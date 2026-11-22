@@ -69,7 +69,9 @@
     function readJson(key, fallback) {
         try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v && typeof v === 'object' ? v : fallback; } catch (_) { return fallback; }
     }
-    const prefs = Object.assign({ channel: '', quality: 'auto', show: 'A', todayAt: 0, body: 'gloss', era: 'xm', info: 'song', view: 'screen', saved: {} }, readJson(LS_PREFS, {}));
+    // skip (Yukimi, Nov 21 2026): previous / next go to the song's or show's start with a hold to seek ('song'), or always
+    // seek 15 seconds ('seek')
+    const prefs = Object.assign({ channel: '', quality: 'auto', show: 'A', todayAt: 0, body: 'gloss', era: 'xm', info: 'song', view: 'screen', skip: 'song', saved: {} }, readJson(LS_PREFS, {}));
     // Now Playing is the receiver's own screen (Yukimi, Nov 20 2026: "It should share the same LCD design"): the desktop
     // radio's display markup and theme (public/css/themes/vista/xmradio.css, whose rules also match .xrm-lcd), one of
     // the docked receivers' screens at its own size, scaled to the phone's width; View > Faceplate (or the phone turned
@@ -648,6 +650,52 @@
         if (next && Date.now() - next.at > 45000) jumpTo(next.at); else goLive();
     }
 
+    /** Seek seconds through the stream (live: played from that far behind live; a tape's recording in the page's player). */
+    function seekSec(sec) {
+        if (!sec) return;
+        if (radio.mode === 'track') {
+            const a = radio.audio;
+            if (a && !radio.native && Number.isFinite(a.duration)) a.currentTime = Math.max(0, Math.min(a.duration - 1, a.currentTime + sec));
+            return;
+        }
+        const t = posTime();
+        const id = curId();
+        if (t == null || !id) return;
+        // that far behind live (jumpTo's half-minute floor would swallow a 15-second step back from live)
+        const back = Math.round((Date.now() - (t + sec * 1000)) / 1000 - NATIVE_RESERVE);
+        if (back < 5) goLive(); else void tune(id, { back });
+    }
+
+    /** Previous / next (the Now Playing keys and the faceplate's): as Menu > Back / Forward says. */
+    function skipKey(dir) {
+        if (prefs.skip === 'seek') { seekSec(dir * 15); return; }
+        if (dir < 0) prevSong(); else nextSong();
+    }
+
+    /**
+     * A held previous / next key (Back / Forward: Song) seeks: 15 seconds more every 0.4 s, shown on the progress line,
+     * played from there when it is let go (one tune, not one a step). True when the press was a hold.
+     */
+    let seekHold = null;
+    function seekHoldStart(dir) {
+        seekHoldEnd(false);
+        if (prefs.skip === 'seek' || radio.state === 'off') return;
+        const h = { dir, n: 0, fired: false, t: 0, iv: 0 };
+        const hint = () => { if (els) setText(els.mid, `SEEK ${dir < 0 ? '-' : '+'}${mmss(h.n * 15)}`); };
+        h.t = setTimeout(() => { h.fired = true; h.n = 1; hint(); h.iv = setInterval(() => { if (document.hidden || !screenOn()) { seekHoldEnd(false); return; } h.n += 1; hint(); }, 400); }, 500);
+        seekHold = h;
+    }
+    function seekHoldEnd(apply) {
+        const h = seekHold;
+        seekHold = null;
+        if (!h) return false;
+        clearTimeout(h.t);
+        clearInterval(h.iv);
+        if (h.fired && apply) seekSec(h.dir * h.n * 15);
+        if (h.fired) paintProgress();
+        return h.fired;
+    }
+
     // ---------------------------------------------------------------- the programme (now, up next, recently played)
 
     const sched = new Map(); // channelId -> { at, data, cutAt }
@@ -736,10 +784,14 @@
     /** Record Channel: everything on the channel until stopped (up to 8 hours), as the deck's REC. */
     async function recordChannel(id) {
         const c = chan(id);
-        if (!c || !isAdmin()) return;
+        if (!isAdmin()) return;
+        if (!c) { void box('Tune a channel first: the deck records the channel the radio plays.', 'info'); return; }
         if (recOf(id)) { void box(`${chanLabel(c)} is already recording.`, 'info'); return; }
-        const ok = await ws.messageBox({ title: TITLE, icon: 'question', text: `Record ${chanLabel(c)} until you stop it (up to 8 hours)?\n\nThe cassette deck's switch decides: a file per song, or one long file.`, buttons: [{ text: 'Record', value: true }, { text: 'Cancel', value: false }] });
-        if (ok) await recStart(id, {});
+        // from the start of what is on air, or from now (Yukimi, Nov 21 2026: the deck asks as Record does)
+        const now = nowOf(id);
+        const what = now && !now.ad && now.t ? `"${now.t}"${now.a ? ` by ${now.a}` : ''}` : `what is on ${chanLabel(c)}`;
+        const choice = await ws.messageBox({ title: TITLE, icon: 'question', text: `Record ${what} from the start?\n\nNo records from now. ${chanLabel(c)} records until you stop it (up to 8 hours); the cassette deck's switch decides a file per song or one long file.`, buttons: [{ text: 'Yes', value: 'start' }, { text: 'No', value: 'now' }, { text: 'Cancel', value: false }] });
+        if (choice) await recStart(id, { fromStart: choice === 'start' });
     }
 
     async function recStart(id, opts) {
@@ -1038,15 +1090,25 @@
         };
         mountScreen();
         bindScreen();
+        // previous / next held: seek (the click that follows is spent)
+        let heldKey = false;
+        page.addEventListener('pointerdown', (e) => {
+            const k = e.target.closest('[data-k="prev"], [data-k="next"]');
+            if (k && !k.closest('.xrm-lcd')) { heldKey = false; seekHoldStart(k.dataset.k === 'prev' ? -1 : 1); }
+        });
+        const keyUp = (apply) => { if (seekHoldEnd(apply)) heldKey = true; };
+        page.addEventListener('pointerup', () => keyUp(true));
+        page.addEventListener('pointercancel', () => keyUp(false));
         page.addEventListener('click', (e) => {
             const tb = e.target.closest('[data-tab]');
             if (tb) { setTab(tb.dataset.tab); return; }
             const k = e.target.closest('[data-k]');
             if (k && !k.closest('.xrm-lcd')) {
                 const id = curId();
+                if ((k.dataset.k === 'prev' || k.dataset.k === 'next') && heldKey) { heldKey = false; return; }
                 if (k.dataset.k === 'play') playPause();
-                else if (k.dataset.k === 'prev') prevSong();
-                else if (k.dataset.k === 'next') nextSong();
+                else if (k.dataset.k === 'prev') skipKey(-1);
+                else if (k.dataset.k === 'next') skipKey(1);
                 else if (k.dataset.k === 'live') goLive();
                 else if (k.dataset.k === 'rec') { const r = recOf(id); if (r) void stopRec(r); else void recordAsk(id); }
                 return;
@@ -1257,6 +1319,8 @@
         let held = 0;
         els.lcd.addEventListener('pointerdown', (e) => {
             down = { x: e.clientX, y: e.clientY, t: Date.now(), on: e.target.closest('button, [data-k], [data-pre]') };
+            const sk = e.target.closest('[data-b="back"], [data-b="fwd"]');
+            if (sk) seekHoldStart(sk.dataset.b === 'back' ? -1 : 1);
             const p = e.target.closest('[data-pre]');
             clearTimeout(held);
             if (p) held = setTimeout(() => { held = -1; const bank = prefs.show === 'B' || prefs.show === 'C' ? prefs.show : 'A'; void setPreset(bank, Number(p.dataset.pre) - 1); if (ws && ws.vibrate) { try { ws.vibrate('tap'); } catch (_) { /* no motor */ } } }, 900);
@@ -1264,6 +1328,7 @@
         els.lcd.addEventListener('pointerup', (e) => {
             const d = down;
             down = null;
+            if (seekHoldEnd(true)) { clearTimeout(held); held = 0; return; }
             const wasHeld = held === -1;
             clearTimeout(held);
             held = 0;
@@ -1285,13 +1350,13 @@
             saveSoon();
             render();
         });
-        els.lcd.addEventListener('pointercancel', () => { down = null; clearTimeout(held); held = 0; });
+        els.lcd.addEventListener('pointercancel', () => { down = null; clearTimeout(held); held = 0; seekHoldEnd(false); });
     }
     function faceKey(b) {
         if (b === 'power') { if (radio.state === 'off') playPause(); else stopRadio(); }
         else if (b === 'play') playPause();
-        else if (b === 'back') prevSong();
-        else if (b === 'fwd') nextSong();
+        else if (b === 'back') skipKey(-1);
+        else if (b === 'fwd') skipKey(1);
         else if (b === 'jump') { if (radio.prevId) void tune(radio.prevId); }
         else if (b === 'band') { const order = ['A', 'B', 'C']; prefs.show = order[(order.indexOf(prefs.show) + 1) % 3] || 'A'; saveSoon(); paintPresetKeys(); render(); }
         else if (b === 'disp') { prefs.info = INFO[(INFO.indexOf(prefs.info) + 1) % INFO.length]; saveSoon(); render(); }
@@ -1675,6 +1740,7 @@
             { label: 'Radio', submenu: BODIES.map(([v, t]) => ({ label: t, radio: prefs.body === v, action: () => { prefs.body = v; saveSoon(); render(); } })) },
             { label: 'Brand', submenu: ERAS.map(([v, t]) => ({ label: t, radio: prefs.era === v, action: () => { prefs.era = v; saveSoon(); render(); } })) },
             { label: 'Quality', submenu: QUALITIES.map(([v, t]) => ({ label: t, radio: prefs.quality === v, action: () => { prefs.quality = v; saveSoon(); if (radio.mode === 'live' && radio.channelId && radio.state !== 'off') void tune(radio.channelId, { back: radio.back }); } })) },
+            { label: 'Back / Forward', submenu: [['song', 'Song or Show, Hold to Seek'], ['seek', 'Always Seek 15 Seconds']].map(([v, t]) => ({ label: t, radio: prefs.skip === v, action: () => { prefs.skip = v; saveSoon(); } })) },
             { label: sl ? `Sleep Timer (${sl} min)` : 'Sleep Timer', submenu: SLEEP.map((m) => ({ label: m ? `${m} minutes` : 'Off', radio: m ? Math.abs(sl - m) < 1 : !sl, disabled: !m ? false : radio.state === 'off', action: () => setSleep(m) })) },
             '-',
             { label: 'Refresh Lineup', action: () => { lineupAsked = false; void loadLineup(true); } },

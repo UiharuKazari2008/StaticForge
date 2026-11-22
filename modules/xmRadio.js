@@ -457,8 +457,18 @@ async function watchTick() {
 }
 /** A channel's recent cuts, oldest first. */
 function nowPlayingCuts(id) { const v = nowPlaying.get(id); return v && v.cuts ? v.cuts.slice() : []; }
+/**
+ * The lineup kept on disk, read into memory once: the recorder and the phone feed need it even when no radio has asked
+ * for the lineup since the server started (a phone keeps its own copy a month, so it never asks; its Record answered
+ * "No such channel." after every restart, Yukimi Nov 21 2026).
+ */
+function lineupKept() {
+    if (!lineupCache) { try { lineupCache = JSON.parse(fs.readFileSync(lineupFile(), 'utf8')); } catch (_) { lineupCache = null; } }
+    return lineupCache;
+}
 /** A channel of the lineup with its plan mark, or null. */
 function channelById(id) {
+    lineupKept();
     const c = lineupCache && lineupCache.channels && lineupCache.channels.find((x) => x.id === id);
     if (!c) return null;
     const no = new Set(lineupCache.notInPlan || []);
@@ -475,7 +485,7 @@ function defineFeed(statusHub) {
         allow: (info) => !!(info && /^(admin|dev_admin)$/.test(String(info.userType || ''))),
         sample: async () => {
             await readLookAround();
-            const items = { account: account(), lineup: lineupCache && lineupCache.at ? { at: lineupCache.at, n: lineupCache.channels.length } : null };
+            const items = { account: account(), lineup: lineupKept() && lineupCache.at ? { at: lineupCache.at, n: lineupCache.channels.length } : null };
             for (const [id, v] of nowPlaying) items[`ch:${id}`] = { a: v.a, t: v.t, s: v.s, ad: v.ad, i: v.i };
             // the cassette deck: its tape, its switch, what it is recording, the timers, alerts and terms
             try { items.deck = require('./xmRadioRecorder').deck(); } catch (_) { /* not started */ }
@@ -520,7 +530,7 @@ function definePhoneFeed(statusHub) {
         sample: async () => {
             await readLookAround();
             const a = account();
-            const items = { account: { signedIn: !!(a && a.signedIn) }, lineup: lineupCache && lineupCache.at ? { at: lineupCache.at } : null, guide: { n: Object.keys((lineupCache && lineupCache.genres) || {}).length } };
+            const items = { account: { signedIn: !!(a && a.signedIn) }, lineup: lineupKept() && lineupCache.at ? { at: lineupCache.at } : null, guide: { n: Object.keys((lineupCache && lineupCache.genres) || {}).length } };
             // the preset banks themselves (at most 30 ids; only a change is pushed): a phone kept the ones it read with
             // the lineup, once a month, so presets stored elsewhere never reached its Today (Yukimi, Nov 21 2026)
             const pr = presets();
@@ -714,7 +724,7 @@ async function channelInfo(id, tok) {
 
 /** The channels this account can tune, by number (kept a month; built again on demand). */
 async function lineup({ fresh } = {}) {
-    if (!lineupCache) { try { lineupCache = JSON.parse(fs.readFileSync(lineupFile(), 'utf8')); } catch (_) { lineupCache = null; } }
+    lineupKept();
     if (!fresh && lineupCache && lineupCache.channels && lineupCache.channels.length && Date.now() - lineupCache.at < LINEUP_TTL) return withPlan(lineupCache.channels);
     if (lineupBuilding) return lineupBuilding;
     lineupBuilding = (async () => {

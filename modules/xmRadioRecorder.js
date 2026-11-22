@@ -497,6 +497,19 @@ async function recordCut(channelId, { fromStart } = {}) {
     return start({ channelId, kind: 'song', back: 0, fromCut: now, until: now + 2 * 3600 * 1000 });
 }
 
+/**
+ * The deck's REC (Yukimi, Nov 21 2026: the desktop asks "record from the start?" as the phone does): the channel until
+ * STOP (up to 8 hours), from the first frame of the song or show on air when asked, else from now.
+ */
+async function recordChannel(channelId, { fromStart } = {}) {
+    const cut = xm.nowPlayingCuts(String(channelId || '')).slice(-1)[0];
+    const now = Date.now();
+    if (fromStart && cut && now - cut.at < 4 * 3600 * 1000) {
+        return start({ channelId, kind: 'manual', back: Math.ceil((now - cut.at) / 1000) + 8, fromCut: cut.at });
+    }
+    return start({ channelId, kind: 'manual' });
+}
+
 async function start(opts) {
     const s = load();
     const channelId = String(opts.channelId || '');
@@ -803,6 +816,6 @@ function init(xmRadio, globalResources, { changed: cb } = {}) {
 }
 
 module.exports = {
-    init, start, stop, recordCut, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
+    init, start, stop, recordCut, recordChannel, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
     _test: { adtsFrames, nextStart, cutAt, norm, onLook, sliceAac, recs, load: () => load(), reset: () => { st = null; recs.clear(); ended.clear(); fired.clear(); } }
 };

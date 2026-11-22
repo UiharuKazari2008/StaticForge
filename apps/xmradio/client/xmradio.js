@@ -57,6 +57,7 @@
     const INFO_MODES = ['song', 'channel', 'show'];
     const HLS_SRC = '/dist/hlsjs/hls.light.min.js';
     const LONG_PRESS_MS = 900;
+    const SKIP_HOLD_MS = 500; // a held back / forward key seeks
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const esc = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const pad = (n, w) => String(n).padStart(w, '0');
@@ -75,7 +76,12 @@
             zoom: Number(p.zoom) > 0 ? Number(p.zoom) : 1,
             // what the keyboard's media keys do (Yukimi, Nov 20 2026): skip through the stream, or change channel
             mediaKeys: p.mediaKeys === 'channel' ? 'channel' : 'transport',
-            channel: typeof p.channel === 'string' ? p.channel : ''
+            // what back / forward do (Yukimi, Nov 21 2026): song = the start of this song or show (the one before, the
+            // next) with a hold to seek; seek = always 15 seconds
+            skip: p.skip === 'seek' ? 'seek' : 'song',
+            channel: typeof p.channel === 'string' ? p.channel : '',
+            // the radio opens as it was left: on or off (Yukimi, Nov 21 2026: "when i open it should show the last state")
+            on: p.on === true
         };
     }
 
@@ -312,6 +318,7 @@
             shell.innerHTML = this.faceplateHtml(model);
             this.f = {};
             this.root.querySelectorAll('[data-f]').forEach((el) => { this.f[el.dataset.f] = el; });
+            this.skipTitles();
             this.artKey = null;
             this.logoKey = null;
             this.bgKey = null;
@@ -396,6 +403,7 @@
             }, sig);
             doc.addEventListener('visibilitychange', () => this.syncSeen(), sig);
             this.root.addEventListener('click', (e) => {
+                if (this.held) { this.held = false; if (e.target.closest('[data-b="back"], [data-b="fwd"], [data-nav="left"], [data-nav="right"]')) return; }
                 const n = e.target.closest('[data-nav]');
                 if (n) { this.nav(n.dataset.nav); return; }
                 const b = e.target.closest('[data-b]');
@@ -409,6 +417,7 @@
                 if (p && e.button === 0) this.presetDown(Number(p.dataset.pre), p);
                 const k = e.target.closest('[data-k]');
                 if (k && e.button === 0) this.knobDrag(k.dataset.k, e, k);
+                this.skipHold(e);
             }, sig);
             this.root.addEventListener('wheel', (e) => {
                 const k = e.target.closest('[data-k]');
@@ -469,7 +478,25 @@
                 this.account = r && r.account;
             } catch (_) { this.account = null; }
             await this.loadLineup();
+            await this.loadDeck();
             this.paint();
+            this.restore();
+        }
+
+        /** What the deck is doing (a recording holds the radio on its channel); the feed keeps it current while on. */
+        async loadDeck() {
+            if (!this.signedIn()) return;
+            try {
+                const r = await this.ask('xmradio_deck_get', {});
+                if (r && r.deck) { this.deckState = r.deck; this.syncRecording(r.deck); }
+            } catch (_) { /* the feed brings it once the radio is on */ }
+        }
+
+        /** Opening: as it was left (on, on the last channel), and on the recording's channel while the deck records. */
+        restore() {
+            if (this.on || this.app.signal.aborted || !this.signedIn()) return;
+            if (this.recording) this.followRecording(this.recording, { start: true, again: true });
+            else if (this.prefs.on) this.power();
         }
 
         async loadLineup() {
@@ -535,8 +562,8 @@
                 } else if (k === 'deck') {
                     // the cassette deck's state (its tape, its switch, recordings, timers, alerts, terms)
                     this.deckState = v;
+                    this.syncRecording(v);
                     if (this.deck) this.deck.applyState(v);
-                    else if (this.recording && !(v && (v.recordings || []).some((x) => x.rid === this.recording.rid))) this.endRecording();
                 } else if (k.startsWith('ch:')) {
                     const id = k.slice(3);
                     this.now.set(id, v);
@@ -550,21 +577,43 @@
 
         signedIn() { return !!(this.account && this.account.signedIn); }
 
+        /**
+         * Power. Off only disconnects this radio from the stream: a recording goes on on the server (Yukimi, Nov 21
+         * 2026: "the power off / stop only disconnects the client from the player"). On: the channel being recorded,
+         * else the last one.
+         */
         power() {
-            if (this.on) { this.stop(); this.on = false; this.state = 'off'; void this.syncHub(); this.paint(); return; }
+            if (this.on) {
+                this.stop(); this.on = false; this.state = 'off';
+                this.prefs.on = false; this.savePrefs();
+                void this.syncHub(); this.paint(); return;
+            }
             this.on = true;
+            this.prefs.on = true;
+            this.savePrefs();
             void this.syncHub();
             if (!this.signedIn()) { this.state = 'signin'; this.paint(); return; }
-            const last = this.byId.get(this.prefs.channel) || this.lineup.find((c) => c.sub !== false);
-            if (last) void this.tune(last); else { this.state = 'nosignal'; this.paint(); }
+            const rec = this.recording && this.byId.get(this.recording.channelId);
+            const last = rec || this.byId.get(this.prefs.channel) || this.lineup.find((c) => c.sub !== false);
+            if (last) void this.tune(last, { guarded: true }); else { this.state = 'nosignal'; this.paint(); }
         }
 
-        async tune(ch) {
+        /**
+         * The deck is recording (its REC, from here or from the phone): the radio is held on that channel, nothing seeks
+         * (Yukimi, Nov 21 2026: "guard the recorder and prevent changing the channel, seeking"). True when it refused.
+         */
+        recordGuard(what) {
+            if (!this.recording) return false;
+            const ch = this.byId.get(this.recording.channelId);
+            this.say(what === 'tune' && ch ? `RECORDING ${ch.number}` : 'RECORDING');
+            return true;
+        }
+
+        async tune(ch, { guarded } = {}) {
             if (!ch) return;
-            if (!this.on) { this.on = true; void this.syncHub(); }
+            if (!guarded && this.recording && ch.id !== this.recording.channelId && this.recordGuard('tune')) return;
+            if (!this.on) { this.on = true; this.prefs.on = true; void this.syncHub(); }
             if (this.channel && this.channel.id !== ch.id) this.prevChannel = this.channel.id;
-            // tuning leaves the recording (it goes on recording on the server)
-            this.recording = null;
             this.channel = ch;
             this.prefs.channel = ch.id;
             this.savePrefs();
@@ -615,21 +664,42 @@
             try { await a.play(); } catch (_) { /* the user's press started it; a refusal shows as paused */ }
         }
 
-        /** The deck's REC: the radio plays the recording (all of it can be paused and rewound) instead of live. */
-        playRecording(rec) {
+        /**
+         * The deck records a channel: the radio shows it and is held on it. It stays on the live stream it already plays
+         * (switching to the new recording's own playlist left several seconds of silence that read as muted, Yukimi Nov
+         * 21 2026), tuning only when it was on another channel; sound on. Off, it waits: power on goes to this channel.
+         */
+        followRecording(rec, opts) {
+            const start = !!(opts && opts.start);
+            if (!rec) return;
+            const was = this.recording;
             this.recording = rec;
-            if (!this.on) { this.on = true; void this.syncHub(); }
-            this.state = 'acquiring';
-            this.paint();
-            void this.play(rec.url, ++this.tuneSeq);
+            if (was && was.rid === rec.rid && !(opts && opts.again)) { this.paint(); return; }
+            this.audio.muted = false;
+            const ch = this.byId.get(rec.channelId);
+            if (!ch) { this.paint(); return; }
+            if (!this.on && !start) { this.paint(); return; }
+            if (this.on && this.channel === ch && this.state !== 'nosignal' && this.state !== 'nosub') {
+                if (this.audio.paused) void this.audio.play().catch(() => {});
+                this.paint();
+                return;
+            }
+            void this.tune(ch, { guarded: true });
         }
 
-        /** The recording was filed (STOP, or its 8 hours): back to the channel, live. */
+        /** The recording was filed (STOP, or its 8 hours): the radio is free again (it plays on, live); MUTE ends with it. */
         endRecording() {
             if (!this.recording) return;
-            const ch = this.byId.get(this.recording.channelId) || this.channel;
             this.recording = null;
-            if (this.on && ch) void this.tune(ch); else this.paint();
+            this.audio.muted = false;
+            this.paint();
+        }
+
+        /** The deck's state (the status feed, or read on opening): follow its REC, or let go when it has ended. */
+        syncRecording(deck, opts) {
+            const mine = ((deck && deck.recordings) || []).find((x) => x.kind === 'manual') || null;
+            if (mine) this.followRecording(mine, opts);
+            else if (this.recording) this.endRecording();
         }
 
         openDeck() {
@@ -681,6 +751,7 @@
         }
 
         seekBy(sec) {
+            if (this.recordGuard('seek')) return;
             const a = this.audio;
             if (!a.seekable.length) return;
             const lo = a.seekable.start(0);
@@ -690,11 +761,90 @@
         }
 
         goLive() {
+            if (this.recordGuard('seek')) return;
             const a = this.audio;
             const live = this.hls && Number.isFinite(this.hls.liveSyncPosition) ? this.hls.liveSyncPosition : (a.seekable.length ? a.seekable.end(a.seekable.length - 1) : null);
             if (live != null) a.currentTime = live;
             if (a.paused) void a.play().catch(() => {});
             this.paintReplay();
+        }
+
+        /** Where the stream plays (ms, the broadcast's clock), or null. */
+        posTime() {
+            const d = this.hls && this.hls.playingDate;
+            return d instanceof Date && !Number.isNaN(d.getTime()) ? d.getTime() : null;
+        }
+
+        /**
+         * Back / forward (the transport keys, the pad's left and right, the media keys), as MENU > Back / Forward says
+         * (Yukimi, Nov 21 2026): the start of this song or show (in its first five seconds, the one before) and the next
+         * one, a hold seeking; or 15 seconds each press.
+         */
+        skip(dir) {
+            if (this.recordGuard('seek')) return;
+            if (this.prefs.skip === 'seek') { this.seekBy(dir * 15); return; }
+            void this.skipSong(dir);
+        }
+
+        async skipSong(dir) {
+            const ch = this.channel;
+            if (!ch || this.posTime() == null) { this.seekBy(dir * 15); return; }
+            const list = await this.starts(ch.id);
+            const p = this.posTime();
+            if (this.channel !== ch || p == null || this.recording) return;
+            if (!list.length) { this.seekBy(dir * 15); return; }
+            if (dir < 0) {
+                let k = -1;
+                list.forEach((t, i) => { if (t <= p) k = i; });
+                const to = k < 0 ? list[0] : (p - list[k] > 5000 || k === 0 ? list[k] : list[k - 1]);
+                this.seekBy((to - p) / 1000);
+                if (this.audio.paused) void this.audio.play().catch(() => {});
+            } else {
+                const next = list.find((t) => t > p + 1000);
+                if (next) this.seekBy((next - p) / 1000); else this.goLive();
+            }
+        }
+
+        /** The starts of the channel's songs we know (its shows on a channel without songs), oldest first; read once a song. */
+        async starts(id) {
+            const n = this.now.get(id);
+            const key = `${id}|${n ? `${n.a}|${n.t}` : ''}`;
+            const c = this.sched;
+            if (!c || c.key !== key || Date.now() - c.at > 120000) {
+                try { this.sched = { key, at: Date.now(), d: await this.ask('xmradio_schedule', { channelId: id }) }; } catch (_) { return []; }
+            }
+            const d = (this.sched && this.sched.d) || {};
+            const songs = [...(d.played || []), ...(d.now ? [d.now] : [])].map((x) => Number(x.at)).filter(Number.isFinite);
+            const shows = (d.shows || []).map((x) => Number(x.at)).filter((t) => Number.isFinite(t) && t <= Date.now());
+            return [...new Set(songs.length ? songs : shows)].sort((a, b) => a - b);
+        }
+
+        /** The keys' tooltips say what back / forward do. */
+        skipTitles() {
+            const song = this.prefs.skip !== 'seek';
+            this.root.querySelectorAll('[data-b="back"], [data-b="fwd"], .xr-st-rocker [data-nav]').forEach((el) => {
+                const back = el.dataset.b === 'back' || el.dataset.nav === 'left';
+                el.title = song ? (back ? 'Previous song (hold: back 15 seconds)' : 'Next song (hold: forward 15 seconds)') : (back ? 'Back 15 seconds' : 'Forward 15 seconds');
+            });
+        }
+
+        /** A held back / forward key (song mode) seeks 15 seconds at a time until it is let go; the click that follows is spent. */
+        skipHold(e) {
+            if (e.button !== 0 || this.menu || this.prefs.skip === 'seek' || !this.on) return;
+            const el = e.target.closest('[data-b="back"], [data-b="fwd"], [data-nav="left"], [data-nav="right"]');
+            if (!el || !this.root.contains(el)) return;
+            const dir = el.dataset.b === 'back' || el.dataset.nav === 'left' ? -1 : 1;
+            const press = new AbortController();
+            const sig = { signal: AbortSignal.any ? AbortSignal.any([press.signal, this.app.signal]) : press.signal };
+            let iv = 0;
+            const t = setTimeout(() => {
+                this.held = true;
+                this.seekBy(dir * 15);
+                // only while the key is held and seen (a lost pointerup must not leave it seeking)
+                iv = setInterval(() => { if (doc.hidden || !el.isConnected || !this.on) { up(); return; } this.seekBy(dir * 15); }, 350);
+            }, SKIP_HOLD_MS);
+            const up = () => { clearTimeout(t); clearInterval(iv); press.abort(); };
+            for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(ev, up, sig);
         }
 
         step(dir) {
@@ -733,8 +883,8 @@
                 this.root.focus();
             } else if (b === 'play') {
                 if (this.audio.paused) void this.audio.play().catch(() => {}); else this.audio.pause();
-            } else if (b === 'back') this.seekBy(-15);
-            else if (b === 'fwd') this.seekBy(15);
+            } else if (b === 'back') this.skip(-1);
+            else if (b === 'fwd') this.skip(1);
             else if (b === 'live') this.goLive();
         }
 
@@ -869,6 +1019,7 @@
                 { label: 'Audio Quality', sub: () => radio([['hi', 'High 256k'], ['std', 'Standard 128k'], ['low', 'Low 32k'], ['eco24', 'Economy 24k'], ['eco16', 'Economy 16k']], this.prefs.quality, (id) => this.setQuality(id)) },
                 { label: 'Display Info', sub: () => radio([['song', 'Artist and Song'], ['channel', 'Channel'], ['show', 'Show']], this.prefs.info, (id) => { this.prefs.info = id; this.savePrefs(); this.paint(); }) },
                 { label: `Volume  ${Math.round(this.prefs.volume * 100)}`, adjust: (d) => this.knobStep('vol', d) },
+                { label: 'Back / Forward', sub: () => radio([['song', 'Song or Show, Hold to Seek'], ['seek', 'Always Seek 15 Seconds']], this.prefs.skip, (id) => { this.prefs.skip = id; this.savePrefs(); this.skipTitles(); }) },
                 { label: 'Media Keys', sub: () => radio([['transport', 'Skip Back / Forward'], ['channel', 'Channel Down / Up']], this.prefs.mediaKeys, (id) => { this.prefs.mediaKeys = id; this.savePrefs(); }) },
                 { label: 'Brand', sub: () => radio(ERAS, this.prefs.era, (id) => { this.prefs.era = id; this.savePrefs(); this.applyLook(); }) },
                 { label: 'Radio', sub: () => radio(BODIES, this.prefs.body, (id) => { this.prefs.body = id; this.prefs.zoom = 1; this.savePrefs(); this.applyLook(); }) }
@@ -925,8 +1076,8 @@
             if (!this.on) { if (dir === 'select') this.power(); return; }
             if (dir === 'up') this.knobStep('tune', 1);
             else if (dir === 'down') this.knobStep('tune', -1);
-            else if (dir === 'left') this.seekBy(-15);
-            else if (dir === 'right') this.seekBy(15);
+            else if (dir === 'left') this.skip(-1);
+            else if (dir === 'right') this.skip(1);
             else if (dir === 'select') this.button('disp');
         }
 
@@ -1093,8 +1244,8 @@
             const h = (a, fn) => { try { ms.setActionHandler(a, fn); } catch (_) { /* not supported */ } };
             h('play', () => { if (this.on) void this.audio.play().catch(() => {}); });
             h('pause', () => this.audio.pause());
-            h('nexttrack', () => { if (this.prefs.mediaKeys === 'channel') this.step(1); else this.seekBy(15); });
-            h('previoustrack', () => { if (this.prefs.mediaKeys === 'channel') this.step(-1); else this.seekBy(-15); });
+            h('nexttrack', () => { if (this.prefs.mediaKeys === 'channel') this.step(1); else this.skip(1); });
+            h('previoustrack', () => { if (this.prefs.mediaKeys === 'channel') this.step(-1); else this.skip(-1); });
             h('seekbackward', () => this.seekBy(-15));
             h('seekforward', () => this.seekBy(15));
             this.app.signal.addEventListener('abort', () => { for (const a of ['play', 'pause', 'nexttrack', 'previoustrack', 'seekbackward', 'seekforward']) h(a, null); });
@@ -1509,9 +1660,9 @@
 
     /**
      * The cassette deck (Yukimi, Nov 20 2026): its own window next to the radio. The recording is the server's
-     * (modules/xmRadioRecorder.js): REC records the channel the radio is on, and the radio then plays the recording
-     * (pause and rewind over all of it) instead of the live stream; STOP files it on the tape and the radio goes back
-     * to live. The tape is a folder in Recordings: STOP / EJECT while stopped swaps it. PLAY, REW and FF play the tape's
+     * (modules/xmRadioRecorder.js): REC asks whether from the start of what is on air, then records the channel the
+     * radio is on; the radio plays on, held on that channel (no tuning away, no seeking) until STOP files it on the
+     * tape. Power off or closing only leaves the stream; opening the radio goes back to the channel recording. The tape is a folder in Recordings: STOP / EJECT while stopped swaps it. PLAY, REW and FF play the tape's
      * recordings here (the radio pauses meanwhile); MUTE silences the radio while it records. The SPLIT switch: a file
      * per song, or one continuous file. TIMER: scheduled recordings, the radio's alerts, search terms.
      */
@@ -1598,13 +1749,17 @@
             }, sig);
             call('openModal', m);
             m.classList.remove('hidden');
-            // beside the radio, under it when there is no room
-            const rb = r.modal.getBoundingClientRect();
-            const vw = root.innerWidth;
-            const x = rb.right + 12 + 540 < vw ? rb.right + 12 : Math.max(8, rb.left);
-            const y = rb.right + 12 + 540 < vw ? rb.top : Math.min(root.innerHeight - 280, rb.bottom + 12);
-            m.style.left = `${Math.round(x)}px`;
-            m.style.top = `${Math.round(Math.max(0, y))}px`;
+            // beside the radio, under it when there is no room; placed through the window manager's offsets (inline
+            // left / top pinned the deck where it opened: it could not be dragged, Yukimi Nov 21 2026)
+            requestAnimationFrame(() => {
+                if (this.closed || m.hasAttribute('data-window-position-restored')) return;
+                const rb = r.modal.getBoundingClientRect();
+                const vw = root.innerWidth;
+                const side = rb.right + 12 + 540 < vw;
+                const x = side ? rb.right + 12 : Math.max(8, rb.left);
+                const y = side ? rb.top : Math.min(root.innerHeight - 280, rb.bottom + 12);
+                call('setModalOffsetsFromViewportTopLeft', m, Math.round(x), Math.round(Math.max(0, y)));
+            });
             this.paint();
             this.el.focus();
         }
@@ -1638,25 +1793,38 @@
         /** The deck's own recording (REC): the manual one; timers' and alerts' run beside it. */
         mine() { const list = (this.state && this.state.recordings) || []; return list.find((x) => x.kind === 'manual') || null; }
 
+        /** The server's deck (the radio has followed its REC already: Radio.syncRecording). */
         applyState(deck) {
-            const was = this.mine();
             this.state = deck;
-            const now = this.mine();
-            // the recording ended on the server (8 hours, the account): the radio goes back to the live stream
-            if (was && !now && this.r.recording && this.r.recording.rid === was.rid) this.r.endRecording();
             this.paint();
+        }
+
+        /**
+         * REC asks first, as the phone's Record does (Yukimi, Nov 21 2026: "on desktop there [is] no dialog for do i want
+         * to record from the start"): Yes from the first frame of what is on air, No from now.
+         */
+        async askFromStart(ch) {
+            const n = this.r.now.get(ch.id);
+            const what = n && !n.ad && n.t ? `"${esc(n.t)}"${n.a ? ` by ${esc(n.a)}` : ''}` : `what is on ${esc(`${ch.number} ${ch.name}`)}`;
+            return root.showConfirmationDialog(`<p>Record ${what} from the start?</p><p>No records from now. ${esc(ch.name)} (channel ${esc(ch.number)}) records until you press STOP (up to 8 hours).</p>`,
+                [{ text: 'Yes', value: 'start' }, { text: 'No', value: 'now' }, { text: 'Cancel', value: false }], null, { title: `${NAME} Cassette Deck`, icon: 'question', owner: this.modal });
         }
 
         async press(k) {
             const r = this.r;
             if (k === 'rec') {
-                if (this.mine()) return;
-                if (!r.channel || !r.signedIn()) { this.say('TUNE A CHANNEL'); return; }
+                if (this.mine() || this.asking) return;
+                const ch = r.channel;
+                if (!ch || !r.on || !r.signedIn()) { this.say('TUNE A CHANNEL'); return; }
+                this.asking = true;
+                let choice;
+                try { choice = await this.askFromStart(ch); } finally { this.asking = false; }
+                if (!choice || this.closed) return;
                 this.stopTape();
                 try {
-                    const rec = await r.ask('xmradio_rec_start', { channelId: r.channel.id });
+                    const rec = await r.ask('xmradio_rec_start', { channelId: ch.id, fromStart: choice === 'start' });
                     this.state = Object.assign({}, this.state, { recordings: [...((this.state && this.state.recordings) || []).filter((x) => x.rid !== rec.rid), rec] });
-                    r.playRecording(rec);
+                    r.followRecording(rec, { start: true });
                 } catch (err) { this.say((err && err.message) || 'NOT RECORDING'); }
             } else if (k === 'stop') {
                 const rec = this.mine();
@@ -1672,7 +1840,7 @@
                     this.eject();
                 }
             } else if (k === 'play') {
-                if (this.mine()) { if (r.audio.paused) void r.audio.play().catch(() => {}); return; }
+                if (this.mine()) { if (!r.on) r.power(); else if (r.audio.paused) void r.audio.play().catch(() => {}); return; }
                 if (this.playing) return;
                 if (this.track >= 0 && this.audio.src) { void this.audio.play().catch(() => {}); return; }
                 await this.playTrack(0);
@@ -1682,7 +1850,8 @@
                 if (this.audio.paused) void this.audio.play().catch(() => {}); else this.audio.pause();
             } else if (k === 'rew' || k === 'ff') {
                 const dir = k === 'ff' ? 1 : -1;
-                if (this.mine()) { r.seekBy(dir * 15); return; }
+                // the recording is guarded: nothing seeks while it records
+                if (this.mine()) { r.recordGuard('seek'); this.say('RECORDING'); return; }
                 if (this.track < 0) return;
                 // back to the start of this recording first, then the one before (as a deck's music search)
                 if (dir < 0 && this.audio.currentTime > 4) { this.audio.currentTime = 0; return; }
@@ -1736,7 +1905,11 @@
             try { this.audio.load(); } catch (_) { /* nothing loaded */ }
             this.track = -1;
             this.playing = false;
-            if (this.radioWasPlaying) { this.radioWasPlaying = false; if (this.r.on) this.r.goLive(); }
+            if (this.radioWasPlaying) {
+                this.radioWasPlaying = false;
+                if (this.r.on && !this.r.recording) this.r.goLive();
+                else if (this.r.on) void this.r.audio.play().catch(() => {});
+            }
             this.paint();
         }
 

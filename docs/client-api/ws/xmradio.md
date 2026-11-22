@@ -52,7 +52,7 @@ server starts again. The deck's SPLIT switch picks the file layout:
 | `xmradio_deck_get` | admin, dev_admin | `{ workspaceId? }` | `{ deck, tapes[] }` |
 | `xmradio_deck_set` | admin | `{ tape?, workspaceId?, mode? }` (`song` or `long`) | `{ deck }` |
 | `xmradio_tape_tracks` | admin, dev_admin | `{ workspaceId, tape }` | `{ tracks[{ id, name, size, at }] }`, played with `vfs_download_file` |
-| `xmradio_rec_start` | admin | `{ channelId }` | `{ rid, channelId, kind, mode, tape, since, until, url, cut }` |
+| `xmradio_rec_start` | admin | `{ channelId, song?, fromStart? }` | `{ rid, channelId, kind, mode, tape, since, until, url, cut }` |
 | `xmradio_rec_stop` | admin | `{ rid }` | `{ rid, filed }` |
 | `xmradio_timers_set` | admin | `{ timers[{ id?, channelId, start 'HH:MM', minutes, days[0-6], date?, mode?, off? }] }` | `{ timers }` |
 | `xmradio_alert_add` | admin | `{ kind: 'artist' \| 'song', artist, title?, channelId? }` | `{ alerts }` |
@@ -82,6 +82,9 @@ Auto-record:
 - One-touch Record: `xmradio_rec_start { channelId, song: true, fromStart }`. It records the cut on air into the deck's
   tape, from its first frame when `fromStart` (the stream keeps five hours), and stops when the cut ends. The phone
   always asks first.
+- The deck's REC: `xmradio_rec_start { channelId, fromStart }` (no `song`) records the channel until STOP (up to 8 hours),
+  from the first frame of the song or show on air when `fromStart`, else from now. The desktop deck and the phone's
+  deck ask first.
 - The phone program has three tabs: Now Playing, Channels and Recordings.
   - Now Playing uses `xmradio_schedule { channelId }`, which returns `{ now { a, t, at, dur }, played[], shows[] }`.
     It reads liveUpdate for the last hour (it pages about a dozen songs at a time, followed up to now) and the next
