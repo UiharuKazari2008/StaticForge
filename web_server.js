@@ -4951,7 +4951,12 @@ async function handleAdminUnixSocketMessage(message, socket) {
             const missing = err.code === 'ENOENT' || err.code === 'ENOTDIR' || err.status === 404 || err.statusCode === 404;
             if (!missing) {
                 // captureRoute: modules/serverFaultCapture.js (Yozora #833)
-                require('./modules/serverFaultCapture').captureRoute(err, req);
+                const faultCapture = require('./modules/serverFaultCapture');
+                // the client left with its upload unread (#1033): not our error, nobody to answer
+                if (faultCapture.requestAbandoned(err, req)) {
+                    return res.status(400).end();
+                }
+                faultCapture.captureRoute(err, req);
                 console.error('Unhandled route error:', err.message);
                 return res.status(500).json({
                     success: false,

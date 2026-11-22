@@ -176,8 +176,23 @@ function requestInfo(req, status) {
     };
 }
 
+// body-parser's two complaints about a request stream that died under it: destroyed before the
+// parser's turn (a 500, "stream is not readable") or while it was reading (a 400, "request aborted").
+const ABANDONED_BODY_TYPES = new Set(['stream.not.readable', 'request.aborted']);
+
+/**
+ * The client went away with its upload unread (a tab restarting for an update in the middle of a
+ * POST, a closed window): nothing failed here and nobody is left to answer. The same complaint on
+ * a connection that is still open is a route reading the body twice, which stays a fault.
+ */
+function requestAbandoned(err, req) {
+    if (!err || !req || !ABANDONED_BODY_TYPES.has(err.type)) return false;
+    return !!(req.aborted || (req.socket && req.socket.destroyed));
+}
+
 /** Express route errors (500s) from the final error handler. */
 function captureRoute(err, req) {
+    if (requestAbandoned(err, req)) return false;
     return capture(err, 'route', { request: requestInfo(req, 500), source: 'express' });
 }
 
@@ -236,6 +251,7 @@ module.exports = {
     install,
     capture,
     captureRoute,
+    requestAbandoned,
     crash,
     flushPendingSync,
     hookLogger,

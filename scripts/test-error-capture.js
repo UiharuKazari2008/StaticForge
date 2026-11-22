@@ -106,6 +106,22 @@ async function testServerCapture() {
     assert.strictEqual(rep.count, 1, 'the throttled repeat is not written yet');
     assert.ok(/^server:scripts\/test-error-capture\.js$/.test(rep.program.key), rep.program.key);
 
+    // an upload the client walked away from is not a fault (#1033); the same complaint on a live
+    // connection (a body read twice) still is
+    const unread = Object.assign(new Error('stream is not readable'), { status: 500, type: 'stream.not.readable' });
+    const cut = Object.assign(new Error('request aborted'), { status: 400, type: 'request.aborted' });
+    const gone = { method: 'POST', originalUrl: '/api/desktop-guac/preview/x', aborted: true, socket: { destroyed: true } };
+    const open = { method: 'POST', originalUrl: '/api/desktop-guac/preview/x', aborted: false, socket: { destroyed: false } };
+    assert.strictEqual(capture.requestAbandoned(unread, gone), true);
+    assert.strictEqual(capture.requestAbandoned(cut, gone), true);
+    assert.strictEqual(capture.requestAbandoned(unread, open), false, 'a live connection is a real fault');
+    assert.strictEqual(capture.requestAbandoned(new Error('route blew up 44'), gone), false, 'only the body parser\'s complaints');
+    assert.strictEqual(capture.captureRoute(unread, gone), false);
+    assert.strictEqual(capture.captureRoute(cut, gone), false);
+    await wait(50);
+    list = await store.list();
+    assert.strictEqual(list.length, 1, 'abandoned uploads write no report');
+
     // logged: only with a frame of ours
     const foreign = new Error('outside');
     foreign.stack = 'Error: outside\n    at x (/usr/lib/node_modules/thing/index.js:1:1)';
