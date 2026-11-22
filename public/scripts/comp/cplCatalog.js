@@ -376,7 +376,8 @@
         { id: 'remote-access', name: 'Remote Access', cats: ['system', 'network'] },
         { id: 'mail', name: 'Mail', cats: ['users', 'additional'] },
         { id: 'chat', name: 'Chat', cats: ['users', 'additional'] },
-        { id: 'runes', name: 'Runes', cats: ['system', 'additional'] },
+        // program: the Start menu's program this item is (Start Search lists that one, #1016)
+        { id: 'runes', name: 'Runes', cats: ['system', 'additional'], program: 'config-editor' },
         // Server Manager (was Management Tools, the old dashboard page) is listed in Administrative Tools
         { id: 'dreamscape-services', cats: ['system', 'additional'], hidden: true },
         { id: 'authentication', name: 'Dreamscape CardSpace', cats: ['users'] },

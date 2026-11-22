@@ -633,6 +633,7 @@ function buildRunSystemCommandEntries() {
     return [{
         id: 'system-winver',
         category: 'app',
+        command: true,
         label: 'winver',
         subtitle: 'About Melaton',
         icon: 'fa-light fa-info-circle',
@@ -643,6 +644,7 @@ function buildRunSystemCommandEntries() {
         // (cplUserAccounts.js openUserPasswords2, in the Control Panel feature)
         id: 'system-userpasswords2',
         category: 'app',
+        command: true,
         label: 'control userpasswords2',
         subtitle: 'User Accounts',
         icon: 'fa-light fa-users',
@@ -655,6 +657,7 @@ function buildRunSystemCommandEntries() {
         // VZAccess Manager (apps/vzaccess, #947): Verizon Wireless' connection manager for the phone's modem
         id: 'system-vzaccess',
         category: 'app',
+        command: true,
         label: 'vzaccess',
         subtitle: 'VZAccess Manager',
         icon: 'fa-light fa-signal',
@@ -664,6 +667,7 @@ function buildRunSystemCommandEntries() {
         // Vista's cleanmgr: Disk Cleanup (diskCleanup.js, in the Control Panel feature, #945)
         id: 'system-cleanmgr',
         category: 'app',
+        command: true,
         label: 'cleanmgr',
         subtitle: 'Disk Cleanup',
         icon: 'fa-light fa-broom',
@@ -676,6 +680,7 @@ function buildRunSystemCommandEntries() {
         // Vista's mblctr: Melaton Mobility Center (mobilityCenter.js, in the Control Panel feature)
         id: 'system-mblctr',
         category: 'app',
+        command: true,
         label: 'mblctr',
         subtitle: 'Melaton Mobility Center',
         icon: 'fa-light fa-laptop',
@@ -688,6 +693,7 @@ function buildRunSystemCommandEntries() {
         // Vista's presentationsettings: Presentation Settings (presentationSettings.js, in the Control Panel feature, #958)
         id: 'system-presentationsettings',
         category: 'app',
+        command: true,
         label: 'presentationsettings',
         subtitle: 'Presentation Settings',
         icon: 'fa-light fa-projector',
@@ -702,9 +708,11 @@ function buildRunSystemCommandEntries() {
  * index loads with; the Control Panel itself loads only when one is opened). An item's task links are its keywords
  * ("sleep" finds Power Options, "mouse pointer" finds Mouse). A name already in the list (Device Manager and Event
  * Viewer are programs too) stays one row: the program's.
+ * An item that is a program under another name (the catalog's program: Runes is the Registry Editor) is that program.
  * @param {Set<string>} taken lower-case labels already listed
+ * @param {Set<string>} [programs] launch ids already listed
  */
-function buildRunControlPanelEntries(taken) {
+function buildRunControlPanelEntries(taken, programs = new Set()) {
     const out = [];
     const seen = new Set(taken);
     const add = (entry) => {
@@ -734,7 +742,7 @@ function buildRunControlPanelEntries(taken) {
         tasks.set(item, list);
     }));
     (cat.ITEMS || []).forEach((c) => {
-        if (!c.name || c.hidden) return;
+        if (!c.name || c.hidden || (c.program && programs.has(c.program))) return;
         add({
             id: `cpl-${c.id}`, category: 'app', label: c.name, subtitle: 'Control Panel',
             icon: 'fa-light fa-sliders',
@@ -1508,10 +1516,18 @@ function buildRunStaticEntries() {
         ...buildRunSystemCommandEntries(),
         ...buildRunWorkspaceManagerEntries()
     ];
-    const taken = new Set(programs.map((e) => String(e.label || '').toLowerCase()));
+    const lower = (e) => String(e.label || '').toLowerCase();
+    // the Start menu's hidden programs (old launch ids kept for agents and Run, startMenuHidesLaunch: modalUtils.js):
+    // Run finds them, Start Search leaves them out (#1016)
+    const hides = typeof window.startMenuHidesLaunch === 'function' ? window.startMenuHidesLaunch : () => false;
+    programs.forEach((e) => { if (e.launchId && hides(e.launchId)) e.startMenuHidden = true; });
+    const taken = new Set(programs.filter((e) => !e.startMenuHidden).map(lower));
+    const cpl = buildRunControlPanelEntries(taken, new Set(programs.map((e) => e.launchId).filter(Boolean)));
+    // a hidden program that a Control Panel item or tool names too (Dynamic Quips, Autofill Ranking): that one stands for it
+    const cplNames = new Set(cpl.map(lower));
     return [
-        ...programs,
-        ...buildRunControlPanelEntries(taken),
+        ...programs.filter((e) => !(e.startMenuHidden && cplNames.has(lower(e)))),
+        ...cpl,
         ...buildRunWorkspaceEntries(),
         ...buildRunShortcutOnlyEntries()
     ];
