@@ -386,7 +386,7 @@
                         } finally { top.classList.toggle('is-start-open', wasOpen); }
                     }
                     const soft = shell.querySelector('.wm-softkeys');
-                    if (soft) { const un2 = hideIn(soft, '.wm-softkey, .wm-sip'); try { out.soft = layoutOf([soft], dpr); } finally { un2(); } }
+                    if (soft) { const un2 = hideIn(soft, '.wm-softkey, .wm-sip, .wm-taskbtn'); try { out.soft = layoutOf([soft], dpr); } finally { un2(); } }
                 }
             } finally { back(); }
         }
@@ -452,7 +452,8 @@
                 out.frames[n] = { items: layoutOf([el], dpr), box: R(el.getBoundingClientRect()) };
             }
             if (soft) {
-                const labels = [...soft.querySelectorAll('.wm-softkey')];
+                // (the centre task button too: the app draws its own glyph there, #1013)
+                const labels = [...soft.querySelectorAll('.wm-softkey, .wm-taskbtn')];
                 const was = labels.map((b) => b.style.visibility);
                 labels.forEach((b) => { b.style.visibility = 'hidden'; });
                 try { out.soft = layoutOf([soft], dpr); } finally { labels.forEach((b, i) => { b.style.visibility = was[i]; }); }
