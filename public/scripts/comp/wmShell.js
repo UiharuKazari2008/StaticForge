@@ -3848,6 +3848,7 @@
                         const parts = r.classList.contains('wm-bubble-right') ? [...r.children] : [r];
                         parts.forEach((p) => {
                             if (p.classList.contains('wm-bars')) pair.bars = p.querySelectorAll('i.is-on').length;
+                            else if (p.classList.contains('wm-status-icon')) pair.r.push({ s: '', icon: p.dataset.icon || '', b: false });
                             else if (p.classList.contains('wm-vpn-time')) {
                                 const ws = window.wsClient;
                                 pair.clock = Number(p.dataset.since) || (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null;
@@ -5176,18 +5177,31 @@
         const show = !!(radiosNow && radiosNow.bluetooth) && (mode === 'on' || (mode === 'connected' && radiosNow.bluetoothConnected === true));
         if (icon.hidden === show) { icon.hidden = !show; fitStatus(); }
         const bubble = shell.querySelector('.wm-bubble');
-        if (bubble && !bubble.hidden && bubble.dataset.role === 'bluetooth') statusBubble('bluetooth', icon, true);
+        if (bubble && !bubble.hidden && (bubble.dataset.role === 'bluetooth' || bubble.dataset.role === 'data')) statusBubble(bubble.dataset.role, icon, true);
         // the Power bubble's brightness follows Android's (its panel, adaptive brightness) while it is up (#1016)
         if (bubble && !bubble.hidden && bubble.dataset.role === 'battery') paintBrightness();
     }
 
-    // ---- the connected Bluetooth devices and their batteries (#1016) ----
+    // ---- the connected Bluetooth devices and their batteries (#1016, Nov 22 2026) ----
     //
     // window.AndroidBluetooth (DSApp BluetoothControl, #772): getState().devices with connected and battery (0-100, Android's
     // own reading from the headset); read once, then the app's 'dreamscape:bluetooth' pushes (a connect, a battery change).
-    // The Bluetooth bubble lists every connected device, the Connectivity bubble the first three.
+    // Only a device Android can name, that has a normal profile and whose battery it can read is a row: an unnamed
+    // "Bluetooth Devices" entry, a sensor with no profile and a device with no battery value are neither listed nor counted.
+    // The Bluetooth bubble lists every such device, the Connectivity bubble the first three.
     let btNow = null;
     let btRead = false;
+    const BT_NORMAL_PROFILES = new Set(['a2dp', 'headset', 'handsfree', 'hfp', 'le_audio', 'leaudio', 'hid', 'wireless stereo', 'hands free', 'input device']);
+    function btListed(d) {
+        if (!d || !d.connected) return false;
+        const name = String(d.name || '').trim();
+        const address = String(d.address || '').trim();
+        if (!name || /^bluetooth devices?$/i.test(name) || (address && name === address)) return false;
+        const profiles = Array.isArray(d.services) ? d.services : Array.isArray(d.profiles) ? d.profiles : [];
+        if (!profiles.some((p) => BT_NORMAL_PROFILES.has(String(p).toLowerCase()))) return false;
+        const lv = Number(d.battery);
+        return d.battery != null && Number.isFinite(lv) && lv >= 0 && lv <= 100;
+    }
     function btConnected() {
         if (!btRead) {
             btRead = true;
@@ -5196,7 +5210,7 @@
         }
         if (!btNow || !btNow.on || !Array.isArray(btNow.devices)) return null;
         // audio first (headphones, speakers, the car), then the rest, each in the app's (name) order
-        const list = btNow.devices.filter((d) => d && d.connected);
+        const list = btNow.devices.filter(btListed);
         return list.filter((d) => d.kind === 'audio').concat(list.filter((d) => d.kind !== 'audio'));
     }
     function takeBluetooth(d) {
@@ -5207,12 +5221,17 @@
         const b = shell && shell.querySelector('.wm-bubble');
         if (b && !b.hidden && (b.dataset.role === 'bluetooth' || b.dataset.role === 'data')) statusBubble(b.dataset.role, shell.querySelector(`.wm-status-icon[data-role="${b.dataset.role}"]`), true);
     }
-    /** A device's row: its name, its battery at the right (a 1-bit cell filled to the level, and the percent). */
+    /** A device's row: its name and the title bar's own battery glyph at the right, no percentage (Nov 22). */
     function btDeviceRow(d) {
-        const name = escapeHtml(d.name || d.address || 'Bluetooth device');
-        const lv = Number.isFinite(d.battery) ? Math.max(0, Math.min(100, Math.round(d.battery))) : null;
-        const cell = lv == null ? '' : `<span class="wm-bt-batt"><svg class="wm-bit-glyph" viewBox="0 0 24 12" shape-rendering="crispEdges" aria-hidden="true"><rect x="0.75" y="0.75" width="20" height="10.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path fill="currentColor" d="M21.5 3.5h2v5h-2z"/><rect x="2.5" y="2.5" width="${(16.5 * lv / 100).toFixed(2)}" height="7" fill="currentColor"/></svg>${lv}%</span>`;
-        return `<div class="wm-bubble-pair"><span>${name}</span>${cell ? `<span class="wm-bubble-right">${cell}</span>` : ''}</div>`;
+        const name = escapeHtml(String(d.name).trim());
+        const lv = Math.max(0, Math.min(100, Math.round(Number(d.battery))));
+        // the same ROM stages the status bar and the Continuity dock use, inverted to black on the bubble
+        const icon = lv <= 20 ? 'battery-empty' : lv > 80 ? 'battery-full' : lv > 60 ? 'battery-3' : lv > 40 ? 'battery-2' : 'battery-1';
+        return `<div class="wm-bubble-pair is-batt"><span>${name}</span><span class="wm-bubble-right is-batt"><span class="wm-status-icon wm-bt-baticon" data-icon="${icon}" aria-hidden="true"></span></span></div>`;
+    }
+    /** The framed connected count, beside "Bluetooth: Connected" as the other bubbles frame a value. */
+    function btCountBadge(n) {
+        return `<span class="wm-net-badge" role="img" aria-label="${n} connected ${n === 1 ? 'device' : 'devices'}">${n}</span>`;
     }
 
     function watchDevice() {
@@ -7714,17 +7733,19 @@
             const dev = deviceView();
             const sections = [];
             const pe = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-            // Bluetooth's icon not in the bar (off, or Show Bluetooth Status hides it): its state as the first
-            // row, before Wi-Fi, worded as the Wi-Fi row (Yukimi, Nov 16)
+            // Bluetooth's state and its devices belong here only while its icon is NOT in the bar (Yukimi, Nov 16/22):
+            // when the icon shows, its own bubble has them and Connectivity must not duplicate them. A divider between
+            // this row, Wi-Fi and mobile stays: each radio / network connection is its own section.
             const btIcon = shell.querySelector('.wm-status-icon[data-role="bluetooth"]');
             const rdo = radiosNow || readRadios();
-            if (rdo && rdo.bluetooth != null && (!btIcon || btIcon.hidden || btIcon.classList.contains('wm-shed'))) {
-                const bst = !rdo.bluetooth ? 'Power Off' : rdo.bluetoothConnected === true ? 'Connected' : 'On';
-                sections.push({ html: `<div class="wm-bubble-pair"><span>Bluetooth: ${bst}</span></div>` });
+            const showBt = !!(rdo && rdo.bluetooth != null && (!btIcon || btIcon.hidden || btIcon.classList.contains('wm-shed')));
+            const btDevs = showBt && rdo.bluetooth ? btConnected() : null;
+            if (showBt) {
+                const bst = !rdo.bluetooth ? 'Power Off' : (rdo.bluetoothConnected === true || (btDevs && btDevs.length)) ? 'Connected' : 'On';
+                const count = btDevs ? btDevs.length : 0;
+                sections.push({ html: `<div class="wm-bubble-pair${count ? ' is-badge' : ''}"><span>Bluetooth: ${bst}</span>${count ? `<span class="wm-bubble-right is-badge">${btCountBadge(count)}</span>` : ''}</div>`
+                    + (btDevs ? btDevs.slice(0, 3).map(btDeviceRow).join('') : '') });
             }
-            // the connected Bluetooth devices with their batteries, three at most (#1016)
-            const btDevs = rdo && rdo.bluetooth ? btConnected() : null;
-            if (btDevs && btDevs.length) sections.push({ html: btDevs.slice(0, 3).map(btDeviceRow).join('') });
             // Wi-Fi as Mobile Broadband (Yukimi, Nov 14): "Wi-Fi: <network / Connected / Disconnected /
             // Power Off>", its signal as bars (1-4) at the right
             const w = dev.wifi;
@@ -7859,13 +7880,17 @@
             });
         } else if (role === 'bluetooth') {
             const rd = radiosNow || readRadios() || {};
-            const lines = [rd.bluetooth ? 'Bluetooth: On' : 'Bluetooth: Off'];
-            // the connected devices by name, each with its battery (#1016); without the app's device list, the old line
+            // the connected devices by name, each with the status bar's battery glyph (#1016); without the app's
+            // device list, the old line stands. Only named, normally-profiled devices with a battery reading count
+            // (Nov 22), and only such a device makes this bubble say Connected.
             const devs = rd.bluetooth ? btConnected() : null;
-            if (devs && devs.length) lines.push({ html: devs.map(btDeviceRow).join('') });
-            else if (rd.bluetooth && rd.bluetoothConnected === true) lines.push('A device is connected.');
-            else if (rd.bluetooth && (rd.bluetoothConnected === false || (devs && !devs.length))) lines.push('No device is connected.');
-            lines.push({ links: [{ label: 'Wireless Manager', action: openWirelessManager }] });
+            const count = devs ? devs.length : 0;
+            const state = count ? 'Connected' : rd.bluetooth ? 'On' : 'Off';
+            const lines = [count ? { html: `<div class="wm-bubble-pair is-badge"><span>Bluetooth: ${state}</span><span class="wm-bubble-right is-badge">${btCountBadge(count)}</span></div>${devs.map(btDeviceRow).join('')}` }
+                : `Bluetooth: ${state}`];
+            if (!count && rd.bluetooth && rd.bluetoothConnected === true) lines.push('A device is connected.');
+            else if (!count && rd.bluetooth && (rd.bluetoothConnected === false || devs)) lines.push('No device is connected.');
+            // this is the Bluetooth bubble: Wireless Manager belongs to Connectivity, not here
             bubble({ title: 'Bluetooth', role, anchor, sections: lines, footLinks: [{ label: 'Settings', action: openBluetoothSettings }], buttons: [{ text: 'Hide' }] });
         } else if (role === 'battery') {
             // #829: the level over WM's block bar, then the charger and its watts, the time to full

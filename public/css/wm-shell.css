@@ -4471,6 +4471,9 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
 .wm-bubble-pair > b { font-weight: bold; white-space: nowrap; }
 .wm-bubble-right { display: inline-flex; align-items: baseline; gap: calc(6 * var(--wm-px)); white-space: nowrap; }
 .wm-bubble-right > b { font-weight: bold; }
+/* the battery glyph and the framed count are pictures beside a line of text: centre them on it, not on its baseline */
+.wm-bubble-pair.is-batt, .wm-bubble-pair.is-badge,
+.wm-bubble-right.is-batt, .wm-bubble-right.is-badge { align-items: center; }
 /* ActiveSync's P2P badge: a computer holds a direct link (#1006, Yukimi Nov 21 2026), a small framed tag in the
    bubble's own text colour, as WM marks a state beside a value (crisp 1 px frame, no browser control) */
 .wm-p2p {
@@ -4495,9 +4498,6 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
     font-size: 0.82em;
     line-height: 1.25;
 }
-/* a connected Bluetooth device's battery (#1016): a 1-bit cell filled to the level, the percent after it */
-.wm-bt-batt { display: inline-flex; align-items: center; gap: calc(3 * var(--wm-px)); white-space: nowrap; }
-.wm-bt-batt > .wm-bit-glyph { width: calc(16 * var(--wm-px)); height: calc(8 * var(--wm-px)); flex: none; }
 /* the VPN row's time connected, bold as the other rows' values (Yukimi, Nov 14) */
 .wm-vpn-time { font-weight: bold; white-space: nowrap; }
 /* XM Radio recording's popup (#1020): the tape with its reels turning (its strip, only while the popup is up) beside
@@ -4603,8 +4603,10 @@ html.ui-mobile .wm-progress-layer .wm-msgbox-buttons[hidden] {
 .wm-status-icon[data-role="continuity"].is-presence { opacity: .5; }
 .wm-bubble .wm-cty-row { display: flex; align-items: center; justify-content: space-between; gap: calc(6 * var(--wm-px)); }
 .wm-bubble .wm-cty-bat { display: inline-flex; align-items: center; gap: calc(2 * var(--wm-px)); }
-/* the dock's battery: the title bar's own glyph (status atlas), black on the bubble (#1019 round, Nov 21) */
-.wm-bubble .wm-cty-baticon { display: inline-block; flex: none; width: calc(16 * var(--wm-px)); height: calc(16 * var(--wm-px)); --wm-icon-unit: var(--wm-px); filter: invert(1); }
+/* the dock's and a connected Bluetooth device's battery: the title bar's own glyph (status atlas), black on the
+   bubble (#1019 round, Nov 21; #1016, Nov 22) */
+.wm-bubble .wm-cty-baticon,
+.wm-bubble .wm-bt-baticon { display: inline-block; flex: none; width: calc(16 * var(--wm-px)); height: calc(16 * var(--wm-px)); --wm-icon-unit: var(--wm-px); filter: invert(1); }
 
 /* the Power bubble's level (#829): WM's block bar (wm-settings-dreamscape.css .wm-ds-progress) under "Main battery: n%" */
 .wm-bubble-section .wm-bat-bar {
