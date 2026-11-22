@@ -60,10 +60,10 @@
     // the page's own copy stays laid out and takes the app's pointer input, unseen (!important over the fade animations,
     // which the app runs on its copy); only in the DeX desktop's window, so the rule lives here
     const sheet = doc.createElement('style');
-    sheet.textContent = `#startMenu.start-menu.${NATIVE}, .context-menu.${NATIVE} { opacity: 0 !important; }`;
+    sheet.textContent = `#startMenu.start-menu.${NATIVE}, .context-menu.${NATIVE}, .popover.${NATIVE} { opacity: 0 !important; }`;
     (doc.head || doc.documentElement).appendChild(sheet);
     // what else belongs to the menu while it is up: its click / context menus (power arrow, Recent Items, right-click)
-    const POPUPS = '.context-menu:not(.hidden), .context-menu-submenu';
+    const POPUPS = '.context-menu:not(.hidden), .context-menu-submenu, .popover.start-menu-overflow-balloon';
 
     let cur = null;     // { sid, menu, ac, parts: Map(name -> json), sent: Set(canvas keys), pops: Set(el), lastPage: ms }
     // (a page loaded again starts past the last one's sessions: the app tells menus apart by it)
@@ -865,7 +865,7 @@
             while (ch.parentElement && ch.parentElement !== c.menu) ch = ch.parentElement;
             return 'm' + [...c.menu.children].indexOf(ch);
         }
-        const pop = el.closest('.context-menu, .context-menu-submenu');
+        const pop = el.closest('.context-menu, .context-menu-submenu, .popover.start-menu-overflow-balloon');
         return pop ? 'pop' + idOf(pop) : '*';
     }
     const changed = (records) => records.forEach((r) => frameSoon(r.target));
@@ -899,7 +899,7 @@
         // popups' own changes (their items' classes, a submenu opening)
         const popMo = new MutationObserver(changed);
         c.mos.push(popMo);
-        c.watchPops = () => doc.querySelectorAll('.context-menu').forEach((p) => { if (!p.dataset.dexStartWatched) { p.dataset.dexStartWatched = '1'; popMo.observe(p, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style'] }); } });
+        c.watchPops = () => doc.querySelectorAll('.context-menu, .popover.start-menu-overflow-balloon').forEach((p) => { if (!p.dataset.dexStartWatched) { p.dataset.dexStartWatched = '1'; popMo.observe(p, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style'] }); } });
         c.watchPops();
         const again = (e) => { c.watchPops(); frameSoon(e && e.target); };
         ['pointerover', 'pointerout', 'pointerdown', 'pointerup', 'focusin', 'focusout', 'input', 'transitionend', 'animationend'].forEach((t) => doc.addEventListener(t, again, { capture: true, signal: sig }));
