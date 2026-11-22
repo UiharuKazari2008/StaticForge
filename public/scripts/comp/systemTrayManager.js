@@ -453,12 +453,16 @@ function setupServiceWorkerTrayContextMenu() {
                     },
                     {
                         icon: 'fas fa-cloud-arrow-down',
+                        // a restart is owed (serviceWorkerManager.updateAction, #1022); styles and pictures that
+                        // install live and counted updates are installed from Melaton Update, not by a restart
                         text: 'Restart to Install Updates',
                         action: 'sw-restart-apply-updates',
                         className: 'text-warning',
-                        hidden: () => !(window.serviceWorkerManager
-                            && typeof window.serviceWorkerManager.hasPendingUpdates === 'function'
-                            && window.serviceWorkerManager.hasPendingUpdates())
+                        hidden: () => {
+                            const m = window.serviceWorkerManager;
+                            const a = m && typeof m.updateAction === 'function' ? m.updateAction() : null;
+                            return !(a && a.kind === 'restart');
+                        }
                     },
                     {
                         icon: 'fa-regular fa-sync',

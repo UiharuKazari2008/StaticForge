@@ -1031,8 +1031,9 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'sw-restart-apply-updates':
-                if (window.serviceWorkerManager) {
-                    window.serviceWorkerManager.forceRestart();
+                // the one install flow (serviceWorkerManager.installUpdates, #1022): a restart only for what needs one
+                if (window.serviceWorkerManager && typeof window.serviceWorkerManager.installUpdates === 'function') {
+                    void window.serviceWorkerManager.installUpdates({ check: false });
                 }
                 break;
 

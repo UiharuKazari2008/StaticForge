@@ -1295,6 +1295,79 @@ class ServiceWorkerManager {
         return null;
     }
 
+    /**
+     * What the updates waiting here allow, the same answer for every place that offers them (#1022: Melaton Update,
+     * Settings > System, the phone's update notification, the tray balloon / popup / menu and the toasts each decided
+     * this for themselves and disagreed - the phone's notification looked for a kind 'apply' that is never set and
+     * restarted the phone for a style update; the classic tray popup's "Download now" only checked again).
+     *   null        nothing waits (or an agent session, whose files its agent updates)
+     *   'busy'      a download is running
+     *   'apply'     downloaded styles / pictures that install live (pendingApplyFiles)
+     *   'restart'   downloaded updates, or a service pack, that a restart installs
+     *   'install'   counted, not downloaded (notify mode, or files that failed): { restart } says whether they need one
+     */
+    updateAction() {
+        if (this.agentSession) return null;
+        if (this.isUpdating) return { kind: 'busy' };
+        if (this.servicePack && this.servicePack.label) return { kind: 'restart', upgrade: true };
+        if (Array.isArray(this.pendingApplyFiles) && this.pendingApplyFiles.length && this.pendingUpdateKind !== 'restart') {
+            return { kind: 'apply', files: this.pendingApplyFiles.length };
+        }
+        if (this.hasPendingUpdates()) return { kind: 'restart', files: this.pendingUpdateFilesTotal || 0 };
+        const count = this.availableUpdateCount();
+        if (count > 0) {
+            let restart = false;
+            try {
+                const files = Array.isArray(this.availableUpdates) ? this.availableUpdates : [];
+                // a DeX window counting the phone's files (no list of its own) restarts through the phone
+                restart = files.length ? this.classifyStaticCacheUpdate(files) === 'restart' : this._isContinuityDexWindow();
+            } catch (_) { restart = false; }
+            return { kind: 'install', count, restart };
+        }
+        return null;
+    }
+
+    /**
+     * Install what waits, the one flow behind every Install / Apply / Restart button (#1022):
+     *   apply   - the downloaded styles and pictures go on screen now, recorded as installed; anything still counted
+     *             follows as below
+     *   restart - forceRestart (Continuity's plan and warning, the shutdown install, the history row)
+     *   install - the phone installs as Windows Mobile installs a package: what needs a restart restarts at once (its
+     *             install window downloads the rest, #1014); the desktop downloads now and Vista's restart prompt follows
+     *             what needs a restart (installAvailableUpdates); live files install as they arrive
+     *   nothing - a check (opts.check === false: nothing)
+     * opts.restart goes to forceRestart. Resolves the action taken ('applied' | 'restart' | 'install' | 'check' | null).
+     */
+    async installUpdates(opts = {}) {
+        const action = this.updateAction();
+        const kind = action ? action.kind : null;
+        if (kind === 'busy') return null;
+        if (kind === 'restart') {
+            this.forceRestart(opts.restart || {});
+            return 'restart';
+        }
+        if (kind === 'apply') {
+            const files = this.pendingApplyFiles.slice();
+            await this.applyStaticCacheUpdate(files, { silent: !!opts.silent });
+            this.recordUpdateHistory({ name: `Melaton update (${files.length} ${files.length === 1 ? 'file' : 'files'})`, status: 'Successful', importance: 'Important' });
+            // counted updates beside it install too, the same way
+            const next = this.updateAction();
+            if (next && next.kind === 'install') await this.installUpdates(Object.assign({}, opts, { check: false }));
+            return 'applied';
+        }
+        if (kind === 'install') {
+            if (action.restart && window.uiShell === 'mobile' && !this._isContinuityDexWindow()) {
+                this.forceRestart(opts.restart || {});
+                return 'restart';
+            }
+            await this.installAvailableUpdates();
+            return 'install';
+        }
+        if (opts.check === false) return null;
+        await this.checkStaticFileUpdates(!!opts.noToast);
+        return 'check';
+    }
+
     /** What was available came down (installed live, downloaded for a restart, or the restart installed it). */
     _clearAvailableUpdates(files) {
         if (!Array.isArray(this.availableUpdates) || !this.availableUpdates.length) return;
@@ -1815,7 +1888,8 @@ class ServiceWorkerManager {
                 e.preventDefault();
                 e.stopPropagation();
                 this._hideServiceWorkerTrayPopup();
-                this.checkStaticFileUpdates(false);
+                // downloads what was counted (a check alone held them again in the notify mode, #1022)
+                void this.installUpdates();
             });
 
             actions.appendChild(downloadBtn);
@@ -1837,14 +1911,17 @@ class ServiceWorkerManager {
                 this._hideServiceWorkerTrayPopup();
             });
 
+            // styles and pictures install live: Install, not a restart (#1022)
+            const live = (this.updateAction() || {}).kind === 'apply';
             const restartBtn = document.createElement('button');
             restartBtn.type = 'button';
             restartBtn.className = 'btn-standard';
-            restartBtn.textContent = 'Restart';
+            restartBtn.textContent = live ? 'Install' : 'Restart';
             restartBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.forceRestart();
+                this._hideServiceWorkerTrayPopup();
+                void this.installUpdates();
             });
 
             actions.appendChild(restartBtn);
@@ -3676,7 +3753,7 @@ class ServiceWorkerManager {
                     {
                         text: 'Restart Now',
                         type: 'primary',
-                        onClick: () => this.forceRestart(),
+                        onClick: () => { void this.installUpdates(); },
                         closeOnClick: true
                     },
                     {
@@ -5664,9 +5741,7 @@ class ServiceWorkerManager {
                 const applyButton = {
                     text: 'Apply Now',
                     type: 'primary',
-                    onClick: () => {
-                        this.applyStaticCacheUpdate(this.pendingApplyFiles);
-                    },
+                    onClick: () => { void this.installUpdates(); },
                     closeOnClick: true
                 };
                 const laterButton = {
@@ -5718,10 +5793,7 @@ class ServiceWorkerManager {
                 const restartButton = {
                     text: 'Restart Now',
                     type: 'primary',
-                    onClick: () => {
-                        console.log('Restart requested by user');
-                        this.forceRestart();
-                    },
+                    onClick: () => { void this.installUpdates(); },
                     closeOnClick: true
                 };
 

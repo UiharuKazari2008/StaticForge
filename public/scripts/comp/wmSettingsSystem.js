@@ -2016,11 +2016,13 @@
         if (m.agentSession) return { state: 'failed', message: 'This is an agent session: its files are updated by the agent that runs it.' };
         if (m.isUpdating) return { state: 'downloading', progress: m.updateProgress || 0, filesTotal: (m.trayPopup && m.trayPopup.filesTotal) || 0 };
         if (m.servicePack && m.servicePack.label) return { state: 'upgrade', message: m.servicePack.label };
-        if (m.pendingApplyFiles && m.pendingApplyFiles.length) return { state: 'ready' };
-        if (m.hasPendingUpdates && m.hasPendingUpdates()) return { state: 'restart' };
+        // the manager's one answer (updateAction, #1022), the same the notification and the desktop page read
+        const a = typeof m.updateAction === 'function' ? m.updateAction() : null;
+        if (a && a.kind === 'apply') return { state: 'ready' };
+        if (a && a.kind === 'restart') return { state: 'restart' };
         // counted by a check and not downloaded (#951): the page offers Install, as the notification does (Yukimi, Nov 21:
         // the page said nothing was waiting, so only the notification could install them)
-        if (typeof m.availableUpdateCount === 'function' && m.availableUpdateCount() > 0) return { state: 'available' };
+        if (a && a.kind === 'install') return { state: 'available' };
         return { state: 'idle' };
     }
 
@@ -2060,8 +2062,8 @@
     function availableNeedsRestart() {
         const m = swm();
         try {
-            const files = m && Array.isArray(m.availableUpdates) ? m.availableUpdates : [];
-            return !!files.length && typeof m.classifyStaticCacheUpdate === 'function' && m.classifyStaticCacheUpdate(files) === 'restart';
+            const a = m && typeof m.updateAction === 'function' ? m.updateAction() : null;
+            return !!(a && a.kind === 'install' && a.restart);
         } catch (_) { return false; }
     }
 
@@ -2137,23 +2139,24 @@
     function updateAct(d, what) {
         const m = swm();
         if (!m) return;
-        // Install with updates counted: installed as the notification's Install Now installs them (Yukimi, Nov 21: "in the
-        // update settings app, it does not show the dialog for are you sure, you have to use the notification"). What
-        // needs a restart restarts through forceRestart, which asks first with a Continuity PC up and shows the install
-        // window; the rest downloads and installs live, and the page follows it
-        if (what === 'install' && typeof m.availableUpdateCount === 'function' && m.availableUpdateCount() > 0) {
-            if (availableNeedsRestart() && typeof m.forceRestart === 'function') { m.forceRestart(); return; }
-            if (typeof m.installAvailableUpdates === 'function') {
-                d.view = { state: 'downloading', message: '', progress: 0, filesTotal: (m.availableUpdates || []).length };
+        // Install / Restart now: the one install flow every update button uses (serviceWorkerManager.installUpdates,
+        // #1022), so this page does what the notification's Install Now does (Yukimi, Nov 21: "in the update settings
+        // app, it does not show the dialog for are you sure, you have to use the notification"): what needs a restart
+        // restarts through forceRestart (it asks first with a Continuity PC up, then the install window); styles and
+        // pictures install live; counted updates download, and the page follows them
+        const action = typeof m.updateAction === 'function' ? m.updateAction() : null;
+        if ((what === 'install' || what === 'apply' || what === 'restart') && action && action.kind !== 'busy' && typeof m.installUpdates === 'function') {
+            if (action.kind === 'apply') d.view = { ...d.view, state: 'installing' };
+            else if (action.kind === 'install' && !action.restart) d.view = { state: 'downloading', message: '', progress: 0, filesTotal: (m.availableUpdates || []).length };
+            if (d.rerender) d.rerender();
+            Promise.resolve(m.installUpdates()).then((done) => {
+                if (done === 'restart') return;
+                if (m.isUpdating) { pollUpdate(d); if (d.rerender) d.rerender(); return; }
+                const now = updateInitialState();
+                d.view = now.state === 'idle' ? { state: 'uptodate' } : now;
                 if (d.rerender) d.rerender();
-                Promise.resolve(m.installAvailableUpdates()).finally(() => {
-                    if (d.view.state !== 'downloading' && d.view.state !== 'installing') return;
-                    const now = updateInitialState();
-                    d.view = now.state === 'idle' ? { state: 'uptodate' } : now;
-                    if (d.rerender) d.rerender();
-                });
-                return;
-            }
+            });
+            return;
         }
         if (what === 'check' || what === 'install') {
             // the desktop page's own check (cplUpdate.js check() without refreshServerCacheAndCheck:
@@ -2170,18 +2173,6 @@
                 }
                 if (d.rerender) d.rerender();
             });
-        } else if (what === 'apply' && typeof m.applyStaticCacheUpdate === 'function') {
-            d.view = { ...d.view, state: 'installing' };
-            if (d.rerender) d.rerender();
-            Promise.resolve(m.applyStaticCacheUpdate(m.pendingApplyFiles || [])).finally(() => {
-                try { localStorage.setItem('meletonUpdateInstalledAt', String(Date.now())); } catch (_) { /* private mode */ }
-                // installed live, with files left that need a restart: Restart Now, as the desktop's page shows it
-                const now = updateInitialState();
-                d.view = now.state === 'idle' || now.state === 'ready' ? { state: 'uptodate' } : now;
-                if (d.rerender) d.rerender();
-            });
-        } else if (what === 'restart' && typeof m.forceRestart === 'function') {
-            m.forceRestart();
         }
     }
 

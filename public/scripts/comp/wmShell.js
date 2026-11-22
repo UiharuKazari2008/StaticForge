@@ -7004,13 +7004,17 @@
      */
     function updateNoteSpec() {
         const sw = window.serviceWorkerManager;
-        if (!sw) return null;
-        let pending = false;
-        try { pending = typeof sw.hasPendingUpdates === 'function' && !!sw.hasPendingUpdates(); } catch (_) { pending = false; }
-        if (pending && sw.pendingUpdateKind === 'apply' && typeof sw.applyStaticCacheUpdate === 'function') {
-            return { title: 'Updates', html: 'Updates are ready to install. They install without a restart.', action: { text: 'Install Now', run: () => { void sw.applyStaticCacheUpdate(sw.pendingApplyFiles); } } };
+        if (!sw || typeof sw.updateAction !== 'function' || typeof sw.installUpdates !== 'function') return null;
+        // one answer for every update button (serviceWorkerManager.updateAction / installUpdates, #1022): this looked for
+        // a kind 'apply' the manager never sets, so a style update restarted the phone
+        let a = null;
+        try { a = sw.updateAction(); } catch (_) { a = null; }
+        if (!a || a.kind === 'busy') return null;
+        const run = () => { void sw.installUpdates(); };
+        if (a.kind === 'apply') {
+            return { title: 'Updates', html: 'Updates are ready to install. They install without a restart.', action: { text: 'Install Now', run } };
         }
-        if (pending && typeof sw.forceRestart === 'function') {
+        if (a.kind === 'restart') {
             const files = Number(sw.pendingUpdateFilesTotal);
             let html = `Updates are ready to install${Number.isFinite(files) && files > 0 ? ` (${files.toLocaleString()} ${files === 1 ? 'file' : 'files'})` : ''}. Melaton restarts to install them.`;
             // Continuity connected (#798): the restart's warning before Restart Now (Yukimi, Nov 14), the restart's own words
@@ -7021,23 +7025,15 @@
                 html += `<br><br>${both ? 'Your Continuity PC will restart too.'
                     : 'Your Continuity PC stays on.'}`;
             }
-            return { title: 'Updates', html, action: { text: 'Restart Now', run: () => sw.forceRestart() } };
+            return { title: 'Updates', html, action: { text: 'Restart Now', run } };
         }
-        let avail = 0;
-        try { avail = typeof sw.availableUpdateCount === 'function' ? sw.availableUpdateCount() : 0; } catch (_) { avail = 0; }
-        if (avail > 0 && typeof sw.installAvailableUpdates === 'function') {
-            // Install Now installs as Windows Mobile installs a package (#951, Yukimi Nov 20: "the phone has never restarted
-            // for the updates"): what needs a restart runs the restart at once - wceload's install window downloads and
-            // installs, then the soft reset (and the Continuity PC in its order); pictures and styles alone install live
-            let needsRestart = false;
-            try {
-                const files = Array.isArray(sw.availableUpdates) ? sw.availableUpdates : [];
-                needsRestart = typeof sw.classifyStaticCacheUpdate === 'function' && sw.classifyStaticCacheUpdate(files) === 'restart';
-            } catch (_) { needsRestart = false; }
-            const html = `${avail === 1 ? '1 update is' : `${avail} updates are`} available for Melaton.${needsRestart ? ' Melaton restarts to install them.' : ''}`;
-            return { title: 'Updates', html, action: { text: 'Install Now', run: () => { if (needsRestart && typeof sw.forceRestart === 'function') sw.forceRestart(); else void sw.installAvailableUpdates(); } } };
-        }
-        return null;
+        // counted, not downloaded (#951): Install Now installs as Windows Mobile installs a package (Yukimi, Nov 20: "the
+        // phone has never restarted for the updates"): what needs a restart runs the restart at once - wceload's install
+        // window downloads and installs, then the soft reset (and the Continuity PC in its order); pictures and styles
+        // alone install live
+        const avail = a.count;
+        const html = `${avail === 1 ? '1 update is' : `${avail} updates are`} available for Melaton.${a.restart ? ' Melaton restarts to install them.' : ''}`;
+        return { title: 'Updates', html, action: { text: 'Install Now', run } };
     }
 
     /**
