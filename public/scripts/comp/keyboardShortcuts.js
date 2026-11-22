@@ -1016,7 +1016,7 @@ function handleKeyDown(event) {
             hideShortcutsOverlay();
         }
         if (!windowSwitcherActive) {
-            startWindowSwitcher();
+            startWindowSwitcher(switcherHoldKey);
             if (windowSwitcherActive) windowSwitcherHoldKey = switcherHoldKey;
             // Ctrl+Shift+Tab starts on this window; Alt/Win+Shift+Tab go straight to the last one
             if (windowSwitcherWindows.length > 1 && !(event.shiftKey && switcherHoldKey === 'Control')) {
@@ -1538,7 +1538,7 @@ function openFlip3d(event) {
         const held = flip3dMetaUpAt < asked;
         if (window.flip3d && window.flip3d.open(held ? mode : 'sticky', { holdKey: 'Meta' })) return;
         flip3dUnavailable = true;
-        startWindowSwitcher();
+        startWindowSwitcher('Meta');
         if (windowSwitcherActive && held) windowSwitcherHoldKey = 'Meta';
     }).catch(() => { flip3dUnavailable = true; });
     return true;
@@ -1552,136 +1552,268 @@ function windowSwitcherHoldKeyFor(event) {
     return null;
 }
 
-// Start window switcher
-function startWindowSwitcher() {
-    // Get window usage stack (most recent first) if available
-    let orderedWindows = [];
-    if (typeof getWindowUsageStack === 'function') {
-        const usageStack = getWindowUsageStack(); // Returns most recent first
-        // Filter to only include open windows
-        orderedWindows = usageStack.filter(modal => 
-            modal && 
-            !modal.classList.contains('hidden') && 
-            !modal.classList.contains('closing') &&
-            modal.querySelector('.modal-window-title')
-        );
+// ---- the window switcher: Vista's Alt+Tab (Windows Flip) ----
+// Measured on the Vista VM (Aero, 1920 x 1200, Nov 22 2026, ~/.cache/vista-vm/alttab): one glass pane
+// centred over the work area, the chosen window's title above a row of 144 x 94 slots; in each a
+// thumbnail of the window fitted into 128 x 78, standing on the slot's bottom (8 px in) and centred,
+// with the program's 32 px icon over its bottom right corner (2 px right of it, 4 px below); the
+// chosen slot is the blue selection box. The desktop is always the last entry. Alt+Tab on the DeX
+// desktop lists Android's windows there too (androidTaskbar.js, #1039). Ctrl+Tab keeps to the
+// desktop's own windows; the classic theme keeps the icon row.
+const windowFlip = (() => {
+    const SLOT = Object.freeze({ w: 144, h: 94, thumbW: 128, thumbH: 78 });
+    let windowSwitcherSession = 0;
+
+    function windowSwitcherIconMode() {
+        return document.body.classList.contains('windows-classic-theme');
     }
-    
-    // Get all open windows (modals that are not hidden and not closing)
-    const allOpenModals = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
-        .filter(modal => !modal.classList.contains('closing') && modal.querySelector('.modal-window-title'));
-    
-    if (allOpenModals.length === 0) {
-        return; // No windows to switch
+
+    /** The desktop's own windows that can come forward, the one used last first (modalUtils.js getWindowUsageStack). */
+    function windowSwitcherModals() {
+        const open = (modal) => modal && !modal.classList.contains('hidden') && !modal.classList.contains('closing') && modal.querySelector('.modal-window-title');
+        const ordered = typeof getWindowUsageStack === 'function' ? getWindowUsageStack().filter(open) : [];
+        const seen = new Set(ordered);
+        const rest = Array.from(document.querySelectorAll('.modal:not(.hidden)')).filter((m) => open(m) && !seen.has(m));
+        return [...ordered, ...rest];
     }
-    
-    // If we have a usage stack, use it; otherwise fall back to all open modals
-    if (orderedWindows.length > 0) {
-        // Add any windows not in the usage stack to the end
-        const orderedIds = new Set(orderedWindows.map(m => m.id));
-        const remainingWindows = allOpenModals.filter(m => !orderedIds.has(m.id));
-        windowSwitcherWindows = [...orderedWindows, ...remainingWindows];
-    } else {
-        windowSwitcherWindows = allOpenModals;
+
+    /** Every entry Alt+Tab lists, in Vista's order: the window in front first, the desktop last. */
+    function windowSwitcherEntries(holdKey) {
+        const modals = windowSwitcherModals().map((modal) => ({ kind: 'modal', modal }));
+        if (holdKey === 'Control') return modals;
+        // Android's windows on the DeX screen (androidTaskbar.js): those that had the focus after the desktop's page
+        // go in front of its windows, the others after them
+        const android = window.melatonAndroidTaskbar;
+        const r = android && typeof android.recency === 'function' ? android.recency() : null;
+        const before = [];
+        const after = [];
+        if (r) r.windows.forEach(({ window: w, at }) => (at > r.pageFocusAt ? before : after).push({ kind: 'android', w }));
+        return [...before, ...modals, ...after, { kind: 'desktop' }];
     }
-    
-    windowSwitcherActive = true;
-    
-    // Find current active window index, start with current window
-    const currentActiveWindow = document.querySelector('.modal.active-window:not(.minimised)');
-    if (currentActiveWindow) {
-        const index = windowSwitcherWindows.indexOf(currentActiveWindow);
-        if (index >= 0) {
-            // Start with the current window (will navigate to next after)
-            windowSwitcherSelectedIndex = index;
-        } else {
-            windowSwitcherSelectedIndex = 0;
+
+    function windowSwitcherTitle(entry) {
+        if (!entry) return '';
+        if (entry.kind === 'desktop') return 'Desktop';
+        if (entry.kind === 'android') {
+            const a = window.melatonAndroidTaskbar;
+            return a && typeof a.titleOf === 'function' ? a.titleOf(entry.w) : String(entry.w.title || entry.w.label || '');
         }
-    } else {
-        // No active window, start at the first one (most recent)
-        windowSwitcherSelectedIndex = 0;
+        return typeof getModalTitle === 'function' ? getModalTitle(entry.modal) : (entry.modal.id || 'Window');
     }
-    
+
+    /** An <img> for a picture source ({ src, srcset }); null without one. */
+    function windowSwitcherImg(pic, className, px) {
+        if (!pic || !pic.src) return null;
+        const img = document.createElement('img');
+        img.className = className;
+        img.alt = '';
+        img.draggable = false;
+        img.decoding = 'async';
+        img.width = px;
+        img.height = px;
+        img.src = pic.src;
+        if (pic.srcset) img.srcset = pic.srcset;
+        return img;
+    }
+
+    /** The program's picture for an entry at px (32: the corner badge, 48: an Android window's stand-in). */
+    function windowSwitcherIcon(entry, px) {
+        if (entry.kind === 'desktop') return { src: `/static_images/vista-taskbar/show-desktop-${px >= 32 ? 32 : 16}.png`, srcset: '' };
+        if (entry.kind === 'android') {
+            const a = window.melatonAndroidTaskbar;
+            return a && typeof a.iconFor === 'function' ? a.iconFor(entry.w, px) : null;
+        }
+        // getModalIcons: public/scripts/comp/modalUtils.js (the window's image icon)
+        const icons = typeof getModalIcons === 'function' ? getModalIcons(entry.modal) : null;
+        return icons && icons.imageIcon ? { src: icons.imageIcon, srcset: '' } : null;
+    }
+
+    /** The thumbnail's size for a picture of w x h: fitted into the slot's 128 x 78 box. */
+    function windowSwitcherFit(w, h) {
+        const s = Math.min(SLOT.thumbW / w, SLOT.thumbH / h);
+        return { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)) };
+    }
+
+    /** A canvas at the screen's density for a thumbnail of w x h CSS px. */
+    function windowSwitcherCanvas(w, h) {
+        const c = document.createElement('canvas');
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        c.width = Math.round(w * dpr);
+        c.height = Math.round(h * dpr);
+        c.className = 'window-switcher-picture';
+        return c;
+    }
+
+    /** windowCapture.js (a lazy feature shared with Flip 3D and the taskbar previews): a promise of it, null when it cannot load. */
+    function windowSwitcherCapture() {
+        if (window.windowCapture) return Promise.resolve(window.windowCapture);
+        if (typeof featureLoader === 'undefined') return Promise.resolve(null);
+        return featureLoader.loadFeature('window_capture').then(() => window.windowCapture || null).catch(() => null);
+    }
+
+    /** The thumbnail box of one slot: a window's picture, the desktop's wallpaper, or an Android window's icon. */
+    function windowSwitcherThumb(entry) {
+        const box = document.createElement('div');
+        box.className = 'window-switcher-thumb';
+        const session = windowSwitcherSession;
+        const put = (w, h, content) => {
+            box.style.width = `${w}px`;
+            box.style.height = `${h}px`;
+            box.replaceChildren(content);
+            const badge = windowSwitcherImg(windowSwitcherIcon(entry, 32), 'window-switcher-badge', 32);
+            if (badge) box.appendChild(badge);
+        };
+        if (entry.kind === 'android') {
+            // no picture of an Android window: its program's icon, as Vista shows a window it has no thumbnail of
+            box.classList.add('is-icon');
+            const size = windowSwitcherFit(window.innerWidth || 16, window.innerHeight || 10);
+            box.style.width = `${size.w}px`;
+            box.style.height = `${size.h}px`;
+            const img = windowSwitcherImg(windowSwitcherIcon(entry, 48), 'window-switcher-program', 48);
+            if (img) box.appendChild(img);
+            return box;
+        }
+        if (entry.kind === 'desktop') {
+            const size = windowSwitcherFit(window.innerWidth || 16, window.innerHeight || 10);
+            const c = windowSwitcherCanvas(size.w, size.h);
+            const g = c.getContext('2d');
+            const bg = getComputedStyle(document.body).backgroundColor;
+            g.fillStyle = bg && bg !== 'rgba(0, 0, 0, 0)' ? bg : '#3a6ea5';
+            g.fillRect(0, 0, c.width, c.height);
+            put(size.w, size.h, c);
+            const m = /url\(\s*(['"]?)([^'")]+)\1\s*\)/.exec(getComputedStyle(document.documentElement).getPropertyValue('--desktop-wallpaper') || '');
+            if (m) {
+                const img = new Image();
+                img.decoding = 'async';
+                img.onload = () => {
+                    if (session !== windowSwitcherSession) return;
+                    const s = Math.max(c.width / img.naturalWidth, c.height / img.naturalHeight);
+                    g.drawImage(img, (c.width - img.naturalWidth * s) / 2, (c.height - img.naturalHeight * s) / 2, img.naturalWidth * s, img.naturalHeight * s);
+                };
+                img.src = m[2];
+            }
+            return box;
+        }
+        const modal = entry.modal;
+        const draw = (wc, pic) => {
+            const size = windowSwitcherFit(pic.w, pic.h);
+            const c = windowSwitcherCanvas(size.w, size.h);
+            const src = wc.composite(pic);
+            const rim = wc.RIM || 0;
+            const g = c.getContext('2d');
+            g.imageSmoothingQuality = 'high';
+            g.drawImage(src, rim, rim, src.width - 2 * rim, src.height - 2 * rim, 0, 0, c.width, c.height);
+            put(size.w, size.h, c);
+        };
+        // the last picture at once; none yet, Vista's card until the copy is done; a changed window copied again
+        const wc0 = window.windowCapture;
+        const pic0 = wc0 && wc0.cached(modal);
+        if (pic0) draw(wc0, pic0);
+        else {
+            const r = modal.getBoundingClientRect();
+            const size = windowSwitcherFit(Math.max(1, r.width || modal.offsetWidth || 400), Math.max(1, r.height || modal.offsetHeight || 300));
+            const c = windowSwitcherCanvas(size.w, size.h);
+            if (wc0 && typeof wc0.placeholder === 'function') {
+                try {
+                    const card = wc0.placeholder(modal, c.width, c.height);
+                    if (card) c.getContext('2d').drawImage(card, 0, 0, c.width, c.height);
+                } catch (_) { /* the card is only a stand-in */ }
+            }
+            put(size.w, size.h, c);
+        }
+        if (!pic0 || !wc0.fresh(modal)) {
+            windowSwitcherCapture().then((wc) => (wc ? wc.capture(modal).then((pic) => ({ wc, pic })) : null)).then((r) => {
+                if (!r || !r.pic || session !== windowSwitcherSession || !windowSwitcherActive) return;
+                draw(r.wc, r.pic);
+            }).catch(() => { /* the card stays */ });
+        }
+        return box;
+    }
+
+    // Show window switcher
+    function showWindowSwitcher() {
+        if (windowSwitcherOverlay) {
+            windowSwitcherOverlay.classList.add('visible');
+        }
+    }
+
+    // Hide window switcher
+    function hideWindowSwitcher() {
+        if (windowSwitcherOverlay) {
+            windowSwitcherOverlay.classList.remove('visible');
+        }
+    }
+
+    return { SLOT, nextSession: () => ++windowSwitcherSession, session: () => windowSwitcherSession, iconMode: windowSwitcherIconMode, modals: windowSwitcherModals, entries: windowSwitcherEntries, title: windowSwitcherTitle, img: windowSwitcherImg, icon: windowSwitcherIcon, fit: windowSwitcherFit, canvas: windowSwitcherCanvas, capture: windowSwitcherCapture, thumb: windowSwitcherThumb, show: showWindowSwitcher, hide: hideWindowSwitcher };
+})();
+
+// Start window switcher
+function startWindowSwitcher(holdKey) {
+    windowSwitcherWindows = windowFlip.entries(holdKey);
+    // nothing but the desktop: Vista still shows it; Ctrl+Tab with no window shows nothing
+    if (windowSwitcherWindows.length === 0) return;
+    windowSwitcherActive = true;
+    windowFlip.nextSession();
+    // the first entry is the window in front now (the desktop's active one, or Android's focused one)
+    windowSwitcherSelectedIndex = 0;
+    if (holdKey === 'Control') {
+        const current = document.querySelector('.modal.active-window:not(.minimised)');
+        const i = windowSwitcherWindows.findIndex((e) => e.modal === current);
+        if (i >= 0) windowSwitcherSelectedIndex = i;
+    }
     updateWindowSwitcherDisplay();
-    showWindowSwitcher();
+    windowFlip.show();
 }
 
 // Navigate window switcher
 function navigateWindowSwitcher(direction) {
     if (windowSwitcherWindows.length === 0) return;
-    
-    windowSwitcherSelectedIndex += direction;
-    
-    // Wrap around
-    if (windowSwitcherSelectedIndex < 0) {
-        windowSwitcherSelectedIndex = windowSwitcherWindows.length - 1;
-    } else if (windowSwitcherSelectedIndex >= windowSwitcherWindows.length) {
-        windowSwitcherSelectedIndex = 0;
-    }
-    
+    windowSwitcherSelectedIndex = (windowSwitcherSelectedIndex + direction + windowSwitcherWindows.length) % windowSwitcherWindows.length;
     updateWindowSwitcherDisplay();
 }
 
 // Update window switcher display
 function updateWindowSwitcherDisplay() {
     if (!windowSwitcherOverlay || windowSwitcherWindows.length === 0) return;
-    
     const titleEl = windowSwitcherOverlay.querySelector('.window-switcher-title');
     const iconsEl = windowSwitcherOverlay.querySelector('.window-switcher-icons');
-    
     if (!titleEl || !iconsEl) return;
-    
-    const selectedModal = windowSwitcherWindows[windowSwitcherSelectedIndex];
-    if (!selectedModal) return;
-    
-    // Get window title using existing functions
-    const title = typeof getModalTitle === 'function' ? getModalTitle(selectedModal) : (selectedModal.id || 'Window');
-    
-    // Update title
-    titleEl.textContent = title;
-    
-    // Build icon row once per switcher session; later Alt-Tab steps only move selected
+    const selected = windowSwitcherWindows[windowSwitcherSelectedIndex];
+    if (!selected) return;
+    titleEl.textContent = windowFlip.title(selected);
+
+    // The row is built once per switcher session; later steps only move the selection
     if (windowSwitcherIconsBuiltFor !== windowSwitcherWindows) {
-        iconsEl.innerHTML = '';
-        windowSwitcherWindows.forEach((modal, index) => {
-            const iconEl = document.createElement('div');
-            iconEl.className = 'window-switcher-icon';
-            if (index === windowSwitcherSelectedIndex) {
-                iconEl.classList.add('selected');
-            }
-            // Use getModalIcons to get both icon and imageIcon for dual icon rendering
-            if (typeof getModalIcons === 'function' && typeof getIconHTML === 'function') {
-                const icons = getModalIcons(modal);
-                iconEl.innerHTML = getIconHTML(icons.icon || 'fas fa-window', icons.imageIcon || null, '', APP_ICON_DISPLAY_PX.switcher);
-            } else if (typeof getModalIcon === 'function' && typeof getIconHTML === 'function') {
-                const modalIcon = getModalIcon(modal);
-                iconEl.innerHTML = getIconHTML(modalIcon, null, '', APP_ICON_DISPLAY_PX.switcher);
+        const icons = windowFlip.iconMode();
+        windowSwitcherOverlay.classList.toggle('is-icons', icons);
+        iconsEl.replaceChildren();
+        // as many slots a row as fit the screen, the rest on more rows
+        const cols = Math.max(1, Math.min(windowSwitcherWindows.length, Math.floor(((window.innerWidth || 1024) - 64) / windowFlip.SLOT.w)));
+        iconsEl.style.setProperty('--window-switcher-cols', String(cols));
+        windowSwitcherWindows.forEach((entry, index) => {
+            const slot = document.createElement('div');
+            if (icons) {
+                slot.className = 'window-switcher-icon';
+                if (entry.kind === 'modal' && typeof getModalIcons === 'function' && typeof getIconHTML === 'function') {
+                    const ic = getModalIcons(entry.modal);
+                    slot.innerHTML = getIconHTML(ic.icon || 'fas fa-window', ic.imageIcon || null, '', APP_ICON_DISPLAY_PX.switcher);
+                } else {
+                    const img = windowFlip.img(windowFlip.icon(entry, 32), 'icon-image', 32);
+                    if (img) slot.appendChild(img);
+                }
             } else {
-                iconEl.innerHTML = `<i class="fas fa-window"></i>`;
+                slot.className = 'window-switcher-item';
+                slot.appendChild(windowFlip.thumb(entry));
             }
-            iconsEl.appendChild(iconEl);
+            if (index === windowSwitcherSelectedIndex) slot.classList.add('selected');
+            iconsEl.appendChild(slot);
         });
         windowSwitcherIconsBuiltFor = windowSwitcherWindows;
         return;
     }
-
-    const iconNodes = iconsEl.children;
-    for (let i = 0; i < iconNodes.length; i++) {
-        iconNodes[i].classList.toggle('selected', i === windowSwitcherSelectedIndex);
-    }
-}
-
-// Show window switcher
-function showWindowSwitcher() {
-    if (windowSwitcherOverlay) {
-        windowSwitcherOverlay.classList.add('visible');
-    }
-}
-
-// Hide window switcher
-function hideWindowSwitcher() {
-    if (windowSwitcherOverlay) {
-        windowSwitcherOverlay.classList.remove('visible');
+    const nodes = iconsEl.children;
+    for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i].classList.contains('selected') !== (i === windowSwitcherSelectedIndex)) nodes[i].classList.toggle('selected', i === windowSwitcherSelectedIndex);
     }
 }
 
@@ -1692,30 +1824,37 @@ function stopWindowSwitcher() {
     windowSwitcherWindows = [];
     windowSwitcherSelectedIndex = 0;
     windowSwitcherIconsBuiltFor = null;
-    hideWindowSwitcher();
+    windowFlip.nextSession();
+    windowFlip.hide();
+    // the pictures go with the pane (canvases hold memory)
+    const iconsEl = windowSwitcherOverlay && windowSwitcherOverlay.querySelector('.window-switcher-icons');
+    if (iconsEl) iconsEl.replaceChildren();
 }
 
 // Activate selected window
 function activateSelectedWindow() {
-    if (windowSwitcherWindows.length === 0 || windowSwitcherSelectedIndex < 0 || windowSwitcherSelectedIndex >= windowSwitcherWindows.length) {
+    const entry = windowSwitcherWindows[windowSwitcherSelectedIndex];
+    if (!entry) return;
+    const android = window.melatonAndroidTaskbar;
+    if (entry.kind === 'android') {
+        if (android) android.activate(entry.w.id);
         return;
     }
-    
-    const selectedModal = windowSwitcherWindows[windowSwitcherSelectedIndex];
-    if (!selectedModal) return;
-    
-    // Unminimize if minimized
+    if (entry.kind === 'desktop') {
+        // Vista's Desktop entry: everything down (taskbarSettings.js Show desktop, Android's windows too)
+        if (window.taskbarSettings && typeof window.taskbarSettings.toggleShowDesktop === 'function') window.taskbarSettings.toggleShowDesktop();
+        return;
+    }
+    const selectedModal = entry.modal;
+    if (!selectedModal || !selectedModal.isConnected) return;
+    // An Android window has the focus: the desktop's windows are below every Android window on the DeX screen,
+    // so the shown ones go down for the chosen window to come up with the focus (as Show desktop does)
+    if (android && typeof android.hasFocus === 'function' && android.hasFocus() && typeof android.minimizeShown === 'function') android.minimizeShown();
     // restoreMinimizedModal: public/scripts/comp/modalUtils.js
     if (typeof restoreMinimizedModal === 'function') {
         restoreMinimizedModal(selectedModal, typeof getOrCreateTaskbarItem === 'function' ? getOrCreateTaskbarItem(selectedModal) : null);
     }
-    
-    // Show if hidden
-    if (selectedModal.classList.contains('hidden')) {
-        selectedModal.classList.remove('hidden');
-    }
-    
-    // Bring to front
+    if (selectedModal.classList.contains('hidden')) selectedModal.classList.remove('hidden');
     openModal(selectedModal);
 }
 
