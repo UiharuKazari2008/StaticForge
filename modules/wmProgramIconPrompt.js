@@ -25,6 +25,16 @@
  * in every pair where the brief's treatment was right; the misses (a white symbol left white, a tile
  * that came back) were all treatment decisions, which is why step 2 is code.
  *
+ * Period design (Yukimi, Nov 22 2026: glossy copies of today's glyphs "look too modern"): a symbol or
+ * a wordmark is not drawn as the icon. The brief designs the icon the program would have had in
+ * 2007-2009 instead: one object of that time that says what the program does, in the brand's colours,
+ * with the brand's symbol as a small badge on it. The object is not the model's idea either: a second
+ * small call answers only a row number of PERIOD_OBJECTS (periodPrompt), and the row's fixed words are
+ * the object (withPeriod). One call that both described the icon and designed the object was tried
+ * first and was not repeatable (it named the "N" as the object, changed its mind between runs). A
+ * program no row fits, a character and an icon that already is a real thing keep their own treatment.
+ * The symbol itself as a glossy emblem for every mark: config wmProgramIcons.design 'mark'.
+ *
  * Wording rules that held up (keep them when editing):
  *   - say what is there, in the order subject / rendering / framing / references; no list of things
  *     not to draw (naming a glass orb or a rounded square brings one in);
@@ -41,6 +51,77 @@ const ARCHETYPES = ['character', 'object', 'mark'];
  * The request for the brief. opts: { category, description, characters (false = Simple mode: a game's
  * emblem or one object, never a figure), direction (the user's own words for a Custom request) }.
  */
+// What a 2007-2009 icon shows for each kind of program. The classifier call answers a row number only
+// (periodPrompt / parsePeriod); the object's words are fixed here, so every program of a kind gets the same
+// object and they differ by colour and badge, as the era's own icon sets do. New rows go at the end of their
+// group; the order is the tie-break (the first row that fits).
+const PERIOD_OBJECTS = [
+    { use: 'chat, messaging, a community', object: 'Two overlapping speech balloons, the front one larger and lower, each with a short pointed tail, facing the viewer' },
+    { use: 'e-mail', object: 'A paper envelope seen from the front with its flap open and the top of a letter showing' },
+    { use: 'phone calls, voice chat', object: 'A telephone handset standing at a slant, earpiece at the upper left, mouthpiece at the lower right' },
+    { use: 'video calls, live streaming by people', object: 'A small round webcam with a glass lens on a short folding stand' },
+    { use: 'films and series, video streaming, anime', object: 'A metal film reel with five round holes, standing upright, a strip of cine film with sprocket holes curling off its right side' },
+    { use: 'television, live channels', object: 'A flat television set of the 2000s with a wide bezel on a low stand, the screen lit' },
+    { use: 'music streaming, a music player', object: 'A compact disc standing upright with a pair of beamed eighth notes in front of its lower right' },
+    { use: 'radio', object: 'A portable radio with a round speaker grille, a tuning dial and a telescopic antenna raised at the upper right' },
+    { use: 'recognising or identifying music', object: 'A compact disc standing upright with a magnifying glass over its lower right, handle pointing down and right' },
+    { use: 'podcasts, voice recording', object: 'A studio microphone with a rounded mesh head on a small desk stand' },
+    { use: 'photos, a gallery, a camera app', object: 'A compact digital camera seen from the front with a large round lens and a small flash window' },
+    { use: 'drawing, painting, image editing, image generation, an art community', object: "An artist's wooden palette with dabs of paint and a brush lying across it" },
+    { use: 'maps, navigation, places', object: 'A paper map folded in three panels lying at a slight angle, with a round-headed map pin standing in it' },
+    { use: 'driving, traffic, a car companion', object: 'A car key with a remote fob that has two buttons, lying at a slant' },
+    { use: 'weather', object: 'A sun partly hidden behind a rounded cloud' },
+    { use: 'a web browser', object: 'A globe showing continents, tilted slightly' },
+    { use: 'search', object: 'A magnifying glass with a round lens, handle pointing down and right' },
+    { use: 'an AI assistant, a chatbot', object: 'One speech balloon with a short tail at the lower left and a four-point spark set in its middle' },
+    { use: 'shopping, a store, a marketplace', object: 'A paper shopping bag with two cord handles, seen from the front' },
+    { use: 'food ordering, a restaurant', object: 'A paper take-away bag with a folded-over top, seen from the front' },
+    { use: 'banking, payments, a wallet', object: 'A folded leather wallet with a payment card standing out of its top' },
+    { use: 'tickets, events, parking', object: 'Two paper admission tickets with notched ends, fanned one over the other' },
+    { use: 'notes, writing, documents', object: 'A sheet of paper with a folded top-right corner and ruled lines, a pencil lying across its lower right' },
+    { use: 'spreadsheets, data', object: 'A sheet of paper with a folded top-right corner carrying a grid of cells' },
+    { use: 'reading, comics, books', object: 'An open book lying flat, pages fanned, seen from slightly above' },
+    { use: 'news', object: 'A folded newspaper with a headline block and columns' },
+    { use: 'files, cloud storage', object: 'A manila folder, slightly open, with papers showing at the top' },
+    { use: 'code, developer tools, a terminal', object: 'A program window with a title bar and several lines of text' },
+    { use: 'passwords, authentication, security', object: 'A closed padlock with a key leaning against its lower right' },
+    { use: 'a VPN, private networking', object: 'A globe with a closed padlock in front of its lower right' },
+    { use: 'networking, Wi-Fi, a router tool', object: 'A wireless router lying flat with two antennas raised and a row of small lights' },
+    { use: 'internet speed, a benchmark, diagnostics', object: 'A round analogue dial gauge with tick marks around its upper half and a needle pointing up and right' },
+    { use: 'remote desktop, screen sharing', object: 'A flat monitor on its stand, the screen lit, with a second smaller screen overlapping its lower right' },
+    { use: 'smart home, home automation', object: 'A small house with a pitched roof, a door and one window' },
+    { use: 'headphones, earbuds or speakers companion', object: 'A pair of over-ear headphones seen from the front' },
+    { use: 'a printer or 3D printer companion', object: 'A desktop printer with a sheet of paper coming out of its front' },
+    { use: 'social network, a feed, sharing with followers', object: 'A bust of a person in front of a second, paler bust, like two contacts' },
+    { use: 'a game with no character', object: 'A game pad with a directional cross on the left and four round buttons on the right' },
+    { use: 'system tools, settings, utilities', object: 'A metal toolbox with a handle, closed' }
+];
+
+/** The classifier's text: which row of PERIOD_OBJECTS fits this program. */
+function periodPrompt(name, opts = {}) {
+    return [
+        `Which kind of program is the Android app "${collapse(name)}"?${collapse(opts.category) ? ` Store category: ${collapse(opts.category)}.` : ''}${collapse(opts.description) ? ` Store description: ${collapse(opts.description).slice(0, 500)}` : ''}`,
+        'Answer with the number of the FIRST line below that fits what the program is mainly for, or 0 when none fits. JSON only: {"row": <number>}',
+        ...PERIOD_OBJECTS.map((r, i) => `${i + 1}. ${r.use}`)
+    ].join('\n');
+}
+
+/** The classifier's answer as a row of PERIOD_OBJECTS, null for "none fits", undefined when it is not an answer. */
+function parsePeriod(raw) {
+    const n = raw && typeof raw === 'object' ? Number(raw.row) : NaN;
+    if (!Number.isInteger(n) || n < 0 || n > PERIOD_OBJECTS.length) return undefined;
+    return n === 0 ? null : PERIOD_OBJECTS[n - 1];
+}
+
+/**
+ * The brief of a mark as its period design: the row's object, the brand's own symbol (the brief's subject) as
+ * the small emblem on it. A brief that is a character or already a real object is left as it is.
+ */
+function withPeriod(brief, row) {
+    if (!brief || brief.archetype !== 'mark' || !row) return brief;
+    return { ...brief, object: row.object, badge: brief.subject };
+}
+
 function briefPrompt(name, opts = {}) {
     const characters = opts.characters !== false;
     const direction = collapse(opts.direction);
@@ -98,6 +179,8 @@ function normaliseBrief(raw) {
     return {
         archetype,
         cutout,
+        object: '',
+        badge: '',
         subject,
         colours,
         tile,
@@ -121,7 +204,9 @@ const STYLE_REFS = {
     }
 };
 const STYLES = Object.keys(STYLE_REFS);
-const styleRefs = (style, archetype) => (STYLE_REFS[style] || STYLE_REFS.wm)[archetype] || (STYLE_REFS[style] || STYLE_REFS.wm).mark;
+/** brief: the normalised brief (or an archetype name). A mark drawn as a period object takes the objects' references. */
+const kindOf = (brief) => (brief && typeof brief === 'object' ? (brief.object ? 'object' : brief.archetype) : brief);
+const styleRefs = (style, brief) => (STYLE_REFS[style] || STYLE_REFS.wm)[kindOf(brief)] || (STYLE_REFS[style] || STYLE_REFS.wm).mark;
 
 const colourList = (brief) => brief.colours.map((c) => `${c.part} ${c.hex}`.trim()).join(', ');
 
@@ -130,6 +215,13 @@ function subjectLine(brief, hasBrandRef) {
     const lettering = brief.lettering ? ` The only lettering is "${brief.lettering}", as part of the shape.` : ' No lettering.';
     const colours = colourList(brief);
     const slab = `${hasBrandRef ? 'Same outline and proportions as reference image 1. ' : ''}It is a slab of glossy enamel seen straight from the front: no side walls show, depth appears only as a narrow bevel along the rim.`;
+    if (brief.object) {
+        // the brand shows as colour, and as one small emblem at most: the object is the icon
+        const body = brief.cutout ? brief.tile : (brief.colours[0] && brief.colours[0].hex) || '';
+        const rest = brief.cutout ? '' : brief.colours.slice(1).map((c) => c.hex).join(', ');
+        const badgeColour = brief.cutout ? 'white' : (brief.colours[1] ? brief.colours[1].hex : 'white');
+        return `${brief.object}. One real object of the 2000s, drawn as a product photograph would show it.${body ? ` Its main colour is ${body}${rest ? `, with ${rest} as accents` : ''}; parts that are paper, metal or glass keep their natural silver, cream and clear tones.` : ''}${brief.badge ? ` On its front, no wider than a third of the object, sits one small raised emblem in ${badgeColour}: ${brief.badge}.` : ''} No lettering${brief.badge ? ' beyond that emblem' : ''}.`;
+    }
     if (brief.archetype === 'object') return `${s}. One real object, drawn as a product photograph would show it${colours ? `, in these colours: ${colours}` : ''}.${lettering}`;
     if (brief.archetype === 'character') return `A head-and-shoulders bust of one character: ${s}.${colours ? ` Colours: ${colours}.` : ''} The bust ends at the shoulders in its own soft outline; nothing frames it.${lettering}`;
     if (brief.cutout) return `A solid emblem cut to this exact outline: ${s}. The whole emblem is one colour, ${brief.tile}: ${hasBrandRef ? `in reference image 1 this shape is pale on a ${brief.tile} background, and here that is reversed, so ` : ''}the shape itself is ${brief.tile} and stands alone; openings inside the shape are see-through. ${slab}${lettering}`;
@@ -162,7 +254,7 @@ function renderPrompt(style, name, brief, opts = {}) {
             ? 'Materials are real: polished glass, lacquered plastic, brushed metal, with one broad curved glass highlight across the upper part of the main form and a faint bright rim light along the lower edge. Colours are rich and saturated; whites are a cool silver, never blank. Edges are crisp and slightly bevelled.'
             : 'Finish is smooth lacquered plastic: one soft, broad highlight band across the upper third of rounded forms, nothing mirror-like. Each shape has a thin rim in a darker shade of its own colour. Colours are clear and saturated; whites are a cool pale grey-blue, never blank.',
         vista
-            ? (brief.archetype === 'object' ? 'View: three-quarter, from slightly above and to the left, as Vista draws objects. Detail suits a 256-pixel picture.' : 'View: straight from the front. Detail suits a 256-pixel picture.')
+            ? (brief.archetype === 'object' || brief.object ? 'View: three-quarter, from slightly above and to the left, as Vista draws objects. Detail suits a 256-pixel picture.' : 'View: straight from the front. Detail suits a 256-pixel picture.')
             : 'View: straight from the front. Detail suits a 90-pixel picture: a few large shapes, nothing fine.',
         '',
         'FRAMING:',
@@ -173,7 +265,8 @@ function renderPrompt(style, name, brief, opts = {}) {
     if (userRefs) lines.push(`The first ${userRefs === 1 ? 'image is a picture' : `${userRefs} images are pictures`} the user attached for this icon: the subject is taken from ${userRefs === 1 ? 'it' : 'them'} as the user's direction says.`);
     if (brandRefs > userRefs) {
         const n = userRefs + 1;
-        lines.push(`Image ${n} is the app's current icon. ${userRefs ? 'Take its colours from it.' : 'Take the subject\'s outline, proportions and colours from it.'} The flat tile behind the subject belongs to the phone's launcher, so it is left out.${brief.drop ? ` Also left out: ${brief.drop}.` : ''}`);
+        if (brief.object) lines.push(`Image ${n} is the app's present-day icon. It gives two things only: the exact colours${brief.badge ? ', and the shape of the small emblem' : ''}. Its flat modern look, its layout and its size on the tile are not used: the picture is the object described above.`);
+        else lines.push(`Image ${n} is the app's current icon. ${userRefs ? 'Take its colours from it.' : 'Take the subject\'s outline, proportions and colours from it.'} The flat tile behind the subject belongs to the phone's launcher, so it is left out.${brief.drop ? ` Also left out: ${brief.drop}.` : ''}`);
     }
     if (styleCount) lines.push(`The last ${styleCount} images are genuine ${platform} icons. Take the rendering from them: how much shading, how much gloss, the rim, the amount of detail. Their subjects stay out of this picture.`);
     if (direction) lines.push('', `REQUIRED BY THE USER (this wins over the subject above wherever they differ): ${direction}`);
@@ -205,7 +298,7 @@ function checkMaster(alpha, width, height, brief) {
     const w = x1 - x0 + 1; const h = y1 - y0 + 1;
     const fill = solid / (w * h);
     const aspect = w / h;
-    if (brief && brief.archetype !== 'object' && fill > 0.84 && aspect > 0.87 && aspect < 1.15) return 'plate';
+    if (brief && brief.archetype !== 'object' && !brief.object && fill > 0.84 && aspect > 0.87 && aspect < 1.15) return 'plate';
     return null;
 }
 
@@ -217,4 +310,4 @@ const RETRY_NOTES = {
 };
 const retryNote = (why) => RETRY_NOTES[why] || '';
 
-module.exports = { ARCHETYPES, STYLES, briefPrompt, normaliseBrief, styleRefs, renderPrompt, checkMaster, retryNote };
+module.exports = { ARCHETYPES, STYLES, PERIOD_OBJECTS, periodPrompt, parsePeriod, withPeriod, briefPrompt, normaliseBrief, styleRefs, renderPrompt, checkMaster, retryNote };

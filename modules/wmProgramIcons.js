@@ -33,7 +33,9 @@
  * Image route (Yukimi, Nov 12: OpenAI's latest image model; TokenRouter when it can, for one wallet):
  * config.json wmProgramIcons { provider: 'auto' | 'tokenrouter' | 'openai', model?, quality?, briefModel?,
  * colours? (palette per Windows Mobile 6.1 size, default 256 as the ROM's icons, 0 = full colour),
- * styleRefs? (false = no platform icons attached as rendering references) }.
+ * styleRefs? (false = no platform icons attached as rendering references),
+ * design? ('mark' = a program's symbol is drawn itself, as a glossy emblem; default: as an object of 2007-2009
+ * in the brand's colours with the symbol as a small badge - wmProgramIconPrompt.js) }.
  * model defaults to gpt-image-2.5-sunburst (as good as 2.6 for these, cheaper); 'latest' takes the
  * newest gpt-image Sunburst OpenAI or TokenRouter lists. auto sends it through TokenRouter when
  * TokenRouter lists that model (2.5 only on Nov 12 2026), else to OpenAI directly.
@@ -244,10 +246,10 @@ const normMode = (m) => (MODES.includes(m) ? m : 'detailed');
 // The platform's own icons that go with a request as rendering references, flattened on white (the
 // model reads a transparent reference's edges as dark fringes). Kept per file.
 const styleBuffers = new Map();
-async function styleRefs(style, archetype) {
+async function styleRefs(style, brief) {
     if (settings().styleRefs === false) return [];
     const out = [];
-    for (const rel of iconPrompt.styleRefs(style, archetype)) {
+    for (const rel of iconPrompt.styleRefs(style, brief)) {
         if (!styleBuffers.has(rel)) {
             let buf = null;
             try {
@@ -273,6 +275,7 @@ function settings() {
     // and its route and preset (a cheap test run: WM_PROGRAM_ICONS_PROVIDER=openai WM_PROGRAM_ICONS_QUALITY=low)
     if (process.env.WM_PROGRAM_ICONS_PROVIDER) cfg.provider = process.env.WM_PROGRAM_ICONS_PROVIDER;
     if (process.env.WM_PROGRAM_ICONS_QUALITY) cfg.quality = process.env.WM_PROGRAM_ICONS_QUALITY;
+    if (process.env.WM_PROGRAM_ICONS_DESIGN) cfg.design = process.env.WM_PROGRAM_ICONS_DESIGN;
     return cfg;
 }
 
@@ -333,8 +336,40 @@ async function chooseRoute() {
 }
 
 /**
+ * The period object for a program whose icon is a symbol (wmProgramIconPrompt.js periodPrompt): the
+ * brief model answers a row number, the row's fixed words are the object. null: no row fits (the
+ * symbol is drawn itself). Kept with the Play Store answer's lifetime, per package.
+ */
+async function periodRow(item, ctx) {
+    if (stubs && stubs.period) return stubs.period(item, ctx);
+    const file = path.join(cacheDir(), 'period', `${String(item.package).replace(/[^A-Za-z0-9_.]/g, '_')}.json`);
+    const cached = readJson(file, null);
+    if (cached && cached.rows === iconPrompt.PERIOD_OBJECTS.length && Date.now() - (cached.at || 0) < PLAY_TTL_MS) return cached.row ? iconPrompt.PERIOD_OBJECTS[cached.row - 1] : null;
+    let key = null;
+    try { key = appIconGenerator.resolveOpenAiKey(projectRoot).apiKey; } catch (_) { throw new Error('No OpenAI key for the icon brief (Security Center > API keys).'); }
+    const text = iconPrompt.periodPrompt(item.label, { category: (ctx && ctx.category) || item.category || (item.game ? 'game' : ''), description: ctx && ctx.description });
+    for (let i = 0; i < 3; i++) {
+        try {
+            const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: collapse(settings().briefModel) || 'gpt-5.4-mini', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: text }] })
+            }, 60000);
+            if (!res.ok) continue;
+            const j = await res.json();
+            const raw = JSON.parse((j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '{}');
+            const row = iconPrompt.parsePeriod(raw);
+            if (row === undefined) continue;
+            try { atomicWrite(file, JSON.stringify({ at: Date.now(), rows: iconPrompt.PERIOD_OBJECTS.length, row: row ? Number(raw.row) : 0 })); } catch (_) { /* asked again next time */ }
+            return row;
+        } catch (_) { /* asked again */ }
+    }
+    throw new Error('No answer on what kind of program this is.');
+}
+
+/**
  * The brief of a program's icon (wmProgramIconPrompt.js briefPrompt / normaliseBrief): a vision model
- * describes what is drawn, code picks the treatment. Asked twice at most (an answer that is not a
+ * describes what is drawn, code picks the treatment. Asked three times at most (an answer that is not a
  * brief is asked again). config wmProgramIcons.briefModel (default gpt-5.4-mini, OpenAI directly).
  * Throws when no brief could be had: without one nothing is drawn (a guess is what made results vary).
  */
@@ -349,7 +384,7 @@ async function iconBrief(name, refBuffers, opts) {
         content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${png.toString('base64')}` } });
     }
     let why = 'no answer';
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 3; i++) {
         try {
             const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -532,7 +567,7 @@ async function checkDrawing(master, brief) {
  * the second is kept either way, with a note when it still fails.
  */
 async function drawStyle(route, style, name, brief, brand, opts) {
-    const refs = await styleRefs(style, brief.archetype);
+    const refs = await styleRefs(style, brief);
     const text = iconPrompt.renderPrompt(style, name, brief, { brandRefs: brand.length, userRefs: opts.userRefs, styleCount: refs.length, direction: opts.direction });
     let master = null;
     let why = null;
@@ -701,7 +736,8 @@ async function runItem(job, item) {
         const pictures = marks.concat(own);
         if (!att.length && !pictures.length) throw new Error('No picture of this program to work from: request its icon from the phone (Settings > Personal > Program Icons).');
         // the brief: once per mode, kept for Regenerate (another draw of the same design, not another design)
-        if (!item.briefs || typeof item.briefs !== 'object' || item.briefs.v !== 2) item.briefs = { v: 2 };
+        const bv = settings().design === 'mark' ? 'm2' : 'p3';
+        if (!item.briefs || typeof item.briefs !== 'object' || item.briefs.v !== bv) item.briefs = { v: bv };
         if (!item.briefs[mode]) {
             item.briefs[mode] = await iconBrief(item.label, att.concat(pictures), {
                 category: (ctx && ctx.category) || item.category || (item.game ? 'game' : ''),
@@ -709,6 +745,11 @@ async function runItem(job, item) {
                 characters: mode !== 'simple',
                 direction: item.direction
             });
+        }
+        // a symbol is drawn as an object of 2007-2009 carrying it (Yukimi, Nov 22: the glyphs alone look too
+        // modern), unless the user wrote their own direction or config design is 'mark'
+        if (item.briefs[mode].archetype === 'mark' && !item.briefs[mode].object && bv !== 'm2' && !item.direction && !att.length) {
+            item.briefs[mode] = iconPrompt.withPeriod(item.briefs[mode], await periodRow(item, ctx));
         }
         const brief = item.briefs[mode];
         // image 1 is the picture the outline is taken from; one picture of the program is enough (the

@@ -45,6 +45,15 @@ const alphaOf = async (buf) => { const { data, info } = await sharp(buf).ensureA
     assert.ok(/#5865f2 and stands alone/.test(wmText), 'the cut-out rule is in the text');
     for (const style of P.STYLES) for (const a of P.ARCHETYPES) for (const rel of P.styleRefs(style, a)) assert.ok(fs.existsSync(path.join(ROOT, 'public', 'static_images', rel)), `style reference ${rel}`);
 
+    // ---- the period design: the classifier answers a row, the words are the table's
+    assert.strictEqual(P.parsePeriod({ row: 1 }), P.PERIOD_OBJECTS[0]);
+    assert.strictEqual(P.parsePeriod({ row: 0 }), null);
+    assert.strictEqual(P.parsePeriod({ row: 999 }), undefined);
+    assert.strictEqual(P.parsePeriod({}), undefined);
+    assert.strictEqual(P.withPeriod(girl, P.PERIOD_OBJECTS[0]), girl, 'a character keeps its treatment');
+    assert.strictEqual(P.withPeriod(white, null), white, 'no row: the symbol itself');
+    assert.ok(P.periodPrompt('Test', {}).includes(`${P.PERIOD_OBJECTS.length}. `));
+
     // ---- the measured check
     const disc = await svg('<circle cx="512" cy="512" r="380" fill="#3050e0"/>');
     const tile = await svg('<rect x="110" y="110" width="804" height="804" rx="180" fill="#102030"/>');
@@ -61,24 +70,29 @@ const alphaOf = async (buf) => { const { data, info } = await sharp(buf).ensureA
     for (const d of ['wm65', 'app_icons']) fs.symlinkSync(path.join(ROOT, 'public', 'static_images', d), path.join(root, 'public', 'static_images', d));
     t.setRoot(root);
     const asked = [];
+    const prompts = [];
     t.stub({
         route: { provider: 'test', model: 'test-image', apiModel: 'test-image' },
+        period: async () => P.PERIOD_OBJECTS[0],
         brief: async (name, refs, opts) => { asked.push(['brief', refs.length, opts.characters]); return { archetype: 'mark', subject: 'A round disc', colours: [{ part: 'disc', hex: '#3050e0' }], tile: '' }; },
-        request: async (route, prompt, refs) => { asked.push([/Windows Vista/.test(prompt) ? 'vista' : 'wm', refs.length, /previous drawing/.test(prompt)]); return asked.filter((x) => x[0] !== 'brief').length % 2 === 1 ? tile : disc; }
+        request: async (route, prompt, refs) => { prompts.push(prompt); asked.push([/Windows Vista/.test(prompt) ? 'vista' : 'wm', refs.length, /previous drawing/.test(prompt)]); return asked.filter((x) => x[0] !== 'brief').length % 2 === 1 ? tile : disc; }
     });
     const ref = `data:image/png;base64,${(await sharp(disc).resize(96, 96).png().toBuffer()).toString('base64')}`;
     const job = await t.createJob({ items: [{ id: 'com.example.app/com.example.Main', label: 'Example', icon: ref }] }, null);
     for (let i = 0; i < 200 && job.items.some((it) => it.state === 'queued' || it.state === 'working'); i++) await new Promise((r) => setTimeout(r, 50));
     const it = job.items[0];
     assert.strictEqual(it.state, 'ready', it.error || '');
-    assert.deepStrictEqual(asked, [['brief', 1, true], ['wm', 4, false], ['wm', 4, true], ['vista', 4, false], ['vista', 4, true]], 'one brief; each style drawn again after the tile');
+    assert.deepStrictEqual(asked, [['brief', 1, true], ['wm', 4, false], ['vista', 4, false]], 'one brief, one drawing per style (an object may be square)');
     assert.strictEqual(it.note, null, 'the second drawings passed');
+    // a symbol is drawn as its period object, the symbol a small emblem on it
+    assert.ok(prompts[0].includes(P.PERIOD_OBJECTS[0].object) && /one small raised emblem in #?\w+: A round disc/.test(prompts[0]), prompts[0]);
+    assert.strictEqual(it.briefs.detailed.object, P.PERIOD_OBJECTS[0].object);
     const pub = t.publicJob(job).items[0].preview;
     assert.deepStrictEqual(Object.keys(pub).sort(), ['128', '16', '32', '65', 'vista']);
 
     // Regenerate: another draw of the same brief (no second brief)
     asked.length = 0;
-    t.stub({ route: { provider: 'test', model: 'test-image', apiModel: 'test-image' }, brief: async () => { throw new Error('asked again'); }, request: async () => disc });
+    t.stub({ route: { provider: 'test', model: 'test-image', apiModel: 'test-image' }, brief: async () => { throw new Error('asked again'); }, period: async () => { throw new Error('asked again'); }, request: async () => disc });
     await t.runItem(job, it);
     assert.strictEqual(it.state, 'ready', it.error || '');
 
@@ -107,7 +121,7 @@ const alphaOf = async (buf) => { const { data, info } = await sharp(buf).ensureA
     // ---- programs still without a Vista icon
     m.icons['com.old.app'] = { name: 'com-old-app-aaaaaa-x', package: 'com.old.app', label: 'Old', updatedAt: '2026-11-12T00:00:00Z' };
     fs.writeFileSync(path.join(store, 'manifest.json'), JSON.stringify(m));
-    t.stub({ route: { provider: 'test', model: 'test-image', apiModel: 'test-image' }, brief: async () => ({ archetype: 'mark', subject: 'x', colours: [], tile: '' }), request: async () => disc });
+    t.stub({ route: { provider: 'test', model: 'test-image', apiModel: 'test-image' }, brief: async () => ({ archetype: 'mark', subject: 'x', colours: [], tile: '' }), period: async () => null, request: async () => disc });
     const missing = await t.missingJob(null);
     assert.ok(missing && missing.left === 0);
     assert.deepStrictEqual(missing.job.items.map((x) => x.id), ['com.old.app']);
