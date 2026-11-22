@@ -8345,6 +8345,8 @@ function writeStartMenuActivity(activity) {
 /** Count a launch (start menu, Start Search, Run) for the most used list. */
 function recordStartMenuLaunch(launchId) {
     if (!launchId) return;
+    // an old id counts for the program it is now (#1016: Dreamscape Server Manager is Server Manager)
+    launchId = startMenuLaunchTarget(launchId);
     const activity = readStartMenuActivity();
     const prev = activity[launchId] || {};
     activity[launchId] = { n: (prev.n || 0) + 1, t: Date.now() };
@@ -8384,6 +8386,12 @@ function getStartMenuFrequentItems() {
     const out = [];
     const seen = new Set();
     const add = (launchId) => {
+        // history kept under an old id: the program it is now; a hidden id with none stays off the list (#1016)
+        if (startMenuHidesLaunch(launchId)) {
+            const now = startMenuLaunchTarget(launchId);
+            if (now === launchId) return;
+            launchId = now;
+        }
         if (out.length >= limit || seen.has(launchId) || pinned.has(launchId)) return;
         if (activity[launchId] && activity[launchId].hidden) return;
         const item = findStartMenuLaunchableById(launchId);
@@ -8524,9 +8532,10 @@ const START_MENU_SYSTEM_PLACES = {
     'mmc-server-manager': { at: 'administrative-tools' },  // Server Manager, as on Windows Server 2008
     'config-editor': { at: 'administrative-tools' },     // "Registry Editor" (Runes)
     'event-viewer': { at: 'administrative-tools' },      // "Event Viewer" (Periscope), as on Vista
-    // the old suite-folder entries now stand for the consoles above (launch ids kept for agents and Run)
-    'server-manager': { at: 'hidden' },
-    'data-management': { at: 'hidden' },
+    // the old suite-folder entries now stand for the consoles above (launch ids kept for agents and Run); is: the
+    // program each one is, whose row stands for it everywhere (Start Search, Run, the most used list, #1016)
+    'server-manager': { at: 'hidden', is: 'mmc-server-manager' },
+    'data-management': { at: 'hidden', is: 'mmc-data-management' },
     'sideshow-simulator-landscape': { at: 'sideshow-simulator', label: 'Device Simulator (Landscape)' },
     'sideshow-simulator-portrait': { at: 'sideshow-simulator', label: 'Device Simulator (Portrait)' }
 };
@@ -8541,6 +8550,13 @@ function startMenuHidesLaunch(launchId) {
     return !!place && place.at === 'hidden';
 }
 window.startMenuHidesLaunch = startMenuHidesLaunch;
+
+/** The program an old hidden launch id is now (START_MENU_SYSTEM_PLACES is), else the id itself. */
+function startMenuLaunchTarget(launchId) {
+    const place = launchId ? START_MENU_SYSTEM_PLACES[launchId] : null;
+    return (place && place.is) || launchId;
+}
+window.startMenuLaunchTarget = startMenuLaunchTarget;
 
 /** The Toolbox's programs and the top level's, each once: the pool the placed programs come from. */
 function getStartMenuSystemPool() {

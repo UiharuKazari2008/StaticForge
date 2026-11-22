@@ -1520,7 +1520,18 @@ function buildRunStaticEntries() {
     // the Start menu's hidden programs (old launch ids kept for agents and Run, startMenuHidesLaunch: modalUtils.js):
     // Run finds them, Start Search leaves them out (#1016)
     const hides = typeof window.startMenuHidesLaunch === 'function' ? window.startMenuHidesLaunch : () => false;
+    const target = typeof window.startMenuLaunchTarget === 'function' ? window.startMenuLaunchTarget : (id) => id;
     programs.forEach((e) => { if (e.launchId && hides(e.launchId)) e.startMenuHidden = true; });
+    // an old id that is now another program (Dreamscape Server Manager is Server Manager): not a row of its own
+    // anywhere, its name and id are that program's keywords (typing either still finds it)
+    for (let i = programs.length - 1; i >= 0; i--) {
+        const e = programs[i];
+        if (!e.startMenuHidden) continue;
+        const now = programs.find((p) => p.launchId && p.launchId === target(e.launchId) && p !== e);
+        if (!now) continue;
+        now.keywords = [...new Set([...(now.keywords || []), ...(e.keywords || []), e.label, e.launchId].filter(Boolean))];
+        programs.splice(i, 1);
+    }
     const taken = new Set(programs.filter((e) => !e.startMenuHidden).map(lower));
     const cpl = buildRunControlPanelEntries(taken, new Set(programs.map((e) => e.launchId).filter(Boolean)));
     // a hidden program that a Control Panel item or tool names too (Dynamic Quips, Autofill Ranking): that one stands for it
