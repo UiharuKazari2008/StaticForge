@@ -23,7 +23,8 @@
  *       (45/90/180: the art in the ROM's 80-of-90 box with its contact shadow, full colour)
  *   public/static_images/wm-android/<name>-vista-<16|24|32|48|64|96|128|256>.png  Windows Vista (desktop)
  *   public/static_images/wm-android/manifest.json  { version, updatedAt, icons: { "<package>/<activity>":
- *                                                     { name, package, label, model, updatedAt, wm65?, vista? } } }
+ *                                                     { name, package, label, model, updatedAt, wm65?, vista?, object? } } }
+ *       (object: the period object it shows, so a new icon of the same kind takes another one)
  *       (wm65 / vista: the set has those files; sets made before Nov 22 2026 have the 6.1 files only)
  * A new icon gets a new name, so no client keeps an old copy under a path it reuses.
  *
@@ -778,7 +779,10 @@ async function runItem(job, item) {
         // modern), unless the user attached pictures or config design is 'mark'; a typed direction is applied on
         // top (Yukimi, Nov 22: Gemini "as a white bubble" keeps its period balloon)
         if (item.briefs[mode].archetype === 'mark' && !item.briefs[mode].object && bv !== 'm2' && !att.length) {
-            item.briefs[mode] = iconPrompt.withPeriod(item.briefs[mode], await periodRow(item, ctx));
+            const row = await periodRow(item, ctx);
+            // the row's object the fewest of the store's other icons show
+            const used = Object.entries(readManifest().icons).filter(([id, e]) => id !== item.id && e && e.object).map(([, e]) => e.object);
+            item.briefs[mode] = iconPrompt.withPeriod(item.briefs[mode], iconPrompt.pickVariant(row, used));
         }
         const brief = item.briefs[mode];
         // image 1 is the picture the outline is taken from; one picture of the program is enough (the
@@ -946,7 +950,8 @@ async function finish(job, accept) {
             vista = true;
         }
         const old = manifest.icons[it.id];
-        manifest.icons[it.id] = { name, package: it.package, label: it.label, model: job.model || null, updatedAt: new Date().toISOString(), wm65: true, vista };
+        const object = (it.briefs && it.briefs[normMode(it.mode)] && it.briefs[normMode(it.mode)].object) || undefined;
+        manifest.icons[it.id] = { name, package: it.package, label: it.label, model: job.model || null, updatedAt: new Date().toISOString(), wm65: true, vista, object };
         if (old && old.name && old.name !== name) removeSet(old.name);
         it.store = `${STORE_WEB}/${name}`;
         saved.push(it.id);

@@ -53,6 +53,12 @@ const alphaOf = async (buf) => { const { data, info } = await sharp(buf).ensureA
     assert.strictEqual(P.withPeriod(girl, P.PERIOD_OBJECTS[0]), girl, 'a character keeps its treatment');
     assert.strictEqual(P.withPeriod(white, null), white, 'no row: the symbol itself');
     assert.ok(P.periodPrompt('Test', {}).includes(`${P.PERIOD_OBJECTS.length}. `));
+    // variants: the object the fewest other icons show
+    const film = P.PERIOD_OBJECTS.find((r) => /^films/.test(r.use));
+    assert.strictEqual(P.pickVariant(film, []).object, film.object);
+    assert.strictEqual(P.pickVariant(film, [film.object]).object, film.alts[0].object);
+    assert.strictEqual(P.pickVariant(film, [film.object, film.alts[0].object, film.alts[1].object, film.alts[2].object, film.object]).object, film.alts[0].object);
+    for (const r of P.PERIOD_OBJECTS) for (const v of P.variants(r)) assert.ok(v.object && v.tint && v.badgeAt, r.use);
 
     // ---- the measured check
     const disc = await svg('<circle cx="512" cy="512" r="380" fill="#3050e0"/>');

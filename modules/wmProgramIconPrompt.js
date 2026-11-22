@@ -58,13 +58,15 @@ const ARCHETYPES = ['character', 'object', 'mark'];
 // colour (every other part keeps its natural material); badgeAt: where the brand's emblem sits
 // (onTint: the emblem sits on that coloured part, so a one-colour emblem is white there). Both are fixed
 // so the phone's drawing and the desktop's agree (left open, two draws put the emblem in different corners and
-// coloured different parts).
+// coloured different parts). alts: other objects for the same kind of program; a new icon takes the one the
+// fewest kept icons show (pickVariant).
 const PERIOD_OBJECTS = [
     { use: 'chat, messaging, a community', object: 'Two overlapping speech balloons, the front one larger and lower, each with a short pointed tail, facing the viewer', tint: 'both balloons', badgeAt: 'centred on the front balloon', onTint: true },
     { use: 'e-mail', object: 'A paper envelope seen from the front with its flap open and the top of a letter showing', tint: "the letter's edge band and the envelope's inner lining", badgeAt: 'centred on the letter' },
+    { use: "a mobile carrier's own account app (plan, bill, data use, devices)", object: 'A slim touchscreen phone of 2008 standing upright, seen from the front, its screen lit, signal bars rising beside its upper right', tint: "the phone's back shell and bezel", badgeAt: 'centred on the lit screen' },
     { use: 'phone calls, voice chat', object: 'A telephone handset standing at a slant, earpiece at the upper left, mouthpiece at the lower right', tint: 'the whole handset', badgeAt: "on the middle of the handset's grip", onTint: true },
     { use: 'video calls, live streaming by people', object: 'A small round webcam with a glass lens on a short folding stand', tint: "the webcam's body shell", badgeAt: 'on the body under the lens', onTint: true },
-    { use: 'films and series, video streaming, anime', object: 'A metal film reel with five round holes, standing upright, a strip of cine film with sprocket holes curling off its right side', tint: 'the strip of cine film', badgeAt: "on the reel's round centre hub" },
+    { use: 'films and series, video streaming, anime', object: 'A metal film reel with five round holes, standing upright, a strip of cine film with sprocket holes curling off its right side', tint: 'the strip of cine film', badgeAt: "on the reel's round centre hub", alts: [{ object: 'A film clapperboard standing upright, its striped hinged stick raised at a slant above the slate', tint: 'the striped hinged stick', badgeAt: 'centred on the slate' }, { object: 'A video cassette tape standing upright, seen from the front, two tape reels behind a clear window above a paper label', tint: "the cassette's shell", badgeAt: 'on the paper label' }, { object: 'A DVD keep case standing slightly open toward the viewer, a disc showing inside', tint: "the case's front cover", badgeAt: 'centred on the front cover', onTint: true }] },
     { use: 'television, live channels', object: 'A flat television set of the 2000s with a wide bezel on a low stand, the screen lit', tint: "the television's screen", badgeAt: 'centred on the screen', onTint: true },
     { use: 'music streaming, a music player', object: 'A compact disc standing upright with a pair of beamed eighth notes in front of its lower right', tint: 'the eighth notes', badgeAt: "on the disc's upper left" },
     { use: 'radio', object: 'A portable radio with a round speaker grille, a tuning dial and a telescopic antenna raised at the upper right', tint: "the radio's body", badgeAt: 'on the body beside the dial', onTint: true },
@@ -77,10 +79,10 @@ const PERIOD_OBJECTS = [
     { use: 'weather', object: 'A sun partly hidden behind a rounded cloud', tint: "the cloud's shaded underside", badgeAt: 'on the cloud' },
     { use: 'a web browser', object: 'A globe showing continents, tilted slightly', tint: 'the oceans of the globe', badgeAt: "on a small round plate at the globe's lower right" },
     { use: 'search', object: 'A magnifying glass with a round lens, handle pointing down and right', tint: "the magnifying glass's rim and handle", badgeAt: 'inside the lens' },
-    { use: 'an AI assistant, a chatbot', object: 'One speech balloon with a short tail at the lower left and a four-point spark set in its middle', tint: 'the whole balloon', badgeAt: "at the balloon's lower right, beside the spark", onTint: true },
-    { use: 'shopping, a store, a marketplace', object: 'A paper shopping bag with two cord handles, seen from the front', tint: 'the whole bag', badgeAt: "centred on the bag's front", onTint: true },
-    { use: 'food ordering, a restaurant', object: 'A paper take-away bag with a folded-over top, seen from the front', tint: "a wide band across the bag's front", badgeAt: 'centred on that band', onTint: true },
-    { use: 'banking, payments, a wallet', object: 'A folded leather wallet with a payment card standing out of its top', tint: 'the payment card', badgeAt: "on the wallet's front, lower right" },
+    { use: 'an AI assistant, a chatbot', object: 'One speech balloon with a short tail at the lower left and a four-point spark set in its middle', tint: 'the whole balloon', badgeAt: "at the balloon's lower right, beside the spark", onTint: true, alts: [{ object: 'A small round desk robot of the 2000s with a glass face showing two lit eyes and a short antenna on top', tint: "the robot's body shell", badgeAt: "on the robot's chest" }] },
+    { use: 'shopping, a store, a marketplace', object: 'A paper shopping bag with two cord handles, seen from the front', tint: 'the whole bag', badgeAt: "centred on the bag's front", onTint: true, alts: [{ object: 'A closed cardboard shipping box, seen from the front and a little above, a strip of packing tape across its top', tint: 'the packing tape', badgeAt: "centred on the box's front side" }, { object: 'A shop price tag hanging from a short loop of string, its corners clipped and a round eyelet at the top', tint: 'the whole tag', badgeAt: 'centred on the tag', onTint: true }] },
+    { use: 'food ordering, a restaurant', object: 'A paper take-away bag with a folded-over top, seen from the front', tint: "a wide band across the bag's front", badgeAt: 'centred on that band', onTint: true, alts: [{ object: 'A paper drinks cup with a domed lid and a straw, seen from the front', tint: "the cup's printed band", badgeAt: 'centred on the band', onTint: true }, { object: 'A closed paper take-away food box with a wire handle, seen from the front and a little above', tint: "the box's front panel", badgeAt: 'centred on the front panel', onTint: true }] },
+    { use: 'banking, payments, a wallet', object: 'A folded leather wallet with a payment card standing out of its top', tint: 'the payment card', badgeAt: "on the wallet's front, lower right", alts: [{ object: 'Two payment cards standing at a slant, the front one overlapping the back one', tint: 'the front card', badgeAt: 'centred on the front card', onTint: true }] },
     { use: 'tickets, events, parking', object: 'Two paper admission tickets with notched ends, fanned one over the other', tint: 'the front ticket', badgeAt: 'centred on the front ticket', onTint: true },
     { use: 'notes, writing, documents', object: 'A sheet of paper with a folded top-right corner and ruled lines, a pencil lying across its lower right', tint: "the pencil's barrel and the paper's folded corner", badgeAt: "at the paper's top left, like a letterhead" },
     { use: 'spreadsheets, data', object: 'A sheet of paper with a folded top-right corner carrying a grid of cells', tint: "the grid's header row and first column", badgeAt: "at the paper's top left, like a letterhead" },
@@ -98,7 +100,7 @@ const PERIOD_OBJECTS = [
     { use: 'a printer or 3D printer companion', object: 'A desktop printer with a sheet of paper coming out of its front', tint: "the printer's top panel", badgeAt: "on the printer's front, upper left" },
     { use: 'social network, a feed, sharing with followers', object: 'A bust of a person in front of a second, paler bust, like two contacts', tint: 'the front bust', badgeAt: "on the front bust's chest", onTint: true },
     { use: 'a game with no character', object: 'A game pad with a directional cross on the left and four round buttons on the right', tint: "the game pad's body", badgeAt: 'between the cross and the buttons', onTint: true },
-    { use: 'system tools, settings, utilities', object: 'A metal toolbox with a handle, closed', tint: "the toolbox's body", badgeAt: "centred on the toolbox's front", onTint: true }
+    { use: 'system tools, settings, utilities', object: 'A metal toolbox with a handle, closed', tint: "the toolbox's body", badgeAt: "centred on the toolbox's front", onTint: true, alts: [{ object: 'A wrench and a screwdriver crossed, handles at the bottom', tint: "the screwdriver's handle", badgeAt: 'on a small round plate where the tools cross' }] }
 ];
 
 /** The classifier's text: which row of PERIOD_OBJECTS fits this program. */
@@ -124,6 +126,23 @@ function parsePeriod(raw) {
 function withPeriod(brief, row) {
     if (!brief || brief.archetype !== 'mark' || !row) return brief;
     return { ...brief, object: row.object, badge: brief.subject, tint: row.tint || '', badgeAt: row.badgeAt || '', onTint: row.onTint === true };
+}
+
+/** A row's objects: its own first, then its alternatives (alts). */
+const variants = (row) => (row ? [row].concat(Array.isArray(row.alts) ? row.alts : []) : []);
+
+/**
+ * The object to draw for a row: the one the fewest kept icons already show (the first on a tie). used:
+ * the objects of the store's other icons (Yukimi, Nov 22 2026: too many icons with the same object look
+ * generated and get confused - five film services were all a film reel).
+ */
+function pickVariant(row, used) {
+    const list = variants(row);
+    if (list.length < 2) return row;
+    const count = (v) => (Array.isArray(used) ? used.filter((o) => o === v.object).length : 0);
+    let best = list[0];
+    for (const v of list) if (count(v) < count(best)) best = v;
+    return best;
 }
 
 function briefPrompt(name, opts = {}) {
@@ -326,4 +345,4 @@ const RETRY_NOTES = {
 };
 const retryNote = (why) => RETRY_NOTES[why] || '';
 
-module.exports = { ARCHETYPES, STYLES, PERIOD_OBJECTS, periodPrompt, parsePeriod, withPeriod, briefPrompt, normaliseBrief, styleRefs, renderPrompt, checkMaster, retryNote };
+module.exports = { ARCHETYPES, STYLES, PERIOD_OBJECTS, periodPrompt, parsePeriod, withPeriod, variants, pickVariant, briefPrompt, normaliseBrief, styleRefs, renderPrompt, checkMaster, retryNote };
