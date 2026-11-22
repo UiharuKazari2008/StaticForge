@@ -3074,6 +3074,18 @@
         connectionOf: (kind) => { const list = adapters(); const a = (kind === 'mobile' && list.find((x) => x.kind === 'mobile' && x.row && x.row.alias === 'rmnet0')) || list.find((x) => x.kind === kind); return a ? a.conn : ''; },
         openMobileStatus: () => { const list = adapters(); const m = list.find((x) => x.kind === 'mobile' && x.row && x.row.alias === 'rmnet0') || list.find((x) => x.kind === 'mobile'); return m ? openStatus(m) : Promise.resolve(null); },
         openConnections, openSetup, setRadio,
+        /**
+         * (#1019) The phone's VPN tunnels (WireGuard's and other VPN apps') as Network and Sharing Center shows them: the
+         * connection's name in Network Connections, the profile (the tunnel's name in its app), the interface and its
+         * device name, connected or not, the address and since when; status() opens its status sheet, toggle(up) switches
+         * it through its app (WireGuard's remote control; another app opens).
+         */
+        vpnTunnels: () => adapters().filter((a) => a.kind === 'vpn' && a.row && a.row.vpnPackage).map((a) => ({
+            conn: a.conn, profile: a.row.vpnSession || a.row.vpnApp || 'VPN', app: a.row.vpnApp || '', iface: a.iface, device: a.label,
+            connected: !!a.row.connected, ip: rowList(a.row, 'ip'), since: Number(a.row.connectedAt) || null,
+            status: () => openStatus(a),
+            toggle: (up) => { if (!vpnControl(a.row, up)) { const h = host(); if (h && typeof h.openVpnApp === 'function') h.openVpnApp(a.iface); } }
+        })),
         /** the Wi-Fi adapter is there but switched off (the flyout offers to turn it on) */
         radioOff: () => { const w = state().wifi || {}; return !!(host() && w.present && (w.radio === false || w.state === 'off')); },
         _manageBody: mwnBody,
