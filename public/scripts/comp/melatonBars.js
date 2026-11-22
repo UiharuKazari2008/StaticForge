@@ -962,6 +962,19 @@
             const fill = rgba(cs.backgroundColor, alpha);
             if (fill) out.push({ k: 'rect', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, fill });
             if (cs.backgroundImage && cs.backgroundImage !== 'none') bgImage(cs, b, clip, alpha);
+            // a border-image 9-slice (6.5's menu frame and its row selector, ROM art): the picture's address, its slices in the
+            // picture's own pixels, the edge widths and the box grown by the outset in device px; the app draws the nine parts
+            const bis = /url\(["']?([^"')]+)["']?\)/.exec(cs.borderImageSource || '');
+            if (bis) {
+                const four = (v) => { const p = String(v || '').trim().split(/\s+/); return [p[0], p[1] ?? p[0], p[2] ?? p[0], p[3] ?? p[1] ?? p[0]]; };
+                const sl = four(String(cs.borderImageSlice || '').replace(/\bfill\b/, '')).map((v) => parseFloat(v) || 0);
+                const bwid = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].map(px);
+                // a width is a length, or a number times the border's own width
+                const wd = four(cs.borderImageWidth).map((v, i) => (/px$/.test(v) ? px(v) : /^[\d.]+$/.test(v) ? parseFloat(v) * bwid[i] : bwid[i]));
+                const os = four(cs.borderImageOutset).map((v, i) => (/px$/.test(v) ? px(v) : /^[\d.]+$/.test(v) ? parseFloat(v) * bwid[i] : 0));
+                out.push({ k: 'nine', url: new URL(bis[1], location.href).href, x: R(b.left - os[3]), y: R(b.top - os[0]), w: R(b.width + os[1] + os[3]), h: R(b.height + os[0] + os[2]),
+                    slice: sl, bw: wd.map(R), fill: /\bfill\b/.test(cs.borderImageSlice || ''), alpha: alpha < 1 ? alpha : undefined });
+            }
             // an inset shadow with no blur is a frame drawn inside the box (the signal bars' outlines)
             const ins = /(rgba?\([^)]*\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px\s+([\d.]+)px\s+inset|inset\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px\s+([\d.]+)px\s+(rgba?\([^)]*\))/.exec(cs.boxShadow || '');
             if (ins) {
