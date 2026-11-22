@@ -590,7 +590,8 @@
     const QA_POS = Array.from({ length: 21 }, (_, i) => i);
     const qaPreview = (q) => { try { if (typeof QA().previewTab === 'function') QA().previewTab(q.zoneTop, q.zoneHeight, q.side); } catch (_) { /* older app */ } };
     const qaClampTop = (q, t) => Math.max(0, Math.min(1 - q.zoneHeight, t));
-    const QA_SIZES = [[0.15, 'Small'], [0.3, 'Medium'], [0.45, 'Large']];
+    // (Yukimi, Nov 22 2026: "the touch area is way too big") the pull zone a few finger widths tall
+    const QA_SIZES = [[0.06, 'Small'], [0.1, 'Medium'], [0.15, 'Large']];
     const QA_LAYOUTS = [['strip1', 'Sidebar strip, 1 column'], ['strip2', 'Sidebar strip, 2 columns'], ['wide', 'Wide panel']];
     const near = (list, v) => list.reduce((a, b) => (Math.abs(b[0] - v) < Math.abs(a[0] - v) ? b : a));
     /** Every control the panel can hold: the built-ins, then each installed tile (its app named after it). */
@@ -659,7 +660,7 @@
         init() {
             const v = KEYS().get();
             const c = QA() ? qaRead('config') : null;
-            const qa = c ? { enabled: !!c.enabled, side: c.side || 'right', anchor: c.anchor === 'bottom' ? 'bottom' : 'top', zoneTop: Number(c.zoneTop) || 0.35, zoneHeight: Number(c.zoneHeight) || 0.3, layout: c.layout || 'strip', columns: Number(c.columns) || 1, items: (c.items || []).slice() } : null;
+            const qa = c ? { enabled: !!c.enabled, side: c.side || 'right', anchor: c.anchor === 'bottom' ? 'bottom' : 'top', zoneTop: Number(c.zoneTop) || 0.35, zoneHeight: Math.min(0.15, Number(c.zoneHeight) || 0.1), layout: c.layout || 'strip', columns: Number(c.columns) || 1, items: (c.items || []).slice() } : null;
             // the soft key bar's centre button held (#1013, Yukimi Nov 22: "open the current app as freeform or split view
             // (config in buttons settins)"): the app's Bars config holdAction
             let hold = 'freeform';
