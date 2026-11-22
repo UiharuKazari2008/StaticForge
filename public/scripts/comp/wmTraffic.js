@@ -1798,7 +1798,8 @@
         if (!trip) return car;
         const main = car.pages[0];
         const tp = trip.pages[0];
-        const carLine = [main.title, main.line2].filter(Boolean).join(' \u00b7 ');
+        // the car's state and when to get gas; the outside temperature stays on the clock's weather (the line fits)
+        const carLine = [main.title].concat(String(main.line2 || '').split(' \u00b7 ').filter((x) => x && !/\u00b0F$/.test(x))).filter(Boolean).join(' \u00b7 ');
         const menu = [{ label: 'Traffic', action: trip.onTap }, { label: 'Lapis Remote', action: car.onTap }];
         // the car's Lock / Unlock key when it has one here (set up, the household's phone), else Traffic's own
         const lockKey = main.softKey && /^(Lock|Unlock)$/.test(main.softKey.label) ? main.softKey : null;
