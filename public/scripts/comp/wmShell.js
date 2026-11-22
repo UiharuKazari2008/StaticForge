@@ -5348,6 +5348,8 @@
         return briRow;
     }
 
+    // myNexDock's Phone Charger tile (the dock powers the phone or not): pressed through Quick Access's tile press
+    const DOCK_CHARGER_TILE = 'com.mynexdock.companion/com.mynexdock.companion.tiles.PhoneChargerTile';
     // ---- the Continuity bubble's media volume: speaker | the WM trackbar (Android's media level, 0-10) ----
     let volRowEl = null;
     let volBar = null;
@@ -7900,22 +7902,47 @@
             // Continuity (#798): the Continuity PC - how it is attached, then its display and its dock's battery
             const mc = window.melatonContinuity;
             const pc = mc && typeof mc.continuityPc === 'function' ? mc.continuityPc() : null;
-            const via = pc && pc.attach === 'wireless' ? 'Wi-Fi Direct' : 'USB-C';
+            const via = pc && pc.attach === 'wireless' ? 'Wireless' : 'USB-C';
             const lines = [];
             if (!pc) lines.push('The desktop on the connected display runs from this phone.');
             // paused with the display gone (#1015): when it shuts down, from Continuity's setting
             else if (pc.displayGone) lines.push(typeof mc.displayGoneText === 'function' ? mc.displayGoneText(pc) : 'Disconnected. The desktop is still running.');
-            else if (pc.state !== 'ready') lines.push(`Connecting via ${via}...`);
-            else lines.push(`Connected via ${via}`);
-            const res = pc && pc.width && pc.height ? `${pc.width} \u00d7 ${pc.height}` : '';
+            // (Yukimi, Nov 21) one top row: the state with how it is attached as a badge, the dock's Charge Phone and battery
+            // at the right; the display's resolution is not shown
+            const linked = !!(pc && !pc.displayGone);
+            const stateWord = linked ? (pc.state !== 'ready' ? 'Connecting...' : 'Connected') : '';
             // the dock's battery, when the dock reports one (pc.dockBattery: { level, charging })
             const bat = pc && pc.dockBattery && Number.isFinite(Number(pc.dockBattery.level)) ? pc.dockBattery : null;
             // the dock's battery as the title bar draws the phone's (the same ROM glyph and stages, black on the bubble)
             const dl = bat ? Math.max(0, Math.min(100, Math.round(Number(bat.level)))) : 0;
             const dIcon = !bat ? '' : bat.charging ? 'battery-charging' : dl <= 20 ? 'battery-empty' : dl > 80 ? 'battery-full' : dl > 60 ? 'battery-3' : dl > 40 ? 'battery-2' : 'battery-1';
             const batHtml = bat ? `<span class="wm-cty-bat"><span class="wm-status-icon wm-cty-baticon" data-icon="${dIcon}" aria-hidden="true"></span><span>${dl}%</span></span>` : '';
-            const sections = [lines.join(' ')];
-            if (res || batHtml) sections.push({ rule: true }, { html: `<div class="wm-cty-row"><span>${escapeHtml(res)}</span>${batHtml}</div>` });
+            const sections = [];
+            if (linked) {
+                const row = document.createElement('div');
+                row.className = 'wm-cty-row';
+                row.innerHTML = `<span>${stateWord} <span class="wm-p2p wm-cty-via">${via}</span></span><span class="wm-cty-right"></span>`;
+                const right = row.querySelector('.wm-cty-right');
+                // the dock's own Phone Charger switch (myNexDock's tile: its power output charges the phone or not)
+                const charger = pc.dockCharger;
+                if (charger != null) {
+                    const b = document.createElement('button');
+                    b.type = 'button';
+                    b.className = 'wm-cty-charge';
+                    b.textContent = 'Charge Phone';
+                    b.setAttribute('aria-pressed', String(!!charger));
+                    b.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const q = window.AndroidQuickAccess;
+                        if (!q || typeof q.act !== 'function') return;
+                        try { q.act(`tile:${DOCK_CHARGER_TILE}`, null); } catch (_) { /* older app */ }
+                        b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'));
+                    });
+                    right.appendChild(b);
+                }
+                if (batHtml) right.insertAdjacentHTML('beforeend', batHtml);
+                sections.push({ node: row, key: `cty:${stateWord}:${via}:${charger}:${bat ? `${dl}${bat.charging}` : ''}` });
+            } else sections.push(lines.join(' '));
             // (Yukimi, Nov 21) brightness with its auto toggle, as the Power bubble's, and the media volume
             const bri = brightnessRow();
             if (bri) { const bn = brightnessNow(); sections.push({ rule: true }, { node: bri, key: bn ? `bri:${bn.percent}:${bn.auto ? 1 : 0}:${bn.canSet ? 1 : 0}` : 'bri' }); }
@@ -7929,7 +7956,7 @@
             const shutDown = { text: 'Shut Down', action: () => { void mc.dexPower('shutdown'); } };
             // shut down on its display (the external screen's home stays, black, #1013): Start boots it again
             const off = !!(mc && typeof mc.dexOff === 'function' && mc.dexOff());
-            if (off) sections[0] = 'Shut down. The display stays connected.';
+            if (off) sections.splice(0, sections.length, 'Shut down. The display stays connected.');
             const power = off ? [{ text: 'Start', action: () => { mc.startDex(); } }]
                 : !live ? [] : pc.displayGone ? [shutDown] : [shutDown, { text: 'Restart', action: () => { void mc.dexPower('restart'); } }];
             // Settings: Settings > Connections > Continuity

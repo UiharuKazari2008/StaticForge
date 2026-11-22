@@ -3525,7 +3525,8 @@ html.ui-mobile body > .pswp .pswp__preloader {
 }
 
 .wm-bubble-buttons.has-links {
-    justify-content: space-between;
+    /* Settings alone at the left, the buttons together at the right (Yukimi, Nov 21) */
+    justify-content: flex-end;
     align-items: center;
     border-top: calc(1 * var(--wm-px)) solid #000;
     padding-top: calc(4 * var(--wm-px));
@@ -3550,6 +3551,20 @@ html.ui-mobile body > .pswp .pswp__preloader {
     background: var(--wm-tint) !important;
     font-weight: bold;
 }
+
+.wm-bubble-buttons.has-links > .wm-bubble-link:first-child { margin-right: auto; }
+
+/* the Continuity popup's top row: the state with its USB-C / Wireless badge; Charge Phone and the dock's battery at the right */
+.wm-bubble .wm-cty-right { display: inline-flex; align-items: center; gap: calc(4 * var(--wm-px)); }
+.wm-bubble .wm-cty-via { margin-left: calc(2 * var(--wm-px)); }
+.wm-bubble .wm-cty-charge {
+    padding: 0 calc(4 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: var(--wm-tint) !important;
+    font-weight: bold;
+    line-height: 1.3;
+}
+.wm-bubble .wm-cty-charge[aria-pressed="true"] { background: var(--wm-highlight) !important; color: var(--wm-highlight-text, #fff); }
 
 /* a button at the row's left end (bubble buttons[].left): the car key's Open | Hide (#874) */
 .wm-bubble-buttons button.is-left { margin-right: auto; }
@@ -4470,6 +4485,12 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
 }
 /* the VPN row's time connected, bold as the other rows' values (Yukimi, Nov 14) */
 .wm-vpn-time { font-weight: bold; white-space: nowrap; }
+/* XM Radio recording's popup (#1020): the tape with its reels turning (its strip, only while the popup is up) beside
+   the channel and what it records */
+.wm-xmrec { display: flex; align-items: center; gap: calc(6 * var(--wm-px)); }
+.wm-xmrec-tape { flex: none; width: calc(32 * var(--wm-px)); height: calc(32 * var(--wm-px)); image-rendering: pixelated; filter: invert(1); }
+.wm-xmrec-lines { min-width: 0; }
+.wm-xmrec-lines > * { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wm-bubble-text.is-bold { font-weight: bold; }
 /* Wi-Fi's signal in the Connectivity bubble: four bars rising left to right, the lit ones solid */
 .wm-bars { display: inline-flex; align-items: flex-end; gap: calc(2 * var(--wm-px)); height: calc(12 * var(--wm-px)); }
