@@ -376,6 +376,9 @@
         return modal;
     }
 
+    // set while api.openItem runs for a caller outside the windows (navigate opens one then)
+    let outsideOpen = false;
+
     function openItem(id) {
         const item = items.find((i) => i.id === id);
         if (item && typeof item.open === 'function') {
@@ -541,6 +544,12 @@
     }
 
     function navigate(page, { replace = false, fromHistory = false } = {}) {
+        // an item opened from outside (Start Search, Run: api.openItem) whose page needs a window: one opens on it
+        if (outsideOpen && !isShown(active)) {
+            outsideOpen = false;
+            open(page);
+            return;
+        }
         if (!pages[page]) page = 'home';
         // a dialog page (open() above): the window stays where it is and owns the dialog
         if (typeof pages[page].dialog === 'function') {
@@ -2279,7 +2288,11 @@
         callerWindow: () => inWindowCall,
         /** The window in use (page code: its .cpl-main, its modal). */
         currentWindow: () => (isShown(active) ? modal : null),
-        openItem: (id) => openItem(id),
+        // from outside a window (Start Search, Run, hotkeys): an item that is a page opens a window on it (#1016)
+        openItem: (id) => {
+            outsideOpen = !inWindowCall;
+            try { openItem(id); } finally { outsideOpen = false; }
+        },
         pageArg: (id) => takePageArg(id),
         _test: { pages, items, linkState, accessText, serverRows, formatDuration, setStatus: (s, e = false) => { lastStatus = s; statusError = e; } }
     };

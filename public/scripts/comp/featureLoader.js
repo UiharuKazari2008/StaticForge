@@ -75,8 +75,15 @@ const FEATURE_MANIFEST = {
         styles: ['css/log-viewer.css', 'css/websocket-requests.css'],
         scripts: ['scripts/comp/websocketRequestsModal.js', 'scripts/comp/logViewerApplet.js']
     },
+    // Vista's Control Panel items, categories, task links and Administrative Tools (cplCatalog.js, data only):
+    // the Control Panel draws from it, Start Search and Run find its items (#1016) without the whole Control Panel
+    cpl_catalog: {
+        hot: true,
+        scripts: ['scripts/comp/cplCatalog.js']
+    },
     run_index: {
         hot: true,
+        depends: ['cpl_catalog'],
         scripts: ['scripts/comp/runCommandIndex.js']
     },
     run: {
@@ -444,7 +451,7 @@ const FEATURE_MANIFEST = {
     control_panel: {
         hot: true,
         // dreamos_wifi (#1001): the network pages and the tray's network flyout read window.dreamosWifi as they draw
-        depends: ['vista_dialog_templates', 'dreamos_firmware', 'dreamos_wifi'],
+        depends: ['cpl_catalog', 'vista_dialog_templates', 'dreamos_firmware', 'dreamos_wifi'],
         // Remote Access Properties draws with Taskbar Properties' Vista controls (tbp-*)
         styles: ['css/desktop-settings.css', 'css/vista-defender.css', 'css/cpl-system.css',
             'css/taskbar-properties.css', 'css/remote-access-properties.css', 'css/cpl-personalization.css',
@@ -459,8 +466,7 @@ const FEATURE_MANIFEST = {
             // Device Manager: the Vista theme's colours (the Disable question's instruction, the combo list's shadow)
             'css/themes/vista/device-manager.css'],
         scripts: [
-            // Vista's items, categories and task links (Yozora #632), read by melatonControlPanel.js
-            'scripts/comp/cplCatalog.js',
+            // Vista's items, categories and task links (Yozora #632): the cpl_catalog feature above
             'scripts/comp/melatonControlPanel.js',
             'scripts/comp/experienceIndex.js',
             'scripts/comp/cplSystem.js',
@@ -567,6 +573,12 @@ const FEATURE_MANIFEST = {
         depends: ['vista_dialog_templates'],
         styles: ['css/print-queue.css'],
         scripts: ['scripts/comp/printQueueWindow.js']
+    },
+    // Vista's Print dialog, Printing Preferences and IE7's Page Setup (vistaPrintDialog.js): Grimoire's Print opens it
+    vista_print_dialog: {
+        depends: ['vista_dialog_templates'],
+        styles: ['css/themes/vista/print-dialog.css'],
+        scripts: ['scripts/comp/vistaPrintDialog.js']
     },
     // Director add-ons loaded on demand by director.js (setupMascot / openToolPayload); styles stay in director.css.
     director_mascot: {

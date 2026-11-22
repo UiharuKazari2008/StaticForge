@@ -776,7 +776,8 @@
             const bub = shell.querySelector('.wm-bubble');
             if (!bub.hidden && !bub.contains(e.target) && !(e.target.closest && e.target.closest('#wmShell .wm-status-icon'))) closeBubble();
             const vc = shell.querySelector('.wm-volume');
-            if (!vc.hidden && !vc.contains(e.target) && !(e.target.closest && e.target.closest('#wmShell .wm-status-icon'))) closeVolume();
+            // (the volume box's Output box sits over it: its taps keep the volume box, #1016)
+            if (!vc.hidden && !vc.contains(e.target) && !(e.target.closest && e.target.closest('#wmShell .wm-status-icon, #wmShell .wm-msgbox-layer'))) closeVolume();
             // the notification tray closes on a tap elsewhere
             if (noteTrayOpen && !(e.target.closest && e.target.closest('#wmShell .wm-notify-tray, #wmShell [data-role="notify"]'))) { noteTrayOpen = false; renderNotes(); }
             // a tap anywhere else hides a notification on screen, as on 6.1 (Yukimi, Nov 14): it waits in
@@ -3743,6 +3744,8 @@
             if (!sec) return;
             if (sec.rule) { out.sec.push({ t: 'rule', first: true }); return; }
             if (sec.links) { out.sec.push({ t: 'links', s: sec.text || '', b: !!sec.bold, right: sec.align === 'right', links: sec.links.map((l) => l.label), first: true }); return; }
+            // a section with its own state (the Power bubble's brightness, #1016): its key, for the change check only
+            if (bubbleKeyMode && sec.key) out.sec.push({ t: 'key', s: String(sec.key) });
             const box = document.createElement('div');
             if (sec.html) box.innerHTML = sec.html; else if (sec.node) box.appendChild(sec.node.cloneNode(true));
             const start = out.sec.length;
@@ -5013,6 +5016,8 @@
         if (icon.hidden === show) { icon.hidden = !show; fitStatus(); }
         const bubble = shell.querySelector('.wm-bubble');
         if (bubble && !bubble.hidden && bubble.dataset.role === 'bluetooth') statusBubble('bluetooth', icon, true);
+        // the Power bubble's brightness follows Android's (its panel, adaptive brightness) while it is up (#1016)
+        if (bubble && !bubble.hidden && bubble.dataset.role === 'battery') paintBrightness();
     }
 
     function watchDevice() {
@@ -5136,6 +5141,62 @@
             <div class="wm-bub-pgraph" role="img" aria-label="Battery power over the last minute"><div class="wm-bub-pgraph-bars">${bars}</div></div></div>`;
     }
 
+    // ---- the Power bubble's brightness (#1016): sun | the WM trackbar | auto brightness ----
+    //
+    // The Android app's display brightness (AndroidDevice, DSApp DeviceControl #945): setBrightness moves the level
+    // only, so with adaptive brightness on Android takes it as the user's adjustment and stays adaptive, as its own
+    // slider does; the toggle alone changes the mode. Changes from anywhere (Android's panel, adaptive learning) come
+    // in the 'dreamscape:radios' push (detail.brightness) and move the thumb, except under a finger.
+    let briRow = null;
+    let briBar = null;
+    let briHeld = false;
+    function brightnessNow() {
+        const r = radiosNow || readRadios();
+        const b = r && r.brightness;
+        return b && b.percent != null && Number.isFinite(Number(b.percent)) ? { percent: Math.max(0, Math.min(100, Math.round(Number(b.percent)))), auto: !!b.auto, canSet: b.canSet !== false } : null;
+    }
+    /** The row's thumb and toggle at the app's last values (not while a finger holds the thumb). */
+    function paintBrightness() {
+        const b = brightnessNow();
+        if (!briRow || !b) return;
+        if (!briHeld && briBar) briBar.set(b.percent);
+        const t = briRow.querySelector('.wm-bri-auto');
+        if (t && t.getAttribute('aria-pressed') !== String(b.auto)) t.setAttribute('aria-pressed', String(b.auto));
+    }
+    /** The row, made once and kept: the bubble's 1.5 s redraw moves it, never rebuilds it (a drag survives). */
+    function brightnessRow() {
+        const b = brightnessNow();
+        const dv = window.AndroidDevice;
+        const ui = window.wmSettings && window.wmSettings.ui;
+        if (!b || !dv || typeof dv.setBrightness !== 'function' || !ui || typeof ui.trackbar !== 'function') return null;
+        if (!briRow || briRow.dataset.canSet !== String(b.canSet)) {
+            briRow = document.createElement('div');
+            briRow.className = 'wm-bri-row';
+            briRow.dataset.canSet = String(b.canSet);
+            briRow.innerHTML = `${bitGlyph('sun', 'Brightness')}<div class="wm-bri-track"></div>`
+                + `<button type="button" class="wm-bri-auto" aria-label="Automatic brightness" aria-pressed="${b.auto}"${b.canSet ? '' : ' disabled'}>${bitGlyph('sunauto')}</button>`;
+            briBar = ui.trackbar(briRow.querySelector('.wm-bri-track'), {
+                steps: Array.from({ length: 101 }, (_, i) => i), value: b.percent, label: 'Brightness', ticks: 10, disabled: !b.canSet,
+                onChange: (v) => { try { dv.setBrightness(v); } catch (_) { /* older app */ } }
+            });
+            // (capture phase: the trackbar stops its own pointerdown from bubbling)
+            const hold = (on) => () => { briHeld = on; if (!on) paintBrightness(); };
+            briRow.addEventListener('pointerdown', hold(true), true);
+            ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((t) => briRow.addEventListener(t, hold(false), true));
+            briRow.querySelector('.wm-bri-auto').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const now = brightnessNow();
+                const on = !(now && now.auto);
+                try { if (typeof dv.setAutoBrightness === 'function') dv.setAutoBrightness(on); } catch (_) { /* older app */ }
+                // shown at once; the app's push confirms it
+                if (radiosNow && radiosNow.brightness) radiosNow.brightness.auto = on;
+                paintBrightness();
+            });
+        }
+        paintBrightness();
+        return briRow;
+    }
+
     function watchBatteryBubble(anchor) {
         // asleep (the screen off too: a bridge read and a redraw every 2 s for nobody, #890) it stops; the
         // wake's status pass draws the open bubble and starts it again
@@ -5143,6 +5204,8 @@
         batteryBubbleTimer = setInterval(() => {
             const el = shell && shell.querySelector('.wm-bubble');
             if (!el || el.hidden || el.dataset.role !== 'battery' || !awake()) { clearInterval(batteryBubbleTimer); batteryBubbleTimer = null; return; }
+            // a finger on the brightness slider: the redraw would move it out from under the drag
+            if (briHeld) return;
             readBattery();
             statusBubble('battery', anchor, true);
         }, 1500);
@@ -7099,6 +7162,98 @@
 
     let volumeFocus = 'media';
 
+    // ---- Output (#1016): where media plays, as One UI's Media output panel offers it ----
+
+    /** Media can be moved to another output here: the Android app's routes (#963) or DreamOS's sinks. */
+    function canPickOutput() {
+        const A = window.melatonAudioDevices;
+        try { return !!(A && typeof A.list === 'function' && typeof A.platform === 'function' && A.platform() !== 'browser'); } catch (_) { return false; }
+    }
+
+    /** The outputs media can play on (audioDevices.js), as the desktop's tray menu lists them; not the earpiece (calls only). */
+    function mediaOutputs() {
+        const A = window.melatonAudioDevices;
+        try { return A.list('playback').filter((d) => d.state === 'working' && (d.isDefault || d.canSetDefault)); } catch (_) { return []; }
+    }
+
+    /**
+     * The volume box's Output: a WM box over it with one button per output ("Headphones (Galaxy Buds2 Pro)"), the one
+     * media plays on now as the default button; a tap moves media there (melatonAudioDevices.setDefault: Android's Media
+     * output route, allowed once through the app's shell when needed). Android is asked for its routes only while the
+     * box is up (onChange starts and ends the app's watch), and the buttons follow what it reports. The volume box
+     * stays open under it: Melaton Bars replays a press on its copy by its place among both boxes' controls.
+     */
+    let outputBoxUp = false;
+    async function openOutputBox() {
+        const A = window.melatonAudioDevices;
+        if (!A || outputBoxUp) return;
+        outputBoxUp = true;
+        // the volume keys' 3 s close waits while the box is up
+        clearTimeout(volumeKeyTimer);
+        volumeKeyTimer = null;
+        try { if (typeof A.refresh === 'function') A.refresh(); } catch (_) { /* the push brings it */ }
+        // as One UI's panel names them: another device by its own name ("Galaxy Buds2 Pro", "Living Room TV"), the
+        // phone's own outputs by what they are ("Speakers", "Headphones"); elsewhere the desktop's "Name (Device)"
+        const label = (d) => {
+            if (d.platform === 'android') return (/^(builtin_|wired_|usb_|line_)/.test(d.type || '') ? d.name : d.description) || d.name;
+            return d.description && d.description !== d.name ? `${d.name} (${d.description})` : d.name;
+        };
+        const sig = (list) => list.map((d) => `${d.id}:${d.isDefault ? 1 : 0}:${label(d)}`).join('|');
+        let shown = mediaOutputs();
+        let close = null;
+        let layerEl = null;
+        const fill = () => {
+            const row = layerEl && layerEl.querySelector('.wm-msgbox-buttons');
+            const text = layerEl && layerEl.querySelector('.wm-msgbox-text');
+            if (!row || !close) return;
+            if (text) text.textContent = shown.length ? 'Play media on:' : 'No other output is available.';
+            row.replaceChildren(...shown.map((d) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.textContent = label(d);
+                if (d.isDefault) { b.classList.add('is-default'); b.setAttribute('aria-pressed', 'true'); }
+                b.addEventListener('click', () => close(d.id));
+                return b;
+            }), Object.assign(document.createElement('button'), { type: 'button', textContent: 'Cancel', onclick: () => close(null) }));
+        };
+        // Android's routes arrive a moment after the watch starts: the buttons are drawn again when the list changed
+        const off = typeof A.onChange === 'function' ? A.onChange(() => {
+            const next = mediaOutputs();
+            if (sig(next) === sig(shown)) return;
+            shown = next;
+            fill();
+        }) : null;
+        let pick = null;
+        try {
+            pick = await messageBox({
+                title: 'Output',
+                text: 'Play media on:',
+                buttons: [{ text: 'Cancel', value: null }, { text: '', value: null }],
+                cancelValue: null,
+                titleAction: { kind: 'close', value: null },
+                onOpen: (c) => {
+                    close = c;
+                    layerEl = shell.querySelector('.wm-msgbox-layer');
+                    const box = layerEl && layerEl.querySelector('.wm-msgbox');
+                    if (box) box.classList.add('wm-output-box');
+                    fill();
+                    const def = layerEl && layerEl.querySelector('.wm-msgbox-buttons .is-default');
+                    if (def) def.focus();
+                }
+            });
+        } finally {
+            if (off) off();
+            outputBoxUp = false;
+        }
+        const was = shown.find((d) => d.isDefault);
+        if (!pick || (was && was.id === pick)) return;
+        // Android takes a moment to move the stream (a Bluetooth connect, a route transfer): the wait cursor meanwhile
+        const r = await busy(Promise.resolve(A.setDefault(pick, 'default')).catch((err) => ({ error: String((err && err.message) || err) })), { delay: 250, timeout: 8000 });
+        if (r && r.error) void messageBox({ title: 'Output', text: r.error, icon: 'warning' });
+        if (volumePaint) volumePaint();
+        refreshStatus();
+    }
+
     function closeVolume() {
         const el = shell && shell.querySelector('.wm-volume');
         if (el && !el.hidden) { el.hidden = true; el.replaceChildren(); }
@@ -7123,7 +7278,9 @@
         const radio = (v, t) => `<label class="wm-vol-mode"><input type="radio" name="wmvolmode" value="${v}"><span>${t}</span></label>`;
         el.innerHTML = '<span class="wm-volume-tail" aria-hidden="true"></span><div class="wm-volume-title">Volume</div>'
             + `<div class="wm-vol-sliders">${col('media', 'volume-system', 'Media')}${col('notify', 'volume-notify', 'Notifications')}${col('ringer', 'volume-ringer', 'Ringer')}</div>`
-            + `<div class="wm-vol-modes">${radio('on', 'On')}${radio('vibrate', 'Vibrate')}${radio('off', 'Off')}</div>`;
+            + `<div class="wm-vol-modes">${radio('on', 'On')}${radio('vibrate', 'Vibrate')}${radio('off', 'Off')}</div>`
+            // where media plays (#1016), only where it can be moved (the Android app, DreamOS; a browser has one output)
+            + (canPickOutput() ? `<button type="button" class="wm-vol-output">${bitGlyph('output')}<span>Output</span></button>` : '');
         el.hidden = false;
         const paint = () => {
             el.querySelectorAll('.wm-vol-col').forEach((c) => {
@@ -7178,6 +7335,8 @@
             });
         });
         el.querySelectorAll('input[name="wmvolmode"]').forEach((r) => r.addEventListener('change', () => { setSoundMode(r.value); paint(); refreshStatus(); }));
+        const outBtn = el.querySelector('.wm-vol-output');
+        if (outBtn) outBtn.addEventListener('click', () => { void openOutputBox(); });
         el.addEventListener('click', (e) => e.stopPropagation());
         el.style.setProperty('--steps', String(VOL_STEPS));
         volumePaint = paint;
@@ -7234,7 +7393,12 @@
         lock: '<path d="M10 15V11a6 6 0 0 1 12 0v4" fill="none" stroke="currentColor" stroke-width="3"/><path fill="currentColor" fill-rule="evenodd" d="M6 14h20v15H6zM14.5 18h3v7h-3z"/>',
         unlock: '<path d="M10 15V9a6 6 0 0 1 12 0v2" fill="none" stroke="currentColor" stroke-width="3"/><path fill="currentColor" fill-rule="evenodd" d="M6 14h20v15H6zM14.5 18h3v7h-3z"/>',
         power: '<path d="M16 3v12" stroke="currentColor" stroke-width="3"/><path d="M10 7.6A10 10 0 1 0 22 7.6" fill="none" stroke="currentColor" stroke-width="3"/>',
-        stop: '<path fill="currentColor" d="M8 8h16v16H8z"/>'
+        stop: '<path fill="currentColor" d="M8 8h16v16H8z"/>',
+        // One UI's Media output (the quick panel's music player): a phone sending sound out (#1016)
+        output: '<rect x="5.5" y="4.5" width="12" height="23" rx="2" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M10 23.5h3" stroke="currentColor" stroke-width="2"/><path d="M21.5 12a6 6 0 0 1 0 8M25 8.5a11 11 0 0 1 0 15" fill="none" stroke="currentColor" stroke-width="2.5"/>',
+        // the brightness: a sun (the Power bubble's slider, #1016); auto: the sun with an A in it
+        sun: '<circle cx="16" cy="16" r="5" fill="currentColor"/><path d="M16 2v5M16 25v5M2 16h5M25 16h5M6 6l3.5 3.5M22.5 22.5L26 26M6 26l3.5-3.5M22.5 9.5L26 6" stroke="currentColor" stroke-width="2.5"/>',
+        sunauto: '<circle cx="16" cy="16" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 1v4M16 27v4M1 16h4M27 16h4M5 5l3 3M24 24l3 3M5 27l3-3M24 8l3-3" stroke="currentColor" stroke-width="2.5"/><path d="M12 21.5l4-11 4 11M13.5 17.5h5" fill="none" stroke="currentColor" stroke-width="2.5"/>'
     };
     function bitGlyph(name, label) {
         return `<svg class="wm-bit-glyph" viewBox="0 0 32 32" shape-rendering="crispEdges"${label ? ` role="img" aria-label="${escapeHtml(label)}"` : ' aria-hidden="true"'}>${GLYPHS[name] || ''}</svg>`;
@@ -7423,6 +7587,9 @@
                 if (b.powerMw != null) noteBatteryPower(b.powerMw, !update);
                 lines.push({ html: `<div data-live="bat-level">Main battery: ${b.level}%</div><div class="wm-bub-meter" role="progressbar" aria-label="Main battery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${b.level}"><div style="width:${b.level}%"></div></div>${more.map((t, i) => `<div data-live="bat-more-${i}">${escapeHtml(t)}</div>`).join('')}${batteryGraphHtml()}` });
             }
+            // the brightness at the bottom (#1016); the state key carries its values (the copy over programs follows them)
+            const bri = brightnessRow();
+            if (bri) { const bn = brightnessNow(); lines.push({ node: bri, key: bn ? `bri:${bn.percent}:${bn.auto ? 1 : 0}:${bn.canSet ? 1 : 0}` : 'bri' }); }
             const powerSettings = () => { const st = window.wmSettings; if (!(st && typeof st.open === 'function' && st.open('power', 'battery')) && apps.has('settings')) open('settings'); };
             bubble({ title: 'Power', role, anchor, sections: lines, footLinks: [{ label: 'Settings', action: powerSettings }], buttons: [{ text: 'Hide' }] });
             if (!capture) watchBatteryBubble(anchor);
