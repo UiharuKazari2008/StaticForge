@@ -154,9 +154,14 @@
         const soft = ctx.softkeys ? shell.querySelector('.wm-softkeys') : null;
         const dpr = window.devicePixelRatio || 1;
         let regions = { top: [], bottom: [] };
+        // the bars at the app's screen width (a page behind a program keeps the size of the screen it was last on: the
+        // Fold folded or opened since, the copy was the other screen's bar, #1043)
+        const bs = barScreen();
+        const sized = bs && Math.abs(bs.w / dpr - window.innerWidth) >= 1 ? { density: dpr, widthPx: bs.w } : {};
         const stage = () => {
             if (restoreNow) return;
             restoreNow = window.wmShell.barsStage({
+                ...sized,
                 title: (ctx.app && ctx.app.label) || '',
                 corner: ctx.corner === 'ok' ? 'ok' : ctx.corner === '' ? '' : 'close',
                 androidTray: !!ctx.androidTray,
@@ -1082,6 +1087,36 @@
         } catch (_) { return null; }
     }
 
+    /**
+     * The shell laid out at the bar's screen size until the returned function puts it back (null: it already is). For
+     * work that awaits (the Start copy, #1043): a Fold folded or unfolded while the page was behind a program still had
+     * the page at the other screen's size, and Start's copy kept the old screen's grid.
+     */
+    function sizeToBarScreen(dpr) {
+        const s = barScreen();
+        const shell = document.getElementById('wmShell');
+        if (!shell || !s) return null;
+        const w = s.w / dpr;
+        const h = s.h / dpr;
+        if (Math.abs(w - window.innerWidth) < 1 && Math.abs(h - window.innerHeight) < 1) return null;
+        const prev = shell.getAttribute('style');
+        Object.assign(shell.style, { right: 'auto', bottom: 'auto', width: `${w}px`, height: `${h}px` });
+        // that screen's own text size (Settings > Screen keeps one for the cover screen and one for the opened Fold)
+        const rs = document.documentElement.style;
+        const pxBefore = rs.getPropertyValue('--wm-px');
+        const ws = window.wmSettings;
+        const px = ws && typeof ws.scaleForWidth === 'function' ? ws.scaleForWidth(w) : undefined;
+        const pxNow = px === undefined ? pxBefore : (px ? `${px}px` : '');
+        if (pxNow !== pxBefore) { if (pxNow) rs.setProperty('--wm-px', pxNow); else rs.removeProperty('--wm-px'); }
+        let done = false;
+        return () => {
+            if (done) return;
+            done = true;
+            if (prev == null) shell.removeAttribute('style'); else shell.setAttribute('style', prev);
+            if (pxNow !== pxBefore) { if (pxBefore) rs.setProperty('--wm-px', pxBefore); else rs.removeProperty('--wm-px'); }
+        };
+    }
+
     /** Lays the shell out at the bar's screen size while fn runs (the popups wrap and anchor as they would there). */
     function atBarScreen(dpr, fn) {
         const s = barScreen();
@@ -1383,7 +1418,9 @@
         ctx = ctx || {};
         const reqId = Number(ctx.reqId) || 0;
         const folders = Array.isArray(ctx.folders) ? ctx.folders : [];
-        const out = (o) => { try { if (window.AndroidBars && window.AndroidBars.publishStart) window.AndroidBars.publishStart(JSON.stringify(Object.assign({ reqId, folders }, o))); } catch (err) { console.warn('[melatonBars] publishStart', err); } };
+        // forW: the app's screen width this copy was asked for (its copies are kept per width, #1043)
+        const forW = Number(ctx.widthPx) || 0;
+        const out = (o) => { try { if (window.AndroidBars && window.AndroidBars.publishStart) window.AndroidBars.publishStart(JSON.stringify(Object.assign({ reqId, folders, forW }, o))); } catch (err) { console.warn('[melatonBars] publishStart', err); } };
         const S = window.wmStart65;
         const shell = document.getElementById('wmShell');
         if (!S || !S.barsPrep || !shell) { out({ unsupported: 'no-start' }); return; }
@@ -1399,10 +1436,13 @@
         // only behind another program: on screen, opening Start would show (and a tap on an item
         // coming in now would open its program from Start, with Start's see-through bar)
         if (document.visibilityState === 'visible') { out({ unsupported: 'visible' }); return; }
+        // Start laid out for the screen the app shows it on (a page behind a program keeps the size it last had on
+        // screen: folded or unfolded since, the copy had the other screen's grid, #1043); put back with Start
+        const unsize = sizeToBarScreen(dpr);
         const prep = S.barsPrep(folders);
-        if (!prep) { out({ unsupported: 'no-start' }); return; }
+        if (!prep) { if (unsize) unsize(); out({ unsupported: 'no-start' }); return; }
         let restored = false;
-        startRestore = () => { if (restored) return; restored = true; startRestore = null; try { prep.restore(); } catch (err) { console.warn('[melatonBars] start restore', err); } };
+        startRestore = () => { if (restored) return; restored = true; startRestore = null; try { prep.restore(); } catch (err) { console.warn('[melatonBars] start restore', err); } if (unsize) unsize(); };
         const top = shell.querySelector('.wm-titlebar');
         const soft = shell.querySelector('.wm-softkeys');
         const wall = shell.querySelector(':scope > .wm-wall65');
@@ -1570,10 +1610,12 @@
         if (!window.windowCapture) { out({ unsupported: 'no-capture' }); return; }
         if (document.visibilityState === 'visible') { out({ unsupported: 'visible' }); return; }
         const dpr = window.devicePixelRatio || 1;
+        // laid out for the screen the app shows it on (the page behind a program keeps its last screen's size, #1043)
+        const unsize = sizeToBarScreen(dpr);
         const prep = window.wmLock.barsPrep();
-        if (!prep) { out({ unsupported: 'no-lock' }); return; }
+        if (!prep) { if (unsize) unsize(); out({ unsupported: 'no-lock' }); return; }
         let restored = false;
-        lockRestore = () => { if (restored) return; restored = true; lockRestore = null; try { prep.restore(); } catch (err) { console.warn('[melatonBars] lock restore', err); } };
+        lockRestore = () => { if (restored) return; restored = true; lockRestore = null; try { prep.restore(); } catch (err) { console.warn('[melatonBars] lock restore', err); } if (unsize) unsize(); };
         const snap = (el, before) => window.windowCapture.snapshot(el, { scale: dpr, before });
         const box = (el) => el.getBoundingClientRect();
         const vis = (el, v) => { el.style.visibility = v; };
