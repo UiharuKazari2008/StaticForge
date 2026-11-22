@@ -3409,6 +3409,21 @@
         vpnRead = true;
         if (JSON.stringify(vpnNow) !== was) statusDirty();
     }, { signal: appScopeSignal });
+    let vpnCfg = null;
+    function vpnConfig() {
+        if (vpnCfg) return vpnCfg;
+        vpnCfg = { name: '' };
+        const q = window.AndroidQuickAccess;
+        if (q && typeof q.config === 'function') {
+            try {
+                const c = JSON.parse(q.config());
+                const t = (c.wireguard || [])[0];
+                if (t) vpnCfg.name = (c.vpn && c.vpn[t] && c.vpn[t].name) || t;
+            } catch (_) { /* older app */ }
+        }
+        return vpnCfg;
+    }
+    window.addEventListener('wmvpnconfig', () => { vpnCfg = null; statusDirty(); }, { signal: appScopeSignal });
     /** The tunnel down through its app: WireGuard by its name (the app's remote control), another VPN app opened. */
     function vpnDisconnect(v) {
         const h = window.AndroidWifi;
@@ -7575,10 +7590,22 @@
             if (dev.link && dev.active !== 'wifi' && dev.active !== 'cellular') sections.push(`${dev.link.text}`);
             // a VPN app's tunnel (#1019, Yukimi Nov 21): "VPN: Connected" with its running time at the right, then its
             // address with Disconnect at the right; no rows while no tunnel is up
+            // one section of two lines (Yukimi, Nov 21): shown whenever a tunnel is up or one is added in Network Cards;
+            // data-live: the app's copy fills them from its own record (this page sleeps behind programs), and its
+            // Connect / Disconnect is done by the app (data-android)
             const vpn = vpnState();
-            if (vpn) {
-                sections.push({ html: `<div class="wm-bubble-pair"><span>VPN: Connected</span>${vpn.since ? `<span class="wm-bubble-right"><span class="wm-vpn-time" data-since="${vpn.since}">${clockText(vpn.since)}</span></span>` : ''}</div>` });
-                sections.push({ text: vpn.ip, links: [{ label: 'Disconnect', action: () => vpnDisconnect(vpn) }] });
+            const vcfg = vpnConfig();
+            if (vpn || vcfg.name) {
+                const node = document.createElement('div');
+                node.innerHTML = `<div class="wm-bubble-pair"><span data-live="vpn-state">VPN: ${vpn ? 'Connected' : 'Disconnected'}</span>${vpn && vpn.since ? `<span class="wm-bubble-right"><span class="wm-vpn-time" data-live="vpn-time" data-since="${vpn.since}">${clockText(vpn.since)}</span></span>` : ''}</div>`
+                    + `<div class="wm-bubble-pair"><span data-live="vpn-addr">${escapeHtml(vpn ? vpn.ip : vcfg.name)}</span><span class="wm-bubble-right"><button type="button" class="wm-bubble-link" data-android="qa:wireguard:toggle" data-live="vpn-act">${vpn ? 'Disconnect' : 'Connect'}</button></span></div>`;
+                node.querySelector('button').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    closeBubble();
+                    if (vpn) vpnDisconnect(vpn);
+                    else { const q = window.AndroidQuickAccess; if (q && typeof q.act === 'function') { try { q.act('wireguard', 'on'); } catch (_) { /* older app */ } } }
+                });
+                sections.push({ node });
             }
             // Nightshade Network (#895, Yukimi Nov 17): no row while the service works (its details are in
             // Settings > Connections > Nightshade); while it does not, one row with Reconnect at its right
