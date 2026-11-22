@@ -1027,7 +1027,15 @@ function ensurePromptEmphasisHighlightOverlay(textarea) {
         return overlay;
     }
 
-    if (textarea.parentElement === host && overlay.nextSibling !== textarea) {
+    // the emphasis and search overlays sit together just before their textarea, in either order (each has its own
+    // z-index): each used to move itself right next to the textarea, which pushed the other away, so both were taken
+    // out and put back on every keystroke and every scroller's MutationObserver above them re-measured (#1048)
+    let placed = false;
+    for (let n = textarea.previousElementSibling; n && !placed; n = n.previousElementSibling) {
+        if (n === overlay) placed = true;
+        else if (!n.classList.contains('emphasis-highlight-overlay') && !n.classList.contains('search-highlight-overlay')) break;
+    }
+    if (textarea.parentElement === host && !placed) {
         host.insertBefore(overlay, textarea);
     }
     return overlay;
@@ -1045,7 +1053,15 @@ function ensurePromptSearchHighlightOverlay(textarea) {
         return overlay;
     }
 
-    if (textarea.parentElement === host && overlay.nextSibling !== textarea) {
+    // the emphasis and search overlays sit together just before their textarea, in either order (each has its own
+    // z-index): each used to move itself right next to the textarea, which pushed the other away, so both were taken
+    // out and put back on every keystroke and every scroller's MutationObserver above them re-measured (#1048)
+    let placed = false;
+    for (let n = textarea.previousElementSibling; n && !placed; n = n.previousElementSibling) {
+        if (n === overlay) placed = true;
+        else if (!n.classList.contains('emphasis-highlight-overlay') && !n.classList.contains('search-highlight-overlay')) break;
+    }
+    if (textarea.parentElement === host && !placed) {
         host.insertBefore(overlay, textarea);
     }
     return overlay;
