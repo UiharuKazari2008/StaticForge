@@ -248,3 +248,9 @@ body.desktop-mode .window-switcher-overlay {
 .window-switcher-overlay:not(.is-icons) {
     transition: none;
 }
+
+/* On the DeX desktop the app draws the pane over Android's windows from this one (dexAltTab.js, #1054): this one stays
+   laid out (the app's copy is written down from it) but unseen */
+.window-switcher-overlay.visible.is-native {
+    opacity: 0;
+}

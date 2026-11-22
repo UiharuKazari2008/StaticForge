@@ -1664,6 +1664,22 @@ const windowFlip = (() => {
             if (badge) box.appendChild(badge);
         };
         if (entry.kind === 'android') {
+            box.dataset.androidWindow = String(entry.w.id);
+            // the app's picture of the window, taken when this Alt+Tab began (dexAltTab.js, DSApp DexAltTab, #1049)
+            const shot = window.melatonDexAltTab ? window.melatonDexAltTab.thumb(entry.w.id) : null;
+            if (shot && shot.w > 0 && shot.h > 0) {
+                const size = windowSwitcherFit(shot.w, shot.h);
+                const img = document.createElement('img');
+                img.className = 'window-switcher-picture';
+                img.alt = '';
+                img.draggable = false;
+                img.decoding = 'async';
+                img.width = size.w;
+                img.height = size.h;
+                img.src = shot.url;
+                put(size.w, size.h, img);
+                return box;
+            }
             // no picture of an Android window: its program's icon, as Vista shows a window it has no thumbnail of
             box.classList.add('is-icon');
             const size = windowSwitcherFit(window.innerWidth || 16, window.innerHeight || 10);
@@ -1689,6 +1705,8 @@ const windowFlip = (() => {
                     if (session !== windowSwitcherSession) return;
                     const s = Math.max(c.width / img.naturalWidth, c.height / img.naturalHeight);
                     g.drawImage(img, (c.width - img.naturalWidth * s) / 2, (c.height - img.naturalHeight * s) / 2, img.naturalWidth * s, img.naturalHeight * s);
+                    // drawn again: the app's copy of the pane takes it again (dexAltTab.js)
+                    c.dataset.drawn = '1';
                 };
                 img.src = m[2];
             }
@@ -1763,6 +1781,24 @@ function startWindowSwitcher(holdKey) {
     }
     updateWindowSwitcherDisplay();
     windowFlip.show();
+    // On the DeX desktop the app draws Alt+Tab over Android's windows, from this pane (dexAltTab.js, #1054)
+    const dex = window.melatonDexAltTab;
+    if (dex && holdKey === 'Alt' && windowSwitcherOverlay) {
+        dex.open(windowSwitcherOverlay, { index: windowSwitcherSelectedIndex, titles: windowSwitcherWindows.map((e) => windowFlip.title(e)), onThumbs: refreshWindowSwitcherAndroidThumbs });
+    }
+}
+
+/** Pictures of Android's windows came in while the pane is up (#1049): their slots show them in place of the icon. */
+function refreshWindowSwitcherAndroidThumbs() {
+    if (!windowSwitcherActive || !windowSwitcherOverlay) return;
+    const nodes = windowSwitcherOverlay.querySelectorAll('.window-switcher-item');
+    windowSwitcherWindows.forEach((entry, i) => {
+        if (entry.kind !== 'android' || !nodes[i]) return;
+        const old = nodes[i].querySelector('.window-switcher-thumb');
+        const shot = window.melatonDexAltTab && window.melatonDexAltTab.thumb(entry.w.id);
+        if (!old || !shot || old.querySelector('.window-switcher-picture')) return;
+        old.replaceWith(windowFlip.thumb(entry));
+    });
 }
 
 // Navigate window switcher
@@ -1770,6 +1806,7 @@ function navigateWindowSwitcher(direction) {
     if (windowSwitcherWindows.length === 0) return;
     windowSwitcherSelectedIndex = (windowSwitcherSelectedIndex + direction + windowSwitcherWindows.length) % windowSwitcherWindows.length;
     updateWindowSwitcherDisplay();
+    if (window.melatonDexAltTab) window.melatonDexAltTab.select(windowSwitcherSelectedIndex);
 }
 
 // Update window switcher display
@@ -1826,6 +1863,7 @@ function stopWindowSwitcher() {
     windowSwitcherIconsBuiltFor = null;
     windowFlip.nextSession();
     windowFlip.hide();
+    if (window.melatonDexAltTab) window.melatonDexAltTab.close();
     // the pictures go with the pane (canvases hold memory)
     const iconsEl = windowSwitcherOverlay && windowSwitcherOverlay.querySelector('.window-switcher-icons');
     if (iconsEl) iconsEl.replaceChildren();
