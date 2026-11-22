@@ -4373,6 +4373,33 @@
             statusDirty();
         }, { signal: appScopeSignal });
     })();
+    // The soft key bar as tall as Android's nav row where Melaton Bars handles the navigation (#1013: AndroidBars state
+    // navPx, device px; html[data-wm-soft-h] + --wm-soft-h, wm65.css / wm-shell.css). It lived in melatonBars.js, a
+    // feature loaded only when the app first asks for a bar copy, so after every app restart Today kept 26 units (88 px
+    // against the Fold cover's 108 px nav row) until an Android program was opened (#1053). Here with the shell: at load,
+    // on a resize (a fold, a turn), when the page is back on screen and when the app asks for a kit (the service up).
+    let softHSet = null;
+    function syncSoftHeight() {
+        let css = '';
+        try {
+            const A = window.AndroidBars;
+            const dex = !!(window.AndroidHome && typeof window.AndroidHome.isExternalDisplay === 'function' && window.AndroidHome.isExternalDisplay());
+            if (A && typeof A.getState === 'function' && !dex) {
+                const st = JSON.parse(A.getState() || 'null');
+                const c = st && st.config;
+                if (c && c.enabled && c.softkeys && c.room !== false && st.navPx > 0) css = `${(st.navPx / (window.devicePixelRatio || 1)).toFixed(2)}px`;
+            }
+        } catch (_) { css = ''; }
+        if (css === softHSet) return;
+        softHSet = css;
+        if (css) { root.style.setProperty('--wm-soft-h', css); root.setAttribute('data-wm-soft-h', ''); }
+        else { root.style.removeProperty('--wm-soft-h'); root.removeAttribute('data-wm-soft-h'); }
+    }
+    if (window.AndroidBars) {
+        syncSoftHeight();
+        window.addEventListener('resize', syncSoftHeight, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) syncSoftHeight(); }, { signal: appScopeSignal });
+    }
     // behind an Android program the app draws its bar with an X / ok (and maybe Android's tray icon): the fit pushed is
     // the one for that bar, staged as the app shows it, not this page's own (Today has no X: it gives that place to the
     // icons, the app's bar cannot - Yukimi, Nov 17, cover: two icons crossed the camera in the app's copy)
@@ -14106,6 +14133,8 @@
     window.wmShell = {
         /** The status fit's last inputs and answer (#907), for checking the bar. */
         statusFitLast: () => statusFitLast,
+        /** The soft key bar at Android's nav row height again (melatonBars kit, Settings' Bars page; #1013, #1053). */
+        syncSoftHeight: () => syncSoftHeight(),
         /** The mail ('mail') or Text Messaging ('sms') was opened: its envelope icon's "new" ends (#907). */
         messagesSeen: (cls) => messagesSeen(cls),
         /** Melaton Bars (#871): set the bars to how they show over an Android program; returns restore(). */
