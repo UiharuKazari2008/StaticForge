@@ -289,6 +289,23 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     assert.strictEqual(refuelRows.length, 1, 'one refuel notice in the inbox');
     assert.strictEqual(refuelRows[0].data.stamp, '2026-11-16:am');
     await svc.saveSettings({ notify: { lowFuel: true } });
+    // the start-up tidy (#1061 follow-up): a copy from before stable ids is cleared, today's refuel reminder in it carried
+    // into the alert, and an alerts notice holding a stale refuel stamp is said again once, with what holds now
+    inbox._test.setNow(() => now);
+    inbox.publish({ app: 'lapis', id: 'lapis:mwold1-1', cls: 'notification', title: 'Get gas before work', text: 'Kuro has 16%.', data: { app: 'lapis', kind: 'refuel' } });
+    inbox.publish({ app: 'lapis', id: 'lapis:health:alerts', cls: 'lapis-issue', title: 'Test', text: 'x', data: { app: 'lapis', kind: 'health', stamp: 'fuel=low+2026-11-10:eve', refuel: '2026-11-10:eve' } });
+    inbox.clear('admin', 'lapis:health:alerts');
+    svc._test.live.flags.refuelSaid = null;
+    const nBefore = notices().length;
+    svc._test.dropRepeatNotices();
+    assert.strictEqual(inbox.get('admin', 'lapis:mwold1-1').state, 'cleared', 'the old copy goes');
+    assert.strictEqual(alertsRow().state, 'new', 'the alert is said again');
+    assert.strictEqual(alertsRow().title, 'Get gas before work', 'fuel alone: the reminder says it');
+    assert.strictEqual(alertsRow().data.refuel, '2026-11-16:am');
+    svc._test.dropRepeatNotices();
+    svc._test.dailyNotices();
+    assert.strictEqual(notices().length, nBefore + 1, 'once');
+    inbox._test.setNow(null);
 
     // when to refuel: a work day is two drives, so the answer is a day and a side of work
     const wk = { miles: [5, 100, 100, 100, 100, 100, 5], basis: Array(7).fill('history') };

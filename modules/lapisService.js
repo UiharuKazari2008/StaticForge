@@ -1413,28 +1413,40 @@ function inboxClear(id) {
 }
 
 /**
- * Once at start (#1061): the notices from before stable ids (lapis:<time>-<n>, one per publish) said the same thing again
- * after each server start. Of each title the newest stays; the extra copies leave the inbox and the phones. A refuel
- * reminder from an earlier day (its stamp day:part; the evening's lasts into the next morning) is old news and goes too.
+ * Once at start, a minute in (#1061). Every Lapis kind now has a stable inbox id, so the notices from before (lapis:<time>-<n>,
+ * one per publish) all leave the inbox and the phones; so do refuel reminders from an earlier day. A refuel reminder of today
+ * among them is carried over (the alert says it from now on, as dailyNotices would). The alerts notice is said again when what
+ * the inbox holds for it is stale (an earlier day's refuel stamp, or the reminder just carried over while the fuel alert holds):
+ * one new notice with the alerts that hold now, sounding once.
  */
 function dropRepeatNotices() {
     try {
         const inbox = require('./notificationInbox').bind(gr);
-        const today = usage.dayKey(nowFn(), getSettings().timeZone);
+        const s = getSettings();
+        const today = usage.dayKey(nowFn(), s.timeZone);
         const stale = (r) => {
             const m = /^(\d{4}-\d\d-\d\d):([a-z]+)$/.exec(String(r || ''));
             return !!m && (m[2] === 'eve' ? usage.addDays(m[1], 1) < today : m[1] < today);
         };
-        const keep = new Set();
+        let carried = false;
         inbox.list('admin')
             .filter((x) => x.app === 'lapis' && x.state !== 'cleared' && x.state !== 'acted')
             .forEach((x) => {
-                if (stale(x.data && x.data.refuel)) { inbox.clear('admin', x.id, 'server'); return; }
-                if (!/^lapis:[a-z0-9]+-\d+$/.test(String(x.id || ''))) return;
-                // newest first: the first of a title stays
-                if (keep.has(x.title)) inbox.clear('admin', x.id, 'server');
-                else keep.add(x.title);
+                const legacy = /^lapis:[a-z0-9]+-\d+$/.test(String(x.id || ''));
+                if (!legacy && !stale(x.data && x.data.refuel)) return;
+                // today's refuel reminder from before stable ids: what it said is kept as today's (refuelAdvice)
+                const d = x.data || {};
+                if (legacy && d.kind === 'refuel' && !carried && !live.flags.refuelSaid && String(live.flags.refuelDay || '').startsWith(`${today}:`)
+                    && usage.dayKey(x.createdAt, s.timeZone) === today) {
+                    live.flags.refuelSaid = { stamp: live.flags.refuelDay, title: x.title, text: x.text, day: today };
+                    carried = true;
+                }
+                inbox.clear('admin', x.id, 'server');
             });
+        const cur = inboxGet('lapis:health:alerts');
+        const staleAlerts = !!(cur && cur.data && stale(cur.data.refuel));
+        if (staleAlerts || (carried && fuelHeld(s))) alertsNotice([], s, live.status, { refuel: true });
+        else if (carried) saveLatest();
     } catch (e) { console.warn(`[lapis] old notices: ${e.message}`); }
 }
 
