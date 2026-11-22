@@ -62,6 +62,44 @@ html.ui-mobile {
     background: #000;
 }
 
+/* the task switcher's Task Manager panel (wm-stage.css, #1013): Melaton's own add-on in the dark glossy look the
+   phone makers' task managers had over Windows Mobile. 6.1: graphite, the title band in the bars' own gloss and
+   workspace colour; wm65.css has 6.5's black glass */
+html.ui-mobile {
+    --wm-tm-screen: rgba(0, 0, 0, 0.4);
+    --wm-tm-panel: linear-gradient(to bottom, #45484e 0, #2b2d31 30%, #1a1b1e 70%, #0e0f10 100%);
+    --wm-tm-panel-shadow: 0 calc(-2 * var(--wm-px)) calc(8 * var(--wm-px)) rgba(0, 0, 0, 0.55), inset 0 calc(1 * var(--wm-px)) 0 rgba(255, 255, 255, 0.25);
+    --wm-tm-text: #fff;
+    --wm-tm-head: linear-gradient(to bottom, var(--wm-gloss-line-edge) 0, var(--wm-gloss-line-edge) calc(1 * var(--wm-px)), var(--wm-gloss-top-edge) calc(1 * var(--wm-px)), var(--wm-gloss-bottom-edge) calc(11 * var(--wm-px)), var(--wm-bar-edge) calc(11 * var(--wm-px)), var(--wm-bar-edge) 100%);
+    --wm-tm-head-centre: linear-gradient(to bottom, var(--wm-gloss-line-centre) 0, var(--wm-gloss-line-centre) calc(1 * var(--wm-px)), var(--wm-gloss-top-centre) calc(1 * var(--wm-px)), var(--wm-gloss-bottom-centre) calc(11 * var(--wm-px)), var(--wm-bar-centre) calc(11 * var(--wm-px)), var(--wm-bar-centre) 100%);
+    --wm-tm-head-rule: #000;
+    --wm-tm-head-text: #fff;
+    --wm-tm-head-shadow: 0 calc(1 * var(--wm-px)) 0 rgba(0, 0, 0, 0.45);
+    --wm-tm-count-bg: linear-gradient(to bottom, #fff 0, #dfe2e6 50%, #c4c8ce 51%, #e6e8eb 100%);
+    --wm-tm-count-text: #17181b;
+    --wm-tm-count-shadow: 0 0 0 calc(1 * var(--wm-px)) rgba(0, 0, 0, 0.55);
+    --wm-tm-btn: linear-gradient(to bottom, #6e7279 0, #474a50 50%, #2c2e32 51%, #3b3e43 100%);
+    --wm-tm-btn-pressed: linear-gradient(to bottom, #2c2e32 0, #3b3e43 50%, #474a50 51%, #5a5e64 100%);
+    --wm-tm-btn-edge: #0b0c0d;
+    --wm-tm-btn-text: #fff;
+    --wm-tm-btn-shadow: inset 0 calc(1 * var(--wm-px)) 0 rgba(255, 255, 255, 0.35);
+    --wm-tm-spot: radial-gradient(ellipse 70% 60% at 50% 40%, rgba(255, 255, 255, 0.08) 0, rgba(255, 255, 255, 0) 100%);
+    --wm-tm-tile: linear-gradient(to bottom, #6b6f76 0, #43464c 50%, #2a2c30 51%, #17181b 100%);
+    --wm-tm-tile-pressed: linear-gradient(to bottom, #4c5056 0, #2f3135 50%, #1c1d20 51%, #0c0c0d 100%);
+    --wm-tm-tile-gloss: linear-gradient(to bottom, rgba(255, 255, 255, 0.5) 0, rgba(255, 255, 255, 0.1) 100%);
+    --wm-tm-tile-edge: #08090a;
+    --wm-tm-tile-shadow: inset 0 calc(1 * var(--wm-px)) 0 rgba(255, 255, 255, 0.3), 0 calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) rgba(0, 0, 0, 0.6);
+    --wm-tm-focus: #fff;
+    --wm-tm-label: #fff;
+    --wm-tm-label-shadow: 0 calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) rgba(0, 0, 0, 0.85);
+    --wm-tm-dim: #a3a7ad;
+    --wm-tm-x: radial-gradient(circle at 50% 28%, #ff8a7c 0, #e2281c 55%, #a10c04 100%);
+    --wm-tm-x-pressed: radial-gradient(circle at 50% 28%, #d2645a 0, #ad1a10 55%, #700600 100%);
+    --wm-tm-x-edge: #fff;
+    --wm-tm-x-glyph: #fff;
+    --wm-tm-x-shadow: 0 calc(1 * var(--wm-px)) calc(3 * var(--wm-px)) rgba(0, 0, 0, 0.75);
+}
+
 /* Settings > Screen > Text Size > "Use Segoe UI as the system font" (Yukimi, Nov 17): every program,
    the bars and Start draw in Segoe UI (vista-fonts.css) instead of the ROM's Tahoma (wmPrograms.js
    applySystemFont; the Android app's native bars follow through the bar kit, melatonBars.js) */
@@ -477,7 +515,9 @@ html.ui-mobile[data-wm-softkey-extend]:not([data-wm-sip]) #wmShell {
 
 html.ui-mobile[data-wm-softkey-extend]:not([data-wm-sip]) #wmShell > .wm-softkeys,
 html.ui-mobile[data-wm-version="6.5"][data-wm-softkey-extend]:not([data-wm-sip]) #wmShell > .wm-softkeys {
-    height: calc(26 * var(--wm-px) + env(safe-area-inset-bottom));
+    /* #1013: the app's nav row (--wm-soft-h, melatonBars.syncSoftHeight) wins over this bezel rule's
+     * ID selector; without it the page stayed at 26 units and jumped going into an Android program. */
+    height: var(--wm-soft-h, calc(26 * var(--wm-px) + env(safe-area-inset-bottom)));
     margin-bottom: calc(-1 * env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
 }
@@ -1094,6 +1134,58 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-sip[aria-pressed="true"]::before
 .wm-sip[hidden] {
     visibility: hidden;
     display: flex;
+}
+
+/* ---- the task button (#1013, wmShell.js syncCentreKey): the input panel button's cell while the keyboard is down,
+ * the same box and the same 16-unit art cell (a "restore down" mark: two window outlines, soft-tasks*.png), lit as
+ * the input panel button is while the task switcher is up. Melaton's own; the device has none. ---- */
+.wm-softkeys > .wm-softkey[data-side="left"] {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.wm-softkeys > .wm-sip,
+.wm-softkeys > .wm-taskbtn {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.wm-softkeys > .wm-softkey[data-side="right"] {
+    grid-column: 3;
+    grid-row: 1;
+}
+
+.wm-taskbtn {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    position: relative;
+    -webkit-touch-callout: none;
+}
+
+.wm-taskbtn img {
+    position: relative;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin: var(--wm-soft-glyph-top, calc(3 * var(--wm-px))) 0 0 calc(22.5 * var(--wm-px));
+    pointer-events: none;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-taskbtn[aria-pressed="true"]::before {
+    content: '';
+    position: absolute;
+    inset: calc(1 * var(--wm-px)) 0 0 0;
+    pointer-events: none;
+    mix-blend-mode: color-dodge;
+    background:
+        linear-gradient(to right, #000 0, #171717 25%, #2b2b2b 50%, #171717 75%, #000 100%) 0 0 / 100% calc(10 * var(--wm-px)) no-repeat,
+        linear-gradient(to right, #000 0, #363636 25%, #4d4d4d 50%, #363636 75%, #000 100%);
+}
+
+/* one of the two in the cell: the input panel button wins when both are asked for (a staged switch, the bars' export) */
+.wm-taskbtn[hidden],
+.wm-sip:not([hidden]) ~ .wm-taskbtn {
+    display: none;
 }
 
 /* ---- Start menu: drops from the flag, title colour, 18 px rows ---- */

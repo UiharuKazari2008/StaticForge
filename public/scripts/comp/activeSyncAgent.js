@@ -845,6 +845,19 @@
         return true;
     }
 
+    /**
+     * A device's icon file in static_images/vista-explorer at a size (16, 32, 48, 64), as Mobile Device Center draws it
+     * (activeSyncDeviceArt.js): a modern phone, a Galaxy Z Fold open, and the Pocket PC (wpdshext.dll 14) only for a
+     * Windows Mobile device (Yukimi, Nov 21 2026). Explorer, its file dialogs and Photo Gallery use it. dev: a record or id.
+     */
+    function deviceIcon(dev, size = 16) {
+        let d = dev && typeof dev === 'object' ? (dev.raw || dev) : null;
+        if (!d && dev) d = st.devices.find((x) => String(x.deviceId).toLowerCase() === String(dev).toLowerCase()) || null;
+        if (d && /windows ?mobile|pocket ?pc|^wm/i.test(String(d.platform || ''))) return `portable-device-${size}.png`;
+        const fold = !!d && (/^SM-F9/i.test(String(d.model || '')) || !!(d.status && d.status.foldable === true));
+        return `portable-${fold ? 'fold' : 'phone'}-${size}.png`;
+    }
+
     root.activeSync = {
         kind,
         state,
@@ -856,6 +869,7 @@
         /** The current transfer as the server sees it (#822): { active, files, filesDone, up, down, startedAt, done } or null. */
         transferProgress: () => (remote ? Object.assign({}, remote, { active: remoteActive() }) : null),
         device: (id) => st.devices.find((d) => d.deviceId === id) || null,
+        deviceIcon,
         primary: () => st.devices.find((d) => d.primary) || null,
         pick: (list) => { const l = Array.isArray(list) ? list : []; return l.find((d) => d && d.primary) || l[0] || null; },
         setPrimary: (deviceId) => send('as_set_primary', { deviceId: deviceId || '' }).then((res) => send('as_list', {}).then((l) => { takeLists(l); fire('state', state()); return res.primary || ''; })),

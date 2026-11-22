@@ -20,8 +20,10 @@
  *
  * The home page and the search provider are user settings (userGlobalSettings.alchemy.homePage /
  * searchProvider, modules/grimoireBrowserBridge.js). Zoom is per pane: CSS zoom on Grimoire pages,
- * Chrome's own zoom in Alchemy (services/grimoire-browser `zoom`). Print copies a Grimoire page into
- * #grimoireIePrintHost; a web page comes back from Alchemy as one full-page picture (`print`).
+ * Chrome's own zoom in Alchemy (services/grimoire-browser `zoom`). Print (the button, Print ▾, Ctrl+P, the page's
+ * menu) opens Vista's Print dialog (vistaPrintDialog.js); Xyridian Print to PDF has Alchemy print the web page to a PDF
+ * (`print-pdf`, Page.printToPDF) that Save Print Output As puts in the user's files; Fax and the XPS Document Writer
+ * still copy a Grimoire page into #grimoireIePrintHost, or a web page that comes back as one picture (`print`).
  *
  * Home, Split view and the site menu are the window's own buttons, moved into the command bar on
  * the Vista desktop and back to the caption toolbar elsewhere. Art from the VM
@@ -36,7 +38,8 @@
     const NAI_FAVICON = '/static_images/novelai-favicon.png';
 
     function pageFavicon(entry) {
-        if (entry && entry.type === 'web') return `${ART}/page-ie.png`;
+        // a web page: its own icon (grimoireRemoteBrowser.js grimoireTabFavicon), IE's page until it is known
+        if (entry && entry.type === 'web') return entry.favicon || `${ART}/page-ie.png`;
         const site = entry && (entry.siteId || (entry.content && entry.content.siteId));
         const url = entry ? (entry.displayUrl || entry.url || (entry.content && entry.content.displayUrl) || '') : '';
         if (site === 'novelai' || /docs\.novelai\.jp/i.test(String(url))) return NAI_FAVICON;
@@ -207,6 +210,7 @@
 
         /** A later window closing (tagWikiSearchModal.js destroyWindow): its listeners go with it. */
         destroy() {
+            if (this._syncTimer) { clearTimeout(this._syncTimer); this._syncTimer = 0; }
             root.removeEventListener('message', this.onFrameMessage);
             if (this.observer) this.observer.disconnect();
             if (this.bodyObserver) this.bodyObserver.disconnect();
@@ -386,6 +390,10 @@
             }
             if (action === 'print') {
                 this.print();
+                return;
+            }
+            if (action === 'page-setup') {
+                this.pageSetup();
                 return;
             }
             if (action === 'search-provider' && item) {
@@ -668,8 +676,9 @@
         printItems() {
             return [
                 { text: 'Print...', icon: 'fas fa-print', action: 'print' },
-                // the browser's print dialog is a preview with the page setup in it
-                { text: 'Print Preview...', action: 'print' }
+                // no Print Preview window yet: the Print dialog
+                { text: 'Print Preview...', action: 'print' },
+                { text: 'Page Setup...', action: 'page-setup' }
             ];
         }
 
@@ -772,6 +781,10 @@
                     .filter((feed) => feed && /^https?:\/\//i.test(feed.href || ''))
                     .map((feed) => ({ href: String(feed.href), title: String(feed.title || '') }));
                 this.sync();
+            } else if ((data.type === 'grimoire-browser-print-info' || data.type === 'grimoire-browser-print-pdf') && data.id && this.printWaits && this.printWaits.has(data.id)) {
+                const done = this.printWaits.get(data.id);
+                this.printWaits.delete(data.id);
+                done(data);
             } else if (data.type === 'grimoire-browser-print' && data.id && data.id === this.printId) {
                 this.printId = '';
                 this.printing = false;
@@ -790,27 +803,165 @@
 
         // ---- print ----
 
-        /** Print...: a Grimoire page is copied into the print host; a web page comes back from Alchemy as one picture. */
-        print() {
+        /** Alchemy's answer to one print message (print-info, print-pdf), or null after ms. */
+        askAlchemy(frame, kind, extra, ms) {
+            if (!this.printWaits) this.printWaits = new Map();
+            const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+            return new Promise((resolve) => {
+                const timer = setTimeout(() => { if (this.printWaits.delete(id)) resolve(null); }, ms);
+                this.printWaits.set(id, (data) => { clearTimeout(timer); resolve(data); });
+                frame.contentWindow.postMessage(Object.assign({ type: `grimoire-browser-${kind}`, id }, extra || {}), '*');
+            });
+        }
+
+        /**
+         * Print...: Vista's Print dialog (vistaPrintDialog.js) with IE7's Options page. Xyridian Print to PDF: Alchemy
+         * prints the web page (Page.printToPDF) and Save Print Output As keeps it; Fax and the XPS Document Writer print
+         * as before (printPicture). The generation printers print Studio's pictures only.
+         * opts.selection: the page's menu was opened on selected words (Page Range: Selection).
+         */
+        async print(opts = {}) {
             const shell = this.shell();
             if (!shell || !shell.displayArea || this.printing) return;
             const entry = shell.history ? shell.history[shell.historyIndex] : null;
             const frame = typeof root.grimoireRemoteFrame === 'function' ? root.grimoireRemoteFrame(shell) : null;
-            if (entry && entry.type === 'web' && frame && frame.contentWindow) {
+            const web = !!(entry && entry.type === 'web' && frame && frame.contentWindow);
+            this.printing = true;
+            this.sync();
+            let picture = false;
+            try {
+                if (!root.vistaPrintDialog && root.featureLoader) await root.featureLoader.loadFeature('vista_print_dialog');
+                const pd = root.vistaPrintDialog;
+                if (!pd) return;
+                // what the page offers: a selection, frames (server.js printInfo)
+                const info = (web && await this.askAlchemy(frame, 'print-info', null, 3000)) || {};
+                const job = await pd.open({
+                    owner: this.host.modal,
+                    selection: !!info.selection,
+                    selectionDefault: !!(opts.selection && info.selection),
+                    ieOptions: { frames: Number(info.frames) || 0 }
+                });
+                if (!job) return;
+                if (job.printer.driver === 'queue') {
+                    await pd.message(`${job.printer.name} prints Dreamscape Studio's pictures only. Choose another printer to print this page.`, this.host.modal);
+                    return;
+                }
+                if (job.printer.driver === 'pdf') {
+                    if (!web) {
+                        await pd.message('Xyridian Print to PDF prints web pages. Print this Grimoire page with another printer.', this.host.modal);
+                        return;
+                    }
+                    await this.printPdf(shell, frame, job);
+                    return;
+                }
+                picture = true;
+            } finally {
+                if (!picture) {
+                    this.printing = false;
+                    this.sync();
+                }
+            }
+            this.printPicture(shell, frame, web);
+        }
+
+        /** Xyridian Print to PDF: the page as Alchemy prints it, kept where Save Print Output As says. */
+        async printPdf(shell, frame, job) {
+            const pd = root.vistaPrintDialog;
+            const owner = this.host.modal;
+            const ps = job.pageSetup || {};
+            const s = job.settings || {};
+            const now = new Date();
+            this.statusText.textContent = 'Printing…';
+            const reply = await this.askAlchemy(frame, 'print-pdf', { options: {
+                landscape: s.orientation === 'landscape',
+                paper: s.paper,
+                marginTop: ps.marginTop, marginBottom: ps.marginBottom, marginLeft: ps.marginLeft, marginRight: ps.marginRight,
+                header: ps.header, footer: ps.footer,
+                pageRanges: job.range === 'pages' ? job.pages : '',
+                selection: job.range === 'selection',
+                tableOfLinks: !!job.tableOfLinks,
+                date: now.toLocaleDateString('en-US'),
+                longDate: now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+                time: now.toLocaleTimeString('en-US')
+            } }, 120000);
+            if (!reply || reply.error || !reply.file) {
+                const text = !reply ? 'The page did not answer. Try printing again.'
+                    : reply.code === 'range' ? 'The page range is not valid for this page. Enter pages this document has, for example 1,5-12.'
+                        : reply.code === 'selection' ? 'Nothing is selected on this page.'
+                            : `This document failed to print.\n${reply.error || ''}`;
+                await pd.message(text, owner, 'error');
+                return;
+            }
+            let data = '';
+            try {
+                const res = await fetch(root.grimoireRemoteFileUrl(shell, 'download', reply.file), { credentials: 'same-origin' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const blob = await res.blob();
+                data = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
+                    reader.onerror = () => resolve('');
+                    reader.readAsDataURL(blob);
+                });
+            } catch (_) {
+                data = '';
+            }
+            if (!data) {
+                await pd.message('This document failed to print. The printed file could not be read.', owner, 'error');
+                return;
+            }
+            // studioOpenFolderDialog (studioSession.js) and vfsClient: the Save dialog and the user's files
+            const save = typeof root.studioOpenFolderDialog === 'function' ? root.studioOpenFolderDialog : null;
+            const vfs = root.vfsClient || (typeof vfsClient !== 'undefined' ? vfsClient : null); // eslint-disable-line no-undef
+            if (!save || !vfs) return;
+            const base = String(reply.title || 'Page').replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim().slice(0, 150) || 'Page';
+            const ws = typeof activeWorkspace !== 'undefined' && activeWorkspace ? activeWorkspace : ''; // eslint-disable-line no-undef
+            save('save', {
+                owner,
+                startPath: ws ? `/Workspaces/${ws}` : '/',
+                host: {
+                    title: 'Save Print Output As',
+                    types: [{ label: 'PDF Document (*.pdf)', ext: 'pdf' }],
+                    rememberKey: 'print-to-pdf',
+                    // the folder's PDF files show (Save asks before replacing one)
+                    acceptItem: (item) => !!item && item.targetKind === 'user-file',
+                    suggestName: () => `${base}.pdf`,
+                    onSave: async ({ path, name }) => {
+                        const finalName = /\.pdf$/i.test(name) ? name : `${name}.pdf`;
+                        const r = await vfs.uploadFile(path, data, finalName, 'application/pdf');
+                        if (r && r.success === false) throw new Error(r.error || 'save failed');
+                        return true;
+                    }
+                }
+            });
+        }
+
+        /** IE7's Page Setup (Print ▾): header, footer, margins, paper and orientation for the next print. */
+        async pageSetup() {
+            if (!root.vistaPrintDialog && root.featureLoader) await root.featureLoader.loadFeature('vista_print_dialog');
+            if (root.vistaPrintDialog) await root.vistaPrintDialog.pageSetup(this.host.modal);
+        }
+
+        /** Fax and the XPS Document Writer: a Grimoire page is copied into the print host; a web page comes back from
+         *  Alchemy as one picture. */
+        printPicture(shell, frame, web) {
+            if (web) {
                 this.printing = true;
                 this.printId = 'p' + Date.now().toString(36);
                 this.statusText.textContent = 'Preparing to print…';
                 frame.contentWindow.postMessage({ type: 'grimoire-browser-print', id: this.printId }, '*');
-                // no answer (an old Alchemy service, a closed page): give the button back
+                // no answer (an old Alchemy service, a closed page): give the button back. A long page's picture takes
+                // Alchemy most of a minute (a 12000 px Wikipedia article: 51 s), so the wait is two minutes
                 setTimeout(() => {
                     if (this.printing && this.printId) {
                         this.printing = false;
                         this.printId = '';
                         this.sync();
                     }
-                }, 30000);
+                }, 120000);
                 return;
             }
+            this.printing = false;
             const page = document.createElement('div');
             page.className = shell.displayArea.className;
             page.innerHTML = shell.displayArea.innerHTML;
@@ -966,10 +1117,10 @@
                 const iconEl = el.querySelector('.grimoire-ie-tab-icon');
                 if (titleEl.textContent !== info.title) titleEl.textContent = info.title;
                 if (iconEl.getAttribute('src') !== info.icon) iconEl.setAttribute('src', info.icon);
-                el.title = info.title;
+                setIf(el, 'title', info.title);
                 el.classList.toggle('is-active', active);
                 el.classList.toggle('is-loading', info.loading);
-                el.setAttribute('aria-selected', active ? 'true' : 'false');
+                if (el.getAttribute('aria-selected') !== (active ? 'true' : 'false')) el.setAttribute('aria-selected', active ? 'true' : 'false');
                 if (active) {
                     this.tabTitle = titleEl;
                     this.tabIcon = iconEl;
@@ -1261,7 +1412,7 @@
                     tile.className = 'grimoire-ie-quicktile grimoire-ie-quick-other';
                     tile.dataset.otherSession = session.id;
                     tile.dataset.otherTab = tab.id;
-                    tile.title = (tab.kind === 'alchemy' ? 'Move this page here: ' : 'Open a copy here: ') + (tab.title || tab.url);
+                    tile.title = (tab.kind === 'alchemy' ? 'Move this page here: ' : 'Open a copy here: ') + (tab.title || grimoireDisplayUrl(tab.url));
                     const title = document.createElement('span');
                     title.className = 'grimoire-ie-quicktile-title';
                     title.textContent = (tab.title && tab.title !== tab.url ? tab.title : '')
@@ -1272,7 +1423,7 @@
                     fav.alt = '';
                     fav.src = tab.kind === 'alchemy' ? `${ART}/page-ie.png` : BOOKS_ICON;
                     const url = document.createElement('span');
-                    url.textContent = tab.url || '';
+                    url.textContent = grimoireDisplayUrl(tab.url || '');
                     const note = document.createElement('span');
                     note.className = 'grimoire-ie-quick-other-note';
                     note.textContent = tab.kind === 'alchemy' ? (tab.alchemyId ? 'Still open there; moves here as it is' : 'Opens again from its address') : 'A copy opens here; the page stays there';
@@ -1386,7 +1537,28 @@
 
         // ---- state ----
 
+        /**
+         * The chrome follows the page at most once a second (Yukimi, Nov 21 2026: "limit to 1ps"): a change after a
+         * quiet second shows at once, a burst (body class flips while a window moves, Alchemy's loading flag, the
+         * address bar) folds into one update at the end of that second. Every write below compares first.
+         */
         sync() {
+            const now = performance.now();
+            const wait = (this._syncAt || 0) + 1000 - now;
+            if (wait <= 0 && !this._syncTimer) {
+                this._syncAt = now;
+                this.syncNow();
+                return;
+            }
+            if (this._syncTimer) return;
+            this._syncTimer = setTimeout(() => {
+                this._syncTimer = 0;
+                this._syncAt = performance.now();
+                this.syncNow();
+            }, Math.max(0, wait));
+        }
+
+        syncNow() {
             const shell = this.shell();
             if (!shell || !this.tabStrip) return;
             const entry = shell.history ? shell.history[shell.historyIndex] : null;
@@ -1400,26 +1572,29 @@
             }
 
             const loading = this.isLoading();
-            this.stop.disabled = !loading;
-            if (!this.printing) this.statusText.textContent = loading ? 'Waiting for page…' : 'Done';
+            setIf(this.stop, 'disabled', !loading);
+            if (!this.printing) setIf(this.statusText, 'textContent', loading ? 'Waiting for page…' : 'Done');
 
             const feeds = web ? this.feedsOf(shell) : [];
-            this.feedsBtn.disabled = !feeds.length;
-            this.feedsDrop.disabled = !feeds.length;
-            this.feedsBtn.title = feeds.length ? `View Feeds on this Page (${feeds.length})` : 'No Feeds Detected on this page';
-            this.printBtn.disabled = !!this.printing;
-            this.zoomText.textContent = `${this.zoomOf(shell)}%`;
-            // IE7's zones (the VM registry's Internet Settings Zones 1 and 3): the Grimoire is the local intranet, Alchemy the Internet
-            const zone = web ? 'Internet | Protected Mode: On' : 'Local intranet | Protected Mode: Off';
+            setIf(this.feedsBtn, 'disabled', !feeds.length);
+            setIf(this.feedsDrop, 'disabled', !feeds.length);
+            setIf(this.feedsBtn, 'title', feeds.length ? `View Feeds on this Page (${feeds.length})` : 'No Feeds Detected on this page');
+            setIf(this.printBtn, 'disabled', !!this.printing);
+            setIf(this.zoomText, 'textContent', `${this.zoomOf(shell)}%`);
+            // IE7's zones (the VM registry's Internet Settings Zones 1 and 3): Grimoire's own pages are the local intranet;
+            // an Alchemy page by the address it came from (Yukimi, Nov 21: "use "Intranet" when the sites IP resolves to
+            // a private ip range"; server.js zoneOfUrl), the Internet until Alchemy has said
+            const internet = web && shell._alchemyZone !== 'intranet';
+            const zone = internet ? 'Internet | Protected Mode: On' : 'Local intranet | Protected Mode: Off';
             if (this.zoneText.textContent !== zone) this.zoneText.textContent = zone;
-            const zoneArt = `${ART}/${web ? 'zone-internet' : 'zone-intranet'}.png`;
+            const zoneArt = `${ART}/${internet ? 'zone-internet' : 'zone-intranet'}.png`;
             if (this.zoneIcon && this.zoneIcon.getAttribute('src') !== zoneArt) this.zoneIcon.setAttribute('src', zoneArt);
 
             // wiki pages are favorites too (#628)
             const url = this.currentBookmarkUrl();
-            this.addFavBtn.disabled = !url;
+            setIf(this.addFavBtn, 'disabled', !url);
             const fav = !!url && this.bookmarks.some((row) => row.url === url);
-            this.addFavBtn.title = fav ? 'Remove from Favorites' : 'Add to Favorites';
+            setIf(this.addFavBtn, 'title', fav ? 'Remove from Favorites' : 'Add to Favorites');
             this.addFavBtn.classList.toggle('is-favorite', fav);
 
             // extension buttons act on an Alchemy page (as Chrome's on a tab)
@@ -1432,6 +1607,11 @@
             const travel = history.length > 1;
             if (this.recent) this.recent.classList.toggle('is-disabled', !travel);
         }
+    }
+
+    /** A property written only when it differs: the same value again still restyles (a title, disabled) or replaces a text node. */
+    function setIf(el, prop, value) {
+        if (el && el[prop] !== value) el[prop] = value;
     }
 
     // ---- extension buttons taken off the command bar (userGlobalSettings.alchemy.hiddenExtensions, every window) ----
@@ -1671,7 +1851,11 @@
     // show. What Alchemy encodes with and the link (grimoire-browser-encoder, asked with grimoire-browser-encoder?) and
     // the viewer's own numbers (grimoire-browser-stats?: frames, bytes, decode time, layers, scroll cache), refreshed
     // every 2 s while it shows; nothing while it, its window or the page is hidden or minimised. ----
-    const INFO_TPL = { t: 'Alchemy Information', w: 262, h: 300, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
+    // Yukimi (Nov 21): "a toggle in alchemy info to show borders of layer boundy and toggle for colorise segment quality
+    // type, and a button to open a tool window that shows the full page cache with a preview of the elements and a box
+    // to indicare the view port": the two checks go to the tab's viewer (grimoire-browser-debug), Page Cache opens
+    // showPageCache
+    const INFO_TPL = { t: 'Alchemy Information', w: 262, h: 324, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
         [901, 'S', 7, 7, 21, 20, 0x50000003, '', 0],
         [902, 'S', 36, 12, 219, 9, 0x5002008C, '', 0],
         [-1, 'S', 7, 33, 248, 1, 0x50000010, '', 0],
@@ -1710,7 +1894,12 @@
         [-1, 'S', 7, 253, 248, 1, 0x50000010, '', 0],
         [-1, 'S', 7, 260, 66, 9, 0x50020080, 'Automatic:', 0],
         [931, 'S', 76, 260, 179, 18, 0x50020080, '', 0],
-        [1, 'B', 205, 282, 50, 14, 0x50010001, 'Close', 0]
+        [-1, 'S', 7, 281, 248, 1, 0x50000010, '', 0],
+        [951, 'B', 7, 287, 74, 10, 0x50010003, 'Layer &borders', 0],
+        [952, 'B', 84, 287, 86, 10, 0x50010003, 'Colour by &source', 0],
+        [954, 'B', 173, 287, 82, 10, 0x50010003, 'Content &types', 0],
+        [953, 'B', 7, 303, 64, 14, 0x50010000, '&Page Cache...', 0],
+        [1, 'B', 205, 303, 50, 14, 0x50010001, 'Close', 0]
     ] };
 
     const NOT_YET = 'Not measured yet';
@@ -1763,7 +1952,7 @@
             return { 902: 'This tab has no web page', 911: '', 912: '', 913: '', 914: '', 915: '', 916: '', 917: '', 921: '', 922: '', 923: '', 924: '', 941: '', 942: '', 943: '', 944: '', 931: '' };
         }
         return {
-            902: pageUrl || 'This tab has no web page',
+            902: grimoireDisplayUrl(pageUrl) || 'This tab has no web page',
             911: info ? `${i.codec || 'JPEG'} from the ${i.source || 'Chromium screencast'}` : NOT_YET,
             912: num(i.q) === null ? 'Unknown' : `JPEG quality ${i.q}`,
             913: num(i.minFps) === null ? 'Unknown' : `${i.minFps} to ${i.maxFps} frames per second`,
@@ -1786,7 +1975,8 @@
     }
 
     let infoOpen = null;
-    const INFO_EVERY_MS = 2000;
+    // once a second while it shows (Yukimi, Nov 21 2026: "only update 1ps"); both answers land in one redraw (draw)
+    const INFO_EVERY_MS = 1000;
 
     async function showAlchemyInfo(host) {
         // one per Grimoire window: asking again brings it to the front
@@ -1799,24 +1989,49 @@
         const V = window.vistaDialogTemplate;
         if (!V) return;
         const abort = new AbortController();
-        const state = { host, modal: null, abort, timer: 0, info: null, stats: null, prev: null, view: null, frame: null, close: null };
+        const state = { host, modal: null, abort, timer: 0, info: null, stats: null, prev: null, view: null, frame: null, close: null, debug: { borders: false, quality: false, content: false } };
+        // the checks to the viewer on show (and off again on the one it leaves, or when this window closes)
+        const sendDebug = (f, on) => {
+            if (!f || !f.contentWindow) return;
+            f.contentWindow.postMessage({ type: 'grimoire-browser-debug', borders: on && state.debug.borders, quality: on && state.debug.quality, content: on && state.debug.content }, '*');
+        };
         const shellNow = () => (host.activePane && host.activePane !== host ? host.activePane : host);
         const frameNow = () => {
             const shell = shellNow();
             return shell && shell._grimoireRemoteSessionId && !shell._grimoireLocalAlchemy ? root.grimoireRemoteFrame(shell) : null;
         };
         let ctxRef = null;
-        const draw = () => {
+        // at most one redraw a second (Yukimi, Nov 21 2026: "only update 1ps"), and only the rows whose text changed:
+        // each viewer answer redrew all 17 rows (a new text node per row) on the Fold's DeX desktop
+        const shown = new Map();
+        let drawAt = 0;
+        let drawTimer = 0;
+        const drawNow = () => {
+            drawTimer = 0;
+            drawAt = performance.now();
             if (!ctxRef) return;
             const rows = alchemyInfoRows(state.info, root.grimoireShellWebUrl(shellNow()), state.view);
-            Object.keys(rows).forEach((id) => ctxRef.text(Number(id), rows[id]));
+            Object.keys(rows).forEach((id) => {
+                if (shown.get(id) === rows[id]) return;
+                shown.set(id, rows[id]);
+                ctxRef.text(Number(id), rows[id]);
+            });
+        };
+        const draw = () => {
+            if (drawTimer) return;
+            const wait = drawAt + 1000 - performance.now();
+            if (wait <= 0) drawNow();
+            else drawTimer = setTimeout(drawNow, wait);
         };
         // shows: the page, this window and its Grimoire window are on screen
         const showing = () => !document.hidden && state.modal && state.modal.isConnected && !state.modal.classList.contains('hidden')
             && host.modal && !host.modal.classList.contains('hidden') && !host.modal.classList.contains('minimised') && !host.modal.classList.contains('minimising');
         const finish = () => {
+            if (state.debug.borders || state.debug.quality || state.debug.content) sendDebug(state.frame, false);
             abort.abort();
             clearTimeout(state.timer);
+            clearTimeout(drawTimer);
+            drawTimer = 0;
             ctxRef = null;
             if (infoOpen === state) infoOpen = null;
         };
@@ -1824,6 +2039,10 @@
         const follow = () => {
             const f = frameNow();
             if (f === state.frame) return;
+            if (state.debug.borders || state.debug.quality || state.debug.content) {
+                sendDebug(state.frame, false);
+                sendDebug(f, true);
+            }
             state.frame = f;
             state.info = null;
             state.prev = null;
@@ -1840,7 +2059,7 @@
             if (showing()) {
                 follow();
                 const f = state.frame;
-                // perf: allow a live metrics window Yukimi asked for, every 2 s only while it shows; the link numbers
+                // perf: allow a live metrics window Yukimi asked for, once a second only while it shows; the link numbers
                 // come from Alchemy (encoder?), the rest from the viewer frame on this page (no request)
                 if (f && f.contentWindow) {
                     f.contentWindow.postMessage({ type: 'grimoire-browser-encoder?' }, '*');
@@ -1933,6 +2152,16 @@
                 if (host.modal) watch.observe(host.modal, { attributes: true, attributeFilter: ['class'] });
                 follow();
                 draw();
+                const toggle = () => {
+                    state.debug.borders = !!ctx.get(951);
+                    state.debug.quality = !!ctx.get(952);
+                    state.debug.content = !!ctx.get(954);
+                    sendDebug(state.frame, true);
+                };
+                ctx.on(951, 'change', toggle);
+                ctx.on(952, 'change', toggle);
+                ctx.on(954, 'change', toggle);
+                ctx.on(953, 'click', () => { showPageCache(host).catch(() => {}); });
             },
             ok() { finish(); },
             cancel() { finish(); },
@@ -1942,6 +2171,153 @@
         ask();
     }
 
+    // ---- Tools > Alchemy Information > Page Cache: the whole page as this device's viewer holds it (its cache of what
+    // was seen, the rows not seen yet hatched, the sheets where they are), a box for the view; a click scrolls the page
+    // there. A tool window of its Grimoire window like Alchemy Information; it asks the viewer for a new picture every
+    // 1.5 s only while it shows (grimoire-browser-cache?). Styles: css/themes/vista/grimoire-extensions.css (.gpc-*). ----
+    const PCACHE_TPL = { t: 'Page Cache', w: 150, h: 300, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
+        [901, 'S', 7, 7, 136, 18, 0x50020080, '', 0],
+        [902, 'S', 7, 28, 136, 248, 0x50000000, '', 0],
+        [1, 'B', 93, 281, 50, 14, 0x50010001, 'Close', 0]
+    ] };
+    const PCACHE_EVERY_MS = 1500;
+    let pcacheOpen = null;
+
+    async function showPageCache(host) {
+        if (pcacheOpen && pcacheOpen.host === host && pcacheOpen.modal && pcacheOpen.modal.isConnected && !pcacheOpen.modal.classList.contains('hidden')) {
+            if (typeof root.bringModalToFront === 'function') root.bringModalToFront(pcacheOpen.modal);
+            return;
+        }
+        if (pcacheOpen) pcacheOpen.close();
+        if (window.featureLoader) await window.featureLoader.loadFeature('browsing_sessions_ui');
+        const V = window.vistaDialogTemplate;
+        if (!V) return;
+        const abort = new AbortController();
+        const state = { host, modal: null, timer: 0, frame: null, close: null, preview: null, els: null };
+        const frameNow = () => {
+            const shell = host.activePane && host.activePane !== host ? host.activePane : host;
+            return shell && shell._grimoireRemoteSessionId && !shell._grimoireLocalAlchemy ? root.grimoireRemoteFrame(shell) : null;
+        };
+        const showing = () => !document.hidden && state.modal && state.modal.isConnected && !state.modal.classList.contains('hidden')
+            && host.modal && !host.modal.classList.contains('hidden') && !host.modal.classList.contains('minimised');
+        let ctxRef = null;
+        const finish = () => {
+            abort.abort();
+            clearTimeout(state.timer);
+            ctxRef = null;
+            if (pcacheOpen === state) pcacheOpen = null;
+        };
+        const draw = () => {
+            const p = state.preview;
+            const els = state.els;
+            if (!ctxRef || !els) return;
+            if (!p) {
+                ctxRef.text(901, state.frame ? 'Nothing cached yet' : 'This tab has no web page');
+                els.page.hidden = true;
+                return;
+            }
+            const pct = p.docRows ? Math.round(p.rows / p.docRows * 100) : 0;
+            ctxRef.text(901, `${pct} % of the page kept in ${p.blocks} block${p.blocks === 1 ? '' : 's'}, ${p.sharpRows ? Math.round(p.sharpRows / Math.max(1, p.rows) * 100) : 0} % sharp`);
+            els.page.hidden = false;
+            if (els.img.getAttribute('src') !== p.url) els.img.src = p.url;
+            // the picture fills the box's width whatever it is (a scroll bar coming or going changes it), so the view
+            // and the sheets are placed as shares of the picture
+            const pctX = (v) => `${(v / p.width) * 100}%`;
+            const pctY = (v) => `${(v / p.height) * 100}%`;
+            els.page.style.setProperty('--gpc-ratio', `${p.width} / ${p.height}`);
+            els.view.style.setProperty('--gpc-top', pctY(p.view[1]));
+            els.view.style.setProperty('--gpc-height', pctY(Math.max(2, p.view[3])));
+            els.sheets.replaceChildren(...p.sheets.map((r) => {
+                const box = document.createElement('div');
+                box.className = 'gpc-sheet';
+                box.style.setProperty('--gpc-x', pctX(r[0]));
+                box.style.setProperty('--gpc-y', pctY(r[1]));
+                box.style.setProperty('--gpc-sw', pctX(r[2]));
+                box.style.setProperty('--gpc-sh', pctY(r[3]));
+                return box;
+            }));
+            // the view stays in sight as the page scrolls (its place at the size the picture is shown)
+            const sc = els.scroll;
+            const shown = els.page.clientWidth / p.width;
+            const vy = p.view[1] * shown;
+            const vh = p.view[3] * shown;
+            if (vy < sc.scrollTop || vy + vh > sc.scrollTop + sc.clientHeight) sc.scrollTop = Math.max(0, vy - (sc.clientHeight - vh) / 2);
+        };
+        const ask = () => {
+            clearTimeout(state.timer);
+            state.timer = 0;
+            if (!state.modal || !state.modal.isConnected) { finish(); return; }
+            if (!showing()) return;
+            const f = frameNow();
+            if (f !== state.frame) { state.frame = f; state.preview = null; draw(); }
+            if (f && f.contentWindow && state.els) f.contentWindow.postMessage({ type: 'grimoire-browser-cache?', width: state.els.scroll.clientWidth - 2 }, '*');
+            state.timer = setTimeout(ask, PCACHE_EVERY_MS);
+        };
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            if (!data || data.type !== 'grimoire-browser-cache' || !state.frame || event.source !== state.frame.contentWindow) return;
+            state.preview = data.preview || null;
+            draw();
+        }, { signal: abort.signal });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) ask(); }, { signal: abort.signal });
+        const watch = new MutationObserver(() => { if (showing() && !state.timer) ask(); else if (!showing()) { clearTimeout(state.timer); state.timer = 0; } });
+        abort.signal.addEventListener('abort', () => watch.disconnect());
+        V.openDialog({
+            id: 'grimoirePageCache' + (host.idSuffix || ''),
+            tpl: PCACHE_TPL,
+            title: PCACHE_TPL.t,
+            owner: host.modal || null,
+            modeless: true,
+            icon: '/static_images/vista-cpl/items/internet-options-32.png',
+            init(ctx) {
+                ctxRef = ctx;
+                const modal = ctx.modal;
+                state.modal = modal;
+                modal.classList.add('tool-window');
+                modal.dataset.windowOwned = 'true';
+                modal.dataset.windowFixedSize = 'true';
+                modal.dataset.windowNoMaximize = 'true';
+                if (host.modal && host.modal.id) modal.setAttribute('data-parent-modal-id', host.modal.id);
+                if (typeof root.linkToolWindowToParent === 'function' && host.modal) root.linkToolWindowToParent(modal, host.modal);
+                // beside Alchemy Information (its right, else its left), not over its numbers
+                requestAnimationFrame(() => {
+                    const info = infoOpen && infoOpen.host === host ? infoOpen.modal : null;
+                    /* global setModalPositionFromViewportRect */
+                    if (!info || !info.isConnected || typeof setModalPositionFromViewportRect !== 'function') return;
+                    const ir = info.getBoundingClientRect();
+                    const mr = modal.getBoundingClientRect();
+                    let left = ir.right + 6;
+                    if (left + mr.width > window.innerWidth) left = Math.max(0, ir.left - mr.width - 6);
+                    setModalPositionFromViewportRect(modal, { left, top: ir.top, width: mr.width, height: mr.height });
+                });
+                ctx.html(902, '<div class="gpc-scroll"><div class="gpc-page" hidden><img class="gpc-img" alt=""><div class="gpc-sheets"></div><div class="gpc-view"></div></div></div>');
+                const holder = ctx.holder(902);
+                const scroll = holder.querySelector('.gpc-scroll');
+                state.els = { scroll, page: holder.querySelector('.gpc-page'), img: holder.querySelector('.gpc-img'), view: holder.querySelector('.gpc-view'), sheets: holder.querySelector('.gpc-sheets') };
+                // a click on the page: the page scrolls there (the view's middle at the click)
+                state.els.page.addEventListener('click', (ev) => {
+                    const p = state.preview;
+                    const f = state.frame;
+                    if (!p || !p.perCss || !f || !f.contentWindow) return;
+                    const box = state.els.page.getBoundingClientRect();
+                    // the picture is shown at the box's width: back to its own pixels, then the page's
+                    const y = Math.max(0, (ev.clientY - box.top) * (p.width / box.width) / p.perCss - (p.viewCss || 0) / 2);
+                    f.contentWindow.postMessage({ type: 'grimoire-browser-scroll-to', y }, '*');
+                    setTimeout(ask, 300);
+                }, { signal: abort.signal });
+                state.close = () => { finish(); ctx.close(); };
+                pcacheOpen = state;
+                watch.observe(modal, { attributes: true, attributeFilter: ['class'] });
+                if (host.modal) watch.observe(host.modal, { attributes: true, attributeFilter: ['class'] });
+                draw();
+                ask();
+            },
+            ok() { finish(); },
+            cancel() { finish(); },
+            close() { finish(); }
+        });
+    }
+
     // ---- Grimoire's own pages as IE7's (Yukimi, Nov 21 2026: "the default page needs to be rectified and IE-ified
     // ... Also update the Alchemy unavalible to be like a IE severe error page with the alchemy logo in the bottom
     // right"): ieframe.dll's res:// pages (dnserror.htm, syntax.htm, navcancl.htm, servbusy.htm, tabswelcome.htm),
@@ -1949,9 +2325,11 @@
     // css/themes/vista/grimoire-ie-pages.css. ----
     const PAGE_ART = `${ART}/pages`;
 
+    // Alchemy's wordmark, dark grey (Yukimi, Nov 21: "a Alchemy text logo that we can use when we need a longer mono
+    // color logo, like on the error images insted of the logo"): static_images/brand/alchemy-wordmark*.png (not app_icons/: that folder is served as square app icons)
     function alchemyLogoHtml() {
-        const at = (n) => (typeof root.resolveAppIconPath === 'function' ? root.resolveAppIconPath('alchemy.png', n) : '/static_images/app_icons/alchemy.png');
-        return `<img class="gip-logo" src="${esc(at(48))}" srcset="${esc(at(48))} 1x, ${esc(at(96))} 2x" alt="Alchemy">`;
+        const at = (suffix) => `/static_images/brand/alchemy-wordmark${suffix}.png`;
+        return `<img class="gip-logo" src="${at('')}" srcset="${at('')} 1x, ${at('@2x')} 2x, ${at('@3x')} 3x" alt="Alchemy">`;
     }
 
     /**

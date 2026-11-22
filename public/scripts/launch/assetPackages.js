@@ -134,6 +134,12 @@
         const c = /^\/static_images\/wm-android\/(.+)$/.exec(u);
         if (c) {
             if (!/\.png$/i.test(c[1])) return null; // manifest.json and the like: core
+            // a program's Windows Vista icon (the DeX desktop's): no phone package holds it; the desktop fetches the
+            // sizes it draws and the service worker keeps them (handleProgramIcon)
+            if (/-vista-\d+\.png$/i.test(c[1])) return 'source';
+            // its Windows Mobile 6.5 Start icon: with 6.5's art
+            const s65 = /-65(@[24]x)?\.png$/i.exec(c[1]);
+            if (s65) return s65[1] ? `wm65-${s65[1].slice(1).toLowerCase()}` : 'wm65';
             return /@4x\.png$/i.test(c[1]) ? 'wmc-4x' : /@2x\.png$/i.test(c[1]) ? 'wmc-2x' : 'wmc';
         }
         const m = /^\/static_images\/(wm61|wm65)\/(.+)$/.exec(u);

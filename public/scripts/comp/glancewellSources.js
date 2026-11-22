@@ -3,8 +3,9 @@
  * the navigation tree is one source (Yukimi, Nov 20 2026: four separate roots, plus a root per ActiveSync device):
  *
  *   pictures   Pictures: this device's own picture library (the Android app's MediaStore in DeX; the phone's cards)
- *   prints     DreamScape Prints: the gallery's prints (request_gallery, newest first, paged)
- *   refs       DreamScape References: base images, character references and vibes (get_references)
+ *   prints     DreamScape: the gallery's prints (request_gallery, newest first, paged); workspaceId '*' lists every
+ *              workspace's (the tree's Workspaces node, Yukimi Nov 21 2026)
+ *   refs       References (inside DreamScape): base images, character references and vibes (get_references)
  *   folders    Folders: the VFS folders added with Add Folder to Gallery (glancewell_watched), prints left out
  *   device:<id> a phone connected through ActiveSync (activeSyncRemoteStorage.js), its folders walked with list
  *
@@ -46,6 +47,10 @@
     };
     const extOf = (name) => (/\.([a-z0-9]+)$/i.exec(name || '') || [])[1] || '';
     const isMedia = (name, mime) => /^(image|video)\//.test(mime || '') || PICTURE.test(name || '') || VIDEO.test(name || '');
+    // pictures browsers cannot decode (HEIC / HEIF from the camera, DNG raw, TIFF)
+    const UNDECODABLE_MIME = /^image\/(heic|heif|heic-sequence|heif-sequence|x-adobe-dng|dng|tiff|x-tiff|x-[a-z]+-raw)$/i;
+    const UNDECODABLE_NAME = /\.(heic|heif|hif|dng|tiff?)$/i;
+    const undecodable = (e) => !!e && !e.video && (UNDECODABLE_MIME.test(String(e.mime || '')) || UNDECODABLE_NAME.test(String(e.name || e.path || '')));
     const isVideo = (name, mime) => /^video\//.test(mime || '') || VIDEO.test(name || '');
 
     // ------------------------------------------------------------------ DreamScape Prints
@@ -100,10 +105,24 @@
 
     const prints = {
         id: 'prints',
-        label: 'DreamScape Prints',
-        /** scope: { view: images | pinned | scraps, workspaceId } ; onPage(items) as each block lands */
+        label: 'DreamScape',
+        /** scope: { view: images | pinned | scraps, workspaceId ('*': every workspace) } ; onPage(items) as each block lands */
         async list(scope = {}, onPage) {
             const view = scope.view || 'images';
+            if (scope.workspaceId === '*') {
+                const all = [];
+                // the desktop's workspace list can still be on its way (a gallery opened just after boot listed none)
+                let ids = workspaceIds();
+                if (!ids.length) {
+                    const r = await send('workspace_list', {}).catch(() => null);
+                    ids = ((r && r.workspaces) || []).map((w) => w && w.id).filter(Boolean);
+                }
+                for (const id of ids) {
+                    if (all.length >= MAX_PRINTS) break;
+                    all.push(...await this.list(Object.assign({}, scope, { workspaceId: id }), onPage));
+                }
+                return all;
+            }
             const workspaceId = scope.workspaceId || activeWorkspaceId();
             const out = [];
             for (let offset = 0; offset < MAX_PRINTS; offset += PAGE) {
@@ -163,7 +182,7 @@
 
     const refs = {
         id: 'refs',
-        label: 'DreamScape References',
+        label: 'References',
         types: REF_TYPES,
         async list() {
             // get_references: modules/referencesWebSocketHandlers.js (every workspace, newest first)
@@ -316,6 +335,7 @@
      */
     function phoneSource({ id, label, ps, deviceId }) {
         let albums = null;
+        let features = null; // the app's hello features (jpeg: it converts what the WebView cannot decode)
         const urlOf = (rootId, path, opts) => {
             const p = ps();
             if (!p) return '';
@@ -323,7 +343,10 @@
             // a device's own address, so two devices' thumbnails show side by side (activeSyncRemoteStorage fileUrl)
             let url = `/api/activesync/file/${encodeURIComponent(deviceId)}/${encodeURIComponent(rootId)}/${p.encodePath(path)}`;
             const q = [];
-            if (opts && opts.thumb) q.push(`thumb=${Math.max(32, Math.min(1024, Math.round(opts.thumb)))}`);
+            // 1024 px through the server; a direct LAN link lifts it to the phone's own limit (#1006)
+            const lim = root.activeSyncDirectLink ? root.activeSyncDirectLink.limits(deviceId) : null;
+            if (opts && opts.thumb) q.push(`thumb=${Math.max(32, Math.min(lim ? lim.thumbMax : 1024, Math.round(opts.thumb)))}`);
+            if (opts && opts.jpeg) q.push('jpeg=1');
             if (q.length) url += `?${q.join('&')}`;
             return url;
         };
@@ -338,12 +361,14 @@
             if (!p) return [];
             let h = null;
             try { h = await p.hello(); } catch (_) { h = null; }
+            if (h && h.features) features = h.features;
             return ((h && h.roots) || []).filter((r) => r && r.id);
         }
         async function loadAlbums() {
             const p = await ready();
             if (!p) return [];
             const h = await p.hello().catch(() => null);
+            if (h && h.features) features = h.features;
             // MediaStore's albums: the page's bridge, or a device whose app answers them over ActiveSync (#984)
             if (h && h.features && h.features.media) {
                 try { return (await p.call('media.albums', {})) || []; } catch (_) { /* an older app: walk */ }
@@ -369,6 +394,20 @@
             }
             return out;
         }
+        /**
+         * The picture as the viewer can show it: the Fold's camera writes HEIC, which the WebView and Chrome do not decode
+         * (they showed blank, Nov 21 2026), so those come as the app's JPEG of them (?jpeg=1) on the phone itself, else as
+         * the largest picture the phone renders (a computer's link answers thumbnails up to 1024).
+         */
+        function viewUrl(rootId, e) {
+            if (!undecodable(e)) return urlOf(rootId, e.path, {});
+            if (!deviceId && features && features.jpeg) return `${urlOf(rootId, e.path, {})}?jpeg=1`;
+            // another computer: over a direct LAN link the full-size JPEG (no size cap, #1006); through the server its
+            // largest preview (the server reads ?jpeg=1 as that too, so the address stays good if the link drops)
+            const lim = deviceId && root.activeSyncDirectLink ? root.activeSyncDirectLink.limits(deviceId) : null;
+            if (lim && lim.jpeg) return urlOf(rootId, e.path, { jpeg: true });
+            return urlOf(rootId, e.path, { thumb: deviceId ? 1024 : 2048 });
+        }
         function entryItem(rootId, e, folderName) {
             const key = `${rootId}:${e.path}`;
             return {
@@ -386,7 +425,7 @@
                 modified: ms(e.mtime),
                 folder: folderName,
                 thumb: (px) => urlOf(rootId, e.path, { thumb: Math.max(128, px) }),
-                full: () => urlOf(rootId, e.path, {}),
+                full: () => viewUrl(rootId, e),
                 raw: Object.assign({ root: rootId }, e)
             };
         }
@@ -403,6 +442,19 @@
                 return p.call(op, args);
             },
             available: () => !!(ps() && (deviceId ? true : ps().available)),
+            /**
+             * The phone gallery's favourites (Samsung Gallery keeps them in MediaStore's IS_FAVORITE; DSApp media.favorites,
+             * hello features.favorites) as this source's items: [{ source, key }]. Throws when the app is too old.
+             */
+            async galleryFavorites() {
+                const p = await ready();
+                if (!p) throw new Error('The phone is not connected.');
+                const h = await p.hello().catch(() => null);
+                if (h && h.features) features = h.features;
+                if (!(h && h.features && h.features.favorites)) throw new Error('This phone\'s Dreamscape app is too old to read the gallery\'s favorites. Update the app and try again.');
+                const list = (await p.call('media.favorites', {})) || [];
+                return list.filter((f) => f && f.root && f.path).map((f) => ({ source: id, key: `${f.root}:${f.path}` }));
+            },
             async albums(force) {
                 if (!albums || force) albums = await loadAlbums();
                 return albums;
@@ -412,6 +464,7 @@
                 if (!p) return [];
                 const list = scope.album ? [scope.album] : await this.albums();
                 const h = await p.hello().catch(() => null);
+            if (h && h.features) features = h.features;
                 const media = !!(h && h.features && h.features.media);
                 const out = [];
                 for (const a of list) {
@@ -460,15 +513,27 @@
         return hostAdapter;
     }
 
-    // Pictures: this device's own library (the Android app's bridge on a phone or DeX; DreamOS's own drives)
-    const localPs = () => (root.phoneStorage && !root.phoneStorage.remote ? root.phoneStorage : hostPs());
+    // Pictures: this device's own library (the Android app's bridge on a phone or DeX; DreamOS's own drives). In DeX the
+    // desktop's remote storage holds root.phoneStorage, so the phone's own bridge is phoneStorageLocal (Yukimi, Nov 21
+    // 2026: on the Fold the phone's gallery was missing from Pictures and the Fold showed as a device at the bottom)
+    if (root.AndroidPhoneStorage && !root.phoneStorageLocal && root.document) {
+        const s = root.document.createElement('script');
+        s.src = '/scripts/comp/phoneStorageBridge.js';
+        root.document.head.appendChild(s);
+    }
+    const localPs = () => root.phoneStorageLocal || (root.phoneStorage && !root.phoneStorage.remote ? root.phoneStorage : hostPs());
+    /** This phone's own ActiveSync id (in its DeX window), so it is not listed again as a device. */
+    const ownDeviceId = () => {
+        try { const a = root.AndroidActiveSync; return a && typeof a.getDeviceId === 'function' ? String(a.getDeviceId() || '').toLowerCase() : ''; } catch (_) { return ''; }
+    };
     const pictures = phoneSource({ id: 'pictures', label: 'Pictures', ps: localPs });
 
     const deviceSources = new Map();
     function devices() {
         const p = root.phoneStorage;
         if (!p || !p.remote || typeof p.devices !== 'function') return [];
-        return p.devices().map((d) => {
+        const own = ownDeviceId();
+        return p.devices().filter((d) => !own || String(d.deviceId).toLowerCase() !== own).map((d) => {
             const sid = `device:${d.deviceId}`;
             if (!deviceSources.has(sid)) deviceSources.set(sid, phoneSource({ id: sid, label: d.name, ps: () => root.phoneStorage, deviceId: d.deviceId }));
             const s = deviceSources.get(sid);

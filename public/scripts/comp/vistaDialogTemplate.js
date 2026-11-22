@@ -961,11 +961,15 @@
                 const h = ctx.holder(id, key);
                 if (!h) return;
                 if (h.classList.contains('vdt-static')) {
+                    // the same text again would still build a new span (a childList change, a restyle): a dialog that
+                    // refreshes its figures (Alchemy Info, Security Center) rewrote every static each time
+                    const span = h.childElementCount === 1 && h.firstElementChild.classList.contains('vdt-st-text') ? h.firstElementChild : null;
+                    if (text ? (span && h.childNodes.length === 1 && span.textContent === String(text)) : !h.firstChild) return;
                     h.innerHTML = text ? `<span class="vdt-st-text">${esc(text)}</span>` : '';
                     return;
                 }
                 const target = h.matches('button') ? h : (h.querySelector('label span') || h.querySelector('.tbp-group-label') || h);
-                target.textContent = text;
+                if (target.textContent !== String(text == null ? '' : text)) target.textContent = text;
             },
             html(id, html, key) {
                 const h = ctx.holder(id, key);

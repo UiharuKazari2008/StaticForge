@@ -14,6 +14,7 @@
  */
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
@@ -91,18 +92,9 @@ async function panel(k, file) {
     const W = Math.round(86 * k);
     const H = Math.round(113 * k);
     const A = Math.round(76 * k);
-    const R = Math.round(26 * k);
     const art = await sharp(Buffer.from(svg), { density: Math.round((72 * A) / 64) * 2 }).resize(A, A).png().toBuffer();
-    const flipped = await sharp(art).flip().extract({ left: 0, top: 0, width: A, height: R }).ensureAlpha().raw().toBuffer();
-    for (let y = 0; y < R; y++) {
-        const f = 0.4 * (1 - y / R);
-        for (let x = 0; x < A; x++) { const i = (y * A + x) * 4 + 3; flipped[i] = Math.round(flipped[i] * f); }
-    }
-    const mirror = await sharp(flipped, { raw: { width: A, height: R, channels: 4 } }).png().toBuffer();
-    await sharp({ create: { width: W, height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-        .composite([{ input: art, left: Math.round(5 * k), top: Math.round(10 * k) }, { input: mirror, left: Math.round(5 * k), top: Math.round(87 * k) }])
-        .png()
-        .toFile(path.join(OUT65, file));
+    // the ROM's own geometry and a mirror of the art's bottom (modules/wm65PanelIcon.js, Nov 21 2026)
+    fs.writeFileSync(path.join(OUT65, file), await require('../modules/wm65PanelIcon').panelIcon(art, k));
     console.log(file, W, H);
 }
 

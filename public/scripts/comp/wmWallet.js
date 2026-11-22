@@ -258,7 +258,7 @@
 
     // drawn barcodes by format + value + size (data URLs), so Today's repaint draws nothing twice
     const codeArt = new Map();
-    function barcodeKey(it, big) { return `${it.format}|${it.value}|${big ? 1 : 0}`; }
+    function barcodeKey(it, big) { return `${it.format}|${it.value}|${big ? 1 : 0}|q2`; }
     /** The barcode as a PNG data URL (null while bwip-js loads; Today repaints when it is ready). */
     function barcodeUrl(it, big) {
         // Samsung Wallet's own barcode picture, when its type could not be read
@@ -278,7 +278,9 @@
                     includetext: !two,
                     textxalign: 'center',
                     textsize: big ? 11 : 9,
-                    paddingwidth: two ? 4 : 10,
+                    // a wide white quiet zone at both ends, so a reader finds where the code starts and stops (Yukimi,
+                    // Nov 21 2026: "a bit more white on the left / right edges to help a barcode reader")
+                    paddingwidth: two ? 8 : 20,
                     paddingheight: 4,
                     backgroundcolor: 'FFFFFF'
                 });
@@ -341,6 +343,8 @@
     let hdrOn = null; // the item whose code is brightened on Today, and when it goes back
     let hdrTimer = null;
     function setHdr(on) {
+        // the window stays in HDR while either a Today code or the Show screen's code is bright
+        on = !!on || showHdr || !!hdrOn;
         const d = window.AndroidDisplay;
         try { if (d && typeof d.setHdr === 'function') d.setHdr(!!on); } catch (_) { /* older app */ }
     }
@@ -356,10 +360,22 @@
         todayKey = '';
         todayChanged();
     }
-    function paintHdr() { todayKey = ''; todayChanged(); }
+    function paintHdr() { todayKey = ''; todayChanged(); if (showHdr && showing) renderShow(); }
+    // the Show screen (the code held up to a reader, also from the 6.5 panel's Show): its code in HDR the whole time it
+    // is open, so only that region of the screen gets brighter (a PQ picture + the window's HDR mode); SDR again on leaving
+    let showHdr = false;
+    function showHdrOn(on) {
+        if (on === showHdr) return;
+        showHdr = on;
+        setHdr(on);
+    }
     // leaving Today or the screen going off: SDR again
     // app-scope: allow page lifetime (phone shell, loaded once from app.html; not an app package)
-    document.addEventListener('visibilitychange', () => { if (document.hidden && hdrOn) { hdrOn = null; clearTimeout(hdrTimer); setHdr(false); } });
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) { if (showing && layers[layers.length - 1] === 'show') showHdrOn(true); return; }
+        if (hdrOn) { hdrOn = null; clearTimeout(hdrTimer); setHdr(false); }
+        if (showHdr) { showHdr = false; setHdr(false); }
+    });
 
     // a card's picture for the 6.5 panel and the list (canvas: the panel takes an image)
     const cardArt = new Map();
@@ -523,7 +539,7 @@
                 const line2 = subOf(it) || (it.kind === 'barcode' ? it.value : '');
                 // wide pictures keep their shape on Today (#903): a card is a card, a barcode as the code is (a QR square)
                 const imageAspect = it.kind === 'card' ? 1.586 : (code && image === code) ? 'auto' : undefined;
-                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, imageAspect, bare: it.kind === 'card' || (!!photo && image === photo), softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
+                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, imageAspect, imageFit: code && image === code ? 'contain' : undefined, bare: it.kind === 'card' || (!!photo && image === photo), softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
             })
         };
     }
@@ -567,7 +583,7 @@
     }
 
     function push(l) { layers.push(l); sync(); }
-    function pop() { const was = layers.pop(); if (was === 'edit') form = null; if (was === 'show') showing = null; if (was === 'import') imported = null; sync(); return true; }
+    function pop() { const was = layers.pop(); if (was === 'edit') form = null; if (was === 'show') { showing = null; showHdrOn(false); } if (was === 'import') imported = null; sync(); return true; }
 
     let selected = null;
     function renderList() {
@@ -615,7 +631,9 @@
     function renderShow() {
         const it = showing;
         if (!it) { pop(); return; }
-        const art = barcodeUrl(it, true);
+        // the HDR copy once it is made (the plain code until then); 2D and 1D alike
+        if (it.kind === 'barcode' && it.format !== 'image') showHdrOn(true);
+        const art = (showHdr && hdrUrl(it)) || barcodeUrl(it, true);
         els.show.innerHTML = `<div class="wwl-show-name">${esc(it.name || 'Membership')}</div>
             <div class="wwl-show-code${TWO_D.has(it.format) ? ' is-2d' : ''}">${art && art !== 'bad' ? `<img src="${art}" alt="${esc(it.value)}">` : `<span>${art === 'bad' ? 'This number cannot be drawn as the chosen barcode.' : 'Drawing the barcode...'}</span>`}</div>
             ${it.number || TWO_D.has(it.format) ? `<div class="wwl-show-num">${esc(it.number || it.value)}</div>` : ''}`;

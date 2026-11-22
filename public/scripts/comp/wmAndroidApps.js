@@ -168,6 +168,8 @@
     };
     const storeIcon = (a) => { const k = storeKey(a); return (k && store.icons[k].icon) || null; };
     const iconOf = (a) => storeIcon(a) || a.icon;
+    /** Its Windows Mobile 6.5 Start icon (<set>-65: 45 / 90 / 180 px in the ROM's layout), when the set has one. */
+    const icon65Of = (a) => { const k = storeKey(a); return k && store.icons[k].wm65 === true && store.icons[k].icon ? `${store.icons[k].icon}-65` : undefined; };
     /** The name the program shows: the user's, else its own. */
     const labelOf = (a) => { const n = readJson(NAMES_KEY, {}); return (n && typeof n[a.id] === 'string' && n[a.id].trim()) || a.label; };
     const inGames = (a) => {
@@ -564,6 +566,7 @@
                 title: role ? ROLES[role].label : labelOf(a),
                 icon: (role && ROLES[role].icon) || iconOf(a),
                 art65: role ? ROLES[role].art65 : undefined,
+                icon65: role ? undefined : icon65Of(a),
                 // 'bottom': on Start under the pinned programs; 'programs': in Programs only. The
                 // phone's camera is WM's Camera, pinned on the Start menu (Yukimi #788)
                 inStart: role === 'camera' ? 'top' : (onStart.has(a.id) ? 'bottom' : 'programs'),
@@ -1022,7 +1025,7 @@
                 const can = it.state === 'ready' || it.state === 'failed';
                 return `<div class="wm-listbox-row wm-pi-row">
                     <label class="wm-check wm-pi-pick">${can ? `<input type="checkbox" data-key="${esc(it.key)}"${d.keep.has(it.key) ? ' checked' : ''}><span></span>` : '<span class="wm-pi-nobox"></span>'}
-                    <span class="wm-pi-thumbs">${it.original ? `<img class="wm-pi-orig" src="${esc(it.original)}" alt="">` : ''}${pv ? `<img class="wm-pi-big" src="${esc(pv[128])}" alt=""><img class="wm-pi-small" src="${esc(pv[16])}" alt="">` : '<span class="wm-pi-big wm-pi-empty"></span>'}</span>
+                    <span class="wm-pi-thumbs">${it.original ? `<img class="wm-pi-orig" src="${esc(it.original)}" alt="">` : ''}${pv ? `<img class="wm-pi-big" src="${esc(pv[128])}" alt=""><img class="wm-pi-small" src="${esc(pv[16])}" alt="">${pv.vista ? `<img class="wm-pi-big wm-pi-vista" src="${esc(pv.vista)}" alt="" title="On the desktop">` : ''}` : '<span class="wm-pi-big wm-pi-empty"></span>'}</span>
                     <span class="wm-pi-text"><b>${esc(it.label)}</b><span>${esc(it.state === 'failed' ? `Failed: ${it.error || ''}` : `${STATE_TEXT[it.state] || it.state}, ${MODE_LABEL[it.mode] || 'Detailed'}${it.direction ? ', custom' : ''}${it.note ? `. ${it.note}` : ''}`)}${it.attempt > 1 && it.state === 'ready' ? ` (try ${it.attempt})` : ''}</span></span></label></div>`;
             }).join('');
             el.innerHTML = `<p>${busy ? `Making icons: ${done} of ${items.length} finished. You can close Program Icons.` : 'Check the icons to keep, or to make again in the Style below, then tap Done or Regenerate.'}</p>

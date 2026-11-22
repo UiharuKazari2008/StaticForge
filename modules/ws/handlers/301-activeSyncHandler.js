@@ -94,6 +94,19 @@ function registerPackets(handlersCtx) {
         }
     });
 
+    // the direct LAN link (#1006, modules/activeSyncLink.js): a computer tab's WebRTC offer, the phone's answer
+    reg('as_link_offer', async ({ ws, message, clientInfo, wsServer }) => {
+        if (!isAdmin(clientInfo)) {
+            reply(ws, 'as_link_offer_response', message, { success: false, code: 'INSUFFICIENT_PERMISSIONS', error: 'Admin access required' });
+            return;
+        }
+        try {
+            reply(ws, 'as_link_offer_response', message, await require('../../activeSyncLink').offer(gr(), wsServer, clientInfo, body(message)));
+        } catch (error) {
+            reply(ws, 'as_link_offer_response', message, refused(error));
+        }
+    });
+
     reg('as_partnership', async ({ ws, message, clientInfo, wsServer }) => {
         if (!isAdmin(clientInfo)) {
             reply(ws, 'as_partnership_response', message, { success: false, code: 'INSUFFICIENT_PERMISSIONS', error: 'Admin access required' });

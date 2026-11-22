@@ -1164,13 +1164,15 @@
      * already carries (handed over, or popped out) stays told.
      */
     function plTell() {
+        // the app's other window hears what plays here (melatonMediaSessions.js: coalesced, only on a change)
+        if (window.melatonMedia) window.melatonMedia.changed('videos');
         const nv = nativePlayer();
         if (!nv) return;
         const p = player;
-        // (playing = the picture really moves: not paused, ended or held up buffering; Yukimi, Nov 21 2026: "it has to
-        // actually be playing video")
+        // (playing = started and not paused by the viewer or ended; a moment of buffering still counts - Yukimi, Nov 21
+        // 2026: "if I playing the video literally nothing should ever stop it and it should always pip")
         const v = els && els.video;
-        const moving = !!(v && !v.paused && !v.ended && v.readyState > 2 && !plStalled);
+        const moving = !!(v && !v.paused && !v.ended);
         const on = !!(p && canHand(p) && p.url && (p.handed || p.popped || p.popAsk || (shown && !p.suspended && moving)));
         const said = on ? JSON.stringify({ url: new URL(p.url, location.origin).toString(), title: p.title, subtitle: p.kind === 'ytr' ? p.channel || '' : modeLabel(p.mode), audioOnly: p.mode === 'audio', vod: p.kind === 'ytr' }) : '';
         if (said === plTold) return;
@@ -1193,8 +1195,6 @@
         if (!p || p.kind !== 'ytr' || !els || !nv || typeof nv.at !== 'function') return;
         try { nv.at(Math.round(els.video.currentTime * 1000), !els.video.paused); } catch (_) { /* an older app build */ }
     }
-    /** The page's video is held up ('waiting') until it plays again. */
-    let plStalled = false;
     /** The native player gives the stream back to the page (Videos is in front again). */
     function plTakeBack() {
         const p = player;
@@ -1444,8 +1444,10 @@
         if (p.id) ask(p.kind === 'ytr' ? 'youtube_video_stop' : 'youtube_live_stop', { id: p.id }, 8000).catch(() => {});
         player = null;
         plTell();
+        // only a stream this page handed to the native player: the native player is shared with XM Radio, whose radio
+        // this stopped whenever a video was closed on either screen
         const nv = nativePlayer();
-        if (nv) { try { nv.stop(); } catch (_) { /* gone */ } }
+        if (nv && (p.handed || p.popped)) { try { nv.stop(); } catch (_) { /* gone */ } }
         if (els) { els.player.hidden = true; els.hud.hidden = true; els.plKey.hidden = true; plChrome(); plStatus('', false); }
         syncPlayer();
         return true;
@@ -2142,12 +2144,16 @@
         });
         try { if (window.screen && screen.orientation) screen.orientation.addEventListener('change', plTurned, { signal: appScopeSignal }); } catch (_) { /* no orientation API */ }
         window.addEventListener('resize', plTurned, { signal: appScopeSignal });
-        v.addEventListener('playing', () => { plStalled = false; if (player && player.state === 'live') { player.tries = 0; plStatus('', false); } plHud(!els.hud.hidden); plTell(); });
+        v.addEventListener('playing', () => {
+            if (player && player.state === 'live') { player.tries = 0; plStatus('', false); }
+            plHud(!els.hud.hidden);
+            plTell();
+        });
         v.addEventListener('pause', () => { plHud(true); plTell(); plAt(); });
         v.addEventListener('seeked', plAt);
         v.addEventListener('timeupdate', ytrTime);
         v.addEventListener('ended', () => { const p = player; if (p && p.kind === 'ytr') { p.best = 100; stopPlayer(); } });
-        v.addEventListener('waiting', () => { plStalled = true; if (player && player.state === 'live') plStatus('Buffering...', true); plTell(); });
+        v.addEventListener('waiting', () => { if (player && player.state === 'live') plStatus('Buffering...', true); });
         v.addEventListener('error', () => { if (player && !player.hls && player.state === 'live') plLost(); });
         // news from the app's native player: it took the stream (another Android app came up), its floating
         // window was tapped (back to this program), or it stopped (closed there, the stream ended or was lost)
@@ -2172,7 +2178,13 @@
             if (player.handed || active) { plTakeBack(); plSuspend(false); }
         }, { signal: appScopeSignal });
         // the screen going off stops a picture mode's fetching; Audio First plays on
-        window.addEventListener('melatonscreen', () => { if (player && player.mode !== 'audio' && !player.handed) plSuspend(document.documentElement.dataset.screenOff !== undefined); }, { signal: appScopeSignal });
+        // (with the Dreamscape app the screen going off stops nothing: the app's player carries the sound on and the page
+        // takes it back when it is in front again)
+        window.addEventListener('melatonscreen', () => {
+            const off = document.documentElement.dataset.screenOff !== undefined;
+            if (off && nativePlayer() && player && canHand(player)) return;
+            if (player && player.mode !== 'audio' && !player.handed) plSuspend(off);
+        }, { signal: appScopeSignal });
     }
 
     const refreshKeys = () => { if (ws) { ws.refreshSoftKeys(); ws.refreshTitleAction(); } };
@@ -2319,6 +2331,9 @@
             const t = data.subs;
             if (t.feedStale && signedIn() && t.videos && !t.loading) { t.feedStale = false; loadTab('subs', false, true); }
             if (pendingWatch) { const v = pendingWatch; pendingWatch = null; if (srcOf(v) === 'kick') watchLive(v); else watchVideo(v); }
+            // the app's other window plays Videos (in its page or handed to the native player): "Playing on <the other
+            // screen>" with its Transfer at the top of the program (melatonMediaSessions.js; Yukimi, Nov 21 2026)
+            if (window.melatonMedia && page) window.melatonMedia.offerTransfer('videos', page);
             if (player) { syncPlayer(); plTakeBack(); plSuspend(false); plClock(true); chatSync(); }
         },
         hide() {
@@ -2475,9 +2490,51 @@
 
     // ---------------------------------------------------------------- register
 
+    /**
+     * Videos' media session for the app's other window (melatonMediaSessions.js): a Kick live stream or a YouTube video
+     * played through the server, where it was. Opening Videos on the other screen takes it there (show()), and a stream
+     * started on one screen stops Videos on the other (one sound).
+     */
+    function mediaDescribe() {
+        const p = player;
+        if (!p || p.state === 'ended' || p.state === 'error') return null;
+        const v = els && els.video;
+        const playing = !!(p.handed || p.popped || (v && !v.paused && !v.ended));
+        if (p.kind === 'ytr' && p.item) {
+            let ms = v ? Math.round(v.currentTime * 1000) : 0;
+            const nv = nativePlayer();
+            if (p.handed && nv && typeof nv.position === 'function') { try { ms = Number(nv.position()) || ms; } catch (_) { /* gone */ } }
+            return { title: p.title, subtitle: p.channel, kind: 'video', source: { item: p.item }, position: ms, playing, native: !!p.handed };
+        }
+        if (!p.slug) return null; // YouTube's own embed: not carried
+        return { title: p.channel, subtitle: p.streamTitle, kind: 'live', source: { v: { id: `kick:${p.slug}`, channel: p.channel, title: p.streamTitle, at: p.startedAt, url: p.kickUrl } }, playing, native: !!p.handed };
+    }
+    const mediaSpec = {
+        label: 'Videos',
+        describe: mediaDescribe,
+        take(s) {
+            const src = (s && s.source) || {};
+            if (s.kind === 'live' && src.v) { watchLive(src.v); return true; }
+            if (s.kind === 'video' && src.item) {
+                const sec = Math.floor((Number(s.position) || 0) / 1000);
+                // watchVideo resumes from `resume` (seconds) like a video picked from the history
+                watchVideo(Object.assign({}, src.item, { resume: sec, progress: sec > 5 ? 50 : 0, watched: false }));
+                return true;
+            }
+            return false;
+        },
+        release() {
+            const s = mediaDescribe();
+            if (!s) return null;
+            stopPlayer();
+            return s;
+        }
+    };
+
     function register() {
         ws = HOST.desktop ? window.videosDesktopShell : window.wmShell;
         if (!ws) return;
+        if (window.melatonMedia) window.melatonMedia.register('videos', mediaSpec, { signal: appScopeSignal });
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
             ws.registerTodayItem({ id: 'youtube', label: 'Videos', icon: 'app-youtube', after: 'lapis', render: todayRender, titanium: todayTitanium });

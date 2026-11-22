@@ -10,7 +10,9 @@
  * last session, and the phone's own list is read once the desktop is up and idle, and again when the app
  * says programs changed ('androidapps'). Entries carry the launch id `android:<package>/<activity>`.
  *
- * Each program looks and is named as on the phone's Start menu (Yukimi, Nov 21): its Windows Mobile icon from the Program
+ * Each program is named as on the phone's Start menu (Yukimi, Nov 21) and drawn with its Windows Vista icon from the
+ * Program Icons store (Nov 22: every program has a Vista version for the desktop; a set made before that has only its
+ * Windows Mobile icon, which is drawn until its Vista one is made): its icon from the Program
  * Icons store (#773, localStorage wmAndroidIconStore, kept by Melaton Mobile in the same app; refreshed from
  * /api/wm-program-icons/manifest once the desktop is idle), else Android's own icon; the name the user gave it
  * (wmAndroidNames); programs cleared in Remove Programs > Android (wmAndroidHidden) are left out here too.
@@ -80,14 +82,25 @@
         const icons = storeIcons();
         let e = (a.id && icons[a.id]) || (a.package && icons[a.package]) || null;
         if (!e && a.package) { const k = Object.keys(icons).find((x) => icons[x] && icons[x].package === a.package); e = k ? icons[k] : null; }
-        return e && typeof e.icon === 'string' && WM_SET.test(e.icon) ? e.icon : null;
+        if (!e || typeof e.icon !== 'string' || !WM_SET.test(e.icon)) return null;
+        // the desktop draws the set's Windows Vista icon (<set>-vista-<px>.png); a set from before Nov 22 2026 has none
+        storeSet.vista = e.vista === true;
+        return e.icon;
     }
+    // Vista sizes of a store set (modules/wmProgramIcons.js VISTA_SIZES): the smallest that covers px
+    const VISTA_PX = [16, 24, 32, 48, 64, 96, 128, 256];
+    const vistaPx = (px) => VISTA_PX.find((s) => s >= px) || 256;
     /**
      * A program's picture at px CSS pixels: the store's set (the small design up to 20 px, the -lg one above, 1x / 2x / 4x),
      * else Android's icon at the size the screen needs (the app's icon handler draws 48..1024 px).
      */
     function iconFor(a, px) {
         const set = a ? storeSet(a) : null;
+        if (set && storeSet.vista) {
+            const one = vistaPx(px);
+            const two = vistaPx(px * 2);
+            return { src: `${set}-vista-${one}.png`, srcset: `${set}-vista-${one}.png 1x, ${set}-vista-${two}.png 2x` };
+        }
         if (set) {
             const base = `${set}${px > 20 ? '-lg' : ''}`;
             return { src: `${base}.png`, srcset: `${base}.png 1x, ${base}@2x.png 2x, ${base}@4x.png 4x` };
@@ -117,14 +130,16 @@
     function descriptor(a, names) {
         const name = (names && typeof names[a.id] === 'string' && names[a.id].trim()) || a.label;
         const set = storeSet(a);
+        const vista = !!set && storeSet.vista;
         return {
             launchId: PREFIX + a.id,
             text: name,
             fullName: name,
             // a store set is drawn by modalUtils.js renderAppIconImg at the row's size (small / -lg, with its srcset)
-            imageIcon: set ? `${set}.png` : iconFor(a, 32).src,
+            // (its Vista icon when the set has one: <set>-vista-32.png names the set, renderAppIconImg picks the size)
+            imageIcon: vista ? `${set}-vista-32.png` : set ? `${set}.png` : iconFor(a, 32).src,
             // the Start menu's picture over the user tile
-            image: set ? `${set}-lg@4x.png` : iconFor(a, 64).src,
+            image: vista ? `${set}-vista-256.png` : set ? `${set}-lg@4x.png` : iconFor(a, 64).src,
             icon: 'fas fa-window-maximize',
             desktopOnly: true,
             androidApp: true,

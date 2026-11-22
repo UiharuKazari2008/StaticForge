@@ -1727,22 +1727,37 @@
         return true;
     }
 
+    /*
+     * Today's panel (Yukimi, Nov 21 2026: "move the traffic light into the bar with its info and put an icon on the top
+     * right for a home or an office building"): the top right is where the commute goes (a house going home, an office
+     * building going to work), and the signal is the page's picture beside its lines (traffic-light-<state>.png, no
+     * frame): green clear, amber moderate, red heavy, every lamp dark with no report.
+     */
+    const placeIcon = (d) => `x:app-traffic-lg-${d === 'work' ? 'office' : 'home'}`;
+    const lightOf = (level) => `/static_images/wm65/traffic-light-${{ clear: 'go', moderate: 'moderate', heavy: 'heavy' }[level] || 'none'}.png`;
+
     function todayTitanium() {
         if (!canUse() || !loaded) return null;
         const first = configured() ? commuteNow() : direction();
         if (configured() && !first) {
             const t = idleLine();
-            const go = () => open(direction());
-            return { label: 'traffic', icon: 'x:app-traffic-lg-none', pages: [{ title: t.title, line2: t.sub, line3: '' }], softKey: { label: 'Traffic', action: go }, onTap: go };
+            const d = direction();
+            const go = () => open(d);
+            return { label: 'traffic', icon: placeIcon(d), pages: [{ title: t.title, line2: t.sub, line3: '', image: lightOf('none'), bare: true }], softKey: { label: 'Traffic', action: go }, onTap: go };
         }
         const go = () => open(first);
         const pages = [first].map((d) => {
             const t = todayLine(d);
             const r = latest[d];
-            return { title: t.title, line2: t.sub, line3: r && r.alerts && r.alerts.length ? `${r.alerts.length} alert${r.alerts.length > 1 ? 's' : ''} on route` : '' };
+            return {
+                title: t.title,
+                line2: t.sub,
+                line3: r && r.alerts && r.alerts.length ? `${r.alerts.length} alert${r.alerts.length > 1 ? 's' : ''} on route` : '',
+                image: lightOf(t.level),
+                bare: true
+            };
         });
-        // the panel's signal lights as the app's does (ti-x-app-traffic-lg-<level>, the same level as the icon)
-        return { label: 'traffic', icon: `x:app-traffic-lg${levelSuffix()}`, pages, softKey: { label: 'Traffic', action: go }, onTap: go };
+        return { label: 'traffic', icon: placeIcon(first), pages, softKey: { label: 'Traffic', action: go }, onTap: go };
     }
 
     // ---------------------------------------------------------------- register

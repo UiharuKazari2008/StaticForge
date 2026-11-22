@@ -43,6 +43,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
+const dns = require('dns');
+const net = require('net');
 const path = require('path');
 const { URL } = require('url');
 
@@ -178,6 +180,20 @@ let launchedZoom = 1;
 // its binary; stock Chromium keeps the default-zoom path above.
 const EMULATED_SCALE_FEATURE = 'AlchemyEmulatedScaleCompositor';
 let emulatedScale = false;
+// the build's layer-sheets patch (LayerTree.alchemySetHiddenLayers): fixed layers over the page go to the viewer as
+// sheets of their own (layerSheets.js); ALCHEMY_SHEETS=0 keeps them in the frames
+let layerSheetsBuild = false;
+let layerContentBuild = false;
+const SHEETS_OFF = process.env.ALCHEMY_SHEETS === '0';
+
+function buildPatches(bin) {
+    try {
+        const info = JSON.parse(fs.readFileSync(path.join(path.dirname(fs.realpathSync(bin)), 'alchemy-patches.json'), 'utf8'));
+        return Array.isArray(info.patches) ? info.patches : [];
+    } catch (_) {
+        return [];
+    }
+}
 
 function patchedBuild(bin) {
     try {
@@ -310,6 +326,19 @@ function watchScroll() {
     let visDone = [];
     let visLayout = 0;
     let lastSize = '';
+    // the elements Alchemy sends as sheets of their own (layerSheets.js): not in the frames, so not bars or layers here
+    const sheetEls = new WeakSet();
+    globalThis.__alchemySheet = (el, on) => {
+        let pin = el;
+        for (let node = el; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+            const pos = getComputedStyle(node).position;
+            if (pos === 'fixed' || pos === 'sticky') { pin = node; break; }
+        }
+        if (on) sheetEls.add(pin);
+        else sheetEls.delete(pin);
+        layerSent = '';
+        queue();
+    };
     const alphaOf = (color) => {
         if (!color || color === 'transparent') return 0;
         const m = /rgba?\(([^)]*)\)/.exec(color);
@@ -354,7 +383,7 @@ function watchScroll() {
         const keep = [];
         for (const item of list) {
             const el = item.el;
-            if (!el.isConnected) continue;
+            if (!el.isConnected || sheetEls.has(el)) continue;
             const r = el.getBoundingClientRect();
             const x0 = Math.max(0, r.left);
             const x1 = Math.min(w, r.right);
@@ -460,7 +489,7 @@ function watchScroll() {
                         if (backdropEl ? (el === backdropEl || backdropEl.contains(el)) : (el === document.body || el === document.documentElement)) { vis[i] = 1; break; }
                         if (el === document.body || el === document.documentElement) break;
                         const pin = pinned(el);
-                        if (pin && fixedEls.has(pin)) continue;
+                        if (pin && (fixedEls.has(pin) || sheetEls.has(pin))) continue;
                         if (covers(el)) {
                             const r = el.getBoundingClientRect();
                             boxes[i] = [r.left, r.top, r.right, r.bottom];
@@ -1161,17 +1190,35 @@ async function readPageInfo(session) {
         if (og && og.content) list.push(abs(og.content));
         icons.filter((i) => i.px < 48).forEach((i) => list.push(i.href));
         list.push(abs('/favicon.ico'));
+        // the tab's icon as Chrome picks it (Yukimi, Nov 21: "i want the icon in the tab to be the sites icon it would
+        // show in chrome"): a rel=icon link (not the touch icons), an SVG or "any" first, else the size closest to 16 px
+        // at the screen's ratio from above, else the largest; then the site's /favicon.ico
+        const want = 16 * (window.devicePixelRatio || 1);
+        let best = null;
+        let bestScore = -Infinity;
+        document.querySelectorAll('link[rel~="icon"]').forEach((link) => {
+            if (/apple-touch/i.test(link.rel)) return;
+            const href = abs(link.getAttribute('href'));
+            if (!href) return;
+            const sizes = link.getAttribute('sizes') || '';
+            const svg = /svg/i.test(link.type || '') || /\.svg(\?|#|$)/i.test(href) || /any/i.test(sizes);
+            const size = svg ? 0 : px(sizes, 16);
+            const score = svg ? 1e6 : (size >= want ? 1e5 - size : size);
+            if (score > bestScore) { best = href; bestScore = score; }
+        });
+        const favicons = [best, abs('/favicon.ico')].filter(Boolean);
         return {
             url: location.href,
             title: document.title || '',
-            icons: [...new Set(list.filter((href) => /^(https?:|data:|chrome-extension:)/i.test(href)))].slice(0, 12)
+            icons: [...new Set(list.filter((href) => /^(https?:|data:|chrome-extension:)/i.test(href)))].slice(0, 12),
+            favicons: [...new Set(favicons.filter((href) => /^(https?:|data:|chrome-extension:)/i.test(href)))]
         };
     });
     const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('page info timed out')), 6000));
     const info = await Promise.race([read, timeout]);
     // Extension pages rarely link an icon; the manifest one is what Chrome shows.
     const ext = extensions.find((e) => e.icon && info.url.startsWith('chrome-extension://' + e.id + '/'));
-    if (ext) info.icons.unshift(ext.icon);
+    if (ext) { info.icons.unshift(ext.icon); info.favicons.unshift(ext.icon); }
     return info;
 }
 
@@ -1281,6 +1328,11 @@ function encoderInfo(session) {
 
 function noteViewerReport(session, ws, rep) {
     if (!rep || typeof rep !== 'object' || !Number.isFinite(rep.rx)) return;
+    // a tab behind another: its viewer's timers are throttled (a Grimoire tab not on show, the WebView in the
+    // background), so its pings come back late and read as a queue that is not the link's - measured on the Fold's
+    // DeX, Nov 21: hidden tabs at 1093 / 1154 ms round trips against a best of 7 ms, automatic quality at step 8 of 9
+    // (JPEG q34, 5-10 fps) for nothing. Nothing it reports moves the quality.
+    if (session.viewHidden) return;
     const aq = aqState(session);
     const now = Date.now();
     const st = ws.aqStat || (ws.aqStat = { at: now, rx: 0, rtts: [], good: 0 });
@@ -1303,6 +1355,13 @@ function noteViewerReport(session, ws, rep) {
     // the device's ceiling: a frame every decode time plus a margin
     aq.fpsCap = dec > 4 ? Math.max(5, Math.min(60, Math.floor(1000 / (dec * 1.25)))) : 60;
     aq.link = { rtt: Math.round(rtt), base: Math.round(base), queueMs: Math.round(queue), kbps: Math.round(st.good * 8 / 1000), inFlightMs: Math.round(flightMs), decMs: Math.round(dec * 10) / 10, fpsCap: aq.fpsCap, frames: Number(rep.n) || 0 };
+    // see-through JPEG XL frames this device decodes slower than 30 a second: WebP for the moving frames of this tab
+    // (Chromium 156 decodes a 1500 x 1050 JPEG XL in ~70-95 ms on this host, WebP in ~18 ms); stills stay JPEG XL
+    if (session.alphaCodecNow === 'jxl' && (Number(rep.n) || 0) >= 3 && dec > ALPHA_JXL_DECODE_MS && !session.alphaJxlSlow) {
+        session.alphaJxlSlow = true;
+        session.pixels = null;
+        restartScreencast(session).catch(() => {});
+    }
     if (!aq.auto) return;
     const before = aq.level;
     const congested = queue > Math.max(60, base * 0.5) || (inFlight > 65536 && flightMs > 400);
@@ -1340,6 +1399,60 @@ function livePageUrl(session) {
     return '';
 }
 
+// ---- the page's security zone (Yukimi, Nov 21: "use "Intranet" when the sites IP resolves to a private ip range"):
+// IE's rules for the Local intranet zone: a site whose address is private (RFC 1918, carrier-grade NAT 100.64/10,
+// loopback, link-local, IPv6 unique-local and link-local), localhost, or a single-label host name. The address is the
+// one the main document came from (Network.responseReceived), else the host's DNS answer (cached 5 min).
+const ZONE_CACHE = new Map();
+const ZONE_TTL_MS = 5 * 60 * 1000;
+
+function ipIsPrivate(ip) {
+    const a = String(ip || '').replace(/^\[|\]$/g, '').toLowerCase();
+    const v4 = a.replace(/^::ffff:/, '');
+    const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(v4);
+    if (m) {
+        const [o1, o2] = [Number(m[1]), Number(m[2])];
+        return o1 === 10 || o1 === 127 || (o1 === 172 && o2 >= 16 && o2 <= 31) || (o1 === 192 && o2 === 168)
+            || (o1 === 169 && o2 === 254) || (o1 === 100 && o2 >= 64 && o2 <= 127);
+    }
+    return a === '::1' || /^f[cd][0-9a-f]{2}:/.test(a) || /^fe[89ab][0-9a-f]:/.test(a);
+}
+
+async function zoneOfUrl(url) {
+    let parsed;
+    try { parsed = new URL(url); } catch (_) { return 'internet'; }
+    // Alchemy's own pages (chrome://, an extension's): this computer
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'intranet';
+    const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    if (net.isIP(host)) return ipIsPrivate(host) ? 'intranet' : 'internet';
+    if (host === 'localhost' || host.endsWith('.localhost') || !host.includes('.')) return 'intranet';
+    const cached = ZONE_CACHE.get(host);
+    if (cached && Date.now() - cached.at < ZONE_TTL_MS) return cached.zone;
+    let zone = 'internet';
+    try {
+        const addrs = await dns.promises.lookup(host, { all: true });
+        if (addrs.length && addrs.every((a) => ipIsPrivate(a.address))) zone = 'intranet';
+    } catch (_) {}
+    ZONE_CACHE.set(host, { zone, at: Date.now() });
+    if (ZONE_CACHE.size > 500) ZONE_CACHE.delete(ZONE_CACHE.keys().next().value);
+    return zone;
+}
+
+// the zone for the address shown: known at once when cached, else looked up and the location sent again
+function noteZone(session, url) {
+    if (!url) return;
+    if (session.zoneUrl === url) return;
+    session.zoneUrl = url;
+    zoneOfUrl(url).then((zone) => {
+        if (session.zoneUrl !== url || !sessions.get(session.id)) return;
+        // the document's own address said otherwise (a proxy, a split DNS): that stands
+        if (session.zoneFromIp && session.zoneFromIp.url === url) zone = session.zoneFromIp.zone;
+        if (zone === session.zone) return;
+        session.zone = zone;
+        publishLocation(session);
+    }).catch(() => {});
+}
+
 function publishLocation(session) {
     const live = livePageUrl(session);
     // While Page.navigate is still outstanding, page.url() is often still the previous page.
@@ -1353,11 +1466,13 @@ function publishLocation(session) {
         }
     }
     const url = (session.navigating && session.navTarget) || session.url || live || '';
+    if (!session.navigating) noteZone(session, url);
     broadcast(session, {
         type: session.navigating ? 'navigating' : 'location',
         url,
         title: session.title || '',
-        navigating: !!session.navigating
+        navigating: !!session.navigating,
+        zone: session.zoneUrl === url ? session.zone || '' : ''
     });
 }
 
@@ -1443,36 +1558,40 @@ const JXL_ON = JXL_MODE !== 'off';
 const jxlStats = { ms: 80, ratio: 0.8, n: 0 };
 const JXL_PIPE = process.env.ALCHEMY_JXL_PIPE || path.join(DATA_DIR, 'alchemy-jxl-pipe');
 const JXL_TIMEOUT_MS = 120;
-const jxl = { proc: null, buf: Buffer.alloc(0), queue: [], broken: false };
+const jxl = { proc: null, buf: Buffer.alloc(0), queue: [], broken: false, effort: 3 };
+// effort 7 for pictures encoded once and kept (layer sheets): measured Nov 21 against effort 3, 1500 x 1050, d1:
+// Wikipedia 153 KB 45.1 dB vs 255 KB 40.6 dB, a photo 66 KB 47.9 dB vs 72 KB 43.6 dB; ~0.6-1.9 s to encode
+const jxlStill = { proc: null, buf: Buffer.alloc(0), queue: [], broken: false, effort: 7 };
 
 function jxlAvailable() {
     return JXL_ON && !jxl.broken && fs.existsSync(JXL_PIPE);
 }
 
-function jxlStart() {
-    if (jxl.proc) return jxl.proc;
-    // effort 3, half the cores (libjxl's thread pool; the pipe built before Nov 21 takes no second argument)
-    const proc = spawn(JXL_PIPE, ['3', String(Math.max(1, Math.floor(os.cpus().length / 2)))], { stdio: ['pipe', 'pipe', 'ignore'] });
-    jxl.proc = proc;
-    jxl.buf = Buffer.alloc(0);
+function jxlStart(pipe) {
+    const state = pipe || jxl;
+    if (state.proc) return state.proc;
+    // its effort, half the cores (libjxl's thread pool; the pipe built before Nov 21 takes no second argument)
+    const proc = spawn(JXL_PIPE, [String(state.effort || 3), String(Math.max(1, Math.floor(os.cpus().length / 2)))], { stdio: ['pipe', 'pipe', 'ignore'] });
+    state.proc = proc;
+    state.buf = Buffer.alloc(0);
     proc.stdout.on('data', (chunk) => {
-        jxl.buf = jxl.buf.length ? Buffer.concat([jxl.buf, chunk]) : chunk;
-        while (jxl.buf.length >= 4) {
-            const n = jxl.buf.readUInt32LE(0);
-            if (jxl.buf.length < 4 + n) break;
-            const out = n ? Buffer.from(jxl.buf.subarray(4, 4 + n)) : null;
-            jxl.buf = jxl.buf.subarray(4 + n);
-            const waiter = jxl.queue.shift();
+        state.buf = state.buf.length ? Buffer.concat([state.buf, chunk]) : chunk;
+        while (state.buf.length >= 4) {
+            const n = state.buf.readUInt32LE(0);
+            if (state.buf.length < 4 + n) break;
+            const out = n ? Buffer.from(state.buf.subarray(4, 4 + n)) : null;
+            state.buf = state.buf.subarray(4 + n);
+            const waiter = state.queue.shift();
             if (waiter) waiter(out);
         }
     });
     const gone = () => {
-        if (jxl.proc !== proc) return;
-        jxl.proc = null;
-        for (const waiter of jxl.queue.splice(0)) waiter(null);
+        if (state.proc !== proc) return;
+        state.proc = null;
+        for (const waiter of state.queue.splice(0)) waiter(null);
     };
     proc.once('exit', gone);
-    proc.once('error', () => { jxl.broken = true; gone(); });
+    proc.once('error', () => { state.broken = true; gone(); });
     proc.stdin.on('error', () => {});
     return proc;
 }
@@ -1481,14 +1600,16 @@ function jxlStart() {
 // (1.0: visually lossless; 0 with lossless). The view at rest goes this way (Yukimi, Nov 21: "I want JPEG XL by
 // default as layers can use transparentcy and would be always better quality"): on this host ~70 ms for 1200 x 900
 // with the pipe's threads, about the bytes of a quality-70 JPEG at distance 1.
-function jxlEncodePixels(pixels, width, height, channels, distance, lossless) {
-    if (!jxlAvailable()) return Promise.resolve(null);
-    const proc = jxlStart();
+function jxlEncodePixels(pixels, width, height, channels, distance, lossless, pipe) {
+    if (!jxlAvailable() || (pipe && pipe.broken)) return Promise.resolve(null);
+    const state = pipe || jxl;
+    const proc = jxlStart(state);
     return new Promise((resolve) => {
         let done = false;
         const finish = (out) => { if (!done) { done = true; resolve(out); } };
-        jxl.queue.push(finish);
-        setTimeout(() => finish(null), 2000).unref();
+        state.queue.push(finish);
+        // effort 7 takes up to ~2 s for a large picture
+        setTimeout(() => finish(null), state.effort > 3 ? 6000 : 2000).unref();
         const head = Buffer.alloc(16);
         head.writeUInt32LE(((12 + pixels.length) | 0x80000000) >>> 0, 0);
         head.writeUInt32LE(width, 4);
@@ -1529,7 +1650,8 @@ function jxlRepack(jpeg) {
 // a whole frame for this viewer: JPEG XL on a slow link when it can show it and it is smaller, else the JPEG as is
 // worth repacking for this session's slowest viewer: the send time it saves against what a repack costs here
 function jxlWorth(session, bytes) {
-    if (!session.jxl || !jxlAvailable()) return false;
+    // a WebP frame (see-through) has no JPEG to repack
+    if (!session.jxl || !jxlAvailable() || session.alphaFrames) return false;
     if (JXL_MODE === 'on') return slowLink(session);
     const kbps = session.aq && session.aq.link && session.aq.link.kbps;
     if (!kbps) return false;
@@ -1678,8 +1800,10 @@ async function packFrame(session, jpeg, gen, header) {
     const stale = () => gen != null && session.packGen !== gen;
     const t0 = PACK_DEBUG ? process.hrtime.bigint() : 0n;
     let decoded;
+    // a JPEG XL frame made here keeps its pixels (no decoder for it on this host)
+    const kept = session.latestRaw && session.latestRaw.frame === jpeg ? session.latestRaw : null;
     try {
-        decoded = await sharp(jpeg).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        decoded = kept ? { data: kept.data, info: kept.info } : await sharp(jpeg).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     } catch (_) {
         return { binary: jpeg };
     }
@@ -1744,10 +1868,15 @@ async function packFrame(session, jpeg, gen, header) {
     const regions = [];
     const bodies = [];
     let total = 0;
+    // the tiles of a see-through JPEG XL frame are JPEG XL too (their transparency kept)
+    const jxlTiles = session.alphaCodecNow === 'jxl';
     for (const rect of rects) {
-        const encoded = await sharp(cropRGBA(next, width, rect), {
-            raw: { width: rect.w, height: rect.h, channels: 4 }
-        }).webp({ quality: session.settings.regionQuality, effort: 2 }).toBuffer();
+        const encoded = jxlTiles
+            ? await jxlEncodePixels(cropRGBA(next, width, rect), rect.w, rect.h, 4, frameDistance(session))
+            : await sharp(cropRGBA(next, width, rect), {
+                raw: { width: rect.w, height: rect.h, channels: 4 }
+            }).webp({ quality: session.settings.regionQuality, effort: 2 }).toBuffer();
+        if (!encoded) return wholeFrame(session, jpeg, header, 'tile encode');
         if (stale()) return { stale: true };
         total += encoded.length;
         if (total > jpeg.length * 0.7) return wholeFrame(session, jpeg, header, 'bytes ' + total + ' of ' + jpeg.length);
@@ -1756,7 +1885,9 @@ async function packFrame(session, jpeg, gen, header) {
     }
     if (stale()) return { stale: true };
     // tiles (or the move and its tiles) patch the frame before them; the header is this frame's (scroll offset, time)
-    const extra = { width, height, f: 'webp', rects: regions };
+    const extra = jxlTiles
+        ? { width, height, f: 'jxl', d: frameDistance(session), rects: regions }
+        : { width, height, f: 'webp', q: session.settings.regionQuality, rects: regions };
     if (dy) {
         extra.dy = dy;
         extra.ops = ops.map((op) => [op.dst, op.src, op.rows]);
@@ -1781,10 +1912,23 @@ const STILL_ACK_WAIT_MS = 10000;
 // A link this slow (the viewer's measured round trip, relay queue included) waits for a still.
 const STILL_MAX_RTT_MS = 1000;
 
-// a screencast frame's pixel size from its JPEG header (base64; only the first few KB are read)
+// a screencast frame's pixel size from its JPEG or WebP header (base64; only the first few KB are read)
 function jpegDims(b64) {
     let buf;
     try { buf = Buffer.from(String(b64 || '').slice(0, 8192), 'base64'); } catch (_) { return null; }
+    // PNG (see-through frames for JPEG XL): the IHDR chunk's width and height
+    if (buf.length >= 24 && buf[0] === 0x89 && buf.toString('ascii', 1, 4) === 'PNG') return [buf.readUInt32BE(16), buf.readUInt32BE(20)];
+    // WebP (see-through frames, layer sheets under the content): RIFF....WEBP then VP8X / VP8L / VP8
+    if (buf.length >= 30 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') {
+        const chunk = buf.toString('ascii', 12, 16);
+        if (chunk === 'VP8X') return [1 + buf.readUIntLE(24, 3), 1 + buf.readUIntLE(27, 3)];
+        if (chunk === 'VP8L') {
+            const bits = buf.readUInt32LE(21);
+            return [1 + (bits & 0x3fff), 1 + ((bits >> 14) & 0x3fff)];
+        }
+        if (chunk === 'VP8 ') return [buf.readUInt16LE(26) & 0x3fff, buf.readUInt16LE(28) & 0x3fff];
+        return null;
+    }
     let i = 2;
     while (i + 9 < buf.length) {
         if (buf[i] !== 0xff) { i++; continue; }
@@ -1804,6 +1948,54 @@ function jxlRefine(session) {
 // JPEG XL distance of the refined view by automatic quality's step: near lossless on a good link, coarser when it
 // is struggling (still far better than the step's JPEG)
 const REFINE_DISTANCE = [0.5, 0.6, 0.8, 1.0, 1.2, 1.5, 1.9, 2.4, 3.0];
+
+// See-through frames (the page's layers under the content are sheets): WebP from Chromium. JPEG XL was measured for
+// them (Yukimi, Nov 21: "why did you not consider JPEG XL for transparent/lucent layers?" / "rely on hard esablished
+// facts form testing"), 1500 x 1050 pictures of four real pages: the A53's Chrome 157 decodes JPEG XL in 95-152 ms,
+// WebP in 24-49 ms, JPEG in 26-28 ms (Alchemy's Chromium on this host: 45-111 / 14-43 / 13-37 ms), so moving JPEG XL
+// frames would hold a phone near 7-10 a second; at the service's effort 3 JPEG XL was not smaller than WebP either
+// (Wikipedia d1.5 203 KB 37.8 dB against WebP q85 173 KB 38.3 dB). ALCHEMY_ALPHA_FRAMES=jxl brings them back (PNG
+// from Chromium, encoded here at a distance by automatic quality's step, its tiles too) to compare.
+const ALPHA_FRAMES_JXL = process.env.ALCHEMY_ALPHA_FRAMES === 'jxl';
+const FRAME_DISTANCE = [1.0, 1.2, 1.5, 1.8, 2.2, 2.6, 3.0, 3.5, 4.0];
+
+const ALPHA_JXL_DECODE_MS = 34;
+
+function alphaCodec(session) {
+    if (!session.alphaFrames) return null;
+    return ALPHA_FRAMES_JXL && jxlRefine(session) && !session.alphaJxlSlow ? 'jxl' : 'webp';
+}
+
+function frameDistance(session) {
+    return FRAME_DISTANCE[session.aq ? session.aq.level : AQ_START] || 2;
+}
+
+// a PNG frame (see-through, JPEG XL viewers) as JPEG XL: its pixels decoded once, kept for packFrame's comparison;
+// one at a time, the newest waiting (Chromium sends the next only after the ack, which pumpFrames sends)
+async function transcodeAlphaFrame(session, event) {
+    if (session.transcoding) { session.transcodeNext = event; return; }
+    session.transcoding = true;
+    try {
+        for (let ev = event; ev; ev = session.transcodeNext, session.transcodeNext = null) {
+            let out = null;
+            let raw = null;
+            try {
+                raw = await sharp(Buffer.from(ev.data, 'base64')).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+                out = await jxlEncodePixels(raw.data, raw.info.width, raw.info.height, 4, frameDistance(session));
+            } catch (_) { out = null; }
+            if (!sessions.get(session.id)) return;
+            session.pendingAck = ev.sessionId;
+            if (out) {
+                session.latestFrame = out;
+                session.latestMeta = ev.metadata || null;
+                session.latestRaw = { frame: out, data: raw.data, info: raw.info };
+            }
+            pumpFrames(session);
+        }
+    } finally {
+        session.transcoding = false;
+    }
+}
 
 function stillScale(session) {
     const meta = session.meta || {};
@@ -1938,7 +2130,7 @@ async function captureStill(session) {
             }
         }
         else shot = await session.cdp.send('Page.captureScreenshot', {
-            format: 'jpeg',
+            format: session.alphaFrames ? 'webp' : 'jpeg',
             quality: session.settings.jpegQuality,
             captureBeyondViewport: false,
             // the clip scale multiplies the device scale: a mobile page already has the viewer's (mobileDeviceScale)
@@ -1953,7 +2145,9 @@ async function captureStill(session) {
     if (PACK_DEBUG) console.log('[grimoire-browser] still captured', shot && shot.data ? shot.data.length : 0, 'B64; frames since', (session.stillGen || 0) - gen, 'meta', session.meta === meta ? 'same' : JSON.stringify(meta) + ' -> ' + JSON.stringify(session.meta));
     if (!shot || !shot.data || !sessions.get(session.id) || session.stillGen !== gen || session.meta !== meta) return;
     let data = shot.data;
-    let format = 'jpeg';
+    let format = session.alphaFrames && !refine ? 'webp' : 'jpeg';
+    // JPEG XL's distance (the refine), else the quality (Alchemy Information's colour by source)
+    let stillDistance = 0;
     if (refine) {
         let out = null;
         try {
@@ -1962,9 +2156,12 @@ async function captureStill(session) {
             // the view's own rows: the frame's width, its height without the band
             const viewH = Math.min(info.height, Math.round(meta.deviceHeight * (session.pxPerDip || 1) * (meta.pageScaleFactor || 1)));
             if (PACK_DEBUG) console.log('[grimoire-browser] refine capture', info.width + 'x' + info.height, 'view rows', viewH, 'frame', session.pixelWidth + 'x' + session.pixelHeight);
-            const decoded = await png.extract({ left: 0, top: 0, width: info.width, height: Math.max(1, viewH) }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+            // see-through frames keep their alpha in the still too (the layers under the content show through)
+            const cut = png.extract({ left: 0, top: 0, width: info.width, height: Math.max(1, viewH) });
+            const decoded = await (session.alphaFrames ? cut.ensureAlpha() : cut.removeAlpha()).raw().toBuffer({ resolveWithObject: true });
             const level = session.aq ? session.aq.level : AQ_START;
-            out = await jxlEncodePixels(decoded.data, decoded.info.width, decoded.info.height, 3, REFINE_DISTANCE[level] || 1);
+            stillDistance = REFINE_DISTANCE[level] || 1;
+            out = await jxlEncodePixels(decoded.data, decoded.info.width, decoded.info.height, session.alphaFrames ? 4 : 3, stillDistance);
         } catch (err) { out = null; if (PACK_DEBUG) console.log('[grimoire-browser] refine failed', err && err.message); }
         if (PACK_DEBUG) console.log('[grimoire-browser] refine jxl', out ? out.length : 0, 'B; frames since', (session.stillGen || 0) - gen);
         // a frame came while it encoded: this view is old
@@ -1986,6 +2183,8 @@ async function captureStill(session) {
         scale,
         baseBytes,
         f: format,
+        q: format === 'jxl' ? undefined : session.settings.jpegQuality,
+        d: format === 'jxl' ? stillDistance : undefined,
         data
     };
     session.still = still;
@@ -2077,6 +2276,10 @@ function pumpFrames(session) {
 }
 
 function noteScreencastFrame(session, event) {
+    if (session.alphaCodecNow === 'jxl' && event.data && sharp) {
+        transcodeAlphaFrame(session, event).catch(() => {});
+        return;
+    }
     session.pendingAck = event.sessionId;
     if (event.data) {
         session.latestFrame = Buffer.from(event.data, 'base64');
@@ -2109,6 +2312,11 @@ function frameHeader(session, meta) {
         sy: Math.round((Number(m.scrollOffsetY) || 0) * (cssPerDip || 1) * 100) / 100,
         k: desktop ? k : 0,
         p: desktop ? 1 : 0,
+        // see-through frames (JPEG XL or WebP with alpha) while the page's layers under the content are sheets
+        f: session.alphaCodecNow || undefined,
+        // the quality it was encoded at (Alchemy Information's colour by source names it): JPEG XL's distance
+        q: session.alphaCodecNow === 'jxl' || !session.settings ? undefined : session.settings.jpegQuality,
+        d: session.alphaCodecNow === 'jxl' ? frameDistance(session) : undefined,
         // frame rows of the page's viewport; any rows below are the over-render band
         vh: session.bandDip ? Math.round((session.dipHeight || 0) * (session.pxPerDip || 1)) : 0
     };
@@ -2188,8 +2396,17 @@ function endNavigating(session) {
     publishLocation(session);
 }
 
-function markHealth(session, state) {
+// the service is shutting down (a restart): its pages close with Chromium, which is not a page failing
+let serviceStopping = false;
+
+// why: what made a page failed or not responding (the log says, so a page shown as stopped can be traced)
+function markHealth(session, state, why) {
     if (!sessions.get(session.id) || session.health === state) return;
+    // a restart closes every page: telling viewers each one failed made them reopen it at once, against the service
+    // still shutting down, and the tab stayed on "The webpage has stopped working" (Yukimi, Nov 21: "pages do not
+    // return after a restart they forever show page has stopped working"); they were told 'restarting' already
+    if (serviceStopping && state !== 'ok') return;
+    if (state !== 'ok') console.warn('[grimoire-browser] page ' + state + (why ? ': ' + String(why).slice(0, 200) : ''), String(session.url || '').slice(0, 120));
     session.health = state;
     broadcast(session, { type: 'status', state, url: session.url || '' });
 }
@@ -2221,10 +2438,10 @@ async function probeHealth(session) {
     } catch (err) {
         const message = (err && err.message) || '';
         if (/crash|detached|closed|Target closed|Session closed/i.test(message)) {
-            markHealth(session, 'failed');
+            markHealth(session, 'failed', 'probe: ' + message);
         } else {
             session.healthMisses = (session.healthMisses || 0) + 1;
-            if (session.healthMisses >= 2) markHealth(session, 'unresponsive');
+            if (session.healthMisses >= 2) markHealth(session, 'unresponsive', 'probe: ' + message);
         }
     }
     if (sessions.get(session.id)) armHealth(session);
@@ -2554,6 +2771,7 @@ async function closeSession(id) {
         if (child.parentId === id) closeSession(child.id);
     }
     if (session.popup) broadcast(session, { type: 'closed' });
+    if (session.sheets) session.sheets.stop();
     clearTimeout(session.navSettle);
     session.navSettle = null;
     clearTimeout(session.frameTimer);
@@ -2603,6 +2821,8 @@ let browserLaunch = null;
  * sending the same command, cutting that save short; it is only the fallback when Chromium hangs.
  */
 async function closeBrowserGently(instance, timeoutMs) {
+    // a shutdown while Chromium is still starting: nothing to close yet (it threw on null and the exit hung)
+    if (!instance) return true;
     const proc = instance && typeof instance.process === 'function' ? instance.process() : null;
     if (!proc || proc.exitCode !== null || proc.signalCode) {
         await instance.close().catch(() => {});
@@ -2859,6 +3079,31 @@ async function adoptOrphan(target) {
         return;
     }
     adoptPopup(announce, page, '');
+}
+
+// Chromium's temporary files on disk beside the profile, not in /tmp: the component updater downloads each update
+// (one of them 194 MB) into a fresh /tmp/org.chromium.Chromium.* folder and a killed Chromium never removes it, so
+// /tmp (RAM) filled to 2.4 GB of copies (Nov 21 2026). Only this Chromium uses the folder, so what it left there
+// (anything not touched in the last 10 minutes) goes at each launch.
+function chromeTempDir() {
+    const dir = path.join(path.dirname(PROFILE_DIR), path.basename(PROFILE_DIR) + '-tmp');
+    // Chromium's single-instance socket lives there too (<dir>/org.chromium.Chromium.XXXXXX/SingletonSocket), and
+    // a socket path over 107 bytes is fatal at start: a deep profile keeps /tmp
+    if (Buffer.byteLength(dir) + '/org.chromium.Chromium.XXXXXX/SingletonSocket'.length > 107) return os.tmpdir();
+    try {
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+        const old = Date.now() - 10 * 60 * 1000;
+        for (const name of fs.readdirSync(dir)) {
+            const p = path.join(dir, name);
+            try {
+                if (fs.lstatSync(p).mtimeMs < old) fs.rmSync(p, { recursive: true, force: true });
+            } catch (_err) { /* gone already */ }
+        }
+    } catch (err) {
+        console.warn('[grimoire-browser] temp folder:', err.message);
+        return os.tmpdir();
+    }
+    return dir;
 }
 
 let xvfb = null;
@@ -3266,6 +3511,7 @@ let browserClient = null;
 
 // Internet Options over Chromium's own settings (chromeSettings.js): preferences, content settings, Delete Browsing
 // History, add-ons, and the launch options (proxy, pop-up blocker, disk cache)
+const { createLayerSheets } = require('./layerSheets');
 const chromeSettings = require('./chromeSettings')({
     dataDir: DATA_DIR,
     getBrowserClient: () => browserClient,
@@ -3422,6 +3668,9 @@ async function launchBrowser() {
     fs.mkdirSync(PROFILE_DIR, { recursive: true, mode: 0o700 });
     fs.chmodSync(PROFILE_DIR, 0o700);
     emulatedScale = patchedBuild(chromeBin);
+    layerSheetsBuild = !SHEETS_OFF && buildPatches(chromeBin).includes('layer-sheets');
+    // the content map, replay with a clip and a see-through background (layer sheets under the content)
+    layerContentBuild = layerSheetsBuild && buildPatches(chromeBin).includes('layer-content');
     setProfilePrefs();
     extensions = readExtensions().filter((ext) => chromeSettings.addonEnabled(ext.id));
     const extensionDirs = extensions.map((ext) => ext.dir).join(',');
@@ -3430,7 +3679,11 @@ async function launchBrowser() {
         '--no-first-run',
         '--no-default-browser-check',
         // site isolation off (#756): pages of several sites share renderers, so fewer processes each with the extensions' scripts
-        '--disable-features=WebAuthentication,WebAuthnConditionalUI,DisableLoadExtensionCommandLineSwitch' + (perf.siteIsolation ? '' : ',IsolateOrigins,site-per-process'),
+        // and what Alchemy never uses (Yukimi, Nov 21 2026: "remove pages and items that are of no use to us"): model
+        // downloads and hints for Chrome's AI and page predictions, casting, Gemini, Lens, history embeddings
+        '--disable-features=WebAuthentication,WebAuthnConditionalUI,DisableLoadExtensionCommandLineSwitch'
+            + ',OptimizationGuideModelDownloading,OptimizationHintsFetching,OptimizationTargetPrediction,MediaRouter,Glic,LensOverlay,HistoryEmbeddings'
+            + (perf.siteIsolation ? '' : ',IsolateOrigins,site-per-process'),
         '--disable-background-networking',
         '--disable-sync',
         '--disable-blink-features=AutomationControlled'
@@ -3451,6 +3704,7 @@ async function launchBrowser() {
     // Loopback only: Dreamscape drives one Alchemy-owned tab here (identity-gated MCP); cookies never leave Chromium.
     if (ALCHEMY_CDP_PORT) args.push('--remote-debugging-address=127.0.0.1', '--remote-debugging-port=' + ALCHEMY_CDP_PORT);
     const env = Object.assign({}, process.env);
+    env.TMPDIR = chromeTempDir();
     let audio = false;
     if (AUDIO) {
         try {
@@ -3566,8 +3820,11 @@ async function launchBrowser() {
 async function startScreencast(session) {
     session.casting = true;
     // the frame is the viewport's DIP size (desktop: device pixels, see applyViewport); never scaled down
+    // see-through: PNG for this host's JPEG XL, else Chromium's WebP; a JPEG otherwise
+    session.alphaCodecNow = alphaCodec(session);
+    session.latestRaw = null;
     await session.cdp.send('Page.startScreencast', {
-        format: 'jpeg',
+        format: session.alphaCodecNow === 'jxl' ? 'png' : (session.alphaCodecNow === 'webp' ? 'webp' : 'jpeg'),
         quality: session.settings.jpegQuality,
         maxWidth: Math.ceil((session.dipWidth || session.width) * (session.pxPerDip || 1)),
         maxHeight: Math.ceil(((session.dipHeight || session.height) + (session.bandDip || 0)) * (session.pxPerDip || 1)),
@@ -3759,8 +4016,9 @@ async function publishFeeds(session) {
     broadcast(session, { type: 'feeds', feeds });
 }
 
-// Print (Grimoire's Print ▾): headful Chromium has no Page.printToPDF, so the whole page goes out as
-// one picture (up to 12000 CSS pixels tall) that the Grimoire window lays out on paper.
+// Print to a printer that is not a file (Grimoire's Print dialog: Fax, XPS Document Writer): the whole page goes out as
+// one picture (up to 12000 CSS pixels tall) that the Grimoire window lays out on paper. Xyridian Print to PDF uses
+// Page.printToPDF (printPagePdf below), which our windowed Chromium does support.
 async function capturePrintPage(session) {
     await settleStill(session);
     const metrics = await session.cdp.send('Page.getLayoutMetrics');
@@ -3774,6 +4032,138 @@ async function capturePrintPage(session) {
         clip: { x: 0, y: 0, width, height, scale: 1 }
     });
     return { image: 'data:image/jpeg;base64,' + shot.data, width, height };
+}
+
+// ---- Xyridian Print to PDF (Yukimi, Nov 21: "can we make Print action open a Vista Print dialog with a Print to PDF
+// printer"): Grimoire's Print dialog asks what the page offers (print-info), then for the PDF (print-pdf) with the
+// dialog's choices. The file waits in the session's download folder (print/, which the download watcher does not
+// see) and is fetched once through the downloads route; Grimoire's Save As puts it in the user's files.
+const PRINT_PAPER_INCHES = {
+    letter: [8.5, 11], legal: [8.5, 14], a4: [8.27, 11.69], a5: [5.83, 8.27], a3: [11.69, 16.54],
+    b5: [7.17, 10.12], executive: [7.25, 10.5], tabloid: [11, 17]
+};
+
+async function printInfo(session) {
+    const info = await session.page.evaluate(() => {
+        const sel = window.getSelection();
+        return {
+            selection: !!(sel && sel.rangeCount && !sel.isCollapsed && String(sel).trim()),
+            frames: document.querySelectorAll('frameset > frame').length,
+            links: document.links.length
+        };
+    }).catch(() => ({ selection: false, frames: 0, links: 0 }));
+    return Object.assign({ title: session.title || '', url: session.url || '' }, info);
+}
+
+// IE's header and footer codes: &w title, &u address, &d / &D short / long date, &t / &T time, &p page, &P pages,
+// &b splits the line (one part left; two left and right; three left, centre, right), && an ampersand
+function ieHeaderTemplate(code, values, left, right) {
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const part = (text) => esc(text).replace(/&amp;([wudDtTpP])/g, (_, k) => (
+        k === 'p' ? '<span class="pageNumber"></span>' : k === 'P' ? '<span class="totalPages"></span>'
+            : esc(k === 'w' ? values.title : k === 'u' ? values.url : k === 'd' ? values.date : k === 'D' ? values.longDate : values.time)
+    )).replace(/&amp;[a-zA-Z]/g, '').replace(/\u0001/g, '&amp;');
+    const parts = String(code || '').slice(0, 300).replace(/&&/g, '\u0001').split('&b').slice(0, 3);
+    if (!parts.join('').trim()) return '<span></span>';
+    const align = parts.length === 1 ? ['left'] : parts.length === 2 ? ['left', 'right'] : ['left', 'center', 'right'];
+    return `<div style="width:100%;box-sizing:border-box;padding:0 ${right}in 0 ${left}in;display:flex;`
+        + 'font:8pt Arial,sans-serif;color:#000;">'
+        + parts.map((t, i) => `<div style="flex:1;text-align:${align[i]};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${part(t)}</div>`).join('')
+        + '</div>';
+}
+
+async function printPagePdf(session, o) {
+    await settleStill(session);
+    const inches = PRINT_PAPER_INCHES[String(o.paper || 'letter').toLowerCase()] || PRINT_PAPER_INCHES.letter;
+    const margin = (v, d) => Math.max(0, Math.min(3, Number.isFinite(Number(v)) ? Number(v) : d));
+    const values = {
+        title: session.title || session.url || '', url: session.url || '',
+        date: String(o.date || ''), longDate: String(o.longDate || ''), time: String(o.time || '')
+    };
+    const header = typeof o.header === 'string' ? o.header : '&w&bPage &p of &P';
+    const footer = typeof o.footer === 'string' ? o.footer : '&u&b&d';
+    // Selection: only what is selected prints; Print table of links: the page's links in a table after it
+    const extra = { selection: !!o.selection, links: !!o.tableOfLinks };
+    const marked = await session.page.evaluate((x) => {
+        const style = document.createElement('style');
+        style.id = '__alchemyPrintStyle';
+        let css = '@media screen { .__alchemyPrintOnly { display: none !important; } }';
+        if (x.selection) {
+            const sel = window.getSelection();
+            if (!sel || !sel.rangeCount || sel.isCollapsed) return false;
+            const box = document.createElement('div');
+            box.className = '__alchemyPrintOnly __alchemyPrintSel';
+            for (let i = 0; i < sel.rangeCount; i += 1) box.appendChild(sel.getRangeAt(i).cloneContents());
+            document.body.appendChild(box);
+            css += ' @media print { body > :not(.__alchemyPrintSel):not(.__alchemyPrintLinks) { display: none !important; } }';
+        }
+        if (x.links) {
+            const rows = [];
+            const seen = new Set();
+            for (const a of document.links) {
+                if (!/^https?:/i.test(a.href) || seen.has(a.href)) continue;
+                seen.add(a.href);
+                rows.push([String(a.textContent || '').replace(/\s+/g, ' ').trim(), a.href]);
+            }
+            const box = document.createElement('div');
+            box.className = '__alchemyPrintOnly __alchemyPrintLinks';
+            const table = document.createElement('table');
+            const head = table.insertRow();
+            ['Shortcut Text', 'Internet Address'].forEach((t) => { const th = document.createElement('th'); th.textContent = t; head.appendChild(th); });
+            rows.forEach(([text, href]) => { const tr = table.insertRow(); tr.insertCell().textContent = text; tr.insertCell().textContent = href; });
+            box.appendChild(table);
+            document.body.appendChild(box);
+            css += ' @media print { .__alchemyPrintLinks { display: block !important; break-before: page; font: 10pt "Times New Roman", serif; color: #000; background: #fff; }'
+                + ' .__alchemyPrintLinks table { border-collapse: collapse; width: 100%; } .__alchemyPrintLinks th, .__alchemyPrintLinks td { border: 1px solid #000; padding: 2px 4px; text-align: left; vertical-align: top; word-break: break-all; } }';
+        }
+        style.textContent = css;
+        document.head.appendChild(style);
+        return true;
+    }, extra).catch(() => null);
+    if (marked === false) {
+        const error = new Error('There is no selection on this page.');
+        error.code = 'selection';
+        throw error;
+    }
+    try {
+        const landscape = !!o.landscape;
+        const pdf = await session.cdp.send('Page.printToPDF', {
+            landscape,
+            printBackground: !!o.printBackground,
+            paperWidth: inches[0],
+            paperHeight: inches[1],
+            marginTop: margin(o.marginTop, 0.75),
+            marginBottom: margin(o.marginBottom, 0.75),
+            marginLeft: margin(o.marginLeft, 0.75),
+            marginRight: margin(o.marginRight, 0.75),
+            pageRanges: String(o.pageRanges || '').replace(/[^0-9,\-\s]/g, '').slice(0, 200),
+            displayHeaderFooter: !!(header || footer),
+            headerTemplate: ieHeaderTemplate(header, values, margin(o.marginLeft, 0.75), margin(o.marginRight, 0.75)),
+            footerTemplate: ieHeaderTemplate(footer, values, margin(o.marginLeft, 0.75), margin(o.marginRight, 0.75)),
+            preferCSSPageSize: false,
+            scale: 1
+        });
+        const buffer = Buffer.from(pdf.data || '', 'base64');
+        if (!buffer.length) throw new Error('The page printed nothing.');
+        const dir = path.join(session.downloadDir || path.join(os.tmpdir(), 'grimoire-browser', session.id), 'print');
+        await fs.promises.mkdir(dir, { recursive: true });
+        const guid = 'pdf-' + crypto.randomBytes(12).toString('hex');
+        const filePath = path.join(dir, guid + '.pdf');
+        await fs.promises.writeFile(filePath, buffer);
+        if (!session.downloads) session.downloads = new Map();
+        session.downloads.set(guid, { filename: safeFilename((values.title || 'page').slice(0, 120) + '.pdf'), state: 'completed', filePath, print: true });
+        // one fetch: the copy goes after 10 minutes either way
+        setTimeout(() => {
+            if (session.downloads) session.downloads.delete(guid);
+            fs.rm(filePath, { force: true }, () => {});
+        }, 10 * 60 * 1000).unref();
+        const pages = (buffer.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+        return { file: guid, bytes: buffer.length, pages, title: values.title };
+    } finally {
+        await session.page.evaluate(() => {
+            document.querySelectorAll('#__alchemyPrintStyle, .__alchemyPrintOnly').forEach((el) => el.remove());
+        }).catch(() => {});
+    }
 }
 
 // adoptedPage: a popup page that is already open (adoptPopup); popup sessions close with their page.
@@ -3900,6 +4290,8 @@ async function createSession(body, adoptedPage) {
         if (!sessions.get(id) || !ev || !ev.frame || ev.frame.parentId) return;
         session.mainFrameId = ev.frame.id || session.mainFrameId;
         session.committedUrl = ev.frame.unreachableUrl || ((ev.frame.url || '') + (ev.frame.urlFragment || ''));
+        // a new document: new layers, and none of the old sheets
+        if (session.sheets) session.sheets.reset();
     });
 
     // Isolated world: a page-visible binding (page.exposeFunction) makes Cloudflare Turnstile refuse the click.
@@ -3965,6 +4357,42 @@ async function createSession(body, adoptedPage) {
     await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: '(' + watchScroll + ')()', worldName: 'alchemy' });
     // The viewer draws the scrollbar (customScrollbar look); Chromium's own would sit inside the picture.
     await cdp.send('Emulation.setScrollbarsHidden', { hidden: true }).catch(() => {});
+    if (layerSheetsBuild) {
+        session.sheets = createLayerSheets(session, {
+            broadcast,
+            binaryMessage,
+            frameScale: (s) => frameHeader(s).k,
+            sharp,
+            // a stationary layer's picture (a sheet): mostly images -> JPEG XL effort 7 at distance 1 (or WebP q90 for a
+            // viewer without it), else WebP lossless; from the measurements of Nov 21 (docs/grimoire-remote-browser.md
+            // "Codec measurements"): text and flat layers were smallest and exact as WebP lossless (Yozora's layer
+            // 51 KB, 24 ms to decode on the A53), pictures with images smallest and sharpest as JPEG XL effort 7
+            encodeSheet: async (s, png, imagey) => {
+                const raw = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+                const { width, height } = raw.info;
+                if (imagey && jxlRefine(s)) {
+                    const out = await jxlEncodePixels(raw.data, width, height, 4, 1, false, jxlStill);
+                    if (out) return { bytes: out, f: 'jxl', d: 1 };
+                }
+                const pic = sharp(raw.data, { raw: { width, height, channels: 4 } });
+                if (imagey) return { bytes: await pic.webp({ quality: 90, effort: 2 }).toBuffer(), f: 'webp', q: 90 };
+                return { bytes: await pic.webp({ lossless: true, effort: 2 }).toBuffer(), f: 'webp', d: 0 };
+            },
+            // the build's content-map patch (LayerTree.alchemyContentMap, replay with a clip): drawing ahead at rest
+            contentMap: layerContentBuild,
+            // see-through frames on (the layers under the content are sheets) or off: the screencast starts again in
+            // the other format and the next frame is whole
+            setAlphaFrames: (s, on) => {
+                if (!!s.alphaFrames === !!on) return;
+                if (process.env.ALCHEMY_DEBUG_SHEETS === '1') console.warn('[grimoire-browser] sheets: see-through frames', on ? 'on' : 'off');
+                s.alphaFrames = !!on;
+                s.pixels = null;
+                restartScreencast(s).catch(() => {});
+            },
+            log: (...args) => console.warn('[grimoire-browser] sheets:', ...args)
+        });
+        // on while a viewer watches (attachViewer): LayerTree reports the page's layers at every update
+    }
 
     cdp.on('Page.screencastFrame', (event) => {
         const current = sessions.get(id);
@@ -4031,6 +4459,16 @@ async function createSession(body, adoptedPage) {
     });
 
     cdp.on('Network.dataReceived', (ev) => noteLoadBytes(session, Number(ev.encodedDataLength) || Number(ev.dataLength) || 0));
+    // the main document's own address: its zone, exactly (no DNS guess)
+    cdp.on('Network.responseReceived', (ev) => {
+        if (!sessions.get(id) || !ev || ev.type !== 'Document' || !mainFrameEvent(ev) || !ev.response || !ev.response.remoteIPAddress) return;
+        const zone = ipIsPrivate(ev.response.remoteIPAddress) ? 'intranet' : 'internet';
+        session.zoneFromIp = { url: ev.response.url, zone };
+        if (session.zoneUrl === ev.response.url && session.zone !== zone) {
+            session.zone = zone;
+            publishLocation(session);
+        }
+    });
 
     cdp.on('Page.frameStoppedLoading', async (ev) => {
         if (!sessions.get(id) || !mainFrameEvent(ev)) return;
@@ -4057,11 +4495,11 @@ async function createSession(body, adoptedPage) {
             session.dialog = null;
         }
     });
-    page.on('error', () => markHealth(session, 'failed'));
+    page.on('error', (err) => markHealth(session, 'failed', 'page error: ' + ((err && err.message) || err)));
     page.on('close', () => {
         if (session.closing) return;
         if (session.popup) closeSession(id);
-        else markHealth(session, 'failed');
+        else markHealth(session, 'failed', 'page closed');
     });
 
     page.on('framenavigated', (frame) => {
@@ -4292,6 +4730,15 @@ async function onViewerMessage(session, raw, ws) {
     // shared Chrome window comes to the front of it so it paints
     if (msg.type === 'visibility') {
         session.viewHidden = !!msg.hidden;
+        // back in front: a quality pushed down while it was behind (or before hidden tabs stopped counting) starts
+        // again from the middle step; the link's own signals take it from there
+        if (!session.viewHidden && session.aq && session.aq.auto && session.aq.level > AQ_START) {
+            session.aq.level = AQ_START;
+            session.aq.why = 'tab shown again';
+            session.aq.changedAt = Date.now();
+            applyAutoQuality(session);
+            broadcast(session, encoderInfo(session));
+        }
         if (!session.viewHidden && HEADFUL && session.group && session.page) session.page.bringToFront().catch(() => {});
         syncCapture(session);
         return;
@@ -4299,6 +4746,16 @@ async function onViewerMessage(session, raw, ws) {
     if (msg.type === 'memory-override') {
         session.memOverride = true;
         await thawSession(session);
+        return;
+    }
+    // Alchemy Information's content-type check: the viewer wants the content map (layerSheets.js)
+    // the viewer scrolls: Alchemy draws ahead the way it goes (layerSheets.js)
+    if (msg.type === 'ahead') {
+        if (session.sheets) session.sheets.ahead(msg);
+        return;
+    }
+    if (msg.type === 'want-content') {
+        if (session.sheets) session.sheets.wantContent(!!msg.on);
         return;
     }
     if (msg.type === 'rtt') {
@@ -4739,6 +5196,21 @@ async function onViewerMessage(session, raw, ws) {
         await changeViewport(session);
         return;
     }
+    if (msg.type === 'print-info') {
+        const id = String(msg.id || '').slice(0, 64);
+        broadcast(session, Object.assign({ type: 'print-info', id }, await printInfo(session)));
+        return;
+    }
+    if (msg.type === 'print-pdf') {
+        const id = String(msg.id || '').slice(0, 64);
+        try {
+            broadcast(session, Object.assign({ type: 'print-pdf', id }, await printPagePdf(session, msg.options || {})));
+        } catch (err) {
+            const text = String((err && err.message) || 'print failed');
+            broadcast(session, { type: 'print-pdf', id, error: text, code: err && err.code ? err.code : (/page range/i.test(text) ? 'range' : '') });
+        }
+        return;
+    }
     if (msg.type === 'print') {
         const id = String(msg.id || '').slice(0, 64);
         try {
@@ -5135,7 +5607,8 @@ function attachViewer(ws, session) {
             type: session.navigating ? 'navigating' : 'location',
             url: (session.navigating && session.navTarget) || session.url || '',
             title: session.title || '',
-            navigating: !!session.navigating
+            navigating: !!session.navigating,
+            zone: session.zone || ''
         }));
     }
     if (session.health && session.health !== 'ok') {
@@ -5145,6 +5618,10 @@ function attachViewer(ws, session) {
     if (session.dialog) ws.send(JSON.stringify(session.dialog.ask));
     if (session.scroll) ws.send(JSON.stringify(session.scroll));
     if (session.layers) ws.send(JSON.stringify(Object.assign({}, session.layers, { reset: 1, v: session.layersVis || undefined })));
+    if (session.sheets) {
+        if (session.sheets.active) session.sheets.attach(ws);
+        else session.sheets.start().catch((err) => console.warn('[grimoire-browser] sheets off:', err.message));
+    }
     if (!session.popup) flushOrphans(session);
     if (session.painted) {
         try { ws.send(session.painted); } catch (_) {}
@@ -5164,6 +5641,11 @@ function attachViewer(ws, session) {
         // what the viewer can show (#990 round 2): image/jxl
         if (preview && preview.type === 'caps') {
             session.jxl = preview.jxl === true;
+            // see-through frames follow what the viewers can show (JPEG XL or WebP)
+            if (session.alphaFrames && alphaCodec(session) !== session.alphaCodecNow) {
+                session.pixels = null;
+                restartScreencast(session).catch(() => {});
+            }
             return;
         }
         // the window in front wants this host's audio on its socket (#990)
@@ -5261,7 +5743,11 @@ function attachViewer(ws, session) {
         session.sockets.delete(ws);
         setAudioListener(ws, false);
         // a moment's grace: a viewer reconnecting (a reload, a transfer) finds the capture still on
-        setTimeout(() => syncCapture(session), 2000);
+        setTimeout(() => {
+            syncCapture(session);
+            // nobody watching: no layer reports, and every layer back in the frames
+            if (!session.sockets.size && session.sheets) session.sheets.stop();
+        }, 2000);
     });
 }
 
@@ -5332,6 +5818,7 @@ async function main() {
     const shutdown = async () => {
         if (shuttingDown) return;
         shuttingDown = true;
+        serviceStopping = true;
         // viewers wait for this service to come back and open their pages again (viewer.html recoverSession)
         for (const session of sessions.values()) broadcast(session, { type: 'restarting' });
         if (browser) {

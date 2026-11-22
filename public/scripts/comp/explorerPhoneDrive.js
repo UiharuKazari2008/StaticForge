@@ -482,7 +482,8 @@
     function crumbIcon(path) {
         const p = parse(path);
         if (path === TRASH) return 'fav-recycle.png';
-        if (remote() && !hybridHere() && !p.root) return 'portable-device-16.png';
+        // the device's own icon: a modern phone or a Fold, as Mobile Device Center draws it (ExplorerComputerView.deviceIcon)
+        if (remote() && !hybridHere() && !p.root) return root.ExplorerComputerView ? root.ExplorerComputerView.deviceIcon(PS().deviceId || '', 16) : 'portable-device-16.png';
         if ((remote() || hybridHere()) && p.path === '/') return (rootInfo(p.root) || {}).kind === 'internal' ? 'drive-fixed-16.png' : 'drive-removable-16.png';
         if (!p.root || p.path === '/') return 'drive-removable-16.png';
         return 'crumb-folder.png';

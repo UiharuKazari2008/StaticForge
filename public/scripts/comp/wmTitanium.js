@@ -2944,11 +2944,13 @@
     // ---- Home by the swipe (Yozora #1013, Yukimi Nov 21): the app's home mask (Today's wallpaper) covers the screen as the
     // swipe ends. Today readies its opening pose under it (the picture only), says so at once (AndroidBars.homeReady), the
     // app takes the mask away and answers ('melatonmaskgone'), and the entrance plays from there - nothing of it hidden
-    // under the mask. The title bar and the soft key bar stay away until 250 ms before the entrance ends, then slide in
-    // from the top and the bottom. Neither side waits long on the other: the app drops its mask after a short cap, and
+    // under the mask. The title bar and the soft key bar stay away while the mask is up and slide in from the top and the
+    // bottom as the entrance starts, alongside the list's rise (Yukimi, Nov 22: "during the reveal animation instead of
+    // near the end" - they came in a second late, over two frames). Neither side waits long on the other: the app drops its mask after a short cap, and
     // the entrance starts here after MASK_CAP_MS without its answer.
     const MASK_CAP_MS = 900;
-    const BARS_IN_MS = 250;
+    const BARS_IN_MS = 420;
+    const BARS_IN_DELAY_MS = 60;
     let maskedRun = null;
 
     /** The app's mask covers the screen now (a home swipe on its way to Today). */
@@ -2972,9 +2974,9 @@
         for (const [el] of shellBars()) el.style.transform = '';
     }
 
-    /** The title bar from the top and the soft key bar from the bottom, in over the entrance's last 250 ms. */
-    function barsIn(totalMs) {
-        const opts = { duration: BARS_IN_MS, delay: Math.max(0, totalMs - BARS_IN_MS), easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'both' };
+    /** The title bar from the top and the soft key bar from the bottom, in with the entrance's rise (its first 480 ms). */
+    function barsIn() {
+        const opts = { duration: BARS_IN_MS, delay: BARS_IN_DELAY_MS, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'both' };
         for (const [el, off] of shellBars()) {
             try {
                 const a = el.animate([{ transform: `translateY(${off})` }, { transform: 'none' }], opts);
@@ -3053,7 +3055,7 @@
             clearTimeout(cap);
             const total = curEnterMs() + ENTER_ZOOM_MS;
             entrance();
-            barsIn(total);
+            barsIn();
             // landed: the picture's effects come back (the lean easing in from rest), the entrance its usual kind again,
             // and the mask is drawn again at rest
             setTimeout(() => { entrySlow = false; wallThaw(); document.dispatchEvent(new CustomEvent('wmTodayRest')); }, total);
@@ -3077,12 +3079,18 @@
         const ready = () => {
             if (started) return;
             prepareEntry();
-            requestAnimationFrame(() => requestAnimationFrame(() => { // perf: allow one call per home swipe: homeReady only posts to the app's main thread, nothing is answered or waited for
-                try { window.AndroidBars.homeReady(); } catch (_) { start(); }
+            requestAnimationFrame(() => requestAnimationFrame(() => { // perf: allow one call per home swipe: homeReady only posts to the app's overlay thread and answers at once, nothing is waited for
+                // true: the overlay goes with its next frame - the entrance starts now, not on 'melatonmaskgone' (that word
+                // comes through the app's main thread while Melaton wakes: ~200 ms of bare wallpaper on the Fold, Nov 22)
+                let now = false;
+                try { now = window.AndroidBars.homeReady() === true; } catch (_) { start(); return; }
+                if (now) start();
             }));
         };
-        if (layer && typeof layer.decode === 'function') {
-            Promise.race([layer.decode().catch(() => {}), new Promise((r) => setTimeout(r, 200))]).then(ready);
+        // the picture already loaded (the same file every swipe): no wait for a decode (it waited up to 200 ms on a page
+        // just woken)
+        if (layer && !(layer.complete && layer.naturalWidth) && typeof layer.decode === 'function') {
+            Promise.race([layer.decode().catch(() => {}), new Promise((r) => setTimeout(r, 120))]).then(ready);
         } else ready();
         return true;
     }

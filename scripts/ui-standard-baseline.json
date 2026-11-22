@@ -1,12 +1,12 @@
 {
  "note": "Counts may only go down. See docs/design/ui-standard.md and scripts/check-ui-standard.js.",
  "totals": {
-  "colour-literal": 11942,
+  "colour-literal": 11937,
   "font-literal": 486,
   "theme-negative": 2674,
   "own-control": 700,
   "inline-style": 691,
-  "theme-art-path": 176,
+  "theme-art-path": 175,
   "hand-built-window": 106,
   "toast": 1051,
   "own-menubar": 61,
@@ -963,8 +963,8 @@
   },
   "public/css/wm-stage.css": {
    "native-scrollbar": 1,
-   "colour-literal": 14,
-   "theme-art-path": 4
+   "colour-literal": 9,
+   "theme-art-path": 3
   },
   "public/css/wm-studio-tools.css": {
    "native-scrollbar": 1,

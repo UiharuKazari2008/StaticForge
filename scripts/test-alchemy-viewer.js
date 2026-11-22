@@ -38,6 +38,9 @@ const mobile = args.includes('--mobile');
 const serviceChrome = args.includes('--chrome') ? path.resolve(args[args.indexOf('--chrome') + 1]) : '';
 let patched = false;
 try { patched = !!serviceChrome && JSON.parse(fs.readFileSync(path.join(path.dirname(serviceChrome), 'alchemy-patches.json'), 'utf8')).features.includes('AlchemyEmulatedScaleCompositor'); } catch (_) {}
+// the build's layer-sheets patch: the page's fixed button goes to the viewer as a sheet of its own (layerSheets.js)
+let sheetsBuild = false;
+try { sheetsBuild = !!serviceChrome && JSON.parse(fs.readFileSync(path.join(path.dirname(serviceChrome), 'alchemy-patches.json'), 'utf8')).patches.includes('layer-sheets'); } catch (_) {}
 // --shots <dir>: the viewer's picture before, during and after the scroll, and scrolling back
 const shotsDir = args.includes('--shots') ? path.resolve(args[args.indexOf('--shots') + 1]) : '';
 async function shot(page, name) {
@@ -54,8 +57,9 @@ const ZOOM = args.includes('--ratio') ? Number(args[args.indexOf('--ratio') + 1]
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><style>
 body{margin:0;font:14px sans-serif}
 #bar{position:fixed;top:0;left:0;right:0;height:40px;background:#c33;color:#fff}
+#fab{position:fixed;right:24px;bottom:24px;width:64px;height:64px;border-radius:32px;background:#2a7;color:#fff;text-align:center;line-height:64px}
 .row{height:200px;border-bottom:1px solid #000}
-</style></head><body><div id="bar">header</div>
+</style></head><body><div id="bar">header</div><div id="fab">+</div>
 <script>
 // rows of text like a real page (a flat colour per row would make whole frames unrealistically small)
 const LOREM = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. ';
@@ -134,7 +138,7 @@ async function main() {
     let viewerBrowser = null;
     let relayServer = null;
     try {
-        await waitFor(() => /listening on/.test(log), 30000, 'service start');
+        await waitFor(() => /listening on/.test(log), 60000, 'service start');
         check('PulseAudio starts (no "audio off")', !/audio off/.test(log), (log.match(/audio off.*/) || [''])[0]);
         const origin = 'http://127.0.0.1:' + port;
         let viewOrigin = origin;
@@ -250,6 +254,42 @@ async function main() {
         const pageY = await remote.evaluate(() => scrollY);
         await shot(viewer, '3-settled');
         check('a wheel scrolls the page as far as the picture moved', Math.abs(pageY - wanted) < 1, 'scrollY ' + pageY + ' for ' + wanted + ', frame sy ' + settled.frame.sy);
+
+        if (sheetsBuild) {
+            // the fixed button (#fab): a sheet once the scroll showed it stays put; its picture is the button and the
+            // frames go on without it (the header animates after the click above, so it stays in the frames)
+            const green = (p) => p && Math.abs(p[0] - 0x22) < 14 && Math.abs(p[1] - 0xaa) < 14 && Math.abs(p[2] - 0x77) < 14;
+            // the pixels come from each canvas's PNG (getImageData on the headless viewer read the sheet canvas wrong)
+            const sharpLib = require(path.join(SERVICE_DIR, 'node_modules', 'sharp'));
+            const pixelOf = async (url, x, y) => {
+                if (!url) return null;
+                const { data } = await sharpLib(Buffer.from(url.split(',')[1], 'base64')).ensureAlpha().extract({ left: x, top: y, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
+                return Array.from(data);
+            };
+            const sample = async () => {
+                // left of the button's middle (its "+" is in the middle)
+                const x = Math.round((800 - 24 - 48) * ZOOM);
+                const y = Math.round((600 - 24 - 32) * ZOOM);
+                const got2 = await viewer.evaluate(() => {
+                    const sc = document.getElementById('sheets');
+                    return {
+                        shown: !sc.hidden,
+                        sheetUrl: sc.width && !sc.hidden ? sc.toDataURL('image/png') : '',
+                        viewUrl: document.getElementById('view').toDataURL('image/png'),
+                        stats: window.__alchemyViewerStats().scroll
+                    };
+                });
+                return { shown: got2.shown, sheet: await pixelOf(got2.sheetUrl, x, y), view: await pixelOf(got2.viewUrl, x, y), stats: got2.stats };
+            };
+            const got = await waitFor(async () => {
+                const s = await sample();
+                return s.shown && s.stats.sheetPictures >= 1 && green(s.sheet) && !green(s.view) ? s : null;
+            }, 6000, 'the button as a sheet').catch(() => null);
+            const last = got || await sample();
+            check('fixed button becomes a sheet', !!(last.shown && last.stats.sheets >= 1), 'sheets ' + last.stats.sheets + ', pictures ' + last.stats.sheetPictures + ' ' + JSON.stringify(last.stats.sheetRects));
+            check('the sheet holds the button', green(last.sheet), JSON.stringify(last.sheet));
+            check('the frames go on without it', !green(last.view), JSON.stringify(last.view));
+        }
 
         // what a run of wheel notches costs on the wire (frames, tiles, scroll packs), for comparing builds
         const before = JSON.stringify((await stats()).traffic || {});

@@ -262,7 +262,8 @@
 
     /** Open a page in the focused Grimoire window (Content > Certificates: Chromium's certificate manager). */
     function openInGrimoire(url) {
-        if (typeof root.grimoireOpenUrl === 'function') root.grimoireOpenUrl(url);
+        // featureLoader.js openGrimoireUrl: a new tab in the Grimoire window (chrome:// pages go to Alchemy)
+        if (typeof root.openGrimoireUrl === 'function') root.openGrimoireUrl(url);
     }
 
     async function clearBrowsingData(what) {
@@ -424,9 +425,8 @@
                     const h = ctx.holder(id);
                     if (h) { h.dataset.min = String(min); h.dataset.max = String(max); }
                 });
-                ctx.on(609, 'click', () => {
-                    if (typeof root.grimoireOpenUrl === 'function') root.grimoireOpenUrl(root.GRIMOIRE_HISTORY_URL || 'dsap://history.grimoire.jp');
-                });
+                // View files: Grimoire's History (there was no grimoireOpenUrl, so the button did nothing)
+                ctx.on(609, 'click', () => openInGrimoire(root.GRIMOIRE_HISTORY_URL || 'dsap://history.grimoire.jp'));
             },
             async ok(ctx, byKey) {
                 const mb = Number((byKey[KEY.cache] || {}).CacheLimitMB);

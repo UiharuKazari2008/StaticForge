@@ -4450,7 +4450,8 @@
             title: 'Internet Explorer',
             icon: 'app-ie',
             inStart: 'top',
-            sip: true,
+            // the input panel button stays in the soft key bar's centre (#1013): it is this program's way to type
+            sip: 'keep',
             mount,
             show() {
                 visible = true;

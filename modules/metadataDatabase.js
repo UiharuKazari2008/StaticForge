@@ -6342,6 +6342,41 @@ async function updateSearchIndexesInner(filename, metadata) {
 }
 
 /**
+ * Smart Tags (Melaton Photo Gallery, glancewellStore.js): the prints whose prompts carry tags. terms: [{ tag, neg }]; a
+ * positive tag is a whole tag of the prompt (search_tags: prompt, input, character prompts), a negative one a whole tag
+ * of the negative prompt (image_prompt_text uc lanes, where weights like 2::tag:: still count). match 'all' | 'any'.
+ * Returns a Set of filenames.
+ */
+const SMART_POSITIVE_SOURCES = ['prompt', 'input_prompt', 'character_prompt', 'v4_character_caption'];
+const SMART_NEGATIVE_LANES = ['compiled_uc', 'input_uc'];
+async function findFilesByPromptTags(terms, match = 'all') {
+    if (!db) throw new Error('Metadata database not initialized');
+    const list = (Array.isArray(terms) ? terms : []).filter((t) => t && t.tag);
+    let out = null;
+    for (const t of list) {
+        const tag = String(t.tag).replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        const files = new Set();
+        if (t.neg) {
+            const esc = tag.replace(/[\\%_]/g, (c) => `\\${c}`);
+            const rows = await db.all(`SELECT filename, text_norm FROM image_prompt_text WHERE lane IN (${SMART_NEGATIVE_LANES.map(() => '?').join(',')}) AND text_norm LIKE ? ESCAPE '\\'`,
+                [...SMART_NEGATIVE_LANES, `%${esc}%`]);
+            // a whole tag: bounded by the start, the end, a comma, a weight's :: or brackets
+            const re = new RegExp(`(^|[,|{}\\[\\]()]|::)\\s*${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(?=$|[,|{}\\[\\]()]|::)`, 'i');
+            rows.forEach((r) => { if (re.test(String(r.text_norm || '').replace(/_/g, ' '))) files.add(r.filename); });
+        } else {
+            const rows = await db.all(`SELECT DISTINCT filename FROM search_tags WHERE tag = ? AND source IN (${SMART_POSITIVE_SOURCES.map(() => '?').join(',')})`,
+                [tag, ...SMART_POSITIVE_SOURCES]);
+            rows.forEach((r) => files.add(r.filename));
+        }
+        if (out === null) out = files;
+        else if (match === 'any') files.forEach((f) => out.add(f));
+        else out = new Set([...out].filter((f) => files.has(f)));
+        if (match !== 'any' && !out.size) break;
+    }
+    return out || new Set();
+}
+
+/**
  * Query search indexes for matching filenames (legacy comma-string API).
  */
 async function searchFilesInDatabase(query, filenamesFilter = null, viewType = 'images', options = {}) {
@@ -8418,6 +8453,7 @@ module.exports = {
     waitForSearchIndexesReady,
     areSearchIndexesReady,
     searchFilesInDatabase,
+    findFilesByPromptTags,
     searchFilesWithBlocks,
     normalizeSearchBlocks,
     flattenSearchBlockTerms,

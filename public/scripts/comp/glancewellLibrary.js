@@ -57,14 +57,17 @@
     const GROUP_GAP = 12;
     const TOP_PAD = 4;
     const LEFT_PAD = 12;
-    const TOC_W = 142;
+    const TOC_W = 168; // the Visual Index's column (View > Table of Contents)
     const TOOLTIP_DELAY = 700;
 
     // the tree strip (BITMAP 205 / 1814): index -> icon
     const ICON = {
         all: 0, tags: 1, folders: 2, date: 3, recent: 4, ratings: 5, pictures: 6, videos: 7, newTag: 8, untagged: 9,
         tag: 10, folder: 11, folderPictures: 12, folderVideos: 13, folderUser: 14, disc: 16, computer: 17, year: 18,
-        month: 19, day: 20, star: 21, starOff: 22
+        month: 19, day: 20, star: 21, starOff: 22,
+        // DreamScape's root (Yukimi, Nov 21 2026: "select an icon that fits it better"): the strip's Pictures icon with a
+        // gold sparkle, in the strip's last slot (lib-tree-16 / -20.png)
+        dream: 23
     };
 
     const GROUPS = [
@@ -77,24 +80,50 @@
         ['favorite', 'Favorites'], ['caption', 'Caption'], ['name', 'File Name']
     ];
 
+    // Date Taken, newest first, grouped by Date Taken (Yukimi, Nov 21 2026); v2 moves older saved views onto it once
+    const PREFS_V = 2;
     const prefs = Object.assign({
-        view: 'thumbs', size: SIZE_DEFAULT, group: 'auto', groupDir: 'desc', sort: 'date', sortDir: 'asc', toc: false,
-        tooltips: true, expanded: { prints: true }, node: { root: 'prints', kind: 'all' }
+        view: 'thumbs', size: SIZE_DEFAULT, group: 'date', groupDir: 'desc', sort: 'date', sortDir: 'desc', toc: false,
+        tooltips: true, expanded: { prints: true }, node: { root: 'prints', kind: 'all' }, pos: {}, at: 0
     }, readPrefs());
+    if (!(prefs.v >= PREFS_V)) Object.assign(prefs, { v: PREFS_V, group: 'date', groupDir: 'desc', sort: 'date', sortDir: 'desc' });
+    if (!prefs.pos || typeof prefs.pos !== 'object') prefs.pos = {};
 
     function readPrefs() {
         try { return JSON.parse(root.localStorage.getItem(PREFS_KEY) || '{}') || {}; } catch (_) { return {}; }
     }
     let prefsTimer = 0;
+    let prefsPushTimer = 0;
+    /**
+     * The view (zoom, sort, group, folder, each folder's place) stays here at once and on the server a few seconds later,
+     * so it comes back on any client and after a cold boot; reopening never waits on the server (installed-boot-zero-wait).
+     */
     function savePrefs() {
+        prefs.at = Date.now();
         clearTimeout(prefsTimer);
         prefsTimer = setTimeout(() => { try { root.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (_) { /* full */ } }, 400);
+        clearTimeout(prefsPushTimer);
+        prefsPushTimer = setTimeout(() => { void send('glancewell_settings_set', { view: viewPrefs() }).catch(() => {}); }, 3000);
+    }
+    const VIEW_KEYS = ['v', 'view', 'size', 'group', 'groupDir', 'sort', 'sortDir', 'toc', 'expanded', 'node', 'pos', 'at'];
+    function viewPrefs() { const o = {}; VIEW_KEYS.forEach((k) => { if (prefs[k] !== undefined) o[k] = prefs[k]; }); return o; }
+    /** The server's view when it is newer than this client's (another client, or this one before its storage went). */
+    function adoptServerView(view) {
+        if (!view || typeof view !== 'object' || !(Number(view.at) > (prefs.at || 0))) return false;
+        VIEW_KEYS.forEach((k) => { if (k !== 'node' && view[k] !== undefined) prefs[k] = view[k]; });
+        if (!prefs.pos || typeof prefs.pos !== 'object') prefs.pos = {};
+        try { root.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (_) { /* full */ }
+        return true;
     }
 
     // ------------------------------------------------------------------ state
 
     const S = {
         built: false,
+        smartTags: [],        // Smart Tags (glancewell_smart_tags): [{ id, name, rule: { match, terms: [{ tag, neg }] } }]
+        smartFiles: new Map(), // smart tag id -> Set of print filenames, matched when the tag is shown
+        smartLoading: new Map(),
+        smartError: '',
         open: false,          // the window shows the gallery
         owns: false,          // the gallery opened the window (the viewer comes back here)
         shell: null,
@@ -252,7 +281,8 @@
     function scopeKeyOf(node) {
         if (node.root === 'prints') {
             const view = node.kind === 'favorites' ? 'pinned' : node.kind === 'scraps' ? 'scraps' : 'images';
-            const wsId = node.kind === 'workspace' ? node.value : SRC().get('prints').activeWorkspaceId();
+            // Workspaces and a Smart Tag look across every workspace
+            const wsId = node.kind === 'workspace' ? node.value : (node.kind === 'workspaces' || node.kind === 'smarttag') ? '*' : SRC().get('prints').activeWorkspaceId();
             return { key: `prints:${view}:${wsId}`, scope: { view, workspaceId: wsId } };
         }
         if (node.root === 'folders' && node.kind === 'folder') return { key: `folders:${node.value}`, scope: { folders: [{ path: node.value, name: node.label }] } };
@@ -282,6 +312,11 @@
             }
             case 'day': return items.filter((it) => dayText(takenOf(it)) === node.value);
             case 'reftype': return items.filter((it) => it.refType === node.value);
+            case 'smarttag': {
+                const set = S.smartFiles.get(Number(node.value));
+                if (!set) { void smartFilesFor(node.value); return []; }
+                return items.filter((it) => set.has(it.key));
+            }
             case 'album': return items.filter((it) => it.raw && `${it.raw.root}:${it.folder}` === node.value);
             case 'recent': return items.filter((it) => S.recent.has(it.key));
             case 'pictures': return items.filter((it) => !it.video);
@@ -296,6 +331,7 @@
     }
 
     async function showNode(node, { history = true } = {}) {
+        if (S.node && S.open && nodeKey(S.node) !== nodeKey(node)) rememberPlace();
         if (history && S.node && nodeKey(S.node) !== nodeKey(node)) { S.history.push(S.node); S.future = []; }
         S.node = node;
         prefs.node = node;
@@ -305,16 +341,66 @@
         S.anchor = null;
         renderTree();
         syncNav();
+        if (node.kind === 'smarttag') { S.smartFiles.delete(Number(node.value)); void smartFilesFor(node.value); }
         const { key, scope } = scopeKeyOf(node);
         const have = S.loaded.get(key);
         S.items = have ? have.items.slice() : [];
         refresh();
+        const restore = !have || !restorePlace();
         await loadScope(node.root, scope, key);
         if (nodeKey(S.node) !== nodeKey(node)) return;
         S.items = (S.loaded.get(key) || {}).items || [];
         renderTree();
         refresh();
+        if (restore) restorePlace();
     }
+
+    // ------------------------------------------------------------------ each folder's place (Yukimi, Nov 21 2026:
+    // "remember the zoom size and position in the gallery when you reopen it"): the picture at the top of the view and
+    // how far into its row, so the place holds through a zoom change or new pictures; written only when the gallery
+    // hides, opens the viewer or leaves the folder, never while scrolling
+    const PLACES_MAX = 40;
+    function rememberPlace() {
+        // the last layout drawn: the one the place was seen in (showing the gallery again clears S.layout first)
+        const L = S.lastLayout;
+        if (!S.node || !L || !S.shown.length || !S.groups.length || S.groups[0].bodyTop == null) return;
+        const top = S.seenTop || 0;
+        let at = null;
+        for (const g of S.groups) {
+            if (g.collapsed || !g.items.length || top >= g.bottom) continue;
+            const row = Math.max(0, Math.min(g.rows - 1, Math.floor((top - g.bodyTop) / L.m.ch)));
+            at = { id: g.items[row * L.cols].id, off: Math.round(top - (g.bodyTop + row * L.m.ch)) };
+            break;
+        }
+        const key = nodeKey(S.node);
+        const prev = prefs.pos[key];
+        if (prev && at && prev.id === at.id && prev.off === at.off) return;
+        delete prefs.pos[key];
+        if (at && top > 0) prefs.pos[key] = at;
+        const keys = Object.keys(prefs.pos);
+        if (keys.length > PLACES_MAX) keys.slice(0, keys.length - PLACES_MAX).forEach((k) => delete prefs.pos[k]);
+        savePrefs();
+    }
+    /** The folder's saved place, or its top; false while its pictures are not here yet. */
+    function restorePlace() {
+        if (!S.open || !S.node) return false;
+        const sc = S.el.scroller;
+        const at = prefs.pos[nodeKey(S.node)];
+        if (!at) { sc.scrollTop = 0; S.seenTop = S.placedTop = 0; return true; }
+        const L = S.layout || computeLayout();
+        for (const g of S.groups) {
+            const k = g.items.findIndex((it) => it.id === at.id);
+            if (k < 0) continue;
+            if (g.collapsed) return true;
+            sc.scrollTop = Math.max(0, g.bodyTop + Math.floor(k / L.cols) * L.m.ch + Math.max(0, Math.min(L.m.ch - 1, at.off || 0)));
+            S.seenTop = S.placedTop = sc.scrollTop;
+            queueRender();
+            return true;
+        }
+        return false;
+    }
+    /** The phone's camera album: MediaStore's "Camera" bucket (DCIM/Camera). */
+    const isCameraAlbum = (a) => !!a && (/^camera$/i.test(a.name || '') || /(^|\/)DCIM\/Camera\/?$/i.test(a.path || a.relativePath || ''));
     const nodeKey = (n) => `${n.root}|${n.kind}|${n.value == null ? '' : n.value}`;
 
     // ------------------------------------------------------------------ DOM
@@ -422,6 +508,14 @@
     async function onStoreChanged(d) {
         if (d.what === 'imports') { await loadRecent(); if (S.node.kind === 'recent') refresh(); return; }
         if (d.what === 'settings') { await loadSettings(); return; }
+        if (d.what === 'smarttags') {
+            await loadSmartTags();
+            S.smartFiles.clear();
+            if (S.node.kind === 'smarttag') void smartFilesFor(S.node.value);
+            renderTree();
+            refresh();
+            return;
+        }
         if (d.what === 'watched') { await loadWatched(); for (const k of S.loaded.keys()) if (k.startsWith('folders')) S.loaded.get(k).stale = true; renderTree(); return; }
         if (d.what === 'tags' || d.tags) await loadTags();
         if (d.what === 'meta') {
@@ -431,6 +525,113 @@
         renderTree();
         refresh();
         renderInfo();
+    }
+
+    // ------------------------------------------------------------------ Smart Tags (Yukimi, Nov 21 2026): prints found by
+    // the tags in their positive or negative prompts, matched on the server each time the smart tag is shown
+
+    async function loadSmartTags() {
+        try { S.smartTags = ((await send('glancewell_smart_tags', {})) || {}).smartTags || []; } catch (_) { S.smartTags = []; }
+        return S.smartTags;
+    }
+
+    function smartFilesFor(id) {
+        const n = Number(id);
+        if (S.smartFiles.has(n)) return Promise.resolve(S.smartFiles.get(n));
+        if (S.smartLoading.has(n)) return S.smartLoading.get(n);
+        S.smartError = '';
+        const p = send('glancewell_smart_tag_files', { id: n }).then((r) => {
+            const set = new Set((r && r.filenames) || []);
+            S.smartFiles.set(n, set);
+            return set;
+        }, (err) => { S.smartError = errorText(err); return null; }).finally(() => {
+            S.smartLoading.delete(n);
+            if (S.node && S.node.kind === 'smarttag' && Number(S.node.value) === n) refresh();
+        });
+        S.smartLoading.set(n, p);
+        return p;
+    }
+
+    /** The tag database's suggestions for what is typed (the autofill's own ranking, test_autofill_ranking). */
+    async function autofillSuggestions(query) {
+        const q = String(query || '').trim();
+        if (q.length < 2) return [];
+        let data = null;
+        try { data = await send('test_autofill_ranking', { query: q }); } catch (_) { return []; }
+        const d = data && (data.data || data);
+        const list = (d && (d.results || d.suggestions || d.items || d.tags)) || [];
+        return list.map((x) => (typeof x === 'string' ? { tag: x } : { tag: x.tag || x.name || x.text || '', count: Number(x.count || x.postCount || 0) || 0 }))
+            .filter((x) => x.tag).slice(0, 12);
+    }
+
+    /**
+     * Create Smart Tag / Edit Smart Tag: a name, the tags to look for (the autofill finds them in the tag database; each
+     * is in the prompt or the negative prompt, a negative one tinted red) and whether a print needs all or any of them.
+     * A Vista dialog of kit controls (Segoe dialog units).
+     */
+    async function editSmartTag(tag) {
+        const rule = tag && tag.rule ? JSON.parse(JSON.stringify(tag.rule)) : { match: 'all', terms: [] };
+        const html = kitText(7, 9, 30, 8, 'Name:') + kitEdit('wpg-smart-name', 40, 7, 213, tag ? tag.name : '', ' maxlength="200" data-autofocus')
+            + kitText(7, 26, 246, 8, 'Find DreamScape prints whose prompts have these tags.')
+            + kitEdit('wpg-smart-search', 7, 39, 192, '', ' aria-label="Search the tags"') + kitButton(203, 38, 50, 'Add', 'smart-add')
+            + kitCheck('radio', 'wpgSmartPos', 'wpgSmartLane', 'pos', 7, 55, 100, 'In the prompt', true)
+            + kitCheck('radio', 'wpgSmartNeg', 'wpgSmartLane', 'neg', 110, 55, 140, 'In the negative prompt', false, 'is-negative')
+            + `<div class="tbp-ctl wpg-smart-terms" data-dlu="7,69,246,58" role="list"></div>`
+            + kitText(7, 135, 60, 8, 'Show prints with:')
+            + kitCheck('radio', 'wpgSmartAll', 'wpgSmartMatch', 'all', 68, 134, 88, 'all of these tags', rule.match !== 'any')
+            + kitCheck('radio', 'wpgSmartAny', 'wpgSmartMatch', 'any', 160, 134, 88, 'any of these tags', rule.match === 'any')
+            + kitButton(149, 155, 50, 'OK', 'ok') + kitButton(203, 155, 50, 'Cancel', 'cancel');
+        const out = await kitDialog({
+            id: 'glancewellSmartTag',
+            title: tag && tag.id ? 'Edit Smart Tag' : 'Create Smart Tag',
+            cls: 'wpg-smart',
+            html,
+            ready: (c, { signal }) => {
+                const search = c.querySelector('.wpg-smart-search');
+                const termsEl = c.querySelector('.wpg-smart-terms');
+                const neg = () => c.querySelector('#wpgSmartNeg').checked;
+                const drawTerms = () => {
+                    termsEl.innerHTML = rule.terms.length
+                        ? rule.terms.map((t, i) => `<span class="wpg-smart-term${t.neg ? ' is-negative' : ''}" role="listitem">${esc(t.tag)}<span class="wpg-smart-x" data-i="${i}" title="Remove" aria-label="Remove ${esc(t.tag)}"></span></span>`).join('')
+                        : '<span class="wpg-smart-none">No tags yet: search for one above and click Add.</span>';
+                };
+                const add = (text) => {
+                    const t = String(text || '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+                    if (!t) return;
+                    if (!rule.terms.some((x) => x.tag === t && x.neg === neg())) rule.terms.push({ tag: t, neg: neg() });
+                    search.value = '';
+                    drawTerms();
+                    search.focus();
+                };
+                // the tag database's autofill, as Studio's prompt boxes rank it
+                attachSuggest(search, async (q) => (await autofillSuggestions(q)).map((x) => ({ text: x.tag, note: x.count ? x.count.toLocaleString() : '' })), (it) => add(it.text), signal);
+                search.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.defaultPrevented) { e.preventDefault(); add(search.value); } }, { signal });
+                c.querySelector('[data-action="smart-add"]').addEventListener('click', () => add(search.value), { signal });
+                termsEl.addEventListener('click', (e) => {
+                    const x = e.target.closest('.wpg-smart-x');
+                    if (!x) return;
+                    rule.terms.splice(Number(x.dataset.i), 1);
+                    drawTerms();
+                }, { signal });
+                drawTerms();
+                return {
+                    accept: () => {
+                        const name = c.querySelector('.wpg-smart-name').value.trim();
+                        if (!name) { void message('Type a name for the smart tag.', 'warning'); return false; }
+                        if (!rule.terms.length) { void message('Add at least one tag to look for.', 'warning'); return false; }
+                        return { name, rule: { match: c.querySelector('#wpgSmartAny').checked ? 'any' : 'all', terms: rule.terms } };
+                    }
+                };
+            }
+        });
+        if (!out) return;
+        try {
+            const r = await send('glancewell_smart_tag_edit', tag && tag.id ? { op: 'update', id: tag.id, name: out.name, rule: out.rule } : { op: 'create', name: out.name, rule: out.rule });
+            await loadSmartTags();
+            S.treeExpanded.add('prints:tags');
+            renderTree();
+            if (r && r.id) void showNode({ root: 'prints', kind: 'smarttag', value: r.id });
+        } catch (err) { await message(errorText(err), 'error'); }
     }
 
     // ------------------------------------------------------------------ tree
@@ -449,7 +650,16 @@
             add({ root: rootId, kind: 'tags' }, depth, 'Tags', ICON.tags, { key: k, expandable: true, expanded: exp(k), noSelect: false });
             if (!exp(k)) return;
             if (rootId !== 'refs') add({ root: rootId, kind: 'newtag' }, depth + 1, 'Create a New Tag', ICON.newTag, { italic: true, action: 'newtag' });
+            // DreamScape: Smart Tags, prints found by the tags in their prompts (Yukimi, Nov 21 2026)
+            if (rootId === 'prints') add({ root: rootId, kind: 'newsmart' }, depth + 1, 'Create a Smart Tag', ICON.newTag, { italic: true, action: 'newsmart' });
             add({ root: rootId, kind: 'untagged' }, depth + 1, 'Not Tagged', ICON.untagged);
+            if (rootId === 'prints') {
+                S.smartTags.forEach((t) => add({ root: rootId, kind: 'smarttag', value: t.id }, depth + 1, t.name, ICON.tag, {
+                    smartId: t.id,
+                    // a smart tag that only looks in negative prompts reads red, as its tags do in the dialog
+                    negative: t.rule.terms.length > 0 && t.rule.terms.every((x) => x.neg)
+                }));
+            }
             if (rootId === 'refs') {
                 const names = new Set();
                 ((S.loaded.get('refs') || {}).items || []).forEach((it) => (it.refTags || []).forEach((t) => names.add(t)));
@@ -502,25 +712,40 @@
         const pics = SRC().get('pictures');
         if (rootRow('pictures', 'Pictures', ICON.pictures)) {
             if (!pics.available()) add({ root: 'pictures', kind: 'none' }, 1, 'No pictures on this device', ICON.pictures, { disabled: true });
+            // Albums: every album on this phone (MediaStore's, as the phone's own gallery lists them; Yukimi Nov 21 2026);
+            // Camera Roll above it is the Camera album (DCIM/Camera), the phone's own pictures
+            const ak = 'pictures:albums';
+            if (pics.available() && !pics._albums && !pics._loading) {
+                pics._loading = true;
+                void pics.albums().then((a) => { pics._albums = a; pics._loading = false; renderTree(); }, () => { pics._albums = []; pics._loading = false; renderTree(); });
+            }
+            const cam = (pics._albums || []).find(isCameraAlbum);
+            if (cam) add({ root: 'pictures', kind: 'album', value: `${cam.root}:${cam.name}`, album: cam }, 1, 'Camera Roll', ICON.pictures);
+            add({ root: 'pictures', kind: 'albums' }, 1, 'Albums', ICON.folders, { key: ak, expandable: true, expanded: exp(ak) });
+            if (exp(ak)) {
+                (pics._albums || []).forEach((a) => add({ root: 'pictures', kind: 'album', value: `${a.root}:${a.name}`, album: a }, 2, a.name, ICON.folderPictures));
+                if (pics._albums && !pics._albums.length) add({ root: 'pictures', kind: 'none' }, 2, 'No albums', ICON.folder, { disabled: true });
+            }
             add({ root: 'pictures', kind: 'favorites' }, 1, 'Favorites', ICON.star);
             tagRows('pictures', 1);
             dateRows('pictures', 1);
         }
-        // DreamScape Prints
-        if (rootRow('prints', 'DreamScape Prints', ICON.all)) {
+        // DreamScape (was "DreamScape Prints", Yukimi Nov 21 2026): its prints, References (was a root of its own) above
+        // Workspaces, and Workspaces itself shows every workspace's prints, each marked with its workspace's colour
+        if (rootRow('prints', 'DreamScape', ICON.dream)) {
             add({ root: 'prints', kind: 'favorites' }, 1, 'Favorites', ICON.star);
             add({ root: 'prints', kind: 'scraps' }, 1, 'Scraps', ICON.starOff);
             tagRows('prints', 1);
             dateRows('prints', 1);
+            add({ root: 'refs', kind: 'all' }, 1, 'References', ICON.folderPictures, { key: 'refs', expandable: true, expanded: exp('refs') });
+            if (exp('refs')) {
+                SRC().get('refs').types.forEach((t) => add({ root: 'refs', kind: 'reftype', value: t.id }, 2, t.name, ICON.pictures));
+                tagRows('refs', 2);
+                dateRows('refs', 2);
+            }
             const wk = 'prints:workspaces';
             add({ root: 'prints', kind: 'workspaces' }, 1, 'Workspaces', ICON.folders, { key: wk, expandable: true, expanded: exp(wk) });
             if (exp(wk)) SRC().get('prints').workspaces().forEach((w) => add({ root: 'prints', kind: 'workspace', value: w.id }, 2, w.name, ICON.folderPictures));
-        }
-        // DreamScape References
-        if (rootRow('refs', 'DreamScape References', ICON.folderPictures)) {
-            SRC().get('refs').types.forEach((t) => add({ root: 'refs', kind: 'reftype', value: t.id }, 1, t.name, ICON.pictures));
-            tagRows('refs', 1);
-            dateRows('refs', 1);
         }
         // Folders: the watched VFS folders, and the last import (Recently Imported)
         if (rootRow('folders', 'Folders', ICON.folders)) {
@@ -569,8 +794,15 @@
             const tw = h('span', 'wpg-lib-twisty');
             if (r.expandable) tw.classList.add(r.expanded ? 'is-open' : 'is-closed');
             const ic = h('span', 'wpg-lib-node-icon');
-            if (r.node.root.startsWith('device:') && r.depth === 0) ic.classList.add('is-device');
+            if (r.node.root.startsWith('device:') && r.depth === 0) {
+                // the device as Explorer and Mobile Device Center show it: a modern phone or a Fold
+                ic.classList.add('is-device');
+                const file = root.activeSync && typeof root.activeSync.deviceIcon === 'function' ? root.activeSync.deviceIcon(r.node.root.slice(7), 16) : '';
+                if (/fold/.test(file)) ic.classList.add('is-fold'); else if (/phone/.test(file)) ic.classList.add('is-phone');
+            }
+            else if (r.smartId) ic.classList.add('is-smart');
             else ic.style.setProperty('--i', String(r.icon));
+            if (r.negative) row.classList.add('is-negative');
             const lb = h('span', 'wpg-lib-node-label', r.label);
             row.append(tw, ic, lb);
             frag.appendChild(row);
@@ -595,8 +827,9 @@
         if (!r || r.disabled) return;
         if (e.target.closest('.wpg-lib-twisty')) { toggleTree(r); return; }
         if (r.action === 'newtag') { void createTagInline(r.node.root); return; }
+        if (r.action === 'newsmart') { void editSmartTag(null); return; }
         if (r.action === 'addfolder') { addFolderToGallery(); return; }
-        if (['tags', 'dates', 'workspaces'].includes(r.node.kind)) { toggleTree(r); return; }
+        if (['tags', 'dates', 'albums'].includes(r.node.kind)) { toggleTree(r); return; }
         void showNode(r.node.kind === 'folder' ? Object.assign({}, r.node) : r.node);
     }
     function onTreeDblClick(e) {
@@ -745,8 +978,11 @@
         if (r.expandable) items.push(r.expanded ? { text: 'Collapse', action: 'gwt-toggle' } : { text: 'Expand', action: 'gwt-toggle' });
         if (r.tagId) {
             items.push({ text: 'Create Tag', action: 'gwt-subtag' }, { separator: true }, { text: 'Rename', action: 'gwt-rename' }, { text: 'Delete', action: 'gwt-delete' });
+        } else if (r.smartId) {
+            items.push({ text: 'Edit Smart Tag...', action: 'gwt-smartedit' }, { separator: true }, { text: 'Delete', action: 'gwt-smartdelete' });
         } else if (r.node.kind === 'tags' && r.node.root !== 'refs') {
             items.push({ text: 'Create Tag', action: 'gwt-newtag' });
+            if (r.node.root === 'prints') items.push({ text: 'Create Smart Tag...', action: 'gwt-newsmart' });
         } else if (r.node.root === 'folders' && (r.node.kind === 'all' || r.node.kind === 'folder')) {
             items.push({ text: 'Add Folder to Gallery...', action: 'gwt-addfolder' });
             if (r.watched) items.push({ separator: true }, { text: 'Remove from Gallery', action: 'gwt-removefolder' });
@@ -761,6 +997,15 @@
         else if (action === 'gwt-rename') void renameTagInline(r);
         else if (action === 'gwt-delete') void deleteTag(r);
         else if (action === 'gwt-newtag') void createTagInline(r.node.root);
+        else if (action === 'gwt-newsmart') void editSmartTag(null);
+        else if (action === 'gwt-smartedit') void editSmartTag(S.smartTags.find((t) => t.id === r.smartId) || null);
+        else if (action === 'gwt-smartdelete') {
+            const t = S.smartTags.find((x) => x.id === r.smartId);
+            if (t && await confirmBox(`Are you sure you want to delete the smart tag "${t.name}"? The pictures are not changed.`, 'Delete Smart Tag')) {
+                try { await send('glancewell_smart_tag_edit', { op: 'delete', id: t.id }); } catch (err) { await message(errorText(err), 'error'); }
+                if (S.node.kind === 'smarttag' && Number(S.node.value) === t.id) void showNode({ root: 'prints', kind: 'all' });
+            }
+        }
         else if (action === 'gwt-subtag') {
             try { await send('glancewell_tag_edit', { op: 'create', name: 'New Tag', parentId: r.tagId }); } catch (err) { await message(errorText(err), 'error'); }
             S.treeExpanded.add(r.key);
@@ -937,6 +1182,7 @@
             g.bottom = y;
         });
         S.layout = { m, left, cols, height: y + 8, showHeaders };
+        S.lastLayout = S.layout;
         S.el.canvas.style.height = `${S.layout.height}px`;
         S.el.toc.hidden = !prefs.toc;
         S.el.lib.classList.toggle('has-toc', !!prefs.toc);
@@ -950,6 +1196,7 @@
         const have = S.loaded.get(scopeKeyOf(S.node).key);
         if (have && have.promise && !have.items.length) return '';
         if (have && have.error) return have.error;
+        if (S.node.kind === 'smarttag' && !S.smartFiles.has(Number(S.node.value))) return S.smartError || 'Searching the prompts...';
         if (S.search) return 'No items match your search.';
         if (S.node.root === 'folders' && !S.watched.length) return 'There are no pictures or videos in Photo Gallery.\nTo get started, click the File menu, and then click Add Folder to Gallery.';
         return 'There are no pictures or videos in this view.';
@@ -965,6 +1212,7 @@
         if (!S.open || !S.built) return;
         const L = S.layout || computeLayout();
         const sc = S.el.scroller;
+        S.seenTop = sc.scrollTop;
         const top = sc.scrollTop - 200;
         const bottom = sc.scrollTop + sc.clientHeight + 200;
         const nodes = [];
@@ -1001,7 +1249,9 @@
 
     const cellCache = new Map(); // id|view|size -> element (reused while it stays in view)
     function cellFor(it, x, y, m) {
-        const k = `${it.id}|${prefs.view}|${m.box}|${it.rev || 0}`;
+        // the workspace's glass square in the corner, where prints of every workspace show together (Workspaces)
+        const badge = it.source === 'prints' && S.node && S.node.root === 'prints' && (S.node.kind === 'workspaces' || S.node.kind === 'smarttag') ? (it.workspaceId || '') : '';
+        const k = `${it.id}|${prefs.view}|${m.box}|${it.rev || 0}|${badge}`;
         let cell = cellCache.get(k);
         if (!cell) {
             cell = h('div', 'wpg-lib-cell');
@@ -1018,8 +1268,16 @@
             // no address (a video nothing has a frame of): the empty frame, not a request for the page itself
             const src = thumbOf(it, m.box * (root.devicePixelRatio || 1));
             if (src) img.src = src; else cell.classList.add('is-broken');
-            fr.appendChild(img);
             if (it.video) fr.classList.add('is-video');
+            if (badge) {
+                // on the picture's own corner: the square rides in a box that hugs the picture
+                const pic = h('span', 'wpg-lib-pic');
+                const b = h('span', 'wpg-lib-ws');
+                b.style.setProperty('--ws', workspaceColor(badge));
+                b.title = SRC().get('prints').workspaces().find((w) => w.id === badge)?.name || badge;
+                pic.append(img, b);
+                fr.appendChild(pic);
+            } else fr.appendChild(img);
             cell.appendChild(fr);
             if (prefs.view !== 'thumbs') cell.appendChild(h('div', 'wpg-lib-text'));
             if (cellCache.size > 1500) cellCache.clear();
@@ -1043,26 +1301,91 @@
         return cell;
     }
 
-    /** Table of Contents: the groups down the left, the band over the ones in view. */
+    /** A workspace's own colour (its settings), else one of a few distinct hues by its id. */
+    function workspaceColor(id) {
+        /* global workspaces */
+        const w = typeof workspaces !== 'undefined' && workspaces ? workspaces[id] : null;
+        if (w && w.color) return w.color;
+        let hsh = 0;
+        for (const ch of String(id)) hsh = (hsh * 31 + ch.charCodeAt(0)) >>> 0;
+        return `hsl(${hsh % 360}, 70%, 50%)`;
+    }
+
+    /**
+     * Table of Contents, as the Workspaces app's Visual Index (Yukimi, Nov 21 2026: "we use that for Visual Index"): a
+     * column of cards down the left, one per group of the view (the gallery's own groups; with one group, the runs of
+     * pictures taken close together), each its first picture, its name and its count. The card over what is in view
+     * is lit and kept in sight; a click goes there. The cards are built when the groups change; scrolling only moves
+     * the light.
+     */
+    const TOC_GAP_MS = 2 * 3600 * 1000;
+    function tocEntries() {
+        if (S.groups.length > 1) return S.groups.map((g) => ({ key: `g:${g.key}`, label: g.label || 'Untitled', items: g.items, group: g }));
+        // one group: the pictures in the order shown, cut where two hours pass between them (or every 300)
+        const list = S.shown;
+        const out = [];
+        let cur = null;
+        list.forEach((it, i) => {
+            const t = takenOf(it) || 0;
+            if (!cur || cur.items.length >= 300 || (t && cur.last && Math.abs(cur.last - t) > TOC_GAP_MS)) { cur = { key: `s:${i}`, items: [], first: t, last: t }; out.push(cur); }
+            cur.items.push(it);
+            if (t) cur.last = t;
+        });
+        out.forEach((e) => { e.label = e.first ? dateText(e.first) : 'Pictures'; });
+        return out;
+    }
     function drawToc() {
         const L = S.layout;
         const sc = S.el.scroller;
-        const total = Math.max(1, L.height);
-        const avail = Math.max(60, sc.clientHeight - 24);
+        const toc = S.el.toc;
+        const key = `${S.groups.map((g) => `${g.key}:${g.items.length}`).join('|')}|${S.shown.length}`;
+        if (S.tocKey !== key) {
+            S.tocKey = key;
+            S.toc = tocEntries();
+            toc.innerHTML = S.toc.map((e, i) => {
+                const first = e.items[0];
+                const src = first ? thumbOf(first, 96 * (root.devicePixelRatio || 1)) : '';
+                return `<button type="button" class="wpg-lib-toc-card" data-toc="${i}"><span class="wpg-lib-toc-pic">${src ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async" draggable="false">` : ''}</span><span class="wpg-lib-toc-lines"><span class="wpg-lib-toc-label">${esc(e.label)}</span><span class="wpg-lib-toc-count">${esc(countText(e.items.length))}</span></span></button>`;
+            }).join('');
+        }
         const top = sc.scrollTop;
-        const parts = S.groups.map((g) => {
-            const visible = g.bottom > top && g.top < top + sc.clientHeight;
-            const ticks = Math.min(12, Math.max(1, Math.round(g.items.length / Math.max(1, S.shown.length) * 30)));
-            return `<button type="button" class="wpg-lib-toc-row${visible ? ' is-visible' : ''}" data-group="${esc(g.key)}"><span class="wpg-lib-toc-label">${esc(g.label)}</span><span class="wpg-lib-toc-ticks" style="--n:${ticks}"></span></button>`;
-        }).join('');
-        S.el.toc.style.cssText = `top:${top}px;height:${Math.min(avail, total)}px`;
-        S.el.toc.innerHTML = `<div class="wpg-lib-toc-up"></div>${parts}`;
+        toc.style.cssText = `top:${top}px;height:${Math.max(60, sc.clientHeight)}px`;
+        // the card for what is in view: the first group (or run) whose pictures reach past the top of the view
+        let at = 0;
+        (S.toc || []).forEach((e, i) => {
+            const g = e.group;
+            const y = g ? g.top : posOf(e.items[0]);
+            if (y != null && y <= top + 4) at = i;
+        });
+        if (S.tocAt !== at || !toc.querySelector('.is-visible')) {
+            S.tocAt = at;
+            const was = toc.querySelector('.wpg-lib-toc-card.is-visible');
+            if (was) was.classList.remove('is-visible');
+            const card = toc.querySelector(`[data-toc="${at}"]`);
+            if (card) {
+                card.classList.add('is-visible');
+                if (card.offsetTop < toc.scrollTop || card.offsetTop + card.offsetHeight > toc.scrollTop + toc.clientHeight) toc.scrollTop = card.offsetTop - Math.round(toc.clientHeight / 3);
+            }
+        }
+        void L;
+    }
+    /** Where a picture's row starts in the view (px), or null. */
+    function posOf(it) {
+        const L = S.layout;
+        if (!it || !L) return null;
+        for (const g of S.groups) {
+            const k = g.items.indexOf(it);
+            if (k >= 0) return g.bodyTop + Math.floor(k / L.cols) * L.m.ch;
+        }
+        return null;
     }
     function onTocClick(e) {
-        const row = e.target.closest('.wpg-lib-toc-row');
-        if (!row) return;
-        const g = S.groups.find((x) => x.key === row.dataset.group);
-        if (g) S.el.scroller.scrollTop = g.top;
+        const card = e.target.closest('.wpg-lib-toc-card');
+        if (!card) return;
+        const entry = (S.toc || [])[Number(card.dataset.toc)];
+        if (!entry) return;
+        const y = entry.group ? entry.group.top : posOf(entry.items[0]);
+        if (y != null) S.el.scroller.scrollTop = Math.max(0, y - (entry.group ? 0 : HEADER_H));
     }
 
     function renderStatus() {
@@ -1164,14 +1487,15 @@
         }
     }
 
-    function scrollIntoView(id) {
-        const L = S.layout || computeLayout();
+    function scrollIntoView(id, centre) {
+        let L = S.layout || computeLayout();
         for (const g of S.groups) {
             const k = g.items.findIndex((it) => it.id === id);
             if (k < 0) continue;
-            if (g.collapsed) { S.collapsed.delete(g.key); S.layout = null; computeLayout(); }
+            if (g.collapsed) { S.collapsed.delete(g.key); S.layout = null; L = computeLayout(); }
             const y = g.bodyTop + Math.floor(k / L.cols) * L.m.ch;
             const sc = S.el.scroller;
+            if (centre) { sc.scrollTop = Math.max(0, y - Math.round((sc.clientHeight - L.m.ch) / 2)); queueRender(); return; }
             if (y < sc.scrollTop) sc.scrollTop = y - HEADER_H;
             else if (y + L.m.ch > sc.scrollTop + sc.clientHeight) sc.scrollTop = y + L.m.ch - sc.clientHeight + 6;
             queueRender();
@@ -1286,11 +1610,14 @@
         const btn = pane && pane.querySelector('.wpg-lib-i-addtag');
         if (!btn) return;
         const input = h('input', 'wpg-lib-i-tagedit');
-        input.setAttribute('list', 'wpgLibTagNames');
-        let dl = doc.getElementById('wpgLibTagNames');
-        if (!dl) { dl = h('datalist'); dl.id = 'wpgLibTagNames'; doc.body.appendChild(dl); }
-        dl.innerHTML = S.tags.map((t) => `<option value="${esc(t.name)}">`).join('');
+        input.type = 'text';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
         btn.after(input);
+        // the gallery's tags as a Vista list under the box (never the browser's datalist)
+        const ac = new AbortController();
+        attachSuggest(input, tagSuggestions, (it) => { input.value = ''; void addTag(items, it.text); input.focus(); }, ac.signal);
+        new MutationObserver((_, mo) => { if (!input.isConnected) { ac.abort(); mo.disconnect(); } }).observe(input.parentNode, { childList: true });
         input.focus();
         input.addEventListener('keydown', async (e) => {
             e.stopPropagation();
@@ -1391,7 +1718,7 @@
             savePrefs();
             cellCache.clear();
             refresh();
-        } else if (action === 'gwl-toc') { prefs.toc = !prefs.toc; savePrefs(); S.layout = null; queueRender(); }
+        } else if (action === 'gwl-toc') { prefs.toc = !prefs.toc; S.tocKey = ''; savePrefs(); S.layout = null; queueRender(); }
         else if (action === 'gwl-refresh') {
             const { key } = scopeKeyOf(S.node);
             if (S.loaded.has(key)) S.loaded.get(key).stale = true;
@@ -1425,30 +1752,148 @@
             { text: 'Change Time Taken...', action: 'gwi-time' },
             { separator: true },
             { text: 'Copy', action: 'gwi-copy', disabled: !one },
+            // prints too: the gallery's own Delete (to Scraps; a scrap goes for good), no Incinerate row (Yukimi, Nov 21 2026)
             { text: 'Delete', action: 'gwi-delete' },
             { text: 'Rename...', action: 'gwi-rename', disabled: !(one && canRename(it)) },
             { text: 'Properties', action: 'gwi-properties', disabled: !one }
         ];
-        // Dreamscape's own actions on a print (Yukimi, Nov 20 2026: the rest go to the right-click menu)
-        if (print && one) {
-            list.push({ separator: true },
-                { text: it.pinned ? 'Remove from Favorites' : 'Add to Favorites', action: 'gwi-pin' },
-                { text: 'Add to Desktop', action: 'gw-desktop' },
-                { text: 'New Reference', action: 'gw-reference' },
-                { text: 'Open in DreamStudio', action: 'gw-studio' },
-                { text: 'Edit in Paint', action: 'gw-paint' },
-                { text: 'Open in Lumen', action: 'gw-lumen' },
-                { text: 'Create Persona', action: 'gw-persona' });
+        // Every management action of the Workspaces app on prints (Yukimi, Nov 21 2026: "all options should be there so
+        // you don't have to use the Workspaces app"): one print or many, in any workspace
+        if (print && items.every((x) => x.source === 'prints')) {
+            list.push({ separator: true }, ...printMenuItems(items, it));
         } else if (!print && it && it.source !== 'refs' && one) {
             list.push({ separator: true }, { text: isFavorite(it) ? 'Remove from Favorites' : 'Add to Favorites', action: 'gwi-fav' });
         }
         return [{ type: 'list', items: list }];
     }
 
+    // ------------------------------------------------------------------ prints: the Workspaces app's actions
+
+    /** The print rows: Favorites, Move To, Scrap / Unscrap (and To), the editors, print tools, sharing, Delete. */
+    function printMenuItems(items, it) {
+        const one = items.length === 1;
+        const scraps = items.every((x) => x.scrap);
+        const anyScrap = items.some((x) => x.scrap);
+        const pinnedAll = items.every((x) => x.pinned);
+        const meta = (it && it.raw && it.raw.metadata) || {};
+        const wsRows = (prefix) => SRC().get('prints').workspaces().map((w) => ({ text: w.name, action: `${prefix}:${w.id}`, disabled: items.every((x) => x.workspaceId === w.id && prefix === 'gwp-move') }));
+        const f = (name) => typeof root[name] === 'function';
+        return [
+            { text: 'Open in Window', action: 'gwp-window', disabled: !one || !f('openGalleryImageInViewer') },
+            { text: pinnedAll ? 'Remove from Favorites' : 'Add to Favorites', action: 'gwp-pin', disabled: anyScrap },
+            { separator: true },
+            { text: 'Move To', submenu: wsRows('gwp-move'), disabled: anyScrap },
+            scraps ? { text: 'Unscrap', action: 'gwp-unscrap' } : { text: 'Scrap', action: 'gwp-scrap', disabled: anyScrap },
+            scraps ? { text: 'Unscrap To', submenu: wsRows('gwp-unscrapto') } : { text: 'Scrap To', submenu: wsRows('gwp-scrapto'), disabled: anyScrap },
+            { separator: true },
+            { text: 'Edit in DreamStudio', action: 'gwp-studio', disabled: !one },
+            { text: 'Edit in Paint', action: 'gwp-paint', disabled: !one },
+            { text: 'Use as Comparison Source', action: 'gwp-compare', disabled: !one || !f('setCompareSourceFromGalleryImage') },
+            { text: 'Print', submenu: [
+                { text: 'Recast Spell', action: 'gwp-reroll', disabled: !one },
+                { text: 'Enhance...', action: 'gwp-enhance', disabled: !one },
+                { text: 'Upscale', action: 'gwp-upscale', disabled: !one || !!(meta.upscaled || (it && it.raw && it.raw.upscaled)) },
+                { text: 'Expand Canvas...', action: 'gwp-expand', disabled: !one },
+                { text: 'Create Animation', action: 'gwp-animate', disabled: !one }
+            ] },
+            { separator: true },
+            { text: 'Create Chat', action: 'gwp-chat', disabled: !one },
+            { text: 'Copy Lookback', action: 'gwp-lookback', disabled: !one || !f('copyLookbackImage') },
+            { text: 'Ask Wren', action: 'gwp-wren', disabled: !one || !f('askWrenAboutImage') },
+            { separator: true },
+            { text: 'New Reference', action: 'gwp-reference', disabled: !one },
+            { text: 'Create Vibe Encoding', action: 'gwp-vibe', disabled: !one || !f('createVibeEncodingFromImage') },
+            { text: 'Add to Desktop', action: 'gwp-desktop', disabled: !one },
+            { text: 'Publish to Explorer...', action: 'gwp-publish', disabled: !one || !f('openPublishToExplorerDialog') },
+            { text: 'Save a Copy', action: 'gwp-download' },
+            { text: 'Share to Sequenzia', action: 'gwp-sequenzia', disabled: anyScrap }
+        ];
+    }
+
+    /** The print's own record (the gallery's, else built from what the library has) for the Workspaces app's calls. */
+    async function runPrintAction(action, items, it, event) {
+        const g = (name) => (typeof root[name] === 'function' ? root[name] : null);
+        const rec = it ? printRecord(it) : null;
+        const names = items.map((x) => x.key);
+        const c = root.wsClient;
+        const bySource = new Map();
+        items.forEach((x) => { const w = x.workspaceId || 'default'; if (!bySource.has(w)) bySource.set(w, []); bySource.get(w).push(x.key); });
+        const after = () => { S.loaded.forEach((e, k) => { if (/^prints:/.test(k)) e.stale = true; }); void showNode(S.node, { history: false }); };
+        const [verb, arg] = action.split(':');
+        try {
+            switch (verb) {
+                case 'gwp-window': if (g('openGalleryImageInViewer')) g('openGalleryImageInViewer')(rec); return;
+                case 'gwp-pin': {
+                    const want = !items.every((x) => x.pinned);
+                    for (const x of items) if (!!x.pinned !== want && g('togglePinImage')) { await g('togglePinImage')(printRecord(x), null); x.pinned = want; }
+                    refresh();
+                    return;
+                }
+                case 'gwp-move':
+                    for (const [src, list] of bySource) if (src !== arg) await c.moveFilesToWorkspace(list, arg, src, 'files');
+                    after();
+                    return;
+                case 'gwp-scrap':
+                    for (const x of items) if (g('moveToScraps')) await g('moveToScraps')(printRecord(x));
+                    after();
+                    return;
+                case 'gwp-scrapto':
+                    await c.addScrapBulk(arg, names);
+                    after();
+                    return;
+                case 'gwp-unscrap':
+                    for (const [src, list] of bySource) await c.removeScrapBulk(src, list);
+                    after();
+                    return;
+                case 'gwp-unscrapto':
+                    for (const [src, list] of bySource) {
+                        await c.removeScrapBulk(src, list);
+                        if (src !== arg) await c.moveFilesToWorkspace(list, arg, src, 'files');
+                    }
+                    after();
+                    return;
+                case 'gwp-studio':
+                    if (g('openManualModalWithContent')) g('openManualModalWithContent')({ type: 'image', image: rec, metadata: rec.metadata || null }, event);
+                    return;
+                case 'gwp-paint': if (g('editGalleryImageInPaint')) await g('editGalleryImageInPaint')(rec); return;
+                case 'gwp-compare': g('setCompareSourceFromGalleryImage')(rec); return;
+                case 'gwp-reroll': if (g('rerollImage')) g('rerollImage')(rec, event); return;
+                case 'gwp-enhance': if (g('openEnhanceFromImage')) g('openEnhanceFromImage')(rec); return;
+                case 'gwp-upscale': if (g('upscaleImage')) g('upscaleImage')(rec, event); return;
+                case 'gwp-expand': if (g('expandCanvasFromGallery')) g('expandCanvasFromGallery')(rec); return;
+                case 'gwp-animate': if (g('animateImage')) g('animateImage')(rec, event); return;
+                case 'gwp-chat':
+                    if (root.featureLoader) await root.featureLoader.loadFeature('chat');
+                    if (root.chatSystem) root.chatSystem.openChatModal(it.key, rec.characterName || null);
+                    return;
+                case 'gwp-lookback': g('copyLookbackImage')(it.key); return;
+                case 'gwp-wren': g('askWrenAboutImage')(it.key); return;
+                case 'gwp-reference': if (g('createReferenceFromImage')) g('createReferenceFromImage')(rec); return;
+                case 'gwp-vibe': g('createVibeEncodingFromImage')(rec); return;
+                case 'gwp-desktop': if (g('createDesktopShortcutFromImage')) await g('createDesktopShortcutFromImage')(rec); return;
+                case 'gwp-publish': g('openPublishToExplorerDialog')(rec); return;
+                case 'gwp-download':
+                    if (g('galleryDownloadImages')) await g('galleryDownloadImages')(items.map(printRecord), { name: 'DreamScape', path: '/Workspaces' });
+                    else if (g('downloadImage')) items.forEach((x) => g('downloadImage')(printRecord(x)));
+                    return;
+                case 'gwp-sequenzia': {
+                    if (!await confirmBox(`Send ${items.length === 1 ? 'this picture' : `these ${items.length} pictures`} to Sequenzia? They move there and leave DreamScape.`, 'Share to Sequenzia')) return;
+                    await c.sendToSequenziaBulk(names);
+                    after();
+                    return;
+                }
+                default: return;
+            }
+        } catch (err) {
+            await message((err && err.message) || 'That did not work.', 'error');
+        }
+    }
+
     async function onItemMenu(action, target, item, event) {
         const items = selectedItems();
         const it = S.focus ? itemsById.get(S.focus) : items[0];
         if (!it) return;
+        if (/^gwp-/.test(action)) { await runPrintAction(action, items, it, event); return; }
         switch (action) {
             case 'gwi-preview': openViewer(it.id); break;
             case 'gwi-tags': openAddTags(items); break;
@@ -1648,23 +2093,38 @@
         try { await send('glancewell_meta_set', { items: items.map(ref), change: { takenShiftHours: hours } }); } catch (err) { await message(errorText(err), 'error'); }
     }
 
+    /** Change Time Taken (WPG dialog 1472): "Change by" hours in Vista's up-down, the new and current time. */
     function promptHours(cur) {
-        const html = `<div class="wpg-lib-time"><p>Change the time stamp for selected pictures and videos.</p><p class="wpg-lib-time-row"><span>Change by:</span><span><input type="number" min="-24" max="24" step="1" value="0" class="wpg-lib-time-h" data-autofocus> hours</span></p><p class="wpg-lib-time-row"><span>New Time:</span><span class="wpg-lib-time-new">${esc(dateText(cur))}</span></p><p class="wpg-lib-time-row"><span>Current Time:</span><span>${esc(dateText(cur))}</span></p></div>`;
-        return dialog(html, [{ text: 'OK', value: 'ok' }, { text: 'Cancel', value: null }], {
+        const html = kitText(7, 7, 200, 8, 'Change the time stamp for selected pictures and videos.')
+            + kitText(7, 25, 50, 8, 'Change by:', 'wpg-time-label')
+            + `<div class="tbp-ctl tbp-spinedit wpg-time-spin" data-dlu="60,23,36,12"><input type="text" class="tbp-edit wpg-time-h" inputmode="numeric" maxlength="3" value="0" aria-label="Change by, in hours" data-autofocus><span class="tbp-spin tbp-spin-up" data-step="1" aria-hidden="true"></span><span class="tbp-spin tbp-spin-down" data-step="-1" aria-hidden="true"></span></div>`
+            + kitText(100, 25, 40, 8, 'hours')
+            + kitText(7, 42, 50, 8, 'New Time:', 'wpg-time-label') + kitText(60, 42, 147, 8, esc(dateText(cur)), 'wpg-time-new')
+            + kitText(7, 56, 50, 8, 'Current Time:', 'wpg-time-label') + kitText(60, 56, 147, 8, esc(dateText(cur)))
+            + kitButton(103, 76, 50, 'OK', 'ok') + kitButton(157, 76, 50, 'Cancel', 'cancel');
+        return kitDialog({
+            id: 'glancewellTimeTaken',
             title: 'Change Time Taken',
-            icon: 'fas fa-clock',
-            onDialogReady: (dlg) => {
-                const inp = dlg.querySelector('.wpg-lib-time-h');
-                if (!inp) return;
-                inp.addEventListener('input', () => { dlg.querySelector('.wpg-lib-time-new').textContent = dateText(cur + (Number(inp.value) || 0) * 3600000); });
-                inp.focus();
-                inp.select();
-            },
-            resolveValue: (value, dlg) => {
-                if (value !== 'ok') return null;
-                const n = Number(dlg.querySelector('.wpg-lib-time-h').value);
-                // WPG 974
-                return Number.isInteger(n) && n >= -24 && n <= 24 ? n : null;
+            cls: 'wpg-time',
+            html,
+            ready: (c, { signal }) => {
+                const inp = c.querySelector('.wpg-time-h');
+                const read = () => { const n = Number(String(inp.value).trim()); return Number.isInteger(n) ? n : NaN; };
+                const show = () => { const n = read(); c.querySelector('.wpg-time-new').textContent = dateText(cur + (Number.isFinite(n) ? n : 0) * 3600000); };
+                const step = (d) => { const n = read(); inp.value = String(Math.max(-24, Math.min(24, (Number.isFinite(n) ? n : 0) + d))); show(); };
+                inp.addEventListener('input', show, { signal });
+                inp.addEventListener('keydown', (e) => {
+                    if (e.key === 'ArrowUp') { e.preventDefault(); step(1); } else if (e.key === 'ArrowDown') { e.preventDefault(); step(-1); }
+                }, { signal });
+                c.querySelectorAll('.tbp-spin').forEach((b) => b.addEventListener('mousedown', (e) => { e.preventDefault(); step(Number(b.dataset.step)); inp.focus(); }, { signal }));
+                return {
+                    accept: () => {
+                        const n = read();
+                        // WPG 974
+                        if (!(Number.isInteger(n) && n >= -24 && n <= 24)) { void message('Please enter a value between -24 and +24.', 'warning'); return false; }
+                        return n;
+                    }
+                };
             }
         });
     }
@@ -1714,6 +2174,7 @@
 
     function enterViewer() {
         if (!S.built) return;
+        if (S.open) rememberPlace();
         S.open = false;
         S.el.lib.hidden = true;
         S.shell.classList.remove('wpg-mode-library');
@@ -1792,12 +2253,45 @@
     }
 
     /** The File menu in the gallery (WPG MENU 14018 &File). */
+    /** This phone's Pictures and every connected phone: the sources whose gallery favourites can come in. */
+    function phoneSources() {
+        const out = [];
+        const pics = SRC().get('pictures');
+        if (pics && pics.available() && typeof pics.galleryFavorites === 'function') out.push(pics);
+        SRC().devices().forEach((d) => { if (d && typeof d.galleryFavorites === 'function') out.push(d); });
+        return out;
+    }
+
+    /**
+     * Import Favorites from Samsung Gallery (Yukimi, Nov 21 2026): every picture and video the phone's gallery has a heart
+     * on becomes a Favorite here (Pictures > Favorites, or the phone's own Favorites). Nothing is removed.
+     */
+    async function importPhoneFavorites() {
+        const sources = phoneSources();
+        let total = 0;
+        const errors = [];
+        for (const src of sources) {
+            let list = [];
+            try { list = await src.galleryFavorites(); } catch (err) { errors.push(`${src.label || 'Phone'}: ${errorText(err)}`); continue; }
+            for (let i = 0; i < list.length; i += 4000) {
+                try { await send('glancewell_meta_set', { items: list.slice(i, i + 4000), change: { favorite: true } }); } catch (err) { errors.push(errorText(err)); break; }
+            }
+            total += list.length;
+            await loadIndex(src.id).catch(() => null);
+        }
+        renderTree();
+        refresh();
+        const done = total ? `${total.toLocaleString()} ${total === 1 ? 'favorite was' : 'favorites were'} imported from Samsung Gallery.` : 'Samsung Gallery has no favorites to import.';
+        await message(errors.length ? `${done}\n\n${errors.join('\n')}` : done, errors.length && !total ? 'error' : 'info');
+    }
+
     function fileMenuItems() {
         const items = selectedItems();
         const one = items.length === 1;
         return [
             { text: 'Add Folder to Gallery...', action: 'gwf-addfolder' },
             { text: 'Import from Camera or Scanner...', action: 'gwf-import', disabled: !SRC().devices().length },
+            { text: 'Import Favorites from Samsung Gallery', action: 'gwf-phonefavs', disabled: !phoneSources().length },
             { separator: true },
             { text: 'Delete', subtext: 'Del', action: 'gwf-delete', disabled: !items.length },
             { text: 'Rename', subtext: 'Ctrl+M', action: 'gwf-rename', disabled: !(one && canRename(items[0])) },
@@ -1821,6 +2315,7 @@
         const items = selectedItems();
         switch (action) {
             case 'gwf-addfolder': addFolderToGallery(); return true;
+            case 'gwf-phonefavs': await importPhoneFavorites(); return true;
             case 'gwf-delete': await deleteSelection(); return true;
             case 'gwf-rename': if (items.length === 1) await renameItem(items[0]); return true;
             case 'gwf-selectall': S.shown.forEach((it) => S.selected.add(it.id)); queueRender(); renderStatus(); renderInfo(); syncCommands(); return true;
@@ -1963,7 +2458,12 @@
     /** Import Pictures and Videos (PhotoAcq dialog 1071): the devices to import from. Resolves a device or null. */
     function chooseImportDevice() {
         const list = SRC().devices();
-        const rows = list.map((d, i) => `<div class="wpg-imp-dev${i === 0 ? ' is-selected' : ''}" data-dev="${esc(d.id)}" tabindex="0"><span class="wpg-imp-dev-icon"></span><span>${esc(d.label)}</span></div>`).join('');
+        // each device as Mobile Device Center draws it: a modern phone or a Fold (activeSyncAgent.js deviceIcon)
+        const icon = (d) => {
+            const f = root.activeSync && typeof root.activeSync.deviceIcon === 'function' && d.deviceId ? root.activeSync.deviceIcon(d.deviceId, 32) : '';
+            return /fold/.test(f) ? ' is-fold' : /phone/.test(f) ? ' is-phone' : '';
+        };
+        const rows = list.map((d, i) => `<div class="wpg-imp-dev${i === 0 ? ' is-selected' : ''}" data-dev="${esc(d.id)}" tabindex="0"><span class="wpg-imp-dev-icon${icon(d)}"></span><span>${esc(d.label)}</span></div>`).join('');
         const html = `<div class="wpg-imp"><p>If you do not see your device in the list, make sure it is connected to the computer and turned on.</p><div class="wpg-imp-list" role="listbox">${rows || '<p class="wpg-imp-none">No devices were found.</p>'}</div></div>`;
         return dialog(html, [{ text: 'Import', value: 'import' }, { text: 'Cancel', value: null }], {
             title: 'Import Pictures and Videos',
@@ -2020,13 +2520,23 @@
         // Found N ... Tag these pictures (optional) (PhotoAcq 1071 / 105 / 118)
         let tag = '';
         if (set.promptTag) {
-            const names = S.tags.map((t) => `<option value="${esc(t.name)}">`).join('');
-            const r = await dialog(`<div class="wpg-imp"><p>Found ${todo.length} pictures and videos</p><label class="wpg-imp-tag">Tag these pictures (optional):<input type="text" class="wpg-imp-tag-input" list="wpgImpTags" spellcheck="false" data-autofocus></label><datalist id="wpgImpTags">${names}</datalist><p class="wpg-imp-note">Tags help you find and organize pictures. You can add or change tags in Photo Gallery after importing.</p></div>`,
-                [{ text: 'Import', value: 'import' }, { text: 'Cancel', value: null }], {
-                    title: 'Importing Pictures and Videos', icon: 'fas fa-camera',
-                    onDialogReady: (dlg) => { const i = dlg.querySelector('.wpg-imp-tag-input'); if (i) { i.focus(); i.addEventListener('keydown', (e) => { if (e.key === '/' || e.key === ';') e.preventDefault(); }); } },
-                    resolveValue: (value, dlg) => (value === 'import' ? { tag: dlg.querySelector('.wpg-imp-tag-input').value.trim() } : null)
-                });
+            // Found N ... / Tag these pictures (optional): a kit dialog, the gallery's tags as a Vista list under the box
+            const r = await kitDialog({
+                id: 'glancewellImportTag',
+                title: 'Importing Pictures and Videos',
+                cls: 'wpg-imp-tagdlg',
+                html: kitText(7, 7, 236, 8, `Found ${todo.length} pictures and videos`)
+                    + kitText(7, 24, 236, 8, 'Tag these pictures (optional):')
+                    + kitEdit('wpg-imp-tag-input', 7, 35, 236, '', ' data-autofocus')
+                    + kitText(7, 54, 236, 24, 'Tags help you find and organize pictures. You can add or change tags in Photo Gallery after importing.', 'wpg-imp-note')
+                    + kitButton(139, 84, 50, 'Import', 'ok') + kitButton(193, 84, 50, 'Cancel', 'cancel'),
+                ready: (c, { signal }) => {
+                    const i2 = c.querySelector('.wpg-imp-tag-input');
+                    i2.addEventListener('keydown', (e) => { if (e.key === '/' || e.key === ';') e.preventDefault(); }, { signal });
+                    attachSuggest(i2, tagSuggestions, (it) => { i2.value = it.text; i2.focus(); }, signal);
+                    return { accept: () => ({ tag: i2.value.trim() }) };
+                }
+            });
             if (!r) return;
             tag = r.tag;
         }
@@ -2103,7 +2613,7 @@
         const kit = root.personalizationDialogs && root.personalizationDialogs.sheetKit;
         if (!kit || typeof kit.makeWindow !== 'function') return { step() {}, close() {} };
         const { modal, content, close } = kit.makeWindow('glancewellImportProgress', 'Importing Pictures and Videos', 'gwi-progress', '/static_images/app_icons/vista-photo-gallery.png', false);
-        content.innerHTML = `<div class="gwi-progress-body"><span class="gwi-progress-pic"></span><div class="gwi-progress-text"><p class="wpg-imp-line">Importing item 1 of ${total}</p><div class="wpg-imp-bar"><span></span></div><label class="wpg-imp-erase"><input type="checkbox" class="wpg-imp-erase-box"${erase ? ' checked' : ''}> Erase after importing</label></div></div><div class="gwi-progress-foot"><button type="button" class="tbp-button" data-act="cancel">Cancel</button></div>`;
+        content.innerHTML = `<div class="gwi-progress-body"><span class="gwi-progress-pic"></span><div class="gwi-progress-text"><p class="wpg-imp-line">Importing item 1 of ${total}</p><div class="wpg-imp-bar"><span></span></div><div class="tbp-check wpg-imp-erase"><input type="checkbox" id="wpgImpErase" class="wpg-imp-erase-box"${erase ? ' checked' : ''}><label for="wpgImpErase"><span>Erase after importing</span></label></div></div></div><div class="gwi-progress-foot"><button type="button" class="tbp-button" data-act="cancel">Cancel</button></div>`;
         const stop = () => onCancel();
         close.addEventListener('click', stop);
         content.querySelector('[data-act="cancel"]').addEventListener('click', stop);
@@ -2212,7 +2722,144 @@
         c.querySelector('#gwoRotate').checked = !!imp.rotate; c.querySelector('#gwoOpen').checked = !!imp.openAfter;
         const sync = () => { c.querySelector('.gwo-example').textContent = ex(c.querySelector('.gwo-foldername').value, c.querySelector('.gwo-filename').value); };
         c.addEventListener('change', () => { sync(); sheet.setDirty(true); });
+        // Photo Gallery's own Options: an owned dialog, no taskbar button
+        sheet.modal.dataset.windowOwned = 'true';
         kit.showWindow(sheet.modal, S.shell);
+    }
+
+    // ------------------------------------------------------------------ Vista dialogs and lists (never the browser's: no
+    // datalist, native radios, check boxes or number spinners; no-native-browser-ui.mdc, Yukimi Nov 21 2026)
+
+    const GALLERY_ICON = '/static_images/app_icons/vista-photo-gallery.png';
+
+    /** The shared Vista dialog kit (personalizationDialogs.js sheetKit), loaded with Control Panel. */
+    async function dialogKit() {
+        if (root.featureLoader) await root.featureLoader.loadFeature('control_panel').catch(() => {});
+        const kit = root.personalizationDialogs && root.personalizationDialogs.sheetKit;
+        if (kit) kit.useUnits(kit.SEGOE);
+        return kit || null;
+    }
+
+    /**
+     * A Vista dialog of kit controls placed in dialog units (data-dlu="x,y,w,h"). Buttons are kit buttons with
+     * data-action; "ok" resolves with ready()'s accept(), "cancel" / the X / Escape with null. Enter presses OK.
+     */
+    async function kitDialog({ id, title, cls, html, ready }) {
+        const kit = await dialogKit();
+        if (!kit) { await message(`${title} is not available right now.`, 'warning'); return null; }
+        const old = doc.getElementById(id);
+        if (old) kit.closeWindow(old);
+        const { modal, content, close } = kit.makeWindow(id, title, cls, GALLERY_ICON, false);
+        // an owned dialog: no taskbar button of its own, as in Windows (modalUtils.js shouldShowInTaskbar)
+        modal.dataset.windowOwned = 'true';
+        content.innerHTML = html;
+        content.querySelectorAll('[data-dlu]').forEach((n) => { const [x, y, w, h] = n.dataset.dlu.split(',').map(Number); n.style.cssText = kit.dlu(x, y, w, h); });
+        return new Promise((resolve) => {
+            let done = false;
+            const ac = new AbortController();
+            const finish = (v) => {
+                if (done) return;
+                done = true;
+                ac.abort();
+                kit.closeWindow(modal);
+                if (S.shell && !S.shell.classList.contains('hidden') && typeof root.bringModalToFront === 'function') root.bringModalToFront(S.shell);
+                resolve(v);
+            };
+            const api = (ready && ready(content, { finish, signal: ac.signal })) || {};
+            const accept = () => {
+                const v = typeof api.accept === 'function' ? api.accept() : true;
+                if (v !== undefined && v !== false) finish(v);
+            };
+            close.addEventListener('click', () => finish(null), { signal: ac.signal });
+            content.addEventListener('click', (e) => {
+                const b = e.target.closest('[data-action]');
+                if (!b) return;
+                if (b.dataset.action === 'ok') accept();
+                else if (b.dataset.action === 'cancel') finish(null);
+            }, { signal: ac.signal });
+            content.addEventListener('keydown', (e) => {
+                if (e.defaultPrevented) return;
+                if (e.key === 'Escape') { e.preventDefault(); finish(null); }
+                else if (e.key === 'Enter' && !e.target.closest('button')) { e.preventDefault(); accept(); }
+            }, { signal: ac.signal });
+            kit.showWindow(modal, S.shell);
+            const f = content.querySelector('[data-autofocus]');
+            if (f) setTimeout(() => { f.focus(); if (f.select) f.select(); }, 60);
+        });
+    }
+
+    /** A kit text box at x,y,w (12 DLU high). */
+    const kitEdit = (cls, x, y, w, value = '', extra = '') => `<input type="text" class="tbp-ctl tbp-edit ${cls}" data-dlu="${x},${y},${w},12" value="${esc(value)}" autocomplete="off" spellcheck="false"${extra}>`;
+    /** A kit check box or radio button (Vista's own art), the input before its label as the kit draws it. */
+    const kitCheck = (type, idv, name, value, x, y, w, label, checked, cls = '') => `<div class="tbp-ctl tbp-check ${cls}" data-dlu="${x},${y},${w},10"><input type="${type}" id="${idv}"${name ? ` name="${name}"` : ''}${value != null ? ` value="${esc(value)}"` : ''}${checked ? ' checked' : ''}><label for="${idv}"><span>${label}</span></label></div>`;
+    const kitButton = (x, y, w, label, action, extra = '') => `<button type="button" class="tbp-ctl tbp-button" data-dlu="${x},${y},${w},14" data-action="${action}"${extra}>${label}</button>`;
+    const kitText = (x, y, w, h, body, cls = '') => `<div class="tbp-ctl tbp-static ${cls}" data-dlu="${x},${y},${w},${h}">${body}</div>`;
+
+    /**
+     * Suggestions under a text box as a Vista list drop-down (instead of the browser's datalist): fetch(query) gives
+     * [{ text, note }]; pick(item) runs on a click or Enter. Arrow keys move, Escape closes. Returns { close }.
+     */
+    function attachSuggest(input, fetch, pick, signal) {
+        const list = h('div', 'wpg-suggest');
+        list.setAttribute('role', 'listbox');
+        list.hidden = true;
+        doc.body.appendChild(list);
+        let items = [];
+        let at = -1;
+        let seq = 0;
+        let timer = 0;
+        const close = () => { list.hidden = true; items = []; at = -1; };
+        const place = () => {
+            const r = input.getBoundingClientRect();
+            list.style.left = `${Math.round(r.left)}px`;
+            list.style.top = `${Math.round(r.bottom)}px`;
+            list.style.minWidth = `${Math.round(r.width)}px`;
+        };
+        const draw = () => {
+            list.innerHTML = items.map((x, i) => `<div class="wpg-suggest-opt${i === at ? ' is-active' : ''}" role="option" aria-selected="${i === at}" data-i="${i}"><span>${esc(x.text)}</span>${x.note ? `<span class="wpg-suggest-note">${esc(x.note)}</span>` : ''}</div>`).join('');
+            list.hidden = !items.length;
+            if (items.length) place();
+        };
+        const opts = signal ? { signal } : undefined;
+        input.addEventListener('input', () => {
+            clearTimeout(timer);
+            const mine = ++seq;
+            timer = setTimeout(async () => {
+                const got = await Promise.resolve(fetch(input.value)).catch(() => []);
+                if (mine !== seq) return;
+                items = got || [];
+                at = -1;
+                draw();
+            }, 150);
+        }, opts);
+        input.addEventListener('keydown', (e) => {
+            if (list.hidden || !items.length) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); at = (at + 1) % items.length; draw(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); at = (at - 1 + items.length) % items.length; draw(); }
+            else if (e.key === 'Enter' && at >= 0) { e.preventDefault(); e.stopPropagation(); const it = items[at]; close(); pick(it); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+        }, opts);
+        input.addEventListener('blur', () => setTimeout(close, 150), opts);
+        list.addEventListener('mousedown', (e) => {
+            const o = e.target.closest('.wpg-suggest-opt');
+            if (!o) return;
+            e.preventDefault();
+            const it = items[Number(o.dataset.i)];
+            close();
+            pick(it);
+        });
+        const remove = () => { clearTimeout(timer); list.remove(); };
+        if (signal) signal.addEventListener('abort', remove, { once: true });
+        return { close, remove };
+    }
+
+    /** The gallery's own tags that start with (or hold) what is typed. */
+    function tagSuggestions(q) {
+        const v = String(q || '').trim().toLowerCase();
+        if (!v) return [];
+        const starts = S.tags.filter((t) => t.name.toLowerCase().startsWith(v));
+        const holds = S.tags.filter((t) => !t.name.toLowerCase().startsWith(v) && t.name.toLowerCase().includes(v));
+        return starts.concat(holds).slice(0, 12).map((t) => ({ text: t.name }));
     }
 
     // ------------------------------------------------------------------ message boxes (Vista's, never the browser's)
@@ -2256,8 +2903,18 @@
             if (typeof root.ensureModalEdgesWithinWorkArea === 'function') root.ensureModalEdgesWithinWorkArea(shell);
         } else if (typeof root.bringModalToFront === 'function') root.bringModalToFront(shell);
         if (typeof root.wireGlancewellChromeOnce === 'function') root.wireGlancewellChromeOnce();
-        await Promise.all([loadTags(), loadWatched(), loadRecent(), loadSettings()]);
+        // the library at once; its tags, watched folders, recent imports and settings fill in as they answer (it stayed
+        // blank behind one that did not answer, Nov 21 2026)
+        if (S.open) rememberPlace();
         showLibrary();
+        void Promise.all([loadTags(), loadSmartTags(), loadWatched(), loadRecent(), loadSettings()].map((p) => Promise.resolve(p).catch(() => null))).then(() => {
+            // a newer view saved by another client: its zoom, sort and places (the open folder stays this one's)
+            const adopted = adoptServerView(SETTINGS && SETTINGS.view);
+            if (adopted) { cellCache.clear(); S.layout = null; }
+            renderTree();
+            refresh();
+            if (adopted && S.seenTop === S.placedTop) restorePlace();
+        });
         await showNode(opts.node || S.node || { root: 'prints', kind: 'all' }, { history: false });
     }
 
@@ -2265,11 +2922,12 @@
     function showFromViewer(slideData) {
         const id = slideData && slideData.gwItem;
         showLibrary();
-        if (id && itemsById.has(id)) {
-            select(id);
-            scrollIntoView(id);
-        }
         S.el.scroller.focus({ preventScroll: true });
+        if (!id || !itemsById.has(id)) return;
+        select(id);
+        // after the gallery has laid itself out again (it was hidden behind the viewer): that picture, centred
+        // (Yukimi, Nov 21 2026: back to the gallery should land on the item)
+        requestAnimationFrame(() => requestAnimationFrame(() => { S.layout = null; scrollIntoView(id, true); }));
     }
 
     /** A video told its length (glancewellVideo.js): Info and the Details view show it from now on. */
@@ -2352,7 +3010,7 @@
     if (doc) {
         doc.addEventListener('staticforge:modal-lifecycle', (e) => {
             const d = e && e.detail;
-            if (d && d.type === 'closed' && d.id === 'photoSwipeWindow') { S.owns = false; S.open = false; hideTip(); }
+            if (d && d.type === 'closed' && d.id === 'photoSwipeWindow') { if (S.open) rememberPlace(); S.owns = false; S.open = false; hideTip(); }
         }, { signal: appScopeSignal });
     }
 

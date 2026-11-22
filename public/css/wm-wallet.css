@@ -166,6 +166,9 @@
 
 .wwl-show-name { font-weight: bold; font-size: calc(14 * var(--wm-px)); text-align: center; }
 
+/* the code's HDR copy (wmWallet showHdr): shown at the panel's own brightness, not tone-mapped down to SDR */
+.wwl-show-code img { dynamic-range-limit: no-limit; }
+
 .wwl-show-code img {
     display: block;
     width: 100%;

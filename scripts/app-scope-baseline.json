@@ -235,8 +235,7 @@
   "page-global": 64
  },
  "public/scripts/comp/desktop-apps/mediaPlayer.js": {
-  "owner-less-listener": 1,
-  "page-global": 80
+  "page-global": 79
  },
  "public/scripts/comp/desktop-apps/paint/paintApp.js": {
   "page-global": 3
@@ -961,7 +960,6 @@
   "page-global": 2
  },
  "public/scripts/comp/wmMedia.js": {
-  "owner-less-listener": 5,
   "page-global": 1
  },
  "public/scripts/comp/wmMessaging.js": {

@@ -387,8 +387,16 @@ function createService(options = {}) {
         return row ? row.pem : null;
     }
 
+    /** A device's live certificate (not revoked, not expired), PEM, or null: ActiveSync's direct link vouches with it. */
+    async function currentPem(kind, deviceId) {
+        await ensureTables();
+        const row = await db.get('SELECT pem FROM client_certificates WHERE kind = ? AND device_id = ? AND revoked_at IS NULL AND not_after > ? ORDER BY issued_at DESC LIMIT 1',
+            [String(kind || ''), String(deviceId || '').toLowerCase(), now()]);
+        return row ? row.pem : null;
+    }
+
     return {
-        certificatePem,
+        certificatePem, currentPem,
         ensureTables, ensureCa, caPem: () => ensureCa().pem,
         enrol, renew, challenge, authenticate, bindSession, sessionSerial, boundSessions,
         revoke, crl, crlNumber, list, get, settings

@@ -39,6 +39,7 @@ root reads those, so `refs` rows here only hold what that store has no column fo
 | --- | --- | --- |
 | `glancewell_settings` | | `{ success, settings: { tooltips, originalsDays, updateNotes, import: { folder, folderName, fileName, promptTag, erase, rotate, openAfter } } }` |
 | `glancewell_settings_set` | `change` (any of the above) | `{ success, settings }`. Unknown keys are dropped. `originalsDays` is one of 0 (Never), 1, 7, 30, 182, 365. `folderName` is one of `dateImportedTag`, `dateTakenTag`, `dateRangeTag`, `tagDateImported`, `tagDateTaken`, `tagDateRange`, `tag`, `none`. `fileName` is one of `tag`, `original`, `originalFolders`. Pushes `glancewell_changed` `{ what: "settings" }` and removes kept Fix originals older than `originalsDays` |
+| `glancewell_settings_set` (view) | `view` (the gallery's view: `size`, `sort`, `sortDir`, `group`, `groupDir`, `view`, `toc`, `expanded`, `node`, `pos` per folder `{ id, off }`, `at` ms) | `{ success, ok }`. Kept whole (at most 64 KB) as `settings.view`; no `glancewell_changed` push. A client adopts it at open when its `at` is newer than its own |
 | `glancewell_import_record` | `items` | `{ success, batch }`. One import's pictures; the last 20 batches are kept. Pushes `{ what: "imports" }` |
 | `glancewell_recent_imports` | | `{ success, batch, at, items }`. The last import, for Recently Imported |
 

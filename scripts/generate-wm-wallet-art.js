@@ -47,7 +47,6 @@ async function panel(k, file) {
     const W = Math.round(86 * k);
     const H = Math.round(113 * k);
     const A = Math.round(76 * k);
-    const R = Math.round(26 * k);
     // the cards are wider than tall (contain leaves space under them): seat their lowest row on the floor
     const raw = await art(A);
     const { info } = await sharp(raw).trim({ threshold: 1 }).toBuffer({ resolveWithObject: true });
@@ -55,18 +54,8 @@ async function panel(k, file) {
     const drop = Math.max(0, A - bottom);
     const seated = await sharp({ create: { width: A, height: A, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
         .composite([{ input: await sharp(raw).extract({ left: 0, top: 0, width: A, height: A - drop }).png().toBuffer(), left: 0, top: drop }]).png().toBuffer();
-    // two steps: sharp cuts before it flips when both are asked for at once
-    const upside = await sharp(seated).flip().png().toBuffer();
-    const flipped = await sharp(upside).extract({ left: 0, top: 0, width: A, height: R }).ensureAlpha().raw().toBuffer();
-    for (let y = 0; y < R; y++) {
-        const f = 0.4 * (1 - y / R);
-        for (let x = 0; x < A; x++) { const i = (y * A + x) * 4 + 3; flipped[i] = Math.round(flipped[i] * f); }
-    }
-    const mirror = await sharp(flipped, { raw: { width: A, height: R, channels: 4 } }).png().toBuffer();
-    await sharp({ create: { width: W, height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-        .composite([{ input: seated, left: Math.round(5 * k), top: Math.round(10 * k) }, { input: mirror, left: Math.round(5 * k), top: Math.round(87 * k) }])
-        .png()
-        .toFile(path.join(OUT65, file));
+    // the ROM's own geometry and a mirror of the art's bottom (modules/wm65PanelIcon.js, Nov 21 2026)
+    fs.writeFileSync(path.join(OUT65, file), await require('../modules/wm65PanelIcon').panelIcon(seated, k));
     console.log(file, W, H);
 }
 

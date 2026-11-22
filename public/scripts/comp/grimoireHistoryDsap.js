@@ -171,8 +171,8 @@
     }
 
     function pageRow(r, level) {
-        return `<li class="gfc-item gfc-page gfc-l${level}" data-url="${esc(r.url)}"><a class="gfc-link" href="#" data-url="${esc(r.url)}" title="${esc(r.url)}">`
-            + `<img class="gfc-icon" src="${pageIcon(r.url)}" alt="">${esc(r.title || r.url)}</a></li>`;
+        return `<li class="gfc-item gfc-page gfc-l${level}" data-url="${esc(r.url)}"><a class="gfc-link" href="#" data-url="${esc(r.url)}" title="${esc(grimoireDisplayUrl(r.url))}">`
+            + `<img class="gfc-icon" src="${pageIcon(r.url)}" alt="">${esc(r.title || grimoireDisplayUrl(r.url))}</a></li>`;
     }
 
     function groupRow(key, icon, label, inner, open) {

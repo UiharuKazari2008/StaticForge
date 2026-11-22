@@ -190,3 +190,39 @@ node scripts/test-grimoire-browser.js
 `node scripts/test-grimoire-tabs.js` checks the tab state swap, background frames, the session cap and closing.
 
 The browser check starts the service, clicks a local page through the stream, copies a selection, types into the page, saves an image, receives a download, opens `chrome://version`, follows a `chrome://` link, loads `https://example.com`, and checks the Dreamscape bridge returns a same-origin view URL.
+
+## Codec measurements (Nov 21 2026)
+
+Measured, not assumed (Yukimi: "rely on hard established facts from testing"). Four real pages captured losslessly
+from Alchemy's build at 1500 x 1050 (1000 x 700 CSS at 1.5): Wikipedia (text and images), Hacker News (text),
+737.jp.net (photo), Yozora's content layer on its own (translucent text over a hidden backdrop, alpha 128-255).
+Encoded as the service does (jxl-pipe, sharp WebP effort 2, sharp JPEG), decoded with `createImageBitmap` in
+Alchemy's Chromium (this host) and the A53's Chrome 157, compared with the original over grey (PSNR on RGB, SSIM on
+luma in 8 x 8 windows). Scripts: `~/.cache/alchemy-proto/codec/` (capture.js, capalpha.js, bench.js, phonedec.js).
+
+| Picture | Encoding | KB | PSNR | SSIM | Decode here | Decode A53 |
+|---|---|---|---|---|---|---|
+| Wikipedia | JPEG XL effort 3, d1 | 255 | 40.6 | 0.9989 | 63 ms | 100 ms |
+| Wikipedia | JPEG XL effort 7, d1 | 153 | 45.1 | 0.9994 | 90 ms | 131 ms |
+| Wikipedia | WebP q85 | 173 | 38.3 | 0.9988 | 39 ms | 49 ms |
+| Wikipedia | WebP lossless | 223 | exact | 1 | 33 ms | 50 ms |
+| Wikipedia | JPEG q80 | 238 | 35.1 | 0.9973 | 19 ms | 28 ms |
+| Hacker News | JPEG XL effort 7, d2 | 89 | 42.6 | 0.9985 | 77 ms | |
+| Hacker News | WebP q50 | 91 | 36.2 | 0.9944 | 27 ms | |
+| Hacker News | WebP lossless | 69 | exact | 1 | 35 ms | |
+| Photo | JPEG XL effort 3, d1 | 72 | 43.6 | 0.9962 | 58 ms | 98 ms |
+| Photo | JPEG XL effort 7, d1 | 66 | 47.9 | 0.9977 | 53 ms | 102 ms |
+| Photo | WebP q85 | 46 | 41.4 | 0.9921 | 21 ms | 33 ms |
+| Photo | JPEG q80 | 78 | 40.3 | 0.9955 | 23 ms | 26 ms |
+| Yozora layer (alpha) | JPEG XL effort 3, d1 | 210 | 44.7 | 0.9995 | 67 ms | 95 ms |
+| Yozora layer (alpha) | JPEG XL effort 7, lossless | 109 | exact | 1 | 80 ms | |
+| Yozora layer (alpha) | WebP q85 | 135 | 43.3 | 0.9994 | 27 ms | 44 ms |
+| Yozora layer (alpha) | WebP lossless | 51 | exact | 1 | 14 ms | 24 ms |
+
+Encode on this host: JPEG XL effort 3 50-260 ms, effort 7 0.6-1.9 s; WebP lossy 65-146 ms, lossless 160 ms (text)
+to 1.4 s (photos); JPEG ~25 ms.
+
+What follows from it: moving frames stay JPEG (opaque) or WebP (see-through), since JPEG XL decodes at 95-152 ms on
+the A53 (7-10 frames a second at most). JPEG XL at effort 7 is the smallest and sharpest for pictures with images and
+photos, decoded once: the still at rest and layer pictures. Flat text layers are smallest and fastest as WebP
+lossless.

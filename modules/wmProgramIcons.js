@@ -7,15 +7,24 @@
  * Melaton Mobile's Settings > Personal > Program Icons sends a batch of the phone's programs (each
  * with its own unthemed launcher icon, read from the app, and its name and Android category). For
  * each one the server reads the program's Play Store page (title, description, category, developer,
- * store icon), asks an image model for a Windows Mobile program icon with that context, and renders
- * the WM sizes as previews. The page lists them; the user keeps some, asks again for others, and
- * presses Done: the kept ones go to the store and the runtime assets are recompiled, so every phone
- * that lists the same program draws the new icon.
+ * store icon) and makes the icon in steps that leave the image model nothing to decide (Nov 22 2026,
+ * modules/wmProgramIconPrompt.js): a vision model writes a brief of the icon, code picks the
+ * treatment, and the image model draws that brief twice from fixed texts - the phone's Windows Mobile
+ * icon and the desktop's Windows Vista icon (every program has both: the DeX desktop draws the Vista
+ * one). Each drawing is measured and drawn again when it is cut off or sits on a tile. The page lists
+ * them; the user keeps some, asks again for others, and presses Done: the kept ones go to the store
+ * and the runtime assets are recompiled, so every phone that lists the same program draws the new icon.
  *
- * Store (served and precached like the shell art):
- *   public/static_images/wm-android/<name>.png, @2x, @4x, -lg, -lg@2x, -lg@4x  (wmIconGenerator SIZES)
+ * Store (served like the shell art; the phone's sets are in its art packages, the Vista set is
+ * fetched on first use and kept by the service worker):
+ *   public/static_images/wm-android/<name>.png, @2x, @4x, -lg, -lg@2x, -lg@4x   Windows Mobile 6.1
+ *       (wmIconGenerator SIZES: 16/32/64 and 32/64/128; 256 colours and a hard mask, as the ROM's)
+ *   public/static_images/wm-android/<name>-65.png, -65@2x, -65@4x               Windows Mobile 6.5 Start
+ *       (45/90/180: the art in the ROM's 80-of-90 box with its contact shadow, full colour)
+ *   public/static_images/wm-android/<name>-vista-<16|24|32|48|64|96|128|256>.png  Windows Vista (desktop)
  *   public/static_images/wm-android/manifest.json  { version, updatedAt, icons: { "<package>/<activity>":
- *                                                     { name, package, label, model, updatedAt } } }
+ *                                                     { name, package, label, model, updatedAt, wm65?, vista? } } }
+ *       (wm65 / vista: the set has those files; sets made before Nov 22 2026 have the 6.1 files only)
  * A new icon gets a new name, so no client keeps an old copy under a path it reuses.
  *
  * Jobs: .cache/wm-program-icons/jobs/<job>.json and <job>/ (references, masters, previews).
@@ -23,7 +32,8 @@
  *
  * Image route (Yukimi, Nov 12: OpenAI's latest image model; TokenRouter when it can, for one wallet):
  * config.json wmProgramIcons { provider: 'auto' | 'tokenrouter' | 'openai', model?, quality?, briefModel?,
- * colours? (palette per rendered size, default 32, 0 = full colour) }.
+ * colours? (palette per Windows Mobile 6.1 size, default 256 as the ROM's icons, 0 = full colour),
+ * styleRefs? (false = no platform icons attached as rendering references) }.
  * model defaults to gpt-image-2.5-sunburst (as good as 2.6 for these, cheaper); 'latest' takes the
  * newest gpt-image Sunburst OpenAI or TokenRouter lists. auto sends it through TokenRouter when
  * TokenRouter lists that model (2.5 only on Nov 12 2026), else to OpenAI directly.
@@ -34,6 +44,8 @@
  *   POST /api/wm-program-icons/jobs                       { mode?: 'simple' | 'detailed', items: [{ id, package, label, category?, game?, mode?, icon: data URL, themed?: data URL }] }
  *   GET  /api/wm-program-icons/jobs/:job
  *   GET  /api/wm-program-icons/jobs/:job/files/:file      a preview PNG
+ *   POST /api/wm-program-icons/jobs/missing               a batch of the store's programs that have no Vista
+ *                                                         icon yet (made from their Play Store icons)
  *   POST /api/wm-program-icons/jobs/:job/regenerate       { keys: [...], mode? }
  *   POST /api/wm-program-icons/jobs/:job/done             { accept: [...] } -> store, recompile
  *   POST /api/wm-program-icons/jobs/:job/cancel
@@ -52,6 +64,7 @@ const sharp = require('sharp');
 const OpenAI = require('openai');
 const appIconGenerator = require('./appIconGenerator');
 const wmIconGenerator = require('./wmIconGenerator');
+const iconPrompt = require('./wmProgramIconPrompt');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const STORE_WEB = '/static_images/wm-android';
@@ -71,6 +84,14 @@ const MODELS_TTL_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 240000;
 const JOB_KEEP_MS = 14 * 24 * 3600 * 1000;
 const PREVIEW_SIZES = [16, 32, 128];
+// the other sets' previews: the 6.5 Start icon at 2x and the Vista icon at 128
+const PREVIEW_EXTRA = ['65', 'vista'];
+// Windows Mobile 6.5 Start icons (ROM: 45 px, VGA 90; ours 180)
+const WM65_SIZES = Object.freeze([{ suffix: '-65', size: 45 }, { suffix: '-65@2x', size: 90 }, { suffix: '-65@4x', size: 180 }]);
+// the desktop's sizes (16..48 lists, taskbar, Start; 96..256 desktop icons and 2x)
+const VISTA_SIZES = Object.freeze([16, 24, 32, 48, 64, 96, 128, 256]);
+// one more draw when the measured check fails
+const MAX_DRAWS = 2;
 
 let projectRoot = PROJECT_ROOT;
 let boundGr = null;
@@ -110,15 +131,16 @@ function publicManifest() {
     const m = readManifest();
     const icons = {};
     for (const [id, e] of Object.entries(m.icons)) {
-        if (e && e.name) icons[id] = { icon: `${STORE_WEB}/${e.name}`, package: e.package || id.split('/')[0], label: e.label || '', updatedAt: e.updatedAt || null };
+        if (e && e.name) icons[id] = { icon: `${STORE_WEB}/${e.name}`, package: e.package || id.split('/')[0], label: e.label || '', updatedAt: e.updatedAt || null, wm65: e.wm65 === true, vista: e.vista === true };
     }
     return { version: m.version || 0, updatedAt: m.updatedAt || null, icons };
 }
 
 function removeSet(name) {
     if (!/^[a-z0-9_-]+$/.test(String(name || ''))) return;
-    for (const s of wmIconGenerator.SIZES) {
-        try { fs.unlinkSync(path.join(storeDir(), `${name}${s.suffix}.png`)); } catch (_) { /* gone already */ }
+    const files = wmIconGenerator.SIZES.concat(WM65_SIZES).map((s) => `${name}${s.suffix}.png`).concat(VISTA_SIZES.map((px) => `${name}-vista-${px}.png`));
+    for (const f of files) {
+        try { fs.unlinkSync(path.join(storeDir(), f)); } catch (_) { /* gone already, or a set without it */ }
     }
 }
 
@@ -212,84 +234,31 @@ async function playStoreContext(pkg) {
 // ---------------------------------------------------------------- prompt
 
 // Modes (Yukimi, Nov 12): chosen when the icons are requested and again on Regenerate.
-//   simple    the app's mark or one iconic object, like Windows Mobile's own program icons; a game
-//             gets its emblem or one object that stands for it, never a character portrait
-//   detailed  the richer take: a game's characters or signature objects, a brand mark with an
-//             object that says what the program does
+//   simple    the app's mark or one object; a game gets its emblem or the one object it is known
+//             for, never a figure (the brief is asked without the "character" treatment)
+//   detailed  a game whose icon is a character keeps that character, as a free-standing bust
+// For a program that is not a game the two give the same brief. The texts are in wmProgramIconPrompt.js.
 const MODES = ['simple', 'detailed'];
 const normMode = (m) => (MODES.includes(m) ? m : 'detailed');
-const SIMPLE_TAKE = 'Simple mode: one bold mark only, built from two or three big shapes with two tones each, like Windows Mobile\'s own program icons. Build it from the app\'s real mark as the references show it (its themed one-colour icon and/or its official logo): keep that exact shape, proportions and letterforms, in the brand\'s colours; never invent a different emblem or letter. The icon is square and must read at 16 pixels, so never copy a whole wordmark: if the logo has an emblem (a halo, a star, a crest, a symbol over a letter), that emblem alone becomes the icon, with at most the one letter it sits on; if it is lettering only, use its main word when it is short (six letters or fewer), else its initial, in the logo\'s own letterforms. No faces or figures, no scene, nothing small.';
 
-// Windows Mobile 6's own program icons, attached as style references to every request (Yukimi,
-// Nov 12: the results were too glossy next to the OS icons). Plain objects, no logos to copy.
-const STYLE_REFS = [
-    { file: 'app-calendar-lg@4x.png', label: 'Calendar' },
-    { file: 'app-messaging-lg@4x.png', label: 'Messaging' },
-    { file: 'app-tasks-lg@4x.png', label: 'Tasks' }
-];
-let styleBuffers = null;
-async function styleRefs() {
-    if (styleBuffers) return styleBuffers;
+// The platform's own icons that go with a request as rendering references, flattened on white (the
+// model reads a transparent reference's edges as dark fringes). Kept per file.
+const styleBuffers = new Map();
+async function styleRefs(style, archetype) {
+    if (settings().styleRefs === false) return [];
     const out = [];
-    for (const r of STYLE_REFS) {
-        try {
-            // on white: the model reads a transparent reference's edges as dark fringes
-            out.push(await sharp(path.join(projectRoot, 'public', 'static_images', 'wm61', r.file)).resize(256, 256, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-                .flatten({ background: '#ffffff' }).png().toBuffer());
-        } catch (_) { /* fewer references */ }
+    for (const rel of iconPrompt.styleRefs(style, archetype)) {
+        if (!styleBuffers.has(rel)) {
+            let buf = null;
+            try {
+                buf = await sharp(path.join(projectRoot, 'public', 'static_images', rel)).resize(512, 512, { fit: 'contain', background: '#ffffff' })
+                    .flatten({ background: '#ffffff' }).png().toBuffer();
+            } catch (_) { buf = null; }
+            styleBuffers.set(rel, buf);
+        }
+        if (styleBuffers.get(rel)) out.push(styleBuffers.get(rel));
     }
-    styleBuffers = out;
     return out;
-}
-
-// a regeneration asks for another way to turn the brand into a WM object
-const TAKES = [
-    'Turn the brand mark itself into a solid object with a little depth: a thick emblem with a slight bevel and a soft light top edge, standing free with no plate behind it.',
-    'Show the job the program does as a physical object of the era (a handset, an envelope, a camera, a speaker, a globe, a notepad, a disc, a game pad, a map, a chat bubble...) in the brand\'s own colours, with the brand mark set into it or overlapping its lower right like a WM badge.',
-    'Combine the two: the brand mark as an emblem in front, with a small object that says what the program does tucked behind or beside it, the way Windows Mobile icons layer a main shape and an accessory.',
-    'Set the brand symbol on a simple rounded token or disc seen slightly from the front, in the brand colours, with one soft gradient and a light top edge (not a glass orb).'
-];
-
-// a game's store icon is usually a painted scene: the icon is its few signature objects, rebuilt
-const GAME_TAKE = 'This is a game whose store icon is a painted illustration. If its icon is a character, draw that character as a free-standing head-and-shoulders figure whose hair and shoulders end in their own outline (never cut off by a straight or rounded edge), like the era\'s Messenger buddy figures. Otherwise pick its one to three signature objects or characters (for example the three candies of a candy game, the bird of a bird game) and draw each again as a clean, chunky object in the Windows Mobile style (few flat tones, soft stepped shading), grouped tightly and overlapping a little, like a 2009 Windows Mobile game icon (Bubble Breaker, Solitaire). Simplify their shapes and surface detail so each reads at 16 pixels; drop the scene, sparkles and background.';
-
-function buildPrompt(item, ctx, attempt, refs, brief, styleCount = 0) {
-    const name = collapse(item.label) || collapse(ctx && ctx.title) || item.package;
-    const lines = [
-        `Redraw the icon of the Android app "${name}"${ctx && ctx.developer ? ` by ${ctx.developer}` : ''} as the program icon it would have had if it had shipped on a 2009 Windows Mobile 6.5 Professional phone, in Microsoft's own icon style of that time (Windows Mobile 6's program icons: Calendar, Messaging, Tasks).`,
-        'Context about the app, to keep its purpose clear:',
-        `- Name: ${name}${ctx && ctx.title && collapse(ctx.title) !== name ? ` (store title: ${collapse(ctx.title)})` : ''}`
-    ];
-    const cat = collapse((ctx && ctx.category) || item.category || (item.game ? 'game' : ''));
-    if (cat) lines.push(`- Category: ${cat}`);
-    if (ctx && ctx.description) lines.push(`- What it does (from its store page): ${ctx.description}`);
-    lines.push(
-        '',
-        'Keep the brand: the same signature colours, the same mark or symbol and its silhouette, so anyone who knows the app recognises it at a glance. Keep what the program is for.',
-        'Redraw, never cut out: build the icon again from scratch in the style below. Do not trace, crop or remove the background from the reference and keep its painting; a result that looks like the reference with its tile removed is wrong.',
-        'Leave out everything that is not the app\'s own mark: publisher or developer logos and wordmarks (a studio\'s name in a corner, a "King" or "Google" badge), corner ribbons, "new" or "beta" tags, store badges.',
-        'But make it a real 2009 Windows Mobile icon, not the modern icon with a filter on it:',
-        '- No modern app-icon plate: no flat rounded-square or circle tile behind the mark, no Material Design long shadows, no flat vector look, no 2020s gradients. Windows Mobile icons are free-standing objects on a transparent background.',
-        '- Nothing is cropped or masked into a shape: no rounded corners, no rounded-square, circle or badge outline cutting the picture, no vignette. Rounded app-icon shapes did not exist in 2009. Every object ends in its own silhouette.',
-        '- Flatter than you would expect, but not flat (Yukimi: the OS icons are flatter, lower complexity, limited colour, staggered shading): a slight three-quarter turn or front-on view, light from the upper left, each surface in two or three tones of its colour as broad soft steps (a lighter top, a mid tone, a slightly darker lower edge). Little shine: at most a faint light band or edge on the top of rounded parts; no wet or glassy gloss, no bright specular streaks, no glass orbs or bubbles, no chrome, no 3D render look, no ambient occlusion, no detailed rendering of hair strands, skin or fabric. Every shape outlined thinly in a darker shade of its own colour (never black).',
-        '- Low complexity: a few big, simple shapes that stay readable at 32 and 16 pixels; no fine texture, hairlines or small text.',
-        `- ${normMode(item.mode) === 'simple' ? SIMPLE_TAKE : (item.game || /game/i.test(cat)) && (Number(attempt) || 1) === 1 ? GAME_TAKE : TAKES[(Math.max(1, Number(attempt) || 1) - 1) % TAKES.length]}`,
-        '- Lettering only where the brand mark itself is a letter or a short word; then keep it as a bold simple shape. No other text.',
-        '',
-        'The object fills the square canvas almost edge to edge, centred, about 94% of the canvas on its longest side.',
-        'Transparent background: no floor, plate, backdrop, drop shadow, contact shadow, reflection or glow. Clean anti-aliased edge with no fringe or halo. Keep surfaces off pure white so highlights stay visible.'
-    );
-    if (brief) lines.push(`The signature objects to model (from the store icon; nothing else of it): ${brief}`);
-    if (refs.length) {
-        lines.push(`Reference images attached first, in order: ${refs.join('; ')}. Use them for the brand mark, its shape and colours only; do not copy their plate, framing or flat rendering.`);
-    }
-    if (styleCount) {
-        lines.push(`The last ${styleCount} attached images are Windows Mobile 6's own program icons (${STYLE_REFS.slice(0, styleCount).map((r) => r.label).join(', ')}): style references only. Match their amount of shading, shine, outline and detail exactly; do not copy their subjects, shapes or colours.`);
-    }
-    const direction = collapse(item.direction);
-    if (direction) lines.push(`Required direction from the user for this icon; follow it even when it conflicts with anything above or with the references: ${direction}`);
-    if (attempt > 1) lines.push(`This is attempt ${attempt}: the earlier ones were not kept. Make a clearly different design from the obvious one, still faithful to the brand.`);
-    return lines.join('\n');
 }
 
 // ---------------------------------------------------------------- image route
@@ -301,6 +270,9 @@ function settings() {
     cfg = cfg && typeof cfg === 'object' ? { ...cfg } : {};
     // a one-off comparison run from a script (WM_PROGRAM_ICONS_MODEL=gpt-image-2.5-sunburst)
     if (process.env.WM_PROGRAM_ICONS_MODEL) cfg.model = process.env.WM_PROGRAM_ICONS_MODEL;
+    // and its route and preset (a cheap test run: WM_PROGRAM_ICONS_PROVIDER=openai WM_PROGRAM_ICONS_QUALITY=low)
+    if (process.env.WM_PROGRAM_ICONS_PROVIDER) cfg.provider = process.env.WM_PROGRAM_ICONS_PROVIDER;
+    if (process.env.WM_PROGRAM_ICONS_QUALITY) cfg.quality = process.env.WM_PROGRAM_ICONS_QUALITY;
     return cfg;
 }
 
@@ -361,39 +333,37 @@ async function chooseRoute() {
 }
 
 /**
- * A game's store icon is a painted scene; as an edit reference the image model keeps its painting,
- * framing and publisher badge (Yukimi, Nov 12: "recreate the 3 candy pieces, remove the King logo").
- * So a vision model writes a brief of the signature objects first and the icon is drawn from text.
- * config wmProgramIcons.briefModel (default gpt-5.4-mini, OpenAI directly). null when unavailable.
+ * The brief of a program's icon (wmProgramIconPrompt.js briefPrompt / normaliseBrief): a vision model
+ * describes what is drawn, code picks the treatment. Asked twice at most (an answer that is not a
+ * brief is asked again). config wmProgramIcons.briefModel (default gpt-5.4-mini, OpenAI directly).
+ * Throws when no brief could be had: without one nothing is drawn (a guess is what made results vary).
  */
-async function describeIcon(name, refBuffers, mode) {
+async function iconBrief(name, refBuffers, opts) {
+    if (stubs && stubs.brief) return iconPrompt.normaliseBrief(await stubs.brief(name, refBuffers, opts));
     let key = null;
-    try { key = appIconGenerator.resolveOpenAiKey(projectRoot).apiKey; } catch (_) { return null; }
+    try { key = appIconGenerator.resolveOpenAiKey(projectRoot).apiKey; } catch (_) { throw new Error('No OpenAI key for the icon brief (Security Center > API keys).'); }
     const model = collapse(settings().briefModel) || 'gpt-5.4-mini';
-    const images = [];
-    for (const b of refBuffers.slice(0, 2)) images.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${(await sharp(b).resize(384, 384, { fit: 'inside' }).png().toBuffer()).toString('base64')}` } });
-    try {
-        const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model,
-                messages: [{
-                    role: 'user',
-                    content: [{
-                        type: 'text',
-                        text: `These are icons of the game "${name}". ${mode === 'simple'
-                            ? 'Name exactly ONE thing for a simple icon of this game and describe it: shape, proportions, colours. Prefer the game\'s emblem or logo symbol (not its wordmark text); if none is visible, use what you know about the game for its best-known symbol or object (a halo, a weapon, a ball, one candy...). Always answer with one thing, never "none", never a group. No characters, faces or figures.'
-                            : 'Name its one to three signature objects or characters that make the icon recognisable, and describe each for an illustrator who will model it again from scratch: shape, proportions, colours, distinctive features, pose.'} Leave out the background, the scene, sparkles, the icon tile, any publisher or developer logo, wordmark or badge (studio names, corner ribbons), and all text, event banners and anniversary or season ribbons. Describe colours as a few flat tones. Plain prose, at most 90 words, no preamble.`
-                    }, ...images]
-                }]
-            })
-        }, 60000);
-        if (!res.ok) return null;
-        const j = await res.json();
-        const text = collapse(j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content);
-        return text ? text.slice(0, 900) : null;
-    } catch (_) { return null; }
+    const content = [{ type: 'text', text: iconPrompt.briefPrompt(name, opts) }];
+    for (const b of refBuffers.slice(0, 4)) {
+        const png = await sharp(b).resize(512, 512, { fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer();
+        content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${png.toString('base64')}` } });
+    }
+    let why = 'no answer';
+    for (let i = 0; i < 2; i++) {
+        try {
+            const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model, response_format: { type: 'json_object' }, messages: [{ role: 'user', content }] })
+            }, 90000);
+            if (!res.ok) { why = `the brief model answered ${res.status}`; continue; }
+            const j = await res.json();
+            const brief = iconPrompt.normaliseBrief(JSON.parse((j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '{}'));
+            if (brief) return brief;
+            why = 'the answer was not a brief';
+        } catch (err) { why = collapse(err && err.message ? err.message : err).slice(0, 120) || why; }
+    }
+    throw new Error(`No brief of the icon (${why}).`);
 }
 
 /**
@@ -449,7 +419,11 @@ async function findLogo(item, ctx, dir) {
     return item.logo;
 }
 
+// (a test draws and briefs with its own functions: _test.stub)
+let stubs = null;
+
 async function requestIcon(route, prompt, refBuffers) {
+    if (stubs && stubs.request) return stubs.request(route, prompt, refBuffers);
     const gate = route.provider === 'tokenrouter' ? require('./tokenRouterGate') : null;
     const client = new OpenAI({
         apiKey: route.apiKey,
@@ -477,15 +451,97 @@ async function requestIcon(route, prompt, refBuffers) {
 }
 
 /**
- * One WM size, cut to a small palette with no dithering (Yukimi, Nov 12: Windows Mobile art had
- * limited colour and staggered shading; the model's smooth gradients fall into bands). config
- * wmProgramIcons.colours (default 32; 0 = full colour).
+ * One Windows Mobile 6.1 size in the ROM's own format: the ROM's 16 / 32 / 64 px program icons are
+ * 8-bit pictures (87 to 253 colours each, measured on the 6.1 dump) with a hard mask, drawn with smooth
+ * shading, so each size gets its own 256-colour palette with no dithering. config
+ * wmProgramIcons.colours (default 256; 0 = full colour).
  */
 async function renderWm(square, size) {
     const out = await wmIconGenerator.renderSize(square, size);
-    const n = settings().colours === undefined ? 32 : Math.floor(Number(settings().colours));
+    const n = settings().colours === undefined ? 256 : Math.floor(Number(settings().colours));
     if (!Number.isFinite(n) || n < 2) return out;
     return sharp(out).png({ palette: true, colours: Math.min(256, n), dither: 0, compressionLevel: 9 }).toBuffer();
+}
+
+const CLEAR = { r: 0, g: 0, b: 0, alpha: 0 };
+
+/** The picture's opaque box (alpha >= 128) as { left, top, right, bottom } in its own pixels, or null. */
+async function opaqueBox(buf) {
+    const b = await wmIconGenerator.bodyBox(buf);
+    return b ? { left: b.minX, top: b.minY, right: b.maxX, bottom: b.maxY } : null;
+}
+
+/**
+ * One Windows Mobile 6.5 Start icon, laid out as the ROM's (measured on start-*@2x.png, 90 px): the art
+ * inside an 80 px box that starts 4 px from the top and is centred across, and under it the ROM's
+ * contact shadow, a flat soft ellipse that ends 3 px below the art. Full colour, soft edge. The shadow
+ * is drawn here, the same for every icon, never by the image model.
+ */
+async function render65(square, px) {
+    const u = px / 90;
+    const box = Math.round(80 * u);
+    const left = Math.round((px - box) / 2);
+    const top = Math.round(4 * u);
+    const art = await sharp(square).resize(box, box, { fit: 'contain', background: CLEAR, kernel: sharp.kernel.lanczos3 })
+        .sharpen({ sigma: px <= 45 ? 0.6 : 0.4, m1: 0.5, m2: 1 }).png().toBuffer();
+    const layers = [];
+    const b = await opaqueBox(art);
+    if (b) {
+        const cx = left + (b.left + b.right + 1) / 2;
+        const base = top + b.bottom + 1;
+        const rx = Math.max(2 * u, (b.right - b.left + 1) * 0.44);
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}"><defs><filter id="f" x="-20%" y="-300%" width="140%" height="700%"><feGaussianBlur stdDeviation="${(1.3 * u).toFixed(2)}"/></filter></defs><ellipse cx="${cx.toFixed(2)}" cy="${(base - 0.5 * u).toFixed(2)}" rx="${rx.toFixed(2)}" ry="${(1.8 * u).toFixed(2)}" fill="#000" fill-opacity="0.5" filter="url(#f)"/></svg>`;
+        layers.push({ input: Buffer.from(svg), left: 0, top: 0 });
+    }
+    layers.push({ input: art, left, top });
+    return sharp({ create: { width: px, height: px, channels: 4, background: CLEAR } }).composite(layers).png({ compressionLevel: 9 }).toBuffer();
+}
+
+/**
+ * One Windows Vista size for the desktop: the art in 86% of the square, a little above centre, on the
+ * soft drop shadow Vista's own icons carry (from 32 px up; its 16 and 24 px frames have none). The
+ * shadow is the art's own silhouette, blurred and set down and to the right, the same for every icon.
+ */
+async function renderVista(square, px) {
+    const box = Math.round(px * 0.86);
+    const left = Math.round((px - box) / 2);
+    const top = Math.max(0, Math.round((px - box) / 2 - px * 0.02));
+    let art = sharp(square).resize(box, box, { fit: 'contain', background: CLEAR, kernel: sharp.kernel.lanczos3 });
+    if (px <= 48) art = art.sharpen({ sigma: 0.5, m1: 0.8, m2: 1.6 });
+    art = await art.png().toBuffer();
+    const layers = [];
+    if (px >= 32) {
+        const shadow = await sharp(art).ensureAlpha().linear([0, 0, 0, 0.4], [0, 0, 0, 0])
+            .extend({ top, bottom: px - box - top, left, right: px - box - left, background: CLEAR })
+            .blur(Math.max(0.6, px * 0.022)).png().toBuffer();
+        layers.push({ input: shadow, left: Math.round(px * 0.012), top: Math.round(px * 0.03) });
+    }
+    layers.push({ input: art, left, top });
+    return sharp({ create: { width: px, height: px, channels: 4, background: CLEAR } }).composite(layers).png({ compressionLevel: 9 }).toBuffer();
+}
+
+/** A drawing measured (wmProgramIconPrompt.js checkMaster): null when fine, else 'clipped' | 'plate' | 'empty'. */
+async function checkDrawing(master, brief) {
+    const { data, info } = await sharp(master).ensureAlpha().extractChannel('alpha').raw().toBuffer({ resolveWithObject: true });
+    return iconPrompt.checkMaster(data, info.width, info.height, brief);
+}
+
+/**
+ * One style's drawing of a brief: the fixed text, the program's pictures first and the platform's
+ * icons last. A drawing that fails the measured check is drawn once more with one sentence added;
+ * the second is kept either way, with a note when it still fails.
+ */
+async function drawStyle(route, style, name, brief, brand, opts) {
+    const refs = await styleRefs(style, brief.archetype);
+    const text = iconPrompt.renderPrompt(style, name, brief, { brandRefs: brand.length, userRefs: opts.userRefs, styleCount: refs.length, direction: opts.direction });
+    let master = null;
+    let why = null;
+    for (let i = 0; i < MAX_DRAWS; i++) {
+        master = await requestIcon(route, why ? `${text}\n\n${iconPrompt.retryNote(why)}` : text, brand.concat(refs));
+        why = await checkDrawing(master, brief);
+        if (!why) break;
+    }
+    return { master, why, prompt: text };
 }
 
 // ---------------------------------------------------------------- jobs
@@ -556,7 +612,7 @@ function publicJob(job) {
             mode: normMode(it.mode),
             note: it.note || null,
             direction: it.direction || null,
-            preview: it.preview ? Object.fromEntries(PREVIEW_SIZES.map((s) => [s, `/api/wm-program-icons/jobs/${job.id}/files/${it.preview}-${s}.png`])) : null,
+            preview: it.preview ? Object.fromEntries(PREVIEW_SIZES.concat(it.sets === 2 ? PREVIEW_EXTRA : []).map((s) => [s, `/api/wm-program-icons/jobs/${job.id}/files/${it.preview}-${s}.png`])) : null,
             original: it.hasRef ? `/api/wm-program-icons/jobs/${job.id}/files/${it.key}-ref.png` : null,
             store: it.store || null
         }))
@@ -595,6 +651,12 @@ function pump() {
     }
 }
 
+const NOTES = {
+    clipped: 'runs off the edge',
+    plate: 'may still sit on a tile',
+    empty: 'came back empty'
+};
+
 async function runItem(job, item) {
     item.state = 'working';
     item.error = null;
@@ -602,10 +664,10 @@ async function runItem(job, item) {
     try {
         const dir = jobDir(job.id);
         const ctx = item.context !== undefined ? item.context : (item.context = await playStoreContext(item.package));
-        const refs = [];
-        const refNames = [];
+        // the program's own pictures: its launcher icon from the phone, its Play Store icon
+        const own = [];
         const refPath = path.join(dir, `${item.key}-ref.png`);
-        if (fs.existsSync(refPath)) { refs.push(fs.readFileSync(refPath)); refNames.push('the app\'s own launcher icon'); }
+        if (fs.existsSync(refPath)) own.push(fs.readFileSync(refPath));
         const playPath = path.join(dir, `${item.key}-play.png`);
         if (!fs.existsSync(playPath) && ctx && ctx.iconUrl) {
             try {
@@ -613,59 +675,62 @@ async function runItem(job, item) {
                 if (r.ok) atomicWrite(playPath, await sharp(Buffer.from(await r.arrayBuffer())).resize(512, 512, { fit: 'inside' }).png().toBuffer());
             } catch (_) { /* the launcher icon is enough */ }
         }
-        if (fs.existsSync(playPath)) { refs.push(fs.readFileSync(playPath)); refNames.push('its Play Store icon'); }
-        const route = await chooseRoute();
+        if (fs.existsSync(playPath)) own.push(fs.readFileSync(playPath));
+        const route = stubs && stubs.route ? stubs.route : await chooseRoute();
         job.provider = route.provider;
         job.model = route.model;
         item.attempt = (item.attempt || 0) + 1;
         const isGame = item.game || /game/i.test(String((ctx && ctx.category) || item.category || ''));
-        let mode = normMode(item.mode);
+        const mode = normMode(item.mode);
         item.note = null;
-        let useRefs = refs;
-        let useNames = refNames;
-        let brief = null;
-        if (mode === 'simple') {
-            // Simple works from the real mark only: the themed icon and the logo in the store art,
-            // with the icons for colour; a game with neither is made in the Detailed style instead
-            const own = [];
-            const ownNames = [];
+        // Simple, for a game: its real mark (the logo found in its store art, its themed one-colour
+        // icon) is what the brief is written from, ahead of the painted store icon
+        const marks = [];
+        if (mode === 'simple' && isGame) {
             const themedPath = path.join(dir, `${item.key}-themed.png`);
-            if (fs.existsSync(themedPath)) { own.push(fs.readFileSync(themedPath)); ownNames.push('the app\'s themed icon (its own one-colour mark: the shape to keep)'); }
             const logo = await findLogo(item, ctx, dir);
-            if (logo.found) { own.push(fs.readFileSync(path.join(dir, `${item.key}-logo.png`))); ownNames.push(`its official logo, cropped from its store art (${logo.what || 'logo'})`); }
-            if (own.length) {
-                useRefs = own.concat(refs);
-                useNames = ownNames.concat(refNames.map((n) => `${n} (for its colours)`));
-            } else if (isGame) {
-                mode = 'detailed';
-                item.note = 'No logo or themed icon to work from: made in the Detailed style.';
-            }
+            if (logo.found) marks.push(fs.readFileSync(path.join(dir, `${item.key}-logo.png`)));
+            if (fs.existsSync(themedPath)) marks.push(fs.readFileSync(themedPath));
         }
-        if (mode === 'detailed' && isGame && refs.length) {
-            // a game in Detailed: drawn from a brief of its objects, with no picture to cut out
-            if (!item.briefs || typeof item.briefs !== 'object') item.briefs = {};
-            if (item.briefs.detailed === undefined) item.briefs.detailed = await describeIcon(item.label, refs.slice().reverse(), 'detailed');
-            brief = item.briefs.detailed;
-        }
-        // the user's attached pictures come first, and the text says how to use them (#776)
+        // the user's attached pictures come first (#776)
         const att = [];
         for (let i = 0; i < (item.attachments || 0); i++) {
             const f = path.join(dir, `${item.key}-att${i}.png`);
             if (fs.existsSync(f)) att.push(fs.readFileSync(f));
         }
-        if (att.length) {
-            brief = null;
-            useRefs = att.concat(useRefs);
-            useNames = att.map((_, i) => `picture ${i + 1} the user attached (use it as their direction says: a character or object to draw, an icon design to follow)`).concat(useNames);
+        const pictures = marks.concat(own);
+        if (!att.length && !pictures.length) throw new Error('No picture of this program to work from: request its icon from the phone (Settings > Personal > Program Icons).');
+        // the brief: once per mode, kept for Regenerate (another draw of the same design, not another design)
+        if (!item.briefs || typeof item.briefs !== 'object' || item.briefs.v !== 2) item.briefs = { v: 2 };
+        if (!item.briefs[mode]) {
+            item.briefs[mode] = await iconBrief(item.label, att.concat(pictures), {
+                category: (ctx && ctx.category) || item.category || (item.game ? 'game' : ''),
+                description: ctx && ctx.description,
+                characters: mode !== 'simple',
+                direction: item.direction
+            });
         }
-        const style = settings().styleRefs === false ? [] : await styleRefs();
-        const prompt = buildPrompt({ ...item, mode }, ctx, item.attempt, brief ? [] : useNames, brief, style.length);
-        const master = await requestIcon(route, prompt, (brief ? [] : useRefs).concat(style));
+        const brief = item.briefs[mode];
+        // image 1 is the picture the outline is taken from; one picture of the program is enough (the
+        // second only repeats it with another tile)
+        const brand = att.concat(pictures.slice(0, 1));
+        const opts = { userRefs: att.length, direction: item.direction };
         const base = `${item.key}-${item.attempt}`;
-        atomicWrite(path.join(dir, `${base}.png`), master);
-        const square = await wmIconGenerator.squareFromCrop(master, await wmIconGenerator.autoCrop(master));
-        for (const s of PREVIEW_SIZES) atomicWrite(path.join(dir, `${base}-${s}.png`), await renderWm(square, s));
+        const notes = [];
+        const wm = await drawStyle(route, 'wm', item.label, brief, brand, opts);
+        atomicWrite(path.join(dir, `${base}.png`), wm.master);
+        if (wm.why) notes.push(`The phone icon ${NOTES[wm.why]}.`);
+        const wmSquare = await wmIconGenerator.squareFromCrop(wm.master, await wmIconGenerator.autoCrop(wm.master));
+        for (const s of PREVIEW_SIZES) atomicWrite(path.join(dir, `${base}-${s}.png`), await renderWm(wmSquare, s));
+        atomicWrite(path.join(dir, `${base}-65.png`), await render65(wmSquare, 90));
+        const vista = await drawStyle(route, 'vista', item.label, brief, brand, opts);
+        atomicWrite(path.join(dir, `${base}-vista-master.png`), vista.master);
+        if (vista.why) notes.push(`The desktop icon ${NOTES[vista.why]}.`);
+        const vistaSquare = await wmIconGenerator.squareFromCrop(vista.master, await wmIconGenerator.autoCrop(vista.master));
+        atomicWrite(path.join(dir, `${base}-vista.png`), await renderVista(vistaSquare, 128));
+        if (notes.length) item.note = notes.join(' ');
         item.preview = base;
+        item.sets = 2; // this drawing has the 6.5 and Vista previews too
         item.state = 'ready';
     } catch (err) {
         item.state = 'failed';
@@ -692,7 +757,8 @@ async function createJob(body, req) {
     for (const raw of list) {
         const appId = collapse(raw && raw.id);
         // a work profile's program carries its profile: "package/activity@u10" (#777)
-        if (!/^[A-Za-z0-9_.]+\/[A-Za-z0-9_.$]+(@u\d{1,6})?$/.test(appId) || seen.has(appId)) continue;
+        // (a store entry kept by package name alone comes back that way from jobs/missing)
+        if (!/^[A-Za-z0-9_.]+(\/[A-Za-z0-9_.$]+)?(@u\d{1,6})?$/.test(appId) || seen.has(appId)) continue;
         seen.add(appId);
         const item = {
             key: crypto.createHash('sha1').update(appId).digest('hex').slice(0, 12),
@@ -751,6 +817,27 @@ async function createJob(body, req) {
     return job;
 }
 
+/**
+ * Every program needs a Vista icon for the desktop, and the store's older sets have none: a batch of
+ * those programs (up to MAX_ITEMS; the oldest sets first), drawn from their Play Store icons with no
+ * phone in the loop. A program with no store page (a web app, a sideloaded build) fails in the batch
+ * with the reason; it is requested from the phone instead. Answers { job, left } (left: programs
+ * still without one after this batch), or null when every set has its Vista icon.
+ */
+async function missingJob(req) {
+    const m = readManifest();
+    const open = new Set();
+    for (const j of jobs.values()) {
+        if (j.state !== 'done' && j.state !== 'cancelled') j.items.forEach((it) => open.add(it.id));
+    }
+    const todo = Object.entries(m.icons)
+        .filter(([id, e]) => e && e.name && e.vista !== true && !open.has(id))
+        .sort((a, b) => String(a[1].updatedAt || '').localeCompare(String(b[1].updatedAt || '')));
+    if (!todo.length) return null;
+    const items = todo.slice(0, MAX_ITEMS).map(([id, e]) => ({ id, label: e.label || '', mode: 'detailed' }));
+    return { job: await createJob({ items }, req), left: todo.length - items.length };
+}
+
 function regenerate(job, keys, mode) {
     if (job.state === 'done' || job.state === 'cancelled') throw Object.assign(new Error('This batch is closed.'), { status: 409 });
     const want = new Set(Array.isArray(keys) ? keys.map(String) : []);
@@ -778,8 +865,18 @@ async function finish(job, accept) {
         const square = await wmIconGenerator.squareFromCrop(master, await wmIconGenerator.autoCrop(master));
         const name = setName(it);
         for (const s of wmIconGenerator.SIZES) atomicWrite(path.join(storeDir(), `${name}${s.suffix}.png`), await renderWm(square, s.size));
+        for (const s of WM65_SIZES) atomicWrite(path.join(storeDir(), `${name}${s.suffix}.png`), await render65(square, s.size));
+        // the desktop's Vista set (a batch from before Nov 22 2026 has no Vista drawing)
+        let vista = false;
+        const vistaMaster = path.join(jobDir(job.id), `${it.preview}-vista-master.png`);
+        if (fs.existsSync(vistaMaster)) {
+            const vm = fs.readFileSync(vistaMaster);
+            const vs = await wmIconGenerator.squareFromCrop(vm, await wmIconGenerator.autoCrop(vm));
+            for (const px of VISTA_SIZES) atomicWrite(path.join(storeDir(), `${name}-vista-${px}.png`), await renderVista(vs, px));
+            vista = true;
+        }
         const old = manifest.icons[it.id];
-        manifest.icons[it.id] = { name, package: it.package, label: it.label, model: job.model || null, updatedAt: new Date().toISOString() };
+        manifest.icons[it.id] = { name, package: it.package, label: it.label, model: job.model || null, updatedAt: new Date().toISOString(), wm65: true, vista };
         if (old && old.name && old.name !== name) removeSet(old.name);
         it.store = `${STORE_WEB}/${name}`;
         saved.push(it.id);
@@ -837,6 +934,12 @@ function mount(app, authMiddleware, globalResources) {
     app.post(`${base}/jobs`, auth, admin, json, async (req, res) => {
         try { res.json({ success: true, job: publicJob(await createJob(req.body, req)) }); } catch (err) { fail(res, err); }
     });
+    app.post(`${base}/jobs/missing`, auth, admin, async (req, res) => {
+        try {
+            const r = await missingJob(req);
+            res.json(r ? { success: true, job: publicJob(r.job), left: r.left } : { success: true, job: null, left: 0 });
+        } catch (err) { fail(res, err); }
+    });
     app.get(`${base}/jobs/:job`, auth, admin, (req, res) => {
         const job = jobOr404(req, res);
         if (!job) return;
@@ -848,7 +951,7 @@ function mount(app, authMiddleware, globalResources) {
         const job = jobOr404(req, res);
         if (!job) return;
         const file = String(req.params.file || '');
-        if (!/^[a-f0-9]{12}-(ref|themed|logo|\d+-(16|32|128))\.png$/.test(file)) return res.status(404).end();
+        if (!/^[a-f0-9]{12}-(ref|themed|logo|\d+-(16|32|128|65|vista))\.png$/.test(file)) return res.status(404).end();
         const p = path.join(jobDir(job.id), file);
         fs.promises.stat(p).then(() => {
             res.set('Cache-Control', 'private, max-age=86400');
@@ -886,9 +989,8 @@ function mount(app, authMiddleware, globalResources) {
 
 module.exports = {
     mount,
-    buildPrompt,
     playStoreContext,
     chooseRoute,
     publicManifest,
-    _test: { versionOf, TAKES, createJob, finish, removeFromStore, jobs, setRoot: (r) => { projectRoot = r; }, watchJob, pushJob, saveJob, publicJob, jobWatchers, setGr: (g) => { boundGr = g; } }
+    _test: { stub: (o) => { stubs = o || null; }, runItem, versionOf, createJob, render65, renderVista, renderWm, checkDrawing, missingJob, finish, removeFromStore, jobs, setRoot: (r) => { projectRoot = r; }, watchJob, pushJob, saveJob, publicJob, jobWatchers, setGr: (g) => { boundGr = g; } }
 };

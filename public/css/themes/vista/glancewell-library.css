@@ -118,6 +118,15 @@ body.theme-vista #photoSwipeWindow .wpg-lib-node-icon.is-device {
     background: url("/static_images/vista-explorer/portable-device-16.png") 0 0 / 16px 16px no-repeat;
 }
 
+/* a Smart Tag: Vista's Saved Search icon; one that only looks in negative prompts reads red */
+body.theme-vista #photoSwipeWindow .wpg-lib-node-icon.is-smart {
+    background: url("/static_images/vista-icons/search-folder-16.png") 0 0 / 16px 16px no-repeat;
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node.is-negative .wpg-lib-node-label {
+    color: #b3261e;
+}
+
 body.theme-vista #photoSwipeWindow .wpg-lib-node-label {
     padding: 0 3px 1px 2px;
     line-height: 16px;
@@ -760,35 +769,6 @@ body.theme-vista #photoSwipeWindow .wpg-lib-i-capedit {
     resize: none;
 }
 
-/* Change Time Taken (dialog 1472) and Options in the shared message box */
-.wpg-lib-time p {
-    margin: 0 0 10px;
-}
-
-.wpg-lib-time .wpg-lib-time-row {
-    display: flex;
-    gap: 8px;
-}
-
-.wpg-lib-time .wpg-lib-time-row > span:first-child {
-    flex: 0 0 80px;
-    text-align: right;
-}
-
-/* Change by: the box, its spinner and "hours" on one line (dialog 1472) */
-.wpg-lib-time .wpg-lib-time-row > span:last-child {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-}
-
-#confirmationDialog .wpg-lib-time input.wpg-lib-time-h {
-    flex: none;
-    width: 52px;
-    min-width: 0;
-}
-
 .wpg-lib-options .wpg-lib-options-h {
     margin: 0 0 6px;
 }
@@ -828,8 +808,6 @@ body.theme-vista #photoSwipeWindow .wpg-lib-node.is-drop .wpg-lib-node-label {
     background: url("/static_images/vista-explorer/portable-device-16.png") center / 32px 32px no-repeat;
 }
 .wpg-imp-none { padding: 8px; color: #6d6d6d; }
-.wpg-imp-tag { display: flex; flex-direction: column; gap: 4px; }
-.wpg-imp-tag-input { width: 100%; box-sizing: border-box; }
 .wpg-imp-note { margin-top: 10px !important; color: #6d6d6d; }
 .wpg-imp-bar {
     height: 15px;
@@ -949,4 +927,220 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     width: 20px;
     height: 8px;
     background: url("/static_images/vista-photo-gallery/seek-thumb.png") 0 0 / 20px 8px no-repeat;
+}
+
+/* DreamScape > Workspaces (every workspace's prints together, Yukimi Nov 21 2026): a glass square in the picture's
+   corner, tinted with the workspace's own colour (its name on hover) */
+body.theme-vista #photoSwipeWindow .wpg-lib-pic { position: relative; display: block; line-height: 0; }
+body.theme-vista #photoSwipeWindow .wpg-lib-ws {
+    position: absolute;
+    z-index: 1;
+    right: 6px;
+    top: 6px;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.18) 48%, rgba(255, 255, 255, 0) 52%, rgba(255, 255, 255, 0.22)),
+        var(--ws, #6b8db8);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.55), 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+/* Table of Contents as the Visual Index (Yukimi, Nov 21 2026): a card per group, its first picture, name and count;
+   the one in view lit (Vista's selection blue), the column scrolls on its own */
+body.theme-vista #photoSwipeWindow .wpg-lib-toc {
+    width: 168px;
+    padding: 6px 8px 6px 8px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    background: linear-gradient(to right, #f4f7fb, #eaf0f7);
+}
+body.theme-vista #photoSwipeWindow .wpg-lib-toc-card {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    margin: 0 0 3px;
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    box-shadow: none;
+    font: inherit;
+    color: #000;
+    text-align: left;
+    cursor: default;
+}
+body.theme-vista #photoSwipeWindow .wpg-lib-toc-card:hover { border-color: #b8d6fb; background: linear-gradient(#fafbfd, #ebf3fd); }
+body.theme-vista #photoSwipeWindow .wpg-lib-toc-card.is-visible { border-color: #7da2ce; background: linear-gradient(#dcebfc, #c1dbfc); }
+body.theme-vista #photoSwipeWindow .wpg-lib-toc-pic { flex: 0 0 auto; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: #fff; box-shadow: 0 0 0 1px #c5ccd4, 0 1px 2px rgba(0, 0, 0, 0.15); }
+body.theme-vista #photoSwipeWindow .wpg-lib-toc-pic img { max-width: 44px; max-height: 44px; object-fit: contain; display: block; }
+body.theme-vista #photoSwipeWindow .wpg-lib-toc-lines { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+body.theme-vista #photoSwipeWindow .wpg-lib-toc-card .wpg-lib-toc-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+body.theme-vista #photoSwipeWindow .wpg-lib-toc-count { color: #5a6c82; font-size: 11px; }
+
+/* Vista dialogs of kit controls (glancewellLibrary.js kitDialog; Segoe dialog units, 1.75 x 1.875 px) */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.wpg-smart {
+    width: 455px;   /* 260 DLU */
+    height: 328px;  /* 175 DLU */
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.wpg-time {
+    width: 375px;   /* 214 DLU */
+    height: 180px;  /* 96 DLU */
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.wpg-imp-tagdlg {
+    width: 438px;   /* 250 DLU */
+    height: 195px;  /* 104 DLU */
+}
+
+.tbp-client.wpg-time .wpg-time-label {
+    text-align: left;
+}
+
+.tbp-client .wpg-imp-note {
+    color: #444;
+}
+
+/* Smart Tags: a negative-prompt tag reads red (the lane's radio label and its token) */
+.tbp-window .tbp-client.wpg-smart .tbp-check.is-negative input + label {
+    color: #b3261e;
+}
+
+.tbp-client.wpg-smart .wpg-smart-terms {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 4px;
+    padding: 4px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #abadb3;
+}
+
+.tbp-client.wpg-smart .wpg-smart-term {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 2px 0 6px;
+    line-height: 18px;
+    background: linear-gradient(#f4f9ff, #dcebfc);
+    border: 1px solid #7da2ce;
+    border-radius: 3px;
+}
+
+.tbp-client.wpg-smart .wpg-smart-term.is-negative {
+    color: #8a1c15;
+    background: linear-gradient(#fff4f3, #fbd9d6);
+    border-color: #d2827b;
+}
+
+.tbp-client.wpg-smart .wpg-smart-x {
+    /* a span without role=button: 7.css paints a button face (and a minimum size) on both */
+    display: inline-block;
+    flex: none;
+    min-width: 0;
+    min-height: 0;
+    position: relative;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
+    color: inherit;
+    box-shadow: none;
+}
+
+.tbp-client.wpg-smart .wpg-smart-x::before,
+.tbp-client.wpg-smart .wpg-smart-x::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 6px;
+    width: 8px;
+    height: 1.5px;
+    background: currentColor;
+    transform: rotate(45deg);
+}
+
+.tbp-client.wpg-smart .wpg-smart-x::after {
+    transform: rotate(-45deg);
+}
+
+.tbp-client.wpg-smart .wpg-smart-x:hover {
+    background: rgba(0, 0, 0, .08);
+}
+
+.tbp-client.wpg-smart .wpg-smart-none {
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+/* suggestions under a text box (glancewellLibrary.js attachSuggest): Vista's list drop-down, never the browser's datalist */
+.wpg-suggest {
+    position: fixed;
+    z-index: 2147483000;
+    max-height: 190px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #646464;
+    box-shadow: 2px 2px 3px rgba(0, 0, 0, .25);
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+.wpg-suggest-opt {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 1px 4px;
+    line-height: 17px;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.wpg-suggest-opt:hover {
+    background: #e5f3fb;
+}
+
+.wpg-suggest-opt.is-active {
+    background: #3399ff;
+    color: #fff;
+}
+
+.wpg-suggest-note {
+    color: #6d6d6d;
+}
+
+.wpg-suggest-opt.is-active .wpg-suggest-note {
+    color: #e6f1ff;
+}
+
+/* a phone as Mobile Device Center draws it: a modern phone or a Galaxy Z Fold (activeSyncAgent.js deviceIcon) */
+body.theme-vista #photoSwipeWindow .wpg-lib-node-icon.is-device.is-phone {
+    background-image: url("/static_images/vista-explorer/portable-phone-16.png");
+}
+
+body.theme-vista #photoSwipeWindow .wpg-lib-node-icon.is-device.is-fold {
+    background-image: url("/static_images/vista-explorer/portable-fold-16.png");
+}
+
+.wpg-imp-dev-icon.is-phone {
+    background-image: url("/static_images/vista-explorer/portable-phone-32.png");
+    background-size: 32px 32px;
+}
+
+.wpg-imp-dev-icon.is-fold {
+    background-image: url("/static_images/vista-explorer/portable-fold-32.png");
+    background-size: 32px 32px;
+}
+
+/* Change Time Taken's up-down: the kit's arrows sit 2 px inside the right edge of a wider box */
+.tbp-client.wpg-time .wpg-time-spin .tbp-spin {
+    left: auto;
+    right: 2px;
 }

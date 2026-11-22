@@ -4,7 +4,7 @@
  * never decide whether it works. Calls and listings stay on the socket (modules/activeSync.js).
  *
  * Phone -> desktop (Explorer thumbnails, opening, copying to the computer):
- *   GET  /api/activesync/file/:deviceId/:root/<path>[?thumb=N][&download=1]      administrators
+ *   GET  /api/activesync/file/:deviceId/:root/<path>[?thumb=N][&jpeg=1][&download=1]  administrators (jpeg=1: thumb 1024 here)
  *        the server asks the phone to send (stream.send { transferId, root, path, thumb, range })
  *        and holds the response open;
  *   POST /api/activesync/transfer/:id/chunk?seq=N[&end=1]                        the device
@@ -13,7 +13,7 @@
  *        never runs ahead of the desktop. 410: the desktop went away, stop.
  *
  * Desktop -> phone (Explorer paste and drops, Send To, a file for a partner that is away):
- *   POST   /api/activesync/upload/:deviceId/begin   { root, dir, name, size, conflict, mtime, id?, mkdirs? }
+ *   POST   /api/activesync/upload/:deviceId/begin   { root, dir, name, size, conflict, mtime, id?, mkdirs?, push? }
  *          mkdirs: the phone makes dir first when it is missing (Send To's /ActiveSync folder, which a
  *          queued copy cannot create ahead)
  *   POST   /api/activesync/upload/:id/chunk?offset=N        raw bytes, in order; resumable: the
@@ -267,7 +267,9 @@ function readBody(req, limit) {
  * play. The bytes pass through here (the phone pulls files sent to it and pushes the ones it
  * sends), so the server tells the phone: as_event 'transfer.progress' (at most 4 a second) and
  * 'transfer.done' when the last one ends. Previews (thumbnails) do not count.
- *   detail { active, files, filesDone, up: { total, done }, down: { total, done }, startedAt }
+ *   detail { active, files, filesDone, up: { total, done }, down: { total, done }, startedAt, push }
+ * push: a file someone sent to the phone (Send To, a program to install), not Explorer or Media Player moving data
+ * around: only then does the phone play ActiveSync's Start / Complete sounds (Yukimi, Nov 21 2026).
  */
 const progress = new Map(); // deviceId -> { items: Map(id -> { dir, total, done }), files, filesDone, up, down, startedAt, timer, lastAt }
 
@@ -281,7 +283,7 @@ function progOf(deviceId) {
 }
 
 function progDetail(p) {
-    return { active: p.items.size > 0, files: p.files, filesDone: p.filesDone, up: { ...p.up }, down: { ...p.down }, startedAt: p.startedAt };
+    return { active: p.items.size > 0, files: p.files, filesDone: p.filesDone, up: { ...p.up }, down: { ...p.down }, startedAt: p.startedAt, push: !!p.push };
 }
 
 function progEmit(globalResources, deviceId, now) {
@@ -299,12 +301,13 @@ function progEmit(globalResources, deviceId, now) {
     if (p.timer.unref) p.timer.unref();
 }
 
-function progStart(globalResources, deviceId, id, dir, total) {
+function progStart(globalResources, deviceId, id, dir, total, push = false) {
     const p = progOf(deviceId);
     if (!p.items.size && p.filesDone === p.files) {
         // a new transfer: the totals start again
-        Object.assign(p, { files: 0, filesDone: 0, up: { total: 0, done: 0 }, down: { total: 0, done: 0 }, startedAt: Date.now() });
+        Object.assign(p, { files: 0, filesDone: 0, up: { total: 0, done: 0 }, down: { total: 0, done: 0 }, startedAt: Date.now(), push: false });
     }
+    if (push) p.push = true;
     if (p.items.has(id)) return;
     p.items.set(id, { dir, total: Math.max(0, Number(total) || 0), done: 0 });
     p.files += 1;
@@ -365,6 +368,9 @@ function mount(app, authMiddleware, globalResources) {
         const rootId = String(req.params.root || '');
         let filePath = `/${String(req.params[0] || '')}`;
         let thumb = Number(req.query.thumb) > 0 ? Math.max(32, Math.min(1024, Math.round(Number(req.query.thumb)))) : 0;
+        // ?jpeg=1 (a picture the browser cannot decode, full size over a direct LAN link, #1006): through the server, the
+        // phone's largest preview, so the same address still shows the picture when the link is not there
+        if (!thumb && req.query.jpeg === '1') thumb = 1024;
         let shareArgs = null;
         let fromName;
         if (rootId === 'share') {
@@ -495,7 +501,9 @@ function mount(app, authMiddleware, globalResources) {
             root: String(b.root || '').slice(0, 64), dir: String(b.dir || '/').slice(0, 2048),
             conflict: ['fail', 'replace', 'rename'].includes(b.conflict) ? b.conflict : 'fail',
             mtime: Number.isFinite(Number(b.mtime)) && Number(b.mtime) > 0 ? Number(b.mtime) : null,
-            mkdirs: b.mkdirs === true
+            mkdirs: b.mkdirs === true,
+            // sent to the phone (Send To, a program), not a copy made in Explorer: the phone plays its sounds
+            push: b.push === true
         };
         if (share) Object.assign(meta, { dir: share.dir, share: { name: share.name, account: share.account }, owner: sessionOf(req) });
         // known before its files exist, so a sweep running now leaves them be
@@ -609,7 +617,7 @@ function mount(app, authMiddleware, globalResources) {
             }
             // the phone pulls at its own pace: an hour per GB is generous on any link
             const timeoutMs = Math.max(120000, Math.ceil(meta.size / (1024 * 1024 * 1024)) * 3600 * 1000);
-            progStart(globalResources, meta.deviceId, meta.id, 'down', meta.size);
+            progStart(globalResources, meta.deviceId, meta.id, 'down', meta.size, meta.push === true || wantInstall);
             let entry;
             try {
                 entry = await activeSync.serverCall(globalResources, wsServer(), meta.deviceId, 'stream.receive', args, { timeoutMs, maxTimeoutMs: SEND_CALL_TIMEOUT_MS, fromName: shareFrom });

@@ -1433,6 +1433,12 @@ html.ui-mobile #wmShell .wm-edit {
     height: calc(48 * var(--wm-px));
 }
 
+/* the same program's Windows Vista icon (the desktop's), beside the phone's */
+.wm-listbox-row .wm-pi-thumbs img.wm-pi-vista {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
 .wm-pi-empty {
     display: block;
     border: calc(1 * var(--wm-px)) dotted #808080;

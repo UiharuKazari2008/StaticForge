@@ -59,7 +59,9 @@ const OP_GROUP = {
     screen: 'screen',
     sync: 'sync',
     // a DreamOS machine's own commands (modules/cafeReadyHost.js): only through the server's admin routes, never as_call
-    host: 'control'
+    host: 'control',
+    // the direct LAN link (#1006, modules/activeSyncLink.js): it carries file calls and bodies
+    link: 'files'
 };
 // a guest connection never syncs: sync items belong to a partnership
 const GUEST_PERMISSIONS = PERMISSIONS.filter((p) => p !== 'sync');
@@ -223,6 +225,8 @@ function sanitizeStatus(raw) {
     if (typeof raw.description === 'string' && raw.description.trim()) out.description = clampString(raw.description.trim(), 128);
     // a DreamOS machine's own facts (CaféReady: base, slot, addresses, power, what it allows; modules/cafeReadyHost.js)
     if (isPlainObject(raw.host)) out.host = require('./cafeReadyHost').sanitizeHost(raw.host);
+    // the phone's networks: interfaces, prefixes, routes, whether it takes direct links (#1006, activeSyncLink.js)
+    if (isPlainObject(raw.net)) { const net = require('./activeSyncLink').sanitizeNet(raw.net); if (net) out.net = net; }
     return out;
 }
 
@@ -776,7 +780,9 @@ function hello(globalResources, wsServer, clientInfo, data) {
     // the page has this list now: the broadcast its hello sets off is not sent back to it unless it
     // differs in what the page reads (scheduleUpdated)
     if (as.speaker !== 'service') lastOwnKeys.set(id, ownPeersKey(peers, id));
-    return { success: true, kind, id, name: as.name, session: as.session, permissions: as.permissions, device: describeDevice(globalResources, server, row), ...peers };
+    // a phone checks direct-link tokens with this key (#1006, docs/activesync-direct-link.md)
+    const linkKey = kind === 'device' && !host ? require('./activeSyncLink').publicKey() : null;
+    return { success: true, kind, id, name: as.name, session: as.session, permissions: as.permissions, device: describeDevice(globalResources, server, row), ...(linkKey ? { linkKey } : {}), ...peers };
 }
 
 /** as_status: fire-and-forget from a device; kept on the socket, written to the row now and then. */
@@ -1588,6 +1594,8 @@ module.exports = {
     __test: { noteReceived, receivedOf, peersKey, ownPeersKey },
     deviceOnline,
     deviceAddresses,
+    /** A device's status as its live sockets report it (merged), or null. */
+    deviceStatus: (globalResources, wsServer, deviceId) => mergedStatus(liveSockets(wsServerOf(globalResources, wsServer), 'device', deviceId)),
     deviceRow,
     touchDevice,
     /** as_event from the server to a device's sockets (transfer progress, #822). */

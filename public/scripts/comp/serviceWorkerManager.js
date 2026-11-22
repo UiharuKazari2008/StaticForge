@@ -5946,36 +5946,67 @@ class ServiceWorkerManager {
      * the window and nothing restarts: the updates stay waiting and the updater tries them again (never a notice).
      */
     async _installThenRestartPhone(opts = {}) {
+        // Kept local: the flow is unit-tested by extracting this method on its own.
+        const WATCHDOG_MS = 90000;
         if (this._phoneInstalling) return;
         this._phoneInstalling = true;
         const ws = window.wmShell;
         const pkg = ws && typeof ws.packageInstall === 'function' ? ws.packageInstall() : null;
         let ok = false;
         let recorded = false;
-        try {
+        let finished = false;
+        let watchdog = null;
+        // The old flow awaited the check, the install and the shell commit with one clock each, but
+        // an await with no clock at all (a locked IndexedDB write, a promise executor that threw
+        // before it armed its stall timer) held both flags true and the install screen up for ever.
+        // One clock over the whole job bounds it; the files stay counted and the screen closes.
+        const timedOut = new Promise((resolve) => {
+            watchdog = setTimeout(() => { if (!finished) resolve(true); }, WATCHDOG_MS);
+        });
+        const work = (async () => {
             this.forgetShutdownPlan();
             const planning = this.planShutdownInstall();
             const wu = window.winlogonUpdates;
             const plan = wu && typeof wu.plan === 'function' ? await wu.plan(this, planning) : await planning;
+            if (finished) return false;
+            let done = false;
             if (plan && plan.updates && plan.updates.length) {
                 const r = await this.installUpdatesAtShutdown(plan, {
                     kind: 'restart',
                     plain: true,
                     onPercent: (pct) => { if (pkg) pkg.progress(Math.min(95, Number(pct) || 0)); }
                 });
-                ok = !(r && r.failed > 0);
+                if (finished) return false;
+                done = !(r && r.failed > 0);
                 recorded = true;
             } else {
-                ok = true;
+                done = true;
             }
-            if (ok) {
+            if (done) {
                 const c = await this.commitShellAndWait({ refresh: true, fetchMs: 8000, timeoutMs: 12000 });
+                if (finished) return false;
                 if (!c || !c.app) console.warn('[update] the new /app is not complete in the cache; the restart may need another', c);
             }
-        } catch (err) {
-            console.warn('[update] Install Now did not finish; the updates keep waiting', err);
-            ok = false;
+            return done;
+        })();
+        try {
+            const timeout = await Promise.race([
+                work.then((v) => { if (!finished) ok = v; return false; }, (err) => {
+                    console.warn('[update] Install Now did not finish; the updates keep waiting', err);
+                    ok = false;
+                    return false;
+                }),
+                timedOut
+            ]);
+            if (timeout) {
+                console.warn(`[update] Install Now did not settle in ${WATCHDOG_MS / 1000}s; the updates keep waiting`);
+                ok = false;
+                // a lost attach must not own the next install either
+                this._activeDownloadAttach = null;
+            }
         } finally {
+            finished = true;
+            clearTimeout(watchdog);
             this._phoneInstalling = false;
             this.forgetShutdownPlan();
         }
@@ -6132,7 +6163,7 @@ class ServiceWorkerManager {
             stallMs = DOWNLOAD_STALL_MS
         } = options;
 
-        return new Promise(async (resolve) => {
+        return new Promise((resolve) => {
             if (!this.swRegistration || !this.swRegistration.active) {
                 resolve({ success: false, reason: 'Service Worker not ready' });
                 return;
@@ -6145,8 +6176,13 @@ class ServiceWorkerManager {
             let skipRequested = false;
             let stallTimer = null;
             let progressHandler = null;
+            let deadline = null;
 
             const cleanup = () => {
+                if (deadline) {
+                    clearTimeout(deadline);
+                    deadline = null;
+                }
                 if (stallTimer) {
                     clearTimeout(stallTimer);
                     stallTimer = null;
@@ -6184,15 +6220,20 @@ class ServiceWorkerManager {
                 if (finished) {
                     return;
                 }
-                if (!result.stalled && result.userChoice !== 'skip' && !result.hasErrors && result.success !== true) {
-                    const liveState = await this.checkDownloadState();
-                    if (liveState && liveState.isDownloading) {
-                        return;
+                let finalState = null;
+                try {
+                    if (!result.stalled && result.userChoice !== 'skip' && !result.hasErrors && result.success !== true) {
+                        const liveState = await this.checkDownloadState();
+                        if (liveState && liveState.isDownloading) {
+                            return;
+                        }
                     }
+                    finalState = await this.checkDownloadState();
+                } catch (err) {
+                    console.warn('[update] the download state could not be read; closing the attach', err);
                 }
                 finished = true;
                 cleanup();
-                const finalState = await this.checkDownloadState();
                 if (!finalState || !finalState.isDownloading) {
                     this.isUpdating = false;
                 }
@@ -6289,6 +6330,14 @@ class ServiceWorkerManager {
                 return true;
             };
 
+            // The stall timer is armed only after the first await below. An await that throws before
+            // that (or a promise that never settles) left this attach owning the install for ever
+            // with no key out of the screen (#1022). One deadline covers the whole attach.
+            deadline = setTimeout(() => {
+                void finishDownload({ success: false, stalled: true, timedOut: true,
+                    completed, total, filesDownloaded: completed, hasErrors });
+            }, Math.max(stallMs * 2, 30000));
+            void (async () => {
             const swState = await this.checkDownloadState();
             if (swState && swState.isDownloading) {
                 console.log('Joining in-progress download:', `${swState.completed}/${swState.total}`);
@@ -6325,6 +6374,10 @@ class ServiceWorkerManager {
                     await resolveIfFilesAlreadyCached(files);
                 }
             }, 250);
+            })().catch((err) => {
+                console.warn('[update] download attach stopped early; closing it', err);
+                void finishDownload({ success: false, hasErrors: true, reason: String(err && err.message || err) });
+            });
         });
     }
 

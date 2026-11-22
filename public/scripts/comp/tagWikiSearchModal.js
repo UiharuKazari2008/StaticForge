@@ -1565,12 +1565,14 @@ class WikiDisplayBase {
                     name = 'NovelAI';
                 }
                 const icon = site.icon ? this.escapeHtml(site.icon) : '';
+                // a tile like the others on the home page (its icon, else the Grimoire's books)
+                const books = resolveAppIconPath('books.png', 48);
                 const iconHtml = icon
-                    ? `<img src="${icon}" alt="" class="dreamwiki-site-btn-icon" aria-hidden="true">`
-                    : '<i class="fas fa-book" aria-hidden="true"></i>';
+                    ? `<img src="${icon}" alt="" class="dreamwiki-site-btn-icon gh-tile-icon" aria-hidden="true">`
+                    : `<img src="${books}" alt="" class="dreamwiki-site-btn-icon gh-tile-icon" aria-hidden="true">`;
                 const btn = document.createElement('button');
                 btn.type = 'button';
-                btn.className = 'btn-secondary btn-small dreamwiki-start-row dreamwiki-site-btn';
+                btn.className = 'btn-secondary btn-small dreamwiki-start-row dreamwiki-site-btn gh-tile';
                 btn.setAttribute('data-static-wiki-site', safeId);
                 btn.innerHTML = `${iconHtml}<span>${name}</span>`;
                 btn.addEventListener('click', () => {
@@ -1618,35 +1620,60 @@ class WikiDisplayBase {
         // and IE-ified as its still using the orignal base design"): ieframe's page layout and art
         // (css/themes/vista/grimoire-ie-pages.css .gip-*), the starting points as IE's task links; every hook the
         // bindings below use (data-action, data-dreamwiki-page, .dreamwiki-starting-points-inline, the recent list) stays
-        const logo64 = '/static_images/app_icons/64/dreamscape-logo.webp';
-        const logo128 = '/static_images/app_icons/128/dreamscape-logo.webp';
-        const startRow = (attr, label) => `<button type="button" class="dreamwiki-start-row" ${attr}><span>${label}</span></button>`;
+        // the Grimoire's own icon (its tab's): there is no dreamscape-logo asset, that name drew nothing
+        const logo64 = resolveAppIconPath('books.png', 64);
+        const logo128 = resolveAppIconPath('books.png', 128);
+        // IE's quick tabs: each place a tile, its icon in the middle and its name under it
+        const tile = (attr, label, icon) => `<button type="button" class="dreamwiki-start-row gh-tile" ${attr}><img class="gh-tile-icon" src="${resolveAppIconPath(icon, 48)}" srcset="${resolveAppIconPath(icon, 48)} 1x, ${resolveAppIconPath(icon, 96)} 2x" alt=""><span>${label}</span></button>`;
+        // Yukimi, Nov 21: the Grimoire's search box back on the page; the bottom third an underlayer set into the page
+        // (an edge and the page's shadow over it) in Alchemy's blue liquid with slowly rising bubbles: Alchemy's icon and
+        // wordmark top left, a Bing / Google search in the middle, "Let's perform Alchemy!" bottom right
+        const brand = '/static_images/brand';
+        const engine = TagWikiSearchModal.homeWebEngine();
+        const engineBtn = (id, label) => `<button type="button" class="gh-engine" data-gh-engine="${id}" aria-pressed="${engine === id}">${label}</button>`;
         this.displayArea.innerHTML = `
-<div class="dreamwiki-home gip-page gip-home">
-    <table class="gip-main">
-        <tr><td class="gip-icon" rowspan="2"><img class="gip-home-logo" src="${logo64}" srcset="${logo64} 1x, ${logo128} 2x" alt="Dreamscape"></td>
-            <td class="gip-title"><h1>Dreamscape: The Grimoire</h1></td></tr>
-        <tr><td class="gip-code">The central home of Knowledge<div class="gip-divider"></div></td></tr>
-        <tr><td>&nbsp;</td><td><h2>Where do you want to go?</h2>
-            <div class="dreamwiki-starting-points dreamwiki-starting-points-inline">
-                ${startRow('data-action="open-search-home"', 'Search the Grimoire')}
-                ${startRow('data-dreamwiki-page="tag groups"', 'Danbooru Tags')}
-                ${startRow('data-dreamwiki-page="tag_group:index"', 'e621 Tags')}
-                ${startRow('data-action="open-fandom-wiki"', 'Fandom')}
-                ${startRow('data-action="open-apocrypha"', 'Apocrypha')}
-                ${startRow('data-action="open-dreamscape-settings"', 'Settings')}
-                <!-- Documentation site buttons (e.g. NovelAI) are appended here by loadStaticWikiHomeSites -->
-            </div></td></tr>
-        <tr><td>&nbsp;</td><td><div class="dreamwiki-recent-panel"><h2 class="dreamwiki-recent-heading">Recently visited</h2>
-            <div class="dreamwiki-recent-list">${recentRows}</div></div></td></tr>
-        <tr><td>&nbsp;</td><td class="dreamwiki-alchemy-cta"><h2>On the web</h2>
-            <button type="button" class="dreamwiki-alchemy-btn" data-action="perform-alchemy">
-                <img src="${resolveAppIconPath('alchemy.png', 24)}" srcset="${resolveAppIconPath('alchemy.png', 24)} 1x, ${resolveAppIconPath('alchemy.png', 48)} 2x" alt=""><span>Perform Alchemy!</span>
-            </button></td></tr>
-    </table>
+<div class="dreamwiki-home gip-page gip-home gh-home">
+  <div class="gh-top">
+    <div class="gh-head">
+        <img class="gh-head-logo" src="${logo64}" srcset="${logo64} 1x, ${logo128} 2x" alt="">
+        <div class="gh-head-text"><h1>Dreamscape: The Grimoire</h1><div class="gh-head-sub">The central home of Knowledge</div></div>
+    </div>
+    <form class="gh-gsearch" data-gh-gsearch action="#" novalidate role="search">
+        <input type="text" name="q" class="gh-input" placeholder="Search the Grimoire" aria-label="Search the Grimoire" autocomplete="off" spellcheck="false" enterkeyhint="search">
+        <button type="submit" class="gh-go">Search</button>
+    </form>
+    <div class="dreamwiki-starting-points dreamwiki-starting-points-inline gh-tiles">
+        ${tile('data-action="open-search-home"', 'Search the Grimoire', 'vista-search.png')}
+        ${tile('data-dreamwiki-page="tag groups"', 'Danbooru Tags', 'grimoire-danbooru-tags.png')}
+        ${tile('data-dreamwiki-page="tag_group:index"', 'e621 Tags', 'grimoire-e621-tags.png')}
+        ${tile('data-action="open-fandom-wiki"', 'Fandom', 'grimoire-fandom.png')}
+        ${tile('data-action="open-apocrypha"', 'Apocrypha', 'apocrypha.png')}
+        ${tile('data-action="open-dreamscape-settings"', 'Settings', 'vista-control-panel.png')}
+        <!-- Documentation site buttons (e.g. NovelAI) are appended here by loadStaticWikiHomeSites, tiles too -->
+    </div>
+    <div class="dreamwiki-recent-panel gh-recent"><h2 class="dreamwiki-recent-heading">Recently visited tags</h2>
+        <div class="dreamwiki-recent-list">${recentRows}</div></div>
+  </div>
+  <div class="gh-under" data-gh-under>
+    <div class="gh-bubbles" aria-hidden="true"></div>
+    <div class="gh-flow" aria-hidden="true"></div>
+    <div class="gh-brand">
+        <img class="gh-brand-icon" src="${resolveAppIconPath('alchemy.png', 48)}" srcset="${resolveAppIconPath('alchemy.png', 48)} 1x, ${resolveAppIconPath('alchemy.png', 96)} 2x" alt="">
+        <img class="gh-brand-word" src="${brand}/alchemy-wordmark-white.png" srcset="${brand}/alchemy-wordmark-white.png 1x, ${brand}/alchemy-wordmark-white@2x.png 2x, ${brand}/alchemy-wordmark-white@3x.png 3x" alt="Alchemy">
+    </div>
+    <form class="gh-websearch" data-gh-websearch action="#" novalidate role="search">
+        <div class="gh-websearch-box">
+            <input type="text" name="q" class="gh-input" placeholder="Search the web" aria-label="Search the web" autocomplete="off" enterkeyhint="search">
+            <button type="submit" class="gh-go">Search</button>
+        </div>
+        <div class="gh-engines" role="group" aria-label="Search with">${engineBtn('bing', 'Bing')}${engineBtn('google', 'Google')}</div>
+    </form>
+    <div class="gh-tagline">Let's perform Alchemy!</div>
+  </div>
 </div>`;
 
         this.bindDreamWikiHomepageEvents();
+        this.bindGrimoireHomeUnderlayer();
         if (typeof this._interceptAllLinks === 'function') {
             this._interceptAllLinks();
         }
@@ -1708,6 +1735,111 @@ class WikiDisplayBase {
             endWikiLoad();
             this.setNavigationLoading(false);
         }
+    }
+
+    /** The home page's web search engine ('bing' | 'google'), kept per browser. */
+    static homeWebEngine(set) {
+        try {
+            if (set) localStorage.setItem('grimoireHomeWebEngine', set);
+            const v = localStorage.getItem('grimoireHomeWebEngine');
+            return v === 'google' ? 'google' : 'bing';
+        } catch (_) { return set || 'bing'; }
+    }
+
+    /**
+     * The home page's underlayer: the two search boxes, and its bubbles rising through the liquid. The bubbles move on a
+     * timer at ~15 frames a second (style transforms, composited) and only while the underlayer is on screen and the
+     * page is shown: an infinite CSS animation would keep the compositor at full refresh rate (check-perf-rules). They
+     * stop for good when the page goes.
+     */
+    bindGrimoireHomeUnderlayer() {
+        const home = this.displayArea && this.displayArea.querySelector('.gh-home');
+        if (!home) return;
+        const gform = home.querySelector('[data-gh-gsearch]');
+        if (gform) gform.addEventListener('submit', (ev) => {
+            ev.preventDefault();
+            const q = gform.q.value.trim();
+            if (q) this.navigate('edtx://en.grimoire.jp/search?q=' + encodeURIComponent(q));
+        });
+        const wform = home.querySelector('[data-gh-websearch]');
+        if (wform) {
+            wform.addEventListener('click', (ev) => {
+                const b = ev.target.closest && ev.target.closest('[data-gh-engine]');
+                if (!b) return;
+                const id = TagWikiSearchModal.homeWebEngine(b.dataset.ghEngine);
+                wform.querySelectorAll('[data-gh-engine]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.ghEngine === id)));
+                wform.q.focus();
+            });
+            wform.addEventListener('submit', (ev) => {
+                ev.preventDefault();
+                const q = wform.q.value.trim();
+                if (!q) return;
+                const base = TagWikiSearchModal.homeWebEngine() === 'google' ? 'https://www.google.com/search?q=' : 'https://www.bing.com/search?q=';
+                this.navigate(base + encodeURIComponent(q));
+            });
+        }
+        const under = home.querySelector('[data-gh-under]');
+        const layer = under && under.querySelector('.gh-bubbles');
+        if (!layer || typeof IntersectionObserver !== 'function') return;
+        const COUNT = 11;
+        const bubbles = [];
+        for (let i = 0; i < COUNT; i++) {
+            const el = document.createElement('span');
+            el.className = 'gh-bubble';
+            layer.appendChild(el);
+            bubbles.push({ el, x: 0, y: 0, r: 0, v: 0, sway: 0, phase: 0 });
+        }
+        let w = 0;
+        let h = 0;
+        const place = (b, anywhere) => {
+            b.r = 3 + Math.random() * 9;
+            b.x = Math.random() * w;
+            b.y = anywhere ? Math.random() * h : h + b.r * 2 + Math.random() * 40;
+            // very slow: 5-12 px a second, larger ones a little faster
+            b.v = 5 + b.r * 0.5 + Math.random() * 3;
+            b.sway = 4 + Math.random() * 10;
+            b.phase = Math.random() * Math.PI * 2;
+            b.el.style.width = b.el.style.height = (b.r * 2) + 'px';
+        };
+        let seen = false;
+        let timer = 0;
+        let last = 0;
+        const tick = () => {
+            timer = 0;
+            if (!home.isConnected) { stop(true); return; }
+            if (!seen || document.hidden) return;
+            const now = performance.now();
+            const dt = Math.min(0.2, (now - last) / 1000);
+            last = now;
+            for (const b of bubbles) {
+                b.y -= b.v * dt;
+                b.phase += dt * 0.8;
+                if (b.y < -b.r * 2) place(b, false);
+                b.el.style.transform = `translate3d(${(b.x + Math.sin(b.phase) * b.sway).toFixed(1)}px, ${b.y.toFixed(1)}px, 0)`;
+            }
+            timer = setTimeout(tick, 66);
+        };
+        const start = () => {
+            if (timer || !seen || document.hidden) return;
+            w = layer.clientWidth;
+            h = layer.clientHeight;
+            if (!w || !h) return;
+            if (!bubbles[0].r) bubbles.forEach((b) => place(b, true));
+            last = performance.now();
+            tick();
+        };
+        const io = new IntersectionObserver((entries) => {
+            seen = entries.some((e) => e.isIntersecting);
+            if (seen) start();
+        });
+        const onVis = () => { if (!document.hidden) start(); };
+        const stop = (gone) => {
+            clearTimeout(timer);
+            timer = 0;
+            if (gone) { io.disconnect(); document.removeEventListener('visibilitychange', onVis); }
+        };
+        io.observe(under);
+        document.addEventListener('visibilitychange', onVis);
     }
 
     bindDreamWikiHomepageEvents() {
@@ -5756,7 +5888,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
         // For Layer 1 (visible display span): show only the path part (no protocol scheme),
         // since we have a mode icon that indicates the protocol/type.
-        const displayPath = isWeb ? fullUrl : fullUrl.replace(/^(edtx|rdf|dsap):\/\//i, '');
+        // Alchemy's own pages read alch:// (dsapRegistry.js grimoireDisplayUrl); the address underneath stays chrome://
+        const displayPath = isWeb ? grimoireDisplayUrl(fullUrl) : fullUrl.replace(/^(edtx|rdf|dsap):\/\//i, '');
 
         this.currentAddress = { fullUrl, displayPath, mode };
         this._currentAddress = { displayUrl: displayPath, fullUrl, mode };
@@ -5851,7 +5984,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         // without the input stealing focus (and triggering keyboard on touch, etc.).
         // User can click the input if they want to edit the address.
         const current = (this.currentAddress && this.currentAddress.fullUrl) || this.addressPath?.textContent || '';
-        this.searchInput.value = current || 'edtx://en.grimoire.jp/index.dtxt';
+        this.searchInput.value = grimoireDisplayUrl(current) || 'edtx://en.grimoire.jp/index.dtxt';
         // On the Vista desktop the box is IE7's: a click puts the caret in and selects the whole
         // address (the VM, 2026-10-13). Touch / mobile keep the no-focus behaviour above.
         if (document.body.classList.contains('desktop-mode') && window.uiTheme.is('vista')
@@ -5881,7 +6014,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
         // Parse what the user typed and navigate or search.
         this.exitAddressEdit(); // close editor first
 
-        const val = (this.searchInput && this.searchInput.value || '').trim();
+        // alch:// typed (or chrome://) opens Alchemy's own page (dsapRegistry.js grimoireAlchToChrome)
+        const val = grimoireAlchToChrome((this.searchInput && this.searchInput.value || '').trim());
         if (!val) {
             // empty → go home
             this.setAddress({ displayUrl: 'edtx://en.grimoire.jp/index.dtxt', mode: 'edtx' });
@@ -6077,7 +6211,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
      * See: public/scripts/comp/dsapRegistry.js and grimoireCoreDomains.js
      */
     navigate(pseudoUrl = '') {
-        const url = String(pseudoUrl || '').trim();
+        const url = grimoireAlchToChrome(String(pseudoUrl || '').trim());
         if (!url) return;
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
         desktopSounds.play('navigate');

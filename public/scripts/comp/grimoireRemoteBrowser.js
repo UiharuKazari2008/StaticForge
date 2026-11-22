@@ -138,7 +138,8 @@ function grimoireSyncAlchemyIdentity(modal, web, title) {
 }
 
 function grimoireNormalizeWebUrl(url) {
-    const raw = String(url || '').trim();
+    // alch:// is chrome:// (dsapRegistry.js grimoireAlchToChrome)
+    const raw = grimoireAlchToChrome(String(url || '').trim());
     if (!/^[a-z][a-z0-9+.-]*:/i.test(raw)) return '';
     try {
         const parsed = new URL(raw);
@@ -708,6 +709,45 @@ function grimoireShellBookmarkTitle(shell, url) {
     return String(raw || url);
 }
 
+// The tab's icon: the page's own, as Chrome picks it (Yukimi, Nov 21: "i want the icon in the tab to be the sites icon
+// it would show in chrome"; server.js readPageInfo favicons, kept by the bridge in /cache/site-icons). Asked once a page
+// has loaded (its links are in by then), once per address; the web entry keeps it (grimoireIeChrome.js pageFavicon).
+const grimoireFaviconCache = new Map();
+function grimoireTabFavicon(shell, url, changed) {
+    const put = (icon) => {
+        const top = shell.history && shell.history[shell.historyIndex];
+        if (!icon || !top || top.type !== 'web' || top.url !== url || top.favicon === icon) return;
+        top.favicon = icon;
+        changed();
+    };
+    if (grimoireFaviconCache.has(url)) {
+        put(grimoireFaviconCache.get(url));
+        return;
+    }
+    grimoireFaviconCache.set(url, '');
+    if (grimoireFaviconCache.size > 300) grimoireFaviconCache.delete(grimoireFaviconCache.keys().next().value);
+    let tries = 0;
+    const ask = async () => {
+        const id = shell._grimoireRemoteSessionId;
+        // the tab's viewer address can come after its first location: asked again a little later (up to 5 times)
+        if (!id || !shell._grimoireRemoteViewQuery) {
+            if (++tries < 5) setTimeout(ask, 1500);
+            else grimoireFaviconCache.delete(url);
+            return;
+        }
+        try {
+            const res = await fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id) + '/page-icon?' + shell._grimoireRemoteViewQuery + '&kind=tab', { credentials: 'same-origin' });
+            const info = res.ok ? await res.json() : {};
+            const icon = typeof info.icon === 'string' ? info.icon : '';
+            grimoireFaviconCache.set(url, icon);
+            put(icon);
+        } catch (_) {
+            grimoireFaviconCache.delete(url);
+        }
+    };
+    setTimeout(ask, 1200);
+}
+
 async function grimoireAddRemotePageToDesktop(shell) {
     const id = shell._grimoireRemoteSessionId;
     if (!id) return;
@@ -964,14 +1004,18 @@ function grimoireRemoteMenuAction(found, action, data) {
         grimoireCopyText(grimoireShellWebUrl(shell));
         return;
     }
+    // Copy / Cut on a selection: Chromium's own copy and cut, as Ctrl+C / Ctrl+X (the viewer's path): a selection in a
+    // text box is not the page's selection, so copying data.selection copied nothing there and Cut deleted the words
+    if (action === 'copy-text' && (more.fieldSel || data.selection) && found.frame.contentWindow) {
+        found.frame.contentWindow.postMessage({ type: 'grimoire-browser-edit', op: 'copy' }, '*');
+        return;
+    }
     if (action === 'copy-text') {
         grimoireCopyText(data.selection || data.text);
         return;
     }
     if (action === 'cut') {
-        // the words go to the clipboard here, then the page deletes its selection
-        grimoireCopyText(data.selection);
-        grimoireMenuPost(found, data, { action: 'edit', command: 'delete' });
+        if (found.frame.contentWindow) found.frame.contentWindow.postMessage({ type: 'grimoire-browser-edit', op: 'cut' }, '*');
         return;
     }
     if (action === 'undo' || action === 'delete' || action === 'select-all') {
@@ -991,9 +1035,13 @@ function grimoireRemoteMenuAction(found, action, data) {
         return;
     }
     if (action === 'paste') {
+        // this window's clipboard (the menu click lets it read); else the viewer's own Ctrl+V path
+        const viaViewer = () => { if (found.frame.contentWindow) found.frame.contentWindow.postMessage({ type: 'grimoire-browser-edit', op: 'paste' }, '*'); };
+        if (!navigator.clipboard || !navigator.clipboard.readText) { viaViewer(); return; }
         navigator.clipboard.readText().then((text) => {
-            if (text && found.frame.contentWindow) found.frame.contentWindow.postMessage({ type: 'grimoire-browser-paste', text }, '*');
-        }).catch(() => {});
+            if (text && found.frame.contentWindow) found.frame.contentWindow.postMessage({ type: 'grimoire-browser-edit', op: 'paste', text }, '*');
+            else viaViewer();
+        }).catch(viaViewer);
         return;
     }
     if (action === 'open-window') {
@@ -1072,7 +1120,8 @@ function grimoireRemoteMenuAction(found, action, data) {
         return;
     }
     if (action === 'print' || action === 'print-preview') {
-        if (found.host.ieChrome) found.host.ieChrome.print();
+        // selected words: IE7's Print dialog opens on Page Range: Selection
+        if (found.host.ieChrome) found.host.ieChrome.print({ selection: !!(data && data.selection) });
         return;
     }
     if (action === 'edge') {
@@ -1135,7 +1184,7 @@ async function grimoireShowRemoteMenu(found, data) {
         items.push({ text: 'Undo', action: 'undo' });
         sep();
         items.push({ text: 'Cut', action: 'cut', disabled: !more.fieldSel && !selection });
-        items.push({ text: 'Copy', action: 'copy-text', disabled: !selection });
+        items.push({ text: 'Copy', action: 'copy-text', disabled: !more.fieldSel && !selection });
         items.push({ text: 'Paste', action: 'paste' });
         items.push({ text: 'Delete', action: 'delete', disabled: !more.fieldSel && !selection });
         sep();
@@ -1286,6 +1335,8 @@ function grimoireApplyRemoteLocation(found, data) {
     shell._grimoireRemoteTitle = data.title || '';
     // the page a download comes from (its dialog's "from")
     if (data.url) shell._grimoireRemoteUrl = data.url;
+    // the page's zone by the address it came from (Alchemy: private address = Local intranet; the status bar)
+    if (data.url) shell._alchemyZone = data.zone || '';
     // Recent Items (public/scripts/comp/recentItems.js): the page this browser session is on now (one entry per session)
     if (!data.navigating && data.url && window.recentItems) window.recentItems.notePage(shell, { type: 'web', url: data.url, title: data.title });
     grimoireTitleWebEntry(shell, data);
@@ -1304,6 +1355,8 @@ function grimoireApplyRemoteLocation(found, data) {
         if (!grimoireFollowRemoteHistory(shell, data.url)) shell.addToHistory({ type: 'web', url: data.url, title: data.title || data.url });
         if (host.updateNavigationButtons) host.updateNavigationButtons();
     }
+    // the tab's icon: the page's own (grimoireTabFavicon), once it has loaded
+    if (data.url) grimoireTabFavicon(shell, data.url, () => { if (host.tabs) host.tabs.emit(); });
     // the tab strip shows the new title (grimoireTabs.js -> grimoireIeChrome.js)
     if (host.tabs) host.tabs.emit();
 }
@@ -1347,6 +1400,7 @@ function grimoireBackgroundRemoteMessage(found, data) {
         }
         if (type !== 'grimoire-browser-navigation-failed') {
             shell._grimoireRemoteTitle = data.title || '';
+            if (data.url) shell._alchemyZone = data.zone || '';
             if (!data.navigating && data.url && window.recentItems) window.recentItems.notePage(shell, { type: 'web', url: data.url, title: data.title });
             if (data.url) {
                 const mode = grimoireWebMode(data.url);
@@ -1358,6 +1412,7 @@ function grimoireBackgroundRemoteMessage(found, data) {
                 if (!grimoireFollowRemoteHistory(shell, data.url)) grimoirePushWebEntry(shell, { type: 'web', url: data.url, title: data.title || data.url });
             }
             grimoireTitleWebEntry(shell, data);
+            if (!data.navigating && data.url) grimoireTabFavicon(shell, data.url, () => tabs.emit());
         }
         tabs.emit();
         return true;
@@ -1435,7 +1490,7 @@ function grimoireBackgroundRemoteMessage(found, data) {
 // ---- tabs (grimoireTabs.js) ----
 
 // Ctrl+T new tab, Ctrl+W / Ctrl+F4 close it, Ctrl+Tab / Ctrl+Shift+Tab next / previous, Ctrl+Q Quick Tabs,
-// Ctrl+N a new window (IE7's keys).
+// Ctrl+N a new window, Ctrl+P the Print dialog (IE7's keys).
 function grimoireTabShortcut(ev) {
     const mod = (ev.ctrlKey || ev.metaKey) && !ev.altKey;
     if (!mod) return '';
@@ -1445,12 +1500,19 @@ function grimoireTabShortcut(ev) {
     if (ev.key === 'w' || ev.key === 'W' || ev.key === 'F4') return 'close-tab';
     if (ev.key === 'q' || ev.key === 'Q') return 'quick-tabs';
     if (ev.key === 'n' || ev.key === 'N') return 'new-window';
+    if (ev.key === 'p' || ev.key === 'P') return 'print';
     return '';
 }
 
 // win: the window the keys came from (its frame's window, or the focused one)
 function grimoireRunTabCommand(command, win) {
     const host = win || grimoireFocusWindow() || (typeof grimoireActiveWindow === 'function' ? grimoireActiveWindow() : tagWikiSearchModal);
+    if (command === 'print') {
+        // grimoireIeChrome.js print(): the Vista Print dialog (vistaPrintDialog.js)
+        if (!host || !host.ieChrome) return false;
+        host.ieChrome.print();
+        return true;
+    }
     const tabs = host && host.tabs;
     if (!tabs || !tabs.available()) return false;
     if (command === 'new-window') {
@@ -2121,7 +2183,10 @@ function grimoireShowRemoteTabPage(shell, state, url) {
     }
     if (frame) frame.hidden = true;
     const hung = state === 'unresponsive';
-    const unavailable = state === 'unavailable';
+    // Alchemy restarting (viewer.html showRestarting) is Alchemy not available for a moment, not the page failing:
+    // shown as "The webpage has stopped working" it stayed after the restart (Yukimi, Nov 21: "pages do not return
+    // after a restart they forever show page has stopped working"); the viewer says 'ok' once it is back
+    const unavailable = state === 'unavailable' || state === 'restarting';
     let reload = null;
     let home = null;
     // IE7's own error pages (grimoireIeChrome.js GrimoireIeChrome.errorPage, Alchemy's logo bottom right)
@@ -2150,7 +2215,7 @@ function grimoireShowRemoteTabPage(shell, state, url) {
             : (unavailable ? 'Alchemy unavailable' : 'This page has failed');
         const urlEl = document.createElement('p');
         urlEl.className = 'grimoire-nav-error-url';
-        urlEl.textContent = url || '';
+        urlEl.textContent = grimoireDisplayUrl(url || '');
         const detail = document.createElement('p');
         detail.className = 'grimoire-nav-error-detail';
         detail.textContent = hung
@@ -2260,7 +2325,7 @@ function grimoireShowTransferredPage(shell, info, hostArg) {
         + ' since ' + when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '.';
     const addr = document.createElement('p');
     addr.className = 'grimoire-transferred-url';
-    addr.textContent = url;
+    addr.textContent = grimoireDisplayUrl(url);
     const hr = document.createElement('hr');
     const list = document.createElement('ul');
     list.className = 'grimoire-transferred-actions';

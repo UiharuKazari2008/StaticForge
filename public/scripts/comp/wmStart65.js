@@ -138,6 +138,9 @@
     /** 6.5.1 (#850): art that only 6.5.3's ROM has (v651-<name>.png with its @2x and @4x copies). */
     const art65v651 = (name) => ({ src: `${ART65}v651-${name}.png`, srcset: `${ART65}v651-${name}.png 1x, ${ART65}v651-${name}@2x.png 2x, ${ART65}v651-${name}@4x.png 4x` });
 
+    /** A Program Icons set's own 6.5 Start icon (<set>-65: 45 / 90 / 180 px, laid out as the ROM's). */
+    const set65 = (path) => ({ src: `${path}.png`, srcset: `${path}.png 1x, ${path}@2x.png 2x, ${path}@4x.png 4x` });
+
     /** The largest copy of a 6.1 shell icon (app-x-lg@4x is 128 px), drawn into the 90x90 box. */
     function art61(name) {
         // a Program Icons set (#773): its largest frame, -lg@4x (128 px)
@@ -314,7 +317,7 @@
         // Settings is a folder of Start once its applets can be listed
         if (a.id === 'settings' && settingsGrid()) return { key: 'a:settings', label: a.title || 'Settings', img: art65('settings'), folder: 'settings' };
         // 6.5.1 (#850): Today is "Home" on 6.5.3's Start
-        return { key: `a:${a.id}`, label: a.id === 'today' ? (REL651 ? 'Home' : 'Today') : appLabel(a), img: n ? art65(n) : art61(a.icon || 'app-programs'), app: a.id };
+        return { key: `a:${a.id}`, label: a.id === 'today' ? (REL651 ? 'Home' : 'Today') : appLabel(a), img: n ? art65(n) : a.icon65 ? set65(a.icon65) : art61(a.icon || 'app-programs'), app: a.id };
     }
 
     /** The items of the Start screen (folder null) or of one of its folders, in the default order. */

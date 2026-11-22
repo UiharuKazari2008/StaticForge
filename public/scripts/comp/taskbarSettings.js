@@ -329,6 +329,9 @@
 
     function appIconSrc(name, px) {
         // a Program Icons store picture (an Android program on the DeX desktop, #1005): its 16 px design, @2x for 32
+        // its Windows Vista icon when the set has one (<set>-vista-<px>.png)
+        const vista = /^\/static_images\/wm-android\/([a-z0-9_-]+?)-vista-\d+\.png$/.exec(String(name || ''));
+        if (vista) return `/static_images/wm-android/${vista[1]}-vista-${px > 24 ? 48 : px > 16 ? 32 : 16}.png`;
         const wm = /^\/static_images\/wm-android\/([a-z0-9_-]+?)(?:-lg)?\.png$/.exec(String(name || ''));
         if (wm) return `/static_images/wm-android/${wm[1]}${px > 16 ? '@2x' : ''}.png`;
         // resolveAppIconPath: public/scripts/comp/modalUtils.js (the server's sized webp)
