@@ -117,8 +117,10 @@
         if (manager.agentSession) return { state: 'failed', message: 'This is an agent session: its files are updated by the agent that runs it.' };
         if (manager.isUpdating) return { state: 'downloading', progress: manager.updateProgress || 0, filesTotal: (manager.trayPopup && manager.trayPopup.filesTotal) || 0 };
         if (manager.servicePack && manager.servicePack.label) return { state: 'upgrade', message: manager.servicePack.label };
-        if (manager.pendingApplyFiles && manager.pendingApplyFiles.length) return { state: 'ready' };
-        if (manager.hasPendingUpdates && manager.hasPendingUpdates()) return { state: 'restart' };
+        // the manager's one answer (updateAction, #1022), the same the phone's page and notification read
+        const a = typeof manager.updateAction === 'function' ? manager.updateAction() : null;
+        if (a && a.kind === 'apply') return { state: 'ready' };
+        if (a && a.kind === 'restart') return { state: 'restart' };
         // files that still did not download after the worker's tries and the page's background rounds (#951): wucltux's
         // red "Some updates were not installed", on this page only (never a notification); Try again downloads them now
         if (manager.updateInstallFailure && manager.updateInstallFailure.count > 0) return { state: 'notinstalled', message: String(manager.updateInstallFailure.count) };
@@ -338,13 +340,23 @@
             paint();
             return;
         }
-        // Install updates with updates counted (#951): they download now; what applies live does, the rest waits for
-        // the restart (the page then shows Restart now)
-        if (what === 'install' && typeof manager.availableUpdateCount === 'function' && manager.availableUpdateCount() > 0
-            && typeof manager.installAvailableUpdates === 'function') {
-            view = { ...view, state: 'downloading', progress: 0 };
+        // Install updates / Restart now: the one install flow every update button uses (serviceWorkerManager.installUpdates,
+        // #1022). Counted updates download now - what applies live does, the rest waits for the restart (the page then
+        // shows Restart now and Vista's restart prompt follows); downloaded styles and pictures install live; a restart
+        // goes through forceRestart
+        const action = typeof manager.updateAction === 'function' ? manager.updateAction() : null;
+        if ((what === 'install' || what === 'apply' || what === 'restart') && action && action.kind !== 'busy'
+            && typeof manager.installUpdates === 'function') {
+            if (action.kind === 'apply') view = { ...view, state: 'installing' };
+            else if (action.kind === 'install') view = { ...view, state: 'downloading', progress: 0 };
             paint();
-            void manager.installAvailableUpdates();
+            Promise.resolve(manager.installUpdates()).then((done) => {
+                if (done === 'restart' || manager.isUpdating) return;
+                // after a live install: what still waits (counted updates, a restart owed), else up to date
+                view = initialState();
+                if (view.state === 'checking') view = { state: 'uptodate' };
+                paint();
+            });
             return;
         }
         if (what === 'check' || what === 'install') {
@@ -355,16 +367,6 @@
                 return;
             }
             check();
-        } else if (what === 'apply' && typeof manager.applyStaticCacheUpdate === 'function') {
-            view = { ...view, state: 'installing' };
-            paint();
-            Promise.resolve(manager.applyStaticCacheUpdate(manager.pendingApplyFiles || [])).finally(() => {
-                try { localStorage.setItem('meletonUpdateInstalledAt', String(Date.now())); } catch (_) { /* private mode */ }
-                view = { state: 'uptodate' };
-                paint();
-            });
-        } else if (what === 'restart' && typeof manager.forceRestart === 'function') {
-            manager.forceRestart();
         }
     }
 
