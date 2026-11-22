@@ -13,40 +13,54 @@
  * are filled by the app too; every press is done by the app (data-android "qa:<id>:toggle", hits "slider:qa-*").
  *
  * Settings: window.AndroidQuickAccess.config() (the app keeps them: Settings > Personal > Buttons > Quick Access).
- * Pictures are Vista's own (Mobility Center, Device Manager classes, network and sound art); a tile from another app
- * uses that tile's own glyph (appassets ?tile=1). Where Vista has an equivalent that is not ripped yet, the nearest
- * ripped picture stands in, marked TODO(vm) below.
+ * Pictures are Android's: the Material glyphs its quick settings use, and an app's tile its own glyph (appassets ?tile=1,
+ * which the app draws itself for its copy).
  */
 (function (root) {
     'use strict';
     if (root.wmQuickAccess) return;
 
-    const I = '/static_images/';
-    // the controls' pictures: one, or { on, off } where the state has its own (Vista's own art for each)
+    // Android's own look (Yukimi, Nov 22 2026: "use the icons from android if possible or something that better represents
+    // what it is"): the built-in tiles take the Material glyph Android's quick settings use (scripts/generate-qa-icons.js,
+    // white as Android tints them); a control that is another app's tile (Samsung's, WireGuard, Traffic Cone) takes that
+    // tile's own glyph from the phone, these files only when the app is not there
+    const Q = '/static_images/quickaccess/';
     const ICONS = {
-        wifi: { on: `${I}vista-mblctr/wireless-4.png`, off: `${I}vista-mblctr/wireless-off.png` },
-        bluetooth: `${I}vista-devmgr/bluetooth-32.png`,
-        brightness: `${I}vista-mblctr/brightness.png`,
-        autobrightness: `${I}vista-mblctr/brightness.png`,
-        adaptivetone: `${I}vista-devmgr/display-adapters-32.png`,
-        volume: { on: `${I}vista-mblctr/volume.png`, off: `${I}vista-mblctr/volume-muted.png` },
-        output: `${I}vista-sndvol/speakers-32.png`,
-        sound: { on: `${I}vista-icons/volume-high-32.png`, off: `${I}vista-icons/volume-mute-32.png` },
-        rotation: `${I}vista-mblctr/display-one.png`, // TODO(vm): Mobility Center's Screen Orientation tile (mblctr.exe)
-        hotspot: `${I}vista-net/setup-adhoc-32.png`,
-        qr: `${I}vista-devmgr/imaging-32.png`,
-        dnd: { on: `${I}vista-mblctr/presentation-on.png`, off: `${I}vista-mblctr/presentation-off.png` },
-        modes: `${I}vista-mblctr/sync.png`, // TODO(vm): a Vista profile / scheme picture
-        flashlight: `${I}vista-devmgr/sensors-32.png`, // TODO(vm): Vista has no torch; a light picture from imageres
-        powersave: { on: `${I}vista-power/battery-low-32.png`, off: `${I}vista-power/battery-full-32.png` },
-        network: `${I}vista-devmgr/modems-32.png`,
-        dolby: `${I}vista-sndvol/digital-32.png`,
-        eyecomfort: `${I}vista-devmgr/monitors-32.png`,
-        record: `${I}vista-devmgr/portable-32.png`, // TODO(vm): Windows Movie Maker / capture picture
-        performance: `${I}vista-devmgr/processors-32.png`,
-        powershare: `${I}vista-devmgr/batteries-32.png`,
-        wireguard: `${I}vista-net/rasmm-vpn-32.png`,
-        pointerflow: `${I}vista-devmgr/mice-32.png`
+        wifi: { on: `${Q}wifi.png`, off: `${Q}wifi-off.png` },
+        bluetooth: { on: `${Q}bluetooth.png`, off: `${Q}bluetooth-off.png` },
+        brightness: `${Q}brightness.png`,
+        autobrightness: `${Q}brightness-auto.png`,
+        adaptivetone: `${Q}adaptive-tone.png`,
+        volume: { on: `${Q}volume.png`, off: `${Q}volume-off.png` },
+        output: `${Q}output.png`,
+        sound: { on: `${Q}sound.png`, off: `${Q}vibrate.png` },
+        rotation: { on: `${Q}rotate.png`, off: `${Q}rotate-lock.png` },
+        hotspot: { on: `${Q}hotspot.png`, off: `${Q}hotspot-off.png` },
+        qr: `${Q}qr.png`,
+        dnd: { on: `${Q}dnd.png`, off: `${Q}dnd-off.png` },
+        modes: `${Q}modes.png`,
+        flashlight: { on: `${Q}flashlight.png`, off: `${Q}flashlight-off.png` },
+        powersave: `${Q}power-saving.png`,
+        network: `${Q}network.png`,
+        dolby: `${Q}dolby.png`,
+        eyecomfort: `${Q}eye-comfort.png`,
+        record: `${Q}record.png`,
+        performance: `${Q}performance.png`,
+        powershare: `${Q}power-share.png`,
+        wireguard: `${Q}vpn.png`,
+        pointerflow: `${Q}pointer-flow.png`
+    };
+    // the controls that are an app's own tile: its glyph from the phone (catalog id tile:<component>)
+    const TILE_GLYPH = {
+        qr: 'com.sec.android.app.camera/com.sec.android.app.camera.service.QrTileService',
+        modes: 'com.samsung.android.app.routines/com.samsung.android.app.routines.LifestyleModeTile',
+        powersave: 'com.samsung.android.lool/com.samsung.android.sm.battery.ui.mode.BatteryModeTile',
+        dolby: 'com.sec.android.app.soundalive/com.sec.android.app.soundalive.DolbyTile',
+        record: 'com.samsung.android.app.smartcapture/com.samsung.android.app.screenrecorder.view.RecordScreenTile',
+        performance: 'com.samsung.android.lool/com.samsung.android.sm.perfopt.PerfOptTile',
+        powershare: 'com.samsung.android.lool/com.samsung.android.sm.powershare.PowerShareTileService',
+        wireguard: 'com.wireguard.android/com.wireguard.android.QuickTileService',
+        network: 'com.radioswitch.app/com.radioswitch.app.tile.RadioTileService'
     };
     // controls with no on / off of their own (a button): one face, never lit
     const BUTTONS = new Set(['qr', 'record', 'modes', 'output']);
@@ -87,6 +101,8 @@
     };
     const iconOf = (m, id, state) => {
         if (id.startsWith('tile:')) return (m.tiles[id] && m.tiles[id].icon) || '';
+        const own = TILE_GLYPH[id] && m.tiles[`tile:${TILE_GLYPH[id]}`];
+        if (own && own.icon) return own.icon;
         const i = ICONS[id];
         return typeof i === 'string' ? i : (state === 'on' ? i.on : i.off) || i.on;
     };
