@@ -8,9 +8,11 @@ registerWsInboundHandler({
     handler(message) {
         const files = message.data && Array.isArray(message.data.files) ? message.data.files : [];
         const silent = message.data && message.data.silent === true;
-        const cacheOptions = {
-            runtimeAssetsRecompiled: message.data && message.data.runtimeAssetsRecompiled === true
-        };
+        // The only publisher is runtimeAssetService's recompile/notify path: the server has already
+        // rebuilt these assets and rewritten the served ?sha= links. Unlike a person's Check for
+        // updates (notify mode counts new versions), this is an explicit apply - download now and let
+        // the classifier swap what can be swapped live.
+        const cacheOptions = { runtimeAssetsRecompiled: true, install: true };
         // sw.js itself is only re-read on a navigation; a page that stays open (the phone) kept the
         // old worker after every notify until it was reloaded (Nov 14)
         // swHash: sha1 of the server's sw.js (#890); an unchanged worker is not asked for again
@@ -30,7 +32,7 @@ registerWsInboundHandler({
         const d = message.data || {};
         if (d.delta === true && sm) {
             if (!d.baseHash || sm._broadcastHash !== d.baseHash) {
-                if (typeof sm.checkStaticFileUpdates === 'function') sm.checkStaticFileUpdates(silent);
+                if (typeof sm.checkStaticFileUpdates === 'function') sm.checkStaticFileUpdates(silent, cacheOptions);
                 return;
             }
             sm._broadcastHash = d.hash || sm._broadcastHash;
@@ -40,7 +42,7 @@ registerWsInboundHandler({
         if (files.length > 0 && window.serviceWorkerManager && typeof window.serviceWorkerManager.updateStaticCache === 'function') {
             window.serviceWorkerManager.updateStaticCache(files, silent, cacheOptions);
         } else if (!silent && window.serviceWorkerManager && typeof window.serviceWorkerManager.checkStaticFileUpdates === 'function') {
-            window.serviceWorkerManager.checkStaticFileUpdates(silent);
+            window.serviceWorkerManager.checkStaticFileUpdates(silent, cacheOptions);
         }
     }
 });
