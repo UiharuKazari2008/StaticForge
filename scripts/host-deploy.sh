@@ -681,9 +681,28 @@ fi
 log "flags restart_server=$RESTART_SERVER push_clients=$PUSH_CLIENTS restart_clients=$RESTART_CLIENTS"
 log "reason=${REASON:-"(empty)"}"
 
+# A client file changed in this deploy: recompile the runtime assets and refresh the
+# served ?sha= links, even with no deploy:push-clients label. Pushing client source without
+# compiling left /app naming the old wmShell.js hash - clients kept booting the old code.
+CLIENT_BUILD_PATHS=(
+    public
+    modules/runtimeAssetCompiler.js
+    modules/runtimeAssetMemory.js
+    modules/runtimeAssetService.js
+    modules/workspaceCssService.js
+    scripts/precompile-runtime-assets.js
+    scripts/notify-service-worker-update.sh
+    scripts/service-worker-cache-socket.js
+    web_server.js
+)
+CHANGED_CLIENT_PATHS="$(git diff --name-only "$LIVE_HEAD" "$DEPLOY_SHA" -- "${CLIENT_BUILD_PATHS[@]}")"
+NEED_SW_NOTIFY=0
+if (( PUSH_CLIENTS == 1 )) || [[ -n "$CHANGED_CLIENT_PATHS" ]]; then NEED_SW_NOTIFY=1; fi
+log "client_build_paths_changed=$([[ -n "$CHANGED_CLIENT_PATHS" ]] && echo yes || echo no) sw_notify=$NEED_SW_NOTIFY"
+
 if [[ "$DRY_RUN" -eq 1 ]]; then
     log "DRY-RUN: would fast-forward main $LIVE_HEAD -> $DEPLOY_SHA, push $MIRROR_REMOTE"
-    log "DRY-RUN: planned verbs: toast=$([ -n "$REASON" ] && (( RESTART_SERVER+PUSH_CLIENTS+RESTART_CLIENTS > 0 )) && echo yes || echo no) restart_server=$RESTART_SERVER push_clients=$PUSH_CLIENTS restart_clients=$RESTART_CLIENTS"
+    log "DRY-RUN: planned verbs: toast=$([ -n "$REASON" ] && (( RESTART_SERVER+PUSH_CLIENTS+RESTART_CLIENTS > 0 )) && echo yes || echo no) restart_server=$RESTART_SERVER push_clients=$PUSH_CLIENTS restart_clients=$RESTART_CLIENTS sw_notify=$NEED_SW_NOTIFY"
     exit 0
 fi
 
@@ -830,8 +849,12 @@ probe();
 NODE
 fi
 
-if (( PUSH_CLIENTS == 1 )); then
-    log "SW notify..."
+if (( NEED_SW_NOTIFY == 1 )); then
+    if (( PUSH_CLIENTS == 1 )); then
+        log "SW notify (deploy:push-clients)..."
+    else
+        log "SW notify (client assets changed: $(printf '%s\n' "$CHANGED_CLIENT_PATHS" | head -3 | tr '\n' ' '))..."
+    fi
     bash "$LIVE_ROOT/scripts/notify-service-worker-update.sh"
 fi
 
