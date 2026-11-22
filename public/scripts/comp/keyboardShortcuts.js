@@ -1892,9 +1892,15 @@ function activateSelectedWindow() {
     }
     const selectedModal = entry.modal;
     if (!selectedModal || !selectedModal.isConnected) return;
-    // An Android window has the focus: the desktop's windows are below every Android window on the DeX screen,
-    // so the shown ones go down for the chosen window to come up with the focus (as Show desktop does)
-    if (android && typeof android.hasFocus === 'function' && android.hasFocus() && typeof android.minimizeShown === 'function') android.minimizeShown();
+    // DeX: the desktop's windows are below every Android window on that screen. With the phone's Continuity setting
+    // "Alt+Tab: selecting a Melaton window minimises all Android windows on the desktop" on (the default; the phone page
+    // keeps it in the localStorage both windows share, read now so a change applies at once, #1064) every shown Android
+    // window goes down so the chosen window can be seen; off, Android's windows stay where they are
+    if (android && typeof android.minimizeShown === 'function' && typeof android.shownCount === 'function' && android.shownCount() > 0) {
+        let minimizeAndroid = true;
+        try { minimizeAndroid = localStorage.getItem('melatonDexAltTabMinimizeAndroid') !== '0'; } catch (_) { /* default on */ }
+        if (minimizeAndroid) android.minimizeShown();
+    }
     // restoreMinimizedModal: public/scripts/comp/modalUtils.js
     if (typeof restoreMinimizedModal === 'function') {
         restoreMinimizedModal(selectedModal, typeof getOrCreateTaskbarItem === 'function' ? getOrCreateTaskbarItem(selectedModal) : null);

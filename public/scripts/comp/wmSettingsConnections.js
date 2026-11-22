@@ -898,6 +898,11 @@
     // The Continuity PC (this phone's DeX window): what happens when its display is unplugged. The desktop pauses and resumes
     // on a display connected again; after the time chosen here the app shuts it down (#1015, Miniport desktopShutdownMinutes).
     const SHUTDOWN_CHOICES = [[5, 'After 5 minutes'], [15, 'After 15 minutes'], [30, 'After 30 minutes'], [60, 'After 1 hour'], [0, 'Never']];
+    // Alt+Tab to a Melaton window on the Continuity PC minimises the Android windows shown there (#1064). The phone's and
+    // the DeX window's pages share one localStorage (same app, same WebView profile): keyboardShortcuts.js reads it at
+    // the moment Alt+Tab picks a window, so a change applies at once with no server or bus message. Unset = on.
+    const ALTTAB_MIN_KEY = 'melatonDexAltTabMinimizeAndroid';
+    const altTabMinOn = () => { try { return localStorage.getItem(ALTTAB_MIN_KEY) !== '0'; } catch (_) { return true; } };
 
     wmSettings.registerPage({
         id: 'continuity',
@@ -912,7 +917,7 @@
             const c = cfg && cfg.config;
             // an app before #1015 has no time: its check box's meaning (off = keeps running = never)
             const min = c && c.desktopShutdownMinutes != null ? Number(c.desktopShutdownMinutes) : (c && c.autoCloseDesktop ? 5 : 0);
-            return { shutdown: SHUTDOWN_CHOICES.some(([v]) => v === min) ? min : 15, was: min };
+            return { shutdown: SHUTDOWN_CHOICES.some(([v]) => v === min) ? min : 15, was: min, altTabMin: altTabMinOn() };
         },
         render(el, tab, d) {
             el.classList.add('wm-setc');
@@ -925,13 +930,18 @@
             el.innerHTML = `<p>A display, dock or computer screen connected to this phone runs the Melaton desktop from it: the Continuity PC.</p>
                 ${ui.facts([['Continuity PC:', state], ...(pc && pc.width ? [['Display:', `${pc.width} \u00d7 ${pc.height}`]] : [])])}
                 ${ui.sub('Display disconnected')}<p>When the display is disconnected, the desktop pauses with its programs open and resumes when a display is connected again. Shut down the desktop when no display is connected:</p>
-                ${ui.comboHtml('dex-shutdown', cur[1])}`;
+                ${ui.comboHtml('dex-shutdown', cur[1])}
+                ${ui.sub('Windows')}
+                ${ui.check('dexAltTabMin', 'Alt+Tab: selecting a Melaton window minimises all Android windows on the desktop', d.altTabMin)}`;
             ui.bindCombo(el.querySelector('[data-act="dex-shutdown"]'), SHUTDOWN_CHOICES, d.shutdown, (v) => { d.shutdown = v; });
+            el.querySelector('input[name="dexAltTabMin"]').addEventListener('change', (e) => { d.altTabMin = e.target.checked; });
         },
         commit(d) {
             const mcx = root.melatonContinuity;
             if (d.shutdown !== d.was && mcx && typeof mcx.setMiniportConfig === 'function') mcx.setMiniportConfig({ desktopShutdownMinutes: d.shutdown });
-            return [];
+            if (d.altTabMin === altTabMinOn()) return [];
+            try { localStorage.setItem(ALTTAB_MIN_KEY, d.altTabMin ? '1' : '0'); } catch (_) { return []; }
+            return [ALTTAB_MIN_KEY];
         }
     });
 
