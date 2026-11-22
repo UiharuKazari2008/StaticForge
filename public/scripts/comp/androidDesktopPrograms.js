@@ -25,11 +25,13 @@
     const root = typeof window !== 'undefined' ? window : null;
     const doc = typeof document !== 'undefined' ? document : null;
     if (!root || !doc) return;
-    const bridge = root.AndroidApps;
+    const bridge0 = root.AndroidApps;
+    // read at each call: a desktop paused with its display unplugged gets the new window's bridge when it resumes (#1015)
+    const live = () => root.AndroidApps || bridge0;
     const isDesktop = (() => {
         try { return !!(root.AndroidDisplay && typeof root.AndroidDisplay.isDesktop === 'function' && root.AndroidDisplay.isDesktop()); } catch (_) { return false; }
     })();
-    if (!isDesktop || root.uiShell === 'mobile' || !bridge || typeof bridge.list !== 'function' || typeof bridge.launch !== 'function') return;
+    if (!isDesktop || root.uiShell === 'mobile' || !bridge0 || typeof bridge0.list !== 'function' || typeof bridge0.launch !== 'function') return;
 
     const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined;
 
@@ -99,7 +101,7 @@
 
     function launch(id) {
         let ok = false;
-        try { ok = !!bridge.launch(id); } catch (_) { ok = false; }
+        try { ok = !!live().launch(id); } catch (_) { ok = false; }
         if (!ok) {
             const a = apps.find((x) => x.id === id);
             const name = a ? a.label : id;
@@ -183,7 +185,7 @@
     function read() {
         readQueued = false;
         let list;
-        try { list = clean(JSON.parse(bridge.list())); } catch (_) { return; }
+        try { list = clean(JSON.parse(live().list())); } catch (_) { return; }
         const before = JSON.stringify(apps);
         const after = JSON.stringify(list);
         if (before === after) return;

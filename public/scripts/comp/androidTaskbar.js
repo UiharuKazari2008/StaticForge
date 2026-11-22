@@ -25,8 +25,10 @@
     const isDesktop = (() => {
         try { return !!(root.AndroidDisplay && typeof root.AndroidDisplay.isDesktop === 'function' && root.AndroidDisplay.isDesktop()); } catch (_) { return false; }
     })();
-    const W = root.AndroidWindows;
-    if (!isDesktop || root.uiShell === 'mobile' || !W || typeof W.list !== 'function') return;
+    const W0 = root.AndroidWindows;
+    if (!isDesktop || root.uiShell === 'mobile' || !W0 || typeof W0.list !== 'function') return;
+    // read at each call: a desktop paused with its display unplugged gets the new window's bridge when it resumes (#1015)
+    const W = () => root.AndroidWindows || W0;
 
     const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined;
 
@@ -51,9 +53,10 @@
     const iconKey = (w) => { const i = iconOf(w); return `${i.src}|${i.srcset}`; };
 
     function send(op, id) {
-        if (typeof W[op] !== 'function') return false;
+        const b = W();
+        if (typeof b[op] !== 'function') return false;
         const req = `aw${++reqSeq}`;
-        try { return !!W[op](id, req); } catch (_) { return false; }
+        try { return !!b[op](id, req); } catch (_) { return false; }
     }
 
     function hasFocus() {
@@ -147,14 +150,14 @@
     }
 
     function read() {
-        try { apply(JSON.parse(W.list() || 'null')); } catch (_) { /* an older app: nothing to show */ }
+        try { apply(JSON.parse(W().list() || 'null')); } catch (_) { /* an older app: nothing to show */ }
     }
 
     /** The windows come from the Melaton accessibility service: turned on once, quietly through the shell when the app can. */
     function askAccessOnce() {
-        if (state.access.service !== false || !state.access.shell || typeof W.requestAccess !== 'function') return;
+        if (state.access.service !== false || !state.access.shell || typeof W().requestAccess !== 'function') return;
         try { if (localStorage.getItem(ASKED_KEY)) return; localStorage.setItem(ASKED_KEY, String(Date.now())); } catch (_) { return; }
-        try { W.requestAccess(); } catch (_) { /* the app could not: the buttons stay away */ }
+        try { W().requestAccess(); } catch (_) { /* the app could not: the buttons stay away */ }
     }
 
     // ---- right-click: the window's menu ----
@@ -189,6 +192,8 @@
     // ---- start ----
 
     root.addEventListener('androidwindows', (e) => apply(e && e.detail), { signal: appScopeSignal });
+    // resumed on a display connected again (#1015): the windows on that display now
+    root.addEventListener('melatondesktopresume', () => { if (desktopUp()) read(); }, { signal: appScopeSignal });
     // the Program Icons store changed (androidDesktopPrograms.js): the buttons take the new pictures
     doc.addEventListener('melaton:android-programs', () => { buttons.forEach((item, id) => { const w = byId(id); if (w) updateButton(item, w); }); }, { signal: appScopeSignal });
 

@@ -115,3 +115,23 @@ choice. localStorage `melatonDexNotifyFilter` `{ apps: { pkg: false }, channels:
 300 x 220 px and the screen; the size is kept in localStorage `melatonDexNotifySize` `{ w, h }`.
 
 `window.melatonAndroidNotifications`: `open()`, `close()`, `manageChannels()`.
+
+## Unplugged: paused, then shut down (#1015)
+
+The desktop is the external screen's home (DSApp `DesktopHomeActivity`, #1013), and Android removes a display's home with
+the display. The app keeps the page instead (DSApp `DesktopPark`, docs/ANDROID_BRIDGE.md): unplugged, the desktop pauses
+with its windows, Start and programs as they were, and a display connected again shows it as it was. After Continuity's
+time it shuts down.
+
+- **Setting:** Melaton Mobile Settings > Connections > Continuity, "Shut down the desktop when no display is connected":
+  After 5 / 15 / 30 minutes / 1 hour / Never (Miniport config `desktopShutdownMinutes`, `0` = never, default 15; it
+  replaced the "Close the desktop when the display is disconnected" check box, `autoCloseDesktop`, read as 5 when it was on).
+- **The desktop page** hears `melatondesktoppark` `{ displayId, shutdownMinutes }` (hidden from then on) and, adopted by
+  the next display, `melatondesktopresume` `{ displayId, width, height, density, rebound }` once its `window.Android*`
+  bridges are the new window's. Read a bridge from `window` when calling it, never keep the object from load:
+  `androidTaskbar.js`, `androidNotificationsTray.js` and `androidDesktopPrograms.js` do, and the taskbar reads the new
+  display's windows on resume. `melatonContinuity.js` says "ready" to the phone at once on resume.
+- **The phone** hears `{ type: "dex-display", state: "removed", parked: true, shutdownMinutes }`: `continuityPc()` has
+  `parked` and `shutdownAt` (ms, 0 = never), `displayGoneText(pc)` is the Continuity PC popup's line ("Paused - display
+  disconnected. Shuts down in N minutes unless a display is connected."). Shut Down there, and a restart for updates,
+  send `dex-close` as for any desktop whose display is gone (#1003): the app ends the paused page.
