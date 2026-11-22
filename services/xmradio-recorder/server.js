@@ -12,7 +12,8 @@
  * the state file. A finished song or file goes to the spool (.cache/xmradio-spool/<id>.m4a + .json); Dreamscape files
  * it on the tape, now or when it is back (it owns the file store). Stopping this process keeps its recordings in the
  * state file; when it starts again each one carries on as the same recording from where it left off (the stream keeps
- * five hours, so the gap is read back).
+ * five hours, so the gap is read back). On a signal the segment on the wire is finished first and the exact next
+ * segment stored, so a restart carries on from there; the recording queue lives in the same state file.
  *
  * Socket: a Unix socket beside the account file (.cache/xmradio-recorder.sock, mode 0600: this user only), one JSON
  * object a line.
@@ -126,13 +127,23 @@ server.listen(SOCK, () => {
     console.log(`[xmradio-recorder] listening on ${SOCK} (pid ${process.pid})`);
 });
 
-// going down (pm2 restart / stop): the recordings stay in the state file and carry on when it starts again
-function down(sig) {
-    console.log(`[xmradio-recorder] ${sig}: saving; recordings carry on at the next start`);
-    try { recorder.saveNow(); } catch (_) { /* best effort */ }
-    try { server.close(); fs.unlinkSync(SOCK); } catch (_) { /* gone */ }
+// going down (pm2 restart / stop): finish the segment on the wire, store the exact next one and keep the queue, so
+// the next process carries every recording on as the same recording - no half segment, no gap, no lost queue
+let goingDown = false;
+async function down(sig) {
+    if (goingDown) return;
+    goingDown = true;
+    // pm2 allows 8 s (kill_timeout): never let a stuck fetch keep us from a clean handoff
+    const hardStop = setTimeout(() => { console.warn(`[xmradio-recorder] ${sig}: handoff took too long; exiting`); process.exit(0); }, 7000);
+    if (hardStop.unref) hardStop.unref();
+    console.log(`[xmradio-recorder] ${sig}: finishing the current segment; recordings and queue hand over to the next start`);
+    try { console.log(`[xmradio-recorder] handoff: ${JSON.stringify(await recorder.shutdown())}`); }
+    catch (err) { console.warn(`[xmradio-recorder] handoff: ${err.message}`); }
+    clearTimeout(hardStop);
+    try { server.close(); } catch (_) { /* gone */ }
+    try { fs.unlinkSync(SOCK); } catch (_) { /* gone */ }
     process.exit(0);
 }
-process.on('SIGINT', () => down('SIGINT'));
-process.on('SIGTERM', () => down('SIGTERM'));
+process.on('SIGINT', () => { void down('SIGINT'); });
+process.on('SIGTERM', () => { void down('SIGTERM'); });
 process.on('unhandledRejection', (err) => console.warn(`[xmradio-recorder] ${err && err.message}`));

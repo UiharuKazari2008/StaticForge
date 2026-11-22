@@ -8,7 +8,8 @@
  *   pump.on('segment', ({ seq, pdt (ms), dur (s), adts (Buffer), plain (Buffer: decrypted, its ID3 kept) }) => ...)
  *   pump.on('error', (err) => ...)        a fatal stop (signed out, the channel left the plan; persistent: the plan only)
  *   pump.start({ back: 0 })               back: start this many seconds behind live
- *   pump.stop()
+ *   pump.stop()                           stops pulling new segments; awaits one already being fetched, so a recorder
+ *                                         handing over to a new process does not cut a segment in half
  *
  * Read by program date-time, not sequence numbers: when SiriusXM's signed stream address expires mid-recording the
  * pump tunes again and carries on from the last instant it had, with no gap and no repeat.
@@ -103,6 +104,7 @@ function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {},
     const ev = new EventEmitter();
     let running = false;
     let timer = null;
+    let ticking = null; // the tick in flight (a segment fetch), so stop() can wait for it to land
     let variant = null;
     let lastEnd = 0; // ms: the end of the last segment handed on
     let failures = 0;
@@ -160,19 +162,23 @@ function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {},
             if (err && (err.code === 'XMRADIO_NOT_SUBSCRIBED' || (err.code === 'XMRADIO_SIGNED_OUT' && !persistent))) { stop(); ev.emit('error', err); return; }
             wait = Math.min(60000, 2000 * 2 ** Math.min(failures, 5));
         }
-        if (running) { timer = setTimeout(() => void tick(0), wait); if (timer.unref) timer.unref(); }
+        if (running) { timer = setTimeout(() => { ticking = tick(0); void ticking; }, wait); if (timer.unref) timer.unref(); }
     }
 
     function start({ back = 0 } = {}) {
         if (running) return;
         running = true;
-        void tick(back);
+        ticking = tick(back);
+        void ticking;
     }
 
-    function stop() {
+    async function stop() {
         running = false;
         clearTimeout(timer);
         timer = null;
+        // the tick's loop checks `running` before each fetch, so it finishes a segment already on the wire and then
+        // returns: awaiting it here is what lets a recording stop *after* that segment (Yukimi, Nov 22 2026)
+        if (ticking) { try { await ticking; } catch (_) { /* the tick logs its own errors */ } ticking = null; }
     }
 
     ev.start = start;
