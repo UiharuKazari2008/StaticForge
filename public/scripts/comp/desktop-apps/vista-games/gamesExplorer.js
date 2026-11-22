@@ -88,6 +88,29 @@
 
     const iconUrl = (id, size) => '/static_images/app_icons/' + size + '/vista-' + id + '.webp';
 
+    /**
+     * A game's picture at size px (2x: size2x): Vista's own from app_icons; a phone's Android game on the DeX desktop (#1044)
+     * its program picture as the Start menu draws it (androidDesktopPrograms.js iconOfId).
+     */
+    const setIcon = (img, g, size, size2x) => {
+        const P = root.melatonAndroidPrograms;
+        if (g.android && P && typeof P.iconOfId === 'function') {
+            const pic = P.iconOfId(g.id, size);
+            img.src = pic.src || ART + 'games-48.png';
+            if (pic.srcset) img.srcset = pic.srcset;
+            return;
+        }
+        img.src = iconUrl(g.id, size);
+        img.srcset = iconUrl(g.id, size) + ' 1x, ' + iconUrl(g.id, size2x) + ' 2x';
+    };
+
+    /** The phone's Android games on the DeX desktop (#1044): the programs its Programs files under Games. */
+    const androidGames = () => {
+        const P = root.melatonAndroidPrograms;
+        const list = P && typeof P.gameItems === 'function' ? P.gameItems() : [];
+        return list.map((it) => ({ id: it.launchId, pack: null, name: it.text, android: it, gdf: { description: '', genre: 'Android', developer: '', publisher: '', version: '' }, rated: false }));
+    };
+
     let gx = null;
 
     // the details columns and Sort By's fields: the game's GDF values (the version, publisher ...)
@@ -190,13 +213,13 @@
         // the games and their GDF facts (the Vista nine, then any other registered game)
         load() {
             const extra = VG.list().filter((r) => !r.hidden && !CATALOG.some((c) => c.id === r.id)).map((r) => ({ id: r.id, pack: null, name: r.name, icon: r.icon }));
-            const all = CATALOG.concat(extra);
+            const all = CATALOG.concat(extra, androidGames());
             return Promise.all(all.map((g) => (g.pack ? fetch('/static_images/vista-games/' + g.pack + '/data.json').then((r) => r.json()).catch(() => null) : Promise.resolve(null)).then((data) => {
                 const gdf = data && data.mui && data.mui.gdf && data.mui.gdf.c ? data.mui.gdf.c[0] : null;
                 const txt = (tag) => VG.text(gdf, tag, '');
                 const nested = (tag, sub) => VG.text(VG.child(VG.child(gdf, tag), sub), undefined, '');
                 const perf = VG.child(gdf, 'WindowsSystemPerformanceRating');
-                if (g.gdf) return Object.assign({}, g, g.gdf, { rated: true });
+                if (g.gdf) return Object.assign({}, g, g.gdf, { rated: !g.android });
                 return Object.assign({}, g, {
                     name: (gdf && txt('Name')) || g.name,
                     description: gdf ? txt('Description') : '',
@@ -240,8 +263,7 @@
                 if (g.description) item.title = g.description;
                 const icon = el('img');
                 icon.alt = '';
-                icon.src = iconUrl(g.id, size);
-                icon.srcset = iconUrl(g.id, size) + ' 1x, ' + iconUrl(g.id, size * 2 > 384 ? 384 : size * 2) + ' 2x';
+                setIcon(icon, g, size, size * 2 > 384 ? 384 : size * 2);
                 icon.onerror = () => { icon.src = g.icon ? g.icon + '-48.png' : ART + 'games-48.png'; };
                 item.appendChild(icon);
                 item.appendChild(el('span', 'gx-item-name', g.name));
@@ -357,8 +379,7 @@
             }
             const icon = el('img', 'gx-preview-icon');
             icon.alt = '';
-            icon.src = iconUrl(g.id, 128);
-            icon.srcset = iconUrl(g.id, 128) + ' 1x, ' + iconUrl(g.id, 384) + ' 2x';
+            setIcon(icon, g, 128, 384);
             p.appendChild(icon);
             p.appendChild(el('div', 'gx-preview-name', g.name));
             if (g.rated) {
@@ -386,8 +407,7 @@
                 d.appendChild(el('div', 'gx-details-count', this.games.length + ' items'));
                 return;
             }
-            icon.src = iconUrl(g.id, 48);
-            icon.srcset = iconUrl(g.id, 48) + ' 1x, ' + iconUrl(g.id, 96) + ' 2x';
+            setIcon(icon, g, 48, 96);
             d.appendChild(icon);
             const grid = el('div', 'gx-details-grid');
             const cell = (cls, text) => grid.appendChild(el('div', cls, text));
@@ -408,6 +428,8 @@
 
         play(g) {
             if (!g) return;
+            // an Android game starts on the DeX screen (androidDesktopPrograms.js launch)
+            if (g.android) { g.android.action(); return; }
             // openVistaGame: public/scripts/comp/featureLoader.js
             if (typeof openVistaGame === 'function') openVistaGame(g.id).catch((err) => console.warn('Games Explorer:', err));
         }
