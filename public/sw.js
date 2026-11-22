@@ -3284,6 +3284,17 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
 
         // Reset download state
         downloadState = freshDownloadState();
+
+        // The Dreamscape app on the phone (#1022): the kept /app follows the cache as soon as a download brought scripts
+        // or styles, whichever window asked for it (the phone page, the DeX window, the background updater). The phone's
+        // restart goes at once (#1014) and its own commit lost the race against the cold boot: the start ran the old
+        // /app against the newer cache, owed a restart for it, and every update took two restarts. Only a complete
+        // candidate is kept (promoteShell), so an unfinished set changes nothing. DreamOS commits at its shutdown install.
+        if (/Android/i.test((self.navigator && self.navigator.userAgent) || '')
+            && updatedFiles.some((f) => /\.(?:js|css)$/i.test(String((f && f.url) || f).split('?')[0]))) {
+          const kept = await commitShells(true, 8000).catch(() => null);
+          console.log('[update] the kept /app follows the download:', kept);
+        }
     } catch (error) {
         // Check if error is due to abort
         if (error.name === 'AbortError') {
