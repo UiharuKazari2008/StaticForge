@@ -85,7 +85,9 @@
         'lapis-service': 'wm65/holder-lapis-service', 'lapis-failed': 'wm65/holder-lapis-failed', 'lapis-run-left': 'wm65/holder-lapis-run-left',
         // the phone's own battery notices (wmShell batteryLowCheck / batteryFullCheck, #1061): 6.5.1's drawer battery
         // pictures from the ROM (shellres.192), the full battery and the empty one with the warning badge
-        'battery-full': 'wm65/v651-drawer-battery', 'battery-low': 'wm65/v651-drawer-battery-low'
+        'battery-full': 'wm65/v651-drawer-battery', 'battery-low': 'wm65/v651-drawer-battery-low',
+        // weather (Nov 22 2026): rain due or falling, a weather alert, a severe one - each its own picture
+        'rain-alarm': 'wm65/holder-rain-alarm', 'weather-alert': 'wm65/holder-weather-alert', 'weather-severe': 'wm65/holder-weather-severe'
     };
     // the page's own notices name their glyph (appNote icon), not a kind: the glyphs that stand for a holder kind (#1061)
     const ICON_KIND = { 'status-battery-full': 'battery-full', 'status-battery-low': 'battery-low', 'status-camera': 'traffic',
@@ -113,6 +115,9 @@
             const k = dk || (/^lapis:([a-z-]+):/.exec(id) || [])[1] || (id === 'lapis:run-left' ? 'run-left' : '');
             return LAPIS_KIND[k] || 'caralert';
         }
+        // weather: the alert's severity (the inbox notice's class, the page's own notice's event), rain on its own
+        if (/^wx:/.test(id)) return cls === 'weather-severe' || (n && n.event === 'weather-severe') || d.severe ? 'weather-severe' : 'weather-alert';
+        if (/^rain:/.test(id)) return 'rain-alarm';
         if (/^rem:task:/.test(id) || (/^rem:/.test(id) && d.task)) return 'task';
         if (/^rem:/.test(id)) return d.meeting ? 'meeting' : 'reminder';
         if (/^print/.test(id)) return cls === 'print-error' || d.failed ? 'print-error' : 'prints';

@@ -50,6 +50,11 @@ JOBS = {
     'lapis-unlocked': ('badge', 'rom:10_2503', 'wm65/start-lapis'),
     'lapis-run-left': ('badge', 'rom:10_2051', 'wm65/start-lapis'),
     'lapis-service': ('badge', 'wm65/start-tasks', 'wm65/start-lapis'),
+    # weather (Yukimi, Nov 22 2026: "we need a icon for rain detect and for severe and regular weather alert"): the
+    # Titanium weather panel's own rain and storm pictures (ROM, wm65/ti-wx-*), the alerts badged as the message boxes are
+    'rain-alarm': ('badge', 'wm65/ti-wx-rain', 'wm61/app-weather-lg'),
+    'weather-alert': ('badge', 'wm61/app-weather-lg', 'wm61/msgbox-warning'),
+    'weather-severe': ('badge', 'wm65/ti-wx-storm', 'wm61/msgbox-error'),
 }
 S4 = 128          # the @4x side
 BADGE = 64        # the badge's side at @4x (half the picture), in the bottom right corner

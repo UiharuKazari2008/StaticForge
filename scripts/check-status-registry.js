@@ -67,8 +67,11 @@ const fixtures = [
     [{ id: 'system:x', data: { level: 'error' } }, 'error'],
     [{ id: 'system:x', data: { level: 'warning' } }, 'warning'],
     [{ id: 'traffic:a:b:c', cls: 'notification' }, 'traffic'],
-    [{ id: 'wx:p:a', cls: 'weather-alert' }, 'wxalert'],
-    [{ id: 'rain:p', cls: 'rain-alarm' }, 'rain'],
+    // weather's own pictures (Nov 22 2026): an alert, a severe one (the inbox's class, the page's event), rain
+    [{ id: 'wx:p:a', cls: 'weather-alert' }, 'weather-alert'],
+    [{ id: 'wx:p:b', cls: 'weather-severe' }, 'weather-severe'],
+    [{ id: 'wx:p:c', event: 'weather-severe' }, 'weather-severe'],
+    [{ id: 'rain:p', cls: 'rain-alarm' }, 'rain-alarm'],
     [{ id: 'lapis:unlocked:k', data: { app: 'lapis', kind: 'unlocked' } }, 'lapis-unlocked'],
     [{ id: 'lapis:health:alerts', data: { app: 'lapis', kind: 'health' } }, 'lapis-health'],
     [{ id: 'lapis:x-1', data: { app: 'lapis', kind: 'refuel' } }, 'lapis-fuel'],
