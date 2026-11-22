@@ -48,6 +48,7 @@
     let failed = false;      // the app could not show its overlay this run: the page's own pane
     const thumbs = new Map(); // Android window id -> { url, w, h }
     let cur = null;          // the pane handed over now: { overlay, sid, ats, index, steps, titles, mo, onThumbs, sent }
+    let onThumbsNow = null;  // the pane up now (drawn by the app or not): its slots take the window pictures that come in
     let sidSeq = 0;
     let sendQueued = 0;
     let chain = Promise.resolve();
@@ -67,7 +68,8 @@
         const d = e && e.detail;
         if (!d || !d.thumbs) return;
         Object.keys(d.thumbs).forEach((id) => { const t = d.thumbs[id]; if (t && t.url) thumbs.set(id, { url: String(t.url), w: +t.w || 0, h: +t.h || 0 }); });
-        if (cur && typeof cur.onThumbs === 'function') { try { cur.onThumbs(); } catch (err) { console.warn('[dexAltTab] thumbs', err); } }
+        // the pane up now, whether the app draws it or the page does (the pictures come in after it opened, #1049)
+        if (typeof onThumbsNow === 'function') { try { onThumbsNow(); } catch (err) { console.warn('[dexAltTab] thumbs', err); } }
     }, { signal: appScopeSignal });
 
     root.addEventListener('androidalttab', (e) => {
@@ -360,6 +362,7 @@
          */
         open: (overlay, opts) => {
             close();
+            onThumbsNow = opts && typeof opts.onThumbs === 'function' ? opts.onThumbs : null;
             if (!overlay || !available()) return false;
             if (!overlay.querySelector('.window-switcher-item')) return false; // the classic icon row is not drawn by the app
             const live = new Set((root.melatonAndroidTaskbar && typeof root.melatonAndroidTaskbar.windows === 'function' ? root.melatonAndroidTaskbar.windows() : []).map((w) => String(w.id)));
@@ -385,6 +388,7 @@
     };
 
     function close() {
+        onThumbsNow = null;
         const c = cur;
         if (!c) return;
         cur = null;
