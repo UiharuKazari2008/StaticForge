@@ -579,15 +579,74 @@
             .concat(k.programs().map((p) => ({ value: `app:${p.id}`, label: p.label, icon: p.icon || 'app-programs' })));
     }
 
+    // ---- Quick Access (#1017): the swipe at the screen's edge, what its panel holds and in what order. The settings
+    // are the app's (AndroidQuickAccess.config / setConfig): the Melaton Bars service draws the tab and panel with no
+    // page running
+    const QA = () => (window.AndroidQuickAccess && typeof window.AndroidQuickAccess.config === 'function' ? window.AndroidQuickAccess : null);
+    const qaRead = (fn) => { try { return JSON.parse(QA()[fn]()); } catch (_) { return null; } };
+    const QA_EDGES = [['right', 'Right'], ['left', 'Left']];
+    const QA_TOPS = [[0.12, 'Top'], [0.25, 'Upper'], [0.4, 'Middle'], [0.55, 'Lower'], [0.7, 'Bottom']];
+    const QA_SIZES = [[0.15, 'Small'], [0.3, 'Medium'], [0.45, 'Large']];
+    const QA_LAYOUTS = [['strip1', 'Sidebar strip, 1 column'], ['strip2', 'Sidebar strip, 2 columns'], ['wide', 'Wide panel']];
+    const near = (list, v) => list.reduce((a, b) => (Math.abs(b[0] - v) < Math.abs(a[0] - v) ? b : a));
+    /** Every control the panel can hold: the built-ins, then each installed tile (its app named after it). */
+    function qaChoices() {
+        const cat = qaRead('catalog') || {};
+        return (cat.controls || []).map((c) => ({ id: c.id, label: c.label }))
+            .concat((cat.tiles || []).filter((t) => !t.builtIn).map((t) => ({ id: t.id, label: t.app && t.app !== t.label ? `${t.label} (${t.app})` : t.label })));
+    }
+    function qaRender(el, d, api) {
+        const q = d.qa;
+        const choices = qaChoices();
+        const label = (id) => (choices.find((c) => c.id === id) || { label: id }).label;
+        // the panel's controls in their order, then the rest (unticked) to add
+        const rows = q.items.map((id) => ({ key: id, label: label(id), checked: true, selected: id === d.qaSel }))
+            .concat(choices.filter((c) => !q.items.includes(c.id)).map((c) => ({ key: c.id, label: c.label, checked: false, selected: c.id === d.qaSel })));
+        const layout = q.layout === 'wide' ? 'wide' : Number(q.columns) === 2 ? 'strip2' : 'strip1';
+        el.innerHTML = `${ui.check('qa-on', 'Swipe from the screen\'s edge for Quick Access', q.enabled, 'data-k="enabled"')}
+            ${ui.row('Edge:', ui.comboHtml('qa-edge', (QA_EDGES.find(([v]) => v === q.side) || QA_EDGES[0])[1], !q.enabled), { wide: true })}
+            ${ui.row('Position:', ui.comboHtml('qa-top', near(QA_TOPS, q.zoneTop)[1], !q.enabled), { wide: true })}
+            ${ui.row('Size:', ui.comboHtml('qa-size', near(QA_SIZES, q.zoneHeight)[1], !q.enabled), { wide: true })}
+            ${ui.row('Show as:', ui.comboHtml('qa-layout', QA_LAYOUTS.find(([v]) => v === layout)[1], !q.enabled), { wide: true })}
+            ${ui.sub('Controls')}
+            ${ui.listbox(rows, { maxHeight: 150 })}
+            ${ui.buttons([['qa-up', 'Move Up', !q.items.includes(d.qaSel) || q.items.indexOf(d.qaSel) === 0], ['qa-down', 'Move Down', !q.items.includes(d.qaSel) || q.items.indexOf(d.qaSel) === q.items.length - 1]])}
+            ${ui.note('Tick a control to put it in Quick Access; select one to move it. Other programs\' quick settings tiles are listed too.')}`;
+        const on = el.querySelector('input[data-k="enabled"]');
+        if (on) on.addEventListener('change', () => { q.enabled = on.checked; api.rerender(); });
+        ui.bindCombo(el.querySelector('[data-act="qa-edge"]'), QA_EDGES, q.side, (v) => { q.side = v; });
+        ui.bindCombo(el.querySelector('[data-act="qa-top"]'), QA_TOPS, near(QA_TOPS, q.zoneTop)[0], (v) => { q.zoneTop = v; });
+        ui.bindCombo(el.querySelector('[data-act="qa-size"]'), QA_SIZES, near(QA_SIZES, q.zoneHeight)[0], (v) => { q.zoneHeight = v; });
+        ui.bindCombo(el.querySelector('[data-act="qa-layout"]'), QA_LAYOUTS, layout, (v) => { q.layout = v === 'wide' ? 'wide' : 'strip'; q.columns = v === 'strip2' ? 2 : 1; });
+        ui.bindListbox(el.querySelector('.wm-listbox'), (key) => { d.qaSel = key; api.rerender(); }, (key, checked) => {
+            q.items = checked ? q.items.filter((x) => x !== key).concat([key]) : q.items.filter((x) => x !== key);
+            d.qaSel = key;
+            api.rerender();
+        });
+        const move = (by) => {
+            const i = q.items.indexOf(d.qaSel);
+            const j = i + by;
+            if (i < 0 || j < 0 || j >= q.items.length) return;
+            [q.items[i], q.items[j]] = [q.items[j], q.items[i]];
+            api.rerender();
+        };
+        const up = el.querySelector('[data-act="qa-up"]'); if (up) up.addEventListener('click', () => move(-1));
+        const down = el.querySelector('[data-act="qa-down"]'); if (down) down.addEventListener('click', () => move(1));
+    }
+
     wmSettings.registerPage({
         id: 'buttons', tab: 'personal', label: 'Buttons', icon: 'set-buttons',
-        tabs: [['program', 'Program Buttons']],
+        // (the app's bridge is there from the page's start)
+        tabs: QA() ? [['program', 'Program Buttons'], ['quickaccess', 'Quick Access']] : [['program', 'Program Buttons']],
         available: () => !!KEYS(),
         init() {
             const v = KEYS().get();
-            return { v: { ...v }, saved: { ...v }, sel: 'left' };
+            const c = QA() ? qaRead('config') : null;
+            const qa = c ? { enabled: !!c.enabled, side: c.side || 'right', zoneTop: Number(c.zoneTop) || 0.35, zoneHeight: Number(c.zoneHeight) || 0.3, layout: c.layout || 'strip', columns: Number(c.columns) || 1, items: (c.items || []).slice() } : null;
+            return { v: { ...v }, saved: { ...v }, sel: 'left', qa, qaSaved: qa ? JSON.stringify(qa) : '', qaSel: null };
         },
         render(el, tab, d, api) {
+            if (tab === 'quickaccess' && d.qa) { qaRender(el, d, api); return; }
             const choices = keyChoices();
             const k = KEYS();
             const choice = (v) => choices.find((c) => c.value === v) || choices.find((c) => c.value === k.defaults()[d.sel]) || choices[0];
@@ -615,6 +674,7 @@
         },
         commit(d) {
             if (!same(d.v, d.saved)) KEYS().set(d.v);
+            if (d.qa && JSON.stringify(d.qa) !== d.qaSaved) { try { QA().setConfig(JSON.stringify(d.qa)); } catch (_) { /* older app */ } }
             return [];
         }
     });
