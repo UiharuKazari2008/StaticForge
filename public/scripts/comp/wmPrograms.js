@@ -2257,6 +2257,8 @@
                 const keys = [];
                 if (d.barsState && d.barsCfg && JSON.stringify(d.barsCfg) !== JSON.stringify(d.barsState.config || {})) {
                     try { window.AndroidBars.setConfig(JSON.stringify(d.barsCfg)); } catch (_) { /* older app */ }
+                    // the page's soft key bar follows the app's height (soft keys / room switched, #1013)
+                    try { if (window.melatonBars && window.melatonBars.syncSoftHeight) window.melatonBars.syncSoftHeight(); } catch (_) { /* older page */ }
                 }
                 const bars = systemBars();
                 if (d.bars && bars && (d.bars.hideStatus !== bars.hideStatus || d.bars.hideNavigation !== bars.hideNavigation)) {

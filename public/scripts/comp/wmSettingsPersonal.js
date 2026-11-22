@@ -637,16 +637,27 @@
     wmSettings.registerPage({
         id: 'buttons', tab: 'personal', label: 'Buttons', icon: 'set-buttons',
         // (the app's bridge is there from the page's start)
-        tabs: QA() ? [['program', 'Program Buttons'], ['quickaccess', 'Quick Access']] : [['program', 'Program Buttons']],
+        tabs: [['program', 'Program Buttons'], ...(QA() ? [['quickaccess', 'Quick Access']] : []), ...(window.AndroidBars ? [['softkey', 'Soft Key Bar']] : [])],
         available: () => !!KEYS(),
         init() {
             const v = KEYS().get();
             const c = QA() ? qaRead('config') : null;
             const qa = c ? { enabled: !!c.enabled, side: c.side || 'right', zoneTop: Number(c.zoneTop) || 0.35, zoneHeight: Number(c.zoneHeight) || 0.3, layout: c.layout || 'strip', columns: Number(c.columns) || 1, items: (c.items || []).slice() } : null;
-            return { v: { ...v }, saved: { ...v }, sel: 'left', qa, qaSaved: qa ? JSON.stringify(qa) : '', qaSel: null };
+            // the soft key bar's centre button held (#1013, Yukimi Nov 22: "open the current app as freeform or split view
+            // (config in buttons settins)"): the app's Bars config holdAction
+            let hold = 'freeform';
+            try { const st = JSON.parse(window.AndroidBars.getState()); if (st && st.config && st.config.holdAction === 'split') hold = 'split'; } catch (_) { /* no app */ }
+            return { v: { ...v }, saved: { ...v }, sel: 'left', qa, qaSaved: qa ? JSON.stringify(qa) : '', qaSel: null, hold, holdSaved: hold };
         },
         render(el, tab, d, api) {
             if (tab === 'quickaccess' && d.qa) { qaRender(el, d, api); return; }
+            if (tab === 'softkey') {
+                const HOLD = [['freeform', 'Open the program as a pop-up window'], ['split', 'Open the program in split screen']];
+                el.innerHTML = `<p class="wmsp-step">The button in the middle of the soft key bar shows the running programs. Hold it to:</p>
+                    ${ui.comboHtml('hold', (HOLD.find(([k]) => k === d.hold) || HOLD[0])[1])}`;
+                ui.bindCombo(el.querySelector('[data-act="hold"]'), HOLD, d.hold, (v) => { d.hold = v; });
+                return;
+            }
             const choices = keyChoices();
             const k = KEYS();
             const choice = (v) => choices.find((c) => c.value === v) || choices.find((c) => c.value === k.defaults()[d.sel]) || choices[0];
@@ -675,6 +686,7 @@
         commit(d) {
             if (!same(d.v, d.saved)) KEYS().set(d.v);
             if (d.qa && JSON.stringify(d.qa) !== d.qaSaved) { try { QA().setConfig(JSON.stringify(d.qa)); } catch (_) { /* older app */ } }
+            if (d.hold !== d.holdSaved) { try { window.AndroidBars.setConfig(JSON.stringify({ holdAction: d.hold })); } catch (_) { /* older app */ } }
             return [];
         }
     });

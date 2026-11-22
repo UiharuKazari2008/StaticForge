@@ -20,6 +20,7 @@
     'use strict';
 
     const root = document.documentElement;
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
     const SOFT_LABELS = { back: 'Back', home: 'Home', recents: 'Recent', start: 'Start', notifications: 'Notification', keyboard: 'Keyboard', menu: 'Menu', none: '' };
     // the right soft key's Menu (Settings > Menus > Soft Key Menu): its rows, in the user's order
     const MENU_ITEMS = { taskmanager: 'Task Manager', notifications: 'All Notifications', quicksettings: 'Quick Settings', maximize: 'Maximize', minimize: 'Minimize', close: 'Close' };
@@ -1648,6 +1649,34 @@
         },
         renderStart: (ctx) => { serial(() => renderStart(ctx)).catch((err) => console.warn('[melatonBars] renderStart', err)); },
         tap: (role) => { if (window.wmShell && window.wmShell.barsTap) window.wmShell.barsTap(role); },
-        unsupported: () => unsupported(document.querySelector('#wmShell .wm-titlebar'))
+        unsupported: () => unsupported(document.querySelector('#wmShell .wm-titlebar')),
+        syncSoftHeight: () => syncSoftHeight()
     };
+
+    // The page's soft key bar as tall as the app's over Android programs (Yozora #1013, Yukimi Nov 22: "adjust the softkey
+    // bar in DS to match androids size so that there no sudden unexpected size change"): where Melaton handles the
+    // navigation, the app's bar is Android's button row (AndroidBars state navPx, device px), 88 px against the page's 26
+    // units on the Fold's cover screen. html[data-wm-soft-h] + --wm-soft-h (wm65.css centres the labels and glyphs in it).
+    // The phone's window only; read at start, on a resize (a fold, a turn) and when the Bars settings change.
+    let softHSet = '';
+    function syncSoftHeight() {
+        let css = '';
+        try {
+            const A = window.AndroidBars;
+            const dex = !!(window.AndroidHome && typeof window.AndroidHome.isExternalDisplay === 'function' && window.AndroidHome.isExternalDisplay());
+            if (A && typeof A.getState === 'function' && !dex) {
+                const st = JSON.parse(A.getState() || 'null');
+                const c = st && st.config;
+                if (c && c.enabled && c.softkeys && c.room !== false && st.navPx > 0) css = `${(st.navPx / (window.devicePixelRatio || 1)).toFixed(2)}px`;
+            }
+        } catch (_) { css = ''; }
+        if (css === softHSet) return;
+        softHSet = css;
+        if (css) { root.style.setProperty('--wm-soft-h', css); root.setAttribute('data-wm-soft-h', ''); }
+        else { root.style.removeProperty('--wm-soft-h'); root.removeAttribute('data-wm-soft-h'); }
+    }
+    if (window.AndroidBars) {
+        syncSoftHeight();
+        window.addEventListener('resize', syncSoftHeight, { signal: appScopeSignal });
+    }
 })();
