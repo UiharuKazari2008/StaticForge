@@ -11,19 +11,19 @@ const sys = [ic('data'), ic('signal'), ic('volume'), ic('battery')];
 const appBar = Object.assign({}, bar, { xReserve: 0 });
 
 // Today (no X): the X's place goes to the icons first
-let r = fit({ icons: [ic('carkey'), ic('sms'), ic('received')].concat(sys), notify: { w: 16 * U, notes: false }, bar, prefs: {}, screen: {} });
+let r = fit({ icons: [ic('carkey'), ic('sms'), ic('received')].concat(sys), notify: { w: 16 * U, notes: false }, bar, prefs: {}, screen: { noCross: true } });
 console.log('Today:', JSON.stringify(r));
 assert.ok(!r.left.length, 'nothing left of the camera on the cover');
 
 // over an app, no short-lived icon: received and car fold before the volume steps aside
-r = fit({ icons: [ic('carkey'), ic('mail'), ic('received')].concat(sys), notify: { w: 16 * U, notes: false }, bar: appBar, prefs: {}, screen: {} });
+r = fit({ icons: [ic('carkey'), ic('mail'), ic('received')].concat(sys), notify: { w: 16 * U, notes: false }, bar: appBar, prefs: {}, screen: { noCross: true } });
 console.log('app bar, car/mail/received:', JSON.stringify(r));
 assert.ok(!r.left.length, 'never crosses the camera');
 assert.ok(!r.shed.includes('volume'), 'the volume stays for car / mail / received');
 assert.deepStrictEqual(r.folded.slice(0, 2), ['received', 'carkey'], 'received folds first, then the car');
 
 // a short-lived icon (sms) with car and received: car and received fold, then the volume steps aside for sms
-r = fit({ icons: [ic('carkey'), ic('sms'), ic('prints'), ic('received')].concat(sys), notify: { w: 16 * U, notes: false }, bar: appBar, prefs: {}, screen: {} });
+r = fit({ icons: [ic('carkey'), ic('sms'), ic('prints'), ic('received')].concat(sys), notify: { w: 16 * U, notes: false }, bar: appBar, prefs: {}, screen: { noCross: true } });
 console.log('app bar, car/sms/prints/received:', JSON.stringify(r));
 assert.ok(!r.left.length);
 assert.ok(r.folded.includes('received') && r.folded.includes('carkey'), 'the lesser ones fold first');
@@ -31,14 +31,27 @@ assert.ok(r.shed.includes('volume'), 'the volume steps aside for a short-lived i
 assert.ok(r.shown.includes('prints') && r.folded.includes('sms'), 'five fit right of the camera: prints outranks sms');
 
 // Sound Icon = Never hide keeps the volume; the short-lived ones fold instead
-r = fit({ icons: [ic('carkey'), ic('sms'), ic('prints'), ic('director'), ic('received')].concat(sys), notify: { w: 16 * U, notes: false }, bar: appBar, prefs: { sound: 'never' }, screen: {} });
+r = fit({ icons: [ic('carkey'), ic('sms'), ic('prints'), ic('director'), ic('received')].concat(sys), notify: { w: 16 * U, notes: false }, bar: appBar, prefs: { sound: 'never' }, screen: { noCross: true } });
 assert.ok(!r.shed.includes('volume'), 'never hide keeps the volume');
 assert.ok(!r.left.length);
 
 // continuity and nightshade never fold
-r = fit({ icons: [ic('carkey'), ic('sms'), ic('mail'), ic('chat'), ic('continuity'), ic('nightshade'), ic('received')].concat(sys), notify: { w: 16 * U, notes: true }, bar: appBar, prefs: {}, screen: {} });
+r = fit({ icons: [ic('carkey'), ic('sms'), ic('mail'), ic('chat'), ic('continuity'), ic('nightshade'), ic('received')].concat(sys), notify: { w: 16 * U, notes: true }, bar: appBar, prefs: {}, screen: { noCross: true } });
 console.log('app bar, crowded:', JSON.stringify(r));
 assert.ok(!r.folded.includes('continuity') && !r.folded.includes('nightshade'));
+
+// #1025 (Yukimi, Nov 22): with the camera in the bar the icons carry on left of it and fold only when the bar is full
+r = fit({ icons: [ic('carkey'), ic('mail'), ic('received')].concat(sys), notify: { w: 16 * U, notes: false }, bar: appBar, prefs: {}, screen: {} });
+console.log('app bar crossing, car/mail/received:', JSON.stringify(r));
+assert.ok(!r.folded.length && !r.shed.length, 'room left of the camera: nothing folds or steps aside');
+assert.deepStrictEqual(r.left, ['carkey', 'mail'], 'the first icons carry on left of the camera');
+r = fit({ icons: [ic('carkey'), ic('sms'), ic('mail'), ic('chat'), ic('continuity'), ic('nightshade'), ic('received'), ic('wxalert'), ic('rain'), ic('prints')].concat(sys), notify: { w: 16 * U, notes: false }, bar: appBar, prefs: {}, screen: {} });
+console.log('app bar crossing, full:', JSON.stringify(r));
+assert.ok(r.folded.length > 0 && r.groupShown, 'a truly full bar folds into the group');
+assert.ok(r.left.length > 0, 'and still uses the room left of the camera');
+// Today with the X's kept place: the room right of the camera is used before crossing
+r = fit({ icons: [ic('carkey'), ic('sms'), ic('received')].concat(sys), notify: { w: 16 * U, notes: false }, bar, prefs: {}, screen: {} });
+assert.ok(r.reserveUsed && !r.left.length, 'the X place first, then the camera');
 
 // unfolded: nothing steps aside or folds, overflow crosses
 r = fit({ icons: [ic('carkey'), ic('sms'), ic('mail'), ic('chat'), ic('wxalert'), ic('rain'), ic('received')].concat(sys), notify: null, bar: appBar, prefs: {}, screen: { unfolded: true } });

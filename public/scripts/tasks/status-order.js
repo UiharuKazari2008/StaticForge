@@ -45,6 +45,27 @@
         bluetooth: 'status-bluetooth', data: 'status-data-*', cell: 'status-data-*', roaming: 'status-roaming',
         signal: 'status-signal-*', volume: 'status-volume|status-vibrate|status-volume-off', battery: 'status-battery-*'
     };
+    /*
+     * The notification holder's pictures (Yukimi, Nov 22 2026, #1026): in WM 6.5 the "..." opens 6.5.1's notification
+     * holder (6.5.3's status drawer under the title bar) and 6.5.1's drawer lists the same, every role and notice kind by
+     * a large colour icon - the ROM's where it has one (the drawer's shellres.192 groups 4946-4958 as v651-drawer-*, the
+     * Start screen's Start_Icon_* as start-*, the message box icons), else the program's own large icon. Never the 1-bit
+     * bar glyph. Paths under /static_images/ without the extension; each has 1x / @2x / @4x files (32 / 64 / 128 px,
+     * the Start icons 45 / 90 / 180). The page draws them and sends them to the app in the bar's kit.
+     */
+    const holder = {
+        notify: 'wm61/msgbox-info', reminder: 'wm65/start-calendar', error: 'wm61/msgbox-error', warning: 'wm61/msgbox-warning',
+        carkey: 'wm65/start-traffic', traffic: 'wm65/start-traffic', lapis: 'wm65/start-lapis', caralert: 'wm65/start-lapis',
+        rain: 'wm61/app-weather-lg', wxalert: 'wm61/app-weather-lg', chat: 'wm65/start-messenger', mail: 'wm65/start-msg',
+        sms: 'wm65/start-sms', prints: 'wm65/start-photos', director: 'wm61/app-director-lg', received: 'wm65/start-async',
+        update: 'wm65/start-update', continuity: 'wm65/start-pccon', nightshade: 'wm61/set-nightshade',
+        batterylow: 'wm65/v651-drawer-battery-low', xmrec: 'wm65/start-xmradio',
+        bluetooth: 'wm65/v651-drawer-bluetooth', data: 'wm65/v651-drawer-connectivity', cell: 'wm65/v651-drawer-phone',
+        roaming: 'wm65/v651-drawer-roaming', signal: 'wm65/v651-drawer-phone', volume: 'wm65/v651-drawer-volume',
+        battery: 'wm65/v651-drawer-battery'
+    };
+    // a glyph name (status-mail) back to its role, for callers that hold the glyph
+    const glyphRole = new Map(Object.entries(glyphs).map(([r, g]) => [g, r]));
     // what a tap does: its popup (status-popups.js), drawn by the app or the page; "..." opens the tray of what waits
     const taps = { notify: 'tray' };
     const NOTE_CLS = { mail: 'mail', sms: 'sms', chat: 'chat', print: 'prints', 'print-error': 'prints', director: 'director',
@@ -91,6 +112,9 @@
         isGlyph: (name) => glyphNames.has(name),
         noteKind,
         noteGlyph: (n) => glyphs[noteKind(n)],
+        holder,
+        /** The holder's large colour picture for a role, notice kind or glyph name (a path under /static_images/), or null. */
+        holderArt: (r) => holder[r] || holder[glyphRole.get(r)] || null,
         systemGlyphs,
         /** What a tap on the role does: 'tray' (the "..." group) or 'popup'. */
         tap: (r) => taps[r] || 'popup',

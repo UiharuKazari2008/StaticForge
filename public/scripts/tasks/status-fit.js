@@ -26,7 +26,8 @@
  * charging battery (Power Icon default or "when charging") step aside; then the short-lived ones fold, least wanted
  * first; last the volume / battery after all. Icons the table does not let fold never fold. A group holds two or
  * more, or one with notices of its own. A bar fits when its leftmost icon clears the title's floor and, except on an
- * unfolded inner screen, starts in the bar's right half (the 50 % mark). The icons' app / foldable / ongoing / seenAt
+ * unfolded inner screen or a bar with the camera in it (icons carry on left of the camera, #1025), starts in the bar's
+ * right half (the 50 % mark). The icons' app / foldable / ongoing / seenAt
  * fields are only read without the table.
  */
 (function (root) {
@@ -76,29 +77,44 @@
             const groupShown = !!notify && (folded.length > 0 || !!notify.notes);
             if (groupShown) items.unshift({ role: 'notify', w: notify.w });
             const b = reserveUsed ? Object.assign({}, bar, { iconsRight: bar.iconsRight + (bar.xReserve || 0) }) : bar;
-            return { placed: place(items, b, screen.noCross), groupShown };
+            // "do not cross" with more than fits right of the camera even after every step: the row as it would cross,
+            // so the result still names what shows (null gave an empty bar)
+            return { placed: place(items, b, screen.noCross), groupShown, all: () => place(items, b, false) };
         };
         const ok = (l) => {
             if (!l.placed) return false;
             if (!l.placed.length) return true;
             const leftmost = l.placed[0].x;
             if (leftmost < bar.titleX + bar.titleMin) return false;
+            // the 50 % mark is for a bar without a camera in it: with one, the camera sits about where that mark is, so
+            // the mark kept every icon right of it and folded them into "..." with half the bar empty. They carry on
+            // left of the camera up to the title's floor (Yukimi, Nov 22 #1025: "continue past the cutout and only
+            // fall into ... when the bar is truly full"); Settings > Screen > "Do not allow status icons to cross over
+            // camera hole" (noCross) still keeps them right of it
+            if (bar.hole && bar.hole.w > 0 && !screen.noCross) return true;
             return screen.unfolded || leftmost >= bar.width / 2;
         };
-        const result = (l) => ({
-            shown: l.placed ? l.placed.map((p) => p.role) : [],
-            left: l.placed ? l.placed.filter((p) => p.left).map((p) => p.role) : [],
-            folded: folded.slice(),
-            shed: [...shed],
-            groupShown: l.groupShown,
-            reserveUsed
-        });
+        const result = (l) => {
+            const placed = l.placed || l.all();
+            return {
+                shown: placed.map((p) => p.role),
+                left: placed.filter((p) => p.left).map((p) => p.role),
+                folded: folded.slice(),
+                shed: [...shed],
+                groupShown: l.groupShown,
+                reserveUsed
+            };
+        };
 
         let l = layout();
         // an unfolded inner screen has the room: nothing steps aside or folds, what does not fit crosses the camera
-        if (screen.unfolded || ok(l)) return result(l);
+        // the room right of the camera is filled first: a row that has to cross it takes the X / ok's kept place (a bar
+        // with none) before it carries on left of the camera
+        const crossed = (x) => !!(x.placed && x.placed.some((p) => p.left));
+        if (screen.unfolded || (ok(l) && !crossed(l))) return result(l);
         const tryStep = (fn) => { fn(); l = layout(); return ok(l); };
         if (bar.xReserve > 0 && tryStep(() => { reserveUsed = true; })) return result(l);
+        if (ok(l)) return result(l);
         // the volume / battery stepping aside (Settings > Screen > Sound Icon / Power Icon allow it)
         const sysSteps = [];
         if (icons.some((i) => i.role === 'volume') && prefs.sound !== 'never') sysSteps.push(() => shed.add('volume'));

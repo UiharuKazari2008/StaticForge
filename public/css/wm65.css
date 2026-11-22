@@ -1069,9 +1069,38 @@ html.ui-mobile[data-wm-version="6.5"] .wm-notify-step::before {
     background: var(--wm65-caption-text);
 }
 
-/* the notification strip under the title bar: black like the bars */
+/* The "..." opens 6.5.1's notification holder (Yukimi, Nov 22 2026, #1026): 6.5.3's status drawer (window TitleBarList
+   480 x 86 under the title bar; measured on the 6.5.3 emulator, #850): shellres.192 RCDATA 4952 across (8 x 86, grey
+   to black, 204 / 255 see-through), 64 px icons at y 10 on an 86 px pitch, the first at x 20, 22 px after the last;
+   here each waiting notification and each icon folded into "..." by its large colour picture (status-order.js holder).
+   More than fit slide sideways under the finger. No pressed look on the device. */
 html.ui-mobile[data-wm-version="6.5"] .wm-notify-tray {
-    background: var(--wm65-bar);
+    justify-content: flex-start;
+    gap: 0;
+    height: calc(43 * var(--wm-px));
+    padding: 0 calc(5.5 * var(--wm-px)) 0 calc(4.5 * var(--wm-px));
+    border-bottom: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    overscroll-behavior: contain;
+    touch-action: pan-x;
+    /* the band's columns are all alike: stretched, not tiled, so the app's copy (a drawing list has no tiling) is the same */
+    background: image-set(url('/static_images/wm65/v651-drawer-band.png') 1x, url('/static_images/wm65/v651-drawer-band@2x.png') 2x) 0 0 / 100% 100% no-repeat;
+}
+html.ui-mobile[data-wm-version="6.5"] .wm-notify-tray::-webkit-scrollbar {
+    display: none;
+}
+html.ui-mobile[data-wm-version="6.5"] .wm-notify-tray-icon {
+    flex: 0 0 calc(43 * var(--wm-px));
+    width: calc(43 * var(--wm-px));
+    height: 100%;
+    background-color: transparent;
+    background-repeat: no-repeat;
+    background-position: center calc(5 * var(--wm-px));
+    background-size: calc(32 * var(--wm-px)) calc(32 * var(--wm-px));
+    image-rendering: auto;
+    -webkit-tap-highlight-color: transparent;
 }
 
 /* ---- volume bubble: 6.1's callout in 6.5's colours (6.5's own volume panel is not built) ---- */
@@ -2039,7 +2068,8 @@ html.ui-mobile[data-wm-rev="6.5.1"] #wmShell > .wm651-drawer {
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
-    background: image-set(url('/static_images/wm65/v651-drawer-band.png') 1x, url('/static_images/wm65/v651-drawer-band@2x.png') 2x) 0 0 / calc(4 * var(--wm-px)) 100% repeat-x;
+    /* stretched, not tiled (its columns are all alike): the app's copy of the drawer draws it the same (#1026) */
+    background: image-set(url('/static_images/wm65/v651-drawer-band.png') 1x, url('/static_images/wm65/v651-drawer-band@2x.png') 2x) 0 0 / 100% 100% no-repeat;
 }
 html.ui-mobile[data-wm-rev="6.5.1"] #wmShell > .wm651-drawer[hidden] {
     display: none;
