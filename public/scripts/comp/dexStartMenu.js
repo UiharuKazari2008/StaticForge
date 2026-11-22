@@ -769,7 +769,8 @@
             });
             // only the parts something happened in are written down again (the rest as they were)
             const all = c.dirty.has('*') || !c.lists.size;
-            const dirty = (name) => all || c.dirty.has(name) || !c.lists.has(name);
+            const marked = new Set(c.dirty);
+            const dirty = (name) => all || marked.has(name) || !c.lists.has(name);
             c.dirty.clear();
             const undos = [];
             const pops = [...doc.querySelectorAll(POPUPS)].filter((p) => p.getClientRects().length);
