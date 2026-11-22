@@ -324,7 +324,7 @@
         }
         readAll();
         if (!d.scanned) { d.scanned = true; callHost('scan'); }
-        el.innerHTML = `<div class="wm-listbox wm-wifi-list" style="max-height:calc(130 * var(--wm-px))"></div>
+        el.innerHTML = `<div class="wm-listbox wm-wifi-list"></div>
             <p class="wm-setc-gap-top">Networks to access:</p>
             ${ui.comboHtml('access', label(ACCESS, d.access))}`;
         const box = el.querySelector('.wm-wifi-list');
