@@ -85,7 +85,7 @@ const alphaOf = async (buf) => { const { data, info } = await sharp(buf).ensureA
     assert.deepStrictEqual(asked, [['brief', 1, true], ['wm', 4, false], ['vista', 4, false]], 'one brief, one drawing per style (an object may be square)');
     assert.strictEqual(it.note, null, 'the second drawings passed');
     // a symbol is drawn as its period object, the symbol a small emblem on it
-    assert.ok(prompts[0].includes(P.PERIOD_OBJECTS[0].object) && /one small raised emblem in #?\w+: A round disc/.test(prompts[0]), prompts[0]);
+    assert.ok(prompts[0].includes(P.PERIOD_OBJECTS[0].object) && /One small raised emblem, white, sits centred on the front balloon, .*: A round disc\./.test(prompts[0]), prompts[0]);
     assert.strictEqual(it.briefs.detailed.object, P.PERIOD_OBJECTS[0].object);
     const pub = t.publicJob(job).items[0].preview;
     assert.deepStrictEqual(Object.keys(pub).sort(), ['128', '16', '32', '65', 'vista']);

@@ -54,47 +54,51 @@ const ARCHETYPES = ['character', 'object', 'mark'];
 // What a 2007-2009 icon shows for each kind of program. The classifier call answers a row number only
 // (periodPrompt / parsePeriod); the object's words are fixed here, so every program of a kind gets the same
 // object and they differ by colour and badge, as the era's own icon sets do. New rows go at the end of their
-// group; the order is the tie-break (the first row that fits).
+// group; the order is the tie-break (the first row that fits). tint: the one part that takes the brand's main
+// colour (every other part keeps its natural material); badgeAt: where the brand's emblem sits
+// (onTint: the emblem sits on that coloured part, so a one-colour emblem is white there). Both are fixed
+// so the phone's drawing and the desktop's agree (left open, two draws put the emblem in different corners and
+// coloured different parts).
 const PERIOD_OBJECTS = [
-    { use: 'chat, messaging, a community', object: 'Two overlapping speech balloons, the front one larger and lower, each with a short pointed tail, facing the viewer' },
-    { use: 'e-mail', object: 'A paper envelope seen from the front with its flap open and the top of a letter showing' },
-    { use: 'phone calls, voice chat', object: 'A telephone handset standing at a slant, earpiece at the upper left, mouthpiece at the lower right' },
-    { use: 'video calls, live streaming by people', object: 'A small round webcam with a glass lens on a short folding stand' },
-    { use: 'films and series, video streaming, anime', object: 'A metal film reel with five round holes, standing upright, a strip of cine film with sprocket holes curling off its right side' },
-    { use: 'television, live channels', object: 'A flat television set of the 2000s with a wide bezel on a low stand, the screen lit' },
-    { use: 'music streaming, a music player', object: 'A compact disc standing upright with a pair of beamed eighth notes in front of its lower right' },
-    { use: 'radio', object: 'A portable radio with a round speaker grille, a tuning dial and a telescopic antenna raised at the upper right' },
-    { use: 'recognising or identifying music', object: 'A compact disc standing upright with a magnifying glass over its lower right, handle pointing down and right' },
-    { use: 'podcasts, voice recording', object: 'A studio microphone with a rounded mesh head on a small desk stand' },
-    { use: 'photos, a gallery, a camera app', object: 'A compact digital camera seen from the front with a large round lens and a small flash window' },
-    { use: 'drawing, painting, image editing, image generation, an art community', object: "An artist's wooden palette with dabs of paint and a brush lying across it" },
-    { use: 'maps, navigation, places', object: 'A paper map folded in three panels lying at a slight angle, with a round-headed map pin standing in it' },
-    { use: 'driving, traffic, a car companion', object: 'A car key with a remote fob that has two buttons, lying at a slant' },
-    { use: 'weather', object: 'A sun partly hidden behind a rounded cloud' },
-    { use: 'a web browser', object: 'A globe showing continents, tilted slightly' },
-    { use: 'search', object: 'A magnifying glass with a round lens, handle pointing down and right' },
-    { use: 'an AI assistant, a chatbot', object: 'One speech balloon with a short tail at the lower left and a four-point spark set in its middle' },
-    { use: 'shopping, a store, a marketplace', object: 'A paper shopping bag with two cord handles, seen from the front' },
-    { use: 'food ordering, a restaurant', object: 'A paper take-away bag with a folded-over top, seen from the front' },
-    { use: 'banking, payments, a wallet', object: 'A folded leather wallet with a payment card standing out of its top' },
-    { use: 'tickets, events, parking', object: 'Two paper admission tickets with notched ends, fanned one over the other' },
-    { use: 'notes, writing, documents', object: 'A sheet of paper with a folded top-right corner and ruled lines, a pencil lying across its lower right' },
-    { use: 'spreadsheets, data', object: 'A sheet of paper with a folded top-right corner carrying a grid of cells' },
-    { use: 'reading, comics, books', object: 'An open book lying flat, pages fanned, seen from slightly above' },
-    { use: 'news', object: 'A folded newspaper with a headline block and columns' },
-    { use: 'files, cloud storage', object: 'A manila folder, slightly open, with papers showing at the top' },
-    { use: 'code, developer tools, a terminal', object: 'A program window with a title bar and several lines of text' },
-    { use: 'passwords, authentication, security', object: 'A closed padlock with a key leaning against its lower right' },
-    { use: 'a VPN, private networking', object: 'A globe with a closed padlock in front of its lower right' },
-    { use: 'networking, Wi-Fi, a router tool', object: 'A wireless router lying flat with two antennas raised and a row of small lights' },
-    { use: 'internet speed, a benchmark, diagnostics', object: 'A round analogue dial gauge with tick marks around its upper half and a needle pointing up and right' },
-    { use: 'remote desktop, screen sharing', object: 'A flat monitor on its stand, the screen lit, with a second smaller screen overlapping its lower right' },
-    { use: 'smart home, home automation', object: 'A small house with a pitched roof, a door and one window' },
-    { use: 'headphones, earbuds or speakers companion', object: 'A pair of over-ear headphones seen from the front' },
-    { use: 'a printer or 3D printer companion', object: 'A desktop printer with a sheet of paper coming out of its front' },
-    { use: 'social network, a feed, sharing with followers', object: 'A bust of a person in front of a second, paler bust, like two contacts' },
-    { use: 'a game with no character', object: 'A game pad with a directional cross on the left and four round buttons on the right' },
-    { use: 'system tools, settings, utilities', object: 'A metal toolbox with a handle, closed' }
+    { use: 'chat, messaging, a community', object: 'Two overlapping speech balloons, the front one larger and lower, each with a short pointed tail, facing the viewer', tint: 'both balloons', badgeAt: 'centred on the front balloon', onTint: true },
+    { use: 'e-mail', object: 'A paper envelope seen from the front with its flap open and the top of a letter showing', tint: "the letter's edge band and the envelope's inner lining", badgeAt: 'centred on the letter' },
+    { use: 'phone calls, voice chat', object: 'A telephone handset standing at a slant, earpiece at the upper left, mouthpiece at the lower right', tint: 'the whole handset', badgeAt: "on the middle of the handset's grip", onTint: true },
+    { use: 'video calls, live streaming by people', object: 'A small round webcam with a glass lens on a short folding stand', tint: "the webcam's body shell", badgeAt: 'on the body under the lens', onTint: true },
+    { use: 'films and series, video streaming, anime', object: 'A metal film reel with five round holes, standing upright, a strip of cine film with sprocket holes curling off its right side', tint: 'the strip of cine film', badgeAt: "on the reel's round centre hub" },
+    { use: 'television, live channels', object: 'A flat television set of the 2000s with a wide bezel on a low stand, the screen lit', tint: "the television's screen", badgeAt: 'centred on the screen', onTint: true },
+    { use: 'music streaming, a music player', object: 'A compact disc standing upright with a pair of beamed eighth notes in front of its lower right', tint: 'the eighth notes', badgeAt: "on the disc's upper left" },
+    { use: 'radio', object: 'A portable radio with a round speaker grille, a tuning dial and a telescopic antenna raised at the upper right', tint: "the radio's body", badgeAt: 'on the body beside the dial', onTint: true },
+    { use: 'recognising or identifying music', object: 'A compact disc standing upright with a magnifying glass over its lower right, handle pointing down and right', tint: "the magnifying glass's rim and handle", badgeAt: 'inside the lens' },
+    { use: 'podcasts, voice recording', object: 'A studio microphone with a rounded mesh head on a small desk stand', tint: "the microphone's body under the mesh head", badgeAt: 'on the body band', onTint: true },
+    { use: 'photos, a gallery, a camera app', object: 'A compact digital camera seen from the front with a large round lens and a small flash window', tint: "the camera's front panel", badgeAt: 'on the front panel at the upper left', onTint: true },
+    { use: 'drawing, painting, image editing, image generation, an art community', object: "An artist's wooden palette with dabs of paint and a brush lying across it", tint: 'the brush handle and the largest dab of paint', badgeAt: "on the palette's open area" },
+    { use: 'maps, navigation, places', object: 'A paper map folded in three panels lying at a slight angle, with a round-headed map pin standing in it', tint: "the map pin's head", badgeAt: "on the map pin's head", onTint: true },
+    { use: 'driving, traffic, a car companion', object: 'A car key with a remote fob that has two buttons, lying at a slant', tint: "the fob's body", badgeAt: 'on the fob above the buttons', onTint: true },
+    { use: 'weather', object: 'A sun partly hidden behind a rounded cloud', tint: "the cloud's shaded underside", badgeAt: 'on the cloud' },
+    { use: 'a web browser', object: 'A globe showing continents, tilted slightly', tint: 'the oceans of the globe', badgeAt: "on a small round plate at the globe's lower right" },
+    { use: 'search', object: 'A magnifying glass with a round lens, handle pointing down and right', tint: "the magnifying glass's rim and handle", badgeAt: 'inside the lens' },
+    { use: 'an AI assistant, a chatbot', object: 'One speech balloon with a short tail at the lower left and a four-point spark set in its middle', tint: 'the whole balloon', badgeAt: "at the balloon's lower right, beside the spark", onTint: true },
+    { use: 'shopping, a store, a marketplace', object: 'A paper shopping bag with two cord handles, seen from the front', tint: 'the whole bag', badgeAt: "centred on the bag's front", onTint: true },
+    { use: 'food ordering, a restaurant', object: 'A paper take-away bag with a folded-over top, seen from the front', tint: "a wide band across the bag's front", badgeAt: 'centred on that band', onTint: true },
+    { use: 'banking, payments, a wallet', object: 'A folded leather wallet with a payment card standing out of its top', tint: 'the payment card', badgeAt: "on the wallet's front, lower right" },
+    { use: 'tickets, events, parking', object: 'Two paper admission tickets with notched ends, fanned one over the other', tint: 'the front ticket', badgeAt: 'centred on the front ticket', onTint: true },
+    { use: 'notes, writing, documents', object: 'A sheet of paper with a folded top-right corner and ruled lines, a pencil lying across its lower right', tint: "the pencil's barrel and the paper's folded corner", badgeAt: "at the paper's top left, like a letterhead" },
+    { use: 'spreadsheets, data', object: 'A sheet of paper with a folded top-right corner carrying a grid of cells', tint: "the grid's header row and first column", badgeAt: "at the paper's top left, like a letterhead" },
+    { use: 'reading, comics, books', object: 'An open book lying flat, pages fanned, seen from slightly above', tint: "the book's cover edges and ribbon marker", badgeAt: 'on the left page' },
+    { use: 'news', object: 'A folded newspaper with a headline block and columns', tint: 'the headline block', badgeAt: 'on the headline block' },
+    { use: 'files, cloud storage', object: 'A manila folder, slightly open, with papers showing at the top', tint: "a tab label on the folder's front", badgeAt: "on the folder's front, lower right" },
+    { use: 'code, developer tools, a terminal', object: 'A program window with a title bar and several lines of text', tint: "the window's title bar", badgeAt: "on a small round plate at the window's lower right" },
+    { use: 'passwords, authentication, security', object: 'A closed padlock with a key leaning against its lower right', tint: "the padlock's body", badgeAt: "centred on the padlock's body", onTint: true },
+    { use: 'a VPN, private networking', object: 'A globe with a closed padlock in front of its lower right', tint: "the padlock's body", badgeAt: "centred on the padlock's body", onTint: true },
+    { use: 'networking, Wi-Fi, a router tool', object: 'A wireless router lying flat with two antennas raised and a row of small lights', tint: "the router's body", badgeAt: "on the router's front face", onTint: true },
+    { use: 'internet speed, a benchmark, diagnostics', object: 'A round analogue dial gauge with tick marks around its upper half and a needle pointing up and right', tint: "the gauge's face", badgeAt: "on the gauge's face under the needle's pivot", onTint: true },
+    { use: 'remote desktop, screen sharing', object: 'A flat monitor on its stand, the screen lit, with a second smaller screen overlapping its lower right', tint: "the monitor's screen", badgeAt: 'centred on the front screen', onTint: true },
+    { use: 'smart home, home automation', object: 'A small house with a pitched roof, a door and one window', tint: 'the walls of the house', badgeAt: 'on the wall beside the door', onTint: true },
+    { use: 'headphones, earbuds or speakers companion', object: 'A pair of over-ear headphones seen from the front', tint: "the ear cups' outer shells", badgeAt: 'on the nearer ear cup', onTint: true },
+    { use: 'a printer or 3D printer companion', object: 'A desktop printer with a sheet of paper coming out of its front', tint: "the printer's top panel", badgeAt: "on the printer's front, upper left" },
+    { use: 'social network, a feed, sharing with followers', object: 'A bust of a person in front of a second, paler bust, like two contacts', tint: 'the front bust', badgeAt: "on the front bust's chest", onTint: true },
+    { use: 'a game with no character', object: 'A game pad with a directional cross on the left and four round buttons on the right', tint: "the game pad's body", badgeAt: 'between the cross and the buttons', onTint: true },
+    { use: 'system tools, settings, utilities', object: 'A metal toolbox with a handle, closed', tint: "the toolbox's body", badgeAt: "centred on the toolbox's front", onTint: true }
 ];
 
 /** The classifier's text: which row of PERIOD_OBJECTS fits this program. */
@@ -119,7 +123,7 @@ function parsePeriod(raw) {
  */
 function withPeriod(brief, row) {
     if (!brief || brief.archetype !== 'mark' || !row) return brief;
-    return { ...brief, object: row.object, badge: brief.subject };
+    return { ...brief, object: row.object, badge: brief.subject, tint: row.tint || '', badgeAt: row.badgeAt || '', onTint: row.onTint === true };
 }
 
 function briefPrompt(name, opts = {}) {
@@ -219,8 +223,18 @@ function subjectLine(brief, hasBrandRef) {
         // the brand shows as colour, and as one small emblem at most: the object is the icon
         const body = brief.cutout ? brief.tile : (brief.colours[0] && brief.colours[0].hex) || '';
         const rest = brief.cutout ? '' : brief.colours.slice(1).map((c) => c.hex).join(', ');
-        const badgeColour = brief.cutout ? 'white' : (brief.colours[1] ? brief.colours[1].hex : 'white');
-        return `${brief.object}. One real object of the 2000s, drawn as a product photograph would show it.${body ? ` Its main colour is ${body}${rest ? `, with ${rest} as accents` : ''}; parts that are paper, metal or glass keep their natural silver, cream and clear tones.` : ''}${brief.badge ? ` On its front, no wider than a third of the object, sits one small raised emblem in ${badgeColour}: ${brief.badge}.` : ''} No lettering${brief.badge ? ' beyond that emblem' : ''}.`;
+// the emblem keeps the brand's own colours, except where it would vanish: one colour on the part that
+        // already has that colour is white
+        const own = brief.colours.map((c) => c.hex).join(', ');
+const badgeColour = brief.onTint
+            ? (brief.cutout || brief.colours.length < 2 ? 'white' : `in its own colours (${own})`)
+            : (brief.cutout ? `in ${brief.tile}` : own ? `in its own colours (${own})` : 'white');
+        const reading = brief.lettering ? ` It reads "${brief.lettering}".` : '';
+const where = brief.badgeAt || 'on its front';
+        const coloured = brief.tint
+            ? ` Exactly one part carries the brand's colour: ${brief.tint}, in ${body}${rest ? ` (with ${rest} as small accents on that same part)` : ''}. Every other part keeps the natural tones of its material: silver metal, black or grey plastic, cream paper, clear glass.`
+            : ` Its main colour is ${body}${rest ? `, with ${rest} as accents` : ''}; parts that are paper, metal or glass keep their natural silver, cream and clear tones.`;
+        return `${brief.object}. One real object of the 2000s, drawn as a product photograph would show it.${body ? coloured : ''}${brief.badge ? ` One small raised emblem, ${badgeColour}, sits ${where}, no wider than a third of the object, and nowhere else: ${brief.badge}.${reading}` : ''} No lettering${brief.badge ? ' beyond that emblem' : ''}.`;
     }
     if (brief.archetype === 'object') return `${s}. One real object, drawn as a product photograph would show it${colours ? `, in these colours: ${colours}` : ''}.${lettering}`;
     if (brief.archetype === 'character') return `A head-and-shoulders bust of one character: ${s}.${colours ? ` Colours: ${colours}.` : ''} The bust ends at the shoulders in its own soft outline; nothing frames it.${lettering}`;

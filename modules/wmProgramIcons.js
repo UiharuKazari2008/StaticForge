@@ -566,13 +566,41 @@ async function checkDrawing(master, brief) {
  * icons last. A drawing that fails the measured check is drawn once more with one sentence added;
  * the second is kept either way, with a note when it still fails.
  */
+/**
+ * The route for a request after TokenRouter refused it for lack of credit (403 insufficient_user_quota):
+ * with provider 'auto' and an OpenAI key, OpenAI directly, for the next ten minutes (Yukimi, Nov 22 2026:
+ * "use the OpenAI account for now" while the TokenRouter wallet was empty). null: no other route.
+ */
+let directUntil = 0;
+function directRoute(route) {
+    const want = settings().provider;
+    if (route.provider !== 'tokenrouter' || want === 'tokenrouter') return null;
+    let key = null;
+    try { key = appIconGenerator.resolveOpenAiKey(projectRoot).apiKey; } catch (_) { return null; }
+    return key ? { provider: 'openai', model: route.model, apiModel: route.model, baseURL: undefined, apiKey: key } : null;
+}
+const outOfCredit = (err) => !!err && (err.status === 403 || err.status === 402) && /insufficient|quota|recharge|balance|forbidden/i.test(`${err.code || ''} ${err.message || ''}`);
+
+async function requestIconRouted(route, prompt, refBuffers) {
+    const direct = directRoute(route);
+    if (direct && Date.now() < directUntil) return requestIcon(direct, prompt, refBuffers);
+    try {
+        return await requestIcon(route, prompt, refBuffers);
+    } catch (err) {
+        if (!direct || !outOfCredit(err)) throw err;
+        console.warn('[wmProgramIcons] TokenRouter has no credit: drawing through OpenAI directly for ten minutes');
+        directUntil = Date.now() + 10 * 60 * 1000;
+        return requestIcon(direct, prompt, refBuffers);
+    }
+}
+
 async function drawStyle(route, style, name, brief, brand, opts) {
     const refs = await styleRefs(style, brief);
     const text = iconPrompt.renderPrompt(style, name, brief, { brandRefs: brand.length, userRefs: opts.userRefs, styleCount: refs.length, direction: opts.direction });
     let master = null;
     let why = null;
     for (let i = 0; i < MAX_DRAWS; i++) {
-        master = await requestIcon(route, why ? `${text}\n\n${iconPrompt.retryNote(why)}` : text, brand.concat(refs));
+        master = await requestIconRouted(route, why ? `${text}\n\n${iconPrompt.retryNote(why)}` : text, brand.concat(refs));
         why = await checkDrawing(master, brief);
         if (!why) break;
     }
@@ -736,7 +764,7 @@ async function runItem(job, item) {
         const pictures = marks.concat(own);
         if (!att.length && !pictures.length) throw new Error('No picture of this program to work from: request its icon from the phone (Settings > Personal > Program Icons).');
         // the brief: once per mode, kept for Regenerate (another draw of the same design, not another design)
-        const bv = settings().design === 'mark' ? 'm2' : 'p3';
+        const bv = settings().design === 'mark' ? 'm2' : 'p4';
         if (!item.briefs || typeof item.briefs !== 'object' || item.briefs.v !== bv) item.briefs = { v: bv };
         if (!item.briefs[mode]) {
             item.briefs[mode] = await iconBrief(item.label, att.concat(pictures), {
