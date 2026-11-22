@@ -414,6 +414,8 @@
     root.addEventListener('androidhotkey', (e) => {
         const k = e.detail;
         if (!k || (k.type !== 'keydown' && k.type !== 'keyup')) return;
+        // keys the app took for the Start menu it draws (start: true) are replayed by dexStartMenu.js with their typing (#1055)
+        if (k.start && root.melatonDexStartMenu && root.melatonDexStartMenu.active()) return;
         // Alt+Tab drawn by the app (dexAltTab.js) learns the app's session before the replayed key opens the pane (#1054)
         const at = root.melatonDexAltTab;
         if (at && typeof at.hotkey === 'function') { try { at.hotkey(k); } catch (err) { console.warn('[androidTaskbar] alttab', err); } }
