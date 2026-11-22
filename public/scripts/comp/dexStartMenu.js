@@ -149,13 +149,14 @@
 
     /** url(...) / image-set(...) -> { url, res } as the browser picks it (the smallest resolution at or over the screen's). */
     function pickImage(layer) {
-        const one = /^url\(["']?([^"')]+)["']?\)$/.exec(layer);
-        if (one) return { url: one[1], res: 1 };
+        // (the address in its own quotes: an inline SVG has the other kind inside)
+        const one = /^url\((["']?)([\s\S]*)\1\)$/.exec(layer);
+        if (one) return { url: one[2], res: 1 };
         const set = /^(?:-webkit-)?image-set\((.*)\)$/.exec(layer);
         if (!set) return null;
         const cands = topSplit(set[1], ',').map((c) => {
-            const m = /url\(["']?([^"')]+)["']?\)\s*([\d.]+)(x|dppx|dpi)\b/.exec(c) || /url\(["']?([^"')]+)["']?\)/.exec(c);
-            return m ? { url: m[1], res: m[2] ? (m[3] === 'dpi' ? +m[2] / 96 : +m[2]) : 1 } : null;
+            const m = /url\((["']?)([\s\S]*?)\1\)\s*(?:([\d.]+)(x|dppx|dpi)\b)?/.exec(c);
+            return m ? { url: m[2], res: m[3] ? (m[4] === 'dpi' ? +m[3] / 96 : +m[3]) : 1 } : null;
         }).filter(Boolean).sort((a, b) => a.res - b.res);
         if (!cands.length) return null;
         const dpr = root.devicePixelRatio || 1;
@@ -525,7 +526,26 @@
         }
         const a = alpha * +pcs.opacity;
         if (a <= 0) return;
+        const start = out.length;
         paintBox(pb, pcs, a, out, ctx.pics, false);
+        flipped(out, start, pb, pcs);
+    }
+
+    /** A mirroring transform (scaleX(-1) / scaleY(-1), a balloon's stem) on what start.. of out drew, about its origin. */
+    function flipped(out, start, b, cs) {
+        const m = /^matrix\(([^)]*)\)$/.exec(cs.transform || '');
+        if (!m) return;
+        const [a, bb, c, d, e, f] = m[1].split(',').map(Number);
+        if (bb || c || (a !== -1 && d !== -1)) return;
+        const o = String(cs.transformOrigin || '').split(' ').map(px);
+        const ox = b.left + (o[0] || 0); const oy = b.top + (o[1] || 0);
+        for (let i = start; i < out.length; i++) {
+            const it = out[i];
+            if (a === -1 && it.x != null) { it.x = r2(2 * ox - it.x - (it.w || 0) + e); if (it.k === 'img') it.fx = true; }
+            if (d === -1 && it.y != null) { it.y = r2(2 * oy - it.y - (it.h || 0) + f); if (it.k === 'img') it.fy = true; }
+            if (it.clip) it.clip = [a === -1 ? r2(2 * ox - it.clip[0] - it.clip[2] + e) : it.clip[0], d === -1 ? r2(2 * oy - it.clip[1] - it.clip[3] + f) : it.clip[1], it.clip[2], it.clip[3], it.clip[4]];
+            if (it.pts) it.pts = it.pts.map(([x, y]) => [a === -1 ? r2(2 * ox - x + e) : x, d === -1 ? r2(2 * oy - y + f) : y]);
+        }
     }
 
     /** A Font Awesome icon: its glyph drawn here (the app has no copy of the font) as a picture. */
@@ -788,6 +808,9 @@
                 parts.set('menu', shell);
             } else parts.set('menu', c.lists.get('menu'));
             kids.forEach((ch, i) => parts.set('m' + i, dirty('m' + i) ? partOf(ch, ctx, false) : c.lists.get('m' + i)));
+            // Vista's orb stands over the open menu's corner (pressed while it is open): the taskbar's own Start button
+            const orb = doc.getElementById('taskbarStartBtn');
+            if (orb && orb.getClientRects().length) parts.set('orb', dirty('orb') ? partOf(orb, ctx, true) : c.lists.get('orb'));
             pops.forEach((p) => { const n = 'pop' + idOf(p); parts.set(n, dirty(n) ? partOf(p, ctx, true) : c.lists.get(n)); /* (as a root: its own opacity is the unseen copy's 0) */ });
             c.lists = parts;
             ctx.scrollers.forEach((sc, el) => c.scrollers.set(el, sc));
@@ -816,6 +839,22 @@
     }
 
     function bytesOf(p) {
+        // SVG pictures (Android cannot decode them): drawn here at twice their size, as PNG
+        if (p.url && /^data:image\/svg|\.svg(\?|#|$)/i.test(p.url)) {
+            return new Promise((res) => {
+                const im = new Image();
+                im.onload = () => {
+                    try {
+                        const cv = doc.createElement('canvas');
+                        cv.width = Math.max(1, (im.naturalWidth || 16) * 2); cv.height = Math.max(1, (im.naturalHeight || 16) * 2);
+                        cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+                        cv.toBlob((b) => res(b ? b.arrayBuffer() : null), 'image/png');
+                    } catch (_) { res(null); }
+                };
+                im.onerror = () => res(null);
+                im.src = p.url;
+            });
+        }
         if (p.canvas) return new Promise((res) => { try { p.canvas.toBlob((b) => res(b ? b.arrayBuffer() : null), 'image/png'); } catch (_) { res(null); } });
         return fetch(p.url).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
     }
@@ -861,6 +900,8 @@
     function partFor(c, node) {
         const el = node && (node.nodeType === 1 ? node : node.parentElement);
         if (!el || el === c.menu || el === doc.body) return '*';
+        const orb = doc.getElementById('taskbarStartBtn');
+        if (orb && orb.contains(el)) return 'orb';
         if (c.menu.contains(el)) {
             let ch = el;
             while (ch.parentElement && ch.parentElement !== c.menu) ch = ch.parentElement;
@@ -894,6 +935,8 @@
         // anything drawn changing: written down again
         const mo = new MutationObserver(changed);
         mo.observe(menu, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'src', 'hidden', 'data-view'] });
+        const orbEl = doc.getElementById('taskbarStartBtn');
+        if (orbEl) mo.observe(orbEl, { subtree: true, attributes: true, attributeFilter: ['class', 'style', 'src'] });
         const bodyMo = new MutationObserver(changed);
         bodyMo.observe(doc.body, { childList: true });
         c.mos = [mo, bodyMo];
