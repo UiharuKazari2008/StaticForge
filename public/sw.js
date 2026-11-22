@@ -257,7 +257,7 @@ const IMAGE_METADATA_KEY = '/internal/sw-image-cache-metadata-v1';
 //   stall  <ms>                    the event loop held that long (100 ms probe)
 const PERF_TRACE_FLAG_KEY = '/internal/sw-perf-trace';
 const PERF_TRACE_LOG_KEY = '/internal/sw-perf-log';
-const perfTrace = { on: false, rows: [], flushTimer: null, probe: null, last: 0 };
+const perfTrace = { on: false, rows: [], flushTimer: null, probe: null, last: 0, expiry: null };
 
 function perfLog(line) {
   if (!perfTrace.on) return;
@@ -282,10 +282,33 @@ async function perfSpan(name, fn) {
   }
 }
 
+// The trace ends by itself PERF_TRACE_TTL_MS after it was turned on: a flag left behind kept a phone's
+// worker awake with the 100 ms probe and rewrote the 600-row log every 2 s for days (#1036, Yukimi's
+// Fold). The flag's body is the time it was turned on; an older flag without one ("1") starts its clock
+// when this worker first reads it.
+const PERF_TRACE_TTL_MS = 2 * 60 * 60 * 1000;
+
 async function loadPerfTraceFlag() {
   try {
     const cache = await caches.open(INTERNAL_CACHE);
-    const on = !!(await cache.match(PERF_TRACE_FLAG_KEY));
+    const flag = await cache.match(PERF_TRACE_FLAG_KEY);
+    let on = !!flag;
+    if (flag) {
+      let since = Number(await flag.text().catch(() => ''));
+      if (!Number.isFinite(since) || since < 1e12) {
+        since = Date.now();
+        await cache.put(PERF_TRACE_FLAG_KEY, new Response(String(since)));
+      }
+      const left = since + PERF_TRACE_TTL_MS - Date.now();
+      clearTimeout(perfTrace.expiry);
+      perfTrace.expiry = null;
+      if (left <= 0) {
+        on = false;
+        await cache.delete(PERF_TRACE_FLAG_KEY);
+      } else {
+        perfTrace.expiry = setTimeout(() => { perfTrace.expiry = null; loadPerfTraceFlag(); }, left + 1000);
+      }
+    }
     if (on && !perfTrace.on) {
       const previous = await cache.match(PERF_TRACE_LOG_KEY);
       perfTrace.rows = previous ? await previous.json().catch(() => []) : [];
