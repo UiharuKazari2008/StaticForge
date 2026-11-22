@@ -115,6 +115,9 @@ const id8 = () => crypto.randomBytes(6).toString('hex');
 
 // ------------------------------------------------------------------ AAC frames
 
+/** YYYY-MM-DD on this machine's clock (a recording's name and tag; toISOString's UTC date was a day ahead after 7 pm). */
+function localDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+
 /** The ADTS frames in a buffer: [{ off, len, sr }] (each 1024 samples). */
 function adtsFrames(buf) {
     const out = [];
@@ -417,14 +420,14 @@ async function fileCut(rec, cut, from, to, partial) {
     if (cover) args.push('-i', cover, '-map', '0:a', '-map', '1:v', '-c:v', 'copy', '-disposition:v:0', 'attached_pic');
     args.push('-c:a', 'copy', '-bsf:a', 'aac_adtstoasc',
         '-metadata', `title=${title}${partial ? ' (partial)' : ''}`, '-metadata', `artist=${artist}`,
-        '-metadata', `album=${ch.number ? `${ch.number} ` : ''}${ch.name}`, '-metadata', `date=${when.toISOString().slice(0, 10)}`,
+        '-metadata', `album=${ch.number ? `${ch.number} ` : ''}${ch.name}`, '-metadata', `date=${localDate(when)}`,
         '-metadata', `comment=Recorded from SiriusXM ${ch.name} on ${when.toISOString()}${cut && cut.s ? `; show: ${cut.s}` : ''}`,
         '-metadata', `track=${(rec.meta.filed || 0) + 1}`,
         '-movflags', '+faststart', out);
     try {
         await ffmpeg(args);
         const stamp = `${pad2(when.getHours())}${pad2(when.getMinutes())}`;
-        const name = safeName(`${when.toISOString().slice(0, 10)} ${stamp} ${artist === ch.name ? title : `${artist} - ${title}`}`);
+        const name = safeName(`${localDate(when)} ${stamp} ${artist === ch.name ? title : `${artist} - ${title}`}`);
         await fileInto(rec, out, name);
     } catch (err) {
         console.warn(`[xmRadio rec] ${rec.meta.rid}: a cut was not filed: ${err.message}`);
@@ -448,7 +451,7 @@ async function fileLong(rec) {
     const meta = path.join(rec.dir, 'long.txt');
     if ((await sliceAac(rec, from, to, tmp)) < 4096) return;
     const when = new Date(from);
-    const lines = [';FFMETADATA1', `title=${ffMetaEsc(`${ch.name}, ${when.toLocaleString('en-US')}`)}`, `artist=${ffMetaEsc(ch.name)}`, `album=${ffMetaEsc(ch.name)}`, `date=${when.toISOString().slice(0, 10)}`];
+    const lines = [';FFMETADATA1', `title=${ffMetaEsc(`${ch.name}, ${when.toLocaleString('en-US')}`)}`, `artist=${ffMetaEsc(ch.name)}`, `album=${ffMetaEsc(ch.name)}`, `date=${localDate(when)}`];
     const cuts = rec.cuts.filter((c) => c.at < to);
     cuts.forEach((c, i) => {
         const s = Math.max(0, c.at - from);
@@ -459,7 +462,7 @@ async function fileLong(rec) {
     await fs.promises.writeFile(meta, `${lines.join('\n')}\n`);
     try {
         await ffmpeg(['-f', 'aac', '-i', tmp, '-i', meta, '-map', '0:a', '-map_metadata', '1', '-map_chapters', '1', '-c:a', 'copy', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', out]);
-        await fileInto(rec, out, safeName(`${when.toISOString().slice(0, 10)} ${pad2(when.getHours())}${pad2(when.getMinutes())} ${ch.name}`));
+        await fileInto(rec, out, safeName(`${localDate(when)} ${pad2(when.getHours())}${pad2(when.getMinutes())} ${ch.name}`));
     } catch (err) {
         console.warn(`[xmRadio rec] ${rec.meta.rid}: not filed: ${err.message}`);
     } finally {

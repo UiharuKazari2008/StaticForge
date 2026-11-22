@@ -63,6 +63,7 @@
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
     const APP_ID = 'windows-media';
+    const MEDIA_APP = 'mediaplayer'; // melatonMediaSessions.js: the same program as the desktop's Media Player
     const TITLE = 'Melaton Media';
     const SKIN = '/static_images/wm61/wmp/';
     const AUDIO = /\.(mp3|ogg|oga|wav|aac|m4a|flac|opus|weba|wma)$/i;
@@ -149,6 +150,7 @@
     /** The item's key across the libraries (the desktop's Media Player keys its ratings the same way). */
     function keyOf(it) {
         if (!it) return '';
+        if (it.src === 'rec') return `rec:${it.id}`;
         if (it.src === 'android') return `phone:${it.volume}:${it.kind === 'video' ? 'v' : ''}${it.id}`;
         if (it.hash) return `local:${it.hash}`;
         if (it.path) return `vfs:${it.path}`;
@@ -175,7 +177,7 @@
 
     // ---------------------------------------------------------------- playback
 
-    const media = { el: null, queue: [], index: -1, shuffle: false, repeat: false, volume: 70, muted: false, status: 'Ready', error: '', counted: -1 };
+    const media = { el: null, queue: [], index: -1, shuffle: false, repeat: false, volume: 70, muted: false, status: 'Ready', error: '', counted: -1, resume: null };
     let focusPaused = ''; // paused because another program took the audio: 'transient' (a call) | 'loss'
 
     function player() {
@@ -225,19 +227,28 @@
         return Promise.resolve('');
     }
 
-    async function playIndex(i) {
+    /** Play the queue's item i; from: { at (s), paused } carries on a session (the app's other window, a release here). */
+    async function playIndex(i, from) {
         const it = media.queue[i];
         if (!it) return;
         media.index = i;
         media.error = '';
+        media.resume = null;
         setStatus('Opening...');
         const v = player();
         try {
             if (it.url && /^http:/i.test(it.url) && !opts.http && !it.local) throw Object.assign(new Error('http'), { name: 'ProtocolOff' });
             const url = it.url || await ws.busy(vfsUrl(it), { timeout: 15000 });
             if (!url) throw new Error('no url');
+            if (media.index !== i) return;
             v.poster = it.poster || '';
             v.src = url;
+            if (from && from.at > 0) {
+                const at = from.at;
+                v.addEventListener('loadedmetadata', () => { if (v.getAttribute('src') === url) { try { v.currentTime = at; } catch (_) { /* not seekable */ } } }, { once: true });
+            }
+            tellAndroid();
+            if (from && from.paused) { setStatus('Paused'); return; }
             await v.play();
         } catch (err) {
             if (err && err.name === 'AbortError') return;
@@ -252,7 +263,12 @@
     function playPause() {
         if (!media.queue.length) return;
         const v = player();
-        if (media.index < 0 || !v.getAttribute('src')) { playIndex(Math.max(0, media.index)); return; }
+        if (media.index < 0 || !v.getAttribute('src')) {
+            const i = Math.max(0, media.index);
+            const r = media.resume;
+            playIndex(i, r && r.index === i ? { at: r.at } : null);
+            return;
+        }
         if (v.paused) v.play().catch(() => {}); else v.pause();
     }
 
@@ -282,6 +298,8 @@
     /** What Melaton Media plays, as Android's media session (lock screen, shade, headset buttons). */
     let tellTimer = 0;
     function tellAndroid() {
+        // and the app's other window (the DeX desktop's Media Player): play, pause, stop, a new item (coalesced there)
+        if (window.melatonMedia) window.melatonMedia.changed(MEDIA_APP);
         const L = library();
         if (!L || typeof L.setNowPlaying !== 'function') return;
         clearTimeout(tellTimer);
@@ -739,15 +757,22 @@
         const [cat, sub, a1, a2] = libPath;
         const L = shown();
         const file = (it) => ({ label: it.name, icon: it.kind === 'video' ? 'wmp-video' : 'wmp-music', item: it });
-        if (L.needsAccess && cat && cat !== 'tv') return [{ label: 'Allow access to music and videos...', icon: 'wmp-properties', ask: true }];
+        if (L.needsAccess && cat && cat !== 'tv' && cat !== 'rec') return [{ label: 'Allow access to music and videos...', icon: 'wmp-properties', ask: true }];
         if (!cat) {
             return [
                 { label: 'My Music', icon: 'wmp-music', open: ['music'] },
                 { label: 'My Videos', icon: 'wmp-video', open: ['video'] },
                 { label: 'My TV', icon: 'wmp-tv', open: ['tv'] },
+                // XM Radio's tapes (the ROM's radio icon), for the administrator
+                ...(canRecordings() ? [{ label: 'Recordings', icon: 'wmp-radio', open: ['rec'] }] : []),
                 { label: 'My Playlists', icon: 'wmp-playlist', open: ['playlists'] },
                 { label: 'Now Playing', icon: 'wmp-play', queue: true }
             ];
+        }
+        if (cat === 'rec') {
+            // the tapes (a tap opens one, Play plays it whole), then a tape's recordings
+            if (sub == null) return (recs.tapes || []).map((name) => ({ label: name, icon: 'wmp-folder', open: ['rec', name], tape: name, items: recs.tracks[name] }));
+            return (recs.tracks[sub] || []).map(file);
         }
         if (cat === 'music' || cat === 'video') {
             const list = cat === 'music' ? L.audio : L.video;
@@ -799,6 +824,7 @@
         if (!cat) return { label: 'Library', icon: 'wmp-search' };
         if (cat === 'fs') return path.length === 1 ? { label: 'File System', icon: 'wmp-search' } : { label: fsName(path[path.length - 1]), icon: 'wmp-folder' };
         if (cat === 'tv') return { label: 'My TV', icon: 'wmp-tv' };
+        if (cat === 'rec') return sub == null ? { label: 'Recordings', icon: 'wmp-radio' } : { label: sub, icon: 'wmp-folder' };
         if (cat === 'playlists') {
             if (sub == null) return { label: 'My Playlists', icon: 'wmp-playlist' };
             const p = shown().playlists[Number(sub)];
@@ -821,6 +847,60 @@
         if (r.item) return [r.item];
         if (r.items) return r.items;
         return [];
+    }
+
+    // ---------------------------------------------------------------- Recordings: XM Radio's tapes
+    // A tape is a folder of the deck workspace's Recordings folder (modules/xmRadioRecorder.js, docs/client-api/ws/
+    // xmradio.md); its recordings play from /api/xmradio/track/<fileId>. The administrator's (admin and dev_admin):
+    // the row shows only there. Read when Recordings is opened (xmradio_deck_get) and when a tape is (xmradio_tape_tracks).
+
+    const recs = { tapes: null, tracks: {}, workspaceId: '' };
+    const canRecordings = () => { try { return /^(admin|dev_admin)$/.test(localStorage.getItem('userType') || ''); } catch (_) { return false; } };
+
+    async function recAsk(type, data) {
+        const W = window.wsClient;
+        if (!W || typeof W.sendMessage !== 'function') throw new Error('Melaton Media is not connected to the server.');
+        const r = await ws.busy(W.sendMessage(type, data || {}, false), { timeout: 30000 });
+        if (r && r.success === false) throw new Error(r.error || 'The recordings could not be read.');
+        return r && r.data && typeof r.data === 'object' ? r.data : r || {};
+    }
+
+    function recItem(t, tape) {
+        const file = String(t.name || '');
+        const ext = (/\.([^.]+)$/.exec(file) || ['', ''])[1].toLowerCase();
+        return {
+            kind: 'audio', src: 'rec', id: t.id, local: true, name: file.replace(/\.[^.]+$/, '') || 'Recording', title: file.replace(/\.[^.]+$/, ''),
+            file, album: tape, duration: Number(t.dur) || 0, size: t.size || 0, mime: ext === 'mp3' ? 'audio/mpeg' : ext === 'aac' ? 'audio/aac' : 'audio/mp4',
+            url: new URL(`/api/xmradio/track/${encodeURIComponent(t.id)}`, location.origin).toString()
+        };
+    }
+
+    async function recLoadTapes() {
+        recs.tapes = null;
+        recs.tracks = {};
+        try {
+            const d = await recAsk('xmradio_deck_get', { info: true });
+            const deck = d.deck || {};
+            const names = (d.tapes || []).map(String);
+            if (deck.tape && !names.includes(deck.tape)) names.unshift(deck.tape);
+            recs.workspaceId = deck.workspaceId || '';
+            recs.tapes = names;
+        } catch (err) {
+            recs.tapes = [];
+            ws.notify({ title: TITLE, icon: 'error', text: (err && err.message) || 'The recordings could not be read.' });
+        }
+    }
+
+    async function recTracks(name) {
+        if (recs.tracks[name]) return recs.tracks[name];
+        try {
+            const d = await recAsk('xmradio_tape_tracks', { workspaceId: recs.workspaceId || undefined, tape: name });
+            recs.tracks[name] = (d.tracks || []).map((t) => recItem(t, name));
+        } catch (err) {
+            recs.tracks[name] = [];
+            ws.notify({ title: TITLE, icon: 'error', text: (err && err.message) || 'The tape could not be read.' });
+        }
+        return recs.tracks[name];
     }
 
     // ---------------------------------------------------------------- Open File...: the file system
@@ -863,8 +943,15 @@
 
     /** A Library level change (the file system loads its folder first). */
     function goLevel(path) {
+        // Recordings read again each time they are opened from the Library (up from a tape keeps them)
+        const recFresh = path[0] === 'rec' && path.length === 1 && libPath[0] !== 'rec';
         libPath = path;
         libSel = 0;
+        if (path[0] === 'rec') {
+            const done = () => { if (layer === 'library' && libPath === path) render(); };
+            if (recFresh || !recs.tapes) recLoadTapes().then(() => (path.length > 1 ? recTracks(path[1]) : null)).then(done);
+            else if (path.length > 1 && !recs.tracks[path[1]]) recTracks(path[1]).then(done);
+        }
         if (path[0] === 'fs') {
             fsList = null;
             fsLoad(path.length > 1 ? path[path.length - 1] : '/').then(() => { if (layer === 'library' && libPath === path) render(); });
@@ -1576,6 +1663,14 @@
         const r = rows[i];
         if (!r) return;
         if (r.queue) { openQueue(); return; }
+        // Recordings: Play on a tape plays the tape whole
+        if (r.tape != null) {
+            const tracks = await recTracks(r.tape);
+            if (!tracks.length) { ws.notify({ title: TITLE, icon: 'info', text: 'This tape is blank.' }); return; }
+            media.queue = [];
+            enqueue(tracks, true);
+            return;
+        }
         // Open File...: Play on a folder plays its media files
         if (r.open && r.open[0] === 'fs') {
             const keep = fsList;
@@ -1600,8 +1695,9 @@
         enqueue(items, true);
     }
 
-    function queueUp() {
-        const items = rowItems(libRows()[libSel]);
+    async function queueUp() {
+        const r = libRows()[libSel];
+        const items = r && r.tape != null ? await recTracks(r.tape) : rowItems(r);
         if (!items.length) return;
         enqueue(items, false);
     }
@@ -1862,6 +1958,7 @@
 
     function register() {
         ws = window.wmShell;
+        if (window.melatonMedia) window.melatonMedia.register(MEDIA_APP, { label: TITLE, describe: mediaDescribe, take: mediaTake, release: mediaRelease }, { signal: appScopeSignal });
         ws.registerApp({
             id: APP_ID,
             title: TITLE,
@@ -1872,6 +1969,8 @@
             sip: () => !full && layer !== 'skin' && layer !== 'props' && layer !== 'about' && layer !== 'update',
             mount,
             show() {
+                // the app's other window (the DeX desktop) plays the Media Player and nothing plays here: it moves here
+                if (pullElsewhere()) { render(); return; }
                 // Options > Library > Start Player on Library screen (on by default): a start with nothing playing opens the Library
                 if (opts.startLibrary && !media.queue.length && layer === 'skin' && !libs.has(currentSource().id) && !androidMode()) { openLibrary(); return; }
                 render();
@@ -1931,12 +2030,13 @@
                     };
                 }
                 const r = libRows()[libSel];
-                const playable = rowItems(r).length > 0 || !!(r && r.open && r.open[0] === 'fs');
+                const playable = rowItems(r).length > 0 || !!(r && r.open && r.open[0] === 'fs') || !!(r && r.tape != null);
                 return {
                     left: { label: 'Play', action: () => playFrom(libSel), disabled: !playable },
                     right: { label: 'Menu', menu: () => [
                         { label: 'Queue Up', action: queueUp, disabled: !playable },
-                        { label: 'Delete from Library', action: deleteFromLibrary, disabled: !(r && (r.item || r.playlist)) }, '-',
+                        // a recording is managed in XM Radio (its Recordings tab), not here
+                        { label: 'Delete from Library', action: deleteFromLibrary, disabled: !(r && (r.item || r.playlist)) || libPath[0] === 'rec' }, '-',
                         { label: 'Now Playing', action: openQueue },
                         { label: 'Library', submenu: sourceMenu() },
                         { label: 'Update Library...', action: runUpdate },
@@ -1947,6 +2047,146 @@
                 };
             }
         });
+    }
+
+    // ---------------------------------------------------------------- the session across the app's windows
+
+    /* What Melaton Media plays, for the app's other window (melatonMediaSessions.js, window.melatonMedia; Yukimi,
+       Nov 21 2026: "all media can transfer its session and know what each are doing"): the DeX desktop's Media
+       Player (desktop-apps/mediaPlayer.js mediaPlayerSession) registers 'mediaplayer' with the same source shape,
+       { item, queue, index }, each entry { type: 'server' (id, hash) | 'phone' (volume, id: MediaStore through
+       AndroidMediaLibrary) | 'vfs' (path, fileId) | 'url' (url), kind, name, title, artist, album, mime }. Only
+       Melaton Media's own playback is told, never what other Android programs play. No timers: tellAndroid() says
+       changed() on play, pause, stop and a new item. */
+
+    /** A queue item as the session's entry, or null when it cannot play in another window. */
+    function sessionEntry(it, here) {
+        if (!it) return null;
+        let e = null;
+        if (it.src === 'android' && it.id != null && it.volume) e = { type: 'phone', volume: String(it.volume), id: it.id };
+        else if (it.serverId != null) e = { type: 'server', id: it.serverId, hash: it.hash || '' };
+        else if (it.src === 'vfs' && it.path) e = { type: 'vfs', path: it.path, fileId: it.fileId || null };
+        else if (it.url && !/^(blob|data):/i.test(it.url)) {
+            let url = it.url;
+            try { url = new URL(it.url, here).href; } catch (_) { /* kept as it is */ }
+            e = { type: 'url', url };
+        }
+        if (!e) return null;
+        return Object.assign(e, { kind: it.kind === 'video' ? 'video' : 'audio', name: it.file || it.name || '', title: it.title || '', artist: it.artist || '', album: it.album || '', mime: it.mime || '' });
+    }
+
+    /** An entry as a queue item here; ctx: { phoneBase: AndroidMediaLibrary.baseUrl(), vfsBase }. null: cannot play here. */
+    function sessionItem(e, ctx) {
+        if (!e || typeof e !== 'object') return null;
+        const kind = e.kind === 'video' ? 'video' : 'audio';
+        const name = e.title || String(e.name || '').replace(/\.[^.]+$/, '') || (kind === 'video' ? 'Video' : 'Unknown');
+        const out = { kind, name, title: e.title || '', file: e.name || '', artist: e.artist || '', album: e.album || '', mime: e.mime || '' };
+        if (e.type === 'server') {
+            if (e.id == null) return null;
+            return Object.assign(out, { src: 'vfs', serverId: e.id, fileId: e.id, hash: e.hash || '' });
+        }
+        if (e.type === 'phone') {
+            const base = ctx && ctx.phoneBase;
+            if (!base || e.id == null || !e.volume) return null;
+            const vol = encodeURIComponent(e.volume);
+            return Object.assign(out, {
+                src: 'android', id: e.id, volume: String(e.volume), url: `${base}/${kind}/${vol}/${e.id}`,
+                art: kind === 'audio' ? `${base}/cover/${vol}/${e.id}?px=512` : '', poster: kind === 'video' ? `${base}/video/${vol}/${e.id}?thumb=480` : ''
+            });
+        }
+        if (e.type === 'vfs') {
+            if (!e.path) return null;
+            const file = String(e.path).split('/').pop() || e.name || '';
+            return Object.assign(out, { src: 'vfs', path: e.path, fileId: e.fileId || null, file, name: e.title || file.replace(/\.[^.]+$/, '') || name });
+        }
+        if (e.type === 'url') return /^https?:/i.test(String(e.url || '')) ? Object.assign(out, { url: e.url }) : null;
+        return null;
+    }
+
+    /** The library's own item for an entry, when that library is read already (its art, tags and play counts). */
+    function sessionKnown(e) {
+        const lib = e.type === 'server' ? libs.get('vfs') : e.type === 'phone' ? libs.get(`android:${e.volume}`) : null;
+        if (!lib) return null;
+        const list = (e.kind === 'video' ? lib.video : lib.audio) || [];
+        return e.type === 'server' ? list.find((x) => x.serverId === e.id) || null : list.find((x) => x.src === 'android' && String(x.id) === String(e.id)) || null;
+    }
+
+    function mediaDescribe() {
+        const it = current();
+        const v = media.el;
+        if (!it || !v || !v.getAttribute('src')) return null;
+        let queue = [];
+        let index = -1;
+        media.queue.forEach((x, i) => {
+            const e = sessionEntry(x, location.href);
+            if (!e) return;
+            if (i === media.index) index = queue.length;
+            queue.push(e);
+        });
+        if (queue.length > 500) {
+            const from = Math.max(0, Math.min(index - 100, queue.length - 500));
+            queue = queue.slice(from, from + 500);
+            if (index >= 0) index -= from;
+        }
+        return {
+            title: it.title || it.name || '',
+            subtitle: it.artist || it.album || '',
+            kind: it.kind === 'video' ? 'video' : 'audio',
+            source: index >= 0 ? { item: queue[index], queue, index } : null,
+            position: Math.round((v.currentTime || 0) * 1000),
+            playing: !v.paused && !v.ended
+        };
+    }
+
+    /** Play the other window's session here: its list, from its item and position (paused when it was). */
+    function mediaTake(s) {
+        const src = s && s.source;
+        if (!src || !Array.isArray(src.queue) || !src.queue.length) return false;
+        const L = library();
+        const V = (typeof vfsClient !== 'undefined' ? vfsClient : window.vfsClient) || null; // eslint-disable-line no-undef
+        const ctx = { phoneBase: L && typeof L.baseUrl === 'function' ? L.baseUrl() : '', vfsBase: V && V.getBasePath ? V.getBasePath() : '' };
+        const items = [];
+        let at = -1;
+        src.queue.forEach((e, i) => {
+            const x = (e && sessionKnown(e)) || sessionItem(e, ctx);
+            if (!x) return;
+            if (i === src.index) at = items.length;
+            items.push({ ...x });
+        });
+        if (at < 0) return false;
+        if (full) setFull(false);
+        media.queue = items;
+        media.index = -1;
+        playIndex(at, { at: Math.max(0, Number(s.position) || 0) / 1000, paused: s.playing === false });
+        toSkin();
+        // a video is seen: the program opens (as its launch does); a song plays on in the background, as Play All does
+        if (ws.current !== APP_ID && items[at].kind === 'video') ws.open(APP_ID);
+        else if (ws.current === APP_ID) render();
+        return true;
+    }
+
+    /** Stop here for the other window: the session as it was. The source is let go, so Android's media session
+        (lock screen, shade, headset) ends with it; Play here carries on from the same place (media.resume). */
+    function mediaRelease() {
+        const s = mediaDescribe();
+        if (!s) return null;
+        const v = media.el;
+        media.resume = { index: media.index, at: v.currentTime || 0 };
+        focusPaused = '';
+        if (full) setFull(false);
+        v.pause();
+        v.removeAttribute('src');
+        v.load();
+        setStatus('Stopped');
+        tellAndroid();
+        return s;
+    }
+
+    /** "Playing on the DeX desktop" with its Transfer at the top of Melaton Media while the other window plays (it moves on a tap). */
+    function pullElsewhere() {
+        const M = window.melatonMedia;
+        if (M && typeof M.offerTransfer === 'function' && page) M.offerTransfer(MEDIA_APP, page);
+        return false;
     }
 
     /** Play All Songs (the 6.5 Music panel): every song of the library from the first, in the background. */

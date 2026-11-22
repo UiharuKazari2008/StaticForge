@@ -102,7 +102,11 @@ const theme = read('public/css/themes/vista/media-player.css');
 // paired phones over ActiveSync (#956 round 3): other libraries, their views page, the relay URLs, push reloads
 assert.ok(js.includes("'media.list', { kind, volume, offset, limit: 500 }") && js.includes("'/api/activesync/file/' + encodeURIComponent(deviceId) + '/media'"), 'a phone lists its library page by page and streams through the relay');
 assert.ok(js.includes("e.event !== 'media.changed'"), 'a change on the phone is pushed, not polled');
-assert.ok(js.includes("/^src:(local|phone|as:[0-9a-f]{32}):(.+)$/"), 'a phone is a library source');
+assert.ok(js.includes("/^src:(local|phone|rec|as:[0-9a-f]{32}):(.+)$/"), 'a phone is a library source');
+// Recordings (XM Radio's tapes): a tree node for the administrator, read when opened, played from the track URL
+assert.ok(js.includes('data-nav="src:rec:tapes"') && js.includes('mediaPlayerCanRecordings()'), 'Recordings in the tree, for the administrator');
+assert.ok(js.includes("'xmradio_deck_get', { info: true }") && js.includes("'xmradio_tape_tracks'") && js.includes("'/api/xmradio/track/' + encodeURIComponent(t.id)"), 'the tapes and their recordings, played from /api/xmradio/track');
+assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-wmp/nav-recordings.png')), 'the Recordings tree icon shipped');
 assert.ok(js.includes('Primary Views</span>') && js.includes('Additional Views</span>') && js.includes("['contributing', 'Contributing Artist']"), "the views page of a shared library's node");
 ['view-artist', 'view-album', 'view-songs', 'view-genre', 'view-year', 'view-rating', 'view-contributing', 'view-composer', 'view-parental', 'view-stores']
     .forEach((name) => assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-wmp', name + '.png')) && fs.existsSync(path.join(ROOT, 'public/static_images/vista-wmp', name + '@2x.png')), name + ' shipped'));
