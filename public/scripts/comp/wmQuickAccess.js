@@ -250,7 +250,9 @@
     function signature() {
         const m = model();
         if (!m) return '';
-        return JSON.stringify([m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.filter((id) => id.startsWith('tile:')).map((id) => m.tiles[id] && m.tiles[id].icon)]);
+        // (every tile's picture: a control drawn with an app tile's glyph changes with the catalog too - its kept layout
+        // pointed at a glyph the app no longer draws, and the tile showed empty)
+        return JSON.stringify([m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => iconOf(m, id, 'on'))]);
     }
 
     root.wmQuickAccess = { open, close, roles, signature, ICONS };
