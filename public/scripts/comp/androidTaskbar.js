@@ -14,6 +14,12 @@
  * Buttons are .taskbar-window-item with data-android-window, in #taskbarWindows: modalUtils.js updateTaskbarWindows
  * leaves them alone (taskbarItemShouldExist) and isModalActiveForTaskbar asks melatonAndroidTaskbar.hasFocus().
  *
+ * More than two Android windows (Yukimi, Nov 22 2026, #1029) share ONE group button, as Vista groups a program's buttons:
+ * "[icon] N Android Programs ▾" (.taskbar-window-group, vista-taskbar.css). A click opens Vista's list of those windows
+ * (each window's icon and title; picking one brings it forward), right-click the group's menu: Restore Group / Minimize
+ * Group / Close Group (Vista's Cascade / Show Windows Stacked / Side by Side are left out: Android places its own windows).
+ * One or two keep their own buttons; Taskbar Properties' "Group similar taskbar buttons" off never groups them.
+ *
  * Only in the DeX window (AndroidDisplay.isDesktop() with the desktop shell and the bridge present).
  */
 (function () {
@@ -34,9 +40,17 @@
 
     const ASKED_KEY = 'melatonDexWindowsAccessAsked';
     const MENU_ID = 'android-taskbar-window';
+    const GROUP_LIST_ID = 'android-taskbar-group-list';
+    const GROUP_MENU_ID = 'android-taskbar-group';
+    // more than two Android windows: one group button (#1029)
+    const GROUP_FROM = 3;
+    const GROUP_NAME = 'Android Programs';
 
     let state = { windows: [], focusedId: null, can: {}, access: {} };
     const buttons = new Map(); // window id -> button element
+    let groupBtn = null;        // the group button while the windows are grouped
+    let groupListWasOpen = false;
+    let lastList = null;        // the bridge's last list (applied again when the grouping setting changes)
     let reqSeq = 0;
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -118,6 +132,7 @@
 
     function apply(next) {
         if (!next || next.ok === false) return;
+        lastList = next;
         const hadFocus = hasFocus();
         state = {
             windows: Array.isArray(next.windows) ? next.windows.filter((w) => w && w.id) : [],
@@ -128,6 +143,16 @@
         const b = band();
         if (!b) return;
         const seen = new Set();
+        if (shouldGroup()) {
+            // the windows' own buttons go; the group button stands in their place
+            buttons.forEach((item) => removeButton(item));
+            buttons.clear();
+            showGroup(b);
+            if (hadFocus !== hasFocus() && typeof root.updateTaskbarActiveStates === 'function') root.updateTaskbarActiveStates();
+            askAccessOnce();
+            return;
+        }
+        dropGroup();
         state.windows.forEach((w) => {
             seen.add(w.id);
             let item = buttons.get(w.id);
@@ -147,6 +172,133 @@
         // updateTaskbarActiveStates: public/scripts/comp/modalUtils.js
         if (hadFocus !== hasFocus() && typeof root.updateTaskbarActiveStates === 'function') root.updateTaskbarActiveStates();
         askAccessOnce();
+    }
+
+    // ---- the group button (#1029) ----
+
+    function shouldGroup() {
+        if (state.windows.length < GROUP_FROM) return false;
+        // taskbarGroupingEnabled: public/scripts/comp/modalUtils.js (Taskbar Properties' Group similar taskbar buttons)
+        return typeof root.taskbarGroupingEnabled !== 'function' || root.taskbarGroupingEnabled();
+    }
+
+    /** The picture on the group button: the window in front's program, else the first window's. */
+    function groupLead() {
+        return byId(state.focusedId) || state.windows[0];
+    }
+
+    function groupHtml() {
+        const lead = groupLead();
+        const pic = lead ? iconOf(lead) : { src: '', srcset: '' };
+        const img = pic.src ? `<img src="${esc(pic.src)}"${pic.srcset ? ` srcset="${esc(pic.srcset)}"` : ''} alt="" class="icon-image" draggable="false" />` : '<i class="fas fa-window-maximize"></i>';
+        return `<div class="taskbar-window-item-content">${img}<span>${esc(GROUP_NAME)}</span><span class="taskbar-group-count">${state.windows.length}</span></div>`;
+    }
+
+    function showGroup(b) {
+        if (!groupBtn || !groupBtn.isConnected || groupBtn.classList.contains('leaving')) {
+            const item = doc.createElement('div');
+            item.className = 'taskbar-window-item taskbar-window-group taskbar-android-item taskbar-android-group entering';
+            // data-android-window: modalUtils.js leaves the button to this file (taskbarItemShouldExist)
+            item.dataset.androidWindow = 'group';
+            // a second click on the button closes its list (the menu's outside press shuts it first)
+            item.addEventListener('pointerdown', () => {
+                const cm = root.contextMenu;
+                groupListWasOpen = !!(cm && cm.isOpen && cm.currentTarget === item && item.dataset.contextMenu === GROUP_LIST_ID);
+            });
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (groupListWasOpen) { groupListWasOpen = false; return; }
+                showGroupList(e, item);
+            });
+            item.addEventListener('contextmenu', (e) => showGroupMenu(e, item));
+            item.addEventListener('animationend', (e) => {
+                if (e.target !== item || e.animationName !== 'taskbar-item-grow') return;
+                item.classList.remove('entering');
+            }, { once: true });
+            groupBtn = item;
+            b.appendChild(item);
+        }
+        const key = `${state.windows.length}|${groupLead() ? iconKey(groupLead()) : ''}`;
+        if (groupBtn.dataset.contentKey !== key) {
+            groupBtn.dataset.contentKey = key;
+            groupBtn.innerHTML = groupHtml();
+        }
+        const title = state.windows.map(titleOf).join('\n');
+        if (groupBtn.title !== title) groupBtn.title = title;
+        const allMin = state.windows.every((w) => w.minimized);
+        const active = hasFocus() && !allMin;
+        if (typeof root.syncTaskbarItemStateClasses === 'function') root.syncTaskbarItemStateClasses(groupBtn, active, allMin);
+        else {
+            if (groupBtn.classList.contains('active') !== active) groupBtn.classList.toggle('active', active);
+            if (groupBtn.classList.contains('minimised') !== allMin) groupBtn.classList.toggle('minimised', allMin);
+        }
+    }
+
+    function dropGroup() {
+        if (!groupBtn) return;
+        const cm = root.contextMenu;
+        if (cm && cm.isOpen && cm.currentTarget === groupBtn && typeof cm.hideMenu === 'function') cm.hideMenu();
+        removeButton(groupBtn);
+        groupBtn = null;
+    }
+
+    /** Vista's list of a group's windows: each window's icon and title, picking one brings it forward. */
+    function showGroupList(e, item) {
+        const cm = root.contextMenu;
+        if (!cm || typeof cm.showMenu !== 'function' || !state.windows.length) return;
+        if (!cm.configs) cm.configs = {};
+        cm.configs[GROUP_LIST_ID] = {
+            position: 'anchor',
+            sections: [{
+                type: 'list',
+                items: state.windows.map((w) => {
+                    const pic = iconOf(w);
+                    return { text: titleOf(w), image: pic.src || undefined, action: `awg:${w.id}` };
+                })
+            }],
+            onAction: (action) => { if (action.startsWith('awg:')) send('activate', action.slice(4)); },
+            onHide: () => { item.classList.remove('group-menu-open'); }
+        };
+        item.dataset.contextMenu = GROUP_LIST_ID;
+        item.classList.add('group-menu-open');
+        cm.showMenu(e, item);
+    }
+
+    /** Right-click on the group: Restore Group, Minimize Group, Close Group. */
+    function showGroupMenu(e, item) {
+        e.preventDefault();
+        e.stopPropagation();
+        const cm = root.contextMenu;
+        if (!cm || typeof cm.showMenu !== 'function') return;
+        if (!cm.configs) cm.configs = {};
+        const anyMin = state.windows.some((w) => w.minimized);
+        const anyShown = state.windows.some((w) => !w.minimized);
+        const glyph = (name) => `vista-sysmenu-glyph vista-sysmenu-${name}`;
+        cm.configs[GROUP_MENU_ID] = {
+            sections: [{
+                type: 'list',
+                items: [
+                    { icon: glyph('restore'), text: 'Restore Group', action: 'awg-restore', disabled: !anyMin },
+                    { icon: glyph('minimize'), text: 'Minimize Group', action: 'awg-minimize', disabled: !anyShown || !state.can.minimize },
+                    { separator: true },
+                    { icon: glyph('close'), text: 'Close Group', action: 'awg-close', className: 'context-menu-item-default', disabled: !state.can.close }
+                ]
+            }],
+            onAction: (action) => {
+                if (action === 'awg-restore') restore(restoreOrder());
+                else if (action === 'awg-minimize') minimizeShown();
+                else if (action === 'awg-close') state.windows.slice().forEach((w) => send('close', w.id));
+            }
+        };
+        item.dataset.contextMenu = GROUP_MENU_ID;
+        cm.showMenu(e, item);
+    }
+
+    /** Every window of the group, the one in front last (it ends in front again). */
+    function restoreOrder() {
+        const ids = state.windows.map((w) => w.id);
+        ids.sort((a, b) => (a === state.focusedId) - (b === state.focusedId));
+        return ids;
     }
 
     function read() {
@@ -192,10 +344,15 @@
     // ---- start ----
 
     root.addEventListener('androidwindows', (e) => apply(e && e.detail), { signal: appScopeSignal });
+    // Taskbar Properties' Group similar taskbar buttons turned on or off (taskbarSettings.js)
+    root.addEventListener('taskbarsettingschange', () => { if (state.windows.length >= GROUP_FROM) apply(lastList); }, { signal: appScopeSignal });
     // resumed on a display connected again (#1015): the windows on that display now
     root.addEventListener('melatondesktopresume', () => { if (desktopUp()) read(); }, { signal: appScopeSignal });
     // the Program Icons store changed (androidDesktopPrograms.js): the buttons take the new pictures
-    doc.addEventListener('melaton:android-programs', () => { buttons.forEach((item, id) => { const w = byId(id); if (w) updateButton(item, w); }); }, { signal: appScopeSignal });
+    doc.addEventListener('melaton:android-programs', () => {
+        buttons.forEach((item, id) => { const w = byId(id); if (w) updateButton(item, w); });
+        if (groupBtn) { delete groupBtn.dataset.contentKey; const b = band(); if (b) showGroup(b); }
+    }, { signal: appScopeSignal });
 
     function desktopUp() {
         try { return typeof root.getClientDesktopState === 'function' && root.getClientDesktopState() === 'desktop'; } catch (_) { return false; }
