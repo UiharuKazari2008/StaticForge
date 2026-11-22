@@ -3747,50 +3747,89 @@ html.ui-mobile body > .pswp .pswp__preloader {
     content: none !important;
 }
 
-/* the volume box's Output (#1016): One UI's Media output glyph and its name on a WM button across the box's
- * foot; it opens the Output box (wmShell openOutputBox) */
-.wm-vol-output {
-    display: flex;
-    align-items: center;
-    gap: calc(4 * var(--wm-px));
-    box-sizing: border-box;
+/* the volume box's Output (#1016): a WM combo box (wm-programs.css .wm-combo) across the box's foot - the kind's
+ * glyph and the output media plays on; its list drops down inside the box (wmShell paintOutput) */
+.wm-vol-output.wm-combo {
     width: calc(100% - 10 * var(--wm-px));
-    height: calc(20 * var(--wm-px));
     margin: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) 0;
-    padding: 0 calc(4 * var(--wm-px));
-    border: calc(1 * var(--wm-px)) solid #000;
-    border-radius: 0;
-    background: var(--wm-tint);
+    gap: calc(3 * var(--wm-px));
     color: #000;
     font: var(--wm-fs) var(--wm-font);
-    font-weight: bold;
-    text-align: left;
 }
 
-.wm-vol-output:active {
-    background: var(--wm-highlight);
-    color: var(--wm-highlight-text, #fff);
+.wm-vol-output.wm-combo > span {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
 }
 
-.wm-vol-output .wm-bit-glyph {
+.wm-vol-output .wm-bit-glyph,
+.wm-vol-outitem .wm-bit-glyph {
     flex: none;
     width: calc(14 * var(--wm-px));
     height: calc(14 * var(--wm-px));
 }
 
-/* the Output box: one output per row, full width (names run long: "Headphones (Galaxy Buds2 Pro)") */
-html.ui-mobile .wm-msgbox.wm-output-box .wm-msgbox-buttons {
-    flex-direction: column;
-    align-items: stretch;
-    padding-left: calc(10 * var(--wm-px));
-    padding-right: calc(10 * var(--wm-px));
+/* the list: WM's combo list hanging from the combo's bottom, as wide as its longest name (right edge with the
+ * combo's: the box sits at the screen's right) */
+.wm-vol-outlist {
+    position: absolute;
+    right: calc(5 * var(--wm-px));
+    z-index: 1;
+    min-width: calc(100% - 10 * var(--wm-px));
+    width: max-content;
+    max-width: calc(200 * var(--wm-px));
+    box-sizing: border-box;
+    padding: calc(1 * var(--wm-px)) 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
 }
 
-html.ui-mobile .wm-msgbox.wm-output-box .wm-msgbox-buttons button {
+.wm-vol-outitem {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    position: relative;
     width: 100%;
-    overflow: hidden;
+    height: calc(20 * var(--wm-px));
+    box-sizing: border-box;
+    padding: 0 calc(8 * var(--wm-px)) 0 calc(14 * var(--wm-px));
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+    text-align: left;
     white-space: nowrap;
+}
+
+.wm-vol-outitem > span {
+    overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* WM's mark for the current choice in a drop-down (as .wm-popup-item.is-radio) */
+.wm-vol-outitem[aria-selected="true"]::before {
+    content: '';
+    position: absolute;
+    left: calc(5 * var(--wm-px));
+    top: calc(50% - 2.5 * var(--wm-px));
+    width: calc(5 * var(--wm-px));
+    height: calc(5 * var(--wm-px));
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.wm-vol-outitem:active,
+.wm-vol-outitem:focus-visible {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text, #fff);
+    outline: none;
+}
+
+.wm-vol-outnone {
+    padding: calc(3 * var(--wm-px)) calc(8 * var(--wm-px));
+    white-space: nowrap;
 }
 
 /* the Power bubble's brightness (#1016): sun | the WM trackbar (wmSettings.ui.trackbar) | auto brightness */

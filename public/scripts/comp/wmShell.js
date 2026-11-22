@@ -82,7 +82,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["status-nightshade", "set-nightshade", "set-location", "app-doubles", "app-doubles-lg", "app-bintoss", "app-bintoss-lg", "app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "app-lapis", "app-lapis-lg", "app-youtube", "app-youtube-lg", "app-xmradio", "app-xmradio-lg", "status-lapis", "status-carkey", "status-car-alert", "app-wallet", "app-wallet-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-battery-low", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "volume-notify", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-camera", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["status-nightshade", "set-nightshade", "set-location", "app-doubles", "app-doubles-lg", "app-bintoss", "app-bintoss-lg", "app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "app-lapis", "app-lapis-lg", "app-youtube", "app-youtube-lg", "app-xmradio", "app-xmradio-lg", "status-lapis", "status-carkey", "status-car-alert", "app-wallet", "app-wallet-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-battery-low", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-vpn-on", "wrls-vpn-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "volume-notify", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-camera", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => WM_SET.test(name) ? `${name}.png 1x, ${name}@2x.png 2x, ${name}@4x.png 4x` : String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -776,7 +776,7 @@
             const bub = shell.querySelector('.wm-bubble');
             if (!bub.hidden && !bub.contains(e.target) && !(e.target.closest && e.target.closest('#wmShell .wm-status-icon'))) closeBubble();
             const vc = shell.querySelector('.wm-volume');
-            // (the volume box's Output box sits over it: its taps keep the volume box, #1016)
+            // (a message box over it - the Output's error, #1016 - keeps the volume box)
             if (!vc.hidden && !vc.contains(e.target) && !(e.target.closest && e.target.closest('#wmShell .wm-status-icon, #wmShell .wm-msgbox-layer'))) closeVolume();
             // the notification tray closes on a tap elsewhere
             if (noteTrayOpen && !(e.target.closest && e.target.closest('#wmShell .wm-notify-tray, #wmShell [data-role="notify"]'))) { noteTrayOpen = false; renderNotes(); }
@@ -1093,7 +1093,7 @@
         if (role === 'notify') { noteIconTap(); return true; }
         const icon = shell.querySelector(`.wm-status-icon[data-role="${role}"]`);
         // the volume box opens with its icon aside too (never the notification box in its place)
-        if (role === 'volume') { closeVolume(); toggleVolume(icon && !icon.hidden && icon.getClientRects().length ? icon : null); return true; }
+        if (role === 'volume') { closeVolume(true); toggleVolume(icon && !icon.hidden && icon.getClientRects().length ? icon : null, true); return true; }
         if (!icon || icon.hidden || !icon.getClientRects().length) { noteIconTap(); return true; }
         icon.click();
         return true;
@@ -1107,7 +1107,8 @@
         if (!shell) return;
         closeMenus(true);
         closeBubble();
-        closeVolume();
+        // (a redraw: the volume box's Output list keeps its state for the next press on the copy)
+        closeVolume(true);
         if (noteTrayOpen) { noteTrayOpen = false; renderNotes(); }
         syncScrim();
     }
@@ -3379,6 +3380,63 @@
     function nightshadeNow(ws) {
         try { return ws && typeof ws.nightshadeState === 'function' ? ws.nightshadeState() : null; } catch (_) { return null; }
     }
+    /*
+     * A VPN app's tunnel for the Connectivity bubble (#1019, Yukimi Nov 21 2026): WireGuard's (or another app's) up now,
+     * its address and since when, from the app's own interface snapshot - pushed as 'androidnetifaces' whenever a link
+     * comes or goes (DSApp NetLinks), so the bubble never asks for it. The tunnel's name is read only when Disconnect
+     * is pressed (AndroidWifi.interfaces names it; the push does not).
+     */
+    let vpnNow = null;
+    let vpnRead = false;
+    function vpnFrom(snap) {
+        const list = snap && Array.isArray(snap.interfaces) ? snap.interfaces : [];
+        const x = list.find((i) => i && i.up && typeof i.extra === 'string' && i.extra.startsWith('VPN:') && Array.isArray(i.ipv4) && i.ipv4.length);
+        if (!x) return null;
+        const a = x.ipv4[0];
+        return { iface: x.name, pkg: x.extra.slice(4), ip: `${a.addr}/${a.prefix}`, since: Number(x.createdAt) > 0 ? Number(x.createdAt) : null };
+    }
+    function vpnState() {
+        if (!vpnRead) {
+            vpnRead = true;
+            const h = window.AndroidWifi;
+            if (h && typeof h.netInterfaces === 'function') { try { vpnNow = vpnFrom(JSON.parse(h.netInterfaces())); } catch (_) { vpnNow = null; } }
+        }
+        return vpnNow;
+    }
+    window.addEventListener('androidnetifaces', (e) => {
+        const was = JSON.stringify(vpnNow);
+        vpnNow = vpnFrom(e && e.detail);
+        vpnRead = true;
+        if (JSON.stringify(vpnNow) !== was) statusDirty();
+    }, { signal: appScopeSignal });
+    /** The tunnel down through its app: WireGuard by its name (the app's remote control), another VPN app opened. */
+    function vpnDisconnect(v) {
+        const h = window.AndroidWifi;
+        if (!h || !v) return;
+        let row = null;
+        try { row = (JSON.parse(h.interfaces()).interfaces || []).find((x) => x && x.name === v.iface) || null; } catch (_) { row = null; }
+        const session = row && row.vpnSession;
+        if (session && typeof h.vpnControl === 'function') { try { h.vpnControl(v.pkg, session, false); return; } catch (_) { /* below */ } }
+        if (typeof h.openVpnApp === 'function') { try { h.openVpnApp(v.iface); } catch (_) { /* older app */ } }
+    }
+    const clockText = (since) => {
+        const t = Math.max(0, Math.floor((Date.now() - since) / 1000));
+        return `${String(Math.floor(t / 3600)).padStart(2, '0')}:${String(Math.floor(t / 60) % 60).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+    };
+    // the open bubble's running time, once a second while it shows (no timer otherwise)
+    let clockTimer = 0;
+    function tickBubbleClock() {
+        clearInterval(clockTimer); clockTimer = 0;
+        const el = shell && shell.querySelector('.wm-bubble');
+        if (!el || el.hidden || !el.querySelector('.wm-vpn-time[data-since]')) return;
+        // perf: allow the open Connectivity bubble's running clock; it stops with the bubble
+        clockTimer = setInterval(() => {
+            const b = shell && shell.querySelector('.wm-bubble');
+            const spans = b && !b.hidden && !document.hidden ? b.querySelectorAll('.wm-vpn-time[data-since]') : [];
+            if (!spans.length) { clearInterval(clockTimer); clockTimer = 0; return; }
+            spans.forEach((sp) => { const t = clockText(Number(sp.dataset.since)); if (sp.textContent !== t) sp.textContent = t; });
+        }, 1000);
+    }
     const bubble0Hidden = () => { const b = shell && shell.querySelector('.wm-bubble'); return !b || b.hidden; };
     let dcWasUp = false;
     let dcDownSince = 0;
@@ -3715,7 +3773,7 @@
                             if (p.classList.contains('wm-bars')) pair.bars = p.querySelectorAll('i.is-on').length;
                             else if (p.classList.contains('wm-vpn-time')) {
                                 const ws = window.wsClient;
-                                pair.clock = (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null;
+                                pair.clock = Number(p.dataset.since) || (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null;
                                 // (the state key leaves the running time out: the app's copy runs that clock itself)
                                 pair.r.push({ s: bubbleKeyMode ? '' : textOf(p), b: true });
                             } else pair.r.push({ s: textOf(p), b: p.tagName === 'B' || p.classList.contains('is-bold') });
@@ -3785,7 +3843,7 @@
         } finally { bubbleCapture = null; bubbleKeyMode = false; }
         out.push(`notes=${notes.map((n) => `${n.id}\u0001${n.type}\u0001${n.title || ''}\u0001${n.running ? 1 : 0}\u0001${n.toast ? n.toast.textContent : ''}`).join('\u0002')}`);
         out.push(`msg=${[shellMailUnread, shellMailNew ? 1 : 0, imapUnread(), smsUnread(), chatUnread()].join(',')}`);
-        out.push(`vol=${[levelOf('media'), levelOf('notify'), levelOf('ringer'), soundMode()].join(',')}`);
+        out.push(`vol=${[levelOf('media'), levelOf('notify'), levelOf('ringer'), soundMode(), canPickOutput() ? (() => { const c = currentOutput(); return c ? outputLabel(c) : ''; })() : ''].join(',')}`);
         out.push(`icons=${[...shell.querySelectorAll('.wm-titlebar .wm-status-icon')].map((i) => `${i.dataset.role}:${i.hidden ? 0 : 1}:${i.classList.contains('wm-shed') ? 0 : 1}:${i.dataset.icon || ''}`).join(',')}`);
         let screenSize = '';
         try { screenSize = typeof window.AndroidBars.screenSize === 'function' ? String(window.AndroidBars.screenSize() || '') : ''; } catch (_) { screenSize = ''; }
@@ -7155,7 +7213,8 @@
             if (volumePaint) volumePaint();
             refreshStatus();
             clearTimeout(volumeKeyTimer);
-            volumeKeyTimer = setTimeout(() => { volumeKeyTimer = null; closeVolume(); }, 3000);
+            // (not while the Output list is down: someone is choosing)
+            if (!volOutOpen) volumeKeyTimer = setTimeout(() => { volumeKeyTimer = null; closeVolume(); }, 3000);
         });
         try { if (typeof AV.takeKeys === 'function') AV.takeKeys(true); } catch (_) { /* older app */ }
     }
@@ -7176,97 +7235,130 @@
         try { return A.list('playback').filter((d) => d.state === 'working' && (d.isDefault || d.canSetDefault)); } catch (_) { return []; }
     }
 
-    /**
-     * The volume box's Output: a WM box over it with one button per output ("Headphones (Galaxy Buds2 Pro)"), the one
-     * media plays on now as the default button; a tap moves media there (melatonAudioDevices.setDefault: Android's Media
-     * output route, allowed once through the app's shell when needed). Android is asked for its routes only while the
-     * box is up (onChange starts and ends the app's watch), and the buttons follow what it reports. The volume box
-     * stays open under it: Melaton Bars replays a press on its copy by its place among both boxes' controls.
+    /** An output's name as One UI's panel gives it: another device by its own name ("Galaxy Buds2 Pro", "NexDock", "Living
+     *  Room TV"), the phone's own outputs by what they are ("Speakers", "Headphones"); elsewhere the desktop's "Name (Device)". */
+    function outputLabel(d) {
+        if (d.platform === 'android') return (/^(builtin_|wired_|usb_|line_)/.test(d.type || '') ? d.name : d.description) || d.name;
+        return d.description && d.description !== d.name ? `${d.name} (${d.description})` : d.name;
+    }
+
+    /** The glyph for an output's kind: the phone itself, headphones, a headset, a display (HDMI, DeX, NexDock), a cast
+     *  target, a speaker, a jack. */
+    function outputGlyph(d) {
+        if (/^builtin_/.test(d.type || '')) return 'output';
+        if (d.name === 'Remote Audio') return d.kind === 'hdmi' ? 'cast' : 'speaker';
+        return { headphones: 'headphones', headset: 'headset', handset: 'output', hdmi: 'display', digital: 'jack', line: 'jack', speakers: 'speaker' }[d.kind] || 'speaker';
+    }
+
+    /** The output media plays on now (its row in mediaOutputs), or null. */
+    function currentOutput(list = mediaOutputs()) {
+        return list.find((d) => d.isDefault) || null;
+    }
+
+    /*
+     * The volume box's Output combo (#1016, Yukimi: "a dropdown where the current device is the text and the icon
+     * represents the output type"): the output media plays on, its kind's glyph; a tap drops the outputs down inside
+     * the box (WM's combo list), the current one marked; a pick moves media there (melatonAudioDevices.setDefault:
+     * Android's Media output route, #963). The list lives in the volume box itself and its open state outlasts a
+     * redraw (Melaton Bars closes and reopens the box to replay a press on its copy), so a press on the copy's rows
+     * lands on the same row. Android is asked for its routes (onChange starts the app's router) from the list's open
+     * until the move it started is done: a route is only good while the router that offered it runs (the NexDock's
+     * "no longer offers this output" was the watch ended before the move, Yukimi, Nov 21).
      */
-    let outputBoxUp = false;
-    async function openOutputBox() {
+    let volOutOpen = false;
+    let outWatchOff = null;
+    let outWatchHold = 0;
+    function outputsWatch(on) {
         const A = window.melatonAudioDevices;
-        if (!A || outputBoxUp) return;
-        outputBoxUp = true;
-        // the volume keys' 3 s close waits while the box is up
-        clearTimeout(volumeKeyTimer);
-        volumeKeyTimer = null;
-        try { if (typeof A.refresh === 'function') A.refresh(); } catch (_) { /* the push brings it */ }
-        // as One UI's panel names them: another device by its own name ("Galaxy Buds2 Pro", "Living Room TV"), the
-        // phone's own outputs by what they are ("Speakers", "Headphones"); elsewhere the desktop's "Name (Device)"
-        const label = (d) => {
-            if (d.platform === 'android') return (/^(builtin_|wired_|usb_|line_)/.test(d.type || '') ? d.name : d.description) || d.name;
-            return d.description && d.description !== d.name ? `${d.name} (${d.description})` : d.name;
-        };
-        const sig = (list) => list.map((d) => `${d.id}:${d.isDefault ? 1 : 0}:${label(d)}`).join('|');
-        let shown = mediaOutputs();
-        let close = null;
-        let layerEl = null;
-        const fill = () => {
-            const row = layerEl && layerEl.querySelector('.wm-msgbox-buttons');
-            const text = layerEl && layerEl.querySelector('.wm-msgbox-text');
-            if (!row || !close) return;
-            if (text) text.textContent = shown.length ? 'Play media on:' : 'No other output is available.';
-            row.replaceChildren(...shown.map((d) => {
-                const b = document.createElement('button');
-                b.type = 'button';
-                b.textContent = label(d);
-                if (d.isDefault) { b.classList.add('is-default'); b.setAttribute('aria-pressed', 'true'); }
-                b.addEventListener('click', () => close(d.id));
-                return b;
-            }), Object.assign(document.createElement('button'), { type: 'button', textContent: 'Cancel', onclick: () => close(null) }));
-        };
-        // Android's routes arrive a moment after the watch starts: the buttons are drawn again when the list changed
-        const off = typeof A.onChange === 'function' ? A.onChange(() => {
-            const next = mediaOutputs();
-            if (sig(next) === sig(shown)) return;
-            shown = next;
-            fill();
-        }) : null;
-        let pick = null;
-        try {
-            pick = await messageBox({
-                title: 'Output',
-                text: 'Play media on:',
-                buttons: [{ text: 'Cancel', value: null }, { text: '', value: null }],
-                cancelValue: null,
-                titleAction: { kind: 'close', value: null },
-                onOpen: (c) => {
-                    close = c;
-                    layerEl = shell.querySelector('.wm-msgbox-layer');
-                    const box = layerEl && layerEl.querySelector('.wm-msgbox');
-                    if (box) box.classList.add('wm-output-box');
-                    fill();
-                    const def = layerEl && layerEl.querySelector('.wm-msgbox-buttons .is-default');
-                    if (def) def.focus();
-                }
-            });
-        } finally {
-            if (off) off();
-            outputBoxUp = false;
+        if (on && !outWatchOff && A && typeof A.onChange === 'function') {
+            outWatchOff = A.onChange(() => { if (volumePaint) volumePaint(); });
+            try { if (typeof A.refresh === 'function') A.refresh(); } catch (_) { /* the push brings it */ }
+        } else if (!on && outWatchOff && !volOutOpen && !outWatchHold) {
+            const off = outWatchOff;
+            outWatchOff = null;
+            off();
         }
-        const was = shown.find((d) => d.isDefault);
-        if (!pick || (was && was.id === pick)) return;
-        // Android takes a moment to move the stream (a Bluetooth connect, a route transfer): the wait cursor meanwhile
-        const r = await busy(Promise.resolve(A.setDefault(pick, 'default')).catch((err) => ({ error: String((err && err.message) || err) })), { delay: 250, timeout: 8000 });
+    }
+    function setOutputListOpen(on) {
+        if (volOutOpen === on) return;
+        volOutOpen = on;
+        if (on) {
+            outputsWatch(true);
+            // the volume keys' 3 s close waits while the list is down
+            clearTimeout(volumeKeyTimer);
+            volumeKeyTimer = null;
+        } else outputsWatch(false);
+        if (volumePaint) volumePaint();
+    }
+    async function pickOutput(id) {
+        const A = window.melatonAudioDevices;
+        const was = currentOutput();
+        // the router stays on until Android has moved the stream (the list closes now)
+        outWatchHold++;
+        setOutputListOpen(false);
+        if (!A || (was && was.id === id)) { outWatchHold--; outputsWatch(false); return; }
+        let r = null;
+        try {
+            // a Bluetooth connect or a route transfer takes a moment: the wait cursor meanwhile
+            r = await busy(Promise.resolve(A.setDefault(id, 'default')).catch((err) => ({ error: String((err && err.message) || err) })), { delay: 250, timeout: 8000 });
+        } finally {
+            outWatchHold--;
+            outputsWatch(false);
+        }
         if (r && r.error) void messageBox({ title: 'Output', text: r.error, icon: 'warning' });
         if (volumePaint) volumePaint();
         refreshStatus();
     }
+    /** The combo and its list as they stand (volumePaint): the current output, and the rows while it is down. */
+    function paintOutput(el) {
+        const combo = el.querySelector('.wm-vol-output');
+        if (!combo) return;
+        const list = mediaOutputs();
+        const cur = currentOutput(list);
+        const name = cur ? outputLabel(cur) : 'Output';
+        const glyph = cur ? outputGlyph(cur) : 'output';
+        if (combo.dataset.sig !== `${glyph}|${name}`) {
+            combo.dataset.sig = `${glyph}|${name}`;
+            combo.innerHTML = `${bitGlyph(glyph)}<span>${escapeHtml(name)}</span>`;
+            combo.setAttribute('aria-label', `Output: ${name}`);
+        }
+        combo.setAttribute('aria-expanded', String(volOutOpen));
+        let box = el.querySelector('.wm-vol-outlist');
+        if (!volOutOpen) { if (box) box.remove(); return; }
+        const sig = list.map((d) => `${d.id}:${d.isDefault ? 1 : 0}:${outputLabel(d)}`).join('|');
+        if (box && box.dataset.sig === sig) return;
+        if (!box) {
+            box = document.createElement('div');
+            box.className = 'wm-vol-outlist';
+            box.setAttribute('role', 'listbox');
+            box.setAttribute('aria-label', 'Output');
+            el.appendChild(box);
+        }
+        box.dataset.sig = sig;
+        box.style.top = `${combo.offsetTop + combo.offsetHeight}px`;
+        box.innerHTML = list.length
+            ? list.map((d) => `<button type="button" class="wm-vol-outitem" role="option" aria-selected="${!!d.isDefault}" data-id="${escapeHtml(d.id)}">${bitGlyph(outputGlyph(d))}<span>${escapeHtml(outputLabel(d))}</span></button>`).join('')
+            : '<div class="wm-vol-outnone">No other output is available.</div>';
+        box.querySelectorAll('.wm-vol-outitem').forEach((b) => b.addEventListener('click', () => { void pickOutput(b.dataset.id); }));
+    }
 
-    function closeVolume() {
+    /** keep: a redraw for Melaton Bars (barsPopupClose / barsPopupOpen), not a close: the Output list stays as it was. */
+    function closeVolume(keep) {
         const el = shell && shell.querySelector('.wm-volume');
         if (el && !el.hidden) { el.hidden = true; el.replaceChildren(); }
         volumePaint = null;
+        if (!keep) setOutputListOpen(false);
         clearTimeout(volumeKeyTimer);
         volumeKeyTimer = null;
         // closed: the volume keys move Media again
         try { if (AV && typeof AV.keyTarget === 'function') AV.keyTarget('media'); } catch (_) { /* older app */ }
     }
 
-    function toggleVolume(anchor) {
+    function toggleVolume(anchor, keep) {
         const el = shell.querySelector('.wm-volume');
         if (!el.hidden) { closeVolume(); return; }
+        // a tap on the icon opens the box as new; Melaton Bars' redraw keeps the Output list as it was
+        if (!keep) setOutputListOpen(false);
         closeBubble();
         closeMenus(true);
         volumeFocus = 'media';
@@ -7280,7 +7372,7 @@
             + `<div class="wm-vol-sliders">${col('media', 'volume-system', 'Media')}${col('notify', 'volume-notify', 'Notifications')}${col('ringer', 'volume-ringer', 'Ringer')}</div>`
             + `<div class="wm-vol-modes">${radio('on', 'On')}${radio('vibrate', 'Vibrate')}${radio('off', 'Off')}</div>`
             // where media plays (#1016), only where it can be moved (the Android app, DreamOS; a browser has one output)
-            + (canPickOutput() ? `<button type="button" class="wm-vol-output">${bitGlyph('output')}<span>Output</span></button>` : '');
+            + (canPickOutput() ? '<button type="button" class="wm-vol-output wm-combo" aria-haspopup="listbox"></button>' : '');
         el.hidden = false;
         const paint = () => {
             el.querySelectorAll('.wm-vol-col').forEach((c) => {
@@ -7297,6 +7389,7 @@
             try { if (AV && typeof AV.keyTarget === 'function') AV.keyTarget(volumeFocus === 'notify' ? 'notification' : volumeFocus === 'ringer' ? 'ring' : 'media'); } catch (_) { /* older app */ }
             const mode = soundMode();
             el.querySelectorAll('input[name="wmvolmode"]').forEach((r) => { r.checked = r.value === mode; });
+            paintOutput(el);
         };
         const set = (kind, v) => {
             v = Math.max(0, Math.min(VOL_STEPS, v));
@@ -7336,7 +7429,7 @@
         });
         el.querySelectorAll('input[name="wmvolmode"]').forEach((r) => r.addEventListener('change', () => { setSoundMode(r.value); paint(); refreshStatus(); }));
         const outBtn = el.querySelector('.wm-vol-output');
-        if (outBtn) outBtn.addEventListener('click', () => { void openOutputBox(); });
+        if (outBtn) outBtn.addEventListener('click', () => setOutputListOpen(!volOutOpen));
         el.addEventListener('click', (e) => e.stopPropagation());
         el.style.setProperty('--steps', String(VOL_STEPS));
         volumePaint = paint;
@@ -7396,6 +7489,14 @@
         stop: '<path fill="currentColor" d="M8 8h16v16H8z"/>',
         // One UI's Media output (the quick panel's music player): a phone sending sound out (#1016)
         output: '<rect x="5.5" y="4.5" width="12" height="23" rx="2" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M10 23.5h3" stroke="currentColor" stroke-width="2"/><path d="M21.5 12a6 6 0 0 1 0 8M25 8.5a11 11 0 0 1 0 15" fill="none" stroke="currentColor" stroke-width="2.5"/>',
+        // the Output combo's kinds (#1016): headphones, a headset (its mic), a display (HDMI, DeX, NexDock), a cast
+        // target (a screen with waves), a speaker, a jack
+        headphones: '<path d="M6 19v-3a10 10 0 0 1 20 0v3" fill="none" stroke="currentColor" stroke-width="2.5"/><path fill="currentColor" d="M4 18h6v10H4zM22 18h6v10h-6z"/>',
+        headset: '<path d="M6 18v-2a10 10 0 0 1 20 0v2" fill="none" stroke="currentColor" stroke-width="2.5"/><path fill="currentColor" d="M4 17h6v9H4zM22 17h6v9h-6z"/><path d="M7 26v2.5h9" fill="none" stroke="currentColor" stroke-width="2"/><path fill="currentColor" d="M15 27h5v3h-5z"/>',
+        display: '<rect x="3.5" y="5.5" width="25" height="17" fill="none" stroke="currentColor" stroke-width="2.5"/><path fill="currentColor" d="M14 22h4v4h-4zM9 26h14v2.5H9z"/>',
+        cast: '<path d="M3.5 12V6.5h25v19H19" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M3 18a8 8 0 0 1 8 8M3 22.5a3.5 3.5 0 0 1 3.5 3.5" fill="none" stroke="currentColor" stroke-width="2.5"/><path fill="currentColor" d="M2 25h3v3H2z"/>',
+        speaker: '<path fill="currentColor" d="M4 11h6l8-7v24l-8-7H4z"/><path d="M21.5 11.5a6 6 0 0 1 0 9M25 8a11 11 0 0 1 0 16" fill="none" stroke="currentColor" stroke-width="2.5"/>',
+        jack: '<path fill="currentColor" d="M13 3h6v8h-6zM11 11h10v6H11z"/><path d="M16 17v6a4 4 0 0 0 4 4h6" fill="none" stroke="currentColor" stroke-width="2.5"/>',
         // the brightness: a sun (the Power bubble's slider, #1016); auto: the sun with an A in it
         sun: '<circle cx="16" cy="16" r="5" fill="currentColor"/><path d="M16 2v5M16 25v5M2 16h5M25 16h5M6 6l3.5 3.5M22.5 22.5L26 26M6 26l3.5-3.5M22.5 9.5L26 6" stroke="currentColor" stroke-width="2.5"/>',
         sunauto: '<circle cx="16" cy="16" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 1v4M16 27v4M1 16h4M27 16h4M5 5l3 3M24 24l3 3M5 27l3-3M24 8l3-3" stroke="currentColor" stroke-width="2.5"/><path d="M12 21.5l4-11 4 11M13.5 17.5h5" fill="none" stroke="currentColor" stroke-width="2.5"/>'
@@ -7472,6 +7573,13 @@
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: ${state}</span>${right ? `<span class="wm-bubble-right">${right}</span>` : ''}</div>` });
             }
             if (dev.link && dev.active !== 'wifi' && dev.active !== 'cellular') sections.push(`${dev.link.text}`);
+            // a VPN app's tunnel (#1019, Yukimi Nov 21): "VPN: Connected" with its running time at the right, then its
+            // address with Disconnect at the right; no rows while no tunnel is up
+            const vpn = vpnState();
+            if (vpn) {
+                sections.push({ html: `<div class="wm-bubble-pair"><span>VPN: Connected</span>${vpn.since ? `<span class="wm-bubble-right"><span class="wm-vpn-time" data-since="${vpn.since}">${clockText(vpn.since)}</span></span>` : ''}</div>` });
+                sections.push({ text: vpn.ip, links: [{ label: 'Disconnect', action: () => vpnDisconnect(vpn) }] });
+            }
             // Nightshade Network (#895, Yukimi Nov 17): no row while the service works (its details are in
             // Settings > Connections > Nightshade); while it does not, one row with Reconnect at its right
             const ns = nightshadeNow(ws);
@@ -7523,6 +7631,7 @@
                 footLinks: [{ label: 'Settings', action: connSettings }],
                 buttons: [{ text: 'Hide' }]
             });
+            if (!bubbleCapture) tickBubbleClock();
         } else if (role === 'signal' || role === 'roaming' || role === 'cell') {
             // WM 6.1's Phone bubble (captured on WM 6.1, Nov 10): the operator or the radio's state
             // (tshres 16458-16477 wording), the Wireless Manager link at the right, a rule, Settings | Hide
