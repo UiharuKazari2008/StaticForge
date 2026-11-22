@@ -1502,6 +1502,10 @@
             out.dockName = row.name || '';
             out.dockBattery = { level: Number(row.battery_percent), charging: String(row.charge_state || '') === 'charging' };
         }
+        // the dock's Phone Charger switch (#1019): on when its power output charges this phone
+        if (row && Number(row.connected) === 1 && row.phone_charger_on != null && row.phone_charger_on !== '') {
+            out.dockCharger = Number(row.phone_charger_on) === 1;
+        }
         return out;
     };
     /**
