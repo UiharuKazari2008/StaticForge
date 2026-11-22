@@ -1091,6 +1091,8 @@
     /** Opens what a tap on the bar's `role` opens here (an icon's bubble, the notification group's tray). */
     function barsPopupOpen(role) {
         if (!shell) return false;
+        // Quick Access (#1017): its grip tab and panel pages, laid out by wmQuickAccess.js to be written down
+        if (/^(qatab|quickaccess)/.test(role)) return !!(window.wmQuickAccess && window.wmQuickAccess.open(role));
         if (role === 'notify') { noteIconTap(); return true; }
         const icon = shell.querySelector(`.wm-status-icon[data-role="${role}"]`);
         // the volume box opens with its icon aside too (never the notification box in its place)
@@ -1106,6 +1108,7 @@
     /** Closes the bubbles, the volume box, the tray and menus (a waiting notification stays). */
     function barsPopupClose() {
         if (!shell) return;
+        if (window.wmQuickAccess) window.wmQuickAccess.close();
         closeMenus(true);
         closeBubble();
         // (a redraw: the volume box's Output list keeps its state for the next press on the copy)
@@ -3912,6 +3915,8 @@
         try {
             roles.forEach((role) => {
                 if (role === 'notify' || role === 'mail' || role === 'sms' || role === 'chat' || role === 'volume') return;
+                // Quick Access: what its layout depends on (the app fills its state itself)
+                if (/^(qatab|quickaccess)/.test(role)) { out.push(`${role}=${window.wmQuickAccess ? window.wmQuickAccess.signature() : ''}`); return; }
                 bubbleCapture = [];
                 try { statusBubble(role, null, true); } catch (_) { /* described as nothing */ }
                 const got = bubbleCapture;
@@ -3936,6 +3941,8 @@
         shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((i) => { const r = i.dataset.role; if (r && !i.hidden) roles.add(r === 'roaming' || r === 'cell' ? 'signal' : r); });
         ['data', 'signal', 'battery', 'bluetooth', 'volume'].forEach((r) => roles.add(r));
         roles.delete('androidtray');
+        // Quick Access (#1017): written down like the popups while it is switched on
+        if (window.wmQuickAccess) { try { window.wmQuickAccess.roles().forEach((r) => roles.add(r)); } catch (_) { /* below */ } }
         // the standard (cursor rule melaton-bars-native-layouts): each popup as the page draws it, written down,
         // again only when what they show changed (bubbleStateKey, worked out at most once a second), and at most
         // every 4 s (the live parts the app fills itself); a change inside those waits for the timer

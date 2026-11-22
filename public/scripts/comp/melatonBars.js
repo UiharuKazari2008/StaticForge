@@ -956,8 +956,10 @@
             // a control the app works itself (the volume sliders): its travel, top = the highest step
             if (el.dataset && el.dataset.control === 'slider') {
                 const steps = +el.getAttribute('aria-valuemax') || 10;
-                const ticks = [...el.querySelectorAll('.wm-vol-tick')].map((t) => { const r = t.getBoundingClientRect(); return r.top + r.height / 2; });
-                if (ticks.length > 1) out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: `slider:${el.dataset.kind}:${steps}:${R(Math.min(...ticks))}:${R(Math.max(...ticks))}` });
+                // (#1017) a slider across (the wide Quick Access panel's): its travel left to right, marked h
+                const across = el.getAttribute('aria-orientation') === 'horizontal';
+                const ticks = [...el.querySelectorAll('.wm-vol-tick')].map((t) => { const r = t.getBoundingClientRect(); return across ? r.left + r.width / 2 : r.top + r.height / 2; });
+                if (ticks.length > 1) out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: `slider:${el.dataset.kind}:${steps}:${R(Math.min(...ticks))}:${R(Math.max(...ticks))}${across ? ':h' : ''}` });
             }
             // the volume box's On / Vibrate / Off: the app draws the dot at Android's ringer mode and sets it itself
             if (el.tagName === 'INPUT' && el.type === 'radio' && el.name === 'wmvolmode') {
