@@ -8535,6 +8535,13 @@ function startMenuSystemPlace(item) {
     return (item && item.launchId && START_MENU_SYSTEM_PLACES[item.launchId]) || null;
 }
 
+/** A program the Start menu leaves out (START_MENU_SYSTEM_PLACES 'hidden': old launch ids kept for agents and Run). */
+function startMenuHidesLaunch(launchId) {
+    const place = launchId ? START_MENU_SYSTEM_PLACES[launchId] : null;
+    return !!place && place.at === 'hidden';
+}
+window.startMenuHidesLaunch = startMenuHidesLaunch;
+
 /** The Toolbox's programs and the top level's, each once: the pool the placed programs come from. */
 function getStartMenuSystemPool() {
     const run = startMenuShellConfig.find((item) => item.launchId === 'run');
@@ -8792,15 +8799,24 @@ function startMenuSearchGroupOrder(entry) {
  */
 function collectStartMenuSearchEntries(query) {
     const raw = typeof searchRunCommandsPrefix === 'function' ? searchRunCommandsPrefix(query) : [];
+    // (#1016) what the Start menu itself leaves out (old launch ids kept for Run), and a command (cleanmgr, mblctr,
+    // vzaccess) whose program is in the results under its own name (the command's subtitle)
+    const listed = new Set(raw.filter((e) => !e.command).map((e) => String(e.label || '').toLowerCase()));
     const entries = raw.filter((entry) => typeof entry.execute === 'function'
-        && !entry.isDeferredNetwork && !entry.isNetworkResult && entry.category !== 'wiki');
+        && !entry.isDeferredNetwork && !entry.isNetworkResult && entry.category !== 'wiki'
+        && !entry.startMenuHidden && !(entry.command && listed.has(String(entry.subtitle || '').toLowerCase())));
     entries.sort((a, b) => startMenuSearchGroupOrder(a) - startMenuSearchGroupOrder(b)
         || (a.matchRank ?? 3) - (b.matchRank ?? 3)
         || String(a.label || '').localeCompare(String(b.label || '')));
     const perGroup = new Map();
     const out = [];
     const tail = [];
+    // one row per name (#1016): the best match of a name stands for the rest
+    const names = new Set();
     entries.forEach((entry) => {
+        const name = `${entry.category}|${String(entry.label || '').toLowerCase()}`;
+        if (names.has(name)) return;
+        names.add(name);
         if (startMenuSearchGroupOrder(entry) === 9) {
             tail.push(entry);
             return;
