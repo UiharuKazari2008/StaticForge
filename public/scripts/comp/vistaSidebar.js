@@ -2412,7 +2412,11 @@ const vsbTimerWind = function (inst, band, event) {
         vsbTimerSound(inst, band === 'mins' ? 'windMins' : 'windSecs');
     };
     const moveRaf = vsbRafCoalesce(move);
+    // #1024 the pressed ring holds the pointer, so a release over a gadget's frame still ends the wind
+    // (pointerDragHold: public/scripts/comp/modalUtils.js)
+    const hold = window.pointerDragHold ? window.pointerDragHold.hold(event.target, event, () => up()) : () => {};
     const up = () => {
+        hold();
         moveRaf.flush();
         document.removeEventListener('pointermove', moveRaf);
         document.removeEventListener('pointerup', up);
@@ -3746,9 +3750,17 @@ const vsbDragStart = function (e, inst) {
     const onGrip = !!e.target.closest('.vsb-tool-grip');
     if (!onGrip && e.target.closest('button, input, textarea, select, a, .vsb-puzzle-pad, .vsb-timer-hit')) return;
     vsb.drag = { inst, startX: e.clientX, startY: e.clientY, pointerId: e.pointerId, moving: false };
-    const move = (ev) => vsbDragMove(ev);
+    // #1024 once it moves, a release over a gadget's frame still ends the drag: the page root holds the pointer (the
+    // dragged gadget moves in the tree, which would drop a capture on the gadget itself; a press that never moved
+    // keeps its own click). pointerDragHold: public/scripts/comp/modalUtils.js
+    let hold = null;
+    const move = (ev) => {
+        vsbDragMove(ev);
+        if (!hold && vsb.drag && vsb.drag.moving && window.pointerDragHold) hold = window.pointerDragHold.hold(document.documentElement, ev, () => up());
+    };
     const moveRaf = vsbRafCoalesce(move);
     const up = (ev) => {
+        if (hold) hold();
         moveRaf.flush();
         document.removeEventListener('pointermove', moveRaf);
         document.removeEventListener('pointerup', up);
@@ -4136,10 +4148,14 @@ const vsbGalleryDragStart = function (e) {
     const sx = e.clientX;
     const sy = e.clientY;
     let ghost = null;
+    let hold = null;
     const move = (ev) => {
         if (!ghost) {
             if (Math.abs(ev.clientX - sx) < VSB_DRAG_THRESHOLD && Math.abs(ev.clientY - sy) < VSB_DRAG_THRESHOLD) return;
             ghost = vsbEl('img', 'vsb-gallery-ghost', document.body);
+            // #1024 from here the page root holds the pointer: a drop over a gadget's frame still lands (a press that
+            // never moved keeps its click). pointerDragHold: public/scripts/comp/modalUtils.js
+            if (window.pointerDragHold) hold = window.pointerDragHold.hold(document.documentElement, ev, (lost) => up(lost));
             ghost.src = vsbGadgetIconUrl(type);
             ghost.alt = '';
         }
@@ -4148,6 +4164,7 @@ const vsbGalleryDragStart = function (e) {
     };
     const moveRaf = vsbRafCoalesce(move);
     const up = (ev) => {
+        if (hold) hold();
         moveRaf.flush();
         document.removeEventListener('pointermove', moveRaf);
         document.removeEventListener('pointerup', up);

@@ -114,7 +114,8 @@ let modalTrueInsetInvalidateScheduled = false;
 /** Active drag/resize session — avoids per-mousemove querySelector + DOM attribute parsing */
 let activeModalInteraction = null;
 let cachedWindowFrameEl = null;
-/** True while document move/end listeners are bound for an active drag/resize */
+/** Truthy while document move/end listeners are bound for an active drag/resize: true, or the function that
+ *  lets go of a mouse drag's pointer hold (#1024, pointerDragHold.hold) */
 let modalInteractionMoveListenersAttached = false;
 
 /** Desktop-mode pointer gesture: down ≠ focus; up decides focus. Match desktopShortcuts.dragThreshold. */
@@ -1480,45 +1481,6 @@ function isToolWindow(modal) {
     return !!modalElement && (modalElement.classList.contains('tool-window') || modalElement.classList.contains('owned-window'));
 }
 
-// Full windows close with Alt+Q; Esc is reserved for confirmations and small pickers.
-const ESCAPE_CLOSE_MODAL_IDS = new Set([
-    'confirmationDialog',
-    'creditCostDialog',
-    'pinModal',
-    'positionDialog',
-    'datasetTagToolbar',
-    'galleryJumpIndexTool',
-    'metadataDialog',
-    'textReplacementLockModal',
-    'createTextReplacementModal',
-    'createRequestBodyReplacementModal',
-    'updatePresetModal',
-    'workspaceEditModal',
-    'workspaceDumpModal',
-    'cacheMetadataModal',
-    'configEditorValueModal',
-    'configEditorCheckpointsModal',
-    'timeDateModal',
-    'weatherLocationModal',
-    'connectionDialModal',
-    'naxtCustomTagModal',
-    'bulkChangePresetModal',
-    'vfsImportChoiceModal',
-    'openNoteModal',
-    'updateNoteModal',
-    'tokenDisplayModal',
-    'virtualKeyboardModal',
-    'runModal'
-]);
-
-function modalClosesWithEscape(modal) {
-    if (!modal) return false;
-    const el = typeof modal === 'string' ? document.getElementById(modal) : modal;
-    if (!el) return false;
-    if (el.classList.contains('alert-theme')) return true;
-    return ESCAPE_CLOSE_MODAL_IDS.has(el.id);
-}
-
 // Link a tool window to a parent modal so it closes when the parent closes
 function linkToolWindowToParent(toolWindow, parentModal) {
     if (!toolWindow || !parentModal) return;
@@ -1696,7 +1658,109 @@ function clearModalDragTransform(modal) {
     modal.style.removeProperty('--modal-drag-y');
 }
 
-function attachModalInteractionMoveListeners() {
+// #1024 Drags keep the pointer. A drag started by a press holds that pointer (pointer capture), so its moves
+// and its release come back to this page even over an iframe or a viewer that takes mouse events for itself
+// (Remote Desktop, Alchemy, gadgets); without it the release landed in the frame and the drag never ended.
+// watchLoss ends a drag whose release the page still missed. Shell code for the page's lifetime; other drags
+// (desktopShortcuts.js, vistaSidebar.js) use it too.
+window.pointerDragHold = (() => {
+    // Blink gives the mouse the fixed pointer id 1; a mousedown carries no pointerId of its own
+    const MOUSE_POINTER_ID = 1;
+
+    /** Holds the pointer of the press `e` (a pointer event, or a mousedown / mousemove with the button down) on `el`.
+     *  Touch is left alone (a touch already stays with the element it started on). Returns the pointer id, or null. */
+    const capture = (el, e) => {
+        if (!el || !e || typeof el.setPointerCapture !== 'function') return null;
+        let id = e.pointerId;
+        if (id == null) {
+            if (!/^mouse(down|move)$/.test(e.type) || (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents)) return null;
+            id = MOUSE_POINTER_ID;
+        }
+        try {
+            el.setPointerCapture(id);
+        } catch (_) {
+            return null; // not the mouse, or already up: the release reaches the document as before
+        }
+        return id;
+    };
+
+    const release = (el, id) => {
+        if (!el || id == null) return;
+        try {
+            if (el.hasPointerCapture(id)) el.releasePointerCapture(id);
+        } catch (_) { /* pointer gone */ }
+    };
+
+    /**
+     * Watches a live drag for a release the page never sees as an up: pointercancel, the capture taken away,
+     * the tab losing focus to another window (not to one of its own frames), or a mouse move with no button
+     * held. Calls `onLost(up)` once, `up` a mouseup-like { type, clientX, clientY, target, lostBy } at the last
+     * place the pointer was seen, so an end handler drops where the drag was. Returns the function that stops.
+     */
+    const watchLoss = (el, onLost, startEvent) => {
+        let done = false;
+        let blurTimer = 0;
+        let lastX = startEvent && Number.isFinite(startEvent.clientX) ? startEvent.clientX : 0;
+        let lastY = startEvent && Number.isFinite(startEvent.clientY) ? startEvent.clientY : 0;
+        const onMove = (e) => {
+            if (!e.isTrusted) return;
+            if (e.buttons === 0 && !(e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents)) {
+                lost(e);
+                return;
+            }
+            lastX = e.clientX;
+            lastY = e.clientY;
+        };
+        // a frame of this page taking focus (Remote Desktop focuses its session) blurs the window too: only
+        // another window or app counts, read once focus has settled
+        const onBlur = (e) => {
+            if (blurTimer) return;
+            blurTimer = setTimeout(() => {
+                blurTimer = 0;
+                if (!document.hasFocus()) lost(e);
+            }, 0);
+        };
+        const stop = () => {
+            done = true;
+            if (blurTimer) clearTimeout(blurTimer);
+            window.removeEventListener('pointercancel', lost, true);
+            window.removeEventListener('mousemove', onMove, true);
+            window.removeEventListener('blur', onBlur);
+            if (el) el.removeEventListener('lostpointercapture', lost);
+        };
+        function lost(e) {
+            if (done) return;
+            stop();
+            if (e.type !== 'blur' && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
+                lastX = e.clientX;
+                lastY = e.clientY;
+            }
+            onLost({
+                type: 'mouseup', clientX: lastX, clientY: lastY, button: 0, buttons: 0, target: el || document.body,
+                lostBy: e.type, preventDefault() {}, stopPropagation() {}
+            });
+        }
+        window.addEventListener('pointercancel', lost, true);
+        window.addEventListener('mousemove', onMove, true);
+        window.addEventListener('blur', onBlur);
+        if (el) el.addEventListener('lostpointercapture', lost);
+        return stop;
+    };
+
+    /** capture + watchLoss in one: returns the function that lets go (idempotent) */
+    const hold = (el, e, onLost) => {
+        const id = capture(el, e);
+        const stop = watchLoss(id != null ? el : null, onLost, e);
+        return () => {
+            stop();
+            release(el, id);
+        };
+    };
+
+    return { capture, release, watchLoss, hold };
+})();
+
+function attachModalInteractionMoveListeners(startEvent) {
     if (modalInteractionMoveListenersAttached) {
         return;
     }
@@ -1706,18 +1770,25 @@ function attachModalInteractionMoveListeners() {
     document.addEventListener('touchend', handleModalInteractionEnd, { passive: false });
     document.addEventListener('touchcancel', handleModalInteractionEnd, { passive: false });
     modalInteractionMoveListenersAttached = true;
+    if (startEvent && startEvent.type === 'mousedown' && startEvent.target instanceof Element) {
+        // the pressed caption or resize handle holds the pointer (its cursor stays); a release the page never
+        // saw as a mouseup still ends the drag where the pointer last was
+        modalInteractionMoveListenersAttached = window.pointerDragHold.hold(startEvent.target, startEvent, handleModalInteractionEnd);
+    }
 }
 
 function detachModalInteractionMoveListeners() {
-    if (!modalInteractionMoveListenersAttached) {
+    const hold = modalInteractionMoveListenersAttached;
+    if (!hold) {
         return;
     }
+    modalInteractionMoveListenersAttached = false;
+    if (hold !== true) hold();
     document.removeEventListener('mousemove', handleModalInteraction);
     document.removeEventListener('mouseup', handleModalInteractionEnd);
     document.removeEventListener('touchmove', handleModalInteraction);
     document.removeEventListener('touchend', handleModalInteractionEnd);
     document.removeEventListener('touchcancel', handleModalInteractionEnd);
-    modalInteractionMoveListenersAttached = false;
 }
 
 function isDesktopPointerMode() {
@@ -2885,7 +2956,7 @@ function handleModalInteraction(e) {
             beginDesktopPointerGesture(e);
         }
         if (handleModalDragStart(e) || handleModalResizeStart(e)) {
-            attachModalInteractionMoveListeners();
+            attachModalInteractionMoveListeners(e);
         }
         return;
     }
@@ -5681,6 +5752,15 @@ function renderAppIconImg(imageIcon, className = '', displayPx) {
     const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
     // a Program Icons store picture (#773; the phone Start menu's icon of an Android program on the DeX desktop, #1005):
     // its small design up to 20 px, its large (-lg) one above, each at 1x / 2x / 4x
+    // its Windows Vista icon (<set>-vista-<px>.png, the desktop's version of an Android program): the size that covers
+    // this surface, and the one that covers it at 2x
+    const vistaSet = /^\/static_images\/wm-android\/([a-z0-9_-]+?)-vista-\d+\.png$/.exec(imagePath || '');
+    if (vistaSet) {
+        const px = Number(displayPx) || 32;
+        const pick = (n) => [16, 24, 32, 48, 64, 96, 128, 256].find((s) => s >= n) || 256;
+        const base = `/static_images/wm-android/${vistaSet[1]}-vista-`;
+        return `<img src="${base}${pick(px)}.png" srcset="${base}${pick(px)}.png 1x, ${base}${pick(px * 2)}.png 2x" alt=""${classAttr} />`;
+    }
     const wmSet = /^\/static_images\/wm-android\/([a-z0-9_-]+?)(?:-lg)?\.png$/.exec(imagePath || '');
     if (wmSet) {
         const base = `/static_images/wm-android/${wmSet[1]}${Number(displayPx) > 20 ? '-lg' : ''}`;

@@ -324,6 +324,43 @@
         }
     };
 
+    // #1024 A remote button is never left held. Guacamole presses a button on mousedown and lets it go only on
+    // mouseup or when the pointer leaves its display; an up this frame never saw (released over another window or
+    // app, the tab losing focus) left the session's button down. A move with the button no longer held, or the
+    // frame losing focus, sends the missing up to the element that took the press, where Guacamole's mouse reads it.
+    const heldButtons = new Map(); // MouseEvent.button -> element the press went to
+    const BUTTON_BITS = [1, 4, 2, 8, 16];
+    let lastPoint = { x: 0, y: 0 };
+    const releaseHeld = (keep) => {
+        heldButtons.forEach((target, button) => {
+            if (keep & (BUTTON_BITS[button] || 0)) return;
+            heldButtons.delete(button);
+            if (!target.isConnected) return;
+            target.dispatchEvent(new MouseEvent('mouseup', {
+                bubbles: true, cancelable: true, view: window, button: button, buttons: keep,
+                clientX: lastPoint.x, clientY: lastPoint.y
+            }));
+        });
+    };
+    // app-scope: allow runs in Guacamole's own frame document, which ends with the frame; nothing of the app page
+    document.addEventListener('mousedown', (e) => {
+        if (e.isTrusted) heldButtons.set(e.button, e.target);
+    }, true);
+    // app-scope: allow runs in Guacamole's own frame document, which ends with the frame; nothing of the app page
+    document.addEventListener('mouseup', (e) => {
+        if (e.isTrusted) heldButtons.delete(e.button);
+    }, true);
+    // app-scope: allow runs in Guacamole's own frame document, which ends with the frame; nothing of the app page
+    document.addEventListener('mousemove', (e) => {
+        if (!e.isTrusted) return;
+        lastPoint = { x: e.clientX, y: e.clientY };
+        if (heldButtons.size) releaseHeld(e.buttons);
+    }, true);
+    // app-scope: allow runs in Guacamole's own frame document, which ends with the frame; nothing of the app page
+    window.addEventListener('blur', () => {
+        if (heldButtons.size) releaseHeld(0);
+    });
+
     // perf: allow the session preview (taskbar, reconnect) has no change event to follow here: while the page is seen it flattens and JPEG-encodes the remote display every 8 s to compare, and POSTs the frame only when it changed; a hidden page or a screen that is off does nothing
     setInterval(capturePreview, 8000);
 })();
