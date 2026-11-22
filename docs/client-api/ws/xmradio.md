@@ -1,6 +1,6 @@
 # XM Radio (client WS)
 
-The skeuomorphic SiriusXM radio (Yozora #989; `apps/xmradio`, server `modules/xmRadio.js`, packets in
+The skeuomorphic SiriusXM radio (Yozora #989; `apps/xmradio`, server `modules/xmRadio.js`; its HTTP routes are in [../rest-api.md](../rest-api.md#xm-radio); packets in
 `modules/ws/handlers/318-xmRadioHandler.js`). The SiriusXM account is the administrator's. `admin` and `dev_admin`
 tabs listen; only admins sign in, sign out or store presets.
 

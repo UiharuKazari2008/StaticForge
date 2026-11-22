@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-11-20T07:05:00-05:00",
+  "updated_at": "2026-11-22T07:10:00-05:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-11-13T07:30:00-05:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Nov20 7am loop on host dreamscape. Live tree dirty (833 files) behind Claude locks dirfocus + wm732: untouched; lands from ~/wt/n20 off origin/main 88ef4905. Docs: new ws/mediaLibrary.md (media_library_get, media_library_changed) + rest-api Media library ({vfsPath}/media/file/:id, /media/art/:hash) for #956; new ws/profileRevision.md (profile_revision, profile_changed) and admin set_skip_minimum_logon_time + /status skipMinimumLogonTime for #910; new ws/linkSpeed.md (link_speed_probe/report) and userSettings registry_changed push for #952. open=[].",
+  "cake_note": "Nov22 7am loop on host dreamscape. Live tree fd5178a45 dirty, 89 ahead/152 behind, under many Claude locks (start1043, dexkb1037, wifi1038, upd1021, ts1013, dex1005, xm989, wm732): untouched; lands from ~/wt/n22 off origin/main 685617e9c (231 first-parent commits since 19645687). Docs: rest-api XM Radio (/api/xmradio/channel|live|key|eco|now|tiicon|track|rec, /xmradio-signin, #989), Alchemy chrome-settings/addons/extension-action, DreamOS machines over ActiveSync (/api/activesync/host/:id/*, #910), /api/dreamos/assign; websocket.md + ws/dreamosUpdates.md miniport_ready/miniport_update_channel; links from ws/activeSync.md and ws/xmradio.md. open=[].",
   "eaten": [
     {
       "id": "sf-22",

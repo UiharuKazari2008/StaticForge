@@ -217,6 +217,11 @@ window; both pages over the app's Melaton Miniport, `?miniport=1`) is a sub-clie
 broadcast for several of its sub-clients goes to the carrier once: with `cc`, as the packet with `_cc: [sub, ...]` added;
 from a Miniport, a broadcast for one page as the raw frame above, and with `ccraw: 1` (#890 P12) a broadcast for several
 pages as one raw frame `"\u0001<sub>,<sub>\u0001<packet>"` (the packet is stringified once and never parsed by the app).
+On connect the carrier gets `miniport_ready { at, tz, activeSyncHost: 1 }` (the server's clock and time zone, which a
+DreamOS host takes, CaféReady `clock.rs`; `activeSyncHost` says the server accepts its CaféReady on the light sub
+`activesync`, #910), and `pong` to its `ping` carries `at` too. A DreamOS host that dialled with `?device=<32 hex>` also
+gets `miniport_update_channel { channel | null, released, sha256 }`: at connect, when its channel publishes, and when an
+admin assigns it another (`PUT /api/dreamos/assign/:device`, [rest-api.md](./rest-api.md#dreamos-updates)).
 
 **Service worker** (`service_worker_cache_update`): carries `swHash`, the sha1 of `/sw.js`; a page asks the browser for a
 new worker only when it differs from the one it last saw. `/sw.js` is served `no-cache` with its ETag, so the browser's
