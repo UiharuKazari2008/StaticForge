@@ -151,6 +151,18 @@
         for (let k = Math.max(minK, fs.nonDisplacing + 1); k <= fs.seq.length; k++) if (foldTo(k)) return result(l);
         // a bar that is still short with all of them in the group: the volume and battery as a last resort
         if (sys()) return result(l);
+        // a count past the camera the bar still cannot keep (Settings > Screen, #1057: 0 = none left of the camera, n = at
+        // most n - exactly): the program icons the table keeps out of the group (Continuity, Nightshade) fold last, the
+        // rightmost first, rather than the row crossing the camera anyway (A53 in a program, a count of 0: the "..." was
+        // put left of the camera 2.6 px short of room; the page then pushed the X toward the screen's corner), then
+        // Bluetooth (an on / off light). The network, signal, volume and battery never fold
+        if (lim !== null && !l.placed) {
+            const sysRoles = new Set(['bluetooth', 'data', 'cell', 'roaming', 'signal', 'volume', 'battery']);
+            const extra = shownRoles.filter((r) => r !== 'notify' && !sysRoles.has(r) && !fs.seq.includes(r) && !shed.has(r)).reverse()
+                .concat(shownRoles.includes('bluetooth') ? ['bluetooth'] : []);
+            const base = folded.slice();
+            for (let k = 1; k <= extra.length; k++) if (tryStep(() => { folded = base.concat(extra.slice(0, k)); })) return result(l);
+        }
         return result(l);
     }
 

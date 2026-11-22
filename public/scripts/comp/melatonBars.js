@@ -390,12 +390,12 @@
         const root = document.documentElement;
         const cs = getComputedStyle(root);
         // (the first part: the lists' make - a new one makes every app ask for its kit again; m25: iconsRight measured
-        // without Today's kept corner place beside the staged X, Nov 20; m26: the soft key Menu's samples; m27: 9-slice frames (nine), Nov 22)
+        // without Today's kept corner place beside the staged X, Nov 20; m26: the soft key Menu's samples; m27: 9-slice frames (nine), Nov 22; m28: the holder's status roles, #1056)
         // the icon unit, the bar's height and the camera extension too (Yukimi, Nov 17: "the icons are never
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m27', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m28', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), softMenuSig(), Math.round(window.innerWidth)].join('|');
     }
@@ -560,6 +560,11 @@
                         });
                         extra.roleIcons = roleIcons;
                     }
+                    // the status items the holder lists, each its own entry, whether its icon shows, stepped aside or folded
+                    // (#1056, Yukimi Nov 22: every pending item, not only what folded into "..."), in the bar's order
+                    const HOLDER_ROLES = ['mail', 'sms', 'chat', 'prints', 'xmrec', 'director', 'update', 'wxalert', 'rain', 'carkey', 'traffic', 'lapis', 'received', 'continuity', 'nightshade'];
+                    extra.holderRoles = ((tblK && tblK.display) || HOLDER_ROLES).filter((r) => HOLDER_ROLES.includes(r))
+                        .concat(HOLDER_ROLES.filter((r) => !((tblK && tblK.display) || HOLDER_ROLES).includes(r)));
                     out.tray = { s: Object.assign({ items: layoutOf([tray], dpr).filter((o) => o.k !== 'hit'), box: tbox, slot, gap, glyph, icons }, extra) };
                 } finally { tray.innerHTML = tk.html; tray.hidden = tk.hidden; }
             }

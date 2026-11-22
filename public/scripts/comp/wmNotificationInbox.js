@@ -379,6 +379,23 @@
          * which have icons of their own) shown again as notifications: the title bar's notification icon stands for them
          * (the app's status task), and a tap on it opened nothing while this page held none (Nov 18). Resolves the count.
          */
+        /**
+         * The notices waiting on the server as showWaiting counts them, without showing any: the "..." holder lists each as
+         * an entry of its own (#1056; one ask as the holder opens). Resolves [] offline.
+         */
+        waitingList: async () => {
+            let r = null;
+            try { r = await ask('inbox_list', {}); } catch (_) { return []; }
+            const dayAgo = Date.now() - 24 * 3600 * 1000;
+            return ((r && r.notices) || []).filter((n) => (n.state === 'new' || (n.state === 'seen' && (Number(n.updatedAt) || Number(n.createdAt) || 0) >= dayAgo)) && !/^(mail|dmail|sms|chat|director):/.test(n.id));
+        },
+        /** One waiting notice (from waitingList) shown as its notification: the holder's tap on it. */
+        showOne: (n) => {
+            if (!n || !n.id) return;
+            close(n.id);
+            if (isReminder(n)) { reminders.set(n.id, n); showReminder(n, { quiet: true }); return; }
+            show(n, { quiet: true });
+        },
         showWaiting: async () => {
             let r = null;
             try { r = await ask('inbox_list', {}); } catch (_) { return 0; }
