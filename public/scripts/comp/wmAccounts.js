@@ -662,7 +662,7 @@
     const NOTIFIED_KEY = 'wmAccountNotified';
     const DAY_KEY = 'wmAccountUsageDay';
     const SUB_KEY = 'wmAccountSubSeen';
-    const NOTIFY_DEFAULTS = { renewal: true, renewalDays: 3, daily: true, dailyPct: 80, fixed: true, fixedBelow: 250, paid: false, paidBelow: 250, balance: true, balanceBelow: 5, api: true };
+    const NOTIFY_DEFAULTS = { renewal: true, renewalDays: 3, daily: true, dailyPct: 80, fixed: true, fixedBelow: 250, expiring: true, paid: false, paidBelow: 250, balance: true, balanceBelow: 5, api: true };
     const MONTHLY_ANLAS = { 1: 1000, 2: 1000, 3: 10000 }; // Tablet, Scroll, Opus
     const TIERS = { 0: 'Free', 1: 'Tablet', 2: 'Scroll', 3: 'Opus' };
     const CHOICES = {
@@ -810,6 +810,16 @@
         if (cfg.fixed && tier > 0 && total !== -1 && fixed < cfg.fixedBelow) {
             out.push({ key: 'nai:fixed-low', icon: 'status-warning', title: 'NovelAI', text: `Fixed Anlas are low: ${fmt(fixed)} left.${expiresMs && expiresMs > Date.now() ? ` They refill on ${new Date(expiresMs).toLocaleDateString()}.` : ''}` });
         }
+        // (Yukimi, Nov 21 2026) the Fixed Anlas that will expire unused at renewal: one notification, as the others (the
+        // account check's own toast is not shown on the phone); the same test and pacing as the desktop's balloon
+        if (cfg.expiring && tier > 0 && expiresMs && fixed > 500) {
+            const hoursLeft = Math.max(1, (expiresMs - Date.now()) / 3600000);
+            const daysLeft = Math.max(1, Math.ceil(hoursLeft / 24));
+            if (expiresMs > Date.now() && daysLeft <= 15) {
+                const pace = hoursLeft < 96 ? `${fmt(Math.max(1, Math.round(fixed / hoursLeft)))} Anlas an hour` : `${fmt(Math.round(fixed / daysLeft))} Anlas a day`;
+                out.push({ key: `nai:fixed-expiring:${expiresMs}`, icon: 'status-warning', title: 'NovelAI', text: `${fmt(fixed)} Fixed Anlas expire when your ${tierName} subscription renews on ${new Date(expiresMs).toLocaleDateString()}. Use about ${pace} to spend them.` });
+            }
+        }
         if (cfg.paid && total !== -1 && paid < cfg.paidBelow) {
             out.push({ key: 'nai:paid-low', icon: 'status-warning', title: 'NovelAI', text: `Paid Anlas are low: ${fmt(paid)} left.` });
         }
@@ -874,6 +884,7 @@
                     ${row('renewal', 'Renewal is within', d, 'renewalDays')}
                     ${row('daily', 'Usage nears the daily refill', d, 'dailyPct')}
                     ${row('fixed', 'Fixed Anlas fall below', d, 'fixedBelow')}
+                    ${row('expiring', 'Fixed Anlas will expire unused', d)}
                     ${row('paid', 'Paid Anlas fall below', d, 'paidBelow')}
                     ${row('api', 'The NovelAI API is not responding', d)}
                     ${ui.sub('Other accounts')}
