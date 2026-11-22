@@ -19,6 +19,7 @@
  *   chat      Messenger replies waiting
  *   director  a turn running (the page also shows it while the Director is open)
  *   prints    prints the phone asked for, queued or running
+ *   xmrec     XM Radio recording on the server (the tape, its reels turning; #1020)
  *   wxalert   weather alerts at Home / Work; rain: rain due or falling with the rain alarm on
  *   carkey    the car key sees the car, a remote start runs, or a commute's leave window is open (or driving)
  *   continuity the DeX window (dim until its desktop is up: dexReady false)
@@ -108,6 +109,7 @@
                 // only while a turn runs (Yukimi, Nov 18: shown when it is open or actively working; open is the page's)
                 director: !!(s.director && s.director.running),
                 prints: !!(s.prints && s.prints.phone > 0),
+                xmrec: !!(s.xmrec && Array.isArray(s.xmrec.list) && s.xmrec.list.length),
                 wxalert: !!(s.weather && s.weather.alerts > 0),
                 rain: !!(s.weather && s.weather.rain),
                 carkey: !!(nat.carKey || lapisUntil > now.getTime() || nat.driving || lib.leaveWindow(s.traffic, now)),
@@ -145,8 +147,8 @@
             const g = L.geo;
             const W = L.widths || {};
             // the program icons (they may fold into the group); Continuity / Nightshade never fold; ongoing work stays out
-            const APPS = new Set(['mail', 'sms', 'chat', 'wxalert', 'rain', 'carkey', 'received', 'prints', 'director']);
-            const ongoing = { prints: true, director: !!(s.fields.director && s.fields.director.running) };
+            const APPS = new Set(['mail', 'sms', 'chat', 'wxalert', 'rain', 'carkey', 'received', 'prints', 'director', 'xmrec']);
+            const ongoing = { prints: true, xmrec: true, director: !!(s.fields.director && s.fields.director.running) };
             // left to right as the table has it (status-order.js); the page's catalog order without it
             const tbl = C.lib.statusOrder;
             const order = ((tbl && tbl.display) || L.order || []).filter((r) => roles[r] && r !== 'notify');

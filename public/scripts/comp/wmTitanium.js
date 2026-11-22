@@ -2016,7 +2016,7 @@
     // 45 px of travel the page, its text and its icon, follows the finger 1:1 and the next one follows
     // a screen width behind (the pages go round); the arrows are gone while it moves; let go past half
     // the width and it carries on to the next page, short of it the page slides back.
-    const slide = { active: false, dir: 0, x: 0, raf: 0 };
+    const slide = { active: false, dir: 0, x: 0, raf: 0, to: null };
 
     /**
      * A panel's page arrows fade 5 s after it arrives or its page turns, and come back with the next
@@ -2030,7 +2030,8 @@
         arrowsTimer = setTimeout(() => { if (host) host.classList.add('arrows-idle'); }, 5000);
     }
 
-    function slideBegin(dir) {
+    /** to: the page to bring in (slideToPage); else the next one in that direction. */
+    function slideBegin(dir, to) {
         const p = panels[sel];
         if (!p || p.pages.length < 2) return false;
         arrowsAwake();
@@ -2042,10 +2043,12 @@
         const n = p.pages.length;
         const next = document.createElement('div');
         next.className = 'wm-ti-pg is-next';
-        next.innerHTML = pageHtml(p, p.pages[(pageIndex(p) + dir + n) % n]);
+        const target = to != null ? to : (pageIndex(p) + dir + n) % n;
+        next.innerHTML = pageHtml(p, p.pages[target]);
         exp.appendChild(next);
         slide.active = true;
         slide.dir = dir;
+        slide.to = target;
         host.classList.add('is-sliding');
         return true;
     }
@@ -2075,7 +2078,8 @@
         const t0 = performance.now();
         const done = () => {
             const p = panels[sel];
-            if (commit && p) { const n = p.pages.length; pageAt.set(p.id, (pageIndex(p) + dir + n) % n); }
+            if (commit && p) { const n = p.pages.length; pageAt.set(p.id, slide.to != null && slide.to < n ? slide.to : (pageIndex(p) + dir + n) % n); }
+            slide.to = null;
             slide.active = false;
             slide.x = 0;
             host.classList.remove('is-sliding');
@@ -3209,6 +3213,32 @@
         bandBar: () => bandBar(), setOverlay: (o) => setOverlay(o),
         // where the list is (tests): the move under way { a, b, n, p } or null, and the dragged position in rows
         motion: () => ({ sel, pos, dragging, move: tw ? { a: tw.a, b: tw.b, n: tw.n, asked: tw.nv, p: tw.p } : null })
+    };
+
+    /**
+     * A panel's page by number, slid in (XM Radio: a channel tapped to play, then its card as the playing one first,
+     * Yukimi Nov 21 2026: "should animate sliding the pages to the now playing card"). The panel is built again first,
+     * so the page that comes in is the new one while the old page slides out; dir -1 brings it from the left. Drawn at
+     * once when the panel is not the one in the band or a slide is already under way.
+     */
+    window.wmTitanium.slideToPage = (id, i, dir) => {
+        const at = panels.findIndex((x) => x.id === id);
+        if (at < 0) return;
+        const w = page && sh.todayItemDefs().find((x) => x.id === id);
+        const rowEl = page ? [...page.querySelectorAll(':scope > [data-row]')].find((r) => r.dataset.row === id) || null : null;
+        let p = null;
+        try { p = w ? widgetPanel(w, rowEl) : null; } catch (err) { console.warn('[wmTitanium] slideToPage', id, err); }
+        if (p && Array.isArray(p.pages) && p.pages.length) { p.id = id; panels[at] = p; } else p = panels[at];
+        const target = Math.max(0, Math.min(p.pages.length - 1, Number(i) || 0));
+        const shown = panels[sel] === p && host && !host.hidden && !dragging && !settle;
+        if (!shown || slide.active || p.pages.length < 2 || !slideBegin(dir < 0 ? -1 : 1, target)) {
+            pageAt.set(id, target);
+            if (panels[sel] === p && !slide.active) { expKey = ''; drawRows(); drawExpanded(); sh.refreshSoftKeys(); }
+            return;
+        }
+        drawRows();
+        slide.x = 0;
+        slideEnd(true);
     };
 
     /** A panel's page by number (Music's "Go To Playing", #796): drawn now when the panel is in the band. */

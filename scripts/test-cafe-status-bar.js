@@ -34,6 +34,17 @@ a = send('push', { type: 'status.snapshot', data: { full: false, fields: { direc
 assert.strictEqual(out(a).roles.director, true, 'a turn running');
 a = send('push', { type: 'status.snapshot', data: { full: false, fields: { prefs: { mailAll: true, smsAll: false } } } });
 assert.strictEqual(out(a).roles.mail, true, '"any unread" on');
+// XM Radio recording (#1020): the tape while one runs, its popup with the running clock and the three buttons
+assert.strictEqual(r.xmrec, false, 'nothing recording');
+a = send('push', { type: 'status.snapshot', data: { full: false, fields: { xmrec: { list: [{ rid: 'r1', channelId: 'c', number: 2, name: 'Hits 1', kind: 'manual', since: 1700000000000, back: 75, a: 'Artist', t: 'Song', ad: false }] } } } });
+assert.strictEqual(out(a).roles.xmrec, true, 'a recording shows the tape');
+const xp = out(a).popups.xmrec;
+assert.ok(xp && xp.sec.some((x) => x.t === 'pair' && x.clock === 1700000000000), 'the running time is the app\'s clock');
+assert.ok(xp.sec.some((x) => x.t === 'pair' && x.r[0].s === '1:15'), 'how far it reached back');
+assert.deepStrictEqual(xp.buttons.map((b) => b.text), ['Monitor', 'Cancel', 'Hide']);
+assert.deepStrictEqual(xp.foot, ['XM Radio']);
+a = send('push', { type: 'status.snapshot', data: { full: false, fields: { xmrec: { list: [] } } } });
+assert.strictEqual(out(a).roles.xmrec, false, 'stopped: the tape goes');
 
 a = send('native', { carKey: true, link: false });
 r = out(a).roles;

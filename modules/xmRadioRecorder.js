@@ -83,6 +83,8 @@ function save() {
 function changed() {
     save();
     try { onChange(); } catch (_) { /* the feed is optional */ }
+    // the phones' status bar (the tape icon and its popup: modules/phoneStatus.js field xmrec)
+    try { require('./phoneStatus').touch('xmrec'); } catch (_) { /* no phone status */ }
 }
 
 const norm = (t) => String(t || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -441,6 +443,13 @@ async function fileFinishedCuts(rec) {
 }
 
 function appendSeg(rec, sg) {
+    // a pump still sending for a recording that has stopped (Nov 21 2026: one went on writing into its removed folder
+    // for 15 minutes after its stop): it is stopped here, its segment dropped
+    if (rec.stopping || recs.get(rec.meta.rid) !== rec) {
+        if (!rec.strayLogged) { rec.strayLogged = true; console.warn(`[xmRadio rec] ${rec.meta.rid}: segments after the stop; pump stopped`); }
+        try { rec.pump && rec.pump.stop(); } catch (_) { /* stopped */ }
+        return;
+    }
     const f = `s${sg.seq}.aac`;
     const row = { seq: sg.seq, pdt: sg.pdt, dur: sg.dur, f };
     rec.segs.push(row);
@@ -572,6 +581,8 @@ function describe(rec) {
     const { cur } = cutAt(rec, rec.lastEnd || Date.now());
     return {
         rid: m.rid, channelId: m.channelId, kind: m.kind, mode: m.mode, tape: m.tape, since: m.since, until: m.until,
+        // how far it reached back behind live when it started (s: "from the start" of the song on air)
+        back: Math.max(0, Math.round((m.since - (m.startPdt || m.since)) / 1000)),
         filed: m.filed || 0, url: `/api/xmradio/rec/${m.rid}/index.m3u8`,
         cut: cur ? { a: cur.a, t: cur.t, s: cur.s, ad: !!cur.ad } : null
     };
