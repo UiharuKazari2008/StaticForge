@@ -1498,6 +1498,10 @@ body:not(.windows-classic-theme) #desktopMediaPlayer > .modal-content.wmp-conten
 /* Title and Length (Now Playing, a playlist, a library's Playlists): 91 + 77px with their dividers, then the bare band */
 #desktopMediaPlayer .wmp-list-head[data-layout="details"] > span:nth-child(1) { width: 91px; }
 #desktopMediaPlayer .wmp-list-head[data-layout="details"] > span:nth-child(2) { flex: 0 0 auto; width: 77px; }
+/* Recordings (XM Radio's tapes): Title, Length, then Count (a tape) or Date (a recording); the rows on the header's columns */
+#desktopMediaPlayer .wmp-list-head[data-layout="recordings"] > span:nth-child(1) { width: 320px; }
+#desktopMediaPlayer .wmp-list-head[data-layout="recordings"] > span:nth-child(2) { width: 77px; }
+#desktopMediaPlayer .wmp-list[data-layout="recordings"] .wmp-row { grid-template-columns: 320px 77px minmax(0, 1fr); }
 
 #desktopMediaPlayer .wmp-list { padding: 0; }
 

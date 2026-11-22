@@ -150,6 +150,7 @@
     /** The item's key across the libraries (the desktop's Media Player keys its ratings the same way). */
     function keyOf(it) {
         if (!it) return '';
+        if (it.src === 'rec') return `rec:${it.id}`;
         if (it.src === 'android') return `phone:${it.volume}:${it.kind === 'video' ? 'v' : ''}${it.id}`;
         if (it.hash) return `local:${it.hash}`;
         if (it.path) return `vfs:${it.path}`;
@@ -756,15 +757,22 @@
         const [cat, sub, a1, a2] = libPath;
         const L = shown();
         const file = (it) => ({ label: it.name, icon: it.kind === 'video' ? 'wmp-video' : 'wmp-music', item: it });
-        if (L.needsAccess && cat && cat !== 'tv') return [{ label: 'Allow access to music and videos...', icon: 'wmp-properties', ask: true }];
+        if (L.needsAccess && cat && cat !== 'tv' && cat !== 'rec') return [{ label: 'Allow access to music and videos...', icon: 'wmp-properties', ask: true }];
         if (!cat) {
             return [
                 { label: 'My Music', icon: 'wmp-music', open: ['music'] },
                 { label: 'My Videos', icon: 'wmp-video', open: ['video'] },
                 { label: 'My TV', icon: 'wmp-tv', open: ['tv'] },
+                // XM Radio's tapes (the ROM's radio icon), for the administrator
+                ...(canRecordings() ? [{ label: 'Recordings', icon: 'wmp-radio', open: ['rec'] }] : []),
                 { label: 'My Playlists', icon: 'wmp-playlist', open: ['playlists'] },
                 { label: 'Now Playing', icon: 'wmp-play', queue: true }
             ];
+        }
+        if (cat === 'rec') {
+            // the tapes (a tap opens one, Play plays it whole), then a tape's recordings
+            if (sub == null) return (recs.tapes || []).map((name) => ({ label: name, icon: 'wmp-folder', open: ['rec', name], tape: name, items: recs.tracks[name] }));
+            return (recs.tracks[sub] || []).map(file);
         }
         if (cat === 'music' || cat === 'video') {
             const list = cat === 'music' ? L.audio : L.video;
@@ -816,6 +824,7 @@
         if (!cat) return { label: 'Library', icon: 'wmp-search' };
         if (cat === 'fs') return path.length === 1 ? { label: 'File System', icon: 'wmp-search' } : { label: fsName(path[path.length - 1]), icon: 'wmp-folder' };
         if (cat === 'tv') return { label: 'My TV', icon: 'wmp-tv' };
+        if (cat === 'rec') return sub == null ? { label: 'Recordings', icon: 'wmp-radio' } : { label: sub, icon: 'wmp-folder' };
         if (cat === 'playlists') {
             if (sub == null) return { label: 'My Playlists', icon: 'wmp-playlist' };
             const p = shown().playlists[Number(sub)];
@@ -838,6 +847,60 @@
         if (r.item) return [r.item];
         if (r.items) return r.items;
         return [];
+    }
+
+    // ---------------------------------------------------------------- Recordings: XM Radio's tapes
+    // A tape is a folder of the deck workspace's Recordings folder (modules/xmRadioRecorder.js, docs/client-api/ws/
+    // xmradio.md); its recordings play from /api/xmradio/track/<fileId>. The administrator's (admin and dev_admin):
+    // the row shows only there. Read when Recordings is opened (xmradio_deck_get) and when a tape is (xmradio_tape_tracks).
+
+    const recs = { tapes: null, tracks: {}, workspaceId: '' };
+    const canRecordings = () => { try { return /^(admin|dev_admin)$/.test(localStorage.getItem('userType') || ''); } catch (_) { return false; } };
+
+    async function recAsk(type, data) {
+        const W = window.wsClient;
+        if (!W || typeof W.sendMessage !== 'function') throw new Error('Melaton Media is not connected to the server.');
+        const r = await ws.busy(W.sendMessage(type, data || {}, false), { timeout: 30000 });
+        if (r && r.success === false) throw new Error(r.error || 'The recordings could not be read.');
+        return r && r.data && typeof r.data === 'object' ? r.data : r || {};
+    }
+
+    function recItem(t, tape) {
+        const file = String(t.name || '');
+        const ext = (/\.([^.]+)$/.exec(file) || ['', ''])[1].toLowerCase();
+        return {
+            kind: 'audio', src: 'rec', id: t.id, local: true, name: file.replace(/\.[^.]+$/, '') || 'Recording', title: file.replace(/\.[^.]+$/, ''),
+            file, album: tape, duration: Number(t.dur) || 0, size: t.size || 0, mime: ext === 'mp3' ? 'audio/mpeg' : ext === 'aac' ? 'audio/aac' : 'audio/mp4',
+            url: new URL(`/api/xmradio/track/${encodeURIComponent(t.id)}`, location.origin).toString()
+        };
+    }
+
+    async function recLoadTapes() {
+        recs.tapes = null;
+        recs.tracks = {};
+        try {
+            const d = await recAsk('xmradio_deck_get', { info: true });
+            const deck = d.deck || {};
+            const names = (d.tapes || []).map(String);
+            if (deck.tape && !names.includes(deck.tape)) names.unshift(deck.tape);
+            recs.workspaceId = deck.workspaceId || '';
+            recs.tapes = names;
+        } catch (err) {
+            recs.tapes = [];
+            ws.notify({ title: TITLE, icon: 'error', text: (err && err.message) || 'The recordings could not be read.' });
+        }
+    }
+
+    async function recTracks(name) {
+        if (recs.tracks[name]) return recs.tracks[name];
+        try {
+            const d = await recAsk('xmradio_tape_tracks', { workspaceId: recs.workspaceId || undefined, tape: name });
+            recs.tracks[name] = (d.tracks || []).map((t) => recItem(t, name));
+        } catch (err) {
+            recs.tracks[name] = [];
+            ws.notify({ title: TITLE, icon: 'error', text: (err && err.message) || 'The tape could not be read.' });
+        }
+        return recs.tracks[name];
     }
 
     // ---------------------------------------------------------------- Open File...: the file system
@@ -880,8 +943,15 @@
 
     /** A Library level change (the file system loads its folder first). */
     function goLevel(path) {
+        // Recordings read again each time they are opened from the Library (up from a tape keeps them)
+        const recFresh = path[0] === 'rec' && path.length === 1 && libPath[0] !== 'rec';
         libPath = path;
         libSel = 0;
+        if (path[0] === 'rec') {
+            const done = () => { if (layer === 'library' && libPath === path) render(); };
+            if (recFresh || !recs.tapes) recLoadTapes().then(() => (path.length > 1 ? recTracks(path[1]) : null)).then(done);
+            else if (path.length > 1 && !recs.tracks[path[1]]) recTracks(path[1]).then(done);
+        }
         if (path[0] === 'fs') {
             fsList = null;
             fsLoad(path.length > 1 ? path[path.length - 1] : '/').then(() => { if (layer === 'library' && libPath === path) render(); });
@@ -1593,6 +1663,14 @@
         const r = rows[i];
         if (!r) return;
         if (r.queue) { openQueue(); return; }
+        // Recordings: Play on a tape plays the tape whole
+        if (r.tape != null) {
+            const tracks = await recTracks(r.tape);
+            if (!tracks.length) { ws.notify({ title: TITLE, icon: 'info', text: 'This tape is blank.' }); return; }
+            media.queue = [];
+            enqueue(tracks, true);
+            return;
+        }
         // Open File...: Play on a folder plays its media files
         if (r.open && r.open[0] === 'fs') {
             const keep = fsList;
@@ -1617,8 +1695,9 @@
         enqueue(items, true);
     }
 
-    function queueUp() {
-        const items = rowItems(libRows()[libSel]);
+    async function queueUp() {
+        const r = libRows()[libSel];
+        const items = r && r.tape != null ? await recTracks(r.tape) : rowItems(r);
         if (!items.length) return;
         enqueue(items, false);
     }
@@ -1951,12 +2030,13 @@
                     };
                 }
                 const r = libRows()[libSel];
-                const playable = rowItems(r).length > 0 || !!(r && r.open && r.open[0] === 'fs');
+                const playable = rowItems(r).length > 0 || !!(r && r.open && r.open[0] === 'fs') || !!(r && r.tape != null);
                 return {
                     left: { label: 'Play', action: () => playFrom(libSel), disabled: !playable },
                     right: { label: 'Menu', menu: () => [
                         { label: 'Queue Up', action: queueUp, disabled: !playable },
-                        { label: 'Delete from Library', action: deleteFromLibrary, disabled: !(r && (r.item || r.playlist)) }, '-',
+                        // a recording is managed in XM Radio (its Recordings tab), not here
+                        { label: 'Delete from Library', action: deleteFromLibrary, disabled: !(r && (r.item || r.playlist)) || libPath[0] === 'rec' }, '-',
                         { label: 'Now Playing', action: openQueue },
                         { label: 'Library', submenu: sourceMenu() },
                         { label: 'Update Library...', action: runUpdate },

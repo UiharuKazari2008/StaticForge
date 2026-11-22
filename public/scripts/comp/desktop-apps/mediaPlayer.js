@@ -1206,6 +1206,7 @@ const mediaPlayerLibrary = (function () {
     }
 
     function mediaPlayerSourceName(source) {
+        if (source === 'rec') return 'Recordings';
         if (source === 'phone') return mediaPlayerPhoneName();
         if (String(source).indexOf('as:') === 0) {
             const d = mediaPlayerDevices().find((x) => 'as:' + x.deviceId === source);
@@ -1295,8 +1296,61 @@ const mediaPlayerLibrary = (function () {
         lastKey = key();
     }
 
+    // ---- Recordings: XM Radio's tapes (modules/xmRadioRecorder.js; docs/client-api/ws/xmradio.md) ----
+    // A tape is a folder of the deck workspace's Recordings folder; its recordings (.m4a) play from
+    // /api/xmradio/track/<fileId>. The administrator's (admin and dev_admin tabs read them): the node shows only there.
+    // Read when the node is opened (xmradio_deck_get) and when a tape is opened (xmradio_tape_tracks); nothing polls.
+
+    function mediaPlayerCanRecordings() {
+        try { return /^(admin|dev_admin)$/.test(localStorage.getItem('userType') || ''); } catch (_) { return false; }
+    }
+
+    async function mediaPlayerAsk(type, data) {
+        const W = window.wsClient;
+        if (!W || typeof W.sendMessage !== 'function') throw new Error('Media Player is not connected to the server.');
+        const r = await W.sendMessage(type, data || {}, false);
+        const d = (r && r.data && typeof r.data === 'object') ? r.data : (r || {});
+        if (r && r.success === false) throw new Error(r.error || 'Media Player cannot read the recordings.');
+        return d;
+    }
+
+    /** A recording as a library track (the tape is its album; mediaPlayerPlayTracks plays it like any song). */
+    function mediaPlayerRecTrack(t, tape) {
+        const name = String(t.name || '');
+        const ext = desktopMediaExtension(name);
+        return {
+            key: 'rec:' + t.id, kind: 'audio', title: name.replace(/\.[^.]+$/, '') || 'Recording', artist: '', albumArtist: '', album: tape,
+            genre: '', year: 0, track: 0, disc: 0, composer: '', duration: Number(t.dur) || 0, added: t.at || 0, name, size: t.size || 0,
+            mime: ext === 'mp3' ? 'audio/mpeg' : ext === 'aac' ? 'audio/aac' : 'audio/mp4',
+            url: '/api/xmradio/track/' + encodeURIComponent(t.id), art: ''
+        };
+    }
+
+    async function mediaPlayerFetchRecordings() {
+        const d = await mediaPlayerAsk('xmradio_deck_get', { info: true });
+        const info = d.tapeInfo || {};
+        const names = (d.tapes || []).slice();
+        const deck = d.deck || {};
+        if (deck.tape && names.indexOf(deck.tape) === -1) names.unshift(deck.tape);
+        return {
+            audio: [], video: [], workspaceId: deck.workspaceId || '', tracks: {},
+            tapes: names.map((name) => ({ name: String(name), n: (info[name] && info[name].n) || 0, dur: (info[name] && info[name].dur) || 0 }))
+        };
+    }
+
+    /** A tape's recordings, read once per visit to Recordings (one request). */
+    async function mediaPlayerRecTracks(player, name) {
+        const d = player.library.data.rec;
+        if (!d) return [];
+        if (d.tracks[name]) return d.tracks[name];
+        const r = await mediaPlayerAsk('xmradio_tape_tracks', { workspaceId: d.workspaceId || undefined, tape: name });
+        d.tracks[name] = (r.tracks || []).map((t) => mediaPlayerRecTrack(t, name));
+        return d.tracks[name];
+    }
+
     /** One source's tracks: { audio, video, error, needsAccess }. Each track: key, title, artist, album, ... url, art. */
     async function mediaPlayerFetchSource(source) {
+        if (source === 'rec') return mediaPlayerFetchRecordings();
         if (String(source).indexOf('as:') === 0) return mediaPlayerFetchDevice(String(source).slice(3));
         if (source === 'phone') {
             const L = window.AndroidMediaLibrary;
@@ -1387,6 +1441,9 @@ const mediaPlayerLibrary = (function () {
         if (player.items.length) h += '<div class="wmp-tree-node wmp-tree-solo"><button type="button" class="wmp-tree-item" data-nav="now-playing"><img src="' + WMP_ART + '/nav-now-playing.png" alt="" width="16" height="16"><span>Now Playing</span></button></div>';
         h += node('local', 'src:local:' + views[0].id, lib.category === 'video' ? 'nav-video' : 'nav-library', 'Library', open.local);
         views.forEach((v) => { h += leaf('src:local:' + v.id, v.icon, v.label, hid(open.local)); });
+        // XM Radio's tapes, at the parent level under Library (where WMP 11 files Recorded TV); its icon is wmploc's
+        // tree strip (PNG 29500, image 18)
+        if (lib.category !== 'video' && mediaPlayerCanRecordings()) h += '<div class="wmp-tree-node wmp-tree-solo"><button type="button" class="wmp-tree-item" data-nav="src:rec:tapes"><img src="' + WMP_ART + '/nav-recordings.png" alt="" width="16" height="16"><span>Recordings</span></button></div>';
         if (mediaPlayerHasPhone()) {
             h += node('phone', 'src:phone:' + views[0].id, 'nav-other-library', mediaPlayerPhoneName(), open.phone);
             views.forEach((v) => { h += leaf('src:phone:' + v.id, v.icon, v.label, hid(open.phone)); });
@@ -1412,6 +1469,8 @@ const mediaPlayerLibrary = (function () {
     function mediaPlayerSetCategory(player, category) {
         const lib = player.library;
         lib.category = category === 'video' ? 'video' : 'music';
+        // Recordings are Music's only
+        if (lib.source === 'rec' && lib.category === 'video') lib.source = 'local';
         lib.view = mediaPlayerViews(lib.category)[lib.category === 'video' ? 0 : 3].id;
         lib.filter = null;
         player.el.categoryIcon.src = WMP_ART + '/' + (lib.category === 'video' ? 'cat-video' : 'cat-music') + '.png';
@@ -1426,7 +1485,11 @@ const mediaPlayerLibrary = (function () {
         const view = views.find((v) => v.id === lib.view) || views[0];
         const crumbs = [{ label: lib.category === 'video' ? 'Video' : 'Music', nav: 'category' }];
         if (lib.mode === 'now-playing') crumbs.push({ label: 'Now Playing', nav: '' });
-        else {
+        else if (lib.source === 'rec') {
+            // Music > Recordings > <tape>
+            crumbs.push({ label: 'Recordings', nav: 'src:rec:tapes' });
+            if (lib.filter) crumbs.push({ label: lib.filter.label, nav: '' });
+        } else {
             const device = String(lib.source).indexOf('as:') === 0 && lib.category !== 'video';
             crumbs.push({ label: mediaPlayerSourceName(lib.source), nav: 'src:' + lib.source + ':' + (device ? 'home' : views[0].id) });
             // a phone's views page: "Music > <phone>" and nothing after it, as the VM's "Music > Xochitl"
@@ -1537,6 +1600,53 @@ const mediaPlayerLibrary = (function () {
         list.querySelectorAll('img[data-art]').forEach((img) => player.artObserver.observe(img));
     }
 
+    /** Recordings: the tapes (Title, Length, Count), or an open tape's recordings (Title, Length, Date). */
+    function mediaPlayerRenderRecordings(player, d) {
+        const lib = player.library;
+        const el = player.el;
+        const q = String(el.search.value || '').trim().toLowerCase();
+        const hit = (s) => !q || String(s || '').toLowerCase().indexOf(q) !== -1;
+        const tape = lib.filter && lib.filter.field === 'tape' ? lib.filter.value : null;
+        if (!d.tracks) d.tracks = {}; // a read that failed (mediaPlayerLoadLibrary) keeps only its error
+        const row = (key, cells) => '<div class="wmp-row" role="option" tabindex="-1" data-key="' + key + '"><span class="wmp-col-title">' + mediaPlayerEsc(cells[0]) + '</span><span class="wmp-col-length">' + mediaPlayerEsc(cells[1]) + '</span><span class="wmp-col-date">' + mediaPlayerEsc(cells[2]) + '</span></div>';
+        lib.rows = [];
+        lib.groups = [];
+        el.list.dataset.layout = el.listHead.dataset.layout = 'recordings';
+        el.listHead.innerHTML = ['Title', 'Length', tape == null ? 'Count' : 'Date'].map((h) => '<span>' + h + '</span>').join('');
+        let note = '';
+        if (tape != null) {
+            const list = d.tracks[tape];
+            if (!list) {
+                // the tape's recordings: one request when it is opened
+                el.list.innerHTML = '';
+                el.listNote.textContent = 'Loading...';
+                el.listNote.classList.remove('hidden');
+                const token = ++lib.token;
+                mediaPlayerRecTracks(player, tape).catch((err) => { d.tracks[tape] = []; d.tapeError = (err && err.message) || 'Media Player cannot read this tape.'; })
+                    .then(() => { if (token === lib.token && lib.source === 'rec' && lib.filter && lib.filter.value === tape) mediaPlayerRenderLibrary(player); });
+                return;
+            }
+            lib.rows = list.filter((t) => hit(t.title));
+            el.list.innerHTML = lib.rows.map((t, i) => row('t:' + i, [t.title, mediaPlayerLength(t.duration), mediaPlayerDate(t.added)])).join('');
+            if (!lib.rows.length) note = q ? 'No items match your search.' : (d.tapeError || 'This tape is blank.');
+            d.tapeError = '';
+        } else {
+            lib.groups = (d.tapes || []).filter((t) => hit(t.name)).map((t) => ({ key: t.name, label: t.name, tracks: d.tracks[t.name] || [], n: t.n, duration: t.dur }));
+            el.list.innerHTML = lib.groups.map((g, i) => row('r:' + i, [g.label, mediaPlayerLength(g.duration), g.n + (g.n === 1 ? ' recording' : ' recordings')])).join('');
+            if (!lib.groups.length) note = d.error || (q ? 'No items match your search.' : 'There are no recordings. XM Radio records onto tapes in the Recordings folder.');
+        }
+        el.listNote.textContent = note;
+        el.listNote.classList.toggle('hidden', !note);
+    }
+
+    /** Play a tape whole (Play with nothing in Now Playing, the tape selected or the first one). */
+    async function mediaPlayerPlayTape(player, name) {
+        let tracks = [];
+        try { tracks = await mediaPlayerRecTracks(player, name); } catch (_) { tracks = []; }
+        if (tracks.length) mediaPlayerPlayTracks(player, tracks, false);
+        else mediaPlayerStatus(player, 'This tape is blank.');
+    }
+
     function mediaPlayerRenderLibrary(player) {
         const lib = player.library;
         const el = player.el;
@@ -1554,6 +1664,7 @@ const mediaPlayerLibrary = (function () {
         }
         const d = lib.data[lib.source];
         if (!d) { void mediaPlayerLoadLibrary(player); return; }
+        if (lib.source === 'rec') { mediaPlayerRenderRecordings(player, d); return; }
         // a phone that is not there (or cannot share yet) shows why instead of its views
         if (lib.view === 'home' && !lib.filter && !(d.offline || d.noMedia || d.needsAccess || d.error)) {
             // a phone's views page (WMP 11's page for a shared library's node)
@@ -1684,8 +1795,11 @@ const mediaPlayerLibrary = (function () {
             return;
         }
         if (nav === 'category') return;
-        const m = /^src:(local|phone|as:[0-9a-f]{32}):(.+)$/.exec(nav);
+        const m = /^src:(local|phone|rec|as:[0-9a-f]{32}):(.+)$/.exec(nav);
         if (!m) return;
+        // Recordings read again each time they are opened (tapes are made and recorded onto elsewhere); up from a
+        // tape to its list keeps what was read
+        if (m[1] === 'rec' && !(lib.mode === 'library' && lib.source === 'rec' && lib.filter)) delete lib.data.rec;
         lib.mode = 'library';
         lib.source = m[1];
         lib.view = m[2];
@@ -1709,6 +1823,12 @@ const mediaPlayerLibrary = (function () {
     /** Play with an empty Now Playing list: the tracks the Library shows (its rows, or every group's tracks). */
     function mediaPlayerPlayShown(player) {
         const lib = player.library;
+        if (lib.source === 'rec' && lib.mode === 'library' && !lib.filter && (lib.groups || []).length) {
+            const sel = player.el.list.querySelector('.wmp-row.is-selected[data-key^="r:"]');
+            const g = lib.groups[sel ? Number(sel.dataset.key.slice(2)) : 0];
+            if (g) void mediaPlayerPlayTape(player, g.key);
+            return;
+        }
         let tracks = (lib.rows || []).filter((t) => t && t.url);
         if (!tracks.length) tracks = (lib.groups || []).reduce((all, g) => all.concat((g && g.tracks) || []), []);
         if (tracks.length) mediaPlayerPlayTracks(player, tracks, false);
@@ -1732,6 +1852,15 @@ const mediaPlayerLibrary = (function () {
             return;
         }
         const lib = player.library;
+        if (key.indexOf('r:') === 0) {
+            // a tape opens (as a stack does) and lists its recordings
+            const g = lib.groups[Number(key.slice(2))];
+            if (!g) return;
+            lib.filter = { field: 'tape', value: g.key, label: g.label, from: 'Recordings', fromView: 'tapes' };
+            mediaPlayerRenderLibrary(player);
+            mediaPlayerRecord(player);
+            return;
+        }
         if (key.indexOf('p:') === 0) {
             const g = lib.groups[Number(key.slice(2))];
             if (!g) return;
