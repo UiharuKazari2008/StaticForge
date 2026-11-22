@@ -163,6 +163,11 @@
 
     // the controls one page of the strip holds (worked out from the screen when it opens): rows of `cols` cells, a row as
     // tall as its tallest cell (a slider is three tiles tall), the last row of a page kept for the page turner
+    // the controls two columns wide in a two-column strip (Yukimi, Nov 22 2026: "a 2 col Samsung mode changer"): its picture,
+    // its name and what it is on now, as the wide panel's tiles
+    const SPAN = new Set(['modes']);
+    const spans = (m, id) => Number(m.cfg.columns) === 2 && m.cfg.layout !== 'wide' && SPAN.has(id);
+
     function stripPages(m, cols, room) {
         const TILE = 40; // a tile's height with its gap, in WM units (CSS: .qa-tile 36 + gap 4)
         const SLIDE = 116; // a slider's (CSS: .qa-slider 112 + gap 4)
@@ -173,12 +178,15 @@
         const flush = () => { used += rowH; row = []; rowH = 0; };
         m.items.forEach((id) => {
             const h = SLIDERS[id] ? SLIDE : TILE;
+            // a wide one starts its own row (the grid moves it there too, leaving the cell before it empty)
+            const span = cols === 2 && spans(m, id) ? 2 : 1;
+            if (span === 2 && row.length) flush();
             const nextH = Math.max(rowH, h);
             if (used + nextH > room - TILE) { pages.push([]); used = 0; row = []; rowH = 0; }
             pages[pages.length - 1].push(id);
             row.push(id);
             rowH = Math.max(rowH, h);
-            if (row.length >= cols) flush();
+            if (row.length + span - 1 >= cols) flush();
         });
         return pages;
     }
@@ -275,7 +283,7 @@
             ? `<button type="button" class="qa-tile qa-more" data-android="qa-page:${page >= pages.length ? 1 : page + 1}" aria-label="More"><span class="qa-face is-off qa-more-face">${page >= pages.length ? '▲' : '▼'}</span></button>`
             : '';
         layer.innerHTML = '<div class="qa-panel"><span class="qa-handle"></span><div class="qa-cells">'
-            + ids.map((id) => (SLIDERS[id] ? slider(m, id, false) : tile(m, id, false))).join('')
+            + ids.map((id) => (SLIDERS[id] ? slider(m, id, false) : spans(m, id) ? tile(m, id, true).replace('class="qa-tile is-wide"', 'class="qa-tile is-wide is-span"') : tile(m, id, false))).join('')
             + more + '</div></div>';
         shell.appendChild(layer);
         return true;

@@ -57,6 +57,8 @@
 #wmShell > .wm-qa.is-cols-1 .qa-cells { grid-template-columns: 1fr; }
 #wmShell > .wm-qa.is-cols-2 .qa-cells { grid-template-columns: 1fr 1fr; }
 #wmShell > .wm-qa.is-cols-2 .qa-cells > .qa-slider { grid-column: span 1; }
+/* a control two columns wide (Modes): the wide panel's tile, its name and what it is on now beside its picture */
+#wmShell > .wm-qa.is-cols-2 .qa-cells > .qa-tile.is-span { grid-column: span 2; height: calc(36 * var(--wm-px)); }
 #wmShell > .wm-qa .qa-cells { align-items: start; }
 
 /* ---- a tile: the press, over its stacked faces (one per state) ---- */
