@@ -8746,7 +8746,8 @@ function renderStartMenuSearchResults(list) {
             const row = createStartMenuListRow({
                 text: entry.label,
                 icon: entry.icon || (window.RUN_CATEGORY_ICONS && window.RUN_CATEGORY_ICONS[entry.category]) || 'fas fa-circle',
-                imageIcon: app ? app.imageIcon : null,
+                // a program's own picture; a Control Panel item or administrative tool carries its own (#1016)
+                imageIcon: app ? app.imageIcon : (entry.imageIcon || null),
                 action: entry.execute
             }, 'result');
             row.dataset.entryId = entry.id || '';

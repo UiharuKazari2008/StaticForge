@@ -697,6 +697,68 @@ function buildRunSystemCommandEntries() {
 }
 
 /**
+ * Start Search and Run (#1016): what Vista's Start Search finds besides the Start menu's programs - Run itself, the
+ * Control Panel's items and the Administrative Tools folder's shortcuts (cplCatalog.js, the cpl_catalog feature this
+ * index loads with; the Control Panel itself loads only when one is opened). An item's task links are its keywords
+ * ("sleep" finds Power Options, "mouse pointer" finds Mouse). A name already in the list (Device Manager and Event
+ * Viewer are programs too) stays one row: the program's.
+ * @param {Set<string>} taken lower-case labels already listed
+ */
+function buildRunControlPanelEntries(taken) {
+    const out = [];
+    const seen = new Set(taken);
+    const add = (entry) => {
+        const key = entry.label.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(entry);
+    };
+    // Run is in All Programs > Accessories (its shell entry is not one of the launchables)
+    if (typeof openRunWithStartSearch === 'function') {
+        add({
+            id: 'app-run', category: 'app', launchId: 'run', label: 'Run', subtitle: 'Application',
+            icon: 'fas fa-magnifying-glass', imageIcon: 'vista-run.png', keywords: ['run', 'command'],
+            execute: () => openRunWithStartSearch('')
+        });
+    }
+    const cat = window.cplCatalog;
+    if (!cat) return out;
+    const loadControlPanel = async () => {
+        try { if (window.featureLoader) await window.featureLoader.loadFeature('control_panel'); } catch (err) { console.warn('Run: Control Panel failed to load', err); }
+        return window.melatonControlPanel || null;
+    };
+    const tasks = new Map();
+    (cat.CATEGORIES || []).forEach((c) => (c.items || []).forEach(({ item, links }) => {
+        const list = tasks.get(item) || [];
+        (links || []).forEach((l) => { if (l && l.t && !list.includes(l.t)) list.push(l.t); });
+        tasks.set(item, list);
+    }));
+    (cat.ITEMS || []).forEach((c) => {
+        if (!c.name || c.hidden) return;
+        add({
+            id: `cpl-${c.id}`, category: 'app', label: c.name, subtitle: 'Control Panel',
+            icon: 'fa-light fa-sliders',
+            imageIcon: c.art ? cat.art(c.art, 16) : '/static_images/app_icons/16/vista-control-panel.webp',
+            keywords: tasks.get(c.id) || [],
+            // an item that is a page opens a Control Panel window on it; a dialog or a program opens alone
+            execute: async () => { const cp = await loadControlPanel(); if (cp) cp.openItem(c.id); }
+        });
+    });
+    (cat.ADMIN_TOOLS || []).forEach((t) => add({
+        id: `admin-${t.id}`, category: 'app', label: t.name, subtitle: 'Administrative Tools',
+        icon: 'fa-light fa-screwdriver-wrench', imageIcon: t.icon, keywords: ['administrative tools'],
+        // the folder's own shortcut (cplPages3.js TOOLS) does what a double-click in the folder does
+        execute: async () => {
+            await loadControlPanel();
+            const tools = window.cplPages3 && window.cplPages3.TOOLS;
+            const tool = Array.isArray(tools) ? tools.find((x) => x.id === t.id) : null;
+            if (tool && typeof tool.open === 'function') tool.open();
+        }
+    }));
+    return out;
+}
+
+/**
  * Run: workspaces / favorites open Computer Management on that page (openDataManagementDsap in
  * dsapManifests.js: the MMC console, #828; #831: the Data Management DSAP page is retired).
  */
@@ -1440,11 +1502,16 @@ async function enterGallerySearchMode(query) {
 }
 
 function buildRunStaticEntries() {
-    return [
+    const programs = [
         ...buildRunAppEntries(),
         ...buildRunAgentEntries(),
         ...buildRunSystemCommandEntries(),
-        ...buildRunWorkspaceManagerEntries(),
+        ...buildRunWorkspaceManagerEntries()
+    ];
+    const taken = new Set(programs.map((e) => String(e.label || '').toLowerCase()));
+    return [
+        ...programs,
+        ...buildRunControlPanelEntries(taken),
         ...buildRunWorkspaceEntries(),
         ...buildRunShortcutOnlyEntries()
     ];

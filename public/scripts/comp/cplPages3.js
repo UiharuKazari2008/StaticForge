@@ -170,36 +170,38 @@
 
     // ---- Administrative Tools ----------------------------------------------------------------
 
-    const TOOLS = [
-        { id: 'autofill-ranking', name: 'Autofill Ranking', icon: '/static_images/app_icons/16/vista-autofill-ranking.webp', open: () => callGlobal('openAutofillRankingSnapin') },
-        { id: 'character-database', name: 'Character Database', icon: '/static_images/app_icons/16/vista-character-database.webp', open: () => callGlobal('openCharacterDbSnapin') },
+    // the folder's shortcuts: names and icons in cplCatalog.js ADMIN_TOOLS (Start Search lists them too, #1016), what each opens here
+    const OPEN_TOOL = {
+        'autofill-ranking': () => callGlobal('openAutofillRankingSnapin'),
+        'character-database': () => callGlobal('openCharacterDbSnapin'),
         // Data Management stands in for Computer Management (#828); Device Manager has its own shortcut
-        { id: 'claude-accounts', name: 'Claude Accounts', icon: '/melaton-apps/claudedesk/assets/claudedesk-16.png', open: () => { if (root.melatonApps) root.melatonApps.launch({ packageId: 'claudedesk' }).catch(() => {}); } },
-        { id: 'computer-management', name: 'Computer Management', icon: '/static_images/app_icons/16/vista-computer-management.webp', open: () => callGlobal('openDataManagementSnapin') },
-        { id: 'odbc', name: 'Data Sources (ODBC)', icon: `${ITEMS}/administrative-tools-16.png`, open: () => msg('No ODBC data sources are configured. Dreamscape keeps its data in the server\'s own databases.', 'ODBC Data Source Administrator') },
-        { id: 'device-manager', name: 'Device Manager', icon: `${ITEMS}/device-manager-16.png`, open: () => callGlobal('openDeviceManager') },
-        { id: 'dynamic-quips', name: 'Dynamic Quips', icon: '/static_images/app_icons/16/vista-dynamic-quips.webp', open: () => callGlobal('openDynamicQuipsSnapin') },
-        { id: 'enshutsuka', name: 'Enshutsuka', icon: '/static_images/app_icons/16/vista-enshutsuka-2.webp', open: () => callGlobal('openEnshutsukaSnapin') },
-        { id: 'event-viewer', name: 'Event Viewer', icon: '/static_images/app_icons/16/vista-event-viewer.webp', open: () => launch('event-viewer') },
-        { id: 'exchange', name: 'Exchange Management Console', icon: '/static_images/app_icons/16/vista-exchange-management-console.webp', open: () => callGlobal('openExchangeConsole') },
-        { id: 'front-gate', name: 'Front Gate', icon: `${ITEMS}/firewall-16.png`, open: () => callGlobal('openFrontGateConsole') },
-        { id: 'ingest-controller', name: 'Ingest Controller', icon: '/static_images/vista-exchange/transport-16.png', open: async () => { if (root.featureLoader) await root.featureLoader.loadFeature('mmc_snapins'); callGlobal('openIngestController'); } },
-        { id: 'iscsi', name: 'iSCSI Initiator', icon: `${ITEMS}/iscsi-initiator-16.png`, open: () => root.cplDialogs && root.cplDialogs.open('iscsi') },
-        { id: 'key-manager', name: 'Key Manager', icon: '/static_images/vista-certmgr/keymgr-16.png', open: () => callGlobal('openKeyManagerConsole') },
-        { id: 'memory', name: 'Memory Diagnostics Tool', icon: `${ITEMS}/administrative-tools-16.png`, open: () => memoryDiagnostics() },
-        { id: 'messaging-bridge', name: 'Messaging Bridge', icon: '/melaton-apps/msgbridge/assets/msgbridge-16.png', open: () => { if (root.melatonApps) root.melatonApps.launch({ packageId: 'msgbridge' }).catch(() => {}); } },
-        { id: 'print-management', name: 'Print Management', icon: '/static_images/app_icons/16/vista-print-management.webp', open: () => callGlobal('openPrintManagementSnapin') },
-        { id: 'reliability', name: 'Reliability and Performance Monitor', icon: '/static_images/app_icons/16/vista-performance.webp', open: () => launch('perfmon') || launch('event-viewer') },
-        { id: 'security-config', name: 'Security Configuration Management', icon: `${ITEMS}/security-center-16.png`, open: () => CP().doAction('item:security-center') },
+        'claude-accounts': () => { if (root.melatonApps) root.melatonApps.launch({ packageId: 'claudedesk' }).catch(() => {}); },
+        'computer-management': () => callGlobal('openDataManagementSnapin'),
+        odbc: () => msg('No ODBC data sources are configured. Dreamscape keeps its data in the server\'s own databases.', 'ODBC Data Source Administrator'),
+        'device-manager': () => callGlobal('openDeviceManager'),
+        'dynamic-quips': () => callGlobal('openDynamicQuipsSnapin'),
+        enshutsuka: () => callGlobal('openEnshutsukaSnapin'),
+        'event-viewer': () => launch('event-viewer'),
+        exchange: () => callGlobal('openExchangeConsole'),
+        'front-gate': () => callGlobal('openFrontGateConsole'),
+        'ingest-controller': async () => { if (root.featureLoader) await root.featureLoader.loadFeature('mmc_snapins'); callGlobal('openIngestController'); },
+        iscsi: () => root.cplDialogs && root.cplDialogs.open('iscsi'),
+        'key-manager': () => callGlobal('openKeyManagerConsole'),
+        memory: () => memoryDiagnostics(),
+        'messaging-bridge': () => { if (root.melatonApps) root.melatonApps.launch({ packageId: 'msgbridge' }).catch(() => {}); },
+        'print-management': () => callGlobal('openPrintManagementSnapin'),
+        reliability: () => launch('perfmon') || launch('event-viewer'),
+        'security-config': () => CP().doAction('item:security-center'),
         // Server Manager (#831 slice 5) replaced the Management Tools shortcut (the old dashboard page)
-        { id: 'server-manager', name: 'Server Manager', icon: '/static_images/app_icons/16/vista-server-manager.webp', open: () => callGlobal('openServerManagerConsole') },
-        { id: 'services', name: 'Services', icon: `${ITEMS}/administrative-tools-16.png`, open: () => launch('services') || CP().doAction('item:network') },
-        { id: 'msconfig', name: 'System Configuration', icon: `${ITEMS}/system-16.png`, open: () => CP().doAction('item:system') },
-        { id: 'task-scheduler', name: 'Task Scheduler', icon: `${ITEMS}/administrative-tools-16.png`, open: () => launch('task-scheduler') || msg('Task Scheduler is coming in a later update of Melaton.', 'Task Scheduler') },
-        { id: 'wiki-caches', name: 'Wiki Caches', icon: '/static_images/app_icons/16/vista-wiki-caches.webp', open: () => callGlobal('openWikiCachesConsole') },
-        { id: 'firewall-adv', name: 'Melaton Firewall with Advanced Security', icon: `${ITEMS}/firewall-16.png`, open: () => CP().doAction('item:firewall') },
-        { id: 'powershell', name: 'Melaton PowerShell Modules', icon: `${ITEMS}/administrative-tools-16.png`, open: () => msg('Melaton PowerShell is not installed.', 'Melaton PowerShell Modules') }
-    ];
+        'server-manager': () => callGlobal('openServerManagerConsole'),
+        services: () => launch('services') || CP().doAction('item:network'),
+        msconfig: () => CP().doAction('item:system'),
+        'task-scheduler': () => launch('task-scheduler') || msg('Task Scheduler is coming in a later update of Melaton.', 'Task Scheduler'),
+        'wiki-caches': () => callGlobal('openWikiCachesConsole'),
+        'firewall-adv': () => CP().doAction('item:firewall'),
+        powershell: () => msg('Melaton PowerShell is not installed.', 'Melaton PowerShell Modules')
+    };
+    const TOOLS = ((root.cplCatalog && root.cplCatalog.ADMIN_TOOLS) || []).map((t) => ({ ...t, open: OPEN_TOOL[t.id] || (() => {}) }));
 
     function launch(id) {
         const item = callGlobal('findStartMenuLaunchableById', id);

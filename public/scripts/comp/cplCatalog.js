@@ -372,19 +372,48 @@
         // Vista's Programs page has "Get Programs Online" (Windows Marketplace): Melaton sends it
         // to Server Manager's Features (#831; was the old dashboard page). It is not a Classic View icon, as in Vista.
         { id: 'get-programs', name: 'Get Programs Online', art: 'programs-and-features', cats: [], hidden: true, tip: 'Get new programs online.', open: 'call:openServerManagerConsole:features' },
-        // Melaton's own
-        { id: 'remote-access', cats: ['system', 'network'] },
-        { id: 'mail', cats: ['users', 'additional'] },
-        { id: 'chat', cats: ['users', 'additional'] },
-        { id: 'runes', cats: ['system', 'additional'] },
+        // Melaton's own (their files register them; the names are the registered ones, for Start Search, #1016)
+        { id: 'remote-access', name: 'Remote Access', cats: ['system', 'network'] },
+        { id: 'mail', name: 'Mail', cats: ['users', 'additional'] },
+        { id: 'chat', name: 'Chat', cats: ['users', 'additional'] },
+        { id: 'runes', name: 'Runes', cats: ['system', 'additional'] },
         // Server Manager (was Management Tools, the old dashboard page) is listed in Administrative Tools
         { id: 'dreamscape-services', cats: ['system', 'additional'], hidden: true },
-        { id: 'authentication', cats: ['users'] },
+        { id: 'authentication', name: 'Dreamscape CardSpace', cats: ['users'] },
         // Window Color and Appearance is Personalization's page in Vista, not an icon of its own
         { id: 'appearance', cats: ['appearance'], hidden: true }
     ];
 
+    // Administrative Tools' shortcuts (cplPages3.js opens them; Start Search finds them, #1016), as Vista's folder lists them
     const ART = '/static_images/vista-cpl/items';
+    const ADMIN_TOOLS = [
+        { id: 'autofill-ranking', name: 'Autofill Ranking', icon: '/static_images/app_icons/16/vista-autofill-ranking.webp' },
+        { id: 'character-database', name: 'Character Database', icon: '/static_images/app_icons/16/vista-character-database.webp' },
+        { id: 'claude-accounts', name: 'Claude Accounts', icon: '/melaton-apps/claudedesk/assets/claudedesk-16.png' },
+        { id: 'computer-management', name: 'Computer Management', icon: '/static_images/app_icons/16/vista-computer-management.webp' },
+        { id: 'odbc', name: 'Data Sources (ODBC)', icon: `${ART}/administrative-tools-16.png` },
+        { id: 'device-manager', name: 'Device Manager', icon: `${ART}/device-manager-16.png` },
+        { id: 'dynamic-quips', name: 'Dynamic Quips', icon: '/static_images/app_icons/16/vista-dynamic-quips.webp' },
+        { id: 'enshutsuka', name: 'Enshutsuka', icon: '/static_images/app_icons/16/vista-enshutsuka-2.webp' },
+        { id: 'event-viewer', name: 'Event Viewer', icon: '/static_images/app_icons/16/vista-event-viewer.webp' },
+        { id: 'exchange', name: 'Exchange Management Console', icon: '/static_images/app_icons/16/vista-exchange-management-console.webp' },
+        { id: 'front-gate', name: 'Front Gate', icon: `${ART}/firewall-16.png` },
+        { id: 'ingest-controller', name: 'Ingest Controller', icon: '/static_images/vista-exchange/transport-16.png' },
+        { id: 'iscsi', name: 'iSCSI Initiator', icon: `${ART}/iscsi-initiator-16.png` },
+        { id: 'key-manager', name: 'Key Manager', icon: '/static_images/vista-certmgr/keymgr-16.png' },
+        { id: 'memory', name: 'Memory Diagnostics Tool', icon: `${ART}/administrative-tools-16.png` },
+        { id: 'messaging-bridge', name: 'Messaging Bridge', icon: '/melaton-apps/msgbridge/assets/msgbridge-16.png' },
+        { id: 'print-management', name: 'Print Management', icon: '/static_images/app_icons/16/vista-print-management.webp' },
+        { id: 'reliability', name: 'Reliability and Performance Monitor', icon: '/static_images/app_icons/16/vista-performance.webp' },
+        { id: 'security-config', name: 'Security Configuration Management', icon: `${ART}/security-center-16.png` },
+        { id: 'server-manager', name: 'Server Manager', icon: '/static_images/app_icons/16/vista-server-manager.webp' },
+        { id: 'services', name: 'Services', icon: `${ART}/administrative-tools-16.png` },
+        { id: 'msconfig', name: 'System Configuration', icon: `${ART}/system-16.png` },
+        { id: 'task-scheduler', name: 'Task Scheduler', icon: `${ART}/administrative-tools-16.png` },
+        { id: 'wiki-caches', name: 'Wiki Caches', icon: '/static_images/app_icons/16/vista-wiki-caches.webp' },
+        { id: 'firewall-adv', name: 'Melaton Firewall with Advanced Security', icon: `${ART}/firewall-16.png` },
+        { id: 'powershell', name: 'Melaton PowerShell Modules', icon: `${ART}/administrative-tools-16.png` }
+    ];
 
     function art(name, size) {
         if (!name) return '';
@@ -396,5 +425,5 @@
         return `/static_images/vista-cpl/categories/${cat.art}-${size}.png`;
     }
 
-    root.cplCatalog = { CATEGORIES, ITEMS, art, categoryArt };
+    root.cplCatalog = { CATEGORIES, ITEMS, ADMIN_TOOLS, art, categoryArt };
 })(typeof window !== 'undefined' ? window : globalThis);

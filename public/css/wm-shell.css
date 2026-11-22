@@ -3747,6 +3747,111 @@ html.ui-mobile body > .pswp .pswp__preloader {
     content: none !important;
 }
 
+/* the volume box's Output (#1016): One UI's Media output glyph and its name on a WM button across the box's
+ * foot; it opens the Output box (wmShell openOutputBox) */
+.wm-vol-output {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    box-sizing: border-box;
+    width: calc(100% - 10 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) 0;
+    padding: 0 calc(4 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: var(--wm-tint);
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+    font-weight: bold;
+    text-align: left;
+}
+
+.wm-vol-output:active {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text, #fff);
+}
+
+.wm-vol-output .wm-bit-glyph {
+    flex: none;
+    width: calc(14 * var(--wm-px));
+    height: calc(14 * var(--wm-px));
+}
+
+/* the Output box: one output per row, full width (names run long: "Headphones (Galaxy Buds2 Pro)") */
+html.ui-mobile .wm-msgbox.wm-output-box .wm-msgbox-buttons {
+    flex-direction: column;
+    align-items: stretch;
+    padding-left: calc(10 * var(--wm-px));
+    padding-right: calc(10 * var(--wm-px));
+}
+
+html.ui-mobile .wm-msgbox.wm-output-box .wm-msgbox-buttons button {
+    width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* the Power bubble's brightness (#1016): sun | the WM trackbar (wmSettings.ui.trackbar) | auto brightness */
+.wm-bri-row {
+    display: flex;
+    align-items: center;
+    gap: calc(3 * var(--wm-px));
+    padding-top: calc(2 * var(--wm-px));
+}
+
+.wm-bri-row > .wm-bit-glyph {
+    flex: none;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wm-bri-track {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* no end labels: the sun says what it is */
+.wm-bri-track > .wm-slider-scale {
+    display: none;
+}
+
+.wm-bri-track > .wm-slider {
+    height: calc(26 * var(--wm-px));
+    margin: 0;
+}
+
+.wm-bri-auto {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: calc(24 * var(--wm-px));
+    height: calc(22 * var(--wm-px));
+    padding: 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: var(--wm-tint);
+    color: #000;
+}
+
+/* on: pressed in, in the highlight colour */
+.wm-bri-auto[aria-pressed="true"] {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text, #fff);
+}
+
+.wm-bri-auto:disabled {
+    color: #8c8e8c;
+}
+
+.wm-bri-auto .wm-bit-glyph {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
 /* Settings > Today > Items: rows switched off */
 .wm-today > .wm-today-off {
     display: none !important;
