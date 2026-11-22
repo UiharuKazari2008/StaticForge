@@ -226,6 +226,18 @@ html.ui-mobile[data-wm-sip] #wmShell {
     --wm-sip-lift: calc(max(env(safe-area-inset-bottom), var(--wm-sip, 0px)) - env(safe-area-inset-bottom));
 }
 
+/* (#1013, Yukimi Nov 22: "In DS when the keyboard is open the softkey bar should not move") Android's buttons hidden
+ * behind ours (data-wm-soft-h): the keyboard keeps a strip of the bar's height at its bottom, and the app draws this
+ * bar's keys over it (wmShell syncDsSoft). The page's own bar stays at the screen's bottom, under the keyboard, out of
+ * the layout: the app's window still ends at the keyboard's top. */
+html.ui-mobile[data-wm-sip][data-wm-soft-h] #wmShell > .wm-softkeys {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    visibility: hidden;
+}
+
 /* an app with a scene (registerApp sipOverlay: the Director) keeps its page at full height behind
  * the bar and the keyboard: the scene stays put, the app lifts its own foreground by --wm-sip-lift */
 html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {

@@ -1398,8 +1398,30 @@
         // app.sip: true, or a function for the layer on screen (Windows Media: the playback screen and Properties have none)
         // (#1013) only while the keyboard is up; the task button has the centre otherwise
         if (!(stage && stage.mask.keys)) syncCentreKey(app);
+        syncDsSoft();
         // the corner follows the same layer as the soft keys
         refreshTitleAction();
+    }
+
+    /**
+     * (#1013, Yukimi Nov 22: "In DS when the keyboard is open the softkey bar should not move and the overlay should
+     * appear over with the keyboard button kit") with Android's buttons hidden behind ours (html[data-wm-soft-h]) the
+     * keyboard keeps a strip of the bar's height at its bottom: the bar stays at the screen's bottom under the keyboard
+     * (wm-shell.css) and the app draws these keys over that strip with the keyboard button between them; their presses
+     * come back as 'melatonsoftkey' (melatonBars.js). Sent only when they change.
+     */
+    let dsSoftSent = '';
+    function syncDsSoft() {
+        const A = window.AndroidBars;
+        if (!A || typeof A.dsSoftKeys !== 'function') return;
+        const on = root.hasAttribute('data-wm-sip') && root.hasAttribute('data-wm-soft-h');
+        const label = (k) => (on && k && !k.disabled ? String(k.label == null ? '' : k.label) : '');
+        const l = label(softKeys.left);
+        const r = label(softKeys.right);
+        const sig = on ? `1\u0001${l}\u0001${r}` : '0';
+        if (sig === dsSoftSent) return;
+        dsSoftSent = sig;
+        try { A.dsSoftKeys(on, l, r); } catch (_) { /* older app */ }
     }
 
     /**
@@ -13911,6 +13933,7 @@
             height = h;
             shell.style.setProperty('--wm-sip', `${h}px`);
             root.toggleAttribute('data-wm-sip', h > 0);
+            syncDsSoft();
             document.dispatchEvent(new CustomEvent('wmSipChange', { detail: { height: h } }));
             // after the bar and the page have their new size: the field into view, then the pan back
             requestAnimationFrame(() => { showFocused(); unpan(); });
