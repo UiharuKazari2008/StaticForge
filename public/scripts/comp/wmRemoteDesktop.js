@@ -1314,7 +1314,8 @@
             title: TITLE,
             icon: 'app-remote-desktop-mobile',
             inStart: 'programs',
-            sip: true,
+            // the input panel button stays in the soft key bar's centre (#1013): it is this program's way to type
+            sip: 'keep',
             mount(p) {
                 page = p;
                 p.classList.add('wm-rdm');

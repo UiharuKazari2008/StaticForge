@@ -2129,7 +2129,8 @@
             // a Dreamscape app with its own icon (not ROM art): /static_images/wm61/app-director*.png
             icon: 'app-director',
             inStart: 'top',
-            sip: true,
+            // the input panel button stays in the soft key bar's centre (#1013): it is this program's way to type
+            sip: 'keep',
             // her scene stays put under the keyboard; the composer, her text box and pages go up (wm-director.css)
             sipOverlay: true,
             mount,
