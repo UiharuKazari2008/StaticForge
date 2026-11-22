@@ -5,7 +5,8 @@
  * the recording runs there, so a Dreamscape restart never stops it (Yukimi, Nov 21 2026). This module has the API the
  * WebSocket handler, the status feeds and the routes used from modules/xmRadioRecorder.js:
  *   deck()                      the service's last pushed deck (sync; { offline: true } with the service away)
- *   start / stop / recordCut / recordChannel / setDeck / setTimers / addAlert / removeAlert / setTerms   over the socket
+ *   start / stop / recordCut / recordChannel / recordRange / queueRemove / queueClear / setDeck / setTimers /
+ *   addAlert / removeAlert / setTerms                                                            over the socket
  *   playlist(rid) (async), segPath(rid, f)   a recording in progress, for /api/xmradio/rec/<rid>/<file>
  *   tapes / tapesInfo / tracks / trackPath / trackRename / trackDelete / trackMove / tapeNew / tapeRename / tapeDelete
  *                               the tapes in the file store (here: Dreamscape owns it)
@@ -134,7 +135,7 @@ function deck() {
     let s = {};
     try { s = JSON.parse(fs.readFileSync(path.join(path.dirname(xm.accountFilePath()), 'xmradio-recorder.json'), 'utf8')) || {}; } catch (_) { s = {}; }
     const d = Object.assign({ workspaceId: 'default', tape: 'Tape 1', mode: 'song' }, s.deck || {});
-    return { tape: d.tape, workspaceId: d.workspaceId, mode: d.mode, recordings: [], timers: s.timers || [], alerts: s.alerts || [], terms: s.terms || [], offline: true };
+    return { tape: d.tape, workspaceId: d.workspaceId, mode: d.mode, recordings: [], timers: s.timers || [], alerts: s.alerts || [], terms: s.terms || [], queue: s.queue || [], offline: true };
 }
 
 function segPath(rid, f) {
@@ -160,6 +161,12 @@ module.exports = {
     stop: (rid) => rpc('stop', { rid }),
     recordCut: (channelId, o = {}) => withAuth('recordCut')({ channelId, fromStart: !!o.fromStart }),
     recordChannel: (channelId, o = {}) => withAuth('recordChannel')({ channelId, fromStart: !!o.fromStart }),
+    recordRange: (channelId, o = {}) => withAuth('recordRange')({
+        channelId, from: Number(o.from) || 0, to: Number(o.to) || 0,
+        a: String(o.a || ''), t: String(o.t || ''), s: String(o.s || ''), ik: String(o.ik || '')
+    }),
+    queueRemove: (id) => rpc('queueRemove', { id }),
+    queueClear: () => rpc('queueClear', {}),
     setDeck: (o) => rpc('setDeck', o || {}),
     setTimers: (timers) => rpc('setTimers', { timers }),
     addAlert: (o) => rpc('addAlert', o || {}),

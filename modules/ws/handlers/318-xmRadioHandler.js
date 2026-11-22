@@ -35,6 +35,12 @@ const recorder = require('../../xmRadioRecorderClient');
 //                                                 (song: the phone's one-touch Record, the cut on air, from its start
 //                                                 when fromStart; it stops when the cut ends. Without song: the deck's
 //                                                 REC, the channel until STOP, from the cut's start when fromStart)
+//   xmradio_rec_range       { channelId, from, to, a, t, s, ik } admins -> { rid, queued, position, queue[] }:
+//                                                 Recently Played's one-tap Record stacks a song from the five-hour
+//                                                 buffer, tagged from the packet (the cut is too old for lookAround).
+//                                                 The queue runs in expiry order (soonest expiry first, then added).
+//   xmradio_queue_remove    { id }                 admins -> { queue[] }: cancel one queued song
+//   xmradio_queue_clear     {}                     admins -> { queue[] }: cancel them all
 //   xmradio_tune's back:    seconds behind live to start at (replay; the stream keeps five hours)
 //   xmradio_search          { q }                 { results[{ channelId, a, t, s }] }: what is on now, every word matched
 //   xmradio_guide           {}                    { genres { channelId: genre }, missing } (missing ones are read in the
@@ -125,6 +131,9 @@ function registerPackets(handlersCtx) {
     reg('xmradio_rec_start', packet(true, 'The recording could not be started', async (m) => (m.song
         ? recorder.recordCut(m.channelId, { fromStart: !!m.fromStart })
         : recorder.recordChannel(m.channelId, { fromStart: !!m.fromStart }))));
+    reg('xmradio_rec_range', packet(true, 'The recording could not be started', async (m) => recorder.recordRange(m.channelId, m)));
+    reg('xmradio_queue_remove', packet(true, 'The recording could not be removed', async (m) => ({ queue: await recorder.queueRemove(String(m.id || '')) })));
+    reg('xmradio_queue_clear', packet(true, 'The queue could not be cleared', async () => ({ queue: await recorder.queueClear() })));
     // a phone's channels for its feed (xmradio_phone): the one it plays and the pages Today shows; fire and forget
     wsPacketRegistry.registerWsPacket('xmradio_phone_watch', async (ctx) => {
         if (!canRead(ctx.clientInfo)) return;

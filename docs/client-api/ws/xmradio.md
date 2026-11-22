@@ -53,14 +53,20 @@ server starts again. The deck's SPLIT switch picks the file layout:
 | `xmradio_deck_set` | admin | `{ tape?, workspaceId?, mode? }` (`song` or `long`) | `{ deck }` |
 | `xmradio_tape_tracks` | admin, dev_admin | `{ workspaceId, tape }` | `{ tracks[{ id, name, size, at }] }`, played with `vfs_download_file` |
 | `xmradio_rec_start` | admin | `{ channelId, song?, fromStart? }` | `{ rid, channelId, kind, mode, tape, since, until, url, cut }` |
+| `xmradio_rec_range` | admin | `{ channelId, from, to, a, t, s, ik }` | `{ rid, queued, position, queue[] }`: queues one song from Recently Played (five-hour buffer) |
+| `xmradio_queue_remove` | admin | `{ id }` | `{ queue[] }`: cancel one queued song |
+| `xmradio_queue_clear` | admin | `{}` | `{ queue[] }`: cancel every queued song |
 | `xmradio_rec_stop` | admin | `{ rid }` | `{ rid, filed }` |
 | `xmradio_timers_set` | admin | `{ timers[{ id?, channelId, start 'HH:MM', minutes, days[0-6], date?, mode?, off? }] }` | `{ timers }` |
 | `xmradio_alert_add` | admin | `{ kind: 'artist' \| 'song', artist, title?, channelId? }` | `{ alerts }` |
 | `xmradio_alert_remove` | admin | `{ id }` | `{ alerts }` |
 | `xmradio_terms_set` | admin | `{ terms[{ id?, text, channelId? }] }` | `{ terms }` |
 
-`deck` is `{ tape, workspaceId, mode, recordings[], timers[], alerts[], terms[] }` and is also the `deck` item of the
-`xmradio` status feed (pushed when it changes).
+`deck` is `{ tape, workspaceId, mode, recordings[], timers[], alerts[], terms[], queue[] }` and is also the `deck` item
+of the `xmradio` status feed (pushed when it changes). A queue entry is
+`{ id, channelId, from, to, a, t, s, expiresAt, addedAt }`; the queue runs in expiry order — a song about to leave the
+five-hour buffer goes first, ties keep the order they were added — and starts the next entry whenever a recorder slot
+frees. It lives in the service's state file, so it survives a recorder restart.
 
 Auto-record:
 
@@ -76,8 +82,9 @@ Auto-record:
 - The phone subscribes to statusHub feed `xmradio_phone` instead of `xmradio`. It carries only:
   - `account { signedIn }` and `lineup { at }`;
   - `rec[{ rid, channelId, kind, since, back, a, t, ad }]` (back: seconds it reached behind live when it started; a / t /
-    ad: what it records now). The phone's status bar tape (`xmrec`) and its popup read the same list; the app's
-    status-bar task gets it as the `xmrec` field of `status.snapshot` (modules/phoneStatus.js).
+    ad: what it records now) and `queue[{ id, channelId, from, to, a, t, expiresAt, addedAt }]` (the stacked Recently
+    Played songs). The phone's status bar tape (`xmrec`) and its popup read the same list; the app's status-bar task
+    gets it as the `xmrec` field of `status.snapshot` (modules/phoneStatus.js).
   - The phone radio's `window.wmXmRadio` (recordings, readRecordings, monitoring, monitor, mute, cancel, open) is what
     wmShell's tape popup calls: Monitor plays `/api/xmradio/rec/<rid>/index.m3u8` through the radio's player, Cancel
     sends `xmradio_rec_stop`.
@@ -87,20 +94,29 @@ Auto-record:
 - One-touch Record: `xmradio_rec_start { channelId, song: true, fromStart }`. It records the cut on air into the deck's
   tape, from its first frame when `fromStart` (the stream keeps five hours), and stops when the cut ends. The phone
   always asks first.
+- Recently Played's hold menu has Play and Record. Play jumps to the song's start as a tap does; Record is one tap with
+  no question and sends `xmradio_rec_range { channelId, from, to, a, t, s, ik }` — that song, from the stream's
+  five-hour buffer, tagged with the artist, title, show and art key that came with `xmradio_schedule`. Record queues the
+  song rather than starting it on the spot: several can be stacked, in expiry order (soonest expiry first, then added).
+  The Recordings tab shows the queue (Queued) with a Cancel for each and a Clear all; `xmradio_queue_remove` and
+  `xmradio_queue_clear` cancel them.
 - The deck's REC: `xmradio_rec_start { channelId, fromStart }` (no `song`) records the channel until STOP (up to 8 hours),
   from the first frame of the song or show on air when `fromStart`, else from now. The desktop deck and the phone's
   deck ask first.
 - The phone program has three tabs: Now Playing, Channels and Recordings.
-  - Now Playing uses `xmradio_schedule { channelId }`, which returns `{ now { a, t, at, dur }, played[], shows[] }`.
+  - Now Playing uses `xmradio_schedule { channelId }`, which returns
+    `{ now { a, t, at, dur, i, s, sa, sd, ik }, played[{ a, t, at, dur, i, s, sa, sd, ik }], shows[] }`.
     It reads liveUpdate for the last hour (it pages about a dozen songs at a time, followed up to now) and the next
     8 hours. Durations are in seconds. Songs are known only once they air; shows appear ahead only where SiriusXM
-    schedules them. The panel shows the song's progress, the show on now or up next, and Recently Played.
+    schedules them. `s` / `sa` / `sd` are the programme on at the song's start (name, start ms, length s) and `ik` is
+    its art key. The panel shows the song's progress, the show on now or up next, and Recently Played: each song row
+    names the show beside the artist and can be held for Play / Record.
   - Recordings lists the tapes and their recordings, plays them (`GET /api/xmradio/track/<fileId>`), and manages them
     with `xmradio_tape_new`, `xmradio_tape_rename`, `xmradio_tape_delete`, `xmradio_track_rename`,
     `xmradio_track_delete` and `xmradio_track_move` (see the handler's header). Deleting moves to the Recycle Bin.
 - Round 3 adds the following.
   - Replay: `xmradio_tune { back }` starts that many seconds behind live (#EXT-X-START in our copy of the media
-    playlists). Recently Played jumps to a song's start; a last-hour bar seeks; LIVE returns.
+    playlists). Recently Played jumps to a song's start (and holds for Play / Record); a last-hour bar seeks; LIVE returns.
   - `xmradio_search { q }` searches what is on now.
   - `xmradio_guide` gives each channel's genre. It is SiriusXM's own where its web player's channel list gives one
     (only that list's first page could be read); otherwise it is placed by the channel's name and description. Pages not

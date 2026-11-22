@@ -69,6 +69,7 @@ function load() {
     st.alerts = Array.isArray(st.alerts) ? st.alerts : [];
     st.terms = Array.isArray(st.terms) ? st.terms : [];
     st.active = Array.isArray(st.active) ? st.active : [];
+    st.queue = Array.isArray(st.queue) ? st.queue : [];
     return st;
 }
 
@@ -437,6 +438,18 @@ async function fileCut(rec, cut, from, to, partial) {
     }
 }
 
+/**
+ * A range from the buffer (Recently Played > Record): one file for that song. It is filed from the packet's data, not
+ * from lookAround's short cut history, so the name and cover survive however old the song is.
+ */
+async function fileRange(rec) {
+    if (!rec.segs.length || !rec.meta.rangeCut) return;
+    const from = rec.meta.rangeCut.at;
+    const to = Math.min(rec.meta.endPdt || rec.lastEnd, rec.lastEnd);
+    if (to <= from) return;
+    await fileCut(rec, rec.meta.rangeCut, from, to, !!rec.meta.endPdt && rec.lastEnd < rec.meta.endPdt - 2000);
+}
+
 const pad2 = (n) => String(n).padStart(2, '0');
 
 /** Write the whole recording (long mode) as one file with a chapter per cut. */
@@ -525,7 +538,7 @@ function appendSeg(rec, sg) {
         // being written and stalled)
         row.ok = true;
     }).catch((err) => console.warn(`[xmRadio rec] ${rec.meta.rid}: ${err.message}`));
-    if (rec.lastEnd - rec.meta.startPdt >= MAX_MS || (rec.meta.until && Date.now() >= rec.meta.until)) { void stop(rec.meta.rid); return; }
+    if (rec.lastEnd - rec.meta.startPdt >= MAX_MS || (rec.meta.until && Date.now() >= rec.meta.until) || (rec.meta.endPdt && rec.lastEnd >= rec.meta.endPdt)) { void stop(rec.meta.rid); return; }
     void fileFinishedCuts(rec);
 }
 
@@ -575,6 +588,101 @@ async function recordCut(channelId, { fromStart } = {}) {
     return start({ channelId, kind: 'song', back: 0, fromCut: now, until: now + 2 * 3600 * 1000 });
 }
 
+// ------------------------------------------------------------------ the recording queue (Recently Played)
+
+/**
+ * A tap on Record stacks the song rather than starting it at once (Yukimi, Nov 22 2026). The order is the order the
+ * buffer runs out in: a song added now that aired long ago goes ahead of one added earlier that aired later. Songs
+ * that expire at the same moment keep the order they were added. The queue lives in the state file, so it survives a
+ * Dreamscape or recorder restart, and nothing has to keep a page open.
+ */
+const QUEUE_TTL = 5 * 3600 * 1000; // the stream keeps five hours
+const MAX_QUEUE = 50;
+let queuePumping = false;
+
+/** The queue in the order it will record: soonest expiry first, then the order it was added. */
+function queueSorted() {
+    return (load().queue || []).slice().sort((a, b) => (a.expiresAt - b.expiresAt) || (a.addedAt - b.addedAt));
+}
+function queuePublic() {
+    return queueSorted().map((q) => ({ id: q.id, channelId: q.channelId, from: q.from, to: q.to,
+        a: q.a || '', t: q.t || '', s: q.s || '', expiresAt: q.expiresAt, addedAt: q.addedAt }));
+}
+function queueRemove(id) {
+    const s = load();
+    const left = s.queue.filter((q) => q.id !== String(id || ''));
+    if (left.length !== s.queue.length) { s.queue = left; changed(); }
+    return queuePublic();
+}
+function queueClear() {
+    const s = load();
+    if (s.queue.length) { s.queue = []; changed(); }
+    return queuePublic();
+}
+
+/** Start one queued song: the same range recording, named from the packet rather than lookAround's short history. */
+async function startRange(item) {
+    const now = Date.now();
+    return start({ channelId: item.channelId, kind: 'song', mode: 'range',
+        back: Math.ceil((now - item.from) / 1000) + 8, fromCut: item.from, endPdt: item.to,
+        until: now + 10 * 60000,
+        rangeCut: { at: item.from, a: item.a || '', t: item.t || '', s: item.s || '', ik: item.ik || '', ad: false } });
+}
+
+/** Fill the free recorder slots from the queue, most urgent first; a channel already recording waits. */
+async function pumpQueue() {
+    if (queuePumping) return [];
+    queuePumping = true;
+    const started = [];
+    try {
+        for (;;) {
+            const s = load();
+            if (!s.queue.length || recs.size >= MAX_AUTO) break;
+            const busy = new Set([...recs.values()].map((r) => r.meta.channelId));
+            const next = queueSorted().find((q) => !busy.has(q.channelId));
+            if (!next) break;
+            s.queue = s.queue.filter((q) => q.id !== next.id);
+            if (Date.now() >= next.expiresAt - 30000) { console.warn(`[xmRadio rec] queued ${next.id}: its five hours ran out`); changed(); continue; }
+            try {
+                const rec = await startRange(next);
+                started.push({ id: next.id, rid: rec.rid });
+            } catch (err) { console.warn(`[xmRadio rec] queued ${next.id}: ${err.message}`); }
+            changed();
+        }
+    } finally { queuePumping = false; }
+    return started;
+}
+
+/**
+ * Record one song from the phone's Recently Played (Yukimi, Nov 22 2026): its context menu's Record is one tap, no
+ * "from the start?" question. It is queued, not started on the spot, so several can be stacked; the name, show and
+ * cover come with the packet because lookAround only holds the cuts on air now.
+ */
+async function recordRange(channelId, opts = {}) {
+    const from = Number(opts.from) || 0;
+    const to = Number(opts.to) || 0;
+    const now = Date.now();
+    if (!from || !to || to <= from || to - from > MAX_MS || from > now + 60000 || from < now - QUEUE_TTL)
+        throw Object.assign(new Error('That song is no longer in the five-hour buffer.'), { code: 'XMRADIO_REC_OLD' });
+    if (!xm.channelById(String(channelId || ''))) throw Object.assign(new Error('No such channel.'), { code: 'XMRADIO_CHANNEL' });
+    const s = load();
+    if (s.queue.length >= MAX_QUEUE) throw Object.assign(new Error('The recording queue is full.'), { code: 'XMRADIO_REC_QUEUE_FULL' });
+    const item = {
+        id: id8(), channelId: String(channelId), from, to, expiresAt: from + QUEUE_TTL, addedAt: now,
+        a: String(opts.a || '').slice(0, 200), t: String(opts.t || '').slice(0, 200),
+        s: String(opts.s || '').slice(0, 200), ik: String(opts.ik || '').slice(0, 200)
+    };
+    s.queue.push(item);
+    changed();
+    const started = await pumpQueue();
+    const mine = started.find((x) => x.id === item.id);
+    return {
+        rid: mine ? mine.rid : null, queued: !mine,
+        position: mine ? 0 : queueSorted().findIndex((q) => q.id === item.id) + 1,
+        queue: queuePublic()
+    };
+}
+
 /**
  * The deck's REC (Yukimi, Nov 21 2026: the desktop asks "record from the start?" as the phone does): the channel until
  * STOP (up to 8 hours), from the first frame of the song or show on air when asked, else from now.
@@ -602,8 +710,9 @@ async function start(opts) {
     const meta = {
         rid, channelId, kind: opts.kind || 'manual', ref: opts.ref || null,
         workspaceId: opts.workspaceId || s.deck.workspaceId, tape: opts.tape || s.deck.tape,
-        mode: opts.kind === 'alert' || opts.kind === 'term' || opts.kind === 'song' ? 'song' : (opts.mode || s.deck.mode),
-        since: now, until: Math.min(now + MAX_MS, Number(opts.until) || now + MAX_MS), startPdt: now - back * 1000, cursor: 0, filed: 0
+        mode: opts.mode || (opts.kind === 'alert' || opts.kind === 'term' || opts.kind === 'song' ? 'song' : s.deck.mode),
+        since: now, until: Math.min(now + MAX_MS, Number(opts.until) || now + MAX_MS), startPdt: now - back * 1000, cursor: 0, filed: 0,
+        endPdt: Number(opts.endPdt) || 0, rangeCut: opts.rangeCut || null
     };
     const rec = { meta, dir, segs: [], cuts: [], lastEnd: 0, write: Promise.resolve(), pump: null, filing: false };
     const np = xm.nowPlayingCuts(channelId);
@@ -627,7 +736,8 @@ async function stop(rid, { filed } = {}) {
     try { rec.pump && rec.pump.stop(); } catch (_) { /* stopped */ }
     await rec.write;
     try {
-        if (rec.meta.mode === 'long') await fileLong(rec);
+        if (rec.meta.mode === 'range') await fileRange(rec);
+        else if (rec.meta.mode === 'long') await fileLong(rec);
         else if (!filed) {
             await fileFinishedCuts(rec);
             const from = rec.meta.cursor || (rec.segs[0] && rec.segs[0].pdt);
@@ -641,6 +751,8 @@ async function stop(rid, { filed } = {}) {
     setTimeout(() => { ended.delete(rid); fs.promises.rm(rec.dir, { recursive: true, force: true }).catch(() => {}); }, 10 * 60 * 1000).unref?.();
     if (!recs.size) xm.watch('rec', false);
     changed();
+    // a slot just came free: the next song in the queue can start
+    void pumpQueue();
     return { rid, filed: rec.meta.filed || 0 };
 }
 const ended = new Map();
@@ -790,7 +902,7 @@ function deck() {
     return {
         tape: s.deck.tape, workspaceId: s.deck.workspaceId, mode: s.deck.mode,
         recordings: [...recs.values()].map(describe),
-        timers: s.timers, alerts: s.alerts, terms: s.terms
+        timers: s.timers, alerts: s.alerts, terms: s.terms, queue: queuePublic()
     };
 }
 
@@ -880,6 +992,8 @@ async function resume() {
     }
     if (recs.size) xm.watch('rec', true);
     changed();
+    // the queue lives in the state file: pick it up again after a recorder restart
+    void pumpQueue().catch((err) => console.warn(`[xmRadio rec] queue: ${err.message}`));
     // folders no recording owns (a crash before its state was written)
     try {
         for (const d of await fs.promises.readdir(recRoot())) {
@@ -923,6 +1037,6 @@ function tapeRenamed(workspaceId, from, to) {
 }
 
 module.exports = {
-    init, library, tapeRenamed, saveNow, importSpool, spoolList, spoolDir: () => spoolDir(), recRoot: () => recRoot(), start, stop, recordCut, recordChannel, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
+    init, library, tapeRenamed, saveNow, importSpool, spoolList, spoolDir: () => spoolDir(), recRoot: () => recRoot(), start, stop, recordCut, recordChannel, recordRange, queueList: queuePublic, queueRemove, queueClear, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
     _test: { adtsFrames, nextStart, cutAt, norm, onLook, sliceAac, recs, load: () => load(), reset: () => { st = null; recs.clear(); ended.clear(); fired.clear(); } }
 };
