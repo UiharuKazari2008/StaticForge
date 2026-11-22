@@ -1142,7 +1142,7 @@
             <div class="wm-form-gap"></div>
             ${check('wmBarsSoft', 'Use the soft key bar in Android programs', cfg.softkeys)}
             <div class="wm-form-row is-wide"><span class="wm-form-label">Right soft key:</span>${ui.comboHtml('barsright', label(BARS_SOFT_RIGHT, cfg.softRight))}</div>
-            ${check('wmBarsRoom', 'Make room for the soft key bar (gesture navigation: swipe up on the bar for Home, in from a side for Back)', cfg.room)}
+            ${check('wmBarsRoom', 'Melaton handles navigation gestures: swipe up on the soft key bar for Home, up and hold for recent programs, in from a side for Back (Android\'s gestures come back when this is off)', cfg.room)}
             <div class="wm-form-row is-wide"><span class="wm-form-label">Home swipe sensitivity:</span>${ui.comboHtml('barshomesense', label(BARS_HOME_SENSE, cfg.homeSense))}</div>
             ${check('wmBarsLandCover', 'Hide Softkey bar in landscape (Cover Screen only), swipe up to show', cfg.hideLandCover)}
             ${check('wmBarsKeyguardClear', 'Transparent Statusbar at keyguard', cfg.keyguardClear)}
