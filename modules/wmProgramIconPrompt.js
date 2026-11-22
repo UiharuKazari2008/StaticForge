@@ -237,7 +237,8 @@ const where = brief.badgeAt || 'on its front';
         return `${brief.object}. One real object of the 2000s, drawn as a product photograph would show it.${body ? coloured : ''}${brief.badge ? ` One small raised emblem, ${badgeColour}, sits ${where}, no wider than a third of the object, and nowhere else: ${brief.badge}.${reading}` : ''} No lettering${brief.badge ? ' beyond that emblem' : ''}.`;
     }
     if (brief.archetype === 'object') return `${s}. One real object, drawn as a product photograph would show it${colours ? `, in these colours: ${colours}` : ''}.${lettering}`;
-    if (brief.archetype === 'character') return `A head-and-shoulders bust of one character: ${s}.${colours ? ` Colours: ${colours}.` : ''} The bust ends at the shoulders in its own soft outline; nothing frames it.${lettering}`;
+    // (a game's store icon often carries an event banner: "4th Anniversary" came back on the first full run)
+    if (brief.archetype === 'character') return `A head-and-shoulders bust of one character: ${s}.${colours ? ` Colours: ${colours}.` : ''} The bust ends at the shoulders in its own soft outline, with plain clothing down to that edge; nothing frames it and nothing lies across it.${lettering}`;
     if (brief.cutout) return `A solid emblem cut to this exact outline: ${s}. The whole emblem is one colour, ${brief.tile}: ${hasBrandRef ? `in reference image 1 this shape is pale on a ${brief.tile} background, and here that is reversed, so ` : ''}the shape itself is ${brief.tile} and stands alone; openings inside the shape are see-through. ${slab}${lettering}`;
     return `A solid emblem cut to this exact outline: ${s}.${colours ? ` Colours: ${colours}.` : ''} ${slab}${lettering}`;
 }
@@ -280,6 +281,7 @@ function renderPrompt(style, name, brief, opts = {}) {
     if (brandRefs > userRefs) {
         const n = userRefs + 1;
         if (brief.object) lines.push(`Image ${n} is the app's present-day icon. It gives two things only: the exact colours${brief.badge ? ', and the shape of the small emblem' : ''}. Its flat modern look, its layout and its size on the tile are not used: the picture is the object described above.`);
+        else if (brief.archetype === 'character') lines.push(`Image ${n} is the app's current icon. Take the character's face, hair, headwear and colours from it. Anything written on it or laid across it (a banner, a ribbon, a number, an anniversary or event title, a studio's name) belongs to a passing promotion and is not part of the character, so the bust is drawn clean without it.${brief.drop ? ` Also left out: ${brief.drop}.` : ''}`);
         else lines.push(`Image ${n} is the app's current icon. ${userRefs ? 'Take its colours from it.' : 'Take the subject\'s outline, proportions and colours from it.'} The flat tile behind the subject belongs to the phone's launcher, so it is left out.${brief.drop ? ` Also left out: ${brief.drop}.` : ''}`);
     }
     if (styleCount) lines.push(`The last ${styleCount} images are genuine ${platform} icons. Take the rendering from them: how much shading, how much gloss, the rim, the amount of detail. Their subjects stay out of this picture.`);

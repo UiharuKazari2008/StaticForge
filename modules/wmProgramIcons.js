@@ -775,8 +775,9 @@ async function runItem(job, item) {
             });
         }
         // a symbol is drawn as an object of 2007-2009 carrying it (Yukimi, Nov 22: the glyphs alone look too
-        // modern), unless the user wrote their own direction or config design is 'mark'
-        if (item.briefs[mode].archetype === 'mark' && !item.briefs[mode].object && bv !== 'm2' && !item.direction && !att.length) {
+        // modern), unless the user attached pictures or config design is 'mark'; a typed direction is applied on
+        // top (Yukimi, Nov 22: Gemini "as a white bubble" keeps its period balloon)
+        if (item.briefs[mode].archetype === 'mark' && !item.briefs[mode].object && bv !== 'm2' && !att.length) {
             item.briefs[mode] = iconPrompt.withPeriod(item.briefs[mode], await periodRow(item, ctx));
         }
         const brief = item.briefs[mode];
