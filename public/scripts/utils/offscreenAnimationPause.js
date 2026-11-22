@@ -269,6 +269,10 @@
     };
 
     const INPUT_IDLE_MS = 120000;
+    // Vista's own default-button glow never rests (Yukimi, Nov 22 #1059: it ALWAYS glows while its window is seen, as on
+    // real Vista; it stops only when the window or the page cannot be seen - hidden, minimised, covered, off screen, the
+    // display off, the page behind an Android program - which the rest of this file and hidden.css already pause)
+    const NO_REST = { 'vista-button-default-pulse': true, 'vista-default-pulse': true };
 
     const scopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
     const rootEl = document.documentElement;
@@ -306,7 +310,7 @@
 
     function watchdogNoteStart(name) {
         if (!name) return;
-        if (FOCUS_BOUND[name]) armIdleTimer();
+        if (FOCUS_BOUND[name] && !NO_REST[name]) armIdleTimer();
         startCounts.set(name, (startCounts.get(name) || 0) + 1);
         if (!wd.dirty) { wd.dirty = true; armTimer(); }
     }
@@ -448,7 +452,7 @@
         if (!el.isConnected) return null;
         if (FOCUS_BOUND[animation.animationName]) {
             if (typeof document.hasFocus === 'function' && !document.hasFocus()) return { reason: 'window not focused', cause: null, quiet: true };
-            if (inputIdle()) return { reason: 'no input', cause: null, quiet: true, rest: true };
+            if (inputIdle() && !NO_REST[animation.animationName]) return { reason: 'no input', cause: null, quiet: true, rest: true };
         }
         if (typeof el.checkVisibility === 'function') {
             // display: none never gets here; visibility / content-visibility: hidden do not tick the compositor
@@ -692,7 +696,7 @@
                 }
                 continue;
             }
-            if (isCss && FOCUS_BOUND[name] && animation.playState === 'running') pulses += 1;
+            if (isCss && FOCUS_BOUND[name] && !NO_REST[name] && animation.playState === 'running') pulses += 1;
             if (asleep || animation.playState !== 'running' || isTransition) continue;
             if (now >= LONG_MS) {
                 const finding = Object.assign({ type: 'endless', allowed: ALLOW[name] || '' }, base);

@@ -303,6 +303,10 @@
     document.addEventListener('focusout', (event) => syncPushButtonFocus(event.relatedTarget), true);
 
     window.syncRootStateFlags = syncRootStateFlags;
+    // a window's dialog-ness changed without an active-window flip (vistaDialogs.js tags / untags a message box, #1059: the
+    // box was already the active window when it was tagged, so .dialog-active never came and its default button never glowed)
+    // (on the existing export, no page global of its own: window.syncRootStateFlags.windowChrome(modal))
+    syncRootStateFlags.windowChrome = (modal) => syncWindowChrome(modal);
     window.setDesktopTaskbarNetFlags = setDesktopTaskbarNetFlags;
 
     if (document.body) {
