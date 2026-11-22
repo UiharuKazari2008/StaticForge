@@ -35,10 +35,17 @@ r = fit({ icons: [ic('carkey'), ic('sms'), ic('prints'), ic('director'), ic('rec
 assert.ok(!r.shed.includes('volume'), 'never hide keeps the volume');
 assert.ok(!r.left.length);
 
-// continuity and nightshade never fold
-r = fit({ icons: [ic('carkey'), ic('sms'), ic('mail'), ic('chat'), ic('continuity'), ic('nightshade'), ic('received')].concat(sys), notify: { w: 16 * U, notes: true }, bar: appBar, prefs: {}, screen: { noCross: true } });
+// continuity and nightshade never fold while the camera may be crossed
+const crowded = [ic('carkey'), ic('sms'), ic('mail'), ic('chat'), ic('continuity'), ic('nightshade'), ic('received')].concat(sys);
+r = fit({ icons: crowded, notify: { w: 16 * U, notes: true }, bar: appBar, prefs: {}, screen: {} });
 console.log('app bar, crowded:', JSON.stringify(r));
 assert.ok(!r.folded.includes('continuity') && !r.folded.includes('nightshade'));
+// with "do not cross" (a count of 0) and the bar still over-full once everything else folded, the camera wins (#1057,
+// Nov 22): Nightshade, then Continuity fold rather than the "..." going left of the camera (it did: left ["notify"])
+r = fit({ icons: crowded, notify: { w: 16 * U, notes: true }, bar: appBar, prefs: {}, screen: { noCross: true } });
+console.log('app bar, crowded, do not cross:', JSON.stringify(r));
+assert.deepStrictEqual(r.left, [], 'nothing left of the camera');
+assert.ok(r.folded.includes('nightshade'), 'Nightshade folds first of the two');
 
 // #1025 (Yukimi, Nov 22): with the camera in the bar the icons carry on left of it and fold only when the bar is full
 r = fit({ icons: [ic('carkey'), ic('mail'), ic('received')].concat(sys), notify: { w: 16 * U, notes: false }, bar: appBar, prefs: {}, screen: {} });
@@ -161,6 +168,56 @@ for (const n of [0, 1, 2]) {
     assert.ok(r.left.length <= n);
     rowClear(`cover kit limit ${n}`, input, r);
 }
+// #1057 verification (Nov 22): home / Today, where the X / ok is hidden and its kept place is the icons' first room, on the
+// A53 as its page measured it (statusFitLast: 411.43 CSS px at dpr 2.625, the punch hole 512..568 device px less / plus
+// 3 units, 24.38 px icons, the "..." up for the server's notices) and on the Fold cover (cover above), and the same bars
+// with the X shown. For every count: at most that many left of the camera (the "..." counts), nothing on the camera or
+// under the title's floor, the X's place taken before anything crosses, the "..." up whenever something folded
+const a53 = { width: 411.4285888671875, iconsRight: 361.1385888671875, gap: 7.5, titleX: 37.5476188659668, titleMin: 90, hole: { x: 190.54762, w: 30.333334 }, xReserve: 24 };
+const a53App = Object.assign({}, a53, { iconsRight: 370.1385888671875, xReserve: 0 });
+const a24 = (role) => ({ role, w: 24.380952835083008 });
+const a53Icons = ['chat', 'mail', 'sms', 'update', 'continuity', 'bluetooth', 'data', 'signal', 'volume', 'battery'].map(a24);
+const homeCases = [
+    ['A53 home', a53, a53Icons], ['A53 in a program', a53App, a53Icons],
+    ['Fold cover home', cover, coverIcons], ['Fold cover in a program', Object.assign({}, cover, { xReserve: 0, iconsRight: 414.75 }), coverIcons]
+];
+for (const [label, b, icons] of homeCases) {
+    for (const notes of [false, true]) {
+        const free = fit({ icons, notify: { w: icons[0].w, notes }, bar: b, prefs: {}, screen: {} });
+        for (const n of [0, 1, 2, 3, 4, 9, null]) {
+            const input = { icons, notify: { w: icons[0].w, notes }, bar: b, prefs: {}, screen: { crossMax: n } };
+            r = fit(input);
+            const tag = `${label}, ${n === null ? 'no limit' : n} past the camera, notices ${notes}`;
+            if (n !== null) assert.ok(r.left.length <= n, `${tag}: ${r.left.length} left of the camera (${r.left})`);
+            rowClear(tag, input, r);
+            if (r.folded.length) assert.ok(r.groupShown && r.shown[0] === 'notify', `${tag}: what folded is behind a "..."`);
+            if (notes) assert.ok(r.groupShown, `${tag}: notices waiting keep the "..." up`);
+            // home: the X's kept place is used before an icon crosses or folds
+            if (b.xReserve && (r.left.length || r.folded.length)) assert.ok(r.reserveUsed, `${tag}: the X's place first`);
+            // a looser count never shows fewer icons
+            if (n === null) assert.deepStrictEqual(r, free, `${tag}: no count is no limit`);
+        }
+        for (let n = 0; n < 4; n++) {
+            const a = fit({ icons, notify: { w: icons[0].w, notes }, bar: b, prefs: {}, screen: { crossMax: n } });
+            const c = fit({ icons, notify: { w: icons[0].w, notes }, bar: b, prefs: {}, screen: { crossMax: n + 1 } });
+            assert.ok(c.shown.length >= a.shown.length, `${label} notes=${notes}: ${n + 1} past the camera shows at least what ${n} does`);
+        }
+    }
+}
+// the A53 in a program with a count of 0: five icons (the "...", Continuity and the phone's own) are 2.6 px longer than
+// the room right of the camera, and nothing the table lets fold is left - Continuity folds rather than the "..." crossing
+// (the battery charging, as on the A53 then: it stepped aside)
+const a53Charging = a53Icons.map((i) => (i.role === 'battery' ? Object.assign({ charging: true }, i) : i));
+r = fit({ icons: a53Charging, notify: { w: 24.380952835083008, notes: true }, bar: a53App, prefs: {}, screen: { crossMax: 0 } });
+console.log('A53 in a program, 0 past the camera:', JSON.stringify(r));
+assert.deepStrictEqual(r.left, [], 'a count of 0: nothing left of the camera, also with the bar over-full');
+assert.ok(r.folded.includes('continuity') && r.shown.includes('bluetooth') && r.shown.includes('signal'), 'Continuity folds last; the phone\'s own icons stay');
+r = fit({ icons: a53Charging, notify: { w: 24.380952835083008, notes: true }, bar: a53App, prefs: {}, screen: { crossMax: 1 } });
+assert.ok(!r.folded.includes('continuity'), 'a count of 1 has room for Continuity');
+// not charging: the battery stays, so Bluetooth folds after Continuity (the network, signal and battery never do)
+r = fit({ icons: a53Icons, notify: { w: 24.380952835083008, notes: true }, bar: a53App, prefs: {}, screen: { crossMax: 0 } });
+assert.deepStrictEqual(r.left, []);
+assert.ok(r.folded.includes('bluetooth') && ['data', 'signal', 'battery'].every((x) => r.shown.includes(x)));
 assert.strictEqual(global.CafeTasks.lib.statusFit.crossLimit('3'), 3);
 assert.strictEqual(global.CafeTasks.lib.statusFit.crossLimit(-1), null, '-1 (the app\'s "any") is no limit');
 console.log('status fit: all checks passed');

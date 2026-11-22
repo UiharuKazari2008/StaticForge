@@ -7196,15 +7196,15 @@
         fitStatus();
         // Today's left soft key follows whether a notification is waiting
         if ((notes.length > 0) !== (noteKeyCount > 0) && current === 'today' && shell) { noteKeyCount = notes.length; renderSoftKeys(); } else noteKeyCount = notes.length;
-        // the tray's only entries may have unfolded (a print ended, the bar got wider): close it
-        // the tray lists the bubble's notifications and the folded icons: with neither it closes (an update
+        // the tray's only entries may have gone (a print ended, a notice was dismissed): with none it closes (an update
         // notice alone is the update icon's, Yukimi Nov 14: it left an empty tray open)
-        if (!notesForBubbleIcon().length && !statusFolded.length) noteTrayOpen = false;
+        const entries = holderEntries();
+        if (!entries.length) noteTrayOpen = false;
         const tray = shell.querySelector('.wm-notify-tray');
         tray.hidden = !noteTrayOpen;
         // rebuilt only when its entries change: refreshStatus runs every 2 s, and a rebuild between
         // pointerdown and pointerup would swallow the tap
-        const key = noteTrayOpen ? JSON.stringify([notes.map((n) => [n.id, n.type, noteTitle(n)]), statusFolded]) : '';
+        const key = noteTrayOpen ? JSON.stringify(entries.map((e) => [e.key, e.label])) : '';
         if (noteTrayOpen && key !== noteTrayKey) {
             tray.textContent = '';
             const add = (image, label, tap) => {
@@ -7217,19 +7217,72 @@
                 tray.appendChild(b);
             };
             // 6.5: the "..." opens 6.5.1's notification holder (#1026, wm65.css): each entry by its large colour picture
-            for (const n of notesForBubbleIcon()) add(WM65 ? noteHolderArt(n) : noteIcon(n), noteTitle(n), () => showNote(n.id));
-            for (const r of statusFolded) {
-                if (!statusGlyph(r)) continue;
-                add(WM65 ? (holderArt(r) || artImageSet(statusGlyph(r))) : artImageSet(statusGlyph(r)), STATUS_APP_LABEL[r], () => {
-                    noteTrayOpen = false;
-                    renderNotes();
-                    // as its own icon would: mail / text / Messenger open their waiting notification
-                    if (!messageIconTap(r)) statusBubble(r, shell.querySelector('[data-role="notify"]'));
-                });
-            }
+            for (const e of entries) add(e.art, e.label, e.tap);
         }
         noteTrayKey = key;
         renderNoteBubble();
+    }
+
+    /*
+     * The "..." holder's entries (Yukimi, Nov 22 #1056): EVERY pending notification and EVERY pending status item, each an
+     * entry of its own by its kind's picture - not only the icons that folded into "...". In order: the page's notices,
+     * those waiting on the server that this page holds none of (fetched as the holder opens, holderServer), then the
+     * status items the title bar holds now (shown, stepped aside or folded) in the bar's order: a mail / text / Messenger
+     * icon by each of its waiting notices (the icon itself when it has none: unread only), an update by its notice when
+     * there is one. 6.1's tray lists the same by the bar's glyphs.
+     */
+    let holderServer = [];
+    let holderServerAsk = 0;
+    function holderEntries() {
+        const out = [];
+        const tbl = statusTable();
+        const noteEntry = (n) => ({ key: `n:${n.id}`, art: WM65 ? noteHolderArt(n) : noteIcon(n), label: noteTitle(n), tap: () => showNote(n.id) });
+        notesForBubbleIcon().forEach((n) => out.push(Object.assign(noteEntry(n), { from: 'notify' })));
+        const inbox = window.wmNotificationInbox;
+        const held = new Set(inbox && typeof inbox.shown === 'function' ? inbox.shown() : []);
+        for (const n of holderServer) {
+            if (held.has(n.id)) continue;
+            const kind = tbl && typeof tbl.holderKind === 'function' ? tbl.holderKind(n) : 'notify';
+            const art = WM65 ? (holderArt(kind) || holderArt('notify')) : artImageSet((tbl && tbl.noteGlyph && tbl.noteGlyph(n)) || 'status-notify-many');
+            out.push({ key: `s:${n.id}`, from: 'notify', art, label: n.title || 'Notification', tap: () => { noteTrayOpen = false; renderNotes(); if (inbox && typeof inbox.showOne === 'function') inbox.showOne(n); } });
+        }
+        const order = ((tbl && tbl.display) || STATUS_APP_ROLES).filter((r) => STATUS_APP_ROLES.includes(r));
+        STATUS_APP_ROLES.forEach((r) => { if (!order.includes(r)) order.push(r); });
+        for (const r of order) {
+            const icon = shell.querySelector(`.wm-status-icon[data-role="${r}"]`);
+            if (!icon || icon.hidden || !statusGlyph(r)) continue;
+            if (MESSAGE_CLASS[r] && messageNotes(r).length) { messageNotes(r).forEach((n) => out.push(noteEntry(n))); continue; }
+            if (r === 'update') { const up = notes.filter(isUpdateNote); if (up.length) { up.forEach((n) => out.push(Object.assign(noteEntry(n), { tap: () => { noteTrayOpen = false; renderNotes(); showUpdateNote(); } }))); continue; } }
+            out.push({
+                key: `r:${r}`,
+                art: WM65 ? (holderArt(r) || artImageSet(statusGlyph(r))) : artImageSet(statusGlyph(r)),
+                label: STATUS_APP_LABEL[r] || r,
+                tap: () => {
+                    noteTrayOpen = false;
+                    renderNotes();
+                    // as its own icon would: mail / text / Messenger open their waiting notification; else its pop-up, from
+                    // the icon where it shows, from the "..." where it folded or stepped aside
+                    const own = icon.getClientRects().length && !icon.classList.contains('wm-shed') ? icon : shell.querySelector('[data-role="notify"]');
+                    if (!messageIconTap(r)) statusBubble(r, own);
+                }
+            });
+        }
+        return out;
+    }
+    /** The server's waiting notices for the holder (one ask as it opens, never on a timer); the holder redraws when in. */
+    function holderAskServer() {
+        const inbox = window.wmNotificationInbox;
+        if (!inbox || typeof inbox.waitingList !== 'function') return;
+        const ask = ++holderServerAsk;
+        void inbox.waitingList().then((list) => {
+            if (ask !== holderServerAsk) return;
+            const next = Array.isArray(list) ? list : [];
+            if (JSON.stringify(next.map((n) => n.id)) === JSON.stringify(holderServer.map((n) => n.id))) return;
+            holderServer = next;
+            if (noteTrayOpen) renderNotes();
+            else paintNotifyIcon();
+            if (d651El && !d651El.hidden) d651Fill();
+        }, () => {});
     }
 
     function renderNoteBubble() {
@@ -7624,6 +7677,12 @@
             hideNote();
             return;
         }
+        // the holder lists everything pending (#1056, Yukimi Nov 22: every notification and status item, not only what
+        // folded): with more than one entry, or notices waiting on the server, the "..." opens it (the server's list is
+        // asked for once now and fills in when it comes)
+        holderAskServer();
+        const entries = holderEntries();
+        if (entries.length > 1 || (entries.length && taskRoles && taskRoles.notify && !notifyQuietUntilTask)) { closeBubble(); noteTrayOpen = !noteTrayOpen; renderNotes(); return; }
         if (mine.length === 1 && !statusFolded.length) { showNote(mine[0].id); return; }
         if (!mine.length && statusFolded.length === 1) { statusBubble(statusFolded[0], shell.querySelector('[data-role="notify"]')); return; }
         // nothing for the tray: an update notice is the update icon's popup; else WM's box
@@ -8884,11 +8943,17 @@
             if (b.hidden) return;
             const role = b.dataset.role;
             // the group icon stands for its own notifications here: what is folded into it has an item of its own
-            if (role === 'notify' && !notesForBubbleIcon().length && statusFolded.length) return;
+            if (role === 'notify' && !holderEntries().some((e) => e.from === 'notify') && statusFolded.length) return;
             // and each of those notifications is an item of its own with its large colour picture (the 6.5.1 notification
             // holder, #1026): a tap shows that notification, no second strip
-            if (role === 'notify' && notesForBubbleIcon().length) {
-                notesForBubbleIcon().forEach((n) => add(noteTitle(n), noteHolderArt(n), () => showNote(n.id)));
+            // (#1056: with those waiting on the server that this page holds none of, each its own item too)
+            if (role === 'notify') {
+                const own = holderEntries().filter((e) => e.from === 'notify');
+                if (own.length) { own.forEach((e) => add(e.label, e.art, e.tap)); return; }
+            }
+            // a mail / text / Messenger icon: each of its waiting notifications an item of its own (#1056)
+            if (MESSAGE_CLASS[role] && messageNotes(role).length) {
+                messageNotes(role).forEach((n) => add(noteTitle(n), noteHolderArt(n), () => showNote(n.id)));
                 return;
             }
             // the network type and the signal are one phone item (both open the Phone bubble)
@@ -8921,6 +8986,8 @@
         closeBubble();
         closeVolume();
         if (noteTrayOpen) { noteTrayOpen = false; renderNotes(); }
+        // the server's waiting notices for their own items (#1056): asked once now, the strip fills in when they come
+        holderAskServer();
         d651Fill();
         const bar = shell.querySelector('.wm-titlebar');
         d651El.style.top = `${bar.offsetTop + bar.offsetHeight}px`;

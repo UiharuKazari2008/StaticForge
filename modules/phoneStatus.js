@@ -24,7 +24,8 @@
  *   traffic   { days, leaveHome, leaveWork, leadMin, timeZone, delayWork, delayHome, reportAt }  (the task works the
  *             leave windows out on the phone's clock; the server has no timer for them)
  *   notices   { waiting, list }   other notices waiting, new or put away with Hide (seen) (the notification glyph); list:
- *                                 the newest ten { id, title, text, cls, at } - the app draws the "..." group from it
+ *                                 every waiting notice, mail / texts / Messenger / Director too, the newest thirty
+ *                                 { id, title, text, cls, kind, at } - the app draws the "..." holder from it (#1056)
  *   prefs     { mailAll, smsAll, popupApps } Messaging's "icon for any unread" choices (the page's, kept on the server);
  *                                 popupApps: the registered Android apps whose notifications pop up as WM boxes
  *   received  { unseen }          ActiveSync received items not seen yet (per phone)
@@ -132,7 +133,10 @@ function inboxCounts(user = 'admin') {
         // the waiting notices themselves (newest first, ten at most): the app draws the "..." group's notices from these
         // with the page asleep (rule cafeready-background; Nov 18: a tap on it showed nothing while the app waited for
         // the page to describe them)
-        noticeList: rows.filter((n) => !mine(n)).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 10)
+        // (#1056, Yukimi Nov 22: the holder lists EVERY pending notification as its own entry - the mail / text /
+        // Messenger / Director ones too, by their kind's picture; the app leaves out their class's icon entry then. Thirty
+        // at most: the holder slides sideways)
+        noticeList: rows.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 30)
             // kind: its holder picture's (#1056; the app's tray draws icons[kind], else its class's)
             .map((n) => ({ id: n.id, title: n.title || '', text: String(n.text || '').slice(0, 300), cls: n.cls || '', kind: holderKindOf(n), at: n.createdAt || 0 }))
     };
