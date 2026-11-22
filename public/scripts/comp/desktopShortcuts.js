@@ -1081,6 +1081,10 @@ class DesktopShortcutsManager {
         document.addEventListener('touchmove', moveHandler, { passive: false });
         document.addEventListener('touchend', endHandler);
         document.addEventListener('touchcancel', endHandler);
+        // #1024 the desktop holds the pointer while the marquee is out: a release over a window's frame ends it
+        if (event.type === 'mousedown' && window.pointerDragHold) {
+            this.marqueeState.letGo = window.pointerDragHold.hold(event.target, event, endHandler);
+        }
         if (event.cancelable) event.preventDefault();
     }
 
@@ -1139,6 +1143,10 @@ class DesktopShortcutsManager {
     }
 
     handleDesktopMarqueeEnd(event, moveHandler, endHandler) {
+        if (this.marqueeState && this.marqueeState.letGo) {
+            this.marqueeState.letGo();
+            this.marqueeState.letGo = null;
+        }
         document.removeEventListener('mousemove', moveHandler);
         document.removeEventListener('mouseup', endHandler);
         document.removeEventListener('touchmove', moveHandler);
@@ -3411,6 +3419,14 @@ class DesktopShortcutsManager {
             // noteDesktopPointerContentDrag: public/scripts/comp/modalUtils.js
             noteDesktopPointerContentDrag();
             event.preventDefault();
+            // #1024 the page holds the pointer from here, so a release over a Remote Desktop / Alchemy / gadget frame
+            // still drops; the page root holds it (the icons move between containers below, which would drop a capture
+            // on the icon). A press that never moved keeps its own click. pointerDragHold: modalUtils.js
+            const signal = this._dragDocumentController && this._dragDocumentController.signal;
+            if (event.type === 'mousemove' && window.pointerDragHold && signal && !signal.aborted) {
+                const letGo = window.pointerDragHold.hold(document.documentElement, event, (up) => this.handleDragEnd(up));
+                signal.addEventListener('abort', letGo, { once: true });
+            }
 
             this.prepareDragGroup(this.draggedShortcut.element, this.draggedShortcut.shortcut);
             if (this.isVistaIconView()) {
