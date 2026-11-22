@@ -305,6 +305,7 @@ html.ui-mobile .wm-setc .wm-setc-ns-head img { width: calc(32 * var(--wm-px)); h
    its name and its state on the right */
 html.ui-mobile .wm-wifi .wm-wifi-list {
     min-height: calc(130 * var(--wm-px));
+    max-height: calc(130 * var(--wm-px));
 }
 html.ui-mobile .wm-wifi .wm-wifi-row {
     min-height: calc(18 * var(--wm-px));
