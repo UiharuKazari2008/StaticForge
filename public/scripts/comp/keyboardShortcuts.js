@@ -1701,6 +1701,13 @@ const windowFlip = (() => {
             if (m) {
                 const img = new Image();
                 img.decoding = 'async';
+                // the DeX wallpaper is the app's appassets file (another origin): read with CORS (the app allows it), so
+                // the canvas stays readable and the app's copy of the pane gets the picture too (dexAltTab.js, #1054);
+                // without CORS it would be tainted and the app's Desktop slot stayed empty on the Fold
+                if (/^https?:/i.test(m[2]) && new URL(m[2], location.href).origin !== location.origin) {
+                    img.crossOrigin = 'anonymous';
+                    img.onerror = () => { if (img.crossOrigin) { img.removeAttribute('crossorigin'); img.src = m[2]; } };
+                }
                 img.onload = () => {
                     if (session !== windowSwitcherSession) return;
                     const s = Math.max(c.width / img.naturalWidth, c.height / img.naturalHeight);
