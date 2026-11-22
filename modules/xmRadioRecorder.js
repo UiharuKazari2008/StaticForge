@@ -48,6 +48,8 @@ let timerHandle = null;
 const fired = new Set(); // `${channelId}|${cutAt}` already recorded by an alert or term
 let saveTimer = null;
 let onChange = () => {};
+let shuttingDown = false; // a signal is handing this process over to a new one: let no new recording start
+const delay = (ms) => new Promise((ok) => setTimeout(ok, ms));
 /*
  * Where this copy runs (Yukimi, Nov 21 2026: "we CAN NOT allow the recording to stop because the server stopped"):
  *   capture  the recorder service (services/xmradio-recorder): pumps, segments, cuts, timers, alerts, terms, the
@@ -631,7 +633,7 @@ async function startRange(item) {
 
 /** Fill the free recorder slots from the queue, most urgent first; a channel already recording waits. */
 async function pumpQueue() {
-    if (queuePumping) return [];
+    if (shuttingDown || queuePumping) return [];
     queuePumping = true;
     const started = [];
     try {
@@ -697,6 +699,7 @@ async function recordChannel(channelId, { fromStart } = {}) {
 }
 
 async function start(opts) {
+    if (shuttingDown) throw Object.assign(new Error('The recorder is handing over to a new process.'), { code: 'XMRADIO_REC_SHUTDOWN' });
     const s = load();
     const channelId = String(opts.channelId || '');
     if (!xm.channelById(channelId)) throw Object.assign(new Error('No such channel.'), { code: 'XMRADIO_CHANNEL' });
@@ -966,6 +969,31 @@ function setTerms(list) {
 
 // ------------------------------------------------------------------ boot
 
+/**
+ * A signal (pm2 restart / stop) hands this process over to a new one (Yukimi, Nov 22 2026): stop pulling segments,
+ * let the one on the wire finish writing, and store the exact next segment in each recording's meta. The active
+ * recordings and the queue stay in the state file, so the new process carries on each one as the same recording at
+ * the next segment - no half segment, no gap, no repeat.
+ */
+async function shutdown() {
+    if (role === 'library') return { recordings: 0, queue: 0 };
+    shuttingDown = true;
+    const live = [...recs.values()];
+    // stop() waits for a segment already being fetched; a stuck fetch must not hold the handoff (pm2's kill timeout)
+    await Promise.all(live.map(async (rec) => {
+        try { if (rec.pump) await Promise.race([rec.pump.stop(), delay(3000)]); } catch (_) { /* best effort */ }
+    }));
+    // every segment that landed is on disk before the state file and this process go away
+    await Promise.race([Promise.all(live.map((r) => r.write.catch(() => {}))), delay(3000)]);
+    for (const rec of live) {
+        rec.meta.resumeAt = rec.lastEnd || rec.meta.resumeAt || rec.meta.startPdt;
+        const last = rec.segs[rec.segs.length - 1];
+        rec.meta.resumeSeq = last ? last.seq + 1 : null;
+    }
+    saveNow();
+    return { recordings: live.length, queue: (load().queue || []).length };
+}
+
 /** Recordings left by a stopped server: file what they hold, and carry on those whose time is not up. */
 async function resume() {
     const s = load();
@@ -983,12 +1011,15 @@ async function resume() {
         try { rec.cuts = (await fs.promises.readFile(path.join(dir, 'cuts.ndjson'), 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l)).sort((a, b) => a.at - b.at); } catch (_) { /* none */ }
         recs.set(meta.rid, rec);
         // it carries on as the same recording (Yukimi, Nov 21 2026: a recording must never stop because a server did):
-        // the pump reads from where it left off, the stream keeps five hours, so the time it was down is recorded too
-        const gap = rec.lastEnd ? Math.ceil((Date.now() - rec.lastEnd) / 1000) + 2 : Math.ceil((Date.now() - meta.startPdt) / 1000);
+        // a graceful handoff stored the exact next segment, a hard stop falls back to the last one on disk. The pump
+        // reads from there, the stream keeps five hours, so the time the process was down is recorded too.
+        const anchor = meta.resumeAt || rec.lastEnd;
+        const gap = anchor ? Math.ceil((Date.now() - anchor) / 1000) + 2 : Math.ceil((Date.now() - meta.startPdt) / 1000);
         const due = (meta.until && Date.now() >= meta.until - 5000) || (rec.lastEnd && rec.lastEnd - meta.startPdt >= MAX_MS);
         if (due || gap > 5 * 3600 - 300 || !xm.channelById(meta.channelId)) { await stop(meta.rid); continue; }
         rec.pump = makePump(rec, Math.max(0, gap));
-        console.log(`[xmRadio rec] ${meta.rid}: resumed (${meta.kind}, ${gap} s to catch up)`);
+        delete meta.resumeAt; delete meta.resumeSeq;
+        console.log(`[xmRadio rec] ${meta.rid}: resumed (${meta.kind}, ${gap} s to catch up${anchor ? ', at the stored segment' : ''})`);
     }
     if (recs.size) xm.watch('rec', true);
     changed();
@@ -1037,6 +1068,6 @@ function tapeRenamed(workspaceId, from, to) {
 }
 
 module.exports = {
-    init, library, tapeRenamed, saveNow, importSpool, spoolList, spoolDir: () => spoolDir(), recRoot: () => recRoot(), start, stop, recordCut, recordChannel, recordRange, queueList: queuePublic, queueRemove, queueClear, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
-    _test: { adtsFrames, nextStart, cutAt, norm, onLook, sliceAac, recs, load: () => load(), reset: () => { st = null; recs.clear(); ended.clear(); fired.clear(); } }
+    init, library, tapeRenamed, saveNow, shutdown, importSpool, spoolList, spoolDir: () => spoolDir(), recRoot: () => recRoot(), start, stop, recordCut, recordChannel, recordRange, queueList: queuePublic, queueRemove, queueClear, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
+    _test: { adtsFrames, nextStart, cutAt, norm, onLook, sliceAac, recs, resume, load: () => load(), reset: () => { st = null; recs.clear(); ended.clear(); fired.clear(); shuttingDown = false; } }
 };
