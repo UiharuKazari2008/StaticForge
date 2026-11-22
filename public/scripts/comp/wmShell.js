@@ -5270,6 +5270,29 @@
         return briRow;
     }
 
+    // ---- the Continuity bubble's media volume: speaker | the WM trackbar (Android's media level, 0-10) ----
+    let volRowEl = null;
+    let volBar = null;
+    let volHeld = false;
+    function mediaRow() {
+        const ui = window.wmSettings && window.wmSettings.ui;
+        if (!ui || typeof ui.trackbar !== 'function') return null;
+        if (!volRowEl) {
+            volRowEl = document.createElement('div');
+            volRowEl.className = 'wm-bri-row';
+            volRowEl.innerHTML = `${bitGlyph('speaker', 'Volume')}<div class="wm-bri-track"></div>`;
+            volBar = ui.trackbar(volRowEl.querySelector('.wm-bri-track'), {
+                steps: Array.from({ length: VOL_STEPS + 1 }, (_, i) => i), value: levelOf('media'), label: 'Volume', ticks: 1,
+                onChange: (v) => { setMediaLevel(v); }
+            });
+            const hold = (on) => () => { volHeld = on; };
+            volRowEl.addEventListener('pointerdown', hold(true), true);
+            ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((t) => volRowEl.addEventListener(t, hold(false), true));
+        }
+        if (!volHeld && volBar) volBar.set(levelOf('media'));
+        return volRowEl;
+    }
+
     function watchBatteryBubble(anchor) {
         // asleep (the screen off too: a bridge read and a redraw every 2 s for nobody, #890) it stops; the
         // wake's status pass draws the open bubble and starts it again
@@ -7804,9 +7827,17 @@
             const res = pc && pc.width && pc.height ? `${pc.width} \u00d7 ${pc.height}` : '';
             // the dock's battery, when the dock reports one (pc.dockBattery: { level, charging })
             const bat = pc && pc.dockBattery && Number.isFinite(Number(pc.dockBattery.level)) ? pc.dockBattery : null;
-            const batHtml = bat ? `<span class="wm-cty-bat">${imgTag(bat.charging ? 'status-battery-charging' : Number(bat.level) >= 80 ? 'status-battery-full' : Number(bat.level) >= 50 ? 'status-battery-3' : Number(bat.level) >= 25 ? 'status-battery-2' : 'status-battery-1')}<span>${Math.round(Number(bat.level))}%</span></span>` : '';
+            // the dock's battery as the title bar draws the phone's (the same ROM glyph and stages, black on the bubble)
+            const dl = bat ? Math.max(0, Math.min(100, Math.round(Number(bat.level)))) : 0;
+            const dIcon = !bat ? '' : bat.charging ? 'battery-charging' : dl <= 20 ? 'battery-empty' : dl > 80 ? 'battery-full' : dl > 60 ? 'battery-3' : dl > 40 ? 'battery-2' : 'battery-1';
+            const batHtml = bat ? `<span class="wm-cty-bat"><span class="wm-status-icon wm-cty-baticon" data-icon="${dIcon}" aria-hidden="true"></span><span>${dl}%</span></span>` : '';
             const sections = [lines.join(' ')];
             if (res || batHtml) sections.push({ rule: true }, { html: `<div class="wm-cty-row"><span>${escapeHtml(res)}</span>${batHtml}</div>` });
+            // (Yukimi, Nov 21) brightness with its auto toggle, as the Power bubble's, and the media volume
+            const bri = brightnessRow();
+            if (bri) { const bn = brightnessNow(); sections.push({ rule: true }, { node: bri, key: bn ? `bri:${bn.percent}:${bn.auto ? 1 : 0}:${bn.canSet ? 1 : 0}` : 'bri' }); }
+            const vol = mediaRow();
+            if (vol) sections.push({ node: vol, key: `vol:${levelOf('media')}` });
             // the desktop's power (#945): its own shutdown sequence runs on the connected display ("Shutting down..."
             // here meanwhile); Shut Down closes the desktop, Restart starts it again. This phone stays on.
             // its display disconnected (the window still running): Shut Down closes it at once; a restart would have nowhere
@@ -7818,7 +7849,9 @@
             if (off) sections[0] = 'Shut down. The display stays connected.';
             const power = off ? [{ text: 'Start', action: () => { mc.startDex(); } }]
                 : !live ? [] : pc.displayGone ? [shutDown] : [shutDown, { text: 'Restart', action: () => { void mc.dexPower('restart'); } }];
-            bubble({ title: 'Continuity PC', role, anchor, sections, buttons: [...power, { text: 'Hide' }] });
+            // Settings: Settings > Connections > Continuity
+            const ctySettings = () => { const st = window.wmSettings; if (st && typeof st.open === 'function') st.open('continuity'); };
+            bubble({ title: 'Continuity PC', role, anchor, sections, footLinks: [{ label: 'Settings', action: ctySettings }], buttons: [...power, { text: 'Hide' }] });
         } else if (role === 'lapis') {
             // Lapis Remote (#835): the time left as a countdown and a bar, what the start set, fuel and the lock
             const l = window.wmLapis;

@@ -4567,6 +4567,8 @@ html.ui-mobile .wm-progress-layer .wm-msgbox-buttons[hidden] {
 .wm-status-icon[data-role="continuity"].is-presence { opacity: .5; }
 .wm-bubble .wm-cty-row { display: flex; align-items: center; justify-content: space-between; gap: calc(6 * var(--wm-px)); }
 .wm-bubble .wm-cty-bat { display: inline-flex; align-items: center; gap: calc(2 * var(--wm-px)); }
+/* the dock's battery: the title bar's own glyph (status atlas), black on the bubble (#1019 round, Nov 21) */
+.wm-bubble .wm-cty-baticon { display: inline-block; flex: none; width: calc(16 * var(--wm-px)); height: calc(16 * var(--wm-px)); --wm-icon-unit: var(--wm-px); filter: invert(1); }
 
 /* the Power bubble's level (#829): WM's block bar (wm-settings-dreamscape.css .wm-ds-progress) under "Main battery: n%" */
 .wm-bubble-section .wm-bat-bar {
