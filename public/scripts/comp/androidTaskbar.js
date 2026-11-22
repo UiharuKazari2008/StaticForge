@@ -77,6 +77,28 @@
         return !!(state.focusedId && byId(state.focusedId));
     }
 
+    // ---- which had the focus last (Alt+Tab's order, #1039) ----
+    // Vista lists the windows from the one in front backwards. Android tells only which window has the focus
+    // now, so each change is timed: an Android window when it got the focus, the desktop's own page when the
+    // focus went back to it (then its windows' own order, modalUtils.js getWindowUsageStack, applies).
+    const focusAt = new Map(); // window id -> performance.now() when it last had the focus
+    let pageFocusAt = 0;
+    function noteFocus(was, now) {
+        if (was === now) return;
+        const t = root.performance ? root.performance.now() : Date.now();
+        if (was) focusAt.set(was, t);
+        if (now) focusAt.set(now, t);
+        else pageFocusAt = t;
+    }
+
+    /** The Android windows, the one with the focus first, then the others by when they last had it, and when
+     *  the desktop's page last took the focus back (windows that had it later go in front of the page's). */
+    function recency() {
+        const at = (w) => (w.id === state.focusedId ? Infinity : (focusAt.get(w.id) || 0));
+        const windows = state.windows.slice().sort((a, b) => at(b) - at(a)).map((w) => ({ window: w, at: at(w) }));
+        return { windows, pageFocusAt: state.focusedId ? pageFocusAt : Infinity };
+    }
+
     // ---- buttons ----
 
     function contentHtml(w) {
@@ -134,6 +156,7 @@
         if (!next || next.ok === false) return;
         lastList = next;
         const hadFocus = hasFocus();
+        noteFocus(state.focusedId, next.focusedId || null);
         state = {
             windows: Array.isArray(next.windows) ? next.windows.filter((w) => w && w.id) : [],
             focusedId: next.focusedId || null,
@@ -404,6 +427,14 @@
     root.melatonAndroidTaskbar = {
         hasFocus,
         windows: () => state.windows.slice(),
+        recency,
+        // the program's picture at a size (androidDesktopPrograms.js iconFor): Alt+Tab's 32 and 48 px
+        iconFor: (w, size) => {
+            const P = root.melatonAndroidPrograms;
+            if (P && typeof P.iconFor === 'function') return P.iconFor({ id: w.appId, package: w.package, icon: w.icon }, size);
+            return { src: w.icon ? String(w.icon) : '', srcset: '' };
+        },
+        titleOf,
         activate: (id) => send('activate', id),
         shownCount: () => state.windows.filter((w) => !w.minimized).length,
         minimizeShown,

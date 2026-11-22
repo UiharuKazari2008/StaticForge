@@ -1,5 +1,4 @@
-/* Window switcher overlay — scripts/comp/windowSwitcher.js */
-/* Window Switcher Overlay - Vista Style */
+/* Window switcher overlay: keyboardShortcuts.js (startWindowSwitcher) - Vista's Alt+Tab, #1039 */
 .window-switcher-overlay {
     position: fixed;
     top: 0;
@@ -16,12 +15,18 @@
     z-index: var(--z-critical);
 }
 
+/* centred over the work area, as Vista centres it above the taskbar */
+body.desktop-mode .window-switcher-overlay {
+    height: auto;
+    bottom: var(--taskbar-height, 35px);
+}
+
 .window-switcher-overlay.visible {
     opacity: 1;
     visibility: visible;
 }
 
-.window-switcher-content {
+.window-switcher-overlay.is-icons .window-switcher-content {
     background:
         linear-gradient(to bottom,
             rgba(255, 255, 255, 0.18) 0%,
@@ -51,7 +56,7 @@
     gap: 16px;
 }
 
-.window-switcher-title {
+.window-switcher-overlay.is-icons .window-switcher-title {
     font-size: 1rem;
     font-weight: 600;
     color: var(--text-primary);
@@ -60,7 +65,7 @@
     margin-bottom: 8px;
 }
 
-.window-switcher-icons {
+.window-switcher-overlay.is-icons .window-switcher-icons {
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -139,3 +144,107 @@
 }
 
 
+
+/* ---------- Aero: the thumbnail pane (Vista VM, ~/.cache/vista-vm/alttab/at1.png) ----------
+   Pane: the active window frame's glass and edge (a dark outer line, white inside it with cyan on the
+   right and bottom; corners 6 px at the top, 5 at the bottom). 1 px edge + 7 px to the slots on the
+   left, right and bottom; 44 px for the title above them. Slots 144 x 94; the thumbnail fitted into
+   128 x 78 on the slot's bottom 8 px in, centred, with a soft shadow; the program's 32 px icon over
+   its bottom right corner. The chosen slot: a 1 px (44,172,238) box, white inside it, filled
+   light to deep blue top to bottom. */
+.window-switcher-overlay:not(.is-icons) .window-switcher-content {
+    position: relative;
+    box-sizing: border-box;
+    padding: 0 7px 7px;
+    border: 1px solid hsl(210 24% 14% / 82%);
+    border-radius: 6px 6px 5px 5px;
+    background-color: var(--glass-windows-bg, hsl(210 40% 60% / 70%));
+    background-image: var(--aero-sheen, none);
+    -webkit-backdrop-filter: blur(6px) saturate(1.4);
+    backdrop-filter: blur(6px) saturate(1.4);
+    box-shadow:
+        inset -1px -1px 0 #2cd3fe,
+        inset 0 0 0 1px hsl(0 0% 100% / 82%),
+        2px 2px 12px 1px hsl(0 0% 0% / 27%),
+        2px 2px 12px 3px hsl(0 0% 0% / 50%);
+}
+
+.window-switcher-overlay:not(.is-icons) .window-switcher-title {
+    height: 44px;
+    max-width: calc(var(--window-switcher-cols, 7) * 144px);
+    margin: 0 auto;
+    overflow: hidden;
+    font: 12pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    /* the caption's cap height sits 19-29 px below the pane's top edge, as on the VM */
+    line-height: 50px;
+    color: #000;
+    text-align: center;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    /* glass text: Vista's white glow behind the caption */
+    text-shadow: 0 0 8px hsl(0 0% 100% / 95%), 0 0 4px hsl(0 0% 100% / 90%), 0 0 2px #fff;
+}
+
+.window-switcher-overlay:not(.is-icons) .window-switcher-icons {
+    display: grid;
+    grid-template-columns: repeat(var(--window-switcher-cols, 7), 144px);
+    grid-auto-rows: 94px;
+    justify-content: center;
+}
+
+.window-switcher-item {
+    position: relative;
+    box-sizing: border-box;
+    width: 144px;
+    height: 94px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+}
+
+.window-switcher-item.selected {
+    border-color: #2cacee;
+    background: linear-gradient(#ddeefd, #bfdffb 9%, #a6daf8 47%, #67c0f2 96%);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 92%);
+}
+
+.window-switcher-thumb {
+    position: absolute;
+    left: 50%;
+    bottom: 7px;
+    transform: translateX(-50%);
+    box-shadow: -1px -1px 2px hsl(0 0% 0% / 18%), 1px 1px 4px hsl(0 0% 0% / 60%);
+}
+
+.window-switcher-thumb.is-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: none;
+}
+
+.window-switcher-picture {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.window-switcher-program {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+}
+
+.window-switcher-badge {
+    position: absolute;
+    right: -2px;
+    bottom: -4px;
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+/* Windows Flip comes and goes at once */
+.window-switcher-overlay:not(.is-icons) {
+    transition: none;
+}
