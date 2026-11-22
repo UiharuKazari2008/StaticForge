@@ -159,7 +159,7 @@ function page(opts) {
     const wmTitanium = {
         bandBar: () => ({
             host, list, unit: U, bandTop: BAND_TOP * U, art: 'art', arrows: { prev: 'p', next: 'n' }, frost: null, frostTransform: '',
-            pageHtml: (p, pg) => `${p.icon}|${pg.title}|${pg.line2}|${pg.line3}`,
+            pageHtml: (p, pg) => `${pg.iconRaw ? 'raw:' : ''}${pg.icon || p.icon}|${pg.title}|${pg.line2}|${pg.line3}`,
             busy: () => !!overlay
         }),
         setOverlay: (o) => { overlay = o || null; }
@@ -175,7 +175,7 @@ function page(opts) {
         wmShell,
         wmTitanium,
         AndroidSocialNotifications: B,
-        wmAndroidApps: { list: () => progs.slice(), wmIcon: () => null },
+        wmAndroidApps: { list: () => progs.slice(), wmIcon: (pkg) => (opts.wmIcons || {})[pkg] || null },
         wmAndroidLaunch: (id, label) => { calls.launch.push([id, label]); return Promise.resolve(true); },
         textMessaging: { androidPackages: () => messaging, on() {}, off() {} },
         addEventListener: (t, fn) => { (winListeners[t] || (winListeners[t] = [])).push(fn); }
@@ -266,6 +266,26 @@ const tick = () => new Promise((r) => setImmediate(r));
     ok(choices.find((c) => c[0] === INSTA)[3] !== true, 'other programs can be checked');
     const paging = p.item.options.find((o) => o.key === 'paging');
     ok(paging.type === 'combo' && paging.choices.map((c) => c[1]).join('|') === 'Show all notifications by date|Page per App', 'the left / right drop-down');
+}
+
+// ---------------------------------------------------------------- 3b. icons by address (#1030)
+// X's icon is a Program Icons set (/static_images/wm-android/<name>, no extension): never handed on bare, an empty image
+{
+    const SET = '/static_images/wm-android/com-twitter-android-47dadd-mwe8s6hz';
+    const p = page({ notes: NOTES, options: { apps: `${DISCORD},${INSTA}`, paging: 'app' }, wmIcons: { [INSTA]: SET } });
+    const panel = p.item.titanium();
+    const ip = panel.pages.find((pg) => pg.pkg === INSTA);
+    ok(ip.icon === `${SET}-lg@4x.png` && ip.iconRaw === true, "a set's page shows its large icon's file, drawn as a panel icon");
+    const dp = panel.pages.find((pg) => pg.pkg === DISCORD);
+    ok(dp.icon === '//icons/discord' && dp.iconRaw === true, "an app without a set keeps its own picture's address");
+    const choices = p.item.options.find((o) => o.key === 'apps').choices;
+    ok(choices.find((c) => c[0] === INSTA)[2] === `${SET}@4x.png`, "Options' row shows the set's file");
+    ip.onTap();
+    await tick();
+    const head = findCls(p.bar(), 'wm-ti-super-panel');
+    ok(head.innerHTML.includes(`raw:${SET}-lg@4x.png|Instagram|`), "the bar's glass shows the set's file, not the bare set");
+    ok(!/wm-android\/[a-z0-9-]+\|/.test(head.innerHTML), 'never the bare set path');
+    p.overlay().close(true);
 }
 
 // ---------------------------------------------------------------- 4. the bar
