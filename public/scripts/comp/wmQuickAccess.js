@@ -102,6 +102,9 @@
     const iconOf = (m, id, state) => {
         // (a tile whose service declares no glyph: a generic tile, never its app icon painted white)
         if (id.startsWith('tile:')) return (m.tiles[id] && m.tiles[id].icon) || '/static_images/quickaccess/tile.png';
+        // Android's own icon for this state where the app has it (SystemUI's tiles: Bluetooth, Sound mode, Flashlight...)
+        const official = m.st[id] && m.st[id].icons;
+        if (official && (official[state === 'on' ? 'on' : 'off'])) return official[state === 'on' ? 'on' : 'off'];
         const own = TILE_GLYPH[id] && m.tiles[`tile:${TILE_GLYPH[id]}`];
         if (own && own.icon) return own.icon;
         const i = ICONS[id];
@@ -279,7 +282,7 @@
         if (!m) return '';
         // (every tile's picture: a control drawn with an app tile's glyph changes with the catalog too - its kept layout
         // pointed at a glyph the app no longer draws, and the tile showed empty)
-        return JSON.stringify([getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => iconOf(m, id, 'on'))]);
+        return JSON.stringify([getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
     }
 
     root.wmQuickAccess = { open, close, roles, signature, ICONS };
