@@ -3470,6 +3470,8 @@ class ServiceWorkerManager {
         // kept across reloads and counted as one set with any earlier batch (#951)
         this._pendingMerge(updatedFiles);
         this.tripPendingUpdateFuse(filesCount);
+        // the phone: the new /app kept now, so the restart starts what was downloaded (#1022)
+        this._precommitPhoneShell();
         this.trayPopup.dismissedUntilComplete = false;
         this._scheduleUpdateCompleteToast('restart');
     }
@@ -5872,6 +5874,15 @@ class ServiceWorkerManager {
             if (!document.documentElement.classList.contains('ui-mobile')) return false;
             if (mc && typeof mc.isDexWindow === 'function' && mc.isDexWindow()) return false;
         } catch (_) { return false; }
+        // updates only counted (Install Now, "let me choose"): installed first, then the restart (#1022). Handing them to
+        // the worker as the page left booted the restart on the old /app before they or the new /app were here: the
+        // started phone ran its old code against the newer cache, said "Updates ready" again, and a second restart
+        // followed every time (the Fold, Nov 22: 00:57 + 00:59, 01:05 + 01:07, 01:52 + 01:53)
+        const counted = Array.isArray(this.availableUpdates) && this.availableUpdates.some((f) => f && f.url && f.hash);
+        if (counted && !opts.installed) {
+            void this._installThenRestartPhone(opts);
+            return true;
+        }
         let both = false;
         try {
             // the counted files too, as forceRestart judges it (_restartUpdateUrls, #951/#1022)
@@ -5882,12 +5893,14 @@ class ServiceWorkerManager {
             const worker = navigator.serviceWorker && navigator.serviceWorker.controller;
             if (worker) {
                 if (owed.length) worker.postMessage({ type: 'CACHE_STATIC_FILES', files: owed, silent: true, requester: this._pageTag });
-                worker.postMessage({ type: 'SHELL_COMMIT', refresh: false });
+                // the server's newest /app as the candidate too (#1022): a commit made when the download finished
+                // (_precommitPhoneShell) normally has it kept already; this covers a tree that changed since
+                worker.postMessage({ type: 'SHELL_COMMIT', refresh: true, fetchMs: 8000 });
             }
             // the downloaded updates install with this restart; owed ones stay counted until the worker has them
             // no shutdown install runs here to file them, so the restart's own row (#1022: the waiting batch every
             // restart-kind download notes kept this from ever being written)
-            if (this.pendingUpdateFuse && !owed.length) {
+            if (this.pendingUpdateFuse && !owed.length && !opts.recorded) {
                 const n = this.pendingUpdateFilesTotal || urls.length;
                 this.recordUpdateHistory({ name: n ? `Melaton update (${n} ${n === 1 ? 'file' : 'files'})` : 'Melaton update', status: 'Successful', importance: 'Important' });
             }
@@ -5902,6 +5915,73 @@ class ServiceWorkerManager {
         try { if (mc && typeof mc.resetMiniport === 'function') mc.resetMiniport(); } catch (_) { /* restart anyway */ }
         window.restartClientNavigate();
         return true;
+    }
+
+    /**
+     * Install Now on the phone with updates only counted (#1022): wceload's install window while they download (the
+     * install itself, one pack - under a second on the home network), the worker keeps the server's /app that names
+     * them, then the restart at once (restartPhoneNow). One restart runs the new code. A download that fails closes
+     * the window and nothing restarts: the updates stay waiting and the updater tries them again (never a notice).
+     */
+    async _installThenRestartPhone(opts = {}) {
+        if (this._phoneInstalling) return;
+        this._phoneInstalling = true;
+        const ws = window.wmShell;
+        const pkg = ws && typeof ws.packageInstall === 'function' ? ws.packageInstall() : null;
+        let ok = false;
+        let recorded = false;
+        try {
+            this.forgetShutdownPlan();
+            const planning = this.planShutdownInstall();
+            const wu = window.winlogonUpdates;
+            const plan = wu && typeof wu.plan === 'function' ? await wu.plan(this, planning) : await planning;
+            if (plan && plan.updates && plan.updates.length) {
+                const r = await this.installUpdatesAtShutdown(plan, {
+                    kind: 'restart',
+                    plain: true,
+                    onPercent: (pct) => { if (pkg) pkg.progress(Math.min(95, Number(pct) || 0)); }
+                });
+                ok = !(r && r.failed > 0);
+                recorded = true;
+            } else {
+                ok = true;
+            }
+            if (ok) {
+                const c = await this.commitShellAndWait({ refresh: true, fetchMs: 8000, timeoutMs: 12000 });
+                if (!c || !c.app) console.warn('[update] the new /app is not complete in the cache; the restart may need another', c);
+            }
+        } catch (err) {
+            console.warn('[update] Install Now did not finish; the updates keep waiting', err);
+            ok = false;
+        } finally {
+            this._phoneInstalling = false;
+            this.forgetShutdownPlan();
+        }
+        if (!ok) {
+            if (pkg) pkg.cancel();
+            this._notifyTrayIconUpdate();
+            return;
+        }
+        if (pkg) { pkg.progress(100); pkg.restartNext(); }
+        this.restartPhoneNow(Object.assign({}, opts, { installed: true, recorded }));
+    }
+
+    /**
+     * The phone in the app, a download that a restart installs has finished (#1022): the worker takes the server's /app
+     * naming those files now, in the background, so Restart Now goes at once (#1014: nothing awaited) and still starts
+     * the new code. Before, the restart only asked for the new /app as the page left, the start found the old one kept,
+     * and a second restart followed.
+     */
+    _precommitPhoneShell() {
+        try {
+            const ad = window.AndroidDisplay;
+            if (!ad || typeof ad.coldBoot !== 'function' || !document.documentElement.classList.contains('ui-mobile')) return;
+            const mc = window.melatonContinuity;
+            if (mc && typeof mc.isDexWindow === 'function' && mc.isDexWindow()) return;
+        } catch (_) { return; }
+        void this.commitShellAndWait({ refresh: true, fetchMs: 8000, timeoutMs: 20000 }).then((r) => {
+            if (!r || !r.app) console.warn('[update] the new /app is not complete yet; the restart commits it again', r);
+        });
     }
 
     forceRestart(opts = {}) {

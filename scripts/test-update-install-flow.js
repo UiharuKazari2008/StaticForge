@@ -130,5 +130,33 @@ function manager(state = {}) {
     w.serviceWorkerManager = manager({ isUpdating: true });
     assert.strictEqual(spec(), null);
 
+    // the phone's Install Now with counted updates: installed under wceload's window, the new /app kept, then ONE
+    // restart (the restart used to go first and the new /app came after it: a second restart every time)
+    const Phone = new Function(`return class { ${block(swmSrc, ['\n    async _installThenRestartPhone('])} }`)();
+    const phone = (failed) => {
+        const log = [];
+        const p = new Phone();
+        p.forgetShutdownPlan = () => {};
+        p.planShutdownInstall = async () => ({ updates: [{ files: css, downloaded: false, available: true }] });
+        p.installUpdatesAtShutdown = async (plan, o) => { log.push(['install', o.plain]); o.onPercent(50); return { installed: 1 - failed, failed }; };
+        p.commitShellAndWait = async (o) => { log.push(['shell', o.refresh]); return { app: true }; };
+        p.restartPhoneNow = (o) => log.push(['restart', o.installed, o.recorded]);
+        p._notifyTrayIconUpdate = () => {};
+        return { p, log };
+    };
+    const job = [];
+    window.wmShell = { packageInstall: () => ({ progress: (n) => job.push(['progress', n]), restartNext: () => job.push(['next']), cancel: () => job.push(['cancel']) }) };
+    let ph = phone(0);
+    await ph.p._installThenRestartPhone({});
+    assert.deepStrictEqual(ph.log, [['install', true], ['shell', true], ['restart', true, true]]);
+    assert.deepStrictEqual(job, [['progress', 50], ['progress', 100], ['next']]);
+    job.length = 0;
+    ph = phone(1);
+    await ph.p._installThenRestartPhone({});
+    assert.deepStrictEqual(ph.log, [['install', true]], 'a failed download restarts nothing');
+    assert.deepStrictEqual(job, [['progress', 50], ['cancel']]);
+    // a download a restart installs keeps the new /app at once on the phone (Restart Now then starts it)
+    assert.ok(/this\.tripPendingUpdateFuse\(filesCount\);\s*\/\/[^\n]*\n\s*this\._precommitPhoneShell\(\);/.test(swmSrc));
+
     console.log('✅ test-update-install-flow: all assertions passed');
 })().catch((err) => { console.error('❌ test-update-install-flow failed:', err); process.exit(1); });
