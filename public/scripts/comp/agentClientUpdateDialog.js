@@ -350,8 +350,9 @@
                             files: filesToUpdate,
                             allowSkip: false
                         });
-                    } else if (typeof sw.updateStaticCache === 'function') {
-                        await sw.updateStaticCache(files, true);
+                    } else if (filesToUpdate.length && typeof sw.updateStaticCache === 'function') {
+                        // install: true - downloaded now, not held as a count (#1022)
+                        await sw.updateStaticCache(filesToUpdate, true, { install: true });
                     }
                 }
             } else if (sw && typeof sw.checkStaticFileUpdates === 'function') {
@@ -361,7 +362,8 @@
             // Still restart — the push is apply-then-restart, not check-or-bail.
         }
         if (sw && typeof sw.forceRestart === 'function') {
-            sw.forceRestart();
+            // the agent's countdown was the warning: no second "Restart?" (Continuity) after it (#1022)
+            sw.forceRestart({ confirmed: true });
             return;
         }
         // runWinlogonPower: public/scripts/comp/winlogonPower.js
