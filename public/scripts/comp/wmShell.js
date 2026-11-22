@@ -1330,7 +1330,14 @@
         // buttons answer it, the soft keys go blank (WM 6.1's MessageBox) and the app's keys under it
         // cannot be pressed through it
         lastModal = modalUp();
-        softKeys = lastModal ? { left: null, right: null }
+        // While wceload copies, Today's own refresh used to put Notification / Camera back on the bar.
+        // A stalled install then had no key that left the screen (#1022): this one always closes it,
+        // leaves the files waiting for the next check and returns to Today. The done page keeps its
+        // blank bar and corner ok.
+        softKeys = root.dataset.wmBoot === 'install'
+            ? (installDoneUp ? { left: null, right: null }
+                : { left: null, right: { label: 'Cancel', action: () => cancelInstall() } })
+            : lastModal ? { left: null, right: null }
             : taskSwitch.open ? taskSwitcherSoftKeys()
             : noteShownNote() ? noteSoftKeys()
             : viewerActive ? viewerSoftKeys()
@@ -13167,6 +13174,8 @@
     let bootWaitDelay = null;
     const BOOT_WAIT_DELAY_MS = 2500;
     let installKind = null;
+    let activeInstall = null; // wceload's job while it is up, so its Cancel key can stop a stuck install
+    let installDoneUp = false; // the success page: no Cancel key, the corner's ok finishes the boot
 
     function installNoun() {
         return installKind === 'update' ? 'Melaton Mobile update' : 'Melaton Mobile';
@@ -13402,9 +13411,9 @@
             setTitle('Start');
             bootTitleKind = null;
             refreshTitleAction();
-            // wceload shows no soft keys while it copies (only the SIP button)
-            softKeys = { left: null, right: null };
-            shell.querySelectorAll('.wm-softkey').forEach((b) => { b.textContent = ''; b.disabled = true; });
+            // wceload's copy screen has one way out: Cancel (#1022). Today's later key refresh must
+            // not replace it with the app's own keys while the install is still up.
+            renderSoftKeys();
             waitStrip(shell.querySelector('.wm-installer-wait'));
         }
     }
@@ -13430,7 +13439,10 @@
     function showInstallDone(kind) {
         installKind = kind;
         installMax = 0;
+        activeInstall = null;
+        installDoneUp = true;
         setBoot('install');
+        renderSoftKeys();
         const inst = shell.querySelector('.wm-installer');
         inst.querySelector('.wm-installer-progress').hidden = true;
         inst.querySelector('.wm-installer-wait').hidden = true;
@@ -13468,24 +13480,51 @@
     function packageInstall() {
         installKind = 'update';
         installMax = 0;
+        installDoneUp = false;
         setBoot('install');
         setInstallProgress(0);
         let open = true;
-        return {
+        const job = {
             progress(pct) { if (open) setInstallProgress(Number(pct) || 0); },
             /** the restart that installs it comes next: its start says it is done */
             restartNext() { try { sessionStorage.setItem(INSTALL_DONE_KEY, 'update'); } catch (_) { /* storage off */ } },
             /** installed in place (styles, pictures, a package): wceload's last page, then back to the shell */
-            done() { if (!open) return; open = false; showInstallDone('update'); },
+            done() { if (!open) return; open = false; activeInstall = null; showInstallDone('update'); },
             /** stopped (offline, cancelled): back to what was on screen */
             cancel() {
                 if (!open) return;
                 open = false;
+                activeInstall = null;
+                installDoneUp = false;
                 installMax = 0;
+                releaseStalledInstall();
                 setBoot('done');
                 activate(current || 'today');
             }
         };
+        activeInstall = job;
+        return job;
+    }
+
+    /** The updater's in-flight flags, if a check or an install stopped without finishing. */
+    function releaseStalledInstall() {
+        try {
+            const swm = window.serviceWorkerManager;
+            if (!swm) return;
+            swm._activeDownloadAttach = null;
+            swm._phoneInstalling = false;
+            if (typeof swm.forgetShutdownPlan === 'function') swm.forgetShutdownPlan();
+        } catch (_) { /* an older updater */ }
+    }
+
+    /** Cancel on wceload's soft key: a job when there is one, a boot-time download screen otherwise. */
+    function cancelInstall() {
+        if (activeInstall) { activeInstall.cancel(); return; }
+        installDoneUp = false;
+        installMax = 0;
+        releaseStalledInstall();
+        setBoot('done');
+        activate(current || 'today');
     }
 
     function swDownloading() {
@@ -14035,6 +14074,8 @@
         back,
         messageBox,
         packageInstall,
+        /** Leave wceload's screen (its Cancel key) when an update check stalled. */
+        cancelInstall,
         /** Dreamscape Mainframe Server box while the server boots: mainframeBox(percent, stage); null hides. */
         mainframeBox: (percent, stage) => mainframeBox(percent, stage),
         /** Work the user started, as a WM box with bar / preview / Hide / Cancel (#806): progressBox({ title, text, pct, preview, onCancel }). */
