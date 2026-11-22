@@ -391,7 +391,9 @@
 
     const storedVersion = () => { const v = lsGet(K.version); return v === '6.5' || v === '6.5.1' ? v : '6.1'; };
 
-    window.wmSettings = { keys: K, startButton, todayUsesDesktop, titleBarStyle, cameraStyle, applyScale, scales: SCALES, versions: VERSIONS, version: runningVersion, release: runningRelease, storedVersion, bottomBars: () => root.dataset.wmBars === 'bottom', storedBottomBars: () => lsGet(K.bars651) === 'bottom' };
+    /** The text size (--wm-px, px) kept for a screen this many CSS px wide, or null for the default (#1043: copies for another screen). */
+    const scaleForWidth = (w) => { const v = Number(lsGet(w >= SCALE_WIDE_MIN ? `${K.scale}Main` : K.scale)); return SCALES.includes(v) ? v : null; };
+    window.wmSettings = { keys: K, startButton, todayUsesDesktop, titleBarStyle, cameraStyle, applyScale, scaleForWidth, scales: SCALES, versions: VERSIONS, version: runningVersion, release: runningRelease, storedVersion, bottomBars: () => root.dataset.wmBars === 'bottom', storedBottomBars: () => lsGet(K.bars651) === 'bottom' };
 
     // ---------------------------------------------------------------- helpers
 
