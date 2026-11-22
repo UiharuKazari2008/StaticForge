@@ -158,5 +158,25 @@ function manager(state = {}) {
     // a download a restart installs keeps the new /app at once on the phone (Restart Now then starts it)
     assert.ok(/this\.tripPendingUpdateFuse\(filesCount\);\s*\/\/[^\n]*\n\s*this\._precommitPhoneShell\(\);/.test(swmSrc));
 
+    // a waiting file the server moved on from installs as the server's version; one it dropped is not installed
+    // (#1022, the Fold Nov 22 03:57: four Installs each asked for wm65.css at a hash the server no longer had)
+    const Plan = new Function(`return class { ${block(swmSrc, ['\n    planShutdownInstall('])} }`)();
+    const pl = new Plan();
+    Object.assign(pl, { agentSession: false, availableUpdates: [], isUpdating: false,
+        _updateBatches: [{ files: [{ url: '/css/wm65.css', hash: 'old' }, { url: '/css/gone.css', hash: 'g' }, { url: '/a.js', hash: 'same' }], at: 1 }] });
+    pl._isContinuityDexWindow = () => false;
+    pl._firmwareWaiting = () => [];
+    pl.availableUpdateGroups = () => [];
+    pl.swRegistration = { active: {} };
+    pl._fetchManifestResult = async () => ({ outcome: 'list', rows: [{ url: '/css/wm65.css', hash: 'new' }, { url: '/a.js', hash: 'same' }, { url: '/b.js', hash: 'b2' }], hash: 'h' });
+    pl.getFilesNeedingUpdate = async (rows) => rows.filter((r) => r.url !== '/a.js');
+    pl._filesCountingTowardInstaller = (f) => f;
+    pl._needsLaunchInstaller = async () => false;
+    global.navigator = { onLine: true };
+    window.wsClient = { isConnected: () => true };
+    window.melatonUpdatePolicy = {};
+    const plan = await pl.planShutdownInstall();
+    assert.deepStrictEqual(plan.updates.map((u) => u.files.map((f) => `${f.url}@${f.hash}`)), [['/css/wm65.css@new', '/a.js@same'], ['/b.js@b2']]);
+
     console.log('✅ test-update-install-flow: all assertions passed');
 })().catch((err) => { console.error('❌ test-update-install-flow failed:', err); process.exit(1); });

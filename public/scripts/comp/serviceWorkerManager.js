@@ -5421,6 +5421,11 @@ class ServiceWorkerManager {
         const rows = (files || []).map((f) => (typeof f === 'string' ? { url: f } : (f && f.url ? { url: f.url, hash: f.hash, size: f.size } : null))).filter(Boolean);
         if (!rows.length) return;
         if (!this._updateBatches) this._updateBatches = [];
+        // a newer version of a file replaces the one an earlier batch waits with (#1022): one hash per file
+        const urls = new Set(rows.map((r) => r.url));
+        this._updateBatches = this._updateBatches
+            .map((b) => ({ ...b, files: b.files.filter((f) => !urls.has(f.url)) }))
+            .filter((b) => b.files.length);
         this._updateBatches.push({ files: rows, at: Date.now() });
         this._syncUpdatesWaitingMark();
     }
@@ -5479,6 +5484,23 @@ class ServiceWorkerManager {
                 if (result.outcome !== 'list') return plan;
                 let rows = result.rows;
                 if (window.melatonPackages && typeof window.melatonPackages.filterRows === 'function') rows = window.melatonPackages.filterRows(rows);
+                // a waiting file the server has moved on from (the tree changed again after it was counted or
+                // downloaded) installs as the server's version now, and one the server dropped is not installed (#1022):
+                // the install asked for the old hash, the server can only send its current bytes, and every Install
+                // failed ("Installing...", then home with the update still waiting) until the next notify
+                const current = new Map(result.rows.map((r) => [r && r.url, r && r.hash]));
+                let moved = 0;
+                plan.updates.forEach((u) => {
+                    if (u.running) return;
+                    u.files = u.files.filter((f) => current.has(f.url)).map((f) => {
+                        const h = current.get(f.url);
+                        if (!f.hash || h === f.hash) return f;
+                        moved += 1;
+                        return Object.assign({}, f, { hash: h });
+                    });
+                });
+                plan.updates = plan.updates.filter((u) => u.running || u.files.length);
+                if (moved) console.log(`[update] ${moved} waiting file(s) changed on the server since; installing the server's version`);
                 const waiting = new Set();
                 plan.updates.forEach((u) => u.files.forEach((f) => waiting.add(f.url)));
                 const fresh = this._filesCountingTowardInstaller(await this.getFilesNeedingUpdate(rows));
