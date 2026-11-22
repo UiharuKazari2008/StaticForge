@@ -15,7 +15,7 @@
  * leaves them alone (taskbarItemShouldExist) and isModalActiveForTaskbar asks melatonAndroidTaskbar.hasFocus().
  *
  * More than two Android windows (Yukimi, Nov 22 2026, #1029) share ONE group button, as Vista groups a program's buttons:
- * "[icon] N Android Programs ▾" (.taskbar-window-group, vista-taskbar.css). A click opens Vista's list of those windows
+ * "[icon] N Android Runtime ▾" (.taskbar-window-group, vista-taskbar.css). A click opens Vista's list of those windows
  * (each window's icon and title; picking one brings it forward), right-click the group's menu: Restore Group / Minimize
  * Group / Close Group (Vista's Cascade / Show Windows Stacked / Side by Side are left out: Android places its own windows).
  * One or two keep their own buttons; Taskbar Properties' "Group similar taskbar buttons" off never groups them.
@@ -44,7 +44,7 @@
     const GROUP_MENU_ID = 'android-taskbar-group';
     // more than two Android windows: one group button (#1029)
     const GROUP_FROM = 3;
-    const GROUP_NAME = 'Android Programs';
+    const GROUP_NAME = 'Android Runtime';
 
     let state = { windows: [], focusedId: null, can: {}, access: {} };
     const buttons = new Map(); // window id -> button element
