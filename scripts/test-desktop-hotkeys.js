@@ -102,7 +102,7 @@ const winCombo = (k, code, mods = {}) => key('keydown', k, code, { metaKey: true
     const up = metaUp();
     assert.strictEqual(t.onKeyup(up), true);
     assert.ok(up.defaultPrevented);
-    assert.deepStrictEqual(calls, [['toggleStartMenu']]);
+    assert.strictEqual(JSON.stringify(calls), JSON.stringify([['toggleStartMenu', { keyboard: true }]]));
 }
 
 // Win+D is Show desktop, and the Windows key's release then does not open Start
@@ -146,10 +146,10 @@ const winCombo = (k, code, mods = {}) => key('keydown', k, code, { metaKey: true
     t.onKeydown(winCombo(' ', 'Space'));
     t.onKeydown(winCombo('2', 'Digit2'));
     assert.strictEqual(t.onKeydown(winCombo('9', 'Digit9')), true, 'a Quick Launch place with no button is still Win+9');
-    assert.deepStrictEqual(calls, [
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(calls)), [
         ['openExplorerApplet', 'Computer'],
         ['loadFeature', 'run'],
-        ['openStartMenu'], ['searchFocus'],
+        ['openStartMenu', { keyboard: true }], ['searchFocus'],
         ['lock'],
         ['help'],
         ['loadFeature', 'control_panel'],
@@ -180,7 +180,7 @@ const winCombo = (k, code, mods = {}) => key('keydown', k, code, { metaKey: true
 {
     const { calls, t } = hotkeysContext();
     assert.strictEqual(t.onKeydown(key('keydown', 'Escape', 'Escape', { ctrlKey: true })), true);
-    assert.deepStrictEqual(calls, [['toggleStartMenu']]);
+    assert.strictEqual(JSON.stringify(calls), JSON.stringify([['toggleStartMenu', { keyboard: true }]]));
 }
 
 // Alt+F4 closes the window in front with its own Close button; none in front: the browser's default

@@ -8174,15 +8174,16 @@ function getStartMenuPowerMenuItems() {
     const isAdmin = localStorage.getItem('userType') === 'admin';
     const desktop = isDesktopStartMenuEnvironment();
     const items = [
-        { id: 'teleport', text: 'Teleport', desktopOnly: true, action: () => runTeleportDirect() },
-        { id: 'logout', text: 'Log Off', action: () => runLogoutDirect() },
-        { id: 'lock', text: 'Lock', desktopOnly: true, action: () => runClientLockDirect() },
+        // accessKey: the underlined letter (Vista's menu: S&witch User, &Log Off, L&ock, &Restart, &Sleep, Sh&ut Down)
+        { id: 'teleport', text: 'Teleport', accessKey: 0, desktopOnly: true, action: () => runTeleportDirect() },
+        { id: 'logout', text: 'Log Off', accessKey: 0, action: () => runLogoutDirect() },
+        { id: 'lock', text: 'Lock', accessKey: 1, desktopOnly: true, action: () => runClientLockDirect() },
         { separator: true },
-        { id: 'restart', text: 'Restart', action: () => runClientRestartDirect() },
-        { id: 'shutdown', text: 'Shut Down', action: () => runClientShutdownDirect() },
+        { id: 'restart', text: 'Restart', accessKey: 0, action: () => runClientRestartDirect() },
+        { id: 'shutdown', text: 'Shut Down', accessKey: 2, action: () => runClientShutdownDirect() },
         { separator: true },
-        { id: 'leave-desktop', text: 'Leave Desktop Mode', desktopOnly: true, action: () => runLeaveDesktopModeDirect() },
-        { id: 'restart-dss', text: 'Restart Server', adminOnly: true, action: () => runRestartDssDirect() },
+        { id: 'leave-desktop', text: 'Leave Desktop Mode', accessKey: 6, desktopOnly: true, action: () => runLeaveDesktopModeDirect() },
+        { id: 'restart-dss', text: 'Restart Server', accessKey: 8, adminOnly: true, action: () => runRestartDssDirect() },
     ].filter((item) => !(item.desktopOnly && !desktop) && !(item.adminOnly && !isAdmin));
     return items.filter((item, i) => !item.separator || (i > 0 && i < items.length - 1 && !items[i - 1].separator));
 }
@@ -8200,10 +8201,20 @@ function attachStartMenuPowerMenu(button) {
     const byId = new Map(items.filter((item) => !item.separator).map((item) => [item.id, item]));
     contextMenu.detachClickMenuFromElement(button);
     contextMenu.attachClickMenuToElement(button, {
+        // Vista's: out of the arrow's right edge, its bottom on the arrow's (the VM, #1060)
+        position: 'anchor',
+        anchorElement: () => {
+            const r = button.getBoundingClientRect();
+            const x = Math.round(r.right);
+            // calculateAnchorPositioning (contextMenu.js) opens upward to top - height - 4 when there is no room below
+            return { getBoundingClientRect: () => ({ left: x, right: x, width: 0, top: Math.round(r.bottom) + 4, bottom: window.innerHeight, height: 0 }) };
+        },
         sections: [{
             type: 'list',
-            items: items.map((item) => (item.separator ? { separator: true } : { text: item.text, action: item.id }))
+            items: items.map((item) => (item.separator ? { separator: true } : { text: item.text, action: item.id, value: item.id, accessKey: item.accessKey }))
         }],
+        // Left in the menu: back to the arrow (#1060)
+        onNavigateLeft: () => startMenuKit.closeStartMenuPopup(true),
         onAction: (action) => {
             const item = byId.get(action);
             if (item) item.action();
@@ -8380,9 +8391,11 @@ function getStartMenuFrequentItems() {
     const prefs = startMenuTaskbarSettings();
     // "Store and display a list of recently opened programs" off: no most used list
     if (prefs && prefs.recentPrograms === false) return [];
-    const limit = prefs ? prefs.recentProgramCount : START_MENU_FREQUENT_LIMIT;
+    // as many as Customize Start Menu asks for, less those the screen has no room for (applyStartMenuSize, #1060)
+    const limit = Math.min(prefs ? prefs.recentProgramCount : START_MENU_FREQUENT_LIMIT, startMenuKit.START_MENU_STATE.frequentFit);
     const activity = readStartMenuActivity();
-    const pinned = new Set(getStartMenuPinnedLaunchIds());
+    // the pinned rows, the Internet and E-mail programs among them, are not repeated in the most used list
+    const pinned = new Set(startMenuKit.getStartMenuPinnedRows().map((item) => item.launchId));
     const out = [];
     const seen = new Set();
     const add = (launchId) => {
@@ -8411,6 +8424,7 @@ function getStartMenuFrequentItems() {
 function launchStartMenuItem(item) {
     if (!item || typeof item.action !== 'function') return;
     if (item.launchId) recordStartMenuLaunch(item.launchId);
+    if (item.launchId) startMenuKit.startMenuProgramSeen(item.launchId);
     // assetPreload.warmLaunch: public/scripts/comp/assetPreload.js (keyboard / Run launches had no hover)
     if (item.launchId && window.assetPreload) assetPreload.warmLaunch(item.launchId);
     closeStartMenu();
@@ -8607,11 +8621,14 @@ function getStartMenuProgramsTree() {
     if (window.melatonAndroidPrograms && typeof window.melatonAndroidPrograms.rootItems === 'function') {
         window.melatonAndroidPrograms.rootItems().forEach((item) => { if (!listed.has(item.launchId)) entries.push(item); });
     }
-    if (!custom) entries.sort(byStartMenuLabel);
+    // Customize Start Menu's "Sort All Programs menu by name" (#1060): off, the programs keep the order they came in
+    const prefs = startMenuTaskbarSettings();
+    if (!custom && !(prefs && prefs.sortByName === false)) entries.sort(byStartMenuLabel);
     // folders after the apps: Accessories, Administrative Tools, Dreamscape 2026 R7, other publishers'
     // (AmusementVISION 2024), Games, Melaton SideShow (the VM's Windows SideShow > Device Simulator 3.0)
     entries.push({ folder: true, folderId: 'accessories', text: 'Accessories', children: getStartMenuAccessoriesItems() });
-    entries.push({ folder: true, folderId: 'administrative-tools', text: 'Administrative Tools', children: getStartMenuPlacedItems('administrative-tools') });
+    // "System administrative tools": Don't display leaves the folder out of All Programs (#1060)
+    if (!(prefs && prefs.adminTools === 'none')) entries.push({ folder: true, folderId: 'administrative-tools', text: 'Administrative Tools', children: getStartMenuPlacedItems('administrative-tools') });
     // the phone's installed programs in the DeX window (#1005; androidDesktopPrograms.js), a Work folder inside
     if (window.melatonAndroidPrograms) entries.push({ folder: true, folderId: 'android-programs', text: 'Android Programs', children: window.melatonAndroidPrograms.tree() });
     entries.push({ folder: true, folderId: 'dreamscape-r7', text: START_MENU_PACKAGE_FOLDER, children: getStartMenuPackageItems() });
@@ -8635,7 +8652,8 @@ function toggleStartMenuFolder(folderId) {
     list.scrollTop = scrollTop;
     const row = list.querySelector(`.start-menu-row[data-folder-id="${CSS.escape(folderId)}"]`);
     if (!row) return;
-    row.classList.add('is-hot');
+    // the folder keeps the keyboard (Right / Left / Enter open and close it, #1060)
+    startMenuKit.setStartMenuHot(row);
     // bring the opened folder's contents into view, keeping the folder row visible
     const children = list.querySelectorAll(`.start-menu-row[data-parent-folder="${CSS.escape(folderId)}"]`);
     if (opening && children.length) children[children.length - 1].scrollIntoView({ block: 'nearest' });
@@ -8702,6 +8720,10 @@ function createStartMenuListRow(item, kind, options = {}) {
     const row = document.createElement('div');
     row.className = `start-menu-row start-menu-row-${kind}`;
     row.setAttribute('role', 'menuitem');
+    // the keyboard moves real focus through the rows (onStartMenuKeydown, #1060)
+    row.tabIndex = -1;
+    // Highlight newly installed programs: a new program, and the folders it is in, in Vista's orange
+    if (kind === 'program' && startMenuKit.startMenuEntryIsNew(item)) row.classList.add('is-new');
     if (options.depth) row.style.setProperty('--start-menu-depth', String(options.depth));
     if (options.parentFolder) row.dataset.parentFolder = options.parentFolder;
 
@@ -8727,10 +8749,14 @@ function createStartMenuListRow(item, kind, options = {}) {
     text.className = 'start-menu-row-text';
     const title = document.createElement('span');
     title.className = 'start-menu-row-title';
-    // pinned rows: what it is in bold, the program under it (Vista's "Internet / Internet Explorer")
-    title.textContent = kind === 'pinned' ? (item.text || startMenuLabel(item)) : startMenuLabel(item);
+    // pinned rows: what it is in bold, the program under it (Vista's "Internet / Internet Explorer");
+    // with small icons Vista shows the Internet and E-mail rows by their program's name alone
+    const smallRows = (startMenuTaskbarSettings() || {}).startIconSize === 'small';
+    title.textContent = kind === 'pinned'
+        ? ((item.pinnedRole && smallRows ? item.fullName : item.text) || startMenuLabel(item))
+        : startMenuLabel(item);
     text.appendChild(title);
-    if (kind === 'pinned' && item.fullName && item.fullName !== item.text) {
+    if (kind === 'pinned' && item.fullName && item.fullName !== item.text && !(item.pinnedRole && smallRows)) {
         const sub = document.createElement('span');
         sub.className = 'start-menu-row-sub';
         sub.textContent = item.fullName;
@@ -8758,7 +8784,9 @@ function createStartMenuListRow(item, kind, options = {}) {
             row.addEventListener('pointerenter', warm);
             row.addEventListener('focus', warm);
         }
-        if (item.launchId && kind !== 'result') attachStartMenuItemContextMenu(row, item);
+        // Customize Start Menu's "Enable context menus and dragging and dropping" (#1060)
+        const prefs = startMenuTaskbarSettings();
+        if (item.launchId && kind !== 'result' && !(prefs && prefs.dragDrop === false)) attachStartMenuItemContextMenu(row, item);
     }
     return row;
 }
@@ -8770,8 +8798,639 @@ function createStartMenuSeparator(className = 'start-menu-separator') {
     return sep;
 }
 
+// The Start menu's own helpers (#1060): keys, size, place menus, new programs, Customize Start Menu's reads.
+// One namespace, so they are not page globals (app-scope-ownership); the rest of this file reaches them as startMenuKit.x.
+const startMenuKit = (() => {
+    /**
+     * The pinned list as the Start menu shows it: Customize Start Menu's "Show on Start menu" Internet and
+     * E-mail rows first (Vista's bold "Internet" over the program's name; #1060), then the pinned programs.
+     */
+    function getStartMenuPinnedRows() {
+        const prefs = startMenuTaskbarSettings();
+        const rows = [];
+        const add = (on, launchId, label) => {
+            if (!on || !launchId) return;
+            const item = findStartMenuLaunchableById(launchId);
+            if (!isStartMenuListedItem(item)) return;
+            const name = startMenuLabel(item);
+            rows.push({ ...item, pinned: true, pinnedRole: label, text: label, fullName: name });
+        };
+        if (prefs) {
+            add(prefs.pinInternet, prefs.internetProgram, 'Internet');
+            add(prefs.pinEmail, prefs.emailProgram, 'E-mail');
+        }
+        const taken = new Set(rows.map((item) => item.launchId));
+        getStartMenuPinnedItems().filter(isStartMenuListedItem).forEach((item) => {
+            if (!taken.has(item.launchId)) rows.push(item);
+        });
+        return rows;
+    }
+
+    /** Show on Start menu's program choices (Customize Start Menu): the browsers and the mail programs. */
+    function getStartMenuPinProgramChoices(kind) {
+        const ids = kind === 'email' ? ['dovecote'] : ['encyclopedia', 'alchemy'];
+        return ids.map((id) => findStartMenuLaunchableById(id)).filter(isStartMenuListedItem)
+            .map((item) => ({ launchId: item.launchId, text: startMenuLabel(item) }));
+    }
+
+    /** Customize Start Menu's search options (#1060): Search programs (programs, Control Panel items, tools),
+     *  Search files (notes and the Gallery's rows; "entire index" and "this user's files" are the same index here),
+     *  Search favorites and history (shortcuts and tags). Communications have no rows of their own in Start Search. */
+    function startMenuSearchesCategory(category) {
+        const prefs = startMenuTaskbarSettings();
+        if (!prefs) return true;
+        const c = String(category || '');
+        if (c === 'app') return prefs.searchPrograms !== false;
+        if (c === 'note' || c.startsWith('gallery-')) return prefs.searchFiles !== 'none';
+        if (c === 'shortcut' || c === 'quick-access') return prefs.searchFavorites !== false;
+        return true;
+    }
+
+    // ---- keyboard (#1060): Vista's Start menu keys, as the VM answers them ----------------------------
+    // Focus is real DOM focus (rows, places, All Programs and the power buttons take tabindex -1), so the
+    // DeX copy (dexStartMenu.js) sees every move (focusin); the keyboard's row carries .is-hot.
+    //   Start Search  typing searches; Down = the first row, Up = All Programs; with results, Up / Down move
+    //                 through them and Enter opens the chosen one
+    //   left column   Up / Down go round the rows, All Programs and Start Search; Left / Right = the place
+    //                 beside the row (the place under a point 25 px (96 dpi) above the row's top); in All
+    //                 Programs Right opens a folder, Left closes it or goes to its folder
+    //   All Programs  Right / Enter open it (the first program chosen); Left = the place beside it
+    //   places        Up / Down (past either end: the power buttons); Left / Right = the row beside (25 px
+    //                 under the place's top); Right / Enter on a menu opens it with its first row chosen
+    //   power         Left / Right between the buttons; on the arrow its menu opens; Up / Down = the places
+    //   Tab           Start Search > places > power button > programs list > All Programs > Start Search
+    //   a letter      off Start Search: the next row / place starting with it
+    //   Esc           an open menu closes; else the search clears; else All Programs goes back; else Start closes
+    const START_MENU_COLUMN_SKEW_PX = 25 * 1.25;
+
+     // the VM's 25 px at 96 dpi; this menu is drawn at 120 dpi
+    const START_MENU_TAB_ZONES = ['search', 'places', 'power', 'list', 'allprograms'];
+
+    function startMenuRows() {
+        return startMenuEls ? [...startMenuEls.list.querySelectorAll('.start-menu-row')] : [];
+    }
+
+    function startMenuPlaceRows() {
+        return startMenuEls ? [...startMenuEls.places.querySelectorAll('.start-menu-place')] : [];
+    }
+
+    function startMenuPowerButtons() {
+        return startMenuEls ? [...startMenuEls.power.querySelectorAll('.start-menu-power-button')] : [];
+    }
+
+    /** Which part of the menu an element is in: 'search' | 'list' | 'allprograms' | 'places' | 'power' | null. */
+    function startMenuZoneOf(el) {
+        if (!el || !startMenuEls || !startMenu || !startMenu.contains(el)) return null;
+        if (el === startMenuEls.search) return 'search';
+        if (el === startMenuEls.allPrograms) return 'allprograms';
+        if (el === startMenuEls.list || el.closest('.start-menu-items')) return 'list';
+        if (el.closest('.start-menu-places')) return 'places';
+        if (el.closest('.start-menu-power')) return 'power';
+        return null;
+    }
+
+    /** The keyboard's choice: focus and .is-hot on it (null: nothing chosen); a place shows its icon in the frame. */
+    function setStartMenuHot(el) {
+        if (!startMenu) return;
+        startMenu.querySelectorAll('.is-hot').forEach((x) => { if (x !== el) x.classList.remove('is-hot'); });
+        if (!el) return;
+        el.classList.add('is-hot');
+        el.focus({ preventScroll: true });
+        if (el.closest('.start-menu-items')) el.scrollIntoView({ block: 'nearest' });
+        if (startMenuView === 'search' && el.classList.contains('start-menu-row')) startMenuSearchHotId = el.dataset.entryId || null;
+        setStartMenuTilePicture(el._startPlace || null);
+    }
+
+    function focusStartMenuSearch() {
+        setStartMenuHot(null);
+        setStartMenuTilePicture(null);
+        startMenuEls.search.focus({ preventScroll: true });
+    }
+
+    /** Lock (or the power button where there is none): Up from the first place lands on it, the column's middle being over it. */
+    function startMenuPowerDefault() {
+        const buttons = startMenuPowerButtons();
+        return buttons.find((b) => b.classList.contains('is-lock')) || buttons[0] || null;
+    }
+
+    /** The element of `candidates` whose box holds the height y, else the nearest one. */
+    function startMenuAtHeight(candidates, y) {
+        let best = null;
+        let bestD = Infinity;
+        for (const el of candidates) {
+            const r = el.getBoundingClientRect();
+            if (!r.height) continue;
+            if (y >= r.top && y < r.bottom) return el;
+            const d = Math.min(Math.abs(y - r.top), Math.abs(y - r.bottom));
+            if (d < bestD) { bestD = d; best = el; }
+        }
+        return best;
+    }
+
+    function startMenuPlaceBeside(el) {
+        const y = el.getBoundingClientRect().top - START_MENU_COLUMN_SKEW_PX;
+        return startMenuAtHeight(startMenuPlaceRows(), y);
+    }
+
+    function startMenuRowBeside(place) {
+        const y = place.getBoundingClientRect().top + START_MENU_COLUMN_SKEW_PX;
+        const listBox = startMenuEls.list.getBoundingClientRect();
+        const rows = startMenuRows().filter((row) => {
+            const r = row.getBoundingClientRect();
+            return r.bottom > listBox.top && r.top < listBox.bottom;
+        });
+        return startMenuAtHeight(rows.concat([startMenuEls.allPrograms]), y);
+    }
+
+    function startMenuTabZone(zone, dir) {
+        const from = START_MENU_TAB_ZONES.indexOf(zone === null ? 'search' : zone);
+        const next = START_MENU_TAB_ZONES[(from + dir + START_MENU_TAB_ZONES.length) % START_MENU_TAB_ZONES.length];
+        if (next === 'search') return focusStartMenuSearch();
+        if (next === 'places') return setStartMenuHot(startMenuPlaceRows()[0] || null);
+        if (next === 'power') return setStartMenuHot(startMenuPowerButtons()[0] || null);
+        if (next === 'allprograms') return setStartMenuHot(startMenuEls.allPrograms);
+        // the programs list itself: focused with no row chosen (Vista draws none until an arrow)
+        setStartMenuHot(null);
+        startMenuEls.list.focus({ preventScroll: true });
+    }
+
+    function startMenuVertical(zone, active, dir) {
+        const els = startMenuEls;
+        if (zone === 'places' || zone === 'power') {
+            const places = startMenuPlaceRows();
+            if (zone === 'power') return setStartMenuHot(dir > 0 ? places[0] : places[places.length - 1]);
+            const j = places.indexOf(active) + dir;
+            return setStartMenuHot(j < 0 || j >= places.length ? startMenuPowerDefault() : places[j]);
+        }
+        // Start Search with results: the results, the box keeps the caret (Vista)
+        if (zone === 'search' && startMenuView === 'search' && els.search.value.trim()) return moveStartMenuHot(dir);
+        const rows = startMenuRows();
+        const cycle = rows.concat([els.allPrograms, els.search]);
+        let i = cycle.indexOf(active);
+        if (active === els.list) i = dir > 0 ? -1 : rows.length;
+        if (i < 0 && zone === 'search') i = cycle.length - 1;
+        const next = cycle[(i + dir + cycle.length) % cycle.length];
+        if (next === els.search) return focusStartMenuSearch();
+        setStartMenuHot(next);
+    }
+
+    function startMenuHorizontal(zone, active, dir) {
+        const els = startMenuEls;
+        if (zone === 'list' && active && active.classList.contains('start-menu-row') && startMenuView === 'programs') {
+            const open = active.getAttribute('aria-expanded') === 'true';
+            if (dir > 0) {
+                if (active.classList.contains('is-folder') && !open) toggleStartMenuFolder(active.dataset.folderId);
+                return;
+            }
+            if (active.classList.contains('is-folder') && open) return toggleStartMenuFolder(active.dataset.folderId);
+            const parent = active.dataset.parentFolder
+                ? els.list.querySelector(`.start-menu-row[data-folder-id="${CSS.escape(active.dataset.parentFolder)}"]`)
+                : null;
+            if (parent) setStartMenuHot(parent);
+            return;
+        }
+        if (zone === 'list') {
+            const row = active && active.classList.contains('start-menu-row') ? active : startMenuRows()[0];
+            if (row) setStartMenuHot(startMenuPlaceBeside(row));
+            return;
+        }
+        if (zone === 'allprograms') {
+            if (dir > 0 && startMenuView === 'home') return startMenuActivate('allprograms', active);
+            if (dir < 0) setStartMenuHot(startMenuPlaceBeside(active));
+            return;
+        }
+        if (zone === 'places') {
+            if (dir > 0 && active && active._startPlace && startMenuPlaceHasMenu(active._startPlace)) return openStartMenuPlaceMenu(active, true);
+            const row = startMenuRowBeside(active);
+            if (row) setStartMenuHot(row);
+            return;
+        }
+        if (zone === 'power') {
+            const buttons = startMenuPowerButtons();
+            const j = buttons.indexOf(active) + dir;
+            if (j < 0) return focusStartMenuSearch();
+            if (j >= buttons.length) return;
+            setStartMenuHot(buttons[j]);
+            // Vista: the arrow's menu drops as soon as the arrow is reached
+            if (buttons[j].classList.contains('is-arrow')) openStartMenuPowerMenu(buttons[j]);
+        }
+    }
+
+    function startMenuActivate(zone, active) {
+        const els = startMenuEls;
+        if (zone === 'allprograms') {
+            const toPrograms = startMenuView === 'home';
+            setStartMenuView(toPrograms ? 'programs' : 'home');
+            setStartMenuHot(toPrograms ? (startMenuRows()[0] || els.allPrograms) : els.allPrograms);
+            return;
+        }
+        if (zone === 'places' && active && active._startPlace && startMenuPlaceHasMenu(active._startPlace)) return openStartMenuPlaceMenu(active, true);
+        if (zone === 'power' && active && active.classList.contains('is-arrow')) return openStartMenuPowerMenu(active);
+        if (zone === 'list' && active && active.classList.contains('is-folder')) return toggleStartMenuFolder(active.dataset.folderId);
+        if (active && active !== els.list) active.click();
+    }
+
+    /** A letter off Start Search: the next row or place whose name starts with it. */
+    function startMenuFirstLetter(zone, active, ch) {
+        const pool = zone === 'places' ? startMenuPlaceRows() : zone === 'power' ? [] : startMenuRows();
+        if (!pool.length) return;
+        const text = (el) => (el._startPlace ? el._startPlace.text : (el.querySelector('.start-menu-row-title') || el).textContent || '').trim().toLowerCase();
+        const at = pool.indexOf(active);
+        for (let k = 1; k <= pool.length; k++) {
+            const el = pool[(at + k + pool.length) % pool.length];
+            if (text(el).startsWith(ch.toLowerCase())) return setStartMenuHot(el);
+        }
+    }
+
+    function startMenuEscape() {
+        const els = startMenuEls;
+        if (els.search.value) {
+            els.search.value = '';
+            onStartMenuSearchInput();
+            focusStartMenuSearch();
+        } else if (startMenuView !== 'home') {
+            setStartMenuView('home');
+            setStartMenuHot(els.allPrograms);
+        } else {
+            closeStartMenu();
+        }
+    }
+
+    /** The click menu open from inside Start (a place's menu, Recent Items, the power arrow), or null. */
+    function startMenuOpenPopupOwner() {
+        if (typeof contextMenu === 'undefined' || !contextMenu || !contextMenu.isOpen) return null;
+        const owner = contextMenu.currentTarget;
+        return owner && startMenu && startMenu.contains(owner) ? owner : null;
+    }
+
+    function closeStartMenuPopup(refocus) {
+        const owner = startMenuOpenPopupOwner();
+        if (!owner) return;
+        contextMenu.hideMenu();
+        if (refocus) setStartMenuHot(owner);
+    }
+
+    /** A letter in an open menu: the row whose underlined letter it is runs; else the next row starting with it. */
+    function startMenuPopupLetter(ch) {
+        const layer = typeof contextMenu._keyboardLayer === 'function' ? contextMenu._keyboardLayer() : contextMenu.menu;
+        if (!layer) return false;
+        const rows = [...layer.querySelectorAll('.context-menu-item:not(.disabled)')]
+            .filter((row) => row.closest('.context-menu, .context-menu-submenu') === layer);
+        const lower = ch.toLowerCase();
+        const keyed = rows.find((row) => {
+            const u = row.querySelector('.context-menu-access-key');
+            return u && u.textContent.toLowerCase() === lower;
+        });
+        if (keyed) { keyed.click(); return true; }
+        const at = rows.indexOf(contextMenu._kbdRow);
+        for (let k = 1; k <= rows.length; k++) {
+            const row = rows[(at + k) % rows.length];
+            if ((row.textContent || '').trim().toLowerCase().startsWith(lower)) {
+                contextMenu._setKeyboardRow(row);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function onStartMenuKeydown(e) {
+        if (!startMenuEls || !startMenu || startMenu.classList.contains('hidden') || !startMenu.contains(document.activeElement)) return;
+        if (e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return;
+        const key = e.key;
+        const stop = () => { e.preventDefault(); e.stopPropagation(); };
+        // a menu of the Start menu's own is open: arrows and Enter are the menu's (contextMenu.js); Esc closes it alone
+        if (startMenuOpenPopupOwner()) {
+            if (key === 'Escape') { stop(); closeStartMenuPopup(true); return; }
+            if (key.length === 1 && key !== ' ' && startMenuPopupLetter(key)) stop();
+            return;
+        }
+        const active = document.activeElement;
+        const zone = startMenuZoneOf(active) || 'search';
+        switch (key) {
+            case 'Escape': stop(); startMenuEscape(); return;
+            case 'Tab': stop(); startMenuTabZone(zone, e.shiftKey ? -1 : 1); return;
+            case 'ArrowDown':
+            case 'ArrowUp':
+                stop();
+                startMenuVertical(zone, active, key === 'ArrowDown' ? 1 : -1);
+                return;
+            case 'ArrowRight':
+            case 'ArrowLeft':
+                if (zone === 'search') return; // the caret
+                stop();
+                startMenuHorizontal(zone, active, key === 'ArrowRight' ? 1 : -1);
+                return;
+            case 'Enter':
+            case ' ':
+                if (zone === 'search') {
+                    if (key !== 'Enter') return;
+                    stop();
+                    const hot = startMenuEls.list.querySelector('.start-menu-row.is-hot');
+                    if (hot && startMenuView === 'search') hot.click();
+                    return;
+                }
+                stop();
+                startMenuActivate(zone, active);
+                return;
+            default:
+                break;
+        }
+        if (zone !== 'search' && key.length === 1 && /\S/.test(key)) {
+            stop();
+            startMenuFirstLetter(zone, active, key);
+        }
+    }
+
+    // ---- newly installed programs (Customize Start Menu's "Highlight newly installed programs", #1060) ----
+    // The programs seen so far are remembered on this computer; one that turns up later is new (orange in
+    // All Programs, its folders and the All Programs button) until it is opened. The first run knows them all.
+    const START_MENU_KNOWN_KEY = 'startMenuKnownPrograms';
+
+    function startMenuNewPrograms() {
+        const prefs = startMenuTaskbarSettings();
+        if (prefs && prefs.highlightNew === false) return new Set();
+        if (START_MENU_STATE.newSet) return START_MENU_STATE.newSet;
+        const ids = collectStartMenuLaunchableDescriptors().map((item) => item.launchId).filter(Boolean);
+        let known = null;
+        try { known = JSON.parse(localStorage.getItem(START_MENU_KNOWN_KEY) || 'null'); } catch (_) { known = null; }
+        if (!Array.isArray(known)) {
+            try { localStorage.setItem(START_MENU_KNOWN_KEY, JSON.stringify(ids)); } catch (_) { /* private mode */ }
+            known = ids;
+        }
+        const seen = new Set(known);
+        START_MENU_STATE.newSet = new Set(ids.filter((id) => !seen.has(id)));
+        return START_MENU_STATE.newSet;
+    }
+
+    /** Opened (or the list rebuilt): a new program is new no more. */
+    function startMenuProgramSeen(launchId) {
+        if (!launchId || !startMenuNewPrograms().has(launchId)) return;
+        START_MENU_STATE.newSet.delete(launchId);
+        try {
+            const known = JSON.parse(localStorage.getItem(START_MENU_KNOWN_KEY) || '[]');
+            if (Array.isArray(known) && !known.includes(launchId)) {
+                known.push(launchId);
+                localStorage.setItem(START_MENU_KNOWN_KEY, JSON.stringify(known.slice(-600)));
+            }
+        } catch (_) { /* private mode */ }
+    }
+
+    function startMenuEntryIsNew(entry) {
+        const fresh = startMenuNewPrograms();
+        if (!fresh.size || !entry) return false;
+        if (entry.folder) return (entry.children || []).some(startMenuEntryIsNew);
+        return !!entry.launchId && fresh.has(entry.launchId);
+    }
+
+    /** Customize Start Menu's choice for a place: 'link' | 'menu' | 'none' (folders), true / false (the rest). */
+    function startMenuPlaceSetting(place, prefs = startMenuTaskbarSettings()) {
+        const v = prefs && prefs.places ? prefs.places[place.id] : undefined;
+        if (place.kind === 'folder') return v === false ? 'none' : v === 'menu' ? 'menu' : 'link';
+        if (place.kind === 'check') return v === undefined ? place.on !== false : v !== false;
+        return true;
+    }
+
+    /** Customize Start Menu's "Don't display this item" and check boxes, and Privacy's recently opened files (Recent Items). */
+    function startMenuPlaceShown(place) {
+        if (place.separator) return true;
+        const prefs = startMenuTaskbarSettings();
+        if (!prefs) return place.kind !== 'admin' && !(place.kind === 'check' && place.on === false);
+        if (place.kind === 'privacy') return !(prefs && prefs.recentFiles === false);
+        if (place.kind === 'admin') return !!(prefs && prefs.adminTools === 'both');
+        const v = startMenuPlaceSetting(place, prefs);
+        return v !== 'none' && v !== false;
+    }
+
+    /** A place that opens a menu: Recent Items, Favorites, Administrative Tools, or a folder set to Display as a menu. */
+    function startMenuPlaceHasMenu(place) {
+        if (!place) return false;
+        if (place.flyout) return true;
+        return place.kind === 'folder' && typeof place.menu === 'function' && startMenuPlaceSetting(place) === 'menu';
+    }
+
+    // Alchemy's bookmarks for the Favorites menu: the user settings' copy (applyUserGlobalSettingsToClient),
+    // or the browser's own when it has loaded them (grimoireRemoteBrowser.js)
+    function startMenuFavorites() {
+        const live = typeof grimoireAlchemySettings !== 'undefined' && grimoireAlchemySettings && Array.isArray(grimoireAlchemySettings.bookmarks)
+            ? grimoireAlchemySettings.bookmarks : null;
+        return (live || START_MENU_STATE.favorites).filter((b) => b && b.url).slice(0, 60);
+    }
+
+    /** A Recent Items row's glyph by what it is (the menu draws Font Awesome glyphs). */
+    function recentItemIconClass(kind) {
+        switch (kind) {
+            case 'page': return 'fas fa-globe';
+            case 'studio': return 'fas fa-compass-drafting';
+            case 'director': return 'fas fa-clapperboard';
+            case 'note': return 'fas fa-note-sticky';
+            case 'picture': return 'fas fa-image';
+            case 'folder': return 'fas fa-folder';
+            default: return 'fas fa-file';
+        }
+    }
+
+    /** A place menu's rows as the click menu takes them (16 px pictures; a row's index is its value). */
+    function startMenuPlaceMenuSections(place) {
+        if (place.id === 'recent') {
+            const store = window.recentItems;
+            const recent = store ? store.list() : [];
+            const items = recent.length
+                ? recent.map((entry, i) => ({ icon: entry.icon || recentItemIconClass(entry.kind), text: entry.title, action: `recent:${i}`, value: i }))
+                : [{ text: '(Empty)', disabled: true }];
+            return {
+                rows: recent,
+                sections: [{ type: 'list', items: items.concat([{ separator: true }, { text: 'Clear Recent Items list', action: 'clear-recent', disabled: !recent.length, value: 'clear' }]) }]
+            };
+        }
+        const rows = (place.menu ? place.menu() : []).filter(Boolean);
+        const items = rows.length
+            ? rows.map((row, i) => {
+                const image = row.image || (row.imageIcon ? resolveAppIconPath(row.imageIcon, 16) : '');
+                return Object.assign({ text: row.text, action: `place:${i}`, value: i },
+                    image ? { image, image2x: row.imageIcon ? resolveAppIconPath(row.imageIcon, 32) : undefined } : { icon: row.icon || 'fas fa-file' });
+            })
+            : [{ text: '(Empty)', disabled: true }];
+        return { rows, sections: [{ type: 'list', items }] };
+    }
+
+    /** Where a place's menu cascades: from the Start menu's right edge, its top at the row's (Vista), moved up to fit. */
+    function startMenuCascadeAnchor(row) {
+        const box = startMenu.getBoundingClientRect();
+        const r = row.getBoundingClientRect();
+        const x = Math.round(box.right - 3);
+        // contextMenu.calculateAnchorPositioning puts the menu 4 px under the anchor's bottom; a top of 0 keeps it
+        // from flipping above the row (it slides up to fit the screen instead, as Vista's does)
+        return { getBoundingClientRect: () => ({ left: x, right: x, width: 0, top: 0, bottom: Math.round(r.top) - 7, height: 0 }) };
+    }
+
+    /** A place's menu (Recent Items, Favorites, Administrative Tools, a folder shown as a menu), rebuilt on each open. */
+    function attachStartMenuPlaceMenu(row, place) {
+        if (typeof contextMenu === 'undefined' || !contextMenu) return;
+        let built = null;
+        const config = {
+            position: 'anchor',
+            anchorElement: () => startMenuCascadeAnchor(row),
+            sections: [{ type: 'list', items: [] }],
+            beforeShow: () => {
+                built = startMenuPlaceMenuSections(place);
+                config.sections = built.sections;
+            },
+            // Left in the menu: back to the place (Vista)
+            onNavigateLeft: () => closeStartMenuPopup(true),
+            onAction: (action) => {
+                if (action === 'clear-recent') {
+                    if (window.recentItems) window.recentItems.clear();
+                    return;
+                }
+                const m = /^(recent|place):(\d+)$/.exec(String(action));
+                const pick = m && built ? built.rows[Number(m[2])] : null;
+                if (!pick) return;
+                closeStartMenu();
+                if (m[1] === 'recent') void window.recentItems.open(pick);
+                else Promise.resolve().then(() => pick.run()).catch((err) => console.error(`Start menu ${place.id}:`, err));
+            }
+        };
+        contextMenu.attachClickMenuToElement(row, config);
+        wireStartMenuOverlayTracking();
+        // "Open submenus when I pause on them with the mouse pointer": Vista's MenuShowDelay, 400 ms
+        let pause = 0;
+        row.addEventListener('pointerenter', (e) => {
+            if (e.pointerType !== 'mouse') return;
+            const prefs = startMenuTaskbarSettings();
+            if (prefs && prefs.autoCascade === false) return;
+            clearTimeout(pause);
+            pause = setTimeout(() => {
+                if (!row.isConnected || !row.matches(':hover') || startMenuOpenPopupOwner() === row) return;
+                openStartMenuPlaceMenu(row, false);
+            }, 400);
+        });
+        row.addEventListener('pointerleave', () => clearTimeout(pause));
+    }
+
+    // While a place's menu is open its overlay (contextMenu.js) covers the column, so the pointer is followed here:
+    // resting on another place for Vista's 400 ms opens that one's menu, or closes the open one (Vista's cascade)
+    function wireStartMenuOverlayTracking() {
+        if (START_MENU_STATE.overlayWired || typeof contextMenu === 'undefined' || !contextMenu || !contextMenu.overlay) return;
+        START_MENU_STATE.overlayWired = true;
+        contextMenu.overlay.addEventListener('mousemove', (e) => {
+            const owner = startMenuOpenPopupOwner();
+            if (!owner || !owner.classList.contains('start-menu-place')) return;
+            const hit = document.elementsFromPoint(e.clientX, e.clientY).find((el) => el !== contextMenu.overlay);
+            const place = hit && hit.closest ? hit.closest('.start-menu-place') : null;
+            if (place === START_MENU_STATE.overlayPlace) return;
+            START_MENU_STATE.overlayPlace = place;
+            clearTimeout(START_MENU_STATE.overlayPause);
+            if (!place || place === owner) return;
+            const prefs = startMenuTaskbarSettings();
+            if (prefs && prefs.autoCascade === false) return;
+            START_MENU_STATE.overlayPause = setTimeout(() => {
+                if (START_MENU_STATE.overlayPlace !== place || !place.isConnected || startMenuOpenPopupOwner() !== owner) return;
+                if (place._startPlace && startMenuPlaceHasMenu(place._startPlace)) openStartMenuPlaceMenu(place, false);
+                else { contextMenu.hideMenu(); setStartMenuHot(place); }
+            }, 400);
+        });
+    }
+
+    /** Open a place's menu; from the keyboard its first row is chosen. */
+    function openStartMenuPlaceMenu(row, keyboard) {
+        if (typeof contextMenu === 'undefined' || !contextMenu || !row.dataset.clickMenu) return;
+        if (startMenuOpenPopupOwner() && startMenuOpenPopupOwner() !== row) contextMenu.hideMenu();
+        setStartMenuHot(row);
+        contextMenu.openClickMenu(row, keyboard ? 0 : undefined);
+        if (keyboard) {
+            const first = contextMenu.menu && contextMenu.menu.querySelector('.context-menu-item:not(.disabled)');
+            if (first) { contextMenu._kbdLayer = contextMenu.menu; contextMenu._setKeyboardRow(first); }
+        }
+    }
+
+    /** The power arrow's menu from the keyboard: the power button's own choice chosen (Vista showed Shut Down). */
+    function openStartMenuPowerMenu(button) {
+        if (typeof contextMenu === 'undefined' || !contextMenu || !button.dataset.clickMenu) return;
+        const prefs = startMenuTaskbarSettings() || {};
+        const id = { restart: 'restart', logoff: 'logout' }[prefs.powerButton] || 'shutdown';
+        contextMenu.openClickMenu(button, id);
+    }
+
+    // ---- size (#1060) ----
+    // Vista sizes the menu from Customize Start Menu, measured on the VM (96 dpi; x 1.25 here): the
+    // height is the tallest of 420 px, the left column (88 px + one row per pinned program and per
+    // "Number of recent programs to display", 38 px each with large icons, 22 px small, kept even
+    // while the list is shorter) and the right column (82 px + 35 px a place + 3 px a separator); the
+    // width is fixed but the places column grows to its longest name. It never goes higher than the
+    // screen above the taskbar: then fewer recent programs show and Vista's balloon "Some Start menu
+    // items can't be displayed" comes up once. There is no sizing border: Vista's menu cannot be
+    // dragged to another size (the VM's DV2ControlHost has no WS_THICKFRAME and its edges do not drag).
+    const START_MENU_MIN_H = 525;
+
+    const START_MENU_LEFT_BASE_H = 105;
+
+      // menu padding, Start Search, the pane's frame, All Programs, the separator
+    const START_MENU_RIGHT_BASE_H = 98;
+
+      // the account frame's room, the power buttons, padding
+    const START_MENU_PLACE_H = 44;
+
+    const START_MENU_PLACE_SEP_H = 4;
+
+    const START_MENU_ROW_H = { large: 48, medium: 38, small: 28 };
+
+    const START_MENU_FRAME_OVERHANG = 34;
+
+    // what the menu keeps between opens
+    const START_MENU_STATE = { newSet: null, favorites: [], overlayWired: false, overlayPause: 0, overlayPlace: null, frequentFit: Infinity, overflowShown: '', overflowPending: '' };
+
+    /** Lay the menu out at its Vista size; returns the number of recent programs that fit. */
+    function applyStartMenuSize() {
+        if (!startMenuEls) return Infinity;
+        const prefs = startMenuTaskbarSettings() || {};
+        const rowH = START_MENU_ROW_H[prefs.startIconSize] || START_MENU_ROW_H.large;
+        const pinned = getStartMenuPinnedRows().length;
+        const wanted = prefs.recentPrograms === false ? 0 : (Number.isFinite(prefs.recentProgramCount) ? prefs.recentProgramCount : START_MENU_FREQUENT_LIMIT);
+        const menu = startMenuEls.menu;
+        const placeRows = Number(menu.dataset.placeRows) || 0;
+        const placeSeps = Number(menu.dataset.placeSeparators) || 0;
+        const right = START_MENU_RIGHT_BASE_H + placeRows * START_MENU_PLACE_H + placeSeps * START_MENU_PLACE_SEP_H;
+        const bar = document.getElementById('desktopTaskbar');
+        const room = window.innerHeight - (bar ? bar.offsetHeight : 35) - START_MENU_FRAME_OVERHANG;
+        const leftFor = (n) => START_MENU_LEFT_BASE_H + (pinned + n) * rowH;
+        let fit = wanted;
+        while (fit > 0 && leftFor(fit) > room) fit--;
+        // a list cut short takes all the room there is (the VM: 1144 px under a 1200 px screen)
+        const height = fit < wanted ? room : Math.min(room, Math.max(START_MENU_MIN_H, leftFor(fit), right));
+        menu.style.setProperty('--start-menu-h', `${Math.max(0, Math.floor(height))}px`);
+        START_MENU_STATE.frequentFit = fit;
+        // the balloon comes up once the power buttons it points at are built (openStartMenu / buildStartMenu)
+        START_MENU_STATE.overflowPending = fit < wanted ? `${wanted}:${pinned}:${rowH}:${room}` : '';
+        return fit;
+    }
+
+    /** Vista's balloon over the Start menu when the items set in Customize Start Menu do not fit (once per setting). */
+    function showStartMenuOverflowBalloon(key) {
+        if (!key || START_MENU_STATE.overflowShown === key || typeof PopoverManager === 'undefined' || !startMenuEls) return;
+        START_MENU_STATE.overflowShown = key;
+        const anchor = startMenuEls.power.querySelector('.is-lock') || startMenuEls.power.querySelector('.start-menu-power-button');
+        if (!anchor) return;
+        // Vista's balloon look (service-worker-tray.css); its stem on the left, at the lock button's middle
+        PopoverManager.showPopover(anchor, 'info', "Some Start menu items can't be displayed",
+            'There is not enough room to show all of the items that you have added to the Start menu. To display all items, try a higher screen resolution.',
+            false, 15000, typeof PopoverManager._trayTypeIcon === 'function' ? PopoverManager._trayTypeIcon('info') : null, null,
+            { popupId: 'start-menu-overflow', position: 'top', arrowPosition: 'bottom-right', className: 'start-menu-overflow-balloon', onClick: null });
+        requestAnimationFrame(() => {
+            const pop = document.querySelector('.popover.start-menu-overflow-balloon');
+            if (!pop || !anchor.isConnected) return;
+            // PopoverManager keeps tray-balloon for tray icons; this one is Vista's same balloon over the Start menu
+            pop.classList.add('tray-balloon', 'tb-icon');
+            const r = anchor.getBoundingClientRect();
+            pop.style.left = `${Math.round(r.left + r.width / 2 - 31)}px`;
+        });
+    }
+
+    return { getStartMenuPinnedRows, getStartMenuPinProgramChoices, startMenuSearchesCategory, START_MENU_COLUMN_SKEW_PX, START_MENU_TAB_ZONES, startMenuRows, startMenuPlaceRows, startMenuPowerButtons, startMenuZoneOf, setStartMenuHot, focusStartMenuSearch, startMenuPowerDefault, startMenuAtHeight, startMenuPlaceBeside, startMenuRowBeside, startMenuTabZone, startMenuVertical, startMenuHorizontal, startMenuActivate, startMenuFirstLetter, startMenuEscape, startMenuOpenPopupOwner, closeStartMenuPopup, startMenuPopupLetter, onStartMenuKeydown, START_MENU_KNOWN_KEY, startMenuNewPrograms, startMenuProgramSeen, startMenuEntryIsNew, startMenuPlaceSetting, startMenuPlaceShown, startMenuPlaceHasMenu, startMenuFavorites, recentItemIconClass, startMenuPlaceMenuSections, startMenuCascadeAnchor, attachStartMenuPlaceMenu, wireStartMenuOverlayTracking, openStartMenuPlaceMenu, openStartMenuPowerMenu, START_MENU_MIN_H, START_MENU_LEFT_BASE_H, START_MENU_RIGHT_BASE_H, START_MENU_PLACE_H, START_MENU_PLACE_SEP_H, START_MENU_ROW_H, START_MENU_FRAME_OVERHANG, START_MENU_STATE, applyStartMenuSize, showStartMenuOverflowBalloon };
+})();
+
+
 function renderStartMenuHome(list) {
-    const pinned = getStartMenuPinnedItems().filter(isStartMenuListedItem);
+    const pinned = startMenuKit.getStartMenuPinnedRows();
     pinned.forEach((item) => list.appendChild(createStartMenuListRow(item, 'pinned')));
     const frequent = getStartMenuFrequentItems();
     if (pinned.length && frequent.length) list.appendChild(createStartMenuSeparator());
@@ -8820,7 +9479,8 @@ function collectStartMenuSearchEntries(query) {
     const listed = new Set(raw.filter((e) => !e.command).map((e) => String(e.label || '').toLowerCase()));
     const entries = raw.filter((entry) => typeof entry.execute === 'function'
         && !entry.isDeferredNetwork && !entry.isNetworkResult && entry.category !== 'wiki'
-        && !entry.startMenuHidden && !(entry.command && listed.has(String(entry.subtitle || '').toLowerCase())));
+        && !entry.startMenuHidden && !(entry.command && listed.has(String(entry.subtitle || '').toLowerCase()))
+        && startMenuKit.startMenuSearchesCategory(entry.category));
     entries.sort((a, b) => startMenuSearchGroupOrder(a) - startMenuSearchGroupOrder(b)
         || (a.matchRank ?? 3) - (b.matchRank ?? 3)
         || String(a.label || '').localeCompare(String(b.label || '')));
@@ -8845,6 +9505,7 @@ function collectStartMenuSearchEntries(query) {
     });
     return out.concat(tail);
 }
+
 
 function renderStartMenuSearchResults(list) {
     const query = startMenuEls ? startMenuEls.search.value.trim() : '';
@@ -8941,7 +9602,6 @@ function onStartMenuSearchInput() {
     }
 }
 
-// ---- keyboard: typing goes to Start Search, arrows move through the left pane ----
 
 function moveStartMenuHot(delta) {
     const rows = [...startMenuEls.list.querySelectorAll('.start-menu-row')];
@@ -8954,27 +9614,25 @@ function moveStartMenuHot(delta) {
     if (startMenuView === 'search') startMenuSearchHotId = rows[index].dataset.entryId || null;
 }
 
-function onStartMenuSearchKeydown(e) {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        moveStartMenuHot(e.key === 'ArrowDown' ? 1 : -1);
-    } else if (e.key === 'Enter') {
-        e.preventDefault();
-        const hot = startMenuEls.list.querySelector('.start-menu-row.is-hot');
-        if (hot) hot.click();
-    } else if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (startMenuEls.search.value) {
-            startMenuEls.search.value = '';
-            onStartMenuSearchInput();
-        } else if (startMenuView !== 'home') {
-            setStartMenuView('home');
-        } else {
-            closeStartMenu();
-        }
-    }
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // ---- views ----
 
@@ -8999,18 +9657,34 @@ function renderStartMenuList() {
     const back = startMenuView !== 'home';
     allPrograms.classList.toggle('is-back', back);
     allProgramsLabel.textContent = back ? 'Back' : 'All Programs';
+    // Highlight newly installed programs: All Programs in Vista's orange while one waits to be opened
+    allPrograms.classList.toggle('is-new', !back && startMenuKit.startMenuNewPrograms().size > 0);
 }
+
+
+
+
 
 // ---- right column ----
 
 /** The places column as the Start menu shows it (Customize Start Menu and Privacy applied). */
 function getStartMenuPlaces() {
     return getStartMenuPlacesAll()
-        .filter((place) => startMenuPlaceShown(place))
+        .filter((place) => startMenuKit.startMenuPlaceShown(place))
         .filter((place, i, all) => !place.separator || (i > 0 && !all[i - 1].separator && i < all.length - 1));
 }
 
-/** Every place the column can show (Customize Start Menu lists them). */
+/**
+ * Every place the column can show, in Vista's order (the VM with every item on: Personal folder,
+ * Documents, Pictures, Music, Games, Favorites | Recent Items, Computer, Network, Connect To | Control
+ * Panel, Default Programs, Administrative Tools, Printers, Help and Support, Run...), Melaton's own in
+ * the folder slots. Customize Start Menu (taskbarProperties.js) lists them from here:
+ *   kind 'folder'   Display as a link / as a menu / Don't display; menu() gives the menu's rows
+ *   kind 'check'    shown or not (on: Vista's default); menu() when it is always a menu (Favorites)
+ *   kind 'privacy'  Recent Items, shown by the Privacy box; 'admin' Administrative Tools, by its tree node
+ *   tree            the name in Customize Start Menu's list
+ * A menu row: { text, image (16 px), imageIcon, run }.
+ */
 function getStartMenuPlacesAll() {
     const desktop = isDesktopStartMenuEnvironment();
     const launch = (launchId) => () => {
@@ -9022,105 +9696,99 @@ function getStartMenuPlacesAll() {
         // melatonControlPanel.open: public/scripts/comp/melatonControlPanel.js
         if (window.melatonControlPanel) window.melatonControlPanel.open(page);
     };
-    return [
-        { id: 'user', text: startMenuUserName(), action: () => openExplorerApplet() },
-        { id: 'cartograph', text: 'Melaton Explorer', imageIcon: 'vista-explorer.png', action: launch('explorer') },
-        { id: 'gallery', text: 'Gallery', imageIcon: 'art.png', desktopOnly: true, action: launch('workspace') },
-        { id: 'notion', text: 'Melaton Journal', imageIcon: 'vista-journal.png', action: launch('notebook') },
-        // Vista's Games place: the Games Explorer (public/scripts/comp/desktop-apps/vista-games/gamesExplorer.js)
-        { id: 'games', text: 'Games', imageIcon: 'vista-games.png', desktopOnly: true, action: launch('games-explorer') },
-        { separator: true },
-        { id: 'recent', text: 'Recent Items', flyout: true },
-        { id: 'network', text: 'Network and Server Center', image: '/static_images/melaton/net-globe.png', action: controlPanel('network') },
-        { separator: true },
-        { id: 'control-panel', text: 'Control Panel', imageIcon: 'vista-control-panel.png', action: controlPanel('home') },
-        // Help and Support: the project's page on Yozora, in Alchemy (openGrimoireUrl: featureLoader.js)
-        { id: 'help', text: 'Help and Support', imageIcon: 'vista-help.png', action: () => openGrimoireUrl(START_MENU_HELP_URL) },
-    ].filter((place) => !(place.desktopOnly && !desktop));
-}
-
-/** Customize Start Menu's "Don't display this item", and Privacy's recently opened files (Recent Items). */
-function startMenuPlaceShown(place) {
-    const prefs = startMenuTaskbarSettings();
-    if (!prefs || place.separator || place.id === 'user') return true;
-    if (place.id === 'recent' && prefs.recentFiles === false) return false;
-    return prefs.places[place.id] !== false;
-}
-
-/** Recent Items: this workspace's recently opened documents (public/scripts/comp/recentItems.js:
- *  Cartograph files, browser sessions' pages, Studio images, Director sessions, notes), rebuilt as
- *  the pointer reaches it. Programs live in the most used list, not here. */
-function attachStartMenuRecentItemsMenu(row) {
-    if (typeof contextMenu === 'undefined' || !contextMenu) return;
-    const refresh = () => {
-        const store = window.recentItems;
-        const recent = store ? store.list() : [];
-        const byKey = new Map(recent.map((entry) => [entry.key, entry]));
-        const items = recent.length
-            ? recent.map((entry) => ({
-                icon: entry.icon || recentItemIconClass(entry.kind),
-                text: entry.title,
-                action: `recent:${entry.key}`
-            }))
-            : [{ text: '(Empty)', disabled: true }];
-        contextMenu.detachClickMenuFromElement(row);
-        contextMenu.attachClickMenuToElement(row, {
-            sections: [{
-                type: 'list',
-                items: items.concat([{ separator: true }, { text: 'Clear Recent Items list', action: 'clear-recent', disabled: !recent.length }])
-            }],
-            onAction: (action) => {
-                if (action === 'clear-recent') {
-                    if (store) store.clear();
-                    return;
-                }
-                const entry = byKey.get(String(action).slice('recent:'.length));
-                if (entry && store) {
-                    closeStartMenu();
-                    void store.open(entry);
-                }
-            }
-        });
+    // a Control Panel item by its catalog id (cplCatalog.js), as Run opens one
+    const cplItem = (id) => async () => {
+        await featureLoader.loadFeature('control_panel');
+        if (window.melatonControlPanel && typeof window.melatonControlPanel.openItem === 'function') window.melatonControlPanel.openItem(id);
     };
-    row.addEventListener('pointerenter', refresh);
-    row.addEventListener('pointerdown', refresh, true);
-    row.addEventListener('focus', refresh);
-    refresh();
+    const appRow = (item) => item && ({ text: startMenuLabel(item), imageIcon: item.imageIcon, icon: item.icon, launchId: item.launchId, run: () => launchStartMenuItem(item) });
+    const folderPlaces = ['cartograph', 'gallery', 'notion', 'games'];
+    const places = [
+        { id: 'user', text: startMenuUserName(), tree: 'Personal folder', kind: 'folder', image: `${START_MENU_ART}/folder-20.png`, action: () => openExplorerApplet(),
+            // the user's own places
+            menu: () => getStartMenuPlacesAll().filter((pl) => folderPlaces.includes(pl.id)).map((pl) => ({ text: pl.text, imageIcon: pl.imageIcon, image: pl.image, run: pl.action })) },
+        { id: 'cartograph', text: 'Melaton Explorer', kind: 'folder', imageIcon: 'vista-explorer.png', action: launch('explorer'),
+            // Computer's drives: the Cartograph root is Local Disk (C:) (explorerComputerView.js)
+            menu: () => [{ text: 'Local Disk (C:)', image: '/static_images/vista-explorer/drive-fixed-16.png', run: () => openExplorerApplet('/') }] },
+        { id: 'gallery', text: 'Gallery', kind: 'folder', imageIcon: 'art.png', desktopOnly: true, action: launch('workspace'),
+            // each planet's gallery
+            menu: () => buildPlanetsSubmenuItems().filter((it) => typeof it.action === 'function').map((it) => ({
+                text: it.text, icon: 'fas fa-planet-ringed', run: () => { it.action(); launch('workspace')(); }
+            })) },
+        { id: 'notion', text: 'Melaton Journal', kind: 'folder', imageIcon: 'vista-journal.png', action: launch('notebook'),
+            // the notes opened lately (recentItems.js)
+            menu: () => (window.recentItems ? window.recentItems.list() : []).filter((entry) => entry.kind === 'note').map((entry) => ({
+                text: entry.title, icon: 'fas fa-note-sticky', run: () => { void window.recentItems.open(entry); }
+            })) },
+        // Vista's Games place: the Games Explorer (public/scripts/comp/desktop-apps/vista-games/gamesExplorer.js)
+        { id: 'games', text: 'Games', kind: 'folder', imageIcon: 'vista-games.png', desktopOnly: true, action: launch('games-explorer'),
+            menu: () => startMenuGameLaunchables.filter(isStartMenuItemLaunchable).sort(byStartMenuLabel).map(appRow) },
+        // Favorites: Alchemy's bookmarks (the Favorites list of its tab row), always a menu
+        { id: 'favorites', text: 'Favorites', tree: 'Favorites menu', kind: 'check', on: false, flyout: true, imageIcon: 'vista-favorites.png',
+            menu: () => startMenuKit.startMenuFavorites().map((b) => ({ text: b.title || b.url, icon: 'fas fa-star', run: () => openGrimoireUrl(b.url) })) },
+        { separator: true },
+        { id: 'recent', text: 'Recent Items', kind: 'privacy', flyout: true },
+        { id: 'network', text: 'Network and Server Center', tree: 'Network', kind: 'check', on: true, image: '/static_images/melaton/net-globe.png', action: controlPanel('network') },
+        // Connect To: Vista's Connect to a network (dreamosWifi.js; dreamosWifiBoot.js answers until it loads)
+        { id: 'connect-to', text: 'Connect To', kind: 'check', on: true, image: '/static_images/vista-cpl/items/network-and-sharing-center-48.png',
+            action: () => { if (window.dreamosWifi && typeof window.dreamosWifi.openConnect === 'function') void window.dreamosWifi.openConnect(); } },
+        { separator: true },
+        { id: 'control-panel', text: 'Control Panel', kind: 'folder', imageIcon: 'vista-control-panel.png', action: controlPanel('home'),
+            // Control Panel's items, as Vista's menu lists them (cplCatalog.js, loaded with the Start menu when this is a menu)
+            menu: () => {
+                const cat = window.cplCatalog;
+                if (!cat) return [];
+                return cat.ITEMS.filter((c) => c.name && !c.hidden).slice().sort((a, b) => a.name.localeCompare(b.name))
+                    .map((c) => ({ text: c.name, image: c.art ? cat.art(c.art, 16) : undefined, run: cplItem(c.id) }));
+            } },
+        { id: 'default-programs', text: 'Default Programs', kind: 'check', on: true, image: '/static_images/vista-cpl/items/default-programs-48.png', action: cplItem('default-programs') },
+        // System administrative tools' "Display on the All Programs menu and the Start menu": always a menu
+        { id: 'admin-tools', text: 'Administrative Tools', kind: 'admin', flyout: true, image: '/static_images/vista-cpl/items/administrative-tools-48.png',
+            menu: () => getStartMenuPlacedItems('administrative-tools').map(appRow) },
+        { id: 'printers', text: 'Printers', kind: 'check', on: false, image: '/static_images/vista-cpl/items/printers-48.png', action: cplItem('printers') },
+        // Help and Support: the project's page on Yozora, in Alchemy (openGrimoireUrl: featureLoader.js)
+        { id: 'help', text: 'Help and Support', tree: 'Help', kind: 'check', on: true, imageIcon: 'vista-help.png', action: () => openGrimoireUrl(START_MENU_HELP_URL) },
+        { id: 'run', text: 'Run...', tree: 'Run command', kind: 'check', on: false, imageIcon: 'vista-run.png',
+            action: async () => { await featureLoader.loadFeature('run'); runApplet.open(); } }
+    ];
+    return places.filter((place) => !(place.desktopOnly && !desktop));
 }
 
-/** A Recent Items row's glyph by what it is (the menu draws Font Awesome glyphs). */
-function recentItemIconClass(kind) {
-    switch (kind) {
-        case 'page': return 'fas fa-globe';
-        case 'studio': return 'fas fa-compass-drafting';
-        case 'director': return 'fas fa-clapperboard';
-        case 'note': return 'fas fa-note-sticky';
-        case 'picture': return 'fas fa-image';
-        case 'folder': return 'fas fa-folder';
-        default: return 'fas fa-file';
-    }
-}
+
+
+
+
+
+
+
+
+
+
 
 function renderStartMenuPlaces() {
     const container = startMenuEls.places;
-    // the old rows' click menus (Recent Items) go with them, or each open leaves one behind
+    // the old rows' click menus go with them, or each open leaves one behind
     if (typeof contextMenu !== 'undefined' && contextMenu) {
         container.querySelectorAll('[data-click-menu]').forEach((el) => contextMenu.detachClickMenuFromElement(el));
     }
     container.textContent = '';
-    getStartMenuPlaces().forEach((place) => {
+    const places = getStartMenuPlaces();
+    places.forEach((place) => {
         if (place.separator) {
             container.appendChild(createStartMenuSeparator('start-menu-place-separator'));
             return;
         }
         const row = document.createElement('div');
-        row.className = 'start-menu-place' + (place.flyout ? ' has-flyout' : '') + (place.id === 'user' ? ' is-user' : '');
+        const menu = startMenuKit.startMenuPlaceHasMenu(place);
+        row.className = 'start-menu-place' + (menu ? ' has-flyout' : '') + (place.id === 'user' ? ' is-user' : '');
         row.setAttribute('role', 'menuitem');
+        if (menu) row.setAttribute('aria-haspopup', 'menu');
         row.tabIndex = -1;
         row.textContent = place.text;
         row.title = place.text;
-        if (place.flyout) {
-            attachStartMenuRecentItemsMenu(row);
+        row._startPlace = place;
+        if (menu) {
+            startMenuKit.attachStartMenuPlaceMenu(row, place);
         } else {
             row.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -9131,6 +9799,12 @@ function renderStartMenuPlaces() {
         wireStartMenuTileHover(row, place);
         container.appendChild(row);
     });
+    // the menus that read Control Panel's catalog: load it now (a local file), so the menu has its rows
+    if (places.some((pl) => (pl.id === 'control-panel' && startMenuKit.startMenuPlaceHasMenu(pl))) && !window.cplCatalog) {
+        void featureLoader.loadFeature('cpl_catalog').catch(() => {});
+    }
+    startMenuEls.menu.dataset.placeRows = String(places.filter((pl) => !pl.separator).length);
+    startMenuEls.menu.dataset.placeSeparators = String(places.filter((pl) => pl.separator).length);
 }
 
 function buildStartMenuPower() {
@@ -9139,6 +9813,7 @@ function buildStartMenuPower() {
     const button = (className, title, onClick) => {
         const btn = document.createElement('button');
         btn.type = 'button';
+        btn.tabIndex = -1;
         btn.className = `start-menu-power-button ${className}`;
         btn.title = title;
         btn.setAttribute('aria-label', title);
@@ -9181,6 +9856,7 @@ const START_MENU_LOCK_BUTTONS = {
     logoff: { className: 'is-lock is-lock-logoff', title: 'Log off', run: () => runLogoutDirect() }
 };
 
+
 // ---- build ----
 
 function ensureStartMenuElements() {
@@ -9204,6 +9880,8 @@ function ensureStartMenuElements() {
         startMenuEls = null;
         return null;
     }
+    startMenuEls.list.tabIndex = -1;
+    startMenuEls.allPrograms.tabIndex = -1;
     startMenuEls.allPrograms.addEventListener('click', (e) => {
         e.stopPropagation();
         setStartMenuView(startMenuView === 'home' ? 'programs' : 'home');
@@ -9222,7 +9900,10 @@ function ensureStartMenuElements() {
         });
     }
     startMenuEls.search.addEventListener('input', onStartMenuSearchInput);
-    startMenuEls.search.addEventListener('keydown', onStartMenuSearchKeydown);
+    // every key of the menu (#1060): Start Search, the rows, the places and the power buttons. Taken at the
+    // window's capture, before the keyboard registry hands Enter / Escape to the window under the menu
+    // (contextMenu.js listens there first, so an open menu of the Start menu's keeps its own keys)
+    window.addEventListener('keydown', startMenuKit.onStartMenuKeydown, true);
     startMenuEls.list.addEventListener('mousemove', (e) => {
         const row = e.target.closest('.start-menu-row');
         if (!row || row.classList.contains('is-hot')) return;
@@ -9239,8 +9920,9 @@ window.refreshStartMenuPower = refreshStartMenuPower;
 
 function buildStartMenu() {
     if (!ensureStartMenuElements()) return;
-    renderStartMenuList();
     renderStartMenuPlaces();
+    startMenuKit.applyStartMenuSize();
+    renderStartMenuList();
     buildStartMenuPower();
 }
 
@@ -9252,7 +9934,8 @@ function closeAllStartMenuSubmenus() {
 
 const START_MENU_FADE_OUT_MS = 320;
 
-function openStartMenu() {
+/** options.keyboard: opened by the Windows key or Ctrl+Esc (desktopHotkeys.js): Start Search takes the keys. */
+function openStartMenu(options = {}) {
     if (!startMenu) return;
     if (!startMenu.classList.contains('hidden') && !startMenu.classList.contains('start-menu-closing')) {
         return;
@@ -9264,11 +9947,15 @@ function openStartMenu() {
 
     if (ensureStartMenuElements()) {
         startMenuOpenFolders.clear();
-        setStartMenuView('home');
+        startMenuKit.START_MENU_STATE.newSet = null;
         renderStartMenuPlaces();
+        startMenuKit.applyStartMenuSize();
+        setStartMenuView('home');
         buildStartMenuPower();
+        startMenuKit.showStartMenuOverflowBalloon(startMenuKit.START_MENU_STATE.overflowPending);
+        startMenuKit.setStartMenuHot(null);
         setStartMenuTilePicture(null);
-        if (startMenuHasFinePointer()) startMenuEls.search.focus({ preventScroll: true });
+        if (options.keyboard === true || startMenuHasFinePointer()) startMenuEls.search.focus({ preventScroll: true });
         // warm Start Search's index while the menu fades in
         if (typeof searchRunCommands !== 'function') void featureLoader.loadFeature('run_index').catch(() => {});
     }
@@ -9310,6 +9997,8 @@ function closeStartMenu(options = {}) {
     unwireStartMenuOutsideClick();
     closeAllStartMenuSubmenus();
     if (startBtn) startBtn.classList.remove('active');
+    // the keys go back to the page (a focused row would keep them in the hidden menu)
+    if (startMenu.contains(document.activeElement)) document.activeElement.blur();
 
     if (immediate) {
         startMenu.classList.remove('start-menu-opening', 'start-menu-closing');
@@ -9342,11 +10031,11 @@ function closeStartMenu(options = {}) {
     setTimeout(finish, START_MENU_FADE_OUT_MS);
 }
 
-function toggleStartMenu() {
+function toggleStartMenu(options) {
     if (!startMenu) return;
 
     if (startMenu.classList.contains('hidden') && !startMenu.classList.contains('start-menu-closing')) {
-        openStartMenu();
+        openStartMenu(options);
     } else {
         closeStartMenu();
     }
@@ -10317,6 +11006,8 @@ function applyUserGlobalSettingsToClient(settings) {
     if (!settings || typeof settings !== 'object') {
         return;
     }
+    // the Start menu's Favorites menu (#1060): Alchemy's bookmarks, read from here with no request of its own
+    if (settings.alchemy && Array.isArray(settings.alchemy.bookmarks)) startMenuKit.START_MENU_STATE.favorites = settings.alchemy.bookmarks.slice(0, 60);
 
     if (settings.desktop && typeof settings.desktop === 'object') {
         const desktop = settings.desktop;

@@ -80,13 +80,13 @@
     // ---- actions -------------------------------------------------------------------------------
 
     function toggleStart() {
-        // toggleStartMenu: public/scripts/comp/modalUtils.js
-        callGlobal('toggleStartMenu');
+        // toggleStartMenu: public/scripts/comp/modalUtils.js (keyboard: Start Search takes the keys, #1060)
+        callGlobal('toggleStartMenu', { keyboard: true });
     }
 
     function startSearch() {
         // openStartMenu focuses Start Search (modalUtils.js)
-        callGlobal('openStartMenu');
+        callGlobal('openStartMenu', { keyboard: true });
         const search = doc.getElementById('startMenuSearchInput');
         if (search) search.focus({ preventScroll: true });
     }

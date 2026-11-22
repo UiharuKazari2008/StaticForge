@@ -15,6 +15,11 @@
    Linked right after aero-glass.css. */
 
 :root {
+    /* a selected item in a list or tree (Vista's COLOR_HIGHLIGHT / HIGHLIGHTTEXT), and the selection
+       when its list has no focus (COLOR_BTNFACE), measured on the VM (#1060) */
+    --vista-select-bg: #3399ff;
+    --vista-select-text: #fff;
+    --vista-select-inactive-bg: #f0f0f0;
     --vista-glass-edge: hsl(0 0% 0% / 62%);
     --vista-glass-inner: hsl(0 0% 100% / 24%);
     --vista-glass-pane: linear-gradient(hsl(0 0% 100% / 15%), hsl(0 0% 100% / 7%) calc(50% - 1px), hsl(0 0% 0% / 10%) 50%, hsl(0 0% 0% / 0%) 85%, hsl(0 0% 100% / 6%));

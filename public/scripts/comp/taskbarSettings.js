@@ -20,9 +20,18 @@
  *   clock / volume / network / power
  *                   the Notification Area tab's system icons
  *   recentFiles / recentPrograms / recentProgramCount / places
- *                   the Start Menu tab's Privacy and Customize Start Menu (modalUtils.js start menu)
+ *                   the Start Menu tab's Privacy and Customize Start Menu (modalUtils.js start menu);
+ *                   places: { <place id>: false (Don't display) | 'menu' (Display as a menu) | true
+ *                   (shown where Vista's default is off) }, an id left out has Vista's default
  *   startIconSize   'small' | 'medium' | 'large': the pinned and most used list's rows
- *                   (Vista's "Use large icons" is large / small; medium is ours)
+ *                   (Vista's "Use large icons" is large / small; medium is from before #1060)
+ *   autoCascade / dragDrop / highlightNew / searchComm / searchFavorites / searchPrograms / sortByName
+ *                   Customize Start Menu's check boxes (#1060): open place menus on a pause, the rows'
+ *                   right-click menus, new programs in orange, what Start Search looks in, All Programs by name
+ *   searchFiles     'none' | 'index' | 'user': Customize Start Menu's Search files
+ *   adminTools      'none' | 'programs' | 'both': System administrative tools (All Programs, and the places)
+ *   pinInternet / internetProgram / pinEmail / emailProgram
+ *                   Show on Start menu: the Internet and E-mail rows over the pinned list and their programs
  *   programsIconSize
  *                   'small' | 'medium' | 'large': the All Programs list's rows
  *   powerButton     what the Start menu's power button does: 'shutdown' | 'restart' | 'logoff'
@@ -63,8 +72,23 @@
         power: true,
         recentFiles: true,
         recentPrograms: true,
-        recentProgramCount: 8,
+        // Vista's default (Customize Start Menu on the VM, #1060)
+        recentProgramCount: 9,
         ticker: true,
+        autoCascade: true,
+        dragDrop: true,
+        highlightNew: true,
+        searchComm: true,
+        searchFavorites: true,
+        searchPrograms: true,
+        sortByName: true,
+        searchFiles: 'user',
+        // Vista's default is "Don't display"; Melaton kept the folder in All Programs from the start
+        adminTools: 'programs',
+        pinInternet: true,
+        internetProgram: 'encyclopedia',
+        pinEmail: true,
+        emailProgram: 'dovecote',
         startIconSize: 'large',
         programsIconSize: 'small',
         powerButton: 'shutdown',
@@ -79,7 +103,9 @@
         startIconSize: ['small', 'medium', 'large'],
         programsIconSize: ['small', 'medium', 'large'],
         powerButton: ['shutdown', 'restart', 'logoff'],
-        lockButton: ['lock', 'logoff']
+        lockButton: ['lock', 'logoff'],
+        searchFiles: ['none', 'index', 'user'],
+        adminTools: ['none', 'programs', 'both']
     });
 
     const BOOLEAN_KEYS = Object.keys(DEFAULTS).filter((k) => typeof DEFAULTS[k] === 'boolean');
@@ -108,9 +134,13 @@
         if (Number.isFinite(op)) out.opacity = Math.max(20, Math.min(100, Math.round(op)));
         if (raw.places && typeof raw.places === 'object') {
             Object.keys(raw.places).forEach((id) => {
-                if (raw.places[id] === false) out.places[id] = false;
+                const v = raw.places[id];
+                if (v === false || v === true || v === 'menu') out.places[id] = v;
             });
         }
+        ['internetProgram', 'emailProgram'].forEach((k) => {
+            if (typeof raw[k] === 'string' && /^[\w:.-]{1,80}$/.test(raw[k])) out[k] = raw[k];
+        });
         return out;
     }
 
@@ -132,9 +162,10 @@
     function set(patch) {
         const next = normalize({ ...settings, ...(patch || {}), places: { ...settings.places, ...((patch && patch.places) || {}) } });
         if (patch && patch.places) {
-            // a place turned back on drops out of the map
+            // a place back at its default (null) drops out of the map
             Object.keys(patch.places).forEach((id) => {
-                if (patch.places[id] !== false) delete next.places[id];
+                const v = patch.places[id];
+                if (v !== false && v !== true && v !== 'menu') delete next.places[id];
             });
         }
         settings = next;
