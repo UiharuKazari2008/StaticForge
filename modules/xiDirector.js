@@ -648,6 +648,19 @@ function claudeProjectPrompt(workspace) {
     ].filter(Boolean).join('\n\n');
 }
 
+// Written into the chat's folder (visible to the CLI sandboxed or not, like its inbox);
+// rewritten only when the text changed.
+function writeProjectPromptFile(sessionId, workspace) {
+    const dir = path.join(layout().chats, sessionId);
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'project-prompt.md');
+    const text = claudeProjectPrompt(workspace);
+    let prior = null;
+    try { prior = fs.readFileSync(file, 'utf8'); } catch (_) { prior = null; }
+    if (prior !== text) fs.writeFileSync(file, text, { mode: 0o600 });
+    return file;
+}
+
 // Same Dreamscape MCP server Cursor loads from .cursor/mcp.json, passed inline
 // so no file needs to exist inside the jail before the process starts. The
 // placeholders are substituted from the jail env (DREAMSCAPE_MCP_URL/_KEY),
@@ -1566,7 +1579,8 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 '--permission-mode', 'bypassPermissions',
                 '--strict-mcp-config',
                 '--mcp-config', claudeMcpConfigArg(),
-                '--append-system-prompt', claudeProjectPrompt(workspace),
+                // a file: the rules + shared MCP text outgrew one argv string (128 KB, E2BIG, Nov 23 2026)
+                '--append-system-prompt-file', writeProjectPromptFile(sessionId, workspace),
                 ...(runtime === 'tokenrouter' || customProviders.isEngine(runtime) ? ['--model', prepared.model] : ['--effort', claudeEffort]),
                 prepared.claudeFirstTurn ? '--session-id' : '--resume', prepared.claudeSessionId,
                 '--',
@@ -1896,7 +1910,7 @@ module.exports = {
         shouldPark, markToolDiffs, readToolDiffText, buildPrompt, launchPlan,
         layout, readIndex, writeIndex, peekIndex, readProjectCursorRules,
         sanitizeRuntime, assertRuntimeUnchanged, publicXiSession, consumeClaudeStreamLine,
-        claudeProjectPrompt, claudeMcpConfigArg, sanitizeClaudeEffort,
+        claudeProjectPrompt, writeProjectPromptFile, claudeMcpConfigArg, sanitizeClaudeEffort,
         usesClaudeCli, xiIdentityLine, XI_TOKENROUTER_DEFAULT_MODEL
     }
 };
