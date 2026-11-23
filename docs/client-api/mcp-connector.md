@@ -393,6 +393,15 @@ Structured NovelAI account/subscription data. Grok web may receive this module.
 - Does NOT invent remaining gens from usageToolManager's 17.3 * percent
 - Uses existing `opusUsage.js` / account endpoints
 
+#### Director Start Module (`sfapp_director_start`)
+
+Start or reuse a Director chat with a persona (Yozora, Yumiya, Chiyo) from outside, headless, and follow it up (#1068, `modules/directorStart.js`; Plaud recordings use it with `source: plaud:<id>`). `universal` keys pass the scope check; persona keys do not hold it.
+
+| Tool | Description |
+|------|-------------|
+| `start_director_session` | `{ persona, prompt, task?, title?, source?, thread?, sessionId?, attachments?, sessionType?, engine?, model?, effort? }` → `sessionId`, `created` / `reused` / `deduped`, `status`, `open`. Rate group `write`. Reuse order and fields: [agent-session.md](./agent-session.md). REST twin `POST /agent/director/sessions` ([rest-api.md](./rest-api.md)). |
+| `get_director_session` | `{ sessionId }` → `status` running / idle, `name`, `archived`, `sources`, `thread`, `messages`, `lastReply`, `issues`. Rate group `free`. REST twin `GET /agent/director/sessions/:sessionId`. |
+
 #### Dovecote Mail Module (`sfapp_dovecote`)
 
 Own-mailbox mail plus per-mailbox new-mail webhook and notify-forward. Submodule `sfapp_dovecote:notify` is the notify tools only. Exchange admin notify tools are on `sfapp_mail_exchange` (Yukimi / Sala / Tsubame).

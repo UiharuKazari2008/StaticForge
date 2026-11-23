@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-11-22T07:10:00-05:00",
+  "updated_at": "2026-11-23T07:10:00-05:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-11-13T07:30:00-05:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Nov22 7am loop on host dreamscape. Live tree fd5178a45 dirty, 89 ahead/152 behind, under many Claude locks (start1043, dexkb1037, wifi1038, upd1021, ts1013, dex1005, xm989, wm732): untouched; lands from ~/wt/n22 off origin/main 685617e9c (231 first-parent commits since 19645687). Docs: rest-api XM Radio (/api/xmradio/channel|live|key|eco|now|tiicon|track|rec, /xmradio-signin, #989), Alchemy chrome-settings/addons/extension-action, DreamOS machines over ActiveSync (/api/activesync/host/:id/*, #910), /api/dreamos/assign; websocket.md + ws/dreamosUpdates.md miniport_ready/miniport_update_channel; links from ws/activeSync.md and ws/xmradio.md. open=[].",
+  "cake_note": "Nov23 7am loop on host dreamscape. Live tree 3b06604ef dirty (3 wm*.js), 153 ahead/209 behind, under Claude locks (dex1005, ts1013, upd1021, wm732, xm989): untouched; lands from ~/wt/n23 off origin/main a4c352ef1 (55 first-parent commits since 836e9d362). Docs: rest-api POST/GET /agent/director/sessions (#1068); authentication.md + mcp-connector.md sfapp_director_start module (start_director_session / get_director_session); activesync-protocol status.snapshot notices list (30, kind, #1056). open=[].",
   "eaten": [
     {
       "id": "sf-22",

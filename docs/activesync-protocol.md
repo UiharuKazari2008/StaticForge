@@ -209,7 +209,7 @@ Server -> the partnered phone's **service** socket:
 | --- | --- | --- |
 | `inbox.notice` | a notification inbox notice `{ id, app, cls, title, text, actions, data, createdAt, alert, catchUp?, resent?, pageConnected }` | posts it, and always confirms with `inbox.posted`. With Melaton Mobile in front, the page must call `AndroidInbox.shown(id)` within 4 s, or the app posts it itself. `sms:` notices become the text's conversation notification. `rem:` notices get Snooze (5 min) and Dismiss buttons |
 | `inbox.cleared` | `{ id }` | cancels it (and an `sms:` notice's conversation) |
-| `status.snapshot` | `{ full, fields: { mail, sms, chat, director, prints, weather, lapis, traffic, notices, prefs, received } }` | hands it to the CaféReady `status-bar` task, which works out the status icons with the page asleep (`modules/phoneStatus.js`). Only changed fields are sent; the whole snapshot is sent after a hello |
+| `status.snapshot` | `{ full, fields: { mail, sms, chat, director, prints, weather, lapis, traffic, notices, prefs, received } }` | hands it to the CaféReady `status-bar` task, which works out the status icons with the page asleep (`modules/phoneStatus.js`). Only changed fields are sent; the whole snapshot is sent after a hello. `notices.list` holds every waiting notice (mail, texts, Messenger and Director too), the newest thirty, each `{ id, title, text, cls, kind, at }`; `kind` is the holder picture kind from `public/scripts/tasks/status-order.js` (Nov 22 2026, #1056) |
 
 The phone -> the server:
 

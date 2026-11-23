@@ -292,6 +292,22 @@ returns `vfsPathUuid` for `/{vfsPathUuid}/…` REST.
 
 Do not log the application key. `autofill` is ranking + Grimoire / tag wiki, not `search`.
 
+### `POST /agent/director/sessions`
+
+**Auth:** Same as `GET /agent`, plus scope `sfapp_director_start` (or `universal`); `403` `FORBIDDEN` otherwise. No bind required (headless). Same call as MCP `start_director_session` (#1068, `modules/directorStart.js`).
+
+Starts or reuses a Director chat for a persona (Yozora / Yumiya / Chiyo) and sends the first request with no tab bound. Body `{ persona, prompt, task?, title?, source?, thread?, sessionId?, attachments?, sessionType?, engine?, model?, effort? }`; reuse order and fields are in [agent-session.md](./agent-session.md). A failed first send gives the `source` back, so a retry of the same source runs instead of returning `deduped`.
+
+**Success:** `200` `{ "success": true, "sessionId", "persona", "created" | "reused", "reusedBy"?, "deduped"?, "status", "open": { "app": "director", "sessionId" } }`
+
+**Errors:** `400` `MISSING_PARAMETERS` / `PROMPT_TOO_LONG` (60,000 chars) / `INVALID_TASK` / `INVALID_ATTACHMENTS` / `UNKNOWN_PERSONA`; `404` `SESSION_NOT_FOUND`; `409` `DIRECTOR_BUSY`; `503` `XI_DISABLED` / `ENGINE_UNAVAILABLE`.
+
+### `GET /agent/director/sessions/:sessionId`
+
+**Auth:** Same scope. Same call as MCP `get_director_session`.
+
+**Success:** `200` `{ "success": true, "sessionId", "persona", "status": "running" | "idle", "name", "archived", "sources", "thread", "messages", "lastReply" (4,000 chars), "issues" }`. `404` `SESSION_NOT_FOUND`.
+
 ### `POST /agent/packet`
 
 **Auth:** Same as `GET /agent`. No bind required.
