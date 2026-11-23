@@ -725,7 +725,7 @@
      * An action's chooser: the action combo, then what it needs (a program, a key, a combination). html(prefix, action) and
      * bind(el, prefix, action, set(newAction), rerender).
      */
-    function skActionHtml(prefix, a, side) {
+    function skActionHtml(prefix, a, side, split = false) {
         const kind = skKind(a);
         const list = SK_ACTIONS.filter(([k]) => prefix === 'sk' || k !== 'ownmenu');
         let more = '';
@@ -737,7 +737,9 @@
         } else if (kind === 'combo') {
             more = `${ui.row('Keys:', `<div class="wm-combo-edit">${ui.edit('', a.length > 6 ? skComboText(a) : '', `data-f="${prefix}-combo" maxlength="40"`)}<button type="button" class="wm-combo" data-act="${prefix}-combos" aria-label="Presets"></button></div>`, { wide: true })}`;
         }
-        return `${ui.comboHtml(`${prefix}-act`, (list.find(([k]) => k === kind) || [kind, skActionText(a)])[1])}${more}`;
+        const main = ui.comboHtml(`${prefix}-act`, (list.find(([k]) => k === kind) || [kind, skActionText(a)])[1]);
+        // (split: the combo for a row of its own and what it needs as rows under it - never rows inside a row)
+        return split ? { main, more } : `${main}${more}`;
     }
     function skActionBind(el, prefix, a, side, set, rerender) {
         const kind = skKind(a);
@@ -780,9 +782,9 @@
             if (sk.msel >= items.length) sk.msel = items.length - 1;
             const it = items[sk.msel];
             menuHtml = `${ui.sub('Menu')}
-                ${ui.listbox(items.map((r, i) => ({ key: String(i), label: r.action === 'sep' ? '— Separator —' : `${r.label || skDefaultName(r.action) || skActionText(r.action)}   ${r.action === 'sep' ? '' : `(${skActionText(r.action)})`}`, selected: i === sk.msel })), { maxHeight: 120 })}
+                ${ui.listbox(items.map((r, i) => ({ key: String(i), label: r.action === 'sep' ? '— Separator —' : (r.label ? `${r.label} (${skActionText(r.action)})` : skActionText(r.action)), selected: i === sk.msel })), { maxHeight: 120 })}
                 ${ui.buttons([['skm-add', 'Add'], ['skm-sep', 'Add Separator'], ['skm-del', 'Remove', !it], ['skm-up', 'Move Up', !it || sk.msel === 0], ['skm-down', 'Move Down', !it || sk.msel === items.length - 1]])}
-                ${it && it.action !== 'sep' ? `${ui.row('Item name:', ui.edit('', it.label || '', 'data-f="skm-name" maxlength="40"'), { wide: true })}${ui.row('Item action:', skActionHtml('skm', it.action, ''), { wide: true })}` : ''}`;
+                ${it && it.action !== 'sep' ? (() => { const h = skActionHtml('skm', it.action, '', true); return `${ui.row('Item name:', ui.edit('', it.label || '', `data-f="skm-name" maxlength="40" placeholder="${esc(skDefaultName(it.action) || skActionText(it.action))}"`), { wide: true })}${ui.row('Item action:', h.main, { wide: true })}${h.more}`; })() : ''}`;
         }
         el.innerHTML = `<p class="wmsp-step">Soft keys over Android programs. Program:</p>
             ${ui.comboHtml('sk-prof', appLabel(sk.prof))}
@@ -792,7 +794,7 @@
             <div class="wmsp-btn-list" role="listbox" aria-label="Soft keys">
                 <div class="wmsp-btn-head"><span>Soft key</span><span>Assignment</span></div>
                 ${SK_SIDES.map(([side, label]) => { const k = prof[side] || { action: SK_DEFAULT[side] }; return `<button type="button" class="wmsp-btn-row${side === sk.sel ? ' is-selected' : ''}" role="option" aria-selected="${side === sk.sel}" data-side="${side}">
-                    <span class="wmsp-btn-name"><span class="wmsp-btn-icon"></span><span>${esc(label)}</span></span><span class="wmsp-btn-assign">${esc(k.label ? `${k.label}: ${keyText(k)}` : keyText(k))}</span></button>`; }).join('')}
+                    <span class="wmsp-btn-name"><span>${esc(label)}</span></span><span class="wmsp-btn-assign">${esc(k.label ? `${k.label}: ${keyText(k)}` : keyText(k))}</span></button>`; }).join('')}
             </div>
             <p class="wmsp-step">2. Assign an action:</p>
             ${skActionHtml('sk', key.action, sk.sel)}
