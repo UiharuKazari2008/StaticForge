@@ -622,18 +622,38 @@ function readProjectCursorRules(workspace) {
     });
     const key = `${rulesDir}\n${stamps.join('\n')}`;
     if (projectRulesCache && projectRulesCache.key === key) return projectRulesCache.text;
+    // alwaysApply rules go in whole; a rule scoped to globs (alwaysApply false) is one index line
+    // she reads when she touches those files, as Cursor treats it (#1068: 136 KB prompt)
+    const scoped = [];
     const joined = names.map((name) => {
         let text = '';
         try { text = fs.readFileSync(path.join(rulesDir, name), 'utf8'); } catch (_) { return ''; }
-        return text.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
-    }).filter(Boolean).join('\n\n');
-    projectRulesCache = Date.now() - newest > RULES_SETTLE_MS ? { key, text: joined } : null;
-    return joined;
+        const head = /^---\n([\s\S]*?)\n---\n/.exec(text);
+        const front = head ? head[1] : '';
+        if (head && !/^alwaysApply:\s*true\s*$/m.test(front)) {
+            const description = ((/^description:\s*(.+)$/m.exec(front) || [])[1] || '').trim();
+            const globs = [];
+            const inline = /^globs:[ \t]*(\S.*)$/m.exec(front);
+            if (inline) globs.push(inline[1].trim());
+            else {
+                const block = /^globs:\s*\n((?:\s+-\s+.+\n?)+)/m.exec(front);
+                if (block) block[1].split('\n').forEach((line) => { const g = line.replace(/^\s+-\s+/, '').trim(); if (g) globs.push(g); });
+            }
+            scoped.push(`- .cursor/rules/${name}${globs.length ? ` (${globs.join(', ')})` : ''}: ${description}`);
+            return '';
+        }
+        return (head ? text.slice(head[0].length) : text).trim();
+    }).filter(Boolean).join('\n\n').replace(/\n{3,}/g, '\n\n');
+    const out = scoped.length
+        ? `${joined}\n\n## Scoped rules\nRead the file before you change anything it names:\n${scoped.join('\n')}`
+        : joined;
+    projectRulesCache = Date.now() - newest > RULES_SETTLE_MS ? { key, text: out } : null;
+    return out;
 }
 
-// Claude Code auto-discovers a project CLAUDE.md, but Xi runs against the real
-// repo (not a jailed copy like Wren's), so writing one there would dirty git
-// status every turn. --append-system-prompt carries the same two sources —
+// Claude Code reads the checked-in CLAUDE.md but does not expand its @.cursor/rules
+// imports (checked Nov 23 2026, CLI 2.1.330), and it cuts the MCP server's instructions
+// short, so neither below is a duplicate. --append-system-prompt-file carries the two sources —
 // this project's own .cursor/rules plus the shared Dreamscape MCP instructions
 // cursor-agent gets implicitly from the MCP server's initialize message —
 // without touching the working tree.
