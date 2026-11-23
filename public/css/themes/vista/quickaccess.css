@@ -189,10 +189,12 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
    the current set state. Right now, just shows the icon"): the app fills the line in (qa-sub), from the left */
 #wmShell > .wm-qa .qa-tile.has-state:not(.is-wide) .qa-face,
 #wmShell > .wm-qa .qa-tile.has-state:not(.is-wide) .qa-face.is-on { background-position: center calc(3 * var(--wm-px)), 0 0; }
+/* (centred under the picture, inside the tile's frame: at the left it ran over the frame, "5G" on the Fold, Nov 23 2026) */
 #wmShell > .wm-qa .qa-tile.has-state:not(.is-wide) .qa-sub {
-    left: calc(4 * var(--wm-px));
-    right: calc(1 * var(--wm-px));
-    bottom: calc(2 * var(--wm-px));
+    left: calc(3 * var(--wm-px));
+    right: calc(3 * var(--wm-px));
+    bottom: calc(3 * var(--wm-px));
+    text-align: center;
     font-size: calc(8 * var(--wm-px));
     line-height: 1.1;
     color: #fff;

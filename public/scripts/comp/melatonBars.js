@@ -1133,6 +1133,9 @@
                         u: /underline/.test(cs.textDecorationLine || cs.textDecoration || ''), ls: R(px(cs.letterSpacing)), w: R(rr.width) };
                     // leading / trailing white space collapses in the page: the drawn text starts at the first letter
                     one.s = text.replace(/^\s+|\s+$/g, '').replace(/\s+/g, ' ');
+                    // a centred live line (Quick Access's state under a tile): its box's middle, so the app centres the text it
+                    // fills in there, whatever its length (it started at the page's sample's left: "5G" over the frame, Nov 23)
+                    if (lv && cs.textAlign === 'center') one.cx = R(b.left + b.width / 2);
                     // a run longer than its box (overflow hidden): cw the room it has, ell when the page ends it with "..."
                     // (#1027: the app drew the whole run past the box - a text notice's line ran off the popup)
                     if (cs.overflowX !== 'visible') {
