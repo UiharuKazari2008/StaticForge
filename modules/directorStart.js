@@ -309,7 +309,9 @@ async function startUnlocked(gr, input) {
 async function tookIt(backend, sessionId) {
     const until = Date.now() + EARLY_FAIL_WAIT_MS;
     while (Date.now() < until) {
-        if (typeof backend.runHasOutput === 'function' && backend.runHasOutput(sessionId)) return null;
+        const out = typeof backend.runOutput === 'function' ? backend.runOutput(sessionId) : null;
+        // a tool or thinking row, or text that is not a refusal: the engine took the turn
+        if (out && (out.otherRows > 0 || (out.text && !ENGINE_REFUSAL.test(out.text)))) return null;
         await new Promise((resolve) => setTimeout(resolve, 250));
     }
     return null;

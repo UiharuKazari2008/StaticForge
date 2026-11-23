@@ -27,7 +27,7 @@ xi.handleDirectorSendMessage = async (handler, ws, message) => {
     }
     sent.push(message);
 };
-xi.runHasOutput = () => true; // the fake engine always takes the turn
+xi.runOutput = () => ({ otherRows: 1, text: '' }); // the fake engine always takes the turn
 const realBriefs = xi.listChatBriefs;
 xi.listChatBriefs = () => realBriefs().map((c) => Object.assign(c, { running: busy.has(c.id) }));
 
@@ -116,7 +116,10 @@ async function main() {
     xi.onRunSettled = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
     const engineOf = (id) => (xi.listChatBriefs().find((c) => c.id === id) || {}).runtime;
     let refuse = new Set(['tokenrouter']);
-    xi.runHasOutput = (id) => !refuse.has(engineOf(id));
+    // a refusing engine writes the 403 as assistant text before the turn settles (as the CLI does)
+    xi.runOutput = (id) => (refuse.has(engineOf(id))
+        ? { otherRows: 0, text: 'Failed to authenticate. API Error: 403 TokenRouter 403: Forbidden.' }
+        : { otherRows: 1, text: '' });
     xi.handleDirectorSendMessage = async (handler, ws, message) => {
         sent.push(message);
         if (refuse.has(engineOf(message.sessionId))) {
@@ -147,7 +150,7 @@ async function main() {
     assert.strictEqual(pinned.engine, 'tokenrouter');
     assert.strictEqual(pinned.fallbackFrom, undefined);
     refuse = new Set();
-    xi.runHasOutput = () => true;
+    xi.runOutput = () => ({ otherRows: 1, text: '' });
 
     // get_director_session
     const got = ds.getDirectorSession(gr, { sessionId: a.sessionId });

@@ -856,11 +856,15 @@ function onRunSettled(listener) {
     return () => settleListeners.delete(listener);
 }
 
-// The turn has produced something (a trace row or text): the engine took it.
-function runHasOutput(sessionId) {
+// What the turn has produced so far: tool / thinking rows, and the text she wrote. The CLI
+// reports an engine refusal as plain assistant text, so the caller checks that text itself.
+function runOutput(sessionId) {
     const run = runs.get(sessionId);
     const stream = run && run.stream;
-    return !!(stream && ((stream.rows && stream.rows.length) || stream.text || stream.live));
+    if (!stream) return null;
+    const rows = stream.rows || [];
+    const text = [stream.text || '', ...rows.filter((row) => row && row.type === 'assistant').map((row) => row.text || '')].join('\n');
+    return { otherRows: rows.filter((row) => row && row.type !== 'assistant').length + (stream.live ? 1 : 0), text: text.trim().slice(0, 2000) };
 }
 
 function finishRun(run, why) {
@@ -1935,7 +1939,7 @@ module.exports = {
     readChatLog,
     tagStartedChat,
     onRunSettled,
-    runHasOutput,
+    runOutput,
     readSessionTasks,
     setSessionTasks,
     setSessionTask,
