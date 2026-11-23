@@ -158,10 +158,27 @@ body.desktop-mode .window-switcher-overlay {
     padding: 0 7px 7px;
     border: 1px solid hsl(210 24% 14% / 82%);
     border-radius: 6px 6px 5px 5px;
-    background-color: var(--glass-windows-bg, hsl(210 40% 60% / 70%));
-    background-image: var(--aero-sheen, none);
-    -webkit-backdrop-filter: blur(6px) saturate(1.4);
-    backdrop-filter: blur(6px) saturate(1.4);
+    /* Vista's frame glass (measured on the VM over white, black and coloured windows, Nov 22 2026, #1065): what is
+       behind blurred (a gaussian of sigma 3, no saturation), times 0.97 x (1 - a), plus the window colour times a,
+       where a is Window Color's intensity (Vista's default 0x45 = 27%). Folded into one layer: the workspace colour
+       x 0.925 at 29.25%, so the windows behind show through as on the VM (the workspace's own 75% made a solid pane).
+       The reflection over it (an Alt+Tab pane is exactly a glass window of its size): the streaks, fixed to the
+       screen (reflection.png, the VM's whole-screen texture at half size; the pane is centred in the work area, so
+       50% / 50% + half the taskbar puts the screen's top left at the texture's), and the two corner glows Vista draws
+       at a window's top corners, the same at every size (glow-left/-right.png, 216 x 184). White over the tint. */
+    background-color: color-mix(in srgb, var(--glass-windows-bg, hsl(210 40% 60% / 75%)) 39%, transparent);
+    background-color: rgb(from var(--glass-windows-bg, hsl(210 40% 60%)) calc(r * 0.925) calc(g * 0.925) calc(b * 0.925) / 0.2925);
+    background-image:
+        url("/static_images/vista-glass/glow-left.png"),
+        url("/static_images/vista-glass/glow-right.png"),
+        url("/static_images/vista-glass/reflection.png");
+    background-size: 216px 184px, 216px 184px, 100vw 100vh;
+    background-position: 0 0, 100% 0, 50% calc(50% + var(--taskbar-height, 0px) / 2);
+    background-repeat: no-repeat;
+    background-origin: border-box;
+    background-clip: border-box;
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
     box-shadow:
         inset -1px -1px 0 #2cd3fe,
         inset 0 0 0 1px hsl(0 0% 100% / 82%),
