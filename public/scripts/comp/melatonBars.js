@@ -398,12 +398,12 @@
         const cs = getComputedStyle(root);
         // (the first part: the lists' make - a new one makes every app ask for its kit again; m25: iconsRight measured
         // without Today's kept corner place beside the staged X, Nov 20; m26: the soft key Menu's samples; m27: 9-slice frames (nine), Nov 22; m28: the holder's status roles, #1056;
-        // m29: Task Manager's sample, lists.taskStrip, Nov 23)
+        // m29: Task Manager's sample, lists.taskStrip, Nov 23; m30: its preview cards and hold menus, Nov 23)
         // the icon unit, the bar's height and the camera extension too (Yukimi, Nov 17: "the icons are never
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m29', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m30', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), softMenuSig(), Math.round(window.innerWidth)].join('|');
     }
@@ -479,7 +479,29 @@
     function taskKit(dpr) {
         const sh = window.wmShell;
         if (!sh || !sh.taskSwitcher || typeof sh.taskSwitcher.sample !== 'function') return null;
-        return sh.taskSwitcher.sample((els) => layoutOf(els, dpr), dpr);
+        const kit = sh.taskSwitcher.sample((els) => layoutOf(els, dpr), dpr);
+        // the hold menus (Yukimi, Nov 23 2026: on a card - Open in Window, Split View...; on its X - Close, End Task,
+        // Uninstall) as the page's own menu draws them, for an Android program and for a Melaton one; rows' tap boxes
+        // 'tmmenu:<n>' in the order of rows
+        if (kit && typeof sh.menuSample === 'function') {
+            const R = (r) => ({ x: Math.round(r.left * dpr), y: Math.round(r.top * dpr), w: Math.round(r.width * dpr), h: Math.round(r.height * dpr) });
+            const menuOf = (rows) => {
+                const smp = sh.menuSample('left', rows.map((r) => ({ label: r.label, action() {} })));
+                try {
+                    settle([smp.el]);
+                    const items = layoutOf([smp.el], dpr).filter((o) => o.k !== 'hit');
+                    [...smp.el.querySelectorAll(':scope > .wm-popup-item')].forEach((el, i) => { const r = R(el.getBoundingClientRect()); items.push({ k: 'hit', x: r.x, y: r.y, w: r.w, h: r.h, act: `tmmenu:${i}` }); });
+                    return { items, box: R(smp.el.getBoundingClientRect()), acts: rows.map((r) => r.act) };
+                } finally { smp.close(); }
+            };
+            try {
+                kit.menus = {
+                    card: menuOf(kit.cardRows || []), cardDs: menuOf((kit.cardRows || []).filter((r) => !r.android)),
+                    end: menuOf(kit.endRows || []), endDs: menuOf((kit.endRows || []).filter((r) => !r.android))
+                };
+            } catch (err) { console.warn('[melatonBars] task menus', err); }
+        }
+        return kit;
     }
 
     function notifyKit(dpr) {
@@ -1871,6 +1893,15 @@
         // (#1017) Quick Access over Melaton Mobile: its content moved aside by the panel's width, the wallpaper and bars staying
         // (the app hands its context over as an object, not as text)
         qaPush: (ctx) => { try { if (window.wmQuickAccess && window.wmQuickAccess.pushPage) window.wmQuickAccess.pushPage(typeof ctx === 'string' ? JSON.parse(ctx || '{}') : (ctx || {})); } catch (_) { /* older page */ } },
+        // the app's Task Manager closed one of Melaton's own programs (its X, or its menu's Close): ended as Task Manager ends it
+        dsClose: (ctx) => {
+            try {
+                const o = typeof ctx === 'string' ? JSON.parse(ctx || '{}') : (ctx || {});
+                const id = String(o.id || '');
+                const tm = window.wmTaskManager;
+                if (id && tm && typeof tm.end === 'function') tm.end(id);
+            } catch (err) { console.warn('[melatonBars] dsClose', err); }
+        },
         // the app's screen changed size (a Fold folded or opened) with layouts kept for the other one: again, at the new size
         // (#1027) also the app's ask after its own update or Android's (cursor rule melaton-bars-native-layouts 4): a page that
         // has pushed nothing yet since it loaded writes down every popup of its bar

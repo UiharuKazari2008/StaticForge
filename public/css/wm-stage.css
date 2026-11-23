@@ -329,7 +329,8 @@ html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
 
 .wm-tm-stage {
     flex: 1 0 auto;
-    min-height: calc(146 * var(--wm-px));
+    /* (smaller cards, 4-5 across: Yukimi, Nov 23 2026 - "we want to be able to see 4-5 apps") */
+    min-height: calc(96 * var(--wm-px));
     position: relative;
     display: flex;
     background: var(--wm-tm-spot);
@@ -355,9 +356,9 @@ html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
 }
 
 .wm-tm-card {
-    flex: 0 0 calc(112 * var(--wm-px));
+    flex: 0 0 calc(62 * var(--wm-px));
     position: relative;
-    padding: calc(14 * var(--wm-px)) 0 calc(12 * var(--wm-px));
+    padding: calc(10 * var(--wm-px)) 0 calc(8 * var(--wm-px));
     box-sizing: border-box;
 }
 
@@ -381,12 +382,12 @@ html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: calc(96 * var(--wm-px));
-    height: calc(96 * var(--wm-px));
+    width: calc(54 * var(--wm-px));
+    height: calc(54 * var(--wm-px));
     box-sizing: border-box;
     overflow: hidden;
     border: calc(1 * var(--wm-px)) solid var(--wm-tm-tile-edge);
-    border-radius: calc(16 * var(--wm-px));
+    border-radius: calc(9 * var(--wm-px));
     background: var(--wm-tm-tile);
     box-shadow: var(--wm-tm-tile-shadow);
 }
@@ -404,10 +405,37 @@ html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
     pointer-events: none;
 }
 
+/* the program's picture as it was last on screen, filling the tile from its top (Android's Recents picture, or the one
+   kept for a Melaton program); the tile's face shows where there is none */
+.wm-tm-shot {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top center;
+    pointer-events: none;
+    -webkit-user-drag: none;
+}
+.wm-tm-shot[hidden] {
+    display: none;
+}
+
+/* its icon as a badge in the top left corner (over the picture, under the glass) */
 .wm-tm-tile > .wm-ts-icon {
-    position: relative;
-    width: calc(60 * var(--wm-px));
-    height: calc(60 * var(--wm-px));
+    position: absolute;
+    left: calc(3 * var(--wm-px));
+    top: calc(3 * var(--wm-px));
+    width: calc(18 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    filter: drop-shadow(0 calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) rgba(0, 0, 0, 0.7));
+}
+/* with no picture the icon stays the tile's own, in its middle */
+.wm-tm-tile > .wm-tm-shot[hidden] + .wm-ts-icon {
+    left: calc(50% - 15 * var(--wm-px));
+    top: calc(50% - 15 * var(--wm-px));
+    width: calc(30 * var(--wm-px));
+    height: calc(30 * var(--wm-px));
 }
 
 .wm-tm-tile > .wm-ts-icon img {
@@ -435,12 +463,13 @@ html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
 }
 
 .wm-tm-card .wm-ts-label {
-    max-width: calc(106 * var(--wm-px));
+    max-width: calc(60 * var(--wm-px));
     box-sizing: border-box;
-    margin-top: calc(6 * var(--wm-px));
+    margin-top: calc(4 * var(--wm-px));
     padding: 0 calc(2 * var(--wm-px));
     color: var(--wm-tm-label);
-    font-size: var(--wm-fs);
+    /* (the smaller card's name: Yukimi, Nov 23 2026) */
+    font-size: calc(9 * var(--wm-px));
     font-weight: bold;
     line-height: calc(13 * var(--wm-px));
     text-shadow: var(--wm-tm-label-shadow);
@@ -452,10 +481,10 @@ html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
 /* the close badge on the tile's top right corner: 30 units to touch, a 20-unit red ball with a white X */
 .wm-tm-end {
     position: absolute;
-    left: calc(50% + 25 * var(--wm-px));
+    left: calc(50% + 12 * var(--wm-px));
     top: calc(1 * var(--wm-px));
-    width: calc(30 * var(--wm-px));
-    height: calc(30 * var(--wm-px));
+    width: calc(24 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
     margin: 0;
     padding: 0 !important;
     border: 0;
@@ -469,8 +498,8 @@ html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
 
 .wm-tm-x {
     position: relative;
-    width: calc(20 * var(--wm-px));
-    height: calc(20 * var(--wm-px));
+    width: calc(15 * var(--wm-px));
+    height: calc(15 * var(--wm-px));
     box-sizing: border-box;
     border: calc(1.5 * var(--wm-px)) solid var(--wm-tm-x-edge);
     border-radius: 50%;
@@ -485,9 +514,9 @@ html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: calc(10 * var(--wm-px));
+    width: calc(8 * var(--wm-px));
     height: calc(2 * var(--wm-px));
-    margin: calc(-1 * var(--wm-px)) 0 0 calc(-5 * var(--wm-px));
+    margin: calc(-1 * var(--wm-px)) 0 0 calc(-4 * var(--wm-px));
     border-radius: calc(1 * var(--wm-px));
     background: var(--wm-tm-x-glyph);
     transform: rotate(45deg);

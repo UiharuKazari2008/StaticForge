@@ -2674,7 +2674,10 @@
         el: null, open: false, mru: [], held: false, timer: null, asking: false, from: '',
         // running count, the open / close motion, a card being flicked, the click after a flick, programs whose
         // card flew away until they are gone
-        count: 0, anims: [], drag: null, dragged: false, ending: new Set()
+        count: 0, anims: [], drag: null, dragged: false, ending: new Set(),
+        // when each of Melaton's own programs was last on screen (ms): one timeline with Android's (Yukimi, Nov 23 2026),
+        // and the open serial that makes each opening ask the app for fresh pictures
+        used: new Map(), openSeq: 0
     };
     const TS_OPEN_MS = 180;
     const TS_CLOSE_MS = 180;
@@ -2725,33 +2728,89 @@
         return item;
     }
 
+    // the app's task pictures (AndroidRecentTasks): Android's Recents picture per task, a kept one per Melaton program
+    const TASK_SHOT = 'https://appassets.androidplatform.net/task-shot/';
+
     function taskSwitcherNote() {
         const id = root.dataset.wmApp;
-        if (!id || SHELL_SCREENS.has(id)) return;
+        if (!id || SHELL_SCREENS.has(id)) { taskSwitcherDsSoon(); return; }
         const at = taskSwitch.mru.indexOf(id);
         if (at >= 0) taskSwitch.mru.splice(at, 1);
         taskSwitch.mru.unshift(id);
+        taskSwitch.used.set(id, Date.now());
+        taskSwitcherShotSoon(id);
+        taskSwitcherDsSoon();
     }
 
-    /** The running programs as Task Manager lists them, the most recently used first. */
-    function taskSwitcherTasks() {
+    /**
+     * The program's card picture (Yukimi, Nov 23 2026: Task Manager "should show preview images like a android task
+     * manager does"): once it has settled on screen the app keeps a picture of the screen for it (AndroidRecentTasks
+     * keepShot -> /task-shot/ds/<id>). One per showing, never while Task Manager or a dialog is up.
+     */
+    let shotTimer = 0;
+    function taskSwitcherShotSoon(id) {
+        const b = androidTasksBridge();
+        if (!b || typeof b.keepShot !== 'function') return;
+        clearTimeout(shotTimer);
+        shotTimer = setTimeout(() => {
+            shotTimer = 0;
+            if (root.dataset.wmApp !== id || document.hidden || taskSwitch.open || root.hasAttribute('data-wm-dialog') || root.hasAttribute('data-screen-off')) return;
+            try { b.keepShot(id); } catch (_) { /* older app */ }
+        }, 1200);
+    }
+
+    /** Melaton's own open programs, written down for the app's Task Manager overlay (it lists them with Android's). */
+    let dsTimer = 0;
+    let dsSent = '';
+    function taskSwitcherDsSoon() {
+        const b = androidTasksBridge();
+        if (!b || typeof b.dsTasks !== 'function') return;
+        clearTimeout(dsTimer);
+        dsTimer = setTimeout(() => {
+            dsTimer = 0;
+            const list = taskSwitcherOwn().map((t) => ({ id: t.id, title: t.title, icon: artSrc(t.icon), used: t.used || 0, current: t.id === current && !document.hidden }));
+            const json = JSON.stringify(list);
+            if (json === dsSent) return;
+            dsSent = json;
+            try { b.dsTasks(json); } catch (_) { /* older app */ }
+        }, 300);
+    }
+    /** An art name's (or a path's) address as an <img> loads it, absolute (the app fetches it itself). */
+    function artSrc(name) {
+        const m = /src="([^"]+)"/.exec(imgTag(name) || '');
+        try { return m ? new URL(m[1].replace(/&amp;/g, '&'), location.href).href : ''; } catch (_) { return ''; }
+    }
+
+    /** Melaton's own running programs, the most recently used first, each with when it was last on screen. */
+    function taskSwitcherOwn() {
         let list = null;
         try { if (window.wmTaskManager) list = window.wmTaskManager.running(); } catch (_) { list = null; }
         if (!list) list = openedApps.filter((id) => apps.has(id)).map((id) => ({ id, title: apps.get(id).startLabel || apps.get(id).title }));
         const rank = (id) => { const i = taskSwitch.mru.indexOf(id); return i < 0 ? 1e6 : i; };
-        const own = list.filter((t) => !SHELL_SCREENS.has(t.id))
+        return list.filter((t) => !SHELL_SCREENS.has(t.id))
             .map((t, i) => ({ id: t.id, title: t.title, icon: (apps.get(t.id) || {}).icon || 'app-programs', i }))
             .sort((a, b) => (rank(a.id) - rank(b.id)) || (a.i - b.i))
-            .map((t) => ({ id: t.id, title: t.title, icon: t.icon }));
-        // the phone's Android programs, most recent first, with Melaton Mobile's own where its task is among them
-        // (brought up by the bars' recents gesture it is in front only for the strip: the program left comes first)
+            .map((t) => ({ id: t.id, title: t.title, icon: t.icon, used: taskSwitch.used.get(t.id) || 0, shot: `${TASK_SHOT}ds/${encodeURIComponent(t.id)}` }));
+    }
+
+    /**
+     * The running programs as Task Manager lists them: Melaton's own and the phone's Android programs in ONE timeline,
+     * the most recently used first (Yukimi, Nov 23 2026: "they must be ordered in time of access"). Android's times are
+     * its tasks' own (the app's list, used), Melaton's when each was last on screen; the program on screen now is the
+     * newest. Each has its picture (shot): Android's Recents picture, or the one kept when a Melaton program settled.
+     */
+    function taskSwitcherTasks() {
+        const own = taskSwitcherOwn();
+        if (current && !SHELL_SCREENS.has(current) && !document.hidden) { const c = own.find((t) => t.id === current); if (c) c.used = Date.now(); }
         const and = androidTs.list;
         if (!and || !Array.isArray(and.tasks) || !and.tasks.length) return own;
         androidTs.byId.clear();
-        const items = and.tasks.map(androidTaskItem);
-        let at = Math.max(0, Math.min(items.length, Number(and.selfIndex) || 0));
-        if (taskSwitch.from === 'android' && at === 0) at = Math.min(1, items.length);
-        return [...items.slice(0, at), ...own, ...items.slice(at)];
+        const items = and.tasks.map((t, i) => Object.assign(androidTaskItem(t), {
+            // (no time from an older app: its place in Android's order, behind Melaton's own by the list's position)
+            used: Number(t.used) || (Number(and.at) || Date.now()) - (i + 1) * 1000,
+            shot: `${TASK_SHOT}${Number(t.taskId)}?w=360&s=${taskSwitch.openSeq}`
+        }));
+        return [...own, ...items].map((t, i) => Object.assign(t, { i })).sort((a, b) => (b.used - a.used) || (a.i - b.i));
     }
 
     /**
@@ -2771,7 +2830,7 @@
 
     /** bindHoldRing: where the ring of dots shows although the bar or the strip around has none. */
     function taskSwitcherHoldTarget(t) {
-        if (t.closest('.wm-ts-item')) return true;
+        if (t.closest('.wm-ts-item') || t.closest('.wm-tm-end')) return true;
         return !!t.closest('.wm-start') && !taskSwitch.open && taskSwitcherCanOpen();
     }
 
@@ -2800,7 +2859,12 @@
         const card = document.createElement('div');
         card.className = 'wm-tm-card';
         card.dataset.app = t.id;
-        card.innerHTML = `<button type="button" class="wm-ts-item" role="option" aria-selected="false" data-app="${escapeHtml(t.id)}"><span class="wm-tm-tile"><span class="wm-ts-icon"></span></span><span class="wm-ts-label"></span></button><button type="button" class="wm-tm-end" tabindex="-1" data-app="${escapeHtml(t.id)}"><span class="wm-tm-x"></span></button>`;
+        // the tile: the program's picture (top aligned) with its icon as a badge in the corner (Yukimi, Nov 23 2026)
+        card.innerHTML = `<button type="button" class="wm-ts-item" role="option" aria-selected="false" data-app="${escapeHtml(t.id)}"><span class="wm-tm-tile"><img class="wm-tm-shot" alt="" draggable="false" decoding="async" hidden><span class="wm-ts-icon"></span></span><span class="wm-ts-label"></span></button><button type="button" class="wm-tm-end" tabindex="-1" data-app="${escapeHtml(t.id)}"><span class="wm-tm-x"></span></button>`;
+        const shot = card.querySelector('.wm-tm-shot');
+        // shown once it loaded; none (a browser, no picture kept yet): the plain tile
+        shot.addEventListener('load', () => { shot.hidden = false; });
+        shot.addEventListener('error', () => { shot.hidden = true; });
         return card;
     }
 
@@ -2823,6 +2887,12 @@
             if (card.dataset.icon !== n) {
                 card.dataset.icon = n;
                 card.querySelector('.wm-ts-icon').innerHTML = imgTag(n);
+            }
+            const shotUrl = t.shot && androidTasksBridge() ? t.shot : '';
+            if (card.dataset.shot !== shotUrl) {
+                card.dataset.shot = shotUrl;
+                const im = card.querySelector('.wm-tm-shot');
+                if (shotUrl) im.src = shotUrl; else { im.removeAttribute('src'); im.hidden = true; }
             }
             if (card.dataset.title !== t.title) {
                 card.dataset.title = t.title;
@@ -2921,6 +2991,12 @@
             const label = c.querySelector('.wm-ts-label');
             label.textContent = 'Program';
             label.dataset.live = 'tm-label';
+            // the picture's place, at its layer (over the tile's face, under its glass and the badge): a plain box the app
+            // fills with the program's picture (live field tm-shot)
+            const shot = c.querySelector('.wm-tm-shot');
+            shot.hidden = false;
+            shot.dataset.live = 'tm-shot';
+            shot.style.background = '#000';
             if (on) c.classList.add('is-current');
             return c;
         };
@@ -2949,7 +3025,7 @@
             const label = a.querySelector('.wm-ts-label');
             const geo = {
                 panel: box(panel), list: box(list), card: box(a), cardOn: box(b), icon: box(a.querySelector('.wm-ts-icon')), tile: box(a.querySelector('.wm-tm-tile')),
-                end: box(a.querySelector('.wm-tm-end')), all: box(all),
+                end: box(a.querySelector('.wm-tm-end')), all: box(all), shot: box(a.querySelector('.wm-tm-shot')),
                 pitch: Math.round((b.getBoundingClientRect().left - a.getBoundingClientRect().left) * k * 100) / 100,
                 labelMax: Math.round((parseFloat(getComputedStyle(label).maxWidth) || a.getBoundingClientRect().width) * k * 100) / 100,
                 screen: getComputedStyle(el).backgroundColor
@@ -2959,7 +3035,11 @@
             all.disabled = true;
             const emptyItems = write([empty]);
             const allOff = write([all]);
-            out = { v: 1, panel: panelItems, card, cardOn, empty: emptyItems, allOff, geo };
+            // v 2: the picture's place (tm-shot, geo.shot), the icon a badge; the hold menus' rows (the app draws them from the
+            // bars' own menu sample: melatonBars taskKit)
+            out = { v: 2, panel: panelItems, card, cardOn, empty: emptyItems, allOff, geo,
+                cardRows: TS_CARD_ROWS.map((r) => ({ label: r.label, act: r.act, android: !!r.android })),
+                endRows: TS_END_ROWS.map((r) => ({ label: r.label, act: r.act, android: !!r.android })) };
         } catch (err) {
             console.warn('[wmShell] task manager sample', err);
             out = null;
@@ -3003,6 +3083,8 @@
         });
         el.addEventListener('pointerdown', (e) => {
             taskSwitch.dragged = false;
+            const endBtn = e.target.closest('.wm-tm-end');
+            if (endBtn) taskSwitcherMouseHold(e, (x, y) => taskSwitcherEndMenu(endBtn.dataset.app, x, y));
             const item = e.target.closest('.wm-ts-item');
             if (item) taskSwitcherMouseHold(e, (x, y) => taskSwitcherMenu(item.dataset.app, x, y));
             taskSwitcherDragStart(e);
@@ -3012,8 +3094,11 @@
         el.addEventListener('pointercancel', (e) => taskSwitcherDragEnd(e, true));
         el.addEventListener('contextmenu', (e) => {
             e.preventDefault();
+            if (!taskSwitch.open || (taskSwitch.drag && taskSwitch.drag.on)) return;
+            const endBtn = e.target.closest('.wm-tm-end');
+            if (endBtn) { taskSwitch.held = !e.isTrusted; taskSwitcherEndMenu(endBtn.dataset.app, e.clientX, e.clientY); return; }
             const item = e.target.closest('.wm-ts-item');
-            if (!item || !taskSwitch.open || (taskSwitch.drag && taskSwitch.drag.on)) return;
+            if (!item) return;
             taskSwitch.held = !e.isTrusted;
             taskSwitcherMenu(item.dataset.app, e.clientX, e.clientY);
         });
@@ -3030,6 +3115,7 @@
         if (!taskSwitcherCanOpen(from)) return false;
         closeMenus(true);
         taskSwitch.from = from;
+        taskSwitch.openSeq++;
         androidTasksRead();
         // the bars' gesture asked the app for the list already; the Start hold and the task button ask here
         if (from !== 'android') androidTasksRefresh();
@@ -3040,11 +3126,13 @@
         el.classList.remove('is-closing');
         el.hidden = false;
         taskSwitcherRender();
-        // the program on screen in view; from Android's gesture, the program just left (the first). The focus is the
-        // arrow keys' (the first key lands on the program on screen): a card focused here would wear the keys' ring
+        // where the row starts (Yukimi, Nov 23 2026): in a program (Melaton's own, or an Android one: the bars' gesture),
+        // on the program before it - the newest is the one on screen, so the second; on Today, at the start. The focus is
+        // the arrow keys' (a card focused here would wear the keys' ring)
         const cards = taskSwitcherCards();
-        const pick = (from !== 'android' && cards.find((c) => c.dataset.app === current)) || cards[0];
-        if (pick) taskSwitcherReveal(pick, false);
+        const inProgram = from === 'android' || (current && !SHELL_SCREENS.has(current));
+        const pick = inProgram ? (cards[1] || cards[0]) : cards[0];
+        if (pick) { const list = pick.parentNode; list.scrollTo({ left: Math.max(0, pick.offsetLeft - (inProgram && cards[1] ? parseFloat(getComputedStyle(list).paddingLeft) || 0 : 0)), behavior: 'instant' }); }
         taskSwitcherPlay(true);
         renderSoftKeys();
         syncHistory();
@@ -3083,12 +3171,46 @@
         if (id && id !== current) open(id);
     }
 
+    /**
+     * Held on a card: what can be done with the program's window (Yukimi, Nov 23 2026: "If you hold the icon it shows a
+     * context menu for Open in window, Split View, etc."); a Melaton program has no Android window: Switch To, Close.
+     */
     function taskSwitcherMenu(id, x, y) {
         if (!taskSwitch.open || !id) return;
-        window.wmShell.menuAt(x, y, [
-            { label: 'Switch To', action: () => taskSwitcherChoose(id) },
-            { label: 'End Task', action: () => taskSwitcherFlyAway(id) }
-        ]);
+        window.wmShell.menuAt(x, y, taskSwitcherCardRows(id).map((r) => ({ label: r.label, action: () => taskSwitcherRow(id, r.act) })));
+    }
+    /** Held on a card's X (Yukimi, Nov 23 2026): Close (as the X), End Task (force stop), Uninstall. */
+    function taskSwitcherEndMenu(id, x, y) {
+        if (!taskSwitch.open || !id) return;
+        window.wmShell.menuAt(x, y, taskSwitcherEndRows(id).map((r) => ({ label: r.label, action: () => taskSwitcherRow(id, r.act) })));
+    }
+    const TS_CARD_ROWS = [{ label: 'Switch To', act: 'switch' }, { label: 'Open in Window', act: 'windowed', android: true }, { label: 'Split View', act: 'split', android: true }];
+    const TS_END_ROWS = [{ label: 'Close', act: 'close' }, { label: 'End Task', act: 'end', android: true }, { label: 'Uninstall', act: 'uninstall', android: true }];
+    function taskSwitcherCardRows(id) { const a = androidTs.byId.has(id); return TS_CARD_ROWS.filter((r) => a || !r.android); }
+    function taskSwitcherEndRows(id) { const a = androidTs.byId.has(id); return TS_END_ROWS.filter((r) => a || !r.android); }
+    function taskSwitcherRow(id, act) {
+        const at = androidTs.byId.get(id);
+        const b = androidTasksBridge();
+        if (act === 'switch') { taskSwitcherChoose(id); return; }
+        if (act === 'close') { taskSwitcherFlyAway(id); return; }
+        if (!at || !b) return;
+        if (act === 'end') {
+            // force-stopped: its card flies off as Close's, the app ends it with its task
+            const card = taskSwitcherCards().find((c) => c.dataset.app === id);
+            if (card) { card.dataset.gone = '1'; taskSwitch.ending.add(id); }
+            try { if (typeof b.endTask === 'function') b.endTask(Number(at.taskId), String(at.package || ''), `tk${++androidTs.req}`); } catch (_) { /* older app */ }
+            if (card && taskSwitcherMotion()) {
+                const a = card.animate([{ transform: 'none', opacity: 1 }, { transform: `translateY(${-(card.offsetHeight || 1)}px)`, opacity: 0 }], { duration: TS_FLY_MS, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' });
+                const done = () => { taskSwitcherCloseUp(card); setTimeout(() => { taskSwitch.ending.delete(id); if (taskSwitch.open) taskSwitcherRender(); }, 1100); };
+                a.finished.then(done, done);
+            } else if (card) taskSwitcherCloseUp(card);
+            return;
+        }
+        if (act === 'uninstall') { closeTaskSwitcher(true); try { if (typeof b.uninstall === 'function') b.uninstall(String(at.package || '')); } catch (_) { /* older app */ } return; }
+        if (act === 'windowed' || act === 'split') {
+            closeTaskSwitcher(true);
+            try { if (typeof b.taskAction === 'function') b.taskAction(Number(at.taskId), String(at.package || ''), act, `ta${++androidTs.req}`); } catch (_) { /* older app */ }
+        }
     }
 
     // ---- a card flicked up: it follows the finger, and past a third of the row (or flung) flies off and its program ends

@@ -1170,6 +1170,10 @@
         const note = why ? 'Needs Bezel > Top of screen: Windows Status Bar, with Extend Status Bar to edge of Camera.'
             : st.elevated === false ? 'Needs Shizuku or Localhost ADB (Android Bridge) to keep Android\'s status bar away.' : '';
         const off = cfg.enabled ? '' : '<p>Android > Use the title bar in Android programs turns these on.</p>';
+        // Samsung's One UI Home, read once per visit (its own setting: the app turns it off or on through its shell)
+        let oneUi = 'absent';
+        try { oneUi = window.AndroidBars && typeof window.AndroidBars.oneUiHome === 'function' ? String(window.AndroidBars.oneUiHome()) : 'absent'; } catch (_) { oneUi = 'absent'; }
+        if (typeof d.oneUiWas !== 'boolean' && oneUi !== 'absent') { d.oneUiWas = oneUi === 'disabled'; d.oneUiOff = d.oneUiWas; }
         const html = part === 'status' ? `<div class="wm-form-sub">Over Android programs</div>
             ${off}
             ${check('wmBarsBlack', 'Black Statusbar (always black behind the icons, never see-through)', cfg.barBlack)}
@@ -1184,6 +1188,7 @@
             <div class="wm-form-gap"></div>
             <div class="wm-form-sub">Gestures</div>
             ${check('wmBarsRoom', 'Melaton handles navigation gestures: swipe up on the soft key bar for Home, push up slowly for Task Manager, in from a side for Back (Android\'s gestures come back when this is off)', cfg.room)}
+            ${oneUi !== 'absent' ? check('wmBarsOneUiHome', 'Disable Samsung One UI Home (its Recents gives way to Melaton\'s Task Manager; Melaton stays the home screen)', d.oneUiOff) : ''}
             <div class="wm-form-row is-wide"><span class="wm-form-label">Home swipe sensitivity:</span>${ui.comboHtml('barshomesense', label(BARS_HOME_SENSE, cfg.homeSense))}</div>
             <div class="wm-sys-footlink">Set each program's <a href="#" data-go="buttons:softkey">soft keys</a>, the <a href="#" data-go="menus:softmenu">Soft Key Menu</a> and <a href="#" data-go="buttons:quickaccess">Quick Access</a>.</div>`
             : `${check('wmBarsOn', 'Use the title bar in Android programs', cfg.enabled)}
@@ -1214,6 +1219,7 @@
             on('wmBarsOn', (v) => { cfg.enabled = v; });
             on('wmBarsSoft', (v) => { cfg.softkeys = v; });
             on('wmBarsRoom', (v) => { cfg.room = v; });
+            on('wmBarsOneUiHome', (v) => { d.oneUiOff = v; });
             on('wmBarsLandCover', (v) => { cfg.hideLandCover = v; });
             on('wmBarsKeyguardClear', (v) => { cfg.keyguardClear = v; });
             on('wmBarsBlack', (v) => { cfg.barBlack = v; });
@@ -2368,6 +2374,10 @@
             },
             commit(d) {
                 const keys = [];
+                // Samsung One UI Home off or back on (Yukimi, Nov 23 2026): through the app's shell, only when it changed
+                if (typeof d.oneUiOff === 'boolean' && d.oneUiOff !== d.oneUiWas) {
+                    try { window.AndroidBars.setOneUiHome(d.oneUiOff); d.oneUiWas = d.oneUiOff; } catch (_) { /* older app */ }
+                }
                 if (d.barsState && d.barsCfg && JSON.stringify(d.barsCfg) !== JSON.stringify(d.barsState.config || {})) {
                     try { window.AndroidBars.setConfig(JSON.stringify(d.barsCfg)); } catch (_) { /* older app */ }
                     // the page's soft key bar follows the app's height (soft keys / room switched, #1013)
