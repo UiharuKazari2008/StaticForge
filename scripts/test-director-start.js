@@ -27,6 +27,7 @@ xi.handleDirectorSendMessage = async (handler, ws, message) => {
     }
     sent.push(message);
 };
+xi.runHasOutput = () => true; // the fake engine always takes the turn
 const realBriefs = xi.listChatBriefs;
 xi.listChatBriefs = () => realBriefs().map((c) => Object.assign(c, { running: busy.has(c.id) }));
 
@@ -109,6 +110,44 @@ async function main() {
     const retry = await ds.startDirectorSession(gr, { persona: 'Yozora', source: 'plaud:rec9', thread: 'plaud-reviews', prompt: 'x' });
     assert.strictEqual(retry.deduped, false);
     assert.strictEqual(retry.reusedBy, 'thread');
+
+    // engine fallback (#1072): TokenRouter refuses at once -> DeepInfra; the failed chat is deleted
+    const listeners = new Set();
+    xi.onRunSettled = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
+    const engineOf = (id) => (xi.listChatBriefs().find((c) => c.id === id) || {}).runtime;
+    let refuse = new Set(['tokenrouter']);
+    xi.runHasOutput = (id) => !refuse.has(engineOf(id));
+    xi.handleDirectorSendMessage = async (handler, ws, message) => {
+        sent.push(message);
+        if (refuse.has(engineOf(message.sessionId))) {
+            setTimeout(() => listeners.forEach((fn) => fn({ sessionId: message.sessionId, failed: true, cancelled: false,
+                error: 'Failed to authenticate. API Error: 403 TokenRouter 403: Forbidden.' })), 50);
+        }
+    };
+    const before = xi.listChatBriefs().length;
+    const fb = await ds.startDirectorSession(gr, { persona: 'Yozora', engine: 'tokenrouter', source: 'plaud:fb1', prompt: 'fb' });
+    assert.strictEqual(fb.engine, 'custom:deepinfra');
+    assert.strictEqual(fb.fallbackFrom.length, 1);
+    assert.strictEqual(fb.fallbackFrom[0].engine, 'tokenrouter');
+    assert.strictEqual(engineOf(fb.sessionId), 'custom:deepinfra');
+    assert.strictEqual(xi.listChatBriefs().length, before + 1, 'the refused chat is deleted');
+    assert.deepStrictEqual(xi.listChatBriefs().find((c) => c.id === fb.sessionId).sources, ['plaud:fb1']);
+    // both refuse -> SloProxy
+    refuse = new Set(['tokenrouter', 'custom:deepinfra']);
+    const fb2 = await ds.startDirectorSession(gr, { persona: 'Yozora', engine: 'tokenrouter', source: 'plaud:fb2', prompt: 'fb' });
+    assert.strictEqual(fb2.engine, 'custom:sloproxy');
+    assert.strictEqual(fb2.fallbackFrom.length, 2);
+    // all refuse -> the last error, source free
+    refuse = new Set(['tokenrouter', 'custom:deepinfra', 'custom:sloproxy']);
+    await assert.rejects(ds.startDirectorSession(gr, { persona: 'Yozora', engine: 'tokenrouter', source: 'plaud:fb3', prompt: 'fb' }),
+        (err) => err.code === 'ENGINE_REFUSED' && err.fallbackFrom.length === 2);
+    assert.ok(!xi.listChatBriefs().some((c) => c.sources.includes('plaud:fb3')));
+    // fallback:false and a pinned sessionId do not fall back
+    const pinned = await ds.startDirectorSession(gr, { persona: 'Yozora', engine: 'tokenrouter', fallback: false, prompt: 'fb' });
+    assert.strictEqual(pinned.engine, 'tokenrouter');
+    assert.strictEqual(pinned.fallbackFrom, undefined);
+    refuse = new Set();
+    xi.runHasOutput = () => true;
 
     // get_director_session
     const got = ds.getDirectorSession(gr, { sessionId: a.sessionId });
