@@ -1879,7 +1879,10 @@ html[data-glass="basic"] #startMenu.start-menu {
     display: flex;
 }
 
-.start-menu-search-input {
+/* #startMenu: the general Vista text box rule (vista-glass-controls.css, many classes) outranks a class and
+   wiped the glyph, this border and the halo for the edit face (#1063). The id keeps them in every state; the
+   VM's box is one dark line, a faint light halo and the magnifier at the right. */
+#startMenu .start-menu-search-input {
     box-sizing: border-box;
     width: 100%;
     height: 30px;
@@ -1890,12 +1893,16 @@ html[data-glass="basic"] #startMenu.start-menu {
     box-shadow: 0 0 0 1px hsl(0 0% 100% / 30%);
     background: #fff image-set(url('/static_images/vista-start/search-glyph.png') 1x, url('/static_images/hidpi/125/vista-start/search-glyph.png') 1.25x, url('/static_images/hidpi/150/vista-start/search-glyph.png') 1.5385x, url('/static_images/hidpi/175/vista-start/search-glyph.png') 1.75x, url('/static_images/hidpi/200/vista-start/search-glyph.png') 2x) no-repeat right 8px center;
     color: #000;
+    border-image: none;
     font: 15px var(--start-menu-font);
+    text-shadow: none;
+    transition: none;
     outline: none;
 }
 
-.start-menu-search-input::placeholder {
-    color: #6d6d6d;
+/* the VM's hint is #575757 italic (ClearType's solid stems) */
+#startMenu .start-menu-search-input::placeholder {
+    color: #575757;
     font-style: italic;
     opacity: 1;
 }
