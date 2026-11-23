@@ -54,8 +54,10 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
     color: #fff;
     font-size: calc(10 * var(--wm-px));
 }
-#wmShell > .wm-qa.is-right .qa-panel { right: 0; border-left: var(--wm-px) solid var(--qa-glass-edge); }
-#wmShell > .wm-qa.is-left .qa-panel { left: 0; border-right: var(--wm-px) solid var(--qa-glass-edge); }
+/* no edge line on the inner side: the screen's own edge is the separation, and its shadow starts right there (a light line
+   between them read as a gap - Yukimi, Nov 23 2026: the shadow "not aligned to the separation") */
+#wmShell > .wm-qa.is-right .qa-panel { right: 0; }
+#wmShell > .wm-qa.is-left .qa-panel { left: 0; }
 /* the screen's shadow in the panel: darkest at the inner edge, gone 10 units in (a plain gradient, which the app's copy
    draws as it is; its last stop is not fully clear because a clear stop is left out of the copy) */
 #wmShell > .wm-qa .qa-inset {
@@ -63,7 +65,6 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
     top: 0;
     bottom: 0;
     width: calc(10 * var(--wm-px));
-    z-index: 1;
     pointer-events: none;
 }
 #wmShell > .wm-qa.is-right .qa-inset { left: 0; background-image: linear-gradient(90deg, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.2) 40%, rgba(0, 0, 0, 0.004)); }
@@ -83,6 +84,8 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
 }
 
 #wmShell > .wm-qa .qa-cells {
+    /* (over the inset, as the app draws them: in the page's order) */
+    position: relative;
     display: grid;
     gap: calc(4 * var(--wm-px));
 }

@@ -108,7 +108,8 @@
     // white: /pkg-icon/<package>/drawable/<name>). Yukimi, Nov 22 2026: "use the official icons when possible"
     const PKG = 'https://appassets.androidplatform.net/pkg-icon/';
     const OFFICIAL = {
-        dolby: `${PKG}com.sec.android.app.soundalive/drawable/quick_panel_icon_dolby_atmos`,
+        // (Sound Assistant's Dolby double-D: its quick panel icon is a raw .spr the app cannot draw)
+        dolby: `${PKG}com.sec.android.app.soundalive/drawable/dolby_routine_icon`,
         powersave: `${PKG}com.samsung.android.lool/drawable/ic_quick_panel_icon_battery_mode`,
         performance: `${PKG}com.samsung.android.lool/drawable/ic_quick_panel_icon_performance_profile`,
         powershare: `${PKG}com.samsung.android.lool/drawable/ic_quick_panel_icon_power_share`,
@@ -216,9 +217,14 @@
         const sr = s && !s.hidden && s.getClientRects().length ? s.getBoundingClientRect() : null;
         // behind a program the page's own bars are put away (the app draws its own): their places by their size, 26 units
         // each - laid out then, the panel ran up over the status bar (Yukimi, Nov 22 2026: "alignment issue")
-        const wmpx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
-        const top = tr && tr.bottom > 0 ? tr.bottom : 26 * wmpx;
-        const bottom = sr && sr.top > 0 ? sr.top : root.innerHeight - 26 * wmpx;
+        const cs = getComputedStyle(document.documentElement);
+        const wmpx = parseFloat(cs.getPropertyValue('--wm-px')) || 1;
+        // (put away, the soft key bar's height is still known: Android's button row, --wm-soft-h - never a fixed 26 units:
+        // the panel laid out so ended short of the Fold's taller bar over Today, a gap at the bottom, Yukimi Nov 23 2026)
+        const softH = parseFloat(cs.getPropertyValue('--wm-soft-h')) || 26 * wmpx;
+        const titleH = t && t.offsetHeight ? t.offsetHeight : 26 * wmpx;
+        const top = tr && tr.bottom > 0 ? tr.bottom : titleH;
+        const bottom = sr && sr.top > 0 ? sr.top : root.innerHeight - softH;
         return { top, bottom };
     }
 
@@ -278,14 +284,13 @@
             layer.classList.add('is-wide');
             const wideIds = m.items.filter((id) => id === 'wifi' || id === 'bluetooth');
             const rest = m.items.filter((id) => !wideIds.includes(id) && !SLIDERS[id]);
-            layer.innerHTML = '<div class="qa-panel">'
+            layer.innerHTML = '<div class="qa-panel"><span class="qa-inset"></span>'
                 + '<div class="qa-head">Quick Access</div>'
                 + (wideIds.length ? `<div class="qa-two">${wideIds.map((id) => tile(m, id, true)).join('')}</div>` : '')
                 + (m.items.includes('brightness') ? `<div class="qa-group">${slider(m, 'brightness', true)}<div class="qa-checks">${tile(m, 'autobrightness', true)}${tile(m, 'adaptivetone', true)}</div></div>` : '')
                 + (m.items.includes('volume') ? `<div class="qa-group">${slider(m, 'volume', true)}${tile(m, 'output', true)}</div>` : '')
                 + `<div class="qa-grid">${rest.filter((id) => id !== 'output').map((id) => tile(m, id, true)).join('')}</div>`
-                // (last: the screen's shadow falls over everything in the panel)
-                + '<span class="qa-inset"></span></div>';
+                + '</div>';
             shell.appendChild(layer);
             return true;
         }
@@ -298,9 +303,10 @@
         const more = pages.length > 1
             ? `<button type="button" class="qa-tile qa-more" data-android="qa-page:${page >= pages.length ? 1 : page + 1}" aria-label="More"><span class="qa-face is-off qa-more-face">${page >= pages.length ? '▲' : '▼'}</span></button>`
             : '';
-        layer.innerHTML = '<div class="qa-panel"><span class="qa-handle"></span><div class="qa-cells">'
+        // (the screen's shadow first: under the tiles, never over them - Yukimi, Nov 23 2026)
+        layer.innerHTML = '<div class="qa-panel"><span class="qa-inset"></span><span class="qa-handle"></span><div class="qa-cells">'
             + ids.map((id) => (SLIDERS[id] ? slider(m, id, false) : spans(m, id) ? tile(m, id, true, true) : tile(m, id, false))).join('')
-            + more + '</div><span class="qa-inset"></span></div>';
+            + more + '</div></div>';
         shell.appendChild(layer);
         return true;
     }
@@ -323,9 +329,9 @@
         if (!m) return '';
         // (every tile's picture: a control drawn with an app tile's glyph changes with the catalog too - its kept layout
         // pointed at a glyph the app no longer draws, and the tile showed empty)
-        // (f4: every tile has its on / off / dim faces; a state line centred in its tile, Nov 23 2026 - a new make sends the
-        // app the new layouts)
-        return JSON.stringify(['f4', getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
+        // (f5: every tile's on / off / dim faces, a centred state line, the inset under the tiles, real bar heights, Nov 23
+        // 2026 - a new make sends the app the new layouts)
+        return JSON.stringify(['f5', getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
     }
 
     // Today and Start show the workspace's wallpaper already (Yukimi, Nov 22 2026): the app brings Quick Access in over them
