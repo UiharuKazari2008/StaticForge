@@ -4045,6 +4045,24 @@
         return vpnCfg;
     }
     window.addEventListener('wmvpnconfig', () => { vpnCfg = null; statusDirty(); }, { signal: appScopeSignal });
+    /**
+     * Quick Access over Today / Start (#1017) is drawn by the app from the layouts melatonBars wrote down, and that file
+     * loads only when the app asks for a bar copy (a program in front): Settings' changes to the panel and a new make of
+     * its look never reached the panel over Melaton Mobile (Yukimi, Nov 23 2026). Loaded once the page has settled, and
+     * after Settings' commit; melatonBars writes the layouts down again only when what they depend on changed.
+     */
+    function quickAccessLayouts() {
+        const q = window.AndroidQuickAccess;
+        const ab = window.AndroidBars;
+        const fl = window.featureLoader;
+        if (!q || typeof q.config !== 'function' || !ab || typeof ab.layouts !== 'function' || !fl) return;
+        try { if (!JSON.parse(q.config()).enabled) return; } catch (_) { return; }
+        fl.loadFeature('melaton_bars').then(() => { if (window.melatonBars && window.melatonBars.quickAccessChanged) window.melatonBars.quickAccessChanged(); }).catch(() => { /* offline: next start */ });
+    }
+    {
+        const t = setTimeout(quickAccessLayouts, 8000);
+        if (appScopeSignal) appScopeSignal.addEventListener('abort', () => clearTimeout(t), { once: true });
+    }
     /** The tunnel down through its app: WireGuard by its name (the app's remote control), another VPN app opened. */
     function vpnDisconnect(v) {
         const h = window.AndroidWifi;
@@ -14475,6 +14493,8 @@
     }
 
     window.wmShell = {
+        /** Quick Access's settings changed: its layouts for the app written down again (Settings' commit). */
+        quickAccessLayouts: () => quickAccessLayouts(),
         /** The status fit's last inputs and answer (#907), for checking the bar. */
         statusFitLast: () => statusFitLast,
         /** The soft key bar at Android's nav row height again (melatonBars kit, Settings' Bars page; #1013, #1053). */

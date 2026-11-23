@@ -1382,6 +1382,32 @@
         return [...roles];
     }
 
+    // ---- the layouts written down while the page is on screen (Quick Access over Melaton Mobile)
+    const QA_SIG_KEY = 'melatonBarsLayoutSig';
+    let qaTimer = 0;
+    let qaSoon = () => {};
+    /** What the kept layouts depend on, for the panel over Melaton Mobile: its settings and look, the kit, the screen. */
+    function onScreenSig() {
+        const qa = window.wmQuickAccess;
+        if (!qa || typeof qa.signature !== 'function') return '';
+        let size = '';
+        try { size = typeof window.AndroidBars.screenSize === 'function' ? String(window.AndroidBars.screenSize() || '') : ''; } catch (_) { size = ''; }
+        return `${qa.signature()}|${kitSignature()}|${size}|${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio || 1}`;
+    }
+    function pushOnScreen() {
+        qaTimer = 0;
+        const sh = window.wmShell;
+        const ab = window.AndroidBars;
+        if (!sh || !sh.barsPopupOpen || !sh.barsPopupLayers || !ab || typeof ab.layouts !== 'function' || document.visibilityState !== 'visible') return;
+        const sig = onScreenSig();
+        if (!sig || sig === lsGet(QA_SIG_KEY)) return;
+        // one of this page's popups (a menu, a bubble) up: once it has gone
+        if (sh.barsPopupLayers().length) { qaTimer = setTimeout(pushOnScreen, 3000); return; }
+        try { localStorage.setItem(QA_SIG_KEY, sig); } catch (_) { /* private mode: again next time */ }
+        capturing = true;
+        try { pushLayoutsNow(sh, barRoles(), false); } catch (err) { console.warn('[melatonBars] on-screen layouts', err); } finally { if (notesMO) notesMO.takeRecords(); capturing = false; }
+    }
+
     function pushLayoutsAt(sh, roles, partial, dpr, vw, vh) {
         const all = {};
         const edges = barEdges(dpr, vh);
@@ -1986,6 +2012,8 @@
         },
         /** wmShell barsStatusPush: the popups' layouts written down again (the roles on the bar now). */
         pushLayouts: (roles, partial) => pushLayouts(roles || [], !!partial),
+        /** Quick Access's settings changed (Settings' commit): its layouts written down again, on screen too. */
+        quickAccessChanged: () => qaSoon(),
         kitSignature: () => kitSignature(),
         /** Settings changed what the kit holds (Soft Keys' menus, #1067): the app hears the new signature now and asks for it. */
         kitChanged: () => { try { if (window.AndroidBars && typeof window.AndroidBars.kitSig === 'function') window.AndroidBars.kitSig(kitSignature()); } catch (_) { /* older app */ } },
@@ -2060,5 +2088,16 @@
         barsMo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-wm-soft-h', 'data-wm-titlebar', 'data-wm-version'] });
         if (appScopeSignal) appScopeSignal.addEventListener('abort', () => { barsMo.disconnect(); clearTimeout(barsTimer); }, { once: true });
         barsSoon();
+        // Quick Access over Today / Start is drawn by the app from the layouts it keeps, and this page wrote them down only
+        // behind a program: a Settings change (adding, ordering the panel's controls), a new make of its look or a fold
+        // never reached the panel over Melaton Mobile (Yukimi, Nov 23 2026: "not a single setting change ... worked").
+        // Written down here too, on screen, when what they depend on changed: one synchronous pass (nothing of it is
+        // painted), never while one of this page's own popups is up (it would be closed), on the changes only
+        qaSoon = () => { if (!qaTimer) qaTimer = setTimeout(pushOnScreen, 400); };
+        window.addEventListener('resize', qaSoon, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', qaSoon, { signal: appScopeSignal });
+        if (appScopeSignal) appScopeSignal.addEventListener('abort', () => { clearTimeout(qaTimer); qaSoon = () => {}; }, { once: true });
+        // (after boot has settled: zero waits for the start, cursor rule installed-boot-zero-wait)
+        qaTimer = setTimeout(pushOnScreen, 4000);
     }
 })();

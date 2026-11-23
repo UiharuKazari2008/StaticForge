@@ -902,7 +902,7 @@
         },
         commit(d) {
             if (!same(d.v, d.saved)) KEYS().set(d.v);
-            if (d.qa && JSON.stringify(d.qa) !== d.qaSaved) { try { QA().setConfig(JSON.stringify(d.qa)); } catch (_) { /* older app */ } }
+            if (d.qa && JSON.stringify(d.qa) !== d.qaSaved) { try { QA().setConfig(JSON.stringify(d.qa)); } catch (_) { /* older app */ } if (window.wmShell && window.wmShell.quickAccessLayouts) window.wmShell.quickAccessLayouts(); }
             if (d.hold !== d.holdSaved) { try { window.AndroidBars.setConfig(JSON.stringify({ holdAction: d.hold })); } catch (_) { /* older app */ } }
             if (d.sk && JSON.stringify(d.sk.keep) !== d.keepSaved) { try { window.AndroidBars.setConfig(JSON.stringify({ keepBars: d.sk.keep })); } catch (_) { /* older app */ } }
             // the soft keys per program (#1067): the app applies them; the kit is made again for the menus' drawings
