@@ -2837,7 +2837,9 @@
     // The device's Installation History (title "Managed Programs", soft keys Done | Details) lists the
     // programs installed on it; here, the phone's Android programs (window.AndroidApps through
     // wmAndroidApps.js, whose list is cached until the app says programs changed). Details shows one
-    // program; its Menu opens, ends or removes it, or shows Android's App info.
+    // program; its Menu opens, ends or removes it, or shows Android's App info, and shows or hides it in the phone's
+    // Start menu and in the desktop's (Yukimi, Nov 23 2026: "from that Manage Programs interface, you should be able to
+    // hide application from the Start menu and from the Vista Start menu"; wmAndroidApps shownIn / setShown).
     const androidBridge = () => window.AndroidApps || null;
     const canBridge = (fn) => { const b = androidBridge(); return !!(b && typeof b[fn] === 'function'); };
 
@@ -2878,6 +2880,10 @@
         softKeys(d) {
             const a = d.details ? managedList().find((x) => x.id === d.sel) : null;
             if (a) {
+                const aa = window.wmAndroidApps;
+                const canShow = !!(aa && typeof aa.shownIn === 'function' && typeof aa.setShown === 'function');
+                const shown = canShow ? aa.shownIn(a.id) : { start: true, desktop: true };
+                const flip = (where) => { aa.setShown(a.id, where, !shown[where]); if (d.rerender) d.rerender(); };
                 return {
                     left: { label: 'Done', action: () => { d.details = false; if (d.rerender) d.rerender(); } },
                     right: {
@@ -2886,6 +2892,9 @@
                             { label: 'Open', disabled: !canBridge('launch'), action: () => managedCall('launch', a, `${a.label} could not be started.`) },
                             { label: 'Program Info', disabled: !canBridge('info'), action: () => managedCall('info', a, `There is no information for ${a.label}. It may have been removed from the device.`) },
                             { label: 'End Task', disabled: !canBridge('forceStop') || a.profile === 'work', action: () => managedCall('forceStop', a, `${a.label} could not be ended.`) },
+                            '-',
+                            { label: shown.start ? 'Hide from Start Menu' : 'Show in Start Menu', disabled: !canShow, action: () => flip('start') },
+                            { label: shown.desktop ? 'Hide from Desktop Start Menu' : 'Show in Desktop Start Menu', disabled: !canShow, action: () => flip('desktop') },
                             '-',
                             { label: 'Remove', disabled: !canBridge('uninstall') || a.removable === false, action: () => managedCall('uninstall', a, `${a.label} could not be removed.`) }
                         ]
@@ -2915,7 +2924,13 @@
                         ['Status:', managedStatus(a)],
                         ['Type:', a.game ? 'Game' : (a.category ? a.category.replace(/^./, (c) => c.toUpperCase()) : 'Program')],
                         ['Profile:', a.profile === 'work' ? 'Work' : 'Personal'],
-                        ['Installed:', up ? up.toLocaleDateString() : 'Unknown']
+                        ['Installed:', up ? up.toLocaleDateString() : 'Unknown'],
+                        ...(() => {
+                            const aa = window.wmAndroidApps;
+                            if (!aa || typeof aa.shownIn !== 'function') return [];
+                            const s = aa.shownIn(a.id);
+                            return [['Start menu:', s.start ? 'Shown' : 'Hidden'], ['Desktop Start menu:', s.desktop ? 'Shown' : 'Hidden']];
+                        })()
                     ])}</div>`;
                 return;
             }

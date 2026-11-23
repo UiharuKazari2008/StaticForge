@@ -1120,9 +1120,9 @@
     // rows that may be there more than once: a separator, a program of her choice ({ id: 'app', app: <program id>, label })
     const SOFT_MENU_MULTI = new Set(['sep', 'app']);
 
-    function renderBarsTab(el, d) {
-        const st = d.barsState || {};
-        const c0 = st.config || {};
+    /** The Android app's Bars settings as this page edits them (one draft for its Status Bar, Navigation and Android tabs). */
+    function barsCfgOf(d) {
+        const c0 = (d.barsState || {}).config || {};
         if (!d.barsCfg) {
             d.barsCfg = {
                 enabled: !!c0.enabled, corner: c0.corner === 'ok' ? 'ok' : 'close', androidTray: false,
@@ -1144,7 +1144,22 @@
                 pullShade: c0.pullShade === true
             };
         }
-        const cfg = d.barsCfg;
+        return d.barsCfg;
+    }
+
+    /**
+     * The Android app's Bars settings (#871), in the tab each belongs to (Yukimi, Nov 23 2026: "the bezel and Android
+     * settings and screen settings need to be moved and broken up into more logical configuration settings. As currently,
+     * they're just a bunch of random settings shoved in there"):
+     *   'bars'    Android: the title bar over Android programs and its corner button, the lock screen, the volume popup,
+     *             window animations, and where the other Android settings are
+     *   'status'  Status Bar: how the title bar is drawn over programs (black, clear on the lock screen, the pull down)
+     *   'nav'     Navigation: the soft key bar over programs, its right key, the gestures and the home swipe
+     * html(part) -> the part's controls; bind(part) wires the ones on the page. One draft (barsCfgOf), saved by the page.
+     */
+    function barsPart(el, d, part) {
+        const st = d.barsState || {};
+        const cfg = barsCfgOf(d);
         let why = '';
         try { why = window.melatonBars ? window.melatonBars.unsupported() : ''; } catch (_) { why = ''; }
         if (!why) {
@@ -1154,61 +1169,78 @@
         const label = (list, v) => (list.find(([k]) => k === v) || list[0])[1];
         const note = why ? 'Needs Bezel > Top of screen: Windows Status Bar, with Extend Status Bar to edge of Camera.'
             : st.elevated === false ? 'Needs Shizuku or Localhost ADB (Android Bridge) to keep Android\'s status bar away.' : '';
-        el.innerHTML = `${check('wmBarsOn', 'Use the title bar in Android programs', cfg.enabled)}
-            ${note ? `<p>${esc(note)}</p>` : ''}
-            <div class="wm-form-row is-wide"><span class="wm-form-label">Corner button:</span>${ui.comboHtml('barscorner', label(BARS_CORNERS, cfg.corner))}</div>
-            ${check('wmBarsPullShade', 'Pull down the title bar to open Android\'s notification shade', cfg.pullShade)}
-            <div class="wm-form-gap"></div>
-            ${check('wmBarsSoft', 'Use the soft key bar in Android programs', cfg.softkeys)}
-            <div class="wm-form-row is-wide"><span class="wm-form-label">Right soft key:</span>${ui.comboHtml('barsright', label(BARS_SOFT_RIGHT, cfg.softRight))}</div>
-            ${check('wmBarsRoom', 'Melaton handles navigation gestures: swipe up on the soft key bar for Home, up and hold for recent programs, in from a side for Back (Android\'s gestures come back when this is off)', cfg.room)}
-            <div class="wm-form-row is-wide"><span class="wm-form-label">Home swipe sensitivity:</span>${ui.comboHtml('barshomesense', label(BARS_HOME_SENSE, cfg.homeSense))}</div>
-            ${check('wmBarsLandCover', 'Hide Softkey bar in landscape (Cover Screen only), swipe up to show', cfg.hideLandCover)}
-            ${check('wmBarsKeyguardClear', 'Transparent Statusbar at keyguard', cfg.keyguardClear)}
+        const off = cfg.enabled ? '' : '<p>Android > Use the title bar in Android programs turns these on.</p>';
+        const html = part === 'status' ? `<div class="wm-form-sub">Over Android programs</div>
+            ${off}
             ${check('wmBarsBlack', 'Black Statusbar (always black behind the icons, never see-through)', cfg.barBlack)}
             ${check('wmBarsBlackLight', 'Only apply in light theme', cfg.barBlackLight)}
-            ${check('wmBarsCutAnim', 'Cut window animations everywhere (programs open, close and switch without zooming)', cfg.cutAnimations)}
+            ${check('wmBarsKeyguardClear', 'Transparent Statusbar at keyguard', cfg.keyguardClear)}
+            ${check('wmBarsPullShade', 'Pull down the title bar to open Android\'s notification shade', cfg.pullShade)}`
+            : part === 'nav' ? `<div class="wm-form-sub">Over Android programs</div>
+            ${off}
+            ${check('wmBarsSoft', 'Use the soft key bar in Android programs', cfg.softkeys)}
+            <div class="wm-form-row is-wide"><span class="wm-form-label">Right soft key:</span>${ui.comboHtml('barsright', label(BARS_SOFT_RIGHT, cfg.softRight))}</div>
+            ${check('wmBarsLandCover', 'Hide Softkey bar in landscape (Cover Screen only), swipe up to show', cfg.hideLandCover)}
             <div class="wm-form-gap"></div>
+            <div class="wm-form-sub">Gestures</div>
+            ${check('wmBarsRoom', 'Melaton handles navigation gestures: swipe up on the soft key bar for Home, push up slowly for Task Manager, in from a side for Back (Android\'s gestures come back when this is off)', cfg.room)}
+            <div class="wm-form-row is-wide"><span class="wm-form-label">Home swipe sensitivity:</span>${ui.comboHtml('barshomesense', label(BARS_HOME_SENSE, cfg.homeSense))}</div>
+            <div class="wm-sys-footlink">Set each program's <a href="#" data-go="buttons:softkey">soft keys</a>, the <a href="#" data-go="menus:softmenu">Soft Key Menu</a> and <a href="#" data-go="buttons:quickaccess">Quick Access</a>.</div>`
+            : `${check('wmBarsOn', 'Use the title bar in Android programs', cfg.enabled)}
+            ${note ? `<p>${esc(note)}</p>` : ''}
+            <div class="wm-form-row is-wide"><span class="wm-form-label">Corner button:</span>${ui.comboHtml('barscorner', label(BARS_CORNERS, cfg.corner))}</div>
+            <div class="wm-form-gap"></div>
+            <div class="wm-form-sub">Lock screen</div>
             ${check('wmBarsLock', 'Use the Windows Mobile lock screen (the phone\'s PIN is typed on its keypad)', cfg.lockScreen)}
             ${check('wmBarsLockWall', 'Use the phone\'s lock screen wallpaper', cfg.lockPhoneWall)}
             <div class="wm-form-gap"></div>
-            ${check('wmBarsVolume', 'Use WM Volume popup in Android (the volume keys show it and change the media level)', cfg.volumePopup)}`;
-        const q = (sel) => el.querySelector(sel);
-        const sync = () => {
-            q('input[name="wmBarsOn"]').disabled = !!why && !cfg.enabled;
-            el.querySelectorAll('input[name="wmBarsTray"], input[name="wmBarsSoft"], [data-act="barscorner"]').forEach((i) => { i.disabled = !cfg.enabled; });
-            const r = q('[data-act="barsright"]');
-            if (r) r.disabled = !cfg.enabled || !cfg.softkeys;
-            q('input[name="wmBarsRoom"]').disabled = !cfg.enabled || !cfg.softkeys;
-            q('input[name="wmBarsLandCover"]').disabled = !cfg.enabled || !cfg.softkeys;
-            const hs = q('[data-act="barshomesense"]');
-            if (hs) hs.disabled = !cfg.enabled;
-            q('input[name="wmBarsKeyguardClear"]').disabled = !cfg.enabled;
-            q('input[name="wmBarsBlack"]').disabled = !cfg.enabled;
-            q('input[name="wmBarsBlackLight"]').disabled = !cfg.enabled || !cfg.barBlack;
-            q('input[name="wmBarsPullShade"]').disabled = !cfg.enabled;
-            q('input[name="wmBarsCutAnim"]').disabled = st.elevated === false;
-            q('input[name="wmBarsLock"]').disabled = !cfg.enabled;
-            q('input[name="wmBarsLockWall"]').disabled = !cfg.enabled || !cfg.lockScreen;
-            q('input[name="wmBarsVolume"]').disabled = !cfg.enabled;
+            <div class="wm-form-sub">System</div>
+            ${check('wmBarsVolume', 'Use WM Volume popup in Android (the volume keys show it and change the media level)', cfg.volumePopup)}
+            ${check('wmBarsCutAnim', 'Cut window animations everywhere (programs open, close and switch without zooming)', cfg.cutAnimations)}
+            <div class="wm-sys-footlink">More Android settings: each program's <a href="#" data-go="buttons:softkey">soft keys</a>, the <a href="#" data-go="menus:softmenu">Soft Key Menu</a>, <a href="#" data-go="buttons:quickaccess">Quick Access</a>, <a href="#" data-go="managed">Managed Programs</a>, <a href="#" data-go="remove-programs:android-hidden">Remove Programs</a>, <a href="#" data-go="program-icons">Program Icons</a> and the <a href="#" data-go="default-programs">Android Bridge</a>.</div>`;
+        const bind = () => {
+            const q = (sel) => el.querySelector(sel);
+            const dis = (sel, v) => { el.querySelectorAll(sel).forEach((i) => { i.disabled = v; }); };
+            const sync = () => {
+                dis('input[name="wmBarsOn"]', !!why && !cfg.enabled);
+                dis('input[name="wmBarsSoft"], [data-act="barscorner"], [data-act="barshomesense"]', !cfg.enabled);
+                dis('[data-act="barsright"], input[name="wmBarsRoom"], input[name="wmBarsLandCover"]', !cfg.enabled || !cfg.softkeys);
+                dis('input[name="wmBarsKeyguardClear"], input[name="wmBarsBlack"], input[name="wmBarsPullShade"], input[name="wmBarsLock"], input[name="wmBarsVolume"]', !cfg.enabled);
+                dis('input[name="wmBarsBlackLight"]', !cfg.enabled || !cfg.barBlack);
+                dis('input[name="wmBarsCutAnim"]', st.elevated === false);
+                dis('input[name="wmBarsLockWall"]', !cfg.enabled || !cfg.lockScreen);
+            };
+            const on = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
+            on('wmBarsOn', (v) => { cfg.enabled = v; });
+            on('wmBarsSoft', (v) => { cfg.softkeys = v; });
+            on('wmBarsRoom', (v) => { cfg.room = v; });
+            on('wmBarsLandCover', (v) => { cfg.hideLandCover = v; });
+            on('wmBarsKeyguardClear', (v) => { cfg.keyguardClear = v; });
+            on('wmBarsBlack', (v) => { cfg.barBlack = v; });
+            on('wmBarsBlackLight', (v) => { cfg.barBlackLight = v; });
+            on('wmBarsPullShade', (v) => { cfg.pullShade = v; });
+            on('wmBarsCutAnim', (v) => { cfg.cutAnimations = v; });
+            on('wmBarsLock', (v) => { cfg.lockScreen = v; });
+            on('wmBarsLockWall', (v) => { cfg.lockPhoneWall = v; });
+            on('wmBarsVolume', (v) => { cfg.volumePopup = v; });
+            if (q('[data-act="barscorner"]')) ui.bindCombo(q('[data-act="barscorner"]'), BARS_CORNERS, cfg.corner, (v) => { cfg.corner = v; });
+            if (q('[data-act="barsright"]')) ui.bindCombo(q('[data-act="barsright"]'), BARS_SOFT_RIGHT, cfg.softRight, (v) => { cfg.softRight = v; });
+            if (q('[data-act="barshomesense"]')) ui.bindCombo(q('[data-act="barshomesense"]'), BARS_HOME_SENSE, cfg.homeSense, (v) => { cfg.homeSense = v; });
+            // the other pages that hold Android settings (WM's foot links): "<page>[:<tab>]"
+            el.querySelectorAll('a[data-go]').forEach((a) => a.addEventListener('click', (e) => {
+                e.preventDefault();
+                const [page, tab] = a.dataset.go.split(':');
+                if (window.wmSettings && typeof window.wmSettings.open === 'function') window.wmSettings.open(page, tab);
+            }));
+            sync();
         };
-        const bind = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
-        bind('wmBarsOn', (v) => { cfg.enabled = v; });
-        bind('wmBarsSoft', (v) => { cfg.softkeys = v; });
-        bind('wmBarsRoom', (v) => { cfg.room = v; });
-        bind('wmBarsLandCover', (v) => { cfg.hideLandCover = v; });
-        bind('wmBarsKeyguardClear', (v) => { cfg.keyguardClear = v; });
-        bind('wmBarsBlack', (v) => { cfg.barBlack = v; });
-        bind('wmBarsBlackLight', (v) => { cfg.barBlackLight = v; });
-        bind('wmBarsPullShade', (v) => { cfg.pullShade = v; });
-        bind('wmBarsCutAnim', (v) => { cfg.cutAnimations = v; });
-        bind('wmBarsLock', (v) => { cfg.lockScreen = v; });
-        bind('wmBarsLockWall', (v) => { cfg.lockPhoneWall = v; });
-        bind('wmBarsVolume', (v) => { cfg.volumePopup = v; });
-        ui.bindCombo(q('[data-act="barscorner"]'), BARS_CORNERS, cfg.corner, (v) => { cfg.corner = v; });
-        ui.bindCombo(q('[data-act="barsright"]'), BARS_SOFT_RIGHT, cfg.softRight, (v) => { cfg.softRight = v; });
-        ui.bindCombo(q('[data-act="barshomesense"]'), BARS_HOME_SENSE, cfg.homeSense, (v) => { cfg.homeSense = v; });
-        sync();
+        return { html, bind };
+    }
+
+    function renderBarsTab(el, d) {
+        const part = barsPart(el, d, 'bars');
+        el.innerHTML = part.html;
+        part.bind();
     }
 
     function check(name, label, checked, attrs = '') {
@@ -2127,7 +2159,10 @@
         {
             id: 'screen', tab: 'system', label: 'Screen', icon: 'set-screen',
             // Melaton Bars (#871): with an Android app that can draw them over other programs
-            tabs: [['textsize', 'Text Size'], ['bezel', 'Bezel']].concat(window.AndroidBars ? [['bars', 'Android']] : []),
+            // Text Size, the Bezel (the top of the screen and what is printed on it), the Status Bar (its icons, and how it
+            // is drawn over Android programs), Navigation (the gesture bar, the soft key bar and the gestures) and Android
+            // (the bars over Android programs, the lock screen and the rest) - one subject a tab (Yukimi, Nov 23 2026)
+            tabs: [['textsize', 'Text Size'], ['bezel', 'Bezel'], ['status', 'Status Bar'], ['nav', 'Navigation']].concat(window.AndroidBars ? [['bars', 'Android']] : []),
             init: () => ({
                 barsState: barsState(),
                 scale: currentScale(), segoe: lsGet(K.systemFont) === 'segoe', camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
@@ -2154,6 +2189,50 @@
             render(el, tab, d) {
                 // Android (#871): these bars over Android's programs, Android's status bar locked away
                 if (tab === 'bars') { renderBarsTab(el, d); return; }
+                // Status Bar: which icons the title bar keeps beside the camera and when the sound and power icons show; over
+                // Android programs, how the app draws it
+                if (tab === 'status') {
+                    const off = !!(d.bars && !d.bars.hideStatus);
+                    const bars = window.AndroidBars ? barsPart(el, d, 'status') : null;
+                    el.innerHTML = `<div class="wm-form-sub">Status icons</div>
+                        <div class="wm-form-row is-wide"><span class="wm-form-label">Sound icon:</span>${ui.comboHtml('soundicon', (STATUS_SOUND.find(([k]) => k === d.soundIcon) || STATUS_SOUND[1])[1])}</div>
+                        <div class="wm-form-row is-wide"><span class="wm-form-label">Power icon:</span>${ui.comboHtml('powericon', (STATUS_POWER.find(([k]) => k === d.powerIcon) || STATUS_POWER[1])[1])}</div>
+                        <div class="wm-form-gap"></div>
+                        <div class="wm-form-sub">Camera</div>
+                        <p>Status icons that may go past the camera hole (the rest collapse into the notification group; 0 = never cross):</p>
+                        <div class="wm-form-row is-wide"><span class="wm-form-label">Cover screen:</span><div data-f="crosscover"></div></div>
+                        <div class="wm-form-row is-wide"><span class="wm-form-label">Main screen:</span><div data-f="crossmain"></div></div>
+                        ${bars ? `<div class="wm-form-gap"></div>${bars.html}` : ''}`;
+                    const q = (sel) => el.querySelector(sel);
+                    ui.bindCombo(q('[data-act="soundicon"]'), STATUS_SOUND, d.soundIcon, (v) => { d.soundIcon = v; });
+                    ui.bindCombo(q('[data-act="powericon"]'), STATUS_POWER, d.powerIcon, (v) => { d.powerIcon = v; });
+                    // (#1057) the cover screen is a phone's only screen when it does not fold
+                    const crossOpts = (label, key) => ({ value: d[key], min: 0, max: 9, anyLabel: 'No limit', label, onChange: (v) => { d[key] = v; } });
+                    const xcv = ui.numberField(q('[data-f="crosscover"]'), crossOpts('Status icons past the camera, cover screen', 'crossCover'));
+                    const xmn = ui.numberField(q('[data-f="crossmain"]'), crossOpts('Status icons past the camera, main screen', 'crossMain'));
+                    // (only with the Windows status bar running to the camera: Bezel > Top of screen)
+                    [xcv, xmn].forEach((x) => x.setDisabled(off || d.camera === 'bezel'));
+                    if (bars) bars.bind();
+                    return;
+                }
+                // Navigation: the bottom of the screen - Android's gesture bar, the soft key bar over Android programs and
+                // the gestures Melaton handles
+                if (tab === 'nav') {
+                    const bars = window.AndroidBars ? barsPart(el, d, 'nav') : null;
+                    el.innerHTML = `<div class="wm-form-sub">Gesture bar</div>
+                        ${d.bars ? check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation) : ''}
+                        ${check('wmSoftkeyExtend', 'Extend softkey background under gesture bar', d.softExtend)}
+                        ${bars ? `<div class="wm-form-gap"></div>${bars.html}` : ''}`;
+                    const q = (sel) => el.querySelector(sel);
+                    // only while the gesture bar shows (hidden, there is nothing under it to cover)
+                    const sync = () => { el.querySelectorAll('input[name="wmSoftkeyExtend"]').forEach((i) => { i.disabled = !!(d.bars && d.bars.hideNavigation); }); };
+                    const bind = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
+                    if (d.bars) bind('wmHideNavigation', (v) => { d.bars.hideNavigation = v; });
+                    bind('wmSoftkeyExtend', (v) => { d.softExtend = v; });
+                    sync();
+                    if (bars) bars.bind();
+                    return;
+                }
                 // Bezel: the top of the phone's screen. Hiding the phone's status bar (Android app) is
                 // what lets the screen handle its camera: a black bezel band with the maker's printed logo,
                 // model text and a notification LED, or a title bar kept clear of the camera.
@@ -2167,17 +2246,8 @@
                     const modeNow = () => (d.bars && !d.bars.hideStatus ? 'android' : d.camera === 'bezel' ? 'bezel' : 'windows');
                     el.innerHTML = `<div class="wm-setb-preview" aria-hidden="true"></div>
                         <div class="wm-form-row is-wide"><span class="wm-form-label">Top of screen:</span>${ui.comboHtml('topmode', (MODES.find(([k]) => k === modeNow()) || MODES[0])[1])}</div>
-                        ${d.bars ? check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation) : ''}
-                        ${check('wmSoftkeyExtend', 'Extend softkey background under gesture bar', d.softExtend)}
                         ${check('wmCameraExtend', 'Extend Status Bar to edge of Camera', d.extend)}
-                        <p>Status icons that may go past the camera hole (the rest collapse into the notification group; 0 = never cross):</p>
-                        <div class="wm-form-row is-wide"><span class="wm-form-label">Cover screen:</span><div data-f="crosscover"></div></div>
-                        <div class="wm-form-row is-wide"><span class="wm-form-label">Main screen:</span><div data-f="crossmain"></div></div>
                         ${check('wmCameraPortraitOnly', 'Only in portrait (a turned phone uses the whole screen)', d.portraitOnly)}
-                        <div class="wm-form-gap"></div>
-                        <div class="wm-form-sub">Status icons</div>
-                        <div class="wm-form-row is-wide"><span class="wm-form-label">Sound icon:</span>${ui.comboHtml('soundicon', (STATUS_SOUND.find(([k]) => k === d.soundIcon) || STATUS_SOUND[1])[1])}</div>
-                        <div class="wm-form-row is-wide"><span class="wm-form-label">Power icon:</span>${ui.comboHtml('powericon', (STATUS_POWER.find(([k]) => k === d.powerIcon) || STATUS_POWER[1])[1])}</div>
                         <div class="wm-form-gap"></div>
                         <div class="wm-form-sub">Logo</div>
                         <p>Opacity:</p>
@@ -2209,10 +2279,6 @@
                         steps: BEZEL_LOGO_SIZES, value: d.logoSize, lo: 'Small', hi: 'Large', label: 'Logo size',
                         onChange: (v) => { d.logoSize = v; }
                     });
-                    // (#1057) the cover screen is a phone's only screen when it does not fold
-                    const crossOpts = (label, key) => ({ value: d[key], min: 0, max: 9, anyLabel: 'No limit', label, onChange: (v) => { d[key] = v; } });
-                    const xcv = ui.numberField(q('[data-f="crosscover"]'), crossOpts('Status icons past the camera, cover screen', 'crossCover'));
-                    const xmn = ui.numberField(q('[data-f="crossmain"]'), crossOpts('Status icons past the camera, main screen', 'crossMain'));
                     const msz = ui.trackbar(q('[data-f="modelsize"]'), {
                         steps: BEZEL_MODEL_SIZES, value: d.modelSize, lo: 'Small', hi: 'Large', label: 'Text size',
                         onChange: (v) => { d.modelSize = v; }
@@ -2223,9 +2289,6 @@
                         const off = !!(d.bars && !d.bars.hideStatus);
                         el.querySelectorAll('input[name="wmCameraPortraitOnly"]').forEach((i) => { i.disabled = off; });
                         el.querySelectorAll('input[name="wmCameraExtend"]').forEach((i) => { i.disabled = off || d.camera === 'bezel'; });
-                        [xcv, xmn].forEach((x) => x.setDisabled(off || d.camera === 'bezel'));
-                        // only while the gesture bar shows (hidden, there is nothing under it to cover)
-                        el.querySelectorAll('input[name="wmSoftkeyExtend"]').forEach((i) => { i.disabled = !!(d.bars && d.bars.hideNavigation); });
                         drawBezelPreview(q('.wm-setb-preview'), modeNow(), d);
                         const noBezel = off || d.camera !== 'bezel';
                         el.querySelectorAll('[data-act="logopos"], input[name="wmModelShow"], input[name="wmLed"]').forEach((i) => { i.disabled = noBezel; });
@@ -2234,11 +2297,7 @@
                         if (msz && typeof msz.setDisabled === 'function') msz.setDisabled(noBezel || !d.modelShow);
                         el.querySelectorAll('.wm-setb-led input').forEach((i) => { i.disabled = noBezel || !d.led; });
                     };
-                    if (d.bars) bind('wmHideNavigation', (v) => { d.bars.hideNavigation = v; });
                     bind('wmCameraExtend', (v) => { d.extend = v; });
-                    bind('wmSoftkeyExtend', (v) => { d.softExtend = v; });
-                    ui.bindCombo(q('[data-act="soundicon"]'), STATUS_SOUND, d.soundIcon, (v) => { d.soundIcon = v; });
-                    ui.bindCombo(q('[data-act="powericon"]'), STATUS_POWER, d.powerIcon, (v) => { d.powerIcon = v; });
                     ui.bindCombo(q('[data-act="topmode"]'), MODES, modeNow(), (v) => {
                         if (d.bars) d.bars.hideStatus = v !== 'android';
                         d.camera = v === 'bezel' ? 'bezel' : 'clear';

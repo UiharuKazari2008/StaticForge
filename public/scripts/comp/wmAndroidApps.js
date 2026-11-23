@@ -39,6 +39,10 @@
     if (!bridge || typeof bridge.list !== 'function') return;
 
     const HIDDEN_KEY = 'wmAndroidHidden';
+    // the programs left out of the desktop's (Vista) Start menu, apart from the phone's (Yukimi, Nov 23 2026: "hide
+    // application from the Start menu and from the Vista Start menu"). Not there yet: the desktop follows HIDDEN_KEY, as
+    // it always did; it is written (as a copy of HIDDEN_KEY) the first time the two are set apart (setShown)
+    const HIDDEN_DESKTOP_KEY = 'wmAndroidHiddenDesktop';
     const START_KEY = 'wmAndroidStart';
     const GAMES_KEY = 'wmAndroidGames';
     const NAMES_KEY = 'wmAndroidNames';      // { id: name } the user gave a program (#776)
@@ -690,7 +694,7 @@
                 return { list, hidden: readSet(HIDDEN_KEY) };
             },
             render(el, tab, d, pageApi) {
-                el.innerHTML = `<p>Checked programs appear in Programs and Start. Clear the ones you never start.</p>
+                el.innerHTML = `<p>Checked programs appear in Programs and Start on this phone. Clear the ones you never start.</p>
                     ${ws.ui.listbox(d.list.map((a) => ({ key: a.id, label: labelOf(a), checked: !d.hidden.has(a.id), selected: a.id === d.sel })), { maxHeight: 190 })}
                     ${ws.ui.buttons([['aa-rename', 'Rename...', !d.sel]])}`;
                 const btn = el.querySelector('[data-act="aa-rename"]');
@@ -1694,7 +1698,32 @@
 
     // an app's Windows Mobile icon set from the store by package (Messaging's Android app accounts, #885), or null
     const wmIcon = (pkg) => { const k = pkg ? storeKey({ id: '', package: String(pkg) }) : null; return (k && store.icons[k].icon) || null; };
-    window.wmAndroidApps = { sync, refresh, list: () => apps.slice(), store: () => store, wmIcon };
+    /** Where a program shows: { start: the phone's Start menu and Programs, desktop: the desktop's Start menu }. */
+    function shownIn(id) {
+        const hidden = readSet(HIDDEN_KEY);
+        const hd = readJson(HIDDEN_DESKTOP_KEY, null);
+        return { start: !hidden.has(id), desktop: !(Array.isArray(hd) ? new Set(hd.map(String)) : hidden).has(id) };
+    }
+
+    /** Shows or hides a program in one of the two Start menus (where: 'start' | 'desktop'); Managed Programs' Menu. */
+    function setShown(id, where, on) {
+        const hidden = readSet(HIDDEN_KEY);
+        const hd = readJson(HIDDEN_DESKTOP_KEY, null);
+        // (the desktop's own list from now on: until here it followed the phone's)
+        const desk = Array.isArray(hd) ? new Set(hd.map(String)) : new Set(hidden);
+        if (where === 'desktop') {
+            if (on) desk.delete(id); else desk.add(id);
+        } else {
+            if (on) hidden.delete(id); else hidden.add(id);
+            writeSet(HIDDEN_KEY, hidden);
+            if (!on) { const s = readSet(START_KEY); if (s.delete(id)) writeSet(START_KEY, s); }
+        }
+        writeSet(HIDDEN_DESKTOP_KEY, desk);
+        if (where !== 'desktop') refresh();
+        return shownIn(id);
+    }
+
+    window.wmAndroidApps = { sync, refresh, list: () => apps.slice(), store: () => store, wmIcon, shownIn, setShown };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });
