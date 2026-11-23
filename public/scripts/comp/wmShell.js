@@ -8535,10 +8535,12 @@
                 if (batHtml) right.insertAdjacentHTML('beforeend', batHtml);
                 sections.push({ node: row, key: `cty:${stateWord}:${via}:${charger}:${bat ? `${dl}${bat.charging}` : ''}` });
             } else sections.push(lines.join(' '));
-            // (Yukimi, Nov 21) brightness with its auto toggle, as the Power bubble's, and the media volume
-            const bri = brightnessRow();
+            // (Yukimi, Nov 21) brightness with its auto toggle, as the Power bubble's, and the media volume: the attached
+            // dock's controls, so only while it is attached (Yukimi, Nov 23 2026: disconnected, "the status bar pop-up
+            // should not show the controls for the attached docking station ... the device isn't connected")
+            const bri = linked ? brightnessRow() : null;
             if (bri) { const bn = brightnessNow(); sections.push({ rule: true }, { node: bri, key: bn ? `bri:${bn.percent}:${bn.auto ? 1 : 0}:${bn.canSet ? 1 : 0}` : 'bri' }); }
-            const vol = mediaRow();
+            const vol = linked ? mediaRow() : null;
             if (vol) sections.push({ node: vol, key: `vol:${levelOf('media')}` });
             // the desktop's power (#945): its own shutdown sequence runs on the connected display ("Shutting down..."
             // here meanwhile); Shut Down closes the desktop, Restart starts it again. This phone stays on.
