@@ -317,6 +317,7 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `agent_session_unbound` | Key rebound / idle 15 min / tray Disconnect | `data.clientId`, `data.reason` |
 | `agent_session_notice` | Physics compiled for the bound tab | `data.action` (`physics`), optional `data.actorName` — `#mcpPhysicsIndicator` (location arrow) plus Remote Access popover |
 | `wm_program_icons_job` | Every change of a Program Icons job (#890 P15): an icon starts, is ready or failed, the batch is closed; at most one per job per turn of the server's event loop | `data.success`, `data.job` (the `GET /api/wm-program-icons/jobs/:job` answer). Sent to the sessions that created, listed, got, regenerated or finished the job; none after `done` / `cancel`. A page that gets them need not poll the job. A sleeping phone page or DeX window is held the newest state per job - [rest-api.md](./rest-api.md) Program Icons |
+| `wm_program_icons_store` | The Program Icons store changed (icons kept in a batch, or one removed) | `data.success`, `data.version`, `data.updatedAt`, `data.icons` (the `GET /api/wm-program-icons/manifest` answer). Broadcast to every client; Melaton Mobile and the DeX desktop redraw their Android programs from it. A sleeping phone page is held the newest one. A client that was offline reads the manifest once when its socket is back |
 
 Director messages use prefix `director_` (handled in client before inbound registry).
 

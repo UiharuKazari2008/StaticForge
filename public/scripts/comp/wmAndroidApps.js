@@ -859,8 +859,10 @@
         if (jobPushWired || !c || typeof c.on !== 'function') return jobPushWired;
         jobPushWired = true;
         c.on('wm_program_icons_job', onJobPush, { signal: appScopeSignal });
+        // the store changed on the server (an icon kept or removed anywhere): drawn now, not at the next page boot
+        c.on('wm_program_icons_store', (m) => { const d = m && (m.data || m); if (d && d.icons) applyStore(d); }, { signal: appScopeSignal });
         // pushes missed while the socket was down: one read when it is back
-        c.on('connected', () => { if (job.id && (job.lastState === 'working' || job.lastState == null)) poll(true); }, { signal: appScopeSignal });
+        c.on('connected', () => { loadStore(); if (job.id && (job.lastState === 'working' || job.lastState == null)) poll(true); }, { signal: appScopeSignal });
         return true;
     }
 

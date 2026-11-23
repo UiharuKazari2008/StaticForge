@@ -54,6 +54,7 @@
  *   POST /api/wm-program-icons/jobs/:job/cancel
  *   DELETE /api/wm-program-icons/store?id=<package/activity>   back to the Android icon
  *
+ * Pushed: every change of the store goes to every client as wm_program_icons_store { data: the GET /manifest answer }.
  * Pushed (#890 P15): every change of a job (an icon starts, is ready or failed, the batch is closed)
  * goes to the sessions that made or asked about it as wm_program_icons_job { success, job } (the
  * GET /jobs/:job answer), so the page need not poll while its socket is up.
@@ -982,10 +983,23 @@ async function finish(job, accept) {
         manifest.updatedAt = new Date().toISOString();
         atomicWrite(manifestPath(), `${JSON.stringify(manifest, null, 2)}\n`);
         await recompileWithin(120000);
+        pushStore();
     }
     job.state = 'done';
     saveJob(job);
     return saved;
+}
+
+/**
+ * Every client hears of a store change (wm_program_icons_store { data: the manifest as GET /manifest answers it }):
+ * phones and the DeX desktop redraw their programs at once instead of only at their next page boot (Nov 23 2026: the
+ * Fold showed version 20 of the store while the server had 30). A sleeping phone page is held the newest one.
+ */
+function pushStore() {
+    let server = null;
+    try { server = boundGr && typeof boundGr.getWebSocketServer === 'function' ? boundGr.getWebSocketServer() : null; } catch (_) { server = null; }
+    if (!server || typeof server.broadcast !== 'function') return;
+    try { server.broadcast({ type: 'wm_program_icons_store', data: { success: true, ...publicManifest() }, timestamp: new Date().toISOString() }); } catch (err) { console.warn('[wmProgramIcons] store push', err && err.message); }
 }
 
 function removeFromStore(id) {
@@ -1079,6 +1093,7 @@ function mount(app, authMiddleware, globalResources) {
         const id = collapse(req.query && req.query.id);
         if (!removeFromStore(id)) return res.status(404).json({ success: false, error: 'That program has no Windows Mobile icon.' });
         await recompileWithin(120000);
+        pushStore();
         res.json({ success: true, manifest: publicManifest() });
     });
 }
@@ -1088,5 +1103,5 @@ module.exports = {
     playStoreContext,
     chooseRoute,
     publicManifest,
-    _test: { stub: (o) => { stubs = o || null; }, runItem, versionOf, createJob, render65, renderVista, renderWm, checkDrawing, missingJob, finish, removeFromStore, jobs, setRoot: (r) => { projectRoot = r; }, watchJob, pushJob, saveJob, publicJob, jobWatchers, setGr: (g) => { boundGr = g; } }
+    _test: { pushStore, stub: (o) => { stubs = o || null; }, runItem, versionOf, createJob, render65, renderVista, renderWm, checkDrawing, missingJob, finish, removeFromStore, jobs, setRoot: (r) => { projectRoot = r; }, watchJob, pushJob, saveJob, publicJob, jobWatchers, setGr: (g) => { boundGr = g; } }
 };

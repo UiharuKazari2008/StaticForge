@@ -17,6 +17,8 @@ const {
 // page has no use for it, and a copy delivered on waking would be stale)
 const DORMANT_HOLD = new Map([
     ['ping', 'last'],
+    // (the Program Icons store: only its newest copy matters)
+    ['wm_program_icons_store', 'last'],
     ['claude_remote_control_status', 'last'],
     ['claude_account_login_status', 'last'],
     ['dovecote_mailbox_updated', 'last'],

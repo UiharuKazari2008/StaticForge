@@ -14,7 +14,7 @@
  * Program Icons store (Nov 22: every program has a Vista version for the desktop; a set made before that has only its
  * Windows Mobile icon, which is drawn until its Vista one is made): its icon from the Program
  * Icons store (#773, localStorage wmAndroidIconStore, kept by Melaton Mobile in the same app; refreshed from
- * /api/wm-program-icons/manifest once the desktop is idle), else Android's own icon; the name the user gave it
+ * /api/wm-program-icons/manifest once the desktop is idle, and from the server's wm_program_icons_store push), else Android's own icon; the name the user gave it
  * (wmAndroidNames); programs cleared in Remove Programs > Android (wmAndroidHidden) are left out here too.
  *
  * The same programs in the same places as the phone's Programs (Yukimi, Nov 22 2026, #1031; wmAndroidApps.js sync is the
@@ -295,16 +295,25 @@
         if (typeof root.fetch !== 'function') return;
         root.fetch('/api/wm-program-icons/manifest', { credentials: 'same-origin', cache: 'no-store' })
             .then((r) => (r.ok ? r.json() : null))
-            .then((m) => {
-                if (!m || !m.icons || typeof m.icons !== 'object') return;
-                const next = JSON.stringify(m.icons);
-                if (next === JSON.stringify(storeIcons())) return;
-                store = m.icons;
-                try { localStorage.setItem(STORE_KEY, JSON.stringify({ version: m.version || 0, icons: m.icons })); } catch (_) { /* the phone page keeps its own */ }
-                changed();
-            })
+            .then(applyManifest)
             .catch(() => { /* the kept copy stays */ });
     }
+    function applyManifest(m) {
+        if (!m || !m.icons || typeof m.icons !== 'object') return;
+        const next = JSON.stringify(m.icons);
+        if (next === JSON.stringify(storeIcons())) return;
+        store = m.icons;
+        try { localStorage.setItem(STORE_KEY, JSON.stringify({ version: m.version || 0, icons: m.icons })); } catch (_) { /* the phone page keeps its own */ }
+        changed();
+    }
+    // the store changed on the server (an icon kept anywhere): the desktop's programs redrawn now (Nov 23 2026)
+    function wireStorePush() {
+        const c = root.wsClient;
+        if (!c || typeof c.on !== 'function') return false;
+        c.on('wm_program_icons_store', (m) => applyManifest(m && (m.data || m)), { signal: appScopeSignal });
+        return true;
+    }
+    if (!wireStorePush()) root.addEventListener('load', wireStorePush, { once: true, signal: appScopeSignal });
 
     function onDesktop() {
         queueRead();
