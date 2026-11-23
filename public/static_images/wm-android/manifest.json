@@ -1,16 +1,16 @@
 {
-  "version": 20,
-  "updatedAt": "2026-11-22T13:05:26.592Z",
+  "version": 30,
+  "updatedAt": "2026-11-23T07:27:39.270Z",
   "icons": {
     "com.google.android.youtube": {
-      "name": "com-google-android-youtube-c938df-mwru6vws",
+      "name": "com-google-android-youtube-c938df-mwsxmr9g",
       "package": "com.google.android.youtube",
       "label": "YouTube",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-22T12:52:23.100Z",
+      "updatedAt": "2026-11-23T07:16:28.528Z",
       "wm65": true,
       "vista": true,
-      "object": "A metal film reel with five round holes, standing upright, a strip of cine film with sprocket holes curling off its right side"
+      "object": "A video cassette tape standing upright, seen from the front, two tape reels behind a clear window above a paper label"
     },
     "com.proximabeta.nikke": {
       "name": "com-proximabeta-nikke-8eddb6-mwru6xjd",
@@ -61,14 +61,14 @@
       "object": "A bust of a person in front of a second, paler bust, like two contacts"
     },
     "app.morphe.android.youtube/app.morphe.android.youtube.morphe_original_1": {
-      "name": "app-morphe-android-youtube-471d92-mwrul894",
+      "name": "app-morphe-android-youtube-471d92-mwsy1626",
       "package": "app.morphe.android.youtube",
       "label": "YouTube",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-22T13:03:30.577Z",
+      "updatedAt": "2026-11-23T07:27:39.257Z",
       "wm65": true,
       "vista": true,
-      "object": "A metal film reel with five round holes, standing upright, a strip of cine film with sprocket holes curling off its right side",
+      "object": "A video cassette tape standing upright, seen from the front, two tape reels behind a clear window above a paper label",
       "sameAs": "com.google.android.youtube"
     },
     "com.anthropic.claude/com.anthropic.claude.mainactivity.MainActivity": {
@@ -138,11 +138,14 @@
       "vista": true
     },
     "org.chromium.webapk.a522ef9992b747cb0_v2/org.chromium.webapk.shell_apk.h2o.H2OOpaqueMainActivity": {
-      "name": "org-chromium-webapk-a522ef9992b747cb0-v2-fc084f-mwebchih",
+      "name": "org-chromium-webapk-a522ef9992b747cb0-v2-fc084f-mwsxkcb7",
       "package": "org.chromium.webapk.a522ef9992b747cb0_v2",
       "label": "Sequenzia",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-13T01:43:50.097Z"
+      "updatedAt": "2026-11-23T07:14:35.927Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A program window with a title bar and several lines of text"
     },
     "com.apple.android.music/com.apple.android.music.common.MainActivity": {
       "name": "com-apple-android-music-a52514-mwru7d28",
@@ -251,14 +254,13 @@
       "object": "A car key with a remote fob that has two buttons, lying at a slant"
     },
     "moe.shizuku.privileged.api/moe.shizuku.manager.MainActivity": {
-      "name": "moe-shizuku-privileged-api-bb9103-mwru7uy1",
+      "name": "moe-shizuku-privileged-api-bb9103-mwsxzh8t",
       "package": "moe.shizuku.privileged.api",
       "label": "Shizuku",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-22T12:53:08.470Z",
+      "updatedAt": "2026-11-23T07:26:22.092Z",
       "wm65": true,
-      "vista": true,
-      "object": "A metal toolbox with a handle, closed"
+      "vista": true
     },
     "com.sirius/sxmp.app.welcome.WelcomeActivity": {
       "name": "com-sirius-ab83ed-mwru81f7",
@@ -300,11 +302,14 @@
       "object": "A globe with a closed padlock in front of its lower right"
     },
     "com.miHoYo.Yuanshen/org.yuzu.yuzu_emu.ui.main.MainActivity": {
-      "name": "com-mihoyo-yuanshen-1dd042-mwf0bzvd",
+      "name": "com-mihoyo-yuanshen-1dd042-mwsxk7vi",
       "package": "com.miHoYo.Yuanshen",
       "label": "Eden Optimized",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-13T13:23:17.720Z"
+      "updatedAt": "2026-11-23T07:14:29.989Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A game pad with a directional cross on the left and four round buttons on the right"
     },
     "com.chickfila.cfaflagship/com.chickfila.cfaflagship.StandardTheme": {
       "name": "com-chickfila-cfaflagship-fc63b0-mwru82z8",
@@ -317,11 +322,13 @@
       "object": "A paper take-away bag with a folded-over top, seen from the front"
     },
     "dev.dexwp.backdrop/dev.dexwp.backdrop.ui.MainActivity": {
-      "name": "dev-dexwp-backdrop-e64b1f-mwfospro",
+      "name": "dev-dexwp-backdrop-e64b1f-mwsxk9cr",
       "package": "dev.dexwp.backdrop",
       "label": "Deskmat",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-14T00:48:08.454Z"
+      "updatedAt": "2026-11-23T07:14:32.067Z",
+      "wm65": true,
+      "vista": true
     },
     "com.audioaddict.di/md5256881233f05e1a12873c405322115cb.SplashActivity": {
       "name": "com-audioaddict-di-686941-mwru84ng",
@@ -363,14 +370,14 @@
       "object": "A paper shopping bag with two cord handles, seen from the front"
     },
     "co.tapcart.app.id_nGDFF1I9N0/co.tapcart.app.id_nGDFF1I9N0.MainActivity": {
-      "name": "co-tapcart-app-id-ngdff1i9n0-66d5d3-mwru8ari",
+      "name": "co-tapcart-app-id-ngdff1i9n0-66d5d3-mwsxxds8",
       "package": "co.tapcart.app.id_nGDFF1I9N0",
       "label": "Gamer Supps",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-22T12:53:28.789Z",
+      "updatedAt": "2026-11-23T07:24:44.388Z",
       "wm65": true,
       "vista": true,
-      "object": "A paper shopping bag with two cord handles, seen from the front"
+      "object": "A closed cardboard shipping box, seen from the front and a little above, a strip of packing tape across its top"
     },
     "com.google.android.googlequicksearchbox/com.google.android.googlequicksearchbox.SearchActivity": {
       "name": "com-google-android-googlequicksearchbox-5b8912-mwru8c6p",
@@ -383,34 +390,34 @@
       "object": "A magnifying glass with a round lens, handle pointing down and right"
     },
     "com.google.android.videos/com.google.android.videos.GoogleTvEntryPoint": {
-      "name": "com-google-android-videos-cd4845-mwru8r9v",
+      "name": "com-google-android-videos-cd4845-mwsxoufb",
       "package": "com.google.android.videos",
       "label": "Google TV",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-22T12:53:50.344Z",
+      "updatedAt": "2026-11-23T07:18:05.964Z",
       "wm65": true,
       "vista": true,
-      "object": "A metal film reel with five round holes, standing upright, a strip of cine film with sprocket holes curling off its right side"
+      "object": "A DVD keep case standing slightly open toward the viewer, a disc showing inside"
     },
     "ai.x.grok/ai.x.grok.main.GrokActivity": {
-      "name": "ai-x-grok-c0bb91-mwru8spv",
+      "name": "ai-x-grok-c0bb91-mwsxr3s5",
       "package": "ai.x.grok",
       "label": "Grok",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-22T12:53:51.956Z",
+      "updatedAt": "2026-11-23T07:19:51.380Z",
       "wm65": true,
       "vista": true,
-      "object": "One speech balloon with a short tail at the lower left and a four-point spark set in its middle"
+      "object": "A small round desk robot of the 2000s with a glass face showing two lit eyes and a short antenna on top"
     },
     "ai.x.grok.bot/ai.x.grok.bot.MainActivity": {
-      "name": "ai-x-grok-bot-c901cf-mwru8tzc",
+      "name": "ai-x-grok-bot-c901cf-mwsxt76w",
       "package": "ai.x.grok.bot",
       "label": "Grok Bot",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-22T12:53:53.637Z",
+      "updatedAt": "2026-11-23T07:21:29.207Z",
       "wm65": true,
       "vista": true,
-      "object": "One speech balloon with a short tail at the lower left and a four-point spark set in its middle"
+      "object": "A small round desk robot of the 2000s with a glass face showing two lit eyes and a short antenna on top"
     },
     "com.guidebook.android/com.guidebook.android.app.activity.LaunchActivity": {
       "name": "com-guidebook-android-fa7004-mwru8vbu",
@@ -503,21 +510,23 @@
       "object": "A compact disc standing upright with a magnifying glass over its lower right, handle pointing down and right"
     },
     "com.ust.sheetzretapp/com.sheetz.consumermobile.login.ui.SplashActivity": {
-      "name": "com-ust-sheetzretapp-123951-mwru99ev",
+      "name": "com-ust-sheetzretapp-123951-mwsxval6",
       "package": "com.ust.sheetzretapp",
       "label": "Sheetz",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-22T12:54:14.113Z",
+      "updatedAt": "2026-11-23T07:23:06.856Z",
       "wm65": true,
       "vista": true,
-      "object": "A paper take-away bag with a folded-over top, seen from the front"
+      "object": "A paper drinks cup with a domed lid and a straw, seen from the front"
     },
     "net.typeblog.shelter/net.typeblog.shelter.ui.MainActivity": {
-      "name": "net-typeblog-shelter-545263-mwfot1hv",
+      "name": "net-typeblog-shelter-545263-mwsxkaw5",
       "package": "net.typeblog.shelter",
       "label": "Shelter",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-14T00:48:23.657Z"
+      "updatedAt": "2026-11-23T07:14:33.942Z",
+      "wm65": true,
+      "vista": true
     },
     "org.thoughtcrime.securesms/org.thoughtcrime.securesms.RoutingActivity@u10": {
       "name": "org-thoughtcrime-securesms-aa8aaa-mwru9b3a",
@@ -549,11 +558,13 @@
       "object": "A folded leather wallet with a payment card standing out of its top"
     },
     "com.radioswitch.app/com.radioswitch.app.MainActivity": {
-      "name": "com-radioswitch-app-9e0d14-mwfot3va",
+      "name": "com-radioswitch-app-9e0d14-mwsxxyst",
       "package": "com.radioswitch.app",
       "label": "Traffic Cone",
       "model": "gpt-image-2.5-sunburst",
-      "updatedAt": "2026-11-14T00:48:26.765Z"
+      "updatedAt": "2026-11-23T07:25:11.683Z",
+      "wm65": true,
+      "vista": true
     }
   }
 }
