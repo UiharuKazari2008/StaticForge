@@ -200,9 +200,14 @@
     function bars(shell) {
         const t = shell.querySelector('.wm-titlebar');
         const s = shell.querySelector('.wm-softkeys');
-        const tr = t ? t.getBoundingClientRect() : { bottom: 0 };
-        const sr = s ? s.getBoundingClientRect() : { top: root.innerHeight };
-        return { top: tr.bottom, bottom: sr.top || root.innerHeight };
+        const tr = t && t.getClientRects().length ? t.getBoundingClientRect() : null;
+        const sr = s && !s.hidden && s.getClientRects().length ? s.getBoundingClientRect() : null;
+        // behind a program the page's own bars are put away (the app draws its own): their places by their size, 26 units
+        // each - laid out then, the panel ran up over the status bar (Yukimi, Nov 22 2026: "alignment issue")
+        const wmpx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
+        const top = tr && tr.bottom > 0 ? tr.bottom : 26 * wmpx;
+        const bottom = sr && sr.top > 0 ? sr.top : root.innerHeight - 26 * wmpx;
+        return { top, bottom };
     }
 
     /**
