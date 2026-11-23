@@ -122,25 +122,39 @@ function personaChats(backend, persona) {
     return persona === 'xi' ? list : list.filter((chat) => chat.persona === persona);
 }
 
-// Yozora's engine is fixed when the chat is made: her last chat's, else TokenRouter
-// (what the Director window starts a new Yozora chat on).
-function xiStartChoice(chats, input) {
+// Yozora's engine is fixed when the chat is made: the caller's, else her last chat's, else
+// TokenRouter (what the Director window starts a new Yozora chat on). runtime overrides it
+// for a fallback chat.
+function xiStartChoice(chats, input, runtimeOverride) {
     const latest = chats.slice().sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
         .find((chat) => chat.runtime);
-    const runtime = input.engine || (latest && latest.runtime) || 'tokenrouter';
+    const runtime = runtimeOverride || input.engine || (latest && latest.runtime) || 'tokenrouter';
     const sameRuntime = latest && latest.runtime === runtime && latest.choice;
+    const pinned = !runtimeOverride || runtimeOverride === input.engine;
     return {
         runtime,
-        model: input.model || (sameRuntime && latest.choice.id !== 'auto' ? latest.choice.id : undefined),
+        model: (pinned && input.model) || (sameRuntime && latest.choice.id !== 'auto' ? latest.choice.id : undefined),
         effort: input.effort || (sameRuntime && latest.choice.effort) || 'medium'
     };
 }
 
-async function createChat(gr, persona, input, title) {
+// Engines a Yozora start falls back to, in order, when the first refuses (#1072).
+const XI_FALLBACK_ENGINES = ['custom:deepinfra', 'custom:sloproxy'];
+// A refusal at the start of a turn: auth, payment, quota, an engine that is off or has no key.
+const ENGINE_REFUSAL = /\b(401|402|403|429)\b|authenticat|forbidden|unauthori[sz]ed|insufficient|balance|quota|credit|rate.?limit|not turned on|no api key|ENGINE_UNAVAILABLE|PROVIDER_/i;
+const EARLY_FAIL_WAIT_MS = 20000;
+
+function xiEngineChain(first, input) {
+    const chain = [first];
+    if (input.fallback !== false) XI_FALLBACK_ENGINES.forEach((engine) => { if (!chain.includes(engine)) chain.push(engine); });
+    return chain;
+}
+
+async function createChat(gr, persona, input, title, runtime) {
     const backend = backendFor(persona);
     const stub = makeStub(gr);
     if (persona === 'xi') {
-        const choice = xiStartChoice(personaChats(backend, 'xi'), input);
+        const choice = xiStartChoice(personaChats(backend, 'xi'), input, runtime);
         await backend.handleDirectorCreateSession(stub.handler, stub.ws, {
             persona: 'xi', description: title || '', runtime: choice.runtime
         });
@@ -253,38 +267,106 @@ async function startUnlocked(gr, input) {
         if (target) reason = 'thread';
     }
 
+    const content = task === 'review' ? reviewBrief(prompt, source) : prompt;
+    if (persona !== 'xi') {
+        const out = await startOn(gr, persona, backend, { input, target, title, source, thread, content, attachments, runtime: null });
+        return result(persona, out.sessionId, {
+            created: out.created, reused: !out.created, reusedBy: out.created ? null : reason, deduped: false,
+            started: true, status: 'running', source: source || null, thread: thread || null
+        });
+    }
+
+    // Yozora: try her engine, then DeepInfra, then SloProxy, while an engine refuses at the start.
+    // A pinned sessionId keeps its engine (no fallback).
+    const first = target ? (target.runtime || 'cursor') : xiStartChoice(chats, input).runtime;
+    const chain = input.sessionId ? [first] : xiEngineChain(first, input);
+    const fallbackFrom = [];
+    for (let i = 0; i < chain.length; i += 1) {
+        const useTarget = i === 0 ? target : null;
+        let out;
+        try {
+            out = await startOn(gr, persona, backend, {
+                input, target: useTarget, title, source, thread, content, attachments, runtime: chain[i], watch: chain.length > 1
+            });
+        } catch (error) {
+            if (i === chain.length - 1 || !ENGINE_REFUSAL.test(`${error.code || ''} ${error.message || ''}`)) {
+                if (fallbackFrom.length) error.fallbackFrom = fallbackFrom;
+                throw error;
+            }
+            fallbackFrom.push({ engine: chain[i], error: String(error.message || error.code).slice(0, 300) });
+            continue;
+        }
+        return result(persona, out.sessionId, {
+            created: out.created, reused: !out.created, reusedBy: out.created ? null : reason, deduped: false,
+            started: true, status: 'running', source: source || null, thread: thread || null,
+            engine: chain[i], fallbackFrom: fallbackFrom.length ? fallbackFrom : undefined
+        });
+    }
+    throw fail('No engine could start Yozora', 'ENGINE_UNAVAILABLE');
+}
+
+// Resolves null once the turn has output (the engine accepted it) or the wait is over.
+async function tookIt(backend, sessionId) {
+    const until = Date.now() + EARLY_FAIL_WAIT_MS;
+    while (Date.now() < until) {
+        if (typeof backend.runHasOutput === 'function' && backend.runHasOutput(sessionId)) return null;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return null;
+}
+
+// One attempt: make (or reuse) the chat, tag it, send. With watch, wait a short while for a turn
+// that dies at once and throw its error so the caller can fall back; the chat this attempt made
+// is deleted and the source given back.
+async function startOn(gr, persona, backend, a) {
+    const created = !a.target;
     let sessionId;
     let choice = null;
-    const created = !target;
-    if (target) {
-        sessionId = target.id;
+    if (a.target) {
+        sessionId = a.target.id;
     } else {
-        const made = await createChat(gr, persona, input, title);
+        const made = await createChat(gr, persona, a.input, a.title, a.runtime);
         sessionId = made.id;
         choice = made.choice;
     }
     // tag before the send so a retry of the same source finds this chat even mid-turn
     await backend.tagStartedChat(sessionId, {
-        source: source || null,
-        thread: thread || null,
+        source: a.source || null,
+        thread: a.thread || null,
         startedVia: created ? STARTED_VIA : null,
-        name: created && title ? title : null
+        name: created && a.title ? a.title : null
     });
-
-    const content = task === 'review' ? reviewBrief(prompt, source) : prompt;
+    let early = null;
+    let stopWatch = null;
+    if (a.watch && typeof backend.onRunSettled === 'function') {
+        early = new Promise((resolve) => {
+            stopWatch = backend.onRunSettled((info) => { if (info.sessionId === sessionId) resolve(info); });
+        });
+    }
+    const undo = async () => {
+        if (a.source) await backend.tagStartedChat(sessionId, { dropSource: a.source }).catch(() => {});
+        if (created && persona === 'xi') {
+            const stub = makeStub(gr);
+            await backend.handleDirectorDeleteSession(stub.handler, stub.ws, { sessionId }).catch(() => {});
+        }
+    };
     try {
-        await sendFirst(gr, persona, sessionId, content, attachments, choice, input);
+        await sendFirst(gr, persona, sessionId, a.content, a.attachments, choice, a.input);
+        if (early) {
+            const info = await Promise.race([early, tookIt(backend, sessionId)]);
+            if (info && info.failed && !info.cancelled && ENGINE_REFUSAL.test(info.error || '')) {
+                throw fail(info.error, 'ENGINE_REFUSED');
+            }
+        }
     } catch (error) {
         // a send that never started must not leave the source taken: the retry would be deduped
-        if (source) await backend.tagStartedChat(sessionId, { dropSource: source }).catch(() => {});
+        await undo();
         error.sessionId = sessionId;
         throw error;
+    } finally {
+        if (stopWatch) stopWatch();
     }
-    return result(persona, sessionId, {
-        created, reused: !created, reusedBy: created ? null : reason, deduped: false,
-        started: true, status: 'running', source: source || null, thread: thread || null,
-        engine: choice ? choice.runtime : undefined
-    });
+    return { sessionId, created };
 }
 
 async function startDirectorSession(gr, input) {
@@ -334,5 +416,5 @@ module.exports = {
     startDirectorSession,
     getDirectorSession,
     STARTED_VIA,
-    _test: { resolvePersona, normalizeAttachments, reviewBrief, xiStartChoice, makeStub, sourceLocks }
+    _test: { resolvePersona, normalizeAttachments, reviewBrief, xiStartChoice, xiEngineChain, makeStub, sourceLocks, ENGINE_REFUSAL }
 };

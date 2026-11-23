@@ -849,6 +849,20 @@ function clearInflight(sessionId) {
     });
 }
 
+// start_director_session (#1072) listens for a turn that dies at once (an engine that refuses)
+const settleListeners = new Set();
+function onRunSettled(listener) {
+    settleListeners.add(listener);
+    return () => settleListeners.delete(listener);
+}
+
+// The turn has produced something (a trace row or text): the engine took it.
+function runHasOutput(sessionId) {
+    const run = runs.get(sessionId);
+    const stream = run && run.stream;
+    return !!(stream && ((stream.rows && stream.rows.length) || stream.text || stream.live));
+}
+
 function finishRun(run, why) {
     if (!run || run.settled) return;
     if (run.stream && !run.cancelled && !run.stream.error && why === 'exit') {
@@ -871,6 +885,18 @@ function finishRun(run, why) {
     const errorText = run.cancelled
         ? 'Stopped'
         : (why === 'timeout' ? 'Yozora stopped because it sent nothing for 10 minutes' : ((run.stream && run.stream.error) || 'Yozora stopped'));
+    settleListeners.forEach((listener) => {
+        try {
+            listener({
+                sessionId: run.sessionId,
+                runtime: run.runtime || null,
+                failed,
+                cancelled: !!run.cancelled,
+                error: failed ? String(errorText) : null,
+                startedAt: run.startedAt || null
+            });
+        } catch (_) { /* a listener never breaks the finish */ }
+    });
     saveTrace(run)
         .then(() => clearInflight(run.sessionId))
         .then(async () => {
@@ -1908,6 +1934,8 @@ module.exports = {
     listChatBriefs,
     readChatLog,
     tagStartedChat,
+    onRunSettled,
+    runHasOutput,
     readSessionTasks,
     setSessionTasks,
     setSessionTask,
