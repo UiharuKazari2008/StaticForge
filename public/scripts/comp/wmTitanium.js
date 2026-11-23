@@ -2383,6 +2383,18 @@
         settle = requestAnimationFrame(tweenStep);
     }
 
+    // the landing item's snap onto the centre bar: SNAP_DROP is the way from the band's top to the item's place in the
+    // band's middle; it is covered, slow - fast - slow, over the move's last SNAP_REACH units (longer than 1.5 x
+    // SNAP_DROP, so an item coming up from below never turns back)
+    const SNAP_DROP = (BAND - ROW) / 2;
+    const SNAP_REACH = ROW + SNAP_DROP;
+    /** How far into its snap the landing item is, 0 .. 1, `left` units before the move ends. */
+    function snapOf(left) {
+        if (left >= SNAP_REACH) return 0;
+        const x = left <= 0 ? 1 : 1 - left / SNAP_REACH;
+        return x * x * (3 - 2 * x);
+    }
+
     /** Row tops (WM units) of the stack at progress p of the move. */
     function tweenYs(top, p) {
         const { a, b, n } = tw;
@@ -2413,6 +2425,12 @@
             const ya = yb + grow + ROW * (n - 1);
             for (let i = 0; i < ys.length; i++) ys[i] = i <= b ? yb - ROW * (b - i) : i < a ? yb + grow + ROW * (i - b - 1) : i === a ? ya : ya + shrink + ROW * (i - a - 1);
         }
+        // the item the move ends on snaps onto the centre bar as it comes near (Yukimi, Nov 23 2026: a flick "should
+        // emulate the same hold and scroll effect where the selected item snaps to the center"): over its last
+        // SNAP_REACH units its name leaves the stack's top-of-slot line for the middle of the band, where a held
+        // scroll keeps the selected item (place()) and where the list rests - it used to end at the band's top and
+        // jump there unseen while its name faded. The other rows keep the stack's pace
+        ys[b] += SNAP_DROP * snapOf(tw.D * (1 - p));
         return ys;
     }
 
@@ -2436,7 +2454,9 @@
             const under = y + ROW / 2 > top && y + ROW / 2 < top + BAND;
             if (under) underNow = i;
             el.classList.toggle('is-under', under);
-            dropClass(el, 'is-sel');
+            // the landing item is the selected one from the moment its snap begins, as under a held scroll
+            const snapping = tw.n > 0 && i === tw.b && tw.D * (1 - p) < SNAP_REACH;
+            if (el.classList.contains('is-sel') !== snapping) el.classList.toggle('is-sel', snapping);
             const far = entering ? String(Math.min(Math.abs(i - tw.b), 3)) : '0';
             if (el.dataset.far !== far) el.dataset.far = far;
             const o = i === tw.b && fade < 1 ? String(Math.round(fade * (under ? 55 : 100)) / 100) : '';

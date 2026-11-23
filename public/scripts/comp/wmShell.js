@@ -10412,32 +10412,28 @@
     let todayPrefsFor = null;
 
     /**
-     * Traffic and Lapis Remote are one Today item since #1041 (Yukimi, Nov 22 2026): 'traffic', the commute and the
-     * car. A list stored before (this device's or the workspace's copy) puts it at the earlier of the two places,
-     * on when either was on, and drops 'lapis'. Rewrites only a list that still names 'lapis'.
+     * Traffic and the car (Lapis Remote) are two Today items again (Yukimi, Nov 23 2026: "the traffic information is
+     * separate from the car instead of combining them into the same item"; they were one, 'traffic', for a day: #1041).
+     * A list stored while they were one (this device's or the workspace's copy) names 'traffic' alone: the car's item
+     * 'lapis' goes right under it, on when the combined one was. Rewrites only a list that names 'traffic' and not 'lapis'.
      */
-    function mergeCarTodayItem() {
+    function splitCarTodayItem() {
         for (const key of ['wmTodayItems', 'wmTodayItems65']) {
             let raw = null;
             try { raw = localStorage.getItem(key); } catch (_) { return; }
-            if (!raw || raw.indexOf('"lapis"') < 0) continue;
+            if (!raw || raw.indexOf('"traffic"') < 0 || raw.indexOf('"lapis"') >= 0) continue;
             let list = null;
             try { list = JSON.parse(raw); } catch (_) { continue; }
             if (!Array.isArray(list)) continue;
-            const li = list.findIndex((it) => it && it.id === 'lapis');
-            if (li < 0) continue;
             const ti = list.findIndex((it) => it && it.id === 'traffic');
-            // Traffic not in the list showed by default (on)
-            const on = list[li].on !== false || ti < 0 || list[ti].on !== false;
-            const at = ti < 0 ? li : Math.min(li, ti);
-            const out = list.filter((it) => !(it && (it.id === 'lapis' || it.id === 'traffic')));
-            out.splice(at, 0, { id: 'traffic', on });
-            try { localStorage.setItem(key, JSON.stringify(out)); } catch (_) { /* storage off */ }
+            if (ti < 0 || list.some((it) => it && it.id === 'lapis')) continue;
+            list.splice(ti + 1, 0, { id: 'lapis', on: list[ti].on !== false });
+            try { localStorage.setItem(key, JSON.stringify(list)); } catch (_) { /* storage off */ }
         }
     }
 
     function loadTodayPrefs(force) {
-        mergeCarTodayItem();
+        splitCarTodayItem();
         const id = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
         const w = activeWorkspaceRecord();
         if (!id || !w) return false;
@@ -10459,7 +10455,7 @@
                 else localStorage.setItem(key, json ? JSON.stringify(v) : String(v));
             } catch (_) { /* storage off */ }
         }
-        mergeCarTodayItem();
+        splitCarTodayItem();
         return true;
     }
 
