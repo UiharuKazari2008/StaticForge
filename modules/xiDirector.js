@@ -1761,6 +1761,7 @@ async function tagStartedChat(sessionId, patch) {
         const chat = index.chats.find((item) => item.id === sessionId);
         if (!chat) return false;
         if (p.source) chat.sources = Array.from(new Set([...(Array.isArray(chat.sources) ? chat.sources : []), p.source])).slice(-200);
+        if (p.dropSource && Array.isArray(chat.sources)) chat.sources = chat.sources.filter((item) => item !== p.dropSource);
         if (p.thread) chat.thread = p.thread;
         if (p.startedVia) chat.startedVia = p.startedVia;
         if (p.name) { chat.name = p.name; chat.titleSetByAgent = true; }
