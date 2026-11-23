@@ -652,6 +652,191 @@
         const down = el.querySelector('[data-act="qa-down"]'); if (down) down.addEventListener('click', () => move(1));
     }
 
+    // ---- Soft Key Bar (#1067, Yukimi Nov 22: "a full Soft Key manager"): the soft key bar over Android programs, per
+    // program - Left, Center and Right each an action, a name, or a menu of its own (named rows, each an action). Stored in
+    // the app's Bars config (softProfiles { default, <package>: { left, center, right } }) and applied there by the program
+    // in front, page or no page (DSApp SoftKeys.kt); the kit carries each menu's drawing (melatonBars.js softKeyMenus)
+    const SK_SIDES = [['left', 'Left soft key'], ['center', 'Center button'], ['right', 'Right soft key']];
+    const SK_DEFAULT = { left: 'back', center: 'tasks', right: 'menu' };
+    // the actions (WM's <actions> look: in angle brackets, as Program Buttons lists them)
+    const SK_ACTIONS = [['back', '<Back>'], ['menu', '<Soft Key Menu>'], ['ownmenu', '<Menu of its own>'], ['home', '<Home>'], ['today', '<Today>'],
+        ['start', '<Start>'], ['tasks', '<Running Programs>'], ['recents', '<Recent Programs>'], ['notifications', '<Notifications>'],
+        ['quicksettings', '<Quick Settings>'], ['keyboard', '<Show/Hide Keyboard>'], ['program', '<Open a Program>'], ['key', '<Key>'],
+        ['combo', '<Key Combination>'], ['do:taskmanager', '<Task Manager>'], ['do:maximize', '<Maximize>'], ['do:minimize', '<Minimize>'],
+        ['do:close', '<Close>'], ['do:split', '<Split View>'], ['do:windowed', '<Pop-up Window>'], ['do:flashlight', '<Flashlight>'],
+        ['do:screenshot', '<Screenshot>'], ['none', '<None>']];
+    // Android's key codes most asked for (any other: typed as its KEYCODE_ name)
+    const SK_KEYS = ['ESCAPE', 'ENTER', 'TAB', 'DEL', 'FORWARD_DEL', 'SPACE', 'DPAD_UP', 'DPAD_DOWN', 'DPAD_LEFT', 'DPAD_RIGHT', 'PAGE_UP', 'PAGE_DOWN',
+        'MOVE_HOME', 'MOVE_END', 'SEARCH', 'MENU', 'MEDIA_PLAY_PAUSE', 'MEDIA_NEXT', 'MEDIA_PREVIOUS', 'VOLUME_MUTE', 'SYSRQ', 'CAMERA', 'CALL', 'ENDCALL',
+        'BRIGHTNESS_UP', 'BRIGHTNESS_DOWN', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'];
+    const SK_COMBOS = ['Ctrl+Z', 'Ctrl+Y', 'Ctrl+C', 'Ctrl+X', 'Ctrl+V', 'Ctrl+A', 'Ctrl+S', 'Ctrl+F', 'Ctrl+T', 'Ctrl+W', 'Ctrl+Shift+T', 'Ctrl+Tab', 'Alt+Tab', 'Alt+F4', 'Ctrl+Shift+Z'];
+    const SK_NAMES = { ctrl: 'CTRL_LEFT', control: 'CTRL_LEFT', shift: 'SHIFT_LEFT', alt: 'ALT_LEFT', win: 'META_LEFT', meta: 'META_LEFT', esc: 'ESCAPE', escape: 'ESCAPE',
+        enter: 'ENTER', return: 'ENTER', tab: 'TAB', backspace: 'DEL', bksp: 'DEL', del: 'FORWARD_DEL', delete: 'FORWARD_DEL', space: 'SPACE', up: 'DPAD_UP', down: 'DPAD_DOWN',
+        left: 'DPAD_LEFT', right: 'DPAD_RIGHT', pgup: 'PAGE_UP', pageup: 'PAGE_UP', pgdn: 'PAGE_DOWN', pagedown: 'PAGE_DOWN', home: 'MOVE_HOME', end: 'MOVE_END',
+        ins: 'INSERT', insert: 'INSERT', ',': 'COMMA', '.': 'PERIOD', '/': 'SLASH', '-': 'MINUS', '=': 'EQUALS', '[': 'LEFT_BRACKET', ']': 'RIGHT_BRACKET', ';': 'SEMICOLON' };
+    const SK_SHORT = { CTRL_LEFT: 'Ctrl', CTRL_RIGHT: 'Ctrl', SHIFT_LEFT: 'Shift', SHIFT_RIGHT: 'Shift', ALT_LEFT: 'Alt', ALT_RIGHT: 'Alt', META_LEFT: 'Win', META_RIGHT: 'Win',
+        ESCAPE: 'Esc', DEL: 'Backspace', FORWARD_DEL: 'Del', DPAD_UP: 'Up', DPAD_DOWN: 'Down', DPAD_LEFT: 'Left', DPAD_RIGHT: 'Right', PAGE_UP: 'PgUp', PAGE_DOWN: 'PgDn',
+        MOVE_HOME: 'Home', MOVE_END: 'End' };
+    const skCode = (t) => {
+        const k = String(t || '').trim();
+        if (!k) return '';
+        const n = SK_NAMES[k.toLowerCase()] || k.toUpperCase().replace(/^KEYCODE_/, '');
+        return /^[A-Z0-9_]{1,40}$/.test(n) ? n : '';
+    };
+    /** "Ctrl+Shift+T" as the app's combo:KEYCODE_CTRL_LEFT+KEYCODE_SHIFT_LEFT+KEYCODE_T ('' when a part is not a key). */
+    const skCombo = (text) => {
+        const parts = String(text || '').split('+').map((x) => x.trim()).filter(Boolean).map(skCode);
+        return parts.length >= 2 && parts.length <= 5 && parts.every(Boolean) ? `combo:${parts.map((c) => `KEYCODE_${c}`).join('+')}` : '';
+    };
+    const skKeyName = (c) => { const n = String(c).replace(/^KEYCODE_/, ''); return SK_SHORT[n] || (n.length === 1 ? n : n.charAt(0) + n.slice(1).toLowerCase()); };
+    const skComboText = (a) => a.slice(6).split('+').map(skKeyName).join('+');
+    const skPrograms = () => { try { return window.wmShell.todaySoftKeys.programs(); } catch (_) { return []; } };
+    // the phone's Android programs a profile can be for (one per package; work-profile copies left out)
+    const skAndroidApps = () => {
+        const seen = new Set();
+        return skPrograms().filter((p) => String(p.id).startsWith('android:') && !String(p.id).includes('@u')).map((p) => ({ pkg: String(p.id).slice(8).split('/')[0], label: p.label }))
+            .filter((a) => a.pkg && !seen.has(a.pkg) && seen.add(a.pkg));
+    };
+    const skKind = (a) => (a.startsWith('open:') ? 'program' : a.startsWith('key:') ? 'key' : a.startsWith('combo:') ? 'combo' : a);
+    /** What an action is called in the lists. */
+    function skActionText(a) {
+        if (!a) return '';
+        if (a.startsWith('open:')) { const p = skPrograms().find((x) => x.id === a.slice(5)); return p ? p.label : a.slice(5); }
+        if (a.startsWith('key:')) return `Key: ${skKeyName(a.slice(4))}`;
+        if (a.startsWith('combo:')) return skComboText(a);
+        return (SK_ACTIONS.find(([k]) => k === a) || [a, a])[1];
+    }
+    /** The name a key shows on the bar when none is typed (DSApp SoftKeys.defaultLabel). */
+    function skDefaultName(a) {
+        if (a.startsWith('combo:')) return skComboText(a);
+        if (a.startsWith('key:')) return skKeyName(a.slice(4));
+        return { back: 'Back', menu: 'Menu', ownmenu: 'Menu', home: 'Home', recents: 'Recent', start: 'Start', today: 'Today', notifications: 'Notification', quicksettings: 'Settings', keyboard: 'Keyboard' }[a] || '';
+    }
+    /** The stored profiles, or Default made from the old left / right settings (Back | the right soft key). */
+    function skLoad() {
+        let st = null;
+        try { st = JSON.parse(window.AndroidBars.getState()); } catch (_) { st = null; }
+        const c = (st && st.config) || {};
+        const saved = c.softProfiles && typeof c.softProfiles === 'object' ? JSON.parse(JSON.stringify(c.softProfiles)) : {};
+        if (!saved.default) saved.default = { left: { action: 'back', label: '' }, center: { action: 'tasks', label: '' }, right: { action: c.softRight || 'menu', label: '' } };
+        return saved;
+    }
+    /**
+     * An action's chooser: the action combo, then what it needs (a program, a key, a combination). html(prefix, action) and
+     * bind(el, prefix, action, set(newAction), rerender).
+     */
+    function skActionHtml(prefix, a, side, split = false) {
+        const kind = skKind(a);
+        const list = SK_ACTIONS.filter(([k]) => prefix === 'sk' || k !== 'ownmenu');
+        let more = '';
+        if (kind === 'program') {
+            const p = skPrograms().find((x) => `open:${x.id}` === a);
+            more = ui.row('Program:', ui.comboHtml(`${prefix}-prog`, p ? p.label : ''), { wide: true });
+        } else if (kind === 'key') {
+            more = `${ui.row('Key:', ui.comboHtml(`${prefix}-keys`, skKeyName(a.slice(4) || 'ESCAPE')), { wide: true })}${ui.row('Key code:', ui.edit('', a.slice(4).replace(/^KEYCODE_/, ''), `data-f="${prefix}-code" maxlength="40"`), { wide: true })}`;
+        } else if (kind === 'combo') {
+            more = `${ui.row('Keys:', `<div class="wm-combo-edit">${ui.edit('', a.length > 6 ? skComboText(a) : '', `data-f="${prefix}-combo" maxlength="40"`)}<button type="button" class="wm-combo" data-act="${prefix}-combos" aria-label="Presets"></button></div>`, { wide: true })}`;
+        }
+        const main = ui.comboHtml(`${prefix}-act`, (list.find(([k]) => k === kind) || [kind, skActionText(a)])[1]);
+        // (split: the combo for a row of its own and what it needs as rows under it - never rows inside a row)
+        return split ? { main, more } : `${main}${more}`;
+    }
+    function skActionBind(el, prefix, a, side, set, rerender) {
+        const kind = skKind(a);
+        const list = SK_ACTIONS.filter(([k]) => prefix === 'sk' || k !== 'ownmenu');
+        ui.bindCombo(el.querySelector(`[data-act="${prefix}-act"]`), list, kind, (v) => {
+            const progs = skPrograms();
+            set(v === 'program' ? (progs.length ? `open:${progs[0].id}` : 'none') : v === 'key' ? 'key:KEYCODE_ESCAPE' : v === 'combo' ? 'combo:KEYCODE_CTRL_LEFT+KEYCODE_Z' : v);
+            rerender();
+        });
+        if (kind === 'program') {
+            ui.bindCombo(el.querySelector(`[data-act="${prefix}-prog"]`), skPrograms().map((p) => [p.id, p.label]), a.slice(5), (v) => { set(`open:${v}`); rerender(); });
+        } else if (kind === 'key') {
+            ui.bindCombo(el.querySelector(`[data-act="${prefix}-keys"]`), SK_KEYS.map((k) => [k, skKeyName(k)]), a.slice(4).replace(/^KEYCODE_/, ''), (v) => { set(`key:KEYCODE_${v}`); rerender(); });
+            const code = el.querySelector(`[data-f="${prefix}-code"]`);
+            // (kept as it is typed: ok may close the page before the box loses focus)
+            if (code) { code.addEventListener('input', () => { const c = skCode(code.value); if (c) set(`key:KEYCODE_${c}`); }); code.addEventListener('change', () => rerender()); }
+        } else if (kind === 'combo') {
+            const edit = el.querySelector(`[data-f="${prefix}-combo"]`);
+            if (edit) { edit.addEventListener('input', () => { const v = skCombo(edit.value); if (v) set(v); }); edit.addEventListener('change', () => rerender()); }
+            const presets = el.querySelector(`[data-act="${prefix}-combos"]`);
+            if (presets) presets.addEventListener('click', (e) => {
+                e.stopPropagation();
+                window.wmShell.dropdown(presets.parentElement, SK_COMBOS.map((t) => ({ label: t, radio: skCombo(t) === a, action: () => { set(skCombo(t)); rerender(); } })), 'left');
+            });
+        }
+    }
+    function skRender(el, d, api) {
+        const sk = d.sk;
+        const apps = skAndroidApps();
+        const appLabel = (pkg) => (pkg === 'default' ? 'Default (all other programs)' : (apps.find((x) => x.pkg === pkg) || { label: pkg }).label);
+        const profs = ['default'].concat(Object.keys(sk.profiles).filter((k) => k !== 'default').sort((x, y) => appLabel(x).localeCompare(appLabel(y))));
+        if (!sk.profiles[sk.prof]) sk.prof = 'default';
+        const prof = sk.profiles[sk.prof];
+        const key = prof[sk.sel] || (prof[sk.sel] = { action: SK_DEFAULT[sk.sel], label: '' });
+        const keyText = (k) => (k.action === 'ownmenu' ? `Menu (${(k.menu || []).filter((r) => r.action !== 'sep').length} items)` : skActionText(k.action));
+        const adds = apps.filter((x) => !sk.profiles[x.pkg]);
+        let menuHtml = '';
+        if (key.action === 'ownmenu') {
+            const items = key.menu || (key.menu = []);
+            if (sk.msel >= items.length) sk.msel = items.length - 1;
+            const it = items[sk.msel];
+            menuHtml = `${ui.sub('Menu')}
+                ${ui.listbox(items.map((r, i) => ({ key: String(i), label: r.action === 'sep' ? '— Separator —' : (r.label ? `${r.label} (${skActionText(r.action)})` : skActionText(r.action)), selected: i === sk.msel })), { maxHeight: 120 })}
+                ${ui.buttons([['skm-add', 'Add'], ['skm-sep', 'Add Separator'], ['skm-del', 'Remove', !it], ['skm-up', 'Move Up', !it || sk.msel === 0], ['skm-down', 'Move Down', !it || sk.msel === items.length - 1]])}
+                ${it && it.action !== 'sep' ? (() => { const h = skActionHtml('skm', it.action, '', true); return `${ui.row('Item name:', ui.edit('', it.label || '', `data-f="skm-name" maxlength="40" placeholder="${esc(skDefaultName(it.action) || skActionText(it.action))}"`), { wide: true })}${ui.row('Item action:', h.main, { wide: true })}${h.more}`; })() : ''}`;
+        }
+        el.innerHTML = `<p class="wmsp-step">Soft keys over Android programs. Program:</p>
+            ${ui.comboHtml('sk-prof', appLabel(sk.prof))}
+            <div class="wm-form-row is-wide"><span class="wm-form-label">Add:</span>${ui.comboHtml('sk-add', adds.length ? 'Choose a program...' : '(none)', !adds.length)}</div>
+            ${ui.buttons([['sk-remove', 'Remove Program', sk.prof === 'default']])}
+            <p class="wmsp-step">1. Select a soft key:</p>
+            <div class="wmsp-btn-list" role="listbox" aria-label="Soft keys">
+                <div class="wmsp-btn-head"><span>Soft key</span><span>Assignment</span></div>
+                ${SK_SIDES.map(([side, label]) => { const k = prof[side] || { action: SK_DEFAULT[side] }; return `<button type="button" class="wmsp-btn-row${side === sk.sel ? ' is-selected' : ''}" role="option" aria-selected="${side === sk.sel}" data-side="${side}">
+                    <span class="wmsp-btn-name"><span>${esc(label)}</span></span><span class="wmsp-btn-assign">${esc(k.label ? `${k.label}: ${keyText(k)}` : keyText(k))}</span></button>`; }).join('')}
+            </div>
+            <p class="wmsp-step">2. Assign an action:</p>
+            ${skActionHtml('sk', key.action, sk.sel)}
+            ${ui.row('Name:', ui.edit('', key.label || '', `data-f="sk-name" maxlength="24" placeholder="${esc(skDefaultName(key.action))}"`), { wide: true })}
+            ${menuHtml}
+            ${ui.gap()}
+            <p class="wmsp-step">Hold the Center button to:</p>
+            ${ui.comboHtml('hold', (SK_HOLD.find(([k]) => k === d.hold) || SK_HOLD[0])[1])}`;
+        ui.bindCombo(el.querySelector('[data-act="sk-prof"]'), profs.map((k) => [k, appLabel(k)]), sk.prof, (v) => { sk.prof = v; sk.msel = 0; api.rerender(); });
+        ui.bindCombo(el.querySelector('[data-act="sk-add"]'), adds.map((x) => [x.pkg, x.label]), '', (v) => {
+            // a new program starts as a copy of Default
+            sk.profiles[v] = JSON.parse(JSON.stringify(sk.profiles.default));
+            sk.prof = v; sk.msel = 0;
+            api.rerender();
+        });
+        const rm = el.querySelector('[data-act="sk-remove"]');
+        if (rm) rm.addEventListener('click', () => { if (sk.prof !== 'default') { delete sk.profiles[sk.prof]; sk.prof = 'default'; api.rerender(); } });
+        el.querySelectorAll('.wmsp-btn-row').forEach((r) => r.addEventListener('click', () => { sk.sel = r.dataset.side; sk.msel = 0; api.rerender(); }));
+        skActionBind(el, 'sk', key.action, sk.sel, (v) => { key.action = v; if (v === 'ownmenu' && !key.menu) key.menu = []; }, api.rerender);
+        const name = el.querySelector('[data-f="sk-name"]');
+        if (name) name.addEventListener('input', () => { key.label = name.value.slice(0, 24); });
+        ui.bindCombo(el.querySelector('[data-act="hold"]'), SK_HOLD, d.hold, (v) => { d.hold = v; });
+        if (key.action !== 'ownmenu') return;
+        const items = key.menu;
+        ui.bindListbox(el.querySelector('.wm-listbox'), (k) => { sk.msel = Number(k); api.rerender(); });
+        const on = (act, fn) => { const b = el.querySelector(`[data-act="${act}"]`); if (b) b.addEventListener('click', fn); };
+        const insert = (row) => { const at = Math.min(items.length, sk.msel + 1); items.splice(at, 0, row); sk.msel = at; api.rerender(); };
+        on('skm-add', () => insert({ label: '', action: 'combo:KEYCODE_CTRL_LEFT+KEYCODE_Z' }));
+        on('skm-sep', () => insert({ label: '-', action: 'sep' }));
+        on('skm-del', () => { items.splice(sk.msel, 1); sk.msel = Math.max(0, sk.msel - 1); api.rerender(); });
+        const move = (by) => { const j = sk.msel + by; if (j < 0 || j >= items.length) return; [items[sk.msel], items[j]] = [items[j], items[sk.msel]]; sk.msel = j; api.rerender(); };
+        on('skm-up', () => move(-1));
+        on('skm-down', () => move(1));
+        const it = items[sk.msel];
+        if (it && it.action !== 'sep') {
+            const nm = el.querySelector('[data-f="skm-name"]');
+            if (nm) nm.addEventListener('input', () => { it.label = nm.value.slice(0, 40); });
+            skActionBind(el, 'skm', it.action, '', (v) => { it.action = v; }, api.rerender);
+        }
+    }
+    const SK_HOLD = [['freeform', 'Open the program as a pop-up window'], ['split', 'Open the program in split screen']];
+
     wmSettings.registerPage({
         id: 'buttons', tab: 'personal', label: 'Buttons', icon: 'set-buttons',
         // (the app's bridge is there from the page's start)
@@ -665,17 +850,12 @@
             // (config in buttons settins)"): the app's Bars config holdAction
             let hold = 'freeform';
             try { const st = JSON.parse(window.AndroidBars.getState()); if (st && st.config && st.config.holdAction === 'split') hold = 'split'; } catch (_) { /* no app */ }
-            return { v: { ...v }, saved: { ...v }, sel: 'left', qa, qaSaved: qa ? JSON.stringify(qa) : '', qaSel: null, hold, holdSaved: hold };
+            const sk = window.AndroidBars ? { profiles: skLoad(), prof: 'default', sel: 'left', msel: 0 } : null;
+            return { v: { ...v }, saved: { ...v }, sel: 'left', qa, qaSaved: qa ? JSON.stringify(qa) : '', qaSel: null, hold, holdSaved: hold, sk, skSaved: sk ? JSON.stringify(sk.profiles) : '' };
         },
         render(el, tab, d, api) {
             if (tab === 'quickaccess' && d.qa) { qaRender(el, d, api); return; }
-            if (tab === 'softkey') {
-                const HOLD = [['freeform', 'Open the program as a pop-up window'], ['split', 'Open the program in split screen']];
-                el.innerHTML = `<p class="wmsp-step">The button in the middle of the soft key bar shows the running programs. Hold it to:</p>
-                    ${ui.comboHtml('hold', (HOLD.find(([k]) => k === d.hold) || HOLD[0])[1])}`;
-                ui.bindCombo(el.querySelector('[data-act="hold"]'), HOLD, d.hold, (v) => { d.hold = v; });
-                return;
-            }
+            if (tab === 'softkey' && d.sk) { skRender(el, d, api); return; }
             const choices = keyChoices();
             const k = KEYS();
             const choice = (v) => choices.find((c) => c.value === v) || choices.find((c) => c.value === k.defaults()[d.sel]) || choices[0];
@@ -705,6 +885,21 @@
             if (!same(d.v, d.saved)) KEYS().set(d.v);
             if (d.qa && JSON.stringify(d.qa) !== d.qaSaved) { try { QA().setConfig(JSON.stringify(d.qa)); } catch (_) { /* older app */ } }
             if (d.hold !== d.holdSaved) { try { window.AndroidBars.setConfig(JSON.stringify({ holdAction: d.hold })); } catch (_) { /* older app */ } }
+            // the soft keys per program (#1067): the app applies them; the kit is made again for the menus' drawings
+            if (d.sk && JSON.stringify(d.sk.profiles) !== d.skSaved) {
+                const clean = {};
+                Object.keys(d.sk.profiles).forEach((k) => {
+                    const p = d.sk.profiles[k];
+                    clean[k] = {};
+                    SK_SIDES.forEach(([side]) => {
+                        const key = p[side] || { action: SK_DEFAULT[side] };
+                        clean[k][side] = { action: key.action, label: String(key.label || '').trim() };
+                        if (key.action === 'ownmenu') clean[k][side].menu = (key.menu || []).map((r) => ({ label: r.action === 'sep' ? '-' : String(r.label || '').trim() || skDefaultName(r.action) || skActionText(r.action), action: r.action }));
+                    });
+                });
+                try { window.AndroidBars.setConfig(JSON.stringify({ softProfiles: clean })); } catch (_) { /* older app */ }
+                try { if (window.melatonBars && typeof window.melatonBars.kitChanged === 'function') window.melatonBars.kitChanged(); } catch (_) { /* no bars */ }
+            }
             return [];
         }
     });
