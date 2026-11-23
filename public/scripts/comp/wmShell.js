@@ -5655,6 +5655,10 @@
         return d.battery != null && Number.isFinite(lv) && lv >= 0 && lv <= 100;
     }
     function btConnected() {
+        // behind a program (the app draws this page's copies of Connectivity and Bluetooth): read again each time, a
+        // connect or battery push may have come while the page slept (Yukimi, Nov 23: the battery row was missing in the
+        // popup over apps)
+        if (btRead && document.visibilityState !== 'visible') btRead = false;
         if (!btRead) {
             btRead = true;
             const b = window.AndroidBluetooth;
@@ -5670,6 +5674,9 @@
         if (!d || typeof d !== 'object') return;
         btNow = d;
         btRead = true;
+        // the app's copies of Connectivity / Bluetooth (drawn over programs) follow it: a status pass, which writes them
+        // down again when what they show changed (barsBubbleSpecs)
+        statusDirty();
         const b = shell && shell.querySelector('.wm-bubble');
         if (b && !b.hidden && (b.dataset.role === 'bluetooth' || b.dataset.role === 'data')) statusBubble(b.dataset.role, shell.querySelector(`.wm-status-icon[data-role="${b.dataset.role}"]`), true);
     }

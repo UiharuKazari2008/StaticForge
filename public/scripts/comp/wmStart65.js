@@ -584,7 +584,12 @@
         // the device's three columns are 72 units apart (the last cell 96 wide): a wider screen
         // takes as many as fit at that pitch, every second one half a row down
         cols = columnsFor();
-        sets = cols === 6 && (view.clientWidth || window.innerWidth || 0) < SPLIT_MAX ? 2 : 1;
+        // the open Fold's two sets, one each side of the crease - only upright: on its side the crease runs across the
+        // screen and there is no fold between the columns to split at (Yukimi, Nov 23: "there is no logical folding
+        // division"), so the columns spread as one set (the shell's box: the native Start's copy lays it out at its screen)
+        const shellBox = document.getElementById('wmShell');
+        const sideways = ((shellBox && shellBox.clientWidth) || window.innerWidth) > ((shellBox && shellBox.clientHeight) || window.innerHeight);
+        sets = cols === 6 && !sideways && (view.clientWidth || window.innerWidth || 0) < SPLIT_MAX ? 2 : 1;
         const per = cols / sets;
         page.classList.toggle('is-split', sets > 1);
         list.style.setProperty('--s65-per', String(per));
