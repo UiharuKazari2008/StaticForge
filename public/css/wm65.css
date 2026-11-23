@@ -506,6 +506,11 @@ html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="left"],
 html.ui-mobile[data-wm-version="6.5"] .wm-popup[data-side="right"] {
     bottom: calc(var(--wm-safe-bottom, 0px) + 25.5 * var(--wm-px));
 }
+/* ... on the soft key bar's own height when it takes Android's nav row (--wm-soft-h, #1053) */
+html.ui-mobile[data-wm-version="6.5"][data-wm-soft-h]:not([data-wm-sip]) .wm-popup[data-side="left"],
+html.ui-mobile[data-wm-version="6.5"][data-wm-soft-h]:not([data-wm-sip]) .wm-popup[data-side="right"] {
+    bottom: calc(var(--wm-soft-h) - 0.5 * var(--wm-px));
+}
 
 html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"])::-webkit-scrollbar {
     display: none;
