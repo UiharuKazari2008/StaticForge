@@ -50,6 +50,10 @@ JOBS = {
     'lapis-unlocked': ('badge', 'rom:10_2503', 'wm65/start-lapis'),
     'lapis-run-left': ('badge', 'rom:10_2051', 'wm65/start-lapis'),
     'lapis-service': ('badge', 'wm65/start-tasks', 'wm65/start-lapis'),
+    # the Car (the status bar's car glyph: a car key in range, a remote start, a commute running late). Yukimi, Nov 23
+    # 2026: "that one needs to be converted from being the traffic icon to a car icon" - it showed Traffic's road and
+    # traffic light. The car's own picture (lapis/car.webp, generate-wm-lapis-art.js), fitted to the square
+    'car': ('fit', 'lapis/car.webp'),
     # weather (Yukimi, Nov 22 2026: "we need a icon for rain detect and for severe and regular weather alert"): the
     # Titanium weather panel's own rain and storm pictures (ROM, wm65/ti-wx-*), the alerts badged as the message boxes are
     'rain-alarm': ('badge', 'wm65/ti-wx-rain', 'wm61/app-weather-lg'),
@@ -162,8 +166,23 @@ def save(a, path):
     Image.fromarray((np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8), 'RGBA').save(path, optimize=True)
 
 
+def fit_picture(ref, side=S4, room=0.94):
+    """one of our own pictures (any size), its empty margin cut off, fitted to the square and centred"""
+    a = load(os.path.join(IMG, ref))
+    ys, xs = np.where(a[..., 3] > 0.02)
+    a = a[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    h, w = a.shape[:2]
+    k = side * room / max(w, h)
+    nw, nh = max(1, round(w * k)), max(1, round(h * k))
+    canvas = np.zeros((side, side, 4))
+    over(canvas, premul_resize(a, nw, nh), (side - nw) // 2, (side - nh) // 2)
+    return canvas
+
+
 def build(kind, job):
-    if isinstance(job, tuple):
+    if isinstance(job, tuple) and job[0] == 'fit':
+        a4 = fit_picture(job[1])
+    elif isinstance(job, tuple):
         _, base, badge = job
         a = at4(base).copy()
         b = at4(badge, BADGE)

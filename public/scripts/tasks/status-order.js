@@ -55,7 +55,9 @@
      */
     const holder = {
         notify: 'wm61/msgbox-info', reminder: 'wm65/start-calendar', error: 'wm61/msgbox-error', warning: 'wm61/msgbox-warning',
-        carkey: 'wm65/start-traffic', traffic: 'wm65/start-traffic', lapis: 'wm65/start-lapis', caralert: 'wm65/start-lapis',
+        // (carkey, the Car: a car, not Traffic's road and light - Yukimi, Nov 23 2026: "converted from being the traffic
+        // icon to a car icon"; scripts/build-wm65-holder-kind-icons.py car)
+        carkey: 'wm65/holder-car', traffic: 'wm65/start-traffic', lapis: 'wm65/start-lapis', caralert: 'wm65/start-lapis',
         rain: 'wm61/app-weather-lg', wxalert: 'wm61/app-weather-lg', chat: 'wm65/start-messenger', mail: 'wm65/start-msg',
         sms: 'wm65/start-sms', prints: 'wm65/start-photos', director: 'wm61/app-director-lg', received: 'wm65/start-async',
         update: 'wm65/start-update', continuity: 'wm65/start-pccon', nightshade: 'wm61/set-nightshade',
