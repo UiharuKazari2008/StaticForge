@@ -30,7 +30,9 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb {
 }
 
 body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb .taskbar-start-button-orb-frame {
-    top: round(down, calc(50% - 23px), 1px);
+    /* (to the nearest pixel: rounded down, a half pixel put the orb a pixel above Vista's place and its well's edge off the
+       bar's top line - the DeX desktop's 29 px button, Yukimi Nov 23 2026) */
+    top: round(nearest, calc(50% - 23px), 1px);
     bottom: auto;
     left: 0;
     width: 60px;

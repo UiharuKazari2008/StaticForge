@@ -2117,6 +2117,14 @@ class DesktopShortcutsManager {
             icon.appendChild(appletIcon);
         }
         
+        // a Program Icons set (an Android program on the DeX desktop): the set's own size for what is drawn here (it showed
+        // its 32 px Vista picture stretched to the desktop's icon - Yukimi, Nov 23 2026: "a very low resolution")
+        if (hasImageIcon && /^\/static_images\/wm-android\//.test(String(applet.imageIcon)) && typeof renderAppIconImg === 'function') {
+            const t = document.createElement('template');
+            t.innerHTML = renderAppIconImg(applet.imageIcon, '', APP_ICON_DISPLAY_PX.desktop);
+            const img = t.content.firstElementChild;
+            if (img) { img.alt = ''; icon.appendChild(img); return icon; }
+        }
         // Render image icon if available
         if (hasImageIcon && applet.imageIcon) {
             const imageIcon = document.createElement('img');

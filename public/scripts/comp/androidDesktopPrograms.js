@@ -162,7 +162,8 @@
             fullName: name,
             // a store set is drawn by modalUtils.js renderAppIconImg at the row's size (small / -lg, with its srcset)
             // (its Vista icon when the set has one: <set>-vista-32.png names the set, renderAppIconImg picks the size)
-            imageIcon: vista ? `${set}-vista-32.png` : set ? `${set}.png` : iconFor(a, 32).src,
+            // (Android's own icon drawn for the desktop's largest use, 64 px: the 32 px one was blurred there)
+            imageIcon: vista ? `${set}-vista-32.png` : set ? `${set}.png` : iconFor(a, 64).src,
             // the Start menu's picture over the user tile
             image: vista ? `${set}-vista-256.png` : set ? `${set}-lg@4x.png` : iconFor(a, 64).src,
             icon: 'fas fa-window-maximize',
