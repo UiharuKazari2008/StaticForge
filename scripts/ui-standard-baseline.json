@@ -1257,10 +1257,6 @@
    "inline-style": 12,
    "hand-built-window": 1
   },
-  "public/scripts/comp/desktop-apps/startMenuOrganizer.js": {
-   "hand-built-window": 1,
-   "toast": 4
-  },
   "public/scripts/comp/desktop-apps/vista-games/blockdrop.js": {
    "colour-in-script": 15
   },

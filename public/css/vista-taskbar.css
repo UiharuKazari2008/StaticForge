@@ -494,6 +494,47 @@ img.taskbar-thumb-still {
     display: none;
 }
 
+/* the Android group's previews (#1029): one per window side by side, each with its own Close while hovered */
+.taskbar-thumb.is-group > .taskbar-thumb-close {
+    display: none;
+}
+.taskbar-thumb.is-group .taskbar-thumb-body {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    min-width: 0;
+    min-height: 0;
+    box-shadow: none;
+}
+.taskbar-thumb-cell {
+    position: relative;
+    box-shadow: 0 0 0 1px hsl(214 20% 25% / 85%);
+}
+.taskbar-thumb-cell:hover {
+    box-shadow: 0 0 0 1px hsl(214 20% 25% / 85%), 0 0 0 3px hsl(205 80% 85% / 55%);
+}
+.taskbar-thumb-cell.is-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 120px;
+    height: 80px;
+    background: hsl(210 15% 90% / 40%);
+}
+.taskbar-thumb-cell.is-icon > img:not(.taskbar-thumb-still) {
+    width: 32px;
+    height: 32px;
+}
+.taskbar-thumb-cell:hover .taskbar-thumb-close {
+    opacity: 1;
+}
+.taskbar-thumb.is-group .taskbar-thumb-cell:not(:hover) .taskbar-thumb-close {
+    opacity: 0;
+}
+.taskbar-thumb.is-group.is-tooltip .taskbar-thumb-title {
+    white-space: pre;
+}
+
 /* With previews off Vista shows the plain title tooltip */
 .taskbar-thumb.is-tooltip,
 .taskbar-clock-tooltip {

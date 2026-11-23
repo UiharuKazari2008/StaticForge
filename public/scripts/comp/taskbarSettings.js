@@ -880,10 +880,8 @@
             }],
             onAction: (action) => {
                 if (action === 'start-properties') openProperties('startmenu');
-                else if (action === 'start-open') {
-                    // openStartMenuOrganizer: public/scripts/comp/desktop-apps/startMenuOrganizer.js
-                    featureLoader.loadFeature('start_menu_organizer').then(() => callGlobal('openStartMenuOrganizer')).catch(() => {});
-                } else if (action === 'start-explore') callGlobal('openExplorerApplet');
+                // (Open and Explore: Explorer; the old Organize Start Menu window is gone, Yukimi, Nov 23 2026)
+                else if (action === 'start-open' || action === 'start-explore') callGlobal('openExplorerApplet');
             }
         };
         // a Quick Launch shortcut: Open, Delete takes it off the toolbar, and Restore Default Items
@@ -1098,8 +1096,85 @@
         if (btn) btn.click();
     }
 
+    /** The app's picture of an Android window's task (Recents' picture), fitted to the preview box once loaded. */
+    function androidStill(w, onFit) {
+        const img = doc.createElement('img');
+        img.className = 'taskbar-thumb-still';
+        img.alt = '';
+        img.draggable = false;
+        img.decoding = 'async';
+        img.addEventListener('load', () => {
+            if (!img.naturalWidth) return;
+            // fitted to the same box as Dreamscape's own windows' previews
+            const sc = Math.min(THUMB_BOX.w / img.naturalWidth, THUMB_BOX.h / img.naturalHeight);
+            img.style.width = `${Math.round(img.naturalWidth * sc)}px`;
+            img.style.height = `${Math.round(img.naturalHeight * sc)}px`;
+            onFit(true);
+        });
+        img.addEventListener('error', () => { img.remove(); onFit(false); });
+        img.src = `https://appassets.androidplatform.net/task-shot/${encodeURIComponent(w.taskId)}?w=320&t=${Date.now()}`;
+        return img;
+    }
+
+    /**
+     * The Android group's button (#1029): a preview of each of its windows side by side, each with its own Close; a press
+     * on one brings that window forward (Yukimi, Nov 23 2026: "no previews of the android windows when you hover the
+     * taskbar group")
+     */
+    function showAndroidGroupThumb(item) {
+        const T = root.melatonAndroidTaskbar;
+        const wins = T && typeof T.windows === 'function' ? T.windows() : [];
+        if (!wins.length) return;
+        const el = ensureThumb();
+        if (el !== doc.body.lastElementChild) doc.body.appendChild(el);
+        el.querySelector('.taskbar-thumb-title').textContent = wins.map((w) => T.titleOf(w)).join('\n');
+        const body = el.querySelector('.taskbar-thumb-body');
+        body.textContent = '';
+        body.classList.remove('is-icon');
+        el.classList.toggle('is-tooltip', !settings.thumbnails);
+        el.classList.add('is-group');
+        thumbFor = item;
+        el.classList.remove('hidden');
+        if (settings.thumbnails) {
+            wins.forEach((w) => {
+                const cell = doc.createElement('div');
+                cell.className = 'taskbar-thumb-cell';
+                cell.title = T.titleOf(w);
+                const x = doc.createElement('button');
+                x.type = 'button';
+                x.className = 'taskbar-thumb-close';
+                x.tabIndex = -1;
+                x.setAttribute('aria-label', 'Close');
+                x.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    cell.remove();
+                    if (T.close) T.close(w.id);
+                    if (!body.childElementCount) hideThumb(true); else placeThumb(item);
+                });
+                cell.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    hideThumb(true);
+                    if (T.activate) T.activate(w.id);
+                });
+                cell.appendChild(x);
+                // (no picture of it: its program's icon in the box)
+                const asIcon = () => {
+                    cell.classList.add('is-icon');
+                    const pic = T.iconFor ? T.iconFor(w, 32) : { src: '' };
+                    if (pic.src) { const i = doc.createElement('img'); i.src = pic.src; i.alt = ''; i.draggable = false; cell.appendChild(i); }
+                };
+                if (w.taskId != null) cell.appendChild(androidStill(w, (ok) => { if (!ok) asIcon(); if (thumbFor === item) placeThumb(item); }));
+                else asIcon();
+                body.appendChild(cell);
+            });
+        }
+        placeThumb(item);
+    }
+
     /** An Android window's preview: its title and the app's picture of it (Recents' picture of its task). */
     function showAndroidThumb(item) {
+        if (item.dataset.androidWindow === 'group') { showAndroidGroupThumb(item); return; }
+        if (thumb) thumb.classList.remove('is-group');
         const T = root.melatonAndroidTaskbar;
         const w = T && typeof T.window === 'function' ? T.window(item.dataset.androidWindow) : null;
         if (!w) return;
@@ -1113,29 +1188,13 @@
         el.classList.toggle('is-tooltip', !withPreview);
         thumbFor = item;
         el.classList.remove('hidden');
-        if (withPreview) {
-            const img = doc.createElement('img');
-            img.className = 'taskbar-thumb-still';
-            img.alt = '';
-            img.draggable = false;
-            img.decoding = 'async';
-            img.addEventListener('load', () => {
-                if (thumbFor !== item || !img.naturalWidth) return;
-                // fitted to the same box as Dreamscape's own windows' previews
-                const sc = Math.min(THUMB_BOX.w / img.naturalWidth, THUMB_BOX.h / img.naturalHeight);
-                img.style.width = `${Math.round(img.naturalWidth * sc)}px`;
-                img.style.height = `${Math.round(img.naturalHeight * sc)}px`;
-                placeThumb(item);
-            });
-            img.addEventListener('error', () => { if (thumbFor === item) { img.remove(); el.classList.add('is-tooltip'); placeThumb(item); } });
-            img.src = `https://appassets.androidplatform.net/task-shot/${encodeURIComponent(w.taskId)}?w=320&t=${Date.now()}`;
-            body.appendChild(img);
-        }
+        if (withPreview) body.appendChild(androidStill(w, (ok) => { if (thumbFor !== item) return; if (!ok) el.classList.add('is-tooltip'); placeThumb(item); }));
         placeThumb(item);
     }
 
     function showThumb(item) {
         if (item.dataset.androidWindow) { showAndroidThumb(item); return; }
+        if (thumb) thumb.classList.remove('is-group');
         const modal = modalFor(item);
         if (!modal) return;
         const el = ensureThumb();
@@ -1198,7 +1257,8 @@
         if (!band) return;
         band.addEventListener('pointerover', (ev) => {
             if (ev.pointerType === 'touch') return;
-            const item = ev.target.closest('.taskbar-window-item:not(.taskbar-window-group)');
+            // (Dreamscape's own groups show their list, as Vista's; the Android group previews its windows, #1029)
+            const item = ev.target.closest('.taskbar-window-item:not(.taskbar-window-group), .taskbar-android-group');
             if (!item || item === thumbFor) return;
             if (thumbHideTimer) clearTimeout(thumbHideTimer);
             thumbHideTimer = 0;

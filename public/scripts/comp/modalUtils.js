@@ -5897,10 +5897,9 @@ const MODAL_APPLICATION_ICONS = {
     directorFeedbackModal: 'director.png',
     directorWindow: 'director.png',
     vibeEncodingModal: 'ref.png',
-    // windows of their own that are built in script (startMenuOrganizer.js, remoteAccessProperties.js,
+    // windows of their own that are built in script (remoteAccessProperties.js,
     // agentClientUpdateDialog.js, mainframeExceptionDialog.js, vfsSystemOpenRouter.js)
     desktopEmotionModal: 'emotion.png',
-    startMenuOrganizerModal: 'vista-taskbar.png',
     remoteAccessPropertiesDialog: 'vista-remote-access.png',
     mcpSystemMessageTemplateWindow: 'vista-remote-access.png',
     agentClientUpdateDialog: 'vista-windows-update.png',
@@ -7293,9 +7292,8 @@ function getAllAppsMenuItems() {
     return sortMenuItemsByIndex(candidates, 'appMenuIndex');
 }
 
-// ---- Start menu organizer (order + folders, like Windows' Accessories folder) ----
+// ---- the Start menu's saved order + folders (a layout saved by the old organizer window, removed Nov 23 2026) ----
 // Server storage/validation: modules/startMenuLayout.js, modules/ws/handlers/260-startMenuLayoutHandler.js
-// Editor window: public/scripts/comp/desktop-apps/startMenuOrganizer.js (openStartMenuOrganizer)
 
 // null until fetchStartMenuCustomLayout resolves; stays null forever if Yukimi has never customized it.
 let startMenuCustomLayout = null;
@@ -7311,17 +7309,6 @@ async function fetchStartMenuCustomLayout() {
         console.error('start_menu_get_layout', e);
         startMenuCustomLayout = null;
     }
-    if (startMenu) buildStartMenu();
-}
-
-/** Read-only accessor for the organizer window — the editor's own save/reset round-trips update the cache themselves. */
-function getStartMenuCustomLayout() {
-    return startMenuCustomLayout;
-}
-
-/** Called by the organizer window after a successful save/reset round-trip to the server. */
-function setStartMenuCustomLayoutCache(layout) {
-    startMenuCustomLayout = Array.isArray(layout) ? layout : null;
     if (startMenu) buildStartMenu();
 }
 
@@ -7369,24 +7356,6 @@ function getOrganizedAllAppsMenuItems() {
         if (!used.has(item.launchId)) result.push(item);
     });
     return result;
-}
-
-/** All-Apps flyout content: organized items + a trailing row that opens the editor. */
-function buildAllAppsSubmenuWithOrganizeRow() {
-    const items = getOrganizedAllAppsMenuItems();
-    return items.concat([
-        { separator: true },
-        {
-            text: 'Organize Start Menu…',
-            icon: 'fas fa-arrows-up-down-left-right',
-            appMenu: false,
-            action: async () => {
-                await featureLoader.loadFeature('start_menu_organizer');
-                // openStartMenuOrganizer: public/scripts/comp/desktop-apps/startMenuOrganizer.js
-                openStartMenuOrganizer();
-            }
-        }
-    ]);
 }
 
 function startMenuPlanetLaunchId(workspaceId) {
@@ -7454,7 +7423,7 @@ const startMenuSubmenus = {
     planets: () => buildPlanetsSubmenuItems(),
     tools: () => buildToolsSubmenuItems(),
     toolbox: () => buildToolsSubmenuItems(),
-    'all-apps': () => buildAllAppsSubmenuWithOrganizeRow()
+    'all-apps': () => getOrganizedAllAppsMenuItems()
 };
 
 const shellIconFontSpecs = [
@@ -9904,18 +9873,6 @@ function ensureStartMenuElements() {
         setStartMenuView(startMenuView === 'home' ? 'programs' : 'home');
         if (startMenuHasFinePointer()) startMenuEls.search.focus();
     });
-    if (typeof contextMenu !== 'undefined' && contextMenu) {
-        contextMenu.attachToElement(startMenuEls.allPrograms, {
-            sections: [{ type: 'list', items: [{ icon: 'fas fa-arrows-up-down-left-right', text: 'Organize Start Menu…', action: 'organize' }] }],
-            onAction: () => {
-                closeStartMenu();
-                void featureLoader.loadFeature('start_menu_organizer').then(() => {
-                    // openStartMenuOrganizer: public/scripts/comp/desktop-apps/startMenuOrganizer.js
-                    openStartMenuOrganizer();
-                });
-            }
-        });
-    }
     startMenuEls.search.addEventListener('input', onStartMenuSearchInput);
     // every key of the menu (#1060): Start Search, the rows, the places and the power buttons. Taken at the
     // window's capture, before the keyboard registry hands Enter / Escape to the window under the menu

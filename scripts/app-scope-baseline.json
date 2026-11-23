@@ -240,9 +240,6 @@
  "public/scripts/comp/desktop-apps/paint/paintApp.js": {
   "page-global": 3
  },
- "public/scripts/comp/desktop-apps/startMenuOrganizer.js": {
-  "page-global": 31
- },
  "public/scripts/comp/desktop-apps/vista-games/blockdrop.js": {
   "owner-less-listener": 1
  },

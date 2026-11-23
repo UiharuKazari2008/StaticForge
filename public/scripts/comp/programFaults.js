@@ -111,7 +111,7 @@
         + '|keyboardShortcuts|desktopShortcuts|appSplash|mainMenuManager|exitConfirmation|trayIndicators|systemTrayManager'
         + '|windowControlsOverlay|errorDisplay|themePreferences|aeroGlass|appBootstrap|connectionManager'
         + '|accountDataBootstrap|uiResize|windowManagementHelpers|featureLoader|telemetryClient|agentClientBridge'
-        + '|agentClientUpdateDialog|assetPreload|startMenuOrganizer)'
+        + '|agentClientUpdateDialog|assetPreload)'
         + ')\\.js$');
 
     /** Program scripts app.html loads up front (the lazy ones come from FEATURE_MANIFEST). */
@@ -166,7 +166,6 @@
         data_mgmt_lib: 'lib',
         security_center_lib: 'lib',
         image_search_lib: 'lib',
-        start_menu_organizer: 'core',
         vista_games: 'lib',
         vista_cards: 'lib'
     };

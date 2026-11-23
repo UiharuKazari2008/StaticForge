@@ -210,11 +210,20 @@
         return byId(state.focusedId) || state.windows[0];
     }
 
+    /**
+     * The group button's name: "Android - <the window in front>" (Yukimi, Nov 23 2026: "Android - " is the group's name on
+     * the taskbar, not on every window in its list)
+     */
+    function groupTitle() {
+        const lead = groupLead();
+        return lead ? `Android - ${titleOf(lead)}` : GROUP_NAME;
+    }
+
     function groupHtml() {
         const lead = groupLead();
         const pic = lead ? iconOf(lead) : { src: '', srcset: '' };
         const img = pic.src ? `<img src="${esc(pic.src)}"${pic.srcset ? ` srcset="${esc(pic.srcset)}"` : ''} alt="" class="icon-image" draggable="false" />` : '<i class="fas fa-window-maximize"></i>';
-        return `<div class="taskbar-window-item-content">${img}<span>${esc(GROUP_NAME)}</span><span class="taskbar-group-count">${state.windows.length}</span></div>`;
+        return `<div class="taskbar-window-item-content">${img}<span>${esc(groupTitle())}</span><span class="taskbar-group-count">${state.windows.length}</span></div>`;
     }
 
     function showGroup(b) {
@@ -241,7 +250,7 @@
             groupBtn = item;
             b.appendChild(item);
         }
-        const key = `${state.windows.length}|${groupLead() ? iconKey(groupLead()) : ''}`;
+        const key = `${state.windows.length}|${groupLead() ? iconKey(groupLead()) : ''}|${groupTitle()}`;
         if (groupBtn.dataset.contentKey !== key) {
             groupBtn.dataset.contentKey = key;
             groupBtn.innerHTML = groupHtml();
@@ -276,8 +285,7 @@
                 type: 'list',
                 items: state.windows.map((w) => {
                     const pic = iconOf(w);
-                    // (in the group's list each window says it is Android's: "Android - <window>", Yukimi, Nov 23 2026)
-                    return { text: `Android - ${titleOf(w)}`, image: pic.src || undefined, action: `awg:${w.id}`, closeAction: state.can.close ? `awgx:${w.id}` : undefined };
+                    return { text: titleOf(w), image: pic.src || undefined, action: `awg:${w.id}`, closeAction: state.can.close ? `awgx:${w.id}` : undefined };
                 })
             }],
             onAction: (action) => {

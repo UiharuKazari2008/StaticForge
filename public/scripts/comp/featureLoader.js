@@ -329,10 +329,6 @@ const FEATURE_MANIFEST = {
         styles: ['css/desktop-apps/vista-games-explorer.css'],
         scripts: ['scripts/comp/desktop-apps/vista-games/gamesExplorer.js']
     },
-    start_menu_organizer: {
-        hot: true,
-        scripts: ['scripts/comp/desktop-apps/startMenuOrganizer.js']
-    },
     // Desktop Icon Settings and Change Icon (Personalize, a desktop shortcut's Change Icon...);
     // drawn with Taskbar Properties' Vista controls (tbp-*)
     desktop_icon_dialogs: {
