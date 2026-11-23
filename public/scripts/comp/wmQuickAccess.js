@@ -114,7 +114,8 @@
         performance: `${PKG}com.samsung.android.lool/drawable/ic_quick_panel_icon_performance_profile`,
         powershare: `${PKG}com.samsung.android.lool/drawable/ic_quick_panel_icon_power_share`,
         qr: `${PKG}com.sec.android.app.camera/drawable/quick_panel_icon_qr_scanner`,
-        modes: `${PKG}com.samsung.android.app.routines/drawable/quick_panel_icon_modes`,
+        // (Routines' own Modes glyph at full size; its tile's service icon is a small one in a padded square)
+        modes: `${PKG}com.samsung.android.app.routines/drawable/routines_ic_modes`,
         record: `${PKG}com.samsung.android.app.smartcapture/drawable/quick_panel_icon_screen_recording`,
         network: `${PKG}com.radioswitch.app/drawable/ic_traffic_cone`,
         wifi: { on: `${PKG}com.android.systemui/drawable/quick_panel_icon_wifi_on`, off: `${PKG}com.android.systemui/drawable/quick_panel_icon_wifi_off` },
@@ -179,7 +180,8 @@
     // the controls two columns wide in a two-column strip (Yukimi, Nov 22 2026: "a 2 col Samsung mode changer"): its picture,
     // its name and what it is on now, as the wide panel's tiles
     const SPAN = new Set(['modes']);
-    const spans = (m, id) => Number(m.cfg.columns) === 2 && m.cfg.layout !== 'wide' && SPAN.has(id);
+    // (in a one-column strip the same control is two rows high: its picture, name and mode under each other - Yukimi, Nov 23)
+    const spans = (m, id) => m.cfg.layout !== 'wide' && SPAN.has(id);
 
     function stripPages(m, cols, room) {
         const TILE = 40; // a tile's height with its gap, in WM units (CSS: .qa-tile 36 + gap 4)
@@ -190,7 +192,7 @@
         let rowH = 0;
         const flush = () => { used += rowH; row = []; rowH = 0; };
         m.items.forEach((id) => {
-            const h = SLIDERS[id] ? SLIDE : TILE;
+            const h = SLIDERS[id] ? SLIDE : cols === 1 && spans(m, id) ? 2 * TILE : TILE;
             // a wide one starts its own row (the grid moves it there too, leaving the cell before it empty)
             const span = cols === 2 && spans(m, id) ? 2 : 1;
             if (span === 2 && row.length) flush();
@@ -331,7 +333,7 @@
         // pointed at a glyph the app no longer draws, and the tile showed empty)
         // (f5: every tile's on / off / dim faces, a centred state line, the inset under the tiles, real bar heights, Nov 23
         // 2026 - a new make sends the app the new layouts)
-        return JSON.stringify(['f5', getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
+        return JSON.stringify(['f6', getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
     }
 
     // Today and Start show the workspace's wallpaper already (Yukimi, Nov 22 2026): the app brings Quick Access in over them

@@ -94,6 +94,23 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
 #wmShell > .wm-qa.is-cols-2 .qa-cells > .qa-slider { grid-column: span 1; }
 /* a control two columns wide (Modes): the wide panel's tile, its name and what it is on now beside its picture */
 #wmShell > .wm-qa.is-cols-2 .qa-cells > .qa-tile.is-span { grid-column: span 2; height: calc(36 * var(--wm-px)); }
+/* Modes' picture as large as every other tile's (Yukimi, Nov 23 2026: "should not be so small") */
+#wmShell > .wm-qa .qa-cells > .qa-tile.is-span .qa-face { background-size: calc(20 * var(--wm-px)) calc(20 * var(--wm-px)), auto; }
+/* one column: two rows high, its picture at the top, its name and the mode on now under it */
+#wmShell > .wm-qa.is-cols-1 .qa-cells > .qa-tile.is-span { height: calc(76 * var(--wm-px)); }
+#wmShell > .wm-qa.is-cols-1 .qa-cells > .qa-tile.is-span .qa-face {
+    align-items: flex-start;
+    justify-content: center;
+    padding: calc(32 * var(--wm-px)) calc(2 * var(--wm-px)) 0;
+    text-align: center;
+    background-position: center calc(8 * var(--wm-px)), 0 0;
+}
+#wmShell > .wm-qa.is-cols-1 .qa-cells > .qa-tile.is-span .qa-sub {
+    left: calc(2 * var(--wm-px));
+    right: calc(2 * var(--wm-px));
+    bottom: calc(8 * var(--wm-px));
+    text-align: center;
+}
 #wmShell > .wm-qa .qa-cells { align-items: start; }
 
 /* ---- a tile: the press, over its stacked faces (one per state) ---- */

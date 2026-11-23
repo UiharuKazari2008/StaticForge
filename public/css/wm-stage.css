@@ -227,7 +227,8 @@ html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
 
 .wm-tm-panel {
     flex: 0 0 auto;
-    min-height: 30%;
+    /* as tall as its cards (Yukimi, Nov 23 2026: "shrink the task bar height instead of leaving so much space free";
+       it kept 30 % of the screen from the large cards) */
     position: relative;
     display: flex;
     flex-direction: column;
@@ -329,8 +330,8 @@ html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
 
 .wm-tm-stage {
     flex: 1 0 auto;
-    /* (smaller cards, 4-5 across: Yukimi, Nov 23 2026 - "we want to be able to see 4-5 apps") */
-    min-height: calc(96 * var(--wm-px));
+    /* (smaller cards, 4-5 across: Yukimi, Nov 23 2026 - "we want to be able to see 4-5 apps"): the card's own height */
+    min-height: calc(86 * var(--wm-px));
     position: relative;
     display: flex;
     background: var(--wm-tm-spot);
