@@ -2867,6 +2867,92 @@
         };
     }
 
+    /**
+     * The panel laid out once, closed, for the Android app to copy (melatonBars taskKit, the kit's lists.taskStrip; cursor
+     * rule melaton-bars-native-layouts): the app draws its own Task Manager over whatever program is in front (Yukimi,
+     * Nov 23 2026: it "can always appear as a overlay no matter where you are and does not return home", and rises under
+     * a slow home swipe), with this page asleep behind that program. write(elements) -> drawing list (layoutOf).
+     *   panel        the panel with no cards: its band (title, the count as live field tm-count, End All) and stage
+     *   card, cardOn a program's card and the card of the program on screen (ringed): tile, gloss, close badge and the
+     *                name (live field tm-label, written "Program"); no picture - the app draws each program's own in icon
+     *   empty        "No programs are running.";  allOff: End All as it stands with nothing running
+     *   geo          boxes in device px [x, y, w, h]: panel, list (the row the cards slide in), card, cardOn, icon, tile,
+     *                end (a card's close badge) and all (End All); pitch (from a card to the next), labelMax (the room a
+     *                name has) and screen (the dimmed screen's colour)
+     * Nothing shows: laid out and put back within the one call, no frame between. Null while the panel is open.
+     */
+    function taskSwitcherSample(write, dpr) {
+        if (!shell || taskSwitch.open || typeof write !== 'function') return null;
+        if (!taskSwitch.el) taskSwitcherBuild();
+        const el = taskSwitch.el;
+        const k = Number(dpr) || window.devicePixelRatio || 1;
+        const panel = el.querySelector('.wm-tm-panel');
+        const list = el.querySelector('.wm-tm-list');
+        const count = el.querySelector('.wm-tm-count');
+        const empty = el.querySelector('.wm-tm-empty');
+        const all = el.querySelector('.wm-tm-all');
+        const kept = { hidden: el.hidden, cards: [...list.childNodes], count: count.textContent, empty: empty.hidden, all: all.disabled, closing: el.classList.contains('is-closing') };
+        const box = (n) => { const r = n.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * k * 100) / 100); };
+        const hide = (nodes) => { const was = nodes.map((n) => [n, n.style.visibility]); nodes.forEach((n) => { n.style.visibility = 'hidden'; }); return () => was.forEach(([n, v]) => { n.style.visibility = v; }); };
+        const mk = (id, on) => {
+            const c = taskSwitcherCard({ id });
+            const label = c.querySelector('.wm-ts-label');
+            label.textContent = 'Program';
+            label.dataset.live = 'tm-label';
+            if (on) c.classList.add('is-current');
+            return c;
+        };
+        let out = null;
+        try {
+            taskSwitcherPlace();
+            el.classList.remove('is-closing');
+            el.hidden = false;
+            const a = mk('__sample-a', false);
+            const b = mk('__sample-b', true);
+            list.replaceChildren(a, b);
+            list.scrollLeft = 0;
+            count.textContent = '8';
+            count.dataset.live = 'tm-count';
+            empty.hidden = true;
+            all.disabled = false;
+            let un = hide([a, b]);
+            const panelItems = write([panel]);
+            un();
+            un = hide([b]);
+            const card = write([a]);
+            un();
+            un = hide([a]);
+            const cardOn = write([b]);
+            un();
+            const label = a.querySelector('.wm-ts-label');
+            const geo = {
+                panel: box(panel), list: box(list), card: box(a), cardOn: box(b), icon: box(a.querySelector('.wm-ts-icon')), tile: box(a.querySelector('.wm-tm-tile')),
+                end: box(a.querySelector('.wm-tm-end')), all: box(all),
+                pitch: Math.round((b.getBoundingClientRect().left - a.getBoundingClientRect().left) * k * 100) / 100,
+                labelMax: Math.round((parseFloat(getComputedStyle(label).maxWidth) || a.getBoundingClientRect().width) * k * 100) / 100,
+                screen: getComputedStyle(el).backgroundColor
+            };
+            list.replaceChildren();
+            empty.hidden = false;
+            all.disabled = true;
+            const emptyItems = write([empty]);
+            const allOff = write([all]);
+            out = { v: 1, panel: panelItems, card, cardOn, empty: emptyItems, allOff, geo };
+        } catch (err) {
+            console.warn('[wmShell] task manager sample', err);
+            out = null;
+        } finally {
+            delete count.dataset.live;
+            count.textContent = kept.count;
+            list.replaceChildren(...kept.cards);
+            empty.hidden = kept.empty;
+            all.disabled = kept.all;
+            el.classList.toggle('is-closing', kept.closing);
+            el.hidden = kept.hidden;
+        }
+        return out;
+    }
+
     function taskSwitcherBuild() {
         const el = document.createElement('div');
         el.className = 'wm-taskstrip';
@@ -14384,7 +14470,9 @@
             close: () => closeTaskSwitcher(),
             get isOpen() { return taskSwitch.open; },
             tasks: () => taskSwitcherTasks(),
-            endAll: () => taskSwitcherEndAll()
+            endAll: () => taskSwitcherEndAll(),
+            /** The panel as a sample for the Android app's own Task Manager (taskSwitcherSample; melatonBars taskKit). */
+            sample: (write, dpr) => taskSwitcherSample(write, dpr)
         },
         /** A status glyph's CSS image (a status role's own, or an art name such as 'status-reminder'): melatonBars' tray kit. */
         statusArt: (name) => artImageSet(statusGlyph(name) || name),
