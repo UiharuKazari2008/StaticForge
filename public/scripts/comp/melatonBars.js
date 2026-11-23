@@ -365,7 +365,7 @@
             // the page asleep): its empty frame per body line count, its soft key band, and the boxes it writes into
             let nk = null;
             try { nk = notifyKit(dpr); } catch (err) { console.warn('[melatonBars] notify kit', err); }
-            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? Object.assign({ notifyFrame: nk.frames, notifySoft: nk.soft }, nk.menu ? { notifyMenu: nk.menu } : {}, nk.replyMenu ? { notifyReplyMenu: nk.replyMenu } : {}, nk.reply ? { notifyReply: nk.reply } : {}, nk.tray ? { notifyTray: nk.tray } : {}, nk.softMenu ? { softMenu: nk.softMenu } : {}, nk.softMenuDesk ? { softMenuDesk: nk.softMenuDesk } : {}) : {}) });
+            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? Object.assign({ notifyFrame: nk.frames, notifySoft: nk.soft }, nk.menu ? { notifyMenu: nk.menu } : {}, nk.replyMenu ? { notifyReplyMenu: nk.replyMenu } : {}, nk.reply ? { notifyReply: nk.reply } : {}, nk.tray ? { notifyTray: nk.tray } : {}, nk.softMenu ? { softMenu: nk.softMenu } : {}, nk.softMenuDesk ? { softMenuDesk: nk.softMenuDesk } : {}, nk.softKeyMenus ? { softKeyMenus: nk.softKeyMenus } : {}) : {}) });
         } finally { kitTarget = null; }
     }
 
@@ -382,7 +382,9 @@
     /** The Soft Key Menu's rows, short (in the kit's signature: Settings > Menus > Soft Key Menu changes the kit). */
     function softMenuSig() {
         if (!window.AndroidBars) return '';
-        const txt = JSON.stringify(softMenuList(barsState()));
+        const st = barsState();
+        // (with each soft key's own menus, #1067: a new menu makes the app ask for the kit again)
+        const txt = JSON.stringify(softMenuList(st)) + JSON.stringify((st && st.config && st.config.softProfiles) || null);
         let h = 0;
         for (let i = 0; i < txt.length; i++) h = (h * 31 + txt.charCodeAt(i)) | 0;
         return `sm${(h >>> 0).toString(36)}`;
@@ -573,8 +575,8 @@
             // the box's Menu (6.5.1's reminder: Dismiss | Menu, Yukimi Nov 18 "so that you have a reminder option"), laid
             // out over the right soft key with its fixed rows; each row's tap box is 'notemenu:<n>' for the app to act on
             if (typeof sh.menuSample === 'function') {
-                const menuOf = (rows, prefix = 'notemenu') => {
-                    const smp = sh.menuSample('right', rows.map((l) => (l === '-' ? '-' : { label: l, action() {} })));
+                const menuOf = (rows, prefix = 'notemenu', side = 'right') => {
+                    const smp = sh.menuSample(side, rows.map((l) => (l === '-' ? '-' : { label: l, action() {} })));
                     try {
                         settle([smp.el]);
                         const items = layoutOf([smp.el], dpr).filter((o) => o.k !== 'hit');
@@ -598,6 +600,23 @@
                     };
                     out.softMenu = softOf(false);
                     out.softMenuDesk = softOf(true);
+                    // each soft key's own menu (Settings > Buttons > Soft Keys, #1067): '<profile>|<side>', laid out over the
+                    // left key (the left one) or the right key (the right and the centre: the app centres that one), its rows'
+                    // actions in order ({ id: 'do', action }); the app draws and runs it with the page asleep
+                    const prof = st && st.config && st.config.softProfiles;
+                    if (prof && typeof prof === 'object') {
+                        const menus = {};
+                        Object.keys(prof).slice(0, 41).forEach((k) => ['left', 'center', 'right'].forEach((side) => {
+                            const key = prof[k] && prof[k][side];
+                            if (!key || key.action !== 'ownmenu' || !Array.isArray(key.menu)) return;
+                            const rows = key.menu.filter((r, i, a) => r && (r.action !== 'sep' || (i > 0 && i < a.length - 1)));
+                            if (!rows.some((r) => r.action !== 'sep')) return;
+                            const m = menuOf(rows.map((r) => (r.action === 'sep' ? '-' : String(r.label || ''))), 'softmenu', side === 'left' ? 'left' : 'right');
+                            m.m.acts = rows.filter((r) => r.action !== 'sep').map((r) => ({ id: 'do', action: r.action }));
+                            menus[`${k}|${side}`] = m;
+                        }));
+                        if (Object.keys(menus).length) out.softKeyMenus = menus;
+                    }
                 }
             }
             // a text's Quick Reply (Yukimi, Nov 18: Reply on the left key opens a dialog to answer without the app; Cancel |
@@ -1856,6 +1875,8 @@
         /** wmShell barsStatusPush: the popups' layouts written down again (the roles on the bar now). */
         pushLayouts: (roles, partial) => pushLayouts(roles || [], !!partial),
         kitSignature: () => kitSignature(),
+        /** Settings changed what the kit holds (Soft Keys' menus, #1067): the app hears the new signature now and asks for it. */
+        kitChanged: () => { try { if (window.AndroidBars && typeof window.AndroidBars.kitSig === 'function') window.AndroidBars.kitSig(kitSignature()); } catch (_) { /* older app */ } },
         // a popup's drawing list as the app gets it (checks: wmShell.barsPopupOpen(role), then this on its layers)
         layoutOf: (roots, dpr) => layoutOf(roots, dpr || window.devicePixelRatio || 1),
         // with the page on screen (a return home just under way) the kit (pack -> toDataURL, ~650 ms on the Fold after an
