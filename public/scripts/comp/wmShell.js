@@ -1400,8 +1400,30 @@
         // app.sip: true, or a function for the layer on screen (Windows Media: the playback screen and Properties have none)
         // (#1013) only while the keyboard is up; the task button has the centre otherwise
         if (!(stage && stage.mask.keys)) syncCentreKey(app);
+        syncDsSoft();
         // the corner follows the same layer as the soft keys
         refreshTitleAction();
+    }
+
+    /**
+     * (#1013, Yukimi Nov 22: "In DS when the keyboard is open the softkey bar should not move and the overlay should
+     * appear over with the keyboard button kit") with Android's buttons hidden behind ours (html[data-wm-soft-h]) the
+     * keyboard keeps a strip of the bar's height at its bottom: the bar stays at the screen's bottom under the keyboard
+     * (wm-shell.css) and the app draws these keys over that strip with the keyboard button between them; their presses
+     * come back as 'melatonsoftkey' (melatonBars.js). Sent only when they change.
+     */
+    let dsSoftSent = '';
+    function syncDsSoft() {
+        const A = window.AndroidBars;
+        if (!A || typeof A.dsSoftKeys !== 'function') return;
+        const on = root.hasAttribute('data-wm-sip') && root.hasAttribute('data-wm-soft-h');
+        const label = (k) => (on && k && !k.disabled ? String(k.label == null ? '' : k.label) : '');
+        const l = label(softKeys.left);
+        const r = label(softKeys.right);
+        const sig = on ? `1\u0001${l}\u0001${r}` : '0';
+        if (sig === dsSoftSent) return;
+        dsSoftSent = sig;
+        try { A.dsSoftKeys(on, l, r); } catch (_) { /* older app */ }
     }
 
     /**
@@ -5635,6 +5657,10 @@
         return d.battery != null && Number.isFinite(lv) && lv >= 0 && lv <= 100;
     }
     function btConnected() {
+        // behind a program (the app draws this page's copies of Connectivity and Bluetooth): read again each time, a
+        // connect or battery push may have come while the page slept (Yukimi, Nov 23: the battery row was missing in the
+        // popup over apps)
+        if (btRead && document.visibilityState !== 'visible') btRead = false;
         if (!btRead) {
             btRead = true;
             const b = window.AndroidBluetooth;
@@ -5650,6 +5676,9 @@
         if (!d || typeof d !== 'object') return;
         btNow = d;
         btRead = true;
+        // the app's copies of Connectivity / Bluetooth (drawn over programs) follow it: a status pass, which writes them
+        // down again when what they show changed (barsBubbleSpecs)
+        statusDirty();
         const b = shell && shell.querySelector('.wm-bubble');
         if (b && !b.hidden && (b.dataset.role === 'bluetooth' || b.dataset.role === 'data')) statusBubble(b.dataset.role, shell.querySelector(`.wm-status-icon[data-role="${b.dataset.role}"]`), true);
     }
@@ -8169,9 +8198,11 @@
 
     /** Four signal bars for a bubble row (level 0-4; null = none). */
     // n bars: 4 for Wi-Fi (Android's 0-4), 5 for the mobile network (the radio's dBm in 5 steps, Yukimi Nov 16)
-    function signalBars(lv, n = 4) {
+    // live (Yukimi, Nov 22: "inconsistencies in the reporting of the signal level"): 'cell' | 'wifi' - the app's copy of the
+    // bubble draws these bars from its own reading while the page sleeps behind a program (melatonBars layoutOf 'sig')
+    function signalBars(lv, n = 4, live = '') {
         if (lv == null) return '';
-        return `<span class="wm-bars" role="img" aria-label="Signal ${lv} of ${n}">${Array.from({ length: n }, (_, i) => `<i class="${i + 1 <= lv ? 'is-on' : ''}" style="height:${(100 * (i + 1)) / n}%"></i>`).join('')}</span>`;
+        return `<span class="wm-bars" role="img"${live ? ` data-live="sig:${live}:${n}"` : ''} aria-label="Signal ${lv} of ${n}">${Array.from({ length: n }, (_, i) => `<i class="${i + 1 <= lv ? 'is-on' : ''}" style="height:${(100 * (i + 1)) / n}%"></i>`).join('')}</span>`;
     }
 
     /**
@@ -8257,7 +8288,7 @@
                 const on = w.enabled !== false;
                 const state = !on ? 'Power Off' : w.connected ? (dev.wifiName || 'Connected') : 'Disconnected';
                 const lv = on && w.connected && Number.isFinite(w.level) ? Math.max(0, Math.min(4, Math.round(w.level))) : null;
-                const barsHtml = signalBars(lv);
+                const barsHtml = signalBars(lv, 4, 'wifi');
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Wi-Fi: ${pe(state)}</span>${barsHtml}</div>` });
             }
             // the mobile network as WM's Connection Manager names it (Yukimi, Nov 14): Connected while it
@@ -8267,12 +8298,14 @@
             if (c && c.present !== false) {
                 const noService = c.radioOn === false || dev.airplane || c.simState === 'absent' || c.simState === 'locked' || c.searching === true || (Number.isFinite(c.level5) ? c.level5 : c.level) === 0;
                 const state = noService ? 'Suspended' : c.dataEnabled === false ? 'Disconnected' : dev.active === 'cellular' || c.dataActive ? 'Connected' : 'Available';
-                // the bars Android draws (level5; Android's 0-4 when the carrier does not inflate it)
-                const lv5 = Number.isFinite(c.level5) ? c.level5 : Number.isFinite(c.level) ? c.level : null;
-                const lv = noService || lv5 == null ? null : Math.max(0, Math.min(5, Math.round(lv5)));
+                // the title bar's own count (Yukimi, Nov 22: the icon showed 2 of 4 where this showed 3 of 5): Android's bars
+                // (level5) on WM's 4 bars as the icon maps them, never 0 while in service
+                const lv5 = Number.isFinite(c.level5) ? c.level5 : null;
+                const lv4 = lv5 != null ? (lv5 <= 0 ? 0 : Math.max(1, Math.round((lv5 * 4) / 5))) : Number.isFinite(c.level) ? Math.max(0, Math.min(4, Math.round(c.level))) : null;
+                const lv = noService || lv4 == null ? null : lv4;
                 // the radio's own type, also while Wi-Fi carries the data (dev.type is the active link's)
                 const rt = dev.type || (typeof c.dataType === 'string' ? c.dataType : null);
-                const right = `${!noService && rt ? typeBadgeHtml(rt) : ''}${signalBars(lv, 5)}`;
+                const right = `${!noService && rt ? typeBadgeHtml(rt) : ''}${signalBars(lv, 4, 'cell')}`;
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: ${state}</span>${right ? `<span class="wm-bubble-right">${right}</span>` : ''}</div>` });
             }
             if (dev.link && dev.active !== 'wifi' && dev.active !== 'cellular') sections.push(`${dev.link.text}`);
@@ -13913,6 +13946,7 @@
             height = h;
             shell.style.setProperty('--wm-sip', `${h}px`);
             root.toggleAttribute('data-wm-sip', h > 0);
+            syncDsSoft();
             document.dispatchEvent(new CustomEvent('wmSipChange', { detail: { height: h } }));
             // after the bar and the page have their new size: the field into view, then the pan back
             requestAnimationFrame(() => { showFocused(); unpan(); });

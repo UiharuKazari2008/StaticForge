@@ -1114,9 +1114,9 @@
     // how short a swipe up from the bottom edge goes Home (DSApp config homeSense, #1013; Yukimi, Nov 22: "allow adjusting
     // the sensitivty of going home"). High is the app's own since Nov 18 (28 dp, or a 12 dp flick)
     const BARS_HOME_SENSE = [['highest', 'Highest'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']];
-    const SOFT_MENU_ITEMS = [['taskmanager', 'Task Manager'], ['notifications', 'All Notifications'], ['quicksettings', 'Quick Settings'], ['maximize', 'Maximize'], ['minimize', 'Minimize'], ['close', 'Close'],
+    const SOFT_MENU_ITEMS = [['taskmanager', 'Task Manager'], ['notifications', 'All Notifications'], ['quicksettings', 'Quick Settings'], ['maximize', 'Maximize (a pop-up window fills the screen, or goes back to a window)'], ['minimize', 'Minimize'], ['close', 'Close'],
         // (#1013, Yukimi Nov 22) Trackpad and Open in Desktop show only while the DeX desktop is up
-        ['trackpad', 'Trackpad (while the desktop is running)'], ['todesktop', 'Open in Desktop (while the desktop is running)'], ['split', 'Split View'], ['windowed', 'Windowed'], ['flashlight', 'Flashlight'], ['screenshot', 'Screenshot']];
+        ['trackpad', 'Trackpad (while the desktop is running)'], ['todesktop', 'Open in Desktop (while the desktop is running)'], ['split', 'Split View'], ['flashlight', 'Flashlight'], ['screenshot', 'Screenshot']];
     // rows that may be there more than once: a separator, a program of her choice ({ id: 'app', app: <program id>, label })
     const SOFT_MENU_MULTI = new Set(['sep', 'app']);
 
