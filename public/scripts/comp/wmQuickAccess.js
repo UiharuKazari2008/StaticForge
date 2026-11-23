@@ -69,6 +69,9 @@
         modes: 'Modes', flashlight: 'Flashlight', powersave: 'Power saving', network: 'Network', dolby: 'Dolby', eyecomfort: 'Eye comfort',
         record: 'Record', performance: 'Performance', powershare: 'Power share', wireguard: 'VPN', pointerflow: 'Pointer Flow', output: 'Output',
         autobrightness: 'Adaptive brightness', adaptivetone: 'Adaptive color tone' };
+    // the tiles that show what they are set to under their picture (Yukimi, Nov 23 2026: Traffic Cone "should show the
+    // current set state. Right now, just shows the icon"): the app fills the line in (qa-sub:<id>)
+    const STATE = new Set(['network']);
     const SLIDERS = { brightness: 'qa-brightness', volume: 'qa-volume' };
     const STEPS = 10;
 
@@ -91,7 +94,8 @@
         const tiles = {};
         (cat.tiles || []).forEach((t) => { tiles[t.id] = t; });
         const items = (cfg.items || []).filter((id) => ICONS[id] || id.startsWith('tile:'));
-        return { cfg, st: st.items || {}, names, tiles, items };
+        // (namedIcons: the app looks the apps' own icons up itself and offers only those the phone has, as st[id].icons)
+        return { cfg, st: st.items || {}, names, tiles, items, named: !!st.namedIcons };
     }
 
     const stateOf = (m, id) => {
@@ -120,7 +124,9 @@
         // Android's own icon for this state where the app has it (SystemUI's tiles: Bluetooth, Sound mode, Flashlight...)
         const official = m.st[id] && m.st[id].icons;
         if (official && (official[state === 'on' ? 'on' : 'off'])) return official[state === 'on' ? 'on' : 'off'];
-        const named = OFFICIAL[id];
+        // by name, unchecked, only for an app that does not look them up itself: a name the phone's copy of the app does
+        // not have drew nothing (Yukimi, Nov 23 2026: "an icon in the quick toggles that is showing up as blank")
+        const named = m.named ? null : OFFICIAL[id];
         if (named) return typeof named === 'string' ? named : named[state === 'on' ? 'on' : 'off'];
         const own = TILE_GLYPH[id] && m.tiles[`tile:${TILE_GLYPH[id]}`];
         if (own && own.icon) return own.icon;
@@ -135,7 +141,7 @@
     };
 
     /** One tile: a button (the app's press) over its stacked faces (the app shows the one of the state it reads). */
-    function tile(m, id, wide) {
+    function tile(m, id, wide, span) {
         const button = BUTTONS.has(id);
         const states = button ? ['off', 'dim'] : ['on', 'off', 'dim'];
         const label = labelOf(m, id, wide);
@@ -146,8 +152,10 @@
             // (one element per face: the app draws what an element draws itself, its picture, glass and name)
             return `<span class="qa-face is-${s}" data-live="qa:${id}:${s}" style="--qa-pic:url('${esc(pic)}')">${wide ? esc(label) : ''}</span>`;
         }).join('');
-        const subLine = wide ? `<span class="qa-sub" data-live="qa-sub:${id}">${esc(sub)}</span>` : '';
-        return `<button type="button" class="qa-tile${wide ? ' is-wide' : ''}" data-android="${act}" aria-label="${esc(label)}">${faces}${subLine}</button>`;
+        const state = STATE.has(id);
+        // (a line with nothing in it is not written down for the app: a state not read yet still keeps its place)
+        const subLine = wide || state ? `<span class="qa-sub" data-live="qa-sub:${id}">${esc(sub || (state ? '-' : ''))}</span>` : '';
+        return `<button type="button" class="qa-tile${wide ? ' is-wide' : ''}${span ? ' is-span' : ''}${state ? ' has-state' : ''}" data-android="${act}" aria-label="${esc(label)}">${faces}${subLine}</button>`;
     }
 
     /** A slider: Vista's trackbar, vertical in the strip, the app moves its thumb to Android's level. */
@@ -234,8 +242,6 @@
         el.style.setProperty('--qa-on-4', `rgba(${hi}, 0.55)`);
         el.style.setProperty('--qa-on-glow', `rgba(${base}, 0.45)`);
         el.style.setProperty('--qa-on-edge', `rgba(${edge}, 0.8)`);
-        el.style.setProperty('--qa-tab-1', `rgba(${hi}, 0.62)`);
-        el.style.setProperty('--qa-tab-2', `rgba(${base}, 0.55)`);
     }
 
     /** Lays out role `qatab` / `quickaccess` / `quickaccess.N` for melatonBars to write down; true when it did. */
@@ -274,7 +280,8 @@
                 + (m.items.includes('brightness') ? `<div class="qa-group">${slider(m, 'brightness', true)}<div class="qa-checks">${tile(m, 'autobrightness', true)}${tile(m, 'adaptivetone', true)}</div></div>` : '')
                 + (m.items.includes('volume') ? `<div class="qa-group">${slider(m, 'volume', true)}${tile(m, 'output', true)}</div>` : '')
                 + `<div class="qa-grid">${rest.filter((id) => id !== 'output').map((id) => tile(m, id, true)).join('')}</div>`
-                + '</div>';
+                // (last: the screen's shadow falls over everything in the panel)
+                + '<span class="qa-inset"></span></div>';
             shell.appendChild(layer);
             return true;
         }
@@ -288,8 +295,8 @@
             ? `<button type="button" class="qa-tile qa-more" data-android="qa-page:${page >= pages.length ? 1 : page + 1}" aria-label="More"><span class="qa-face is-off qa-more-face">${page >= pages.length ? '▲' : '▼'}</span></button>`
             : '';
         layer.innerHTML = '<div class="qa-panel"><span class="qa-handle"></span><div class="qa-cells">'
-            + ids.map((id) => (SLIDERS[id] ? slider(m, id, false) : spans(m, id) ? tile(m, id, true).replace('class="qa-tile is-wide"', 'class="qa-tile is-wide is-span"') : tile(m, id, false))).join('')
-            + more + '</div></div>';
+            + ids.map((id) => (SLIDERS[id] ? slider(m, id, false) : spans(m, id) ? tile(m, id, true, true) : tile(m, id, false))).join('')
+            + more + '</div><span class="qa-inset"></span></div>';
         shell.appendChild(layer);
         return true;
     }

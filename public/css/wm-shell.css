@@ -682,8 +682,12 @@ html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="right"]::before { rig
     padding-bottom: calc(4 * var(--wm-px));
 }
 
+/* a bar with no X / ok (Today, Start) keeps no place for one: its icons end at the bar's own edge, on the cover and the
+ * inner screen alike (Yukimi, Nov 23 2026: "hide the gap that was made for the X button ... it shows on both"). The
+ * place used to be kept (25 / 28 / 21.5 units) and given back only when the bar ran short (wm-status-full, which the
+ * inner screen's fit never reached) */
 .wm-titlebar.wm-no-action > .wm-status {
-    padding-right: calc(25 * var(--wm-px) + var(--wm-bar-edge));
+    padding-right: calc(6 * var(--wm-px) + var(--wm-bar-edge));
 }
 
 /* ... given back to the icons when the bar runs short (wmShell fitStatusNow wm-status-full): the bar's own edge only */
@@ -694,9 +698,6 @@ html.ui-mobile[data-wm-version="6.5"] #wmShell > .wm-titlebar.wm-status-full > .
     padding-right: calc(5.5 * var(--wm-px) + var(--wm-bar-edge)) !important;
 }
 
-html.ui-mobile[data-wm-app="today"] .wm-titlebar.wm-no-action > .wm-status {
-    padding-right: calc(28 * var(--wm-px) + var(--wm-bar-edge));
-}
 
 /* the left group (icons beside the camera) keeps the same padding */
 .wm-status-left {

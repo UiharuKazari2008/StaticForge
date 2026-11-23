@@ -365,7 +365,10 @@
             // the page asleep): its empty frame per body line count, its soft key band, and the boxes it writes into
             let nk = null;
             try { nk = notifyKit(dpr); } catch (err) { console.warn('[melatonBars] notify kit', err); }
-            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? Object.assign({ notifyFrame: nk.frames, notifySoft: nk.soft }, nk.menu ? { notifyMenu: nk.menu } : {}, nk.replyMenu ? { notifyReplyMenu: nk.replyMenu } : {}, nk.reply ? { notifyReply: nk.reply } : {}, nk.tray ? { notifyTray: nk.tray } : {}, nk.softMenu ? { softMenu: nk.softMenu } : {}, nk.softMenuDesk ? { softMenuDesk: nk.softMenuDesk } : {}, nk.softKeyMenus ? { softKeyMenus: nk.softKeyMenus } : {}) : {}) });
+            // Task Manager's panel as a sample (Yukimi, Nov 23 2026: the app's own, an overlay over any program)
+            let tk = null;
+            try { tk = taskKit(dpr); } catch (err) { console.warn('[melatonBars] task kit', err); }
+            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? Object.assign({ notifyFrame: nk.frames, notifySoft: nk.soft }, nk.menu ? { notifyMenu: nk.menu } : {}, nk.replyMenu ? { notifyReplyMenu: nk.replyMenu } : {}, nk.reply ? { notifyReply: nk.reply } : {}, nk.tray ? { notifyTray: nk.tray } : {}, nk.softMenu ? { softMenu: nk.softMenu } : {}, nk.softMenuDesk ? { softMenuDesk: nk.softMenuDesk } : {}, nk.softKeyMenus ? { softKeyMenus: nk.softKeyMenus } : {}) : {}, tk ? { taskStrip: tk } : {}) });
         } finally { kitTarget = null; }
     }
 
@@ -394,12 +397,13 @@
         const root = document.documentElement;
         const cs = getComputedStyle(root);
         // (the first part: the lists' make - a new one makes every app ask for its kit again; m25: iconsRight measured
-        // without Today's kept corner place beside the staged X, Nov 20; m26: the soft key Menu's samples; m27: 9-slice frames (nine), Nov 22; m28: the holder's status roles, #1056)
+        // without Today's kept corner place beside the staged X, Nov 20; m26: the soft key Menu's samples; m27: 9-slice frames (nine), Nov 22; m28: the holder's status roles, #1056;
+        // m29: Task Manager's sample, lists.taskStrip, Nov 23)
         // the icon unit, the bar's height and the camera extension too (Yukimi, Nov 17: "the icons are never
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m28', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m29', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), softMenuSig(), Math.round(window.innerWidth)].join('|');
     }
@@ -468,6 +472,16 @@
         lapis: 'caralert', traffic: 'traffic', wxalert: 'wxalert', rain: 'rain', prints: 'prints', update: 'update',
         // the kinds status-order.js noteKind gives beyond the app's trayKind (#1026; the app falls back to notification)
         mail: 'mail', sms: 'sms', chat: 'chat', director: 'director', caralert: 'caralert' };
+    /**
+     * Task Manager's panel for the app to draw as its own overlay (wmShell taskSwitcher.sample): the panel, a program's
+     * card (plain and for the program on screen), the empty text and where each stands, as drawing lists in device px.
+     */
+    function taskKit(dpr) {
+        const sh = window.wmShell;
+        if (!sh || !sh.taskSwitcher || typeof sh.taskSwitcher.sample !== 'function') return null;
+        return sh.taskSwitcher.sample((els) => layoutOf(els, dpr), dpr);
+    }
+
     function notifyKit(dpr) {
         const sh = window.wmShell;
         const shell = document.getElementById('wmShell');
@@ -763,6 +777,9 @@
      *   { k: 'text', x, y, s, size, bold, color, u, ls, live }  one line of text, its box's top-left (y = top
      *                                                            of the font's ascent), letter spacing, a live clock
      *   { k: 'hit', x, y, w, h, act }                          a button / link / control: 'hide' or 'click:<n>'
+     *   { k: 'rgrad', x, y, w, h, r, cx, cy, rx, ry, stops }   a radial gradient in its box (centre and radii in device px)
+     * - a box may carry r2: [[rx, ry] x 4] (corners that are not quarter circles), rot (degrees about its middle) and
+     *   cl: [x, y, w, h, r] (cut to that rounded box); an app that does not know them draws the box without
      * - with the colours as #rrggbbaa. The app draws exactly this; a press it cannot do itself goes back as
      * the page's own click (n = the element's place among the popup's clickable ones).
      */
@@ -880,6 +897,14 @@
         roots.forEach((r) => r.querySelectorAll(CLICKABLE).forEach((el) => { if (!clickable.includes(el)) clickable.push(el); }));
         const isHide = (el) => (el.tagName === 'BUTTON' || el.classList.contains('wm-softkey')) && /^hide$/i.test((el.textContent || '').trim());
         const radii = (cs) => [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map((v) => R(px(v)));
+        // corners that are not quarter circles (two radii, "62px 14px" or "50% 30%": Task Manager's tile gloss): each
+        // corner's [rx, ry] in device px, as r2 beside r (an app that does not know r2 draws r); null for plain corners
+        const radii2 = (cs, box) => {
+            const vs = [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map((v) => String(v || '0px').trim().split(/\s+/));
+            if (!vs.some((v) => v.length > 1)) return null;
+            return vs.map((v) => [R(lenOf(v[0], box.width)), R(lenOf(v[1] || v[0], box.height))]);
+        };
+        const withR2 = (item, cs, box) => { const r2 = radii2(cs, box); if (r2) item.r2 = r2; return item; };
         // clip-path: polygon(...) as device-px points (the volume box's tail, its sliders' arrow thumbs)
         const polyOf = (clipPath, box) => {
             const m = /^polygon\((.*)\)$/.exec(String(clipPath || '').trim());
@@ -914,6 +939,35 @@
                 }
                 return;
             }
+            // a radial-gradient (Task Manager's red close ball and the light on its stage): { k: 'rgrad', cx, cy, rx, ry,
+            // stops } - a circle or an ellipse at a place in the box; a size left out is farthest-corner, as in CSS
+            const rgm = /^radial-gradient\((.*)\)$/.exec(cs.backgroundImage || '');
+            if (rgm) {
+                const args = topSplit(rgm[1], ',');
+                let cx = box.width / 2; let cy = box.height / 2; let rx = null; let ry = null; let circle = false;
+                if (!/^(rgba?\(|color\(|#|transparent)/.test(args[0])) {
+                    const head = args.shift();
+                    const at = /\bat\s+(\S+)(?:\s+(\S+))?/.exec(head);
+                    if (at) { cx = lenOf(at[1], box.width); cy = lenOf(at[2] || '50%', box.height); }
+                    const shape = head.replace(/\bat\s+.*$/, '').trim();
+                    circle = /\bcircle\b/.test(shape);
+                    const dims = shape.replace(/\b(circle|ellipse|farthest-corner)\b/g, '').trim().split(/\s+/).filter(Boolean);
+                    if (dims.length === 1 && /px$/.test(dims[0])) { rx = ry = parseFloat(dims[0]); circle = true; }
+                    else if (dims.length === 2) { rx = lenOf(dims[0], box.width); ry = lenOf(dims[1], box.height); }
+                }
+                if (rx == null) {
+                    const fx = Math.max(cx, box.width - cx); const fy = Math.max(cy, box.height - cy);
+                    if (circle) rx = ry = Math.hypot(fx, fy); else { rx = fx * Math.SQRT2; ry = fy * Math.SQRT2; }
+                }
+                const stops = args.map((a, i) => {
+                    const mm = /^(.*?)(?:\s+([\d.]+)%)?$/.exec(a);
+                    // (a clear stop keeps its place: the light fades out to it)
+                    const cm = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(mixColor(mm[1]) || '');
+                    const c = rgba(mixColor(mm[1]), alpha) || (cm ? `#${[cm[1], cm[2], cm[3]].map((v) => Math.round(+v).toString(16).padStart(2, '0')).join('')}00` : null);
+                    return [c, mm[2] != null ? +mm[2] / 100 : i / Math.max(1, args.length - 1)];
+                }).filter((st) => st[0]);
+                if (stops.length >= 2 && rx > 0 && ry > 0) { out.push(withR2({ k: 'rgrad', x: R(box.left), y: R(box.top), w: R(box.width), h: R(box.height), r: radii(cs), cx: R(box.left + cx), cy: R(box.top + cy), rx: R(rx), ry: R(ry), stops }, cs, box)); return; }
+            }
             // a plain linear-gradient (the volume box's title band): its stops, top to bottom or left to right
             const lg = /^linear-gradient\((.*)\)$/.exec(cs.backgroundImage || '');
             if (lg) {
@@ -924,7 +978,7 @@
                     const mm = /^(.*?)(?:\s+([\d.]+)%)?$/.exec(a);
                     return [rgba(mixColor(mm[1]), alpha), mm[2] != null ? +mm[2] / 100 : i / Math.max(1, args.length - 1)];
                 }).filter((st) => st[0]);
-                if (stops.length >= 2) { out.push({ k: 'grad', x: R(box.left), y: R(box.top), w: R(box.width), h: R(box.height), r: radii(cs), dir, stops }); return; }
+                if (stops.length >= 2) { out.push(withR2({ k: 'grad', x: R(box.left), y: R(box.top), w: R(box.width), h: R(box.height), r: radii(cs), dir, stops }, cs, box)); return; }
             }
             // WM's block bar: repeating-linear-gradient(to right, c 0, c Apx, transparent Apx, transparent Bpx)
             // (its stops read one by one: Chrome writes transparent as rgba(0, 0, 0, 0), commas and all)
@@ -993,7 +1047,7 @@
             const sh = /^(rgba?\([^)]*\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px/.exec(cs.boxShadow || '');
             if (sh && !/inset/.test(cs.boxShadow)) out.push({ k: 'shadow', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, blur: R(px(sh[4])), dy: R(px(sh[3])), color: rgba(sh[1], alpha) });
             const fill = rgba(cs.backgroundColor, alpha);
-            if (fill) out.push({ k: 'rect', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, fill });
+            if (fill) out.push(withR2({ k: 'rect', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, fill }, cs, b));
             if (cs.backgroundImage && cs.backgroundImage !== 'none') bgImage(cs, b, clip, alpha);
             // a border-image 9-slice (6.5's menu frame and its row selector, ROM art): the picture's address, its slices in the
             // picture's own pixels, the edge widths and the box grown by the outset in device px; the app draws the nine parts
@@ -1032,7 +1086,9 @@
                 if (ps.position !== 'absolute') return;
                 const w = px(ps.width); const h = px(ps.height);
                 if (!w || !h) return;
-                const box = { left: b.left + px(ps.left), top: b.top + px(ps.top), width: w, height: h };
+                // (its place is from the element's padding box, with its own margins: Task Manager's X is two bars centred by
+                // negative margins in a ball with a border)
+                const box = { left: b.left + (el.clientLeft || 0) + px(ps.left) + px(ps.marginLeft), top: b.top + (el.clientTop || 0) + px(ps.top) + px(ps.marginTop), width: w, height: h };
                 const pa = alpha * (+ps.opacity || 1);
                 const pf = rgba(ps.backgroundColor, pa);
                 const p0 = out.length;
@@ -1048,10 +1104,17 @@
                         url: new URL(mu[mu.length - 1], location.href).href, color: pf, clip: [R(box.left), R(box.top), R(w), R(h), [0, 0, 0, 0]] });
                     return;
                 }
-                if (pf) out.push({ k: 'rect', x: R(box.left), y: R(box.top), w: R(w), h: R(h), r: radii(ps), fill: pf });
+                if (pf) out.push(withR2({ k: 'rect', x: R(box.left), y: R(box.top), w: R(w), h: R(h), r: radii(ps), fill: pf }, ps, box));
                 if (ps.backgroundImage && ps.backgroundImage !== 'none') bgImage(ps, box, clip, pa);
                 const pp = polyOf(ps.clipPath, box);
                 if (pp) for (let i = p0; i < out.length; i++) out[i].poly = pp;
+                // turned about its middle (transform: rotate - the X's two bars): rot, in degrees
+                const tm = /^matrix\(([-\d.e]+),\s*([-\d.e]+)/.exec(ps.transform || '');
+                const rot = tm ? Math.round(Math.atan2(+tm[2], +tm[1]) * 18000 / Math.PI) / 100 : 0;
+                if (rot) for (let i = p0; i < out.length; i++) out[i].rot = rot;
+                // cut to the element's own rounded box when it hides what overflows (the gloss over a tile); pictures
+                // carry their clip already
+                if (cs.overflowX !== 'visible') for (let i = p0; i < out.length; i++) if (!out[i].clip && !out[i].cl) out[i].cl = clip;
             });
             // its own text, line by line (a line: the characters on one row), in its font
             [...el.childNodes].forEach((n) => {

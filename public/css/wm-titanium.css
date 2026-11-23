@@ -590,6 +590,13 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-panel {
     height: calc(70 * var(--u));
 }
 
+/* the Social bar's card stands with its glass's top line on the title bar (9 units of the card above the
+ * screen): the app's icon, which pokes 13 units over the band on the list, sits wholly on the glass here
+ * (10 - 67 of the card's 9 - 68) instead of being cut by the title bar (Yukimi, Nov 23 2026) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super.is-bar .wm-ti-super-panel .wm-ti-icon {
+    top: calc(10 * var(--u));
+}
+
 /* the analog clock moves beside the digital one: it shrinks toward its top right corner */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-panel .wm-ti-aclock {
     transform-origin: 100% 0;

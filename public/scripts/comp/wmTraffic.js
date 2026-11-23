@@ -1699,11 +1699,10 @@
         const light = LEVEL_LIGHT[r.level] || (delayMin >= rMin ? 'red' : delayMin >= yMin ? 'yellow' : 'green');
         return { delayed: !!win, reason: win ? (late ? 'delay' : 'leave') : '', direction: d, title: 'Traffic', lines, light, leaveLine };
     }
-    /** The commute's half of Today's Traffic and Car item: its signal and two lines (HTML), or '' when it shows nothing. */
-    function todayTrip() {
-        if (!canUse()) return '';
-        if (!loaded) { if (!wired) wire(); return ''; }
-        if (!configured() && !isAdmin()) return '';
+    function todayRender(el) {
+        if (!canUse()) return false;
+        if (!loaded) { if (!wired) wire(); return false; }
+        if (!configured() && !isAdmin()) return false;
         readPosition();
         const d = configured() ? commuteNow() : direction();
         // at Home on a day off or after work: "At Home" and when tracking starts again; no checks
@@ -1716,37 +1715,15 @@
             quietCheck(d);
         }
         const t = idle ? idleLine() : todayLine(d);
-        return `<span class="trf-today-sig" data-level="${t.level}"><i></i><i></i><i></i></span><span class="wtw-lines"><span class="wtw-title">${esc(t.title)}</span><span class="wtw-sub">${esc(t.sub)}</span></span>`;
-    }
-
-    /** Lapis Remote's half (wmLapis.today, #1041), when Lapis Remote is on this phone. */
-    const carToday = () => (window.wmLapis && window.wmLapis.today) || null;
-
-    /**
-     * Today's Traffic and Car item (Yukimi, Nov 22 2026, #1041: Traffic's and Lapis Remote's items are one): the
-     * commute (signal, time, the way) over the car (picture, lock state, range, gas, the weather, its Lock and Start
-     * keys). Each half keeps its own taps: the commute opens Traffic, the car Lapis Remote, the keys do their thing.
-     * One half alone when only that app is set up here.
-     */
-    function todayRender(el) {
-        const trip = todayTrip();
-        const L = carToday();
-        let car = null;
-        try { car = L ? L.part() : null; } catch (err) { car = null; console.warn('[traffic] the car on Today', err); }
-        if (!trip && !car) return false;
         if (!el.dataset.trfBound) {
             el.dataset.trfBound = '1';
             el.classList.add('wtw', 'trf-today');
-            el.addEventListener('click', (e) => {
-                const part = e.target.closest('[data-today-part]');
-                const C = carToday();
-                if (part && part.dataset.todayPart === 'car' && C) { C.tap(e); return; }
-                open(commuteNow() || direction());
-            });
+            el.setAttribute('role', 'button');
+            el.tabIndex = 0;
+            el.addEventListener('click', () => open(commuteNow() || direction()));
         }
-        const html = (trip ? `<span class="trf-today-part" data-today-part="trip" role="button" tabindex="0">${trip}</span>` : '')
-            + (car ? `<span class="trf-today-part lps-today" data-today-part="car" role="button" tabindex="0">${car.html}</span>` : '');
-        if (html !== todayHtml || !el.firstChild) { todayHtml = html; el.innerHTML = html; el.classList.toggle('has-car', !!(trip && car)); }
+        const html = `<span class="trf-today-sig" data-level="${t.level}"><i></i><i></i><i></i></span><span class="wtw-lines"><span class="wtw-title">${esc(t.title)}</span><span class="wtw-sub">${esc(t.sub)}</span></span>`;
+        if (html !== todayHtml || !el.firstChild) { todayHtml = html; el.innerHTML = html; }
         return true;
     }
 
@@ -1759,8 +1736,7 @@
     const placeIcon = (d) => `x:app-traffic-lg-${d === 'work' ? 'office' : 'home'}`;
     const lightOf = (level) => `/static_images/wm65/traffic-light-${{ clear: 'go', moderate: 'moderate', heavy: 'heavy' }[level] || 'none'}.png`;
 
-    /** The commute's own 6.5 panel (as before #1041), or null when Traffic shows nothing here. */
-    function tripPanel() {
+    function todayTitanium() {
         if (!canUse() || !loaded) return null;
         const first = configured() ? commuteNow() : direction();
         if (configured() && !first) {
@@ -1782,37 +1758,6 @@
             };
         });
         return { label: 'traffic', icon: placeIcon(first), pages, softKey: { label: 'Traffic', action: go }, onTap: go };
-    }
-
-    /**
-     * The 6.5 panel of the Traffic and Car item (#1041): named after the car, with its superscript; the first page is
-     * the commute with the car's state as its third line (the car's Lock / Unlock key, a tap opens Traffic), then the
-     * car's own pages (remote start, the next service). A hold offers both programs.
-     */
-    function todayTitanium() {
-        const trip = tripPanel();
-        const L = carToday();
-        let car = null;
-        try { car = L ? L.panel() : null; } catch (err) { car = null; console.warn('[traffic] the car on Today', err); }
-        if (!car || !Array.isArray(car.pages) || !car.pages.length) return trip;
-        if (!trip) return car;
-        const main = car.pages[0];
-        const tp = trip.pages[0];
-        // the car's state and when to get gas; the outside temperature stays on the clock's weather (the line fits)
-        const carLine = [main.title].concat(String(main.line2 || '').split(' \u00b7 ').filter((x) => x && !/\u00b0F$/.test(x))).filter(Boolean).join(' \u00b7 ');
-        const menu = [{ label: 'Traffic', action: trip.onTap }, { label: 'Lapis Remote', action: car.onTap }];
-        // the car's Lock / Unlock key when it has one here (set up, the household's phone), else Traffic's own
-        const lockKey = main.softKey && /^(Lock|Unlock)$/.test(main.softKey.label) ? main.softKey : null;
-        const first = Object.assign({}, tp, { icon: trip.icon, line3: carLine, softKey: lockKey || trip.softKey, onTap: trip.onTap, menu });
-        return {
-            label: car.label,
-            count: car.count,
-            icon: trip.icon,
-            pages: [first].concat(car.pages.slice(1).map((pg) => Object.assign({ menu }, pg))),
-            softKey: first.softKey,
-            onTap: trip.onTap,
-            menu
-        };
     }
 
     // ---------------------------------------------------------------- register
@@ -1880,8 +1825,7 @@
         watchLeaveWindow();
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
-            // one item for the commute and the car (#1041): Lapis Remote's half comes from window.wmLapis.today
-            ws.registerTodayItem({ id: 'traffic', label: 'Traffic and Car', icon: 'app-traffic', after: 'weather', render: todayRender, titanium: todayTitanium });
+            ws.registerTodayItem({ id: 'traffic', label: 'Traffic', icon: 'app-traffic', after: 'weather', render: todayRender, titanium: todayTitanium });
         }
         // websocket.js (window.wsClient) loads before this file; should it not have, every script has run by 'load'
         if (!wire()) window.addEventListener('load', () => { wire(); }, { once: true, signal: appScopeSignal });

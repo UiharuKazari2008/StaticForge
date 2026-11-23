@@ -2537,7 +2537,7 @@
         if (window.melatonMedia) window.melatonMedia.register('videos', mediaSpec, { signal: appScopeSignal });
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
-            ws.registerTodayItem({ id: 'youtube', label: 'Videos', icon: 'app-youtube', after: 'traffic', render: todayRender, titanium: todayTitanium });
+            ws.registerTodayItem({ id: 'youtube', label: 'Videos', icon: 'app-youtube', after: 'lapis', render: todayRender, titanium: todayTitanium });
         }
         // websocket.js (window.wsClient) loads before this file; should it not have, every script has run by 'load'
         if (!wire()) window.addEventListener('load', () => { wire(); }, { once: true, signal: appScopeSignal });

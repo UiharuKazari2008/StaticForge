@@ -50,6 +50,9 @@
     const STORE_KEY = 'wmAndroidIconStore';
     const NAMES_KEY = 'wmAndroidNames';
     const HIDDEN_KEY = 'wmAndroidHidden';
+    // the programs left out of this Start menu apart from the phone's (Settings > Managed Programs on the phone: "Hide
+    // from Desktop Start Menu", Nov 23 2026); while it is not there the phone's own list (HIDDEN_KEY) is followed
+    const HIDDEN_DESKTOP_KEY = 'wmAndroidHiddenDesktop';
     const GAMES_KEY = 'wmAndroidGames';     // { program id: true | false } the user's Move to / Remove from Games
     const FOLDERS_KEY = 'wmAndroidFolders'; // { v, folders: [{ id, parent: 'android' | 'work', name }], of: { id: folder } }
     // the phone's role programs (wmAndroidApps.js ROLES): the device's names, in Programs itself
@@ -179,7 +182,8 @@
     function build() {
         if (items) return;
         const names = readJson(NAMES_KEY, {}) || {};
-        const hidden = new Set((readJson(HIDDEN_KEY, []) || []).map(String));
+        const hd = readJson(HIDDEN_DESKTOP_KEY, null);
+        const hidden = new Set(((Array.isArray(hd) ? hd : readJson(HIDDEN_KEY, [])) || []).map(String));
         const games = readJson(GAMES_KEY, {}) || {};
         const sub = readJson(FOLDERS_KEY, null);
         userFolders = sub && Array.isArray(sub.folders) ? sub.folders.filter((f) => f && f.id && (f.parent === 'android' || f.parent === 'work') && typeof f.name === 'string') : [];
@@ -325,7 +329,7 @@
     root.addEventListener('androidapps', queueRead, { signal: appScopeSignal });
     // Melaton Mobile (the phone's window, same storage) changed an icon, a name or the programs shown
     root.addEventListener('storage', (e) => {
-        if (!e || (e.key !== STORE_KEY && e.key !== NAMES_KEY && e.key !== HIDDEN_KEY && e.key !== GAMES_KEY && e.key !== FOLDERS_KEY)) return;
+        if (!e || (e.key !== STORE_KEY && e.key !== NAMES_KEY && e.key !== HIDDEN_KEY && e.key !== HIDDEN_DESKTOP_KEY && e.key !== GAMES_KEY && e.key !== FOLDERS_KEY)) return;
         if (e.key === STORE_KEY) store = null;
         changed();
     }, { signal: appScopeSignal });

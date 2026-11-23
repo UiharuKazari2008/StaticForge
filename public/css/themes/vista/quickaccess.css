@@ -11,8 +11,11 @@
     --qa-on-4: rgba(63, 154, 240, 0.55);
     --qa-on-glow: rgba(47, 140, 255, 0.45);
     --qa-on-edge: rgba(168, 216, 255, 0.75);
-    --qa-tab-1: rgba(127, 195, 255, 0.62);
-    --qa-tab-2: rgba(58, 139, 224, 0.55);
+    /* the panel's glass, which the tab is made of too (Yukimi, Nov 23 2026: "the toggle itself is the same color as the
+       background of the actual quick toggle area"), and the workspace's colour itself for the tab's dots */
+    --qa-glass: rgba(8, 10, 14, 0.55);
+    --qa-glass-edge: rgba(255, 255, 255, 0.28);
+    --qa-ws: rgb(58, 139, 224);
     position: absolute;
     z-index: 60;
     pointer-events: none;
@@ -44,13 +47,27 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
     box-sizing: border-box;
     padding: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
     /* P1 (Yukimi, Nov 22 2026): see-through glass over Today's wallpaper, which the app draws blurred under it */
-    background-color: rgba(8, 10, 14, 0.55);
-    box-shadow: rgba(0, 0, 0, 0.6) 0 0 calc(8 * var(--wm-px));
+    background-color: var(--qa-glass);
+    /* no shadow thrown onto the screen: the panel lies under it (the screen slides aside over it), so the shadow is the
+       screen's, falling into the panel along its inner edge (.qa-inset; Yukimi, Nov 23 2026: "the shadow should be inset
+       into the sidebar to appear that the content is underneath of the screen") */
     color: #fff;
     font-size: calc(10 * var(--wm-px));
 }
-#wmShell > .wm-qa.is-right .qa-panel { right: 0; border-left: var(--wm-px) solid rgba(255, 255, 255, 0.28); }
-#wmShell > .wm-qa.is-left .qa-panel { left: 0; border-right: var(--wm-px) solid rgba(255, 255, 255, 0.28); }
+#wmShell > .wm-qa.is-right .qa-panel { right: 0; border-left: var(--wm-px) solid var(--qa-glass-edge); }
+#wmShell > .wm-qa.is-left .qa-panel { left: 0; border-right: var(--wm-px) solid var(--qa-glass-edge); }
+/* the screen's shadow in the panel: darkest at the inner edge, gone 10 units in (a plain gradient, which the app's copy
+   draws as it is; its last stop is not fully clear because a clear stop is left out of the copy) */
+#wmShell > .wm-qa .qa-inset {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: calc(10 * var(--wm-px));
+    z-index: 1;
+    pointer-events: none;
+}
+#wmShell > .wm-qa.is-right .qa-inset { left: 0; background-image: linear-gradient(90deg, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.2) 40%, rgba(0, 0, 0, 0.004)); }
+#wmShell > .wm-qa.is-left .qa-inset { right: 0; background-image: linear-gradient(270deg, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.2) 40%, rgba(0, 0, 0, 0.004)); }
 #wmShell > .wm-qa.is-cols-1 .qa-panel { width: calc(44 * var(--wm-px)); }
 #wmShell > .wm-qa.is-cols-2 .qa-panel { width: calc(84 * var(--wm-px)); }
 #wmShell > .wm-qa.is-wide .qa-panel { width: calc(176 * var(--wm-px)); padding: calc(6 * var(--wm-px)); }
@@ -168,6 +185,28 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
     background-size: calc(18 * var(--wm-px)) calc(18 * var(--wm-px)), auto;
 }
 #wmShell > .wm-qa .qa-grid .qa-sub { display: none; }
+/* a tile that shows what it is set to (Traffic Cone: Auto, 5G, 5G/LTE, LTE, 3G - Yukimi, Nov 23 2026: "it should show
+   the current set state. Right now, just shows the icon"): the app fills the line in (qa-sub), from the left */
+#wmShell > .wm-qa .qa-tile.has-state:not(.is-wide) .qa-face,
+#wmShell > .wm-qa .qa-tile.has-state:not(.is-wide) .qa-face.is-on { background-position: center calc(3 * var(--wm-px)), 0 0; }
+#wmShell > .wm-qa .qa-tile.has-state:not(.is-wide) .qa-sub {
+    left: calc(4 * var(--wm-px));
+    right: calc(1 * var(--wm-px));
+    bottom: calc(2 * var(--wm-px));
+    font-size: calc(8 * var(--wm-px));
+    line-height: 1.1;
+    color: #fff;
+}
+#wmShell > .wm-qa .qa-grid .qa-tile.has-state .qa-sub {
+    display: block;
+    left: calc(2 * var(--wm-px));
+    right: auto;
+    top: calc(2 * var(--wm-px));
+    bottom: auto;
+    font-size: calc(7 * var(--wm-px));
+    line-height: 1.1;
+    color: #fff;
+}
 #wmShell > .wm-qa .qa-group > .qa-tile { margin-top: calc(4 * var(--wm-px)); }
 
 /* ---- a slider: Vista's trackbar (thumb from the trackbar's own art) on the glass ---- */
@@ -222,22 +261,24 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
     background-size: calc(11 * var(--wm-px)) calc(95 * var(--wm-px));
 }
 
-/* ---- the tab (Yukimi, Nov 22 2026: "just a tab with a handle", B/D): frosted in the workspace colour, three dots ---- */
+/* ---- the tab (Yukimi, Nov 22 2026: "just a tab with a handle", B/D): three dots on the panel's own glass, the dots in the
+   workspace's colour (Nov 23 2026: "the toggle itself is the same color as the background of the actual quick toggle
+   area and the three-dot icon should be the primary color"). The app draws it as tall as Settings > Buttons > Quick
+   Access > Tab height says (the zone), stretching the rows between its ends and its dots ---- */
 #wmShell > .wm-qa.is-tab { width: calc(14 * var(--wm-px)); }
 #wmShell > .wm-qa .qa-tab {
     position: absolute;
     top: var(--qa-top, 0);
     width: calc(12 * var(--wm-px));
-    height: calc(46 * var(--wm-px));
+    height: calc(34 * var(--wm-px));
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: calc(4 * var(--wm-px));
     box-sizing: border-box;
-    background: linear-gradient(90deg, var(--qa-tab-1), var(--qa-tab-2));
-    border: var(--wm-px) solid rgba(255, 255, 255, 0.55);
-    box-shadow: rgba(0, 0, 0, 0.35) 0 0 calc(4 * var(--wm-px));
+    background-color: var(--qa-glass);
+    border: var(--wm-px) solid var(--qa-glass-edge);
 }
 /* (the edge on the inner sides only: a line down the screen's own edge read as a gap there) */
 #wmShell > .wm-qa.is-right .qa-tab { right: 0; border-right: 0; border-radius: calc(6 * var(--wm-px)) 0 0 calc(6 * var(--wm-px)); }
@@ -246,5 +287,5 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
     width: calc(2.5 * var(--wm-px));
     height: calc(2.5 * var(--wm-px));
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.95);
+    background: var(--qa-ws);
 }

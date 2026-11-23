@@ -590,10 +590,11 @@
     const QA_POS = Array.from({ length: 21 }, (_, i) => i);
     const qaPreview = (q) => { try { if (typeof QA().previewTab === 'function') QA().previewTab(q.zoneTop, q.zoneHeight, q.side); } catch (_) { /* older app */ } };
     const qaClampTop = (q, t) => Math.max(0, Math.min(1 - q.zoneHeight, t));
-    // (Yukimi, Nov 22 2026: "the touch area is way too big") the pull zone a few finger widths tall
-    const QA_SIZES = [[0.06, 'Small'], [0.1, 'Medium'], [0.15, 'Large']];
+    // (Yukimi, Nov 22 2026: "the touch area is way too big") the pull zone a few finger widths tall; the tab is drawn as
+    // tall as the zone, and its height is a slider (Nov 23 2026: "the quick toggle tab itself is slightly too tall. There
+    // should be a setting slash slider to adjust the height"): 4 to 15 hundredths of the screen
+    const QA_HEIGHTS = Array.from({ length: 12 }, (_, i) => i + 4);
     const QA_LAYOUTS = [['strip1', 'Sidebar strip, 1 column'], ['strip2', 'Sidebar strip, 2 columns'], ['wide', 'Wide panel']];
-    const near = (list, v) => list.reduce((a, b) => (Math.abs(b[0] - v) < Math.abs(a[0] - v) ? b : a));
     /** Every control the panel can hold: the built-ins, then each installed tile (its app named after it). */
     function qaChoices() {
         const cat = qaRead('catalog') || {};
@@ -610,7 +611,8 @@
         const layout = q.layout === 'wide' ? 'wide' : Number(q.columns) === 2 ? 'strip2' : 'strip1';
         el.innerHTML = `${ui.check('qa-on', 'Swipe from the screen\'s edge for Quick Access', q.enabled, 'data-k="enabled"')}
             ${ui.row('Edge:', ui.comboHtml('qa-edge', (QA_EDGES.find(([v]) => v === q.side) || QA_EDGES[0])[1], !q.enabled), { wide: true })}
-            ${ui.row('Size:', ui.comboHtml('qa-size', near(QA_SIZES, q.zoneHeight)[1], !q.enabled), { wide: true })}
+            ${ui.sub('Tab height')}
+            <div data-f="qa-size"></div>
             ${ui.sub('Position')}
             <div class="wmsp-radios">${ui.radio('qa-anchor', 'top', 'Top aligned', q.anchor !== 'bottom', q.enabled ? '' : 'disabled')}${ui.radio('qa-anchor', 'bottom', 'Bottom aligned', q.anchor === 'bottom', q.enabled ? '' : 'disabled')}</div>
             <div data-f="qa-pos"></div>
@@ -622,12 +624,16 @@
         const on = el.querySelector('input[data-k="enabled"]');
         if (on) on.addEventListener('change', () => { q.enabled = on.checked; api.rerender(); });
         ui.bindCombo(el.querySelector('[data-act="qa-edge"]'), QA_EDGES, q.side, (v) => { q.side = v; qaPreview(q); });
-        // a new size keeps the aligned edge where it is
-        ui.bindCombo(el.querySelector('[data-act="qa-size"]'), QA_SIZES, near(QA_SIZES, q.zoneHeight)[0], (v) => {
-            const bottom = q.zoneTop + q.zoneHeight;
-            q.zoneHeight = v;
-            q.zoneTop = qaClampTop(q, q.anchor === 'bottom' ? bottom - v : q.zoneTop);
-            qaPreview(q);
+        // a new height keeps the aligned edge where it is; the app shows the tab at it as the slider moves
+        ui.trackbar(el.querySelector('[data-f="qa-size"]'), {
+            steps: QA_HEIGHTS, value: Math.max(4, Math.min(15, Math.round(q.zoneHeight * 100))), lo: 'Short', hi: 'Tall', label: 'Quick Access tab height', disabled: !q.enabled,
+            onChange: (n) => {
+                const v = n / 100;
+                const bottom = q.zoneTop + q.zoneHeight;
+                q.zoneHeight = v;
+                q.zoneTop = qaClampTop(q, q.anchor === 'bottom' ? bottom - v : q.zoneTop);
+                qaPreview(q);
+            }
         });
         el.querySelectorAll('input[name="qa-anchor"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) { q.anchor = r.value; api.rerender(); } }));
         const edgeNow = q.anchor === 'bottom' ? q.zoneTop + q.zoneHeight : q.zoneTop;
@@ -800,6 +806,10 @@
             ${skActionHtml('sk', key.action, sk.sel)}
             ${ui.row('Name:', ui.edit('', key.label || '', `data-f="sk-name" maxlength="24" placeholder="${esc(skDefaultName(key.action))}"`), { wide: true })}
             ${menuHtml}
+            ${sk.prof === 'default' ? '' : `${ui.sub('Full screen')}
+            ${ui.check('sk-keep-status', 'Keep the title bar when this program fills the screen', !!(sk.keep[sk.prof] && sk.keep[sk.prof].status))}
+            ${ui.check('sk-keep-soft', 'Keep the soft key bar when this program fills the screen', !!(sk.keep[sk.prof] && sk.keep[sk.prof].soft))}
+            ${ui.note('A program that hides the phone\'s bars (the camera) hides these too. Keep the soft key bar to always have a way out of it.')}`}
             ${ui.gap()}
             <p class="wmsp-step">Hold the Center button to:</p>
             ${ui.comboHtml('hold', (SK_HOLD.find(([k]) => k === d.hold) || SK_HOLD[0])[1])}`;
@@ -811,11 +821,17 @@
             api.rerender();
         });
         const rm = el.querySelector('[data-act="sk-remove"]');
-        if (rm) rm.addEventListener('click', () => { if (sk.prof !== 'default') { delete sk.profiles[sk.prof]; sk.prof = 'default'; api.rerender(); } });
+        if (rm) rm.addEventListener('click', () => { if (sk.prof !== 'default') { delete sk.profiles[sk.prof]; delete sk.keep[sk.prof]; sk.prof = 'default'; api.rerender(); } });
         el.querySelectorAll('.wmsp-btn-row').forEach((r) => r.addEventListener('click', () => { sk.sel = r.dataset.side; sk.msel = 0; api.rerender(); }));
         skActionBind(el, 'sk', key.action, sk.sel, (v) => { key.action = v; if (v === 'ownmenu' && !key.menu) key.menu = []; }, api.rerender);
         const name = el.querySelector('[data-f="sk-name"]');
         if (name) name.addEventListener('input', () => { key.label = name.value.slice(0, 24); });
+        // this program's bars kept over full screen (Yukimi, Nov 23 2026: "applications that do not hide the status bar or
+        // the soft key bar. For example, camera"): the app's Bars config keepBars { <package>: { status, soft } }
+        for (const [id, field] of [['sk-keep-status', 'status'], ['sk-keep-soft', 'soft']]) {
+            const box = el.querySelector(`#${id}, input[data-k="${id}"], input[name="${id}"]`);
+            if (box) box.addEventListener('change', () => { const k = sk.keep[sk.prof] || (sk.keep[sk.prof] = { status: false, soft: false }); k[field] = box.checked; });
+        }
         ui.bindCombo(el.querySelector('[data-act="hold"]'), SK_HOLD, d.hold, (v) => { d.hold = v; });
         if (key.action !== 'ownmenu') return;
         const items = key.menu;
@@ -850,8 +866,11 @@
             // (config in buttons settins)"): the app's Bars config holdAction
             let hold = 'freeform';
             try { const st = JSON.parse(window.AndroidBars.getState()); if (st && st.config && st.config.holdAction === 'split') hold = 'split'; } catch (_) { /* no app */ }
-            const sk = window.AndroidBars ? { profiles: skLoad(), prof: 'default', sel: 'left', msel: 0 } : null;
-            return { v: { ...v }, saved: { ...v }, sel: 'left', qa, qaSaved: qa ? JSON.stringify(qa) : '', qaSel: null, hold, holdSaved: hold, sk, skSaved: sk ? JSON.stringify(sk.profiles) : '' };
+            // (keep: the programs whose bars stay over full screen, the app's Bars config keepBars)
+            let keep = {};
+            try { const st = JSON.parse(window.AndroidBars.getState()); if (st && st.config && st.config.keepBars && typeof st.config.keepBars === 'object') keep = JSON.parse(JSON.stringify(st.config.keepBars)); } catch (_) { /* no app */ }
+            const sk = window.AndroidBars ? { profiles: skLoad(), prof: 'default', sel: 'left', msel: 0, keep } : null;
+            return { v: { ...v }, saved: { ...v }, sel: 'left', qa, qaSaved: qa ? JSON.stringify(qa) : '', qaSel: null, hold, holdSaved: hold, sk, skSaved: sk ? JSON.stringify(sk.profiles) : '', keepSaved: JSON.stringify(keep) };
         },
         render(el, tab, d, api) {
             if (tab === 'quickaccess' && d.qa) { qaRender(el, d, api); return; }
@@ -885,6 +904,7 @@
             if (!same(d.v, d.saved)) KEYS().set(d.v);
             if (d.qa && JSON.stringify(d.qa) !== d.qaSaved) { try { QA().setConfig(JSON.stringify(d.qa)); } catch (_) { /* older app */ } }
             if (d.hold !== d.holdSaved) { try { window.AndroidBars.setConfig(JSON.stringify({ holdAction: d.hold })); } catch (_) { /* older app */ } }
+            if (d.sk && JSON.stringify(d.sk.keep) !== d.keepSaved) { try { window.AndroidBars.setConfig(JSON.stringify({ keepBars: d.sk.keep })); } catch (_) { /* older app */ } }
             // the soft keys per program (#1067): the app applies them; the kit is made again for the menus' drawings
             if (d.sk && JSON.stringify(d.sk.profiles) !== d.skSaved) {
                 const clean = {};
