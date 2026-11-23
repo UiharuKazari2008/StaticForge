@@ -11,7 +11,8 @@
  * Sent over window.AndroidAltTabPort (a WebMessageListener, in order; the pane first, its pictures right after it):
  *   - each picture the list names that the app does not hold yet (AndroidAltTab.missing): binary
  *     [u16 key length][key utf-8][png / jpeg / bmp bytes (a canvas: bmpOf)] - never a data: string (no-base64-images). Keys: 'p:<url>' a picture
- *     file (icons, kept by the app across sessions), 'c:<n>:<v>' one of the pane's canvases (window pictures, this session),
+ *     file (icons, kept by the app across sessions), 'p:bg:<w>x<h>:<hash>' a box's url() background layers put together
+ *     (the pane's Vista reflection, picturesOf; kept the same way), 'c:<n>:<v>' one of the pane's canvases (window pictures, this session),
  *     'aw:<window id>' an Android window's picture the app took itself;
  *   - { op: 'show', ats, sid, index, steps, vw, pane, titles, slots, sel } - the pane without a selection, each entry's
  *     caption, each slot's items, the selection's own box (relative to its slot); again whenever the pane changed
@@ -90,7 +91,10 @@
     const px = (v) => parseFloat(v) || 0;
     const r2 = (v) => Math.round(v * 100) / 100;
     function rgba(c, mul) {
-        const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || '');
+        let m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || '');
+        // relative colours and color-mix() compute to color(srgb r g b / a), channels 0-1 (the pane's tint, #1065)
+        const s = !m && /color\(srgb\s+(-?[\d.e-]+)\s+(-?[\d.e-]+)\s+(-?[\d.e-]+)(?:\s*\/\s*([\d.e-]+))?\)/.exec(c || '');
+        if (s) m = [s[0], ...[s[1], s[2], s[3]].map((v) => Math.max(0, Math.min(255, +v * 255))), s[4]];
         if (!m) return null;
         const a = (m[4] == null ? 1 : +m[4]) * (mul == null ? 1 : mul);
         if (a <= 0) return null;
@@ -164,8 +168,65 @@
         return key;
     }
 
+    // a background length (px, %, calc(% +/- px)) along an axis whose free room (area - tile) is free
+    function bgLen(v, free) {
+        const t = String(v || '0').trim();
+        const c = /^calc\((.*)\)$/.exec(t);
+        const one = (u) => (/%$/.test(u) ? (free * parseFloat(u)) / 100 : px(u));
+        if (!c) return one(t);
+        let sum = 0; let sign = 1;
+        c[1].split(/\s+/).forEach((tok) => { if (tok === '+') sign = 1; else if (tok === '-') sign = -1; else { sum += sign * one(tok); sign = 1; } });
+        return sum;
+    }
+    const layerPics = new Map(); // url -> Image (decoded once, kept for the next Alt+Tab)
+    function layerPic(url) {
+        let im = layerPics.get(url);
+        if (!im) { im = new Image(); im.decoding = 'async'; im.src = url; layerPics.set(url, im); }
+        return im.decode().then(() => im, () => null);
+    }
+    /**
+     * The box's url() background layers (the pane's Vista reflection, #1065) as ONE picture of the box's size, put
+     * together here as the browser lays them out (size and position in px, % or calc(), no-repeat, border-box): the
+     * app draws it over the tint, cut to the box's corners. Keyed by what it shows, so the app keeps it for the next
+     * Alt+Tab of that size. Gradient layers stay drawn by the app (gradient()).
+     */
+    function picturesOf(cs, b, r, pics) {
+        if (!pics || !cs.backgroundImage || !/url\(/.test(cs.backgroundImage)) return null;
+        const imgs = topSplit(cs.backgroundImage, ',');
+        const sizes = topSplit(cs.backgroundSize, ',');
+        const poss = topSplit(cs.backgroundPosition, ',');
+        const w = Math.round(b.width); const h = Math.round(b.height);
+        if (!w || !h) return null;
+        const layers = [];
+        for (let i = imgs.length - 1; i >= 0; i--) {
+            const u = /^url\(["']?(.*?)["']?\)$/.exec(imgs[i]);
+            if (!u) continue;
+            const sz = topSplit(sizes[i % sizes.length] || 'auto', ' ');
+            const tw = bgLen(sz[0], w); const th = bgLen(sz[1] || sz[0], h);
+            if (!(tw > 0 && th > 0)) continue;
+            const ps = topSplit(poss[i % poss.length] || '0% 0%', ' ');
+            layers.push({ url: u[1], x: bgLen(ps[0], w - tw), y: bgLen(ps[1] || '50%', h - th), w: tw, h: th });
+        }
+        if (!layers.length) return null;
+        const sig = `${w}x${h}|` + layers.map((l) => `${l.url}@${r2(l.x)},${r2(l.y)},${r2(l.w)},${r2(l.h)}`).join('|');
+        let hsh = 5381;
+        for (let i = 0; i < sig.length; i++) hsh = ((hsh * 33) ^ sig.charCodeAt(i)) >>> 0;
+        const key = `p:bg:${w}x${h}:${hsh.toString(36)}`;
+        pics.set(key, {
+            render: () => Promise.all(layers.map((l) => layerPic(l.url))).then((ims) => {
+                const cv = doc.createElement('canvas');
+                cv.width = w; cv.height = h;
+                const x = cv.getContext('2d');
+                if (!x) return null;
+                ims.forEach((im, i) => { if (im) x.drawImage(im, layers[i].x, layers[i].y, layers[i].w, layers[i].h); });
+                return cv;
+            })
+        });
+        return Object.assign({ k: 'img' }, B(b), { key, clip: [r2(b.left), r2(b.top), r2(b.width), r2(b.height), r] });
+    }
+
     /** el's own box as the page draws it (shadows, glass, background, border) into out. */
-    function boxOf(el, cs, alpha, out) {
+    function boxOf(el, cs, alpha, out, pics) {
         const b = el.getBoundingClientRect();
         const r = radii(cs);
         const sh = shadowsOf(cs.boxShadow);
@@ -182,6 +243,8 @@
         }
         const fill = rgba(cs.backgroundColor, alpha);
         if (fill) out.push(Object.assign({ k: 'rect' }, B(b), { r, fill }));
+        const layers = picturesOf(cs, b, r, pics);
+        if (layers) out.push(layers);
         if (cs.backgroundImage && cs.backgroundImage !== 'none') {
             topSplit(cs.backgroundImage, ',').reverse().forEach((layer) => {
                 const g = gradient(layer, b, r, alpha);
@@ -209,7 +272,7 @@
         const cs = getComputedStyle(el);
         if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) return;
         const alpha = (inherited == null ? 1 : inherited) * (+cs.opacity || 1);
-        const b = own === false ? el.getBoundingClientRect() : boxOf(el, cs, alpha, out);
+        const b = own === false ? el.getBoundingClientRect() : boxOf(el, cs, alpha, out, pics);
         if (el.tagName === 'IMG' || el.tagName === 'CANVAS') {
             const key = picKey(el, pics);
             if (key) out.push(Object.assign({ k: 'img' }, B(b), { key, alpha: alpha < 1 ? alpha : undefined, clip: [r2(b.left), r2(b.top), r2(b.width), r2(b.height), radii(cs)] }));
@@ -275,6 +338,7 @@
     }
 
     function bytesOf(el) {
+        if (typeof el.render === 'function') return el.render().then((cv) => (cv ? bmpOf(cv) : null)).catch(() => null);
         if (el.tagName === 'CANVAS') {
             const bmp = bmpOf(el);
             if (bmp) return Promise.resolve(bmp);
@@ -313,7 +377,7 @@
         let titles = []; let items = []; let sel = [];
         try {
             // (its caption and slots are written down on their own)
-            boxOf(content, getComputedStyle(content), 1, pane);
+            boxOf(content, getComputedStyle(content), 1, pane, pics);
             items = slots.map((s) => { const out = []; treeOf(s, out, pics, 1, true); const r = s.getBoundingClientRect(); return { x: r2(r.left), y: r2(r.top), w: r2(r.width), h: r2(r.height), items: out }; });
             titles = c.titles.map((t) => { title.textContent = t; const out = []; treeOf(title, out, pics, 1, true); return out; });
             // the selection's own box, relative to its slot
