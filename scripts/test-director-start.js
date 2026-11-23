@@ -100,6 +100,15 @@ async function main() {
     assert.strictEqual(e.reusedBy, 'sessionId');
     await assert.rejects(ds.startDirectorSession(gr, { persona: 'Yozora', sessionId: 'xi_nope', prompt: 'x' }), (err) => err.code === 'SESSION_NOT_FOUND');
 
+    // a failed send gives the source back, so the retry runs
+    xi.handleDirectorSendMessage = async (handler, ws) => { handler.sendError(ws, 'spawnSync /bin/sh E2BIG', 'E2BIG'); };
+    await assert.rejects(ds.startDirectorSession(gr, { persona: 'Yozora', source: 'plaud:rec9', thread: 'plaud-reviews', prompt: 'x' }), (err) => err.code === 'E2BIG');
+    assert.ok(!xi.listChatBriefs().some((c) => c.sources.includes('plaud:rec9')));
+    xi.handleDirectorSendMessage = async (handler, ws, message) => { sent.push(message); };
+    const retry = await ds.startDirectorSession(gr, { persona: 'Yozora', source: 'plaud:rec9', thread: 'plaud-reviews', prompt: 'x' });
+    assert.strictEqual(retry.deduped, false);
+    assert.strictEqual(retry.reusedBy, 'thread');
+
     // get_director_session
     const got = ds.getDirectorSession(gr, { sessionId: a.sessionId });
     assert.strictEqual(got.status, 'idle');

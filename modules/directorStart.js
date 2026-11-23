@@ -272,7 +272,14 @@ async function startUnlocked(gr, input) {
     });
 
     const content = task === 'review' ? reviewBrief(prompt, source) : prompt;
-    await sendFirst(gr, persona, sessionId, content, attachments, choice, input);
+    try {
+        await sendFirst(gr, persona, sessionId, content, attachments, choice, input);
+    } catch (error) {
+        // a send that never started must not leave the source taken: the retry would be deduped
+        if (source) await backend.tagStartedChat(sessionId, { dropSource: source }).catch(() => {});
+        error.sessionId = sessionId;
+        throw error;
+    }
     return result(persona, sessionId, {
         created, reused: !created, reusedBy: created ? null : reason, deduped: false,
         started: true, status: 'running', source: source || null, thread: thread || null,
