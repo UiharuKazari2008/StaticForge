@@ -945,6 +945,18 @@
             const t = bw[0] + pd[0]; const r = bw[1] + pd[1]; const btm = bw[2] + pd[2]; const l = bw[3] + pd[3];
             return { left: box.left + l, top: box.top + t, width: Math.max(0, box.width - l - r), height: Math.max(0, box.height - t - btm) };
         };
+        // a background layer's own box: background-size (px, %, auto) placed by background-position (px, %), as CSS does
+        const sizedBox = (cs, box) => {
+            const sz = String(cs.backgroundSize || 'auto').trim().split(/\s+/);
+            if (!sz[0] || sz[0] === 'auto' || sz[0] === 'cover' || sz[0] === 'contain') return box;
+            const len = (v, of) => (!v || v === 'auto' ? of : v.endsWith('%') ? (parseFloat(v) / 100) * of : (parseFloat(v) || of));
+            const w = len(sz[0], box.width);
+            const h = len(sz[1] || 'auto', box.height);
+            if (Math.abs(w - box.width) < 0.5 && Math.abs(h - box.height) < 0.5) return box;
+            const pos = String(cs.backgroundPosition || '0% 0%').trim().split(/\s+/);
+            const at = (v, free) => (String(v || '0%').endsWith('%') ? (parseFloat(v) / 100) * free : (parseFloat(v) || 0));
+            return { left: box.left + at(pos[0], box.width - w), top: box.top + at(pos[1], box.height - h), width: w, height: h };
+        };
         const bgImage = (cs, box, clip, alpha) => {
             // several layers (the title bar's ok / X face: two gradients, content-box over padding-box): the
             // bottom one first, each in its own clip box
@@ -990,8 +1002,11 @@
                 }).filter((st) => st[0]);
                 if (stops.length >= 2 && rx > 0 && ry > 0) { out.push(withR2({ k: 'rgrad', x: R(box.left), y: R(box.top), w: R(box.width), h: R(box.height), r: radii(cs), cx: R(box.left + cx), cy: R(box.top + cy), rx: R(rx), ry: R(ry), stops }, cs, box)); return; }
             }
-            // a plain linear-gradient (the volume box's title band): its stops, top to bottom or left to right
+            // a plain linear-gradient (the volume box's title band): its stops, top to bottom or left to right - in the box its
+            // background-size and -position give it (Task Manager's lit rule is a 1-unit line at the bottom: drawn over the
+            // whole title band, the app's copy had an orange band - Yukimi, Nov 23 2026)
             const lg = /^linear-gradient\((.*)\)$/.exec(cs.backgroundImage || '');
+            if (lg) box = sizedBox(cs, box);
             if (lg) {
                 const args = topSplit(lg[1], ',');
                 let dir = 'v';

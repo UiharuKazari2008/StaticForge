@@ -331,7 +331,7 @@ html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
 .wm-tm-stage {
     flex: 1 0 auto;
     /* (smaller cards, 4-5 across: Yukimi, Nov 23 2026 - "we want to be able to see 4-5 apps"): the card's own height */
-    min-height: calc(86 * var(--wm-px));
+    min-height: calc(94 * var(--wm-px));
     position: relative;
     display: flex;
     background: var(--wm-tm-spot);
@@ -464,18 +464,33 @@ html.ui-mobile #wmShell img[src*="/static_images/melaton/"] {
 }
 
 .wm-tm-card .wm-ts-label {
+    width: calc(60 * var(--wm-px));
     max-width: calc(60 * var(--wm-px));
+    /* always two lines' room, so every card is as tall (Yukimi, Nov 23 2026: smaller, broken onto a second line when too
+       wide, two at most) */
+    height: calc(22 * var(--wm-px));
     box-sizing: border-box;
-    margin-top: calc(4 * var(--wm-px));
-    padding: 0 calc(2 * var(--wm-px));
+    margin-top: calc(3 * var(--wm-px));
+    padding: 0 calc(1 * var(--wm-px));
     color: var(--wm-tm-label);
-    /* (the smaller card's name: Yukimi, Nov 23 2026) */
-    font-size: calc(9 * var(--wm-px));
+    font-size: calc(8 * var(--wm-px));
     font-weight: bold;
-    line-height: calc(13 * var(--wm-px));
+    line-height: calc(11 * var(--wm-px));
+    text-align: center;
     text-shadow: var(--wm-tm-label-shadow);
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     overflow: hidden;
+}
+/* a name that cannot break (no space in it): one line, ended with "..." */
+.wm-tm-card .wm-ts-label.is-one {
+    display: block;
+    white-space: nowrap;
     text-overflow: ellipsis;
 }
 

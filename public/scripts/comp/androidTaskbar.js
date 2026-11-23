@@ -276,7 +276,8 @@
                 type: 'list',
                 items: state.windows.map((w) => {
                     const pic = iconOf(w);
-                    return { text: titleOf(w), image: pic.src || undefined, action: `awg:${w.id}`, closeAction: state.can.close ? `awgx:${w.id}` : undefined };
+                    // (in the group's list each window says it is Android's: "Android - <window>", Yukimi, Nov 23 2026)
+                    return { text: `Android - ${titleOf(w)}`, image: pic.src || undefined, action: `awg:${w.id}`, closeAction: state.can.close ? `awgx:${w.id}` : undefined };
                 })
             }],
             onAction: (action) => {

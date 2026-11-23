@@ -2896,7 +2896,10 @@
             }
             if (card.dataset.title !== t.title) {
                 card.dataset.title = t.title;
-                card.querySelector('.wm-ts-label').textContent = t.title;
+                const lab = card.querySelector('.wm-ts-label');
+                lab.textContent = t.title;
+                // (no space to break at: one line with "...")
+                lab.classList.toggle('is-one', !/\s/.test(String(t.title).trim()));
                 card.querySelector('.wm-tm-end').setAttribute('aria-label', `End ${t.title}`);
             }
             const on = t.id === current;
