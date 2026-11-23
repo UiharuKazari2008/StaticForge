@@ -6342,6 +6342,23 @@ function toggleTaskbarGroupMenu(groupItem, modals) {
             <i class="${icon}"></i>
             <span>${title}</span>
         `;
+        // an X at the row's end while it is hovered: that window closed, the list stays (Yukimi, Nov 23 2026)
+        const closeBtn = modal.querySelector('.close-btn');
+        if (closeBtn && !closeBtn.disabled) {
+            const x = document.createElement('button');
+            x.type = 'button';
+            x.className = 'taskbar-group-menu-close';
+            x.tabIndex = -1;
+            x.setAttribute('aria-label', 'Close');
+            x.addEventListener('click', (e) => {
+                e.stopPropagation();
+                closeBtn.click();
+                item.remove();
+                if (!menu.querySelector('.taskbar-group-menu-item')) closeTaskbarGroupMenu();
+            });
+            item.classList.add('has-close');
+            item.appendChild(x);
+        }
 
         // Click handler
         item.addEventListener('click', (e) => {

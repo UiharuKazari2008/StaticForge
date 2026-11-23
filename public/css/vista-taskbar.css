@@ -453,6 +453,46 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group.group-menu-o
     overflow: hidden;
     contain: strict;
 }
+img.taskbar-thumb-still {
+    display: block;
+    width: 0;
+    height: 0;
+    object-fit: cover;
+    object-position: top center;
+}
+
+/* the X on the preview's corner while it is hovered (Yukimi, Nov 23 2026), a caption's red Close with Vista's small glyph */
+.taskbar-thumb-close {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    z-index: 2;
+    width: 19px;
+    height: 17px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid hsl(0 0% 0% / 55%);
+    border-radius: 3px;
+    background:
+        linear-gradient(hsl(6 70% 72%) 0, hsl(5 68% 55%) 48%, hsl(4 78% 42%) 52%, hsl(8 80% 52%) 100%);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 35%);
+    opacity: 0;
+    transition: opacity 0.12s linear;
+    cursor: var(--c-pointer, pointer);
+}
+.taskbar-thumb:hover .taskbar-thumb-close {
+    opacity: 1;
+}
+.taskbar-thumb-close:hover {
+    background-color: transparent;
+    filter: brightness(1.12);
+}
+.taskbar-thumb-close:active {
+    filter: brightness(0.85);
+}
+.taskbar-thumb.is-tooltip .taskbar-thumb-close {
+    display: none;
+}
 
 /* With previews off Vista shows the plain title tooltip */
 .taskbar-thumb.is-tooltip,
@@ -914,4 +954,47 @@ body.desktop-mode .desktop-taskbar.taskbar-autohide .taskbar-start-button-orb-fr
 
 body.desktop-mode .desktop-taskbar.taskbar-autohide:not(.taskbar-revealed) .taskbar-start-button-orb-frame {
     opacity: 0;
+}
+
+/* the X on a group list's row while it is hovered (Yukimi, Nov 23 2026): that window closed, the list stays - the preview's
+   small red Close at the row's end (contextMenu.js closeAction, modalUtils' taskbar-group-menu) */
+.context-menu-item.has-close,
+.taskbar-group-menu-item.has-close {
+    position: relative;
+    padding-right: 26px;
+}
+.context-menu-item-close,
+.taskbar-group-menu-close {
+    position: absolute;
+    top: 50%;
+    right: 3px;
+    width: 19px;
+    height: 17px;
+    margin: -8.5px 0 0;
+    padding: 0;
+    border: 1px solid hsl(0 0% 0% / 55%);
+    border-radius: 3px;
+    background:
+        linear-gradient(hsl(6 70% 72%) 0, hsl(5 68% 55%) 48%, hsl(4 78% 42%) 52%, hsl(8 80% 52%) 100%);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 35%);
+    opacity: 0;
+    transition: opacity 0.12s linear;
+    cursor: var(--c-pointer, pointer);
+}
+:is(.context-menu-item, .taskbar-group-menu-item):hover > :is(.context-menu-item-close, .taskbar-group-menu-close) {
+    opacity: 1;
+}
+:is(.context-menu-item-close, .taskbar-group-menu-close):hover { filter: brightness(1.12); }
+:is(.context-menu-item-close, .taskbar-group-menu-close):active { filter: brightness(0.85); }
+
+/* the small glyph, its top cell only (the art holds two, 7 x 7 each) */
+:is(.taskbar-thumb-close, .context-menu-item-close, .taskbar-group-menu-close)::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    margin: -3.5px 0 0 -3.5px;
+    background: image-set(url("/static_images/window-controls/vista-close-small.png") 1x, url("/static_images/hidpi/125/window-controls/vista-close-small.png") 1.2857x, url("/static_images/hidpi/150/window-controls/vista-close-small.png") 1.5714x, url("/static_images/hidpi/175/window-controls/vista-close-small.png") 1.7143x, url("/static_images/hidpi/200/window-controls/vista-close-small.png") 2x) 0 0 / 7px 14px no-repeat;
 }

@@ -1070,7 +1070,14 @@
         thumb = doc.createElement('div');
         thumb.className = 'taskbar-thumb hidden';
         thumb.setAttribute('role', 'tooltip');
-        thumb.innerHTML = '<div class="taskbar-thumb-title"></div><div class="taskbar-thumb-body"></div>';
+        // the X on the preview's corner while it is hovered (Yukimi, Nov 23 2026: the preview "is missing the close button")
+        thumb.innerHTML = '<div class="taskbar-thumb-title"></div><button type="button" class="taskbar-thumb-close" tabindex="-1" aria-label="Close"></button><div class="taskbar-thumb-body"></div>';
+        thumb.querySelector('.taskbar-thumb-close').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const item = thumbFor;
+            hideThumb(true);
+            if (item && item.isConnected) closeFromThumb(item);
+        });
         thumb.addEventListener('pointerenter', () => { if (thumbHideTimer) clearTimeout(thumbHideTimer); thumbHideTimer = 0; });
         thumb.addEventListener('pointerleave', () => hideThumb());
         thumb.addEventListener('click', () => {
@@ -1082,7 +1089,53 @@
         return thumb;
     }
 
+    /** The window a button stands for, closed (its own Close: the caption's X, or the Android window's). */
+    function closeFromThumb(item) {
+        const aw = item.dataset.androidWindow;
+        if (aw) { const T = root.melatonAndroidTaskbar; if (T && typeof T.close === 'function') T.close(aw); return; }
+        const modal = modalFor(item);
+        const btn = modal && modal.querySelector('.close-btn');
+        if (btn) btn.click();
+    }
+
+    /** An Android window's preview: its title and the app's picture of it (Recents' picture of its task). */
+    function showAndroidThumb(item) {
+        const T = root.melatonAndroidTaskbar;
+        const w = T && typeof T.window === 'function' ? T.window(item.dataset.androidWindow) : null;
+        if (!w) return;
+        const el = ensureThumb();
+        if (el !== doc.body.lastElementChild) doc.body.appendChild(el);
+        el.querySelector('.taskbar-thumb-title').textContent = w.title || 'Program';
+        const body = el.querySelector('.taskbar-thumb-body');
+        body.textContent = '';
+        body.classList.remove('is-icon');
+        const withPreview = settings.thumbnails && w.taskId != null;
+        el.classList.toggle('is-tooltip', !withPreview);
+        thumbFor = item;
+        el.classList.remove('hidden');
+        if (withPreview) {
+            const img = doc.createElement('img');
+            img.className = 'taskbar-thumb-still';
+            img.alt = '';
+            img.draggable = false;
+            img.decoding = 'async';
+            img.addEventListener('load', () => {
+                if (thumbFor !== item || !img.naturalWidth) return;
+                // fitted to the same box as Dreamscape's own windows' previews
+                const sc = Math.min(THUMB_BOX.w / img.naturalWidth, THUMB_BOX.h / img.naturalHeight);
+                img.style.width = `${Math.round(img.naturalWidth * sc)}px`;
+                img.style.height = `${Math.round(img.naturalHeight * sc)}px`;
+                placeThumb(item);
+            });
+            img.addEventListener('error', () => { if (thumbFor === item) { img.remove(); el.classList.add('is-tooltip'); placeThumb(item); } });
+            img.src = `https://appassets.androidplatform.net/task-shot/${encodeURIComponent(w.taskId)}?w=320&t=${Date.now()}`;
+            body.appendChild(img);
+        }
+        placeThumb(item);
+    }
+
     function showThumb(item) {
+        if (item.dataset.androidWindow) { showAndroidThumb(item); return; }
         const modal = modalFor(item);
         if (!modal) return;
         const el = ensureThumb();

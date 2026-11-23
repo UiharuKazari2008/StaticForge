@@ -276,10 +276,13 @@
                 type: 'list',
                 items: state.windows.map((w) => {
                     const pic = iconOf(w);
-                    return { text: titleOf(w), image: pic.src || undefined, action: `awg:${w.id}` };
+                    return { text: titleOf(w), image: pic.src || undefined, action: `awg:${w.id}`, closeAction: state.can.close ? `awgx:${w.id}` : undefined };
                 })
             }],
-            onAction: (action) => { if (action.startsWith('awg:')) send('activate', action.slice(4)); },
+            onAction: (action) => {
+                if (action.startsWith('awgx:')) send('close', action.slice(5));
+                else if (action.startsWith('awg:')) send('activate', action.slice(4));
+            },
             onHide: () => { item.classList.remove('group-menu-open'); }
         };
         item.dataset.contextMenu = GROUP_LIST_ID;
@@ -344,14 +347,21 @@
         const w = byId(item.dataset.androidWindow);
         if (!cm || !w || typeof cm.showMenu !== 'function') return;
         if (!cm.configs) cm.configs = {};
+        // Vista's window menu, as Dreamscape's own windows' buttons give (modalUtils buildVistaWindowMenuItems; Yukimi, Nov 23
+        // 2026: "its taskbar menu is also not the correct type"): Restore / Move / Size / Minimize / Maximize, Close in bold with
+        // Alt+F4 - what Android does not let the desktop do greyed
+        const glyph = (name) => `vista-sysmenu-glyph vista-sysmenu-${name}`;
         cm.configs[MENU_ID] = {
             sections: [{
                 type: 'list',
                 items: [
-                    { text: 'Restore', icon: 'fas fa-window-restore', action: 'aw-restore', disabled: !(w.minimized || state.focusedId !== w.id) },
-                    { text: 'Minimize', icon: 'fas fa-window-minimize', action: 'aw-minimize', disabled: !state.can.minimize || !!w.minimized },
+                    { icon: glyph('restore'), text: 'Restore', action: 'aw-restore', disabled: !(w.minimized || state.focusedId !== w.id) },
+                    { text: 'Move', action: 'aw-move', disabled: true },
+                    { text: 'Size', action: 'aw-size', disabled: true },
+                    { icon: glyph('minimize'), text: 'Minimize', action: 'aw-minimize', disabled: !state.can.minimize || !!w.minimized },
+                    { icon: glyph('maximize'), text: 'Maximize', action: 'aw-maximize', disabled: true },
                     { separator: true },
-                    { text: 'Close', icon: 'fas fa-times', action: 'aw-close', disabled: !state.can.close }
+                    { icon: glyph('close'), text: 'Close', action: 'aw-close', subtext: 'Alt+F4', className: 'context-menu-item-default', disabled: !state.can.close }
                 ]
             }],
             onAction: (action) => {
@@ -431,6 +441,10 @@
 
     root.melatonAndroidTaskbar = {
         hasFocus,
+        /** One Android window by its id (the taskbar preview's title, picture and X). */
+        window: (id) => { const w = byId(String(id)); return w ? Object.assign({}, w, { title: titleOf(w) }) : null; },
+        /** Closed as its menu's Close does (the preview's X). */
+        close: (id) => { if (state.can.close) send('close', String(id)); },
         windows: () => state.windows.slice(),
         recency,
         // the program's picture at a size (androidDesktopPrograms.js iconFor): Alt+Tab's 32 and 48 px

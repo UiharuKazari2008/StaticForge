@@ -2018,6 +2018,24 @@ class ContextMenuController {
                 }
             }
 
+            // item.closeAction: an X at the row's end while it is hovered (a taskbar group's window list: Close that window
+            // without picking it - Yukimi, Nov 23 2026); the row goes, the menu stays
+            if (item.closeAction && typeof item.closeAction === 'string') {
+                const x = document.createElement('button');
+                x.type = 'button';
+                x.className = 'context-menu-item-close';
+                x.tabIndex = -1;
+                x.setAttribute('aria-label', 'Close');
+                x.addEventListener('mousedown', (ev) => ev.preventDefault());
+                x.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    this.executeAction(item.closeAction, target, item);
+                    itemElement.remove();
+                });
+                itemElement.classList.add('has-close');
+                itemElement.appendChild(x);
+            }
+
             // Value display for submenu items (shows current selection)
             if ((item.submenu && Array.isArray(item.submenu)) || item.optionsfn) {
                 if (item.valueDisplay) {

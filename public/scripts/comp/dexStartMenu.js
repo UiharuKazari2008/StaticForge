@@ -974,12 +974,22 @@
     }
 
     // the menu's class says what it does: hidden removed = opening, start-menu-closing = fading out, hidden = gone
+    let ownKeysOn = false;
+    function ownKeys(on) {
+        if (on === ownKeysOn) return;
+        ownKeysOn = on;
+        try { if (typeof A().keys === 'function') A().keys(on); } catch (_) { /* older app */ }
+    }
+
     function follow() {
         const menu = menuEl();
         if (!menu) return false;
         followMo = new MutationObserver(() => {
             const hidden = menu.classList.contains('hidden');
             const closing = menu.classList.contains('start-menu-closing');
+            // the page's own menu (no program over it) takes the keyboard while it is open, as the copy does: a program
+            // keeps Android's key focus, so the app hands its keys to this page (Yukimi, Nov 23 2026: no keyboard in Start)
+            ownKeys(!hidden && !closing && !cur);
             if (hidden) { close(true); return; }
             if (closing) {
                 if (!cur) return;
@@ -990,6 +1000,7 @@
                 return;
             }
             if (!cur) open(menu);
+            if (cur) ownKeys(false);
         });
         followMo.observe(menu, { attributes: true, attributeFilter: ['class'] });
         return true;
@@ -1019,15 +1030,17 @@
     // does with them when no handler took them (typing, Backspace, Delete, the arrows, Home, End)
     root.addEventListener('androidhotkey', (e) => {
         const k = e && e.detail;
-        if (!k || !k.start || !cur) return;
+        // (the copy's session, or the page's own menu open with the keys handed here: ownKeys)
+        const menu = cur ? cur.menu : (ownKeysOn ? menuEl() : null);
+        if (!k || !k.start || !menu) return;
         e.stopImmediatePropagation();
         // typing with nothing focused goes into the menu's search field (Vista's Start: typing is Start Search)
         const fa = doc.activeElement;
-        if (k.ch && k.type === 'keydown' && !(fa && /^(INPUT|TEXTAREA)$/.test(fa.tagName) && cur.menu.contains(fa))) {
-            const field = cur.menu.querySelector('input[type="text"], input:not([type]), input[type="search"]');
+        if (k.ch && k.type === 'keydown' && !(fa && /^(INPUT|TEXTAREA)$/.test(fa.tagName) && menu.contains(fa))) {
+            const field = menu.querySelector('input[type="text"], input:not([type]), input[type="search"]');
             if (field) field.focus({ preventScroll: true });
         }
-        const target = doc.activeElement && doc.activeElement !== doc.body ? doc.activeElement : cur.menu;
+        const target = doc.activeElement && doc.activeElement !== doc.body ? doc.activeElement : menu;
         let ev;
         try {
             ev = new KeyboardEvent(k.type, { key: String(k.key || 'Unidentified'), code: String(k.code || ''), repeat: !!k.repeat, metaKey: !!k.metaKey, altKey: !!k.altKey, ctrlKey: !!k.ctrlKey, shiftKey: !!k.shiftKey, bubbles: true, cancelable: true, composed: true });
@@ -1045,7 +1058,7 @@
             const pos = k.key === 'Home' ? 0 : k.key === 'End' ? v.length : k.key === 'ArrowLeft' ? (s0 === s1 ? Math.max(0, s0 - 1) : s0) : (s0 === s1 ? Math.min(v.length, s1 + 1) : s1);
             if (k.shiftKey) f.setSelectionRange(Math.min(pos, s0), Math.max(pos, s1)); else f.setSelectionRange(pos, pos);
         } else if (k.ctrlKey && (k.key === 'a' || k.key === 'A')) f.select();
-        frameSoon(f);
+        if (cur) frameSoon(f);
     }, { capture: true, signal: lifeSignal });
 
     lifeSignal.addEventListener('abort', () => { close(true); if (followMo) followMo.disconnect(); sheet.remove(); }, { once: true });
