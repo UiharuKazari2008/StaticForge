@@ -159,7 +159,11 @@ async function main() {
     // disabled Yozora
     await assert.rejects(ds.startDirectorSession({ getConfig: () => ({}) }, { persona: 'Yozora', prompt: 'p' }), (err) => err.code === 'XI_DISABLED');
 
-    // tool + scope wiring
+    // tool + scope wiring (loading the facade catches a syntax slip in the tool text, as on Nov 23)
+    const facadeTools = require('../modules/mcpAgentFacade')._test;
+    assert.ok(facadeTools, 'mcpAgentFacade loads');
+    const facadeSrc = fs.readFileSync(path.join(__dirname, '../modules/mcpAgentFacade.js'), 'utf8');
+    assert.ok(facadeSrc.includes("name: 'start_director_session'") && facadeSrc.includes("name: 'get_director_session'"));
     const reg = require('../modules/mcpModuleRegistry');
     assert.ok(reg.scopesAllowModuleTool(['sfapp_director_start'], 'start_director_session'));
     assert.ok(!reg.scopesAllowModuleTool(['chat'], 'start_director_session'));
