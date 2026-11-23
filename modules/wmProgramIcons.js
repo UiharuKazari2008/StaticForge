@@ -44,7 +44,8 @@
  * HTTP (session auth; generating and writing the store are admin only):
  *   GET  /api/wm-program-icons/manifest
  *   GET  /api/wm-program-icons/jobs                       open jobs (newest first)
- *   POST /api/wm-program-icons/jobs                       { mode?: 'simple' | 'detailed', items: [{ id, package, label, category?, game?, mode?, icon: data URL, themed?: data URL }] }
+ *   POST /api/wm-program-icons/jobs                       { mode?: 'simple' | 'detailed', items: [{ id, package, label, category?, game?, mode?, icon: data URL, themed?: data URL, direction?, plain? }] }
+ *                                                         (plain: the program's own mark drawn itself, no period object)
  *   GET  /api/wm-program-icons/jobs/:job
  *   GET  /api/wm-program-icons/jobs/:job/files/:file      a preview PNG
  *   POST /api/wm-program-icons/jobs/missing               a batch of the store's programs that have no Vista
@@ -800,7 +801,7 @@ async function runItem(job, item) {
         // a symbol is drawn as an object of 2007-2009 carrying it (Yukimi, Nov 22: the glyphs alone look too
         // modern), unless the user attached pictures or config design is 'mark'; a typed direction is applied on
         // top (Yukimi, Nov 22: Gemini "as a white bubble" keeps its period balloon)
-        if (item.briefs[mode].archetype === 'mark' && !item.briefs[mode].object && bv !== 'm2' && !att.length) {
+        if (item.briefs[mode].archetype === 'mark' && !item.briefs[mode].object && bv !== 'm2' && !att.length && !item.plain) {
             const row = await periodRow(item, ctx);
             // the row's object the fewest of the store's other icons show
             const used = Object.entries(readManifest().icons).filter(([id, e]) => id !== item.id && e && e.object).map(([, e]) => e.object);
@@ -866,6 +867,8 @@ async function createJob(body, req) {
             mode: normMode(raw.mode || (body && body.mode)),
             // a custom request: what the user wants this icon to be (kept for Regenerate)
             direction: collapse(raw.direction).slice(0, 600) || null,
+            // the program's own mark drawn itself, polished, instead of a period object carrying it (Yukimi, Nov 23: Sequenzia)
+            plain: raw.plain === true,
             attempt: 0,
             hasRef: false
         };
