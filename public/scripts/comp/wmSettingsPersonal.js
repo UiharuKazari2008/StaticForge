@@ -806,6 +806,10 @@
             ${skActionHtml('sk', key.action, sk.sel)}
             ${ui.row('Name:', ui.edit('', key.label || '', `data-f="sk-name" maxlength="24" placeholder="${esc(skDefaultName(key.action))}"`), { wide: true })}
             ${menuHtml}
+            ${sk.prof === 'default' ? '' : `${ui.sub('Full screen')}
+            ${ui.check('sk-keep-status', 'Keep the title bar when this program fills the screen', !!(sk.keep[sk.prof] && sk.keep[sk.prof].status))}
+            ${ui.check('sk-keep-soft', 'Keep the soft key bar when this program fills the screen', !!(sk.keep[sk.prof] && sk.keep[sk.prof].soft))}
+            ${ui.note('A program that hides the phone\'s bars (the camera) hides these too. Keep the soft key bar to always have a way out of it.')}`}
             ${ui.gap()}
             <p class="wmsp-step">Hold the Center button to:</p>
             ${ui.comboHtml('hold', (SK_HOLD.find(([k]) => k === d.hold) || SK_HOLD[0])[1])}`;
@@ -817,11 +821,17 @@
             api.rerender();
         });
         const rm = el.querySelector('[data-act="sk-remove"]');
-        if (rm) rm.addEventListener('click', () => { if (sk.prof !== 'default') { delete sk.profiles[sk.prof]; sk.prof = 'default'; api.rerender(); } });
+        if (rm) rm.addEventListener('click', () => { if (sk.prof !== 'default') { delete sk.profiles[sk.prof]; delete sk.keep[sk.prof]; sk.prof = 'default'; api.rerender(); } });
         el.querySelectorAll('.wmsp-btn-row').forEach((r) => r.addEventListener('click', () => { sk.sel = r.dataset.side; sk.msel = 0; api.rerender(); }));
         skActionBind(el, 'sk', key.action, sk.sel, (v) => { key.action = v; if (v === 'ownmenu' && !key.menu) key.menu = []; }, api.rerender);
         const name = el.querySelector('[data-f="sk-name"]');
         if (name) name.addEventListener('input', () => { key.label = name.value.slice(0, 24); });
+        // this program's bars kept over full screen (Yukimi, Nov 23 2026: "applications that do not hide the status bar or
+        // the soft key bar. For example, camera"): the app's Bars config keepBars { <package>: { status, soft } }
+        for (const [id, field] of [['sk-keep-status', 'status'], ['sk-keep-soft', 'soft']]) {
+            const box = el.querySelector(`#${id}, input[data-k="${id}"], input[name="${id}"]`);
+            if (box) box.addEventListener('change', () => { const k = sk.keep[sk.prof] || (sk.keep[sk.prof] = { status: false, soft: false }); k[field] = box.checked; });
+        }
         ui.bindCombo(el.querySelector('[data-act="hold"]'), SK_HOLD, d.hold, (v) => { d.hold = v; });
         if (key.action !== 'ownmenu') return;
         const items = key.menu;
@@ -856,8 +866,11 @@
             // (config in buttons settins)"): the app's Bars config holdAction
             let hold = 'freeform';
             try { const st = JSON.parse(window.AndroidBars.getState()); if (st && st.config && st.config.holdAction === 'split') hold = 'split'; } catch (_) { /* no app */ }
-            const sk = window.AndroidBars ? { profiles: skLoad(), prof: 'default', sel: 'left', msel: 0 } : null;
-            return { v: { ...v }, saved: { ...v }, sel: 'left', qa, qaSaved: qa ? JSON.stringify(qa) : '', qaSel: null, hold, holdSaved: hold, sk, skSaved: sk ? JSON.stringify(sk.profiles) : '' };
+            // (keep: the programs whose bars stay over full screen, the app's Bars config keepBars)
+            let keep = {};
+            try { const st = JSON.parse(window.AndroidBars.getState()); if (st && st.config && st.config.keepBars && typeof st.config.keepBars === 'object') keep = JSON.parse(JSON.stringify(st.config.keepBars)); } catch (_) { /* no app */ }
+            const sk = window.AndroidBars ? { profiles: skLoad(), prof: 'default', sel: 'left', msel: 0, keep } : null;
+            return { v: { ...v }, saved: { ...v }, sel: 'left', qa, qaSaved: qa ? JSON.stringify(qa) : '', qaSel: null, hold, holdSaved: hold, sk, skSaved: sk ? JSON.stringify(sk.profiles) : '', keepSaved: JSON.stringify(keep) };
         },
         render(el, tab, d, api) {
             if (tab === 'quickaccess' && d.qa) { qaRender(el, d, api); return; }
@@ -891,6 +904,7 @@
             if (!same(d.v, d.saved)) KEYS().set(d.v);
             if (d.qa && JSON.stringify(d.qa) !== d.qaSaved) { try { QA().setConfig(JSON.stringify(d.qa)); } catch (_) { /* older app */ } }
             if (d.hold !== d.holdSaved) { try { window.AndroidBars.setConfig(JSON.stringify({ holdAction: d.hold })); } catch (_) { /* older app */ } }
+            if (d.sk && JSON.stringify(d.sk.keep) !== d.keepSaved) { try { window.AndroidBars.setConfig(JSON.stringify({ keepBars: d.sk.keep })); } catch (_) { /* older app */ } }
             // the soft keys per program (#1067): the app applies them; the kit is made again for the menus' drawings
             if (d.sk && JSON.stringify(d.sk.profiles) !== d.skSaved) {
                 const clean = {};
