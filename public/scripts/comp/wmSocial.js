@@ -42,6 +42,10 @@
     const BODY_TOP = 62;
     const BAR_MS = 420; // the Super Bar's even ease in and out (wmTitanium.js SUPER_MS / SUPER_EASE)
     const BAR_EASE = 'cubic-bezier(0.45, 0, 0.2, 1)';
+    // the app's icon: 13 units over the glass on the band (wm-titanium.css .wm-ti-icon), wholly on it in the bar (10 units
+    // down, .is-bar): it travels the 23 units with the card, both ways (Yukimi, Nov 23 2026: "a lack of fluid animation
+    // between the states in open and close" - it jumped at the first and the last frame)
+    const ICON_DROP = 23;
     const SLIDE_START = 22.5; // a swipe on the glass turns the page after 45 VGA px, as a panel's pages
     const PAGE_MS = 220;
     const PAGING = [['date', 'Show all notifications by date'], ['app', 'Page per App']];
@@ -368,6 +372,8 @@
             body.animate([{ opacity: 0, transform: `translateY(${18 * u}px)` }, { opacity: 1, transform: 'none' }], { duration: BAR_MS * 0.6, delay: BAR_MS * 0.4, easing: 'cubic-bezier(0.2, 0, 0.2, 1)', fill: 'both' })
         ];
         if (g.list) bar.anims.push(g.list.animate([{ opacity: 1 }, { opacity: 0 }], { duration: BAR_MS * 0.5, easing: 'linear', fill: 'forwards' }));
+        const icon = head.querySelector('.wm-ti-icon');
+        if (icon) bar.anims.push(icon.animate([{ transform: `translateY(${-ICON_DROP * u}px)` }, { transform: 'none' }], opt));
         const b = bar;
         const done = () => { if (bar === b) b.busy = false; };
         if (b.anims[0] && b.anims[0].finished) b.anims[0].finished.then(done, done); else done();
@@ -402,6 +408,8 @@
             b.body.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.5, easing: 'linear', fill: 'forwards' })
         ];
         if (b.g.list) b.anims.push(b.g.list.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms * 0.7, delay: ms * 0.3, easing: 'linear', fill: 'both' }));
+        const icon = b.head.querySelector('.wm-ti-icon');
+        if (icon) b.anims.push(icon.animate([{ transform: 'none' }, { transform: `translateY(${-ICON_DROP * u}px)` }], opt));
         if (sh) sh.refreshSoftKeys();
         if (b.anims[0] && b.anims[0].finished) b.anims[0].finished.then(finish, finish); else finish();
     }

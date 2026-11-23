@@ -62,8 +62,9 @@
         wireguard: 'com.wireguard.android/com.wireguard.android.QuickTileService',
         network: 'com.radioswitch.app/com.radioswitch.app.tile.RadioTileService'
     };
-    // controls with no on / off of their own (a button): one face, never lit
-    const BUTTONS = new Set(['qr', 'record', 'modes', 'output']);
+    // controls with no on / off of their own (a button): never lit (their 'on' face looks as the off one). Modes is not
+    // one: it is lit while a mode is on, as Samsung's own tile
+    const BUTTONS = new Set(['qr', 'record', 'output']);
     // the strip's short names (the wide panel uses the catalog's labels)
     const SHORT = { wifi: 'Wi-Fi', bluetooth: 'Bluetooth', rotation: 'Rotate', sound: 'Sound', hotspot: 'Hotspot', qr: 'QR code', dnd: 'Do not disturb',
         modes: 'Modes', flashlight: 'Flashlight', powersave: 'Power saving', network: 'Network', dolby: 'Dolby', eyecomfort: 'Eye comfort',
@@ -142,15 +143,18 @@
 
     /** One tile: a button (the app's press) over its stacked faces (the app shows the one of the state it reads). */
     function tile(m, id, wide, span) {
+        // every state has its face, buttons too: Modes is on while a mode is (Work, Sleep ...), and with no 'on' face the
+        // app drew nothing but its line - a tile with no background (Yukimi's Fold, Nov 23 2026)
+        const states = ['on', 'off', 'dim'];
         const button = BUTTONS.has(id);
-        const states = button ? ['off', 'dim'] : ['on', 'off', 'dim'];
         const label = labelOf(m, id, wide);
         const sub = (m.st[id] && m.st[id].sub) || '';
         const act = id === 'output' ? 'qa:output' : `qa:${id}:toggle`;
         const faces = states.map((s) => {
             const pic = iconOf(m, id, s);
             // (one element per face: the app draws what an element draws itself, its picture, glass and name)
-            return `<span class="qa-face is-${s}" data-live="qa:${id}:${s}" style="--qa-pic:url('${esc(pic)}')">${wide ? esc(label) : ''}</span>`;
+            const look = button && s === 'on' ? 'off' : s;
+            return `<span class="qa-face is-${look}" data-live="qa:${id}:${s}" style="--qa-pic:url('${esc(pic)}')">${wide ? esc(label) : ''}</span>`;
         }).join('');
         const state = STATE.has(id);
         // (a line with nothing in it is not written down for the app: a state not read yet still keeps its place)
@@ -319,7 +323,8 @@
         if (!m) return '';
         // (every tile's picture: a control drawn with an app tile's glyph changes with the catalog too - its kept layout
         // pointed at a glyph the app no longer draws, and the tile showed empty)
-        return JSON.stringify([getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
+        // (f3: every tile has its on / off / dim faces, Nov 23 2026 - a new make sends the app the new layouts)
+        return JSON.stringify(['f3', getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
     }
 
     // Today and Start show the workspace's wallpaper already (Yukimi, Nov 22 2026): the app brings Quick Access in over them

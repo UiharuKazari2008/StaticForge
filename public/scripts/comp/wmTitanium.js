@@ -1806,12 +1806,12 @@
     }
 
     /** Place every row for the list position `pos` (rows) around the band. */
-    function place() {
+    function place(moving) {
         dropEntryAnims();
         parallax(pos);
         const top = focusTop();
         const e = (pos - sel) * ROW;
-        const rest = !dragging && !settle;
+        const rest = !moving && !dragging && !settle;
         setTop(top);
         host.classList.toggle('is-rest', rest);
         panels.forEach((p, i) => {
@@ -2217,7 +2217,13 @@
             tw.gain = (tw.D + ROW * (nv - n)) / tw.D;
             tw.Tv = o && o.tap ? TAP_ROW_MS * nv : FLING_BASE_MS + FLING_ROW_MS * nv;
             tw.end = tw.Tv * Math.pow(1 / tw.gain, 1 / FLING_POW);
-            tw.p0 = Math.max(0, Math.min(0.999, (b > a ? e : -e) / tw.D));
+            // the ratchet (Yukimi, Nov 23 2026: "the ratcheting scroll is supposed to be used throughout the today scroll"):
+            // a flick, a tap on an item or a key runs the list position itself from a to b on the move's curve, and every
+            // frame is laid out as under a held finger (place) - the item in the band stays in its middle, the rows move,
+            // each next item snaps into the band with its tick as the list passes it. The stack's own layout (tweenYs)
+            // spread the rows apart before the landing item and dropped it into the band only at the end
+            tw.ratchet = true;
+            tw.p0 = Math.max(0, Math.min(0.999, (pos - a) / (b - a)));
             tw.p = tw.p0;
         }
         sel = a;
@@ -2372,7 +2378,9 @@
         }
         const t = Math.max(0, now - tw.t0);
         let p;
-        if (tw.n) p = Math.max(tw.p0, Math.min(1, tw.gain * Math.pow(t / tw.Tv, FLING_POW)));
+        // (the ratchet runs the curve over what is left from where the finger let go: no standstill while it catches up)
+        if (tw.n && tw.ratchet) p = tw.p0 + (1 - tw.p0) * Math.min(1, tw.gain * Math.pow(t / tw.Tv, FLING_POW));
+        else if (tw.n) p = Math.max(tw.p0, Math.min(1, tw.gain * Math.pow(t / tw.Tv, FLING_POW)));
         else if (tw.ease) { tw.x = Math.min(1, t / (tw.back || BACK_MS)); p = tw.ease(tw.x); }
         else { const k = Math.pow(Math.min(1, t / (tw.back || BACK_MS)), 1.3); p = k * k * (3 - 2 * k); } // 13 %, 65 %, 100 % of the way at 103, 206, 310 ms
         if (t >= tw.end || p >= 1) { arrive(); return; }
@@ -2381,18 +2389,6 @@
         // (the entrance and a Home press keep the arriving name up: the panel grows out of it as the list settles)
         placeTween(p, tw.entry || homeArrival ? 1 : Math.min(1, (tw.end - t) / FADE_MS));
         settle = requestAnimationFrame(tweenStep);
-    }
-
-    // the landing item's snap onto the centre bar: SNAP_DROP is the way from the band's top to the item's place in the
-    // band's middle; it is covered, slow - fast - slow, over the move's last SNAP_REACH units (longer than 1.5 x
-    // SNAP_DROP, so an item coming up from below never turns back)
-    const SNAP_DROP = (BAND - ROW) / 2;
-    const SNAP_REACH = ROW + SNAP_DROP;
-    /** How far into its snap the landing item is, 0 .. 1, `left` units before the move ends. */
-    function snapOf(left) {
-        if (left >= SNAP_REACH) return 0;
-        const x = left <= 0 ? 1 : 1 - left / SNAP_REACH;
-        return x * x * (3 - 2 * x);
     }
 
     /** Row tops (WM units) of the stack at progress p of the move. */
@@ -2425,17 +2421,17 @@
             const ya = yb + grow + ROW * (n - 1);
             for (let i = 0; i < ys.length; i++) ys[i] = i <= b ? yb - ROW * (b - i) : i < a ? yb + grow + ROW * (i - b - 1) : i === a ? ya : ya + shrink + ROW * (i - a - 1);
         }
-        // the item the move ends on snaps onto the centre bar as it comes near (Yukimi, Nov 23 2026: a flick "should
-        // emulate the same hold and scroll effect where the selected item snaps to the center"): over its last
-        // SNAP_REACH units its name leaves the stack's top-of-slot line for the middle of the band, where a held
-        // scroll keeps the selected item (place()) and where the list rests - it used to end at the band's top and
-        // jump there unseen while its name faded. The other rows keep the stack's pace
-        ys[b] += SNAP_DROP * snapOf(tw.D * (1 - p));
         return ys;
     }
 
     /** Draw the stack: transforms only. fade: what is left of the arriving label (1 .. 0). */
     function placeTween(p, fade) {
+        // a move between items: the list position on the curve, laid out as a held scroll (the ratchet)
+        if (tw && tw.ratchet) {
+            moveTo(tw.a + (tw.b - tw.a) * p);
+            place(true);
+            return;
+        }
         dropEntryAnims();
         const top = focusTop();
         const ys = tweenYs(top, p);
@@ -2454,9 +2450,7 @@
             const under = y + ROW / 2 > top && y + ROW / 2 < top + BAND;
             if (under) underNow = i;
             el.classList.toggle('is-under', under);
-            // the landing item is the selected one from the moment its snap begins, as under a held scroll
-            const snapping = tw.n > 0 && i === tw.b && tw.D * (1 - p) < SNAP_REACH;
-            if (el.classList.contains('is-sel') !== snapping) el.classList.toggle('is-sel', snapping);
+            dropClass(el, 'is-sel');
             const far = entering ? String(Math.min(Math.abs(i - tw.b), 3)) : '0';
             if (el.dataset.far !== far) el.dataset.far = far;
             const o = i === tw.b && fade < 1 ? String(Math.round(fade * (under ? 55 : 100)) / 100) : '';
@@ -2492,6 +2486,17 @@
     /** A tap on an item while the list runs: it ends on the next item to reach the band. */
     function stopAtNext() {
         if (!tw || !tw.n) return;
+        // the ratchet: the next item to come into the band is the one after the item in it now
+        if (tw.ratchet) {
+            const dir = tw.b > tw.a ? 1 : -1;
+            const j = Math.max(0, Math.min(panels.length - 1, sel + dir));
+            if (dir > 0 ? j >= tw.b : j <= tw.b) return;
+            cancelAnimationFrame(settle);
+            settle = 0;
+            tw = null;
+            startTween(sel, j, { tap: true });
+            return;
+        }
         const top = focusTop();
         const ys = tweenYs(top, tw.p);
         const dir = tw.b > tw.a ? 1 : -1;
@@ -2508,6 +2513,13 @@
     /** A finger takes the running list over: the item nearest the band is the one it holds. */
     function takeOver() {
         if (!tw) return sel;
+        // the ratchet: the finger carries on from where the list is, not from a whole item (no jump)
+        if (tw.ratchet) {
+            cancelAnimationFrame(settle);
+            settle = 0;
+            tw = null;
+            return pos;
+        }
         const top = focusTop();
         const ys = tweenYs(top, tw.p);
         let best = tw.a;
