@@ -398,12 +398,12 @@
         const cs = getComputedStyle(root);
         // (the first part: the lists' make - a new one makes every app ask for its kit again; m25: iconsRight measured
         // without Today's kept corner place beside the staged X, Nov 20; m26: the soft key Menu's samples; m27: 9-slice frames (nine), Nov 22; m28: the holder's status roles, #1056;
-        // m29: Task Manager's sample, lists.taskStrip, Nov 23; m30: its preview cards and hold menus, Nov 23)
+        // m29: Task Manager's sample, lists.taskStrip, Nov 23; m30: its preview cards and hold menus, Nov 23; m31: the volume box written down with no mode chosen, Nov 23)
         // the icon unit, the bar's height and the camera extension too (Yukimi, Nov 17: "the icons are never
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m30', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m31', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), softMenuSig(), Math.round(window.innerWidth)].join('|');
     }
@@ -1420,6 +1420,9 @@
                 }
                 sh.barsPopupClose();
                 const layers = openedLayers(sh, role);
+                // the volume box's On / Vibrate / Off written down with none chosen: the app draws the dot at Android's
+                // mode itself, and the page's own choice stayed in the picture as a second one (Yukimi's Fold, Nov 23 2026)
+                if (role === 'volume') layers.forEach((l) => l.querySelectorAll('input[name="wmvolmode"]').forEach((i) => { i.checked = false; }));
                 // written down as it ends up, not mid-way through its fade (WM 6.1's notification fades in)
                 settle(layers);
                 // pw: the width it was laid out at (the app moves it on a turned screen)

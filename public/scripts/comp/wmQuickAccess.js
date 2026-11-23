@@ -33,7 +33,7 @@
         adaptivetone: `${Q}adaptive-tone.png`,
         volume: { on: `${Q}volume.png`, off: `${Q}volume-off.png` },
         output: `${Q}output.png`,
-        sound: { on: `${Q}sound.png`, off: `${Q}vibrate.png` },
+        sound: { on: `${Q}sound.png`, off: `${Q}vibrate.png`, vibrate: `${Q}vibrate.png`, mute: `${Q}mute.png` },
         rotation: { on: `${Q}rotate.png`, off: `${Q}rotate-lock.png` },
         hotspot: { on: `${Q}hotspot.png`, off: `${Q}hotspot-off.png` },
         qr: `${Q}qr.png`,
@@ -124,6 +124,8 @@
     const iconOf = (m, id, state) => {
         // (a tile whose service declares no glyph: a generic tile, never its app icon painted white)
         if (id.startsWith('tile:')) return (m.tiles[id] && m.tiles[id].icon) || '/static_images/quickaccess/tile.png';
+        // Sound mode's own three: Sound, Vibrate, Mute (one "off" picture showed Vibrate for Mute too, Nov 23 2026)
+        if (id === 'sound' && (state === 'vibrate' || state === 'mute')) return ICONS.sound[state];
         // Android's own icon for this state where the app has it (SystemUI's tiles: Bluetooth, Sound mode, Flashlight...)
         const official = m.st[id] && m.st[id].icons;
         if (official && (official[state === 'on' ? 'on' : 'off'])) return official[state === 'on' ? 'on' : 'off'];
@@ -147,7 +149,9 @@
     function tile(m, id, wide, span) {
         // every state has its face, buttons too: Modes is on while a mode is (Work, Sleep ...), and with no 'on' face the
         // app drew nothing but its line - a tile with no background (Yukimi's Fold, Nov 23 2026)
-        const states = ['on', 'off', 'dim'];
+        // (Sound mode: a face for each of its modes - the app shows the one Android's ringer setting is in; Vibrate lit
+        // as Samsung's tile is, Mute not; 'off' kept for an app that knows only on / off)
+        const states = id === 'sound' ? ['on', 'vibrate', 'mute', 'off', 'dim'] : ['on', 'off', 'dim'];
         const button = BUTTONS.has(id);
         const label = labelOf(m, id, wide);
         const sub = (m.st[id] && m.st[id].sub) || '';
@@ -155,7 +159,7 @@
         const faces = states.map((s) => {
             const pic = iconOf(m, id, s);
             // (one element per face: the app draws what an element draws itself, its picture, glass and name)
-            const look = button && s === 'on' ? 'off' : s;
+            const look = button && s === 'on' ? 'off' : s === 'vibrate' ? 'on' : s === 'mute' ? 'off' : s;
             return `<span class="qa-face is-${look}" data-live="qa:${id}:${s}" style="--qa-pic:url('${esc(pic)}')">${wide ? esc(label) : ''}</span>`;
         }).join('');
         const state = STATE.has(id);
@@ -333,7 +337,7 @@
         // pointed at a glyph the app no longer draws, and the tile showed empty)
         // (f5: every tile's on / off / dim faces, a centred state line, the inset under the tiles, real bar heights, Nov 23
         // 2026 - a new make sends the app the new layouts)
-        return JSON.stringify(['f7', getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
+        return JSON.stringify(['f8', getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
     }
 
     // Today and Start show the workspace's wallpaper already (Yukimi, Nov 22 2026): the app brings Quick Access in over them
