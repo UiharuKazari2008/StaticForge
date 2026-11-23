@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-11-20T07:05:00-05:00",
+  "updated_at": "2026-11-23T07:10:00-05:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-11-13T07:30:00-05:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Nov20 7am loop on host dreamscape. Live tree dirty (833 files) behind Claude locks dirfocus + wm732: untouched; lands from ~/wt/n20 off origin/main 88ef4905. Docs: new ws/mediaLibrary.md (media_library_get, media_library_changed) + rest-api Media library ({vfsPath}/media/file/:id, /media/art/:hash) for #956; new ws/profileRevision.md (profile_revision, profile_changed) and admin set_skip_minimum_logon_time + /status skipMinimumLogonTime for #910; new ws/linkSpeed.md (link_speed_probe/report) and userSettings registry_changed push for #952. open=[].",
+  "cake_note": "Nov23 7am loop on host dreamscape. Live tree 3b06604ef dirty (3 wm*.js), 153 ahead/209 behind, under Claude locks (dex1005, ts1013, upd1021, wm732, xm989): untouched; lands from ~/wt/n23 off origin/main a4c352ef1 (55 first-parent commits since 836e9d362). Docs: rest-api POST/GET /agent/director/sessions (#1068); authentication.md + mcp-connector.md sfapp_director_start module (start_director_session / get_director_session); activesync-protocol status.snapshot notices list (30, kind, #1056). open=[].",
   "eaten": [
     {
       "id": "sf-22",

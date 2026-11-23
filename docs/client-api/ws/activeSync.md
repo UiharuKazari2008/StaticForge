@@ -22,7 +22,7 @@ Miniport connected with (else `NOT_PERMITTED` / `BAD_ID`). It is partnered by th
 the primary device, and reads no peer list. Device descriptions carry `platform` (`android` | `cafeready`); a machine's
 `status.host` has its base, slot, CaféReady version, update channel, addresses, interfaces, power source, the server
 address it uses and `allow { commands, screenshots, killSwitch }`. Its `host.*` operations are the server's
-(`/api/activesync/host/...`, admin, audited); `as_call` refuses them. See
+(`/api/activesync/host/...`, admin, audited: [rest-api.md](../rest-api.md#dreamos-machines-over-activesync-admin)); `as_call` refuses them. See
 [activesync-protocol.md](../../activesync-protocol.md), "DreamOS machines".
 
 A device is `pending` from its hello until a computer chose how to connect and the phone's user agreed: `guest` (this

@@ -182,6 +182,7 @@ Use on REST only via `X-StaticForge-App-Token: sftok_…` (no UA check). Tokens 
 | `sfapp_cake_pantry:adjust` | `adjust_weight` only (approval-gated weight-loss surgery) |
 | `sfapp_report_issue` | Development QA reporting (tool failures, errors, reviews) |
 | `sfapp_usage` | NovelAI account usage data (Anlas, Opus meter, generation count) |
+| `sfapp_director_start` | Start or reuse a Director chat (Yozora, Yumiya, Chiyo) from outside and read its status: MCP `start_director_session` / `get_director_session`, REST `/agent/director/sessions` (#1068) |
 
 Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants only the `deliver_cake` tool. The full `sfapp_cake_pantry` grants every pantry tool, including `adjust_weight`. `sfapp_cake_pantry:adjust` grants only `adjust_weight`.
 

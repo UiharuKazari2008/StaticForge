@@ -30,6 +30,9 @@ When **Site Homepage** access gate is configured, most routes also require a val
 16. [Miscellaneous](#miscellaneous)
 17. [Replication](#replication)
 18. [Static files (public/)](#static-files-public)
+19. [XM Radio](#xm-radio)
+20. [Alchemy browser settings and extensions](#alchemy-browser-settings-and-extensions)
+21. [DreamOS machines over ActiveSync (admin)](#dreamos-machines-over-activesync-admin)
 
 ---
 
@@ -288,6 +291,22 @@ returns `vfsPathUuid` for `/{vfsPathUuid}/…` REST.
 ```
 
 Do not log the application key. `autofill` is ranking + Grimoire / tag wiki, not `search`.
+
+### `POST /agent/director/sessions`
+
+**Auth:** Same as `GET /agent`, plus scope `sfapp_director_start` (or `universal`); `403` `FORBIDDEN` otherwise. No bind required (headless). Same call as MCP `start_director_session` (#1068, `modules/directorStart.js`).
+
+Starts or reuses a Director chat for a persona (Yozora / Yumiya / Chiyo) and sends the first request with no tab bound. Body `{ persona, prompt, task?, title?, source?, thread?, sessionId?, attachments?, sessionType?, engine?, model?, effort? }`; reuse order and fields are in [agent-session.md](./agent-session.md). A failed first send gives the `source` back, so a retry of the same source runs instead of returning `deduped`.
+
+**Success:** `200` `{ "success": true, "sessionId", "persona", "created" | "reused", "reusedBy"?, "deduped"?, "status", "open": { "app": "director", "sessionId" } }`
+
+**Errors:** `400` `MISSING_PARAMETERS` / `PROMPT_TOO_LONG` (60,000 chars) / `INVALID_TASK` / `INVALID_ATTACHMENTS` / `UNKNOWN_PERSONA`; `404` `SESSION_NOT_FOUND`; `409` `DIRECTOR_BUSY`; `503` `XI_DISABLED` / `ENGINE_UNAVAILABLE`.
+
+### `GET /agent/director/sessions/:sessionId`
+
+**Auth:** Same scope. Same call as MCP `get_director_session`.
+
+**Success:** `200` `{ "success": true, "sessionId", "persona", "status": "running" | "idle", "name", "archived", "sources", "thread", "messages", "lastReply" (4,000 chars), "issues" }`. `404` `SESSION_NOT_FOUND`.
 
 ### `POST /agent/packet`
 
@@ -1423,6 +1442,8 @@ checks it again before mounting. **Auth required.** Errors are `{ success: false
 | `GET /api/dreamos/channel/:channel` | any signed-in | Manifest bytes exactly as signed. Headers `X-DreamOS-Signature` (base64), `X-DreamOS-Key` (key id), `ETag` (sha256 of the bytes; 304 when same), `Cache-Control: no-cache`. 404 `NOT_FOUND` |
 | `GET /api/dreamos/object/:sha256` | any signed-in | A stored file. Range requests work. `Cache-Control: public, max-age=31536000, immutable` |
 | `PUT /api/dreamos/object/:sha256` | admin | Raw body, up to 8 GiB. `{ success, sha256, size, stored: true }`, or `stored: false` when it is already there. `BAD_HASH`, `HASH_MISMATCH`, `TOO_LARGE` (413), `ABORTED`, `WRITE_FAILED` |
+| `GET /api/dreamos/assign` | admin | `{ success, devices: { <deviceId>: <channel> } }`: the update channel the server assigned each machine (#910, Nov 20). `FORBIDDEN` (403) |
+| `PUT /api/dreamos/assign/:device` | admin | `{ channel }` (`null` removes it) gives `{ success, device, channel }`; the machine's Miniport is sent `miniport_update_channel` at once. `BAD_DEVICE` (32 lower-case hex), `BAD_CHANNEL` |
 | `PUT /api/dreamos/channel/:channel` | admin | `{ manifest: "<json text>", signature: "<base64>", key: "<id>", allowOlder? }` gives `{ success, channel, sha256 }`. `BAD_CHANNEL`, `BAD_MANIFEST`, `UNTRUSTED_KEY` / `BAD_SIGNATURE` (403), `MISSING_FILES` (409, `missing: [sha]`: upload those first), `OLDER_RELEASE` (409, unless `allowOlder`) |
 
 Channel names match `^[a-z][a-z0-9-]{0,31}$`. The manifest (format 1) is
@@ -1487,6 +1508,59 @@ list comes over WS `media_library_get` (see [ws/mediaLibrary.md](ws/mediaLibrary
 | --- | --- |
 | `GET {vfsPath}/media/file/:id` | The VFS file by id, with HTTP Range (`Accept-Ranges: bytes`, 206 / 416) so songs and videos can seek. 404 if missing, trashed or no blob; 403 if the session may not access it. |
 | `GET {vfsPath}/media/art/:hash` | The album art (300 px JPEG) for a content hash (16-64 hex). 404 when there is none. Cached by the browser as immutable. |
+
+## XM Radio
+
+`modules/xmRadio.js` (Yozora #989, Nov 20-21 2026). The radio's WS packets are in [ws/xmradio.md](./ws/xmradio.md).
+**Auth required**, and every `/api/xmradio/*` route is for `admin` / `dev_admin` only (else bare `403`).
+
+| Route | Notes |
+| --- | --- |
+| `GET /api/xmradio/channel/:id.m3u8` | Tunes the channel now and `302`s to our copy of its stream (the app's native player: next / previous channel, the alarm's radio with the page asleep). `?q` quality (`hi` / `std` / `low` / `eco24` / `eco16`, default `std`), `?back` seconds behind live. `401` `XMRADIO_SIGNED_OUT`, `403` `XMRADIO_NOT_SUBSCRIBED`, else `502` `{ error }`. `no-store` |
+| `GET /api/xmradio/live/:sid/m/*` | The tuned stream's mirrored playlist / segments (the `url` from `xmradio_tune`), query string passed on. |
+| `GET /api/xmradio/key/:sid/:keyId` | The stream's segment key for that tune. |
+| `GET /api/xmradio/eco/:rid/:file` | ECO (Opus re-encoded on the server) playlist / segments. |
+| `GET /api/xmradio/now/:id` | What is on a channel for the media notification: `{ channel, a, t, s, ad, at, dur, art }` (`dur` 0 when unknown; `art` the image service's public URL, empty on ads). Asked again when the song is due to end, never on a timer. `no-store` |
+| `GET /api/xmradio/tiicon?k&x&a` | A channel logo as a Windows Mobile 6.5 Today panel icon: trimmed, fitted, with its reflection (palette PNG). `k` art key, `x` scale 1 / 2 / 4 (default 4), `a` aspect 0.2-5. `immutable`, a year. |
+| `GET /api/xmradio/track/:fileId` | A finished recording on a tape (`audio/mp4`, Range), for the phone's Recordings. `404` when gone. |
+| `GET /api/xmradio/rec/:rid/:file` | A recording in progress: `index.m3u8` (growing playlist from the recorder service, `no-store`) or one decrypted `audio/aac` segment. |
+| `GET` / `POST /xmradio-signin/:code` | The one-time sign-in page from `xmradio_signin_browser` (10 minutes, mounted before the site gate, no session). `POST { handle, password }` signs in and keeps the login as the CardSpace card; more than 5 tries ends the page. A wrong or expired code is `404`. |
+
+---
+
+## Alchemy browser settings and extensions
+
+`modules/grimoireBrowserBridge.js`, relayed to `services/grimoire-browser` (Nov 21 2026). **Auth required.** `503`
+`{ error }` when the remote browser is not configured, `502` when it cannot be reached; otherwise the service's status
+and JSON are passed through.
+
+| Route | Notes |
+| --- | --- |
+| `GET /api/grimoire-browser/chrome-settings` | Internet Options over Alchemy's Chromium settings (`services/grimoire-browser/chromeSettings.js`). `?fonts=1` adds the font list. |
+| `POST /api/grimoire-browser/chrome-settings` | `{ prefs?, content?, exceptions?, searchEngine?, launch? }` writes them and answers the settings as read back. |
+| `GET /api/grimoire-browser/addons` | The add-on (extension) list. |
+| `POST /api/grimoire-browser/addons` | `{ id, enabled }` turns one on / off, `{ id, remove: true }` removes it. |
+| `POST /api/grimoire-browser/sessions/:id/extension-action` | An extension's command-bar button for that page: `{ extensionId (32 chars a-p), t (the session's view token) }`. Its popup opens as a child session streamed by the same viewer; `popup: null` when the extension acts on the click itself. `400 { error: 'bad input' }`. |
+
+---
+
+## DreamOS machines over ActiveSync (admin)
+
+`modules/cafeReadyHost.js` (#910, Nov 20 2026). A DreamOS machine's CaféReady joins ActiveSync over its Miniport (see
+[ws/activeSync.md](./ws/activeSync.md)); its `host.*` operations are these routes, not `as_call`. **Auth required, admin
+only** (`403 INSUFFICIENT_PERMISSIONS`); each call is audited with the session and address. `:deviceId` is the machine's
+device id. Errors are `{ success: false, code, error }`: `UNKNOWN_DEVICE` 404; `NOT_CAFEREADY`, `NOT_ALLOWED`,
+`SCREENSHOTS_OFF`, `REMOTE_COMMANDS_OFF`, `NOT_ONLINE`, `OFFLINE`, `UNSUPPORTED` 409; `NOT_PERMITTED` 403; `TIMEOUT` 504;
+`BAD_REQUEST` 400; else 502.
+
+| Route | Notes |
+| --- | --- |
+| `POST /api/activesync/host/:deviceId/shell` | `{ command, root?: true, timeoutMs? }` gives `{ success, ... }` with the command's result. Needs the machine's `allow.commands`. |
+| `GET /api/activesync/host/:deviceId/screenshot` | `image/png`, `no-store`, header `X-Captured-Via`. `?output` picks a display. Needs `allow.screenshots`. |
+| `GET /api/activesync/host/:deviceId/diagnostics` | The journal as `text/plain` (sandboxed CSP, `no-store`). `?boot`, `?lines`. |
+| `GET` / `PUT /api/activesync/host/:deviceId/config` | `{ success, config }`; `PUT` takes the fields to change. |
+| `GET /api/activesync/host/:deviceId/packages` | `{ success, base, update, packages[] }` (components change through Melaton Update, not package actions). |
+| `POST /api/activesync/host/:deviceId/blob/:token` | The machine's own upload of what it was asked for (screenshot, diagnostics): only that device's session, a 32-hex one-time token, header `X-Blob-Kind`. `NOT_THE_DEVICE` 403, `GONE` 410 (nobody waiting), `TOO_LARGE` 413. |
 
 ---
 
