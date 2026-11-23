@@ -42,6 +42,7 @@ async function main() {
     assert.deepStrictEqual(att[1], { source: 'vfs', fileId: 'abcdefgh12' });
     assert.throws(() => t.normalizeAttachments([{ name: 'x' }]), /text or vfsFileId/);
     assert.ok(t.reviewBrief('X', 'plaud:1').includes('plaud:1'));
+    assert.ok(/to Yukimi[^.]*in English/.test(t.reviewBrief('X')), 'chat with Yukimi is in English');
 
     await assert.rejects(ds.startDirectorSession(gr, { persona: 'Yozora' }), /prompt is required/);
 

@@ -82,10 +82,10 @@ function reviewBrief(prompt, source) {
         'How:',
         '1. Read the whole report and any attached files first. Check the code and open Yozora issues before you write: reuse or comment on an issue that already covers an item instead of filing a duplicate.',
         '2. Group the action items into one or more issues by topic and repo. Each issue: a specific title; Ziel (goal), Kontext (what was said or seen, short quotes from the transcript), Umfang (scope) as a checklist, Abnahme (how to verify), the files or modules that are likely involved (you checked them), and the source of the review' + (source ? ` (${source})` : '') + '.',
-        '3. Write issues and comments in German, like the rest of Yozora.',
+        '3. Language: issues and issue comments on Yozora in German, like the rest of Yozora. Everything you say to Yukimi - your chat replies, request_form titles, labels and options - in English, whatever language the review is in.',
         '4. Labels by board convention: one type:*, one of p1/p2/p3, and status:ready when nothing is open, else status:triage. Add cursor-agent when a coding agent (Claude Code) can take it as written. Card it on board 5 in the column that matches its status.',
         '5. Invent nothing. Whatever is unclear or needs Yukimi\'s decision becomes a question: ask with request_form (chatId of this chat). If request_form says no client is connected, put the questions in your reply and leave them in the issue under "Offene Fragen" with status:triage. When she answers, update the issue and move it to status:ready.',
-        '6. Reply with a short list: each issue as a link, its labels, and the questions still open.',
+        '6. Reply (in English) with a short list: each issue as a link, its labels, and the questions still open.',
         '',
         'Review:',
         prompt
