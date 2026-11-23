@@ -1,17 +1,17 @@
 {
   "version": 1,
-  "capturedAt": "2026-11-16T15:26:01.553Z",
+  "capturedAt": "2026-11-23T15:31:36.318Z",
   "policy": "Public endpoints only. No JWT, recaptcha, cookies, or generate APIs.",
   "sources": {
     "home": {
       "url": "https://novelai.net/",
       "status": 200,
-      "buildId": "adc9438-production",
-      "staticBuildDir": "adc9438-production",
-      "dpl": "adc9438-43846402163-1",
-      "bytes": 159320,
+      "buildId": "52e2e6f-production",
+      "staticBuildDir": "52e2e6f-production",
+      "dpl": "52e2e6f-44850709975-1",
+      "bytes": 159315,
       "chunkCount": 35,
-      "chunkPathsSha256": "ef4964d1486aa3e4f1f919d4ec06b3c4a605657b770940dc424b3f8cfc7c038e",
+      "chunkPathsSha256": "b77cb91fc4eb2b8c08be5030d8aebc8dbb6ee9dc84599b162c064c7f69edefb4",
       "chunkPathsSample": [
         "/_next/static/chunks/00cw-g5jlj2sj.js",
         "/_next/static/chunks/09ef663ae8-r2.js",
@@ -52,7 +52,7 @@
       "bytes": 5719,
       "etag": null,
       "lastModified": null,
-      "sha256": "fb7bea96c3cada8d8c30248e080176c029ec8a14126a62c925f94031d269b324",
+      "sha256": "60fef272f17801a8dc70113b245b521c0b654833907d44ac69c508211a57f50f",
       "error": "HTTP 403"
     }
   }
