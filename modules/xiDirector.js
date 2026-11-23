@@ -1716,6 +1716,45 @@ function chatImagesDir(sessionId) {
     return path.join(layout().chats, director._test.safeName(sessionId), 'chat-images');
 }
 
+// start_director_session (#1068): a light view of every chat (no messages) and a tag
+// writer for the fields it keeps on a chat (sources, thread, startedVia, name).
+function listChatBriefs() {
+    return peekIndex().chats.map((chat) => ({
+        id: chat.id,
+        name: chat.name,
+        archived: chat.archived === true,
+        sources: Array.isArray(chat.sources) ? chat.sources.slice() : [],
+        thread: chat.thread || null,
+        startedVia: chat.startedVia || null,
+        runtime: chat.runtime || null,
+        choice: chat.choice || null,
+        updated_at: chat.updated_at || null,
+        running: runs.has(chat.id)
+    }));
+}
+
+function readChatLog(sessionId) {
+    const chat = peekIndex().chats.find((item) => item.id === sessionId);
+    return chat && Array.isArray(chat.messages)
+        ? chat.messages.map((m) => ({ role: m.role, content: m.content, timestamp: m.timestamp }))
+        : [];
+}
+
+async function tagStartedChat(sessionId, patch) {
+    const p = patch || {};
+    return enqueue(async () => {
+        const index = readIndex();
+        const chat = index.chats.find((item) => item.id === sessionId);
+        if (!chat) return false;
+        if (p.source) chat.sources = Array.from(new Set([...(Array.isArray(chat.sources) ? chat.sources : []), p.source])).slice(-200);
+        if (p.thread) chat.thread = p.thread;
+        if (p.startedVia) chat.startedVia = p.startedVia;
+        if (p.name) { chat.name = p.name; chat.titleSetByAgent = true; }
+        writeIndex(index);
+        return true;
+    });
+}
+
 async function setSessionTitle(gr, sessionId, title) {
     boundGr = gr || boundGr;
     const name = String(title || '').replace(/\s+/g, ' ').trim();
@@ -1831,6 +1870,9 @@ module.exports = {
     chatsDir,
     chatImagesDir,
     setSessionTitle,
+    listChatBriefs,
+    readChatLog,
+    tagStartedChat,
     readSessionTasks,
     setSessionTasks,
     setSessionTask,

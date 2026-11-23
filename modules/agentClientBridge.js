@@ -2071,6 +2071,27 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
         }
     });
 
+    // start_director_session / get_director_session over REST (#1068, modules/directorStart.js)
+    const DIRECTOR_START_STATUS = {
+        MISSING_PARAMETERS: 400, PROMPT_TOO_LONG: 400, INVALID_TASK: 400, INVALID_ATTACHMENTS: 400,
+        UNKNOWN_PERSONA: 400, SESSION_NOT_FOUND: 404, DIRECTOR_BUSY: 409, XI_DISABLED: 503, ENGINE_UNAVAILABLE: 503
+    };
+    const directorStartRoute = (run) => async (req, res) => {
+        if (!agentHasNamedScope(resolveAgentAuthScopes(req), 'sfapp_director_start')) {
+            return res.status(403).json({ success: false, error: 'This key needs the sfapp_director_start scope', code: 'FORBIDDEN' });
+        }
+        try {
+            return res.json({ success: true, ...(await run(req)) });
+        } catch (error) {
+            const status = DIRECTOR_START_STATUS[error && error.code] || 500;
+            return res.status(status).json({ success: false, error: error.message || 'Director start failed', code: (error && error.code) || 'DIRECTOR_ERROR' });
+        }
+    };
+    app.post('/agent/director/sessions', devAuthMiddleware, directorStartRoute((req) =>
+        require('./directorStart').startDirectorSession(globalResources, req.body || {})));
+    app.get('/agent/director/sessions/:sessionId', devAuthMiddleware, directorStartRoute((req) =>
+        require('./directorStart').getDirectorSession(globalResources, { sessionId: req.params.sessionId })));
+
     app.post('/agent/packet', devAuthMiddleware, async (req, res) => {
         try {
             const message = resolveAgentPacketMessage(req.body || {});

@@ -187,6 +187,8 @@ const TOOL_RATE_GROUPS = {
     remove_work_item: 'write',
     report_issue: 'write',
     get_usage: 'free',
+    start_director_session: 'write',
+    get_director_session: 'free',
     lookup_character_age: 'search',
     send_mail: 'write',
     forward_mail: 'write',
