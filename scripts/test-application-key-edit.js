@@ -94,7 +94,10 @@ async function main() {
     });
     // sfapp_alchemy_browser is identity-gated (Hoshino/Yukimi drive Yukimi's signed-in tab),
     // so Wren and Xi deliberately do not get it.
-    const IDENTITY_GATED = new Set(['sfapp_alchemy_browser']);
+    // sfapp_director_start (#1068) starts Director chats from outside; the personas' own keys
+    // do not hold it, so a turn cannot spawn chats of itself.
+    const IDENTITY_GATED = new Set(['sfapp_alchemy_browser', 'sfapp_director_start']);
+    assert.ok(!report.after.includes('sfapp_director_start'), 'director keys never get the Director start scope');
     assert.ok(!report.after.includes('sfapp_alchemy_browser'), 'director keys never get the Alchemy browser scope');
     const uncovered = [...new Set(tools.map((tool) => tool.scope))]
         .filter((scope) => !IDENTITY_GATED.has(scope) && !report.after.includes(scope));

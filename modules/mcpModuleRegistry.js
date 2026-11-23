@@ -205,6 +205,13 @@ const MODULE_DEFS = {
         label: 'Usage',
         description: 'NovelAI account usage data (Anlas, Opus meter, generation count)',
         tools: ['get_usage']
+    },
+    director_start: {
+        id: 'director_start',
+        scope: 'sfapp_director_start',
+        label: 'Director Start',
+        description: 'Start or reuse a Director chat from outside and follow it up (#1068)',
+        tools: ['start_director_session', 'get_director_session']
     }
 };
 

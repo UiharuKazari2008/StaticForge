@@ -3245,6 +3245,60 @@ const TOOL_DEFS = [
             }
         }
     },
+    // Director start tools (sfapp_director_start scope, #1068): start or reuse a Director chat
+    // from outside the Director window, headless. modules/directorStart.js.
+    {
+        name: 'start_director_session',
+        core: true,
+        description: 'Start or reuse a Director chat with a persona (Yozora, Yumiya, or Chiyo) and send it a first request. It runs headless: no browser tab is needed. Yukimi gets the turn-finished notice, and request_form questions, the usual way. Reuse order: (1) source: a chat that already took this source is returned with deduped true and is not sent anything, so the same Plaud recording never starts a second session; (2) sessionId: post into that chat (DIRECTOR_BUSY while it is mid-turn); (3) thread: post into the newest open chat started with this thread name, or a new chat in that thread when that one is busy; (4) otherwise a new chat. task "review" wraps the prompt in the review brief: Yozora reads the brainstorm or live-test report, checks the code and existing issues, files German Yozora issues (Ziel / Kontext / Umfang checklist / Abnahme, type + priority + status labels, cursor-agent when a coding agent can take it, board card), and asks Yukimi about anything unclear (request_form, or open questions in the issue with status:triage). Attach long transcripts as attachments [{name, text}] instead of putting them in the prompt. Returns sessionId (= chatId), persona, created / reused / deduped, status, and open {app, sessionId}. Follow up with get_director_session. Example: {"persona":"Yozora","task":"review","source":"plaud:<recordingId>","thread":"plaud-reviews","title":"Review: <recording name>","prompt":"<summary + action items>","attachments":[{"name":"transcript.md","text":"..."}]}.',
+        scope: 'sfapp_director_start',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['persona', 'prompt'],
+            properties: {
+                persona: { type: 'string', description: 'Yozora (host agent; plans work and files issues), Yumiya, or Chiyo' },
+                prompt: { type: 'string', description: 'First request (Markdown), up to 60,000 characters' },
+                task: { type: 'string', enum: ['plain', 'review'], description: 'plain (default): the prompt as written. review: wrap it in the review-to-issues brief' },
+                title: { type: 'string', description: 'Chat title for a new chat (80 characters); otherwise the persona names it' },
+                source: { type: 'string', description: 'Origin key for idempotency and logs, e.g. plaud:<recording-id>' },
+                thread: { type: 'string', description: 'Reuse key: requests with the same thread go into one rolling chat (e.g. plaud-reviews)' },
+                sessionId: { type: 'string', description: 'Post into this existing chat of that persona' },
+                attachments: {
+                    type: 'array',
+                    maxItems: 8,
+                    description: 'Files for the chat inbox: {name, text} (UTF-8, up to 2 MB each) or {vfsFileId}',
+                    items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        properties: {
+                            name: { type: 'string' },
+                            text: { type: 'string' },
+                            vfsFileId: { type: 'string' }
+                        }
+                    }
+                },
+                sessionType: { type: 'string', enum: ['utility', 'lowvolume', 'normal'], description: 'Yumiya / Chiyo new chats only (default lowvolume). Yozora chats never expire' },
+                engine: { type: 'string', description: 'Optional engine. For Yozora it is fixed when the chat is made (default: her last chat\'s engine, else tokenrouter)' },
+                model: { type: 'string', description: 'Optional model id' },
+                effort: { type: 'string', description: 'Optional effort (low, medium, high)' }
+            }
+        }
+    },
+    {
+        name: 'get_director_session',
+        core: true,
+        description: 'Follow up on a chat started with start_director_session: status (running / idle), name, archived, the sources and thread it took, message count, the last reply (4,000 characters), and the Yozora issue numbers linked in its replies.',
+        scope: 'sfapp_director_start',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['sessionId'],
+            properties: {
+                sessionId: { type: 'string', description: 'sessionId / chatId from start_director_session' }
+            }
+        }
+    },
     // Dovecote mail tools (sfapp_dovecote scope). Caller identity (bot name,
     // or Cursor/Claude for Xi jobs) resolves server-side to the mailbox owner —
     // there is no "from"/"owner" input; you only ever act as your own mailbox.
@@ -9983,6 +10037,19 @@ async function callTool(globalResources, req, name, args) {
     if (name === 'report_issue') {
         const result = reportIssue(input);
         return mcpTextResult(result, !result.success);
+    }
+
+    // Director start tools (sfapp_director_start, #1068)
+    if (name === 'start_director_session' || name === 'get_director_session') {
+        const directorStart = require('./directorStart');
+        try {
+            const out = name === 'start_director_session'
+                ? await directorStart.startDirectorSession(globalResources, input)
+                : directorStart.getDirectorSession(globalResources, input);
+            return mcpTextResult({ success: true, ...out });
+        } catch (error) {
+            return mcpTextResult({ success: false, error: error.message, code: error.code || 'DIRECTOR_ERROR' }, true);
+        }
     }
 
     // Usage module tools (sfapp_usage)
