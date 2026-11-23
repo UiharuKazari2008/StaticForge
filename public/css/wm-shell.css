@@ -226,6 +226,18 @@ html.ui-mobile[data-wm-sip] #wmShell {
     --wm-sip-lift: calc(max(env(safe-area-inset-bottom), var(--wm-sip, 0px)) - env(safe-area-inset-bottom));
 }
 
+/* (#1013, Yukimi Nov 22: "In DS when the keyboard is open the softkey bar should not move") Android's buttons hidden
+ * behind ours (data-wm-soft-h): the keyboard keeps a strip of the bar's height at its bottom, and the app draws this
+ * bar's keys over it (wmShell syncDsSoft). The page's own bar stays at the screen's bottom, under the keyboard, out of
+ * the layout: the app's window still ends at the keyboard's top. */
+html.ui-mobile[data-wm-sip][data-wm-soft-h] #wmShell > .wm-softkeys {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    visibility: hidden;
+}
+
 /* an app with a scene (registerApp sipOverlay: the Director) keeps its page at full height behind
  * the bar and the keyboard: the scene stays put, the app lifts its own foreground by --wm-sip-lift */
 html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
@@ -2117,6 +2129,22 @@ html.ui-mobile body > #toastContainer {
     border-radius: calc(8 * var(--wm-px)) calc(8 * var(--wm-px)) 0 0;
     box-sizing: border-box;
     font: var(--wm-fs) var(--wm-font);
+}
+
+/* The soft key bar takes Android's nav row height (--wm-soft-h, wmShell syncSoftHeight, #1053), which is taller than
+ * the 26 units these docks assume: notifications, soft key menus, the picture viewbar and the Gallery host sit on its
+ * top edge instead of under it (Yukimi, Nov 22 2026: "Main Battery Low" cut off behind Hide / Dismiss). While the
+ * keyboard is up the bar sits under the keyboard and the app's window ends at the keyboard's top, so they dock there. */
+html.ui-mobile[data-wm-soft-h]:not([data-wm-sip]) .wm-notify,
+html.ui-mobile[data-wm-soft-h]:not([data-wm-sip]) .wm-popup:not([data-side="dropdown"]),
+html.ui-mobile[data-wm-soft-h]:not([data-wm-sip]) .wm-viewbar {
+    bottom: var(--wm-soft-h);
+}
+html.ui-mobile[data-wm-soft-h]:not([data-wm-sip]) .wm-notify {
+    max-height: calc(70% - var(--wm-soft-h));
+}
+html.ui-mobile[data-wm-soft-h]:not([data-wm-sip])[data-wm-app="gallery"] body > #galleryWindow {
+    bottom: var(--wm-soft-h) !important;
 }
 
 .wm-notify[hidden] {
