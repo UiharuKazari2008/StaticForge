@@ -220,7 +220,8 @@ html.ui-mobile .wm-form .wmsp-btn-name {
 }
 
 /* WM highlights the selected row's button name only */
-html.ui-mobile .wm-form .wmsp-btn-row.is-selected .wmsp-btn-name > span {
+/* (not the picture's box: a row with no picture showed an empty highlighted square, #1067) */
+html.ui-mobile .wm-form .wmsp-btn-row.is-selected .wmsp-btn-name > span:not(.wmsp-btn-icon) {
     background: var(--wm-highlight);
     color: var(--wm-highlight-text);
     padding: 0 calc(1 * var(--wm-px));
