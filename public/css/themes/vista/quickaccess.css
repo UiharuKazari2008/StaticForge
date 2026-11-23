@@ -67,6 +67,18 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
     width: calc(10 * var(--wm-px));
     pointer-events: none;
 }
+/* the panel over the screen (Today, Start: Yukimi, Nov 23 2026 - "as an overlay to the screen"): its shadow falls onto the
+   screen, darkest at the panel's edge and gone 10 units out; over a program the panel is under the screen and the inset
+   below is drawn instead (the app draws one of the two: qa-out / qa-in) */
+#wmShell > .wm-qa .qa-drop {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: calc(10 * var(--wm-px));
+    pointer-events: none;
+}
+#wmShell > .wm-qa.is-right .qa-drop { right: 100%; background-image: linear-gradient(270deg, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.2) 40%, rgba(0, 0, 0, 0.004)); }
+#wmShell > .wm-qa.is-left .qa-drop { left: 100%; background-image: linear-gradient(90deg, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.2) 40%, rgba(0, 0, 0, 0.004)); }
 #wmShell > .wm-qa.is-right .qa-inset { left: 0; background-image: linear-gradient(90deg, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.2) 40%, rgba(0, 0, 0, 0.004)); }
 #wmShell > .wm-qa.is-left .qa-inset { right: 0; background-image: linear-gradient(270deg, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.2) 40%, rgba(0, 0, 0, 0.004)); }
 #wmShell > .wm-qa.is-cols-1 .qa-panel { width: calc(44 * var(--wm-px)); }

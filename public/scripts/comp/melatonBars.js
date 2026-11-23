@@ -2037,5 +2037,28 @@
         }, { signal: appScopeSignal });
         syncSoftHeight();
         if (!(window.wmShell && typeof window.wmShell.syncSoftHeight === 'function')) window.addEventListener('resize', syncSoftHeight, { signal: appScopeSignal });
+        // this page's own bars as they stand (device px: the title bar's bottom, the soft key bar's height), for what the app
+        // draws over Melaton Mobile itself - Quick Access's panel between them, its push (Yukimi, Nov 23 2026: the panel ran
+        // under the soft key bar over Today). Sent when they change, while the page is seen; never on a timer
+        let barsSent = '';
+        let barsTimer = 0;
+        const sendBars = () => {
+            barsTimer = 0;
+            const ab = window.AndroidBars;
+            if (!ab || typeof ab.pageBars !== 'function' || document.hidden) return;
+            const dpr = window.devicePixelRatio || 1;
+            const e = barEdges(dpr, window.innerHeight);
+            const key = `${e.bh}|${e.sk}|${Math.round(window.innerWidth * dpr)}`;
+            if (key === barsSent) return;
+            barsSent = key;
+            try { ab.pageBars(e.bh, e.sk); } catch (_) { /* older app */ }
+        };
+        const barsSoon = () => { if (!barsTimer) barsTimer = setTimeout(sendBars, 150); };
+        window.addEventListener('resize', barsSoon, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', barsSoon, { signal: appScopeSignal });
+        const barsMo = new MutationObserver(barsSoon);
+        barsMo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-wm-soft-h', 'data-wm-titlebar', 'data-wm-version'] });
+        if (appScopeSignal) appScopeSignal.addEventListener('abort', () => { barsMo.disconnect(); clearTimeout(barsTimer); }, { once: true });
+        barsSoon();
     }
 })();

@@ -286,7 +286,7 @@
             layer.classList.add('is-wide');
             const wideIds = m.items.filter((id) => id === 'wifi' || id === 'bluetooth');
             const rest = m.items.filter((id) => !wideIds.includes(id) && !SLIDERS[id]);
-            layer.innerHTML = '<div class="qa-panel"><span class="qa-inset"></span>'
+            layer.innerHTML = '<div class="qa-panel"><span class="qa-drop" data-live="qa-out"></span><span class="qa-inset" data-live="qa-in"></span>'
                 + '<div class="qa-head">Quick Access</div>'
                 + (wideIds.length ? `<div class="qa-two">${wideIds.map((id) => tile(m, id, true)).join('')}</div>` : '')
                 + (m.items.includes('brightness') ? `<div class="qa-group">${slider(m, 'brightness', true)}<div class="qa-checks">${tile(m, 'autobrightness', true)}${tile(m, 'adaptivetone', true)}</div></div>` : '')
@@ -306,7 +306,7 @@
             ? `<button type="button" class="qa-tile qa-more" data-android="qa-page:${page >= pages.length ? 1 : page + 1}" aria-label="More"><span class="qa-face is-off qa-more-face">${page >= pages.length ? '▲' : '▼'}</span></button>`
             : '';
         // (the screen's shadow first: under the tiles, never over them - Yukimi, Nov 23 2026)
-        layer.innerHTML = '<div class="qa-panel"><span class="qa-inset"></span><span class="qa-handle"></span><div class="qa-cells">'
+        layer.innerHTML = '<div class="qa-panel"><span class="qa-drop" data-live="qa-out"></span><span class="qa-inset" data-live="qa-in"></span><span class="qa-handle"></span><div class="qa-cells">'
             + ids.map((id) => (SLIDERS[id] ? slider(m, id, false) : spans(m, id) ? tile(m, id, true, true) : tile(m, id, false))).join('')
             + more + '</div></div>';
         shell.appendChild(layer);
@@ -333,7 +333,7 @@
         // pointed at a glyph the app no longer draws, and the tile showed empty)
         // (f5: every tile's on / off / dim faces, a centred state line, the inset under the tiles, real bar heights, Nov 23
         // 2026 - a new make sends the app the new layouts)
-        return JSON.stringify(['f6', getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
+        return JSON.stringify(['f7', getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
     }
 
     // Today and Start show the workspace's wallpaper already (Yukimi, Nov 22 2026): the app brings Quick Access in over them
@@ -367,8 +367,15 @@
         const content = shell && shell.querySelector(':scope > .wm-content');
         if (!content) return;
         const dx = Math.round((Number(o && o.dx) || 0) / (root.devicePixelRatio || 1));
-        content.style.transition = `transform ${Number(o && o.ms) || 180}ms cubic-bezier(0.2, 0.8, 0.3, 1)`;
+        const ms = Number(o && o.ms) || 180;
+        content.style.transition = `transform ${ms}ms cubic-bezier(0.2, 0.8, 0.3, 1)`;
         content.style.transform = dx ? `translateX(${dx}px)` : '';
+        // the glass's frosted copies of the wallpaper (Today's band, Start's frost) stay lined up with the wallpaper, which
+        // does not move: they go back the way the content goes (Yukimi, Nov 23 2026: "the today bar blur needs to be shift too")
+        content.querySelectorAll('.wm-ti-blur-in, .wm-ti-super-frost').forEach((f) => {
+            f.style.transition = `translate ${ms}ms cubic-bezier(0.2, 0.8, 0.3, 1)`;
+            f.style.translate = dx ? `${-dx}px 0` : '';
+        });
         if (!dx) content.addEventListener('transitionend', () => { if (!content.style.transform) content.style.transition = ''; }, { once: true });
     }
 
