@@ -337,6 +337,27 @@ async function chooseRoute() {
 }
 
 /**
+ * A request to the brief model (the vision brief, the kind-of-program row, the logo finder): OpenAI directly, and
+ * TokenRouter's copy of the same model when OpenAI answers that the account has no credit (Nov 23 2026: the OpenAI
+ * wallet ran dry mid-batch while TokenRouter still had funds; the drawings already fall back the other way).
+ * opts: fetch options with the OpenAI Authorization header and a JSON body naming the model.
+ */
+async function briefFetch(opts, ms) {
+    const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', opts, ms);
+    if (res.status !== 429 && res.status !== 402 && res.status !== 403) return res;
+    const text = await res.clone().text().catch(() => '');
+    if (!/insufficient_quota|credit_balance_exhausted|no credits/i.test(text)) return res;
+    const trKey = tokenRouterKey();
+    if (!trKey) return res;
+    let body = null;
+    try { body = JSON.parse(opts.body); } catch (_) { return res; }
+    if (body && body.model && !String(body.model).includes('/')) body.model = `openai/${body.model}`;
+    console.warn('[wmProgramIcons] OpenAI has no credit: the brief asked through TokenRouter');
+    const gate = require('./tokenRouterGate');
+    return gate.run(() => fetchWithTimeout(`${tokenRouterBase()}/v1/chat/completions`, { ...opts, headers: { ...opts.headers, Authorization: `Bearer ${trKey}` }, body: JSON.stringify(body) }, ms), { lane: 'background', label: 'program icon brief' });
+}
+
+/**
  * The period object for a program whose icon is a symbol (wmProgramIconPrompt.js periodPrompt): the
  * brief model answers a row number, the row's fixed words are the object. null: no row fits (the
  * symbol is drawn itself). Kept with the Play Store answer's lifetime, per package.
@@ -351,7 +372,7 @@ async function periodRow(item, ctx) {
     const text = iconPrompt.periodPrompt(item.label, { category: (ctx && ctx.category) || item.category || (item.game ? 'game' : ''), description: ctx && ctx.description });
     for (let i = 0; i < 3; i++) {
         try {
-            const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+            const res = await briefFetch({
                 method: 'POST',
                 headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ model: collapse(settings().briefModel) || 'gpt-5.4-mini', response_format: { type: 'json_object' }, messages: [{ role: 'user', content: text }] })
@@ -387,7 +408,7 @@ async function iconBrief(name, refBuffers, opts) {
     let why = 'no answer';
     for (let i = 0; i < 3; i++) {
         try {
-            const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+            const res = await briefFetch({
                 method: 'POST',
                 headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ model, response_format: { type: 'json_object' }, messages: [{ role: 'user', content }] })
@@ -429,7 +450,7 @@ async function findLogo(item, ctx, dir) {
     }];
     for (const b of imgs) content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${(await sharp(b).resize({ width: 768, withoutEnlargement: true }).png().toBuffer()).toString('base64')}` } });
     try {
-        const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+        const res = await briefFetch({
             method: 'POST',
             headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ model: collapse(settings().briefModel) || 'gpt-5.4-mini', response_format: { type: 'json_object' }, messages: [{ role: 'user', content }] })
