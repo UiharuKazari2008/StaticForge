@@ -905,3 +905,50 @@
 }
 
 .cd-wizard label[hidden] { display: none; }
+
+/* ---- Nov 24: Memory (counts strip, the memory window, the session digest) ---- */
+
+#mmcConsole_claudedesk .cd-membar-counts {
+    display: flex;
+    flex: none;
+    gap: 16px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--cd-c-d5d5d5);
+    color: var(--cd-c-444);
+}
+
+#mmcConsole_claudedesk .cd-mem-digest-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 8px;
+}
+
+.cd-win .cd-mem-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 4px 0 8px;
+}
+
+.cd-win .cd-mem-body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    padding: 4px 6px;
+    border: 1px solid var(--cd-c-d5d5d5);
+    background: var(--cd-c-fff);
+}
+
+.cd-win .cd-mem-tag {
+    display: inline-block;
+    padding: 0 5px;
+    border: 1px solid var(--cd-c-d5d5d5);
+    background: var(--cd-c-f0f0f0);
+}
+
+#mmcConsole_claudedesk .cd-sp-h {
+    margin: 10px 0 4px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid var(--cd-c-d5d5d5);
+    font-size: 12px;
+}

@@ -29,7 +29,8 @@
  *       Inspect: <agent>        what one agent is doing: files it edited, commands, last words, claims
  *
  * Nov 24 tree: Active Work (Supervised Work -> work item -> its session -> its background agents; Unsupervised
- * Sessions), Work Queue, Sessions, Activity (every command, edit and tool call), Coordination, Supervisor (pause /
+ * Sessions), Work Queue, Sessions, Activity (every command, edit and tool call), Memory (the shared memory of
+ * every agent, claude_fleet_memory), Coordination, Supervisor (pause /
  * resume, restart waits), Accounts, Remote Control, Contractors (other machines that run Fleet work).
  *
  * Server: 313-claudeAccountsHandler (accounts, host, sign-in) and 314-claudeDeskHandler (sessions,
@@ -119,6 +120,7 @@
             usageOn: false,
             usageLoaded: false,
             usageError: '',
+            spend: { data: null, loaded: false, loading: false, gone: false, error: '' }, // the Supervisor's cost and balances (Plan Usage)
             sup: { loaded: false, data: null, draft: null, sel: '', busy: '', error: '', unavailable: false, lastReviewId: null },
             liveKey: '',
             show: Object.assign({}, SHOW_DEFAULT), // what the session view shows (saved per user: registry ShowView)
@@ -126,6 +128,14 @@
             wins: new Set(), // the item windows (a folded thinking / edit in full)
             engines: null, // claude_fleet_engines, read when a wizard or the queue needs it
             act: { rows: [], next: null, total: 0, kind: '', q: '', sessionId: '', loaded: false, loading: false, error: '', gone: false, seq: 0 }, // Activity
+            mem: memBlank('active'), // Memory
+            memRv: memBlank('review'), // Needs Review
+            memStats: null,
+            memRepos: new Set(),
+            memOn: false,
+            memVer: undefined,
+            memBusy: false,
+            dig: { repo: '', text: '', loaded: false, loading: false, error: '', gone: false }, // Session Digest
             conChats: new Map(), // contractor id | session id -> { messages, loading, error }
             con: { list: [], invites: [], loaded: false, loading: false, error: '', gone: false }, // Contractors
             awAgents: new Map() // session id -> { agents, loading, gone, error }: the background agents shown under an Active Work session
@@ -182,12 +192,15 @@
             const sp = changed.supervisor;
             const ver = sp.version != null ? sp.version : (sp.lastReviewId == null ? null : sp.lastReviewId);
             S.sup.counts = { active: sp.workActive || 0, queued: sp.workQueued || 0 };
+            const pushed = !!(sp.spend && typeof sp.spend === 'object');
+            if (pushed) { S.spend.data = sp.spend; S.spend.loaded = true; S.spend.gone = false; }
             // version moves on every review, work item and lock change: the status is read again once per change
             if (ver !== S.sup.version) {
                 const shown = S.c && (S.c.node === 'co-work' || S.c.node === 'co-supervisor');
                 if (S.sup.loaded && shown && !S.sup.loading) void loadSupervisor();
                 else S.sup.stale = true;
                 S.sup.version = ver;
+                if (!pushed) { if (S.c && usageWanted(S.c.node)) void loadSpend(); else S.spend.loaded = false; }
             }
             S.sup.lastReviewId = sp.lastReviewId == null ? null : sp.lastReviewId;
         }
@@ -256,6 +269,12 @@
             const d = msg && Array.isArray(msg.accounts) ? msg : (msg && msg.data) || null;
             if (d && Array.isArray(d.accounts)) { S.fleet = d; repaint(); }
         }, opts);
+        c.on('claude_fleet_memory_status', (msg) => {
+            if (!S.memOn) return;
+            const d = msg && msg.changed ? msg : (msg && msg.data) || {};
+            memTake(d.changed || d);
+            if (S.c && MEM_NODES.has(S.c.node)) repaint();
+        }, opts);
         c.on('claude_fleet_contractors_status', (msg) => { conTake(msg); if (S.c) repaint(); }, opts);
         c.on('claude_usage_status', (msg) => {
             if (!S.usageOn) return;
@@ -281,6 +300,7 @@
             S.fluxOn = false;
             if (S.usageOn) { S.usageOn = false; void usageWatch(true); }
             void subscribe(true);
+            if (S.memOn) { S.memOn = false; void memWatch(true); }
             const w = S.watching;
             S.watching = null;
             if (w) void watch(w);
@@ -435,6 +455,195 @@
             <h4>Why</h4>${why.request ? `<p class="mmc-hint">The request:</p><pre class="cd-pre cd-act-why">${esc(why.request)}</pre>` : ''}${why.assistantText ? `<p class="mmc-hint">What Claude said just before:</p><pre class="cd-pre cd-act-why">${esc(why.assistantText)}</pre>` : ''}${why.request || why.assistantText ? '' : '<p class="mmc-hint">No reason was recorded for this call.</p>'}
             <h4>${row.kind === 'shell' ? 'Command' : (row.kind === 'edit' ? 'Edit' : 'Parameters')}</h4>${row.description ? `<p class="mmc-hint">${esc(row.description)}</p>` : ''}${actInputHtml(row, r.input)}
             <h4>Output${row.error ? ' (it failed)' : ''}</h4>${r.output == null ? '<p class="mmc-hint">No output was recorded.</p>' : `<pre class="cd-pre cd-act-out${row.error ? ' is-error' : ''}">${esc(r.output || '(empty)')}</pre>`}</div>`;
+    }
+
+    // ---- Memory: the shared memory every Fleet agent reads and writes (claude_fleet_memory) -----------------
+
+    const MEM_PAGE = 50;
+    const MEM_STATUS = [['active', 'Active'], ['proposed', 'Proposed'], ['flagged', 'Flagged'], ['stale', 'Stale'], ['rejected', 'Rejected'], ['superseded', 'Superseded'], ['', 'All']];
+    const MEM_STATUS_TEXT = { proposed: 'Proposed', active: 'Active', rejected: 'Rejected', superseded: 'Superseded', expired: 'Expired' };
+    const MEM_KINDS = [['fact', 'Fact'], ['decision', 'Decision'], ['gotcha', 'Gotcha'], ['preference', 'Preference'], ['lesson', 'Lesson'], ['who-did-what', 'Who did what']];
+    const MEM_NODES = new Set(['memory', 'mem-review', 'mem-digest']);
+    function memBlank(status) { return { rows: [], next: null, status, scope: '', q: '', qDraft: '', loaded: false, loading: false, error: '', gone: false, seq: 0 }; }
+    const memStatusText = (m) => `${MEM_STATUS_TEXT[m.status] || m.status || ''}${m.flagged ? ' (flagged)' : ''}${m.stale ? ' (stale)' : ''}`;
+    const memKindText = (k) => (MEM_KINDS.find((x) => x[0] === k) || [])[1] || k || '';
+    const memScopeText = (s) => (s === 'global' ? 'Global' : String(s || '').replace(/^repo:/, '').replace(/^area:/, 'area: '));
+    const memIcon = (m) => `${VI}/${m.flagged ? 'warning' : (m.status === 'active' ? 'check' : (m.status === 'rejected' ? 'error' : (m.status === 'proposed' ? 'info' : 'warning')))}-16.png`;
+    const memId = (v) => String(v == null ? '' : v);
+    const memOf = (id) => S.mem.rows.concat(S.memRv.rows).find((x) => memId(x.id) === memId(id)) || null;
+    const memSel = (c, arg) => (arg != null && arg !== '' ? memId(arg) : selId(c, 'me:'));
+
+    function memNote(rows) { (rows || []).forEach((m) => { if (m && /^repo:/.test(m.scope || '')) S.memRepos.add(m.scope); }); }
+
+    /** A page of the list (More: before = the reply's next); Needs Review reads proposed and flagged together. */
+    async function loadMem(L, more) {
+        if (L.loading) return;
+        L.loading = true;
+        const seq = ++L.seq;
+        try {
+            let rows;
+            let next = null;
+            if (L.status === 'review') {
+                const rs = await Promise.all(['proposed', 'flagged'].map((status) => send('claude_fleet_memory', { action: 'list', status, limit: 100 })));
+                const seen = new Set();
+                rows = [];
+                rs.forEach((r) => (unwrap(r, 'rows').rows || []).forEach((m) => { if (!seen.has(memId(m.id))) { seen.add(memId(m.id)); rows.push(m); } }));
+            } else {
+                const f = { action: 'list', limit: MEM_PAGE };
+                if (L.status) f.status = L.status;
+                if (L.scope) f.scope = L.scope;
+                if (L.q) f.q = L.q;
+                if (more && L.next != null) f.before = L.next;
+                const r = unwrap(await send('claude_fleet_memory', f), 'rows');
+                rows = Array.isArray(r.rows) ? r.rows : [];
+                if (L.status === 'flagged') rows = rows.filter((m) => m.flagged);
+                else if (L.status === 'stale') rows = rows.filter((m) => m.stale);
+                next = r.next == null ? null : r.next;
+            }
+            if (seq === L.seq) {
+                L.rows = more ? L.rows.concat(rows.filter((x) => !L.rows.some((y) => memId(y.id) === memId(x.id)))) : rows;
+                L.next = next;
+                L.error = '';
+                L.gone = false;
+                memNote(L.rows);
+            }
+        } catch (e) { if (seq === L.seq) { if (isGone(e)) L.gone = true; else L.error = errText(e); } }
+        L.loading = false;
+        L.loaded = true;
+        repaint();
+    }
+    async function loadMemStats() {
+        try { const r = unwrap(await send('claude_fleet_memory', { action: 'stats' }), 'stats'); if (r.stats) S.memStats = Object.assign({}, S.memStats, r.stats); } catch (_) { /* the page says so */ }
+        repaint();
+    }
+    /** The push: counts now, and the open list again once when the change marker moved. */
+    function memTake(items) {
+        const d = items && items.changed && typeof items.changed === 'object' && !('counts' in items) ? items.changed : items || {};
+        if (d.counts) S.memStats = Object.assign({}, S.memStats, d.counts);
+        if (d.changed != null && d.changed !== S.memVer) {
+            const first = S.memVer === undefined;
+            S.memVer = d.changed;
+            if (!first) memReload();
+        }
+    }
+    function memReload() {
+        const node = S.c ? S.c.node : '';
+        [[S.mem, 'memory'], [S.memRv, 'mem-review']].forEach(([L, id]) => { if (!L.loaded) return; if (node === id) void loadMem(L, false); else L.loaded = false; });
+        if (node === 'mem-digest' && S.dig.loaded) void loadDigest();
+        void loadMemStats();
+    }
+    async function memWatch(on) {
+        if (on === S.memOn) return;
+        S.memOn = on;
+        if (!on) { try { await send('status_unsubscribe', { feed: 'fleet_memory' }); } catch (_) { /* gone */ } return; }
+        try { const r = await send('status_subscribe', { feed: 'fleet_memory' }); if (S.memOn) memTake(r.items || r); } catch (_) { /* a server without it: the pages say so */ }
+        repaint();
+    }
+    async function loadDigest() {
+        const D = S.dig;
+        if (D.loading) return;
+        D.loading = true;
+        try {
+            const r = unwrap(await send('claude_fleet_memory', Object.assign({ action: 'digest' }, D.repo ? { repo: D.repo } : {})), 'digest');
+            D.text = typeof r.digest === 'string' ? r.digest : '';
+            D.error = '';
+            D.gone = false;
+        } catch (e) { if (isGone(e)) D.gone = true; else D.error = errText(e); }
+        D.loading = false;
+        D.loaded = true;
+        repaint();
+    }
+
+    async function memCall(payload) { return unwrap(await send('claude_fleet_memory', payload), 'memory'); }
+
+    function memProvenance(m) {
+        const rows = [['Author', esc(m.author || '')], ['Account', esc(m.account || '')], ['Host', esc(m.host || '')], ['Source', esc(m.source || '')], ['Created', esc(when(m.createdAt))], ['Updated', esc(when(m.updatedAt))], ['Confirmed', esc(when(m.confirmedAt))]];
+        return actProps(rows);
+    }
+    /** One memory in full, in its own window: nothing here is HTML (the body is escaped text). */
+    function memoryHtml(m) {
+        const tags = Array.isArray(m.tags) && m.tags.length ? m.tags.map((t) => `<span class="cd-mem-tag">${esc(t)}</span>`).join(' ') : '<span class="mmc-hint">none</span>';
+        const link = (id, label) => `<span class="mmc-link" data-mem-open="${esc(memId(id))}">${esc(label)}</span>`;
+        const flags = [m.pinned ? 'Pinned' : '', m.flagged ? `Flagged: ${m.flagged}` : '', m.stale ? 'Stale: not confirmed for a while' : ''].filter(Boolean);
+        const hist = Array.isArray(m.history) && m.history.length ? `<table class="cd-table"><thead><tr><th class="cd-w120">When</th><th class="cd-w80">By</th><th>Change</th></tr></thead><tbody>${m.history.map((h) => `<tr><td>${esc(when(h.at))}</td><td>${esc(h.by || '')}</td><td>${esc(h.change || '')}</td></tr>`).join('')}</tbody></table>` : '<p class="mmc-hint">No history.</p>';
+        const btn = (act, text, dis) => `<button type="button" class="btn-standard" data-mem-act="${act}"${dis ? ' disabled' : ''}>${text}</button>`;
+        return `<div class="cd-act cd-mem">
+            <h4>${esc(m.title || 'Memory')}</h4>
+            <p class="cd-mem-actions">${btn('approve', 'Approve', m.status !== 'proposed')}${btn('reject', 'Reject...', m.status !== 'proposed')}${btn('pin', m.pinned ? 'Unpin' : 'Pin')}${btn('unflag', 'Clear Flag', !m.flagged)}${btn('edit', 'Edit...')}${btn('remove', 'Remove...')}</p>
+            ${actProps([['Kind', esc(memKindText(m.kind))], ['Scope', esc(memScopeText(m.scope))], ['Tags', tags], ['Status', esc(memStatusText(m))], ['Notes', esc(flags.join('; '))], ['Review note', esc(m.reviewNote || '')], ['Replaced by', m.supersededBy ? link(m.supersededBy, `Memory ${m.supersededBy}`) : ''], ['Replaces', m.supersedes ? link(m.supersedes, `Memory ${m.supersedes}`) : '']])}
+            <h4>Body</h4><div class="cd-mem-body">${esc(m.body == null ? (m.snippet || '') : m.body)}</div>
+            <h4>Where it came from</h4>${memProvenance(m)}
+            <h4>History</h4>${hist}</div>`;
+    }
+
+    async function openMemory(id) {
+        if (!S.c || id == null || id === '') return;
+        const key = `mem:${id}`;
+        const have = Array.from(S.wins).find((x) => x.key === key);
+        if (have) { call('bringModalToFront', have.modal); return; }
+        const row = memOf(id);
+        const w = openViewer({ key, title: `Memory: ${String((row && row.title) || id).slice(0, 48)}`, body: '<p class="mmc-hint">Reading...</p>' });
+        const st = { m: row };
+        const show = async () => {
+            try {
+                const r = await memCall({ action: 'get', id });
+                st.m = r.memory || st.m;
+                w.set(st.m ? memoryHtml(st.m) : '<p class="cd-err">This memory is gone.</p>');
+            } catch (e) { w.set(`<p class="cd-err">${esc(isGone(e) ? NOT_YET : errText(e))}</p>`); }
+        };
+        w.modal.addEventListener('click', (ev) => {
+            const o = ev.target.closest('[data-mem-open]');
+            if (o) { void openMemory(o.dataset.memOpen); return; }
+            const b = ev.target.closest('[data-mem-act]');
+            if (b && st.m && !b.disabled) void memAct(b.dataset.memAct, st.m, show, w);
+        });
+        await show();
+    }
+
+    /** Approve / Reject / Pin / Clear Flag / Edit / Remove on one memory, then the lists and the window read again. */
+    async function memAct(act, m, show, w) {
+        const c = S.c;
+        if (!c) return;
+        try {
+            if (act === 'approve') await memCall({ action: 'approve', id: m.id });
+            else if (act === 'reject') {
+                const { value, fields } = await form(c, `<p>Reject <b>${esc(m.title)}</b>. Agents stop reading it; the note is kept with it.</p><label class="cd-top"><span>Note:</span><textarea data-cd="note" data-cd-focus rows="3" spellcheck="true" placeholder="Why it is rejected (required)"></textarea></label>`,
+                    [{ text: 'Reject', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Reject Memory', icon: 'fas fa-circle-info' });
+                const note = String(fields.note || '').trim();
+                if (value !== true) return;
+                if (!note) { await c.box('<p>Say why it is rejected.</p>', null, { icon: 'warning' }); return; }
+                await memCall({ action: 'reject', id: m.id, note });
+            } else if (act === 'pin') await memCall({ action: 'pin', id: m.id, pinned: !m.pinned });
+            else if (act === 'unflag') await memCall({ action: 'unflag', id: m.id });
+            else if (act === 'edit') { if (!(await memEditBox(c, m))) return; }
+            else if (act === 'remove') {
+                const ok = await c.box(`<p>Remove <b>${esc(m.title)}</b>? Its history is removed with it and agents no longer see it.</p>`, [{ text: 'Remove', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'warning', title: 'Remove Memory' });
+                if (ok !== true) return;
+                await memCall({ action: 'remove', id: m.id });
+                memReload();
+                if (w) w.close();
+                return;
+            }
+        } catch (e) { await failBox(c, e); return; }
+        memReload();
+        if (show) await show();
+    }
+    /** Title, kind, scope, tags and body in a Vista dialog; saved with update. */
+    async function memEditBox(c, m) {
+        const kinds = MEM_KINDS.map(([v, t]) => `<option value="${v}"${v === m.kind ? ' selected' : ''}>${esc(t)}</option>`).join('');
+        const { value, fields } = await form(c, `
+            <label class="cd-top"><span>Title:</span><input type="text" data-cd="title" data-cd-focus value="${esc(m.title)}" spellcheck="true" autocomplete="off"></label>
+            <label class="cd-top"><span>Kind:</span><select class="vdt-select" data-cd="kind">${kinds}</select></label>
+            <label class="cd-top"><span>Scope:</span><input type="text" data-cd="scope" value="${esc(m.scope)}" spellcheck="false" autocomplete="off" placeholder="global, repo:<name>, area:<tag> or session"></label>
+            <label class="cd-top"><span>Tags:</span><input type="text" data-cd="tags" value="${esc((m.tags || []).join(', '))}" spellcheck="false" autocomplete="off" placeholder="Separated by commas"></label>
+            <label class="cd-top"><span>Body:</span><textarea data-cd="body" rows="10" spellcheck="true">${esc(m.body || '')}</textarea></label>`,
+        [{ text: 'Save', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Edit Memory', width: 560, icon: 'fas fa-circle-info' });
+        if (value !== true) return false;
+        const title = String(fields.title || '').trim();
+        if (!title) { await c.box('<p>A memory needs a title.</p>', null, { icon: 'warning' }); return false; }
+        const tags = String(fields.tags || '').split(',').map((t) => t.trim()).filter(Boolean);
+        await memCall({ action: 'update', id: m.id, title, kind: fields.kind, scope: String(fields.scope || '').trim() || m.scope, tags, body: String(fields.body || '') });
+        return true;
     }
 
     // ---- Contractors: other machines that run Fleet work on their own projects (claude_fleet_contractors) ------
@@ -1170,6 +1379,88 @@
         };
     }
 
+    // ---- Memory pages ---------------------------------------------------------------------------------------
+
+    function memCounts() {
+        const s = S.memStats || {};
+        const n = (k) => (s[k] == null ? '-' : s[k]);
+        return `<div class="cd-membar-counts" role="status"><span><b>${n('active')}</b> active</span><span><b>${n('proposed')}</b> proposed</span><span><b>${n('flagged')}</b> flagged</span><span><b>${n('stale')}</b> stale</span></div>`;
+    }
+    function memList(c, L, sortId, empty) {
+        const rows = L.rows.map((m) => ({
+            key: `me:${m.id}`,
+            icon: memIcon(m),
+            cls: m.status === 'rejected' || m.status === 'superseded' || m.status === 'expired' ? 'cd-stale' : '',
+            data: { title: m.title || '', kind: memKindText(m.kind), scope: memScopeText(m.scope), status: memStatusText(m), pinned: m.pinned ? 'Pinned' : '', author: m.author || '', updated: m.updatedAt || 0 }
+        }));
+        return c.listView([
+            { t: 'Title', w: 280, key: 'title', text: (d) => d.title },
+            { t: 'Kind', w: 80, key: 'kind', text: (d) => d.kind },
+            { t: 'Scope', w: 110, key: 'scope', text: (d) => d.scope },
+            { t: 'Status', w: 120, key: 'status', text: (d) => d.status },
+            { t: 'Pinned', w: 54, key: 'pinned', text: (d) => d.pinned },
+            { t: 'Author', w: 110, key: 'author', text: (d) => d.author },
+            { t: 'Updated', w: 128, key: 'updated', text: (d) => when(d.updated), value: (d) => Number(d.updated) || Date.parse(d.updated) || 0 }
+        ], rows, { sortId, sort: { key: 'updated', dir: -1 }, empty, fit: true });
+    }
+    function memGone(c, title) { return c.page(title, '', [{ id: 'cd-mem-gone', title, body: `<p>${NOT_YET}</p>` }]); }
+
+    function memoryPage(c) {
+        const L = S.mem;
+        if (!L.loaded && !L.loading) { void loadMem(L, false); void loadMemStats(); }
+        if (L.gone) return memGone(c, 'Memory');
+        const scopes = ['global'].concat(Array.from(S.memRepos).sort());
+        if (L.scope && !scopes.includes(L.scope)) scopes.push(L.scope);
+        const bar = `${memCounts()}<div class="cd-actbar" role="toolbar" aria-label="Filter the memory">
+            <label><span>Status:</span><select class="vdt-select" data-mem-f="status">${MEM_STATUS.map(([v, t]) => `<option value="${v}"${v === L.status ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+            <label><span>Scope:</span><select class="vdt-select" data-mem-f="scope"><option value="">All</option>${scopes.map((s) => `<option value="${esc(s)}"${s === L.scope ? ' selected' : ''}>${esc(memScopeText(s))}</option>`).join('')}</select></label>
+            <label class="cd-actq"><span>Search:</span><input type="text" data-mem-f="q" value="${esc(L.qDraft != null ? L.qDraft : L.q)}" spellcheck="false" autocomplete="off" placeholder="A word in a title or body"></label>
+            <button type="button" class="btn-standard" data-act="mem-search"${L.loading ? ' disabled' : ''}>Search</button></div>`;
+        const empty = L.error ? `The memory could not be read. ${L.error}` : (L.loading || !L.loaded ? 'Reading the memory...' : (L.q || L.scope || L.status !== 'active' ? 'Nothing matches.' : 'No memory is active yet.'));
+        const more = L.loaded ? `<div class="cd-more"><span>${L.rows.length} shown</span><button type="button" class="btn-standard" data-act="mem-more"${L.next == null || L.loading ? ' disabled' : ''}>More</button></div>` : '';
+        return {
+            html: `<div class="cd-list-wrap">${bar}${memList(c, L, 'cd-memory', empty)}${more}</div>`,
+            list: true,
+            split: true,
+            mount: (pane) => {
+                const st = pane.querySelector('[data-mem-f="status"]');
+                const sc = pane.querySelector('[data-mem-f="scope"]');
+                const q = pane.querySelector('[data-mem-f="q"]');
+                const apply = () => { L.status = st.value; L.scope = sc.value; L.q = q.value.trim(); L.qDraft = q.value; L.rows = []; L.next = null; L.loaded = false; void loadMem(L, false); c.refresh(); };
+                if (st) st.addEventListener('change', apply);
+                if (sc) sc.addEventListener('change', apply);
+                if (q) {
+                    q.addEventListener('input', () => { L.qDraft = q.value; });
+                    q.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); apply(); } });
+                }
+            }
+        };
+    }
+    function memReviewPage(c) {
+        const L = S.memRv;
+        if (!L.loaded && !L.loading) { void loadMem(L, false); void loadMemStats(); }
+        if (L.gone) return memGone(c, 'Needs Review');
+        const empty = L.error ? `The memory could not be read. ${L.error}` : (L.loading || !L.loaded ? 'Reading the memory...' : 'Nothing is waiting for review.');
+        const bar = `${memCounts()}<div class="cd-actbar"><span>Proposed and flagged memories wait here. The Supervisor's model approves or rejects them on its own.</span><button type="button" class="btn-standard" data-act="mem-review-now"${S.memBusy ? ' disabled' : ''}>Ask the Supervisor to review now</button></div>`;
+        return { html: `<div class="cd-list-wrap">${bar}${memList(c, L, 'cd-memory-review', empty)}</div>`, list: true, split: true };
+    }
+    function memDigestPage(c) {
+        const D = S.dig;
+        if (!D.loaded && !D.loading) void loadDigest();
+        if (D.gone) return memGone(c, 'Session Digest');
+        const repos = Array.from(S.memRepos).sort().map((s) => s.replace(/^repo:/, ''));
+        if (D.repo && !repos.includes(D.repo)) repos.push(D.repo);
+        const bar = `<div class="cd-actbar"><label><span>Repository:</span><select class="vdt-select" data-mem-f="repo"><option value="">Any</option>${repos.map((r) => `<option value="${esc(r)}"${r === D.repo ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select></label><span class="mmc-hint">What every session starts with.</span></div>`;
+        const body = D.error ? `<p class="cd-err">${esc(D.error)}</p>` : (D.loaded ? `<pre class="cd-pre cd-mem-digest">${esc(D.text || '(empty)')}</pre>` : '<p class="mmc-hint">Reading the digest...</p>');
+        return {
+            html: `<div class="cd-list-wrap">${bar}<div class="cd-mem-digest-wrap">${body}</div></div>`,
+            mount: (pane) => {
+                const r = pane.querySelector('[data-mem-f="repo"]');
+                if (r) r.addEventListener('change', () => { D.repo = r.value; D.loaded = false; void loadDigest(); c.refresh(); });
+            }
+        };
+    }
+
     // ---- Contractors pages ---------------------------------------------------------------------------------
 
     function contractorsPage(c) {
@@ -1299,6 +1590,11 @@
                     children: [{ id: 'running', name: `Running (${running})`, icon: `${A}/session-16.png`, desc: 'The sessions running now' }].concat(open)
                 },
                 { id: 'activity', name: 'Activity', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Every shell command, tool call and file edit of every session' },
+                { id: 'memory', name: 'Memory', icon: `${ITEMS}/personalization-16.png`, desc: 'The shared memory every Fleet agent reads and writes',
+                    children: [
+                        { id: 'mem-review', name: 'Needs Review', icon: `${VI}/warning-16.png`, desc: 'Proposed and flagged memories' },
+                        { id: 'mem-digest', name: 'Session Digest', icon: `${VI}/info-16.png`, desc: 'The text every session starts with' }
+                    ] },
                 {
                     id: 'co-root',
                     name: 'Coordination',
@@ -1335,6 +1631,56 @@
         return `${c.state(ok, text, st.state === 'reconnecting')}${st.message && !ok ? ` <span class="mmc-hint">${esc(st.message)}</span>` : ''}`;
     }
 
+    // ---- the Supervisor's cost and balances (Plan Usage; claude_desk_supervisor spend) ----------------------
+
+    async function loadSpend() {
+        const P = S.spend;
+        if (P.loading) return;
+        P.loading = true;
+        try {
+            const r = unwrap(await send('claude_desk_supervisor', { action: 'spend' }), 'spend');
+            P.data = r.spend || null;
+            P.error = '';
+            P.gone = false;
+        } catch (e) { if (isGone(e)) P.gone = true; else P.error = errText(e); }
+        P.loading = false;
+        P.loaded = true;
+        repaint();
+    }
+    function spendSum(rows) {
+        const list = Array.isArray(rows) ? rows : [];
+        const sum = (k) => list.reduce((n, r) => n + (Number(r[k]) || 0), 0);
+        const un = sum('unpriced');
+        const tok = sum('prompt') + sum('completion');
+        const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : (n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n)));
+        return `$${sum('cost').toFixed(2)}${un ? ` (+${plural(un, 'call')} unpriced)` : ''}, ${plural(sum('calls'), 'call')}, ${k(tok)} tokens`;
+    }
+    function supervisorSpendHtml(c) {
+        const P = S.spend;
+        if (!P.loaded && !P.loading) void loadSpend();
+        if (P.gone) return '';
+        const d = P.data;
+        if (!d) return `<h4 class="cd-sp-h">Supervisor</h4><p class="${P.error ? 'cd-err' : 'mmc-hint'}">${esc(P.error || 'Reading the Supervisor\'s cost...')}</p>`;
+        const run = d.active || d.configured || {};
+        const fo = (d.failovers || [])[0] || null;
+        const ref = d.lastRefusal || null;
+        const money = !!(ref && /fund|balance|credit|billing|payment|quota|insufficient|402/i.test(ref.error || ''));
+        let bar = '';
+        if (d.failedOver || money) {
+            const text = fo ? `The Supervisor ran out of funds on ${fo.fromEngine} and moved to ${fo.toEngine} (${when(fo.at)}).` : `The Supervisor ran out of funds${ref && ref.engine ? ` on ${ref.engine}` : ''} (${when(ref && ref.at)}).`;
+            bar = `<div class="cd-infobar is-cost" role="alert"><img src="${VI}/error-16.png" alt=""><span>${esc(text)}${ref && ref.error ? ` ${esc(ref.error)}` : ''}</span></div>`;
+        }
+        const w = d.windows || {};
+        const bal = (d.balances || []).map((b) => `${esc(b.name || b.title || b.engine)}: ${esc(b.balanceText || (b.balance != null ? `${b.balance}${b.currency ? ` ${b.currency}` : ''}` : (b.error || 'unknown')))}`);
+        return `<h4 class="cd-sp-h">Supervisor</h4>${bar}${c.props([
+            ['Runs on', esc([run.engine, run.model].filter(Boolean).join(' / ') || 'Not set')],
+            ['Cost today', esc(spendSum(w.today))],
+            ['Cost, 7 days', esc(spendSum(w.week))],
+            ['Cost, 30 days', esc(spendSum(w.month))],
+            ['Balances', bal.length ? bal.join('<br>') : 'None reported']
+        ])}`;
+    }
+
     function rootPage(c) {
         const A = S.app.url('assets').replace(/\/$/, '');
         const act = activeAccount();
@@ -1368,7 +1714,7 @@
                 ['Build gates open', String((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length)]
             ]) + `<p><span class="mmc-link" data-act="nav:co-agents">Agents</span> &nbsp; <span class="mmc-link" data-act="nav:co-builds">Build gates</span></p>` }
         ];
-        return c.page(S.host && S.host.hostname ? `${TITLE} (${S.host.hostname})` : TITLE, S.error ? `Error: ${S.error}` : '', [{ id: 'cd-sum-overview', title: 'Overview', body: overview }, { id: 'cd-sum-usage', title: 'Plan Usage', body: `<div class="cd-usage">${usageHtml()}</div>` }].concat(sections));
+        return c.page(S.host && S.host.hostname ? `${TITLE} (${S.host.hostname})` : TITLE, S.error ? `Error: ${S.error}` : '', [{ id: 'cd-sum-overview', title: 'Overview', body: overview }, { id: 'cd-sum-usage', title: 'Plan Usage', body: `<div class="cd-usage">${usageHtml()}</div>${supervisorSpendHtml(c)}` }].concat(sections));
     }
 
     const ACCOUNT_COLS = [
@@ -2072,6 +2418,9 @@
             case 'aw-sup': return workPage(c, true);
             case 'aw-uns': return unsupervisedPage(c);
             case 'activity': return activityPage(c);
+            case 'memory': return memoryPage(c);
+            case 'mem-review': return memReviewPage(c);
+            case 'mem-digest': return memDigestPage(c);
             case 'contractors': return contractorsPage(c);
             case 'accounts': return accountsPage(c);
             case 'rc': return rcPage(c);
@@ -2110,6 +2459,9 @@
             case 'aw-sup':
             case 'aw-uns': return [{ text: 'New Session...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'activity': return [{ text: 'Read Again', action: 'act-refresh' }];
+            case 'memory': return [{ text: 'Read Again', action: 'mem-refresh' }];
+            case 'mem-review': return [{ text: 'Ask the Supervisor to Review Now', action: 'mem-review-now', disabled: S.memBusy }, { text: 'Read Again', action: 'mem-refresh' }];
+            case 'mem-digest': return [{ text: 'Read Again', action: 'mem-refresh' }];
             case 'contractors': return [{ text: 'Add Contractor...', action: 'con-add' }, { text: 'Read Again', action: 'con-refresh' }];
             case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }, { separator: true }, { text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Clean...', action: 'sup-art-clean' }, { text: 'Forget', action: 'sup-art-forget' }];
             case 'rc-host': return [
@@ -2236,6 +2588,11 @@
         }
         if (key.startsWith('lk:')) { const l = supLocks().find((x) => `${x.root || ''}|${x.file}` === key.slice(3)); return { title: 'Busy Lock', items: [{ text: 'Remove...', action: 'sup-lock-remove', disabled: !l || l.state !== 'orphan' || !!S.sup.busy }] }; }
         if (key.startsWith('ar:')) { const a = supArtifacts().find((x) => String(x.id) === key.slice(3)); return { title: 'Work Folder', items: [{ text: 'Clean...', action: 'sup-art-clean', disabled: !a || !a.cleanable || !!S.sup.busy }, { text: 'Forget', action: 'sup-art-forget', disabled: !a || !!S.sup.busy }] }; }
+        if (key.startsWith('me:')) {
+            const m = memOf(key.slice(3));
+            if (!m) return null;
+            return { title: m.title || 'Memory', items: [{ text: 'Open', action: 'mem-open' }, { separator: true }, { text: 'Approve', action: 'mem-approve', disabled: m.status !== 'proposed' }, { text: 'Reject...', action: 'mem-reject', disabled: m.status !== 'proposed' }, { text: m.pinned ? 'Unpin' : 'Pin', action: 'mem-pin' }, { text: 'Clear Flag', action: 'mem-unflag', disabled: !m.flagged }, { separator: true }, { text: 'Edit...', action: 'mem-edit' }, { text: 'Remove...', action: 'mem-remove' }] };
+        }
         if (key.startsWith('x:')) { const r = S.act.rows.find((x) => String(x.id) === key.slice(2)); return { title: 'Activity', items: [{ text: 'Open Details', action: 'act-open' }, { text: 'Open Session', action: 'act-session', disabled: !(r && r.sessionId) }] }; }
         if (key.startsWith('hd:')) { const h = supHolds().find((x) => String(x.id) === key.slice(3)); return { title: 'Paused Session', items: [{ text: 'Resume', action: 'sup-resume', disabled: !h || !!S.sup.busy }, { text: 'Open Session', action: 'sup-hold-open', disabled: !h }] }; }
         if (key.startsWith('k:')) { const k = conOf(key.slice(2)); return { title: 'Contractor', items: [{ text: 'Open', action: 'con-open' }, { text: 'Start Session...', action: 'con-start', disabled: !(k && k.online) }, { text: 'Revoke...', action: 'con-revoke', disabled: !k || k.revoked }, { text: 'Remove...', action: 'con-remove' }, { separator: true }, { text: 'Add Contractor...', action: 'con-add' }] }; }
@@ -2306,6 +2663,47 @@
                 return true;
             }
             case 'act-more': await loadActivity(true); return true;
+            case 'mem-refresh':
+                [S.mem, S.memRv].forEach((L) => { L.rows = []; L.next = null; L.loaded = false; });
+                S.dig.loaded = false;
+                await Promise.all([c.node === 'mem-digest' ? loadDigest() : loadMem(c.node === 'mem-review' ? S.memRv : S.mem, false), loadMemStats()]);
+                return true;
+            case 'mem-search': {
+                const q = c.modal.querySelector('[data-mem-f="q"]');
+                if (q) { S.mem.q = q.value.trim(); S.mem.qDraft = q.value; }
+                Object.assign(S.mem, { rows: [], next: null, loaded: false });
+                await loadMem(S.mem, false);
+                return true;
+            }
+            case 'mem-more': await loadMem(S.mem, true); return true;
+            case 'mem-open': await openMemory(memSel(c, arg)); return true;
+            case 'mem-approve':
+            case 'mem-reject':
+            case 'mem-pin':
+            case 'mem-unflag':
+            case 'mem-edit':
+            case 'mem-remove': {
+                const id = memSel(c, arg);
+                let m = memOf(id);
+                if (!m) return true;
+                if (a === 'mem-edit') { try { m = (await memCall({ action: 'get', id })).memory || m; } catch (e) { await failBox(c, e); return true; } }
+                await memAct(a.slice(4), m, null, null);
+                return true;
+            }
+            case 'mem-review-now': {
+                if (S.memBusy) return true;
+                S.memBusy = true;
+                c.note('Asking the Supervisor to review...');
+                try {
+                    const r = unwrap(await send('claude_fleet_memory', { action: 'review' }), 'decided');
+                    const n = Array.isArray(r.decided) ? r.decided.length : Number(r.decided) || 0;
+                    c.note(`The Supervisor decided ${n} ${n === 1 ? 'memory' : 'memories'}.`);
+                } catch (e) { c.note(''); await failBox(c, e); }
+                S.memBusy = false;
+                memReload();
+                repaint();
+                return true;
+            }
             case 'act-open': await openActivity(selId(c, 'x:')); return true;
             case 'act-session': {
                 const r = S.act.rows.find((x) => String(x.id) === selId(c, 'x:'));
@@ -2673,6 +3071,7 @@
         else if (key.startsWith('l:')) void action('lock-inspect', c);
         else if (key.startsWith('w:')) void action('work-open', c);
         else if (key.startsWith('x:')) void action('act-open', c);
+        else if (key.startsWith('me:')) void action('mem-open', c);
         else if (key.startsWith('hd:')) void action('sup-hold-open', c);
         else if (key.startsWith('k:')) void action('con-open', c);
     }
@@ -3508,6 +3907,8 @@
                 if (n.id === 'running') return plural(S.live.length, 'session');
                 if (n.id === 'accounts') return plural(S.accounts.length, 'account');
                 if (n.id === 'rc') { const r = fleetRows(); return r.length ? `${r.filter((f) => f.state === 'connected').length} of ${plural(r.length, 'account')} connected` : ''; }
+                if (n.id === 'memory') return S.mem.gone ? NOT_YET : (S.mem.loaded ? `${S.mem.rows.length} shown` : '');
+                if (n.id === 'mem-review') return S.memRv.loaded ? `${S.memRv.rows.length} to review` : '';
                 if (n.id === 'activity') return S.act.loaded ? `${S.act.rows.length} of ${S.act.total} calls` : '';
                 if (n.id === 'contractors') return S.con.gone ? NOT_YET : `${plural(S.con.list.length, 'contractor')}, ${S.con.list.filter((k) => k.online).length} online`;
                 if (n.id === 'aw-sup') return plural(activeItems().length, 'open work item');
@@ -3528,6 +3929,7 @@
                 Array.from(S.wins).forEach((w) => w.close());
                 void unwatch();
                 void usageWatch(false);
+                void memWatch(false);
                 void subscribe(false);
                 if (app0 && !S.exiting) { S.exiting = true; app0.exit(); }
             }
@@ -3564,6 +3966,7 @@
             if (S.watching && id !== `t:${S.watching}` && nodeSid(id) !== S.watching) void unwatch();
             select(id, record);
             void usageWatch(usageWanted(id));
+            void memWatch(MEM_NODES.has(id));
             if (id && nodeSid(id) && S.chats.has(nodeSid(id))) void watch(nodeSid(id));
         };
         if (programFaults()) programFaults().registerProgram(c.modal.id, { name: TITLE, terminate: () => app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: ID }) });
@@ -3575,6 +3978,7 @@
         });
         await subscribe(true);
         void usageWatch(usageWanted(c.node));
+        void memWatch(MEM_NODES.has(c.node));
         void loadSessions(false);
         void loadFleet();
         void loadContractors();
