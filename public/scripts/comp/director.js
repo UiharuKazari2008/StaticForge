@@ -3970,6 +3970,96 @@ class Director {
     }
 
     // Mascot view: the title banner and session HUD (directorMascot.js updateHud).
+    // ---- Yozora's edits this turn (her HUD on the desktop and the phone, the phone's file tags and Changes) ----
+
+    // Her edit rows (tool rows with diffKind 'diff') since the last message Yukimi sent, at most 80.
+    turnEditRows() {
+        const s = this.currentSession;
+        const ms = s && Array.isArray(s.messages) ? s.messages : [];
+        let from = 0;
+        for (let i = ms.length - 1; i >= 0; i--) {
+            if (ms[i] && ms[i].role === 'user' && ms[i].message_type !== 'Attachment') { from = i; break; }
+        }
+        const rows = [];
+        const seen = new Set();
+        for (let i = from; i < ms.length; i++) {
+            const t = ms[i] && Array.isArray(ms[i].trace) ? ms[i].trace : [];
+            t.forEach((r) => {
+                const id = r && r.type === 'tool' && r.diffKind === 'diff' ? (r.payloadId || r.diffId) : '';
+                if (!id || seen.has(id)) return;
+                seen.add(id);
+                rows.push(r);
+            });
+        }
+        return rows.slice(-80);
+    }
+
+    // The files of her last turn's edits: [{ file, name, add, del, hunks }], in the order she touched them.
+    // Each edit's payload is read once (director_tool_payload); only this turn's stay parsed (#890).
+    async turnFileChanges() {
+        const sid = this.currentSession && this.currentSession.id;
+        if (!sid) return [];
+        if (!this._changeCache) this._changeCache = new Map();
+        const cache = this._changeCache;
+        const rows = this.turnEditRows();
+        const one = async (r) => {
+            const id = `${sid}|${r.payloadId || r.diffId}`;
+            if (cache.has(id)) return cache.get(id);
+            let c;
+            try {
+                const p = await this.directorRequest('director_tool_payload', { sessionId: sid, payloadId: r.payloadId || r.diffId, diffId: r.diffId || '' });
+                c = directorParseChange(r, p && p.args, p && p.result);
+                cache.set(id, c);
+            } catch (_) {
+                c = { file: '', add: 0, del: 0, lines: [], cut: true };
+            }
+            return c;
+        };
+        const out = [];
+        for (let i = 0; i < rows.length; i += 8) out.push(...await Promise.all(rows.slice(i, i + 8).map(one)));
+        const keep = new Set(rows.map((r) => `${sid}|${r.payloadId || r.diffId}`));
+        cache.forEach((_, k) => { if (!keep.has(k)) cache.delete(k); });
+        const files = new Map();
+        out.forEach((c) => {
+            const k = c.file || '(unknown file)';
+            if (!files.has(k)) files.set(k, { file: k, name: k.split('/').pop(), add: 0, del: 0, hunks: [] });
+            const f = files.get(k);
+            f.add += c.add;
+            f.del += c.del;
+            f.hunks.push(c);
+        });
+        return [...files.values()];
+    }
+
+    // Yozora's HUD numbers (Yukimi Nov 24 2026): files she edited this turn where the others count prints, the
+    // lines added and removed, and her task list's progress in the ring. The files are read in the background;
+    // the HUD is painted again when they arrive.
+    xiHudNumbers() {
+        const sid = this.currentSession && this.currentSession.id;
+        const rows = this.turnEditRows();
+        const key = `${sid}|${rows.map((r) => r.payloadId || r.diffId).join(',')}`;
+        if (!this._xiFiles || this._xiFiles.key !== key) {
+            const keepOld = this._xiFiles && this._xiFiles.sid === sid ? this._xiFiles.files : [];
+            this._xiFiles = { key, sid, files: rows.length ? keepOld : [] };
+            if (rows.length) {
+                void this.turnFileChanges().then((files) => {
+                    if (!this._xiFiles || this._xiFiles.key !== key) return;
+                    this._xiFiles.files = files;
+                    this.paintMascotHud();
+                });
+            }
+        }
+        const files = this._xiFiles.files || [];
+        const tasks = this.sessionTasks();
+        const done = tasks.filter((t) => t && t.done).length;
+        return {
+            count: files.length,
+            countLabel: 'files',
+            diff: { add: files.reduce((n, f) => n + (f.add || 0), 0), del: files.reduce((n, f) => n + (f.del || 0), 0) },
+            ring: tasks.length ? { pct: (done / tasks.length) * 100, text: `${done}/${tasks.length}`, title: `Tasks done: ${done} of ${tasks.length}` } : null
+        };
+    }
+
     paintMascotHud() {
         if (!this.mascot || typeof this.mascot.updateHud !== 'function') return;
         const session = this.currentSession;
@@ -3993,7 +4083,9 @@ class Director {
         }
         const meta = this.sessionWorkspaceMeta(session);
         const sub = [meta && meta.name, `Turn ${turns}`, prints ? `${prints} prints` : ''].filter(Boolean).join(' \u00b7 ').toUpperCase();
-        this.mascot.updateHud({ title: session.name || 'Director', sub, turns, prints, ratio, color: meta && meta.color });
+        const info = { title: session.name || 'Director', sub, turns, prints, ratio, color: meta && meta.color };
+        if (this.persona === 'xi') Object.assign(info, this.xiHudNumbers());
+        this.mascot.updateHud(info);
     }
 
     // Mascot view with the log hidden: the parts of the finished turn's dialogue box
@@ -4224,6 +4316,8 @@ class Director {
     renderSessionTasks() {
         if (!this.directorTaskList) return;
         const tasks = this.sessionTasks();
+        // Yozora's HUD ring is this list's progress
+        if (this.persona === 'xi') this.paintMascotHud();
         this.directorTaskList.classList.toggle('hidden', tasks.length === 0);
         this.directorTaskList.innerHTML = '';
         if (!tasks.length) return;

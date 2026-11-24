@@ -3517,3 +3517,75 @@ html.ui-mobile[data-wm-version="6.5"] .wm-director .wmd-thumb.is-pending {
     animation: wm-strip calc(var(--n) * var(--ms) * 1ms) steps(var(--n)) infinite;
     pointer-events: none;
 }
+
+/* ======================================================================
+ * "This session belongs to <workspace>" (#directorWorkspaceBanner) in the persona's own kit: on the phone
+ * always (the shell's black text sat on the workspace's 40 % glass), on the desktop over her scene (the log
+ * view keeps the Vista command-bar glass, vista-director.css). Yukimi Nov 24 2026.
+ * ====================================================================== */
+html.ui-mobile #directorContainer:not([data-persona="xi"]) #directorWorkspaceBanner,
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-view > #directorWorkspaceBanner {
+    color: var(--mk-cream);
+    text-shadow: 0 1px 1px black;
+    background: var(--mk-lac);
+    border-bottom: 2px solid;
+    border-image: var(--mk-gold) 1;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+html.ui-mobile #directorContainer[data-persona="xi"] #directorWorkspaceBanner,
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-view > #directorWorkspaceBanner {
+    color: var(--sh-text);
+    text-shadow: 0 1px 1px black;
+    background: var(--sh-night);
+    border-bottom: 1px solid var(--sh-rim);
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+/* Switch: the kit's button, gold-edged lacquer / a foxfire-edged night plate */
+html.ui-mobile #directorContainer:not([data-persona="xi"]) #directorWorkspaceBanner #directorWorkspaceSwitchBtn,
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-view > #directorWorkspaceBanner #directorWorkspaceSwitchBtn {
+    min-height: 28px;
+    padding: 3px 14px;
+    border: 1.5px solid transparent;
+    border-radius: 0;
+    background: linear-gradient(var(--mk-slip-hi), var(--mk-slip-lo)) padding-box, var(--mk-gold) border-box;
+    box-shadow: none;
+    color: var(--mk-gold-flat);
+    font-weight: 700;
+    text-shadow: 0 1px 1px black;
+    opacity: 1;
+}
+
+html.ui-mobile #directorContainer[data-persona="xi"] #directorWorkspaceBanner #directorWorkspaceSwitchBtn,
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-view > #directorWorkspaceBanner #directorWorkspaceSwitchBtn {
+    min-height: 28px;
+    padding: 3px 14px;
+    border: 1px solid var(--sh-fire);
+    border-radius: 0;
+    background: var(--sh-verm);
+    box-shadow: none;
+    color: white;
+    font-weight: 700;
+    text-shadow: 0 1px 1px black;
+    opacity: 1;
+}
+
+html.ui-mobile #directorContainer:not([data-persona="xi"]) #directorWorkspaceBanner #directorWorkspaceSwitchBtn:active,
+html:not(.ui-mobile) #directorContainer:not([data-persona="xi"]) #directorSessionChat.director-mascot-view > #directorWorkspaceBanner #directorWorkspaceSwitchBtn:is(:hover, :active) {
+    background: var(--mk-gold) padding-box, var(--mk-gold) border-box;
+    color: var(--mk-ink);
+    text-shadow: none;
+}
+
+html.ui-mobile #directorContainer[data-persona="xi"] #directorWorkspaceBanner #directorWorkspaceSwitchBtn:active,
+html:not(.ui-mobile) #directorContainer[data-persona="xi"] #directorSessionChat.director-mascot-view > #directorWorkspaceBanner #directorWorkspaceSwitchBtn:is(:hover, :active) {
+    background: var(--sh-fire);
+    color: black;
+    text-shadow: none;
+}
+

@@ -226,13 +226,6 @@
             const cam = this.camera();
             const face = Array.isArray(this.manifest.face) ? this.manifest.face : [cam[0] + cam[2] / 2, cam[1] + cam[3] * 0.2, cam[2] * 0.15];
             if (box.width > box.height) {
-                // landscape: the stage's own top again (the portrait inset is measured for the portrait chrome)
-                if (stage === this.root && stage.style.top) {
-                    stage.style.top = '';
-                    const r1 = stage.getBoundingClientRect();
-                    box.width = r1.width;
-                    box.height = r1.height;
-                }
                 // landscape: the desktop's own staging (sized from the height, her face toward her side).
                 // The desktop measures the whole chat; beside the log her scene is narrower, so the
                 // same staging is redone in the scene's box (unchanged numbers when they are the same box)
@@ -285,18 +278,7 @@
             this._k = k;
             if (typeof this.placeThink === 'function') this.placeThink(face, k, px - face[0] * k, py - face[1] * k, box.width);
         };
-        // the HUD's second counter is Yozora's files: directorMascot.js writes the prints count on every paint
-        const hud = m.updateHud.bind(m);
-        m.updateHud = function (info) {
-            hud(info);
-            paintFilesHud(dir());
-        };
-        // ...and on every other paint too (turn start / end repaint the chips with the prints count)
-        const chrome = m.paintChrome.bind(m);
-        m.paintChrome = function () {
-            chrome();
-            paintFilesHud(dir());
-        };
+        // Yozora's HUD (files, lines, tasks) comes with the HUD info itself: director.js xiHudNumbers
         // the pager counts pages of (height - 24 px): a short box read "1/2" with nothing more to show
         const pager = m.paintPager.bind(m);
         m.paintPager = function () {
@@ -1487,126 +1469,15 @@
      *   page    Changes (Menu > Changes, or a tag): one file's edits as removed and added lines
      *   HUD     the second counter reads "files"
      */
-    const changeCache = new Map();
     let filesKey = null;
     let filesSeq = 0;
-    let filesCount = null;
-    let filesAdd = 0;
-    let filesDel = 0;
 
-    function editRows(d) {
-        const s = d && d.currentSession;
-        const ms = s && Array.isArray(s.messages) ? s.messages : [];
-        let from = 0;
-        for (let i = ms.length - 1; i >= 0; i--) {
-            if (ms[i] && ms[i].role === 'user' && ms[i].message_type !== 'Attachment') { from = i; break; }
-        }
-        const rows = [];
-        const seen = new Set();
-        for (let i = from; i < ms.length; i++) {
-            const t = ms[i] && Array.isArray(ms[i].trace) ? ms[i].trace : [];
-            t.forEach((r) => {
-                const id = r && r.type === 'tool' && r.diffKind === 'diff' ? (r.payloadId || r.diffId) : '';
-                if (!id || seen.has(id)) return;
-                seen.add(id);
-                rows.push(r);
-            });
-        }
-        return rows.slice(-80);
-    }
-
-    /** The files of her last turn's edits: [{ file, name, add, del, hunks }], in the order she touched them. */
-    async function loadChanges(d) {
-        const sid = d && d.currentSession && d.currentSession.id;
-        if (!sid) return [];
-        const rows = editRows(d);
-        const one = async (r) => {
-            const id = `${sid}|${r.payloadId || r.diffId}`;
-            if (changeCache.has(id)) return changeCache.get(id);
-            let c;
-            try {
-                const p = await d.directorRequest('director_tool_payload', { sessionId: sid, payloadId: r.payloadId || r.diffId, diffId: r.diffId || '' });
-                c = directorParseChange(r, p && p.args, p && p.result);
-                changeCache.set(id, c);
-            } catch (_) {
-                c = { file: '', add: 0, del: 0, lines: [], cut: true };
-            }
-            return c;
-        };
-        const out = [];
-        for (let i = 0; i < rows.length; i += 8) out.push(...await Promise.all(rows.slice(i, i + 8).map(one)));
-        // only this turn's edits stay parsed: the cache grew by every edit of every chat (5-30 MB on a
-        // busy day, #890); an older one is read again if it is asked for
-        const keep = new Set(rows.map((r) => `${sid}|${r.payloadId || r.diffId}`));
-        changeCache.forEach((_, k) => { if (!keep.has(k)) changeCache.delete(k); });
-        const files = new Map();
-        out.forEach((c) => {
-            const k = c.file || '(unknown file)';
-            if (!files.has(k)) files.set(k, { file: k, name: k.split('/').pop(), add: 0, del: 0, hunks: [] });
-            const f = files.get(k);
-            f.add += c.add;
-            f.del += c.del;
-            f.hunks.push(c);
-        });
-        return [...files.values()];
-    }
+    // her edit rows and the files they touched: director.js turnEditRows / turnFileChanges (the HUD reads them too)
+    const editRows = (d) => (d && typeof d.turnEditRows === 'function' ? d.turnEditRows() : []);
+    const loadChanges = (d) => (d && typeof d.turnFileChanges === 'function' ? d.turnFileChanges() : Promise.resolve([]));
 
     const fileTag = (f, on) => `<button type="button" class="wmd-file${on ? ' is-on' : ''}" data-file="${esc(f.file)}">${esc(f.name)}`
         + `${f.add ? ` <i class="wmd-add">+${f.add}</i>` : ''}${f.del ? ` <i class="wmd-del">−${f.del}</i>` : ''}</button>`;
-
-    const shortCount = (n) => (n >= 10000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
-
-    /**
-     * Yozora's HUD (#744, Yukimi Nov 24 2026): files she edited this turn where the others count prints,
-     * the lines added and removed beside it, and her task list's progress in the ring (the others' ring
-     * is the report card's hit ratio). directorMascot.js paints prints / ratio first; this runs after.
-     */
-    function paintFilesHud(d) {
-        const hudEl = page && page.querySelector('.dm-hud');
-        const b = hudEl && hudEl.querySelector('[data-hud="prints"]');
-        const label = b && b.parentNode ? b.parentNode.querySelector('span') : null;
-        if (!b || !label) return;
-        const xi = !!(d && d.persona === 'xi');
-        const want = xi ? 'files' : 'prints';
-        if (label.textContent !== want) label.textContent = want;
-        let diff = hudEl.querySelector('.dm-hud-diff');
-        const ring = hudEl.querySelector('.dm-hud-ring');
-        if (!xi) {
-            if (diff) diff.hidden = true;
-            if (ring && ring.dataset.tasks) { delete ring.dataset.tasks; ring.title = 'Hit ratio of the last report card'; }
-            return;
-        }
-        const n = filesCount == null ? 0 : filesCount;
-        if (b.textContent !== String(n)) b.textContent = String(n);
-        if (!diff) {
-            diff = document.createElement('div');
-            diff.className = 'dm-hud-chip dm-hud-diff';
-            diff.title = 'Lines added and removed this turn';
-            diff.innerHTML = '<b class="dm-diff-add"></b><b class="dm-diff-del"></b>';
-            b.parentNode.after(diff);
-        }
-        diff.hidden = false;
-        const add = `+${shortCount(filesAdd)}`;
-        const del = `\u2212${shortCount(filesDel)}`;
-        if (diff.firstChild.textContent !== add) diff.firstChild.textContent = add;
-        if (diff.lastChild.textContent !== del) diff.lastChild.textContent = del;
-        if (ring) {
-            let tasks = [];
-            try { tasks = typeof d.sessionTasks === 'function' ? d.sessionTasks() : []; } catch (_) { tasks = []; }
-            const done = tasks.filter((t) => t && t.done).length;
-            if (tasks.length) {
-                const pct = Math.round((done / tasks.length) * 100);
-                ring.dataset.tasks = `${done}/${tasks.length}`;
-                ring.title = `Tasks done: ${done} of ${tasks.length}`;
-                const span = ring.querySelector('[data-hud="ratio"]');
-                if (span && span.textContent !== `${done}/${tasks.length}`) span.textContent = `${done}/${tasks.length}`;
-                const disc = ring.querySelector('.dm-ring');
-                if (disc) disc.style.setProperty('--p', pct);
-            } else if (ring.dataset.tasks) {
-                delete ring.dataset.tasks;
-            }
-        }
-    }
 
     function paintFiles() {
         if (!page) return;
@@ -1632,23 +1503,15 @@
             const settle = () => { if (d.mascot && d.mascot._result) d.mascot.settleLayout(300); };
             if (!on) closePages('changes');
             if (!rows.length) {
-                filesCount = on ? 0 : null;
-                filesAdd = 0;
-                filesDel = 0;
                 if (bar.innerHTML) { bar.innerHTML = ''; settle(); }
             } else {
                 void loadChanges(d).then((files) => {
                     if (seq !== filesSeq) return;
-                    filesCount = files.length;
-                    filesAdd = files.reduce((n, f) => n + (f.add || 0), 0);
-                    filesDel = files.reduce((n, f) => n + (f.del || 0), 0);
                     bar.innerHTML = files.map((f) => fileTag(f, false)).join('');
-                    paintFilesHud(d);
                     settle();
                 });
             }
         }
-        paintFilesHud(d);
     }
 
     /* global directorParseChange, directorChangeHtml */

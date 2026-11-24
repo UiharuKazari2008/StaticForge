@@ -1219,6 +1219,18 @@ class DirectorMascot {
         this._heldTimer = setTimeout(() => { this._heldTimer = 0; this._heldUntil = 0; this.layout(); }, Math.max(0, Number(ms) || 0));
     }
 
+    // How far down the chat's own chrome reaches over her scene: the title banner, the HUD and the workspace
+    // line. Her stage starts under it so her head never reaches up into them (Yukimi Nov 24 2026).
+    chromeInset(hostTop) {
+        let top = 0;
+        [this.el && this.el.banner, this.el && this.el.hud, this.host && this.host.querySelector('#directorWorkspaceBanner')].forEach((el) => {
+            if (!el || el.classList.contains('hidden') || el.hidden) return;
+            const r = el.getBoundingClientRect();
+            if (r.height) top = Math.max(top, r.bottom - hostTop + 4);
+        });
+        return Math.round(top);
+    }
+
     layout() {
         // not shown: nothing to measure (applyView lays her out again when she shows)
         if (!this.root || !this.manifest || !this.host || !this._shown) return;
@@ -1241,12 +1253,16 @@ class DirectorMascot {
         const [W, H] = this.manifest.size;
         const cam = this.camera();
         const vn = this.view === 'mascot';
+        // the visual novel's stage starts under the chat's chrome; elsewhere it is the whole chat area
+        const chromeTop = vn ? this.chromeInset(hostBox.top) : 0;
+        const wantTop = chromeTop ? `${chromeTop}px` : '';
+        if (this.root.style.top !== wantTop) this.root.style.top = wantTop;
         if (vn) {
             // Visual novel (Yukimi): her face rests at one spot for every pose and every persona: 24% in from
             // her side, 24% down (head top lands about 12 to 15% down), sized so faces match across personas.
             // The rest of her spills out of frame where it is bigger.
             const face = Array.isArray(this.manifest.face) ? this.manifest.face : [cam[0] + cam[2] / 2, cam[1] + cam[3] * 0.2, cam[2] * 0.15];
-            const Wh = hostBox.width, Hh = hostBox.height;
+            const Wh = hostBox.width, Hh = Math.max(1, hostBox.height - chromeTop);
             const kv = (Hh * 0.11) / Math.max(1, face[2]);
             const px = this.manifest.anchor === 'left' ? Wh * 0.24 : Wh * 0.76;
             const py = Hh * 0.24;
@@ -2206,7 +2222,8 @@ class DirectorMascot {
         this.paintChrome();
     }
 
-    // info: { title, sub, turns, prints, ratio (0..1 or null) } from director.js paintMascotHud.
+    // info: { title, sub, turns, prints, ratio (0..1 or null), and for Yozora count + countLabel ('files'),
+    // diff { add, del } and ring { pct, text, title } (her task list) } from director.js paintMascotHud.
     updateHud(info) {
         this._hud = info || null;
         this.setAccent(info && info.color);
@@ -2225,10 +2242,42 @@ class DirectorMascot {
             this.el.banner.querySelector('.dm-banner-sub').textContent = this.working ? `${hud.sub || ''} · WORKING`.replace(/^ · /, '') : (hud.sub || '');
             const set = (key, value) => { const node = this.el.hud.querySelector(`[data-hud="${key}"]`); if (node && node.textContent !== String(value)) node.textContent = String(value); };
             set('turns', hud.turns || 0);
-            set('prints', hud.prints || 0);
-            const pct = hud.ratio == null ? null : Math.round(hud.ratio * 100);
-            set('ratio', pct == null ? '-' : `${pct}%`);
-            this.el.hud.querySelector('.dm-ring').style.setProperty('--p', pct == null ? 0 : pct);
+            // the second counter: prints, or what the persona counts instead (Yozora: the files she edited)
+            set('prints', hud.count != null ? hud.count : (hud.prints || 0));
+            const countChip = this.el.hud.querySelector('[data-hud="prints"]');
+            const countLabel = countChip && countChip.parentNode ? countChip.parentNode.querySelector('span') : null;
+            if (countLabel && countLabel.textContent !== (hud.countLabel || 'prints')) countLabel.textContent = hud.countLabel || 'prints';
+            // lines added and removed (Yozora), beside the count
+            let diff = this.el.hud.querySelector('.dm-hud-diff');
+            if (hud.diff && !diff && countChip) {
+                diff = document.createElement('div');
+                diff.className = 'dm-hud-chip dm-hud-diff';
+                diff.title = 'Lines added and removed this turn';
+                diff.innerHTML = '<b class="dm-diff-add"></b><b class="dm-diff-del"></b>';
+                countChip.parentNode.after(diff);
+            }
+            if (diff) {
+                diff.hidden = !hud.diff;
+                if (hud.diff) {
+                    const short = (n) => (n >= 10000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+                    const add = `+${short(hud.diff.add || 0)}`;
+                    const del = `\u2212${short(hud.diff.del || 0)}`;
+                    if (diff.firstChild.textContent !== add) diff.firstChild.textContent = add;
+                    if (diff.lastChild.textContent !== del) diff.lastChild.textContent = del;
+                }
+            }
+            // the ring: the report card's hit ratio, or (hud.ring) another progress, e.g. Yozora's task list
+            const ringChip = this.el.hud.querySelector('.dm-hud-ring');
+            if (hud.ring) {
+                set('ratio', hud.ring.text);
+                this.el.hud.querySelector('.dm-ring').style.setProperty('--p', Math.round(hud.ring.pct || 0));
+                if (ringChip) { ringChip.dataset.tasks = hud.ring.text; ringChip.title = hud.ring.title || ''; }
+            } else {
+                const pct = hud.ratio == null ? null : Math.round(hud.ratio * 100);
+                set('ratio', pct == null ? '-' : `${pct}%`);
+                this.el.hud.querySelector('.dm-ring').style.setProperty('--p', pct == null ? 0 : pct);
+                if (ringChip && ringChip.dataset.tasks) { delete ringChip.dataset.tasks; ringChip.title = 'Hit ratio of the last report card'; }
+            }
             // Growth: points toward the next stage (behaviour.growth).
             const g = this.manifest ? directorMascotGrowth(this.manifest) : { order: [], points: [] };
             const pts = Number(this.growthPoints) || 0;
