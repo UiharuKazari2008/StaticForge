@@ -147,7 +147,15 @@ function paneOf(pid) {
     if (!pid) return null;
     const chain = new Set([pid]);
     let p = pid;
-    for (let i = 0; i < 4; i += 1) { p = parentOf(p); if (p > 1) chain.add(p); }
+    for (let i = 0; i < 4; i += 1) {
+        p = parentOf(p);
+        if (p <= 1) break;
+        // above it sits Remote Control's server: its pane is the server's terminal, never typed into (#1154)
+        let cmd = '';
+        try { cmd = fs.readFileSync(`/proc/${p}/cmdline`, 'utf8').replace(/\0/g, ' '); } catch (_) { cmd = ''; }
+        if (/\bremote-control\b/.test(cmd) && !/--remote-control\b/.test(cmd)) break; // its pane is the server's: the climb stops
+        chain.add(p);
+    }
     for (const sock of [[], ['-L', CARRY_SOCKET]]) {
         const hit = tmuxPanes(sock).find((x) => chain.has(x.pid));
         if (hit) return { sock, pane: hit.pane };
@@ -193,6 +201,7 @@ const TOOLS = [
     { name: 'coord_build_begin', description: 'Start your gated build: refused while anyone is pending or not ready or another build of the target runs (the answer says who). force with a reason starts anyway and tells everyone.', inputSchema: S({ build: { type: 'number' }, force: { type: 'boolean' }, reason: str('Required with force') }, ['build']) },
     { name: 'coord_build_end', description: 'End your build (or cancel a gate you opened); everyone is told the result.', inputSchema: S({ build: { type: 'number' }, result: str('One line: ok / failed and why') }, ['build']) },
     { name: 'coord_supervisor_check', description: 'Ask the Supervisor (a separate model) to check your current turn: does what you did cover everything in the request and every steering message? Answers verdict ok / gaps / unclear and the missed items. Call it before you say you are done with a multi-part request.', inputSchema: S({}) },
+    { name: 'coord_request_work', description: 'Hand a piece of work to the Supervisor: it becomes a work item that starts as its own supervised Fleet session (startNow: as soon as there is a slot and an account with room; else it waits in the queue for Yukimi or the Supervisor). Give a complete brief: goal, files, acceptance check. Use it for work outside your task, or work that should run beside yours.', inputSchema: S({ title: str('Short title'), prompt: str('The whole brief'), start_now: { type: 'boolean', description: 'Start it now when there is room (default false: queued)' }, cwd: str('Absolute folder (default the Dreamscape repo)'), model: str('Model (default sonnet)'), effort: str('low | medium | high | xhigh | max') }, ['title', 'prompt']) },
     { name: 'coord_builds', description: 'Open and running build gates (recent: also the ones that ended in the last day).', inputSchema: S({ repo: str('Repo name'), recent: { type: 'boolean' } }) }
 ];
 
@@ -272,6 +281,8 @@ function run(name, args) {
         return store.buildEnd(ego.id, a.build, a.result);
     case 'coord_supervisor_check':
         return supervisorCheck();
+    case 'coord_request_work':
+        return supervisorAsk({ op: 'enqueue', title: a.title, prompt: a.prompt, startNow: a.start_now === true, cwd: a.cwd, model: a.model, effort: a.effort }, 20000).then((out) => ({ work: out.work }));
     case 'coord_builds':
         return { builds: store.builds({ repo: a.repo, recent: a.recent === true }) };
     default:
@@ -285,21 +296,27 @@ function run(name, args) {
 function supervisorCheck() {
     const rec = claudeRecord();
     if (!rec) return Promise.reject(new Error('The Supervisor checks Claude Code sessions: this one has no session record'));
+    return supervisorAsk({ op: 'check', sessionId: rec.sessionId }, 120000).then((out) => {
+        const r = out.review || {};
+        return { verdict: r.verdict, summary: r.summary, missed: r.missed || [], model: r.model, request: (r.request || '').slice(0, 300), steering: r.steering || [] };
+    });
+}
+
+/** One request to the Supervisor's socket: { ok, ... } or a rejection with its error. */
+function supervisorAsk(req, timeoutMs) {
     const net = require('net');
     const file = process.env.AGENT_SUPERVISOR_SOCKET || path.join(path.dirname(store.dbPath()), 'supervisor.sock');
     return new Promise((resolve, reject) => {
         let buf = '';
-        const sock = net.createConnection(file, () => sock.write(`${JSON.stringify({ op: 'check', sessionId: rec.sessionId })}\n`));
+        const sock = net.createConnection(file, () => sock.write(`${JSON.stringify(req)}\n`));
         sock.setEncoding('utf8');
-        sock.setTimeout(120000, () => { sock.destroy(); reject(new Error('The Supervisor did not answer in 2 minutes')); });
+        sock.setTimeout(timeoutMs, () => { sock.destroy(); reject(new Error('The Supervisor did not answer in time')); });
         sock.on('data', (c) => { buf += c; });
         sock.on('end', () => {
-            try {
-                const out = JSON.parse(buf.trim());
-                if (!out.ok) return reject(new Error(out.error || 'The Supervisor failed'));
-                const r = out.review || {};
-                return resolve({ verdict: r.verdict, summary: r.summary, missed: r.missed || [], model: r.model, request: (r.request || '').slice(0, 300), steering: r.steering || [] });
-            } catch (e) { return reject(new Error('The Supervisor answered something unreadable')); }
+            let out = null;
+            try { out = JSON.parse(buf.trim()); } catch (e) { return reject(new Error('The Supervisor answered something unreadable')); }
+            if (!out.ok) return reject(new Error(out.error || 'The Supervisor failed'));
+            return resolve(out);
         });
         sock.on('error', (e) => reject(new Error(e.code === 'ENOENT' || e.code === 'ECONNREFUSED' ? 'The Supervisor is not running (it runs inside the Dreamscape server)' : e.message)));
     });

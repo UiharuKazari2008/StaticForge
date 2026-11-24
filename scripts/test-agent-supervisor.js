@@ -224,6 +224,57 @@ sup._test.setFetch(async (url, opts) => {
         assert.ok(!sup.artifactStatus().some((a) => a.id === inRepo.id));
     });
 
+    await test('work queue: starts supervised sessions up to the slot limit; Start Now passes it; reviews set done / waiting', async () => {
+        settingsCfg.agentSupervisor = Object.assign(settingsCfg.agentSupervisor, { maxConcurrent: 1, autoStart: true });
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart;
+        const realStart = launcher.start;
+        const started = [];
+        let n = 0;
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: { defaultModel: 'sonnet', defaultMode: 'bypassPermissions' } });
+        launcher.start = async (g, o) => {
+            n += 1;
+            const id = `dddddddd-0000-0000-0000-00000000000${n}`;
+            started.push(o);
+            fs.writeFileSync(path.join(tmp, '.claude', 'sessions', `${process.pid}${n}.json`), JSON.stringify({ pid: process.pid, sessionId: id, status: 'busy', cwd: tmp }));
+            return { id, state: 'connected', link: `https://claude.ai/code/session_${n}` };
+        };
+        try {
+            sup.bind(gr);
+            const a = sup.enqueue({ title: 'A', prompt: 'do A' }, { gr });
+            await sup.pumpWork(gr);
+            const b = sup.enqueue({ title: 'B', prompt: 'do B' }, { gr });
+            await sup.pumpWork(gr);
+            assert.strictEqual(sup.getWork(a.id).state, 'running');
+            assert.strictEqual(sup.getWork(b.id).state, 'queued');
+            assert.match(sup.getWork(b.id).message, /slot/);
+            assert.ok(sup.isSupervised(sup.getWork(a.id).sessionId));
+            assert.match(started[0].prompt, /supervised Fleet session/);
+            assert.strictEqual(started[0].model, 'sonnet');
+            sup.startWork(b.id);
+            await sup.pumpWork(gr);
+            assert.strictEqual(sup.getWork(b.id).state, 'running', 'Start Now passes the slot limit');
+            sup.workAfterReview({ sessionId: sup.getWork(a.id).sessionId, verdict: 'gaps', missed: [{ item: 'tests' }], summary: '' });
+            assert.strictEqual(sup.getWork(a.id).state, 'waiting');
+            sup.workAfterReview({ sessionId: sup.getWork(a.id).sessionId, verdict: 'ok', missed: [], summary: 'all done' });
+            assert.strictEqual(sup.getWork(a.id).state, 'done');
+            const c = sup.enqueue({ title: 'C', prompt: 'do C', sourceRef: 'plaud:x1', source: 'plaud' }, { gr });
+            assert.strictEqual(sup.enqueue({ title: 'C again', prompt: 'do C', sourceRef: 'plaud:x1', source: 'plaud' }, { gr }).id, c.id, 'one item per recording');
+            assert.strictEqual(sup.cancelWork(c.id).state, 'cancelled');
+            assert.ok(sup.summary().version > 0);
+            // an agent asks over the socket
+            sup.start(gr);
+            await new Promise((r) => setTimeout(r, 100));
+            const reply = await new Promise((resolve, reject) => {
+                let buf = '';
+                const sock = require('net').createConnection(process.env.AGENT_SUPERVISOR_SOCKET, () => sock.write(`${JSON.stringify({ op: 'enqueue', title: 'From an agent', prompt: 'do D' })}\n`));
+                sock.on('data', (ch) => { buf += ch; }); sock.on('end', () => resolve(JSON.parse(buf))); sock.on('error', reject);
+            });
+            assert.ok(reply.ok && reply.work.source === 'agent' && reply.work.state === 'queued', JSON.stringify(reply));
+            sup.stop();
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; }
+    });
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');

@@ -46,7 +46,7 @@ const TOOLS = [
     tool('claude_fleet_status', 'Every Claude account: plan usage (current session / 5-hour and weekly percent used, resets), Remote Control (connected / stopped / error; own folder or the host\'s login), the sessions running on it (busy / idle, title, folder, link), and the coordination picture (agents, claims, open build gates). Read this before claude_dispatch.', {
         refresh: { type: 'boolean', description: 'Read usage now instead of the cached read (at most every 20 s)' }
     }),
-    tool('claude_dispatch', 'Start a Claude Code session on an account with a model and effort, in a folder, with a first prompt. It runs in Remote Control (Yukimi sees it on claude.ai/code) with the agent-coord MCP (claims, busy locks, build gates). Answers its session id, account and link. Give the prompt the whole task: the Yozora issue, the files, the acceptance check, and that it must coord_claim before editing and coord_build_request before any build.', {
+    tool('claude_dispatch', 'Hand work to the Supervisor: it becomes a work item that starts as a supervised Fleet session (now when there is a slot and an account with room, else queued) on an account with a model and effort, in a folder, with a first prompt. The Supervisor checks each of its turns against the request. It runs in Remote Control (Yukimi sees it on claude.ai/code) with the agent-coord MCP (claims, busy locks, build gates). Answers its session id, account and link. Give the prompt the whole task: the Yozora issue, the files, the acceptance check, and that it must coord_claim before editing and coord_build_request before any build.', {
         prompt: str('The task, complete (it starts with nothing else)'),
         account: str('Account name or index from claude_fleet_status, or "auto" (default): the account with the most headroom'),
         model: str('Model alias (sonnet, opus, haiku, fable) or a full model id. Default sonnet (subagents-sonnet rule): pick another only for a named reason (undecided design, a bug Sonnet already failed on, a security review, Yukimi asked) and say it in modelReason'),
@@ -55,7 +55,8 @@ const TOOLS = [
         cwd: str('Absolute folder on the host (default: the Dreamscape repo)'),
         title: str('Session title shown in claude.ai/code (default: the prompt\'s first line)'),
         mode: { type: 'string', enum: ['bypassPermissions', 'acceptEdits', 'auto', 'default', 'plan'], description: 'Permission mode (default bypassPermissions, as Remote Control\'s)' },
-        allowFull: { type: 'boolean', description: 'Allow an account at 95% or more of a limit' }
+        allowFull: { type: 'boolean', description: 'Allow an account at 95% or more of a limit' },
+        startNow: { type: 'boolean', description: 'Start it now when there is room (default true); false leaves it queued for Yukimi or the Supervisor to start' }
     }, ['prompt']),
     tool('claude_session_read', 'A Claude session: busy / idle, account, model, its latest messages, the files it edited and its claims (from agent-coord).', {
         session: str('Session id (or its first 8 characters)'),
@@ -197,13 +198,18 @@ async function dispatch(gr, name, input) {
         if (input.model && !/sonnet/i.test(model) && !String(input.modelReason || '').trim()) {
             throw new Error(`Dispatches start on Sonnet: pass modelReason to use ${model} (undecided design, a bug Sonnet already failed on, a security review, or Yukimi asked)`);
         }
-        const r = await launcher().start(gr, {
-            cwd, prompt, title: input.title, account: acc.index, mode: input.mode,
-            model, effort: input.effort || (acc.settings && acc.settings.defaultEffort) || undefined, dispatchedBy: 'Yozora'
-        });
+        // Director requests are Supervisor work (Yukimi, Nov 24 2026): queued and started as a supervised Fleet
+        // session (steerable from Fleet), now when there is a slot and an account with room
+        const sup = require('./agentSupervisor');
+        let w = sup.enqueue({
+            title: input.title, prompt, cwd, account: input.account && String(input.account).toLowerCase() !== 'auto' ? acc.index : null,
+            model, effort: input.effort || (acc.settings && acc.settings.defaultEffort) || undefined, startNow: input.startNow !== false, source: 'director'
+        }, { gr });
+        await sup.pumpWork(gr);
+        w = sup.getWork(w.id);
         return {
-            session: r.id, account: { index: acc.index, name: acc.name }, model: r.model, effort: r.effort,
-            state: r.state, link: r.link || '', message: r.message, tmux: r.tmuxSession,
+            work: w.id, state: w.state, session: w.sessionId || null, account: w.account || acc.name, model, effort: w.effort || null,
+            link: w.link || '', message: w.message,
             modelReason: input.modelReason ? String(input.modelReason).slice(0, 300) : undefined,
             usageBefore: acc.usage ? acc.usage.limits : []
         };

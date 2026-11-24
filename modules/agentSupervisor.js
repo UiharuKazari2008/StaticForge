@@ -37,6 +37,19 @@
  * size) and cleans one on request: only under /tmp, /var/tmp, ~/.cache or a git worktree, never a repo, a
  * home dir or ~/.claude. Nothing is deleted on its own.
  *
+ * Work queue (Yukimi Nov 24: requests go through the Supervisor - "the director is more of a pretty interface
+ * to ask for things to get done and fleet is the down and dirty interface"): a work item (from Fleet's New
+ * Session wizard, a Plaud recording, Yozora's claude_dispatch, or an agent's coord_request_work) waits in
+ * supervisor_work until there is a slot (settings.maxConcurrent supervised sessions at once, default 3) and
+ * an account free to take work (claudeFleetMcp.pickForStart: preferred while free, else most headroom);
+ * then it runs as a supervised Fleet session (tmux, Remote Control on, steerable from Fleet). Its state
+ * follows the session's reviews: running -> done (a turn ended with nothing missed) / waiting (gaps sent
+ * back to it) / failed (it ended with gaps or did not start). autoStart off keeps items queued until Start
+ * Now. The queue moves on enqueue, after every review and on every usage read (no timer).
+ * Plaud recordings: the Supervisor fetches the notes and the whole transcript (plaudClient; its tools are
+ * Yozora's key only) into ~/.local/state/dreamscape-agents/plaud/<id>.md (0600) and the session works
+ * from that file.
+ *
  * Supervised sessions (Fleet's New Session wizard): gaps are typed into the session whatever the delivery
  * setting (still at most 2 automatic steers in a row).
  *
@@ -69,7 +82,8 @@ const coord = () => require('./agentCoord/store');
 let gResources = null;
 const listeners = new Set();
 function onReview(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-function emit(review) { listeners.forEach((fn) => { try { fn(review); } catch (_) { /* a listener */ } }); }
+let version = 0; // moves on every change the console shows (reviews, work, locks)
+function emit(review) { version += 1; listeners.forEach((fn) => { try { fn(review); } catch (_) { /* a listener */ } }); }
 
 // ---------------------------------------------------------------- settings + engines
 
@@ -83,7 +97,9 @@ function settings(gr) {
         model: String(cfg.model || ''),
         delivery: DELIVERIES.includes(cfg.delivery) ? cfg.delivery : 'inbox',
         manageLocks: cfg.manageLocks !== false,
-        trackArtifacts: cfg.trackArtifacts !== false
+        trackArtifacts: cfg.trackArtifacts !== false,
+        maxConcurrent: Number.isInteger(cfg.maxConcurrent) && cfg.maxConcurrent >= 1 && cfg.maxConcurrent <= 12 ? cfg.maxConcurrent : 3,
+        autoStart: cfg.autoStart !== false
     };
 }
 
@@ -95,7 +111,9 @@ async function saveSettings(gr, next) {
         model: next.model !== undefined ? String(next.model || '').trim().slice(0, 120) : cur.model,
         delivery: DELIVERIES.includes(next.delivery) ? next.delivery : cur.delivery,
         manageLocks: next.manageLocks === undefined ? cur.manageLocks : next.manageLocks === true,
-        trackArtifacts: next.trackArtifacts === undefined ? cur.trackArtifacts : next.trackArtifacts === true
+        trackArtifacts: next.trackArtifacts === undefined ? cur.trackArtifacts : next.trackArtifacts === true,
+        maxConcurrent: next.maxConcurrent === undefined ? cur.maxConcurrent : Math.max(1, Math.min(12, Math.round(Number(next.maxConcurrent)) || cur.maxConcurrent)),
+        autoStart: next.autoStart === undefined ? cur.autoStart : next.autoStart === true
     };
     if (!engines(gr).some((e) => e.id === s.engine)) throw new Error(`Unknown engine ${s.engine}`);
     await gr.modifyConfig('config').assign(['agentSupervisor'], s);
@@ -258,6 +276,13 @@ function db() {
                 model TEXT NOT NULL DEFAULT '', delivered TEXT NOT NULL DEFAULT '', dismissed INTEGER NOT NULL DEFAULT 0, error TEXT
             );
             CREATE INDEX IF NOT EXISTS supervisor_reviews_at ON supervisor_reviews (at);
+            CREATE TABLE IF NOT EXISTS supervisor_work (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, prompt TEXT NOT NULL, cwd TEXT, account TEXT,
+                model TEXT, effort TEXT, source TEXT NOT NULL DEFAULT 'fleet', source_ref TEXT, state TEXT NOT NULL DEFAULT 'queued',
+                session_id TEXT, link TEXT, message TEXT NOT NULL DEFAULT '', start_now INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL, started_at INTEGER, ended_at INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS supervisor_work_state ON supervisor_work (state);
         `);
         const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
         if (!cols.has('supervised')) d.exec('ALTER TABLE supervisor_state ADD COLUMN supervised INTEGER NOT NULL DEFAULT 0');
@@ -288,7 +313,9 @@ function summary() {
     const open = d.prepare("SELECT COUNT(*) n FROM supervisor_reviews WHERE verdict = 'gaps' AND dismissed = 0 AND delivered != 'steer'").get().n;
     const reviewed = d.prepare('SELECT COUNT(*) n FROM supervisor_reviews').get().n;
     const gaps = d.prepare("SELECT COUNT(*) n FROM supervisor_reviews WHERE verdict = 'gaps'").get().n;
-    return { lastReviewId: last ? last.id : 0, open, reviewed, gaps, lastAt: last ? last.at : null };
+    const active = d.prepare("SELECT COUNT(*) n FROM supervisor_work WHERE state IN ('starting','running','waiting')").get().n;
+    const queued = d.prepare("SELECT COUNT(*) n FROM supervisor_work WHERE state = 'queued'").get().n;
+    return { lastReviewId: last ? last.id : 0, version, open, reviewed, gaps, lastAt: last ? last.at : null, workActive: active, workQueued: queued };
 }
 
 function dismiss(id) {
@@ -390,6 +417,7 @@ async function review(sessionId, trigger, opts = {}) {
     let rv = getReview(ins.lastInsertRowid);
     if (rv.verdict === 'gaps' && trigger !== 'mcp') rv = await deliver(rv, s, { auto: true, fromSupervisor: turn.fromSupervisor }).catch(() => rv);
     afterTurn(sessionId, s).catch((e) => console.warn(`[supervisor] upkeep ${sessionId.slice(0, 8)}: ${e.message}`));
+    try { workAfterReview(rv); } catch (e) { console.warn(`[supervisor] work state: ${e.message}`); }
     emit(rv);
     return rv;
 }
@@ -443,6 +471,174 @@ function markSupervised(sessionId) {
 }
 function isSupervised(sessionId) {
     try { const r = db().prepare('SELECT supervised FROM supervisor_state WHERE session_id = ?').get(String(sessionId)); return !!(r && r.supervised); } catch (_) { return false; }
+}
+
+// ---------------------------------------------------------------- work queue
+
+const WORK_STATES = ['queued', 'starting', 'running', 'waiting', 'done', 'failed', 'cancelled'];
+const ACTIVE = ['starting', 'running', 'waiting'];
+
+function rowWork(r) {
+    if (!r) return null;
+    return {
+        id: r.id, title: r.title, source: r.source, sourceRef: r.source_ref || '', state: r.state, account: r.account || '', model: r.model || '', effort: r.effort || '',
+        cwd: r.cwd || '', sessionId: r.session_id || '', link: r.link || '', message: r.message || '', startNow: !!r.start_now,
+        createdAt: r.created_at, startedAt: r.started_at, endedAt: r.ended_at, prompt: String(r.prompt || '').slice(0, 2000)
+    };
+}
+function listWork(opts = {}) {
+    const lim = Math.max(1, Math.min(300, Number(opts.limit) || 100));
+    return db().prepare("SELECT * FROM supervisor_work ORDER BY CASE WHEN state IN ('queued','starting','running','waiting') THEN 0 ELSE 1 END, id DESC LIMIT ?").all(lim).map(rowWork);
+}
+const getWork = (id) => rowWork(db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id)));
+function setWork(id, fields) {
+    const keys = Object.keys(fields);
+    db().prepare(`UPDATE supervisor_work SET ${keys.map((k) => `${k} = @${k}`).join(', ')} WHERE id = @id`).run(Object.assign({ id: Number(id) }, fields));
+}
+
+const SUPERVISED_NOTE = 'You are a supervised Fleet session: claim files with agent-coord before editing (coord_claim), commit your own work at the end of every turn, open a build gate before any build / restart, and before you say a multi-part request is done call coord_supervisor_check and address what it finds. Work you find that should be done by another session: coord_request_work (startNow when it should start now).';
+
+/** Adds a work item and moves the queue. item: { title, prompt, cwd?, account?, model?, effort?, startNow?, source?, sourceRef? } */
+function enqueue(item, opts = {}) {
+    const prompt = String(item.prompt || '').trim();
+    if (!prompt) throw new Error('A work item needs a prompt');
+    if (prompt.length > 60000) throw new Error('That request is too long (60,000 characters at most): put the detail in a file and point to it');
+    const src = ['fleet', 'plaud', 'director', 'agent'].includes(item.source) ? item.source : 'fleet';
+    if (item.sourceRef) {
+        const dup = db().prepare("SELECT id FROM supervisor_work WHERE source_ref = ? AND state NOT IN ('failed','cancelled')").get(String(item.sourceRef));
+        if (dup) return Object.assign(getWork(dup.id), { reused: true });
+    }
+    const title = String(item.title || prompt.split('\n')[0]).replace(/\s+/g, ' ').trim().slice(0, 120) || 'Work';
+    const r = db().prepare(`INSERT INTO supervisor_work (title, prompt, cwd, account, model, effort, source, source_ref, state, start_now, created_at, message)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, 'Waiting for a slot')`).run(title, prompt, item.cwd || null, item.account !== undefined && item.account !== null ? String(item.account) : null, item.model || null, item.effort || null, src, item.sourceRef || null, item.startNow ? 1 : 0, Date.now());
+    const w = getWork(r.lastInsertRowid);
+    emit({ work: w });
+    pumpWork(opts.gr).catch((e) => console.warn(`[supervisor] queue: ${e.message}`));
+    return w;
+}
+
+function activeCount() {
+    const live = liveSessionsById();
+    let n = 0;
+    db().prepare(`SELECT id, session_id, state FROM supervisor_work WHERE state IN (${ACTIVE.map(() => '?').join(',')})`).all(...ACTIVE).forEach((w) => {
+        if (w.state === 'starting' || (w.session_id && live.has(w.session_id))) n += 1;
+        else if (w.session_id) setWork(w.id, { state: 'done', ended_at: Date.now(), message: 'Its session ended' });
+    });
+    return n;
+}
+
+let pumping = null;
+/** Starts queued items while there are slots and accounts with room. One pump at a time. */
+function pumpWork(gr) {
+    if (pumping) return pumping;
+    pumping = (async () => {
+        const g = gr || gResources;
+        if (!g) return 0;
+        const set = settings(g);
+        let started = 0;
+        const queued = db().prepare("SELECT * FROM supervisor_work WHERE state = 'queued' ORDER BY start_now DESC, id").all();
+        for (const w of queued) {
+            const forced = !!w.start_now;
+            if (!set.autoStart && !forced) continue;
+            if (!forced && activeCount() >= set.maxConcurrent) { setWork(w.id, { message: `Waiting for a slot (${set.maxConcurrent} supervised sessions at once)` }); continue; }
+            let pick;
+            try { pick = await require('./claudeFleetMcp').pickForStart(g, w.account || 'auto'); } catch (e) { setWork(w.id, { message: `Waiting for an account with room: ${e.message.slice(0, 160)}` }); continue; }
+            setWork(w.id, { state: 'starting', message: `Starting on ${pick.name}`, account: pick.name });
+            emit({ work: getWork(w.id) });
+            try {
+                const st = pick.settings || {};
+                const r = await require('./claudeSessionLauncher').start(g, {
+                    cwd: w.cwd || path.join(__dirname, '..'), prompt: `${w.prompt}\n\n${SUPERVISED_NOTE}`, title: w.title, account: pick.index,
+                    mode: st.defaultMode, model: w.model || st.defaultModel || 'sonnet', effort: w.effort || st.defaultEffort || undefined, dispatchedBy: `Supervisor (${w.source})`
+                });
+                if (r.state === 'failed') { setWork(w.id, { state: 'failed', ended_at: Date.now(), message: r.message || 'It did not start', session_id: r.id || null }); }
+                else {
+                    markSupervised(r.id);
+                    setWork(w.id, { state: 'running', session_id: r.id, link: r.link || '', started_at: Date.now(), message: `Running on ${pick.name}` });
+                    started += 1;
+                }
+            } catch (e) {
+                setWork(w.id, { state: 'failed', ended_at: Date.now(), message: e.message.slice(0, 300) });
+            }
+            emit({ work: getWork(w.id) });
+        }
+        return started;
+    })().finally(() => { pumping = null; });
+    return pumping;
+}
+
+/** A work item's session ended a turn: done when nothing was missed, waiting while gaps go back to it. */
+function workAfterReview(rv) {
+    if (!rv || !rv.sessionId) return;
+    const w = db().prepare(`SELECT * FROM supervisor_work WHERE session_id = ? AND state IN (${ACTIVE.map(() => '?').join(',')})`).get(rv.sessionId, ...ACTIVE);
+    if (!w) { pumpWork().catch(() => {}); return; }
+    if (rv.verdict === 'ok') setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done' });
+    else if (rv.verdict === 'gaps') setWork(w.id, { state: 'waiting', message: `Gaps sent back: ${rv.missed.map((m) => m.item).join('; ').slice(0, 240)}` });
+    else setWork(w.id, { state: 'running', message: rv.summary || 'Turn ended' });
+    emit({ work: getWork(w.id) });
+    pumpWork().catch(() => {});
+}
+
+function startWork(id) {
+    const w = getWork(id);
+    if (!w) throw new Error('No such work item');
+    if (w.state !== 'queued') throw new Error(`It is ${w.state}`);
+    setWork(w.id, { start_now: 1 });
+    pumpWork().catch(() => {});
+    return getWork(w.id);
+}
+
+function cancelWork(id) {
+    const w = getWork(id);
+    if (!w) throw new Error('No such work item');
+    if (w.state !== 'queued' && w.state !== 'failed') throw new Error('Only a queued item is cancelled here: end a running one from its session');
+    setWork(w.id, { state: 'cancelled', ended_at: Date.now(), message: 'Cancelled' });
+    emit({ work: getWork(w.id) });
+    return getWork(w.id);
+}
+
+// ---------------------------------------------------------------- Plaud recordings into the queue
+
+function plaudDir() { return path.join(stateDir(), 'plaud'); }
+
+/** Notes + the whole transcript of a recording in a private file a session can read. */
+async function plaudFile(recordingId) {
+    const plaud = require('./plaudClient');
+    const rec = await plaud.getRecording(recordingId);
+    const parts = [`# ${rec.name || recordingId}`, '', `source plaud:${rec.id || recordingId} · ${rec.startAt ? new Date(rec.startAt).toISOString() : ''} · ${rec.durationMs ? Math.round(rec.durationMs / 60000) : '?'} min`, '', '## Notes', '', typeof rec.notes === 'string' ? rec.notes : JSON.stringify(rec.notes || [], null, 1), '', '## Transcript', ''];
+    let offset = 0;
+    for (let i = 0; i < 200; i += 1) {
+        const t = await plaud.getTranscript(recordingId, { offset });
+        parts.push(t.text || '');
+        if (t.nextOffset === null || t.nextOffset === undefined) break;
+        offset = t.nextOffset;
+    }
+    fs.mkdirSync(plaudDir(), { recursive: true, mode: 0o700 });
+    const file = path.join(plaudDir(), `${String(recordingId).replace(/[^\w-]/g, '_')}.md`);
+    fs.writeFileSync(file, parts.join('\n'), { mode: 0o600 });
+    return { file, name: rec.name || '', id: String(rec.id || recordingId) };
+}
+
+/** One work item per recording; started now when there is room. */
+async function intakePlaud(gr, recordingIds) {
+    const { plaudActionsPrompt } = require('./plaudActionsPrompt');
+    const out = [];
+    for (const recId of recordingIds) {
+        const dup = db().prepare("SELECT id FROM supervisor_work WHERE source_ref = ? AND state NOT IN ('failed','cancelled')").get(`plaud:${recId}`);
+        if (dup) { out.push(Object.assign(getWork(dup.id), { recordingId: recId, reused: true })); continue; }
+        const f = await plaudFile(recId);
+        const prompt = [
+            `Plaud Actions for recording plaud:${f.id}${f.name ? ` (${f.name})` : ''}, from Fleet.`,
+            `The recording's notes and its whole transcript are in ${f.file} (read all of it; you do not have the plaud_* tools, this file replaces them).`,
+            'Use calendar_list_items / calendar_add_items (Dreamscape MCP) for events and tasks, the Yozora API as `claude` (CLAUDE.md) for issues on every project\'s repo.',
+            'Code work that should start now (Yukimi said so, or it blocks something): coord_request_work with startNow true and a complete brief; other code work: an issue (and coord_request_work without startNow only when it is ready to build as written).',
+            '',
+            plaudActionsPrompt({ id: f.id, name: f.name })
+        ].join('\n');
+        const w = enqueue({ title: `Plaud: ${f.name || f.id}`, prompt, source: 'plaud', sourceRef: `plaud:${f.id}`, startNow: true }, { gr });
+        out.push(Object.assign(w, { recordingId: recId }));
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------- busy locks
@@ -658,7 +854,7 @@ function pump() {
     }
 }
 
-function enqueue(sessionId, trigger) {
+function queueReview(sessionId, trigger) {
     if (queue.some((j) => j.sessionId === sessionId)) return;
     if (queue.length > 50) return;
     queue.push({ sessionId, trigger });
@@ -678,7 +874,7 @@ function scan(first) {
         const prev = statusBySession.get(r.sessionId);
         const now = String(r.status || '');
         statusBySession.set(r.sessionId, now);
-        if (!first && prev === 'busy' && now !== 'busy' && settings().enabled) enqueue(r.sessionId, 'turn-end');
+        if (!first && prev === 'busy' && now !== 'busy' && settings().enabled) queueReview(r.sessionId, 'turn-end');
         if (!first && prev === undefined && now === 'busy') markPartial(r.sessionId);
     });
     [...statusBySession.keys()].forEach((id) => { if (!seen.has(id)) statusBySession.delete(id); });
@@ -709,9 +905,14 @@ function serveSocket() {
             buf = '';
             let out;
             try {
-                if (!req || req.op !== 'check') throw new Error('op must be check');
-                if (!settings().enabled) throw new Error('The Supervisor is off (Fleet > Coordination > Supervisor)');
-                out = { ok: true, review: await review(String(req.sessionId || ''), 'mcp') };
+                if (!req || (req.op !== 'check' && req.op !== 'enqueue')) throw new Error('op must be check or enqueue');
+                if (req.op === 'enqueue') {
+                    const w = enqueue({ title: req.title, prompt: req.prompt, cwd: req.cwd, model: req.model, effort: req.effort, startNow: req.startNow === true, source: 'agent', sourceRef: req.sourceRef || null });
+                    out = { ok: true, work: w };
+                } else {
+                    if (!settings().enabled) throw new Error('The Supervisor is off (Fleet > Coordination > Supervisor)');
+                    out = { ok: true, review: await review(String(req.sessionId || ''), 'mcp') };
+                }
             } catch (e) { out = { ok: false, error: e.message }; }
             try { sock.end(`${JSON.stringify(out)}\n`); } catch (_) { /* gone */ }
         });
@@ -721,7 +922,12 @@ function serveSocket() {
     sockServer.listen(file, () => { try { fs.chmodSync(file, 0o600); } catch (_) { /* kept */ } });
 }
 
-function bind(gr) { if (gr) gResources = gr; }
+let usageHooked = false;
+function bind(gr) {
+    if (gr) gResources = gr;
+    // queued work starts when an account gets room again
+    if (!usageHooked && gResources) { usageHooked = true; try { require('./claudeUsage').onRead(() => { pumpWork().catch(() => {}); }); } catch (_) { usageHooked = false; } }
+}
 
 function start(gr) {
     bind(gr);
@@ -737,6 +943,7 @@ function start(gr) {
         console.warn(`[supervisor] cannot watch ${sessionsDir()}: ${e.message}`);
     }
     serveSocket();
+    pumpWork().catch(() => {});
 }
 
 function stop() {
@@ -746,7 +953,7 @@ function stop() {
 }
 
 module.exports = {
-    start, stop, bind, settings, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
+    start, stop, bind, settings, enqueue, pumpWork, listWork, getWork, startWork, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, enqueue, queue }
+    _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, queueReview, queue }
 };

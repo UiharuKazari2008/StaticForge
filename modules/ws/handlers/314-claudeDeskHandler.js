@@ -201,7 +201,7 @@ const supervisor = require('../../agentSupervisor');
 
 /** The console refetches the review list only when lastReviewId moves (no polling). */
 function supervisorSummary() {
-    try { const x = supervisor.summary(); return { lastReviewId: x.lastReviewId, open: x.open }; } catch (_) { return { lastReviewId: 0, open: 0 }; }
+    try { const x = supervisor.summary(); return { lastReviewId: x.lastReviewId, version: x.version, open: x.open, workActive: x.workActive, workQueued: x.workQueued }; } catch (_) { return { lastReviewId: 0, version: 0, open: 0 }; }
 }
 
 async function supervisorStatus(gr) {
@@ -213,7 +213,7 @@ async function supervisorStatus(gr) {
         try { supervisor.refreshArtifacts({ budgetMs: 2500 }); artifacts = supervisor.artifactStatus(); } catch (e) { console.warn(`[claudeDesk] artifacts: ${e.message}`); }
     }
     const stats = Object.assign(supervisor.summary(), { artifactBytes: artifacts.filter((a) => a.exists !== false).reduce((n, a) => n + (a.sizeBytes || 0), 0) });
-    return { settings: set, engines: supervisor.engines(gr), reviews: supervisor.listReviews({ limit: 80 }), locks, artifacts, stats };
+    return { settings: set, engines: supervisor.engines(gr), reviews: supervisor.listReviews({ limit: 80 }), work: supervisor.listWork({ limit: 100 }), locks, artifacts, stats };
 }
 
 const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => {
@@ -223,10 +223,16 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'recheck') return { review: await supervisor.review(String(message.sessionId || ''), 'recheck', { gr }) };
     if (action === 'send') return { review: await supervisor.send(message.reviewId) };
     if (action === 'dismiss') { supervisor.dismiss(message.reviewId); return supervisorStatus(gr); }
+    if (action === 'enqueue') {
+        supervisor.enqueue({ title: message.title, prompt: message.prompt, cwd: message.cwd, account: message.account === 'auto' ? null : message.account, model: message.model, effort: message.effort, startNow: message.startNow === true, source: 'fleet' }, { gr });
+        return supervisorStatus(gr);
+    }
+    if (action === 'work_start') { supervisor.startWork(message.id); return supervisorStatus(gr); }
+    if (action === 'work_cancel') { supervisor.cancelWork(message.id); return supervisorStatus(gr); }
     if (action === 'lock_remove') { supervisor.removeLockFile(String(message.root || ''), String(message.file || '')); poke(); return supervisorStatus(gr); }
     if (action === 'artifact_clean') { const r = supervisor.cleanArtifact(message.id); return Object.assign(await supervisorStatus(gr), { cleaned: r }); }
     if (action === 'artifact_forget') { supervisor.forgetArtifact(message.id); return supervisorStatus(gr); }
-    throw new Error('action must be status, save, recheck, send, dismiss, lock_remove, artifact_clean or artifact_forget');
+    throw new Error('action must be status, save, recheck, send, dismiss, enqueue, work_start, work_cancel, lock_remove, artifact_clean or artifact_forget');
 });
 
 // ---------------------------------------------------------------- transcript watches (one per socket)
@@ -318,6 +324,8 @@ const handleSession = guard('claude_desk_session', async (gr, message) => {
         result = await launcher.screen(id);
     } else if (action === 'disconnect') {
         result = await claudeSessions.disconnect(id);
+    } else if (action === 'takeover') {
+        result = await launcher.takeover(gr, id);
     } else if (action === 'detail') {
         return { detail: await sessionDetail(gr, id) };
     } else if (action === 'agent_page') {
@@ -328,7 +336,7 @@ const handleSession = guard('claude_desk_session', async (gr, message) => {
     } else if (action === 'command') {
         result = await sessionCommand(id, message.command, message.value);
     } else {
-        throw new Error('action must be start, resume, steer, interrupt, screen, disconnect, detail, agent_page, task_output or command');
+        throw new Error('action must be start, resume, takeover, steer, interrupt, screen, disconnect, detail, agent_page, task_output or command');
     }
     poke();
     return { result };
@@ -490,7 +498,7 @@ async function sessionCommand(id, command, value) {
     return Object.assign({ command: line }, r);
 }
 
-// ---------------------------------------------------------------- Plaud into Yozora (New Session wizard)
+// ---------------------------------------------------------------- Plaud into the Supervisor's queue (New Session wizard)
 
 const handlePlaud = guard('claude_fleet_plaud', async (gr, message) => {
     const action = String(message.action || 'list');
@@ -507,16 +515,10 @@ const handlePlaud = guard('claude_fleet_plaud', async (gr, message) => {
         ((r && (r.recordings || r.items)) || []).forEach((x) => named.set(String(x.id), x.name || x.title || ''));
         if (message.all === true) picks = [...named.keys()].slice(0, 20);
         if (!picks.length) throw new Error('Pick a recording');
-        const { startDirectorSession } = require('../../directorStart');
-        const { plaudActionsPrompt } = require('../../plaudActionsPrompt');
-        const chats = [];
-        for (const recId of picks) {
-            const name = named.get(recId) || '';
-            // source plaud:<id>: a recording Yozora already took comes back as that chat, never a second one
-            const out = await startDirectorSession(gr, { persona: 'xi', prompt: plaudActionsPrompt({ id: recId, name }), source: `plaud:${recId}`, title: `Plaud: ${name || recId}`.slice(0, 80), thread: 'Plaud Actions' });
-            chats.push({ chatId: out.sessionId || out.chatId || '', title: name, recordingId: recId, reused: !!(out.reused || out.deduped) });
-        }
-        return { chats };
+        // the Supervisor takes them (#1154, Yukimi: "you don't have to start a new director session, you can have
+        // the supervisor handle it so they can also handle if the work needs to be started now")
+        const work = await supervisor.intakePlaud(gr, picks);
+        return { work: work.map((w) => ({ id: w.id, title: w.title, state: w.state, sessionId: w.sessionId, link: w.link, recordingId: w.recordingId, reused: !!w.reused, message: w.message })) };
     }
     throw new Error('action must be list or start');
 });

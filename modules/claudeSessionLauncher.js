@@ -287,6 +287,37 @@ async function resume(gr, id, opts = {}) {
     return launch(gr, { id, resume: true, cwd, title: opts.title || id.slice(0, 8), task: opts.title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
 }
 
+/**
+ * Takes a session Remote Control's own server spawned (from claude.ai / the app: Fleet cannot type into it)
+ * over into Fleet (#1154, Yukimi: "sending a steering message does not seem to work in the session view ...
+ * so I can stop using the Claude mobile app"): its process is ended, then the same session id is resumed
+ * in a Fleet terminal (tmux rc-<id8>) on the same account, Remote Control still on (a new claude.ai link).
+ */
+async function takeover(gr, id) {
+    if (readOnly()) throw new Error('Sessions are read-only on this instance');
+    const live = claudeSessions.liveSessions().find((s) => s.id === id);
+    if (!live) throw new Error('It is not running: Resume it instead');
+    if (live.origin !== 'server') throw new Error('It already runs in a terminal Fleet can type into');
+    // its account: the config dir it runs on (an account's own folder), else the host's login
+    let account;
+    if (live.configDir) {
+        const accId = path.basename(path.dirname(live.configDir));
+        const acc = require('./claudeAccountHost').listAccounts(gr).find((a) => a.id === accId);
+        if (acc) account = acc.index;
+    }
+    const title = live.givenName || live.name || id.slice(0, 8);
+    try { process.kill(live.pid, 'SIGTERM'); } catch (e) { if (e.code !== 'ESRCH') throw e; }
+    const until = Date.now() + 15000;
+    let killed = false;
+    while (claudeSessions.pidAlive(live.pid) && Date.now() < until) {
+        await new Promise((r) => setTimeout(r, 250));
+        if (!killed && Date.now() > until - 5000) { killed = true; try { process.kill(live.pid, 'SIGKILL'); } catch (_) { /* gone */ } }
+    }
+    if (claudeSessions.pidAlive(live.pid)) throw new Error('Its Remote Control process did not end');
+    const cwd = live.cwd || (await cwdOf(await findFile(id)));
+    return launch(gr, { id, resume: true, cwd, title, task: title, account });
+}
+
 // ---------------------------------------------------------------- steering
 
 async function parentOf(pid) {
@@ -296,20 +327,37 @@ async function parentOf(pid) {
     } catch (_) { return 0; }
 }
 
+async function isRemoteControlServer(pid) {
+    try { return /\bremote-control\b/.test((await fs.promises.readFile(`/proc/${pid}/cmdline`, 'utf8')).replace(/\0/g, ' ')) && !/--remote-control\b/.test((await fs.promises.readFile(`/proc/${pid}/cmdline`, 'utf8')).replace(/\0/g, ' ')); } catch (_) { return false; }
+}
+
 /** The tmux pane a running session's claude process sits in: { args (socket), pane }. */
 async function paneFor(id) {
     const live = claudeSessions.liveSessions().find((s) => s.id === id);
     if (!live) throw new Error('It is not running: resume it first');
+    // A session Remote Control's own server spawned (from claude.ai / the app) sits under that server's
+    // process; the server's tmux pane is the SERVER's terminal (keys there toggle its spawn mode, show a QR
+    // code). Never type into it (#1154: steering went to the server): such a session is taken over into
+    // Fleet first (claude_desk_session takeover).
+    if (live.origin === 'server') throw Object.assign(new Error('It runs inside Remote Control\'s server, which Fleet cannot type into: Take Over in Fleet to steer it from here (it continues the same conversation in a Fleet terminal), or steer it from claude.ai/code'), { code: 'NEEDS_TAKEOVER' });
     const chain = new Set([live.pid]);
     let p = live.pid;
-    for (let i = 0; i < 4; i += 1) { p = await parentOf(p); if (p > 1) chain.add(p); }
+    let underServer = false;
+    for (let i = 0; i < 4; i += 1) {
+        p = await parentOf(p);
+        if (p <= 1) break;
+        // the climb stops at a Remote Control server: its pane (and anything above it) is never a session's
+        if (await isRemoteControlServer(p)) { underServer = true; break; }
+        chain.add(p);
+    }
     for (const sock of [['-L', socket()], []]) {
         const r = await runner('tmux', [...sock, 'list-panes', '-a', '-F', '#{pane_id} #{pane_pid}']);
         if (r.code !== 0) continue;
         const hit = r.stdout.trim().split('\n').map((l) => l.split(' ')).find(([, pid]) => chain.has(Number(pid)));
         if (hit) return { sock, pane: hit[0], live };
     }
-    throw new Error(live.origin === 'server' ? 'It runs inside Remote Control itself: steer it from claude.ai/code' : 'It does not run in tmux: type into its own terminal');
+    if (underServer) throw Object.assign(new Error('It runs inside Remote Control\'s server: Take Over in Fleet to steer it from here'), { code: 'NEEDS_TAKEOVER' });
+    throw new Error('It does not run in tmux: type into its own terminal');
 }
 
 /** Types text into a running session and presses Enter. */
@@ -351,4 +399,4 @@ async function screen(id) {
     return { id, lines: lines.slice(-40) };
 }
 
-module.exports = { ensureServer, start, resume, steer, interrupt, screen, mcpConfigFile, findFile, _setRunner, _commandLine: commandLine, DEFAULT_MODE, EFFORTS };
+module.exports = { ensureServer, start, resume, takeover, steer, interrupt, screen, mcpConfigFile, findFile, _setRunner, _commandLine: commandLine, DEFAULT_MODE, EFFORTS };
