@@ -105,12 +105,12 @@
     }
 
     /**
-     * The screen as it really shows, from the Android app (DSApp ScreenGrab: AndroidScreen.capture, the display this window
+     * The screen as it really shows, from the Android app (DSApp ScreenGrab: AndroidScreenGrab.capture, the display this window
      * is on, cut to the window) - Yukimi, Nov 23 2026: the drawn copy left web pages out, drew the browser's scrollbars and
      * missed parts. null outside the app or when it cannot (the drawn desktop then).
      */
     async function grabNative(W) {
-        const A = root.AndroidScreen;
+        const A = root.AndroidScreenGrab;
         if (!A || typeof A.capture !== 'function' || (typeof A.available === 'function' && !A.available())) return null;
         let token = '';
         const answer = await new Promise((resolve) => {
