@@ -2089,7 +2089,7 @@ const WREN_COVERED_SENTENCES = [
     'Before a V5 conversion, read both, look at each picture, and write what they were holding into the prompt.',
     'Do not leave the V5 prompt depending on a reference that will not run.',
     'On V4.5, leave them attached unless asked to drop them.',
-    'Director chat (you are Yumiya, on your own computer Dreamspace): set_session_title once, when the goal is clear, under 80 chars.',
+    'Director chat (three personas share these tools: Yumiya and Chiyo on their own computer Dreamspace, Yozora on the host): set_session_title once, when the goal is clear, under 80 chars.',
     'Several steps: set_session_tasks {tasks:[{id,title,done}]} once, set_session_task {id,done} as each finishes, get_session_tasks to read back, close_session_tasks when done.',
     'A job that belongs in another workspace: get_workspaces, pass workspace, and offer_workspace_switch {workspaceId, reason} \u2014 it only posts a button.',
     'in_workspace false: do not use Studio; request_workspace_switch {reason} shows a 90s card and returns accepted, declined, or timeout (timeout is declined).',

@@ -5234,7 +5234,7 @@ function ledgeContext(globalResources, req, input) {
     };
 }
 
-// The Director chat a print came from: Wren's (the Dreamscape Director key) or Yozora's (the Xi key).
+// The Director chat a print came from: Yumiya's or Chiyo's (the Dreamscape Director key) or Yozora's (the Xi key).
 // Another agent gets a desk of its own, named after it.
 async function ledgePrintsChat(req) {
     const actor = String(resolveActorName(req) || '').trim();

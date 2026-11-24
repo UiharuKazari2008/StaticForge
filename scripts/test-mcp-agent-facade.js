@@ -972,7 +972,9 @@ assert.strictEqual(_test.workspaceRecordExact(fakeWorkspaces.globalResources, 'n
 assert.ok(_test.MCP_INSTRUCTIONS.includes('offer_workspace_switch'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('show_chat_image'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('Dreamspace'));
-assert.ok(_test.MCP_INSTRUCTIONS.includes('Wren'));
+// the Director's three personas, by the names Yukimi uses (Wren is only the internal id)
+['Yumiya', 'Yozora', 'Chiyo'].forEach((name) => assert.ok(_test.MCP_INSTRUCTIONS.includes(name), name));
+assert.ok(!/\bWren\b/.test(_test.MCP_INSTRUCTIONS));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'set_session_title').description.includes('once'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'set_session_title').description.includes('Do not call it again'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('set_session_title once'));
@@ -1029,7 +1031,8 @@ assert.ok(coreNames.includes('exchange_spam'));
 assert.ok(coreNames.includes('exchange_set_mailbox_notify_forward'));
 assert.ok(coreNames.includes('exchange_get_mailbox_notify_forward'));
 assert.ok(coreNames.includes('exchange_clear_mailbox_notify_forward'));
-assert.strictEqual(coreNames.length, 153);
+// every core tool, Plaud's three (Yozora only) included; a new core tool raises it
+assert.strictEqual(coreNames.length, 194);
 assert.ok(!_test.listToolsForScopes(['universal'], null).some((t) => t.name === 'exchange_list_mailboxes'));
 assert.ok(_test.listToolsForScopes(['universal'], null, { owner: 'yukimi' }).some((t) => t.name === 'exchange_list_mailboxes'));
 assert.ok(_test.listToolsForScopes(['sfapp_mail_exchange'], null, { owner: 'sala' }).some((t) => t.name === 'exchange_toggles'));
