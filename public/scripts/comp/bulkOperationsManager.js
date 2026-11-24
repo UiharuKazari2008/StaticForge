@@ -28,15 +28,122 @@ async function galleryTransfer(op, filenames, from, to, worker) {
         return fileOperationProgress.batches({ op, from, to, items: filenames.map(name => ({ name })) }, filenames, worker);
     });
 }
+// ---- The download window (#1134): which format the pictures download as -----------------------------------------
+/** galleryDownloadWindow.choose(images, owner) / .one(image, owner) / .many(images, from, owner) */
+const galleryDownloadWindow = (() => {
+    // A Vista dialog in MS Shell Dlg 8: the formats as radio buttons in a group, each with what it keeps and, for one
+    // picture, its size; Download / Cancel. The last choice is kept (localStorage melatonDownloadFormat).
+    const DOWNLOAD_FORMAT_KEY = 'melatonDownloadFormat';
+    const DOWNLOAD_FORMATS = [
+        { id: 811, hint: 821, value: 'png' },
+        { id: 812, hint: 822, value: 'jxl' },
+        { id: 813, hint: 823, value: 'slim' },
+        { id: 814, hint: 824, value: 'jpeg' }
+    ];
+    const DOWNLOAD_FORMAT_TPL = { t: 'Download', w: 262, h: 190, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
+        [801, 'S', 7, 7, 248, 9, 0x50020000, 'Download this picture as:', 0],
+        [-1, 'B', 7, 20, 248, 142, 0x50000007, 'Format', 0],
+        [811, 'B', 15, 33, 232, 10, 0x50030009, '&PNG, as it was saved', 0],
+        [821, 'S', 27, 44, 220, 9, 0x50020000, 'Keeps the prompt and settings.', 0],
+        [812, 'B', 15, 63, 232, 10, 0x50010009, 'JPEG &XL, lossless and smaller', 0],
+        [822, 'S', 27, 74, 220, 18, 0x50020000, 'Keeps the prompt and settings. Opens in apps that read JPEG XL.', 0],
+        [813, 'B', 15, 101, 232, 10, 0x50010009, 'PNG &without the prompt and settings', 0],
+        [823, 'S', 27, 112, 220, 9, 0x50020000, 'The picture only.', 0],
+        [814, 'B', 15, 131, 232, 10, 0x50010009, '&JPEG, smallest, for sharing', 0],
+        [824, 'S', 27, 142, 220, 9, 0x50020000, 'Some detail is lost; no prompt or settings.', 0],
+        [1, 'B', 151, 170, 50, 14, 0x50010001, '&Download', 0],
+        [2, 'B', 205, 170, 50, 14, 0x50010000, 'Cancel', 0]
+    ] };
+
+    function downloadSizeText(bytes) {
+        if (!(bytes > 0)) return '';
+        return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    }
+
+    /**
+     * Ask which format the pictures download as: resolves 'png' | 'jxl' | 'slim' | 'jpeg', or null (Cancel). Off the
+     * desktop (no Vista dialogs) it resolves 'png' at once, as downloads always were.
+     */
+    async function choose(images, owner) {
+        const list = (images || []).filter(Boolean);
+        if (!list.length) return null;
+        if (!window.isDesktop || !window.featureLoader) return 'png';
+        try { await window.featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { return 'png'; }
+        const V = window.vistaDialogTemplate;
+        if (!V || typeof V.openDialog !== 'function') return 'png';
+        let last = 'png';
+        try { last = localStorage.getItem(DOWNLOAD_FORMAT_KEY) || 'png'; } catch (_) { /* storage off */ }
+        if (!DOWNLOAD_FORMATS.some((f) => f.value === last)) last = 'png';
+        const nameOf = (image) => (typeof image === 'string' ? image : (image.upscaled || image.original || image.filename || ''));
+        return new Promise((resolve) => {
+            let settled = false;
+            const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+            V.openDialog({
+                id: 'galleryDownloadFormat',
+                tpl: DOWNLOAD_FORMAT_TPL,
+                owner,
+                title: DOWNLOAD_FORMAT_TPL.t,
+                bareCaption: true,
+                init(ctx) {
+                    ctx.text(801, list.length === 1 ? 'Download this picture as:' : `Download these ${list.length} pictures as:`);
+                    DOWNLOAD_FORMATS.forEach((f) => ctx.set(f.id, f.value === last));
+                    if (list.length !== 1) return;
+                    // one picture: its sizes where the server knows them without work, else an estimate for JPEG XL
+                    const name = nameOf(list[0]);
+                    if (!name || typeof localGalleryImageUrl !== 'function') return;
+                    fetch(`${localGalleryImageUrl(name)}?info=formats`, { cache: 'no-store' })
+                        .then((r) => (r.ok ? r.json() : null))
+                        .then((info) => {
+                            if (!info || settled) return;
+                            const png = downloadSizeText(info.png);
+                            const jxl = info.jxl ? downloadSizeText(info.jxl) : (info.png ? `about ${downloadSizeText(info.png * 0.56)}` : '');
+                            if (png) ctx.text(821, `${png}. Keeps the prompt and settings.`);
+                            if (jxl) ctx.text(822, `${jxl}. Keeps the prompt and settings. Opens in apps that read JPEG XL.`);
+                        })
+                        .catch(() => { /* the texts stay without sizes */ });
+                },
+                ok(ctx) {
+                    const pick = DOWNLOAD_FORMATS.find((f) => ctx.get(f.id)) || DOWNLOAD_FORMATS[0];
+                    try { localStorage.setItem(DOWNLOAD_FORMAT_KEY, pick.value); } catch (_) { /* storage off */ }
+                    done(pick.value);
+                    return true;
+                },
+                cancel() { done(null); }
+            });
+        });
+    }
+
+    /** The download window for one picture, then the download (no progress dialog for one). */
+    async function one(image, owner) {
+        if (!image) return;
+        const format = await choose([image], owner);
+        // downloadImage: public/scripts/comp/galleryView.js
+        if (format) downloadImage(image, format);
+    }
+
+    /**
+     * The download window, then the pictures saved in the chosen format under Vista's progress dialog (the gallery,
+     * Melaton Photo Gallery, Lumen). from: the folder the progress dialog names.
+     */
+    async function many(images, from, owner) {
+        const list = (images || []).filter(Boolean);
+        const format = await choose(list, owner);
+        if (!format) return;
+        await galleryDownloadImages(list, from || { name: 'DreamScape', path: '/Workspaces' }, format);
+    }
+
+    return { choose, one, many };
+})();
+
 /**
  * Gallery images saved to this computer: one browser download each under Vista's progress dialog
  * ("Downloading 5 items" from the gallery folder); off the desktop the toast says it.
  * downloadImage: public/scripts/comp/galleryView.js
  */
-async function galleryDownloadImages(images, from) {
+async function galleryDownloadImages(images, from, format = 'png') {
     const list = (images || []).filter(Boolean);
     if (typeof fileOperationProgress === 'undefined' || !fileOperationProgress.available()) {
-        list.forEach((image) => downloadImage(image));
+        list.forEach((image) => downloadImage(image, format));
         if (list.length > 1) {
             showGlassToast('success', null, `Downloading ${list.length} image(s)...`, false, 3000, '<i class="fas fa-download"></i>');
         }
@@ -49,7 +156,7 @@ async function galleryDownloadImages(images, from) {
         from,
         items: list.map((image) => ({ name: nameOf(image) }))
     }, list, async (image) => {
-        downloadImage(image);
+        downloadImage(image, format);
         // the browser takes one download at a time from a page more readily when they are spaced
         await new Promise((resolve) => setTimeout(resolve, 150));
     });
@@ -168,11 +275,10 @@ function handleBulkDownload() {
     }
 
     if (selectedImagesArray.length === 1) {
-        // downloadImage: public/scripts/comp/galleryView.js
-        downloadImage(selectedImagesArray[0]);
+        galleryDownloadWindow.one(selectedImagesArray[0]);
         return;
     }
-    galleryDownloadImages(selectedImagesArray, galleryTransferPlace(activeWorkspace, galleryViewFolder(currentGalleryView)));
+    galleryDownloadWindow.many(selectedImagesArray, galleryTransferPlace(activeWorkspace, galleryViewFolder(currentGalleryView)));
 }
 
 async function handleBulkUnpin(event = null) {

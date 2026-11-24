@@ -1873,7 +1873,9 @@
                 case 'gwp-desktop': if (g('createDesktopShortcutFromImage')) await g('createDesktopShortcutFromImage')(rec); return;
                 case 'gwp-publish': g('openPublishToExplorerDialog')(rec); return;
                 case 'gwp-download':
-                    if (g('galleryDownloadImages')) await g('galleryDownloadImages')(items.map(printRecord), { name: 'DreamScape', path: '/Workspaces' });
+                    // the download window first (format, #1134), then Vista's progress dialog
+                    if (typeof galleryDownloadWindow !== 'undefined') await galleryDownloadWindow.many(items.map(printRecord), { name: 'DreamScape', path: '/Workspaces' });
+                    else if (g('galleryDownloadImages')) await g('galleryDownloadImages')(items.map(printRecord), { name: 'DreamScape', path: '/Workspaces' });
                     else if (g('downloadImage')) items.forEach((x) => g('downloadImage')(printRecord(x)));
                     return;
                 case 'gwp-sequenzia': {

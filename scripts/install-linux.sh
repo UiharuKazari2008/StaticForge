@@ -54,6 +54,7 @@ APT_PKGS=(
   build-essential python3 python-is-python3 pkg-config
   libsqlite3-dev libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
   libhunspell-dev ruby
+  libvips-dev libjxl-tools
 )
 if [[ $SKIP_APT -eq 0 ]]; then
   command -v apt-get >/dev/null || die "apt-get not found (Debian/Ubuntu only); use --skip-apt"

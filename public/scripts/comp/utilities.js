@@ -3660,6 +3660,33 @@ async function fetchTrackedImageBlob(url, knownTotalBytes, onProgress, fetchInit
             if (kind === 'VP8X') return ok(1 + (b[24] | (b[25] << 8) | (b[26] << 16)), 1 + (b[27] | (b[28] << 8) | (b[29] << 16)));
             return null;
         }
+        // JPEG XL (#1134): the SizeHeader at the start of the codestream (bare, or in a container's jxlc / jxlp box;
+        // a gallery JXL's sfPN metadata box comes first)
+        if ((b[0] === 0xff && b[1] === 0x0a) || (b[3] === 0x0c && b[4] === 0x4a && b[5] === 0x58 && b[6] === 0x4c && b[7] === 0x20)) {
+            let cs = 0;
+            if (b[0] !== 0xff) {
+                let off = 0;
+                cs = -1;
+                while (off + 8 <= b.length) {
+                    const size = ((b[off] << 24) >>> 0) + ((b[off + 1] << 16) | (b[off + 2] << 8) | b[off + 3]);
+                    const type = String.fromCharCode(b[off + 4], b[off + 5], b[off + 6], b[off + 7]);
+                    if (type === 'jxlc') { cs = off + 8; break; }
+                    if (type === 'jxlp') { cs = off + 12; break; }
+                    if (size < 8) return null;
+                    off += size;
+                }
+                if (cs < 0 || cs + 12 > b.length) return null;
+            }
+            let bit = (cs + 2) * 8;
+            const u = (n) => { let v = 0; for (let i = 0; i < n; i++, bit++) v |= ((b[bit >> 3] >> (bit & 7)) & 1) << i; return v >>> 0; };
+            const u32 = () => [9, 13, 18, 30][u(2)];
+            const div8 = u(1);
+            const h = div8 ? 8 * (1 + u(5)) : 1 + u(u32());
+            const ratio = u(3);
+            const R = [null, [1, 1], [12, 10], [4, 3], [3, 2], [16, 9], [5, 4], [2, 1]];
+            const w = ratio === 0 ? (div8 ? 8 * (1 + u(5)) : 1 + u(u32())) : Math.floor(h * R[ratio][0] / R[ratio][1]);
+            return ok(w, h);
+        }
         // JPEG: walk the segments to the first SOFn
         if (b[0] === 0xff && b[1] === 0xd8) {
             let i = 2;
@@ -3734,12 +3761,14 @@ async function fetchTrackedImageBlob(url, knownTotalBytes, onProgress, fetchInit
         chunks.push(value);
         loaded += value.length;
         if (headBytes) {
-            const head = new Uint8Array(Math.min(65536, headBytes.length + value.length));
+            // a JXL container may carry a large metadata box before its codestream: read on up to 512 KB
+            const cap = headBytes.length >= 8 && headBytes[4] === 0x4a && headBytes[5] === 0x58 ? 524288 : 65536;
+            const head = new Uint8Array(Math.min(cap, headBytes.length + value.length));
             head.set(headBytes);
             head.set(value.subarray(0, head.length - headBytes.length), headBytes.length);
             headBytes = head;
             const dims = readImageHeaderDimensions(headBytes);
-            if (dims || headBytes.length >= 65536) {
+            if (dims || headBytes.length >= cap) {
                 headBytes = null;
                 if (dims) {
                     try { onDimensions(dims); } catch (_err) { /* the caller's sizing */ }

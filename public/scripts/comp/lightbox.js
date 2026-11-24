@@ -1829,7 +1829,8 @@ async function initializePhotoSwipe() {
                             onClick: () => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
-                                    downloadImage(currentItem.data?.data);
+                                    // the download window (format) — galleryDownloadWindow: public/scripts/comp/bulkOperationsManager.js
+                                    galleryDownloadWindow.one(currentItem.data?.data);
                                 }
                             }
                         },

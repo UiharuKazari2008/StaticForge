@@ -117,6 +117,8 @@ What it installs that the README never mentioned:
 | `libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev` | `canvas` |
 | `libhunspell-dev` | `spellchecker` (fails to build without it) |
 | `libsqlite3-dev` | sqlite native builds |
+| `libvips-dev` | `sharp` builds from source against the system libvips 8.16, which reads JPEG XL (#1134); the prebuilt sharp cannot |
+| `libjxl-tools` | `cjxl` / `djxl`: gallery pictures older than 30 days are stored as lossless JPEG XL (`modules/imageStore.js`, `scripts/image-jxl-idle.js`) |
 | `ruby` | DText parser (`modules/globalResources.js`, polymodules) |
 | `git zstd` | update engine / replication bundles (`tar` + `zstd`) |
 | `nekoai-js` from npm | `package.json` points at `file:../NekoAI-JS`; `scripts/configure-nekoai.js` switches it |

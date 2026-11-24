@@ -1862,6 +1862,12 @@ class ImageViewer {
     }
 
     download() {
+        // a gallery picture: the download window (format, #1134) — galleryDownloadWindow: bulkOperationsManager.js
+        const galleryName = this.getImageFilename && this.getImageFilename();
+        if (galleryName && typeof galleryDownloadWindow !== 'undefined') {
+            void galleryDownloadWindow.one(galleryName, this.element);
+            return;
+        }
         // Create download link
         const link = document.createElement('a');
         link.href = this.imageSrc;

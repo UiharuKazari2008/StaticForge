@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential python3 python-is-python3 pkg-config ruby \
     libsqlite3-dev \
     libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev \
+    libvips-dev libjxl-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # Layer cache: install deps before full source copy

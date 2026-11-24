@@ -5328,7 +5328,7 @@ async function attachFocusedWindowImage(globalResources, body, windows, includeI
 
     if (attachName) {
         try {
-            const resolved = await resolveGalleryPngPath(globalResources, attachName);
+            const resolved = await resolveGalleryPixelPath(globalResources, attachName);
             const image = await resizeImageForGrok(resolved.filePath);
             if (image) {
                 image.filename = attachName;
@@ -7282,6 +7282,20 @@ async function resolveGalleryPngPath(globalResources, filename) {
     return { safe: resolved.safe, filePath };
 }
 
+// A file sharp reads, for the tools that only look at the pixels (resize for the model, compare): the stored file
+// itself, a JPEG XL one too when sharp reads JXL (#1134); readGalleryImage, which sends the bytes as they are,
+// keeps resolveGalleryPngPath.
+async function resolveGalleryPixelPath(globalResources, filename) {
+    const resolved = resolveGalleryImagePath(globalResources, filename);
+    const filePath = await imageStore.pixelPath(resolved.safe, path.dirname(resolved.filePath));
+    if (!filePath) {
+        const err = new Error('Image not found');
+        err.status = 404;
+        throw err;
+    }
+    return { safe: resolved.safe, filePath };
+}
+
 async function resizeImageForGrok(source) {
     const sharp = require('sharp');
     let edge = GROK_IMAGE_MAX_EDGE;
@@ -7666,7 +7680,7 @@ async function attachAllPrintImages(globalResources, result, names) {
             continue;
         }
         try {
-            const resolved = await resolveGalleryPngPath(globalResources, name);
+            const resolved = await resolveGalleryPixelPath(globalResources, name);
             const image = await resizeImageForGrok(resolved.filePath);
             if (image) {
                 images.push({ type: 'image', mimeType: image.mimeType, data: image.bytes.toString('base64') });
@@ -7781,7 +7795,7 @@ async function mcpResultFromGenerateFlat(globalResources, flat, success, destPat
     });
     if (filename && success) {
         try {
-            const resolved = await resolveGalleryPngPath(globalResources, filename);
+            const resolved = await resolveGalleryPixelPath(globalResources, filename);
             const image = await resizeImageForGrok(resolved.filePath);
             if (image) {
                 image.filename = filename;
@@ -8699,8 +8713,8 @@ async function callTool(globalResources, req, name, args) {
         if (lookedA.filename === lookedB.filename) {
             return mcpTextResult({ success: false, error: 'Pick two different files to compare.' }, true);
         }
-        const pathA = await resolveGalleryPngPath(globalResources, lookedA.filename);
-        const pathB = await resolveGalleryPngPath(globalResources, lookedB.filename);
+        const pathA = await resolveGalleryPixelPath(globalResources, lookedA.filename);
+        const pathB = await resolveGalleryPixelPath(globalResources, lookedB.filename);
         const metaA = flattenPacket(await dispatchPacketTool(globalResources, req, 'request_image_metadata', {
             filename: lookedA.filename
         }));
@@ -9163,7 +9177,7 @@ async function callTool(globalResources, req, name, args) {
         }
         if (!image) {
             try {
-                const resolved = await resolveGalleryPngPath(globalResources, filename);
+                const resolved = await resolveGalleryPixelPath(globalResources, filename);
                 image = await resizeImageForGrok(resolved.filePath);
                 if (image) {
                     image.filename = filename;
@@ -9305,7 +9319,7 @@ async function callTool(globalResources, req, name, args) {
         };
         if (wantImage && focusedFilename) {
             try {
-                const resolved = await resolveGalleryPngPath(globalResources, focusedFilename);
+                const resolved = await resolveGalleryPixelPath(globalResources, focusedFilename);
                 const image = await resizeImageForGrok(resolved.filePath);
                 if (image) {
                     image.filename = focusedFilename;

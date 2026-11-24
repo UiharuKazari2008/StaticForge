@@ -1088,7 +1088,7 @@ function handleUnupscaledOriginalContextAction(action, image, event) {
             copyImageToClipboard(originalImage);
             return true;
         case 'download-original':
-            downloadImage(originalImage);
+            galleryDownloadWindow.one(originalImage);
             return true;
         case 'expand-canvas-original':
             expandCanvasFromGallery(originalImage);
@@ -3216,7 +3216,8 @@ function onGalleryRerollOverlayActionClick(event) {
             }
             break;
         case 'download':
-            if (image) downloadImage(image);
+            // the download window (format) — galleryDownloadWindow: public/scripts/comp/bulkOperationsManager.js
+            if (image) galleryDownloadWindow.one(image);
             break;
         case 'copy':
             if (image) copyImageToClipboard(image);
@@ -8407,7 +8408,8 @@ function handleGalleryContextMenuAction(event) {
             break;
 
         case 'download':
-            downloadImage(image);
+            // the download window (format) — galleryDownloadWindow: public/scripts/comp/bulkOperationsManager.js
+            galleryDownloadWindow.one(image);
             break;
 
         case 'copy':
@@ -10308,12 +10310,15 @@ function updateGalleryPinButtons(filename, isPinned) {
 
 // Flag to track if app data has been loaded
 
-// Download image
-function downloadImage(image) {
+/**
+ * Download a picture. format (the download window, #1134): 'png' as saved (default), 'jxl' lossless JPEG XL with
+ * the prompt and settings, 'slim' PNG without them, 'jpeg' a small JPEG.
+ */
+function downloadImage(image, format = 'png') {
     let filename, url;
 
     // Handle different image object structures
-    if (image.url) {
+    if (image.url && format === 'png') {
         // For newly generated images (lightbox)
         url = image.url;
         filename = image.filename;
@@ -10338,10 +10343,22 @@ function downloadImage(image) {
         link.download = filename;
         link.click();
     } else {
-        // For existing images — localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+        // For existing images — localGalleryImageUrl, localGalleryDerivedImageUrl: public/scripts/comp/assetUrlResolver.js
+        const stem = String(filename).replace(/\.[^.]+$/, '');
         const link = document.createElement('a');
-        link.href = `${localGalleryImageUrl(filename)}?download=true`;
-        link.download = filename;
+        if (format === 'jxl') {
+            link.href = `${localGalleryImageUrl(filename)}?download=true&format=jxl`;
+            link.download = `${stem}.jxl`;
+        } else if (format === 'slim') {
+            link.href = `${localGalleryDerivedImageUrl('slim', filename)}?download=true`;
+            link.download = `${stem}_slim.png`;
+        } else if (format === 'jpeg') {
+            link.href = `${localGalleryDerivedImageUrl('opti', filename)}?download=true`;
+            link.download = `${stem}_optimized.jpg`;
+        } else {
+            link.href = `${localGalleryImageUrl(filename)}?download=true`;
+            link.download = filename;
+        }
         link.click();
     }
 }

@@ -193,15 +193,18 @@ function readBoxes(jxl) {
 }
 
 /**
- * The JXL with the PNG's metadata in an sfPN box (a bare codestream is wrapped in a container first; an older
- * sfPN box is replaced). Decoders skip box types they do not know.
+ * The JXL with the PNG's metadata in an sfPN box after the codestream (a bare codestream is wrapped in a container
+ * first; an older sfPN box is replaced). Decoders skip box types they do not know (djxl, sharp / libvips and
+ * Chrome 157 checked).
  */
 function attachPngMetadata(jxl, pngBuf) {
     const payload = encodeBoxPayload(pngBuf);
     const boxes = readBoxes(jxl);
     if (!boxes) {
         const ftyp = box('ftyp', Buffer.from('jxl \0\0\0\0jxl ', 'latin1'));
-        return Buffer.concat([JXL_CONTAINER_SIG, ftyp, box(BOX_TYPE, payload), box('jxlc', jxl)]);
+        // the codestream first: a browser draws while the rest arrives, and its size header is at the start
+        // (a picture's metadata box can be hundreds of KB, #1134)
+        return Buffer.concat([JXL_CONTAINER_SIG, ftyp, box('jxlc', jxl), box(BOX_TYPE, payload)]);
     }
     // explicit sizes throughout (a last box of size 0 runs to the end of the file)
     const kept = boxes.filter((b) => b.type !== BOX_TYPE && b.type !== 'JXL ');
@@ -381,18 +384,35 @@ function run(cmd, args) {
     });
 }
 
-/** A full PNG (pixels + the original metadata chunks) from a JXL file. */
+let djxlMissing = false;
+
+/**
+ * A full PNG (pixels + the original metadata chunks) from a JXL file. djxl first (libjxl-tools; its output is what
+ * the size map was learnt from on this host), sharp when djxl is not installed and sharp reads JXL (#1134
+ * install: a host may have either one).
+ */
 async function decodeJxlToPngBuffer(jxlPath) {
-    const tmp = path.join(CACHE_DIR, `.dec-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
-    await fs.promises.mkdir(CACHE_DIR, { recursive: true });
-    try {
-        await run('djxl', ['--quiet', jxlPath, tmp]);
-        const decoded = await fs.promises.readFile(tmp);
-        const jxl = await fs.promises.readFile(jxlPath);
-        return rebuildPng(decoded, readPngMetadataBox(jxl));
-    } finally {
-        fs.promises.unlink(tmp).catch(() => {});
+    const jxl = await fs.promises.readFile(jxlPath);
+    const stored = readPngMetadataBox(jxl);
+    if (!djxlMissing) {
+        const tmp = path.join(CACHE_DIR, `.dec-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+        await fs.promises.mkdir(CACHE_DIR, { recursive: true });
+        try {
+            await run('djxl', ['--quiet', jxlPath, tmp]);
+            return rebuildPng(await fs.promises.readFile(tmp), stored);
+        } catch (e) {
+            if (e && e.code !== 'ENOENT') throw e;
+            djxlMissing = true;
+            console.warn('[imageStore] djxl is not installed (apt install libjxl-tools): decoding JPEG XL with sharp');
+        } finally {
+            fs.promises.unlink(tmp).catch(() => {});
+        }
     }
+    if (!sharpReadsJxl()) {
+        throw new Error('no JPEG XL decoder: install libjxl-tools (djxl), or build sharp against a libvips with libjxl');
+    }
+    const decoded = await require('sharp')(jxl).png({ compressionLevel: 6 }).toBuffer();
+    return rebuildPng(decoded, stored);
 }
 
 async function trimCache() {
@@ -489,6 +509,35 @@ async function jxlOriginalHasIcc(jxlPath) {
     return stored.some((c) => c.raw.toString('latin1', 4, 8) === 'iCCP');
 }
 
+/**
+ * The picture as JPEG XL with its PNG's metadata in the sfPN box (the download window, #1134): the stored file for
+ * a JXL; a PNG is encoded losslessly now (cjxl effort 7, or sharp when cjxl is not installed). null when missing.
+ */
+async function jxlBytes(name, dir = IMAGES_DIR) {
+    const loc = await locate(name, dir);
+    if (!loc) return null;
+    if (loc.kind === 'jxl') return fs.promises.readFile(loc.path);
+    if (loc.kind !== 'png') return null;
+    const png = await fs.promises.readFile(loc.path);
+    let jxl = null;
+    const tmp = path.join(CACHE_DIR, `.enc-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.jxl`);
+    await fs.promises.mkdir(CACHE_DIR, { recursive: true });
+    try {
+        await run('cjxl', [loc.path, tmp, '-d', '0', '-e', '7', '--quiet']);
+        jxl = await fs.promises.readFile(tmp);
+    } catch (e) {
+        if (!e || e.code !== 'ENOENT') throw e;
+        const sharp = require('sharp');
+        if (!(sharp.format.jxl && sharp.format.jxl.output && sharp.format.jxl.output.buffer)) {
+            throw new Error('no JPEG XL encoder: install libjxl-tools (cjxl)');
+        }
+        jxl = await sharp(png).jxl({ lossless: true, effort: 7 }).toBuffer();
+    } finally {
+        fs.promises.unlink(tmp).catch(() => {});
+    }
+    return attachPngMetadata(jxl, png);
+}
+
 /** The picture's PNG bytes (original or rebuilt), or null. */
 async function readPng(name, dir = IMAGES_DIR) {
     const p = await pngPath(name, dir);
@@ -570,6 +619,7 @@ module.exports = {
     sharpReadsJxl,
     jxlOriginalHasIcc,
     readPng,
+    jxlBytes,
     pngSize,
     knownPngSize,
     notePngSize,

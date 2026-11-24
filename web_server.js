@@ -2414,6 +2414,31 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
     // the stored picture (x.png, or x.jxl under that name: then the decoded PNG copy is what is sent)
     const loc = await imageStore.locate(filename);
+    // The download window's sizes (#1134): the PNG and the JPEG XL the picture downloads as, where known without
+    // work (a JXL's rebuilt PNG once it was rebuilt; a PNG's JXL only after an encode: null, the window estimates)
+    if (req.query.info === 'formats') {
+        if (!loc) return res.status(404).json({ success: false, error: 'Image not found' });
+        const pngBytes = loc.kind === 'jxl' ? imageStore.knownPngSize(filename, loc.stat.mtimeMs) : loc.stat.size;
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json({ success: true, stored: loc.kind, png: pngBytes, jxl: loc.kind === 'jxl' ? loc.stat.size : null });
+    }
+    // Download as JPEG XL (the download window): the stored JXL, or the PNG encoded now; the prompt and settings
+    // ride in its sfPN box
+    if (loc && req.query.download === 'true' && req.query.format === 'jxl') {
+        try {
+            const bytes = await imageStore.jxlBytes(filename);
+            if (!bytes) return res.status(404).json({ success: false, error: 'Image not found' });
+            const stem = path.basename(filename, path.extname(filename));
+            res.setHeader('Content-Type', 'image/jxl');
+            res.setHeader('Content-Length', bytes.length);
+            res.setHeader('Cache-Control', 'no-store');
+            res.setHeader('Content-Disposition', `attachment; filename="${stem.replace(/["\\\r\n]/g, '_')}.jxl"`);
+            return res.send(bytes);
+        } catch (e) {
+            console.error('[images] JPEG XL download failed for', filename, ':', e.message);
+            return res.status(500).json({ success: false, error: 'Could not make the JPEG XL file' });
+        }
+    }
     // A picture shown (an <img> / CSS image: Sec-Fetch-Dest image) on a client that decodes JPEG XL gets the JXL
     // itself, no decode here (#1134): the client said so with the melaton_jxl cookie (assetPackages.js checks
     // after boot), or its Accept lists image/jxl. fetch() readers (Paint, uploads, clipboard), downloads and

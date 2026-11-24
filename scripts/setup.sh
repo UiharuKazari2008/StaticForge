@@ -167,6 +167,9 @@ APT_BUILD=(
     libgif-dev
     librsvg2-dev
     libhunspell-dev
+    # #1134: sharp built against the system libvips (reads JPEG XL) and djxl / cjxl for the JXL-stored gallery
+    libvips-dev
+    libjxl-tools
 )
 
 APT_RUNTIME=(
