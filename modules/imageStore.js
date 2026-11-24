@@ -19,6 +19,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const pictureMeta = require('./pictureMeta');
+const pictureIds = require('./pictureIds');
 
 const ROOT = path.resolve(__dirname, '..');
 const IMAGES_DIR = path.join(ROOT, 'images');
@@ -48,9 +49,36 @@ function isPngName(name) {
     return /\.png$/i.test(name);
 }
 
-/** `x.png` -> `x.jxl` (null for a name that is not a PNG: those are never stored as JXL). */
+/** `x.png` -> `x.jxl`; a picture ID (#1156: no extension) -> `<id>.jxl`; null for any other name (never stored as JXL). */
 function jxlNameFor(name) {
-    return isPngName(name) ? name.slice(0, -4) + '.jxl' : null;
+    if (isPngName(name)) return name.slice(0, -4) + '.jxl';
+    return name.length === 36 && pictureIds.isId(name) ? name + '.jxl' : null;
+}
+
+/** A gallery picture's name: a legacy image file name, or a picture ID (#1156, no extension). */
+function isPictureName(name) {
+    return typeof name === 'string' && (/\.(png|jpe?g|gif)$/i.test(name) || (name.length === 36 && pictureIds.isId(name)));
+}
+
+/**
+ * The name for a new upscale of `filename`: the picture's existing upscale when it has one (an upscale replaces
+ * the earlier one), a legacy `x_upscaled.png` that is on disk, else a new picture ID linked to its parent (#1156).
+ */
+function upscaleNameFor(filename, dir = IMAGES_DIR) {
+    const linked = pictureIds.upscaleOf(filename);
+    if (linked) return linked;
+    if (isPngName(filename) && !pictureIds.isId(filename)) {
+        const legacy = filename.replace(/\.png$/i, '_upscaled.png');
+        if (existsSync(legacy, dir)) return legacy;
+    }
+    return pictureIds.newUpscaleOf(filename);
+}
+
+/** The original of an upscale (its linked parent, or the legacy name without `_upscaled`); the name itself otherwise. */
+function originalNameFor(filename) {
+    const parent = pictureIds.parentOf(filename);
+    if (parent && pictureIds.isUpscale(filename)) return parent;
+    return /_upscaled\./.test(filename) ? filename.replace('_upscaled.', '.') : filename;
 }
 
 /** A directory listing's names as the pictures' names: `x.jxl` shows as `x.png`, once. */
@@ -59,7 +87,9 @@ function logicalNames(entries) {
     for (const e of entries) {
         const n = typeof e === 'string' ? e : e && e.name;
         if (!n) continue;
-        out.add(/\.jxl$/i.test(n) ? n.slice(0, -4) + '.png' : n);
+        if (!/\.jxl$/i.test(n)) { out.add(n); continue; }
+        const stem = n.slice(0, -4);
+        out.add(pictureIds.isId(stem) ? stem : stem + '.png'); // an ID is its own name; a legacy x.jxl shows as x.png
     }
     return [...out];
 }
@@ -699,7 +729,7 @@ async function encodeLossless(pngBuf, effort) {
  */
 async function writePicture(name, buffer, opts = {}) {
     const n = cleanName(name);
-    if (!n || !isPngName(n)) throw new Error('writePicture: a gallery .png name is required');
+    if (!n || !(isPngName(n) || pictureIds.isId(n))) throw new Error('writePicture: a picture ID or a legacy gallery .png name is required');
     const fmt = pictureMeta.formatOf(buffer);
     if (!fmt) throw new Error('writePicture: not a PNG, WebP, JPEG XL or JPEG picture');
     if (fmt !== 'png') return writeOtherPicture(n, buffer, fmt, opts);
@@ -879,6 +909,9 @@ module.exports = {
     cleanName,
     jxlNameFor,
     logicalNames,
+    isPictureName,
+    upscaleNameFor,
+    originalNameFor,
     locate,
     locateSync,
     exists,
