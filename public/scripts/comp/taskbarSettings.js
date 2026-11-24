@@ -1165,6 +1165,11 @@
                 };
                 if (w.taskId != null) cell.appendChild(androidStill(w, (ok) => { if (!ok) asIcon(); if (thumbFor === item) placeThumb(item); }));
                 else asIcon();
+                // its name under it, as Windows 7 does
+                const cap = doc.createElement('div');
+                cap.className = 'taskbar-thumb-caption';
+                cap.textContent = T.titleOf(w);
+                cell.appendChild(cap);
                 body.appendChild(cell);
             });
         }

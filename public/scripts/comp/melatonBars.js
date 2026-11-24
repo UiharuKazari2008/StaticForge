@@ -398,12 +398,12 @@
         const cs = getComputedStyle(root);
         // (the first part: the lists' make - a new one makes every app ask for its kit again; m25: iconsRight measured
         // without Today's kept corner place beside the staged X, Nov 20; m26: the soft key Menu's samples; m27: 9-slice frames (nine), Nov 22; m28: the holder's status roles, #1056;
-        // m29: Task Manager's sample, lists.taskStrip, Nov 23; m30: its preview cards and hold menus, Nov 23; m31: the volume box written down with no mode chosen, Nov 23)
+        // m29: Task Manager's sample, lists.taskStrip, Nov 23; m30: its preview cards and hold menus, Nov 23; m31: the volume box written down with no mode chosen, Nov 23; m32: right-to-left gradients' stops in their places)
         // the icon unit, the bar's height and the camera extension too (Yukimi, Nov 17: "the icons are never
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m31', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m32', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), softMenuSig(), Math.round(window.innerWidth)].join('|');
     }
@@ -1010,11 +1010,16 @@
             if (lg) {
                 const args = topSplit(lg[1], ',');
                 let dir = 'v';
-                if (/^(to |[\d.]+deg)/.test(args[0])) { const a = args.shift(); dir = /to (right|left)|90deg|270deg/.test(a) ? 'h' : 'v'; if (/to (top|left)|0deg|270deg/.test(a)) args.reverse(); }
-                const stops = args.map((a, i) => {
+                let back = false;
+                if (/^(to |[\d.]+deg)/.test(args[0])) { const a = args.shift(); dir = /to (right|left)|90deg|270deg/.test(a) ? 'h' : 'v'; back = /to (top|left)|0deg|270deg/.test(a); }
+                // (stops placed first, then turned round with their places mirrored: reversed before, a stop at 40 % from the
+                // right edge sat 40 % from the left - Quick Access's shadows, Nov 23 2026)
+                let stops = args.map((a, i) => {
                     const mm = /^(.*?)(?:\s+([\d.]+)%)?$/.exec(a);
                     return [rgba(mixColor(mm[1]), alpha), mm[2] != null ? +mm[2] / 100 : i / Math.max(1, args.length - 1)];
-                }).filter((st) => st[0]);
+                });
+                if (back) stops = stops.reverse().map(([c, at]) => [c, 1 - at]);
+                stops = stops.filter((st) => st[0]);
                 if (stops.length >= 2) { out.push(withR2({ k: 'grad', x: R(box.left), y: R(box.top), w: R(box.width), h: R(box.height), r: radii(cs), dir, stops }, cs, box)); return; }
             }
             // WM's block bar: repeating-linear-gradient(to right, c 0, c Apx, transparent Apx, transparent Bpx)

@@ -421,8 +421,38 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group.group-menu-o
     display: none;
 }
 
-.taskbar-thumb-title {
+/* the window's name under its picture (Yukimi, Nov 23 2026: "add the window name under them like in 7") */
+.taskbar-thumb:not(.is-tooltip) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.taskbar-thumb.hidden {
     display: none;
+}
+.taskbar-thumb-title,
+.taskbar-thumb-caption {
+    order: 2;
+    max-width: 200px;
+    margin-top: 4px;
+    overflow: hidden;
+    color: #fff;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    text-shadow: 0 0 8px hsl(0 0% 0% / 90%), 0 0 2px hsl(0 0% 0% / 90%);
+}
+.taskbar-thumb.is-group > .taskbar-thumb-title {
+    display: none;
+}
+.taskbar-thumb-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.taskbar-thumb-cell .taskbar-thumb-caption {
+    max-width: 100%;
 }
 
 .taskbar-thumb-body {
@@ -508,22 +538,21 @@ img.taskbar-thumb-still {
 }
 .taskbar-thumb-cell {
     position: relative;
+}
+.taskbar-thumb-cell > .taskbar-thumb-still {
     box-shadow: 0 0 0 1px hsl(214 20% 25% / 85%);
 }
-.taskbar-thumb-cell:hover {
+.taskbar-thumb-cell:hover > :is(.taskbar-thumb-still, img) {
     box-shadow: 0 0 0 1px hsl(214 20% 25% / 85%), 0 0 0 3px hsl(205 80% 85% / 55%);
 }
-.taskbar-thumb-cell.is-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 120px;
-    height: 80px;
-    background: hsl(210 15% 90% / 40%);
-}
+/* (no picture of it: its icon in a 120 x 80 box, the name under it) */
 .taskbar-thumb-cell.is-icon > img:not(.taskbar-thumb-still) {
+    box-sizing: content-box;
     width: 32px;
     height: 32px;
+    padding: 24px 44px;
+    background: hsl(210 15% 90% / 40%);
+    box-shadow: 0 0 0 1px hsl(214 20% 25% / 85%);
 }
 .taskbar-thumb-cell:hover .taskbar-thumb-close {
     opacity: 1;
