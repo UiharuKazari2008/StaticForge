@@ -56,7 +56,7 @@ const ytRelay = require('../../videosYoutubeRelay');
 //   youtube_channel          { id }                    { channel, videos[], favourite, subscribed }
 //   youtube_favourite        { channel, on }           admins; adds or removes a Today favourite -> { favourites[] }
 //   youtube_favourites_order { ids[] }                 admins -> { favourites[] }
-//   youtube_settings_save    { settings }              admins; { noShorts, rareFirst, skipSegments, playIn ('app' | 'here'), todayCount } -> { settings }
+//   youtube_settings_save    { settings }              admins; { noShorts, rareFirst, skipSegments, playIn ('app' | 'here'), todayCount, notifyUploads } -> { settings }
 //
 // Status is pushed, never polled: statusHub feed `youtube` (status_subscribe { feed: 'youtube' } while the
 // Today item or the program is on screen) answers { account, favourites, latest, settings } once and then
@@ -127,7 +127,7 @@ function registerPackets(handlersCtx) {
         require('../../notificationInbox').bind(handlersCtx.globalResources).publish({
             app: 'youtube', id: `videos:live:${channel.slug}`, cls: 'notification', alert: true,
             title: `${channel.name} is live on Kick`, text: item.title || '', actions: [],
-            data: { app: 'youtube', open: `kick:${channel.slug}` }, ttlMs: 6 * 60 * 60 * 1000
+            data: { app: 'youtube', open: `kick:${channel.slug}` }, ttlMs: 2 * 60 * 60 * 1000 // a live notice is worth little after two hours (#1106)
         });
     });
     sources.watchKick();
@@ -164,7 +164,12 @@ function registerPackets(handlersCtx) {
     reg('youtube_video_state', packet(true, 'The video could not be read', async (m) => ytRelay.state(m.id)));
     reg('youtube_video_stop', packet(true, 'The video could not be stopped', async (m) => ({ stopped: await ytRelay.stop(m.id) })));
     reg('youtube_live_modes', packet(false, 'The qualities could not be read', async () => ({ modes: kickRelay.modes() })));
-    reg('youtube_live_start', packet(true, 'The stream could not be started', async (m) => Object.assign(await kickRelay.start(m.slug, m.mode), { modes: kickRelay.modes() })));
+    reg('youtube_live_start', packet(true, 'The stream could not be started', async (m) => {
+        const r = await kickRelay.start(m.slug, m.mode);
+        // opening the stream answers the waiting "is live" notice: cleared everywhere (#1106)
+        try { require('../../notificationInbox').bind(handlersCtx.globalResources).clear(undefined, `videos:live:${String(m.slug || '')}`, 'open'); } catch (e) { console.warn(`[youtube] live notice clear: ${e.message}`); }
+        return Object.assign(r, { modes: kickRelay.modes() });
+    }));
     reg('youtube_live_state', packet(true, 'The stream could not be read', async (m) => kickRelay.state(m.id)));
     reg('youtube_live_stop', packet(true, 'The stream could not be stopped', async (m) => ({ stopped: await kickRelay.stop(m.id) })));
     reg('youtube_kick_add', packet(true, 'The Kick channel could not be added', async (m) => sources.kickAdd(m.name)));
