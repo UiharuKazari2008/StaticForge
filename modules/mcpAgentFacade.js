@@ -3645,6 +3645,9 @@ messagingBridgeMcp.TOOLS.forEach((tool) => TOOL_DEFS.push(tool));
 // Plaud (sfapp_plaud): Yukimi's Plaud recordings, for Yozora (the Xi key) only (modules/plaudMcp.js)
 const plaudMcp = require('./plaudMcp');
 plaudMcp.TOOLS.forEach((tool) => TOOL_DEFS.push(tool));
+// Claude fleet (sfapp_claude_fleet): every Claude account's usage, Remote Control and sessions, and dispatch with a model and effort, for Yozora (the Xi key) only (modules/claudeFleetMcp.js, #1154)
+const claudeFleetMcp = require('./claudeFleetMcp');
+claudeFleetMcp.TOOLS.forEach((tool) => TOOL_DEFS.push(tool));
 
 const MEMORY_TOOL_ALIASES = {
     saveKnowledgeMemory: 'save_memory',
@@ -7351,6 +7354,8 @@ function toolAllowedForScopes(scopes, tool) {
     if (tool.role === messagingBridgeMcp.ROLE) return messagingBridgeMcp.scopesHaveBridge(scopes);
     // Plaud: the key must name sfapp_plaud itself; only the Xi key holds it
     if (tool.role === plaudMcp.ROLE) return plaudMcp.scopesHavePlaud(scopes);
+    // Claude fleet: the key must name sfapp_claude_fleet itself; only the Xi key holds it
+    if (tool.role === claudeFleetMcp.ROLE) return claudeFleetMcp.scopesHaveFleet(scopes);
     if (tool.name === 'resolve_lookback') {
         return agentHasNamedScope(scopes, 'gallery')
             || agentHasNamedScope(scopes, 'notes')
@@ -7476,6 +7481,7 @@ function listToolsForScopes(scopes, globalResources, options) {
                 return messagingBridgeMcp.isBridgeOwner(owner) || messagingBridgeMcp.isBridgeOwner(options && options.actor);
             }
             if (tool.role === plaudMcp.ROLE) return plaudMcp.isPlaudOwner(options && options.appName);
+            if (tool.role === claudeFleetMcp.ROLE) return claudeFleetMcp.isFleetOwner(options && options.appName);
             return false;
         })
         .map((tool) => serializeListedTool(tool, catalog));
@@ -10509,6 +10515,10 @@ async function callTool(globalResources, req, name, args) {
 
     if (plaudMcp.isPlaudTool(name)) {
         return plaudMcp.handlePlaudTool(req, name, input);
+    }
+
+    if (claudeFleetMcp.isFleetTool(name)) {
+        return claudeFleetMcp.handleFleetTool(globalResources, req, name, input);
     }
 
     const err = new Error(`Unknown tool: ${name}`);

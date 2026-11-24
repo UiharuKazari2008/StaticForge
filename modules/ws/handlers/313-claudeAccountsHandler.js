@@ -14,6 +14,10 @@
  * Sessions tab: get_claude_sessions (every transcript on the host, paged) and claude_session_action
  * (reconnect: resume into Remote Control, no fork, or its link when it is live already; disconnect: end
  * its rc-* tmux session). modules/claudeSessions.js.
+ * Own folders (#1154): claude_remote_fleet { action: move | start | stop | reconnect | leave, index,
+ * confirmHost, carry } runs an account's own Remote Control on its own config dir
+ * (modules/claudeRemoteFleet.js); every snapshot carries fleet (each account's Remote Control), and
+ * claude_remote_fleet_status is pushed when an action changes one.
  * docs/client-api/ws/account.md#claude-accounts
  */
 
@@ -21,6 +25,8 @@ const wsPacketRegistry = require('../wsPacketRegistry');
 const claudeHost = require('../../claudeAccountHost');
 const claudeLogin = require('../../claudeAccountLogin');
 const claudeSessions = require('../../claudeSessions');
+const fleet = require('../../claudeRemoteFleet');
+const runtime = require('../../claudeAccountRuntime');
 
 const ADMIN_DESTRUCTIVE = { destructive: true };
 
@@ -29,7 +35,8 @@ function isAdmin(clientInfo) {
 }
 
 async function snapshot(gr) {
-    return { accounts: claudeHost.listAccounts(gr), host: await claudeHost.hostStatus(gr) };
+    const [host, fleetStatus] = await Promise.all([claudeHost.hostStatus(gr), fleet.status(gr)]);
+    return { accounts: claudeHost.listAccounts(gr), host, fleet: fleetStatus };
 }
 
 function reply(handlersCtx, ws, message, type, data) {
@@ -62,7 +69,10 @@ const handleSwitch = guard('switch_claude_account', async (gr, message) => {
     const accounts = claudeHost.listAccounts(gr);
     const target = accounts.find((a) => a.index === index);
     if (!target) throw new Error('No such Claude account');
-    if (target.active) {
+    if (target.active && runtime.isMoved(target.id)) {
+        // in its own folder: "on each switch" reconnects its own Remote Control, nothing on the host changes
+        fleet.reconnect(gr, index).catch(() => {});
+    } else if (target.active) {
         // already the engine's account: the switch still reconnects (Yukimi: "on each switch")
         claudeHost.reconnect(gr, { index, carry, account: { index, name: target.name }, reason: `Reconnecting as ${target.name}` }).catch(() => {});
     } else {
@@ -79,6 +89,8 @@ const handleLink = guard('link_claude_account_login', async (gr, message) => {
 });
 
 const handleUnlink = guard('unlink_claude_account_login', async (gr, message) => {
+    const acc = claudeHost.listAccounts(gr).find((a) => a.index === Number(message.index));
+    if (acc && runtime.isMoved(acc.id)) throw new Error(`${acc.name} runs in its own folder: Leave Own Folder first (unlinking removes that folder)`);
     claudeHost.unlinkLogin(gr, message.index);
     return snapshot(gr);
 });
@@ -99,6 +111,32 @@ const handleRemoteControl = guard('claude_remote_control', async (gr, message) =
         throw new Error('action must be reconnect, start or stop');
     }
     return snapshot(gr);
+});
+
+const handleFleet = guard('claude_remote_fleet', async (gr, message) => {
+    const action = String(message.action || '');
+    const index = Number(message.index);
+    let result = null;
+    if (action === 'move') {
+        // answers at once; the move goes on (its state is pushed), the host's account's move ends this socket's server sessions
+        const p = fleet.moveToOwnFolder(gr, index, { confirmHost: message.confirmHost === true, carry: carryOf(message) });
+        // a refusal (no login, host account unconfirmed) comes back at once; the move itself goes on
+        const early = await Promise.race([p.then(() => null, (e) => e), new Promise((r) => setTimeout(() => r(null), 50))]);
+        if (early instanceof Error) throw early;
+        result = { started: true };
+    } else if (action === 'start' || action === 'reconnect') {
+        const p = fleet[action](gr, index);
+        const early = await Promise.race([p.then(() => null, (e) => e), new Promise((r) => setTimeout(() => r(null), 50))]);
+        if (early instanceof Error) throw early;
+        result = { started: true };
+    } else if (action === 'stop') {
+        result = await fleet.stop(gr, index);
+    } else if (action === 'leave') {
+        result = await fleet.leaveOwnFolder(gr, index);
+    } else if (action !== 'status') {
+        throw new Error('action must be status, move, start, stop, reconnect or leave');
+    }
+    return { result, fleet: await fleet.status(gr) };
 });
 
 // Add Account by signing in. Never logs the code: the guard logs error messages only, which carry none.
@@ -137,6 +175,7 @@ function registerPackets(handlersCtx) {
     if (!handlersCtx) return;
     // CardSpace's "Use this account" reconnects Remote Control from here on (apiKeyManager -> onSelectionChanged)
     claudeHost.arm(handlersCtx.globalResources);
+    fleet.armAll(handlersCtx.globalResources).catch(() => {});
     const reg = (type, handlerFn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             await handlerFn(ctx.handlers, ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer);
@@ -148,8 +187,9 @@ function registerPackets(handlersCtx) {
     reg('unlink_claude_account_login', handleUnlink, ADMIN_DESTRUCTIVE);
     reg('claude_remote_control', handleRemoteControl, ADMIN_DESTRUCTIVE);
     reg('claude_account_login', handleLogin, ADMIN_DESTRUCTIVE);
+    reg('claude_remote_fleet', handleFleet, ADMIN_DESTRUCTIVE);
     reg('get_claude_sessions', handleSessions);
     reg('claude_session_action', handleSessionAction, ADMIN_DESTRUCTIVE);
 }
 
-module.exports = { registerPackets, _handlers: { handleGet, handleSwitch, handleLink, handleUnlink, handleRemoteControl, handleLogin, handleSessions, handleSessionAction } };
+module.exports = { registerPackets, _handlers: { handleGet, handleSwitch, handleLink, handleUnlink, handleRemoteControl, handleLogin, handleFleet, handleSessions, handleSessionAction } };

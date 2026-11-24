@@ -19,6 +19,7 @@ process.env.DREAMSCAPE_CLAUDE_ACCOUNTS_DIR = path.join(SANDBOX, 'store');
 process.env.DREAMSCAPE_CLAUDE_CARRY_SOCKET = 'ds-claude-desk-test';
 process.env.DREAMSCAPE_CLAUDE_DESK_STATE = path.join(SANDBOX, 'state');
 process.env.DREAMSCAPE_CLAUDE_CLI = '/opt/test/claude';
+process.env.DREAMSCAPE_CLAUDE_COORD_MCP = '0'; // agent-coord via --mcp-config here (user-scope registration runs the CLI)
 process.env.AGENT_COORD_DB = path.join(SANDBOX, 'coord', 'coord.db');
 process.env.DREAMSCAPE_CLAUDE_RC_UNIT = 'claude-remote-test.service';
 process.env.DREAMSCAPE_CLAUDE_RC_TMUX = 'claude-rc-test';
@@ -280,7 +281,7 @@ async function main() {
         assert.ok(/coord_claim/.test(init.result.instructions));
         child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
         const list = await rpc(child, { jsonrpc: '2.0', id: 2, method: 'tools/list' });
-        assert.deepStrictEqual(list.result.tools.map((t) => t.name).sort(), ['coord_agents', 'coord_check', 'coord_claim', 'coord_claims', 'coord_hello', 'coord_inbox', 'coord_post', 'coord_release', 'coord_set_task']);
+        assert.deepStrictEqual(list.result.tools.map((t) => t.name).sort(), ['coord_agents', 'coord_build_begin', 'coord_build_end', 'coord_build_ready', 'coord_build_request', 'coord_build_status', 'coord_builds', 'coord_check', 'coord_claim', 'coord_claims', 'coord_editors', 'coord_hello', 'coord_inbox', 'coord_inspect', 'coord_locks', 'coord_post', 'coord_release', 'coord_set_task']);
         const hello = await rpc(child, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'coord_hello', arguments: { task: 'testing the MCP' } } });
         assert.ok(JSON.parse(hello.result.content[0].text).you.id === 'cursor-test');
         // Third claims a file; the Cursor agent's claim on it conflicts

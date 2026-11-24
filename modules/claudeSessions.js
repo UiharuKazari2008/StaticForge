@@ -197,10 +197,26 @@ function findTranscript(id) {
 
 const originOf = (tmux) => {
     const t = String(tmux || '');
-    if (t.startsWith(`${serverTmux()}:`)) return 'server';
+    if (t.startsWith(`${serverTmux()}:`) || /^claude-rc-[0-9a-f]{16}:/.test(t)) return 'server'; // the legacy unit's or an account's own (#1154)
     if (/^rc-[A-Za-z0-9_-]+:/.test(t)) return 'rc';
     return t ? 'tmux' : 'terminal';
 };
+
+// CLAUDE_CONFIG_DIR of a live CLI (its account's own folder, #1154; null = the host's ~/.claude login).
+// A process's environment does not change: read once per pid + start.
+const configDirs = new Map();
+function configDirOf(pid, startedAt) {
+    const key = `${pid}:${startedAt || 0}`;
+    if (configDirs.has(key)) return configDirs.get(key);
+    let dir = null;
+    try {
+        const hit = fs.readFileSync(`/proc/${pid}/environ`, 'latin1').split('\0').find((kv) => kv.startsWith('CLAUDE_CONFIG_DIR='));
+        dir = hit ? path.resolve(hit.slice('CLAUDE_CONFIG_DIR='.length)) : null;
+    } catch (_) { dir = null; }
+    if (configDirs.size > 200) configDirs.clear();
+    configDirs.set(key, dir);
+    return dir;
+}
 
 /** Every running claude with its session id (sessions/<pid>.json whose pid is alive). */
 function liveSessions() {
@@ -223,7 +239,8 @@ function liveSessions() {
             remoteControl: !!r.bridgeSessionId,
             link: linkFor(r.bridgeSessionId),
             updatedAt: Number(r.updatedAt) || 0,
-            startedAt: Number(r.startedAt) || 0
+            startedAt: Number(r.startedAt) || 0,
+            configDir: configDirOf(r.pid, r.startedAt)
         });
     });
     return out;

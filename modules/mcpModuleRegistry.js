@@ -190,6 +190,13 @@ const MODULE_DEFS = {
         description: 'Yukimi\'s Plaud recordings (list, AI notes, transcripts; read-only) for Yozora. Granted only to the Xi key; identity-gated to Xi. universal does not include it.',
         tools: require('./plaudMcp').TOOLS.map((t) => t.name)
     },
+    claude_fleet: {
+        id: 'claude_fleet',
+        scope: 'sfapp_claude_fleet',
+        label: 'Claude Fleet',
+        description: 'Every Claude account\'s plan usage, Remote Control and sessions, and dispatching work to an account with a model and effort (read, send, stop). Granted only to the Xi key; identity-gated to Xi. universal does not include it.',
+        tools: require('./claudeFleetMcp').TOOLS.map((t) => t.name)
+    },
     report_issue: {
         id: 'report_issue',
         scope: 'sfapp_report_issue',

@@ -5,8 +5,10 @@
  * Shares claudeSessions.js (the phone's Sessions tab): the same tmux socket, the same rc-<id8> session
  * names, the same live-session records, so either app sees and ends what the other started.
  *
- *   start({ cwd, prompt, title, account, mode })   a new session: `claude --session-id <new uuid>
- *                                       --remote-control <title> --permission-mode <mode> [prompt]`
+ *   start({ cwd, prompt, title, account, mode, model, effort })   a new session: `claude --session-id
+ *                                       <new uuid> --remote-control <title> --permission-mode <mode>
+ *                                       [--model <model>] [--effort <level>] [prompt]` (Yozora's
+ *                                       claude_dispatch picks the model and effort, #1154)
  *   resume(id, { account, mode, title })          a session that is not running, back in Remote Control
  *                                       (`--resume <uuid>`, no fork)
  *   steer(id, text)                    types a message into a running session's terminal (tmux); Claude
@@ -46,6 +48,8 @@ const POLL_MS = 1500;
 const RC_ACTIVE_RE = claudeSessions._text.RC_ACTIVE_RE;
 const RC_NUDGE_RE = claudeSessions._text.RC_NUDGE_RE;
 const FAIL_RE = /No conversation found|Session .{0,40}not found|could not resume|Invalid session|Not logged in|Please run \/login|Invalid API key|OAuth token has expired/i;
+const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,79}$/;
 const STRIP_ENV = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CONFIG_DIR', 'TMUX', 'TMUX_PANE'];
 
 function socket() { return process.env.DREAMSCAPE_CLAUDE_CARRY_SOCKET || 'dreamscape-claude-carry'; }
@@ -214,7 +218,19 @@ async function launch(gr, o) {
     const { env, account } = await accountEnv(gr, o.account);
     if (account) env.AGENT_COORD_ACCOUNT = account.name;
     const title = cleanTitle(o.title, 60) || o.id.slice(0, 8);
-    const args = [o.resume ? '--resume' : '--session-id', o.id, '--remote-control', title, '--permission-mode', mode, '--mcp-config', await mcpConfigFile()];
+    // agent-coord: user scope in the account's config dir / the host's (every session there has it, #1154);
+    // a launch-only config only when that could not be registered
+    const coordOk = await runtime.ensureCoordMcp(env.CLAUDE_CONFIG_DIR || null).catch(() => false);
+    const args = [o.resume ? '--resume' : '--session-id', o.id, '--remote-control', title, '--permission-mode', mode];
+    if (!coordOk) args.push('--mcp-config', await mcpConfigFile());
+    if (o.model !== undefined && o.model !== null && o.model !== '') {
+        if (!MODEL_RE.test(String(o.model))) throw new Error('That is not a model name (an alias like opus / sonnet, or a full model id)');
+        args.push('--model', String(o.model));
+    }
+    if (o.effort !== undefined && o.effort !== null && o.effort !== '') {
+        if (!EFFORTS.has(String(o.effort))) throw new Error('effort is low, medium, high, xhigh or max');
+        args.push('--effort', String(o.effort));
+    }
     if (!o.resume && o.prompt) args.push('--', String(o.prompt).slice(0, 20000));
     const name = tmuxName(o.id);
     await ensureServer();
@@ -224,15 +240,15 @@ async function launch(gr, o) {
     }
     const r = await tmux(['new-session', '-d', '-s', name, '-x', '200', '-y', '50', '-c', cwd, commandLine({ env, bin: cliPath(), args })]);
     if (r.code !== 0) return { id: o.id, tmuxSession: name, account, state: 'failed', link: '', message: `Could not start it: ${cleanTitle(r.stderr, 120) || 'tmux failed'}` };
-    coordNote({ id: `claude-${o.id.slice(0, 8)}`, kind: 'claude', name: title, sessionId: o.id, account: account ? account.name : 'host', task: o.task || title, cwd, tmux: `${name} (${socket()})` });
-    return Object.assign({ id: o.id, tmuxSession: name, account }, await watch(name, o));
+    coordNote({ id: `claude-${o.id.slice(0, 8)}`, kind: 'claude', name: title, sessionId: o.id, account: account ? account.name : 'host', task: o.task || title, cwd, tmux: `${name} (${socket()})`, model: o.model || '', effort: o.effort || '', dispatchedBy: o.dispatchedBy || '' });
+    return Object.assign({ id: o.id, tmuxSession: name, account, model: o.model || null, effort: o.effort || null }, await watch(name, o));
 }
 
 /** A new session in a folder, with an optional first prompt. */
 async function start(gr, opts = {}) {
     const id = crypto.randomUUID();
     const title = opts.title || (opts.prompt ? String(opts.prompt).split('\n')[0] : '') || path.basename(String(opts.cwd || '')) || 'Claude session';
-    return launch(gr, { id, cwd: opts.cwd, prompt: opts.prompt, title, task: opts.prompt ? cleanTitle(opts.prompt, 200) : title, account: opts.account, mode: opts.mode, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
+    return launch(gr, { id, cwd: opts.cwd, prompt: opts.prompt, title, task: opts.prompt ? cleanTitle(opts.prompt, 200) : title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, dispatchedBy: opts.dispatchedBy, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
 }
 
 async function findFile(id) {
@@ -268,7 +284,7 @@ async function resume(gr, id, opts = {}) {
     if (live && live.remoteControl) return { id, state: 'live', link: live.link, tmuxSession: live.tmuxSession, message: 'Already in Remote Control' };
     if (live) throw new Error(`It is running already (${live.origin === 'server' ? 'Remote Control' : live.tmuxSession || 'a terminal'}) without Remote Control: type /remote-control there, or send it /remote-control from here`);
     const cwd = await cwdOf(file);
-    return launch(gr, { id, resume: true, cwd, title: opts.title || id.slice(0, 8), task: opts.title, account: opts.account, mode: opts.mode, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
+    return launch(gr, { id, resume: true, cwd, title: opts.title || id.slice(0, 8), task: opts.title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
 }
 
 // ---------------------------------------------------------------- steering
@@ -335,4 +351,4 @@ async function screen(id) {
     return { id, lines: lines.slice(-40) };
 }
 
-module.exports = { ensureServer, start, resume, steer, interrupt, screen, mcpConfigFile, findFile, _setRunner, _commandLine: commandLine, DEFAULT_MODE };
+module.exports = { ensureServer, start, resume, steer, interrupt, screen, mcpConfigFile, findFile, _setRunner, _commandLine: commandLine, DEFAULT_MODE, EFFORTS };

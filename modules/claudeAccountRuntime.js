@@ -21,6 +21,16 @@
  * signs in with the current token (watch()). The account that is on the host never gets a config dir
  * launch: its sessions use the host's login (configFor answers null), so one login is never held twice.
  *
+ * Own folder (#1154, Yukimi Nov 24 2026: "all accounts are placed in a separate config folder ... so they
+ * can all be open and running at the same time and all have remote access working independently"): an
+ * account moved to its own folder (claudeRemoteFleet.moveToOwnFolder) has <id>/fleet.json and its own
+ * Remote Control server on its config dir. Its sessions always use that dir, on the host or not
+ * (configFor), and the host's ~/.claude login of a moved host account is a link to the dir's login, so
+ * the one login is still held once. remote/, bridge-spawn/ and the policy-limit files are the account's
+ * own (Remote Control's registration), never shared. Every config dir, and the host's, carries the
+ * agent-coord MCP server at user scope (ensureCoordMcp), so every session on every account takes the
+ * same locks.
+ *
  * Nothing here returns or logs a token. Overrides (tests): DREAMSCAPE_CLAUDE_HOME (claudeAccountHost's),
  * DREAMSCAPE_CLAUDE_ACCOUNTS_DIR.
  */
@@ -30,7 +40,7 @@ const os = require('os');
 const path = require('path');
 const claudeHost = require('./claudeAccountHost');
 
-const SHARED = ['projects', 'sessions', 'settings.json', 'CLAUDE.md', 'skills', 'plugins', 'agents', 'commands'];
+const SHARED = ['projects', 'sessions', 'settings.json', 'CLAUDE.md', 'skills', 'plugins', 'agents', 'commands', 'file-history'];
 const PROJECT_KEYS = ['hasTrustDialogAccepted', 'allowedTools', 'mcpServers', 'enabledMcpjsonServers', 'disabledMcpjsonServers', 'hasClaudeMdExternalIncludesApproved', 'hasClaudeMdExternalIncludesWarningShown'];
 const GLOBAL_KEYS = ['hasCompletedOnboarding', 'lastOnboardingVersion', 'installMethod', 'autoUpdates', 'remoteDialogSeen', 'hasUsedRemoteControl', 'bypassPermissionsModeAccepted', 'theme'];
 
@@ -43,6 +53,20 @@ function accountDir(id) {
     return path.join(claudeHost.storeDir(), id);
 }
 const configDir = (id) => path.join(accountDir(id), 'config');
+const fleetFile = (id) => path.join(accountDir(id), 'fleet.json');
+
+/** The account's own-folder record ({ movedAt, name, wasOnHost }), or null when it was never moved. */
+function fleetInfo(id) {
+    try {
+        const v = JSON.parse(fs.readFileSync(fleetFile(id), 'utf8'));
+        return v && v.movedAt ? v : null;
+    } catch (_) { return null; }
+}
+const isMoved = (id) => !!fleetInfo(id);
+
+async function writeFleetInfo(id, info) {
+    await writeJsonAtomic(fleetFile(id), info, 0o600);
+}
 
 async function readJson(file) {
     try { return JSON.parse(await fs.promises.readFile(file, 'utf8')); } catch (_) { return null; }
@@ -94,6 +118,7 @@ async function prepare(id) {
     for (const name of SHARED) await ensureLink(path.join(hostDir(), name), path.join(cdir, name));
     const host = (await readJson(hostJson())) || {};
     const cj = (await readJson(path.join(cdir, '.claude.json'))) || {};
+    const before = JSON.stringify(cj);
     GLOBAL_KEYS.forEach((k) => { if (k in host && !(k in cj)) cj[k] = host[k]; });
     cj.hasCompletedOnboarding = true;
     if (meta.oauthAccount) cj.oauthAccount = meta.oauthAccount;
@@ -104,7 +129,9 @@ async function prepare(id) {
         PROJECT_KEYS.forEach((k) => { if (k in v) mine[k] = v[k]; });
         cj.projects[p] = mine;
     });
-    await writeJsonAtomic(path.join(cdir, '.claude.json'), cj, 0o600);
+    // only when something changed: the account's own Remote Control CLI writes this file as it runs
+    if (JSON.stringify(cj) !== before) await writeJsonAtomic(path.join(cdir, '.claude.json'), cj, 0o600);
+    await ensureCoordMcp(cdir).catch((e) => console.warn(`[claudeRuntime] agent-coord: ${e.message}`));
     watch(id);
     return { dir: cdir, email: (meta.oauthAccount && meta.oauthAccount.emailAddress) || '' };
 }
@@ -117,10 +144,53 @@ async function configFor(gr, index) {
     if (index === null || index === undefined || index === 'host') return null;
     const acc = claudeHost.listAccounts(gr).find((a) => a.index === Number(index));
     if (!acc) throw new Error('No such Claude account');
-    if (acc.onHost) return null;
+    if (acc.onHost && !isMoved(acc.id)) return null;
     if (!acc.remoteLogin) throw new Error(`${acc.name} has no linked claude.ai login: link one first (Remote Control and parallel sessions need it)`);
     const p = await prepare(acc.id);
     return Object.assign({ index: acc.index, name: acc.name, id: acc.id }, p);
+}
+
+// ---------------------------------------------------------------- agent-coord for every session
+
+const COORD_NAME = 'agent-coord';
+function coordServer() {
+    return { type: 'stdio', command: process.execPath, args: [path.join(__dirname, 'agentCoord', 'mcpServer.js')], env: {} };
+}
+
+/**
+ * agent-coord at user scope in a config dir's .claude.json (null: the host's ~/.claude.json), so every
+ * session there has it (Remote Control's own sessions included). Added through the CLI (`claude mcp add
+ * --scope user`), which writes .claude.json under its own lock while other CLIs run; skipped when it is
+ * there already with this command. Answers true when it is (now) registered.
+ */
+async function ensureCoordMcp(dir, opts = {}) {
+    if (process.env.DREAMSCAPE_CLAUDE_COORD_MCP === '0') return false; // tests: the launcher passes --mcp-config instead
+    const file = dir ? path.join(dir, '.claude.json') : hostJson();
+    const cj = (await readJson(file)) || {};
+    const want = coordServer();
+    const cur = cj.mcpServers && cj.mcpServers[COORD_NAME];
+    if (cur && cur.command === want.command && JSON.stringify(cur.args) === JSON.stringify(want.args)) return true;
+    const run = opts.runner || cliRunner;
+    const env = dir ? { CLAUDE_CONFIG_DIR: dir } : {};
+    if (cur) await run(['mcp', 'remove', '--scope', 'user', COORD_NAME], env);
+    const r = await run(['mcp', 'add', '--scope', 'user', COORD_NAME, '--', want.command, ...want.args], env);
+    if (r.code !== 0) console.warn(`[claudeRuntime] agent-coord not registered in ${dir || '~/.claude.json'}: ${String(r.stderr || r.stdout || '').trim().slice(0, 160)}`);
+    return r.code === 0;
+}
+
+function cliRunner(args, extraEnv) {
+    const { execFile } = require('child_process');
+    let bin = process.env.DREAMSCAPE_CLAUDE_CLI || path.join(os.homedir(), '.local', 'bin', 'claude');
+    const env = Object.assign({}, process.env, extraEnv || {});
+    // the CLI finds ~/.claude.json from HOME: an overridden home (tests) must never reach the real one
+    if (process.env.DREAMSCAPE_CLAUDE_HOME) env.HOME = process.env.DREAMSCAPE_CLAUDE_HOME;
+    ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'].forEach((k) => { delete env[k]; });
+    if (!extraEnv || !extraEnv.CLAUDE_CONFIG_DIR) delete env.CLAUDE_CONFIG_DIR;
+    return new Promise((resolve) => {
+        execFile(bin, args, { env, timeout: 30000, maxBuffer: 256 * 1024, cwd: claudeHome() }, (error, stdout, stderr) => {
+            resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout: String(stdout || ''), stderr: String(stderr || '') });
+        });
+    });
 }
 
 // ---------------------------------------------------------------- copy rotated logins back
@@ -183,4 +253,4 @@ function stopAll() {
     watchers.clear();
 }
 
-module.exports = { prepare, configFor, syncBack, armAll, bind, stopAll, configDir, _fresher: fresher };
+module.exports = { prepare, configFor, syncBack, armAll, bind, stopAll, configDir, accountDir, fleetInfo, isMoved, writeFleetInfo, ensureCoordMcp, coordServer, readJson, writeJsonAtomic, fresher, _fresher: fresher };

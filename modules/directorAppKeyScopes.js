@@ -73,6 +73,11 @@ const PLAUD_SCOPE = 'sfapp_plaud';
 const PLAUD_KEY_TARGETS = Object.freeze([
     { persona: 'xi', label: 'Xi' }
 ]);
+/** Claude fleet (every Claude account's usage + dispatch, modules/claudeFleetMcp.js): the Xi (Yozora) key only (#1154, Yukimi Nov 24 2026). */
+const CLAUDE_FLEET_SCOPE = 'sfapp_claude_fleet';
+const CLAUDE_FLEET_KEY_TARGETS = Object.freeze([
+    { persona: 'xi', label: 'Xi' }
+]);
 
 function parseStoredScopes(raw) {
     try {
@@ -221,6 +226,12 @@ async function widenDirectorApplicationKeys(manager) {
         [PLAUD_SCOPE],
         'plaud_scope_migration'
     );
+    const fleet = await widenLabeledApplicationKeys(
+        manager,
+        CLAUDE_FLEET_KEY_TARGETS,
+        [CLAUDE_FLEET_SCOPE],
+        'claude_fleet_scope_migration'
+    );
     const tokens = await widenDovecoteOAuthAccessTokens(manager);
     const bridgeTokens = await widenOAuthAccessTokensForScope(
         MESSAGING_BRIDGE_KEY_TARGETS.map((t) => t.label),
@@ -228,11 +239,12 @@ async function widenDirectorApplicationKeys(manager) {
         { explicitOnly: true }
     );
     return {
-        updated: director.updated + bots.updated + exchange.updated + alchemy.updated + bridge.updated + plaud.updated,
-        keys: director.keys.concat(bots.keys).concat(exchange.keys).concat(alchemy.keys).concat(bridge.keys).concat(plaud.keys),
+        updated: director.updated + bots.updated + exchange.updated + alchemy.updated + bridge.updated + plaud.updated + fleet.updated,
+        keys: director.keys.concat(bots.keys).concat(exchange.keys).concat(alchemy.keys).concat(bridge.keys).concat(plaud.keys).concat(fleet.keys),
         alchemyBrowserUpdated: alchemy.updated,
         messagingBridgeUpdated: bridge.updated,
         plaudUpdated: plaud.updated,
+        claudeFleetUpdated: fleet.updated,
         messagingBridgeTokensUpdated: bridgeTokens.updated,
         beforeScopes: LEGACY_DIRECTOR_SCOPES.slice(),
         afterScopes: DIRECTOR_MCP_SCOPES.slice(),
@@ -373,6 +385,8 @@ module.exports = {
     MESSAGING_BRIDGE_KEY_TARGETS,
     PLAUD_SCOPE,
     PLAUD_KEY_TARGETS,
+    CLAUDE_FLEET_SCOPE,
+    CLAUDE_FLEET_KEY_TARGETS,
     widenOAuthAccessTokensForScope,
     directorScopeReport,
     widenLabeledApplicationKeys,

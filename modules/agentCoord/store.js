@@ -19,6 +19,20 @@
  *
  * Paths are kept relative to their repo, so worktrees of one repo (~/staticforge, ~/wt/x) share
  * claims: repoOf(dir) names the repo by its git common dir.
+ *
+ * v2 (#1154, Yukimi Nov 24 2026: "see the other agents that are working, inspect their session so they
+ * can see what files they have edited ... prevent agents from stepping on each others work or starting a
+ * build without checking if every agent is ready to build. we want full cooperation"):
+ *   locks      the agent-busy-lock rule's .agent-<id> file, planted in a repo's root on an agent's first
+ *              claim there and removed when it releases everything there, is done, or its process is
+ *              gone (only locks this store planted are ever removed); .agent-* files of agents that do
+ *              not use agent-coord are listed by lockFiles() with their age
+ *   edits      files a Claude session changed (Edit / Write / MultiEdit / NotebookEdit in its transcript and
+ *              its subagents'), from an incremental scan: scans keeps each transcript's byte offset, so a
+ *              transcript is read once, never again from the start (inspect())
+ *   builds     build gates: a build of a target in a repo is requested, every live agent in the repo answers
+ *              ready or not (an agent that is not busy and holds no claim there counts as ready by itself),
+ *              and it begins only when nobody is pending or not ready and no other build of the target runs
  */
 
 const fs = require('fs');
@@ -68,7 +82,33 @@ function open() {
             delivered TEXT NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS messages_to ON messages (to_agent, id);
+        CREATE TABLE IF NOT EXISTS locks (
+            agent_id TEXT NOT NULL, root TEXT NOT NULL, file TEXT NOT NULL, created_at INTEGER NOT NULL,
+            PRIMARY KEY (agent_id, root)
+        );
+        CREATE TABLE IF NOT EXISTS scans (
+            key TEXT PRIMARY KEY, session_id TEXT NOT NULL, file TEXT NOT NULL, offset INTEGER NOT NULL DEFAULT 0,
+            commands TEXT NOT NULL DEFAULT '[]', last_text TEXT NOT NULL DEFAULT '', last_at INTEGER, tools INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS edits (
+            session_id TEXT NOT NULL, path TEXT NOT NULL, tool TEXT NOT NULL DEFAULT '', n INTEGER NOT NULL DEFAULT 0,
+            first_at INTEGER, last_at INTEGER, PRIMARY KEY (session_id, path)
+        );
+        CREATE TABLE IF NOT EXISTS builds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, target TEXT NOT NULL, repo TEXT NOT NULL, requested_by TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'open', created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL, started_at INTEGER, ended_at INTEGER, result TEXT NOT NULL DEFAULT '', forced TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS builds_open ON builds (state, repo, target);
+        CREATE TABLE IF NOT EXISTS build_votes (
+            build_id INTEGER NOT NULL, agent_id TEXT NOT NULL, ready INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '',
+            at INTEGER NOT NULL, PRIMARY KEY (build_id, agent_id)
+        );
     `);
+    const cols = new Set(db.prepare('PRAGMA table_info(agents)').all().map((c) => c.name));
+    [['model', 'TEXT'], ['effort', 'TEXT'], ['dispatched_by', 'TEXT'], ['config_dir', 'TEXT']].forEach(([c, t]) => {
+        if (!cols.has(c)) db.exec(`ALTER TABLE agents ADD COLUMN ${c} ${t}`);
+    });
     try { fs.chmodSync(file, 0o600); } catch (_) { /* kept */ }
     return db;
 }
@@ -153,7 +193,8 @@ function rowAgent(r) {
     return {
         id: r.id, kind: r.kind, name: r.name, sessionId: r.session_id || '', account: r.account || '', task: r.task,
         status, cwd: r.cwd || '', repo: r.repo || '', branch: r.branch || '', tmux: r.tmux || '', pid: r.pid || null,
-        host: r.host || '', startedAt: r.started_at, seenAt: r.seen_at
+        host: r.host || '', startedAt: r.started_at, seenAt: r.seen_at,
+        model: r.model || '', effort: r.effort || '', dispatchedBy: r.dispatched_by || '', configDir: r.config_dir || ''
     };
 }
 
@@ -180,15 +221,19 @@ function upsertAgent(a) {
         branch: a.branch !== undefined ? text(a.branch, 200) : (cur ? cur.branch : null),
         tmux: a.tmux !== undefined ? text(a.tmux, 120) : (cur ? cur.tmux : null),
         pid: a.pid !== undefined ? (Number.isInteger(a.pid) ? a.pid : null) : (cur ? cur.pid : null),
+        model: a.model !== undefined ? text(a.model, 80) : (cur ? cur.model : null),
+        effort: a.effort !== undefined ? text(a.effort, 20) : (cur ? cur.effort : null),
+        dispatched_by: a.dispatchedBy !== undefined ? text(a.dispatchedBy, 120) : (cur ? cur.dispatched_by : null),
+        config_dir: a.configDir !== undefined ? text(a.configDir, 400) : (cur ? cur.config_dir : null),
         host: text(a.host || (cur && cur.host) || os.hostname(), 120),
         started_at: cur ? cur.started_at : t,
         seen_at: t,
         inbox_cursor: cur ? cur.inbox_cursor : (d.prepare('SELECT COALESCE(MAX(id), 0) m FROM messages').get().m)
     };
-    d.prepare(`INSERT INTO agents (id, kind, name, session_id, account, task, status, cwd, repo, branch, tmux, pid, host, started_at, seen_at, inbox_cursor)
-        VALUES (@id, @kind, @name, @session_id, @account, @task, @status, @cwd, @repo, @branch, @tmux, @pid, @host, @started_at, @seen_at, @inbox_cursor)
+    d.prepare(`INSERT INTO agents (id, kind, name, session_id, account, task, status, cwd, repo, branch, tmux, pid, host, started_at, seen_at, inbox_cursor, model, effort, dispatched_by, config_dir)
+        VALUES (@id, @kind, @name, @session_id, @account, @task, @status, @cwd, @repo, @branch, @tmux, @pid, @host, @started_at, @seen_at, @inbox_cursor, @model, @effort, @dispatched_by, @config_dir)
         ON CONFLICT(id) DO UPDATE SET kind=@kind, name=@name, session_id=@session_id, account=@account, task=@task, status=@status, cwd=@cwd,
-        repo=@repo, branch=@branch, tmux=@tmux, pid=@pid, host=@host, seen_at=@seen_at`).run(v);
+        repo=@repo, branch=@branch, tmux=@tmux, pid=@pid, host=@host, seen_at=@seen_at, model=@model, effort=@effort, dispatched_by=@dispatched_by, config_dir=@config_dir`).run(v);
     return getAgent(id);
 }
 
@@ -251,6 +296,8 @@ function liveClaims(filter = {}) {
         const st = d.prepare('UPDATE claims SET released_at = ? WHERE id = ?');
         const t = now();
         d.transaction(() => lapsed.forEach((id) => st.run(t, id)))();
+        const goneAgents = new Set(rows.filter((r) => lapsed.includes(r.id)).map((r) => r.agent_id));
+        goneAgents.forEach((a) => removeLocks(a));
     }
     return out;
 }
@@ -296,7 +343,9 @@ function claim(agentId, repo, paths, opts = {}) {
         });
     })();
     upsertAgent({ id: agentId });
-    return { repo: r, mode, leaseMinutes: leaseMin, granted, conflicts };
+    let lock = '';
+    if (granted.length && opts.root) { try { lock = plantLock(agentId, opts.root, agent.task || opts.note || ''); } catch (e) { lock = ''; } }
+    return { repo: r, mode, leaseMinutes: leaseMin, granted, conflicts, lock };
 }
 
 function release(agentId, repo, paths, opts = {}) {
@@ -308,6 +357,7 @@ function release(agentId, repo, paths, opts = {}) {
     const st = repo ? d.prepare('UPDATE claims SET released_at = ? WHERE agent_id = ? AND repo = ? AND path = ? AND released_at IS NULL')
         : d.prepare('UPDATE claims SET released_at = ? WHERE agent_id = ? AND path = ? AND released_at IS NULL');
     list.forEach((p) => { n += (repo ? st.run(t, agentId, repo, p) : st.run(t, agentId, p)).changes; });
+    if (repo && !liveClaims({ repo, agentId }).length) removeLocks(agentId, repo);
     return { released: n };
 }
 
@@ -315,6 +365,7 @@ function releaseAll(agentId, repo) {
     const d = open();
     const r = repo ? d.prepare('UPDATE claims SET released_at = ? WHERE agent_id = ? AND repo = ? AND released_at IS NULL').run(now(), agentId, repo)
         : d.prepare('UPDATE claims SET released_at = ? WHERE agent_id = ? AND released_at IS NULL').run(now(), agentId);
+    removeLocks(agentId, repo || null);
     return r.changes;
 }
 
@@ -390,12 +441,20 @@ function prune() {
     d.prepare('DELETE FROM claims WHERE (released_at IS NOT NULL AND released_at < ?) OR expires_at < ?').run(t - 86400000, t - 86400000);
     d.prepare('DELETE FROM messages WHERE created_at < ?').run(t - 14 * 86400000);
     d.prepare('DELETE FROM agents WHERE seen_at < ?').run(t - 7 * 86400000);
+    d.prepare("DELETE FROM build_votes WHERE build_id IN (SELECT id FROM builds WHERE state NOT IN ('open', 'running') AND COALESCE(ended_at, expires_at) < ?)").run(t - 14 * 86400000);
+    d.prepare("DELETE FROM builds WHERE state NOT IN ('open', 'running') AND COALESCE(ended_at, expires_at) < ?").run(t - 14 * 86400000);
+    d.prepare('DELETE FROM edits WHERE session_id NOT IN (SELECT session_id FROM agents WHERE session_id IS NOT NULL) AND last_at < ?').run(t - 14 * 86400000);
+    d.prepare('DELETE FROM scans WHERE session_id NOT IN (SELECT session_id FROM agents WHERE session_id IS NOT NULL) AND COALESCE(last_at, 0) < ?').run(t - 14 * 86400000);
 }
 
-module.exports = {
+Object.assign(module.exports, require('./storeV2')({
+    open, now, text, getAgent, resolveAgent, listAgents, liveClaims, post, repoOf, pidAlive: (pid) => pidAlive(pid)
+}));
+module.exports = Object.assign(module.exports, {
     dbPath, open, close, repoOf, normPath, overlaps,
     upsertAgent, getAgent, resolveAgent, listAgents, setStatus,
     liveClaims, claim, release, releaseAll, check,
     post, markDelivered, inbox, unreadCount, recentMessages, prune,
     DEFAULT_LEASE_MIN, MAX_LEASE_MIN, _setPidAlive
-};
+});
+const { plantLock, removeLocks } = module.exports;

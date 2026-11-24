@@ -543,6 +543,12 @@ function reconnect(gr, opts = {}) {
         const carry = { selected: chosen.map(briefSession), ending: ending.map(briefSession), results: [] };
         setState('reconnecting', opts.reason || 'Reconnecting Remote Control', { account: opts.account || rc.account, attempt: rc.attempt + 1, carry, permissionsKept: null });
         try {
+            let blocked = '';
+            try {
+                const target = opts.index != null && gResources ? findAccount(gResources, opts.index).id : '';
+                blocked = require('./claudeRemoteFleet').blocksLegacySwitch(target);
+            } catch (_) { blocked = ''; }
+            if (blocked) throw new Error(blocked);
             const unit0 = await unitInfo();
             const permsBefore = permissionFingerprint(unit0.workingDirectory);
             const stop = await runner('systemctl', ['--user', 'stop', unitName()], { timeout: 30000 });
@@ -614,6 +620,18 @@ async function stop(gr) {
 function onSelectionChanged(gr, index) {
     if (!armed || process.env.DREAMSCAPE_CLAUDE_RC_DISABLED === '1') return null;
     if (gr) gResources = gr;
+    // #1154: an account in its own folder runs its own Remote Control; its login is never put on the host
+    // too (one refresh token held twice), and once the host's account has moved nothing switches here
+    let blocked = '';
+    try {
+        const { keys } = keyList(gr);
+        blocked = require('./claudeRemoteFleet').blocksLegacySwitch(keys[index] ? accountId(keys[index]) : '');
+    } catch (_) { blocked = ''; }
+    if (blocked) {
+        takePendingCarry();
+        setState(rc.state, `${blocked}: the switch only picks the Director's account`);
+        return null;
+    }
     let account = null;
     try {
         const { keys } = keyList(gr);
@@ -639,6 +657,7 @@ module.exports = {
     reconnect,
     stop,
     onSelectionChanged,
+    saveLiveLoginBack,
     parsePane,
     publicStatus,
     listRemoteSessions: () => sessions.listRemoteSessions(),

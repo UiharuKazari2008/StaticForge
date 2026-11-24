@@ -138,14 +138,26 @@ function liveSummary() {
     })).sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/** A build gate as the console lists it (#1154): state, who asked, who it waits on. */
+function briefBuild(g) {
+    const b = g.build;
+    return {
+        id: b.id, target: b.target, repo: b.repo, state: b.state, requestedBy: b.requestedBy, note: b.note, createdAt: b.createdAt,
+        startedAt: b.startedAt, endedAt: b.endedAt, result: b.result, forced: b.forced, canBegin: !!g.canBegin,
+        participants: (g.participants || []).map((p) => ({ agentId: p.agentId, name: p.name, state: p.state, note: p.note, busy: p.busy })),
+        waitingOn: (g.waitingOn || []).map((w) => w.name || w.agentId)
+    };
+}
+
 function coordSummary() {
     try {
-        const agents = coord.listAgents().map((a) => ({ id: a.id, kind: a.kind, name: a.name, account: a.account, task: a.task, status: a.status, repo: a.repo, branch: a.branch, sessionId: a.sessionId, claims: a.claims }));
+        const agents = coord.listAgents().map((a) => ({ id: a.id, kind: a.kind, name: a.name, account: a.account, task: a.task, status: a.status, repo: a.repo, branch: a.branch, sessionId: a.sessionId, claims: a.claims, model: a.model, effort: a.effort, dispatchedBy: a.dispatchedBy, live: a.status !== 'gone' ? ((coord.liveRecord(a) || {}).status || '') : '' }));
         const claims = coord.liveClaims().map((c) => ({ id: c.id, agentId: c.agentId, repo: c.repo, path: c.path, mode: c.mode, note: c.note, expiresAt: c.expiresAt }));
         const last = coord.recentMessages({ limit: 1 })[0];
-        return { agents, claims, lastMessageId: last ? last.id : 0 };
+        const builds = coord.builds({ recent: true }).map(briefBuild);
+        return { agents, claims, builds, lastMessageId: last ? last.id : 0 };
     } catch (e) {
-        return { agents: [], claims: [], lastMessageId: 0, error: e.message };
+        return { agents: [], claims: [], builds: [], lastMessageId: 0, error: e.message };
     }
 }
 
@@ -239,9 +251,9 @@ const handleSession = guard('claude_desk_session', async (gr, message) => {
     const id = String(message.id || '');
     let result;
     if (action === 'start') {
-        result = await launcher.start(gr, { cwd: message.cwd, prompt: message.prompt, title: message.title, account: message.account, mode: message.mode });
+        result = await launcher.start(gr, { cwd: message.cwd, prompt: message.prompt, title: message.title, account: message.account, mode: message.mode, model: message.model || undefined, effort: message.effort || undefined });
     } else if (action === 'resume') {
-        result = await launcher.resume(gr, id, { account: message.account, mode: message.mode, title: message.title });
+        result = await launcher.resume(gr, id, { account: message.account, mode: message.mode, title: message.title, model: message.model || undefined, effort: message.effort || undefined });
     } else if (action === 'steer') {
         result = await launcher.steer(id, message.text);
     } else if (action === 'interrupt') {
@@ -289,7 +301,22 @@ const handleCoord = guard('claude_desk_coord', async (gr, message, ws, clientInf
         poke();
         return Object.assign(coordSummary(), { released: claim.id });
     }
-    throw new Error('action must be list, post or release');
+    if (action === 'inspect') {
+        // #1154: what an agent is doing (files edited, commands, last words, claims, uncommitted files)
+        return { inspect: coord.inspect(String(message.agentId || ''), { limit: Number(message.limit) || 100 }) };
+    }
+    if (action === 'locks') {
+        const root = path.join(__dirname, '..', '..', '..');
+        return { root, locks: coord.lockFiles(root) };
+    }
+    if (action === 'build_end') {
+        // an admin cancels / ends a gate someone left open (everyone is told)
+        const me = deskAgent(clientInfo);
+        const ended = coord.adminEndBuild(Number(message.buildId), me.id, message.reason || 'ended from Claude Accounts');
+        poke();
+        return Object.assign(coordSummary(), { ended });
+    }
+    throw new Error('action must be list, post, release, inspect, locks or build_end');
 });
 
 function registerPackets(handlersCtx) {
