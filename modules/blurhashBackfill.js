@@ -36,8 +36,8 @@ async function encodeGalleryBlurhash(filename, { imagesDir, previewsDir }) {
     if (fs.existsSync(previewPath)) {
         return encodeBlurhashFromFile(previewPath);
     }
-    // a real PNG (a JXL-stored picture decoded)
-    const imagePath = await imageStore.pngPath(filename, imagesDir);
+    // the stored file (sharp reads a JXL itself; else its decoded PNG)
+    const imagePath = await imageStore.pixelPath(filename, imagesDir);
     if (imagePath) {
         return encodeBlurhashFromFile(imagePath);
     }

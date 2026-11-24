@@ -6,6 +6,7 @@
  * - A JXL carries the PNG's own metadata chunks (tEXt / iTXt / zTXt / eXIf / pHYs ...) raw and in their order in
  *   one container box `sfPN`, so a PNG rebuilt from it reads exactly like the original: pngMetadata's text
  *   chunks, the stealth bits in the alpha channel (lossless pixels) and NovelAI's signature (pixels + Comment).
+ * - Code that only reads pixels with sharp asks pixelPath(name): the JXL itself when sharp reads JXL.
  * - Whatever needs a real PNG asks pngPath(name): the original, or a decoded copy in .cache/jxl-png (one decode
  *   per name at a time, the oldest copies dropped past CACHE_MAX_BYTES).
  *
@@ -316,6 +317,42 @@ async function pngPath(name, dir = IMAGES_DIR) {
     return job;
 }
 
+let sharpJxl = null;
+/** sharp reads JPEG XL itself (built against the system libvips 8.16 with libjxl; the prebuilt one does not). */
+function sharpReadsJxl() {
+    if (sharpJxl === null) {
+        try {
+            const s = require('sharp');
+            sharpJxl = !!(s.format && s.format.jxl && s.format.jxl.input && s.format.jxl.input.file);
+        } catch (_) {
+            sharpJxl = false;
+        }
+    }
+    return sharpJxl;
+}
+
+/**
+ * A file for code that only reads the pixels with sharp (previews, resizes, sizes): the stored file itself, a JXL
+ * too when sharp reads JXL (no decode to PNG); else as pngPath. Never for code that needs the PNG's metadata
+ * chunks or PNG bytes (uploads, downloads, metadata reads): those use pngPath / readPng.
+ */
+async function pixelPath(name, dir = IMAGES_DIR) {
+    const loc = await locate(name, dir);
+    if (!loc) return null;
+    if (loc.kind === 'jxl' && !sharpReadsJxl()) return pngPath(name, dir);
+    return loc.path;
+}
+
+/**
+ * Whether the PNG a JXL was made from carried a colour profile (an iCCP chunk in its sfPN box). libvips reports an
+ * ICC profile for every JXL (the format always names its colour space), so a JXL's own metadata cannot tell.
+ */
+async function jxlOriginalHasIcc(jxlPath) {
+    const stored = readPngMetadataBox(await fs.promises.readFile(jxlPath));
+    if (!stored) return true;
+    return stored.some((c) => c.raw.toString('latin1', 4, 8) === 'iCCP');
+}
+
 /** The picture's PNG bytes (original or rebuilt), or null. */
 async function readPng(name, dir = IMAGES_DIR) {
     const p = await pngPath(name, dir);
@@ -376,6 +413,9 @@ module.exports = {
     exists,
     existsSync,
     pngPath,
+    pixelPath,
+    sharpReadsJxl,
+    jxlOriginalHasIcc,
     readPng,
     stat,
     remove,

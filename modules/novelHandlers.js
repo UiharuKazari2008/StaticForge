@@ -179,7 +179,7 @@ class NovelHandlers {
         if (!filename) return null;
         const imagesPath = this.globalResources.getPath('images');
         // the picture's own file, or the PNG rebuilt from x.jxl (#1134)
-        const filePath = await imageStore.pngPath(filename, imagesPath);
+        const filePath = await imageStore.pixelPath(filename, imagesPath);
         if (!filePath) return null;
         const jpegBuffer = await sharp(filePath)
             .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })

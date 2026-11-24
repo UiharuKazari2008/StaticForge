@@ -197,7 +197,7 @@ async function ensureStudioPreview(imagesDir, previewsDir, previewName) {
     const job = (async () => {
         const tmpPath = `${outPath}.${process.pid}.${Date.now()}.tmp`;
         try {
-            sourcePath = await imageStore.pngPath(sourceName, imagesDir);
+            sourcePath = await imageStore.pixelPath(sourceName, imagesDir);
             if (!sourcePath) return null;
             // effort 2: within ~2% of effort 4's size at a third of the time (1024² ~0.1 s, 4096² ~1.2 s)
             await sharp(sourcePath)
@@ -283,7 +283,7 @@ async function ensureFitPreview(imagesDir, previewsDir, previewName, opts) {
         job = fitSlot().then(async (release) => {
             const tmpPath = `${outPath}.${process.pid}.${Date.now()}.tmp`;
             try {
-                if (source.kind === 'jxl') sourcePath = await imageStore.pngPath(source.name, imagesDir);
+                if (source.kind === 'jxl') sourcePath = await imageStore.pixelPath(source.name, imagesDir);
                 if (!sourcePath) return null;
                 await sharp(sourcePath, { failOnError: false })
                     .resize(FIT_PREVIEW_EDGE, FIT_PREVIEW_EDGE, { fit: 'inside', withoutEnlargement: true, fastShrinkOnLoad: true })
@@ -383,7 +383,7 @@ async function ensureLosslessPreview(imagesDir, previewsDir, previewName) {
         job = (async () => {
             // the header read happens before the encode slot: a refused PNG never waits behind an encode
             // a failed JXL decode is not a refusal: the next request tries again
-            const pngFile = await imageStore.pngPath(sourceName, imagesDir).catch((e) => {
+            const pngFile = await imageStore.pixelPath(sourceName, imagesDir).catch((e) => {
                 console.error('Failed to decode', sourcePath, 'for a lossless preview:', e.message);
                 return null;
             });
@@ -396,8 +396,10 @@ async function ensureLosslessPreview(imagesDir, previewsDir, previewName) {
                 console.error('Failed to read', sourcePath, 'for a lossless preview:', e.message);
                 return null;
             }
-            // 8 bits per channel and no colour profile: the WebP holds exactly the PNG's pixels
-            if (meta.depth !== 'uchar' || meta.icc || !meta.width || !meta.height) {
+            // 8 bits per channel and no colour profile: the WebP holds exactly the PNG's pixels (a JXL always
+            // reports one; whether the PNG had one is in its sfPN box)
+            const hasIcc = meta.icc && (sourceLoc.kind !== 'jxl' || await imageStore.jxlOriginalHasIcc(sourceLoc.path));
+            if (meta.depth !== 'uchar' || hasIcc || !meta.width || !meta.height) {
                 refuseLossless(sourcePath, sourceStat.mtimeMs);
                 return null;
             }

@@ -4636,7 +4636,7 @@ class GlobalResources {
             try {
                 // the real PNG (a JXL-stored picture's decoded copy); a missing one gets the placeholder below
                 const imageName = typeof img === 'string' ? img : (img.filename || path.basename(img.path));
-                const imagePath = await imageStore.pngPath(imageName, imagesDir);
+                const imagePath = await imageStore.pixelPath(imageName, imagesDir);
                 if (!imagePath) throw new Error('image not found');
 
                 // Load and resize normal image

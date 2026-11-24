@@ -159,7 +159,7 @@ async function photoFor(filename) {
         // a picture stored as x.jxl (#1134) is read from its rebuilt PNG
         const name = path.basename(file);
         const source = path.dirname(file) === path.resolve(base)
-            ? await require('./imageStore').pngPath(name, base)
+            ? await require('./imageStore').pixelPath(name, base)
             : file;
         if (!source) return '';
         const sharp = require('sharp');

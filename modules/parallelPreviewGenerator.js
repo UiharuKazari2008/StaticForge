@@ -62,7 +62,7 @@ class ParallelPreviewGenerator {
             
             const workers = batch.map(async imageFile => {
                 // a picture stored as x.jxl (#1134) is read from its decoded PNG; a missing one fails in the worker as before
-                const imagePath = (await imageStore.pngPath(imageFile, imagesDir).catch(() => null)) || path.join(imagesDir, imageFile);
+                const imagePath = (await imageStore.pixelPath(imageFile, imagesDir).catch(() => null)) || path.join(imagesDir, imageFile);
                 const basename = this.globalResources.getPngMetadata().getBaseName(imageFile);
                 
                 // Remove existing previews if force regenerate

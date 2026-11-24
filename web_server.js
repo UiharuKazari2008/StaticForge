@@ -2568,8 +2568,8 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
 // Slim PNG route - strips PNG metadata/blueprint data
 app.use('/image/slim/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
-    // a real PNG for sharp (x.jxl stored under the name x.png is decoded once into the cache)
-    const filePath = await galleryPngPath(filename);
+    // a file sharp reads (x.jxl itself when sharp reads JXL, else its decoded PNG)
+    const filePath = await imageStore.pixelPath(filename).catch(() => null);
     
     if (!filePath) {
         return res.status(404).json({ success: false, error: 'Image not found' });
@@ -2605,8 +2605,8 @@ app.use('/image/slim/:filename', authMiddleware, async (req, res) => {
 // Optimized JPG route - converts to optimized JPEG
 app.use('/image/opti/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
-    // a real PNG for sharp (x.jxl stored under the name x.png is decoded once into the cache)
-    const filePath = await galleryPngPath(filename);
+    // a file sharp reads (x.jxl itself when sharp reads JXL, else its decoded PNG)
+    const filePath = await imageStore.pixelPath(filename).catch(() => null);
     
     if (!filePath) {
         return res.status(404).json({ success: false, error: 'Image not found' });

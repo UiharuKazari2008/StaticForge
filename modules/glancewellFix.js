@@ -89,7 +89,7 @@ async function remakePreviews(gr, filename) {
     for (const suffix of ['@studio.webp', '@ll.webp', '@fit.webp']) {
         try { await fs.promises.unlink(path.join(previewsDir, `${base}${suffix}`)); } catch (_) { /* none */ }
     }
-    const sourcePath = await imageStore.pngPath(filename, imagesDir);
+    const sourcePath = await imageStore.pixelPath(filename, imagesDir);
     const res = sourcePath ? await generateMobilePreviews(sourcePath, base) : null;
     const db = gr.getMetadataDatabase();
     if (res && res.blurhash) await db.setImageBlurhash(filename, res.blurhash);

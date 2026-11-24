@@ -913,7 +913,7 @@ class PngMetadata {
                         : null;
                     // a gallery source may be stored as x.jxl (#1134): its PNG (the rebuilt copy is kept in the cache)
                     const galleryPng = galleryName && imageStore.cleanName(galleryName)
-                        ? await imageStore.pngPath(galleryName, imagesDir)
+                        ? await imageStore.pixelPath(galleryName, imagesDir)
                         : null;
                     const imagePath = galleryPng
                         || (galleryName
