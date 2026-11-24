@@ -524,6 +524,82 @@ async function agentPackages(globalResources, input = {}) {
  * nothing to show (no device given among several, ADB not ready) meta lists the phones and their
  * ADB states.
  */
+// ---------------------------------------------------------------- the camera on a screenshot
+//
+// Yukimi, Nov 23 2026 (the title bar's camera gap missing at random): a screenshot carries no camera, so a bar laid out
+// over it or past it cannot be told apart. The camera is drawn on the agent's screenshots as a thin outline: the cutout
+// Android reports for the screen (dumpsys display, in the panel's natural orientation), and the Fold7's under-display
+// camera on its inner screen (not reported; DSApp MainActivity.cameraHoleInWindow measured it from udcCutout).
+const UDC = { 'SM-F966': { w: 1968, h: 2184, rect: [1450, 18, 1520, 88] } };
+const cameraCache = new Map(); // deviceId -> { at, byId: { displayId: { w, h, rot, rect } } }
+
+/** Each built-in screen's camera: { displayId: { w, h, rot, rect: [l, t, r, b] in natural px, round } }. */
+async function cameraRects(globalResources, dev) {
+    const c = cameraCache.get(dev.deviceId);
+    if (c && Date.now() - c.at < 5 * 60 * 1000) return c.byId;
+    const r = await shell(globalResources, dev.deviceId, "dumpsys display | grep -oE 'uniqueId=\"local:[0-9]+\", [0-9]+ x [0-9]+|boundingRect=.Bounds=.[^]]*.|, rotation [0-9]'");
+    const text = String((r && (r.stdout || r.output)) || '');
+    const byId = {};
+    let cur = null;
+    for (const line of text.split('\n')) {
+        const u = line.match(/local:(\d+)", (\d+) x (\d+)/);
+        if (u) { cur = { id: u[1], w: Number(u[2]), h: Number(u[3]), rot: 0, rotSet: false, rect: null }; byId[cur.id] = cur; continue; }
+        if (!cur) continue;
+        const b = line.match(/Bounds=\[(.*)\]/);
+        if (b && !cur.rect) {
+            const rects = [...b[1].matchAll(/Rect\((\d+), (\d+) - (\d+), (\d+)\)/g)].map((m) => m.slice(1, 5).map(Number)).filter((q) => q[2] > q[0] && q[3] > q[1]);
+            if (rects.length) cur.rect = rects[0];
+            continue;
+        }
+        const ro = line.match(/rotation (\d)/);
+        if (ro && !cur.rotSet) { cur.rot = Number(ro[1]); cur.rotSet = true; }
+    }
+    const model = String(dev.model || '');
+    for (const d of Object.values(byId)) {
+        if (d.rect) { const w = d.rect[2] - d.rect[0]; const h = d.rect[3] - d.rect[1]; d.round = h > w * 1.3; continue; }
+        const u = Object.entries(UDC).find(([m]) => model.startsWith(m));
+        if (u && Math.min(d.w, d.h) === Math.min(u[1].w, u[1].h) && Math.max(d.w, d.h) === Math.max(u[1].w, u[1].h)) { d.rect = u[1].rect.slice(); d.w = u[1].w; d.h = u[1].h; d.round = false; }
+    }
+    cameraCache.set(dev.deviceId, { at: Date.now(), byId });
+    return byId;
+}
+
+/** The camera's box on a screenshot of that screen (its turn applied, scaled to the picture), or null. */
+function cameraOnShot(cam, pw, ph) {
+    if (!cam || !cam.rect) return null;
+    const [l, t, r, b] = cam.rect;
+    const W = cam.w;
+    const H = cam.h;
+    let q;
+    if (cam.rot === 1) q = [t, W - r, b, W - l];
+    else if (cam.rot === 2) q = [W - r, H - b, W - l, H - t];
+    else if (cam.rot === 3) q = [H - b, l, H - t, r];
+    else q = [l, t, r, b];
+    const sideways = cam.rot === 1 || cam.rot === 3;
+    const sx = pw / (sideways ? H : W);
+    const sy = ph / (sideways ? W : H);
+    return { l: q[0] * sx, t: q[1] * sy, r: q[2] * sx, b: q[3] * sy, round: cam.round };
+}
+
+/** The picture with the camera outlined (a thin magenta ring or box, a dark edge under it to show on any colour). */
+async function markCamera(sharp, png, cam) {
+    const meta = await sharp(png).metadata();
+    const box = cameraOnShot(cam, meta.width, meta.height);
+    if (!box) return png;
+    let shape;
+    if (box.round) {
+        // a punch hole reported as a box down to the status bar: the circle, as wide as the box, centred in it
+        const rr = (box.r - box.l) / 2;
+        const cx = (box.l + box.r) / 2;
+        const cy = (box.t + box.b) / 2;
+        shape = `<circle cx="${cx}" cy="${cy}" r="${rr}" fill="none" stroke="#000" stroke-width="5" opacity="0.6"/><circle cx="${cx}" cy="${cy}" r="${rr}" fill="none" stroke="#ff2bd6" stroke-width="2.5"/>`;
+    } else {
+        shape = `<rect x="${box.l}" y="${box.t}" width="${box.r - box.l}" height="${box.b - box.t}" rx="6" fill="none" stroke="#000" stroke-width="5" opacity="0.6"/><rect x="${box.l}" y="${box.t}" width="${box.r - box.l}" height="${box.b - box.t}" rx="6" fill="none" stroke="#ff2bd6" stroke-width="2.5"/>`;
+    }
+    const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${meta.width}" height="${meta.height}">${shape}</svg>`);
+    return sharp(png).composite([{ input: svg, top: 0, left: 0 }]).png().toBuffer();
+}
+
 async function agentScreenshot(globalResources, input = {}) {
     const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
     // the route that works: the phone's own ADB (5555 on the phone, Shizuku) when the phone answers; the server's own dial
@@ -550,12 +626,17 @@ async function agentScreenshot(globalResources, input = {}) {
     const sharp = require('sharp');
     const images = [];
     const shots = [];
+    // the camera outlined on each built-in screen's picture (camera: false leaves it off)
+    let cams = null;
+    if (input.camera !== false) { try { cams = await cameraRects(globalResources, dev); } catch (_) { cams = null; } }
     for (const d of which) {
         try {
-            const { png } = await screenshot(globalResources, dev.deviceId, d.id);
+            let { png } = await screenshot(globalResources, dev.deviceId, d.id);
+            const cam = cams && cams[d.id];
+            if (cam && cam.rect) { try { png = await markCamera(sharp, png, cam); } catch (_) { /* the plain picture */ } }
             const bytes = await sharp(png).resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer();
             images.push({ mimeType: 'image/jpeg', bytes });
-            shots.push({ display: d.kind, id: d.id, width: d.width, height: d.height });
+            shots.push({ display: d.kind, id: d.id, width: d.width, height: d.height, camera: cam && cam.rect ? 'outlined' : undefined });
         } catch (err) {
             shots.push({ display: d.kind, id: d.id, error: err.message });
         }
