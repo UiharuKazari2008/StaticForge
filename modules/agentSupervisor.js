@@ -100,6 +100,7 @@ function settings(gr) {
         trackArtifacts: cfg.trackArtifacts !== false,
         maxConcurrent: Number.isInteger(cfg.maxConcurrent) && cfg.maxConcurrent >= 1 && cfg.maxConcurrent <= 12 ? cfg.maxConcurrent : 3,
         autoStart: cfg.autoStart !== false,
+        fallbackEngines: Array.isArray(cfg.fallbackEngines) ? cfg.fallbackEngines.filter((e) => e && e.engine).map((e) => ({ engine: String(e.engine), model: String(e.model || '') })) : [],
         autoPauseOnCollision: cfg.autoPauseOnCollision !== false,
         maxAskMinutes: Number.isFinite(cfg.maxAskMinutes) && cfg.maxAskMinutes >= 1 ? Math.min(240, cfg.maxAskMinutes) : 15,
         yozoraRepos: Array.isArray(cfg.yozoraRepos) ? cfg.yozoraRepos.filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)) : ['DreamScape/StaticForge']
@@ -117,6 +118,7 @@ async function saveSettings(gr, next) {
         trackArtifacts: next.trackArtifacts === undefined ? cur.trackArtifacts : next.trackArtifacts === true,
         maxConcurrent: next.maxConcurrent === undefined ? cur.maxConcurrent : Math.max(1, Math.min(12, Math.round(Number(next.maxConcurrent)) || cur.maxConcurrent)),
         autoStart: next.autoStart === undefined ? cur.autoStart : next.autoStart === true,
+        fallbackEngines: Array.isArray(next.fallbackEngines) ? next.fallbackEngines.filter((e) => e && e.engine).slice(0, 6).map((e) => ({ engine: String(e.engine).slice(0, 60), model: String(e.model || '').slice(0, 120) })) : cur.fallbackEngines,
         autoPauseOnCollision: next.autoPauseOnCollision === undefined ? cur.autoPauseOnCollision : next.autoPauseOnCollision === true,
         maxAskMinutes: next.maxAskMinutes === undefined ? cur.maxAskMinutes : Math.max(1, Math.min(240, Math.round(Number(next.maxAskMinutes)) || cur.maxAskMinutes)),
         yozoraRepos: Array.isArray(next.yozoraRepos) ? next.yozoraRepos.map(String).filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)).slice(0, 20) : cur.yozoraRepos
@@ -226,29 +228,108 @@ function promptFor(t, meta) {
 let fetchFn = (...a) => fetch(...a);
 function _setFetch(fn) { fetchFn = typeof fn === 'function' ? fn : (...a) => fetch(...a); }
 
-async function askModel(gr, s, userText) {
-    const ep = endpoint(gr, s);
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), CALL_TIMEOUT_MS);
+// ---------------------------------------------------------------- one call to the Supervisor's engine
+//
+// Yukimi, Nov 24 2026: "in plan usage we should also show the supervisor account usage, that being how much money
+// it has cost doing its work and account balances, as well as if it has failed over to another account due to no
+// longer having funds to keep working". Every call is recorded (supervisor_usage: kind, engine, model, tokens,
+// cost when the provider says it); an engine that refuses for money (402, or "insufficient / credit / balance /
+// quota" in its answer) hands the call to the next engine with a key (the configured one, then TokenRouter, then
+// the ready custom providers), and the failover is recorded with its reason.
+
+const FUNDS_RE = /insufficient|credit|balance|quota|payment|billing|top.?up|exceeded your/i;
+
+function engineChain(gr, s) {
+    const chain = [{ engine: s.engine, model: s.model }];
+    (Array.isArray(s.fallbackEngines) ? s.fallbackEngines : []).forEach((e) => { if (e && e.engine) chain.push({ engine: e.engine, model: e.model || '' }); });
+    engines(gr).filter((e) => e.ready).forEach((e) => chain.push({ engine: e.id, model: '' }));
+    const seen = new Set();
+    return chain.filter((c) => { const k = `${c.engine}|${c.model || ''}`; if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
+function recordUsage(row) {
     try {
-        const res = await fetchFn(ep.url, {
-            method: 'POST',
-            signal: ctl.signal,
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.key}` },
-            body: JSON.stringify({ model: ep.model, temperature: 0, max_tokens: 6000, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: userText }] })
-        });
-        const body = await res.text();
-        if (!res.ok) throw new Error(`${ep.name} ${res.status}: ${body.replace(/\s+/g, ' ').slice(0, 200)}`);
-        const choice = (JSON.parse(body).choices || [])[0] || {};
-        const content = (choice.message || {}).content || '';
-        const out = Object.assign(parseVerdict(content), { model: ep.model, engine: ep.name });
+        db().prepare(`INSERT INTO supervisor_usage (at, kind, engine, model, prompt_tokens, completion_tokens, cost, ok, error, failover_from)
+            VALUES (@at, @kind, @engine, @model, @prompt_tokens, @completion_tokens, @cost, @ok, @error, @failover_from)`).run(Object.assign({ at: Date.now(), prompt_tokens: null, completion_tokens: null, cost: null, error: null, failover_from: null }, row));
+    } catch (e) { console.warn(`[supervisor] usage not recorded: ${e.message}`); }
+}
+
+/** messages -> { content, finish, engine, model }; records usage; fails over on a money refusal. */
+async function callEngine(gr, messages, opts = {}) {
+    const s = settings(gr);
+    const chain = engineChain(gr, s);
+    let lastErr = null;
+    let from = null;
+    for (const link of chain) {
+        let ep;
+        try { ep = endpoint(gr, Object.assign({}, s, link)); } catch (e) { lastErr = e; continue; }
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), CALL_TIMEOUT_MS);
+        try {
+            const res = await fetchFn(ep.url, { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.key}` }, body: JSON.stringify({ model: ep.model, temperature: 0, max_tokens: opts.maxTokens || 6000, response_format: { type: 'json_object' }, messages }) });
+            const body = await res.text();
+            if (!res.ok) {
+                const msg = `${ep.name} ${res.status}: ${body.replace(/\s+/g, ' ').slice(0, 200)}`;
+                const funds = res.status === 402 || (res.status >= 400 && FUNDS_RE.test(body));
+                recordUsage({ kind: opts.kind || 'call', engine: link.engine, model: ep.model, ok: 0, error: msg.slice(0, 300), failover_from: from });
+                lastErr = new Error(msg);
+                if (funds) { from = link.engine; continue; }   // out of money: the next engine
+                throw lastErr;
+            }
+            const j = JSON.parse(body);
+            const u = j.usage || {};
+            const cost = Number.isFinite(Number(u.cost)) ? Number(u.cost) : (Number.isFinite(Number(u.total_cost)) ? Number(u.total_cost) : null);
+            recordUsage({ kind: opts.kind || 'call', engine: link.engine, model: ep.model, prompt_tokens: u.prompt_tokens || null, completion_tokens: u.completion_tokens || null, cost, ok: 1, failover_from: from });
+            const choice = (j.choices || [])[0] || {};
+            return { content: (choice.message || {}).content || '', finish: choice.finish_reason, engine: ep.name, model: ep.model, failedOverFrom: from };
+        } finally { clearTimeout(timer); }
+    }
+    throw lastErr || new Error('No Supervisor engine has a key');
+}
+
+/** What the Supervisor spent and what its engines hold (Fleet's Plan Usage). */
+async function spend(gr) {
+    const d = db();
+    const now = Date.now();
+    const windows = { today: now - (now % 86400000), week: now - 7 * 86400000, month: now - 30 * 86400000 };
+    const out = {};
+    for (const [k, since] of Object.entries(windows)) {
+        out[k] = d.prepare(`SELECT engine, COUNT(*) calls, SUM(ok) ok, SUM(COALESCE(prompt_tokens,0)) prompt, SUM(COALESCE(completion_tokens,0)) completion,
+            SUM(cost) cost, SUM(CASE WHEN ok = 1 AND cost IS NULL THEN 1 ELSE 0 END) unpriced FROM supervisor_usage WHERE at >= ? GROUP BY engine ORDER BY calls DESC`).all(since);
+    }
+    const lastOk = d.prepare('SELECT engine, model, at FROM supervisor_usage WHERE ok = 1 ORDER BY id DESC LIMIT 1').get();
+    const failovers = d.prepare('SELECT at, failover_from AS fromEngine, engine AS toEngine, kind FROM supervisor_usage WHERE failover_from IS NOT NULL AND ok = 1 ORDER BY id DESC LIMIT 10').all();
+    const lastRefusal = d.prepare('SELECT at, engine, error FROM supervisor_usage WHERE ok = 0 ORDER BY id DESC LIMIT 1').get();
+    let balances = [];
+    try {
+        const w = await require('./walletStatus').getWalletStatus(gr, {});
+        const rows = [];
+        if (w && w.tokenrouter) rows.push(Object.assign({ engine: 'tokenrouter', name: 'TokenRouter' }, pickBalance(w.tokenrouter)));
+        (w && Array.isArray(w.custom) ? w.custom : []).forEach((c) => rows.push(Object.assign({ engine: c.engine || `custom:${c.id}`, name: c.name || c.id }, pickBalance(c))));
+        const mine = new Set(engineChain(gr, settings(gr)).map((c) => c.engine));
+        balances = rows.filter((r) => mine.has(r.engine) || mine.has(r.engine.replace(/^custom:/, '')));
+    } catch (e) { balances = [{ engine: '', name: 'Balances', error: e.message }]; }
+    const s = settings(gr);
+    return { configured: { engine: s.engine, model: s.model || '' }, active: lastOk || null, failedOver: !!(lastOk && failovers[0] && failovers[0].at === lastOk.at) || (lastOk && lastOk.engine !== s.engine), failovers, lastRefusal: lastRefusal || null, windows: out, balances };
+}
+function pickBalance(x) {
+    return { balance: x.balance !== undefined ? x.balance : (x.remaining !== undefined ? x.remaining : null), balanceText: x.balanceText || x.text || '', currency: x.currency || '', state: x.state || '', title: x.title || '' };
+}
+
+async function askModel(gr, s, userText) {
+    {
+        const r = await callEngine(gr, [{ role: 'system', content: SYSTEM }, { role: 'user', content: userText }], { kind: 'review' });
+        const ep = { name: r.engine, model: r.model };
+        const choice = { finish_reason: r.finish };
+        const content = r.content;
+        const out = Object.assign(parseVerdict(content), { model: ep.model, engine: ep.name, failedOverFrom: r.failedOverFrom || undefined });
         if (out.unparsed) {
             // kept for the console: why the answer was not a verdict (cut off, prose, empty)
             out.error = `finish ${choice.finish_reason || '?'}, ${String(content).length} chars: ${String(content).replace(/\s+/g, ' ').slice(0, 300)}`;
             delete out.unparsed;
         }
         return out;
-    } finally { clearTimeout(timer); }
+    }
 }
 
 function parseVerdict(text) {
@@ -290,6 +371,11 @@ function db() {
                 created_at INTEGER NOT NULL, started_at INTEGER, ended_at INTEGER
             );
             CREATE INDEX IF NOT EXISTS supervisor_work_state ON supervisor_work (state);
+            CREATE TABLE IF NOT EXISTS supervisor_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, kind TEXT NOT NULL, engine TEXT NOT NULL, model TEXT,
+                prompt_tokens INTEGER, completion_tokens INTEGER, cost REAL, ok INTEGER NOT NULL, error TEXT, failover_from TEXT
+            );
+            CREATE INDEX IF NOT EXISTS supervisor_usage_at ON supervisor_usage (at);
             CREATE TABLE IF NOT EXISTS supervisor_holds (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, mode TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
                 by_who TEXT NOT NULL DEFAULT '', pids TEXT NOT NULL DEFAULT '[]', at INTEGER NOT NULL, ended_at INTEGER, kind TEXT NOT NULL DEFAULT 'manual', paths TEXT NOT NULL DEFAULT '[]'
@@ -680,17 +766,10 @@ function cleanStages(st) {
 }
 
 /** One JSON answer from the Supervisor's engine (the same engine / model as its reviews). */
-async function askJson(gr, system, user) {
-    const ep = endpoint(gr, settings(gr));
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), CALL_TIMEOUT_MS);
-    try {
-        const res = await fetchFn(ep.url, { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.key}` }, body: JSON.stringify({ model: ep.model, temperature: 0, max_tokens: 6000, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }) });
-        const body = await res.text();
-        if (!res.ok) throw new Error(`${ep.name} ${res.status}`);
-        const raw = String((((JSON.parse(body).choices || [])[0] || {}).message || {}).content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
-        try { return JSON.parse(raw); } catch (_) { const m = /\{[\s\S]*\}/.exec(raw); return m ? JSON.parse(m[0]) : null; }
-    } finally { clearTimeout(timer); }
+async function askJson(gr, system, user, kind) {
+    const r = await callEngine(gr, [{ role: 'system', content: system }, { role: 'user', content: user }], { kind: kind || 'json' });
+    const raw = String(r.content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    try { return JSON.parse(raw); } catch (_) { const m = /\{[\s\S]*\}/.exec(raw); return m ? JSON.parse(m[0]) : null; }
 }
 
 async function decideTopology(gr, w) {
@@ -1299,7 +1378,7 @@ function stop() {
 }
 
 module.exports = {
-    start, stop, bind, settings, TOPOLOGIES, cleanStages, decideTopology, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, startWork, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
+    start, stop, bind, settings, askJson, callEngine, spend, engineChain, TOPOLOGIES, cleanStages, decideTopology, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, startWork, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, queueReview, queue }
 };

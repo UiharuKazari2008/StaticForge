@@ -217,7 +217,9 @@ async function supervisorStatus(gr) {
     const stats = Object.assign(supervisor.summary(), { artifactBytes: artifacts.filter((a) => a.exists !== false).reduce((n, a) => n + (a.sizeBytes || 0), 0) });
     let gateAsks = [];
     try { gateAsks = coord.open().prepare('SELECT * FROM gate_asks ORDER BY first_at').all().map((r) => ({ agentId: r.agent_id, firstAt: r.first_at, lastAt: r.last_at, text: r.text, stale: !!r.stale })); } catch (_) { gateAsks = []; }
-    return { settings: set, engines: supervisor.engines(gr), reviews: supervisor.listReviews({ limit: 80 }), work: supervisor.listWork({ limit: 100 }), holds: supervisor.listHolds(), gateAsks, topologies: supervisor.TOPOLOGIES, locks, artifacts, stats };
+    let spend = null;
+    try { spend = await Promise.race([supervisor.spend(gr), new Promise((r) => setTimeout(() => r(null), 4000))]); } catch (_) { spend = null; }
+    return { spend, settings: set, engines: supervisor.engines(gr), reviews: supervisor.listReviews({ limit: 80 }), work: supervisor.listWork({ limit: 100 }), holds: supervisor.listHolds(), gateAsks, topologies: supervisor.TOPOLOGIES, locks, artifacts, stats };
 }
 
 const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => {
@@ -227,6 +229,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'recheck') return { review: await supervisor.review(String(message.sessionId || ''), 'recheck', { gr }) };
     if (action === 'send') return { review: await supervisor.send(message.reviewId) };
     if (action === 'dismiss') { supervisor.dismiss(message.reviewId); return supervisorStatus(gr); }
+    if (action === 'spend') return { spend: await supervisor.spend(gr) };
     if (action === 'pause') { await supervisor.pauseSession(String(message.sessionId || ''), { mode: message.mode, reason: message.reason, by: 'Fleet' }); return supervisorStatus(gr); }
     if (action === 'resume') { await supervisor.resumeSession(String(message.sessionId || ''), { note: message.note }); return supervisorStatus(gr); }
     if (action === 'enqueue') {

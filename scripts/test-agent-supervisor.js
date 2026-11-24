@@ -406,6 +406,27 @@ sup._test.setFetch(async (url, opts) => {
         } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; }
     });
 
+    await test('spend: calls recorded with tokens and cost; out of funds fails over to the next engine and says so', async () => {
+        const g2 = Object.assign({}, gr, { getConfig: () => ({ agentSupervisor: { enabled: true, engine: 'tokenrouter', fallbackEngines: [{ engine: 'tokenrouter', model: 'cheap/fallback-model' }] } }) });
+        const calls2 = [];
+        sup._test.setFetch(async (url, opts) => {
+            calls2.push(JSON.parse(opts.body).model);
+            if (calls2.length === 1) return { ok: false, status: 402, text: async () => '{"error":"Insufficient balance, top up"}' };
+            return { ok: true, status: 200, text: async () => JSON.stringify({ usage: { prompt_tokens: 1200, completion_tokens: 80, cost: 0.0021 }, choices: [{ message: { content: '{"verdict":"ok","missed":[]}' } }] }) };
+        });
+        // the fallback "engine" resolves like TokenRouter (only its name differs in the chain)
+        const r = await sup.callEngine(g2, [{ role: 'user', content: 'x' }], { kind: 'review' });
+        assert.deepStrictEqual(calls2, ['deepseek/deepseek-v4.1-flash', 'cheap/fallback-model']);
+        assert.strictEqual(r.failedOverFrom, 'tokenrouter');
+        const sp = await sup.spend(g2);
+        const today = sp.windows.today;
+        assert.ok(today.some((x) => x.calls >= 1), JSON.stringify(today));
+        const refused = require('../modules/agentCoord/store').open().prepare("SELECT COUNT(*) n FROM supervisor_usage WHERE ok = 0 AND error LIKE '%402%'").get().n;
+        assert.ok(refused >= 1, 'the refusal is recorded');
+        assert.ok(sp.failovers.length >= 1 && sp.failovers[0].fromEngine === 'tokenrouter', JSON.stringify(sp.failovers));
+        assert.ok(today.some((x) => x.cost > 0.002), 'cost summed');
+    });
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');
