@@ -56,7 +56,8 @@ const TOOLS = [
         title: str('Session title shown in claude.ai/code (default: the prompt\'s first line)'),
         mode: { type: 'string', enum: ['bypassPermissions', 'acceptEdits', 'auto', 'default', 'plan'], description: 'Permission mode (default bypassPermissions, as Remote Control\'s)' },
         allowFull: { type: 'boolean', description: 'Allow an account at 95% or more of a limit' },
-        startNow: { type: 'boolean', description: 'Start it now when there is room (default true); false leaves it queued for Yukimi or the Supervisor to start' }
+        startNow: { type: 'boolean', description: 'Start it now when there is room (default true); false leaves it queued for Yukimi or the Supervisor to start' },
+        engine: str('claude (default: the account\'s plan), tokenrouter (DeepSeek V4.1 Flash unless model names another), or custom:<provider id> (custom:sloproxy, custom:deepinfra, custom:deepseek): another model runs the same Claude Code session through the Director\'s bridge')
     }, ['prompt']),
     tool('claude_session_read', 'A Claude session: busy / idle, account, model, its latest messages, the files it edited and its claims (from agent-coord).', {
         session: str('Session id (or its first 8 characters)'),
@@ -159,7 +160,9 @@ function pickAccount(snap, want, allowFull) {
     if (!runnable.length) throw new Error('No Claude account has room (every runnable account is at its limit, past its own max, or cannot run): wait for a reset or pass allowFull');
     const preferred = runnable.find((a) => a.preferred && (!a.availability || a.availability.state !== 'near'));
     if (preferred) return preferred;
-    return runnable.slice().sort((x, y) => worstOf(x) - worstOf(y) || x.sessions.length - y.sessions.length)[0];
+    // account priority (Fleet settings): high before normal before low; then the most headroom
+    const rank = (a) => ({ high: 0, normal: 1, low: 2 }[(a.settings && a.settings.priority) || 'normal']);
+    return runnable.slice().sort((x, y) => rank(x) - rank(y) || worstOf(x) - worstOf(y) || x.sessions.length - y.sessions.length)[0];
 }
 
 /** For Fleet's New Session "Auto" and an account's defaults: { index, name, settings }. */
@@ -203,7 +206,7 @@ async function dispatch(gr, name, input) {
         const sup = require('./agentSupervisor');
         let w = sup.enqueue({
             title: input.title, prompt, cwd, account: input.account && String(input.account).toLowerCase() !== 'auto' ? acc.index : null,
-            model, effort: input.effort || (acc.settings && acc.settings.defaultEffort) || undefined, startNow: input.startNow !== false, source: 'director'
+            model: input.engine && input.engine !== 'claude' ? (input.model || undefined) : model, engine: input.engine, effort: input.effort || (acc.settings && acc.settings.defaultEffort) || undefined, startNow: input.startNow !== false, source: 'director'
         }, { gr });
         await sup.pumpWork(gr);
         w = sup.getWork(w.id);

@@ -284,6 +284,8 @@ function db() {
             );
             CREATE INDEX IF NOT EXISTS supervisor_work_state ON supervisor_work (state);
         `);
+        const wcols = new Set(d.prepare('PRAGMA table_info(supervisor_work)').all().map((c) => c.name));
+        if (!wcols.has('engine')) d.exec("ALTER TABLE supervisor_work ADD COLUMN engine TEXT NOT NULL DEFAULT 'claude'");
         const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
         if (!cols.has('supervised')) d.exec('ALTER TABLE supervisor_state ADD COLUMN supervised INTEGER NOT NULL DEFAULT 0');
         db.ready = d;
@@ -481,7 +483,7 @@ const ACTIVE = ['starting', 'running', 'waiting'];
 function rowWork(r) {
     if (!r) return null;
     return {
-        id: r.id, title: r.title, source: r.source, sourceRef: r.source_ref || '', state: r.state, account: r.account || '', model: r.model || '', effort: r.effort || '',
+        id: r.id, title: r.title, engine: r.engine || 'claude', source: r.source, sourceRef: r.source_ref || '', state: r.state, account: r.account || '', model: r.model || '', effort: r.effort || '',
         cwd: r.cwd || '', sessionId: r.session_id || '', link: r.link || '', message: r.message || '', startNow: !!r.start_now,
         createdAt: r.created_at, startedAt: r.started_at, endedAt: r.ended_at, prompt: String(r.prompt || '').slice(0, 2000)
     };
@@ -509,8 +511,9 @@ function enqueue(item, opts = {}) {
         if (dup) return Object.assign(getWork(dup.id), { reused: true });
     }
     const title = String(item.title || prompt.split('\n')[0]).replace(/\s+/g, ' ').trim().slice(0, 120) || 'Work';
-    const r = db().prepare(`INSERT INTO supervisor_work (title, prompt, cwd, account, model, effort, source, source_ref, state, start_now, created_at, message)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, 'Waiting for a slot')`).run(title, prompt, item.cwd || null, item.account !== undefined && item.account !== null ? String(item.account) : null, item.model || null, item.effort || null, src, item.sourceRef || null, item.startNow ? 1 : 0, Date.now());
+    const engine = item.engine && item.engine !== 'claude' ? String(item.engine).slice(0, 60) : 'claude';
+    const r = db().prepare(`INSERT INTO supervisor_work (title, prompt, cwd, account, model, effort, source, source_ref, state, start_now, created_at, message, engine)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, 'Waiting for a slot', ?)`).run(title, prompt, item.cwd || null, item.account !== undefined && item.account !== null ? String(item.account) : null, item.model || null, item.effort || null, src, item.sourceRef || null, item.startNow ? 1 : 0, Date.now(), engine);
     const w = getWork(r.lastInsertRowid);
     emit({ work: w });
     pumpWork(opts.gr).catch((e) => console.warn(`[supervisor] queue: ${e.message}`));
@@ -549,7 +552,8 @@ function pumpWork(gr) {
                 const st = pick.settings || {};
                 const r = await require('./claudeSessionLauncher').start(g, {
                     cwd: w.cwd || path.join(__dirname, '..'), prompt: `${w.prompt}\n\n${SUPERVISED_NOTE}`, title: w.title, account: pick.index,
-                    mode: st.defaultMode, model: w.model || st.defaultModel || 'sonnet', effort: w.effort || st.defaultEffort || undefined, dispatchedBy: `Supervisor (${w.source})`
+                    mode: st.defaultMode, engine: w.engine && w.engine !== 'claude' ? w.engine : undefined,
+                    model: w.model || (w.engine && w.engine !== 'claude' ? undefined : (st.defaultModel || 'sonnet')), effort: w.effort || st.defaultEffort || undefined, dispatchedBy: `Supervisor (${w.source})`
                 });
                 if (r.state === 'failed') { setWork(w.id, { state: 'failed', ended_at: Date.now(), message: r.message || 'It did not start', session_id: r.id || null }); }
                 else {
@@ -907,7 +911,7 @@ function serveSocket() {
             try {
                 if (!req || (req.op !== 'check' && req.op !== 'enqueue')) throw new Error('op must be check or enqueue');
                 if (req.op === 'enqueue') {
-                    const w = enqueue({ title: req.title, prompt: req.prompt, cwd: req.cwd, model: req.model, effort: req.effort, startNow: req.startNow === true, source: 'agent', sourceRef: req.sourceRef || null });
+                    const w = enqueue({ title: req.title, prompt: req.prompt, cwd: req.cwd, model: req.model, effort: req.effort, engine: req.engine, startNow: req.startNow === true, source: 'agent', sourceRef: req.sourceRef || null });
                     out = { ok: true, work: w };
                 } else {
                     if (!settings().enabled) throw new Error('The Supervisor is off (Fleet > Coordination > Supervisor)');

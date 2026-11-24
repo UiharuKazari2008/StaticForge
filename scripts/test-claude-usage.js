@@ -261,7 +261,7 @@ const REPLY = {
         // C: a login needed, its link opens Claude Accounts
         assert.strictEqual(rc.dot, 'warn');
         const link = rc.lines.find((l) => l && typeof l === 'object');
-        assert.deepStrictEqual([link.link.name, link.link.label], ['claude-accounts', 'Claude Accounts']);
+        assert.deepStrictEqual([link.link.name, link.link.label], ['claude-accounts', 'Fleet']);
         assert.ok(model.alerts.some((a) => a.title === 'Claude Spare: Claude login needed'));
         // a push replaces the wallet_status copy: B's session at 100%
         tray._test.applyClaude({ [ids[1]]: { ...snap.accounts[1], limits: [{ ...snap.accounts[1].limits[0], percent: 100 }] } }, [], true);

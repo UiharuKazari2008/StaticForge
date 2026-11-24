@@ -110,11 +110,96 @@ function messagesOf(o, at) {
     return out;
 }
 
-function parse(line, at) {
+// ---------------------------------------------------------------- views (#1154, Fleet's session view)
+//
+// Yukimi, Nov 24 2026: "by default it shows just messages, and thinking and file edits are just openable rows
+// that you can open in new windows ... the server should not send that thinking / line edits / tool call data
+// unless it's enabled". With opts.view the messages are:
+//   text / command / notice     always
+//   thinking                    view.thinking: in full; else a fold row (title, size; no text)
+//   edit (Edit / Write / MultiEdit / NotebookEdit)   view.edits: file + old / new text; else a fold row
+//   tool_use / tool_result      only with view.tools / view.results (else not sent at all)
+// A fold row is { kind: 'fold', of: 'thinking' | 'edit', at, part, title, size }; readItem(file, at, part)
+// answers its full content. Without opts.view the output is the old one (Supervisor, Yozora's tools).
+
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+const ITEM_CAP = 60000;
+
+/** Every part of one line, with thinking and edits as their own kinds (full content). */
+function richOf(o, at) {
+    if (!o || typeof o !== 'object' || o.isMeta) return [];
+    if (o.type !== 'assistant' || !o.message || !Array.isArray(o.message.content)) {
+        return messagesOf(o, at).map((m, i) => Object.assign(m, { part: i }));
+    }
+    const base = { at, uuid: o.uuid || '', time: o.timestamp || null, sidechain: !!o.isSidechain };
+    const out = [];
+    o.message.content.forEach((b) => {
+        if (!b) return;
+        const part = out.length;
+        if (b.type === 'thinking' && (b.thinking || '').trim()) out.push(Object.assign({}, base, { part, role: 'assistant', kind: 'thinking', text: b.thinking }));
+        else if (b.type === 'text' && b.text && b.text.trim()) out.push(Object.assign({}, base, { part, role: 'assistant', kind: 'text', text: cap(b.text, TEXT_CAP), model: o.message.model || '' }));
+        else if (b.type === 'tool_use' && EDIT_TOOLS.has(b.name)) {
+            const i = b.input || {};
+            const file = i.file_path || i.notebook_path || '';
+            const edits = b.name === 'MultiEdit' && Array.isArray(i.edits) ? i.edits : [{ old_string: i.old_string, new_string: i.new_string !== undefined ? i.new_string : (i.content !== undefined ? i.content : i.new_source) }];
+            out.push(Object.assign({}, base, { part, role: 'assistant', kind: 'edit', tool: b.name, toolUseId: b.id || '', file, edits }));
+        } else if (b.type === 'tool_use') out.push(Object.assign({}, base, { part, role: 'assistant', kind: 'tool_use', tool: String(b.name || 'tool'), toolUseId: b.id || '', text: inputSummary(b.name, b.input) }));
+    });
+    return out;
+}
+
+const plural = (n, w) => `${n.toLocaleString('en-US')} ${w}${n === 1 ? '' : 's'}`;
+
+/** One message as the view wants it: itself, a fold row, or nothing. */
+function viewOf(m, view) {
+    if (m.kind === 'thinking') {
+        if (view.thinking) return Object.assign({}, m, { text: cap(m.text, ITEM_CAP) });
+        return { kind: 'fold', of: 'thinking', role: 'assistant', at: m.at, part: m.part, uuid: m.uuid, time: m.time, sidechain: m.sidechain, title: 'Thinking', size: String(m.text || '').length };
+    }
+    if (m.kind === 'edit') {
+        const lines = m.edits.reduce((n, e) => n + String(e.new_string || '').split('\n').length, 0);
+        const title = `${m.tool === 'Write' ? 'Wrote' : 'Edited'} ${m.file || 'a file'}`;
+        if (view.edits) {
+            return Object.assign({}, m, { title, edits: m.edits.map((e) => ({ old: cap(String(e.old_string || ''), 8000), new: cap(String(e.new_string || ''), 8000) })) });
+        }
+        return { kind: 'fold', of: 'edit', role: 'assistant', at: m.at, part: m.part, uuid: m.uuid, time: m.time, sidechain: m.sidechain, title, file: m.file, tool: m.tool, size: lines };
+    }
+    if (m.kind === 'tool_use') return view.tools ? m : null;
+    if (m.kind === 'tool_result') return view.results ? m : null;
+    return m;
+}
+
+function parse(line, at, view) {
     if (!line || line.length < 2) return [];
     let o;
     try { o = JSON.parse(line); } catch (_) { return []; }
-    return messagesOf(o, at);
+    if (!view) return messagesOf(o, at);
+    return richOf(o, at).map((m) => viewOf(m, view)).filter(Boolean);
+}
+
+/** The full content of one folded part (a line's byte offset + its part number). */
+async function readItem(file, at, part) {
+    const pos = Math.max(0, Number(at) || 0);
+    const total = await size(file);
+    if (pos >= total) throw new Error('No such item');
+    const fh = await fs.promises.open(file, 'r');
+    let line = '';
+    try {
+        let len = 64 * 1024;
+        for (;;) {
+            const buf = Buffer.alloc(Math.min(len, total - pos));
+            await fh.read(buf, 0, buf.length, pos);
+            const nl = buf.indexOf(0x0a);
+            if (nl >= 0 || pos + buf.length >= total) { line = buf.subarray(0, nl >= 0 ? nl : buf.length).toString('utf8'); break; }
+            if (len > 32 * 1024 * 1024) throw new Error('That line is too long to show');
+            len *= 4;
+        }
+    } finally { await fh.close(); }
+    let o;
+    try { o = JSON.parse(line); } catch (_) { throw new Error('No such item'); }
+    const m = richOf(o, pos).find((x) => x.part === Number(part));
+    if (!m) throw new Error('No such item');
+    return viewOf(m, { thinking: true, edits: true, tools: true, results: true });
 }
 
 async function size(file) {
@@ -146,7 +231,7 @@ async function readPage(file, opts = {}) {
             let off = from + cut + 1;
             const offsets = lines.map((l) => { const o = off; off += Buffer.byteLength(l, 'utf8') + 1; return o; });
             for (let i = lines.length - 1; i >= 0 && found.length < limit; i -= 1) {
-                const msgs = parse(lines[i], offsets[i]);
+                const msgs = parse(lines[i], offsets[i], opts.view);
                 for (let j = msgs.length - 1; j >= 0 && found.length < limit; j -= 1) found.push(msgs[j]);
                 if (msgs.length) start = offsets[i];
             }
@@ -164,7 +249,7 @@ async function readPage(file, opts = {}) {
 }
 
 /** The messages appended after byte `offset`, up to 512 KB of lines; `end` is where to read next. */
-async function readSince(file, offset) {
+async function readSince(file, offset, opts = {}) {
     const total = await size(file);
     let from = Math.max(0, Number(offset) || 0);
     if (from > total) from = 0; // the file was replaced
@@ -184,10 +269,16 @@ async function readSince(file, offset) {
     const messages = [];
     let off = from;
     text.split('\n').forEach((l) => {
-        if (l) parse(l, off).forEach((m) => messages.push(m));
+        if (l) parse(l, off, opts.view).forEach((m) => messages.push(m));
         off += Buffer.byteLength(l, 'utf8') + 1;
     });
     return { messages, end: from + Buffer.byteLength(text, 'utf8') };
 }
 
-module.exports = { readPage, readSince, mask, messagesOf, _cap: cap };
+/** A view from a request: { thinking, edits, tools, results } (all off = messages only). */
+function viewFrom(show) {
+    const s = show && typeof show === 'object' ? show : {};
+    return { thinking: s.thinking === true, edits: s.edits === true, tools: s.tools === true, results: s.results === true };
+}
+
+module.exports = { readPage, readSince, readItem, viewFrom, mask, messagesOf, _cap: cap };

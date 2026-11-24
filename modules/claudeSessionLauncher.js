@@ -165,9 +165,42 @@ async function accountEnv(gr, account) {
 
 function commandLine(parts) {
     const envs = Object.entries(parts.env || {}).map(([k, v]) => `${k}=${shq(v)}`);
-    const unset = STRIP_ENV.filter((k) => !(k in (parts.env || {}))).map((k) => `-u ${k}`);
+    const keep = Object.assign({}, parts.env || {}, parts.envFileKeys || {});
+    const unset = STRIP_ENV.filter((k) => !(k in keep)).map((k) => `-u ${k}`);
     const args = parts.args.map((a) => (/^[A-Za-z0-9_./:=@%+-]+$/.test(a) ? a : shq(a))).join(' ');
-    return `env ${unset.join(' ')} ${envs.join(' ')} ${shq(parts.bin)} ${args}; sleep 3600`.replace(/\s+/g, ' ');
+    // an env file (0600) carries what must not be on a command line (another engine's bridge secret)
+    const source = parts.envFile ? `set -a; . ${shq(parts.envFile)}; set +a; ` : '';
+    return `${source}env ${unset.join(' ')} ${envs.join(' ')} ${shq(parts.bin)} ${args}; sleep 3600`.replace(/\s+/g, ' ');
+}
+
+/**
+ * Another engine for a session (#1154, Yukimi: "sending a request to another model like SloProxy and or
+ * DeepSeek"): the Claude Code CLI talks to the Director's loopback bridge (tokenRouterBridge.js), which relays
+ * to TokenRouter (DeepSeek V4.1 Flash by default) or a custom model provider (custom:<id>: SloProxy,
+ * DeepInfra, DeepSeek). The account's own folder still carries Remote Control's login. Answers
+ * { envFile, keys, model }: the env file (0600, one per session id, rewritten on every start) keeps the
+ * bridge secret off the command line.
+ */
+async function engineEnv(gr, engine, model, effort, id) {
+    const cmp = require('./customModelProviders');
+    let resolvedModel = model;
+    let providerId;
+    if (engine === 'tokenrouter') {
+        resolvedModel = model && !/^(sonnet|opus|haiku|fable)$/i.test(model) ? model : 'deepseek/deepseek-v4.1-flash';
+    } else if (cmp.isEngine(engine)) {
+        const row = cmp.requireReady(gr, engine);
+        providerId = cmp.providerId(engine);
+        resolvedModel = model && !/^(sonnet|opus|haiku|fable)$/i.test(model) ? model : cmp.preferredModel(row);
+        if (!resolvedModel) throw new Error(`${row.name} has no default model: pick one`);
+    } else throw new Error(`Unknown engine ${engine}`);
+    const link = await require('./tokenRouterBridge').ensureBridge();
+    const env = require('./cursorDirector')._test.tokenRouterCliEnv(link, { model: resolvedModel, effort: effort || undefined, lane: 'normal', providerId });
+    const dir = path.join(stateDir(), 'session-env');
+    await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
+    const file = path.join(dir, `${id}.env`);
+    await fs.promises.writeFile(file, Object.entries(env).map(([k, v]) => `${k}=${shq(v)}`).join('\n') + '\n', { mode: 0o600 });
+    await fs.promises.chmod(file, 0o600);
+    return { envFile: file, keys: env, model: resolvedModel };
 }
 
 async function watch(name, opts = {}) {
@@ -221,6 +254,12 @@ async function launch(gr, o) {
     // agent-coord: user scope in the account's config dir / the host's (every session there has it, #1154);
     // a launch-only config only when that could not be registered
     const coordOk = await runtime.ensureCoordMcp(env.CLAUDE_CONFIG_DIR || null).catch(() => false);
+    const engine = o.engine && o.engine !== 'claude' ? String(o.engine) : '';
+    let other = null;
+    if (engine) {
+        other = await engineEnv(gr, engine, o.model, o.effort, o.id);
+        o = Object.assign({}, o, { model: other.model, effort: undefined }); // the bridge carries the effort
+    }
     const args = [o.resume ? '--resume' : '--session-id', o.id, '--remote-control', title, '--permission-mode', mode];
     if (!coordOk) args.push('--mcp-config', await mcpConfigFile());
     if (o.model !== undefined && o.model !== null && o.model !== '') {
@@ -238,17 +277,17 @@ async function launch(gr, o) {
         if (claudeSessions.liveSessions().some((s) => s.tmuxSession === name)) return Object.assign({ id: o.id, tmuxSession: name, account }, await watch(name, o));
         await tmux(['kill-session', '-t', `=${name}`]);
     }
-    const r = await tmux(['new-session', '-d', '-s', name, '-x', '200', '-y', '50', '-c', cwd, commandLine({ env, bin: cliPath(), args })]);
+    const r = await tmux(['new-session', '-d', '-s', name, '-x', '200', '-y', '50', '-c', cwd, commandLine({ env, bin: cliPath(), args, envFile: other ? other.envFile : null, envFileKeys: other ? other.keys : null })]);
     if (r.code !== 0) return { id: o.id, tmuxSession: name, account, state: 'failed', link: '', message: `Could not start it: ${cleanTitle(r.stderr, 120) || 'tmux failed'}` };
-    coordNote({ id: `claude-${o.id.slice(0, 8)}`, kind: 'claude', name: title, sessionId: o.id, account: account ? account.name : 'host', task: o.task || title, cwd, tmux: `${name} (${socket()})`, model: o.model || '', effort: o.effort || '', dispatchedBy: o.dispatchedBy || '' });
-    return Object.assign({ id: o.id, tmuxSession: name, account, model: o.model || null, effort: o.effort || null }, await watch(name, o));
+    coordNote({ id: `claude-${o.id.slice(0, 8)}`, kind: 'claude', name: title, sessionId: o.id, account: account ? account.name : 'host', task: o.task || title, cwd, tmux: `${name} (${socket()})`, model: engine ? `${engine} ${o.model}` : (o.model || ''), effort: o.effort || '', dispatchedBy: o.dispatchedBy || '' });
+    return Object.assign({ id: o.id, tmuxSession: name, account, engine: engine || 'claude', model: o.model || null, effort: o.effort || null }, await watch(name, o));
 }
 
 /** A new session in a folder, with an optional first prompt. */
 async function start(gr, opts = {}) {
     const id = crypto.randomUUID();
     const title = opts.title || (opts.prompt ? String(opts.prompt).split('\n')[0] : '') || path.basename(String(opts.cwd || '')) || 'Claude session';
-    return launch(gr, { id, cwd: opts.cwd, prompt: opts.prompt, title, task: opts.prompt ? cleanTitle(opts.prompt, 200) : title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, dispatchedBy: opts.dispatchedBy, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
+    return launch(gr, { id, cwd: opts.cwd, prompt: opts.prompt, title, task: opts.prompt ? cleanTitle(opts.prompt, 200) : title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, engine: opts.engine, dispatchedBy: opts.dispatchedBy, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
 }
 
 async function findFile(id) {

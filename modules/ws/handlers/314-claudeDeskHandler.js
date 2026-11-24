@@ -224,7 +224,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'send') return { review: await supervisor.send(message.reviewId) };
     if (action === 'dismiss') { supervisor.dismiss(message.reviewId); return supervisorStatus(gr); }
     if (action === 'enqueue') {
-        supervisor.enqueue({ title: message.title, prompt: message.prompt, cwd: message.cwd, account: message.account === 'auto' ? null : message.account, model: message.model, effort: message.effort, startNow: message.startNow === true, source: 'fleet' }, { gr });
+        supervisor.enqueue({ title: message.title, prompt: message.prompt, cwd: message.cwd, account: message.account === 'auto' ? null : message.account, model: message.model, effort: message.effort, engine: message.engine, startNow: message.startNow === true, source: 'fleet' }, { gr });
         return supervisorStatus(gr);
     }
     if (action === 'work_start') { supervisor.startWork(message.id); return supervisorStatus(gr); }
@@ -247,7 +247,7 @@ function unwatch(ws) {
     watches.delete(ws);
 }
 
-async function watchTranscript(handlersCtx, ws, id, from) {
+async function watchTranscript(handlersCtx, ws, id, from, view) {
     unwatch(ws);
     const file = await launcher.findFile(id);
     if (!file) throw new Error('No such Claude session');
@@ -258,7 +258,7 @@ async function watchTranscript(handlersCtx, ws, id, from) {
         w.reading = true;
         try {
             for (let i = 0; i < 8; i += 1) {
-                const r = await transcript.readSince(file, w.end);
+                const r = await transcript.readSince(file, w.end, { view: w.view });
                 if (r.end === w.end) break;
                 w.end = r.end;
                 if (r.messages.length && ws.readyState === 1) handlersCtx.sendToClient(ws, { type: APPEND_TYPE, data: { id, messages: r.messages, end: r.end }, timestamp: new Date().toISOString() });
@@ -267,6 +267,7 @@ async function watchTranscript(handlersCtx, ws, id, from) {
     };
     w.watcher = fs.watch(file, { persistent: false }, () => { clearTimeout(w.timer); w.timer = setTimeout(flush, 400); });
     w.watcher.on('error', () => unwatch(ws));
+    w.view = view || null;
     watches.set(ws, w);
     if (typeof ws.once === 'function') ws.once('close', () => unwatch(ws));
     void flush();
@@ -280,11 +281,15 @@ const handleSessions = guard('claude_desk_sessions', (gr, message) => sessionsPa
 const handleTranscript = guard('claude_desk_transcript', async (gr, message) => {
     const file = await launcher.findFile(String(message.id || ''));
     if (!file) throw new Error('No such Claude session');
-    if (message.since !== undefined && message.since !== null) return Object.assign({ id: message.id }, await transcript.readSince(file, message.since));
-    return Object.assign({ id: message.id }, await transcript.readPage(file, { before: message.before, limit: message.limit }));
+    // #1154: show { thinking, edits, tools, results } picks what is sent (Fleet sends it; without it the old
+    // full output); item { at, part } answers one folded thinking / edit in full
+    const view = message.show ? transcript.viewFrom(message.show) : undefined;
+    if (message.item) return { id: message.id, item: await transcript.readItem(file, message.item.at, message.item.part) };
+    if (message.since !== undefined && message.since !== null) return Object.assign({ id: message.id }, await transcript.readSince(file, message.since, { view }));
+    return Object.assign({ id: message.id }, await transcript.readPage(file, { before: message.before, limit: message.limit, view }));
 });
 
-const handleWatch = guard('claude_desk_watch', async (gr, message, ws, clientInfo, handlersCtx) => watchTranscript(handlersCtx, ws, String(message.id || ''), message.from));
+const handleWatch = guard('claude_desk_watch', async (gr, message, ws, clientInfo, handlersCtx) => watchTranscript(handlersCtx, ws, String(message.id || ''), message.from, message.show ? transcript.viewFrom(message.show) : null));
 const handleUnwatch = guard('claude_desk_unwatch', async (gr, message, ws) => { unwatch(ws); return { watching: false }; });
 
 const handleSession = guard('claude_desk_session', async (gr, message) => {
@@ -310,7 +315,8 @@ const handleSession = guard('claude_desk_session', async (gr, message) => {
             : message.prompt;
         result = await launcher.start(gr, {
             cwd: message.cwd || path.join(__dirname, '..', '..', '..'), prompt, title: message.title, account,
-            mode: message.mode || defaults.defaultMode, model: message.model || defaults.defaultModel || undefined, effort: message.effort || defaults.defaultEffort || undefined
+            mode: message.mode || defaults.defaultMode, engine: message.engine && message.engine !== 'claude' ? message.engine : undefined,
+            model: message.model || (message.engine && message.engine !== 'claude' ? undefined : defaults.defaultModel) || undefined, effort: message.effort || defaults.defaultEffort || undefined
         });
         if (supervised && result && result.id) supervisor.markSupervised(result.id);
         result = Object.assign({ supervised }, result);
@@ -330,7 +336,8 @@ const handleSession = guard('claude_desk_session', async (gr, message) => {
         return { detail: await sessionDetail(gr, id) };
     } else if (action === 'agent_page') {
         const file = await subagentFile(id, message.agentId);
-        return Object.assign({ id, agentId: String(message.agentId) }, await transcript.readPage(file, { before: message.before, limit: message.limit }));
+        if (message.item) return { id, agentId: String(message.agentId), item: await transcript.readItem(file, message.item.at, message.item.part) };
+        return Object.assign({ id, agentId: String(message.agentId) }, await transcript.readPage(file, { before: message.before, limit: message.limit, view: message.show ? transcript.viewFrom(message.show) : undefined }));
     } else if (action === 'task_output') {
         return taskOutput(id, message.taskId);
     } else if (action === 'command') {
@@ -498,6 +505,12 @@ async function sessionCommand(id, command, value) {
     return Object.assign({ command: line }, r);
 }
 
+// the engines a session or work item can run on: Claude (the account's login) or another model through the bridge
+const handleEngines = guard('claude_fleet_engines', async (gr) => ({
+    engines: [{ id: 'claude', name: 'Claude (the account\'s plan)', defaultModel: 'sonnet', models: ['sonnet', 'opus', 'haiku', 'fable'], ready: true }]
+        .concat(supervisor.engines(gr).map((e) => ({ id: e.id === 'tokenrouter' ? 'tokenrouter' : (String(e.id).startsWith('custom:') ? e.id : `custom:${e.id}`), name: e.name, defaultModel: e.defaultModel, models: [], ready: e.ready })))
+}));
+
 // ---------------------------------------------------------------- Plaud into the Supervisor's queue (New Session wizard)
 
 const handlePlaud = guard('claude_fleet_plaud', async (gr, message) => {
@@ -600,6 +613,7 @@ function registerPackets(handlersCtx) {
     reg('claude_desk_coord', handleCoord, ADMIN_DESTRUCTIVE);
     reg('claude_desk_supervisor', handleSupervisor, ADMIN_DESTRUCTIVE);
     reg('claude_fleet_plaud', handlePlaud, ADMIN_DESTRUCTIVE);
+    reg('claude_fleet_engines', handleEngines);
 }
 
 module.exports = { registerPackets, _handlers: { handleSessions, handleTranscript, handleWatch, handleUnwatch, handleSession, handleCoord, handleSupervisor }, _sessionsPage: sessionsPage, _ownerOf: ownerOf };

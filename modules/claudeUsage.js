@@ -74,9 +74,31 @@ const expiresOf = (creds) => Number(oauthOf(creds) && oauthOf(creds).expiresAt) 
 const fresher = (a, b) => (!oauthOf(a) ? (oauthOf(b) ? b : null) : !oauthOf(b) ? a : expiresOf(b) > expiresOf(a) ? b : a);
 
 /** "Max 5x" from rateLimitTier default_claude_max_5x / subscriptionType max; "Pro", "Team", ... */
-function planName(oauth) {
+/**
+ * The account's profile as its CLI keeps it current (#1154: Secoundary showed "Max 5x" from the tier its
+ * login token was issued with; its profile says max_20x): the account's own config dir's .claude.json, the
+ * host's ~/.claude.json for the account on the host, else the linked login's copy. Answers oauthAccount or null.
+ */
+async function profileFor(acc) {
+    const files = [];
+    try {
+        const rt = require('./claudeAccountRuntime');
+        if (rt.isMoved(acc.id)) files.push(path.join(rt.configDir(acc.id), '.claude.json'));
+    } catch (_) { /* no runtime */ }
+    if (acc.onHost) files.push(path.join(claudeHome(), '.claude.json'));
+    files.push(path.join(claudeHost.storeDir(), acc.id, 'account.json'));
+    for (const f of files) {
+        const j = await readJson(f);
+        if (j && j.oauthAccount && (!acc.remoteLogin || !acc.remoteLogin.accountUuid || j.oauthAccount.accountUuid === acc.remoteLogin.accountUuid)) return j.oauthAccount;
+    }
+    return null;
+}
+
+function planName(oauth, profile) {
     const o = oauth || {};
-    const tier = String(o.rateLimitTier || '');
+    const p = profile || {};
+    const tier = String(p.organizationRateLimitTier || p.userRateLimitTier || o.rateLimitTier || '');
+    if (!/max_(\d+)x/i.test(tier) && p.planDisplayName) return String(p.planDisplayName).slice(0, 40);
     const sub = String(o.subscriptionType || '');
     const m = tier.match(/max_(\d+)x/i);
     if (m) return `Max ${m[1]}x`;
@@ -256,14 +278,17 @@ async function readAccount(gr, acc, liveDirs) {
         at: null,
         limits: [],
         extra: null,
+        extraEnabled: false,
         needsLogin: false,
         error: null
     };
     let got;
     try { got = await loginFor(gr, acc, liveDirs); } catch (e) { got = { creds: null, note: shortError(e) }; }
     const creds = got.creds;
-    if (creds && oauthOf(creds)) base.plan = planName(oauthOf(creds));
-    else if (login) base.plan = planName({ subscriptionType: login.plan, rateLimitTier: login.rateLimitTier });
+    const profile = await profileFor(acc).catch(() => null);
+    base.extraEnabled = !!(profile && profile.hasExtraUsageEnabled);
+    if (creds && oauthOf(creds)) base.plan = planName(oauthOf(creds), profile);
+    else if (login) base.plan = planName({ subscriptionType: login.plan, rateLimitTier: login.rateLimitTier }, profile);
     if (!creds || !oauthOf(creds) || !oauthOf(creds).accessToken) {
         if (!acc.remoteLogin && acc.active) {
             const turn = await lastTurnUsage();
@@ -330,6 +355,8 @@ function onRead(fn) { readers.add(fn); return () => readers.delete(fn); }
 
 module.exports = {
     read,
+    _profileFor: profileFor,
+    _planName: planName,
     cached,
     onRead,
     parseUsage,

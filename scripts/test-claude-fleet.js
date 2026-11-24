@@ -184,6 +184,9 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
         snap.accounts[0].availability = { state: 'near', schedulable: true };
         assert.strictEqual(pickAccount(snap, 'auto').name, 'Ops');
         assert.throws(() => pickAccount(snap, 'Capped'), /past max/);
+        snap.accounts[1].settings = { priority: 'low' };
+        snap.accounts.push(acc(3, 'Busy', 60, { settings: { priority: 'normal' } }));
+        assert.strictEqual(pickAccount(snap, 'auto').name, 'Main', 'a low-priority account (Ops, the most headroom) waits behind normal ones');
     });
 
     await test('MCP tools: agent-coord lists the v2 tools; the fleet module is Xi-only', () => {

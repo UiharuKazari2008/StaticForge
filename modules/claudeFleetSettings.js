@@ -25,7 +25,8 @@ const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,79}$/;
 const NEAR_PCT = 80;
 const NEAR_CAP = 10;
 
-const DEFAULTS = { preferred: false, maxWeeklyPct: null, maxSessionPct: null, defaultModel: 'sonnet', defaultEffort: '', defaultMode: 'bypassPermissions' };
+const PRIORITIES = ['high', 'normal', 'low'];
+const DEFAULTS = { priority: 'normal', preferred: false, maxWeeklyPct: null, maxSessionPct: null, defaultModel: 'sonnet', defaultEffort: '', defaultMode: 'bypassPermissions' };
 
 function all(gr) {
     try { return (gr && gr.getConfig && gr.getConfig().fleet && gr.getConfig().fleet.accounts) || {}; } catch (_) { return {}; }
@@ -34,6 +35,7 @@ function all(gr) {
 function get(gr, id) {
     const v = all(gr)[id] || {};
     return {
+        priority: PRIORITIES.includes(v.priority) ? v.priority : 'normal',
         preferred: v.preferred === true,
         maxWeeklyPct: Number.isFinite(v.maxWeeklyPct) ? v.maxWeeklyPct : null,
         maxSessionPct: Number.isFinite(v.maxSessionPct) ? v.maxSessionPct : null,
@@ -63,6 +65,10 @@ async function save(gr, index, patch = {}) {
     const cur = get(gr, acc.id);
     const next = Object.assign({}, cur);
     if (patch.preferred !== undefined) next.preferred = patch.preferred === true;
+    if (patch.priority !== undefined) {
+        if (!PRIORITIES.includes(patch.priority)) throw new Error('priority is high, normal or low');
+        next.priority = patch.priority;
+    }
     if (patch.maxWeeklyPct !== undefined) next.maxWeeklyPct = pct(patch.maxWeeklyPct);
     if (patch.maxSessionPct !== undefined) next.maxSessionPct = pct(patch.maxSessionPct);
     if (patch.defaultModel !== undefined) {
@@ -96,8 +102,21 @@ function limitCap(limit, s) {
     return null;
 }
 
-/** { state, schedulable, message, resetsAt } for an account from its usage row and its settings. */
+/**
+ * { state, schedulable, message, resetsAt, costWarning } for an account from its usage row and its settings.
+ * costWarning (Yukimi Nov 24: "if extra usage is on that's a red banner for high costs"): extra usage is on,
+ * so work past the plan's limits is billed; past a limit with it on the account is not schedulable.
+ */
 function availability(usage, s) {
+    const out = availabilityOf(usage, s);
+    const extra = usage && (usage.extraEnabled || (usage.extra && usage.extra.enabled));
+    if (!extra) return Object.assign(out, { costWarning: '' });
+    const x = (usage && usage.extra) || {};
+    const spent = Number.isFinite(x.used) ? ` (${x.currency || ''}${x.used}${Number.isFinite(x.limit) ? ` of ${x.currency || ''}${x.limit}` : ''} spent this month)` : '';
+    return Object.assign(out, { costWarning: `Extra usage is on: work past the plan's limits on this account is billed${spent}` });
+}
+
+function availabilityOf(usage, s) {
     const limits = (usage && Array.isArray(usage.limits) ? usage.limits : []).filter((l) => Number.isFinite(l.percent));
     if (!limits.length) return { state: 'unknown', schedulable: true, message: usage && usage.error ? `Usage unknown: ${usage.error}` : 'Usage not read yet', resetsAt: null };
     const label = (l) => l.label || l.short || l.kind;
@@ -126,8 +145,8 @@ function usageFor(index) {
         const snap = require('./claudeUsage').cached();
         const row = snap && (snap.accounts || []).find((a) => a.index === index);
         if (!row) return null;
-        return { plan: row.plan || '', limits: row.limits || [], at: row.at || null, error: row.error || null };
+        return { plan: row.plan || '', limits: row.limits || [], at: row.at || null, error: row.error || null, extra: row.extra || null, extraEnabled: !!row.extraEnabled };
     } catch (_) { return null; }
 }
 
-module.exports = { get, save, availability, usageFor, DEFAULTS, _limitCap: limitCap };
+module.exports = { get, save, availability, usageFor, DEFAULTS, PRIORITIES, _limitCap: limitCap };
