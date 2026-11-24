@@ -3351,16 +3351,63 @@ html.disable-blur .director-attach-chip {
         backdrop-filter: none;
         box-shadow: none;
         z-index: auto;
-        transition: none;
+        overflow: hidden;
+        /* the hamburger's steps slide (#1148); the mascot holds still meanwhile (Director.setSessionPanelState) */
+        transition: flex-basis 0.22s ease, width 0.22s ease, visibility 0s linear 0s;
     }
 
     #directorWindow .director-view {
         min-width: 0;
     }
 
+    /* Thumbnails only: a rail of the chats' pictures; the name shows on hover (the row's title) */
+    #directorWindow .director-container.director-sessions-rail .director-session-overlay {
+        flex-basis: 76px;
+        width: 76px;
+    }
+
+    #directorWindow .director-container.director-sessions-rail #directorPersonaGroup,
+    #directorWindow .director-container.director-sessions-rail .director-session-info,
+    #directorWindow .director-container.director-sessions-rail .director-session-label {
+        display: none;
+    }
+
+    #directorWindow .director-container.director-sessions-rail #directorSessionList > .director-header {
+        justify-content: center;
+    }
+
+    #directorWindow .director-container.director-sessions-rail .director-session-item {
+        justify-content: center;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    #directorWindow .director-container.director-sessions-rail .director-session-item > .director-session-preview {
+        width: 52px;
+        height: 52px;
+        margin-right: 0;
+    }
+
+    /* Folded: slid shut, then out of the tab order; the list keeps its width while it slides, so it does not re-wrap */
     #directorWindow .director-container.director-sessions-folded .director-session-overlay,
     #directorWindow .director-container.director-sessions-folded .director-session-overlay.hidden {
-        display: none !important;
+        flex-basis: 0;
+        width: 0;
+        border: 0;
+        visibility: hidden;
+        transition: flex-basis 0.22s ease, width 0.22s ease, visibility 0s linear 0.22s;
+    }
+
+    #directorWindow .director-container.director-sessions-folded:not(.director-sessions-from-rail) .director-session-overlay > * {
+        flex-shrink: 0;
+        min-width: 260px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        #directorWindow .director-session-overlay,
+        #directorWindow .director-container.director-sessions-folded .director-session-overlay {
+            transition: none;
+        }
     }
 }
 

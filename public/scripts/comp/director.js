@@ -3300,7 +3300,7 @@ class Director {
         }
         this.directorWindowChat.appendChild(this.directorContainer);
         this.directorContainer.classList.remove('hidden', 'director-closed');
-        this.applySessionPanelFold(this.sessionPanelFolded());
+        this.applySessionPanelFold(this.sessionPanelState());
         this.applyPrintsPaneFold();
         this.directorContainer.classList.add('director-open');
         this.updateHeaderForView(this.currentView);
@@ -4606,7 +4606,7 @@ class Director {
     async showSessionList() {
         // The static left panel is already the session list, so the chat view stays put (unfolded if it was folded)
         if (this.staticSessionPanel()) {
-            if (this.sessionPanelFolded()) this.setSessionPanelFolded(false);
+            if (this.sessionPanelState() !== 'open') this.setSessionPanelFolded(false);
             await this.loadDirectorSessions();
             this.initializeScrollbars();
             return;
@@ -4649,6 +4649,8 @@ class Director {
         this._personaSession[this.persona] = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
         this.persona = want;
         this.rememberPersona(want);
+        // Yozora's list has no pictures for a rail (#1148)
+        this.applySessionPanelFold(this.sessionPanelState());
         // The mascot and her room follow too: a Chiyo chat opened from Yumiya's tab showed Yumiya (Yukimi 2026-11-01).
         if (this.mascot) void this.mascot.setPersona(want);
         this.engine = this.personaEngine(want);
@@ -4746,33 +4748,63 @@ class Director {
     }
 
 
-    // Wide window: the hamburger folds the static session panel away and back (the chat takes the room;
-    // Yukimi, Nov 24 2026). Kept per browser in localStorage staticforge_director_sessions_folded.
+    // Wide window: the hamburger steps the static session panel open -> thumbnails only (a rail of the chats'
+    // pictures) -> folded -> open, at any window size, so the chat and the persona take the room (#1148,
+    // Yukimi Nov 24 2026). Yozora's chats have no pictures, so hers skips the rail. The panel slides
+    // (director.css); the mascot holds still while it does and is laid out once at the end.
+    // Kept per browser in localStorage staticforge_director_sessions_folded ('rail' | '1').
+    sessionPanelState() {
+        let v = '';
+        try { v = localStorage.getItem('staticforge_director_sessions_folded') || ''; } catch (_) { /* storage blocked */ }
+        if (v === '1') return 'folded';
+        if (v === 'rail' && this.persona !== 'xi') return 'rail';
+        return 'open';
+    }
+
     sessionPanelFolded() {
-        try { return localStorage.getItem('staticforge_director_sessions_folded') === '1'; } catch (_) { return false; }
+        return this.sessionPanelState() === 'folded';
     }
 
-    applySessionPanelFold(folded) {
-        if (this.directorContainer) this.directorContainer.classList.toggle('director-sessions-folded', !!folded);
-        if (this.directorMenuBtn) this.directorMenuBtn.setAttribute('aria-pressed', folded ? 'false' : 'true');
+    applySessionPanelFold(state) {
+        const st = state === true ? 'folded' : (state || 'open');
+        if (this.directorContainer) {
+            this.directorContainer.classList.toggle('director-sessions-folded', st === 'folded');
+            this.directorContainer.classList.toggle('director-sessions-rail', st === 'rail');
+        }
+        if (this.directorMenuBtn) {
+            this.directorMenuBtn.setAttribute('aria-pressed', st === 'folded' ? 'false' : 'true');
+            this.directorMenuBtn.title = st === 'open' ? 'Show only pictures' : (st === 'rail' ? 'Hide sessions' : 'Show sessions');
+        }
     }
 
-    setSessionPanelFolded(folded) {
+    setSessionPanelState(state) {
+        const st = state === 'rail' && this.persona === 'xi' ? 'folded' : state;
         try {
-            if (folded) localStorage.setItem('staticforge_director_sessions_folded', '1');
+            if (st === 'folded') localStorage.setItem('staticforge_director_sessions_folded', '1');
+            else if (st === 'rail') localStorage.setItem('staticforge_director_sessions_folded', 'rail');
             else localStorage.removeItem('staticforge_director_sessions_folded');
         } catch (_) { /* storage blocked: this window only */ }
-        this.applySessionPanelFold(folded);
-        if (!folded) {
+        // the slide is 220 ms (director.css): she is laid out once when it ends, not on every frame
+        if (this.mascot && typeof this.mascot.holdLayout === 'function') this.mascot.holdLayout(260);
+        // rail -> folded slides the rail itself away, not the full list (director.css)
+        if (this.directorContainer) this.directorContainer.classList.toggle('director-sessions-from-rail', st === 'folded' && this.directorContainer.classList.contains('director-sessions-rail'));
+        this.applySessionPanelFold(st);
+        if (st !== 'folded') {
             this.loadDirectorSessions();
             this.initializeScrollbars();
         }
     }
 
+    setSessionPanelFolded(folded) {
+        this.setSessionPanelState(folded ? 'folded' : 'open');
+    }
+
     toggleSessionOverlay() {
         if (!this.directorSessionList) return;
         if (this.staticSessionPanel()) {
-            this.setSessionPanelFolded(!this.sessionPanelFolded());
+            const now = this.sessionPanelState();
+            const next = now === 'open' ? (this.persona === 'xi' ? 'folded' : 'rail') : (now === 'rail' ? 'folded' : 'open');
+            this.setSessionPanelState(next);
             return;
         }
 
@@ -5039,14 +5071,14 @@ class Director {
 
     createNoSessionsItem() {
         const item = document.createElement('div');
-        item.className = 'director-session-item';
+        item.className = 'director-session-item director-session-label';
         item.innerHTML = '<div class="director-session-info"><div class="director-session-name">No sessions yet</div></div>';
         return item;
     }
 
     createArchiveHeader() {
         const item = document.createElement('div');
-        item.className = 'director-session-item';
+        item.className = 'director-session-item director-session-label';
         item.innerHTML = '<div class="director-session-info"><div class="director-session-name">Archives</div></div>';
         return item;
     }
@@ -5083,6 +5115,8 @@ class Director {
             : `<img class="director-session-preview" src="${this.getSessionPreviewImage(session)}" alt="Session preview" loading="lazy">`;
 
         const accountBadge = engine === 'cursor' ? this.accountBadgeHtml(sessionAccId, isInactiveAccount) : '';
+        // the thumbnails-only rail (#1148) shows no names: the picture says it on hover
+        if (!item.title && session.name) item.title = String(session.name);
 
         item.innerHTML = `
             ${preview}

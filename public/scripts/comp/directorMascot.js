@@ -1211,9 +1211,18 @@ class DirectorMascot {
         if (el && el.style[prop] !== value) el.style[prop] = value;
     }
 
+    // A side panel sliding (the Director's session list, #1148) resizes the chat on every frame: she keeps
+    // her size and place until it stops, then is laid out once (no per-frame relayout, no wobble).
+    holdLayout(ms) {
+        this._heldUntil = Date.now() + Math.max(0, Number(ms) || 0);
+        clearTimeout(this._heldTimer);
+        this._heldTimer = setTimeout(() => { this._heldTimer = 0; this._heldUntil = 0; this.layout(); }, Math.max(0, Number(ms) || 0));
+    }
+
     layout() {
         // not shown: nothing to measure (applyView lays her out again when she shows)
         if (!this.root || !this.manifest || !this.host || !this._shown) return;
+        if (this._heldUntil && Date.now() < this._heldUntil) return;
         if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => { this.placeResult(); this.placeChrome(); });
         const hostBox = this.host.getBoundingClientRect();
         const composer = this.host.querySelector('#directorComposer');

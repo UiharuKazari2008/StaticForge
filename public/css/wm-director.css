@@ -1454,6 +1454,63 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
     display: flex;
 }
 
+/* #1148: the strip's handle at its end folds it down to the handle and back (wmDirector.js stripFolded) */
+.wm-director .wmd-strip-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    gap: 5px;
+    min-width: 0;
+}
+
+.wm-director .wmd-strip-row > .wmd-strip {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.wm-director .wmd-strip-grip {
+    display: none;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 22px;
+    height: 46px;
+    margin: 0 0 3px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 0;
+    background: white;
+    box-shadow: 0 0 0 1px black;
+    color: black;
+    font-size: 11px;
+}
+
+.wm-director.wmd-strip-handle .wmd-strip-grip {
+    display: flex;
+}
+
+/* folded: only the handle is left, short, with the count of prints */
+.wm-director.wmd-strip-folded .wmd-strip-grip {
+    height: 20px;
+}
+
+.wm-director .wmd-strip-chev {
+    width: 6px;
+    height: 6px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-2px) rotate(45deg);
+}
+
+.wm-director.wmd-strip-folded .wmd-strip-chev {
+    transform: translateY(2px) rotate(-135deg);
+}
+
+.wm-director .wmd-strip-count:empty {
+    display: none;
+}
+
 .wm-director .wmd-thumb {
     flex: 0 0 auto;
     width: 46px;
@@ -1504,8 +1561,9 @@ html.ui-mobile .wm-director .wmd-choices .director-message-actions button.btn-sm
         grid-row: 1 / -1;
     }
 
-    /* the strip's prints are in the gallery column */
-    .wm-director:not(.wmd-solo).wmd-gallery-on .wmd-strip {
+    /* the strip's prints are in the gallery column (its handle goes with it) */
+    .wm-director:not(.wmd-solo).wmd-gallery-on .wmd-strip,
+    .wm-director:not(.wmd-solo).wmd-gallery-on .wmd-strip-grip {
         display: none !important;
     }
 
@@ -1900,6 +1958,21 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip 
 
 html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip .wmd-thumb:nth-child(even) {
     transform: rotate(2deg) translateY(1px);
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip-grip {
+    height: 50px;
+    background-color: var(--mk-leaf);
+    box-shadow: 0 0 0 1px var(--mk-ink);
+    color: var(--mk-ink);
+}
+
+html.ui-mobile .wm-director.wmd-strip-folded #directorWindow:not([data-persona="xi"]) .wmd-strip-grip {
+    height: 20px;
+}
+
+html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip-grip:active {
+    background-color: var(--mk-gold-flat);
 }
 
 html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip .wmd-thumb:active {

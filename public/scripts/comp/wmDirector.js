@@ -98,6 +98,7 @@
      *   openPrints    a new print of the open chat opens in the picture view
      *   notifyTurns   a turn that ends while the app is in the background raises a notification
      *   printStrip    her prints as a strip under the text box (the desktop's prints sidebar)
+     *   stripFolded   the strip folded down to its handle (#1148: the handle at its end folds it and back)
      *   wideLog       wide screens show the log beside her (off: the prints gallery column)
      *   xiWideSolo    the same choice for Yozora, kept apart: beside her is her log (she has no prints),
      *                 which is what you watch while she works
@@ -105,7 +106,7 @@
      *                 lays the log over her, Reply opens the composer at the bottom)
      */
     const PREF_KEY = 'wmDirectorPhone';
-    const PREF_DEFAULTS = Object.freeze({ allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, wideLog: false, wideSolo: false, xiWideSolo: false });
+    const PREF_DEFAULTS = Object.freeze({ allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, stripFolded: false, wideLog: false, wideSolo: false, xiWideSolo: false });
     let prefCache = null;
     function prefs() {
         if (prefCache) return prefCache;
@@ -1316,7 +1317,19 @@
             recheckLayout();
         }
         page.classList.toggle('wmd-vn', vn);
-        page.classList.toggle('wmd-strip-on', vn && p.printStrip && (items.length > 0 || pending));
+        // #1148: the strip folds down to its handle and back (the handle shows whenever the strip has prints)
+        const stripHas = vn && p.printStrip && (items.length > 0 || pending);
+        page.classList.toggle('wmd-strip-on', stripHas && !p.stripFolded);
+        page.classList.toggle('wmd-strip-handle', stripHas);
+        page.classList.toggle('wmd-strip-folded', stripHas && !!p.stripFolded);
+        const grip = page.querySelector('.wmd-strip-grip');
+        if (grip) {
+            const n = items.length;
+            grip.setAttribute('aria-expanded', p.stripFolded ? 'false' : 'true');
+            grip.setAttribute('aria-label', p.stripFolded ? `Show prints (${n})` : 'Hide prints');
+            const count = grip.querySelector('.wmd-strip-count');
+            if (count) count.textContent = p.stripFolded && n ? String(n) : '';
+        }
         page.classList.toggle('wmd-gallery-on', vn && !p.wideLog && !!(d && d.persona !== 'xi'));
         paintFiles();
         const sid = d && d.currentSession ? String(d.currentSession.id) : '';
@@ -1999,10 +2012,17 @@
         page.classList.add('wm-director');
         page.innerHTML = `
             <div class="wmd-host"></div>
-            <div class="wmd-dock"><div class="wmd-choices"></div><div class="wmd-strip" role="list" aria-label="Prints"></div></div>
+            <div class="wmd-dock"><div class="wmd-choices"></div><div class="wmd-strip-row"><div class="wmd-strip" role="list" aria-label="Prints"></div><button type="button" class="wmd-strip-grip" aria-expanded="true" aria-label="Hide prints"><span class="wmd-strip-chev"></span><span class="wmd-strip-count"></span></button></div></div>
             <div class="wmd-status" hidden><img src="/static_images/app_icons/director.webp" alt=""><span class="wmd-status-text"></span></div>`;
         watchLayout();
         wireThumbs(page.querySelector('.wmd-strip'));
+        page.querySelector('.wmd-strip-grip').addEventListener('click', () => {
+            setPrefs({ stripFolded: !prefs().stripFolded });
+            paintPrints();
+            // her text box sits over the dock: it follows the strip's height in one pass
+            const d = dir();
+            if (d && d.mascot && typeof d.mascot.settleLayout === 'function') d.mascot.settleLayout(300);
+        });
         // the dock's height moves her text box (choices come and go with the reply)
         if (typeof ResizeObserver === 'function') {
             new ResizeObserver(() => { const d = dir(); if (shown && d && d.mascot && d.mascot._result) d.mascot.placeResult(); }).observe(page.querySelector('.wmd-dock'));
