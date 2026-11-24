@@ -1099,6 +1099,8 @@ class WebSocketMessageHandlers {
             }
 
             const result = this.globalResources.getWorkspaceManager().updateShortcutPositions(workspaceId, positions);
+            const applied = result && result.positions;
+            if (result) delete result.positions;
 
             this.sendToClient(ws, {
                 type: 'desktop_update_positions_response',
@@ -1107,10 +1109,13 @@ class WebSocketMessageHandlers {
                 timestamp: new Date().toISOString()
             });
 
-            // Broadcast to all clients
+            // A refused (stale) or empty upload changed nothing: nothing to tell the others (#1083)
+            if (!applied || applied.length === 0) return;
+
+            // Broadcast to all clients: only the entries that were stored
             wsServer.broadcast({
                 type: 'desktop_positions_updated',
-                data: { workspaceId, positions },
+                data: { workspaceId, positions: applied },
                 timestamp: new Date().toISOString()
             });
         } catch (error) {

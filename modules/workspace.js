@@ -2715,8 +2715,28 @@ class WorkspaceManager {
     }
 
     // Update shortcut positions (for drag and drop)
+    // An upload that names none of the stored icons (or carries no usable position) comes from
+    // a client that never loaded this layout: refuse it and tell the client to reload (#1083).
     updateShortcutPositions(workspaceId, positions) {
         try {
+            const stored = this.getDesktopShortcuts(workspaceId).shortcuts || [];
+            const storedIds = new Set(stored.map((s) => s && s.id));
+            const valid = (Array.isArray(positions) ? positions : []).filter((entry) => entry
+                && typeof entry.id === 'string'
+                && entry.position && typeof entry.position === 'object' && !Array.isArray(entry.position)
+                && storedIds.has(entry.id));
+            if (valid.length === 0) {
+                if (stored.length > 0) {
+                    return {
+                        success: false,
+                        reload: true,
+                        reason: 'stale-layout',
+                        storedCount: stored.length
+                    };
+                }
+                return { success: true, updated: 0 };
+            }
+
             // Use callback-based modifyConfig for batch updates
             this.globalResources.modifyConfig('workspaceDesktop', (config) => {
                 if (!config[workspaceId] || !config[workspaceId].shortcuts) {
@@ -2725,7 +2745,7 @@ class WorkspaceManager {
 
                 // JULES: perf optimization — Set/Map lookup O(1) instead of Array.find O(S) inside loop
                 const shortcutMap = new Map((config[workspaceId].shortcuts || []).map(s => [s.id, s]));
-                positions.forEach(({ id, position }) => {
+                valid.forEach(({ id, position }) => {
                     const shortcut = shortcutMap.get(id);
                     if (shortcut) {
                         shortcut.position = position;
@@ -2735,7 +2755,7 @@ class WorkspaceManager {
                 return config;
             });
 
-            return { success: true };
+            return { success: true, updated: valid.length, positions: valid };
         } catch (error) {
             console.error('❌ Error updating shortcut positions:', error);
             throw error;

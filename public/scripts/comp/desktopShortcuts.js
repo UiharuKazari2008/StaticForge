@@ -46,6 +46,11 @@ class DesktopShortcutsManager {
         this._saveTrayState = 'hidden';
         this._layoutHydrationComplete = false;
         this._shortcutLoadGen = 0;
+        // The workspace whose icons and window positions really came from the server (or the
+        // cached profile). Nothing is sent before this matches currentWorkspace: a client that
+        // never loaded would upload an empty or default layout over the stored one (#1083).
+        this._loadedWorkspace = null;
+        this._staleReloadPromise = null;
         
         // Positioning settings
         this.snapThreshold = 50; // pixels to snap to grid
@@ -434,6 +439,7 @@ class DesktopShortcutsManager {
             }
 
             this.shortcuts = data.shortcuts;
+            this._loadedWorkspace = workspaceId;
             
             // Set global window positions (mutate shared object — modalUtils.js)
             replaceGlobalWindowPositions(data.windowPositions);
@@ -3947,6 +3953,30 @@ class DesktopShortcutsManager {
         }, this.saveDebounceDelay);
     }
 
+    // True once this workspace's layout was really loaded (#1083: never upload before that)
+    hasLoadedLayout(workspaceId = this.currentWorkspace) {
+        return !!workspaceId && this._loadedWorkspace === workspaceId;
+    }
+
+    // The server refused an upload as stale (it holds icons this client never loaded):
+    // take the server's layout instead of overwriting it. One reload at a time.
+    reloadLayoutAfterStaleUpload(workspaceId = this.currentWorkspace) {
+        if (this._staleReloadPromise) return this._staleReloadPromise;
+        this._loadedWorkspace = null;
+        this._staleReloadPromise = (async () => {
+            try {
+                const loaded = await this.loadShortcuts(workspaceId);
+                if (loaded && workspaceId === this.currentWorkspace && this.gridContainer && this.freeformContainer) {
+                    this.renderShortcuts();
+                }
+                return loaded;
+            } finally {
+                this._staleReloadPromise = null;
+            }
+        })();
+        return this._staleReloadPromise;
+    }
+
     // Save all shortcuts to server
     async saveToServer() {
         if (!this.pendingChanges) return;
@@ -3954,6 +3984,14 @@ class DesktopShortcutsManager {
         try {
             if (!wsClient || !wsClient.isConnected()) {
                 console.warn('WebSocket not connected, changes saved locally');
+                return;
+            }
+
+            if (!this.hasLoadedLayout()) {
+                // Never loaded this workspace's icons: what we hold is not the server's layout
+                console.warn('Desktop layout not loaded for this workspace; reloading instead of uploading');
+                this.pendingChanges = false;
+                await this.reloadLayoutAfterStaleUpload();
                 return;
             }
 
@@ -4053,7 +4091,14 @@ class DesktopShortcutsManager {
 
             if (positionUpdates.length > 0) {
                 try {
-                    await wsClient.updateDesktopPositions(this.currentWorkspace, positionUpdates);
+                    const result = await wsClient.updateDesktopPositions(this.currentWorkspace, positionUpdates);
+                    if (result && result.success === false && result.reload) {
+                        // The server holds icons this upload did not know: reload, never overwrite
+                        console.warn('Server refused desktop positions as stale:', result.reason);
+                        this.pendingChanges = false;
+                        await this.reloadLayoutAfterStaleUpload();
+                        return;
+                    }
                     positionUpdates.forEach(({ id }) => {
                         const shortcut = this.shortcuts.find(s => s.id === id);
                         if (shortcut) {

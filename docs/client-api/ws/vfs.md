@@ -206,8 +206,17 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
+| `workspaceId` | Required |
+| `positions` | Required array of `{ id, position }`; `position` must be an object |
 
-**Success response:** `desktop_update_positions_response`
+**Success response:** `desktop_update_positions_response` with `data: { success: true, updated }`. Only the entries
+that name a stored icon and carry an object `position` are stored and broadcast as `desktop_positions_updated`.
+
+**Stale upload (#1083):** when no entry names a stored icon (an empty list, unknown ids or no usable position) and the
+workspace already has icons, nothing is written or broadcast and the reply is
+`data: { success: false, reload: true, reason: "stale-layout", storedCount }`. The client then reloads the layout
+(`desktop_get_shortcuts`) instead of uploading again. The desktop also sends no positions (icons or windows) before it
+has loaded the workspace's layout.
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

@@ -11372,6 +11372,12 @@ function saveWindowPositions(options = {}) {
     const { force = false } = options;
     // Collect positions of all windows (non-transient, or transient that are marked for restoration)
     if (!window.isDesktop) return Promise.resolve();
+    // A client that never loaded the stored map holds default geometry for the windows it opened;
+    // sending it would overwrite the stored positions of those windows (#1083)
+    if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts
+        && typeof desktopShortcuts.hasLoadedLayout === 'function' && !desktopShortcuts._loadedWorkspace) {
+        return Promise.resolve();
+    }
 
     const windowPositions = {};
     const containerWidth = window.innerWidth;
