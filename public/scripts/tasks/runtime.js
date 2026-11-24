@@ -21,7 +21,7 @@
  * ctx: state (kept by the host across restarts; changes are saved after the event), now (epoch ms),
  *   link(on) (the task needs the CaféReady link now: requests, pushes and feeds flow only while some task
  *   asks for it; the host closes it and stops the engine when none does),
- *   notify({ id, kind, title, text }), location('off' | 'low' | 'high'), request(type, data, tag),
+ *   notify({ id, kind, title, text, sound?, strikes? }) (sound: a name of the app's sound set; strikes: play it that many times), location('off' | 'low' | 'high'), request(type, data, tag),
  *   subscribe([type]) (broadcast types it hears as push), feed(name, on) (statusHub feeds), output(obj)
  *   (what the app's native parts and the page read), timer(ms) (one, inexact, never repeating; 0 cancels),
  *   log(text).
@@ -85,7 +85,8 @@
         const ctx = {
             state,
             now: Date.now(),
-            notify: (n) => actions.push({ op: 'notify', id: String(n.id || ''), kind: String(n.kind || ''), title: String(n.title || ''), text: String(n.text || '') }),
+            notify: (n) => actions.push({ op: 'notify', id: String(n.id || ''), kind: String(n.kind || ''), title: String(n.title || ''), text: String(n.text || ''),
+                sound: n.sound ? String(n.sound) : undefined, strikes: n.strikes > 0 ? Math.min(12, Math.round(n.strikes)) : undefined }),
             link: (on) => actions.push({ op: 'link', on: !!on }),
             location: (level) => actions.push({ op: 'location', level: level === 'high' || level === 'low' ? level : 'off' }),
             request: (rtype, rdata, tag) => actions.push({ op: 'request', type: String(rtype), data: rdata || {}, tag: String(tag || rtype) }),

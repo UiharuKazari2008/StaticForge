@@ -99,6 +99,14 @@ function registerPackets(handlersCtx) {
         reply(handlersCtx, ctx.ws, m, { ok: true });
     });
     // the envelope icons' "new since last opened" (#907, modules/messageNew.js): a page asks once at start, the server
+    // the hour / half-hour chime (#1108): choices kept here, the phones chime on their own (CaféReady task hour-chime)
+    reg('hour_chime_get', (ctx) => { reply(handlersCtx, ctx.ws, ctx.message, { ok: true, chime: require('../../hourChime').get(inbox.userOf(ctx.clientInfo)) }); });
+    reg('hour_chime_set', (ctx) => {
+        const m = ctx.message;
+        const chime = require('../../hourChime').set(inbox.userOf(ctx.clientInfo), m.chime || {});
+        try { require('../../phoneStatus').touch('chime'); } catch (_e) { /* no status */ }
+        reply(handlersCtx, ctx.ws, m, { ok: true, chime });
+    });
     // pushes msg_new_state on change; opening the mail / Text Messaging on a phone says so
     reg('msg_new_state', (ctx) => {
         reply(handlersCtx, ctx.ws, ctx.message, require('../../messageNew').state());

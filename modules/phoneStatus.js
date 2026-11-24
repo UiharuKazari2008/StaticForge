@@ -28,6 +28,8 @@
  *                                 { id, title, text, cls, kind, at } - the app draws the "..." holder from it (#1056)
  *   prefs     { mailAll, smsAll, popupApps } Messaging's "icon for any unread" choices (the page's, kept on the server);
  *                                 popupApps: the registered Android apps whose notifications pop up as WM boxes
+ *   chime     { mode, hourSound, halfSound, strike }  the hour / half-hour chime's choices (modules/hourChime.js, #1108);
+ *                                 the task "hour-chime" chimes on the phone's own clock
  *   received  { unseen }          ActiveSync received items not seen yet (per phone)
  *   xmrec     { list }            XM Radio recordings running on the server (the tape icon and its popup, #1020):
  *                                 [{ rid, channelId, number, name, kind (manual | song | timer | alert | term), since
@@ -225,7 +227,8 @@ async function build() {
         traffic: traffic(),
         notices: { waiting: ib.notices, list: ib.noticeList },
         prefs: prefs(),
-        xmrec: { list: xmRecordings() }
+        xmrec: { list: xmRecordings() },
+        chime: safe(() => require('./hourChime').get('admin'), null)
     };
 }
 
