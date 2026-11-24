@@ -9,7 +9,7 @@
  * metadata chunks go into the JXL's sfPN box (imageStore.attachPngMetadata); the box is read back; one picture in
  * 25 (and the first ten) is decoded in full and compared with the PNG (pixels via sharp raw, and the text chunks);
  * x.jxl is written via a temp file with the PNG's mtime; only then is x.png removed. Anything that does not match
- * is skipped and logged, its PNG left as it is. Progress: <staging>/swapped.ndjson, skips: swap-skipped.ndjson.
+ * is skipped and logged, its PNG left as it is. The staged copy is deleted once its picture is swapped. Progress: <staging>/swapped.ndjson, skips: swap-skipped.ndjson.
  * Runs at nice 19 / idle I/O and only while Dreamscape is idle (scripts/director-idle-check.js exit 0, checked
  * every 200 pictures); touch <staging>/STOP-SWAP to stop. Rerun to resume.
  */
@@ -103,6 +103,8 @@ async function main() {
         }
         fs.renameSync(tmp, jxlP);
         fs.unlinkSync(pngP);
+        // the staged copy is now in images/ (with its box): keeping it would hold the space twice
+        try { fs.unlinkSync(staged); } catch (_) { /* gone */ }
         swapped++;
         freed += png.length - boxed.length;
         append('swapped.ndjson', { name: r.name, png_size: png.length, jxl_size: boxed.length, at: Date.now() });
