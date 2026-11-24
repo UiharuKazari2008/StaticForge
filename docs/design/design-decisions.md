@@ -1,0 +1,51 @@
+# Design decisions
+
+The register of decisions about how Dreamscape looks and behaves. Rule:
+`.cursor/rules/design-decisions.mdc` (cursor-rules). Yukimi, 2026-11-23, Yozora #1137.
+
+## How this file works
+
+- A decision about how something should look or behave is written here when it is made, in the
+  same change that acts on it. Newest entries go at the end of their section.
+- An entry has: the decision, who made it and when, the issue, and where it is enforced
+  (rule, check, doc).
+- **A change that contradicts an entry is not made silently.** Ask Yukimi first (see the rule).
+  Until she confirms, the entry stands. After she confirms, update the entry in the same change
+  and keep the old wording under "Superseded" with the date.
+- Detail lives in the linked docs; this file is the index with the one-line decision.
+
+## Platforms and look
+
+| Decision | By / when | Source |
+| --- | --- | --- |
+| One UI standard for every app: one skin, one factory, one control kit, literals only in theme files, named themes with zero leak between them | Yukimi, 2026-11-15, #851 | `docs/design/ui-standard.md`, `ui-standard.mdc`, `scripts/check-ui-standard.js` |
+| Desktop look is Vista ("Vista or nothing"); XP comes later as a complete second theme, zero leak | Yukimi, 2026-11-15, #851 | `ui-standard.md` section 1 |
+| Phone look is Windows Mobile 6.1 or 6.5, user-selectable; desktop and phone UIs never cross over | #851 | `ui-standard.md`, `wm61-icon-style.md` |
+| Reference measurements (Vista VM, XP VM, WM emulator) are 1:1; no interim approximations | Yukimi, Oct 2026 | `ui-standard.md` preamble |
+| Every window has an image icon; children use the parent's | Oct 2026 | `ui-standard-window-inventory.md` |
+| Vista icons, not Font Awesome | Yukimi | `vista-icons-not-fa.mdc` |
+| Sliders are the platform's: Vista trackbar on desktop, WM trackbar on phones, never the browser's | Yukimi | `sliders-platform.mdc` |
+| Nothing the browser draws on its own reaches the screen (selects, pickers, alerts, progress, scroll bars, focus rings) | Yukimi, #851 | `no-native-browser-ui.mdc` |
+| Phone scroll bars and controls use the WM version's own art, measured on the emulator | Yukimi, Nov 2026 | `melaton-bars-native-layouts.mdc` |
+| Notifications and status indicators are never silenced to save power | Yukimi, Nov 17 2026 | `phone-power-client.mdc` |
+| Pictures that can show again are files with an address, not `data:` strings | Yukimi, Nov 21 2026 | `no-base64-images.mdc` |
+| CaféReady and Melaton Café are written with the é wherever people read them | Yukimi | `cafe-ready-name.mdc` |
+
+## Behaviour
+
+| Decision | By / when | Source |
+| --- | --- | --- |
+| Installed clients start with zero server waits; checks, sign-in and updates run inside the running app afterwards | Yukimi, Nov 18 2026 (top rule) | `installed-boot-zero-wait.mdc` |
+| Nothing on the phone depends on a WebView page; background duties run as CaféReady task code | Yukimi, Nov 17 2026 | `cafeready-background.mdc` |
+| Server pushes, clients do not poll under 60 s | Yukimi, Nov 13 2026 | `server-push-not-polling.mdc` |
+| UI defects an agent sees are fixed or handed on, never left | Yukimi, Nov 7 2026 | `fix-ui-issues-you-find.mdc` |
+| Hidden screens never redraw; mark stale and redraw in full on show | Yukimi, Nov 2026 | memory `no-offscreen-redraws` |
+| Density first in DreamStudio: no page indicators or extra rows, one-row bars | Yukimi, Nov 15 2026 | memory `dreamstudio-density-first` |
+| Menus hold real settings, never copies of what is visible; nothing is desktop-only in the phone Studio | Yukimi, Nov 2026 | memory `dreamstudio-full-build-meaningful-menus` |
+| Phone shows real device quirks (WM glitches, draw order, slowdowns) | Yukimi, Nov 2026 | memory `copy-device-quirks` |
+| Dialogs for in-app information, notifications for background events (phone) | Yukimi, Nov 2026 | memory `wm-phone-ui-feedback` |
+| Test UI by real taps through the visible path, on the hardware phone for phone UI | Yukimi, Nov 2026 | `client-browser-testing.mdc` |
+
+## Superseded
+
+None yet.

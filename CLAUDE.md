@@ -54,6 +54,7 @@ done, whatever else it achieves.
 @.cursor/rules/app-scope-ownership.mdc
 @.cursor/rules/no-retype-on-move.mdc
 @.cursor/rules/no-stash-to-pretty-commit.mdc
+@.cursor/rules/design-decisions.mdc
 @.cursor/rules/commit-each-turn.mdc
 @.cursor/rules/subagents-sonnet.mdc
 @.cursor/rules/rename-scope.mdc
