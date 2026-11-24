@@ -429,6 +429,15 @@ Test: `npm run test:claude-accounts` (sandboxed home, store, sessions, transcrip
 
 Test: `node scripts/test-claude-fleet.js` (temp home and DB, fake systemctl / tmux: the unit template, the switch guard, model / effort, busy locks, inspect, build gates, dispatch account pick). `node scripts/test-claude-desk.js` (temp home, account store, coordination DB and a fake tmux / systemd-run; never touches a real account folder, login, tmux server or session).
 
+#### Fleet activity
+
+`claude_fleet_activity` (admin; `modules/ws/handlers/316-fleetActivityHandler.js`, index `modules/agentCoord/activityIndex.js`) is the global list of shell commands, tool calls and file edits of every Claude Code session on the host, newest first, paged. Response type `claude_fleet_activity_response`, `data: { success, action, ... }`.
+
+- `{ action: 'list', kind?: 'shell' | 'edit' | 'tool', sessionId?, q? (substring of summary / target / description), before? (the previous page's `next`), limit? (50, max 200) }` -> `{ rows: [{ id, ts (ISO), kind, tool, summary, target, description, sessionId, sessionTitle, account, agentId ('' = the session itself), agentDescription, error, resultSize }], next (pass as `before`; null at the end), total }`. A list first runs a budgeted refresh (3 s, at most once per 20 s); a first run over many transcripts fills in over several lists.
+- `{ action: 'detail', id }` -> `{ row, input (the tool input, masked, long strings cut at ~20 KB), output (the tool result text, masked, cut at ~40 KB; null until it arrives), why: { request (the last prompt before the call), assistantText (the reply text just before it) }, session: { id, title, account, cwd, link } }`.
+
+The index keeps each transcript's byte offset (`activity_scans`, agent-coord DB) and reads on from there; rows older than 30 days are dropped; only transcripts touched in the last 14 days are scanned. Test: `node scripts/test-fleet-activity.js`.
+
 ### `get_account_pictures` / `set_account_picture`
 
 Account pictures for Melaton's two accounts (`modules/accountPictures.js`): Administrator (the admin
