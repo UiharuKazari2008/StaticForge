@@ -88,6 +88,8 @@ Paths are display paths from the VFS root (`/`, `/@desktop`, `/Workspaces/<id>/P
 | `vfs_move` | `path` or `paths[]`, `dest` (folder path, or another workspace) | `dest`, `count` |
 | `vfs_copy` | `path` or `paths[]`, `dest`, optional `mode` `duplicate` (default) / `shortcut` | `dest`, `count` |
 | `vfs_write` | `path` (destination **folder**), `name`, then `fileData` (base64, `data:` prefix allowed) **or** `sourcePath`; optional `mimeType` | `path` of the saved file |
+| `calendar_add_items` | `items` (≤ 50: `kind` event / task, `summary`, `uid`, `start` / `end` / `due` as `YYYY-MM-DD`, `YYYY-MM-DDTHH:MM` in `timezone` (default America/New_York) or ISO with zone, `location`, `description`, `priority`, `categories`, `url`, `reminderMinutes`), `calendar` (default `Yozora`), `workspace` (default `default`), `replace` | `{ path, created, added, replaced, skipped }`: writes only the agents' own calendar (`X-MELATON-OWNER:agents`, made on first use in the workspace's `Calendars`), merges by UID under a per-file lock; Calendar / Tasks show it read-only |
+| `calendar_list_items` | `workspace`, `calendar`, `search`, `from` / `to` (`YYYY-MM-DD`), `kind`, `limit` | `{ calendars: [{ name, file, items, agents, phoneMirror, subscribed }], total, items }` across every calendar in the workspace, read-only |
 | `vfs_delete` | `path` or `paths[]` | `trashed`, `results` |
 
 `vfs_move` crosses workspaces when `dest` is another workspace (its home, its Desktop, or a folder in it): a picture, scrap, reference, vibe, note or VFS user file moves there through the same call the desktop's Move to Workspace makes (gallery membership, reference database, notes database). A folder shortcut crosses too. `vfs_copy` does not cross workspaces.

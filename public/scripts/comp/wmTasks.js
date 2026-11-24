@@ -182,7 +182,7 @@
         const flat = String(text || '').replace(/\r\n|\r/g, '\n').replace(/\n[ \t]/g, '');
         const head = flat.split(/\nBEGIN:V(?:EVENT|TODO)/i)[0];
         const prop = (n) => { const m = new RegExp(`^${n}:(.*)$`, 'mi').exec(head); return m ? m[1].trim() : ''; };
-        const cal = { file, name: icsUnescape(prop('X-WR-CALNAME')) || String(file.name || 'Calendar').replace(/\.ics$/i, ''), readonly: !!prop('X-MELATON-SOURCE'), hidden: false, tasks: [] };
+        const cal = { file, name: icsUnescape(prop('X-WR-CALNAME')) || String(file.name || 'Calendar').replace(/\.ics$/i, ''), readonly: !!prop('X-MELATON-SOURCE') || !!prop('X-MELATON-OWNER'), hidden: false, tasks: [] }; // X-MELATON-OWNER: an agents' calendar (calendarMcp.js)
         (String(text || '').match(BLOCK) || []).forEach((b) => {
             const t = parseTodo(b);
             if (!t.uid) t.uid = newUid();

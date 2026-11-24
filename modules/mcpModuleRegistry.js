@@ -105,7 +105,8 @@ const MODULE_DEFS = {
         description: 'Virtual file system',
         tools: [
             'vfs_list', 'vfs_read', 'vfs_stat', 'vfs_mkdir', 'vfs_rename', 'vfs_move', 'vfs_copy',
-            'vfs_write', 'vfs_delete', 'list_desktop_items', 'create_shortcut'
+            'vfs_write', 'vfs_delete', 'list_desktop_items', 'create_shortcut',
+            'calendar_add_items', 'calendar_list_items'
         ]
     },
 

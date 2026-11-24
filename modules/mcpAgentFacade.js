@@ -3648,6 +3648,9 @@ plaudMcp.TOOLS.forEach((tool) => TOOL_DEFS.push(tool));
 // Claude fleet (sfapp_claude_fleet): every Claude account's usage, Remote Control and sessions, and dispatch with a model and effort, for Yozora (the Xi key) only (modules/claudeFleetMcp.js, #1154)
 const claudeFleetMcp = require('./claudeFleetMcp');
 claudeFleetMcp.TOOLS.forEach((tool) => TOOL_DEFS.push(tool));
+// Calendar items (scope vfs): add events / tasks to the agents' own calendar file only, list every calendar (modules/calendarMcp.js)
+const calendarMcp = require('./calendarMcp');
+calendarMcp.TOOLS.forEach((tool) => TOOL_DEFS.push(tool));
 
 const MEMORY_TOOL_ALIASES = {
     saveKnowledgeMemory: 'save_memory',
@@ -10519,6 +10522,10 @@ async function callTool(globalResources, req, name, args) {
 
     if (claudeFleetMcp.isFleetTool(name)) {
         return claudeFleetMcp.handleFleetTool(globalResources, req, name, input);
+    }
+
+    if (calendarMcp.isCalendarTool(name)) {
+        return calendarMcp.handleCalendarTool({ gr: globalResources, req, dispatchPacketTool }, name, input);
     }
 
     const err = new Error(`Unknown tool: ${name}`);

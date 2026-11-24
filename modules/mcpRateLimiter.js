@@ -225,6 +225,15 @@ const TOOL_RATE_GROUPS = {
     exchange_status: 'free',
     exchange_resync_recipients: 'write',
     exchange_spam: 'mail',
+    // Calendar items (modules/calendarMcp.js): one locked read-merge-write of the agents' own .ics / reads every calendar
+    calendar_add_items: 'write',
+    calendar_list_items: 'search',
+    // Claude fleet (modules/claudeFleetMcp.js, Xi only): status reads usage (cached); dispatch starts a session
+    claude_fleet_status: 'search',
+    claude_dispatch: 'write',
+    claude_session_read: 'search',
+    claude_session_send: 'write',
+    claude_session_stop: 'write',
     // Plaud (modules/plaudMcp.js): each call is one or two requests to Plaud
     plaud_list_recordings: 'search',
     plaud_get_recording: 'search',

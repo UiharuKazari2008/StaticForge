@@ -171,6 +171,8 @@
                 if (name === 'X-WR-CALNAME') cal.name = icsUnescape(value);
                 else if (name === 'X-MELATON-COLOR' || name === 'X-APPLE-CALENDAR-COLOR') cal.color = value.slice(0, 7);
                 else if (name === 'X-MELATON-SOURCE') cal.source = value;
+                // an agents' calendar (modules/calendarMcp.js): written by the server only, shown read-only here
+                else if (name === 'X-MELATON-OWNER') cal.owner = value;
                 else if (name === 'X-MELATON-REFRESH') cal.refresh = parseInt(value, 10) || 0;
                 continue;
             }
@@ -220,6 +222,7 @@
     function toIcs(cal) {
         const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Xyridian//Melaton Calendar for Melaton//EN', 'CALSCALE:GREGORIAN',
             `X-WR-CALNAME:${icsEscape(cal.name)}`, `X-MELATON-COLOR:${cal.color}`];
+        if (cal.owner) L.push(`X-MELATON-OWNER:${cal.owner}`);
         if (cal.source) L.push(`X-MELATON-SOURCE:${cal.source}`, `X-MELATON-REFRESH:${cal.refresh || 0}`);
         const stamp = icsUtc(new Date());
         cal.events.forEach((e) => {
@@ -481,7 +484,8 @@
                 visible: true,
                 lastRefresh: 0
             };
-            cal.readonly = !!cal.source;
+            cal.owner = parsed.owner || '';
+            cal.readonly = !!cal.source || !!cal.owner;
             parsed.events.forEach((e) => cal.events.push({ uid: e.uid || uid(), summary: e.summary || '', location: e.location || '', description: e.description || '', url: e.url || '', start: e.start, end: e.end, allDay: !!e.allDay, rrule: e.rrule || null, exdates: e.exdates || [], reminder: e.reminder === undefined ? null : e.reminder, reminderAt: e.reminderAt || null, attendees: e.attendees || [] }));
             parsed.tasks.forEach((t) => cal.tasks.push({ uid: t.uid || uid(), summary: t.summary || '', due: t.due || null, start: t.start || null, priority: t.priority || 0, completed: !!t.completed, completedAt: t.completedAt || null, reminderAt: t.reminderAt || null, description: t.description || '', url: t.url || '' }));
             this.calendars.push(cal);
