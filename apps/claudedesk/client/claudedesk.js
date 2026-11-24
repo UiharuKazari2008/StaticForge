@@ -72,7 +72,9 @@
     async function send(type, payload) {
         const c = ws();
         if (!c || typeof c.sendMessage !== 'function') throw new Error('Not connected to Dreamscape');
-        const r = await c.sendMessage(type, payload || {}, false);
+        // Fleet reports every server error itself (its own message box / line): no desktop "Unhandled exception"
+        // window as well (wsClient.handlesErrors)
+        const r = await (typeof c.handlesErrors === 'function' ? c.handlesErrors(() => c.sendMessage(type, payload || {}, false)) : c.sendMessage(type, payload || {}, false));
         const d = r && r.data && typeof r.data === 'object' && !Array.isArray(r.data) && ('success' in r.data || 'accounts' in r.data || 'items' in r.data) ? r.data : r;
         if (d && d.success === false) throw new Error(d.error || d.message || 'The server refused');
         return d || {};
