@@ -1287,7 +1287,8 @@ async function convertStandardMaskToCompressed(standardMaskBase64, originalWidth
             reject(new Error('Failed to load standard mask image'));
         };
 
-        img.src = "data:image/png;base64," + standardMaskBase64;
+        // its real type: masks the server made are lossless WebP since #1156 (base64 "UklGR"), the editor's PNG
+        img.src = `data:${String(standardMaskBase64).startsWith('UklGR') ? 'image/webp' : 'image/png'};base64,${standardMaskBase64}`;
     });
 }
 
@@ -1388,7 +1389,8 @@ function processCompressedMask(compressedMaskBase64, targetWidth, targetHeight, 
             reject(new Error('Failed to load compressed mask image'));
         };
 
-        img.src = "data:image/png;base64," + compressedMaskBase64;
+        // its real type: masks the server made are lossless WebP since #1156 (base64 "UklGR"), the editor's PNG
+        img.src = `data:${String(compressedMaskBase64).startsWith('UklGR') ? 'image/webp' : 'image/png'};base64,${compressedMaskBase64}`;
     });
 }
 

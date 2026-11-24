@@ -15,6 +15,7 @@ const { McpOAuthProvider } = require('./mcpOAuthProvider');
 const { createOAuthRoutes } = require('./mcpOAuthRoutes');
 const novelaiExplore = require('./novelaiExploreGallery');
 const imageStore = require('./imageStore');
+const pictureMeta = require('./pictureMeta');
 const {
     hasManagedEmphasisGroupIds,
     expandEmphasisGroupIds,
@@ -7273,7 +7274,7 @@ function resolveGalleryImagePath(globalResources, filename) {
         throw err;
     }
     // a picture stored as x.jxl (#1134) is there under its name x.png; filePath stays images/<safe>, readers
-    // that need its bytes take resolveGalleryPngPath
+    // that need its bytes take imageStore (readGalleryImage: webpBytes)
     if (!imageStore.existsSync(safe, imagesDir)) {
         const err = new Error('Image not found');
         err.status = 404;
@@ -7282,21 +7283,8 @@ function resolveGalleryImagePath(globalResources, filename) {
     return { safe, filePath };
 }
 
-/** resolveGalleryImagePath with filePath a real PNG: the picture's own file or the copy rebuilt from x.jxl (#1134). */
-async function resolveGalleryPngPath(globalResources, filename) {
-    const resolved = resolveGalleryImagePath(globalResources, filename);
-    const filePath = await imageStore.pngPath(resolved.safe, path.dirname(resolved.filePath));
-    if (!filePath) {
-        const err = new Error('Image not found');
-        err.status = 404;
-        throw err;
-    }
-    return { safe: resolved.safe, filePath };
-}
-
 // A file sharp reads, for the tools that only look at the pixels (resize for the model, compare): the stored file
-// itself, a JPEG XL one too when sharp reads JXL (#1134); readGalleryImage, which sends the bytes as they are,
-// keeps resolveGalleryPngPath.
+// itself, a JPEG XL one too when sharp reads JXL (#1134); readGalleryImage sends the picture as WebP (#1156).
 async function resolveGalleryPixelPath(globalResources, filename) {
     const resolved = resolveGalleryImagePath(globalResources, filename);
     const filePath = await imageStore.pixelPath(resolved.safe, path.dirname(resolved.filePath));
@@ -7336,19 +7324,23 @@ async function resizeImageForGrok(source) {
 }
 
 async function readGalleryImage(globalResources, filename) {
-    const { safe, filePath } = await resolveGalleryPngPath(globalResources, filename);
-    const stat = await fs.promises.stat(filePath);
-    if (stat.size > MAX_IMAGE_BYTES) {
+    const resolved = resolveGalleryImagePath(globalResources, filename);
+    // the picture as lossless WebP with its fields, no PNG decode (#1156); labelled with the bytes' own type
+    const bytes = await imageStore.webpBytes(resolved.safe, path.dirname(resolved.filePath));
+    if (!bytes) {
+        const err = new Error('Image not found');
+        err.status = 404;
+        throw err;
+    }
+    if (bytes.length > MAX_IMAGE_BYTES) {
         const err = new Error('Image exceeds MCP size limit; use GET /images/:filename with the same app key');
         err.status = 413;
         throw err;
     }
-    const ext = path.extname(safe).toLowerCase();
-    const mimeType = (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' : 'image/png';
     return {
-        filename: safe,
-        mimeType,
-        bytes: await fs.promises.readFile(filePath)
+        filename: resolved.safe,
+        mimeType: 'image/' + (pictureMeta.formatOf(bytes) || 'webp'),
+        bytes
     };
 }
 

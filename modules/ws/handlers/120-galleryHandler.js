@@ -54,8 +54,8 @@ async function createDynGenPreviewHashResolver(handlers, filenames) {
         if (entry) {
             return entry.hash || null;
         }
-        // PNG bytes (a JXL-stored picture decoded); missing throws like the file read did
-        const imageBuffer = await imageStore.readPng(originalFilename, path.dirname(originalPath));
+        // the stored bytes (readMetadata takes JXL or PNG, no decode, #1156); missing throws like the file read did
+        const imageBuffer = await imageStore.readStored(originalFilename, path.dirname(originalPath));
         if (!imageBuffer) {
             throw new Error(`not found: ${originalFilename}`);
         }
@@ -1175,11 +1175,13 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
 
                         if (previewHash) {
                             const dynGenPreviewDir = path.join(handlers.globalResources.getPath("cache"), 'dynGenPreview');
-                            const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.png`);
-
-                            if (await fileExists(dynGenPreviewPath)) {
-                                filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
-                                console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
+                            // .webp since #1156, .png before
+                            for (const ext of ['webp', 'png']) {
+                                const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.${ext}`);
+                                if (await fileExists(dynGenPreviewPath)) {
+                                    filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
+                                    console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
+                                }
                             }
                         }
                     } catch (metadataError) {

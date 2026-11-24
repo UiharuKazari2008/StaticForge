@@ -778,6 +778,37 @@ async function writeOtherPicture(n, buffer, fmt, opts) {
     return { path: jxlP, pngPath: null, pixelPath: sharpReadsJxl() ? jxlP : null, kind: 'jxl' };
 }
 
+/**
+ * The stored file's bytes as they are (a JPEG XL, or a legacy PNG), or null: for code that reads the picture's
+ * fields or pixels in any format (pictureMeta / pngMetadata take both) and needs no PNG (#1156).
+ */
+async function readStored(name, dir = IMAGES_DIR) {
+    const loc = await locate(name, dir);
+    return loc ? fs.promises.readFile(loc.path) : null;
+}
+
+/**
+ * The picture as lossless WebP, encoded from its pixels with no PNG step (#1156): what is sent to NovelAI (img2img
+ * and inpaint sources, references, vibe encodes) and what a generation result reused from the gallery hands on.
+ * opts.fields: true (default) keeps the picture's text fields (EXIF, NovelAI's layout); false sends bare pixels.
+ * opts.effort: libwebp effort (default 0, the fastest lossless). null when missing.
+ */
+async function webpBytes(name, dir = IMAGES_DIR, opts = {}) {
+    const buf = await readStored(name, dir);
+    if (!buf) return null;
+    const effort = opts.effort != null ? opts.effort : 0;
+    let raw;
+    if (pictureMeta.formatOf(buf) === 'jxl' && !sharpReadsJxl()) {
+        raw = await pictureMeta.rgba(buf);
+    } else {
+        // the stored channels as they are (an opaque picture stays RGB)
+        const out = await require('sharp')(buf).raw().toBuffer({ resolveWithObject: true });
+        raw = { data: out.data, width: out.info.width, height: out.info.height, channels: out.info.channels };
+    }
+    const fields = opts.fields === false ? [] : pictureMeta.readFields(buf);
+    return pictureMeta.encode(raw, fields, 'webp', { effort });
+}
+
 /** The picture's PNG bytes (original or rebuilt), or null. */
 async function readPng(name, dir = IMAGES_DIR) {
     const p = await pngPath(name, dir);
@@ -859,6 +890,8 @@ module.exports = {
     sharpReadsJxl,
     jxlOriginalHasIcc,
     readPng,
+    readStored,
+    webpBytes,
     writePicture,
     WRITE_EFFORT,
     jxlBytes,

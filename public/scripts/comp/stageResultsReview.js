@@ -484,7 +484,7 @@ class StageResultsReviewManager {
                 ? data.stepFrames[data.stepFrames.length - 1].imageData
                 : null);
         if (!frameData) return;
-        const mime = data.imageFormat === 'png' ? 'image/png' : 'image/jpeg';
+        const mime = /^(png|webp)$/.test(data.imageFormat) ? 'image/' + data.imageFormat : 'image/jpeg';
         const src = String(frameData).startsWith('data:') ? frameData : `data:${mime};base64,${frameData}`;
         const thumb = item.querySelector('.stage-result-thumb');
         if (!thumb) return;

@@ -6,9 +6,11 @@ let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
 
 // Import modules
-const { 
-    getImageDimensions
+const {
+    getImageDimensions,
+    toWebp
 } = require('./imageTools');
+const pictureMeta = require('./pictureMeta');
 const { generateMobilePreviews } = require('./previewUtils');
 const imageStore = require('./imageStore');
 const {
@@ -29,6 +31,26 @@ async function resolveUpscaleRatio(upscaledBuffer, srcWidth, requestedScale, ups
         }
     } catch (_) {}
     return fallback;
+}
+
+/**
+ * An upscaler's answer as the working picture (#1156): NovelAI's ZIP, Ruiko and RunPod hand back a PNG; it is
+ * turned into a JPEG XL in memory straight away (lossless, its fields kept; 2x of 832x1216 in about 0.5 s, where a
+ * lossless WebP takes over 1.5 s), which imageStore.writePicture then stores as it is. A WebP or JXL answer stays.
+ * A WebP when this host has no JPEG XL encoder.
+ */
+async function workingPicture(buffer) {
+    if (!buffer || pictureMeta.formatOf(buffer) !== 'png') return buffer;
+    const fields = pictureMeta.readFields(buffer);
+    const icc = pictureMeta.hasIcc(buffer);
+    const { data, info } = await require('sharp')(buffer).raw().toBuffer({ resolveWithObject: true });
+    const raw = { data, width: info.width, height: info.height, channels: info.channels };
+    try {
+        return await pictureMeta.encode(raw, fields, 'jxl', { icc: typeof icc === 'boolean' ? icc : undefined });
+    } catch (e) {
+        if (!e || e.code !== 'NO_JXL_ENCODER') throw e;
+        return pictureMeta.encode(raw, fields, 'webp');
+    }
 }
 
 function tagLocalJob(buffer, jobId) {
@@ -53,14 +75,18 @@ const upscaleImageCore = async (globalResources, imageBuffer, scale = 4, width, 
     }
 
     try {
+        let out;
         if (provider === 'local') {
-            return await upscaleWithLocalWorker(imageBuffer, actualScale, localOptions || {}, ws, handler, requestId);
-        }
-        if (provider === 'esrgan') {
+            out = await upscaleWithLocalWorker(imageBuffer, actualScale, localOptions || {}, ws, handler, requestId);
+        } else if (provider === 'esrgan') {
             // ESRGAN via RunPod (pass ws, handler, requestId for keep-alive during polling)
-            return await upscaleWithESRGAN(imageBuffer, actualScale, width, height, provider, ws, handler, requestId);
+            out = await upscaleWithESRGAN(imageBuffer, actualScale, width, height, provider, ws, handler, requestId);
+        } else {
+            out = await upscaleWithNovelAI(imageBuffer, actualScale, width, height);
         }
-        return await upscaleWithNovelAI(imageBuffer, actualScale, width, height);
+        // never PNG as the working format (#1156); the local job id rides on the new buffer too
+        const jobId = out && out.localJobId;
+        return tagLocalJob(await workingPicture(out), jobId);
     } catch (error) {
         console.error('❌ Upscaling failed:', error.message);
         throw error;
@@ -102,9 +128,10 @@ const upscaleWithNovelAI = async (imageBuffer, scale, width, height) => {
 
     // Official /ai/upscale: image.novelai.net/ai/upscale, model nai-diffusion-5-curated, declared_blur_sigma 0.
     // Do not send scale; do not retarget api.novelai.net. Live contract scale is 2 (2026-08-28 quality scaler).
-    // Width/height are inferred from the PNG.
+    // Width/height are inferred from the picture, sent as lossless WebP (#1156: never PNG to NovelAI).
+    const upload = pictureMeta.formatOf(imageBuffer) === 'webp' ? imageBuffer : await toWebp(imageBuffer);
     const payload = {
-        image: imageBuffer.toString('base64'),
+        image: upload.toString('base64'),
         model: 'nai-diffusion-5-curated',
         declared_blur_sigma: 0
     };
@@ -146,16 +173,17 @@ const upscaleWithNovelAI = async (imageBuffer, scale, width, height) => {
     const AdmZip = require('adm-zip');
     const zip = new AdmZip(zipBuffer);
     const zipEntries = zip.getEntries();
-    const pngEntry = zipEntries.find((entry) => {
+    // the picture in the ZIP, whatever its format (upscaleImageCore turns a PNG into the working format)
+    const imageEntry = zipEntries.find((entry) => {
         const name = String(entry.entryName || '').split('/').pop();
-        return name.startsWith('image') && name.endsWith('.png');
+        return name.startsWith('image') && /\.(png|webp|jxl|jpe?g)$/i.test(name);
     }) || zipEntries[0];
 
-    if (!pngEntry) {
+    if (!imageEntry) {
         throw new Error('ZIP file is empty');
     }
 
-    return pngEntry.getData();
+    return imageEntry.getData();
 };
 
 const upscaleWithESRGAN = async (imageBuffer, scale, width, height, upscaler, ws = null, handler = null, requestId = null) => {
@@ -312,21 +340,22 @@ async function upscaleImage(globalResources, filename, workspaceId, req, res, up
         return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
     }
     try {
-        // Read the image (PNG bytes, also when it is stored as JXL)
-        const imageBuffer = await imageStore.readPng(filename, __runtimeGr.getPath("images"));
+        // The stored picture as it is (its metadata) and as lossless WebP for the upscaler (#1156: no PNG)
+        const imageBuffer = await imageStore.readStored(filename, __runtimeGr.getPath("images"));
 
         if (!imageBuffer) {
             return res.status(404).json({ error: 'Image not found' });
         }
+        const uploadBuffer = await imageStore.webpBytes(filename, __runtimeGr.getPath("images"), { fields: false });
 
         // Get image dimensions
         const { width, height } = await getImageDimensions(imageBuffer);
 
         // Upscale the image
         const provider = normalizeUpscalerName(upscaler) || 'novelai';
-        const upscaledBuffer = await upscaleImageCore(globalResources, imageBuffer, scale, width, height, provider, null, null, null, localOptions);
+        const upscaledBuffer = await upscaleImageCore(globalResources, uploadBuffer, scale, width, height, provider, null, null, null, localOptions);
 
-        // Copy origin Comment onto the upscaled PNG (copyMetadataToImage was previously unbound here).
+        // Copy origin Comment onto the upscaled picture (copyMetadataToImage was previously unbound here).
         const ratio = await resolveUpscaleRatio(upscaledBuffer, width, scale, provider);
         const upscaledForgeData = upscaleForgeData(ratio, provider, localOptions, upscaledBuffer);
         const updatedUpscaledBuffer = __runtimeGr.getPngMetadata().copyMetadataToImage(imageBuffer, upscaledBuffer, upscaledForgeData);
@@ -334,9 +363,9 @@ async function upscaleImage(globalResources, filename, workspaceId, req, res, up
         // Save upscaled image
         const upscaledFilename = filename.replace('.png', '_upscaled.png');
         // stored as JPEG XL (#1134: PNG is legacy; replaces an older upscale in either form); upscaledPath is
-        // the PNG bytes kept as its decoded copy, for the preview below
+        // a file of it sharp reads, for the preview below (#1156)
         const storedUpscale = await imageStore.writePicture(upscaledFilename, updatedUpscaledBuffer, { dir: __runtimeGr.getPath("images") });
-        const upscaledPath = storedUpscale.pngPath;
+        const upscaledPath = storedUpscale.pixelPath || await imageStore.pixelPath(upscaledFilename, __runtimeGr.getPath("images"));
         console.log(`💾 Saved upscaled: ${upscaledFilename}`);
 
         // Add upscaled file to workspace
@@ -357,7 +386,7 @@ async function upscaleImage(globalResources, filename, workspaceId, req, res, up
         }
         
         // Return the upscaled image
-        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Content-Type', 'image/' + (pictureMeta.formatOf(updatedUpscaledBuffer) || 'png'));
         if (upscaledBuffer && upscaledBuffer.localJobId) {
             res.setHeader('X-Upscale-Job-Id', upscaledBuffer.localJobId);
         }
@@ -378,19 +407,20 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
     }
     
     try {
-        // Read the image (PNG bytes, also when it is stored as JXL)
-        const imageBuffer = await imageStore.readPng(filename, __runtimeGr.getPath("images"));
+        // The stored picture as it is (its metadata) and as lossless WebP for the upscaler (#1156: no PNG)
+        const imageBuffer = await imageStore.readStored(filename, __runtimeGr.getPath("images"));
         
         if (!imageBuffer) {
             throw new Error('Image not found');
         }
+        const uploadBuffer = await imageStore.webpBytes(filename, __runtimeGr.getPath("images"), { fields: false });
         
         // Get image dimensions
         const { width, height } = await getImageDimensions(imageBuffer);
 
         // Upscale the image (pass ws, handler, requestId for keep-alive)
         const provider = normalizeUpscalerName(upscaler) || 'novelai';
-        const upscaledBuffer = await upscaleImageCore(globalResources, imageBuffer, scale, width, height, provider, ws, handler, requestId, localOptions);
+        const upscaledBuffer = await upscaleImageCore(globalResources, uploadBuffer, scale, width, height, provider, ws, handler, requestId, localOptions);
 
         // Copy origin Comment/signed_hash onto the upscaled PNG instead of overwriting via updateMetadata.
         const ratio = await resolveUpscaleRatio(upscaledBuffer, width, scale, provider);
@@ -400,9 +430,9 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
         // Save upscaled image
         const upscaledFilename = filename.replace('.png', '_upscaled.png');
         // stored as JPEG XL (#1134: PNG is legacy; replaces an older upscale in either form); upscaledPath is
-        // the PNG bytes kept as its decoded copy, for the preview below
+        // a file of it sharp reads, for the preview below (#1156)
         const storedUpscale = await imageStore.writePicture(upscaledFilename, updatedUpscaledBuffer, { dir: __runtimeGr.getPath("images") });
-        const upscaledPath = storedUpscale.pngPath;
+        const upscaledPath = storedUpscale.pixelPath || await imageStore.pixelPath(upscaledFilename, __runtimeGr.getPath("images"));
         console.log(`💾 Saved upscaled: ${upscaledFilename}`);
 
         // Add upscaled file to workspace
@@ -455,6 +485,7 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
 }
 
 module.exports = {
+    workingPicture,
     upscaleImage,
     upscaleImageWebSocket,
     upscaleImageCore,

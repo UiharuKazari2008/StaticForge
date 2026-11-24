@@ -116,7 +116,8 @@ async function expireDynGenPreviewDir(dynGenDir, maxAgeMs) {
         return removed;
     }
     for (const name of names) {
-        if (!name.endsWith('.png')) continue;
+        // .webp since #1156, .png before
+        if (!name.endsWith('.png') && !name.endsWith('.webp')) continue;
         const full = path.join(dynGenDir, name);
         let st;
         try {

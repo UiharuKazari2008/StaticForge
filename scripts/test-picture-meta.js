@@ -303,7 +303,10 @@ async function gallery() {
         const jxl = store.attachPngMetadata(await pm.encodeJxlPixels(raw, 1), png);
         const webp = await pm.encode(raw, pm.readFields(png), 'webp', { effort: 0 });
         for (const [k, b] of [['jxl', jxl], ['webp', webp]]) {
-            eq(pm.readFields(b), pm.readFields(png), `${n} as ${k}: fields`);
+            // NovelAI's WebP layout keeps the fields in its own order (sorted JSON in UserComment): the same set,
+            // in NovelAI's order, for a picture whose PNG had another; JXL keeps the order exactly
+            const order = (f) => (k === 'webp' ? [...f].sort((x, y) => String(x[0]).localeCompare(String(y[0]))) : f);
+            eq(order(pm.readFields(b)), order(pm.readFields(png)), `${n} as ${k}: fields`);
             eq(meta.readMetadata(b).tEXt, meta.readMetadata(png).tEXt, `${n} as ${k}: readMetadata tEXt`);
             eq(await meta.readStealthMetadata(b), await meta.readStealthMetadata(png), `${n} as ${k}: stealth`);
         }

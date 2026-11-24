@@ -1631,6 +1631,7 @@ const tempDownloadDir = path.join(cacheDir, 'tempDownload');
 const imagesDir = path.resolve(__dirname, 'images');
 // gallery pictures may be stored as x.jxl under the name x.png (#1134): reads go through pngPath / locate
 const imageStore = require('./modules/imageStore');
+const pictureMeta = require('./modules/pictureMeta');
 // for routes outside a try: a failed JXL decode answers as a missing picture instead of an unhandled rejection
 // A request that will show the picture on a client that decodes JPEG XL itself (#1134)
 function clientShowsJxl(req) {
@@ -3967,12 +3968,11 @@ app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (r
         // Read the target image file
         let finalBuffer;
         if (targetFilename && targetFilename !== result.filename) {
-            // Need to read from disk
-            const imagePath = await imageStore.pngPath(targetFilename);
-            if (!imagePath) {
+            // Need to read from disk: the stored picture as WebP with its fields, as a fresh print is (#1156)
+            finalBuffer = await imageStore.webpBytes(targetFilename);
+            if (!finalBuffer) {
                 return res.status(404).json({ success: false, error: 'Generated image file not found' });
             }
-            finalBuffer = await fs.promises.readFile(imagePath);
         } else {
             // Use buffer from result
             finalBuffer = result.buffer;
@@ -3980,7 +3980,8 @@ app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (r
         
         // Check if optimization is requested
         const optimize = req.query.optimize === 'true';
-        let contentType = 'image/png';
+        // the bytes' own type (a NovelAI WebP since #1156)
+        let contentType = 'image/' + (pictureMeta.formatOf(finalBuffer) || 'png');
         if (optimize) {
             try {
                 finalBuffer = await sharp(finalBuffer)
@@ -4001,7 +4002,7 @@ app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (r
         res.setHeader('X-Preset-UUID', p.uuid);
         res.setHeader('X-Preset-Name', p.name);
         if (req.query.download === 'true') {
-            const extension = optimize ? 'jpg' : 'png';
+            const extension = optimize ? 'jpg' : (pictureMeta.formatOf(finalBuffer) || 'png');
             const optimizedFilename = targetFilename.replace('.png', `.${extension}`);
             res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
         }
@@ -4274,16 +4275,14 @@ app.get('/pending/retrieval/:requestid', serverReadinessMiddleware, async (req, 
                 }
             }
 
-            // Read the generated image file
-            const imagePath = await imageStore.pngPath(targetFilename);
-            if (!imagePath) {
+            // Read the generated image file: WebP with its fields, as a fresh print is (#1156)
+            const imageBuffer = await imageStore.webpBytes(targetFilename);
+            if (!imageBuffer) {
                 return res.status(404).json({ success: false, error: 'Generated image file not found' });
             }
 
-            const imageBuffer = await fs.promises.readFile(imagePath);
-
             // Set headers similar to regular preset endpoint
-            res.setHeader('Content-Type', 'image/png');
+            res.setHeader('Content-Type', 'image/webp');
             res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename, X-Request-ID, X-Total-Saved');
             res.setHeader('X-Generated-Filename', targetFilename);
             res.setHeader('X-Request-ID', requestId);
@@ -4294,7 +4293,7 @@ app.get('/pending/retrieval/:requestid', serverReadinessMiddleware, async (req, 
             // Handle optimization if requested
             const optimize = req.query.optimize === 'true';
             let finalBuffer = imageBuffer;
-            let contentType = 'image/png';
+            let contentType = 'image/webp';
 
             if (optimize) {
                 try {
@@ -4310,7 +4309,7 @@ app.get('/pending/retrieval/:requestid', serverReadinessMiddleware, async (req, 
 
             res.setHeader('Content-Type', contentType);
             if (req.query.download === 'true') {
-                const extension = optimize ? 'jpg' : 'png';
+                const extension = optimize ? 'jpg' : 'webp';
                 const optimizedFilename = targetFilename.replace('.png', `.${extension}`);
                 res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
             }
@@ -4358,7 +4357,8 @@ app.get('/reroll/:filename', serverReadinessMiddleware, authMiddleware, getQueue
         // Check if optimization is requested
         const optimize = req.query.optimize === 'true';
         let finalBuffer = result.buffer;
-        let contentType = 'image/png';
+        // the bytes' own type (a NovelAI WebP since #1156)
+        let contentType = 'image/' + (pictureMeta.formatOf(finalBuffer) || 'png');
         
         if (optimize) {
             try {
@@ -4386,7 +4386,7 @@ app.get('/reroll/:filename', serverReadinessMiddleware, authMiddleware, getQueue
         res.setHeader('X-Original-Filename', filename);
         
         if (req.query.download === 'true') {
-            const extension = optimize ? 'jpg' : 'png';
+            const extension = optimize ? 'jpg' : (pictureMeta.formatOf(finalBuffer) || 'png');
             const optimizedFilename = result.filename.replace('.png', `.${extension}`);
             res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
         }
@@ -4408,22 +4408,21 @@ app.post('/test-bias-adjustment', serverReadinessMiddleware, authMiddleware, asy
             return res.status(400).json({ success: false, error: 'Missing required parameters' });
         }
         
-        // Load image from disk based on source
-        let imagePath;
+        // Load image from disk based on source (the stored file in any format: processDynamicImage reads them all)
+        let imageBuffer = null;
         if (image_source.startsWith('file:')) {
-            imagePath = await imageStore.pngPath(image_source.replace('file:', ''));
+            imageBuffer = await imageStore.readStored(image_source.replace('file:', ''));
         } else if (image_source.startsWith('cache:')) {
-            imagePath = path.join(uploadCacheDir, image_source.replace('cache:', ''));
+            const imagePath = path.join(uploadCacheDir, image_source.replace('cache:', ''));
+            if (await statOrNull(imagePath)) imageBuffer = await fs.promises.readFile(imagePath);
         } else {
             return res.status(400).json({ success: false, error: 'Invalid image source format' });
         }
         
         // Check if file exists
-        if (!imagePath || !await statOrNull(imagePath)) {
+        if (!imageBuffer) {
             return res.status(404).json({ success: false, error: 'Image file not found' });
         }
-        
-        const imageBuffer = await fs.promises.readFile(imagePath);
         
         // Process image with dynamic bias
         const processedBuffer = await processDynamicImage(
@@ -4432,8 +4431,8 @@ app.post('/test-bias-adjustment', serverReadinessMiddleware, authMiddleware, asy
             bias
         );
         
-        // Return the processed image
-        res.set('Content-Type', 'image/png');
+        // Return the processed image (lossless WebP, #1156)
+        res.set('Content-Type', 'image/' + (pictureMeta.formatOf(processedBuffer) || 'webp'));
         res.send(processedBuffer);
         
     } catch (error) {

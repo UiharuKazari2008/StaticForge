@@ -5,6 +5,8 @@ const https = require('https');
 const sharp = require('sharp');
 const { generateMobilePreviews } = require('./previewUtils');
 const imageStore = require('./imageStore');
+const pictureMeta = require('./pictureMeta');
+const { toWebp } = require('./imageTools');
 const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
 const replicationRemoteFetch = require('./replicationRemoteFetch');
 const { broadcastGalleryMutation } = require('./ws/handlers/120-galleryHandler');
@@ -1049,10 +1051,10 @@ class ReferencesWebSocketHandlers {
             let imageBuffer;
 
             if (filename) {
-                // PNG bytes, rebuilt from x.jxl when it is stored as one (#1134)
-                const localPng = await imageStore.readPng(filename, this.globalResources.getPath("images"));
-                if (localPng) {
-                    imageBuffer = localPng;
+                // the gallery picture as lossless WebP with its fields, no PNG step (#1134, #1156)
+                const localPicture = await imageStore.webpBytes(filename, this.globalResources.getPath("images"));
+                if (localPicture) {
+                    imageBuffer = localPicture;
                 } else {
                     try {
                         const fetched = await replicationRemoteFetch.readAssetBuffer(
@@ -2599,8 +2601,12 @@ class ReferencesWebSocketHandlers {
 
     // Direct NovelAI vibe encoding function
     async encodeVibeDirect(imageBase64, informationExtracted, model) {
+        // NovelAI gets the picture as lossless WebP whatever it was uploaded as (#1156: never PNG); the pixels are
+        // the same, so the encoding is too
+        const raw = Buffer.from(String(imageBase64 || '').replace(/^data:[^,]*,/, ''), 'base64');
+        const uploadBase64 = pictureMeta.formatOf(raw) === 'webp' ? raw.toString('base64') : (await toWebp(raw)).toString('base64');
         const body = {
-            image: imageBase64,
+            image: uploadBase64,
             model: (this.globalResources.getNekoAiService('Model'))[model.toUpperCase()],
             information_extracted: informationExtracted || 1
         };

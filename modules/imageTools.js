@@ -1,6 +1,56 @@
 const sharp = require('sharp');
 const { createCanvas, loadImage } = require('canvas');
 const { computeExpansionLetterboxLayout } = require('./expansionLetterbox');
+const pictureMeta = require('./pictureMeta');
+
+let imageStoreMod = null;
+const imageStore = () => imageStoreMod || (imageStoreMod = require('./imageStore'));
+
+// Working pictures (what is sent to NovelAI, stage canvases, masks) are lossless WebP, never PNG (#1156). Effort 0
+// is the fastest lossless setting (832x1216 in about 0.3 s, about 60 % of the PNG's size).
+const WORK_WEBP_EFFORT = 0;
+
+/** A sharp pipeline over any picture buffer: a JPEG XL is decoded to raw pixels when this sharp cannot read it. */
+async function sharpOf(buffer) {
+    if (pictureMeta.formatOf(buffer) === 'jxl' && !imageStore().sharpReadsJxl()) {
+        const raw = await pictureMeta.rgba(buffer);
+        return sharp(raw.data, { raw: { width: raw.width, height: raw.height, channels: raw.channels } });
+    }
+    return sharp(buffer);
+}
+
+/**
+ * The picture as lossless WebP without text fields (input: a picture buffer of any format, or a sharp pipeline).
+ * The format every picture sent to NovelAI is in (#1156).
+ */
+async function toWebp(input, opts = {}) {
+    const s = Buffer.isBuffer(input) ? await sharpOf(input) : input;
+    return s.webp({ lossless: true, effort: opts.effort != null ? opts.effort : WORK_WEBP_EFFORT }).toBuffer();
+}
+
+/**
+ * Something canvas can draw (drawImage, width / height) from any picture buffer: node-canvas reads PNG and JPEG
+ * only, so a WebP or JPEG XL is drawn from its pixels.
+ */
+async function loadCanvasImage(buffer) {
+    const fmt = pictureMeta.formatOf(buffer);
+    if (!fmt || fmt === 'png' || fmt === 'jpeg') return loadImage(buffer);
+    const { data, info } = await (await sharpOf(buffer)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const canvas = createCanvas(info.width, info.height);
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.createImageData(info.width, info.height);
+    imageData.data.set(data);
+    ctx.putImageData(imageData, 0, 0);
+    return canvas;
+}
+
+/** A canvas's pixels as lossless WebP (in place of canvas.toBuffer('image/png')). */
+async function canvasToWebp(canvas, opts = {}) {
+    const { width, height } = canvas;
+    const px = canvas.getContext('2d').getImageData(0, 0, width, height).data;
+    const raw = Buffer.from(px.buffer, px.byteOffset, px.byteLength);
+    return toWebp(sharp(raw, { raw: { width, height, channels: 4 } }), opts);
+}
 
 const inverseDimensionsMap = {
     "small_portrait": "512x768",
@@ -43,7 +93,11 @@ const dimensionsMap = {
 // Utility functions
 const getImageDimensions = async buffer => {
     try {
-        const metadata = await sharp(buffer).metadata();
+        if (Buffer.isBuffer(buffer) && pictureMeta.formatOf(buffer) === 'jxl') {
+            const head = imageStore().jxlSizeFromHead(buffer);
+            if (head) return head;
+        }
+        const metadata = await (Buffer.isBuffer(buffer) ? await sharpOf(buffer) : sharp(buffer)).metadata();
         return { width: metadata.width, height: metadata.height };
     } catch (error) {
         throw new Error('Failed to get image dimensions: ' + error.message);
@@ -57,7 +111,7 @@ async function getImageDimensionsWithCanvas(imageBuffer) {
             throw new Error('Image buffer is required');
         }
         
-        const img = await loadImage(imageBuffer);
+        const img = await loadCanvasImage(imageBuffer);
         
         if (!img.width || !img.height || img.width <= 0 || img.height <= 0) {
             throw new Error(`Invalid image dimensions: ${img.width}x${img.height}`);
@@ -134,7 +188,7 @@ async function processDynamicImage(imageBuffer, targetDims, bias = 2) {
         const ctx = canvas.getContext('2d');
         
         // Load the original image
-        const img = await loadImage(imageBuffer);
+        const img = await loadCanvasImage(imageBuffer);
         
         // Calculate how to fill the canvas while maintaining aspect ratio
         const imageAR = origDims.width / origDims.height;
@@ -175,15 +229,15 @@ async function processDynamicImage(imageBuffer, targetDims, bias = 2) {
         
         ctx.restore();
         
-        return canvas.toBuffer('image/png');
+        return canvasToWebp(canvas);
     } else {
         // Legacy bias handling (0-4 integer) - use Sharp for better performance
-        const metadata = await sharp(imageBuffer).metadata();
+        const metadata = await (await sharpOf(imageBuffer)).metadata();
         const origDims = { width: metadata.width, height: metadata.height };
         const origAR = origDims.width / origDims.height;
         const targetAR = targetDims.width / targetDims.height;
 
-        let sharpInstance = sharp(imageBuffer);
+        let sharpInstance = await sharpOf(imageBuffer);
 
         if (Math.abs(origAR - targetAR) > 0.01) {
             // Aspect ratios don't match, crop is needed.
@@ -208,10 +262,7 @@ async function processDynamicImage(imageBuffer, targetDims, bias = 2) {
             sharpInstance = sharpInstance.extract({ left: cropLeft, top: cropTop, width: cropWidth, height: cropHeight });
         }
 
-        return sharpInstance
-            .resize(targetDims.width, targetDims.height, { fit: 'fill' })
-            .png() // Ensure output is PNG
-            .toBuffer();
+        return toWebp(sharpInstance.resize(targetDims.width, targetDims.height, { fit: 'fill' }));
     }
 }
 
@@ -222,7 +273,7 @@ async function processDynamicImageLetterbox(imageBuffer, targetDims, bias = 2, o
     }
 
     // Get original dimensions using Sharp
-    const metadata = await sharp(imageBuffer).metadata();
+    const metadata = await (await sharpOf(imageBuffer)).metadata();
     const layout = computeExpansionLetterboxLayout(
         metadata.width,
         metadata.height,
@@ -237,16 +288,18 @@ async function processDynamicImageLetterbox(imageBuffer, targetDims, bias = 2, o
 
     const { scaledWidth, scaledHeight, left, top } = layout;
     
-    // Use Sharp to resize image with high quality
-    const resizedImageBuffer = await sharp(imageBuffer)
+    // Use Sharp to resize image with high quality (raw pixels between the steps: no encode)
+    const resized = await (await sharpOf(imageBuffer))
         .resize(scaledWidth, scaledHeight, {
             fit: 'fill',
             kernel: 'lanczos3' // High-quality downscaling
         })
-        .toBuffer();
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
     
     // Create transparent background with composited image using Sharp
-    const letterboxedBuffer = await sharp({
+    return toWebp(sharp({
         create: {
             width: targetDims.width,
             height: targetDims.height,
@@ -255,14 +308,11 @@ async function processDynamicImageLetterbox(imageBuffer, targetDims, bias = 2, o
         }
     })
     .composite([{
-        input: resizedImageBuffer,
+        input: resized.data,
+        raw: { width: resized.info.width, height: resized.info.height, channels: resized.info.channels },
         top: top,
         left: left
-    }])
-    .png()
-    .toBuffer();
-    
-    return letterboxedBuffer;
+    }]));
 }
 
 // Utility: Resize mask using Canvas (replaces Sharp operations)
@@ -277,7 +327,7 @@ async function resizeMaskWithCanvas(maskBuffer, targetWidth, targetHeight) {
     }
     
     try {
-        const img = await loadImage(maskBuffer);
+        const img = await loadCanvasImage(maskBuffer);
         
         // Validate loaded image dimensions
         if (!img.width || !img.height || img.width <= 0 || img.height <= 0) {
@@ -322,7 +372,7 @@ async function resizeMaskWithCanvas(maskBuffer, targetWidth, targetHeight) {
     }
     ctx.putImageData(imageData, 0, 0);
     
-    return canvas.toBuffer('image/png');
+    return await canvasToWebp(canvas);
     } catch (error) {
         throw new Error(`Failed to resize mask: ${error.message}`);
     }
@@ -354,7 +404,7 @@ async function generateAndPadMask(maskInput, targetDims, maskBias = 2) {
             ctx.fillRect(x, y, w, h);
         }
         
-        maskBuffer = canvas.toBuffer('image/png');
+        maskBuffer = await canvasToWebp(canvas);
         origDims = { width: targetDims.width, height: targetDims.height };
         
     } else if (typeof maskInput === 'string') {
@@ -378,7 +428,7 @@ async function generateAndPadMask(maskInput, targetDims, maskBias = 2) {
         }
         
         // Load the mask image
-        const img = await loadImage(maskBuffer);
+        const img = await loadCanvasImage(maskBuffer);
         
         // Validate loaded image
         if (!img.width || !img.height || img.width <= 0 || img.height <= 0) {
@@ -452,7 +502,7 @@ async function generateAndPadMask(maskInput, targetDims, maskBias = 2) {
         }
         ctx.putImageData(imageData, 0, 0);
         
-        maskBuffer = canvas.toBuffer('image/png');
+        maskBuffer = await canvasToWebp(canvas);
     } else {
         throw new Error('Mask must be either an array of coordinates or base64 encoded image');
     }
@@ -520,5 +570,10 @@ module.exports = {
     getImageDimensionsWithCanvas,
     resizeMaskWithCanvas,
     isImageLarge,
-    dimensionsMaxUnderArea
+    dimensionsMaxUnderArea,
+    WORK_WEBP_EFFORT,
+    sharpOf,
+    toWebp,
+    loadCanvasImage,
+    canvasToWebp
 };

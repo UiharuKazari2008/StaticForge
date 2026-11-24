@@ -150,7 +150,9 @@ function addImageAttachment(requestId, label, buffer, extension = 'png', meta = 
     const id = safeId(requestId);
     const trace = openTraces.get(id) || loadTrace(id);
     if (!trace) return;
-    const saved = saveAttachmentBuffer(id, buffer, extension, label);
+    // the bytes' own format wins over the caller's guess (generation buffers are WebP since #1156)
+    const fmt = require('./pictureMeta').formatOf(buffer);
+    const saved = saveAttachmentBuffer(id, buffer, fmt || extension, label);
     if (!saved) return;
     const cleanMeta = sanitizeTraceValue(meta) || {};
     const attachment = { type: 'image', label, path: saved.relPath, ...cleanMeta, timestamp: Date.now() };

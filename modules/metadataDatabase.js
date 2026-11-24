@@ -797,6 +797,11 @@ function generateMD5Async(filePath) {
  */
 async function extractImageMetadata(filePath) {
     try {
+        // a JPEG XL buffer's size from its header when this sharp cannot read JPEG XL (#1156)
+        if (Buffer.isBuffer(filePath) && filePath[0] !== 0x89 && !imageStore.sharpReadsJxl()) {
+            const head = imageStore.jxlSizeFromHead(filePath);
+            if (head) return { width: head.width, height: head.height, format: 'jxl' };
+        }
         const metadata = await sharp(filePath).metadata();
         return {
             width: metadata.width,
@@ -1023,10 +1028,16 @@ async function buildImageMetadataFromFile(filename, imagesDir, existingReceipts 
     if (!stats) {
         return null;
     }
-    // a real PNG (original or decoded copy); without a caller buffer it is read once below
-    const filePath = (!Buffer.isBuffer(options.buffer) || stats.kind === 'jxl')
-        ? await imageStore.pngPath(filename, imagesDir)
-        : path.join(imagesDir, filename);
+    // with a caller buffer (the bytes just stored, in any format: a NovelAI WebP since #1156) only the stored
+    // file's path is needed (its folder, for an expanded picture's original), so no JXL is decoded to PNG here;
+    // without one, a real PNG (original or decoded copy) is read once below
+    let filePath;
+    if (Buffer.isBuffer(options.buffer)) {
+        const loc = await imageStore.locate(filename, imagesDir);
+        filePath = loc ? loc.path : null;
+    } else {
+        filePath = await imageStore.pngPath(filename, imagesDir);
+    }
     if (!filePath) {
         return null;
     }
@@ -2732,8 +2743,9 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
                 metadata.size = stats.size;
             }
         } else {
-            // the PNG bytes (a JXL-stored picture decoded); stored again as JPEG XL (#1134), date created kept
-            const imageBuffer = fileBuffer || await imageStore.readPng(filename, imagesDir);
+            // the picture's bytes in any format (the stored JXL itself: updateMetadata keeps the format, #1156);
+            // stored again as JPEG XL (#1134), date created kept
+            const imageBuffer = fileBuffer || await imageStore.readStored(filename, imagesDir);
             if (imageBuffer) {
                 const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
                 const stored = await imageStore.writePicture(filename, updatedBuffer, { dir: imagesDir });

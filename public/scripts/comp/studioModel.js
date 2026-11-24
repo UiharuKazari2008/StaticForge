@@ -667,7 +667,7 @@
     }
 
     function frameSrc(last) {
-        return `data:${last.imageFormat === 'png' ? 'image/png' : 'image/jpeg'};base64,${last.imageData}`;
+        return `data:${/^(png|webp)$/.test(last.imageFormat) ? 'image/' + last.imageFormat : 'image/jpeg'};base64,${last.imageData}`;
     }
 
     /**

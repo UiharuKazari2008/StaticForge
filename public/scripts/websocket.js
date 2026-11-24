@@ -7695,7 +7695,7 @@ class WebSocketClient {
     async displayStreamingStep(modalType, data) {
         if (!data?.imageData) return;
 
-        const mime = data.imageFormat === 'png' ? 'image/png' : 'image/jpeg';
+        const mime = /^(png|webp)$/.test(data.imageFormat) ? 'image/' + data.imageFormat : 'image/jpeg';
         const imageDataUrl = `data:${mime};base64,${data.imageData}`;
         const stepNum = data.currentStep != null ? data.currentStep : data.step;
         const session = this.getStreamingStepSession(modalType);
@@ -7886,7 +7886,7 @@ class WebSocketClient {
             return;
         }
 
-        const mime = data.imageFormat === 'png' ? 'image/png' : 'image/jpeg';
+        const mime = /^(png|webp)$/.test(data.imageFormat) ? 'image/' + data.imageFormat : 'image/jpeg';
         this._applyStreamingPreviewSrc(modalType, `data:${mime};base64,${data.imageData}`);
     }
 

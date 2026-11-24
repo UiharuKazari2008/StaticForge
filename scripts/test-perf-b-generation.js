@@ -415,7 +415,8 @@ sections.previewHash = async function previewHash() {
     }
     const pick = async (where) => (await sampleImageRows(150, `filename NOT LIKE '%_upscaled.png' AND ${where}`))
         .map((r) => r.filename)
-        .filter((f) => fs.existsSync(path.join(liveImages, f)));
+        // stored as x.png or (since #1134) x.jxl under that name
+        .filter((f) => require('../modules/imageStore').existsSync(f, liveImages));
     const withHash = await pick(`json_extract(metadata, '$.forge_data.dynamic_generation.compiled_prompt.preview_image_hash') IS NOT NULL`);
     const dgNoHash = await pick(`json_type(metadata, '$.forge_data.dynamic_generation') = 'object' AND json_extract(metadata, '$.forge_data.dynamic_generation.compiled_prompt.preview_image_hash') IS NULL`);
     const noDg = await pick(`json_extract(metadata, '$.forge_data.dynamic_generation') IS NULL`);
@@ -436,7 +437,9 @@ sections.previewHash = async function previewHash() {
     const { createDynGenPreviewHashResolver } = require('../modules/ws/handlers/120-galleryHandler');
 
     const fromFile = async (file) => {
-        const buf = await fs.promises.readFile(path.join(liveImages, file));
+        // the stored file, PNG or JXL (#1134); readMetadata reads either (#1156)
+        const loc = require('../modules/imageStore').locateSync(file, liveImages);
+        const buf = await fs.promises.readFile(loc.path);
         const meta = pm.readMetadata(buf);
         if (!meta?.tEXt?.Comment) return null;
         return JSON.parse(meta.tEXt.Comment)?.forge_data?.dynamic_generation?.compiled_prompt?.preview_image_hash || null;

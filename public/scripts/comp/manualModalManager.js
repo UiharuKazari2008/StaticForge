@@ -4586,11 +4586,11 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                     console.error('❌ Failed to process compressed mask for regular image:', error);
                     // Fallback to regular mask if available
                     if (data.mask !== undefined && data.mask !== null) {
-                        window.currentMaskData = "data:image/png;base64," + data.mask;
+                        window.currentMaskData = `data:${String(data.mask).startsWith('UklGR') ? 'image/webp' : 'image/png'};base64,${data.mask}`;
                     }
                 }
             } else if (data.mask !== undefined && data.mask !== null) {
-                window.currentMaskData = "data:image/png;base64," + data.mask;
+                window.currentMaskData = `data:${String(data.mask).startsWith('UklGR') ? 'image/webp' : 'image/png'};base64,${data.mask}`;
                 try {
                     const compressedMask = await convertStandardMaskToCompressed(data.mask, data.width || 1024, data.height || 1024);
                     if (compressedMask) {

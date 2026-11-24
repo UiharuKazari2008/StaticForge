@@ -1,5 +1,6 @@
 const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage, enhanceImage, maxEnhanceImage, previewExpandImagePrompt, compileDynamicGenerationWebSocket, applyTendaiPreviewWebSocket } = require('../../imageGeneration');
 const { upscaleImageWebSocket } = require('../../imageUpscaling');
+const pictureMeta = require('../../pictureMeta');
 const { animateImageWebSocket, getEmotionJob, publicEmotionJob } = require('../../imageAnimation');
 const {
     isLocalUpscaler,
@@ -213,6 +214,18 @@ function generationReplyImage(message, buffer, base64 = null) {
     return base64 || null;
 }
 
+/**
+ * The MIME type of the image generationReplyImage puts in the reply (the bytes' own format: a NovelAI WebP, a
+ * JPEG XL upscale, #1156), so a consumer does not assume PNG. null when the reply carries no image.
+ */
+function generationReplyImageType(message, buffer, base64 = null) {
+    if (message && message.imageTransport === 'http') return null;
+    let head = buffer || null;
+    if (!head && typeof base64 === 'string' && base64) head = Buffer.from(base64.slice(0, 24), 'base64');
+    const fmt = head ? pictureMeta.formatOf(head) : null;
+    return fmt ? 'image/' + fmt : null;
+}
+
 async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsServer) {
     const requestId = message.requestId || 'unknown';
     let outcome = null;
@@ -277,6 +290,7 @@ async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsSe
             const contentLength = handlers.resolveGeneratedImageContentLength(result);
             const responseData = {
                 image: generationReplyImage(message, result.buffer),
+                imageType: generationReplyImageType(message, result.buffer),
                 filename: result.filename,
                 seed: result.seed || null,
                 metadata: result.metadata,
@@ -305,6 +319,7 @@ async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsSe
             const contentLength = handlers.resolveGeneratedImageContentLength(result);
             const responseData = {
                 image: generationReplyImage(message, result.buffer),
+                imageType: generationReplyImageType(message, result.buffer),
                 filename: result.filename,
                 seed: result.seed || null,
                 metadata: result.metadata,
@@ -410,6 +425,7 @@ async function handleImageRerollWork(handlers, ws, message, clientInfo, wsServer
             requestId: requestId,
             data: {
                 image: generationReplyImage(message, result.buffer),
+                imageType: generationReplyImageType(message, result.buffer),
                 filename: result.filename,
                 seed: result.seed || null,
                 originalFilename: filename
@@ -483,6 +499,7 @@ async function handleImageUpscaling(handlers, ws, message, clientInfo, wsServer)
             requestId: requestId,
             data: {
                 image: generationReplyImage(message, result.buffer),
+                imageType: generationReplyImageType(message, result.buffer),
                 filename: result.filename,
                 metadata: result.metadata,
                 contentLength,
@@ -712,6 +729,7 @@ async function handleImageExpansion(handlers, ws, message, clientInfo, wsServer)
             requestId: requestId,
             data: {
                 image: generationReplyImage(message, null, result.image),
+                imageType: generationReplyImageType(message, null, result.image),
                 filename: result.filename,
                 seed: result.seed,
                 expansionPrompt: result.expansionPrompt,
@@ -788,6 +806,7 @@ async function handleMaxEnhanceImage(handlers, ws, message, clientInfo, wsServer
             requestId,
             data: {
                 image: generationReplyImage(message, result.buffer),
+                imageType: generationReplyImageType(message, result.buffer),
                 filename: result.filename,
                 seed: result.seed,
                 metadata: result.metadata,
@@ -855,6 +874,7 @@ async function handleEnhanceImage(handlers, ws, message, clientInfo, wsServer) {
                 requestId,
                 data: {
                     image: generationReplyImage(message, result.buffer),
+                    imageType: generationReplyImageType(message, result.buffer),
                     filename: result.filename,
                     seed: null,
                     metadata: result.metadata,
@@ -904,6 +924,7 @@ async function handleEnhanceImage(handlers, ws, message, clientInfo, wsServer) {
             requestId,
             data: {
                 image: generationReplyImage(message, result.buffer),
+                imageType: generationReplyImageType(message, result.buffer),
                 filename: result.filename,
                 seed: result.seed,
                 metadata: result.metadata,
@@ -982,6 +1003,7 @@ async function handleImageExpansionReroll(handlers, ws, message, clientInfo, wsS
             requestId: requestId,
             data: {
                 image: generationReplyImage(message, null, result.image),
+                imageType: generationReplyImageType(message, null, result.image),
                 filename: result.filename,
                 seed: result.seed,
                 expansionPrompt: result.expansionPrompt,
@@ -1246,6 +1268,7 @@ async function handleLocalAnimateStatus(handlers, ws, message) {
 
 module.exports = {
     generationReplyImage,
+    generationReplyImageType,
     handleImageGeneration,
     handleImageReroll,
     handleImageUpscaling,

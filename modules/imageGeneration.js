@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const sharp = require('sharp');
-const { createCanvas, loadImage } = require('canvas');
+const { createCanvas } = require('canvas');
 const { z } = require('zod');
 const {
     matchCommaTextColon,
@@ -156,8 +156,13 @@ const {
     processDynamicImage,
     processDynamicImageLetterbox,
     resizeMaskWithCanvas,
-    dimensionsMaxUnderArea
+    dimensionsMaxUnderArea,
+    sharpOf,
+    toWebp,
+    loadCanvasImage,
+    canvasToWebp
 } = require('./imageTools');
+const pictureMeta = require('./pictureMeta');
 const { generateMobilePreviews } = require('./previewUtils');
 const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
 const { upscaleImageCore, resolveUpscaleRatio } = require('./imageUpscaling');
@@ -772,7 +777,8 @@ async function convertCharacterReferenceToBase64(charaReference) {
                 imageBuffer = await fs.promises.readFile(cachedImagePath);
                 break;
             case 'file':
-                imageBuffer = await imageStore.readPng(identifier, __runtimeGr.getPath('images'));
+                // the stored picture's pixels as WebP (#1156: no PNG on the way to NovelAI)
+                imageBuffer = await imageStore.webpBytes(identifier, __runtimeGr.getPath('images'), { fields: false });
                 if (!imageBuffer) {
                     console.warn(`⚠️ Character reference file not found: ${identifier}`);
                     return null;
@@ -785,11 +791,11 @@ async function convertCharacterReferenceToBase64(charaReference) {
 
         if (!imageBuffer) return null;
 
-        // Strip PNG text chunks to avoid issues
+        // Strip text fields to avoid issues (any format)
         imageBuffer = __runtimeGr.getPngMetadata().stripPngTextChunks(imageBuffer);
 
         // Get image metadata to calculate aspect ratio
-        const metadata = await sharp(imageBuffer).metadata();
+        const metadata = await getImageDimensions(imageBuffer);
         const imgWidth = metadata.width;
         const imgHeight = metadata.height;
 
@@ -842,27 +848,27 @@ async function convertCharacterReferenceToBase64(charaReference) {
             }
         });
 
-        // Resize the input image to calculated dimensions
-        const resizedImage = await sharp(imageBuffer)
+        // Resize the input image to calculated dimensions (raw pixels between the steps: no encode)
+        const resized = await (await sharpOf(imageBuffer))
             .resize(drawWidth, drawHeight, {
                 fit: 'fill', // Don't maintain aspect ratio for this resize
                 withoutEnlargement: false // Allow enlargement to match target size
             })
-            .png()
-            .toBuffer();
+            .raw()
+            .toBuffer({ resolveWithObject: true });
 
         // Composite the resized image onto the black background, centered
         const offsetX = Math.round((targetWidth - drawWidth) / 2);
         const offsetY = Math.round((targetHeight - drawHeight) / 2);
 
-        const finalImage = await background
+        // lossless WebP for NovelAI (#1156)
+        const finalImage = await toWebp(background
             .composite([{
-                input: resizedImage,
+                input: resized.data,
+                raw: { width: resized.info.width, height: resized.info.height, channels: resized.info.channels },
                 top: offsetY,
                 left: offsetX
-            }])
-            .png()
-            .toBuffer();
+            }]));
 
         // Convert to base64
         const processedBase64 = finalImage.toString('base64');
@@ -923,7 +929,8 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
 
     // Create cache filename
     const presetHash = crypto.createHash('md5').update(presetName).digest('hex');
-    const cacheFilename = `${presetHash}_${seed}.png`;
+    // a NovelAI WebP since #1156 (older .png entries are no longer read)
+    const cacheFilename = `${presetHash}_${seed}.webp`;
     const presetSourceCacheDir = __runtimeGr.getPath('presetSourceCache');
     const cachePath = path.join(presetSourceCacheDir, cacheFilename);
 
@@ -2723,8 +2730,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 if (body.dynamic_generation?.compiled_prompt?.preview_image_hash) {
                     // Check if the preview file actually exists on disk
                     const dynGenPreviewDir = path.join(__runtimeGr.getPath('cache'), 'dynGenPreview');
-                    const previewFilePath = path.join(dynGenPreviewDir, `${body.dynamic_generation.compiled_prompt.preview_image_hash}.png`);
-                    hasValidPreview = fs.existsSync(previewFilePath);
+                    // a NovelAI WebP since #1156; older previews are .png
+                    const previewHashBase = path.join(dynGenPreviewDir, body.dynamic_generation.compiled_prompt.preview_image_hash);
+                    hasValidPreview = fs.existsSync(`${previewHashBase}.webp`) || fs.existsSync(`${previewHashBase}.png`);
                     if (!hasValidPreview) {
                         console.log(`⚠️ Preview hash exists but file not found, will regenerate`);
                     } else {
@@ -2823,9 +2831,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                             fs.mkdirSync(dynGenPreviewDir, { recursive: true });
                         }
 
-                        const previewFilePath = path.join(dynGenPreviewDir, `${previewHash}.png`);
+                        // named for its bytes (a NovelAI WebP since #1156)
+                        const previewExt = pictureMeta.formatOf(previewResult.buffer) || 'webp';
+                        const previewFilePath = path.join(dynGenPreviewDir, `${previewHash}.${previewExt}`);
                         await fs.promises.writeFile(previewFilePath, previewResult.buffer);
-                        console.log(`💾 Saved preview to cache: ${previewHash}.png`);
+                        console.log(`💾 Saved preview to cache: ${previewHash}.${previewExt}`);
 
                         // Store only the hash in dynamic_generation for the actual generation
                         body.dynamic_generation.compiled_prompt = body.dynamic_generation.compiled_prompt || {};
@@ -3716,7 +3726,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     imageBuffer = await fs.promises.readFile(cachedImagePath);
                     break;
                 case 'file':
-                    imageBuffer = await imageStore.readPng(imageIdentifier, __runtimeGr.getPath('images'));
+                    // the stored picture's pixels as WebP (#1156: no PNG on the way to NovelAI)
+                    imageBuffer = await imageStore.webpBytes(imageIdentifier, __runtimeGr.getPath('images'), { fields: false });
                     if (!imageBuffer) throw new Error(`Image not found: ${imageIdentifier}`);
                     break;
                 case 'data': // For new uploads from client, not yet cached.
@@ -3781,7 +3792,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
                     // Create a temporary canvas to resize the mask
                     const maskBuffer = Buffer.from(body.mask, 'base64');
-                    const maskImage = await loadImage(maskBuffer);
+                    const maskImage = await loadCanvasImage(maskBuffer);
 
                     const tempCanvas = createCanvas(compressedWidth, compressedHeight);
                     const tempCtx = tempCanvas.getContext('2d');
@@ -3824,7 +3835,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     tempCtx.putImageData(imageData, 0, 0);
 
                     // Convert to base64 and store as compressed mask
-                    const compressedMaskBase64 = tempCanvas.toBuffer('image/png').toString('base64');
+                    const compressedMaskBase64 = (await canvasToWebp(tempCanvas)).toString('base64');
                     body.mask_compressed = compressedMaskBase64;
                     baseOptions.mask_compressed = compressedMaskBase64;
 
@@ -3836,8 +3847,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             }
 
             if (body.mask) {
-                // Process compressed mask if available, otherwise use regular mask
-                baseOptions.mask = body.mask;
+                // Process compressed mask if available, otherwise use regular mask; NovelAI gets it as WebP (#1156)
+                const maskBytes = Buffer.from(body.mask, 'base64');
+                baseOptions.mask = pictureMeta.formatOf(maskBytes) === 'webp'
+                    ? body.mask
+                    : (await toWebp(maskBytes)).toString('base64');
                 baseOptions.strength = img2imgNumber(1, body.inpainting_strength, body.strength);
                 baseOptions.noise = 0.0;
             } else {
@@ -3845,6 +3859,9 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 baseOptions.noise = img2imgNumber(0.1, body.noise);
             }
 
+            // NovelAI gets every source as lossless WebP (#1156): an upload or a pre-letterboxed canvas may be
+            // another format
+            if (pictureMeta.formatOf(imageBuffer) !== 'webp') imageBuffer = await toWebp(imageBuffer);
             baseOptions.image = imageBuffer.toString('base64');
             baseOptions.image_source = originalSource;
             baseOptions.image_source_seed = imageSourceSeed;
@@ -4334,7 +4351,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         auto_clean_uc: opts.auto_clean_uc
     });
     if (!opts._rentanReview && lastApiGenerationRecord && lastApiGenerationRecord.fingerprint === currentFingerprint && lastApiGenerationRecord.filename) {
-        const existingBuffer = await imageStore.readPng(lastApiGenerationRecord.filename, __runtimeGr.getPath('images'));
+        // the stored picture as WebP with its fields, the format a fresh generation hands on (#1156)
+        const existingBuffer = await imageStore.webpBytes(lastApiGenerationRecord.filename, __runtimeGr.getPath('images'));
         if (existingBuffer) {
             __runtimeGr.getLogger().normal(`⚡ Reusing identical generation result for existing image: ${lastApiGenerationRecord.filename}`);
             const targetWorkspaceId = workspaceId || __runtimeGr.getWorkspaceManager().getActiveWorkspace(req?.session?.id);
@@ -4365,6 +4383,10 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             return lastApiGenerationRecord.filename;
         }
     }
+
+    // NovelAI answers in lossless WebP (#1156): the picture stays WebP in memory up to imageStore.writePicture,
+    // which stores it as JPEG XL. Set after the fingerprint so it does not change it.
+    apiOpts.image_format = 'webp';
 
     // Get balance before generation
     let creditUsage;
@@ -4585,7 +4607,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                     attempt: info.n,
                     maxAttempts: info.max,
                     imageData: info.imageData,
-                    imageFormat: 'png',
+                    imageFormat: info.imageFormat || pictureMeta.formatOf(attemptBuffer) || 'webp',
                     currentStep: info.n,
                     totalSteps: info.max
                 });
@@ -4979,7 +5001,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             const baseName = __runtimeGr.getPngMetadata().getBaseName(name);
 
             // Generate main / @2x / @lq previews + BlurHash (replaces @blur.webp)
-            const previewResult = await generateMobilePreviews(stored.pngPath, baseName);
+            // previews read the stored file's pixels (pngPath is null for a WebP / JXL write, #1156)
+            const previewResult = await generateMobilePreviews(stored.pixelPath || await imageStore.pixelPath(name, __runtimeGr.getPath('images')), baseName);
             // Not awaited: the UPDATE queues on the metadata write handle and Studio's
             // complete / response must not wait behind it (#652).
             storePreviewBlurhash(__runtimeGr, name, previewResult, forgeData.blurhash || null).catch((err) => {
@@ -5085,7 +5108,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), upscaledReceiptData, upscaledForgeData, { buffer: finalBuffer });
                 await recordReplicationGalleryJournal(upscaledName, targetWorkspaceId, updatedScaledBuffer);
 
-                const upscaledPreviewResult = await generateMobilePreviews(storedUpscaled.pngPath, __runtimeGr.getPngMetadata().getBaseName(upscaledName));
+                const upscaledPreviewResult = await generateMobilePreviews(storedUpscaled.pixelPath || await imageStore.pixelPath(upscaledName, __runtimeGr.getPath('images')), __runtimeGr.getPngMetadata().getBaseName(upscaledName));
                 await storePreviewBlurhash(__runtimeGr, upscaledName, upscaledPreviewResult);
 
                 const plumbing = __runtimeGr.getDataPlumbing();
@@ -5150,16 +5173,14 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     } else {
         // Save image and return filename only (legacy behavior)
         if (shouldSave) {
-            const filePath = path.join(__runtimeGr.getPath('images'), name);
-            await img.save(filePath);
-            // stored as JPEG XL (#1134); the saved PNG becomes its decoded copy
-            const storedLegacy = await imageStore.writePicture(name, await fs.promises.readFile(filePath), { dir: __runtimeGr.getPath('images') });
+            // NovelAI's WebP straight to JPEG XL (#1134, #1156): no PNG file on the way
+            const storedLegacy = await imageStore.writePicture(name, Buffer.from(img.data), { dir: __runtimeGr.getPath('images') });
             console.log(`💾 Saved: ${name}`);
 
             // Generate preview
             const baseName = __runtimeGr.getPngMetadata().getBaseName(name);
 
-            const legacyPreviewResult = await generateMobilePreviews(storedLegacy.pngPath, baseName);
+            const legacyPreviewResult = await generateMobilePreviews(storedLegacy.pixelPath || await imageStore.pixelPath(name, __runtimeGr.getPath('images')), baseName);
             await storePreviewBlurhash(__runtimeGr, name, legacyPreviewResult);
             __runtimeGr.getLogger().detailed(`📸 Generated previews for ${baseName}`);
         }
@@ -5186,7 +5207,8 @@ const handleImageRequest = async (globalResources, req, res, opts, presetName = 
     const optimize = req.query.optimize === 'true';
 
     let finalBuffer = result.buffer;
-    let contentType = 'image/png';
+    // the bytes as they are (a NovelAI WebP since #1156)
+    let contentType = 'image/' + (pictureMeta.formatOf(finalBuffer) || 'png');
 
     if (optimize) {
         try {
@@ -5213,7 +5235,7 @@ const handleImageRequest = async (globalResources, req, res, opts, presetName = 
         res.setHeader('X-Seed', result.seed.toString());
     }
     if (req.query.download === 'true') {
-        const extension = optimize ? 'jpg' : 'png';
+        const extension = optimize ? 'jpg' : (pictureMeta.formatOf(finalBuffer) || 'png');
         const optimizedFilename = result.filename.replace('.png', `.${extension}`);
         res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
     }
@@ -6979,7 +7001,7 @@ function dilateExpansionMaskWhiteIntoOpaque(maskData, compressedMaskWidth, compr
 
 // Helper function to create expansion mask from letterboxed image
 async function createExpansionMask(letterboxedBuffer, targetWidth, targetHeight, originalWidth, originalHeight, inset = false) {
-    const letterboxedImg = await loadImage(letterboxedBuffer);
+    const letterboxedImg = await loadCanvasImage(letterboxedBuffer);
 
     // Calculate compressed dimensions (8x smaller)
     const compressedMaskWidth = Math.round(targetWidth / 8);
@@ -7044,16 +7066,17 @@ async function createExpansionMask(letterboxedBuffer, targetWidth, targetHeight,
     const finalMaskImageData = maskCtx.createImageData(compressedMaskWidth, compressedMaskHeight);
     finalMaskImageData.data.set(expandedMaskData);
     maskCtx.putImageData(finalMaskImageData, 0, 0);
-    return maskCanvas.toBuffer('image/png');
+    return canvasToWebp(maskCanvas);
 }
 
 // Helper function to compress mask to base64
 async function compressMask(maskBuffer) {
-    const maskCanvas = await loadImage(maskBuffer);
+    const maskCanvas = await loadCanvasImage(maskBuffer);
     const canvas = createCanvas(maskCanvas.width, maskCanvas.height);
     const ctx = canvas.getContext('2d');
     ctx.drawImage(maskCanvas, 0, 0);
-    return canvas.toDataURL('image/png').split(',')[1];
+    // lossless WebP (#1156)
+    return (await canvasToWebp(canvas)).toString('base64');
 }
 
 // Process expand canvas stage - reusable function for both manual and staged expansion
@@ -7078,7 +7101,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
         console.log(`📦 Letterboxed image created`);
 
         // Load letterboxed image for mask creation
-        const letterboxedImg = await loadImage(letterboxedBuffer);
+        const letterboxedImg = await loadCanvasImage(letterboxedBuffer);
 
         // Calculate compressed dimensions (8x smaller)
         const compressedMaskWidth = Math.round(targetDims.width / 8);
@@ -7302,7 +7325,7 @@ async function processExpandCanvas(globalResources, stage, body, baseMetadata, g
         finalMaskImageData.data.set(expandedMaskData);
         maskCtx.putImageData(finalMaskImageData, 0, 0);
 
-        const compressedMaskBase64 = maskCanvas.toDataURL('image/png').split(',')[1];
+        const compressedMaskBase64 = (await canvasToWebp(maskCanvas)).toString('base64');
         console.log(`🎭 Mask created and compressed: ${compressedMaskWidth}x${compressedMaskHeight}`);
 
         // Calculate expansion percentages based on bias and dimensions
@@ -7561,17 +7584,16 @@ async function previewExpandImagePrompt(
     requestId = null
 ) {
     bindRuntimeGlobalResources(globalResources);
-    const filePath = await imageStore.pngPath(filename, __runtimeGr.getPath('images'));
-    if (!filePath) {
+    // the stored files as they are (JXL or legacy PNG): readMetadata takes either, no PNG decode (#1156)
+    const originalImageBuffer = await imageStore.readStored(filename, __runtimeGr.getPath('images'));
+    if (!originalImageBuffer) {
         throw new Error('Image not found');
     }
-    const sourceFilePath = sourceFilename ? await imageStore.pngPath(sourceFilename, __runtimeGr.getPath('images')) : null;
-    if (sourceFilename && !sourceFilePath) {
+    const storedSourceBuffer = sourceFilename ? await imageStore.readStored(sourceFilename, __runtimeGr.getPath('images')) : null;
+    if (sourceFilename && !storedSourceBuffer) {
         throw new Error('Source image not found');
     }
-
-    const originalImageBuffer = await fs.promises.readFile(filePath);
-    const sourceImageBuffer = sourceFilePath ? await fs.promises.readFile(sourceFilePath) : originalImageBuffer;
+    const sourceImageBuffer = storedSourceBuffer || originalImageBuffer;
 
     let originalPrompt = '';
     let originalUc = '';
@@ -7653,17 +7675,16 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         console.log(`📌 Expansion inset (native-scale letterbox padding): ${inset}`);
 
         // Load original image
-        const filePath = await imageStore.pngPath(filename, __runtimeGr.getPath('images'));
-        if (!filePath) {
+        // the stored files as they are (JXL or legacy PNG): metadata reads and the letterbox take either (#1156)
+        const originalImageBuffer = await imageStore.readStored(filename, __runtimeGr.getPath('images'));
+        if (!originalImageBuffer) {
             throw new Error('Image not found');
         }
-        const sourceFilePath = sourceFilename ? await imageStore.pngPath(sourceFilename, __runtimeGr.getPath('images')) : null;
-        if (sourceFilename && !sourceFilePath) {
+        const storedSourceBuffer = sourceFilename ? await imageStore.readStored(sourceFilename, __runtimeGr.getPath('images')) : null;
+        if (sourceFilename && !storedSourceBuffer) {
             throw new Error('Source image not found');
         }
-
-        const originalImageBuffer = await fs.promises.readFile(filePath);
-        const sourceImageBuffer = sourceFilePath ? await fs.promises.readFile(sourceFilePath) : originalImageBuffer;
+        const sourceImageBuffer = storedSourceBuffer || originalImageBuffer;
         const originalDims = await getImageDimensions(originalImageBuffer);
         console.log(`📐 Original dimensions: ${originalDims.width}x${originalDims.height}`);
 
@@ -7698,7 +7719,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         console.log(`📦 Letterboxed image created`);
 
         // Load letterboxed image for mask creation
-        const letterboxedImg = await loadImage(letterboxedBuffer);
+        const letterboxedImg = await loadCanvasImage(letterboxedBuffer);
 
         // Calculate compressed dimensions (8x smaller)
         const compressedMaskWidth = Math.round(targetDims.width / 8);
@@ -7799,7 +7820,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         finalMaskImageData.data.set(expandedMaskData);
         maskCtx.putImageData(finalMaskImageData, 0, 0);
 
-        const compressedMaskBase64 = maskCanvas.toDataURL('image/png').split(',')[1];
+        const compressedMaskBase64 = (await canvasToWebp(maskCanvas)).toString('base64');
         console.log(`🎭 Mask created and compressed: ${compressedMaskWidth}x${compressedMaskHeight}`);
 
         // Calculate expansion percentages based on bias and dimensions
@@ -7954,7 +7975,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         console.log(`💾 Attempting to save: ${expandedFilename} at ${expandedPath}`);
         console.log(`📊 Buffer size: ${expandedBuffer.length} bytes`);
 
-        // stored as JPEG XL (#1134); the PNG bytes stay as its decoded copy for the preview below
+        // stored as JPEG XL (#1134); previews read the stored file's pixels (#1156)
         const storedExpanded = await imageStore.writePicture(expandedFilename, expandedBuffer, { dir: __runtimeGr.getPath('images') });
         console.log(`✅ File saved successfully: ${expandedFilename} (${fs.statSync(storedExpanded.path).size} bytes, ${storedExpanded.kind})`);
 
@@ -7972,7 +7993,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
 
         // Generate preview
         const expandedBaseName = __runtimeGr.getPngMetadata().getBaseName(expandedFilename);
-        const expandedPreviewResult = await generateMobilePreviews(storedExpanded.pngPath, expandedBaseName);
+        const expandedPreviewResult = await generateMobilePreviews(storedExpanded.pixelPath || await imageStore.pixelPath(expandedFilename, __runtimeGr.getPath('images')), expandedBaseName);
         await storePreviewBlurhash(__runtimeGr, expandedFilename, expandedPreviewResult);
 
         // no_save skips handleGeneration's phase:complete — notify client so streaming finalize can finish.
@@ -8027,7 +8048,8 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         console.log(`🔄 Starting image expansion reroll: ${filename}`);
 
         // 1. Load image and extract metadata
-        const imageBuffer = await imageStore.readPng(filename, __runtimeGr.getPath('images'));
+        // the stored file as it is (readMetadata takes JXL or PNG, #1156)
+        const imageBuffer = await imageStore.readStored(filename, __runtimeGr.getPath('images'));
         if (!imageBuffer) {
             throw new Error('Image not found');
         }
@@ -8062,7 +8084,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         console.log(`🔗 Maintaining expansion source: ${expansion_source}`);
 
         // Load the SOURCE image for letterboxing (not the expanded image)
-        const sourceImageBuffer = await imageStore.readPng(expansion_source, __runtimeGr.getPath('images'));
+        const sourceImageBuffer = await imageStore.readStored(expansion_source, __runtimeGr.getPath('images'));
         if (!sourceImageBuffer) {
             throw new Error(`Source image not found: ${expansion_source}`);
         }
@@ -8090,7 +8112,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         console.log(`📦 Letterboxed image created`);
 
         // Load letterboxed image for mask creation
-        const letterboxedImg = await loadImage(letterboxedBuffer);
+        const letterboxedImg = await loadCanvasImage(letterboxedBuffer);
 
         // Calculate compressed dimensions (8x smaller)
         const compressedMaskWidth = Math.round(targetDims.width / 8);
@@ -8191,7 +8213,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         finalMaskImageData.data.set(expandedMaskData);
         maskCtx.putImageData(finalMaskImageData, 0, 0);
 
-        const compressedMaskBase64 = maskCanvas.toDataURL('image/png').split(',')[1];
+        const compressedMaskBase64 = (await canvasToWebp(maskCanvas)).toString('base64');
         console.log(`🎭 Mask created and compressed: ${compressedMaskWidth}x${compressedMaskHeight}`);
 
         // 4. Merge stored params with overrides (source PNG model if none was saved)
@@ -8283,7 +8305,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         const expandedPath = path.join(__runtimeGr.getPath('images'), expandedFilename);
 
         console.log(`💾 Saving: ${expandedFilename}`);
-        // stored as JPEG XL (#1134); the PNG bytes stay as its decoded copy for the preview below
+        // stored as JPEG XL (#1134); previews read the stored file's pixels (#1156)
         const storedReroll = await imageStore.writePicture(expandedFilename, expandedBuffer, { dir: __runtimeGr.getPath('images') });
         console.log(`✅ File saved successfully: ${expandedFilename} (${fs.statSync(storedReroll.path).size} bytes, ${storedReroll.kind})`);
 
@@ -8297,7 +8319,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
 
         // Generate preview
         const rerollExpandedBase = __runtimeGr.getPngMetadata().getBaseName(expandedFilename);
-        const rerollPreviewResult = await generateMobilePreviews(storedReroll.pngPath, rerollExpandedBase);
+        const rerollPreviewResult = await generateMobilePreviews(storedReroll.pixelPath || await imageStore.pixelPath(expandedFilename, __runtimeGr.getPath('images')), rerollExpandedBase);
         await storePreviewBlurhash(__runtimeGr, expandedFilename, rerollPreviewResult);
 
         // no_save skips handleGeneration's phase:complete — notify client so streaming finalize can finish.
@@ -8617,10 +8639,13 @@ async function enhanceImage(globalResources, filename, scale, sessionId, workspa
         throw new Error('Enhance scale must be 1, 1.5, 2, or max');
     }
 
-    const filePath = filename ? await imageStore.pngPath(filename, __runtimeGr.getPath('images')) : null;
-    if (!filePath) {
+    // the stored file as it is (JXL or legacy PNG): metadata reads take either and buildOptions turns the data:
+    // source into WebP for NovelAI (#1156)
+    const sourceLoc = filename ? await imageStore.locate(filename, __runtimeGr.getPath('images')) : null;
+    if (!sourceLoc) {
         throw new Error('Image not found');
     }
+    const filePath = sourceLoc.path;
 
     const sourceBuffer = await fs.promises.readFile(filePath);
     const sourceMetadata = __runtimeGr.getPngMetadata().readMetadata(sourceBuffer);
@@ -8635,7 +8660,7 @@ async function enhanceImage(globalResources, filename, scale, sessionId, workspa
     const sourceDimensions = await getImageDimensions(sourceBuffer);
     // An expanded PNG stores only the fill prompt for the new edges; enhance the whole canvas with the original's prompt, as the gallery shows it.
     const promptMetadata = parsedMetadata.forge_data?.expansion_source
-        ? (await __runtimeGr.getPngMetadata().extractNovelAIMetadata(filePath)) || parsedMetadata
+        ? (await __runtimeGr.getPngMetadata().extractNovelAIMetadata(filePath, sourceBuffer)) || parsedMetadata
         : parsedMetadata;
     const requestBody = await convertMetadataToRequestFormat(globalResources, {
         filename,

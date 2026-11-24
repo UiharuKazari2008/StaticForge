@@ -771,7 +771,7 @@ Generates from preset UUID (resolved via text replacement / preset registry).
 | `upscale` | bool or float | Upscale setting |
 | `num` | int | For staged/pipeline results — index into `filenames[]` |
 
-**Success:** Image bytes (PNG/JPEG) with headers:
+**Success:** Image bytes with headers (a lossless WebP with NovelAI's metadata since #1156, `Content-Type: image/webp`; JPEG with `optimize=true`):
 
 - `X-Generated-Filename`
 - `X-Seed`
@@ -837,7 +837,7 @@ Polls a queued preset request. Response shape depends on `request.status`.
 | Query | Description |
 |-------|-------------|
 | `num` | For staged generations with multiple saved images: numeric index `0…n-1` or 2-char hex `stageId` |
-| `optimize=true` | Return JPEG q=75 instead of PNG when completed |
+| `optimize=true` | Return JPEG q=75 instead of the WebP when completed |
 | `download=true` | `Content-Disposition: attachment` when completed |
 
 **Waiting / pending:** `200` JSON
@@ -854,7 +854,7 @@ Polls a queued preset request. Response shape depends on `request.status`.
 
 **Error state:** `200` JSON `{ "status": "error", "error": "<message>" }`
 
-**Completed:** `200` **binary image** (PNG or JPEG if `optimize=true`)
+**Completed:** `200` **binary image** (lossless WebP with its metadata, `image/webp`, since #1156; JPEG if `optimize=true`)
 
 Headers: `Content-Type`, `X-Generated-Filename`, `X-Request-ID`, optional `X-Total-Saved` (staged multi-save count), `Access-Control-Expose-Headers`
 
@@ -871,7 +871,7 @@ Regenerates from existing image metadata.
 | Query | Description |
 |-------|-------------|
 | `workspace` | Workspace id (default `default`) |
-| `optimize=true` | Return JPEG q=75 instead of PNG |
+| `optimize=true` | Return JPEG q=75 instead of the WebP (#1156) |
 | `download=true` | Attachment disposition |
 
 **Response headers:** `X-Generated-Filename`, `X-Seed`, `X-Original-Filename`, `Access-Control-Expose-Headers`
@@ -890,7 +890,7 @@ Regenerates from existing image metadata.
 | `bias` | Yes | Bias object for dynamic image processing |
 | `target_width` / `target_height` | Yes | Output dimensions |
 
-**Success:** `200` `image/png` processed buffer  
+**Success:** `200` `image/webp` processed buffer (lossless, #1156)  
 **Errors:** 400 missing/invalid source, 404 file not found, 500 processing error (`{ success: false, error }`)
 
 ---
