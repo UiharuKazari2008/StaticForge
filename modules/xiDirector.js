@@ -1268,6 +1268,53 @@ function reattachAll() {
     return attached;
 }
 
+// Start-up sweep (#1150). reattachAll() has finished every record whose process died; what is left
+// to clean is a record it cannot read, and a chat whose turn is marked in flight with no live run
+// (the server died between marking it and writing the record, or the record is gone). Without this
+// the chat shows "running" for ever and the idle check stays BUSY.
+function sweepAbortedRuns() {
+    let removed = 0;
+    let cleared = 0;
+    const dir = layout().runs;
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch (_) { names = []; }
+    names.forEach((name) => {
+        if (!name.endsWith('.json')) return;
+        const metaPath = path.join(dir, name);
+        let meta = null;
+        try { meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')); } catch (_) { /* unreadable */ }
+        const id = meta && meta.sessionId;
+        if (id && meta.log && (runs.has(id) || pidAlive(meta.pid))) return;
+        try { fs.unlinkSync(metaPath); removed += 1; } catch (_) { /* already gone */ }
+    });
+    const done = enqueue(async () => {
+        const index = readIndex();
+        let changed = false;
+        index.chats.forEach((chat) => {
+            if (!chat.inflight || runs.has(chat.id)) return;
+            const draftId = chat.inflight.draftId;
+            chat.messages = chat.messages || [];
+            let draft = chat.messages.find((item) => item.id === draftId);
+            if (draft) draft = chat.messages[chat.messages.indexOf(draft)] = { ...draft };
+            else if (draftId) {
+                draft = { id: draftId, role: 'assistant', content: '', timestamp: new Date().toISOString(), data: { Description: '' } };
+                chat.messages.push(draft);
+            }
+            if (draft) {
+                draft.aborted = true;
+                draft.error = 'Stopped: the server restarted during this turn';
+            }
+            delete chat.inflight;
+            chat.updated_at = new Date().toISOString();
+            cleared += 1;
+            changed = true;
+        });
+        if (changed) writeIndex(index);
+        return { removed, cleared };
+    });
+    return done;
+}
+
 function prepareXi(gr) {
     boundGr = gr;
     if (!isEnabled(gr)) return { enabled: false };
@@ -1293,6 +1340,7 @@ function prepareXi(gr) {
             console.error(`Xi bridge after restart: ${error.message}`);
         }
     }
+    sweepAbortedRuns().catch((error) => console.error(`Xi start-up sweep: ${error.message}`));
     return { enabled: true, attached, cursorLogin };
 }
 
@@ -2021,6 +2069,6 @@ module.exports = {
         layout, readIndex, writeIndex, peekIndex, readProjectCursorRules,
         sanitizeRuntime, assertRuntimeUnchanged, publicXiSession, consumeClaudeStreamLine,
         claudeProjectPrompt, writeProjectPromptFile, claudeMcpConfigArg, sanitizeClaudeEffort,
-        usesClaudeCli, xiIdentityLine, XI_TOKENROUTER_DEFAULT_MODEL
+        usesClaudeCli, xiIdentityLine, sweepAbortedRuns, reattachAll, XI_TOKENROUTER_DEFAULT_MODEL
     }
 };
