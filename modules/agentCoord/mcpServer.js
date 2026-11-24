@@ -202,6 +202,8 @@ const TOOLS = [
     { name: 'coord_build_end', description: 'End your build (or cancel a gate you opened); everyone is told the result.', inputSchema: S({ build: { type: 'number' }, result: str('One line: ok / failed and why') }, ['build']) },
     { name: 'coord_supervisor_check', description: 'Ask the Supervisor (a separate model) to check your current turn: does what you did cover everything in the request and every steering message? Answers verdict ok / gaps / unclear and the missed items. Call it before you say you are done with a multi-part request.', inputSchema: S({}) },
     { name: 'coord_request_work', description: 'Hand a piece of work to the Supervisor: it becomes a work item that starts as its own supervised Fleet session (startNow: as soon as there is a slot and an account with room; else it waits in the queue for Yukimi or the Supervisor). Give a complete brief: goal, files, acceptance check. Use it for work outside your task, or work that should run beside yours.', inputSchema: S({ title: str('Short title'), prompt: str('The whole brief'), start_now: { type: 'boolean', description: 'Start it now when there is room (default false: queued)' }, cwd: str('Absolute folder (default the Dreamscape repo)'), model: str('Model (default sonnet)'), effort: str('low | medium | high | xhigh | max') }, ['title', 'prompt']) },
+    { name: 'coord_pause_agent', description: 'Ask the Supervisor to PAUSE another agent (hold: its turn is stopped and it waits for RESUME) while you need momentary control: a collision on the same files, a merge, a migration it would damage. Say why. coord_resume_agent when you are done. (Freezing a process is Fleet-only.)', inputSchema: S({ agent: str('Agent id / name / session id (coord_agents)'), reason: str('Why, one line') }, ['agent', 'reason']) },
+    { name: 'coord_resume_agent', description: 'Let an agent you paused continue.', inputSchema: S({ agent: str('Agent id / name / session id') }, ['agent']) },
     { name: 'coord_builds', description: 'Open and running build gates (recent: also the ones that ended in the last day).', inputSchema: S({ repo: str('Repo name'), recent: { type: 'boolean' } }) }
 ];
 
@@ -281,6 +283,13 @@ function run(name, args) {
         return store.buildEnd(ego.id, a.build, a.result);
     case 'coord_supervisor_check':
         return supervisorCheck();
+    case 'coord_pause_agent':
+    case 'coord_resume_agent': {
+        const target = store.resolveAgent(a.agent);
+        if (!target || !target.sessionId) throw new Error(`No Claude session for ${a.agent} (coord_agents lists them)`);
+        const by = (store.getAgent(ego.id) || {}).name || ego.id;
+        return supervisorAsk({ op: name === 'coord_pause_agent' ? 'pause' : 'resume', sessionId: target.sessionId, reason: a.reason, by }, 30000).then((out) => out.result);
+    }
     case 'coord_request_work':
         return supervisorAsk({ op: 'enqueue', title: a.title, prompt: a.prompt, startNow: a.start_now === true, cwd: a.cwd, model: a.model, effort: a.effort }, 20000).then((out) => ({ work: out.work }));
     case 'coord_builds':

@@ -262,9 +262,9 @@ sup._test.setFetch(async (url, opts) => {
         };
         try {
             sup.bind(gr);
-            const a = sup.enqueue({ title: 'A', prompt: 'do A' }, { gr });
+            const a = sup.enqueue({ title: 'A', prompt: 'do A', topology: 'direct' }, { gr });
             await sup.pumpWork(gr);
-            const b = sup.enqueue({ title: 'B', prompt: 'do B' }, { gr });
+            const b = sup.enqueue({ title: 'B', prompt: 'do B', topology: 'direct' }, { gr });
             await sup.pumpWork(gr);
             assert.strictEqual(sup.getWork(a.id).state, 'running');
             assert.strictEqual(sup.getWork(b.id).state, 'queued');
@@ -340,6 +340,70 @@ sup._test.setFetch(async (url, opts) => {
             await sup.pullIssues(gr, { force: true });
             assert.strictEqual(sup.getWork(q.id).state, 'cancelled', 'closed ' + JSON.stringify(sup.getWork(q.id)));
         } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; settingsCfg.agentSupervisor.autoStart = true; }
+    });
+
+    await test('pause: hold types PAUSE and records it; freeze stops the process tree (SIGSTOP) and resume continues it', async () => {
+        const realSteer = launcher.steer;
+        const realInt = launcher.interrupt;
+        const typed = [];
+        launcher.steer = async (id, t) => { typed.push(t); return { sent: true }; };
+        launcher.interrupt = async () => ({ interrupted: true });
+        const child = require('child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+        const SIDP = 'ffffffff-1111-2222-3333-444444444444';
+        const rec = path.join(tmp, '.claude', 'sessions', `${child.pid}.json`);
+        fs.writeFileSync(rec, JSON.stringify({ pid: child.pid, sessionId: SIDP, status: 'busy', cwd: tmp }));
+        const stateOf = () => fs.readFileSync(`/proc/${child.pid}/stat`, 'utf8').split(') ')[1][0];
+        try {
+            await sup.pauseSession(SIDP, { mode: 'hold', reason: 'merging' });
+            assert.match(typed[0], /PAUSE \(Fleet\): merging/);
+            assert.strictEqual(sup.listHolds()[0].mode, 'hold');
+            await assert.rejects(sup.pauseSession(SIDP, {}), /paused already/);
+            await sup.resumeSession(SIDP);
+            assert.match(typed[1], /RESUME/);
+            await sup.pauseSession(SIDP, { mode: 'freeze', reason: 'collision' });
+            await new Promise((r) => setTimeout(r, 100));
+            assert.strictEqual(stateOf(), 'T', 'stopped');
+            await sup.resumeSession(SIDP);
+            await new Promise((r) => setTimeout(r, 100));
+            assert.notStrictEqual(stateOf(), 'T', 'running again');
+        } finally { child.kill('SIGKILL'); fs.rmSync(rec, { force: true }); launcher.steer = realSteer; launcher.interrupt = realInt; }
+    });
+
+    await test('fan-out: auto asks the Supervisor model; surfaces splits into child items and the parent settles; planner gets the stage models', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart;
+        const realStart = launcher.start;
+        const starts = [];
+        let n = 0;
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        launcher.start = async (g, o) => { n += 1; starts.push(o); return { id: `aaaaaaaa-0000-0000-0000-0000000001${String(n).padStart(2, '0')}`, state: 'connected', link: '' }; };
+        const replies = [];
+        sup._test.setFetch(async (url, opts) => ({ ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: JSON.stringify(replies.shift() || { verdict: 'ok', missed: [] }) } }] }) }));
+        settingsCfg.agentSupervisor = Object.assign(settingsCfg.agentSupervisor, { maxConcurrent: 10, autoStart: true });
+        try {
+            const p = sup.enqueue({ title: 'Plan it', prompt: 'big feature', topology: 'planner', stages: { planner: { model: 'fable', effort: 'xhigh' }, workers: { model: 'haiku', effort: 'low' } }, startNow: true }, { gr });
+            await sup.pumpWork(gr);
+            const ps = starts.find((o) => o.title === 'Plan it');
+            assert.deepStrictEqual([ps.model, ps.effort], ['fable', 'xhigh']);
+            assert.match(ps.prompt, /You are the PLANNER/);
+            assert.match(ps.prompt, /model "haiku" and effort "low"/);
+            replies.push({ topology: 'direct', reason: 'small' });
+            const a = sup.enqueue({ title: 'Auto', prompt: 'tiny fix', topology: 'auto', startNow: true }, { gr });
+            await sup.pumpWork(gr);
+            assert.strictEqual(sup.getWork(a.id).topology, 'direct');
+            assert.doesNotMatch(starts.find((o) => o.title === 'Auto').prompt, /PLANNER/);
+            replies.push({ parts: [{ title: 'Server', surface: 'server', paths: ['modules/x.js'], brief: 'do server' }, { title: 'Desktop', surface: 'desktop', paths: ['apps/y'], brief: 'do desktop' }] });
+            const sp = sup.enqueue({ title: 'Split', prompt: 'server and desktop', topology: 'surfaces', startNow: true }, { gr });
+            await sup.pumpWork(gr);
+            await sup.pumpWork(gr);
+            const kids = sup.listWork().filter((x) => x.parentId === sp.id);
+            assert.strictEqual(kids.length, 2);
+            assert.ok(kids.every((k) => k.topology === 'direct'));
+            assert.match(starts.find((o) => /Split: Server/.test(o.title)).prompt, /You own modules\/x\.js/);
+            kids.forEach((k) => { const w = sup.getWork(k.id); if (w.sessionId) sup.workAfterReview({ sessionId: w.sessionId, verdict: 'ok', missed: [], summary: 'ok' }); });
+            assert.strictEqual(sup.getWork(sp.id).state, 'done', JSON.stringify(sup.getWork(sp.id)));
+            assert.ok(p);
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; }
     });
 
     require('../modules/agentCoord/store').close();

@@ -164,6 +164,52 @@ function checkAgents(store, dirty) {
     dirty.filter((f) => !owned.has(f.path)).slice(0, 8).forEach((f) => add('note', `uncommitted ${f.path} (no live session holds it: it loads as it is)`));
 }
 
+// ---------------------------------------------------------------- ask: how long, and is it still a real wait
+
+/**
+ * Yukimi, Nov 24 2026: "the 'ask x' should have some max time before the supervisor is notified to verify
+ * that it's actually a valid wait". An ask that has stood longer than agentSupervisor.maxAskMinutes
+ * (default 15) is checked: its session idle and nothing new from it for 30 min -> a stale hold (a note,
+ * no longer blocking); else a valid wait, said with how long it has been asked and when it was last active.
+ * The first and last time each agent was asked live in the agent-coord DB (gate_asks).
+ */
+function maxAskMinutes() {
+    try { const v = require('../config.json').agentSupervisor; return v && Number.isFinite(v.maxAskMinutes) ? v.maxAskMinutes : 15; } catch (_) { return 15; }
+}
+function verifyAsks(store) {
+    if (!store) return;
+    const d = store.open();
+    d.exec('CREATE TABLE IF NOT EXISTS gate_asks (agent_id TEXT PRIMARY KEY, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, text TEXT NOT NULL DEFAULT \'\', stale INTEGER NOT NULL DEFAULT 0)');
+    const now = Date.now();
+    const asked = findings.filter((f) => f.level === 'ask' && f.agent);
+    const keep = new Set(asked.map((f) => f.agent));
+    d.prepare('SELECT agent_id FROM gate_asks').all().forEach((r) => { if (!keep.has(r.agent_id)) d.prepare('DELETE FROM gate_asks WHERE agent_id = ?').run(r.agent_id); });
+    let live = [];
+    try { live = require('../modules/claudeSessions').liveSessions(); } catch (_) { live = []; }
+    const limit = maxAskMinutes() * 60000;
+    for (const f of asked) {
+        d.prepare('INSERT INTO gate_asks (agent_id, first_at, last_at, text) VALUES (?, ?, ?, ?) ON CONFLICT(agent_id) DO UPDATE SET last_at = excluded.last_at, text = excluded.text').run(f.agent, now, now, f.text);
+        const row = d.prepare('SELECT * FROM gate_asks WHERE agent_id = ?').get(f.agent);
+        const askedMin = Math.round((now - row.first_at) / 60000);
+        if (now - row.first_at < limit) continue;
+        const a = store.getAgent(f.agent);
+        const s = a && a.sessionId ? live.find((x) => x.id === a.sessionId) : null;
+        let lastActive = s ? Number(s.updatedAt) || 0 : 0;
+        try {
+            const file = a && a.sessionId ? require('child_process').execFileSync('find', [path.join(require('os').homedir(), '.claude', 'projects'), '-maxdepth', '2', '-name', `${a.sessionId}.jsonl`], { encoding: 'utf8', timeout: 5000 }).trim().split('\n')[0] : '';
+            if (file) lastActive = Math.max(lastActive, fs.statSync(file).mtimeMs);
+        } catch (_) { /* unknown */ }
+        const idleMin = lastActive ? Math.round((now - lastActive) / 60000) : null;
+        if ((!s || s.status !== 'busy') && (idleMin === null || idleMin >= 30)) {
+            f.level = 'note';
+            f.text = `stale hold: ${f.text.replace(/^ask /, '')} - asked for ${askedMin} min, idle ${idleMin === null ? 'and gone' : `${idleMin} min`}: verified by the Supervisor, no longer blocking`;
+            d.prepare('UPDATE gate_asks SET stale = 1 WHERE agent_id = ?').run(f.agent);
+        } else {
+            f.text = `${f.text} - asked for ${askedMin} min; active ${idleMin === null ? 'now' : `${idleMin} min ago`}: a valid wait`;
+        }
+    }
+}
+
 // ---------------------------------------------------------------- verdict
 
 function verdict() {
@@ -198,6 +244,7 @@ function main() {
     const store = coordStore();
     checkGates(store);
     checkAgents(store, dirty);
+    try { verifyAsks(store); } catch (e) { add('note', `ask times not checked: ${e.message}`); }
     const v = verdict();
     const notified = notifyAsk(store);
     if (has('--json')) {

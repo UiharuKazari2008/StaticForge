@@ -100,6 +100,8 @@ function settings(gr) {
         trackArtifacts: cfg.trackArtifacts !== false,
         maxConcurrent: Number.isInteger(cfg.maxConcurrent) && cfg.maxConcurrent >= 1 && cfg.maxConcurrent <= 12 ? cfg.maxConcurrent : 3,
         autoStart: cfg.autoStart !== false,
+        autoPauseOnCollision: cfg.autoPauseOnCollision !== false,
+        maxAskMinutes: Number.isFinite(cfg.maxAskMinutes) && cfg.maxAskMinutes >= 1 ? Math.min(240, cfg.maxAskMinutes) : 15,
         yozoraRepos: Array.isArray(cfg.yozoraRepos) ? cfg.yozoraRepos.filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)) : ['DreamScape/StaticForge']
     };
 }
@@ -115,6 +117,8 @@ async function saveSettings(gr, next) {
         trackArtifacts: next.trackArtifacts === undefined ? cur.trackArtifacts : next.trackArtifacts === true,
         maxConcurrent: next.maxConcurrent === undefined ? cur.maxConcurrent : Math.max(1, Math.min(12, Math.round(Number(next.maxConcurrent)) || cur.maxConcurrent)),
         autoStart: next.autoStart === undefined ? cur.autoStart : next.autoStart === true,
+        autoPauseOnCollision: next.autoPauseOnCollision === undefined ? cur.autoPauseOnCollision : next.autoPauseOnCollision === true,
+        maxAskMinutes: next.maxAskMinutes === undefined ? cur.maxAskMinutes : Math.max(1, Math.min(240, Math.round(Number(next.maxAskMinutes)) || cur.maxAskMinutes)),
         yozoraRepos: Array.isArray(next.yozoraRepos) ? next.yozoraRepos.map(String).filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)).slice(0, 20) : cur.yozoraRepos
     };
     if (!engines(gr).some((e) => e.id === s.engine)) throw new Error(`Unknown engine ${s.engine}`);
@@ -197,6 +201,7 @@ const SYSTEM = [
     'You are the Supervisor for coding agents (Claude Code sessions) working for Yukimi. After a turn you check, from the transcript summary given, whether the agent did EVERYTHING the user asked in the request and in every steering message sent while it worked.',
     'List each concrete thing asked (including small asides, questions to answer, files or checks named, "also ..." items, and changes of direction from steering). For each, decide from the actions and the final answer whether it was done, answered, or explicitly deferred with a reason. A later steering message that cancels or replaces an earlier ask overrides it.',
     'Only report real gaps: an ask that was not done, not answered, or done differently than asked without saying so. Do not report style, quality opinions, or things nobody asked for. Work the agent said it filed as a follow-up issue counts as addressed. If the turn ended with the agent waiting on the user (a question, an approval) that is not a gap.',
+    'When the request is to build, change or fix something, it is only done with evidence it works: the agent ran tests, a build, the program, or looked at the result, and says what it saw. A build / fix turn that ends without any such evidence is a gap ("not shown to be tested").',
     'Answer ONLY a JSON object: {"verdict":"ok"|"gaps"|"unclear","summary":"one sentence","missed":[{"item":"what was asked and not addressed","evidence":"why you think so, quoting the request"}]}. verdict ok means nothing missed; unclear means the summary is not enough to tell.'
 ].join('\n');
 
@@ -285,10 +290,14 @@ function db() {
                 created_at INTEGER NOT NULL, started_at INTEGER, ended_at INTEGER
             );
             CREATE INDEX IF NOT EXISTS supervisor_work_state ON supervisor_work (state);
+            CREATE TABLE IF NOT EXISTS supervisor_holds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, mode TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
+                by_who TEXT NOT NULL DEFAULT '', pids TEXT NOT NULL DEFAULT '[]', at INTEGER NOT NULL, ended_at INTEGER, kind TEXT NOT NULL DEFAULT 'manual', paths TEXT NOT NULL DEFAULT '[]'
+            );
         `);
         const wcols = new Set(d.prepare('PRAGMA table_info(supervisor_work)').all().map((c) => c.name));
         if (!wcols.has('engine')) d.exec("ALTER TABLE supervisor_work ADD COLUMN engine TEXT NOT NULL DEFAULT 'claude'");
-        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
+        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
         const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
         if (!cols.has('supervised')) d.exec('ALTER TABLE supervisor_state ADD COLUMN supervised INTEGER NOT NULL DEFAULT 0');
         db.ready = d;
@@ -489,6 +498,7 @@ function rowWork(r) {
         id: r.id, title: r.title, engine: r.engine || 'claude', source: r.source, sourceRef: r.source_ref || '', state: r.state, account: r.account || '', model: r.model || '', effort: r.effort || '',
         cwd: r.cwd || '', sessionId: r.session_id || '', link: r.link || '', message: r.message || '', startNow: !!r.start_now,
         createdAt: r.created_at, startedAt: r.started_at, endedAt: r.ended_at, prompt: String(r.prompt || '').slice(0, 2000),
+        topology: r.topology || 'planner', stages: (() => { try { return JSON.parse(r.stages || '{}'); } catch (_) { return {}; } })(), parentId: r.parent_id || null,
         issue: r.issue_repo && r.issue_number ? { repo: r.issue_repo, number: r.issue_number, url: yz().issueUrl(r.issue_repo, r.issue_number) } : null,
         issueNote: r.issue_note || ''
     };
@@ -544,6 +554,12 @@ async function syncIssue(id, prevState) {
     else if (r.state === 'done') text = `**Fleet / Supervisor:** the last turn's check found nothing missed. ${r.message || ''}\n\nRan ${mins(ran)} (added as tracked time).${session} Status: review.`;
     else if (r.state === 'failed') text = `**Fleet:** did not finish: ${r.message || 'unknown'}${ran ? `\n\nRan ${mins(ran)} (added as tracked time).` : ''}`;
     else if (r.state === 'cancelled') text = '**Fleet:** cancelled in Fleet.';
+    if (r.parent_id) {
+        // a part of a split item: its own line on the parent's issue, no labels / closing (the parent has those)
+        if (text) await Y.comment(r.issue_repo, r.issue_number, text.replace('**Fleet', `**Fleet (part: ${r.title})`));
+        if (['done', 'failed'].includes(r.state) && ran) await Y.addTime(r.issue_repo, r.issue_number, ran / 1000).catch(() => {});
+        return;
+    }
     if (text) await Y.comment(r.issue_repo, r.issue_number, text);
     if (['running', 'waiting', 'done', 'failed'].includes(r.state)) await Y.setStatus(r.issue_repo, r.issue_number, r.issue_id, r.state).catch(() => {});
     if (['done', 'failed'].includes(r.state) && ran) await Y.addTime(r.issue_repo, r.issue_number, ran / 1000).catch(() => {});
@@ -602,8 +618,11 @@ function enqueue(item, opts = {}) {
     }
     const title = String(item.title || prompt.split('\n')[0]).replace(/\s+/g, ' ').trim().slice(0, 120) || 'Work';
     const engine = item.engine && item.engine !== 'claude' ? String(item.engine).slice(0, 60) : 'claude';
+    const topology = TOPOLOGIES.includes(item.topology) ? item.topology : 'planner';
+    const stages = JSON.stringify(cleanStages(item.stages));
     const r = db().prepare(`INSERT INTO supervisor_work (title, prompt, cwd, account, model, effort, source, source_ref, state, start_now, created_at, message, engine)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, 'Waiting for a slot', ?)`).run(title, prompt, item.cwd || null, item.account !== undefined && item.account !== null ? String(item.account) : null, item.model || null, item.effort || null, src, item.sourceRef || null, item.startNow ? 1 : 0, Date.now(), engine);
+    db().prepare('UPDATE supervisor_work SET topology = ?, stages = ?, parent_id = ? WHERE id = ?').run(topology, stages, item.parentId || null, r.lastInsertRowid);
     if (item.issueFields && item.issueFields.repo && item.issueFields.number) {
         db().prepare('UPDATE supervisor_work SET issue_repo = ?, issue_number = ?, issue_id = ? WHERE id = ?').run(item.issueFields.repo, item.issueFields.number, item.issueFields.id || null, r.lastInsertRowid);
     }
@@ -632,6 +651,65 @@ function activeCount() {
     return n;
 }
 
+// ---------------------------------------------------------------- fan-out shapes (#1154)
+//
+// Yukimi, Nov 24 2026: "when you start a new supervisor session you can select the fan-out topology:
+// Supervisor -> Claude Agent; Supervisor -> Claude Agent(s) (subdivide by surfaces); (default) Supervisor ->
+// Claude Planner -> Background Agent(s); Let supervisor decide ... You can then select each stage's preferred
+// model and effort ... the supervisor is there to help ensure what was asked for was completed and has been
+// tested with evidence, and give me updates on the progress or holdups."
+//   direct    one supervised session (the workers stage's engine / model / effort)
+//   surfaces  the Supervisor's model splits the request by surface into parts (max 6), each its own direct
+//             work item (child of this one, commenting on the same issue); the parent ends when they all do
+//   planner   one planner session (planner stage) that researches and plans, then runs the work through
+//             background agents on the workers stage, verifies their results with evidence and reports
+//   auto      the Supervisor's model picks one of the three for the request
+
+const TOPOLOGIES = ['direct', 'surfaces', 'planner', 'auto'];
+function cleanStages(st) {
+    const one = (x) => {
+        const o = x && typeof x === 'object' ? x : {};
+        return {
+            engine: o.engine && o.engine !== 'claude' ? String(o.engine).slice(0, 60) : 'claude',
+            model: o.model ? String(o.model).slice(0, 80) : '',
+            effort: ['', 'low', 'medium', 'high', 'xhigh', 'max'].includes(o.effort || '') ? (o.effort || '') : ''
+        };
+    };
+    const v = st && typeof st === 'object' ? st : {};
+    return { planner: Object.assign({ model: 'opus', effort: 'high' }, Object.fromEntries(Object.entries(one(v.planner)).filter(([, x]) => x))), workers: Object.assign({ model: 'sonnet', effort: 'medium' }, Object.fromEntries(Object.entries(one(v.workers)).filter(([, x]) => x))) };
+}
+
+/** One JSON answer from the Supervisor's engine (the same engine / model as its reviews). */
+async function askJson(gr, system, user) {
+    const ep = endpoint(gr, settings(gr));
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), CALL_TIMEOUT_MS);
+    try {
+        const res = await fetchFn(ep.url, { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.key}` }, body: JSON.stringify({ model: ep.model, temperature: 0, max_tokens: 6000, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }) });
+        const body = await res.text();
+        if (!res.ok) throw new Error(`${ep.name} ${res.status}`);
+        const raw = String((((JSON.parse(body).choices || [])[0] || {}).message || {}).content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+        try { return JSON.parse(raw); } catch (_) { const m = /\{[\s\S]*\}/.exec(raw); return m ? JSON.parse(m[0]) : null; }
+    } finally { clearTimeout(timer); }
+}
+
+async function decideTopology(gr, w) {
+    try {
+        const o = await askJson(gr, 'You route coding requests for a team of Claude Code agents. Pick the shape: "direct" (one agent: a small or single-area change, a question, a quick fix), "surfaces" (several agents in parallel, one per independent surface such as server / desktop UI / phone UI / docs, when the parts barely depend on each other), or "planner" (one planner that researches and plans, then runs background agents: anything with open design questions, research, or ordered steps). Answer ONLY {"topology":"direct"|"surfaces"|"planner","reason":"one sentence"}.', String(w.prompt).slice(0, 12000));
+        if (o && ['direct', 'surfaces', 'planner'].includes(o.topology)) return { topology: o.topology, reason: String(o.reason || '').slice(0, 200) };
+    } catch (_) { /* default */ }
+    return { topology: 'planner', reason: 'the Supervisor could not decide: the default' };
+}
+
+async function splitSurfaces(gr, w) {
+    const o = await askJson(gr, 'Split this coding request into independent parts by surface (server / desktop UI / phone UI / docs / scripts / another project), each one a complete brief another agent can do alone: the goal for that surface, the files or folders it owns (no two parts own the same file), what it must not touch, and how to verify it with evidence. 2 to 6 parts; one part when it does not split. Answer ONLY {"parts":[{"title":"short","surface":"server","paths":["modules/..."],"brief":"the whole brief"}]}.', String(w.prompt).slice(0, 20000));
+    const parts = (o && Array.isArray(o.parts) ? o.parts : []).filter((p) => p && p.brief).slice(0, 6);
+    if (!parts.length) throw new Error('The Supervisor could not split it');
+    return parts.map((p) => ({ title: String(p.title || p.surface || 'Part').slice(0, 100), surface: String(p.surface || '').slice(0, 40), paths: (Array.isArray(p.paths) ? p.paths : []).map(String).slice(0, 20), brief: String(p.brief).slice(0, 20000) }));
+}
+
+const plannerNote = (st) => `You are the PLANNER for this request (Supervisor -> Planner -> background agents). First research and plan (read the code, decide the approach, split it into parts with clear file ownership). Then do the work through background agents (the Agent tool, run_in_background), each with a complete brief (goal, files it owns, what it must not touch, how to verify with evidence) and model "${st.workers.model || 'sonnet'}"${st.workers.effort ? ` and effort "${st.workers.effort}"` : ''}; do trivial edits yourself only. Verify every agent's result with evidence (tests you ran, command output, screenshots you read) before you call a part done, integrate, commit, and report progress and holdups on the tracked issue as you go.`;
+
 let pumping = null;
 /** Starts queued items while there are slots and accounts with room. One pump at a time. */
 function pumpWork(gr) {
@@ -656,10 +734,32 @@ function pumpWork(gr) {
                 : '';
             try {
                 const st = pick.settings || {};
+                const stages = cleanStages((() => { try { return JSON.parse(w.stages || '{}'); } catch (_) { return {}; } })());
+                let topology = TOPOLOGIES.includes(w.topology) ? w.topology : 'planner';
+                if (topology === 'auto') {
+                    const d = await decideTopology(g, w);
+                    topology = d.topology;
+                    setWork(w.id, { topology, message: `The Supervisor picked ${topology}: ${d.reason}` });
+                }
+                if (topology === 'surfaces' && !w.parent_id) {
+                    const parts = await splitSurfaces(g, w);
+                    parts.forEach((p) => enqueue({
+                        title: `${w.title}: ${p.title}`, prompt: `Part of "${w.title}" (Fleet item ${w.id}), surface ${p.surface || p.title}. You own ${p.paths.join(', ') || 'only what this brief names'}; other parts run in parallel on the other surfaces: do not edit their files.\n\n${p.brief}`,
+                        cwd: w.cwd, account: w.account, topology: 'direct', stages, startNow: !!w.start_now, source: w.source, parentId: w.id,
+                        issueFields: w.issue_repo ? { repo: w.issue_repo, number: w.issue_number, id: w.issue_id } : null
+                    }, { gr: g }));
+                    setWork(w.id, { state: 'running', started_at: Date.now(), message: `Split into ${parts.length} parts by surface` });
+                    if (w.issue_repo) yz().comment(w.issue_repo, w.issue_number, `**Fleet / Supervisor:** split into ${parts.length} parts by surface, each its own supervised session:\n${parts.map((p) => `- ${p.title} (${p.paths.slice(0, 4).join(', ') || p.surface})`).join('\n')}`).catch(() => {});
+                    started += 1;
+                    emit({ work: getWork(w.id) });
+                    continue;
+                }
+                const stage = topology === 'planner' ? stages.planner : stages.workers;
+                const engine = (w.engine && w.engine !== 'claude') ? w.engine : (stage.engine !== 'claude' ? stage.engine : undefined);
                 const r = await require('./claudeSessionLauncher').start(g, {
-                    cwd: w.cwd || path.join(__dirname, '..'), prompt: `${w.prompt}${track}\n\n${SUPERVISED_NOTE}`, title: w.title, account: pick.index,
-                    mode: st.defaultMode, engine: w.engine && w.engine !== 'claude' ? w.engine : undefined,
-                    model: w.model || (w.engine && w.engine !== 'claude' ? undefined : (st.defaultModel || 'sonnet')), effort: w.effort || st.defaultEffort || undefined, dispatchedBy: `Supervisor (${w.source})`
+                    cwd: w.cwd || path.join(__dirname, '..'), prompt: `${w.prompt}${track}${topology === 'planner' ? `\n\n${plannerNote(stages)}` : ''}\n\n${SUPERVISED_NOTE}`, title: w.title, account: pick.index,
+                    mode: st.defaultMode, engine,
+                    model: w.model || stage.model || (engine ? undefined : (st.defaultModel || 'sonnet')), effort: w.effort || stage.effort || st.defaultEffort || undefined, dispatchedBy: `Supervisor (${w.source}, ${topology})`
                 });
                 if (r.state === 'failed') { setWork(w.id, { state: 'failed', ended_at: Date.now(), message: r.message || 'It did not start', session_id: r.id || null }); }
                 else {
@@ -682,11 +782,20 @@ function workAfterReview(rv) {
     if (!rv || !rv.sessionId) return;
     const w = db().prepare(`SELECT * FROM supervisor_work WHERE session_id = ? AND state IN (${ACTIVE.map(() => '?').join(',')})`).get(rv.sessionId, ...ACTIVE);
     if (!w) { pumpWork().catch(() => {}); return; }
-    if (rv.verdict === 'ok') setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done' });
+    if (rv.verdict === 'ok') { setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done' }); settleParent(w.parent_id); }
     else if (rv.verdict === 'gaps') setWork(w.id, { state: 'waiting', message: `Gaps sent back: ${rv.missed.map((m) => m.item).join('; ').slice(0, 240)}` });
     else setWork(w.id, { state: 'running', message: rv.summary || 'Turn ended' });
     emit({ work: getWork(w.id) });
     pumpWork().catch(() => {});
+}
+
+/** A surfaces parent ends when all its parts have: done when they all are, else failed. */
+function settleParent(parentId) {
+    if (!parentId) return;
+    const kids = db().prepare('SELECT state FROM supervisor_work WHERE parent_id = ?').all(parentId);
+    if (!kids.length || kids.some((k) => !['done', 'failed', 'cancelled'].includes(k.state))) return;
+    const ok = kids.every((k) => k.state === 'done');
+    setWork(parentId, { state: ok ? 'done' : 'failed', ended_at: Date.now(), message: ok ? `All ${kids.length} parts done` : `${kids.filter((k) => k.state !== 'done').length} of ${kids.length} parts did not finish` });
 }
 
 function startWork(id) {
@@ -749,6 +858,121 @@ async function intakePlaud(gr, recordingIds) {
         out.push(Object.assign(w, { recordingId: recId }));
     }
     return out;
+}
+
+// ---------------------------------------------------------------- pause / resume (holds)
+//
+// Yukimi, Nov 24 2026: "allow the supervisor to halt / pause an agent when it needs to interject or take
+// momentary control of the process (a collision has occurred, or it needs to merge things and does not want
+// an agent to damage the process)".
+//   hold    its current turn is stopped (Esc) and it is told to wait for RESUME (typed in when it runs in
+//           tmux, and in its agent-coord inbox); it can still answer, it must not edit
+//   freeze  the session's claude process and every process under it get SIGSTOP (its own tree only, never a
+//           process group a Remote Control server shares); resume sends SIGCONT. Fleet / the Supervisor
+//           only, never an agent's tool. An API stream cut while frozen is retried by the CLI.
+// Collisions (settings.autoPauseOnCollision, default on): after a turn, a file this session changed and has
+// not committed that another live session has also changed and not committed pauses that other session
+// (hold) and tells both; the hold ends by itself once the two no longer overlap.
+
+function descendants(pid) {
+    const kids = new Map();
+    try {
+        fs.readdirSync('/proc').filter((n) => /^\d+$/.test(n)).forEach((n) => {
+            try {
+                const st = fs.readFileSync(`/proc/${n}/stat`, 'utf8');
+                const pp = Number(st.slice(st.lastIndexOf(')') + 2).split(' ')[1]);
+                if (!kids.has(pp)) kids.set(pp, []);
+                kids.get(pp).push(Number(n));
+            } catch (_) { /* gone */ }
+        });
+    } catch (_) { return [pid]; }
+    const out = [pid];
+    for (let i = 0; i < out.length && out.length < 500; i += 1) (kids.get(out[i]) || []).forEach((c) => out.push(c));
+    return out;
+}
+
+function activeHold(sessionId) {
+    return db().prepare('SELECT * FROM supervisor_holds WHERE session_id = ? AND ended_at IS NULL ORDER BY id DESC').get(String(sessionId));
+}
+function listHolds() {
+    return db().prepare('SELECT * FROM supervisor_holds WHERE ended_at IS NULL ORDER BY id DESC').all().map((h) => ({ id: h.id, sessionId: h.session_id, mode: h.mode, reason: h.reason, by: h.by_who, at: h.at, kind: h.kind, paths: JSON.parse(h.paths || '[]') }));
+}
+
+async function pauseSession(sessionId, opts = {}) {
+    const mode = opts.mode === 'freeze' ? 'freeze' : 'hold';
+    const live = liveSessionsById().get(sessionId);
+    if (!live) throw new Error('It is not running');
+    if (activeHold(sessionId)) throw new Error('It is paused already');
+    const reason = String(opts.reason || 'The Supervisor needs a moment').slice(0, 300);
+    const by = String(opts.by || 'Fleet').slice(0, 80);
+    let pids = [];
+    const launcher = require('./claudeSessionLauncher');
+    if (mode === 'freeze') {
+        pids = descendants(live.pid);
+        pids.forEach((p) => { try { process.kill(p, 'SIGSTOP'); } catch (_) { /* gone */ } });
+    } else {
+        try { await launcher.interrupt(sessionId); } catch (_) { /* not in tmux: the inbox note stands */ }
+        const text = `${STEER_PREFIX} PAUSE (${by}): ${reason}. Stop where you are, do not edit files or run builds, and wait until you are told RESUME. You may answer questions.`;
+        try { await launcher.steer(sessionId, text); } catch (_) { /* not typeable */ }
+    }
+    try {
+        if (!coord().getAgent(lockAgentId(sessionId))) coord().upsertAgent({ id: lockAgentId(sessionId), kind: 'claude', name: live.givenName || live.name || sessionId.slice(0, 8), sessionId });
+        coord().post('supervisor', lockAgentId(sessionId), `PAUSE (${by}, ${mode}): ${reason}. Do not edit files or run builds until RESUME.`, { kind: 'steer' });
+    } catch (_) { /* inbox unavailable */ }
+    db().prepare('INSERT INTO supervisor_holds (session_id, mode, reason, by_who, pids, at, kind, paths) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(sessionId, mode, reason, by, JSON.stringify(pids), Date.now(), opts.kind || 'manual', JSON.stringify(opts.paths || []));
+    emit({ hold: sessionId });
+    return activeHold(sessionId);
+}
+
+async function resumeSession(sessionId, opts = {}) {
+    const h = activeHold(sessionId);
+    if (!h) throw new Error('It is not paused');
+    if (h.mode === 'freeze') {
+        JSON.parse(h.pids || '[]').forEach((p) => { try { process.kill(p, 'SIGCONT'); } catch (_) { /* gone */ } });
+    } else {
+        const text = `${STEER_PREFIX} RESUME${opts.note ? `: ${String(opts.note).slice(0, 300)}` : ''}. You may continue your work.`;
+        try { await require('./claudeSessionLauncher').steer(sessionId, text); } catch (_) { /* inbox */ }
+        try { coord().post('supervisor', lockAgentId(sessionId), `RESUME: you may continue.${opts.note ? ` ${opts.note}` : ''}`, { kind: 'steer' }); } catch (_) { /* none */ }
+    }
+    db().prepare('UPDATE supervisor_holds SET ended_at = ? WHERE id = ?').run(Date.now(), h.id);
+    emit({ hold: sessionId });
+    return { sessionId, resumed: true };
+}
+
+/** After a turn: files this session and another live one both changed and did not commit. */
+async function checkCollisions(sessionId, s) {
+    const live = liveSessionsById();
+    const me = live.get(sessionId);
+    if (!me || !me.cwd) return [];
+    const store = coord();
+    const mineRow = (() => { try { return store.inspect(lockAgentId(sessionId), { limit: 300 }); } catch (_) { return null; } })();
+    if (!mineRow) return [];
+    const { root } = store.repoOf(me.cwd);
+    const mine = new Set(mineRow.edited.files.filter((f) => f.uncommitted).map((f) => f.path));
+    const found = [];
+    for (const [id, other] of live) {
+        if (id === sessionId || !other.cwd || store.repoOf(other.cwd).root !== root) continue;
+        let r = null;
+        try { r = store.inspect(lockAgentId(id), { limit: 300, git: true }); } catch (_) { r = null; }
+        if (!r) continue;
+        const both = r.edited.files.filter((f) => f.uncommitted && mine.has(f.path)).map((f) => f.path);
+        if (both.length) found.push({ sessionId: id, name: r.agent.name || id.slice(0, 8), paths: both, busy: other.status === 'busy' });
+    }
+    for (const c of found) {
+        const text = `Collision: ${(mineRow.agent && mineRow.agent.name) || sessionId.slice(0, 8)} and ${c.name} both changed ${c.paths.slice(0, 5).join(', ')} without committing.`;
+        try { store.post('supervisor', null, `${text} The Supervisor ${s.autoPauseOnCollision ? `paused ${c.name} until they no longer overlap` : 'left both running'}: commit your own hunks, coordinate with coord_post.`, { kind: 'note' }); } catch (_) { /* none */ }
+        if (s.autoPauseOnCollision && !activeHold(c.sessionId)) {
+            await pauseSession(c.sessionId, { mode: 'hold', reason: `${text} Wait while the other session commits`, by: 'Supervisor', kind: 'collision', paths: c.paths }).catch(() => {});
+        }
+    }
+    // collision holds whose overlap is gone end by themselves
+    for (const h of listHolds().filter((x) => x.kind === 'collision')) {
+        let r = null;
+        try { r = store.inspect(lockAgentId(h.sessionId), { limit: 300, git: true }); } catch (_) { r = null; }
+        const still = r && r.edited.files.some((f) => f.uncommitted && h.paths.includes(f.path) && [...live.keys()].some((id) => id !== h.sessionId && (() => { try { return store.inspect(lockAgentId(id), { limit: 300, git: false }).edited.files.some((g) => g.path === f.path); } catch (_) { return false; } })()));
+        if (!still) await resumeSession(h.sessionId, { note: 'the overlap is gone' }).catch(() => {});
+    }
+    return found;
 }
 
 // ---------------------------------------------------------------- busy locks
@@ -942,6 +1166,7 @@ async function afterTurn(sessionId, s) {
     let changed = [];
     if (set.manageLocks) changed = await sweepLocks(sessionId);
     if (set.trackArtifacts) refreshArtifacts({ sessionId, budgetMs: 4000 });
+    await checkCollisions(sessionId, set).catch((e) => console.warn(`[supervisor] collisions: ${e.message}`));
     if (changed.length) emit({ locks: changed });
     return changed;
 }
@@ -1015,8 +1240,14 @@ function serveSocket() {
             buf = '';
             let out;
             try {
-                if (!req || (req.op !== 'check' && req.op !== 'enqueue')) throw new Error('op must be check or enqueue');
-                if (req.op === 'enqueue') {
+                if (!req || !['check', 'enqueue', 'pause', 'resume'].includes(req.op)) throw new Error('op must be check, enqueue, pause or resume');
+                if (req.op === 'pause' || req.op === 'resume') {
+                    // an agent asks: hold only (freeze is Fleet's)
+                    const r = req.op === 'pause'
+                        ? await pauseSession(String(req.sessionId || ''), { mode: 'hold', reason: String(req.reason || '').slice(0, 300), by: String(req.by || 'an agent').slice(0, 80), kind: 'agent' })
+                        : await resumeSession(String(req.sessionId || ''), { note: `by ${String(req.by || 'an agent').slice(0, 80)}` });
+                    out = { ok: true, result: r };
+                } else if (req.op === 'enqueue') {
                     const w = enqueue({ title: req.title, prompt: req.prompt, cwd: req.cwd, model: req.model, effort: req.effort, engine: req.engine, startNow: req.startNow === true, source: 'agent', sourceRef: req.sourceRef || null });
                     out = { ok: true, work: w };
                 } else {
@@ -1068,7 +1299,7 @@ function stop() {
 }
 
 module.exports = {
-    start, stop, bind, settings, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, startWork, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
+    start, stop, bind, settings, TOPOLOGIES, cleanStages, decideTopology, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, startWork, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, queueReview, queue }
 };
