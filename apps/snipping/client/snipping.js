@@ -129,6 +129,9 @@
         try {
             const img = new Image();
             img.decoding = 'async';
+            // (asked for with CORS: the app's address is another origin, and without it the picture taints the canvas -
+            // Save and Copy then fail with "Tainted canvases may not be exported", Yukimi Nov 24 2026)
+            img.crossOrigin = 'anonymous';
             img.src = `https://appassets.androidplatform.net/screen-shot/${encodeURIComponent(token)}`;
             await img.decode();
             const c = doc.createElement('canvas');
