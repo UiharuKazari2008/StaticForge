@@ -909,6 +909,21 @@
         };
         if (window.isDesktop) {
             window.applyDesktopStartupClasses();
+            // Black the moment the page starts to leave (a restart, an update, log off, the app reloading it): the screen
+            // keeps the last frame until the next page paints (Chrome's paint holding; the DeX window's page survives
+            // its window), and that frame was the old desktop, shown again before winlogon - Yukimi, Nov 23 2026: "it
+            // starts with showing the desktop then winlogon when it was supposed to always be covered by default with
+            // a black cover". The old page still draws until the new one commits, so the cover is that frame.
+            window.addEventListener('beforeunload', function () {
+                try {
+                    if (document.getElementById('leaveCover')) return;
+                    var c = document.createElement('div');
+                    c.id = 'leaveCover';
+                    c.setAttribute('aria-hidden', 'true');
+                    c.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#000;pointer-events:none';
+                    document.documentElement.appendChild(c);
+                } catch (e) { /* leaving anyway */ }
+            });
         }
     </script>
 

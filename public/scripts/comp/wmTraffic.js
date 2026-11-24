@@ -270,6 +270,25 @@
         return { home: pick(s.home, ends('work', false), ends('home', true)), work: pick(s.work, ends('work', true), ends('home', false)) };
     }
 
+    // ---------------------------------------------------------------- To Work once a day (Yukimi, Nov 23 2026)
+    //
+    // "we dont show 'to work' after we have been to work that day and it does not reappear until 5 hours before the start
+    // time set in the app": the day the phone was last found at Work is kept (this phone), and To Work is offered only on
+    // another day, from 5 hours before Home at (Leave Home)
+    const LS_WORKED = 'wmTrafficAtWorkDay';
+    const dayKey = (d = new Date()) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    function noteAtWork() {
+        try { if (localStorage.getItem(LS_WORKED) !== dayKey()) localStorage.setItem(LS_WORKED, dayKey()); } catch (_) { /* none */ }
+    }
+    function toWorkAllowed(now = new Date()) {
+        let been = null;
+        try { been = localStorage.getItem(LS_WORKED); } catch (_) { been = null; }
+        if (been === dayKey(now)) return false;
+        const lh = minutesOf(settings && settings.leaveHome);
+        if (lh == null) return true;
+        return now.getHours() * 60 + now.getMinutes() >= lh - 5 * 60;
+    }
+
     function storedPlace() {
         try {
             const v = JSON.parse(localStorage.getItem(LS_PLACE) || 'null');
@@ -303,6 +322,7 @@
             here = Object.assign({ at: Date.now() }, pos);
             const p = placeNow();
             if (p) { try { localStorage.setItem(LS_PLACE, JSON.stringify({ place: p, at: Date.now() })); } catch (_) { /* none */ } }
+            if (p === 'work') noteAtWork();
             const now = commuteNow();
             if (now && (now !== before || (now === 'home' && hereMoved()))) { const r = latest[now]; if (!r || Date.now() - Date.parse(r.at) > STALE_MS || hereMoved()) quietCheck(now); }
             changed();
@@ -728,7 +748,7 @@
         const workOn = workDay && (lw == null ? t < 12 * 60 : t < lw);
         // a known position decides; without one, the last place found (12 h) stands in
         const p = placeNow() || (here ? null : storedPlace());
-        if (p === 'home') return workOn ? 'work' : null;
+        if (p === 'home') return workOn && toWorkAllowed(now) ? 'work' : null;
         if (p === 'work') return 'home';
         if (here) return 'home';
         // no position at all yet: only during the work day (after Leave Work the phone is most likely home)
@@ -1773,7 +1793,16 @@
         // the destinations, each its own page: the commute ahead first, then the other place when there is a report for it
         // (Yukimi, Nov 23 2026: "traffic destinations were there and then the car status")
         const other = first === 'home' ? 'work' : 'home';
-        const dirs = configured() && latest[other] ? [first, other] : [first];
+        // (never the way to where the phone is now: "when you are at a location the 'to <that location>' is not in the
+        // carousel"; To Work only when it may show today - Yukimi, Nov 23 2026)
+        const at = placeNow();
+        const dirs = (configured() && latest[other] ? [first, other] : [first])
+            .filter((d) => d !== at && (d !== 'work' || toWorkAllowed() || !configured()));
+        if (!dirs.length) dirs.push(first);
+        // Start Car on the right key of both trips (Yukimi, Nov 23 2026), when the car can be started from here
+        const car = window.wmLapis;
+        const startKey = () => (car && typeof car.canStart === 'function' && car.canStart() && car.today && typeof car.today.start === 'function'
+            ? { label: 'Start Car', action: () => car.today.start() } : null);
         const pages = dirs.map((d) => {
             const t = todayLine(d);
             const r = latest[d];
@@ -1785,11 +1814,11 @@
                 image: lightOf(t.level),
                 bare: true,
                 icon: placeIcon(d),
-                softKey: { label: 'Traffic', action: goD },
+                softKey: startKey() || { label: 'Traffic', action: goD },
                 onTap: goD
             };
         });
-        return { label: 'traffic', icon: placeIcon(first), pages, softKey: { label: 'Traffic', action: go }, onTap: go };
+        return { label: 'traffic', icon: placeIcon(dirs[0]), pages, softKey: startKey() || { label: 'Traffic', action: go }, onTap: go };
     }
 
     /**

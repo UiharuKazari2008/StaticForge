@@ -1634,7 +1634,7 @@
          * The car's half of Today's Traffic and Car item (#1041): part() -> { html, t } | null for the 6.1 row,
          * tap(event) for a tap on it, panel() -> the 6.5 panel (the car's own pages) | null, line() -> todayLine().
          */
-        today: { part: todayPart, tap: todayTap, panel: todayTitanium, line: todayLine },
+        today: { part: todayPart, tap: todayTap, panel: todayTitanium, line: todayLine, start: () => todayStart() },
         state: () => state,
         /** A running remote start for the shell's title-bar glyph: { running, until, title, html, canStop }. */
         statusState,

@@ -534,9 +534,14 @@
             if (doc && (doc.hidden || doc.documentElement.dataset.screenOff !== undefined)) return;
             tries += 1;
             const state = typeof root.getClientDesktopState === 'function' ? root.getClientDesktopState() : null;
-            if (state !== 'desktop' && tries < 240) return;
+            // the desktop really on screen: logged on and the staged reveal ("Preparing your desktop...") over - it opened
+            // under the Welcome screen or over a half-built desktop (Yukimi, Nov 23 2026: "always delayed until the user is
+            // at the desktop, then you open it")
+            const bc = doc && doc.body ? doc.body.classList : null;
+            const built = !bc || !(bc.contains('boot-staged') || bc.contains('windows-startup') || bc.contains('initializing'));
+            if ((state !== 'desktop' || !built) && tries < 240) return;
             clearInterval(timer);
-            if (state !== 'desktop') return;
+            if (state !== 'desktop' || !built) return;
             let shown = false;
             try { shown = root.sessionStorage.getItem('welcomeCenterShown') === '1'; } catch (_) { /* none */ }
             if (shown || !reg('RunAtStartup', false)) return;
