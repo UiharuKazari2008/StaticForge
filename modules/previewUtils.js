@@ -130,7 +130,7 @@ async function generateMobilePreviews(imagePath, basename) {
         previewPromises.push(image.clone()
             .resize(FIT_PREVIEW_EDGE, FIT_PREVIEW_EDGE, { fit: 'inside', ...commonResizeOptions })
             .webp({ quality: 72, effort: 2 })
-            .toFile(path.join(previewsDir, fitPreviewNameForFile(imagePath))));
+            .toFile(path.join(previewsDir, `${basename}${FIT_PREVIEW_SUFFIX}`)));
 
         const [previewResults, blurhash] = await Promise.all([
             Promise.allSettled(previewPromises),
@@ -226,7 +226,8 @@ function isFitPreviewName(name) {
 }
 
 function fitPreviewNameForFile(filename) {
-    return `${path.basename(filename).replace(/\.(png|jpe?g|webp)$/i, '')}${FIT_PREVIEW_SUFFIX}`;
+    // the picture's name without its extension (a stored x.jxl is the picture x.png, #1134)
+    return `${path.basename(filename).replace(/\.(png|jpe?g|webp|jxl)$/i, '')}${FIT_PREVIEW_SUFFIX}`;
 }
 
 // at most two encodes at once: a phone opening a large gallery must not starve the server

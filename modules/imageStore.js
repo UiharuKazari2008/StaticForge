@@ -212,7 +212,7 @@ function attachPngMetadata(jxl, source, times = null) {
     const tail = [box(pictureMeta.MD_BOX, Buffer.from(JSON.stringify(md), 'utf8'))];
     if (times && (times.birthtimeMs > 0 || times.mtimeMs > 0)) {
         const t = { b: Math.round(times.birthtimeMs || 0), m: Math.round(times.mtimeMs || 0) };
-        if (times.effort) t.e = times.effort;
+        if (typeof times.effort === 'number') t.e = times.effort; // e: the effort it was encoded at; 0 = not known (the nightly pass re-encodes it); no e = effort 7 (the Ruiko backlog)
         tail.push(box(TIMES_BOX, Buffer.from(JSON.stringify(t))));
     }
     const boxes = readBoxes(jxl);
@@ -249,7 +249,7 @@ function readFileTimesSync(jxlPath) {
                 const body = Buffer.alloc(size - head);
                 fs.readSync(fd, body, 0, body.length, off + head);
                 const t = JSON.parse(body.toString('utf8'));
-                return { birthtimeMs: Number(t.b) || 0, mtimeMs: Number(t.m) || 0, effort: Number(t.e) || 0, estimated: !!t.est };
+                return { birthtimeMs: Number(t.b) || 0, mtimeMs: Number(t.m) || 0, effort: t.e === undefined ? null : Number(t.e), estimated: !!t.est };
             }
             if (size === 0 || size < head) return null;
             off += size;

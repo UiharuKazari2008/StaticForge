@@ -139,7 +139,8 @@ async function main() {
         } else if (/\.jxl$/i.test(e.name)) {
             const p = path.join(store.IMAGES_DIR, e.name);
             const t = store.readFileTimesSync(p);
-            if (t && t.effort > 0 && t.effort < TARGET_EFFORT && fs.statSync(p).mtimeMs < upgradeCutoff) upgrades.push(e.name);
+            // a recorded effort under 7 (0 = not known) is re-encoded; no recorded effort = the effort-7 backlog
+            if (t && t.effort !== null && t.effort < TARGET_EFFORT && fs.statSync(p).mtimeMs < upgradeCutoff) upgrades.push(e.name);
         }
     }
     due.sort((a, b) => a.mtimeMs - b.mtimeMs);

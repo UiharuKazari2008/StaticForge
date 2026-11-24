@@ -632,7 +632,7 @@ function jxlWithFields(jxl, fields, opts = {}) {
 /** An sfFT box: the picture's own date created / modified (and the effort it was encoded at). */
 function timesBox(times) {
     const t = { b: Math.round(times.birthtimeMs || 0), m: Math.round(times.mtimeMs || 0) };
-    if (times.effort) t.e = times.effort;
+    if (typeof times.effort === 'number') t.e = times.effort; // e: the effort it was encoded at; 0 = not known (the nightly pass re-encodes it); no e = effort 7 (the Ruiko backlog)
     return jxlBox(FT_BOX, Buffer.from(JSON.stringify(t)));
 }
 
@@ -653,7 +653,7 @@ function jxlTimes(jxl) {
     if (!b) return null;
     try {
         const t = JSON.parse(b.payload.toString('utf8'));
-        return { birthtimeMs: Number(t.b) || 0, mtimeMs: Number(t.m) || 0, effort: Number(t.e) || 0 };
+        return { birthtimeMs: Number(t.b) || 0, mtimeMs: Number(t.m) || 0, effort: t.e === undefined ? null : Number(t.e) };
     } catch (_) {
         return null;
     }
