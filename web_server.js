@@ -1632,6 +1632,12 @@ const imagesDir = path.resolve(__dirname, 'images');
 // gallery pictures may be stored as x.jxl under the name x.png (#1134): reads go through pngPath / locate
 const imageStore = require('./modules/imageStore');
 // for routes outside a try: a failed JXL decode answers as a missing picture instead of an unhandled rejection
+// A request that will show the picture on a client that decodes JPEG XL itself (#1134)
+function clientShowsJxl(req) {
+    const accept = String(req.headers.accept || '');
+    if (/\bimage\/jxl\b/i.test(accept)) return true;
+    return req.headers['sec-fetch-dest'] === 'image' && /(?:^|;\s*)melaton_jxl=1-/.test(String(req.headers.cookie || ''));
+}
 function galleryPngPath(name) {
     return imageStore.pngPath(name).catch((e) => {
         console.error('[imageStore] no PNG for', name, ':', e.message);
@@ -2406,6 +2412,23 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
     // the stored picture (x.png, or x.jxl under that name: then the decoded PNG copy is what is sent)
     const loc = await imageStore.locate(filename);
+    // A picture shown (an <img> / CSS image: Sec-Fetch-Dest image) on a client that decodes JPEG XL gets the JXL
+    // itself, no decode here (#1134): the client said so with the melaton_jxl cookie (assetPackages.js checks
+    // after boot), or its Accept lists image/jxl. fetch() readers (Paint, uploads, clipboard), downloads and
+    // the metadata variants below always get the PNG.
+    res.setHeader('Vary', 'Accept, Cookie, Sec-Fetch-Dest');
+    if (loc && loc.kind === 'jxl' && req.query.download !== 'true' && req.query.clipboard !== 'true'
+        && req.query.clipboardOrigin !== 'true' && req.query.stripContext !== 'true' && clientShowsJxl(req)) {
+        res.setHeader('Content-Type', 'image/jxl');
+        res.setHeader('Cache-Control', 'private, max-age=259200');
+        res.setHeader('Content-Length', loc.stat.size);
+        res.setHeader('Last-Modified', loc.stat.mtime.toUTCString());
+        res.setHeader('ETag', `"${loc.stat.mtime.getTime()}-jxl"`);
+        res.setHeader('Expires', '0');
+        return res.sendFile(loc.path, (err) => {
+            if (err && !res.headersSent) res.status(404).json({ success: false, error: 'Image not found' });
+        });
+    }
     const filePath = loc ? (loc.kind === 'jxl' ? await galleryPngPath(filename) : loc.path) : null;
     // Last-Modified / ETag from the stored file (the swap keeps the PNG's mtime), Content-Length of the sent one
     const fileStat = loc && filePath ? loc.stat : null;

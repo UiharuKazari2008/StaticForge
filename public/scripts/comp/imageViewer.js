@@ -617,7 +617,11 @@ class ImageViewer {
                 this.showNavigationLoading(true, 'Downloading…', 'indeterminate');
                 // fetchTrackedImageBlob: public/scripts/comp/utilities.js
                 // the file header gives the size long before the whole picture is in (#1121)
+                // an engine that decodes JPEG XL asks for it: a picture stored as JXL comes as it is (#1134)
+                const jxl = !!(window.melatonPackages && typeof window.melatonPackages.jxlSupported === 'function'
+                    && window.melatonPackages.jxlSupported());
                 const fetchResult = await fetchTrackedImageBlob(imageUrl, 0, reportDownloadProgress, {
+                    ...(jxl ? { headers: { Accept: 'image/jxl,image/png,image/*;q=0.8' } } : {}),
                     onDimensions: (dims) => {
                         if (loadGeneration === this._loadGeneration) this.applyImageWindowSize(dims.width, dims.height);
                     }

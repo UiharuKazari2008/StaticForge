@@ -498,5 +498,34 @@
         watch();
     }
 
-    return { PACKAGES, COOKIE, MOBILE_FLAG, HIDPI_TIERS, packageOf, phoneOptional, tierFor, hidpiTierFor, current, noteBoot, noteTier, noteHidpi, pin, unpin, pinned, automatic, filterRows, legacyRows, parseSet, cookieValue, read };
+    // ---- JPEG XL (#1134). A gallery picture may be stored as JXL; a client whose engine decodes it is sent the
+    // JXL itself for pictures it shows (web_server.js clientShowsJxl), with no decode on the server. The engine
+    // is asked once per engine version, well after the boot (a 21-byte 1x1 picture, never shown), and the
+    // answer kept in the cookie melaton_jxl = "<1|0>-<engine><major>".
+    const JXL_COOKIE = 'melaton_jxl';
+    const JXL_PROBE_DELAY_MS = 8000;
+    const JXL_PROBE = [0xff, 0x0a, 0x00, 0x10, 0x0c, 0x04, 0xc5, 0x8d, 0x08, 0x04, 0x01, 0x00, 0x1c, 0x00, 0x4b, 0x18, 0x8b, 0x15, 0xc2, 0x10, 0x0e];
+    function startJxlProbe() {
+        if (typeof window === 'undefined' || typeof document === 'undefined' || typeof createImageBitmap !== 'function') return;
+        const m = /(Chrome|Firefox|Version)\/(\d+)/.exec(String(navigator.userAgent || ''));
+        const engine = m ? `${m[1]}${m[2]}` : 'other';
+        const had = /(?:^|;\s*)melaton_jxl=([01])-([A-Za-z0-9]+)/.exec(document.cookie || '');
+        if (had && had[2] === engine) return;
+        setTimeout(() => {
+            createImageBitmap(new Blob([new Uint8Array(JXL_PROBE)], { type: 'image/jxl' }))
+                .then((bm) => { try { bm.close(); } catch (_) { /* old engine */ } return 1; }, () => 0)
+                .then((ok) => {
+                    const secure = location.protocol === 'https:' ? '; Secure' : '';
+                    try { document.cookie = `${JXL_COOKIE}=${ok}-${engine}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`; } catch (_) { /* cookies off */ }
+                });
+        }, JXL_PROBE_DELAY_MS);
+    }
+    try { startJxlProbe(); } catch (_) { /* PNG for every picture, as before */ }
+    /** This engine decodes JPEG XL (the probe's answer; false until it has run). */
+    function jxlSupported() {
+        if (typeof document === 'undefined') return false;
+        return /(?:^|;\s*)melaton_jxl=1-/.test(document.cookie || '');
+    }
+
+    return { PACKAGES, COOKIE, MOBILE_FLAG, HIDPI_TIERS, packageOf, phoneOptional, tierFor, hidpiTierFor, current, noteBoot, noteTier, noteHidpi, pin, unpin, pinned, automatic, filterRows, legacyRows, parseSet, cookieValue, read, jxlSupported };
 }));
