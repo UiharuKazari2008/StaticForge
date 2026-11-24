@@ -316,6 +316,15 @@ function lumenSlidesFromRows(rows) {
     });
 }
 
+/** Pixel size a picture's record already carries (gallery rows, prints), or null. */
+function imageViewerKnownDims(meta) {
+    if (!meta || typeof meta !== 'object') return null;
+    const forge = meta.forge_data || meta.metadata?.forge_data || {};
+    const w = Number(meta.width || forge.width);
+    const h = Number(meta.height || forge.height);
+    return w > 0 && h > 0 ? { width: w, height: h } : null;
+}
+
 class ImageViewer {
     constructor(id, element, imageSrc, title, metadata, manager) {
         this.id = id;
@@ -438,6 +447,16 @@ class ImageViewer {
         this.updateTitle();
 
         this.wireModalListenerScope();
+        // The picture's size is known from its record: the window opens at it, not small first (#1121)
+        const knownDims = imageViewerKnownDims(this.metadata);
+        const savedKey = this.element.dataset.windowIdentifier;
+        if (knownDims && !(window.isDesktop && savedKey && typeof globalWindowPositions !== 'undefined'
+            && globalWindowPositions[savedKey]?.topLeft)) {
+            const size = this.windowSizeForImage(knownDims.width, knownDims.height);
+            this.element.style.width = `${Math.round(size.width)}px`;
+            this.element.style.height = `${Math.round(size.height)}px`;
+            this._sizedForImage = `${Math.round(size.width)}x${Math.round(size.height)}`;
+        }
         openModal(this.element);
         // Backup scope open — openModal skips Lumen position restore, not onModalOpened (modalListenerScope.js)
         onModalOpened(this.element);
@@ -597,7 +616,12 @@ class ImageViewer {
             try {
                 this.showNavigationLoading(true, 'Downloading…', 'indeterminate');
                 // fetchTrackedImageBlob: public/scripts/comp/utilities.js
-                const fetchResult = await fetchTrackedImageBlob(imageUrl, 0, reportDownloadProgress);
+                // the file header gives the size long before the whole picture is in (#1121)
+                const fetchResult = await fetchTrackedImageBlob(imageUrl, 0, reportDownloadProgress, {
+                    onDimensions: (dims) => {
+                        if (loadGeneration === this._loadGeneration) this.applyImageWindowSize(dims.width, dims.height);
+                    }
+                });
                 if (loadGeneration !== this._loadGeneration) {
                     if (fetchResult.objectUrl) {
                         URL.revokeObjectURL(fetchResult.objectUrl);
@@ -702,7 +726,29 @@ class ImageViewer {
     adjustModalSizeForImage(imgElement) {
         const width = imgElement.naturalWidth || this.metadata?.width || 512;
         const height = imgElement.naturalHeight || this.metadata?.height || 512;
+        this.applyImageWindowSize(width, height);
+    }
 
+    // Size the window for a picture of width x height once per target size: a window opened at its
+    // saved layout keeps it for the first picture; stepping to a picture of another shape resizes (#1121)
+    applyImageWindowSize(width, height) {
+        const size = this.windowSizeForImage(width, height);
+        const key = `${Math.round(size.width)}x${Math.round(size.height)}`;
+        if (this._sizedForImage === key) return;
+        this._sizedForImage = key;
+
+        // Saved layout already has size — only auto-size brand-new windows
+        if (this.element.getAttribute('data-window-position-restored') === 'true') {
+            this.element.removeAttribute('data-window-position-restored');
+            return;
+        }
+        if (this.element.classList.contains('modal-maximized')) return;
+
+        // setModalSizePreservingCenter: public/scripts/comp/modalUtils.js
+        setModalSizePreservingCenter(this.element, size.width, size.height);
+    }
+
+    windowSizeForImage(width, height) {
         // Calculate aspect ratio
         const aspectRatio = width / height;
 
@@ -739,15 +785,7 @@ class ImageViewer {
         // Apply constraints
         modalWidth = Math.max(minWidth, Math.min(modalWidth, maxWidth));
         modalHeight = Math.max(minHeight, Math.min(modalHeight, maxHeight));
-
-        // Saved layout already has size — only auto-size brand-new windows
-        if (this.element.getAttribute('data-window-position-restored') === 'true') {
-            this.element.removeAttribute('data-window-position-restored');
-            return;
-        }
-
-        // setModalSizePreservingCenter: public/scripts/comp/modalUtils.js
-        setModalSizePreservingCenter(this.element, modalWidth, modalHeight);
+        return { width: modalWidth, height: modalHeight };
     }
 
     // Soft backdrop from BlurHash only (CSS filter blurs it; @lq is for PhotoSwipe, not backdrops)
@@ -1013,6 +1051,8 @@ class ImageViewer {
         this.rotation = 0;
         this.updateTitle();
         this.syncStepButtons();
+        const dims = imageViewerKnownDims(image);
+        if (dims) this.applyImageWindowSize(dims.width, dims.height);
         this.loadImage();
     }
 
