@@ -2964,8 +2964,46 @@
         });
     }
 
+    /**
+     * Menu > Create Picture (#1126): Studio opens with a prompt made from the selected place, its local day and
+     * season, the hour of the day and the current conditions, and Generate is pressed. The picture is the user's
+     * own Studio print (workspace, model and settings as Studio holds them). The daily per-workspace pictures are
+     * the server's (modules/weatherDaily.js).
+     */
+    function pictureBrief(p, data) {
+        const cur = data.current;
+        const cond = condOf(cur, cur.isDay !== false);
+        const now = new Date(placeNow(data));
+        const month = now.getUTCMonth();
+        const north = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'][month];
+        const south = { winter: 'summer', summer: 'winter', spring: 'autumn', autumn: 'spring' }[north];
+        const season = Number.isFinite(p.lat) && p.lat < 0 ? south : north;
+        const hour = now.getUTCHours();
+        const part = cur.isDay === false ? (hour < 5 || hour >= 22 ? 'deep night' : 'night') : hour < 9 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+        const where = [p.name, p.here ? '' : p.region, p.here ? '' : p.country].filter(Boolean).join(', ');
+        const t = mainC(cur);
+        const temp = Number.isFinite(t) ? `${Math.round(t)} degrees Celsius` : '';
+        return `landscape of ${where}, ${DAYS[now.getUTCDay()]} ${part}, ${season}, ${String(cond.text || '').toLowerCase()}${temp ? `, ${temp}` : ''}, ${cur.isDay === false ? 'night lighting' : 'daylight'} matching the weather, atmospheric, detailed scenery`;
+    }
+
+    async function createPicture() {
+        const p = selected();
+        const data = dataOf(p);
+        if (!p || !data || !data.current) return;
+        const open = window.openManualModalWithContent;
+        if (typeof open !== 'function') {
+            ws.messageBox({ title: 'Weather', icon: 'info', text: 'Studio is not available here.' });
+            return;
+        }
+        await open({ type: 'metadata', data: { prompt: pictureBrief(p, data) }, title: `Weather - ${p.name}` });
+        const btn = document.getElementById('manualGenerateBtn');
+        if (btn && !btn.disabled) btn.click();
+    }
+
     function mainMenu() {
         return [
+            { label: 'Create Picture', disabled: !(selected() && dataOf(selected()) && dataOf(selected()).current) || MOBILE, action: createPicture },
+            '-',
             { label: 'Locations', action: openPlaces },
             { label: 'Add Location...', action: openAdd },
             '-',
