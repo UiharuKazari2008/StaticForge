@@ -1,0 +1,16 @@
+# ~/.config/systemd/user/dreamscape-fuse.service
+[Unit]
+Description=Dreamscape VFS (FUSE)
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/dreamscape-fuse.env
+ExecStartPre=/usr/bin/mkdir -p %h/dreamscape
+ExecStart=%h/.local/share/dreamscape-fuse/venv/bin/python %h/.local/share/dreamscape-fuse/dreamscape_fuse.py -f %h/dreamscape
+ExecStop=/usr/bin/fusermount3 -u %h/dreamscape
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
