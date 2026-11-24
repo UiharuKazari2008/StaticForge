@@ -1635,6 +1635,7 @@ async function handleUpdateImagePresetBulk(handlers, ws, message, clientInfo, ws
                 // Write the updated image back to disk (nothing to remove: file unchanged)
                 if (updatedImageBuffer) {
                     await fs.promises.writeFile(filePath, updatedImageBuffer);
+                    await imageStore.dropStaleJxl(filename, path.dirname(filePath));
                 }
 
                 results.push({ filename, presetName: presetName || 'removed' });

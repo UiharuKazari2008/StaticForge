@@ -21,12 +21,16 @@
 //
 //   GET  /fs/list?path=&offset=&limit=&sortField=&sortDirection=&search=
 //        -> { success, path, canonicalPath, totalCount, totalSizeBytes, hasMore,
-//             entries: [{ path, name, kind: 'dir'|'file', size, mtime, mimeType,
+//             entries: [{ path, name, kind: 'dir'|'file', size, sizeExact, mtime, mimeType,
 //                         targetKind, targetId, readOnly, systemFileKey }] }
+//        A gallery picture may be stored as JPEG XL (#1134); /fs/read always sends a PNG. When the
+//        server does not know that PNG's size yet, a list entry carries the stored size and
+//        sizeExact: false: the client must /fs/stat it (always exact) before trusting the size,
+//        or read to EOF.
 //        `mtime` is unix seconds or an ISO string, depending on the backing store.
 //
 //   GET  /fs/stat?path=
-//        -> { success, ...same entry fields, canonicalPath }
+//        -> { success, ...same entry fields, canonicalPath }. size is always exact here (sizeExact true).
 //
 //   GET  /fs/read?path=
 //        -> raw bytes. Readable kinds: user-file, system-file, image, scrap, note.
@@ -126,11 +130,21 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
     }
 
     function describeEntry(item, itemPath) {
+        // a picture stored as x.jxl (#1134) is read as its rebuilt PNG: list that PNG's size when it is known
+        // (imageStore keeps it once the picture was rebuilt); otherwise the stored size, with sizeExact false
+        let size = item.size || 0;
+        let sizeExact = true;
+        if (item.storedAs === 'jxl') {
+            const known = imageStore.knownPngSize(String(item.targetId || ''), Number(item.modifiedAt) * 1000);
+            if (known != null) size = known;
+            else sizeExact = false;
+        }
         return {
             path: itemPath,
             name: item.name,
             kind: item.kind === 'folder' ? 'dir' : 'file',
-            size: item.size || 0,
+            size,
+            sizeExact,
             mtime: item.modifiedAt || null,
             mimeType: item.mimeType || null,
             targetKind: item.targetKind || null,
@@ -378,9 +392,17 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
                     systemFileKey: null
                 });
             }
+            const described = describeEntry(entry.item, base);
+            // a picture: always the exact size /fs/read sends (a JXL-stored one is rebuilt once to know it, #1152)
+            const kind = entry.item.targetKind;
+            if (kind === 'image' || kind === 'scrap') {
+                const exact = await imageStore.pngSize(path.basename(String(entry.item.targetId || '')),
+                    { decode: true }, globalResources.getPath('images')).catch(() => null);
+                if (exact != null) { described.size = exact; described.sizeExact = true; }
+            }
             res.json({
                 success: true,
-                ...describeEntry(entry.item, base),
+                ...described,
                 canonicalPath: entry.canonicalPath
             });
         } catch (e) {

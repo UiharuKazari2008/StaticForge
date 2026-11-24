@@ -228,11 +228,145 @@ function rebuildPng(decodedPng, stored) {
     return Buffer.concat([PNG_SIG, ihdr.raw, ...pre, ...idat.map((c) => c.raw), ...post, iend.raw]);
 }
 
+/**
+ * Pixel size from the start of a JPEG XL file (bare codestream or container), from its SizeHeader (ISO/IEC
+ * 18181-1): no decode. null when the bytes do not reach it.
+ */
+function jxlSizeFromHead(buf) {
+    let cs = null;
+    if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0x0a) {
+        cs = buf;
+    } else if (buf.length >= 12 && buf.subarray(0, 12).equals(JXL_CONTAINER_SIG)) {
+        let off = 0;
+        while (off + 8 <= buf.length) {
+            let size = buf.readUInt32BE(off);
+            const type = buf.toString('latin1', off + 4, off + 8);
+            let head = 8;
+            if (size === 1) { if (off + 16 > buf.length) return null; size = Number(buf.readBigUInt64BE(off + 8)); head = 16; }
+            if (type === 'jxlc') { cs = buf.subarray(off + head); break; }
+            if (type === 'jxlp') { cs = buf.subarray(off + head + 4); break; }
+            if (size === 0 || size < head) return null;
+            off += size;
+        }
+    }
+    if (!cs || cs.length < 12 || cs[0] !== 0xff || cs[1] !== 0x0a) return null;
+    let bit = 16;
+    const u = (n) => {
+        let v = 0;
+        for (let i = 0; i < n; i++, bit++) v |= ((cs[bit >> 3] >> (bit & 7)) & 1) << i;
+        return v >>> 0;
+    };
+    const u32 = () => [9, 13, 18, 30][u(2)];
+    const div8 = u(1);
+    const height = div8 ? 8 * (1 + u(5)) : 1 + u(u32());
+    const ratio = u(3);
+    const RATIOS = [null, [1, 1], [12, 10], [4, 3], [3, 2], [16, 9], [5, 4], [2, 1]];
+    let width;
+    if (ratio === 0) width = div8 ? 8 * (1 + u(5)) : 1 + u(u32());
+    else width = Math.floor(height * RATIOS[ratio][0] / RATIOS[ratio][1]);
+    return width > 0 && height > 0 ? { width, height } : null;
+}
+
+/**
+ * The picture's pixel size from its file header (PNG IHDR or the JXL SizeHeader), synchronously and without a
+ * decode: for callers that cannot wait (Cake Pantry's meal layout). null when unknown.
+ */
+function readSizeSync(name, dir = IMAGES_DIR) {
+    const loc = locateSync(name, dir);
+    if (!loc) return null;
+    let fd;
+    try {
+        fd = fs.openSync(loc.path, 'r');
+        if (loc.kind === 'jxl') {
+            // walk the box headers (the sfPN box can be tens of KB) to the codestream; read only its start
+            const hb = Buffer.alloc(64);
+            let off = 0;
+            for (let i = 0; i < 64; i++) {
+                const n = fs.readSync(fd, hb, 0, 64, off);
+                if (n < 16) return null;
+                if (off === 0 && hb[0] === 0xff && hb[1] === 0x0a) return jxlSizeFromHead(hb.subarray(0, n));
+                if (off === 0 && !hb.subarray(0, 12).equals(JXL_CONTAINER_SIG)) return null;
+                let size = hb.readUInt32BE(0);
+                const type = hb.toString('latin1', 4, 8);
+                let head = 8;
+                if (size === 1) { size = Number(hb.readBigUInt64BE(8)); head = 16; }
+                if (type === 'jxlc' || type === 'jxlp') {
+                    const skip = head + (type === 'jxlp' ? 4 : 0);
+                    return jxlSizeFromHead(hb.subarray(skip, n));
+                }
+                if (size < head) return null;
+                off += size;
+            }
+            return null;
+        }
+        const buf = Buffer.alloc(24);
+        const n = fs.readSync(fd, buf, 0, 24, 0);
+        const head = buf.subarray(0, n);
+        if (n < 24 || !head.subarray(0, 8).equals(PNG_SIG)) return null;
+        return { width: head.readUInt32BE(16), height: head.readUInt32BE(20) };
+    } catch (_) {
+        return null;
+    } finally {
+        if (fd !== undefined) { try { fs.closeSync(fd); } catch (_) { /* closed */ } }
+    }
+}
+
 // ---------------------------------------------------------------------------------------------------------
 // decoding and the cache
 
 const inflight = new Map();
 let cacheBytesKnown = null;
+
+// The size of each picture's rebuilt PNG (what pngPath / FUSE reads send), by name: { m: the JXL's mtimeMs, s: bytes }.
+// djxl and the rebuild are deterministic, so a size stays right while the JXL is unchanged. Kept in
+// .cache/jxl-png/.sizes.json (the cache trim skips dot files); filled whenever a PNG is rebuilt (#1152).
+const SIZES_FILE = path.join(CACHE_DIR, '.sizes.json');
+let pngSizes = null;
+let pngSizesSave = null;
+function sizesMap() {
+    if (!pngSizes) {
+        try { pngSizes = new Map(Object.entries(JSON.parse(fs.readFileSync(SIZES_FILE, 'utf8')))); } catch (_) { pngSizes = new Map(); }
+    }
+    return pngSizes;
+}
+function notePngSize(name, jxlMtimeMs, size) {
+    const m = sizesMap();
+    const was = m.get(name);
+    if (was && was.m === jxlMtimeMs && was.s === size) return;
+    m.set(name, { m: jxlMtimeMs, s: size });
+    scheduleSizesSave();
+}
+function scheduleSizesSave() {
+    if (pngSizesSave) return;
+    pngSizesSave = setTimeout(() => {
+        pngSizesSave = null;
+        const tmp = SIZES_FILE + `.${process.pid}.tmp`;
+        fs.promises.mkdir(CACHE_DIR, { recursive: true })
+            .then(() => fs.promises.writeFile(tmp, JSON.stringify(Object.fromEntries(sizesMap()))))
+            .then(() => fs.promises.rename(tmp, SIZES_FILE))
+            .catch(() => {});
+    }, 5000);
+    if (pngSizesSave.unref) pngSizesSave.unref();
+}
+/** The rebuilt PNG's size for a JXL-stored picture whose JXL has this mtime, if it was ever rebuilt; else null. */
+function knownPngSize(name, jxlMtimeMs) {
+    const e = sizesMap().get(name);
+    return e && Math.abs(e.m - jxlMtimeMs) < 1000 ? e.s : null;
+}
+/**
+ * The size of the PNG a read of the picture sends: the PNG's own, or for a JXL the rebuilt one (decoding it once
+ * when { decode: true } and it is not known yet). null when unknown or missing.
+ */
+async function pngSize(name, opts = {}, dir = IMAGES_DIR) {
+    const loc = await locate(name, dir);
+    if (!loc) return null;
+    if (loc.kind !== 'jxl') return loc.stat.size;
+    const known = knownPngSize(cleanName(name), loc.stat.mtimeMs);
+    if (known != null || !opts.decode) return known;
+    const p = await pngPath(name, dir);
+    const s = p ? await statOrNull(p) : null;
+    return s ? s.size : null;
+}
 
 function run(cmd, args) {
     return new Promise((resolve, reject) => {
@@ -298,6 +432,7 @@ async function pngPath(name, dir = IMAGES_DIR) {
     const cached = path.join(CACHE_DIR, n);
     const cs = await statOrNull(cached);
     if (cs && cs.mtimeMs === loc.stat.mtimeMs) {
+        notePngSize(n, loc.stat.mtimeMs, cs.size);
         // used: the trim keeps it (atime is not always kept by the mount)
         fs.promises.utimes(cached, new Date(), loc.stat.mtime).catch(() => {});
         return cached;
@@ -310,6 +445,7 @@ async function pngPath(name, dir = IMAGES_DIR) {
         // the copy carries the JXL's mtime: a later JXL (re-encode) is seen as new
         await fs.promises.utimes(tmp, new Date(), loc.stat.mtime);
         await fs.promises.rename(tmp, cached);
+        notePngSize(n, loc.stat.mtimeMs, buf.length);
         if (cacheBytesKnown === null || (cacheBytesKnown += buf.length) > CACHE_MAX_BYTES) void trimCache();
         return cached;
     })().finally(() => inflight.delete(cached));
@@ -390,6 +526,21 @@ async function remove(name, dir = IMAGES_DIR) {
     return removed;
 }
 
+/**
+ * After a fresh x.png was written for a picture that was stored as x.jxl (a metadata rewrite, a new upscale over
+ * an old one): the old JXL and its decoded copy go, so the disk does not hold the picture twice (#1152).
+ */
+async function dropStaleJxl(name, dir = IMAGES_DIR) {
+    const n = cleanName(name);
+    const j = n && jxlNameFor(n);
+    if (!j) return false;
+    let dropped = false;
+    try { await fs.promises.unlink(path.join(dir, j)); dropped = true; } catch (_) { /* none */ }
+    fs.promises.unlink(path.join(CACHE_DIR, n)).catch(() => {});
+    if (sizesMap().delete(n)) scheduleSizesSave();
+    return dropped;
+}
+
 /** Rename a picture in whatever form it is stored (`a.png` -> `b.png` moves `a.jxl` to `b.jxl`). */
 async function rename(oldName, newName, dir = IMAGES_DIR) {
     const loc = await locate(oldName, dir);
@@ -414,12 +565,18 @@ module.exports = {
     existsSync,
     pngPath,
     pixelPath,
+    readSizeSync,
+    jxlSizeFromHead,
     sharpReadsJxl,
     jxlOriginalHasIcc,
     readPng,
+    pngSize,
+    knownPngSize,
+    notePngSize,
     stat,
     remove,
     rename,
+    dropStaleJxl,
     // the swap / converter and tests
     attachPngMetadata,
     readPngMetadataBox,

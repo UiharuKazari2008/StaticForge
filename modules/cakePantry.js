@@ -1485,8 +1485,20 @@ function imageSize(imageId, options) {
             return { width: Number(size.width), height: Number(size.height) };
         }
     }
-    const filePath = resolveImageFilePath(imageId, options);
-    return filePath ? readPngSize(filePath) : null;
+    // a mapped path (tests, other stores) is read as before; a gallery picture by name through imageStore,
+    // which reads a JXL-stored one's size from its header too (#1152)
+    if (options && typeof options.resolveImagePath === 'function') {
+        const filePath = resolveImageFilePath(imageId, options);
+        return filePath ? readPngSize(filePath) : null;
+    }
+    const safe = sanitizePantryImageName(imageId);
+    const gr = getGlobalResources();
+    if (!safe || !gr || typeof gr.getPath !== 'function') return null;
+    try {
+        return imageStore.readSizeSync(safe, path.resolve(gr.getPath('images')));
+    } catch (_) {
+        return null;
+    }
 }
 
 function inferLandscapeFromImages(beforeId, afterId, options) {

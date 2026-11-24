@@ -69,9 +69,9 @@ function safeName(filename) {
 }
 
 /** After a new PNG lands over a print: its old JXL form (if it had one) goes, the PNG is the picture now. */
-async function dropStaleJxl(imagesDir, name) {
-    const j = imageStore.jxlNameFor(name);
-    if (j) await fs.promises.unlink(path.join(imagesDir, j)).catch(() => {});
+// (#1152: the shared imageStore.dropStaleJxl, which also drops the decoded copy)
+function dropStaleJxl(imagesDir, name) {
+    return imageStore.dropStaleJxl(name, imagesDir);
 }
 
 function originalsDir(gr) {

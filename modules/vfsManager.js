@@ -47,7 +47,7 @@ async function statImageNames(imagesPath, names, limit = 64) {
     const map = new Map();
     await mapWithConcurrency([...new Set(names || [])], limit, async (name) => {
         const st = await imageStore.stat(name, {}, imagesPath);
-        map.set(name, st ? { size: st.size, mtime: Math.floor(st.mtimeMs / 1000) } : { size: 0, mtime: null });
+        map.set(name, st ? { size: st.size, mtime: Math.floor(st.mtimeMs / 1000), storedAs: st.kind } : { size: 0, mtime: null, storedAs: null });
     });
     return map;
 }
@@ -1637,7 +1637,7 @@ class VfsManager {
                 // Async stat (images.size/mtime drift from the files after metadata rewrites).
                 const statMap = await statImageNames(imagesPath, filenames);
                 return filenames.map(filename => {
-                    const { size, mtime } = statMap.get(filename) || { size: 0, mtime: null };
+                    const { size, mtime, storedAs } = statMap.get(filename) || { size: 0, mtime: null, storedAs: null };
                     return {
                         id: `img-${filename}`,
                         name: filename,
@@ -1650,6 +1650,8 @@ class VfsManager {
                         protected: false,
                         importable: false,
                         size,
+                        // 'jxl': the size above is the stored JXL's; FUSE reports the PNG it sends (#1152)
+                        storedAs,
                         modifiedAt: mtime,
                         previewImageFilename: filename,
                         workspaceId,
@@ -1749,7 +1751,7 @@ class VfsManager {
                 const imagesPath = this.globalResources.getPath('images');
                 const statMap = await statImageNames(imagesPath, scraps);
                 return scraps.map(filename => {
-                    const { size, mtime } = statMap.get(filename) || { size: 0, mtime: null };
+                    const { size, mtime, storedAs } = statMap.get(filename) || { size: 0, mtime: null, storedAs: null };
                     return {
                         id: `scrap-${filename}`,
                         name: filename,
@@ -1762,6 +1764,8 @@ class VfsManager {
                         protected: false,
                         importable: false,
                         size,
+                        // 'jxl': the size above is the stored JXL's; FUSE reports the PNG it sends (#1152)
+                        storedAs,
                         modifiedAt: mtime,
                         previewImageFilename: filename,
                         workspaceId,
@@ -1809,7 +1813,7 @@ class VfsManager {
 
         const pinnedSet = await this._listPinnedFilenameSet(workspaceId);
         const statMap = await statImageNames(this.globalResources.getPath('images'), [filename]);
-        const { size, mtime } = statMap.get(filename);
+        const { size, mtime, storedAs } = statMap.get(filename);
         const item = {
             id: `${isScraps ? 'scrap' : 'img'}-${filename}`,
             name: filename,
@@ -1822,6 +1826,7 @@ class VfsManager {
             protected: false,
             importable: false,
             size,
+            storedAs,
             modifiedAt: mtime,
             previewImageFilename: filename,
             workspaceId,

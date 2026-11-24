@@ -2737,6 +2737,7 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
             if (imageBuffer) {
                 const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
                 await fs.promises.writeFile(filePath, updatedBuffer);
+                await imageStore.dropStaleJxl(filename, imagesDir);
                 metadata.md5 = md5OfBuffer(updatedBuffer);
                 const stats = await fs.promises.stat(filePath);
                 metadata.mtime = stats.mtime.valueOf();
@@ -2890,8 +2891,9 @@ async function updateFileMetadata(filename, imagesDir, forgeData) {
         // Update the PNG metadata using the pngMetadata module
         const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
         
-        // Write the updated buffer back to the file
+        // Write the updated buffer back to the file (a JXL it was stored as is dropped: the PNG is the picture now)
         fs.writeFileSync(filePath, updatedBuffer);
+        await imageStore.dropStaleJxl(filename, imagesDir);
         
         // Update the database metadata as well
         const image = await db.get('SELECT id FROM images WHERE filename = ?', [filename]);

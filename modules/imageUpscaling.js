@@ -335,6 +335,8 @@ async function upscaleImage(globalResources, filename, workspaceId, req, res, up
         const upscaledFilename = filename.replace('.png', '_upscaled.png');
         const upscaledPath = path.join(__runtimeGr.getPath("images"), upscaledFilename);
         fs.writeFileSync(upscaledPath, updatedUpscaledBuffer);
+        // a new upscale over an old one stored as JXL: the PNG is the picture now (#1152)
+        await imageStore.dropStaleJxl(upscaledFilename, __runtimeGr.getPath("images"));
         console.log(`💾 Saved upscaled: ${upscaledFilename}`);
 
         // Add upscaled file to workspace
@@ -399,6 +401,8 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
         const upscaledFilename = filename.replace('.png', '_upscaled.png');
         const upscaledPath = path.join(__runtimeGr.getPath("images"), upscaledFilename);
         fs.writeFileSync(upscaledPath, updatedUpscaledBuffer);
+        // a new upscale over an old one stored as JXL: the PNG is the picture now (#1152)
+        await imageStore.dropStaleJxl(upscaledFilename, __runtimeGr.getPath("images"));
         console.log(`💾 Saved upscaled: ${upscaledFilename}`);
 
         // Add upscaled file to workspace
