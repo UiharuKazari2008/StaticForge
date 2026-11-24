@@ -9,7 +9,7 @@
     "icon": "assets/claudedesk-48.png",
     "client": {
         "entry": "client/claudedesk.js",
-        "styles": ["assets/claudedesk.css"],
+        "styles": ["assets/claudedesk-tokens.css", "assets/claudedesk.css"],
         "owns": ["#mmcConsole_claudedesk"]
     }
 }

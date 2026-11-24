@@ -590,6 +590,16 @@
     const planText = (l) => [l.plan ? l.plan.replace(/^\w/, (c) => c.toUpperCase()) : '', l.rateLimitTier ? l.rateLimitTier.replace(/^default_claude_/, '').replace(/_/g, ' ') : ''].filter(Boolean).join(' · ');
 
     function statusStrip() {
+        if (fleet.hostMigrated) {
+            // the legacy host unit is retired: the strip summarises each account's own Remote Control
+            const fl = fleet.accounts.filter((f) => f.moved);
+            const up = fl.filter((f) => f.state === 'connected').length;
+            const sd = up === fl.length ? 'ok' : up ? 'warn' : 'bad';
+            return `<div class="wca-status wca-st-${up === fl.length ? 'connected' : up ? 'reconnecting' : 'error'}" role="status" aria-live="polite">
+            <span class="wac-dot wac-dot-${sd}"></span>
+            <span class="wca-status-text"><b>Remote Control:</b> ${up} of ${fl.length} connected</span>
+        </div>`;
+        }
         const st = STATE_LABEL[status.state] ? status.state : 'unknown';
         const retry = st === 'error' || st === 'stopped';
         return `<div class="wca-status wca-st-${esc(st)}" role="status" aria-live="polite">

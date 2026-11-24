@@ -160,7 +160,33 @@ function bind(gr) {
     if (!usageHooked && gResources) {
         usageHooked = true;
         try { require('./claudeUsage').onRead(() => broadcast()); } catch (_) { usageHooked = false; }
+        watchUnits();
     }
+}
+
+// Unit changes no action caused (a crash, a systemd restart) reach the screens without polling: the user
+// journal logs every start / stop / failure of the units, and `journalctl -f` wakes us only on those lines.
+let unitWatch = null;
+let unitWatchDelay = 2000;
+function watchUnits() {
+    if (unitWatch || readOnly()) return;
+    let child;
+    try {
+        child = require('child_process').spawn('journalctl', ['--user', '-f', '-n0', '-o', 'cat', '-u', TEMPLATE.replace('@.', '@*.'), '-u', LEGACY_UNIT], { stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch (_) { return; }
+    unitWatch = child;
+    child.stdout.on('data', () => { unitWatchDelay = 2000; broadcast(); });
+    const again = () => {
+        if (unitWatch !== child) return;
+        unitWatch = null;
+        const t = setTimeout(watchUnits, unitWatchDelay);
+        unitWatchDelay = Math.min(unitWatchDelay * 2, 300000);
+        if (t.unref) t.unref();
+    };
+    child.on('error', again);
+    child.on('exit', again);
+    if (child.unref) child.unref();
+    if (child.stdout.unref) child.stdout.unref();
 }
 
 function setState(id, state, message) {

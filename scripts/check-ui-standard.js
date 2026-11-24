@@ -27,6 +27,7 @@ const SKIP = /(^|\/)(node_modules|vendor|graphify-out|server|\.cache)\//;
 // Theme and kit files: the only places that may hold colour, font and art literals, because
 // they ARE the theme. Everything else is app code. (Generated files are theme files too.)
 const THEME_FILES = new Set([
+    'apps/claudedesk/assets/claudedesk-tokens.css', // Claude Fleet's own colour and font tokens
     // desktop: Vista
     'public/css/7.scoped.css',
     'public/css/vista-glass-controls.css',

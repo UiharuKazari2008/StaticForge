@@ -29,9 +29,9 @@
     justify-content: space-between;
     gap: 8px;
     padding: 4px 6px;
-    border-top: 1px solid #d5d5d5;
-    background: #f0f0f0;
-    color: #444;
+    border-top: 1px solid var(--cd-c-d5d5d5);
+    background: var(--cd-c-f0f0f0);
+    color: var(--cd-c-444);
 }
 
 #mmcConsole_claudedesk .mmc-row.cd-busy .mmc-col:nth-child(3),
@@ -46,7 +46,7 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    background: #fff;
+    background: var(--cd-c-fff);
 }
 
 #mmcConsole_claudedesk .cd-chat > .mmc-page-title {
@@ -58,7 +58,7 @@
     display: flex;
     gap: 12px;
     padding: 3px 10px 4px;
-    border-bottom: 1px solid #e3e3e3;
+    border-bottom: 1px solid var(--cd-c-e3e3e3);
 }
 
 #mmcConsole_claudedesk .cd-chat-log {
@@ -78,7 +78,7 @@
 
 #mmcConsole_claudedesk .cd-day {
     margin: 10px 0 4px;
-    color: #6d6d6d;
+    color: var(--cd-c-6d6d6d);
     font-size: 11px;
     text-align: center;
 }
@@ -95,16 +95,16 @@
 }
 
 #mmcConsole_claudedesk .cd-msg-head > span {
-    color: #6d6d6d;
+    color: var(--cd-c-6d6d6d);
     font-size: 11px;
 }
 
 #mmcConsole_claudedesk .cd-user .cd-msg-head > b {
-    color: #1e4e8c;
+    color: var(--cd-c-1e4e8c);
 }
 
 #mmcConsole_claudedesk .cd-claude .cd-msg-head > b {
-    color: #7a3e00;
+    color: var(--cd-c-7a3e00);
 }
 
 #mmcConsole_claudedesk .cd-msg-text {
@@ -114,9 +114,9 @@
 
 #mmcConsole_claudedesk .cd-user .cd-msg-text {
     padding: 4px 7px;
-    border: 1px solid #c5d5ea;
+    border: 1px solid var(--cd-c-c5d5ea);
     border-radius: 3px;
-    background: #eef4fc;
+    background: var(--cd-c-eef4fc);
 }
 
 #mmcConsole_claudedesk .cd-msg.is-side {
@@ -128,28 +128,28 @@
 #mmcConsole_claudedesk .cd-tool,
 #mmcConsole_claudedesk .cd-result {
     margin-left: 12px;
-    border-left: 2px solid #d0d0d0;
+    border-left: 2px solid var(--cd-c-d0d0d0);
     padding: 1px 0 1px 7px;
 }
 
 #mmcConsole_claudedesk .cd-tool-head {
-    color: #444;
+    color: var(--cd-c-444);
     font-size: 11px;
 }
 
 #mmcConsole_claudedesk .cd-pre {
     margin: 0;
-    font: 11px Consolas, "Lucida Console", monospace;
+    font: 11px var(--cd-font-mono);
     white-space: pre-wrap;
-    color: #333;
+    color: var(--cd-c-333);
 }
 
 #mmcConsole_claudedesk .cd-result .cd-pre {
-    color: #555;
+    color: var(--cd-c-555);
 }
 
 #mmcConsole_claudedesk .cd-result.is-error .cd-pre {
-    color: #a00000;
+    color: var(--cd-c-a00000);
 }
 
 #mmcConsole_claudedesk .cd-result.is-folded .cd-pre {
@@ -161,7 +161,7 @@
     padding: 0;
     border: 0;
     background: none;
-    color: #0066cc;
+    color: var(--cd-c-0066cc);
     font: inherit;
     font-size: 11px;
     cursor: pointer;
@@ -173,12 +173,12 @@
 
 #mmcConsole_claudedesk .cd-note {
     margin-left: 12px;
-    color: #6d6d6d;
+    color: var(--cd-c-6d6d6d);
     font-style: italic;
 }
 
 #mmcConsole_claudedesk .cd-err {
-    color: #a00000;
+    color: var(--cd-c-a00000);
 }
 
 #mmcConsole_claudedesk .cd-compose {
@@ -187,8 +187,8 @@
     gap: 6px;
     align-items: stretch;
     padding: 6px;
-    border-top: 1px solid #d5d5d5;
-    background: #f0f0f0;
+    border-top: 1px solid var(--cd-c-d5d5d5);
+    background: var(--cd-c-f0f0f0);
 }
 
 #mmcConsole_claudedesk .cd-compose .cd-input {
@@ -197,7 +197,7 @@
     box-sizing: border-box;
     height: 58px;
     resize: none;
-    font: 12px "Segoe UI", Tahoma, sans-serif;
+    font: 12px var(--cd-font-ui);
 }
 
 #mmcConsole_claudedesk .cd-compose-btns {
@@ -209,7 +209,7 @@
 #mmcConsole_claudedesk .cd-compose.cd-ended {
     align-items: center;
     justify-content: space-between;
-    color: #444;
+    color: var(--cd-c-444);
 }
 
 /* ---- dialogs (inside the shared confirmation box) ---- */
@@ -246,7 +246,7 @@
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
-    font: 12px "Segoe UI", Tahoma, sans-serif;
+    font: 12px var(--cd-font-ui);
 }
 
 .cd-form > textarea,
@@ -257,16 +257,16 @@
 .cd-form .cd-link-line,
 .cd-link-line {
     padding: 4px 6px;
-    border: 1px solid #c5c5c5;
-    background: #fff;
-    font: 11px Consolas, "Lucida Console", monospace;
+    border: 1px solid var(--cd-c-c5c5c5);
+    background: var(--cd-c-fff);
+    font: 11px var(--cd-font-mono);
     word-break: break-all;
     max-height: 64px;
     overflow: auto;
 }
 
 .cd-form .cd-err {
-    color: #a00000;
+    color: var(--cd-c-a00000);
 }
 
 .cd-props td:first-child {
@@ -286,22 +286,22 @@
 /* only the state cell says it: Remote Control's (2nd) on an error, a lock's State (4th) when it is stale */
 #mmcConsole_claudedesk .mmc-row.cd-rc-error > span:nth-child(2) i,
 #mmcConsole_claudedesk .mmc-row.cd-stale > span:nth-child(4) i {
-    color: #a00000;
+    color: var(--cd-c-a00000);
 }
 
 /* small report tables inside a page section or a message box (Inspect, Properties) */
 .cd-table {
     width: 100%;
     border-collapse: collapse;
-    font: 12px "Segoe UI", Tahoma, sans-serif;
+    font: 12px var(--cd-font-ui);
     table-layout: fixed;
 }
 
 .cd-table th {
     padding: 2px 6px;
-    border-bottom: 1px solid #d5d5d5;
-    background: #f5f5f5;
-    color: #444;
+    border-bottom: 1px solid var(--cd-c-d5d5d5);
+    background: var(--cd-c-f5f5f5);
+    color: var(--cd-c-444);
     font-weight: normal;
     text-align: left;
     white-space: nowrap;
@@ -309,7 +309,7 @@
 
 .cd-table td {
     padding: 2px 6px;
-    border-bottom: 1px solid #efefef;
+    border-bottom: 1px solid var(--cd-c-efefef);
     vertical-align: top;
     overflow-wrap: anywhere;
 }
@@ -319,7 +319,7 @@
 }
 
 .cd-table code {
-    font: 11px Consolas, "Lucida Console", monospace;
+    font: 11px var(--cd-font-mono);
 }
 
 /* the host move's "bring these sessions over" list */
@@ -327,18 +327,18 @@
     max-height: 160px;
     overflow: auto;
     padding: 4px 6px;
-    border: 1px solid #c5c5c5;
-    background: #fff;
+    border: 1px solid var(--cd-c-c5c5c5);
+    background: var(--cd-c-fff);
 }
 
-.cd-form label.cd-check {
+.cd-form label.cd-opt {
     display: flex;
     align-items: center;
     gap: 6px;
     margin: 2px 0;
 }
 
-.cd-form label.cd-check > span {
+.cd-form label.cd-opt > span {
     flex: 1;
     min-width: 0;
     width: auto;
@@ -465,9 +465,9 @@
     margin: 0 0 4px;
     padding: 3px 8px;
     border: 0;
-    border-bottom: 1px solid #b3b3b3;
-    background: #ffffe1;
-    color: #000;
+    border-bottom: 1px solid var(--cd-c-b3b3b3);
+    background: var(--cd-c-ffffe1);
+    color: var(--cd-c-000);
 }
 
 #mmcConsole_claudedesk .cd-infobar > img {
@@ -489,21 +489,21 @@
 .cd-wiz-head {
     margin: -4px -4px 8px;
     padding: 6px 8px 8px;
-    border-bottom: 1px solid #dfdfdf;
-    background: #fff;
+    border-bottom: 1px solid var(--cd-c-dfdfdf);
+    background: var(--cd-c-fff);
 }
 
 .cd-form .cd-wiz-head > h3,
 #confirmationDialog .cd-wiz-head > h3 {
     margin: 0 0 2px;
-    color: #003399 !important;
-    font: 15px "Segoe UI", Tahoma, sans-serif;
+    color: var(--cd-c-003399) !important;
+    font: 15px var(--cd-font-ui);
     font-weight: normal;
 }
 
 .cd-wiz-head > p {
     margin: 0;
-    color: #444;
+    color: var(--cd-c-444);
 }
 
 .cd-wiz-body {
@@ -523,8 +523,8 @@
 }
 
 .cd-form label.cd-cmdlink:hover {
-    border-color: #c5d5ea;
-    background: #eef4fc;
+    border-color: var(--cd-c-c5d5ea);
+    background: var(--cd-c-eef4fc);
 }
 
 .cd-form label.cd-cmdlink > span {
@@ -535,14 +535,14 @@
 }
 
 .cd-form label.cd-cmdlink > span > b {
-    color: #003399;
+    color: var(--cd-c-003399);
     font-weight: normal;
     font-size: 13px;
 }
 
 .cd-form label.cd-cmdlink > span > i {
     font-style: normal;
-    color: #444;
+    color: var(--cd-c-444);
 }
 
 .cd-form .cd-recs {
@@ -571,8 +571,8 @@
 
 #mmcConsole_claudedesk .cd-dt-box {
     margin-top: 6px;
-    border: 1px solid #828790;
-    background: #fff;
+    border: 1px solid var(--cd-c-828790);
+    background: var(--cd-c-fff);
     padding: 4px 6px;
     min-height: 40px;
 }
@@ -593,7 +593,7 @@
 }
 
 #mmcConsole_claudedesk .mmc-row.cd-stale > span:nth-child(3) i {
-    color: #a00000;
+    color: var(--cd-c-a00000);
 }
 
 .cd-screen {
@@ -612,21 +612,21 @@
 /* the colours and the mono font of the session view's own parts (one token block) */
 #mmcConsole_claudedesk,
 .cd-win {
-    --cd-c1: #b86b6b;
-    --cd-c2: #fde4e4;
-    --cd-c3: #5c0000;
-    --cd-c4: #e3e3e3;
-    --cd-c5: #444;
-    --cd-c6: #a8d8eb;
-    --cd-c7: #eaf6fd;
-    --cd-c8: #6d6d6d;
-    --cd-c9: #c8c8c8;
-    --cd-c10: #fff;
-    --cd-c11: #fde8e8;
-    --cd-c12: #6b1111;
-    --cd-c13: #e6f6e6;
-    --cd-c14: #0f4d12;
-    --cd-c15: #000;
+    --cd-c1: var(--cd-c-b86b6b);
+    --cd-c2: var(--cd-c-fde4e4);
+    --cd-c3: var(--cd-c-5c0000);
+    --cd-c4: var(--cd-c-e3e3e3);
+    --cd-c5: var(--cd-c-444);
+    --cd-c6: var(--cd-c-a8d8eb);
+    --cd-c7: var(--cd-c-eaf6fd);
+    --cd-c8: var(--cd-c-6d6d6d);
+    --cd-c9: var(--cd-c-c8c8c8);
+    --cd-c10: var(--cd-c-fff);
+    --cd-c11: var(--cd-c-fde8e8);
+    --cd-c12: var(--cd-c-6b1111);
+    --cd-c13: var(--cd-c-e6f6e6);
+    --cd-c14: var(--cd-c-0f4d12);
+    --cd-c15: var(--cd-c-000);
     --cd-mono: Consolas, "Lucida Console", monospace;
 }
 

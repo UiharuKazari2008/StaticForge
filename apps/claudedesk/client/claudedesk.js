@@ -4,7 +4,7 @@
  * the agents' coordination. The phone has the same accounts and host in Melaton Mobile's Claude Accounts
  * (wmClaudeAccounts.js, also named Fleet); both use one backend.
  *
- *   Fleet (Local)               summary: every account's plan usage as progress bars (claude_usage feed,
+ *   Fleet (<server name>)       summary: every account's plan usage as progress bars (claude_usage feed,
  *                               subscribed while this page is shown), the engine's account, Remote Control,
  *                               sessions running, agents
  *     Accounts                  CardSpace's Claude accounts: Switch To (the engine's account + Remote
@@ -27,6 +27,10 @@
  *       Supervisor              reviews of finished agent turns against what was asked (claude_desk_supervisor):
  *                               settings, the reviews, Send to Session / Re-check / Dismiss
  *       Inspect: <agent>        what one agent is doing: files it edited, commands, last words, claims
+ *
+ * Nov 24 tree: Active Work (Supervised Work -> work item -> its session -> its background agents; Unsupervised
+ * Sessions), Work Queue, Sessions, Activity (every command, edit and tool call), Coordination, Supervisor (pause /
+ * resume, restart waits), Accounts, Remote Control, Contractors (other machines that run Fleet work).
  *
  * Server: 313-claudeAccountsHandler (accounts, host, sign-in) and 314-claudeDeskHandler (sessions,
  * transcripts, steering, coordination; the claude_desk / claude_desk_flux status feeds, subscribed while
@@ -120,11 +124,16 @@
             show: Object.assign({}, SHOW_DEFAULT), // what the session view shows (saved per user: registry ShowView)
             winSeq: 0,
             wins: new Set(), // the item windows (a folded thinking / edit in full)
-            engines: null // claude_fleet_engines, read when a wizard or the queue needs it
+            engines: null, // claude_fleet_engines, read when a wizard or the queue needs it
+            act: { rows: [], next: null, total: 0, kind: '', q: '', sessionId: '', loaded: false, loading: false, error: '', gone: false, seq: 0 }, // Activity
+            con: { list: [], loaded: false, loading: false, error: '', gone: false }, // Contractors
+            awAgents: new Map() // session id -> { agents, loading, gone, error }: the background agents shown under an Active Work session
         };
     }
     let S = blank();
 
+    /** The session a tree node shows: its own node under Sessions (t:), in Active Work (aw:s:) or among the unsupervised (us:). */
+    const nodeSid = (id) => { const m = /^(?:t:|aw:s:|us:)(.+)$/.exec(id || ''); return m ? m[1] : ''; };
     const liveOf = (id) => S.live.find((s) => s.id === id) || null;
     const rowOf = (id) => S.sessions.find((s) => s.id === id) || (S.chats.get(id) && S.chats.get(id).row) || null;
     const accountName = (idx) => { const a = S.accounts.find((x) => x.index === idx); return a ? a.name : ''; };
@@ -139,6 +148,8 @@
     }
 
     function stateText(row) {
+        const h = holdOf(row.id);
+        if (h) return holdWord(h);
         const l = liveOf(row.id);
         if (!l) return 'Ended';
         if (l.status === 'busy') return 'Working';
@@ -244,6 +255,7 @@
             const d = msg && Array.isArray(msg.accounts) ? msg : (msg && msg.data) || null;
             if (d && Array.isArray(d.accounts)) { S.fleet = d; repaint(); }
         }, opts);
+        c.on('claude_fleet_contractors_status', (msg) => { conTake(msg); if (S.c) repaint(); }, opts);
         c.on('claude_usage_status', (msg) => {
             if (!S.usageOn) return;
             const d = msg && msg.changed ? msg : (msg && msg.data) || {};
@@ -259,7 +271,7 @@
             if (chat.tailCut) return;
             const seen = new Set(chat.messages.map(msgKey));
             shownOnly(d.messages).forEach((m) => { if (!seen.has(msgKey(m))) { chat.messages.push(m); seen.add(msgKey(m)); } });
-            if (S.c && S.c.node === `t:${d.id}`) appendChat(d.id);
+            if (S.c && nodeSid(S.c.node) === d.id) appendChat(d.id);
         }, opts);
         // the server forgets a dropped socket's subscriptions and watches
         c.on('connected', () => {
@@ -345,13 +357,125 @@
         repaint();
     }
 
+    // ---- Activity: every shell command, tool call and file edit (claude_fleet_activity) -----------------------
+
+    const ACT_PAGE = 60;
+    const ACT_KINDS = [['', 'All'], ['shell', 'Shell commands'], ['edit', 'File edits'], ['tool', 'Tool calls']];
+    const KIND_TEXT = { shell: 'Shell', edit: 'Edit', tool: 'Tool' };
+
+    /** The first page (filters changed / read again) or the next one ("More": before = the reply's next). */
+    async function loadActivity(more) {
+        const A = S.act;
+        if (A.loading) return;
+        A.loading = true;
+        const seq = ++A.seq;
+        const f = { kind: A.kind || undefined, sessionId: A.sessionId || undefined, q: A.q || undefined };
+        try {
+            const r = unwrap(await send('claude_fleet_activity', Object.assign({ action: 'list', limit: ACT_PAGE }, f, more && A.next != null ? { before: A.next } : {})), 'rows');
+            if (seq === A.seq) {
+                const rows = Array.isArray(r.rows) ? r.rows : [];
+                A.rows = more ? A.rows.concat(rows.filter((x) => !A.rows.some((y) => y.id === x.id))) : rows;
+                A.next = r.next == null ? null : r.next;
+                A.total = r.total == null ? A.rows.length : r.total;
+                A.error = '';
+                A.gone = false;
+            }
+        } catch (e) { if (seq === A.seq) { if (isGone(e)) A.gone = true; else A.error = errText(e); } }
+        A.loading = false;
+        A.loaded = true;
+        repaint();
+    }
+
+    /** One row's detail (claude_fleet_activity detail): who, why, the parameters and the output, in its own window. */
+    async function openActivity(id) {
+        if (!S.c || id == null) return;
+        const key = `act:${id}`;
+        const have = Array.from(S.wins).find((x) => x.key === key);
+        if (have) { call('bringModalToFront', have.modal); return; }
+        const row = S.act.rows.find((x) => String(x.id) === String(id));
+        const w = openViewer({ key, title: row ? `${KIND_TEXT[row.kind] || 'Activity'}: ${String(row.summary || row.tool || '').slice(0, 40)}` : 'Activity', body: '<p class="mmc-hint">Reading...</p>' });
+        w.modal.addEventListener('click', (ev) => { const b = ev.target.closest('[data-cd-open-session]'); if (b && S.c) openChat(S.c, b.dataset.cdOpenSession); });
+        try {
+            const r = unwrap(await send('claude_fleet_activity', { action: 'detail', id }), 'row');
+            w.set(activityHtml(r));
+        } catch (e) { w.set(`<p class="cd-err">${esc(isGone(e) ? NOT_YET : errText(e))}</p>`); }
+    }
+
+    function actProps(rows) {
+        return `<table class="cd-props">${rows.filter(([, v]) => v).map(([k, v]) => `<tr><td>${esc(k)}:</td><td>${v}</td></tr>`).join('')}</table>`;
+    }
+    /** The call's parameters: a command in full, an edit as old / new, anything else as name and value. */
+    function actInputHtml(row, input) {
+        if (!input || typeof input !== 'object') return '<p class="mmc-hint">No parameters were recorded.</p>';
+        const keys = Object.keys(input);
+        if (!keys.length) return '<p class="mmc-hint">It took no parameters.</p>';
+        let out = '';
+        const rest = keys.filter((k) => !((k === 'command' && typeof input[k] === 'string') || k === 'old_string' || k === 'new_string' || (k === 'content' && row.kind === 'edit')));
+        if (typeof input.command === 'string') out += `<pre class="cd-pre cd-act-cmd">${esc(input.command)}</pre>`;
+        if (typeof input.new_string === 'string') out += editsHtml([{ old: input.old_string || '', new: input.new_string }]);
+        else if (row.kind === 'edit' && typeof input.content === 'string') out += editsHtml([{ old: '', new: input.content }]);
+        if (rest.length) {
+            out += `<table class="cd-props">${rest.map((k) => {
+                const v = input[k];
+                const text = typeof v === 'string' ? v : JSON.stringify(v);
+                return `<tr><td>${esc(k)}:</td><td>${String(text).length > 160 ? `<pre class="cd-pre">${esc(text)}</pre>` : esc(text)}</td></tr>`;
+            }).join('')}</table>`;
+        }
+        return out;
+    }
+    function activityHtml(r) {
+        const row = r.row || {};
+        const ses = r.session || {};
+        const why = r.why || {};
+        const who = row.agentId ? `Background agent${row.agentDescription ? `: ${esc(row.agentDescription)}` : ''}` : 'The session itself';
+        const link = ses.id ? ` <button type="button" class="btn-standard" data-cd-open-session="${esc(ses.id)}">Open Session</button>` : '';
+        return `<div class="cd-act">
+            <h4>Who</h4>${actProps([['Session', `${esc(ses.title || row.sessionTitle || shortId(row.sessionId))}${link}`], ['Account', esc(ses.account || row.account || '')], ['Acted as', who], ['Folder', esc(ses.cwd || '')], ['When', esc(when(row.ts))], ['Tool', esc(row.tool || '')]])}
+            <h4>Why</h4>${why.request ? `<p class="mmc-hint">The request:</p><pre class="cd-pre cd-act-why">${esc(why.request)}</pre>` : ''}${why.assistantText ? `<p class="mmc-hint">What Claude said just before:</p><pre class="cd-pre cd-act-why">${esc(why.assistantText)}</pre>` : ''}${why.request || why.assistantText ? '' : '<p class="mmc-hint">No reason was recorded for this call.</p>'}
+            <h4>${row.kind === 'shell' ? 'Command' : (row.kind === 'edit' ? 'Edit' : 'Parameters')}</h4>${row.description ? `<p class="mmc-hint">${esc(row.description)}</p>` : ''}${actInputHtml(row, r.input)}
+            <h4>Output${row.error ? ' (it failed)' : ''}</h4>${r.output == null ? '<p class="mmc-hint">No output was recorded.</p>' : `<pre class="cd-pre cd-act-out${row.error ? ' is-error' : ''}">${esc(r.output || '(empty)')}</pre>`}</div>`;
+    }
+
+    // ---- Contractors: other machines that run Fleet work on their own projects (claude_fleet_contractors) ------
+
+    function conTake(r) {
+        const list = r && (Array.isArray(r.contractors) ? r.contractors : (r.data && Array.isArray(r.data.contractors) ? r.data.contractors : null));
+        if (list) { S.con.list = list; S.con.loaded = true; S.con.gone = false; S.con.error = ''; }
+    }
+    async function loadContractors() {
+        if (S.con.loading) return;
+        S.con.loading = true;
+        try { conTake(await send('claude_fleet_contractors', { action: 'list' })); S.con.loaded = true; } catch (e) { S.con.loaded = true; if (isGone(e)) S.con.gone = true; else S.con.error = errText(e); }
+        S.con.loading = false;
+        repaint();
+    }
+    const conOf = (id) => S.con.list.find((x) => String(x.id) === String(id)) || null;
+    const conSessions = (k) => (Array.isArray(k && k.sessions) ? k.sessions : []);
+    const conSessionCount = (k) => (Array.isArray(k && k.sessions) ? k.sessions.length : (Number(k && k.sessions) || 0));
+
+    /** The background agents of an Active Work session, read when its node opens. */
+    async function loadAwAgents(sid) {
+        let e = S.awAgents.get(sid);
+        if (e && e.loading) return;
+        if (!e) { e = { agents: null, loading: false, gone: false, error: '' }; S.awAgents.set(sid, e); }
+        e.loading = true;
+        try {
+            const r = await send('claude_desk_session', { action: 'detail', id: sid });
+            const d = unwrap(r, 'detail').detail || null;
+            e.agents = d && Array.isArray(d.agents) ? d.agents : [];
+            e.error = '';
+        } catch (err) { e.agents = e.agents || []; if (isGone(err)) e.gone = true; else e.error = errText(err); }
+        e.loading = false;
+        repaint();
+    }
+
     /** What the view shows, as sent with every transcript request and watch. */
     const showNow = () => ({ thinking: !!S.show.thinking, edits: !!S.show.edits, tools: !!S.show.tools, results: !!S.show.results });
     /** A message's identity (a line's byte offset and its part), the same on a page, a push and in the DOM. */
     const msgKey = (m) => `${m.at}:${m.part == null ? '' : m.part}:${m.kind}:${m.toolUseId || ''}`;
     /** A server that does not know `show` yet answers in full: the tool rows the view hides are left out here. */
     const shownOnly = (list) => (list || []).filter((m) => !((m.kind === 'tool_use' && !S.show.tools) || (m.kind === 'tool_result' && !S.show.results)));
-    const logOf = (id) => (S.c && S.c.node === `t:${id}` ? S.c.modal.querySelector('.cd-chat-log:not(.cd-agent-log)') : null);
+    const logOf = (id) => (S.c && nodeSid(S.c.node) === id ? S.c.modal.querySelector('.cd-chat-log:not(.cd-agent-log)') : null);
 
     /** Drop whole lines from the top / the end until at most MSG_MAX rows are left. */
     function trimRows(chat, fromEnd) {
@@ -415,7 +539,7 @@
         } catch (e) { if (gen === chat.gen) chat.error = errText(e); } finally { if (gen === chat.gen) chat.loading = false; }
         if (gen !== chat.gen) return;
         if (!earlier && !later) await watch(id, true);
-        if (S.c && S.c.node === `t:${id}`) {
+        if (S.c && nodeSid(S.c.node) === id) {
             if (earlier || later) redrawLog(id);
             else S.c.render();
         }
@@ -459,7 +583,7 @@
     // ---- a session's details: background agents and tasks (claude_desk_session detail / agent_page / task_output) ----
 
     /** A reply's payload: the fields sit at the top of the reply, or under result. */
-    const unwrap = (r, key) => (r && r[key] !== undefined ? r : (r && r.result && typeof r.result === 'object' ? r.result : r) || {});
+    const unwrap = (r, key) => (r && r[key] !== undefined ? r : (r && r.data && typeof r.data === 'object' && r.data[key] !== undefined ? r.data : (r && r.result && typeof r.result === 'object' ? r.result : r)) || {});
     const chatOf = (id) => S.chats.get(id) || null;
     /** A session Remote Control's own server spawned: Fleet has no terminal of it to type into until it takes it over. */
     const serverOrigin = (id) => {
@@ -479,7 +603,7 @@
             dt.data = unwrap(r, 'detail').detail || null;
         } catch (e) { if (isGone(e)) dt.gone = true; else dt.error = errText(e); }
         dt.loading = false;
-        if (S.c && S.c.node === `t:${id}`) S.c.render();
+        if (S.c && nodeSid(S.c.node) === id) S.c.render();
     }
 
     async function loadAgentPage(id, agentId, earlier) {
@@ -677,6 +801,29 @@
     const PLANTED = { agent: 'Agent', supervisor: 'Supervisor', unknown: 'Unknown' };
     const ART_KIND = { dir: 'Folder', file: 'File', worktree: 'Worktree' };
     const ART_STATE = { live: 'In use', orphan: 'Orphan', gone: 'Gone' };
+    // pauses (claude_desk_supervisor pause / resume) and the restart waits the Supervisor watches
+    const supHolds = () => (S.sup.data && Array.isArray(S.sup.data.holds) ? S.sup.data.holds : []);
+    const holdOf = (sid) => supHolds().find((h) => h.sessionId === sid) || null;
+    const supAsks = () => (S.sup.data && Array.isArray(S.sup.data.gateAsks) ? S.sup.data.gateAsks : []);
+    const HOLD_KIND = { manual: 'By hand', collision: 'Two agents on the same files', agent: 'By an agent' };
+    const holdWord = (h) => (h && h.mode === 'freeze' ? 'Frozen' : 'Paused');
+    const holdLine = (h) => `${holdWord(h)}${h.reason ? `: ${h.reason}` : ''}`;
+    // the shape of supervised work (topology) and its stages
+    const TOPO = [
+        ['direct', 'Supervisor -> Claude agent', 'Single agent'],
+        ['surfaces', 'Supervisor -> Claude agents, one per surface', 'One agent per surface'],
+        ['planner', 'Supervisor -> Claude planner -> background agents', 'Planner and agents'],
+        ['auto', 'Let the Supervisor decide', 'Supervisor decides']
+    ];
+    const topoShort = (t) => (TOPO.find((x) => x[0] === t) || [])[2] || '';
+    const STAGES = { planner: { label: 'Planner', engine: 'claude', model: 'opus', effort: 'high', uses: ['planner', 'auto'] }, workers: { label: 'Workers', engine: 'claude', model: 'sonnet', effort: 'medium', uses: ['direct', 'surfaces', 'planner', 'auto'] } };
+    const workState = (w) => { const h = w.sessionId ? holdOf(w.sessionId) : null; return h ? holdWord(h) : (WORK_STATE[w.state] || w.state || ''); };
+    const shapeText = (w) => {
+        if (w.parentId != null && w.parentId !== '') { const p = workOf(w.parentId); return `Part of ${p ? (p.title || p.id) : w.parentId}`; }
+        const parts = supWork().filter((x) => String(x.parentId) === String(w.id));
+        const t = topoShort(w.topology);
+        return parts.length ? `${t || 'One agent per surface'} (${plural(parts.length, 'part')}, ${parts.filter((x) => x.state === 'done').length} done)` : t;
+    };
 
     function supTake(r) {
         if (r && r.settings) { S.sup.data = Object.assign({}, S.sup.data || {}, r); S.sup.draft = null; S.sup.loaded = true; S.sup.unavailable = false; S.sup.error = ''; S.sup.stale = false; }
@@ -705,7 +852,7 @@
                 S.sup.sel = String(r.review.id);
             }
             S.sup.error = '';
-        } catch (e) { supFail(e); if (S.sup.error) await failBox(c, e); }
+        } catch (e) { supFail(e); if (S.sup.error) await failBox(c, e); else await c.box(`<p>${NOT_YET}</p>`, null, { icon: 'info' }); }
         S.sup.busy = '';
         c.note('');
         repaint();
@@ -746,14 +893,16 @@
         const placeholder = (eng && eng.defaultModel) || (st.engine === 'tokenrouter' ? 'deepseek/deepseek-v4.1-flash' : '');
         const stats = (sup.data && sup.data.stats) || {};
         const form = `<div class="cd-sup-form">
-            <label class="cd-check"><input type="checkbox" data-sup="enabled"${st.enabled ? ' checked' : ''}><span>Enabled: review each agent turn against what was asked</span></label>
+            <label class="cd-opt"><input type="checkbox" data-sup="enabled"${st.enabled ? ' checked' : ''}><span>Enabled: review each agent turn against what was asked</span></label>
             <label><span>Engine:</span><select class="vdt-select" data-sup="engine">${engineOpts}</select></label>
             <label><span>Model:</span><input type="text" data-sup="model" value="${esc(st.model || '')}" placeholder="${esc(placeholder)}" spellcheck="false" autocomplete="off"></label>
             <label><span>Delivery:</span><select class="vdt-select" data-sup="delivery">${DELIVERY.map(([v, t]) => `<option value="${v}"${v === st.delivery ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
             <label><span>Max concurrent sessions:</span><input type="text" data-sup="maxConcurrent" value="${esc(st.maxConcurrent == null ? 3 : st.maxConcurrent)}" inputmode="numeric" autocomplete="off"></label>
-            <label class="cd-check"><input type="checkbox" data-sup="autoStart"${st.autoStart === false ? '' : ' checked'}><span>Start queued work automatically</span></label>
-            <label class="cd-check"><input type="checkbox" data-sup="manageLocks"${st.manageLocks ? ' checked' : ''}><span>Manage busy locks for agents</span></label>
-            <label class="cd-check"><input type="checkbox" data-sup="trackArtifacts"${st.trackArtifacts ? ' checked' : ''}><span>Track work folders and temp files</span></label>
+            <label class="cd-opt"><input type="checkbox" data-sup="autoStart"${st.autoStart === false ? '' : ' checked'}><span>Start queued work automatically</span></label>
+            <label class="cd-opt"><input type="checkbox" data-sup="manageLocks"${st.manageLocks ? ' checked' : ''}><span>Manage busy locks for agents</span></label>
+            <label class="cd-opt"><input type="checkbox" data-sup="trackArtifacts"${st.trackArtifacts ? ' checked' : ''}><span>Track work folders and temp files</span></label>
+            <label class="cd-opt"><input type="checkbox" data-sup="autoPauseOnCollision"${st.autoPauseOnCollision ? ' checked' : ''}><span>Pause the later agent when two collide on the same files</span></label>
+            <label><span>Verify a restart wait after (minutes):</span><input type="text" data-sup="maxAskMinutes" value="${esc(st.maxAskMinutes == null ? '' : st.maxAskMinutes)}" inputmode="numeric" autocomplete="off" placeholder="Ask the Supervisor to verify a restart wait after N minutes"></label>
             <label class="cd-top"><span>Yozora repositories to watch:</span><textarea data-sup="yozoraRepos" rows="3" spellcheck="false" placeholder="owner/repo, one per line">${esc(Array.isArray(st.yozoraRepos) ? st.yozoraRepos.join('\n') : String(st.yozoraRepos || ''))}</textarea></label>
             <p class="mmc-hint">An open issue labelled fleet in these repositories joins the Work Queue by itself.</p>
             <p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="sup-save"${sup.busy ? ' disabled' : ''}>Save</button>${sup.draft ? ' <span class="mmc-hint">Not saved yet.</span>' : ''}</p>
@@ -791,13 +940,28 @@
         ], artRows, { sortId: 'cd-sup-arts', sort: { key: 'age', dir: -1 }, empty: st.trackArtifacts ? 'No work folder or temp file is tracked.' : 'Tracking is off. Tick "Track work folders and temp files" above.' });
         const total = stats.artifactBytes != null ? stats.artifactBytes : arts.reduce((n, a) => n + (a.sizeBytes || 0), 0);
         const side = sup.busy || sup.error || `${stats.reviewed || 0} reviewed, ${stats.gaps || 0} with gaps${stats.lastAt ? `, last ${when(stats.lastAt)}` : ''}`;
+        const holds = supHolds();
+        const holdRows = holds.map((h) => ({ key: `hd:${h.id}`, icon: `${VI}/warning-16.png`, data: { title: titleOf(rowOf(h.sessionId) || { id: h.sessionId }), mode: holdWord(h), reason: h.reason || '', kind: HOLD_KIND[h.kind] || h.kind || '', by: h.by || '', at: h.at || 0, paths: Array.isArray(h.paths) ? h.paths.join(', ') : '' } }));
+        const holdList = c.listView([
+            { t: 'Session', w: 170, key: 'title', text: (d) => d.title },
+            { t: 'Mode', w: 60, key: 'mode', text: (d) => d.mode },
+            { t: 'Reason', w: 220, key: 'reason', text: (d) => d.reason },
+            { t: 'Why', w: 130, key: 'kind', text: (d) => d.kind },
+            { t: 'By', w: 90, key: 'by', text: (d) => d.by },
+            { t: 'Since', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => Number(d.at) || Date.parse(d.at) || 0 },
+            { t: 'Files', w: 200, key: 'paths', text: (d) => d.paths }
+        ], holdRows, { sortId: 'cd-sup-holds', sort: { key: 'at', dir: -1 }, empty: 'No session is paused.' });
+        const asks = supAsks();
+        const askBody = asks.length ? asks.map((g) => `<div class="cd-infobar is-warning" role="alert"><img src="${VI}/warning-16.png" alt=""><span>${esc(askText(g))}</span></div>`).join('') : '';
         const html = c.page('Supervisor', side, [
+            asks.length ? { id: 'cd-sup-asks', title: `Restart waits (${asks.length})`, body: `${askBody}<p class="mmc-hint">An agent asked to restart Dreamscape and waits for the others to be idle. The Supervisor checks the wait after the time set below.</p>` } : null,
             { id: 'cd-sup-set', title: 'Settings', body: form },
+            { id: 'cd-sup-holds', title: `Paused sessions (${holds.length})`, body: `<div class="cd-sup-list">${holdList}</div><p class="cd-sup-actions"><button type="button" class="btn-standard" data-act="sup-resume"${sup.busy ? ' disabled' : ''}>Resume</button> <span class="mmc-hint">Resumes the selected session.</span></p>` },
             { id: 'cd-sup-list', title: `Reviews (${reviews.length})`, body: `<div class="cd-sup-list">${list}</div>` },
             { id: 'cd-sup-detail', title: 'Selected Review', body: `<div class="cd-sup-detail">${supDetailHtml()}</div>` },
             { id: 'cd-sup-locks', title: `Locks (${locks.length})`, body: `<div class="cd-sup-list">${lockList}</div><p class="cd-sup-actions"><button type="button" class="btn-standard" data-act="sup-lock-remove"${sup.busy ? ' disabled' : ''}>Remove</button> <span class="mmc-hint">Removes the selected lock when its agent is gone (an orphan).</span></p>` },
             { id: 'cd-sup-arts', title: `Work folders and temp files (${arts.length})`, body: `<div class="cd-sup-list">${artList}</div><p class="mmc-hint">${arts.length ? `${esc(bytesText(total))} in all.` : ''}</p><p class="cd-sup-actions"><button type="button" class="btn-standard" data-act="sup-art-clean"${sup.busy ? ' disabled' : ''}>Clean</button> <button type="button" class="btn-standard" data-act="sup-art-forget"${sup.busy ? ' disabled' : ''}>Forget</button> <span class="mmc-hint">Clean deletes it from disk; Forget only stops tracking it.</span></p>` }
-        ]);
+        ].filter(Boolean));
         return {
             html,
             mount: (pane) => {
@@ -820,19 +984,21 @@
             }
         };
     }
-    function workPage(c) {
-        if (!S.sup.loaded) { void loadSupervisor(); return c.page('Work Queue', '', [{ id: 'cd-wq-wait', title: 'Work Queue', body: '<p class="mmc-hint">Reading the work queue...</p>' }]); }
+    function workPage(c, onlyOpen) {
+        const T = onlyOpen ? 'Supervised Work' : 'Work Queue';
+        if (!S.sup.loaded) { void loadSupervisor(); return c.page(T, '', [{ id: 'cd-wq-wait', title: T, body: '<p class="mmc-hint">Reading the work queue...</p>' }]); }
         if (S.sup.stale) { S.sup.stale = false; void loadSupervisor(); }
-        if (S.sup.unavailable) return c.page('Work Queue', '', [{ id: 'cd-wq-gone', title: 'Work Queue', body: `<p>${NOT_YET}</p>` }]);
-        const rows = supWork().map((w) => ({
+        if (S.sup.unavailable) return c.page(T, '', [{ id: 'cd-wq-gone', title: T, body: `<p>${NOT_YET}</p>` }]);
+        const rows = (onlyOpen ? activeItems() : supWork()).map((w) => ({
             key: `w:${w.id}`,
-            icon: workIcon(w.state),
+            icon: w.sessionId && holdOf(w.sessionId) ? `${VI}/warning-16.png` : workIcon(w.state),
             cls: w.state === 'running' || w.state === 'starting' ? 'cd-live' : (w.state === 'failed' ? 'cd-stale' : ''),
-            data: { title: w.title || String(w.id), state: WORK_STATE[w.state] || w.state || '', source: WORK_SOURCE[w.source] || w.source || '', account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), model: [w.engine && w.engine !== 'claude' ? engineName(w.engine) : '', w.model, w.effort].filter(Boolean).join(' / '), session: w.sessionId ? shortId(w.sessionId) : '', issue: issueText(w), at: w.createdAt || 0, message: [w.message, w.issueNote].filter(Boolean).join(' - ') }
+            data: { title: w.title || String(w.id), state: workState(w), shape: shapeText(w), source: WORK_SOURCE[w.source] || w.source || '', account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), model: [w.engine && w.engine !== 'claude' ? engineName(w.engine) : '', w.model, w.effort].filter(Boolean).join(' / '), session: w.sessionId ? shortId(w.sessionId) : '', issue: issueText(w), at: w.createdAt || 0, message: [w.message, w.issueNote].filter(Boolean).join(' - ') }
         }));
         const lv = c.listView([
-            { t: 'Request', w: 230, key: 'title', text: (d) => d.title },
+            { t: 'Request', w: 220, key: 'title', text: (d) => d.title },
             { t: 'State', w: 76, key: 'state', text: (d) => d.state },
+            { t: 'Shape / Parts', w: 170, key: 'shape', text: (d) => d.shape },
             { t: 'From', w: 66, key: 'source', text: (d) => d.source },
             { t: 'Account', w: 90, key: 'account', text: (d) => d.account },
             { t: 'Engine / Model / Effort', w: 150, key: 'model', text: (d) => d.model },
@@ -840,8 +1006,174 @@
             { t: 'Issue', w: 110, key: 'issue', text: (d) => d.issue },
             { t: 'Queued', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => Number(d.at) || Date.parse(d.at) || 0 },
             { t: 'Note', w: 220, key: 'message', text: (d) => d.message }
-        ], rows, { sortId: 'cd-work', sort: { key: 'at', dir: -1 }, empty: 'The queue is empty. A request from New Session..., Plaud or an agent waits here until an account has room.', fit: true });
+        ], rows, { sortId: onlyOpen ? 'cd-work-active' : 'cd-work', sort: { key: 'at', dir: -1 }, empty: onlyOpen ? 'No supervised work is running or waiting.' : 'The queue is empty. A request from New Session..., Plaud or an agent waits here until an account has room.', fit: true });
         return { html: lv, list: true };
+    }
+
+    /** Active Work: every open work item and every running session no item owns, in one list. */
+    function awPage(c) {
+        if (!S.sup.loaded) void loadSupervisor();
+        const A = S.app.url('assets').replace(/\/$/, '');
+        const items = activeItems().map((w) => ({
+            key: `w:${w.id}`,
+            icon: w.sessionId && holdOf(w.sessionId) ? `${VI}/warning-16.png` : workIcon(w.state),
+            cls: w.state === 'running' || w.state === 'starting' ? 'cd-live' : '',
+            data: { name: w.title || String(w.id), what: w.parentId != null && w.parentId !== '' ? 'Part' : 'Work item', state: workState(w), shape: shapeText(w), account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), session: w.sessionId ? titleOf(rowOf(w.sessionId) || { id: w.sessionId }) : '' }
+        }));
+        const uns = unsupervised().map((l) => {
+            const h = holdOf(l.id);
+            const row = rowOf(l.id) || { id: l.id, title: l.name };
+            return { key: `s:${l.id}`, icon: h ? `${VI}/warning-16.png` : `${A}/session-16.png`, cls: l.status === 'busy' ? 'cd-busy' : 'cd-live', data: { name: titleOf(row), what: 'Session', state: stateText(row), shape: 'Unsupervised', account: row.account ? row.account.name : '', session: '' } };
+        });
+        const bars = supAsks().map((g) => `<div class="cd-infobar is-warning" role="alert"><img src="${VI}/warning-16.png" alt=""><span>${esc(askText(g))}</span></div>`).join('');
+        const lv = c.listView([
+            { t: 'Name', w: 260, key: 'name', text: (d) => d.name },
+            { t: 'Kind', w: 80, key: 'what', text: (d) => d.what },
+            { t: 'State', w: 80, key: 'state', text: (d) => d.state },
+            { t: 'Shape', w: 180, key: 'shape', text: (d) => d.shape },
+            { t: 'Account', w: 100, key: 'account', text: (d) => d.account },
+            { t: 'Session', w: 180, key: 'session', text: (d) => d.session }
+        ], items.concat(uns), { sortId: 'cd-aw', empty: S.sup.loaded ? 'Nothing is running. Start work from New Session...' : 'Reading the work...', fit: true });
+        return { html: bars ? `<div class="cd-list-wrap">${bars}${lv}</div>` : lv, list: true, split: !!bars };
+    }
+    const askText = (g) => { const a = agentOf(g.agentId); return `Restart waiting on ${a ? (a.name || a.id) : (g.agentId || 'an agent')}${g.text ? `: ${String(g.text).replace(/\s+/g, ' ').slice(0, 160)}` : ''}${g.firstAt ? ` (since ${timeOnly(g.firstAt)})` : ''}${g.stale ? ' - it looks stuck' : ''}`; };
+
+    /** The running sessions no work item owns, as the Sessions list shows them. */
+    function unsupervisedPage(c) {
+        if (!S.sessionsLoaded && !S.sessionsLoading) void loadSessions(false);
+        const list = unsupervised().map((l) => rowOf(l.id) || { id: l.id, title: l.name, folder: l.cwd ? l.cwd.split('/').pop() : '', lastActivity: l.startedAt ? new Date(l.startedAt).toISOString() : '', messages: 0 });
+        return { html: c.listView(SESSION_COLS, sessionRows(list), { sortId: 'cd-unsup', sort: { key: 'last', dir: -1 }, empty: 'Every running session belongs to a work item, or none is running.' }), list: true };
+    }
+
+    /** One work item: what was asked, how it is arranged, its parts, where it runs. */
+    function workItemPage(c, id) {
+        const w = workOf(id);
+        if (!w) return c.page('Work Item', '', [{ id: 'cd-wi-gone', title: 'Work Item', body: '<p class="mmc-hint">This item is no longer in the queue.</p>' }]);
+        const parts = supWork().filter((x) => String(x.parentId) === String(w.id));
+        const h = w.sessionId ? holdOf(w.sessionId) : null;
+        const st = w.stages || {};
+        const stageText = (x) => (x ? [x.engine && x.engine !== 'claude' ? engineName(x.engine) : '', x.model, x.effort].filter(Boolean).join(' / ') : '');
+        const links = [w.sessionId ? `<span class="mmc-link" data-act="work-open" data-arg="${esc(w.id)}">Open session</span>` : '', w.issue && w.issue.url ? '<span class="mmc-link" data-act="work-issue">Open issue</span>' : ''].filter(Boolean).join(' &nbsp; ');
+        return c.page(w.title || String(w.id), workState(w), [
+            h ? { id: 'cd-wi-hold', title: holdWord(h), body: `<p>${esc(holdLine(h))}</p><p class="mmc-hint">${esc([HOLD_KIND[h.kind] || h.kind, h.by ? `by ${h.by}` : '', when(h.at)].filter(Boolean).join(' - '))}</p><p><span class="mmc-link" data-act="resume-hold" data-arg="${esc(w.sessionId)}">Resume</span></p>` } : null,
+            { id: 'cd-wi-info', title: 'Request', body: c.props([
+                ['State', esc(workState(w))],
+                ['Shape', esc((TOPO.find((x) => x[0] === w.topology) || [])[1] || '')],
+                ['Planner stage', esc(stageText(st.planner))],
+                ['Workers stage', esc(stageText(st.workers) || [w.model, w.effort].filter(Boolean).join(' / '))],
+                ['Account', esc(w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)))],
+                ['Folder', esc(w.cwd || '')],
+                ['Issue', esc(issueText(w))],
+                ['Queued', esc(when(w.createdAt))],
+                ['Note', esc([w.message, w.issueNote].filter(Boolean).join(' - '))]
+            ]) + (links ? `<p>${links}</p>` : '') + (w.prompt ? `<p class="cd-read">${esc(w.prompt)}</p>` : '') },
+            parts.length ? { id: 'cd-wi-parts', title: `Parts (${parts.length})`, body: `<table class="cd-table"><thead><tr><th>Part</th><th class="cd-w80">State</th><th class="cd-w80">Session</th></tr></thead><tbody>${parts.map((x) => `<tr><td>${esc(x.title || x.id)}</td><td>${esc(workState(x))}</td><td>${esc(x.sessionId ? shortId(x.sessionId) : '')}</td></tr>`).join('')}</tbody></table>` } : null
+        ].filter(Boolean));
+    }
+
+    /** A background agent in the Active Work tree. */
+    function awAgentPage(c, sid, agentId) {
+        const e = S.awAgents.get(sid);
+        const x = e && e.agents ? e.agents.find((a) => a.agentId === agentId) : null;
+        if (!x) return c.page('Background Agent', '', [{ id: 'cd-aa-wait', title: 'Background Agent', body: `<p class="mmc-hint">${e && e.loading ? 'Reading the agent...' : 'This agent is no longer listed.'}</p>` }]);
+        return c.page(x.description || agentId, x.finished ? 'Finished' : 'Running', [{ id: 'cd-aa-info', title: 'Background Agent', body: c.props([
+            ['Session', esc(titleOf(rowOf(sid) || { id: sid }))],
+            ['Type', esc(x.type || '')],
+            ['Model', esc(x.model || '')],
+            ['State', x.finished ? 'Finished' : 'Running'],
+            ['Last activity', esc(when(x.lastActivity))],
+            ['Messages', String(x.messages || 0)]
+        ]) + `<p><span class="mmc-link" data-act="agent-open" data-arg="${esc(`${sid}|${agentId}`)}">Read its conversation</span> &nbsp; <span class="mmc-link" data-act="aw-agents-refresh" data-arg="${esc(sid)}">Read again</span></p>` }]);
+    }
+
+    // ---- Activity page ------------------------------------------------------------------------------------
+
+    function activityPage(c) {
+        const A = S.act;
+        if (!A.loaded && !A.loading) void loadActivity(false);
+        if (A.gone) return c.page('Activity', '', [{ id: 'cd-act-gone', title: 'Activity', body: `<p>${NOT_YET}</p>` }]);
+        const seen = new Set();
+        const sess = [];
+        S.live.forEach((l) => { if (!seen.has(l.id)) { seen.add(l.id); sess.push([l.id, titleOf(rowOf(l.id) || { id: l.id, title: l.name })]); } });
+        S.sessions.slice(0, 100).forEach((r) => { if (!seen.has(r.id)) { seen.add(r.id); sess.push([r.id, titleOf(r)]); } });
+        if (A.sessionId && !seen.has(A.sessionId)) sess.unshift([A.sessionId, titleOf(rowOf(A.sessionId) || { id: A.sessionId })]);
+        const bar = `<div class="cd-actbar" role="toolbar" aria-label="Filter the activity">
+            <label><span>Show:</span><select class="vdt-select" data-act-f="kind">${ACT_KINDS.map(([v, t]) => `<option value="${v}"${v === A.kind ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+            <label><span>Session:</span><select class="vdt-select" data-act-f="session"><option value="">All sessions</option>${sess.map(([id, t]) => `<option value="${esc(id)}"${id === A.sessionId ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+            <label class="cd-actq"><span>Search:</span><input type="text" data-act-f="q" value="${esc(A.qDraft != null ? A.qDraft : A.q)}" spellcheck="false" autocomplete="off" placeholder="A command, a file, a word"></label>
+            <button type="button" class="btn-standard" data-act="act-search"${A.loading ? ' disabled' : ''}>Search</button></div>`;
+        const rows = A.rows.map((r) => ({
+            key: `x:${r.id}`,
+            icon: r.kind === 'edit' ? `${VI}/explorer/file-16.png` : (r.kind === 'shell' ? `${ITEMS}/administrative-tools-16.png` : `${VI}/info-16.png`),
+            cls: r.error ? 'cd-stale' : '',
+            data: { ts: r.ts, kind: KIND_TEXT[r.kind] || r.kind || '', tool: r.tool || '', summary: String(r.summary || r.target || '').replace(/\s+/g, ' '), session: r.sessionTitle || shortId(r.sessionId), who: r.agentId ? (r.agentDescription || 'Background agent') : '', result: r.error ? 'Failed' : '' }
+        }));
+        const empty = A.error ? `The activity could not be read. ${A.error}` : (A.loading || !A.loaded ? 'Reading the activity...' : (A.kind || A.q || A.sessionId ? 'Nothing matches.' : 'No activity yet.'));
+        const lv = c.listView([
+            { t: 'When', w: 128, key: 'ts', text: (d) => when(d.ts), value: (d) => Date.parse(d.ts) || 0 },
+            { t: 'Kind', w: 52, key: 'kind', text: (d) => d.kind },
+            { t: 'Tool', w: 74, key: 'tool', text: (d) => d.tool },
+            { t: 'What', w: 300, key: 'summary', text: (d) => d.summary },
+            { t: 'Session', w: 160, key: 'session', text: (d) => d.session },
+            { t: 'Background Agent', w: 130, key: 'who', text: (d) => d.who },
+            { t: 'Result', w: 54, key: 'result', text: (d) => d.result }
+        ], rows, { sortId: 'cd-activity', sort: { key: 'ts', dir: -1 }, empty, fit: true });
+        const more = A.loaded ? `<div class="cd-more"><span>${A.rows.length} of ${A.total}</span><button type="button" class="btn-standard" data-act="act-more"${A.next == null || A.loading ? ' disabled' : ''}>More</button></div>` : '';
+        return {
+            html: `<div class="cd-list-wrap">${bar}${lv}${more}</div>`,
+            list: true,
+            split: true,
+            mount: (pane) => {
+                const onKind = pane.querySelector('[data-act-f="kind"]');
+                const onSes = pane.querySelector('[data-act-f="session"]');
+                const q = pane.querySelector('[data-act-f="q"]');
+                const apply = () => { A.kind = onKind.value; A.sessionId = onSes.value; A.q = q.value.trim(); A.qDraft = q.value; A.rows = []; A.next = null; A.total = 0; A.loaded = false; void loadActivity(false); c.refresh(); };
+                if (onKind) onKind.addEventListener('change', apply);
+                if (onSes) onSes.addEventListener('change', apply);
+                if (q) {
+                    q.addEventListener('input', () => { A.qDraft = q.value; });
+                    q.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); apply(); } });
+                }
+            }
+        };
+    }
+
+    // ---- Contractors pages ---------------------------------------------------------------------------------
+
+    function contractorsPage(c) {
+        if (!S.con.loaded && !S.con.loading) void loadContractors();
+        if (S.con.gone) return c.page('Contractors', '', [{ id: 'cd-con-gone', title: 'Contractors', body: `<p>${NOT_YET}</p><p class="mmc-hint">Contractors are other machines that run Fleet work on their own projects.</p>` }]);
+        const rows = S.con.list.map((k) => ({
+            key: `k:${k.id}`,
+            icon: `${ITEMS}/network-and-sharing-center-16.png`,
+            cls: k.connected ? 'cd-live' : '',
+            data: { name: k.name || k.hostname || String(k.id), host: k.hostname || '', os: k.os || '', state: k.connected ? 'Connected' : 'Not connected', seen: k.lastSeen || 0, sessions: conSessionCount(k) }
+        }));
+        const empty = S.con.error ? `Contractors could not be read. ${S.con.error}` : (S.con.loaded ? 'No other machine is added. Use Add Contractor... to connect one.' : 'Reading the contractors...');
+        return { html: c.listView([
+            { t: 'Name', w: 160, key: 'name', text: (d) => d.name },
+            { t: 'Host', w: 140, key: 'host', text: (d) => d.host },
+            { t: 'System', w: 110, key: 'os', text: (d) => d.os },
+            { t: 'State', w: 90, key: 'state', text: (d) => d.state },
+            { t: 'Last Seen', w: 128, key: 'seen', text: (d) => when(d.seen), value: (d) => Number(d.seen) || Date.parse(d.seen) || 0 },
+            { t: 'Sessions', w: 62, key: 'sessions', num: true, text: (d) => String(d.sessions), value: (d) => d.sessions }
+        ], rows, { sortId: 'cd-contractors', empty, fit: true }), list: true };
+    }
+    function contractorPage(c, id) {
+        const k = conOf(id);
+        if (!k) return c.page('Contractor', '', [{ id: 'cd-ct-gone', title: 'Contractor', body: '<p class="mmc-hint">This contractor is no longer listed.</p>' }]);
+        const sess = conSessions(k);
+        return c.page(k.name || k.hostname || String(k.id), k.connected ? 'Connected' : 'Not connected', [
+            { id: 'cd-ct-info', title: 'Machine', body: c.props([['Host', esc(k.hostname || '')], ['System', esc(k.os || '')], ['State', c.state(!!k.connected, k.connected ? 'Connected' : 'Not connected', true)], ['Last seen', esc(when(k.lastSeen))]]) },
+            { id: 'cd-ct-sess', title: `Sessions (${conSessionCount(k)})`, body: sess.length ? `<table class="cd-table"><thead><tr><th>Session</th><th class="cd-w80">State</th></tr></thead><tbody>${sess.map((x) => `<tr><td>${esc((x && (x.title || x.name || x.id)) || '')}</td><td>${esc((x && (x.state || x.status)) || '')}</td></tr>`).join('')}</tbody></table>` : '<p class="mmc-hint">It runs no session now.</p>' }
+        ]);
+    }
+    function contractorSessionPage(c, cid, key) {
+        const k = conOf(cid);
+        const sess = k ? conSessions(k) : [];
+        const x = sess.find((y, i) => String(y && y.id != null ? y.id : i) === key);
+        if (!x || typeof x !== 'object') return c.page('Session', '', [{ id: 'cd-cs-gone', title: 'Session', body: '<p class="mmc-hint">This session is no longer listed.</p>' }]);
+        return c.page(x.title || x.name || String(x.id || ''), k.name || '', [{ id: 'cd-cs-info', title: 'Session', body: c.props(Object.keys(x).filter((p) => ['string', 'number', 'boolean'].includes(typeof x[p])).map((p) => [esc(p), esc(String(x[p]))])) }]);
     }
 
     /** The selected review's detail again, without drawing the page (the settings keep what is typed). */
@@ -854,6 +1186,32 @@
 
     // ---- the tree -----------------------------------------------------------------------------------------
 
+    /** The sessions no work item owns: running ones the Supervisor does not supervise. */
+    const unsupervised = () => { const owned = new Set(supWork().filter((w) => WORK_OPEN.has(w.state) && w.sessionId).map((w) => w.sessionId)); return S.live.filter((l) => !owned.has(l.id)); };
+    const activeItems = () => supWork().filter((w) => WORK_OPEN.has(w.state));
+
+    /** A session in the tree: paused ones carry the warning icon and the word. */
+    function sessionNode(idPrefix, sid, A) {
+        const row = rowOf(sid) || { id: sid, title: (liveOf(sid) || {}).name };
+        const h = holdOf(sid);
+        const node = { id: `${idPrefix}${sid}`, name: `${titleOf(row)}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? `${VI}/warning-16.png` : `${A}/session-16.png`, desc: h ? holdLine(h) : 'The session\'s conversation' };
+        if (idPrefix === 'aw:s:') {
+            const e = S.awAgents.get(sid);
+            if (e && e.agents) node.children = e.agents.map((x) => ({ id: `aw:a:${sid}:${x.agentId}`, name: x.description || x.agentId, icon: x.finished ? `${VI}/check-16.png` : `${A}/session-16.png`, desc: 'A background agent of this session' }));
+            else if (liveOf(sid)) node.children = [{ id: `aw:l:${sid}`, name: 'Reading the agents...', icon: `${VI}/info-16.png` }];
+        }
+        return node;
+    }
+    /** A work item: its parts (a surfaces item's child items, each with its session) and its own session. */
+    function workNode(w, A, seen) {
+        seen.add(String(w.id));
+        const kids = activeItems().filter((x) => String(x.parentId) === String(w.id) && !seen.has(String(x.id))).map((x) => workNode(x, A, seen));
+        if (w.sessionId) kids.push(sessionNode('aw:s:', w.sessionId, A));
+        const h = w.sessionId ? holdOf(w.sessionId) : null;
+        const topo = topoShort(w.topology);
+        return { id: `aw:w:${w.id}`, name: `${w.title || w.id}${topo && w.parentId == null ? ` - ${topo}` : ''}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? `${VI}/warning-16.png` : workIcon(w.state), desc: `${WORK_STATE[w.state] || w.state || ''}`, children: kids };
+    }
+
     function nodes() {
         const A = S.app ? S.app.url('assets').replace(/\/$/, '') : '/melaton-apps/claudedesk/assets';
         const running = S.live.length;
@@ -861,19 +1219,30 @@
             const row = rowOf(id);
             return { id: `t:${id}`, name: titleOf(row || { id }), icon: `${A}/session-16.png`, desc: 'The session\'s conversation' };
         });
+        const seen = new Set();
+        const items = activeItems();
+        const tops = items.filter((w) => w.parentId == null || w.parentId === '' || !items.some((x) => String(x.id) === String(w.parentId)));
+        const supNodes = tops.map((w) => workNode(w, A, seen));
+        const uns = unsupervised().map((l) => sessionNode('us:', l.id, A));
+        const cons = S.con.list.map((k) => ({
+            id: `ct:${k.id}`,
+            name: k.name || k.hostname || String(k.id),
+            icon: `${ITEMS}/network-and-sharing-center-16.png`,
+            desc: k.connected ? 'Connected' : 'Not connected',
+            children: conSessions(k).map((x, i) => ({ id: `ctS:${k.id}:${x && x.id != null ? x.id : i}`, name: (x && (x.title || x.name)) || (x && x.id) || `Session ${i + 1}`, icon: `${A}/session-16.png` }))
+        }));
+        const host = S.host && S.host.hostname ? S.host.hostname : '';
         return [{
             id: 'root',
-            name: `${TITLE} (Local)`,
+            name: host ? `${TITLE} (${host})` : TITLE,
             icon: `${A}/claudedesk-16.png`,
             children: [
-                { id: 'accounts', name: 'Accounts', icon: `${A}/account-16.png`, desc: 'The Claude accounts of this host' },
-                {
-                    id: 'rc',
-                    name: 'Remote Control',
-                    icon: `${ITEMS}/network-and-sharing-center-16.png`,
-                    desc: 'Every Claude account\'s own Remote Control',
-                    children: [{ id: 'rc-host', name: 'Host Login', icon: `${ITEMS}/network-and-sharing-center-16.png`, desc: 'claude-remote.service: the host\'s own claude.ai login' }]
-                },
+                { id: 'aw', name: 'Active Work', icon: `${A}/session-16.png`, desc: 'Who watches whom: the Supervisor, its work items, their sessions and background agents',
+                    children: [
+                        { id: 'aw-sup', name: 'Supervised Work', icon: `${ITEMS}/parental-controls-16.png`, desc: 'The Supervisor and the work it runs', children: supNodes },
+                        { id: 'aw-uns', name: `Unsupervised Sessions (${uns.length})`, icon: `${A}/session-16.png`, desc: 'Running sessions no work item owns', children: uns }
+                    ] },
+                { id: 'co-work', name: 'Work Queue', icon: `${A}/session-16.png`, desc: 'Requests waiting for, starting on and running on an account' },
                 {
                     id: 'sessions',
                     name: 'Sessions',
@@ -881,6 +1250,7 @@
                     desc: 'Every Claude session on the host',
                     children: [{ id: 'running', name: `Running (${running})`, icon: `${A}/session-16.png`, desc: 'The sessions running now' }].concat(open)
                 },
+                { id: 'activity', name: 'Activity', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Every shell command, tool call and file edit of every session' },
                 {
                     id: 'co-root',
                     name: 'Coordination',
@@ -891,10 +1261,19 @@
                         { id: 'co-claims', name: 'Claims', icon: FOLDER16 },
                         { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
                         { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
-                        { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' },
-                        { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Reviews of finished agent turns against what was asked', children: [{ id: 'co-work', name: 'Work Queue', icon: `${A}/session-16.png`, desc: 'Requests waiting for, starting on and running on an account' }] }
-                    ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: `${S.app ? S.app.url('assets').replace(/\/$/, '') : '/melaton-apps/claudedesk/assets'}/session-16.png`, desc: 'What this agent is doing' }] : [])
-                }
+                        { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
+                    ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: `${A}/session-16.png`, desc: 'What this agent is doing' }] : [])
+                },
+                { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Settings, reviews, pauses, locks and temp files' },
+                { id: 'accounts', name: 'Accounts', icon: `${A}/account-16.png`, desc: 'The Claude accounts of this host' },
+                {
+                    id: 'rc',
+                    name: 'Remote Control',
+                    icon: `${ITEMS}/network-and-sharing-center-16.png`,
+                    desc: 'Every Claude account\'s own Remote Control',
+                    children: [{ id: 'rc-host', name: 'Host Login', icon: `${ITEMS}/network-and-sharing-center-16.png`, desc: 'claude-remote.service: the host\'s own claude.ai login' }]
+                },
+                { id: 'contractors', name: 'Contractors', icon: `${ITEMS}/network-and-sharing-center-16.png`, desc: 'Other machines that run Fleet work on their own projects', children: cons }
             ]
         }];
     }
@@ -915,7 +1294,7 @@
         const busy = S.live.filter((s) => s.status === 'busy').length;
         const agents = S.coord.agents.filter((a) => a.kind !== 'person');
         const overview = c.overview(`${A}/claudedesk-32.png`, [
-            'Fleet manages the Claude accounts of this host, its Remote Control, the Claude sessions running on it and the agents coordinating on it.',
+            'Fleet manages the Claude accounts of this server, its Remote Control, the Claude sessions running on it and the agents coordinating on it.',
             'Sessions started here run in Remote Control, outlive a Dreamscape restart, and can run on either account at the same time.'
         ]);
         const sections = [
@@ -941,7 +1320,7 @@
                 ['Build gates open', String((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length)]
             ]) + `<p><span class="mmc-link" data-act="nav:co-agents">Agents</span> &nbsp; <span class="mmc-link" data-act="nav:co-builds">Build gates</span></p>` }
         ];
-        return c.page(`${TITLE} (Local)`, S.error ? `Error: ${S.error}` : '', [{ id: 'cd-sum-overview', title: 'Overview', body: overview }, { id: 'cd-sum-usage', title: 'Plan Usage', body: `<div class="cd-usage">${usageHtml()}</div>` }].concat(sections));
+        return c.page(S.host && S.host.hostname ? `${TITLE} (${S.host.hostname})` : TITLE, S.error ? `Error: ${S.error}` : '', [{ id: 'cd-sum-overview', title: 'Overview', body: overview }, { id: 'cd-sum-usage', title: 'Plan Usage', body: `<div class="cd-usage">${usageHtml()}</div>` }].concat(sections));
     }
 
     const ACCOUNT_COLS = [
@@ -1313,7 +1692,7 @@
         if (!(key in SHOW_DEFAULT)) return;
         S.show[key] = !!on;
         if (S.c) S.c.setReg({ ShowView: showNow() });
-        const cur = S.c && S.c.node && S.c.node.startsWith('t:') ? S.c.node.slice(2) : '';
+        const cur = S.c ? nodeSid(S.c.node) : '';
         Array.from(S.chats.keys()).forEach((id) => { if (id !== cur) S.chats.delete(id); });
         const chat = S.chats.get(cur);
         if (!chat) return;
@@ -1511,7 +1890,7 @@
     /** The two boxes under the agents and tasks lists, drawn again without drawing the page. */
     function detailBoxes(id) {
         const chat = chatOf(id);
-        const m = S.c && S.c.node === `t:${id}` ? S.c.modal : null;
+        const m = S.c && nodeSid(S.c.node) === id ? S.c.modal : null;
         if (!m || !chat) return;
         const a = m.querySelector('.cd-agent-box');
         const t = m.querySelector('.cd-task-box');
@@ -1638,13 +2017,18 @@
     function page(n, c) {
         switch (n.id) {
             case 'root': return withBars(rootPage(c));
+            case 'aw': return awPage(c);
+            case 'aw-sup': return workPage(c, true);
+            case 'aw-uns': return unsupervisedPage(c);
+            case 'activity': return activityPage(c);
+            case 'contractors': return contractorsPage(c);
             case 'accounts': return accountsPage(c);
             case 'rc': return rcPage(c);
             case 'rc-host': return hostRcPage(c);
             case 'co-builds': return buildsPage(c);
             case 'co-locks': return locksPage(c);
             case 'co-supervisor': return supervisorPage(c);
-            case 'co-work': return workPage(c);
+            case 'co-work': return workPage(c, false);
             case 'sessions': return sessionsPage(c, false);
             case 'running': return sessionsPage(c, true);
             case 'co-root': return withBars(rootPage(c));
@@ -1652,7 +2036,12 @@
             case 'co-claims': return claimsPage(c);
             case 'co-messages': return messagesPage(c);
             default:
-                if (n.id.startsWith('t:')) return chatPage(c, n.id.slice(2));
+                if (nodeSid(n.id)) return chatPage(c, nodeSid(n.id));
+                if (n.id.startsWith('aw:w:')) return workItemPage(c, n.id.slice(5));
+                if (n.id.startsWith('aw:a:')) { const m = /^aw:a:([^:]+):(.+)$/.exec(n.id); return m ? awAgentPage(c, m[1], m[2]) : ''; }
+                if (n.id.startsWith('aw:l:')) { void loadAwAgents(n.id.slice(5)); return c.page('Background Agents', '', [{ id: 'cd-al', title: 'Background Agents', body: '<p class="mmc-hint">Reading the session\'s agents...</p>' }]); }
+                if (n.id.startsWith('ct:')) return contractorPage(c, n.id.slice(3));
+                if (n.id.startsWith('ctS:')) { const m = /^ctS:([^:]+):(.+)$/.exec(n.id); return m ? contractorSessionPage(c, m[1], m[2]) : ''; }
                 if (n.id.startsWith('i:')) return inspectPage(c, n.id.slice(2));
                 return '';
         }
@@ -1666,6 +2055,11 @@
             case 'co-builds': return [{ text: 'Post Message...', action: 'post' }];
             case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
             case 'co-work': return [{ text: 'New Request...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }];
+            case 'aw':
+            case 'aw-sup':
+            case 'aw-uns': return [{ text: 'New Session...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }];
+            case 'activity': return [{ text: 'Read Again', action: 'act-refresh' }];
+            case 'contractors': return [{ text: 'Add Contractor...', action: 'con-add' }, { text: 'Read Again', action: 'con-refresh' }];
             case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }, { separator: true }, { text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Clean...', action: 'sup-art-clean' }, { text: 'Forget', action: 'sup-art-forget' }];
             case 'rc-host': return [
                 { text: 'Reconnect', action: 'rc-reconnect' },
@@ -1678,10 +2072,13 @@
             case 'co-agents':
             case 'co-messages': return [{ text: 'Post Message...', action: 'post' }];
             default:
-                if (n.id.startsWith('t:')) {
-                    const id = n.id.slice(2);
-                    return sessionItems(id).concat([{ separator: true }, { text: 'Close', action: 'close-chat', icon: 0 }]);
+                if (nodeSid(n.id)) {
+                    const id = nodeSid(n.id);
+                    return sessionItems(id).concat(n.id.startsWith('t:') ? [{ separator: true }, { text: 'Close', action: 'close-chat', icon: 0 }] : []);
                 }
+                if (n.id.startsWith('aw:w:')) { const w = workOf(n.id.slice(5)); return w ? selCommands(n, `w:${w.id}`).items : []; }
+                if (n.id.startsWith('aw:a:')) { const m = /^aw:a:([^:]+):(.+)$/.exec(n.id); return m ? [{ text: 'Read Its Conversation', action: 'agent-open' }, { text: 'Read Again', action: 'aw-agents-refresh' }] : []; }
+                if (n.id.startsWith('ct:')) return [{ text: 'Add Contractor...', action: 'con-add' }, { text: 'Read Again', action: 'con-refresh' }];
                 if (n.id.startsWith('i:')) return [{ text: 'Read Again', action: 'inspect-refresh' }, { text: 'Open Session', action: 'inspect-session' }, { separator: true }, { text: 'Close', action: 'close-inspect', icon: 0 }];
                 return [];
         }
@@ -1691,10 +2088,11 @@
         const l = liveOf(id);
         const server = !!l && serverOrigin(id);
         const typed = server
-            ? [{ text: 'Take Over in Fleet...', action: 'takeover' }]
+            ? [{ text: 'Take Over in Fleet...', action: 'takeover' }, { text: holdOf(id) ? 'Resume' : 'Pause...', action: holdOf(id) ? 'resume-hold' : 'pause', disabled: !l }]
             : [
                 { text: 'Send Message...', action: 'message', disabled: !l },
                 { text: 'Stop Current Turn', action: 'interrupt', disabled: !(l && l.status === 'busy') },
+                { text: holdOf(id) ? 'Resume' : 'Pause...', action: holdOf(id) ? 'resume-hold' : 'pause', disabled: !l },
                 { text: 'Compact', action: 'compact', disabled: !l },
                 { text: 'Set Model...', action: 'set-model', disabled: !l },
                 { text: 'Set Effort...', action: 'set-effort', disabled: !l },
@@ -1786,6 +2184,9 @@
         }
         if (key.startsWith('lk:')) { const l = supLocks().find((x) => `${x.root || ''}|${x.file}` === key.slice(3)); return { title: 'Busy Lock', items: [{ text: 'Remove...', action: 'sup-lock-remove', disabled: !l || l.state !== 'orphan' || !!S.sup.busy }] }; }
         if (key.startsWith('ar:')) { const a = supArtifacts().find((x) => String(x.id) === key.slice(3)); return { title: 'Work Folder', items: [{ text: 'Clean...', action: 'sup-art-clean', disabled: !a || !a.cleanable || !!S.sup.busy }, { text: 'Forget', action: 'sup-art-forget', disabled: !a || !!S.sup.busy }] }; }
+        if (key.startsWith('x:')) { const r = S.act.rows.find((x) => String(x.id) === key.slice(2)); return { title: 'Activity', items: [{ text: 'Open Details', action: 'act-open' }, { text: 'Open Session', action: 'act-session', disabled: !(r && r.sessionId) }] }; }
+        if (key.startsWith('hd:')) { const h = supHolds().find((x) => String(x.id) === key.slice(3)); return { title: 'Paused Session', items: [{ text: 'Resume', action: 'sup-resume', disabled: !h || !!S.sup.busy }, { text: 'Open Session', action: 'sup-hold-open', disabled: !h }] }; }
+        if (key.startsWith('k:')) return { title: 'Contractor', items: [{ text: 'Open', action: 'con-open' }, { text: 'Add Contractor...', action: 'con-add' }] };
         if (key.startsWith('c:')) return { title: 'Claim', items: [{ text: 'Release', action: 'release-claim' }] };
         if (key.startsWith('m:')) return { title: 'Message', items: [{ text: 'Read', action: 'read-message' }, { text: 'Reply...', action: 'reply' }] };
         return null;
@@ -1808,11 +2209,11 @@
 
     async function action(a, c, arg) {
         if (a.startsWith('show:')) { await setShow(a.slice(5), !S.show[a.slice(5)]); return true; }
-        const sid = arg && /^[0-9a-f-]{36}$/.test(arg) ? arg : (selId(c, 's:') || (c.node && c.node.startsWith('t:') ? c.node.slice(2) : '') || ((supReview(selId(c, 'v:')) || {}).sessionId || ''));
+        const sid = arg && /^[0-9a-f-]{36}$/.test(arg) ? arg : (selId(c, 's:') || nodeSid(c.node) || ((supReview(selId(c, 'v:')) || {}).sessionId || ''));
         switch (a) {
             case 'refresh':
                 S.sessionsLoaded = false;
-                S.chats.forEach((ch, id) => { if (c.node === `t:${id}`) void loadChat(id, false); });
+                S.chats.forEach((ch, id) => { if (nodeSid(c.node) === id) void loadChat(id, false); });
                 if (S.locks) S.locks = null;
                 if (S.inspect && c.node === `i:${S.inspect.id}`) void loadInspect(S.inspect.id);
                 await Promise.all([refreshAccounts(), loadSessions(false), loadMessages()]);
@@ -1867,7 +2268,10 @@
             case 'sup-save': {
                 if (!S.sup.draft) return true;
                 const d = S.sup.draft;
-                await supAct(c, { action: 'save', settings: { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) } }, 'Saving...');
+                const extra = {};
+                if (d.autoPauseOnCollision !== undefined) extra.autoPauseOnCollision = !!d.autoPauseOnCollision;
+                if (String(d.maxAskMinutes == null ? '' : d.maxAskMinutes).trim() !== '') extra.maxAskMinutes = Math.max(1, Math.min(1440, Math.round(Number(d.maxAskMinutes)) || 15));
+                await supAct(c, { action: 'save', settings: Object.assign(extra, { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) }) }, 'Saving...');
                 return true;
             }
             case 'sup-send': {
@@ -2002,7 +2406,7 @@
                 return true;
             }
             case 'message': await messageBox(c, sid); return true;
-            case 'takeover': await takeoverBox(c, c.node && c.node.startsWith('t:') ? c.node.slice(2) : sid); return true;
+            case 'takeover': await takeoverBox(c, nodeSid(c.node) || sid); return true;
             case 'detail-toggle': {
                 const chat = chatOf(sid);
                 if (!chat) return true;
@@ -2012,7 +2416,7 @@
                 return true;
             }
             case 'detail-refresh': await loadDetail(sid); return true;
-            case 'agent-earlier': await loadAgentPage(c.node && c.node.startsWith('t:') ? c.node.slice(2) : sid, arg, true); return true;
+            case 'agent-earlier': await loadAgentPage(nodeSid(c.node) || sid, arg, true); return true;
             case 'compact': await sessionCommand(c, sid, 'compact', undefined, 'Compacting the conversation...'); return true;
             case 'set-model':
             case 'set-effort': await setBox(c, sid, a === 'set-model' ? 'model' : 'effort'); return true;
@@ -2127,6 +2531,9 @@
         else if (key.startsWith('b:')) void action('build-props', c);
         else if (key.startsWith('l:')) void action('lock-inspect', c);
         else if (key.startsWith('w:')) void action('work-open', c);
+        else if (key.startsWith('x:')) void action('act-open', c);
+        else if (key.startsWith('hd:')) void action('sup-hold-open', c);
+        else if (key.startsWith('k:')) void action('con-open', c);
     }
 
     // ---- dialogs ------------------------------------------------------------------------------------------
@@ -2230,7 +2637,7 @@
         const recs = W.recs || [];
         if (!recs.length) return '<p class="mmc-hint">Plaud has no recordings to list.</p>';
         const dur = (ms) => (ms ? `${Math.max(1, Math.round(ms / 60000))} min` : '');
-        return `<div class="cd-carry cd-recs">${recs.map((r) => `<label class="cd-check"><input type="checkbox" data-cd="rec:${esc(r.id)}"${W.picked && W.picked.has(String(r.id)) ? ' checked' : ''}><span>${esc(r.name || r.id)} <i>${esc([when(r.startAt), dur(r.durationMs)].filter(Boolean).join(', '))}</i></span></label>`).join('')}</div>`;
+        return `<div class="cd-carry cd-recs">${recs.map((r) => `<label class="cd-opt"><input type="checkbox" data-cd="rec:${esc(r.id)}"${W.picked && W.picked.has(String(r.id)) ? ' checked' : ''}><span>${esc(r.name || r.id)} <i>${esc([when(r.startAt), dur(r.durationMs)].filter(Boolean).join(', '))}</i></span></label>`).join('')}</div>`;
     }
 
     function wizBody(W, page) {
@@ -2252,7 +2659,7 @@
                 ${direct ? `<label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeSelect(W.mode || 'bypassPermissions')}</select></label>` : `<label><span>Link to issue:</span><input type="text" data-cd="issue" value="${esc(W.issue || '')}" spellcheck="false" autocomplete="off" placeholder="owner/repo#N or an issue URL (blank: a new issue is made)"></label>`}${err}`;
         }
         if (page === 'plaud') {
-            return `<label class="cd-check"><input type="checkbox" data-cd="plaudAll"${W.all ? ' checked' : ''}><span>Every recording not worked yet</span></label>
+            return `<label class="cd-opt"><input type="checkbox" data-cd="plaudAll"${W.all ? ' checked' : ''}><span>Every recording not worked yet</span></label>
                 <p class="mmc-hint">Or tick the recordings (newest first):</p>${wizRecs(W)}${err}`;
         }
         // summary
@@ -2467,7 +2874,7 @@
                 <table class="cd-props">${rows.map(([k, v]) => `<tr><td>${esc(k)}:</td><td>${esc(v)}</td></tr>`).join('')}</table>
                 ${f ? '' : `<p class="mmc-hint">The account settings are not available on this server yet.</p>`}
                 <label><span>Name:</span><input type="text" data-cd="name" data-cd-focus value="${esc(cur.name)}" spellcheck="false" autocomplete="off"></label>
-                <label class="cd-check"><input type="checkbox" data-cd="preferred"${cur.preferred ? ' checked' : ''}><span>Preferred account: new sessions use it first (only one account is preferred)</span></label>
+                <label class="cd-opt"><input type="checkbox" data-cd="preferred"${cur.preferred ? ' checked' : ''}><span>Preferred account: new sessions use it first (only one account is preferred)</span></label>
                 <label><span>Priority:</span><select class="vdt-select" data-cd="priority">${PRIORITY.map(([v, t]) => `<option value="${v}"${v === cur.priority ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
                 <p class="mmc-hint cd-prio-hint">An account with a lower priority gets work only after the higher ones.</p>
                 <label><span>Max weekly usage:</span><input type="text" data-cd="maxWeekly" value="${esc(cur.maxWeekly)}" inputmode="numeric" placeholder="% (blank: no limit)" autocomplete="off"></label>
@@ -2511,7 +2918,7 @@
             const others = fleetRows().filter((x) => x.index !== index && x.hasLogin && !x.moved);
             const list = (S.host && S.host.sessions) || [];
             const boxes = list.length
-                ? `<div class="cd-carry">${list.map((x) => `<label class="cd-check"><input type="checkbox" data-cd="carry:${esc(x.id)}"><span>${esc(x.title || shortId(x.id))}${x.folder ? ` <i>(${esc(x.folder)})</i>` : ''}</span></label>`).join('')}</div>`
+                ? `<div class="cd-carry">${list.map((x) => `<label class="cd-opt"><input type="checkbox" data-cd="carry:${esc(x.id)}"><span>${esc(x.title || shortId(x.id))}${x.folder ? ` <i>(${esc(x.folder)})</i>` : ''}</span></label>`).join('')}</div>`
                 : '<p class="mmc-hint">No session runs in the host\'s Remote Control now.</p>';
             const { value, fields } = await form(c, `
                 <p><b>${esc(f.name)}</b> is the host's account. Moving it stops the host's Remote Control (claude-remote.service) and <b>ends every session it runs</b>, including a Claude Code session that may be doing work right now.</p>
@@ -2565,6 +2972,31 @@
         }
     }
 
+    /** Pause a session: Hold (its turn stops, it waits for Resume) or Freeze (its processes stop where they are). */
+    async function pauseBox(c, id) {
+        const row = rowOf(id) || { id };
+        const { value, fields } = await form(c, `
+            <p>Pause <b>${esc(titleOf(row))}</b>. It does nothing more until it is resumed.</p>
+            <label class="cd-opt cd-modeopt"><input type="radio" name="cd-pause" data-cd="hold" checked><span><b>Hold</b> (recommended): its current turn is stopped and it waits for Resume. Its processes and background agents keep running.</span></label>
+            <label class="cd-opt cd-modeopt"><input type="radio" name="cd-pause" data-cd="freeze"><span><b>Freeze</b>: its processes are stopped where they are (like Ctrl+Z), so a build or a test run halts in the middle and continues on Resume. Use it when something must not run for a while.</span></label>
+            <label class="cd-top"><span>Reason:</span><textarea data-cd="reason" data-cd-focus rows="3" spellcheck="true" placeholder="Why it is paused (shown beside it and typed to it on Resume)"></textarea></label>`,
+        [{ text: 'Pause', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Pause Session', icon: 'fas fa-circle-info' });
+        if (value !== true) return;
+        const mode = fields.freeze === true ? 'freeze' : 'hold';
+        await supAct(c, { action: 'pause', sessionId: id, mode, reason: String(fields.reason || '').trim() }, 'Pausing the session...');
+    }
+    async function resumeHold(c, id) {
+        const row = rowOf(id) || { id };
+        const h = holdOf(id);
+        const { value, fields } = await form(c, `
+            <p>Resume <b>${esc(titleOf(row))}</b>${h ? ` (${esc(holdLine(h))})` : ''}.</p>
+            <label class="cd-top"><span>Note:</span><textarea data-cd="note" data-cd-focus rows="3" spellcheck="true" placeholder="Optional: typed to the session as it continues"></textarea></label>`,
+        [{ text: 'Resume', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Resume Session', icon: 'fas fa-circle-info' });
+        if (value !== true) return;
+        const note = String(fields.note || '').trim();
+        await supAct(c, Object.assign({ action: 'resume', sessionId: id }, note ? { note } : {}), 'Resuming the session...');
+    }
+
     async function takeoverBox(c, id) {
         const row = rowOf(id) || { id };
         const ok = await c.box(`<p><b>${esc(titleOf(row))}</b> runs inside Remote Control's server.</p><p>Fleet ends this session's Remote Control process and continues the same conversation in a Fleet terminal, with Remote Control still on (its claude.ai link changes). Anything it is doing this second is interrupted.</p>`,
@@ -2581,7 +3013,7 @@
             if (ch && ch.dt && ch.dt.data) ch.dt.data.origin = 'rc';
             await loadSessions(false);
             if (ch && ch.dt) await loadDetail(id);
-            if (S.c && S.c.node === `t:${id}`) S.c.render();
+            if (S.c && nodeSid(S.c.node) === id) S.c.render();
         } catch (e) {
             c.note('');
             if (isGone(e)) await c.box(`<p>${NOT_YET}</p>`, null, { icon: 'info' }); else await failBox(c, e);
@@ -2797,10 +3229,10 @@
                 if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
                 if (n.id === 'co-work') return S.sup.busy || (S.sup.counts ? `${S.sup.counts.active} running, ${S.sup.counts.queued} queued` : plural(supWork().filter((w) => WORK_OPEN.has(w.state)).length, 'open request'));
                 if (n.id === 'co-supervisor') return S.sup.busy || (S.sup.data && S.sup.data.stats ? `${plural(S.sup.data.stats.reviewed || 0, 'review')}, ${S.sup.data.stats.gaps || 0} with gaps` : '');
-                if (n.id.startsWith('t:')) { const ch = S.chats.get(n.id.slice(2)); return ch ? plural(ch.messages.length, 'message') : ''; }
+                if (nodeSid(n.id)) { const ch = S.chats.get(nodeSid(n.id)); return ch ? plural(ch.messages.length, 'message') : ''; }
                 return `Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`;
             },
-            onSelectRow: (key, n) => { if (n && n.id === 'co-supervisor') supSelect(key); else if (n && n.id.startsWith('t:')) detailSelect(key, n.id.slice(2)); },
+            onSelectRow: (key, n) => { if (n && n.id === 'co-supervisor') supSelect(key); else if (n && nodeSid(n.id)) detailSelect(key, nodeSid(n.id)); },
             onSelect: undefined,
             onOpen: () => {},
             onClose: () => {
@@ -2835,10 +3267,10 @@
         // the open chat follows the selection: leaving it stops its pushes
         const select = c.select.bind(c);
         c.select = (id, record) => {
-            if (S.watching && id !== `t:${S.watching}`) void unwatch();
+            if (S.watching && id !== `t:${S.watching}` && nodeSid(id) !== S.watching) void unwatch();
             select(id, record);
             void usageWatch(usageWanted(id));
-            if (id && id.startsWith('t:') && S.chats.has(id.slice(2))) void watch(id.slice(2));
+            if (id && nodeSid(id) && S.chats.has(nodeSid(id))) void watch(nodeSid(id));
         };
         if (programFaults()) programFaults().registerProgram(c.modal.id, { name: TITLE, terminate: () => app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: ID }) });
         app.onExit(() => {
