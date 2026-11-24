@@ -3322,16 +3322,13 @@ html.disable-blur .director-attach-chip {
     box-shadow: 0 0 5px 0 rgb(255 170 54);
 }
 
-/* Wide window: the session list is a static left panel and the hamburger is gone.
+/* Wide window: the session list is a static left panel; the hamburger (in #directorWindowToolbar, outside
+   this container) folds it away and back (.director-sessions-folded, Director.setSessionPanelFolded).
    Director.staticSessionPanel (public/scripts/comp/director.js) reads
    --director-static-sessions so the breakpoint stays in this file. */
 @container director-window (min-width: 900px) {
     #directorWindow .director-container {
         --director-static-sessions: 1;
-    }
-
-    #directorWindow #directorMenuBtn {
-        display: none;
     }
 
     #directorWindow #directorSessionList > .director-header {
@@ -3359,6 +3356,11 @@ html.disable-blur .director-attach-chip {
 
     #directorWindow .director-view {
         min-width: 0;
+    }
+
+    #directorWindow .director-container.director-sessions-folded .director-session-overlay,
+    #directorWindow .director-container.director-sessions-folded .director-session-overlay.hidden {
+        display: none !important;
     }
 }
 

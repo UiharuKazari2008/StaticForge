@@ -3300,6 +3300,7 @@ class Director {
         }
         this.directorWindowChat.appendChild(this.directorContainer);
         this.directorContainer.classList.remove('hidden', 'director-closed');
+        this.applySessionPanelFold(this.sessionPanelFolded());
         this.directorContainer.classList.add('director-open');
         this.updateHeaderForView(this.currentView);
         this.renderSessionImages();
@@ -4589,8 +4590,9 @@ class Director {
     }
     
     async showSessionList() {
-        // The static left panel is already the session list, so the chat view stays put
+        // The static left panel is already the session list, so the chat view stays put (unfolded if it was folded)
         if (this.staticSessionPanel()) {
+            if (this.sessionPanelFolded()) this.setSessionPanelFolded(false);
             await this.loadDirectorSessions();
             this.initializeScrollbars();
             return;
@@ -4730,8 +4732,35 @@ class Director {
     }
 
 
+    // Wide window: the hamburger folds the static session panel away and back (the chat takes the room;
+    // Yukimi, Nov 24 2026). Kept per browser in localStorage staticforge_director_sessions_folded.
+    sessionPanelFolded() {
+        try { return localStorage.getItem('staticforge_director_sessions_folded') === '1'; } catch (_) { return false; }
+    }
+
+    applySessionPanelFold(folded) {
+        if (this.directorContainer) this.directorContainer.classList.toggle('director-sessions-folded', !!folded);
+        if (this.directorMenuBtn) this.directorMenuBtn.setAttribute('aria-pressed', folded ? 'false' : 'true');
+    }
+
+    setSessionPanelFolded(folded) {
+        try {
+            if (folded) localStorage.setItem('staticforge_director_sessions_folded', '1');
+            else localStorage.removeItem('staticforge_director_sessions_folded');
+        } catch (_) { /* storage blocked: this window only */ }
+        this.applySessionPanelFold(folded);
+        if (!folded) {
+            this.loadDirectorSessions();
+            this.initializeScrollbars();
+        }
+    }
+
     toggleSessionOverlay() {
-        if (!this.directorSessionList || this.staticSessionPanel()) return;
+        if (!this.directorSessionList) return;
+        if (this.staticSessionPanel()) {
+            this.setSessionPanelFolded(!this.sessionPanelFolded());
+            return;
+        }
 
         const isVisible = !this.directorSessionList.classList.contains('hidden');
         if (isVisible) {
