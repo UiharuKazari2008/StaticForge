@@ -2157,7 +2157,8 @@
         musicStart(musicDefault());
     }
 
-    /** Play All Songs: the default app plays from its library, Today stays (as on the device). */
+    /** Play All Songs: Melaton Media plays its library in the background, Today stays (as on the device);
+        an Android player is opened and plays there. */
     async function musicPlayAll() {
         const key = musicDefault();
         if (key === MUSIC_DEFAULT) {
@@ -2168,20 +2169,18 @@
             if (!ok) open('windows-media');
             return;
         }
+        // an Android player opens at once (its own no-transition start), and its Play key then starts its
+        // last list there (Yukimi, Nov 23 2026, #1113: the background Play key ran the leave animation, came
+        // back to Today and opened the player 3 s later)
+        musicStart(key);
         const m = /^a:android:([^/]+)\//.exec(key);
         if (m && mediaBridge()) {
-            // a Play key to the player: most start their last list from it in the background; one that
-            // has not started playing in 3 s is opened instead
-            musicCall('play', m[1]);
-            const at = Date.now();
             setTimeout(() => {
                 const st = music.state;
-                const ok = st && Array.isArray(st.sessions) && st.sessions.some((s) => s.package === m[1] && s.state === 'playing');
-                if (!ok && Date.now() - at < 10000) musicStart(key);
-            }, 3000);
-            return;
+                const playing = st && Array.isArray(st.sessions) && st.sessions.some((x) => x.package === m[1] && x.state === 'playing');
+                if (!playing) musicCall('play', m[1]);
+            }, 700);
         }
-        musicStart(key);
     }
 
     function musicMenu(now) {
