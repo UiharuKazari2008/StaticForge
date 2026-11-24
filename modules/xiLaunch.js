@@ -287,6 +287,21 @@ function refuseWholeHome(dir) {
 // ones a host Claude Code session uses. The environment is still built from
 // scratch: nothing from the Dreamscape process (Cursor variables, its secrets)
 // is inherited, and credentials stay off argv (read from their files by sh).
+// Yozora is her own Yozora account, director.yozora (Yukimi, Nov 24 2026; #1071): every git call to the
+// Yozora host authenticates with ~/.secrets/yozora-yozora.token. The empty helper first drops the stored
+// ones (~/.git-credentials holds Menma, Cursor and Yukimi), so a plain push can never go out as someone
+// else (#1151). The token is read by sh at use, never put in the environment. Other hosts are untouched.
+const YOZORA_GIT_HOST = 'https://yozora.bluesteel.737.jp.net';
+const YOZORA_LOGIN = 'director.yozora';
+const YOZORA_TOKEN_FILE = '.secrets/yozora-yozora.token';
+
+function yozoraGitEnv(home) {
+    const file = path.join(home, YOZORA_TOKEN_FILE).replace(/'/g, '');
+    const helper = `!f(){ test "$1" = get || exit 0; echo username=${YOZORA_LOGIN}; echo "password=$(tr -d '[:space:]' < '${file}')"; }; f`;
+    const key = `credential.${YOZORA_GIT_HOST}.helper`;
+    return { GIT_CONFIG_COUNT: '2', GIT_CONFIG_KEY_0: key, GIT_CONFIG_VALUE_0: '', GIT_CONFIG_KEY_1: key, GIT_CONFIG_VALUE_1: helper };
+}
+
 function hostEnvFor(spec) {
     const home = spec.homeDir;
     const lang = spec.lang || process.env.LANG || 'C.UTF-8';
@@ -312,6 +327,7 @@ function hostEnvFor(spec) {
     };
     if (process.env.XDG_RUNTIME_DIR) env.XDG_RUNTIME_DIR = process.env.XDG_RUNTIME_DIR;
     if (spec.cursorConfig) env.CURSOR_CONFIG_DIR = spec.cursorConfig;
+    Object.assign(env, yozoraGitEnv(home));
     const extra = spec.extraEnv || {};
     Object.keys(extra).forEach((key) => {
         if (!JAIL_ENV_ALLOW.has(key) || ['HOME', 'PATH', 'PWD', 'CLAUDE_CONFIG_DIR', 'CURSOR_CONFIG_DIR'].includes(key)) return;
@@ -610,6 +626,8 @@ function spawnLaunch(options) {
 
 module.exports = {
     JAIL_ENV_KEYS,
+    YOZORA_LOGIN,
+    YOZORA_TOKEN_FILE,
     JAIL_HOME,
     JAIL_KEY_FILE,
     JAIL_CLAUDE_TOKEN_FILE,

@@ -39,6 +39,15 @@ try {
     assert.strictEqual(
         xiLaunch.claudeSessionPath({ sandbox: false, projectDir: '/home/kanmi/staticforge', sessionId: 'abc' }),
         path.join(os.homedir(), '.claude', 'projects', '-home-kanmi-staticforge', 'abc.jsonl'));
+    // Yozora signs in to the Yozora host as director.yozora, from a token file read at use (never in the env)
+    const gitHome = path.join(root, 'githome');
+    fs.mkdirSync(path.join(gitHome, '.secrets'), { recursive: true });
+    fs.writeFileSync(path.join(gitHome, '.secrets', 'yozora-yozora.token'), 'yz-test-token\n', { mode: 0o600 });
+    const gitPlan = xiLaunch.buildLaunch({ sandbox: false, runtime: 'claude', homeDir: gitHome, projectDir: project, homeAccessDir: path.join(root, 'access'), runRoot: path.join(root, 'runs'), claudeTokenFile: token });
+    assert.ok(!Object.values(gitPlan.hostEnv).some((v) => String(v).includes('yz-test-token')), 'the token never sits in the environment');
+    const fill = require('child_process').spawnSync('git', ['credential', 'fill'], { env: gitPlan.hostEnv, encoding: 'utf8', input: 'protocol=https\nhost=yozora.bluesteel.737.jp.net\n\n' });
+    assert.ok(fill.stdout.includes('username=director.yozora'), fill.stdout + fill.stderr);
+    assert.ok(fill.stdout.includes('password=yz-test-token'));
     console.log('test-xi-host-launch: ok');
 } finally {
     fs.rmSync(root, { recursive: true, force: true });
