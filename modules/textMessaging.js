@@ -302,6 +302,14 @@ async function dreamscapeContacts() {
     return first || changed ? dsContacts.promise : dsContacts.keys;
 }
 
+/** Whether a phone number is on a card, answered from the map already built (call filter, #1107); starts the scan when there is none yet. */
+function isContactNumberSync(address) {
+    if (!dsContacts.at) dreamscapeContacts().catch(() => {});
+    const k = handleKey(address);
+    return !!k && dsContacts.keys.has(k);
+}
+function contactsReady() { return !!dsContacts.at; }
+
 /** Contacts may have changed (a VFS write): the next lookup reads the Contacts folders again. */
 function contactsChanged() {
     dsContacts.dirty = true;
@@ -1168,7 +1176,7 @@ module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
     recentAndroidApps, action, androidAppIcon, openInApp, androidPopupPackages, accountRenamed, sendReceive,
     listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, search, typing, syncStatus, syncChats, resync,
-    downloadAttachment, attachmentSeen, resolveName, handleKey, contactsChanged, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset,
+    downloadAttachment, attachmentSeen, resolveName, handleKey, isContactNumberSync, contactsReady, contactsChanged, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset,
     // tests (scripts/test-ws-phone-round5.js): a provider's event and who gets it
     _test: { onProviderEvent, vcfHandles, mergeSplits, accountOut, setResources: (r) => { gr = r; }, setProvider: (id, p) => providers.set(id, p) }
 };

@@ -422,6 +422,9 @@ function pendingForPhones(user) {
  * the notices still new are sent once more, marked catchUp: the app posts the ones it has not posted
  * and sounds only the newest.
  */
+function staleCatchUpMs() {
+    try { return require('./callFilter').staleMs(); } catch (_e) { return 30 * 60 * 1000; }
+}
 function catchUpPhone(deviceId) {
     if (!gr || !deviceId) return 0;
     let sent = 0;
@@ -433,6 +436,12 @@ function catchUpPhone(deviceId) {
     for (const user of (isTestDevice(deviceId) ? ['test'] : ['admin', 'dev_admin'])) {
         for (const n of pendingForPhones(user)) {
             if (done.has(`${user}\u0000${n.id}`)) continue;
+            // a text / call notice from before a long absence is not replayed one by one (a flood on return, #1107):
+            // the summary counts it
+            if ((n.cls === 'sms' || n.cls === 'call') && nowFn() - Number(n.createdAt || 0) > staleCatchUpMs()) {
+                try { require('./callFilter').noteSkipped(n); } catch (_e) { /* best effort */ }
+                continue;
+            }
             const sentTo = [];
             try { sent += as.sendInboxNotice(gr, null, Object.assign({ user }, n, { alert: true, catchUp: true }), { deviceId, sentTo }); } catch (_e) { /* the link went again */ }
             // a fresh round of tries for each (the app confirms it, or says it showed it already)

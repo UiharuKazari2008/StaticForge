@@ -351,7 +351,9 @@ function build(deviceId) {
             ch[a.package][x.id] = 0;
         }
     }
-    const phone = { d: 1, keep: [...ctx.keep].sort(), p, c: ch };
+    let cf = 0;
+    try { cf = require('./callFilter').settings().on ? 1 : 0; } catch (_e) { cf = 0; }
+    const phone = { d: 1, cf, keep: [...ctx.keep].sort(), p, c: ch };
     phone.v = crypto.createHash('sha1').update(JSON.stringify(phone)).digest('hex').slice(0, 12);
     const eff = { apps: effApps };
     eff.v = crypto.createHash('sha1').update(JSON.stringify(eff)).digest('hex').slice(0, 12);
@@ -520,6 +522,8 @@ function tap(globalResources) {
     as.setRelayFilter((g, me, name, detail) => {
         if (name === 'notify.seen') return undefined;
         if (name !== 'notify.posted' || !detail || typeof detail !== 'object') return detail;
+        // a spam / unknown caller is only noted (callFilter, #1107): no balloon, no copy on the computers
+        try { if (!require('./callFilter').vet(detail).pass) return undefined; } catch (_e) { /* the filter never blocks the relay */ }
         const r = decide(me.id, String(detail.package || ''), typeof detail.channel === 'string' ? detail.channel : '');
         if (!r.send) return undefined;
         return Object.assign({}, detail, { tray: r.tray });
@@ -533,6 +537,7 @@ function tap(globalResources) {
         if (t.unref) t.unref();
     });
     as.onPartnershipEnded((deviceId) => forgetDevice(deviceId));
+    try { require('./callFilter').tap(); } catch (err) { console.warn('[activeSync notify filter] call filter:', err.message); }
 }
 
 function _reset() {
