@@ -157,11 +157,17 @@
         }
         // the supervisor reviewed something: its list is read again once, only when the last review changed
         if (changed.supervisor && typeof changed.supervisor === 'object') {
-            const id = changed.supervisor.lastReviewId == null ? null : changed.supervisor.lastReviewId;
-            if (S.sup.loaded && S.c && S.c.node === 'co-work') void loadSupervisor();
-            else if (S.sup.loaded && id !== S.sup.lastReviewId && S.c && S.c.node === 'co-supervisor') void loadSupervisor();
-            else if (id !== S.sup.lastReviewId) S.sup.stale = true;
-            S.sup.lastReviewId = id;
+            const sp = changed.supervisor;
+            const ver = sp.version != null ? sp.version : (sp.lastReviewId == null ? null : sp.lastReviewId);
+            S.sup.counts = { active: sp.workActive || 0, queued: sp.workQueued || 0 };
+            // version moves on every review, work item and lock change: the status is read again once per change
+            if (ver !== S.sup.version) {
+                const shown = S.c && (S.c.node === 'co-work' || S.c.node === 'co-supervisor');
+                if (S.sup.loaded && shown && !S.sup.loading) void loadSupervisor();
+                else S.sup.stale = true;
+                S.sup.version = ver;
+            }
+            S.sup.lastReviewId = sp.lastReviewId == null ? null : sp.lastReviewId;
         }
         if (S.host && S.host.remoteControl && S.host.remoteControl.status && S.rc.state === 'unknown') S.rc = S.host.remoteControl.status;
         // a session started or ended: the list (its order and states) is read again once
@@ -705,6 +711,7 @@
     }
     function workPage(c) {
         if (!S.sup.loaded) { void loadSupervisor(); return c.page('Work Queue', '', [{ id: 'cd-wq-wait', title: 'Work Queue', body: '<p class="mmc-hint">Reading the work queue...</p>' }]); }
+        if (S.sup.stale) { S.sup.stale = false; void loadSupervisor(); }
         if (S.sup.unavailable) return c.page('Work Queue', '', [{ id: 'cd-wq-gone', title: 'Work Queue', body: `<p>${NOT_YET}</p>` }]);
         const rows = supWork().map((w) => ({
             key: `w:${w.id}`,
@@ -2450,7 +2457,7 @@
                 if (n.id === 'rc') { const r = fleetRows(); return r.length ? `${r.filter((f) => f.state === 'connected').length} of ${plural(r.length, 'account')} connected` : ''; }
                 if (n.id === 'co-builds') return plural((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length, 'gate') + ' open';
                 if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
-                if (n.id === 'co-work') return S.sup.busy || plural(supWork().filter((w) => WORK_OPEN.has(w.state)).length, 'open request');
+                if (n.id === 'co-work') return S.sup.busy || (S.sup.counts ? `${S.sup.counts.active} running, ${S.sup.counts.queued} queued` : plural(supWork().filter((w) => WORK_OPEN.has(w.state)).length, 'open request'));
                 if (n.id === 'co-supervisor') return S.sup.busy || (S.sup.data && S.sup.data.stats ? `${plural(S.sup.data.stats.reviewed || 0, 'review')}, ${S.sup.data.stats.gaps || 0} with gaps` : '');
                 if (n.id.startsWith('t:')) { const ch = S.chats.get(n.id.slice(2)); return ch ? plural(ch.messages.length, 'message') : ''; }
                 return `Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`;
