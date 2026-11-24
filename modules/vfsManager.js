@@ -935,6 +935,7 @@ class VfsManager {
             modifiedAt: file.updated_at || file.created_at,
             previewFileId: file.preview_path ? file.id : (isImage ? file.id : null),
             previewVersion: userFilePreviewVersion(file),
+            ...(/\.ics$/i.test(file.original_name || '') ? { contentHash: file.content_hash } : {}), // a calendar save names the version it loaded (#1157)
             ...extra
         };
     }

@@ -182,7 +182,7 @@
         const flat = String(text || '').replace(/\r\n|\r/g, '\n').replace(/\n[ \t]/g, '');
         const head = flat.split(/\nBEGIN:V(?:EVENT|TODO)/i)[0];
         const prop = (n) => { const m = new RegExp(`^${n}:(.*)$`, 'mi').exec(head); return m ? m[1].trim() : ''; };
-        const cal = { file, name: icsUnescape(prop('X-WR-CALNAME')) || String(file.name || 'Calendar').replace(/\.ics$/i, ''), readonly: !!prop('X-MELATON-SOURCE') || !!prop('X-MELATON-OWNER'), hidden: false, tasks: [] }; // X-MELATON-OWNER: an agents' calendar (calendarMcp.js)
+        const cal = { file, name: icsUnescape(prop('X-WR-CALNAME')) || String(file.name || 'Calendar').replace(/\.ics$/i, ''), readonly: !!prop('X-MELATON-SOURCE'), hidden: false, tasks: [] }; // an agents' calendar (X-MELATON-OWNER) is editable: the server merges every save (#1157)
         (String(text || '').match(BLOCK) || []).forEach((b) => {
             const t = parseTodo(b);
             if (!t.uid) t.uid = newUid();
@@ -225,7 +225,8 @@
         return w;
     }
     const workspaceRoot = () => `/Workspaces/${workspaceId()}`;
-    const folder = () => `${workspaceRoot()}/Calendars`;
+    const CAL_HOME = '/Workspaces/Default'; // one calendar set for the host (#1157)
+    const folder = () => `${CAL_HOME}/Calendars`;
 
     function textB64(t) {
         return new Promise((resolve, reject) => {
@@ -239,7 +240,7 @@
     async function hasFolder() {
         // listing a missing folder raises a server error banner (see wmCalendar.js load): look first
         try {
-            const top = await vfs().listDirectory(workspaceRoot(), { offset: 0, limit: 500 });
+            const top = await vfs().listDirectory(CAL_HOME, { offset: 0, limit: 500 });
             return ((top && top.items) || []).some((i) => i && (i.kind === 'folder' || i.targetKind === 'vfs-folder') && String(i.name || '').toLowerCase() === 'calendars');
         } catch (_) { return false; }
     }
@@ -256,13 +257,14 @@
         },
         async read(file) {
             const r = await vfs().downloadFile(file.id);
+            file.hash = r.contentHash || ''; // the version read: the server merges the save with any change since (#1157)
             return (await fetch(r.downloadUrl, { credentials: 'same-origin', cache: 'no-store' })).text();
         },
         async write(file, text) {
-            await vfs().replaceFile(file.id, await textB64(text), 'text/calendar');
+            await vfs().replaceFile(file.id, await textB64(text), 'text/calendar', file.hash);
         },
         async create(name, text) {
-            if (!(await hasFolder())) await vfs().createFolder(workspaceRoot(), 'Calendars');
+            if (!(await hasFolder())) await vfs().createFolder(CAL_HOME, 'Calendars');
             const res = await vfs().uploadFile(folder(), await textB64(text), name, 'text/calendar');
             const f = res && (res.file || res.entry || res);
             return { id: (f && (f.id || f.fileId)) || null, name };

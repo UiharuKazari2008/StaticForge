@@ -1489,8 +1489,9 @@
 
         async function writeFile(folder, name, text, mime) {
             if (typeof vfsClient === 'undefined') throw new Error('Files are not available.');
-            const root = wsRoot();
-            const leaf = folder.slice(root.length + 1);
+            const cut = folder.lastIndexOf('/');
+            const root = folder.slice(0, cut);
+            const leaf = folder.slice(cut + 1);
             const top = await listOf(root);
             if (!top.some((i) => i.kind === 'folder' && String(i.name).toLowerCase() === leaf.toLowerCase())) { try { await vfsClient.createFolder(root, leaf); } catch (_) { /* the upload says */ } }
             const old = (await listOf(folder)).find((i) => i.name === name && i.kind !== 'folder');
@@ -1558,7 +1559,7 @@
                             const MC = MCx();
                             if (!MC || typeof MC.toIcs !== 'function') continue;
                             const now = Date.now();
-                            const folder = `${wsRoot()}/Calendars`;
+                            const folder = '/Workspaces/Default/Calendars'; // one calendar set for the host (#1157)
                             const written = new Set();
                             // one file per calendar the phone shows: "Phone - <name> (<device>).ics"
                             const files = [];

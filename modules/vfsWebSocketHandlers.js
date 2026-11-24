@@ -348,7 +348,18 @@ class VfsWebSocketHandlers {
     }
 
     async handleVfsReplaceFile(ws, message, clientInfo, wsServer) {
-        const { fileId, fileData, mimeType, tempFile } = this.getPayload(message);
+        // a calendar (.ics) save is merged with what is stored, one at a time with the agents' calendar tool (#1157)
+        const { fileId } = this.getPayload(message);
+        const peek = await this.globalResources.getVfsDatabase().getUserFileById(fileId);
+        if (peek && /\.ics$/i.test(peek.original_name || '')) {
+            const cm = require('./calendarMcp');
+            return cm.withLock(cm.CAL_LOCK, () => this._replaceFile(ws, message, clientInfo, wsServer));
+        }
+        return this._replaceFile(ws, message, clientInfo, wsServer);
+    }
+
+    async _replaceFile(ws, message, clientInfo, wsServer) {
+        const { fileId, fileData, mimeType, tempFile, baseHash } = this.getPayload(message);
         const vfsDb = this.globalResources.getVfsDatabase();
         const existing = await vfsDb.getUserFileById(fileId);
         if (!existing) throw new Error('File not found');
@@ -359,6 +370,21 @@ class VfsWebSocketHandlers {
         } else {
             const base64 = fileData.replace(/^data:[^;]+;base64,/, '');
             buffer = Buffer.from(base64, 'base64');
+        }
+
+        let calendarMerged = false;
+        if (/\.ics$/i.test(existing.original_name || '') && existing.content_hash && Number(existing.size) <= 2 * 1024 * 1024) {
+            try {
+                const cm = require('./calendarMcp');
+                const blob = async (h) => (h && /^[0-9a-f]{16,64}$/i.test(String(h)) ? fs.promises.readFile(this.getVfs().getFileBlobPath(String(h))).then((b) => b.toString('utf8'), () => '') : '');
+                const currentText = await blob(existing.content_hash);
+                const r = require('./calendarMerge').mergeSave({
+                    baseText: baseHash === existing.content_hash ? currentText : await blob(baseHash),
+                    currentText, incomingText: buffer.toString('utf8')
+                }, cm.joinCalendar);
+                if (r.text !== buffer.toString('utf8')) buffer = Buffer.from(r.text, 'utf8');
+                calendarMerged = r.merged;
+            } catch (e) { console.warn('calendar merge on save failed, saving as sent:', e.message); }
         }
 
         const newMime = mimeType || existing.mime_type;
@@ -385,13 +411,15 @@ class VfsWebSocketHandlers {
         this.handlers.sendToClient(ws, {
             type: 'vfs_replace_file_response',
             requestId: message.requestId,
-            data: { success: true, file: updated },
+            data: { success: true, file: updated, ...(calendarMerged ? { merged: true } : {}) },
             timestamp: new Date().toISOString()
         });
     }
 
     async handleVfsDownloadFile(ws, message) {
         const { fileId } = this.getPayload(message);
+        let contentHash;
+        try { const f = await this.globalResources.getVfsDatabase().getUserFileById(fileId); if (f && /\.ics$/i.test(f.original_name || '')) contentHash = f.content_hash; } catch (_) { /* no hash */ }
         const uuid = this.globalResources.getVfsPathUuid();
         this.handlers.sendToClient(ws, {
             type: 'vfs_download_file_response',
@@ -399,7 +427,8 @@ class VfsWebSocketHandlers {
             data: {
                 success: true,
                 downloadUrl: `/${uuid}/files/${fileId}`,
-                fileId
+                fileId,
+                ...(contentHash ? { contentHash } : {}) // a calendar save names the version it read (#1157)
             },
             timestamp: new Date().toISOString()
         });

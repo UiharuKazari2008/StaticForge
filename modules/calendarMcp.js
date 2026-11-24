@@ -16,9 +16,10 @@
  *   calendar_list_items   events and tasks of every calendar in a workspace's Calendars folder (read-only),
  *                         filtered by text / dates: so an agent checks before it adds (e.g. "plaud:<id>").
  *
- * Calendar, the phone's Calendar and Tasks show the owned file as a read-only calendar (X-MELATON-OWNER, as
- * a subscription), so a stale copy open in an app can never save over what an agent added. Editing those
- * items in the apps is the multi-calendar follow-up (merge on save).
+ * One calendar set for the host (#1157): always the Default workspace's Calendars folder, read by every
+ * workspace, Calendar, the phone's Calendar, Tasks and Today. Calendar, the phone's Calendar and Tasks edit the
+ * owned file like any other: every .ics save goes through calendarMerge.js in vfs_replace_file (a three-way
+ * merge by UID under CAL_LOCK, the lock addItems holds), so a stale window never overwrites an agent's items.
  *
  * Times: start / end / due as "YYYY-MM-DD" (all-day / date only), "YYYY-MM-DDTHH:MM" (wall time in
  * timezone, default America/New_York, written as UTC), or a full ISO time with Z / an offset.
@@ -61,15 +62,15 @@ function tool(name, description, properties, required) {
 }
 
 const TOOLS = [
-    tool('calendar_add_items', 'Add appointments (event) and to-dos (task) to the agents\' own calendar file (default "Yozora" in the Default workspace\'s Calendars folder; made on first use). Never writes any other calendar. Items merge by UID: one already there is skipped unless replace. Use this, never vfs_write, for calendar items. It shows read-only in Calendar and Tasks on the desktop and phone.', {
+    tool('calendar_add_items', 'Add appointments (event) and to-dos (task) to the agents\' own calendar file (default "Yozora" in the Default workspace\'s Calendars folder; made on first use). Never writes any other calendar. Items merge by UID: one already there is skipped unless replace. Use this, never vfs_write, for calendar items. It shows in Calendar and Tasks on the desktop and phone, where it can be edited (every save is merged on the server).', {
         items: { type: 'array', items: ITEM_SCHEMA, description: `Up to ${MAX_ITEMS} items` },
         calendar: str('The agents\' calendar to write (default Yozora). Only a calendar agents own; letters, digits, space, - and _'),
-        workspace: str('Workspace id (default: default)'),
+        workspace: str('Ignored: there is one calendar set for the host (the Default workspace\'s Calendars folder)'),
         timezone: str('IANA zone for wall times (default America/New_York)'),
         replace: { type: 'boolean', description: 'Replace an item whose UID is there already (default: skip it)' }
     }, ['items']),
     tool('calendar_list_items', 'Events and tasks of every calendar in a workspace (read-only): Yukimi\'s, the phone\'s mirrors, subscriptions and the agents\' own. Filter by text (summary, description, location, UID: e.g. "plaud:<id>") and dates, to check before adding.', {
-        workspace: str('Workspace id (default: default)'),
+        workspace: str('Ignored: there is one calendar set for the host (the Default workspace\'s Calendars folder)'),
         calendar: str('Only this calendar (its name)'),
         search: str('Text to find (case-insensitive)'),
         from: str('YYYY-MM-DD: items on or after'),
@@ -264,7 +265,8 @@ function readItems(text, calName) {
 
 // ---------------------------------------------------------------- the tools (VFS through the facade's packets)
 
-const locks = new Map(); // file path -> promise of the write in progress
+const locks = new Map(); // lock key -> promise of the write in progress (every calendar write shares CAL_LOCK)
+const CAL_LOCK = 'calendars';
 function withLock(key, fn) {
     const prev = locks.get(key) || Promise.resolve();
     const run = prev.catch(() => {}).then(fn);
@@ -279,10 +281,9 @@ function safeName(n) {
     if (!/^[\w][\w -]{0,39}$/.test(name) || /^phone\b/i.test(name)) throw new Error('calendar: letters, digits, space, - and _ (up to 40), not starting with "Phone"');
     return name;
 }
-function safeWorkspace(w) {
-    const ws = String(w || DEFAULT_WORKSPACE).trim();
-    if (!/^[\w-]{1,64}$/.test(ws)) throw new Error('workspace: a workspace id');
-    return ws;
+/** One calendar set for the host (#1157): the Default workspace's Calendars folder, whatever workspace is asked for. */
+function safeWorkspace() {
+    return DEFAULT_WORKSPACE;
 }
 
 async function listFolder(ctx, folder) {
@@ -320,7 +321,7 @@ async function addItems(ctx, input) {
     const ws = safeWorkspace(input.workspace);
     const tz = String(input.timezone || DEFAULT_TZ);
     const fileName = `${name}.ics`;
-    return withLock(`${ws}/${fileName.toLowerCase()}`, async () => {
+    return withLock(CAL_LOCK, async () => {
         const folder = await ensureFolder(ctx, ws);
         const files = (await listFolder(ctx, folder)) || [];
         const existing = files.find((f) => String(f.name).toLowerCase() === fileName.toLowerCase());
@@ -378,4 +379,4 @@ async function handleCalendarTool(ctx, name, args) {
     }
 }
 
-module.exports = { TOOLS, isCalendarTool, handleCalendarTool, mergeItems, readItems, parseWhen, OWNER, _test: { splitCalendar, componentLines, fold } };
+module.exports = { TOOLS, isCalendarTool, handleCalendarTool, mergeItems, readItems, parseWhen, OWNER, withLock, CAL_LOCK, splitCalendar, joinCalendar, _test: { splitCalendar, componentLines, fold } };

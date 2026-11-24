@@ -101,7 +101,8 @@
         try { if (typeof activeWorkspace !== 'undefined' && activeWorkspace) w = activeWorkspace; } catch (_) { /* none */ } // eslint-disable-line no-undef
         return `/Workspaces/${w}`;
     }
-    const folder = () => `${workspaceRoot()}/Calendars`;
+    const CAL_HOME = '/Workspaces/Default'; // one calendar set for the host (#1157)
+    const folder = () => `${CAL_HOME}/Calendars`;
 
     async function ensureParser() {
         if (window.melatonCalendar && window.melatonCalendar.parseIcs) return window.melatonCalendar;
@@ -121,12 +122,13 @@
             refresh: parsed.refresh || 0,
             fileId: file.id || null,
             fileName: file.name || null,
+            baseHash: file.contentHash || '', // the version loaded: the server merges the save with any change since (#1157)
             events: [],
             tasks: [],
             visible: true
         };
         cal.owner = parsed.owner || '';
-        cal.readonly = !!cal.source || !!cal.owner; // an agents' calendar (calendarMcp.js) is the server's to write
+        cal.readonly = !!cal.source; // an agents' calendar (X-MELATON-OWNER) is editable: the server merges every save (#1157)
         parsed.events.forEach((e) => cal.events.push({ uid: e.uid || uid(), summary: e.summary || '', location: e.location || '', description: e.description || '', url: e.url || '', start: e.start, end: e.end, allDay: !!e.allDay, rrule: e.rrule || null, exdates: e.exdates || [], reminder: e.reminder === undefined ? null : e.reminder, reminderAt: e.reminderAt || null, attendees: e.attendees || [] }));
         parsed.tasks.forEach((t) => cal.tasks.push({ uid: t.uid || uid(), summary: t.summary || '', due: t.due || null, start: t.start || null, priority: t.priority || 0, completed: !!t.completed, completedAt: t.completedAt || null, reminderAt: t.reminderAt || null, description: t.description || '', url: t.url || '' }));
         return cal;
@@ -143,7 +145,7 @@
         // any catch here runs, so look in the workspace first and list the folder only when it is there.
         let present = false;
         try {
-            const top = await V.listDirectory(workspaceRoot(), { offset: 0, limit: 500 });
+            const top = await V.listDirectory(CAL_HOME, { offset: 0, limit: 500 });
             present = ((top && top.items) || []).some((i) => i && i.kind === 'folder' && String(i.name || '').toLowerCase() === 'calendars');
         } catch (_) { present = false; }
         if (present) {
@@ -164,6 +166,7 @@
                 let text = key ? icsText.get(key) : undefined;
                 if (text === undefined) {
                     const r = await V.downloadFile(f.id);
+                    f.contentHash = r.contentHash || f.contentHash;
                     text = await (await fetch(r.downloadUrl, { credentials: 'same-origin', cache: 'no-store' })).text();
                 }
                 if (key) keep.set(key, text);
@@ -254,9 +257,9 @@
     async function ensureFolder() {
         const V = vfs();
         try {
-            const top = await V.listDirectory(workspaceRoot(), { offset: 0, limit: 500 });
+            const top = await V.listDirectory(CAL_HOME, { offset: 0, limit: 500 });
             const has = ((top && top.items) || []).some((i) => i.name === 'Calendars' && (i.kind === 'folder' || i.targetKind === 'vfs-folder'));
-            if (!has) await V.createFolder(workspaceRoot(), 'Calendars');
+            if (!has) await V.createFolder(CAL_HOME, 'Calendars');
         } catch (_) { /* the upload below reports it */ }
     }
 
@@ -266,7 +269,10 @@
         const V = vfs();
         const data = await textB64(MC.toIcs(cal));
         if (cal.fileId) {
-            await V.replaceFile(cal.fileId, data, 'text/calendar');
+            const res = await V.replaceFile(cal.fileId, data, 'text/calendar', cal.baseHash);
+            const f = res && res.file;
+            if (f && f.content_hash) cal.baseHash = f.content_hash;
+            if (res && res.merged) calDirty = true; // the store held changes: read the merged file
         } else {
             await ensureFolder();
             const name = `${cal.name.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80) || 'Calendar'}.ics`;

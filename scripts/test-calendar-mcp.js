@@ -135,6 +135,40 @@ const NOW = Date.UTC(2026, 10, 24, 12, 0, 0);
         fs.rmSync(tmp, { recursive: true, force: true });
     });
 
+    await test('merge on save: three-way by UID, neither edit lost', () => {
+        const { mergeSave } = require('../modules/calendarMerge');
+        const mk = (items, extra) => ['BEGIN:VCALENDAR', 'VERSION:2.0', 'X-WR-CALNAME:T', ...(extra || []), ...items.flatMap(([uid, sum, stamp]) => ['BEGIN:VTODO', `UID:${uid}`, `DTSTAMP:${stamp || '20261124T100000Z'}`, `SUMMARY:${sum}`, 'END:VTODO']), 'END:VCALENDAR'].join('\r\n') + '\r\n';
+        const sums = (t) => cal._test.splitCalendar(t).comps.map((c) => `${c.uid}=${(c.lines.find((l) => /^SUMMARY/.test(l)) || '').slice(8)}`).sort();
+        const j = cal.joinCalendar;
+        const base = mk([['a', 'A'], ['b', 'B']]);
+        // an agent added c while a window (loaded at base) edited a and deleted b
+        const current = mk([['a', 'A'], ['b', 'B'], ['c', 'C']]);
+        const incoming = mk([['a', 'A edited', '20261124T110000Z']]);
+        let r = mergeSave({ baseText: base, currentText: current, incomingText: incoming }, j);
+        assert.deepStrictEqual(sums(r.text), ['a=A edited', 'c=C']); assert.ok(r.merged);
+        // nothing changed under the client: its file is stored as sent (a delete holds)
+        r = mergeSave({ baseText: base, currentText: base, incomingText: incoming }, j);
+        assert.deepStrictEqual(sums(r.text), ['a=A edited']); assert.ok(!r.merged);
+        // the same item edited on both sides: the newer stamp wins; a tie goes to the client
+        r = mergeSave({ baseText: base, currentText: mk([['a', 'A server', '20261124T120000Z'], ['b', 'B']]), incomingText: mk([['a', 'A client', '20261124T110000Z'], ['b', 'B']]) }, j);
+        assert.deepStrictEqual(sums(r.text), ['a=A server', 'b=B']);
+        r = mergeSave({ baseText: base, currentText: mk([['a', 'A server'], ['b', 'B']]), incomingText: mk([['a', 'A client'], ['b', 'B']]) }, j);
+        assert.deepStrictEqual(sums(r.text), ['a=A client', 'b=B']);
+        // an edit beats a delete, both ways
+        r = mergeSave({ baseText: base, currentText: mk([['a', 'A server edit'], ['b', 'B']]), incomingText: mk([['b', 'B']]) }, j);
+        assert.deepStrictEqual(sums(r.text), ['a=A server edit', 'b=B']);
+        r = mergeSave({ baseText: base, currentText: mk([['a', 'A']]), incomingText: mk([['a', 'A'], ['b', 'B edited']]) }, j);
+        assert.deepStrictEqual(sums(r.text), ['a=A', 'b=B edited']);
+        // no base (it is gone): nothing is dropped
+        r = mergeSave({ baseText: '', currentText: mk([['a', 'A'], ['c', 'C']]), incomingText: mk([['a', 'A'], ['d', 'D']]) }, j);
+        assert.deepStrictEqual(sums(r.text), ['a=A', 'c=C', 'd=D']);
+        // the owner line survives a client that dropped it; a phone mirror / subscription is stored as sent
+        r = mergeSave({ baseText: base, currentText: mk([['a', 'A'], ['b', 'B']], ['X-MELATON-OWNER:agents', 'X-X:1']), incomingText: mk([['a', 'A2']]) }, j);
+        assert.match(r.text, /X-MELATON-OWNER:agents/);
+        const mirror = mk([['a', 'A2']], ['X-MELATON-SOURCE:phone:Fold']);
+        assert.strictEqual(mergeSave({ baseText: '', currentText: mk([['a', 'A'], ['z', 'Z']]), incomingText: mirror }, j).text, mirror);
+    });
+
     await test('tools: scope vfs, listed in core_vfs', () => {
         cal.TOOLS.forEach((t) => assert.strictEqual(t.scope, 'vfs'));
         const reg = require('../modules/mcpModuleRegistry').MODULE_DEFS.core_vfs.tools;

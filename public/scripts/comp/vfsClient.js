@@ -118,8 +118,9 @@ const vfsClient = {
         return wsClient.sendMessage('vfs_upload_file', { path, fileData, originalFilename, mimeType });
     },
 
-    async replaceFile(fileId, fileData, mimeType) {
-        return wsClient.sendMessage('vfs_replace_file', { fileId, fileData, mimeType });
+    // baseHash: the content hash of the version the caller loaded (a .ics is merged with what is stored since, #1157)
+    async replaceFile(fileId, fileData, mimeType, baseHash) {
+        return wsClient.sendMessage('vfs_replace_file', baseHash ? { fileId, fileData, mimeType, baseHash } : { fileId, fileData, mimeType });
     },
 
     async downloadFile(fileId) {

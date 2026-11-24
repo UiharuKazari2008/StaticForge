@@ -333,6 +333,9 @@
         return `/Workspaces/${ws}`;
     }
 
+    // one calendar set for the host (#1157): every workspace, the phone, Today and Tasks read this folder
+    const CAL_HOME = '/Workspaces/Default';
+
     function userName() {
         const a = root.meletonAccounts;
         const n = (a && typeof a.displayName === 'function' && a.displayName()) || (a && typeof a.name === 'function' && a.name()) || (root.localStorage && root.localStorage.getItem('username')) || '';
@@ -363,6 +366,7 @@
             const sig = { signal: this.app.signal };
             doc.addEventListener('visibilitychange', () => this.syncTicks(), sig);
             root.addEventListener('melatonscreen', () => this.syncTicks(), sig);
+            doc.addEventListener('wsMessage', (e) => { const d = (e && e.detail) || {}; if (d.type === 'vfs_updated') this.reloadFromPush(String((d.data && d.data.path) || '')); }, sig);
         }
 
         syncTicks() {
@@ -424,7 +428,24 @@
 
         // ---- loading and saving ----------------------------------------------------------
 
-        folder() { return `${workspaceRoot()}/Calendars`; }
+        folder() { return `${CAL_HOME}/Calendars`; }
+
+        /**
+         * A Calendars file changed elsewhere (the phone, Tasks, an agent: vfs_updated, pushed by the server): the
+         * files are read again, unless an edit is open or waiting to save (the next change reads then). #1157
+         */
+        reloadFromPush(path) {
+            if (path && !/\/Calendars(\/|$)/i.test(path)) return;
+            if (!this.loaded || this.app.signal.aborted) return;
+            clearTimeout(this.pushTimer);
+            this.pushTimer = setTimeout(() => {
+                if (this.modal || this.saveTimers.size || this.reloading) return;
+                this.reloading = true;
+                const old = this.calendars;
+                this.calendars = [];
+                this.load().catch(() => { this.calendars = old; }).finally(() => { this.reloading = false; });
+            }, 500);
+        }
 
         async load() {
             this.status('Opening your calendars...');
@@ -433,11 +454,11 @@
             // a folder that is not there is a server error (and its exception window): look first
             let has = false;
             try {
-                const top = await V.listDirectory(workspaceRoot(), { offset: 0, limit: 500 });
+                const top = await V.listDirectory(CAL_HOME, { offset: 0, limit: 500 });
                 has = ((top && top.items) || []).some((i) => i.name === 'Calendars' && (i.kind === 'folder' || i.targetKind === 'vfs-folder'));
             } catch (_) { has = false; }
             if (!has) {
-                try { await V.createFolder(workspaceRoot(), 'Calendars'); } catch (_e) { /* not allowed here */ }
+                try { await V.createFolder(CAL_HOME, 'Calendars'); } catch (_e) { /* not allowed here */ }
             } else {
                 try {
                     const res = await V.listDirectory(this.folder(), { offset: 0, limit: 200 });
@@ -449,7 +470,7 @@
                 try {
                     const r = await V.downloadFile(f.id);
                     const text = await (await fetch(r.downloadUrl, { credentials: 'same-origin' })).text();
-                    this.adopt(parseIcs(text), { fileId: f.id, fileName: f.name });
+                    this.adopt(parseIcs(text), { fileId: f.id, fileName: f.name, hash: r.contentHash || f.contentHash || '' });
                 } catch (err) {
                     console.warn('Calendar: could not read', f.name, err);
                 }
@@ -479,13 +500,14 @@
                 refresh: parsed.refresh || 0,
                 fileId: file.fileId || null,
                 fileName: file.fileName || null,
+                baseHash: file.hash || '', // the version loaded: the server merges the save with any change since (#1157)
                 events: [],
                 tasks: [],
                 visible: true,
                 lastRefresh: 0
             };
             cal.owner = parsed.owner || '';
-            cal.readonly = !!cal.source || !!cal.owner;
+            cal.readonly = !!cal.source; // an agents' calendar (owner) is editable: the server merges every save (#1157)
             parsed.events.forEach((e) => cal.events.push({ uid: e.uid || uid(), summary: e.summary || '', location: e.location || '', description: e.description || '', url: e.url || '', start: e.start, end: e.end, allDay: !!e.allDay, rrule: e.rrule || null, exdates: e.exdates || [], reminder: e.reminder === undefined ? null : e.reminder, reminderAt: e.reminderAt || null, attendees: e.attendees || [] }));
             parsed.tasks.forEach((t) => cal.tasks.push({ uid: t.uid || uid(), summary: t.summary || '', due: t.due || null, start: t.start || null, priority: t.priority || 0, completed: !!t.completed, completedAt: t.completedAt || null, reminderAt: t.reminderAt || null, description: t.description || '', url: t.url || '' }));
             this.calendars.push(cal);
@@ -501,8 +523,11 @@
             const V = vfs();
             const data = await textB64(toIcs(cal));
             try {
-                if (cal.fileId) await V.replaceFile(cal.fileId, data, 'text/calendar');
-                else {
+                if (cal.fileId) {
+                    const res = await V.replaceFile(cal.fileId, data, 'text/calendar', cal.baseHash);
+                    if (res && res.file && res.file.content_hash) cal.baseHash = res.file.content_hash;
+                    if (res && res.merged) void this.load(); // the store held changes: read the merged file
+                } else {
                     const res = await V.uploadFile(this.folder(), data, this.fileNameOf(cal), 'text/calendar');
                     const f = res && (res.file || res.entry || res);
                     cal.fileId = (f && (f.id || f.fileId)) || null;
