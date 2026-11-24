@@ -49,7 +49,8 @@ const TOOLS = [
     tool('claude_dispatch', 'Start a Claude Code session on an account with a model and effort, in a folder, with a first prompt. It runs in Remote Control (Yukimi sees it on claude.ai/code) with the agent-coord MCP (claims, busy locks, build gates). Answers its session id, account and link. Give the prompt the whole task: the Yozora issue, the files, the acceptance check, and that it must coord_claim before editing and coord_build_request before any build.', {
         prompt: str('The task, complete (it starts with nothing else)'),
         account: str('Account name or index from claude_fleet_status, or "auto" (default): the account with the most headroom'),
-        model: str('Model alias (opus, sonnet, haiku, fable) or a full model id; omit for the account default'),
+        model: str('Model alias (sonnet, opus, haiku, fable) or a full model id. Default sonnet (subagents-sonnet rule): pick another only for a named reason (undecided design, a bug Sonnet already failed on, a security review, Yukimi asked) and say it in modelReason'),
+        modelReason: str('Why not Sonnet, when model is not sonnet'),
         effort: { type: 'string', enum: EFFORTS, description: 'Reasoning effort (default: the CLI default)' },
         cwd: str('Absolute folder on the host (default: the Dreamscape repo)'),
         title: str('Session title shown in claude.ai/code (default: the prompt\'s first line)'),
@@ -174,13 +175,19 @@ async function dispatch(gr, name, input) {
         const snap = await snapshot(gr);
         const acc = pickAccount(snap, input.account, input.allowFull === true);
         const cwd = input.cwd ? String(input.cwd) : path.join(__dirname, '..');
+        // subagents-sonnet (Yukimi, Nov 24 2026): Sonnet unless a reason is named
+        const model = input.model ? String(input.model) : 'sonnet';
+        if (!/sonnet/i.test(model) && !String(input.modelReason || '').trim()) {
+            throw new Error(`Dispatches start on Sonnet: pass modelReason to use ${model} (undecided design, a bug Sonnet already failed on, a security review, or Yukimi asked)`);
+        }
         const r = await launcher().start(gr, {
             cwd, prompt, title: input.title, account: acc.index, mode: input.mode,
-            model: input.model, effort: input.effort, dispatchedBy: 'Yozora'
+            model, effort: input.effort, dispatchedBy: 'Yozora'
         });
         return {
             session: r.id, account: { index: acc.index, name: acc.name }, model: r.model, effort: r.effort,
             state: r.state, link: r.link || '', message: r.message, tmux: r.tmuxSession,
+            modelReason: input.modelReason ? String(input.modelReason).slice(0, 300) : undefined,
             usageBefore: acc.usage ? acc.usage.limits : []
         };
     }

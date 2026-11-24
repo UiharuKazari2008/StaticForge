@@ -32,6 +32,11 @@ done, whatever else it achieves.
    - **No base64 images** (Yukimi, Nov 21 2026): a picture that can show again is a file with an address (server URL,
      the app's appassets handler over its cache folder, a revoked blob URL), never a `data:` string; only tiny or
      shown-once pictures may be inline - `no-base64-images`.
+2. **Commit every turn and delegate to Sonnet** (Yukimi, Nov 24 2026): a turn that changed files ends with your
+   own work committed and pushed where your workflow lands, unless a failing check, a half-done change, a hard stop
+   or a secret holds it (then `wip/<agent-id>`) - `commit-each-turn`. Subagents, workflow agents and
+   `claude_dispatch` sessions start on Sonnet unless a named reason says otherwise, with a brief Sonnet can finish -
+   `subagents-sonnet`.
 3. **Behaviour and look:** `ui-standard`, `no-native-browser-ui`, `fix-ui-issues-you-find`, notifications
    and status indicators never silenced to save power.
 
@@ -49,6 +54,8 @@ done, whatever else it achieves.
 @.cursor/rules/app-scope-ownership.mdc
 @.cursor/rules/no-retype-on-move.mdc
 @.cursor/rules/no-stash-to-pretty-commit.mdc
+@.cursor/rules/commit-each-turn.mdc
+@.cursor/rules/subagents-sonnet.mdc
 @.cursor/rules/rename-scope.mdc
 @.cursor/rules/nai-critical-dump.mdc
 @.cursor/rules/client-browser-testing.mdc

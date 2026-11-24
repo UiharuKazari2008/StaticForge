@@ -349,6 +349,18 @@ const DIRECTOR_XI_QUICK_STARTS = [
         prompt: 'Full cycle. Commit and push the finished work (take the already-dirty files too, never stash), post the Done comments with line counts, and close the Yozora issues this work covers. Stay off greg.'
     },
     {
+        // Yukimi, Nov 24 2026: "extract actionable items from my Plaud transcripts, that goes beyond just the
+        // dreamscape project ... make a issue for it and also detect calendar events or tasks"
+        id: 'xi-plaud-actions',
+        label: 'Plaud Actions',
+        title: 'Turn my Plaud recordings into issues, calendar events and tasks, for every project',
+        prompt: 'Go through my Plaud recordings that are not worked yet, newest first (plaud_list_recordings; if I named a recording or a date in this message, only those). A recording is worked when a Yozora issue or comment, or an item in my calendar, already names source plaud:<id>: search Yozora and my calendar files for it before you start, and skip it or add only what is missing. For each one read the AI notes (plaud_get_recording) and the WHOLE transcript (plaud_get_transcript, every block). Pull out every actionable item, whatever project it belongs to, not only Dreamscape. Only what I said I will do, want done, or agreed to: nothing invented, nothing from small talk.\n'
+            + '1. Project work: file it on the Yozora repo of that project. List the repos first (GET /api/v1/repos/search?limit=50 and each org\'s repos) and pick the one the item is about; DreamScape/StaticForge only for Dreamscape itself. Check its open issues and comment on a match instead of filing a duplicate. English, Goal / Context / Scope checklist / Acceptance, the quote it came from, source plaud:<id>, type / priority / status labels where the repo has them. When no repo fits, make it a task (3) with the project name as its category and say so in the report.\n'
+            + '2. Appointments, meetings, calls and deadlines with a date or a time: a VEVENT in my calendar. The calendars are iCalendar files in the workspace\'s Calendars folder (vfs_list /Workspaces to find the one with my calendars; the main calendar file unless the item names another; never a subscribed one, those carry X-MELATON-SOURCE). vfs_read the file, insert the event before END:VCALENDAR and vfs_write the whole file back: UID plaud-<id>-<n>@dreamscape (skip a UID that is already there), DTSTAMP, DTSTART / DTEND with TZID=America/New_York (all-day: VALUE=DATE), SUMMARY, LOCATION when said, DESCRIPTION with the quote and source plaud:<id>. Resolve relative dates ("next Tuesday") from the recording\'s own date, not today.\n'
+            + '3. To-dos for me that are not project work (call, buy, send, book, check): a VTODO in the same file: UID plaud-<id>-t<n>@dreamscape, SUMMARY, DUE when a date was said, PRIORITY (1 high, 5 normal, 9 low), CATEGORIES (the project or area), STATUS:NEEDS-ACTION, DESCRIPTION with the quote and source plaud:<id>. They show in Tasks on the phone and the desktop.\n'
+            + 'Anything unclear (which project, which day, whether it is really a commitment): one request_form with all the questions, not one per item. Finish with a table: item, where it went (issue link, event with date and time, or task), and the recording it came from.'
+    },
+    {
         id: 'xi-review-wren',
         label: 'Review Yumiya',
         title: 'Fix what went wrong in Yumiya sessions and update the prompt guide',
