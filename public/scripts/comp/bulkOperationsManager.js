@@ -40,16 +40,17 @@ const galleryDownloadWindow = (() => {
         { id: 813, hint: 823, value: 'slim' },
         { id: 814, hint: 824, value: 'jpeg' }
     ];
+    // the radios one after another (the renderer groups radios that follow each other), their notes after them
     const DOWNLOAD_FORMAT_TPL = { t: 'Download', w: 262, h: 190, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
         [801, 'S', 7, 7, 248, 9, 0x50020000, 'Download this picture as:', 0],
         [-1, 'B', 7, 20, 248, 142, 0x50000007, 'Format', 0],
         [811, 'B', 15, 33, 232, 10, 0x50030009, '&PNG, as it was saved', 0],
-        [821, 'S', 27, 44, 220, 9, 0x50020000, 'Keeps the prompt and settings.', 0],
         [812, 'B', 15, 63, 232, 10, 0x50010009, 'JPEG &XL, lossless and smaller', 0],
-        [822, 'S', 27, 74, 220, 18, 0x50020000, 'Keeps the prompt and settings. Opens in apps that read JPEG XL.', 0],
         [813, 'B', 15, 101, 232, 10, 0x50010009, 'PNG &without the prompt and settings', 0],
-        [823, 'S', 27, 112, 220, 9, 0x50020000, 'The picture only.', 0],
         [814, 'B', 15, 131, 232, 10, 0x50010009, '&JPEG, smallest, for sharing', 0],
+        [821, 'S', 27, 44, 220, 9, 0x50020000, 'Keeps the prompt and settings.', 0],
+        [822, 'S', 27, 74, 220, 18, 0x50020000, 'Keeps the prompt and settings. Opens in apps that read JPEG XL.', 0],
+        [823, 'S', 27, 112, 220, 9, 0x50020000, 'The picture only.', 0],
         [824, 'S', 27, 142, 220, 9, 0x50020000, 'Some detail is lost; no prompt or settings.', 0],
         [1, 'B', 151, 170, 50, 14, 0x50010001, '&Download', 0],
         [2, 'B', 205, 170, 50, 14, 0x50010000, 'Cancel', 0]
@@ -95,7 +96,8 @@ const galleryDownloadWindow = (() => {
                         .then((r) => (r.ok ? r.json() : null))
                         .then((info) => {
                             if (!info || settled) return;
-                            const png = downloadSizeText(info.png);
+                            // a JXL-stored picture whose PNG was never rebuilt: an estimate from the JXL
+                            const png = info.png ? downloadSizeText(info.png) : (info.jxl ? `about ${downloadSizeText(info.jxl / 0.56)}` : '');
                             const jxl = info.jxl ? downloadSizeText(info.jxl) : (info.png ? `about ${downloadSizeText(info.png * 0.56)}` : '');
                             if (png) ctx.text(821, `${png}. Keeps the prompt and settings.`);
                             if (jxl) ctx.text(822, `${jxl}. Keeps the prompt and settings. Opens in apps that read JPEG XL.`);
