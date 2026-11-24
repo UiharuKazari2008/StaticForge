@@ -1193,6 +1193,22 @@ body.windows-classic-theme #mainframeExceptionDialog .dotnet-buttons .btn-standa
     opacity: 0.12;
 }
 
+/* the top card of the stack: a closed frame in the edges' line (only the edges under it were drawn, so the stack read
+   as a frame with just its bottom, #1089); the kit's hot / selected frame replaces it */
+.android-notify-stack::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 7px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    opacity: 0.22;
+    pointer-events: none;
+}
+
+.android-notify-flyout .android-notify-frame .android-notify-app .android-notify-stack:is(:hover, :focus-visible, .is-selected)::before {
+    opacity: 0;
+}
+
 .android-notify-note {
     position: relative;
     padding: 4px 42px 5px 4px;
