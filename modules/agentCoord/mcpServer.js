@@ -192,6 +192,7 @@ const TOOLS = [
     { name: 'coord_build_status', description: 'A build gate: participants (ready, not-ready, auto, pending), who it waits on, whether another build of the target runs, canBegin.', inputSchema: S({ build: { type: 'number' } }, ['build']) },
     { name: 'coord_build_begin', description: 'Start your gated build: refused while anyone is pending or not ready or another build of the target runs (the answer says who). force with a reason starts anyway and tells everyone.', inputSchema: S({ build: { type: 'number' }, force: { type: 'boolean' }, reason: str('Required with force') }, ['build']) },
     { name: 'coord_build_end', description: 'End your build (or cancel a gate you opened); everyone is told the result.', inputSchema: S({ build: { type: 'number' }, result: str('One line: ok / failed and why') }, ['build']) },
+    { name: 'coord_supervisor_check', description: 'Ask the Supervisor (a separate model) to check your current turn: does what you did cover everything in the request and every steering message? Answers verdict ok / gaps / unclear and the missed items. Call it before you say you are done with a multi-part request.', inputSchema: S({}) },
     { name: 'coord_builds', description: 'Open and running build gates (recent: also the ones that ended in the last day).', inputSchema: S({ repo: str('Repo name'), recent: { type: 'boolean' } }) }
 ];
 
@@ -269,6 +270,8 @@ function run(name, args) {
         return store.buildBegin(ego.id, a.build, { force: a.force === true, reason: a.reason });
     case 'coord_build_end':
         return store.buildEnd(ego.id, a.build, a.result);
+    case 'coord_supervisor_check':
+        return supervisorCheck();
     case 'coord_builds':
         return { builds: store.builds({ repo: a.repo, recent: a.recent === true }) };
     default:
@@ -276,9 +279,44 @@ function run(name, args) {
     }
 }
 
+// ---------------------------------------------------------------- Supervisor (modules/agentSupervisor.js, in the Dreamscape server)
+
+/** Asks the Supervisor over its unix socket to review this session's current turn (up to ~2 min). */
+function supervisorCheck() {
+    const rec = claudeRecord();
+    if (!rec) return Promise.reject(new Error('The Supervisor checks Claude Code sessions: this one has no session record'));
+    const net = require('net');
+    const file = process.env.AGENT_SUPERVISOR_SOCKET || path.join(path.dirname(store.dbPath()), 'supervisor.sock');
+    return new Promise((resolve, reject) => {
+        let buf = '';
+        const sock = net.createConnection(file, () => sock.write(`${JSON.stringify({ op: 'check', sessionId: rec.sessionId })}\n`));
+        sock.setEncoding('utf8');
+        sock.setTimeout(120000, () => { sock.destroy(); reject(new Error('The Supervisor did not answer in 2 minutes')); });
+        sock.on('data', (c) => { buf += c; });
+        sock.on('end', () => {
+            try {
+                const out = JSON.parse(buf.trim());
+                if (!out.ok) return reject(new Error(out.error || 'The Supervisor failed'));
+                const r = out.review || {};
+                return resolve({ verdict: r.verdict, summary: r.summary, missed: r.missed || [], model: r.model, request: (r.request || '').slice(0, 300), steering: r.steering || [] });
+            } catch (e) { return reject(new Error('The Supervisor answered something unreadable')); }
+        });
+        sock.on('error', (e) => reject(new Error(e.code === 'ENOENT' || e.code === 'ECONNREFUSED' ? 'The Supervisor is not running (it runs inside the Dreamscape server)' : e.message)));
+    });
+}
+
 // ---------------------------------------------------------------- JSON-RPC over stdio
 
 function write(obj) { process.stdout.write(`${JSON.stringify(obj)}\n`); }
+
+/** A tools/call answer (sync or after a promise), with the caller's unread count. */
+function finishCall(id, name, out, isError) {
+    if (id === undefined || id === null) return;
+    let unread = 0;
+    try { unread = me ? store.unreadCount(me.id) : 0; } catch (_) { unread = 0; }
+    const textOut = JSON.stringify(out, null, 1) + (unread && name !== 'coord_inbox' ? `\n\nYou have ${unread} unread message${unread === 1 ? '' : 's'}: call coord_inbox.` : '');
+    write({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: textOut }], isError } });
+}
 
 function handle(msg) {
     const { id, method, params } = msg || {};
@@ -298,10 +336,11 @@ function handle(msg) {
             let out;
             let isError = false;
             try { out = run(name, params && params.arguments); } catch (e) { out = { error: e.message }; isError = true; }
-            let unread = 0;
-            try { unread = me ? store.unreadCount(me.id) : 0; } catch (_) { unread = 0; }
-            const textOut = JSON.stringify(out, null, 1) + (unread && name !== 'coord_inbox' ? `\n\nYou have ${unread} unread message${unread === 1 ? '' : 's'}: call coord_inbox.` : '');
-            reply({ content: [{ type: 'text', text: textOut }], isError });
+            if (out && typeof out.then === 'function') {
+                out.then((v) => finishCall(id, name, v, false), (e) => finishCall(id, name, { error: e.message }, true));
+                return;
+            }
+            finishCall(id, name, out, isError);
             return;
         }
         if (typeof method === 'string' && method.startsWith('notifications/')) return;

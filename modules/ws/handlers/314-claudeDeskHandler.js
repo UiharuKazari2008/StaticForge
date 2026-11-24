@@ -179,7 +179,8 @@ function defineFeeds() {
                 host,
                 accounts: gResources ? claudeHost.listAccounts(gResources) : [],
                 live: liveSummary(),
-                coord: coordSummary()
+                coord: coordSummary(),
+                supervisor: supervisorSummary()
             };
         }
     });
@@ -193,6 +194,29 @@ function defineFeeds() {
 }
 
 const poke = () => { if (deskFeed) deskFeed.poke(); };
+
+// ---------------------------------------------------------------- Supervisor (#1154, modules/agentSupervisor.js)
+
+const supervisor = require('../../agentSupervisor');
+
+/** The console refetches the review list only when lastReviewId moves (no polling). */
+function supervisorSummary() {
+    try { const x = supervisor.summary(); return { lastReviewId: x.lastReviewId, open: x.open }; } catch (_) { return { lastReviewId: 0, open: 0 }; }
+}
+
+async function supervisorStatus(gr) {
+    return { settings: supervisor.settings(gr), engines: supervisor.engines(gr), reviews: supervisor.listReviews({ limit: 80 }), stats: supervisor.summary() };
+}
+
+const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => {
+    const action = String(message.action || 'status');
+    if (action === 'status') return supervisorStatus(gr);
+    if (action === 'save') { await supervisor.saveSettings(gr, message.settings || {}); return supervisorStatus(gr); }
+    if (action === 'recheck') return { review: await supervisor.review(String(message.sessionId || ''), 'recheck', { gr }) };
+    if (action === 'send') return { review: await supervisor.send(message.reviewId) };
+    if (action === 'dismiss') { supervisor.dismiss(message.reviewId); return supervisorStatus(gr); }
+    throw new Error('action must be status, save, recheck, send or dismiss');
+});
 
 // ---------------------------------------------------------------- transcript watches (one per socket)
 
@@ -328,6 +352,10 @@ function registerPackets(handlersCtx) {
     setTimeout(() => {
         runtime.armAll(gResources).catch((e) => console.warn(`[claudeDesk] account runtimes: ${e.message}`));
         if (process.env.DREAMSCAPE_CLAUDE_RC_READONLY !== '1') launcher.ensureServer().catch((e) => console.warn(`[claudeDesk] carry tmux server: ${e.message}`));
+        // the Supervisor watches every session's turns end (fs.watch on ~/.claude/sessions) and serves agent-coord's check
+        if (process.env.DREAMSCAPE_CLAUDE_RC_READONLY !== '1') {
+            try { supervisor.start(gResources); supervisor.onReview(() => poke()); } catch (e) { console.warn(`[claudeDesk] supervisor: ${e.message}`); }
+        }
     }, 5000).unref();
     const reg = (type, handlerFn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
@@ -340,6 +368,7 @@ function registerPackets(handlersCtx) {
     reg('claude_desk_unwatch', handleUnwatch);
     reg('claude_desk_session', handleSession, ADMIN_DESTRUCTIVE);
     reg('claude_desk_coord', handleCoord, ADMIN_DESTRUCTIVE);
+    reg('claude_desk_supervisor', handleSupervisor, ADMIN_DESTRUCTIVE);
 }
 
-module.exports = { registerPackets, _handlers: { handleSessions, handleTranscript, handleWatch, handleUnwatch, handleSession, handleCoord }, _sessionsPage: sessionsPage, _ownerOf: ownerOf };
+module.exports = { registerPackets, _handlers: { handleSessions, handleTranscript, handleWatch, handleUnwatch, handleSession, handleCoord, handleSupervisor }, _sessionsPage: sessionsPage, _ownerOf: ownerOf };

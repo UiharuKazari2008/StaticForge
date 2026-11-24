@@ -1,0 +1,524 @@
+'use strict';
+
+/**
+ * Supervisor (#1154, Yukimi Nov 24 2026: "a separate runner as DeepSeek 4.1 flash (by default unless it's
+ * changed to another engine or model) that is used to watch over all sessions and when a turn ends or a
+ * session calls it via MCP can double check that the last request + any steering matches what was
+ * requested and no work was forgotten along the way or was not addressed").
+ *
+ * Watches every Claude session on the host (one shared ~/.claude/sessions for every account): when a
+ * session's record goes busy -> idle, the turn just ended. The turn is read from its transcript (from the
+ * byte offset the last review stopped at, so a transcript is never read again from the start): Yukimi's
+ * request, any steering typed while it worked, what it did (tool calls: edits, commands, files) and its
+ * final answer. One call to the Supervisor's engine compares them and answers { verdict: ok | gaps |
+ * unclear, summary, missed: [{ item, evidence }] }.
+ *
+ *   engine     config agentSupervisor.engine: 'tokenrouter' (default; its key in Security Center) or a
+ *              custom model provider id (customModelProviders.js); model default deepseek/deepseek-v4.1-flash
+ *              on TokenRouter, else the provider's own default
+ *   delivery   'inbox' (default): a gap is posted to the agent's agent-coord inbox (the unread note on its
+ *              next coord call); 'steer': also typed into the session as its next prompt when it runs in
+ *              tmux (at most 2 automatic steers in a row per session, so it never loops); 'off': recorded only
+ *   MCP        a session asks itself (agent-coord coord_supervisor_check) over a unix socket in the
+ *              agent-coord state dir (0600): the same review, answered in the call
+ *   store      reviews in the agent-coord DB (supervisor_reviews / supervisor_state), shown in Fleet >
+ *              Coordination > Supervisor (claude_desk_supervisor); onReview(fn) tells the console's feed
+ *
+ * Costs: the sessions dir is watched (fs.watch, 500 ms debounce), never polled; one model call per ended
+ * turn that had a request, at most 2 at once, input capped at ~24k characters. Nothing here returns or
+ * logs a key.
+ */
+
+const fs = require('fs');
+const os = require('os');
+const net = require('net');
+const path = require('path');
+
+const DEFAULT_ENGINE = 'tokenrouter';
+const DEFAULT_MODEL = 'deepseek/deepseek-v4.1-flash';
+const DELIVERIES = ['inbox', 'steer', 'off'];
+const MAX_INPUT = 24000;
+const MAX_PARALLEL = 2;
+const MAX_AUTO_STEERS = 2;
+const CALL_TIMEOUT_MS = 90 * 1000;
+const STEER_PREFIX = '[Supervisor]';
+const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function claudeHome() { return process.env.DREAMSCAPE_CLAUDE_HOME || os.homedir(); }
+const sessionsDir = () => path.join(claudeHome(), '.claude', 'sessions');
+function stateDir() { return path.dirname(require('./agentCoord/store').dbPath()); }
+function socketPath() { return process.env.AGENT_SUPERVISOR_SOCKET || path.join(stateDir(), 'supervisor.sock'); }
+const coord = () => require('./agentCoord/store');
+
+let gResources = null;
+const listeners = new Set();
+function onReview(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+function emit(review) { listeners.forEach((fn) => { try { fn(review); } catch (_) { /* a listener */ } }); }
+
+// ---------------------------------------------------------------- settings + engines
+
+function settings(gr) {
+    const g = gr || gResources;
+    let cfg = {};
+    try { cfg = (g && g.getConfig && g.getConfig().agentSupervisor) || {}; } catch (_) { cfg = {}; }
+    return {
+        enabled: cfg.enabled !== false,
+        engine: String(cfg.engine || DEFAULT_ENGINE),
+        model: String(cfg.model || ''),
+        delivery: DELIVERIES.includes(cfg.delivery) ? cfg.delivery : 'inbox'
+    };
+}
+
+async function saveSettings(gr, next) {
+    const cur = settings(gr);
+    const s = {
+        enabled: next.enabled === undefined ? cur.enabled : next.enabled === true,
+        engine: next.engine ? String(next.engine).slice(0, 60) : cur.engine,
+        model: next.model !== undefined ? String(next.model || '').trim().slice(0, 120) : cur.model,
+        delivery: DELIVERIES.includes(next.delivery) ? next.delivery : cur.delivery
+    };
+    if (!engines(gr).some((e) => e.id === s.engine)) throw new Error(`Unknown engine ${s.engine}`);
+    await gr.modifyConfig('config').assign(['agentSupervisor'], s);
+    return settings(gr);
+}
+
+function tokenRouterBase() {
+    return String(process.env.TOKENROUTER_BASE_URL || 'https://api.tokenrouter.com').trim().replace(/\/+$/, '').replace(/\/v1$/, '');
+}
+
+/** TokenRouter plus every custom model provider: { id, name, defaultModel, ready }. */
+function engines(gr) {
+    const g = gr || gResources;
+    const out = [];
+    let trKey = '';
+    try { trKey = g.getApiKeyManager().getActiveApiKey('tokenrouter') || ''; } catch (_) { trKey = ''; }
+    out.push({ id: 'tokenrouter', name: 'TokenRouter', defaultModel: DEFAULT_MODEL, ready: !!trKey });
+    try {
+        const cmp = require('./customModelProviders');
+        cmp.publicList(g).forEach((p) => {
+            const row = cmp.lookup(g, p.id);
+            out.push({ id: p.id, name: p.name, defaultModel: cmp.preferredModel(row) || '', ready: !!(row && row.apiKey) });
+        });
+    } catch (_) { /* no providers */ }
+    return out;
+}
+
+/** { url, key, model, name } for the configured engine (throws when it has no key). */
+function endpoint(gr, s) {
+    if (s.engine === 'tokenrouter') {
+        const key = gr.getApiKeyManager().getActiveApiKey('tokenrouter');
+        if (!key) throw new Error('TokenRouter has no API key (Security Center > API keys)');
+        return { url: `${tokenRouterBase()}/v1/chat/completions`, key, model: s.model || DEFAULT_MODEL, name: 'TokenRouter' };
+    }
+    const cmp = require('./customModelProviders');
+    const row = cmp.requireReady(gr, s.engine);
+    const model = s.model || cmp.preferredModel(row);
+    if (!model) throw new Error(`${row.name} has no default model: set one for the Supervisor`);
+    return { url: row.chatUrl, key: row.apiKey, model, name: row.name };
+}
+
+// ---------------------------------------------------------------- the turn
+
+/** The turn's request, steering, actions and final answer, from transcript messages (claudeTranscript). */
+function turnOf(messages) {
+    const users = [];
+    const actions = [];
+    let final = '';
+    let lastAssistantText = '';
+    messages.forEach((m) => {
+        if (m.sidechain) return;
+        if (m.role === 'user' && m.kind === 'text' && String(m.text || '').trim()) users.push(String(m.text).trim());
+        else if (m.role === 'assistant' && m.kind === 'tool_use') actions.push(`${m.tool || 'tool'}: ${String(m.text || '').replace(/\s+/g, ' ').slice(0, 220)}`);
+        else if (m.role === 'assistant' && m.kind === 'text' && String(m.text || '').trim()) lastAssistantText = String(m.text).trim();
+    });
+    final = lastAssistantText;
+    const fromSupervisor = users.length > 0 && users.every((u) => u.startsWith(STEER_PREFIX));
+    return { request: users[0] || '', steering: users.slice(1), actions, final, fromSupervisor };
+}
+
+function capTurn(t) {
+    const cut = (s, n) => (s.length > n ? `${s.slice(0, n)} [...cut]` : s);
+    const request = cut(t.request, 8000);
+    const steering = t.steering.map((s) => cut(s, 1500)).slice(0, 12);
+    let actions = t.actions.slice(-120);
+    const final = cut(t.final, 6000);
+    let size = request.length + steering.join('').length + final.length;
+    const kept = [];
+    for (let i = actions.length - 1; i >= 0; i -= 1) {
+        if (size + actions[i].length > MAX_INPUT) break;
+        size += actions[i].length;
+        kept.unshift(actions[i]);
+    }
+    actions = kept;
+    return { request, steering, actions, final, droppedActions: t.actions.length - actions.length };
+}
+
+const SYSTEM = [
+    'You are the Supervisor for coding agents (Claude Code sessions) working for Yukimi. After a turn you check, from the transcript summary given, whether the agent did EVERYTHING the user asked in the request and in every steering message sent while it worked.',
+    'List each concrete thing asked (including small asides, questions to answer, files or checks named, "also ..." items, and changes of direction from steering). For each, decide from the actions and the final answer whether it was done, answered, or explicitly deferred with a reason. A later steering message that cancels or replaces an earlier ask overrides it.',
+    'Only report real gaps: an ask that was not done, not answered, or done differently than asked without saying so. Do not report style, quality opinions, or things nobody asked for. Work the agent said it filed as a follow-up issue counts as addressed. If the turn ended with the agent waiting on the user (a question, an approval) that is not a gap.',
+    'Answer ONLY a JSON object: {"verdict":"ok"|"gaps"|"unclear","summary":"one sentence","missed":[{"item":"what was asked and not addressed","evidence":"why you think so, quoting the request"}]}. verdict ok means nothing missed; unclear means the summary is not enough to tell.'
+].join('\n');
+
+function promptFor(t, meta) {
+    return [
+        `Session: ${meta.title || meta.sessionId} (account ${meta.account || 'host'})${meta.partial ? ' [the start of this turn was before the Supervisor saw it]' : ''}`,
+        '',
+        '## Request',
+        t.request || '(no request text in this turn)',
+        '',
+        `## Steering sent while it worked (${t.steering.length})`,
+        t.steering.length ? t.steering.map((s, i) => `${i + 1}. ${s}`).join('\n') : '(none)',
+        '',
+        `## What it did (${t.actions.length} tool calls${t.droppedActions ? `, ${t.droppedActions} earlier ones left out` : ''})`,
+        t.actions.join('\n') || '(no tool calls)',
+        '',
+        '## Its final answer',
+        t.final || '(no final text)'
+    ].join('\n');
+}
+
+let fetchFn = (...a) => fetch(...a);
+function _setFetch(fn) { fetchFn = typeof fn === 'function' ? fn : (...a) => fetch(...a); }
+
+async function askModel(gr, s, userText) {
+    const ep = endpoint(gr, s);
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), CALL_TIMEOUT_MS);
+    try {
+        const res = await fetchFn(ep.url, {
+            method: 'POST',
+            signal: ctl.signal,
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.key}` },
+            body: JSON.stringify({ model: ep.model, temperature: 0, max_tokens: 6000, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: userText }] })
+        });
+        const body = await res.text();
+        if (!res.ok) throw new Error(`${ep.name} ${res.status}: ${body.replace(/\s+/g, ' ').slice(0, 200)}`);
+        const choice = (JSON.parse(body).choices || [])[0] || {};
+        const content = (choice.message || {}).content || '';
+        const out = Object.assign(parseVerdict(content), { model: ep.model, engine: ep.name });
+        if (out.unparsed) {
+            // kept for the console: why the answer was not a verdict (cut off, prose, empty)
+            out.error = `finish ${choice.finish_reason || '?'}, ${String(content).length} chars: ${String(content).replace(/\s+/g, ' ').slice(0, 300)}`;
+            delete out.unparsed;
+        }
+        return out;
+    } finally { clearTimeout(timer); }
+}
+
+function parseVerdict(text) {
+    const raw = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    let o = null;
+    try { o = JSON.parse(raw); } catch (_) {
+        const m = /\{[\s\S]*\}/.exec(raw);
+        try { o = m ? JSON.parse(m[0]) : null; } catch (__) { o = null; }
+    }
+    if (!o || typeof o !== 'object') return { verdict: 'unclear', summary: 'The Supervisor\'s answer was not JSON', missed: [], unparsed: true };
+    // items as { item, evidence } or plain strings (models do both)
+    const missed = (Array.isArray(o.missed) ? o.missed : []).map((x) => (typeof x === 'string' ? { item: x.slice(0, 400), evidence: '' } : { item: String((x && x.item) || '').slice(0, 400), evidence: String((x && x.evidence) || '').slice(0, 600) })).filter((x) => x.item).slice(0, 20);
+    let verdict = ['ok', 'gaps', 'unclear'].includes(o.verdict) ? o.verdict : (missed.length ? 'gaps' : 'unclear');
+    if (verdict === 'ok' && missed.length) verdict = 'gaps';
+    return { verdict, summary: String(o.summary || '').slice(0, 400), missed };
+}
+
+// ---------------------------------------------------------------- store (agent-coord DB)
+
+function db() {
+    const d = coord().open();
+    if (!db.ready || db.ready !== d) {
+        d.exec(`
+            CREATE TABLE IF NOT EXISTS supervisor_state (
+                session_id TEXT PRIMARY KEY, file TEXT, offset INTEGER NOT NULL DEFAULT 0, status TEXT,
+                auto_steers INTEGER NOT NULL DEFAULT 0, updated_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS supervisor_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, agent_id TEXT, title TEXT, account TEXT,
+                at INTEGER NOT NULL, trigger TEXT NOT NULL, verdict TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '',
+                request TEXT NOT NULL DEFAULT '', steering TEXT NOT NULL DEFAULT '[]', missed TEXT NOT NULL DEFAULT '[]',
+                model TEXT NOT NULL DEFAULT '', delivered TEXT NOT NULL DEFAULT '', dismissed INTEGER NOT NULL DEFAULT 0, error TEXT
+            );
+            CREATE INDEX IF NOT EXISTS supervisor_reviews_at ON supervisor_reviews (at);
+        `);
+        db.ready = d;
+    }
+    return d;
+}
+
+function rowReview(r) {
+    if (!r) return null;
+    const j = (s, d) => { try { return JSON.parse(s); } catch (_) { return d; } };
+    return {
+        id: r.id, sessionId: r.session_id, agentId: r.agent_id || '', title: r.title || '', account: r.account || '', at: r.at,
+        trigger: r.trigger, verdict: r.verdict, summary: r.summary, request: r.request, steering: j(r.steering, []),
+        missed: j(r.missed, []), model: r.model, delivered: r.delivered || '', dismissed: !!r.dismissed, error: r.error || ''
+    };
+}
+
+function listReviews(opts = {}) {
+    const lim = Math.max(1, Math.min(200, Number(opts.limit) || 60));
+    return db().prepare('SELECT * FROM supervisor_reviews ORDER BY id DESC LIMIT ?').all(lim).map(rowReview);
+}
+const getReview = (id) => rowReview(db().prepare('SELECT * FROM supervisor_reviews WHERE id = ?').get(Number(id)));
+
+function summary() {
+    const d = db();
+    const last = d.prepare('SELECT id, at FROM supervisor_reviews ORDER BY id DESC LIMIT 1').get();
+    const open = d.prepare("SELECT COUNT(*) n FROM supervisor_reviews WHERE verdict = 'gaps' AND dismissed = 0 AND delivered != 'steer'").get().n;
+    const reviewed = d.prepare('SELECT COUNT(*) n FROM supervisor_reviews').get().n;
+    const gaps = d.prepare("SELECT COUNT(*) n FROM supervisor_reviews WHERE verdict = 'gaps'").get().n;
+    return { lastReviewId: last ? last.id : 0, open, reviewed, gaps, lastAt: last ? last.at : null };
+}
+
+function dismiss(id) {
+    db().prepare('UPDATE supervisor_reviews SET dismissed = 1 WHERE id = ?').run(Number(id));
+    const r = getReview(id);
+    emit(r);
+    return r;
+}
+
+// ---------------------------------------------------------------- reviewing
+
+function liveRecord(sessionId) {
+    let names = [];
+    try { names = fs.readdirSync(sessionsDir()).filter((n) => /^\d+\.json$/.test(n)); } catch (_) { return null; }
+    for (const n of names) {
+        try {
+            const r = JSON.parse(fs.readFileSync(path.join(sessionsDir(), n), 'utf8'));
+            if (r && r.sessionId === sessionId) return r;
+        } catch (_) { /* next */ }
+    }
+    return null;
+}
+
+function metaFor(sessionId) {
+    let agent = null;
+    try { agent = coord().resolveAgent(`claude-${sessionId.slice(0, 8)}`); } catch (_) { agent = null; }
+    const rec = liveRecord(sessionId);
+    let account = agent && agent.account ? agent.account : '';
+    if (!account && rec && rec.pid) {
+        try {
+            const hit = fs.readFileSync(`/proc/${rec.pid}/environ`, 'latin1').split('\0').find((kv) => kv.startsWith('CLAUDE_CONFIG_DIR='));
+            if (hit) {
+                const dir = path.dirname(hit.slice('CLAUDE_CONFIG_DIR='.length));
+                try { account = JSON.parse(fs.readFileSync(path.join(dir, 'fleet.json'), 'utf8')).name || ''; } catch (_) { account = path.basename(dir); }
+            } else account = 'host';
+        } catch (_) { /* gone */ }
+    }
+    const title = (agent && agent.name) || (rec && rec.name) || sessionId.slice(0, 8);
+    return { sessionId, agentId: agent ? agent.id : `claude-${sessionId.slice(0, 8)}`, title, account, rec };
+}
+
+async function transcriptFile(sessionId) {
+    return require('./claudeSessionLauncher').findFile(sessionId);
+}
+
+/**
+ * Reviews a session's latest turn: from the stored offset (or, on a first look, the last 80 messages
+ * back to the last request) to the end. trigger: turn-end | mcp | recheck. Answers the stored review.
+ */
+async function review(sessionId, trigger, opts = {}) {
+    if (!SESSION_ID_RE.test(String(sessionId || ''))) throw new Error('A session id');
+    const gr = opts.gr || gResources;
+    const s = settings(gr);
+    const file = await transcriptFile(sessionId);
+    if (!file) throw new Error('No transcript for that session');
+    const d = db();
+    const st = d.prepare('SELECT * FROM supervisor_state WHERE session_id = ?').get(sessionId);
+    const transcript = require('./claudeTranscript');
+    let messages = [];
+    let partial = false;
+    let end = 0;
+    if (st && st.file === file && st.offset > 0 && trigger !== 'recheck') {
+        const r = await transcript.readSince(file, st.offset);
+        messages = r.messages || [];
+        end = r.end;
+        partial = st.status === 'partial';
+        // nothing new since the last review (a session that went idle twice): the last turn again
+        if (!messages.some((m) => m.role === 'user' && m.kind === 'text')) messages = [];
+    }
+    if (!messages.length) {
+        const page = await transcript.readPage(file, { limit: 120 });
+        const all = page.messages || [];
+        end = page.end;
+        // back to the last request: a user text right after an assistant text answer (or the page start)
+        let start = 0;
+        for (let i = all.length - 1; i > 0; i -= 1) {
+            if (all[i].role === 'user' && all[i].kind === 'text' && !String(all[i].text || '').startsWith(STEER_PREFIX)) {
+                const prev = all.slice(0, i).reverse().find((m) => m.role === 'assistant' || (m.role === 'user' && m.kind === 'text'));
+                if (!prev || (prev.role === 'assistant' && prev.kind === 'text')) { start = i; break; }
+            }
+        }
+        messages = all.slice(start);
+        partial = start === 0 && all.length >= 120;
+    }
+    const meta = metaFor(sessionId);
+    const turn = turnOf(messages);
+    const base = { session_id: sessionId, agent_id: meta.agentId, title: meta.title, account: meta.account, at: Date.now(), trigger, request: turn.request.slice(0, 4000), steering: JSON.stringify(turn.steering.map((x) => x.slice(0, 1500)).slice(0, 12)) };
+    d.prepare(`INSERT INTO supervisor_state (session_id, file, offset, status, updated_at) VALUES (?, ?, ?, 'seen', ?)
+        ON CONFLICT(session_id) DO UPDATE SET file = excluded.file, offset = excluded.offset, status = 'seen', updated_at = excluded.updated_at`).run(sessionId, file, end || 0, Date.now());
+    let result;
+    if (!turn.request) result = { verdict: 'unclear', summary: 'No request in this turn', missed: [], model: '', skipped: true };
+    else {
+        try { result = await askModel(gr, s, promptFor(capTurn(turn), Object.assign({ partial }, meta))); } catch (e) { result = { verdict: 'error', summary: e.message.slice(0, 300), missed: [], model: '', error: e.message }; }
+    }
+    if (result.skipped && trigger === 'turn-end') return null; // nothing asked: no row
+    const ins = d.prepare(`INSERT INTO supervisor_reviews (session_id, agent_id, title, account, at, trigger, verdict, summary, request, steering, missed, model, error)
+        VALUES (@session_id, @agent_id, @title, @account, @at, @trigger, @verdict, @summary, @request, @steering, @missed, @model, @error)`)
+        .run(Object.assign(base, { verdict: result.verdict, summary: result.summary || '', missed: JSON.stringify(result.missed || []), model: result.model || '', error: result.error || null }));
+    let rv = getReview(ins.lastInsertRowid);
+    if (rv.verdict === 'gaps' && trigger !== 'mcp') rv = await deliver(rv, s, { auto: true, fromSupervisor: turn.fromSupervisor }).catch(() => rv);
+    emit(rv);
+    return rv;
+}
+
+function gapText(rv) {
+    return `${STEER_PREFIX} Your last turn may have left these unaddressed: ${rv.missed.map((m, i) => `(${i + 1}) ${m.item}`).join(' ')} Please do them now, or say why not.`;
+}
+
+/** Sends a gap review to its session: inbox note, and typed in when delivery is steer (or force). */
+async function deliver(rv, s, opts = {}) {
+    if (!rv || rv.verdict !== 'gaps' || !rv.missed.length) return rv;
+    const set = s || settings();
+    if (!opts.force && set.delivery === 'off') return rv;
+    const d = db();
+    let how = '';
+    try {
+        const me = coord().upsertAgent({ id: 'supervisor', kind: 'other', name: 'Supervisor', task: 'Checks that every turn did what was asked', pid: null });
+        // a session that never called agent-coord has no row yet: make it, so the note waits in its inbox
+        if (!coord().getAgent(rv.agentId)) coord().upsertAgent({ id: rv.agentId, kind: 'claude', name: rv.title || rv.agentId, sessionId: rv.sessionId, account: rv.account || undefined });
+        coord().post(me.id, rv.agentId, gapText(rv).slice(STEER_PREFIX.length + 1), { kind: 'question' });
+        how = 'inbox';
+    } catch (_) { how = ''; }
+    const st = d.prepare('SELECT auto_steers FROM supervisor_state WHERE session_id = ?').get(rv.sessionId) || { auto_steers: 0 };
+    const autoSteers = opts.fromSupervisor ? st.auto_steers : 0;
+    const wantSteer = opts.force || (set.delivery === 'steer' && autoSteers < MAX_AUTO_STEERS);
+    if (wantSteer) {
+        try {
+            await require('./claudeSessionLauncher').steer(rv.sessionId, gapText(rv));
+            how = 'steer';
+            if (opts.auto) d.prepare('UPDATE supervisor_state SET auto_steers = ? WHERE session_id = ?').run(autoSteers + 1, rv.sessionId);
+        } catch (_) { /* not in tmux (Remote Control's own): the inbox note stands */ }
+    } else if (opts.auto && !opts.fromSupervisor) d.prepare('UPDATE supervisor_state SET auto_steers = 0 WHERE session_id = ?').run(rv.sessionId);
+    if (how) d.prepare('UPDATE supervisor_reviews SET delivered = ? WHERE id = ?').run(how, rv.id);
+    return getReview(rv.id);
+}
+
+async function send(id) {
+    const rv = getReview(id);
+    if (!rv) throw new Error('No such review');
+    if (rv.verdict !== 'gaps') throw new Error('Only a review with gaps can be sent');
+    const out = await deliver(rv, settings(), { force: true });
+    emit(out);
+    return out;
+}
+
+// ---------------------------------------------------------------- watching turns end
+
+const statusBySession = new Map(); // session id -> last status
+const queue = [];
+let running = 0;
+let watcher = null;
+let debounce = null;
+
+function pump() {
+    while (running < MAX_PARALLEL && queue.length) {
+        const job = queue.shift();
+        running += 1;
+        review(job.sessionId, job.trigger)
+            .catch((e) => console.warn(`[supervisor] ${job.sessionId.slice(0, 8)}: ${e.message}`))
+            .finally(() => { running -= 1; pump(); });
+    }
+}
+
+function enqueue(sessionId, trigger) {
+    if (queue.some((j) => j.sessionId === sessionId)) return;
+    if (queue.length > 50) return;
+    queue.push({ sessionId, trigger });
+    pump();
+}
+
+/** Reads the session records and queues a review for every session that went busy -> idle. */
+function scan(first) {
+    let names = [];
+    try { names = fs.readdirSync(sessionsDir()).filter((n) => /^\d+\.json$/.test(n)); } catch (_) { return; }
+    const seen = new Set();
+    names.forEach((n) => {
+        let r = null;
+        try { r = JSON.parse(fs.readFileSync(path.join(sessionsDir(), n), 'utf8')); } catch (_) { return; }
+        if (!r || !SESSION_ID_RE.test(String(r.sessionId || ''))) return;
+        seen.add(r.sessionId);
+        const prev = statusBySession.get(r.sessionId);
+        const now = String(r.status || '');
+        statusBySession.set(r.sessionId, now);
+        if (!first && prev === 'busy' && now !== 'busy' && settings().enabled) enqueue(r.sessionId, 'turn-end');
+        if (!first && prev === undefined && now === 'busy') markPartial(r.sessionId);
+    });
+    [...statusBySession.keys()].forEach((id) => { if (!seen.has(id)) statusBySession.delete(id); });
+}
+
+/** A session first seen mid-turn: its turn starts before what the Supervisor read. */
+function markPartial(sessionId) {
+    try { db().prepare("INSERT OR IGNORE INTO supervisor_state (session_id, status, updated_at) VALUES (?, 'partial', ?)").run(sessionId, Date.now()); } catch (_) { /* later */ }
+}
+
+// ---------------------------------------------------------------- MCP: a session asks (unix socket)
+
+let sockServer = null;
+function serveSocket() {
+    const file = socketPath();
+    try { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }); } catch (_) { /* there */ }
+    try { fs.unlinkSync(file); } catch (_) { /* none */ }
+    sockServer = net.createServer((sock) => {
+        let buf = '';
+        sock.setEncoding('utf8');
+        sock.setTimeout(CALL_TIMEOUT_MS + 15000, () => sock.destroy());
+        sock.on('data', async (chunk) => {
+            buf += chunk;
+            const i = buf.indexOf('\n');
+            if (i < 0) { if (buf.length > 4096) sock.destroy(); return; }
+            let req = null;
+            try { req = JSON.parse(buf.slice(0, i)); } catch (_) { req = null; }
+            buf = '';
+            let out;
+            try {
+                if (!req || req.op !== 'check') throw new Error('op must be check');
+                if (!settings().enabled) throw new Error('The Supervisor is off (Fleet > Coordination > Supervisor)');
+                out = { ok: true, review: await review(String(req.sessionId || ''), 'mcp') };
+            } catch (e) { out = { ok: false, error: e.message }; }
+            try { sock.end(`${JSON.stringify(out)}\n`); } catch (_) { /* gone */ }
+        });
+        sock.on('error', () => {});
+    });
+    sockServer.on('error', (e) => console.warn(`[supervisor] socket: ${e.message}`));
+    sockServer.listen(file, () => { try { fs.chmodSync(file, 0o600); } catch (_) { /* kept */ } });
+}
+
+function bind(gr) { if (gr) gResources = gr; }
+
+function start(gr) {
+    bind(gr);
+    if (watcher || process.env.AGENT_SUPERVISOR_DISABLED === '1') return;
+    scan(true);
+    try {
+        watcher = fs.watch(sessionsDir(), { persistent: false }, () => {
+            clearTimeout(debounce);
+            debounce = setTimeout(() => scan(false), 500);
+        });
+        watcher.on('error', () => { try { watcher.close(); } catch (_) { /* closed */ } watcher = null; });
+    } catch (e) {
+        console.warn(`[supervisor] cannot watch ${sessionsDir()}: ${e.message}`);
+    }
+    serveSocket();
+}
+
+function stop() {
+    if (watcher) { try { watcher.close(); } catch (_) { /* closed */ } watcher = null; }
+    clearTimeout(debounce);
+    if (sockServer) { try { sockServer.close(); } catch (_) { /* closed */ } sockServer = null; }
+}
+
+module.exports = {
+    start, stop, bind, settings, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
+    DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
+    _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, enqueue, queue }
+};
