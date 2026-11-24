@@ -1588,13 +1588,23 @@
 
     // ---- Plaud (Yukimi's recorder): one account, read only by Yozora's Plaud tools (modules/plaudClient.js) ----
     //
-    // Plaud's sign-in returns to http://localhost:8199 (its CLI's address), which is not this server: the browser
-    // lands on a page that does not load, and that address is pasted here. ws plaud_account_* (319-plaudHandler.js).
+    // Plaud's sign-in returns to http://localhost:8199 (its CLI's address). The sign-in window is the remote browser on
+    // the server's host, where the server listens on :8199 and finishes it itself (push plaud_account_changed). Only when
+    // it cannot (port taken, another browser) is the address pasted here. ws plaud_account_* (319-plaudHandler.js).
     const PL_PICTURE = '/static_images/app_icons/vista-sound-recorder.png';
     let plState = null;      // plaud_account_status
     let plLink = null;       // { url, expiresAt } while a sign-in waits
     let plAdding = false;
     let plError = '';
+    let plOff = null;
+    const plChanged = (msg) => {
+        const d = msg && msg.data && typeof msg.data === 'object' ? msg.data : msg;
+        if (!d || typeof d !== 'object') return;
+        plState = d;
+        plError = '';
+        if (d.linked) { plAdding = false; plLink = null; }
+        plPaint();
+    };
 
     async function plSend(type, payload) {
         const c = window.wsClient;
@@ -1650,7 +1660,7 @@
         back.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); void finish().catch((err) => tmToast((err && err.message) || 'Plaud did not finish the sign-in')); } });
         details.append(
             customField('Steps', tmText(plLink
-                ? 'A browser window opens at Plaud. Sign in, click Authorize, then copy the address the window went to (a page at localhost:8199 that does not load) and paste it here.'
+                ? 'A browser window opens at Plaud. Sign in and click Authorize; Dreamscape takes the account from there and this card turns to Connected. If the window shows a page that does not load instead, copy its address and paste it here.'
                 : 'Press Sign in to Plaud. A browser window opens at Plaud\'s sign-in.', 'cpl-tm-hint')),
             customField('Address after Authorize', back)
         );
@@ -1718,10 +1728,16 @@
         list.className = 'cpl-vault-list';
         list.id = 'cplPlaudList';
         hostEl.append(head, list);
+        const c = window.wsClient;
+        if (c && typeof c.on === 'function' && !plOff) {
+            c.on('plaud_account_changed', plChanged);
+            plOff = () => { if (typeof c.off === 'function') c.off('plaud_account_changed', plChanged); };
+        }
         void plLoad();
     }
 
     function unmountPlaud() {
+        if (plOff) { plOff(); plOff = null; }
         plState = null;
         plLink = null;
         plAdding = false;

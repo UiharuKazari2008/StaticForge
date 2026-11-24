@@ -13,8 +13,10 @@
  *   token     POST https://platform.plaud.ai/developer/api/oauth/third-party/access-token(/refresh)
  *   reads     GET  /open/third-party/users/current, /open/third-party/files/?page&page_size&start_date&end_date,
  *                  /open/third-party/files/<id> (source_list = transcript blocks, note_list = AI notes)
- * The client's redirect is fixed to http://localhost:8199/auth/callback, which is not this server: after
- * Authorize the browser lands on a page that does not load, and Yukimi pastes that address into CardSpace.
+ * The client's redirect is fixed to http://localhost:8199/auth/callback. CardSpace opens the sign-in in the
+ * remote browser (grimoire-browser), which runs on this host, so while a sign-in waits the server listens on
+ * 127.0.0.1 / ::1 port 8199 and finishes it itself. When the port is taken, or the sign-in ran in a browser
+ * on another computer, Yukimi pastes the address that browser went to into CardSpace instead.
  *
  * Tokens live in .cache/plaud-account.json (0600), never in a reply, a log or a tool result.
  */
@@ -24,6 +26,7 @@ const path = require('path');
 const crypto = require('crypto');
 const dns = require('dns');
 const net = require('net');
+const http = require('http');
 
 const FILE = process.env.PLAUD_ACCOUNT_FILE || path.join(__dirname, '..', '.cache', 'plaud-account.json');
 const AUTH_URL = 'https://web.plaud.ai/platform/oauth';
@@ -32,6 +35,9 @@ const TOKEN_URL = `${API}/oauth/third-party/access-token`;
 const REFRESH_URL = `${API}/oauth/third-party/access-token/refresh`;
 const CLIENT_ID = 'client_f9e0b214-c11f-434b-8b95-c4497d1feb81';
 const REDIRECT_URI = 'http://localhost:8199/auth/callback';
+const CALLBACK_PORT = 8199;
+const CALLBACK_PATH = '/auth/callback';
+const STATUS_TYPE = 'plaud_account_changed';
 const MIN = 60 * 1000;
 const LINK_TTL = 15 * MIN;
 const TIMEOUT_MS = 20000;
@@ -46,6 +52,9 @@ let loading = null;
 let pending = null;    // { state, verifier, until }
 let refreshing = null;
 let lastError = '';
+let listeners = [];    // http servers on 127.0.0.1 / ::1 :8199 while a sign-in waits
+let listenTimer = null;
+let broadcast = null;  // (status) => void, bound by ws/handlers/319-plaudHandler.js
 
 class PlaudError extends Error {
     constructor(message, code) { super(message); this.code = code || 'PLAUD_ERROR'; }
@@ -86,6 +95,7 @@ async function status() {
         account: s.user && s.account ? { name: s.account.name || '', email: s.account.email || '' } : null,
         linkedAt: s.user ? s.linkedAt || 0 : 0,
         signingIn: !!(pending && pending.until > Date.now()),
+        listening: listeners.length > 0,
         lastError: s.user ? lastError : ''
     };
 }
@@ -176,8 +186,66 @@ function linkStart() {
         client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, response_type: 'code',
         code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', state: st
     });
+    void listen();
     return { url: `${AUTH_URL}?${q.toString()}`, redirectUri: REDIRECT_URI, expiresAt: pending.until };
 }
+
+// ------------------------------------------------------------------------------------------ the callback on :8199
+
+const PAGE = (title, text) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head>`
+    + `<body style="font:12px 'Segoe UI',Tahoma,sans-serif;margin:24px;color:#000"><h1 style="font-size:16px;font-weight:normal;color:#1e3287">${title}</h1><p>${text}</p></body></html>`;
+
+function stopListening() {
+    clearTimeout(listenTimer);
+    listenTimer = null;
+    const old = listeners;
+    listeners = [];
+    old.forEach((srv) => { try { srv.close(); } catch (_e) { /* already closed */ } });
+}
+
+async function notify() {
+    if (!broadcast) return;
+    try { broadcast(await status()); } catch (e) { console.warn(`[plaud] status push skipped: ${e.message}`); }
+}
+
+async function onCallback(req, res) {
+    const url = new URL(req.url || '/', REDIRECT_URI);
+    if (req.method !== 'GET' || url.pathname !== CALLBACK_PATH) { res.writeHead(404).end(); return; }
+    const answer = (code, title, text) => {
+        res.writeHead(code, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(PAGE(title, text));
+    };
+    // not this sign-in's answer (a stale tab, a guess): leave the waiting sign-in alone
+    if (!pending || url.searchParams.get('state') !== pending.state) { answer(400, 'Plaud sign-in', 'This sign-in is no longer waiting. Start it again from CardSpace.'); return; }
+    try {
+        await linkFinish(url.toString());
+        answer(200, 'You are signed in to Plaud', 'Dreamscape CardSpace has the account now. You can close this window.');
+    } catch (e) {
+        answer(400, 'Plaud sign-in did not finish', `${String(e.message || 'Failed').replace(/[<>&"]/g, '')} Start it again from CardSpace.`);
+    }
+    stopListening();
+    void notify();
+}
+
+function listenOn(host) {
+    return new Promise((resolve) => {
+        const srv = http.createServer((req, res) => { void onCallback(req, res); });
+        srv.once('error', () => resolve(null));
+        srv.listen(CALLBACK_PORT, host, () => resolve(srv));
+    });
+}
+
+async function listen() {
+    if (listeners.length) { clearTimeout(listenTimer); } else {
+        const got = (await Promise.all(['127.0.0.1', '::1'].map(listenOn))).filter(Boolean);
+        if (!pending) { got.forEach((srv) => srv.close()); return; }
+        listeners = got;
+        if (!got.length) console.warn(`[plaud] port ${CALLBACK_PORT} is taken: the sign-in needs the pasted address`);
+    }
+    listenTimer = setTimeout(() => { stopListening(); void notify(); }, LINK_TTL);
+    if (listenTimer.unref) listenTimer.unref();
+}
+
 
 /** The address the browser landed on after Authorize (or just its code). */
 function parsePasted(text) {
@@ -199,6 +267,7 @@ async function linkFinish(pasted) {
     if (!p.code) throw new PlaudError('Paste the address the browser went to after Authorize (it starts with http://localhost:8199).', 'PLAUD_NO_CODE');
     if (p.state && p.state !== waiting.state) throw new PlaudError('That address belongs to another sign-in. Press Sign in again.', 'PLAUD_LINK_GONE');
     pending = null;
+    stopListening();
     const r = await call(TOKEN_URL, { method: 'POST', form: { code: p.code, redirect_uri: REDIRECT_URI, code_verifier: waiting.verifier, state: waiting.state } });
     if (r.status !== 200 || !r.body || !r.body.access_token) throw new PlaudError(`Plaud did not finish the sign-in (${r.status})`, 'PLAUD_LINK_REFUSED');
     const s = await load();
@@ -214,7 +283,7 @@ async function linkFinish(pasted) {
     return status();
 }
 
-function linkCancel() { pending = null; }
+function linkCancel() { pending = null; stopListening(); }
 
 async function unlink() {
     const s = await load();
@@ -225,6 +294,7 @@ async function unlink() {
     s.linkedAt = 0;
     lastError = '';
     pending = null;
+    stopListening();
     await save();
     return status();
 }
@@ -376,6 +446,8 @@ async function getTranscript(id, opts) {
 
 module.exports = {
     PlaudError,
+    STATUS_TYPE,
+    bind: (fn) => { broadcast = typeof fn === 'function' ? fn : null; },
     BLOCKS,
     status,
     linkStart,
@@ -387,10 +459,11 @@ module.exports = {
     getTranscript,
     _test: {
         setDeps: (d) => { deps = Object.assign(deps, d || {}); },
-        reset: () => { state = null; pending = null; refreshing = null; lastError = ''; },
+        reset: () => { state = null; pending = null; refreshing = null; lastError = ''; stopListening(); },
         parsePasted,
         renderSegments,
         isPrivateAddress,
-        REDIRECT_URI
+        REDIRECT_URI,
+        listening: () => listeners.length
     }
 };

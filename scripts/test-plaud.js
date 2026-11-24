@@ -80,6 +80,40 @@ t.setDeps({
     const saved = fs.statSync(process.env.PLAUD_ACCOUNT_FILE);
     assert.strictEqual(saved.mode & 0o777, 0o600);
 
+    // sign in again through the :8199 callback the server listens on (the remote browser runs on this host)
+    await plaud.unlink();
+    const pushed = [];
+    plaud.bind((x) => pushed.push(x));
+    const link2 = plaud.linkStart();
+    const st2 = new URL(link2.url).searchParams.get('state');
+    for (let i = 0; i < 50 && !t.listening(); i++) await new Promise((r) => setTimeout(r, 20));
+    if (t.listening()) {
+        const get = (q) => new Promise((resolve, reject) => {
+            require('http').get(`http://127.0.0.1:8199/auth/callback?${q}`, (res) => {
+                let body = '';
+                res.on('data', (c) => { body += c; });
+                res.on('end', () => resolve({ status: res.statusCode, body }));
+            }).on('error', reject);
+        });
+        const wrong = await get('code=CODE1&state=nope');
+        assert.strictEqual(wrong.status, 400);
+        assert.strictEqual((await plaud.status()).linked, false, 'a stranger\'s state does not sign in');
+        const ok = await get(`code=CODE1&state=${encodeURIComponent(st2)}`);
+        assert.strictEqual(ok.status, 200);
+        assert.ok(ok.body.includes('signed in to Plaud'));
+        assert.strictEqual((await plaud.status()).linked, true);
+        for (let i = 0; i < 50 && !pushed.length; i++) await new Promise((r) => setTimeout(r, 20));
+        assert.strictEqual(pushed[pushed.length - 1].linked, true, 'CardSpace is told');
+        assert.strictEqual(t.listening(), 0, 'the port is let go');
+    } else {
+        console.warn('test-plaud: port 8199 is taken here, callback case skipped');
+        plaud.linkCancel();
+        await plaud.linkFinish(`${t.REDIRECT_URI}?code=CODE1&state=x`).catch(() => {});
+        const l3 = plaud.linkStart();
+        await plaud.linkFinish(`${t.REDIRECT_URI}?code=CODE1&state=${new URL(l3.url).searchParams.get('state')}`);
+    }
+    plaud.bind(null);
+
     // list, search
     const page1 = await plaud.listRecordings({ limit: 10 });
     assert.strictEqual(page1.recordings.length, 10);

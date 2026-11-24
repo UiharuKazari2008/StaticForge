@@ -41,6 +41,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `account_pictures_changed` | An administrator changed an account picture or name | `public/scripts/comp/cplUserAccounts.js` (`wsClient.on`) |
 | `claude_remote_control_status` | Claude Remote Control reconnecting / connected / error (admins) | `public/scripts/comp/wmClaudeAccounts.js` (`wsClient.on`) |
 | `claude_account_login_status` | Add Account sign-in state (link, step, done / error; admins) | `public/scripts/comp/wmClaudeAccounts.js` (`wsClient.on`) |
+| `plaud_account_changed` | The Plaud account signed in through the server's :8199 callback (status; admins, desktop pages) | `public/scripts/comp/cplAuthentication.js` (`wsClient.on`) |
 
 Periodic **ping** payloads include `balance`, `opusUsage`, and `accountHealth` — see [infrastructure.md](./infrastructure.md#ping-server-push-fields).
 
@@ -488,7 +489,7 @@ After deletion, the next account refresh writes a fresh snapshot from the curren
 CardSpace > Add a card > Install a Managed Service Account > **Plaud** (`public/scripts/comp/cplAuthentication.js` `mountPlaud`). The account is read only by Yozora's Plaud MCP tools ([mcp-connector.md](../mcp-connector.md#plaud-module-sfapp_plaud)).
 
 1. `plaud_account_link_start` → `{ url, redirectUri, expiresAt }`. The window opens `url` (Plaud's sign-in, OAuth code + PKCE, 15 minutes).
-2. Yukimi signs in and clicks Authorize. Plaud's client returns to `http://localhost:8199/auth/callback?code=...&state=...` (fixed by Plaud, not this server), a page that does not load; she copies that address.
-3. `plaud_account_link_finish { url }` exchanges the code (the state must match) and replies with the status. A bare code is taken as well.
+2. Yukimi signs in and clicks Authorize. Plaud's client returns to `http://localhost:8199/auth/callback?code=...&state=...` (fixed by Plaud). The sign-in window is the remote browser (grimoire-browser) on the server's host, and while a sign-in waits the server listens on `127.0.0.1` / `::1` port 8199: it takes the code (the state must match), shows "You are signed in to Plaud", lets the port go, and pushes `plaud_account_changed` (the status) to admin desktop pages.
+3. Only when the server could not listen (port taken) or the sign-in ran in a browser on another computer: `plaud_account_link_finish { url }` with the address that browser went to. A bare code is taken as well.
 
 `plaud_account_unlink` revokes the authorization at Plaud and forgets the tokens. When Plaud refuses a refresh, the account reads as not linked and the tools answer `PLAUD_NOT_LINKED`. No reply carries a token.
