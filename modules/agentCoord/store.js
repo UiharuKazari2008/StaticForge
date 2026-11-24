@@ -100,6 +100,15 @@ function open() {
             expires_at INTEGER NOT NULL, started_at INTEGER, ended_at INTEGER, result TEXT NOT NULL DEFAULT '', forced TEXT NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS builds_open ON builds (state, repo, target);
+        CREATE TABLE IF NOT EXISTS artifacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, path TEXT NOT NULL, kind TEXT NOT NULL,
+            created_at INTEGER NOT NULL, cmd TEXT NOT NULL DEFAULT '', cwd TEXT NOT NULL DEFAULT '',
+            exists_now INTEGER, size_bytes INTEGER, checked_at INTEGER, forgotten INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (session_id, path)
+        );
+        CREATE TABLE IF NOT EXISTS lock_owners (
+            session_id TEXT NOT NULL, name TEXT NOT NULL, seen_at INTEGER NOT NULL, PRIMARY KEY (session_id, name)
+        );
         CREATE TABLE IF NOT EXISTS build_votes (
             build_id INTEGER NOT NULL, agent_id TEXT NOT NULL, ready INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '',
             at INTEGER NOT NULL, PRIMARY KEY (build_id, agent_id)
@@ -109,6 +118,8 @@ function open() {
     [['model', 'TEXT'], ['effort', 'TEXT'], ['dispatched_by', 'TEXT'], ['config_dir', 'TEXT']].forEach(([c, t]) => {
         if (!cols.has(c)) db.exec(`ALTER TABLE agents ADD COLUMN ${c} ${t}`);
     });
+    const lockCols = new Set(db.prepare('PRAGMA table_info(locks)').all().map((c) => c.name));
+    if (!lockCols.has('planted_by')) db.exec("ALTER TABLE locks ADD COLUMN planted_by TEXT NOT NULL DEFAULT 'agent'");
     try { fs.chmodSync(file, 0o600); } catch (_) { /* kept */ }
     return db;
 }

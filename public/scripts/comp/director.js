@@ -351,6 +351,7 @@ const DIRECTOR_XI_QUICK_STARTS = [
     {
         // Yukimi, Nov 24 2026: "extract actionable items from my Plaud transcripts, that goes beyond just the
         // dreamscape project ... make a issue for it and also detect calendar events or tasks"
+        // twin: modules/plaudActionsPrompt.js (Fleet's New Session wizard sends it for one recording); change both
         id: 'xi-plaud-actions',
         label: 'Plaud Actions',
         title: 'Turn my Plaud recordings into issues, calendar events and tasks, for every project',

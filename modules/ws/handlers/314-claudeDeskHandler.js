@@ -205,7 +205,15 @@ function supervisorSummary() {
 }
 
 async function supervisorStatus(gr) {
-    return { settings: supervisor.settings(gr), engines: supervisor.engines(gr), reviews: supervisor.listReviews({ limit: 80 }), stats: supervisor.summary() };
+    const set = supervisor.settings(gr);
+    let locks = [];
+    let artifacts = [];
+    try { locks = supervisor.lockStatus(); } catch (e) { console.warn(`[claudeDesk] locks: ${e.message}`); }
+    if (set.trackArtifacts) {
+        try { supervisor.refreshArtifacts({ budgetMs: 2500 }); artifacts = supervisor.artifactStatus(); } catch (e) { console.warn(`[claudeDesk] artifacts: ${e.message}`); }
+    }
+    const stats = Object.assign(supervisor.summary(), { artifactBytes: artifacts.filter((a) => a.exists !== false).reduce((n, a) => n + (a.sizeBytes || 0), 0) });
+    return { settings: set, engines: supervisor.engines(gr), reviews: supervisor.listReviews({ limit: 80 }), locks, artifacts, stats };
 }
 
 const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => {
@@ -215,7 +223,10 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'recheck') return { review: await supervisor.review(String(message.sessionId || ''), 'recheck', { gr }) };
     if (action === 'send') return { review: await supervisor.send(message.reviewId) };
     if (action === 'dismiss') { supervisor.dismiss(message.reviewId); return supervisorStatus(gr); }
-    throw new Error('action must be status, save, recheck, send or dismiss');
+    if (action === 'lock_remove') { supervisor.removeLockFile(String(message.root || ''), String(message.file || '')); poke(); return supervisorStatus(gr); }
+    if (action === 'artifact_clean') { const r = supervisor.cleanArtifact(message.id); return Object.assign(await supervisorStatus(gr), { cleaned: r }); }
+    if (action === 'artifact_forget') { supervisor.forgetArtifact(message.id); return supervisorStatus(gr); }
+    throw new Error('action must be status, save, recheck, send, dismiss, lock_remove, artifact_clean or artifact_forget');
 });
 
 // ---------------------------------------------------------------- transcript watches (one per socket)
@@ -275,7 +286,28 @@ const handleSession = guard('claude_desk_session', async (gr, message) => {
     const id = String(message.id || '');
     let result;
     if (action === 'start') {
-        result = await launcher.start(gr, { cwd: message.cwd, prompt: message.prompt, title: message.title, account: message.account, mode: message.mode, model: message.model || undefined, effort: message.effort || undefined });
+        // account 'auto': the preferred account while it is free, else the most headroom (claudeFleetMcp.pickForStart);
+        // model / effort / mode fall back to the account's own defaults (Fleet account settings)
+        let account = message.account;
+        let defaults = {};
+        if (account === 'auto' || account === '' || account === undefined || account === null) {
+            const pick = await require('../../claudeFleetMcp').pickForStart(gr, 'auto');
+            account = pick.index;
+            defaults = pick.settings || {};
+        } else {
+            const acc = claudeHost.listAccounts(gr).find((a) => a.index === Number(account));
+            if (acc) defaults = require('../../claudeFleetSettings').get(gr, acc.id);
+        }
+        const supervised = message.supervised === true;
+        const prompt = message.prompt && supervised
+            ? `${message.prompt}\n\n(This session is supervised: before you say a multi-part request is done, call coord_supervisor_check and address what it finds.)`
+            : message.prompt;
+        result = await launcher.start(gr, {
+            cwd: message.cwd || path.join(__dirname, '..', '..', '..'), prompt, title: message.title, account,
+            mode: message.mode || defaults.defaultMode, model: message.model || defaults.defaultModel || undefined, effort: message.effort || defaults.defaultEffort || undefined
+        });
+        if (supervised && result && result.id) supervisor.markSupervised(result.id);
+        result = Object.assign({ supervised }, result);
     } else if (action === 'resume') {
         result = await launcher.resume(gr, id, { account: message.account, mode: message.mode, title: message.title, model: message.model || undefined, effort: message.effort || undefined });
     } else if (action === 'steer') {
@@ -286,11 +318,207 @@ const handleSession = guard('claude_desk_session', async (gr, message) => {
         result = await launcher.screen(id);
     } else if (action === 'disconnect') {
         result = await claudeSessions.disconnect(id);
+    } else if (action === 'detail') {
+        return { detail: await sessionDetail(gr, id) };
+    } else if (action === 'agent_page') {
+        const file = await subagentFile(id, message.agentId);
+        return Object.assign({ id, agentId: String(message.agentId) }, await transcript.readPage(file, { before: message.before, limit: message.limit }));
+    } else if (action === 'task_output') {
+        return taskOutput(id, message.taskId);
+    } else if (action === 'command') {
+        result = await sessionCommand(id, message.command, message.value);
     } else {
-        throw new Error('action must be start, resume, steer, interrupt, screen or disconnect');
+        throw new Error('action must be start, resume, steer, interrupt, screen, disconnect, detail, agent_page, task_output or command');
     }
     poke();
     return { result };
+});
+
+// ---------------------------------------------------------------- one session in depth (#1154)
+
+const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const AGENT_ID_RE = /^a[0-9a-f]{8,40}$/;
+const TASK_ID_RE = /^[A-Za-z0-9_-]{4,64}$/;
+
+/** The session's own folder beside its transcript (subagents/, tool-results/) and its background task dir. */
+async function sessionDirs(id) {
+    if (!SESSION_ID_RE.test(String(id || ''))) throw new Error('A session id');
+    const file = await launcher.findFile(id);
+    if (!file) throw new Error('No such Claude session');
+    const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
+    return {
+        file,
+        own: path.join(path.dirname(file), id),
+        tasks: path.join(require('os').tmpdir(), `claude-${uid}`, path.basename(path.dirname(file)), id, 'tasks')
+    };
+}
+
+async function subagentFile(id, agentId) {
+    if (!AGENT_ID_RE.test(String(agentId || ''))) throw new Error('An agent id');
+    const d = await sessionDirs(id);
+    const file = path.join(d.own, 'subagents', `agent-${agentId}.jsonl`);
+    await fs.promises.access(file);
+    return file;
+}
+
+async function countLines(file, size) {
+    if (size > 8 * 1024 * 1024) return null; // not worth reading for a count
+    const buf = await fs.promises.readFile(file);
+    let n = 0;
+    for (let i = 0; i < buf.length; i += 1) if (buf[i] === 10) n += 1;
+    return n;
+}
+
+async function sessionDetail(gr, id) {
+    const d = await sessionDirs(id);
+    const live = claudeSessions.liveSessions().find((x) => x.id === id) || null;
+    const st = await fs.promises.stat(d.file);
+    let inspect = null;
+    try { inspect = coord.inspect(`claude-${id.slice(0, 8)}`, { limit: 100 }); } catch (_) { inspect = null; }
+    const agentRow = inspect ? inspect.agent : null;
+    // the model of its last answer (the transcript's own record)
+    let model = agentRow && agentRow.model ? agentRow.model : '';
+    if (!model) {
+        try {
+            const page = await transcript.readPage(d.file, { limit: 20 });
+            const last = (page.messages || []).slice().reverse().find((m) => m.role === 'assistant' && m.model);
+            model = last ? last.model : '';
+        } catch (_) { model = ''; }
+    }
+    let account = agentRow && agentRow.account ? agentRow.account : '';
+    if (!account && live) {
+        if (!live.configDir) account = 'host';
+        else { try { account = JSON.parse(fs.readFileSync(path.join(path.dirname(live.configDir), 'fleet.json'), 'utf8')).name || ''; } catch (_) { account = ''; } }
+    }
+    const cwd = (live && live.cwd) || (agentRow && agentRow.cwd) || '';
+    let branch = (agentRow && agentRow.branch) || '';
+    if (!branch && cwd) { try { branch = require('child_process').execFileSync('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch (_) { branch = ''; } }
+    const agents = [];
+    let metas = [];
+    try { metas = (await fs.promises.readdir(path.join(d.own, 'subagents'))).filter((n) => /^agent-a[0-9a-f]+\.meta\.json$/.test(n)); } catch (_) { metas = []; }
+    for (const n of metas) {
+        const agentId = n.slice('agent-'.length, -'.meta.json'.length);
+        let meta = {};
+        try { meta = JSON.parse(await fs.promises.readFile(path.join(d.own, 'subagents', n), 'utf8')); } catch (_) { meta = {}; }
+        let js = null;
+        try { js = await fs.promises.stat(path.join(d.own, 'subagents', `agent-${agentId}.jsonl`)); } catch (_) { js = null; }
+        agents.push({
+            agentId, description: String(meta.description || '').slice(0, 200), type: meta.agentType || '', model: meta.model || meta.pickedEffortModel || '',
+            finished: meta.finished === true, background: meta.requestShape === 'background', lastActivity: js ? Math.round(js.mtimeMs) : null,
+            messages: js ? await countLines(path.join(d.own, 'subagents', `agent-${agentId}.jsonl`), js.size) : 0
+        });
+    }
+    agents.sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
+    const tasks = [];
+    let names = [];
+    try { names = (await fs.promises.readdir(d.tasks)).filter((n) => n.endsWith('.output')); } catch (_) { names = []; }
+    for (const n of names) {
+        const taskId = n.slice(0, -'.output'.length);
+        let lst = null;
+        let tst = null;
+        try { lst = await fs.promises.lstat(path.join(d.tasks, n)); tst = await fs.promises.stat(path.join(d.tasks, n)); } catch (_) { continue; }
+        const kind = lst.isSymbolicLink() ? 'agent' : 'shell';
+        tasks.push({ taskId, kind, sizeBytes: tst.size, modifiedAt: Math.round(tst.mtimeMs), running: Date.now() - tst.mtimeMs < 30000 && kind !== 'agent' });
+    }
+    tasks.sort((a, b) => b.modifiedAt - a.modifiedAt);
+    let reviews = [];
+    try { reviews = supervisor.listReviews({ limit: 200 }).filter((r) => r.sessionId === id).slice(0, 20).map((r) => ({ id: r.id, verdict: r.verdict, summary: r.summary, at: r.at, missed: r.missed })); } catch (_) { reviews = []; }
+    return {
+        id,
+        title: (live && live.givenName) || (agentRow && agentRow.name) || (live && live.name) || id.slice(0, 8),
+        status: live ? (live.status || 'idle') : 'stopped',
+        live: !!live,
+        account,
+        model,
+        effort: (agentRow && agentRow.effort) || '',
+        cwd,
+        branch,
+        link: live ? live.link : '',
+        remoteControl: !!(live && live.remoteControl),
+        origin: live ? live.origin : '',
+        startedAt: live && live.startedAt ? live.startedAt : null,
+        lastActivity: Math.round(st.mtimeMs),
+        transcriptBytes: st.size,
+        claims: inspect ? inspect.claims.map((c) => c.path) : [],
+        edited: inspect ? inspect.edited : { total: 0, files: [] },
+        uncommitted: inspect && inspect.uncommitted ? inspect.uncommitted.count : null,
+        reviews,
+        supervised: supervisor.isSupervised(id),
+        agents,
+        tasks
+    };
+}
+
+async function taskOutput(id, taskId) {
+    if (!TASK_ID_RE.test(String(taskId || ''))) throw new Error('A task id');
+    const d = await sessionDirs(id);
+    const file = path.join(d.tasks, `${taskId}.output`);
+    const lst = await fs.promises.lstat(file);
+    if (lst.isSymbolicLink()) throw new Error('That task is a background agent: open it in Background agents');
+    const st = await fs.promises.stat(file);
+    const want = Math.min(st.size, 16 * 1024);
+    const fh = await fs.promises.open(file, 'r');
+    let text = '';
+    try {
+        const buf = Buffer.alloc(want);
+        await fh.read(buf, 0, want, st.size - want);
+        text = buf.toString('utf8');
+    } finally { await fh.close(); }
+    if (st.size > want) text = text.slice(text.indexOf('\n') + 1);
+    text = text.split('\n').map((l) => transcript.mask(l)).join('\n');
+    return { id, taskId, text, sizeBytes: st.size, modifiedAt: Math.round(st.mtimeMs), truncated: st.size > want };
+}
+
+/** A slash command typed into the session (only these; the session must run in tmux). */
+async function sessionCommand(id, command, value) {
+    const v = String(value || '').trim();
+    let line;
+    if (command === 'compact') line = '/compact';
+    else if (command === 'cost') line = '/cost';
+    else if (command === 'context') line = '/context';
+    else if (command === 'model') {
+        if (!/^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,79}$/.test(v)) throw new Error('A model name (opus, sonnet, haiku, fable or a full id)');
+        line = `/model ${v}`;
+    } else if (command === 'effort') {
+        if (!launcher.EFFORTS.has(v)) throw new Error('effort is low, medium, high, xhigh or max');
+        line = `/effort ${v}`;
+    } else throw new Error('command is compact, model, effort, cost or context');
+    const r = await launcher.steer(id, line);
+    if (command === 'model' || command === 'effort') {
+        try { coord.upsertAgent({ id: `claude-${id.slice(0, 8)}`, [command]: v }); } catch (_) { /* not registered */ }
+    }
+    return Object.assign({ command: line }, r);
+}
+
+// ---------------------------------------------------------------- Plaud into Yozora (New Session wizard)
+
+const handlePlaud = guard('claude_fleet_plaud', async (gr, message) => {
+    const action = String(message.action || 'list');
+    const plaud = require('../../plaudClient');
+    if (action === 'list') {
+        const r = await plaud.listRecordings({ limit: Math.max(5, Math.min(50, Number(message.limit) || 20)) });
+        const items = (r && (r.recordings || r.items)) || [];
+        return { recordings: items.map((x) => ({ id: x.id, name: x.name || x.title || '', startAt: x.startAt || x.createdAt || null, durationMs: x.durationMs || null })) };
+    }
+    if (action === 'start') {
+        let picks = Array.isArray(message.recordingIds) ? message.recordingIds.map(String).filter((x) => /^[A-Za-z0-9_-]{4,80}$/.test(x)).slice(0, 20) : [];
+        let named = new Map();
+        const r = await plaud.listRecordings({ limit: 50 });
+        ((r && (r.recordings || r.items)) || []).forEach((x) => named.set(String(x.id), x.name || x.title || ''));
+        if (message.all === true) picks = [...named.keys()].slice(0, 20);
+        if (!picks.length) throw new Error('Pick a recording');
+        const { startDirectorSession } = require('../../directorStart');
+        const { plaudActionsPrompt } = require('../../plaudActionsPrompt');
+        const chats = [];
+        for (const recId of picks) {
+            const name = named.get(recId) || '';
+            // source plaud:<id>: a recording Yozora already took comes back as that chat, never a second one
+            const out = await startDirectorSession(gr, { persona: 'xi', prompt: plaudActionsPrompt({ id: recId, name }), source: `plaud:${recId}`, title: `Plaud: ${name || recId}`.slice(0, 80), thread: 'Plaud Actions' });
+            chats.push({ chatId: out.sessionId || out.chatId || '', title: name, recordingId: recId, reused: !!(out.reused || out.deduped) });
+        }
+        return { chats };
+    }
+    throw new Error('action must be list or start');
 });
 
 /** The person at the desktop, as an agent in the coordination store (so agents can answer them). */
@@ -369,6 +597,7 @@ function registerPackets(handlersCtx) {
     reg('claude_desk_session', handleSession, ADMIN_DESTRUCTIVE);
     reg('claude_desk_coord', handleCoord, ADMIN_DESTRUCTIVE);
     reg('claude_desk_supervisor', handleSupervisor, ADMIN_DESTRUCTIVE);
+    reg('claude_fleet_plaud', handlePlaud, ADMIN_DESTRUCTIVE);
 }
 
 module.exports = { registerPackets, _handlers: { handleSessions, handleTranscript, handleWatch, handleUnwatch, handleSession, handleCoord, handleSupervisor }, _sessionsPage: sessionsPage, _ownerOf: ownerOf };

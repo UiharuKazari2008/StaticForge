@@ -177,6 +177,53 @@ sup._test.setFetch(async (url, opts) => {
         assert.strictEqual(sup.dismiss(rv.id).dismissed, true);
     });
 
+    await test('locks: a session that edited without a lock gets one; gone, it is removed', async () => {
+        const repo = path.join(tmp, 'repo');
+        fs.mkdirSync(path.join(repo, 'src'), { recursive: true });
+        require('child_process').execFileSync('git', ['init', '-q', repo]);
+        fs.writeFileSync(path.join(repo, 'src', 'a.js'), '1'); // uncommitted: work in progress
+        const SID2 = 'bbbbbbbb-1111-2222-3333-444444444444';
+        const f2 = path.join(tmp, '.claude', 'projects', '-repo', `${SID2}.jsonl`);
+        fs.writeFileSync(f2, user('edit a', '2026-11-24T11:00:00Z') + asst([{ type: 'tool_use', id: 'e1', name: 'Edit', input: { file_path: path.join(repo, 'src', 'a.js') } }], '2026-11-24T11:00:05Z'));
+        const rec = path.join(tmp, '.claude', 'sessions', `${process.pid}.json`);
+        fs.writeFileSync(rec, JSON.stringify({ pid: process.pid, sessionId: SID2, status: 'idle', cwd: repo, updatedAt: Date.now() }));
+        const store = require('../modules/agentCoord/store');
+        store.upsertAgent({ id: 'claude-bbbbbbbb', kind: 'claude', name: 'Worker2', sessionId: SID2, cwd: repo, repo: 'repo', pid: process.pid });
+        const changed = await sup.sweepLocks(SID2);
+        assert.ok(changed.some((c) => c.planted === '.agent-claude-bbbbbbbb'), JSON.stringify(changed));
+        assert.ok(fs.existsSync(path.join(repo, '.agent-claude-bbbbbbbb')));
+        assert.strictEqual(sup.lockStatus().find((l) => l.file === '.agent-claude-bbbbbbbb').plantedBy, 'supervisor');
+        fs.writeFileSync(path.join(repo, '.agent-nobody'), 'agent: nobody\n');
+        assert.strictEqual(sup.lockStatus().find((l) => l.file === '.agent-nobody').state, 'orphan');
+        fs.unlinkSync(rec); // the session ends
+        const after = await sup.sweepLocks(SID2);
+        assert.ok(after.some((c) => c.removed === '.agent-claude-bbbbbbbb'), JSON.stringify(after));
+        assert.ok(!fs.existsSync(path.join(repo, '.agent-claude-bbbbbbbb')));
+        assert.ok(fs.existsSync(path.join(repo, '.agent-nobody')), 'an orphan lock is only removed from Fleet');
+    });
+
+    await test('artifacts: temp folders a session made are tracked; only /tmp-like paths of ended sessions are cleanable', async () => {
+        const SID3 = 'cccccccc-1111-2222-3333-444444444444';
+        const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'sup-art-'));
+        fs.writeFileSync(path.join(scratch, 'big.bin'), Buffer.alloc(4096));
+        const f3 = path.join(tmp, '.claude', 'projects', '-repo', `${SID3}.jsonl`);
+        fs.writeFileSync(f3, user('build', '2026-11-24T12:00:00Z') + asst([{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: `mkdir -p ${scratch} && node x.js > ${scratch}/log.txt` } }, { type: 'tool_use', id: 'b2', name: 'Bash', input: { command: `mkdir -p ${tmp}/repo/build` } }], '2026-11-24T12:00:05Z'));
+        const store = require('../modules/agentCoord/store');
+        store.upsertAgent({ id: 'claude-cccccccc', kind: 'claude', name: 'Builder', sessionId: SID3, cwd: path.join(tmp, 'repo') });
+        store.scanSession(SID3);
+        sup.refreshArtifacts({ sessionId: SID3 });
+        const arts = sup.artifactStatus().filter((a) => a.sessionId === SID3);
+        const dir = arts.find((a) => a.path === scratch);
+        assert.ok(dir && dir.exists && dir.sizeBytes >= 4096 && dir.state === 'orphan' && dir.cleanable, JSON.stringify(arts));
+        const inRepo = arts.find((a) => a.path.endsWith(`${path.sep}repo${path.sep}build`));
+        assert.ok(inRepo && !inRepo.cleanable, 'a folder outside /tmp-like roots is never cleaned from here');
+        const r = sup.cleanArtifact(dir.id);
+        assert.ok(r.freedBytes >= 4096 && !fs.existsSync(scratch));
+        assert.throws(() => sup.cleanArtifact(inRepo.id), /Only work folders/);
+        sup.forgetArtifact(inRepo.id);
+        assert.ok(!sup.artifactStatus().some((a) => a.id === inRepo.id));
+    });
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');

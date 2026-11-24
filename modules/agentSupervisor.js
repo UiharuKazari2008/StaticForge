@@ -24,6 +24,22 @@
  *   store      reviews in the agent-coord DB (supervisor_reviews / supervisor_state), shown in Fleet >
  *              Coordination > Supervisor (claude_desk_supervisor); onReview(fn) tells the console's feed
  *
+ * Busy locks (settings.manageLocks, default on; Yukimi Nov 24: "the supervisor also can help by deleting or
+ * creating locks for agents if they forget to do so"): after every review, a live session that edited a
+ * repo with no .agent-* lock of its own there gets one (.agent-claude-<id8>, planted_by supervisor); a lock
+ * whose session is gone, or idle for 30 min with its edits committed and no claims, is removed. A lock no
+ * session can be tied to is listed as orphan (removed only from Fleet). Owners come from the agent-coord
+ * locks table and from the sessions' own commands that wrote the lock (lock_owners).
+ *
+ * Work folders and temp files (settings.trackArtifacts, default on): the transcript scan records what
+ * commands made (mkdir, git worktree add, writes to /tmp, ~/.cache, other paths outside the repo); after a
+ * review the session's are stat'ed (size by du, 2 s cap each); Fleet lists them (live / orphan / gone, total
+ * size) and cleans one on request: only under /tmp, /var/tmp, ~/.cache or a git worktree, never a repo, a
+ * home dir or ~/.claude. Nothing is deleted on its own.
+ *
+ * Supervised sessions (Fleet's New Session wizard): gaps are typed into the session whatever the delivery
+ * setting (still at most 2 automatic steers in a row).
+ *
  * Costs: the sessions dir is watched (fs.watch, 500 ms debounce), never polled; one model call per ended
  * turn that had a request, at most 2 at once, input capped at ~24k characters. Nothing here returns or
  * logs a key.
@@ -65,7 +81,9 @@ function settings(gr) {
         enabled: cfg.enabled !== false,
         engine: String(cfg.engine || DEFAULT_ENGINE),
         model: String(cfg.model || ''),
-        delivery: DELIVERIES.includes(cfg.delivery) ? cfg.delivery : 'inbox'
+        delivery: DELIVERIES.includes(cfg.delivery) ? cfg.delivery : 'inbox',
+        manageLocks: cfg.manageLocks !== false,
+        trackArtifacts: cfg.trackArtifacts !== false
     };
 }
 
@@ -75,7 +93,9 @@ async function saveSettings(gr, next) {
         enabled: next.enabled === undefined ? cur.enabled : next.enabled === true,
         engine: next.engine ? String(next.engine).slice(0, 60) : cur.engine,
         model: next.model !== undefined ? String(next.model || '').trim().slice(0, 120) : cur.model,
-        delivery: DELIVERIES.includes(next.delivery) ? next.delivery : cur.delivery
+        delivery: DELIVERIES.includes(next.delivery) ? next.delivery : cur.delivery,
+        manageLocks: next.manageLocks === undefined ? cur.manageLocks : next.manageLocks === true,
+        trackArtifacts: next.trackArtifacts === undefined ? cur.trackArtifacts : next.trackArtifacts === true
     };
     if (!engines(gr).some((e) => e.id === s.engine)) throw new Error(`Unknown engine ${s.engine}`);
     await gr.modifyConfig('config').assign(['agentSupervisor'], s);
@@ -239,6 +259,8 @@ function db() {
             );
             CREATE INDEX IF NOT EXISTS supervisor_reviews_at ON supervisor_reviews (at);
         `);
+        const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
+        if (!cols.has('supervised')) d.exec('ALTER TABLE supervisor_state ADD COLUMN supervised INTEGER NOT NULL DEFAULT 0');
         db.ready = d;
     }
     return d;
@@ -367,6 +389,7 @@ async function review(sessionId, trigger, opts = {}) {
         .run(Object.assign(base, { verdict: result.verdict, summary: result.summary || '', missed: JSON.stringify(result.missed || []), model: result.model || '', error: result.error || null }));
     let rv = getReview(ins.lastInsertRowid);
     if (rv.verdict === 'gaps' && trigger !== 'mcp') rv = await deliver(rv, s, { auto: true, fromSupervisor: turn.fromSupervisor }).catch(() => rv);
+    afterTurn(sessionId, s).catch((e) => console.warn(`[supervisor] upkeep ${sessionId.slice(0, 8)}: ${e.message}`));
     emit(rv);
     return rv;
 }
@@ -391,7 +414,8 @@ async function deliver(rv, s, opts = {}) {
     } catch (_) { how = ''; }
     const st = d.prepare('SELECT auto_steers FROM supervisor_state WHERE session_id = ?').get(rv.sessionId) || { auto_steers: 0 };
     const autoSteers = opts.fromSupervisor ? st.auto_steers : 0;
-    const wantSteer = opts.force || (set.delivery === 'steer' && autoSteers < MAX_AUTO_STEERS);
+    const supervisedSession = isSupervised(rv.sessionId);
+    const wantSteer = opts.force || ((set.delivery === 'steer' || supervisedSession) && autoSteers < MAX_AUTO_STEERS);
     if (wantSteer) {
         try {
             await require('./claudeSessionLauncher').steer(rv.sessionId, gapText(rv));
@@ -410,6 +434,210 @@ async function send(id) {
     const out = await deliver(rv, settings(), { force: true });
     emit(out);
     return out;
+}
+
+function markSupervised(sessionId) {
+    if (!SESSION_ID_RE.test(String(sessionId || ''))) return;
+    db().prepare(`INSERT INTO supervisor_state (session_id, status, supervised, updated_at) VALUES (?, 'seen', 1, ?)
+        ON CONFLICT(session_id) DO UPDATE SET supervised = 1`).run(sessionId, Date.now());
+}
+function isSupervised(sessionId) {
+    try { const r = db().prepare('SELECT supervised FROM supervisor_state WHERE session_id = ?').get(String(sessionId)); return !!(r && r.supervised); } catch (_) { return false; }
+}
+
+// ---------------------------------------------------------------- busy locks
+
+const IDLE_UNLOCK_MS = 30 * 60 * 1000;
+const lockAgentId = (sessionId) => `claude-${String(sessionId).slice(0, 8)}`;
+
+function liveSessionsById() {
+    const m = new Map();
+    try { require('./claudeSessions').liveSessions().forEach((x) => m.set(x.id, x)); } catch (_) { /* none */ }
+    return m;
+}
+
+/** The repo roots worth looking at: every known agent's, plus the Dreamscape repo. */
+function repoRoots() {
+    const roots = new Set([path.join(__dirname, '..')]);
+    try { coord().listAgents({ all: false }).forEach((a) => { const r = coord().repoOf(a.cwd).root; if (r) roots.add(r); }); } catch (_) { /* none */ }
+    return [...roots];
+}
+
+/** Who a lock file belongs to: the session that planted it (locks table) or wrote / named it (lock_owners). */
+function lockOwnerSession(name, root) {
+    const d = coord().open();
+    const planted = d.prepare('SELECT agent_id, planted_by FROM locks WHERE root = ? AND file = ?').get(root, path.join(root, name));
+    if (planted) {
+        const a = coord().getAgent(planted.agent_id);
+        return { sessionId: a && a.sessionId ? a.sessionId : '', agentId: planted.agent_id, plantedBy: planted.planted_by || 'agent' };
+    }
+    const row = d.prepare('SELECT session_id FROM lock_owners WHERE name = ? ORDER BY seen_at DESC LIMIT 1').get(name);
+    if (row) return { sessionId: row.session_id, agentId: lockAgentId(row.session_id), plantedBy: 'agent' };
+    const m = /^\.agent-claude-([0-9a-f]{8})$/.exec(name);
+    if (m) return { sessionId: '', agentId: `claude-${m[1]}`, plantedBy: 'unknown' };
+    return { sessionId: '', agentId: name.slice('.agent-'.length), plantedBy: 'unknown' };
+}
+
+/** Every .agent-* lock in the known repo roots with its owner and state (live / idle / orphan). */
+function lockStatus() {
+    const live = liveSessionsById();
+    const out = [];
+    repoRoots().forEach((root) => {
+        coord().lockFiles(root).forEach((l) => {
+            const o = lockOwnerSession(l.file, root);
+            let sess = o.sessionId ? live.get(o.sessionId) : null;
+            if (!sess && !o.sessionId) {
+                const a = coord().getAgent(o.agentId);
+                if (a && a.sessionId) sess = live.get(a.sessionId) || null;
+            }
+            const agent = coord().getAgent(o.agentId);
+            const state = sess ? (sess.status === 'busy' ? 'live' : 'idle') : 'orphan';
+            out.push({ file: l.file, root, agentId: o.agentId, agentName: (agent && agent.name) || (sess && sess.name) || o.agentId, sessionId: o.sessionId || (agent && agent.sessionId) || '', state, plantedBy: o.plantedBy, ageMinutes: l.ageMinutes, intent: l.intent, stale: l.stale });
+        });
+    });
+    return out;
+}
+
+function removeLockFile(root, file) {
+    if (!/^\.agent-[A-Za-z0-9_.-]+$/.test(String(file || ''))) throw new Error('Not a busy lock file');
+    if (!repoRoots().includes(root)) throw new Error('Not a repo the Supervisor knows');
+    const full = path.join(root, file);
+    fs.rmSync(full, { force: true });
+    try { coord().open().prepare('DELETE FROM locks WHERE root = ? AND file = ?').run(root, full); } catch (_) { /* none */ }
+    return true;
+}
+
+/**
+ * After a session's turn: plant its lock where it edited without one; remove locks of sessions that are
+ * gone, or idle 30 min with their edits committed and no claims.
+ */
+async function sweepLocks(sessionId) {
+    const live = liveSessionsById();
+    const store = coord();
+    const changed = [];
+    // 1. this session: edits in a repo but no lock of its own there
+    const sess = live.get(sessionId);
+    if (sess && sess.cwd) {
+        const { root } = store.repoOf(sess.cwd);
+        if (root) {
+            let r = null;
+            try { r = store.inspect(lockAgentId(sessionId), { limit: 300 }); } catch (_) {
+                store.upsertAgent({ id: lockAgentId(sessionId), kind: 'claude', name: sess.givenName || sess.name || sessionId.slice(0, 8), sessionId, cwd: sess.cwd, pid: sess.pid, repo: store.repoOf(sess.cwd).repo });
+                try { r = store.inspect(lockAgentId(sessionId), { limit: 300 }); } catch (_) { r = null; }
+            }
+            const working = r && r.edited.files.some((f) => f.uncommitted);
+            const mine = lockStatus().filter((l) => l.root === root && (l.sessionId === sessionId || l.agentId === lockAgentId(sessionId)));
+            if (working && !mine.length) {
+                const file = store.plantLock(lockAgentId(sessionId), root, (r.agent && r.agent.task) || 'editing (lock planted by the Supervisor: it had none)');
+                store.open().prepare("UPDATE locks SET planted_by = 'supervisor' WHERE agent_id = ? AND root = ?").run(lockAgentId(sessionId), root);
+                changed.push({ planted: path.basename(file), root });
+            }
+        }
+    }
+    // 2. every lock: its session gone, or idle with nothing uncommitted of its own and no claims
+    for (const l of lockStatus()) {
+        if (!l.sessionId) continue; // not tied to a session: listed as orphan, removed only from Fleet
+        const s = live.get(l.sessionId);
+        let remove = !s;
+        if (s && s.status !== 'busy' && Date.now() - (Number(s.updatedAt) || 0) > IDLE_UNLOCK_MS) {
+            let r = null;
+            try { r = store.inspect(lockAgentId(l.sessionId), { limit: 300 }); } catch (_) { r = null; }
+            remove = !!r && !r.claims.length && !r.edited.files.some((f) => f.uncommitted);
+        }
+        if (remove) { removeLockFile(l.root, l.file); changed.push({ removed: l.file, root: l.root }); }
+    }
+    return changed;
+}
+
+// ---------------------------------------------------------------- work folders and temp files
+
+const HOME = os.homedir();
+const expand = (p, cwd) => {
+    let v = String(p || '');
+    if (v.startsWith('~/')) v = path.join(HOME, v.slice(2));
+    if (!path.isAbsolute(v)) v = cwd ? path.resolve(cwd, v) : '';
+    return v ? path.normalize(v) : '';
+};
+const CLEAN_ROOTS = () => [os.tmpdir(), '/tmp', '/var/tmp', path.join(HOME, '.cache')].map((x) => path.normalize(x) + path.sep);
+const NEVER = () => [HOME, path.join(HOME, '.claude'), path.join(HOME, '.secrets'), path.join(HOME, '.config'), path.join(__dirname, '..'), '/', '/tmp', '/var/tmp', path.join(HOME, '.cache')].map((x) => path.normalize(x));
+
+function cleanable(full, kind) {
+    if (!full || NEVER().includes(full)) return false;
+    if (kind === 'worktree') return true;
+    return CLEAN_ROOTS().some((r) => full.startsWith(r) && full.length > r.length + 1) && !full.includes(`${path.sep}.claude${path.sep}`);
+}
+
+function duBytes(full) {
+    try {
+        const out = require('child_process').execFileSync('du', ['-sb', full], { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] });
+        return Number(out.split(/\s/)[0]) || 0;
+    } catch (_) { return null; }
+}
+
+/** Stats a session's artifacts (or the stalest ones), within a time budget. */
+function refreshArtifacts(opts = {}) {
+    const d = coord().open();
+    const rows = opts.sessionId
+        ? d.prepare('SELECT * FROM artifacts WHERE session_id = ? AND forgotten = 0').all(opts.sessionId)
+        : d.prepare('SELECT * FROM artifacts WHERE forgotten = 0 AND (checked_at IS NULL OR checked_at < ?) ORDER BY COALESCE(checked_at, 0) LIMIT 100').all(Date.now() - 10 * 60 * 1000);
+    const until = Date.now() + (opts.budgetMs || 6000);
+    const up = d.prepare('UPDATE artifacts SET exists_now = ?, size_bytes = ?, checked_at = ? WHERE id = ?');
+    for (const r of rows) {
+        if (Date.now() > until) break;
+        const full = expand(r.path, r.cwd);
+        let st = null;
+        try { st = full ? fs.statSync(full) : null; } catch (_) { st = null; }
+        up.run(st ? 1 : 0, st ? (st.isDirectory() ? duBytes(full) : st.size) : null, Date.now(), r.id);
+    }
+}
+
+function artifactStatus() {
+    const live = liveSessionsById();
+    const d = coord().open();
+    const rows = d.prepare('SELECT * FROM artifacts WHERE forgotten = 0 ORDER BY created_at DESC LIMIT 300').all();
+    const names = new Map();
+    return rows.map((r) => {
+        const full = expand(r.path, r.cwd);
+        if (!names.has(r.session_id)) { const a = coord().getAgent(lockAgentId(r.session_id)); names.set(r.session_id, (a && a.name) || r.session_id.slice(0, 8)); }
+        const exists = r.exists_now === null ? null : !!r.exists_now;
+        const state = exists === false ? 'gone' : (live.has(r.session_id) ? 'live' : 'orphan');
+        return {
+            id: r.id, path: full || r.path, kind: r.kind, sessionId: r.session_id, agentName: names.get(r.session_id), createdAt: r.created_at, cmd: r.cmd,
+            exists, sizeBytes: r.size_bytes, checkedAt: r.checked_at, ageHours: Math.round((Date.now() - r.created_at) / 3600000), state,
+            cleanable: exists !== false && state !== 'live' && cleanable(full, r.kind)
+        };
+    });
+}
+
+function cleanArtifact(id) {
+    const d = coord().open();
+    const r = d.prepare('SELECT * FROM artifacts WHERE id = ?').get(Number(id));
+    if (!r) throw new Error('No such entry');
+    const a = artifactStatus().find((x) => x.id === r.id);
+    if (!a || !a.cleanable) throw new Error(a && a.state === 'live' ? 'Its session is still running: let it clean up, or stop it first' : 'Only work folders and temp files under /tmp, /var/tmp, ~/.cache or a git worktree are cleaned from here');
+    if (r.kind === 'worktree') {
+        const cp = require('child_process');
+        try { cp.execFileSync('git', ['-C', a.path, 'worktree', 'remove', '--force', a.path], { timeout: 20000, stdio: 'ignore' }); } catch (e) { throw new Error(`git worktree remove failed: ${e.message.slice(0, 160)}`); }
+    } else {
+        fs.rmSync(a.path, { recursive: true, force: true });
+    }
+    d.prepare('UPDATE artifacts SET exists_now = 0, size_bytes = NULL, checked_at = ? WHERE id = ?').run(Date.now(), r.id);
+    return { cleaned: a.path, freedBytes: a.sizeBytes || 0 };
+}
+
+function forgetArtifact(id) {
+    coord().open().prepare('UPDATE artifacts SET forgotten = 1 WHERE id = ?').run(Number(id));
+    return true;
+}
+
+/** Upkeep after a session's turn: its locks and its work folders. */
+async function afterTurn(sessionId, s) {
+    const set = s || settings();
+    let changed = [];
+    if (set.manageLocks) changed = await sweepLocks(sessionId);
+    if (set.trackArtifacts) refreshArtifacts({ sessionId, budgetMs: 4000 });
+    if (changed.length) emit({ locks: changed });
+    return changed;
 }
 
 // ---------------------------------------------------------------- watching turns end
@@ -518,7 +746,7 @@ function stop() {
 }
 
 module.exports = {
-    start, stop, bind, settings, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
+    start, stop, bind, settings, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, enqueue, queue }
 };

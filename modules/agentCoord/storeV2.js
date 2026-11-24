@@ -36,6 +36,34 @@ function shellPaths(cmd) {
     }
     return [...out];
 }
+// work folders and temp files a command makes (#1154 Supervisor: "detect the creation of working directories
+// and temp files that can get lost and forgotten and will waste space"): mkdir, git worktree add, and writes
+// (redirects, tee, -o / --output, cp / mv targets, Write) to paths outside the repo
+const ARTIFACT_ROOT_RE = /^(?:\/tmp\/|\/var\/tmp\/|~\/|\/home\/[^/]+\/)/;
+function shellArtifacts(cmd) {
+    const c = String(cmd || '');
+    const out = [];
+    const add = (p, kind) => { const v = String(p || '').replace(/^["']|["']$/g, '').replace(/[;,)]+$/, ''); if (v && v.length < 400 && !/[*?$`]/.test(v)) out.push({ path: v, kind }); };
+    let m;
+    const mk = /\bmkdir\s+(?:-[a-zA-Z]+\s+)*((?:"[^"]+"|'[^']+'|[^\s;&|]+)(?:\s+(?:"[^"]+"|'[^']+'|[^\s;&|-][^\s;&|]*))*)/g;
+    while ((m = mk.exec(c))) m[1].split(/\s+/).forEach((p) => add(p, 'dir'));
+    const wt = /\bgit\s+(?:-C\s+\S+\s+)?worktree\s+add\s+(?:-[a-zA-Z]+\s+(?:\S+\s+)?)*([^\s;&|]+)/g;
+    while ((m = wt.exec(c))) add(m[1], 'worktree');
+    const wr = /(?:(?:^|[^>&0-9])>{1,2}|\btee\s+(?:-a\s+)?|\s-o\s+|--output[= ]|--out-dir[= ])\s*([^\s;&|>]+)/g;
+    while ((m = wr.exec(c))) add(m[1], 'file');
+    return out.filter((a) => a.kind === 'worktree' || a.kind === 'dir' || ARTIFACT_ROOT_RE.test(a.path));
+}
+// a busy lock a session made itself (echo / printf ... > .agent-x, touch .agent-x; Write is matched on its path):
+// naming one (ls, cat, rm) does not make it the session's
+const LOCK_NAME_RE = /(?:>{1,2}\s*|\btouch\s+(?:-\S+\s+)*)(?:\S*\/)?(\.agent-[A-Za-z0-9_.-]+)/g;
+function lockMentions(cmd) {
+    const c = String(cmd || '');
+    const out = new Set();
+    let m;
+    LOCK_NAME_RE.lastIndex = 0;
+    while ((m = LOCK_NAME_RE.exec(c))) out.add(m[1]);
+    return [...out];
+}
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function claudeHome() { return process.env.DREAMSCAPE_CLAUDE_HOME || os.homedir(); }
@@ -165,7 +193,11 @@ module.exports = function storeV2(core) {
         let lastAt = row ? row.last_at : null;
         let tools = row ? row.tools : 0;
         const edits = new Map();
+        const artifacts = [];
+        const locksSeen = new Set();
+        let cwdSeen = '';
         chunk.split('\n').forEach((line) => {
+            if (!cwdSeen) { const cm = /"cwd":"((?:[^"\\]|\\.)*)"/.exec(line); if (cm) { try { cwdSeen = JSON.parse(`"${cm[1]}"`); } catch (_) { cwdSeen = ''; } } }
             if (!line || (line.indexOf('"tool_use"') < 0 && line.indexOf('"assistant"') < 0)) return;
             let o;
             try { o = JSON.parse(line); } catch (_) { return; }
@@ -181,10 +213,14 @@ module.exports = function storeV2(core) {
                 if (EDIT_TOOLS.has(c.name)) {
                     const p = inp.file_path || inp.notebook_path;
                     if (!p) return;
+                    if (c.name === 'Write' && /\/\.agent-[A-Za-z0-9_.-]+$/.test(p)) locksSeen.add(path.basename(p));
+                    if (c.name === 'Write' && ARTIFACT_ROOT_RE.test(p)) artifacts.push({ path: p, kind: 'file', at, cmd: `Write ${p}` });
                     const e = edits.get(p) || { tool: c.name, n: 0, first: at, last: at };
                     e.n += 1; e.tool = c.name; e.last = at || e.last; if (!e.first) e.first = at;
                     edits.set(p, e);
                 } else if (c.name === 'Bash' && inp.command) {
+                    shellArtifacts(inp.command).forEach((a) => artifacts.push(Object.assign(a, { at, cmd: text(String(inp.command).split('\n')[0], 200) })));
+                    lockMentions(inp.command).forEach((n) => locksSeen.add(n));
                     shellPaths(inp.command).forEach((p) => {
                         if (edits.has(p) && edits.get(p).tool !== 'Bash') return;
                         const e = edits.get(p) || { tool: 'Bash', n: 0, first: at, last: at };
@@ -202,6 +238,10 @@ module.exports = function storeV2(core) {
                 ON CONFLICT(session_id, path) DO UPDATE SET tool = CASE WHEN excluded.tool = 'Bash' AND tool != 'Bash' THEN tool ELSE excluded.tool END,
                 n = n + excluded.n, last_at = COALESCE(excluded.last_at, last_at)`);
             edits.forEach((e, p) => up.run(sessionId, text(p, 500), e.tool, e.n, e.first, e.last));
+            const ins = d.prepare('INSERT OR IGNORE INTO artifacts (session_id, path, kind, created_at, cmd, cwd) VALUES (?, ?, ?, ?, ?, ?)');
+            artifacts.forEach((a) => ins.run(sessionId, text(a.path, 400), a.kind, a.at || now(), a.cmd || '', cwdSeen || ''));
+            const lo = d.prepare('INSERT OR IGNORE INTO lock_owners (session_id, name, seen_at) VALUES (?, ?, ?)');
+            locksSeen.forEach((n) => lo.run(sessionId, text(n, 120), now()));
             d.prepare(`INSERT INTO scans (key, session_id, file, offset, commands, last_text, last_at, tools) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(key) DO UPDATE SET file = excluded.file, offset = excluded.offset, commands = excluded.commands,
                 last_text = excluded.last_text, last_at = excluded.last_at, tools = excluded.tools`)
@@ -436,6 +476,7 @@ module.exports = function storeV2(core) {
     }
 
     return {
+        shellArtifacts, lockMentions,
         plantLock, removeLocks, lockFiles, liveRecord, isBusy,
         scanSession, inspect, editorsOf, gitDirty,
         buildRequest, buildReady, buildBegin, buildEnd, adminEndBuild, builds, gateState

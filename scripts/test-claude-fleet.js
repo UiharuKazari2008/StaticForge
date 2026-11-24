@@ -161,6 +161,31 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
         assert.throws(() => pickAccount({ accounts: [acc(2, 'Full', 99)] }, 'auto'), /No Claude account has room/);
     });
 
+    await test('availability: free, near (80%+ or within 10 of a max), capped (past its max), exhausted (100%)', () => {
+        const fs8 = require('../modules/claudeFleetSettings');
+        const s = (o) => Object.assign({}, fs8.DEFAULTS, o || {});
+        const u = (...ps) => ({ limits: ps.map(([kind, percent]) => ({ kind, label: kind, percent, resetsAt: 1 })) });
+        assert.strictEqual(fs8.availability(u(['session', 20], ['weekly_all', 30]), s()).state, 'free');
+        assert.strictEqual(fs8.availability(u(['session', 85]), s()).state, 'near');
+        assert.strictEqual(fs8.availability(u(['weekly_all', 52]), s({ maxWeeklyPct: 60 })).state, 'near');
+        const c = fs8.availability(u(['weekly_all', 61]), s({ maxWeeklyPct: 60 }));
+        assert.deepStrictEqual([c.state, c.schedulable], ['capped', false]);
+        assert.strictEqual(fs8.availability(u(['session', 40]), s({ maxSessionPct: 40 })).state, 'capped');
+        const e = fs8.availability(u(['session', 100]), s());
+        assert.deepStrictEqual([e.state, e.schedulable], ['exhausted', false]);
+        assert.deepStrictEqual([fs8.availability(null, s()).state, fs8.availability(null, s()).schedulable], ['unknown', true]);
+    });
+
+    await test('auto pick: the preferred account while free, skipping capped / exhausted ones', () => {
+        const { pickAccount } = require('../modules/claudeFleetMcp')._test;
+        const acc = (index, name, worst, extra) => Object.assign({ index, name, canRun: true, sessions: [], remoteControl: { message: '' }, usage: { worstPercent: worst }, availability: { state: 'free', schedulable: true } }, extra || {});
+        const snap = { accounts: [acc(0, 'Main', 40, { preferred: true }), acc(1, 'Ops', 10), acc(2, 'Capped', 5, { availability: { state: 'capped', schedulable: false, message: 'past max' } })] };
+        assert.strictEqual(pickAccount(snap, 'auto').name, 'Main');
+        snap.accounts[0].availability = { state: 'near', schedulable: true };
+        assert.strictEqual(pickAccount(snap, 'auto').name, 'Ops');
+        assert.throws(() => pickAccount(snap, 'Capped'), /past max/);
+    });
+
     await test('MCP tools: agent-coord lists the v2 tools; the fleet module is Xi-only', () => {
         const names = require('../modules/agentCoord/mcpServer').TOOLS.map((t) => t.name);
         ['coord_inspect', 'coord_editors', 'coord_locks', 'coord_build_request', 'coord_build_ready', 'coord_build_begin', 'coord_build_end', 'coord_builds'].forEach((n) => assert.ok(names.includes(n), n));

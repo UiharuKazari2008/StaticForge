@@ -1,0 +1,216 @@
+#!/usr/bin/env node
+'use strict';
+
+/**
+ * Restart gate for the Dreamscape server (#1154, Yukimi Nov 24 2026: "change the rules and handling of
+ * restarting the server so that it goes to a script that can check the status of agents and see if there
+ * is any ongoing edits or work that would get interrupted by the restart and to return a "approved" /
+ * "ask <agent>" / "wait for <agent or signal>" / "denied for <reason/failed validation>"").
+ *
+ *   node scripts/restart-gate.js [--json] [--notify] [--why "<reason for the restart>"]
+ *
+ * The first line of the answer is the verdict; each reason follows on its own line. Exit codes:
+ *   0 approved   10 ask <agent>   20 wait for <agent or signal>   30 denied for <reason>
+ * The worst finding wins: denied > wait > ask > approved.
+ *
+ * Checks:
+ *   denied   the PM2 guard fails (scripts/host-deploy.sh --check-pm2); a changed server file does not pass
+ *            `node --check` / JSON.parse (modules/, routes/, server.js, web_server.js, config JSON); the
+ *            Director idle check cannot decide (exit 2)
+ *   wait     the Director idle check is busy (a Director / Yozora / Wren turn, generation, MCP calls,
+ *            local jobs, mail, HTTP): "wait for <what>"; a running agent-coord build gate in the repo; an
+ *            open or running gate with target hold-restart (any agent's "do not restart now" signal)
+ *   ask      a live Claude session (any account, not the one asking) holds uncommitted edits to server code
+ *            it made, or claims on server paths: the restart would load them half done. --notify posts the
+ *            question to its agent-coord inbox.
+ *   approved none of the above (uncommitted server files nobody live holds are listed as notes)
+ *
+ * It never restarts anything itself: scripts/restart-dreamscape.sh runs it and restarts only on approved.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const { execFileSync, spawnSync } = require('child_process');
+
+const ROOT = path.join(__dirname, '..');
+const SERVER_PATH_RE = /^(modules\/|routes\/|server\.js$|web_server\.js$|config\/[^/]+\.json$|[^/]+\.config\.json$|config\.json$|package\.json$)/;
+const args = process.argv.slice(2);
+const has = (f) => args.includes(f);
+const valueOf = (f) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : ''; };
+
+const findings = []; // { level: denied | wait | ask | note, text, agent? }
+const add = (level, text, extra) => findings.push(Object.assign({ level, text }, extra || {}));
+
+function run(cmd, argv, opts) {
+    return spawnSync(cmd, argv, Object.assign({ cwd: ROOT, encoding: 'utf8', timeout: 60000 }, opts || {}));
+}
+
+// ---------------------------------------------------------------- denied: health and validation
+
+function checkPm2() {
+    const r = run('bash', ['scripts/host-deploy.sh', '--check-pm2']);
+    if (r.status !== 0) add('denied', `PM2 guard failed: ${String(r.stdout || r.stderr || '').trim().split('\n').pop().slice(0, 200)}`);
+}
+
+function dirtyServerFiles() {
+    let out = '';
+    try { out = execFileSync('git', ['-C', ROOT, 'status', '--porcelain=v1', '--untracked-files=all'], { encoding: 'utf8', timeout: 10000 }); } catch (_) { return []; }
+    return out.split('\n').filter(Boolean).map((l) => ({ status: l.slice(0, 2), path: l.slice(3).replace(/^.* -> /, '') }))
+        .filter((f) => SERVER_PATH_RE.test(f.path) && !f.status.includes('D'));
+}
+
+function validate(files) {
+    for (const f of files) {
+        const abs = path.join(ROOT, f.path);
+        if (!fs.existsSync(abs)) continue;
+        if (f.path.endsWith('.json')) {
+            try { JSON.parse(fs.readFileSync(abs, 'utf8')); } catch (e) { add('denied', `${f.path} is not valid JSON: ${e.message.slice(0, 160)}`); }
+        } else if (f.path.endsWith('.js')) {
+            const r = run(process.execPath, ['--check', abs], { timeout: 20000 });
+            if (r.status !== 0) add('denied', `${f.path} fails node --check: ${String(r.stderr || '').trim().split('\n').find((l) => /Error/.test(l)) || 'syntax error'}`.slice(0, 260));
+        }
+    }
+}
+
+// ---------------------------------------------------------------- wait: running work
+
+function checkIdle() {
+    const r = run(process.execPath, ['scripts/director-idle-check.js', '--json'], { timeout: 60000 });
+    let o = null;
+    try { o = JSON.parse(r.stdout); } catch (_) { o = null; }
+    if (r.status === 2 || !o || o.decided === false) { add('denied', 'the Director idle check could not decide (server state unknown): look at scripts/director-idle-check.js output'); return; }
+    if (r.status === 0) return;
+    const ip = o.inProcess || {};
+    (ip.director || []).forEach((d) => add('wait', `wait for the Director turn ${d.sessionId || d.id || ''} (${d.persona || 'Director'})`.trim()));
+    (ip.xi || []).concat(o.xi || []).forEach((x) => add('wait', `wait for Yozora's turn ${x.sessionId || x.chatId || x.id || ''}`.trim()));
+    (o.wren || []).forEach(() => add('wait', 'wait for a Wren (Yumiya / Chiyo) turn'));
+    if (ip.generation && (ip.generation.processing || ip.generation.pending)) add('wait', `wait for image generation (${ip.generation.pending || 0} queued${ip.generation.running ? ', one running' : ''})`);
+    (ip.localJobs || []).forEach((j) => add('wait', `wait for the local job ${j.kind || j.type || ''} ${j.id || ''}`.trim()));
+    (ip.mcp || []).forEach((m) => add('wait', `wait for MCP call ${m.tool || ''} by ${m.key || m.actorName || 'a client'}`));
+    (ip.smtp || []).forEach(() => add('wait', 'wait for an open mail (SMTP) session'));
+    const http = (ip.http || []).filter((h) => h.path !== '/status/stream'); // clients waiting on a boot: not work
+    if (http.length) add('wait', `wait for ${http.length} HTTP request${http.length === 1 ? '' : 's'} in flight (${http.slice(0, 3).map((h) => `${h.method} ${h.path}`).join(', ')})`);
+    if (!findings.some((f) => f.level === 'wait') && (o.reasons || []).length) add('wait', `wait for: ${(o.reasons || []).join(', ')}`);
+}
+
+function coordStore() {
+    try { return require('../modules/agentCoord/store'); } catch (_) { return null; }
+}
+
+function checkGates(store) {
+    if (!store) return;
+    let gates = [];
+    try { gates = store.builds({ repo: 'staticforge' }).concat(store.builds({ repo: '' }).filter((g) => g.build.target === 'hold-restart')); } catch (_) { gates = []; }
+    const seen = new Set();
+    gates.forEach((g) => {
+        const b = g.build;
+        if (seen.has(b.id)) return;
+        seen.add(b.id);
+        const who = (store.getAgent(b.requestedBy) || {}).name || b.requestedBy;
+        if (b.target === 'hold-restart' && (b.state === 'open' || b.state === 'running')) add('wait', `wait for ${who}: hold-restart${b.note ? ` (${b.note})` : ''}`, { agent: b.requestedBy });
+        else if (b.state === 'running') add('wait', `wait for build ${b.id} (${b.target}) by ${who}`, { agent: b.requestedBy });
+    });
+}
+
+// ---------------------------------------------------------------- ask: live sessions with server edits
+
+const commitMs = new Map();
+function lastCommitMs(file) {
+    if (commitMs.has(file)) return commitMs.get(file);
+    let t = 0;
+    try { t = Number(execFileSync('git', ['-C', ROOT, 'log', '-1', '--format=%ct', '--', file], { encoding: 'utf8', timeout: 5000 }).trim()) * 1000 || 0; } catch (_) { t = 0; }
+    commitMs.set(file, t);
+    return t;
+}
+
+/** The Claude session this script runs under (skipped: it is the one asking). */
+function selfSessionId() {
+    const dir = path.join(process.env.DREAMSCAPE_CLAUDE_HOME || require('os').homedir(), '.claude', 'sessions');
+    let pid = process.ppid;
+    for (let i = 0; i < 8 && pid > 1; i += 1) {
+        try { const r = JSON.parse(fs.readFileSync(path.join(dir, `${pid}.json`), 'utf8')); if (r && r.sessionId) return r.sessionId; } catch (_) { /* up */ }
+        try { pid = Number(fs.readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1].split(' ')[1]) || 0; } catch (_) { break; }
+    }
+    return '';
+}
+
+function checkAgents(store, dirty) {
+    if (!store) return;
+    const self = selfSessionId();
+    let live = [];
+    try { live = require('../modules/claudeSessions').liveSessions(); } catch (_) { live = []; }
+    const dirtySet = new Set(dirty.map((f) => f.path));
+    const owned = new Set();
+    for (const s of live) {
+        if (s.id === self) continue;
+        const agentId = `claude-${s.id.slice(0, 8)}`;
+        if (!store.getAgent(agentId)) store.upsertAgent({ id: agentId, kind: 'claude', name: s.givenName || s.name || s.id.slice(0, 8), sessionId: s.id, cwd: s.cwd, pid: s.pid });
+        let r = null;
+        try { r = store.inspect(agentId, { limit: 300 }); } catch (_) { r = null; }
+        if (!r) continue;
+        const { root } = store.repoOf(s.cwd);
+        const inThisRepo = root && path.resolve(root) === path.resolve(ROOT);
+        // its edit counts only when it came after that file's last commit (an older edit is in a commit already;
+        // the file is dirty again from someone else)
+        const serverEdits = inThisRepo ? r.edited.files.filter((f) => SERVER_PATH_RE.test(f.path) && dirtySet.has(f.path) && (f.lastAt || 0) > lastCommitMs(f.path)) : [];
+        const serverClaims = r.claims.filter((c) => SERVER_PATH_RE.test(c.path) || c.path === '.' || c.path === 'modules');
+        serverEdits.forEach((f) => owned.add(f.path));
+        if (serverEdits.length || serverClaims.length) {
+            const name = r.agent.name || agentId;
+            const what = serverEdits.length ? `uncommitted ${serverEdits.slice(0, 4).map((f) => f.path).join(', ')}${serverEdits.length > 4 ? ` (+${serverEdits.length - 4})` : ''}` : `claims on ${serverClaims.map((c) => c.path).slice(0, 4).join(', ')}`;
+            add('ask', `ask ${name} (${agentId}, ${s.status === 'busy' ? 'working now' : 'idle'}): ${what}`, { agent: agentId, busy: s.status === 'busy' });
+        }
+    }
+    dirty.filter((f) => !owned.has(f.path)).slice(0, 8).forEach((f) => add('note', `uncommitted ${f.path} (no live session holds it: it loads as it is)`));
+}
+
+// ---------------------------------------------------------------- verdict
+
+function verdict() {
+    const order = ['denied', 'wait', 'ask'];
+    const worst = order.find((l) => findings.some((f) => f.level === l));
+    if (!worst) return { verdict: 'approved', code: 0, line: 'approved' };
+    const first = findings.find((f) => f.level === worst);
+    if (worst === 'denied') return { verdict: 'denied', code: 30, line: `denied for ${first.text}` };
+    if (worst === 'wait') return { verdict: 'wait', code: 20, line: first.text.startsWith('wait for') ? first.text : `wait for ${first.text}` };
+    return { verdict: 'ask', code: 10, line: first.text.replace(/ \(.*$/, '') };
+}
+
+function notifyAsk(store) {
+    if (!store || !has('--notify')) return 0;
+    const why = valueOf('--why') || 'a server change';
+    let n = 0;
+    try {
+        const me = store.upsertAgent({ id: 'restart-gate', kind: 'other', name: 'Restart gate', task: 'Dreamscape restarts', pid: null });
+        findings.filter((f) => f.level === 'ask' && f.agent).forEach((f) => {
+            store.post(me.id, f.agent, `The Dreamscape server is about to restart for ${why}. Your uncommitted server edits / claims would load as they are now. Reply (coord_post to restart-gate, kind reply) "ok" when it is safe, or open a hold with coord_build_request target hold-restart until you are done.`, { kind: 'question' });
+            n += 1;
+        });
+    } catch (_) { /* inbox unavailable */ }
+    return n;
+}
+
+function main() {
+    checkPm2();
+    const dirty = dirtyServerFiles();
+    validate(dirty);
+    checkIdle();
+    const store = coordStore();
+    checkGates(store);
+    checkAgents(store, dirty);
+    const v = verdict();
+    const notified = notifyAsk(store);
+    if (has('--json')) {
+        process.stdout.write(`${JSON.stringify({ verdict: v.verdict, line: v.line, code: v.code, findings, notified }, null, 1)}\n`);
+    } else {
+        process.stdout.write(`${v.line}\n`);
+        findings.forEach((f) => process.stdout.write(`  ${f.level}: ${f.text}\n`));
+        if (notified) process.stdout.write(`  (asked ${notified} agent${notified === 1 ? '' : 's'} in their agent-coord inbox)\n`);
+    }
+    try { if (store) store.close(); } catch (_) { /* closed */ }
+    process.exit(v.code);
+}
+
+if (require.main === module) main();
+
+module.exports = { SERVER_PATH_RE, _verdict: verdict, _findings: findings };

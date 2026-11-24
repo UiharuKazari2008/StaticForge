@@ -139,6 +139,16 @@ const handleFleet = guard('claude_remote_fleet', async (gr, message) => {
     return { result, fleet: await fleet.status(gr) };
 });
 
+// #1154: an account's name, preferred flag, usage caps and session defaults (modules/claudeFleetSettings.js)
+const handleFleetAccount = guard('claude_fleet_account', async (gr, message) => {
+    if (String(message.action || 'save') !== 'save') throw new Error('action must be save');
+    const patch = {};
+    ['name', 'preferred', 'maxWeeklyPct', 'maxSessionPct', 'defaultModel', 'defaultEffort', 'defaultMode'].forEach((k) => { if (message[k] !== undefined) patch[k] = message[k]; });
+    await require('../../claudeFleetSettings').save(gr, message.index, patch);
+    fleet.broadcast();
+    return { fleet: await fleet.status(gr) };
+});
+
 // Add Account by signing in. Never logs the code: the guard logs error messages only, which carry none.
 const handleLogin = guard('claude_account_login', async (gr, message) => {
     const action = String(message.action || 'status');
@@ -188,6 +198,7 @@ function registerPackets(handlersCtx) {
     reg('claude_remote_control', handleRemoteControl, ADMIN_DESTRUCTIVE);
     reg('claude_account_login', handleLogin, ADMIN_DESTRUCTIVE);
     reg('claude_remote_fleet', handleFleet, ADMIN_DESTRUCTIVE);
+    reg('claude_fleet_account', handleFleetAccount, ADMIN_DESTRUCTIVE);
     reg('get_claude_sessions', handleSessions);
     reg('claude_session_action', handleSessionAction, ADMIN_DESTRUCTIVE);
 }

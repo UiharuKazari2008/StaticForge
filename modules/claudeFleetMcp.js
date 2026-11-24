@@ -117,6 +117,9 @@ async function snapshot(gr, opts = {}) {
         onHostLogin: a.onHost,
         remoteControl: { state: a.state, statusLine: a.statusLine, message: a.message },
         canRun: a.hasLogin && (a.moved || a.onHost),
+        preferred: !!(a.settings && a.settings.preferred),
+        settings: a.settings || null,
+        availability: a.availability || null,
         usage: usageBrief(byIndex.get(a.index)),
         sessions: a.sessions
     }));
@@ -133,23 +136,36 @@ async function snapshot(gr, opts = {}) {
     return { at: new Date().toISOString(), accounts, coordination };
 }
 
-/** The account for a dispatch: a named / numbered one, or the runnable one with the most headroom. */
+/**
+ * The account for a dispatch: a named / numbered one, or "auto": among runnable accounts that are free to
+ * take work (claudeFleetSettings availability: not exhausted, not past its own max), the preferred one,
+ * else the most headroom. allowFull takes a full / capped account anyway.
+ */
 function pickAccount(snap, want, allowFull) {
-    const runnable = snap.accounts.filter((a) => a.canRun);
+    const usable = (a) => !a.availability || a.availability.schedulable !== false;
+    const worstOf = (a) => (a.usage && Number.isFinite(a.usage.worstPercent) ? a.usage.worstPercent : 50);
     if (want !== undefined && want !== null && String(want).trim() !== '' && String(want).toLowerCase() !== 'auto') {
         const w = String(want).trim().toLowerCase();
         const acc = snap.accounts.find((a) => String(a.index) === w || a.name.toLowerCase() === w) || snap.accounts.find((a) => a.name.toLowerCase().includes(w));
         if (!acc) throw new Error(`No Claude account ${want} (claude_fleet_status lists them)`);
         if (!acc.canRun) throw new Error(`${acc.name} cannot run sessions yet: ${acc.remoteControl.message || 'it needs a linked login and its own folder'}`);
         const worst = acc.usage && acc.usage.worstPercent;
+        if (!allowFull && !usable(acc)) throw new Error(`${acc.name}: ${acc.availability.message}. Pick another, or pass allowFull`);
         if (!allowFull && Number.isFinite(worst) && worst >= FULL_PCT) throw new Error(`${acc.name} is at ${worst}% of a limit: pick another, or pass allowFull`);
         return acc;
     }
-    const scored = runnable.map((a) => ({ a, worst: a.usage && Number.isFinite(a.usage.worstPercent) ? a.usage.worstPercent : 50 }))
-        .filter((x) => allowFull || x.worst < FULL_PCT)
-        .sort((x, y) => x.worst - y.worst || x.a.sessions.length - y.a.sessions.length);
-    if (!scored.length) throw new Error('No Claude account has room (every runnable account is at 95% of a limit or cannot run): wait for a reset or pass allowFull');
-    return scored[0].a;
+    const runnable = snap.accounts.filter((a) => a.canRun && (allowFull || (usable(a) && worstOf(a) < FULL_PCT)));
+    if (!runnable.length) throw new Error('No Claude account has room (every runnable account is at its limit, past its own max, or cannot run): wait for a reset or pass allowFull');
+    const preferred = runnable.find((a) => a.preferred && (!a.availability || a.availability.state !== 'near'));
+    if (preferred) return preferred;
+    return runnable.slice().sort((x, y) => worstOf(x) - worstOf(y) || x.sessions.length - y.sessions.length)[0];
+}
+
+/** For Fleet's New Session "Auto" and an account's defaults: { index, name, settings }. */
+async function pickForStart(gr, want) {
+    const snap = await snapshot(gr);
+    const acc = pickAccount(snap, want, false);
+    return { index: acc.index, name: acc.name, settings: acc.settings || {} };
 }
 
 function resolveSession(ref) {
@@ -175,14 +191,15 @@ async function dispatch(gr, name, input) {
         const snap = await snapshot(gr);
         const acc = pickAccount(snap, input.account, input.allowFull === true);
         const cwd = input.cwd ? String(input.cwd) : path.join(__dirname, '..');
-        // subagents-sonnet (Yukimi, Nov 24 2026): Sonnet unless a reason is named
-        const model = input.model ? String(input.model) : 'sonnet';
-        if (!/sonnet/i.test(model) && !String(input.modelReason || '').trim()) {
+        // subagents-sonnet (Yukimi, Nov 24 2026): Sonnet unless a reason is named; an account's own default
+        // model (Fleet settings, set by Yukimi) counts as her reason
+        const model = input.model ? String(input.model) : ((acc.settings && acc.settings.defaultModel) || 'sonnet');
+        if (input.model && !/sonnet/i.test(model) && !String(input.modelReason || '').trim()) {
             throw new Error(`Dispatches start on Sonnet: pass modelReason to use ${model} (undecided design, a bug Sonnet already failed on, a security review, or Yukimi asked)`);
         }
         const r = await launcher().start(gr, {
             cwd, prompt, title: input.title, account: acc.index, mode: input.mode,
-            model, effort: input.effort, dispatchedBy: 'Yozora'
+            model, effort: input.effort || (acc.settings && acc.settings.defaultEffort) || undefined, dispatchedBy: 'Yozora'
         });
         return {
             session: r.id, account: { index: acc.index, name: acc.name }, model: r.model, effort: r.effort,
@@ -250,6 +267,6 @@ async function handleFleetTool(gr, req, name, args) {
 }
 
 module.exports = {
-    SCOPE, ROLE, TOOLS, isFleetTool, isFleetOwner, scopesHaveFleet, handleFleetTool,
+    SCOPE, ROLE, TOOLS, isFleetTool, isFleetOwner, scopesHaveFleet, handleFleetTool, pickForStart,
     _test: { pickAccount, snapshot }
 };

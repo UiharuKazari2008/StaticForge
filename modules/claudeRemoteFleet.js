@@ -153,7 +153,15 @@ const states = new Map(); // id -> { state, message, at, source }
 const busy = new Map();   // id -> promise
 let gResources = null;
 
-function bind(gr) { if (gr) gResources = gr; }
+let usageHooked = false;
+function bind(gr) {
+    if (gr) gResources = gr;
+    // banners follow usage: every new usage read pushes the fleet again (claudeUsage reads on its own feed)
+    if (!usageHooked && gResources) {
+        usageHooked = true;
+        try { require('./claudeUsage').onRead(() => broadcast()); } catch (_) { usageHooked = false; }
+    }
+}
 
 function setState(id, state, message) {
     states.set(id, { state, message: message || '', at: new Date().toISOString(), source: 'action' });
@@ -231,7 +239,13 @@ function blocksLegacySwitch(accountIdToInstall) {
 
 async function rowFor(acc, legacy) {
     const moved = runtime.fleetInfo(acc.id);
+    const fs8 = require('./claudeFleetSettings');
+    const settings = fs8.get(gResources, acc.id);
+    const usage = fs8.usageFor(acc.index);
     const row = {
+        settings,
+        usage,
+        availability: fs8.availability(usage, settings),
         index: acc.index,
         id: acc.id,
         name: acc.name,
