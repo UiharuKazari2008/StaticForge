@@ -405,7 +405,7 @@
 
 #mmcConsole_claudedesk .cd-sup-form label > span:first-child:not(:last-child) {
     flex: none;
-    width: 70px;
+    width: 150px;
 }
 
 #mmcConsole_claudedesk .cd-sup-form input[type="text"],
@@ -435,3 +435,176 @@
     margin: 2px 0 6px;
     padding-left: 22px;
 }
+
+/* ---- #1154 Fleet: usage bars edge to edge, information bars, the wizard, session details, locks ---- */
+
+/* The Vista fill (vista-glass-controls.css) has 8 px end caps, so it was never narrower than 16 px (0% was not empty)
+   and its -1 px margin with a width of the inner box stopped it 2 px short of the track at 100%. Here its width is a
+   share of the track's outer edge (claudedesk.js paintBars sets --cd-w); 0% hides it and a short fill drops its caps. */
+#mmcConsole_claudedesk .cd-usage-row [role="progressbar"] > .cd-fill {
+    width: calc((100% + 2px) * var(--cd-w, 0) / 100);
+    min-width: 0;
+}
+
+#mmcConsole_claudedesk .cd-usage-row [role="progressbar"] > .cd-fill.is-empty {
+    display: none;
+}
+
+#mmcConsole_claudedesk .cd-usage-row [role="progressbar"] > .cd-fill.is-short {
+    border-width: 0;
+}
+
+/* Vista's information bar (as Explorer's, vista-explorer.css .explorer-net-infobar): #ffffe1, a #b3b3b3 rule under it */
+#mmcConsole_claudedesk .cd-infobar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    box-sizing: border-box;
+    min-height: 26px;
+    margin: 0 0 4px;
+    padding: 3px 8px;
+    border: 0;
+    border-bottom: 1px solid #b3b3b3;
+    background: #ffffe1;
+    color: #000;
+}
+
+#mmcConsole_claudedesk .cd-infobar > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+#mmcConsole_claudedesk .cd-usage-acct > .cd-infobar {
+    margin: 2px 0 4px 22px;
+}
+
+#mmcConsole_claudedesk .cd-list-wrap > .cd-infobar {
+    margin: 0;
+}
+
+/* ---- the New Session wizard (inside the shared confirmation box) ---- */
+
+.cd-wiz-head {
+    margin: -4px -4px 8px;
+    padding: 6px 8px 8px;
+    border-bottom: 1px solid #dfdfdf;
+    background: #fff;
+}
+
+.cd-form .cd-wiz-head > h3,
+#confirmationDialog .cd-wiz-head > h3 {
+    margin: 0 0 2px;
+    color: #003399 !important;
+    font: 15px "Segoe UI", Tahoma, sans-serif;
+    font-weight: normal;
+}
+
+.cd-wiz-head > p {
+    margin: 0;
+    color: #444;
+}
+
+.cd-wiz-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+/* Vista's command link: a radio row with a bold title and its explanation under it */
+.cd-form label.cd-cmdlink {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid transparent;
+}
+
+.cd-form label.cd-cmdlink:hover {
+    border-color: #c5d5ea;
+    background: #eef4fc;
+}
+
+.cd-form label.cd-cmdlink > span {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.cd-form label.cd-cmdlink > span > b {
+    color: #003399;
+    font-weight: normal;
+    font-size: 13px;
+}
+
+.cd-form label.cd-cmdlink > span > i {
+    font-style: normal;
+    color: #444;
+}
+
+.cd-form .cd-recs {
+    max-height: 220px;
+}
+
+.cd-form .cd-summary-request {
+    max-height: 120px;
+    margin: 0;
+}
+
+.cd-form .cd-props {
+    margin: 0 0 6px;
+}
+
+.cd-screen {
+    max-height: 60vh;
+    overflow: auto;
+}
+
+/* ---- a session's details: the agents and tasks lists with their transcript / output under them ---- */
+
+#mmcConsole_claudedesk .cd-dt-list {
+    min-width: 0;
+}
+
+#mmcConsole_claudedesk .cd-dt-box {
+    margin-top: 6px;
+    border: 1px solid #828790;
+    background: #fff;
+    padding: 4px 6px;
+    min-height: 40px;
+}
+
+#mmcConsole_claudedesk .cd-agent-box .cd-chat-log {
+    max-height: 300px;
+    padding: 2px 4px;
+}
+
+#mmcConsole_claudedesk .cd-task-out {
+    max-height: 260px;
+    overflow: auto;
+}
+
+#mmcConsole_claudedesk .mmc-row.cd-live .mmc-col:first-child,
+#mmcConsole_claudedesk .mmc-row.cd-live > span:first-child {
+    font-weight: 600;
+}
+
+#mmcConsole_claudedesk .mmc-row.cd-stale > span:nth-child(3) i {
+    color: #a00000;
+}
+
+.cd-screen {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.cd-table .cd-w46 { width: 46px; }
+.cd-table .cd-w76 { width: 76px; }
+.cd-table .cd-w80 { width: 80px; }
+.cd-table .cd-w84 { width: 84px; }
+.cd-table .cd-w100 { width: 100px; }
+.cd-table .cd-w130 { width: 130px; }
+.cd-table .cd-w50 { width: 50px; }
+.cd-table .cd-w90 { width: 90px; }

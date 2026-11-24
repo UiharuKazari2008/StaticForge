@@ -158,7 +158,8 @@
         // the supervisor reviewed something: its list is read again once, only when the last review changed
         if (changed.supervisor && typeof changed.supervisor === 'object') {
             const id = changed.supervisor.lastReviewId == null ? null : changed.supervisor.lastReviewId;
-            if (S.sup.loaded && id !== S.sup.lastReviewId && S.c && S.c.node === 'co-supervisor') void loadSupervisor();
+            if (S.sup.loaded && S.c && S.c.node === 'co-work') void loadSupervisor();
+            else if (S.sup.loaded && id !== S.sup.lastReviewId && S.c && S.c.node === 'co-supervisor') void loadSupervisor();
             else if (id !== S.sup.lastReviewId) S.sup.stale = true;
             S.sup.lastReviewId = id;
         }
@@ -356,6 +357,74 @@
         }
     }
 
+    // ---- a session's details: background agents and tasks (claude_desk_session detail / agent_page / task_output) ----
+
+    /** A reply's payload: the fields sit at the top of the reply, or under result. */
+    const unwrap = (r, key) => (r && r[key] !== undefined ? r : (r && r.result && typeof r.result === 'object' ? r.result : r) || {});
+    const chatOf = (id) => S.chats.get(id) || null;
+    /** A session Remote Control's own server spawned: Fleet has no terminal of it to type into until it takes it over. */
+    const serverOrigin = (id) => {
+        const l = liveOf(id);
+        if (l && l.origin) return l.origin === 'server';
+        const ch = chatOf(id);
+        return !!(ch && ch.dt && ch.dt.data && ch.dt.data.origin === 'server');
+    };
+
+    async function loadDetail(id) {
+        const chat = chatOf(id);
+        if (!chat) return;
+        const dt = chat.dt = Object.assign(chat.dt || { data: null, agents: new Map(), agentSel: '', taskSel: '', task: null }, { loading: true, error: '', gone: false });
+        repaint();
+        try {
+            const r = await send('claude_desk_session', { action: 'detail', id });
+            dt.data = unwrap(r, 'detail').detail || null;
+        } catch (e) { if (isGone(e)) dt.gone = true; else dt.error = errText(e); }
+        dt.loading = false;
+        if (S.c && S.c.node === `t:${id}`) S.c.render();
+    }
+
+    async function loadAgentPage(id, agentId, earlier) {
+        const chat = chatOf(id);
+        if (!chat || !chat.dt) return;
+        let pg = chat.dt.agents.get(agentId);
+        if (!pg) { pg = { messages: [], start: 0, end: 0, more: false, loading: false, error: '' }; chat.dt.agents.set(agentId, pg); }
+        if (pg.loading) return;
+        pg.loading = true;
+        detailBoxes(id);
+        try {
+            const r = unwrap(await send('claude_desk_session', earlier ? { action: 'agent_page', id, agentId, before: pg.start, limit: 80 } : { action: 'agent_page', id, agentId, limit: 80 }), 'messages');
+            pg.messages = earlier ? (r.messages || []).concat(pg.messages) : (r.messages || []);
+            pg.start = r.start;
+            if (!earlier) pg.end = r.end;
+            pg.more = !!r.more;
+            pg.error = '';
+        } catch (e) { pg.error = isGone(e) ? NOT_YET : errText(e); }
+        pg.loading = false;
+        detailBoxes(id);
+    }
+
+    async function loadTaskOutput(id, taskId) {
+        const chat = chatOf(id);
+        if (!chat || !chat.dt) return;
+        const meta = ((chat.dt.data && chat.dt.data.tasks) || []).find((x) => x.taskId === taskId);
+        if (meta && meta.kind === 'agent') {
+            // a background agent has no output file: its conversation is under Background Agents
+            const ag = ((chat.dt.data && chat.dt.data.agents) || []).find((x) => x.agentId === taskId);
+            chat.dt.task = { taskId, hint: ag ? `This task is the background agent "${ag.description || taskId}": its conversation is shown under Background Agents.` : 'This task is a background agent: its conversation is under Background Agents.' };
+            if (ag) { chat.dt.agentSel = ag.agentId; if (!chat.dt.agents.has(ag.agentId)) void loadAgentPage(id, ag.agentId, false); }
+            detailBoxes(id);
+            return;
+        }
+        const t = chat.dt.task = { taskId, loading: true, error: '', text: '' };
+        detailBoxes(id);
+        try {
+            const r = unwrap(await send('claude_desk_session', { action: 'task_output', id, taskId }), 'text');
+            if (chat.dt.task === t) Object.assign(t, { text: r.text || '', sizeBytes: r.sizeBytes, modifiedAt: r.modifiedAt, error: '' });
+        } catch (e) { t.error = isGone(e) ? NOT_YET : errText(e); }
+        t.loading = false;
+        if (chat.dt.task === t) detailBoxes(id);
+    }
+
     /** New messages of the open session are pushed to this window (one session at a time). */
     async function watch(id) {
         if (S.watching === id) return;
@@ -417,6 +486,28 @@
         if (l.resetsAt <= now) return 'Reset since the last reading';
         return `Resets ${new Date(l.resetsAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
     }
+    const isPreferred = (idx) => { const f = fleetOf(idx); return !!(f && f.settings && f.settings.preferred); };
+
+    /**
+     * Vista's information bar for an account that nears a limit or is no longer free to schedule work
+     * (fleet row availability: state near | capped | exhausted): the warning icon while it can still take work,
+     * the error icon once it cannot.
+     */
+    function availBar(f, withName) {
+        const av = f && f.availability;
+        if (!av) return '';
+        const bad = av.state === 'near' || av.state === 'capped' || av.state === 'exhausted' || av.schedulable === false;
+        if (!bad) return '';
+        const icon = av.state === 'near' && av.schedulable !== false ? 'warning' : 'error';
+        const fallback = av.state === 'near' ? 'is close to a usage limit.' : (av.state === 'exhausted' ? 'has used up its plan usage.' : 'has reached a usage limit.');
+        const msg = av.message ? String(av.message) : `${f.name} ${fallback}`;
+        const at = av.resetsAt ? new Date(av.resetsAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+        // the server's sentence may already end on "until it resets": the time then completes it
+        const base = msg.replace(/[\s.]+$/, '');
+        const text = !at ? `${base}.` : (/\bresets?$/i.test(base) ? `${base} ${at}.` : `${base}. Resets ${at}.`);
+        return `<div class="cd-infobar is-${icon}" role="alert"><img src="${VI}/${icon}-16.png" alt=""><span>${withName && !msg.includes(f.name) ? `<b>${esc(f.name)}</b>: ` : ''}${esc(text)}</span></div>`;
+    }
+
     function usageBlock(a, now) {
         const planText = a.plan ? String(a.plan).replace(/^\w/, (ch) => ch.toUpperCase()) : '';
         const who = [a.engine ? 'Director' : '', a.onHost ? 'Remote Control' : ''].filter(Boolean).join(', ');
@@ -428,7 +519,7 @@
                 const pct = Math.max(0, Math.min(100, Math.round(l.percent)));
                 const stale = l.resetsAt && l.resetsAt <= now;
                 return `<div class="cd-usage-row"><span class="cd-usage-label">${esc(l.label || l.short || l.kind)}</span>`
-                    + `<div class="mmc-progress"><div role="progressbar"${lv ? ` class="${lv}"` : ''} aria-valuemin="0" aria-valuemax="100" aria-valuenow="${stale ? 0 : pct}"><div data-w="${stale ? 0 : pct}"></div></div><span>${stale ? '' : `${pct}%`}</span></div>`
+                    + `<div class="mmc-progress"><div role="progressbar"${lv ? ` class="${lv}"` : ''} aria-valuemin="0" aria-valuemax="100" aria-valuenow="${stale ? 0 : pct}"><div class="cd-fill" data-w="${stale ? 0 : pct}"></div></div><span>${stale ? '' : `${pct}%`}</span></div>`
                     + `<span class="cd-usage-reset mmc-hint">${esc(resetText(l, now))}</span></div>`;
             }).join('');
         } else {
@@ -438,7 +529,7 @@
         const extra = x && x.enabled ? `<p class="mmc-hint">Extra usage is on${x.limitReached ? ' (limit reached)' : ''}.</p>` : '';
         const err = limits.length && a.error ? `<p class="mmc-hint">${esc(a.error)}</p>` : '';
         return `<div class="cd-usage-acct"><div class="cd-usage-head"><img src="${esc(S.app.url('assets').replace(/\/$/, ''))}/account-16.png" alt=""><b>${esc(a.name)}</b>`
-            + `<span class="mmc-hint">${esc([planText, who].filter(Boolean).join(' - '))}</span></div>${body}${extra}${err}</div>`;
+            + `<span class="mmc-hint">${esc([planText, who, isPreferred(a.index) ? 'Preferred' : ''].filter(Boolean).join(' - '))}</span></div>${availBar(fleetOf(a.index), false)}${body}${extra}${err}</div>`;
     }
     function usageHtml() {
         const rows = [...S.usage.values()].sort((a, b) => (a.index || 0) - (b.index || 0));
@@ -449,7 +540,7 @@
 
     // ---- the supervisor (claude_desk_supervisor) -----------------------------------------------------------
 
-    const SUP_DEFAULT = { enabled: false, engine: 'tokenrouter', model: '', delivery: 'inbox' };
+    const SUP_DEFAULT = { enabled: false, engine: 'tokenrouter', model: '', delivery: 'inbox', manageLocks: false, trackArtifacts: false, maxConcurrent: 3, autoStart: true };
     const SUP_FALLBACK_ENGINES = [{ id: 'tokenrouter', name: 'TokenRouter', defaultModel: 'deepseek/deepseek-v4.1-flash' }];
     const DELIVERY = [['inbox', 'Inbox only'], ['steer', 'Type into the session'], ['off', 'Off']];
     const VERDICT = { ok: ['Complete', `${VI}/check-16.png`], gaps: ['Gaps found', `${VI}/warning-16.png`], unclear: ['Unclear', `${VI}/info-16.png`], error: ['Review failed', `${VI}/error-16.png`] };
@@ -460,6 +551,18 @@
     const supReview = (id) => supReviews().find((r) => String(r.id) === String(id)) || null;
     const supEngine = (id) => supEngines().find((e) => e.id === id) || null;
     const SUP_GONE = /unknown message type/i;
+    const supWork = () => (S.sup.data && Array.isArray(S.sup.data.work) ? S.sup.data.work : []);
+    const workOf = (id) => supWork().find((w) => String(w.id) === String(id)) || null;
+    const WORK_STATE = { queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Waiting', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+    const WORK_SOURCE = { fleet: 'Fleet', plaud: 'Plaud', director: 'Director', agent: 'Agent' };
+    const WORK_OPEN = new Set(['queued', 'starting', 'running', 'waiting']);
+    const workIcon = (st) => ({ queued: `${VI}/info-16.png`, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || `${S.app.url('assets').replace(/\/$/, '')}/session-16.png`);
+    const supLocks = () => (S.sup.data && Array.isArray(S.sup.data.locks) ? S.sup.data.locks : []);
+    const supArtifacts = () => (S.sup.data && Array.isArray(S.sup.data.artifacts) ? S.sup.data.artifacts : []);
+    const LOCK_STATE = { live: 'Live', idle: 'Idle', orphan: 'Orphan' };
+    const PLANTED = { agent: 'Agent', supervisor: 'Supervisor', unknown: 'Unknown' };
+    const ART_KIND = { dir: 'Folder', file: 'File', worktree: 'Worktree' };
+    const ART_STATE = { live: 'In use', orphan: 'Orphan', gone: 'Gone' };
 
     function supTake(r) {
         if (r && r.settings) { S.sup.data = Object.assign({}, S.sup.data || {}, r); S.sup.draft = null; S.sup.loaded = true; S.sup.unavailable = false; S.sup.error = ''; S.sup.stale = false; }
@@ -532,6 +635,10 @@
             <label><span>Engine:</span><select class="vdt-select" data-sup="engine">${engineOpts}</select></label>
             <label><span>Model:</span><input type="text" data-sup="model" value="${esc(st.model || '')}" placeholder="${esc(placeholder)}" spellcheck="false" autocomplete="off"></label>
             <label><span>Delivery:</span><select class="vdt-select" data-sup="delivery">${DELIVERY.map(([v, t]) => `<option value="${v}"${v === st.delivery ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+            <label><span>Max concurrent sessions:</span><input type="text" data-sup="maxConcurrent" value="${esc(st.maxConcurrent == null ? 3 : st.maxConcurrent)}" inputmode="numeric" autocomplete="off"></label>
+            <label class="cd-check"><input type="checkbox" data-sup="autoStart"${st.autoStart === false ? '' : ' checked'}><span>Start queued work automatically</span></label>
+            <label class="cd-check"><input type="checkbox" data-sup="manageLocks"${st.manageLocks ? ' checked' : ''}><span>Manage busy locks for agents</span></label>
+            <label class="cd-check"><input type="checkbox" data-sup="trackArtifacts"${st.trackArtifacts ? ' checked' : ''}><span>Track work folders and temp files</span></label>
             <p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="sup-save"${sup.busy ? ' disabled' : ''}>Save</button>${sup.draft ? ' <span class="mmc-hint">Not saved yet.</span>' : ''}</p>
         </div>`;
         const reviews = supReviews().filter((r) => !r.dismissed);
@@ -546,11 +653,33 @@
             { t: 'Summary', w: 250, key: 'summary', text: (d) => d.summary },
             { t: 'When', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => d.at }
         ], rows, { sortId: 'cd-sup', sort: { key: 'at', dir: -1 }, empty: sup.data && sup.data.settings && sup.data.settings.enabled ? 'No review yet. Each agent turn that ends is reviewed.' : 'The supervisor is off. Turn it on above to review finished agent turns.' });
+        const locks = supLocks();
+        const arts = supArtifacts();
+        const lockRows = locks.map((l) => ({ key: `lk:${l.root || ''}|${l.file}`, icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, cls: l.state === 'orphan' ? 'cd-stale' : '', data: { file: l.file, agent: l.agentName || l.agentId || '', state: LOCK_STATE[l.state] || l.state || '', by: PLANTED[l.plantedBy] || '', age: l.ageMinutes } }));
+        const lockList = c.listView([
+            { t: 'Lock', w: 170, key: 'file', text: (d) => d.file },
+            { t: 'Agent', w: 130, key: 'agent', text: (d) => d.agent },
+            { t: 'State', w: 70, key: 'state', text: (d) => d.state },
+            { t: 'Planted By', w: 80, key: 'by', text: (d) => d.by },
+            { t: 'Age', w: 70, key: 'age', num: true, text: (d) => (d.age == null ? '' : ageText(d.age)), value: (d) => d.age || 0 }
+        ], lockRows, { sortId: 'cd-sup-locks', sort: { key: 'age', dir: -1 }, empty: 'No agent holds a busy lock.' });
+        const artRows = arts.map((a) => ({ key: `ar:${a.id}`, icon: a.kind === 'file' ? `${VI}/explorer/file-16.png` : FOLDER16, cls: a.state === 'orphan' ? 'cd-stale' : '', data: { path: a.path, kind: ART_KIND[a.kind] || a.kind || '', who: a.agentName || shortId(a.sessionId), size: a.sizeBytes, age: a.ageHours, state: ART_STATE[a.state] || a.state || '' } }));
+        const artList = c.listView([
+            { t: 'Path', w: 230, key: 'path', text: (d) => d.path },
+            { t: 'Kind', w: 70, key: 'kind', text: (d) => d.kind },
+            { t: 'Session', w: 110, key: 'who', text: (d) => d.who },
+            { t: 'Size', w: 64, key: 'size', num: true, text: (d) => bytesText(d.size), value: (d) => d.size || 0 },
+            { t: 'Age', w: 60, key: 'age', num: true, text: (d) => (d.age == null ? '' : ageText(Math.round(d.age * 60))), value: (d) => d.age || 0 },
+            { t: 'State', w: 64, key: 'state', text: (d) => d.state }
+        ], artRows, { sortId: 'cd-sup-arts', sort: { key: 'age', dir: -1 }, empty: st.trackArtifacts ? 'No work folder or temp file is tracked.' : 'Tracking is off. Tick "Track work folders and temp files" above.' });
+        const total = stats.artifactBytes != null ? stats.artifactBytes : arts.reduce((n, a) => n + (a.sizeBytes || 0), 0);
         const side = sup.busy || sup.error || `${stats.reviewed || 0} reviewed, ${stats.gaps || 0} with gaps${stats.lastAt ? `, last ${when(stats.lastAt)}` : ''}`;
         const html = c.page('Supervisor', side, [
             { id: 'cd-sup-set', title: 'Settings', body: form },
             { id: 'cd-sup-list', title: `Reviews (${reviews.length})`, body: `<div class="cd-sup-list">${list}</div>` },
-            { id: 'cd-sup-detail', title: 'Selected Review', body: `<div class="cd-sup-detail">${supDetailHtml()}</div>` }
+            { id: 'cd-sup-detail', title: 'Selected Review', body: `<div class="cd-sup-detail">${supDetailHtml()}</div>` },
+            { id: 'cd-sup-locks', title: `Locks (${locks.length})`, body: `<div class="cd-sup-list">${lockList}</div><p class="cd-sup-actions"><button type="button" class="btn-standard" data-act="sup-lock-remove"${sup.busy ? ' disabled' : ''}>Remove</button> <span class="mmc-hint">Removes the selected lock when its agent is gone (an orphan).</span></p>` },
+            { id: 'cd-sup-arts', title: `Work folders and temp files (${arts.length})`, body: `<div class="cd-sup-list">${artList}</div><p class="mmc-hint">${arts.length ? `${esc(bytesText(total))} in all.` : ''}</p><p class="cd-sup-actions"><button type="button" class="btn-standard" data-act="sup-art-clean"${sup.busy ? ' disabled' : ''}>Clean</button> <button type="button" class="btn-standard" data-act="sup-art-forget"${sup.busy ? ' disabled' : ''}>Forget</button> <span class="mmc-hint">Clean deletes it from disk; Forget only stops tracking it.</span></p>` }
         ]);
         return {
             html,
@@ -574,9 +703,32 @@
             }
         };
     }
+    function workPage(c) {
+        if (!S.sup.loaded) { void loadSupervisor(); return c.page('Work Queue', '', [{ id: 'cd-wq-wait', title: 'Work Queue', body: '<p class="mmc-hint">Reading the work queue...</p>' }]); }
+        if (S.sup.unavailable) return c.page('Work Queue', '', [{ id: 'cd-wq-gone', title: 'Work Queue', body: `<p>${NOT_YET}</p>` }]);
+        const rows = supWork().map((w) => ({
+            key: `w:${w.id}`,
+            icon: workIcon(w.state),
+            cls: w.state === 'running' || w.state === 'starting' ? 'cd-live' : (w.state === 'failed' ? 'cd-stale' : ''),
+            data: { title: w.title || String(w.id), state: WORK_STATE[w.state] || w.state || '', source: WORK_SOURCE[w.source] || w.source || '', account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), model: [w.model, w.effort].filter(Boolean).join(' / '), session: w.sessionId ? shortId(w.sessionId) : '', at: w.createdAt || 0, message: w.message || '' }
+        }));
+        const lv = c.listView([
+            { t: 'Request', w: 230, key: 'title', text: (d) => d.title },
+            { t: 'State', w: 76, key: 'state', text: (d) => d.state },
+            { t: 'From', w: 66, key: 'source', text: (d) => d.source },
+            { t: 'Account', w: 90, key: 'account', text: (d) => d.account },
+            { t: 'Model / Effort', w: 100, key: 'model', text: (d) => d.model },
+            { t: 'Session', w: 70, key: 'session', text: (d) => d.session },
+            { t: 'Queued', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => Number(d.at) || Date.parse(d.at) || 0 },
+            { t: 'Note', w: 220, key: 'message', text: (d) => d.message }
+        ], rows, { sortId: 'cd-work', sort: { key: 'at', dir: -1 }, empty: 'The queue is empty. A request from New Session..., Plaud or an agent waits here until an account has room.', fit: true });
+        return { html: lv, list: true };
+    }
+
     /** The selected review's detail again, without drawing the page (the settings keep what is typed). */
     function supSelect(key) {
-        S.sup.sel = key && key.startsWith('v:') ? key.slice(2) : '';
+        if (!key || !key.startsWith('v:')) return;
+        S.sup.sel = key.slice(2);
         const box = S.c && S.c.modal.querySelector('.cd-sup-detail');
         if (box) box.innerHTML = supDetailHtml();
     }
@@ -621,7 +773,7 @@
                         { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
                         { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
                         { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' },
-                        { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Reviews of finished agent turns against what was asked' }
+                        { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Reviews of finished agent turns against what was asked', children: [{ id: 'co-work', name: 'Work Queue', icon: `${A}/session-16.png`, desc: 'Requests waiting for, starting on and running on an account' }] }
                     ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: `${S.app ? S.app.url('assets').replace(/\/$/, '') : '/melaton-apps/claudedesk/assets'}/session-16.png`, desc: 'What this agent is doing' }] : [])
                 }
             ]
@@ -675,7 +827,7 @@
 
     const ACCOUNT_COLS = [
         { t: 'Name', w: 170, key: 'name', text: (d) => d.name },
-        { t: 'Status', w: 120, key: 'status', text: (d) => d.status },
+        { t: 'Status', w: 150, key: 'status', text: (d) => d.status },
         { t: 'Remote Control Login', w: 200, key: 'login', text: (d) => d.login },
         { t: 'Plan', w: 70, key: 'plan', text: (d) => d.plan },
         { t: 'Running', w: 60, key: 'running', num: true, text: (d) => String(d.running), value: (d) => d.running }
@@ -684,7 +836,7 @@
     function accountsPage(c) {
         const A = S.app.url('assets').replace(/\/$/, '');
         const rows = S.accounts.map((a) => {
-            const status = [a.active ? 'Engine' : '', a.onHost ? 'On host' : ''].filter(Boolean).join(', ') || (a.remoteLogin ? 'Ready' : 'No login linked');
+            const status = [a.active ? 'Engine' : '', a.onHost ? 'On host' : '', isPreferred(a.index) ? 'Preferred' : ''].filter(Boolean).join(', ') || (a.remoteLogin ? 'Ready' : 'No login linked');
             const running = S.sessions.filter((s) => s.account && s.account.index === a.index && liveOf(s.id)).length;
             return {
                 key: `a:${a.index}`,
@@ -704,7 +856,7 @@
     }
 
     const FLEET_COLS = [
-        { t: 'Account', w: 130, min: 90, key: 'name', text: (d) => d.name },
+        { t: 'Account', w: 170, min: 90, key: 'name', text: (d) => d.name },
         { t: 'Remote Control', w: 120, min: 100, key: 'state', text: (d) => d.stateText, html: (d) => d.stateHtml },
         { t: 'Folder', w: 84, min: 76, key: 'folder', text: (d) => d.folder },
         { t: 'Sessions', w: 58, min: 58, key: 'sessions', num: true, text: (d) => String(d.sessions), value: (d) => d.sessions },
@@ -719,7 +871,7 @@
             icon: `${A}/account-16.png`,
             cls: f.state === 'connected' ? '' : (f.state === 'error' ? 'cd-rc-error' : ''),
             data: {
-                name: f.name,
+                name: f.settings && f.settings.preferred ? `${f.name} (Preferred)` : f.name,
                 stateText: RC_TEXT[f.state] || f.state,
                 stateHtml: fleetState(c, f),
                 folder: f.moved ? 'Own folder' : (f.onHost ? 'Host login' : 'None'),
@@ -728,7 +880,9 @@
             }
         }));
         const empty = S.fleetError ? `Remote Control could not be read. ${S.fleetError}` : (S.fleet ? 'There are no Claude accounts.' : 'Reading every account\'s Remote Control...');
-        return { html: c.listView(FLEET_COLS, rows, { sortId: 'cd-fleet', empty, fit: true }), list: true };
+        const lv = c.listView(FLEET_COLS, rows, { sortId: 'cd-fleet', empty, fit: true });
+        const bars = fleetRows().map((f) => availBar(f, true)).join('');
+        return bars ? { html: `<div class="cd-list-wrap">${bars}${lv}</div>`, list: true, split: true } : { html: lv, list: true };
     }
 
     function hostRcPage(c) {
@@ -942,7 +1096,7 @@
         const live = a.live;
         const files = (d.edited && d.edited.files) || [];
         // head: [title, width?] (no width: the column takes the rest)
-        const table = (head, rows) => (rows.length ? `<table class="cd-table"><colgroup>${head.map(([, w]) => `<col${w ? ` style="width:${w}px"` : ''}>`).join('')}</colgroup><thead><tr>${head.map(([h]) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>` : '<p class="mmc-hint">None.</p>');
+        const table = (head, rows) => (rows.length ? `<table class="cd-table"><colgroup>${head.map(([, w]) => `<col${w ? ` class="cd-w${w}"` : ''}>`).join('')}</colgroup><thead><tr>${head.map(([h]) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>` : '<p class="mmc-hint">None.</p>');
         const unc = d.uncommitted;
         return c.page(`Inspect: ${a.name || a.id}`, ins.loading ? 'Reading...' : (ins.error ? `Error: ${ins.error}` : ''), [
             { id: 'cd-in-agent', title: 'Agent', body: c.props([
@@ -995,15 +1149,18 @@
     function chatPage(c, id) {
         let chat = S.chats.get(id);
         if (!chat) { void loadChat(id, false); chat = { messages: [], loading: true, row: rowOf(id) }; }
+        if (chat.view === 'detail') return { html: detailPage(c, id, chat), split: false };
         const row = chat.row || rowOf(id) || { id };
         const l = liveOf(id);
         const acct = row.account ? row.account.name : '';
         const side = [stateText(row), acct, row.folder].filter(Boolean).join(' - ');
-        const linkBits = l && l.link ? `<span class="mmc-link" data-act="open-link" data-arg="${esc(l.link)}">Open in claude.ai</span> <span class="mmc-link" data-act="copy-link" data-arg="${esc(l.link)}">Copy link</span>` : '';
+        const linkBits = `<span class="mmc-link" data-act="detail-toggle">Details</span>${l && serverOrigin(id) ? ' <span class="mmc-link" data-act="takeover">Take Over in Fleet</span>' : ''}${l && l.link ? ` <span class="mmc-link" data-act="open-link" data-arg="${esc(l.link)}">Open in claude.ai</span> <span class="mmc-link" data-act="copy-link" data-arg="${esc(l.link)}">Copy link</span>` : ''}`;
         const top = chat.more ? `<div class="cd-earlier"><button type="button" class="btn-standard" data-act="earlier" data-arg="${esc(id)}"${chat.loading ? ' disabled' : ''}>Show Earlier Messages</button></div>` : '';
         const body = chat.error ? `<p class="cd-err">${esc(chat.error)}</p>` : (chat.messages.length ? logHtml(chat) : `<p class="mmc-hint">${chat.loading ? 'Reading the conversation...' : 'No messages yet.'}</p>`);
         let composer;
-        if (l) {
+        if (l && serverOrigin(id)) {
+            composer = `<div class="cd-compose cd-ended"><span>This session runs inside Remote Control's server, so Fleet has no terminal to type into.</span><button type="button" class="btn-standard primary" data-act="takeover" data-arg="${esc(id)}">Take Over in Fleet...</button></div>`;
+        } else if (l) {
             composer = `<div class="cd-compose">
                 <textarea class="cd-input" data-field="cd-input-${esc(id)}" rows="3" placeholder="${l.status === 'busy' ? 'Steer it: your message reaches it while it works' : 'Message this session'}" spellcheck="true"></textarea>
                 <div class="cd-compose-btns">
@@ -1041,6 +1198,110 @@
         };
     }
 
+    const bytesText = (n) => (n == null ? '' : (n < 1024 ? `${n} B` : (n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`)));
+    const STATUS_TEXT = { busy: 'Working', idle: 'Idle', waiting: 'Idle', running: 'Running', ended: 'Ended' };
+
+    function agentBoxHtml(chat) {
+        const dt = chat && chat.dt;
+        if (!dt || !dt.agentSel) return '<p class="mmc-hint">Select a background agent to read what it did.</p>';
+        const pg = dt.agents.get(dt.agentSel);
+        if (!pg || (pg.loading && !pg.messages.length)) return '<p class="mmc-hint">Reading the agent\'s conversation...</p>';
+        if (pg.error) return `<p class="cd-err">${esc(pg.error)}</p>`;
+        if (!pg.messages.length) return '<p class="mmc-hint">This agent has no messages yet.</p>';
+        const top = pg.more ? `<div class="cd-earlier"><button type="button" class="btn-standard" data-act="agent-earlier" data-arg="${esc(dt.agentSel)}"${pg.loading ? ' disabled' : ''}>Show Earlier Messages</button></div>` : '';
+        return `<div class="cd-chat-log cd-agent-log">${top}${logHtml(pg)}</div>`;
+    }
+    function taskBoxHtml(chat) {
+        const t = chat && chat.dt && chat.dt.task;
+        if (!t) return '<p class="mmc-hint">Select a background task to read the end of its output.</p>';
+        if (t.hint) return `<p class="mmc-hint">${esc(t.hint)}</p>`;
+        if (t.loading) return '<p class="mmc-hint">Reading the output...</p>';
+        if (t.error) return `<p class="cd-err">${esc(t.error)}</p>`;
+        return `<p class="mmc-hint">${esc([`The end of the output (${bytesText(t.sizeBytes)} in all)`, t.modifiedAt ? `last written ${when(t.modifiedAt)}` : ''].filter(Boolean).join(', '))}</p><pre class="cd-pre cd-task-out">${esc(t.text || '(no output)')}</pre>`;
+    }
+    /** The two boxes under the agents and tasks lists, drawn again without drawing the page. */
+    function detailBoxes(id) {
+        const chat = chatOf(id);
+        const m = S.c && S.c.node === `t:${id}` ? S.c.modal : null;
+        if (!m || !chat) return;
+        const a = m.querySelector('.cd-agent-box');
+        const t = m.querySelector('.cd-task-box');
+        if (a) a.innerHTML = agentBoxHtml(chat);
+        if (t) t.innerHTML = taskBoxHtml(chat);
+        const log = a && a.querySelector('.cd-chat-log');
+        if (log && !log.dataset.kept) { log.dataset.kept = '1'; log.scrollTop = log.scrollHeight; }
+        delete m.querySelector('.mmc-result').dataset.html;
+    }
+    function detailSelect(key, id) {
+        const chat = chatOf(id);
+        if (!chat || !chat.dt) return;
+        if (key && key.startsWith('ag:')) {
+            chat.dt.agentSel = key.slice(3);
+            if (!chat.dt.agents.has(chat.dt.agentSel)) void loadAgentPage(id, chat.dt.agentSel, false);
+            else detailBoxes(id);
+        } else if (key && key.startsWith('tk:')) {
+            void loadTaskOutput(id, key.slice(3));
+        }
+    }
+
+    function detailPage(c, id, chat) {
+        if (!chat.dt || (!chat.dt.data && !chat.dt.loading && !chat.dt.error && !chat.dt.gone)) { void loadDetail(id); }
+        const dt = chat.dt || { loading: true, agents: new Map() };
+        const row = chat.row || rowOf(id) || { id };
+        const title = titleOf(row);
+        const back = `<span class="mmc-link" data-act="detail-toggle">Back to the conversation</span> &nbsp; <span class="mmc-link" data-act="detail-refresh">Read again</span>${liveOf(id) && serverOrigin(id) ? ` &nbsp; <span class="mmc-link" data-act="takeover" data-arg="${esc(id)}">Take Over in Fleet</span>` : ''}`;
+        const d = dt.data;
+        if (!d) {
+            const msg = dt.gone ? 'Session details are not available on this server yet.' : (dt.error || 'Reading the session...');
+            return c.page(title, '', [{ id: 'cd-dt-wait', title: 'Details', body: `<p class="${dt.error ? 'cd-err' : 'mmc-hint'}">${esc(msg)}</p><p>${back}</p>` }]);
+        }
+        const A = S.app.url('assets').replace(/\/$/, '');
+        const link = d.link || '';
+        const agents = Array.isArray(d.agents) ? d.agents : [];
+        const tasks = Array.isArray(d.tasks) ? d.tasks : [];
+        const edited = d.edited && Array.isArray(d.edited.files) ? d.edited.files : [];
+        const claims = Array.isArray(d.claims) ? d.claims : [];
+        const reviews = Array.isArray(d.reviews) ? d.reviews : supReviews().filter((r) => r.sessionId === id);
+        const table = (head, rows, none) => (rows.length ? `<table class="cd-table"><colgroup>${head.map(([, w]) => `<col${w ? ` class="cd-w${w}"` : ''}>`).join('')}</colgroup><thead><tr>${head.map(([h]) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>` : `<p class="mmc-hint">${none}</p>`);
+        const agentRows = agents.map((x) => ({ key: `ag:${x.agentId}`, icon: `${A}/session-16.png`, cls: x.finished ? '' : 'cd-live', data: { desc: x.description || x.agentId, type: x.type || '', model: x.model || '', state: x.finished ? 'Finished' : 'Running', last: x.lastActivity || 0, messages: x.messages || 0 } }));
+        const taskRows = tasks.map((x) => ({ key: `tk:${x.taskId}`, icon: `${ITEMS}/administrative-tools-16.png`, cls: x.running ? 'cd-live' : '', data: { id: x.taskId, kind: { shell: 'Shell', monitor: 'Monitor', agent: 'Agent' }[x.kind] || x.kind || '', state: x.running ? 'Running' : 'Ended', size: x.sizeBytes || 0, at: x.modifiedAt || 0 } }));
+        const agentList = c.listView([
+            { t: 'Description', w: 230, key: 'desc', text: (r) => r.desc },
+            { t: 'Type', w: 90, key: 'type', text: (r) => r.type },
+            { t: 'Model', w: 80, key: 'model', text: (r) => r.model },
+            { t: 'State', w: 70, key: 'state', text: (r) => r.state },
+            { t: 'Last Activity', w: 128, key: 'last', text: (r) => when(r.last), value: (r) => Number(r.last) || Date.parse(r.last) || 0 },
+            { t: 'Messages', w: 62, key: 'messages', num: true, text: (r) => String(r.messages), value: (r) => r.messages }
+        ], agentRows, { sortId: 'cd-dt-ag', sort: { key: 'last', dir: -1 }, empty: 'This session has run no background agents.' });
+        const taskList = c.listView([
+            { t: 'Task', w: 150, key: 'id', text: (r) => r.id },
+            { t: 'Kind', w: 80, key: 'kind', text: (r) => r.kind },
+            { t: 'State', w: 70, key: 'state', text: (r) => r.state },
+            { t: 'Output', w: 80, key: 'size', num: true, text: (r) => bytesText(r.size), value: (r) => r.size },
+            { t: 'Last Written', w: 128, key: 'at', text: (r) => when(r.at), value: (r) => Number(r.at) || Date.parse(r.at) || 0 }
+        ], taskRows, { sortId: 'cd-dt-tk', sort: { key: 'at', dir: -1 }, empty: 'This session has no background tasks.' });
+        const l = liveOf(id);
+        const status = d.live === false ? 'Ended' : (STATUS_TEXT[d.status] || (l ? stateText(row) : d.status) || '');
+        return c.page(d.title || title, status, [
+            { id: 'cd-dt-info', title: 'Session', body: c.props([
+                ['Status', esc(status)],
+                ['Account', esc(d.account && d.account.name ? d.account.name : (d.account || ''))],
+                ['Model', esc(d.model || '')],
+                ['Effort', esc(d.effort || 'Default')],
+                ['Branch', esc(d.branch || '')],
+                ['Folder', esc(d.cwd || '')],
+                ['Remote Control', link ? `<span class="mmc-link" data-act="open-link" data-arg="${esc(link)}">Open in claude.ai</span> &nbsp; <span class="mmc-link" data-act="copy-link" data-arg="${esc(link)}">Copy link</span>` : 'Not connected'],
+                ['Started', esc(when(d.startedAt))],
+                ['Last activity', esc(when(d.lastActivity))]
+            ]) + `<p>${back}</p>` },
+            { id: 'cd-dt-agents', title: `Background Agents (${agents.length})`, body: `<div class="cd-dt-list">${agentList}</div><div class="cd-dt-box cd-agent-box">${agentBoxHtml(chat)}</div>` },
+            { id: 'cd-dt-tasks', title: `Background Tasks (${tasks.length})`, body: `<div class="cd-dt-list">${taskList}</div><div class="cd-dt-box cd-task-box">${taskBoxHtml(chat)}</div>` },
+            { id: 'cd-dt-claims', title: `Claims (${claims.length})`, body: table([['Path']], claims.map((p) => `<tr><td>${esc(p)}</td></tr>`), 'It holds no claim.') },
+            { id: 'cd-dt-files', title: `Files Edited (${d.edited ? d.edited.total || edited.length : 0})`, body: table([['File'], ['Via', 76], ['Edits', 46], ['Uncommitted', 84]], edited.map((f) => `<tr><td>${esc(f.path)}</td><td>${f.via === 'shell' ? 'Shell' : esc(f.via || '')}</td><td class="is-num">${f.edits == null ? '' : f.edits}</td><td>${f.uncommitted == null ? '' : (f.uncommitted ? 'Yes' : 'No')}</td></tr>`), 'It has edited no file.') },
+            { id: 'cd-dt-reviews', title: `Supervisor Reviews (${reviews.length})`, body: table([['Verdict', 100], ['Summary'], ['When', 130]], reviews.map((r) => `<tr><td>${esc((VERDICT[r.verdict] || [r.verdict || ''])[0])}</td><td>${esc(r.summary || '')}</td><td>${esc(when(r.at))}</td></tr>`), 'The supervisor has not reviewed this session.') }
+        ]);
+    }
+
     /** New messages go at the end of the open chat without drawing the page again (scroll kept at the end). */
     function appendChat(id) {
         const pane = S.c && S.c.modal.querySelector('.cd-chat-log');
@@ -1059,9 +1320,23 @@
 
     // ---- commands -----------------------------------------------------------------------------------------
 
-    /** The usage bars' widths are set after the page is drawn (a script, not an inline style in the markup). */
+    /**
+     * The usage bars' widths are set after the page is drawn (a script, not an inline style in the markup).
+     * The Vista fill carries 8 px end caps that give it a 16 px minimum, so 0% is hidden and a fill too short
+     * for its caps drops them; --cd-w feeds the width (cd-fill in claudedesk.css) that spans the track edge to edge.
+     */
+    function paintBars(pane) {
+        const fills = Array.from(pane.querySelectorAll('[data-w]'));
+        const outer = fills.map((el) => (el.parentElement ? el.parentElement.offsetWidth : 0));
+        fills.forEach((el, i) => {
+            const p = Math.max(0, Math.min(100, Number(el.dataset.w) || 0));
+            el.style.setProperty('--cd-w', String(p));
+            el.classList.toggle('is-empty', p <= 0);
+            el.classList.toggle('is-short', p > 0 && outer[i] * p / 100 < 18);
+        });
+    }
     function withBars(html) {
-        return { html, mount: (pane) => { pane.querySelectorAll('[data-w]').forEach((el) => { el.style.width = `${el.dataset.w}%`; }); } };
+        return { html, mount: (pane) => paintBars(pane) };
     }
 
     function page(n, c) {
@@ -1073,6 +1348,7 @@
             case 'co-builds': return buildsPage(c);
             case 'co-locks': return locksPage(c);
             case 'co-supervisor': return supervisorPage(c);
+            case 'co-work': return workPage(c);
             case 'sessions': return sessionsPage(c, false);
             case 'running': return sessionsPage(c, true);
             case 'co-root': return withBars(rootPage(c));
@@ -1093,7 +1369,8 @@
             case 'rc': return [{ text: 'Refresh Status', action: 'fleet-refresh' }];
             case 'co-builds': return [{ text: 'Post Message...', action: 'post' }];
             case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
-            case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }];
+            case 'co-work': return [{ text: 'New Request...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }];
+            case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }, { separator: true }, { text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Clean...', action: 'sup-art-clean' }, { text: 'Forget', action: 'sup-art-forget' }];
             case 'rc-host': return [
                 { text: 'Reconnect', action: 'rc-reconnect' },
                 { text: 'Start', action: 'rc-start', disabled: !!(S.host && S.host.remoteControl && S.host.remoteControl.active === 'active') },
@@ -1116,17 +1393,27 @@
 
     function sessionItems(id) {
         const l = liveOf(id);
-        return [
-            { text: 'Open', action: 'open-session' },
-            { text: 'Send Message...', action: 'message', disabled: !l },
-            { text: 'Stop Current Turn', action: 'interrupt', disabled: !(l && l.status === 'busy') },
+        const server = !!l && serverOrigin(id);
+        const typed = server
+            ? [{ text: 'Take Over in Fleet...', action: 'takeover' }]
+            : [
+                { text: 'Send Message...', action: 'message', disabled: !l },
+                { text: 'Stop Current Turn', action: 'interrupt', disabled: !(l && l.status === 'busy') },
+                { text: 'Compact', action: 'compact', disabled: !l },
+                { text: 'Set Model...', action: 'set-model', disabled: !l },
+                { text: 'Set Effort...', action: 'set-effort', disabled: !l },
+                { text: 'Show Screen', action: 'screen', disabled: !l }
+            ];
+        return [{ text: 'Open', action: 'open-session' }].concat(typed, [
+            { separator: true },
+            { text: chatOf(id) && chatOf(id).view === 'detail' ? 'Conversation' : 'Details', action: 'detail-toggle' },
             { separator: true },
             { text: 'Resume in Remote Control...', action: 'resume', disabled: !!l },
             { text: 'Open in claude.ai', action: 'open-link', disabled: !(l && l.link) },
             { text: 'Copy Link', action: 'copy-link', disabled: !(l && l.link) },
             { separator: true },
             { text: 'End Session', action: 'end', disabled: !(l && l.origin === 'rc') }
-        ];
+        ]);
     }
 
     function selCommands(n, key) {
@@ -1196,6 +1483,13 @@
             const sendable = r.verdict === 'gaps' && !r.delivered && !!liveOf(r.sessionId);
             return { title: r.title || 'Review', items: [{ text: 'Send to Session', action: 'sup-send', disabled: !sendable || !!S.sup.busy }, { text: 'Re-check', action: 'sup-recheck', disabled: !!S.sup.busy }, { text: 'Dismiss', action: 'sup-dismiss', disabled: !!r.dismissed }, { separator: true }, { text: 'Open Session', action: 'open-session' }] };
         }
+        if (key.startsWith('w:')) {
+            const w = workOf(key.slice(2));
+            if (!w) return null;
+            return { title: w.title || 'Request', items: [{ text: 'Start Now', action: 'work-start', disabled: w.state !== 'queued' || !!S.sup.busy }, { text: 'Cancel', action: 'work-cancel', disabled: !WORK_OPEN.has(w.state) || !!S.sup.busy }, { separator: true }, { text: 'Open Session', action: 'work-open', disabled: !w.sessionId }] };
+        }
+        if (key.startsWith('lk:')) { const l = supLocks().find((x) => `${x.root || ''}|${x.file}` === key.slice(3)); return { title: 'Busy Lock', items: [{ text: 'Remove...', action: 'sup-lock-remove', disabled: !l || l.state !== 'orphan' || !!S.sup.busy }] }; }
+        if (key.startsWith('ar:')) { const a = supArtifacts().find((x) => String(x.id) === key.slice(3)); return { title: 'Work Folder', items: [{ text: 'Clean...', action: 'sup-art-clean', disabled: !a || !a.cleanable || !!S.sup.busy }, { text: 'Forget', action: 'sup-art-forget', disabled: !a || !!S.sup.busy }] }; }
         if (key.startsWith('c:')) return { title: 'Claim', items: [{ text: 'Release', action: 'release-claim' }] };
         if (key.startsWith('m:')) return { title: 'Message', items: [{ text: 'Read', action: 'read-message' }, { text: 'Reply...', action: 'reply' }] };
         return null;
@@ -1228,10 +1522,49 @@
                 return true;
             case 'fleet-refresh': await loadFleet(); return true;
             case 'sup-refresh': await loadSupervisor(); return true;
+            case 'work-start': {
+                const w = workOf(selId(c, 'w:'));
+                if (w) await supAct(c, { action: 'work_start', id: w.id }, 'Starting the request...');
+                return true;
+            }
+            case 'work-cancel': {
+                const w = workOf(selId(c, 'w:'));
+                if (!w) return true;
+                const ok = await c.box(`<p>Cancel <b>${esc(w.title || w.id)}</b>?${w.sessionId ? ' Its session is stopped.' : ' It is taken off the queue.'}</p>`,
+                    [{ text: 'Cancel Request', value: true, className: 'btn-standard primary' }, { text: 'Keep', value: false, className: 'btn-standard' }], { icon: 'warning' });
+                if (ok === true) await supAct(c, { action: 'work_cancel', id: w.id }, 'Cancelling...');
+                return true;
+            }
+            case 'work-open': {
+                const w = workOf(selId(c, 'w:'));
+                if (w && w.sessionId) { await loadSessions(false); openChat(c, w.sessionId); } else c.note('It has no session yet.');
+                return true;
+            }
+            case 'sup-lock-remove': {
+                const k = selId(c, 'lk:');
+                const l = supLocks().find((x) => `${x.root || ''}|${x.file}` === k);
+                if (!l) { c.note('Select a lock first.'); return true; }
+                if (l.state !== 'orphan') { await c.box(`<p><b>${esc(l.file)}</b> belongs to an agent that is ${l.state === 'live' ? 'working' : 'still there'}. Only a lock whose agent is gone can be removed.</p>`, null, { icon: 'info', title: 'Remove Lock' }); return true; }
+                const ok = await c.box(`<p>Remove the busy lock <b>${esc(l.file)}</b>${l.agentName ? ` of ${esc(l.agentName)}` : ''}? Its agent is gone, so nothing else holds it.</p>`,
+                    [{ text: 'Remove', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'warning' });
+                if (ok === true) await supAct(c, { action: 'lock_remove', file: l.file, root: l.root }, 'Removing the lock...');
+                return true;
+            }
+            case 'sup-art-clean':
+            case 'sup-art-forget': {
+                const art = supArtifacts().find((x) => String(x.id) === selId(c, 'ar:'));
+                if (!art) { c.note('Select a work folder or temp file first.'); return true; }
+                const clean = a === 'sup-art-clean';
+                if (clean && !art.cleanable) { await c.box(`<p><b>${esc(art.path)}</b> cannot be cleaned${art.state === 'live' ? ': its session is still using it' : art.state === 'gone' ? ': it is already gone from the disk' : ''}.</p>`, null, { icon: 'info', title: 'Clean' }); return true; }
+                const ok = await c.box(clean ? `<p>Delete <b>${esc(art.path)}</b> from the disk? That frees <b>${esc(bytesText(art.sizeBytes) || '0 B')}</b> and cannot be undone.</p>` : `<p>Forget <b>${esc(art.path)}</b>? It stays on the disk; it is only no longer tracked here.</p>`,
+                    [{ text: clean ? 'Clean' : 'Forget', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'warning' });
+                if (ok === true) await supAct(c, { action: clean ? 'artifact_clean' : 'artifact_forget', id: art.id }, clean ? 'Cleaning...' : 'Forgetting...');
+                return true;
+            }
             case 'sup-save': {
                 if (!S.sup.draft) return true;
                 const d = S.sup.draft;
-                await supAct(c, { action: 'save', settings: { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), delivery: d.delivery } }, 'Saving...');
+                await supAct(c, { action: 'save', settings: { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false } }, 'Saving...');
                 return true;
             }
             case 'sup-send': {
@@ -1366,6 +1699,21 @@
                 return true;
             }
             case 'message': await messageBox(c, sid); return true;
+            case 'takeover': await takeoverBox(c, c.node && c.node.startsWith('t:') ? c.node.slice(2) : sid); return true;
+            case 'detail-toggle': {
+                const chat = chatOf(sid);
+                if (!chat) return true;
+                chat.view = chat.view === 'detail' ? 'chat' : 'detail';
+                if (chat.view === 'chat') S.chatScrolled = false;
+                c.render();
+                return true;
+            }
+            case 'detail-refresh': await loadDetail(sid); return true;
+            case 'agent-earlier': await loadAgentPage(c.node && c.node.startsWith('t:') ? c.node.slice(2) : sid, arg, true); return true;
+            case 'compact': await sessionCommand(c, sid, 'compact', undefined, 'Compacting the conversation...'); return true;
+            case 'set-model':
+            case 'set-effort': await setBox(c, sid, a === 'set-model' ? 'model' : 'effort'); return true;
+            case 'screen': await screenBox(c, sid); return true;
             case 'interrupt':
                 try { await send('claude_desk_session', { action: 'interrupt', id: sid }); c.note('Stopped its current turn.'); } catch (e) { await failBox(c, e); }
                 return true;
@@ -1411,15 +1759,7 @@
                 try { const r = await send('unlink_claude_account_login', { index: idx }); if (r.accounts) S.accounts = r.accounts; c.refresh(); } catch (e) { await failBox(c, e); }
                 return true;
             }
-            case 'account-props': {
-                const a = S.accounts.find((x) => x.index === Number(selId(c, 'a:')));
-                if (!a) return true;
-                const l = a.remoteLogin;
-                const rows = [['Name', a.name], ['Engine token', a.fingerprint], ['Engine account', a.active ? 'Yes' : 'No'], ['On the host', a.onHost ? 'Yes' : 'No'],
-                    ['Remote Control login', l ? (l.email || l.displayName) : 'None'], ['Organization', l ? l.organization : ''], ['Plan', l ? l.plan : ''], ['Linked', l ? when(l.linkedAt) : '']];
-                await c.box(`<table class="cd-props">${rows.map(([k, v]) => `<tr><td>${esc(k)}:</td><td>${esc(v || '')}</td></tr>`).join('')}</table>`, null, { icon: 'info', title: `${a.name} Properties`, width: 420 });
-                return true;
-            }
+            case 'account-props': await accountPropsBox(c, Number(selId(c, 'a:'))); return true;
             case 'rc-reconnect':
             case 'rc-start':
             case 'rc-stop': {
@@ -1483,6 +1823,7 @@
         else if (key.startsWith('r:')) void action('fleet-props', c);
         else if (key.startsWith('b:')) void action('build-props', c);
         else if (key.startsWith('l:')) void action('lock-inspect', c);
+        else if (key.startsWith('w:')) void action('work-open', c);
     }
 
     // ---- dialogs ------------------------------------------------------------------------------------------
@@ -1498,7 +1839,7 @@
                 if (!box) return;
                 read = () => {
                     fields = {};
-                    box.querySelectorAll('[data-cd]').forEach((el) => { fields[el.dataset.cd] = el.type === 'checkbox' ? el.checked : el.value; });
+                    box.querySelectorAll('[data-cd]').forEach((el) => { fields[el.dataset.cd] = el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value; });
                 };
                 box.addEventListener('input', read, { signal });
                 box.addEventListener('change', read, { signal });
@@ -1519,27 +1860,298 @@
     const modeOptions = () => MODES.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('');
     const defaultAccount = () => { const h = S.accounts.find((a) => a.onHost) || activeAccount(); return h ? h.index : null; };
 
-    async function newSessionBox(c, accountIndex) {
-        const folder = (S.sessions.find((r) => r.cwd) || {}).cwd || '/home/kanmi/staticforge';
-        const acct = Number.isInteger(accountIndex) ? accountIndex : defaultAccount();
+    // ---- the New Session wizard (Vista's Aero Wizard: a heading, the page, Back / Next / Cancel) ----------------
+
+    const DEFAULT_CWD = '/home/kanmi/staticforge';
+    const WIZ_PATHS = [
+        ['supervised', 'New supervised session', 'A session on the account you choose (or the best one for it) that a separate model checks when each turn ends: was the request and every steering message addressed?'],
+        ['direct', 'Direct request on an account', 'A session on the account you name, with the model, effort and permissions you set. Nothing checks it afterwards.'],
+        ['plaud', 'Import actionable items from Plaud', 'Reads your Plaud recordings and starts a Yozora chat for the actionable items in each.']
+    ];
+    const WIZ_TITLES = {
+        type: ['What do you want to start?', 'Choose what the new session is for.'],
+        supervised: ['New supervised session', 'Say what it should do and where. The account, model and effort start from the account\'s defaults.'],
+        direct: ['Direct request on an account', 'Pick the account, say where it works and what to do.'],
+        plaud: ['Import from Plaud', 'Choose the recordings whose actionable items should be worked on.'],
+        summary: ['Ready to start', 'Check what will happen, then click Finish.']
+    };
+    const pathName = (id) => (WIZ_PATHS.find((p) => p[0] === id) || [])[1] || '';
+    const acctLabel = (v) => (v === 'auto' ? 'Auto (the preferred account, else the most headroom)' : (accountName(Number(v)) || ''));
+
+    /** Model, effort and permissions follow the account picked, until the person changes them. */
+    function wizPrefill(box, val) {
+        const f = val === 'auto' || val === '' ? fleetRows().find((x) => x.settings && x.settings.preferred) : fleetOf(Number(val));
+        const st = (f && f.settings) || {};
+        const model = st.defaultModel || 'sonnet';
+        const known = MODEL_IDS.includes(model);
+        const set = (key, v) => {
+            const el = box.querySelector(`[data-cd="${key}"]`);
+            if (el && v != null) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }
+        };
+        set('model', known ? model : 'sonnet');
+        set('modelId', known ? '' : model);
+        set('effort', st.defaultEffort || '');
+        set('mode', st.defaultMode || 'bypassPermissions');
+    }
+
+    function wizRecs(W) {
+        if (W.recsGone) return `<p class="mmc-hint">${NOT_YET}</p>`;
+        if (W.recsErr) return `<p class="cd-err">${esc(W.recsErr)}</p>`;
+        const recs = W.recs || [];
+        if (!recs.length) return '<p class="mmc-hint">Plaud has no recordings to list.</p>';
+        const dur = (ms) => (ms ? `${Math.max(1, Math.round(ms / 60000))} min` : '');
+        return `<div class="cd-carry cd-recs">${recs.map((r) => `<label class="cd-check"><input type="checkbox" data-cd="rec:${esc(r.id)}"${W.picked && W.picked.has(String(r.id)) ? ' checked' : ''}><span>${esc(r.name || r.id)} <i>${esc([when(r.startAt), dur(r.durationMs)].filter(Boolean).join(', '))}</i></span></label>`).join('')}</div>`;
+    }
+
+    function wizBody(W, page) {
+        const err = W.err ? `<p class="cd-err">${esc(W.err)}</p>` : '';
+        if (page === 'type') {
+            return WIZ_PATHS.map(([id, name, desc]) => `<label class="cd-cmdlink"><input type="radio" name="cd-path" data-cd="path:${id}"${W.path === id ? ' checked' : ''}><span><b>${esc(name)}</b><i>${esc(desc)}</i></span></label>`).join('');
+        }
+        if (page === 'supervised' || page === 'direct') {
+            const direct = page === 'direct';
+            const acct = direct ? `<label><span>Account:</span><select class="vdt-select" data-cd="account">${accountOptions(Number(W.account))}</select></label>`
+                : `<label><span>Account:</span><select class="vdt-select" data-cd="account"><option value="auto"${W.account === 'auto' ? ' selected' : ''}>Auto (preferred, else most headroom)</option>${accountOptions(Number(W.account))}</select></label>`;
+            return `${acct}
+                <label><span>Folder:</span><input type="text" data-cd="cwd" value="${esc(W.cwd)}" spellcheck="false" autocomplete="off"></label>
+                <label class="cd-top"><span>Request:</span><textarea data-cd="prompt" data-cd-focus rows="5" spellcheck="true" placeholder="What should it do?">${esc(W.prompt)}</textarea></label>
+                <label><span>Model:</span><select class="vdt-select" data-cd="model">${modelOptions(W.model || 'sonnet')}</select></label>
+                <label><span>Or model ID:</span><input type="text" data-cd="modelId" value="${esc(W.modelId || '')}" spellcheck="false" autocomplete="off" placeholder="A full model ID (optional)"></label>
+                <label><span>Effort:</span><select class="vdt-select" data-cd="effort">${effortOptions(W.effort)}</select></label>
+                ${direct ? `<label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeSelect(W.mode || 'bypassPermissions')}</select></label>` : ''}${err}`;
+        }
+        if (page === 'plaud') {
+            return `<label class="cd-check"><input type="checkbox" data-cd="plaudAll"${W.all ? ' checked' : ''}><span>Every recording not worked yet</span></label>
+                <p class="mmc-hint">Or tick the recordings (newest first):</p>${wizRecs(W)}${err}`;
+        }
+        // summary
+        const rows = [['What', pathName(W.path)]];
+        if (W.path === 'plaud') {
+            rows.push(['Recordings', W.all ? 'Every recording not worked yet' : plural((W.picked || new Set()).size, 'recording')]);
+        } else {
+            rows.push(['Account', acctLabel(W.account)], ['Folder', W.cwd], ['Model', (MODEL_CHOICES.find((m) => m[0] === modelOf(W)) || [])[1] || modelOf(W) || 'Sonnet'], ['Effort', (EFFORTS.find((e) => e[0] === (W.effort || '')) || [])[1] || 'Default']);
+            if (W.path === 'direct') rows.push(['Permissions', (MODES.find((m) => m[0] === W.mode) || [])[1] || W.mode]);
+            rows.push(['Checked by supervisor', W.path === 'supervised' ? 'Yes (queued on the Supervisor)' : 'No']);
+        }
+        return `<table class="cd-props">${rows.map(([k, v]) => `<tr><td>${esc(k)}:</td><td>${esc(v)}</td></tr>`).join('')}</table>
+            ${W.path === 'plaud' ? '' : `<p><b>Request</b></p><p class="cd-read cd-summary-request">${esc(W.prompt)}</p>`}${err}`;
+    }
+
+    /** One wizard page: 'next' | 'back' | 'cancel'. What was entered goes back into W. */
+    async function wizPage(c, W, page, first) {
+        const [head, sub] = WIZ_TITLES[page];
+        const last = page === 'summary';
+        let boxRef = null;
         const { value, fields } = await form(c, `
-            <p>Start a Claude session on the host. It runs in Remote Control and keeps running when Dreamscape restarts.</p>
-            <label><span>Folder:</span><input type="text" data-cd="cwd" value="${esc(folder)}" spellcheck="false" autocomplete="off"></label>
-            <label><span>Account:</span><select class="vdt-select" data-cd="account">${accountOptions(acct)}</select></label>
-            <label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeOptions()}</select></label>
-            <label><span>Model:</span><select class="vdt-select" data-cd="model">${MODELS.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></label>
-            <label><span>Or model ID:</span><input type="text" data-cd="modelId" spellcheck="false" autocomplete="off" placeholder="A full model ID (optional)"></label>
-            <label><span>Effort:</span><select class="vdt-select" data-cd="effort">${EFFORTS.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></label>
-            <label class="cd-top"><span>First message:</span><textarea data-cd="prompt" data-cd-focus rows="5" spellcheck="true" placeholder="What should it do? (optional)"></textarea></label>
-            <label><span>Title:</span><input type="text" data-cd="title" spellcheck="false" autocomplete="off" placeholder="Shown in Remote Control (optional)"></label>`,
-        [{ text: 'Start', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'New Session', width: 520 });
-        if (value !== true) return;
-        c.note('Starting the session...');
+            <div class="cd-wiz-head"><h3>${esc(head)}</h3><p>${esc(sub)}</p></div>
+            <div class="cd-wiz-body">${wizBody(W, page)}</div>`,
+        [first ? null : { text: 'Back', value: 'back', className: 'btn-standard' }, { text: last ? 'Finish' : 'Next', value: 'next', className: 'btn-standard primary' }, { text: 'Cancel', value: 'cancel', className: 'btn-standard' }].filter(Boolean),
+        {
+            title: 'New Session', width: 560, icon: 'fas fa-circle-info',
+            ready: (box, signal) => {
+                box.classList.add('cd-wizard');
+                boxRef = box;
+                const acct = box.querySelector('[data-cd="account"]');
+                if (acct) {
+                    if (W.model === undefined) wizPrefill(box, acct.value);
+                    acct.addEventListener('change', () => wizPrefill(box, acct.value), { signal });
+                }
+                const all = box.querySelector('[data-cd="plaudAll"]');
+                if (all) {
+                    const sync = () => box.querySelectorAll('[data-cd^="rec:"]').forEach((el) => { el.disabled = all.checked; });
+                    all.addEventListener('change', sync, { signal });
+                    sync();
+                }
+                signal.addEventListener('abort', () => box.classList.remove('cd-wizard'), { once: true });
+            }
+        });
+        if (value !== 'next' && value !== 'back') return 'cancel';
+        // keep what was typed even on Back
+        if (page === 'type') {
+            const on = boxRef && boxRef.querySelector('input[name="cd-path"]:checked');
+            const p = WIZ_PATHS.find(([id]) => (on ? on.dataset.cd === `path:${id}` : fields[`path:${id}`] === true));
+            if (p) W.path = p[0];
+        }
+        else if (page === 'plaud') { W.all = !!fields.plaudAll; W.picked = new Set(Object.keys(fields).filter((k) => k.startsWith('rec:') && fields[k] === true).map((k) => k.slice(4))); }
+        else if (page === 'supervised' || page === 'direct') {
+            W.account = fields.account; W.cwd = String(fields.cwd || '').trim(); W.prompt = String(fields.prompt || '').trim();
+            W.model = fields.model; W.modelId = String(fields.modelId || '').trim(); W.effort = fields.effort || '';
+            if (page === 'direct') W.mode = fields.mode;
+        }
+        return value;
+    }
+
+    function wizCheck(W, page) {
+        if (page === 'plaud') return W.all || (W.picked && W.picked.size) ? '' : 'Tick at least one recording, or choose every recording not worked yet.';
+        if (page === 'supervised' || page === 'direct') {
+            if (page === 'direct' && !Number.isInteger(Number(W.account))) return 'Pick the account the request runs on.';
+            if (!W.cwd) return 'Say which folder it works in.';
+            if (!W.prompt) return 'Say what it should do.';
+        }
+        return '';
+    }
+
+    async function wizLoadRecs(c, W) {
+        if (W.recs || W.recsGone) return;
+        c.note('Reading the Plaud recordings...');
         try {
-            const model = String(fields.modelId || '').trim() || fields.model || undefined;
-            const r = await send('claude_desk_session', { action: 'start', cwd: fields.cwd, account: fields.account === '' ? undefined : Number(fields.account), mode: fields.mode, prompt: fields.prompt, title: fields.title, model, effort: fields.effort || undefined });
-            await afterLaunch(c, r.result);
-        } catch (e) { c.note(''); await failBox(c, e); }
+            const r = await send('claude_fleet_plaud', { action: 'list' });
+            W.recs = Array.isArray(r.recordings) ? r.recordings.slice().sort((x, y) => (y.startAt || 0) - (x.startAt || 0)) : [];
+            W.recsErr = '';
+        } catch (e) { if (isGone(e)) W.recsGone = true; else W.recsErr = errText(e); }
+        c.note('');
+    }
+
+    /** Finish: starts it; false when it failed (the wizard stays on the summary with the reason). */
+    async function wizFinish(c, W) {
+        let body;
+        let buttons = [{ text: 'Close', value: false, className: 'btn-standard' }];
+        let link = '';
+        try {
+            if (W.path === 'plaud') {
+                c.note('Queuing the requests...');
+                const r = await send('claude_fleet_plaud', W.all ? { action: 'start', all: true } : { action: 'start', recordingIds: Array.from(W.picked) });
+                const items = Array.isArray(r.work) ? r.work : [];
+                const chats = Array.isArray(r.chats) ? r.chats : [];
+                void loadSupervisor();
+                body = items.length
+                    ? `<p>${plural(items.length, 'request')} for the actionable items, on the Supervisor's Work Queue:</p>${workTable(items, (x) => (W.recs || []).map((rc) => (String(rc.id) === String(x.recordingId) ? rc.name : '')).join(''))}`
+                    : (chats.length ? `<p>${plural(chats.length, 'chat')} started.</p>` : '<p>No recording had actionable items to start work for.</p>');
+            } else {
+                c.note('Starting the session...');
+                const acct = W.account === 'auto' ? 'auto' : Number(W.account);
+                if (W.path === 'supervised') {
+                    // supervised requests are Supervisor work items: queued, and started at once when an account has room
+                    const before = new Set(supWork().map((w) => String(w.id)));
+                    const first = W.prompt.split('\n').find((x) => x.trim()) || W.prompt;
+                    const job = { action: 'enqueue', title: first.trim().slice(0, 80), prompt: W.prompt, cwd: W.cwd, model: modelOf(W) || 'sonnet', effort: W.effort || undefined, startNow: true };
+                    if (acct !== 'auto') job.account = acct;
+                    const rr = await send('claude_desk_supervisor', job);
+                    if (rr.settings) supTake(rr);
+                    const list = supWork();
+                    const item = rr.work && !Array.isArray(rr.work) ? rr.work : (list.find((w) => !before.has(String(w.id))) || list.slice().sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0))[0]);
+                    body = item
+                        ? `<p>The request is on the Supervisor's Work Queue.</p>${workTable([item])}${item.message ? `<p class="mmc-hint">${esc(item.message)}</p>` : ''}`
+                        : '<p>The request was queued.</p>';
+                    if (item && item.sessionId) { await loadSessions(false); openChat(c, item.sessionId); }
+                    if (item && item.link) { link = item.link; buttons = [{ text: 'Open in claude.ai', value: 'open', className: 'btn-standard primary' }, { text: 'Copy Link', value: 'copy', className: 'btn-standard' }, { text: 'Close', value: false, className: 'btn-standard' }]; }
+                    c.note('');
+                    return await wizDone(c, W, body, buttons, link);
+                }
+                const payload = { action: 'start', cwd: W.cwd, prompt: W.prompt, account: acct, model: modelOf(W) || 'sonnet', effort: W.effort || undefined, supervised: false };
+                if (W.path === 'direct') payload.mode = W.mode;
+                const r = await send('claude_desk_session', payload);
+                const res = r.result || {};
+                if (res.state === 'failed') { c.note(''); W.err = `The session did not start. ${res.message || ''}`.trim(); return false; }
+                link = res.link || '';
+                body = `<p>The session is ${res.state === 'connected' || res.state === 'live' ? 'running in Remote Control' : 'starting'}${res.account ? ` on <b>${esc(res.account.name)}</b>` : ''}.</p>
+                    <table class="cd-props"><tr><td>Session:</td><td>${esc(res.id || '')}</td></tr></table>${link ? `<p class="cd-link-line">${esc(link)}</p>` : ''}`;
+                if (link) buttons = [{ text: 'Open in claude.ai', value: 'open', className: 'btn-standard primary' }, { text: 'Copy Link', value: 'copy', className: 'btn-standard' }, { text: 'Close', value: false, className: 'btn-standard' }];
+                if (res.id) { await loadSessions(false); openChat(c, res.id); }
+            }
+        } catch (e) { c.note(''); W.err = errText(e); if (isGone(e)) W.err = NOT_YET; return false; }
+        c.note('');
+        return wizDone(c, W, body, buttons, link);
+    }
+
+    /** The last page: what was started; Open / Copy when there is a link. Always true (the wizard is done). */
+    async function wizDone(c, W, body, buttons, link) {
+        const go = await form(c, `<div class="cd-wiz-head"><h3>${W.path === 'direct' ? 'The session started' : 'The request is queued'}</h3><p>You can close this wizard.</p></div><div class="cd-wiz-body">${body}</div>`, buttons, { title: 'New Session', width: 560, icon: 'fas fa-circle-info', ready: (box, signal) => { box.classList.add('cd-wizard'); signal.addEventListener('abort', () => box.classList.remove('cd-wizard'), { once: true }); } });
+        if (go.value === 'open' && link) await call('openGrimoireUrl', link);
+        else if (go.value === 'copy' && link) { await copy(link); c.note('The link was copied to the Clipboard.'); }
+        return true;
+    }
+
+    /** Work items as a small table: request, state, session. */
+    function workTable(items, whoOf) {
+        return `<table class="cd-table"><thead><tr><th>Request</th>${whoOf ? '<th>Recording</th>' : ''}<th class="cd-w80">State</th><th class="cd-w80">Session</th></tr></thead><tbody>${items.map((x) => `<tr><td>${esc(x.title || x.id)}</td>${whoOf ? `<td>${esc(whoOf(x) || x.recordingId || '')}</td>` : ''}<td>${esc(WORK_STATE[x.state] || x.state || '')}</td><td>${esc(x.sessionId ? shortId(x.sessionId) : '')}</td></tr>`).join('')}</tbody></table>`;
+    }
+
+    async function newSessionBox(c, accountIndex) {
+        const pinned = Number.isInteger(accountIndex);
+        const W = { path: pinned ? 'direct' : 'supervised', account: pinned ? String(accountIndex) : 'auto', cwd: DEFAULT_CWD, prompt: '', mode: 'bypassPermissions', picked: new Set(), err: '' };
+        if (!pinned && defaultAccount() == null) W.account = 'auto';
+        let page = 'type';
+        for (;;) {
+            let order = ['type', W.path, 'summary'];
+            const r = await wizPage(c, W, page, page === 'type');
+            if (r === 'cancel') return;
+            order = ['type', W.path, 'summary']; // the first page may have changed the path
+            W.err = '';
+            if (r === 'back') { page = order[Math.max(0, order.indexOf(page) - 1)]; continue; }
+            const bad = wizCheck(W, page);
+            if (bad) { W.err = bad; continue; }
+            if (page === 'summary') { if (await wizFinish(c, W)) return; continue; }
+            page = order[order.indexOf(page) + 1];
+            if (page === 'plaud') await wizLoadRecs(c, W);
+        }
+    }
+
+    // ---- an account's properties (claude_fleet_account) ----------------------------------------------------
+
+    const MODEL_IDS = MODELS.slice(1).map((m) => m[0]);
+    const MODEL_CHOICES = [['sonnet', 'Sonnet'], ['opus', 'Opus'], ['haiku', 'Haiku'], ['fable', 'Fable']];
+    const NOT_YET = 'This is not available on this server yet.';
+    const isGone = (e) => SUP_GONE.test(errText(e));
+    const modelOptions = (sel) => MODEL_CHOICES.map(([v, t]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${esc(t)}</option>`).join('');
+    const effortOptions = (sel) => EFFORTS.map(([v, t]) => `<option value="${v}"${v === (sel || '') ? ' selected' : ''}>${esc(t)}</option>`).join('');
+    const modeSelect = (sel) => MODES.map(([v, t]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${esc(t)}</option>`).join('');
+    /** The model chosen: the full id typed wins over the list. */
+    const modelOf = (fields) => String(fields.modelId || '').trim() || fields.model || undefined;
+    /** A percentage field: blank = none (null); anything else must be 1 to 100. */
+    function pctOf(v) {
+        const t = String(v == null ? '' : v).trim();
+        if (!t) return { value: null };
+        const n = Number(t);
+        return Number.isFinite(n) && n >= 1 && n <= 100 ? { value: Math.round(n) } : { error: true };
+    }
+
+    async function accountPropsBox(c, index) {
+        const a = S.accounts.find((x) => x.index === index);
+        if (!a) return;
+        const f = fleetOf(index);
+        const st = (f && f.settings) || {};
+        const l = a.remoteLogin;
+        const model = st.defaultModel || 'sonnet';
+        const known = MODEL_IDS.includes(model);
+        const rows = [['Engine account', a.active ? 'Yes' : 'No'], ['On the host', a.onHost ? 'Yes' : 'No'], ['Remote Control login', l ? (l.email || l.displayName) : 'None'],
+            ['Plan', l ? l.plan : ''], ['Linked', l ? when(l.linkedAt) : '']].filter(([, v]) => v);
+        let err = '';
+        // what the boxes show: the saved settings, then what was typed when a retry is needed
+        let cur = { name: a.name, preferred: !!st.preferred, maxWeekly: st.maxWeeklyPct == null ? '' : st.maxWeeklyPct, maxSession: st.maxSessionPct == null ? '' : st.maxSessionPct,
+            model: known ? model : 'sonnet', modelId: known ? '' : model, effort: st.defaultEffort || '', mode: st.defaultMode || 'bypassPermissions' };
+        for (;;) {
+            const { value, fields } = await form(c, `
+                <table class="cd-props">${rows.map(([k, v]) => `<tr><td>${esc(k)}:</td><td>${esc(v)}</td></tr>`).join('')}</table>
+                ${f ? '' : `<p class="mmc-hint">The account settings are not available on this server yet.</p>`}
+                <label><span>Name:</span><input type="text" data-cd="name" data-cd-focus value="${esc(cur.name)}" spellcheck="false" autocomplete="off"></label>
+                <label class="cd-check"><input type="checkbox" data-cd="preferred"${cur.preferred ? ' checked' : ''}><span>Preferred account: new sessions use it first (only one account is preferred)</span></label>
+                <label><span>Max weekly usage:</span><input type="text" data-cd="maxWeekly" value="${esc(cur.maxWeekly)}" inputmode="numeric" placeholder="% (blank: no limit)" autocomplete="off"></label>
+                <label><span>Max session usage:</span><input type="text" data-cd="maxSession" value="${esc(cur.maxSession)}" inputmode="numeric" placeholder="% (blank: no limit)" autocomplete="off"></label>
+                <label><span>Default model:</span><select class="vdt-select" data-cd="model">${modelOptions(cur.model)}</select></label>
+                <label><span>Or model ID:</span><input type="text" data-cd="modelId" value="${esc(cur.modelId)}" spellcheck="false" autocomplete="off" placeholder="A full model ID (optional)"></label>
+                <label><span>Default effort:</span><select class="vdt-select" data-cd="effort">${effortOptions(cur.effort)}</select></label>
+                <label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeSelect(cur.mode)}</select></label>
+                ${err ? `<p class="cd-err">${esc(err)}</p>` : ''}`,
+            [{ text: 'Save', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: `${a.name} Properties`, width: 480, icon: 'fas fa-circle-info' });
+            if (value !== true) return;
+            cur = { name: fields.name, preferred: !!fields.preferred, maxWeekly: fields.maxWeekly, maxSession: fields.maxSession, model: fields.model, modelId: fields.modelId, effort: fields.effort, mode: fields.mode };
+            const weekly = pctOf(fields.maxWeekly);
+            const session = pctOf(fields.maxSession);
+            const name = String(fields.name || '').trim();
+            if (weekly.error || session.error) { err = 'A maximum usage is a percentage from 1 to 100, or blank for none.'; continue; }
+            if (!name) { err = 'The account needs a name.'; continue; }
+            try {
+                const r = await send('claude_fleet_account', { action: 'save', index, name, preferred: !!fields.preferred, maxWeeklyPct: weekly.value, maxSessionPct: session.value, defaultModel: modelOf(fields) || 'sonnet', defaultEffort: fields.effort || '', defaultMode: fields.mode });
+                if (r.fleet) S.fleet = r.fleet;
+                c.note(`${name}: settings saved.`);
+                await refreshAccounts();
+                return;
+            } catch (e) {
+                if (isGone(e)) { await c.box(`<p>${NOT_YET}</p>`, null, { icon: 'info', title: `${a.name} Properties` }); return; }
+                err = errText(e);
+            }
+        }
     }
 
     /**
@@ -1607,6 +2219,70 @@
             if (go === 'open') await call('openGrimoireUrl', res.link);
             else if (go === 'copy') await copy(res.link);
         }
+    }
+
+    async function takeoverBox(c, id) {
+        const row = rowOf(id) || { id };
+        const ok = await c.box(`<p><b>${esc(titleOf(row))}</b> runs inside Remote Control's server.</p><p>Fleet ends this session's Remote Control process and continues the same conversation in a Fleet terminal, with Remote Control still on (its claude.ai link changes). Anything it is doing this second is interrupted.</p>`,
+            [{ text: 'Take Over', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'warning', title: 'Take Over in Fleet' });
+        if (ok !== true) return;
+        c.note('Taking the session over...');
+        try {
+            const r = await send('claude_desk_session', { action: 'takeover', id });
+            const res = r.result || {};
+            c.note(res.message || 'The session now runs in a Fleet terminal.');
+            const l = liveOf(id);
+            if (l) { l.origin = 'rc'; if (res.link) l.link = res.link; }
+            const ch = chatOf(id);
+            if (ch && ch.dt && ch.dt.data) ch.dt.data.origin = 'rc';
+            await loadSessions(false);
+            if (ch && ch.dt) await loadDetail(id);
+            if (S.c && S.c.node === `t:${id}`) S.c.render();
+        } catch (e) {
+            c.note('');
+            if (isGone(e)) await c.box(`<p>${NOT_YET}</p>`, null, { icon: 'info' }); else await failBox(c, e);
+        }
+    }
+
+    /** One session command (claude_desk_session command): the reply's text goes in the status line. */
+    async function sessionCommand(c, id, command, value, busy) {
+        c.note(busy || 'Working...');
+        try {
+            const r = await send('claude_desk_session', { action: 'command', id, command, value });
+            const res = r.result;
+            const text = res && typeof res === 'object' ? (res.text || res.message || '') : String(res || '');
+            c.note(text ? String(text).replace(/\s+/g, ' ').slice(0, 160) : 'Done.');
+            return res;
+        } catch (e) {
+            c.note('');
+            if (isGone(e)) await c.box(`<p>${NOT_YET}</p>`, null, { icon: 'info' }); else await failBox(c, e);
+            return null;
+        }
+    }
+
+    async function setBox(c, id, what) {
+        const row = rowOf(id) || { id };
+        const det = chatOf(id) && chatOf(id).dt && chatOf(id).dt.data;
+        const cur = det ? det[what] : '';
+        const { value, fields } = await form(c, what === 'model' ? `
+            <p>Change the model <b>${esc(titleOf(row))}</b> uses from its next turn on.</p>
+            <label><span>Model:</span><select class="vdt-select" data-cd="model">${modelOptions(MODEL_IDS.includes(cur) ? cur : 'sonnet')}</select></label>
+            <label><span>Or model ID:</span><input type="text" data-cd="modelId" data-cd-focus value="${MODEL_IDS.includes(cur) ? '' : esc(cur || '')}" spellcheck="false" autocomplete="off" placeholder="A full model ID (optional)"></label>` : `
+            <p>Change how hard <b>${esc(titleOf(row))}</b> thinks from its next turn on.</p>
+            <label><span>Effort:</span><select class="vdt-select" data-cd="effort">${EFFORTS.filter(([v]) => v).map(([v, t]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`,
+        [{ text: 'Set', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: what === 'model' ? 'Set Model' : 'Set Effort' });
+        if (value !== true) return;
+        const v = what === 'model' ? modelOf(fields) : fields.effort;
+        if (!v) return;
+        await sessionCommand(c, id, what, v, `Setting the ${what}...`);
+    }
+
+    async function screenBox(c, id) {
+        try {
+            const r = await send('claude_desk_session', { action: 'screen', id });
+            const lines = (r.result && r.result.lines) || [];
+            await c.box(`<pre class="cd-pre cd-screen">${esc(lines.join('\n') || '(the screen is empty)')}</pre>`, null, { icon: 'info', title: 'Terminal Screen', width: 600 });
+        } catch (e) { await failBox(c, e); }
     }
 
     async function messageBox(c, id) {
@@ -1774,11 +2450,12 @@
                 if (n.id === 'rc') { const r = fleetRows(); return r.length ? `${r.filter((f) => f.state === 'connected').length} of ${plural(r.length, 'account')} connected` : ''; }
                 if (n.id === 'co-builds') return plural((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length, 'gate') + ' open';
                 if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
+                if (n.id === 'co-work') return S.sup.busy || plural(supWork().filter((w) => WORK_OPEN.has(w.state)).length, 'open request');
                 if (n.id === 'co-supervisor') return S.sup.busy || (S.sup.data && S.sup.data.stats ? `${plural(S.sup.data.stats.reviewed || 0, 'review')}, ${S.sup.data.stats.gaps || 0} with gaps` : '');
                 if (n.id.startsWith('t:')) { const ch = S.chats.get(n.id.slice(2)); return ch ? plural(ch.messages.length, 'message') : ''; }
                 return `Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`;
             },
-            onSelectRow: (key, n) => { if (n && n.id === 'co-supervisor') supSelect(key); },
+            onSelectRow: (key, n) => { if (n && n.id === 'co-supervisor') supSelect(key); else if (n && n.id.startsWith('t:')) detailSelect(key, n.id.slice(2)); },
             onSelect: undefined,
             onOpen: () => {},
             onClose: () => {
