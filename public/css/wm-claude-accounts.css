@@ -138,7 +138,7 @@
 .wm-claude-accounts .wca-sess-note { color: #00669a; }
 .wm-claude-accounts .wca-sess-note.is-bad { color: #b00000; }
 .wm-claude-accounts .wca-sess-link a { color: #00669a; word-break: break-all; }
-.wm-claude-accounts .wca-badge-rc { color: #007a33; }
+.wm-claude-accounts :is(.wca-badge-rc, .wca-badge-pref) { color: #007a33; }
 
 /* plan usage under an account: label, WM meter, percent, resets time */
 .wm-claude-accounts .wca-use {
@@ -156,3 +156,34 @@
     grid-column: 1 / -1;
     margin: 0 0 calc(2 * var(--wm-px));
 }
+
+/* usage bars: 0 is an empty track and 100 fills it edge to edge. Both are classes, not widths: a width in % of a
+ * track with a fractional device-pixel border left a hairline on the right at 100 and a sliver at 0 */
+.wm-claude-accounts .wac-meter > i.wca-f-full { width: auto !important; right: 0; }
+.wm-claude-accounts .wac-meter > i.wca-f-zero { display: none; }
+.wm-claude-accounts .wac-meter > i { min-width: 0; }
+
+/* availability notices: the shell's own warning / error icon and a tinted line (Accounts tab top and on the account's row) */
+.wm-claude-accounts .wca-notice {
+    display: grid;
+    grid-template-columns: calc(18 * var(--wm-px)) minmax(0, 1fr);
+    align-items: start;
+    column-gap: calc(3 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) calc(2 * var(--wm-px)) calc(2 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid color-mix(in srgb, currentColor 50%, transparent);
+    background: color-mix(in srgb, orange 14%, white);
+}
+.wm-claude-accounts .wac-main .wca-notice {
+    margin: calc(2 * var(--wm-px)) 0;
+    border: calc(1 * var(--wm-px)) solid color-mix(in srgb, currentColor 50%, transparent);
+}
+.wm-claude-accounts .wca-notice-bad { background: color-mix(in srgb, red 10%, white); }
+.wm-claude-accounts .wca-notice { color: black; }
+.wm-claude-accounts .wca-notice-ico { display: block; width: calc(16 * var(--wm-px)); height: calc(16 * var(--wm-px)); margin-top: calc(0 * var(--wm-px)); }
+.wm-claude-accounts .wca-notice-ico img { display: block; width: 100%; height: 100%; }
+.wm-claude-accounts .wca-notice-text { min-width: 0; overflow-wrap: anywhere; }
+
+/* account Settings form */
+.wm-claude-accounts .wca-form { padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(8 * var(--wm-px)); }
+.wm-claude-accounts .wca-form .wm-form-row { margin-bottom: calc(3 * var(--wm-px)); }

@@ -70,6 +70,7 @@
     let pollTimer = null;
     let adding = false; // the Add Account page is up (Accounts tab)
     let lg = { state: 'idle' }; // claude_account_login state (never a token or code)
+    let editing = null; // the account Settings page (#1154): { index, draft, name } while it is up
     let picking = null; // the Bring over page: { verb, run(carry), picks: Set of session ids }
     let sx = { total: 0, sessions: [], loaded: false, error: '', limit: 30 }; // Sessions tab
     const sxBusy = new Set(); // session ids with an action running
@@ -347,6 +348,121 @@
         await act(async () => { await send('add_api_key', { service: 'claude', name, apiKey: String(token).trim() }); return send('get_claude_accounts'); });
     }
 
+    // ---------------------------------------------------------------- account Settings (#1154)
+
+    const MODEL_CHOICES = [['', 'Account default'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku'], ['fable', 'Fable']];
+    const EFFORT_CHOICES = [['', 'Account default'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max']];
+    const MODE_CHOICES = [['', 'Account default'], ['default', 'Ask first'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan'], ['auto', 'Auto'], ['dontAsk', 'Do not ask'], ['bypassPermissions', 'Bypass permissions']];
+    const withCurrent = (list, v) => (v && !list.some(([k]) => k === v) ? list.concat([[v, v]]) : list);
+    const pctText = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? '' : String(Math.round(Number(v))));
+    const settingsUi = () => (window.wmSettings && window.wmSettings.ui) || null;
+
+    function openSettings(acc) {
+        const ui = settingsUi();
+        if (!acc || !ui) { if (acc) void sh.messageBox({ title: 'Settings', icon: 'error', text: 'The form controls are not loaded yet. Try again in a moment.' }); return; }
+        const fa = fleetAcc(acc.index);
+        const st = (fa && fa.settings) || {};
+        editing = {
+            index: acc.index,
+            built: false,
+            saving: false,
+            draft: {
+                name: (fa && fa.name) || acc.name || '',
+                preferred: !!st.preferred,
+                maxWeeklyPct: pctText(st.maxWeeklyPct),
+                maxSessionPct: pctText(st.maxSessionPct),
+                defaultModel: st.defaultModel || '',
+                defaultEffort: st.defaultEffort || '',
+                defaultMode: st.defaultMode || ''
+            }
+        };
+        adding = false;
+        picking = null;
+        tab = 'accounts';
+        render();
+        sh.refreshTitleAction();
+    }
+
+    function buildSettings(panel) {
+        const ui = settingsUi();
+        const e = editing;
+        const d = e.draft;
+        const acc = data.accounts.find((a) => a.index === e.index);
+        const label = (list, v) => (list.find(([k]) => k === v) || [v, v])[1];
+        const model = withCurrent(MODEL_CHOICES, d.defaultModel);
+        const effort = withCurrent(EFFORT_CHOICES, d.defaultEffort);
+        const mode = withCurrent(MODE_CHOICES, d.defaultMode);
+        panel.innerHTML = `<div class="wm-form-hdr wca-sub-hdr">${esc((acc && acc.name) || 'Account')}: Settings</div>
+            <div class="wca-form">
+                ${ui.row('Name', ui.edit('wca-f-name', d.name, 'maxlength="60" data-f="name"'), { for: 'wca-f-name' })}
+                ${ui.check('preferred', 'Preferred account', d.preferred, 'data-f="preferred"')}
+                ${ui.row('Max weekly usage %', ui.edit('wca-f-week', d.maxWeeklyPct, 'inputmode="numeric" maxlength="3" placeholder="None" data-f="maxWeeklyPct"'), { for: 'wca-f-week', wide: true })}
+                ${ui.row('Max session usage %', ui.edit('wca-f-sess', d.maxSessionPct, 'inputmode="numeric" maxlength="3" placeholder="None" data-f="maxSessionPct"'), { for: 'wca-f-sess', wide: true })}
+                ${ui.row('Default model', ui.comboHtml('model', label(model, d.defaultModel)), { wide: true })}
+                ${ui.row('Default effort', ui.comboHtml('effort', label(effort, d.defaultEffort)), { wide: true })}
+                ${ui.row('Permission mode', ui.comboHtml('mode', label(mode, d.defaultMode)), { wide: true })}
+                ${ui.note('Only one account can be preferred. Leave a maximum blank for no limit: the account is then used until it is out.')}
+                <div class="wac-note wca-form-err" hidden></div>
+            </div>`;
+        panel.dataset.h = 'settings';
+        e.built = true;
+        panel.querySelectorAll('input[data-f]').forEach((inp) => {
+            if (inp.type === 'checkbox') inp.addEventListener('change', () => { d.preferred = inp.checked; });
+            else inp.addEventListener('input', () => { d[inp.dataset.f] = inp.value; });
+        });
+        ui.bindCombo(panel.querySelector('[data-act="model"]'), model, d.defaultModel, (v) => { d.defaultModel = v; });
+        ui.bindCombo(panel.querySelector('[data-act="effort"]'), effort, d.defaultEffort, (v) => { d.defaultEffort = v; });
+        ui.bindCombo(panel.querySelector('[data-act="mode"]'), mode, d.defaultMode, (v) => { d.defaultMode = v; });
+    }
+
+    function formError(text) {
+        const el = page && page.querySelector('.wca-form-err');
+        if (!el) return;
+        el.textContent = text || '';
+        el.hidden = !text;
+    }
+
+    function closeSettings() {
+        editing = null;
+        render();
+        sh.refreshTitleAction();
+    }
+
+    async function saveSettings() {
+        const e = editing;
+        if (!e || e.saving) return;
+        const d = e.draft;
+        const name = String(d.name || '').trim();
+        if (!name) { formError('Enter a name for the account.'); return; }
+        const pct = (v, what) => {
+            const t = String(v == null ? '' : v).trim();
+            if (!t) return { ok: true, value: null };
+            const n = Number(t);
+            if (!/^\d{1,3}$/.test(t) || n < 1 || n > 100) { formError(`${what} must be a whole number from 1 to 100, or blank.`); return { ok: false }; }
+            return { ok: true, value: n };
+        };
+        const wk = pct(d.maxWeeklyPct, 'Max weekly usage');
+        if (!wk.ok) return;
+        const se = pct(d.maxSessionPct, 'Max session usage');
+        if (!se.ok) return;
+        formError('');
+        e.saving = true;
+        try {
+            const r = await send('claude_fleet_account', {
+                action: 'save', index: e.index, name, preferred: !!d.preferred, maxWeeklyPct: wk.value, maxSessionPct: se.value,
+                defaultModel: d.defaultModel || '', defaultEffort: d.defaultEffort || '', defaultMode: d.defaultMode || ''
+            });
+            take(r);
+            closeSettings();
+            void load(); // the account's new name in the CardSpace rows
+        } catch (err) {
+            e.saving = false;
+            const msg = errText(err);
+            if (/unknown message type/i.test(msg)) await sh.messageBox({ title: 'Settings', icon: 'warning', text: 'Account settings are not available on this server yet.' });
+            else await sh.messageBox({ title: 'Settings', icon: 'error', text: msg });
+        }
+    }
+
     // ---------------------------------------------------------------- Add Account (sign in on the host)
 
     async function loginAct(action, payload, quiet) {
@@ -517,22 +633,49 @@
         return 'ok';
     };
     const usageRank = (l) => (l.kind === 'session' || l.kind === 'five_hour' ? 0 : l.kind === 'weekly_all' || l.kind === 'seven_day' ? 1 : 2);
+    const resetText = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    /** The account's usage: the fleet snapshot's own (pushed whenever the server reads it again), else the claude_usage feed's row. */
+    function usageOf(a) {
+        const fa = fleetAcc(a.index);
+        const fu = fa && fa.usage && typeof fa.usage === 'object' ? fa.usage : null;
+        if (fu && Array.isArray(fu.limits) && fu.limits.some((l) => l && l.percent != null)) return fu;
+        return usageIndexRow(a.index) || (fu && fu.error ? fu : null);
+    }
     function usageHtml(a) {
-        const u = usageIndexRow(a.index);
+        const u = usageOf(a);
         if (!u) return usageLoaded ? '' : '<div class="wac-line wca-muted">Reading usage...</div>';
         const now = Date.now();
         const limits = (Array.isArray(u.limits) ? u.limits : []).filter((l) => l && l.percent != null).sort((x, y) => usageRank(x) - usageRank(y));
         if (!limits.length) return `<div class="wac-line wca-muted">${esc(u.needsLogin ? (u.error || 'No login linked: no usage') : `Usage unavailable${u.error ? `: ${u.error}` : ''}`)}</div>`;
         return limits.map((l) => {
             const stale = l.resetsAt && l.resetsAt <= now;
-            const w = stale ? 0 : Math.max(0, Math.min(100, Math.round(l.percent)));
-            const resets = !l.resetsAt ? '' : stale ? 'reset' : `resets ${new Date(l.resetsAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
+            const w = stale ? 0 : Math.max(0, Math.min(100, Math.round(Number(l.percent) || 0)));
+            const resets = !l.resetsAt ? '' : stale ? 'reset' : `resets ${resetText(l.resetsAt)}`;
+            // 0 draws no fill at all and 100 fills the whole inside (the fill's width in % leaves a hairline or a sliver
+            // at fractional device pixels); these two states are classes, not widths
+            const edge = w >= 100 ? ' wca-f-full' : w <= 0 ? ' wca-f-zero' : '';
             return `<div class="wca-use"><span class="wca-use-label">${esc(l.label || l.short || l.kind)}</span>`
-                + `<span class="wac-meter wac-lv-${usageLevel(l)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${w}"><i data-w="${w}"></i></span>`
+                + `<span class="wac-meter wac-lv-${usageLevel(l)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${w}"><i class="${edge.trim()}" data-w="${w}"></i></span>`
                 + `<span class="wca-use-pct">${stale ? '' : `${w}%`}</span><span class="wca-use-reset wca-muted">${esc(resets)}</span></div>`;
         }).join('');
     }
     function paintBars(root0) { root0.querySelectorAll('i[data-w]').forEach((el) => { el.style.width = `${el.dataset.w}%`; }); }
+
+    // ---- availability (server: fleet.accounts[].availability): near a limit = warning, capped / exhausted = error ----
+    /** { level: 'warn' | 'bad', text } for an account that is near its limits or no longer free to schedule work on, else null. */
+    function noticeOf(fa) {
+        const av = fa && fa.availability;
+        if (!av || typeof av !== 'object') return null;
+        const bad = av.state === 'capped' || av.state === 'exhausted' || (av.schedulable === false && av.state !== 'unknown' && av.state !== 'free');
+        if (!bad && av.state !== 'near') return null;
+        let text = String(av.message || (bad ? 'No longer free to schedule work' : 'Near its limit')).trim();
+        if (av.resetsAt && !/reset/i.test(text)) text += `${/[.!?]$/.test(text) ? '' : '.'} Resets ${resetText(av.resetsAt)}.`;
+        return { level: bad ? 'bad' : 'warn', text };
+    }
+    const noticeLine = (n, who) => `<div class="wca-notice wca-notice-${n.level}" role="status"><span class="wca-notice-ico">${sh.art.img(n.level === 'bad' ? 'msgbox-error' : 'msgbox-warning')}</span><span class="wca-notice-text">${who ? `<b>${esc(who)}:</b> ` : ''}${esc(n.text)}</span></div>`;
+    function noticesHtml() {
+        return data.accounts.map((a) => { const fa = fleetAcc(a.index); const n = noticeOf(fa); return n ? noticeLine(n, (fa && fa.name) || a.name) : ''; }).join('');
+    }
 
     function accountRow(a) {
         const l = a.remoteLogin;
@@ -546,13 +689,15 @@
         }
         const fa = fleetAcc(a.index);
         if (fa && fa.moved) lines.push(`<div class="wac-line">Own Remote Control: ${esc(FLEET_LABEL[fa.state] || fa.state)}</div>`);
+        const note = noticeOf(fa);
+        if (note) lines.push(noticeLine(note));
         lines.push(usageHtml(a));
         lines.push(`<div class="wac-line wca-muted">Engine key ${esc(a.fingerprint || '')}</div>`);
         const dot = fa && fa.moved ? (FLEET_DOT[fa.state] || 'off') : a.active ? (status.state === 'connected' ? 'ok' : status.state === 'error' ? 'bad' : 'warn') : 'off';
         return `<div class="wac-row${sel === a.index ? ' is-selected' : ''}" role="option" aria-selected="${sel === a.index}" data-index="${a.index}">
             <span class="wac-dot wac-dot-${dot}"></span>
             <div class="wac-main">
-                <div class="wac-name">${esc(a.name)}${a.active ? ' <span class="wca-badge">Active</span>' : ''}${a.onHost ? ' <span class="wca-badge wca-badge-host">On host</span>' : ''}</div>
+                <div class="wac-name">${esc((fa && fa.name) || a.name)}${a.active ? ' <span class="wca-badge">Active</span>' : ''}${a.onHost ? ' <span class="wca-badge wca-badge-host">On host</span>' : ''}${fa && fa.settings && fa.settings.preferred ? ' <span class="wca-badge wca-badge-pref">Preferred</span>' : ''}</div>
                 ${lines.join('')}
             </div>
         </div>`;
@@ -789,11 +934,12 @@
         if (error && !loaded) list = `<div class="wac-note">${esc(error)}</div>`;
         else if (!loaded) list = '<div class="wac-empty">Loading...</div>';
         else if (!data.accounts.length) list = `<div class="wac-empty">No Claude accounts yet.</div>${listFooter()}`;
-        else list = data.accounts.map(accountRow).join('') + (error ? `<div class="wac-note">${esc(error)}</div>` : '') + listFooter();
+        else list = noticesHtml() + data.accounts.map(accountRow).join('') + (error ? `<div class="wac-note">${esc(error)}</div>` : '') + listFooter();
         if (picking) setHtml(accountsPanel, pickHtml());
+        else if (editing) { if (!editing.built) buildSettings(accountsPanel); }
         else if (adding) setHtmlKeep(accountsPanel, addHtml());
         else setHtml(accountsPanel, list);
-        if (tab === 'accounts' && !picking && !adding && accountsPanel.querySelector('i[data-w]:not([style])')) paintBars(accountsPanel);
+        if (tab === 'accounts' && !picking && !adding && !editing && accountsPanel.querySelector('i[data-w]:not([style])')) paintBars(accountsPanel);
         setHtml(hostPanel, hostHtml());
         if (tab === 'sessions') setHtml(sessionsPanel, sessionsHtml());
         page.querySelectorAll('.wm-tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === tab)));
@@ -836,6 +982,7 @@
             { label: 'Link Host Login', action: () => link(acc) },
             { label: 'Unlink Login', disabled: !acc.remoteLogin, action: () => unlink(acc) },
             '-',
+            { label: 'Settings...', action: () => openSettings(acc) },
             { label: 'Rename...', action: () => rename(acc) },
             { label: 'Delete', action: () => remove(acc) }
         ];
@@ -855,6 +1002,10 @@
             if (LG_ACTIVE.has(lg.state)) items.push({ label: 'Cancel Sign-in', action: cancelAdd });
             if (lg.state === 'error') items.push({ label: 'Try Again', action: () => loginAct('retry') });
             items.push({ label: 'Back to Accounts', action: () => { adding = false; render(); } });
+            return items;
+        }
+        if (tab === 'accounts' && editing) {
+            items.push({ label: 'Done', action: saveSettings }, { label: 'Cancel', action: closeSettings });
             return items;
         }
         if (tab === 'accounts' && picking) {
@@ -995,13 +1146,18 @@
         sh.registerApp({
             id: APP_ID,
             title: 'Fleet',
-            icon: 'svc-claude',
+            icon: '/static_images/wm-android/fleet', // the box truck (Program Icons store sets, rendered from public/static_images/app_icons/fleet.png)
+            icon65: '/static_images/wm-android/fleet-65',
             inStart: 'programs',
             mount,
             show,
+            titleKind: () => (editing ? 'ok' : 'close'),
+            onTitleOk() { if (!editing) return false; void saveSettings(); return true; },
+            onBack() { if (!editing) return false; closeSettings(); return true; },
             hide() { clearTimeout(pollTimer); void usageWatch(false); },
-            onEnd() { clearTimeout(pollTimer); page = null; void usageWatch(false); },
+            onEnd() { clearTimeout(pollTimer); page = null; editing = null; void usageWatch(false); },
             softKeys() {
+                if (tab === 'accounts' && editing) return { left: { label: 'Done', action: saveSettings }, right: { label: 'Cancel', action: closeSettings } };
                 if (tab === 'accounts' && picking) return { left: { label: 'Continue', action: pickDone }, right: { label: 'Menu', menu: menuItems } };
                 if (tab === 'sessions') return { left: { label: 'Refresh', action: () => loadSessions() }, right: { label: 'Menu', menu: menuItems } };
                 if (tab === 'accounts' && adding) {
