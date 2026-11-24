@@ -3301,6 +3301,7 @@ class Director {
         this.directorWindowChat.appendChild(this.directorContainer);
         this.directorContainer.classList.remove('hidden', 'director-closed');
         this.applySessionPanelFold(this.sessionPanelFolded());
+        this.applyPrintsPaneFold();
         this.directorContainer.classList.add('director-open');
         this.updateHeaderForView(this.currentView);
         this.renderSessionImages();
@@ -4050,9 +4051,22 @@ class Director {
         this.renderSessionImages();
     }
 
+    // Folded prints stay folded across opens and window sizes (#1148), kept per browser.
     togglePrintsPane() {
         if (!this.directorSessionImagesPane) return;
-        this.directorSessionImagesPane.classList.toggle('is-collapsed');
+        const folded = this.directorSessionImagesPane.classList.toggle('is-collapsed');
+        try {
+            if (folded) localStorage.setItem('staticforge_director_prints_folded', '1');
+            else localStorage.removeItem('staticforge_director_prints_folded');
+        } catch (_) { /* storage blocked: this window only */ }
+        this.paintPrintsToggle();
+    }
+
+    applyPrintsPaneFold() {
+        if (!this.directorSessionImagesPane) return;
+        let folded = false;
+        try { folded = localStorage.getItem('staticforge_director_prints_folded') === '1'; } catch (_) { /* storage blocked */ }
+        this.directorSessionImagesPane.classList.toggle('is-collapsed', folded);
         this.paintPrintsToggle();
     }
 
