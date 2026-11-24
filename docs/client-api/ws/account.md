@@ -439,6 +439,24 @@ Test: `node scripts/test-claude-fleet.js` (temp home and DB, fake systemctl / tm
 
 The index keeps each transcript's byte offset (`activity_scans`, agent-coord DB) and reads on from there; rows older than 30 days are dropped; only transcripts touched in the last 14 days are scanned. Test: `node scripts/test-fleet-activity.js`.
 
+#### Fleet shared memory
+
+One memory for every agent on this host and the contractor machines (#1154, Yukimi Nov 24 2026). Store `modules/agentCoord/memoryStore.js` (tables `memories`, `memory_revisions`, FTS5 `memories_fts` in the agent-coord DB), packets `modules/ws/handlers/318-fleetMemoryHandler.js`. Agents use the agent-coord tools `mem_search`, `mem_get`, `mem_add`, `mem_update`, `mem_supersede`, `mem_confirm`, `mem_flag`, `mem_recent`, `mem_digest`; every session's MCP `instructions` end with the digest for its repo (<= 40 lines / 3 KB). A memory has `scope` (`global`, `repo:<name>`, `area:<tag>`, `session`), `kind` (fact, decision, gotcha, preference, lesson, who-did-what), `status` (`proposed`, `active`, `rejected`, `superseded`, `expired`), `pinned`, `flagged` (text or null), `stale` (active, unpinned, not confirmed in 90 days), tags, source, author / account / host (contractors: `host` = `contractor:<id>`), `supersedes` / `supersededBy`, `createdAt`, `updatedAt`, `confirmedAt`, `reviewNote`.
+
+New memories (agents and contractors alike) are stored `proposed` and approved by the Supervisor's model (`agentSupervisor.askJson`: duplicates, contradiction, specific / true-looking, no secret, no instructions aimed at agents) -> `active`, `rejected` with a note, or `supersede` (the old one becomes `superseded`, linked). With no model the memory stays `proposed`: approve it in Fleet. The MCP processes write the DB and poke the server over `~/.local/state/dreamscape-agents/memory.sock`; the server also reviews anything proposed at start. Secrets (tokens, keys, passwords) are refused at write. Every active memory is mirrored to `~/fleet-memory/<scope>/<id>-<slug>.md` (frontmatter + body, `INDEX.md`, a git repo committed as "Fleet memory"); a hand edit there is imported as an update by `Yukimi`, a new file without an id as a new active memory. Import of an existing folder: `node scripts/fleet-memory-import.js [--dry-run]`.
+
+`claude_fleet_memory` (admin) -> `claude_fleet_memory_response` `{ success, action, ...}`:
+
+- `{ action: 'list', scope?, status?, q?, before? (previous page's `next`), limit? (50, max 200) }` -> `{ rows: [memory + snippet], next }`
+- `{ action: 'get', id }` -> `{ memory: { ..., body, history: [{ at, by, change }] } }`
+- `{ action: 'approve', id, note? }`, `{ action: 'reject', id, note }`, `{ action: 'pin', id, pinned }`, `{ action: 'unflag', id }` -> `{ memory }`
+- `{ action: 'update', id, body?, title?, kind?, tags?, scope? }` -> `{ memory }` (old text kept as a revision)
+- `{ action: 'remove', id }` -> `{ removed }` (also drops its history)
+- `{ action: 'review' }` -> `{ decided }` (asks the Supervisor's model about everything proposed, now)
+- `{ action: 'digest', repo? }` -> `{ digest }`; `{ action: 'stats' }` -> `{ stats: { proposed, active, flagged, stale, rejected, lastChange } }`
+
+Push: subscribe with `status_subscribe { feed: 'fleet_memory' }` (admin); `claude_fleet_memory_status` -> `{ feed, changed: { counts: { proposed, active, flagged, stale }, changed: <lastChange ms> } }` whenever something changes (no polling; refetch `list` when `changed` moves). Test: `node scripts/test-fleet-memory.js`.
+
 ### `get_account_pictures` / `set_account_picture`
 
 Account pictures for Melaton's two accounts (`modules/accountPictures.js`): Administrator (the admin
