@@ -1,6 +1,6 @@
 /**
- * Weather alerts for the primary location (Yozora #780). The server's weather service watches the
- * configured home location and broadcasts each new alert once to every signed-in client
+ * Weather alerts (Yozora #780, #1127). The server's weather service watches Home, Work and the phone's
+ * current location (reported from here, weather_here_set) and broadcasts each new alert once to every signed-in client
  * (weather_alert_issued: { alert, place, source }; modules/weatherService.js pollAlerts).
  *
  *   Desktop  a warning notification with the alert, where and until when; Details opens its full
@@ -161,6 +161,34 @@
         }
     }
 
+    /**
+     * Where the phone is (Yozora #1127): each new device fix goes to the server (weather_here_set), which watches
+     * that place for alerts and the rain alarm beside Home and Work. Only on a move of 2 km or a half hour; no timer.
+     */
+    let sentHere = null;
+    function reportHere(fix) {
+        const c = root.wsClient;
+        if (!fix || fix.source !== 'device' || !Number.isFinite(fix.lat) || !Number.isFinite(fix.lon) || !c || typeof c.sendMessage !== 'function') return;
+        if (sentHere) {
+            const dLat = (fix.lat - sentHere.lat) * 111;
+            const dLon = (fix.lon - sentHere.lon) * 111 * Math.cos((fix.lat * Math.PI) / 180);
+            if (Math.hypot(dLat, dLon) < 2 && Date.now() - sentHere.at < 30 * 60 * 1000) return;
+        }
+        sentHere = { lat: fix.lat, lon: fix.lon, at: Date.now() };
+        c.sendMessage('weather_here_set', { lat: fix.lat, lon: fix.lon }, false).catch(() => { sentHere = null; });
+    }
+
+    function wireHere() {
+        if (!isPhone()) return;
+        const signal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined;
+        document.addEventListener('wmLocationFix', (e) => reportHere(e && e.detail), { signal });
+        const loc = root.wmLocation;
+        if (loc && typeof loc.get === 'function') {
+            // the cached fix answers at once; a stale one asks the phone once (city precision: no GPS radio)
+            Promise.resolve(loc.get({ precision: 'city', maxAgeMs: 6 * 60 * 60 * 1000, deviceOnly: true, purpose: 'Weather alerts' })).then(reportHere).catch(() => {});
+        }
+    }
+
     function wire() {
         if (wired) return true;
         const c = root.wsClient;
@@ -168,6 +196,7 @@
         wired = true;
         c.on('weather_alert_issued', onIssued);
         c.on('weather_rain_alarm', onRain);
+        wireHere();
         return true;
     }
 

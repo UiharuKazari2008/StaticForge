@@ -1224,7 +1224,7 @@ function wireDiffers(wire, have) {
 // ------------------------------------------------------------------------------------------ Home and Work (#792)
 
 const PLACE_IDS = ['home', 'work'];
-const PLACE_LABEL = { home: 'Home', work: 'Work' };
+const PLACE_LABEL = { home: 'Home', work: 'Work', here: 'Current location' };
 const PLACE_DEFAULTS = { radiusKm: 3, alerts: true, rainAlarm: false, rainLeadMin: 15 };
 
 /** Kilometres between two points (haversine). */
@@ -1471,6 +1471,31 @@ async function pollPlace(id, p, changes) {
     monitor.rain[id] = st;
 }
 
+// The phone's current location (Yozora #1127): alerts and the rain alarm follow where the phone is, not only Home.
+const HERE_FRESH_MS = 3 * HOUR;
+let hereFix = null;
+
+/** The phone reports where it is; a move of 2 km or more (or a first fix) looks at the new place at once. */
+function setHere(fix = {}) {
+    const lat = Number(fix.lat);
+    const lon = Number(fix.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new WeatherError('lat and lon are needed', 'BAD_PLACE');
+    const prev = hereFix;
+    const str = (v) => String(v == null ? '' : v).trim().slice(0, 80);
+    hereFix = { lat: round2(lat), lon: round2(lon), name: str(fix.name), region: str(fix.region), country: str(fix.country), at: Date.now() };
+    if (!prev || distanceKm(prev, hereFix) >= 2) pollPlaces().catch(() => {});
+    return { ok: true };
+}
+
+/** The place for Current location while it is fresh and outside Home's and Work's radius (those say it themselves). */
+function herePlace() {
+    if (!hereFix || Date.now() - hereFix.at > HERE_FRESH_MS) return null;
+    if (placeFor(hereFix.lat, hereFix.lon)) return null;
+    const home = getPlaces().home || {};
+    return cleanPlace({ name: hereFix.name || 'Current location', region: hereFix.region, country: hereFix.country, lat: hereFix.lat, lon: hereFix.lon,
+        alerts: true, rainAlarm: home.rainAlarm === true, rainLeadMin: home.rainLeadMin });
+}
+
 /** Look at Home and Work. Changes go out as weather_alerts_changed / weather_rain_status. */
 async function pollPlaces() {
     const primary = primaryPlace();
@@ -1481,6 +1506,9 @@ async function pollPlaces() {
         if (places[id]) await pollPlace(id, places[id], changes);
         else if (monitor.byPlace[id]) { delete monitor.byPlace[id]; delete monitor.rain[id]; changes.alerts = true; changes.rain = true; }
     }
+    const here = herePlace();
+    if (here) await pollPlace('here', here, changes);
+    else if (monitor.byPlace.here) { delete monitor.byPlace.here; delete monitor.rain.here; changes.alerts = true; changes.rain = true; }
     monitor.checkedAt = new Date().toISOString();
     if (changes.alerts || changes.rain) { try { require('./phoneStatus').touch('weather'); } catch (_) { /* best effort (#908) */ } }
     if (changes.alerts) broadcast({ type: 'weather_alerts_changed', data: getActiveAlerts() });
@@ -1515,6 +1543,9 @@ function getRainStatus() {
         if (!p || !st || !st.outlook) return;
         out[id] = Object.assign({ place: placeTag(id, p), rainAlarm: p.rainAlarm }, st.outlook, { kind: rainWord(st.outlook.peakMmh) });
     });
+    const st = monitor.rain.here;
+    const hp = monitor.byPlace.here;
+    if (hp && st && st.outlook) out.here = Object.assign({ place: hp.place, rainAlarm: !!(herePlace() || {}).rainAlarm }, st.outlook, { kind: rainWord(st.outlook.peakMmh) });
     return { places: out, checkedAt: monitor.checkedAt };
 }
 
@@ -1735,6 +1766,7 @@ async function cached(key, fn) {
 
 module.exports = {
     bind,
+    setHere,
     getForecast,
     forecastWire,
     forecastReply,
