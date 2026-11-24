@@ -30,6 +30,8 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `switch_claude_account` / `link_claude_account_login` / `unlink_claude_account_login` / `claude_remote_control` | `*_response` | admin | Switch the engine's account (reconnects Remote Control), link / unlink a Remote Control login, reconnect / start / stop Remote Control (destructive) |
 | `claude_account_login` | `claude_account_login_response` | admin | Add an account by signing in on the host: sign-in link + pasted code, two steps (destructive); [Add Account](#claude-add-account) |
 | `get_claude_sessions` / `claude_session_action` | `*_response` | admin | Every Claude session on the host; Reconnect one into Remote Control / Disconnect it (the action is destructive); [Sessions](#claude-sessions) |
+| `plaud_account_status` | `plaud_account_status_response` | admin | The Plaud account: `linked`, `account { name, email }`, `linkedAt`, `signingIn`, `lastError`. Handler `modules/ws/handlers/319-plaudHandler.js` (owner `plaud`); [Plaud](#plaud) |
+| `plaud_account_link_start` / `plaud_account_link_finish` / `plaud_account_link_cancel` / `plaud_account_unlink` | `*_response` | admin | Sign in (Plaud's sign-in link; then `{ url }` = the address after Authorize), cancel, sign out (revokes at Plaud) (destructive) |
 
 ## Server push (no request)
 
@@ -480,3 +482,13 @@ After deletion, the next account refresh writes a fresh snapshot from the curren
 | Stored account + health | `modules/globalResources.js` |
 | Upstream fetch | `web_server.js` → `getUserData`, `getBalance` |
 | Client gate | `public/scripts/comp/accountDataBootstrap.js` |
+
+## Plaud
+
+CardSpace > Add a card > Install a Managed Service Account > **Plaud** (`public/scripts/comp/cplAuthentication.js` `mountPlaud`). The account is read only by Yozora's Plaud MCP tools ([mcp-connector.md](../mcp-connector.md#plaud-module-sfapp_plaud)).
+
+1. `plaud_account_link_start` → `{ url, redirectUri, expiresAt }`. The window opens `url` (Plaud's sign-in, OAuth code + PKCE, 15 minutes).
+2. Yukimi signs in and clicks Authorize. Plaud's client returns to `http://localhost:8199/auth/callback?code=...&state=...` (fixed by Plaud, not this server), a page that does not load; she copies that address.
+3. `plaud_account_link_finish { url }` exchanges the code (the state must match) and replies with the status. A bare code is taken as well.
+
+`plaud_account_unlink` revokes the authorization at Plaud and forgets the tokens. When Plaud refuses a refresh, the account reads as not linked and the tools answer `PLAUD_NOT_LINKED`. No reply carries a token.

@@ -68,6 +68,12 @@ const MESSAGING_BRIDGE_KEY_TARGETS = Object.freeze([
     { persona: 'tsubame', label: 'Tsubame' }
 ]);
 
+/** Plaud (Yukimi's recordings, modules/plaudMcp.js): the Xi (Yozora) key only (Yukimi, Nov 23 2026). */
+const PLAUD_SCOPE = 'sfapp_plaud';
+const PLAUD_KEY_TARGETS = Object.freeze([
+    { persona: 'xi', label: 'Xi' }
+]);
+
 function parseStoredScopes(raw) {
     try {
         const parsed = JSON.parse(raw);
@@ -209,6 +215,12 @@ async function widenDirectorApplicationKeys(manager) {
         [MESSAGING_BRIDGE_SCOPE],
         'messaging_bridge_scope_migration'
     );
+    const plaud = await widenLabeledApplicationKeys(
+        manager,
+        PLAUD_KEY_TARGETS,
+        [PLAUD_SCOPE],
+        'plaud_scope_migration'
+    );
     const tokens = await widenDovecoteOAuthAccessTokens(manager);
     const bridgeTokens = await widenOAuthAccessTokensForScope(
         MESSAGING_BRIDGE_KEY_TARGETS.map((t) => t.label),
@@ -216,10 +228,11 @@ async function widenDirectorApplicationKeys(manager) {
         { explicitOnly: true }
     );
     return {
-        updated: director.updated + bots.updated + exchange.updated + alchemy.updated + bridge.updated,
-        keys: director.keys.concat(bots.keys).concat(exchange.keys).concat(alchemy.keys).concat(bridge.keys),
+        updated: director.updated + bots.updated + exchange.updated + alchemy.updated + bridge.updated + plaud.updated,
+        keys: director.keys.concat(bots.keys).concat(exchange.keys).concat(alchemy.keys).concat(bridge.keys).concat(plaud.keys),
         alchemyBrowserUpdated: alchemy.updated,
         messagingBridgeUpdated: bridge.updated,
+        plaudUpdated: plaud.updated,
         messagingBridgeTokensUpdated: bridgeTokens.updated,
         beforeScopes: LEGACY_DIRECTOR_SCOPES.slice(),
         afterScopes: DIRECTOR_MCP_SCOPES.slice(),
@@ -358,6 +371,8 @@ module.exports = {
     ALCHEMY_BROWSER_KEY_TARGETS,
     MESSAGING_BRIDGE_SCOPE,
     MESSAGING_BRIDGE_KEY_TARGETS,
+    PLAUD_SCOPE,
+    PLAUD_KEY_TARGETS,
     widenOAuthAccessTokensForScope,
     directorScopeReport,
     widenLabeledApplicationKeys,

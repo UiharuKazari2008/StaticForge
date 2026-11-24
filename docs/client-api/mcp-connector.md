@@ -402,6 +402,21 @@ Start or reuse a Director chat with a persona (Yozora, Yumiya, Chiyo) from outsi
 | `start_director_session` | `{ persona, prompt, task?, title?, source?, thread?, sessionId?, attachments?, sessionType?, engine?, model?, effort? }` → `sessionId`, `created` / `reused` / `deduped`, `status`, `open`. Rate group `write`. Reuse order and fields: [agent-session.md](./agent-session.md). REST twin `POST /agent/director/sessions` ([rest-api.md](./rest-api.md)). |
 | `get_director_session` | `{ sessionId }` → `status` running / idle, `name`, `archived`, `sources`, `thread`, `messages`, `lastReply`, `issues`. Rate group `free`. REST twin `GET /agent/director/sessions/:sessionId`. |
 
+#### Plaud Module (`sfapp_plaud`)
+
+Yukimi's Plaud recordings (brainstorming, UI reviews, live tests), for Yozora, who validates them against the code and open issues and plans them as Yozora issues for Claude Code or herself (Yukimi, Nov 23 2026: only Yozora). Code: `modules/plaudMcp.js`, account `modules/plaudClient.js` (Plaud's developer API at `platform.plaud.ai/developer/api`, the one its CLI and MCP use). Read-only.
+
+- **Account:** added in CardSpace (Install a Managed Service Account > Plaud): Plaud's sign-in opens, Authorize, paste the `http://localhost:8199/auth/callback?...` address the browser went to. WS `plaud_account_*` ([account.md](./ws/account.md#plaud)). Tokens in `.cache/plaud-account.json` (0600), never in a reply.
+- **Scope:** the key must name `sfapp_plaud` itself; `universal` does **not** include it. Only the Xi key gets it (startup migration `directorAppKeyScopes.js` `PLAUD_KEY_TARGETS`, audit source `plaud_scope_migration`). The Wren key (Yumiya, Chiyo) never does.
+- **Identity:** the key's application name must be `Xi`. Any other key gets `FORBIDDEN`, even with the scope, and the tools are not listed for it.
+- Replies are `{ success: true, ... }` or `{ success: false, error, code }` with `isError`. Codes: `PLAUD_NOT_LINKED` (no account, or Plaud wants a new sign-in), `PLAUD_NOT_FOUND`, `PLAUD_NETWORK`, `PLAUD_REFUSED`, `PLAUD_BAD_LINK`.
+
+| Tool | Description |
+|------|-------------|
+| `plaud_list_recordings` | `{ query?, from?, to?, page?, limit? }` → `recordings [{ id, name, createdAt, startAt, durationMs }]`. `query` matches the name over the 500 newest; dates `YYYY-MM-DD`. Rate group `search`. |
+| `plaud_get_recording` | `{ recordingId }` → details, `notes [{ type, title, markdown }]` (Plaud's AI summary, action items), `transcriptBlocks`, `source` (`plaud:<id>`, for the issues and `start_director_session`). Rate group `search`. |
+| `plaud_get_transcript` | `{ recordingId, block?, offset? }` → `text` as `[mm:ss] Speaker: text` lines, 60,000 characters a call; `nextOffset` until null. `block`: `transaction` (default), `transaction_polish`, `outline`, `mark_memo`. Rate group `search`. |
+
 #### Dovecote Mail Module (`sfapp_dovecote`)
 
 Own-mailbox mail plus per-mailbox new-mail webhook and notify-forward. Submodule `sfapp_dovecote:notify` is the notify tools only. Exchange admin notify tools are on `sfapp_mail_exchange` (Yukimi / Sala / Tsubame).

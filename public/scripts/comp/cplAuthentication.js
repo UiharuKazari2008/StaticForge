@@ -1586,6 +1586,148 @@
         Object.keys(maUi).forEach((k) => { delete maUi[k]; });
     }
 
+    // ---- Plaud (Yukimi's recorder): one account, read only by Yozora's Plaud tools (modules/plaudClient.js) ----
+    //
+    // Plaud's sign-in returns to http://localhost:8199 (its CLI's address), which is not this server: the browser
+    // lands on a page that does not load, and that address is pasted here. ws plaud_account_* (319-plaudHandler.js).
+    const PL_PICTURE = '/static_images/app_icons/vista-sound-recorder.png';
+    let plState = null;      // plaud_account_status
+    let plLink = null;       // { url, expiresAt } while a sign-in waits
+    let plAdding = false;
+    let plError = '';
+
+    async function plSend(type, payload) {
+        const c = window.wsClient;
+        if (!c || typeof c.sendMessage !== 'function') throw new Error('Not connected to Dreamscape');
+        const r = await c.sendMessage(type, payload || {});
+        const d = r && r.data && typeof r.data === 'object' ? r.data : (r || {});
+        if (d.success === false) throw new Error(d.error || d.message || 'The server refused');
+        return d;
+    }
+
+    async function plLoad() {
+        try { plState = await plSend('plaud_account_status'); plError = ''; } catch (err) { plError = (err && err.message) || 'Plaud could not be read'; }
+        if (plState && plState.linked) { plAdding = false; plLink = null; }
+        plPaint();
+    }
+
+    async function plStart() {
+        plAdding = true;
+        const d = await plSend('plaud_account_link_start');
+        plLink = { url: d.url, expiresAt: d.expiresAt };
+        plPaint();
+        await csOpenBrowser(d.url, 'Plaud');
+    }
+
+    function plDetails(details, actions) {
+        const st = plState || {};
+        if (st.linked) {
+            const who = st.account && (st.account.email || st.account.name);
+            details.append(
+                customField('Account', tmText(who || 'Signed in')),
+                customField('Signed in', tmText(st.linkedAt ? new Date(st.linkedAt).toLocaleString() : '')),
+                customField('Used by', tmText('Yozora only, in the Director: she reads your recordings\' notes and transcripts to plan Yozora issues. No other persona or key can read them.')),
+                customField('Status', tmText(st.lastError ? `Error: ${st.lastError}` : 'Connected', st.lastError ? 'cpl-tm-error' : ''))
+            );
+            actions.append(tmButton('Sign out', async () => {
+                const ok = typeof root.showConfirmationDialog === 'function' ? await root.showConfirmationDialog('<p>Sign out of Plaud? Yozora can no longer read your recordings until you sign in again. Your recordings stay at Plaud.</p>',
+                    [{ text: 'Sign out', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], null, { title: 'Dreamscape CardSpace', width: 400 }) : true;
+                if (ok !== true) return;
+                plState = await plSend('plaud_account_unlink');
+                plPaint();
+            }));
+            return;
+        }
+        const back = customInput('', 'http://localhost:8199/auth/callback?code=...');
+        back.autocomplete = 'off';
+        back.spellcheck = false;
+        const finish = async () => {
+            plState = await plSend('plaud_account_link_finish', { url: back.value.trim() });
+            plAdding = false;
+            plLink = null;
+            plPaint();
+        };
+        back.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); void finish().catch((err) => tmToast((err && err.message) || 'Plaud did not finish the sign-in')); } });
+        details.append(
+            customField('Steps', tmText(plLink
+                ? 'A browser window opens at Plaud. Sign in, click Authorize, then copy the address the window went to (a page at localhost:8199 that does not load) and paste it here.'
+                : 'Press Sign in to Plaud. A browser window opens at Plaud\'s sign-in.', 'cpl-tm-hint')),
+            customField('Address after Authorize', back)
+        );
+        if (plError) details.append(customField('Status', tmText(plError, 'cpl-tm-error')));
+        actions.append(
+            tmButton(plLink ? 'Open the sign-in again' : 'Sign in to Plaud', async () => {
+                if (plLink && plLink.expiresAt > Date.now()) await csOpenBrowser(plLink.url, 'Plaud');
+                else await plStart();
+            }),
+            tmButton('Finish', finish),
+            tmButton('Cancel', async () => {
+                plAdding = false;
+                plLink = null;
+                try { plState = await plSend('plaud_account_link_cancel'); } catch (_err) { /* nothing was waiting */ }
+                plPaint();
+            })
+        );
+    }
+
+    function plPaint() {
+        const list = hostEl && hostEl.querySelector('#cplPlaudList');
+        if (!list) return;
+        list.textContent = '';
+        const st = plState || {};
+        if (!st.linked && !plAdding) { csRefresh(); return; }
+        const block = document.createElement('div');
+        block.className = 'cpl-vault-row is-open';
+        block.dataset.cplVaultKey = 'plaud:account';
+        block.dataset.cplCardPicture = PL_PICTURE;
+        const line = document.createElement('button');
+        line.type = 'button';
+        line.className = 'cpl-vault-line';
+        const name = document.createElement('span');
+        name.className = 'cpl-vault-name';
+        name.textContent = 'Plaud';
+        const sub = document.createElement('span');
+        sub.className = 'cpl-vault-sub';
+        sub.textContent = st.linked ? ((st.account && (st.account.email || st.account.name)) || 'Plaud account') : 'Signing in';
+        name.appendChild(sub);
+        const summary = document.createElement('span');
+        summary.className = 'cpl-vault-summary';
+        summary.textContent = st.linked ? 'Yozora only' : 'Not signed in';
+        const glance = makeGlance([{ state: st.linked ? (st.lastError ? 'fail' : 'ok') : 'warn', label: st.linked ? 'Connected' : 'Not signed in' }]);
+        const chevron = document.createElement('span');
+        chevron.className = 'cpl-vault-chevron';
+        line.append(name, summary, glance, chevron);
+        const details = document.createElement('div');
+        details.className = 'cpl-vault-details';
+        const actions = document.createElement('div');
+        actions.className = 'cpl-vault-actions';
+        plDetails(details, actions);
+        details.appendChild(actions);
+        block.append(line, details);
+        list.appendChild(block);
+        csRefresh();
+    }
+
+    function mountPlaud() {
+        if (!hostEl || hostEl.querySelector('#cplVault-plaud')) return;
+        const head = document.createElement('div');
+        head.className = 'cpl-vault-head';
+        head.id = 'cplVault-plaud';
+        head.innerHTML = `<img src="${PL_PICTURE}" alt=""><span class="cpl-vault-title">Plaud</span><span class="cpl-vault-links"></span>`;
+        const list = document.createElement('div');
+        list.className = 'cpl-vault-list';
+        list.id = 'cplPlaudList';
+        hostEl.append(head, list);
+        void plLoad();
+    }
+
+    function unmountPlaud() {
+        plState = null;
+        plLink = null;
+        plAdding = false;
+        plError = '';
+    }
+
     // ---- the window: Vista's Windows CardSpace (icardagt.exe, icardres.dll; measured on the VM) ----
     //
     // Windows CardSpace is a window of its own (Control Panel only starts it). Its three views:
@@ -1631,7 +1773,7 @@
         if (!list) return 'service';
         if (list.id === 'cplCustomProviderList') return 'provider';
         if (list.id === 'cplTextMessagingList' || list.id === 'cplMailAccountsList') return 'messaging';
-        if (list.id === 'cplKeyCardList') return 'service';
+        if (list.id === 'cplKeyCardList' || list.id === 'cplPlaudList') return 'service';
         const body = list.dataset.cplVaultFor || '';
         // each Cursor profile is a managed service account card of its own
         if (/Cursor/.test(body)) return 'service';
@@ -2369,7 +2511,8 @@
             desc: 'Select the service the account is for.',
             items: () => [
                 ['key:claude', 'Claude', 'A Claude account the Director signs in with (paste the token from claude setup-token). The selected account runs the Claude engine for Yumiya, Yozora and Rentan.'],
-                ['secCursorAccountsAddBtn', 'Cursor', 'A Cursor profile the Director can run Yumiya and Yozora on.']
+                ['secCursorAccountsAddBtn', 'Cursor', 'A Cursor profile the Director can run Yumiya and Yozora on.'],
+                ['plaud-add', 'Plaud', 'Your Plaud recorder\'s account. Yozora reads your brainstorming, UI review and test recordings (notes and transcripts) and plans them as Yozora issues; no other persona can read them.']
             ].concat(csKeyServices().filter((sv) => sv.id !== 'claude').map((sv) => [`key:${sv.id}`, sv.label || sv.id, sv.description || '']))
         },
         androidApps: {
@@ -2422,6 +2565,12 @@
                 const fresh = csRow('mail:');
                 if (fresh) { csSel = fresh.dataset.cplVaultKey; csGo('details'); } else csGo('home');
             }, 0);
+            return;
+        }
+        if (id === 'plaud-add') {
+            const go = () => { const row = csRow('plaud:account'); if (row) { csSel = row.dataset.cplVaultKey; csGo('details'); } else csGo('home'); };
+            if (plState && plState.linked) { go(); return; }
+            void plStart().catch((err) => { plError = (err && err.message) || 'Plaud sign-in could not start'; plPaint(); }).then(() => setTimeout(go, 0));
             return;
         }
         if (id === 'noop') return;
@@ -2647,6 +2796,7 @@
         mountCustomProviders();
         mountTextMessaging();
         mountMailAccounts();
+        mountPlaud();
     }
 
     function unmount() {
@@ -2659,6 +2809,7 @@
         customProviderRows = [];
         unmountTextMessaging();
         unmountMailAccounts();
+        unmountPlaud();
         if (hostEl) hostEl.innerHTML = '';
         hostEl = null;
     }

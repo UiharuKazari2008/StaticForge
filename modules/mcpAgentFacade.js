@@ -3641,6 +3641,9 @@ EXCHANGE_MCP_TOOLS.forEach((tool) => TOOL_DEFS.push(tool));
 // Messaging Bridge (sfapp_messaging_bridge): Yukimi's own IMAP mail, mail rules and texts, for Tsubame (modules/messagingBridgeMcp.js)
 const messagingBridgeMcp = require('./messagingBridgeMcp');
 messagingBridgeMcp.TOOLS.forEach((tool) => TOOL_DEFS.push(tool));
+// Plaud (sfapp_plaud): Yukimi's Plaud recordings, for Yozora (the Xi key) only (modules/plaudMcp.js)
+const plaudMcp = require('./plaudMcp');
+plaudMcp.TOOLS.forEach((tool) => TOOL_DEFS.push(tool));
 
 const MEMORY_TOOL_ALIASES = {
     saveKnowledgeMemory: 'save_memory',
@@ -7315,6 +7318,8 @@ function readGalleryImage(globalResources, filename) {
 function toolAllowedForScopes(scopes, tool) {
     // Messaging Bridge: the key must name sfapp_messaging_bridge itself; 'universal' does not reach Yukimi's own mail and texts
     if (tool.role === messagingBridgeMcp.ROLE) return messagingBridgeMcp.scopesHaveBridge(scopes);
+    // Plaud: the key must name sfapp_plaud itself; only the Xi key holds it
+    if (tool.role === plaudMcp.ROLE) return plaudMcp.scopesHavePlaud(scopes);
     if (tool.name === 'resolve_lookback') {
         return agentHasNamedScope(scopes, 'gallery')
             || agentHasNamedScope(scopes, 'notes')
@@ -7439,6 +7444,7 @@ function listToolsForScopes(scopes, globalResources, options) {
             if (tool.role === messagingBridgeMcp.ROLE) {
                 return messagingBridgeMcp.isBridgeOwner(owner) || messagingBridgeMcp.isBridgeOwner(options && options.actor);
             }
+            if (tool.role === plaudMcp.ROLE) return plaudMcp.isPlaudOwner(options && options.appName);
             return false;
         })
         .map((tool) => serializeListedTool(tool, catalog));
@@ -10462,6 +10468,10 @@ async function callTool(globalResources, req, name, args) {
         return messagingBridgeMcp.handleBridgeTool(req, name, input);
     }
 
+    if (plaudMcp.isPlaudTool(name)) {
+        return plaudMcp.handlePlaudTool(req, name, input);
+    }
+
     const err = new Error(`Unknown tool: ${name}`);
     err.status = 404;
     throw err;
@@ -10825,13 +10835,14 @@ async function handleJsonRpc(globalResources, req, message) {
             owner = null;
         }
         const actor = require('./mailExchangeAuth').resolveMcpActor(req);
+        const appName = resolveActorName(req);
         return {
             status: 200,
             body: {
                 jsonrpc: '2.0',
                 id,
                 result: {
-                    tools: listToolsForScopes(scopes, globalResources, { owner, actor })
+                    tools: listToolsForScopes(scopes, globalResources, { owner, actor, appName })
                         .filter((tool) => tool.name !== 'lookup_character_age' || ageToolAllowed(globalResources))
                 }
             }

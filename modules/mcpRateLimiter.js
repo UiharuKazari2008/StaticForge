@@ -225,6 +225,10 @@ const TOOL_RATE_GROUPS = {
     exchange_status: 'free',
     exchange_resync_recipients: 'write',
     exchange_spam: 'mail',
+    // Plaud (modules/plaudMcp.js): each call is one or two requests to Plaud
+    plaud_list_recordings: 'search',
+    plaud_get_recording: 'search',
+    plaud_get_transcript: 'search',
     // Messaging Bridge (modules/messagingBridgeMcp.js)
     bridge_mail_accounts: 'bridge',
     bridge_mail_folders: 'bridge',

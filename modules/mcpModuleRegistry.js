@@ -183,6 +183,13 @@ const MODULE_DEFS = {
         description: 'Yukimi\'s own external mail (IMAP accounts, iCloud included), mail rules, and text messages (iMessage via BlueBubbles, RCS, Android). Granted only to the Tsubame (mailroom) key; identity-gated to Tsubame and Yukimi. universal does not include it.',
         tools: require('./messagingBridgeMcp').TOOLS.map((t) => t.name)
     },
+    plaud: {
+        id: 'plaud',
+        scope: 'sfapp_plaud',
+        label: 'Plaud',
+        description: 'Yukimi\'s Plaud recordings (list, AI notes, transcripts; read-only) for Yozora. Granted only to the Xi key; identity-gated to Xi. universal does not include it.',
+        tools: require('./plaudMcp').TOOLS.map((t) => t.name)
+    },
     report_issue: {
         id: 'report_issue',
         scope: 'sfapp_report_issue',

@@ -80,7 +80,7 @@ function reviewBrief(prompt, source) {
         'Task: turn the review below (a brainstorming or live-testing report, often a Plaud recording summary, action items and transcript) into planned work on Yozora, DreamScape/StaticForge (or the repo the item belongs to).',
         '',
         'How:',
-        '1. Read the whole report and any attached files first. Check the code and open Yozora issues before you write: reuse or comment on an issue that already covers an item instead of filing a duplicate.',
+        '1. Read the whole report and any attached files first. For a Plaud recording (source plaud:<id>) whose transcript is not attached or is cut short, read it with plaud_get_transcript (and its notes with plaud_get_recording). Check the code and open Yozora issues before you write: reuse or comment on an issue that already covers an item instead of filing a duplicate.',
         '2. Group the action items into one or more issues by topic and repo. Each issue: a specific title; Ziel (goal), Kontext (what was said or seen, short quotes from the transcript), Umfang (scope) as a checklist, Abnahme (how to verify), the files or modules that are likely involved (you checked them), and the source of the review' + (source ? ` (${source})` : '') + '.',
         '3. Language: issues and issue comments on Yozora in German, like the rest of Yozora. Everything you say to Yukimi - your chat replies, request_form titles, labels and options - in English, whatever language the review is in.',
         '4. Labels by board convention: one type:*, one of p1/p2/p3, and status:ready when nothing is open, else status:triage. Add cursor-agent when a coding agent (Claude Code) can take it as written. Card it on board 5 in the column that matches its status.',

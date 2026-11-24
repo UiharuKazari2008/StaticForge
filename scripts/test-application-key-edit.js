@@ -96,7 +96,9 @@ async function main() {
     // so Wren and Xi deliberately do not get it.
     // sfapp_director_start (#1068) starts Director chats from outside; the personas' own keys
     // do not hold it, so a turn cannot spawn chats of itself.
-    const IDENTITY_GATED = new Set(['sfapp_alchemy_browser', 'sfapp_director_start']);
+    // sfapp_plaud (Yukimi's Plaud recordings) is the Xi key's alone (PLAUD_KEY_TARGETS), never the shared director list.
+    const IDENTITY_GATED = new Set(['sfapp_alchemy_browser', 'sfapp_director_start', 'sfapp_plaud']);
+    assert.ok(!report.after.includes('sfapp_plaud'), 'the shared director list never carries the Plaud scope');
     assert.ok(!report.after.includes('sfapp_director_start'), 'director keys never get the Director start scope');
     assert.ok(!report.after.includes('sfapp_alchemy_browser'), 'director keys never get the Alchemy browser scope');
     const uncovered = [...new Set(tools.map((tool) => tool.scope))]
