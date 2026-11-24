@@ -381,6 +381,10 @@
             f.style.translate = dx ? `${-dx}px 0` : '';
         });
         if (!dx) content.addEventListener('transitionend', () => { if (!content.style.transform) content.style.transition = ''; }, { once: true });
+        // the app's strip follows from the frame the content starts moving in (it closed a frame or more ahead, and the page
+        // under the content showed white - Yukimi, Nov 23 2026)
+        const h = host();
+        if (h && typeof h.pushMoving === 'function') requestAnimationFrame(() => { try { h.pushMoving(); } catch (_) { /* older app */ } });
     }
 
     root.wmQuickAccess = { open, close, roles, signature, pushPage, ICONS };
