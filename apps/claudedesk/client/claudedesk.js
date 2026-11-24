@@ -126,7 +126,8 @@
             wins: new Set(), // the item windows (a folded thinking / edit in full)
             engines: null, // claude_fleet_engines, read when a wizard or the queue needs it
             act: { rows: [], next: null, total: 0, kind: '', q: '', sessionId: '', loaded: false, loading: false, error: '', gone: false, seq: 0 }, // Activity
-            con: { list: [], loaded: false, loading: false, error: '', gone: false }, // Contractors
+            conChats: new Map(), // contractor id | session id -> { messages, loading, error }
+            con: { list: [], invites: [], loaded: false, loading: false, error: '', gone: false }, // Contractors
             awAgents: new Map() // session id -> { agents, loading, gone, error }: the background agents shown under an Active Work session
         };
     }
@@ -438,9 +439,16 @@
 
     // ---- Contractors: other machines that run Fleet work on their own projects (claude_fleet_contractors) ------
 
+    /** A list reply (contractors, invites) or a push ({ reason, contractor } merged by id, or { reason: 'invites', invites }). */
     function conTake(r) {
-        const list = r && (Array.isArray(r.contractors) ? r.contractors : (r.data && Array.isArray(r.data.contractors) ? r.data.contractors : null));
-        if (list) { S.con.list = list; S.con.loaded = true; S.con.gone = false; S.con.error = ''; }
+        const d = r && (r.contractors || r.contractor || r.invites || r.reason) ? r : (r && r.data) || {};
+        if (Array.isArray(d.contractors)) { S.con.list = d.contractors; S.con.loaded = true; S.con.gone = false; S.con.error = ''; }
+        if (Array.isArray(d.invites)) S.con.invites = d.invites;
+        const k = d.contractor;
+        if (k && k.id) {
+            const i = S.con.list.findIndex((x) => x.id === k.id);
+            if (d.reason === 'removed') { if (i >= 0) S.con.list.splice(i, 1); } else if (i >= 0) S.con.list[i] = k; else S.con.list.push(k);
+        }
     }
     async function loadContractors() {
         if (S.con.loading) return;
@@ -451,7 +459,24 @@
     }
     const conOf = (id) => S.con.list.find((x) => String(x.id) === String(id)) || null;
     const conSessions = (k) => (Array.isArray(k && k.sessions) ? k.sessions : []);
-    const conSessionCount = (k) => (Array.isArray(k && k.sessions) ? k.sessions.length : (Number(k && k.sessions) || 0));
+    const conHello = (k) => (k && k.hello) || {};
+    const conName = (k) => k.name || conHello(k).hostname || String(k.id);
+    const conState = (k) => (k.revoked ? 'Revoked' : (k.online ? 'Online' : 'Offline'));
+    /** One contractor session's transcript page (the same shape claude_desk_transcript answers). */
+    async function loadConChat(cid, sid) {
+        const key = `${cid}|${sid}`;
+        let e = S.conChats.get(key);
+        if (!e) { e = { messages: [], loading: false, error: '' }; S.conChats.set(key, e); }
+        if (e.loading) return;
+        e.loading = true;
+        try {
+            const r = await send('claude_fleet_contractors', { action: 'transcript', id: cid, sessionId: sid, limit: MSG_PAGE, show: showNow() });
+            e.messages = shownOnly(unwrap(r, 'messages').messages);
+            e.error = '';
+        } catch (err) { e.error = isGone(err) ? NOT_YET : errText(err); }
+        e.loading = false;
+        repaint();
+    }
 
     /** The background agents of an Active Work session, read when its node opens. */
     async function loadAwAgents(sid) {
@@ -834,6 +859,7 @@
     async function loadSupervisor() {
         void loadEngines();
         try { supTake(await send('claude_desk_supervisor', { action: 'status' })); S.sup.loaded = true; } catch (e) { S.sup.loaded = true; supFail(e); }
+        openAgents();
         repaint();
     }
     /** One supervisor action; busy = the status line while it runs (a re-check takes up to a minute). */
@@ -856,6 +882,12 @@
         S.sup.busy = '';
         c.note('');
         repaint();
+    }
+
+    /** Session nodes left open in Active Work (the tree remembers them) read their agents once. */
+    function openAgents() {
+        if (!S.c) return;
+        S.c.open.forEach((id) => { const m = /^aw:s:(.+)$/.exec(id); if (m && !S.awAgents.has(m[1]) && liveOf(m[1])) void loadAwAgents(m[1]); });
     }
 
     function supDetailHtml() {
@@ -1110,7 +1142,7 @@
         }));
         const empty = A.error ? `The activity could not be read. ${A.error}` : (A.loading || !A.loaded ? 'Reading the activity...' : (A.kind || A.q || A.sessionId ? 'Nothing matches.' : 'No activity yet.'));
         const lv = c.listView([
-            { t: 'When', w: 128, key: 'ts', text: (d) => when(d.ts), value: (d) => Date.parse(d.ts) || 0 },
+            { t: 'When', w: 140, key: 'ts', text: (d) => when(d.ts), value: (d) => Date.parse(d.ts) || 0 },
             { t: 'Kind', w: 52, key: 'kind', text: (d) => d.kind },
             { t: 'Tool', w: 74, key: 'tool', text: (d) => d.tool },
             { t: 'What', w: 300, key: 'summary', text: (d) => d.summary },
@@ -1145,35 +1177,51 @@
         if (S.con.gone) return c.page('Contractors', '', [{ id: 'cd-con-gone', title: 'Contractors', body: `<p>${NOT_YET}</p><p class="mmc-hint">Contractors are other machines that run Fleet work on their own projects.</p>` }]);
         const rows = S.con.list.map((k) => ({
             key: `k:${k.id}`,
-            icon: `${ITEMS}/network-and-sharing-center-16.png`,
-            cls: k.connected ? 'cd-live' : '',
-            data: { name: k.name || k.hostname || String(k.id), host: k.hostname || '', os: k.os || '', state: k.connected ? 'Connected' : 'Not connected', seen: k.lastSeen || 0, sessions: conSessionCount(k) }
+            icon: k.revoked ? `${VI}/error-16.png` : `${ITEMS}/network-and-sharing-center-16.png`,
+            cls: k.online ? 'cd-live' : (k.revoked ? 'cd-stale' : ''),
+            data: { name: conName(k), host: [conHello(k).hostname, conHello(k).os].filter(Boolean).join(' / '), claude: conHello(k).claudeVersion || '', state: conState(k), seen: k.lastSeenAt || 0, sessions: conSessions(k).filter((x) => x && x.live !== false).length }
         }));
+        const inv = (S.con.invites || []).map((i) => ({ key: `iv:${i.id}`, icon: `${VI}/info-16.png`, data: { name: i.name, expires: i.expiresAt || 0 } }));
         const empty = S.con.error ? `Contractors could not be read. ${S.con.error}` : (S.con.loaded ? 'No other machine is added. Use Add Contractor... to connect one.' : 'Reading the contractors...');
-        return { html: c.listView([
-            { t: 'Name', w: 160, key: 'name', text: (d) => d.name },
-            { t: 'Host', w: 140, key: 'host', text: (d) => d.host },
-            { t: 'System', w: 110, key: 'os', text: (d) => d.os },
-            { t: 'State', w: 90, key: 'state', text: (d) => d.state },
+        const lv = c.listView([
+            { t: 'Name', w: 150, key: 'name', text: (d) => d.name },
+            { t: 'Host / System', w: 190, key: 'host', text: (d) => d.host },
+            { t: 'Claude', w: 70, key: 'claude', text: (d) => d.claude },
+            { t: 'State', w: 70, key: 'state', text: (d) => d.state },
             { t: 'Last Seen', w: 128, key: 'seen', text: (d) => when(d.seen), value: (d) => Number(d.seen) || Date.parse(d.seen) || 0 },
             { t: 'Sessions', w: 62, key: 'sessions', num: true, text: (d) => String(d.sessions), value: (d) => d.sessions }
-        ], rows, { sortId: 'cd-contractors', empty, fit: true }), list: true };
+        ], rows, { sortId: 'cd-contractors', empty, fit: true });
+        const invList = inv.length ? c.listView([{ t: 'Open invitation', w: 200, key: 'name', text: (d) => d.name }, { t: 'Expires', w: 128, key: 'expires', text: (d) => when(d.expires), value: (d) => Number(d.expires) || Date.parse(d.expires) || 0 }], inv, { sortId: 'cd-invites' }) : '';
+        return { html: invList ? `<div class="cd-list-wrap">${lv}${invList}</div>` : lv, list: true, split: !!invList };
     }
     function contractorPage(c, id) {
         const k = conOf(id);
         if (!k) return c.page('Contractor', '', [{ id: 'cd-ct-gone', title: 'Contractor', body: '<p class="mmc-hint">This contractor is no longer listed.</p>' }]);
-        const sess = conSessions(k);
-        return c.page(k.name || k.hostname || String(k.id), k.connected ? 'Connected' : 'Not connected', [
-            { id: 'cd-ct-info', title: 'Machine', body: c.props([['Host', esc(k.hostname || '')], ['System', esc(k.os || '')], ['State', c.state(!!k.connected, k.connected ? 'Connected' : 'Not connected', true)], ['Last seen', esc(when(k.lastSeen))]]) },
-            { id: 'cd-ct-sess', title: `Sessions (${conSessionCount(k)})`, body: sess.length ? `<table class="cd-table"><thead><tr><th>Session</th><th class="cd-w80">State</th></tr></thead><tbody>${sess.map((x) => `<tr><td>${esc((x && (x.title || x.name || x.id)) || '')}</td><td>${esc((x && (x.state || x.status)) || '')}</td></tr>`).join('')}</tbody></table>` : '<p class="mmc-hint">It runs no session now.</p>' }
+        const h = conHello(k);
+        const live = conSessions(k).filter((x) => x && x.live !== false);
+        const recent = S.conRecent && S.conRecent.get(k.id);
+        const tbl = (list) => (list.length ? `<table class="cd-table"><thead><tr><th>Session</th><th>Folder</th><th class="cd-w80">State</th></tr></thead><tbody>${list.map((x) => `<tr><td>${esc(x.title || shortId(x.id))}</td><td>${esc(baseName(x.cwd))}</td><td>${esc(x.status || '')}</td></tr>`).join('')}</tbody></table>` : '<p class="mmc-hint">None.</p>');
+        return c.page(conName(k), conState(k), [
+            { id: 'cd-ct-info', title: 'Machine', body: c.props([['Host', esc(h.hostname || '')], ['System', esc([h.os, h.osRelease, h.arch].filter(Boolean).join(' '))], ['State', c.state(!!k.online, conState(k), true)], ['Address', esc(k.address || '')], ['Last seen', esc(when(k.lastSeenAt))], ['Claude Code', esc(h.claudeVersion || '')], ['Agent', esc([h.agentVersion, h.runner].filter(Boolean).join(' / '))], ['Added', esc(when(k.createdAt))]]) },
+            { id: 'cd-ct-acc', title: `Accounts (${(h.accounts || []).length})`, body: (h.accounts || []).length ? `<table class="cd-table"><thead><tr><th>Account</th><th>Organization</th><th class="cd-w80">Plan</th></tr></thead><tbody>${h.accounts.map((a) => `<tr><td>${esc(a.displayName || a.email || '')}</td><td>${esc(a.organization || '')}</td><td>${esc(a.plan || '')}</td></tr>`).join('')}</tbody></table>` : '<p class="mmc-hint">None signed in.</p>' },
+            { id: 'cd-ct-proj', title: `Projects (${(h.projects || []).length})`, body: (h.projects || []).length ? `<table class="cd-table"><thead><tr><th>Project</th><th>Folder</th></tr></thead><tbody>${h.projects.map((x) => `<tr><td>${esc(x.name || '')}</td><td>${esc(x.path || '')}</td></tr>`).join('')}</tbody></table>` : '<p class="mmc-hint">None.</p>' },
+            { id: 'cd-ct-sess', title: `Live Sessions (${live.length})`, body: tbl(live) },
+            { id: 'cd-ct-recent', title: 'Recent Sessions', body: recent ? tbl(recent) : `<p><span class="mmc-link" data-act="con-recent" data-arg="${esc(k.id)}">Show recent sessions</span></p>` }
         ]);
     }
-    function contractorSessionPage(c, cid, key) {
+    /** A contractor's session: what it is and its conversation (read through the contractor's relay). */
+    function contractorSessionPage(c, cid, sid) {
         const k = conOf(cid);
-        const sess = k ? conSessions(k) : [];
-        const x = sess.find((y, i) => String(y && y.id != null ? y.id : i) === key);
-        if (!x || typeof x !== 'object') return c.page('Session', '', [{ id: 'cd-cs-gone', title: 'Session', body: '<p class="mmc-hint">This session is no longer listed.</p>' }]);
-        return c.page(x.title || x.name || String(x.id || ''), k.name || '', [{ id: 'cd-cs-info', title: 'Session', body: c.props(Object.keys(x).filter((p) => ['string', 'number', 'boolean'].includes(typeof x[p])).map((p) => [esc(p), esc(String(x[p]))])) }]);
+        const x = k ? (conSessions(k).find((y) => y.id === sid) || ((S.conRecent && S.conRecent.get(cid)) || []).find((y) => y.id === sid)) : null;
+        if (!x) return c.page('Session', '', [{ id: 'cd-cs-gone', title: 'Session', body: '<p class="mmc-hint">This session is no longer listed.</p>' }]);
+        const key = `${cid}|${sid}`;
+        const e = S.conChats.get(key);
+        if (!e) void loadConChat(cid, sid);
+        const log = e && e.messages.length ? `<div class="cd-chat-log cd-agent-log">${logHtml(e)}</div>` : `<p class="${e && e.error ? 'cd-err' : 'mmc-hint'}">${esc(e ? (e.error || (e.loading ? 'Reading the conversation...' : 'No messages yet.')) : 'Reading the conversation...')}</p>`;
+        return c.page(x.title || shortId(sid), `${conName(k)} - ${x.status || ''}`, [
+            { id: 'cd-cs-info', title: 'Session', body: c.props([['Folder', esc(x.cwd || '')], ['Model', esc(x.model || '')], ['Permissions', esc(x.mode || '')], ['Started', esc(when(x.startedAt))], ['Updated', esc(when(x.updatedAt))], ['Remote Control', x.link ? `<span class="mmc-link" data-act="open-link" data-arg="${esc(x.link)}">Open in claude.ai</span>` : 'Not connected']]) + `<p><span class="mmc-link" data-act="con-steer" data-arg="${esc(key)}">Steer...</span> &nbsp; <span class="mmc-link" data-act="con-interrupt" data-arg="${esc(key)}">Stop turn</span> &nbsp; <span class="mmc-link" data-act="con-stop" data-arg="${esc(key)}">Stop session</span> &nbsp; <span class="mmc-link" data-act="con-reread" data-arg="${esc(key)}">Read again</span></p>` },
+            { id: 'cd-cs-log', title: 'Conversation', body: log }
+        ]);
     }
 
     /** The selected review's detail again, without drawing the page (the settings keep what is typed). */
@@ -1226,10 +1274,10 @@
         const uns = unsupervised().map((l) => sessionNode('us:', l.id, A));
         const cons = S.con.list.map((k) => ({
             id: `ct:${k.id}`,
-            name: k.name || k.hostname || String(k.id),
-            icon: `${ITEMS}/network-and-sharing-center-16.png`,
-            desc: k.connected ? 'Connected' : 'Not connected',
-            children: conSessions(k).map((x, i) => ({ id: `ctS:${k.id}:${x && x.id != null ? x.id : i}`, name: (x && (x.title || x.name)) || (x && x.id) || `Session ${i + 1}`, icon: `${A}/session-16.png` }))
+            name: `${conName(k)}${k.revoked ? ' (revoked)' : (k.online ? '' : ' (offline)')}`,
+            icon: k.revoked ? `${VI}/error-16.png` : (k.online ? `${ITEMS}/network-and-sharing-center-16.png` : `${VI}/warning-16.png`),
+            desc: conState(k),
+            children: conSessions(k).filter((x) => x && x.live !== false).map((x) => ({ id: `ctS:${k.id}:${x.id}`, name: x.title || shortId(x.id), icon: `${A}/session-16.png`, desc: 'A session on this contractor' }))
         }));
         const host = S.host && S.host.hostname ? S.host.hostname : '';
         return [{
@@ -1808,7 +1856,9 @@
         const l = liveOf(id);
         const acct = row.account ? row.account.name : '';
         const side = [stateText(row), acct, row.folder].filter(Boolean).join(' - ');
-        const linkBits = `<span class="mmc-link" data-act="detail-toggle">Details</span>${l && serverOrigin(id) ? ' <span class="mmc-link" data-act="takeover">Take Over in Fleet</span>' : ''}${l && l.link ? ` <span class="mmc-link" data-act="open-link" data-arg="${esc(l.link)}">Open in claude.ai</span> <span class="mmc-link" data-act="copy-link" data-arg="${esc(l.link)}">Copy link</span>` : ''}`;
+        const hold = holdOf(id);
+        const holdBar = hold ? `<div class="cd-infobar is-warning" role="alert"><img src="${VI}/warning-16.png" alt=""><span><b>${esc(holdWord(hold))}</b>${hold.reason ? `: ${esc(hold.reason)}` : ''}${hold.by ? ` <i>(${esc(HOLD_KIND[hold.kind] || hold.kind || '')} by ${esc(hold.by)})</i>` : ''} <span class="mmc-link" data-act="resume-hold" data-arg="${esc(id)}">Resume</span></span></div>` : '';
+        const linkBits = `<span class="mmc-link" data-act="detail-toggle">Details</span>${l && !hold ? ` <span class="mmc-link" data-act="pause" data-arg="${esc(id)}">Pause...</span>` : ''}${l && serverOrigin(id) ? ' <span class="mmc-link" data-act="takeover">Take Over in Fleet</span>' : ''}${l && l.link ? ` <span class="mmc-link" data-act="open-link" data-arg="${esc(l.link)}">Open in claude.ai</span> <span class="mmc-link" data-act="copy-link" data-arg="${esc(l.link)}">Copy link</span>` : ''}`;
         let composer;
         if (l && serverOrigin(id)) {
             composer = `<div class="cd-compose cd-ended"><span>This session runs inside Remote Control's server, so Fleet has no terminal to type into.</span><button type="button" class="btn-standard primary" data-act="takeover" data-arg="${esc(id)}">Take Over in Fleet...</button></div>`;
@@ -1827,6 +1877,7 @@
             html: `<div class="cd-chat">
                 <div class="mmc-page-title"><b>${esc(titleOf(row))}</b><span>${esc(side)}</span></div>
                 ${linkBits ? `<div class="cd-chat-links">${linkBits}</div>` : ''}
+                ${holdBar}
                 ${showBar()}
                 <div class="cd-chat-log" data-mmc-scroll>${logInner(chat, id)}</div>
                 ${composer}
@@ -2078,7 +2129,8 @@
                 }
                 if (n.id.startsWith('aw:w:')) { const w = workOf(n.id.slice(5)); return w ? selCommands(n, `w:${w.id}`).items : []; }
                 if (n.id.startsWith('aw:a:')) { const m = /^aw:a:([^:]+):(.+)$/.exec(n.id); return m ? [{ text: 'Read Its Conversation', action: 'agent-open' }, { text: 'Read Again', action: 'aw-agents-refresh' }] : []; }
-                if (n.id.startsWith('ct:')) return [{ text: 'Add Contractor...', action: 'con-add' }, { text: 'Read Again', action: 'con-refresh' }];
+                if (n.id.startsWith('ctS:')) return [{ text: 'Steer...', action: 'con-steer' }, { text: 'Stop Current Turn', action: 'con-interrupt' }, { text: 'Stop Session', action: 'con-stop' }, { text: 'Read Again', action: 'con-reread' }];
+                if (n.id.startsWith('ct:')) { const k = conOf(n.id.slice(3)); return [{ text: 'Start Session...', action: 'con-start', disabled: !(k && k.online) }, { separator: true }, { text: 'Revoke...', action: 'con-revoke', disabled: !k || k.revoked }, { text: 'Remove...', action: 'con-remove' }, { separator: true }, { text: 'Add Contractor...', action: 'con-add' }, { text: 'Read Again', action: 'con-refresh' }]; }
                 if (n.id.startsWith('i:')) return [{ text: 'Read Again', action: 'inspect-refresh' }, { text: 'Open Session', action: 'inspect-session' }, { separator: true }, { text: 'Close', action: 'close-inspect', icon: 0 }];
                 return [];
         }
@@ -2180,17 +2232,29 @@
         if (key.startsWith('w:')) {
             const w = workOf(key.slice(2));
             if (!w) return null;
-            return { title: w.title || 'Request', items: [{ text: 'Start Now', action: 'work-start', disabled: w.state !== 'queued' || !!S.sup.busy }, { text: 'Cancel', action: 'work-cancel', disabled: !WORK_OPEN.has(w.state) || !!S.sup.busy }, { separator: true }, { text: 'Open Session', action: 'work-open', disabled: !w.sessionId }, { text: 'Open Issue', action: 'work-issue', disabled: !(w.issue && w.issue.url) }] };
+            return { title: w.title || 'Request', items: [{ text: 'Start Now', action: 'work-start', disabled: w.state !== 'queued' || !!S.sup.busy }, { text: 'Cancel', action: 'work-cancel', disabled: !WORK_OPEN.has(w.state) || !!S.sup.busy }, { text: w.sessionId && holdOf(w.sessionId) ? 'Resume' : 'Pause...', action: w.sessionId && holdOf(w.sessionId) ? 'resume-hold' : 'pause', disabled: !w.sessionId || !liveOf(w.sessionId) }, { separator: true }, { text: 'Open Session', action: 'work-open', disabled: !w.sessionId }, { text: 'Open Issue', action: 'work-issue', disabled: !(w.issue && w.issue.url) }] };
         }
         if (key.startsWith('lk:')) { const l = supLocks().find((x) => `${x.root || ''}|${x.file}` === key.slice(3)); return { title: 'Busy Lock', items: [{ text: 'Remove...', action: 'sup-lock-remove', disabled: !l || l.state !== 'orphan' || !!S.sup.busy }] }; }
         if (key.startsWith('ar:')) { const a = supArtifacts().find((x) => String(x.id) === key.slice(3)); return { title: 'Work Folder', items: [{ text: 'Clean...', action: 'sup-art-clean', disabled: !a || !a.cleanable || !!S.sup.busy }, { text: 'Forget', action: 'sup-art-forget', disabled: !a || !!S.sup.busy }] }; }
         if (key.startsWith('x:')) { const r = S.act.rows.find((x) => String(x.id) === key.slice(2)); return { title: 'Activity', items: [{ text: 'Open Details', action: 'act-open' }, { text: 'Open Session', action: 'act-session', disabled: !(r && r.sessionId) }] }; }
         if (key.startsWith('hd:')) { const h = supHolds().find((x) => String(x.id) === key.slice(3)); return { title: 'Paused Session', items: [{ text: 'Resume', action: 'sup-resume', disabled: !h || !!S.sup.busy }, { text: 'Open Session', action: 'sup-hold-open', disabled: !h }] }; }
-        if (key.startsWith('k:')) return { title: 'Contractor', items: [{ text: 'Open', action: 'con-open' }, { text: 'Add Contractor...', action: 'con-add' }] };
+        if (key.startsWith('k:')) { const k = conOf(key.slice(2)); return { title: 'Contractor', items: [{ text: 'Open', action: 'con-open' }, { text: 'Start Session...', action: 'con-start', disabled: !(k && k.online) }, { text: 'Revoke...', action: 'con-revoke', disabled: !k || k.revoked }, { text: 'Remove...', action: 'con-remove' }, { separator: true }, { text: 'Add Contractor...', action: 'con-add' }] }; }
         if (key.startsWith('c:')) return { title: 'Claim', items: [{ text: 'Release', action: 'release-claim' }] };
         if (key.startsWith('m:')) return { title: 'Message', items: [{ text: 'Read', action: 'read-message' }, { text: 'Reply...', action: 'reply' }] };
         return null;
     }
+
+    /** The selected work item: a list row (w:<id>), its tree node (aw:w:<id>) or a link's argument. */
+    function workSel(c, arg) {
+        if (arg != null && arg !== '' && workOf(arg)) return String(arg);
+        const k = selId(c, 'w:');
+        if (k) return k;
+        return c.node && c.node.startsWith('aw:w:') ? c.node.slice(5) : '';
+    }
+
+    /** The selected contractor: its list row (k:<id>) or its tree node (ct:<id>). */
+    const conSel = (c) => selId(c, 'k:') || (c.node && /^ct:/.test(c.node) ? c.node.slice(3) : '');
+    const conSessKey = (c) => { const m = /^ctS:([^:]+):(.+)$/.exec(c.node || ''); return m ? `${m[1]}|${m[2]}` : ''; };
 
     function selId(c, prefix) {
         const k = c.sel || '';
@@ -2209,7 +2273,7 @@
 
     async function action(a, c, arg) {
         if (a.startsWith('show:')) { await setShow(a.slice(5), !S.show[a.slice(5)]); return true; }
-        const sid = arg && /^[0-9a-f-]{36}$/.test(arg) ? arg : (selId(c, 's:') || nodeSid(c.node) || ((supReview(selId(c, 'v:')) || {}).sessionId || ''));
+        const sid = arg && /^[0-9a-f-]{36}$/.test(arg) ? arg : (selId(c, 's:') || nodeSid(c.node) || ((supReview(selId(c, 'v:')) || {}).sessionId || '') || ((workOf(workSel(c)) || {}).sessionId || ''));
         switch (a) {
             case 'refresh':
                 S.sessionsLoaded = false;
@@ -2221,13 +2285,90 @@
             case 'fleet-refresh': await loadFleet(); return true;
             case 'fold-open': if (S.foldCtx) await openFold(S.foldCtx.id, S.foldCtx.agent, S.foldCtx.el); return true;
             case 'sup-refresh': await loadSupervisor(); return true;
+            case 'pause': if (sid) await pauseBox(c, sid); else c.note('Select a running session first.'); return true;
+            case 'resume-hold': if (sid) await resumeHold(c, sid); return true;
+            case 'sup-resume': {
+                const h = supHolds().find((x) => String(x.id) === selId(c, 'hd:'));
+                if (h) await resumeHold(c, h.sessionId); else c.note('Select a paused session first.');
+                return true;
+            }
+            case 'sup-hold-open': {
+                const h = supHolds().find((x) => String(x.id) === selId(c, 'hd:'));
+                if (h) { await loadSessions(false); openChat(c, h.sessionId); }
+                return true;
+            }
+            case 'act-refresh': Object.assign(S.act, { rows: [], next: null, total: 0, loaded: false }); await loadActivity(false); return true;
+            case 'act-search': {
+                const q = c.modal.querySelector('[data-act-f="q"]');
+                if (q) { S.act.q = q.value.trim(); S.act.qDraft = q.value; }
+                Object.assign(S.act, { rows: [], next: null, total: 0, loaded: false });
+                await loadActivity(false);
+                return true;
+            }
+            case 'act-more': await loadActivity(true); return true;
+            case 'act-open': await openActivity(selId(c, 'x:')); return true;
+            case 'act-session': {
+                const r = S.act.rows.find((x) => String(x.id) === selId(c, 'x:'));
+                if (r && r.sessionId) { await loadSessions(false); openChat(c, r.sessionId); }
+                return true;
+            }
+            case 'con-refresh': S.con.loaded = false; await loadContractors(); return true;
+            case 'con-open': { const k = conOf(selId(c, 'k:')); if (k) { c.open.add('contractors'); c.select(`ct:${k.id}`, true); } return true; }
+            case 'con-add': await contractorAddBox(c); return true;
+            case 'con-start': { const k = conOf(conSel(c)); if (k) await contractorStartBox(c, k); return true; }
+            case 'con-revoke':
+            case 'con-remove': {
+                const k = conOf(conSel(c));
+                if (!k) return true;
+                const rev = a === 'con-revoke';
+                const ok = await c.box(`<p>${rev ? 'Revoke' : 'Remove'} <b>${esc(conName(k))}</b>? ${rev ? 'It can no longer connect; its sessions end.' : 'It is taken off the list.'}</p>`, [{ text: rev ? 'Revoke' : 'Remove', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'warning' });
+                if (ok !== true) return true;
+                try { conTake(await send('claude_fleet_contractors', { action: rev ? 'revoke' : 'remove', id: k.id })); await loadContractors(); if (!rev) c.select('contractors', true); } catch (e) { await failBox(c, e); }
+                return true;
+            }
+            case 'con-recent': {
+                S.conRecent = S.conRecent || new Map();
+                try { const r = unwrap(await send('claude_fleet_contractors', { action: 'sessions', id: arg }), 'recent'); S.conRecent.set(arg, Array.isArray(r.recent) ? r.recent : []); } catch (e) { await failBox(c, e); }
+                c.refresh();
+                return true;
+            }
+            case 'con-reread': { const [cid, sid2] = String(arg || conSessKey(c)).split('|'); S.conChats.delete(`${cid}|${sid2}`); c.render(); return true; }
+            case 'con-steer': {
+                const [cid, sid2] = String(arg || conSessKey(c)).split('|');
+                const { value, fields } = await form(c, '<p>Send a message to the session. It reaches it as steering.</p><textarea data-cd="text" data-cd-focus rows="6" spellcheck="true"></textarea>', [{ text: 'Send', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Send Message' });
+                if (value !== true || !String(fields.text || '').trim()) return true;
+                try { await send('claude_fleet_contractors', { action: 'steer', id: cid, sessionId: sid2, text: fields.text }); c.note('Sent.'); } catch (e) { await failBox(c, e); }
+                return true;
+            }
+            case 'con-interrupt':
+            case 'con-stop': {
+                const [cid, sid2] = String(arg || conSessKey(c)).split('|');
+                try { await send('claude_fleet_contractors', { action: a === 'con-stop' ? 'stop' : 'interrupt', id: cid, sessionId: sid2 }); c.note(a === 'con-stop' ? 'The session was stopped.' : 'Stopped its current turn.'); } catch (e) { await failBox(c, e); }
+                return true;
+            }
+            case 'aw-agents-refresh': {
+                const m = /^aw:a:([^:]+):/.exec(c.node || '');
+                const id = (arg && /^[0-9a-f-]{36}$/.test(arg) ? arg : '') || (m ? m[1] : '');
+                if (id) await loadAwAgents(id);
+                return true;
+            }
+            case 'agent-open': {
+                let [ssid, aid] = String(arg || '').split('|');
+                if (!aid) { const m = /^aw:a:([^:]+):(.+)$/.exec(c.node || ''); if (m) { ssid = m[1]; aid = m[2]; } }
+                if (!ssid || !aid) return true;
+                await loadSessions(false);
+                openChat(c, ssid);
+                const ch = chatOf(ssid);
+                if (ch) { ch.view = 'detail'; await loadDetail(ssid); if (ch.dt) { ch.dt.agentSel = aid; void loadAgentPage(ssid, aid, false); } c.render(); }
+                return true;
+            }
             case 'work-start': {
-                const w = workOf(selId(c, 'w:'));
+                const w = workOf(workSel(c, arg));
                 if (w) await supAct(c, { action: 'work_start', id: w.id }, 'Starting the request...');
                 return true;
             }
             case 'work-cancel': {
-                const w = workOf(selId(c, 'w:'));
+                const w = workOf(workSel(c, arg));
                 if (!w) return true;
                 const ok = await c.box(`<p>Cancel <b>${esc(w.title || w.id)}</b>?${w.sessionId ? ' Its session is stopped.' : ' It is taken off the queue.'}</p>`,
                     [{ text: 'Cancel Request', value: true, className: 'btn-standard primary' }, { text: 'Keep', value: false, className: 'btn-standard' }], { icon: 'warning' });
@@ -2235,12 +2376,12 @@
                 return true;
             }
             case 'work-issue': {
-                const w = workOf(selId(c, 'w:'));
+                const w = workOf(workSel(c, arg));
                 if (w && w.issue && /^https?:\/\//.test(w.issue.url || '')) await call('openGrimoireUrl', w.issue.url); else c.note('It has no issue yet.');
                 return true;
             }
             case 'work-open': {
-                const w = workOf(selId(c, 'w:'));
+                const w = workOf(workSel(c, arg));
                 if (w && w.sessionId) { await loadSessions(false); openChat(c, w.sessionId); } else c.note('It has no session yet.');
                 return true;
             }
@@ -2583,6 +2724,7 @@
         supervised: ['New supervised session', 'Say what it should do and where. The account, model and effort start from the account\'s defaults.'],
         direct: ['Direct request on an account', 'Pick the account, say where it works and what to do.'],
         plaud: ['Import from Plaud', 'Choose the recordings whose actionable items should be worked on.'],
+        shape: ['How the work is arranged', 'Choose who works on it and which engine, model and effort each stage uses.'],
         summary: ['Ready to start', 'Check what will happen, then click Finish.']
     };
     const pathName = (id) => (WIZ_PATHS.find((p) => p[0] === id) || [])[1] || '';
@@ -2640,6 +2782,19 @@
         return `<div class="cd-carry cd-recs">${recs.map((r) => `<label class="cd-opt"><input type="checkbox" data-cd="rec:${esc(r.id)}"${W.picked && W.picked.has(String(r.id)) ? ' checked' : ''}><span>${esc(r.name || r.id)} <i>${esc([when(r.startAt), dur(r.durationMs)].filter(Boolean).join(', '))}</i></span></label>`).join('')}</div>`;
     }
 
+    /** A stage as one line: engine, model, effort. */
+    function stageText(st) {
+        if (!st) return '';
+        const other = st.engine && st.engine !== 'claude';
+        const model = st.modelId || (other ? ((engineOf(st.engine) || {}).defaultModel || 'the engine\'s default') : ((MODEL_CHOICES.find((m) => m[0] === st.model) || [])[1] || st.model));
+        return [other ? engineName(st.engine) : 'Claude', model, (EFFORTS.find((e) => e[0] === (st.effort || '')) || [])[1] || 'Default effort'].join(' / ');
+    }
+    /** What a stage sends: the engine, the model (the typed ID wins; another engine without one uses its default) and the effort. */
+    function stagePayload(st) {
+        const other = st.engine && st.engine !== 'claude';
+        return { engine: st.engine || 'claude', model: st.modelId || (other ? undefined : st.model), effort: st.effort || undefined };
+    }
+
     function wizBody(W, page) {
         const err = W.err ? `<p class="cd-err">${esc(W.err)}</p>` : '';
         if (page === 'type') {
@@ -2649,14 +2804,29 @@
             const direct = page === 'direct';
             const acct = direct ? `<label><span>Account:</span><select class="vdt-select" data-cd="account">${accountOptions(Number(W.account))}</select></label>`
                 : `<label><span>Account:</span><select class="vdt-select" data-cd="account"><option value="auto"${W.account === 'auto' ? ' selected' : ''}>Auto (preferred, else most headroom)</option>${accountOptions(Number(W.account))}</select></label>`;
-            return `${acct}
-                <label><span>Engine:</span><select class="vdt-select" data-cd="engine">${engineOptions(W.engine)}</select></label>
-                <label><span>Folder:</span><input type="text" data-cd="cwd" value="${esc(W.cwd)}" spellcheck="false" autocomplete="off"></label>
-                <label class="cd-top"><span>Request:</span><textarea data-cd="prompt" data-cd-focus rows="5" spellcheck="true" placeholder="What should it do?">${esc(W.prompt)}</textarea></label>
+            const modelRows = direct ? `
+                <label><span>Engine:</span><select class="vdt-select" data-cd="engine">${engineOptions(W.engine)}</select></label>` : '';
+            const modelRows2 = direct ? `
                 <label><span>Model:</span><select class="vdt-select" data-cd="model">${modelOptions(W.model || 'sonnet')}</select></label>
                 <label><span>Or model ID:</span><input type="text" data-cd="modelId" value="${esc(W.modelId || '')}" spellcheck="false" autocomplete="off" placeholder="A full model ID (optional)"></label>
-                <label><span>Effort:</span><select class="vdt-select" data-cd="effort">${effortOptions(W.effort)}</select></label>
+                <label><span>Effort:</span><select class="vdt-select" data-cd="effort">${effortOptions(W.effort)}</select></label>` : '';
+            return `${acct}${modelRows}
+                <label><span>Folder:</span><input type="text" data-cd="cwd" value="${esc(W.cwd)}" spellcheck="false" autocomplete="off"></label>
+                <label class="cd-top"><span>Request:</span><textarea data-cd="prompt" data-cd-focus rows="5" spellcheck="true" placeholder="What should it do?">${esc(W.prompt)}</textarea></label>${modelRows2}
                 ${direct ? `<label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeSelect(W.mode || 'bypassPermissions')}</select></label>` : `<label><span>Link to issue:</span><input type="text" data-cd="issue" value="${esc(W.issue || '')}" spellcheck="false" autocomplete="off" placeholder="owner/repo#N or an issue URL (blank: a new issue is made)"></label>`}${err}`;
+        }
+        if (page === 'shape') {
+            const desc = { direct: 'One agent does the whole request.', surfaces: 'An agent works on each surface; the queue shows the parts.', planner: 'A planner starts background agents for the parts (default).', auto: 'The Supervisor picks the shape when it starts.' };
+            const stage = (k) => {
+                const st = W.stages[k];
+                const def = STAGES[k];
+                return `<div class="cd-stage" data-stage="${k}" data-uses="${def.uses.join(' ')}"${def.uses.includes(W.topology) ? '' : ' hidden'}><p><b>${esc(def.label)} stage</b> <span class="mmc-hint">${k === 'planner' ? 'reads the request and plans the parts' : 'does the work'}</span></p>
+                    <label><span>Engine:</span><select class="vdt-select" data-cd="${k}.engine">${engineOptions(st.engine)}</select></label>
+                    <label><span>Model:</span><select class="vdt-select" data-cd="${k}.model">${modelOptions(st.model)}</select></label>
+                    <label data-cd-idrow="${k}"${st.engine && st.engine !== 'claude' ? '' : ' hidden'}><span>Model ID:</span><input type="text" data-cd="${k}.modelId" value="${esc(st.modelId || '')}" spellcheck="false" autocomplete="off" placeholder="A full model ID (optional)"></label>
+                    <label><span>Effort:</span><select class="vdt-select" data-cd="${k}.effort">${effortOptions(st.effort)}</select></label></div>`;
+            };
+            return `${TOPO.map(([id, name]) => `<label class="cd-cmdlink"><input type="radio" name="cd-topo" data-cd="topo:${id}"${W.topology === id ? ' checked' : ''}><span><b>${esc(name)}</b><i>${esc(desc[id])}</i></span></label>`).join('')}${stage('planner')}${stage('workers')}${err}`;
         }
         if (page === 'plaud') {
             return `<label class="cd-opt"><input type="checkbox" data-cd="plaudAll"${W.all ? ' checked' : ''}><span>Every recording not worked yet</span></label>
@@ -2668,7 +2838,12 @@
             rows.push(['Recordings', W.all ? 'Every recording not worked yet' : plural((W.picked || new Set()).size, 'recording')]);
         } else {
             const other = W.engine && W.engine !== 'claude';
-            rows.push(['Account', acctLabel(W.account)], ['Engine', engineName(W.engine)], ['Folder', W.cwd], ['Model', other ? (wizModel(W) || (engineOf(W.engine) || {}).defaultModel || 'The engine\'s default') : ((MODEL_CHOICES.find((m) => m[0] === modelOf(W)) || [])[1] || modelOf(W) || 'Sonnet')], ['Effort', (EFFORTS.find((e) => e[0] === (W.effort || '')) || [])[1] || 'Default']);
+            if (W.path === 'supervised') {
+                rows.push(['Account', acctLabel(W.account)], ['Folder', W.cwd], ['Shape', (TOPO.find((x) => x[0] === W.topology) || [])[1] || '']);
+                Object.keys(STAGES).filter((k) => STAGES[k].uses.includes(W.topology)).forEach((k) => rows.push([`${STAGES[k].label} stage`, stageText(W.stages[k])]));
+            } else {
+                rows.push(['Account', acctLabel(W.account)], ['Engine', engineName(W.engine)], ['Folder', W.cwd], ['Model', other ? (wizModel(W) || (engineOf(W.engine) || {}).defaultModel || 'The engine\'s default') : ((MODEL_CHOICES.find((m) => m[0] === modelOf(W)) || [])[1] || modelOf(W) || 'Sonnet')], ['Effort', (EFFORTS.find((e) => e[0] === (W.effort || '')) || [])[1] || 'Default']);
+            }
             if (W.path === 'direct') rows.push(['Permissions', (MODES.find((m) => m[0] === W.mode) || [])[1] || W.mode]);
             rows.push(['Checked by supervisor', W.path === 'supervised' ? 'Yes (queued on the Supervisor)' : 'No']);
             if (W.path === 'supervised') rows.push(['Issue', W.issue || 'A new issue is made']);
@@ -2701,6 +2876,28 @@
                     wizEngine(box, eng.value);
                     eng.addEventListener('change', () => { wizEngine(box, eng.value); if (eng.value === 'claude' && acct) wizPrefill(box, acct.value); }, { signal });
                 }
+                if (page === 'shape') {
+                    const sync = () => {
+                        const on = box.querySelector('input[name="cd-topo"]:checked');
+                        const topo = on ? on.dataset.cd.slice(5) : W.topology;
+                        box.querySelectorAll('.cd-stage').forEach((st) => { st.hidden = !st.dataset.uses.split(' ').includes(topo); });
+                    };
+                    box.querySelectorAll('input[name="cd-topo"]').forEach((r) => r.addEventListener('change', sync, { signal }));
+                    Object.keys(STAGES).forEach((k) => {
+                        const eng = box.querySelector(`[data-cd="${k}.engine"]`);
+                        const stageEngine = () => {
+                            const other = eng.value && eng.value !== 'claude';
+                            const e = engineOf(eng.value);
+                            const sel = box.querySelector(`[data-cd="${k}.model"]`);
+                            const id = box.querySelector(`[data-cd="${k}.modelId"]`);
+                            if (sel) sel.disabled = !!other;
+                            if (id) id.placeholder = other ? ((e && e.defaultModel) || 'The engine\'s own default') : 'A full model ID (optional)';
+                            const row = box.querySelector(`[data-cd-idrow="${k}"]`);
+                            if (row) row.hidden = !other;
+                        };
+                        if (eng) { stageEngine(); eng.addEventListener('change', stageEngine, { signal }); }
+                    });
+                }
                 const all = box.querySelector('[data-cd="plaudAll"]');
                 if (all) {
                     const sync = () => box.querySelectorAll('[data-cd^="rec:"]').forEach((el) => { el.disabled = all.checked; });
@@ -2717,11 +2914,17 @@
             const p = WIZ_PATHS.find(([id]) => (on ? on.dataset.cd === `path:${id}` : fields[`path:${id}`] === true));
             if (p) W.path = p[0];
         }
+        else if (page === 'shape') {
+            const p2 = Object.keys(fields).find((k) => k.startsWith('topo:') && fields[k] === true);
+            const on = boxRef && boxRef.querySelector('input[name="cd-topo"]:checked');
+            W.topology = on ? on.dataset.cd.slice(5) : (p2 ? p2.slice(5) : W.topology);
+            Object.keys(STAGES).forEach((k) => { W.stages[k] = { engine: fields[`${k}.engine`] || 'claude', model: fields[`${k}.model`] || STAGES[k].model, modelId: String(fields[`${k}.modelId`] || '').trim(), effort: fields[`${k}.effort`] || '' }; });
+        }
         else if (page === 'plaud') { W.all = !!fields.plaudAll; W.picked = new Set(Object.keys(fields).filter((k) => k.startsWith('rec:') && fields[k] === true).map((k) => k.slice(4))); }
         else if (page === 'supervised' || page === 'direct') {
             W.account = fields.account; W.cwd = String(fields.cwd || '').trim(); W.prompt = String(fields.prompt || '').trim();
-            W.model = fields.model; W.modelId = String(fields.modelId || '').trim(); W.effort = fields.effort || '';
-            W.engine = fields.engine || 'claude'; W.issue = String(fields.issue || '').trim();
+            if (page === 'direct') { W.model = fields.model; W.modelId = String(fields.modelId || '').trim(); W.effort = fields.effort || ''; W.engine = fields.engine || 'claude'; }
+            W.issue = String(fields.issue || '').trim();
             if (page === 'direct') W.mode = fields.mode;
         }
         return value;
@@ -2770,7 +2973,9 @@
                     // supervised requests are Supervisor work items: queued, and started at once when an account has room
                     const before = new Set(supWork().map((w) => String(w.id)));
                     const first = W.prompt.split('\n').find((x) => x.trim()) || W.prompt;
-                    const job = { action: 'enqueue', title: first.trim().slice(0, 80), prompt: W.prompt, cwd: W.cwd, model: wizModel(W), effort: W.effort || undefined, startNow: true, engine: W.engine || 'claude' };
+                    const stages = { planner: stagePayload(W.stages.planner), workers: stagePayload(W.stages.workers) };
+                    // model / effort / engine at the top stay the Workers stage's, for a server that does not read stages yet
+                    const job = { action: 'enqueue', title: first.trim().slice(0, 80), prompt: W.prompt, cwd: W.cwd, topology: W.topology, stages, model: stages.workers.model, effort: stages.workers.effort, startNow: true, engine: stages.workers.engine };
                     if (W.issue) job.issue = W.issue;
                     if (acct !== 'auto') job.account = acct;
                     const rr = await send('claude_desk_supervisor', job);
@@ -2820,12 +3025,15 @@
         if (!pinned && defaultAccount() == null) W.account = 'auto';
         let page = 'type';
         W.engine = 'claude';
+        W.topology = 'planner';
+        W.stages = { planner: Object.assign({ modelId: '' }, STAGES.planner), workers: Object.assign({ modelId: '' }, STAGES.workers) };
         await loadEngines();
         for (;;) {
-            let order = ['type', W.path, 'summary'];
+            const orderOf = () => (W.path === 'supervised' ? ['type', 'supervised', 'shape', 'summary'] : ['type', W.path, 'summary']);
+            let order = orderOf();
             const r = await wizPage(c, W, page, page === 'type');
             if (r === 'cancel') return;
-            order = ['type', W.path, 'summary']; // the first page may have changed the path
+            order = orderOf(); // the first page may have changed the path
             W.err = '';
             if (r === 'back') { page = order[Math.max(0, order.indexOf(page) - 1)]; continue; }
             const bad = wizCheck(W, page);
@@ -2972,14 +3180,89 @@
         }
     }
 
+    /** Add Contractor...: an invitation with a one-time code (15 minutes) and the install lines; the installer asks for the code. */
+    async function contractorAddBox(c) {
+        const { value, fields } = await form(c, `
+            <p>A contractor is another machine that runs Fleet work on its own projects. Name it, then install the agent there.</p>
+            <label><span>Name:</span><input type="text" data-cd="name" data-cd-focus spellcheck="false" autocomplete="off" placeholder="For example Studio PC"></label>`,
+        [{ text: 'Next', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Add Contractor' });
+        if (value !== true) return;
+        const name = String(fields.name || '').trim();
+        if (!name) { c.note('A contractor needs a name.'); return; }
+        c.note('Making the invitation...');
+        let r;
+        try { r = await send('claude_fleet_contractors', { action: 'invite', name }); } catch (e) { c.note(''); if (isGone(e)) await c.box(`<p>${NOT_YET}</p>`, null, { icon: 'info', title: 'Add Contractor' }); else await failBox(c, e); return; }
+        c.note('');
+        const d = unwrap(r, 'invite');
+        const inv = d.invite || {};
+        const ins = d.install || {};
+        if (!inv.code) { await c.box(`<p>${esc(d.message || 'The invitation was made.')}</p>`, null, { icon: 'info', title: 'Add Contractor' }); void loadContractors(); return; }
+        const line = (k, t) => (ins[k] ? `<p><b>${esc(t)}:</b></p><pre class="cd-pre cd-invite" data-cd-invite="${k}">${esc(ins[k])}</pre><p><button type="button" class="btn-standard" data-cd-copy="${k}">Copy</button> <button type="button" class="btn-standard" data-cd-installer="${k === 'windows' ? 'windows' : 'linux'}">Save Installer...</button></p>` : '');
+        const html = `<p>Invitation for <b>${esc(inv.name || name)}</b>. The code is shown once and expires ${inv.expiresAt ? `at ${esc(timeOnly(inv.expiresAt))}` : 'in 15 minutes'}.</p>
+            <p class="cd-code" data-cd-invite="code">${esc(inv.code)}</p><p><button type="button" class="btn-standard" data-cd-copy="code">Copy Code</button></p>
+            ${line('linux', 'Linux or macOS')}${line('windows', 'Windows')}${ins.note ? `<p class="mmc-hint">${esc(ins.note)}</p>` : '<p class="mmc-hint">The installer asks for the code.</p>'}`;
+        await form(c, html, [{ text: 'Close', value: true, className: 'btn-standard primary' }], {
+            title: 'Add Contractor', width: 540,
+            ready: (box, signal) => box.addEventListener('click', async (ev) => {
+                const b = ev.target.closest('[data-cd-copy]');
+                if (b) { const pre = box.querySelector(`[data-cd-invite="${b.dataset.cdCopy}"]`); if (pre) void copy(pre.textContent).then(() => { b.textContent = 'Copied'; }); return; }
+                const sv = ev.target.closest('[data-cd-installer]');
+                if (!sv) return;
+                try {
+                    const f = unwrap(await send('claude_fleet_contractors', { action: 'installer', os: sv.dataset.cdInstaller }), 'text');
+                    saveText(f.filename || `fleet-contractor-${sv.dataset.cdInstaller}`, f.text || '');
+                    sv.textContent = 'Saved';
+                } catch (e) { sv.textContent = errText(e).slice(0, 40); }
+            }, { signal })
+        });
+        void loadContractors();
+    }
+    /** The installer goes to the browser's Downloads (a text blob, revoked after the click). */
+    function saveText(name, text) {
+        const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }
+
+    /** Start Session on a contractor: a project folder (from its projects), the request, its model and effort. */
+    async function contractorStartBox(c, k) {
+        const projects = conHello(k).projects || [];
+        const { value, fields } = await form(c, `
+            <p>Start a session on <b>${esc(conName(k))}</b>.</p>
+            <label><span>Project:</span><select class="vdt-select" data-cd="proj">${projects.map((x) => `<option value="${esc(x.path)}">${esc(x.name || x.path)}</option>`).join('')}<option value="">Another folder...</option></select></label>
+            <label><span>Folder:</span><input type="text" data-cd="cwd" value="${esc((projects[0] || {}).path || '')}" spellcheck="false" autocomplete="off"></label>
+            <label class="cd-top"><span>Request:</span><textarea data-cd="prompt" data-cd-focus rows="5" spellcheck="true" placeholder="What should it do?"></textarea></label>
+            <label><span>Model:</span><select class="vdt-select" data-cd="model">${modelOptions('sonnet')}</select></label>
+            <label><span>Effort:</span><select class="vdt-select" data-cd="effort">${effortOptions('')}</select></label>`,
+        [{ text: 'Start', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Start Session', width: 500, ready: (box, signal) => {
+            const p = box.querySelector('[data-cd="proj"]');
+            const f = box.querySelector('[data-cd="cwd"]');
+            if (p && f) p.addEventListener('change', () => { if (p.value) { f.value = p.value; f.dispatchEvent(new Event('input', { bubbles: true })); } }, { signal });
+        } });
+        if (value !== true) return;
+        const cwd = String(fields.cwd || '').trim();
+        const prompt = String(fields.prompt || '').trim();
+        if (!cwd || !prompt) { c.note('A session needs a folder and a request.'); return; }
+        c.note('Starting the session...');
+        try {
+            const r = unwrap(await send('claude_fleet_contractors', { action: 'start', id: k.id, cwd, prompt, title: prompt.split('\n')[0].slice(0, 80), model: fields.model || undefined, effort: fields.effort || undefined }), 'sessionId');
+            c.note(r.sessionId ? 'The session started.' : 'Starting...');
+            await loadContractors();
+            if (r.sessionId) { c.open.add('contractors'); c.open.add(`ct:${k.id}`); c.select(`ctS:${k.id}:${r.sessionId}`, true); }
+        } catch (e) { c.note(''); if (isGone(e)) await c.box(`<p>${NOT_YET}</p>`, null, { icon: 'info' }); else await failBox(c, e); }
+    }
+
     /** Pause a session: Hold (its turn stops, it waits for Resume) or Freeze (its processes stop where they are). */
     async function pauseBox(c, id) {
         const row = rowOf(id) || { id };
         const { value, fields } = await form(c, `
             <p>Pause <b>${esc(titleOf(row))}</b>. It does nothing more until it is resumed.</p>
-            <label class="cd-opt cd-modeopt"><input type="radio" name="cd-pause" data-cd="hold" checked><span><b>Hold</b> (recommended): its current turn is stopped and it waits for Resume. Its processes and background agents keep running.</span></label>
+            <label class="cd-opt cd-modeopt"><input type="radio" name="cd-pause" data-cd="hold" checked><span><b>Hold</b> (recommended): its current turn is stopped and it waits for Resume.</span></label>
             <label class="cd-opt cd-modeopt"><input type="radio" name="cd-pause" data-cd="freeze"><span><b>Freeze</b>: its processes are stopped where they are (like Ctrl+Z), so a build or a test run halts in the middle and continues on Resume. Use it when something must not run for a while.</span></label>
-            <label class="cd-top"><span>Reason:</span><textarea data-cd="reason" data-cd-focus rows="3" spellcheck="true" placeholder="Why it is paused (shown beside it and typed to it on Resume)"></textarea></label>`,
+            <label class="cd-top"><span>Reason:</span><textarea data-cd="reason" data-cd-focus rows="3" spellcheck="true" placeholder="Why it is paused (shown beside the session)"></textarea></label>`,
         [{ text: 'Pause', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Pause Session', icon: 'fas fa-circle-info' });
         if (value !== true) return;
         const mode = fields.freeze === true ? 'freeze' : 'hold';
@@ -3211,7 +3494,7 @@
             taskbarIcon: `${A}/claudedesk-24.png`,
             width: w,
             height: h,
-            expanded: ['root', 'sessions', 'co-root'],
+            expanded: ['root', 'aw', 'aw-sup'],
             about: { version: VERSION, lines: ['Claude accounts, Remote Control, sessions and agent coordination.'] },
             nodes,
             page,
@@ -3225,6 +3508,10 @@
                 if (n.id === 'running') return plural(S.live.length, 'session');
                 if (n.id === 'accounts') return plural(S.accounts.length, 'account');
                 if (n.id === 'rc') { const r = fleetRows(); return r.length ? `${r.filter((f) => f.state === 'connected').length} of ${plural(r.length, 'account')} connected` : ''; }
+                if (n.id === 'activity') return S.act.loaded ? `${S.act.rows.length} of ${S.act.total} calls` : '';
+                if (n.id === 'contractors') return S.con.gone ? NOT_YET : `${plural(S.con.list.length, 'contractor')}, ${S.con.list.filter((k) => k.online).length} online`;
+                if (n.id === 'aw-sup') return plural(activeItems().length, 'open work item');
+                if (n.id === 'aw-uns') return plural(unsupervised().length, 'session');
                 if (n.id === 'co-builds') return plural((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length, 'gate') + ' open';
                 if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
                 if (n.id === 'co-work') return S.sup.busy || (S.sup.counts ? `${S.sup.counts.active} running, ${S.sup.counts.queued} queued` : plural(supWork().filter((w) => WORK_OPEN.has(w.state)).length, 'open request'));
@@ -3265,6 +3552,13 @@
         S.c = c;
         S.show = Object.assign({}, SHOW_DEFAULT, c.reg('ShowView', {}) || {});
         // the open chat follows the selection: leaving it stops its pushes
+        // a session's node opening in Active Work reads its background agents
+        const toggle = c.toggle.bind(c);
+        c.toggle = (id) => {
+            toggle(id);
+            const m = /^aw:s:(.+)$/.exec(id || '');
+            if (m && c.open.has(id)) void loadAwAgents(m[1]);
+        };
         const select = c.select.bind(c);
         c.select = (id, record) => {
             if (S.watching && id !== `t:${S.watching}` && nodeSid(id) !== S.watching) void unwatch();
@@ -3283,6 +3577,7 @@
         void usageWatch(usageWanted(c.node));
         void loadSessions(false);
         void loadFleet();
+        void loadContractors();
     }
     const programFaults = () => (root.programFaults && root.programFaults.registerProgram ? root.programFaults : null);
 

@@ -780,3 +780,128 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
+
+/* ---- Nov 24: Activity (filter bar, detail window), Pause / Resume, the wizard's shape page ---- */
+
+#mmcConsole_claudedesk .cd-actbar {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--cd-c-d5d5d5);
+    background: var(--cd-c-f0f0f0);
+}
+
+#mmcConsole_claudedesk .cd-actbar label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+#mmcConsole_claudedesk .cd-actbar label.cd-actq {
+    flex: 1 1 160px;
+}
+
+#mmcConsole_claudedesk .cd-actbar select {
+    max-width: 170px;
+}
+
+#mmcConsole_claudedesk .cd-actbar input[type="text"] {
+    flex: 1;
+    min-width: 0;
+}
+
+#mmcConsole_claudedesk .cd-infobar.is-warning {
+    margin: 0;
+}
+
+#mmcConsole_claudedesk .cd-chat > .cd-infobar {
+    margin: 0;
+}
+
+/* the Activity detail window (an item window: its own scroll bars) */
+.cd-win .cd-act h4 {
+    margin: 10px 0 4px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid var(--cd-c-d5d5d5);
+    font-size: 12px;
+}
+
+.cd-win .cd-act h4:first-child {
+    margin-top: 0;
+}
+
+.cd-win .cd-act .cd-pre {
+    margin: 0 0 4px;
+    padding: 4px 6px;
+    border: 1px solid var(--cd-c-d5d5d5);
+    background: var(--cd-c-f5f5f5);
+    font-family: var(--cd-font-mono);
+    font-size: 11px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.cd-win .cd-act .cd-act-out,
+.cd-win .cd-act .cd-act-why {
+    max-height: 220px;
+    overflow: auto;
+}
+
+.cd-win .cd-act .cd-act-out.is-error {
+    color: var(--cd-c-a00000);
+}
+
+.cd-win .cd-act .cd-props td {
+    padding: 1px 6px 1px 0;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+/* the New Session wizard: stage blocks of the shape page; the pause dialog's two modes */
+.cd-wizard .cd-stage {
+    margin: 6px 0 0;
+    padding: 4px 0 0;
+    border-top: 1px solid var(--cd-c-d5d5d5);
+}
+
+.cd-wizard .cd-stage[hidden] {
+    display: none;
+}
+
+.cd-wizard .cd-stage > p {
+    margin: 0 0 4px;
+}
+
+.cd-form label.cd-modeopt {
+    align-items: start;
+}
+
+.cd-form .cd-invite {
+    margin: 0;
+    padding: 4px 6px;
+    border: 1px solid var(--cd-c-d5d5d5);
+    background: var(--cd-c-f5f5f5);
+    font-family: var(--cd-font-mono);
+    font-size: 11px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+}
+
+.cd-form .cd-code {
+    margin: 4px 0;
+    padding: 6px 8px;
+    border: 1px solid var(--cd-c-d5d5d5);
+    background: var(--cd-c-f5f5f5);
+    font-family: var(--cd-font-mono);
+    font-size: 20px;
+    letter-spacing: 2px;
+    text-align: center;
+    user-select: text;
+}
+
+.cd-wizard label[hidden] { display: none; }
