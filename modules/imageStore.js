@@ -374,6 +374,18 @@ function readSizeSync(name, dir = IMAGES_DIR) {
 // ---------------------------------------------------------------------------------------------------------
 // decoding and the cache
 
+/**
+ * Where a picture's decoded copy lives: by name for images/; per folder for any other (tests, temp folders), so
+ * the same name in two folders never shares a copy.
+ */
+function cacheFileFor(name, dir) {
+    if (!dir || path.resolve(dir) === IMAGES_DIR) return path.join(CACHE_DIR, name);
+    const tag = require('crypto').createHash('sha1').update(path.resolve(dir)).digest('hex').slice(0, 12);
+    const sub = path.join(CACHE_DIR, `d-${tag}`);
+    try { fs.mkdirSync(sub, { recursive: true }); } catch (_) { /* exists */ }
+    return path.join(sub, name);
+}
+
 const inflight = new Map();
 let cacheBytesKnown = null;
 
@@ -506,7 +518,7 @@ async function pngPath(name, dir = IMAGES_DIR) {
     if (!loc) return null;
     if (loc.kind !== 'jxl') return loc.path;
     const n = cleanName(name);
-    const cached = path.join(CACHE_DIR, n);
+    const cached = cacheFileFor(n, dir);
     const cs = await statOrNull(cached);
     if (cs && cs.mtimeMs === loc.stat.mtimeMs) {
         notePngSize(n, loc.stat.mtimeMs, cs.size);
@@ -650,7 +662,7 @@ async function writePicture(name, pngBuf, opts = {}) {
     await fs.promises.rename(tmp, jxlP);
     if (prior && prior.kind === 'png') await fs.promises.unlink(pngP).catch(() => {});
     // the original PNG as this picture's decoded copy (valid while the JXL keeps this mtime)
-    const cached = path.join(CACHE_DIR, n);
+    const cached = cacheFileFor(n, dir);
     try {
         await fs.promises.writeFile(cached + '.seed', pngBuf);
         await fs.promises.utimes(cached + '.seed', now / 1000, now / 1000);
@@ -696,7 +708,7 @@ async function remove(name, dir = IMAGES_DIR) {
     for (const t of targets) {
         try { await fs.promises.unlink(t); removed = true; } catch (_) { /* not that form */ }
     }
-    fs.promises.unlink(path.join(CACHE_DIR, n)).catch(() => {});
+    fs.promises.unlink(cacheFileFor(n, dir)).catch(() => {});
     return removed;
 }
 
@@ -710,7 +722,7 @@ async function dropStaleJxl(name, dir = IMAGES_DIR) {
     if (!j) return false;
     let dropped = false;
     try { await fs.promises.unlink(path.join(dir, j)); dropped = true; } catch (_) { /* none */ }
-    fs.promises.unlink(path.join(CACHE_DIR, n)).catch(() => {});
+    fs.promises.unlink(cacheFileFor(n, dir)).catch(() => {});
     if (sizesMap().delete(n)) scheduleSizesSave();
     return dropped;
 }
@@ -722,7 +734,7 @@ async function rename(oldName, newName, dir = IMAGES_DIR) {
     if (!loc || !nn) throw new Error('rename: picture not found or bad name');
     const target = loc.kind === 'jxl' ? path.join(dir, jxlNameFor(nn)) : path.join(dir, nn);
     await fs.promises.rename(loc.path, target);
-    fs.promises.unlink(path.join(CACHE_DIR, cleanName(oldName))).catch(() => {});
+    fs.promises.unlink(cacheFileFor(cleanName(oldName), dir)).catch(() => {});
     return target;
 }
 

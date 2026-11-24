@@ -1633,7 +1633,8 @@ async function handleUpdateImagePresetBulk(handlers, ws, message, clientInfo, ws
                 }
 
                 // Write the updated image back to disk (nothing to remove: file unchanged)
-                if (updatedImageBuffer) {
+                // unchanged bytes (no preset to remove) leave the picture as it is: no rewrite, no new date modified
+                if (updatedImageBuffer && !updatedImageBuffer.equals(imageBuffer)) {
                     // stored again as JPEG XL (#1134), date created kept
                     await imageStore.writePicture(filename, updatedImageBuffer, { dir: path.dirname(filePath) });
                 }

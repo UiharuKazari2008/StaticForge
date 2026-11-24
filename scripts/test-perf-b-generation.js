@@ -251,7 +251,8 @@ sections.forge624 = async function forge624() {
     // Old call shape (no flag): the second merge adds a history entry and breaks the signature.
     fs.writeFileSync(path.join(imagesDir, 'old.png'), finalBuffer);
     await metadataDb.addReceiptMetadata('old.png', imagesDir, null, forgeData);
-    const oldDisk = fs.readFileSync(path.join(imagesDir, 'old.png'));
+    // the rewrite stores the picture as JPEG XL (#1134): read it back as PNG through imageStore
+    const oldDisk = await require('../modules/imageStore').readPng('old.png', imagesDir);
     assert.strictEqual(readForgeData(pm, oldDisk).history.length, 1, 'legacy path pushes a spurious history entry');
     assert.strictEqual((await pm.verifyForgeSignature(oldDisk)).ok, false, 'legacy path breaks forge_signed_hash');
 
@@ -276,8 +277,9 @@ sections.forge624 = async function forge624() {
     fs.writeFileSync(path.join(imagesDir, 'pb.png'), finalBuffer);
     const ra = await metadataDb.addReceiptMetadata('pa.png', imagesDir, { type: 'upscaling', cost: 0, date: 1 }, upForge);
     const rb = await metadataDb.addReceiptMetadata('pb.png', imagesDir, { type: 'upscaling', cost: 0, date: 1 }, upForge, { buffer: finalBuffer });
-    const da = fs.readFileSync(path.join(imagesDir, 'pa.png'));
-    const db = fs.readFileSync(path.join(imagesDir, 'pb.png'));
+    // both rewrites store JPEG XL (#1134): compare their PNG bytes
+    const da = await require('../modules/imageStore').readPng('pa.png', imagesDir);
+    const db = await require('../modules/imageStore').readPng('pb.png', imagesDir);
     assert.ok(da.equals(db), 'buffer path writes the same parent bytes');
     assert.strictEqual(ra.md5, rb.md5);
     assert.strictEqual(rb.md5, crypto.createHash('md5').update(db).digest('hex'));
@@ -490,14 +492,16 @@ sections.preset622 = async function preset622() {
     const run = (message) => handle({ handlers, ws: {}, message, clientInfo: {}, wsServer: { broadcast() {} } });
 
     await run({ type: 'update_image_preset_bulk', requestId: 'r1', filenames: ['a.png', 'c.png'], presetName: '' });
-    const a = readForgeData(pm, fs.readFileSync(path.join(dir, 'a.png')));
+    const store = require('../modules/imageStore');
+    // a rewrite stores JPEG XL (#1134): read the pictures back as PNG through imageStore
+    const a = readForgeData(pm, await store.readPng('a.png', dir));
     assert.ok(!('preset_name' in a), 'remove must drop preset_name');
     assert.strictEqual(a.generation_type, 'generated', 'other forge_data kept');
-    assert.ok(fs.readFileSync(path.join(dir, 'c.png')).equals(base), 'no preset to remove: file unchanged');
+    assert.ok(fs.readFileSync(path.join(dir, 'c.png')).equals(base), 'no preset to remove: file unchanged (still the PNG)');
     assert.strictEqual(sent[0].data.updatedCount, 2);
 
     await run({ type: 'update_image_preset_bulk', requestId: 'r2', filenames: ['b.png'], presetName: 'New Preset' });
-    assert.strictEqual(readForgeData(pm, fs.readFileSync(path.join(dir, 'b.png'))).preset_name, 'New Preset');
+    assert.strictEqual(readForgeData(pm, await store.readPng('b.png', dir)).preset_name, 'New Preset');
     console.log('  preset622: ok (remove drops preset_name, set still sets it)');
 };
 
