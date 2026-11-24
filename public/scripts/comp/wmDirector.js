@@ -219,12 +219,20 @@
             if (!page || !page.contains(this.host)) return;
             // her stage: the whole chat on a phone, the scene column on a wide screen (wm-director.css)
             const stage = (this.root && this.root.classList && this.root.classList.contains('director-mascot-stage')) ? this.root : this.host;
-            const box = stage.getBoundingClientRect();
+            const r0 = stage.getBoundingClientRect();
+            const box = { width: r0.width, height: r0.height };
             if (!box.width || !box.height) return;
             const [W, H] = this.manifest.size;
             const cam = this.camera();
             const face = Array.isArray(this.manifest.face) ? this.manifest.face : [cam[0] + cam[2] / 2, cam[1] + cam[3] * 0.2, cam[2] * 0.15];
             if (box.width > box.height) {
+                // landscape: the stage's own top again (the portrait inset is measured for the portrait chrome)
+                if (stage === this.root && stage.style.top) {
+                    stage.style.top = '';
+                    const r1 = stage.getBoundingClientRect();
+                    box.width = r1.width;
+                    box.height = r1.height;
+                }
                 // landscape: the desktop's own staging (sized from the height, her face toward her side).
                 // The desktop measures the whole chat; beside the log her scene is narrower, so the
                 // same staging is redone in the scene's box (unchanged numbers when they are the same box)
@@ -241,8 +249,24 @@
                 if (typeof this.placeThink === 'function') this.placeThink(face, kv, ax - face[0] * kv, ay - face[1] * kv, box.width);
                 return;
             }
-            // portrait: her face at the upper middle, sized from the width (the desktop sizes it from
-            // the height, which on a phone put most of her off the side)
+            // portrait: her stage starts under the chat's name, status and counters (the banner, the HUD,
+            // the workspace line), so her head never reaches up into them (Yukimi Nov 24 2026); measured
+            // here, as those come and go with the chat
+            if (stage === this.root) {
+                const hostTop = this.host.getBoundingClientRect().top;
+                let top = 0;
+                [this.el && this.el.banner, this.el && this.el.hud, this.host.querySelector('#directorWorkspaceBanner')].forEach((el) => {
+                    if (!el || el.classList.contains('hidden')) return;
+                    const r = el.getBoundingClientRect();
+                    if (r.height) top = Math.max(top, r.bottom - hostTop + 4);
+                });
+                const want = top ? `${Math.round(top)}px` : '';
+                if (stage.style.top !== want) stage.style.top = want;
+            }
+            const sb = stage.getBoundingClientRect();
+            box.height = sb.height || box.height;
+            // her face at the upper middle, sized from the width (the desktop sizes it from the height,
+            // which on a phone put most of her off the side)
             const faceSize = Math.min(box.height * 0.1, box.width * 0.2);
             const k = faceSize / Math.max(1, face[2]);
             // her belly in view (Yukimi 2026-11-11): she stands a little higher, and off centre away
@@ -263,6 +287,12 @@
         const hud = m.updateHud.bind(m);
         m.updateHud = function (info) {
             hud(info);
+            paintFilesHud(dir());
+        };
+        // ...and on every other paint too (turn start / end repaint the chips with the prints count)
+        const chrome = m.paintChrome.bind(m);
+        m.paintChrome = function () {
+            chrome();
             paintFilesHud(dir());
         };
         // the pager counts pages of (height - 24 px): a short box read "1/2" with nothing more to show
@@ -1459,6 +1489,8 @@
     let filesKey = null;
     let filesSeq = 0;
     let filesCount = null;
+    let filesAdd = 0;
+    let filesDel = 0;
 
     function editRows(d) {
         const s = d && d.currentSession;
@@ -1520,15 +1552,58 @@
     const fileTag = (f, on) => `<button type="button" class="wmd-file${on ? ' is-on' : ''}" data-file="${esc(f.file)}">${esc(f.name)}`
         + `${f.add ? ` <i class="wmd-add">+${f.add}</i>` : ''}${f.del ? ` <i class="wmd-del">−${f.del}</i>` : ''}</button>`;
 
-    /** The HUD's second counter: her files this turn (directorMascot.js writes the prints count there). */
+    const shortCount = (n) => (n >= 10000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+
+    /**
+     * Yozora's HUD (#744, Yukimi Nov 24 2026): files she edited this turn where the others count prints,
+     * the lines added and removed beside it, and her task list's progress in the ring (the others' ring
+     * is the report card's hit ratio). directorMascot.js paints prints / ratio first; this runs after.
+     */
     function paintFilesHud(d) {
-        const b = page && page.querySelector('.dm-hud [data-hud="prints"]');
+        const hudEl = page && page.querySelector('.dm-hud');
+        const b = hudEl && hudEl.querySelector('[data-hud="prints"]');
         const label = b && b.parentNode ? b.parentNode.querySelector('span') : null;
         if (!b || !label) return;
         const xi = !!(d && d.persona === 'xi');
         const want = xi ? 'files' : 'prints';
         if (label.textContent !== want) label.textContent = want;
-        if (xi && filesCount != null && b.textContent !== String(filesCount)) b.textContent = String(filesCount);
+        let diff = hudEl.querySelector('.dm-hud-diff');
+        const ring = hudEl.querySelector('.dm-hud-ring');
+        if (!xi) {
+            if (diff) diff.hidden = true;
+            if (ring && ring.dataset.tasks) { delete ring.dataset.tasks; ring.title = 'Hit ratio of the last report card'; }
+            return;
+        }
+        const n = filesCount == null ? 0 : filesCount;
+        if (b.textContent !== String(n)) b.textContent = String(n);
+        if (!diff) {
+            diff = document.createElement('div');
+            diff.className = 'dm-hud-chip dm-hud-diff';
+            diff.title = 'Lines added and removed this turn';
+            diff.innerHTML = '<b class="dm-diff-add"></b><b class="dm-diff-del"></b>';
+            b.parentNode.after(diff);
+        }
+        diff.hidden = false;
+        const add = `+${shortCount(filesAdd)}`;
+        const del = `\u2212${shortCount(filesDel)}`;
+        if (diff.firstChild.textContent !== add) diff.firstChild.textContent = add;
+        if (diff.lastChild.textContent !== del) diff.lastChild.textContent = del;
+        if (ring) {
+            let tasks = [];
+            try { tasks = typeof d.sessionTasks === 'function' ? d.sessionTasks() : []; } catch (_) { tasks = []; }
+            const done = tasks.filter((t) => t && t.done).length;
+            if (tasks.length) {
+                const pct = Math.round((done / tasks.length) * 100);
+                ring.dataset.tasks = `${done}/${tasks.length}`;
+                ring.title = `Tasks done: ${done} of ${tasks.length}`;
+                const span = ring.querySelector('[data-hud="ratio"]');
+                if (span && span.textContent !== `${done}/${tasks.length}`) span.textContent = `${done}/${tasks.length}`;
+                const disc = ring.querySelector('.dm-ring');
+                if (disc) disc.style.setProperty('--p', pct);
+            } else if (ring.dataset.tasks) {
+                delete ring.dataset.tasks;
+            }
+        }
     }
 
     function paintFiles() {
@@ -1556,11 +1631,15 @@
             if (!on) closePages('changes');
             if (!rows.length) {
                 filesCount = on ? 0 : null;
+                filesAdd = 0;
+                filesDel = 0;
                 if (bar.innerHTML) { bar.innerHTML = ''; settle(); }
             } else {
                 void loadChanges(d).then((files) => {
                     if (seq !== filesSeq) return;
                     filesCount = files.length;
+                    filesAdd = files.reduce((n, f) => n + (f.add || 0), 0);
+                    filesDel = files.reduce((n, f) => n + (f.del || 0), 0);
                     bar.innerHTML = files.map((f) => fileTag(f, false)).join('');
                     paintFilesHud(d);
                     settle();

@@ -2396,6 +2396,8 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip 
 .wm-director .wmd-page-changes {
     --sh-verm: linear-gradient(#f2664a, #c8321e);
     --sh-shu: #d23a22;
+    /* lines added on her foxfire (the removed ones are --sh-shu) */
+    --sh-add: var(--success-color);
     --sh-fire: #7fd0ff;
     --sh-text: #e6eeff;
     --sh-dim: #9fb0dc;
@@ -2490,8 +2492,44 @@ html.ui-mobile .wm-director #directorWindow:not([data-persona="xi"]) .wmd-strip 
     color: #0b1a4a;
 }
 
-/* she writes no report cards: no score ring, no growth bar */
-#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-chip:is(.dm-hud-ring, .dm-hud-grow) {
+/* she writes no report cards: no growth bar, and the ring is her task list's progress (wmDirector.js
+   paintFilesHud), shown while she has one */
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-chip.dm-hud-grow,
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-chip.dm-hud-ring:not([data-tasks]) {
+    display: none;
+}
+
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-ring .dm-ring span {
+    font-size: 8.5px;
+    letter-spacing: -0.3px;
+}
+
+/* lines added and removed this turn, beside her files */
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-diff {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    line-height: 1.15;
+}
+
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-diff b {
+    position: relative;
+    font-size: 11px;
+}
+
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-diff .dm-diff-add {
+    color: var(--sh-add);
+}
+
+#directorContainer[data-persona="xi"] #directorSessionChat .dm-vn-layer .dm-hud-diff .dm-diff-del {
+    color: var(--sh-shu);
+}
+
+/* only Yozora counts lines */
+#directorContainer:not([data-persona="xi"]) #directorSessionChat .dm-vn-layer .dm-hud-diff {
     display: none;
 }
 
