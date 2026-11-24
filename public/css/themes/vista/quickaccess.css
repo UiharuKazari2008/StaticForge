@@ -111,15 +111,16 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
 /* two columns: the picture at the left, then a gap, then its name and the mode on now as one block in the middle of the tile
    (Yukimi, Nov 23 2026: the lines sat at the tile's top and bottom, "spaced way too far out", the name against the picture) */
 #wmShell > .wm-qa.is-cols-2 .qa-cells > .qa-tile.is-span .qa-face {
-    padding: calc(8 * var(--wm-px)) calc(4 * var(--wm-px)) 0 calc(34 * var(--wm-px));
+    padding: calc(8 * var(--wm-px)) calc(4 * var(--wm-px)) 0 calc(40 * var(--wm-px));
     line-height: calc(10 * var(--wm-px));
     background-position: calc(7 * var(--wm-px)) center, 0 0;
 }
 #wmShell > .wm-qa.is-cols-2 .qa-cells > .qa-tile.is-span .qa-sub {
-    left: calc(34 * var(--wm-px));
+    left: calc(40 * var(--wm-px));
     top: calc(19 * var(--wm-px));
     bottom: auto;
     line-height: calc(9 * var(--wm-px));
+    text-align: left;
 }
 /* one column: two rows high, its picture at the top, its name and the mode on now under it */
 #wmShell > .wm-qa.is-cols-1 .qa-cells > .qa-tile.is-span { height: calc(76 * var(--wm-px)); }

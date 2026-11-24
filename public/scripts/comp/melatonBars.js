@@ -403,7 +403,7 @@
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m33', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m34', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), softMenuSig(), Math.round(window.innerWidth)].join('|');
     }
@@ -1179,7 +1179,14 @@
                     one.s = text.replace(/^\s+|\s+$/g, '').replace(/\s+/g, ' ');
                     // a centred live line (Quick Access's state under a tile): its box's middle, so the app centres the text it
                     // fills in there, whatever its length (it started at the page's sample's left: "5G" over the frame, Nov 23)
-                    if (lv && cs.textAlign === 'center') one.cx = R(b.left + b.width / 2);
+                    // (only text that really is in the middle of its padded box, and that middle: a button's inherited
+                    // text-align centred Modes' name, laid out at its left past the picture, onto the picture - Nov 23 2026)
+                    if (lv && cs.textAlign === 'center') {
+                        const cl = b.left + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+                        const cr = b.right - (parseFloat(cs.borderRightWidth) || 0) - (parseFloat(cs.paddingRight) || 0);
+                        const mid = (cl + cr) / 2;
+                        if (Math.abs((rr.left + rr.right) / 2 - mid) < 2) one.cx = R(mid);
+                    }
                     // a run longer than its box (overflow hidden): cw the room it has, ell when the page ends it with "..."
                     // (#1027: the app drew the whole run past the box - a text notice's line ran off the popup)
                     if (cs.overflowX !== 'visible') {
