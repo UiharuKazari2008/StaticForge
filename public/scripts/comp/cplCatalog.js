@@ -390,7 +390,6 @@
     const ADMIN_TOOLS = [
         { id: 'autofill-ranking', name: 'Autofill Ranking', icon: '/static_images/app_icons/16/vista-autofill-ranking.webp' },
         { id: 'character-database', name: 'Character Database', icon: '/static_images/app_icons/16/vista-character-database.webp' },
-        { id: 'claude-accounts', name: 'Claude Accounts', icon: '/melaton-apps/claudedesk/assets/claudedesk-16.png' },
         { id: 'computer-management', name: 'Computer Management', icon: '/static_images/app_icons/16/vista-computer-management.webp' },
         { id: 'odbc', name: 'Data Sources (ODBC)', icon: `${ART}/administrative-tools-16.png` },
         { id: 'device-manager', name: 'Device Manager', icon: `${ART}/device-manager-16.png` },
@@ -398,6 +397,7 @@
         { id: 'enshutsuka', name: 'Enshutsuka', icon: '/static_images/app_icons/16/vista-enshutsuka-2.webp' },
         { id: 'event-viewer', name: 'Event Viewer', icon: '/static_images/app_icons/16/vista-event-viewer.webp' },
         { id: 'exchange', name: 'Exchange Management Console', icon: '/static_images/app_icons/16/vista-exchange-management-console.webp' },
+        { id: 'claude-accounts', name: 'Fleet', icon: '/melaton-apps/claudedesk/assets/claudedesk-16.png' },
         { id: 'front-gate', name: 'Front Gate', icon: `${ART}/firewall-16.png` },
         { id: 'ingest-controller', name: 'Ingest Controller', icon: '/static_images/vista-exchange/transport-16.png' },
         { id: 'iscsi', name: 'iSCSI Initiator', icon: `${ART}/iscsi-initiator-16.png` },

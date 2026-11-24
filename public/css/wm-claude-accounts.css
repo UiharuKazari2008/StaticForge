@@ -139,3 +139,20 @@
 .wm-claude-accounts .wca-sess-note.is-bad { color: #b00000; }
 .wm-claude-accounts .wca-sess-link a { color: #00669a; word-break: break-all; }
 .wm-claude-accounts .wca-badge-rc { color: #007a33; }
+
+/* plan usage under an account: label, WM meter, percent, resets time */
+.wm-claude-accounts .wca-use {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) calc(60 * var(--wm-px)) calc(30 * var(--wm-px));
+    column-gap: calc(4 * var(--wm-px));
+    align-items: center;
+}
+
+.wm-claude-accounts .wca-use-pct {
+    text-align: right;
+}
+
+.wm-claude-accounts .wca-use-reset {
+    grid-column: 1 / -1;
+    margin: 0 0 calc(2 * var(--wm-px));
+}

@@ -497,7 +497,7 @@
         const limits = Array.isArray(acc.limits) ? acc.limits : [];
         if (!limits.length) {
             if (acc.needsLogin) {
-                const open = { label: 'Claude Accounts', name: 'claude-accounts', arg: acc.id };
+                const open = { label: 'Fleet', name: 'claude-accounts', arg: acc.id };
                 lines.push({ text: `${acc.error || 'Link a claude.ai login to see its usage'}.`.replace(/\.\.$/, '.'), link: open });
                 alert(alerts, `${key}:login`, 'warning', 'Claude', `${acc.name}: Claude login needed`,
                     'Its plan usage shows again once the account has a claude.ai login.', open);

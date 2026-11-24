@@ -1,9 +1,11 @@
 /**
- * Melaton Mobile: Claude Accounts (Yukimi, Nov 19). The phone's way to pick the Claude account the
+ * Melaton Mobile: Fleet (was Claude Accounts; renamed Nov 24; Yukimi, Nov 19). The phone's way to pick the Claude account the
  * Director's Claude engine uses (the desktop keeps CardSpace for it: one backend), plus the host side:
  * the Claude Remote Control on the server, which reconnects on every switch.
  *
  *   Accounts  one row per CardSpace Claude account (service key 'claude'): status dot, name, Active,
+ *             its plan usage as WM progress bars (session / week / scoped week, percent, resets time; pushed by
+ *             the claude_usage feed while the page is shown, no timer),
  *             the linked claude.ai login (email, plan) Remote Control signs in with, or "No Remote
  *             Control login linked". Tap selects; Switch (left soft key) makes it the engine's account
  *             and reconnects Remote Control (switch_claude_account). Menu: Switch, Reconnect, Link Host
@@ -133,7 +135,7 @@
     const selected = () => data.accounts.find((a) => a.index === sel) || null;
 
     async function act(fn) {
-        try { take(await fn()); } catch (e) { await sh.messageBox({ title: 'Claude Accounts', icon: 'error', text: errText(e) }); }
+        try { take(await fn()); } catch (e) { await sh.messageBox({ title: 'Fleet', icon: 'error', text: errText(e) }); }
         render();
         watchSettle();
     }
@@ -163,7 +165,7 @@
         if (p.note) lines.push(p.note);
         if (come.length) lines.push(`Comes over (${come.length}): ${come.map(sessLabel).join(', ')}`);
         if (end.length) lines.push(`Ends (${end.length}): ${end.map(sessLabel).join(', ')}`);
-        const v = await sh.messageBox({ title: 'Claude Accounts', icon: end.length ? 'warning' : 'question', text: lines.join('\n\n'), buttons: [{ text: 'Continue', value: true, default: true }, { text: 'Cancel', value: false }] });
+        const v = await sh.messageBox({ title: 'Fleet', icon: end.length ? 'warning' : 'question', text: lines.join('\n\n'), buttons: [{ text: 'Continue', value: true, default: true }, { text: 'Cancel', value: false }] });
         if (v !== true) return;
         picking = null;
         await p.run(come.map((x) => x.id));
@@ -175,7 +177,7 @@
         const n = (rc && rc.pane && rc.pane.sessions) || liveRc().length;
         if (!n) return true;
         const v = await sh.messageBox({
-            title: 'Claude Accounts',
+            title: 'Fleet',
             icon: 'warning',
             text: `${verb} restarts Remote Control on ${data.host.hostname || 'the host'}. Its ${n} running session${n === 1 ? '' : 's'} will end.`,
             buttons: [{ text: 'Continue', value: true, default: true }, { text: 'Cancel', value: false }]
@@ -222,7 +224,7 @@
         try {
             take(await send('claude_remote_fleet', Object.assign({ action, index: fa.index }, extra || {})));
         } catch (e) {
-            await sh.messageBox({ title: 'Claude Accounts', icon: 'error', text: errText(e) });
+            await sh.messageBox({ title: 'Fleet', icon: 'error', text: errText(e) });
         }
         render();
     }
@@ -322,7 +324,7 @@
     async function link(acc) {
         if (!acc) return;
         const login = data.host && data.host.login;
-        if (!login) { await sh.messageBox({ title: 'Claude Accounts', icon: 'warning', text: 'The host has no claude.ai login. Sign in with claude on the host first.' }); return; }
+        if (!login) { await sh.messageBox({ title: 'Fleet', icon: 'warning', text: 'The host has no claude.ai login. Sign in with claude on the host first.' }); return; }
         const v = await sh.messageBox({
             title: 'Link Host Login',
             icon: 'question',
@@ -476,6 +478,62 @@
         </div>`;
     }
 
+    // ---- plan usage (statusHub claude_usage via walletTray.watchClaude's count; own listener for the rows) ----
+    const usage = new Map(); // account id -> row
+    let usageOn = false;
+    let usageLoaded = false;
+    let usageWired = false;
+    const awake = () => (typeof sh.onScreen === 'function' ? sh.onScreen() : !document.hidden);
+    const usageIndexRow = (index) => { for (const r of usage.values()) if (r.index === index) return r; return null; };
+
+    function usageApply(changed, removed, whole) {
+        if (whole) usage.clear();
+        Object.entries(changed || {}).forEach(([id, row]) => { if (id !== '_meta' && row && typeof row === 'object') usage.set(id, row); });
+        (removed || []).forEach((id) => usage.delete(id));
+        usageLoaded = true;
+    }
+
+    async function usageWatch(on) {
+        const c = ws();
+        const tray = window.walletTray && typeof window.walletTray.watchClaude === 'function' ? window.walletTray : null;
+        if (on === usageOn) return;
+        usageOn = on;
+        if (tray) tray.watchClaude('fleet', on);
+        if (!c || typeof c.sendMessage !== 'function') return;
+        if (on) {
+            try {
+                const r = await c.sendMessage('status_subscribe', { feed: 'claude_usage' }, false);
+                if (usageOn) { usageApply((r && (r.items || (r.data && r.data.items))) || {}, [], true); render(); }
+            } catch (_) { usageLoaded = true; render(); }
+        } else if (!tray) {
+            try { await c.sendMessage('status_unsubscribe', { feed: 'claude_usage' }, false); } catch (_) { /* gone */ }
+        }
+    }
+
+    const usageLevel = (l) => {
+        const sev = String(l.severity || '').toLowerCase();
+        if (l.percent >= 90 || /crit|danger|high|error|limit|block/.test(sev)) return 'bad';
+        if (l.percent >= 75 || /warn|elevat|approach/.test(sev)) return 'warn';
+        return 'ok';
+    };
+    const usageRank = (l) => (l.kind === 'session' || l.kind === 'five_hour' ? 0 : l.kind === 'weekly_all' || l.kind === 'seven_day' ? 1 : 2);
+    function usageHtml(a) {
+        const u = usageIndexRow(a.index);
+        if (!u) return usageLoaded ? '' : '<div class="wac-line wca-muted">Reading usage...</div>';
+        const now = Date.now();
+        const limits = (Array.isArray(u.limits) ? u.limits : []).filter((l) => l && l.percent != null).sort((x, y) => usageRank(x) - usageRank(y));
+        if (!limits.length) return `<div class="wac-line wca-muted">${esc(u.needsLogin ? (u.error || 'No login linked: no usage') : `Usage unavailable${u.error ? `: ${u.error}` : ''}`)}</div>`;
+        return limits.map((l) => {
+            const stale = l.resetsAt && l.resetsAt <= now;
+            const w = stale ? 0 : Math.max(0, Math.min(100, Math.round(l.percent)));
+            const resets = !l.resetsAt ? '' : stale ? 'reset' : `resets ${new Date(l.resetsAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
+            return `<div class="wca-use"><span class="wca-use-label">${esc(l.label || l.short || l.kind)}</span>`
+                + `<span class="wac-meter wac-lv-${usageLevel(l)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${w}"><i data-w="${w}"></i></span>`
+                + `<span class="wca-use-pct">${stale ? '' : `${w}%`}</span><span class="wca-use-reset wca-muted">${esc(resets)}</span></div>`;
+        }).join('');
+    }
+    function paintBars(root0) { root0.querySelectorAll('i[data-w]').forEach((el) => { el.style.width = `${el.dataset.w}%`; }); }
+
     function accountRow(a) {
         const l = a.remoteLogin;
         const lines = [];
@@ -488,6 +546,7 @@
         }
         const fa = fleetAcc(a.index);
         if (fa && fa.moved) lines.push(`<div class="wac-line">Own Remote Control: ${esc(FLEET_LABEL[fa.state] || fa.state)}</div>`);
+        lines.push(usageHtml(a));
         lines.push(`<div class="wac-line wca-muted">Engine key ${esc(a.fingerprint || '')}</div>`);
         const dot = fa && fa.moved ? (FLEET_DOT[fa.state] || 'off') : a.active ? (status.state === 'connected' ? 'ok' : status.state === 'error' ? 'bad' : 'warn') : 'off';
         return `<div class="wac-row${sel === a.index ? ' is-selected' : ''}" role="option" aria-selected="${sel === a.index}" data-index="${a.index}">
@@ -703,14 +762,16 @@
             </div>`;
     }
 
-    function setHtml(el, html) { if (el && el.innerHTML !== html) el.innerHTML = html; }
+    // the last markup is kept on the element: the usage bars' widths are set on the nodes afterwards, so innerHTML never matches
+    function setHtml(el, html) { if (el && el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; } }
     // the Add page's fields keep what is typed (and focus) across pushes
     function setHtmlKeep(el, html) {
-        if (!el || el.innerHTML === html) return;
+        if (!el || el.dataset.h === html) return;
         const kept = {};
         el.querySelectorAll('input.wca-input').forEach((i) => { kept[i.id] = i.value; });
         const focused = document.activeElement && el.contains(document.activeElement) ? document.activeElement.id : '';
         el.innerHTML = html;
+        el.dataset.h = html;
         Object.keys(kept).forEach((id) => { const i = el.querySelector(`#${id}`); if (i && !i.disabled && kept[id]) i.value = kept[id]; });
         if (focused) { const f = el.querySelector(`#${focused}`); if (f && !f.disabled) f.focus(); }
     }
@@ -732,6 +793,7 @@
         if (picking) setHtml(accountsPanel, pickHtml());
         else if (adding) setHtmlKeep(accountsPanel, addHtml());
         else setHtml(accountsPanel, list);
+        if (tab === 'accounts' && !picking && !adding && accountsPanel.querySelector('i[data-w]:not([style])')) paintBars(accountsPanel);
         setHtml(hostPanel, hostHtml());
         if (tab === 'sessions') setHtml(sessionsPanel, sessionsHtml());
         page.querySelectorAll('.wm-tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === tab)));
@@ -826,7 +888,7 @@
         page = p;
         p.classList.add('wm-accounts', 'wm-claude-accounts');
         p.innerHTML = `
-            <div class="wm-form-hdr">Claude Accounts</div>
+            <div class="wm-form-hdr">Fleet</div>
             <div class="wca-status-slot"></div>
             <div class="wac-scroll wm-set-scroll" role="listbox" aria-label="Claude accounts">
                 <div class="wac-panel wca-panel-accounts"></div>
@@ -914,6 +976,7 @@
     }
 
     function show() {
+        void usageWatch(awake());
         render();
         if (!loaded) userRefresh(); else void load();
         void loginAct('status', null, true); // a sign-in left running shows as Resume
@@ -931,13 +994,13 @@
         sh = window.wmShell;
         sh.registerApp({
             id: APP_ID,
-            title: 'Claude Accounts',
+            title: 'Fleet',
             icon: 'svc-claude',
             inStart: 'programs',
             mount,
             show,
-            hide() { clearTimeout(pollTimer); },
-            onEnd() { clearTimeout(pollTimer); page = null; },
+            hide() { clearTimeout(pollTimer); void usageWatch(false); },
+            onEnd() { clearTimeout(pollTimer); page = null; void usageWatch(false); },
             softKeys() {
                 if (tab === 'accounts' && picking) return { left: { label: 'Continue', action: pickDone }, right: { label: 'Menu', menu: menuItems } };
                 if (tab === 'sessions') return { left: { label: 'Refresh', action: () => loadSessions() }, right: { label: 'Menu', menu: menuItems } };
@@ -966,6 +1029,15 @@
             c.on('claude_remote_control_status', onStatus, { signal: appScopeSignal });
             c.on('claude_account_login_status', onLoginStatus, { signal: appScopeSignal });
             c.on('claude_remote_fleet_status', onFleet, { signal: appScopeSignal });
+            c.on('claude_usage_status', (msg) => {
+                if (!usageOn) return;
+                const d = msg && msg.changed ? msg : (msg && msg.data) || {};
+                usageApply(d.changed, d.removed, false);
+                render();
+            }, { signal: appScopeSignal });
+            // the server forgets a dropped socket's subscriptions; the screen back on joins again
+            c.on('connected', () => { if (usageOn) { usageOn = false; void usageWatch(true); } }, { signal: appScopeSignal });
+            window.addEventListener('melatonscreen', () => { if (page && !page.hidden && sh.current === APP_ID) void usageWatch(awake()); }, { signal: appScopeSignal });
         }
     }
 

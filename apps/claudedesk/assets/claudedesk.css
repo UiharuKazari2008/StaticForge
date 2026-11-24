@@ -343,3 +343,95 @@
     min-width: 0;
     width: auto;
 }
+
+/* ---- Plan Usage on the summary page: a block per account, a Vista progress bar per limit ---- */
+
+#mmcConsole_claudedesk .cd-usage-acct {
+    margin: 0 0 10px;
+}
+
+#mmcConsole_claudedesk .cd-usage-acct:last-child {
+    margin-bottom: 0;
+}
+
+#mmcConsole_claudedesk .cd-usage-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 3px;
+}
+
+#mmcConsole_claudedesk .cd-usage-head > img {
+    width: 16px;
+    height: 16px;
+}
+
+#mmcConsole_claudedesk .cd-usage-row {
+    display: grid;
+    grid-template-columns: 170px minmax(120px, 280px) minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding: 1px 0 1px 22px;
+}
+
+#mmcConsole_claudedesk .cd-usage-row .mmc-progress {
+    margin: 0;
+}
+
+#mmcConsole_claudedesk .cd-usage-row .mmc-progress > [role="progressbar"] {
+    max-width: none;
+}
+
+#mmcConsole_claudedesk .cd-usage-row .mmc-progress > span {
+    width: 34px;
+    text-align: right;
+    flex: none;
+}
+
+#mmcConsole_claudedesk .cd-usage-reset {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- Supervisor: the settings form, the reviews list, the selected review ---- */
+
+#mmcConsole_claudedesk .cd-sup-form label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 6px;
+}
+
+#mmcConsole_claudedesk .cd-sup-form label > span:first-child:not(:last-child) {
+    flex: none;
+    width: 70px;
+}
+
+#mmcConsole_claudedesk .cd-sup-form input[type="text"],
+#mmcConsole_claudedesk .cd-sup-form select {
+    flex: 0 1 320px;
+    min-width: 0;
+}
+
+#mmcConsole_claudedesk .cd-sup-actions {
+    margin: 8px 0 0;
+}
+
+#mmcConsole_claudedesk .cd-sup-list {
+    height: 180px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#mmcConsole_claudedesk .cd-sup-list > .mmc-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+#mmcConsole_claudedesk .cd-sup-steer {
+    margin: 2px 0 6px;
+    padding-left: 22px;
+}

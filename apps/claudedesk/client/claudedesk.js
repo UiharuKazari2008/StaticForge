@@ -1,10 +1,12 @@
 /**
- * Claude Accounts (desktop): an MMC 3.0 console (mmcConsole.js, the shell Server Manager and the other
+ * Fleet (desktop; was Claude Accounts until Nov 24): an MMC 3.0 console (mmcConsole.js, the shell Server Manager and the other
  * snap-ins share) over the host's Claude accounts, its Remote Control, every Claude session on the host and
  * the agents' coordination. The phone has the same accounts and host in Melaton Mobile's Claude Accounts
- * (wmClaudeAccounts.js); both use one backend.
+ * (wmClaudeAccounts.js, also named Fleet); both use one backend.
  *
- *   Claude Accounts (Local)     summary: the engine's account, Remote Control, sessions running, agents
+ *   Fleet (Local)               summary: every account's plan usage as progress bars (claude_usage feed,
+ *                               subscribed while this page is shown), the engine's account, Remote Control,
+ *                               sessions running, agents
  *     Accounts                  CardSpace's Claude accounts: Switch To (the engine's account + Remote
  *                               Control's login), Link Host Login, Unlink, New Session on This Account,
  *                               Add Account... (sign in: a link to copy / open in Alchemy, the code back)
@@ -22,6 +24,8 @@
  *     Coordination              the agent-coord MCP server's store
  *       Agents / Claims / Messages   who works on what, the files they claimed, notes and steering
  *       Build Gates / Busy Locks      builds waiting on every agent's ready, the repo's .agent-* locks
+ *       Supervisor              reviews of finished agent turns against what was asked (claude_desk_supervisor):
+ *                               settings, the reviews, Send to Session / Re-check / Dismiss
  *       Inspect: <agent>        what one agent is doing: files it edited, commands, last words, claims
  *
  * Server: 313-claudeAccountsHandler (accounts, host, sign-in) and 314-claudeDeskHandler (sessions,
@@ -34,7 +38,7 @@
     'use strict';
 
     const ID = 'claudedesk';
-    const TITLE = 'Claude Accounts';
+    const TITLE = 'Fleet';
     const VERSION = '1.0.0';
     const MODES = [['bypassPermissions', 'Bypass permissions'], ['acceptEdits', 'Accept edits'], ['default', 'Ask before acting'], ['plan', 'Plan only']];
     const RC_TEXT = { connected: 'Connected', reconnecting: 'Reconnecting', starting: 'Starting', error: 'Error', stopped: 'Stopped', unknown: 'Unknown', 'not-moved': 'Not in its own folder' };
@@ -101,6 +105,11 @@
             messagesFor: 0,
             subscribed: false,
             fluxOn: false,
+            usage: new Map(), // claude_usage rows by account id
+            usageOn: false,
+            usageLoaded: false,
+            usageError: '',
+            sup: { loaded: false, data: null, draft: null, sel: '', busy: '', error: '', unavailable: false, lastReviewId: null },
             liveKey: ''
         };
     }
@@ -145,6 +154,13 @@
             const before = S.coord.lastMessageId;
             S.coord = changed.coord || S.coord;
             if (S.coord.lastMessageId !== before && /^co-messages|^co-root/.test(S.c ? S.c.node : '')) void loadMessages();
+        }
+        // the supervisor reviewed something: its list is read again once, only when the last review changed
+        if (changed.supervisor && typeof changed.supervisor === 'object') {
+            const id = changed.supervisor.lastReviewId == null ? null : changed.supervisor.lastReviewId;
+            if (S.sup.loaded && id !== S.sup.lastReviewId && S.c && S.c.node === 'co-supervisor') void loadSupervisor();
+            else if (id !== S.sup.lastReviewId) S.sup.stale = true;
+            S.sup.lastReviewId = id;
         }
         if (S.host && S.host.remoteControl && S.host.remoteControl.status && S.rc.state === 'unknown') S.rc = S.host.remoteControl.status;
         // a session started or ended: the list (its order and states) is read again once
@@ -211,6 +227,12 @@
             const d = msg && Array.isArray(msg.accounts) ? msg : (msg && msg.data) || null;
             if (d && Array.isArray(d.accounts)) { S.fleet = d; repaint(); }
         }, opts);
+        c.on('claude_usage_status', (msg) => {
+            if (!S.usageOn) return;
+            const d = msg && msg.changed ? msg : (msg && msg.data) || {};
+            usageApply(d.changed, d.removed, false);
+            if (S.c && usageWanted(S.c.node)) repaint();
+        }, opts);
         c.on('claude_desk_transcript_append', (msg) => {
             const d = (msg && msg.data) || msg || {};
             const chat = S.chats.get(d.id);
@@ -225,6 +247,7 @@
             if (!S.c) return;
             S.subscribed = false;
             S.fluxOn = false;
+            if (S.usageOn) { S.usageOn = false; void usageWatch(true); }
             void subscribe(true);
             const w = S.watching;
             S.watching = null;
@@ -348,6 +371,216 @@
         try { await send('claude_desk_unwatch', {}); } catch (_) { /* gone */ }
     }
 
+    // ---- plan usage (statusHub feed claude_usage, pushed; subscribed while the summary page is shown) ------
+
+    const USAGE_KINDS = { session: 0, five_hour: 0, weekly_all: 1, seven_day: 1 };
+    const usageRank = (l) => (l.kind in USAGE_KINDS ? USAGE_KINDS[l.kind] : 2);
+
+    function usageApply(changed, removed, whole) {
+        if (whole) S.usage = new Map();
+        Object.entries(changed || {}).forEach(([id, row]) => { if (id !== '_meta' && row && typeof row === 'object') S.usage.set(id, row); });
+        (removed || []).forEach((id) => S.usage.delete(id));
+        S.usageLoaded = true;
+    }
+
+    /**
+     * The tray (walletTray.watchClaude) counts who shows the figures and unsubscribes when nobody does, so
+     * this joins its count; the first snapshot is asked for here because the tray keeps it to itself.
+     */
+    async function usageWatch(on) {
+        if (on === S.usageOn) return;
+        S.usageOn = on;
+        const tray = root.walletTray && typeof root.walletTray.watchClaude === 'function' ? root.walletTray : null;
+        if (tray) tray.watchClaude('fleet', on);
+        if (on) {
+            try {
+                const r = await send('status_subscribe', { feed: 'claude_usage' });
+                if (S.usageOn) { usageApply(r.items || {}, [], true); S.usageError = ''; }
+            } catch (e) { S.usageError = errText(e); S.usageLoaded = true; }
+            repaint();
+        } else if (!tray) {
+            try { await send('status_unsubscribe', { feed: 'claude_usage' }); } catch (_) { /* gone */ }
+        }
+    }
+
+    const NODES_USAGE = new Set(['root', 'co-root']);
+    const usageWanted = (id) => NODES_USAGE.has(id);
+
+    function levelOf(l) {
+        const sev = String(l.severity || '').toLowerCase();
+        if (l.percent >= 90 || /crit|danger|high|error|limit|block/.test(sev)) return 'error';
+        if (l.percent >= 75 || /warn|elevat|approach/.test(sev)) return 'paused';
+        return '';
+    }
+    function resetText(l, now) {
+        if (!l.resetsAt) return '';
+        if (l.resetsAt <= now) return 'Reset since the last reading';
+        return `Resets ${new Date(l.resetsAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
+    }
+    function usageBlock(a, now) {
+        const planText = a.plan ? String(a.plan).replace(/^\w/, (ch) => ch.toUpperCase()) : '';
+        const who = [a.engine ? 'Director' : '', a.onHost ? 'Remote Control' : ''].filter(Boolean).join(', ');
+        const limits = (Array.isArray(a.limits) ? a.limits : []).filter((l) => l && l.percent != null).sort((x, y) => usageRank(x) - usageRank(y));
+        let body;
+        if (limits.length) {
+            body = limits.map((l) => {
+                const lv = levelOf(l);
+                const pct = Math.max(0, Math.min(100, Math.round(l.percent)));
+                const stale = l.resetsAt && l.resetsAt <= now;
+                return `<div class="cd-usage-row"><span class="cd-usage-label">${esc(l.label || l.short || l.kind)}</span>`
+                    + `<div class="mmc-progress"><div role="progressbar"${lv ? ` class="${lv}"` : ''} aria-valuemin="0" aria-valuemax="100" aria-valuenow="${stale ? 0 : pct}"><div data-w="${stale ? 0 : pct}"></div></div><span>${stale ? '' : `${pct}%`}</span></div>`
+                    + `<span class="cd-usage-reset mmc-hint">${esc(resetText(l, now))}</span></div>`;
+            }).join('');
+        } else {
+            body = `<p class="mmc-hint">${esc(a.needsLogin ? (a.error || 'Link a claude.ai login to see its usage.') : `Usage unavailable${a.error ? `: ${a.error}` : ''}`)}</p>`;
+        }
+        const x = a.extra;
+        const extra = x && x.enabled ? `<p class="mmc-hint">Extra usage is on${x.limitReached ? ' (limit reached)' : ''}.</p>` : '';
+        const err = limits.length && a.error ? `<p class="mmc-hint">${esc(a.error)}</p>` : '';
+        return `<div class="cd-usage-acct"><div class="cd-usage-head"><img src="${esc(S.app.url('assets').replace(/\/$/, ''))}/account-16.png" alt=""><b>${esc(a.name)}</b>`
+            + `<span class="mmc-hint">${esc([planText, who].filter(Boolean).join(' - '))}</span></div>${body}${extra}${err}</div>`;
+    }
+    function usageHtml() {
+        const rows = [...S.usage.values()].sort((a, b) => (a.index || 0) - (b.index || 0));
+        if (!rows.length) return `<p class="${S.usageError ? 'cd-err' : 'mmc-hint'}">${esc(S.usageError || (S.usageLoaded ? 'There are no Claude accounts.' : 'Reading the plan usage of every account...'))}</p>`;
+        const now = Date.now();
+        return rows.map((a) => usageBlock(a, now)).join('');
+    }
+
+    // ---- the supervisor (claude_desk_supervisor) -----------------------------------------------------------
+
+    const SUP_DEFAULT = { enabled: false, engine: 'tokenrouter', model: '', delivery: 'inbox' };
+    const SUP_FALLBACK_ENGINES = [{ id: 'tokenrouter', name: 'TokenRouter', defaultModel: 'deepseek/deepseek-v4.1-flash' }];
+    const DELIVERY = [['inbox', 'Inbox only'], ['steer', 'Type into the session'], ['off', 'Off']];
+    const VERDICT = { ok: ['Complete', `${VI}/check-16.png`], gaps: ['Gaps found', `${VI}/warning-16.png`], unclear: ['Unclear', `${VI}/info-16.png`], error: ['Review failed', `${VI}/error-16.png`] };
+    const TRIGGER = { 'turn-end': 'Turn ended', mcp: 'Asked by the agent', recheck: 'Re-checked' };
+    const supEngines = () => (S.sup.data && S.sup.data.engines && S.sup.data.engines.length ? S.sup.data.engines : SUP_FALLBACK_ENGINES);
+    const supSettings = () => S.sup.draft || Object.assign({}, SUP_DEFAULT, (S.sup.data && S.sup.data.settings) || {});
+    const supReviews = () => (S.sup.data && Array.isArray(S.sup.data.reviews) ? S.sup.data.reviews : []);
+    const supReview = (id) => supReviews().find((r) => String(r.id) === String(id)) || null;
+    const supEngine = (id) => supEngines().find((e) => e.id === id) || null;
+    const SUP_GONE = /unknown message type/i;
+
+    function supTake(r) {
+        if (r && r.settings) { S.sup.data = Object.assign({}, S.sup.data || {}, r); S.sup.draft = null; S.sup.loaded = true; S.sup.unavailable = false; S.sup.error = ''; S.sup.stale = false; }
+    }
+    function supFail(e) {
+        if (SUP_GONE.test(errText(e))) { S.sup.unavailable = true; S.sup.error = ''; } else S.sup.error = errText(e);
+    }
+    async function loadSupervisor() {
+        try { supTake(await send('claude_desk_supervisor', { action: 'status' })); S.sup.loaded = true; } catch (e) { S.sup.loaded = true; supFail(e); }
+        repaint();
+    }
+    /** One supervisor action; busy = the status line while it runs (a re-check takes up to a minute). */
+    async function supAct(c, payload, busy) {
+        S.sup.busy = busy || 'Working...';
+        c.note(S.sup.busy);
+        repaint();
+        try {
+            const r = await send('claude_desk_supervisor', payload);
+            if (r.settings) supTake(r);
+            else if (r.review) {
+                const list = supReviews().slice();
+                const i = list.findIndex((x) => String(x.id) === String(r.review.id));
+                if (i >= 0) list[i] = r.review; else list.unshift(r.review);
+                S.sup.data = Object.assign({}, S.sup.data || {}, { reviews: list });
+                S.sup.sel = String(r.review.id);
+            }
+            S.sup.error = '';
+        } catch (e) { supFail(e); if (S.sup.error) await failBox(c, e); }
+        S.sup.busy = '';
+        c.note('');
+        repaint();
+    }
+
+    function supDetailHtml() {
+        const r = supReview(S.sup.sel);
+        if (!r) return '<p class="mmc-hint">Select a review to see what was asked, what was missed and the steering.</p>';
+        const missed = Array.isArray(r.missed) ? r.missed : [];
+        const steering = Array.isArray(r.steering) ? r.steering : [];
+        const live = !!liveOf(r.sessionId);
+        const busy = !!S.sup.busy;
+        const sendable = r.verdict === 'gaps' && !r.delivered && (missed.length || steering.length);
+        const bits = [
+            `<p><b>${esc(r.title || shortId(r.sessionId))}</b> <span class="mmc-hint">${esc([r.account, TRIGGER[r.trigger] || r.trigger, when(r.at)].filter(Boolean).join(' - '))}</span></p>`,
+            r.summary ? `<p class="cd-read">${esc(r.summary)}</p>` : '',
+            r.request ? `<p><b>What was asked</b></p><p class="cd-read">${esc(r.request)}</p>` : '',
+            missed.length ? `<p><b>Missed</b></p><table class="cd-table"><thead><tr><th>Item</th><th>Evidence</th></tr></thead><tbody>${missed.map((m) => `<tr><td>${esc(m.item)}</td><td>${esc(m.evidence || '')}</td></tr>`).join('')}</tbody></table>` : '',
+            steering.length ? `<p><b>Steering</b></p><ul class="cd-sup-steer">${steering.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '',
+            r.delivered ? `<p class="mmc-hint">${r.delivered === 'steer' ? 'Typed into the session.' : 'Left in the inbox.'}</p>` : '',
+            r.dismissed ? '<p class="mmc-hint">Dismissed.</p>' : '',
+            `<p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="sup-send" data-arg="${esc(r.id)}"${sendable && live && !busy ? '' : ' disabled'}>Send to Session</button> `
+                + `<button type="button" class="btn-standard" data-act="sup-recheck" data-arg="${esc(r.sessionId)}"${busy ? ' disabled' : ''}>Re-check</button> `
+                + `<button type="button" class="btn-standard" data-act="sup-dismiss" data-arg="${esc(r.id)}"${r.dismissed || busy ? ' disabled' : ''}>Dismiss</button></p>`
+        ];
+        return bits.join('');
+    }
+
+    function supervisorPage(c) {
+        const sup = S.sup;
+        if (!sup.loaded) { void loadSupervisor(); return c.page('Supervisor', '', [{ id: 'cd-sup-wait', title: 'Supervisor', body: '<p class="mmc-hint">Reading the supervisor...</p>' }]); }
+        if (sup.stale && !sup.loading) { sup.stale = false; void loadSupervisor(); }
+        if (sup.unavailable) return c.page('Supervisor', '', [{ id: 'cd-sup-gone', title: 'Supervisor', body: '<p>Supervisor is not available on this server yet.</p>' }]);
+        const st = supSettings();
+        const engines = supEngines();
+        const eng = supEngine(st.engine);
+        const engineOpts = (eng ? engines : engines.concat([{ id: st.engine, name: st.engine }])).map((e) => `<option value="${esc(e.id)}"${e.id === st.engine ? ' selected' : ''}>${esc(e.name || e.id)}</option>`).join('');
+        const placeholder = (eng && eng.defaultModel) || (st.engine === 'tokenrouter' ? 'deepseek/deepseek-v4.1-flash' : '');
+        const stats = (sup.data && sup.data.stats) || {};
+        const form = `<div class="cd-sup-form">
+            <label class="cd-check"><input type="checkbox" data-sup="enabled"${st.enabled ? ' checked' : ''}><span>Enabled: review each agent turn against what was asked</span></label>
+            <label><span>Engine:</span><select class="vdt-select" data-sup="engine">${engineOpts}</select></label>
+            <label><span>Model:</span><input type="text" data-sup="model" value="${esc(st.model || '')}" placeholder="${esc(placeholder)}" spellcheck="false" autocomplete="off"></label>
+            <label><span>Delivery:</span><select class="vdt-select" data-sup="delivery">${DELIVERY.map(([v, t]) => `<option value="${v}"${v === st.delivery ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+            <p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="sup-save"${sup.busy ? ' disabled' : ''}>Save</button>${sup.draft ? ' <span class="mmc-hint">Not saved yet.</span>' : ''}</p>
+        </div>`;
+        const reviews = supReviews().filter((r) => !r.dismissed);
+        const rows = reviews.map((r) => {
+            const v = VERDICT[r.verdict] || [r.verdict || '', `${VI}/info-16.png`];
+            return { key: `v:${r.id}`, icon: v[1], data: { title: r.title || shortId(r.sessionId), account: r.account || '', verdict: v[0], summary: r.summary || '', at: r.at || 0 } };
+        });
+        const list = c.listView([
+            { t: 'Session', w: 140, key: 'title', text: (d) => d.title },
+            { t: 'Account', w: 70, key: 'account', text: (d) => d.account },
+            { t: 'Verdict', w: 80, key: 'verdict', text: (d) => d.verdict },
+            { t: 'Summary', w: 250, key: 'summary', text: (d) => d.summary },
+            { t: 'When', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => d.at }
+        ], rows, { sortId: 'cd-sup', sort: { key: 'at', dir: -1 }, empty: sup.data && sup.data.settings && sup.data.settings.enabled ? 'No review yet. Each agent turn that ends is reviewed.' : 'The supervisor is off. Turn it on above to review finished agent turns.' });
+        const side = sup.busy || sup.error || `${stats.reviewed || 0} reviewed, ${stats.gaps || 0} with gaps${stats.lastAt ? `, last ${when(stats.lastAt)}` : ''}`;
+        const html = c.page('Supervisor', side, [
+            { id: 'cd-sup-set', title: 'Settings', body: form },
+            { id: 'cd-sup-list', title: `Reviews (${reviews.length})`, body: `<div class="cd-sup-list">${list}</div>` },
+            { id: 'cd-sup-detail', title: 'Selected Review', body: `<div class="cd-sup-detail">${supDetailHtml()}</div>` }
+        ]);
+        return {
+            html,
+            mount: (pane) => {
+                const read = (ev) => {
+                    const el = ev.target.closest('[data-sup]');
+                    if (!el) return;
+                    const d = S.sup.draft || Object.assign({}, SUP_DEFAULT, (S.sup.data && S.sup.data.settings) || {});
+                    d[el.dataset.sup] = el.type === 'checkbox' ? el.checked : el.value;
+                    S.sup.draft = d;
+                    if (el.dataset.sup === 'engine') {
+                        const e = supEngine(el.value);
+                        const m = pane.querySelector('[data-sup="model"]');
+                        if (m) m.placeholder = (e && e.defaultModel) || '';
+                    }
+                    const note = pane.querySelector('.cd-sup-form .cd-sup-actions');
+                    if (note && !note.querySelector('.mmc-hint')) note.insertAdjacentHTML('beforeend', ' <span class="mmc-hint">Not saved yet.</span>');
+                };
+                pane.addEventListener('input', read);
+                pane.addEventListener('change', read);
+            }
+        };
+    }
+    /** The selected review's detail again, without drawing the page (the settings keep what is typed). */
+    function supSelect(key) {
+        S.sup.sel = key && key.startsWith('v:') ? key.slice(2) : '';
+        const box = S.c && S.c.modal.querySelector('.cd-sup-detail');
+        if (box) box.innerHTML = supDetailHtml();
+    }
+
     // ---- the tree -----------------------------------------------------------------------------------------
 
     function nodes() {
@@ -380,14 +613,15 @@
                 {
                     id: 'co-root',
                     name: 'Coordination',
-                    icon: `${ITEMS}/sync-center-16.png`,
+                    icon: `${ITEMS}/people-near-me-16.png`,
                     desc: 'The agents working now, their claims and messages',
                     children: [
                         { id: 'co-agents', name: 'Agents', icon: `${ITEMS}/user-accounts-16.png` },
                         { id: 'co-claims', name: 'Claims', icon: FOLDER16 },
                         { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
                         { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
-                        { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
+                        { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' },
+                        { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Reviews of finished agent turns against what was asked' }
                     ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: `${S.app ? S.app.url('assets').replace(/\/$/, '') : '/melaton-apps/claudedesk/assets'}/session-16.png`, desc: 'What this agent is doing' }] : [])
                 }
             ]
@@ -410,7 +644,7 @@
         const busy = S.live.filter((s) => s.status === 'busy').length;
         const agents = S.coord.agents.filter((a) => a.kind !== 'person');
         const overview = c.overview(`${A}/claudedesk-32.png`, [
-            'Claude Accounts manages the Claude accounts of this host, its Remote Control, and the Claude sessions running on it.',
+            'Fleet manages the Claude accounts of this host, its Remote Control, the Claude sessions running on it and the agents coordinating on it.',
             'Sessions started here run in Remote Control, outlive a Dreamscape restart, and can run on either account at the same time.'
         ]);
         const sections = [
@@ -436,7 +670,7 @@
                 ['Build gates open', String((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length)]
             ]) + `<p><span class="mmc-link" data-act="nav:co-agents">Agents</span> &nbsp; <span class="mmc-link" data-act="nav:co-builds">Build gates</span></p>` }
         ];
-        return c.page(`${TITLE} (Local)`, S.error ? `Error: ${S.error}` : '', [{ id: 'cd-sum-overview', title: 'Overview', body: overview }].concat(sections));
+        return c.page(`${TITLE} (Local)`, S.error ? `Error: ${S.error}` : '', [{ id: 'cd-sum-overview', title: 'Overview', body: overview }, { id: 'cd-sum-usage', title: 'Plan Usage', body: `<div class="cd-usage">${usageHtml()}</div>` }].concat(sections));
     }
 
     const ACCOUNT_COLS = [
@@ -825,17 +1059,23 @@
 
     // ---- commands -----------------------------------------------------------------------------------------
 
+    /** The usage bars' widths are set after the page is drawn (a script, not an inline style in the markup). */
+    function withBars(html) {
+        return { html, mount: (pane) => { pane.querySelectorAll('[data-w]').forEach((el) => { el.style.width = `${el.dataset.w}%`; }); } };
+    }
+
     function page(n, c) {
         switch (n.id) {
-            case 'root': return rootPage(c);
+            case 'root': return withBars(rootPage(c));
             case 'accounts': return accountsPage(c);
             case 'rc': return rcPage(c);
             case 'rc-host': return hostRcPage(c);
             case 'co-builds': return buildsPage(c);
             case 'co-locks': return locksPage(c);
+            case 'co-supervisor': return supervisorPage(c);
             case 'sessions': return sessionsPage(c, false);
             case 'running': return sessionsPage(c, true);
-            case 'co-root': return rootPage(c);
+            case 'co-root': return withBars(rootPage(c));
             case 'co-agents': return agentsPage(c);
             case 'co-claims': return claimsPage(c);
             case 'co-messages': return messagesPage(c);
@@ -853,6 +1093,7 @@
             case 'rc': return [{ text: 'Refresh Status', action: 'fleet-refresh' }];
             case 'co-builds': return [{ text: 'Post Message...', action: 'post' }];
             case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
+            case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }];
             case 'rc-host': return [
                 { text: 'Reconnect', action: 'rc-reconnect' },
                 { text: 'Start', action: 'rc-start', disabled: !!(S.host && S.host.remoteControl && S.host.remoteControl.active === 'active') },
@@ -949,6 +1190,12 @@
             const l = ((S.locks && S.locks.list) || []).find((x) => x.file === key.slice(2));
             return { title: key.slice(2), items: [{ text: 'Inspect Agent', action: 'lock-inspect', disabled: !(l && l.viaCoord && agentOf(l.agentId)) }] };
         }
+        if (key.startsWith('v:')) {
+            const r = supReview(key.slice(2));
+            if (!r) return null;
+            const sendable = r.verdict === 'gaps' && !r.delivered && !!liveOf(r.sessionId);
+            return { title: r.title || 'Review', items: [{ text: 'Send to Session', action: 'sup-send', disabled: !sendable || !!S.sup.busy }, { text: 'Re-check', action: 'sup-recheck', disabled: !!S.sup.busy }, { text: 'Dismiss', action: 'sup-dismiss', disabled: !!r.dismissed }, { separator: true }, { text: 'Open Session', action: 'open-session' }] };
+        }
         if (key.startsWith('c:')) return { title: 'Claim', items: [{ text: 'Release', action: 'release-claim' }] };
         if (key.startsWith('m:')) return { title: 'Message', items: [{ text: 'Read', action: 'read-message' }, { text: 'Reply...', action: 'reply' }] };
         return null;
@@ -970,7 +1217,7 @@
     async function failBox(c, e) { await c.box(`<p>${esc(errText(e))}</p>`, null, { icon: 'error' }); }
 
     async function action(a, c, arg) {
-        const sid = arg && /^[0-9a-f-]{36}$/.test(arg) ? arg : (selId(c, 's:') || (c.node && c.node.startsWith('t:') ? c.node.slice(2) : ''));
+        const sid = arg && /^[0-9a-f-]{36}$/.test(arg) ? arg : (selId(c, 's:') || (c.node && c.node.startsWith('t:') ? c.node.slice(2) : '') || ((supReview(selId(c, 'v:')) || {}).sessionId || ''));
         switch (a) {
             case 'refresh':
                 S.sessionsLoaded = false;
@@ -980,6 +1227,29 @@
                 await Promise.all([refreshAccounts(), loadSessions(false), loadMessages()]);
                 return true;
             case 'fleet-refresh': await loadFleet(); return true;
+            case 'sup-refresh': await loadSupervisor(); return true;
+            case 'sup-save': {
+                if (!S.sup.draft) return true;
+                const d = S.sup.draft;
+                await supAct(c, { action: 'save', settings: { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), delivery: d.delivery } }, 'Saving...');
+                return true;
+            }
+            case 'sup-send': {
+                const r = supReview(arg || selId(c, 'v:'));
+                if (r) await supAct(c, { action: 'send', reviewId: r.id }, 'Typing the missed items into the session...');
+                return true;
+            }
+            case 'sup-recheck': {
+                const r = supReview(selId(c, 'v:')) || supReviews().find((x) => x.sessionId === arg);
+                const sessionId = (r && r.sessionId) || arg;
+                if (sessionId) await supAct(c, { action: 'recheck', sessionId }, 'Reviewing the session (this can take a minute)...');
+                return true;
+            }
+            case 'sup-dismiss': {
+                const id = arg || selId(c, 'v:');
+                if (id) await supAct(c, { action: 'dismiss', reviewId: id }, 'Dismissing...');
+                return true;
+            }
             case 'fleet-move': await moveBox(c, Number(selId(c, 'r:'))); return true;
             case 'fleet-start':
             case 'fleet-stop':
@@ -1490,7 +1760,7 @@
             width: w,
             height: h,
             expanded: ['root', 'sessions', 'co-root'],
-            about: { version: VERSION, lines: ['Claude accounts, Remote Control and the Claude sessions of this host.'] },
+            about: { version: VERSION, lines: ['Claude accounts, Remote Control, sessions and agent coordination.'] },
             nodes,
             page,
             commands,
@@ -1504,15 +1774,18 @@
                 if (n.id === 'rc') { const r = fleetRows(); return r.length ? `${r.filter((f) => f.state === 'connected').length} of ${plural(r.length, 'account')} connected` : ''; }
                 if (n.id === 'co-builds') return plural((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length, 'gate') + ' open';
                 if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
+                if (n.id === 'co-supervisor') return S.sup.busy || (S.sup.data && S.sup.data.stats ? `${plural(S.sup.data.stats.reviewed || 0, 'review')}, ${S.sup.data.stats.gaps || 0} with gaps` : '');
                 if (n.id.startsWith('t:')) { const ch = S.chats.get(n.id.slice(2)); return ch ? plural(ch.messages.length, 'message') : ''; }
                 return `Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`;
             },
+            onSelectRow: (key, n) => { if (n && n.id === 'co-supervisor') supSelect(key); },
             onSelect: undefined,
             onOpen: () => {},
             onClose: () => {
                 const app0 = S.app;
                 S.c = null;
                 void unwatch();
+                void usageWatch(false);
                 void subscribe(false);
                 if (app0 && !S.exiting) { S.exiting = true; app0.exit(); }
             }
@@ -1540,6 +1813,7 @@
         c.select = (id, record) => {
             if (S.watching && id !== `t:${S.watching}`) void unwatch();
             select(id, record);
+            void usageWatch(usageWanted(id));
             if (id && id.startsWith('t:') && S.chats.has(id.slice(2))) void watch(id.slice(2));
         };
         if (programFaults()) programFaults().registerProgram(c.modal.id, { name: TITLE, terminate: () => app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: ID }) });
@@ -1550,6 +1824,7 @@
             if (S.c && !S.exiting) { S.exiting = true; S.c.close(); }
         });
         await subscribe(true);
+        void usageWatch(usageWanted(c.node));
         void loadSessions(false);
         void loadFleet();
     }
