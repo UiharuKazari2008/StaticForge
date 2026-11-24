@@ -3038,6 +3038,8 @@ class Director {
         // Menu buttons
         if (this.directorMenuBtn) {
             this.directorMenuBtn.addEventListener('click', () => this.toggleSessionOverlay());
+            // a double click puts the panel back to its default (open) width (#1148)
+            this.directorMenuBtn.addEventListener('dblclick', () => { if (this.staticSessionPanel()) this.setSessionPanelState('open'); });
         }
         const printsToggle = document.getElementById('directorSessionImagesToggle');
         if (printsToggle) {

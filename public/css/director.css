@@ -3443,6 +3443,14 @@ html.disable-blur .director-attach-chip {
     pointer-events: auto;
 }
 
+/* touch has no hover: the prints handle stays reachable (#1148) */
+@media (hover: none) {
+    #directorSessionImagesToggle {
+        opacity: 1;
+        pointer-events: auto;
+    }
+}
+
 #directorWindow .director-session-images-pane.is-collapsed {
     flex: 0 0 0;
     width: 0;
