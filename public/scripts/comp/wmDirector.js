@@ -276,7 +276,9 @@
             const belly = def && Array.isArray(def.belly) ? def.belly : null;
             const lean = belly ? Math.max(-box.width * 0.22, Math.min(box.width * 0.22, (belly[0] - face[0]) * k * 0.75)) : 0;
             const px = box.width * 0.5 - lean;
-            const py = box.height * 0.15;
+            // her whole head inside the stage: hair and ears reach about 1.9 face heights above the face's
+            // middle (the manifests' face boxes), so the stage's top edge never cuts them
+            const py = Math.max(box.height * 0.15, faceSize * 1.9 + 4);
             this.setStyle(this.el.canvas, 'width', `${Math.round(W * k)}px`);
             this.setStyle(this.el.canvas, 'height', `${Math.round(H * k)}px`);
             this.setStyle(this.el.canvas, 'transform', `translate(${Math.round(px - face[0] * k)}px, ${Math.round(py - face[1] * k)}px)`);
