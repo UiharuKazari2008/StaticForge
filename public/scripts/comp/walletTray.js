@@ -1232,7 +1232,7 @@
     // (wmClaudeAccounts.js)
     function openClaudeAccounts() {
         try {
-            if (root.wmClaudeAccounts && typeof root.wmClaudeAccounts.open === 'function') { root.wmClaudeAccounts.open('accounts'); return 'phone'; }
+            if (root.uiShell === 'mobile' && root.wmShell && typeof root.wmShell.open === 'function') { root.wmShell.open('claude-accounts', { fromStart: true }); return 'phone'; }
             if (root.melatonApps && typeof root.melatonApps.launch === 'function') { root.melatonApps.launch({ packageId: 'claudedesk' }); return 'claudedesk'; }
         } catch (error) {
             console.warn('Wallet: could not open Claude Accounts', error);

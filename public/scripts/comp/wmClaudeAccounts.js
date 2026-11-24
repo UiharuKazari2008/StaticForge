@@ -29,6 +29,14 @@
  *             signed in on the host, the engine's account and token file. Reconnect / Start / Stop.
  *   status    a strip over both tabs: Remote Control Connected / Reconnecting... / Error (Retry) from
  *             claude_remote_control_status pushes and the packets' answers.
+ *   Own folders (#1154) on the Host tab: one row per account with its own Remote Control state ("Own
+ *             folder": its own config dir and claude-remote@<id>.service; "Host login": the host's
+ *             claude-remote.service), what it says and its sessions. Tap selects, hold or Menu: Move to Own
+ *             Folder, Start / Stop / Reconnect, Leave Own Folder (claude_remote_fleet). Moving the host's
+ *             account restarts the host's Remote Control: a warning, then the Bring over list of its
+ *             sessions, then confirmHost. claude_remote_fleet_status pushes re-render it. Once an account
+ *             has its own folder (or the host's account moved), Switch only picks the Director's account:
+ *             no Remote Control restart, no Bring over.
  *
  * Adding, renaming and deleting go through CardSpace's own packets (add_api_key / update_api_key /
  * delete_api_key, service 'claude'). Admin only (the server answers others with an error). No token
@@ -44,12 +52,16 @@
     const APP_ID = 'claude-accounts';
     const STATE_LABEL = { connected: 'Connected', reconnecting: 'Reconnecting...', error: 'Error', stopped: 'Stopped', unknown: 'Unknown' };
     const STATE_DOT = { connected: 'ok', reconnecting: 'warn', error: 'bad', stopped: 'off', unknown: 'off' };
+    const FLEET_LABEL = { connected: 'Connected', reconnecting: 'Working...', starting: 'Starting...', error: 'Error', stopped: 'Stopped', 'not-moved': 'No own Remote Control', unknown: 'Unknown' };
+    const FLEET_DOT = { connected: 'ok', reconnecting: 'warn', starting: 'warn', error: 'bad', stopped: 'off', 'not-moved': 'off', unknown: 'off' };
 
     let sh = null;
     let page = null;
     let tab = 'accounts';
     let sel = null; // account index (Accounts tab)
     let data = { accounts: [], host: null };
+    let fleet = { accounts: [], hostMigrated: false }; // each account's own Remote Control (claude_remote_fleet, #1154)
+    let fsel = null; // account index (Host tab's own-folder rows)
     let status = { state: 'unknown', message: '' };
     let error = '';
     let loaded = false;
@@ -84,6 +96,7 @@
         if (!d) return;
         if (Array.isArray(d.sessions) && typeof d.total === 'number') { sx.sessions = d.sessions; sx.total = d.total; sx.loaded = true; sx.error = ''; }
         if (d.login) lg = d.login;
+        if (d.fleet && Array.isArray(d.fleet.accounts)) fleet = d.fleet;
         if (Array.isArray(d.accounts)) data.accounts = d.accounts;
         if (d.host) {
             data.host = d.host;
@@ -129,13 +142,13 @@
     const sessLabel = (x) => `${x.title || x.id.slice(0, 8)}${x.folder ? ` (${x.folder})` : ''}`;
 
     /** Switch / Reconnect: pick the sessions to bring over first (when any run), then confirm. */
-    async function withCarry(verb, run) {
+    async function withCarry(verb, run, extraNote) {
         const list = liveRc();
         if (!list.length) {
             if (!(await confirmEndSessions(verb))) return;
             return run([]);
         }
-        picking = { verb, run, picks: new Set() };
+        picking = { verb, run, picks: new Set(), note: extraNote || '' };
         adding = false;
         if (tab !== 'accounts') tab = 'accounts';
         render();
@@ -147,6 +160,7 @@
         const come = list.filter((x) => p.picks.has(x.id));
         const end = list.filter((x) => !p.picks.has(x.id));
         const lines = [`${p.verb} restarts Remote Control on ${(data.host && data.host.hostname) || 'the host'}.`];
+        if (p.note) lines.push(p.note);
         if (come.length) lines.push(`Comes over (${come.length}): ${come.map(sessLabel).join(', ')}`);
         if (end.length) lines.push(`Ends (${end.length}): ${end.map(sessLabel).join(', ')}`);
         const v = await sh.messageBox({ title: 'Claude Accounts', icon: end.length ? 'warning' : 'question', text: lines.join('\n\n'), buttons: [{ text: 'Continue', value: true, default: true }, { text: 'Cancel', value: false }] });
@@ -169,8 +183,19 @@
         return v === true;
     }
 
+    const fleetAcc = (index) => fleet.accounts.find((f) => f.index === index) || null;
+    /** A switch that only picks the Director's account (the account, or the host's, runs in its own folder). */
+    const directorOnly = (acc) => !!(fleet.hostMigrated || (fleetAcc(acc.index) || {}).moved);
+
     async function switchTo(acc) {
         if (!acc) return;
+        if (directorOnly(acc)) {
+            const fa = fleetAcc(acc.index);
+            // its own Remote Control: "Reconnect" restarts only that one, a switch restarts nothing
+            if (acc.active && fa && fa.moved) { await fleetAct('reconnect', fa); return; }
+            await act(() => send('switch_claude_account', { index: acc.index, carry: [] }));
+            return;
+        }
         await withCarry(acc.active ? 'Reconnecting' : `Switching to ${acc.name}`, async (carry) => {
             status = { state: 'reconnecting', message: `Switching to ${acc.name}` };
             render();
@@ -189,6 +214,78 @@
             render();
             await act(() => send('claude_remote_control', { action, carry }));
         });
+    }
+
+    // ---------------------------------------------------------------- own folders (each account's own Remote Control)
+
+    async function fleetSend(action, fa, extra) {
+        try {
+            take(await send('claude_remote_fleet', Object.assign({ action, index: fa.index }, extra || {})));
+        } catch (e) {
+            await sh.messageBox({ title: 'Claude Accounts', icon: 'error', text: errText(e) });
+        }
+        render();
+    }
+
+    async function fleetAct(action, fa) {
+        if (!fa) return;
+        const n = (fa.sessions || []).length;
+        const ends = n ? ` Its ${n} running session${n === 1 ? '' : 's'} end${n === 1 ? 's' : ''}.` : '';
+        if (action === 'stop' || action === 'leave' || action === 'reconnect') {
+            const text = action === 'stop' ? `Stop ${fa.name}'s Remote Control?${ends} It starts again with the host, or with Start.`
+                : action === 'leave' ? `Take ${fa.name} out of its own folder? Its Remote Control stops and is not started again.${ends} Its sessions can be resumed later.`
+                    : `Reconnect ${fa.name}'s Remote Control?${ends}`;
+            if (action !== 'reconnect' || n) {
+                const v = await sh.messageBox({ title: fa.remoteName || fa.name, icon: 'warning', text, buttons: [{ text: action === 'stop' ? 'Stop' : action === 'leave' ? 'Leave' : 'Reconnect', value: true }, { text: 'Cancel', value: false, default: true }] });
+                if (v !== true) return;
+            }
+        }
+        await fleetSend(action, fa);
+    }
+
+    async function moveFolder(fa) {
+        if (!fa || !fa.canMove) return;
+        if (!fa.moveRestartsHost) {
+            const v = await sh.messageBox({
+                title: 'Move to Own Folder',
+                icon: 'question',
+                text: `Give ${fa.name} a folder of its own? It gets its own Remote Control (${fa.remoteName}) on its own login and runs next to the other accounts. Settings, permissions and sessions stay shared.`,
+                buttons: [{ text: 'Move', value: true, default: true }, { text: 'Cancel', value: false }]
+            });
+            if (v === true) await fleetSend('move', fa);
+            return;
+        }
+        const others = fleet.accounts.filter((f) => f.index !== fa.index && f.hasLogin && !f.moved).map((f) => f.name);
+        const v = await sh.messageBox({
+            title: 'Move to Own Folder',
+            icon: 'warning',
+            text: [`${fa.name} is on the host's login. Moving it stops the host's Remote Control (claude-remote.service) and ends every session it runs, including a Claude session that may be working through it right now.`,
+                others.length ? `Move the other accounts first: ${others.join(', ')}.` : 'The other accounts already have their own folders.',
+                'You can pick sessions to bring over next.'].join('\n\n'),
+            buttons: [{ text: 'Continue', value: true }, { text: 'Cancel', value: false, default: true }]
+        });
+        if (v !== true) return;
+        await withCarry(`Moving ${fa.name}`, (carry) => fleetSend('move', fa, { confirmHost: true, carry }), 'Its own Remote Control starts once the host\'s has stopped; picked sessions continue there.');
+    }
+
+    function fleetItems(fa) {
+        if (!fa) return [];
+        const items = [];
+        if (fa.canMove) items.push({ label: 'Move to Own Folder...', action: () => moveFolder(fa) });
+        if (fa.moved) {
+            const up = fa.state === 'connected' || fa.state === 'reconnecting' || fa.state === 'starting';
+            items.push(up ? { label: 'Stop', action: () => fleetAct('stop', fa) } : { label: 'Start', action: () => fleetAct('start', fa) });
+            items.push({ label: 'Reconnect', action: () => fleetAct('reconnect', fa) });
+            items.push({ label: 'Leave Own Folder...', disabled: !!fa.onHost, action: () => fleetAct('leave', fa) });
+        }
+        return items;
+    }
+
+    function onFleet(msg) {
+        const d = (msg && (msg.data || msg)) || null;
+        if (!d || !Array.isArray(d.accounts)) return;
+        fleet = d;
+        render();
     }
 
     // ---------------------------------------------------------------- Sessions tab
@@ -389,8 +486,10 @@
         } else {
             lines.push('<div class="wac-line wca-muted">No Remote Control login linked</div>');
         }
+        const fa = fleetAcc(a.index);
+        if (fa && fa.moved) lines.push(`<div class="wac-line">Own Remote Control: ${esc(FLEET_LABEL[fa.state] || fa.state)}</div>`);
         lines.push(`<div class="wac-line wca-muted">Engine key ${esc(a.fingerprint || '')}</div>`);
-        const dot = a.active ? (status.state === 'connected' ? 'ok' : status.state === 'error' ? 'bad' : 'warn') : 'off';
+        const dot = fa && fa.moved ? (FLEET_DOT[fa.state] || 'off') : a.active ? (status.state === 'connected' ? 'ok' : status.state === 'error' ? 'bad' : 'warn') : 'off';
         return `<div class="wac-row${sel === a.index ? ' is-selected' : ''}" role="option" aria-selected="${sel === a.index}" data-index="${a.index}">
             <span class="wac-dot wac-dot-${dot}"></span>
             <div class="wac-main">
@@ -539,6 +638,28 @@
         return `<div class="wm-form-hdr wca-sub-hdr">Last switch: brought over</div><div class="wca-kvs">${lines}${c.ending && c.ending.length ? row('Ended', c.ending.length) : ''}</div>`;
     }
 
+    function fleetRow(f) {
+        const where = f.moved ? '<span class="wca-badge wca-badge-rc">Own folder</span>' : f.onHost ? '<span class="wca-badge wca-badge-host">Host login</span>' : '';
+        const n = (f.sessions || []).length;
+        const lines = [`<div class="wac-line">${esc(FLEET_LABEL[f.state] || f.state)}${f.statusLine && f.state === 'connected' ? ` · ${esc(f.statusLine.replace(/^Connected\s*·?\s*/, ''))}` : ''}</div>`];
+        lines.push(`<div class="wac-line wca-muted">${esc([n ? `${n} session${n === 1 ? '' : 's'}` : 'No sessions', f.capacity ? `of ${f.capacity}` : ''].filter(Boolean).join(' '))}</div>`);
+        if (f.message && f.state !== 'connected') lines.push(`<div class="wac-line wca-muted">${esc(f.message)}</div>`);
+        return `<div class="wac-row wca-fleet-row${fsel === f.index ? ' is-selected' : ''}" role="option" aria-selected="${fsel === f.index}" data-fleet="${f.index}">
+            <span class="wac-dot wac-dot-${FLEET_DOT[f.state] || 'off'}"></span>
+            <div class="wac-main">
+                <div class="wac-name">${esc(f.name)} ${where}</div>
+                ${lines.join('')}
+            </div>
+        </div>`;
+    }
+
+    function fleetHtml() {
+        if (!fleet.accounts.length) return '';
+        return `<div class="wm-form-hdr wca-sub-hdr">Remote Control per account</div>
+            ${fleet.accounts.map(fleetRow).join('')}
+            <div class="wac-note wca-muted">Tap an account, then Menu (or hold it): Move to Own Folder, Start, Stop, Reconnect.</div>`;
+    }
+
     function hostHtml() {
         const h = data.host;
         if (!h) return '<div class="wac-empty">No host information.</div>';
@@ -554,7 +675,9 @@
                 ${row('Engine account', eng.account ? eng.account.name : 'none')}
                 ${row('Engine token', eng.tokenFile ? 'In place' : 'Missing (old default used)')}
             </div>
-            <div class="wm-form-hdr wca-sub-hdr">Remote Control</div>
+            ${fleetHtml()}
+            <div class="wm-form-hdr wca-sub-hdr">Remote Control on the host's login</div>
+            ${fleet.hostMigrated ? '<div class="wac-note">The host\'s account runs in its own folder: this service is no longer used.</div>' : ''}
             <div class="wca-kvs">
                 ${row('Service', rc.installed === false ? `${rc.unit || ''} not installed` : `${rc.active || 'unknown'}${rc.sub ? ` (${rc.sub})` : ''}`)}
                 ${row('Session name', rc.sessionName)}
@@ -633,10 +756,20 @@
         sh.refreshSoftKeys();
     }
 
+    function selectFleet(index) {
+        fsel = index;
+        page.querySelectorAll('.wca-fleet-row').forEach((r) => {
+            const on = Number(r.dataset.fleet) === index;
+            r.classList.toggle('is-selected', on);
+            r.setAttribute('aria-selected', String(on));
+        });
+        sh.refreshSoftKeys();
+    }
+
     function accountItems(acc) {
         if (!acc) return [];
         return [
-            { label: acc.active ? 'Reconnect' : 'Switch', action: () => switchTo(acc) },
+            { label: acc.active ? 'Reconnect' : directorOnly(acc) ? 'Use for the Director' : 'Switch', action: () => switchTo(acc) },
             '-',
             { label: 'Link Host Login', action: () => link(acc) },
             { label: 'Unlink Login', disabled: !acc.remoteLogin, action: () => unlink(acc) },
@@ -677,8 +810,13 @@
             items.push({ label: 'Add with Token...', action: addAccount });
         } else {
             const rc = data.host && data.host.remoteControl;
-            items.push({ label: 'Reconnect', action: () => remote('reconnect') });
-            items.push(rc && rc.active === 'active' ? { label: 'Stop Remote Control', action: () => remote('stop') } : { label: 'Start Remote Control', action: () => remote('start') });
+            const fa = fleetAcc(fsel);
+            if (fa) { const fi = fleetItems(fa); if (fi.length) items.push({ label: fa.name, disabled: true }, ...fi, '-'); }
+            // the host login's own service (claude-remote.service), named so it is not mistaken for an account's
+            if (!fleet.hostMigrated) {
+                items.push({ label: 'Reconnect Host Login', action: () => remote('reconnect') });
+                items.push(rc && rc.active === 'active' ? { label: 'Stop Host Login', action: () => remote('stop') } : { label: 'Start Host Login', action: () => remote('start') });
+            }
         }
         items.push('-', { label: 'Refresh', action: userRefresh });
         return items;
@@ -725,6 +863,8 @@
             if (e.target.closest('.wca-link-field')) { e.target.select(); return; }
             const b = e.target.closest('[data-wca]');
             if (b) { void remote(b.dataset.wca); return; }
+            const frow = e.target.closest('.wca-fleet-row');
+            if (frow && !held) { selectFleet(Number(frow.dataset.fleet)); return; }
             const row = e.target.closest('.wca-panel-accounts .wac-row');
             if (row && !held && !picking) select(Number(row.dataset.index));
         });
@@ -738,6 +878,20 @@
         let holdTimer = null;
         let held = false;
         list.addEventListener('pointerdown', (e) => {
+            const frow = e.target.closest('.wca-fleet-row');
+            if (frow) {
+                held = false;
+                const { clientX: fx, clientY: fy } = e;
+                clearTimeout(holdTimer);
+                holdTimer = setTimeout(() => {
+                    const fa = fleetAcc(Number(frow.dataset.fleet));
+                    const items = fleetItems(fa);
+                    held = true;
+                    selectFleet(Number(frow.dataset.fleet));
+                    if (items.length) sh.menuAt(fx, fy, items);
+                }, ((window.wmShell && window.wmShell.holdMs) || 600));
+                return;
+            }
             const row = e.target.closest('.wca-panel-accounts .wac-row');
             if (!row || picking) return;
             held = false;
@@ -797,9 +951,13 @@
                     return { left, right: { label: 'Menu', menu: menuItems } };
                 }
                 const acc = selected();
+                const fa = tab === 'host' ? fleetAcc(fsel) : null;
                 const left = tab === 'host'
-                    ? { label: 'Reconnect', action: () => remote('reconnect') }
-                    : acc ? { label: acc.active ? 'Reconnect' : 'Switch', action: () => switchTo(acc) } : { label: 'Refresh', action: userRefresh };
+                    ? (fa && fa.canMove ? { label: 'Move', action: () => moveFolder(fa) }
+                        : fa && fa.moved ? { label: 'Reconnect', action: () => fleetAct('reconnect', fa) }
+                            : fleet.hostMigrated ? { label: 'Refresh', action: userRefresh }
+                                : { label: 'Reconnect', action: () => remote('reconnect') })
+                    : acc ? { label: acc.active ? 'Reconnect' : directorOnly(acc) ? 'Use' : 'Switch', action: () => switchTo(acc) } : { label: 'Refresh', action: userRefresh };
                 return { left, right: { label: 'Menu', menu: menuItems } };
             }
         });
@@ -807,14 +965,11 @@
         if (c && typeof c.on === 'function') {
             c.on('claude_remote_control_status', onStatus, { signal: appScopeSignal });
             c.on('claude_account_login_status', onLoginStatus, { signal: appScopeSignal });
+            c.on('claude_remote_fleet_status', onFleet, { signal: appScopeSignal });
         }
     }
 
-    window.wmClaudeAccounts = {
-        open: (t) => { if (t) tab = t === 'host' || t === 'sessions' ? t : 'accounts'; sh.open(APP_ID, { fromStart: true }); },
-        refresh: load,
-        addAccount: () => { sh.open(APP_ID, { fromStart: true }); return startAdd(); }
-    };
+    // (no page global: other programs open it with wmShell.open('claude-accounts'), app-scope #890)
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

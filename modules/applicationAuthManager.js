@@ -160,6 +160,7 @@ const AVAILABLE_SCOPES = [
     { id: 'sfapp_mail_exchange', label: 'Dreamscape Exchange Server', description: 'Mail system admin console. Granted per application key (Tsubame mailroom, Sala, Yukimi). Identity-gated to those owners; other bot keys cannot call the tools.' },
     { id: 'sfapp_messaging_bridge', label: 'Messaging Bridge', description: 'Yukimi\'s own external mail (IMAP / iCloud), mail rules, and text messages (iMessage, RCS, Android): read, search, flag, move, delete, send. Granted only to the Tsubame (mailroom) key (Yukimi, Nov 18 2026); identity-gated to Tsubame and Yukimi; universal does not include it.' },
     { id: 'sfapp_plaud', label: 'Plaud', description: 'Yukimi\'s Plaud recordings (list, AI notes, transcripts; read-only), so brainstorming and review recordings become Yozora issues. Granted only to the Xi (Yozora) key (Yukimi, Nov 23 2026); identity-gated to Xi; universal does not include it.' },
+    { id: 'sfapp_claude_fleet', label: 'Claude Fleet', description: 'Every Claude account\'s plan usage, Remote Control and sessions, and dispatching work to an account with a model and effort (read, send, stop). Granted only to the Xi (Yozora) key (#1154, Yukimi, Nov 24 2026); identity-gated to Xi; universal does not include it.' },
 ];
 
 // Scope ids for O(1) membership in normalizeScopes (Jules GH #341)

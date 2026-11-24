@@ -8,8 +8,11 @@
  *     Accounts                  CardSpace's Claude accounts: Switch To (the engine's account + Remote
  *                               Control's login), Link Host Login, Unlink, New Session on This Account,
  *                               Add Account... (sign in: a link to copy / open in Alchemy, the code back)
- *     Remote Control            the host's claude-remote.service: state, sessions / capacity, login,
- *                               Reconnect / Start / Stop
+ *     Remote Control            every account's own Remote Control (#1154: each account in its own config
+ *                               folder, its own claude-remote@<id>.service): state, sessions, Move to Own
+ *                               Folder / Start / Stop / Reconnect / Leave Own Folder
+ *       Host Login              the legacy claude-remote.service (the host's ~/.claude login) for the
+ *                               account not moved yet: state, sessions / capacity, login, Reconnect / Start / Stop
  *     Sessions                  every session on the host (~/.claude/projects), newest first, with the
  *                               account it runs on: Open (the chat), Resume in Remote Control (no fork),
  *                               Send Message..., Stop Current Turn, Open in claude.ai, End
@@ -18,6 +21,8 @@
  *                               written; a box to send it a message (steering while it works)
  *     Coordination              the agent-coord MCP server's store
  *       Agents / Claims / Messages   who works on what, the files they claimed, notes and steering
+ *       Build Gates / Busy Locks      builds waiting on every agent's ready, the repo's .agent-* locks
+ *       Inspect: <agent>        what one agent is doing: files it edited, commands, last words, claims
  *
  * Server: 313-claudeAccountsHandler (accounts, host, sign-in) and 314-claudeDeskHandler (sessions,
  * transcripts, steering, coordination; the claude_desk / claude_desk_flux status feeds, subscribed while
@@ -32,7 +37,11 @@
     const TITLE = 'Claude Accounts';
     const VERSION = '1.0.0';
     const MODES = [['bypassPermissions', 'Bypass permissions'], ['acceptEdits', 'Accept edits'], ['default', 'Ask before acting'], ['plan', 'Plan only']];
-    const RC_TEXT = { connected: 'Connected', reconnecting: 'Reconnecting', error: 'Error', stopped: 'Stopped', unknown: 'Unknown' };
+    const RC_TEXT = { connected: 'Connected', reconnecting: 'Reconnecting', starting: 'Starting', error: 'Error', stopped: 'Stopped', unknown: 'Unknown', 'not-moved': 'Not in its own folder' };
+    const MODELS = [['', 'Account default'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku'], ['fable', 'Fable']];
+    const EFFORTS = [['', 'Default'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max']];
+    const GATE_TEXT = { open: 'Waiting', running: 'Building', done: 'Ended', cancelled: 'Cancelled', expired: 'Lapsed' };
+    const VOTE_TEXT = { ready: 'Ready', 'not-ready': 'Not ready', auto: 'Ready (idle)', pending: 'Not answered' };
     const VI = '/static_images/vista-icons';
     const ITEMS = '/static_images/vista-cpl/items';
     const FOLDER16 = `${VI}/explorer/folder-16.png`;
@@ -74,7 +83,11 @@
             host: null,
             accounts: [],
             live: [],
-            coord: { agents: [], claims: [], lastMessageId: 0 },
+            coord: { agents: [], claims: [], builds: [], lastMessageId: 0 },
+            fleet: null,
+            fleetError: '',
+            locks: null,
+            inspect: null, // { id, data, loading, error }
             rc: { state: 'unknown' },
             login: { state: 'idle' },
             sessions: [],
@@ -97,6 +110,14 @@
     const rowOf = (id) => S.sessions.find((s) => s.id === id) || (S.chats.get(id) && S.chats.get(id).row) || null;
     const accountName = (idx) => { const a = S.accounts.find((x) => x.index === idx); return a ? a.name : ''; };
     const activeAccount = () => S.accounts.find((a) => a.active) || null;
+    const fleetRows = () => (S.fleet && Array.isArray(S.fleet.accounts) ? S.fleet.accounts : []);
+    const fleetOf = (idx) => fleetRows().find((f) => f.index === idx) || null;
+    const agentOf = (id) => S.coord.agents.find((x) => x.id === id) || null;
+    function inspectName() {
+        if (!S.inspect) return '';
+        const a = agentOf(S.inspect.id) || (S.inspect.data && S.inspect.data.agent) || null;
+        return (a && (a.name || a.id)) || S.inspect.id;
+    }
 
     function stateText(row) {
         const l = liveOf(row.id);
@@ -185,6 +206,11 @@
             repaint();
             if (S.loginBox) S.loginBox();
         }, opts);
+        // #1154: an account's own Remote Control changed (an action moved it on): the whole fleet, pushed
+        c.on('claude_remote_fleet_status', (msg) => {
+            const d = msg && Array.isArray(msg.accounts) ? msg : (msg && msg.data) || null;
+            if (d && Array.isArray(d.accounts)) { S.fleet = d; repaint(); }
+        }, opts);
         c.on('claude_desk_transcript_append', (msg) => {
             const d = (msg && msg.data) || msg || {};
             const chat = S.chats.get(d.id);
@@ -213,7 +239,38 @@
             const r = await send('get_claude_accounts');
             if (Array.isArray(r.accounts)) S.accounts = r.accounts;
             if (r.host) { S.host = r.host; if (r.host.remoteControl && r.host.remoteControl.status) S.rc = r.host.remoteControl.status; }
+            if (r.fleet) S.fleet = r.fleet;
         } catch (e) { S.error = errText(e); }
+        repaint();
+    }
+
+    /** Every account's Remote Control, read once; then pushes (claude_remote_fleet_status) and action replies. */
+    async function loadFleet() {
+        try {
+            const r = await send('claude_remote_fleet', { action: 'status' });
+            if (r.fleet) S.fleet = r.fleet;
+            S.fleetError = '';
+        } catch (e) { S.fleetError = errText(e); }
+        repaint();
+    }
+
+    async function loadLocks() {
+        try {
+            const r = await send('claude_desk_coord', { action: 'locks' });
+            S.locks = { root: r.root || '', list: r.locks || [], error: '' };
+        } catch (e) { S.locks = { root: '', list: [], error: errText(e) }; }
+        repaint();
+    }
+
+    async function loadInspect(id) {
+        S.inspect = { id, data: S.inspect && S.inspect.id === id ? S.inspect.data : null, loading: true, error: '' };
+        repaint();
+        try {
+            const r = await send('claude_desk_coord', { action: 'inspect', agentId: id });
+            if (S.inspect && S.inspect.id === id) S.inspect = { id, data: r.inspect || null, loading: false, error: '' };
+        } catch (e) {
+            if (S.inspect && S.inspect.id === id) S.inspect = { id, data: S.inspect.data, loading: false, error: errText(e) };
+        }
         repaint();
     }
 
@@ -241,7 +298,7 @@
         try {
             const r = await send('claude_desk_coord', { action: 'list', limit: 150 });
             S.messages = r.messages || [];
-            if (r.agents) S.coord = { agents: r.agents, claims: r.claims || [], lastMessageId: r.lastMessageId || 0 };
+            if (r.agents) S.coord = { agents: r.agents, claims: r.claims || [], builds: r.builds || S.coord.builds || [], lastMessageId: r.lastMessageId || 0 };
         } catch (e) { S.coordError = errText(e); }
         repaint();
     }
@@ -306,7 +363,13 @@
             icon: `${A}/claudedesk-16.png`,
             children: [
                 { id: 'accounts', name: 'Accounts', icon: `${A}/account-16.png`, desc: 'The Claude accounts of this host' },
-                { id: 'rc', name: 'Remote Control', icon: `${ITEMS}/network-and-sharing-center-16.png`, desc: 'The host\'s Claude Remote Control' },
+                {
+                    id: 'rc',
+                    name: 'Remote Control',
+                    icon: `${ITEMS}/network-and-sharing-center-16.png`,
+                    desc: 'Every Claude account\'s own Remote Control',
+                    children: [{ id: 'rc-host', name: 'Host Login', icon: `${ITEMS}/network-and-sharing-center-16.png`, desc: 'claude-remote.service: the host\'s own claude.ai login' }]
+                },
                 {
                     id: 'sessions',
                     name: 'Sessions',
@@ -322,8 +385,10 @@
                     children: [
                         { id: 'co-agents', name: 'Agents', icon: `${ITEMS}/user-accounts-16.png` },
                         { id: 'co-claims', name: 'Claims', icon: FOLDER16 },
-                        { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' }
-                    ]
+                        { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
+                        { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
+                        { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
+                    ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: `${S.app ? S.app.url('assets').replace(/\/$/, '') : '/melaton-apps/claudedesk/assets'}/session-16.png`, desc: 'What this agent is doing' }] : [])
                 }
             ]
         }];
@@ -356,7 +421,8 @@
                 ['Claude Code', S.host && S.host.cliVersion ? esc(S.host.cliVersion) : '']
             ]) + `<p><span class="mmc-link" data-act="nav:accounts">Manage accounts</span></p>` },
             { id: 'cd-sum-rc', title: 'Remote Control', body: c.props([
-                ['Status', rcLine(c)],
+                ['Accounts', fleetRows().length ? `${fleetRows().filter((f) => f.state === 'connected').length} of ${fleetRows().length} connected (${fleetRows().filter((f) => f.moved).length} in their own folder)` : ''],
+                ['Host login', rcLine(c)],
                 ['Sessions', rc && rc.pane && rc.pane.capacity ? `${rc.pane.sessions} of ${rc.pane.capacity}` : ''],
                 ['Host', S.host ? esc(S.host.hostname) : '']
             ]) + `<p><span class="mmc-link" data-act="nav:rc">Remote Control</span></p>` },
@@ -366,8 +432,9 @@
             ]) + `<p><span class="mmc-link" data-act="nav:running">Running sessions</span> &nbsp; <span class="mmc-link" data-act="new-session">New session...</span></p>` },
             { id: 'cd-sum-coord', title: 'Coordination', body: c.props([
                 ['Agents working', String(agents.length)],
-                ['Files claimed', String(S.coord.claims.length)]
-            ]) + `<p><span class="mmc-link" data-act="nav:co-agents">Agents</span></p>` }
+                ['Files claimed', String(S.coord.claims.length)],
+                ['Build gates open', String((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length)]
+            ]) + `<p><span class="mmc-link" data-act="nav:co-agents">Agents</span> &nbsp; <span class="mmc-link" data-act="nav:co-builds">Build gates</span></p>` }
         ];
         return c.page(`${TITLE} (Local)`, S.error ? `Error: ${S.error}` : '', [{ id: 'cd-sum-overview', title: 'Overview', body: overview }].concat(sections));
     }
@@ -395,13 +462,52 @@
         return { html: list, list: true };
     }
 
+    /** A fleet state with the console's status icon: plain when connected, warning while it moves, error. */
+    function fleetState(c, f) {
+        const text = RC_TEXT[f.state] || f.state || 'Unknown';
+        if (f.state === 'not-moved') return esc(f.onHost && f.unit ? `Host login (${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'})` : text);
+        return c.state(f.state === 'connected', text, f.state !== 'error');
+    }
+
+    const FLEET_COLS = [
+        { t: 'Account', w: 130, min: 90, key: 'name', text: (d) => d.name },
+        { t: 'Remote Control', w: 120, min: 100, key: 'state', text: (d) => d.stateText, html: (d) => d.stateHtml },
+        { t: 'Folder', w: 84, min: 76, key: 'folder', text: (d) => d.folder },
+        { t: 'Sessions', w: 58, min: 58, key: 'sessions', num: true, text: (d) => String(d.sessions), value: (d) => d.sessions },
+        { t: 'Status', w: 220, key: 'status', text: (d) => d.status }
+    ];
+
     function rcPage(c) {
+        if (!S.fleet && !S.fleetError) void loadFleet();
+        const A = S.app.url('assets').replace(/\/$/, '');
+        const rows = fleetRows().map((f) => ({
+            key: `r:${f.index}`,
+            icon: `${A}/account-16.png`,
+            cls: f.state === 'connected' ? '' : (f.state === 'error' ? 'cd-rc-error' : ''),
+            data: {
+                name: f.name,
+                stateText: RC_TEXT[f.state] || f.state,
+                stateHtml: fleetState(c, f),
+                folder: f.moved ? 'Own folder' : (f.onHost ? 'Host login' : 'None'),
+                sessions: (f.sessions || []).length,
+                status: f.statusLine || f.message || ''
+            }
+        }));
+        const empty = S.fleetError ? `Remote Control could not be read. ${S.fleetError}` : (S.fleet ? 'There are no Claude accounts.' : 'Reading every account\'s Remote Control...');
+        return { html: c.listView(FLEET_COLS, rows, { sortId: 'cd-fleet', empty, fit: true }), list: true };
+    }
+
+    function hostRcPage(c) {
         const h = S.host;
-        if (!h) return c.page('Remote Control', '', [{ id: 'cd-rc-wait', title: 'Status', body: `<p>${esc(S.error || 'Reading the host...')}</p>` }]);
+        if (!h) return c.page('Host Login', '', [{ id: 'cd-rc-wait', title: 'Status', body: `<p>${esc(S.error || 'Reading the host...')}</p>` }]);
         const u = h.remoteControl || {};
         const p = u.pane || {};
         const lg = h.login;
-        return c.page('Remote Control', h.hostname, [
+        const hostAcc = fleetRows().find((f) => f.onHost && !f.moved);
+        const migrated = S.fleet && S.fleet.hostMigrated;
+        return c.page('Host Login', h.hostname, [
+            migrated ? { id: 'cd-rc-moved', title: 'Moved', body: '<p>The host\'s account runs in its own folder now: its Remote Control is on the Remote Control list. This service is stopped and disabled.</p>' } : null,
+            hostAcc ? { id: 'cd-rc-who', title: 'Account', body: `<p><b>${esc(hostAcc.name)}</b> still runs Remote Control on the host's own login. Move it to its own folder last: that stops this service and ends every session it runs.</p>` } : null,
             { id: 'cd-rc-status', title: 'Status', body: c.props([
                 ['Remote Control', rcLine(c)],
                 ['Service', `${esc(u.unit || '')} (${esc(u.active || '')}${u.sub ? `, ${esc(u.sub)}` : ''})`],
@@ -470,17 +576,22 @@
         const rows = S.coord.agents.map((a) => ({
             key: `g:${a.id}`,
             icon: a.kind === 'person' ? `${ITEMS}/user-accounts-16.png` : `${S.app.url('assets').replace(/\/$/, '')}/session-16.png`,
-            data: { name: a.name || a.id, kind: a.kind, account: a.account || '', task: a.task || '', branch: [a.repo, a.branch].filter(Boolean).join(' : '), status: a.status, claims: a.claims || 0, id: a.id }
+            data: {
+                name: a.name || a.id, kind: a.kind, account: a.account || '', task: a.task || '', branch: [a.repo, a.branch].filter(Boolean).join(' : '),
+                status: a.status === 'gone' ? 'Gone' : (a.live === 'busy' ? 'Working' : (a.live ? 'Idle' : a.status)),
+                model: [a.model, a.effort].filter(Boolean).join(' / '), by: a.dispatchedBy || '', claims: a.claims || 0, id: a.id
+            }
         }));
         return {
             html: c.listView([
-                { t: 'Agent', w: 170, key: 'name', text: (d) => d.name },
-                { t: 'Kind', w: 60, key: 'kind', text: (d) => d.kind },
-                { t: 'Account', w: 100, key: 'account', text: (d) => d.account },
-                { t: 'Task', w: 240, key: 'task', text: (d) => d.task },
-                { t: 'Repo : Branch', w: 150, key: 'branch', text: (d) => d.branch },
-                { t: 'Status', w: 60, key: 'status', text: (d) => d.status },
-                { t: 'Claims', w: 50, key: 'claims', num: true, text: (d) => String(d.claims), value: (d) => d.claims }
+                { t: 'Agent', w: 150, key: 'name', text: (d) => d.name },
+                { t: 'Live', w: 60, key: 'status', text: (d) => d.status },
+                { t: 'Account', w: 90, key: 'account', text: (d) => d.account },
+                { t: 'Model / Effort', w: 100, key: 'model', text: (d) => d.model },
+                { t: 'Task', w: 220, key: 'task', text: (d) => d.task },
+                { t: 'Dispatched By', w: 80, key: 'by', text: (d) => d.by },
+                { t: 'Repo : Branch', w: 130, key: 'branch', text: (d) => d.branch },
+                { t: 'Claims', w: 46, key: 'claims', num: true, text: (d) => String(d.claims), value: (d) => d.claims }
             ], rows, { sortId: 'cd-agents', empty: 'No agent has joined the coordination yet. Sessions started here join it on their own; others join through the agent-coord MCP server.', fit: true }),
             list: true
         };
@@ -526,6 +637,95 @@
             ], rows, { sortId: 'cd-messages', sort: { key: 'at', dir: -1 }, empty: 'No messages yet.', fit: true }),
             list: true
         };
+    }
+
+    function buildsPage(c) {
+        const name = (id) => { const a = agentOf(id); return a ? (a.name || a.id) : id; };
+        const rows = (S.coord.builds || []).map((b) => ({
+            key: `b:${b.id}`,
+            icon: `${ITEMS}/administrative-tools-16.png`,
+            cls: b.state === 'open' || b.state === 'running' ? 'cd-live' : '',
+            data: {
+                id: b.id, target: b.target, repo: b.repo, by: name(b.requestedBy),
+                state: `${GATE_TEXT[b.state] || b.state}${b.forced ? ' (forced)' : ''}`,
+                waiting: b.state === 'open' ? (b.waitingOn.length ? b.waitingOn.join(', ') : 'Nobody: it can begin') : '',
+                at: b.startedAt || b.createdAt, result: b.result || b.note || ''
+            }
+        }));
+        return {
+            html: c.listView([
+                { t: 'Gate', w: 46, key: 'id', num: true, text: (d) => String(d.id), value: (d) => d.id },
+                { t: 'Target', w: 120, key: 'target', text: (d) => d.target },
+                { t: 'Repo', w: 90, key: 'repo', text: (d) => d.repo },
+                { t: 'Requested By', w: 130, key: 'by', text: (d) => d.by },
+                { t: 'State', w: 90, key: 'state', text: (d) => d.state },
+                { t: 'Waiting On', w: 180, key: 'waiting', text: (d) => d.waiting },
+                { t: 'Since', w: 130, key: 'at', text: (d) => when(d.at), value: (d) => d.at || 0 },
+                { t: 'Result / Note', w: 200, key: 'result', text: (d) => d.result }
+            ], rows, { sortId: 'cd-builds', sort: { key: 'id', dir: -1 }, empty: 'No build is waiting or running. Agents open a gate with coord_build_request before they build.', fit: true }),
+            list: true
+        };
+    }
+
+    function locksPage(c) {
+        if (!S.locks) void loadLocks();
+        const rows = ((S.locks && S.locks.list) || []).map((l) => ({
+            key: `l:${l.file}`,
+            icon: `${ITEMS}/bitlocker-drive-encryption-16.png`,
+            cls: l.stale ? 'cd-stale' : '',
+            data: {
+                file: l.file, agent: (agentOf(l.agentId) || {}).name || l.agentId, by: l.viaCoord ? 'agent-coord' : 'By hand',
+                state: l.stale ? 'Stale (over 3 hours)' : (l.viaCoord ? (l.status || 'active') : 'In use'),
+                age: l.ageMinutes, intent: l.intent || ''
+            }
+        }));
+        const empty = S.locks ? (S.locks.error ? `The locks could not be read. ${S.locks.error}` : 'No agent holds a busy lock in the repo.') : 'Reading the locks...';
+        return {
+            html: c.listView([
+                { t: 'Lock', w: 170, key: 'file', text: (d) => d.file },
+                { t: 'Agent', w: 140, key: 'agent', text: (d) => d.agent },
+                { t: 'Made By', w: 80, key: 'by', text: (d) => d.by },
+                { t: 'State', w: 120, key: 'state', text: (d) => d.state },
+                { t: 'Age', w: 70, key: 'age', num: true, text: (d) => (d.age == null ? '' : ageText(d.age)), value: (d) => d.age || 0 },
+                { t: 'Intent', w: 260, key: 'intent', text: (d) => d.intent }
+            ], rows, { sortId: 'cd-locks', empty, fit: true }),
+            list: true
+        };
+    }
+
+    function ageText(min) {
+        if (min < 60) return `${min} min`;
+        if (min < 48 * 60) return `${Math.round(min / 60)} h`;
+        return `${Math.round(min / 1440)} d`;
+    }
+
+    function inspectPage(c, id) {
+        const ins = S.inspect && S.inspect.id === id ? S.inspect : null;
+        if (!ins) { void loadInspect(id); return c.page(`Inspect: ${id}`, '', [{ id: 'cd-in-wait', title: 'Agent', body: '<p class="mmc-hint">Reading what it is doing...</p>' }]); }
+        const d = ins.data;
+        if (!d) return c.page(`Inspect: ${inspectName()}`, '', [{ id: 'cd-in-wait', title: 'Agent', body: `<p${ins.error ? ' class="cd-err"' : ' class="mmc-hint"'}>${esc(ins.error || 'Reading what it is doing...')}</p>` }]);
+        const a = d.agent || {};
+        const live = a.live;
+        const files = (d.edited && d.edited.files) || [];
+        // head: [title, width?] (no width: the column takes the rest)
+        const table = (head, rows) => (rows.length ? `<table class="cd-table"><colgroup>${head.map(([, w]) => `<col${w ? ` style="width:${w}px"` : ''}>`).join('')}</colgroup><thead><tr>${head.map(([h]) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>` : '<p class="mmc-hint">None.</p>');
+        const unc = d.uncommitted;
+        return c.page(`Inspect: ${a.name || a.id}`, ins.loading ? 'Reading...' : (ins.error ? `Error: ${ins.error}` : ''), [
+            { id: 'cd-in-agent', title: 'Agent', body: c.props([
+                ['Status', live ? (live.status === 'busy' ? 'Working' : 'Idle') : esc(a.status || '')],
+                ['Task', esc(a.task || '')],
+                ['Account', esc(a.account || '')],
+                ['Model', esc([a.model, a.effort].filter(Boolean).join(' / ') || 'Default')],
+                ['Dispatched by', esc(a.dispatchedBy || '')],
+                ['Folder', esc([a.cwd, a.branch].filter(Boolean).join(' : '))],
+                ['Tool calls', String(d.toolCalls || 0)]
+            ]) + `<p>${a.sessionId ? '<span class="mmc-link" data-act="inspect-session">Open session</span> &nbsp; ' : ''}${live && live.link ? `<span class="mmc-link" data-act="open-link" data-arg="${esc(live.link)}">Open in claude.ai</span> &nbsp; ` : ''}<span class="mmc-link" data-act="inspect-refresh">Read again</span></p>` },
+            { id: 'cd-in-claims', title: `Claims (${(d.claims || []).length})`, body: table([['Path'], ['Repo', 90], ['Mode', 76], ['Lease Ends', 130]], (d.claims || []).map((cl) => `<tr><td>${esc(cl.path)}</td><td>${esc(cl.repo)}</td><td>${cl.mode === 'shared' ? 'Shared' : 'Exclusive'}</td><td>${esc(when(cl.expiresAt))}</td></tr>`)) },
+            { id: 'cd-in-files', title: `Files Edited (${d.edited ? d.edited.total : 0})`, body: table([['File'], ['Via', 76], ['Edits', 46], ['Last', 130], ['Uncommitted', 84]], files.map((f) => `<tr><td>${esc(f.path)}</td><td>${f.via === 'shell' ? 'Shell' : esc(f.tool)}</td><td class="is-num">${f.edits}</td><td>${esc(when(f.lastAt))}</td><td>${f.uncommitted == null ? '' : (f.uncommitted ? 'Yes' : 'No')}</td></tr>`)) },
+            { id: 'cd-in-cmds', title: 'Recent Commands', body: table([['When', 76], ['Command']], (d.commands || []).slice().reverse().map((x) => `<tr><td>${esc(timeOnly(x.at))}</td><td><code>${esc(x.command)}</code>${x.description ? `<br><span class="mmc-hint">${esc(x.description)}</span>` : ''}</td></tr>`)) },
+            { id: 'cd-in-last', title: 'Last Message', body: d.lastMessage && d.lastMessage.text ? `<p class="cd-read">${esc(d.lastMessage.text)}</p><p class="mmc-hint">${esc(when(d.lastMessage.at))}</p>` : '<p class="mmc-hint">None.</p>' },
+            { id: 'cd-in-tree', title: `Uncommitted in Its Folder (${unc ? unc.count : 0})`, body: unc ? `<p class="mmc-hint">Every uncommitted file in the tree, other agents' work included.</p>` + table([['State', 50], ['File']], unc.files.map((f) => `<tr><td>${esc(f.status)}</td><td>${esc(f.path)}</td></tr>`)) + (unc.count > unc.files.length ? `<p class="mmc-hint">${unc.count - unc.files.length} more not shown.</p>` : '') : '<p class="mmc-hint">Not a git folder.</p>' }
+        ]);
     }
 
     // ---- the chat ------------------------------------------------------------------------------------------
@@ -630,6 +830,9 @@
             case 'root': return rootPage(c);
             case 'accounts': return accountsPage(c);
             case 'rc': return rcPage(c);
+            case 'rc-host': return hostRcPage(c);
+            case 'co-builds': return buildsPage(c);
+            case 'co-locks': return locksPage(c);
             case 'sessions': return sessionsPage(c, false);
             case 'running': return sessionsPage(c, true);
             case 'co-root': return rootPage(c);
@@ -638,6 +841,7 @@
             case 'co-messages': return messagesPage(c);
             default:
                 if (n.id.startsWith('t:')) return chatPage(c, n.id.slice(2));
+                if (n.id.startsWith('i:')) return inspectPage(c, n.id.slice(2));
                 return '';
         }
     }
@@ -646,7 +850,10 @@
         switch (n.id) {
             case 'root': return [{ text: 'Add Account...', action: 'add-account' }, { text: 'New Session...', action: 'new-session' }];
             case 'accounts': return [{ text: 'Add Account...', action: 'add-account' }];
-            case 'rc': return [
+            case 'rc': return [{ text: 'Refresh Status', action: 'fleet-refresh' }];
+            case 'co-builds': return [{ text: 'Post Message...', action: 'post' }];
+            case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
+            case 'rc-host': return [
                 { text: 'Reconnect', action: 'rc-reconnect' },
                 { text: 'Start', action: 'rc-start', disabled: !!(S.host && S.host.remoteControl && S.host.remoteControl.active === 'active') },
                 { text: 'Stop', action: 'rc-stop', disabled: !(S.host && S.host.remoteControl && S.host.remoteControl.active === 'active') }
@@ -661,6 +868,7 @@
                     const id = n.id.slice(2);
                     return sessionItems(id).concat([{ separator: true }, { text: 'Close', action: 'close-chat', icon: 0 }]);
                 }
+                if (n.id.startsWith('i:')) return [{ text: 'Read Again', action: 'inspect-refresh' }, { text: 'Open Session', action: 'inspect-session' }, { separator: true }, { text: 'Close', action: 'close-inspect', icon: 0 }];
                 return [];
         }
     }
@@ -705,11 +913,41 @@
             return {
                 title: a.name || a.id,
                 items: [
+                    { text: 'Inspect', action: 'inspect', disabled: a.kind === 'person' },
                     { text: 'Post Message...', action: 'post-to' },
                     { text: 'Steer...', action: 'steer-agent', disabled: a.kind !== 'claude' },
                     { text: 'Open Session', action: 'agent-session', disabled: !a.sessionId }
                 ]
             };
+        }
+        if (key.startsWith('r:')) {
+            const f = fleetOf(Number(key.slice(2)));
+            if (!f) return null;
+            const busy = f.state === 'reconnecting' || f.state === 'starting';
+            const running = !!(f.unit && f.unit.active === 'active');
+            return {
+                title: f.name,
+                items: [
+                    { text: 'Move to Own Folder...', action: 'fleet-move', disabled: !f.canMove || busy },
+                    { separator: true },
+                    { text: 'Start', action: 'fleet-start', disabled: !f.moved || running || busy },
+                    { text: 'Stop', action: 'fleet-stop', disabled: !f.moved || !running || busy },
+                    { text: 'Reconnect', action: 'fleet-reconnect', disabled: !f.moved || busy },
+                    { separator: true },
+                    { text: 'Leave Own Folder...', action: 'fleet-leave', disabled: !f.moved || busy || !!(S.fleet && S.fleet.hostMigrated && f.onHost) },
+                    { text: 'Properties', action: 'fleet-props' }
+                ]
+            };
+        }
+        if (key.startsWith('b:')) {
+            const b = (S.coord.builds || []).find((x) => x.id === Number(key.slice(2)));
+            if (!b) return null;
+            const live = b.state === 'open' || b.state === 'running';
+            return { title: `Build Gate ${b.id}`, items: [{ text: b.state === 'running' ? 'End Build...' : 'Cancel Gate...', action: 'build-end', disabled: !live }, { text: 'Properties', action: 'build-props' }] };
+        }
+        if (key.startsWith('l:')) {
+            const l = ((S.locks && S.locks.list) || []).find((x) => x.file === key.slice(2));
+            return { title: key.slice(2), items: [{ text: 'Inspect Agent', action: 'lock-inspect', disabled: !(l && l.viaCoord && agentOf(l.agentId)) }] };
         }
         if (key.startsWith('c:')) return { title: 'Claim', items: [{ text: 'Release', action: 'release-claim' }] };
         if (key.startsWith('m:')) return { title: 'Message', items: [{ text: 'Read', action: 'read-message' }, { text: 'Reply...', action: 'reply' }] };
@@ -737,8 +975,101 @@
             case 'refresh':
                 S.sessionsLoaded = false;
                 S.chats.forEach((ch, id) => { if (c.node === `t:${id}`) void loadChat(id, false); });
+                if (S.locks) S.locks = null;
+                if (S.inspect && c.node === `i:${S.inspect.id}`) void loadInspect(S.inspect.id);
                 await Promise.all([refreshAccounts(), loadSessions(false), loadMessages()]);
                 return true;
+            case 'fleet-refresh': await loadFleet(); return true;
+            case 'fleet-move': await moveBox(c, Number(selId(c, 'r:'))); return true;
+            case 'fleet-start':
+            case 'fleet-stop':
+            case 'fleet-reconnect':
+            case 'fleet-leave': {
+                const idx = Number(selId(c, 'r:'));
+                const f = fleetOf(idx);
+                if (!f) return true;
+                const verb = a.slice(6);
+                const n = (f.sessions || []).length;
+                if (verb === 'leave') {
+                    const ok = await c.box(`<p>Take <b>${esc(f.name)}</b> out of its own folder? Its Remote Control stops and does not start with the host again${n ? `, and the ${plural(n, 'session')} running in it end` : ''}. Its folder and conversations are kept; Move to Own Folder brings it back.</p>`,
+                        [{ text: 'Leave Own Folder', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'warning' });
+                    if (ok !== true) return true;
+                } else if (verb !== 'start' && n) {
+                    const ok = await c.box(`<p>${verb === 'stop' ? 'Stopping' : 'Reconnecting'} the Remote Control of <b>${esc(f.name)}</b> ends the ${plural(n, 'session')} running in it. Other accounts are not touched.</p>`,
+                        [{ text: verb === 'stop' ? 'Stop' : 'Reconnect', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'warning' });
+                    if (ok !== true) return true;
+                }
+                try {
+                    const r = await send('claude_remote_fleet', { action: verb, index: idx });
+                    if (r.fleet) S.fleet = r.fleet;
+                    c.note(verb === 'stop' ? `${f.name}: Remote Control stopped.` : verb === 'leave' ? `${f.name} left its own folder.` : `${f.name}: ${verb === 'start' ? 'starting' : 'reconnecting'} Remote Control...`);
+                    c.refresh();
+                } catch (e) { await failBox(c, e); }
+                return true;
+            }
+            case 'fleet-props': {
+                const f = fleetOf(Number(selId(c, 'r:')));
+                if (!f) return true;
+                const u = f.unit || {};
+                const rows = [['Account', f.name], ['Signed in as', f.email], ['Plan', f.plan], ['Folder', f.moved ? 'Its own' : (f.onHost ? 'The host\'s login' : 'None')],
+                    ['Moved', f.movedAt ? when(f.movedAt) : ''], ['Shown in claude.ai as', f.moved ? f.remoteName : ''], ['Service', u.unit ? `${u.unit} (${u.active || ''}${u.sub ? `, ${u.sub}` : ''})` : ''],
+                    ['Starts with the host', f.moved ? (u.enabled ? 'Yes' : 'No') : ''], ['Running since', u.since || ''], ['Sessions', `${(f.sessions || []).length}${f.capacity ? ` of ${f.capacity}` : ''}`],
+                    ['It says', f.statusLine || f.message || '']];
+                const sess = (f.sessions || []).map((x) => `<tr><td>${esc(x.title)}</td><td>${esc(x.folder)}</td><td>${esc(x.status)}</td></tr>`).join('');
+                await c.box(`<table class="cd-props">${rows.filter(([, v]) => v).map(([k, v]) => `<tr><td>${esc(k)}:</td><td>${esc(v)}</td></tr>`).join('')}</table>${sess ? `<p><b>Running sessions</b></p><table class="cd-table"><thead><tr><th>Session</th><th>Folder</th><th>State</th></tr></thead><tbody>${sess}</tbody></table>` : ''}`, null, { icon: 'info', title: `${f.name} Remote Control`, width: 480 });
+                return true;
+            }
+            case 'inspect': {
+                const id = selId(c, 'g:');
+                if (!id) return true;
+                void loadInspect(id);
+                c.open.add('co-root');
+                c.select(`i:${id}`, true);
+                return true;
+            }
+            case 'lock-inspect': {
+                const l = ((S.locks && S.locks.list) || []).find((x) => x.file === selId(c, 'l:'));
+                if (!l) return true;
+                void loadInspect(l.agentId);
+                c.select(`i:${l.agentId}`, true);
+                return true;
+            }
+            case 'inspect-refresh': if (S.inspect) await loadInspect(S.inspect.id); return true;
+            case 'inspect-session': {
+                const d = S.inspect && S.inspect.data;
+                const sidIn = d && d.agent && d.agent.sessionId;
+                if (sidIn) openChat(c, sidIn);
+                return true;
+            }
+            case 'close-inspect': S.inspect = null; c.select('co-agents', true); return true;
+            case 'locks-refresh': await loadLocks(); return true;
+            case 'build-props': {
+                const b = (S.coord.builds || []).find((x) => x.id === Number(selId(c, 'b:')));
+                if (!b) return true;
+                const name = (id) => { const g = agentOf(id); return g ? (g.name || g.id) : id; };
+                const rows = [['Target', b.target], ['Repo', b.repo], ['Requested by', name(b.requestedBy)], ['State', GATE_TEXT[b.state] || b.state], ['Note', b.note],
+                    ['Opened', when(b.createdAt)], ['Started', when(b.startedAt)], ['Ended', when(b.endedAt)], ['Result', b.result], ['Forced', b.forced]];
+                const parts = (b.participants || []).map((p) => `<tr><td>${esc(p.name || p.agentId)}</td><td>${esc(VOTE_TEXT[p.state] || p.state)}${p.busy ? ' (working)' : ''}</td><td>${esc(p.note || '')}</td></tr>`).join('');
+                await c.box(`<table class="cd-props">${rows.filter(([, v]) => v).map(([k, v]) => `<tr><td>${esc(k)}:</td><td>${esc(v)}</td></tr>`).join('')}</table><p><b>Agents</b></p>${parts ? `<table class="cd-table"><thead><tr><th>Agent</th><th>Answer</th><th>Note</th></tr></thead><tbody>${parts}</tbody></table>` : '<p class="mmc-hint">No other agent works in this repo.</p>'}`,
+                    null, { icon: 'info', title: `Build Gate ${b.id}`, width: 500 });
+                return true;
+            }
+            case 'build-end': {
+                const b = (S.coord.builds || []).find((x) => x.id === Number(selId(c, 'b:')));
+                if (!b) return true;
+                const running = b.state === 'running';
+                const { value, fields } = await form(c, `
+                    <p>${running ? 'End' : 'Cancel'} build gate ${b.id} (<b>${esc(b.target)}</b> in ${esc(b.repo)})? Every agent is told who ${running ? 'ended' : 'cancelled'} it and why.${running ? ' The build itself is not stopped: only the gate.' : ''}</p>
+                    <label><span>Reason:</span><input type="text" data-cd="reason" data-cd-focus spellcheck="true" autocomplete="off" placeholder="For example left open by an agent that ended"></label>`,
+                [{ text: running ? 'End Build' : 'Cancel Gate', value: true, className: 'btn-standard primary' }, { text: 'Close', value: false, className: 'btn-standard' }], { title: `Build Gate ${b.id}`, icon: 'fas fa-triangle-exclamation' });
+                if (value !== true) return true;
+                try {
+                    const r = await send('claude_desk_coord', { action: 'build_end', buildId: b.id, reason: String(fields.reason || '').trim() || undefined });
+                    if (r.agents) S.coord = { agents: r.agents, claims: r.claims || [], builds: r.builds || [], lastMessageId: r.lastMessageId || S.coord.lastMessageId };
+                    c.refresh();
+                } catch (e) { await failBox(c, e); }
+                return true;
+            }
             case 'more-sessions': await loadSessions(true); return true;
             case 'earlier': await loadChat(arg, true); return true;
             case 'open-session': openChat(c, sid); return true;
@@ -879,6 +1210,9 @@
         else if (key.startsWith('a:')) void action('account-props', c);
         else if (key.startsWith('g:')) void action('agent-session', c);
         else if (key.startsWith('m:')) void action('read-message', c);
+        else if (key.startsWith('r:')) void action('fleet-props', c);
+        else if (key.startsWith('b:')) void action('build-props', c);
+        else if (key.startsWith('l:')) void action('lock-inspect', c);
     }
 
     // ---- dialogs ------------------------------------------------------------------------------------------
@@ -921,17 +1255,58 @@
         const { value, fields } = await form(c, `
             <p>Start a Claude session on the host. It runs in Remote Control and keeps running when Dreamscape restarts.</p>
             <label><span>Folder:</span><input type="text" data-cd="cwd" value="${esc(folder)}" spellcheck="false" autocomplete="off"></label>
-            <label><span>Account:</span><select data-cd="account">${accountOptions(acct)}</select></label>
-            <label><span>Permissions:</span><select data-cd="mode">${modeOptions()}</select></label>
+            <label><span>Account:</span><select class="vdt-select" data-cd="account">${accountOptions(acct)}</select></label>
+            <label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeOptions()}</select></label>
+            <label><span>Model:</span><select class="vdt-select" data-cd="model">${MODELS.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></label>
+            <label><span>Or model ID:</span><input type="text" data-cd="modelId" spellcheck="false" autocomplete="off" placeholder="A full model ID (optional)"></label>
+            <label><span>Effort:</span><select class="vdt-select" data-cd="effort">${EFFORTS.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select></label>
             <label class="cd-top"><span>First message:</span><textarea data-cd="prompt" data-cd-focus rows="5" spellcheck="true" placeholder="What should it do? (optional)"></textarea></label>
             <label><span>Title:</span><input type="text" data-cd="title" spellcheck="false" autocomplete="off" placeholder="Shown in Remote Control (optional)"></label>`,
         [{ text: 'Start', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'New Session', width: 520 });
         if (value !== true) return;
         c.note('Starting the session...');
         try {
-            const r = await send('claude_desk_session', { action: 'start', cwd: fields.cwd, account: fields.account === '' ? undefined : Number(fields.account), mode: fields.mode, prompt: fields.prompt, title: fields.title });
+            const model = String(fields.modelId || '').trim() || fields.model || undefined;
+            const r = await send('claude_desk_session', { action: 'start', cwd: fields.cwd, account: fields.account === '' ? undefined : Number(fields.account), mode: fields.mode, prompt: fields.prompt, title: fields.title, model, effort: fields.effort || undefined });
             await afterLaunch(c, r.result);
         } catch (e) { c.note(''); await failBox(c, e); }
+    }
+
+    /**
+     * Move to Own Folder: the account gets its own config folder and its own Remote Control. For the host's
+     * account it stops claude-remote.service first, which ends every session in it: the ones ticked here
+     * start again on the account's own folder.
+     */
+    async function moveBox(c, index) {
+        const f = fleetOf(index);
+        if (!f || !f.canMove) return;
+        let payload = { action: 'move', index };
+        if (f.moveRestartsHost) {
+            const others = fleetRows().filter((x) => x.index !== index && x.hasLogin && !x.moved);
+            const list = (S.host && S.host.sessions) || [];
+            const boxes = list.length
+                ? `<div class="cd-carry">${list.map((x) => `<label class="cd-check"><input type="checkbox" data-cd="carry:${esc(x.id)}"><span>${esc(x.title || shortId(x.id))}${x.folder ? ` <i>(${esc(x.folder)})</i>` : ''}</span></label>`).join('')}</div>`
+                : '<p class="mmc-hint">No session runs in the host\'s Remote Control now.</p>';
+            const { value, fields } = await form(c, `
+                <p><b>${esc(f.name)}</b> is the host's account. Moving it stops the host's Remote Control (claude-remote.service) and <b>ends every session it runs</b>, including a Claude Code session that may be doing work right now.</p>
+                ${others.length ? `<p class="cd-err">Move the other accounts first: ${esc(others.map((x) => x.name).join(', '))} ${others.length === 1 ? 'is' : 'are'} not in ${others.length === 1 ? 'its' : 'their'} own folder yet.</p>` : ''}
+                <p>Bring these sessions over onto ${esc(f.name)}'s own folder once it is connected:</p>
+                ${boxes}`,
+            [{ text: 'Move and Restart', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Move to Own Folder', width: 520, icon: 'fas fa-triangle-exclamation' });
+            if (value !== true) return;
+            const carry = Object.keys(fields).filter((k) => k.startsWith('carry:') && fields[k] === true).map((k) => k.slice(6));
+            payload = Object.assign(payload, { confirmHost: true, carry });
+        } else {
+            const ok = await c.box(`<p>Move <b>${esc(f.name)}</b> to its own folder? It gets its own Claude configuration and its own Remote Control (shown in claude.ai as <b>${esc(f.remoteName)}</b>), which runs next to the other accounts' and starts with the host. Transcripts, settings and permissions stay shared.</p>`,
+                [{ text: 'Move', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'question', width: 440 });
+            if (ok !== true) return;
+        }
+        try {
+            const r = await send('claude_remote_fleet', payload);
+            if (r.fleet) S.fleet = r.fleet;
+            c.note(`Moving ${f.name} to its own folder...`);
+            c.refresh();
+        } catch (e) { await failBox(c, e); }
     }
 
     async function resumeBox(c, id) {
@@ -939,8 +1314,8 @@
         const acct = row.account && Number.isInteger(row.account.index) ? row.account.index : defaultAccount();
         const { value, fields } = await form(c, `
             <p>Resume <b>${esc(titleOf(row))}</b> in Remote Control. The same session continues (no copy is made).</p>
-            <label><span>Account:</span><select data-cd="account">${accountOptions(acct)}</select></label>
-            <label><span>Permissions:</span><select data-cd="mode">${modeOptions()}</select></label>`,
+            <label><span>Account:</span><select class="vdt-select" data-cd="account">${accountOptions(acct)}</select></label>
+            <label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeOptions()}</select></label>`,
         [{ text: 'Resume', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Resume Session' });
         if (value !== true) return;
         c.note('Resuming the session...');
@@ -981,8 +1356,8 @@
         const kinds = [['note', 'Note'], ['steer', 'Steering (typed into its terminal too)'], ['question', 'Question'], ['reply', 'Reply']]
             .map(([v, t]) => `<option value="${v}"${v === kind ? ' selected' : ''}>${esc(t)}</option>`).join('');
         const { value, fields } = await form(c, `
-            <label><span>To:</span><select data-cd="to">${opts}</select></label>
-            <label><span>Kind:</span><select data-cd="kind">${kinds}</select></label>
+            <label><span>To:</span><select class="vdt-select" data-cd="to">${opts}</select></label>
+            <label><span>Kind:</span><select class="vdt-select" data-cd="kind">${kinds}</select></label>
             <textarea data-cd="body" data-cd-focus rows="5" spellcheck="true"></textarea>`,
         [{ text: 'Post', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Post Message' });
         if (value !== true || !String(fields.body || '').trim()) return;
@@ -1126,6 +1501,9 @@
                 if (n.id === 'sessions') return S.sessionsLoaded ? `${S.sessions.length} of ${S.sessionsTotal} sessions` : '';
                 if (n.id === 'running') return plural(S.live.length, 'session');
                 if (n.id === 'accounts') return plural(S.accounts.length, 'account');
+                if (n.id === 'rc') { const r = fleetRows(); return r.length ? `${r.filter((f) => f.state === 'connected').length} of ${plural(r.length, 'account')} connected` : ''; }
+                if (n.id === 'co-builds') return plural((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length, 'gate') + ' open';
+                if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
                 if (n.id.startsWith('t:')) { const ch = S.chats.get(n.id.slice(2)); return ch ? plural(ch.messages.length, 'message') : ''; }
                 return `Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`;
             },
@@ -1173,6 +1551,7 @@
         });
         await subscribe(true);
         void loadSessions(false);
+        void loadFleet();
     }
     const programFaults = () => (root.programFaults && root.programFaults.registerProgram ? root.programFaults : null);
 
