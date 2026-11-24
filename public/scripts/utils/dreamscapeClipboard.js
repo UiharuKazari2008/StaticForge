@@ -630,6 +630,59 @@ _installAndroidClipboardOnRead();
                 return nativeWrite ? nativeWrite(text) : Promise.reject(new Error((res && res.error) || 'Clipboard write failed'));
             }
         });
+        // (pictures and rich text too - Yukimi, Nov 23 2026: "fix all the clipboard issues in the app with the android
+        // bridge": navigator.clipboard.write / read went to Chromium's clipboard, which the WebView refuses, so a Copy of a
+        // picture (Snipping Tool, Paint, a print) did nothing and a Paste of one found nothing). Every ClipboardItem's types
+        // go over the bridge as one clip; a read hands back ClipboardItems built from the Android clipboard.
+        const nativeWriteItems = typeof clip.write === 'function' ? clip.write.bind(clip) : null;
+        Object.defineProperty(clip, 'write', {
+            configurable: true,
+            writable: true,
+            value: async (clipItems) => {
+                if (!isAndroidClipboardBridgeActive()) {
+                    if (nativeWriteItems) return nativeWriteItems(clipItems);
+                    throw new Error('Clipboard write unavailable');
+                }
+                const items = [];
+                for (const ci of Array.from(clipItems || [])) {
+                    const types = Array.from((ci && ci.types) || []);
+                    let text = null;
+                    let html = null;
+                    for (const type of types) {
+                        const blob = await ci.getType(type);
+                        if (type === 'text/plain') text = await blob.text();
+                        else if (type === 'text/html') html = await blob.text();
+                        else items.push({ blob, mime: type || blob.type || 'application/octet-stream' });
+                    }
+                    if (text != null || html != null) items.push({ kind: 'text', text: text != null ? text : _stripHtmlToText(html || ''), html: html || undefined });
+                }
+                if (!items.length) throw new Error('Nothing to copy');
+                await writeClipboard({ items });
+            }
+        });
+        const nativeReadItems = typeof clip.read === 'function' ? clip.read.bind(clip) : null;
+        Object.defineProperty(clip, 'read', {
+            configurable: true,
+            writable: true,
+            value: async () => {
+                if (!isAndroidClipboardBridgeActive() || typeof ClipboardItem !== 'function') {
+                    if (nativeReadItems) return nativeReadItems();
+                    throw new DOMException('Read permission denied.', 'NotAllowedError');
+                }
+                const r = await _readClipboardAndroid(false);
+                if (!r || r.empty) return [];
+                const out = [];
+                for (const it of r.items) {
+                    if (it.blob) out.push(new ClipboardItem({ [it.blob.type || it.mime || 'application/octet-stream']: it.blob }));
+                    else if (it.text != null || it.html != null) {
+                        const parts = { 'text/plain': new Blob([it.text != null ? it.text : _stripHtmlToText(it.html || '')], { type: 'text/plain' }) };
+                        if (it.html) parts['text/html'] = new Blob([it.html], { type: 'text/html' });
+                        out.push(new ClipboardItem(parts));
+                    }
+                }
+                return out;
+            }
+        });
     } catch (error) {
         console.warn('📱 navigator.clipboard shim failed:', error);
     }
