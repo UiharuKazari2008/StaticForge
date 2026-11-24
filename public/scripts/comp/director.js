@@ -5049,6 +5049,12 @@ class Director {
             </div>
         `;
         if (this.persona !== 'xi') this.bindSessionPreviewFallback(item.querySelector('.director-session-preview'), session.filename || '');
+        // what its turns cost, on hover (the server adds them up: xiDirector sessionCost)
+        const cost = session.cost;
+        if (cost && cost.turns) {
+            const line = `${Number.isFinite(cost.usd) && cost.priced ? `${this.usd(cost.usd)} · ` : ''}${this.tokenCount(cost.tokens)} tokens · ${cost.turns} turn${cost.turns === 1 ? '' : 's'}`;
+            item.title = item.title ? `${item.title}\n${line}` : line;
+        }
 
         // Attach context menu to this session item
         if (contextMenu && this.directorSessionContextConfig) {
@@ -5485,8 +5491,61 @@ class Director {
                 units.push({ type: 'message', message });
             }
             if (report) units.push({ type: 'report', message });
+            // the end of a turn: its time, tokens and real cost on a squiggly line (Yukimi, Nov 24 2026)
+            if (message.role === 'assistant' && message.turn && typeof message.turn === 'object') units.push({ type: 'turnEnd', message });
         });
         return units;
+    }
+
+    /** A token count for people: 812, 52 K, 3.1 M. */
+    tokenCount(n) {
+        const v = Number(n) || 0;
+        if (v >= 1e6) return `${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)} M`;
+        if (v >= 1e3) return `${Math.round(v / 1e3)} K`;
+        return String(v);
+    }
+
+    /** Dollars for a turn's cost: $0.085, $1.20; under a tenth of a cent as < $0.001. */
+    usd(v) {
+        const n = Number(v) || 0;
+        if (n > 0 && n < 0.001) return '< $0.001';
+        if (n < 1) return `$${n.toFixed(3)}`;
+        return `$${n.toFixed(2)}`;
+    }
+
+    /** A turn's figures as one line: "8 m 0 s · 3.1 M tokens · $0.085" (with the parts it has). */
+    turnEndText(turn) {
+        const t = turn || {};
+        const parts = [];
+        if (Number.isFinite(t.ms) && t.ms > 0) {
+            const s = Math.round(t.ms / 1000);
+            parts.push(s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} m` : s >= 60 ? `${Math.floor(s / 60)} m ${s % 60} s` : `${s} s`);
+        }
+        const tokens = (Number(t.input) || 0) + (Number(t.cached) || 0) + (Number(t.cacheWrite) || 0) + (Number(t.output) || 0);
+        if (tokens > 0) parts.push(`${this.tokenCount(tokens)} tokens`);
+        if (Number.isFinite(t.usd)) parts.push(this.usd(t.usd));
+        return parts.join(' · ');
+    }
+
+    createTurnEndElement(message) {
+        const t = (message && message.turn) || {};
+        const text = this.turnEndText(t);
+        if (!text) return null;
+        const el = document.createElement('div');
+        el.className = 'director-turn-end';
+        el.dataset.turnEnd = '1';
+        const basis = t.basis === 'deepinfra' ? "DeepInfra's prices" : t.basis === 'anthropic' ? "Anthropic's prices" : "the provider's prices";
+        el.title = [
+            Number.isFinite(t.steps) ? `${t.steps} steps` : '',
+            `Input ${(Number(t.input) || 0).toLocaleString()} new, ${(Number(t.cached) || 0).toLocaleString()} re-read${t.cacheWrite ? `, ${Number(t.cacheWrite).toLocaleString()} cached` : ''}`,
+            `Output ${(Number(t.output) || 0).toLocaleString()}`,
+            Number.isFinite(t.usd) ? `Cost ${this.usd(t.usd)} (${basis})` : 'Cost not known for this provider'
+        ].filter(Boolean).join('\n');
+        const span = document.createElement('span');
+        span.className = 'director-turn-end-text';
+        span.textContent = text;
+        el.append(document.createElement('i'), span, document.createElement('i'));
+        return el;
     }
 
     _unitPlain(unit) {
@@ -5496,6 +5555,7 @@ class Director {
             return String(row.text || row.detail || row.label || row.name || '').replace(/\s+/g, ' ').trim();
         }
         if (unit.type === 'caption') return String(unit.caption || '').replace(/\s+/g, ' ').trim();
+        if (unit.type === 'turnEnd') return this.turnEndText(unit.message && unit.message.turn);
         const message = unit.message || {};
         return String(message.user_input || message.content || '').replace(/\s+/g, ' ').trim();
     }
@@ -5530,6 +5590,7 @@ class Director {
             if (seen) carry++;
             this._animateRows = !seen && !unseen;
             if (unit.type === 'caption') el = this.createQuoteMessageElement(unit.caption);
+            else if (unit.type === 'turnEnd') el = this.createTurnEndElement(unit.message);
             else if (unit.type === 'report') el = this.createReportElement(unit.message);
             else if (unit.type === 'card') el = this.createDirectorCardElement(unit.message);
             else if (unit.type === 'trace') el = this.createTraceRow(unit.row, unit.expandKey, unit.model);
@@ -5624,6 +5685,7 @@ class Director {
         visible.forEach((unit) => {
             let el = null;
             if (unit.type === 'caption') el = this.createQuoteMessageElement(unit.caption);
+            else if (unit.type === 'turnEnd') el = this.createTurnEndElement(unit.message);
             else if (unit.type === 'report') el = this.createReportElement(unit.message);
             else if (unit.type === 'card') el = this.createDirectorCardElement(unit.message);
             else if (unit.type === 'trace') el = this.createTraceRow(unit.row, unit.expandKey, unit.model);
@@ -8320,7 +8382,33 @@ class Director {
         return Math.round(chars / 4);
     }
 
+    /** The open session's turns added up in the top bar, beside the balance (their replies' turn records). */
+    paintSessionCost() {
+        const host = document.getElementById('directorSessionCost');
+        const textEl = document.getElementById('directorSessionCostText');
+        if (!host || !textEl) return;
+        const msgs = (this.currentSession && Array.isArray(this.currentSession.messages)) ? this.currentSession.messages : [];
+        let usd = 0;
+        let tokens = 0;
+        let turns = 0;
+        let priced = 0;
+        msgs.forEach((m) => {
+            const t = m && m.role === 'assistant' && m.turn;
+            if (!t || typeof t !== 'object') return;
+            turns += 1;
+            tokens += (Number(t.input) || 0) + (Number(t.cached) || 0) + (Number(t.cacheWrite) || 0) + (Number(t.output) || 0);
+            if (Number.isFinite(t.usd)) { usd += t.usd; priced += 1; }
+        });
+        host.classList.toggle('hidden', !turns);
+        if (!turns) return;
+        const text = priced ? this.usd(usd) : `${this.tokenCount(tokens)} tokens`;
+        if (textEl.textContent !== text) textEl.textContent = text;
+        host.title = `This session: ${priced ? `${this.usd(usd)}, ` : ''}${this.tokenCount(tokens)} tokens over ${turns} turn${turns === 1 ? '' : 's'}`
+            + (priced < turns ? ` (${turns - priced} without a known price)` : '');
+    }
+
     paintContext(source, approximate) {
+        this.paintSessionCost();
         const host = document.getElementById('directorContextDisplay');
         const valueEl = document.getElementById('directorContextPercent');
         if (!host || !valueEl) return;

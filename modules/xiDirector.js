@@ -296,11 +296,30 @@ function usesClaudeCli(runtime) {
     return runtime === 'claude' || runtime === 'tokenrouter' || customProviders.isEngine(runtime);
 }
 
+/** The session's turns added up (the replies' turn records: turnCost.js): { usd, tokens, turns, priced } or null. */
+function sessionCost(chat) {
+    const msgs = (chat && Array.isArray(chat.messages)) ? chat.messages : [];
+    let usd = 0;
+    let tokens = 0;
+    let turns = 0;
+    let priced = 0;
+    msgs.forEach((m) => {
+        const t = m && m.role === 'assistant' && m.turn;
+        if (!t || typeof t !== 'object') return;
+        turns += 1;
+        tokens += (Number(t.input) || 0) + (Number(t.cached) || 0) + (Number(t.cacheWrite) || 0) + (Number(t.output) || 0);
+        if (Number.isFinite(t.usd)) { usd += t.usd; priced += 1; }
+    });
+    return turns ? { usd: Math.round(usd * 1e6) / 1e6, tokens, turns, priced } : null;
+}
+
 function publicXiSession(chat) {
     return Object.assign(director._test.publicSession(chat), {
         persona: 'xi',
         workspaceId: null,
-        runtime: sanitizeRuntime(chat && chat.runtime)
+        runtime: sanitizeRuntime(chat && chat.runtime),
+        // what its turns cost (the session list's hover, the window's top bar)
+        cost: sessionCost(chat)
     });
 }
 
@@ -802,7 +821,24 @@ function publish(run) {
     }, 2000);
 }
 
+/** The finished turn's time, steps, tokens and real cost (turnCost.js), or null with no result read. */
+async function turnStats(run) {
+    const st = run.stream || {};
+    if (!st.turnUsage) return null;
+    const turnCost = require('./turnCost');
+    const engine = (run.round && run.round.engine) || run.runtime || '';
+    const model = st.turnModel || (run.round && (run.round.run || run.round.id)) || '';
+    let priced = { usd: null, basis: null };
+    try { priced = await turnCost.priceTurn({ engine, model, usage: st.turnUsage }); } catch (_) { /* tokens only */ }
+    const ms = Number.isFinite(st.turnMs) ? st.turnMs : (run.startedAt ? Date.now() - run.startedAt : null);
+    return turnCost.turnRecord({ ms, steps: st.turnSteps, usage: st.turnUsage, usd: priced.usd, basis: priced.basis });
+}
+
 function saveTrace(run) {
+    return turnStats(run).catch(() => null).then((turn) => saveTraceWith(run, turn));
+}
+
+function saveTraceWith(run, turn) {
     const rows = (run.stream && run.stream.rows) || [];
     markToolDiffs(run.sessionId, rows);
     director.parkToolBodies(run.sessionId, rows, path.join(layout().chats, director._test.safeName(run.sessionId)));
@@ -817,6 +853,8 @@ function saveTrace(run) {
         data: { Description: text },
         model: run.round || null
     };
+    if (turn) assistant.turn = turn;
+    run.turn = turn;
     return enqueue(async () => {
         const index = readIndex();
         const chat = index.chats.find((item) => item.id === run.sessionId);
@@ -831,6 +869,7 @@ function saveTrace(run) {
         if (existing) {
             existing.trace = assistant.trace;
             existing.data = assistant.data;
+            if (assistant.turn) existing.turn = assistant.turn;
             if (assistant.model) existing.model = assistant.model;
             if (mine.length) existing.prints = mine;
         } else {
@@ -939,7 +978,10 @@ function finishRun(run, why) {
                     sessionId: run.sessionId,
                     persona: 'xi',
                     // the reply once (#890; no page reads the clientResponse / data copies)
-                    response: { SuggestedName: name, Description: text || 'Done.' }
+                    response: { SuggestedName: name, Description: text || 'Done.' },
+                    // the turn's time, tokens and cost (the end-of-turn line in the log)
+                    turn: run.turn || null,
+                    messageId: run.draftId
                 });
                 emit(boundGr, 'director_send_message_response', {
                     success: true,
@@ -1053,6 +1095,11 @@ function consumeClaudeStreamLine(line, state) {
     }
     if (evt.type === 'result') {
         state.finished = true;
+        // the turn's own figures (priced from the provider's list at save: turnCost.js; never the CLI's estimate)
+        if (evt.usage && typeof evt.usage === 'object') state.turnUsage = evt.usage;
+        if (Number.isFinite(evt.duration_ms)) state.turnMs = evt.duration_ms;
+        if (Number.isFinite(evt.num_turns)) state.turnSteps = evt.num_turns;
+        if (evt.modelUsage && typeof evt.modelUsage === 'object') state.turnModel = Object.keys(evt.modelUsage)[0] || null;
         if (evt.is_error) {
             state.error = claudeResultError(evt);
         } else if (typeof evt.result === 'string' && evt.result.trim() && !state.text) {

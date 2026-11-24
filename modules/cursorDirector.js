@@ -1840,6 +1840,8 @@ function publicMessage(message) {
         changeJson: message.changeJson || null,
         steer: message.steer === true,
         trace: message.trace || null,
+        // a finished turn's time, tokens and real cost (turnCost.js; Yozora's turns)
+        turn: message.turn && typeof message.turn === 'object' ? message.turn : null,
         prints: Array.isArray(message.prints) ? message.prints.filter((name) => typeof name === 'string' && name) : [],
         model: message.model && typeof message.model === 'object' ? roundModelRecord(
             message.model.id,

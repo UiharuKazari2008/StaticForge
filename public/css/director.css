@@ -5340,3 +5340,31 @@ body #directorSessionChat .dm-vn-layer .dm-hud-chip { --dm-cut: 8px; }
     border-radius: 30px;
 }
 
+
+/* the end of a turn (director.js createTurnEndElement): its time, tokens and cost between two squiggly lines (Yukimi,
+   Nov 24 2026). The wave is a tiny inline SVG tiled across (no-base64-images: a few bytes of text, not a picture) */
+.director-turn-end {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 2px 4px 10px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 14px;
+    cursor: default;
+}
+.director-turn-end > i {
+    flex: 1 1 0;
+    min-width: 12px;
+    height: 6px;
+    opacity: 0.55;
+    /* the wave in the line's own text colour: a mask, so no colour is written here */
+    background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='6'%3E%3Cpath d='M0 3 Q3 0 6 3 T12 3' fill='none' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E") repeat-x left center / 12px 6px;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='6'%3E%3Cpath d='M0 3 Q3 0 6 3 T12 3' fill='none' stroke='black' stroke-width='1.2'/%3E%3C/svg%3E") repeat-x left center / 12px 6px;
+}
+.director-turn-end-text {
+    flex: none;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
