@@ -3608,6 +3608,17 @@ class Director {
     applyDirectorStatus(status) {
         if (!status || typeof status !== 'object') return;
         this._status = status;
+        // ... except a turn the server no longer runs at all: a page that loaded after the turn ended (a restart) re-armed
+        // "running" from a stream flush it could not tell was late, and the window said WORKING for good (Yukimi, Nov 24
+        // 2026: "why the director is still running when it should be done"). Not in the first seconds of a turn this page
+        // started (the server's status can come before it has the run)
+        if (this._running && this._runningSessionId && Date.now() - (this._runningArmedAt || 0) > 20000) {
+            const sid = this._runningSessionId;
+            const xi = status.xi || {};
+            // (the server names one running session per side; any run at all keeps the window's turn, to be safe)
+            const serverHas = !!status.running || !!xi.running || (Array.isArray(status.runningSessions) && status.runningSessions.includes(sid));
+            if (!serverHas && status.success !== false) this.finishTurn(sid);
+        }
         this.updateTrayChrome();
         this.noteCursorLogin(status.cursorLogin);
         const personaChanged = !!(status.xi && typeof status.xi.enabled === 'boolean' && this.noteXiEnabled(status.xi.enabled));
@@ -3652,6 +3663,7 @@ class Director {
         if (runningHere) this._settledSessionId = null;
         if (runningHere && !this._running) {
             this._running = true;
+            this._runningArmedAt = Date.now();
             this._runningSessionId = xiRunningId && openId === xiRunningId ? xiRunningId : status.sessionId;
             this.updateTrayChrome();
             this.showTypingIndicator();
@@ -3696,6 +3708,7 @@ class Director {
         if (runningId) {
             this._creatingChat = false;
             this._running = true;
+            this._runningArmedAt = Date.now();
             this._runningSessionId = runningId;
             this._settledSessionId = null;
             this.updateTrayChrome();
@@ -8745,6 +8758,7 @@ class Director {
         const changeJson = this.snapshotStudioChange();
         if (window.wsClient && window.wsClient.isConnected()) {
             this._running = true;
+            this._runningArmedAt = Date.now();
             this._runningSessionId = this.currentSession.id;
             this._settledSessionId = null;
             this._turnPrints = 0;
@@ -9275,6 +9289,7 @@ class Director {
             if (payload && payload.sessionId === window.currentSession?.id && window.directorInstance) {
                 if (!window.directorInstance._running || window.directorInstance._runningSessionId !== payload.sessionId) {
                     window.directorInstance._running = true;
+                    window.directorInstance._runningArmedAt = Date.now();
                     window.directorInstance._runningSessionId = payload.sessionId;
                     window.directorInstance.updateTrayChrome();
                 }
