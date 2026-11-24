@@ -9461,7 +9461,7 @@ const startMenuKit = (() => {
         });
     }
 
-    return { getStartMenuPinnedRows, getStartMenuPinProgramChoices, startMenuSearchesCategory, START_MENU_COLUMN_SKEW_PX, START_MENU_TAB_ZONES, startMenuRows, startMenuPlaceRows, startMenuPowerButtons, startMenuZoneOf, setStartMenuHot, focusStartMenuSearch, startMenuPowerDefault, startMenuAtHeight, startMenuPlaceBeside, startMenuRowBeside, startMenuTabZone, startMenuVertical, startMenuHorizontal, startMenuActivate, startMenuFirstLetter, startMenuEscape, startMenuOpenPopupOwner, closeStartMenuPopup, startMenuPopupLetter, onStartMenuKeydown, START_MENU_KNOWN_KEY, startMenuNewPrograms, startMenuProgramSeen, startMenuEntryIsNew, startMenuPlaceSetting, startMenuPlaceShown, startMenuPlaceHasMenu, startMenuFavorites, recentItemIconClass, startMenuPlaceMenuSections, startMenuCascadeAnchor, attachStartMenuPlaceMenu, wireStartMenuOverlayTracking, openStartMenuPlaceMenu, openStartMenuPowerMenu, START_MENU_MIN_H, START_MENU_LEFT_BASE_H, START_MENU_RIGHT_BASE_H, START_MENU_PLACE_H, START_MENU_PLACE_SEP_H, START_MENU_ROW_H, START_MENU_FRAME_OVERHANG, START_MENU_STATE, applyStartMenuSize, showStartMenuOverflowBalloon };
+    return { getStartMenuPinnedRows, getStartMenuPinProgramChoices, startMenuSearchesCategory, START_MENU_COLUMN_SKEW_PX, START_MENU_TAB_ZONES, startMenuRows, startMenuPlaceRows, startMenuPowerButtons, startMenuZoneOf, setStartMenuHot, focusStartMenuSearch, startMenuPowerDefault, startMenuAtHeight, startMenuPlaceBeside, startMenuRowBeside, startMenuTabZone, startMenuVertical, startMenuHorizontal, startMenuActivate, startMenuFirstLetter, startMenuEscape, startMenuOpenPopupOwner, closeStartMenuPopup, startMenuPopupLetter, onStartMenuKeydown, START_MENU_KNOWN_KEY, startMenuNewPrograms, startMenuProgramSeen, startMenuEntryIsNew, startMenuPlaceSetting, startMenuPlaceShown, startMenuPlaceHasMenu, startMenuFavorites, recentItemIconClass, startMenuPlaceMenuSections, startMenuCascadeAnchor, attachStartMenuPlaceMenu, wireStartMenuOverlayTracking, openStartMenuPlaceMenu, openStartMenuPowerMenu, START_MENU_MIN_H, START_MENU_LEFT_BASE_H, START_MENU_RIGHT_BASE_H, START_MENU_PLACE_H, START_MENU_PLACE_SEP_H, START_MENU_ROW_H, START_MENU_FRAME_OVERHANG, START_MENU_STATE, applyStartMenuSize, wireStartMenuGrip, showStartMenuOverflowBalloon };
 })();
 
 
@@ -9917,7 +9917,7 @@ function ensureStartMenuElements() {
         return null;
     }
     startMenuEls.list.tabIndex = -1;
-    wireStartMenuGrip(startMenuEls.menu);
+    startMenuKit.wireStartMenuGrip(startMenuEls.menu);
     startMenuEls.allPrograms.tabIndex = -1;
     startMenuEls.allPrograms.addEventListener('click', (e) => {
         e.stopPropagation();
