@@ -9,6 +9,27 @@ const assert = require('assert');
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dirstart-'));
 process.env.HOME = home;
 
+// apiKeyHealth's cached key health, kept away from the repo's own cache (#1145). The file is
+// written before the module is first used: it reads it once and keeps what it found.
+const healthFile = path.join(home, 'api-key-health.json');
+process.env.API_KEY_HEALTH_CACHE = healthFile;
+const fpOf = (service, slot, secret) => require('crypto').createHash('sha256')
+    .update(`${service}\n${slot}\n${secret}`).digest('hex').slice(0, 24);
+fs.writeFileSync(healthFile, JSON.stringify({
+    version: 1,
+    entries: {
+        [fpOf('tokenrouter', 'apiKey', 'tr-key')]: { state: 'fail', message: 'refused', checkedAt: Date.now() }
+    }
+}));
+// A key manager holding one service and one key, for the engine health read.
+const keyGr = (service, apiKey) => ({
+    getApiKeyManager: () => ({
+        SERVICE_METADATA: { [service]: {} },
+        getServiceKeys: () => [{ apiKey }],
+        credentialSecret: () => apiKey
+    })
+});
+
 const xi = require('../modules/xiDirector');
 const ds = require('../modules/directorStart');
 
@@ -45,6 +66,20 @@ async function main() {
     assert.ok(t.reviewBrief('X', 'plaud:1').includes('plaud:1'));
     assert.ok(/to Yukimi[^.]*in English/.test(t.reviewBrief('X')), 'chat with Yukimi is in English');
 
+    // default engine (#1145): DeepInfra, and an engine a cached check refused is not inherited
+    assert.strictEqual(t.XI_DEFAULT_ENGINE, 'custom:deepinfra');
+    assert.strictEqual(t.xiStartChoice([], {}, undefined, gr).runtime, 'custom:deepinfra', 'a new chat defaults to DeepInfra');
+    const lastChat = [{ runtime: 'tokenrouter', updated_at: '2026-11-24T00:00:00Z' }];
+    assert.strictEqual(t.xiStartChoice(lastChat, {}, undefined, gr).runtime, 'tokenrouter',
+        'an engine nothing is known about is still inherited');
+    assert.strictEqual(t.engineRefused(gr, 'tokenrouter'), false, 'no key manager: nothing known counts as usable');
+    const refusedGr = keyGr('tokenrouter', 'tr-key');
+    assert.strictEqual(t.engineRefused(refusedGr, 'tokenrouter'), true, 'the cached refusal is read');
+    assert.strictEqual(t.xiStartChoice(lastChat, {}, undefined, refusedGr).runtime, 'custom:deepinfra',
+        'a refused engine is not inherited: no wasted refused start');
+    assert.strictEqual(t.xiStartChoice(lastChat, { engine: 'tokenrouter' }, undefined, refusedGr).runtime, 'tokenrouter',
+        'an engine asked for by name is kept');
+
     await assert.rejects(ds.startDirectorSession(gr, { persona: 'Yozora' }), /prompt is required/);
 
     // new chat, review brief, title kept, tagged
@@ -54,7 +89,7 @@ async function main() {
     });
     assert.strictEqual(a.created, true);
     assert.strictEqual(a.persona, 'xi');
-    assert.strictEqual(a.engine, 'tokenrouter');
+    assert.strictEqual(a.engine, 'custom:deepinfra');
     assert.strictEqual(sent.length, 1);
     assert.ok(sent[0].content.startsWith('Task: turn the review'));
     assert.ok(sent[0].content.endsWith('Action items: A, B'));

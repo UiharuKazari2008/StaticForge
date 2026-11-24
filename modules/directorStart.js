@@ -122,13 +122,44 @@ function personaChats(backend, persona) {
     return persona === 'xi' ? list : list.filter((chat) => chat.persona === persona);
 }
 
+// An engine a cached check has already refused. Read from what was recorded, never a probe: the
+// start path makes no network call of its own. tokenrouter's key health is kept by
+// modules/apiKeyHealth.js, a custom provider's by modules/customModelProviders.js (the status of
+// its last chat). An engine nothing is known about counts as not refused.
+function engineRefused(gr, runtime) {
+    const engine = String(runtime || '');
+    if (!engine) return false;
+    try {
+        if (engine === 'tokenrouter') {
+            const rows = (require('./apiKeyHealth').publicStatuses(gr) || {}).tokenrouter || [];
+            return rows.some((row) => row && row.apiKey && row.apiKey.state === 'fail');
+        }
+        const providers = require('./customModelProviders');
+        if (typeof providers.isEngine === 'function' && providers.isEngine(engine)) {
+            const row = providers.lookup(gr, engine);
+            const check = row && typeof providers.keyCheckFor === 'function' ? providers.keyCheckFor(row) : null;
+            return !!(check && check.state === 'fail');
+        }
+    } catch (_) { /* nothing known about this engine: treat it as usable */ }
+    return false;
+}
+
+// What a new Yozora chat starts on when there is nothing to go on (#1145; it was TokenRouter,
+// whose key refused every start, #1072).
+const XI_DEFAULT_ENGINE = 'custom:deepinfra';
+
 // Yozora's engine is fixed when the chat is made: the caller's, else her last chat's, else
-// TokenRouter (what the Director window starts a new Yozora chat on). runtime overrides it
-// for a fallback chat.
-function xiStartChoice(chats, input, runtimeOverride) {
+// DeepInfra. runtime overrides it for a fallback chat.
+function xiStartChoice(chats, input, runtimeOverride, gr) {
     const latest = chats.slice().sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
         .find((chat) => chat.runtime);
-    const runtime = runtimeOverride || input.engine || (latest && latest.runtime) || 'tokenrouter';
+    // Her last chat's engine is inherited, unless a cached check says it was refused: inheriting a
+    // refused engine spends the refusal (up to EARLY_FAIL_WAIT_MS) and a deleted chat on every new
+    // chat before the fallback chain catches it.
+    const inherited = latest && latest.runtime;
+    const runtime = runtimeOverride || input.engine
+        || ((inherited && !engineRefused(gr, inherited)) ? inherited : null)
+        || XI_DEFAULT_ENGINE;
     const sameRuntime = latest && latest.runtime === runtime && latest.choice;
     const pinned = !runtimeOverride || runtimeOverride === input.engine;
     return {
@@ -154,7 +185,7 @@ async function createChat(gr, persona, input, title, runtime) {
     const backend = backendFor(persona);
     const stub = makeStub(gr);
     if (persona === 'xi') {
-        const choice = xiStartChoice(personaChats(backend, 'xi'), input, runtime);
+        const choice = xiStartChoice(personaChats(backend, 'xi'), input, runtime, gr);
         await backend.handleDirectorCreateSession(stub.handler, stub.ws, {
             persona: 'xi', description: title || '', runtime: choice.runtime
         });
@@ -278,7 +309,7 @@ async function startUnlocked(gr, input) {
 
     // Yozora: try her engine, then DeepInfra, then SloProxy, while an engine refuses at the start.
     // A pinned sessionId keeps its engine (no fallback).
-    const first = target ? (target.runtime || 'cursor') : xiStartChoice(chats, input).runtime;
+    const first = target ? (target.runtime || 'cursor') : xiStartChoice(chats, input, undefined, gr).runtime;
     const chain = input.sessionId ? [first] : xiEngineChain(first, input);
     const fallbackFrom = [];
     for (let i = 0; i < chain.length; i += 1) {
@@ -418,5 +449,5 @@ module.exports = {
     startDirectorSession,
     getDirectorSession,
     STARTED_VIA,
-    _test: { resolvePersona, normalizeAttachments, reviewBrief, xiStartChoice, xiEngineChain, makeStub, sourceLocks, ENGINE_REFUSAL }
+    _test: { resolvePersona, normalizeAttachments, reviewBrief, xiStartChoice, engineRefused, XI_DEFAULT_ENGINE, xiEngineChain, makeStub, sourceLocks, ENGINE_REFUSAL }
 };

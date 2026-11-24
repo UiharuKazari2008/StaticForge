@@ -1038,6 +1038,7 @@ module.exports = {
     parseRateLimitHeaders,
     noteRateLimit,
     noteKeyResult,
+    keyCheckFor,
     isInternalHost,
     moneyText,
     preferredModel,
