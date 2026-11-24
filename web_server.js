@@ -1636,7 +1636,9 @@ const imageStore = require('./modules/imageStore');
 function clientShowsJxl(req) {
     const accept = String(req.headers.accept || '');
     if (/\bimage\/jxl\b/i.test(accept)) return true;
-    return req.headers['sec-fetch-dest'] === 'image' && /(?:^|;\s*)melaton_jxl=1-/.test(String(req.headers.cookie || ''));
+    // a picture being shown: the browser's own request, or the service worker's on its behalf (sw.js)
+    const shown = req.headers['sec-fetch-dest'] === 'image' || req.headers['x-melaton-image-dest'] === 'image';
+    return shown && /(?:^|;\s*)melaton_jxl=1-/.test(String(req.headers.cookie || ''));
 }
 function galleryPngPath(name) {
     return imageStore.pngPath(name).catch((e) => {
@@ -2416,7 +2418,7 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     // itself, no decode here (#1134): the client said so with the melaton_jxl cookie (assetPackages.js checks
     // after boot), or its Accept lists image/jxl. fetch() readers (Paint, uploads, clipboard), downloads and
     // the metadata variants below always get the PNG.
-    res.setHeader('Vary', 'Accept, Cookie, Sec-Fetch-Dest');
+    res.setHeader('Vary', 'Accept, Cookie, Sec-Fetch-Dest, X-Melaton-Image-Dest');
     if (loc && loc.kind === 'jxl' && req.query.download !== 'true' && req.query.clipboard !== 'true'
         && req.query.clipboardOrigin !== 'true' && req.query.stripContext !== 'true' && clientShowsJxl(req)) {
         res.setHeader('Content-Type', 'image/jxl');

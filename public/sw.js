@@ -1418,14 +1418,14 @@ async function enforceImageCachePolicyNow({ reconcile }) {
 async function handleImageRequest(event) {
   const { request } = event;
   if (isFullImageUrl(request.url)) {
-    const networkResponse = await fetch(request, {
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    });
+    // the request's own headers stay (Accept: image/jxl from Lumen, #1134); this fetch's Sec-Fetch-Dest is
+    // 'empty', so a picture being shown says so in X-Melaton-Image-Dest (web_server.js clientShowsJxl)
+    const headers = new Headers(request.headers);
+    headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    headers.set('Pragma', 'no-cache');
+    headers.set('Expires', '0');
+    if (request.destination === 'image') headers.set('X-Melaton-Image-Dest', 'image');
+    const networkResponse = await fetch(request, { cache: 'no-store', headers });
     notifyClientsOfNetworkActivity('receive', {
       url: request.url,
       method: request.method,
