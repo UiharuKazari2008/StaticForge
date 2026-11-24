@@ -22,8 +22,9 @@
  *             cancelled, else done). Pulled when Fleet reads the queue (at most every 2 min) and every 10 min
  *             on the server.
  *
- * Token: Claude's own Yozora PAT (~/.secrets/yozora-claude.token), read on every call, never logged. Every
- * call is best effort: Yozora being away never stops the queue (the item keeps a sync note).
+ * Token: Yozora's own (director.yozora, ~/.secrets/yozora-yozora.token; Yukimi Nov 24 2026: "all the fleet
+ * system should use Yozora's token not Claude, pretty much only the host session should use that"), read on
+ * every call, never logged. Every call is best effort: Yozora being away never stops the queue.
  */
 
 const fs = require('fs');
@@ -42,10 +43,10 @@ const STATUS_LABEL = { queued: 'status:ready', starting: 'status:in-progress', r
 const MARK = (id) => `<!-- fleet-work:${id} -->`;
 
 function token() {
-    for (const name of ['yozora-claude.token', 'yozora-grok.cursor.token']) {
+    for (const name of ['yozora-yozora.token']) {
         try { const t = fs.readFileSync(path.join(os.homedir(), '.secrets', name), 'utf8').trim(); if (t) return t; } catch (_) { /* next */ }
     }
-    throw new Error('no Yozora token in ~/.secrets');
+    throw new Error('no Yozora (director.yozora) token in ~/.secrets/yozora-yozora.token');
 }
 
 let fetchFn = (...a) => fetch(...a);
@@ -128,7 +129,7 @@ async function createIssue(item) {
     const by = await labels(repo).catch(() => new Map());
     const ids = [fleetLabel, by.get('status:ready'), by.get('type:feature')].filter(Boolean);
     const body = [
-        `Queued in **Fleet** (the Supervisor's work queue, item ${item.id}, from ${item.source}). It runs as a supervised Claude Code session; the Supervisor comments here when it starts, when it sends gaps back, and when it ends, and adds the time it ran. Claude Code automation (\`claude\`).`,
+        `Queued in **Fleet** (the Supervisor's work queue, item ${item.id}, from ${item.source}). It runs as a supervised Claude Code session; the Supervisor comments here when it starts, when it sends gaps back, and when it ends, and adds the time it ran. Tracked by Yozora (\`director.yozora\`) for Fleet.`,
         '',
         '## Brief',
         '',
@@ -140,7 +141,7 @@ async function createIssue(item) {
         '',
         MARK(item.id)
     ].join('\n');
-    const issue = await call('POST', `/repos/${repo}/issues`, { title: String(item.title || 'Fleet work').slice(0, 200), body, labels: ids, assignees: ['claude'] });
+    const issue = await call('POST', `/repos/${repo}/issues`, { title: String(item.title || 'Fleet work').slice(0, 200), body, labels: ids, assignees: ['director.yozora'] });
     if (repo.startsWith(`${BOARD.org}/`) && issue && issue.id) await call('POST', `/orgs/${BOARD.org}/projects/${BOARD.project}/columns/${BOARD.columns.queued}/issues/${issue.id}`).catch(() => {});
     return { repo, number: issue.number, id: issue.id, url: issueUrl(repo, issue.number) };
 }

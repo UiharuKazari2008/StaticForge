@@ -604,7 +604,7 @@ async function pullIssues(gr, opts = {}) {
     return { added, ended, repos: [...repos] };
 }
 
-const SUPERVISED_NOTE = 'You are a supervised Fleet session: claim files with agent-coord before editing (coord_claim), commit your own work at the end of every turn, open a build gate before any build / restart, and before you say a multi-part request is done call coord_supervisor_check and address what it finds. Work you find that should be done by another session: coord_request_work (startNow when it should start now).';
+const SUPERVISED_NOTE = 'On Yozora you are Yozora (director.yozora), not claude: every Yozora API call uses the token in the file named by $YOZORA_TOKEN_FILE, and git pushes to Yozora with a plain `git push` (this session\'s git already signs in as director.yozora); never use ~/.secrets/yozora-claude.token or the claude credential helper from CLAUDE.md. You are a supervised Fleet session: claim files with agent-coord before editing (coord_claim), commit your own work at the end of every turn, open a build gate before any build / restart, and before you say a multi-part request is done call coord_supervisor_check and address what it finds. Work you find that should be done by another session: coord_request_work (startNow when it should start now).';
 
 /** Adds a work item and moves the queue. item: { title, prompt, cwd?, account?, model?, effort?, startNow?, source?, sourceRef? } */
 function enqueue(item, opts = {}) {

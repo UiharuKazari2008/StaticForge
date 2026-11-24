@@ -66,6 +66,7 @@ done, whatever else it achieves.
 @.cursor/rules/vista-icons-not-fa.mdc
 @.cursor/rules/copyrights-not-1to1.mdc
 @.cursor/rules/fix-ui-issues-you-find.mdc
+@.cursor/rules/scroll-lists-keep-position.mdc
 @.cursor/rules/sliders-platform.mdc
 @.cursor/rules/tray-balloons.mdc
 @.cursor/rules/emulator-instances.mdc
@@ -89,6 +90,10 @@ done, whatever else it achieves.
   StaticForge, nai-prompt-guide, DSApp-Kotlin, cursor-rules.
 - Git push to Yozora as `claude`, never via the checkout's stored credentials:
   `git -c credential.helper= -c 'credential.helper=!f(){ echo username=claude; echo "password=$(tr -d "[:space:]" < ~/.secrets/yozora-claude.token)"; }; f' push origin <branch>`
+- **Fleet sessions are Yozora on Yozora** (Yukimi, Nov 24 2026): a session Fleet / the Supervisor started has
+  `FLEET_SESSION=1`; it uses Yozora's token (`$YOZORA_TOKEN_FILE`, login `director.yozora`) for every Yozora
+  API call and pushes with a plain `git push` (its git already signs in as `director.yozora`). Only the host
+  session (not started by Fleet) uses the `claude` token and push command above.
 - Identity: a Claude Code agent, not Cursor, not Yukimi. Where the rules say
   "auth as `grok.cursor`" or "Cursor agent (`grok.cursor`)", use the Claude
   account and wording instead. Every other rule (timers, labels, Done comment,

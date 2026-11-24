@@ -158,7 +158,9 @@ function checkAgents(store, dirty) {
         if (serverEdits.length || serverClaims.length) {
             const name = r.agent.name || agentId;
             const what = serverEdits.length ? `uncommitted ${serverEdits.slice(0, 4).map((f) => f.path).join(', ')}${serverEdits.length > 4 ? ` (+${serverEdits.length - 4})` : ''}` : `claims on ${serverClaims.map((c) => c.path).slice(0, 4).join(', ')}`;
-            add('ask', `ask ${name} (${agentId}, ${s.status === 'busy' ? 'working now' : 'idle'}): ${what}`, { agent: agentId, busy: s.status === 'busy' });
+            // two sessions can carry the same derived name (two "staticforge-8e"): the link's end tells them apart
+            const tail = s.link ? `, claude.ai …${s.link.slice(-10)}` : '';
+            add('ask', `ask ${name} (${agentId}${tail}, ${s.status === 'busy' ? 'working now' : 'idle'}): ${what}`, { agent: agentId, busy: s.status === 'busy' });
         }
     }
     dirty.filter((f) => !owned.has(f.path)).slice(0, 8).forEach((f) => add('note', `uncommitted ${f.path} (no live session holds it: it loads as it is)`));

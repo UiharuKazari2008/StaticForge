@@ -249,6 +249,11 @@ async function launch(gr, o) {
     if (!isDir) throw new Error(`The folder ${cwd || '(none)'} is not on the host`);
     const mode = MODES.has(o.mode) ? o.mode : DEFAULT_MODE;
     const { env, account } = await accountEnv(gr, o.account);
+    // Fleet sessions work on Yozora as Yozora (director.yozora), never as claude (Yukimi, Nov 24 2026: "all the
+    // fleet system should use Yozora's token not Claude, pretty much only the host session should use that"):
+    // git's credential helper for the Yozora host reads her token file at use (no token in the environment)
+    const { yozoraGitEnv, YOZORA_LOGIN, YOZORA_TOKEN_FILE } = require('./xiLaunch');
+    Object.assign(env, yozoraGitEnv(os.homedir()), { FLEET_SESSION: '1', YOZORA_LOGIN, YOZORA_TOKEN_FILE: path.join(os.homedir(), YOZORA_TOKEN_FILE) });
     if (account) env.AGENT_COORD_ACCOUNT = account.name;
     const title = cleanTitle(o.title, 60) || o.id.slice(0, 8);
     // agent-coord: user scope in the account's config dir / the host's (every session there has it, #1154);

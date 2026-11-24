@@ -628,6 +628,7 @@ module.exports = {
     JAIL_ENV_KEYS,
     YOZORA_LOGIN,
     YOZORA_TOKEN_FILE,
+    yozoraGitEnv,
     JAIL_HOME,
     JAIL_KEY_FILE,
     JAIL_CLAUDE_TOKEN_FILE,
