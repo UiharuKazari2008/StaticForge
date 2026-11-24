@@ -7,7 +7,7 @@
  *      metadata and times boxes, same mtime; kept only when smaller).
  * Pictures keep their name x.png for everything else (modules/imageStore.js).
  *
- *   node scripts/image-jxl-idle.js [--dry-run] [--limit N] [--min-age-hours 1] [--upgrade-age-hours 24]
+ *   node scripts/image-jxl-idle.js [--dry-run] [--limit N] [--min-age-hours 1] [--upgrade-age-hours 24] [--no-idle-wait]
  *
  * Meant to run once a night (crontab); it does what is due and exits. It runs at nice 19 / idle I/O, and only
  * while Dreamscape is idle (scripts/director-idle-check.js exit 0 and load under 60 % of the cores), checked
@@ -31,6 +31,7 @@ const STATE = path.join(ROOT, '.cache', 'image-jxl');
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const DRY = args.includes('--dry-run');
+const IDLE_WAIT = !args.includes('--no-idle-wait');
 const LIMIT = parseInt(opt('--limit', '0'), 10) || 0;
 const MIN_AGE_MS = (parseFloat(opt('--min-age-hours', '1')) || 1) * 3600000;
 const UPGRADE_AGE_MS = (parseFloat(opt('--upgrade-age-hours', '24')) || 24) * 3600000;
@@ -59,7 +60,10 @@ async function samePixels(a, b) {
         && x.data.equals(y.data);
 }
 
-const chunkKey = (buf) => store.metadataChunks(buf).map((c) => c.raw.toString('base64')).join(',');
+// what a picture carries besides its pixels, in neutral form (#1156): its text fields and the extras (pixel
+// density, EXIF); the raw PNG chunks differ by design once a JXL is rebuilt (the decoder adds its colour chunks)
+const pictureMeta = require('../modules/pictureMeta');
+const chunkKey = (buf) => JSON.stringify([pictureMeta.readFields(buf), pictureMeta.extrasOf(buf)]);
 
 async function convertOne(name) {
     const pngP = path.join(store.IMAGES_DIR, name);
@@ -144,7 +148,7 @@ async function main() {
     let n = 0, freed = 0;
     for (const d of due) {
         if (LIMIT && n >= LIMIT) break;
-        if (!idle()) { log(`host busy: stopping after ${n} (rest next run)`); break; }
+        if (IDLE_WAIT && !idle()) { log(`host busy: stopping after ${n} (rest next run)`); break; }
         try {
             freed += await convertOne(d.name);
             n++;
@@ -156,7 +160,7 @@ async function main() {
     let u = 0;
     for (const file of upgrades) {
         if (LIMIT && n + u >= LIMIT) break;
-        if (!idle()) { log(`host busy: stopping re-encodes after ${u} (rest next run)`); break; }
+        if (IDLE_WAIT && !idle()) { log(`host busy: stopping re-encodes after ${u} (rest next run)`); break; }
         try {
             freed += await upgradeOne(file);
             u++;

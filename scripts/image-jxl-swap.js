@@ -22,6 +22,9 @@ const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const sharp = require('sharp');
 const store = require('../modules/imageStore');
+// what a picture carries besides its pixels, in neutral form (#1156): text fields + extras (pixel density, EXIF)
+const pictureMeta = require('../modules/pictureMeta');
+const metaKey = (buf) => JSON.stringify([pictureMeta.readFields(buf), pictureMeta.extrasOf(buf)]);
 
 const ROOT = path.resolve(__dirname, '..');
 const args = process.argv.slice(2);
@@ -87,8 +90,9 @@ async function main() {
         if (sha(jxl) !== r.jxl_sha) { skip('staged jxl changed'); continue; }
         // the PNG's own times ride along: date created (birth) and modified stay the picture's
         const boxed = store.attachPngMetadata(jxl, png, { birthtimeMs: st.birthtimeMs, mtimeMs: st.mtimeMs });
-        const want = store.metadataChunks(png).map((c) => c.raw.toString('base64')).join(',');
-        const got = (store.readPngMetadataBox(boxed) || []).map((c) => c.raw.toString('base64')).join(',');
+        // the box read back must carry the PNG's fields and extras (#1156: sfMD, format-neutral)
+        const want = metaKey(png);
+        const got = metaKey(boxed);
         if (want !== got) { skip('metadata box readback differs'); continue; }
         if (DRY) { swapped++; freed += png.length - boxed.length; continue; }
         const tmp = jxlP + '.tmp';
@@ -98,7 +102,7 @@ async function main() {
             let ok = false;
             try {
                 const rebuilt = await store.decodeJxlToPngBuffer(tmp);
-                ok = await samePixels(png, rebuilt) && store.metadataChunks(rebuilt).map((c) => c.raw.toString('base64')).join(',') === want;
+                ok = await samePixels(png, rebuilt) && metaKey(rebuilt) === want;
             } catch (e) { ok = false; }
             if (!ok) { fs.unlinkSync(tmp); skip('full decode check failed'); continue; }
         }

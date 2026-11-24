@@ -3,9 +3,10 @@
  * clients, URLs), but its bytes may lie on disk as `x.jxl` (lossless JPEG XL, about 56 % of the PNG).
  *
  * - The PNG wins when both exist (the swap writes the JXL first and removes the PNG last).
- * - A JXL carries the PNG's own metadata chunks (tEXt / iTXt / zTXt / eXIf / pHYs ...) raw and in their order in
- *   one container box `sfPN`, so a PNG rebuilt from it reads exactly like the original: pngMetadata's text
- *   chunks, the stealth bits in the alpha channel (lossless pixels) and NovelAI's signature (pixels + Comment).
+ * - A JXL carries the picture's text fields ([keyword, text], format-neutral, #1156) in one container box `sfMD`
+ *   (modules/pictureMeta.js), so a PNG rebuilt from it reads like the original: pngMetadata's text chunks, the
+ *   stealth bits in the alpha channel (lossless pixels) and NovelAI's signature (pixels + Comment). Files from
+ *   before #1156 carry the PNG's own metadata chunks raw in `sfPN` instead; they are still read (sfMD first).
  * - Code that only reads pixels with sharp asks pixelPath(name): the JXL itself when sharp reads JXL.
  * - Whatever needs a real PNG asks pngPath(name): the original, or a decoded copy in .cache/jxl-png (one decode
  *   per name at a time, the oldest copies dropped past CACHE_MAX_BYTES).
@@ -17,6 +18,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+const pictureMeta = require('./pictureMeta');
 
 const ROOT = path.resolve(__dirname, '..');
 const IMAGES_DIR = path.join(ROOT, 'images');
@@ -146,15 +148,10 @@ function metadataChunks(pngBuf) {
     return out;
 }
 
-/** The sfPN box payload: version, then per chunk: where (u8), its whole raw PNG chunk (length, type, data, crc). */
-function encodeBoxPayload(pngBuf) {
-    const parts = [Buffer.from([BOX_VERSION])];
-    for (const c of metadataChunks(pngBuf)) {
-        parts.push(Buffer.from([c.where]), c.raw);
-    }
-    return Buffer.concat(parts);
-}
-
+/**
+ * The legacy sfPN box payload (written before #1156, read still): version, then per chunk: where (u8), its whole raw
+ * PNG chunk (length, type, data, crc).
+ */
 function decodeBoxPayload(payload) {
     if (!payload || payload[0] !== BOX_VERSION) throw new Error('unknown sfPN box version');
     const out = [];
@@ -195,15 +192,24 @@ function readBoxes(jxl) {
 }
 
 /**
- * The JXL with the PNG's metadata in an sfPN box after the codestream (a bare codestream is wrapped in a container
- * first; an older sfPN box is replaced). Decoders skip box types they do not know (djxl, sharp / libvips and
- * Chrome 157 checked).
+ * The JXL with the source picture's text fields in an sfMD box after the codestream (#1156; a bare codestream is
+ * wrapped in a container first; older sfPN / sfMD / sfFT boxes are replaced). source: a PNG, WebP, JPEG XL or JPEG
+ * buffer, or a fields array ([[keyword, text], ...]). Decoders skip box types they do not know (djxl, sharp /
+ * libvips and Chrome 157 checked).
  */
-function attachPngMetadata(jxl, pngBuf, times = null) {
-    const payload = encodeBoxPayload(pngBuf);
+function attachPngMetadata(jxl, source, times = null) {
+    const fields = Array.isArray(source) ? pictureMeta.normFields(source) : pictureMeta.readFields(source);
+    // whether the source had a colour profile (the lossless preview asks; a JXL always reports one)
+    const icc = Array.isArray(source) ? undefined : pictureMeta.hasIcc(source);
+    const md = { v: 1, fields };
+    if (typeof icc === 'boolean') md.icc = icc;
+    // a PNG's pixel density and EXIF, kept in neutral form (#1156: nothing lost in the move to JXL)
+    const extras = Array.isArray(source) ? {} : pictureMeta.extrasOf(source);
+    if (extras.dpi) md.dpi = extras.dpi;
+    if (extras.exif) md.exif = extras.exif;
     // the PNG file's own times (birth = date created, mtime = date modified): the JXL file is new, so its birth is
     // the swap; these stay with the picture (Yukimi: dates created and modified must not change)
-    const tail = [box(BOX_TYPE, payload)];
+    const tail = [box(pictureMeta.MD_BOX, Buffer.from(JSON.stringify(md), 'utf8'))];
     if (times && (times.birthtimeMs > 0 || times.mtimeMs > 0)) {
         const t = { b: Math.round(times.birthtimeMs || 0), m: Math.round(times.mtimeMs || 0) };
         if (times.effort) t.e = times.effort;
@@ -217,7 +223,7 @@ function attachPngMetadata(jxl, pngBuf, times = null) {
         return Buffer.concat([JXL_CONTAINER_SIG, ftyp, box('jxlc', jxl), ...tail]);
     }
     // explicit sizes throughout (a last box of size 0 runs to the end of the file)
-    const kept = boxes.filter((b) => b.type !== BOX_TYPE && b.type !== TIMES_BOX && b.type !== 'JXL ');
+    const kept = boxes.filter((b) => b.type !== BOX_TYPE && b.type !== pictureMeta.MD_BOX && b.type !== TIMES_BOX && b.type !== 'JXL ');
     return Buffer.concat([JXL_CONTAINER_SIG, ...kept.map((b) => box(b.type, b.payload)), ...tail]);
 }
 
@@ -274,18 +280,60 @@ function readPngMetadataBox(jxl) {
     return b ? decodeBoxPayload(b.payload) : null;
 }
 
-/** The decoder's PNG with the stored metadata chunks back in their places (its own metadata chunks dropped). */
-function rebuildPng(decodedPng, stored) {
+/**
+ * A JXL's text fields ([[keyword, text], ...]): its sfMD box, else the text chunks of a legacy sfPN box; [] when it
+ * has neither. jxl: the file's bytes or its path.
+ */
+async function readMetadataFields(jxl) {
+    const buf = Buffer.isBuffer(jxl) ? jxl : await fs.promises.readFile(jxl);
+    return pictureMeta.readFields(buf);
+}
+
+const TEXT_CHUNK_TYPES = new Set(['tEXt', 'iTXt', 'zTXt']);
+
+/**
+ * The decoder's PNG with the stored metadata back: the sfPN chunks in their places (the decoder's own metadata
+ * chunks dropped), and, when the JXL has sfMD fields, those as tEXt chunks right after IHDR (where NovelAI puts
+ * them; any text chunks in sfPN or from the decoder dropped).
+ */
+function rebuildPng(decodedPng, stored, fields = null, md = null) {
     const chunks = readPngChunks(decodedPng);
     const ihdr = chunks.find((c) => c.type === 'IHDR');
     const idat = chunks.filter((c) => c.type === 'IDAT');
     const iend = chunks.find((c) => c.type === 'IEND');
     if (!ihdr || !idat.length || !iend) throw new Error('decoded PNG incomplete');
     // with nothing stored, the decoder's own chunks (colour space) stay
-    if (!stored) return decodedPng;
-    const pre = stored.filter((c) => c.where === 0).map((c) => c.raw);
-    const post = stored.filter((c) => c.where === 1).map((c) => c.raw);
-    return Buffer.concat([PNG_SIG, ihdr.raw, ...pre, ...idat.map((c) => c.raw), ...post, iend.raw]);
+    if (!stored && !fields) return decodedPng;
+    if (!fields) {
+        const pre = stored.filter((c) => c.where === 0).map((c) => c.raw);
+        const post = stored.filter((c) => c.where === 1).map((c) => c.raw);
+        return Buffer.concat([PNG_SIG, ihdr.raw, ...pre, ...idat.map((c) => c.raw), ...post, iend.raw]);
+    }
+    const isText = (raw) => TEXT_CHUNK_TYPES.has(raw.toString('latin1', 4, 8));
+    let pre;
+    let post;
+    if (stored) {
+        pre = stored.filter((c) => c.where === 0 && !isText(c.raw)).map((c) => c.raw);
+        post = stored.filter((c) => c.where === 1 && !isText(c.raw)).map((c) => c.raw);
+    } else {
+        pre = [];
+        post = [];
+        let after = false;
+        for (const c of chunks) {
+            if (c.type === 'IDAT') { after = true; continue; }
+            if (c.type === 'IHDR' || c.type === 'IEND' || TEXT_CHUNK_TYPES.has(c.type)) continue;
+            (after ? post : pre).push(c.raw);
+        }
+    }
+    const text = fields.map(([k, v]) => pictureMeta.pngTextChunk(k, v));
+    // the source PNG's pixel density and EXIF kept in sfMD (#1156) replace whatever the decoder wrote for them
+    const extras = pictureMeta.extrasPngChunks(md);
+    if (extras.length) {
+        const own = new Set(extras.map((c) => c.toString('latin1', 4, 8)));
+        pre = pre.filter((raw) => !own.has(raw.toString('latin1', 4, 8)));
+        post = post.filter((raw) => !own.has(raw.toString('latin1', 4, 8)));
+    }
+    return Buffer.concat([PNG_SIG, ihdr.raw, ...text, ...extras, ...pre, ...idat.map((c) => c.raw), ...post, iend.raw]);
 }
 
 /**
@@ -461,27 +509,34 @@ let djxlMissing = false;
  * install: a host may have either one).
  */
 async function decodeJxlToPngBuffer(jxlPath) {
-    const jxl = await fs.promises.readFile(jxlPath);
+    // a path, or the JXL's bytes (#1156: pictures in memory)
+    const jxl = Buffer.isBuffer(jxlPath) ? jxlPath : await fs.promises.readFile(jxlPath);
     const stored = readPngMetadataBox(jxl);
+    const md = pictureMeta.readMd(jxl);
+    const fields = md ? md.fields : null;
     if (!djxlMissing) {
-        const tmp = path.join(CACHE_DIR, `.dec-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+        const stamp = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const tmp = path.join(CACHE_DIR, `.dec-${stamp}.png`);
+        const src = Buffer.isBuffer(jxlPath) ? path.join(CACHE_DIR, `.dec-${stamp}.jxl`) : jxlPath;
         await fs.promises.mkdir(CACHE_DIR, { recursive: true });
         try {
-            await run('djxl', ['--quiet', jxlPath, tmp]);
-            return rebuildPng(await fs.promises.readFile(tmp), stored);
+            if (src !== jxlPath) await fs.promises.writeFile(src, jxl);
+            await run('djxl', ['--quiet', src, tmp]);
+            return rebuildPng(await fs.promises.readFile(tmp), stored, fields, md);
         } catch (e) {
             if (e && e.code !== 'ENOENT') throw e;
             djxlMissing = true;
             console.warn('[imageStore] djxl is not installed (apt install libjxl-tools): decoding JPEG XL with sharp');
         } finally {
             fs.promises.unlink(tmp).catch(() => {});
+            if (src !== jxlPath) fs.promises.unlink(src).catch(() => {});
         }
     }
     if (!sharpReadsJxl()) {
         throw new Error('no JPEG XL decoder: install libjxl-tools (djxl), or build sharp against a libvips with libjxl');
     }
     const decoded = await require('sharp')(jxl).png({ compressionLevel: 6 }).toBuffer();
-    return rebuildPng(decoded, stored);
+    return rebuildPng(decoded, stored, fields, md);
 }
 
 async function trimCache() {
@@ -569,17 +624,17 @@ async function pixelPath(name, dir = IMAGES_DIR) {
 }
 
 /**
- * Whether the PNG a JXL was made from carried a colour profile (an iCCP chunk in its sfPN box). libvips reports an
- * ICC profile for every JXL (the format always names its colour space), so a JXL's own metadata cannot tell.
+ * Whether the picture a JXL was made from carried a colour profile (sfMD's icc, else an iCCP chunk in its legacy
+ * sfPN box). libvips reports an ICC profile for every JXL (the format always names its colour space), so a JXL's
+ * own metadata cannot tell; unknown counts as yes.
  */
 async function jxlOriginalHasIcc(jxlPath) {
-    const stored = readPngMetadataBox(await fs.promises.readFile(jxlPath));
-    if (!stored) return true;
-    return stored.some((c) => c.raw.toString('latin1', 4, 8) === 'iCCP');
+    const known = pictureMeta.hasIcc(await fs.promises.readFile(jxlPath));
+    return typeof known === 'boolean' ? known : true;
 }
 
 /**
- * The picture as JPEG XL with its PNG's metadata in the sfPN box (the download window, #1134): the stored file for
+ * The picture as JPEG XL with its text fields in the sfMD box (the download window, #1134): the stored file for
  * a JXL; a PNG is encoded losslessly now (cjxl effort 7, or sharp when cjxl is not installed). null when missing.
  */
 async function jxlBytes(name, dir = IMAGES_DIR) {
@@ -633,16 +688,22 @@ async function encodeLossless(pngBuf, effort) {
 
 /**
  * Store a picture (Yukimi, Nov 24 2026: "after generating an image it directly writes the output as JPEG XL, never
- * PNG; PNG is only legacy"). pngBuf is the PNG as made (its text chunks and alpha stealth data are kept: lossless,
- * sfPN box). Writes x.jxl atomically and removes any x.png; a rewrite of an existing picture keeps its date created.
- * The PNG bytes go into the decoded cache with the JXL's mtime, so whatever reads the new picture next (previews,
- * metadata, the reply, a NovelAI upload) gets the original PNG without a decode.
- * Resolves { path (the stored file), pngPath (a PNG file of it), kind }. With no JPEG XL encoder on the host it
- * writes the PNG as before.
+ * PNG; PNG is only legacy"). buffer is the picture as made: a PNG, WebP or JPEG XL (#1156). Its text fields and
+ * alpha stealth data are kept (lossless pixels, sfMD box). A JXL is stored as it is (its boxes kept, sfFT set); a
+ * WebP / JPEG is encoded to JXL from its pixels with its fields; a PNG through cjxl, and its bytes go into the
+ * decoded cache with the JXL's mtime, so whatever reads the new picture next as PNG gets it without a decode.
+ * Writes x.jxl atomically and removes any x.png; a rewrite of an existing picture keeps its date created.
+ * Resolves { path (the stored file), pngPath (a PNG file of it; null for a WebP / JXL input: ask pngPath(name)
+ * only when a PNG is really needed), pixelPath (a file sharp reads), kind }. With no JPEG XL encoder on the host it
+ * writes a PNG.
  */
-async function writePicture(name, pngBuf, opts = {}) {
+async function writePicture(name, buffer, opts = {}) {
     const n = cleanName(name);
     if (!n || !isPngName(n)) throw new Error('writePicture: a gallery .png name is required');
+    const fmt = pictureMeta.formatOf(buffer);
+    if (!fmt) throw new Error('writePicture: not a PNG, WebP, JPEG XL or JPEG picture');
+    if (fmt !== 'png') return writeOtherPicture(n, buffer, fmt, opts);
+    const pngBuf = buffer;
     const dir = opts.dir || IMAGES_DIR;
     const pngP = path.join(dir, n);
     const jxlP = path.join(dir, jxlNameFor(n));
@@ -652,7 +713,7 @@ async function writePicture(name, pngBuf, opts = {}) {
     const jxl = await encodeLossless(pngBuf, effort);
     if (!jxl) {
         await fs.promises.writeFile(pngP, pngBuf);
-        return { path: pngP, pngPath: pngP, kind: 'png' };
+        return { path: pngP, pngPath: pngP, pixelPath: pngP, kind: 'png' };
     }
     const now = Date.now();
     const boxed = attachPngMetadata(jxl, pngBuf, { birthtimeMs: created || now, mtimeMs: now, effort });
@@ -670,9 +731,51 @@ async function writePicture(name, pngBuf, opts = {}) {
         notePngSize(n, now, pngBuf.length);
         if (cacheBytesKnown === null || (cacheBytesKnown += pngBuf.length) > CACHE_MAX_BYTES) void trimCache();
     } catch (_) {
-        return { path: jxlP, pngPath: await pngPath(n, dir), kind: 'jxl' };
+        return { path: jxlP, pngPath: await pngPath(n, dir), pixelPath: await pixelPath(n, dir), kind: 'jxl' };
     }
-    return { path: jxlP, pngPath: cached, kind: 'jxl' };
+    return { path: jxlP, pngPath: cached, pixelPath: sharpReadsJxl() ? jxlP : cached, kind: 'jxl' };
+}
+
+/** writePicture for a JXL (stored as it is) or a WebP / JPEG (encoded to JXL from its pixels, its fields kept). */
+async function writeOtherPicture(n, buffer, fmt, opts) {
+    const dir = opts.dir || IMAGES_DIR;
+    const pngP = path.join(dir, n);
+    const jxlP = path.join(dir, jxlNameFor(n));
+    const prior = locateSync(n, dir);
+    const created = prior ? createdMsSync(n, dir) : null;
+    const now = Date.now();
+    let jxl;
+    let effort = opts.effort || 0;
+    if (fmt === 'jxl') {
+        // as it is: only its times change (the effort it was made at stays when it said one)
+        const had = pictureMeta.jxlTimes(buffer);
+        if (!effort && had && had.effort) effort = had.effort;
+        jxl = buffer;
+    } else {
+        effort = effort || WRITE_EFFORT;
+        const fields = pictureMeta.readFields(buffer);
+        const icc = pictureMeta.hasIcc(buffer);
+        const raw = await pictureMeta.rgba(buffer);
+        try {
+            jxl = await pictureMeta.encode(raw, fields, 'jxl', { effort, icc: typeof icc === 'boolean' ? icc : undefined });
+        } catch (e) {
+            if (!e || e.code !== 'NO_JXL_ENCODER') throw e;
+            // no JPEG XL encoder on this host: a PNG of the pixels with the fields
+            const png = await pictureMeta.encode(raw, fields, 'png');
+            await fs.promises.writeFile(pngP, png);
+            return { path: pngP, pngPath: pngP, pixelPath: pngP, kind: 'png' };
+        }
+    }
+    const boxed = pictureMeta.jxlWithTimes(jxl, { birthtimeMs: created || now, mtimeMs: now, effort });
+    const tmp = `${jxlP}.${process.pid}.tmp`;
+    await fs.promises.writeFile(tmp, boxed);
+    await fs.promises.utimes(tmp, now / 1000, now / 1000);
+    await fs.promises.rename(tmp, jxlP);
+    if (prior && prior.kind === 'png') await fs.promises.unlink(pngP).catch(() => {});
+    // an older decoded copy is stale (its mtime no longer matches); dropped now so the cache does not hold it
+    fs.promises.unlink(cacheFileFor(n, dir)).catch(() => {});
+    if (sizesMap().delete(n)) scheduleSizesSave();
+    return { path: jxlP, pngPath: null, pixelPath: sharpReadsJxl() ? jxlP : null, kind: 'jxl' };
 }
 
 /** The picture's PNG bytes (original or rebuilt), or null. */
@@ -771,6 +874,7 @@ module.exports = {
     readFileTimesSync,
     createdMsSync,
     readPngMetadataBox,
+    readMetadataFields,
     rebuildPng,
     decodeJxlToPngBuffer,
     metadataChunks

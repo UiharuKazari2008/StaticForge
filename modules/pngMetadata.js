@@ -4,6 +4,7 @@ const zlib = require('zlib');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const imageStore = require('./imageStore');
+const pictureMeta = require('./pictureMeta');
 const { getResolutionFromDimensions } = require('./imageTools');
 const {
     signGeneratedImage,
@@ -86,6 +87,31 @@ const CRC32_TABLE = (() => {
     return table;
 })();
 
+/*
+ * Format-neutral since #1156 (Yukimi: no assumptions of PNG at any stage): every public method takes a PNG, WebP or
+ * JPEG XL picture (bytes, or a file path) and, where it returns a picture, returns the same format. PNG keeps its
+ * own code paths below (byte-identical to before); the other formats read and write their text fields through
+ * modules/pictureMeta.js (WebP: NovelAI's EXIF layout; JPEG XL: the sfMD box, legacy sfPN read too), and stealth
+ * data through raw RGBA pixels, re-encoded losslessly in the input's format.
+ */
+
+/** A picture's bytes: the buffer itself, or the file at a path (sync callers; prefer passing bytes). */
+function bytesSync(input) {
+    return typeof input === 'string' ? fs.readFileSync(input) : input;
+}
+
+async function bytesOf(input) {
+    return typeof input === 'string' ? fs.promises.readFile(input) : input;
+}
+
+/** 'webp' | 'jxl' | 'jpeg' for a picture that is not a PNG (null for a PNG or anything unknown: the PNG code runs). */
+function otherFormat(buf) {
+    const f = pictureMeta.formatOf(buf);
+    return f && f !== 'png' ? f : null;
+}
+
+const CONTENT_TYPES = { png: 'image/png', webp: 'image/webp', jxl: 'image/jxl', jpeg: 'image/jpeg' };
+
 /** Uint8Array view over a Buffer / typed array without copying (new Uint8Array(buffer) copies). */
 function asUint8View(buffer) {
     if (buffer instanceof Uint8Array) {
@@ -99,12 +125,37 @@ class PngMetadata {
         this.globalResources = globalResources;
     }
 
-    // Helper: Read PNG metadata
+    // Helper: Read a picture's metadata (PNG chunks; WebP EXIF; JPEG XL sfMD / legacy sfPN)
     readMetadata(buffer) {
+        buffer = bytesSync(buffer);
+        const fmt = otherFormat(buffer);
+        if (fmt) return this._readOtherMetadata(buffer, fmt);
+        return this._metadataFromChunks(this.extractChunks(buffer));
+    }
+
+    /** readMetadata for a WebP / JPEG XL / JPEG: { tEXt: fields, _encoding } (a legacy sfPN JXL reads as its PNG). */
+    _readOtherMetadata(buffer, fmt) {
+        if (fmt === 'jxl' && !pictureMeta.readMd(buffer)) {
+            let stored = null;
+            try { stored = imageStore.readPngMetadataBox(buffer); } catch (_) { stored = null; }
+            if (stored) {
+                return this._metadataFromChunks(stored.map((c) => ({
+                    name: c.raw.toString('latin1', 4, 8),
+                    data: c.raw.subarray(8, c.raw.length - 4)
+                })));
+            }
+        }
+        const fields = pictureMeta.readFields(buffer);
+        const result = {};
+        if (fields.length) result.tEXt = pictureMeta.fieldsToObject(fields);
+        if (result.tEXt && result.tEXt.Comment) result._encoding = fmt === 'jxl' ? 'JXL' : 'EXIF';
+        return result;
+    }
+
+    _metadataFromChunks(chunks) {
         const result = {};
         // Records which chunk type carried the "Comment" payload (JtEXt/JiTXt/JzTXt)
         let commentEncoding = null;
-        const chunks = this.extractChunks(buffer);
         chunks.forEach(chunk => {
             switch (chunk.name) {
                 case 'tEXt':
@@ -248,8 +299,9 @@ class PngMetadata {
     // Returns a readMetadata-shaped object ({ tEXt, _encoding }) or null.
     async readStealthMetadata(buffer) {
         try {
-            const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-            const { width, height, channels } = info;
+            buffer = await bytesOf(buffer);
+            // raw RGBA of any format (a JXL through djxl when sharp cannot read it)
+            const { data, width, height, channels } = await pictureMeta.rgba(buffer);
             let res = null;
             if (channels >= 4) {
                 res = this._extractStealthPayload(data, width, height, channels, 'alpha');
@@ -283,6 +335,7 @@ class PngMetadata {
 
     // Unified async reader: prefer PNG text chunks, fall back to stealth LSB steganography.
     async readAnyMetadata(buffer) {
+        buffer = await bytesOf(buffer);
         const meta = this.readMetadata(buffer);
         if (meta && meta.tEXt && meta.tEXt.Comment) {
             return meta;
@@ -298,6 +351,7 @@ class PngMetadata {
     // Helper: Update PNG metadata with forge_data
     updateMetadata(imageBuffer, forgeData) {
         try {
+            imageBuffer = bytesSync(imageBuffer);
             const metadata = this.readMetadata(imageBuffer);
             let existingMetadata = {};
             
@@ -419,9 +473,28 @@ class PngMetadata {
         );
     }
 
-    // Helper: Insert text chunk into PNG
+    /**
+     * insertTextChunk for a WebP / JPEG XL / JPEG: the field replaced where it was (its last one, as the PNG code
+     * replaces the last tEXt chunk of that keyword) or added at the end; a Comment also sets Title.
+     */
+    _insertField(imageBuffer, keyword, text) {
+        const fields = pictureMeta.readFields(imageBuffer);
+        const set = (k, v) => {
+            let at = -1;
+            fields.forEach((f, i) => { if (f[0] === k) at = i; });
+            if (at >= 0) fields[at] = [k, v];
+            else fields.push([k, v]);
+        };
+        set(keyword, String(text));
+        if (keyword === 'Comment') set('Title', STANDARD_PNG_TITLE);
+        return pictureMeta.withFields(imageBuffer, fields);
+    }
+
+    // Helper: Insert a text field (PNG tEXt chunk; WebP EXIF; JPEG XL sfMD)
     insertTextChunk(imageBuffer, keyword, text) {
     try {
+        imageBuffer = bytesSync(imageBuffer);
+        if (otherFormat(imageBuffer)) return this._insertField(imageBuffer, keyword, text);
         const data = asUint8View(imageBuffer);
         let commentStart = -1;
         let commentEnd = -1;
@@ -508,8 +581,10 @@ class PngMetadata {
         return (crc ^ 0xFFFFFFFF) >>> 0;
     }
 
-    // Utility: Strip all text chunks (tEXt, iTXt, zTXt) from a PNG buffer
+    // Utility: Strip all text chunks (tEXt, iTXt, zTXt) from a PNG buffer; every text field from a WebP / JPEG XL
     stripPngTextChunks(buffer) {
+        buffer = bytesSync(buffer);
+        if (otherFormat(buffer)) return pictureMeta.withFields(buffer, []);
         // PNG header is 8 bytes
         if (!buffer || buffer.length < 8 || buffer.readUInt32BE(0) !== 0x89504e47) return buffer;
         const PNG_HEADER = buffer.slice(0, 8);
@@ -571,15 +646,14 @@ class PngMetadata {
                 
                 console.log(`📋 Detected expanded image, loading original: ${originalFilename}`);
                 
-                // the original may be stored as x.jxl (#1134): its PNG bytes, rebuilt
-                const originalStored = imageStore.cleanName(originalFilename)
-                    ? imageStore.existsSync(originalFilename, imagesDir)
-                    : fs.existsSync(originalPath);
+                // the original may be stored as x.jxl (#1134): its stored bytes (any format reads, #1156)
+                const originalLoc = imageStore.cleanName(originalFilename)
+                    ? imageStore.locateSync(originalFilename, imagesDir)
+                    : null;
+                const originalStored = imageStore.cleanName(originalFilename) ? !!originalLoc : fs.existsSync(originalPath);
                 if (originalStored) {
                     try {
-                        const originalBuffer = imageStore.cleanName(originalFilename)
-                            ? await imageStore.readPng(originalFilename, imagesDir)
-                            : await fs.promises.readFile(originalPath);
+                        const originalBuffer = await fs.promises.readFile(originalLoc ? originalLoc.path : originalPath);
                         if (!originalBuffer) throw new Error(`${originalFilename} is gone`);
                         const originalMetadata = await this.readAnyMetadata(originalBuffer);
                         if (originalMetadata.tEXt && originalMetadata.tEXt.Comment) {
@@ -1301,6 +1375,7 @@ class PngMetadata {
     // New comprehensive metadata extraction function for download URL functionality
     async extractMetadataSummary(buffer, filename = null) {
         try {
+            buffer = await bytesOf(buffer);
             const metadata = await this.readAnyMetadata(buffer);
         
         if (!metadata.tEXt || !metadata.tEXt.Comment) {
@@ -1417,7 +1492,7 @@ class PngMetadata {
             _encoding: metadata._encoding || 'JtEXt',
             filename: filename,
             file_size: buffer.length,
-            content_type: 'image/png'
+            content_type: CONTENT_TYPES[pictureMeta.formatOf(buffer)] || 'image/png'
         };
         
     } catch (error) {
@@ -1519,6 +1594,8 @@ class PngMetadata {
     // Helper: Copy metadata from source image to target image buffer
     copyMetadataToImage(sourceBuffer, targetBuffer, additionalForgeData = {}) {
         try {
+            sourceBuffer = bytesSync(sourceBuffer);
+            targetBuffer = bytesSync(targetBuffer);
             // Read metadata from source image
             const sourceMetadata = this.readMetadata(sourceBuffer);
 
@@ -1588,6 +1665,7 @@ class PngMetadata {
     // Helper: Update metadata with existing metadata object (internal function)
     updateMetadataWithExisting(imageBuffer, existingMetadata) {
         try {
+            imageBuffer = bytesSync(imageBuffer);
             // Create new Comment chunk with the merged metadata
             const commentText = JSON.stringify(existingMetadata);
 
@@ -1604,6 +1682,11 @@ class PngMetadata {
      * Row-major RGB bytes (H×W×3) matching numpy image_array[:,:,:3].tobytes().
      */
     async extractRgbBytes(buffer) {
+        buffer = await bytesOf(buffer);
+        // a JXL when sharp cannot read JPEG XL: its pixels through djxl
+        if (pictureMeta.formatOf(buffer) === 'jxl' && !imageStore.sharpReadsJxl()) {
+            buffer = await imageStore.decodeJxlToPngBuffer(buffer);
+        }
         // libvips drops the alpha off the main thread. The per-pixel copy below took
         // ~25ms per call on the event loop, up to 4 calls per generation.
         const rgbOut = await sharp(buffer).removeAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -1622,13 +1705,26 @@ class PngMetadata {
     }
 
     /**
-     * Write stealth_pngcomp into alpha LSB. Returns a new PNG buffer (text chunks are not preserved).
-     * @param {Buffer} buffer
+     * Write stealth_pngcomp into alpha LSB. Returns a new picture in the input's format, losslessly re-encoded
+     * (PNG, WebP or JPEG XL; text fields are not preserved). A JPEG cannot carry it (no alpha, lossy).
+     * @param {Buffer|string} buffer
      * @param {object} outer - { Description, Software, Source, 'Generation time', Comment: string }
      */
     async writeStealthPngComp(buffer, outer) {
-        const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-        const { width, height, channels } = info;
+        buffer = await bytesOf(buffer);
+        const fmt = otherFormat(buffer);
+        if (fmt === 'jpeg') throw new Error('writeStealthPngComp: a JPEG has no lossless alpha channel');
+        let data;
+        let width;
+        let height;
+        let channels;
+        if (fmt) {
+            ({ data, width, height, channels } = await pictureMeta.rgba(buffer));
+        } else {
+            const out = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+            data = out.data;
+            ({ width, height, channels } = out.info);
+        }
         if (channels < 4) {
             throw new Error('writeStealthPngComp requires an alpha channel');
         }
@@ -1669,6 +1765,11 @@ class PngMetadata {
             pixels[pi] = (pixels[pi] & 0xfe) | bitStream[index];
         }
 
+        if (fmt) {
+            const icc = pictureMeta.hasIcc(buffer);
+            return pictureMeta.encode({ data: pixels, width, height, channels: 4 }, [], fmt,
+                { icc: typeof icc === 'boolean' ? icc : undefined });
+        }
         return sharp(pixels, { raw: { width, height, channels: 4 } }).png().toBuffer();
     }
 
@@ -1677,6 +1778,7 @@ class PngMetadata {
      * @returns {{ buffer: Buffer, originComment: string, embedded: boolean, wroteStealth: boolean, textMeta: object }}
      */
     async ensureOriginCommentInStealth(imageBuffer) {
+        imageBuffer = await bytesOf(imageBuffer);
         const textMeta = this.readMetadata(imageBuffer);
         const textComment = textMeta?.tEXt?.Comment || '';
 
@@ -1731,6 +1833,7 @@ class PngMetadata {
      * Replace tEXt Comment with stealth origin Comment (exact string). For clipboard / export.
      */
     async restoreOriginCommentFromStealth(imageBuffer) {
+        imageBuffer = await bytesOf(imageBuffer);
         const stealth = await this.readStealthMetadata(imageBuffer);
         if (!stealth?.tEXt?.Comment) {
             return { buffer: imageBuffer, restored: false };
@@ -1761,6 +1864,7 @@ class PngMetadata {
      * Embed/confirm origin Comment in stealth, write forge_data, then attest with forge_signed_hash.
      */
     async finalizeWithForgeData(imageBuffer, forgeData) {
+        imageBuffer = await bytesOf(imageBuffer);
         const ensured = await this.ensureOriginCommentInStealth(imageBuffer);
         let buffer = ensured.buffer;
         const originComment = ensured.originComment || '';
@@ -1804,6 +1908,11 @@ class PngMetadata {
      * @returns {{ ok: boolean, reason: string|null, source: 'stealth'|'text'|null }}
      */
     async verifyNovelAiSignature(imageBuffer) {
+        try {
+            imageBuffer = await bytesOf(imageBuffer);
+        } catch (e) {
+            return { ok: false, reason: 'read_failed', source: null };
+        }
         let rgb;
         try {
             rgb = await this.extractRgbBytes(imageBuffer);
@@ -1875,6 +1984,7 @@ class PngMetadata {
      * Verify forge_signed_hash on an image buffer.
      */
     async verifyForgeSignature(imageBuffer) {
+        imageBuffer = await bytesOf(imageBuffer);
         const textMeta = this.readMetadata(imageBuffer);
         if (!textMeta?.tEXt?.Comment) return { ok: false, reason: 'no_comment' };
         let comment;
