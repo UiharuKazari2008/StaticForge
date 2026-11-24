@@ -608,3 +608,175 @@
 .cd-table .cd-w130 { width: 130px; }
 .cd-table .cd-w50 { width: 50px; }
 .cd-table .cd-w90 { width: 90px; }
+
+/* the colours and the mono font of the session view's own parts (one token block) */
+#mmcConsole_claudedesk,
+.cd-win {
+    --cd-c1: #b86b6b;
+    --cd-c2: #fde4e4;
+    --cd-c3: #5c0000;
+    --cd-c4: #e3e3e3;
+    --cd-c5: #444;
+    --cd-c6: #a8d8eb;
+    --cd-c7: #eaf6fd;
+    --cd-c8: #6d6d6d;
+    --cd-c9: #c8c8c8;
+    --cd-c10: #fff;
+    --cd-c11: #fde8e8;
+    --cd-c12: #6b1111;
+    --cd-c13: #e6f6e6;
+    --cd-c14: #0f4d12;
+    --cd-c15: #000;
+    --cd-mono: Consolas, "Lucida Console", monospace;
+}
+
+/* Fleet's cost warning (extra usage on): the error information bar, red */
+#mmcConsole_claudedesk .cd-infobar.is-cost {
+    border-bottom-color: var(--cd-c1);
+    background: var(--cd-c2);
+    color: var(--cd-c3);
+}
+
+/* the session view's options under the title */
+#mmcConsole_claudedesk .cd-showbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+    padding: 2px 10px 3px;
+    border-bottom: 1px solid var(--cd-c4);
+}
+
+#mmcConsole_claudedesk .cd-showbar .cd-showopt {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* a folded thinking block / file edit: one row that opens in a window */
+#mmcConsole_claudedesk .cd-fold {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 12px;
+    padding: 1px 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: var(--cd-c5);
+    cursor: pointer;
+}
+
+#mmcConsole_claudedesk .cd-fold:hover,
+#mmcConsole_claudedesk .cd-fold:focus-visible {
+    border-color: var(--cd-c6);
+    background: var(--cd-c7);
+    outline: 0;
+}
+
+#mmcConsole_claudedesk .cd-fold > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+#mmcConsole_claudedesk .cd-block {
+    margin-left: 12px;
+}
+
+#mmcConsole_claudedesk .cd-fold-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 4px;
+    border: 0;
+    background: none;
+    color: var(--cd-c5);
+    font: inherit;
+    cursor: pointer;
+}
+
+#mmcConsole_claudedesk .cd-fold-head > img {
+    width: 16px;
+    height: 16px;
+}
+
+#mmcConsole_claudedesk .cd-block:not(.is-open) > .cd-fold-body {
+    display: none;
+}
+
+#mmcConsole_claudedesk .cd-block > .cd-fold-body {
+    margin: 2px 0 0 22px;
+}
+
+/* removed / added text of an edit (the item window and the inline edit) */
+.cd-diff {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin: 0 0 8px;
+}
+
+.cd-diff.is-one {
+    grid-template-columns: 1fr;
+}
+
+.cd-diff-col {
+    min-width: 0;
+}
+
+.cd-diff-head,
+.cd-diff-n {
+    margin: 0 0 2px;
+    color: var(--cd-c8);
+    font-size: 11px;
+}
+
+.cd-diff-body {
+    overflow-x: auto;
+    border: 1px solid var(--cd-c9);
+    background: var(--cd-c10);
+    font: 11px var(--cd-mono);
+}
+
+.cd-dl {
+    padding: 0 4px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.cd-dl.is-del {
+    background: var(--cd-c11);
+    color: var(--cd-c12);
+}
+
+.cd-dl.is-add {
+    background: var(--cd-c13);
+    color: var(--cd-c14);
+}
+
+/* the item window */
+.cd-win .cd-win-content {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+}
+
+.cd-win .cd-viewer {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 8px 10px;
+    background: var(--cd-c10);
+    color: var(--cd-c15);
+    outline: 0;
+}
+
+.cd-win .cd-viewer-path {
+    margin: 0 0 8px;
+    font-weight: bold;
+    overflow-wrap: anywhere;
+}
+
+.cd-win .cd-viewer-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

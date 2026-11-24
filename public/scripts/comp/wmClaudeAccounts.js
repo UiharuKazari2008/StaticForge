@@ -352,6 +352,7 @@
 
     const MODEL_CHOICES = [['', 'Account default'], ['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku'], ['fable', 'Fable']];
     const EFFORT_CHOICES = [['', 'Account default'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max']];
+    const PRIORITY_CHOICES = [['high', 'High'], ['normal', 'Normal'], ['low', 'Low']];
     const MODE_CHOICES = [['', 'Account default'], ['default', 'Ask first'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan'], ['auto', 'Auto'], ['dontAsk', 'Do not ask'], ['bypassPermissions', 'Bypass permissions']];
     const withCurrent = (list, v) => (v && !list.some(([k]) => k === v) ? list.concat([[v, v]]) : list);
     const pctText = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? '' : String(Math.round(Number(v))));
@@ -369,6 +370,7 @@
             draft: {
                 name: (fa && fa.name) || acc.name || '',
                 preferred: !!st.preferred,
+                priority: st.priority || 'normal',
                 maxWeeklyPct: pctText(st.maxWeeklyPct),
                 maxSessionPct: pctText(st.maxSessionPct),
                 defaultModel: st.defaultModel || '',
@@ -392,16 +394,18 @@
         const model = withCurrent(MODEL_CHOICES, d.defaultModel);
         const effort = withCurrent(EFFORT_CHOICES, d.defaultEffort);
         const mode = withCurrent(MODE_CHOICES, d.defaultMode);
+        const prio = PRIORITY_CHOICES;
         panel.innerHTML = `<div class="wm-form-hdr wca-sub-hdr">${esc((acc && acc.name) || 'Account')}: Settings</div>
             <div class="wca-form">
                 ${ui.row('Name', ui.edit('wca-f-name', d.name, 'maxlength="60" data-f="name"'), { for: 'wca-f-name' })}
                 ${ui.check('preferred', 'Preferred account', d.preferred, 'data-f="preferred"')}
+                ${ui.row('Priority', ui.comboHtml('priority', label(prio, d.priority)), { wide: true })}
                 ${ui.row('Max weekly usage %', ui.edit('wca-f-week', d.maxWeeklyPct, 'inputmode="numeric" maxlength="3" placeholder="None" data-f="maxWeeklyPct"'), { for: 'wca-f-week', wide: true })}
                 ${ui.row('Max session usage %', ui.edit('wca-f-sess', d.maxSessionPct, 'inputmode="numeric" maxlength="3" placeholder="None" data-f="maxSessionPct"'), { for: 'wca-f-sess', wide: true })}
                 ${ui.row('Default model', ui.comboHtml('model', label(model, d.defaultModel)), { wide: true })}
                 ${ui.row('Default effort', ui.comboHtml('effort', label(effort, d.defaultEffort)), { wide: true })}
                 ${ui.row('Permission mode', ui.comboHtml('mode', label(mode, d.defaultMode)), { wide: true })}
-                ${ui.note('Only one account can be preferred. Leave a maximum blank for no limit: the account is then used until it is out.')}
+                ${ui.note('Only one account can be preferred. A lower priority account gets work only after the higher ones. Leave a maximum blank for no limit: the account is then used until it is out.')}
                 <div class="wac-note wca-form-err" hidden></div>
             </div>`;
         panel.dataset.h = 'settings';
@@ -410,6 +414,7 @@
             if (inp.type === 'checkbox') inp.addEventListener('change', () => { d.preferred = inp.checked; });
             else inp.addEventListener('input', () => { d[inp.dataset.f] = inp.value; });
         });
+        ui.bindCombo(panel.querySelector('[data-act="priority"]'), prio, d.priority, (v) => { d.priority = v; });
         ui.bindCombo(panel.querySelector('[data-act="model"]'), model, d.defaultModel, (v) => { d.defaultModel = v; });
         ui.bindCombo(panel.querySelector('[data-act="effort"]'), effort, d.defaultEffort, (v) => { d.defaultEffort = v; });
         ui.bindCombo(panel.querySelector('[data-act="mode"]'), mode, d.defaultMode, (v) => { d.defaultMode = v; });
@@ -449,7 +454,7 @@
         e.saving = true;
         try {
             const r = await send('claude_fleet_account', {
-                action: 'save', index: e.index, name, preferred: !!d.preferred, maxWeeklyPct: wk.value, maxSessionPct: se.value,
+                action: 'save', index: e.index, name, preferred: !!d.preferred, priority: d.priority || 'normal', maxWeeklyPct: wk.value, maxSessionPct: se.value,
                 defaultModel: d.defaultModel || '', defaultEffort: d.defaultEffort || '', defaultMode: d.defaultMode || ''
             });
             take(r);
@@ -673,8 +678,19 @@
         return { level: bad ? 'bad' : 'warn', text };
     }
     const noticeLine = (n, who) => `<div class="wca-notice wca-notice-${n.level}" role="status"><span class="wca-notice-ico">${sh.art.img(n.level === 'bad' ? 'msgbox-error' : 'msgbox-warning')}</span><span class="wca-notice-text">${who ? `<b>${esc(who)}:</b> ` : ''}${esc(n.text)}</span></div>`;
+    /** Extra usage is on (availability.costWarning): billed past the plan's limits, a red notice whatever the limits say. */
+    function costOf(fa) {
+        const t = fa && fa.availability && fa.availability.costWarning ? String(fa.availability.costWarning).trim() : '';
+        return t ? { level: 'bad', text: t } : null;
+    }
     function noticesHtml() {
-        return data.accounts.map((a) => { const fa = fleetAcc(a.index); const n = noticeOf(fa); return n ? noticeLine(n, (fa && fa.name) || a.name) : ''; }).join('');
+        return data.accounts.map((a) => {
+            const fa = fleetAcc(a.index);
+            const who = (fa && fa.name) || a.name;
+            const n = noticeOf(fa);
+            const cost = costOf(fa);
+            return (n ? noticeLine(n, who) : '') + (cost ? noticeLine(cost, who) : '');
+        }).join('');
     }
 
     function accountRow(a) {
@@ -691,13 +707,15 @@
         if (fa && fa.moved) lines.push(`<div class="wac-line">Own Remote Control: ${esc(FLEET_LABEL[fa.state] || fa.state)}</div>`);
         const note = noticeOf(fa);
         if (note) lines.push(noticeLine(note));
+        const cost = costOf(fa);
+        if (cost) lines.push(noticeLine(cost));
         lines.push(usageHtml(a));
         lines.push(`<div class="wac-line wca-muted">Engine key ${esc(a.fingerprint || '')}</div>`);
         const dot = fa && fa.moved ? (FLEET_DOT[fa.state] || 'off') : a.active ? (status.state === 'connected' ? 'ok' : status.state === 'error' ? 'bad' : 'warn') : 'off';
         return `<div class="wac-row${sel === a.index ? ' is-selected' : ''}" role="option" aria-selected="${sel === a.index}" data-index="${a.index}">
             <span class="wac-dot wac-dot-${dot}"></span>
             <div class="wac-main">
-                <div class="wac-name">${esc((fa && fa.name) || a.name)}${a.active ? ' <span class="wca-badge">Active</span>' : ''}${a.onHost ? ' <span class="wca-badge wca-badge-host">On host</span>' : ''}${fa && fa.settings && fa.settings.preferred ? ' <span class="wca-badge wca-badge-pref">Preferred</span>' : ''}</div>
+                <div class="wac-name">${esc((fa && fa.name) || a.name)}${a.active ? ' <span class="wca-badge">Active</span>' : ''}${a.onHost ? ' <span class="wca-badge wca-badge-host">On host</span>' : ''}${fa && fa.settings && fa.settings.preferred ? ' <span class="wca-badge wca-badge-pref">Preferred</span>' : ''}${fa && fa.settings && fa.settings.priority === 'high' ? ' <span class="wca-badge wca-badge-pref">High</span>' : ''}${fa && fa.settings && fa.settings.priority === 'low' ? ' <span class="wca-badge">Low</span>' : ''}</div>
                 ${lines.join('')}
             </div>
         </div>`;

@@ -124,6 +124,9 @@ body.desktop-mode:not(.windows-classic-theme) :not(html):not(.has-custom-scrollb
     background-position: center, 0 0;
     background-origin: padding-box, border-box;
     background-clip: border-box;
+    /* never shorter than 24 px on a long list, so it can be grabbed; the browser maps the whole track to the whole content */
+    min-height: 24px;
+    min-width: 24px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :not(html):not(.has-custom-scrollbar):not(.scrollable-content):not(.form-section-scroll):not(.modal-window-title-toolbar)::-webkit-scrollbar-thumb:vertical {

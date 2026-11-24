@@ -50,6 +50,10 @@
     const ITEMS = '/static_images/vista-cpl/items';
     const FOLDER16 = `${VI}/explorer/folder-16.png`;
     const PAGE = 50;
+    const MSG_PAGE = 40; // messages a session view loads at a time
+    const MSG_MAX = 300; // message rows kept in the page; the far end is dropped and read again on scroll back
+    const SHOW_ITEMS = [['thinking', 'Show Thinking'], ['edits', 'Show File Edits'], ['tools', 'Show Tool Calls'], ['results', 'Show Tool Results']];
+    const SHOW_DEFAULT = { thinking: false, edits: false, tools: false, results: false };
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
@@ -112,7 +116,11 @@
             usageLoaded: false,
             usageError: '',
             sup: { loaded: false, data: null, draft: null, sel: '', busy: '', error: '', unavailable: false, lastReviewId: null },
-            liveKey: ''
+            liveKey: '',
+            show: Object.assign({}, SHOW_DEFAULT), // what the session view shows (saved per user: registry ShowView)
+            winSeq: 0,
+            wins: new Set(), // the item windows (a folded thinking / edit in full)
+            engines: null // claude_fleet_engines, read when a wizard or the queue needs it
         };
     }
     let S = blank();
@@ -246,9 +254,11 @@
             const d = (msg && msg.data) || msg || {};
             const chat = S.chats.get(d.id);
             if (!chat || !Array.isArray(d.messages)) return;
-            const seen = new Set(chat.messages.map((m) => `${m.at}:${m.kind}:${m.toolUseId || ''}`));
-            d.messages.forEach((m) => { if (!seen.has(`${m.at}:${m.kind}:${m.toolUseId || ''}`)) chat.messages.push(m); });
             chat.end = d.end;
+            // the far end is out of the page (the reader scrolled up through 300 rows): the push only moves the end
+            if (chat.tailCut) return;
+            const seen = new Set(chat.messages.map(msgKey));
+            shownOnly(d.messages).forEach((m) => { if (!seen.has(msgKey(m))) { chat.messages.push(m); seen.add(msgKey(m)); } });
             if (S.c && S.c.node === `t:${d.id}`) appendChat(d.id);
         }, opts);
         // the server forgets a dropped socket's subscriptions and watches
@@ -335,34 +345,115 @@
         repaint();
     }
 
-    async function loadChat(id, earlier) {
+    /** What the view shows, as sent with every transcript request and watch. */
+    const showNow = () => ({ thinking: !!S.show.thinking, edits: !!S.show.edits, tools: !!S.show.tools, results: !!S.show.results });
+    /** A message's identity (a line's byte offset and its part), the same on a page, a push and in the DOM. */
+    const msgKey = (m) => `${m.at}:${m.part == null ? '' : m.part}:${m.kind}:${m.toolUseId || ''}`;
+    /** A server that does not know `show` yet answers in full: the tool rows the view hides are left out here. */
+    const shownOnly = (list) => (list || []).filter((m) => !((m.kind === 'tool_use' && !S.show.tools) || (m.kind === 'tool_result' && !S.show.results)));
+    const logOf = (id) => (S.c && S.c.node === `t:${id}` ? S.c.modal.querySelector('.cd-chat-log:not(.cd-agent-log)') : null);
+
+    /** Drop whole lines from the top / the end until at most MSG_MAX rows are left. */
+    function trimRows(chat, fromEnd) {
+        const list = chat.messages;
+        if (list.length <= MSG_MAX) return;
+        if (fromEnd) {
+            list.length = MSG_MAX;
+            chat.tailCut = true;
+            chat.fwd = null;
+        } else {
+            let drop = list.length - MSG_MAX;
+            while (drop < list.length && list[drop - 1].at === list[drop].at) drop += 1;
+            list.splice(0, drop);
+            if (list.length) { chat.start = list[0].at; chat.more = true; }
+        }
+    }
+
+    /**
+     * The session's newest page (default), the page before the first row (earlier), or the page after the last
+     * row once the end was dropped (later). One page is MSG_PAGE rows; the page keeps at most MSG_MAX.
+     */
+    async function loadChat(id, earlier, later) {
         let chat = S.chats.get(id);
-        if (!chat) { chat = { messages: [], start: 0, end: 0, more: false, loading: false, error: '', row: rowOf(id) }; S.chats.set(id, chat); }
-        if (chat.loading) return;
+        if (!chat) { chat = { messages: [], start: 0, end: 0, more: false, loading: false, error: '', row: rowOf(id), gen: 0, tailCut: false }; S.chats.set(id, chat); }
+        if (chat.loading && (earlier || later)) return;
+        const gen = earlier || later ? chat.gen : ++chat.gen; // a newest read supersedes anything in flight
         chat.loading = true;
+        const show = showNow();
         try {
-            const r = await send('claude_desk_transcript', earlier ? { id, before: chat.start, limit: 80 } : { id, limit: 80 });
             if (earlier) {
-                chat.messages = (r.messages || []).concat(chat.messages);
+                const r = await send('claude_desk_transcript', { id, before: chat.start, limit: MSG_PAGE, show });
+                if (gen !== chat.gen) return;
+                const seen = new Set(chat.messages.map(msgKey));
+                const fresh = shownOnly(r.messages).filter((m) => !seen.has(msgKey(m)));
+                chat.more = !!r.more && r.start < chat.start;
                 chat.start = r.start;
-                chat.more = r.more;
+                chat.messages = fresh.concat(chat.messages);
+                trimRows(chat, true);
+            } else if (later) {
+                const last = chat.messages[chat.messages.length - 1];
+                const r = await send('claude_desk_transcript', { id, since: chat.fwd != null ? chat.fwd : (last ? last.at : chat.end), show });
+                if (gen !== chat.gen) return;
+                const seen = new Set(chat.messages.map(msgKey));
+                const fresh = shownOnly(r.messages).filter((m) => !seen.has(msgKey(m)));
+                chat.messages = chat.messages.concat(fresh.slice(0, MSG_PAGE));
+                // read everything the chunk held: the next read starts where it ended (rows hidden by the view cost no loop)
+                chat.fwd = fresh.length <= MSG_PAGE ? r.end : null;
+                if (fresh.length <= MSG_PAGE && r.end >= chat.end) { chat.tailCut = false; chat.fwd = null; }
+                trimRows(chat, false);
             } else {
-                chat.messages = r.messages || [];
+                const r = await send('claude_desk_transcript', { id, limit: MSG_PAGE, show });
+                if (gen !== chat.gen) return;
+                chat.messages = shownOnly(r.messages);
                 chat.start = r.start;
                 chat.end = r.end;
                 chat.more = r.more;
+                chat.tailCut = false;
+                chat.stick = true;
             }
             chat.error = '';
-        } catch (e) { chat.error = errText(e); }
-        chat.loading = false;
-        if (!earlier) await watch(id);
+        } catch (e) { if (gen === chat.gen) chat.error = errText(e); } finally { if (gen === chat.gen) chat.loading = false; }
+        if (gen !== chat.gen) return;
+        if (!earlier && !later) await watch(id, true);
         if (S.c && S.c.node === `t:${id}`) {
-            const pane = S.c.modal.querySelector('.cd-chat-log');
-            const keep = earlier && pane ? pane.scrollHeight - pane.scrollTop : null;
-            S.c.render();
-            const log = S.c.modal.querySelector('.cd-chat-log');
-            if (log) log.scrollTop = keep != null ? log.scrollHeight - keep : log.scrollHeight;
+            if (earlier || later) redrawLog(id);
+            else S.c.render();
         }
+    }
+
+    /**
+     * The log drawn again from the page's rows with the reader's place kept: the first row in view keeps its
+     * distance from the top (or the end stays in view when the reader was there).
+     */
+    function redrawLog(id) {
+        const pane = logOf(id);
+        const chat = S.chats.get(id);
+        if (!pane || !chat) return;
+        const top = pane.getBoundingClientRect().top;
+        let key = '';
+        let off = 0;
+        if (!chat.stick) {
+            const rows = pane.querySelectorAll('[data-k]');
+            for (let i = 0; i < rows.length; i += 1) {
+                const r = rows[i].getBoundingClientRect();
+                if (r.bottom > top + 1) { key = rows[i].dataset.k; off = r.top - top; break; }
+            }
+        }
+        pane.innerHTML = logInner(chat, id);
+        const row = key ? Array.from(pane.querySelectorAll('[data-k]')).find((n) => n.dataset.k === key) : null;
+        if (row) pane.scrollTop += row.getBoundingClientRect().top - top - off;
+        else if (chat.stick) pane.scrollTop = pane.scrollHeight;
+        delete S.c.modal.querySelector('.mmc-result').dataset.html;
+        void pageMore(id, pane);
+    }
+
+    /** More rows are read while the reader is near the end that has more, or the page is too short to scroll. */
+    function pageMore(id, pane) {
+        const chat = S.chats.get(id);
+        if (!chat || chat.loading || chat.error || !pane) return;
+        const room = pane.scrollHeight - pane.clientHeight;
+        if (chat.more && (pane.scrollTop < 160 || room <= 4)) void loadChat(id, true);
+        else if (chat.tailCut && room - pane.scrollTop < 160) void loadChat(id, false, true);
     }
 
     // ---- a session's details: background agents and tasks (claude_desk_session detail / agent_page / task_output) ----
@@ -400,8 +491,9 @@
         pg.loading = true;
         detailBoxes(id);
         try {
-            const r = unwrap(await send('claude_desk_session', earlier ? { action: 'agent_page', id, agentId, before: pg.start, limit: 80 } : { action: 'agent_page', id, agentId, limit: 80 }), 'messages');
-            pg.messages = earlier ? (r.messages || []).concat(pg.messages) : (r.messages || []);
+            const show = showNow();
+            const r = unwrap(await send('claude_desk_session', earlier ? { action: 'agent_page', id, agentId, before: pg.start, limit: MSG_PAGE, show } : { action: 'agent_page', id, agentId, limit: MSG_PAGE, show }), 'messages');
+            pg.messages = earlier ? shownOnly(r.messages).concat(pg.messages) : shownOnly(r.messages);
             pg.start = r.start;
             if (!earlier) pg.end = r.end;
             pg.more = !!r.more;
@@ -434,11 +526,12 @@
     }
 
     /** New messages of the open session are pushed to this window (one session at a time). */
-    async function watch(id) {
-        if (S.watching === id) return;
+    async function watch(id, again) {
+        if (S.watching === id && !again) return;
         const chat = S.chats.get(id);
         try {
-            await send('claude_desk_watch', { id, from: chat ? chat.end : undefined });
+            // the watch is told what the view shows, so a push carries only that (a new view is a new watch)
+            await send('claude_desk_watch', { id, from: chat ? chat.end : undefined, show: showNow() });
             S.watching = id;
         } catch (_) { S.watching = null; }
     }
@@ -495,6 +588,10 @@
         return `Resets ${new Date(l.resetsAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
     }
     const isPreferred = (idx) => { const f = fleetOf(idx); return !!(f && f.settings && f.settings.preferred); };
+    const PRIORITY = [['high', 'High'], ['normal', 'Normal'], ['low', 'Low']];
+    /** 'High' / 'Low' next to the account (normal is not worth a word). */
+    const fleetTags = (f) => [f.settings && f.settings.preferred ? 'Preferred' : '', f.settings && f.settings.priority === 'high' ? 'High' : (f.settings && f.settings.priority === 'low' ? 'Low' : '')].filter(Boolean).join(', ');
+    const priorityTag = (idx) => { const f = fleetOf(idx); const p = f && f.settings && f.settings.priority; return p === 'high' ? 'High priority' : (p === 'low' ? 'Low priority' : ''); };
 
     /**
      * Vista's information bar for an account that nears a limit or is no longer free to schedule work
@@ -504,6 +601,14 @@
     function availBar(f, withName) {
         const av = f && f.availability;
         if (!av) return '';
+        return limitBar(f, av, withName) + costBar(av, f, withName);
+    }
+    /** Extra usage is on: work past the plan's limits is billed (availability.costWarning): a red bar, whatever the limits say. */
+    function costBar(av, f, withName) {
+        const text = av && av.costWarning ? String(av.costWarning) : '';
+        return text ? `<div class="cd-infobar is-error is-cost" role="alert"><img src="${VI}/error-16.png" alt=""><span>${withName && f ? `<b>${esc(f.name)}</b>: ` : ''}${esc(text)}</span></div>` : '';
+    }
+    function limitBar(f, av, withName) {
         const bad = av.state === 'near' || av.state === 'capped' || av.state === 'exhausted' || av.schedulable === false;
         if (!bad) return '';
         const icon = av.state === 'near' && av.schedulable !== false ? 'warning' : 'error';
@@ -537,7 +642,7 @@
         const extra = x && x.enabled ? `<p class="mmc-hint">Extra usage is on${x.limitReached ? ' (limit reached)' : ''}.</p>` : '';
         const err = limits.length && a.error ? `<p class="mmc-hint">${esc(a.error)}</p>` : '';
         return `<div class="cd-usage-acct"><div class="cd-usage-head"><img src="${esc(S.app.url('assets').replace(/\/$/, ''))}/account-16.png" alt=""><b>${esc(a.name)}</b>`
-            + `<span class="mmc-hint">${esc([planText, who, isPreferred(a.index) ? 'Preferred' : ''].filter(Boolean).join(' - '))}</span></div>${availBar(fleetOf(a.index), false)}${body}${extra}${err}</div>`;
+            + `<span class="mmc-hint">${esc([planText, who, isPreferred(a.index) ? 'Preferred' : '', priorityTag(a.index)].filter(Boolean).join(' - '))}</span></div>${availBar(fleetOf(a.index), false)}${body}${extra}${err}</div>`;
     }
     function usageHtml() {
         const rows = [...S.usage.values()].sort((a, b) => (a.index || 0) - (b.index || 0));
@@ -548,7 +653,7 @@
 
     // ---- the supervisor (claude_desk_supervisor) -----------------------------------------------------------
 
-    const SUP_DEFAULT = { enabled: false, engine: 'tokenrouter', model: '', delivery: 'inbox', manageLocks: false, trackArtifacts: false, maxConcurrent: 3, autoStart: true };
+    const SUP_DEFAULT = { enabled: false, engine: 'tokenrouter', model: '', delivery: 'inbox', manageLocks: false, trackArtifacts: false, maxConcurrent: 3, autoStart: true, yozoraRepos: ['DreamScape/StaticForge'] };
     const SUP_FALLBACK_ENGINES = [{ id: 'tokenrouter', name: 'TokenRouter', defaultModel: 'deepseek/deepseek-v4.1-flash' }];
     const DELIVERY = [['inbox', 'Inbox only'], ['steer', 'Type into the session'], ['off', 'Off']];
     const VERDICT = { ok: ['Complete', `${VI}/check-16.png`], gaps: ['Gaps found', `${VI}/warning-16.png`], unclear: ['Unclear', `${VI}/info-16.png`], error: ['Review failed', `${VI}/error-16.png`] };
@@ -562,7 +667,8 @@
     const supWork = () => (S.sup.data && Array.isArray(S.sup.data.work) ? S.sup.data.work : []);
     const workOf = (id) => supWork().find((w) => String(w.id) === String(id)) || null;
     const WORK_STATE = { queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Waiting', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
-    const WORK_SOURCE = { fleet: 'Fleet', plaud: 'Plaud', director: 'Director', agent: 'Agent' };
+    const WORK_SOURCE = { fleet: 'Fleet', plaud: 'Plaud', director: 'Director', agent: 'Agent', yozora: 'Yozora' };
+    const issueText = (w) => (w && w.issue ? `${String(w.issue.repo || '').split('/').pop()}#${w.issue.number}` : '');
     const WORK_OPEN = new Set(['queued', 'starting', 'running', 'waiting']);
     const workIcon = (st) => ({ queued: `${VI}/info-16.png`, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || `${S.app.url('assets').replace(/\/$/, '')}/session-16.png`);
     const supLocks = () => (S.sup.data && Array.isArray(S.sup.data.locks) ? S.sup.data.locks : []);
@@ -579,6 +685,7 @@
         if (SUP_GONE.test(errText(e))) { S.sup.unavailable = true; S.sup.error = ''; } else S.sup.error = errText(e);
     }
     async function loadSupervisor() {
+        void loadEngines();
         try { supTake(await send('claude_desk_supervisor', { action: 'status' })); S.sup.loaded = true; } catch (e) { S.sup.loaded = true; supFail(e); }
         repaint();
     }
@@ -647,6 +754,8 @@
             <label class="cd-check"><input type="checkbox" data-sup="autoStart"${st.autoStart === false ? '' : ' checked'}><span>Start queued work automatically</span></label>
             <label class="cd-check"><input type="checkbox" data-sup="manageLocks"${st.manageLocks ? ' checked' : ''}><span>Manage busy locks for agents</span></label>
             <label class="cd-check"><input type="checkbox" data-sup="trackArtifacts"${st.trackArtifacts ? ' checked' : ''}><span>Track work folders and temp files</span></label>
+            <label class="cd-top"><span>Yozora repositories to watch:</span><textarea data-sup="yozoraRepos" rows="3" spellcheck="false" placeholder="owner/repo, one per line">${esc(Array.isArray(st.yozoraRepos) ? st.yozoraRepos.join('\n') : String(st.yozoraRepos || ''))}</textarea></label>
+            <p class="mmc-hint">An open issue labelled fleet in these repositories joins the Work Queue by itself.</p>
             <p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="sup-save"${sup.busy ? ' disabled' : ''}>Save</button>${sup.draft ? ' <span class="mmc-hint">Not saved yet.</span>' : ''}</p>
         </div>`;
         const reviews = supReviews().filter((r) => !r.dismissed);
@@ -719,15 +828,16 @@
             key: `w:${w.id}`,
             icon: workIcon(w.state),
             cls: w.state === 'running' || w.state === 'starting' ? 'cd-live' : (w.state === 'failed' ? 'cd-stale' : ''),
-            data: { title: w.title || String(w.id), state: WORK_STATE[w.state] || w.state || '', source: WORK_SOURCE[w.source] || w.source || '', account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), model: [w.model, w.effort].filter(Boolean).join(' / '), session: w.sessionId ? shortId(w.sessionId) : '', at: w.createdAt || 0, message: w.message || '' }
+            data: { title: w.title || String(w.id), state: WORK_STATE[w.state] || w.state || '', source: WORK_SOURCE[w.source] || w.source || '', account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), model: [w.engine && w.engine !== 'claude' ? engineName(w.engine) : '', w.model, w.effort].filter(Boolean).join(' / '), session: w.sessionId ? shortId(w.sessionId) : '', issue: issueText(w), at: w.createdAt || 0, message: [w.message, w.issueNote].filter(Boolean).join(' - ') }
         }));
         const lv = c.listView([
             { t: 'Request', w: 230, key: 'title', text: (d) => d.title },
             { t: 'State', w: 76, key: 'state', text: (d) => d.state },
             { t: 'From', w: 66, key: 'source', text: (d) => d.source },
             { t: 'Account', w: 90, key: 'account', text: (d) => d.account },
-            { t: 'Model / Effort', w: 100, key: 'model', text: (d) => d.model },
+            { t: 'Engine / Model / Effort', w: 150, key: 'model', text: (d) => d.model },
             { t: 'Session', w: 70, key: 'session', text: (d) => d.session },
+            { t: 'Issue', w: 110, key: 'issue', text: (d) => d.issue },
             { t: 'Queued', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => Number(d.at) || Date.parse(d.at) || 0 },
             { t: 'Note', w: 220, key: 'message', text: (d) => d.message }
         ], rows, { sortId: 'cd-work', sort: { key: 'at', dir: -1 }, empty: 'The queue is empty. A request from New Session..., Plaud or an agent waits here until an account has room.', fit: true });
@@ -845,7 +955,7 @@
     function accountsPage(c) {
         const A = S.app.url('assets').replace(/\/$/, '');
         const rows = S.accounts.map((a) => {
-            const status = [a.active ? 'Engine' : '', a.onHost ? 'On host' : '', isPreferred(a.index) ? 'Preferred' : ''].filter(Boolean).join(', ') || (a.remoteLogin ? 'Ready' : 'No login linked');
+            const status = [a.active ? 'Engine' : '', a.onHost ? 'On host' : '', isPreferred(a.index) ? 'Preferred' : '', priorityTag(a.index)].filter(Boolean).join(', ') || (a.remoteLogin ? 'Ready' : 'No login linked');
             const running = S.sessions.filter((s) => s.account && s.account.index === a.index && liveOf(s.id)).length;
             return {
                 key: `a:${a.index}`,
@@ -880,7 +990,7 @@
             icon: `${A}/account-16.png`,
             cls: f.state === 'connected' ? '' : (f.state === 'error' ? 'cd-rc-error' : ''),
             data: {
-                name: f.settings && f.settings.preferred ? `${f.name} (Preferred)` : f.name,
+                name: fleetTags(f) ? `${f.name} (${fleetTags(f)})` : f.name,
                 stateText: RC_TEXT[f.state] || f.state,
                 stateHtml: fleetState(c, f),
                 folder: f.moved ? 'Own folder' : (f.onHost ? 'Host login' : 'None'),
@@ -1129,19 +1239,45 @@
 
     const WHO = { user: 'You', assistant: 'Claude', tool: 'Result', system: 'Notice' };
 
+    const baseName = (f) => String(f || '').split(/[\\/]/).filter(Boolean).pop() || String(f || '');
+    const diffLines = (text, cls) => String(text || '').split('\n').map((l) => `<div class="cd-dl${cls ? ` ${cls}` : ''}">${esc(l) || '&nbsp;'}</div>`).join('');
+    /** An edit's old and new text: removed lines red-tinted, added lines green-tinted; a write (no old text) shows the new text. */
+    function editsHtml(edits) {
+        const list = Array.isArray(edits) ? edits : [];
+        return list.map((e, i) => {
+            const hasOld = String(e.old || '') !== '';
+            return `${list.length > 1 ? `<div class="cd-diff-n">Edit ${i + 1} of ${list.length}</div>` : ''}<div class="cd-diff${hasOld ? '' : ' is-one'}">`
+                + `${hasOld ? `<div class="cd-diff-col"><div class="cd-diff-head">Removed</div><div class="cd-diff-body">${diffLines(e.old, 'is-del')}</div></div>` : ''}`
+                + `<div class="cd-diff-col"><div class="cd-diff-head">${hasOld ? 'Added' : 'Written'}</div><div class="cd-diff-body">${diffLines(e.new, 'is-add')}</div></div></div>`;
+        }).join('');
+    }
+
     function messageHtml(m) {
+        const k = ` data-at="${m.at}" data-k="${esc(msgKey(m))}"`;
+        if (m.kind === 'fold') {
+            // a thinking block or file edit the view keeps closed: one row that opens it in its own window
+            const edit = m.of === 'edit';
+            const label = edit ? `${m.tool === 'Write' ? 'Wrote' : 'Edited'} ${m.file ? baseName(m.file) : 'a file'} (${plural(Number(m.size) || 0, 'line')})` : `Thinking (${plural(Number(m.size) || 0, 'character')})`;
+            return `<div class="cd-msg cd-fold is-${edit ? 'edit' : 'thinking'}"${k} data-part="${m.part == null ? 0 : m.part}" role="link" tabindex="0" title="${esc(edit && m.file ? m.file : 'Open in a window')}"><img src="${edit ? `${VI}/explorer/file-16.png` : `${VI}/info-16.png`}" alt=""><span>${esc(label)}</span></div>`;
+        }
+        if (m.kind === 'thinking') {
+            return `<div class="cd-msg cd-block cd-think is-open"${k}><button type="button" class="cd-fold-head" data-cd-toggle><img src="${VI}/info-16.png" alt=""><span>Thinking (${plural(String(m.text || '').length, 'character')})</span></button><div class="cd-fold-body cd-msg-text">${esc(m.text)}</div></div>`;
+        }
+        if (m.kind === 'edit') {
+            return `<div class="cd-msg cd-block cd-edit is-open"${k}><button type="button" class="cd-fold-head" data-cd-toggle title="${esc(m.file || '')}"><img src="${VI}/explorer/file-16.png" alt=""><span>${esc(`${m.tool === 'Write' ? 'Wrote' : 'Edited'} ${baseName(m.file) || 'a file'}`)}</span></button><div class="cd-fold-body">${editsHtml(m.edits)}</div></div>`;
+        }
         if (m.kind === 'tool_use') {
-            return `<div class="cd-msg cd-tool" data-at="${m.at}"><div class="cd-tool-head"><b>${esc(m.tool)}</b></div><pre class="cd-pre">${esc(m.text)}</pre></div>`;
+            return `<div class="cd-msg cd-tool"${k}><div class="cd-tool-head"><b>${esc(m.tool)}</b></div><pre class="cd-pre">${esc(m.text)}</pre></div>`;
         }
         if (m.kind === 'tool_result') {
             const lines = String(m.text || '').split('\n');
             const long = lines.length > 6 || m.text.length > 500;
-            return `<div class="cd-msg cd-result${m.error ? ' is-error' : ''}${long ? ' is-folded' : ''}" data-at="${m.at}"><pre class="cd-pre">${esc(m.text || '(no output)')}</pre>${long ? '<button type="button" class="cd-unfold" data-cd-unfold>Show all</button>' : ''}</div>`;
+            return `<div class="cd-msg cd-result${m.error ? ' is-error' : ''}${long ? ' is-folded' : ''}"${k}><pre class="cd-pre">${esc(m.text || '(no output)')}</pre>${long ? '<button type="button" class="cd-unfold" data-cd-unfold>Show all</button>' : ''}</div>`;
         }
-        if (m.kind === 'command') return `<div class="cd-msg cd-note" data-at="${m.at}">${esc(m.text)}</div>`;
-        if (m.role === 'system') return `<div class="cd-msg cd-note" data-at="${m.at}">${esc(m.text)}</div>`;
+        if (m.kind === 'command') return `<div class="cd-msg cd-note"${k}>${esc(m.text)}</div>`;
+        if (m.role === 'system') return `<div class="cd-msg cd-note"${k}>${esc(m.text)}</div>`;
         const who = m.role === 'user' ? (m.origin && m.origin !== 'human' ? 'Steering' : WHO.user) : WHO[m.role] || m.role;
-        return `<div class="cd-msg cd-${m.role === 'user' ? 'user' : 'claude'}${m.sidechain ? ' is-side' : ''}" data-at="${m.at}"><div class="cd-msg-head"><b>${esc(who)}</b><span>${esc(timeOnly(m.time))}</span></div><div class="cd-msg-text">${esc(m.text)}</div></div>`;
+        return `<div class="cd-msg cd-${m.role === 'user' ? 'user' : 'claude'}${m.sidechain ? ' is-side' : ''}"${k}><div class="cd-msg-head"><b>${esc(who)}</b><span>${esc(timeOnly(m.time))}</span></div><div class="cd-msg-text">${esc(m.text)}</div></div>`;
     }
 
     function logHtml(chat) {
@@ -1155,6 +1291,136 @@
         return out;
     }
 
+    /** The log's content: the earlier-messages row, the rows, and a line while the end is out of the page. */
+    function logInner(chat, id) {
+        const top = chat.more ? `<div class="cd-earlier"><button type="button" class="btn-standard" data-act="earlier" data-arg="${esc(id)}"${chat.loading ? ' disabled' : ''}>Show Earlier Messages</button></div>` : '';
+        const body = chat.error ? `<p class="cd-err">${esc(chat.error)}</p>` : (chat.messages.length ? logHtml(chat) : `<p class="mmc-hint">${chat.loading ? 'Reading the conversation...' : 'No messages yet.'}</p>`);
+        const bottom = chat.tailCut ? '<div class="cd-earlier"><span class="mmc-hint">Scroll down for later messages...</span></div>' : '';
+        return top + body + bottom;
+    }
+
+    /** The view options as links' check boxes under the title: what the log shows. */
+    function showBar() {
+        return `<div class="cd-showbar" role="group" aria-label="Show">${SHOW_ITEMS.map(([k, t]) => `<label class="cd-showopt"><input type="checkbox" data-cd-show="${k}"${S.show[k] ? ' checked' : ''}><span>${esc(t.replace(/^Show /, ''))}</span></label>`).join('')}</div>`;
+    }
+
+    // ---- the view options and the item windows (a folded thinking / file edit opened in full) ---------------
+
+    const showMenuItems = () => SHOW_ITEMS.map(([k, t]) => ({ text: t, action: `show:${k}`, showIndicator: true, indicatorMark: 'check', checked: !!S.show[k] }));
+
+    /** One view option changed: the open session reads its newest page again; the others read when opened. */
+    async function setShow(key, on) {
+        if (!(key in SHOW_DEFAULT)) return;
+        S.show[key] = !!on;
+        if (S.c) S.c.setReg({ ShowView: showNow() });
+        const cur = S.c && S.c.node && S.c.node.startsWith('t:') ? S.c.node.slice(2) : '';
+        Array.from(S.chats.keys()).forEach((id) => { if (id !== cur) S.chats.delete(id); });
+        const chat = S.chats.get(cur);
+        if (!chat) return;
+        if (chat.dt) {
+            chat.dt.agents = new Map();
+            if (chat.dt.agentSel) void loadAgentPage(cur, chat.dt.agentSel, false);
+        }
+        await loadChat(cur, false);
+    }
+
+    /** A Vista window of its own (resizable, its own scroll bar, the app's icon) belonging to the console. */
+    function openViewer(o) {
+        const A = S.app.url('assets').replace(/\/$/, '');
+        const parent = S.c.modal;
+        const id = `claudeDeskView-${++S.winSeq}`;
+        const made = call('desktopAppCreateWindow', { id, identifier: 'melatonClaudeDesk-view', title: o.title, icon16: `${A}/claudedesk-16.png`, taskbarIcon: `${A}/claudedesk-32.png`, className: 'resizeable-window owned-window cd-win' });
+        if (!made) throw new Error('The window could not open.');
+        const m = made.modal;
+        m.dataset.windowRestorePosition = 'true';
+        m.dataset.windowRestoreSize = 'true';
+        m.dataset.windowDefaultWidth = '640';
+        m.dataset.windowDefaultHeight = '420';
+        m.dataset.windowMinWidth = '320';
+        m.dataset.windowMinHeight = '200';
+        m.style.width = '640px';
+        m.style.height = '420px';
+        m.dataset.iconOwnerId = parent.id;
+        m.dataset.parentModalId = parent.id;
+        made.content.classList.add('cd-win-content');
+        made.content.innerHTML = `<div class="cd-viewer" tabindex="0">${o.body || ''}</div>`;
+        made.close.classList.add('cd-win-x');
+        const ctl = new AbortController();
+        let closed = false;
+        const w = {
+            key: o.key,
+            modal: m,
+            set: (html) => { const b = m.querySelector('.cd-viewer'); if (b && !closed) b.innerHTML = html; },
+            close: () => {
+                if (closed) return;
+                closed = true;
+                ctl.abort();
+                S.wins.delete(w);
+                try { call('closeModal', m); } catch (_) { /* gone */ }
+                setTimeout(() => m.remove(), 400);
+            }
+        };
+        S.wins.add(w);
+        m.addEventListener('click', (ev) => { if (ev.target.closest('.cd-win-x')) w.close(); }, { signal: ctl.signal });
+        m.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); w.close(); } }, { signal: ctl.signal });
+        document.addEventListener('staticforge:modal-lifecycle', (e) => { if (e && e.detail && e.detail.id === id && e.detail.type === 'closed') w.close(); }, { signal: ctl.signal });
+        call('openModal', m);
+        m.classList.remove('hidden');
+        requestAnimationFrame(() => {
+            const r = m.getBoundingClientRect();
+            const p = parent.getBoundingClientRect();
+            call('setModalOffsetsFromViewportTopLeft', m, Math.max(0, Math.round(p.left + 40 + (S.wins.size % 5) * 24)), Math.max(0, Math.round(p.top + 40 + (S.wins.size % 5) * 24)));
+            const b = m.querySelector('.cd-viewer');
+            if (b && r) b.focus({ preventScroll: true });
+        });
+        return w;
+    }
+
+    /** The full content of a fold row (thinking text / a file's edits) in a window of its own. */
+    async function openFold(id, agentId, el) {
+        if (!el || !S.c) return;
+        const at = Number(el.dataset.at);
+        const part = Number(el.dataset.part) || 0;
+        const key = `${id}|${agentId}|${at}|${part}`;
+        const have = Array.from(S.wins).find((x) => x.key === key);
+        if (have) { call('bringModalToFront', have.modal); return; }
+        const edit = el.classList.contains('is-edit');
+        const label = (el.querySelector('span') || {}).textContent || '';
+        const w = openViewer({ key, title: edit ? label.replace(/ \(\d+ lines?\)$/, '') : 'Thinking', body: '<p class="mmc-hint">Reading...</p>' });
+        try {
+            const r = agentId ? await send('claude_desk_session', { action: 'agent_page', id, agentId, item: { at, part } }) : await send('claude_desk_transcript', { id, item: { at, part } });
+            const item = unwrap(r, 'item').item;
+            if (!item) throw new Error('The server did not send it. Restart Dreamscape to load the newer session reader.');
+            if (item.kind === 'edit') w.set(`<div class="cd-viewer-path">${esc(item.file || '')}</div>${editsHtml(item.edits)}`);
+            else w.set(`<pre class="cd-pre cd-viewer-text">${esc(item.text || '')}</pre>`);
+        } catch (e) { w.set(`<p class="cd-err">${esc(isGone(e) ? 'The server does not have this yet. Restart Dreamscape to load the newer session reader.' : errText(e))}</p>`); }
+    }
+
+    /** Fold rows of a log open on click / Enter / Space and from the right-click menu. kind '' = the session, 'agent' = the selected agent. */
+    function wireFolds(box, id, kind) {
+        if (!box || box.dataset.cdFolds) return;
+        box.dataset.cdFolds = '1';
+        const agentOf2 = () => { if (kind !== 'agent') return ''; const ch = chatOf(id); return (ch && ch.dt && ch.dt.agentSel) || ''; };
+        box.addEventListener('click', (ev) => {
+            const t = ev.target.closest('[data-cd-toggle]');
+            if (t) { t.parentElement.classList.toggle('is-open'); return; }
+            const r = ev.target.closest('.cd-fold');
+            if (r) void openFold(id, agentOf2(), r);
+        });
+        box.addEventListener('keydown', (ev) => {
+            if (ev.key !== 'Enter' && ev.key !== ' ') return;
+            const r = ev.target.closest && ev.target.closest('.cd-fold');
+            if (r) { ev.preventDefault(); void openFold(id, agentOf2(), r); }
+        });
+        box.addEventListener('mousedown', (ev) => { if (ev.button === 2) { const r = ev.target.closest('.cd-fold'); S.foldCtx = r ? { id, agent: agentOf2(), el: r } : null; } });
+        if (root.contextMenu) {
+            root.contextMenu.attachToElement(box, {
+                onAction: (a) => { if (S.c) void action(a, S.c); },
+                sections: [{ type: 'list', initfn: (sec) => { sec.items = [{ text: 'Open in New Window', action: 'fold-open', disabled: !S.foldCtx }, { separator: true }].concat(showMenuItems()); } }]
+            });
+        }
+    }
+
     function chatPage(c, id) {
         let chat = S.chats.get(id);
         if (!chat) { void loadChat(id, false); chat = { messages: [], loading: true, row: rowOf(id) }; }
@@ -1164,8 +1430,6 @@
         const acct = row.account ? row.account.name : '';
         const side = [stateText(row), acct, row.folder].filter(Boolean).join(' - ');
         const linkBits = `<span class="mmc-link" data-act="detail-toggle">Details</span>${l && serverOrigin(id) ? ' <span class="mmc-link" data-act="takeover">Take Over in Fleet</span>' : ''}${l && l.link ? ` <span class="mmc-link" data-act="open-link" data-arg="${esc(l.link)}">Open in claude.ai</span> <span class="mmc-link" data-act="copy-link" data-arg="${esc(l.link)}">Copy link</span>` : ''}`;
-        const top = chat.more ? `<div class="cd-earlier"><button type="button" class="btn-standard" data-act="earlier" data-arg="${esc(id)}"${chat.loading ? ' disabled' : ''}>Show Earlier Messages</button></div>` : '';
-        const body = chat.error ? `<p class="cd-err">${esc(chat.error)}</p>` : (chat.messages.length ? logHtml(chat) : `<p class="mmc-hint">${chat.loading ? 'Reading the conversation...' : 'No messages yet.'}</p>`);
         let composer;
         if (l && serverOrigin(id)) {
             composer = `<div class="cd-compose cd-ended"><span>This session runs inside Remote Control's server, so Fleet has no terminal to type into.</span><button type="button" class="btn-standard primary" data-act="takeover" data-arg="${esc(id)}">Take Over in Fleet...</button></div>`;
@@ -1184,17 +1448,33 @@
             html: `<div class="cd-chat">
                 <div class="mmc-page-title"><b>${esc(titleOf(row))}</b><span>${esc(side)}</span></div>
                 ${linkBits ? `<div class="cd-chat-links">${linkBits}</div>` : ''}
-                <div class="cd-chat-log" data-mmc-scroll>${top}${body}</div>
+                ${showBar()}
+                <div class="cd-chat-log" data-mmc-scroll>${logInner(chat, id)}</div>
                 ${composer}
             </div>`,
             split: true,
             mount: (pane) => {
                 const log = pane.querySelector('.cd-chat-log');
-                if (log && !S.chatScrolled) { log.scrollTop = log.scrollHeight; }
+                const mine = S.chats.get(id) || chat;
+                // a drawn-again page keeps the reader's place (at the end it stays at the end)
+                if (log) log.scrollTop = mine.stick === false && mine.fromBottom != null ? log.scrollHeight - mine.fromBottom : log.scrollHeight;
+                let raf = 0;
+                log.addEventListener('scroll', () => {
+                    if (raf) return;
+                    raf = requestAnimationFrame(() => {
+                        raf = 0;
+                        mine.fromBottom = log.scrollHeight - log.scrollTop;
+                        mine.stick = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+                        pageMore(id, log);
+                    });
+                }, { passive: true });
                 log.addEventListener('click', (ev) => {
                     const b = ev.target.closest('[data-cd-unfold]');
                     if (b) { b.parentElement.classList.remove('is-folded'); b.remove(); }
                 });
+                wireFolds(log, id, '');
+                pane.querySelectorAll('[data-cd-show]').forEach((cb) => cb.addEventListener('change', () => void setShow(cb.dataset.cdShow, cb.checked)));
+                requestAnimationFrame(() => pageMore(id, log));
                 const input = pane.querySelector('.cd-input');
                 if (input) {
                     if (S.drafts && S.drafts[id]) input.value = S.drafts[id];
@@ -1237,6 +1517,7 @@
         const t = m.querySelector('.cd-task-box');
         if (a) a.innerHTML = agentBoxHtml(chat);
         if (t) t.innerHTML = taskBoxHtml(chat);
+        wireFolds(a, id, 'agent');
         const log = a && a.querySelector('.cd-chat-log');
         if (log && !log.dataset.kept) { log.dataset.kept = '1'; log.scrollTop = log.scrollHeight; }
         delete m.querySelector('.mmc-result').dataset.html;
@@ -1313,15 +1594,21 @@
 
     /** New messages go at the end of the open chat without drawing the page again (scroll kept at the end). */
     function appendChat(id) {
-        const pane = S.c && S.c.modal.querySelector('.cd-chat-log');
+        const pane = logOf(id);
         const chat = S.chats.get(id);
         if (!pane || !chat) return;
         const atEnd = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 40;
-        const have = new Set(Array.from(pane.querySelectorAll('.cd-msg[data-at]')).map((n) => n.dataset.at));
-        const fresh = chat.messages.filter((m) => !have.has(String(m.at)));
+        const have = new Set(Array.from(pane.querySelectorAll('[data-k]')).map((n) => n.dataset.k));
+        const fresh = chat.messages.filter((m) => !have.has(msgKey(m)));
         if (!fresh.length) return;
         const hint = pane.querySelector(':scope > .mmc-hint');
         if (hint) hint.remove();
+        if (chat.messages.length > MSG_MAX + MSG_PAGE) {
+            trimRows(chat, false);
+            chat.stick = atEnd;
+            redrawLog(id);
+            return;
+        }
         pane.insertAdjacentHTML('beforeend', fresh.map(messageHtml).join(''));
         delete S.c.modal.querySelector('.mmc-result').dataset.html;
         if (atEnd) pane.scrollTop = pane.scrollHeight;
@@ -1495,7 +1782,7 @@
         if (key.startsWith('w:')) {
             const w = workOf(key.slice(2));
             if (!w) return null;
-            return { title: w.title || 'Request', items: [{ text: 'Start Now', action: 'work-start', disabled: w.state !== 'queued' || !!S.sup.busy }, { text: 'Cancel', action: 'work-cancel', disabled: !WORK_OPEN.has(w.state) || !!S.sup.busy }, { separator: true }, { text: 'Open Session', action: 'work-open', disabled: !w.sessionId }] };
+            return { title: w.title || 'Request', items: [{ text: 'Start Now', action: 'work-start', disabled: w.state !== 'queued' || !!S.sup.busy }, { text: 'Cancel', action: 'work-cancel', disabled: !WORK_OPEN.has(w.state) || !!S.sup.busy }, { separator: true }, { text: 'Open Session', action: 'work-open', disabled: !w.sessionId }, { text: 'Open Issue', action: 'work-issue', disabled: !(w.issue && w.issue.url) }] };
         }
         if (key.startsWith('lk:')) { const l = supLocks().find((x) => `${x.root || ''}|${x.file}` === key.slice(3)); return { title: 'Busy Lock', items: [{ text: 'Remove...', action: 'sup-lock-remove', disabled: !l || l.state !== 'orphan' || !!S.sup.busy }] }; }
         if (key.startsWith('ar:')) { const a = supArtifacts().find((x) => String(x.id) === key.slice(3)); return { title: 'Work Folder', items: [{ text: 'Clean...', action: 'sup-art-clean', disabled: !a || !a.cleanable || !!S.sup.busy }, { text: 'Forget', action: 'sup-art-forget', disabled: !a || !!S.sup.busy }] }; }
@@ -1520,6 +1807,7 @@
     async function failBox(c, e) { await c.box(`<p>${esc(errText(e))}</p>`, null, { icon: 'error' }); }
 
     async function action(a, c, arg) {
+        if (a.startsWith('show:')) { await setShow(a.slice(5), !S.show[a.slice(5)]); return true; }
         const sid = arg && /^[0-9a-f-]{36}$/.test(arg) ? arg : (selId(c, 's:') || (c.node && c.node.startsWith('t:') ? c.node.slice(2) : '') || ((supReview(selId(c, 'v:')) || {}).sessionId || ''));
         switch (a) {
             case 'refresh':
@@ -1530,6 +1818,7 @@
                 await Promise.all([refreshAccounts(), loadSessions(false), loadMessages()]);
                 return true;
             case 'fleet-refresh': await loadFleet(); return true;
+            case 'fold-open': if (S.foldCtx) await openFold(S.foldCtx.id, S.foldCtx.agent, S.foldCtx.el); return true;
             case 'sup-refresh': await loadSupervisor(); return true;
             case 'work-start': {
                 const w = workOf(selId(c, 'w:'));
@@ -1542,6 +1831,11 @@
                 const ok = await c.box(`<p>Cancel <b>${esc(w.title || w.id)}</b>?${w.sessionId ? ' Its session is stopped.' : ' It is taken off the queue.'}</p>`,
                     [{ text: 'Cancel Request', value: true, className: 'btn-standard primary' }, { text: 'Keep', value: false, className: 'btn-standard' }], { icon: 'warning' });
                 if (ok === true) await supAct(c, { action: 'work_cancel', id: w.id }, 'Cancelling...');
+                return true;
+            }
+            case 'work-issue': {
+                const w = workOf(selId(c, 'w:'));
+                if (w && w.issue && /^https?:\/\//.test(w.issue.url || '')) await call('openGrimoireUrl', w.issue.url); else c.note('It has no issue yet.');
                 return true;
             }
             case 'work-open': {
@@ -1573,7 +1867,7 @@
             case 'sup-save': {
                 if (!S.sup.draft) return true;
                 const d = S.sup.draft;
-                await supAct(c, { action: 'save', settings: { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false } }, 'Saving...');
+                await supAct(c, { action: 'save', settings: { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) } }, 'Saving...');
                 return true;
             }
             case 'sup-send': {
@@ -1887,8 +2181,35 @@
     const pathName = (id) => (WIZ_PATHS.find((p) => p[0] === id) || [])[1] || '';
     const acctLabel = (v) => (v === 'auto' ? 'Auto (the preferred account, else the most headroom)' : (accountName(Number(v)) || ''));
 
+    const CLAUDE_ENGINE = { id: 'claude', name: 'Claude (the account\'s plan)', defaultModel: 'sonnet', models: [], ready: true };
+    const enginesNow = () => (S.engines && S.engines.length ? S.engines : [CLAUDE_ENGINE]);
+    const engineOf = (id) => enginesNow().find((e) => e.id === (id || 'claude')) || null;
+    const engineName = (id) => (engineOf(id) ? engineOf(id).name : (id || 'claude'));
+    /** The engines a session or request can run on (claude_fleet_engines); a server without it offers Claude only. */
+    async function loadEngines() {
+        if (S.engines) return;
+        try {
+            const r = await send('claude_fleet_engines');
+            S.engines = Array.isArray(r.engines) && r.engines.length ? r.engines : [CLAUDE_ENGINE];
+        } catch (_) { S.engines = null; }
+    }
+    const engineOptions = (sel) => enginesNow().map((e) => `<option value="${esc(e.id)}"${e.id === (sel || 'claude') ? ' selected' : ''}>${esc(e.name || e.id)}${e.ready === false ? ' (not set up)' : ''}</option>`).join('');
+    /** Another engine: the Claude model list does not apply; the model box shows that engine's own default. */
+    function wizEngine(box, val) {
+        const other = val && val !== 'claude';
+        const e = engineOf(val);
+        const sel = box.querySelector('[data-cd="model"]');
+        const id = box.querySelector('[data-cd="modelId"]');
+        if (sel) sel.disabled = !!other;
+        if (id) id.placeholder = other ? ((e && e.defaultModel) || 'The engine\'s own default') : 'A full model ID (optional)';
+    }
+    /** The model to send: Claude's list or the typed ID; on another engine only the typed ID (blank = the engine's default). */
+    const wizModel = (W) => (W.engine && W.engine !== 'claude' ? (String(W.modelId || '').trim() || undefined) : (modelOf(W) || 'sonnet'));
+
     /** Model, effort and permissions follow the account picked, until the person changes them. */
     function wizPrefill(box, val) {
+        const eng = box.querySelector('[data-cd="engine"]');
+        if (eng && eng.value !== 'claude') return;
         const f = val === 'auto' || val === '' ? fleetRows().find((x) => x.settings && x.settings.preferred) : fleetOf(Number(val));
         const st = (f && f.settings) || {};
         const model = st.defaultModel || 'sonnet';
@@ -1922,12 +2243,13 @@
             const acct = direct ? `<label><span>Account:</span><select class="vdt-select" data-cd="account">${accountOptions(Number(W.account))}</select></label>`
                 : `<label><span>Account:</span><select class="vdt-select" data-cd="account"><option value="auto"${W.account === 'auto' ? ' selected' : ''}>Auto (preferred, else most headroom)</option>${accountOptions(Number(W.account))}</select></label>`;
             return `${acct}
+                <label><span>Engine:</span><select class="vdt-select" data-cd="engine">${engineOptions(W.engine)}</select></label>
                 <label><span>Folder:</span><input type="text" data-cd="cwd" value="${esc(W.cwd)}" spellcheck="false" autocomplete="off"></label>
                 <label class="cd-top"><span>Request:</span><textarea data-cd="prompt" data-cd-focus rows="5" spellcheck="true" placeholder="What should it do?">${esc(W.prompt)}</textarea></label>
                 <label><span>Model:</span><select class="vdt-select" data-cd="model">${modelOptions(W.model || 'sonnet')}</select></label>
                 <label><span>Or model ID:</span><input type="text" data-cd="modelId" value="${esc(W.modelId || '')}" spellcheck="false" autocomplete="off" placeholder="A full model ID (optional)"></label>
                 <label><span>Effort:</span><select class="vdt-select" data-cd="effort">${effortOptions(W.effort)}</select></label>
-                ${direct ? `<label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeSelect(W.mode || 'bypassPermissions')}</select></label>` : ''}${err}`;
+                ${direct ? `<label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeSelect(W.mode || 'bypassPermissions')}</select></label>` : `<label><span>Link to issue:</span><input type="text" data-cd="issue" value="${esc(W.issue || '')}" spellcheck="false" autocomplete="off" placeholder="owner/repo#N or an issue URL (blank: a new issue is made)"></label>`}${err}`;
         }
         if (page === 'plaud') {
             return `<label class="cd-check"><input type="checkbox" data-cd="plaudAll"${W.all ? ' checked' : ''}><span>Every recording not worked yet</span></label>
@@ -1938,9 +2260,11 @@
         if (W.path === 'plaud') {
             rows.push(['Recordings', W.all ? 'Every recording not worked yet' : plural((W.picked || new Set()).size, 'recording')]);
         } else {
-            rows.push(['Account', acctLabel(W.account)], ['Folder', W.cwd], ['Model', (MODEL_CHOICES.find((m) => m[0] === modelOf(W)) || [])[1] || modelOf(W) || 'Sonnet'], ['Effort', (EFFORTS.find((e) => e[0] === (W.effort || '')) || [])[1] || 'Default']);
+            const other = W.engine && W.engine !== 'claude';
+            rows.push(['Account', acctLabel(W.account)], ['Engine', engineName(W.engine)], ['Folder', W.cwd], ['Model', other ? (wizModel(W) || (engineOf(W.engine) || {}).defaultModel || 'The engine\'s default') : ((MODEL_CHOICES.find((m) => m[0] === modelOf(W)) || [])[1] || modelOf(W) || 'Sonnet')], ['Effort', (EFFORTS.find((e) => e[0] === (W.effort || '')) || [])[1] || 'Default']);
             if (W.path === 'direct') rows.push(['Permissions', (MODES.find((m) => m[0] === W.mode) || [])[1] || W.mode]);
             rows.push(['Checked by supervisor', W.path === 'supervised' ? 'Yes (queued on the Supervisor)' : 'No']);
+            if (W.path === 'supervised') rows.push(['Issue', W.issue || 'A new issue is made']);
         }
         return `<table class="cd-props">${rows.map(([k, v]) => `<tr><td>${esc(k)}:</td><td>${esc(v)}</td></tr>`).join('')}</table>
             ${W.path === 'plaud' ? '' : `<p><b>Request</b></p><p class="cd-read cd-summary-request">${esc(W.prompt)}</p>`}${err}`;
@@ -1965,6 +2289,11 @@
                     if (W.model === undefined) wizPrefill(box, acct.value);
                     acct.addEventListener('change', () => wizPrefill(box, acct.value), { signal });
                 }
+                const eng = box.querySelector('[data-cd="engine"]');
+                if (eng) {
+                    wizEngine(box, eng.value);
+                    eng.addEventListener('change', () => { wizEngine(box, eng.value); if (eng.value === 'claude' && acct) wizPrefill(box, acct.value); }, { signal });
+                }
                 const all = box.querySelector('[data-cd="plaudAll"]');
                 if (all) {
                     const sync = () => box.querySelectorAll('[data-cd^="rec:"]').forEach((el) => { el.disabled = all.checked; });
@@ -1985,6 +2314,7 @@
         else if (page === 'supervised' || page === 'direct') {
             W.account = fields.account; W.cwd = String(fields.cwd || '').trim(); W.prompt = String(fields.prompt || '').trim();
             W.model = fields.model; W.modelId = String(fields.modelId || '').trim(); W.effort = fields.effort || '';
+            W.engine = fields.engine || 'claude'; W.issue = String(fields.issue || '').trim();
             if (page === 'direct') W.mode = fields.mode;
         }
         return value;
@@ -2033,7 +2363,8 @@
                     // supervised requests are Supervisor work items: queued, and started at once when an account has room
                     const before = new Set(supWork().map((w) => String(w.id)));
                     const first = W.prompt.split('\n').find((x) => x.trim()) || W.prompt;
-                    const job = { action: 'enqueue', title: first.trim().slice(0, 80), prompt: W.prompt, cwd: W.cwd, model: modelOf(W) || 'sonnet', effort: W.effort || undefined, startNow: true };
+                    const job = { action: 'enqueue', title: first.trim().slice(0, 80), prompt: W.prompt, cwd: W.cwd, model: wizModel(W), effort: W.effort || undefined, startNow: true, engine: W.engine || 'claude' };
+                    if (W.issue) job.issue = W.issue;
                     if (acct !== 'auto') job.account = acct;
                     const rr = await send('claude_desk_supervisor', job);
                     if (rr.settings) supTake(rr);
@@ -2047,7 +2378,7 @@
                     c.note('');
                     return await wizDone(c, W, body, buttons, link);
                 }
-                const payload = { action: 'start', cwd: W.cwd, prompt: W.prompt, account: acct, model: modelOf(W) || 'sonnet', effort: W.effort || undefined, supervised: false };
+                const payload = { action: 'start', cwd: W.cwd, prompt: W.prompt, account: acct, model: wizModel(W), effort: W.effort || undefined, supervised: false, engine: W.engine || 'claude' };
                 if (W.path === 'direct') payload.mode = W.mode;
                 const r = await send('claude_desk_session', payload);
                 const res = r.result || {};
@@ -2081,6 +2412,8 @@
         const W = { path: pinned ? 'direct' : 'supervised', account: pinned ? String(accountIndex) : 'auto', cwd: DEFAULT_CWD, prompt: '', mode: 'bypassPermissions', picked: new Set(), err: '' };
         if (!pinned && defaultAccount() == null) W.account = 'auto';
         let page = 'type';
+        W.engine = 'claude';
+        await loadEngines();
         for (;;) {
             let order = ['type', W.path, 'summary'];
             const r = await wizPage(c, W, page, page === 'type');
@@ -2127,7 +2460,7 @@
             ['Plan', l ? l.plan : ''], ['Linked', l ? when(l.linkedAt) : '']].filter(([, v]) => v);
         let err = '';
         // what the boxes show: the saved settings, then what was typed when a retry is needed
-        let cur = { name: a.name, preferred: !!st.preferred, maxWeekly: st.maxWeeklyPct == null ? '' : st.maxWeeklyPct, maxSession: st.maxSessionPct == null ? '' : st.maxSessionPct,
+        let cur = { name: a.name, preferred: !!st.preferred, priority: st.priority || 'normal', maxWeekly: st.maxWeeklyPct == null ? '' : st.maxWeeklyPct, maxSession: st.maxSessionPct == null ? '' : st.maxSessionPct,
             model: known ? model : 'sonnet', modelId: known ? '' : model, effort: st.defaultEffort || '', mode: st.defaultMode || 'bypassPermissions' };
         for (;;) {
             const { value, fields } = await form(c, `
@@ -2135,6 +2468,8 @@
                 ${f ? '' : `<p class="mmc-hint">The account settings are not available on this server yet.</p>`}
                 <label><span>Name:</span><input type="text" data-cd="name" data-cd-focus value="${esc(cur.name)}" spellcheck="false" autocomplete="off"></label>
                 <label class="cd-check"><input type="checkbox" data-cd="preferred"${cur.preferred ? ' checked' : ''}><span>Preferred account: new sessions use it first (only one account is preferred)</span></label>
+                <label><span>Priority:</span><select class="vdt-select" data-cd="priority">${PRIORITY.map(([v, t]) => `<option value="${v}"${v === cur.priority ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+                <p class="mmc-hint cd-prio-hint">An account with a lower priority gets work only after the higher ones.</p>
                 <label><span>Max weekly usage:</span><input type="text" data-cd="maxWeekly" value="${esc(cur.maxWeekly)}" inputmode="numeric" placeholder="% (blank: no limit)" autocomplete="off"></label>
                 <label><span>Max session usage:</span><input type="text" data-cd="maxSession" value="${esc(cur.maxSession)}" inputmode="numeric" placeholder="% (blank: no limit)" autocomplete="off"></label>
                 <label><span>Default model:</span><select class="vdt-select" data-cd="model">${modelOptions(cur.model)}</select></label>
@@ -2144,14 +2479,14 @@
                 ${err ? `<p class="cd-err">${esc(err)}</p>` : ''}`,
             [{ text: 'Save', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: `${a.name} Properties`, width: 480, icon: 'fas fa-circle-info' });
             if (value !== true) return;
-            cur = { name: fields.name, preferred: !!fields.preferred, maxWeekly: fields.maxWeekly, maxSession: fields.maxSession, model: fields.model, modelId: fields.modelId, effort: fields.effort, mode: fields.mode };
+            cur = { name: fields.name, preferred: !!fields.preferred, priority: fields.priority || 'normal', maxWeekly: fields.maxWeekly, maxSession: fields.maxSession, model: fields.model, modelId: fields.modelId, effort: fields.effort, mode: fields.mode };
             const weekly = pctOf(fields.maxWeekly);
             const session = pctOf(fields.maxSession);
             const name = String(fields.name || '').trim();
             if (weekly.error || session.error) { err = 'A maximum usage is a percentage from 1 to 100, or blank for none.'; continue; }
             if (!name) { err = 'The account needs a name.'; continue; }
             try {
-                const r = await send('claude_fleet_account', { action: 'save', index, name, preferred: !!fields.preferred, maxWeeklyPct: weekly.value, maxSessionPct: session.value, defaultModel: modelOf(fields) || 'sonnet', defaultEffort: fields.effort || '', defaultMode: fields.mode });
+                const r = await send('claude_fleet_account', { action: 'save', index, name, preferred: !!fields.preferred, priority: fields.priority || 'normal', maxWeeklyPct: weekly.value, maxSessionPct: session.value, defaultModel: modelOf(fields) || 'sonnet', defaultEffort: fields.effort || '', defaultMode: fields.mode });
                 if (r.fleet) S.fleet = r.fleet;
                 c.note(`${name}: settings saved.`);
                 await refreshAccounts();
@@ -2450,6 +2785,7 @@
             page,
             commands,
             selCommands,
+            viewMenu: showMenuItems,
             action,
             rowOpen,
             status: (n) => {
@@ -2470,6 +2806,7 @@
             onClose: () => {
                 const app0 = S.app;
                 S.c = null;
+                Array.from(S.wins).forEach((w) => w.close());
                 void unwatch();
                 void usageWatch(false);
                 void subscribe(false);
@@ -2494,6 +2831,7 @@
         wire(app);
         const c = root.mmcConsole.open(def(app));
         S.c = c;
+        S.show = Object.assign({}, SHOW_DEFAULT, c.reg('ShowView', {}) || {});
         // the open chat follows the selection: leaving it stops its pushes
         const select = c.select.bind(c);
         c.select = (id, record) => {
