@@ -7,6 +7,7 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
+const imageStore = require('./imageStore');
 const { REPLICATION_ERROR_CODES, canGalleryUseRemoteMaster } = require('./replication/replicationContracts');
 
 let globalResourcesRef = null;
@@ -96,6 +97,10 @@ function resolveLocalPath(globalResources, kind, key) {
 
 function localFileExists(globalResources, kind, key) {
     const localPath = resolveLocalPath(globalResources, kind, key);
+    if (localPath && kind === 'gallery-image' && imageStore.cleanName(key)) {
+        // the picture in any stored form (x.png may lie on disk as x.jxl)
+        return imageStore.existsSync(key, path.dirname(localPath));
+    }
     return !!(localPath && fs.existsSync(localPath));
 }
 
@@ -179,7 +184,13 @@ async function readAssetBuffer(kind, key, globalResources = null, options = {}) 
     }
 
     const localPath = resolveLocalPath(gr, kind, key);
-    if (localPath && fs.existsSync(localPath)) {
+    if (localPath && kind === 'gallery-image' && imageStore.cleanName(key)) {
+        // PNG bytes, a JXL-stored picture decoded
+        const buffer = await imageStore.readPng(key, path.dirname(localPath));
+        if (buffer) {
+            return { buffer, storage: 'local', localPath };
+        }
+    } else if (localPath && fs.existsSync(localPath)) {
         return {
             buffer: fs.readFileSync(localPath),
             storage: 'local',

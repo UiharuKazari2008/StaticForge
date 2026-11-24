@@ -142,6 +142,8 @@ function recentImages(dir, sinceMs, limit = 5) {
             if (hits.length >= limit) return;
             const p = path.join(d, e.name);
             if (e.isDirectory()) { walk(p, depth + 1); continue; }
+            // a picture moved to JPEG XL (#1134 swap / idle converter) or a temp file is not a generation
+            if (/\.(jxl|tmp)$/i.test(e.name)) continue;
             try { if (fs.statSync(p).mtimeMs >= sinceMs) hits.push(p); } catch (_) { /* gone */ }
         }
     };

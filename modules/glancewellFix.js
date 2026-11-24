@@ -15,6 +15,8 @@
 
 const fs = require('fs');
 const path = require('path');
+// a print may be stored as x.jxl under the name x.png (#1134)
+const imageStore = require('./imageStore');
 
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const TEXT_CHUNKS = new Set(['tEXt', 'iTXt', 'zTXt']);
@@ -66,6 +68,12 @@ function safeName(filename) {
     return base;
 }
 
+/** After a new PNG lands over a print: its old JXL form (if it had one) goes, the PNG is the picture now. */
+async function dropStaleJxl(imagesDir, name) {
+    const j = imageStore.jxlNameFor(name);
+    if (j) await fs.promises.unlink(path.join(imagesDir, j)).catch(() => {});
+}
+
 function originalsDir(gr) {
     const d = path.join(gr.getPath('cache'), 'glancewell-originals');
     fs.mkdirSync(d, { recursive: true });
@@ -81,7 +89,8 @@ async function remakePreviews(gr, filename) {
     for (const suffix of ['@studio.webp', '@ll.webp', '@fit.webp']) {
         try { await fs.promises.unlink(path.join(previewsDir, `${base}${suffix}`)); } catch (_) { /* none */ }
     }
-    const res = await generateMobilePreviews(path.join(imagesDir, filename), base);
+    const sourcePath = await imageStore.pngPath(filename, imagesDir);
+    const res = sourcePath ? await generateMobilePreviews(sourcePath, base) : null;
     const db = gr.getMetadataDatabase();
     if (res && res.blurhash) await db.setImageBlurhash(filename, res.blurhash);
     // the row is read again from the file (size, dimensions, md5 differ)
@@ -96,7 +105,8 @@ async function saveFixed(gr, { filename, buffer, mode, workspaceId }) {
     if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > MAX_BYTES) throw new Error('No picture to save');
     const imagesDir = gr.getPath('images');
     const src = path.join(imagesDir, name);
-    const original = await fs.promises.readFile(src);
+    const original = await imageStore.readPng(name, imagesDir);
+    if (!original) throw Object.assign(new Error(`ENOENT: no such file, open '${src}'`), { code: 'ENOENT' });
     const out = withTextChunks(buffer, textChunks(original));
     if (mode === 'overwrite') {
         const keep = path.join(originalsDir(gr), name);
@@ -104,13 +114,14 @@ async function saveFixed(gr, { filename, buffer, mode, workspaceId }) {
         const tmp = `${src}.glancewell-${process.pid}.tmp`;
         await fs.promises.writeFile(tmp, out);
         await fs.promises.rename(tmp, src);
+        await dropStaleJxl(imagesDir, name);
         await remakePreviews(gr, name);
         return { filename: name, mode, hasOriginal: true };
     }
     if (mode === 'copy') {
         const base = path.basename(name, '.png').replace(/_fixed(_\d+)?$/, '');
         let next = `${base}_fixed.png`;
-        for (let n = 2; fs.existsSync(path.join(imagesDir, next)); n++) next = `${base}_fixed_${n}.png`;
+        for (let n = 2; imageStore.existsSync(next, imagesDir); n++) next = `${base}_fixed_${n}.png`;
         await fs.promises.writeFile(path.join(imagesDir, next), out);
         await remakePreviews(gr, next);
         gr.getWorkspaceManager().addToWorkspaceArray('files', next, workspaceId || 'default');
@@ -132,6 +143,7 @@ async function revert(gr, filename) {
     const tmp = `${src}.glancewell-${process.pid}.tmp`;
     await fs.promises.writeFile(tmp, original);
     await fs.promises.rename(tmp, src);
+    await dropStaleJxl(gr.getPath('images'), name);
     await fs.promises.unlink(keep);
     await remakePreviews(gr, name);
     return { filename: name };

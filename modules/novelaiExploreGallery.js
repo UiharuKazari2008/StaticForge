@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { browserRequest } = require('./browserHttp');
+const imageStore = require('./imageStore');
 
 const EXPLORE_ORIGIN = 'https://explore.novelai.net';
 const SEARCH_PATH = '/post/search';
@@ -1626,7 +1627,7 @@ function validateExploreUploadTitle(title) {
     return { ok: true, title: trimmed, message: null };
 }
 
-function resolveExploreUploadFilePath(filename, imagesDir) {
+async function resolveExploreUploadFilePath(filename, imagesDir) {
     const name = path.basename(String(filename || '').trim());
     if (!name || name !== String(filename || '').trim()) {
         throw new Error('Invalid filename');
@@ -1637,8 +1638,9 @@ function resolveExploreUploadFilePath(filename, imagesDir) {
         throw err;
     }
     if (!imagesDir) throw new Error('Images directory not configured');
-    const filePath = path.join(imagesDir, name);
-    if (!fs.existsSync(filePath)) {
+    // a real PNG: the picture's own file, or the copy rebuilt from x.jxl (#1134)
+    const filePath = await imageStore.pngPath(name, imagesDir);
+    if (!filePath) {
         throw new Error(`Image not found: ${name}`);
     }
     return { filename: name, filePath };
@@ -1651,7 +1653,7 @@ function resolveExploreUploadFilePath(filename, imagesDir) {
 async function checkExploreUploadImage(filename, options = {}) {
     assertExploreUploadsEnabled(options);
 
-    const { filePath, filename: safeName } = resolveExploreUploadFilePath(
+    const { filePath, filename: safeName } = await resolveExploreUploadFilePath(
         filename,
         options.imagesDir
     );
@@ -1672,7 +1674,7 @@ async function checkExploreUploadImage(filename, options = {}) {
         throw err;
     }
 
-    const buffer = fs.readFileSync(filePath);
+    const buffer = await fs.promises.readFile(filePath);
     const pngMetadata = options.pngMetadata;
     let tEXt = null;
     if (pngMetadata && typeof pngMetadata.readMetadata === 'function') {
@@ -1725,11 +1727,11 @@ async function uploadExploreImage(filename, title, options = {}) {
         throw err;
     }
 
-    const { filePath, filename: safeName } = resolveExploreUploadFilePath(
+    const { filePath, filename: safeName } = await resolveExploreUploadFilePath(
         filename,
         options.imagesDir
     );
-    const buffer = fs.readFileSync(filePath);
+    const buffer = await fs.promises.readFile(filePath);
     const { apiKey, apiKeyManager } = await resolveExploreApiKey(options);
 
     await waitUpstreamGap();

@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const replicationTokenAuth = require('../../replicationTokenAuth');
+const imageStore = require('../../imageStore');
 const { REPLICATION_ERROR_CODES, REPLICATION_TOKEN_SCOPES } = require('../replicationContracts');
 
 function setReplicationCors(req, res) {
@@ -56,6 +57,16 @@ function resolveContentType(kind, filePath) {
     return 'application/octet-stream';
 }
 
+// A gallery picture may be stored as x.jxl under its name x.png (#1134): the replica always gets the PNG.
+async function resolveServedPath(globalResources, kind, key) {
+    const localPath = replicationRemoteFetch.resolveLocalPath(globalResources, kind, key);
+    if (!localPath) return null;
+    if (kind === 'gallery-image' && imageStore.cleanName(key) === key) {
+        return imageStore.pngPath(key, path.dirname(localPath));
+    }
+    return localPath;
+}
+
 function register(app, globalResources) {
     const readAuth = replicationReadAuth(globalResources);
 
@@ -64,14 +75,14 @@ function register(app, globalResources) {
         res.status(204).end();
     });
 
-    app.head('/replication/assets/:kind/:key(*)', readAuth, (req, res) => {
+    app.head('/replication/assets/:kind/:key(*)', readAuth, async (req, res) => {
         const kind = req.params.kind;
         const key = decodeURIComponent(req.params.key || '');
-        const localPath = replicationRemoteFetch.resolveLocalPath(globalResources, kind, key);
-        if (!localPath || !fs.existsSync(localPath)) {
+        const localPath = await resolveServedPath(globalResources, kind, key);
+        const stat = localPath ? await fs.promises.stat(localPath).catch(() => null) : null;
+        if (!stat) {
             return res.status(404).end();
         }
-        const stat = fs.statSync(localPath);
         res.setHeader('Content-Type', resolveContentType(kind, localPath));
         res.setHeader('Content-Length', stat.size);
         res.setHeader('Cache-Control', 'private, max-age=259200');
@@ -85,7 +96,7 @@ function register(app, globalResources) {
             return res.status(400).json({ success: false, error: 'Missing asset key' });
         }
 
-        const localPath = replicationRemoteFetch.resolveLocalPath(globalResources, kind, key);
+        const localPath = await resolveServedPath(globalResources, kind, key);
         const stat = localPath ? await fs.promises.stat(localPath).catch(() => null) : null;
         if (!stat) {
             return res.status(404).json({

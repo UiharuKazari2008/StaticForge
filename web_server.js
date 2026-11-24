@@ -1629,6 +1629,15 @@ const vibeCacheDir = path.join(cacheDir, 'vibe');
 const wallpapersDir = path.join(cacheDir, 'wallpapers');
 const tempDownloadDir = path.join(cacheDir, 'tempDownload');
 const imagesDir = path.resolve(__dirname, 'images');
+// gallery pictures may be stored as x.jxl under the name x.png (#1134): reads go through pngPath / locate
+const imageStore = require('./modules/imageStore');
+// for routes outside a try: a failed JXL decode answers as a missing picture instead of an unhandled rejection
+function galleryPngPath(name) {
+    return imageStore.pngPath(name).catch((e) => {
+        console.error('[imageStore] no PNG for', name, ':', e.message);
+        return null;
+    });
+}
 const previewsDir = path.resolve(__dirname, '.previews');
 const fflateBrowserPath = path.resolve(__dirname, 'public', 'scripts', 'vendor', 'fflate.js');
 
@@ -2024,9 +2033,13 @@ app.use('/previews/:preview', authMiddleware, async (req, res, next) => {
         const waitFor = !!(req.query && req.query.wait === '1');
         if (!await studioPreview.ensureFitPreview(imagesDir, previewsDir, previewFile, waitFor ? { wait: false } : undefined)) {
             const source = waitFor ? await studioPreview.fitPreviewSource(imagesDir, previewFile) : null;
-            if (source) {
+            // the picture's real PNG (a .jxl source is sent as its decoded copy)
+            const sourcePath = source
+                ? await imageStore.pngPath(imageStore.logicalNames([path.basename(source.path)])[0])
+                : null;
+            if (sourcePath) {
                 res.setHeader('Cache-Control', 'no-store');
-                return res.sendFile(path.basename(source.path), { root: imagesDir }, (err) => {
+                return res.sendFile(sourcePath, (err) => {
                     if (err && !res.headersSent) res.status(404).end();
                 });
             }
@@ -2391,10 +2404,13 @@ require('./modules/clientCertificates').mount(app, authMiddleware, globalResourc
 
 app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
-    const filePath = path.join(imagesDir, filename);
-    
-    const fileStat = await statOrNull(filePath);
-    if (!fileStat || !fileStat.isFile()) {
+    // the stored picture (x.png, or x.jxl under that name: then the decoded PNG copy is what is sent)
+    const loc = await imageStore.locate(filename);
+    const filePath = loc ? (loc.kind === 'jxl' ? await galleryPngPath(filename) : loc.path) : null;
+    // Last-Modified / ETag from the stored file (the swap keeps the PNG's mtime), Content-Length of the sent one
+    const fileStat = loc && filePath ? loc.stat : null;
+    const sentStat = filePath && loc.kind === 'jxl' ? await statOrNull(filePath) : fileStat;
+    if (!fileStat || !sentStat) {
         return res.status(404).json({ success: false, error: 'Image not found' });
     }
 
@@ -2402,7 +2418,7 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     const ext = path.extname(filename).toLowerCase();
     res.setHeader('Content-Type', (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' : 'image/png');
     res.setHeader('Cache-Control', 'private, max-age=259200');
-    res.setHeader('Content-Length', fileStat.size);
+    res.setHeader('Content-Length', sentStat.size);
     res.setHeader('Last-Modified', new Date(fileStat.mtime).toUTCString());
     res.setHeader('ETag', `"${fileStat.mtime.getTime()}"`);
     res.setHeader('Expires', '0');
@@ -2527,9 +2543,10 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
 // Slim PNG route - strips PNG metadata/blueprint data
 app.use('/image/slim/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
-    const filePath = path.join(imagesDir, filename);
+    // a real PNG for sharp (x.jxl stored under the name x.png is decoded once into the cache)
+    const filePath = await galleryPngPath(filename);
     
-    if (!await statOrNull(filePath)) {
+    if (!filePath) {
         return res.status(404).json({ success: false, error: 'Image not found' });
     }
     
@@ -2563,9 +2580,10 @@ app.use('/image/slim/:filename', authMiddleware, async (req, res) => {
 // Optimized JPG route - converts to optimized JPEG
 app.use('/image/opti/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
-    const filePath = path.join(imagesDir, filename);
+    // a real PNG for sharp (x.jxl stored under the name x.png is decoded once into the cache)
+    const filePath = await galleryPngPath(filename);
     
-    if (!await statOrNull(filePath)) {
+    if (!filePath) {
         return res.status(404).json({ success: false, error: 'Image not found' });
     }
     
@@ -3709,8 +3727,8 @@ app.get('/traces/:id', authMiddleware, adminOnlyMiddleware, (req, res) => {
             if (!ws) return res.status(404).json({ success: false, error: 'Workspace not found' });
             const inFiles = (ws.files || []).includes(filename) || (ws.scraps || []).includes(filename);
             if (!inFiles) return res.status(403).json({ success: false, error: 'Access denied' });
-            const imagePath = path.join(globalResources.getPath('images'), filename);
-            if (!await statOrNull(imagePath)) return res.status(404).send('Not found');
+            const imagePath = await imageStore.pngPath(filename);
+            if (!imagePath) return res.status(404).send('Not found');
             res.setHeader('Content-Type', 'image/png');
             fs.createReadStream(imagePath).pipe(res);
         } catch (e) {
@@ -3900,8 +3918,8 @@ app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (r
         let finalBuffer;
         if (targetFilename && targetFilename !== result.filename) {
             // Need to read from disk
-            const imagePath = path.join(imagesDir, targetFilename);
-            if (!await statOrNull(imagePath)) {
+            const imagePath = await imageStore.pngPath(targetFilename);
+            if (!imagePath) {
                 return res.status(404).json({ success: false, error: 'Generated image file not found' });
             }
             finalBuffer = await fs.promises.readFile(imagePath);
@@ -4207,8 +4225,8 @@ app.get('/pending/retrieval/:requestid', serverReadinessMiddleware, async (req, 
             }
 
             // Read the generated image file
-            const imagePath = path.join(imagesDir, targetFilename);
-            if (!await statOrNull(imagePath)) {
+            const imagePath = await imageStore.pngPath(targetFilename);
+            if (!imagePath) {
                 return res.status(404).json({ success: false, error: 'Generated image file not found' });
             }
 
@@ -4343,7 +4361,7 @@ app.post('/test-bias-adjustment', serverReadinessMiddleware, authMiddleware, asy
         // Load image from disk based on source
         let imagePath;
         if (image_source.startsWith('file:')) {
-            imagePath = path.join(imagesDir, image_source.replace('file:', ''));
+            imagePath = await imageStore.pngPath(image_source.replace('file:', ''));
         } else if (image_source.startsWith('cache:')) {
             imagePath = path.join(uploadCacheDir, image_source.replace('cache:', ''));
         } else {
@@ -4351,7 +4369,7 @@ app.post('/test-bias-adjustment', serverReadinessMiddleware, authMiddleware, asy
         }
         
         // Check if file exists
-        if (!await statOrNull(imagePath)) {
+        if (!imagePath || !await statOrNull(imagePath)) {
             return res.status(404).json({ success: false, error: 'Image file not found' });
         }
         

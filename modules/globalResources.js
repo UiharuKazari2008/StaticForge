@@ -6,6 +6,8 @@
 
 const path = require('path');
 const crypto = require('crypto');
+// gallery pictures may be stored as x.jxl under the name x.png (#1134)
+const imageStore = require('./imageStore');
 const nekoaijs = require('nekoai-js');
 const SpellChecker = require('./spellChecker');
 const WordLookupService = require('./wordLookupService');
@@ -1776,9 +1778,9 @@ class GlobalResources {
                         if (workspace.files && Array.isArray(workspace.files)) {
                             for (const file of workspace.files) {
                                 try {
-                                    const filePath = path.join(imagesPath, file);
-                                    const stats = await fs.promises.stat(filePath);
-                                    totalSize += stats.size;
+                                    // the stored file's size (a .jxl's when the picture is kept as JXL)
+                                    const stats = await imageStore.stat(file, {}, imagesPath);
+                                    if (stats) totalSize += stats.size;
                                 } catch (fileError) {
                                     // Skip file if can't read
                                 }
@@ -4182,7 +4184,8 @@ class GlobalResources {
 
         // Async listings, and existence checks against the listing: ~193k existsSync
         // calls held the event loop ~1s right after boot.
-        const files = (await fs.promises.readdir(imagesDir)).filter(f => f.match(/\.(png|jpg|jpeg|gif)$/i));
+        // x.jxl is listed as its picture's name x.png (#1134)
+        const files = imageStore.logicalNames(await fs.promises.readdir(imagesDir)).filter(f => f.match(/\.(png|jpg|jpeg|gif)$/i));
         const previewEntries = await fs.promises.readdir(previewsDir);
         const previews = previewEntries.filter(f => f.endsWith('.webp'));
         const previewNames = new Set(previews);
@@ -4518,7 +4521,6 @@ class GlobalResources {
      * Helper for sprite sheet generation
      */
     async getPinnedImages() {
-        const fs = require('fs');
         const imagesDir = this.getPath('images');
         const workspaces = this.getWorkspaceManager().getWorkspaces();
 
@@ -4552,8 +4554,9 @@ class GlobalResources {
                     return;
                 }
 
+                // path is the picture's name in images/; the sprite sheet asks imageStore for its real PNG
                 const imagePath = path.join(imagesDir, pinnedFile);
-                if (fs.existsSync(imagePath) && pinnedFile.match(/\.(png|jpg|jpeg)$/i)) {
+                if (pinnedFile.match(/\.(png|jpg|jpeg)$/i) && imageStore.existsSync(pinnedFile, imagesDir)) {
                     pinnedImages.push({
                         filename: pinnedFile,
                         path: imagePath,
@@ -4589,7 +4592,10 @@ class GlobalResources {
                 throw readError;
             }
 
-            const imageNames = names.filter(file => /\.(png|jpg|jpeg)$/i.test(file));
+            // x.jxl counts as its picture x.png, once (imageStore.logicalNames, inlined: the perf test runs this
+            // method's source on its own)
+            const imageNames = [...new Set(names.map(n => (/\.jxl$/i.test(n) ? n.slice(0, -4) + '.png' : n)))]
+                .filter(file => /\.(png|jpg|jpeg)$/i.test(file));
             if (imageNames.length === 0) {
                 console.warn('⚠️ No image files found in images directory');
                 return [];
@@ -4628,7 +4634,10 @@ class GlobalResources {
 
         for (const img of images) {
             try {
-                const imagePath = typeof img === 'string' ? path.join(imagesDir, img) : img.path;
+                // the real PNG (a JXL-stored picture's decoded copy); a missing one gets the placeholder below
+                const imageName = typeof img === 'string' ? img : (img.filename || path.basename(img.path));
+                const imagePath = await imageStore.pngPath(imageName, imagesDir);
+                if (!imagePath) throw new Error('image not found');
 
                 // Load and resize normal image
                 const normalBuffer = await sharp(imagePath)

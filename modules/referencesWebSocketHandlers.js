@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const https = require('https');
 const sharp = require('sharp');
 const { generateMobilePreviews } = require('./previewUtils');
+const imageStore = require('./imageStore');
 const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
 const replicationRemoteFetch = require('./replicationRemoteFetch');
 const { broadcastGalleryMutation } = require('./ws/handlers/120-galleryHandler');
@@ -473,14 +474,9 @@ class ReferencesWebSocketHandlers {
 
     async getFileImageData(filename) {
         try {
-            const filePath = path.join(this.globalResources.getPath('images'), filename);
-            let stats;
-            try {
-                stats = await fs.promises.stat(filePath);
-            } catch (err) {
-                if (err && err.code === 'ENOENT') return null;
-                throw err;
-            }
+            // the picture may be stored as x.jxl (#1134); its mtime is the original's
+            const stats = await imageStore.stat(filename, {}, this.globalResources.getPath('images'));
+            if (!stats) return null;
             return {
                 filename,
                 mtime: stats.mtimeMs,
@@ -1053,9 +1049,10 @@ class ReferencesWebSocketHandlers {
             let imageBuffer;
 
             if (filename) {
-                const imageFilePath = path.join(this.globalResources.getPath("images"), filename);
-                if (await fileExists(imageFilePath)) {
-                    imageBuffer = await fs.promises.readFile(imageFilePath);
+                // PNG bytes, rebuilt from x.jxl when it is stored as one (#1134)
+                const localPng = await imageStore.readPng(filename, this.globalResources.getPath("images"));
+                if (localPng) {
+                    imageBuffer = localPng;
                 } else {
                     try {
                         const fetched = await replicationRemoteFetch.readAssetBuffer(
@@ -3102,7 +3099,8 @@ class ReferencesWebSocketHandlers {
             let finalFilePath = path.join(this.globalResources.getPath("images"), finalFilename);
             let counter = 1;
 
-            while (await fileExists(finalFilePath)) {
+            // a name taken by a picture stored as x.jxl (#1134) is taken too
+            while (await imageStore.exists(finalFilename, this.globalResources.getPath("images"))) {
                 const ext = path.extname(filename);
                 const baseName = path.basename(filename, ext);
                 finalFilename = `${baseName}_${counter}${ext}`;

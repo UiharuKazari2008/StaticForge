@@ -10,6 +10,7 @@ const {
     getImageDimensions
 } = require('./imageTools');
 const { generateMobilePreviews } = require('./previewUtils');
+const imageStore = require('./imageStore');
 const {
     normalizeUpscalerName,
     upscaleBufferWithLocalWorker
@@ -311,14 +312,12 @@ async function upscaleImage(globalResources, filename, workspaceId, req, res, up
         return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
     }
     try {
-        const filePath = path.join(__runtimeGr.getPath("images"), filename);
+        // Read the image (PNG bytes, also when it is stored as JXL)
+        const imageBuffer = await imageStore.readPng(filename, __runtimeGr.getPath("images"));
 
-        if (!fs.existsSync(filePath)) {
+        if (!imageBuffer) {
             return res.status(404).json({ error: 'Image not found' });
         }
-
-        // Read the image
-        const imageBuffer = fs.readFileSync(filePath);
 
         // Get image dimensions
         const { width, height } = await getImageDimensions(imageBuffer);
@@ -377,14 +376,12 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
     }
     
     try {
-        const filePath = path.join(__runtimeGr.getPath("images"), filename);
+        // Read the image (PNG bytes, also when it is stored as JXL)
+        const imageBuffer = await imageStore.readPng(filename, __runtimeGr.getPath("images"));
         
-        if (!fs.existsSync(filePath)) {
+        if (!imageBuffer) {
             throw new Error('Image not found');
         }
-        
-        // Read the image
-        const imageBuffer = fs.readFileSync(filePath);
         
         // Get image dimensions
         const { width, height } = await getImageDimensions(imageBuffer);

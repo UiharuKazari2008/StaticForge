@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { generateMobilePreviews } = require('./previewUtils');
 const { animateBufferWithLocalWorker } = require('./localUpscaleWorker');
+const imageStore = require('./imageStore');
 
 let __runtimeGr = null;
 function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
@@ -123,11 +124,11 @@ async function animateImageWebSocket(globalResources, filename, workspaceId, use
     let jobState = null;
     try {
         const imagesDir = __runtimeGr.getPath('images');
-        const filePath = path.join(imagesDir, filename);
-        if (!fs.existsSync(filePath)) {
+        // PNG bytes, also when the still is stored as JXL
+        const imageBuffer = await imageStore.readPng(filename, imagesDir);
+        if (!imageBuffer) {
             throw new Error('Image not found');
         }
-        const imageBuffer = fs.readFileSync(filePath);
 
         jobState = {
             requestId,

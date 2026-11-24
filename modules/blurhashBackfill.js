@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { encodeBlurhashFromFile, encodeBlurhashFromBuffer } = require('./blurhashUtils');
+const imageStore = require('./imageStore');
 
 const DEFAULT_BATCH = 200;
 const DEFAULT_CONCURRENCY = 4;
@@ -35,8 +36,9 @@ async function encodeGalleryBlurhash(filename, { imagesDir, previewsDir }) {
     if (fs.existsSync(previewPath)) {
         return encodeBlurhashFromFile(previewPath);
     }
-    const imagePath = path.join(imagesDir, filename);
-    if (fs.existsSync(imagePath)) {
+    // a real PNG (a JXL-stored picture decoded)
+    const imagePath = await imageStore.pngPath(filename, imagesDir);
+    if (imagePath) {
         return encodeBlurhashFromFile(imagePath);
     }
     return null;

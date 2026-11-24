@@ -1,4 +1,5 @@
 const melatonNetwork = require('./melatonNetwork');
+const imageStore = require('./imageStore');
 const { normalizeRegistry, mergeRegistryPatch } = require('./melatonRegistry');
 const { WebSocketServer } = require('./websocket');
 const VfsWebSocketHandlers = require('./vfsWebSocketHandlers');
@@ -1452,9 +1453,10 @@ class WebSocketMessageHandlers {
         const filename = result.filename || null;
         if (!filename) return null;
         try {
-            const filePath = path.join(this.globalResources.getPath('images'), filename);
-            // One stat; a missing file throws ENOENT and lands on null like the old existsSync check.
-            return fs.statSync(filePath).size;
+            // One stat (two for a missing PNG); a missing file lands on null like the old existsSync check.
+            // A picture stored as x.jxl (#1134) has no PNG byte length without a decode: unknown (null).
+            const loc = imageStore.locateSync(filename, this.globalResources.getPath('images'));
+            return loc && loc.kind !== 'jxl' ? loc.stat.size : null;
         } catch (_) { /* ignore */ }
         return null;
     }

@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const imageStore = require('./imageStore');
 
 class PromptManager {
     constructor(globalResources = null) {
@@ -105,12 +106,12 @@ class PromptManager {
      * Get persona image and prompt for a chat session
      */
     async getPersonaData(filename) {
-        const imagePath = path.join(this.globalResources.getPath('images'), filename);
         let personaImage = null;
         let userPrompt = '';
 
-        if (fs.existsSync(imagePath)) {
-            const imageBuffer = fs.readFileSync(imagePath);
+        // PNG bytes, also when the picture is stored as JXL (null when it is not there)
+        const imageBuffer = await imageStore.readPng(filename, this.globalResources.getPath('images'));
+        if (imageBuffer) {
             const base64Image = imageBuffer.toString('base64');
 
             const mimeType = path.extname(filename).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg';

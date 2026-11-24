@@ -1,6 +1,5 @@
-const fs = require('fs');
-const path = require('path');
 const sharp = require('sharp');
+const imageStore = require('./imageStore');
 const customModelProviders = require('./customModelProviders');
 const {
     normalizeNovelMetadata,
@@ -179,10 +178,10 @@ class NovelHandlers {
     async loadImageBuffer(filename) {
         if (!filename) return null;
         const imagesPath = this.globalResources.getPath('images');
-        const filePath = path.join(imagesPath, filename);
-        if (!fs.existsSync(filePath)) return null;
-        const buffer = fs.readFileSync(filePath);
-        const jpegBuffer = await sharp(buffer)
+        // the picture's own file, or the PNG rebuilt from x.jxl (#1134)
+        const filePath = await imageStore.pngPath(filename, imagesPath);
+        if (!filePath) return null;
+        const jpegBuffer = await sharp(filePath)
             .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
             .jpeg({ quality: 85 })
             .toBuffer();

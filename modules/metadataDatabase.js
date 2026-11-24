@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const logger = require('./logger');
+const imageStore = require('./imageStore');
 // Note: globalResources is NOT required here to avoid circular dependency
 // It will be accessed lazily when needed
 const { isImageLarge, getResolutionFromDimensions } = require('./imageTools');
@@ -791,18 +792,6 @@ function generateMD5Async(filePath) {
     });
 }
 
-async function statOrNull(filePath) {
-    try {
-        return await fs.promises.stat(filePath);
-    } catch (_) {
-        return null;
-    }
-}
-
-async function fileExists(filePath) {
-    return (await statOrNull(filePath)) !== null;
-}
-
 /**
  * Extract image metadata using Sharp (file path or in-memory buffer)
  */
@@ -835,7 +824,7 @@ function determineImageRelationships(filename, imagesDir) {
 
     if (isUpscaled) {
         const originalName = filename.replace('_upscaled.png', '.png');
-        if (fs.existsSync(path.join(imagesDir, originalName))) {
+        if (imageStore.existsSync(originalName, imagesDir)) {
             parent = originalName;
         }
     }
@@ -1029,9 +1018,16 @@ async function backfillMissingBlurhashes(options = {}) {
  * Build image metadata from disk without touching SQL.
  */
 async function buildImageMetadataFromFile(filename, imagesDir, existingReceipts = [], options = {}) {
-    const filePath = path.join(imagesDir, filename);
-    const stats = await statOrNull(filePath);
+    // the stored file's size and the original's mtime (a JXL-stored picture keeps its PNG's mtime)
+    const stats = await imageStore.stat(filename, {}, imagesDir);
     if (!stats) {
+        return null;
+    }
+    // a real PNG (original or decoded copy); without a caller buffer it is read once below
+    const filePath = (!Buffer.isBuffer(options.buffer) || stats.kind === 'jxl')
+        ? await imageStore.pngPath(filename, imagesDir)
+        : path.join(imagesDir, filename);
+    if (!filePath) {
         return null;
     }
 
@@ -1264,16 +1260,19 @@ async function getImageMetadata(filename, imagesDir) {
         }
 
         const filePath = path.join(imagesDir, filename);
-        const stats = await statOrNull(filePath);
+        const stats = await imageStore.stat(filename, {}, imagesDir);
         // md5 of the current file, computed (streamed) at most once and only when size/mtime differ
         let currentMD5;
         const fileMatches = async (record) => {
             if (!record || !stats) return false;
-            if (Number(record.size) === stats.size && Number(record.mtime) === stats.mtime.valueOf()) {
+            // a JXL-stored picture keeps its PNG's mtime but not its size (the row may hold either)
+            if ((stats.kind === 'jxl' || Number(record.size) === stats.size)
+                && Number(record.mtime) === stats.mtime.valueOf()) {
                 return true;
             }
             if (currentMD5 === undefined) {
-                currentMD5 = await generateMD5Async(filePath);
+                const pngFile = await imageStore.pngPath(filename, imagesDir);
+                currentMD5 = pngFile ? await generateMD5Async(pngFile) : null;
             }
             return currentMD5 === record.md5;
         };
@@ -1329,7 +1328,7 @@ async function scanAndUpdateMetadata(imagesDir) {
         const existingFilesSet = new Set((await db.all('SELECT filename FROM images')).map(row => row.filename));
         
         // Get all image files from directory
-        const allFiles = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
+        const allFiles = imageStore.logicalNames(fs.readdirSync(imagesDir)).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
         const missingFiles = allFiles.filter(f => !existingFilesSet.has(f));
         
         let updatedCount = 0;
@@ -1371,7 +1370,7 @@ async function rebuildMetadataCache(imagesDir, progressCallback = null) {
         }
         
         // Get all image files from directory
-        const allFiles = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
+        const allFiles = imageStore.logicalNames(fs.readdirSync(imagesDir)).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
         
         let updatedCount = 0;
         let errorCount = 0;
@@ -1380,17 +1379,18 @@ async function rebuildMetadataCache(imagesDir, progressCallback = null) {
         for (let i = 0; i < allFiles.length; i++) {
             const filename = allFiles[i];
             try {
-                const filePath = path.join(imagesDir, filename);
+                // a real PNG (original or decoded copy of its JXL)
+                const filePath = await imageStore.pngPath(filename, imagesDir);
+                const stats = filePath ? await imageStore.stat(filename, {}, imagesDir) : null;
                 
                 // Check if file exists
-                if (!fs.existsSync(filePath)) {
-                    console.warn(`⚠️ File not found: ${filePath}`);
+                if (!filePath || !stats) {
+                    console.warn(`⚠️ File not found: ${path.join(imagesDir, filename)}`);
                     errorCount++;
                     continue;
                 }
                 
                 // Extract new metadata
-                const stats = fs.statSync(filePath);
                 const md5 = generateMD5(filePath);
                 const imageMetadata = await extractImageMetadata(filePath);
                 
@@ -2696,9 +2696,10 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
     if (!metadata) {
         const existing = await db.get('SELECT * FROM images WHERE filename = ?', [filename]);
         if (existing) {
+            const pngFile = fileBuffer ? null : await imageStore.pngPath(filename, imagesDir);
             const currentMD5 = fileBuffer
                 ? md5OfBuffer(fileBuffer)
-                : (await fileExists(filePath) ? await generateMD5Async(filePath) : null);
+                : (pngFile ? await generateMD5Async(pngFile) : null);
             if (currentMD5 && currentMD5 === existing.md5) {
                 const receipts = await db.all(
                     'SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp',
@@ -2719,19 +2720,20 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
 
     if (forgeData) {
         if (options.forgeDataEmbedded) {
-            const stats = await statOrNull(filePath);
+            const stats = await imageStore.stat(filename, {}, imagesDir);
             if (fileBuffer) {
                 metadata.md5 = md5OfBuffer(fileBuffer);
             } else if (stats) {
-                metadata.md5 = (await generateMD5Async(filePath)) || metadata.md5;
+                const pngFile = await imageStore.pngPath(filename, imagesDir);
+                metadata.md5 = (pngFile && await generateMD5Async(pngFile)) || metadata.md5;
             }
             if (stats) {
                 metadata.mtime = stats.mtime.valueOf();
                 metadata.size = stats.size;
             }
         } else {
-            const imageBuffer = fileBuffer
-                || (await fileExists(filePath) ? await fs.promises.readFile(filePath) : null);
+            // the PNG bytes (a JXL-stored picture decoded); the write below stores a PNG again, which wins
+            const imageBuffer = fileBuffer || await imageStore.readPng(filename, imagesDir);
             if (imageBuffer) {
                 const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
                 await fs.promises.writeFile(filePath, updatedBuffer);
@@ -2876,14 +2878,14 @@ async function updateFileMetadata(filename, imagesDir, forgeData) {
         
         const filePath = path.join(imagesDir, filename);
         
+        // Read the file buffer (a JXL-stored picture decoded; the write below stores a PNG again, which wins)
+        const imageBuffer = await imageStore.readPng(filename, imagesDir);
+        
         // Check if file exists
-        if (!fs.existsSync(filePath)) {
+        if (!imageBuffer) {
             console.warn(`⚠️ File not found: ${filePath}`);
             return false;
         }
-        
-        // Read the file buffer
-        const imageBuffer = fs.readFileSync(filePath);
         
         // Update the PNG metadata using the pngMetadata module
         const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);

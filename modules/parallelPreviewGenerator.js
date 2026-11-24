@@ -1,4 +1,5 @@
 const { generateMobilePreviews } = require('./previewUtils');
+const imageStore = require('./imageStore');
 const fs = require('fs');
 const path = require('path');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -59,8 +60,9 @@ class ParallelPreviewGenerator {
         for (let i = 0; i < imageFiles.length; i += this.batchSize) {
             const batch = imageFiles.slice(i, i + this.batchSize);
             
-            const workers = batch.map(imageFile => {
-                const imagePath = path.join(imagesDir, imageFile);
+            const workers = batch.map(async imageFile => {
+                // a picture stored as x.jxl (#1134) is read from its decoded PNG; a missing one fails in the worker as before
+                const imagePath = (await imageStore.pngPath(imageFile, imagesDir).catch(() => null)) || path.join(imagesDir, imageFile);
                 const basename = this.globalResources.getPngMetadata().getBaseName(imageFile);
                 
                 // Remove existing previews if force regenerate
@@ -165,7 +167,7 @@ class ParallelPreviewGenerator {
         }
         
         // Get all image files
-        const imageFiles = fs.readdirSync(imagesDir).filter(file => 
+        const imageFiles = imageStore.logicalNames(fs.readdirSync(imagesDir)).filter(file => 
             /\.(png|jpg|jpeg|webp)$/i.test(file) && !file.includes('_upscaled')
         );
         
@@ -182,7 +184,7 @@ class ParallelPreviewGenerator {
         const previewsDir = path.resolve('./.previews');
         
         // Get all image files
-        const imageFiles = fs.readdirSync(imagesDir).filter(file => 
+        const imageFiles = imageStore.logicalNames(fs.readdirSync(imagesDir)).filter(file => 
             /\.(png|jpg|jpeg|webp)$/i.test(file) && !file.includes('_upscaled')
         );
         

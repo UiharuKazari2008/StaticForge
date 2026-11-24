@@ -156,8 +156,14 @@ async function photoFor(filename) {
         const base = resources().getPath('images');
         const file = path.resolve(base, String(filename));
         if (!file.startsWith(path.resolve(base) + path.sep)) return '';
+        // a picture stored as x.jxl (#1134) is read from its rebuilt PNG
+        const name = path.basename(file);
+        const source = path.dirname(file) === path.resolve(base)
+            ? await require('./imageStore').pngPath(name, base)
+            : file;
+        if (!source) return '';
         const sharp = require('sharp');
-        const buf = await sharp(file).rotate().resize(PHOTO_SIDE, PHOTO_SIDE, { fit: 'cover', position: 'attention' }).jpeg({ quality: 82 }).toBuffer();
+        const buf = await sharp(source).rotate().resize(PHOTO_SIDE, PHOTO_SIDE, { fit: 'cover', position: 'attention' }).jpeg({ quality: 82 }).toBuffer();
         return `data:image/jpeg;base64,${buf.toString('base64')}`;
     } catch (_) {
         return '';

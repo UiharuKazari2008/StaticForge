@@ -1,7 +1,7 @@
 // Chat WebSocket implementations (migrated from websocketHandlers.js)
-const fs = require('fs');
 const path = require('path');
 const personaContacts = require('../../chatPersonaContacts');
+const imageStore = require('../../imageStore');
 
 // A chat persona's contact card (Yozora #763): never in the way of the chat itself.
 function personaContact(what, fn) {
@@ -168,12 +168,8 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
             console.log('📁 Images directory:', handler.globalResources.getPath("images"));
             console.log('📄 Filename:', data.filename);
 
-            let imageBuffer = null;
-            try {
-                imageBuffer = await fs.promises.readFile(imagePath);
-            } catch (err) {
-                if (!err || err.code !== 'ENOENT') throw err;
-            }
+            // PNG bytes, also when the picture is stored as JXL (null when it is not there)
+            const imageBuffer = await imageStore.readPng(data.filename, handler.globalResources.getPath("images"));
             if (imageBuffer) {
                 console.log('✅ Image file exists, loading...');
                 const base64Image = imageBuffer.toString('base64');

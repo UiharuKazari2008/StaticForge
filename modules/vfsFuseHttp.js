@@ -56,6 +56,8 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { md5HexAsync, writeFileIfMissing } = require('./vfsPerfHelpers');
+// gallery pictures may be stored as x.jxl under the name x.png (#1134)
+const imageStore = require('./imageStore');
 
 const LIST_HARD_LIMIT = 100000;
 const LIST_DEFAULT_LIMIT = 1000;
@@ -276,10 +278,12 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
         if (kind === 'image' || kind === 'scrap') {
             // Membership was already proven by the workspace listing that produced this item.
             const filename = path.basename(String(item.targetId || ''));
-            const abs = path.join(globalResources.getPath('images'), filename);
-            if (!filename || !fs.existsSync(abs)) return fail(res, 404, 'Image not found');
+            // the real PNG (a picture stored as x.jxl is read as its decoded copy, #1134)
+            const abs = filename ? await imageStore.pngPath(filename, globalResources.getPath('images')) : null;
+            const st = abs ? await fs.promises.stat(abs).catch(() => null) : null;
+            if (!st) return fail(res, 404, 'Image not found');
             res.setHeader('Content-Type', item.mimeType || 'image/png');
-            res.setHeader('Content-Length', String(fs.statSync(abs).size));
+            res.setHeader('Content-Length', String(st.size));
             return fs.createReadStream(abs).pipe(res);
         }
 

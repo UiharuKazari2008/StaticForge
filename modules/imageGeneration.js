@@ -15,6 +15,7 @@ const { resolveTextDisplayStyle } = require('../public/scripts/comp/textDisplayS
 const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 const { resolveMediumLock, applyMediumLocksToOptions, explicitEffortModelKey, mediumUcResidual } = require('./v5MediumLock');
 const { resolveNekoEnumValue } = require('./nekoEnumResolve');
+const imageStore = require('./imageStore');
 const {
     resolvePresetRecord,
     isBackgroundOnlyRequest,
@@ -771,12 +772,11 @@ async function convertCharacterReferenceToBase64(charaReference) {
                 imageBuffer = await fs.promises.readFile(cachedImagePath);
                 break;
             case 'file':
-                const filePath = path.join(__runtimeGr.getPath('images'), identifier);
-                if (!fs.existsSync(filePath)) {
+                imageBuffer = await imageStore.readPng(identifier, __runtimeGr.getPath('images'));
+                if (!imageBuffer) {
                     console.warn(`⚠️ Character reference file not found: ${identifier}`);
                     return null;
                 }
-                imageBuffer = await fs.promises.readFile(filePath);
                 break;
             default:
                 console.warn(`⚠️ Unsupported character reference type: ${type}`);
@@ -3716,9 +3716,8 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                     imageBuffer = await fs.promises.readFile(cachedImagePath);
                     break;
                 case 'file':
-                    const filePath = path.join(__runtimeGr.getPath('images'), imageIdentifier);
-                    if (!fs.existsSync(filePath)) throw new Error(`Image not found: ${imageIdentifier}`);
-                    imageBuffer = await fs.promises.readFile(filePath);
+                    imageBuffer = await imageStore.readPng(imageIdentifier, __runtimeGr.getPath('images'));
+                    if (!imageBuffer) throw new Error(`Image not found: ${imageIdentifier}`);
                     break;
                 case 'data': // For new uploads from client, not yet cached.
                     imageBuffer = Buffer.from(imageIdentifier, 'base64');
@@ -4335,10 +4334,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         auto_clean_uc: opts.auto_clean_uc
     });
     if (!opts._rentanReview && lastApiGenerationRecord && lastApiGenerationRecord.fingerprint === currentFingerprint && lastApiGenerationRecord.filename) {
-        const candidatePath = path.join(__runtimeGr.getPath('images'), lastApiGenerationRecord.filename);
-        if (fs.existsSync(candidatePath)) {
+        const existingBuffer = await imageStore.readPng(lastApiGenerationRecord.filename, __runtimeGr.getPath('images'));
+        if (existingBuffer) {
             __runtimeGr.getLogger().normal(`⚡ Reusing identical generation result for existing image: ${lastApiGenerationRecord.filename}`);
-            const existingBuffer = await fs.promises.readFile(candidatePath);
             const targetWorkspaceId = workspaceId || __runtimeGr.getWorkspaceManager().getActiveWorkspace(req?.session?.id);
 
             sendStageOrGenerationComplete(ws, handler, opts, {
@@ -7560,12 +7558,12 @@ async function previewExpandImagePrompt(
     requestId = null
 ) {
     bindRuntimeGlobalResources(globalResources);
-    const filePath = path.join(__runtimeGr.getPath('images'), filename);
-    if (!fs.existsSync(filePath)) {
+    const filePath = await imageStore.pngPath(filename, __runtimeGr.getPath('images'));
+    if (!filePath) {
         throw new Error('Image not found');
     }
-    const sourceFilePath = sourceFilename ? path.join(__runtimeGr.getPath('images'), sourceFilename) : null;
-    if (sourceFilePath && !fs.existsSync(sourceFilePath)) {
+    const sourceFilePath = sourceFilename ? await imageStore.pngPath(sourceFilename, __runtimeGr.getPath('images')) : null;
+    if (sourceFilename && !sourceFilePath) {
         throw new Error('Source image not found');
     }
 
@@ -7652,12 +7650,12 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         console.log(`📌 Expansion inset (native-scale letterbox padding): ${inset}`);
 
         // Load original image
-        const filePath = path.join(__runtimeGr.getPath('images'), filename);
-        if (!fs.existsSync(filePath)) {
+        const filePath = await imageStore.pngPath(filename, __runtimeGr.getPath('images'));
+        if (!filePath) {
             throw new Error('Image not found');
         }
-        const sourceFilePath = sourceFilename ? path.join(__runtimeGr.getPath('images'), sourceFilename) : null;
-        if (sourceFilePath && !fs.existsSync(sourceFilePath)) {
+        const sourceFilePath = sourceFilename ? await imageStore.pngPath(sourceFilename, __runtimeGr.getPath('images')) : null;
+        if (sourceFilename && !sourceFilePath) {
             throw new Error('Source image not found');
         }
 
@@ -8032,12 +8030,11 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         console.log(`🔄 Starting image expansion reroll: ${filename}`);
 
         // 1. Load image and extract metadata
-        const filePath = path.join(__runtimeGr.getPath('images'), filename);
-        if (!fs.existsSync(filePath)) {
+        const imageBuffer = await imageStore.readPng(filename, __runtimeGr.getPath('images'));
+        if (!imageBuffer) {
             throw new Error('Image not found');
         }
 
-        const imageBuffer = await fs.promises.readFile(filePath);
         const metadata = __runtimeGr.getPngMetadata().readMetadata(imageBuffer);
 
         // 2. Validate expansion metadata exists
@@ -8068,11 +8065,10 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         console.log(`🔗 Maintaining expansion source: ${expansion_source}`);
 
         // Load the SOURCE image for letterboxing (not the expanded image)
-        const sourceFilePath = path.join(__runtimeGr.getPath('images'), expansion_source);
-        if (!fs.existsSync(sourceFilePath)) {
+        const sourceImageBuffer = await imageStore.readPng(expansion_source, __runtimeGr.getPath('images'));
+        if (!sourceImageBuffer) {
             throw new Error(`Source image not found: ${expansion_source}`);
         }
-        const sourceImageBuffer = await fs.promises.readFile(sourceFilePath);
 
         // Get source image dimensions
         const originalDims = await getImageDimensions(sourceImageBuffer);
@@ -8627,8 +8623,8 @@ async function enhanceImage(globalResources, filename, scale, sessionId, workspa
         throw new Error('Enhance scale must be 1, 1.5, 2, or max');
     }
 
-    const filePath = path.join(__runtimeGr.getPath('images'), filename);
-    if (!filename || !fs.existsSync(filePath)) {
+    const filePath = filename ? await imageStore.pngPath(filename, __runtimeGr.getPath('images')) : null;
+    if (!filePath) {
         throw new Error('Image not found');
     }
 

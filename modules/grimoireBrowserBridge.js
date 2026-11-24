@@ -16,6 +16,7 @@ const path = require('path');
 const { Readable, Transform } = require('stream');
 const { pipeline } = require('stream/promises');
 const { WebSocket } = require('ws');
+const imageStore = require('./imageStore');
 
 const ROOT = path.join(__dirname, '..');
 const SITE_ICON_DIR = path.join(ROOT, '.cache', 'site-icons');
@@ -672,7 +673,8 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
                 } else if (item && item.kind === 'image') {
                     const filename = path.basename(String(item.filename || ''));
                     if (!filename) continue;
-                    filePath = path.join(globalResources.getPath('images'), filename);
+                    // the picture's own file, or the PNG rebuilt from x.jxl (#1134); '' when it is not there
+                    filePath = (await imageStore.pngPath(filename, globalResources.getPath('images'))) || '';
                     name = filename;
                 }
                 if (!filePath || !(await fs.promises.stat(filePath).then((st) => st.isFile(), () => false))) continue;

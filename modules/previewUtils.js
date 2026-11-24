@@ -2,6 +2,7 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
+const imageStore = require('./imageStore');
 
 // Generate a preview for an image
 async function generatePreview(imagePath, previewPath) {
@@ -178,14 +179,15 @@ async function ensureStudioPreview(imagesDir, previewsDir, previewName) {
     const name = path.basename(previewName);
     const stem = name.slice(0, -STUDIO_PREVIEW_SUFFIX.length);
     if (!stem) return null;
-    let sourcePath = null;
+    // the picture may be stored as x.jxl (#1134): its stat (the original's mtime) for freshness, a PNG only to encode
+    let sourceName = null;
     let sourceStat = null;
     for (const ext of STUDIO_PREVIEW_SOURCE_EXTS) {
-        const candidate = path.join(imagesDir, `${stem}${ext}`);
-        const st = await statOrNullAsync(candidate);
-        if (st && st.isFile()) { sourcePath = candidate; sourceStat = st; break; }
+        const loc = await imageStore.locate(`${stem}${ext}`, imagesDir);
+        if (loc) { sourceName = `${stem}${ext}`; sourceStat = loc.stat; break; }
     }
-    if (!sourcePath) return null;
+    if (!sourceName) return null;
+    let sourcePath = path.join(imagesDir, sourceName);
     const outPath = path.join(previewsDir, name);
     const outStat = await statOrNullAsync(outPath);
     if (outStat && outStat.isFile() && outStat.size > 0 && outStat.mtimeMs >= sourceStat.mtimeMs) return outPath;
@@ -195,6 +197,8 @@ async function ensureStudioPreview(imagesDir, previewsDir, previewName) {
     const job = (async () => {
         const tmpPath = `${outPath}.${process.pid}.${Date.now()}.tmp`;
         try {
+            sourcePath = await imageStore.pngPath(sourceName, imagesDir);
+            if (!sourcePath) return null;
             // effort 2: within ~2% of effort 4's size at a third of the time (1024² ~0.1 s, 4096² ~1.2 s)
             await sharp(sourcePath)
                 .webp({ quality: 85, effort: 2 })
@@ -248,15 +252,18 @@ function fitSlot() {
     });
 }
 
-/** The gallery file a fit preview is made from: { path, stat } or null. */
+/**
+ * The gallery file a fit preview is made from: { name, kind, path, stat } or null. path is the stored file
+ * (x.jxl for a picture kept as JPEG XL, #1134: kind 'jxl'); anything that reads the pixels asks
+ * imageStore.pngPath(name) for a PNG.
+ */
 async function fitPreviewSource(imagesDir, previewName) {
     if (!isFitPreviewName(previewName)) return null;
     const stem = path.basename(previewName).slice(0, -FIT_PREVIEW_SUFFIX.length);
     if (!stem) return null;
     for (const ext of [...STUDIO_PREVIEW_SOURCE_EXTS, '.webp']) {
-        const candidate = path.join(imagesDir, `${stem}${ext}`);
-        const st = await statOrNullAsync(candidate);
-        if (st && st.isFile()) return { path: candidate, stat: st };
+        const loc = await imageStore.locate(`${stem}${ext}`, imagesDir);
+        if (loc) return { name: `${stem}${ext}`, kind: loc.kind, path: loc.path, stat: loc.stat };
     }
     return null;
 }
@@ -266,7 +273,7 @@ async function ensureFitPreview(imagesDir, previewsDir, previewName, opts) {
     const name = path.basename(previewName);
     const source = await fitPreviewSource(imagesDir, name);
     if (!source) return null;
-    const sourcePath = source.path;
+    let sourcePath = source.path;
     const sourceStat = source.stat;
     const outPath = path.join(previewsDir, name);
     const outStat = await statOrNullAsync(outPath);
@@ -276,6 +283,8 @@ async function ensureFitPreview(imagesDir, previewsDir, previewName, opts) {
         job = fitSlot().then(async (release) => {
             const tmpPath = `${outPath}.${process.pid}.${Date.now()}.tmp`;
             try {
+                if (source.kind === 'jxl') sourcePath = await imageStore.pngPath(source.name, imagesDir);
+                if (!sourcePath) return null;
                 await sharp(sourcePath, { failOnError: false })
                     .resize(FIT_PREVIEW_EDGE, FIT_PREVIEW_EDGE, { fit: 'inside', withoutEnlargement: true, fastShrinkOnLoad: true })
                     .webp({ quality: 72, effort: 2 })
@@ -358,9 +367,13 @@ async function ensureLosslessPreview(imagesDir, previewsDir, previewName) {
     const name = path.basename(previewName);
     const stem = name.slice(0, -LOSSLESS_PREVIEW_SUFFIX.length);
     if (!stem) return null;
-    const sourcePath = path.join(imagesDir, `${stem}.png`);
-    const sourceStat = await statOrNullAsync(sourcePath);
-    if (!sourceStat || !sourceStat.isFile()) return null;
+    // images/<stem>.png may be stored as <stem>.jxl (#1134): keyed and dated by the PNG's name and the original's
+    // mtime, decoded only for an encode
+    const sourceName = `${stem}.png`;
+    const sourcePath = path.join(imagesDir, sourceName);
+    const sourceLoc = await imageStore.locate(sourceName, imagesDir);
+    if (!sourceLoc) return null;
+    const sourceStat = sourceLoc.stat;
     const outPath = path.join(previewsDir, name);
     const outStat = await statOrNullAsync(outPath);
     if (outStat && outStat.isFile() && outStat.size > 0 && outStat.mtimeMs >= sourceStat.mtimeMs) return outPath;
@@ -369,9 +382,15 @@ async function ensureLosslessPreview(imagesDir, previewsDir, previewName) {
     if (!job) {
         job = (async () => {
             // the header read happens before the encode slot: a refused PNG never waits behind an encode
+            // a failed JXL decode is not a refusal: the next request tries again
+            const pngFile = await imageStore.pngPath(sourceName, imagesDir).catch((e) => {
+                console.error('Failed to decode', sourcePath, 'for a lossless preview:', e.message);
+                return null;
+            });
+            if (!pngFile) return null;
             let meta;
             try {
-                meta = await sharp(sourcePath).metadata();
+                meta = await sharp(pngFile).metadata();
             } catch (e) {
                 refuseLossless(sourcePath, sourceStat.mtimeMs);
                 console.error('Failed to read', sourcePath, 'for a lossless preview:', e.message);
@@ -386,7 +405,7 @@ async function ensureLosslessPreview(imagesDir, previewsDir, previewName) {
             const release = await losslessSlot();
             const tmpPath = `${outPath}.${process.pid}.${Date.now()}.tmp`;
             try {
-                await sharp(sourcePath).webp({ lossless: true, effort }).toFile(tmpPath);
+                await sharp(pngFile).webp({ lossless: true, effort }).toFile(tmpPath);
                 await fs.promises.rename(tmpPath, outPath);
                 return outPath;
             } catch (e) {

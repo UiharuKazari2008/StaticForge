@@ -3,6 +3,7 @@ const path = require('path');
 const metadataWriteQueue = require('./metadataWriteQueue');
 const crypto = require('crypto');
 const sharp = require('sharp');
+const imageStore = require('./imageStore');
 
 // modules/replicationJournal.js
 async function recordReplicationWorkspaceFilenameJournal(filename, workspaceId, { operation = 'INSERT' } = {}) {
@@ -507,7 +508,8 @@ class WorkspaceManager {
                 return;
             }
 
-            const imageFiles = fs.readdirSync(this.IMAGES_DIR)
+            // x.jxl is the picture x.png stored as JPEG XL (#1134)
+            const imageFiles = imageStore.logicalNames(fs.readdirSync(this.IMAGES_DIR))
                 .filter(f => f.match(/\.(png|jpg|jpeg|gif)$/i))
                 .filter(f => !f.startsWith('.'));
 
@@ -912,9 +914,11 @@ class WorkspaceManager {
     // Helper: get file creation date from filesystem
     getFileCreationDate(filename) {
         try {
-            const filePath = path.join(this.IMAGES_DIR, filename);
-            const stats = fs.statSync(filePath);
-            return stats.birthtime.getTime() || stats.mtime.getTime();
+            // the stored file: x.jxl after the #1134 swap, born at the swap, so its kept mtime dates it
+            const loc = imageStore.locateSync(filename, this.IMAGES_DIR);
+            if (!loc) throw new Error('not found');
+            const stats = loc.stat;
+            return (loc.kind !== 'jxl' && stats.birthtime.getTime()) || stats.mtime.getTime();
         } catch (error) {
             console.warn(`Could not get creation date for ${filename}:`, error.message);
             return Date.now(); // Fallback to current time
@@ -1235,7 +1239,8 @@ class WorkspaceManager {
             return movedCount;
         }
 
-        const allImageFiles = fs.readdirSync(this.IMAGES_DIR)
+        // x.jxl is the picture x.png stored as JPEG XL (#1134)
+        const allImageFiles = imageStore.logicalNames(fs.readdirSync(this.IMAGES_DIR))
             .filter(f => f.match(/\.(png|jpg|jpeg)$/i))
             .filter(f => !f.startsWith('.'));
 
@@ -1420,7 +1425,7 @@ class WorkspaceManager {
         const merged = [...new Set(
             filenameLists.flat().filter(f => typeof f === 'string' && f.length > 0)
         )];
-        return new Set(merged.filter(f => fs.existsSync(path.join(dir, f))));
+        return new Set(merged.filter(f => imageStore.existsSync(f, dir)));
     }
 
     /**
@@ -1436,14 +1441,15 @@ class WorkspaceManager {
         if (merged.length === 0) {
             return new Set();
         }
-        const missing = merged.filter(f => !fs.existsSync(path.join(dir, f)));
+        // a picture stored as x.jxl (#1134) is there under its name x.png
+        const missing = merged.filter(f => !imageStore.existsSync(f, dir));
         if (missing.length > 0) {
             const totalRemoved = this.removeFilesFromWorkspaces(missing);
             if (totalRemoved > 0) {
                 console.log(`🧹 Dropped ${missing.length} missing image(s) from workspaces (${totalRemoved} reference(s) removed)`);
             }
         }
-        return new Set(merged.filter(f => fs.existsSync(path.join(dir, f))));
+        return new Set(merged.filter(f => imageStore.existsSync(f, dir)));
     }
 
     // Remove files from all this.workspaces (used when files are deleted)
@@ -1681,7 +1687,7 @@ class WorkspaceManager {
                 // checked for an earlier file): adding again is a no-op, skip the stat.
                 if (allFilesToMove.has(candidate)) continue;
                 if (memoryFiles.has(candidate)
-                    || fs.existsSync(path.join(this.IMAGES_DIR, candidate))) {
+                    || imageStore.existsSync(candidate, this.IMAGES_DIR)) {
                     allFilesToMove.add(candidate);
                 }
             }

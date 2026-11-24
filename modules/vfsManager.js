@@ -2,7 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const vfsDatabase = require('./vfsDatabase');
-const { statNamesInDir, md5HexAsync, writeFileIfMissing } = require('./vfsPerfHelpers');
+const { mapWithConcurrency, md5HexAsync, writeFileIfMissing } = require('./vfsPerfHelpers');
+// gallery pictures may be stored as x.jxl under the name x.png (#1134)
+const imageStore = require('./imageStore');
 const {
     VfsSystemProvider,
     getSystemSegmentDisplayLabel,
@@ -36,6 +38,19 @@ const ROOT_SYSTEM_FOLDERS = [
     { id: VFS_SYSTEM_IDS.SYSTEM, name: 'System', icon: 'fas fa-cog' },
     { id: VFS_SYSTEM_IDS.WORKSPACES, name: 'Workspaces', icon: 'fas fa-planet-ringed' }
 ];
+
+/**
+ * statNamesInDir for gallery pictures: Map(name -> { size, mtime }) with mtime in whole seconds, size of the
+ * stored file (a .jxl's for a picture kept as JXL); missing ones map to { size: 0, mtime: null }.
+ */
+async function statImageNames(imagesPath, names, limit = 64) {
+    const map = new Map();
+    await mapWithConcurrency([...new Set(names || [])], limit, async (name) => {
+        const st = await imageStore.stat(name, {}, imagesPath);
+        map.set(name, st ? { size: st.size, mtime: Math.floor(st.mtimeMs / 1000) } : { size: 0, mtime: null });
+    });
+    return map;
+}
 
 // Same value the preview route sends as its ETag (web_server.js).
 function userFilePreviewVersion(file) {
@@ -1329,8 +1344,8 @@ class VfsManager {
             const imagesPath = this.globalResources.getPath('images');
             await Promise.all([...imageFilenames].map(async (fn) => {
                 try {
-                    const st = await fs.promises.stat(path.join(imagesPath, fn));
-                    ctx.imageSizeMap.set(fn, st.size);
+                    const st = await imageStore.stat(fn, {}, imagesPath);
+                    ctx.imageSizeMap.set(fn, st ? st.size : 0);
                 } catch (_) {
                     ctx.imageSizeMap.set(fn, 0);
                 }
@@ -1620,7 +1635,7 @@ class VfsManager {
                     parsed.skipNameFilter = true;
                 }
                 // Async stat (images.size/mtime drift from the files after metadata rewrites).
-                const statMap = await statNamesInDir(imagesPath, filenames);
+                const statMap = await statImageNames(imagesPath, filenames);
                 return filenames.map(filename => {
                     const { size, mtime } = statMap.get(filename) || { size: 0, mtime: null };
                     return {
@@ -1732,7 +1747,7 @@ class VfsManager {
                 }
                 const pinnedSet = await this._listPinnedFilenameSet(workspaceId);
                 const imagesPath = this.globalResources.getPath('images');
-                const statMap = await statNamesInDir(imagesPath, scraps);
+                const statMap = await statImageNames(imagesPath, scraps);
                 return scraps.map(filename => {
                     const { size, mtime } = statMap.get(filename) || { size: 0, mtime: null };
                     return {
@@ -1793,7 +1808,7 @@ class VfsManager {
         }
 
         const pinnedSet = await this._listPinnedFilenameSet(workspaceId);
-        const statMap = await statNamesInDir(this.globalResources.getPath('images'), [filename]);
+        const statMap = await statImageNames(this.globalResources.getPath('images'), [filename]);
         const { size, mtime } = statMap.get(filename);
         const item = {
             id: `${isScraps ? 'scrap' : 'img'}-${filename}`,
@@ -2311,8 +2326,8 @@ class VfsManager {
             const batch = filenames.slice(i, i + batchSize);
             const sizes = await Promise.all(batch.map(async (filename) => {
                 try {
-                    const st = await fs.promises.stat(path.join(imagesPath, filename));
-                    return st.size;
+                    const st = await imageStore.stat(filename, {}, imagesPath);
+                    return st ? st.size : 0;
                 } catch (_) {
                     return 0;
                 }

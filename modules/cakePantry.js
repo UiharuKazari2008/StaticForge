@@ -35,6 +35,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const imageStore = require('./imageStore');
 const {
     ACCOUNT_DIRS,
     getCakePantryDb,
@@ -1426,7 +1427,8 @@ function defaultResolvePantryImage(imageId) {
         if (!filePath.startsWith(imagesDir + path.sep) && filePath !== imagesDir) {
             return null;
         }
-        if (fs.existsSync(filePath)) return safe;
+        // a picture stored as x.jxl (#1134) keeps its name x.png
+        if (imageStore.existsSync(safe, imagesDir)) return safe;
     } catch (_) {
         return null;
     }

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const imageStore = require('./imageStore');
 
 const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -45,7 +46,8 @@ function loadCounter() {
         // Fallback: scan images dir for recent images
         try {
             const now = Date.now();
-            const files = fs.readdirSync(imageDir);
+            // x.jxl counts as its picture x.png, once
+            const files = imageStore.logicalNames(fs.readdirSync(imageDir));
             timestamps = files
                 .map(f => {
                     const match = f.match(/^(\d+)_/);

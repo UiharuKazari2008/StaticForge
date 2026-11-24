@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { resolveMcpPublicBaseUrl } = require('./mcpServerInfo');
+const imageStore = require('./imageStore');
 
 const DEFAULT_PAGE_LIMIT = 50;
 const MAX_PAGE_LIMIT = 200;
@@ -416,23 +417,32 @@ function handleMcpGalleryImageDownload(globalResources, req, res) {
         res.status(400).json({ success: false, error: 'filename must be a gallery basename' });
         return;
     }
-    let stat;
-    try {
-        stat = fs.statSync(filePath);
-    } catch (_err) {
+    // the stored file (x.png may lie on disk as x.jxl: then its PNG is rebuilt off the sync path)
+    const loc = imageStore.locateSync(filename, imagesDir);
+    if (!loc) {
         res.status(404).json({ success: false, error: 'Image not found' });
         return;
     }
-    if (!stat.isFile()) {
-        res.status(404).json({ success: false, error: 'Image not found' });
-        return;
+    if (loc.kind === 'jxl') {
+        return imageStore.readPng(filename, imagesDir).then((bytes) => {
+            if (!bytes) {
+                res.status(404).json({ success: false, error: 'Image not found' });
+                return;
+            }
+            sendGalleryImageBytes(res, filename, bytes);
+        }, (err) => {
+            res.status(500).json({ success: false, error: 'Image could not be read: ' + (err && err.message) });
+        });
     }
+    sendGalleryImageBytes(res, filename, fs.readFileSync(loc.path));
+}
+
+function sendGalleryImageBytes(res, filename, bytes) {
     const ext = path.extname(filename).toLowerCase();
     const mime = (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' : 'image/png';
     const headerName = filename.replace(/["\r\n]/g, '');
     res.setHeader('Content-Disposition', `inline; filename="${headerName}"`);
     res.setHeader('Cache-Control', 'private, no-store');
-    const bytes = fs.readFileSync(filePath);
     res.setHeader('Content-Type', mime);
     res.setHeader('Content-Length', String(bytes.length));
     res.status(200).send(bytes);

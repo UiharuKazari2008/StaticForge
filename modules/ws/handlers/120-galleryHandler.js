@@ -15,6 +15,7 @@ const wsPacketRegistry = require('../wsPacketRegistry');
 const { encodeBlurhashFromFile } = require('../../blurhashUtils');
 const { isImageLarge, matchOriginalResolution } = require('../../imageTools');
 const replicationRemoteFetch = require('../../replicationRemoteFetch');
+const imageStore = require('../../imageStore');
 const { isReplicationGalleryClient, canGalleryUseRemoteMaster } = require('../../replication/replicationContracts');
 
 const GALLERY_DESTRUCTIVE = { destructive: true };
@@ -53,7 +54,11 @@ async function createDynGenPreviewHashResolver(handlers, filenames) {
         if (entry) {
             return entry.hash || null;
         }
-        const imageBuffer = await fs.promises.readFile(originalPath);
+        // PNG bytes (a JXL-stored picture decoded); missing throws like the file read did
+        const imageBuffer = await imageStore.readPng(originalFilename, path.dirname(originalPath));
+        if (!imageBuffer) {
+            throw new Error(`not found: ${originalFilename}`);
+        }
         const metadata = handlers.globalResources.getPngMetadata().readMetadata(imageBuffer);
         if (!metadata?.tEXt?.Comment) {
             return null;
@@ -749,8 +754,7 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
         }
 
         if (!cachedMetadata) {
-            const filePath = path.join(imagesDir, filename);
-            const exists = await fileExists(filePath);
+            const exists = await imageStore.exists(filename, imagesDir);
 
             if (!exists && canGalleryUseRemoteMaster(
                 handlers.globalResources.getReplicationService().getReplicationConfig()
@@ -929,8 +933,7 @@ async function handleImageByIndexRequest(handlers, ws, message, clientInfo, wsSe
         // Load full metadata only for the target image (check cache first)
         let metadata = null;
         try {
-            const filePath = path.join(handlers.globalResources.getPath("images"), image.original);
-            if (await fileExists(filePath)) {
+            if (await imageStore.exists(image.original, handlers.globalResources.getPath("images"))) {
                 // Track client workspace usage
                 handlers.metadataCache.trackClientWorkspace(clientInfo.sessionId, workspaceId);
 
@@ -1118,9 +1121,7 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
 
         for (const filename of filenames) {
             try {
-                const filePath = path.join(handlers.globalResources.getPath("images"), filename);
-
-                if (!await fileExists(filePath)) {
+                if (!await imageStore.exists(filename, handlers.globalResources.getPath("images"))) {
                     alreadyMissing.push(filename);
                     results.push({ filename, deletedFiles: ['already-missing'] });
                     continue;
@@ -1164,8 +1165,8 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
 
                 // Add original file if exists
                 const originalPath = path.join(handlers.globalResources.getPath("images"), originalFilename);
-                if (await fileExists(originalPath)) {
-                    filesToDelete.push({ path: originalPath, type: 'original' });
+                if (await imageStore.exists(originalFilename, path.dirname(originalPath))) {
+                    filesToDelete.push({ path: originalPath, type: 'original', name: originalFilename });
                     filenamesToRemoveFromWorkspaces.push(originalFilename);
 
                     // Try to extract and delete dynGenPreview file from original
@@ -1189,8 +1190,8 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
 
                 // Add upscaled file if exists
                 const upscaledPath = path.join(handlers.globalResources.getPath("images"), upscaledFilename);
-                if (await fileExists(upscaledPath)) {
-                    filesToDelete.push({ path: upscaledPath, type: 'upscaled' });
+                if (await imageStore.exists(upscaledFilename, path.dirname(upscaledPath))) {
+                    filesToDelete.push({ path: upscaledPath, type: 'upscaled', name: upscaledFilename });
                     filenamesToRemoveFromWorkspaces.push(upscaledFilename);
                 }
 
@@ -1215,7 +1216,14 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
                 const deletedFiles = [];
                 for (const file of filesToDelete) {
                     try {
-                        await fs.promises.unlink(file.path);
+                        // gallery pictures go in every stored form (PNG / JXL / decoded copy)
+                        if (file.name) {
+                            if (!await imageStore.remove(file.name, path.dirname(file.path))) {
+                                throw new Error('not found');
+                            }
+                        } else {
+                            await fs.promises.unlink(file.path);
+                        }
                         deletedFiles.push(file.type);
                     } catch (error) {
                         console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
@@ -1296,16 +1304,16 @@ async function handleDeleteUnupscaledOriginal(handlers, ws, message, clientInfo,
         const upscaledFilename = filename.replace(/\.png$/i, '_upscaled.png');
         const upscaledPath = path.join(imagesDir, upscaledFilename);
 
-        if (!await fileExists(originalPath)) {
+        if (!await imageStore.exists(filename, imagesDir)) {
             handlers.sendError(ws, 'Original file not found', 'delete_unupscaled_original', message.requestId);
             return;
         }
-        if (!await fileExists(upscaledPath)) {
+        if (!await imageStore.exists(upscaledFilename, imagesDir)) {
             handlers.sendError(ws, 'No upscaled version exists; use Incinerate to delete the image', 'delete_unupscaled_original', message.requestId);
             return;
         }
 
-        const filesToDelete = [{ path: originalPath, type: 'original' }];
+        const filesToDelete = [{ path: originalPath, type: 'original', name: filename }];
         try {
             const resolveDynGenPreviewHash = await createDynGenPreviewHashResolver(handlers, [filename]);
             const previewHash = await resolveDynGenPreviewHash(filename, originalPath);
@@ -1325,7 +1333,12 @@ async function handleDeleteUnupscaledOriginal(handlers, ws, message, clientInfo,
 
         for (const file of filesToDelete) {
             try {
-                await fs.promises.unlink(file.path);
+                if (file.name) {
+                    // every stored form (PNG / JXL / decoded copy)
+                    if (!await imageStore.remove(file.name, imagesDir)) throw new Error('not found');
+                } else {
+                    await fs.promises.unlink(file.path);
+                }
             } catch (error) {
                 console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
             }
@@ -1398,9 +1411,7 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
 
         for (const filename of filenames) {
             try {
-                const filePath = path.join(handlers.globalResources.getPath("images"), filename);
-
-                if (!await fileExists(filePath)) {
+                if (!await imageStore.exists(filename, handlers.globalResources.getPath("images"))) {
                     errors.push({ filename, error: 'File not found' });
                     continue;
                 }
@@ -1444,9 +1455,9 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
 
                 // Add original file if exists
                 const originalPath = path.join(handlers.globalResources.getPath("images"), originalFilename);
-                if (await fileExists(originalPath)) {
-                    filesToMove.push({ source: originalPath, type: 'original' });
-                    filesToDelete.push(originalPath);
+                if (await imageStore.exists(originalFilename, path.dirname(originalPath))) {
+                    filesToMove.push({ source: originalPath, type: 'original', name: originalFilename });
+                    filesToDelete.push({ path: originalPath, name: originalFilename });
                     filenamesToRemoveFromWorkspaces.push(originalFilename);
 
                     // Try to extract and delete dynGenPreview file from original
@@ -1458,7 +1469,7 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
                             const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.png`);
 
                             if (await fileExists(dynGenPreviewPath)) {
-                                filesToDelete.push(dynGenPreviewPath);
+                                filesToDelete.push({ path: dynGenPreviewPath });
                                 console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
                             }
                         }
@@ -1470,33 +1481,45 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
 
                 // Add upscaled file if exists
                 const upscaledPath = path.join(handlers.globalResources.getPath("images"), upscaledFilename);
-                if (await fileExists(upscaledPath)) {
-                    filesToMove.push({ source: upscaledPath, type: 'upscaled' });
-                    filesToDelete.push(upscaledPath);
+                if (await imageStore.exists(upscaledFilename, path.dirname(upscaledPath))) {
+                    filesToMove.push({ source: upscaledPath, type: 'upscaled', name: upscaledFilename });
+                    filesToDelete.push({ path: upscaledPath, name: upscaledFilename });
                     filenamesToRemoveFromWorkspaces.push(upscaledFilename);
                 }
 
                 // Add all preview files (webp and legacy formats)
                 for (const previewFilePath of previewFiles) {
                     if (await fileExists(previewFilePath)) {
-                        filesToDelete.push(previewFilePath);
+                        filesToDelete.push({ path: previewFilePath });
                     }
                 }
 
                 // Move files to sequenzia folder
                 const movedFiles = [];
                 for (const file of filesToMove) {
+                    // Sequenzia gets a real PNG under the picture's name (a JXL-stored one decoded)
+                    const source = await imageStore.pngPath(file.name, path.dirname(file.source));
+                    if (!source) {
+                        throw new Error(`File not found: ${file.name}`);
+                    }
                     const destPath = path.join(sequenziaFolder, path.basename(file.source));
-                    await fs.promises.copyFile(file.source, destPath);
+                    await fs.promises.copyFile(source, destPath);
                     movedFiles.push(file.type);
                     console.log(`📁 Moved to sequenzia: ${path.basename(file.source)}`);
                 }
 
                 // Delete files from original location
                 const deletedFiles = [];
-                for (const filePath of filesToDelete) {
-                    await fs.promises.unlink(filePath);
-                    deletedFiles.push(path.basename(filePath));
+                for (const file of filesToDelete) {
+                    if (file.name) {
+                        // every stored form (PNG / JXL / decoded copy)
+                        if (!await imageStore.remove(file.name, path.dirname(file.path))) {
+                            throw new Error(`File not found: ${file.name}`);
+                        }
+                    } else {
+                        await fs.promises.unlink(file.path);
+                    }
+                    deletedFiles.push(path.basename(file.path));
                 }
 
                 if (movedFiles.length > 0) {
@@ -1574,13 +1597,13 @@ async function handleUpdateImagePresetBulk(handlers, ws, message, clientInfo, ws
             try {
                 const filePath = path.join(handlers.globalResources.getPath("images"), filename);
 
-                if (!await fileExists(filePath)) {
+                // Read the current image (a JXL-stored picture decoded; the write below stores a PNG
+                // again, which wins over the JXL) and extract metadata
+                const imageBuffer = await imageStore.readPng(filename, handlers.globalResources.getPath("images"));
+                if (!imageBuffer) {
                     errors.push({ filename, error: 'File not found' });
                     continue;
                 }
-
-                // Read the current image and extract metadata
-                const imageBuffer = await fs.promises.readFile(filePath);
                 const metadata = handlers.globalResources.getPngMetadata().readMetadata(imageBuffer);
 
                 if (!metadata) {

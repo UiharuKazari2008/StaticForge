@@ -50,6 +50,7 @@ const EFFORT_MODELS = {
 };
 const { DIRECTOR_MCP_SCOPES } = require('./directorAppKeyScopes');
 const tokenRouter = require('./tokenRouterBridge');
+const imageStore = require('./imageStore');
 const customProviders = require('./customModelProviders');
 const { isDormantPage } = require('./wsSocketHeartbeat');
 const MCP_SCOPES = DIRECTOR_MCP_SCOPES;
@@ -4788,10 +4789,13 @@ async function readAttachment(gr, attachment) {
             throw new Error('Workspace image name is not valid');
         }
         const filePath = path.join(gr.getPath('images'), filename);
-        if (!insideDir(gr.getPath('images'), filePath) || !fs.existsSync(filePath)) {
+        // PNG bytes, rebuilt from x.jxl when the picture is stored as one (#1134)
+        const buffer = insideDir(gr.getPath('images'), filePath)
+            ? await imageStore.readPng(filename, gr.getPath('images'))
+            : null;
+        if (!buffer) {
             throw new Error('Workspace image was not found');
         }
-        const buffer = fs.readFileSync(filePath);
         if (buffer.length > MAX_ATTACHMENT_BYTES) throw new Error('Workspace image is too large');
         return { name: safeName(filename), buffer };
     }

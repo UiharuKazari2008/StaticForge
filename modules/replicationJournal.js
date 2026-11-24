@@ -6,6 +6,7 @@
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
+const imageStore = require('./imageStore');
 const { REPLICATION_CHANGE_ORIGINS } = require('./replication/replicationContracts');
 
 const JOURNAL_KINDS = Object.freeze([
@@ -169,8 +170,10 @@ async function recordGallerySave(filename, { workspaceId = null, imagesDir = nul
             checksum = crypto.createHash('sha256').update(buffer).digest('hex');
         } else {
             const dir = imagesDir || (globalResourcesRef ? globalResourcesRef.getPath('images') : null);
-            if (dir) {
-                checksum = await sha256FileAsync(path.join(dir, filename));
+            // a real PNG (a JXL-stored picture decoded); a missing one has no checksum, as before
+            const pngFile = dir ? await imageStore.pngPath(filename, dir) : null;
+            if (pngFile) {
+                checksum = await sha256FileAsync(pngFile);
             }
         }
     }

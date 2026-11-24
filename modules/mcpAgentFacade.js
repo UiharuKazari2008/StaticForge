@@ -14,6 +14,7 @@ const { createMcpAuthMiddleware } = require('./auth');
 const { McpOAuthProvider } = require('./mcpOAuthProvider');
 const { createOAuthRoutes } = require('./mcpOAuthRoutes');
 const novelaiExplore = require('./novelaiExploreGallery');
+const imageStore = require('./imageStore');
 const {
     hasManagedEmphasisGroupIds,
     expandEmphasisGroupIds,
@@ -5327,7 +5328,7 @@ async function attachFocusedWindowImage(globalResources, body, windows, includeI
 
     if (attachName) {
         try {
-            const resolved = resolveGalleryImagePath(globalResources, attachName);
+            const resolved = await resolveGalleryPngPath(globalResources, attachName);
             const image = await resizeImageForGrok(resolved.filePath);
             if (image) {
                 image.filename = attachName;
@@ -7122,14 +7123,12 @@ function savedPrintStat(globalResources, filename, sinceMs) {
     } catch (_err) {
         return null;
     }
-    let st;
-    try {
-        st = fs.statSync(resolved.filePath);
-    } catch (_err) {
-        return null;
-    }
-    if (!st.isFile() || st.size < 64) return null;
-    const bornMs = st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
+    // the stored file (x.jxl after the #1134 swap: born at the swap, so its kept mtime dates it)
+    const loc = imageStore.locateSync(resolved.safe, path.dirname(resolved.filePath));
+    if (!loc) return null;
+    const st = loc.stat;
+    if (st.size < 64) return null;
+    const bornMs = loc.kind !== 'jxl' && st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
     if (sinceMs && bornMs + 5000 < sinceMs) return null;
     return { size: st.size };
 }
@@ -7181,14 +7180,12 @@ async function savedPrintStatAsync(globalResources, filename, sinceMs) {
     } catch (_err) {
         return null;
     }
-    let st;
-    try {
-        st = await fs.promises.stat(resolved.filePath);
-    } catch (_err) {
-        return null;
-    }
-    if (!st.isFile() || st.size < 64) return null;
-    const bornMs = st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
+    // the stored file (x.jxl after the #1134 swap: born at the swap, so its kept mtime dates it)
+    const loc = await imageStore.locate(resolved.safe, path.dirname(resolved.filePath));
+    if (!loc) return null;
+    const st = loc.stat;
+    if (st.size < 64) return null;
+    const bornMs = loc.kind !== 'jxl' && st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
     if (sinceMs && bornMs + 5000 < sinceMs) return null;
     return { size: st.size };
 }
@@ -7263,12 +7260,26 @@ function resolveGalleryImagePath(globalResources, filename) {
         err.status = 400;
         throw err;
     }
-    if (!fs.existsSync(filePath)) {
+    // a picture stored as x.jxl (#1134) is there under its name x.png; filePath stays images/<safe>, readers
+    // that need its bytes take resolveGalleryPngPath
+    if (!imageStore.existsSync(safe, imagesDir)) {
         const err = new Error('Image not found');
         err.status = 404;
         throw err;
     }
     return { safe, filePath };
+}
+
+/** resolveGalleryImagePath with filePath a real PNG: the picture's own file or the copy rebuilt from x.jxl (#1134). */
+async function resolveGalleryPngPath(globalResources, filename) {
+    const resolved = resolveGalleryImagePath(globalResources, filename);
+    const filePath = await imageStore.pngPath(resolved.safe, path.dirname(resolved.filePath));
+    if (!filePath) {
+        const err = new Error('Image not found');
+        err.status = 404;
+        throw err;
+    }
+    return { safe: resolved.safe, filePath };
 }
 
 async function resizeImageForGrok(source) {
@@ -7298,9 +7309,9 @@ async function resizeImageForGrok(source) {
     return null;
 }
 
-function readGalleryImage(globalResources, filename) {
-    const { safe, filePath } = resolveGalleryImagePath(globalResources, filename);
-    const stat = fs.statSync(filePath);
+async function readGalleryImage(globalResources, filename) {
+    const { safe, filePath } = await resolveGalleryPngPath(globalResources, filename);
+    const stat = await fs.promises.stat(filePath);
     if (stat.size > MAX_IMAGE_BYTES) {
         const err = new Error('Image exceeds MCP size limit; use GET /images/:filename with the same app key');
         err.status = 413;
@@ -7311,7 +7322,7 @@ function readGalleryImage(globalResources, filename) {
     return {
         filename: safe,
         mimeType,
-        bytes: fs.readFileSync(filePath)
+        bytes: await fs.promises.readFile(filePath)
     };
 }
 
@@ -7655,7 +7666,7 @@ async function attachAllPrintImages(globalResources, result, names) {
             continue;
         }
         try {
-            const resolved = resolveGalleryImagePath(globalResources, name);
+            const resolved = await resolveGalleryPngPath(globalResources, name);
             const image = await resizeImageForGrok(resolved.filePath);
             if (image) {
                 images.push({ type: 'image', mimeType: image.mimeType, data: image.bytes.toString('base64') });
@@ -7770,7 +7781,7 @@ async function mcpResultFromGenerateFlat(globalResources, flat, success, destPat
     });
     if (filename && success) {
         try {
-            const resolved = resolveGalleryImagePath(globalResources, filename);
+            const resolved = await resolveGalleryPngPath(globalResources, filename);
             const image = await resizeImageForGrok(resolved.filePath);
             if (image) {
                 image.filename = filename;
@@ -8218,8 +8229,12 @@ function resolveMetadataFilePath(globalResources, raw) {
     }
     if (text.startsWith('images/')) {
         const imagesDir = globalResources.getPath('images');
-        const abs = containedMetadataPath(imagesDir, path.join(imagesDir, text.slice('images/'.length)));
-        return abs ? { absPath: abs } : { error: 'path is outside the gallery' };
+        const rel = text.slice('images/'.length);
+        const abs = containedMetadataPath(imagesDir, path.join(imagesDir, rel));
+        if (abs) return { absPath: abs };
+        // a picture stored as x.jxl (#1134): read from its rebuilt PNG
+        if (imageStore.existsSync(rel, imagesDir)) return { galleryName: rel, imagesDir };
+        return { error: 'path is outside the gallery' };
     }
     return resolveDirectorSourcePath(text);
 }
@@ -8233,12 +8248,16 @@ async function readImageMetadataTool(globalResources, req, input) {
     if (asPath) {
         const resolved = resolveMetadataFilePath(globalResources, asPath);
         if (resolved.error) return mcpTextResult({ success: false, error: resolved.error }, true);
+        const absPath = resolved.galleryName
+            ? await imageStore.pngPath(resolved.galleryName, resolved.imagesDir)
+            : resolved.absPath;
+        if (!absPath) return mcpTextResult({ success: false, error: 'Image not found', path: asPath }, true);
         const png = globalResources.getPngMetadata();
-        const raw = await png.extractNovelAIMetadata(resolved.absPath);
+        const raw = await png.extractNovelAIMetadata(absPath);
         if (!raw) {
             return mcpTextResult({ success: false, error: 'No NovelAI metadata in that file', path: asPath }, true);
         }
-        filename = filename || path.basename(resolved.absPath);
+        filename = filename || resolved.galleryName || path.basename(absPath);
         fields = await png.extractRelevantFields(raw, filename, null);
     } else {
         const lookedUp = await resolveGalleryFilename(globalResources, req, input || {});
@@ -8680,8 +8699,8 @@ async function callTool(globalResources, req, name, args) {
         if (lookedA.filename === lookedB.filename) {
             return mcpTextResult({ success: false, error: 'Pick two different files to compare.' }, true);
         }
-        const pathA = resolveGalleryImagePath(globalResources, lookedA.filename);
-        const pathB = resolveGalleryImagePath(globalResources, lookedB.filename);
+        const pathA = await resolveGalleryPngPath(globalResources, lookedA.filename);
+        const pathB = await resolveGalleryPngPath(globalResources, lookedB.filename);
         const metaA = flattenPacket(await dispatchPacketTool(globalResources, req, 'request_image_metadata', {
             filename: lookedA.filename
         }));
@@ -9133,7 +9152,7 @@ async function callTool(globalResources, req, name, args) {
         let imageKind = null;
         if (wantFull) {
             try {
-                image = readGalleryImage(globalResources, filename);
+                image = await readGalleryImage(globalResources, filename);
                 imageKind = 'full';
             } catch (error) {
                 if (error.status === 404) {
@@ -9144,7 +9163,7 @@ async function callTool(globalResources, req, name, args) {
         }
         if (!image) {
             try {
-                const resolved = resolveGalleryImagePath(globalResources, filename);
+                const resolved = await resolveGalleryPngPath(globalResources, filename);
                 image = await resizeImageForGrok(resolved.filePath);
                 if (image) {
                     image.filename = filename;
@@ -9286,7 +9305,7 @@ async function callTool(globalResources, req, name, args) {
         };
         if (wantImage && focusedFilename) {
             try {
-                const resolved = resolveGalleryImagePath(globalResources, focusedFilename);
+                const resolved = await resolveGalleryPngPath(globalResources, focusedFilename);
                 const image = await resizeImageForGrok(resolved.filePath);
                 if (image) {
                     image.filename = focusedFilename;

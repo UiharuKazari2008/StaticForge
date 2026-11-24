@@ -3,6 +3,7 @@ const path = require('path');
 const zlib = require('zlib');
 const crypto = require('crypto');
 const sharp = require('sharp');
+const imageStore = require('./imageStore');
 const { getResolutionFromDimensions } = require('./imageTools');
 const {
     signGeneratedImage,
@@ -543,7 +544,14 @@ class PngMetadata {
             // If this is an expanded image, load the original image's metadata
             if (_metadata.forge_data?.expansion_source) {
                 const originalFilename = _metadata.forge_data.expansion_source;
-                const imagesDir = path.dirname(filePath);
+                let imagesDir = path.dirname(filePath);
+                // a picture stored as x.jxl is read from its rebuilt copy in .cache/jxl-png (#1134): its original
+                // is in the gallery
+                if (path.resolve(imagesDir) === path.resolve(imageStore.CACHE_DIR)) {
+                    imagesDir = this.globalResources && typeof this.globalResources.getPath === 'function'
+                        ? this.globalResources.getPath('images')
+                        : imageStore.IMAGES_DIR;
+                }
                 const originalPath = path.join(imagesDir, originalFilename);
                 
                 // Store expansion data
@@ -563,9 +571,16 @@ class PngMetadata {
                 
                 console.log(`📋 Detected expanded image, loading original: ${originalFilename}`);
                 
-                if (fs.existsSync(originalPath)) {
+                // the original may be stored as x.jxl (#1134): its PNG bytes, rebuilt
+                const originalStored = imageStore.cleanName(originalFilename)
+                    ? imageStore.existsSync(originalFilename, imagesDir)
+                    : fs.existsSync(originalPath);
+                if (originalStored) {
                     try {
-                        const originalBuffer = await fs.promises.readFile(originalPath);
+                        const originalBuffer = imageStore.cleanName(originalFilename)
+                            ? await imageStore.readPng(originalFilename, imagesDir)
+                            : await fs.promises.readFile(originalPath);
+                        if (!originalBuffer) throw new Error(`${originalFilename} is gone`);
                         const originalMetadata = await this.readAnyMetadata(originalBuffer);
                         if (originalMetadata.tEXt && originalMetadata.tEXt.Comment) {
                             _metadata = JSON.parse(originalMetadata.tEXt.Comment);
@@ -893,13 +908,21 @@ class PngMetadata {
                 } else {
                     const imagesDir = this.globalResources.getPath('images');
                     const uploadCacheDir = this.globalResources.getPath('uploadCache');
-                    const imagePath = result.image_source.startsWith('file:')
-                        ? path.join(imagesDir, result.image_source.replace('file:', ''))
-                        : result.image_source.startsWith('cache:')
-                            ? path.join(uploadCacheDir, result.image_source.replace('cache:', ''))
-                            : null;
+                    const galleryName = result.image_source.startsWith('file:')
+                        ? result.image_source.replace('file:', '')
+                        : null;
+                    // a gallery source may be stored as x.jxl (#1134): its PNG (the rebuilt copy is kept in the cache)
+                    const galleryPng = galleryName && imageStore.cleanName(galleryName)
+                        ? await imageStore.pngPath(galleryName, imagesDir)
+                        : null;
+                    const imagePath = galleryPng
+                        || (galleryName
+                            ? path.join(imagesDir, galleryName)
+                            : result.image_source.startsWith('cache:')
+                                ? path.join(uploadCacheDir, result.image_source.replace('cache:', ''))
+                                : null);
                     // sharp(path).metadata() reads headers only — never fs.readFileSync the whole PNG
-                    if (imagePath && fs.existsSync(imagePath)) {
+                    if (imagePath && (galleryPng || fs.existsSync(imagePath))) {
                         const dims = await sharp(imagePath).metadata();
                         if (dims.width && dims.height) {
                             result.image_source_width = dims.width;
