@@ -546,12 +546,19 @@
                 const shot = await grabScreen(this.app, own);
                 if (!shot) return;
                 if (mode === 'full') { this.captured({ canvas: shot.canvas, scale: shot.scale }); return; }
+                // the DeX desktop's Android windows are in the picture, but over the page they would hide the snipping
+                // overlay: put aside (minimised) while the snip is chosen, back in their order after (Yukimi, Nov 24 2026)
+                const T = root.melatonAndroidTaskbar;
+                let aside = [];
+                if (T && typeof T.minimizeShown === 'function') { try { aside = T.minimizeShown() || []; } catch (_) { aside = []; } }
+                const giveBack = () => { if (aside.length && T && typeof T.restore === 'function') { const ids = aside; aside = []; setTimeout(() => { try { T.restore(ids); } catch (_) { /* gone */ } }, 60); } };
                 // the Snipping Tool's window stays over the frozen screen (Vista), the others go
                 const hidden = [...this.markups].map((k) => k.modal);
                 hidden.forEach((m) => m.classList.add('snip-hide'));
                 await new Promise((resolve) => {
                     this.session = new Session(this, shot, mode, (res) => {
                         this.session = null;
+                        giveBack();
                         hidden.forEach((m) => m.classList.remove('snip-hide'));
                         this.lift(false);
                         this.syncMain();
@@ -1022,8 +1029,11 @@
             tool.ownWindows().forEach((m) => { try { call('closeModal', m); } catch (_) { /* gone */ } m.remove(); });
         });
         tool.openMain();
-        // Vista starts snipping straight away, in the last mode
-        if (tool.mode !== 'full') setTimeout(() => void tool.snip(tool.mode), 250);
+        // Vista starts snipping straight away, in the last mode (Win+Shift+S: a rectangle, desktopHotkeys.js snipNow)
+        const quick = root.melatonSnipQuick;
+        root.melatonSnipQuick = null;
+        if (quick) setTimeout(() => void tool.snip(quick), 250);
+        else if (tool.mode !== 'full') setTimeout(() => void tool.snip(tool.mode), 250);
     }
 
     root.melatonSnipping = { start, Session, grabComposite, layers, _running: () => running };

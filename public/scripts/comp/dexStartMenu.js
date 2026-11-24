@@ -1040,12 +1040,23 @@
             const field = menu.querySelector('input[type="text"], input:not([type]), input[type="search"]');
             if (field) field.focus({ preventScroll: true });
         }
+        // the page's focus inside the menu (a program holds Android's key focus, so the page's own can sit anywhere: the
+        // Start menu's key handler answers only keys from inside it - Enter did nothing, Yukimi Nov 24 2026)
+        if (k.type === 'keydown' && !menu.contains(doc.activeElement)) {
+            const field = menu.querySelector('input[type="text"], input:not([type]), input[type="search"]');
+            if (field) field.focus({ preventScroll: true });
+        }
         const target = doc.activeElement && doc.activeElement !== doc.body ? doc.activeElement : menu;
         let ev;
         try {
             ev = new KeyboardEvent(k.type, { key: String(k.key || 'Unidentified'), code: String(k.code || ''), repeat: !!k.repeat, metaKey: !!k.metaKey, altKey: !!k.altKey, ctrlKey: !!k.ctrlKey, shiftKey: !!k.shiftKey, bubbles: true, cancelable: true, composed: true });
         } catch (_) { return; }
         const go = target.dispatchEvent(ev);
+        // Enter no handler took: the item lit (a search's first result, the row the arrows reached) opens, as a click on it
+        if (go && k.type === 'keydown' && k.key === 'Enter' && !k.altKey && !k.ctrlKey && !k.metaKey) {
+            const lit = menu.querySelector('.start-menu-row.is-hot') || (doc.activeElement && doc.activeElement !== menu && menu.contains(doc.activeElement) && doc.activeElement.tagName !== 'INPUT' ? doc.activeElement : null);
+            if (lit) { lit.click(); return; }
+        }
         if (!go || k.type !== 'keydown') return;
         const f = doc.activeElement;
         if (!f || (f.tagName !== 'INPUT' && f.tagName !== 'TEXTAREA') || f.readOnly || f.disabled) return;

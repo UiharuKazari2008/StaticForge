@@ -331,7 +331,20 @@
         KeyX: openMobilityCenter
     };
 
+    /**
+     * Win+Shift+S (Yukimi, Nov 24 2026): the Snipping Tool, a rectangle snip at once over the screen as it is (Android
+     * windows taken with it, then put aside while the snip is chosen, back after - apps/snipping). Already open: a new snip.
+     */
+    function snipNow() {
+        const S = root.melatonSnipping;
+        const t = S && typeof S._running === 'function' ? S._running() : null;
+        if (t && typeof t.snip === 'function') { t.openMain(); void t.snip('rect'); return; }
+        root.melatonSnipQuick = 'rect';
+        if (root.melatonApps) void root.melatonApps.launch({ packageId: 'snipping' });
+    }
+
     function winComboAction(ev) {
+        if (ev.code === 'KeyS' && ev.shiftKey) return snipNow;
         if (WIN_COMBOS[ev.code]) return WIN_COMBOS[ev.code];
         const digit = /^Digit([1-9])$/.exec(ev.code || '');
         if (digit) return () => launchQuickLaunch(Number(digit[1]));
