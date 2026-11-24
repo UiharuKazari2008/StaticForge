@@ -14514,6 +14514,8 @@
             if (barsExternal) root.dataset.wmBehind = ''; else delete root.dataset.wmBehind;
             if (was !== barsExternal) document.dispatchEvent(new CustomEvent('wmBehind', { detail: { on: barsExternal } }));
         },
+        /** The volume box open with its Output list down (Quick Access's Output over Melaton Mobile). */
+        volumeOutputs: () => { if (!canPickOutput()) return false; barsPopupClose(); barsPopupOpen('volume'); setOutputListOpen(true); return true; },
         barsPopupOpen: (role) => barsPopupOpen(role),
         barsPopupLayers: () => barsPopupLayers(),
         barsPopupClose: () => barsPopupClose(),

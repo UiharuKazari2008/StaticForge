@@ -1943,6 +1943,9 @@
     window.melatonBars = {
         // (#1017) Quick Access over Melaton Mobile: its content moved aside by the panel's width, the wallpaper and bars staying
         // (the app hands its context over as an object, not as text)
+        // Quick Access's Output over Melaton Mobile: the volume box with its Output list down (the picker the rest of the app
+        // uses: melatonAudioDevices, verified - not Android's own Media output panel; Yukimi, Nov 23 2026)
+        volumeOutputs: () => { try { if (window.wmShell && window.wmShell.volumeOutputs) window.wmShell.volumeOutputs(); } catch (err) { console.warn('[melatonBars] volumeOutputs', err); } },
         qaPush: (ctx) => { try { if (window.wmQuickAccess && window.wmQuickAccess.pushPage) window.wmQuickAccess.pushPage(typeof ctx === 'string' ? JSON.parse(ctx || '{}') : (ctx || {})); } catch (_) { /* older page */ } },
         // the app's Task Manager closed one of Melaton's own programs (its X, or its menu's Close): ended as Task Manager ends it
         dsClose: (ctx) => {
@@ -1993,7 +1996,9 @@
                 const list = [];
                 layers.forEach((r) => r.querySelectorAll(CLICKABLE).forEach((el) => { if (!list.includes(el)) list.push(el); }));
                 // a soft key the app showed for this popup: that key of the page's bar
-                const el = ctx.soft ? document.querySelector(`#wmShell .wm-softkeys .wm-softkey[data-side="${ctx.soft}"]`) : list[Number(ctx.n)];
+                // (sel: a control named by the app - Quick Access's Output opens the volume box's Output list, Nov 23 2026)
+                const el = ctx.soft ? document.querySelector(`#wmShell .wm-softkeys .wm-softkey[data-side="${ctx.soft}"]`)
+                    : ctx.sel ? list.find((e) => e.matches(ctx.sel)) : list[Number(ctx.n)];
                 if (el) el.click();
                 if (sh.currentApp() !== before) result = 'app';
                 else {
