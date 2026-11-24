@@ -170,7 +170,12 @@ function commandLine(parts) {
     const args = parts.args.map((a) => (/^[A-Za-z0-9_./:=@%+-]+$/.test(a) ? a : shq(a))).join(' ');
     // an env file (0600) carries what must not be on a command line (another engine's bridge secret)
     const source = parts.envFile ? `set -a; . ${shq(parts.envFile)}; set +a; ` : '';
-    return `${source}env ${unset.join(' ')} ${envs.join(' ')} ${shq(parts.bin)} ${args}; sleep 3600`.replace(/\s+/g, ' ');
+    // Every CLAUDE* / CLAUDECODE variable the tmux server happens to hold goes first (#1154, Nov 24: the carry
+    // server was started from inside a Claude session, so every Fleet session inherited that session's id,
+    // messaging token, bridge owner and CLAUDE_CODE_CHILD_SESSION: no transcripts, no session records). Only
+    // what Fleet sets on purpose comes back; CLAUDE_CODE_FORCE_SESSION_PERSISTENCE keeps transcripts on.
+    const clean = 'for v in $(env | sed -n "s/^\\(CLAUDE[A-Za-z0-9_]*\\)=.*/\\1/p"); do unset "$v"; done; ';
+    return `${clean}${source}env ${unset.join(' ')} ${envs.join(' ')} CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 ${shq(parts.bin)} ${args}; sleep 3600`.replace(/\s+/g, ' ');
 }
 
 /**

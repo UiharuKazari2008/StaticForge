@@ -727,11 +727,22 @@ function enqueue(item, opts = {}) {
     return w;
 }
 
+/** A session runs while its claude process does (its record can be missing: never decide "ended" from that alone). */
+function sessionRunning(sessionId, live) {
+    if (live.has(sessionId)) return true;
+    try {
+        return fs.readdirSync('/proc').some((n) => {
+            if (!/^\d+$/.test(n)) return false;
+            try { const c = fs.readFileSync(`/proc/${n}/cmdline`, 'utf8'); return c.includes(sessionId) && /claude/.test(c); } catch (_) { return false; }
+        });
+    } catch (_) { return true; }
+}
+
 function activeCount() {
     const live = liveSessionsById();
     let n = 0;
     db().prepare(`SELECT id, session_id, state FROM supervisor_work WHERE state IN (${ACTIVE.map(() => '?').join(',')})`).all(...ACTIVE).forEach((w) => {
-        if (w.state === 'starting' || (w.session_id && live.has(w.session_id))) n += 1;
+        if (w.state === 'starting' || (w.session_id && sessionRunning(w.session_id, live))) n += 1;
         else if (w.session_id) setWork(w.id, { state: 'done', ended_at: Date.now(), message: 'Its session ended' });
     });
     return n;

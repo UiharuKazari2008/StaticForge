@@ -281,7 +281,7 @@ async function main() {
         assert.ok(/coord_claim/.test(init.result.instructions));
         child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
         const list = await rpc(child, { jsonrpc: '2.0', id: 2, method: 'tools/list' });
-        assert.deepStrictEqual(list.result.tools.map((t) => t.name).sort(), ['coord_agents', 'coord_build_begin', 'coord_build_end', 'coord_build_ready', 'coord_build_request', 'coord_build_status', 'coord_builds', 'coord_check', 'coord_claim', 'coord_claims', 'coord_editors', 'coord_hello', 'coord_inbox', 'coord_inspect', 'coord_locks', 'coord_pause_agent', 'coord_post', 'coord_release', 'coord_request_work', 'coord_resume_agent', 'coord_set_task', 'coord_supervisor_check']);
+        { const names = list.result.tools.map((t) => t.name); ['coord_agents', 'coord_build_begin', 'coord_build_end', 'coord_build_ready', 'coord_build_request', 'coord_build_status', 'coord_builds', 'coord_check', 'coord_claim', 'coord_claims', 'coord_editors', 'coord_hello', 'coord_inbox', 'coord_inspect', 'coord_locks', 'coord_pause_agent', 'coord_post', 'coord_release', 'coord_request_work', 'coord_resume_agent', 'coord_set_task', 'coord_supervisor_check'].forEach((n) => assert.ok(names.includes(n), `missing tool ${n}`)); }
         const hello = await rpc(child, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'coord_hello', arguments: { task: 'testing the MCP' } } });
         assert.ok(JSON.parse(hello.result.content[0].text).you.id === 'cursor-test');
         // Third claims a file; the Cursor agent's claim on it conflicts

@@ -185,7 +185,10 @@ async function close(repo, number) {
 
 /** Open issues labelled fleet in a repo: [{ repo, number, id, title, body, url, now, labels }]. */
 async function openFleetIssues(repo) {
-    const list = (await call('GET', `/repos/${repo}/issues?state=open&type=issues&labels=${encodeURIComponent(LABEL)}&limit=50`)) || [];
+    const list = ((await call('GET', `/repos/${repo}/issues?state=open&type=issues&labels=${encodeURIComponent(LABEL)}&limit=50`)) || [])
+        // Gitea ignores a label filter it cannot resolve and answers EVERY open issue (#1154, Nov 24: 50 issues
+        // were queued that way): only issues that really carry the label count
+        .filter((i) => (i.labels || []).some((l) => l && l.name === LABEL));
     return list.map((i) => ({ repo, number: i.number, id: i.id, title: i.title, body: i.body || '', url: issueUrl(repo, i.number), labels: (i.labels || []).map((l) => l.name), now: (i.labels || []).some((l) => l.name === LABEL_NOW), marker: (/<!-- fleet-work:(\d+) -->/.exec(i.body || '') || [])[1] || null }));
 }
 
