@@ -68,7 +68,7 @@ function main() {
             console.log(`skip ${name}: readback differs`);
             continue;
         }
-        fs.utimesSync(tmp, st.atime, st.mtime);
+        fs.utimesSync(tmp, st.atimeMs / 1000, st.mtimeMs / 1000); // numbers keep the sub-millisecond part
         fs.renameSync(tmp, p);
         moved++;
         if (moved % 2000 === 0) console.log(`${moved} reordered`);

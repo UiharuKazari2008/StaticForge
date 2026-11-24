@@ -914,11 +914,10 @@ class WorkspaceManager {
     // Helper: get file creation date from filesystem
     getFileCreationDate(filename) {
         try {
-            // the stored file: x.jxl after the #1134 swap, born at the swap, so its kept mtime dates it
-            const loc = imageStore.locateSync(filename, this.IMAGES_DIR);
-            if (!loc) throw new Error('not found');
-            const stats = loc.stat;
-            return (loc.kind !== 'jxl' && stats.birthtime.getTime()) || stats.mtime.getTime();
+            // x.jxl after the #1134 swap is born at the swap: the PNG's own birth time kept in it (imageStore)
+            const created = imageStore.createdMsSync(filename, this.IMAGES_DIR);
+            if (created == null) throw new Error('not found');
+            return created;
         } catch (error) {
             console.warn(`Could not get creation date for ${filename}:`, error.message);
             return Date.now(); // Fallback to current time

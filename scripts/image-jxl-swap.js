@@ -85,14 +85,15 @@ async function main() {
         let jxl;
         try { jxl = fs.readFileSync(staged); } catch (_) { skip('staged jxl missing'); continue; }
         if (sha(jxl) !== r.jxl_sha) { skip('staged jxl changed'); continue; }
-        const boxed = store.attachPngMetadata(jxl, png);
+        // the PNG's own times ride along: date created (birth) and modified stay the picture's
+        const boxed = store.attachPngMetadata(jxl, png, { birthtimeMs: st.birthtimeMs, mtimeMs: st.mtimeMs });
         const want = store.metadataChunks(png).map((c) => c.raw.toString('base64')).join(',');
         const got = (store.readPngMetadataBox(boxed) || []).map((c) => c.raw.toString('base64')).join(',');
         if (want !== got) { skip('metadata box readback differs'); continue; }
         if (DRY) { swapped++; freed += png.length - boxed.length; continue; }
         const tmp = jxlP + '.tmp';
         fs.writeFileSync(tmp, boxed);
-        fs.utimesSync(tmp, st.atime, st.mtime);
+        fs.utimesSync(tmp, st.atimeMs / 1000, st.mtimeMs / 1000); // numbers keep the sub-millisecond part
         if (swapped < 10 || n % FULL_CHECK_EVERY === 0) {
             let ok = false;
             try {

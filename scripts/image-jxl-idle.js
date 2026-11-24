@@ -63,14 +63,15 @@ async function convertOne(name) {
     const png = fs.readFileSync(pngP);
     try {
         execFileSync('cjxl', [pngP, raw, '-d', '0', '-e', '7', '--num_threads=2', '--quiet'], { stdio: 'ignore' });
-        const boxed = store.attachPngMetadata(fs.readFileSync(raw), png);
+        // the PNG's own times ride along: date created (birth) and modified stay the picture's
+        const boxed = store.attachPngMetadata(fs.readFileSync(raw), png, { birthtimeMs: st.birthtimeMs, mtimeMs: st.mtimeMs });
         fs.writeFileSync(tmp, boxed);
         const rebuilt = await store.decodeJxlToPngBuffer(tmp);
         if (!(await samePixels(png, rebuilt)) || chunkKey(rebuilt) !== chunkKey(png)) throw new Error('decode check failed');
         // the PNG must not have changed while it was being converted
         const now = fs.statSync(pngP);
         if (now.mtimeMs !== st.mtimeMs || now.size !== st.size) throw new Error('png changed during conversion');
-        fs.utimesSync(tmp, st.atime, st.mtime);
+        fs.utimesSync(tmp, st.atimeMs / 1000, st.mtimeMs / 1000); // numbers keep the sub-millisecond part
         fs.renameSync(tmp, jxlP);
         fs.unlinkSync(pngP);
         return png.length - boxed.length;

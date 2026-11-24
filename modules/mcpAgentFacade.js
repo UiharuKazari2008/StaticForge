@@ -7123,12 +7123,15 @@ function savedPrintStat(globalResources, filename, sinceMs) {
     } catch (_err) {
         return null;
     }
-    // the stored file (x.jxl after the #1134 swap: born at the swap, so its kept mtime dates it)
+    // the stored file (x.jxl after the #1134 swap)
     const loc = imageStore.locateSync(resolved.safe, path.dirname(resolved.filePath));
     if (!loc) return null;
     const st = loc.stat;
     if (st.size < 64) return null;
-    const bornMs = loc.kind !== 'jxl' && st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
+    // a JXL (#1134 swap) is born at the swap: the PNG's own birth time kept in it, else its kept mtime
+    const kept = loc.kind === 'jxl' ? imageStore.readFileTimesSync(loc.path) : null;
+    const bornMs = loc.kind !== 'jxl' ? (st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs)
+        : (kept && kept.birthtimeMs > 0 ? kept.birthtimeMs : st.mtimeMs);
     if (sinceMs && bornMs + 5000 < sinceMs) return null;
     return { size: st.size };
 }
@@ -7180,12 +7183,15 @@ async function savedPrintStatAsync(globalResources, filename, sinceMs) {
     } catch (_err) {
         return null;
     }
-    // the stored file (x.jxl after the #1134 swap: born at the swap, so its kept mtime dates it)
+    // the stored file (x.jxl after the #1134 swap)
     const loc = await imageStore.locate(resolved.safe, path.dirname(resolved.filePath));
     if (!loc) return null;
     const st = loc.stat;
     if (st.size < 64) return null;
-    const bornMs = loc.kind !== 'jxl' && st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
+    // a JXL (#1134 swap) is born at the swap: the PNG's own birth time kept in it, else its kept mtime
+    const kept = loc.kind === 'jxl' ? imageStore.readFileTimesSync(loc.path) : null;
+    const bornMs = loc.kind !== 'jxl' ? (st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs)
+        : (kept && kept.birthtimeMs > 0 ? kept.birthtimeMs : st.mtimeMs);
     if (sinceMs && bornMs + 5000 < sinceMs) return null;
     return { size: st.size };
 }

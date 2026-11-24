@@ -23,6 +23,8 @@ const IMAGES_DIR = path.join(ROOT, 'images');
 const CACHE_DIR = path.join(ROOT, '.cache', 'jxl-png');
 const CACHE_MAX_BYTES = 2 * 1024 * 1024 * 1024;
 const BOX_TYPE = 'sfPN';
+// the original PNG file's birth and modified times (date created / modified kept across the swap)
+const TIMES_BOX = 'sfFT';
 const BOX_VERSION = 1;
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const JXL_CONTAINER_SIG = Buffer.from([0, 0, 0, 0x0c, 0x4a, 0x58, 0x4c, 0x20, 0x0d, 0x0a, 0x87, 0x0a]);
@@ -197,18 +199,71 @@ function readBoxes(jxl) {
  * first; an older sfPN box is replaced). Decoders skip box types they do not know (djxl, sharp / libvips and
  * Chrome 157 checked).
  */
-function attachPngMetadata(jxl, pngBuf) {
+function attachPngMetadata(jxl, pngBuf, times = null) {
     const payload = encodeBoxPayload(pngBuf);
+    // the PNG file's own times (birth = date created, mtime = date modified): the JXL file is new, so its birth is
+    // the swap; these stay with the picture (Yukimi: dates created and modified must not change)
+    const tail = [box(BOX_TYPE, payload)];
+    if (times && (times.birthtimeMs > 0 || times.mtimeMs > 0)) {
+        tail.push(box(TIMES_BOX, Buffer.from(JSON.stringify({ b: Math.round(times.birthtimeMs || 0), m: Math.round(times.mtimeMs || 0) }))));
+    }
     const boxes = readBoxes(jxl);
     if (!boxes) {
         const ftyp = box('ftyp', Buffer.from('jxl \0\0\0\0jxl ', 'latin1'));
         // the codestream first: a browser draws while the rest arrives, and its size header is at the start
         // (a picture's metadata box can be hundreds of KB, #1134)
-        return Buffer.concat([JXL_CONTAINER_SIG, ftyp, box('jxlc', jxl), box(BOX_TYPE, payload)]);
+        return Buffer.concat([JXL_CONTAINER_SIG, ftyp, box('jxlc', jxl), ...tail]);
     }
     // explicit sizes throughout (a last box of size 0 runs to the end of the file)
-    const kept = boxes.filter((b) => b.type !== BOX_TYPE && b.type !== 'JXL ');
-    return Buffer.concat([JXL_CONTAINER_SIG, ...kept.map((b) => box(b.type, b.payload)), box(BOX_TYPE, payload)]);
+    const kept = boxes.filter((b) => b.type !== BOX_TYPE && b.type !== TIMES_BOX && b.type !== 'JXL ');
+    return Buffer.concat([JXL_CONTAINER_SIG, ...kept.map((b) => box(b.type, b.payload)), ...tail]);
+}
+
+/**
+ * The original PNG file's times kept in a JXL (sfFT box): { birthtimeMs, mtimeMs }, or null (a JXL made before the
+ * box existed). Reads box headers only, then the small box.
+ */
+function readFileTimesSync(jxlPath) {
+    let fd;
+    try {
+        fd = fs.openSync(jxlPath, 'r');
+        const hb = Buffer.alloc(16);
+        let off = 0;
+        for (let i = 0; i < 64; i++) {
+            const n = fs.readSync(fd, hb, 0, 16, off);
+            if (n < 8) return null;
+            if (off === 0 && !(hb.readUInt32BE(0) === 12 && hb.toString('latin1', 4, 8) === 'JXL ')) return null;
+            let size = hb.readUInt32BE(0);
+            let head = 8;
+            if (size === 1) { size = Number(hb.readBigUInt64BE(8)); head = 16; }
+            const type = hb.toString('latin1', 4, 8);
+            if (type === TIMES_BOX && size - head < 4096) {
+                const body = Buffer.alloc(size - head);
+                fs.readSync(fd, body, 0, body.length, off + head);
+                const t = JSON.parse(body.toString('utf8'));
+                return { birthtimeMs: Number(t.b) || 0, mtimeMs: Number(t.m) || 0 };
+            }
+            if (size === 0 || size < head) return null;
+            off += size;
+        }
+        return null;
+    } catch (_) {
+        return null;
+    } finally {
+        if (fd !== undefined) { try { fs.closeSync(fd); } catch (_) { /* closed */ } }
+    }
+}
+
+/**
+ * The picture's date created: a PNG's file birth time; for a JXL the PNG's birth time kept in it (sfFT), else its
+ * kept mtime. ms, or null when the picture is missing.
+ */
+function createdMsSync(name, dir = IMAGES_DIR) {
+    const loc = locateSync(name, dir);
+    if (!loc) return null;
+    if (loc.kind !== 'jxl') return loc.stat.birthtimeMs > 0 ? loc.stat.birthtimeMs : loc.stat.mtimeMs;
+    const t = readFileTimesSync(loc.path);
+    return t && t.birthtimeMs > 0 ? t.birthtimeMs : loc.stat.mtimeMs;
 }
 
 function readPngMetadataBox(jxl) {
@@ -629,6 +684,8 @@ module.exports = {
     dropStaleJxl,
     // the swap / converter and tests
     attachPngMetadata,
+    readFileTimesSync,
+    createdMsSync,
     readPngMetadataBox,
     rebuildPng,
     decodeJxlToPngBuffer,
