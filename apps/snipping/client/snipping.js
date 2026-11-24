@@ -53,7 +53,8 @@
             copy: reg('AlwaysCopy', true) !== false,
             prompt: reg('PromptToSave', true) !== false,
             ink: reg('SelectionInkColor', '#ff0000'),
-            showInk: reg('ShowSelectionInk', true) !== false,
+            // (off unless chosen in Options: the red ink drawn into every snip read as part of the picture - Yukimi, Nov 23 2026)
+            showInk: reg('ShowSelectionInk', false) === true,
             overlay: reg('ShowScreenOverlay', true) !== false,
             exact: reg('ExactCapture', false) === true,
             quickLaunch: reg('QuickLaunchIcon', false) === true,
@@ -93,12 +94,49 @@
         await new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(r)); setTimeout(r, 80); });
         let shot = null;
         try {
-            if (prefs().exact) shot = await grabExact(W);
+            // inside the Android app: the screen itself (every window, web page and Vista scrollbar as it shows)
+            shot = await grabNative(W);
+            if (!shot && prefs().exact) shot = await grabExact(W);
             if (!shot) shot = await grabComposite(W, H, hideEls);
         } finally {
             hideEls.forEach((m) => m.classList.remove('snip-hide'));
         }
         return shot;
+    }
+
+    /**
+     * The screen as it really shows, from the Android app (DSApp ScreenGrab: AndroidScreen.capture, the display this window
+     * is on, cut to the window) - Yukimi, Nov 23 2026: the drawn copy left web pages out, drew the browser's scrollbars and
+     * missed parts. null outside the app or when it cannot (the drawn desktop then).
+     */
+    async function grabNative(W) {
+        const A = root.AndroidScreen;
+        if (!A || typeof A.capture !== 'function' || (typeof A.available === 'function' && !A.available())) return null;
+        let token = '';
+        const answer = await new Promise((resolve) => {
+            const timer = setTimeout(() => { root.removeEventListener('androidscreen', on); resolve(null); }, 3000);
+            function on(ev) {
+                const d = ev && ev.detail;
+                if (!d || d.token !== token) return;
+                clearTimeout(timer);
+                root.removeEventListener('androidscreen', on);
+                resolve(d);
+            }
+            root.addEventListener('androidscreen', on);
+            try { token = String(A.capture() || ''); } catch (_) { clearTimeout(timer); root.removeEventListener('androidscreen', on); resolve(null); }
+        });
+        if (!answer || !answer.ok) return null;
+        try {
+            const img = new Image();
+            img.decoding = 'async';
+            img.src = `https://appassets.androidplatform.net/screen-shot/${encodeURIComponent(token)}`;
+            await img.decode();
+            const c = doc.createElement('canvas');
+            c.width = img.naturalWidth;
+            c.height = img.naturalHeight;
+            c.getContext('2d').drawImage(img, 0, 0);
+            return { canvas: c, scale: c.width / W, exact: true };
+        } catch (_) { return null; }
     }
 
     /** The tab's real pixels: the browser asks first; the stream ends as soon as one frame is in. */
@@ -823,9 +861,13 @@
             root.melatonClipboardImage = c;
             try {
                 const blob = await toBlob(c);
-                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-            } catch (_) {
-                // the browser's clipboard needs the page in focus; Melaton's own copy still pastes in Paint
+                // Melaton's clipboard (dreamscapeClipboard.js writeClipboard: the Android app's clipboard in the app, which
+                // the browser's own refused there - Copy did nothing, Yukimi Nov 23 2026), else the browser's
+                if (typeof root.writeClipboard === 'function') await root.writeClipboard({ items: [{ blob, mime: 'image/png', name: 'Snip.png' }], label: 'Snip' });
+                else await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+            } catch (err) {
+                // Melaton's own copy still pastes in Paint
+                console.warn('[snipping] copy', err);
             }
             void quiet;
         }
