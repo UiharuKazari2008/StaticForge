@@ -576,3 +576,63 @@
 .wtw-favs.is-empty .wtw-favs-name {
     display: none;
 }
+
+/* ---- Recordings (#1144): the newest Plaud recordings, the picked one's summary, the Yozora button */
+.wm-today-block.wtw-rec {
+    align-items: flex-start;
+    min-height: calc(21 * var(--wm-px));
+}
+
+.wtw-rec-rows {
+    display: flex;
+    flex-direction: column;
+}
+
+.wtw-rec-row {
+    display: flex;
+    gap: calc(6 * var(--wm-px));
+    min-width: 0;
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+}
+
+.wtw-rec-row.is-picked .wtw-rec-name {
+    font-weight: bold;
+}
+
+.wtw-rec-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wtw-rec-meta {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+.wtw-rec-sum {
+    --wtw-lines: 3;
+}
+
+.wtw-rec-bar {
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--wm-px));
+    margin-top: calc(3 * var(--wm-px));
+    font-size: calc(11 * var(--wm-px));
+}
+
+.wtw-rec-go {
+    font: inherit;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wtw-rec-batt[hidden] {
+    display: none;
+}

@@ -1244,6 +1244,135 @@
         return true;
     }
 
+    // ================================================================ Recordings (#1144)
+
+    /**
+     * Plaud's newest recordings (plaud_today_list: the server reads Plaud, the page never does), the picked
+     * one's AI summary (plaud_today_summary, once per recording), and a button that has Yozora read it and plan
+     * the work (plaud_today_review). One press = one agent session, so a question names that first; a second
+     * press only opens the running chat. Once started the item shows running / done and the Yozora issue
+     * numbers from her replies. Read when Today shows and after a change (connect, a Director status push while a
+     * review runs, a press): no timed poll.
+     */
+    const REC_RETRY_MS = 60 * 1000;
+    const rec = { list: null, linked: true, at: 0, busy: 0, stale: true, pick: '', sums: new Map(), wired: false, battery: null };
+
+    function recWire() {
+        const c = ws();
+        if (rec.wired || !c || typeof c.on !== 'function') return;
+        rec.wired = true;
+        c.on('connected', () => { rec.stale = true; });
+        // a review's turn starting or ending arrives with the Director's status: read again only while one runs
+        c.on('director_computer_status', () => {
+            if (rec.list && rec.list.some((r) => r.review && r.review.status === 'running')) { rec.stale = true; repaintItems(['recordings']); }
+        });
+    }
+
+    function recLoad() {
+        recWire();
+        const now = Date.now();
+        if ((rec.busy && now - rec.busy < 30000) || !online() || !isAdmin() || !todayOnScreen()) return;
+        if (document.documentElement.dataset.wmBoot !== 'done') return;
+        if (!rec.stale && (rec.list || now - rec.at < REC_RETRY_MS)) return;
+        rec.busy = now; rec.stale = false; rec.at = now;
+        ask('plaud_today_list').then((d) => {
+            if (d && Array.isArray(d.recordings)) { rec.list = d.recordings; rec.linked = d.linked !== false; rec.battery = d.battery; }
+            else repaintLater('recordings', REC_RETRY_MS + 50);
+        }).finally(() => { rec.busy = 0; repaintItems(['recordings']); });
+    }
+
+    function recDuration(ms) {
+        const min = Math.round((Number(ms) || 0) / 60000);
+        return min >= 60 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${Math.max(1, min)} min`;
+    }
+    function recWhen(r) {
+        const t = Date.parse(r.startAt || r.createdAt || '');
+        return Number.isFinite(t) ? `${fmtDate.format(t)} ${fmtTime.format(t)}` : '';
+    }
+    function recState(r) {
+        const v = r && r.review;
+        if (!v) return { label: 'Plan with Yozora', open: false };
+        const nums = (v.issues || []).map((n) => `#${n}`).join(', ');
+        if (v.status === 'running') return { label: `Yozora is working${nums ? ` (${nums})` : ''} - open`, open: true, running: true };
+        return { label: nums ? `${v.issues.length} issue${v.issues.length === 1 ? '' : 's'}: ${nums} - open` : 'Reviewed - open', open: true };
+    }
+    function recSummary(r) {
+        let s = rec.sums.get(r.id);
+        if (!s) { s = { text: null, busy: false }; rec.sums.set(r.id, s); }
+        if (s.text == null && !s.busy && online()) {
+            s.busy = true;
+            ask('plaud_today_summary', { id: r.id }).then((d) => { s.text = d ? String(d.summary || '') : ''; }).finally(() => { s.busy = false; repaintItems(['recordings']); });
+        }
+        return s.text;
+    }
+
+    async function recPress(r) {
+        if (!r) return;
+        if (r.review && r.review.sessionId) { void openDirector({ persona: 'xi', id: r.review.sessionId }); return; }
+        const yes = await sh.messageBox({
+            title: 'Plan with Yozora', icon: 'question',
+            text: `Yozora will read "${r.name}" and plan the work on Yozora. This starts an agent session and uses its usage. Start it?`,
+            buttons: [{ text: 'Start', value: true, default: true }, { text: 'Cancel', value: false }], cancelValue: false
+        });
+        if (yes !== true) return;
+        const d = await ask('plaud_today_review', { id: r.id });
+        if (!d) { await sh.messageBox({ title: 'Plan with Yozora', icon: 'error', text: 'Yozora could not be started. Try again in a moment.', buttons: [{ text: 'OK', value: true, default: true }] }); return; }
+        rec.stale = true;
+        repaintItems(['recordings']);
+    }
+
+    function recModel() {
+        recLoad();
+        if (!rec.list) return null;
+        return { list: rec.list, pick: rec.list.find((r) => r.id === rec.pick) || rec.list[0] || null, linked: rec.linked };
+    }
+
+    function recordingsTitanium() {
+        const m = recModel();
+        if (!m || !m.pick) return null;
+        const st = recState(m.pick);
+        return { label: 'recordings', icon: 's:notes', pages: [{ title: m.pick.name, line2: `${recWhen(m.pick)} - ${recDuration(m.pick.durationMs)}`, line3: st.open ? st.label : '' }], softKey: { label: st.open ? 'Open' : 'Plan', action: () => void recPress(m.pick) } };
+    }
+
+    function renderRecordings(el, { option }) {
+        if (itemOff(el, false) || !isAdmin()) return false;
+        const m = recModel();
+        if (!m || !m.linked || !m.pick) return false;
+        shell(el, 'wtw-rec', `
+            <img class="wtw-notes-icon" ${imgSrcset('app-notes')} alt="">
+            <span class="wtw-lines">
+                <span class="wtw-title"></span>
+                <span class="wtw-rec-rows"></span>
+                <span class="wtw-preview wtw-rec-sum" hidden></span>
+                <span class="wtw-rec-bar"><button type="button" class="wtw-rec-go" data-wtw-own></button><span class="wtw-rec-batt" hidden></span></span>
+            </span>`, null);
+        if (!el.dataset.recWired) {
+            el.dataset.recWired = '1';
+            el.addEventListener('click', (e) => {
+                const row = e.target.closest('[data-rec]');
+                if (row) { rec.pick = row.dataset.rec; repaintItems(['recordings']); return; }
+                if (e.target.closest('.wtw-rec-go') && rec.list) void recPress(rec.list.find((x) => x.id === rec.pick) || rec.list[0]);
+            });
+        }
+        const waiting = m.list.filter((r) => !r.review).length;
+        setText(el.querySelector('.wtw-title'), `Recordings${waiting ? ` (${waiting} not reviewed)` : ''}`);
+        const rows = m.list.slice(0, Number(option('rows')) || 3).map((r) => `<span class="wtw-rec-row${r === m.pick ? ' is-picked' : ''}" data-rec="${esc(r.id)}"><span class="wtw-rec-name">${esc(r.name)}</span><span class="wtw-rec-meta">${esc(recWhen(r))} - ${esc(recDuration(r.durationMs))}${r.review ? (r.review.status === 'running' ? ' - working' : ' - reviewed') : ''}</span></span>`).join('');
+        const box = el.querySelector('.wtw-rec-rows');
+        if (box.dataset.html !== rows) { box.dataset.html = rows; box.innerHTML = rows; }
+        const pv = el.querySelector('.wtw-rec-sum');
+        const text = String(recSummary(m.pick) || '').replace(/[#*_`>]+/g, '').split('\n').map((l) => l.trim()).filter(Boolean).join('\n');
+        setText(pv, text);
+        if (pv.hidden !== !text) pv.hidden = !text;
+        const st = recState(m.pick);
+        setText(el.querySelector('.wtw-rec-go'), st.label);
+        el.classList.toggle('is-working', !!st.running);
+        const b = el.querySelector('.wtw-rec-batt');
+        const batt = rec.battery != null ? `Recorder ${Math.round(Number(rec.battery))}%` : '';
+        setText(b, batt);
+        if (b.hidden !== !batt) b.hidden = !batt;
+        return true;
+    }
+
     // ================================================================ Files
 
     /**
@@ -2426,6 +2555,8 @@
             id: 'server', label: 'Server Status', after: 'remote-desktop', defaultOn: false, wantsMinute: true, render: renderServer, titanium: serverTitanium,
             options: [{ key: 'view', label: 'Show', value: 'detailed', choices: [['detailed', 'Details (version, CPU, RAM, disk, workers)'], ['compact', 'One line']] }]
         });
+        // Recordings (#1144): Plaud's newest recordings and the button that has Yozora plan them; admin only, off until switched on
+        registerItem({ id: 'recordings', label: 'Recordings', icon: 'app-notes', after: 'notes', defaultOn: false, wantsMinute: false, render: renderRecordings, titanium: recordingsTitanium, options: [{ key: 'rows', label: 'Recordings shown', value: '3', choices: [['3', '3'], ['5', '5'], ['8', '8']] }] });
         // Files: off until switched on, as Notes, Remote Desktop and Server Status are
         registerItem({ id: 'files', label: 'Files', icon: 'app-file-explorer', after: 'server', defaultOn: false, wantsMinute: false, render: renderFiles, titanium: filesTitanium, options: FILES_OPTIONS });
         document.addEventListener('wmFilesChange', () => { files.stale = true; repaintItems(['files']); }, { signal: appScopeSignal });
