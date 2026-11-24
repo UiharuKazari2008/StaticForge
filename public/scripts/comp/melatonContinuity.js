@@ -766,6 +766,9 @@
      */
     api.on('dex-close', () => {
         if (!isDw()) return;
+        // a video playing in this window goes on as the phone's picture-in-picture instead of stopping with it (#1130;
+        // wmYouTube.js: melatonVideosRescue answers true when the app's native player took the stream)
+        try { if (typeof root.melatonVideosRescue === 'function') root.melatonVideosRescue(); } catch (_) { /* closes anyway */ }
         dexClosing = true;
         ownRestart = true;
         try { if (typeof root.suppressWebSocketReconnectForReload === 'function') root.suppressWebSocketReconnectForReload(); } catch (_) { /* closing anyway */ }
