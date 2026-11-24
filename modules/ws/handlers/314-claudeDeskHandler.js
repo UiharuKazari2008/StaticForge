@@ -206,6 +206,8 @@ function supervisorSummary() {
 
 async function supervisorStatus(gr) {
     const set = supervisor.settings(gr);
+    // fleet-labelled issues filed on Yozora come into the queue (at most every 2 min; never waits long)
+    await Promise.race([supervisor.pullIssues(gr).catch(() => null), new Promise((r) => setTimeout(r, 4000))]);
     let locks = [];
     let artifacts = [];
     try { locks = supervisor.lockStatus(); } catch (e) { console.warn(`[claudeDesk] locks: ${e.message}`); }

@@ -99,7 +99,8 @@ function settings(gr) {
         manageLocks: cfg.manageLocks !== false,
         trackArtifacts: cfg.trackArtifacts !== false,
         maxConcurrent: Number.isInteger(cfg.maxConcurrent) && cfg.maxConcurrent >= 1 && cfg.maxConcurrent <= 12 ? cfg.maxConcurrent : 3,
-        autoStart: cfg.autoStart !== false
+        autoStart: cfg.autoStart !== false,
+        yozoraRepos: Array.isArray(cfg.yozoraRepos) ? cfg.yozoraRepos.filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)) : ['DreamScape/StaticForge']
     };
 }
 
@@ -113,7 +114,8 @@ async function saveSettings(gr, next) {
         manageLocks: next.manageLocks === undefined ? cur.manageLocks : next.manageLocks === true,
         trackArtifacts: next.trackArtifacts === undefined ? cur.trackArtifacts : next.trackArtifacts === true,
         maxConcurrent: next.maxConcurrent === undefined ? cur.maxConcurrent : Math.max(1, Math.min(12, Math.round(Number(next.maxConcurrent)) || cur.maxConcurrent)),
-        autoStart: next.autoStart === undefined ? cur.autoStart : next.autoStart === true
+        autoStart: next.autoStart === undefined ? cur.autoStart : next.autoStart === true,
+        yozoraRepos: Array.isArray(next.yozoraRepos) ? next.yozoraRepos.map(String).filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)).slice(0, 20) : cur.yozoraRepos
     };
     if (!engines(gr).some((e) => e.id === s.engine)) throw new Error(`Unknown engine ${s.engine}`);
     await gr.modifyConfig('config').assign(['agentSupervisor'], s);
@@ -286,6 +288,7 @@ function db() {
         `);
         const wcols = new Set(d.prepare('PRAGMA table_info(supervisor_work)').all().map((c) => c.name));
         if (!wcols.has('engine')) d.exec("ALTER TABLE supervisor_work ADD COLUMN engine TEXT NOT NULL DEFAULT 'claude'");
+        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
         const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
         if (!cols.has('supervised')) d.exec('ALTER TABLE supervisor_state ADD COLUMN supervised INTEGER NOT NULL DEFAULT 0');
         db.ready = d;
@@ -485,7 +488,9 @@ function rowWork(r) {
     return {
         id: r.id, title: r.title, engine: r.engine || 'claude', source: r.source, sourceRef: r.source_ref || '', state: r.state, account: r.account || '', model: r.model || '', effort: r.effort || '',
         cwd: r.cwd || '', sessionId: r.session_id || '', link: r.link || '', message: r.message || '', startNow: !!r.start_now,
-        createdAt: r.created_at, startedAt: r.started_at, endedAt: r.ended_at, prompt: String(r.prompt || '').slice(0, 2000)
+        createdAt: r.created_at, startedAt: r.started_at, endedAt: r.ended_at, prompt: String(r.prompt || '').slice(0, 2000),
+        issue: r.issue_repo && r.issue_number ? { repo: r.issue_repo, number: r.issue_number, url: yz().issueUrl(r.issue_repo, r.issue_number) } : null,
+        issueNote: r.issue_note || ''
     };
 }
 function listWork(opts = {}) {
@@ -493,9 +498,94 @@ function listWork(opts = {}) {
     return db().prepare("SELECT * FROM supervisor_work ORDER BY CASE WHEN state IN ('queued','starting','running','waiting') THEN 0 ELSE 1 END, id DESC LIMIT ?").all(lim).map(rowWork);
 }
 const getWork = (id) => rowWork(db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id)));
+const yz = () => require('./fleetYozora');
+
 function setWork(id, fields) {
+    const before = fields.state ? db().prepare('SELECT state FROM supervisor_work WHERE id = ?').get(Number(id)) : null;
     const keys = Object.keys(fields);
     db().prepare(`UPDATE supervisor_work SET ${keys.map((k) => `${k} = @${k}`).join(', ')} WHERE id = @id`).run(Object.assign({ id: Number(id) }, fields));
+    if (before && before.state !== fields.state) syncIssue(Number(id), before.state).catch((e) => noteIssue(Number(id), e.message));
+}
+
+function noteIssue(id, text) {
+    try { db().prepare('UPDATE supervisor_work SET issue_note = ? WHERE id = ?').run(String(text || '').slice(0, 300), id); } catch (_) { /* gone */ }
+}
+
+// ---------------------------------------------------------------- Yozora tracking (modules/fleetYozora.js)
+
+/** The item's issue: linked (item.issue / a pulled issue) or made now. Best effort: the queue never waits on Yozora for long. */
+async function ensureIssue(id) {
+    const r = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id));
+    if (!r || (r.issue_repo && r.issue_number)) return r;
+    try {
+        const w = rowWork(r);
+        const made = await yz().createIssue(Object.assign({}, w, { prompt: r.prompt }));
+        db().prepare('UPDATE supervisor_work SET issue_repo = ?, issue_number = ?, issue_id = ?, issue_note = NULL WHERE id = ?').run(made.repo, made.number, made.id, r.id);
+    } catch (e) { noteIssue(r.id, `No issue yet: ${e.message}`); }
+    return db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id));
+}
+
+const mins = (ms) => `${Math.max(1, Math.round(ms / 60000))} min`;
+
+/** A state change, as a comment, status labels, the board card and (when it ends) tracked time. */
+async function syncIssue(id, prevState) {
+    let r = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(id);
+    if (!r) return;
+    if (!r.issue_number && ['starting', 'running'].includes(r.state)) r = await ensureIssue(id);
+    if (!r.issue_repo || !r.issue_number) return;
+    const Y = yz();
+    const where = `${r.issue_repo}#${r.issue_number}`;
+    const ran = r.started_at ? (r.ended_at || Date.now()) - r.started_at : 0;
+    const session = r.link ? ` Session: ${r.link}` : (r.session_id ? ` Session ${r.session_id.slice(0, 8)} (Fleet).` : '');
+    let text = '';
+    if (r.state === 'running' && prevState !== 'waiting') text = `**Fleet:** started as a supervised session on ${r.account || 'an account'} (${r.engine && r.engine !== 'claude' ? `${r.engine} ` : ''}${r.model || 'default model'}).${session} The Supervisor checks each turn against this issue.`;
+    else if (r.state === 'running' && prevState === 'waiting') text = '**Fleet:** working again after the Supervisor\'s notes.';
+    else if (r.state === 'waiting') text = `**Fleet / Supervisor:** after its last turn these look unaddressed, sent back to the session:\n${String(r.message || '').replace(/^Gaps sent back: /, '').split('; ').map((x) => `- ${x}`).join('\n')}`;
+    else if (r.state === 'done') text = `**Fleet / Supervisor:** the last turn's check found nothing missed. ${r.message || ''}\n\nRan ${mins(ran)} (added as tracked time).${session} Status: review.`;
+    else if (r.state === 'failed') text = `**Fleet:** did not finish: ${r.message || 'unknown'}${ran ? `\n\nRan ${mins(ran)} (added as tracked time).` : ''}`;
+    else if (r.state === 'cancelled') text = '**Fleet:** cancelled in Fleet.';
+    if (text) await Y.comment(r.issue_repo, r.issue_number, text);
+    if (['running', 'waiting', 'done', 'failed'].includes(r.state)) await Y.setStatus(r.issue_repo, r.issue_number, r.issue_id, r.state).catch(() => {});
+    if (['done', 'failed'].includes(r.state) && ran) await Y.addTime(r.issue_repo, r.issue_number, ran / 1000).catch(() => {});
+    if (r.state === 'cancelled' && String(r.source) !== 'yozora') await Y.close(r.issue_repo, r.issue_number).catch(() => {});
+    noteIssue(id, `Synced ${new Date().toISOString().slice(11, 16)} (${where})`);
+}
+
+let lastPull = 0;
+/** Open `fleet` issues become queued items; an item whose issue closed ends. At most every 2 min unless forced. */
+async function pullIssues(gr, opts = {}) {
+    if (!opts.force && Date.now() - lastPull < 2 * 60 * 1000) return { skipped: true };
+    lastPull = Date.now();
+    const g = gr || gResources;
+    let cfgRepos = [];
+    try { cfgRepos = ((g && g.getConfig && g.getConfig().agentSupervisor) || {}).yozoraRepos || []; } catch (_) { cfgRepos = []; }
+    const repos = new Set([yz().DEFAULT_REPO].concat(Array.isArray(cfgRepos) ? cfgRepos : []));
+    db().prepare('SELECT DISTINCT issue_repo FROM supervisor_work WHERE issue_repo IS NOT NULL').all().forEach((x) => repos.add(x.issue_repo));
+    let added = 0;
+    let ended = 0;
+    for (const repo of repos) {
+        let open = [];
+        try { open = await yz().openFleetIssues(repo); } catch (e) { continue; }
+        for (const i of open) {
+            const have = db().prepare('SELECT id FROM supervisor_work WHERE issue_repo = ? AND issue_number = ?').get(repo, i.number)
+                || (i.marker ? db().prepare('SELECT id FROM supervisor_work WHERE id = ?').get(Number(i.marker)) : null);
+            if (have) continue;
+            const prompt = `Yozora issue ${repo}#${i.number}: ${i.title}\n${i.url}\n\n${String(i.body || '').slice(0, 20000)}`;
+            enqueue({ title: i.title, prompt, source: 'yozora', sourceRef: `issue:${repo}#${i.number}`, startNow: i.now, issueFields: { repo, number: i.number, id: i.id } }, { gr: g });
+            added += 1;
+        }
+    }
+    // items whose issue was closed on Yozora
+    const active = db().prepare("SELECT * FROM supervisor_work WHERE issue_number IS NOT NULL AND state IN ('queued','starting','running','waiting')").all();
+    for (const r of active) {
+        let st = null;
+        try { st = await yz().issueState(r.issue_repo, r.issue_number); } catch (_) { st = null; }
+        if (st !== 'closed') continue;
+        db().prepare('UPDATE supervisor_work SET state = ?, ended_at = ?, message = ? WHERE id = ?').run(r.state === 'queued' ? 'cancelled' : 'done', Date.now(), 'Its issue was closed on Yozora', r.id);
+        ended += 1;
+    }
+    if (added || ended) emit({ work: true });
+    return { added, ended, repos: [...repos] };
 }
 
 const SUPERVISED_NOTE = 'You are a supervised Fleet session: claim files with agent-coord before editing (coord_claim), commit your own work at the end of every turn, open a build gate before any build / restart, and before you say a multi-part request is done call coord_supervisor_check and address what it finds. Work you find that should be done by another session: coord_request_work (startNow when it should start now).';
@@ -505,7 +595,7 @@ function enqueue(item, opts = {}) {
     const prompt = String(item.prompt || '').trim();
     if (!prompt) throw new Error('A work item needs a prompt');
     if (prompt.length > 60000) throw new Error('That request is too long (60,000 characters at most): put the detail in a file and point to it');
-    const src = ['fleet', 'plaud', 'director', 'agent'].includes(item.source) ? item.source : 'fleet';
+    const src = ['fleet', 'plaud', 'director', 'agent', 'yozora'].includes(item.source) ? item.source : 'fleet';
     if (item.sourceRef) {
         const dup = db().prepare("SELECT id FROM supervisor_work WHERE source_ref = ? AND state NOT IN ('failed','cancelled')").get(String(item.sourceRef));
         if (dup) return Object.assign(getWork(dup.id), { reused: true });
@@ -514,7 +604,19 @@ function enqueue(item, opts = {}) {
     const engine = item.engine && item.engine !== 'claude' ? String(item.engine).slice(0, 60) : 'claude';
     const r = db().prepare(`INSERT INTO supervisor_work (title, prompt, cwd, account, model, effort, source, source_ref, state, start_now, created_at, message, engine)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, 'Waiting for a slot', ?)`).run(title, prompt, item.cwd || null, item.account !== undefined && item.account !== null ? String(item.account) : null, item.model || null, item.effort || null, src, item.sourceRef || null, item.startNow ? 1 : 0, Date.now(), engine);
+    if (item.issueFields && item.issueFields.repo && item.issueFields.number) {
+        db().prepare('UPDATE supervisor_work SET issue_repo = ?, issue_number = ?, issue_id = ? WHERE id = ?').run(item.issueFields.repo, item.issueFields.number, item.issueFields.id || null, r.lastInsertRowid);
+    }
     const w = getWork(r.lastInsertRowid);
+    // its Yozora issue: the one it names (item.issue: "owner/repo#N" / URL), else made in the background
+    if (item.issue) {
+        yz().linkIssue(item.issue).then((iss) => {
+            db().prepare('UPDATE supervisor_work SET issue_repo = ?, issue_number = ?, issue_id = ? WHERE id = ?').run(iss.repo, iss.number, iss.id, w.id);
+            emit({ work: getWork(w.id) });
+        }).catch((e) => noteIssue(w.id, `Issue not linked: ${e.message}`));
+    } else if (src !== 'yozora') {
+        ensureIssue(w.id).then(() => emit({ work: getWork(w.id) })).catch(() => {});
+    }
     emit({ work: w });
     pumpWork(opts.gr).catch((e) => console.warn(`[supervisor] queue: ${e.message}`));
     return w;
@@ -548,10 +650,14 @@ function pumpWork(gr) {
             try { pick = await require('./claudeFleetMcp').pickForStart(g, w.account || 'auto'); } catch (e) { setWork(w.id, { message: `Waiting for an account with room: ${e.message.slice(0, 160)}` }); continue; }
             setWork(w.id, { state: 'starting', message: `Starting on ${pick.name}`, account: pick.name });
             emit({ work: getWork(w.id) });
+            const tracked = await Promise.race([ensureIssue(w.id), new Promise((res) => setTimeout(() => res(null), 15000))]);
+            const track = tracked && tracked.issue_number
+                ? `\n\nThis work is tracked in Yozora ${tracked.issue_repo}#${tracked.issue_number} (${yz().issueUrl(tracked.issue_repo, tracked.issue_number)}, label fleet). Comment your progress there as you go and end with the Done comment the rules ask for; the Supervisor comments when it starts, sends gaps back and ends, and adds the time this session runs (do not start a stopwatch). Check its Definition of done.`
+                : '';
             try {
                 const st = pick.settings || {};
                 const r = await require('./claudeSessionLauncher').start(g, {
-                    cwd: w.cwd || path.join(__dirname, '..'), prompt: `${w.prompt}\n\n${SUPERVISED_NOTE}`, title: w.title, account: pick.index,
+                    cwd: w.cwd || path.join(__dirname, '..'), prompt: `${w.prompt}${track}\n\n${SUPERVISED_NOTE}`, title: w.title, account: pick.index,
                     mode: st.defaultMode, engine: w.engine && w.engine !== 'claude' ? w.engine : undefined,
                     model: w.model || (w.engine && w.engine !== 'claude' ? undefined : (st.defaultModel || 'sonnet')), effort: w.effort || st.defaultEffort || undefined, dispatchedBy: `Supervisor (${w.source})`
                 });
@@ -948,16 +1054,21 @@ function start(gr) {
     }
     serveSocket();
     pumpWork().catch(() => {});
+    // fleet issues filed on Yozora come in, closed ones end their item (server side, every 10 min; Fleet's own reads pull too)
+    pullIssues(gr, { force: true }).catch(() => {});
+    if (!pullTimer) { pullTimer = setInterval(() => pullIssues(null, { force: true }).catch(() => {}), 10 * 60 * 1000); if (pullTimer.unref) pullTimer.unref(); }
 }
+let pullTimer = null;
 
 function stop() {
     if (watcher) { try { watcher.close(); } catch (_) { /* closed */ } watcher = null; }
     clearTimeout(debounce);
     if (sockServer) { try { sockServer.close(); } catch (_) { /* closed */ } sockServer = null; }
+    if (pullTimer) { clearInterval(pullTimer); pullTimer = null; }
 }
 
 module.exports = {
-    start, stop, bind, settings, enqueue, pumpWork, listWork, getWork, startWork, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
+    start, stop, bind, settings, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, startWork, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, queueReview, queue }
 };

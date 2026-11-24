@@ -23,9 +23,30 @@ fs.mkdirSync(path.join(tmp, '.claude', 'projects', '-repo'), { recursive: true }
 fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
 
 const sup = require('../modules/agentSupervisor');
+// a fake Yozora: every call recorded, never the network (#1154 Yozora tracking)
+const yzCalls = [];
+const yzIssues = new Map(); // "repo#n" -> { state, labels, body, title }
+let yzNext = 100;
+require('../modules/fleetYozora')._setFetch(async (url, opts) => {
+    const method = (opts && opts.method) || 'GET';
+    const u = String(url).replace('https://yozora.bluesteel.737.jp.net/api/v1', '');
+    const body = opts && opts.body ? JSON.parse(opts.body) : null;
+    yzCalls.push({ method, url: u, body });
+    const ok = (o) => ({ ok: true, status: 200, text: async () => JSON.stringify(o) });
+    let m;
+    if (method === 'GET' && /\/labels\?/.test(u)) return ok([{ id: 1, name: 'fleet' }, { id: 2, name: 'status:ready' }, { id: 3, name: 'status:in-progress' }, { id: 4, name: 'status:review' }, { id: 5, name: 'status:blocked' }]);
+    if (method === 'POST' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues$/.exec(u))) { const n = yzNext++; yzIssues.set(`${m[1]}#${n}`, { state: 'open', labels: body.labels, body: body.body, title: body.title }); return ok({ number: n, id: 9000 + n }); }
+    if (method === 'GET' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues\?state=open.*labels=fleet/.exec(u))) {
+        return ok([...yzIssues.entries()].filter(([k, v]) => k.startsWith(`${m[1]}#`) && v.state === 'open' && v.external).map(([k, v]) => ({ number: Number(k.split('#')[1]), id: 1, title: v.title, body: v.body, labels: [{ name: 'fleet' }].concat(v.now ? [{ name: 'fleet:now' }] : []) })));
+    }
+    if (method === 'GET' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)$/.exec(u))) { const v = yzIssues.get(`${m[1]}#${m[2]}`) || { state: 'open' }; return ok({ number: Number(m[2]), id: 9000, state: v.state, labels: [] }); }
+    return ok({});
+});
 const launcher = require('../modules/claudeSessionLauncher');
 
 let failed = 0;
+// put an item back to queued (a test started it already)
+function db_setQueued(id) { require('../modules/agentCoord/store').open().prepare("UPDATE supervisor_work SET state = 'queued', session_id = NULL WHERE id = ?").run(id); }
 async function test(name, fn) {
     try { await fn(); console.log(`ok   ${name}`); } catch (e) { failed += 1; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 3).join('\n     ')}`); }
 }
@@ -273,6 +294,52 @@ sup._test.setFetch(async (url, opts) => {
             assert.ok(reply.ok && reply.work.source === 'agent' && reply.work.state === 'queued', JSON.stringify(reply));
             sup.stop();
         } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; }
+    });
+
+    await test('Yozora tracking: an issue per item, comments on start / gaps / done, status labels, tracked time; pulled fleet issues queue; a closed issue ends its item', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart;
+        const realStart = launcher.start;
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        let started = null;
+        launcher.start = async (g, o) => { started = o; return { id: 'eeeeeeee-0000-0000-0000-000000000001', state: 'connected', link: 'https://claude.ai/code/session_x' }; };
+        settingsCfg.agentSupervisor = Object.assign(settingsCfg.agentSupervisor, { maxConcurrent: 10, autoStart: true });
+        try {
+            yzCalls.length = 0;
+            const w = sup.enqueue({ title: 'Tracked', prompt: 'Do it.\n\nAcceptance\n- tests pass\n- docs updated', startNow: true }, { gr });
+            for (let i = 0; i < 50 && !(sup.getWork(w.id).state === 'running' && sup.getWork(w.id).issue); i += 1) await new Promise((r) => setTimeout(r, 20));
+            const got = sup.getWork(w.id);
+            assert.ok(got.issue && got.issue.repo === 'DreamScape/StaticForge', JSON.stringify(got));
+            const created = yzCalls.find((c) => c.method === 'POST' && /\/issues$/.test(c.url));
+            assert.ok(created.body.labels.includes(1), 'labelled fleet');
+            assert.match(created.body.body, /## Definition of done\n\n- \[ \] tests pass\n- \[ \] docs updated/);
+            assert.match(created.body.body, /<!-- fleet-work:\d+ -->/);
+            assert.match(started.prompt, /tracked in Yozora DreamScape\/StaticForge#\d+/);
+            for (let i = 0; i < 50 && !yzCalls.some((c) => /\/comments$/.test(c.url)); i += 1) await new Promise((r) => setTimeout(r, 20));
+            assert.match(yzCalls.find((c) => /\/comments$/.test(c.url)).body.body, /started as a supervised session on Main/);
+            sup.workAfterReview({ sessionId: got.sessionId, verdict: 'gaps', missed: [{ item: 'docs' }], summary: '' });
+            sup.workAfterReview({ sessionId: got.sessionId, verdict: 'ok', missed: [], summary: 'all done' });
+            for (let i = 0; i < 50 && !yzCalls.some((c) => /\/times$/.test(c.url)); i += 1) await new Promise((r) => setTimeout(r, 20));
+            const comments = yzCalls.filter((c) => /\/comments$/.test(c.url)).map((c) => c.body.body);
+            assert.ok(comments.some((t) => /sent back to the session:\n- docs/.test(t)), comments.join(' | '));
+            assert.ok(comments.some((t) => /found nothing missed/.test(t)));
+            assert.ok(yzCalls.some((c) => c.method === 'PUT' && /\/labels$/.test(c.url) && c.body.labels.includes(4)), 'status:review on done');
+            // pull: an issue filed on Yozora with fleet + fleet:now
+            yzIssues.set('DreamScape/StaticForge#500', { state: 'open', external: true, now: true, title: 'From Yozora', body: 'Please do X' });
+            const pulled = await sup.pullIssues(gr, { force: true });
+            assert.strictEqual(pulled.added, 1, 'pulled ' + JSON.stringify(pulled));
+            const item = sup.listWork().find((x) => x.issue && x.issue.number === 500);
+            assert.ok(item && item.source === 'yozora' && item.startNow);
+            const again = await sup.pullIssues(gr, { force: true }); assert.strictEqual(again.added, 0, 'pulled once ' + JSON.stringify(again));
+            // closed on Yozora: a queued one is cancelled
+            settingsCfg.agentSupervisor.autoStart = false;
+            const q = sup.enqueue({ title: 'Later', prompt: 'later', issueFields: { repo: 'DreamScape/StaticForge', number: 501 } }, { gr });
+            await sup.pumpWork(gr);
+            assert.strictEqual(sup.getWork(q.id).state, 'queued');
+            yzIssues.set('DreamScape/StaticForge#501', { state: 'closed' });
+            await sup.pullIssues(gr, { force: true });
+            assert.strictEqual(sup.getWork(q.id).state, 'cancelled', 'closed ' + JSON.stringify(sup.getWork(q.id)));
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; settingsCfg.agentSupervisor.autoStart = true; }
     });
 
     require('../modules/agentCoord/store').close();
