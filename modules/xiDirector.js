@@ -601,6 +601,13 @@ function buildPrompt(chat, userText, files, clientId, options) {
         const talk = voice.turnTalkHint(userText, files.length);
         lines.push(...voice.personaVoiceLines('xi', options && options.mascot, { coding: true, talk }));
     }
+    // The finish_turn contract, in the turn prompt the way the Director window carries it (#1146).
+    // Her coding prompt never had it, so she ended every turn with plain text: no report card and,
+    // the part Yukimi noticed, no suggested replies at all. She makes no prints, so no reportCard.
+    lines.push('End the turn with one finish_turn {summary, spoken, suggestions} call as your last tool call: '
+        + 'summary is your reply (markdown) and replaces a written reply; spoken is one to three plain sentences you would say out loud; '
+        + 'suggestions are 2 to 4 next replies THEY might send, written as they would say them, each one a whole message that makes sense on its own. '
+        + 'No reportCard (you make no prints). Write no reply text after finish_turn. Text you write while working is fine.');
     if (options && options.memoryStore === 'obliterated') {
         lines.push('Memory store: Obliterated Memories. list_memories, search_memories, get_memory, and save_memory use that shared store. It is not the Studio memory database. Do not pass a Studio model filter.');
     }

@@ -3947,7 +3947,8 @@ class Director {
         host.appendChild(this.createReplyChoicesBar(options, !!last));
     }
 
-    // Next-reply buttons: clicking one sends it (the log under the reply, and the mascot's result panel).
+    // Next-reply buttons: clicking one puts it in the input as written, unsent (Yukimi, 24.11.2026:
+    // "pasted in the chat insted of just sent"), so it can be read, changed or sent by hand.
     createReplyChoicesBar(options, fromReport) {
         const bar = document.createElement('div');
         bar.className = 'director-message-actions';
@@ -3959,8 +3960,7 @@ class Director {
             button.className = 'btn-secondary btn-small';
             button.textContent = label;
             button.addEventListener('click', () => {
-                bar.querySelectorAll('button').forEach((item) => { item.disabled = true; });
-                this.sendMessage(label);
+                this.pasteToInput(label);
             });
             bar.appendChild(button);
         });
@@ -9578,42 +9578,22 @@ class Director {
         content.classList.toggle('hidden');
     }
 
-    useSuggestion(suggestionText) {
-        // Get the chat input and send button
-        const directorChatInput = this.directorChatInput;
-        const directorSendBtn = this.directorSendBtn;
-        
-        if (!directorChatInput || !directorSendBtn) {
-            console.warn('❌ Chat input or send button not found');
+    // A suggested reply goes into the box exactly as it was written, and is not sent: Yukimi reads
+    // it, changes it, or sends it herself (24.11.2026). Every persona, both suggestion renderers.
+    pasteToInput(text) {
+        const input = this.directorChatInput;
+        if (!input) {
+            console.warn('❌ Chat input not found');
             return;
         }
-        
-        // Set the input text with the suggestion
-        const currentText = this.directorChatInput.value.trim();
-        let messageText;
-
-        if (currentText) {
-            // If there's existing text, append the suggestion with ", and "
-            if (currentText.includes('Lets execute your suggestion')) {
-                messageText = `${currentText}, and "${suggestionText}"`;
-            } else {
-                messageText = `${currentText}, and lets execute your suggestion: "${suggestionText}"`;
-            }
-        } else {
-            // If no existing text, use the original format with quotes
-            messageText = `Lets execute your suggestion: "${suggestionText}"`;
-        }
-
-        this.directorChatInput.value = messageText;
-
-        // Auto-expand textarea to fit new content
+        input.value = String(text == null ? '' : text);
         this.autoExpandTextarea(this.directorUserInput);
-
-        // Focus on the input
-        this.directorChatInput.focus();
-        
-        // Show a toast notification
+        input.focus();
         showGlassToast('info', null, 'Suggestion added to input. Click send to apply.');
+    }
+
+    useSuggestion(suggestionText) {
+        this.pasteToInput(suggestionText);
     }
 
     // Initialize custom scrollbars for director content
