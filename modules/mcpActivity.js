@@ -98,7 +98,9 @@ function summarizeResult(result) {
 
 function liveWsServer(globalResources) {
     if (!globalResources || typeof globalResources.getWebSocketServer !== 'function') return null;
-    return globalResources.getWebSocketServer();
+    // HTTP (and MCP) answers ~40-60 s before the WebSocket server is set after a restart: the activity
+    // broadcast is skipped then, never thrown (it turned every tools/call in that window into a bare 500)
+    try { return globalResources.getWebSocketServer(); } catch (_) { return null; }
 }
 
 function broadcastActivity(globalResources, row) {

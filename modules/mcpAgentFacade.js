@@ -11042,6 +11042,10 @@ function registerRoutes(app, { globalResources }) {
             const handled = await handleJsonRpc(globalResources, req, body);
             return sendMcpResponse(req, res, handled.status, handled.body);
         } catch (error) {
+            // never swallowed: a 500 every MCP client sees needs its cause in the log
+            const method = req.body && !Array.isArray(req.body) ? req.body.method : 'batch';
+            const tool = req.body && req.body.params && req.body.params.name;
+            console.error(`[mcp] ${method}${tool ? ` ${tool}` : ''} failed: ${(error && error.stack) || error}`);
             return res.status(500).json({
                 jsonrpc: '2.0',
                 id: null,
