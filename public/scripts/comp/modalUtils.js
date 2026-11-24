@@ -9379,15 +9379,65 @@ const startMenuKit = (() => {
         const bar = document.getElementById('desktopTaskbar');
         const room = window.innerHeight - (bar ? bar.offsetHeight : 35) - START_MENU_FRAME_OVERHANG;
         const leftFor = (n) => START_MENU_LEFT_BASE_H + (pinned + n) * rowH;
+        // the height the person dragged it to (its top edge's grip, kept on this device), else Vista's
+        const userH = startMenuUserHeight();
+        const limit = userH ? Math.min(room, Math.max(Math.min(START_MENU_MIN_H, room), right, userH)) : room;
         let fit = wanted;
-        while (fit > 0 && leftFor(fit) > room) fit--;
+        while (fit > 0 && leftFor(fit) > limit) fit--;
         // a list cut short takes all the room there is (the VM: 1144 px under a 1200 px screen)
-        const height = fit < wanted ? room : Math.min(room, Math.max(START_MENU_MIN_H, leftFor(fit), right));
+        const height = userH ? limit : (fit < wanted ? room : Math.min(room, Math.max(START_MENU_MIN_H, leftFor(fit), right)));
         menu.style.setProperty('--start-menu-h', `${Math.max(0, Math.floor(height))}px`);
         START_MENU_STATE.frequentFit = fit;
         // the balloon comes up once the power buttons it points at are built (openStartMenu / buildStartMenu)
-        START_MENU_STATE.overflowPending = fit < wanted ? `${wanted}:${pinned}:${rowH}:${room}` : '';
+        START_MENU_STATE.overflowPending = fit < wanted && !userH ? `${wanted}:${pinned}:${rowH}:${room}` : '';
         return fit;
+    }
+
+    // ---- resizing (Yukimi, Nov 23 2026: "we should also be able to resize it" - Vista's could not be; this one's top edge
+    // drags, Windows 7 style): the height is kept on this device, the recent programs fill what fits
+    const START_MENU_USER_H_KEY = 'startMenuUserHeight';
+    function startMenuUserHeight() {
+        try { const v = Number(localStorage.getItem(START_MENU_USER_H_KEY)); return Number.isFinite(v) && v > 0 ? v : 0; } catch (_) { return 0; }
+    }
+    function wireStartMenuGrip(menu) {
+        if (!menu || menu.querySelector('.start-menu-grip')) return;
+        const grip = document.createElement('div');
+        grip.className = 'start-menu-grip';
+        grip.setAttribute('aria-hidden', 'true');
+        menu.appendChild(grip);
+        grip.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const y0 = e.clientY;
+            const h0 = menu.getBoundingClientRect().height;
+            const bar = document.getElementById('desktopTaskbar');
+            const room = window.innerHeight - (bar ? bar.offsetHeight : 35) - START_MENU_FRAME_OVERHANG;
+            let h = h0;
+            let raf = 0;
+            grip.setPointerCapture(e.pointerId);
+            menu.classList.add('is-resizing');
+            const move = (ev) => {
+                h = Math.max(START_MENU_MIN_H, Math.min(room, h0 + (y0 - ev.clientY)));
+                if (!raf) raf = requestAnimationFrame(() => { raf = 0; menu.style.setProperty('--start-menu-h', `${Math.round(h)}px`); });
+            };
+            const up = () => {
+                grip.removeEventListener('pointermove', move);
+                menu.classList.remove('is-resizing');
+                if (raf) cancelAnimationFrame(raf);
+                try { localStorage.setItem(START_MENU_USER_H_KEY, String(Math.round(h))); } catch (_) { /* this time only */ }
+                // the rows again for the new height (how many recent programs fit)
+                if (typeof buildStartMenu === 'function') buildStartMenu();
+            };
+            grip.addEventListener('pointermove', move);
+            grip.addEventListener('pointerup', up, { once: true });
+            grip.addEventListener('pointercancel', up, { once: true });
+        });
+        // a double-click on the grip: Vista's own size again
+        grip.addEventListener('dblclick', () => {
+            try { localStorage.removeItem(START_MENU_USER_H_KEY); } catch (_) { /* none */ }
+            if (typeof buildStartMenu === 'function') buildStartMenu();
+        });
     }
 
     /** Vista's balloon over the Start menu when the items set in Customize Start Menu do not fit (once per setting). */
@@ -9867,6 +9917,7 @@ function ensureStartMenuElements() {
         return null;
     }
     startMenuEls.list.tabIndex = -1;
+    wireStartMenuGrip(startMenuEls.menu);
     startMenuEls.allPrograms.tabIndex = -1;
     startMenuEls.allPrograms.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -10015,6 +10066,12 @@ function toggleStartMenu(options) {
     }
 }
 
+/** An Android program's row (androidDesktopPrograms.js, "android:<id>"). */
+function isAndroidStartItem(item) {
+    const P = window.melatonAndroidPrograms;
+    return !!(P && typeof P.isAndroidId === 'function' && typeof P.hideOnDesktop === 'function' && item && P.isAndroidId(item.launchId));
+}
+
 /** Right-click on a start menu row: pin / unpin, order, remove from the most used list, desktop. */
 function attachStartMenuItemContextMenu(element, item) {
     if (!contextMenu || !item.launchId) return;
@@ -10085,6 +10142,14 @@ function attachStartMenuItemContextMenu(element, item) {
                             ctxItem.disabled = already;
                             ctxItem.text = already ? 'Already in Quick Launch' : 'Add to Quick Launch';
                         }
+                    },
+                    // an Android program left out of this desktop's Start menu only, still on the phone (Yukimi, Nov 23 2026)
+                    { separator: true, hidden: () => !isAndroidStartItem(item) },
+                    {
+                        icon: 'fas fa-eye-slash',
+                        text: 'Hide from Desktop Start Menu',
+                        action: 'hide-on-desktop',
+                        hidden: () => !isAndroidStartItem(item)
                     }
                 ]
             }
@@ -10112,6 +10177,12 @@ function attachStartMenuItemContextMenu(element, item) {
             }
             if (action === 'add-to-quick-launch' && window.taskbarSettings) {
                 window.taskbarSettings.addQuickLaunch(item.launchId);
+                return;
+            }
+            if (action === 'hide-on-desktop' && window.melatonAndroidPrograms) {
+                if (isStartMenuItemPinned(item.launchId)) await setStartMenuItemPinned(item.launchId, false);
+                window.melatonAndroidPrograms.hideOnDesktop(item.launchId);
+                if (startMenu) buildStartMenu();
             }
         }
     };

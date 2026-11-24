@@ -11015,7 +11015,13 @@
     }
     function todayWallSource() {
         let s = null;
-        try { s = localStorage.getItem(WALL_SOURCE_KEY); } catch (_) { /* storage off */ }
+        // (this workspace's on this device - Yukimi, Nov 23 2026: "workspace + device specific"; the device's older one
+        // until this workspace has its own)
+        try {
+            const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) || window.currentWorkspace || 'default';
+            s = localStorage.getItem(`${WALL_SOURCE_KEY}:${ws}`);
+            if (s === null) s = localStorage.getItem(WALL_SOURCE_KEY);
+        } catch (_) { /* storage off */ }
         if (s === 'android') return androidWallAvailable() ? 'android' : 'workspace';
         if (s === 'workspace' || s === 'selected') return s;
         let useDesktop = true;

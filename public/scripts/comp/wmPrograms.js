@@ -1817,7 +1817,11 @@
                 // workspace wallpaper save fails (the page then stays open to retry)
                 const useDesktop = d.source !== 'selected' || !sameSite(d.picture);
                 lsSet(K.todayUseDesktop, useDesktop ? '1' : '0');
-                lsSet(K.todayWallSource, d.source === 'android' ? 'android' : useDesktop ? 'workspace' : 'selected');
+                // (this workspace's on this device: wmShell todayWallSource reads it so - Yukimi, Nov 23 2026)
+                {
+                    const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) || window.currentWorkspace || 'default';
+                    lsSet(`${K.todayWallSource}:${ws}`, d.source === 'android' ? 'android' : useDesktop ? 'workspace' : 'selected');
+                }
                 if (sameSite(d.picture)) lsSet(K.todayBackground, d.picture);
                 lsSet(K.todayItems, JSON.stringify(d.items.map((r) => ({ id: r.id, on: r.on }))));
                 lsSet(TODAY_OPTIONS_KEY, JSON.stringify(d.opts || {}));

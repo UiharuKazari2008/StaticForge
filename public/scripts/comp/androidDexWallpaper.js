@@ -10,7 +10,8 @@
  *   - coming back on screen or into focus asks for the id again (an event missed while the page was frozen);
  *   - a live wallpaper or an empty slot has no picture: the workspace's wallpaper shows instead.
  *
- * The choice is this device's only (localStorage melatonDexWallpaper = '1'), never the workspace's: Personalization >
+ * The choice is this device's and this workspace's (localStorage melatonDexWallpaper:<workspace> = '1' | '0'; Yukimi, Nov
+ * 23 2026: "workspace + device specific"; the device's older melatonDexWallpaper until the workspace has its own): Personalization >
  * Desktop Background's "Use the Samsung DeX wallpaper on this display" (cplDesktopBackground.js). While it is on, the
  * desktop's painter (workspaceUtils.js syncDesktopWallpaperInline / the workspace settings' apply) hands the background
  * to paint() here, as it does for a presentation's (melatonPresentation.js).
@@ -37,8 +38,12 @@
         try { return !!(h && h.isExternalDisplay()); } catch (_) { return false; }
     }
 
+    const wsKey = () => `${KEY}:${(typeof activeWorkspace !== 'undefined' && activeWorkspace) || window.currentWorkspace || 'default'}`;
     function enabled() {
-        try { return localStorage.getItem(KEY) === '1'; } catch (_) { return false; }
+        try {
+            const v = localStorage.getItem(wsKey());
+            return v !== null ? v === '1' : localStorage.getItem(KEY) === '1';
+        } catch (_) { return false; }
     }
 
     /** The DeX wallpaper's address now ('' for a live wallpaper or none). One bridge call, no file read. */
@@ -87,7 +92,7 @@
     /** Personalization's check box: this device only. */
     function setEnabled(on) {
         try {
-            if (on) localStorage.setItem(KEY, '1'); else localStorage.removeItem(KEY);
+            localStorage.setItem(wsKey(), on ? '1' : '0');
         } catch (_) { /* storage off: the choice lasts this visit */ }
         failedUrl = '';
         paintedUrl = '';

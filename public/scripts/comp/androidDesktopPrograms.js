@@ -341,5 +341,21 @@
         return a ? iconFor(a, px) : { src: '', srcset: '' };
     }
 
-    root.melatonAndroidPrograms = { items: allItems, tree, rootItems, gameItems, find, isAndroidId, launch, iconFor, iconOfId };
+    /**
+     * Left out of this desktop's Start menu only, the phone's untouched (Yukimi, Nov 23 2026: "hide just in the desktop as
+     * there are apps we dont want to open or show but just in the desktop mode"): the desktop's own list (Managed Programs'
+     * wmAndroidHiddenDesktop; started as a copy of the phone's list the first time it is set apart, as there).
+     */
+    function hideOnDesktop(launchId) {
+        if (!isAndroidId(launchId)) return false;
+        const id = launchId.slice(PREFIX.length);
+        const hd = readJson(HIDDEN_DESKTOP_KEY, null);
+        const desk = new Set(((Array.isArray(hd) ? hd : readJson(HIDDEN_KEY, [])) || []).map(String));
+        desk.add(id);
+        try { localStorage.setItem(HIDDEN_DESKTOP_KEY, JSON.stringify([...desk])); } catch (_) { return false; }
+        changed();
+        return true;
+    }
+
+    root.melatonAndroidPrograms = { items: allItems, tree, rootItems, gameItems, find, isAndroidId, launch, iconFor, iconOfId, hideOnDesktop };
 })();
