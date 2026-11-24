@@ -5443,12 +5443,15 @@ function watchGeneratedPrints(gr, notify) {
         try { stat = fs.statSync(path.join(dir, filename)); } catch (_) { return; }
         if (!stat.size || stat.mtimeMs < startedAt) return;
         seen.add(filename);
-        try { notify(filename); } catch (_) { /* client may be gone */ }
+        // a print is written as x.jxl under its name x.png (#1134); older prints swapped to JXL keep their old
+        // mtime and are skipped above
+        const shown = /\.jxl$/i.test(filename) ? filename.slice(0, -4) + '.png' : filename;
+        try { notify(shown); } catch (_) { /* client may be gone */ }
     };
     try {
         watcher = fs.watch(dir, (_event, filename) => {
             if (!filename || seen.has(filename) || timers.has(filename)) return;
-            if (!/\.(png|jpe?g|webp)$/i.test(filename)) return;
+            if (!/\.(png|jxl|jpe?g|webp)$/i.test(filename)) return;
             // The file is still being written when the event fires; the preview webp lands later
             timers.set(filename, setTimeout(() => settle(filename), PRINT_SETTLE_MS));
         });

@@ -4939,8 +4939,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         }
 
         if (shouldSave) {
-            await fs.promises.writeFile(path.join(__runtimeGr.getPath('images'), name), finalBuffer);
-            __runtimeGr.getLogger().normal(`💾 Saved: ${name}`);
+            // stored as JPEG XL (#1134: PNG is legacy); the PNG bytes stay as its decoded copy for what follows
+            const stored = await imageStore.writePicture(name, finalBuffer, { dir: __runtimeGr.getPath('images') });
+            __runtimeGr.getLogger().normal(`💾 Saved: ${name}${stored.kind === 'jxl' ? ' (JPEG XL)' : ''}`);
 
             // Add file to workspace
             __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', name, targetWorkspaceId);
@@ -4978,7 +4979,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             const baseName = __runtimeGr.getPngMetadata().getBaseName(name);
 
             // Generate main / @2x / @lq previews + BlurHash (replaces @blur.webp)
-            const previewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), name), baseName);
+            const previewResult = await generateMobilePreviews(stored.pngPath, baseName);
             // Not awaited: the UPDATE queues on the metadata write handle and Studio's
             // complete / response must not wait behind it (#652).
             storePreviewBlurhash(__runtimeGr, name, previewResult, forgeData.blurhash || null).catch((err) => {
@@ -5067,8 +5068,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             const upscaledName = name.replace('.png', '_upscaled.png');
 
             if (shouldSave) {
-                await fs.promises.writeFile(path.join(__runtimeGr.getPath('images'), upscaledName), updatedScaledBuffer);
-                console.log(`💾 Saved: ${upscaledName}`);
+                const storedUpscaled = await imageStore.writePicture(upscaledName, updatedScaledBuffer, { dir: __runtimeGr.getPath('images') });
+                console.log(`💾 Saved: ${upscaledName}${storedUpscaled.kind === 'jxl' ? ' (JPEG XL)' : ''}`);
 
                 // Add upscaled file to workspace
                 __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', upscaledName, targetWorkspaceId);
@@ -5084,7 +5085,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), upscaledReceiptData, upscaledForgeData, { buffer: finalBuffer });
                 await recordReplicationGalleryJournal(upscaledName, targetWorkspaceId, updatedScaledBuffer);
 
-                const upscaledPreviewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), upscaledName), __runtimeGr.getPngMetadata().getBaseName(upscaledName));
+                const upscaledPreviewResult = await generateMobilePreviews(storedUpscaled.pngPath, __runtimeGr.getPngMetadata().getBaseName(upscaledName));
                 await storePreviewBlurhash(__runtimeGr, upscaledName, upscaledPreviewResult);
 
                 const plumbing = __runtimeGr.getDataPlumbing();
@@ -5151,12 +5152,14 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         if (shouldSave) {
             const filePath = path.join(__runtimeGr.getPath('images'), name);
             await img.save(filePath);
+            // stored as JPEG XL (#1134); the saved PNG becomes its decoded copy
+            const storedLegacy = await imageStore.writePicture(name, await fs.promises.readFile(filePath), { dir: __runtimeGr.getPath('images') });
             console.log(`💾 Saved: ${name}`);
 
             // Generate preview
             const baseName = __runtimeGr.getPngMetadata().getBaseName(name);
 
-            const legacyPreviewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), name), baseName);
+            const legacyPreviewResult = await generateMobilePreviews(storedLegacy.pngPath, baseName);
             await storePreviewBlurhash(__runtimeGr, name, legacyPreviewResult);
             __runtimeGr.getLogger().detailed(`📸 Generated previews for ${baseName}`);
         }
@@ -7951,15 +7954,9 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         console.log(`💾 Attempting to save: ${expandedFilename} at ${expandedPath}`);
         console.log(`📊 Buffer size: ${expandedBuffer.length} bytes`);
 
-        await fs.promises.writeFile(expandedPath, expandedBuffer);
-
-        // Verify file was written
-        if (fs.existsSync(expandedPath)) {
-            const stats = fs.statSync(expandedPath);
-            console.log(`✅ File saved successfully: ${expandedFilename} (${stats.size} bytes)`);
-        } else {
-            console.error(`❌ File was not saved: ${expandedFilename}`);
-        }
+        // stored as JPEG XL (#1134); the PNG bytes stay as its decoded copy for the preview below
+        const storedExpanded = await imageStore.writePicture(expandedFilename, expandedBuffer, { dir: __runtimeGr.getPath('images') });
+        console.log(`✅ File saved successfully: ${expandedFilename} (${fs.statSync(storedExpanded.path).size} bytes, ${storedExpanded.kind})`);
 
         // Add to workspace
         const targetWorkspaceId = workspaceId || __runtimeGr.getWorkspaceManager().getActiveWorkspace(sessionId);
@@ -7975,7 +7972,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
 
         // Generate preview
         const expandedBaseName = __runtimeGr.getPngMetadata().getBaseName(expandedFilename);
-        const expandedPreviewResult = await generateMobilePreviews(expandedPath, expandedBaseName);
+        const expandedPreviewResult = await generateMobilePreviews(storedExpanded.pngPath, expandedBaseName);
         await storePreviewBlurhash(__runtimeGr, expandedFilename, expandedPreviewResult);
 
         // no_save skips handleGeneration's phase:complete — notify client so streaming finalize can finish.
@@ -8286,12 +8283,9 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         const expandedPath = path.join(__runtimeGr.getPath('images'), expandedFilename);
 
         console.log(`💾 Saving: ${expandedFilename}`);
-        await fs.promises.writeFile(expandedPath, expandedBuffer);
-
-        if (fs.existsSync(expandedPath)) {
-            const stats = fs.statSync(expandedPath);
-            console.log(`✅ File saved successfully: ${expandedFilename} (${stats.size} bytes)`);
-        }
+        // stored as JPEG XL (#1134); the PNG bytes stay as its decoded copy for the preview below
+        const storedReroll = await imageStore.writePicture(expandedFilename, expandedBuffer, { dir: __runtimeGr.getPath('images') });
+        console.log(`✅ File saved successfully: ${expandedFilename} (${fs.statSync(storedReroll.path).size} bytes, ${storedReroll.kind})`);
 
         // Add to workspace
         const targetWorkspaceId = workspaceId || __runtimeGr.getWorkspaceManager().getActiveWorkspace(sessionId);
@@ -8303,7 +8297,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
 
         // Generate preview
         const rerollExpandedBase = __runtimeGr.getPngMetadata().getBaseName(expandedFilename);
-        const rerollPreviewResult = await generateMobilePreviews(expandedPath, rerollExpandedBase);
+        const rerollPreviewResult = await generateMobilePreviews(storedReroll.pngPath, rerollExpandedBase);
         await storePreviewBlurhash(__runtimeGr, expandedFilename, rerollPreviewResult);
 
         // no_save skips handleGeneration's phase:complete — notify client so streaming finalize can finish.

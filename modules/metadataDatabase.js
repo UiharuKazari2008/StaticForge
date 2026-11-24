@@ -2732,14 +2732,13 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
                 metadata.size = stats.size;
             }
         } else {
-            // the PNG bytes (a JXL-stored picture decoded); the write below stores a PNG again, which wins
+            // the PNG bytes (a JXL-stored picture decoded); stored again as JPEG XL (#1134), date created kept
             const imageBuffer = fileBuffer || await imageStore.readPng(filename, imagesDir);
             if (imageBuffer) {
                 const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
-                await fs.promises.writeFile(filePath, updatedBuffer);
-                await imageStore.dropStaleJxl(filename, imagesDir);
+                const stored = await imageStore.writePicture(filename, updatedBuffer, { dir: imagesDir });
                 metadata.md5 = md5OfBuffer(updatedBuffer);
-                const stats = await fs.promises.stat(filePath);
+                const stats = await fs.promises.stat(stored.path);
                 metadata.mtime = stats.mtime.valueOf();
                 metadata.size = stats.size;
             }
@@ -2891,9 +2890,8 @@ async function updateFileMetadata(filename, imagesDir, forgeData) {
         // Update the PNG metadata using the pngMetadata module
         const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
         
-        // Write the updated buffer back to the file (a JXL it was stored as is dropped: the PNG is the picture now)
-        fs.writeFileSync(filePath, updatedBuffer);
-        await imageStore.dropStaleJxl(filename, imagesDir);
+        // Store it again as JPEG XL (#1134; replaces it in either form, date created kept)
+        await imageStore.writePicture(filename, updatedBuffer, { dir: imagesDir });
         
         // Update the database metadata as well
         const image = await db.get('SELECT id FROM images WHERE filename = ?', [filename]);

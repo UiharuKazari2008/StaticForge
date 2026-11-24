@@ -3108,8 +3108,15 @@ class ReferencesWebSocketHandlers {
                 counter++;
             }
 
-            // Save file to images directory
-            await fs.promises.writeFile(finalFilePath, imageBuffer);
+            // Save file to images directory: a PNG is stored as JPEG XL (#1134; finalFilePath becomes the PNG kept
+            // as its decoded copy, for the previews below); other formats as they are
+            const isPngUpload = /\.png$/i.test(finalFilename) && Buffer.isBuffer(imageBuffer)
+                && imageBuffer.length > 8 && imageBuffer.readUInt32BE(0) === 0x89504e47;
+            if (isPngUpload) {
+                finalFilePath = (await imageStore.writePicture(finalFilename, imageBuffer, { dir: this.globalResources.getPath("images") })).pngPath;
+            } else {
+                await fs.promises.writeFile(finalFilePath, imageBuffer);
+            }
 
             // Handle preview - use existing temp preview if available, otherwise generate new one
             const baseName = path.basename(finalFilename, path.extname(finalFilename));

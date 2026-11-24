@@ -205,7 +205,9 @@ function attachPngMetadata(jxl, pngBuf, times = null) {
     // the swap; these stay with the picture (Yukimi: dates created and modified must not change)
     const tail = [box(BOX_TYPE, payload)];
     if (times && (times.birthtimeMs > 0 || times.mtimeMs > 0)) {
-        tail.push(box(TIMES_BOX, Buffer.from(JSON.stringify({ b: Math.round(times.birthtimeMs || 0), m: Math.round(times.mtimeMs || 0) }))));
+        const t = { b: Math.round(times.birthtimeMs || 0), m: Math.round(times.mtimeMs || 0) };
+        if (times.effort) t.e = times.effort;
+        tail.push(box(TIMES_BOX, Buffer.from(JSON.stringify(t))));
     }
     const boxes = readBoxes(jxl);
     if (!boxes) {
@@ -241,7 +243,7 @@ function readFileTimesSync(jxlPath) {
                 const body = Buffer.alloc(size - head);
                 fs.readSync(fd, body, 0, body.length, off + head);
                 const t = JSON.parse(body.toString('utf8'));
-                return { birthtimeMs: Number(t.b) || 0, mtimeMs: Number(t.m) || 0 };
+                return { birthtimeMs: Number(t.b) || 0, mtimeMs: Number(t.m) || 0, effort: Number(t.e) || 0, estimated: !!t.est };
             }
             if (size === 0 || size < head) return null;
             off += size;
@@ -593,6 +595,74 @@ async function jxlBytes(name, dir = IMAGES_DIR) {
     return attachPngMetadata(jxl, png);
 }
 
+// effort for pictures written as they are made: fast on the save path (1024x1024 about 0.2 s, 62 % of the PNG);
+// the nightly converter re-encodes them at effort 7 (56 %) when the host is idle
+const WRITE_EFFORT = 3;
+
+async function encodeLossless(pngBuf, effort) {
+    const stamp = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const tmpPng = path.join(CACHE_DIR, `.w-${stamp}.png`);
+    const tmpJxl = path.join(CACHE_DIR, `.w-${stamp}.jxl`);
+    await fs.promises.mkdir(CACHE_DIR, { recursive: true });
+    try {
+        await fs.promises.writeFile(tmpPng, pngBuf);
+        await run('cjxl', [tmpPng, tmpJxl, '-d', '0', '-e', String(effort), '--quiet']);
+        return await fs.promises.readFile(tmpJxl);
+    } catch (e) {
+        if (!e || e.code !== 'ENOENT') throw e;
+        const sharp = require('sharp');
+        if (!(sharp.format.jxl && sharp.format.jxl.output && sharp.format.jxl.output.buffer)) return null;
+        return sharp(pngBuf).jxl({ lossless: true, effort }).toBuffer();
+    } finally {
+        fs.promises.unlink(tmpPng).catch(() => {});
+        fs.promises.unlink(tmpJxl).catch(() => {});
+    }
+}
+
+/**
+ * Store a picture (Yukimi, Nov 24 2026: "after generating an image it directly writes the output as JPEG XL, never
+ * PNG; PNG is only legacy"). pngBuf is the PNG as made (its text chunks and alpha stealth data are kept: lossless,
+ * sfPN box). Writes x.jxl atomically and removes any x.png; a rewrite of an existing picture keeps its date created.
+ * The PNG bytes go into the decoded cache with the JXL's mtime, so whatever reads the new picture next (previews,
+ * metadata, the reply, a NovelAI upload) gets the original PNG without a decode.
+ * Resolves { path (the stored file), pngPath (a PNG file of it), kind }. With no JPEG XL encoder on the host it
+ * writes the PNG as before.
+ */
+async function writePicture(name, pngBuf, opts = {}) {
+    const n = cleanName(name);
+    if (!n || !isPngName(n)) throw new Error('writePicture: a gallery .png name is required');
+    const dir = opts.dir || IMAGES_DIR;
+    const pngP = path.join(dir, n);
+    const jxlP = path.join(dir, jxlNameFor(n));
+    const prior = locateSync(n, dir);
+    const created = prior ? createdMsSync(n, dir) : null;
+    const effort = opts.effort || WRITE_EFFORT;
+    const jxl = await encodeLossless(pngBuf, effort);
+    if (!jxl) {
+        await fs.promises.writeFile(pngP, pngBuf);
+        return { path: pngP, pngPath: pngP, kind: 'png' };
+    }
+    const now = Date.now();
+    const boxed = attachPngMetadata(jxl, pngBuf, { birthtimeMs: created || now, mtimeMs: now, effort });
+    const tmp = `${jxlP}.${process.pid}.tmp`;
+    await fs.promises.writeFile(tmp, boxed);
+    await fs.promises.utimes(tmp, now / 1000, now / 1000);
+    await fs.promises.rename(tmp, jxlP);
+    if (prior && prior.kind === 'png') await fs.promises.unlink(pngP).catch(() => {});
+    // the original PNG as this picture's decoded copy (valid while the JXL keeps this mtime)
+    const cached = path.join(CACHE_DIR, n);
+    try {
+        await fs.promises.writeFile(cached + '.seed', pngBuf);
+        await fs.promises.utimes(cached + '.seed', now / 1000, now / 1000);
+        await fs.promises.rename(cached + '.seed', cached);
+        notePngSize(n, now, pngBuf.length);
+        if (cacheBytesKnown === null || (cacheBytesKnown += pngBuf.length) > CACHE_MAX_BYTES) void trimCache();
+    } catch (_) {
+        return { path: jxlP, pngPath: await pngPath(n, dir), kind: 'jxl' };
+    }
+    return { path: jxlP, pngPath: cached, kind: 'jxl' };
+}
+
 /** The picture's PNG bytes (original or rebuilt), or null. */
 async function readPng(name, dir = IMAGES_DIR) {
     const p = await pngPath(name, dir);
@@ -674,6 +744,8 @@ module.exports = {
     sharpReadsJxl,
     jxlOriginalHasIcc,
     readPng,
+    writePicture,
+    WRITE_EFFORT,
     jxlBytes,
     pngSize,
     knownPngSize,

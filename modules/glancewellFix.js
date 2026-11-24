@@ -69,10 +69,6 @@ function safeName(filename) {
 }
 
 /** After a new PNG lands over a print: its old JXL form (if it had one) goes, the PNG is the picture now. */
-// (#1152: the shared imageStore.dropStaleJxl, which also drops the decoded copy)
-function dropStaleJxl(imagesDir, name) {
-    return imageStore.dropStaleJxl(name, imagesDir);
-}
 
 function originalsDir(gr) {
     const d = path.join(gr.getPath('cache'), 'glancewell-originals');
@@ -111,10 +107,8 @@ async function saveFixed(gr, { filename, buffer, mode, workspaceId }) {
     if (mode === 'overwrite') {
         const keep = path.join(originalsDir(gr), name);
         try { await fs.promises.access(keep); } catch (_) { await fs.promises.writeFile(keep, original); }
-        const tmp = `${src}.glancewell-${process.pid}.tmp`;
-        await fs.promises.writeFile(tmp, out);
-        await fs.promises.rename(tmp, src);
-        await dropStaleJxl(imagesDir, name);
+        // stored as JPEG XL (#1134), replacing the print in either form
+        await imageStore.writePicture(name, out, { dir: imagesDir });
         await remakePreviews(gr, name);
         return { filename: name, mode, hasOriginal: true };
     }
@@ -122,7 +116,7 @@ async function saveFixed(gr, { filename, buffer, mode, workspaceId }) {
         const base = path.basename(name, '.png').replace(/_fixed(_\d+)?$/, '');
         let next = `${base}_fixed.png`;
         for (let n = 2; imageStore.existsSync(next, imagesDir); n++) next = `${base}_fixed_${n}.png`;
-        await fs.promises.writeFile(path.join(imagesDir, next), out);
+        await imageStore.writePicture(next, out, { dir: imagesDir });
         await remakePreviews(gr, next);
         gr.getWorkspaceManager().addToWorkspaceArray('files', next, workspaceId || 'default');
         return { filename: next, mode, hasOriginal: false };
@@ -139,11 +133,7 @@ async function revert(gr, filename) {
     const name = safeName(filename);
     const keep = path.join(originalsDir(gr), name);
     const original = await fs.promises.readFile(keep);
-    const src = path.join(gr.getPath('images'), name);
-    const tmp = `${src}.glancewell-${process.pid}.tmp`;
-    await fs.promises.writeFile(tmp, original);
-    await fs.promises.rename(tmp, src);
-    await dropStaleJxl(gr.getPath('images'), name);
+    await imageStore.writePicture(name, original, { dir: gr.getPath('images') });
     await fs.promises.unlink(keep);
     await remakePreviews(gr, name);
     return { filename: name };

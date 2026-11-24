@@ -333,10 +333,10 @@ async function upscaleImage(globalResources, filename, workspaceId, req, res, up
 
         // Save upscaled image
         const upscaledFilename = filename.replace('.png', '_upscaled.png');
-        const upscaledPath = path.join(__runtimeGr.getPath("images"), upscaledFilename);
-        fs.writeFileSync(upscaledPath, updatedUpscaledBuffer);
-        // a new upscale over an old one stored as JXL: the PNG is the picture now (#1152)
-        await imageStore.dropStaleJxl(upscaledFilename, __runtimeGr.getPath("images"));
+        // stored as JPEG XL (#1134: PNG is legacy; replaces an older upscale in either form); upscaledPath is
+        // the PNG bytes kept as its decoded copy, for the preview below
+        const storedUpscale = await imageStore.writePicture(upscaledFilename, updatedUpscaledBuffer, { dir: __runtimeGr.getPath("images") });
+        const upscaledPath = storedUpscale.pngPath;
         console.log(`💾 Saved upscaled: ${upscaledFilename}`);
 
         // Add upscaled file to workspace
@@ -399,10 +399,10 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
         
         // Save upscaled image
         const upscaledFilename = filename.replace('.png', '_upscaled.png');
-        const upscaledPath = path.join(__runtimeGr.getPath("images"), upscaledFilename);
-        fs.writeFileSync(upscaledPath, updatedUpscaledBuffer);
-        // a new upscale over an old one stored as JXL: the PNG is the picture now (#1152)
-        await imageStore.dropStaleJxl(upscaledFilename, __runtimeGr.getPath("images"));
+        // stored as JPEG XL (#1134: PNG is legacy; replaces an older upscale in either form); upscaledPath is
+        // the PNG bytes kept as its decoded copy, for the preview below
+        const storedUpscale = await imageStore.writePicture(upscaledFilename, updatedUpscaledBuffer, { dir: __runtimeGr.getPath("images") });
+        const upscaledPath = storedUpscale.pngPath;
         console.log(`💾 Saved upscaled: ${upscaledFilename}`);
 
         // Add upscaled file to workspace

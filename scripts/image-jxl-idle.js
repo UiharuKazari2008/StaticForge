@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 /**
- * #1134: the host's own JPEG XL conversion, after the one-time backlog. Gallery PNGs older than 30 days become
- * lossless JXL (effort 7) in place, keeping their name x.png for everything else (modules/imageStore.js).
+ * #1134: the host's own JPEG XL upkeep. New pictures are written as JPEG XL at once (imageStore.writePicture, a
+ * fast effort 3); PNG is legacy (Yukimi, Nov 24 2026). Each night, while the host is idle:
+ *   1. any PNG still in images/ (written by legacy code) older than an hour becomes lossless JXL (effort 7);
+ *   2. JXLs written at a lower effort and older than a day are re-encoded at effort 7 (same pixels, same
+ *      metadata and times boxes, same mtime; kept only when smaller).
+ * Pictures keep their name x.png for everything else (modules/imageStore.js).
  *
- *   node scripts/image-jxl-idle.js [--dry-run] [--limit N] [--days 30]
+ *   node scripts/image-jxl-idle.js [--dry-run] [--limit N] [--min-age-hours 1] [--upgrade-age-hours 24]
  *
  * Meant to run once a night (crontab); it does what is due and exits. It runs at nice 19 / idle I/O, and only
  * while Dreamscape is idle (scripts/director-idle-check.js exit 0 and load under 60 % of the cores), checked
@@ -11,6 +15,7 @@
  * Per picture: cjxl -d 0 -e 7, full decode compared with the PNG (pixels and metadata chunks), the PNG's metadata
  * in the sfPN box, x.jxl written via a temp file with the PNG's mtime, then x.png removed. A picture that fails is
  * left as PNG and listed in .cache/image-jxl/failed.ndjson (not tried again). Log: .cache/image-jxl/idle.log.
+ * Re-encodes: decode, effort 7, decode again and compare pixels and metadata chunks; a failure leaves the file.
  */
 'use strict';
 
@@ -27,7 +32,9 @@ const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const DRY = args.includes('--dry-run');
 const LIMIT = parseInt(opt('--limit', '0'), 10) || 0;
-const DAYS = parseFloat(opt('--days', '30')) || 30;
+const MIN_AGE_MS = (parseFloat(opt('--min-age-hours', '1')) || 1) * 3600000;
+const UPGRADE_AGE_MS = (parseFloat(opt('--upgrade-age-hours', '24')) || 24) * 3600000;
+const TARGET_EFFORT = 7;
 
 fs.mkdirSync(STATE, { recursive: true });
 const log = (m) => {
@@ -64,7 +71,7 @@ async function convertOne(name) {
     try {
         execFileSync('cjxl', [pngP, raw, '-d', '0', '-e', '7', '--num_threads=2', '--quiet'], { stdio: 'ignore' });
         // the PNG's own times ride along: date created (birth) and modified stay the picture's
-        const boxed = store.attachPngMetadata(fs.readFileSync(raw), png, { birthtimeMs: st.birthtimeMs, mtimeMs: st.mtimeMs });
+        const boxed = store.attachPngMetadata(fs.readFileSync(raw), png, { birthtimeMs: st.birthtimeMs, mtimeMs: st.mtimeMs, effort: TARGET_EFFORT });
         fs.writeFileSync(tmp, boxed);
         const rebuilt = await store.decodeJxlToPngBuffer(tmp);
         if (!(await samePixels(png, rebuilt)) || chunkKey(rebuilt) !== chunkKey(png)) throw new Error('decode check failed');
@@ -80,21 +87,59 @@ async function convertOne(name) {
     }
 }
 
+/** A JXL written at a lower effort, re-encoded at effort 7; resolves the bytes saved (0 when not smaller). */
+async function upgradeOne(file) {
+    const jxlP = path.join(store.IMAGES_DIR, file);
+    const st = fs.statSync(jxlP);
+    const times = store.readFileTimesSync(jxlP);
+    if (!times) return 0;
+    const pngTmp = jxlP + '.up.png';
+    const raw = jxlP + '.up.jxl';
+    const tmp = jxlP + '.tmp';
+    try {
+        const png = await store.decodeJxlToPngBuffer(jxlP);
+        fs.writeFileSync(pngTmp, png);
+        execFileSync('cjxl', [pngTmp, raw, '-d', '0', '-e', String(TARGET_EFFORT), '--num_threads=2', '--quiet'], { stdio: 'ignore' });
+        const boxed = store.attachPngMetadata(fs.readFileSync(raw), png, {
+            birthtimeMs: times.birthtimeMs, mtimeMs: times.mtimeMs, effort: TARGET_EFFORT
+        });
+        if (boxed.length >= st.size) return 0;
+        fs.writeFileSync(tmp, boxed);
+        const again = await store.decodeJxlToPngBuffer(tmp);
+        if (!(await samePixels(png, again)) || chunkKey(again) !== chunkKey(png)) throw new Error('re-encode check failed');
+        const now = fs.statSync(jxlP);
+        if (now.mtimeMs !== st.mtimeMs || now.size !== st.size) throw new Error('picture changed during re-encode');
+        fs.utimesSync(tmp, st.atimeMs / 1000, st.mtimeMs / 1000);
+        fs.renameSync(tmp, jxlP);
+        return st.size - boxed.length;
+    } finally {
+        for (const f of [pngTmp, raw, tmp]) { try { fs.unlinkSync(f); } catch (_) { /* gone */ } }
+    }
+}
+
 async function main() {
     try { os.setPriority(19); } catch (_) { /* not allowed */ }
     try { execFileSync('ionice', ['-c', '3', '-p', String(process.pid)]); } catch (_) { /* no ionice */ }
     const failedP = path.join(STATE, 'failed.ndjson');
     const failed = new Set(fs.existsSync(failedP)
         ? fs.readFileSync(failedP, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l).name) : []);
-    const cutoff = Date.now() - DAYS * 86400000;
+    const cutoff = Date.now() - MIN_AGE_MS;
+    const upgradeCutoff = Date.now() - UPGRADE_AGE_MS;
     const due = [];
+    const upgrades = [];
     for (const e of fs.readdirSync(store.IMAGES_DIR, { withFileTypes: true })) {
-        if (!e.isFile() || !/\.png$/i.test(e.name) || e.name.startsWith('.') || failed.has(e.name)) continue;
-        const st = fs.statSync(path.join(store.IMAGES_DIR, e.name));
-        if (st.mtimeMs < cutoff) due.push({ name: e.name, mtimeMs: st.mtimeMs });
+        if (!e.isFile() || e.name.startsWith('.') || failed.has(e.name)) continue;
+        if (/\.png$/i.test(e.name)) {
+            const st = fs.statSync(path.join(store.IMAGES_DIR, e.name));
+            if (st.mtimeMs < cutoff) due.push({ name: e.name, mtimeMs: st.mtimeMs });
+        } else if (/\.jxl$/i.test(e.name)) {
+            const p = path.join(store.IMAGES_DIR, e.name);
+            const t = store.readFileTimesSync(p);
+            if (t && t.effort > 0 && t.effort < TARGET_EFFORT && fs.statSync(p).mtimeMs < upgradeCutoff) upgrades.push(e.name);
+        }
     }
     due.sort((a, b) => a.mtimeMs - b.mtimeMs);
-    log(`${due.length} PNG older than ${DAYS} days${DRY ? ' (dry run)' : ''}`);
+    log(`${due.length} PNG to convert, ${upgrades.length} JXL to re-encode at effort ${TARGET_EFFORT}${DRY ? ' (dry run)' : ''}`);
     if (DRY) return;
     let n = 0, freed = 0;
     for (const d of due) {
@@ -108,7 +153,19 @@ async function main() {
             log(`failed ${d.name}: ${e.message}`);
         }
     }
-    log(`converted ${n}, ${(freed / 1e6).toFixed(0)} MB freed`);
+    let u = 0;
+    for (const file of upgrades) {
+        if (LIMIT && n + u >= LIMIT) break;
+        if (!idle()) { log(`host busy: stopping re-encodes after ${u} (rest next run)`); break; }
+        try {
+            freed += await upgradeOne(file);
+            u++;
+        } catch (e) {
+            fs.appendFileSync(failedP, JSON.stringify({ name: file, err: String(e.message).slice(0, 300), at: Date.now() }) + '\n');
+            log(`re-encode failed ${file}: ${e.message}`);
+        }
+    }
+    log(`converted ${n}, re-encoded ${u}, ${(freed / 1e6).toFixed(0)} MB freed`);
 }
 
 main().catch((e) => { log('error: ' + (e && e.stack || e)); process.exit(1); });
