@@ -271,9 +271,13 @@ function runtimeStatus() {
         const chat = peekIndex().chats.find((item) => item.id === sessionId);
         sessionName = chat ? (chat.name || 'Yozora') : null;
     }
+    // every session with a live run (sessionId names one only while exactly one runs): the page checks its own
+    // chat against this list, so the typing indicator follows the real run state per chat (#1150)
+    const runningSessions = Array.from(runs.values()).filter((run) => !run.settled).map((run) => run.sessionId);
     return {
         enabled: isEnabled(boundGr),
-        running: Array.from(runs.values()).some((run) => !run.settled),
+        running: runningSessions.length > 0,
+        runningSessions,
         sessionId,
         sessionName
     };

@@ -111,7 +111,9 @@ function tmEventHoldKey(d) {
 /** The turns a Director status says are running ('' when none): the key that starts or ends a turn. */
 function directorRunKey(d) {
     const s = d && typeof d === 'object' ? d : {};
-    const xi = s.xi && s.xi.running ? String(s.xi.sessionId || 'xi') : '';
+    const xi = s.xi && s.xi.running
+        ? (Array.isArray(s.xi.runningSessions) && s.xi.runningSessions.length ? s.xi.runningSessions.join(',') : String(s.xi.sessionId || 'xi'))
+        : '';
     return `${s.running ? String(s.sessionId || 'run') : ''}|${xi}`;
 }
 

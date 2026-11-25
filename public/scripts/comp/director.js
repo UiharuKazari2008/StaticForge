@@ -409,6 +409,23 @@ const DIRECTOR_WORKSPACE_ACCENT_VARS = [
 ];
 const DIRECTOR_PERSONA_NAMES = { wren: 'Yumiya', kabuki: 'Chiyo', xi: 'Yozora' };
 
+// The first seconds of a turn this page started: the server's status can come before it has registered the run.
+const STATUS_ARM_GRACE_MS = 3000;
+
+// Does the server's status say a turn runs for this chat? The typing indicator follows this, not a flag the page
+// keeps by itself (#1150). A Yozora (xi) chat counts only its own side: the cursor Director's run (status.running) is
+// another chat's turn and must not keep it "typing". A Director chat counts the cursor side (it names one session
+// only, so any run there keeps it, to be safe).
+function directorServerRunsSession(status, sid, isXi) {
+    const st = status && typeof status === 'object' ? status : {};
+    const xi = st.xi && typeof st.xi === 'object' ? st.xi : {};
+    if (isXi) {
+        if (Array.isArray(xi.runningSessions)) return xi.runningSessions.includes(sid);
+        return !!xi.running && (!xi.sessionId || xi.sessionId === sid);
+    }
+    return !!st.running || (Array.isArray(st.runningSessions) && st.runningSessions.includes(sid));
+}
+
 function directorPersonaName(persona) {
     return DIRECTOR_PERSONA_NAMES[persona] || DIRECTOR_PERSONA_NAMES.wren;
 }
@@ -3647,12 +3664,9 @@ class Director {
         // "running" from a stream flush it could not tell was late, and the window said WORKING for good (Yukimi, Nov 24
         // 2026: "why the director is still running when it should be done"). Not in the first seconds of a turn this page
         // started (the server's status can come before it has the run)
-        if (this._running && this._runningSessionId && Date.now() - (this._runningArmedAt || 0) > 20000) {
+        if (this._running && this._runningSessionId && Date.now() - (this._runningArmedAt || 0) > STATUS_ARM_GRACE_MS) {
             const sid = this._runningSessionId;
-            const xi = status.xi || {};
-            // (the server names one running session per side; any run at all keeps the window's turn, to be safe)
-            const serverHas = !!status.running || !!xi.running || (Array.isArray(status.runningSessions) && status.runningSessions.includes(sid));
-            if (!serverHas && status.success !== false) this.finishTurn(sid);
+            if (!directorServerRunsSession(status, sid, this.persona === 'xi') && status.success !== false) this.finishTurn(sid);
         }
         this.updateTrayChrome();
         this.noteCursorLogin(status.cursorLogin);
@@ -9580,6 +9594,9 @@ class Director {
             if (payload && window.directorInstance && window.directorInstance._steer && payload.sessionId === window.directorInstance._steer.sessionId) return;
             if (payload && payload.sessionId === window.currentSession?.id && window.directorInstance) {
                 if (!window.directorInstance._running || window.directorInstance._runningSessionId !== payload.sessionId) {
+                    // the server's last status says no turn runs for this chat: a late flush must not start the indicator (#1150)
+                    const known = window.directorInstance._status;
+                    if (known && !directorServerRunsSession(known, payload.sessionId, window.directorInstance.persona === 'xi')) return;
                     window.directorInstance._running = true;
                     window.directorInstance._runningArmedAt = Date.now();
                     window.directorInstance._runningSessionId = payload.sessionId;
