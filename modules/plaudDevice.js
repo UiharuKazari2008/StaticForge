@@ -134,6 +134,32 @@ function failMsg(r, fallback) {
 
 // ------------------------------------------------------------------------------------------ sign in and out
 
+/** The access token in a sign-in answer: the known places, else any JWT under a key named like a token (not a refresh one). */
+function findToken(body) {
+    const b = body && typeof body === 'object' ? body : {};
+    const d = b.data && typeof b.data === 'object' ? b.data : {};
+    for (const v of [b.access_token, d.access_token, b.token, d.token]) if (typeof v === 'string' && v.split('.').length === 3) return v;
+    let found = '';
+    const walk = (o, depth) => {
+        if (found || !o || typeof o !== 'object' || depth > 4) return;
+        for (const k of Object.keys(o)) {
+            const v = o[k];
+            if (typeof v === 'string' && /token|jwt|authorization/i.test(k) && !/refresh/i.test(k) && /^(bearer\s+)?eyJ[\w-]+\.[\w-]+\.[\w-]+$/i.test(v)) { found = v.replace(/^bearer\s+/i, ''); return; }
+            if (v && typeof v === 'object') walk(v, depth + 1);
+        }
+    };
+    walk(b, 0);
+    return found;
+}
+
+/** Key names and value types of an answer, three levels deep: for the log, never a value. */
+function shapeOf(o, depth = 0) {
+    if (o === null || typeof o !== 'object') return typeof o;
+    if (Array.isArray(o)) return `[${o.length ? shapeOf(o[0], depth + 1) : ''}]`;
+    if (depth >= 3) return '{...}';
+    return `{${Object.keys(o).map((k) => `${k}:${shapeOf(o[k], depth + 1)}`).join(', ')}}`;
+}
+
 async function sendCode(email) {
     const to = String(email || '').trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new PlaudError('Enter the email address of the Plaud app account', 'PLAUD_DEVICE_BAD_EMAIL');
@@ -154,10 +180,13 @@ async function signIn(code) {
     if (!pending || pending.until <= Date.now()) { pending = null; throw new PlaudError('Ask for a new code first', 'PLAUD_DEVICE_NO_CODE'); }
     let r;
     try { r = await request('POST', '/auth/otp-login', { fields: { code: c, token: pending.token } }); } catch (e) { lastError = e.message; throw e; }
-    const access = r.body && (r.body.access_token || (r.body.data && r.body.data.access_token));
-    if (!(r.status < 300 && access)) {
-        lastError = failMsg(r, 'Plaud did not accept that code');
-        throw new PlaudError(lastError, 'PLAUD_DEVICE_BAD_CODE');
+    const access = r.status < 300 ? findToken(r.body) : '';
+    if (!access) {
+        const accepted = r.status < 300 && r.body && r.body.status === 0;
+        // Plaud said yes but the token is not where it was looked for: the answer's key names (never values) say where
+        if (accepted) console.warn(`[plaud-device] sign-in answer without a token: ${shapeOf(r.body)}`);
+        lastError = accepted ? 'Plaud accepted the code but sent no sign-in this server could read' : failMsg(r, 'Plaud did not accept that code');
+        throw new PlaudError(lastError, accepted ? 'PLAUD_DEVICE_NO_TOKEN' : 'PLAUD_DEVICE_BAD_CODE');
     }
     const s = load();
     Object.assign(s, { token: String(access), email: pending.email, since: Date.now(), exp: jwtExp(access), asked: '', dead: false });

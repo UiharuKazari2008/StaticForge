@@ -242,7 +242,7 @@ t.setDeps({
 
     // ---- the Plaud app account (second sign-in): email code, regions, recorder ----
     const dev = require('../modules/plaudDevice');
-    const jwt = `h.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.s`;
+    const jwt = `${Buffer.from('{"alg":"none"}').toString('base64url')}.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.s`;
     const dcalls = [];
     let regionSwitch = true;
     let devices = [{ sn: 'SN0000001884', name: 'Yukimi NotePin', model: 'note-pin', version_number: 131, extra: 1 }];
@@ -260,7 +260,7 @@ t.setDeps({
                 const sent = JSON.parse(init.body);
                 if (sent.code !== '123456') return reply(422, { detail: [{ loc: ['body', 'code'], msg: 'wrong code' }] });
                 assert.strictEqual(sent.token, 'CODETOKEN');
-                return reply(200, { status: 0, access_token: jwt });
+                return reply(200, { status: 0, msg: 'success', data: { user: { id: 1 }, auth: { user_token: jwt } } });   // not where the write-ups say
             }
             if (u.pathname === '/device/list') {
                 if (deviceStatus === 401) return reply(401, { detail: 'no' });
