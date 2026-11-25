@@ -73,7 +73,7 @@ const SEARCH_TTL = 10 * MIN;
 const FEED_MIN_GAP = 5 * MIN; // a Refresh inside this gap answers from what is held
 const HUB_INTERVAL = 5 * MIN;
 const DEVICE_MIN_S = Number(process.env.YOUTUBE_DEVICE_MIN_S || 5);
-const DEFAULTS = { noShorts: true, rareFirst: true, todayCount: 12, budget: 6000, playIn: 'app' };
+const DEFAULTS = { noShorts: true, rareFirst: true, todayCount: 12, budget: 6000, playIn: 'app', notifyUploads: true };
 const PLAY_IN = new Set(['app', 'here']);
 // No small cap on favourites (Yukimi, Nov 15 2026: an import of every channel with its bell on must fit).
 // A long list is cheap to watch: one unit tells whether any of 50 channels uploaded (refreshLatest).
@@ -173,6 +173,8 @@ function settings() {
         // where a YouTube video opens on a phone when tapped: 'app' (Android's YouTube app) or 'here' (the program's
         // own player). Yukimi, Nov 21 2026. The desktop has no YouTube app and always plays in its window.
         playIn: PLAY_IN.has(s.playIn) ? s.playIn : DEFAULTS.playIn,
+        // #1129: the app's own notifications, added to the server's (never over one the server already holds)
+        notifyUploads: s.notifyUploads === undefined ? DEFAULTS.notifyUploads : !!s.notifyUploads,
         todayCount: Number.isFinite(n) ? Math.max(3, Math.min(30, Math.round(n))) : DEFAULTS.todayCount,
         budget: Number.isFinite(b) ? Math.max(500, Math.min(10000, Math.round(b))) : DEFAULTS.budget
     };
@@ -195,6 +197,7 @@ async function saveSettings(next) {
         rareFirst: next && next.rareFirst !== undefined ? !!next.rareFirst : cur.rareFirst,
         skipSegments: next && next.skipSegments !== undefined ? !!next.skipSegments : cur.skipSegments,
         playIn: next && PLAY_IN.has(next.playIn) ? next.playIn : cur.playIn,
+        notifyUploads: next && next.notifyUploads !== undefined ? !!next.notifyUploads : cur.notifyUploads,
         todayCount: next && next.todayCount !== undefined ? next.todayCount : cur.todayCount
     });
     saveAccount();
@@ -1133,6 +1136,26 @@ function latestVideos(now = Date.now(), opts = {}) {
  * the lists of the channels that uploaded. Pushes when the Today list changed.
  */
 let latestCheckedAt = 0;
+
+/**
+ * #1129: a favourite's new upload (not there before this look) raises a notification in the durable inbox, once, only
+ * when the inbox does not hold one with that id already - the app's own notice adds to the server's, never replaces it.
+ * Nothing at first load (no earlier list to compare with); at most 3 a look; not for videos older than 6 hours.
+ */
+function tellUploads(knownIds) {
+    if (!settings().notifyUploads || !gr) return;
+    let inbox;
+    try { inbox = require('./notificationInbox').bind(gr); } catch (_) { return; }
+    const fresh = latestVideos().filter((v) => !knownIds.has(v.id) && v.live !== 'live' && v.live !== 'upcoming' && !v.watched && v.at && Date.now() - v.at < 6 * 60 * MIN).slice(0, 3);
+    fresh.forEach((v) => {
+        const id = `videos:upload:${v.id}`;
+        try {
+            if (inbox.get(undefined, id)) return;
+            inbox.publish({ app: 'youtube', id, cls: 'notification', alert: true, title: `${v.channel || 'A channel'} uploaded`, text: v.title || '', actions: [], data: { app: 'youtube', open: `yt:${v.id}` }, ttlMs: 24 * 60 * MIN });
+        } catch (e) { console.warn(`[youtube] upload notice: ${e.message}`); }
+    });
+}
+
 function refreshLatest(force) {
     if (refreshing || !signedIn() || !acct.favourites.length) return refreshing;
     const now = Date.now();
@@ -1141,6 +1164,7 @@ function refreshLatest(force) {
     if (!unread && now - latestCheckedAt < (force ? FEED_MIN_GAP : LATEST_TTL)) return null;
     latestCheckedAt = now;
     const before = JSON.stringify(latestVideos().map((v) => [v.id, v.length, v.live]));
+    const knownIds = new Set(latestVideos().map((v) => v.id));
     refreshing = (async () => {
         try {
             let counts = null;
@@ -1154,6 +1178,7 @@ function refreshLatest(force) {
         } finally {
             refreshing = null;
         }
+        if (knownIds.size) tellUploads(knownIds);
         if (JSON.stringify(latestVideos().map((v) => [v.id, v.length, v.live])) !== before || lastError) poke();
     })();
     return refreshing;

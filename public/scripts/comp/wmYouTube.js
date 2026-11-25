@@ -65,6 +65,7 @@
         later: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.4V8l2.6 1.6"/></svg>',
         search: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6.8" cy="6.8" r="4.4"/><path d="M10.2 10.2l4 4"/></svg>',
         channels: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.6l1.9 4 4.4.6-3.2 3 .8 4.4L8 11.5l-3.9 2.1.8-4.4-3.2-3 4.4-.6z"/></svg>',
+        gear: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5l1.2 1.6 2-.4.6 1.9 1.9.7-.5 2 1.4 1.4-1.4 1.4.5 2-1.9.7-.6 1.9-2-.4L8 14.5l-1.2-1.6-2 .4-.6-1.9-1.9-.7.5-2L1.4 8l1.4-1.4-.5-2 1.9-.7.6-1.9 2 .4z"/></svg>',
         star: '<svg viewBox="0 0 20 20"><path d="M10 2l2.4 5 5.5.7-4 3.8 1 5.5-4.9-2.7L5.1 17l1-5.5-4-3.8L7.6 7z"/></svg>',
         later: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="6" cy="6" r="4.6"/><path d="M6 3.4V6l1.9 1.2"/></svg>',
         pause: '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3.5" y="2.5" width="3.2" height="11" rx="0.6"/><rect x="9.3" y="2.5" width="3.2" height="11" rx="0.6"/></svg>',
@@ -87,7 +88,8 @@
         { id: 'subs', label: 'Feed', icon: I.subs },
         { id: 'later', label: 'Watch Later', icon: I.later },
         { id: 'search', label: 'Search', icon: I.search },
-        { id: 'channels', label: 'Channels', icon: I.channels }
+        { id: 'channels', label: 'Channels', icon: I.channels },
+        { id: 'settings', label: 'Settings', icon: I.gear }
     ];
 
     let ws = null;
@@ -103,7 +105,8 @@
         subs: { videos: null, at: 0, loading: false, error: '', note: '', refreshing: false, feedAt: 0 },
         later: { videos: null, at: 0, loading: false, error: '', unavailable: false, why: '' },
         search: { query: '', videos: null, channels: [], next: '', loading: false, error: '' },
-        channels: { list: null, at: 0, loading: false, error: '' }
+        channels: { list: null, at: 0, loading: false, error: '' },
+        settings: { loading: false, error: '' }
     };
     let layer = null; // { id, channel, videos, loading, error, favourite }
     const seen = new Map(); // video id -> video, channel id -> channel (what the rows on screen stand for)
@@ -373,7 +376,7 @@
 
     async function loadTab(id, fresh, quiet) {
         const t = data[id];
-        if (!t || t.loading || !signedIn() || id === 'search') return;
+        if (!t || t.loading || !signedIn() || id === 'search' || id === 'settings') return;
         t.loading = true;
         t.error = '';
         if (!quiet) renderPane(id);
@@ -408,7 +411,7 @@
     }
 
     function ensureTab() {
-        if (!signedIn() || tab === 'search') return;
+        if (!signedIn() || tab === 'search' || tab === 'settings') return;
         const t = data[tab];
         const has = tab === 'channels' ? t.list : t.videos;
         if (!t.loading && (!has || Date.now() - t.at > STALE_MS) && !(t.error && Date.now() - t.at < 5000)) loadTab(tab, false);
@@ -693,7 +696,7 @@
             <span class="yt-tx"><span class="yt-t">${esc(a.label)}</span><span class="yt-s">${chosen.has(a.package) ? 'Its notifications are in the feed' : 'Tap to bring its notifications into the feed'}</span></span>
             <span class="yt-check${chosen.has(a.package) ? ' is-on' : ''}" aria-hidden="true"></span>
         </div>`).join('');
-        return `<div class="yt-sec">Kick (${kick.length})</div>
+        const kickPart = `<div class="yt-sec">Kick (${kick.length})</div>
             ${so.kickReady ? `<form class="yt-search yt-kick-form" action="#" autocomplete="off"><label class="yt-field"><input class="yt-q yt-kick-q" type="text" enterkeyhint="done" placeholder="Kick channel name" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="60"></label><button type="submit" class="yt-btn is-go">Add</button></form>` : '<div class="yt-empty">Kick needs a key first: the administrator adds one on the desktop under Service keys &gt; Kick.</div>'}
             ${kickRows}
             ${so.kickReady ? `<div class="yt-row is-chan is-plain" role="button" tabindex="0" data-yt-chat="setup">
@@ -704,9 +707,59 @@
                 <span class="yt-th is-app is-small">${I.out}</span>
                 <span class="yt-tx"><span class="yt-t">Kick account</span><span class="yt-s">${chatLinked() ? 'Linked: you can write in chat. Tap to remove it' : 'Tap to link an account for writing in chat'}</span></span>
                 <span class="yt-check${chatLinked() ? ' is-on' : ''}" aria-hidden="true"></span>
-            </div>` : ''}` : ''}
-            <div class="yt-sec">Apps in the feed (${apps.length})</div>
+            </div>` : ''}` : ''}`;
+        const appsPart = `<div class="yt-sec">Android notifications (${apps.length})</div>
             ${appRows || '<div class="yt-empty">An app shows here once it has posted a notification while ActiveSync\'s Send notifications is on. Tap it to bring its notifications into the feed.</div>'}`;
+        return { kickPart, appsPart };
+    }
+
+    /** One row of the settings page: a switch (data-yt-set) or a choice that goes round (data-yt-cycle). */
+    function setRow(icon, title, sub, attr, on) {
+        return `<div class="yt-row is-chan is-plain" role="button" tabindex="0" ${attr}>
+            <span class="yt-th is-app is-small">${icon}</span>
+            <span class="yt-tx"><span class="yt-t">${esc(title)}</span><span class="yt-s">${esc(sub)}</span></span>
+            ${on === undefined ? '' : `<span class="yt-check${on ? ' is-on' : ''}" aria-hidden="true"></span>`}
+        </div>`;
+    }
+
+    /** Settings (#1129): the channels of what the program shows - YouTube, Kick, more platforms, Android notifications - in one place. */
+    function settingsHtml() {
+        const s = hub.settings || {};
+        const a = acct();
+        const out = signedIn();
+        const n = Number(s.todayCount) || 12;
+        const { kickPart, appsPart } = sourcesHtml();
+        const yt = `<div class="yt-sec">YouTube</div>
+            ${setRow(I.channels, out ? (a.account && a.account.title) || 'Signed in' : 'Not signed in', out ? 'Tap to sign out' : 'Tap to sign in with Google', 'data-yt-set="account"')}
+            ${out ? `${setRow(I.channels, 'Bring in channels', 'Every channel whose bell is set to All goes on Today', 'data-act="import-bells"')}
+            ${setRow(I.subs, 'Read subscriptions again', 'Reads your subscriptions from YouTube now', 'data-act="resubs"')}
+            ${setRow(I.subs, 'Leave out Shorts', 'Feed and Today show long videos only', 'data-yt-set="noShorts"', s.noShorts !== false)}
+            ${setRow(I.subs, 'Skip sponsors', 'SponsorBlock parts are skipped in the player', 'data-yt-set="skipSegments"', s.skipSegments !== false)}
+            ${setRow(I.subs, 'Rare uploads first', 'Channels that upload seldom lead on Today', 'data-yt-set="rareFirst"', s.rareFirst !== false)}
+            ${setRow(I.subs, 'Videos on Today', String(n), 'data-yt-cycle="todayCount"')}
+            ${HOST.desktop ? '' : setRow(I.out, 'Open videos in', playInSetting() === 'here' ? 'Melaton Videos' : 'YouTube app', 'data-yt-cycle="playIn"')}
+            ${setRow(I.bell, 'Tell me about new uploads', 'A notification when a favourite channel uploads; the server\'s own is never replaced', 'data-yt-set="notifyUploads"', s.notifyUploads !== false)}` : ''}`;
+        const more = '<div class="yt-sec">Other platforms</div><div class="yt-empty">Kick is the only other platform for now. A new one shows here as its own section.</div>';
+        return `${yt}${kickPart}${more}${appsPart}`;
+    }
+
+    async function setSwitch(key) {
+        const s = hub.settings || {};
+        if (key === 'account') { if (signedIn()) signOut(); else signIn(); return; }
+        await saveSettings({ [key]: !(s[key] !== false) });
+    }
+    async function cycleSetting(key) {
+        const s = hub.settings || {};
+        if (key === 'todayCount') {
+            const list = [6, 12, 20, 30];
+            const i = list.indexOf(Number(s.todayCount) || 12);
+            await saveSettings({ todayCount: list[(i + 1) % list.length] });
+        } else if (key === 'playIn') await saveSettings({ playIn: playInSetting() === 'here' ? 'app' : 'here' });
+    }
+    async function resubs() {
+        await loadTab('channels', true);
+        const l = data.channels.list;
+        box(l ? `${l.length} subscription${l.length === 1 ? '' : 's'} read from YouTube.` : (data.channels.error || 'The subscriptions could not be read.'), l ? 'info' : 'error');
     }
 
     async function addKick(name) {
@@ -778,6 +831,7 @@
             if (!t.videos.length) return emptyHtml('Nothing saved', 'Videos you save to Watch Later in YouTube show up here.');
             return videosHtml(t.videos) + (t.why ? `<div class="yt-foot">These are the videos added here. ${esc(BROWSER_WHY[t.why] || '')}<br><button type="button" class="yt-btn" data-act="open-later">Open Watch Later in YouTube</button></div>` : '');
         }
+        if (id === 'settings') return settingsHtml();
         if (id === 'channels') {
             if (t.error && !t.list) return errorHtml(t.error, 'retry');
             if (!t.list) return emptyHtml('Channels', t.loading ? 'Reading your subscriptions...' : '');
@@ -787,7 +841,6 @@
             const favs = (hub.favourites || []).map((f) => t.list.find((c) => c.id === f.id) || f);
             const rest = t.list.filter((c) => !fav.has(c.id));
             return `<div class="yt-sec">On Today (${favs.length})</div>${favs.length ? favs.map((c) => channelRow(c, subIds.has(c.id) ? '' : 'Not subscribed')).join('') : '<div class="yt-empty">Tap a channel\'s star to see its newest videos on Today, or bring in every channel whose bell is set to All notifications.<br><button type="button" class="yt-btn is-go" data-act="import-bells">Import from Notifications</button></div>'}
-                ${sourcesHtml()}
                 <div class="yt-sec">YouTube subscriptions (${t.list.length})</div>${rest.length ? rest.map((c) => channelRow(c)).join('') : (t.list.length ? '' : '<div class="yt-empty">You do not subscribe to a channel yet. Find some with Search.</div>')}`;
         }
         // search
@@ -810,7 +863,10 @@
         const html = paneHtml(id);
         if (list.dataset.html === html) return;
         list.dataset.html = html;
+        // scroll-lists-keep-position: a switch or a push redraws the page in place, the view stays where it was
+        const top = list.scrollTop;
         list.innerHTML = html;
+        if (top) list.scrollTop = top;
     }
 
     // ---------------------------------------------------------------- page
@@ -820,7 +876,7 @@
             <div class="yt-root">
                 <div class="yt-head"><img class="yt-me" alt="" draggable="false" hidden><span class="yt-title"></span><span class="yt-note"></span></div>
                 <div class="yt-panes">
-                    ${TABS.map((t) => `<div class="yt-pane" data-pane="${t.id}" hidden>${t.id === 'search' ? `<form class="yt-search" action="#" autocomplete="off"><label class="yt-field">${I.search}<input class="yt-q" type="search" enterkeyhint="search" placeholder="Search YouTube" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="120"><button type="button" class="yt-clear" aria-label="Clear" hidden>&times;</button></label><button type="submit" class="yt-btn is-go">Search</button></form>` : ''}<div class="yt-list${t.id === 'channels' ? '' : ' is-videos'}"></div></div>`).join('')}
+                    ${TABS.map((t) => `<div class="yt-pane" data-pane="${t.id}" hidden>${t.id === 'search' ? `<form class="yt-search" action="#" autocomplete="off"><label class="yt-field">${I.search}<input class="yt-q" type="search" enterkeyhint="search" placeholder="Search YouTube" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="120"><button type="button" class="yt-clear" aria-label="Clear" hidden>&times;</button></label><button type="submit" class="yt-btn is-go">Search</button></form>` : ''}<div class="yt-list${t.id === 'channels' || t.id === 'settings' ? '' : ' is-videos'}"></div></div>`).join('')}
                     <div class="yt-layer" hidden><div class="yt-chan"></div><div class="yt-list is-videos"></div></div>
                     <div class="yt-player" hidden>
                         <div class="yt-stage">
@@ -887,6 +943,7 @@
         });
         els.q.addEventListener('input', () => { els.clear.hidden = !els.q.value; });
         els.clear.addEventListener('click', () => { clearSearch(); els.q.focus(); });
+        els.slider.style.width = `${100 / TABS.length}%`;
         wireTabs();
         wirePlayer();
         // its animations stop while the page is hidden or the screen is off (the page is not hidden then)
@@ -1049,6 +1106,10 @@
         if (act && !act.disabled) { doAct(act.dataset.act); return; }
         const rec = e.target.closest('[data-recent]');
         if (rec) { runSearch(rec.dataset.recent); return; }
+        const sw = e.target.closest('[data-yt-set]');
+        if (sw) { setSwitch(sw.dataset.ytSet); return; }
+        const cy = e.target.closest('[data-yt-cycle]');
+        if (cy) { cycleSetting(cy.dataset.ytCycle); return; }
         const kn = e.target.closest('[data-yt-kick-notify]');
         if (kn) { notifyKick(kn.dataset.ytKickNotify); return; }
         const kx = e.target.closest('[data-yt-kick-remove]');
@@ -1079,6 +1140,7 @@
         else if (act === 'retry-channel' && layer) openChannel(layer.id, layer.channel);
         else if (act === 'open-later') openUrl('https://www.youtube.com/playlist?list=WL');
         else if (act === 'import-bells') importBells();
+        else if (act === 'resubs') resubs();
         else if (act === 'more') runSearch(data.search.query, true);
         else if (act === 'search-again') runSearch(data.search.query);
     }
@@ -2282,11 +2344,12 @@
             // where a tapped YouTube video plays (the phone only: the desktop has no YouTube app, its window always plays it)
             HOST.desktop ? null : { label: 'Open Videos In', disabled: !admin, submenu: [['here', 'Melaton Videos'], ['app', 'YouTube App']].map(([k, label]) => ({ label, radio: playInSetting() === k, action: () => saveSettings({ playIn: k }) })) },
             { label: 'Videos on Today', disabled: !admin || !signedIn(), submenu: [6, 12, 20, 30].map((k) => ({ label: String(k), radio: n === k, action: () => saveSettings({ todayCount: k }) })) },
+            { label: 'Settings...', action: () => setTab('settings') },
             { label: 'Favourite Channels...', disabled: !signedIn(), action: () => setTab('channels') },
             { label: 'Import from Notifications', disabled: !admin || !signedIn(), action: importBells },
             '-',
             { label: 'Open YouTube', action: () => openUrl('https://www.youtube.com/') },
-            { label: 'Kick Channels and Apps...', disabled: !signedIn(), action: () => setTab('channels') },
+            { label: 'Kick Channels and Apps...', disabled: !signedIn(), action: () => setTab('settings') },
             signedIn() ? { label: 'Sign Out', disabled: !admin, action: signOut } : { label: 'Sign In', disabled: !admin || !acct().configured || !!acct().signIn, action: signIn },
             { label: 'About', action: about }
         ].filter(Boolean);
