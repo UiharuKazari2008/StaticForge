@@ -323,6 +323,12 @@ class VfsWebSocketHandlers {
             });
             if (!file || !file.id) throw new Error('File was not stored');
             this.broadcastVfsUpdated(wsServer, resolvedPath);
+            // resolvedPath names folders by id (/Workspaces/default/<uuid>): Calendar, the phone's Calendar, Tasks and
+            // Today listen for a path under /Calendars, so a calendar upload (the agents' tool, the phone mirror) also
+            // names the folder as it was asked for (#1157)
+            if (/\.ics$/i.test(String(originalFilename || '')) && typeof vfsPath === 'string' && vfsPath !== resolvedPath && /\/Calendars\/?$/i.test(vfsPath)) {
+                this.broadcastVfsUpdated(wsServer, vfsPath);
+            }
             // modules/replicationJournal.js — recordReplicationVfsJournal
             await recordReplicationVfsJournal(file.content_hash, {
                 fileId: file.id,
