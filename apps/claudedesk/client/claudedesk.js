@@ -235,6 +235,7 @@
         }
         RP.pending = false;
         c.refresh();
+        wmPlace();
     }
     function repaint() { if (S.c && S.c.modal && S.c.modal.isConnected && !RP.t) RP.t = setTimeout(repaintNow, 60); }
 
@@ -888,8 +889,8 @@
         document.querySelectorAll('.cd-wm-canvas[data-w]').forEach((cv) => {
             cv.style.width = `${cv.dataset.w}px`;
             cv.style.height = `${cv.dataset.h}px`;
-            cv.removeAttribute('data-w');
-            cv.querySelectorAll('.cd-wm-node[data-x]').forEach((n) => { n.style.left = `${n.dataset.x}px`; n.style.top = `${n.dataset.y}px`; n.removeAttribute('data-x'); });
+            // idempotent; the data attributes stay (the in-place update compares markup with them; boxes went off their lines)
+            cv.querySelectorAll('.cd-wm-node[data-x]').forEach((n) => { n.style.left = `${n.dataset.x}px`; n.style.top = `${n.dataset.y}px`; });
         });
     }
 

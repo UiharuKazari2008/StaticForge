@@ -74,7 +74,9 @@
     // unmatched ones are inserted. Nothing replays on a push that changed one number.
     const MORPH_DEPTH = 9;
     const virt = new WeakMap(); // live node -> the node of the latest markup it was made from
-    const fresh = new WeakSet(); // live roots inserted by a patch (they still need their listeners)
+    // live roots inserted by a patch that still need their listeners; emptied after every mount, so a node is wired once
+    // (Nov 25 2026: never emptied, every later update wired the composer again and one Send sent twice)
+    const fresh = new Set();
     const FORMS = /^(INPUT|TEXTAREA|SELECT)$/;
     const keyOf = (n) => (n && n.nodeType === 1 ? (n.getAttribute('data-key') || n.getAttribute('data-sec') || n.getAttribute('data-node') || n.id || '') : '');
 
@@ -603,6 +605,7 @@
                     if (st.first || (prev && typeof prev.unmount === 'function')) { this.unmountPage(); run(); }
                     else { if (typeof spec.mount !== 'function') this.unmountPage(); remount(pane, run); }
                 }
+                fresh.clear();
                 if (focused && !focused.isConnected) {
                     const again = focusKey && (pane.querySelector(`#${CSS.escape(focusKey)}`) || pane.querySelector(`[data-field="${CSS.escape(focusKey)}"], [name="${CSS.escape(focusKey)}"]`));
                     const target = again || pane.querySelector('.mmc-list');
