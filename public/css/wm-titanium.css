@@ -1436,6 +1436,7 @@ html.ui-mobile[data-wm-version="6.5"] [data-wind="1"] { --lean: -0.3; --rot: 15d
 html.ui-mobile[data-wm-version="6.5"] [data-wind="2"] { --lean: -0.46; --rot: 22deg; }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-wx-streak {
+    top: var(--top);
     left: calc(-70 * var(--u));
     width: calc(var(--w) * var(--u));
     height: calc(0.5 * var(--u));
@@ -1455,11 +1456,13 @@ html.ui-mobile[data-wm-version="6.5"] .wm-wx-streak {
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-wx-leaf {
+    top: var(--top);
     left: calc(-12 * var(--u));
     width: calc(var(--s) * var(--u));
     height: calc(var(--s) * 0.62 * var(--u));
     border-radius: 0 100% 0 100%;
-    background: var(--c);
+    /* its tint from the script's numbers (wmTitanium.js drawWeatherFx: hue, saturation, lightness) */
+    background: hsl(var(--hue) calc(var(--sat) * 1%) calc(var(--lig) * 1%));
     box-shadow: inset 0 calc(-0.2 * var(--u)) 0 rgba(0, 0, 0, 0.18);
     opacity: 0;
     /* perf: allow design motion (Yukimi, Nov 23): blowing leaves in the Super Bar's weather and the band's glass; transform / opacity only, paused whenever the layer is not seen (wmTitanium.js syncWx) */
