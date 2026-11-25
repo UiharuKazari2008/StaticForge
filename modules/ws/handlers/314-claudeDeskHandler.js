@@ -1024,6 +1024,8 @@ async function buildWorkMap(gr, ref) {
         const planning = it.topology === 'auto' && ['starting', 'running'].includes(it.state);
         let state = WM_ITEM_STATE[it.state] || 'idle';
         if (sid && state === 'working' && lv && lv.status !== 'busy') state = 'idle';
+        // the session itself is the truth while it runs: a Sent Back item whose session took the notes up is working
+        if (sid && lv && lv.status === 'busy' && state !== 'done' && state !== 'failed') state = 'working';
         const startedAt = it.startedAt || wmMs(ins && ins.firstAt);
         const top = items[0] === it;
         nodes.push({
