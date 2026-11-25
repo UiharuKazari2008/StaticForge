@@ -52,6 +52,19 @@ async function statImageNames(imagesPath, names, limit = 64) {
     return map;
 }
 
+/**
+ * The type of the bytes a gallery picture is read as (#1156): a PNG for a picture stored as PNG or JXL (an ID is
+ * stored as <id>.jxl and read as its rebuilt PNG), the file's own type for a legacy .jpg / .gif.
+ */
+function galleryMimeType(name, storedAs) {
+    if (storedAs === 'jxl' || storedAs === 'png') return 'image/png';
+    const ext = path.extname(String(name || '')).toLowerCase();
+    if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+    if (ext === '.gif') return 'image/gif';
+    if (ext === '.webp') return 'image/webp';
+    return 'image/png';
+}
+
 // Same value the preview route sends as its ETag (web_server.js).
 function userFilePreviewVersion(file) {
     const hash = String((file && file.content_hash) || '').slice(0, 16);
@@ -1645,7 +1658,7 @@ class VfsManager {
                         kind: 'file',
                         targetKind: 'image',
                         targetId: filename,
-                        mimeType: 'image/png',
+                        mimeType: galleryMimeType(filename, storedAs),
                         icon: 'fas fa-file-image',
                         system: false,
                         protected: false,
@@ -1759,7 +1772,7 @@ class VfsManager {
                         kind: 'file',
                         targetKind: 'scrap',
                         targetId: filename,
-                        mimeType: 'image/png',
+                        mimeType: galleryMimeType(filename, storedAs),
                         icon: 'fas fa-bin-recycle',
                         system: false,
                         protected: false,
@@ -1821,7 +1834,7 @@ class VfsManager {
             kind: 'file',
             targetKind: trashKind,
             targetId: filename,
-            mimeType: 'image/png',
+            mimeType: galleryMimeType(filename, storedAs),
             icon: isScraps ? 'fas fa-bin-recycle' : 'fas fa-file-image',
             system: false,
             protected: false,
@@ -3507,7 +3520,9 @@ class VfsManager {
             return `/cache/preview/${item.previewCachePreview}`;
         }
         if (item.previewImageFilename) {
-            if (opts.fit && /\.(png|jpe?g|webp)$/i.test(item.previewImageFilename)) {
+            // a picture ID (#1156) has no extension: a gallery picture name, not an extension, says it has a preview
+            if (opts.fit && ((imageStore.isPictureName(item.previewImageFilename) && !/\.gif$/i.test(item.previewImageFilename))
+                || /\.webp$/i.test(item.previewImageFilename))) {
                 return `/previews/${encodeURIComponent(require('./previewUtils').fitPreviewNameForFile(item.previewImageFilename))}?wait=1`;
             }
             return `/images/${encodeURIComponent(item.previewImageFilename)}`;

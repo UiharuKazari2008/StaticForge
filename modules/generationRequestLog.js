@@ -438,9 +438,10 @@ function handleMcpGalleryImageDownload(globalResources, req, res) {
 }
 
 function sendGalleryImageBytes(res, filename, bytes) {
-    const ext = path.extname(filename).toLowerCase();
-    const mime = (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' : 'image/png';
-    const headerName = filename.replace(/["\r\n]/g, '');
+    // the type and the file's extension come from the bytes (#1156: a picture ID has no extension of its own)
+    const FORMATS = { png: ['image/png', 'png'], jpeg: ['image/jpeg', 'jpg'], webp: ['image/webp', 'webp'], jxl: ['image/jxl', 'jxl'] };
+    const [mime, ext] = FORMATS[require('./pictureMeta').formatOf(bytes)] || FORMATS.png;
+    const headerName = `${require('./pictureIds').stemOf(filename)}.${ext}`.replace(/[^\x20-\x7e]|["\\]/g, '_');
     res.setHeader('Content-Disposition', `inline; filename="${headerName}"`);
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Content-Type', mime);

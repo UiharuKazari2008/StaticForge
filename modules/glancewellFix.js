@@ -6,9 +6,9 @@
  *   overwrite   the print's file takes the fixed pixels. Its PNG text chunks (the prompt, seed and parameters)
  *               carry over, and the first original is kept for Revert to Original, as Photo Gallery keeps
  *               originals.
- *   copy        a new print next to it in the same workspace, with the same text chunks (<name>_fixed.png).
+ *   copy        a new print next to it in the same workspace, with the same text chunks (a new picture ID linked to it as its fix).
  *
- * Originals live in <cache>/glancewell-originals/<filename>. Revert copies the original back and removes it.
+ * Originals live in <cache>/glancewell-originals/<stem>.png. Revert copies the original back and removes it.
  * The previews are made again, the database row is read again from the file (size, dimensions, md5), and the
  * gallery hears about it like any other change.
  */
@@ -17,6 +17,7 @@ const fs = require('fs');
 const path = require('path');
 // a print may be stored as x.jxl under the name x.png (#1134)
 const imageStore = require('./imageStore');
+const pictureIds = require('./pictureIds');
 
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const TEXT_CHUNKS = new Set(['tEXt', 'iTXt', 'zTXt']);
@@ -64,8 +65,14 @@ function withTextChunks(fixed, chunks) {
 
 function safeName(filename) {
     const base = path.basename(String(filename || ''));
-    if (!base || base !== String(filename) || !/\.png$/i.test(base)) throw new Error('Not a print');
+    // a picture ID (#1156, no extension) or a legacy .png name
+    if (!base || base !== String(filename) || !imageStore.isPictureName(base) || /\.(jpe?g|gif)$/i.test(base)) throw new Error('Not a print');
     return base;
+}
+
+/** The kept original's file name: PNG bytes, so `<stem>.png` (an ID has no extension of its own). */
+function keptName(name) {
+    return `${pictureIds.stemOf(name)}.png`;
 }
 
 /** After a new PNG lands over a print: its old JXL form (if it had one) goes, the PNG is the picture now. */
@@ -79,14 +86,15 @@ function originalsDir(gr) {
 async function remakePreviews(gr, filename) {
     const { generateMobilePreviews } = require('./previewUtils');
     const imagesDir = gr.getPath('images');
-    const base = path.basename(filename, path.extname(filename));
+    const stem = pictureIds.stemOf(filename);
     // previews made on first ask (Studio's, the lossless one) are dropped and made again from the new pixels
     const previewsDir = path.resolve(__dirname, '../.previews');
     for (const suffix of ['@studio.webp', '@ll.webp', '@fit.webp']) {
-        try { await fs.promises.unlink(path.join(previewsDir, `${base}${suffix}`)); } catch (_) { /* none */ }
+        try { await fs.promises.unlink(path.join(previewsDir, `${stem}${suffix}`)); } catch (_) { /* none */ }
     }
     const sourcePath = await imageStore.pixelPath(filename, imagesDir);
-    const res = sourcePath ? await generateMobilePreviews(sourcePath, base) : null;
+    // the gallery's thumbnails are named after the picture's base (the root original of an upscale chain, #1156)
+    const res = sourcePath ? await generateMobilePreviews(sourcePath, pictureIds.baseOf(filename)) : null;
     const db = gr.getMetadataDatabase();
     if (res && res.blurhash) await db.setImageBlurhash(filename, res.blurhash);
     // the row is read again from the file (size, dimensions, md5 differ)
@@ -105,7 +113,7 @@ async function saveFixed(gr, { filename, buffer, mode, workspaceId }) {
     if (!original) throw Object.assign(new Error(`ENOENT: no such file, open '${src}'`), { code: 'ENOENT' });
     const out = withTextChunks(buffer, textChunks(original));
     if (mode === 'overwrite') {
-        const keep = path.join(originalsDir(gr), name);
+        const keep = path.join(originalsDir(gr), keptName(name));
         try { await fs.promises.access(keep); } catch (_) { await fs.promises.writeFile(keep, original); }
         // stored as JPEG XL (#1134), replacing the print in either form
         await imageStore.writePicture(name, out, { dir: imagesDir });
@@ -113,9 +121,9 @@ async function saveFixed(gr, { filename, buffer, mode, workspaceId }) {
         return { filename: name, mode, hasOriginal: true };
     }
     if (mode === 'copy') {
-        const base = path.basename(name, '.png').replace(/_fixed(_\d+)?$/, '');
-        let next = `${base}_fixed.png`;
-        for (let n = 2; imageStore.existsSync(next, imagesDir); n++) next = `${base}_fixed_${n}.png`;
+        // a new picture ID linked to the print as its fix (#1156): no _fixed_N names to count
+        const next = pictureIds.newId();
+        pictureIds.link(next, name, 'fix');
         await imageStore.writePicture(next, out, { dir: imagesDir });
         await remakePreviews(gr, next);
         gr.getWorkspaceManager().addToWorkspaceArray('files', next, workspaceId || 'default');
@@ -125,13 +133,13 @@ async function saveFixed(gr, { filename, buffer, mode, workspaceId }) {
 }
 
 async function hasOriginal(gr, filename) {
-    try { await fs.promises.access(path.join(originalsDir(gr), safeName(filename))); return true; } catch (_) { return false; }
+    try { await fs.promises.access(path.join(originalsDir(gr), keptName(safeName(filename)))); return true; } catch (_) { return false; }
 }
 
 /** Revert to Original: the kept original goes back over the print. */
 async function revert(gr, filename) {
     const name = safeName(filename);
-    const keep = path.join(originalsDir(gr), name);
+    const keep = path.join(originalsDir(gr), keptName(name));
     const original = await fs.promises.readFile(keep);
     await imageStore.writePicture(name, original, { dir: gr.getPath('images') });
     await fs.promises.unlink(keep);

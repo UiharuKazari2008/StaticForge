@@ -7,6 +7,8 @@ const fs = require('fs');
 const path = require('path');
 const { Readable } = require('stream');
 const replicationService = require('./replicationService');
+const imageStore = require('./imageStore');
+const pictureIds = require('./pictureIds');
 const replicationMaintenance = require('./replicationMaintenance');
 const replicationChangelog = require('./replicationChangelog');
 const replicationTarStream = require('./replicationTarStream');
@@ -136,6 +138,19 @@ async function collectUserCargoFileEntries() {
         entries.push({ path: relPath, tarPath: tarPath || `/${relPath.replace(/\\/g, '/')}` });
     };
 
+    // A gallery picture's file and its previews (#1156). The picture's name is not its file: an ID and a legacy picture
+    // kept as JPEG XL are <x>.jxl on disk, so the stored file is located, and it travels under that name. Previews are
+    // named by the picture's base (the original's stem for an upscale).
+    const pushGalleryPicture = async (name) => {
+        const loc = await imageStore.locate(name, path.join(rootDir, 'images'));
+        const file = loc ? path.basename(loc.path) : name;
+        pushEntry(path.join('images', file), `/images/${file}`);
+        const base = pictureIds.baseOf(name);
+        for (const kind of ['', '@2x', '@lq', '@blur']) {
+            pushEntry(path.join('.previews', `${base}${kind}.webp`), `/.previews/${base}${kind}.webp`);
+        }
+    };
+
     if (replicationChangelog.isInitialized()) {
         const db = replicationChangelog.getDb();
         const rows = await db.all(
@@ -144,9 +159,7 @@ async function collectUserCargoFileEntries() {
         );
         for (const row of rows) {
             if (row.database_name === 'metadata.db' && row.row_key) {
-                pushEntry(path.join('images', row.row_key), `/images/${row.row_key}`);
-                const previewName = row.row_key.replace(/\.png$/i, '.jpg');
-                pushEntry(path.join('.previews', previewName), `/.previews/${previewName}`);
+                await pushGalleryPicture(row.row_key);
             }
             if (row.database_name === 'reference_metadata.db' && row.payload_json) {
                 try {
@@ -184,9 +197,7 @@ async function collectUserCargoFileEntries() {
             const key = row.entry_key;
             if (!key) continue;
             if (row.kind === 'gallery-image') {
-                pushEntry(path.join('images', key), `/images/${key}`);
-                const previewName = key.replace(/\.png$/i, '.jpg');
-                pushEntry(path.join('.previews', previewName), `/.previews/${previewName}`);
+                await pushGalleryPicture(key);
             } else if (row.kind === 'gallery-preview') {
                 pushEntry(path.join('.previews', `${key}.webp`), `/.previews/${key}.webp`);
             } else if (row.kind === 'reference-upload') {

@@ -109,12 +109,12 @@ class PromptManager {
         let personaImage = null;
         let userPrompt = '';
 
-        // PNG bytes, also when the picture is stored as JXL (null when it is not there)
-        const imageBuffer = await imageStore.readPng(filename, this.globalResources.getPath('images'));
+        // lossless WebP of the pixels, whatever the picture is stored as (#1156: an ID has no extension to guess a type from)
+        const imageBuffer = await imageStore.webpBytes(filename, this.globalResources.getPath('images'), { fields: false, effort: 2 });
         if (imageBuffer) {
             const base64Image = imageBuffer.toString('base64');
 
-            const mimeType = path.extname(filename).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg';
+            const mimeType = 'image/webp';
             
             personaImage = {
                 base64: base64Image,

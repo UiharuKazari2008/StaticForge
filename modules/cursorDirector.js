@@ -51,6 +51,8 @@ const EFFORT_MODELS = {
 const { DIRECTOR_MCP_SCOPES } = require('./directorAppKeyScopes');
 const tokenRouter = require('./tokenRouterBridge');
 const imageStore = require('./imageStore');
+const pictureIds = require('./pictureIds');
+const pictureMeta = require('./pictureMeta');
 const customProviders = require('./customModelProviders');
 const { isDormantPage } = require('./wsSocketHeartbeat');
 const MCP_SCOPES = DIRECTOR_MCP_SCOPES;
@@ -1949,7 +1951,7 @@ function wrenRules() {
             '4. Paid sizes spend Anlas: large, xlarge, the wallpaper presets, and anything over 1024x1024. Use them only when they named that size. Otherwise resolution stays normal; offer a higher resolution, an enhance pass, or upscale, and set userApprovedPaidRequest only after they say yes. Wallpaper means a finished picture composed for a desktop with clear areas for UI, not the wallpaper preset.',
             '5. Ask questions only with request_form. AskQuestion and other built-in question tools are skipped in this window: they never see them, and the turn is told they declined.',
             '6. Do the controls yourself. A new variation is params.seedLock false. NSFW, quality, and UC presets are params you set. Never ask them to unlock the seed or flip a dropdown you can write.',
-            '7. Do not curl or browse Danbooru. Do not shell-parse a PNG or paste raw metadata back. Do not ls, find, or python /workspace/images or /workspace/previews; gallery history is omegasearch with the workspace id from the session. Prints older than a month lie in /workspace/images as x.jxl (JPEG XL) under their name x.png everywhere else: look at a print with get_generated_image or compare_images, never by opening the file.',
+            '7. Do not curl or browse Danbooru. Do not shell-parse a PNG or paste raw metadata back. Do not ls, find, or python /workspace/images or /workspace/previews; gallery history is omegasearch with the workspace id from the session. Prints lie in /workspace/images as <name>.jxl (JPEG XL; the print name is an ID with no extension, older ones x.png) everywhere else under the name alone: look at a print with get_generated_image or compare_images, never by opening the file.',
             '8. restart_client reloads the whole page and closes Studio: never call it to recover from a tool error. Dreamscape source is not on this machine, and a missing Studio tab is not a server problem. If a tool fails for another reason, tell them the error and stop.'
         ].join('\n'),
         [
@@ -3811,12 +3813,13 @@ function persistToolBody(folder, payloadId, body) {
 // Explore copies) and gallery files named by image tools. Read from the raw text, since stored results can
 // be cut off mid-JSON. The client shows them as thumbnails on the row; server-local paths never match.
 const TOOL_ROW_IMAGE_MAX = 4;
-const TOOL_ROW_IMAGE_PATH = /"((?:\/(?:naxCache|images|previews|static_images)\/)[^"\\]{1,400}?\.(?:png|jpe?g|webp|gif|avif))"/gi;
+// a picture ID (#1156: 36 characters, no extension) is a gallery path's last segment as well as x.png
+const TOOL_ROW_IMAGE_PATH = /"((?:\/(?:naxCache|images|previews|static_images)\/)(?:[^"\\]{1,400}?\.(?:png|jpe?g|webp|gif|avif)|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}))"/gi;
 const TOOL_ROW_GALLERY_TOOLS = new Set([
     'get_generated_image', 'show_chat_image', 'read_image_metadata', 'upscale_image', 'expand_image',
     'generate_image', 'await_generation_job', 'print_studio', 'remove_background'
 ]);
-const TOOL_ROW_GALLERY_FILE = /"(?:filename|filenames|newFilename|outputFilename)"\s*:\s*(?:\[\s*)?"([^"\\/]{1,300}\.(?:png|jpe?g|webp))"/gi;
+const TOOL_ROW_GALLERY_FILE = /"(?:filename|filenames|newFilename|outputFilename)"\s*:\s*(?:\[\s*)?"([^"\\/]{1,300}\.(?:png|jpe?g|webp)|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/gi;
 
 function toolRowImages(name, args, result) {
     const out = [];
@@ -4781,6 +4784,17 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     return lines.join('\n');
 }
 
+const ATTACHMENT_EXT = { png: 'png', webp: 'webp', jxl: 'jxl', jpeg: 'jpg' };
+/** The attachment's name with the extension of the bytes it carries when they are a picture (#1156: IDs have none). */
+function nameForBytes(name, buffer) {
+    const fmt = pictureMeta.formatOf(buffer);
+    const ext = fmt && ATTACHMENT_EXT[fmt];
+    if (!ext) return name;
+    const own = path.extname(name).slice(1).toLowerCase();
+    if (own === ext || (ext === 'jpg' && own === 'jpeg')) return name;
+    return `${/^\.[a-z0-9]{1,5}$/i.test(path.extname(name)) ? name.slice(0, -path.extname(name).length) : name}.${ext}`;
+}
+
 async function readAttachment(gr, attachment) {
     const source = attachment && attachment.source;
     if (source === 'client') {
@@ -4788,7 +4802,7 @@ async function readAttachment(gr, attachment) {
         const buffer = Buffer.from(raw, 'base64');
         if (!buffer.length) throw new Error('Attached file was empty');
         if (buffer.length > MAX_ATTACHMENT_BYTES) throw new Error('Attached file is too large');
-        return { name: safeName(attachment.name), buffer };
+        return { name: nameForBytes(safeName(attachment.name), buffer), buffer };
     }
     if (source === 'workspace') {
         const filename = path.basename(String(attachment.filename || ''));
@@ -4796,15 +4810,20 @@ async function readAttachment(gr, attachment) {
             throw new Error('Workspace image name is not valid');
         }
         const filePath = path.join(gr.getPath('images'), filename);
-        // PNG bytes, rebuilt from x.jxl when the picture is stored as one (#1134)
-        const buffer = insideDir(gr.getPath('images'), filePath)
-            ? await imageStore.readPng(filename, gr.getPath('images'))
-            : null;
+        // Lossless WebP of the picture's pixels, with its fields (#1156): smaller than the PNG it replaces and
+        // the agent's file tools read it; the PNG only when WebP cannot be made. The name carries the bytes' own
+        // extension (an ID has none).
+        const dir = gr.getPath('images');
+        let buffer = null;
+        if (insideDir(dir, filePath)) {
+            buffer = await imageStore.webpBytes(filename, dir, { fields: true, effort: 2 }).catch(() => null);
+            if (!buffer) buffer = await imageStore.readPng(filename, dir);
+        }
         if (!buffer) {
             throw new Error('Workspace image was not found');
         }
         if (buffer.length > MAX_ATTACHMENT_BYTES) throw new Error('Workspace image is too large');
-        return { name: safeName(filename), buffer };
+        return { name: `${safeName(pictureIds.stemOf(filename))}.${ATTACHMENT_EXT[pictureMeta.formatOf(buffer)] || 'png'}`, buffer };
     }
     if (source === 'reference') {
         const hash = String(attachment.hash || '');
@@ -4813,7 +4832,7 @@ async function readAttachment(gr, attachment) {
         if (!fs.existsSync(filePath)) throw new Error('Reference file was not found');
         const buffer = fs.readFileSync(filePath);
         if (buffer.length > MAX_ATTACHMENT_BYTES) throw new Error('Reference file is too large');
-        return { name: safeName(attachment.name || hash), buffer };
+        return { name: nameForBytes(safeName(attachment.name || hash), buffer), buffer };
     }
     if (source === 'vfs') {
         const fileId = String(attachment.fileId || '');
@@ -5452,7 +5471,7 @@ function watchGeneratedPrints(gr, notify) {
         seen.add(filename);
         // a print is written as x.jxl under its name x.png (#1134); older prints swapped to JXL keep their old
         // mtime and are skipped above
-        const shown = /\.jxl$/i.test(filename) ? filename.slice(0, -4) + '.png' : filename;
+        const shown = imageStore.logicalNames([filename])[0];
         try { notify(shown); } catch (_) { /* client may be gone */ }
     };
     try {

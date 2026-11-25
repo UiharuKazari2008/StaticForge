@@ -168,12 +168,12 @@ async function handleCreateChatSession(handler, ws, message, clientInfo, wsServe
             console.log('📁 Images directory:', handler.globalResources.getPath("images"));
             console.log('📄 Filename:', data.filename);
 
-            // PNG bytes, also when the picture is stored as JXL (null when it is not there)
-            const imageBuffer = await imageStore.readPng(data.filename, handler.globalResources.getPath("images"));
+            // lossless WebP of the pixels, whatever the picture is stored as (#1156: an ID has no extension to guess a type from)
+            const imageBuffer = await imageStore.webpBytes(data.filename, handler.globalResources.getPath("images"), { fields: false, effort: 2 });
             if (imageBuffer) {
                 console.log('✅ Image file exists, loading...');
                 const base64Image = imageBuffer.toString('base64');
-                const mimeType = path.extname(data.filename).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg';
+                const mimeType = 'image/webp';
 
                 personaImage = {
                     base64: base64Image,

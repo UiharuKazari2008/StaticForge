@@ -6,6 +6,7 @@ const sharp = require('sharp');
 const { generateMobilePreviews } = require('./previewUtils');
 const imageStore = require('./imageStore');
 const pictureMeta = require('./pictureMeta');
+const pictureIds = require('./pictureIds');
 const { toWebp } = require('./imageTools');
 const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
 const replicationRemoteFetch = require('./replicationRemoteFetch');
@@ -3066,66 +3067,22 @@ class ReferencesWebSocketHandlers {
                 return;
             }
 
-            // Generate filename - use original if provided, otherwise generate from hash
-            let filename;
-            if (originalFilename) {
-                // Use original filename, but ensure it has proper extension
-                const originalExt = path.extname(originalFilename).toLowerCase();
-                if (originalExt === '.png') {
-                    // Keep original filename with original case
-                    filename = hash + '_' + originalFilename;
-                } else {
-                    // If original doesn't have valid extension, add one based on image format
-                    const tempImg = sharp(imageBuffer);
-                    const metadata = await tempImg.metadata();
-                    const ext = metadata.format === 'jpeg' ? 'jpg' : metadata.format || 'png';
-                    const baseName = path.basename(originalFilename, path.extname(originalFilename));
-                    filename = `${hash}_${baseName}.${ext}`;
-                }
-            } else {
-                // Generate filename from hash with proper extension
-                const tempImg = sharp(imageBuffer);
-                const metadata = await tempImg.metadata();
-                const ext = metadata.format === 'jpeg' ? 'jpg' : metadata.format || 'png';
-                filename = `${hash}.${ext}`;
+            // #1156: a new picture is named by a new ID (no extension, not the upload's name or its md5) and stored as
+            // <id>.jxl; what it is comes from its bytes, not from the name it arrived under. writePicture takes PNG,
+            // WebP, JPEG XL and JPEG, and a picture it cannot read is refused here.
+            const uploadFormat = Buffer.isBuffer(imageBuffer) ? pictureMeta.formatOf(imageBuffer) : null;
+            if (!uploadFormat) {
+                throw new Error('Invalid image format: not a PNG, WebP, JPEG XL or JPEG picture');
             }
+            const finalFilename = pictureIds.newId();
+            console.log(`📥 Upload ${originalFilename || tempFile || '(data)'} (${uploadFormat}) -> ${finalFilename}`);
 
-            // For downloaded files, we need to handle the .dat extension
-            if (filename.toLowerCase().endsWith('.dat')) {
-                // Convert .dat to .png for downloaded files
-                filename = filename.replace(/\.dat$/i, '.png');
-            }
-
-            if (!filename.toLowerCase().endsWith('.png')) {
-                throw new Error('Invalid image format: Only PNG files are allowed');
-            }
-
-            // Handle filename conflicts by appending a counter if needed
-            let finalFilename = filename;
-            let finalFilePath = path.join(this.globalResources.getPath("images"), finalFilename);
-            let counter = 1;
-
-            // a name taken by a picture stored as x.jxl (#1134) is taken too
-            while (await imageStore.exists(finalFilename, this.globalResources.getPath("images"))) {
-                const ext = path.extname(filename);
-                const baseName = path.basename(filename, ext);
-                finalFilename = `${baseName}_${counter}${ext}`;
-                finalFilePath = path.join(this.globalResources.getPath("images"), finalFilename);
-                counter++;
-            }
-
-            // Save file to images directory: a PNG is stored as JPEG XL (#1134; finalFilePath becomes the PNG kept
-            // as its decoded copy, for the previews below); other formats as they are
-            const isPngUpload = /\.png$/i.test(finalFilename) && Buffer.isBuffer(imageBuffer)
-                && imageBuffer.length > 8 && imageBuffer.readUInt32BE(0) === 0x89504e47;
-            if (isPngUpload) {
-                finalFilePath = (await imageStore.writePicture(finalFilename, imageBuffer, { dir: this.globalResources.getPath("images") })).pngPath;
-            } else {
-                await fs.promises.writeFile(finalFilePath, imageBuffer);
-            }
+            // Save the picture: stored as JPEG XL (#1134); finalFilePath is a file sharp reads, for the previews below
+            const written = await imageStore.writePicture(finalFilename, imageBuffer, { dir: this.globalResources.getPath("images") });
+            const finalFilePath = written.pixelPath || written.pngPath || await imageStore.pixelPath(finalFilename, this.globalResources.getPath("images"));
 
             // Handle preview - use existing temp preview if available, otherwise generate new one
-            const baseName = path.basename(finalFilename, path.extname(finalFilename));
+            const baseName = finalFilename;
 
             // Generate both main and @2x / @lq previews + BlurHash
             const uploadPreviewResult = await generateMobilePreviews(finalFilePath, baseName);

@@ -16,12 +16,42 @@ const { encodeBlurhashFromFile } = require('../../blurhashUtils');
 const { isImageLarge, matchOriginalResolution } = require('../../imageTools');
 const replicationRemoteFetch = require('../../replicationRemoteFetch');
 const imageStore = require('../../imageStore');
+const pictureIds = require('../../pictureIds');
 const { isReplicationGalleryClient, canGalleryUseRemoteMaster } = require('../../replication/replicationContracts');
 
 const GALLERY_DESTRUCTIVE = { destructive: true };
 
+// An upscale is a legacy `x_upscaled.png` or an ID linked to its original (#1156): neither can be told from the name alone
 function originalFilenameFor(filename) {
-    return filename.includes('_upscaled') ? filename.replace('_upscaled.png', '.png') : filename;
+    return imageStore.originalNameFor(filename);
+}
+
+/**
+ * A picture's original and its upscales as gallery names, whichever of the two was named: { original, upscaled: [] }.
+ * The legacy `x_upscaled.png` is listed whether or not it exists (callers check), a linked upscale when one is linked.
+ */
+function galleryPairOf(filename) {
+    const isUp = pictureIds.isUpscale(filename);
+    const original = isUp ? imageStore.originalNameFor(filename) : filename;
+    const upscaled = [];
+    const linked = pictureIds.upscaleOf(original);
+    if (linked) upscaled.push(linked);
+    if (/\.png$/i.test(original) && !pictureIds.isId(original)) upscaled.push(original.replace(/\.png$/i, '_upscaled.png'));
+    if (isUp && !upscaled.some((u) => pictureIds.stemOf(u) === pictureIds.stemOf(filename))) upscaled.push(filename);
+    return { original, upscaled };
+}
+
+/** Every preview file kind of the pictures (named by stem: the ID, or a legacy name without its extension). */
+function previewFilesFor(previewsDir, names, legacyBase) {
+    const stems = [...new Set(names.map((n) => pictureIds.stemOf(n)))];
+    const out = [];
+    for (const stem of stems) {
+        for (const kind of ['', '@2x', '@lq', '@blur', '@studio', '@fit', '@ll']) {
+            out.push(path.join(previewsDir, `${stem}${kind}.webp`));
+        }
+    }
+    out.push(path.join(previewsDir, `${legacyBase}_preview.png`)); // legacy preview format
+    return out;
 }
 
 /**
@@ -244,8 +274,8 @@ async function buildGalleryRowForFilename(handlers, clientInfo, viewType, filena
         if (!meta) {
             return null;
         }
-        const base = String(filename).replace(/\.(png|jpg|jpeg)$/i, '').replace(/_upscaled$/i, '');
-        const isUpscaled = Boolean(meta.upscaled) || /_upscaled\./i.test(filename);
+        const base = pictureIds.baseOf(filename);
+        const isUpscaled = Boolean(meta.upscaled) || pictureIds.isUpscale(filename);
         return mapMaterializedItemToGalleryRow({
             base,
             original: isUpscaled ? (meta.parent || null) : filename,
@@ -1109,13 +1139,7 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
         const alreadyMissing = [];
 
         // Helper functions
-        const getBaseName = (filename) => {
-            return filename.replace(/\.(png|jpg|jpeg)$/i, '').replace(/_upscaled$/, '');
-        };
-
-        const getPreviewFilename = (baseName) => {
-            return `${baseName}_preview.png`;
-        };
+        const getBaseName = (filename) => pictureIds.baseOf(filename);
 
         const resolveDynGenPreviewHash = await createDynGenPreviewHashResolver(handlers, filenames);
 
@@ -1129,39 +1153,16 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
 
                 // Get the base name to find related files
                 const baseName = getBaseName(filename);
-                const previewFile = getPreviewFilename(baseName);
-                const previewPath = path.join(handlers.globalResources.getPath("previews"), previewFile);
 
-                // Define all preview files that may exist
-                const previewFiles = [
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@2x.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@lq.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@blur.webp`),
-                    // Studio (#648), fit (#788) and lossless (#890 P14) previews, named after the original
-                    // and the upscaled file
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@studio.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}_upscaled@studio.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@fit.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}_upscaled@fit.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@ll.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}_upscaled@ll.webp`),
-                    previewPath // Legacy preview format
-                ];
 
                 // Always delete both the base and upscaled version
                 const filesToDelete = [];
                 const filenamesToRemoveFromWorkspaces = [];
 
-                // Determine base/original and upscaled filenames
-                let originalFilename, upscaledFilename;
-                if (filename.includes('_upscaled')) {
-                    upscaledFilename = filename;
-                    originalFilename = filename.replace('_upscaled.png', '.png');
-                } else {
-                    originalFilename = filename;
-                    upscaledFilename = filename.replace('.png', '_upscaled.png');
-                }
+                // Determine the original and every upscale of it (legacy `_upscaled` names and linked IDs, #1156)
+                const pair = galleryPairOf(filename);
+                const originalFilename = pair.original;
+                const previewFiles = previewFilesFor(handlers.globalResources.getPath('previews'), [pair.original, ...pair.upscaled], baseName);
 
                 // Add original file if exists
                 const originalPath = path.join(handlers.globalResources.getPath("images"), originalFilename);
@@ -1191,10 +1192,12 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
                 }
 
                 // Add upscaled file if exists
-                const upscaledPath = path.join(handlers.globalResources.getPath("images"), upscaledFilename);
-                if (await imageStore.exists(upscaledFilename, path.dirname(upscaledPath))) {
-                    filesToDelete.push({ path: upscaledPath, type: 'upscaled', name: upscaledFilename });
-                    filenamesToRemoveFromWorkspaces.push(upscaledFilename);
+                for (const upscaledFilename of pair.upscaled) {
+                    const upscaledPath = path.join(handlers.globalResources.getPath("images"), upscaledFilename);
+                    if (await imageStore.exists(upscaledFilename, path.dirname(upscaledPath))) {
+                        filesToDelete.push({ path: upscaledPath, type: 'upscaled', name: upscaledFilename });
+                        filenamesToRemoveFromWorkspaces.push(upscaledFilename);
+                    }
                 }
 
                 // Add all preview files (webp and legacy formats)
@@ -1296,21 +1299,24 @@ async function handleDeleteUnupscaledOriginal(handlers, ws, message, clientInfo,
             handlers.sendError(ws, 'Filename is required', 'delete_unupscaled_original', message.requestId);
             return;
         }
-        if (filename.includes('_upscaled')) {
+        if (pictureIds.isUpscale(filename)) {
             handlers.sendError(ws, 'Filename is not an original (un-upscaled) file', 'delete_unupscaled_original', message.requestId);
             return;
         }
 
         const imagesDir = handlers.globalResources.getPath('images');
         const originalPath = path.join(imagesDir, filename);
-        const upscaledFilename = filename.replace(/\.png$/i, '_upscaled.png');
-        const upscaledPath = path.join(imagesDir, upscaledFilename);
+        // the picture's upscale that is on disk: a linked ID or the legacy x_upscaled.png (#1156)
+        let upscaledFilename = null;
+        for (const candidate of galleryPairOf(filename).upscaled) {
+            if (await imageStore.exists(candidate, imagesDir)) { upscaledFilename = candidate; break; }
+        }
 
         if (!await imageStore.exists(filename, imagesDir)) {
             handlers.sendError(ws, 'Original file not found', 'delete_unupscaled_original', message.requestId);
             return;
         }
-        if (!await imageStore.exists(upscaledFilename, imagesDir)) {
+        if (!upscaledFilename) {
             handlers.sendError(ws, 'No upscaled version exists; use Incinerate to delete the image', 'delete_unupscaled_original', message.requestId);
             return;
         }
@@ -1320,13 +1326,12 @@ async function handleDeleteUnupscaledOriginal(handlers, ws, message, clientInfo,
             const resolveDynGenPreviewHash = await createDynGenPreviewHashResolver(handlers, [filename]);
             const previewHash = await resolveDynGenPreviewHash(filename, originalPath);
             if (previewHash) {
-                const dynGenPreviewPath = path.join(
-                    handlers.globalResources.getPath('cache'),
-                    'dynGenPreview',
-                    `${previewHash}.png`
-                );
-                if (await fileExists(dynGenPreviewPath)) {
-                    filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
+                // .webp since #1156, .png before
+                for (const ext of ['webp', 'png']) {
+                    const dynGenPreviewPath = path.join(handlers.globalResources.getPath('cache'), 'dynGenPreview', `${previewHash}.${ext}`);
+                    if (await fileExists(dynGenPreviewPath)) {
+                        filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
+                    }
                 }
             }
         } catch (metadataError) {
@@ -1419,41 +1424,18 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
                 }
 
                 // Get the base name to find related files
-                const baseName = filename.replace(/\.(png|jpg|jpeg)$/i, '').replace(/_upscaled$/, '');
-                const previewFile = `${baseName}_preview.png`;
-                const previewPath = path.join(handlers.globalResources.getPath('previews'), previewFile);
+                const baseName = pictureIds.baseOf(filename);
 
-                // Define all preview files that may exist
-                const previewFiles = [
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@2x.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@lq.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@blur.webp`),
-                    // Studio (#648), fit (#788) and lossless (#890 P14) previews, named after the original
-                    // and the upscaled file
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@studio.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}_upscaled@studio.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@fit.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}_upscaled@fit.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@ll.webp`),
-                    path.join(handlers.globalResources.getPath("previews"), `${baseName}_upscaled@ll.webp`),
-                    previewPath // Legacy preview format
-                ];
 
                 // Find all related files
                 const filesToMove = [];
                 const filesToDelete = [];
                 const filenamesToRemoveFromWorkspaces = [];
 
-                // Determine base/original and upscaled filenames
-                let originalFilename, upscaledFilename;
-                if (filename.includes('_upscaled')) {
-                    upscaledFilename = filename;
-                    originalFilename = filename.replace('_upscaled.png', '.png');
-                } else {
-                    originalFilename = filename;
-                    upscaledFilename = filename.replace('.png', '_upscaled.png');
-                }
+                // Determine the original and every upscale of it (legacy `_upscaled` names and linked IDs, #1156)
+                const pair = galleryPairOf(filename);
+                const originalFilename = pair.original;
+                const previewFiles = previewFilesFor(handlers.globalResources.getPath('previews'), [pair.original, ...pair.upscaled], baseName);
 
                 // Add original file if exists
                 const originalPath = path.join(handlers.globalResources.getPath("images"), originalFilename);
@@ -1468,11 +1450,12 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
 
                         if (previewHash) {
                             const dynGenPreviewDir = path.join(handlers.globalResources.getPath("cache"), 'dynGenPreview');
-                            const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.png`);
-
-                            if (await fileExists(dynGenPreviewPath)) {
-                                filesToDelete.push({ path: dynGenPreviewPath });
-                                console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
+                            for (const ext of ['webp', 'png']) { // .webp since #1156
+                                const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.${ext}`);
+                                if (await fileExists(dynGenPreviewPath)) {
+                                    filesToDelete.push({ path: dynGenPreviewPath });
+                                    console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
+                                }
                             }
                         }
                     } catch (metadataError) {
@@ -1482,11 +1465,13 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
                 }
 
                 // Add upscaled file if exists
-                const upscaledPath = path.join(handlers.globalResources.getPath("images"), upscaledFilename);
-                if (await imageStore.exists(upscaledFilename, path.dirname(upscaledPath))) {
-                    filesToMove.push({ source: upscaledPath, type: 'upscaled', name: upscaledFilename });
-                    filesToDelete.push({ path: upscaledPath, name: upscaledFilename });
-                    filenamesToRemoveFromWorkspaces.push(upscaledFilename);
+                for (const upscaledFilename of pair.upscaled) {
+                    const upscaledPath = path.join(handlers.globalResources.getPath("images"), upscaledFilename);
+                    if (await imageStore.exists(upscaledFilename, path.dirname(upscaledPath))) {
+                        filesToMove.push({ source: upscaledPath, type: 'upscaled', name: upscaledFilename });
+                        filesToDelete.push({ path: upscaledPath, name: upscaledFilename });
+                        filenamesToRemoveFromWorkspaces.push(upscaledFilename);
+                    }
                 }
 
                 // Add all preview files (webp and legacy formats)
@@ -1504,10 +1489,12 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
                     if (!source) {
                         throw new Error(`File not found: ${file.name}`);
                     }
-                    const destPath = path.join(sequenziaFolder, path.basename(file.source));
+                    // an ID has no extension: the copy is a PNG named <stem>.png (a legacy .jpg / .gif keeps its name)
+                    const destName = /\.(jpe?g|gif)$/i.test(file.name) ? file.name : `${pictureIds.stemOf(file.name)}.png`;
+                    const destPath = path.join(sequenziaFolder, destName);
                     await fs.promises.copyFile(source, destPath);
                     movedFiles.push(file.type);
-                    console.log(`📁 Moved to sequenzia: ${path.basename(file.source)}`);
+                    console.log(`📁 Moved to sequenzia: ${destName}`);
                 }
 
                 // Delete files from original location

@@ -14,6 +14,7 @@ const {
     bindRuntimeGlobalResources
 } = require('./dynamicGenerationHandlers');
 const weatherService = require('./weatherService');
+const pictureIds = require('./pictureIds');
 const { getHostMetrics } = require('./pm2Service');
 
 const GADGET_TYPES = ['calendar', 'calculator', 'clipboard', 'clock', 'contacts', 'cpu', 'currency', 'deskcalc', 'feed', 'hero', 'mail', 'notes', 'outlook', 'puzzle', 'slideshow', 'stocks', 'timer', 'weather'];
@@ -338,12 +339,12 @@ async function pickSearchImage(metadataDb, search, offset, runSearch) {
     const index = Number.isInteger(offset) ? ((offset % total) + total) % total : Math.floor(Math.random() * total);
     const filename = entry.filenames[index];
     const meta = (await metadataDb.getMultipleMetadata([filename]))[filename] || {};
-    const upscaled = !!meta.upscaled || /_upscaled\.[a-z]+$/i.test(filename);
+    const upscaled = !!meta.upscaled || pictureIds.isUpscale(filename);
     return {
         total,
         index,
         item: {
-            base: filename.replace(/\.(png|jpg|jpeg|webp)$/i, '').replace(/_upscaled$/, ''),
+            base: pictureIds.baseOf(filename),
             original: upscaled ? null : filename,
             upscaled: upscaled ? filename : null,
             width: meta.width || null,

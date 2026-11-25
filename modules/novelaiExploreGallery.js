@@ -1632,7 +1632,10 @@ async function resolveExploreUploadFilePath(filename, imagesDir) {
     if (!name || name !== String(filename || '').trim()) {
         throw new Error('Invalid filename');
     }
-    if (!/\.(png|webp)$/i.test(name)) {
+    // a picture ID (#1156: no extension, stored as JXL) or a legacy .png / .webp name; NovelAI gets the PNG's bytes,
+    // so a legacy .jpg / .gif is refused as before
+    const uploadable = (imageStore.isPictureName(name) && !/\.(jpe?g|gif)$/i.test(name)) || /\.webp$/i.test(name);
+    if (!uploadable) {
         const err = new Error('Invalid image format, must be PNG or WEBP.');
         err.code = 'EXPLORE_INVALID_FORMAT';
         throw err;

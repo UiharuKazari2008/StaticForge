@@ -675,7 +675,8 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
                     if (!filename) continue;
                     // the picture's own file, or the PNG rebuilt from x.jxl (#1134); '' when it is not there
                     filePath = (await imageStore.pngPath(filename, globalResources.getPath('images'))) || '';
-                    name = filename;
+                    // PNG bytes go by `<stem>.png` (a picture ID has no extension, #1156); a legacy .jpg / .gif keeps its name
+                    name = /\.(jpe?g|gif)$/i.test(filename) ? filename : `${require('./pictureIds').stemOf(filename)}.png`;
                 }
                 if (!filePath || !(await fs.promises.stat(filePath).then((st) => st.isFile(), () => false))) continue;
                 const upstream = await fetch(config.origin + '/sessions/' + id + '/file-chooser/' + cid + '/file?t=' + encodeURIComponent(token) + '&name=' + encodeURIComponent(name), {

@@ -4,10 +4,12 @@
 
 const replicationRemoteFetch = require('./replicationRemoteFetch');
 const { canGalleryUseRemoteMaster } = require('./replication/replicationContracts');
+const pictureIds = require('./pictureIds');
 
+// The picture's base (#1156): a legacy `_upscaled` name or a linked upscale ID resolves to its original's stem. A remote
+// ID whose link this server has not seen is its own base.
 function getBaseName(filename) {
-    const base = String(filename || '').replace(/\.(png|jpg|jpeg)$/i, '');
-    return base.replace(/_upscaled$/, '');
+    return pictureIds.baseOf(String(filename || ''));
 }
 
 async function fetchRemoteGalleryFilenames(globalResources, { workspaceId, viewType } = {}) {
@@ -54,10 +56,11 @@ function mergeRemoteGalleryBaseArray(localBaseArray, remoteFilenames, localFilen
         const base = getBaseName(filename);
         if (seenBases.has(base)) continue;
         seenBases.add(base);
+        const isUpscale = pictureIds.isUpscale(filename);
         const entry = {
             base,
-            original: filename.includes('_upscaled') ? null : filename,
-            upscaled: filename.includes('_upscaled') ? filename : null,
+            original: isUpscale ? null : filename,
+            upscaled: isUpscale ? filename : null,
             mtime: now,
             remoteOnly: true
         };

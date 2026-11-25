@@ -1632,6 +1632,7 @@ const imagesDir = path.resolve(__dirname, 'images');
 // gallery pictures may be stored as x.jxl under the name x.png (#1134): reads go through pngPath / locate
 const imageStore = require('./modules/imageStore');
 const pictureMeta = require('./modules/pictureMeta');
+const pictureIds = require('./modules/pictureIds');
 // for routes outside a try: a failed JXL decode answers as a missing picture instead of an unhandled rejection
 // A request that will show the picture on a client that decodes JPEG XL itself (#1134)
 function clientShowsJxl(req) {
@@ -1646,6 +1647,26 @@ function galleryPngPath(name) {
         console.error('[imageStore] no PNG for', name, ':', e.message);
         return null;
     });
+}
+// #1156: a picture's name says nothing about its bytes (an ID has no extension, is stored as <id>.jxl and is sent
+// as the decoded PNG), so a route sets Content-Type, the download's file name and its PNG-only steps from what it
+// sends. imageStore.locate's kind: 'jxl' and 'png' are sent as PNG; 'other' is a legacy .jpg / .gif sent as it is.
+function sentImageType(loc, name) {
+    if (!loc || loc.kind === 'jxl' || loc.kind === 'png') return 'image/png';
+    const ext = path.extname(String(name || '')).toLowerCase();
+    if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+    if (ext === '.gif') return 'image/gif';
+    if (ext === '.webp') return 'image/webp';
+    return 'image/png';
+}
+const DOWNLOAD_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/jxl': 'jxl' };
+/** Content-Disposition for a picture download: `<stem>.<ext of the format sent>` (the ID has no extension of its own). */
+function pictureDownloadDisposition(name, type) {
+    const stem = pictureIds.stemOf(String(name || '')) || 'image';
+    const ext = DOWNLOAD_EXT[type] || 'png';
+    const ascii = `${stem}.${ext}`.replace(/[^\x20-\x7e]|["\\]/g, '_');
+    const utf8 = encodeURIComponent(`${stem}.${ext}`);
+    return `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`;
 }
 const previewsDir = path.resolve(__dirname, '.previews');
 const fflateBrowserPath = path.resolve(__dirname, 'public', 'scripts', 'vendor', 'fflate.js');
@@ -2048,6 +2069,8 @@ app.use('/previews/:preview', authMiddleware, async (req, res, next) => {
                 : null;
             if (sourcePath) {
                 res.setHeader('Cache-Control', 'no-store');
+                // an ID's decoded copy has no extension: the type comes from the bytes' kind (#1156)
+                res.setHeader('Content-Type', sentImageType(await imageStore.locate(imageStore.logicalNames([path.basename(source.path)])[0]), source.name));
                 return res.sendFile(sourcePath, (err) => {
                     if (err && !res.headersSent) res.status(404).end();
                 });
@@ -2419,25 +2442,51 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     // work (a JXL's rebuilt PNG once it was rebuilt; a PNG's JXL only after an encode: null, the window estimates)
     if (req.query.info === 'formats') {
         if (!loc) return res.status(404).json({ success: false, error: 'Image not found' });
-        const pngBytes = loc.kind === 'jxl' ? imageStore.knownPngSize(filename, loc.stat.mtimeMs) : loc.stat.size;
+        // sizes only where known without work (null: the window estimates); the formats the picture downloads as (#1156)
+        const pngBytes = loc.kind === 'jxl' ? imageStore.knownPngSize(filename, loc.stat.mtimeMs) : (loc.kind === 'png' ? loc.stat.size : null);
         res.setHeader('Cache-Control', 'no-store');
-        return res.json({ success: true, stored: loc.kind, png: pngBytes, jxl: loc.kind === 'jxl' ? loc.stat.size : null });
+        return res.json({
+            success: true, stored: loc.kind, formats: ['jxl', 'png', 'webp', 'jpeg'],
+            png: pngBytes, jxl: loc.kind === 'jxl' ? loc.stat.size : null, webp: null, jpeg: null
+        });
     }
-    // Download as JPEG XL (the download window): the stored JXL, or the PNG encoded now; the prompt and settings
-    // ride in its sfPN box
-    if (loc && req.query.download === 'true' && req.query.format === 'jxl') {
+    // Downloads in a format the stored file is not (the download window, #1134 / #1156): ?download=true&format=
+    // jxl (the stored JXL, or encoded now; the prompt and settings ride in its sfMD box), webp (lossless, the fields
+    // as EXIF in NovelAI's layout), jpeg (quality 90, fields as EXIF where they fit) and png of a legacy .jpg/.gif.
+    // format=png of a PNG / JXL picture (and no format) falls through to the PNG download below. The file is
+    // <stem>.<ext of the bytes sent>: an ID has no extension of its own.
+    const dlFormat = req.query.download === 'true' ? String(req.query.format || '').toLowerCase() : '';
+    if (loc && (dlFormat === 'jxl' || dlFormat === 'webp' || dlFormat === 'jpeg' || dlFormat === 'jpg'
+        || (dlFormat === 'png' && loc.kind === 'other'))) {
         try {
-            const bytes = await imageStore.jxlBytes(filename);
+            let bytes = null;
+            let type;
+            const encodeFromPixels = async (fmt) => {
+                const stored = await imageStore.readStored(filename);
+                return stored ? pictureMeta.encode(await pictureMeta.rgba(stored), pictureMeta.readFields(stored), fmt, fmt === 'jpeg' ? { quality: 90 } : {}) : null;
+            };
+            if (dlFormat === 'jxl') {
+                type = 'image/jxl';
+                bytes = loc.kind === 'other' ? await encodeFromPixels('jxl') : await imageStore.jxlBytes(filename);
+            } else if (dlFormat === 'webp') {
+                type = 'image/webp';
+                bytes = await imageStore.webpBytes(filename, undefined, { fields: true, effort: 4 });
+            } else if (dlFormat === 'png') {
+                type = 'image/png';
+                bytes = await encodeFromPixels('png');
+            } else {
+                type = 'image/jpeg';
+                bytes = await encodeFromPixels('jpeg');
+            }
             if (!bytes) return res.status(404).json({ success: false, error: 'Image not found' });
-            const stem = path.basename(filename, path.extname(filename));
-            res.setHeader('Content-Type', 'image/jxl');
+            res.setHeader('Content-Type', type);
             res.setHeader('Content-Length', bytes.length);
             res.setHeader('Cache-Control', 'no-store');
-            res.setHeader('Content-Disposition', `attachment; filename="${stem.replace(/["\\\r\n]/g, '_')}.jxl"`);
+            res.setHeader('Content-Disposition', pictureDownloadDisposition(filename, type));
             return res.send(bytes);
         } catch (e) {
-            console.error('[images] JPEG XL download failed for', filename, ':', e.message);
-            return res.status(500).json({ success: false, error: 'Could not make the JPEG XL file' });
+            console.error(`[images] ${dlFormat} download failed for`, filename, ':', e.message);
+            return res.status(500).json({ success: false, error: `Could not make the ${dlFormat} file` });
         }
     }
     // A picture shown (an <img> / CSS image: Sec-Fetch-Dest image) on a client that decodes JPEG XL gets the JXL
@@ -2466,8 +2515,10 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     }
 
     // Set appropriate headers
-    const ext = path.extname(filename).toLowerCase();
-    res.setHeader('Content-Type', (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' : 'image/png');
+    // the bytes sent, not the name (an ID has no extension, #1156); the PNG-only steps below key on this too
+    const sentType = sentImageType(loc, filename);
+    const sendsPng = sentType === 'image/png';
+    res.setHeader('Content-Type', sentType);
     res.setHeader('Cache-Control', 'private, max-age=259200');
     res.setHeader('Content-Length', sentStat.size);
     res.setHeader('Last-Modified', new Date(fileStat.mtime).toUTCString());
@@ -2476,12 +2527,11 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     
     // Handle download request
     if (req.query.download === 'true') {
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Disposition', pictureDownloadDisposition(filename, sentType));
     }
 
     // Clipboard / origin Comment: restore tEXt Comment from stealth (pre-forge NAI Comment)
-    if ((req.query.clipboardOrigin === 'true' || req.query.clipboard === 'true')
-        && path.extname(filename).toLowerCase() === '.png') {
+    if ((req.query.clipboardOrigin === 'true' || req.query.clipboard === 'true') && sendsPng) {
         try {
             const imageBuffer = await fs.promises.readFile(filePath);
             const pngMeta = globalResources.getPngMetadata();
@@ -2508,7 +2558,7 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     }
 
     // Download: attest NovelAI (+ Forge when forge_data is present) via response headers
-    if (req.query.download === 'true' && path.extname(filename).toLowerCase() === '.png') {
+    if (req.query.download === 'true' && sendsPng) {
         try {
             const imageBuffer = await fs.promises.readFile(filePath);
             const pngMeta = globalResources.getPngMetadata();
@@ -2545,7 +2595,7 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     }
 
     // Handle stripContext query parameter for PNG files
-    if (req.query.stripContext === 'true' && path.extname(filename).toLowerCase() === '.png') {
+    if (req.query.stripContext === 'true' && sendsPng) {
         try {
             const imageBuffer = await fs.promises.readFile(filePath);
             const metadata = globalResources.getPngMetadata().readMetadata(imageBuffer);
@@ -3780,7 +3830,7 @@ app.get('/traces/:id', authMiddleware, adminOnlyMiddleware, (req, res) => {
             if (!inFiles) return res.status(403).json({ success: false, error: 'Access denied' });
             const imagePath = await imageStore.pngPath(filename);
             if (!imagePath) return res.status(404).send('Not found');
-            res.setHeader('Content-Type', 'image/png');
+            res.setHeader('Content-Type', sentImageType(await imageStore.locate(filename), filename));
             fs.createReadStream(imagePath).pipe(res);
         } catch (e) {
             res.status(500).send(e.message);
@@ -4005,9 +4055,8 @@ app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (r
         res.setHeader('X-Preset-UUID', p.uuid);
         res.setHeader('X-Preset-Name', p.name);
         if (req.query.download === 'true') {
-            const extension = optimize ? 'jpg' : (pictureMeta.formatOf(finalBuffer) || 'png');
-            const optimizedFilename = targetFilename.replace('.png', `.${extension}`);
-            res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+            // <stem>.<ext of the bytes sent>: an ID has no extension to replace (#1156)
+            res.setHeader('Content-Disposition', pictureDownloadDisposition(targetFilename, optimize ? 'image/jpeg' : `image/${pictureMeta.formatOf(finalBuffer) || 'png'}`));
         }
         res.send(finalBuffer);
     } catch(e) {
@@ -4312,9 +4361,7 @@ app.get('/pending/retrieval/:requestid', serverReadinessMiddleware, async (req, 
 
             res.setHeader('Content-Type', contentType);
             if (req.query.download === 'true') {
-                const extension = optimize ? 'jpg' : 'webp';
-                const optimizedFilename = targetFilename.replace('.png', `.${extension}`);
-                res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+                res.setHeader('Content-Disposition', pictureDownloadDisposition(targetFilename, optimize ? 'image/jpeg' : 'image/webp'));
             }
 
             return res.send(finalBuffer);
@@ -4389,9 +4436,7 @@ app.get('/reroll/:filename', serverReadinessMiddleware, authMiddleware, getQueue
         res.setHeader('X-Original-Filename', filename);
         
         if (req.query.download === 'true') {
-            const extension = optimize ? 'jpg' : (pictureMeta.formatOf(finalBuffer) || 'png');
-            const optimizedFilename = result.filename.replace('.png', `.${extension}`);
-            res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+            res.setHeader('Content-Disposition', pictureDownloadDisposition(result.filename, optimize ? 'image/jpeg' : `image/${pictureMeta.formatOf(finalBuffer) || 'png'}`));
         }
         
         res.send(finalBuffer);
