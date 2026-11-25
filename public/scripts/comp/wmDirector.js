@@ -96,7 +96,9 @@
      *   allowStudio   the Director may open Studio (off: she prints on the server unless Studio is
      *                 already open; the server refuses her Studio tools, mcpAgentFacade refuseStudioOnPhone)
      *   openPrints    a new print of the open chat opens in the picture view
-     *   notifyTurns   a turn that ends while the app is in the background raises a notification
+     *   notifyTurns   this page's own notification for a finished turn, raised only while the message is off
+     *                 on screen (Settings > Sounds & Notifications > Director: Turn finished): with it on, the
+     *                 inbox notice is that one notification and a toast here would be a second one (#1168)
      *   printStrip    her prints as a strip under the text box (the desktop's prints sidebar)
      *   stripFolded   the strip folded down to its handle (#1148: the handle at its end folds it and back)
      *   wideLog       wide screens show the log beside her (off: the prints gallery column)
@@ -2032,16 +2034,28 @@
     // ---------------------------------------------------------------- turn notifications
 
     /**
-     * A turn that ends while the Director is not on screen: a WM notification (the shell draws the
-     * toast as its bubble, with its sound; the Android app posts it as a phone notification), View
-     * opens the app. The title bar's Director glyph already shows while a turn runs.
+     * A turn that ends while the Director is not on screen: a toast (the shell draws it as its bubble,
+     * wmShell eventPrefs' Director sound plays beside it), View opens the app. The title bar's Director
+     * glyph already shows while a turn runs.
      * Never for a turn a steer cut short (director_message_response steer: true arrives before the idle status: the
-     * transcript row is the record), and never while this page is hidden: the server's inbox notice (the Android app
-     * posts it) is that one notification, and a toast here would be the second (#1168). The server notice itself
-     * is silent while she watches that chat.
+     * transcript row is the record), and never while she watches that chat or while this page is hidden.
+     *
+     * ONE notification per finished turn (#1168, Yukimi Nov 25 2026: "2 director notifications still when there
+     * should be 1 or 0"). The server's inbox notice director:<session>:turn is that one: this page shows it as a
+     * WM note here, and the app posts it natively when the page is not running. This page's own toast went out
+     * beside it whenever the Director app was up but on another chat, so a turn read as two - "Yozora replied in
+     * ..." from here and "<name>: the turn is finished." from the inbox. So the toast is kept for the one case
+     * where nothing else would tell her: the message is off on screen (Settings > Sounds & Notifications >
+     * Director: Turn finished > Display message on screen), which is also the switch the shell's sound follows.
      */
     let runningTurns = new Map(); // session id -> { name, xi }
     const steerCut = new Set(); // session ids whose turn a steer ended; used once by the next idle status
+    /** Whether the inbox notice for a finished turn is shown on screen (wmShell SND_EVENTS 'director'). */
+    function noticeOnScreen() {
+        const shell = window.wmShell;
+        const p = shell && typeof shell.eventPrefs === 'function' ? shell.eventPrefs('director') : null;
+        return !(p && p.display === false);
+    }
     function noteTurns() {
         const d = dir();
         const st = d && d._status;
@@ -2056,7 +2070,7 @@
         // another page of hers shows that chat (a phone's DeX window while this is its shell page): no second notification
         const watched = Array.isArray(st.watched) ? st.watched.map(String) : [];
         const told = ended.filter(([id]) => !steerCut.delete(id) && !watched.includes(id));
-        if (!told.length || document.hidden || (shown && isCurrent()) || !prefs().notifyTurns || typeof showGlassToast !== 'function') return;
+        if (!told.length || document.hidden || (shown && isCurrent()) || !prefs().notifyTurns || noticeOnScreen() || typeof showGlassToast !== 'function') return;
         told.forEach(([id, turn]) => {
             const s = (d.directorSessions || []).find((x) => String(x.id) === id);
             const persona = turn.xi ? 'xi' : (s && s.memoryStore === 'obliterated' ? 'kabuki' : 'wren');

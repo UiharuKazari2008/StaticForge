@@ -400,7 +400,7 @@
     const PHONE_ROWS = [
         ['allowStudio', 'Allow the Director to open Studio'],
         ['openPrints', 'Open new prints in the picture view'],
-        ['notifyTurns', 'Notify me when a turn ends in the background'],
+        ['notifyTurns', 'Notify me when a turn ends (when its message is off on screen)'],
         ['printStrip', 'Show prints under her text box'],
         ['wideLog', 'Show the log beside her on wide screens'],
         ['wideSolo', 'Show only her on wide screens'],
