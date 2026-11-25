@@ -242,7 +242,7 @@
         try {
             // (the browser's own question may never be answered, a headless tab has nobody to ask: after 12 s the drawn desktop is
             // taken instead, so the tool's windows are never left hidden behind an open prompt; a stream that arrives late is stopped)
-            const ask = md.getDisplayMedia({ video: { displaySurface: 'browser', frameRate: 5 }, audio: false, preferCurrentTab: true, selfBrowserSurface: 'include' });
+            const ask = md.getDisplayMedia({ video: { displaySurface: 'browser', frameRate: 5, width: { ideal: Math.round(W * (root.devicePixelRatio || 1)) }, height: { ideal: Math.round(root.innerHeight * (root.devicePixelRatio || 1)) } }, audio: false, preferCurrentTab: true, selfBrowserSurface: 'include' });
             let late = false;
             const timer = new Promise((r) => setTimeout(() => { late = true; r(null); }, 12000));
             ask.then((st) => { if (late && st) st.getTracks().forEach((t) => t.stop()); }, () => {});
