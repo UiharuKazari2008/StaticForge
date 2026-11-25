@@ -511,7 +511,7 @@ class WorkspaceManager {
 
             // x.jxl is the picture x.png stored as JPEG XL (#1134)
             const imageFiles = imageStore.logicalNames(fs.readdirSync(this.IMAGES_DIR))
-                .filter(f => f.match(/\.(png|jpg|jpeg|gif)$/i))
+                .filter(f => imageStore.isPictureName(f)) // a picture ID has no extension (#1156)
                 .filter(f => !f.startsWith('.'));
 
             const imageSet = new Set(imageFiles);
@@ -902,6 +902,9 @@ class WorkspaceManager {
             return null;
         }
 
+        // a picture ID encodes its creation time (#1156); legacy names start with a 13-digit ms stamp
+        const idTime = pictureIds.timeOf(filename);
+        if (idTime !== null) return idTime;
         const parts = filename.split('_');
         if (parts.length > 0) {
             const timestamp = parseInt(parts[0]);

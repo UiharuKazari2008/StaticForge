@@ -16,6 +16,7 @@ const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 const { resolveMediumLock, applyMediumLocksToOptions, explicitEffortModelKey, mediumUcResidual } = require('./v5MediumLock');
 const { resolveNekoEnumValue } = require('./nekoEnumResolve');
 const imageStore = require('./imageStore');
+const pictureIds = require('./pictureIds');
 const {
     resolvePresetRecord,
     isBackgroundOnlyRequest,
@@ -47,21 +48,6 @@ async function recordReplicationGalleryJournal(filename, workspaceId, buffer = n
     } catch (_err) {
         // Journal not initialized yet
     }
-}
-
-// Preset / session names go into the saved filename verbatim otherwise; a "/" there
-// becomes a missing subdirectory and the write fails with ENOENT. The real name
-// still rides in forgeData.preset_name.
-function filenameSafePresetName(presetName) {
-    let s = String(presetName || '')
-        .replace(/[\/\\:*?"<>|\x00-\x1f\x7f]/g, '-')
-        .replace(/\.{2,}/g, '.')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .replace(/^[.\s-]+|[.\s-]+$/g, '');
-    // Keep the whole name under the 255-byte filename limit (timestamp + seed + .png ~ 40).
-    while (Buffer.byteLength(s, 'utf8') > 180) s = s.slice(0, -1);
-    return s.trim();
 }
 
 function sanitizeDynamicGenerationForForge(dg) {
@@ -4632,12 +4618,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         }
     }
 
-    const timestamp = Date.now().toString();
-    let namePrefix = filenameSafePresetName(presetName) || 'generated';
-
-    // Generate filename based on standard generation
-    let name;
-    name = `${timestamp}_${namePrefix}_${seed}.png`;
+    // a new picture is an ID (#1156): no extension, no preset name or seed in it (forge_data / the receipt carry those)
+    const name = pictureIds.newId();
 
     const shouldSave = opts.no_save !== true;
 
@@ -5088,7 +5070,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             }
             await ensureForgeDataBlurhash(upscaledForgeData, scaledBuffer);
             const updatedScaledBuffer = __runtimeGr.getPngMetadata().copyMetadataToImage(finalBuffer, scaledBuffer, upscaledForgeData);
-            const upscaledName = name.replace('.png', '_upscaled.png');
+            // the upscale is its own ID linked to this picture (#1156), linked before it is written so its DB row gets the parent
+            const upscaledName = imageStore.upscaleNameFor(name, __runtimeGr.getPath('images'));
 
             if (shouldSave) {
                 const storedUpscaled = await imageStore.writePicture(upscaledName, updatedScaledBuffer, { dir: __runtimeGr.getPath('images') });
@@ -5236,7 +5219,7 @@ const handleImageRequest = async (globalResources, req, res, opts, presetName = 
     }
     if (req.query.download === 'true') {
         const extension = optimize ? 'jpg' : (pictureMeta.formatOf(finalBuffer) || 'png');
-        const optimizedFilename = result.filename.replace('.png', `.${extension}`);
+        const optimizedFilename = pictureIds.stemOf(result.filename) + `.${extension}`;
         res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
     }
     res.send(finalBuffer);
@@ -7966,10 +7949,9 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         if (!baseName) {
             throw new Error('Could not derive output filename from source image');
         }
-        // Remove old timestamp from basename (format: timestamp_name)
-        const nameWithoutTimestamp = baseName.replace(/^\d+_/, '');
-        const timestamp = Date.now();
-        const expandedFilename = `${timestamp}_${nameWithoutTimestamp}_expanded.png`;
+        // the expansion is its own picture ID linked to its source (#1156); linked before it is written so the DB row gets its parent
+        const expandedFilename = pictureIds.newId();
+        pictureIds.link(expandedFilename, namingFilename, 'expand');
         const expandedPath = path.join(__runtimeGr.getPath('images'), expandedFilename);
 
         console.log(`💾 Attempting to save: ${expandedFilename} at ${expandedPath}`);
@@ -8298,10 +8280,9 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         const expandedBuffer = __runtimeGr.getPngMetadata().updateMetadata(result.buffer, expansionMetadata);
 
         // Save file
-        const baseName = __runtimeGr.getPngMetadata().getBaseName(expansion_source);
-        const nameWithoutTimestamp = baseName.replace(/^\d+_/, '');
-        const timestamp = Date.now();
-        const expandedFilename = `${timestamp}_${nameWithoutTimestamp}_expanded.png`;
+        // its own picture ID linked to the expansion source (#1156), linked before the write so the DB row gets its parent
+        const expandedFilename = pictureIds.newId();
+        pictureIds.link(expandedFilename, expansion_source, 'expand');
         const expandedPath = path.join(__runtimeGr.getPath('images'), expandedFilename);
 
         console.log(`💾 Saving: ${expandedFilename}`);

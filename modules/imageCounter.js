@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const imageStore = require('./imageStore');
+const pictureIds = require('./pictureIds');
 
 const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -50,6 +51,9 @@ function loadCounter() {
             const files = imageStore.logicalNames(fs.readdirSync(imageDir));
             timestamps = files
                 .map(f => {
+                    // a picture ID encodes its time (#1156); legacy names start with it in ms
+                    const idMs = pictureIds.timeOf(f);
+                    if (idMs !== null) return idMs;
                     const match = f.match(/^(\d+)_/);
                     return match ? parseInt(match[1], 10) : null;
                 })

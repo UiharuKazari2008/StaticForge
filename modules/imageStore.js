@@ -896,7 +896,10 @@ async function rename(oldName, newName, dir = IMAGES_DIR) {
     const loc = await locate(oldName, dir);
     const nn = cleanName(newName);
     if (!loc || !nn) throw new Error('rename: picture not found or bad name');
-    const target = loc.kind === 'jxl' ? path.join(dir, jxlNameFor(nn)) : path.join(dir, nn);
+    // a JXL-stored picture moves to a name that has a JXL form (a picture ID or x.png); anything else cannot hold one
+    const newJxl = jxlNameFor(nn);
+    if (loc.kind === 'jxl' && !newJxl) throw new Error('rename: a JPEG XL picture needs a picture ID or .png name');
+    const target = loc.kind === 'jxl' ? path.join(dir, newJxl) : path.join(dir, nn);
     await fs.promises.rename(loc.path, target);
     fs.promises.unlink(cacheFileFor(cleanName(oldName), dir)).catch(() => {});
     return target;

@@ -6,6 +6,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const pictureIds = require('./pictureIds');
 const { prepareEmphasisTextForNovelAI } = require('./emphasisGroupIdSyntax');
 
 // Long enough that an agent awaiting a slow Studio print does not get "Unknown generation jobId".
@@ -99,6 +100,9 @@ function completeApplyGenerateJob(jobId, filename, filenames) {
 }
 
 function filenameBornMs(filename) {
+    // a picture ID encodes its time (#1156)
+    const idMs = pictureIds.timeOf(filename);
+    if (idMs !== null) return idMs;
     const match = /^(\d{13})_/.exec(String(filename || ''));
     return match ? Number(match[1]) : null;
 }

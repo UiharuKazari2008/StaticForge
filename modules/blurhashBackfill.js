@@ -6,14 +6,14 @@ const fs = require('fs');
 const path = require('path');
 const { encodeBlurhashFromFile, encodeBlurhashFromBuffer } = require('./blurhashUtils');
 const imageStore = require('./imageStore');
+const pictureIds = require('./pictureIds');
 
 const DEFAULT_BATCH = 200;
 const DEFAULT_CONCURRENCY = 4;
 
 function getBaseName(filename) {
-    return String(filename || '')
-        .replace(/\.(png|jpg|jpeg|webp)$/i, '')
-        .replace(/_upscaled$/i, '');
+    // an ID upscale (#1156) is its own ID linked to the original: baseOf follows the link; legacy _upscaled is stripped
+    return pictureIds.baseOf(String(filename || '').replace(/\.(png|jpg|jpeg|webp)$/i, ''));
 }
 
 async function mapPool(items, limitN, mapper) {

@@ -361,7 +361,9 @@ async function upscaleImage(globalResources, filename, workspaceId, req, res, up
         const updatedUpscaledBuffer = __runtimeGr.getPngMetadata().copyMetadataToImage(imageBuffer, upscaledBuffer, upscaledForgeData);
 
         // Save upscaled image
-        const upscaledFilename = filename.replace('.png', '_upscaled.png');
+        // an upscale is its own picture ID linked to the original (#1156), linked before the write so the DB row gets its
+        // parent; a legacy x_upscaled.png that exists is reused
+        const upscaledFilename = imageStore.upscaleNameFor(filename, __runtimeGr.getPath("images"));
         // stored as JPEG XL (#1134: PNG is legacy; replaces an older upscale in either form); upscaledPath is
         // a file of it sharp reads, for the preview below (#1156)
         const storedUpscale = await imageStore.writePicture(upscaledFilename, updatedUpscaledBuffer, { dir: __runtimeGr.getPath("images") });
@@ -428,7 +430,9 @@ async function upscaleImageWebSocket(globalResources, filename, workspaceId, use
         const updatedUpscaledBuffer = __runtimeGr.getPngMetadata().copyMetadataToImage(imageBuffer, upscaledBuffer, upscaledForgeData);
         
         // Save upscaled image
-        const upscaledFilename = filename.replace('.png', '_upscaled.png');
+        // an upscale is its own picture ID linked to the original (#1156), linked before the write so the DB row gets its
+        // parent; a legacy x_upscaled.png that exists is reused
+        const upscaledFilename = imageStore.upscaleNameFor(filename, __runtimeGr.getPath("images"));
         // stored as JPEG XL (#1134: PNG is legacy; replaces an older upscale in either form); upscaledPath is
         // a file of it sharp reads, for the preview below (#1156)
         const storedUpscale = await imageStore.writePicture(upscaledFilename, updatedUpscaledBuffer, { dir: __runtimeGr.getPath("images") });

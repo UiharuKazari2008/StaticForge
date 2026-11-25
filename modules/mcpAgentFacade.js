@@ -15,6 +15,7 @@ const { McpOAuthProvider } = require('./mcpOAuthProvider');
 const { createOAuthRoutes } = require('./mcpOAuthRoutes');
 const novelaiExplore = require('./novelaiExploreGallery');
 const imageStore = require('./imageStore');
+const pictureIds = require('./pictureIds');
 const pictureMeta = require('./pictureMeta');
 const {
     hasManagedEmphasisGroupIds,
@@ -7184,6 +7185,9 @@ const applyPrintWait = { timeoutMs: 180000 };
 const restartClientWait = { timeoutMs: 45000 };
 
 function galleryFilenameBornMs(filename) {
+    // a picture ID encodes its time (#1156)
+    const idMs = pictureIds.timeOf(filename);
+    if (idMs !== null) return idMs;
     const match = /^(\d{13})_/.exec(String(filename || ''));
     return match ? Number(match[1]) : null;
 }

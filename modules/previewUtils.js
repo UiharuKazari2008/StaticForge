@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { encodeBlurhashFromBuffer } = require('./blurhashUtils');
 const imageStore = require('./imageStore');
+const pictureIds = require('./pictureIds');
 
 // Generate a preview for an image
 async function generatePreview(imagePath, previewPath) {
@@ -182,9 +183,10 @@ async function ensureStudioPreview(imagesDir, previewsDir, previewName) {
     // the picture may be stored as x.jxl (#1134): its stat (the original's mtime) for freshness, a PNG only to encode
     let sourceName = null;
     let sourceStat = null;
-    for (const ext of STUDIO_PREVIEW_SOURCE_EXTS) {
-        const loc = await imageStore.locate(`${stem}${ext}`, imagesDir);
-        if (loc) { sourceName = `${stem}${ext}`; sourceStat = loc.stat; break; }
+    // a picture ID is its own name, with no extension (#1156)
+    for (const candidate of (pictureIds.isId(stem) ? [stem] : STUDIO_PREVIEW_SOURCE_EXTS.map((ext) => `${stem}${ext}`))) {
+        const loc = await imageStore.locate(candidate, imagesDir);
+        if (loc) { sourceName = candidate; sourceStat = loc.stat; break; }
     }
     if (!sourceName) return null;
     let sourcePath = path.join(imagesDir, sourceName);
@@ -262,9 +264,10 @@ async function fitPreviewSource(imagesDir, previewName) {
     if (!isFitPreviewName(previewName)) return null;
     const stem = path.basename(previewName).slice(0, -FIT_PREVIEW_SUFFIX.length);
     if (!stem) return null;
-    for (const ext of [...STUDIO_PREVIEW_SOURCE_EXTS, '.webp']) {
-        const loc = await imageStore.locate(`${stem}${ext}`, imagesDir);
-        if (loc) return { name: `${stem}${ext}`, kind: loc.kind, path: loc.path, stat: loc.stat };
+    // a picture ID is its own name, with no extension (#1156)
+    for (const candidate of (pictureIds.isId(stem) ? [stem] : [...STUDIO_PREVIEW_SOURCE_EXTS, '.webp'].map((ext) => `${stem}${ext}`))) {
+        const loc = await imageStore.locate(candidate, imagesDir);
+        if (loc) return { name: candidate, kind: loc.kind, path: loc.path, stat: loc.stat };
     }
     return null;
 }
@@ -370,7 +373,7 @@ async function ensureLosslessPreview(imagesDir, previewsDir, previewName) {
     if (!stem) return null;
     // images/<stem>.png may be stored as <stem>.jxl (#1134): keyed and dated by the PNG's name and the original's
     // mtime, decoded only for an encode
-    const sourceName = `${stem}.png`;
+    const sourceName = pictureIds.isId(stem) ? stem : `${stem}.png`; // an ID has no extension (#1156)
     const sourcePath = path.join(imagesDir, sourceName);
     const sourceLoc = await imageStore.locate(sourceName, imagesDir);
     if (!sourceLoc) return null;
@@ -430,7 +433,8 @@ async function ensureLosslessPreview(imagesDir, previewsDir, previewName) {
  */
 function previewSweepBase(preview) {
     const name = String(preview || '');
-    if (/@(studio|fit|ll)\.webp$/.test(name)) return name.replace(/@(studio|fit|ll)\.webp$/, '').replace(/_upscaled$/, '');
+    // baseOf: a legacy _upscaled and an ID upscale (its own ID, linked) both map to the original's base, as syncPreviews' baseMap does (#1156)
+    if (/@(studio|fit|ll)\.webp$/.test(name)) return pictureIds.baseOf(name.replace(/@(studio|fit|ll)\.webp$/, ''));
     if (name.endsWith('@lq.webp')) return name.replace(/@lq\.webp$/, '');
     if (name.endsWith('@2x.webp')) return name.replace(/@2x\.webp$/, '');
     if (name.endsWith('.webp')) return name.replace(/\.webp$/, '');

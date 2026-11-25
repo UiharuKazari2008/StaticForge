@@ -15,7 +15,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const LINKS_FILE = path.join(__dirname, '..', 'data', 'picture-links.jsonl');
+// PICTURE_LINKS_FILE: tests point it at a temp file
+const LINKS_FILE = process.env.PICTURE_LINKS_FILE || path.join(__dirname, '..', 'data', 'picture-links.jsonl');
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 let lastMs = 0;
@@ -97,6 +98,9 @@ function remember(id, parent, kind) {
 function link(id, parent, kind = 'upscale') {
     load();
     if (!id || !parent || stemOf(id) === stemOf(parent)) return;
+    // the same link again (a retry, a replaced upscale re-linked) adds no line
+    const was = parents.get(stemOf(id));
+    if (was && was.kind === kind && stemOf(was.parent) === stemOf(parent)) return;
     remember(id, parent, kind);
     try {
         fs.mkdirSync(path.dirname(LINKS_FILE), { recursive: true });
@@ -127,7 +131,7 @@ function baseOf(name) {
 function isUpscale(name) {
     load();
     const p = parents.get(stemOf(name));
-    return !!(p && p.kind === 'upscale') || /_upscaled\.[a-z]+$/i.test(String(name || ''));
+    return !!(p && p.kind === 'upscale') || /_upscaled(\.[a-z]+)?$/i.test(String(name || ''));
 }
 
 function parentOf(name) {

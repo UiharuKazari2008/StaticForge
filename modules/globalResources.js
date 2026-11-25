@@ -8,6 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 // gallery pictures may be stored as x.jxl under the name x.png (#1134)
 const imageStore = require('./imageStore');
+const pictureIds = require('./pictureIds');
 const nekoaijs = require('nekoai-js');
 const SpellChecker = require('./spellChecker');
 const WordLookupService = require('./wordLookupService');
@@ -4213,7 +4214,7 @@ class GlobalResources {
         for (const file of files) {
             const base = this.pngMetadata.getBaseName(file);
             if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
-            if (file.includes('_upscaled')) baseMap[base].upscaled = file;
+            if (pictureIds.isUpscale(file)) baseMap[base].upscaled = file; // an ID upscale is linked, not suffixed (#1156)
             else baseMap[base].original = file;
         }
 
@@ -4556,7 +4557,7 @@ class GlobalResources {
 
                 // path is the picture's name in images/; the sprite sheet asks imageStore for its real PNG
                 const imagePath = path.join(imagesDir, pinnedFile);
-                if (pinnedFile.match(/\.(png|jpg|jpeg)$/i) && imageStore.existsSync(pinnedFile, imagesDir)) {
+                if ((/\.(png|jpg|jpeg)$/i.test(pinnedFile) || pictureIds.isId(pinnedFile)) && imageStore.existsSync(pinnedFile, imagesDir)) {
                     pinnedImages.push({
                         filename: pinnedFile,
                         path: imagePath,

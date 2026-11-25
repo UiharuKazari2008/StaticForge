@@ -24,6 +24,7 @@ const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const pictureIds = require('./pictureIds');
 const WebSocket = require('ws');
 
 const DEVICE_KINDS = new Set(['slideshow']);
@@ -95,6 +96,9 @@ function sanitizeSettings(raw) {
 
 /** Gallery files start with their creation time in ms ("1792945938451_generated_..."). */
 function filenameMs(name) {
+    // a picture ID encodes its time (#1156)
+    const idMs = pictureIds.timeOf(name);
+    if (idMs !== null) return idMs;
     const m = /^(\d{12,14})_/.exec(String(name || ''));
     const ms = m ? Number(m[1]) : 0;
     // some names carry a seed-like number, not a time: past tomorrow counts as undated
