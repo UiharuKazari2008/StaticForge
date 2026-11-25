@@ -62,7 +62,12 @@
     }
 
     class AdminTerminal {
-        constructor() {
+        /** opts.claudeSession: attach to that Fleet session's tmux pane (Show Screen) instead of a bash shell. */
+        constructor(opts) {
+            const o = opts || {};
+            this.claudeSession = o.claudeSession ? String(o.claudeSession) : '';
+            this.sessionLabel = o.title ? String(o.title) : '';
+            this.title = this.claudeSession ? `Claude session: ${String(o.title || this.claudeSession.slice(0, 8))}` : TITLE;
             counter += 1;
             this.n = counter;
             this.id = `at${Date.now().toString(36)}${counter}`;
@@ -89,7 +94,7 @@
             const w = root.desktopAppCreateWindow({
                 id: `adminTerminalModal${this.n}`,
                 identifier: `adminTerminal${this.n}`,
-                title: TITLE,
+                title: this.title,
                 icon16: ICON16,
                 taskbarIcon: ICON32,
                 className: 'at-window',
@@ -150,7 +155,7 @@
             requestAnimationFrame(place);
             setTimeout(place, 80);
             if (root.programFaults && root.programFaults.registerProgram) {
-                root.programFaults.registerProgram(m.id, { name: TITLE, terminate: () => this.close(), relaunch: () => root.openMelatonAdminTerminal() });
+                root.programFaults.registerProgram(m.id, { name: this.title, terminate: () => this.close(), relaunch: () => (this.claudeSession ? root.openClaudeSessionTerminal(this.claudeSession, this.sessionLabel) : root.openMelatonAdminTerminal()) });
             }
         }
 
@@ -176,7 +181,7 @@
                 theme: consoleTheme(),
                 allowProposedApi: false,
                 macOptionIsMeta: true,
-                ariaLabel: TITLE
+                ariaLabel: this.title
             });
             const fit = new Fit();
             term.loadAddon(fit);
@@ -223,7 +228,7 @@
             const c = root.wsClient;
             try {
                 if (!c || typeof c.sendMessage !== 'function') throw new Error('Not connected to Dreamscape');
-                await c.sendMessage('admin_terminal_open', { id: this.id, cols: this.term.cols, rows: this.term.rows }, false);
+                await c.sendMessage('admin_terminal_open', Object.assign({ id: this.id, cols: this.term.cols, rows: this.term.rows }, this.claudeSession ? { claudeSession: this.claudeSession } : {}), false);
                 if (this.closed) { this.send('admin_terminal_close', {}); return; }
                 this.opened = true;
                 // a window resized while the shell started
@@ -310,5 +315,13 @@
         return t.modal;
     }
 
+    /** A live terminal on a running Claude session's own tmux pane (Fleet's Show Screen): answer a menu it shows, watch it. Closing only detaches. */
+    function openClaudeSessionTerminal(sessionId, title) {
+        const t = new AdminTerminal({ claudeSession: sessionId, title });
+        t.show();
+        return t.modal;
+    }
+
     root.openMelatonAdminTerminal = openMelatonAdminTerminal;
+    root.openClaudeSessionTerminal = openClaudeSessionTerminal;
 })(window);
