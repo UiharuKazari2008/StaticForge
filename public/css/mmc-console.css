@@ -571,7 +571,9 @@
 
 .mmc-window .mmc-list.is-wrap .mmc-row > span > i {
     overflow: visible;
-    overflow-wrap: anywhere;
+    /* wrap between words; break inside a word only when one word alone is wider than the column */
+    overflow-wrap: break-word;
+    word-break: normal;
     text-overflow: clip;
 }
 

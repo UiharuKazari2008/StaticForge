@@ -599,7 +599,8 @@
         /** The grid columns for pixel widths: every column but the last fixed (shrinkable in a wrap list), the last takes the rest. */
         colsTemplate(widths, wrap) {
             const n = widths.length;
-            return widths.map((w, i) => (i === n - 1 ? 'minmax(0, 1fr)' : wrap ? `minmax(0, ${w}px)` : `${w}px`)).join(' ') + ' 0px';
+            // wrap: a column shrinks with the pane but never below a floor, so a short value (a state, a date) is not broken mid-word
+            return widths.map((w, i) => (i === n - 1 ? 'minmax(0, 1fr)' : wrap ? `minmax(${Math.min(w, i === 0 ? 180 : 64)}px, ${w}px)` : `${w}px`)).join(' ') + ' 0px';
         }
 
         /** The column widths the person dragged for a list (localStorage, per list id), or null. */

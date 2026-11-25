@@ -878,7 +878,7 @@
         WM.loading.add(key);
         try {
             const r = await send('claude_desk_supervisor', { action: 'work_map', id: Number(key) });
-            WM.maps.set(key, { map: unwrap(r, 'map'), at: Date.now() });
+            WM.maps.set(key, { map: unwrap(r, 'map').map || null, at: Date.now() });
         } catch (_) { if (!WM.maps.has(key)) WM.maps.set(key, { map: { nodes: [] }, at: Date.now() }); }
         WM.loading.delete(key);
         wmPaint(key);
