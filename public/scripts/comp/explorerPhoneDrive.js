@@ -773,7 +773,18 @@
     // scaled; kept in memory by the package's update stamp (iconKey) for the page's life, and the phone is told
     // which it need not send again (have). No storage, no timer.
     const ANDROID_PICK = 'android:';
-    const phoneIcons = new Map(); // "<iconKey>|<px>" -> data URL
+    const phoneIcons = new Map(); // "<iconKey>|<px>" -> blob URL (revoked when the map is cleared)
+    // no-base64-images: the phone sends each icon once as a data URL (transport over ActiveSync); it is kept as a blob URL
+    function phoneIconUrl(dataUrl) {
+        try {
+            const comma = dataUrl.indexOf(',');
+            const bin = atob(dataUrl.slice(comma + 1));
+            const u8 = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+            const type = (/^data:([^;,]+)/.exec(dataUrl) || [])[1] || 'image/png';
+            return URL.createObjectURL(new Blob([u8], { type }));
+        } catch (_) { return ''; }
+    }
     const PHONE_APPS_WAIT_MS = 4000;
     function isAndroidPick(id) {
         return typeof id === 'string' && id.length > ANDROID_PICK.length && id.startsWith(ANDROID_PICK) && id.includes('/');
@@ -794,7 +805,7 @@
             const st = ps.remote ? await ps.hello() : await ensureState();
             if (!st || blocker(st) || !(st.features && st.features.openWith)) return [];
             const px = Math.max(16, Math.min(128, Math.round(cssPx * (root.devicePixelRatio || 1))));
-            if (phoneIcons.size > 400) phoneIcons.clear();
+            if (phoneIcons.size > 400) { phoneIcons.forEach((u) => { try { URL.revokeObjectURL(u); } catch (_) { /* gone */ } }); phoneIcons.clear(); }
             const have = [];
             phoneIcons.forEach((_v, k) => { if (k.endsWith(`|${px}`)) have.push(k.slice(0, k.length - String(px).length - 1)); });
             const res = await ps.call('handlers', Object.assign({ actions: ['view', 'edit'], iconData: px, have }, where));
@@ -804,7 +815,7 @@
             const device = (t.name && t.name !== 'Phone' ? t.name : '') || (ps.remote ? ps.deviceName : localDeviceName()) || phoneName();
             const onPhone = device && device !== 'Phone' ? device : 'the phone';
             return (res && Array.isArray(res.apps) ? res.apps : []).filter((a) => a && a.id && a.label).map((a) => {
-                if (a.iconData) phoneIcons.set(`${a.iconKey}|${px}`, a.iconData);
+                if (a.iconData && !phoneIcons.has(`${a.iconKey}|${px}`)) { const u = phoneIconUrl(a.iconData); if (u) phoneIcons.set(`${a.iconKey}|${px}`, u); }
                 const icon = phoneIcons.get(`${a.iconKey}|${px}`) || '';
                 // an entry the app labels apart from itself ("Save as" in Material Files) says whose it is
                 const own = !a.appLabel || a.appLabel === a.label || a.label.toLowerCase().includes(a.appLabel.toLowerCase());
