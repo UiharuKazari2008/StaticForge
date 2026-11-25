@@ -3,8 +3,8 @@
 /**
  * Today's Recordings item (#1144; modules/plaudToday.js). Admin only; the page never reads Plaud itself.
  *   plaud_today_list                 -> { linked, recordings[{ id, name, createdAt, startAt, durationMs, source, review }], battery, device, lastRead, stale, waiting, reviewing, lastSync, deviceLogin }
- *     (device { name, model } | null, battery 0-100 | null, lastSync ms | null: the recorder, from the second Plaud sign-in (plaudDevice.js), null when not signed in or not reported;
- *      deviceLogin 'ok' | 'missing' | 'expired'; stale: true = Plaud was unreachable, the kept list with its older lastRead)
+ *     (device { name, model } | null, battery 0-100 | null, lastSync ms | null: the recorder, from Plaud's web page in the server's browser (plaudDevice.js); battery and lastSync stay null, Plaud's cloud has neither;
+ *      deviceLogin 'ok' | 'missing' (that browser is not signed in to Plaud) | 'unknown'; stale: true = Plaud was unreachable, the kept list with its older lastRead)
  *   plaud_today_summary { id }       -> { id, name, title, summary, review }
  *   plaud_today_review { id }        -> { sessionId, started, deduped, review }   (one agent session; a second press only returns it)
  *   plaud_today_review_new           -> { sessionId, started, deduped, count, review } | { started: false, none: true, count: 0, waiting: 0 }   (one chat for every unreviewed recording)

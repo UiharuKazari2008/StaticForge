@@ -46,10 +46,10 @@ function withReview(rec) {
 /**
  * The newest recordings with the review state of each. lastRead is when Plaud's list was last read; when Plaud cannot
  * be reached (network / refused) the kept list comes back with stale: true. The developer API reports no device
- * (tested Nov 25 2026: /open/third-party/devices answers 404), so device, battery and lastSync come from the second
- * sign-in (plaudDevice.js, the Plaud app account), read at most every 10 minutes, capped at 4 s here, nulls on any
- * failure; deviceLogin says whether that sign-in is 'ok', 'missing' or 'expired'. gr (optional) lets the one notice
- * asking for that sign-in be published.
+ * (tested Nov 25 2026: /open/third-party/devices answers 404), so device comes from Plaud's web page in the server's
+ * browser (plaudDevice.js), read at most once a day, capped at 4 s here, null on any failure; battery and lastSync stay
+ * null (Plaud's cloud has neither). deviceLogin: 'ok' | 'missing' (that browser is not signed in to Plaud) | 'unknown'.
+ * gr (optional) lets the one notice asking for that sign-in be published.
  */
 async function recorderRead() {
     let timer;

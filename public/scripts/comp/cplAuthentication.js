@@ -1597,8 +1597,6 @@
     let plAdding = false;
     let plError = '';
     let plOff = null;
-    let plDevEmail = null;   // the recorder sign-in's email field, kept over repaints (null = not typed yet)
-    let plDevCode = '';
     const plChanged = (msg) => {
         const d = msg && msg.data && typeof msg.data === 'object' ? msg.data : msg;
         if (!d || typeof d !== 'object') return;
@@ -1633,65 +1631,29 @@
         await csOpenBrowser(d.url, 'Plaud');
     }
 
-    // The recorder's own Plaud app account (plaud_device_*): shows its name and battery on Today's Plaud item
+    // The recorder itself (plaud_device_read): read by the server from Plaud's page in its Alchemy browser, where she is signed in
     function plRecorder(details, actions, st) {
         const dev = (st.device && typeof st.device === 'object') ? st.device : {};
-        if (dev.signedIn && !dev.expired) {
-            const lines = (Array.isArray(dev.recorders) ? dev.recorders : []).map((r) => {
-                const head = `${r.name || 'Plaud recorder'}${r.model ? ` (${r.model})` : ''}`;
-                const bits = [];
+        const list = Array.isArray(dev.recorders) ? dev.recorders : [];
+        const read = async () => { plState = await plSend('plaud_device_read'); plPaint(); };
+        if (dev.state === 'missing') {
+            details.append(customField('Recorder', tmText('The server\'s browser is not signed in to Plaud, so the recorder\'s name cannot be read. Sign in at Plaud in the window that opens (the way you sign in on the Plaud app), then click Read recorder again.', 'cpl-tm-hint')));
+            actions.append(tmButton('Sign in at Plaud', async () => { await csOpenBrowser(dev.url || 'https://web.plaud.ai/', 'Plaud'); }));
+        } else {
+            const box = document.createElement('div');
+            const lines = list.map((r) => {
+                const bits = [`${r.name || 'Plaud recorder'}${r.model ? ` (model ${r.model})` : ''}`];
+                if (r.firmware) bits.push(`Firmware ${r.firmware}`);
                 if (typeof r.battery === 'number' && Number.isFinite(r.battery)) bits.push(`Battery ${Math.round(r.battery)}%`);
                 if (r.lastSync) bits.push(`Last sync ${new Date(r.lastSync).toLocaleString()}`);
-                else if (r.firmware) bits.push(`Firmware ${r.firmware}`);
-                return bits.length ? `${head} - ${bits.join(' - ')}` : head;
+                return bits.join(' - ');
             });
-            const box = document.createElement('div');
-            // a code for an address Plaud does not know makes a new, empty account there
-            (lines.length ? lines : [dev.newAccount ? 'Plaud made a new, empty account for this address: the recorder is on another account. Sign out of recorder; the address must be the one the recorder\'s account uses.' : 'No recorder found on this account']).forEach((t) => { const row = document.createElement('div'); row.textContent = t; box.appendChild(row); });
-            details.append(customField('Recorder', box), customField('Recorder account', tmText(dev.email || 'Signed in')));
-            if (dev.lastError) details.append(customField('Recorder status', tmText(`Error: ${dev.lastError}`, 'cpl-tm-error')));
-            actions.append(tmButton('Sign out of recorder', async () => {
-                const ok = typeof root.showConfirmationDialog === 'function' ? await root.showConfirmationDialog('<p>Sign out of the recorder account? Today goes back to showing Last read only.</p>',
-                    [{ text: 'Sign out', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], null, { title: 'Dreamscape CardSpace', width: 400 }) : true;
-                if (ok !== true) return;
-                plState = await plSend('plaud_device_signout');
-                plDevCode = '';
-                plPaint();
-            }));
-            return;
+            (lines.length ? lines : [dev.readAt ? 'No recorder on this Plaud account' : 'Not read yet']).forEach((t) => { const row = document.createElement('div'); row.textContent = t; box.appendChild(row); });
+            details.append(customField('Recorder', box));
+            if (dev.readAt) details.append(customField('Recorder read', tmText(`${new Date(dev.readAt).toLocaleString()}. Plaud keeps no battery level or sync time online; the recorder reports those only to the Plaud app over Bluetooth.`, 'cpl-tm-hint')));
         }
-        const hint = 'Sign in with your Plaud app account to show your recorder\'s name and battery on Today. Plaud emails a code to the account\'s address (your Google or Apple address if you sign in with those); no password is kept.';
-        // a Google / Apple sign-in has a made-up address at Plaud (google-<id>@plaud.ai) that receives no mail: not offered
-        const known = (st.account && st.account.email) || '';
-        const email = customInput(plDevEmail != null ? plDevEmail : (/^(google|apple)-[^@]*@plaud\.ai$/i.test(known) ? '' : known), 'Plaud app account email');
-        email.type = 'email';
-        email.autocomplete = 'email';
-        email.spellcheck = false;
-        email.addEventListener('input', () => { plDevEmail = email.value; });
-        const sendCode = async () => {
-            plDevEmail = email.value.trim();
-            plState = await plSend('plaud_device_code_send', { email: plDevEmail });
-            plPaint();
-        };
-        details.append(customField('Recorder', tmText(dev.expired ? `The recorder sign-in has expired. ${hint}` : hint, 'cpl-tm-hint')), customField('Recorder email', email));
-        if (dev.lastError && !dev.expired) details.append(customField('Recorder status', tmText(`Error: ${dev.lastError}`, 'cpl-tm-error')));
-        if (!dev.codeSent) {
-            actions.append(tmButton('Send code', sendCode));
-            return;
-        }
-        const code = customInput(plDevCode, 'Code from the email');
-        code.inputMode = 'numeric';
-        code.autocomplete = 'one-time-code';
-        code.spellcheck = false;
-        code.addEventListener('input', () => { plDevCode = code.value; });
-        const signIn = async () => {
-            plState = await plSend('plaud_device_signin', { code: code.value.trim() });
-            plDevCode = '';
-            plPaint();
-        };
-        code.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); void signIn().catch((err) => tmToast((err && err.message) || 'The recorder sign-in failed')); } });
-        details.append(customField('Recorder code', code));
-        actions.append(tmButton('Sign in', signIn), tmButton('Send again', sendCode));
+        if (dev.lastError && dev.state !== 'missing') details.append(customField('Recorder status', tmText(`Error: ${dev.lastError}`, 'cpl-tm-error')));
+        actions.append(tmButton('Read recorder again', read));
     }
 
     function plDetails(details, actions) {
@@ -1808,8 +1770,6 @@
         plLink = null;
         plAdding = false;
         plError = '';
-        plDevEmail = null;
-        plDevCode = '';
     }
 
     // ---- the window: Vista's Windows CardSpace (icardagt.exe, icardres.dll; measured on the VM) ----

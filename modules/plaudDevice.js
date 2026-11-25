@@ -1,41 +1,45 @@
 'use strict';
 
 /**
- * The Plaud app account (second sign-in, #1193): Plaud's private web API, used only to read the recorder
- * (name, model, battery, last sync) for Today's Plaud item. The developer account (plaudClient.js) has no device endpoint.
- * Unofficial API: https://api.plaud.ai (regional bases answer status -302 with data.domains.api), email code sign-in
- * (POST /auth/otp-send-code { username } -> { token }; POST /auth/otp-login { code, token } -> { access_token }, JSON
- * body, a form once more when Plaud answers 422), GET /device/list with the bearer token.
- * The access token is a JWT with an exp claim; there is no refresh token: when it ends she signs in again.
+ * The Plaud recorder itself (name, model, firmware) for Today's Plaud item (#1193). The developer account
+ * (plaudClient.js) has no device endpoint, so it is read from Plaud's web app in the server's Alchemy browser, where
+ * Yukimi is signed in to Plaud (with Google) already: a hidden tab is opened at web.plaud.ai, the page itself asks
+ * Plaud for GET /device/list with its own session, and only the recorder's fields come back. The Plaud session never
+ * leaves the browser: no token is read out, stored or logged here.
  *
- * Stored in .cache/plaud-device.json (0600; env PLAUD_DEVICE_FILE): { token, base, email, since, exp, asked }.
- * Never a token, code or code token in a reply or a log. No timers: the recorder is read only when Today asks, at
- * most once per 10 minutes.
+ * Seen live Nov 25 2026: { data_devices: [{ sn, name, model, version_number, workspace_id, owner_member_id,
+ * info { auth_mode_*, timezone_iana }, prot_version }] }. Plaud's cloud has NO battery and NO last sync (tried
+ * /device/status, info, detail, battery, state, setting, config, ota, latest, sync: none exists; /device/<x> is the
+ * bind check). battery and lastSync are still taken if a field named like one ever appears, never made up.
+ * An emailed code (auth/otp-login) is no way in: for a Google account it makes a second, empty Plaud account.
+ *
+ * Kept in .cache/plaud-device.json (0600; env PLAUD_DEVICE_FILE): { recorders, readAt, signedIn, asked }. No timers:
+ * read only when Today (or the card) asks, at most once a day; the card's Read again forces it.
  */
 
 const fs = require('fs');
+const http = require('http');
 const path = require('path');
 
 const FILE = process.env.PLAUD_DEVICE_FILE || path.join(__dirname, '..', '.cache', 'plaud-device.json');
-const DEFAULT_BASE = 'https://api.plaud.ai';
-const TIMEOUT_MS = 15000;
-const CODE_MS = 10 * 60 * 1000;
-const READ_MS = 10 * 60 * 1000;
-const MIN_TIME = Date.UTC(2020, 0, 1);
+const WEB_URL = 'https://web.plaud.ai/';
+const CDP_HOST = '127.0.0.1';
+const CDP_PORT = Math.max(0, Number(process.env.ALCHEMY_CDP_PORT || 9339) || 0);
+const QUIET_URL = 'about:blank#alchemy-quiet';   // the Alchemy service never shows a tab with this mark
+const READ_MS = 24 * 60 * 60 * 1000;
+const RETRY_MS = 10 * 60 * 1000;
+const PAGE_TIMEOUT_MS = 25000;
 const NOTICE_ID = 'plaud:device-login';
-const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+const MIN_TIME = Date.UTC(2020, 0, 1);
 
-let deps = { fetch: (...a) => fetch(...a) };
-let state = null;       // { token, base, email, since, exp, asked } from the file
-let pending = null;     // { token, email, until }: a sent email code
-let recorders = [];     // from the last read
+let deps = {};
+let state = null;       // { recorders, readAt, signedIn, asked } from the file
 let fields = [];        // key names of the first device object (names only)
-let readAt = 0;
+let triedAt = 0;
 let reading = null;
 let lastError = '';
 let broadcast = null;
 let resources = null;
-let newAccount = false; // the last sign-in made a new Plaud account (no recorder on it)
 
 class PlaudError extends Error {
     constructor(message, code) { super(message); this.code = code || 'PLAUD_DEVICE_ERROR'; }
@@ -46,10 +50,9 @@ function load() {
     let s = null;
     try { s = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch (_) { s = null; }
     state = {
-        token: (s && s.token) || '', base: (s && s.base) || DEFAULT_BASE, email: (s && s.email) || '',
-        since: (s && s.since) || 0, exp: (s && s.exp) || 0, asked: (s && s.asked) || '', dead: !!(s && s.dead)
+        recorders: s && Array.isArray(s.recorders) ? s.recorders : [], readAt: (s && s.readAt) || 0,
+        signedIn: s && typeof s.signedIn === 'boolean' ? s.signedIn : null, asked: (s && s.asked) || ''
     };
-    newAccount = !!(s && s.newAccount);
     return state;
 }
 
@@ -66,156 +69,92 @@ function save() {
 
 function notify() { if (broadcast) { try { broadcast(); } catch (_) { /* the page learns on its next read */ } } }
 
-function jwtExp(token) {
-    try {
-        const p = JSON.parse(Buffer.from(String(token).split('.')[1], 'base64url').toString('utf8'));
-        return Number(p.exp) > 0 ? Number(p.exp) * 1000 : 0;
-    } catch (_) { return 0; }
-}
-
-/** ut_expire_at: seconds or ms. */
-function expOf(v) { const n = Number(v); return n > 0 ? (n < 1e11 ? Math.round(n * 1000) : Math.round(n)) : 0; }
-
-function isExpired(s) { return !!s.token && ((s.exp > 0 && s.exp <= Date.now()) || s.dead === true); }
-
+/** 'ok' the recorder is known | 'missing' the browser is not signed in to Plaud | 'unknown' not read yet / browser off. */
 function stateName() {
     const s = load();
-    if (!s.token) return 'missing';
-    return isExpired(s) ? 'expired' : 'ok';
+    if (s.signedIn === false) return 'missing';
+    return s.readAt ? 'ok' : 'unknown';
 }
 
-// ------------------------------------------------------------------------------------------ Plaud calls
+// ------------------------------------------------------------------------------------------ the page
 
-async function once(base, method, p, { token, fields: f, form } = {}) {
-    const headers = {
-        Accept: 'application/json', 'User-Agent': UA, Origin: 'https://web.plaud.ai', Referer: 'https://web.plaud.ai/',
-        'app-platform': 'web', 'edit-from': 'web'
-    };
-    if (token) headers.Authorization = `bearer ${token}`;
-    let body;
-    if (f) {
-        if (form) { headers['Content-Type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(f).toString(); }
-        else { headers['Content-Type'] = 'application/json'; body = JSON.stringify(f); }
-    }
-    let res;
+// Runs inside web.plaud.ai: the page's own session asks Plaud; the token stays in the page. Returns null while the page is still loading.
+const IN_PAGE = `(async () => {
+    if (location.host !== 'web.plaud.ai' || document.readyState === 'loading') return null;
+    let tok = null; let ws = null;
+    try { tok = JSON.parse(localStorage.getItem('pld_session.tokens')); ws = JSON.parse(localStorage.getItem('pld_session.workspace')); } catch (_) { /* below */ }
+    const by = tok && tok.byWsId;
+    const t = by && ((ws && by[ws.currentId]) || Object.values(by)[0]);
+    if (!t || !t.token) return document.readyState === 'complete' ? { signedIn: false } : null;
+    const r = await fetch('https://api.plaud.ai/device/list', { headers: { Authorization: (t.tokenType || 'Bearer') + ' ' + t.token, 'app-platform': 'web', 'edit-from': 'web' } });
+    if (r.status === 401) return { retry: true };
+    let b = null; try { b = await r.json(); } catch (_) { /* below */ }
+    if (!b || !Array.isArray(b.data_devices)) return { signedIn: true, failed: (b && b.msg) || ('HTTP ' + r.status) };
+    return { signedIn: true, devices: b.data_devices };
+})()`;
+
+function offline(message) {
+    return new PlaudError(message || 'The server\'s browser (Alchemy) is not running', 'PLAUD_DEVICE_BROWSER');
+}
+
+function browserSocketUrl() {
+    if (!CDP_PORT) return Promise.reject(offline());
+    return new Promise((resolve, reject) => {
+        const req = http.get({ host: CDP_HOST, port: CDP_PORT, path: '/json/version', timeout: 5000 }, (res) => {
+            let body = '';
+            res.on('data', (c) => { body += c; });
+            res.on('end', () => {
+                try { const url = JSON.parse(body).webSocketDebuggerUrl; if (url) { resolve(url); return; } } catch (_) { /* below */ }
+                reject(offline());
+            });
+        });
+        req.on('timeout', () => req.destroy(new Error('timeout')));
+        req.on('error', () => reject(offline()));
+    });
+}
+
+/** A hidden tab at web.plaud.ai, its device list, the tab closed again (the way youtubeAlchemy.js reads YouTube). */
+async function browserRead() {
+    const WebSocket = require('ws');
+    const ws = new WebSocket(await browserSocketUrl(), { perMessageDeflate: false });
+    await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', () => reject(offline())); });
+    let nextId = 1;
+    const waiting = new Map();
+    ws.on('message', (raw) => {
+        let m;
+        try { m = JSON.parse(raw); } catch (_) { return; }
+        const w = m.id != null && waiting.get(m.id);
+        if (!w) return;
+        waiting.delete(m.id);
+        if (m.error) w.fail(new Error(m.error.message || 'browser error')); else w.ok(m.result || {});
+    });
+    ws.on('close', () => { for (const w of waiting.values()) w.fail(offline()); waiting.clear(); });
+    const send = (method, params, sessionId) => new Promise((ok, fail) => {
+        const id = nextId++;
+        waiting.set(id, { ok, fail });
+        ws.send(JSON.stringify(Object.assign({ id, method, params: params || {} }, sessionId ? { sessionId } : {})));
+    });
+    let targetId = null;
     try {
-        res = await deps.fetch(`${base}${p}`, { method, headers, body, signal: AbortSignal.timeout(TIMEOUT_MS) });
-    } catch (_) {
-        throw new PlaudError('Plaud could not be reached', 'PLAUD_DEVICE_NETWORK');
-    }
-    const text = await res.text().catch(() => '');
-    let parsed = null;
-    try { parsed = text ? JSON.parse(text) : null; } catch (_) { parsed = null; }
-    return { status: res.status, body: parsed };
-}
-
-/**
- * One call; a -302 answer switches to the regional base (stored) and repeats once. Fields go as JSON (seen live Nov 25
- * 2026: otp-send-code validates a JSON username and answers a form body "invalid request"); a 422 is tried once more as
- * a form, and the JSON answer is kept when that fails too.
- */
-async function request(method, p, opts = {}) {
-    const s = load();
-    let r = await once(s.base, method, p, opts);
-    const dom = r.body && r.body.status === -302 && r.body.data && r.body.data.domains && r.body.data.domains.api;
-    if (dom && /^https:\/\/[a-z0-9.-]+\.plaud\.ai\/?$/i.test(String(dom))) {
-        s.base = String(dom).replace(/\/$/, '');
-        save();
-        r = await once(s.base, method, p, opts);
-    }
-    if (opts.fields && r.status === 422) {
-        const again = await once(s.base, method, p, Object.assign({}, opts, { form: true })).catch(() => null);
-        if (again && again.status < 300) r = again;
-    }
-    return r;
-}
-
-function failMsg(r, fallback) {
-    const b = r.body || {};
-    const d = Array.isArray(b.detail) && b.detail[0] && typeof b.detail[0].msg === 'string' ? b.detail[0].msg : '';
-    const why = (typeof b.msg === 'string' && b.msg) || d;
-    return why ? `${fallback} (${why.slice(0, 120)})` : fallback;
-}
-
-// ------------------------------------------------------------------------------------------ sign in and out
-
-/** The access token in a sign-in answer: the known places, else any JWT under a key named like a token (not a refresh one). */
-function findToken(body) {
-    const b = body && typeof body === 'object' ? body : {};
-    const d = b.data && typeof b.data === 'object' ? b.data : {};
-    // seen live Nov 25 2026: { access_token, token_type, refresh_token, ut_expire_at, is_new_user, ... } at the root, and the token is not a JWT
-    for (const v of [b.access_token, d.access_token]) if (typeof v === 'string' && v.length >= 16) return v;
-    let found = '';
-    const walk = (o, depth) => {
-        if (found || !o || typeof o !== 'object' || depth > 4) return;
-        for (const k of Object.keys(o)) {
-            const v = o[k];
-            if (typeof v === 'string' && /token|jwt|authorization/i.test(k) && !/refresh/i.test(k) && /^(bearer\s+)?eyJ[\w-]+\.[\w-]+\.[\w-]+$/i.test(v)) { found = v.replace(/^bearer\s+/i, ''); return; }
-            if (v && typeof v === 'object') walk(v, depth + 1);
+        let target;
+        try { target = await send('Target.createTarget', { url: QUIET_URL, background: true, hidden: true }); } catch (_) { target = await send('Target.createTarget', { url: QUIET_URL, background: true }); }
+        targetId = target.targetId;
+        const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
+        await send('Page.enable', {}, sessionId);
+        await send('Page.navigate', { url: WEB_URL }, sessionId);
+        const started = Date.now();
+        while (Date.now() - started < PAGE_TIMEOUT_MS) {
+            await new Promise((r) => setTimeout(r, 700));
+            const r = await send('Runtime.evaluate', { expression: IN_PAGE, returnByValue: true, awaitPromise: true }, sessionId).catch(() => null);
+            const value = r && r.result && r.result.value;
+            // retry: the page's token was a day old; its own scripts renew it in a moment
+            if (value && typeof value === 'object' && !value.retry) return value;
         }
-    };
-    walk(b, 0);
-    return found;
-}
-
-/** Key names and value types of an answer, three levels deep: for the log, never a value. */
-function shapeOf(o, depth = 0) {
-    if (o === null || typeof o !== 'object') return typeof o;
-    if (Array.isArray(o)) return `[${o.length ? shapeOf(o[0], depth + 1) : ''}]`;
-    if (depth >= 3) return '{...}';
-    return `{${Object.keys(o).map((k) => `${k}:${shapeOf(o[k], depth + 1)}`).join(', ')}}`;
-}
-
-async function sendCode(email) {
-    const to = String(email || '').trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new PlaudError('Enter the email address of the Plaud app account', 'PLAUD_DEVICE_BAD_EMAIL');
-    let r;
-    try { r = await request('POST', '/auth/otp-send-code', { fields: { username: to } }); } catch (e) { lastError = e.message; throw e; }
-    const token = r.body && (r.body.token || (r.body.data && r.body.data.token));
-    if (!(r.status < 300 && r.body && r.body.status === 0 && token)) {
-        lastError = failMsg(r, 'Plaud did not send a code');
-        throw new PlaudError(lastError, 'PLAUD_DEVICE_CODE_SEND');
+        throw new PlaudError('Plaud\'s page did not finish loading in the server\'s browser', 'PLAUD_DEVICE_TIMEOUT');
+    } finally {
+        if (targetId) await send('Target.closeTarget', { targetId }).catch(() => {});
+        try { ws.close(); } catch (_) { /* gone */ }
     }
-    pending = { token: String(token), email: to, until: Date.now() + CODE_MS };
-    lastError = '';
-}
-
-async function signIn(code) {
-    const c = String(code || '').trim();
-    if (!c) throw new PlaudError('Enter the code from the email', 'PLAUD_DEVICE_NO_CODE');
-    if (!pending || pending.until <= Date.now()) { pending = null; throw new PlaudError('Ask for a new code first', 'PLAUD_DEVICE_NO_CODE'); }
-    let r;
-    try { r = await request('POST', '/auth/otp-login', { fields: { code: c, token: pending.token } }); } catch (e) { lastError = e.message; throw e; }
-    const access = r.status < 300 ? findToken(r.body) : '';
-    if (!access) {
-        const accepted = r.status < 300 && r.body && r.body.status === 0;
-        // Plaud said yes but the token is not where it was looked for: the answer's key names (never values) say where
-        if (accepted) console.warn(`[plaud-device] sign-in answer without a token: ${shapeOf(r.body)}`);
-        lastError = accepted ? 'Plaud accepted the code but sent no sign-in this server could read' : failMsg(r, 'Plaud did not accept that code');
-        throw new PlaudError(lastError, accepted ? 'PLAUD_DEVICE_NO_TOKEN' : 'PLAUD_DEVICE_BAD_CODE');
-    }
-    const s = load();
-    const src = r.body && typeof r.body.access_token === 'string' ? r.body : ((r.body && r.body.data) || {});
-    // a code for an address Plaud does not know makes a new, empty account (a Google / Apple account has its own made-up address)
-    newAccount = src.is_new_user === true;
-    if (newAccount) console.warn('[plaud-device] Plaud made a new account for that address: it is not the account the recorder is on');
-    Object.assign(s, { token: String(access), email: pending.email, since: Date.now(), exp: jwtExp(access) || expOf(src.ut_expire_at), asked: '', dead: false, newAccount });
-    pending = null;
-    lastError = '';
-    recorders = []; readAt = 0;
-    save();
-    clearAsk();
-    try { await readNow(); } catch (_) { /* the card shows the recorder on Today's next read */ }
-    notify();
-}
-
-function signOut() {
-    const s = load();
-    Object.assign(s, { token: '', email: '', since: 0, exp: 0, asked: '', dead: false });
-    pending = null; recorders = []; fields = []; readAt = 0; lastError = ''; newAccount = false; s.newAccount = false;
-    try { fs.unlinkSync(FILE); } catch (_) { /* no file */ }
-    clearAsk();
-    notify();
 }
 
 // ------------------------------------------------------------------------------------------ the recorder
@@ -233,72 +172,86 @@ function timeOf(v) {
     return null;
 }
 
-/** Only values the object really carries: never invented. */
+/** Only values the object really carries (its own keys and those of its info part): never invented. */
 function mapDevice(d) {
     const o = d && typeof d === 'object' ? d : {};
+    const all = Object.assign({}, o.info && typeof o.info === 'object' ? o.info : {}, o);
     let battery = null;
     let lastSync = null;
-    for (const k of Object.keys(o)) {
-        if (battery === null && /batter|electric|power_level/i.test(k) && !/low|warn|stat|flag|type/i.test(k) && typeof o[k] === 'number' && o[k] >= 0 && o[k] <= 100) battery = o[k];
-        if (lastSync === null && /sync|connect|online|active/i.test(k)) lastSync = timeOf(o[k]);
+    for (const k of Object.keys(all)) {
+        if (battery === null && /batter|electric|power_level/i.test(k) && !/low|warn|stat|flag|type/i.test(k) && typeof all[k] === 'number' && all[k] >= 0 && all[k] <= 100) battery = all[k];
+        if (lastSync === null && /sync|connect|online|active/i.test(k)) lastSync = timeOf(all[k]);
     }
     const str = (v) => (typeof v === 'string' ? v : '');
-    return { name: str(o.name), model: str(o.model), serial: str(o.sn), firmware: typeof o.version_number === 'number' ? String(o.version_number) : str(o.version_number), battery, lastSync };
+    const serial = str(o.sn);
+    // the serial is kept cut: nothing here needs the whole one
+    return { name: str(o.name), model: str(o.model), serial: serial ? `...${serial.slice(-4)}` : '', firmware: typeof o.version_number === 'number' ? String(o.version_number) : str(o.version_number), battery, lastSync };
 }
 
 async function readNow() {
     const s = load();
+    const before = stateName();
+    triedAt = Date.now();
     let r;
-    try { r = await request('GET', '/device/list', { token: s.token }); } catch (e) { lastError = e.message; return recorder_cached(); }
-    if (r.status === 401 || (r.body && r.body.status === 401)) {
-        s.dead = true;
-        recorders = [];
-        lastError = 'The Plaud sign-in has expired';
-        save();
-        notify();
-        return null;
+    try {
+        r = await (deps.browserRead || browserRead)();
+    } catch (e) {
+        lastError = e.message;
+        return first();
     }
-    const list = r.status < 300 && r.body && Array.isArray(r.body.data_devices) ? r.body.data_devices : null;
-    if (!list) { lastError = failMsg(r, 'Plaud did not list the recorder'); return recorder_cached(); }
-    lastError = '';
-    const keys = list[0] && typeof list[0] === 'object' ? Object.keys(list[0]).sort() : [];
-    // key names only (never values): what Plaud really sends, since no public source lists a battery or sync field
-    if (keys.join() !== fields.join()) console.log(`[plaud-device] recorder fields: ${keys.join(', ') || '(none)'}`);
-    fields = keys;
-    recorders = list.map(mapDevice);
-    readAt = Date.now();
-    return recorder_cached();
+    if (!r.signedIn) {
+        s.signedIn = false;
+        lastError = 'The server\'s browser is not signed in to Plaud';
+    } else if (!Array.isArray(r.devices)) {
+        s.signedIn = true;
+        lastError = `Plaud did not list the recorder${r.failed ? ` (${String(r.failed).slice(0, 120)})` : ''}`;
+    } else {
+        const keys = r.devices[0] && typeof r.devices[0] === 'object' ? Object.keys(r.devices[0]).sort() : [];
+        // key names only (never values): what Plaud really sends
+        if (keys.join() !== fields.join()) console.log(`[plaud-device] recorder fields: ${keys.join(', ') || '(none)'}`);
+        fields = keys;
+        Object.assign(s, { signedIn: true, recorders: r.devices.map(mapDevice), readAt: Date.now(), asked: '' });
+        lastError = '';
+        clearAsk();
+    }
+    save();
+    if (stateName() !== before) notify();
+    return first();
 }
 
-function recorder_cached() {
-    const f = recorders[0];
-    return f ? { name: f.name, model: f.model, battery: f.battery, lastSync: f.lastSync, readAt } : null;
+function first() {
+    const s = load();
+    const f = s.signedIn === false ? null : s.recorders[0];
+    return f ? { name: f.name, model: f.model, battery: f.battery, lastSync: f.lastSync, readAt: s.readAt } : null;
 }
 
-/** The first recorder, cached 10 minutes; a network error keeps the cached one; expired or no login -> null. */
-async function recorder() {
-    if (stateName() !== 'ok') return null;
-    if (readAt && Date.now() - readAt < READ_MS) return recorder_cached();
+function read() {
     if (!reading) reading = readNow().finally(() => { reading = null; });
     return reading;
+}
+
+/**
+ * The first recorder, from the file; read again when it is a day old (a failed read is not repeated for 10 minutes).
+ * A stale read happens in the background: the caller gets what is known now. Not signed in -> null.
+ */
+async function recorder() {
+    const s = load();
+    const due = Date.now() - s.readAt >= READ_MS && Date.now() - triedAt >= RETRY_MS;
+    if (!due) return first();
+    if (s.readAt) { read().catch(() => {}); return first(); }
+    return read();
+}
+
+/** The card's Read again (and after a sign-in at Plaud in the browser): a read now. */
+async function refresh() {
+    await read();
+    notify();
 }
 
 function status() {
     const s = load();
     const name = stateName();
-    return {
-        signedIn: name === 'ok',
-        expired: name === 'expired',
-        email: s.token ? s.email : '',
-        since: s.token ? s.since : 0,
-        expiresAt: s.token ? s.exp : 0,
-        codeSent: !!(pending && pending.until > Date.now()),
-        newAccount: name === 'missing' ? false : newAccount,
-        lastError,
-        recorders: name === 'missing' ? [] : recorders.map((d) => ({
-            name: d.name, model: d.model, serial: d.serial ? `...${d.serial.slice(-4)}` : '', firmware: d.firmware, battery: d.battery, lastSync: d.lastSync
-        }))
-    };
+    return { state: name, signedIn: s.signedIn === true, recorders: name === 'missing' ? [] : s.recorders, readAt: s.readAt, lastError, url: WEB_URL };
 }
 
 // ------------------------------------------------------------------------------------------ the ask
@@ -312,33 +265,34 @@ function clearAsk() {
     try { const ib = inbox(); if (ib && ib.clear) ib.clear(undefined, NOTICE_ID, 'open'); } catch (_) { /* nothing to clear */ }
 }
 
-/** One notice per state (missing / expired) while the developer account is linked; remembered in the file. */
+/** One notice while the developer account is linked and the browser is not signed in to Plaud; remembered in the file. */
 function ask(gr, linked) {
     if (gr) resources = gr;
     const s = load();
-    const name = stateName();
-    if (!linked || name === 'ok' || s.asked === name) return;
+    if (!linked || stateName() !== 'missing' || s.asked === 'missing') return;
     const ib = inbox();
     if (!ib) return;
-    const text = name === 'expired'
-        ? 'Your Plaud recorder sign-in has expired. Sign in again in Control Panel > Authentication > Plaud.'
-        : 'Sign in to Plaud once more to show your recorder\'s name and battery on Today. Control Panel > Authentication > Plaud.';
     try {
-        ib.publish({ app: 'plaud', id: NOTICE_ID, cls: 'notification', title: 'Plaud', text, actions: [], data: { app: 'plaud' } });
-        s.asked = name;
+        ib.publish({
+            app: 'plaud', id: NOTICE_ID, cls: 'notification', title: 'Plaud',
+            text: 'Sign in at Plaud in the server\'s browser to show your recorder\'s name on Today: Control Panel > Authentication > Plaud > Sign in at Plaud.',
+            actions: [], data: { app: 'plaud' }
+        });
+        s.asked = 'missing';
         save();
     } catch (e) { console.warn(`[plaud-device] notice: ${e.message}`); }
 }
 
 module.exports = {
-    PlaudError,
-    status, sendCode, signIn, signOut, recorder, ask,
+    PlaudError, WEB_URL,
+    status, recorder, refresh, ask,
     state: stateName,
     attach: (gr) => { if (gr) resources = gr; },
     bind: (fn) => { broadcast = typeof fn === 'function' ? fn : null; },
     _test: {
         setDeps: (d) => { deps = Object.assign(deps, d || {}); },
-        reset: () => { state = null; pending = null; recorders = []; fields = []; readAt = 0; reading = null; lastError = ''; resources = null; },
-        fields: () => fields.slice()
+        reset: () => { state = null; fields = []; triedAt = 0; reading = null; lastError = ''; resources = null; },
+        fields: () => fields.slice(),
+        mapDevice
     }
 };
