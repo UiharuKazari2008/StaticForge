@@ -94,6 +94,10 @@
         Array.from(v.attributes).forEach((a) => { if (!x.hasAttribute(a.name)) m.removeAttribute(a.name); });
     }
     function morphKids(live, nv, d, st) {
+        // a node whose children the page redrew itself (innerHTML, textContent, appended rows) has children the patch
+        // never made: the page owns them, so they are left as they are - patching would keep the old and add the new
+        // beside them (a panel or a link's text shown twice, Nov 24 2026)
+        if (Array.from(live.childNodes).some((n) => !virt.has(n))) return;
         const nk = Array.from(nv.childNodes);
         const old = Array.from(live.childNodes).filter((n) => virt.has(n));
         const byKey = new Map();

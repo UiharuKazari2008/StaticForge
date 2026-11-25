@@ -1877,7 +1877,32 @@
 }
 
 #mmcConsole_claudedesk .cd-wm-node.is-working {
-    border-left-color: var(--cd-busy-a);
+    /* a working box is unmistakable: accent frame, tinted face and a running bar along its foot */
+    position: relative;
+    overflow: hidden;
+    border-color: var(--cd-busy-a);
+    border-left-width: 4px;
+    background: var(--cd-busy-tint);
+}
+
+#mmcConsole_claudedesk .cd-wm-node.is-working::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 30%;
+    height: 3px;
+    background: var(--cd-busy-a);
+    animation: cd-wm-run 1.6s linear infinite; /* perf: allow only on a box whose session or agent works now (the class goes when it stops), in the open Fleet window, never on the phone */
+}
+
+@keyframes cd-wm-run {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(340%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #mmcConsole_claudedesk .cd-wm-node.is-working::after { animation: none; width: 100%; }
 }
 
 #mmcConsole_claudedesk .cd-wm-node.is-done {
@@ -1919,4 +1944,37 @@
 #mmcConsole_claudedesk .cd-ux-note {
     flex: none;
     margin: 2px 6px;
+}
+
+/* HARD RULE (Yukimi, Nov 24 2026): no row in Fleet is ever more than one line - tables, list views, the task panel.
+   Text that does not fit ends in an ellipsis; the whole text is in the tooltip and the reading pane. */
+#mmcConsole_claudedesk .cd-table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+#mmcConsole_claudedesk .cd-table th,
+#mmcConsole_claudedesk .cd-table td,
+#mmcConsole_claudedesk .cd-table td *,
+#mmcConsole_claudedesk .mmc-row > span,
+#mmcConsole_claudedesk .mmc-row > span > i,
+#mmcConsole_claudedesk .cd-task-text {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#mmcConsole_claudedesk .cd-table td * {
+    display: inline;
+}
+
+#mmcConsole_claudedesk .cd-task {
+    flex-wrap: nowrap;
+    min-width: 0;
+}
+
+#mmcConsole_claudedesk .cd-task-text {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
 }

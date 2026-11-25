@@ -6460,6 +6460,12 @@
         wire(app);
         const c = root.mmcConsole.open(def(app));
         S.c = c;
+        // every row in Fleet is one line (Yukimi, Nov 24 2026): a cell cut short by its ellipsis shows its whole text
+        // as a tooltip when hovered (set once, only when it is really cut)
+        if (c.modal) c.modal.addEventListener('mouseover', (ev) => {
+            const cell = ev.target && ev.target.closest && ev.target.closest('td, .mmc-row > span, .cd-task-text, .cd-tile span, .cd-tile small');
+            if (cell && !cell.title && cell.scrollWidth > cell.clientWidth + 1) cell.title = cell.textContent.trim();
+        }, { passive: true });
         S.show = Object.assign({}, SHOW_DEFAULT, c.reg('ShowView', {}) || {});
         // the open chat follows the selection: leaving it stops its pushes
         // a session's node opening in Active Work reads its background agents
