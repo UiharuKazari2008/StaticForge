@@ -265,6 +265,7 @@ async function launch(gr, o) {
     // a launch-only config only when that could not be registered
     const coordOk = await runtime.ensureCoordMcp(env.CLAUDE_CONFIG_DIR || null).catch(() => false);
     await runtime.ensureGiteaMcp(env.CLAUDE_CONFIG_DIR || null).catch(() => false); // yozora (gitea-mcp), user scope like agent-coord
+    await runtime.ensureAskHook(env.CLAUDE_CONFIG_DIR || null).catch(() => false); // AskUserQuestion goes to Fleet / the phone
     const engine = o.engine && o.engine !== 'claude' ? String(o.engine) : '';
     let other = null;
     if (engine) {

@@ -178,15 +178,20 @@ function turnOf(messages) {
     const actions = [];
     let final = '';
     let lastAssistantText = '';
+    const said = []; // every answer the agent wrote in the turn, not only the last one (it answers steering as it goes)
     messages.forEach((m) => {
         if (m.sidechain) return;
         if (m.role === 'user' && m.kind === 'text' && String(m.text || '').trim()) users.push(String(m.text).trim());
         else if (m.role === 'assistant' && m.kind === 'tool_use') actions.push(`${m.tool || 'tool'}: ${String(m.text || '').replace(/\s+/g, ' ').slice(0, 220)}`);
-        else if (m.role === 'assistant' && m.kind === 'text' && String(m.text || '').trim()) lastAssistantText = String(m.text).trim();
+        else if (m.role === 'assistant' && m.kind === 'text' && String(m.text || '').trim()) { lastAssistantText = String(m.text).trim(); said.push(lastAssistantText); }
     });
     final = lastAssistantText;
     const fromSupervisor = users.length > 0 && users.every((u) => u.startsWith(STEER_PREFIX));
-    return { request: users[0] || '', steering: users.slice(1), actions, final, fromSupervisor };
+    // the Supervisor's own notes are not asks of the user's: they are checked against the asks they name, not added to them
+    const human = users.filter((u) => !u.startsWith(STEER_PREFIX));
+    // a turn that only answers the Supervisor's own note is checked against that note (a supervised work item needs it)
+    const asks = human.length ? human : users;
+    return { request: asks[0] || '', steering: asks.slice(1), actions, final, said: said.slice(0, -1), fromSupervisor };
 }
 
 function capTurn(t) {
@@ -195,6 +200,7 @@ function capTurn(t) {
     const steering = t.steering.map((s) => cut(s, 1500)).slice(0, 12);
     let actions = t.actions.slice(-120);
     const final = cut(t.final, 6000);
+    const said = (t.said || []).map((x) => cut(x, 800)).slice(-12);
     let size = request.length + steering.join('').length + final.length;
     const kept = [];
     for (let i = actions.length - 1; i >= 0; i -= 1) {
@@ -203,7 +209,7 @@ function capTurn(t) {
         kept.unshift(actions[i]);
     }
     actions = kept;
-    return { request, steering, actions, final, droppedActions: t.actions.length - actions.length };
+    return { request, steering, actions, final, said, droppedActions: t.actions.length - actions.length };
 }
 
 const SYSTEM = [
@@ -211,6 +217,7 @@ const SYSTEM = [
     'List each concrete thing asked (including small asides, questions to answer, files or checks named, "also ..." items, and changes of direction from steering). For each, decide from the actions and the final answer whether it was done, answered, or explicitly deferred with a reason. A later steering message that cancels or replaces an earlier ask overrides it.',
     'Only report real gaps: an ask that was not done, not answered, or done differently than asked without saying so. Do not report style, quality opinions, or things nobody asked for. Work the agent said it filed as a follow-up issue counts as addressed. If the turn ended with the agent waiting on the user (a question, an approval) that is not a gap.',
     'When the request is to build, change or fix something, it is only done with evidence it works: the agent ran tests, a build, the program, or looked at the result, and says what it saw. A build / fix turn that ends without any such evidence is a gap ("not shown to be tested").',
+    'Answers along the way count as much as the final one: an ask answered or reported done in any of them is addressed. An agent that says an item was already done earlier (naming the commit, the check or what it saw) has addressed it: do not ask for it again.',
     'Answer ONLY a JSON object: {"verdict":"ok"|"gaps"|"unclear","summary":"one sentence","missed":[{"item":"what was asked and not addressed","evidence":"why you think so, quoting the request"}]}. verdict ok means nothing missed; unclear means the summary is not enough to tell.'
 ].join('\n');
 
@@ -226,6 +233,9 @@ function promptFor(t, meta) {
         '',
         `## What it did (${t.actions.length} tool calls${t.droppedActions ? `, ${t.droppedActions} earlier ones left out` : ''})`,
         t.actions.join('\n') || '(no tool calls)',
+        '',
+        `## What it told the user along the way (${(t.said || []).length})`,
+        (t.said || []).length ? t.said.map((x, i) => `${i + 1}. ${x}`).join('\n') : '(nothing before the final answer)',
         '',
         '## Its final answer',
         t.final || '(no final text)'
@@ -1415,6 +1425,67 @@ function markPartial(sessionId) {
 
 // ---------------------------------------------------------------- MCP: a session asks (unix socket)
 
+// A Claude Code session's AskUserQuestion (scripts/claude-ask-hook.js): the questions become a request form on every
+// client (and the phone's notification inbox); the answers go back to the hook, which fills the tool in with them.
+const ASK_WAIT_MS = 10 * 60 * 1000;
+function accountNameOf(configDir) {
+    try {
+        const m = /claude-accounts\/([0-9a-f]+)\/config\/?$/.exec(String(configDir || ''));
+        if (!m) return configDir ? '' : 'host';
+        const a = require('./claudeAccountHost').listAccounts(gResources).find((x) => x.id === m[1]);
+        return (a && (a.name || a.email)) || '';
+    } catch (_) { return ''; }
+}
+function askFields(questions) {
+    const fields = [];
+    questions.slice(0, 4).forEach((q, i) => {
+        const text = String((q && q.question) || '').replace(/\s+/g, ' ').trim();
+        const head = String((q && q.header) || '').trim();
+        const opts = (Array.isArray(q && q.options) ? q.options : []).slice(0, 8);
+        const optLabel = (o) => `${String((o && o.label) || o || '')}${o && o.description ? ` - ${o.description}` : ''}`.slice(0, 120);
+        if (q && q.multiSelect === true) {
+            opts.forEach((o, j) => fields.push({ id: `q${i}_o${j}`, label: `${head ? `${head}: ` : ''}${String((o && o.label) || o || '')}`.slice(0, 80), type: 'bool', sub: j === 0 ? text : String((o && o.description) || '') }));
+        } else {
+            fields.push({ id: `q${i}`, label: (head || `Question ${i + 1}`).slice(0, 80), type: 'select', sub: text, data: { options: opts.map((o) => ({ value: String((o && o.label) || o || ''), label: optLabel(o) })).concat([{ value: '__other__', label: 'Other... (type below)' }]), default: opts.length ? String((opts[0] && opts[0].label) || opts[0]) : '' } });
+        }
+        fields.push({ id: `q${i}_other`, label: `${head || `Question ${i + 1}`}: other`.slice(0, 80), type: 'text', sub: 'Typed here, it replaces the choice above', data: { placeholder: 'Other...' } });
+    });
+    return fields;
+}
+async function askUser(req, onId) {
+    const questions = (Array.isArray(req.questions) ? req.questions : []).filter((q) => q && q.question).slice(0, 4);
+    if (!questions.length) throw new Error('no questions');
+    const rf = require('./requestForm');
+    let live = null;
+    try { live = require('./claudeSessions').liveSessions().find((x) => x.id === req.sessionId); } catch (_) { /* unknown */ }
+    const title = String((live && live.name) || path.basename(String(req.cwd || '')) || String(req.sessionId || 'A Claude session').slice(0, 8)).slice(0, 40);
+    const account = accountNameOf(req.configDir);
+    const form = rf.normalizeRequestForm({ title: `${title} asks`, submitLabel: 'Answer', fields: askFields(questions) });
+    form.fields.unshift({ id: 'session', label: `Session: ${title}${account ? ` (${account})` : ''}`.slice(0, 80), type: 'text', sub: 'Read only: the Claude session that asks', data: { default: String(req.sessionId || '').slice(0, 8), placeholder: '', options: [], required: false, min: null, max: null, step: null } });
+    const id = rf.askRequestForm(gResources, { title: form.title, submitLabel: form.submitLabel, fields: form.fields, chatId: null, claude: { sessionId: String(req.sessionId || ''), question: String(questions[0].question).slice(0, 200), count: questions.length } });
+    onId(id);
+    const deadline = Date.now() + ASK_WAIT_MS;
+    let ans = null;
+    while (Date.now() < deadline) {
+        ans = await rf.awaitRequestForm(id);
+        if (!ans.pending) break;
+        ans = null;
+    }
+    if (!ans) { rf.submitRequestForm({ id, cancelled: true }); return { ok: true, timeout: true }; }
+    if (ans.cancelled || !ans.values) return { ok: true, timeout: true };
+    const answers = {};
+    questions.forEach((q, i) => {
+        const v = ans.values;
+        const other = String(v[`q${i}_other`] || '').trim();
+        let a;
+        if (other) a = other;
+        else if (q.multiSelect === true) a = (q.options || []).filter((o, j) => v[`q${i}_o${j}`] === true).map((o) => String((o && o.label) || o)).join(', ');
+        else a = String(v[`q${i}`] || '').replace(/^__other__$/, '');
+        answers[q.question] = a;
+    });
+    return { ok: true, answers };
+}
+
 let sockServer = null;
 function serveSocket() {
     const file = socketPath();
@@ -1424,17 +1495,23 @@ function serveSocket() {
         let buf = '';
         sock.setEncoding('utf8');
         sock.setTimeout(CALL_TIMEOUT_MS + 15000, () => sock.destroy());
+        let asking = null; // ask_user: the request form id while the hook waits
+        sock.on('close', () => { if (asking) { try { require('./requestForm').submitRequestForm({ id: asking, cancelled: true }); } catch (_) { /* gone */ } } });
         sock.on('data', async (chunk) => {
             buf += chunk;
             const i = buf.indexOf('\n');
-            if (i < 0) { if (buf.length > 4096) sock.destroy(); return; }
+            if (i < 0) { if (buf.length > (buf.startsWith('{"op":"ask_user"') ? 262144 : 4096)) sock.destroy(); return; }
             let req = null;
             try { req = JSON.parse(buf.slice(0, i)); } catch (_) { req = null; }
             buf = '';
             let out;
             try {
-                if (!req || !['check', 'enqueue', 'pause', 'resume'].includes(req.op)) throw new Error('op must be check, enqueue, pause or resume');
-                if (req.op === 'pause' || req.op === 'resume') {
+                if (!req || !['check', 'enqueue', 'pause', 'resume', 'ask_user'].includes(req.op)) throw new Error('op must be check, enqueue, pause, resume or ask_user');
+                if (req.op === 'ask_user') {
+                    sock.setTimeout(0); // a person answers: the hook's own timeout bounds the wait
+                    out = await askUser(req, (id) => { asking = id; });
+                    asking = null;
+                } else if (req.op === 'pause' || req.op === 'resume') {
                     // an agent asks: hold only (freeze is Fleet's)
                     const r = req.op === 'pause'
                         ? await pauseSession(String(req.sessionId || ''), { mode: 'hold', reason: String(req.reason || '').slice(0, 300), by: String(req.by || 'an agent').slice(0, 80), kind: 'agent' })

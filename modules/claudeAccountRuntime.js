@@ -133,6 +133,7 @@ async function prepare(id) {
     if (JSON.stringify(cj) !== before) await writeJsonAtomic(path.join(cdir, '.claude.json'), cj, 0o600);
     await ensureCoordMcp(cdir).catch((e) => console.warn(`[claudeRuntime] agent-coord: ${e.message}`));
     await ensureGiteaMcp(cdir).catch((e) => console.warn(`[claudeRuntime] yozora MCP: ${e.message}`));
+    await ensureAskHook(cdir).catch((e) => console.warn(`[claudeRuntime] ask hook: ${e.message}`));
     watch(id);
     return { dir: cdir, email: (meta.oauthAccount && meta.oauthAccount.emailAddress) || '' };
 }
@@ -207,6 +208,35 @@ async function ensureGiteaMcp(dir, opts = {}) {
     const r = await run(['mcp', 'add', '--scope', 'user', GITEA_NAME, '--', want.command, ...want.args], env);
     if (r.code !== 0) console.warn(`[claudeRuntime] yozora MCP not registered in ${dir || '~/.claude.json'}: ${String(r.stderr || r.stdout || '').trim().slice(0, 160)}`);
     return r.code === 0;
+}
+
+const ASK_HOOK_RE = /claude-ask-hook\.js/;
+function askHookCommand() { return `node ${path.join(__dirname, '..', 'scripts', 'claude-ask-hook.js')}`; }
+
+/**
+ * A PreToolUse hook on AskUserQuestion in <dir>/settings.json (host: ~/.claude/settings.json): the question goes to
+ * Fleet and the phone as a request form (scripts/claude-ask-hook.js). Merged, never replacing another setting or hook;
+ * written only when it changed.
+ */
+async function ensureAskHook(dir) {
+    if (process.env.DREAMSCAPE_CLAUDE_ASK_HOOK === '0') return false;
+    const file = path.join(dir || path.join(claudeHome(), '.claude'), 'settings.json');
+    const st = (await readJson(file)) || {};
+    const want = { type: 'command', command: askHookCommand(), timeout: 660 };
+    st.hooks = st.hooks && typeof st.hooks === 'object' ? st.hooks : {};
+    const list = Array.isArray(st.hooks.PreToolUse) ? st.hooks.PreToolUse : [];
+    const before = JSON.stringify(st);
+    const mine = list.find((g) => g && g.matcher === 'AskUserQuestion' && Array.isArray(g.hooks) && g.hooks.some((h) => h && ASK_HOOK_RE.test(String(h.command || ''))));
+    if (mine) {
+        mine.hooks = mine.hooks.map((h) => (h && ASK_HOOK_RE.test(String(h.command || '')) ? Object.assign({}, h, want) : h));
+    } else {
+        list.push({ matcher: 'AskUserQuestion', hooks: [want] });
+    }
+    st.hooks.PreToolUse = list;
+    if (JSON.stringify(st) === before) return true;
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    await fs.promises.writeFile(file, `${JSON.stringify(st, null, 2)}\n`, { mode: 0o600 });
+    return true;
 }
 
 function cliRunner(args, extraEnv) {
@@ -284,4 +314,4 @@ function stopAll() {
     watchers.clear();
 }
 
-module.exports = { prepare, configFor, syncBack, armAll, bind, stopAll, configDir, accountDir, fleetInfo, isMoved, writeFleetInfo, ensureCoordMcp, ensureGiteaMcp, giteaServer, coordServer, readJson, writeJsonAtomic, fresher, _fresher: fresher };
+module.exports = { prepare, configFor, syncBack, armAll, bind, stopAll, configDir, accountDir, fleetInfo, isMoved, writeFleetInfo, ensureCoordMcp, ensureGiteaMcp, ensureAskHook, giteaServer, coordServer, readJson, writeJsonAtomic, fresher, _fresher: fresher };

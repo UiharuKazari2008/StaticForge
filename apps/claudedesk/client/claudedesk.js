@@ -95,6 +95,7 @@
 
     function blank() {
         return {
+            asks: new Map(),
             app: null,
             c: null,
             host: null,
@@ -287,6 +288,20 @@
             usageApply(d.changed, d.removed, false);
             if (S.c && usageWanted(S.c.node)) repaint();
         }, opts);
+        // a session's AskUserQuestion shows as a request form (the Supervisor's ask_user); the row at the end of its chat opens it again
+        c.on('request_form', (msg) => {
+            const d = (msg && msg.data) || msg || {};
+            if (!d.id || !d.claude || !d.claude.sessionId) return;
+            S.asks.set(d.id, d);
+            askDraw(d.claude.sessionId);
+        }, opts);
+        c.on('request_form_closed', (msg) => {
+            const d = (msg && msg.data) || msg || {};
+            const a = S.asks.get(String(d.id));
+            if (!a) return;
+            S.asks.delete(String(d.id));
+            askDraw(a.claude.sessionId);
+        }, opts);
         c.on('claude_desk_transcript_append', (msg) => {
             const d = (msg && msg.data) || msg || {};
             const chat = S.chats.get(d.id);
@@ -427,6 +442,7 @@
         const row = S.act.rows.find((x) => String(x.id) === String(id));
         const w = openViewer({ key, title: row ? `${KIND_TEXT[row.kind] || 'Activity'}: ${String(row.summary || row.tool || '').slice(0, 40)}` : 'Activity', body: '<p class="mmc-hint">Reading...</p>' });
         w.modal.addEventListener('click', (ev) => { const b = ev.target.closest('[data-cd-open-session]'); if (b && S.c) openChat(S.c, b.dataset.cdOpenSession); });
+        w.modal.addEventListener('click', (ev) => { const b = ev.target.closest('[data-cd-ask]'); const a = b && S.asks.get(b.dataset.cdAsk); if (a && typeof root.presentRequestForm === 'function') root.presentRequestForm(a); });
         try {
             const r = unwrap(await send('claude_fleet_activity', { action: 'detail', id }), 'row');
             w.set(activityHtml(r));
@@ -772,7 +788,19 @@
         return (chat.pending || []).map((p) => `<div class="cd-msg cd-user is-pending" data-pend="${p.at}"><div class="cd-msg-head"><b>${p.steer ? 'You (steering)' : 'You'}</b><span>sending</span></div><div class="cd-msg-text">${esc(p.text)}</div></div>`).join('');
     }
     /** The live activity row at the end of a working session's log: what it does now, the turn's time, its background agents. */
+    function askHtml(id) {
+        const a = Array.from(S.asks.values()).find((x) => x.claude.sessionId === id);
+        return a ? `<div class="cd-activity" role="status"><div><b>Asks: ${esc(a.claude.question)}</b> <button type="button" class="btn-secondary" data-cd-ask="${esc(a.id)}">Answer...</button></div></div>` : '';
+    }
+    /** The ask row is drawn again when a question opens or closes. */
+    function askDraw(id) { if (logOf(id)) pendingDraw(id); }
     function activityHtml(id) {
+        const chat = S.chats.get(id);
+        const ask = askHtml(id);
+        if (ask) return ask + activityHtml1(id);
+        return activityHtml1(id);
+    }
+    function activityHtml1(id) {
         const chat = S.chats.get(id);
         const l = liveOf(id);
         const ins = chat && chat.ins;
@@ -2470,7 +2498,7 @@
                 },
                 { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Settings, reviews, restart waits, pauses, locks and temp files',
                     children: [
-                        { id: 'sup-reviews', name: `Reviews (${reviewN})`, icon: `${VI}/check-16.png`, desc: 'What the Supervisor made of each finished agent turn' },
+                        { id: 'sup-reviews', name: `Reviews (${reviewN})`, icon: '/static_images/vista-cmdbar/paste.png', desc: 'What the Supervisor made of each finished agent turn' },
                         { id: 'sup-asks', name: `Restart Waits (${supAsks().length})`, icon: '/static_images/vista-cmdbar/clock.png', desc: 'Agents waiting to restart Dreamscape' },
                         { id: 'sup-holds', name: `Paused Sessions (${supHolds().length})`, icon: '/static_images/vista-cmdbar/pause.png', desc: 'Sessions the Supervisor or you paused' },
                         { id: 'sup-locks', name: `Managed Locks (${supLocks().length})`, icon: '/static_images/vista-cmdbar/lock.png', desc: 'Busy locks the Supervisor keeps for agents' },
@@ -2568,7 +2596,7 @@
             tile('co-pending', `${VI}/warning-16.png`, sentBack.length, 'Sent back', true),
             tile('sessions', SESSION16, S.live.length, busy ? `Sessions (${busy} working)` : 'Sessions'),
             tile('bg-agents', `${ITEMS}/programs-and-features-16.png`, bgRunning().length, 'Background agents'),
-            tile('sup-reviews', `${VI}/check-16.png`, gaps, 'Reviews with gaps', true),
+            tile('sup-reviews', '/static_images/vista-cmdbar/paste.png', gaps, 'Reviews with gaps', true),
             tile('sup-asks', '/static_images/vista-cmdbar/clock.png', supAsks().length, 'Restart waits', true),
             tile('sup-holds', '/static_images/vista-cmdbar/pause.png', supHolds().length, 'Paused', true)
         ].join('')}</div>`;
