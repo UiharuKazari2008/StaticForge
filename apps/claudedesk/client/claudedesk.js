@@ -1602,8 +1602,8 @@
                                 { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
                             ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: `${A}/session-16.png`, desc: 'What this agent is doing' }] : [])
                         },
-                        { id: 'sup-asks', name: `Restart Waits (${supAsks().length})`, icon: `${VI}/warning-16.png`, desc: 'Agents waiting to restart Dreamscape' },
-                        { id: 'sup-holds', name: `Paused Sessions (${supHolds().length})`, icon: `${VI}/warning-16.png`, desc: 'Sessions the Supervisor or you paused' },
+                        { id: 'sup-asks', name: `Restart Waits (${supAsks().length})`, icon: supAsks().length ? `${VI}/warning-16.png` : `${VI}/info-16.png`, desc: 'Agents waiting to restart Dreamscape' },
+                        { id: 'sup-holds', name: `Paused Sessions (${supHolds().length})`, icon: supHolds().length ? `${VI}/warning-16.png` : `${VI}/info-16.png`, desc: 'Sessions the Supervisor or you paused' },
                         { id: 'sup-locks', name: `Managed Locks (${supLocks().length})`, icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'Busy locks the Supervisor keeps for agents' },
                         { id: 'sup-arts', name: `Work Folders (${supArtifacts().length})`, icon: FOLDER16, desc: 'Work folders and temp files the agents left' }
                     ] },

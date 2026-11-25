@@ -112,7 +112,11 @@ function availability(usage, s) {
     const extra = usage && (usage.extraEnabled || (usage.extra && usage.extra.enabled));
     if (!extra) return Object.assign(out, { costWarning: '' });
     const x = (usage && usage.extra) || {};
-    const spent = Number.isFinite(x.used) ? ` (${x.currency || ''}${x.used}${Number.isFinite(x.limit) ? ` of ${x.currency || ''}${x.limit}` : ''} spent this month)` : '';
+    // used_credits / monthly_limit come in minor units (decimal_places, 2 for cents): 1875 is $18.75; a 0 limit is no limit set
+    const dec = Number.isFinite(x.decimals) ? x.decimals : 2;
+    const sym = { USD: '$', EUR: '\u20ac', GBP: '\u00a3', JPY: '\u00a5' }[x.currency || 'USD'];
+    const money = (n) => { const v = (n / 10 ** dec).toFixed(dec); return sym ? `${sym}${v}` : `${v} ${x.currency}`; };
+    const spent = Number.isFinite(x.used) ? ` (${money(x.used)} spent this month${Number.isFinite(x.limit) && x.limit > 0 ? ` of ${money(x.limit)}` : ', no monthly limit'})` : '';
     return Object.assign(out, { costWarning: `Extra usage is on: work past the plan's limits on this account is billed${spent}` });
 }
 
