@@ -1316,6 +1316,17 @@ sup._test.setFetch(async (url, opts) => {
             assert.match(wb.message, /^Input Required: Spend 20 USD/);
             assert.deepStrictEqual(wb.questions.map((q) => q.answer), ['Yes', '']);
             assert.strictEqual(typed.length, 0, 'nothing typed into the session yet');
+            // a question that needs real work becomes a started work item and the agent is told so; Yukimi is not asked
+            const pf = P('{"verdict":"input","questions":[{"question":"Commits are not on origin/main; who pushes them?","answer":"","followUp":{"title":"Land the missing commits","brief":"Merge them onto origin/main without losing work."}}]}');
+            assert.strictEqual(pf.questions[0].followUp.title, 'Land the missing commits');
+            const f = await mk('InputFollowUp');
+            typed.length = 0;
+            await sup.workAfterReview({ sessionId: f.sessionId, verdict: 'input', missed: [], summary: 's', questions: pf.questions });
+            assert.strictEqual(sup.getWork(f.id).state, 'running', 'not Input Required');
+            const fu = sup.listWork({ limit: 300 }).find((x) => x.title === 'Land the missing commits');
+            assert.ok(fu && fu.startNow, 'the follow-up is queued to start now');
+            await waitFor(() => !['queued', 'starting'].includes(sup.getWork(fu.id).state), 'follow-up started');
+            assert.ok(typed.some(([id, t]) => id === f.sessionId && t.includes(`work item ${fu.id}`)), JSON.stringify(typed));
             // input is active: it carries its issue (issuesOpen) and holds no slot
             await assert.rejects(() => sup.answerWork(a.id, { answers: ['x'] }), /only an item that is Input Required/);
             // Yukimi answers: her text, else the Supervisor's proposal; a stopped session is resumed first

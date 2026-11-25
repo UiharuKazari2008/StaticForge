@@ -298,7 +298,7 @@ const SYSTEM = [
     'Work the agent handed to a background agent or subagent that is still running, and said so (what it does, that it reports back), is in progress, not a gap: the turn ending while it runs is expected. Only report it if the agent never started it or never said so.',
     'Answers along the way count as much as the final one: an ask answered or reported done in any of them is addressed. An agent that says an item was already done earlier (naming the commit, the check or what it saw) has addressed it: do not ask for it again.',
     'When "The user\'s list" is given, it holds everything the user asked over the whole session, with a tick and the evidence for the items already done: an open item without evidence that this turn was about and did not address is a gap; a ticked item with evidence is addressed. Name the open items this turn did, with what shows it, in "done".',
-    'Standing rule from Yukimi: "I do not and should not have much involvement in the process. The point is for you to take control of getting the task completed and fully tested and reviewed." You own completion. Answer every question you reasonably can yourself: scope, approach, which option to take, whether to test, whether a second login / sign-in flow should be built, waiting on other agents. Send the agent back (gaps) until the work is built, tested with evidence and reviewed. Leave "answer" empty ONLY for what truly needs Yukimi: spending money, a secret / password / login only she has, creating an account only she can make, or an irreversible outward action (publishing, deleting her data). When in doubt you decide: take the recommended option (or the safest reasonable one) and say so in the answer ("Decided by the Supervisor: option B, the recommended one") instead of asking. "Which option do you prefer" with a recommended option is answered with that option, never escalated.',
+    'Standing rule from Yukimi: "I do not and should not have much involvement in the process. The point is for you to take control of getting the task completed and fully tested and reviewed." You own completion. Answer every question you reasonably can yourself: scope, approach, which option to take, whether to test, whether a second login / sign-in flow should be built, waiting on other agents. Send the agent back (gaps) until the work is built, tested with evidence and reviewed. Leave "answer" empty ONLY for what truly needs Yukimi: spending money, a secret / password / login only she has, creating an account only she can make, or an irreversible outward action toward other people (publishing to the public web, sending mail to others, deleting her data). Engineering is never hers: git (push, merge, rebase, diverged branches, commits missing from origin, conflicts, branch protection), builds, restarts, tests, CI, other agents and Fleet itself are answered by you - the logical answer is to merge correctly without losing anyone\'s work. When an answer needs real work or deep reasoning, do not ask: put "followUp":{"title":"...","brief":"the complete brief: goal, files, how to merge or fix without losing work, acceptance"} on that question (answer may stay empty) and the Supervisor starts it as its own work item and tells the agent. When in doubt you decide: take the recommended option (or the safest reasonable one) and say so in the answer ("Decided by the Supervisor: option B, the recommended one") instead of asking. "Which option do you prefer" with a recommended option is answered with that option, never escalated.',
     'A turn that ends waiting on ANOTHER AGENT or EVENT (not on Yukimi) is not "input" and not done: the agent says it waits for someone to commit, to release claims, for a build gate or a restart to finish, for another session to end. Give verdict "ok" (or "gaps" when something else was missed) and record the wait in "waitsOn":{"kind":"commit"|"claims"|"build"|"restart"|"agent","who":"agent name or id when named","paths":["files named"],"what":"one line: what it waits for"}. The Supervisor watches the condition and tells the agent to continue when it clears. Omit "waitsOn" when nothing is waited on.',
     'Answer ONLY a JSON object: {"verdict":"ok"|"gaps"|"input"|"unclear","summary":"one sentence","waitsOn":null,"missed":[{"item":"what was asked and not addressed","evidence":"why you think so, quoting the request"}],"questions":[{"question":"what the agent waits on","answer":"your answer or empty","why":"source of the answer"}],"done":[{"id":12,"evidence":"short proof from the actions or the answer"}]}. verdict ok means nothing missed and nothing waiting on the user; unclear means the summary is not enough to tell. "done" is optional (only ids from the user\'s list).'
 ].join('\n');
@@ -502,7 +502,10 @@ function cleanQuestions(list) {
     return (Array.isArray(list) ? list : []).map((x) => {
         if (typeof x === 'string') return { question: x.replace(/\s+/g, ' ').trim().slice(0, 400), answer: '', why: '' };
         if (!x || typeof x !== 'object') return null;
-        return { question: String(x.question || x.item || '').replace(/\s+/g, ' ').trim().slice(0, 400), answer: String(x.answer || '').replace(/\s+/g, ' ').trim().slice(0, 800), why: String(x.why || x.source || '').replace(/\s+/g, ' ').trim().slice(0, 300) };
+        const q = { question: String(x.question || x.item || '').replace(/\s+/g, ' ').trim().slice(0, 400), answer: String(x.answer || '').replace(/\s+/g, ' ').trim().slice(0, 800), why: String(x.why || x.source || '').replace(/\s+/g, ' ').trim().slice(0, 300) };
+        const f = x.followUp && typeof x.followUp === 'object' ? x.followUp : null;
+        if (f && String(f.title || '').trim() && String(f.brief || '').trim()) q.followUp = { title: String(f.title).replace(/\s+/g, ' ').trim().slice(0, 160), brief: String(f.brief).trim().slice(0, 8000) };
+        return q;
     }).filter((x) => x && x.question).slice(0, 12);
 }
 
@@ -1859,6 +1862,9 @@ async function workAfterReview(rv, opts = {}) {
         else { setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done', input_questions: null }); settleParent(w.parent_id); }
     }
     else if (rv.verdict === 'input' && qs.length) {
+        // a question whose answer is real work becomes its own started work item, never a question for Yukimi (Nov 25 2026:
+        // "if it requires deep reasoning then make a new work item and start it")
+        startFollowUps(w, qs);
         const open = qs.filter((q) => !hasAnswer(q));
         let sent = false;
         if (!open.length) sent = await sendAnswers(rv, qs, opts).catch(() => false);
@@ -1939,6 +1945,19 @@ function reopenOnWork(sessionId) {
             if (t) { const cur = db().prepare('SELECT state, message FROM supervisor_work WHERE id = ?').get(r.id); if (cur && cur.state === 'running' && /^Working again/.test(cur.message)) { setWork(r.id, { message: `Working again: ${t}` }); emit({ work: getWork(r.id) }); } }
         } catch (_) { /* the generic message stands */ }
     })();
+}
+
+/** Questions carrying followUp { title, brief } and no answer: each starts as a work item (start now) and gets an answer naming it. */
+function startFollowUps(w, qs) {
+    for (const q of qs) {
+        if (!q || !q.followUp || hasAnswer(q)) continue;
+        try {
+            const item = enqueue({ title: q.followUp.title, prompt: `${q.followUp.brief}\n\n(Started by the Supervisor from a question work item ${w.id} ended on: "${q.question}". Do not ask Yukimi; decide, do it, test it, report on the issue.)`, startNow: true, source: 'agent', sourceRef: `supervisor:followup:${w.id}:${Date.now().toString(36)}`, cwd: w.cwd || undefined }, {});
+            q.answer = `The Supervisor started work item ${item.id} ("${q.followUp.title}") for this. Do not wait for it: carry on with the rest of your task and end when that is done.`;
+            q.why = 'follow-up work item';
+            commentIssue(w, `**Fleet / Supervisor:** started work item ${item.id} for a question this run ended on (${q.question.slice(0, 160)}): ${q.followUp.title}`);
+        } catch (e) { console.warn(`[supervisor] follow-up for ${w.id}: ${e.message}`); }
+    }
 }
 
 /** Reopens the item's closed issue: always when Yukimi sent it back (any), else only when Fleet closed it. True when it is open now. */
