@@ -1354,17 +1354,20 @@
         const a = recPlaudApp();
         if (a && typeof window.wmAndroidLaunch === 'function') void window.wmAndroidLaunch(a.id, a.label);
     }
-    // the transfer status, else "Last read 14:02". No battery line (Yukimi, Nov 25 2026): the recorder gives its percentage only to the Plaud app
+    // "Battery full - Note ready 12:03": the battery in front when the server knows it (a number = percent, a word = the
+    // recorder's own four-step state), then the transfer status, else "Last read 14:02". Yukimi, Nov 25 2026: the battery stays.
     function recDevice() {
+        const bv = rec.device && rec.device.battery != null ? rec.device.battery : rec.battery;
+        const batt = typeof bv === 'string' && bv ? `Battery ${bv} - ` : (bv != null && bv !== '' && Number.isFinite(Number(bv)) ? `Battery ${Math.round(Number(bv))}% - ` : '');
         const tr = rec.transfer;
         const today = (ms) => ms > 0 && new Date(ms).toDateString() === new Date().toDateString();
-        if (tr && tr.state === 'transferring') return 'Transferring from the recorder';
-        if (tr && today(tr.noteReadyAt) && tr.noteReadyAt > (tr.state === 'complete' ? tr.at : 0)) return `Note ready ${fmtTime.format(tr.noteReadyAt)}`;
-        if (tr && tr.state === 'complete' && today(tr.at)) return `Transfer complete ${fmtTime.format(tr.at)}`;
+        if (tr && tr.state === 'transferring') return batt ? `${batt}Transferring` : 'Transferring from the recorder';   // the short words only beside a battery (one line)
+        if (tr && today(tr.noteReadyAt) && tr.noteReadyAt > (tr.state === 'complete' ? tr.at : 0)) return `${batt}Note ready ${fmtTime.format(tr.noteReadyAt)}`;
+        if (tr && tr.state === 'complete' && today(tr.at)) return batt ? `${batt}Transferred ${fmtTime.format(tr.at)}` : `Transfer complete ${fmtTime.format(tr.at)}`;
         const t = rec.lastSync || rec.lastRead;
         const stamp = t ? `${new Date(t).toDateString() === new Date().toDateString() ? '' : `${fmtDate.format(t)} `}${fmtTime.format(t)}` : '';
         const read = t ? `${rec.lastSync ? 'Synced' : 'Last read'} ${stamp}` : '';
-        return read;
+        return `${batt}${read}`.replace(/ - $/, '');
     }
 
     function recModel() {

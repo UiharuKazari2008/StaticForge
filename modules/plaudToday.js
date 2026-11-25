@@ -102,7 +102,8 @@ async function list(gr) {
 async function summary(id) {
     const rec = await plaud.getRecording(id);
     const note = (rec.notes || []).find((n) => n.markdown && !/^\(not readable/.test(n.markdown)) || null;
-    const text = note ? String(note.markdown).slice(0, SUMMARY_MAX) : '';
+    // Plaud's notes open with card links only its own app can draw ([](plaud://image?type=summaryCard...)): not text
+    const text = note ? String(note.markdown).replace(/!?\[[^\]]*\]\(plaud:\/\/[^)\s]*\)/g, '').replace(/^\s*\n/gm, '').trim().slice(0, SUMMARY_MAX) : '';
     return { id: rec.id, name: rec.name, summary: text, title: note ? note.title : '', review: sessionFor(rec.source) };
 }
 
