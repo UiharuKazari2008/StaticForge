@@ -230,9 +230,12 @@ async function watch(name, opts = {}) {
         if (p.code !== 0) return { state: 'failed', link: '', message: 'It ended right after starting' };
         const text = p.stdout || '';
         link = claudeSessions._text.paneLink(text) || link;
-        if (FAIL_RE.test(text)) {
+        // a resumed session replays its conversation: an old "● Login expired · Please run /login" from history is not this
+        // start failing (Nov 25 2026: moving sessions off an account whose login expired killed every resume on the new one)
+        const failLine = text.split('\n').find((l) => FAIL_RE.test(l) && !(opts.resume && /^\s*[\u25cf\u23bf\u276f>]/.test(l)));
+        if (failLine) {
             await tmux(['kill-session', '-t', `=${name}`]);
-            return { state: 'failed', link: '', message: cleanTitle(text.split('\n').find((l) => FAIL_RE.test(l)), 160) };
+            return { state: 'failed', link: '', message: cleanTitle(failLine, 160) };
         }
         if (rc && RC_ACTIVE_RE.test(text)) {
             if (!link) link = linkOf(name);
