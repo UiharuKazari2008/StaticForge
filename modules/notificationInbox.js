@@ -21,6 +21,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const CACHE_DIR = path.join(__dirname, '..', '.cache');
 const STATES = new Set(['new', 'seen', 'acted', 'cleared']);
@@ -78,6 +79,7 @@ function database() {
             state TEXT NOT NULL DEFAULT 'new',
             actedBy TEXT,
             updatedAt INTEGER NOT NULL,
+            digest TEXT,
             PRIMARY KEY (user, id)
         );
         CREATE INDEX IF NOT EXISTS notices_user_created ON notices (user, createdAt);
@@ -100,6 +102,10 @@ function database() {
             PRIMARY KEY (user, key)
         );
     `);
+    // a database from before the digest (a dismissed alert never sounds twice, #1194): add the column once
+    try {
+        if (!db.prepare('PRAGMA table_info(notices)').all().some((c) => c.name === 'digest')) db.exec('ALTER TABLE notices ADD COLUMN digest TEXT');
+    } catch (e) { console.warn(`[notify-inbox] digest column: ${e.message}`); }
     return db;
 }
 
@@ -176,22 +182,62 @@ function publish(notice = {}) {
         actedBy: null,
         updatedAt: now,
     };
-    // does this publish sound on the phones (#889)? A new notice, one already done with (cleared, acted),
-    // or the producer saying it is a new event under the same id (the next message in a conversation).
-    // A notice changing in place (a countdown step, a commute update, the same text again) is silent.
+    // ---- does this publish sound on the phones, and does it bring a dismissed notice back? (#889, #1194) ----
+    // Yukimi: "If you went off once, you don't get to go off again ... unless the alert has been majorly changed."
+    // Every publish carries a digest of what the notice says: the producer's own (notice.digest: the thing that makes
+    // it a different event) or sha1 of class | title | text | data.stamp. The stored row (cur) decides:
+    //   - no row: loud, new.
+    //   - a live row (new / seen), the producer did not say alert: a countdown step, a commute update, a place added to
+    //     an alert: updated in place, silent - unless it escalated.
+    //   - a live row, alert: true: loud only when the digest changed (or it escalated); the same thing again is silent.
+    //     A new message in a conversation is a new event under the one id (its digest carries the message's guid, its text
+    //     differs), a new Lapis stamp is one (data.stamp), a persona's next reply has other text.
+    //   - a done row (acted, cleared): the user has dealt with it. Unchanged digest and no escalation: it STAYS acted /
+    //     cleared (state and createdAt kept, text / data / digest refreshed, expiresAt the later of the two so it stays
+    //     quiet until the alert really ends), no phone push, no inbox_updated 'new' - the page must not pop it and a
+    //     reload's catch-up (non-cleared rows only) must not bring it back. Changed or escalated: loud, new again
+    //     (a different event title or day for a weather alert; a message with another guid).
+    //   - escalation: moving to a higher-ranked class (CLASS_RANK: weather-alert -> weather-severe) is material even when
+    //     the digest is otherwise the same: the worse news sounds once more. A downgrade is no news.
+    //   - a legacy row (digest NULL, from before this column): its digest is worked out from what it stored; when the
+    //     producer gives a custom digest, the same title and class counts as unchanged.
+    //   - returning: true (a snooze ending): the user asked for it back, so it sounds and is new again whatever it says.
+    //   - the test lane (user 'test', modules/testDevices.js) keeps the old rule: every alert: true sounds, every
+    //     publish over a done row is new again - it exists to fire the same notice at the emulator over and over.
+    const custom = typeof notice.digest === 'string' && notice.digest !== '';
+    const dataObj = notice.data && typeof notice.data === 'object' ? notice.data : {};
+    row.digest = custom ? sha1(`c|${notice.digest}`) : defaultDigest(row.cls, row.title, row.text, dataObj.stamp);
     let alert = true;
     try {
-        const cur = database().prepare('SELECT state, title, text FROM notices WHERE user = ? AND id = ?').get(user, id);
-        if (cur && cur.state !== 'acted' && cur.state !== 'cleared' && notice.alert !== true) alert = false;
+        const cur = database().prepare('SELECT state, digest, title, text, cls, data, expiresAt FROM notices WHERE user = ? AND id = ?').get(user, id);
+        if (cur) {
+            const done = cur.state === 'acted' || cur.state === 'cleared';
+            if (user === 'test') {
+                if (!done && notice.alert !== true) alert = false;
+            } else {
+                const escalated = classRank(row.cls) > classRank(cur.cls);
+                // returning: the user asked for it back (a snooze ending, reminderScheduler.fireSnoozed) - loud by request
+                const changed = escalated || notice.returning === true || digestChanged(cur, row, custom);
+                if (done && !changed) {
+                    // stays dealt with: refresh what it says, nothing else (no state move, no push, no broadcast)
+                    const until = Math.max(Number(cur.expiresAt) || 0, Number(expiresAt) || 0) || null;
+                    database().prepare('UPDATE notices SET text = ?, data = ?, expiresAt = ?, digest = ? WHERE user = ? AND id = ?').run(row.text, row.data, until, row.digest, user, id);
+                    const stored = noticeRow(user, id);
+                    return stored ? Object.assign(rowOut(stored), { alert: false }) : null;
+                }
+                alert = done ? true : escalated || notice.returning === true || (notice.alert === true && changed);
+            }
+        }
     } catch (_e) { /* a new table: new */ }
     row.fresh = alert ? 1 : 0;
     try {
         database()
             .prepare(
-                `INSERT INTO notices (user, id, app, cls, title, text, actions, data, createdAt, expiresAt, state, actedBy, updatedAt)
-                 VALUES (@user, @id, @app, @cls, @title, @text, @actions, @data, @createdAt, @expiresAt, @state, @actedBy, @updatedAt)
+                `INSERT INTO notices (user, id, app, cls, title, text, actions, data, createdAt, expiresAt, state, actedBy, updatedAt, digest)
+                 VALUES (@user, @id, @app, @cls, @title, @text, @actions, @data, @createdAt, @expiresAt, @state, @actedBy, @updatedAt, @digest)
                  ON CONFLICT (user, id) DO UPDATE SET app=excluded.app, cls=excluded.cls, title=excluded.title, text=excluded.text,
                      actions=excluded.actions, data=excluded.data, expiresAt=excluded.expiresAt, state=excluded.state, actedBy=NULL, updatedAt=excluded.updatedAt,
+                     digest=excluded.digest,
                      createdAt=CASE WHEN @fresh = 1 THEN excluded.createdAt ELSE createdAt END`
             )
             .run(row);
@@ -213,6 +259,21 @@ function publish(notice = {}) {
         sentTo.forEach((device) => noteSent(device, user, id, alert, true));
     }
     return out;
+}
+
+// A class that is worse news than another: moving up it is material even when the text digest is the same (the weather
+// alert that turned severe sounds once more; the reverse does not). Extend with a pair when another class gets levels.
+const CLASS_RANK = { 'weather-alert': 1, 'weather-severe': 2 };
+const classRank = (cls) => CLASS_RANK[cls] || 0;
+
+const sha1 = (s) => crypto.createHash('sha1').update(String(s)).digest('hex');
+const defaultDigest = (cls, title, text, stamp) => sha1(`${cls}|${title}|${text}|${stamp || ''}`);
+
+/** Did the notice change materially from the stored row (cur), by digest; a legacy row without one is judged on what it stored. */
+function digestChanged(cur, row, custom) {
+    if (cur.digest) return cur.digest !== row.digest;
+    if (custom) return cur.title !== row.title || cur.cls !== row.cls;
+    return defaultDigest(cur.cls, cur.title, cur.text, safeJson(cur.data, {}).stamp) !== row.digest;
 }
 
 /**
@@ -553,6 +614,8 @@ function tapPhoneHellos() {
     if (typeof as.onDeviceEvent === 'function') {
         as.onDeviceEvent((name, detail, me) => {
             if (name === 'inbox.posted' && me && me.id && detail && detail.id) confirmed(me.id, detail.id, detail.how);
+            // any other notice news from a phone's app (a dismissal in its shade, #1194) is logged: proof of which hop arrived
+            else if (/^inbox\./.test(String(name || ''))) console.log(`[notify-inbox] phone event ${name} ${detail && detail.id ? String(detail.id).slice(0, 80) : ''} from device ${String((me && me.id) || '?').slice(0, 8)}`);
         });
     }
     // deliveries a restart left unconfirmed
@@ -618,6 +681,7 @@ module.exports = {
     clients,
     _test: {
         resendDue,
+        database,
         setNow: (fn) => {
             nowFn = fn || (() => Date.now());
         },

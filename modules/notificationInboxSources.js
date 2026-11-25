@@ -20,7 +20,8 @@
  *                                     live page, none for a turn a steer cut short - #1168, design-decisions.md)
  *   print:<jobId>                     DreamStudio: a print the phone asked for failed (a finished print
  *                                     raises nothing: Yukimi, Nov 22 2026, #1040)
- *   wx:<placeId>:<alertId>            a weather alert for Home / Work
+ *   wx:<alertId>                      a weather alert, one notice for the event whichever places it covers (Home, Work, the
+ *                                     current place): data.places lists them, the text names them all (#1194)
  *   rain:<placeId>                    the rain alarm for Home / Work
  *
  * Titles and texts are the page's own (WM wording); data names the app and what to open on a tap.
@@ -306,6 +307,8 @@ function onTextEvent(p) {
             id: smsId(p.accountId, p.chatGuid),
             cls: 'sms',
             alert: true, // each message is news, though the conversation keeps one notice (#889)
+            // the message itself is what makes it news (#1194): two texts of "ok" are two events, the same message twice is one
+            digest: `sms|${p.chatGuid}|${p.message.guid || p.message.date || Date.now()}`,
             title: 'New Text Message',
             text: `From: ${from}\n${text}`,
             actions: ['reply'],
@@ -556,29 +559,48 @@ function when(iso) {
     return `${day} ${time}`;
 }
 
-/** weather_alert_issued { alert, place, source }. */
+/**
+ * weather_alert_issued { alert, place, source }. One weather event is one notice (#1194): weatherService reports an alert once
+ * per place it covers; the id is the alert's own, the places an alert was reported for are merged into data.places and the
+ * text names them all. Another place on an alert changes nothing for the sound: a live one updates in place, a dismissed one
+ * stays dismissed (it was dismissed for every region). The digest is the event's title and end day - not the places, not the
+ * severity (a rise in class sounds through the inbox's class rank, a fall stays silent), so a same-day extension or a
+ * rewording is no news and another event or another day is.
+ */
 function onWeatherAlert({ alert, place } = {}) {
     if (!alert || !alert.id) return null;
+    const id = `wx:${alert.id}`;
+    const held = inbox.get('admin', id);
+    const places = Array.isArray(held && held.data && held.data.places) ? held.data.places.filter((p) => p && p.id).map((p) => ({ id: p.id, label: p.label || '', name: p.name || '' })) : [];
+    const placeId = (place && place.id) || 'place';
+    if (!places.some((p) => p.id === placeId)) places.push({ id: placeId, label: (place && place.label) || '', name: (place && place.name) || '' });
+    // "Home, Work: <area>, until Fri 11:00 AM" - the one place's own name, else the alert's area
+    const names = [...new Set(places.map((p) => p.name).filter(Boolean))];
+    const where = places.length > 1 ? alert.area || names.join(' / ') : names[0] || alert.area || '';
     const bits = [];
-    const where = (place && place.name) || alert.area || '';
     if (where) bits.push(where);
     const until = when(alert.ends || alert.expires);
     if (until) bits.push(`until ${until}`);
     const text = bits.join(', ');
-    const label = place && place.label ? `${place.label}: ` : '';
+    const labels = [...new Set(places.map((p) => p.label).filter(Boolean))].join(', ');
+    const label = labels ? `${labels}: ` : '';
     const severe = alert.severity === 'extreme' || alert.severity === 'severe';
+    const title = alert.title || 'Weather Alert';
     const ends = Date.parse(`${String(alert.expires || alert.ends || '').slice(0, 16)}:00Z`);
-    const placeId = (place && place.id) || 'place';
+    const expiresAt = Number.isFinite(ends) ? ends + DAY / 2 : Date.now() + 2 * DAY;
     return publish({
         app: 'weather',
-        id: `wx:${placeId}:${alert.id}`,
+        id,
         cls: severe ? 'weather-severe' : 'weather-alert',
-        title: alert.title || 'Weather Alert',
+        title,
         text: `${label}${text || 'A weather alert was issued.'}`,
         actions: ['view'],
-        data: { app: 'weather', kind: 'weather-alert', alertId: alert.id, placeId },
-        // the alert's own end (its wall clock, give or take the zone) plus a margin
-        expiresAt: Number.isFinite(ends) ? ends + DAY / 2 : Date.now() + 2 * DAY,
+        // placeId (the first place) stays for older readers
+        data: { app: 'weather', kind: 'weather-alert', alertId: alert.id, placeId: places[0].id, places },
+        alert: true, // sounds only when the digest moved (another event or day) or the class rose: the inbox decides
+        digest: `${title}|${String(alert.ends || alert.expires || '').slice(0, 10)}`,
+        // the alert's own end (its wall clock, give or take the zone) plus a margin; the latest place's end wins
+        expiresAt: Math.max(expiresAt, (held && held.expiresAt) || 0),
     });
 }
 

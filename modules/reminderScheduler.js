@@ -423,7 +423,8 @@ function fireSnoozed(row) {
     if (!notice) return null;
     if (/^rem:/.test(row.id)) notice.title = `${clock(new Date(nowFn()))} | Reminder`;
     if (notice.expiresAt && notice.expiresAt <= nowFn()) notice.expiresAt = nowFn() + HOUR; // snoozed past its end: still shown a while
-    const out = publishNotice(row.id, notice);
+    // she asked for it back (#1194): a snooze ending sounds even though it says what it said before
+    const out = publishNotice(row.id, Object.assign({}, notice, { returning: true }));
     console.log(`[reminders] snooze over: ${row.id}`);
     return out;
 }

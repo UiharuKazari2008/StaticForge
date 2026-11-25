@@ -133,7 +133,7 @@ const byId = (id, user = 'admin') => inbox.list(user, { includeCleared: true }).
 
     // ---- weather: an alert until it ends, the rain alarm for its spell
     src.onWeatherAlert({ alert: { id: 'a1', title: 'Wind Advisory', severity: 'moderate', expires: '2026-11-16T21:00' }, place: { id: 'home', label: 'Home', name: 'Jersey City' } });
-    n = byId('wx:home:a1');
+    n = byId('wx:a1');
     assert.strictEqual(n.title, 'Wind Advisory');
     assert.strictEqual(n.text, 'Home: Jersey City, until Mon 9:00 PM');
     assert.strictEqual(n.cls, 'weather-alert');

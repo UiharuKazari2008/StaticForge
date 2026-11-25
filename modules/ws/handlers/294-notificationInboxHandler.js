@@ -81,6 +81,9 @@ function registerPackets(handlersCtx) {
     reg('inbox_ack', (ctx) => {
         const m = ctx.message;
         const ok = inbox.ack(inbox.userOf(ctx.clientInfo), String(m.id || ''), String(m.state || ''), m.device || ctx.clientInfo.clientId);
+        // every ack on one line (#1194): which hop of a dismissal reached the server - the page, the app's popup, a phone's shade
+        const ci = ctx.clientInfo || {};
+        console.log(`[notify-inbox] ack ${String(m.id || '').slice(0, 80)} ${String(m.state || '')} from ${ci.as && ci.as.id ? `device ${ci.as.id.slice(0, 8)}` : `client ${String(m.device || ci.clientId || '?').slice(0, 24)}`}${ci.light ? ' (link)' : ''} -> ${ok ? 'ok' : 'unknown id'}`);
         reply(handlersCtx, ctx.ws, m, { ok });
     }, { destructive: true });
     // the phone's Sounds & Notifications "Display message on screen" choices: classes shown without a

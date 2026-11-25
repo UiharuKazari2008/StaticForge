@@ -96,7 +96,7 @@
         // a WM notification of its own sound class (Settings > Sounds & Notifications: Weather: Alert /
         // Weather: Severe alert), View and Dismiss on the soft keys; it stays until dismissed (#792)
         // the server's copy for when the page is not running has this id (#876): done here, done there
-        const inboxId = `wx:${(data.place && data.place.id) || 'place'}:${alert.id}`;
+        const inboxId = `wx:${alert.id}`; // one notice per event, whichever places it covers (#1194)
         if (isPhone() && root.wmShell && typeof root.wmShell.appNote === 'function') {
             const label = data.place && data.place.label ? `${data.place.label}: ` : '';
             const note = root.wmShell.appNote({

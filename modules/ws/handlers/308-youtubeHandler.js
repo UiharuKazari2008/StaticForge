@@ -127,6 +127,8 @@ function registerPackets(handlersCtx) {
         require('../../notificationInbox').bind(handlersCtx.globalResources).publish({
             app: 'youtube', id: `videos:live:${channel.slug}`, cls: 'notification', alert: true,
             title: `${channel.name} is live on Kick`, text: item.title || '', actions: [],
+            // the stream is the event (#1194): a new stream sounds even with the last one's title, the same stream never twice
+            digest: `kick|${channel.slug}|${item.at || ''}`,
             data: { app: 'youtube', open: `kick:${channel.slug}` }, ttlMs: 2 * 60 * 60 * 1000 // a live notice is worth little after two hours (#1106)
         });
     });
