@@ -191,7 +191,8 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
 
     await test('MCP tools: agent-coord lists the v2 tools; the fleet module is Xi-only', () => {
         const names = require('../modules/agentCoord/mcpServer').TOOLS.map((t) => t.name);
-        ['coord_inspect', 'coord_editors', 'coord_locks', 'coord_build_request', 'coord_build_ready', 'coord_build_begin', 'coord_build_end', 'coord_builds'].forEach((n) => assert.ok(names.includes(n), n));
+        ['coord_inspect', 'coord_editors', 'coord_locks', 'coord_build_request', 'coord_build_ready', 'coord_build_begin', 'coord_build_end', 'coord_builds', 'fleet_status', 'fleet_work_list', 'fleet_work_get', 'fleet_work_update', 'fleet_work_hold', 'fleet_work_cancel', 'fleet_session_read', 'fleet_maintenance_report'].forEach((n) => assert.ok(names.includes(n), n));
+        assert.ok(!names.includes('fleet_work_start'), 'agents start nothing');
         const f = require('../modules/claudeFleetMcp');
         assert.ok(f.isFleetOwner('Xi') && !f.isFleetOwner('Wren'));
         assert.ok(!f.scopesHaveFleet(['universal']) && f.scopesHaveFleet(['sfapp_claude_fleet']));

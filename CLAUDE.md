@@ -43,41 +43,48 @@ done, whatever else it achieves.
 @.cursor/rules/installed-boot-zero-wait.mdc
 @.cursor/rules/cafeready-background.mdc
 @.cursor/rules/agent-busy-lock.mdc
-@.cursor/rules/keyboard-characters.mdc
 @.cursor/rules/no-dreamscape-restart.mdc
 @.cursor/rules/director-idle-before-restart.mdc
+@.cursor/rules/no-stash-to-pretty-commit.mdc
+@.cursor/rules/android-app-builds.mdc
 @.cursor/rules/phone-power-client.mdc
 @.cursor/rules/phone-power-server.mdc
 @.cursor/rules/phone-power-native.mdc
 @.cursor/rules/server-push-not-polling.mdc
-@.cursor/rules/no-base64-images.mdc
 @.cursor/rules/app-scope-ownership.mdc
-@.cursor/rules/no-retype-on-move.mdc
-@.cursor/rules/no-stash-to-pretty-commit.mdc
-@.cursor/rules/design-decisions.mdc
+@.cursor/rules/no-base64-images.mdc
 @.cursor/rules/commit-each-turn.mdc
 @.cursor/rules/subagents-sonnet.mdc
-@.cursor/rules/rename-scope.mdc
-@.cursor/rules/nai-critical-dump.mdc
-@.cursor/rules/client-browser-testing.mdc
-@.cursor/rules/agent-session-client-update.mdc
-@.cursor/rules/agent-session-studio.mdc
-@.cursor/rules/yozora-cursor-agent.mdc
-@.cursor/rules/yozora-ingest-2stage.mdc
-@.cursor/rules/vista-icons-not-fa.mdc
-@.cursor/rules/copyrights-not-1to1.mdc
-@.cursor/rules/fix-ui-issues-you-find.mdc
-@.cursor/rules/scroll-lists-keep-position.mdc
-@.cursor/rules/sliders-platform.mdc
-@.cursor/rules/tray-balloons.mdc
-@.cursor/rules/emulator-instances.mdc
-@.cursor/rules/android-app-builds.mdc
 @.cursor/rules/ui-standard.mdc
 @.cursor/rules/no-native-browser-ui.mdc
-@.cursor/rules/melaton-bars-native-layouts.mdc
-@.cursor/rules/status-icon-tables.mdc
-@.cursor/rules/phone-data-via-activesync.mdc
+@.cursor/rules/fix-ui-issues-you-find.mdc
+@.cursor/rules/keyboard-characters.mdc
 @.cursor/rules/cafe-ready-name.mdc
+@.cursor/rules/rename-scope.mdc
+
+## Rules on demand
+
+Before touching an area in this table, read its rule with the Read tool: "I didn't know" is not an excuse. These rules are not loaded into every session; they bind exactly like the imported ones (Priority above).
+
+| Rule | Read it when |
+| --- | --- |
+| `.cursor/rules/design-decisions.mdc` | changing how something looks or behaves; a change that contradicts `docs/design/design-decisions.md` is confirmed with Yukimi first |
+| `.cursor/rules/no-retype-on-move.mdc` | moving large blocks of code between files (copy by script with start/end markers, never retype) |
+| `.cursor/rules/client-browser-testing.mdc` | testing the bound Dreamscape client tab via MCP (update, wait for download/ready, restart only for JS/HTML, then inspect) |
+| `.cursor/rules/phone-data-via-activesync.mdc` | the server's ADB does not see a phone or it is unauthorized (get its data through ActiveSync before asking Yukimi) |
+| `.cursor/rules/emulator-instances.mdc` | needing a Windows Mobile emulator (check out your own instance from the emulator manager `~/.config/wm-emu/emu`) |
+| `.cursor/rules/vista-icons-not-fa.mdc` | icons in Vista desktop windows (Vista's own icons, Font Awesome only when Vista has none) |
+| `.cursor/rules/copyrights-not-1to1.mdc` | a 1:1 copy of Vista, Windows 3.x, Setup or boot text (copyright holder is rewritten: Microsoft becomes Xyridian) |
+| `.cursor/rules/sliders-platform.mdc` | any slider or `input type=range` (Vista trackbar on desktop, WM trackbar on phone) |
+| `.cursor/rules/scroll-lists-keep-position.mdc` | actions inside a scrollable list (close, toggle, rename, refresh, data push; scroll position is kept) |
+| `.cursor/rules/tray-balloons.mdc` | desktop tray balloons, popups anchored on a tray icon (PopoverManager / toastManager); files `public/scripts/**/*.js` |
+| `.cursor/rules/melaton-bars-native-layouts.mdc` | Melaton Mobile status bar elements and popups (native layout definitions CaféReady draws, synced on app, system, theme and version changes) |
+| `.cursor/rules/status-icon-tables.mdc` | adding a Melaton Mobile status bar icon (Yukimi decides its place in the three status icon tables first) |
+| `.cursor/rules/agent-session-client-update.mdc` | `POST /agent/session/update` (15 s Cancel dialog, then apply and restart); files `modules/agentClientBridge.js`, `public/scripts/comp/agentClientBridge.js`, `agentClientUpdateDialog.js`, `docs/client-api/agent-session.md`, `rest-api.md`, `ws/agentSession.md` |
+| `.cursor/rules/agent-session-studio.mdc` | `POST /agent/session/studio` (autoApply is silent; Studio opens like open-image); files `modules/agentClientBridge.js`, `public/scripts/comp/agentClientBridge.js`, `studioChangeJson.js`, the same client-api docs |
+| `.cursor/rules/nai-critical-dump.mdc` | NovelAI staff / webapp dumps (detect critical contract changes, file and start a StaticForge issue the same hour) |
+| `.cursor/rules/yozora-cursor-agent.mdc` | reading, commenting on, time-tracking or closing Yozora issues (labels `cursor-agent` / `cursor-take`; timers, Done comment, hard stops, credit) |
+| `.cursor/rules/yozora-ingest-2stage.mdc` | Yozora ingest sweeps and the Yozora ingest automation (Ask-mode plan, then Multitask vs inline) |
 
 ## Yozora access from Claude Code
 

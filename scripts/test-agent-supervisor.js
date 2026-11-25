@@ -442,7 +442,7 @@ sup._test.setFetch(async (url, opts) => {
         fs.writeFileSync(path.join(rd, '.cursor', 'rules', 'jp.mdc'), '---\ndescription: Japanese\n---\n' + '\u3053\u3093\u306b\u3061\u306f'.repeat(8) + '\n');
         fs.mkdirSync(path.join(rd, 'scripts'), { recursive: true });
         fs.writeFileSync(path.join(rd, 'scripts', 'here.js'), '');
-        fs.writeFileSync(path.join(rd, 'CLAUDE.md'), '# x\n@.cursor/rules/alpha.mdc\n@.cursor/rules/ghost.mdc\n');
+        fs.writeFileSync(path.join(rd, 'CLAUDE.md'), '# x\n@.cursor/rules/alpha.mdc\n@.cursor/rules/ghost.mdc\n\n## Rules on demand\n\n| Rule | Read it when |\n| --- | --- |\n| `.cursor/rules/jp.mdc` | testing |\n| `.cursor/rules/phantom.mdc` | never |\n');
         const g3 = Object.assign({}, gr, { getConfig: () => ({ agentSupervisor: { enabled: true, engine: 'tokenrouter' } }) });
         let prompts = 0; let release;
         const gate = new Promise((r) => { release = r; });
@@ -466,6 +466,9 @@ sup._test.setFetch(async (url, opts) => {
         const kinds = rv.findings.map((f) => f.kind);
         ['missing-file', 'missing-import', 'outdated-reference', 'not-english', 'contradiction', 'duplicate'].forEach((k) => assert.ok(kinds.includes(k), `${k} in ${kinds}`));
         assert.ok(!rv.findings.some((f) => /here\.js`, which/.test(f.text)), 'an existing file is not flagged');
+        const miss = rv.findings.filter((f) => f.kind === 'missing-import').map((f) => f.rules[0]);
+        assert.deepStrictEqual(miss, ['beta'], 'a rule in the Rules on demand table counts as listed');
+        assert.ok(rv.findings.some((f) => f.kind === 'missing-file' && /phantom/.test(f.text)), 'a table row naming a missing file is flagged');
         assert.ok(rv.findings.some((f) => f.kind === 'outdated-reference' && /scripts\/gone\.js/.test(f.text)));
         assert.ok(rv.model && rv.ruleCount === 3);
         const st = sup.rulesState(opts);
@@ -512,6 +515,41 @@ sup._test.setFetch(async (url, opts) => {
         store.open().prepare("UPDATE supervisor_work SET state = 'running' WHERE id = ?").run(w.id);
         assert.throws(() => sup.updateWork(w.id, { title: 'x' }), /running/);
         store.open().prepare("UPDATE supervisor_work SET state = 'held' WHERE id = ?").run(w.id);
+    });
+
+    await test('fleet_* socket ops: read views for every agent; update / hold / cancel only the caller\'s own items; no start op', async () => {
+        const net = require('net');
+        const ask = (req) => new Promise((resolve, reject) => {
+            let buf = '';
+            const sk = net.createConnection(process.env.AGENT_SUPERVISOR_SOCKET, () => sk.write(`${JSON.stringify(req)}\n`));
+            sk.on('data', (c) => { buf += c; }); sk.on('end', () => resolve(JSON.parse(buf))); sk.on('error', reject);
+        });
+        sup.start(gr);
+        await new Promise((r) => setTimeout(r, 100));
+        try {
+            const mine = sup.enqueue({ title: 'Mine', prompt: 'my brief', source: 'agent', sourceRef: 'agent:claude-aaaa1111#1' });
+            const theirs = sup.enqueue({ title: 'Theirs', prompt: 'their brief', source: 'agent', sourceRef: 'agent:claude-bbbb2222#1' });
+            const yoz = sup.enqueue({ title: 'Yozora one', prompt: 'y', source: 'yozora', sourceRef: 'issue:x/y#9' });
+            const l = await ask({ op: 'fleet_work_list', state: 'held', search: 'brief', limit: 5 });
+            assert.ok(l.ok && l.result.work.some((w) => w.id === mine.id && w.state === 'Waiting'), JSON.stringify(l));
+            const g = await ask({ op: 'fleet_work_get', id: mine.id });
+            assert.ok(g.ok && g.result.brief === 'my brief');
+            const u = await ask({ op: 'fleet_work_update', id: mine.id, by: 'claude-aaaa1111', appendNote: 'More.' });
+            assert.ok(u.ok && sup.workPrompt(mine.id) === 'my brief\n\nMore.', JSON.stringify(u));
+            const denied = await ask({ op: 'fleet_work_update', id: theirs.id, by: 'claude-aaaa1111', title: 'hijack' });
+            assert.ok(!denied.ok && /not queued by you/.test(denied.error));
+            assert.ok(!(await ask({ op: 'fleet_work_cancel', id: yoz.id, by: 'claude-aaaa1111' })).ok);
+            assert.ok(!(await ask({ op: 'fleet_work_cancel', id: mine.id })).ok, 'no caller id, no change');
+            assert.ok(!(await ask({ op: 'fleet_work_start', id: mine.id, by: 'claude-aaaa1111' })).ok, 'agents start nothing');
+            const h = await ask({ op: 'fleet_work_hold', id: mine.id, by: 'claude-aaaa1111' });
+            assert.ok(h.ok && h.result.item.state === 'Waiting');
+            const c = await ask({ op: 'fleet_work_cancel', id: mine.id, by: 'claude-aaaa1111', reason: 'outdated' });
+            assert.ok(c.ok && c.result.item.state === 'Cancelled' && /outdated/.test(sup.getWork(mine.id).message), JSON.stringify(c));
+            const m = await ask({ op: 'fleet_maintenance_report' });
+            assert.ok(m.ok && m.result.run === null || m.result.checks, JSON.stringify(m));
+            const st = await ask({ op: 'fleet_status' }); // the sandbox's fake resources lack the account host: the op must still be routed
+            assert.ok(st.ok || !/op must be/.test(st.error), JSON.stringify(st).slice(0, 300));
+        } finally { sup.stop(); }
     });
 
     require('../modules/agentCoord/store').close();

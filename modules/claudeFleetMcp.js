@@ -142,7 +142,7 @@ function usageBrief(row) {
     if (!row) return null;
     const limits = (row.limits || []).map((l) => ({ kind: l.kind, label: l.label, percent: l.percent, resetsAt: iso(l.resetsAt), severity: l.severity }));
     const worst = limits.reduce((m, l) => (Number.isFinite(l.percent) ? Math.max(m, l.percent) : m), -1);
-    return { plan: row.plan || '', limits, worstPercent: worst >= 0 ? worst : null, readAt: iso(row.at), note: row.error || '' };
+    return { plan: row.plan || '', limits, worstPercent: worst >= 0 ? worst : null, extraUsage: !!row.extraEnabled, readAt: iso(row.at), note: row.error || '' };
 }
 
 async function snapshot(gr, opts = {}) {
@@ -289,6 +289,53 @@ function workDispatch(sup, name, input) {
     return { results };
 }
 
+/** agent-coord's fleet_status: accounts (usage, Remote Control, sessions), the Supervisor's settings, the queue counts. Compact. */
+async function overview(gr) {
+    const snap = await snapshot(gr);
+    const sup = require('./agentSupervisor');
+    const st = sup.settings(gr);
+    const counts = {};
+    sup.listWork({ limit: 300 }).forEach((w) => { const k = STATE_LABEL[w.state] || w.state; counts[k] = (counts[k] || 0) + 1; });
+    return {
+        at: snap.at,
+        accounts: snap.accounts.map((a) => ({
+            name: a.name, plan: a.usage ? a.usage.plan : '', canRun: a.canRun, preferred: a.preferred || undefined,
+            usage: a.usage ? a.usage.limits.map((l) => ({ limit: l.label, percent: l.percent, resetsAt: l.resetsAt })) : [],
+            extraUsage: a.usage ? a.usage.extraUsage : false, usageNote: a.usage && a.usage.note ? a.usage.note : undefined,
+            remoteControl: a.remoteControl.state, rcNote: a.remoteControl.message || undefined,
+            sessions: (a.sessions || []).map((s) => ({ id: s.id.slice(0, 8), title: s.title, status: s.status, folder: s.folder }))
+        })),
+        supervisor: { enabled: st.enabled, engine: st.engine, model: st.model || undefined, delivery: st.delivery, autoStart: st.autoStart, maxConcurrent: st.maxConcurrent },
+        queue: counts
+    };
+}
+
+/** agent-coord's fleet_session_read: state, model / effort / context, the last answer, files edited, claims. Compact. */
+async function sessionBrief(gr, ref) {
+    const r = await dispatch(gr, 'claude_session_read', { session: ref, messages: 6 });
+    const out = { session: r.session, running: r.running, status: r.status, account: r.account, folder: r.folder, task: r.task, model: r.model, edited: r.edited, claims: r.claims };
+    const last = (r.messages || []).filter((m) => m.role === 'assistant').pop();
+    out.lastAnswer = last ? String(last.text || '').slice(0, 1200) : '';
+    try {
+        const file = await launcher().findFile(r.session);
+        if (file) {
+            const i = await require('./claudeInsight').insightOf(file, { busy: r.status === 'busy' });
+            out.insight = { model: i.model, effort: i.effort, context: `${i.context.percent}% of ${i.context.window / 1000}k${i.context.windowGuess ? ' (window estimated)' : ''}`, turns: i.turns, now: i.now || undefined, lastTool: i.lastTool, branch: i.branch };
+        }
+    } catch (_) { /* no transcript yet */ }
+    return out;
+}
+
+/** agent-coord's fleet_maintenance_report: the last run, one line per check. */
+function maintenanceBrief() {
+    const last = require('./fleetMaintenance').lastRun();
+    if (!last) return { run: null, note: 'No maintenance run yet' };
+    return {
+        run: last.id, at: iso(last.startedAt), trigger: last.trigger, dryRun: !!last.dryRun, state: last.state, summary: last.summary,
+        checks: (last.checks || []).map((c) => ({ id: c.id, state: c.state, summary: String(c.summary || '').slice(0, 240), actions: (c.actions || []).slice(0, 5).map((x) => String(x).slice(0, 160)), findings: (c.findings || []).slice(0, 4).map((f) => String((f && (f.text || f.message)) || f).slice(0, 160)) }))
+    };
+}
+
 async function dispatch(gr, name, input) {
     if (/^fleet_work_/.test(name)) return workDispatch(require('./agentSupervisor'), name, input);
     if (name === 'claude_fleet_status') return snapshot(gr, { refresh: input.refresh === true });
@@ -380,5 +427,6 @@ async function handleFleetTool(gr, req, name, args) {
 
 module.exports = {
     SCOPE, ROLE, TOOLS, isFleetTool, isFleetOwner, scopesHaveFleet, handleFleetTool, pickForStart,
+    overview, sessionBrief, maintenanceBrief, workDispatch, workRow,
     _test: { pickAccount, snapshot, dispatch }
 };

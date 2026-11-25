@@ -1486,6 +1486,33 @@ async function askUser(req, onId) {
     return { ok: true, answers };
 }
 
+// Fleet tools for every agent (agent-coord fleet_*): read-only views, plus update / hold / cancel of the items the
+// caller itself queued (source 'agent', sourceRef 'agent:<its id>#<n>'). Starting is Yukimi's: there is no start op.
+const FLEET_OPS = ['fleet_status', 'fleet_work_list', 'fleet_work_get', 'fleet_work_update', 'fleet_work_hold', 'fleet_work_cancel', 'fleet_session_read', 'fleet_maintenance_report'];
+function ownsWork(w, by) { return !!by && w.source === 'agent' && String(w.sourceRef || '').startsWith(`agent:${by}#`); }
+async function fleetOp(req) {
+    const fm = require('./claudeFleetMcp');
+    const op = req.op;
+    if (op === 'fleet_status') return fm.overview(gResources);
+    if (op === 'fleet_work_list' || op === 'fleet_work_get') return fm.workDispatch(module.exports, op, { id: req.id, state: req.state, search: req.search, limit: req.limit });
+    if (op === 'fleet_session_read') return fm.sessionBrief(gResources, req.session);
+    if (op === 'fleet_maintenance_report') return fm.maintenanceBrief();
+    // update / hold / cancel: only the caller's own items
+    const by = String(req.by || '').slice(0, 80);
+    const w = getWork(req.id);
+    if (!w) throw new Error(`No work item ${req.id}`);
+    if (!ownsWork(w, by)) throw new Error(`Work item ${w.id} was not queued by you (${w.source}): only Yukimi or its creator changes it. Ask her, or coord_post the Supervisor's note`);
+    if (op === 'fleet_work_update') {
+        const f = {};
+        ['title', 'prompt', 'appendNote', 'model', 'effort'].forEach((k) => { if (req[k] !== undefined) f[k] = req[k]; });
+        const u = updateWork(w.id, f, { by });
+        return { item: fm.workRow(u), changed: Object.keys(f) };
+    }
+    const u = op === 'fleet_work_hold' ? holdWork(w.id) : cancelWork(w.id);
+    if (op === 'fleet_work_cancel' && req.reason) setWork(w.id, { message: `Cancelled by ${by}: ${String(req.reason).slice(0, 300)}` });
+    return { item: fm.workRow(getWork(u.id)) };
+}
+
 let sockServer = null;
 function serveSocket() {
     const file = socketPath();
@@ -1500,14 +1527,16 @@ function serveSocket() {
         sock.on('data', async (chunk) => {
             buf += chunk;
             const i = buf.indexOf('\n');
-            if (i < 0) { if (buf.length > (buf.startsWith('{"op":"ask_user"') ? 262144 : 4096)) sock.destroy(); return; }
+            if (i < 0) { if (buf.length > (/^\{"op":"(ask_user|enqueue|fleet_work_update)"/.test(buf) ? 262144 : 4096)) sock.destroy(); return; }
             let req = null;
             try { req = JSON.parse(buf.slice(0, i)); } catch (_) { req = null; }
             buf = '';
             let out;
             try {
-                if (!req || !['check', 'enqueue', 'pause', 'resume', 'ask_user'].includes(req.op)) throw new Error('op must be check, enqueue, pause, resume or ask_user');
-                if (req.op === 'ask_user') {
+                if (!req || !['check', 'enqueue', 'pause', 'resume', 'ask_user'].concat(FLEET_OPS).includes(req.op)) throw new Error('op must be check, enqueue, pause, resume, ask_user or a fleet_* op');
+                if (FLEET_OPS.includes(req.op)) {
+                    out = { ok: true, result: await fleetOp(req) };
+                } else if (req.op === 'ask_user') {
                     sock.setTimeout(0); // a person answers: the hook's own timeout bounds the wait
                     out = await askUser(req, (id) => { asking = id; });
                     asking = null;
@@ -1569,7 +1598,7 @@ function stop() {
 }
 
 // ---------------------------------------------------------------- rules review (Fleet > Rules > Rules Review)
-// The agent rules (.cursor/rules/*.mdc, imported by CLAUDE.md). Cheap file checks run first (missing @ imports,
+// The agent rules (.cursor/rules/*.mdc, imported by CLAUDE.md or indexed in its Rules on demand table). Cheap file checks run first (rules missing from both,
 // named files that no longer exist, non-English text); the Supervisor's engine then reads the rules in a few
 // chunks for contradictions, overlap and unclear wording. The result is kept in the coord DB; clients see it
 // through the status push (emit), never by polling.
@@ -1631,10 +1660,12 @@ function staticRuleFindings(rules, opts = {}) {
     try { md = fs.readFileSync(claudeMd, 'utf8'); } catch (_) { /* none */ }
     const listed = new Set();
     (md.match(/^@\S+$/gm) || []).forEach((l) => { const m = /\.cursor\/rules\/([^/\s]+?)\.mdc?$/.exec(l); if (m) { listed.add(m[1]); } });
+    // rules indexed on demand: a table row of CLAUDE.md that starts with the rule's path in backticks counts as listed too
+    (md.match(/^\|\s*`\.cursor\/rules\/[^`|\s]+?\.mdc?`/gm) || []).forEach((l) => { const m = /\.cursor\/rules\/([^/`\s]+?)\.mdc?`/.exec(l); if (m) { listed.add(m[1]); } });
     const have = new Set(rules.map((r) => r.name));
     if (md) {
-        rules.forEach((r) => { if (!listed.has(r.name)) out.push({ rules: [r.name], kind: 'missing-import', severity: 'medium', text: `${r.file} is not in the @ list of CLAUDE.md, so Claude Code does not load it.`, suggestion: `Add @.cursor/rules/${r.file} to CLAUDE.md, or delete the rule if it is retired.` }); });
-        listed.forEach((n) => { if (!have.has(n)) out.push({ rules: ['CLAUDE.md'], kind: 'missing-file', severity: 'high', text: `CLAUDE.md imports ${n}.mdc but that rule file does not exist.`, suggestion: 'Remove the line or restore the rule.' }); });
+        rules.forEach((r) => { if (!listed.has(r.name)) out.push({ rules: [r.name], kind: 'missing-import', severity: 'medium', text: `${r.file} is neither in the @ list nor in the Rules on demand table of CLAUDE.md, so Claude Code never learns of it.`, suggestion: `Add @.cursor/rules/${r.file} to CLAUDE.md (rules every session needs), or a row to its Rules on demand table, or delete the rule if it is retired.` }); });
+        listed.forEach((n) => { if (!have.has(n)) out.push({ rules: ['CLAUDE.md'], kind: 'missing-file', severity: 'high', text: `CLAUDE.md lists ${n}.mdc (import or Rules on demand row) but that rule file does not exist.`, suggestion: 'Remove the line or restore the rule.' }); });
     }
     const exists = (p) => {
         const clean = p.replace(/[:#]\d+(-\d+)?$/, '').replace(/^~\//, `${os.homedir()}/`);
