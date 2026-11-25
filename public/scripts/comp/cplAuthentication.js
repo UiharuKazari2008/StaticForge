@@ -1597,6 +1597,8 @@
     let plAdding = false;
     let plError = '';
     let plOff = null;
+    let plDevEmail = null;   // the recorder sign-in's email field, kept over repaints (null = not typed yet)
+    let plDevCode = '';
     const plChanged = (msg) => {
         const d = msg && msg.data && typeof msg.data === 'object' ? msg.data : msg;
         if (!d || typeof d !== 'object') return;
@@ -1629,6 +1631,64 @@
         await csOpenBrowser(d.url, 'Plaud');
     }
 
+    // The recorder's own Plaud app account (plaud_device_*): shows its name and battery on Today's Plaud item
+    function plRecorder(details, actions, st) {
+        const dev = (st.device && typeof st.device === 'object') ? st.device : {};
+        if (dev.signedIn && !dev.expired) {
+            const lines = (Array.isArray(dev.recorders) ? dev.recorders : []).map((r) => {
+                const head = `${r.name || 'Plaud recorder'}${r.model ? ` (${r.model})` : ''}`;
+                const bits = [];
+                if (typeof r.battery === 'number' && Number.isFinite(r.battery)) bits.push(`Battery ${Math.round(r.battery)}%`);
+                if (r.lastSync) bits.push(`Last sync ${new Date(r.lastSync).toLocaleString()}`);
+                else if (r.firmware) bits.push(`Firmware ${r.firmware}`);
+                return bits.length ? `${head} - ${bits.join(' - ')}` : head;
+            });
+            const box = document.createElement('div');
+            (lines.length ? lines : ['No recorder found on this account']).forEach((t) => { const row = document.createElement('div'); row.textContent = t; box.appendChild(row); });
+            details.append(customField('Recorder', box), customField('Recorder account', tmText(dev.email || 'Signed in')));
+            if (dev.lastError) details.append(customField('Recorder status', tmText(`Error: ${dev.lastError}`, 'cpl-tm-error')));
+            actions.append(tmButton('Sign out of recorder', async () => {
+                const ok = typeof root.showConfirmationDialog === 'function' ? await root.showConfirmationDialog('<p>Sign out of the recorder account? Today goes back to showing Last read only.</p>',
+                    [{ text: 'Sign out', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], null, { title: 'Dreamscape CardSpace', width: 400 }) : true;
+                if (ok !== true) return;
+                plState = await plSend('plaud_device_signout');
+                plDevCode = '';
+                plPaint();
+            }));
+            return;
+        }
+        const hint = 'Sign in with your Plaud app account to show your recorder\'s name and battery on Today. Plaud emails you a code; no password is kept.';
+        const email = customInput(plDevEmail != null ? plDevEmail : ((st.account && st.account.email) || ''), 'Plaud app account email');
+        email.type = 'email';
+        email.autocomplete = 'email';
+        email.spellcheck = false;
+        email.addEventListener('input', () => { plDevEmail = email.value; });
+        const sendCode = async () => {
+            plDevEmail = email.value.trim();
+            plState = await plSend('plaud_device_code_send', { email: plDevEmail });
+            plPaint();
+        };
+        details.append(customField('Recorder', tmText(dev.expired ? `The recorder sign-in has expired. ${hint}` : hint, 'cpl-tm-hint')), customField('Recorder email', email));
+        if (dev.lastError && !dev.expired) details.append(customField('Recorder status', tmText(`Error: ${dev.lastError}`, 'cpl-tm-error')));
+        if (!dev.codeSent) {
+            actions.append(tmButton('Send code', sendCode));
+            return;
+        }
+        const code = customInput(plDevCode, 'Code from the email');
+        code.inputMode = 'numeric';
+        code.autocomplete = 'one-time-code';
+        code.spellcheck = false;
+        code.addEventListener('input', () => { plDevCode = code.value; });
+        const signIn = async () => {
+            plState = await plSend('plaud_device_signin', { code: code.value.trim() });
+            plDevCode = '';
+            plPaint();
+        };
+        code.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); void signIn().catch((err) => tmToast((err && err.message) || 'The recorder sign-in failed')); } });
+        details.append(customField('Recorder code', code));
+        actions.append(tmButton('Sign in', signIn), tmButton('Send again', sendCode));
+    }
+
     function plDetails(details, actions) {
         const st = plState || {};
         if (st.linked) {
@@ -1639,6 +1699,7 @@
                 customField('Used by', tmText('Yozora only, in the Director: she reads your recordings\' notes and transcripts to plan Yozora issues. No other persona or key can read them.')),
                 customField('Status', tmText(st.lastError ? `Error: ${st.lastError}` : 'Connected', st.lastError ? 'cpl-tm-error' : ''))
             );
+            plRecorder(details, actions, st);
             actions.append(tmButton('Sign out', async () => {
                 const ok = typeof root.showConfirmationDialog === 'function' ? await root.showConfirmationDialog('<p>Sign out of Plaud? Yozora can no longer read your recordings until you sign in again. Your recordings stay at Plaud.</p>',
                     [{ text: 'Sign out', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], null, { title: 'Dreamscape CardSpace', width: 400 }) : true;
@@ -1742,6 +1803,8 @@
         plLink = null;
         plAdding = false;
         plError = '';
+        plDevEmail = null;
+        plDevCode = '';
     }
 
     // ---- the window: Vista's Windows CardSpace (icardagt.exe, icardres.dll; measured on the VM) ----

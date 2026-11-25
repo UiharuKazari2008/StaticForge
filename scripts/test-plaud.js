@@ -8,6 +8,7 @@ const path = require('path');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plaud-test-'));
 process.env.PLAUD_ACCOUNT_FILE = path.join(dir, 'plaud-account.json');
+process.env.PLAUD_DEVICE_FILE = path.join(dir, 'plaud-device.json');
 
 const plaud = require('../modules/plaudClient');
 const plaudMcp = require('../modules/plaudMcp');
@@ -237,6 +238,114 @@ t.setDeps({
     assert.strictEqual(two.count, 2);
     assert.strictEqual(two.sessionId, 'chat1');
     today._test.reset();
+
+
+    // ---- the Plaud app account (second sign-in): email code, regions, recorder ----
+    const dev = require('../modules/plaudDevice');
+    const jwt = `h.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.s`;
+    const dcalls = [];
+    let regionSwitch = true;
+    let devices = [{ sn: 'SN0000001884', name: 'Yukimi NotePin', model: 'note-pin', version_number: 131, extra: 1 }];
+    let deviceStatus = 200;
+    dev._test.setDeps({
+        fetch: async (url, init) => {
+            const u = new URL(url);
+            dcalls.push({ host: u.host, path: u.pathname, headers: init.headers, body: init.body });
+            if (regionSwitch && u.host === 'api.plaud.ai' && u.pathname === '/auth/otp-send-code') {
+                return reply(200, { status: -302, data: { domains: { api: 'https://api-euc1.plaud.ai' } } });
+            }
+            if (u.pathname === '/auth/otp-send-code') return reply(200, { status: 0, msg: 'ok', token: 'CODETOKEN' });
+            if (u.pathname === '/auth/otp-login') {
+                const form = new URLSearchParams(init.body);
+                if (form.get('code') !== '123456') return reply(422, { status: -1, msg: 'invalid request' });
+                assert.strictEqual(form.get('token'), 'CODETOKEN');
+                return reply(200, { status: 0, access_token: jwt });
+            }
+            if (u.pathname === '/device/list') {
+                if (deviceStatus === 401) return reply(401, { detail: 'no' });
+                return reply(200, { status: 0, data_devices: devices });
+            }
+            throw new Error(`unexpected ${url}`);
+        },
+        inbox: { publish: (n) => { notices.push(n); return n; }, clear: (u, id) => { cleared.push(id); } }
+    });
+    const notices = [];
+    const cleared = [];
+    const devPushes = [];
+    dev.bind(() => devPushes.push(1));
+    assert.strictEqual(dev.state(), 'missing');
+    assert.deepStrictEqual(await today.list('gr').then((x) => [x.device, x.battery, x.lastSync, x.deviceLogin]), [null, null, null, 'missing']);
+    await today.list('gr');
+    assert.strictEqual(notices.length, 1, 'the notice is published once per state');
+    assert.strictEqual(notices[0].title, 'Plaud');
+    assert.ok(/Sign in to Plaud once more/.test(notices[0].text));
+    assert.strictEqual(JSON.parse(fs.readFileSync(process.env.PLAUD_DEVICE_FILE, 'utf8')).asked, 'missing');
+
+    await assert.rejects(dev.sendCode('nope'), (e) => e.code === 'PLAUD_DEVICE_BAD_EMAIL');
+    await dev.sendCode('y@example.com');
+    assert.strictEqual(dcalls[0].host, 'api.plaud.ai');
+    assert.strictEqual(dcalls[1].host, 'api-euc1.plaud.ai', 'the -302 answer switches the region and repeats once');
+    assert.strictEqual(dcalls[1].path, '/auth/otp-send-code');
+    assert.strictEqual(dcalls[1].body, 'username=y%40example.com');
+    assert.strictEqual(dcalls[1].headers['Content-Type'], 'application/x-www-form-urlencoded');
+    assert.ok(/Chrome/.test(dcalls[1].headers['User-Agent']) && dcalls[1].headers.Origin === 'https://web.plaud.ai');
+    assert.strictEqual(dev.status().codeSent, true);
+    assert.strictEqual(JSON.parse(fs.readFileSync(process.env.PLAUD_DEVICE_FILE, 'utf8')).base, 'https://api-euc1.plaud.ai', 'the region is stored');
+
+    await assert.rejects(dev.signIn('000000'), (e) => e.code === 'PLAUD_DEVICE_BAD_CODE' && /^Plaud did not accept that code/.test(e.message));
+    assert.strictEqual(dev.state(), 'missing');
+    await dev.signIn('123456');
+    const login = dcalls.filter((c) => c.path === '/auth/otp-login').pop();   // the sign-in then reads the recorder once
+    assert.strictEqual(login.host, 'api-euc1.plaud.ai');
+    assert.strictEqual(login.body, 'code=123456&token=CODETOKEN');
+    assert.strictEqual(dev.state(), 'ok');
+    assert.strictEqual(fs.statSync(process.env.PLAUD_DEVICE_FILE).mode & 0o777, 0o600);
+    assert.strictEqual(JSON.parse(fs.readFileSync(process.env.PLAUD_DEVICE_FILE, 'utf8')).token, jwt);
+    assert.ok(!JSON.stringify(dev.status()).includes(jwt) && !JSON.stringify(dev.status()).includes('CODETOKEN'), 'status never carries a token');
+    assert.deepStrictEqual(cleared, ['plaud:device-login'], 'sign-in clears the notice');
+    assert.ok(devPushes.length >= 1, 'a change push on sign-in');
+    assert.ok(dev.status().expiresAt > Date.now());
+
+    // recorder: no battery / lastSync field -> null, key names kept, serial cut to 4 characters
+    let l5 = await today.list('gr');
+    assert.deepStrictEqual(l5.device, { name: 'Yukimi NotePin', model: 'note-pin' });
+    assert.strictEqual(l5.battery, null);
+    assert.strictEqual(l5.lastSync, null);
+    assert.strictEqual(l5.deviceLogin, 'ok');
+    assert.deepStrictEqual(dev._test.fields(), ['extra', 'model', 'name', 'sn', 'version_number']);
+    assert.deepStrictEqual(dev.status().recorders, [{ name: 'Yukimi NotePin', model: 'note-pin', serial: '...1884', firmware: '131', battery: null, lastSync: null }]);
+    const listCalls = () => dcalls.filter((c) => c.path === '/device/list').length;
+    assert.strictEqual(listCalls(), 1);
+    assert.strictEqual(dcalls.find((c) => c.path === '/device/list').headers.Authorization, `bearer ${jwt}`);
+    await today.list('gr');
+    assert.strictEqual(listCalls(), 1, 'read at most once per 10 minutes');
+
+    // a battery field -> number; a last sync field -> ms (seconds epoch and ISO)
+    devices = [{ sn: 'SN9', name: 'Pin', model: 'note-pin', version_number: 'v1', battery_level: 64, last_sync_time: 1790000000 }];
+    dev._test.reset();
+    assert.strictEqual(dev.state(), 'ok', 'the stored login survives a reset (read from the file)');
+    const r2 = await dev.recorder();
+    assert.strictEqual(r2.battery, 64);
+    assert.strictEqual(r2.lastSync, 1790000000000);
+    assert.strictEqual(dev.status().recorders[0].firmware, 'v1');
+    assert.strictEqual((await today.list('gr')).battery, 64);
+
+    // 401 -> expired, state expired, recorder null, one new notice
+    dev._test.reset();
+    deviceStatus = 401;
+    assert.strictEqual(await dev.recorder(), null);
+    assert.strictEqual(dev.state(), 'expired');
+    assert.strictEqual(dev.status().expired, true);
+    const l6 = await today.list('gr');
+    assert.deepStrictEqual([l6.device, l6.battery, l6.deviceLogin], [null, null, 'expired']);
+    await today.list('gr');
+    assert.strictEqual(notices.length, 2);
+    assert.ok(/has expired/.test(notices[1].text));
+
+    // sign out forgets the file
+    dev.signOut();
+    assert.strictEqual(dev.state(), 'missing');
+    assert.ok(!fs.existsSync(process.env.PLAUD_DEVICE_FILE));
 
     fs.rmSync(dir, { recursive: true, force: true });
     console.log('test-plaud: ok');

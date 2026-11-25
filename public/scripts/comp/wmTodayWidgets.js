@@ -1259,7 +1259,7 @@
      * review runs, a press): no timed poll.
      */
     const REC_RETRY_MS = 60 * 1000;
-    const rec = { list: null, linked: true, at: 0, busy: 0, stale: true, pick: '', sums: new Map(), wired: false, battery: null, device: null, lastRead: 0, asking: false, failed: false };
+    const rec = { list: null, linked: true, at: 0, busy: 0, stale: true, pick: '', sums: new Map(), wired: false, battery: null, device: null, lastRead: 0, lastSync: 0, deviceLogin: '', asking: false, failed: false };
 
     function recWire() {
         const c = ws();
@@ -1280,7 +1280,7 @@
         if (!rec.stale && (rec.list || now - rec.at < REC_RETRY_MS)) return;
         rec.busy = now; rec.stale = false; rec.at = now;
         ask('plaud_today_list').then((d) => {
-            if (d && Array.isArray(d.recordings)) { rec.list = d.recordings; rec.linked = d.linked !== false; rec.battery = d.battery; rec.device = d.device || null; rec.lastRead = Number(d.lastRead) || 0; rec.failed = false; }
+            if (d && Array.isArray(d.recordings)) { rec.list = d.recordings; rec.linked = d.linked !== false; rec.battery = d.battery; rec.device = d.device || null; rec.lastRead = Number(d.lastRead) || 0; rec.lastSync = Number(d.lastSync) || 0; rec.deviceLogin = d.deviceLogin || ''; rec.failed = false; }
             else repaintLater('recordings', REC_RETRY_MS + 50);
         }).finally(() => { rec.busy = 0; repaintItems(['recordings']); });
     }
@@ -1348,10 +1348,11 @@
         const a = recPlaudApp();
         if (a && typeof window.wmAndroidLaunch === 'function') void window.wmAndroidLaunch(a.id, a.label);
     }
-    // "Battery 80% - Last read 14:02": battery only when the server sent a number
+    // "Battery 80% - Synced 14:02" (recorder account) or "... - Last read 14:02": battery only when the server sent a number
     function recDevice() {
-        const t = rec.lastRead;
-        const read = t ? `Last read ${new Date(t).toDateString() === new Date().toDateString() ? '' : `${fmtDate.format(t)} `}${fmtTime.format(t)}` : '';
+        const t = rec.lastSync || rec.lastRead;
+        const stamp = t ? `${new Date(t).toDateString() === new Date().toDateString() ? '' : `${fmtDate.format(t)} `}${fmtTime.format(t)}` : '';
+        const read = t ? `${rec.lastSync ? 'Synced' : 'Last read'} ${stamp}` : '';
         const b = rec.device && rec.device.battery != null ? rec.device.battery : rec.battery;
         return `${b != null && Number.isFinite(Number(b)) ? `Battery ${Math.round(Number(b))}% - ` : ''}${read}`.replace(/ - $/, '');
     }

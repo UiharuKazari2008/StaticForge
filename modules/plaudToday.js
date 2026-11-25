@@ -12,10 +12,12 @@
  */
 
 const plaud = require('./plaudClient');
+const plaudDevice = require('./plaudDevice');
 
 const LIST_LIMIT = 8;
 const SUMMARY_MAX = 1200;
 const PERSONA = 'xi';
+const DEVICE_CAP_MS = 4000;
 
 let deps = {};
 let kept = null;     // the last good recordings list (raw, no review state) and when it was read
@@ -43,10 +45,24 @@ function withReview(rec) {
 
 /**
  * The newest recordings with the review state of each. lastRead is when Plaud's list was last read; when Plaud cannot
- * be reached (network / refused) the kept list comes back with stale: true. battery and device are null: Plaud's
- * developer API reports no device (tested Nov 25 2026: /open/third-party/devices answers 404; a file has only serial_number).
+ * be reached (network / refused) the kept list comes back with stale: true. The developer API reports no device
+ * (tested Nov 25 2026: /open/third-party/devices answers 404), so device, battery and lastSync come from the second
+ * sign-in (plaudDevice.js, the Plaud app account), read at most every 10 minutes, capped at 4 s here, nulls on any
+ * failure; deviceLogin says whether that sign-in is 'ok', 'missing' or 'expired'. gr (optional) lets the one notice
+ * asking for that sign-in be published.
  */
-async function list() {
+async function recorderRead() {
+    let timer;
+    try {
+        return await Promise.race([
+            plaudDevice.recorder(),
+            new Promise((resolve) => { timer = setTimeout(() => resolve(null), DEVICE_CAP_MS); })
+        ]);
+    } catch (_) { return null; } finally { clearTimeout(timer); }
+}
+
+async function list(gr) {
+    const recorderP = recorderRead();
     let raw;
     let stale = false;
     try {
@@ -61,12 +77,16 @@ async function list() {
         stale = true;
     }
     const st = await plaud.status();
+    const rec = await recorderP;
+    try { plaudDevice.ask(gr, !!st.linked); } catch (_) { /* the list does not depend on the notice */ }
     const recordings = raw.map(withReview);
     return {
         linked: !!st.linked,
         recordings,
-        battery: null,
-        device: null,
+        device: rec ? { name: rec.name, model: rec.model } : null,
+        battery: rec ? rec.battery : null,
+        lastSync: rec ? rec.lastSync : null,
+        deviceLogin: plaudDevice.state(),
         lastRead,
         stale,
         waiting: recordings.filter((x) => !x.review).length,

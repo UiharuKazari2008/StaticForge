@@ -2,8 +2,9 @@
 
 /**
  * Today's Recordings item (#1144; modules/plaudToday.js). Admin only; the page never reads Plaud itself.
- *   plaud_today_list                 -> { linked, recordings[{ id, name, createdAt, startAt, durationMs, source, review }], battery, device, lastRead, stale, waiting, reviewing }
- *     (battery and device are null: Plaud's API has none; stale: true = Plaud was unreachable, the kept list with its older lastRead)
+ *   plaud_today_list                 -> { linked, recordings[{ id, name, createdAt, startAt, durationMs, source, review }], battery, device, lastRead, stale, waiting, reviewing, lastSync, deviceLogin }
+ *     (device { name, model } | null, battery 0-100 | null, lastSync ms | null: the recorder, from the second Plaud sign-in (plaudDevice.js), null when not signed in or not reported;
+ *      deviceLogin 'ok' | 'missing' | 'expired'; stale: true = Plaud was unreachable, the kept list with its older lastRead)
  *   plaud_today_summary { id }       -> { id, name, title, summary, review }
  *   plaud_today_review { id }        -> { sessionId, started, deduped, review }   (one agent session; a second press only returns it)
  *   plaud_today_review_new           -> { sessionId, started, deduped, count, review } | { started: false, none: true, count: 0, waiting: 0 }   (one chat for every unreviewed recording)
@@ -30,7 +31,7 @@ function registerPackets(handlersCtx) {
             }
         }, { owner: 'plaud', ...meta });
     };
-    reg('plaud_today_list', () => today.list());
+    reg('plaud_today_list', (m, h) => today.list(h.globalResources));
     reg('plaud_today_summary', (m) => today.summary(m.id));
     reg('plaud_today_review', (m, h) => today.review(h.globalResources, m.id), { destructive: true });
     reg('plaud_today_review_new', (m, h) => today.reviewNew(h.globalResources), { destructive: true });
