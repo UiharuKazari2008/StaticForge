@@ -142,6 +142,16 @@ const wx = (extra) => Object.assign({ id: 'A', title: 'Wind Advisory', severity:
     now += 1000;
     assert.strictEqual(src.onRainAlarm(rain).alert, true, 'the next spell sounds though its words are the same');
 
+    // a dismissed notice coming back in a lower class (no producer digest) is no news; a higher class is
+    inbox.publish({ app: 'x', id: 'cls', cls: 'weather-severe', title: 'C', text: 'c' });
+    inbox.clear('admin', 'cls', 'x');
+    assert.strictEqual(inbox.publish({ app: 'x', id: 'cls', cls: 'weather-alert', title: 'C', text: 'c', alert: true }).alert, false, 'a downgrade after a dismissal stays quiet');
+    assert.strictEqual(inbox.get('admin', 'cls').state, 'cleared');
+    // a row stored with the first digest form (class hashed in) still matches its own words
+    inbox.publish({ app: 'x', id: 'v1', cls: 'notification', title: 'V', text: 'v' });
+    inbox._test.database().prepare("UPDATE notices SET digest = ?, state = 'cleared' WHERE id = 'v1'").run(require('crypto').createHash('sha1').update('notification|V|v|').digest('hex'));
+    assert.strictEqual(inbox.publish({ app: 'x', id: 'v1', cls: 'notification', title: 'V', text: 'v' }).alert, false, 'first-form digest, same words: quiet');
+
     console.log('notification inbox dedup: ok');
     process.exit(0); // phoneStatus.touch leaves a debounce timer open
 })().catch((e) => { console.error(e); process.exit(1); });

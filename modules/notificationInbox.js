@@ -185,7 +185,7 @@ function publish(notice = {}) {
     // ---- does this publish sound on the phones, and does it bring a dismissed notice back? (#889, #1194) ----
     // Yukimi: "If you went off once, you don't get to go off again ... unless the alert has been majorly changed."
     // Every publish carries a digest of what the notice says: the producer's own (notice.digest: the thing that makes
-    // it a different event) or sha1 of class | title | text | data.stamp. The stored row (cur) decides:
+    // it a different event) or sha1 of title | text | data.stamp (not the class: see escalation). The stored row (cur) decides:
     //   - no row: loud, new.
     //   - a live row (new / seen), the producer did not say alert: a countdown step, a commute update, a place added to
     //     an alert: updated in place, silent - unless it escalated.
@@ -206,7 +206,7 @@ function publish(notice = {}) {
     //     snooze comes back with returning: true like the household's.
     const custom = typeof notice.digest === 'string' && notice.digest !== '';
     const dataObj = notice.data && typeof notice.data === 'object' ? notice.data : {};
-    row.digest = custom ? sha1(`c|${notice.digest}`) : defaultDigest(row.cls, row.title, row.text, dataObj.stamp);
+    row.digest = custom ? sha1(`c|${notice.digest}`) : defaultDigest(row.title, row.text, dataObj.stamp);
     let alert = true;
     try {
         const cur = database().prepare('SELECT state, digest, title, text, cls, data, expiresAt FROM notices WHERE user = ? AND id = ?').get(user, id);
@@ -265,13 +265,19 @@ const CLASS_RANK = { 'weather-alert': 1, 'weather-severe': 2 };
 const classRank = (cls) => CLASS_RANK[cls] || 0;
 
 const sha1 = (s) => crypto.createHash('sha1').update(String(s)).digest('hex');
-const defaultDigest = (cls, title, text, stamp) => sha1(`${cls}|${title}|${text}|${stamp || ''}`);
+// what the notice says, not its class: a class moving up is the rank rule's to judge, moving down is no news
+const defaultDigest = (title, text, stamp) => sha1(`d2|${title}|${text}|${stamp || ''}`);
+// the first form (Nov 25, 15:23 to this fix) also hashed the class: a row stored then still matches its own words
+const firstDigest = (cls, title, text, stamp) => sha1(`${cls}|${title}|${text}|${stamp || ''}`);
 
 /** Did the notice change materially from the stored row (cur), by digest; a legacy row without one is judged on what it stored. */
 function digestChanged(cur, row, custom) {
-    if (cur.digest) return cur.digest !== row.digest;
-    if (custom) return cur.title !== row.title || cur.cls !== row.cls;
-    return defaultDigest(cur.cls, cur.title, cur.text, safeJson(cur.data, {}).stamp) !== row.digest;
+    if (cur.digest) {
+        if (cur.digest === row.digest) return false;
+        return custom || cur.digest !== firstDigest(cur.cls, row.title, row.text, safeJson(row.data, {}).stamp);
+    }
+    if (custom) return cur.title !== row.title;
+    return defaultDigest(cur.title, cur.text, safeJson(cur.data, {}).stamp) !== row.digest;
 }
 
 /**
