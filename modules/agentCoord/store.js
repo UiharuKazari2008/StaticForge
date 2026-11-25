@@ -42,6 +42,7 @@ const { execFileSync } = require('child_process');
 
 const DEFAULT_LEASE_MIN = 45;
 const MAX_LEASE_MIN = 8 * 60;
+const GONE_NOPID_MS = 2 * 60 * 60 * 1000;
 const GONE_AFTER_MS = 6 * 60 * 60 * 1000; // an agent nobody has heard from in 6 h is listed as gone
 const BODY_CAP = 8000;
 
@@ -200,7 +201,9 @@ function rowAgent(r) {
     if (!r) return null;
     const alive = r.pid ? pidAlive(r.pid) : null;
     let status = r.status;
-    if (status !== 'gone' && (alive === false || now() - r.seen_at > GONE_AFTER_MS)) status = 'gone';
+    // no pid to check (a session Fleet or the Supervisor registered for it): gone after 2 h without a word, not 6
+    // (Nov 24 2026: 52 ended sessions still counted as "55 agents active")
+    if (status !== 'gone' && (alive === false || now() - r.seen_at > (r.pid ? GONE_AFTER_MS : GONE_NOPID_MS))) status = 'gone';
     return {
         id: r.id, kind: r.kind, name: r.name, sessionId: r.session_id || '', account: r.account || '', task: r.task,
         status, cwd: r.cwd || '', repo: r.repo || '', branch: r.branch || '', tmux: r.tmux || '', pid: r.pid || null,
