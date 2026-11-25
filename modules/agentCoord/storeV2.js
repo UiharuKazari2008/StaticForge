@@ -368,6 +368,31 @@ module.exports = function storeV2(core) {
     }
 
     /**
+     * Does this agent have uncommitted work of its own? (files git shows as changed in its folder that its own session
+     * edited). An agent without any is not asked by a build gate: nothing of its can be half done (Yukimi, Nov 24 2026:
+     * asking idle or finished sessions wastes their usage). Cached 15 s per agent.
+     */
+    const dirtyCache = new Map();
+    function ownDirty(a) {
+        if (!a || !a.sessionId || !a.cwd) return true; // unknown: ask
+        const hit = dirtyCache.get(a.id);
+        if (hit && now() - hit.at < 15000) return hit.dirty;
+        let dirty = true;
+        try {
+            const out = require('child_process').execFileSync('git', ['-C', a.cwd, 'status', '--porcelain', '-uall'], { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] });
+            const changed = out.split('\n').map((l) => l.slice(3).trim().replace(/^"|"$/g, '').split(' -> ').pop()).filter(Boolean);
+            if (!changed.length) dirty = false;
+            else {
+                try { scanSession(a.sessionId); } catch (_) { /* older rows only */ }
+                const mine = open().prepare('SELECT path FROM edits WHERE session_id = ?').all(a.sessionId).map((r) => String(r.path));
+                dirty = changed.some((c) => mine.some((m) => m === c || m.endsWith(`/${c}`) || c.endsWith(`/${m}`)));
+            }
+        } catch (_) { dirty = true; }
+        dirtyCache.set(a.id, { at: now(), dirty });
+        return dirty;
+    }
+
+    /**
      * Everyone a gate waits on: every live agent in the repo but the builder. ready (answered yes), not-ready
      * (answered no, with why), auto (not busy and holding no claim in the repo: nothing of theirs is half
      * done), pending (busy or holding claims, not answered yet).
@@ -383,7 +408,7 @@ module.exports = function storeV2(core) {
             const busy = isBusy(a);
             let state = 'pending';
             if (v) state = v.ready ? 'ready' : 'not-ready';
-            else if (!busy && !held.length) state = 'auto';
+            else if (!held.length && (!busy || !ownDirty(a))) state = 'auto';
             return { agentId: a.id, name: a.name, kind: a.kind, task: a.task, busy, claims: held.map((c) => c.path), state, note: v ? v.note : '', answeredAt: v ? v.at : null };
         });
         const running = d.prepare("SELECT * FROM builds WHERE state = 'running' AND repo = ? AND target = ? AND id != ?").get(b.repo, b.target, b.id);
