@@ -1494,11 +1494,12 @@ function herePlace() {
     const places = getPlaces();
     const home = places.home || {};
     // Alerts are the person's own switch, and it governs Current location too: this place was always on, so
-    // turning Weather Alerts off for Home and Work never stopped the notices once the phone was away from
-    // them, which is exactly when they kept arriving (#1127 follow-up, Yukimi Nov 25 2026). With no place
-    // saved at all there is no switch to follow and alerts stay on, as before.
-    const saved = PLACE_IDS.map((id) => places[id]).filter(Boolean);
-    const alerts = saved.length ? saved.some((p) => p.alerts !== false) : true;
+    // turning Weather Alerts off for Home never stopped the notices once the phone was away from it, which
+    // is exactly when they kept arriving (#1127 follow-up, Yukimi Nov 25 2026). Home is the place the switch
+    // is set on (Work's own alerts are Work's); with neither saved there is no switch to follow and alerts
+    // stay on, as before.
+    const primary = places.home || places.work || null;
+    const alerts = primary ? primary.alerts !== false : true;
     return cleanPlace({ name: hereFix.name || 'Current location', region: hereFix.region, country: hereFix.country, lat: hereFix.lat, lon: hereFix.lon,
         alerts, rainAlarm: home.rainAlarm === true, rainLeadMin: home.rainLeadMin });
 }

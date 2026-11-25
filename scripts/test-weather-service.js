@@ -269,9 +269,9 @@ function appleFixture() {
     await test('Current location follows the places\' Weather Alerts switch (#1127)', async () => {
         // the phone 130 km from Home: outside its radius, so the monitor watches it as its own place
         const hereAt = { lat: 38.9, lon: -77.03 };
-        const once = async (alerts, alertId) => {
+        const once = async (alerts, alertId, extra = {}) => {
             const sent = [];
-            const cfg = { weather: { places: { home: { name: 'Home', lat: 40.71, lon: -74.01, radiusKm: 3, alerts, rainAlarm: false, rainLeadMin: 15 } } } };
+            const cfg = { weather: { places: Object.assign({ home: { name: 'Home', lat: 40.71, lon: -74.01, radiusKm: 3, alerts, rainAlarm: false, rainLeadMin: 15 } }, extra) } };
             const gr = {
                 getConfig: ({ path: p }) => p.split('.').reduce((o, k) => (o == null ? o : o[k]), cfg),
                 getSecureConfig: () => null,
@@ -290,6 +290,11 @@ function appleFixture() {
             w._test.jsonCache.set('om:fc:40.71:-74.01', { ok: true, value: om, at: Date.now(), expires: Date.now() + 60000 });
             w._test.jsonCache.set('geo:country:40.7:-74', { ok: true, value: { code: 'US', city: 'New York', region: 'New York', country: 'United States' }, at: Date.now(), expires: Date.now() + 60000 });
             w._test.jsonCache.set('nws:alerts:40.71:-74.01', { ok: true, value: [], at: Date.now(), expires: Date.now() + 60000 });
+            if (extra.work) {
+                w._test.jsonCache.set('om:fc:40.75:-73.98', { ok: true, value: om, at: Date.now(), expires: Date.now() + 60000 });
+                w._test.jsonCache.set('geo:country:40.8:-74', { ok: true, value: { code: 'US', city: 'New York', region: 'New York', country: 'United States' }, at: Date.now(), expires: Date.now() + 60000 });
+                w._test.jsonCache.set('nws:alerts:40.75:-73.98', { ok: true, value: [], at: Date.now(), expires: Date.now() + 60000 });
+            }
             w.setHere(hereAt);
             await w.pollPlaces();
             return sent.filter((m) => m.type === 'weather_alert_issued');
@@ -298,6 +303,9 @@ function appleFixture() {
         const on = await once(true, 'yr-here-on');
         assert.strictEqual(on.length, 1, 'with them on, the same look does broadcast');
         assert.strictEqual(on[0].data.place.label, 'Current location');
+        // Work's own alerts are Work's: they do not switch Current location back on behind Home's off switch
+        const work = { work: { name: 'Office', lat: 40.75, lon: -73.98, radiusKm: 3, alerts: true, rainAlarm: false, rainLeadMin: 15 } };
+        assert.strictEqual((await once(false, 'yr-here-work', work)).length, 0, 'Home off, Work on: still quiet away from both');
     });
 
     await test('a setting on the stand-in Home keeps its coordinates and saves it', async () => {
