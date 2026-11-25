@@ -38,6 +38,7 @@ const transcript = require('../../claudeTranscript');
 const insight = require('../../claudeInsight');
 const runtime = require('../../claudeAccountRuntime');
 const coord = require('../../agentCoord/store');
+const fleetPhoneFeed = require('../../fleetPhoneFeed');
 
 const ADMIN_DESTRUCTIVE = { destructive: true };
 const APPEND_TYPE = 'claude_desk_transcript_append';
@@ -117,17 +118,21 @@ async function sessionsPage(gr, message) {
 
 // ---------------------------------------------------------------- feeds
 
+let deskFeed = null;
+let phoneFeed = null;
 let sessionsWatcher = null;
 let pokeTimer = null;
 
-function armSessionsWatch(feed) {
+const watchers = () => ((deskFeed && deskFeed.size) || (phoneFeed && phoneFeed.size) || 0);
+
+function armSessionsWatch() {
     if (sessionsWatcher) return;
     const dir = path.join(process.env.DREAMSCAPE_CLAUDE_HOME || os.homedir(), '.claude', 'sessions');
     try {
         sessionsWatcher = fs.watch(dir, { persistent: false }, () => {
-            if (!feed.size) { try { sessionsWatcher.close(); } catch (_) { /* closed */ } sessionsWatcher = null; return; }
+            if (!watchers()) { try { sessionsWatcher.close(); } catch (_) { /* closed */ } sessionsWatcher = null; return; }
             clearTimeout(pokeTimer);
-            pokeTimer = setTimeout(() => { feed.poke(); if (agentsFeed) agentsFeed.poke(); }, 1200);
+            pokeTimer = setTimeout(() => { if (deskFeed) deskFeed.poke(); if (phoneFeed && phoneFeed.size) phoneFeed.poke(); if (agentsFeed) agentsFeed.poke(); }, 1200);
         });
         sessionsWatcher.on('error', () => { sessionsWatcher = null; });
     } catch (_) { sessionsWatcher = null; }
@@ -165,7 +170,6 @@ function coordSummary() {
     }
 }
 
-let deskFeed = null;
 let fluxFeed = null;
 
 function defineFeeds() {
@@ -176,7 +180,7 @@ function defineFeeds() {
         intervalMs: 30000,
         allow: isAdmin,
         sample: async () => {
-            armSessionsWatch(deskFeed);
+            armSessionsWatch();
             const host = gResources ? await claudeHost.hostStatus(gResources) : null;
             if (host && host.remoteControl && host.remoteControl.pane) delete host.remoteControl.pane.tail; // the pane's last lines change on every redraw
             return {
@@ -192,8 +196,22 @@ function defineFeeds() {
     try {
         const T = require('../../agentSupervisor').sessionTasks();
         const shown = new Map();
-        T.onChange((sid) => { const t = T.titleFor(sid); if (shown.get(sid) !== t) { shown.set(sid, t); if (deskFeed && deskFeed.size) deskFeed.poke(); } });
+        let phoneTaskPoke = null;
+        T.onChange((sid) => {
+            const t = T.titleFor(sid);
+            if (shown.get(sid) !== t) { shown.set(sid, t); if (deskFeed && deskFeed.size) deskFeed.poke(); }
+            // the phone's rows say where each workflow is (the session's current task): any task change, batched
+            if (phoneFeed && phoneFeed.size && !phoneTaskPoke) phoneTaskPoke = setTimeout(() => { phoneTaskPoke = null; if (phoneFeed && phoneFeed.size) phoneFeed.poke(); }, 1500);
+        });
     } catch (_) { /* no store yet */ }
+    // the phone Fleet app's Work Queue page (#1198, modules/fleetPhoneFeed.js)
+    phoneFeed = statusHub.define({
+        name: 'claude_fleet_phone',
+        pushType: 'claude_fleet_phone_status',
+        intervalMs: 120000,
+        allow: isAdmin,
+        sample: () => { armSessionsWatch(); return fleetPhoneFeed.snapshot(gResources, { live: liveSummary() }); }
+    });
     fluxFeed = statusHub.define({
         name: 'claude_desk_flux',
         pushType: 'claude_desk_flux',
@@ -203,7 +221,7 @@ function defineFeeds() {
     });
 }
 
-const poke = () => { if (deskFeed) deskFeed.poke(); };
+const poke = () => { if (deskFeed) deskFeed.poke(); if (phoneFeed && phoneFeed.size) phoneFeed.poke(); };
 
 // ---------------------------------------------------------------- Supervisor (#1154, modules/agentSupervisor.js)
 
