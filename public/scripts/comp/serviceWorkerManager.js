@@ -3316,7 +3316,27 @@ class ServiceWorkerManager {
             if (!href || !pathnameMatchesAssetUrl(pathname, href)) {
                 return;
             }
-            link.href = nextUrl;
+            // Never rewrite a loaded sheet's href in place: the browser drops its rules at once and the page runs
+            // unstyled until the new sheet arrives (a flash on every CSS-only update, #1167). The new sheet loads
+            // beside the old one, which goes only when the new one has loaded; on an error the old one stays.
+            if (link.href === new URL(nextUrl, document.baseURI).href) return;
+            const fresh = link.cloneNode(false);
+            fresh.setAttribute('href', nextUrl);
+            let settled = false;
+            const finish = (ok) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                fresh.removeEventListener('load', onLoad);
+                fresh.removeEventListener('error', onError);
+                (ok ? link : fresh).remove();
+            };
+            const onLoad = () => finish(true);
+            const onError = () => finish(false);
+            const timer = setTimeout(() => finish(true), 8000);
+            fresh.addEventListener('load', onLoad);
+            fresh.addEventListener('error', onError);
+            link.after(fresh);
         });
     }
 
