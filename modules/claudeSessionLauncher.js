@@ -442,7 +442,9 @@ async function paneFor(id) {
 }
 
 /** The key hints Claude Code prints under a menu or confirmation that has taken over its input box. */
-const DIALOG_RE = /(↑\/↓|↑↓) to (choose|select|navigate)|\bEsc to cancel\b|\bEnter to (confirm|select)\b|Not answered yet/i;
+const DIALOG_RE = /(↑\/↓|↑↓)\s+(to\s+)?(choose|select|navigate)|\besc\s+(to\s+cancel|not\s+now)\b|\benter\s+(to\s+)?(confirm|select)\b|Not answered yet/i;
+/** An offer Claude Code makes itself (autocompact size, tips): its hint line has "esc not now", and Esc keeps everything as it is. */
+const OFFER_HINT_RE = /\besc\s+not\s+now\b/i;
 /**
  * Menus Claude Code opens on its own (offers, tips, setup nags), answered for Yukimi with the choice that changes
  * nothing, so a message is never stuck behind one nobody sees. A question the agent's own work raised (a tool's
@@ -483,21 +485,26 @@ function readDialog(lines) {
     } else {
         for (let i = end - 1; i >= lo; i -= 1) { if (/\?\s*$/.test(tail[i])) { qi = i; break; } }
     }
-    return { question: qi >= 0 ? tail[qi].trim() : '', options };
+    return { question: qi >= 0 ? tail[qi].trim() : '', options, hint: tail[end].trim() };
 }
 
 /** Answers a self-made menu with its no-change choice: true when it was answered and the input box is back. */
 async function autoAnswer(sock, pane, dlg) {
-    if (!dlg || !dlg.options.length || NEVER_AUTO_RE.test(dlg.question)) return false;
+    if (!dlg || NEVER_AUTO_RE.test(dlg.question)) return false;
     const known = AUTO_ANSWER.find((a) => a.question.test(dlg.question));
     const want = dlg.options.findIndex((o) => (known ? known.choice : DECLINE_RE).test(o.text));
     const at = dlg.options.findIndex((o) => o.on);
-    if (want < 0 || at < 0) return false;
-    const key = want > at ? 'Down' : 'Up';
-    for (let i = 0; i < Math.abs(want - at); i += 1) await runner('tmux', [...sock, 'send-keys', '-t', pane, key]);
-    await new Promise((res) => setTimeout(res, 80));
-    await runner('tmux', [...sock, 'send-keys', '-t', pane, 'Enter']);
-    console.log(`[claudeDesk] answered "${dlg.question.slice(0, 80)}" with "${dlg.options[want].text.slice(0, 60)}" before a message`);
+    if (want >= 0 && at >= 0) {
+        const key = want > at ? 'Down' : 'Up';
+        for (let i = 0; i < Math.abs(want - at); i += 1) await runner('tmux', [...sock, 'send-keys', '-t', pane, key]);
+        await new Promise((res) => setTimeout(res, 80));
+        await runner('tmux', [...sock, 'send-keys', '-t', pane, 'Enter']);
+        console.log(`[claudeDesk] answered "${dlg.question.slice(0, 80)}" with "${dlg.options[want].text.slice(0, 60)}" before a message`);
+    } else if (OFFER_HINT_RE.test(dlg.hint || '')) {
+        // its own "not now": nothing changes (e.g. "Want to autocompact at 400k tokens instead?")
+        await runner('tmux', [...sock, 'send-keys', '-t', pane, 'Escape']);
+        console.log(`[claudeDesk] dismissed "${dlg.question.slice(0, 80)}" (esc not now) before a message`);
+    } else return false;
     for (let i = 0; i < 10; i += 1) {
         await new Promise((res) => setTimeout(res, 150));
         if (!readDialog(await paneTail(sock, pane))) return true;

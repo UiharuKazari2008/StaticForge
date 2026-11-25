@@ -277,6 +277,14 @@ async function main() {
         assert.strictEqual((await launcher.steer(SID, 'are you there')).sent, true);
         const keys = calls.filter((c) => c.includes('send-keys')).map((c) => c[c.length - 1]);
         assert.deepStrictEqual(keys, ['Down', 'Enter', 'are you there', 'Enter'], keys.join(','));
+        // an offer with its own "esc not now" (the autocompact size offer): dismissed with Esc, then the message goes in
+        paneText = ['✻ Worked for 18m 50s · done 1:05 PM', '─'.repeat(40), '  We recommend compacting earlier',
+            "  Want to autocompact at 400k tokens instead? Your model doesn't change. Switch", '  back any time with /autocompact.',
+            '    Keep auto (1m tokens)', '    Autocompact at ‹ 400k › tokens', '  ↑/↓ choose · ←/→ change size · enter confirm · esc not now'].join('\n');
+        onKeys = (a) => { if (a[a.length - 1] === 'Escape') paneText = box; else assert.strictEqual(paneText, box, 'no key but Esc goes into the offer'); };
+        calls.length = 0;
+        assert.strictEqual((await launcher.steer(SID, 'the sent back icon')).sent, true);
+        assert.deepStrictEqual(calls.filter((c) => c.includes('send-keys')).map((c) => c[c.length - 1]), ['Escape', 'the sent back icon', 'Enter']);
         // a question the agent's work raised is never answered for her: refused, named, no keys
         onKeys = null;
         paneText = [' Bash command', '   rm -rf build', ' Do you want to proceed?', ' ❯ 1. Yes', "   2. Yes, and don't ask again", '   3. No, and tell Claude what to do differently (esc)', ' Esc to cancel'].join('\n');
