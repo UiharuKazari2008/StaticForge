@@ -946,9 +946,10 @@
         const flakes = (c) => Array.from({ length: n(c) }, () => `<i class="wm-wx-flake" style="left:${rnd(-3, 103).toFixed(1)}%;--t:${rnd(7, 12).toFixed(1)}s;--d:-${rnd(0, 12).toFixed(1)}s;--s:${rnd(1.4, 3.2).toFixed(1)};--x:${rnd(-6, 6).toFixed(1)}"></i>`).join('');
         const clouds = (c, a) => Array.from({ length: c }, (_, i) => `<i class="wm-wx-cloud" style="top:${(o.band ? 4 + i * 38 + rnd(-6, 6) : 8 + i * 22 + rnd(-4, 4)).toFixed(0)}%;--t:${rnd(38, 60).toFixed(0)}s;--d:-${rnd(0, 60).toFixed(0)}s;--a:${a}"></i>`).join('');
         // wind: long thin streaks racing across, and leaves tumbling (their own sizes, speeds and tints)
-        const streaks = (c) => Array.from({ length: c }, () => `<i class="wm-wx-streak" style="top:${rnd(4, 92).toFixed(0)}%;--t:${rnd(1.1, 2).toFixed(2)}s;--d:-${rnd(0, 2).toFixed(2)}s;--w:${rnd(24, 64).toFixed(0)}"></i>`).join('');
-        const TINTS = ['#7da64a', '#a8b84a', '#d29a3a', '#b8672b', '#8a5a2a'];
-        const leaves = (c) => Array.from({ length: c }, () => `<i class="wm-wx-leaf" style="top:${rnd(5, 85).toFixed(0)}%;--t:${rnd(3.2, 6.5).toFixed(1)}s;--d:-${rnd(0, 6).toFixed(1)}s;--s:${rnd(2.6, 4.4).toFixed(1)};--y:${rnd(4, 14).toFixed(0)};--c:${TINTS[Math.floor(Math.random() * TINTS.length)]}"></i>`).join('');
+        const streaks = (c) => Array.from({ length: c }, () => `<i class="wm-wx-streak" style="--top:${rnd(4, 92).toFixed(0)}%;--t:${rnd(1.1, 2).toFixed(2)}s;--d:-${rnd(0, 2).toFixed(2)}s;--w:${rnd(24, 64).toFixed(0)}"></i>`).join('');
+        // leaf tints as hue / saturation / lightness (wm-titanium.css .wm-wx-leaf): green, yellow-green, ochre, rust, brown
+        const TINTS = ['86;--sat:38;--lig:47', '69;--sat:44;--lig:51', '38;--sat:62;--lig:53', '26;--sat:62;--lig:44', '30;--sat:53;--lig:35'];
+        const leaves = (c) => Array.from({ length: c }, () => `<i class="wm-wx-leaf" style="--top:${rnd(5, 85).toFixed(0)}%;--t:${rnd(3.2, 6.5).toFixed(1)}s;--d:-${rnd(0, 6).toFixed(1)}s;--s:${rnd(2.6, 4.4).toFixed(1)};--y:${rnd(4, 14).toFixed(0)};--hue:${TINTS[Math.floor(Math.random() * TINTS.length)]}"></i>`).join('');
         let html = '';
         if (scene === 'storm') html = drops(60) + '<i class="wm-wx-flash"></i>';
         else if (scene === 'heavy') html = drops(60);
