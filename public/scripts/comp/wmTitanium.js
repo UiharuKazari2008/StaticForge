@@ -867,7 +867,7 @@
         const uu = unit();
         superEl.querySelector('.wm-ti-super-body').style.top = `${(62 + superGrow) * uu}px`;
         superEl.style.setProperty('--fall', `${Math.round(host.clientHeight * 1.15)}px`);
-        drawWeatherFx(cur);
+        drawWeatherFx(superEl.querySelector('.wm-ti-super-fx'), cur);
         // the frost: the band's blurred copy, placed on the picture as the band's is (the card's own
         // translate is undone on it while it moves, so it stays lined up with the picture)
         const frost = superEl.querySelector('.wm-ti-super-frost');
@@ -913,22 +913,42 @@
     }
 
     /**
-     * The weather inside the bar (Yukimi, Nov 15): rain or drizzle falling, snow drifting, sleet both,
-     * a storm's flashes, fog banks and clouds drifting, the sun's glow and turning rays by day, stars by
-     * night. A few dozen small layers on transform / opacity animations, made when the bar opens.
+     * The weather in a box (Yukimi, Nov 15): rain or drizzle falling, snow drifting, sleet both, a storm's
+     * flashes, fog banks and clouds drifting, the sun's glow and turning rays by day, stars by night, and
+     * (Nov 23) wind: streaks and blowing leaves when it blows hard or storms. A few dozen small layers on
+     * transform / opacity animations, made when the box's scene changes (compared first, never rebuilt
+     * for the same sky). The Super Bar's box (.wm-ti-super-fx, made when the bar opens) and the band's
+     * (.wm-ti-wxfx, syncWx) share it; opts: { k: density (1 = the whole screen), band: the short glass }.
      */
-    function drawWeatherFx(cur) {
-        const box = superEl.querySelector('.wm-ti-super-fx');
+    const WIND_LEAVES = 25; // km/h from which the wind is drawn (a storm always blows some)
+    function windBucket(cur) {
+        const v = cur && Number(cur.windKmh);
+        const w = Number.isFinite(v) ? v : 0;
+        const b = w >= 45 ? 2 : w >= WIND_LEAVES ? 1 : 0;
+        return cur && cur.scene === 'storm' ? Math.max(1, b) : b;
+    }
+    function drawWeatherFx(box, cur, opts) {
+        const o = opts || {};
         let still = false;
         try { still = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { /* no media queries */ }
         const scene = cur && cur.scene;
-        if (!scene || still) { box.innerHTML = ''; box.dataset.scene = ''; return; }
-        if (box.dataset.scene === `${scene}|${cur.isDay}`) return;
-        box.dataset.scene = `${scene}|${cur.isDay}`;
+        if (!scene || still) { if (box.dataset.scene) { box.innerHTML = ''; box.dataset.scene = ''; box.dataset.wind = '0'; } return; }
+        const wind = windBucket(cur);
+        const key = `${scene}|${cur.isDay}|${wind}`;
+        if (box.dataset.scene === key) return;
+        box.dataset.scene = key;
+        box.dataset.wind = String(wind);
+        const k = o.k || 1;
+        const n = (c) => Math.max(1, Math.round(c * k));
         const rnd = (a, b) => a + Math.random() * (b - a);
-        const drops = (n, slow) => Array.from({ length: n }, () => `<i class="wm-wx-drop" style="left:${rnd(-5, 105).toFixed(1)}%;--t:${rnd(slow ? 0.9 : 0.55, slow ? 1.4 : 0.85).toFixed(2)}s;--d:-${rnd(0, 2).toFixed(2)}s;--l:${rnd(7, 13).toFixed(1)}"></i>`).join('');
-        const flakes = (n) => Array.from({ length: n }, () => `<i class="wm-wx-flake" style="left:${rnd(-3, 103).toFixed(1)}%;--t:${rnd(7, 12).toFixed(1)}s;--d:-${rnd(0, 12).toFixed(1)}s;--s:${rnd(1.4, 3.2).toFixed(1)};--x:${rnd(-6, 6).toFixed(1)}"></i>`).join('');
-        const clouds = (n, a) => Array.from({ length: n }, (_, i) => `<i class="wm-wx-cloud" style="top:${(8 + i * 22 + rnd(-4, 4)).toFixed(0)}%;--t:${rnd(38, 60).toFixed(0)}s;--d:-${rnd(0, 60).toFixed(0)}s;--a:${a}"></i>`).join('');
+        const len = o.band ? 0.55 : 1; // drops are shorter in the short glass
+        const drops = (c, slow) => Array.from({ length: n(c) }, () => `<i class="wm-wx-drop" style="left:${rnd(-5, 105).toFixed(1)}%;--t:${rnd(slow ? 0.9 : 0.55, slow ? 1.4 : 0.85).toFixed(2)}s;--d:-${rnd(0, 2).toFixed(2)}s;--l:${(rnd(7, 13) * len).toFixed(1)}"></i>`).join('');
+        const flakes = (c) => Array.from({ length: n(c) }, () => `<i class="wm-wx-flake" style="left:${rnd(-3, 103).toFixed(1)}%;--t:${rnd(7, 12).toFixed(1)}s;--d:-${rnd(0, 12).toFixed(1)}s;--s:${rnd(1.4, 3.2).toFixed(1)};--x:${rnd(-6, 6).toFixed(1)}"></i>`).join('');
+        const clouds = (c, a) => Array.from({ length: c }, (_, i) => `<i class="wm-wx-cloud" style="top:${(o.band ? 4 + i * 38 + rnd(-6, 6) : 8 + i * 22 + rnd(-4, 4)).toFixed(0)}%;--t:${rnd(38, 60).toFixed(0)}s;--d:-${rnd(0, 60).toFixed(0)}s;--a:${a}"></i>`).join('');
+        // wind: long thin streaks racing across, and leaves tumbling (their own sizes, speeds and tints)
+        const streaks = (c) => Array.from({ length: c }, () => `<i class="wm-wx-streak" style="top:${rnd(4, 92).toFixed(0)}%;--t:${rnd(1.1, 2).toFixed(2)}s;--d:-${rnd(0, 2).toFixed(2)}s;--w:${rnd(24, 64).toFixed(0)}"></i>`).join('');
+        const TINTS = ['#7da64a', '#a8b84a', '#d29a3a', '#b8672b', '#8a5a2a'];
+        const leaves = (c) => Array.from({ length: c }, () => `<i class="wm-wx-leaf" style="top:${rnd(5, 85).toFixed(0)}%;--t:${rnd(3.2, 6.5).toFixed(1)}s;--d:-${rnd(0, 6).toFixed(1)}s;--s:${rnd(2.6, 4.4).toFixed(1)};--y:${rnd(4, 14).toFixed(0)};--c:${TINTS[Math.floor(Math.random() * TINTS.length)]}"></i>`).join('');
         let html = '';
         if (scene === 'storm') html = drops(60) + '<i class="wm-wx-flash"></i>';
         else if (scene === 'heavy') html = drops(60);
@@ -937,12 +957,51 @@
         else if (scene === 'snow') html = flakes(40);
         else if (scene === 'sleet') html = drops(18, true) + flakes(20);
         else if (scene === 'fog') html = '<i class="wm-wx-fog"></i><i class="wm-wx-fog" style="--d:-14s;top:55%"></i>';
-        else if (scene === 'cloudy') html = clouds(4, 0.14);
-        else if (scene === 'partly') html = (cur.isDay ? '<i class="wm-wx-sun"></i>' : '') + clouds(3, 0.11);
+        else if (scene === 'cloudy') html = clouds(o.band ? 2 : 4, 0.14);
+        else if (scene === 'partly') html = (cur.isDay ? '<i class="wm-wx-sun"></i>' : '') + clouds(o.band ? 2 : 3, 0.11);
         else if (cur.isDay) html = '<i class="wm-wx-sun"></i><i class="wm-wx-rays"></i>';
-        else html = Array.from({ length: 32 }, () => `<i class="wm-wx-star" style="left:${rnd(2, 98).toFixed(1)}%;top:${rnd(2, 70).toFixed(1)}%;--t:${rnd(2.5, 5).toFixed(1)}s;--d:-${rnd(0, 5).toFixed(1)}s"></i>`).join('');
+        else html = Array.from({ length: n(32) }, () => `<i class="wm-wx-star" style="left:${rnd(2, 98).toFixed(1)}%;top:${rnd(2, 70).toFixed(1)}%;--t:${rnd(2.5, 5).toFixed(1)}s;--d:-${rnd(0, 5).toFixed(1)}s"></i>`).join('');
+        if (wind && scene !== 'snow' && scene !== 'sleet') html += streaks(n(wind === 2 ? 14 : 8)) + leaves(n(wind === 2 ? 9 : 5));
+        else if (wind) html += streaks(n(wind === 2 ? 12 : 6));
         box.innerHTML = html;
     }
+
+    // ---- the weather in the band's glass (Yukimi, Nov 23): over the frosted picture, under the art, the
+    // rows and the panel, as high as the glass. It plays only while Today is seen and the screen awake:
+    // syncWx pauses every animation (a class; a paused animation draws nothing) when Today is hidden or
+    // behind a program (wmBehind), the screen is off, the page is hidden, or the Super Bar is up (its own
+    // weather); the sky is read again only when wmWeatherChange said it changed.
+    let wxEl = null;
+    let wxDirty = true;
+    function wxWanted() {
+        return !!(fx.weather && host && !host.hidden && root.dataset.wmApp === 'today' && !document.hidden
+            && root.dataset.screenOff === undefined && root.dataset.wmBehind === undefined && !host.classList.contains('is-super'));
+    }
+    function syncWx() {
+        if (!wxWanted()) {
+            // not seen: paused (stopped, not redrawn); a changed sky is read when Today shows again
+            if (wxEl && !wxEl.classList.contains('is-paused')) wxEl.classList.add('is-paused');
+            if (!fx.weather && wxEl && wxEl.dataset.scene) { wxEl.innerHTML = ''; wxEl.dataset.scene = ''; wxDirty = true; }
+            return;
+        }
+        if (!wxEl) {
+            wxEl = document.createElement('div');
+            wxEl.className = 'wm-ti-wxfx is-paused';
+            wxEl.setAttribute('aria-hidden', 'true');
+            host.insertBefore(wxEl, host.querySelector('.wm-ti-list'));
+        }
+        if (wxDirty) {
+            let cur = null;
+            try { cur = window.wmWeather && typeof window.wmWeather.current === 'function' ? window.wmWeather.current() : null; } catch (_) { cur = null; }
+            if (cur) wxDirty = false;
+            drawWeatherFx(wxEl, cur, { k: 0.6, band: true });
+        }
+        if (wxEl.classList.contains('is-paused')) wxEl.classList.remove('is-paused');
+    }
+    document.addEventListener('wmWeatherChange', () => { wxDirty = true; syncWx(); }, { signal: appScopeSignal });
+    document.addEventListener('visibilitychange', syncWx, { signal: appScopeSignal });
+    document.addEventListener('wmBehind', syncWx, { signal: appScopeSignal });
+    window.addEventListener('melatonscreen', () => setTimeout(syncWx, 0), { signal: appScopeSignal });
 
     const SUPER_NOTES_KEY = 'wmSuperBarNotes'; // { phone, apps: { pkg: false }, channels: { 'pkg|ch': false }, known: { pkg: { app, channels } } }
     /** Android apps that are Messaging accounts (#885): the Super Bar leaves them to Messaging. */
@@ -1166,8 +1225,10 @@
     // read again after a resize, a change on <html>, or the list's own size changing (ResizeObserver, no forced read)
     let unitKept = 0;
     let hostHKept = 0;
+    // Settings > Today > Effects > Size (#1109): every Titanium measure is wm-px x this; 1.15 unless set
+    let todayScale = 1.15;
     function unit() {
-        if (!unitKept) unitKept = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        if (!unitKept) unitKept = (parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1) * todayScale;
         return unitKept;
     }
     function hostHeight() {
@@ -1183,6 +1244,7 @@
         hostHKept = 0;
         if (typeof ResizeObserver === 'function') new ResizeObserver(() => { hostHKept = 0; }).observe(host);
         host.className = 'wm-ti';
+        host.style.setProperty('--wm-ti-scale', String(todayScale));
         host.innerHTML = `<div class="wm-ti-list"></div>
             <div class="wm-ti-band" aria-hidden="true"></div>
             <div class="wm-ti-focus">
@@ -1273,6 +1335,7 @@
     const PARALLAX_KEY = 'wmTodayParallax';
     const PARALLAX_LEVEL_KEY = 'wmTodayParallaxLevel'; // 1 - 10: zoom 1 + 2 % a step, travel 7/8 of the margin
     const FX_KEY = 'wmTodayFx';
+    const SCALE_KEY = 'wmTodayScale'; // percent 100 - 130 in steps of 5; unset = 115
     // Settings > Today > Text (Yukimi, Nov 17): the labels' weight and the glass item's (wm-titanium.css)
     const ROW_WEIGHT_KEY = 'wmTodayRowWeight';
     const BAND_WEIGHT_KEY = 'wmTodayBandWeight';
@@ -1317,8 +1380,8 @@
     // (the frosted picture under its dark sheet), startlaunch (a program grows out of its icon),
     // startticks (a tick a row while it scrolls)
     // superbar: a tap on the clock opens the Super Bar (openSuper)
-    const FX_NAMES = ['tilt', 'breathe', 'stagger', 'overshoot', 'catch', 'exit', 'gloss', 'digits', 'blur', 'haptics', 'startopen', 'startfrost', 'startlaunch', 'startticks', 'superbar'];
-    const FX_MOTION = ['tilt', 'breathe', 'stagger', 'overshoot', 'exit', 'digits', 'startopen', 'startlaunch'];
+    const FX_NAMES = ['tilt', 'breathe', 'stagger', 'overshoot', 'catch', 'exit', 'gloss', 'digits', 'blur', 'glasslight', 'weather', 'haptics', 'startopen', 'startfrost', 'startlaunch', 'startticks', 'superbar'];
+    const FX_MOTION = ['tilt', 'breathe', 'stagger', 'overshoot', 'exit', 'digits', 'weather', 'startopen', 'startlaunch'];
     const fx = {};
     let parallaxOn = false;
     let parallaxZoom = 1.08;
@@ -1373,6 +1436,16 @@
             URL.revokeObjectURL(url);
         }
     }
+    function readScale() {
+        let pc = 115;
+        try { const v = Number(localStorage.getItem(SCALE_KEY)); if (v >= 100 && v <= 130) pc = Math.round(v / 5) * 5; } catch (_) { /* default */ }
+        const sc = pc / 100;
+        if (sc === todayScale) return;
+        todayScale = sc;
+        unitKept = 0;
+        hostHKept = 0;
+        if (host) host.style.setProperty('--wm-ti-scale', String(sc));
+    }
     function readEffects() {
         try { parallaxOn = localStorage.getItem(PARALLAX_KEY) === '1'; } catch (_) { parallaxOn = false; }
         let lv = 4;
@@ -1393,7 +1466,7 @@
         wallEl = null; // the next use sets the zoom and travel again
         ensureWall();
         syncTilt();
-        if (host) syncBlur();
+        if (host) { syncBlur(); syncWx(); }
     }
 
     /** The picture layer (.wm-wall65, wmShell.js) with this setting's zoom and travel on it. */
@@ -1729,7 +1802,7 @@
             if (blobRetired.size) sweepRetired();
         });
     }
-    /** The picture at 320 px wide, blurred 5 px with its edges carried out (no dark rim), as a WebP blob. */
+    /** The picture at 320 px wide, blurred 5 px and a little more saturated, with its edges carried out (no dark rim), as a WebP blob. */
     function blurredUrl(u) {
         const had = lruGet(blurCache, u);
         if (had) return had;
@@ -1755,7 +1828,7 @@
                     const o = document.createElement('canvas');
                     o.width = W; o.height = H;
                     const y = o.getContext('2d');
-                    y.filter = 'blur(5px)';
+                    y.filter = 'blur(5px) saturate(1.35)'; // a little more colour in the frost (Yukimi, Nov 23): drawn once here, never a filter per frame
                     y.drawImage(c, -m, -m);
                     o.toBlob((b) => resolve(b ? URL.createObjectURL(b) : null), 'image/webp', 0.85);
                 } catch (_) { resolve(null); }
@@ -1863,11 +1936,13 @@
         try { sh.vibrate(kind); } catch (_) { /* no motor */ }
     }
 
+    readScale();
     readEffects();
     readTextWeights();
     document.addEventListener('wmSettingsChange', (e) => {
         const keys = (e && e.detail && e.detail.keys) || [];
         if (keys.includes(ROW_WEIGHT_KEY) || keys.includes(BAND_WEIGHT_KEY) || keys.includes('wmSystemFont')) readTextWeights();
+        if (keys.includes(SCALE_KEY)) { readScale(); if (host && !host.hidden) place(); }
         if (keys.includes(PARALLAX_KEY) || keys.includes(PARALLAX_LEVEL_KEY) || keys.includes(FX_KEY)) { readEffects(); if (host && !host.hidden) place(); }
         if (keys.includes('wmSuperBarNotes') && superOpen) refreshNotes();
     });
@@ -1879,7 +1954,7 @@
         if (el.classList.contains(cls)) el.classList.remove(cls);
     }
     function moveRow(el, y) {
-        const t = `translate3d(0, calc(${y} * var(--wm-px)), 0)`;
+        const t = `translate3d(0, calc(${y} * var(--u)), 0)`;
         if (el._wmTiT !== t) {
             el._wmTiT = t;
             el.style.transform = t;
@@ -2042,9 +2117,9 @@
         if (clockTimer) return;
         clockTimer = setTimeout(tickClocks, 0);
     }
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) ensureClockTick(); });
-    window.addEventListener('melatonscreen', (e) => { if (e && e.detail && e.detail.on) ensureClockTick(); });
-    document.addEventListener('wmAppChange', () => ensureClockTick());
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) ensureClockTick(); }, { signal: appScopeSignal });
+    window.addEventListener('melatonscreen', (e) => { if (e && e.detail && e.detail.on) ensureClockTick(); }, { signal: appScopeSignal });
+    document.addEventListener('wmAppChange', () => ensureClockTick(), { signal: appScopeSignal });
 
     function liveClockHtml() {
         const a = clockAngles(new Date());
@@ -2882,6 +2957,7 @@
             if (!on) { if (host) host.hidden = true; return; }
             if (!host) build();
             host.hidden = false;
+            syncWx();
             // the list is moving: it draws the new data once it has landed (arrive); there is no timed repaint
             if (dragging || settle) { missed = true; return; }
             missed = false;
@@ -3305,6 +3381,7 @@
         if (now !== 'today' && overlay) { try { overlay.close(true); } catch (_) { overlay = null; } }
         lastApp = now;
         syncTilt();
+        syncWx();
         if (now === 'today' && host) requestAnimationFrame(() => { syncBlur(); blurPlace(); });
     }).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
     document.addEventListener('visibilitychange', syncTilt);

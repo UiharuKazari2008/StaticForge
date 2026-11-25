@@ -3287,6 +3287,8 @@
                 iconUrl: iconUrl(cond.icon),
                 iconUrl2x: iconUrl(cond.icon, true),
                 isDay: cur.isDay !== false,
+                // the wind now (km/h): Today's band and the Super Bar draw streaks and blowing leaves from it
+                windKmh: num(cur.windKmh),
                 hiC: today ? num(hiC(today)) : null,
                 loC: today ? num(loC(today)) : null,
                 hi: today ? tempOf(hiC(today)) : null,
