@@ -1570,6 +1570,23 @@ async function issuesBrief(r) {
 
 let pumping = null;
 /** Starts queued items while there are slots and accounts with room. One pump at a time. */
+const loginTried = new Map(); // work item id -> Set of account indexes whose login failed its start (at most one try per account per item)
+/**
+ * A start / resume failed with a login error (Yukimi Nov 25: "If login expired then move on to next account until it's fixed"):
+ * the account is marked login-failed (claudeFleetSettings; availability 'login' skips it) and the item goes back to queued so
+ * the next pump starts it on the next account. False when the text is not a login error (the caller fails the item).
+ */
+function loginFailover(w, pick, message) {
+    const fs8 = require('./claudeFleetSettings');
+    if (!pick || !fs8.isLoginError(message)) return false;
+    fs8.markLoginFailed(pick.index, message, pick.name);
+    const tried = loginTried.get(w.id) || new Set();
+    tried.add(pick.index);
+    loginTried.set(w.id, tried);
+    setWork(w.id, { state: 'queued', message: `Login expired on ${pick.name}: starting on the next account` });
+    return true;
+}
+
 function pumpWork(gr) {
     if (pumping) return pumping;
     pumping = (async () => {
@@ -1590,7 +1607,17 @@ function pumpWork(gr) {
             if (!set.autoStart && !forced) continue;
             if (!forced && activeCount() >= set.maxConcurrent) { setWork(w.id, { message: `Waiting for a slot (${set.maxConcurrent} supervised sessions at once)` }); continue; }
             let pick;
-            try { pick = await require('./claudeFleetMcp').pickForStart(g, w.account || 'auto'); } catch (e) { setWork(w.id, { message: `Waiting for an account with room: ${e.message.slice(0, 160)}` }); continue; }
+            try {
+                try { pick = await require('./claudeFleetMcp').pickForStart(g, w.account || 'auto'); } catch (e) {
+                    // a named account whose login expired: the work moves on to the next account until it is fixed
+                    if (w.account && w.account !== 'auto' && /Login expired/.test(e.message)) pick = await require('./claudeFleetMcp').pickForStart(g, 'auto'); else throw e;
+                }
+            } catch (e) {
+                if (loginTried.has(w.id)) { loginTried.delete(w.id); setWork(w.id, { state: 'failed', ended_at: Date.now(), message: `No account with a working login (${e.message.slice(0, 160)})` }); settleParent(w.parent_id); emit({ work: getWork(w.id) }); continue; }
+                setWork(w.id, { message: `Waiting for an account with room: ${e.message.slice(0, 160)}` }); continue;
+            }
+            // one try per account per item: an account that already failed this item's start on its login is not tried again
+            if ((loginTried.get(w.id) || new Set()).has(pick.index)) { loginTried.delete(w.id); setWork(w.id, { state: 'failed', ended_at: Date.now(), message: 'No account with a working login' }); settleParent(w.parent_id); emit({ work: getWork(w.id) }); continue; }
             setWork(w.id, { state: 'starting', message: `Starting on ${pick.name}`, account: pick.name });
             emit({ work: getWork(w.id) });
             try {
@@ -1638,15 +1665,18 @@ function pumpWork(gr) {
                     mode: st.defaultMode, engine, remoteControl: !!w.remote_control,
                     model: w.model || stage.model || (engine ? undefined : (st.defaultModel || 'sonnet')), effort: w.effort || stage.effort || st.defaultEffort || undefined, dispatchedBy: `Supervisor (${w.source}, ${topology})`
                 });
-                if (r.state === 'failed') { setWork(w.id, { state: 'failed', ended_at: Date.now(), message: r.message || 'It did not start', session_id: r.id || null }); settleParent(w.parent_id); }
+                if (r.state === 'failed' && loginFailover(w, pick, r.message)) regroup = true;
+                else if (r.state === 'failed') { setWork(w.id, { state: 'failed', ended_at: Date.now(), message: r.message || 'It did not start', session_id: r.id || null }); settleParent(w.parent_id); }
                 else {
+                    loginTried.delete(w.id);
+                    require('./claudeFleetSettings').clearLoginFailed(pick.index);
                     markSupervised(r.id);
                     setWork(w.id, { state: 'running', session_id: r.id, link: r.link || '', started_at: Date.now(), message: planFirst ? `Planning: reviewing the request on ${pick.name}` : `Running on ${pick.name}` });
                     started += 1;
                 }
             } catch (e) {
-                setWork(w.id, { state: 'failed', ended_at: Date.now(), message: e.message.slice(0, 300) });
-                settleParent(w.parent_id);
+                if (loginFailover(w, pick, e.message)) regroup = true;
+                else { setWork(w.id, { state: 'failed', ended_at: Date.now(), message: e.message.slice(0, 300) }); settleParent(w.parent_id); }
             }
             emit({ work: getWork(w.id) });
         }
@@ -1900,12 +1930,35 @@ async function workAfterReview(rv, opts = {}) {
     pumpWork().catch(() => {});
 }
 
+/**
+ * Resumes a session on the item's account, else the next with room; an account whose login expired (the launcher's text) is marked
+ * and the next one tried, once each. { pick, res } or { pick: null, loginFailed } when no account is left.
+ */
+async function resumeOnAccount(sid, wants) {
+    const fleet = require('./claudeFleetMcp');
+    const launcher = require('./claudeSessionLauncher');
+    const fs8 = require('./claudeFleetSettings');
+    const tried = new Set();
+    for (let i = 0; i < 12; i += 1) {
+        let pick = null;
+        for (const want of wants) { try { pick = await fleet.pickForStart(gResources, want); } catch (_) { pick = null; } if (pick) break; }
+        if (!pick || tried.has(pick.index)) return { pick: null, res: null, loginFailed: tried.size > 0 };
+        let res = null;
+        try { res = await launcher.resume(gResources, sid, { account: pick.index }); } catch (e) { res = { state: 'failed', message: e.message }; }
+        if (res && res.state === 'failed' && fs8.isLoginError(res.message)) { fs8.markLoginFailed(pick.index, res.message, pick.name); tried.add(pick.index); continue; }
+        if (res && res.state !== 'failed') fs8.clearLoginFailed(pick.index);
+        return { pick, res };
+    }
+    return { pick: null, res: null, loginFailed: tried.size > 0 };
+}
+
 /** Types a message into an item's session; a session that is not running is resumed first (on the item's account, else the best with room). */
 async function steerResumed(r, text) {
     const sid = r.session_id;
     if (!liveSessionsById().get(sid)) {
-        const pick = await require('./claudeFleetMcp').pickForStart(gResources, r.account || 'auto');
-        const res = await require('./claudeSessionLauncher').resume(gResources, sid, { account: pick.index });
+        const got = await resumeOnAccount(sid, [r.account || 'auto', 'auto']);
+        if (!got.pick) { if (got.loginFailed) throw new Error('No account with a working login'); await require('./claudeFleetMcp').pickForStart(gResources, r.account || 'auto'); throw new Error('No account with room'); }
+        const res = got.res;
         if (res && res.state === 'failed') throw new Error(res.message || 'Its session did not start again');
     }
     await require('./claudeSessionLauncher').steer(sid, text);
@@ -2708,17 +2761,12 @@ async function maybeRevive(workId, rv, opts = {}) {
         emit({ work: getWork(w.id) });
         return 'failed';
     }
-    const fleet = require('./claudeFleetMcp');
-    let pick = null;
-    for (const want of [w.account || 'auto', 'auto']) {
-        try { pick = await fleet.pickForStart(gResources, want); break; } catch (_) { pick = null; }
-        if (want === 'auto') break;
-    }
-    if (!pick) { setWork(w.id, { message: 'Its session stopped; waiting for an account with room to start it again' }); emit({ work: getWork(w.id) }); return 'waiting'; }
+    const got = await resumeOnAccount(sid, [w.account || 'auto', 'auto']);
+    const pick = got.pick;
+    if (!pick) { setWork(w.id, { message: got.loginFailed ? 'Its session stopped; no account with a working login to start it again (sign in again in Fleet > Accounts)' : 'Its session stopped; waiting for an account with room to start it again' }); emit({ work: getWork(w.id) }); return 'waiting'; }
     d.prepare('INSERT INTO supervisor_resumes (work_id, at, why) VALUES (?, ?, ?)').run(w.id, Date.now(), why);
     const launcher = require('./claudeSessionLauncher');
-    let res = null;
-    try { res = await launcher.resume(gResources, sid, { account: pick.index }); } catch (e) { res = { state: 'failed', message: e.message }; }
+    const res = got.res;
     if (res && res.state === 'failed') { setWork(w.id, { message: `Its session stopped (${why}); starting it again failed: ${String(res.message || '').slice(0, 160)}` }); emit({ work: getWork(w.id) }); return 'waiting'; }
     const bits = [];
     const missed = rv && Array.isArray(rv.missed) ? rv.missed : [];
@@ -3822,5 +3870,5 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
+    _test: { resumeOnAccount, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
 };

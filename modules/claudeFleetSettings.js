@@ -13,6 +13,8 @@
  *              exhausted  a limit at 100% (or the API says so)       not schedulable
  *              capped     a limit at or past the account's own max   not schedulable
  *              near       a limit at 80%+, or within 10 points of its max
+ *              login      its login expired (usage row needsLogin / a login error, or a session start failed on it:
+ *                         markLoginFailed)                           not schedulable until a good usage read or start
  *              free / unknown (no usage read yet: schedulable, said so)
  *
  * Yozora's dispatch (claudeFleetMcp) and Fleet's New Session "Auto" pick from schedulable accounts only:
@@ -131,7 +133,25 @@ function availability(usage, s) {
     return Object.assign(out, { costWarning: `Extra usage is on: work past the plan's limits on this account is billed${spent}` });
 }
 
+// ---------------------------------------------------------------- expired logins (Yukimi Nov 25: "If login expired then move on to next account until it's fixed")
+const LOGIN_RE = /sign in again|login expired|login refused|HTTP 401|not logged in|please run \/login|oauth token has expired|invalid api key/i;
+const LOGIN_MSG = 'Login expired: sign in again (Fleet > Accounts > the account) - work goes to the other accounts until then';
+const loginFailed = new Map(); // account index -> { at, message, name }: a start / resume that failed on a login error (memory only, no timer)
+
+/** Is this error / note text a login-expiry one (a usage read's or the launcher's)? */
+function isLoginError(text) { return LOGIN_RE.test(String(text || '')); }
+function markLoginFailed(index, message, name) { if (Number.isFinite(index)) loginFailed.set(Number(index), { at: Date.now(), message: String(message || '').slice(0, 200), name: name || '' }); }
+function loginFailedOf(index) { return loginFailed.get(Number(index)) || null; }
+function clearLoginFailed(index) { return loginFailed.delete(Number(index)); }
+
 function availabilityOf(usage, s) {
+    const idx = usage && Number.isFinite(usage.index) ? usage.index : null;
+    const hasRows = !!(usage && Array.isArray(usage.limits) && usage.limits.some((l) => Number.isFinite(l.percent)));
+    const failed = idx !== null ? loginFailedOf(idx) : null;
+    // a later good usage read (limits, no needsLogin) clears a recorded start failure
+    if (failed && hasRows && !usage.needsLogin && !isLoginError(usage.error || usage.note) && Number.isFinite(usage.at) && usage.at > failed.at) { clearLoginFailed(idx); }
+    const stillFailed = idx !== null ? loginFailedOf(idx) : null;
+    if ((usage && (usage.needsLogin || isLoginError(usage.error || usage.note))) || stillFailed) return { state: 'login', schedulable: false, message: LOGIN_MSG, resetsAt: null };
     const limits = (usage && Array.isArray(usage.limits) ? usage.limits : []).filter((l) => Number.isFinite(l.percent));
     if (!limits.length) return { state: 'unknown', schedulable: true, message: usage && usage.error ? `Usage unknown: ${usage.error}` : 'Usage not read yet', resetsAt: null };
     const label = (l) => l.label || l.short || l.kind;
@@ -196,9 +216,9 @@ function usageFor(index) {
     try {
         const snap = require('./claudeUsage').cached();
         const row = snap && (snap.accounts || []).find((a) => a.index === index);
-        if (!row) return null;
-        return { id: row.id || null, plan: row.plan || '', limits: row.limits || [], at: row.at || null, error: row.error || null, extra: row.extra || null, extraEnabled: !!row.extraEnabled, billingDay: row.billingDay || null };
+        if (!row) return Number.isFinite(index) && loginFailedOf(index) ? { id: null, index, needsLogin: false, plan: '', limits: [], at: null, error: null, extra: null, extraEnabled: false, billingDay: null } : null;
+        return { id: row.id || null, index: row.index, needsLogin: !!row.needsLogin, plan: row.plan || '', limits: row.limits || [], at: row.at || null, error: row.error || null, extra: row.extra || null, extraEnabled: !!row.extraEnabled, billingDay: row.billingDay || null };
     } catch (_) { return null; }
 }
 
-module.exports = { get, save, availability, pace, usageFor, DEFAULTS, PRIORITIES, _limitCap: limitCap };
+module.exports = { get, save, availability, pace, usageFor, isLoginError, markLoginFailed, loginFailedOf, clearLoginFailed, LOGIN_MSG, DEFAULTS, PRIORITIES, _limitCap: limitCap };

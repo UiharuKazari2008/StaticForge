@@ -1381,7 +1381,7 @@
 
     /**
      * Vista's information bar for an account that nears a limit or is no longer free to schedule work
-     * (fleet row availability: state near | capped | exhausted): the warning icon while it can still take work,
+     * (fleet row availability: state near | capped | exhausted | login): the warning icon while it can still take work,
      * the error icon once it cannot.
      */
     function availBar(f, withName) {
@@ -1395,10 +1395,11 @@
         return text ? `<div class="cd-infobar is-error is-cost" role="alert"><img src="${VI}/error-16.png" alt=""><span>${withName && f ? `<b>${esc(f.name)}</b>: ` : ''}${esc(text)}</span></div>` : '';
     }
     function limitBar(f, av, withName) {
-        const bad = av.state === 'near' || av.state === 'capped' || av.state === 'exhausted' || av.schedulable === false;
+        const bad = av.state === 'near' || av.state === 'capped' || av.state === 'exhausted' || av.state === 'login' || av.schedulable === false;
         if (!bad) return '';
-        const icon = av.state === 'near' && av.schedulable !== false ? 'warning' : 'error';
-        const fallback = av.state === 'near' ? 'is close to a usage limit.' : (av.state === 'exhausted' ? 'has used up its plan usage.' : 'has reached a usage limit.');
+        // an expired login is a warning (sign in again), not a limit: the account can be fixed any time
+        const icon = (av.state === 'near' && av.schedulable !== false) || av.state === 'login' ? 'warning' : 'error';
+        const fallback = av.state === 'login' ? 'login expired: sign in again (Fleet > Accounts > the account).' : av.state === 'near' ? 'is close to a usage limit.' : (av.state === 'exhausted' ? 'has used up its plan usage.' : 'has reached a usage limit.');
         const msg = av.message ? String(av.message) : `${f.name} ${fallback}`;
         const at = av.resetsAt ? new Date(av.resetsAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
         // the server's sentence may already end on "until it resets": the time then completes it
@@ -1412,7 +1413,7 @@
         const p = f && f.availability && f.availability.pace;
         if (!p || p.state === 'unknown' || !Number.isFinite(p.usedToday)) return '';
         // an account at or past a limit already says so in its bar above: no pace line under it
-        if (f.availability && ['exhausted', 'capped'].includes(f.availability.state)) return '';
+        if (f.availability && ['exhausted', 'capped', 'login'].includes(f.availability.state)) return '';
         const word = { ok: 'On pace', ahead: 'Ahead of pace', over: 'Used today\'s share' }[p.state] || '';
         const tip = `Week ${p.weekPct}% of ${p.cap}%, ${p.expectedPct}% expected by now; ${p.dayStartPct}% when today began, ${p.daysLeft} days left`;
         return `<p class="mmc-hint cd-pace is-${esc(p.state)}" title="${esc(tip)}">Today: ${esc(String(p.usedToday))}% of ${esc(String(p.todayShare))}% share - ${esc(word)}</p>`;
@@ -3295,7 +3296,8 @@
     function accountsPage(c) {
         const A = S.app.url('assets').replace(/\/$/, '');
         const rows = S.accounts.map((a) => {
-            const status = [a.active ? 'Engine' : '', a.onHost ? 'On host' : '', isPreferred(a.index) ? 'Preferred' : '', priorityTag(a.index)].filter(Boolean).join(', ') || (a.remoteLogin ? 'Ready' : 'No login linked');
+            const loginState = (fleetOf(a.index) || {}).availability;
+            const status = [loginState && loginState.state === 'login' ? 'Login expired' : '', a.active ? 'Engine' : '', a.onHost ? 'On host' : '', isPreferred(a.index) ? 'Preferred' : '', priorityTag(a.index)].filter(Boolean).join(', ') || (a.remoteLogin ? 'Ready' : 'No login linked');
             const running = S.sessions.filter((s) => s.account && s.account.index === a.index && liveOf(s.id)).length;
             return {
                 key: `a:${a.index}`,

@@ -451,6 +451,55 @@ sup._test.setFetch(async (url, opts) => {
         } finally { child.kill('SIGKILL'); fs.rmSync(rec, { force: true }); launcher.steer = realSteer; launcher.interrupt = realInt; }
     });
 
+    await test('expired login: a start that fails on account A moves on to account B (item not failed); every account failing fails the item; resume moves on too', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const fs8 = require('../modules/claudeFleetSettings');
+        const realPick = fleetMcp.pickForStart;
+        const realStart = launcher.start;
+        const realResume = launcher.resume;
+        const accounts = [{ index: 0, name: 'A' }, { index: 1, name: 'B' }];
+        const bad = new Set([0]);
+        const tries = [];
+        fleetMcp.pickForStart = async () => {
+            const a = accounts.find((x) => !fs8.loginFailedOf(x.index));
+            if (!a) throw new Error('No Claude account has room');
+            return Object.assign({ settings: {} }, a);
+        };
+        launcher.start = async (g, o) => { tries.push(o.account); return bad.has(o.account) ? { state: 'failed', message: 'OAuth token has expired' } : { id: `ffffffff-0000-0000-0000-00000000000${tries.length}`, state: 'connected', link: '' }; };
+        settingsCfg.agentSupervisor = Object.assign(settingsCfg.agentSupervisor, { maxConcurrent: 10, autoStart: true });
+        try {
+            const w = sup.enqueue({ title: 'Login A', prompt: 'x', topology: 'direct', startNow: true }, { gr });
+            await sup.pumpWork(gr);
+            await new Promise((r) => setTimeout(r, 50));
+            await sup.pumpWork(gr);
+            assert.deepStrictEqual(tries, [0, 1], 'A failed on its login, B took the item');
+            assert.strictEqual(sup.getWork(w.id).state, 'running');
+            assert.match(sup.getWork(w.id).message, /Running on B/);
+            assert.ok(fs8.loginFailedOf(0), 'A is recorded as login-failed');
+            // every account fails
+            fs8.clearLoginFailed(0); fs8.clearLoginFailed(1);
+            bad.add(1); tries.length = 0;
+            const z = sup.enqueue({ title: 'Login all', prompt: 'y', topology: 'direct', startNow: true }, { gr });
+            for (let i = 0; i < 4; i += 1) { await sup.pumpWork(gr); await new Promise((r) => setTimeout(r, 30)); }
+            assert.deepStrictEqual(tries, [0, 1]);
+            assert.strictEqual(sup.getWork(z.id).state, 'failed');
+            assert.match(sup.getWork(z.id).message, /No account with a working login/);
+            // resume: the item's account failed on its login, the session resumes on the next one
+            fs8.clearLoginFailed(0); fs8.clearLoginFailed(1); bad.delete(1);
+            const resumedOn = [];
+            launcher.resume = async (g, id, o) => { resumedOn.push(o.account); return bad.has(o.account) ? { state: 'failed', message: 'Not logged in' } : { id, state: 'connected' }; };
+            bad.add(0);
+            const got = await sup._test.resumeOnAccount('abababab-0000-0000-0000-000000000001', ['auto']);
+            assert.deepStrictEqual(resumedOn, [0, 1]);
+            assert.strictEqual(got.pick.name, 'B');
+            assert.ok(got.res && got.res.state === 'connected');
+            bad.add(1); fs8.clearLoginFailed(0); fs8.clearLoginFailed(1); resumedOn.length = 0;
+            const none = await sup._test.resumeOnAccount('abababab-0000-0000-0000-000000000002', ['auto']);
+            assert.strictEqual(none.pick, null);
+            assert.strictEqual(none.loginFailed, true);
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.resume = realResume; fs8.clearLoginFailed(0); fs8.clearLoginFailed(1); }
+    });
+
     await test('fan-out: auto plans first (a planner reports its shape); surfaces splits into child items and the parent settles; planner gets the stage models', async () => {
         const fleetMcp = require('../modules/claudeFleetMcp');
         const realPick = fleetMcp.pickForStart;

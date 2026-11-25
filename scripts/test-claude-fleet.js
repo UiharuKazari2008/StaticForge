@@ -176,6 +176,35 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
         assert.deepStrictEqual([fs8.availability(null, s()).state, fs8.availability(null, s()).schedulable], ['unknown', true]);
     });
 
+    await test('availability: login state from needsLogin / a login error / a recorded start failure; clears on a later good usage read; pick skips it (auto) and refuses it (named)', () => {
+        const fs8 = require('../modules/claudeFleetSettings');
+        const { pickAccount } = require('../modules/claudeFleetMcp')._test;
+        const s = Object.assign({}, fs8.DEFAULTS);
+        const lim = [{ kind: 'session', label: 'session', percent: 20, resetsAt: 1 }];
+        const a1 = fs8.availability({ index: 7, needsLogin: true, limits: [], error: 'Login expired: sign in again (Claude Accounts > Add Account)' }, s);
+        assert.deepStrictEqual([a1.state, a1.schedulable], ['login', false]);
+        assert.match(a1.message, /Login expired: sign in again \(Fleet > Accounts/);
+        assert.strictEqual(fs8.availability({ index: 7, limits: [], error: 'login refused (HTTP 401)' }, s).state, 'login');
+        assert.strictEqual(fs8.availability({ index: 7, limits: [], error: 'Usage read failed (HTTP 500)' }, s).state, 'unknown');
+        assert.ok(fs8.isLoginError('OAuth token has expired') && fs8.isLoginError('Not logged in') && !fs8.isLoginError('rate limited'));
+        // a recorded runtime failure
+        fs8.markLoginFailed(8, 'OAuth token has expired', 'Ops');
+        assert.ok(fs8.loginFailedOf(8));
+        assert.strictEqual(fs8.availability({ index: 8, limits: lim, at: Date.now() - 60000 }, s).state, 'login', 'an older good read does not clear it');
+        assert.strictEqual(fs8.availability({ index: 8, limits: [] }, s).state, 'login');
+        assert.strictEqual(fs8.availability({ index: 8, limits: lim, at: Date.now() + 1000 }, s).state, 'free', 'a later good read clears it');
+        assert.strictEqual(fs8.loginFailedOf(8), null);
+        fs8.markLoginFailed(8, 'x'); fs8.clearLoginFailed(8);
+        assert.strictEqual(fs8.loginFailedOf(8), null);
+        const acc = (index, name, availability) => ({ index, name, canRun: true, sessions: [], remoteControl: { message: '' }, usage: { worstPercent: 5 }, availability });
+        const snap = { accounts: [acc(0, 'Main', { state: 'login', schedulable: false, message: fs8.LOGIN_MSG }), acc(1, 'Ops', { state: 'free', schedulable: true })] };
+        assert.strictEqual(pickAccount(snap, 'auto').name, 'Ops');
+        assert.strictEqual(pickAccount(snap, 'auto', true).name, 'Ops', 'allowFull does not take an expired login');
+        assert.throws(() => pickAccount(snap, 'Main'), /Login expired/);
+        assert.throws(() => pickAccount(snap, 'Main', true), /Login expired/);
+        assert.throws(() => pickAccount({ accounts: [snap.accounts[0]] }, 'auto'), /No Claude account has room/);
+    });
+
     await test('auto pick: the preferred account while free, skipping capped / exhausted ones', () => {
         const { pickAccount } = require('../modules/claudeFleetMcp')._test;
         const acc = (index, name, worst, extra) => Object.assign({ index, name, canRun: true, sessions: [], remoteControl: { message: '' }, usage: { worstPercent: worst }, availability: { state: 'free', schedulable: true } }, extra || {});

@@ -196,12 +196,14 @@ function pickAccount(snap, want, allowFull) {
         if (!acc) throw new Error(`No Claude account ${want} (claude_fleet_status lists them)`);
         if (!acc.canRun) throw new Error(`${acc.name} cannot run sessions yet: ${acc.remoteControl.message || 'it needs a linked login and its own folder'}`);
         const worst = acc.usage && acc.usage.worstPercent;
+        // an expired login is refused even with allowFull: no session can start on it
+        if (acc.availability && acc.availability.state === 'login') throw new Error(`${acc.name}: ${acc.availability.message}. Pick another account`);
         if (!allowFull && !usable(acc)) throw new Error(`${acc.name}: ${acc.availability.message}. Pick another, or pass allowFull`);
         if (!allowFull && Number.isFinite(worst) && worst >= FULL_PCT) throw new Error(`${acc.name} is at ${worst}% of a limit: pick another, or pass allowFull`);
         return acc;
     }
-    const runnable = snap.accounts.filter((a) => a.canRun && (allowFull || (usable(a) && worstOf(a) < FULL_PCT)));
-    if (!runnable.length) throw new Error('No Claude account has room (every runnable account is at its limit, past its own max, or cannot run): wait for a reset or pass allowFull');
+    const runnable = snap.accounts.filter((a) => a.canRun && !(a.availability && a.availability.state === 'login') && (allowFull || (usable(a) && worstOf(a) < FULL_PCT)));
+    if (!runnable.length) throw new Error('No Claude account has room (every runnable account is at its limit, past its own max, has an expired login, or cannot run): wait for a reset or pass allowFull');
     // pace (Yukimi Nov 25): an account that used today's share of its week ranks after every one that did not; ahead of pace after ok
     const paceOf = (a) => (a.availability && a.availability.pace) || null;
     const paceState = (a) => { const p = paceOf(a); return p && p.state ? p.state : 'ok'; };
