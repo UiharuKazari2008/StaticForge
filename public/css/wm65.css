@@ -1505,9 +1505,15 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] #wmShell > .wm-wall65
     background: rgba(0, 0, 0, 0.5);
 }
 
-html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-page.wm-s65 { background: transparent; }
-html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-s65-wall,
-html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-s65-sheet { display: none; }
+/* With the shell's own picture layer (has-wall65) Start is see-through: it draws no backdrop of its
+ * own and the layer's 50 % sheet (above) is its darkening. The open Fold's split is the exception
+ * (Yukimi, Nov 25 2026: the left pane came out white): that pane is not the whole screen, the
+ * program on the right owns the shell's white .wm-content, and the shell's picture layer is not
+ * behind a pane at all - so the pane draws its own copy of Today's picture and the ROM's 50 %
+ * sheet (wmStart65.js paintWallpaper), falling back to the ROM's black. */
+html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-page.wm-s65:not(.is-split-left) { background: transparent; }
+html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-page.wm-s65:not(.is-split-left) .wm-s65-wall,
+html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-page.wm-s65:not(.is-split-left) .wm-s65-sheet { display: none; }
 
 html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] #wmShell.has-wall65 > .wm-content { background: transparent; }
 
