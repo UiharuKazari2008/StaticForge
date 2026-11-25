@@ -586,7 +586,7 @@
                 const sorted = sort && sort.key === col.key;
                 return `<span class="mmc-col${col.num ? ' is-num' : ''}${sorted ? ' is-sorted' : ''}"${sort && col.key ? ` data-sort="${esc(col.key)}" data-sort-id="${esc(opts.sortId)}"` : ''}>${sorted ? `<span class="mmc-arrow${sort.dir < 0 ? ' is-down' : ''}"></span>` : ''}${esc(col.t)}${opts.sortId ? `<i class="mmc-grip" data-grip="${i}"></i>` : ''}</span>`;
             }).join('') + '<span class="mmc-col mmc-col-rest"></span>';
-            const list = sort ? this.sorted(rows, cols, opts.sortId, opts.sort) : rows;
+            const list = sort && !opts.presorted ? this.sorted(rows, cols, opts.sortId, opts.sort) : rows; // presorted: the caller orders the rows (a tree sorts within each level)
             const cell = (col, r, i) => {
                 const inner = col.html ? col.html(r.data) : `<i>${esc(col.text(r.data))}</i>`;
                 return `<span${col.num ? ' class="is-num"' : ''}>${i === 0 && r.icon ? `<img class="mmc-row-icon" src="${esc(r.icon)}" alt="">` : ''}${inner}</span>`;

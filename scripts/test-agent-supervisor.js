@@ -592,6 +592,83 @@ sup._test.setFetch(async (url, opts) => {
         assert.ok(bad.error && bad.findings.some((f) => f.kind === 'missing-file'));
     });
 
+    await test('rules review: memory findings; explain -> proposal; accept queues a held item or steers the Manager Session; reject keeps the reason', async () => {
+        const rd = path.join(tmp, 'repo2');
+        fs.mkdirSync(path.join(rd, '.cursor', 'rules'), { recursive: true });
+        fs.writeFileSync(path.join(rd, '.cursor', 'rules', 'alpha.mdc'), '---\ndescription: Alpha rule\nalwaysApply: true\n---\nNever restart the server.\n');
+        fs.writeFileSync(path.join(rd, 'CLAUDE.md'), '# x\n@.cursor/rules/alpha.mdc\n');
+        const opts = { repo: rd, memories: [
+            { id: 11, title: 'Yukimi: always answer short', kind: 'preference', scope: 'global', pinned: true, body: 'Short answers.' },
+            { id: 12, title: 'Do not restart', kind: 'lesson', scope: 'global', body: 'Never restart the server while testing.' },
+            { id: 13, title: 'Old build host', kind: 'fact', scope: 'global', body: 'Builds run on Ruiko1.' }
+        ] };
+        const g5 = Object.assign({}, gr, { getConfig: () => ({ agentSupervisor: { enabled: true, engine: 'tokenrouter' } }) });
+        let memPrompt = '';
+        const reply = (content) => ({ ok: true, status: 200, text: async () => JSON.stringify({ usage: { prompt_tokens: 10, completion_tokens: 5, cost: 0 }, choices: [{ message: { content: JSON.stringify(content) } }] }) });
+        sup._test.setFetch(async (url, o) => {
+            const msgs = JSON.parse(o.body).messages;
+            const sys = msgs[0].content; const user = msgs[1].content;
+            if (/audit the written rules/.test(sys)) return reply({ findings: [] });
+            if (/review the shared memory/.test(sys)) {
+                memPrompt = user;
+                return reply({ findings: [
+                    { memoryId: 11, kind: 'memory-to-rule', rule: 'new', text: 'A standing preference.', draft: { mode: 'new', rule: 'Short Answers', description: 'Answer in a few lines.', alwaysApply: true, text: '# Short answers\n\nAnswer in a few lines.' } },
+                    { memoryId: 12, kind: 'memory-duplicate', rule: 'alpha', text: 'alpha says it already.' },
+                    { memoryId: 13, kind: 'memory-outdated', text: 'Ruiko1 is gone.' },
+                    { memoryId: 99, kind: 'memory-outdated', text: 'unknown memory is dropped' }
+                ] });
+            }
+            if (/Yukimi keep the written rules/.test(sys)) return reply({ verdict: 'new-rule', title: 'No server restarts while testing', reasoning: 'Alpha forbids restarts but only for the server, not tests.', rules: ['alpha'], draft: { file: 'no-restart-while-testing', description: 'Do not restart.', alwaysApply: false, trigger: 'before any restart', text: '# No restart\n\nDo not restart while Yukimi tests.' } });
+            return reply({});
+        });
+        const rv = await sup.reviewRules(g5, opts);
+        assert.ok(/\[preference, global, pinned\] Yukimi: always answer short/.test(memPrompt) && memPrompt.indexOf('#11') < memPrompt.indexOf('#12'), 'memories are given, pinned first');
+        const mf = rv.findings.filter((f) => /^memory-/.test(f.kind));
+        assert.deepStrictEqual(mf.map((f) => [f.kind, f.memoryId]), [['memory-to-rule', 11], ['memory-duplicate', 12], ['memory-outdated', 13]]);
+        const toRule = mf[0];
+        assert.strictEqual(toRule.draft.kind, 'new-rule'); assert.strictEqual(toRule.draft.file, 'short-answers.mdc'); assert.strictEqual(toRule.draft.alwaysApply, true);
+        assert.deepStrictEqual(mf[1].rules, ['alpha']);
+        // an explanation becomes a draft proposal with her words and the reasoning
+        const p = await sup.explainRuleIssue(g5, 'agents keep restarting the server while I test', opts);
+        assert.strictEqual(p.status, 'draft'); assert.strictEqual(p.draft.kind, 'new-rule'); assert.strictEqual(p.draft.file, 'no-restart-while-testing.mdc');
+        assert.ok(/restarting the server/.test(p.input) && /Alpha forbids/.test(p.reasoning));
+        assert.ok(sup.rulesState(opts).proposals.some((x) => x.id === p.id));
+        await assert.rejects(() => sup.explainRuleIssue(g5, '   ', opts), /Describe/);
+        // accept queues a held item with the edited draft; the engine is not called again
+        const a = await sup.acceptRuleProposal(g5, p.id, { text: '# No restart\n\nEdited text.' }, opts);
+        assert.strictEqual(a.status, 'accepted'); assert.strictEqual(a.how, 'work');
+        const w = sup.getWork(a.workId);
+        assert.strictEqual(w.state, 'held'); assert.strictEqual(w.title, `Apply rule proposal #${p.id}`);
+        assert.ok(/Edited text\./.test(w.prompt) && /no-restart-while-testing\.mdc/.test(w.prompt) && /Rules on demand/.test(w.prompt) && /English/.test(w.prompt) && /cursor-rules/.test(w.prompt));
+        await assert.rejects(() => sup.acceptRuleProposal(g5, p.id, {}, opts), /already accepted/);
+        // with a Manager Session it is steered there instead
+        const mgrId = '11111111-2222-3333-4444-555555555555';
+        const g6 = Object.assign({}, gr, { getConfig: () => ({ agentSupervisor: { enabled: true, engine: 'tokenrouter', managerSessionId: mgrId } }) });
+        const steered = []; const realSteer = launcher.steer;
+        launcher.steer = async (id, text) => { steered.push([id, text]); };
+        try {
+            const p2 = await sup.explainRuleIssue(g6, 'second problem', opts);
+            const a2 = await sup.acceptRuleProposal(g6, p2.id, {}, opts);
+            assert.strictEqual(a2.how, 'manager'); assert.strictEqual(a2.workId, null);
+            assert.strictEqual(steered.length, 1); assert.strictEqual(steered[0][0], mgrId); assert.ok(/Apply rule proposal #/.test(steered[0][1]));
+            // a finding's Accept... makes its own accepted proposal and marks the finding done
+            const fa = await sup.acceptRuleFinding(g6, toRule.id, { text: 'Answer in a few lines. Edited.' }, opts);
+            assert.strictEqual(fa.status, 'accepted'); assert.strictEqual(fa.memoryId, 11);
+            assert.ok(/Edited\./.test(steered[1][1]) && /short-answers\.mdc/.test(steered[1][1]));
+            assert.strictEqual(sup.rulesState(opts).last.findings.find((f) => f.id === toRule.id).dismissed, true);
+        } finally { launcher.steer = realSteer; }
+        // reject keeps the reason
+        const p3 = await sup.explainRuleIssue(g5, 'third', opts);
+        const r3 = sup.rejectRuleProposal(p3.id, 'Not a rule, a one-off');
+        assert.strictEqual(r3.status, 'rejected'); assert.strictEqual(r3.reason, 'Not a rule, a one-off');
+        assert.throws(() => sup.rejectRuleProposal(p3.id, ''), /already rejected/);
+        // a memory already accepted or rejected is not offered again
+        let again = '';
+        sup._test.setFetch(async (u, o) => { const m = JSON.parse(o.body).messages; if (/review the shared memory/.test(m[0].content)) again = m[1].content; return reply({ findings: [] }); });
+        await sup.reviewRules(g5, opts);
+        assert.ok(!/#11 /.test(again) && /#12 /.test(again), 'a decided memory is skipped');
+    });
+
     await test('sizePlanner: opus / high by default, opus / xhigh large, fable / xhigh very large or hard, max on a retry', async () => {
         const w = { prompt: 'Build it.' };
         sup._test.setFetch(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: JSON.stringify(answer) } }] }) }));

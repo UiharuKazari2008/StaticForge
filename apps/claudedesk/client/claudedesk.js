@@ -2596,22 +2596,121 @@
             { t: 'Modified', w: 128, key: 'mtime', text: (x) => when(x.mtime), value: (x) => x.mtime }
         ], rows, { wrap: true, sortId: 'cd-rules', empty, fit: true });
     }
+    const RULE_KIND2 = { 'memory-to-rule': 'Memory to rule', 'memory-duplicate': 'Memory repeats a rule', 'memory-outdated': 'Memory outdated' };
+    const PROP_STATUS = { draft: 'Draft', accepted: 'Accepted', rejected: 'Rejected' };
+    const PROP_KIND = { 'new-rule': 'New rule', 'change-rule': 'Change a rule', covered: 'Already covered' };
+    const rulesProposals = () => rulesData().proposals || [];
+    const findingOf = (id) => rulesOpenFindings().find((f) => String(f.id) === String(id));
+    const proposalOf = (id) => rulesProposals().find((p) => String(p.id) === String(id));
+    const draftTarget = (d) => (d && d.file) || '';
+    /** What a selected finding or proposal says in full, with its draft. */
+    function rulesDetailHtml(c) {
+        const k = c.sel || '';
+        const pre = (t) => `<pre class="cd-pre cd-rule-text">${esc(t)}</pre>`;
+        if (k.startsWith('rf:')) {
+            const f = findingOf(k.slice(3));
+            if (!f) return '<p class="mmc-hint">Select a finding to read it in full.</p>';
+            const d = f.draft;
+            return `<p><b>${esc(RULE_KIND[f.kind] || RULE_KIND2[f.kind] || f.kind)}</b>${f.memoryId ? ` (memory #${esc(f.memoryId)}: ${esc(f.memoryTitle || '')})` : ''}${(f.rules || []).length ? `, rule ${esc(f.rules.join(', '))}` : ''}</p><p>${esc(f.text)}</p>${d ? `<p>${esc(PROP_KIND[d.kind] || '')}${draftTarget(d) ? ` <b>${esc(draftTarget(d))}</b>` : ''}${d.kind === 'new-rule' ? (d.alwaysApply ? ', always applied' : `, on demand${d.trigger ? `: ${esc(d.trigger)}` : ''}`) : ''}</p>${pre(d.text)}` : `<p>${esc(f.suggestion || '')}</p>`}`;
+        }
+        if (k.startsWith('rp:')) {
+            const p = proposalOf(k.slice(3));
+            if (!p) return '<p class="mmc-hint">Select a proposal to read it in full.</p>';
+            const d = p.draft || {};
+            return `<p><b>${esc(p.title)}</b> (${esc(PROP_STATUS[p.status] || p.status)}, ${esc(PROP_KIND[d.kind] || '')}${draftTarget(d) ? ` ${esc(draftTarget(d))}` : ''})</p>${p.input ? `<p>Your words: ${esc(p.input)}</p>` : ''}<p>${esc(p.reasoning)}</p>${d.text ? pre(d.text) : ''}${p.reason ? `<p>Rejected: ${esc(p.reason)}</p>` : ''}${p.status === 'accepted' ? `<p class="mmc-hint">${p.how === 'manager' ? 'Sent to the Manager Session.' : `Queued as request #${esc(p.workId)}: start it from Requests.`}</p>` : ''}`;
+        }
+        return '<p class="mmc-hint">Select a finding or a proposal to read it in full.</p>';
+    }
     function rulesReviewPage(c) {
         const d = rulesData();
         const run = d.running;
         const busy = !!run || !!S.rulesBusy;
         const last = d.last;
         const status = run ? `${esc(run.step || 'Reviewing')} (${run.done} of ${run.total} done)`
-            : (S.rulesBusy ? 'Starting the review...' : (last ? `Reviewed ${esc(when(last.at))} by ${esc(last.model || last.engine || 'the Supervisor')}: ${plural(rulesOpenFindings().length, 'finding')} open in ${plural(last.ruleCount, 'rule')}.${last.error ? ` <span class="cd-err">${esc(last.error)}</span>` : ''}` : 'The rules have not been reviewed yet.'));
+            : (S.rulesBusy ? 'Starting the review...' : (last ? `Reviewed ${esc(when(last.at))} by ${esc(last.model || last.engine || 'the Supervisor')}: ${plural(rulesOpenFindings().length, 'finding')} open in ${plural(last.ruleCount, 'rule')} and the memories.${last.error ? ` <span class="cd-err">${esc(last.error)}</span>` : ''}` : 'The rules and memories have not been reviewed yet.'));
         const bar = `<div class="cd-actbar"><span>${status}</span><button type="button" class="btn-standard primary" data-act="rules-review"${busy ? ' disabled' : ''}>Review Now</button></div>`;
-        const rows = rulesOpenFindings().map((f) => ({ key: `rf:${f.id}`, icon: (RULE_SEV[f.severity] || RULE_SEV.medium)[1], data: { rule: (f.rules || []).join(', '), kind: RULE_KIND[f.kind] || f.kind, text: f.text, fix: f.suggestion, sev: (RULE_SEV[f.severity] || RULE_SEV.medium)[0] } }));
+        const kindIcon = (f) => (f.kind || '').startsWith('memory-') ? `${ITEMS}/personalization-16.png` : (RULE_SEV[f.severity] || RULE_SEV.medium)[1];
+        const rows = rulesOpenFindings().map((f) => ({ key: `rf:${f.id}`, icon: kindIcon(f), data: { rule: (f.kind || '').startsWith('memory-') ? `Memory #${f.memoryId}${(f.rules || []).length ? ` > ${f.rules.join(', ')}` : ''}` : (f.rules || []).join(', '), kind: RULE_KIND[f.kind] || RULE_KIND2[f.kind] || f.kind, text: f.text, fix: f.suggestion } }));
         const lv = c.listView([
-            { t: 'Rule', w: 150, key: 'rule', text: (x) => x.rule },
-            { t: 'Kind', w: 110, key: 'kind', text: (x) => x.kind },
-            { t: 'Issue', w: 330, key: 'text', text: (x) => x.text },
-            { t: 'Suggestion', w: 300, key: 'fix', text: (x) => x.fix }
+            { t: 'Rule / Memory', w: 150, key: 'rule', text: (x) => x.rule },
+            { t: 'Kind', w: 120, key: 'kind', text: (x) => x.kind },
+            { t: 'Issue', w: 300, key: 'text', text: (x) => x.text },
+            { t: 'Suggestion / Draft', w: 300, key: 'fix', text: (x) => x.fix }
         ], rows, { wrap: true, sortId: 'cd-rules-review', empty: last ? 'No open findings.' : 'Nothing to show until a review has run.', fit: true });
-        return { html: `<div class="cd-list-wrap">${bar}${lv}</div>`, list: true, split: true };
+        const prow = rulesProposals().map((p) => ({ key: `rp:${p.id}`, icon: p.status === 'accepted' ? `${VI}/info-16.png` : (p.status === 'rejected' ? `${VI}/error-16.png` : `${VI}/warning-16.png`), data: { n: p.id, status: PROP_STATUS[p.status] || p.status, title: p.title, kind: PROP_KIND[(p.draft || {}).kind] || '', draft: String((p.draft || {}).text || '').replace(/\s+/g, ' ').slice(0, 220) } }));
+        const pv = c.listView([
+            { t: '#', w: 40, key: 'n', num: true, text: (x) => String(x.n), value: (x) => x.n },
+            { t: 'Status', w: 80, key: 'status', text: (x) => x.status },
+            { t: 'Proposal', w: 230, key: 'title', text: (x) => x.title },
+            { t: 'Kind', w: 110, key: 'kind', text: (x) => x.kind },
+            { t: 'Draft', w: 300, key: 'draft', text: (x) => x.draft }
+        ], prow, { wrap: true, sortId: 'cd-rules-props', empty: 'No proposals yet. Explain an issue below, or accept a memory finding.', fit: true });
+        const ex = S.rulesExplain || '';
+        const explain = `<p class="mmc-hint">Describe a problem in your own words. The Supervisor checks it against the rules and memories, says whether a rule already covers it, and drafts a change or a new rule as a proposal.</p>
+            <label class="cd-top"><span>The problem:</span><textarea data-rules-explain rows="4" spellcheck="true" placeholder="For example: agents keep restarting the server while I test"${S.rulesExplainBusy ? ' disabled' : ''}>${esc(ex)}</textarea></label>
+            <p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="rules-explain"${S.rulesExplainBusy ? ' disabled' : ''}>Review as a Rule</button>${S.rulesExplainBusy ? ' <span class="mmc-hint">The Supervisor is reasoning about it...</span>' : ''}</p>`;
+        const html = c.page('Rules Review', '', [
+            { id: 'cd-rr-bar', title: 'Review', body: bar },
+            { id: 'cd-rr-find', title: `Findings (${rows.length})`, body: `<div class="cd-sup-list">${lv}</div>` },
+            { id: 'cd-rr-prop', title: `Proposals (${prow.length})`, body: `<div class="cd-sup-list">${pv}</div>` },
+            { id: 'cd-rr-detail', title: 'Selected', body: `<div class="cd-maint-detail">${rulesDetailHtml(c)}</div>` },
+            { id: 'cd-rr-explain', title: 'Explain an Issue', body: explain }
+        ]);
+        return {
+            html,
+            mount: (pane) => { pane.addEventListener('input', (ev) => { const t = ev.target.closest('[data-rules-explain]'); if (t) S.rulesExplain = t.value; }); }
+        };
+    }
+    function rulesTake(r) { S.sup.data = Object.assign({}, S.sup.data || {}, { rules: r.rules }); }
+    /** Accept...: the draft in an editable box first; OK sends it to a session (held request, or the Manager Session). */
+    async function ruleAcceptBox(c, title, text, info) {
+        const { value, fields } = await form(c, `<p>${esc(info)}</p><label class="cd-top"><span>Draft:</span><textarea data-cd="text" data-cd-focus rows="14" spellcheck="true">${esc(text)}</textarea></label><p class="mmc-hint">OK does not change the rules itself: a session applies, commits and pushes it. Without a Manager Session it waits as a held request.</p>`,
+            [{ text: 'OK', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title, width: 640 });
+        return value === true ? String(fields.text || '').trim() : null;
+    }
+    async function ruleAcceptSelected(c) {
+        const k = c.sel || '';
+        try {
+            if (k.startsWith('rf:')) {
+                const f = findingOf(k.slice(3));
+                if (!f || f.kind !== 'memory-to-rule' || !f.draft) { await c.box('<p>Select a memory finding that should become a rule.</p>', null, { icon: 'info' }); return; }
+                const text = await ruleAcceptBox(c, 'Accept as a Rule', f.draft.text, `${f.draft.kind === 'new-rule' ? `New rule ${f.draft.file || ''}` : `Add to ${f.draft.file || 'a rule'}`}, from memory #${f.memoryId}.`);
+                if (text === null) return;
+                rulesTake(unwrap(await send('claude_desk_supervisor', { action: 'rules_finding_accept', findingId: f.id, text }), 'rules'));
+            } else if (k.startsWith('rp:')) {
+                const p = proposalOf(k.slice(3));
+                if (!p || p.status !== 'draft') { await c.box('<p>Select a draft proposal.</p>', null, { icon: 'info' }); return; }
+                if ((p.draft || {}).kind === 'covered') { await c.box('<p>The rules already cover this, so there is nothing to apply. Read the reasoning, and reject it if it is right.</p>', null, { icon: 'info' }); return; }
+                const text = await ruleAcceptBox(c, 'Accept Proposal', (p.draft || {}).text || '', `${PROP_KIND[(p.draft || {}).kind] || 'Rule'} ${draftTarget(p.draft)}: ${p.title}`);
+                if (text === null) return;
+                rulesTake(unwrap(await send('claude_desk_supervisor', { action: 'rules_proposal_accept', id: p.id, text }), 'rules'));
+            } else { await c.box('<p>Select a finding or a proposal first.</p>', null, { icon: 'info' }); return; }
+        } catch (e) { await failBox(c, e); }
+        repaint();
+    }
+    async function ruleRejectSelected(c) {
+        const p = (c.sel || '').startsWith('rp:') ? proposalOf(c.sel.slice(3)) : null;
+        if (!p || p.status !== 'draft') { await c.box('<p>Select a draft proposal to reject.</p>', null, { icon: 'info' }); return; }
+        const { value, fields } = await form(c, `<p>Reject <b>${esc(p.title)}</b>. The reason is optional and is kept with it.</p><label class="cd-top"><span>Reason:</span><textarea data-cd="reason" data-cd-focus rows="3" spellcheck="true" placeholder="Why it is rejected (optional)"></textarea></label>`,
+            [{ text: 'Reject', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Reject Proposal' });
+        if (value !== true) return;
+        try { rulesTake(unwrap(await send('claude_desk_supervisor', { action: 'rules_proposal_reject', id: p.id, reason: String(fields.reason || '').trim() }), 'rules')); } catch (e) { await failBox(c, e); }
+        repaint();
+    }
+    async function rulesExplainSend(c) {
+        const text = String(S.rulesExplain || '').trim();
+        if (!text) { await c.box('<p>Describe the problem first.</p>', null, { icon: 'info' }); return; }
+        if (S.rulesExplainBusy) return;
+        S.rulesExplainBusy = true;
+        repaint();
+        try {
+            const r = unwrap(await send('claude_desk_supervisor', { action: 'rules_explain', text }), 'rules');
+            rulesTake(r);
+            S.rulesExplain = '';
+            if (r.proposal) c.sel = `rp:${r.proposal.id}`;
+        } catch (e) { await failBox(c, e); }
+        S.rulesExplainBusy = false;
+        repaint();
     }
     async function ruleRead(c, name) {
         if (!name) return;
@@ -2769,27 +2868,29 @@
                         { id: 'aw-uns', name: `Unsupervised (${uns.length})`, icon: `${VI}/run-16.png`, desc: 'Running sessions no work item owns', children: uns },
                         { id: 'sessions', name: 'All Sessions', icon: SESSION16, desc: 'Every Claude session on the host, running or ended', children: open }
                     ] },
-                { id: 'usage', name: 'Usage', icon: '/static_images/vista-cmdbar/pie-chart.png', desc: 'What each work item, session, turn and agent spent, and the heavy ones flagged', children: [{ id: 'usage-flags', name: `Flags (${usgOpenFlags()})`, icon: `${VI}/warning-16.png`, desc: 'Sessions, turns and agents that burned a lot of usage' }] },
-                { id: 'activity', name: 'Activity', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Every shell command, tool call and file edit of every session', children: bgNodes() },
+                { id: 'activity', name: 'Activity', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Every shell command, tool call and file edit, the background agents, what it all cost, and who is coordinating',
+                    children: bgNodes().concat([
+                        { id: 'usage', name: 'Usage', icon: '/static_images/vista-cmdbar/pie-chart.png', desc: 'What each work item, session, turn and agent spent, and the heavy ones flagged', children: [{ id: 'usage-flags', name: `Flags (${usgOpenFlags()})`, icon: `${VI}/warning-16.png`, desc: 'Sessions, turns and agents that burned a lot of usage' }] },
+                        {
+                        id: 'co-root',
+                        name: 'Coordination',
+                        icon: `${ITEMS}/people-near-me-16.png`,
+                        desc: 'The agents working now, their claims and messages',
+                        children: [
+                            { id: 'co-agents', name: 'Agents', icon: `${ITEMS}/user-accounts-16.png` },
+                            { id: 'co-claims', name: 'Claims', icon: FOLDER16 },
+                            { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
+                            { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
+                            { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
+                        ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: SESSION16, desc: 'What this agent is doing' }] : [])
+                    }
+                    ]) },
                 { id: 'memory', name: 'Memory', icon: `${ITEMS}/personalization-16.png`, desc: 'The shared memory every Fleet agent reads and writes',
                     children: [
                         { id: 'mem-review', name: 'Needs Review', icon: `${VI}/warning-16.png`, desc: 'Proposed and flagged memories' },
                         { id: 'mem-digest', name: 'Session Digest', icon: `${VI}/info-16.png`, desc: 'The text every session starts with' },
-                        { id: 'rules', name: 'Rules', icon: rulesIcon, desc: 'The rules the agents follow', children: [{ id: 'rules-review', name: `Rules Review (${plural(rulesOpenFindings().length, 'finding')})`, icon: `${ITEMS}/security-center-16.png`, desc: 'The Supervisor reads the rules for problems' }] }
+                        { id: 'rules', name: 'Rules', icon: rulesIcon, desc: 'The rules the agents follow', children: [{ id: 'rules-review', name: `Rules Review (${plural(rulesOpenFindings().length, 'finding')})`, icon: `${ITEMS}/security-center-16.png`, desc: 'The Supervisor reads the rules and the memories for problems' }] }
                     ] },
-                {
-                    id: 'co-root',
-                    name: 'Coordination',
-                    icon: `${ITEMS}/people-near-me-16.png`,
-                    desc: 'The agents working now, their claims and messages',
-                    children: [
-                        { id: 'co-agents', name: 'Agents', icon: `${ITEMS}/user-accounts-16.png` },
-                        { id: 'co-claims', name: 'Claims', icon: FOLDER16 },
-                        { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
-                        { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
-                        { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
-                    ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: SESSION16, desc: 'What this agent is doing' }] : [])
-                },
                 { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Settings, reviews, restart waits, pauses, locks and temp files',
                     children: [
                         managerSid()
@@ -4400,7 +4501,7 @@
     const usgTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n || 0)));
     const usgDur = (ms) => { if (ms == null) return ''; const m = Math.round(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : (m >= 1 ? `${m} min` : `${Math.max(1, Math.round(ms / 1000))} s`); };
     const usgPct = (v) => (v == null ? '' : `${Math.round(v * 100)}%`);
-    const usgModel = (m) => String(m || '').replace(/^claude-/, '').replace(/^deepseek-ai\//, '');
+    const usgModel = (m) => String(m || '').replace(/^claude-/, '').replace(/^[a-z-]+\//i, '');
     const usgOpenFlags = () => { const u = S.sup.data && S.sup.data.usage; return u ? u.open || 0 : (usgUi().flags || []).filter((f) => !f.ackAt).length; };
     const usgFlagged = (sid) => !!(S.sup.data && S.sup.data.usage && S.sup.data.usage.sessions && S.sup.data.usage.sessions[sid]);
 
@@ -4413,7 +4514,11 @@
             const r = unwrap(await send('claude_desk_supervisor', { action: 'usage_tree', days: u.days }), 'usage');
             u.data = r.usage || { rows: [] };
             if (r.flags) u.flags = r.flags;
-            if (!u.opened && u.data.rows) { u.opened = true; u.data.rows.forEach((x) => { if (x.kind === 'work') u.open.add(x.key); }); }
+            if (!u.opened && u.data.rows) {
+                u.opened = true;
+                const kept = S.c && S.c.reg ? S.c.reg('UsageOpen', null) : null; // the expanded rows are remembered
+                if (Array.isArray(kept)) kept.forEach((k) => u.open.add(k)); else u.data.rows.forEach((x) => { if (x.kind === 'work') u.open.add(x.key); });
+            }
             // a first read of a big window answers "scanning" and finishes in the background: asked again once
             clearTimeout(u.retry);
             if (u.data.scanning) u.retry = setTimeout(() => { u.loading = false; void usgLoad(); }, 6000);
@@ -4426,23 +4531,54 @@
         repaint();
     }
 
-    /** The rows that show: a row is hidden when any ancestor is closed. */
-    function usgVisible() {
+    /** The tree rows in display order: every level sorted by the chosen column on its own, closed rows hide their children. */
+    function usgVisible(c, cols) {
         const u = usgUi();
         const rows = (u.data && u.data.rows) || [];
-        const byKey = new Map(rows.map((r) => [r.key, r]));
+        const kids = new Map();
+        rows.forEach((r) => { const p = r.parent || ''; if (!kids.has(p)) kids.set(p, []); kids.get(p).push({ key: r.key, data: r }); });
         const hasKids = new Set(rows.map((r) => r.parent).filter(Boolean));
-        const vis = rows.filter((r) => { let p = r.parent; while (p) { if (!u.open.has(p)) return false; p = (byKey.get(p) || {}).parent; } return true; });
+        const vis = [];
+        const walk = (parent) => {
+            const level = kids.get(parent) || [];
+            const ordered = c && cols ? c.sorted(level, cols, 'cd-usage', { key: 'fresh', dir: -1 }) : level;
+            ordered.forEach((x) => { vis.push(x.data); if (u.open.has(x.key)) walk(x.key); });
+        };
+        walk('');
         return { vis, hasKids };
     }
+    function usgSetOpen(key, on) {
+        const u = usgUi();
+        if (on) u.open.add(key); else u.open.delete(key);
+        if (S.c && S.c.setReg) S.c.setReg({ UsageOpen: [...u.open] });
+        repaint();
+    }
+    /** Left / Right on the usage tree: Right opens, or steps into the first child; Left closes, or steps to the parent. */
+    function usgKey(ev) {
+        if (!ev.target.classList || !ev.target.classList.contains('mmc-list') || (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight')) return;
+        const u = usgUi();
+        const { vis, hasKids } = usgVisible(S.c, usgCols(S.c));
+        const i = vis.findIndex((r) => `ux:${r.key}` === String(S.c.sel));
+        if (i < 0) return;
+        const r = vis[i];
+        ev.preventDefault();
+        const select = (x) => { if (x) { S.c.selectRow(`ux:${x.key}`); } };
+        if (ev.key === 'ArrowRight') {
+            if (hasKids.has(r.key) && !u.open.has(r.key)) usgSetOpen(r.key, true);
+            else if (hasKids.has(r.key)) select(vis[i + 1]);
+        } else if (hasKids.has(r.key) && u.open.has(r.key)) usgSetOpen(r.key, false);
+        else select(vis.find((x) => x.key === r.parent));
+    }
+
+    const usgIcon = (r) => (r.flags.length || r.below ? `${VI}/warning-16.png` : r.kind === 'work' ? `${ITEMS}/administrative-tools-16.png` : r.kind === 'agent' ? `${ITEMS}/programs-and-features-16.png` : r.kind === 'turn' ? `${VI}/info-16.png` : SESSION16);
 
     function usgCols(c) {
         const u = usgUi();
-        const hasKids = usgVisible().hasKids;
+        const hasKids = new Set(((u.data && u.data.rows) || []).map((r) => r.parent).filter(Boolean));
         return [
-            { t: 'Name', w: 300, key: 'name', html: (r) => `<i class="cd-ux-n cd-ux-d${Math.min(3, r.depth)}">${hasKids.has(r.key) ? `<span class="cd-ux-tw" data-act="usage-toggle" data-arg="${esc(r.key)}" role="button" aria-label="${u.open.has(r.key) ? 'Collapse' : 'Expand'}">${u.open.has(r.key) ? '-' : '+'}</span>` : '<span class="cd-ux-tw"></span>'}${esc(r.name)}${r.sub ? ` <small>${esc(r.sub)}</small>` : ''}</i>`, text: (r) => r.name },
-            { t: 'Model', w: 120, key: 'model', text: (r) => r.fig.models.map(usgModel).join(', ') },
-            { t: 'Effort', w: 56, key: 'effort', text: (r) => r.fig.efforts.join(', ') },
+            { t: 'Name', w: 300, min: 220, key: 'name', html: (r) => `<i class="cd-ux-n cd-ux-d${Math.min(3, r.depth)}">${hasKids.has(r.key) ? `<span class="mmc-twisty cd-ux-tw ${u.open.has(r.key) ? 'is-open' : 'is-closed'}" data-act="usage-toggle" data-arg="${esc(r.key)}" aria-hidden="true"></span>` : '<span class="cd-ux-tw"></span>'}<img class="mmc-row-icon" src="${esc(usgIcon(r))}" alt="">${esc(r.name)}${r.sub ? ` <small>${esc(r.sub)}</small>` : ''}</i>`, text: (r) => r.name },
+            { t: 'Model', w: 120, min: 90, key: 'model', text: (r) => Array.from(new Set(r.fig.models.map((m) => usgModel(m).toLowerCase()))).join(', ') },
+            { t: 'Effort', w: 56, min: 64, key: 'effort', text: (r) => r.fig.efforts.join(', ') },
             { t: 'Tokens', w: 70, key: 'fresh', num: true, text: (r) => usgTok(r.fig.tokens.fresh), value: (r) => r.fig.tokens.fresh },
             { t: 'In / Out', w: 90, key: 'io', num: true, text: (r) => `${usgTok(r.fig.tokens.input)} / ${usgTok(r.fig.tokens.output)}` },
             { t: 'Cache W / R', w: 100, key: 'cache', num: true, text: (r) => `${usgTok(r.fig.tokens.cacheWrite)} / ${usgTok(r.fig.tokens.cacheRead)}` },
@@ -4502,17 +4638,17 @@
         const u = usgUi();
         if (!u.data && !u.loading) void usgLoad();
         if (!S.sup.loaded && !S.sup.loading) void loadSupervisor();
-        const { vis } = usgVisible();
-        const icon = (r) => (r.flags.length || r.below ? `${VI}/warning-16.png` : r.kind === 'work' ? `${ITEMS}/administrative-tools-16.png` : r.kind === 'agent' ? `${ITEMS}/programs-and-features-16.png` : r.kind === 'turn' ? `${VI}/info-16.png` : SESSION16);
-        const rows = vis.map((r) => ({ key: `ux:${r.key}`, icon: icon(r), data: r }));
+        const cols = usgCols(c);
+        const { vis } = usgVisible(c, cols);
+        const rows = vis.map((r) => ({ key: `ux:${r.key}`, data: r }));
         const empty = u.error ? `The usage could not be read. ${u.error}` : (u.data && u.data.scanning ? 'Reading the transcripts for the first time (this can take a minute)...' : (u.data ? `No Claude session was active in the last ${u.days === 1 ? '24 hours' : '7 days'}.` : 'Reading the transcripts...'));
-        const lv = c.listView(usgCols(c), rows, { wrap: true, fit: true, sortId: 'cd-usage', empty });
+        const lv = c.listView(cols, rows, { fit: true, sortId: 'cd-usage', sort: { key: 'fresh', dir: -1 }, presorted: true, empty });
         const note = u.data && u.data.rows && u.data.rows.length ? `<p class="mmc-hint cd-ux-note">${u.days === 1 ? 'Last 24 hours' : 'Last 7 days'}, biggest first. Tokens are new input, output and cache writes; cache reads are shown apart.${u.data.pricesSet ? '' : ' No prices are set, so no cost is shown.'}</p>` : '';
         return {
             html: `<div class="cd-rv"><div class="cd-rv-top">${lv}${note}</div><div class="cd-rv-split" role="separator" aria-orientation="horizontal" title="Drag to resize"></div><div class="cd-rv-bot cd-ux-detail">${usgDetailHtml(c)}</div></div>`,
             list: true,
             split: true,
-            mount: (pane) => splitDrag(pane)
+            mount: (pane) => { splitDrag(pane); if (!pane.dataset.uxKeys) { pane.dataset.uxKeys = '1'; pane.addEventListener('keydown', usgKey); } }
         };
     }
 
@@ -4613,11 +4749,11 @@
         put('internet', 'open-link work-issue');
         put('copy', 'copy-link');
         put('shortcut', 'link');
-        put('ban', 'unlink con-revoke mem-reject');
+        put('ban', 'unlink con-revoke mem-reject rules-reject');
         put('save', 'sup-save');
         put('delete', 'sup-lock-remove sup-art-clean work-cancel work-cancel-sel build-end mem-remove con-remove release-claim');
         put('clear', 'rules-dismiss sup-art-forget sup-dismiss mem-unflag');
-        put('checklist', 'mem-approve');
+        put('checklist', 'mem-approve rules-accept');
         put('favorites', 'mem-pin');
         put('rename', 'mem-edit');
         put('find', 'inspect lock-inspect');
@@ -4646,7 +4782,7 @@
             case 'mem-review': return [{ text: 'Ask the Supervisor to Review Now', action: 'mem-review-now', disabled: S.memBusy }, { text: 'Read Again', action: 'mem-refresh' }];
             case 'mem-digest': return [{ text: 'Read Again', action: 'mem-refresh' }];
             case 'rules': return [{ text: 'Open Rule', action: 'rules-open' }, { text: 'Rules Review', action: 'rules-goto' }, { text: 'Read Again', action: 'sup-refresh' }];
-            case 'rules-review': return [{ text: 'Review Now', action: 'rules-review', disabled: !!(rulesData().running || S.rulesBusy) }, { text: 'Dismiss', action: 'rules-dismiss' }, { text: 'Read Again', action: 'sup-refresh' }];
+            case 'rules-review': return [{ text: 'Review Now', action: 'rules-review', disabled: !!(rulesData().running || S.rulesBusy) }, { text: 'Accept...', action: 'rules-accept' }, { text: 'Reject...', action: 'rules-reject' }, { text: 'Dismiss', action: 'rules-dismiss' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'contractors': return [{ text: 'Add Contractor...', action: 'con-add' }, { text: 'Read Again', action: 'con-refresh' }];
             case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-settings': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }];
@@ -4841,7 +4977,7 @@
             case 'fleet-refresh': await loadFleet(); return true;
             case 'fold-open': if (S.foldCtx) await openFold(S.foldCtx.id, S.foldCtx.agent, S.foldCtx.el); return true;
             case 'sup-refresh': await loadSupervisor(); return true;
-            case 'usage-toggle': { const u = usgUi(); if (arg) { if (u.open.has(arg)) u.open.delete(arg); else u.open.add(arg); } repaint(); return true; }
+            case 'usage-toggle': { if (arg) usgSetOpen(arg, !usgUi().open.has(arg)); return true; }
             case 'usage-d1': case 'usage-d7': { const u = usgUi(); u.days = a === 'usage-d7' ? 7 : 1; u.data = null; u.sel = ''; u.det.clear(); void usgLoad(); repaint(); return true; }
             case 'usage-refresh': { const u = usgUi(); u.det.clear(); u.flags = null; void usgLoad(); void loadSupervisor(); repaint(); return true; }
             case 'usage-ack': await usgAck(c, arg); return true;
@@ -4964,6 +5100,9 @@
             case 'rules-goto': c.open.add('memory'); c.open.add('rules'); c.select('rules-review', true); return true;
             case 'rules-review': await rulesReviewStart(c); return true;
             case 'rules-dismiss': await ruleFindingDismiss(c, selId(c, 'rf:')); return true;
+            case 'rules-accept': await ruleAcceptSelected(c); return true;
+            case 'rules-reject': await ruleRejectSelected(c); return true;
+            case 'rules-explain': await rulesExplainSend(c); return true;
             case 'con-refresh': S.con.loaded = false; await loadContractors(); return true;
             case 'con-open': { const k = conOf(selId(c, 'k:')); if (k) { c.open.add('contractors'); c.select(`ct:${k.id}`, true); } return true; }
             case 'con-add': await contractorAddBox(c); return true;
@@ -5394,6 +5533,7 @@
         else if (key.startsWith('hd:')) void action('sup-hold-open', c);
         else if (key.startsWith('k:')) void action('con-open', c);
         else if (key.startsWith('ru:')) void action('rules-open', c);
+        else if (key.startsWith('ux:') && !key.startsWith('ux:f:')) { const k = key.slice(3); if (usgVisible(c, usgCols(c)).hasKids.has(k)) usgSetOpen(k, !usgUi().open.has(k)); }
     }
 
     // ---- dialogs ------------------------------------------------------------------------------------------
@@ -6217,8 +6357,8 @@
             width: w,
             height: h,
             expanded: ['root', 'co-work'],
-            // the tree was reorganised (Nov 24 2026): Memory, Coordination and Remote Control start closed
-            expandedKey: 'ExpandedV2',
+            // the tree was reorganised again (Nov 24 2026): Usage and Coordination moved under Activity, which starts closed
+            expandedKey: 'ExpandedV3',
             about: { version: VERSION, lines: ['Claude accounts, Remote Control, sessions and agent coordination.'] },
             nodes,
             page,

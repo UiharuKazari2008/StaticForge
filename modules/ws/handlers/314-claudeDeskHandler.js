@@ -293,11 +293,15 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'rules_text') return { rule: supervisor.ruleText(message.name) };
     if (action === 'rules_review') { supervisor.startRulesReview(gr); return { rules: supervisor.rulesState() }; }
     if (action === 'rules_dismiss') { supervisor.dismissRuleFinding(message.findingId); return { rules: supervisor.rulesState() }; }
+    if (action === 'rules_explain') { const proposal = await supervisor.explainRuleIssue(gr, message.text); return { proposal, rules: supervisor.rulesState() }; }
+    if (action === 'rules_proposal_accept') { const proposal = await supervisor.acceptRuleProposal(gr, message.id, { text: message.text }); poke(); return { proposal, rules: supervisor.rulesState() }; }
+    if (action === 'rules_proposal_reject') { const proposal = supervisor.rejectRuleProposal(message.id, message.reason); return { proposal, rules: supervisor.rulesState() }; }
+    if (action === 'rules_finding_accept') { const proposal = await supervisor.acceptRuleFinding(gr, message.findingId, { text: message.text }); poke(); return { proposal, rules: supervisor.rulesState() }; }
     // Fleet > Supervisor > Maintenance: the daily run's report, history, settings; Run Now answers at once, the result arrives through the status push
     if (action === 'maintenance_status') return { maintenance: maintenance.state(gr), report: message.runId ? maintenance.getRun(message.runId) : undefined };
     if (action === 'maintenance_run') { const r = maintenance.runNow({ trigger: 'manual', gr, dryRun: message.dryRun === true ? true : undefined }); return { maintenance: maintenance.state(gr), started: r.started }; }
     if (action === 'maintenance_save') { await maintenance.saveSettings(gr, message.settings || {}); return { maintenance: maintenance.state(gr) }; }
-    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, pause, resume, enqueue, work_start, work_hold, work_update, work_cancel, lock_remove, artifact_clean, artifact_restore or artifact_forget');
+    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, rules_explain, rules_proposal_accept, rules_proposal_reject, rules_finding_accept, pause, resume, enqueue, work_start, work_hold, work_update, work_cancel, lock_remove, artifact_clean, artifact_restore or artifact_forget');
 });
 
 // ---------------------------------------------------------------- transcript watches (one per socket)

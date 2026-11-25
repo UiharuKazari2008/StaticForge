@@ -156,15 +156,28 @@
     font-size: 11px;
 }
 
-#mmcConsole_claudedesk .cd-task-btns {
-    display: none;
-    flex: none;
-    gap: 6px;
-    font-size: 11px;
+/* Edit / Remove sit over the end of the row and only fade in: hovering changes colour and opacity, never the layout */
+#mmcConsole_claudedesk .cd-task {
+    position: relative;
 }
 
-#mmcConsole_claudedesk .cd-task:hover .cd-task-btns {
+#mmcConsole_claudedesk .cd-task-btns {
+    position: absolute;
+    top: 2px;
+    right: 3px;
     display: inline-flex;
+    gap: 6px;
+    padding-left: 6px;
+    background: var(--cd-c-eaf6fd);
+    font-size: 11px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+#mmcConsole_claudedesk .cd-task:hover .cd-task-btns,
+#mmcConsole_claudedesk .cd-task:focus-within .cd-task-btns {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 #mmcConsole_claudedesk .cd-task.is-editing {
@@ -1884,15 +1897,23 @@
     white-space: nowrap;
 }
 
-#mmcConsole_claudedesk .cd-ux-d1 { padding-left: 14px; }
-#mmcConsole_claudedesk .cd-ux-d2 { padding-left: 28px; }
-#mmcConsole_claudedesk .cd-ux-d3 { padding-left: 42px; }
+#mmcConsole_claudedesk .cd-ux-d1 { padding-left: 16px; }
+#mmcConsole_claudedesk .cd-ux-d2 { padding-left: 32px; }
+#mmcConsole_claudedesk .cd-ux-d3 { padding-left: 48px; }
 
-#mmcConsole_claudedesk .cd-ux-tw {
+/* the tree glyph is the console tree's own (.mmc-twisty), set in the line instead of beside the row */
+#mmcConsole_claudedesk .cd-ux-n > .cd-ux-tw {
+    position: static;
     display: inline-block;
-    width: 14px;
-    cursor: pointer;
-    text-align: center;
+    width: 16px;
+    height: 16px;
+    margin: 0 2px 0 0;
+    vertical-align: middle;
+}
+
+#mmcConsole_claudedesk .cd-ux-n > .mmc-row-icon {
+    margin-right: 4px;
+    vertical-align: middle;
 }
 
 #mmcConsole_claudedesk .cd-ux-note {
