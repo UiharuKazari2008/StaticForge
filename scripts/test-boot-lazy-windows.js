@@ -41,7 +41,7 @@ const mobile = bootTags('mobile');
 const WINDOW_FILES = {
     dovecote: { scripts: ['/scripts/comp/desktop-apps/dovecoteWindow.js'], styles: ['/css/desktop-apps/dovecote.css'] },
     dreamos_wifi: { scripts: ['/scripts/comp/dreamosWifi.js'], styles: [] },
-    melaton_weather: { scripts: ['/scripts/comp/wmWeather.js'], styles: ['/css/wm-weather.css'] }
+    melaton_weather: { scripts: ['/scripts/comp/melatonWeatherDesktop.js', '/scripts/comp/wmWeather.js'], styles: ['/css/wm-weather.css'] }
 };
 for (const [name, f] of Object.entries(WINDOW_FILES)) {
     f.scripts.forEach((s) => assert.ok(!desktop.scripts.includes(s), `the desktop boot does not load ${s} (${name})`));

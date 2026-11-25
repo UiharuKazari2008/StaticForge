@@ -354,13 +354,13 @@ const FEATURE_MANIFEST = {
         styles: ['css/desktop-apps/dovecote.css'],
         scripts: ['scripts/comp/desktop-apps/dovecoteWindow.js']
     },
-    // Melaton Weather's desktop window (#1001): the phone's Weather (wmWeather.js) in a Vista window. Melaton Mobile
+    // Melaton Weather's desktop window (#1001): the phone's Weather (wmWeather.js) in a Vista window (melatonWeatherDesktop.js, loaded first). Melaton Mobile
     // runs it from the boot (Today, the 6.5 home screen, the status bar); the desktop loads it on the first open
     // (melatonWeatherOpener.js stands in for window.wmWeather until then)
     melaton_weather: {
         stylesFirst: true,
         styles: ['css/wm-weather.css'],
-        scripts: ['scripts/comp/wmWeather.js']
+        scripts: ['scripts/comp/melatonWeatherDesktop.js', 'scripts/comp/wmWeather.js']
     },
     // Dovecote Express's Tools > Options (and Control Panel's Mail item): drawn with Taskbar
     // Properties' Vista controls (tbp-*); desktop-apps/dovecote.js openDovecoteMailOptions

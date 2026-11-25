@@ -1181,5 +1181,8 @@
  },
  "public/scripts/ws/wsInboundRegistry.js": {
   "page-global": 10
+ },
+ "public/scripts/comp/melatonWeatherDesktop.js": {
+  "page-global": 1
  }
 }

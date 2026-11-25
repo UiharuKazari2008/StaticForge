@@ -1984,8 +1984,7 @@
    "native-range": 1,
    "colour-in-script": 11,
    "inline-style": 4,
-   "theme-art-path": 1,
-   "hand-built-window": 1
+   "theme-art-path": 1
   },
   "public/scripts/comp/wmYouTube.js": {
    "inline-style": 1,
@@ -2003,6 +2002,9 @@
   },
   "public/scripts/comp/workstationLock.js": {
    "colour-in-script": 10,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/melatonWeatherDesktop.js": {
    "hand-built-window": 1
   }
  }
