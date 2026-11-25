@@ -1484,8 +1484,9 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
                 // Move files to sequenzia folder
                 const movedFiles = [];
                 for (const file of filesToMove) {
-                    // Sequenzia gets a real PNG under the picture's name (a JXL-stored one decoded)
-                    const source = await imageStore.pngPath(file.name, path.dirname(file.source));
+                    // Sequenzia is an external consumer: it gets a real PNG under the picture's name (a JXL-stored
+                    // one decoded; the only PNG this move makes, #1156)
+                    const source = await imageStore.exportPngPath(file.name, path.dirname(file.source));
                     if (!source) {
                         throw new Error(`File not found: ${file.name}`);
                     }
@@ -1586,9 +1587,9 @@ async function handleUpdateImagePresetBulk(handlers, ws, message, clientInfo, ws
             try {
                 const filePath = path.join(handlers.globalResources.getPath("images"), filename);
 
-                // Read the current image (a JXL-stored picture decoded; the write below stores a PNG
-                // again, which wins over the JXL) and extract metadata
-                const imageBuffer = await imageStore.readPng(filename, handlers.globalResources.getPath("images"));
+                // Read the stored bytes as they are (a JXL stays one: pngMetadata reads and edits every format and
+                // writePicture keeps it, #1156) and extract metadata
+                const imageBuffer = await imageStore.readStored(filename, handlers.globalResources.getPath("images"));
                 if (!imageBuffer) {
                     errors.push({ filename, error: 'File not found' });
                     continue;

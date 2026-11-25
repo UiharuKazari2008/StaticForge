@@ -317,7 +317,10 @@ async function gallery() {
         const png = await store.decodeJxlToPngBuffer(jxl);
         const a = meta.readMetadata(jxl);
         const b = meta.readMetadata(png);
-        eq([a.tEXt, a._encoding], [b.tEXt, b._encoding], `${n}: readMetadata = rebuilt PNG`);
+        // the text always matches; _encoding names the carrier ('JXL' for an sfMD picture, whose rebuilt PNG says
+        // 'JtEXt'), so it is only compared for a legacy sfPN picture. Since the new IDs (#1156) the gallery holds sfMD ones
+        eq(a.tEXt, b.tEXt, `${n}: readMetadata text = rebuilt PNG`);
+        if (!pm.readMd(jxl)) eq(a._encoding, b._encoding, `${n}: readMetadata encoding = rebuilt PNG`);
         eq(await meta.readStealthMetadata(jxl), await meta.readStealthMetadata(png), `${n}: stealth = rebuilt PNG`);
         sameBuf(await meta.extractRgbBytes(jxl), await meta.extractRgbBytes(png), `${n}: RGB = rebuilt PNG`);
         eq(pm.readFields(jxl), pm.readFields(png), `${n}: fields = rebuilt PNG`);

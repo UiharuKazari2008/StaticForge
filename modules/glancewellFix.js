@@ -8,7 +8,8 @@
  *               originals.
  *   copy        a new print next to it in the same workspace, with the same text chunks (a new picture ID linked to it as its fix).
  *
- * Originals live in <cache>/glancewell-originals/<stem>.png. Revert copies the original back and removes it.
+ * Originals live in <cache>/glancewell-originals/<stem>.<ext of the stored file> (its bytes as they were: a JPEG XL
+ * stays one, #1156; older backups are .png). Revert copies the original back and removes it.
  * The previews are made again, the database row is read again from the file (size, dimensions, md5), and the
  * gallery hears about it like any other change.
  */
@@ -18,6 +19,7 @@ const path = require('path');
 // a print may be stored as x.jxl under the name x.png (#1134)
 const imageStore = require('./imageStore');
 const pictureIds = require('./pictureIds');
+const pictureMeta = require('./pictureMeta');
 
 const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const TEXT_CHUNKS = new Set(['tEXt', 'iTXt', 'zTXt']);
@@ -70,12 +72,24 @@ function safeName(filename) {
     return base;
 }
 
-/** The kept original's file name: PNG bytes, so `<stem>.png` (an ID has no extension of its own). */
-function keptName(name) {
-    return `${pictureIds.stemOf(name)}.png`;
+// the extension a kept original gets from its bytes; the lookup also finds older backups (all were .png)
+const KEPT_EXT = { jxl: 'jxl', png: 'png', webp: 'webp', jpeg: 'jpg' };
+const KEPT_EXTS = ['jxl', 'png', 'webp', 'jpg'];
+
+/** The kept original's file name for bytes of this format (an ID has no extension of its own). */
+function keptName(name, fmt) {
+    return `${pictureIds.stemOf(name)}.${KEPT_EXT[fmt] || 'png'}`;
 }
 
-/** After a new PNG lands over a print: its old JXL form (if it had one) goes, the PNG is the picture now. */
+/** The kept original's path, in whichever format it was kept, or null. */
+async function findKept(gr, name) {
+    const dir = originalsDir(gr);
+    for (const ext of KEPT_EXTS) {
+        const p = path.join(dir, `${pictureIds.stemOf(name)}.${ext}`);
+        try { await fs.promises.access(p); return p; } catch (_) { /* next */ }
+    }
+    return null;
+}
 
 function originalsDir(gr) {
     const d = path.join(gr.getPath('cache'), 'glancewell-originals');
@@ -109,12 +123,17 @@ async function saveFixed(gr, { filename, buffer, mode, workspaceId }) {
     if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > MAX_BYTES) throw new Error('No picture to save');
     const imagesDir = gr.getPath('images');
     const src = path.join(imagesDir, name);
-    const original = await imageStore.readPng(name, imagesDir);
+    // the stored bytes as they are (a JPEG XL, or a legacy PNG): no decode to a PNG (#1156)
+    const original = await imageStore.readStored(name, imagesDir);
     if (!original) throw Object.assign(new Error(`ENOENT: no such file, open '${src}'`), { code: 'ENOENT' });
-    const out = withTextChunks(buffer, textChunks(original));
+    // a PNG original hands its text chunks over untouched; any other format through its fields
+    const out = isPng(original) && isPng(buffer)
+        ? withTextChunks(buffer, textChunks(original))
+        : pictureMeta.withFields(buffer, pictureMeta.readFields(original));
     if (mode === 'overwrite') {
-        const keep = path.join(originalsDir(gr), keptName(name));
-        try { await fs.promises.access(keep); } catch (_) { await fs.promises.writeFile(keep, original); }
+        if (!await findKept(gr, name)) {
+            await fs.promises.writeFile(path.join(originalsDir(gr), keptName(name, pictureMeta.formatOf(original))), original);
+        }
         // stored as JPEG XL (#1134), replacing the print in either form
         await imageStore.writePicture(name, out, { dir: imagesDir });
         await remakePreviews(gr, name);
@@ -133,13 +152,14 @@ async function saveFixed(gr, { filename, buffer, mode, workspaceId }) {
 }
 
 async function hasOriginal(gr, filename) {
-    try { await fs.promises.access(path.join(originalsDir(gr), keptName(safeName(filename)))); return true; } catch (_) { return false; }
+    return !!(await findKept(gr, safeName(filename)));
 }
 
 /** Revert to Original: the kept original goes back over the print. */
 async function revert(gr, filename) {
     const name = safeName(filename);
-    const keep = path.join(originalsDir(gr), keptName(name));
+    const keep = await findKept(gr, name);
+    if (!keep) throw Object.assign(new Error('No original kept for this print'), { code: 'ENOENT' });
     const original = await fs.promises.readFile(keep);
     await imageStore.writePicture(name, original, { dir: gr.getPath('images') });
     await fs.promises.unlink(keep);

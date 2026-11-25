@@ -5701,15 +5701,31 @@ function chatImageUrlSource(value) {
 // The agent's file is copied next to the chat so one confined route serves it.
 // The name is content-addressed by source path, so the same file is copied once.
 async function copyChatImageIntoChat(director, chatId, absPath) {
-    const ext = path.extname(absPath).toLowerCase();
+    let ext = path.extname(absPath).toLowerCase();
+    let base = path.basename(absPath);
+    let bytes = null;
     if (!CHAT_IMAGE_EXT_MIME[ext]) {
-        return { error: `path must be a ${Object.keys(CHAT_IMAGE_EXT_MIME).join(', ')} image` };
+        // a picture ID has no extension and a .jxl is no browser image (#1156): the copy is named by what its
+        // bytes are (/director/image/ finds the type by the extension), a JPEG XL as lossless WebP
+        const head = await fs.promises.readFile(absPath).catch(() => null);
+        const fmt = head ? pictureMeta.formatOf(head) : null;
+        if (!fmt) return { error: `path must be a ${Object.keys(CHAT_IMAGE_EXT_MIME).join(', ')} image` };
+        if (fmt === 'jxl') {
+            bytes = await pictureMeta.encode(await pictureMeta.rgba(head), pictureMeta.readFields(head), 'webp', { effort: 0 });
+            ext = '.webp';
+        } else {
+            bytes = head;
+            ext = fmt === 'jpeg' ? '.jpg' : `.${fmt}`;
+        }
+        const had = path.extname(base);
+        base = (had ? path.basename(base, had) : base) + ext;
     }
     const stamp = crypto.createHash('sha1').update(absPath).digest('hex').slice(0, 8);
-    const name = `${stamp}-${path.basename(absPath).replace(/[^A-Za-z0-9._-]+/g, '_').slice(-60)}`;
+    const name = `${stamp}-${base.replace(/[^A-Za-z0-9._-]+/g, '_').slice(-60)}`;
     const dir = director.chatImagesDir(chatId);
     await fs.promises.mkdir(dir, { recursive: true });
-    await fs.promises.copyFile(absPath, path.join(dir, name));
+    if (bytes) await fs.promises.writeFile(path.join(dir, name), bytes);
+    else await fs.promises.copyFile(absPath, path.join(dir, name));
     return { name, src: `/director/image/${encodeURIComponent(chatId)}/${encodeURIComponent(name)}` };
 }
 
@@ -8293,7 +8309,7 @@ function resolveMetadataFilePath(globalResources, raw) {
         const rel = text.slice('images/'.length);
         const abs = containedMetadataPath(imagesDir, path.join(imagesDir, rel));
         if (abs) return { absPath: abs };
-        // a picture stored as x.jxl (#1134): read from its rebuilt PNG
+        // a picture stored as x.jxl (#1134) or an ID: its stored file is read as it is (#1156)
         if (imageStore.existsSync(rel, imagesDir)) return { galleryName: rel, imagesDir };
         return { error: 'path is outside the gallery' };
     }
@@ -8308,8 +8324,9 @@ async function resolveInspectSource(globalResources, req, workspaceId, name, ask
     if (asPath) {
         const resolved = resolveMetadataFilePath(globalResources, asPath);
         if (resolved.error) return { error: resolved.error };
+        // the tools compare pixels only: a file sharp reads (the stored JPEG XL when it can), no PNG export
         const abs = resolved.galleryName
-            ? await imageStore.pngPath(resolved.galleryName, resolved.imagesDir)
+            ? await imageStore.pixelPath(resolved.galleryName, resolved.imagesDir)
             : resolved.absPath;
         if (!abs) return { error: `Image not found: ${asPath}` };
         return { file: abs, label: asPath, filename: resolved.galleryName || undefined };
@@ -8330,9 +8347,9 @@ async function readImageMetadataTool(globalResources, req, input) {
     if (asPath) {
         const resolved = resolveMetadataFilePath(globalResources, asPath);
         if (resolved.error) return mcpTextResult({ success: false, error: resolved.error }, true);
-        const absPath = resolved.galleryName
-            ? await imageStore.pngPath(resolved.galleryName, resolved.imagesDir)
-            : resolved.absPath;
+        // the stored file in any format: extractNovelAIMetadata reads PNG, WebP and JPEG XL (#1156)
+        const stored = resolved.galleryName ? await imageStore.locate(resolved.galleryName, resolved.imagesDir) : null;
+        const absPath = resolved.galleryName ? (stored ? stored.path : null) : resolved.absPath;
         if (!absPath) return mcpTextResult({ success: false, error: 'Image not found', path: asPath }, true);
         const png = globalResources.getPngMetadata();
         const raw = await png.extractNovelAIMetadata(absPath);

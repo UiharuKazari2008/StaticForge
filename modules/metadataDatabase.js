@@ -5,6 +5,7 @@ const sharp = require('sharp');
 const logger = require('./logger');
 const imageStore = require('./imageStore');
 const pictureIds = require('./pictureIds');
+const pictureMeta = require('./pictureMeta');
 // Note: globalResources is NOT required here to avoid circular dependency
 // It will be accessed lazily when needed
 const { isImageLarge, getResolutionFromDimensions } = require('./imageTools');
@@ -762,24 +763,24 @@ async function getMetadataReadDatabase() {
     return metadataReadDb;
 }
 
-/**
- * Generate MD5 hash for a file
- */
-function generateMD5(filePath) {
-    try {
-        const fileBuffer = fs.readFileSync(filePath);
-        return crypto.createHash('md5').update(fileBuffer).digest('hex');
-    } catch (error) {
-        console.error(`❌ Error generating MD5 for ${filePath}:`, error.message);
-        return null;
-    }
-}
-
 function md5OfBuffer(buffer) {
     return crypto.createHash('md5').update(buffer).digest('hex');
 }
 
-/** Streamed MD5 (no full-file read on the event loop); null on error like generateMD5. */
+/**
+ * images.md5 is the MD5 of the STORED file's bytes (the .jxl, or a legacy .png), never of a decoded PNG copy
+ * (#1156). Every producer and comparer in this file goes through here, so a re-encode or a PNG to JXL swap changes
+ * the value once and a refresh follows, never a loop. buffer: bytes the caller just stored; they stand for the file
+ * when it has their size (writePicture stores a JXL as it is, a PNG as a different JXL, which is read instead).
+ */
+async function storedMd5(filename, imagesDir, buffer = null) {
+    const loc = await imageStore.locate(filename, imagesDir);
+    if (!loc) return null;
+    if (Buffer.isBuffer(buffer) && loc.stat.size === buffer.length) return md5OfBuffer(buffer);
+    return generateMD5Async(loc.path);
+}
+
+/** Streamed MD5 (no full-file read on the event loop); null on error. */
 function generateMD5Async(filePath) {
     return new Promise((resolve) => {
         const hash = crypto.createHash('md5');
@@ -798,8 +799,8 @@ function generateMD5Async(filePath) {
  */
 async function extractImageMetadata(filePath) {
     try {
-        // a JPEG XL buffer's size from its header when this sharp cannot read JPEG XL (#1156)
-        if (Buffer.isBuffer(filePath) && filePath[0] !== 0x89 && !imageStore.sharpReadsJxl()) {
+        // a JPEG XL buffer's size from its header (no decode, whether or not this sharp reads JPEG XL, #1156)
+        if (Buffer.isBuffer(filePath) && pictureMeta.formatOf(filePath) === 'jxl') {
             const head = imageStore.jxlSizeFromHead(filePath);
             if (head) return { width: head.width, height: head.height, format: 'jxl' };
         }
@@ -822,18 +823,15 @@ async function extractImageMetadata(filePath) {
 }
 
 /**
- * Determine if an image is upscaled and find its parent (stat only — no directory scan).
+ * Determine if an image is upscaled and find its parent (stat only — no directory scan). Any linked picture (an
+ * upscale, an expand, a fix) records its parent (#1156); `upscaled` stays for upscales. Gallery grouping
+ * (pictureIds.baseOf) follows only upscale links, so an expand or fix is still its own base.
  */
 function determineImageRelationships(filename, imagesDir) {
     const isUpscaled = pictureIds.isUpscale(filename);
-    let parent = null;
-
-    if (isUpscaled) {
-        const originalName = imageStore.originalNameFor(filename);
-        if (originalName !== filename && imageStore.existsSync(originalName, imagesDir)) {
-            parent = originalName;
-        }
-    }
+    const candidate = pictureIds.parentOf(filename)
+        || (isUpscaled ? imageStore.originalNameFor(filename) : null);
+    const parent = candidate && candidate !== filename && imageStore.existsSync(candidate, imagesDir) ? candidate : null;
 
     return {
         isUpscaled,
@@ -1029,21 +1027,13 @@ async function buildImageMetadataFromFile(filename, imagesDir, existingReceipts 
     if (!stats) {
         return null;
     }
-    // with a caller buffer (the bytes just stored, in any format: a NovelAI WebP since #1156) only the stored
-    // file's path is needed (its folder, for an expanded picture's original), so no JXL is decoded to PNG here;
-    // without one, a real PNG (original or decoded copy) is read once below
-    let filePath;
-    if (Buffer.isBuffer(options.buffer)) {
-        const loc = await imageStore.locate(filename, imagesDir);
-        filePath = loc ? loc.path : null;
-    } else {
-        filePath = await imageStore.pngPath(filename, imagesDir);
-    }
-    if (!filePath) {
+    // the stored file as it is (a JPEG XL, a legacy PNG, a NovelAI WebP): no decode to a PNG (#1156). One read
+    // serves md5, dimensions and the text fields; a caller buffer (the bytes it just stored) saves that read
+    const loc = await imageStore.locate(filename, imagesDir);
+    if (!loc) {
         return null;
     }
-
-    // One read serves md5, Sharp dimensions and the PNG text chunks (caller may pass the bytes).
+    const filePath = loc.path;
     let fileBuffer = Buffer.isBuffer(options.buffer) ? options.buffer : null;
     if (!fileBuffer) {
         try {
@@ -1053,7 +1043,8 @@ async function buildImageMetadataFromFile(filename, imagesDir, existingReceipts 
             return null;
         }
     }
-    const md5 = md5OfBuffer(fileBuffer);
+    // md5 of the stored bytes: the caller's buffer only when it is what is on disk (see storedMd5)
+    const md5 = fileBuffer.length === loc.stat.size ? md5OfBuffer(fileBuffer) : await storedMd5(filename, imagesDir);
     const imageMetadata = await extractImageMetadata(fileBuffer);
     if (!imageMetadata) {
         return null;
@@ -1283,8 +1274,7 @@ async function getImageMetadata(filename, imagesDir) {
                 return true;
             }
             if (currentMD5 === undefined) {
-                const pngFile = await imageStore.pngPath(filename, imagesDir);
-                currentMD5 = pngFile ? await generateMD5Async(pngFile) : null;
+                currentMD5 = await storedMd5(filename, imagesDir);
             }
             return currentMD5 === record.md5;
         };
@@ -1391,8 +1381,9 @@ async function rebuildMetadataCache(imagesDir, progressCallback = null) {
         for (let i = 0; i < allFiles.length; i++) {
             const filename = allFiles[i];
             try {
-                // a real PNG (original or decoded copy of its JXL)
-                const filePath = await imageStore.pngPath(filename, imagesDir);
+                // the stored file in any format (no decode to a PNG, #1156)
+                const loc = await imageStore.locate(filename, imagesDir);
+                const filePath = loc ? loc.path : null;
                 const stats = filePath ? await imageStore.stat(filename, {}, imagesDir) : null;
                 
                 // Check if file exists
@@ -1402,9 +1393,10 @@ async function rebuildMetadataCache(imagesDir, progressCallback = null) {
                     continue;
                 }
                 
-                // Extract new metadata
-                const md5 = generateMD5(filePath);
-                const imageMetadata = await extractImageMetadata(filePath);
+                // Extract new metadata (one read: md5 of the stored bytes, dimensions, text fields)
+                const fileBuffer = await fs.promises.readFile(filePath);
+                const md5 = md5OfBuffer(fileBuffer);
+                const imageMetadata = await extractImageMetadata(fileBuffer);
                 
                 if (!imageMetadata) {
                     console.error(`❌ Failed to extract metadata for ${filename}`);
@@ -1412,10 +1404,10 @@ async function rebuildMetadataCache(imagesDir, progressCallback = null) {
                     continue;
                 }
                 
-                // Extract PNG embedded metadata
+                // Extract embedded metadata
                 let extractedMetadata = null;
                 try {
-                    extractedMetadata = await _pngMetadata.extractNovelAIMetadata(filePath);
+                    extractedMetadata = await _pngMetadata.extractNovelAIMetadata(filePath, fileBuffer);
                 } catch (error) {
                     console.error(`❌ Error extracting PNG metadata for ${filename}:`, error.message);
                     extractedMetadata = {};
@@ -2699,8 +2691,8 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
         throw new Error('Database not initialized');
     }
 
-    // options.buffer: the PNG bytes the caller just wrote to imagesDir/filename. md5, size and
-    // dimensions come from it instead of re-reading the file.
+    // options.buffer: the bytes (any format) the caller just stored under imagesDir/filename. Dimensions and fields
+    // come from it instead of re-reading the file; the md5 is the stored file's (see storedMd5).
     const fileBuffer = Buffer.isBuffer(options.buffer) ? options.buffer : null;
     const filePath = path.join(imagesDir, filename);
     let metadata = metadataWriteQueue.getHotImage(filename);
@@ -2708,10 +2700,7 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
     if (!metadata) {
         const existing = await db.get('SELECT * FROM images WHERE filename = ?', [filename]);
         if (existing) {
-            const pngFile = fileBuffer ? null : await imageStore.pngPath(filename, imagesDir);
-            const currentMD5 = fileBuffer
-                ? md5OfBuffer(fileBuffer)
-                : (pngFile ? await generateMD5Async(pngFile) : null);
+            const currentMD5 = await storedMd5(filename, imagesDir, fileBuffer);
             if (currentMD5 && currentMD5 === existing.md5) {
                 const receipts = await db.all(
                     'SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp',
@@ -2733,13 +2722,8 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
     if (forgeData) {
         if (options.forgeDataEmbedded) {
             const stats = await imageStore.stat(filename, {}, imagesDir);
-            if (fileBuffer) {
-                metadata.md5 = md5OfBuffer(fileBuffer);
-            } else if (stats) {
-                const pngFile = await imageStore.pngPath(filename, imagesDir);
-                metadata.md5 = (pngFile && await generateMD5Async(pngFile)) || metadata.md5;
-            }
             if (stats) {
+                metadata.md5 = (await storedMd5(filename, imagesDir, fileBuffer)) || metadata.md5;
                 metadata.mtime = stats.mtime.valueOf();
                 metadata.size = stats.size;
             }
@@ -2750,7 +2734,8 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
             if (imageBuffer) {
                 const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
                 const stored = await imageStore.writePicture(filename, updatedBuffer, { dir: imagesDir });
-                metadata.md5 = md5OfBuffer(updatedBuffer);
+                // the stored file's md5 (writePicture may have stored a different encoding of updatedBuffer)
+                metadata.md5 = (await generateMD5Async(stored.path)) || metadata.md5;
                 const stats = await fs.promises.stat(stored.path);
                 metadata.mtime = stats.mtime.valueOf();
                 metadata.size = stats.size;
@@ -2891,8 +2876,8 @@ async function updateFileMetadata(filename, imagesDir, forgeData) {
         
         const filePath = path.join(imagesDir, filename);
         
-        // Read the file buffer (a JXL-stored picture decoded; the write below stores a PNG again, which wins)
-        const imageBuffer = await imageStore.readPng(filename, imagesDir);
+        // Read the stored bytes as they are (a JXL stays a JXL: updateMetadata edits every format, #1156)
+        const imageBuffer = await imageStore.readStored(filename, imagesDir);
         
         // Check if file exists
         if (!imageBuffer) {
@@ -2900,10 +2885,10 @@ async function updateFileMetadata(filename, imagesDir, forgeData) {
             return false;
         }
         
-        // Update the PNG metadata using the pngMetadata module
+        // Update the embedded metadata using the pngMetadata module (it takes PNG, WebP and JPEG XL)
         const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
         
-        // Store it again as JPEG XL (#1134; replaces it in either form, date created kept)
+        // Store it again (a PNG as JPEG XL, #1134; replaces it in either form, date created kept)
         await imageStore.writePicture(filename, updatedBuffer, { dir: imagesDir });
         
         // Update the database metadata as well

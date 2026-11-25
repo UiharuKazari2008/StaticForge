@@ -16,7 +16,7 @@
  *   (imageStore); they are read when there is no sfMD.
  * - JPEG: the same TIFF block in an APP1 "Exif" segment (when it fits in one segment).
  *
- * Pixels: rgba(buffer) gives raw RGBA for every format (sharp; djxl for JXL when sharp cannot read it), and
+ * Pixels: rgba(buffer) gives raw RGBA for every format (sharp; djxl's PAM output for a JXL when sharp cannot read it, never a PNG), and
  * encode() writes them back losslessly (JPEG excepted) with the fields attached.
  */
 'use strict';
@@ -707,12 +707,71 @@ function hasIcc(buffer) {
     }
 }
 
+let djxlMissing = false;
+
+/**
+ * A JPEG XL's pixels as djxl writes them to a PAM on stdout (no PNG step, no temp file, #1156): { data, width,
+ * height, channels } at 8 bits, or null when djxl is not installed.
+ */
+function jxlRawViaDjxl(buf) {
+    if (djxlMissing) return Promise.resolve(null);
+    return new Promise((resolve, reject) => {
+        const child = require('child_process').spawn('djxl', ['-', '-', '--output_format', 'pam', '--bits_per_sample', '8', '--quiet'],
+            { stdio: ['pipe', 'pipe', 'pipe'] });
+        const out = [];
+        const err = [];
+        child.stdout.on('data', (c) => out.push(c));
+        child.stderr.on('data', (c) => err.push(c));
+        child.stdin.on('error', () => {});
+        child.on('error', (e) => {
+            if (e && e.code === 'ENOENT') { djxlMissing = true; resolve(null); } else reject(e);
+        });
+        child.on('close', (code) => {
+            if (code !== 0) return reject(new Error('djxl failed: ' + Buffer.concat(err).toString('utf8').slice(-300)));
+            const all = Buffer.concat(out);
+            const end = all.indexOf('ENDHDR\n');
+            if (end < 0) return reject(new Error('djxl: no PAM header'));
+            const head = all.toString('latin1', 0, end);
+            const num = (k) => Number((new RegExp('^' + k + ' (\\d+)', 'm').exec(head) || [])[1]);
+            const width = num('WIDTH');
+            const height = num('HEIGHT');
+            const channels = num('DEPTH');
+            if (!(width > 0 && height > 0 && channels >= 1 && channels <= 4)) return reject(new Error('djxl: bad PAM header'));
+            resolve({ data: all.subarray(end + 7), width, height, channels });
+        });
+        child.stdin.end(buf);
+    });
+}
+
+/**
+ * The pixels of a PNG, WebP, JPEG XL or JPEG as they are stored: { data, width, height, channels } (1 to 4).
+ * A JPEG XL sharp cannot read goes through djxl's PAM output, never through a PNG (#1156).
+ */
+async function rawOf(buffer) {
+    const b = asBuffer(buffer);
+    if (formatOf(b) === 'jxl' && !store().sharpReadsJxl()) {
+        const raw = await jxlRawViaDjxl(b);
+        if (raw) return raw;
+        // no djxl on this host: the last resort is the store's PNG decode
+        const input = await store().decodeJxlToPngBuffer(b);
+        const out = await sharp()(input).raw().toBuffer({ resolveWithObject: true });
+        return { data: out.data, width: out.info.width, height: out.info.height, channels: out.info.channels };
+    }
+    const out = await sharp()(b).raw().toBuffer({ resolveWithObject: true });
+    return { data: out.data, width: out.info.width, height: out.info.height, channels: out.info.channels };
+}
+
 /** Raw RGBA pixels of a PNG, WebP, JPEG XL or JPEG: { data, width, height, channels: 4 }. */
 async function rgba(buffer) {
     const b = asBuffer(buffer);
-    let input = b;
-    if (formatOf(b) === 'jxl' && !store().sharpReadsJxl()) input = await store().decodeJxlToPngBuffer(b);
-    const { data, info } = await sharp()(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    if (formatOf(b) === 'jxl' && !store().sharpReadsJxl()) {
+        const raw = await rawOf(b);
+        if (raw.channels === 4) return raw;
+        const { data, info } = await sharp()(raw.data, { raw: { width: raw.width, height: raw.height, channels: raw.channels } })
+            .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        return { data, width: info.width, height: info.height, channels: info.channels };
+    }
+    const { data, info } = await sharp()(b).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     return { data, width: info.width, height: info.height, channels: info.channels };
 }
 
@@ -797,6 +856,7 @@ module.exports = {
     readFields,
     withFields,
     rgba,
+    rawOf,
     encode,
     hasIcc,
     fieldsToObject,

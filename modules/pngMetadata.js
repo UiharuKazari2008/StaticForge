@@ -621,8 +621,8 @@ class PngMetadata {
             if (_metadata.forge_data?.expansion_source) {
                 const originalFilename = _metadata.forge_data.expansion_source;
                 let imagesDir = path.dirname(filePath);
-                // a picture stored as x.jxl is read from its rebuilt copy in .cache/jxl-png (#1134): its original
-                // is in the gallery
+                // a path under .cache/jxl-png (a rebuilt PNG copy, #1134) is not where the original lives: it is in
+                // the gallery. Readers of the stored file (x.jxl, any format, #1156) pass the gallery path itself.
                 if (path.resolve(imagesDir) === path.resolve(imageStore.CACHE_DIR)) {
                     imagesDir = this.globalResources && typeof this.globalResources.getPath === 'function'
                         ? this.globalResources.getPath('images')
@@ -1433,8 +1433,9 @@ class PngMetadata {
         // Extract actual PNG dimensions from the image data using Sharp for safety
         let actualWidth, actualHeight;
         try {
-
-            const imageInfo = await sharp(buffer).metadata();
+            // a JPEG XL's size from its header (this sharp cannot read JPEG XL; no decode either way, #1156)
+            const head = pictureMeta.formatOf(buffer) === 'jxl' ? imageStore.jxlSizeFromHead(buffer) : null;
+            const imageInfo = head || await sharp(buffer).metadata();
             actualWidth = imageInfo.width;
             actualHeight = imageInfo.height;
         } catch (e) {
@@ -1686,15 +1687,19 @@ class PngMetadata {
      */
     async extractRgbBytes(buffer) {
         buffer = await bytesOf(buffer);
-        // a JXL when sharp cannot read JPEG XL: its pixels through djxl
+        // a JXL when sharp cannot read JPEG XL: its pixels through djxl's raw (PAM) output, not a PNG (#1156)
+        let input = buffer;
+        let opts;
         if (pictureMeta.formatOf(buffer) === 'jxl' && !imageStore.sharpReadsJxl()) {
-            buffer = await imageStore.decodeJxlToPngBuffer(buffer);
+            const raw = await pictureMeta.rawOf(buffer);
+            input = raw.data;
+            opts = { raw: { width: raw.width, height: raw.height, channels: raw.channels } };
         }
         // libvips drops the alpha off the main thread. The per-pixel copy below took
         // ~25ms per call on the event loop, up to 4 calls per generation.
-        const rgbOut = await sharp(buffer).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+        const rgbOut = await sharp(input, opts).removeAlpha().raw().toBuffer({ resolveWithObject: true });
         if (rgbOut.info.channels === 3) return rgbOut.data;
-        const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        const { data, info } = await sharp(input, opts).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
         const { width, height, channels } = info;
         const rgb = Buffer.alloc(width * height * 3);
         let o = 0;
