@@ -868,16 +868,15 @@ class BannerManager {
  * - Comprehensive error handling and logging
  * - Progress tracking for initialization steps
  */
-// The requests this client waits on (generation jobs among them). A change fires wsPendingChanged on the
-// document, so a page that shows them (phone Tasks lists prints in progress) follows by event, not by timer (#852).
-class PendingRequestMap extends Map {
-    set(key, value) { const had = this.has(key); super.set(key, value); if (!had) PendingRequestMap.notify(); return this; }
-    delete(key) { const had = super.delete(key); if (had) PendingRequestMap.notify(); return had; }
-    clear() { const had = this.size > 0; super.clear(); if (had) PendingRequestMap.notify(); }
-    static notify() { if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('wsPendingChanged')); }
-}
-
 class WebSocketClient {
+    // The requests this client waits on (generation jobs among them). A change fires wsPendingChanged on the
+    // document, so a page that shows them (phone Tasks lists prints in progress) follows by event, not by timer (#852).
+    static PendingMap = class extends Map {
+        set(key, value) { const had = this.has(key); super.set(key, value); if (!had) this.notify(); return this; }
+        delete(key) { const had = super.delete(key); if (had) this.notify(); return had; }
+        clear() { const had = this.size > 0; super.clear(); if (had) this.notify(); }
+        notify() { document.dispatchEvent(new CustomEvent('wsPendingChanged')); }
+    };
     // Constants for timeouts, delays, and limits
     static TIMEOUT_UI_DEFAULT = 3000; // Default UI timeout (3 seconds)
     // Nightshade Network (#895): the service's status words, and what its problems say (the desktop
@@ -9524,7 +9523,7 @@ class WebSocketClient {
             }
 
             // Store pending request with timestamp
-            this.pendingRequests = this.pendingRequests || new PendingRequestMap();
+            this.pendingRequests = this.pendingRequests || new WebSocketClient.PendingMap();
             this.pendingRequests.set(requestId, {
                 resolve,
                 reject,
@@ -10348,7 +10347,7 @@ class WebSocketClient {
 
             // Ensure pendingRequests map is properly initialized
             if (!this.pendingRequests) {
-                this.pendingRequests = new PendingRequestMap();
+                this.pendingRequests = new WebSocketClient.PendingMap();
                 console.log('🔄 Initialized pendingRequests map');
             }
 
@@ -10483,7 +10482,7 @@ class WebSocketClient {
             };
 
             // Store pending request with callback
-            this.pendingRequests = this.pendingRequests || new PendingRequestMap();
+            this.pendingRequests = this.pendingRequests || new WebSocketClient.PendingMap();
             this.pendingRequests.set(requestId, {
                 resolve,
                 reject,
@@ -10536,7 +10535,7 @@ class WebSocketClient {
         return new Promise((resolve, reject) => {
             // Store the promise for later resolution
             if (!this.pendingRequests) {
-                this.pendingRequests = new PendingRequestMap();
+                this.pendingRequests = new WebSocketClient.PendingMap();
             }
 
             this.pendingRequests.set(requestId, { resolve, reject, type, showBanner, timestamp: Date.now(), socket: this.ws, counted: true });
@@ -10648,7 +10647,7 @@ class WebSocketClient {
             }
 
             // Store pending request with callback and pagination info
-            this.pendingRequests = this.pendingRequests || new PendingRequestMap();
+            this.pendingRequests = this.pendingRequests || new WebSocketClient.PendingMap();
             this.pendingRequests.set(requestId, {
                 resolve,
                 reject,
