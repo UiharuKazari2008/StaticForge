@@ -689,9 +689,27 @@
             <p class="cpl-vtext cpl-vindent">New conversations use this engine and model. A conversation started on another engine moves to this one with its next message. Effort sets how long the model thinks before it answers; Default leaves it to the model.</p>`;
     }
 
+    // no-base64-images: the profile photo is stored as base64 (a persona setting); it is shown from one
+    // blob URL kept here (a single slot, the previous one revoked when the photo changes)
+    let photoBlob = { key: '', url: '' };
+    function photoBlobUrl(b64) {
+        if (!b64) return '';
+        const key = b64.length + ':' + b64.slice(-40);
+        if (photoBlob.key === key) return photoBlob.url;
+        try {
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+            if (photoBlob.url) URL.revokeObjectURL(photoBlob.url);
+            photoBlob = { key, url };
+            return url;
+        } catch (_) { return ''; }
+    }
+
     function chatInfoSection() {
         const d = chatState.draft;
-        const pic = d.photo ? `data:image/jpeg;base64,${d.photo}` : '/static_images/account-pictures/guest.png';
+        const pic = photoBlobUrl(d.photo) || '/static_images/account-pictures/guest.png';
         return `
             <div class="cpl-vsection"><span>My info</span></div>
             <p class="cpl-vtext">Personas see your name, picture and story when you talk to them.</p>
@@ -783,6 +801,7 @@
                 g.fillStyle = '#fff';
                 g.fillRect(0, 0, c.width, c.height);
                 g.drawImage(img, 0, 0, c.width, c.height);
+                // no-base64-images: transport (the setting stores the photo as base64; it is shown by blob URL)
                 chatState.draft.photo = c.toDataURL('image/jpeg', 0.9).split(',')[1] || '';
                 chatState.draft.photoChanged = true;
                 chatState.status = '';

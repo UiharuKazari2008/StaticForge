@@ -134,6 +134,7 @@
             const fr = new FileReader();
             fr.onload = () => resolve(String(fr.result).replace(/^data:[^,]*,/, ''));
             fr.onerror = () => reject(fr.error || new Error('read failed'));
+            // no-base64-images: transport (a file read to base64 for the server)
             fr.readAsDataURL(blob);
         });
     }

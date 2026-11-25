@@ -26,6 +26,28 @@ function desktopShortcutPhotoFrame(preview) {
 }
 
 class DesktopShortcutsManager {
+    // no-base64-images: request shortcuts keep their preview as base64 in the shortcut data; it is shown
+    // from a blob URL kept here (capped, the oldest revoked), not a data URL in the style
+    requestPreviewBlobUrl(b64) {
+        const blobs = (this._requestPreviewBlobs = this._requestPreviewBlobs || new Map());
+        const key = String(b64).length + ':' + String(b64).slice(-48);
+        if (blobs.has(key)) return blobs.get(key);
+        let url = '';
+        try {
+            const bin = atob(String(b64));
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            url = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
+        } catch (_) { return ''; }
+        blobs.set(key, url);
+        while (blobs.size > 32) {
+            const oldest = blobs.keys().next().value;
+            URL.revokeObjectURL(blobs.get(oldest));
+            blobs.delete(oldest);
+        }
+        return url;
+    }
+
     constructor() {
         this.shortcuts = [];
         this.currentWorkspace = null;
@@ -2615,8 +2637,9 @@ class DesktopShortcutsManager {
         
         // Use embedded preview if available (base64)
         if (shortcut.data && shortcut.data.preview) {
-            // Preview is base64 encoded
-            imagePreview.style.backgroundImage = `url('data:image/png;base64,${shortcut.data.preview}')`;
+            // Preview is base64 encoded in the shortcut; shown from a capped, revoked blob URL (no-base64-images)
+            const requestUrl = this.requestPreviewBlobUrl(shortcut.data.preview);
+            if (requestUrl) imagePreview.style.backgroundImage = `url('${requestUrl}')`;
         }
 
         // Flare holder for overlay effect

@@ -69,6 +69,7 @@
             const r = new FileReader();
             r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
             r.onerror = () => reject(r.error);
+            // no-base64-images: transport (a capture sent to the server)
             r.readAsDataURL(blob);
         });
     }

@@ -214,7 +214,17 @@ function emotionApplyJobUpdate(job) {
     emotionSetProgress(pct, stage + steps + ' · ' + Math.max(pct, desktopEmotion.progress) + '%');
     if (job.previewBase64 && job.previewSeq > desktopEmotion.previewSeq) {
         desktopEmotion.previewSeq = job.previewSeq;
-        desktopEmotionEls.filmstrip.src = 'data:image/jpeg;base64,' + job.previewBase64;
+        // a blob URL per frame; the previous frame's is revoked (no-base64-images)
+        try {
+            const bin = atob(job.previewBase64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const frameUrl = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+            const prevUrl = desktopEmotionEls.filmstrip.dataset.blobUrl;
+            desktopEmotionEls.filmstrip.src = frameUrl;
+            desktopEmotionEls.filmstrip.dataset.blobUrl = frameUrl;
+            if (prevUrl) URL.revokeObjectURL(prevUrl);
+        } catch (_) { /* a bad frame is skipped */ }
         desktopEmotionEls.filmstrip.classList.remove('hidden');
     }
 }

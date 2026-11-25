@@ -1175,6 +1175,7 @@ async function savePicture(dataUrl) {
         pushState();
         return { picture: null };
     }
+    // no-base64-images: transport (the page uploads the picture as base64; it is stored as a file)
     const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
     if (!m) throw new LapisError('The picture must be a PNG, JPEG or WebP image', 'BAD_PICTURE');
     const buf = Buffer.from(m[2], 'base64');
@@ -1193,7 +1194,11 @@ function getPicture() {
     const p = getSettings().picture;
     if (!p) return { picture: null };
     try {
-        return { picture: p, dataUrl: `data:${p.type};base64,${fs.readFileSync(pictureFile()).toString('base64')}` };
+        const url = require('./servedPictures').servedUrl(pictureFile(), 'lapis-picture', 'lapis', p.type === 'image/jpeg' ? 'jpg' : p.type === 'image/webp' ? 'webp' : 'png');
+        if (!url) return { picture: null };
+        // dataUrl stays only for the old reader in wmLapis.js (not this file's owner); it should read url
+        // no-base64-images: legacy field, to be dropped once wmLapis.js uses url
+        return { picture: p, url, dataUrl: `data:${p.type};base64,${fs.readFileSync(pictureFile()).toString('base64')}` };
     } catch (_e) {
         return { picture: null };
     }

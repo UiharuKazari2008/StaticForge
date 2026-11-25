@@ -324,11 +324,13 @@ class DeepInfraChatService {
         const persona = await this.compressImage(personaImage.base64, personaImage.mimeType);
         const content = [
             { type: 'text', text: personaPrompt },
+            // no-base64-images: transport (a picture sent to the model API)
             { type: 'image_url', image_url: { url: `data:${persona.mimeType};base64,${persona.base64}` } }
         ];
         if (viewerAvatar) {
             const avatar = await this.compressImage(viewerAvatar.base64, viewerAvatar.mimeType);
             content.push({ type: 'text', text: '\n\nThis is my beloved, who I am speaking to:' });
+            // no-base64-images: transport (a picture sent to the model API)
             content.push({ type: 'image_url', image_url: { url: `data:${avatar.mimeType};base64,${avatar.base64}` } });
         }
         return { role: 'user', content };

@@ -122,6 +122,7 @@
             const r = new FileReader();
             r.onload = () => resolve(String(r.result).split(',')[1] || '');
             r.onerror = reject;
+            // no-base64-images: shown once (print / View Bitmap now) / transport (file save: layers, base64 for the server)
             r.readAsDataURL(blob);
         });
     }
@@ -2026,7 +2027,9 @@
             }
             if (type === 'mpi') {
                 const layers = this.doc.layers.map((l) => ({
+                    // no-base64-images: shown once (print / View Bitmap now) / transport (file save: layers, base64 for the server)
                     name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, png: l.canvas.toDataURL('image/png'),
+                    // no-base64-images: shown once (print / View Bitmap now) / transport (file save: layers, base64 for the server)
                     mask: l.mask ? l.mask.canvas.toDataURL('image/png') : undefined, maskOn: l.mask ? l.mask.enabled : undefined, styles: l.styles || undefined,
                     adjust: l.adjust ? { kind: l.adjust.kind, params: l.adjust.params } : undefined, text: l.text || undefined, isBackground: l.isBackground || undefined
                 }));
@@ -2165,6 +2168,7 @@
             const frame = doc.createElement('iframe');
             frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
             doc.body.appendChild(frame);
+            // no-base64-images: shown once (print / View Bitmap now) / transport (file save: layers, base64 for the server)
             frame.contentDocument.write(`<!doctype html><title>${esc(this.name)}</title><style>@page{margin:0.75in}body{margin:0}img{max-width:100%}</style><img src="${flat.toDataURL('image/png')}">`);
             frame.contentDocument.close();
             setTimeout(() => {
@@ -2862,6 +2866,7 @@
             const flat = this.doc.flattened();
             const v = doc.createElement('div');
             v.className = 'mp-viewbitmap';
+            // no-base64-images: shown once (print / View Bitmap now) / transport (file save: layers, base64 for the server)
             v.innerHTML = `<img src="${flat.toDataURL('image/png')}" alt="">`;
             const close = () => v.remove();
             v.addEventListener('click', close);

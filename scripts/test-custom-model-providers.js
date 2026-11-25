@@ -125,7 +125,7 @@ const withLogo = custom.saveProvider(memoryGr, {
     managementKey: '',
     logo: `data:image/png;base64,${png.toString('base64')}`
 });
-assert.ok(withLogo.logo.startsWith('data:image/png;base64,'));
+assert.ok(/^\/cache\/provider-logos\/.+\.png$/.test(withLogo.logo));
 assert.strictEqual(withLogo.hasManagementKey, true);
 
 const metered = custom.saveProvider(memoryGr, {

@@ -231,6 +231,7 @@
         const pts = [];
         for (let i = 0; i <= 24; i += 1) { const t = i / 24; pts.push({ x: 6 + t * (wpx - 12), y: hpx / 2 + Math.sin(t * Math.PI * 2) * (hpx / 2 - 7), p: Math.sin(t * Math.PI) * 0.9 + 0.1 }); }
         for (let i = 1; i < pts.length; i += 1) stroke(fake, pts[i - 1], pts[i], pts[i - 1].p, pts[i].p, '#222', Math.min(12, hpx - 8));
+        // no-base64-images: tiny (a small brush-stroke preview / a sampled brush tip stored in the preset)
         return c.toDataURL();
     }
 
@@ -387,6 +388,7 @@
         const tipId = `tip${Date.now().toString(36)}`;
         customTips.set(tipId, c);
         tipCache.clear();
+        // no-base64-images: tiny (a small brush-stroke preview / a sampled brush tip stored in the preset)
         await savePreset(w, { ...BASE, tip: tipId, tipData: c.toDataURL('image/png'), spacing: 25, size: Math.round(Math.max(src.width, src.height)), name: 'Sampled Brush' });
     }
 

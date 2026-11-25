@@ -849,6 +849,7 @@ function alignSel(b, names, inputs) {
 
 async function lumaOf(dataUrl) {
     const sharp = require('sharp');
+    // no-base64-images: transport (a picture given to sharp, not shown)
     const b64 = String(dataUrl || '').replace(/^data:image\/\w+;base64,/, '');
     const st = await sharp(Buffer.from(b64, 'base64')).greyscale().stats();
     return st.channels[0].mean;

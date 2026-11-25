@@ -126,6 +126,7 @@
                 img.data[x * 4 + 3] = 255;
             }
             ctx.putImageData(img, 0, 0);
+            // no-base64-images: tiny (a 1 px caption gradient strip)
             modal.style.setProperty('--jz-cap-' + kind, 'url("' + c.toDataURL('image/png') + '")');
         });
     }

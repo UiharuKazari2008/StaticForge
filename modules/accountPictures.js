@@ -40,13 +40,9 @@ function customPath(account) {
     return path.join(PICTURE_DIR, `${account}.png`);
 }
 
-function readCustomDataUrl(account) {
-    try {
-        const buf = fs.readFileSync(customPath(account));
-        return `data:image/png;base64,${buf.toString('base64')}`;
-    } catch (_err) {
-        return null;
-    }
+/** The uploaded picture's address (a versioned copy under .cache/account-pictures, /cache static route). */
+function customPictureUrl(account) {
+    return require('./servedPictures').servedUrl(customPath(account), 'account-pictures', account);
 }
 
 /** The account's name: the one set in User Accounts, else Vista's built-in name. */
@@ -75,7 +71,7 @@ function describe(config) {
         let picture = normalizeChoice(account, stored[account]);
         let url = null;
         if (picture === 'custom') {
-            url = readCustomDataUrl(account);
+            url = customPictureUrl(account);
             if (!url) picture = DEFAULTS[account];
         }
         if (!url) url = `/static_images/account-pictures/${picture}.png`;
@@ -96,6 +92,7 @@ function logonPictureUrl(config) {
 /**
  * Validate a change and write an uploaded picture; returns the value to store for the account.
  * dataUrl: a data:image/png;base64 URL (the client draws the upload into 128x128 first).
+ * no-base64-images: transport (an upload from the page; stored as a file, shown by URL)
  */
 function applyChange(account, picture, dataUrl) {
     if (!ACCOUNTS.includes(account)) throw new AccountPictureError('Unknown account', 'BAD_ACCOUNT');

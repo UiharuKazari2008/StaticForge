@@ -29,6 +29,7 @@
         x.fillStyle = '#fff';
         x.fillRect(0, 0, 32, 24);
         x.drawImage(d.flattened(), (32 - d.width * k) / 2, (24 - d.height * k) / 2, d.width * k, d.height * k);
+        // no-base64-images: tiny (a 32x24 layer-comp thumbnail)
         return c.toDataURL();
     }
 

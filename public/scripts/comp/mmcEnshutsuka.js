@@ -684,12 +684,30 @@
         if (at(c, 'profile', 'root')) c.refresh();
     }
 
+    // no-base64-images: the profile photo is stored as base64 (a persona setting); it is shown from one
+    // blob URL kept here (a single slot, the previous one revoked when the photo changes)
+    let photoBlob = { key: '', url: '' };
+    function photoBlobUrl(b64) {
+        if (!b64) return '';
+        const key = b64.length + ':' + b64.slice(-40);
+        if (photoBlob.key === key) return photoBlob.url;
+        try {
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+            if (photoBlob.url) URL.revokeObjectURL(photoBlob.url);
+            photoBlob = { key, url };
+            return url;
+        } catch (_) { return ''; }
+    }
+
     function personaPage(c) {
         const p = S(c).persona;
         if (!p) {
             return c.page('Profile', '', [{ id: 'ens-persona', title: 'Chat Persona', body: S(c).personaError ? `<p>${c.state(false, S(c).personaError)}</p>` : '<p>Reading data, please wait...</p>' }]);
         }
-        const photo = p.profile_photo_base64 ? `data:image/jpeg;base64,${p.profile_photo_base64}` : '/static_images/account-pictures/guest.png';
+        const photo = photoBlobUrl(p.profile_photo_base64) || '/static_images/account-pictures/guest.png';
         const body = `${c.overview('', ['Your LinkXi chat persona for Director conversations: the name the Director calls you, your picture, a backstory it keeps in mind, and how much it says by default. The settings are saved to your account.'])}
             <div class="mmc-form ens-persona">
                 <label for="ensPersonaName">My <u>n</u>ame:</label>
@@ -727,6 +745,7 @@
                 c.note('The photo is used when you save the persona.');
                 c.refresh();
             };
+            // no-base64-images: transport (the persona setting stores the photo as base64)
             reader.readAsDataURL(file);
         });
         void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Choose Photo' }) : input.click());

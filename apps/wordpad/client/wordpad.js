@@ -114,6 +114,7 @@
             let bin = '';
             for (let k = 0; k + 1 < hex.length; k += 2) bin += String.fromCharCode(parseInt(hex.slice(k, k + 2), 16));
             flushText();
+            // no-base64-images: shown once (a picture embedded in the document body, saved with the document) / transport (RTF bytes)
             runs.push({ img: `data:image/${kind};base64,${btoa(bin)}`, w: wg ? Math.round(wg / 15) : 0, h: hg ? Math.round(hg / 15) : 0 });
         };
         while (i < s.length) {
@@ -301,6 +302,7 @@
             c.width = img.naturalWidth || img.width;
             c.height = img.naturalHeight || img.height;
             c.getContext('2d').drawImage(img, 0, 0);
+            // no-base64-images: shown once (a picture embedded in the document body, saved with the document) / transport (RTF bytes)
             const bin = atob(c.toDataURL('image/png').split(',')[1]);
             let hex = '';
             for (let k = 0; k < bin.length; k += 1) { hex += bin.charCodeAt(k).toString(16).padStart(2, '0'); if (k % 64 === 63) hex += '\r\n'; }
@@ -315,6 +317,7 @@
             const r = new FileReader();
             r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
             r.onerror = () => reject(r.error);
+            // no-base64-images: shown once (a picture embedded in the document body, saved with the document) / transport (RTF bytes)
             r.readAsDataURL(blob);
         });
     }
@@ -458,6 +461,7 @@
                     const f = imgItem.getAsFile();
                     const r = new FileReader();
                     r.onload = () => this.exec('insertImage', r.result);
+                    // no-base64-images: shown once (a picture embedded in the document body, saved with the document) / transport (RTF bytes)
                     r.readAsDataURL(f);
                     return;
                 }
@@ -631,6 +635,7 @@
                         const items = await navigator.clipboard.read();
                         for (const it of items) {
                             const img = it.types.find((t) => t.startsWith('image/'));
+                            // no-base64-images: shown once (a picture embedded in the document body, saved with the document) / transport (RTF bytes)
                             if (img) { const b = await it.getType(img); this.exec('insertImage', `data:${img};base64,${await blobToBase64(b)}`); return; }
                             if (it.types.includes('text/plain')) { this.exec('insertText', await (await it.getType('text/plain')).text()); return; }
                         }
@@ -1036,6 +1041,7 @@
                         c.width = Math.round(img.naturalWidth * k);
                         c.height = Math.round(img.naturalHeight * k);
                         c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                        // no-base64-images: shown once (a picture embedded in the document body, saved with the document) / transport (RTF bytes)
                         url = c.toDataURL('image/png');
                         this.saved = keep;
                         this.restoreSel();

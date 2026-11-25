@@ -756,6 +756,7 @@ async function liveStream(ticket, req, res) {
             if (!link.online) await link.connect();
             const scene = await monitorScene(cab);
             const r = await link.request('GetSourceScreenshot', { sourceName: scene, imageFormat: 'jpg', imageWidth: t.width, imageCompressionQuality: 70 }, 5000);
+            // no-base64-images: transport (an uploaded picture written to a file)
             const buf = Buffer.from(String(r.imageData || '').replace(/^data:image\/\w+;base64,/, ''), 'base64');
             if (!open || t.closed) break;
             res.write(`--${boundary}\r\nContent-Type: image/jpeg\r\nContent-Length: ${buf.length}\r\n\r\n`);

@@ -4805,6 +4805,7 @@ function nameForBytes(name, buffer) {
 async function readAttachment(gr, attachment) {
     const source = attachment && attachment.source;
     if (source === 'client') {
+        // no-base64-images: transport (an attachment given to the agent)
         const raw = String(attachment.data || '').replace(/^data:[^;]+;base64,/, '');
         const buffer = Buffer.from(raw, 'base64');
         if (!buffer.length) throw new Error('Attached file was empty');

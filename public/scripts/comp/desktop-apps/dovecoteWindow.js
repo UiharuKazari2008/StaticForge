@@ -2079,6 +2079,7 @@
             const reader = new FileReader();
             reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
             reader.onerror = () => reject(new Error('The attachment could not be read.'));
+            // no-base64-images: transport (an attachment moved to base64) / shown once (the opened viewer, an inline image in the opened message)
             reader.readAsDataURL(blob);
         });
     };
@@ -2109,6 +2110,7 @@
             // openGalleryImageInViewer: public/scripts/comp/imageViewer.js (Lumen; a data: URL with no
             // gallery filename is shown as is, like the Reference Manager's images)
             if (kind === 'image' && typeof openGalleryImageInViewer === 'function') {
+                // no-base64-images: transport (an attachment moved to base64) / shown once (the opened viewer, an inline image in the opened message)
                 openGalleryImageInViewer({ url: 'data:' + att.mimeType + ';base64,' + base64, base: name });
                 return;
             }
@@ -2239,7 +2241,13 @@
                     thumb.src = att.url;
                 } else {
                     doveFetchAttachmentBase64(att.id, viewAsOwner).then((base64) => {
-                        if (base64) thumb.src = 'data:' + att.mimeType + ';base64,' + base64;
+                        if (!base64) return;
+                        // a blob URL, dropped once the thumbnail has loaded (no-base64-images)
+                        const thumbUrl = URL.createObjectURL(doveBase64ToBlob(base64, att.mimeType));
+                        const drop = () => URL.revokeObjectURL(thumbUrl);
+                        thumb.addEventListener('load', drop, { once: true });
+                        thumb.addEventListener('error', drop, { once: true });
+                        thumb.src = thumbUrl;
                     }).catch(() => {});
                 }
             } else {
@@ -2363,6 +2371,7 @@
         const toDataUrl = async (att) => {
             if (!att || !(att.mimeType || '').startsWith('image/')) return null;
             const base64 = await doveFetchAttachmentBase64(att.id, viewAsOwner).catch(() => null);
+            // no-base64-images: transport (an attachment moved to base64) / shown once (the opened viewer, an inline image in the opened message)
             return base64 ? 'data:' + att.mimeType + ';base64,' + base64 : null;
         };
         const jobs = [];

@@ -77,6 +77,7 @@
             const r = new FileReader();
             r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
             r.onerror = () => reject(r.error);
+            // no-base64-images: transport (a file's bytes sent to the server)
             r.readAsDataURL(blob);
         });
     }
@@ -569,6 +570,7 @@
                         cv.width = 96;
                         cv.height = 96;
                         cv.getContext('2d').drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, 0, 0, 96, 96);
+                        // no-base64-images: tiny (a 96 px card photo, stored into the vCard as base64 by format)
                         done(cv.toDataURL('image/png'));
                     } catch (err) {
                         await message(`The picture could not be used.\n${(err && err.message) || err}`);

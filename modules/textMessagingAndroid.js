@@ -133,6 +133,7 @@ const hash = (s, n = 20) => crypto.createHash('sha1').update(String(s)).digest('
 const str = (v, max) => String(v == null ? '' : v).slice(0, max);
 
 function dataUrlBytes(url) {
+    // no-base64-images: transport (a data URL arriving from the phone is written to a file)
     const m = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(url || ''));
     if (!m) return null;
     const buf = Buffer.from(m[2], 'base64');

@@ -56,6 +56,7 @@
         return { W, H };
     }
 
+    // no-base64-images: transport (the canvas sent to NovelAI)
     const b64 = (canvas) => canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
 
     async function imageOf(w, result) {

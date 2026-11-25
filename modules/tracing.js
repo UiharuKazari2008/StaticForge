@@ -25,6 +25,7 @@ let indexRefresh = null;
 
 // Large base64 blobs (input images, masks) are replaced by a length marker before tracing.
 const BASE64_MIN_LENGTH = 4096;
+// no-base64-images: transport (a pattern that recognises base64 in trace text, no picture)
 const BASE64_RE = /^(data:[^;,]+;base64,)?[A-Za-z0-9+/\r\n]+={0,2}$/;
 
 function sanitizeTraceValue(value, seen = new Set()) {

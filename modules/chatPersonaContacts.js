@@ -150,6 +150,7 @@ function broadcast(workspaceId) {
 }
 
 /** The gallery picture as a square JPEG data URL, or '' when it cannot be read. */
+// no-base64-images: transport (a vCard PHOTO is base64 by format; the card file stores it, nothing shows this string)
 async function photoFor(filename) {
     if (!filename) return '';
     try {

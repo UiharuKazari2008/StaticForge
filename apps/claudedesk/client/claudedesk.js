@@ -4068,6 +4068,7 @@
             const r = new FileReader();
             r.onload = () => resolve(String(r.result).slice(String(r.result).indexOf(',') + 1));
             r.onerror = () => reject(new Error('Could not read the attachment'));
+            // no-base64-images: transport (an attachment for the socket, never shown from it)
             r.readAsDataURL(blob);
         });
     }

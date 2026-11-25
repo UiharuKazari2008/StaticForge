@@ -386,6 +386,7 @@ class RcsProvider {
                     const thumb = full ? (/^image\/|^video\//.test(mime) ? `${base}?thumb=1` : null) : base;
                     attachments.push(Object.assign({ guid, url: base, thumbUrl: thumb }, common));
                 } else {
+                    // no-base64-images: tiny (an RCS inline message thumbnail of a few KB)
                     const data = `data:image/jpeg;base64,${String(m.mediaData).replace(/[^A-Za-z0-9+/=]/g, '')}`;
                     attachments.push(Object.assign({ guid: `rinline-${raw.messageID}-${i}`, url: data, thumbUrl: data }, common));
                 }

@@ -287,6 +287,7 @@
                 canvas.height = 128;
                 canvas.getContext('2d').drawImage(img, (img.naturalWidth - size) / 2, (img.naturalHeight - size) / 2, size, size, 0, 0, 128, 128);
                 URL.revokeObjectURL(url);
+                // no-base64-images: transport (the 128 px account picture sent to the server; shown afterwards from its URL)
                 resolve(canvas.toDataURL('image/png'));
             };
             img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not a picture')); };

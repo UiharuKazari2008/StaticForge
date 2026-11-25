@@ -103,6 +103,7 @@ async function soraTanLoadAssets(app) {
         const im = new Image();
         im.onload = () => resolve(im);
         im.onerror = () => reject(new Error('the texture did not decode'));
+        // no-base64-images: transport (a texture decoded once into a canvas, then dropped)
         im.src = 'data:image/png;base64,' + msg.texture;
     });
     const c = document.createElement('canvas');

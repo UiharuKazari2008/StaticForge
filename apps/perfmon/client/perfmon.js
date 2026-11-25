@@ -327,6 +327,7 @@
                     const f = doc.createElement('iframe');
                     f.style.cssText = 'position:fixed;width:0;height:0;border:0';
                     doc.body.appendChild(f);
+                    // no-base64-images: shown once (the graph printed now)
                     f.contentDocument.write(`<img src="${c.toDataURL()}" style="max-width:100%">`);
                     f.contentDocument.close();
                     setTimeout(() => { try { f.contentWindow.print(); } catch (_) { /* no printing */ } setTimeout(() => f.remove(), 2000); }, 200);

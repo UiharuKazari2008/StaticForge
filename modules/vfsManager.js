@@ -1935,7 +1935,6 @@ class VfsManager {
                     kind: 'file',
                     targetKind: 'desktop-shortcut',
                     targetId: shortcut.id,
-                    previewDataUrl: data.preview ? `data:image/png;base64,${data.preview}` : null,
                     icon: 'fas fa-image'
                 };
             case 'wiki-page':

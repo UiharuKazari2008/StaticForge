@@ -212,6 +212,7 @@
 
     const frameImages = new Map();
     const pictureCache = new Map();
+    const PICTURE_CACHE_MAX = 256; // blob URLs kept; the oldest is revoked past this (phone-power-client rule 8)
 
     function loadImage(src) {
         return new Promise((resolve, reject) => {
@@ -228,7 +229,7 @@
         return frameImages.get(size);
     }
 
-    /** The card's picture in the glass frame, side px square, as a data URL (cached per card). */
+    /** The card's picture in the glass frame, side px square, as a blob URL (cached per card, capped, revoked when evicted). */
     async function framedPicture(card, side) {
         const key = `${card ? card.uid : '-'}|${card && card.photo ? card.photo.length : 0}|${side}`;
         if (pictureCache.has(key)) return pictureCache.get(key);
@@ -246,9 +247,16 @@
             const s = Math.min(photo.naturalWidth, photo.naturalHeight);
             x.drawImage(photo, (photo.naturalWidth - s) / 2, (photo.naturalHeight - s) / 2, s, s, inset, inset, side - inset * 2, side - inset * 2);
             x.drawImage(frame, 0, 0, side, side);
-            return cv.toDataURL('image/png');
+            const blob = await new Promise((resolve) => cv.toBlob(resolve, 'image/png'));
+            return blob ? URL.createObjectURL(blob) : `${ART}/default-picture.png`;
         })();
         pictureCache.set(key, p);
+        while (pictureCache.size > PICTURE_CACHE_MAX) {
+            const oldest = pictureCache.keys().next().value;
+            const gone = pictureCache.get(oldest);
+            pictureCache.delete(oldest);
+            void gone.then((u) => { if (String(u).startsWith('blob:')) URL.revokeObjectURL(u); });
+        }
         return p;
     }
 

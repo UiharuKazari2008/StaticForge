@@ -1212,6 +1212,7 @@ class ReferencesWebSocketHandlers {
             const previewBuf = Buffer.from(await previewResp.arrayBuffer());
             if (!previewBuf.length) return null;
             const ct = (previewResp.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+            // no-base64-images: transport (a preview fetched to embed into a vibe file)
             return `data:${ct};base64,${previewBuf.toString('base64')}`;
         } catch (e) {
             console.warn('fetchRemotePreviewDataUrl:', e.message);

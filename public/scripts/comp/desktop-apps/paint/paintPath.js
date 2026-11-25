@@ -696,6 +696,7 @@
         x.scale(k, k);
         x.fillStyle = '#7a7a7a';
         x.fill(toPath2D(path));
+        // no-base64-images: tiny (a 40x30 path thumbnail)
         return c.toDataURL();
     }
 

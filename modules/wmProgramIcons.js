@@ -405,6 +405,7 @@ async function iconBrief(name, refBuffers, opts) {
     const content = [{ type: 'text', text: iconPrompt.briefPrompt(name, opts) }];
     for (const b of refBuffers.slice(0, 4)) {
         const png = await sharp(b).resize(512, 512, { fit: 'contain', background: '#ffffff' }).flatten({ background: '#ffffff' }).png().toBuffer();
+        // no-base64-images: transport (pictures sent to the AI / uploaded icons stored as files)
         content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${png.toString('base64')}` } });
     }
     let why = 'no answer';
@@ -450,6 +451,7 @@ async function findLogo(item, ctx, dir) {
         type: 'text',
         text: `These are store images of "${item.label}" (numbered from 0 in order). Find its official logo: the emblem or logo lettering as the publisher designed it, not character art, UI text, captions or the publisher's own logo. Answer JSON only: {"found": true|false, "image": <index>, "box": [left, top, right, bottom] as fractions 0..1 of that image, "what": "<short description>"}. Pick the clearest, largest one. If no official logo is visible, answer {"found": false}. Never guess.`
     }];
+    // no-base64-images: transport (pictures sent to the AI / uploaded icons stored as files)
     for (const b of imgs) content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${(await sharp(b).resize({ width: 768, withoutEnlargement: true }).png().toBuffer()).toString('base64')}` } });
     try {
         const res = await briefFetch({
@@ -872,6 +874,7 @@ async function createJob(body, req) {
             attempt: 0,
             hasRef: false
         };
+        // no-base64-images: transport (pictures sent to the AI / uploaded icons stored as files)
         const m = /^data:image\/(png|webp|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(String(raw.icon || ''));
         if (m) {
             const buf = Buffer.from(m[2], 'base64');
@@ -886,6 +889,7 @@ async function createJob(body, req) {
         item.attachments = 0;
         const atts = Array.isArray(raw.attachments) ? raw.attachments.slice(0, MAX_ATTACHMENTS) : [];
         for (const att of atts) {
+            // no-base64-images: transport (pictures sent to the AI / uploaded icons stored as files)
             const a = /^data:image\/(png|webp|jpeg|gif|bmp);base64,([A-Za-z0-9+/=]+)$/.exec(String((att && att.data) || ''));
             if (!a) continue;
             const buf = Buffer.from(a[2], 'base64');
@@ -895,6 +899,7 @@ async function createJob(body, req) {
                 item.attachments++;
             } catch (_) { /* not a picture */ }
         }
+        // no-base64-images: transport (pictures sent to the AI / uploaded icons stored as files)
         const t = /^data:image\/(png|webp|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(String(raw.themed || ''));
         if (t) {
             const buf = Buffer.from(t[2], 'base64');

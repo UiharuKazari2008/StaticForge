@@ -43,6 +43,7 @@ const rateLimits = new Map(); // id -> { at, limit, remaining, resetMs }
 const keyChecks = new Map();
 const LOGO_MAX_BYTES = 64 * 1024;
 let logoDirectory = path.join(__dirname, '..', 'data', 'provider-logos');
+let servedRoot; // undefined = the server's .cache; tests point it at a temp folder
 
 // Supported hosts. A preset only fills the form (director_custom_providers_response presets);
 // the host kind is read from the saved URL. defaultModel is used when the row names none.
@@ -97,12 +98,13 @@ function logoFile(id) {
 
 function readLogo(id) {
     try {
-        const buf = fs.readFileSync(logoFile(id));
-        if (!buf.length || buf.length > LOGO_MAX_BYTES) return '';
-        return `data:image/png;base64,${buf.toString('base64')}`;
+        const st = fs.statSync(logoFile(id));
+        if (!st.size || st.size > LOGO_MAX_BYTES) return '';
     } catch (_) {
         return '';
     }
+    // the logo's address (shown again in menus and cards), never a data URL
+    return require('./servedPictures').servedUrl(logoFile(id), 'provider-logos', id, 'png', servedRoot) || '';
 }
 
 function writeLogo(id, dataUrl) {
@@ -111,6 +113,7 @@ function writeLogo(id, dataUrl) {
         try { fs.unlinkSync(logoFile(id)); } catch (_) { /* already gone */ }
         return;
     }
+    // no-base64-images: transport (the page uploads the logo as base64; it is stored as a file)
     const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl));
     if (!match) {
         const error = new Error('Provider logo must be a PNG.');
@@ -1051,6 +1054,6 @@ module.exports = {
     _test: {
         resetCatalogs: () => catalogs.clear(),
         resetBalances: () => { balances.clear(); rateLimits.clear(); keyChecks.clear(); },
-        setLogoDir: (dir) => { logoDirectory = dir; }
+        setLogoDir: (dir) => { logoDirectory = dir; servedRoot = dir; }
     }
 };

@@ -362,6 +362,7 @@ Rules:
             ? {
                 role: 'user',
                 content: [
+                    // no-base64-images: transport (a picture sent to the AI)
                     { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBuffer.toString('base64')}` } },
                     { type: 'text', text: userText }
                 ]

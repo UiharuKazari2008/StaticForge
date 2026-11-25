@@ -625,6 +625,7 @@
                     canvas.height = 64;
                     canvas.getContext('2d').drawImage(img, (img.naturalWidth - size) / 2, (img.naturalHeight - size) / 2, size, size, 0, 0, 64, 64);
                     URL.revokeObjectURL(url);
+                    // no-base64-images: tiny (a 64 px provider logo, sent to the server as base64 on save)
                     row._logoData = canvas.toDataURL('image/png');
                     row._logoClear = false;
                     logoPreview.src = row._logoData;

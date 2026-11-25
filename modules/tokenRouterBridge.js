@@ -245,6 +245,7 @@ function imagePart(block) {
     const source = block && block.source;
     if (!source) return null;
     if (source.type === 'base64' && source.data) {
+        // no-base64-images: transport (a picture sent to the model API)
         return { type: 'image_url', image_url: { url: `data:${source.media_type || 'image/png'};base64,${source.data}` } };
     }
     if (source.type === 'url' && source.url) return { type: 'image_url', image_url: { url: source.url } };

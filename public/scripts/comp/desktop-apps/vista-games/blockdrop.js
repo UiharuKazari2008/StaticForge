@@ -2097,6 +2097,7 @@
                     st.sprite(block, x * size, y * size, { frame: COLOR[ch], w: size, h: size });
                 }
             });
+            // no-base64-images: tiny (a small options-dialog preview)
             return c.toDataURL('image/png');
         }
 

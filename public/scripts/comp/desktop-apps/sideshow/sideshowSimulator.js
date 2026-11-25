@@ -503,6 +503,7 @@
             const mg = mask.getContext('2d');
             mg.fillStyle = '#fff';
             mg.fillRect(b.pad, b.pad, b.lw, b.lh);
+            // no-base64-images: transport (a frame sent to the Sideshow device)
             const b64 = (c) => c.toDataURL('image/png').replace(/^data:[^,]*,/, '');
             this.send({
                 type: 'client_device_preview',
@@ -607,6 +608,7 @@
                 g.fillStyle = `rgba(0,0,0,${dim / 100})`;
                 g.fillRect(0, 0, lw, lh);
             }
+            // no-base64-images: transport (a frame sent to the Sideshow device)
             const image = c.toDataURL('image/jpeg', 0.8).replace(/^data:[^,]*,/, '');
             this.send({ type: 'client_device_screen', data: { deviceId: this.deviceId, format: 'jpeg', image, width: lw, height: lh, at: Date.now() } });
         }

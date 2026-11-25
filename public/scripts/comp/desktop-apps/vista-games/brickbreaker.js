@@ -1997,6 +1997,7 @@
             st.sprite(look.paddle.m, px + 12, 150, { w: 40 });
             st.sprite(look.paddle.r, px + 52, 150);
             ctx.restore();
+            // no-base64-images: tiny (a small options-dialog preview)
             return c.toDataURL('image/png');
         }
 

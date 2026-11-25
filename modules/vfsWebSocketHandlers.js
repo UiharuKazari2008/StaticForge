@@ -306,6 +306,7 @@ class VfsWebSocketHandlers {
                 const tempPath = path.join(this.globalResources.getPath('tempDownload'), tempFile);
                 buffer = await fs.promises.readFile(tempPath);
             } else if (fileData) {
+                // no-base64-images: transport (a file uploaded by the page, written to the VFS)
                 const base64 = fileData.replace(/^data:[^;]+;base64,/, '');
                 buffer = Buffer.from(base64, 'base64');
             } else {
@@ -374,6 +375,7 @@ class VfsWebSocketHandlers {
         if (tempFile) {
             buffer = await fs.promises.readFile(path.join(this.globalResources.getPath('tempDownload'), tempFile));
         } else {
+            // no-base64-images: transport (a file uploaded by the page, written to the VFS)
             const base64 = fileData.replace(/^data:[^;]+;base64,/, '');
             buffer = Buffer.from(base64, 'base64');
         }
