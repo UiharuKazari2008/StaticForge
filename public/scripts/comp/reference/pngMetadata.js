@@ -1,17 +1,213 @@
-// Extract PNG metadata from a File object
+// Picture format readers (one global: #1156). Formats whose generation metadata can be imported are png, webp and jxl
+// (JPEG XL by its fields only: the browser may not decode it).
+const pictureMetadata = (() => {
+// Which picture format the bytes are, by magic (a .jxl usually has an empty file.type): 'png', 'webp', 'jxl'
+// (bare codestream or container), 'jpeg' or null. #1156
+function sniffPictureFormat(data) {
+    if (!data || data.length < 4) return null;
+    if (data.length >= 8 && isValidPNGHeader(data)) return 'png';
+    if (data.length >= 12 && data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 &&
+        data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50) return 'webp';
+    if (data[0] === 0xFF && data[1] === 0x0A) return 'jxl';
+    if (data.length >= 12 && data[0] === 0 && data[1] === 0 && data[2] === 0 && data[3] === 0x0C &&
+        data[4] === 0x4A && data[5] === 0x58 && data[6] === 0x4C && data[7] === 0x20 &&
+        data[8] === 0x0D && data[9] === 0x0A && data[10] === 0x87 && data[11] === 0x0A) return 'jxl';
+    if (data[0] === 0xFF && data[1] === 0xD8 && data[2] === 0xFF) return 'jpeg';
+    return null;
+}
+
+// The format of a File from its first bytes, never from file.type or the extension.
+async function sniffPictureFileFormat(file) {
+    try {
+        return sniffPictureFormat(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
+    } catch (e) {
+        return null;
+    }
+}
+
+
+// [keyword, text] fields as the NovelAI keyword set flattenNaiComment reads (a later field of a keyword wins).
+function metadataFromFields(fields, encoding) {
+    const o = {};
+    for (const [k, v] of fields) o[k] = v;
+    if (o.Comment) return flattenNaiComment({ Comment: o.Comment, Source: o.Source, Software: o.Software }, encoding);
+    return null;
+}
+
+// WebP (NovelAI): EXIF chunk, UserComment JSON = the whole field set, else the IFD0 strings (see modules/pictureMeta.js).
+function readWebpMetadata(data) {
+    let off = 12;
+    while (off + 8 <= data.length) {
+        const fourcc = String.fromCharCode(data[off], data[off + 1], data[off + 2], data[off + 3]);
+        const len = data[off + 4] | (data[off + 5] << 8) | (data[off + 6] << 16) | (data[off + 7] * 0x1000000);
+        if (off + 8 + len > data.length) break;
+        if (fourcc === 'EXIF') {
+            let tiff = data.subarray(off + 8, off + 8 + len);
+            if (tiff.length >= 6 && String.fromCharCode(...tiff.subarray(0, 6)) === 'Exif\0\0') tiff = tiff.subarray(6);
+            return metadataFromFields(readExifFields(tiff), 'WebP EXIF');
+        }
+        off += 8 + len + (len & 1);
+    }
+    return null;
+}
+
+// Fields from a TIFF block: the UserComment JSON object, else DocumentName / ImageDescription / Software + the comment.
+function readExifFields(t) {
+    if (t.length < 8) return [];
+    const order = String.fromCharCode(t[0], t[1]);
+    if (order !== 'MM' && order !== 'II') return [];
+    const le = order === 'II';
+    const dv = new DataView(t.buffer, t.byteOffset, t.byteLength);
+    const u16 = (o) => dv.getUint16(o, le);
+    const u32 = (o) => dv.getUint32(o, le);
+    if (u16(2) !== 42) return [];
+    const typeSize = [0, 1, 1, 2, 4, 8, 1, 1, 2, 4, 8, 4, 8];
+    const readIfd = (off) => {
+        const tags = new Map();
+        if (!off || off + 2 > t.length) return tags;
+        const n = u16(off);
+        for (let i = 0; i < n; i++) {
+            const p = off + 2 + i * 12;
+            if (p + 12 > t.length) break;
+            const type = u16(p + 2);
+            const size = (typeSize[type] || 1) * u32(p + 4);
+            const vo = size > 4 ? u32(p + 8) : p + 8;
+            if (vo + size > t.length) continue;
+            tags.set(u16(p), { type, value: t.subarray(vo, vo + size), ptr: u32(p + 8) });
+        }
+        return tags;
+    };
+    const ifd0 = readIfd(u32(4));
+    const ep = ifd0.get(0x8769);
+    const exif = ep ? readIfd(ep.ptr) : new Map();
+    const ascii = (v) => {
+        let end = v.length;
+        while (end > 0 && v[end - 1] === 0) end--;
+        return new TextDecoder('utf-8').decode(v.subarray(0, end));
+    };
+    let text = null;
+    const uc = exif.get(0x9286);
+    if (uc && uc.value.length >= 8) {
+        const cs = String.fromCharCode(...uc.value.subarray(0, 8));
+        const body = uc.value.subarray(8);
+        if (cs.startsWith('UNICODE')) {
+            let s = '';
+            for (let i = 0; i + 1 < body.length; i += 2) s += String.fromCharCode(le ? body[i] | (body[i + 1] << 8) : (body[i] << 8) | body[i + 1]);
+            text = s.replace(/\0+$/, '');
+        } else {
+            text = ascii(body);
+        }
+    }
+    if (text) {
+        try {
+            const obj = JSON.parse(text);
+            if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+                return Object.keys(obj).map((k) => [k, typeof obj[k] === 'string' ? obj[k] : JSON.stringify(obj[k])]);
+            }
+        } catch (e) { /* a plain comment */ }
+    }
+    const out = [];
+    const s = (tag) => { const e = ifd0.get(tag); return e && e.type === 2 ? ascii(e.value) : null; };
+    if (s(0x010D) != null) out.push(['Title', s(0x010D)]);
+    if (s(0x010E) != null) out.push(['Description', s(0x010E)]);
+    if (s(0x0131) != null) out.push(['Software', s(0x0131)]);
+    if (text) out.push(['Comment', text]);
+    return out;
+}
+
+// JPEG XL container: the sfMD box ({v:1, fields:[[k,v],...]}), else a legacy sfPN box (raw PNG chunks). A bare
+// codestream has no boxes: null (no metadata).
+async function readJxlMetadata(data) {
+    if (data[0] === 0xFF) return null;
+    const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const dec = new TextDecoder('utf-8');
+    let md = null;
+    let pn = null;
+    let off = 0;
+    while (off + 8 <= data.length) {
+        let size = dv.getUint32(off);
+        const type = String.fromCharCode(data[off + 4], data[off + 5], data[off + 6], data[off + 7]);
+        let head = 8;
+        if (size === 1) { size = Number(dv.getBigUint64(off + 8)); head = 16; }
+        if (size === 0) size = data.length - off;
+        if (size < head || off + size > data.length) break;
+        if (type === 'sfMD' && !md) md = data.subarray(off + head, off + size);
+        else if (type === 'sfPN' && !pn) pn = data.subarray(off + head, off + size);
+        off += size;
+    }
+    if (md) {
+        try {
+            const o = JSON.parse(dec.decode(md));
+            if (o && o.v === 1 && Array.isArray(o.fields)) {
+                const fields = o.fields.filter((f) => Array.isArray(f) && typeof f[0] === 'string')
+                    .map((f) => [f[0], typeof f[1] === 'string' ? f[1] : f[1] == null ? '' : JSON.stringify(f[1])]);
+                return metadataFromFields(fields, 'JXL sfMD');
+            }
+        } catch (e) { /* fall through to sfPN */ }
+    }
+    if (pn && pn[0] === 1) {
+        // entries: where(1) + raw PNG chunk (length, type, data, crc); read as a PNG without pixels
+        const parts = [];
+        let p = 1;
+        let total = 8;
+        while (p + 5 <= pn.length) {
+            const len = (pn[p + 1] << 24 | pn[p + 2] << 16 | pn[p + 3] << 8 | pn[p + 4]) >>> 0;
+            const end = p + 1 + 12 + len;
+            if (end > pn.length) break;
+            parts.push(pn.subarray(p + 1, end));
+            total += end - p - 1;
+            p = end;
+        }
+        const png = new Uint8Array(total);
+        png.set([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], 0);
+        let w = 8;
+        for (const part of parts) { png.set(part, w); w += part.length; }
+        let metadata = readPNGMetadata(png.buffer);
+        if (!metadata || !metadata.source || !metadata.source.includes('NovelAI')) {
+            const z = await readCompressedTextChunks(png);
+            if (z && z.Comment) metadata = flattenNaiComment(z, 'JXL sfPN');
+        }
+        return metadata && metadata.source ? metadata : null;
+    }
+    return null;
+}
+
+    return {
+        FORMATS: ['png', 'webp', 'jxl'],
+        sniffFormat: sniffPictureFormat,
+        sniffFile: sniffPictureFileFormat,
+        fromWebp: readWebpMetadata,
+        fromJxl: readJxlMetadata
+    };
+})();
+
+// Extract picture metadata (PNG, lossless WebP, JPEG XL) from a File object. Name kept for its callers.
 async function extractPNGMetadata(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
                 const buffer = e.target.result;
-                let metadata = readPNGMetadata(buffer);
+                const bytes = new Uint8Array(buffer);
+                const format = pictureMetadata.sniffFormat(bytes);
+                let metadata;
+                if (format === 'webp' || format === 'jxl') {
+                    metadata = format === 'webp' ? pictureMetadata.fromWebp(bytes) : await pictureMetadata.fromJxl(bytes);
+                    // WebP keeps stealth data in the alpha LSBs and the browser decodes it; a JXL is fields only.
+                    if (format === 'webp' && (!metadata || !metadata.source || !metadata.source.includes('NovelAI'))) {
+                        const fallback = await extractFallbackPNGMetadata(bytes, file);
+                        if (fallback) metadata = fallback;
+                    }
+                    if (!metadata) metadata = {};
+                } else {
+                    metadata = readPNGMetadata(buffer);
 
-                // External images may carry the blueprint in zTXt (compressed) or as
-                // stealth LSB steganography (alpha/RGB) rather than tEXt/iTXt chunks.
-                if (!metadata || !metadata.source || !metadata.source.includes('NovelAI')) {
-                    const fallback = await extractFallbackPNGMetadata(new Uint8Array(buffer), file);
-                    if (fallback) metadata = fallback;
+                    // External images may carry the blueprint in zTXt (compressed) or as
+                    // stealth LSB steganography (alpha/RGB) rather than tEXt/iTXt chunks.
+                    if (!metadata || !metadata.source || !metadata.source.includes('NovelAI')) {
+                        const fallback = await extractFallbackPNGMetadata(bytes, file);
+                        if (fallback) metadata = fallback;
+                    }
                 }
 
                 const enhancedMetadata = await extractMetadataWithDimensions(metadata, buffer, file);

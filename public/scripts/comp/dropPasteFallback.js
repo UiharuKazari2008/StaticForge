@@ -24,7 +24,7 @@
     if (!doc) return;
 
     // what the Import wizard reads: pictures (references, blueprints) and vibe files
-    const IMPORT_EXT = /\.(png|jpe?g|webp|gif|bmp|avif|json|naiv4vibe|naiv4vibebundle)$/i;
+    const IMPORT_EXT = /\.(png|jpe?g|webp|jxl|gif|bmp|avif|json|naiv4vibe|naiv4vibebundle)$/i;
 
     let internalDrag = false;
     let highlighted = null;
@@ -123,12 +123,17 @@
         return new File([file], `Pasted Image ${stamp}${index ? ` (${index + 1})` : ''}.${ext}`, { type: file.type });
     }
 
+    /** A picture by type, or a JPEG XL (its type is usually empty, so the extension says; the importer sniffs the bytes). #1156 */
+    function isPictureFile(file) {
+        return (!!file.type && file.type.startsWith('image/')) || (!file.type && /\.jxl$/i.test(file.name || ''));
+    }
+
     /** Image files on the clipboard, as uploadHandlers.js reads them (Dreamscape's packed copy too). */
     function pastedImages(cd) {
         const out = [];
         const seen = new Set();
         const add = (file) => {
-            if (!file || !file.type || !file.type.startsWith('image/')) return;
+            if (!file || !isPictureFile(file)) return;
             const key = `${file.name}|${file.size}|${file.type}`;
             if (seen.has(key)) return;
             seen.add(key);
@@ -136,7 +141,7 @@
         };
         Array.from((cd && cd.files) || []).forEach(add);
         Array.from((cd && cd.items) || []).forEach((item) => {
-            if (item.kind === 'file' && item.type && item.type.startsWith('image/')) add(item.getAsFile());
+            if (item.kind === 'file') add(item.getAsFile());
         });
         const html = cd && cd.getData ? cd.getData('text/html') : '';
         /* global filesFromClipboardHtml */
@@ -225,7 +230,7 @@
         asking = true;
         try {
             const options = [{ text: 'Attach to Director Message', value: 'director', className: 'btn-standard primary', primary: true }];
-            if (files.some((f) => (f.type && f.type.startsWith('image/')) || IMPORT_EXT.test(f.name || ''))) {
+            if (files.some((f) => isPictureFile(f) || IMPORT_EXT.test(f.name || ''))) {
                 options.push({ text: 'Import', value: 'import', className: 'btn-standard' });
             }
             options.push({ text: 'Save to Folder...', value: 'save', className: 'btn-standard' });

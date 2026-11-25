@@ -3274,9 +3274,10 @@ async function handleUnifiedUploadConfirm() {
     if (!unifiedUploadDownloadedFile) {
         // Validate file types - accept images, JSON files, and .naiv4vibe/.naiv4vibebundle files
         const invalidFiles = unifiedUploadFiles.filter(file => {
-            const isImage = file.type.startsWith('image/');
-            const isJson = file.type === 'application/json';
             const fileName = file.name.toLowerCase();
+            // a JPEG XL usually has an empty type (#1156)
+            const isImage = file.type.startsWith('image/') || fileName.endsWith('.jxl');
+            const isJson = file.type === 'application/json';
             const isNaiv4File = fileName.includes('.naiv4vibe') || fileName.includes('.naiv4vibebundle');
             return !isImage && !isJson && !isNaiv4File;
         });
@@ -5326,7 +5327,9 @@ async function handleUnifiedUploadFileChange(event) {
     
     // Process all files first to check for blueprint metadata and vibe bundles
     const metadataPromises = unifiedUploadFiles.map(async (file) => {
-        if (file.type === 'image/png') {
+        // PNG, WebP or JPEG XL by magic bytes, not file.type (#1156)
+        const pictureFormat = await pictureMetadata.sniffFile(file);
+        if (pictureMetadata.FORMATS.includes(pictureFormat)) {
             try {
                 const metadata = await extractPNGMetadata(file);
                 if (metadata && metadata.source && metadata.source.includes('NovelAI')) {
@@ -5334,14 +5337,16 @@ async function handleUnifiedUploadFileChange(event) {
                 } else {
                     return { 
                         valid: false, 
-                        error: 'No Valid NovelAI / StaticForge metadata found' 
+                        error: pictureFormat === 'jxl'
+                            ? 'No NovelAI / StaticForge metadata in this JPEG XL file (the browser cannot use its pixels as a reference)'
+                            : 'No Valid NovelAI / StaticForge metadata found' 
                     };
                 }
             } catch (error) {
-                console.warn('Error extracting PNG metadata:', error.message, 'for file:', file.name);
+                console.warn('Error extracting picture metadata:', error.message, 'for file:', file.name);
                 return { 
                     valid: false, 
-                    error: `Invalid PNG: ${error.message}` 
+                    error: `Invalid ${pictureFormat.toUpperCase()}: ${error.message}` 
                 };
             }
         } else if (file.type === 'application/json' || file.name.toLowerCase().includes('.naiv4vibe') || file.name.toLowerCase().includes('.naiv4vibebundle')) {
@@ -5379,7 +5384,7 @@ async function handleUnifiedUploadFileChange(event) {
         } else {
             return { 
                 valid: false, 
-                error: 'Not a PNG file or JSON vibe bundle' 
+                error: 'Not a PNG, WebP or JPEG XL file or JSON vibe bundle' 
             };
         }
     });
@@ -7675,6 +7680,16 @@ function detectFileTypeFromBytes(bytes) {
         return 'image/png';
     }
     
+    // JPEG XL: bare codestream FF 0A, or the container signature box (#1156)
+    if (bytes[0] === 0xFF && bytes[1] === 0x0A) {
+        return 'image/jxl';
+    }
+    if (bytes.length >= 12 && bytes[0] === 0 && bytes[1] === 0 && bytes[2] === 0 && bytes[3] === 0x0C &&
+        bytes[4] === 0x4A && bytes[5] === 0x58 && bytes[6] === 0x4C && bytes[7] === 0x20 &&
+        bytes[8] === 0x0D && bytes[9] === 0x0A && bytes[10] === 0x87 && bytes[11] === 0x0A) {
+        return 'image/jxl';
+    }
+
     // GIF: starts with 47 49 46 38 (GIF8)
     if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
         return 'image/gif';
@@ -7713,7 +7728,9 @@ async function handleClipboardFile(file) {
         
         // Process all files first to check for blueprint metadata (same logic as handleUnifiedUploadFileChange)
         const metadataPromises = unifiedUploadFiles.map(async (file) => {
-            if (file.type === 'image/png') {
+            // PNG, WebP or JPEG XL by magic bytes, not file.type (#1156)
+            const pictureFormat = await pictureMetadata.sniffFile(file);
+            if (pictureMetadata.FORMATS.includes(pictureFormat)) {
                 try {
                     const metadata = await extractPNGMetadata(file);
                     if (metadata && metadata.source && metadata.source.includes('NovelAI')) {
@@ -7721,20 +7738,22 @@ async function handleClipboardFile(file) {
                     } else {
                         return { 
                             valid: false, 
-                            error: 'No Valid NovelAI / StaticForge metadata found' 
+                            error: pictureFormat === 'jxl'
+                                ? 'No NovelAI / StaticForge metadata in this JPEG XL file (the browser cannot use its pixels as a reference)'
+                                : 'No Valid NovelAI / StaticForge metadata found' 
                         };
                     }
                 } catch (error) {
-                    console.warn('Error extracting PNG metadata:', error.message, 'for file:', file.name);
+                    console.warn('Error extracting picture metadata:', error.message, 'for file:', file.name);
                     return { 
                         valid: false, 
-                        error: `Invalid PNG: ${error.message}` 
+                        error: `Invalid ${pictureFormat.toUpperCase()}: ${error.message}` 
                     };
                 }
             } else {
                 return { 
                     valid: false, 
-                    error: 'Not a PNG file' 
+                    error: 'Not a PNG, WebP or JPEG XL file' 
                 };
             }
         });
@@ -8390,6 +8409,7 @@ function formatContentType(contentType) {
         'image/png': 'PNG Image',
         'image/gif': 'GIF Image',
         'image/webp': 'WebP Image',
+        'image/jxl': 'JPEG XL Image',
         'application/json': 'Object File',
         'application/octet-stream': 'Binary File',
         'application/x-binary': 'Binary File',
