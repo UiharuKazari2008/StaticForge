@@ -421,8 +421,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-blur-in {
 
 /* the light on the glass (glasslight; Yukimi, Nov 23: livelier, a bit of HTC Sense, still the 6.5 look): static
  * layers on the art's glass (9 - 69 of 82 units), nothing animates. A light rim along the glass's top and
- * bottom lines (a hint only), a crease at the art's middle edge (24 units: the glass's upper band meets its
- * lower body; 15 units into the glass), a faint diagonal sheen and one thin specular streak. */
+ * bottom lines (a hint only), a faint diagonal sheen and one thin specular streak. The art's own middle edge
+ * (24 units) is left alone. */
 html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="glasslight"] .wm-ti-band::before {
     content: "";
     position: absolute;
@@ -437,9 +437,7 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="glasslight"] .wm-ti-band::
         /* the bottom rim, fainter still (the art's bottom edge carries it), with the glass's edge light just above it */
         linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.14) 18%, rgba(255, 255, 255, 0.2) 50%, rgba(255, 255, 255, 0.14) 82%, rgba(255, 255, 255, 0)) 0 100% / 100% calc(0.75 * var(--u)) no-repeat,
         linear-gradient(to top, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0)) 0 100% / 100% calc(5 * var(--u)) no-repeat,
-        /* the middle edge, a crease (Yukimi, Nov 25: a 0.5 white lip read as a line drawn on the glass): the dark
-         * hairline, a barely-there catch of light on its lip, then a soft fall-off */
-        linear-gradient(to bottom, rgba(0, 0, 0, 0.4) 0, rgba(0, 0, 0, 0.4) calc(0.5 * var(--u)), rgba(255, 255, 255, 0.16) calc(0.5 * var(--u)), rgba(255, 255, 255, 0.16) calc(1.1 * var(--u)), rgba(255, 255, 255, 0.05) calc(2.2 * var(--u)), rgba(255, 255, 255, 0) calc(4 * var(--u))) 0 calc(14.5 * var(--u)) / 100% calc(4 * var(--u)) no-repeat,
+        /* no middle line of its own: the art's middle edge stays as it was (Yukimi, Nov 25: put it back) */
         /* the specular streak: one thin slanted line of light across the glass */
         linear-gradient(104deg, rgba(255, 255, 255, 0) 61%, rgba(255, 255, 255, 0.18) 62.4%, rgba(255, 255, 255, 0.18) 63.4%, rgba(255, 255, 255, 0) 64.8%),
         /* the sheen: two soft slanted bands of light, the left one stronger */
