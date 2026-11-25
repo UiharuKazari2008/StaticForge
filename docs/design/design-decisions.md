@@ -30,6 +30,7 @@ The register of decisions about how Dreamscape looks and behaves. Rule:
 | Notifications and status indicators are never silenced to save power | Yukimi, Nov 17 2026 | `phone-power-client.mdc` |
 | Pictures that can show again are files with an address, not `data:` strings | Yukimi, Nov 21 2026 | `no-base64-images.mdc` |
 | CaféReady and Melaton Café are written with the é wherever people read them | Yukimi | `cafe-ready-name.mdc` |
+| The open Fold's inner screen keeps two windows (Settings > Screen > Open Fold, `wmSplitLeft`): the Start screen in the left pane, the program in the right. A pane draws its own backdrop - Start's own copy of Today's picture and the ROM's 50 % sheet - because neither the shell's picture layer nor Today's page is behind a pane (the shell's white `.wm-content` is); a pane is never a bare white page | Yukimi, Nov 23 2026, #1131 (pane backdrop fixed Nov 25 2026 after Yukimi: "my start menu is broken when i unfold") | `public/scripts/comp/wmShell.js` (`applySplit`), `public/css/wm65.css` (the split pane's backdrop), `public/scripts/comp/wmStart65.js` (`paintWallpaper`) |
 
 ## Behaviour
 
