@@ -780,7 +780,7 @@ sup._test.setFetch(async (url, opts) => {
         if (/checklist/.test(sys)) {
             const msgs = (usr.split('## New message(s)')[1] || '').replace(/^[^\n]*\n/, '').split(/\n\n(?=\d+\. )/).map((x) => x.replace(/^\s*\d+\.\s*/, '').trim()).filter(Boolean);
             out = { items: msgs.flatMap((m, i) => m.split(' and ').map((t) => ({ text: t.trim(), msg: i + 1 }))), drop: /Forget the header/.test(usr) ? [Number((/#(\d+) \[ \] Fix the header/.exec(usr) || [])[1])] : [] };
-        } else if (/name a coding session/.test(sys)) out = { title: `Title number ${++titleN} for the session that is far too long to fit in the sixty characters allowed` };
+        } else if (/^Title these coding requests/.test(sys)) out = { title: `Title number ${++titleN} for the session that is far too long to fit in the sixty characters allowed` };
         else if (/Supervisor for coding agents/.test(sys)) out = answer;
         else out = {};
         return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: JSON.stringify(out) } }] }) };

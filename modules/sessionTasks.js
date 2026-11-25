@@ -210,7 +210,8 @@ function setName(sessionId, name) {
     return t;
 }
 
-const TITLE_SYSTEM = 'You name a coding session for a list. From the user\'s recent asks (oldest first, the last one is the newest) write ONE short title: what this session is about now, max 60 characters, plain words, no quotes, no trailing period, in the user\'s language. Answer ONLY {"title":"..."}.';
+// kept short on purpose: a title is a cheap call (no reasoning, 200 tokens)
+const TITLE_SYSTEM = 'Title these coding requests in at most 8 words. Answer ONLY {"title":"..."}.';
 
 function cleanTitleText(t) {
     let s = clean(t, 200).replace(/^["'`]+|["'`]+$/g, '').replace(/[.\s]+$/, '');

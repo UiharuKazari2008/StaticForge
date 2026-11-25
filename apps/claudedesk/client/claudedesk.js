@@ -216,7 +216,27 @@
         if (liveChanged && S.sessionsLoaded) { clearTimeout(S.relist); S.relist = setTimeout(() => void loadSessions(false), 800); }
     }
 
-    function repaint() { if (S.c && S.c.modal && S.c.modal.isConnected) S.c.refresh(); }
+    // Pushes come in bursts (status, agents, usage, transcript): they become one refresh ~60 ms later, and a console
+    // that is hidden or minimized is refreshed once when it shows again (the page is patched in place, see mmcConsole patch()).
+    const RP = { t: 0, pending: false, io: null, ioFor: null };
+    function repaintNow() {
+        RP.t = 0;
+        const c = S.c;
+        if (!c || !c.modal || !c.modal.isConnected) { RP.pending = false; return; }
+        if (typeof document !== 'undefined' && (document.hidden || !c.modal.getClientRects().length)) {
+            RP.pending = true;
+            if (typeof IntersectionObserver === 'function' && RP.ioFor !== c.modal) {
+                if (RP.io) RP.io.disconnect();
+                RP.ioFor = c.modal;
+                RP.io = new IntersectionObserver((es) => { if (RP.pending && es.some((e) => e.isIntersecting)) { RP.pending = false; repaint(); } });
+                RP.io.observe(c.modal);
+            }
+            return;
+        }
+        RP.pending = false;
+        c.refresh();
+    }
+    function repaint() { if (S.c && S.c.modal && S.c.modal.isConnected && !RP.t) RP.t = setTimeout(repaintNow, 60); }
 
     async function subscribe(on) {
         const c = ws();
@@ -1616,7 +1636,7 @@
             <label class="cd-opt"><input type="checkbox" data-sup="enabled"${st.enabled ? ' checked' : ''}><span>Enabled: review each agent turn against what was asked</span></label>
             <label><span>Engine:</span><select class="vdt-select" data-sup="engine">${engineOpts}</select></label>
             <label><span>Model:</span><select class="vdt-select" data-sup="model">${supModelOptions(st.engine, st.model)}</select></label>
-            <label><span>Effort:</span><select class="vdt-select" data-sup="effort">${supEffortOptions(st.engine, st.effort)}</select></label>
+            <label title="The default and the maximum for the Supervisor's judgement calls (reviews, rule checks). Simple jobs use less: titles none, task lists and sizing low."><span>Maximum effort:</span><select class="vdt-select" data-sup="effort">${supEffortOptions(st.engine, st.effort)}</select></label>
             <label data-sup-other hidden><span>Model ID:</span><input type="text" data-sup="modelOther" value="" placeholder="A full model ID" spellcheck="false" autocomplete="off"></label>
             <label><span>Reviews:</span><select class="vdt-select" data-sup="reviewScope">${[['supervised', 'Supervised sessions only'], ['all', 'Every session']].map(([v, t]) => `<option value="${v}"${v === (st.reviewScope || 'supervised') ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
             <label><span>Delivery:</span><select class="vdt-select" data-sup="delivery">${DELIVERY.map(([v, t]) => `<option value="${v}"${v === st.delivery ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>

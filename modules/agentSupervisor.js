@@ -378,6 +378,18 @@ function recordUsage(row) {
 const bgCalls = [];
 const NO_EFFORT = new Set(); // engine|model pairs that refuse reasoning_effort
 const BG_PER_MIN = Number(process.env.AGENT_SUPERVISOR_BG_PER_MIN) || 20;
+/**
+ * The Supervisor's Effort setting is the maximum and the default for its judgement calls (reviews, rule checks, rules
+ * review); simple jobs use their own lower effort (Yukimi, Nov 24 2026: "not everything should use the same effort").
+ */
+const KIND_EFFORT = { title: 'none', tasks: 'low', size: 'low', usage: 'low' };
+const EFFORT_RANK = { none: 0, low: 1, medium: 2, high: 3 };
+function effortFor(kind, setting) {
+    const want = KIND_EFFORT[kind];
+    if (!want) return setting || '';
+    if (!setting) return want;
+    return EFFORT_RANK[want] <= EFFORT_RANK[setting] ? want : setting;
+}
 async function callEngine(gr, messages, opts = {}) {
     if (opts.kind && !['review', 'json'].includes(opts.kind)) {
         const now = Date.now();
@@ -391,7 +403,7 @@ async function callEngine(gr, messages, opts = {}) {
     let from = null;
     for (const link of chain) {
         let ep;
-        try { ep = endpoint(gr, Object.assign({}, s, link)); } catch (e) { lastErr = e; continue; }
+        try { ep = endpoint(gr, Object.assign({}, s, link)); ep.effort = effortFor(opts.kind, ep.effort); } catch (e) { lastErr = e; continue; }
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), CALL_TIMEOUT_MS);
         try {
@@ -2501,7 +2513,7 @@ async function acceptRuleFinding(gr, findingId, edit = {}, opts = {}) {
 module.exports = {
     explainRuleIssue, acceptRuleProposal, rejectRuleProposal, acceptRuleFinding, listRuleProposals, getRuleProposal, proposalBrief,
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
 };
