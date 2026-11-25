@@ -326,3 +326,25 @@
 .wwl-code.is-side { flex: 1 1 0; min-width: 0; min-height: 0; padding: calc(3 * var(--wm-px)); }
 .wwl-code.is-side img { width: 100%; height: auto; max-height: calc(49 * var(--wm-px)); object-fit: contain; }
 .wwl-code.is-side.is-2d img { width: auto; height: calc(49 * var(--wm-px)); max-width: 100%; }
+
+/* the card's bank balance under its second line (#1123): same size as the line above it; muted when a sign-in is needed */
+.wwl-bal.is-muted,
+.wwl-lbal.is-muted,
+.wwl-bank-acct.is-muted { opacity: 0.65; }
+
+.wwl-lsel .wwl-ltext { display: flex; flex-direction: column; }
+.wwl-lsel .wwl-lname { display: block; }
+.wwl-lbal { display: block; font-size: calc(11 * var(--wm-px)); font-weight: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Bank accounts (Menu): each linked bank with its status and accounts */
+.wm-wallet .wwl-bank { padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px)); }
+.wm-wallet .wwl-bank[hidden] { display: none; }
+.wwl-bank-item { margin: calc(4 * var(--wm-px)) 0; border-bottom: calc(1 * var(--wm-px)) solid #d0d0d0; padding-bottom: calc(4 * var(--wm-px)); }
+.wwl-bank-item:last-child { border-bottom: 0; }
+.wwl-bank-head,
+.wwl-bank-acct { display: flex; justify-content: space-between; align-items: baseline; gap: calc(6 * var(--wm-px)); }
+.wwl-bank-name { font-weight: bold; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wwl-bank-status { flex: 0 0 auto; }
+.wwl-bank-item.is-bad .wwl-bank-status { color: #c00000; font-weight: bold; }
+.wwl-bank-acct { padding-left: calc(8 * var(--wm-px)); }
+.wwl-bank-amt { flex: 0 0 auto; }

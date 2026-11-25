@@ -36,6 +36,18 @@
  * big enough to scan under its name. 6.5: a Titanium panel, a page each (the card's picture,
  * nickname, name ••last 4), right soft key Pay Now / Show. Program: Wallet (Start > Programs) lists, adds, edits and orders
  * them. Styles: public/css/wm-wallet.css. Phones only.
+ *
+ * Bank balance (Yozora #1123): a card can show its bank account's balance ("Available $1,234.56", or "Bank
+ * sign-in needed") under its second line on Today (6.1 block, 6.5 panel) and in the program's list. The
+ * server (modules/plaidBank.js, admin only) answers plaid_status { refresh } and pushes plaid_balances when
+ * anything changes; nothing here polls. The card's `bankAccountId` picks the account ('none' = no balance,
+ * unset = the first account whose institution / label shares a word with the card's name, checking first).
+ * Zero wait: the last balances (and each account's institution, name, mask) are kept in the encrypted
+ * store blob (`balances`, written only when a value changed) so Today draws them at once; plaid_status is
+ * asked when Today draws the item or the program opens, at most every 10 min, never on a timer. A
+ * restricted answer or a missing server packet shows nothing. Menu > Bank accounts lists the linked items,
+ * Reconnect / Link a bank open Plaid's hosted sign-in page in the phone's browser (plaid_link_start), and
+ * the push brings the balance when it is done.
  */
 (function () {
     'use strict';
@@ -64,7 +76,7 @@
     let data = { v: 1, items: [] };
     let loaded = false;
     let storeNote = ''; // why the store cannot be read now ('' when it can)
-    let layers = []; // 'edit' | 'show' | 'scan' | 'import' | 'keys'
+    let layers = []; // 'edit' | 'show' | 'scan' | 'import' | 'keys' | 'bank'
     let imported = null; // { running, items, picked: Set(index), reason } while an import runs or is offered
     let form = null; // the item being edited (a copy) and whether it is new
     let showing = null; // the item shown full screen
@@ -157,7 +169,7 @@
         if (!text) { data = { v: 2, items: [] }; return; }
         try {
             const d = JSON.parse(text);
-            data = { v: 2, items: Array.isArray(d.items) ? d.items.filter((x) => x && x.id && x.kind) : [] };
+            data = { v: 2, items: Array.isArray(d.items) ? d.items.filter((x) => x && x.id && x.kind) : [], balances: d.balances && typeof d.balances === 'object' ? d.balances : {} };
         } catch (_) { storeNote = 'error'; return; }
         // a wallet saved before (v1) kept its pictures in the encrypted list: they move to IndexedDB now
         if (data.items.some((it) => it.photo || it.codeImage)) save();
@@ -205,7 +217,7 @@
         blobs.clear();
         if (s && typeof s.put === 'function' && storeNote !== 'error') {
             let ok = false;
-            try { ok = s.put(NS, JSON.stringify({ v: 2, items: data.items })) === true; } catch (_) { ok = false; }
+            try { ok = s.put(NS, JSON.stringify({ v: 2, items: data.items, balances: data.balances || {} })) === true; } catch (_) { ok = false; }
             if (!ok && sh) sh.messageBox({ title: TITLE, icon: 'error', text: 'The wallet could not be saved on this phone. Unlock the phone, then try again.' });
         }
         todayChanged();
@@ -237,6 +249,189 @@
     }
 
     function items() { if (!loaded) load(); return data.items; }
+
+    // ---------------------------------------------------------------- bank balance (#1123)
+
+    const BANK_ASK_MS = 600000; // plaid_status { refresh } from the page: at most once every 10 min
+    // words too common in card and bank names to tell one bank from another
+    const BANK_STOP = new Set(['card', 'cards', 'debit', 'credit', 'visa', 'mastercard', 'amex', 'discover', 'bank', 'banking', 'federal', 'union', 'savings', 'checking', 'account', 'the', 'and', 'platinum', 'rewards', 'cash']);
+    let bank = null; // the live plaid_status answer (items with status and accounts); null until one came
+    let bankAskAt = 0;
+    let bankAsking = false;
+    let bankLinking = false; // Plaid's sign-in page is open in the browser
+    let bankLinkFrom = null; // { n, bad }: the linked items and whether one needed a sign-in when the page opened
+    const bankCli = () => (window.wsClient && typeof window.wsClient.sendMessage === 'function' && (!window.wsClient.isConnected || window.wsClient.isConnected()) ? window.wsClient : null);
+
+    function fmtMoney(v, cur) {
+        try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur || 'USD' }).format(v); } catch (_) { return `$${Number(v).toFixed(2)}`; }
+    }
+    /** The known accounts (kept in the store: institution, name, mask, last balance), live or last seen. */
+    function bankAccounts() {
+        items();
+        return Object.entries(data.balances || {}).map(([id, b]) => Object.assign({ id }, b));
+    }
+    const bankWords = (s) => String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !BANK_STOP.has(w));
+    /** The first account whose institution or label shares a word with the card's name; checking preferred. */
+    function autoAccount(it) {
+        const cw = new Set([...bankWords(it.name), ...bankWords(it.walletName)]);
+        if (!cw.size) return null;
+        const hits = bankAccounts().filter((a) => bankWords(`${a.inst || ''} ${a.label || ''}`).some((w) => cw.has(w)));
+        return hits.find((a) => a.subtype === 'checking') || hits[0] || null;
+    }
+    function accountOf(it) {
+        if (!it || it.kind !== 'card' || it.bankAccountId === 'none') return null;
+        if (it.bankAccountId) return bankAccounts().find((a) => a.id === it.bankAccountId) || null;
+        return autoAccount(it);
+    }
+    /** { text, muted } under a card's second line, or null. */
+    function bankLine(it) {
+        const a = accountOf(it);
+        if (!a) return null;
+        if (a.login) return { text: 'Bank sign-in needed', muted: true };
+        const v = a.available != null ? a.available : a.current;
+        return v == null ? null : { text: `Available ${fmtMoney(v, a.isoCurrencyCode)}`, muted: false };
+    }
+    const accountName = (a) => `${a.inst || a.label || 'Bank'} - ${a.name || 'Account'}${a.mask ? ` \u2022\u2022${a.mask}` : ''}`;
+
+    /** What Today, the panel and the list redraw after the balances changed. */
+    function bankChanged() {
+        todayKey = '';
+        todayChanged();
+        if (top() === 'bank') renderBank();
+        else if (!layers.length && page && page.isConnected && els) renderList();
+    }
+
+    /** An answer or push of the server: the known accounts follow it; stored only when a value changed. */
+    function takeStatus(d) {
+        if (!d || typeof d !== 'object' || d.success === false || d.restricted || !Array.isArray(d.items)) return;
+        bank = d;
+        // the sign-in in the browser is done: a new item, or the one that needed it is ok now
+        if (bankLinking && bankLinkFrom && (d.items.length > bankLinkFrom.n || (bankLinkFrom.bad && !needsReconnect()))) { bankLinking = false; if (sh && sh.refreshSoftKeys) sh.refreshSoftKeys(); }
+        const old = (items(), data.balances || {});
+        const next = {};
+        for (const item of d.items) {
+            const login = item && item.status === 'login_required';
+            for (const a of (item && item.accounts) || []) {
+                if (!a || !a.accountId) continue;
+                const p = old[a.accountId] || {};
+                const e = {
+                    available: a.available != null ? a.available : (p.available != null ? p.available : null),
+                    current: a.current != null ? a.current : (p.current != null ? p.current : null),
+                    isoCurrencyCode: a.isoCurrencyCode || p.isoCurrencyCode || 'USD',
+                    at: Date.parse(item.fetchedAt) || p.at || 0,
+                    inst: item.institutionName || '',
+                    label: item.label || '',
+                    name: a.name || a.officialName || '',
+                    mask: a.mask || '',
+                    subtype: a.subtype || ''
+                };
+                if (login) e.login = true;
+                next[a.accountId] = e;
+            }
+        }
+        const same = (x) => JSON.stringify(Object.keys(x).sort().map((k) => [k, Object.assign({}, x[k], { at: 0 })]));
+        if (same(next) !== same(old)) {
+            data.balances = next;
+            const s = store();
+            if (s && typeof s.put === 'function' && !storeNote) {
+                try { s.put(NS, JSON.stringify({ v: 2, items: data.items, balances: next })); } catch (_) { /* kept in memory */ }
+            }
+        }
+        bankChanged();
+    }
+
+    /** plaid_status { refresh } when Today draws the item or the program opens; not on a timer, not twice in 10 min. */
+    function askBank(force) {
+        const c = bankCli();
+        if (!c || bankAsking || document.hidden) return;
+        if (!force && Date.now() - bankAskAt < BANK_ASK_MS) return;
+        bankAsking = true;
+        bankAskAt = Date.now();
+        Promise.resolve(c.sendMessage('plaid_status', { refresh: true }, false))
+            .then((r) => takeStatus(r && r.data && typeof r.data === 'object' ? r.data : r))
+            .catch(() => { /* the server has no bank packet (older server) or the user is not an admin: nothing shows */ })
+            .then(() => { bankAsking = false; });
+    }
+    /** Today drew a card (or the panel did) while Today is the screen: look for newer balances. */
+    function askBankToday(list) {
+        if (!list.some((x) => x.kind === 'card') || !sh || (sh.currentApp && sh.currentApp() !== 'today')) return;
+        askBank(false);
+    }
+
+    function openOutside(url) {
+        const L = window.AndroidLinks;
+        try {
+            if (L && typeof L.openNative === 'function' && L.openNative(url, '') === true) return true;
+            if (L && typeof L.openBrowser === 'function' && L.openBrowser(url) === true) return true;
+        } catch (_) { /* the plain way below */ }
+        try { window.open(url, '_blank', 'noopener'); return true; } catch (_) { return false; }
+    }
+
+    async function linkStart(itemId) {
+        const c = bankCli();
+        if (!c) { sh.messageBox({ title: TITLE, icon: 'error', text: 'The server cannot be reached now. Try again when the phone is online.' }); return; }
+        // a new bank can add a monthly Plaid charge: confirmed first; Reconnect (an itemId) needs none
+        if (!itemId) {
+            const go = await sh.messageBox({ title: TITLE, icon: 'question', text: 'Linking a new bank can add a monthly Plaid charge. Link a bank?', buttons: [{ text: 'Link', value: true }, { text: 'Cancel', value: false }], cancelValue: false });
+            if (!go) return;
+        }
+        let d = null;
+        try {
+            const r = await c.sendMessage('plaid_link_start', itemId ? { itemId } : { confirmCharge: true }, false);
+            d = r && r.data && typeof r.data === 'object' ? r.data : r;
+        } catch (err) { d = { success: false, error: err && err.message }; }
+        if (d && d.success !== false && !d.hostedLinkUrl) {
+            sh.messageBox({ title: TITLE, icon: 'info', text: 'This bank link can\'t open on the phone yet.' });
+            return;
+        }
+        if (!d || d.success === false || !d.hostedLinkUrl) {
+            sh.messageBox({ title: TITLE, icon: 'error', text: `The bank link could not be started${d && d.error ? `: ${d.error}` : '.'}` });
+            return;
+        }
+        bankLinking = true;
+        bankLinkFrom = { n: bank && bank.items ? bank.items.length : 0, bad: !!needsReconnect() };
+        if (top() === 'bank') renderBank();
+        if (sh.refreshSoftKeys) sh.refreshSoftKeys();
+        if (!openOutside(d.hostedLinkUrl)) sh.messageBox({ title: TITLE, icon: 'error', text: 'The sign-in page could not be opened in the browser.' });
+    }
+
+    function linkCancel() {
+        const c = bankCli();
+        bankLinking = false;
+        if (c) void Promise.resolve(c.sendMessage('plaid_link_cancel', {}, false)).catch(() => {});
+        if (top() === 'bank') renderBank();
+        if (sh && sh.refreshSoftKeys) sh.refreshSoftKeys();
+    }
+
+    const statusText = (it) => (it.status === 'login_required' ? 'Sign-in needed' : it.status === 'error' ? `Error${it.errorCode ? ` ${it.errorCode}` : ''}` : 'OK');
+
+    function renderBank() {
+        const ui = window.wmSettings && window.wmSettings.ui;
+        if (!ui || !els) return;
+        const list = (bank && bank.items) || [];
+        const blocks = list.map((it) => {
+            const rows = (it.accounts || []).map((a) => {
+                const v = a.available != null ? a.available : a.current;
+                return `<div class="wwl-bank-acct"><span>${esc(a.name || a.officialName || 'Account')}${a.mask ? ` \u2022\u2022${esc(a.mask)}` : ''}</span><span class="wwl-bank-amt">${v == null ? '' : esc(fmtMoney(v, a.isoCurrencyCode))}</span></div>`;
+            }).join('');
+            return `<div class="wwl-bank-item${it.status === 'ok' ? '' : ' is-bad'}">
+                <div class="wwl-bank-head"><span class="wwl-bank-name">${esc(it.institutionName || 'Bank')}${it.label ? ` (${esc(it.label)})` : ''}</span><span class="wwl-bank-status">${esc(statusText(it))}</span></div>
+                ${rows || '<div class="wwl-bank-acct is-muted">No accounts</div>'}
+            </div>`;
+        }).join('');
+        const empty = !bank ? 'The linked banks show here when the server answers.' : 'No bank is linked yet. Menu > Link a bank signs in to one.';
+        const link = bankLinking ? `${ui.note('Finish signing in to your bank in the browser. The balance shows here when it is done.')}${ui.buttons([['linkcancel', 'Cancel']])}` : '';
+        els.bank.innerHTML = `${link}${list.length ? blocks : `<p class="wwl-empty">${empty}</p>`}`;
+        const cb = els.bank.querySelector('[data-act="linkcancel"]');
+        if (cb) cb.addEventListener('click', linkCancel);
+    }
+
+    function openBank() {
+        if (!sh) return;
+        sh.open(APP_ID);
+        if (top() !== 'bank') push('bank'); else renderBank();
+    }
+    const needsReconnect = () => ((bank && bank.items) || []).find((x) => x.status && x.status !== 'ok');
 
     // ---------------------------------------------------------------- pictures
 
@@ -480,14 +675,16 @@
         const bright = it.kind === 'barcode' && hdrOn === it.id;
         const art = it.kind === 'barcode' && showCode ? (bright ? (hdrUrl(it) || barcodeUrl(it, false)) : barcodeUrl(it, false)) : null;
         const pic = it.kind === 'card' ? cardUrl(it) : photoOf(it);
-        const key = JSON.stringify([todayAt, list.length, it.id, it.name, it.last4, it.color, it.network, it.walletName, it.value, it.number, it.format, art, pic.length, showCode, bright]);
+        const bl = bankLine(it);
+        askBankToday(list);
+        const key = JSON.stringify([bl, todayAt, list.length, it.id, it.name, it.last4, it.color, it.network, it.walletName, it.value, it.number, it.format, art, pic.length, showCode, bright]);
         if (key === todayKey) return true;
         todayKey = key;
         // [card picture] nickname / its name in Wallet ••last 4; a tap on it pays (or shows, or opens)
         const act = it.kind === 'card' ? 'pay' : it.kind === 'barcode' ? 'show' : 'id';
         const lead = pic ? `<img class="wwl-pic" src="${esc(pic)}" alt="" draggable="false">` : `<img class="wwl-pic is-icon" src="/static_images/wm61/${ICON}.png" srcset="/static_images/wm61/${ICON}@2x.png 2x, /static_images/wm61/${ICON}@4x.png 4x" alt="" draggable="false">`;
         const row = `<div class="wwl-row">
-                <button type="button" class="wwl-item" data-act="${act}">${lead}<span class="wwl-lines"><span class="wwl-title">${esc(lineOf(it))}</span><span class="wwl-sub">${esc(subOf(it))}</span></span></button>
+                <button type="button" class="wwl-item" data-act="${act}">${lead}<span class="wwl-lines"><span class="wwl-title">${esc(lineOf(it))}</span><span class="wwl-sub">${esc(subOf(it))}</span>${bl ? `<span class="wwl-sub wwl-bal${bl.muted ? ' is-muted' : ''}">${esc(bl.text)}</span>` : ''}</span></button>
                 ${list.length > 1 ? `<span class="wwl-pager"><button type="button" class="wwl-arrow" data-act="prev" aria-label="Previous">\u2039</button><button type="button" class="wwl-arrow" data-act="next" aria-label="Next">\u203a</button></span>` : ''}
             </div>`;
         // the code on Today (Settings > Today > Items > Wallet: Barcode); a tap brightens just the code (HDR)
@@ -528,6 +725,7 @@
         const showCode = !ctx || typeof ctx.option !== 'function' || ctx.option('code') !== 'hide';
         if (storeNote === 'locked') return { label: 'wallet', icon: `x:${ICON}-lg`, pages: [{ title: 'Wallet', line2: 'Unlock the phone to show your cards' }] };
         if (!list.length) return null;
+        askBankToday(list);
         return {
             label: 'wallet',
             icon: `x:${ICON}-lg`,
@@ -539,7 +737,8 @@
                 const line2 = subOf(it) || (it.kind === 'barcode' ? it.value : '');
                 // wide pictures keep their shape on Today (#903): a card is a card, a barcode as the code is (a QR square)
                 const imageAspect = it.kind === 'card' ? 1.586 : (code && image === code) ? 'auto' : undefined;
-                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, imageAspect, imageFit: code && image === code ? 'contain' : undefined, bare: it.kind === 'card' || (!!photo && image === photo), softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
+                const bl = bankLine(it);
+                return { title: lineOf(it), line2, line3: bl ? bl.text : '', image: image === 'bad' ? undefined : image, imageAspect, imageFit: code && image === code ? 'contain' : undefined, bare: it.kind === 'card' || (!!photo && image === photo), softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
             })
         };
     }
@@ -553,6 +752,7 @@
             <div class="wwl-show" data-layer="show" hidden></div>
             <div class="wwl-import wm-form" data-layer="import" hidden></div>
             <div class="wwl-keys wm-form" data-layer="keys" hidden></div>
+            <div class="wwl-bank wm-form" data-layer="bank" hidden></div>
             <div class="wwl-scan" data-layer="scan" hidden><video playsinline muted></video><span class="wwl-scan-guide"></span><p class="wwl-scan-note">Hold the barcode inside the frame.</p></div>
         </div>`;
         els = {
@@ -561,6 +761,7 @@
             show: page.querySelector('[data-layer="show"]'),
             import: page.querySelector('[data-layer="import"]'),
             keys: page.querySelector('[data-layer="keys"]'),
+            bank: page.querySelector('[data-layer="bank"]'),
             scan: page.querySelector('[data-layer="scan"]'),
             video: page.querySelector('.wwl-scan video')
         };
@@ -571,7 +772,7 @@
     function sync() {
         if (!els) return;
         const t = top();
-        for (const k of ['list', 'edit', 'show', 'scan', 'import', 'keys']) els[k].hidden = k !== t;
+        for (const k of ['list', 'edit', 'show', 'scan', 'import', 'keys', 'bank']) els[k].hidden = k !== t;
         page.classList.toggle('is-show', t === 'show');
         brightness(t === 'show');
         if (t !== 'scan') stopScan();
@@ -579,6 +780,7 @@
         else if (t === 'show') renderShow();
         else if (t === 'import') renderImport();
         else if (t === 'keys') renderKeys();
+        else if (t === 'bank') renderBank();
         if (sh) { if (sh.refreshSoftKeys) sh.refreshSoftKeys(); if (sh.refreshTitleAction) sh.refreshTitleAction(); }
     }
 
@@ -597,8 +799,9 @@
         const rows = list.map((it, i) => {
             const img = it.kind === 'card' ? cardUrl(it) : photoOf(it);
             const text = `${lineOf(it)}${it.kind === 'barcode' ? ` (${label(FORMATS, it.format)})` : it.kind === 'id' ? ' (ID)' : ''}`;
+            const bl = bankLine(it);
             return `<div class="wwl-lrow${it.id === selected ? ' is-selected' : ''}" data-key="${esc(it.id)}">
-                <button type="button" class="wwl-lsel">${img ? `<img src="${esc(img)}" alt="" draggable="false">` : '<span class="wwl-lnoimg"></span>'}<span>${esc(text)}</span></button>
+                <button type="button" class="wwl-lsel">${img ? `<img src="${esc(img)}" alt="" draggable="false">` : '<span class="wwl-lnoimg"></span>'}<span class="wwl-ltext"><span class="wwl-lname">${esc(text)}</span>${bl ? `<small class="wwl-lbal${bl.muted ? ' is-muted' : ''}">${esc(bl.text)}</small>` : ''}</span></button>
                 <button type="button" class="wwl-lmove" data-move="-1" aria-label="Move up"${i === 0 ? ' disabled' : ''}>\u25b2</button>
                 <button type="button" class="wwl-lmove" data-move="1" aria-label="Move down"${i === list.length - 1 ? ' disabled' : ''}>\u25bc</button>
             </div>`;
@@ -658,6 +861,7 @@
                 ${ui.row('Last 4:', ui.edit('wwlLast4', f.last4 || '', 'maxlength="4" inputmode="numeric"'), { for: 'wwlLast4' })}
                 ${ui.row('Network:', ui.comboHtml('net', label(NETWORKS, f.network)))}
                 ${ui.row('Colour:', ui.comboHtml('color', label(COLORS, f.color)))}
+                ${bankChoices(f).length > 2 || f.bankAccountId ? ui.row('Bank balance:', ui.comboHtml('bank', (bankChoices(f).find((x) => x[0] === (f.bankAccountId || 'auto')) || bankChoices(f)[0])[1])) : ''}
                 ${ui.note('Card name is the card\'s name in Samsung Wallet ("X Card"). Pay Now opens the pay sheet on it when it is one of Wallet\'s Quick Access cards; blank opens the default card. Only the last 4 digits are kept, never the card number. The picture is a photo of the card taken here, else one drawn in the colour.')}`;
         } else if (f.kind === 'barcode') {
             html = `${ui.row('Name:', ui.edit('wwlName', f.name || '', 'maxlength="32"'), { for: 'wwlName' })}
@@ -675,12 +879,19 @@
         bind('net', NETWORKS, 'network');
         bind('color', COLORS, 'color');
         bind('format', FORMATS, 'format');
+        const bk = els.edit.querySelector('[data-act="bank"]');
+        if (bk) ui.bindCombo(bk, bankChoices(f), f.bankAccountId || 'auto', (v) => { if (v === 'auto') delete f.bankAccountId; else f.bankAccountId = v; });
         const sc = els.edit.querySelector('[data-act="scan"]');
         if (sc) sc.addEventListener('click', () => { readEdit(); startScan(); });
         const ph = els.edit.querySelector('[data-act="photo"]');
         if (ph) ph.addEventListener('click', () => { readEdit(); startScan('photo'); });
         const np = els.edit.querySelector('[data-act="nophoto"]');
         if (np) np.addEventListener('click', () => { readEdit(); delete f.photo; f.photoRemoved = true; renderEdit(); });
+    }
+
+    /** The Bank balance choices: Automatic (matched by name), None, then each known account. */
+    function bankChoices(f) {
+        return [['auto', 'Automatic'], ['none', 'None']].concat(bankAccounts().map((a) => [a.id, accountName(a)]));
     }
 
     function readEdit() {
@@ -1079,7 +1290,7 @@
         inStart: false,
         sip: true,
         mount(p) { page = p; p.classList.add('wm-wallet'); build(); },
-        show() { if (!loaded || storeNote === 'locked') load(); sync(); },
+        show() { if (!loaded || storeNote === 'locked') load(); sync(); askBank(false); },
         // left without OK: an unsaved reorder is dropped
         hide() { brightness(false); stopScan(); if (pendingOrder) { revertOrder(); if (els) renderList(); } },
         historyDepth: () => layers.length,
@@ -1099,6 +1310,19 @@
             if (t === 'edit') return { left: { label: 'Save', action: saveEdit }, right: { label: 'Cancel', action: pop } };
             if (t === 'import') return { left: { label: 'Add', action: importSave }, right: { label: 'Cancel', action: pop } };
             if (t === 'keys') return { left: { label: 'Done', action: pop }, right: { label: '', action: () => {} } };
+            if (t === 'bank') {
+                const bad = needsReconnect();
+                return {
+                    left: bankLinking ? { label: 'Cancel', action: linkCancel } : bad ? { label: 'Reconnect', action: () => linkStart(bad.itemId) } : { label: 'Link a bank', action: () => linkStart() },
+                    right: { label: 'Menu', menu: () => [
+                        { label: 'Reconnect', disabled: !bad || bankLinking, action: () => linkStart(bad.itemId) },
+                        { label: 'Link a bank', disabled: bankLinking, action: () => linkStart() },
+                        { label: 'Refresh', action: () => askBank(true) },
+                        '-',
+                        { label: 'Done', action: pop }
+                    ] }
+                };
+            }
             if (t === 'scan') return { left: scan && scan.photo ? { label: 'Capture', action: capture } : { label: '', action: () => {} }, right: { label: 'Cancel', action: pop } };
             if (t === 'show') {
                 const list = items().filter((x) => x.kind === 'barcode');
@@ -1117,6 +1341,7 @@
                         { label: 'New Barcode...', action: () => editItem(null, 'barcode') },
                         { label: 'New ID...', action: () => editItem(null, 'id') },
                         { label: 'Import from Samsung Wallet...', action: importStart },
+                        { label: 'Bank accounts...', action: openBank },
                         { label: 'Car Keys...', action: openKeys },
                         '-',
                         { label: 'Edit...', disabled: !sel, action: () => editItem(sel) },
@@ -1150,6 +1375,18 @@
     // the phone was unlocked: a store that was locked can be read now
     // app-scope: allow page lifetime (phone shell, loaded once from app.html; not an app package)
     window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on && storeNote === 'locked') { load(); todayKey = ''; todayChanged(); } });
+
+    // the server's push when a balance or a bank's status changed (#1123); a missing packet type does nothing
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment
+    let bankWired = false;
+    function wireBank() {
+        const c = window.wsClient;
+        if (bankWired || !c || typeof c.on !== 'function') return bankWired;
+        bankWired = true;
+        c.on('plaid_balances', (pk) => takeStatus(pk && (pk.items ? pk : pk.data)), { signal: appScopeSignal });
+        return true;
+    }
+    if (!wireBank()) window.addEventListener('load', () => { wireBank(); }, { once: true, signal: appScopeSignal });
 
     window.wmWallet = { open: () => sh && sh.open(APP_ID), carKeys: () => openKeys(), pay: (i) => pay(items()[i]), show: (i) => show(items()[i]) };
 
