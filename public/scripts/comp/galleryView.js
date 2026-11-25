@@ -8715,7 +8715,8 @@ async function fetchGalleryImageBlobForClipboard(image) {
     const naiSigInvalid = naiSigValid !== null && naiSigValid.toLowerCase() !== 'true';
     const blob = await response.blob();
     const filename = image.filename || image.original || image.upscaled;
-    const name = filename ? String(filename).split('/').pop() : 'image.png';
+    let name = filename ? String(filename).split('/').pop() : 'image.png';
+    if (isPictureId(name)) name = pictureDownloadName(name, pictureExtForMime(blob.type) || 'png'); // #1156
     // formatClipboardBlobSize: public/scripts/utils/dreamscapeClipboard.js
     return { blob, name, naiSigInvalid, sizeText: formatClipboardBlobSize(blob) };
 }
@@ -10101,7 +10102,7 @@ function buildPreviewUrlForCache(image) {
     if (!previewValue) {
         const baseFilename = image.filename || image.original || image.upscaled;
         if (!baseFilename) return null;
-        previewValue = baseFilename.replace(/\.(jpg|jpeg|png|webp)$/i, '.webp');
+        previewValue = `${pictureStem(baseFilename)}.webp`; // an ID has no extension to replace (#1156)
     }
 
     if (typeof getGalleryPreviewUrl === 'function') {
@@ -10311,8 +10312,9 @@ function updateGalleryPinButtons(filename, isPinned) {
 // Flag to track if app data has been loaded
 
 /**
- * Download a picture. format (the download window, #1134): 'png' as saved (default), 'jxl' lossless JPEG XL with
- * the prompt and settings, 'slim' PNG without them, 'jpeg' a small JPEG.
+ * Download a picture. format (the download window, #1134): 'png' as saved (default), 'jxl' lossless JPEG XL and 'webp' lossless
+ * WebP, both with the prompt and settings, 'slim' PNG without them, 'jpeg' a small JPEG. A download is always named
+ * <stem>.<ext of the chosen format>: an ID picture has no extension of its own (#1156).
  */
 function downloadImage(image, format = 'png') {
     let filename, url;
@@ -10337,18 +10339,23 @@ function downloadImage(image, format = 'png') {
     }
 
     if (url) {
-        // For newly generated images
+        // For newly generated images; an ID name has no extension, so ask for PNG by name (#1156)
         const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
+        if (isPictureId(filename) && /^\/images\/[^?#]+$/.test(url)) {
+            link.href = `${url}?download=true&format=png`;
+            link.download = pictureDownloadName(filename, 'png');
+        } else {
+            link.href = url;
+            link.download = isPictureId(filename) ? pictureDownloadName(filename, 'png') : filename;
+        }
         link.click();
     } else {
         // For existing images — localGalleryImageUrl, localGalleryDerivedImageUrl: public/scripts/comp/assetUrlResolver.js
         const stem = String(filename).replace(/\.[^.]+$/, '');
         const link = document.createElement('a');
-        if (format === 'jxl') {
-            link.href = `${localGalleryImageUrl(filename)}?download=true&format=jxl`;
-            link.download = `${stem}.jxl`;
+        if (format === 'jxl' || format === 'webp') {
+            link.href = `${localGalleryImageUrl(filename)}?download=true&format=${format}`;
+            link.download = `${stem}.${format}`;
         } else if (format === 'slim') {
             link.href = `${localGalleryDerivedImageUrl('slim', filename)}?download=true`;
             link.download = `${stem}_slim.png`;
@@ -10357,7 +10364,13 @@ function downloadImage(image, format = 'png') {
             link.download = `${stem}_optimized.jpg`;
         } else {
             link.href = `${localGalleryImageUrl(filename)}?download=true`;
-            link.download = filename;
+            if (isPictureId(filename)) {
+                // ID picture: PNG as a decoded copy of the stored file, named .png (#1156)
+                link.href = `${localGalleryImageUrl(filename)}?download=true&format=png`;
+                link.download = pictureDownloadName(filename, 'png');
+            } else {
+                link.download = filename;
+            }
         }
         link.click();
     }
@@ -10383,7 +10396,7 @@ function downloadImageSlim(image) {
     // Use the slim endpoint — localGalleryDerivedImageUrl: public/scripts/comp/assetUrlResolver.js
     const link = document.createElement('a');
     link.href = localGalleryDerivedImageUrl('slim', filename);
-    link.download = filename;
+    link.download = pictureDownloadName(filename, 'png');
     link.click();
 }
 
@@ -10407,7 +10420,7 @@ function downloadImageOptimized(image) {
     // Use the optimized endpoint — localGalleryDerivedImageUrl: public/scripts/comp/assetUrlResolver.js
     const link = document.createElement('a');
     link.href = localGalleryDerivedImageUrl('opti', filename);
-    link.download = filename;
+    link.download = pictureDownloadName(filename, 'jpg');
     link.click();
 }
 

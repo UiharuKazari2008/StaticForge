@@ -120,8 +120,9 @@
         const isImg = item.targetKind === 'image' || item.targetKind === 'scrap' || item.shortcutType === 'image';
         let mime = String(item.mimeType || '').toLowerCase();
         if (!mime) {
+            // an extensionless ID picture (#1156) falls to the image default below, not to a made-up extension
             const ext = (names.map((s) => (/\.([a-z0-9]+)$/.exec(s) || [])[1]).find(Boolean)) || (isImg ? 'png' : '');
-            const byExt = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', txt: 'text/plain', pdf: 'application/pdf', json: 'application/json', mp4: 'video/mp4', webm: 'video/webm' };
+            const byExt = { png: 'image/png', jxl: 'image/jxl', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', txt: 'text/plain', pdf: 'application/pdf', json: 'application/json', mp4: 'video/mp4', webm: 'video/webm' };
             mime = byExt[ext] || (isImg ? 'image/png' : '');
         }
         return tokens.some((t) => {

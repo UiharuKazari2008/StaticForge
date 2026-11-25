@@ -42,7 +42,7 @@
     const VIDEO_EXTS = ['mp4', 'm4v', 'webm', 'mkv', 'mov', 'avi', 'wmv', 'mpg', 'mpeg', '3gp'];
     const TEXT_EXTS = ['txt', 'log', 'csv', 'md', 'json', 'xml', 'ini'];
     const MIME_OF = {
-        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', jpe: 'image/jpeg', jfif: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+        png: 'image/png', jxl: 'image/jxl', jpg: 'image/jpeg', jpeg: 'image/jpeg', jpe: 'image/jpeg', jfif: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
         bmp: 'image/bmp', dib: 'image/bmp', ico: 'image/x-icon', tif: 'image/tiff', tiff: 'image/tiff', avif: 'image/avif', heic: 'image/heic',
         mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', aac: 'audio/aac', m4a: 'audio/mp4', flac: 'audio/flac',
         mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mkv: 'video/x-matroska', mov: 'video/quicktime',
@@ -143,7 +143,10 @@
     function fileName(item) {
         const name = String(item.name || 'file');
         if (extOf(name)) return name;
-        const ext = extOf(galleryName(item) || (item.phoneFile && item.phoneFile.path) || '');
+        const g = galleryName(item);
+        let ext = extOf(g || (item.phoneFile && item.phoneFile.path) || '');
+        // an ID picture has no extension at all (#1156): the mime names it (pictureExtForMime: assetUrlResolver.js)
+        if (!ext && g && typeof pictureExtForMime === 'function') ext = pictureExtForMime(itemMime(item)) || 'png';
         return ext ? `${name}.${ext}` : name;
     }
 

@@ -272,7 +272,9 @@
     }
 
     function imageUrl(name) {
-        if (typeof name !== 'string' || !IMAGE_RE.test(name) || /^https?:|^data:/i.test(name)) return '';
+        // an extensionless picture ID is a picture too (#1156)
+        const isId = typeof isPictureId === 'function' && isPictureId(name);
+        if (typeof name !== 'string' || !(IMAGE_RE.test(name) || isId) || /^https?:|^data:/i.test(name)) return '';
         if (name.startsWith('/')) return name;
         try {
             // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js

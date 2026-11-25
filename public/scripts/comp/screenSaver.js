@@ -128,9 +128,12 @@
     // gallery's previews out, and the PNG it replaces was never cached either (one-shot /images/).
     const LOSSLESS_RE = /^\/previews\/([^/?#]+)@ll\.webp(?:\?download=true)?$/;
     function losslessUrl(file) {
-        // images/<stem>.png exactly (the fallback rebuilds the name from the stem)
-        if (!file || !/\.png$/.test(file) || /[\\/]/.test(file)) return null;
-        return `/previews/${encodeURIComponent(file.slice(0, -4))}@ll.webp?download=true`;
+        // images/<stem>.png exactly, or an extensionless picture ID (#1156); the fallback rebuilds the name from the stem
+        if (!file || /[\\/]/.test(file)) return null;
+        /* global isPictureId */
+        const stem = /\.png$/.test(file) ? file.slice(0, -4) : (typeof isPictureId === 'function' && isPictureId(file) && !/\.[^.]+$/.test(file) ? file : '');
+        if (!stem) return null;
+        return `/previews/${encodeURIComponent(stem)}@ll.webp?download=true`;
     }
 
     function loadImage(url) {
@@ -142,7 +145,9 @@
             img.onerror = () => {
                 if (!ll) { resolve(null); return; }
                 let file = '';
-                try { file = `${decodeURIComponent(ll[1])}.png`; } catch (_) { resolve(null); return; }
+                // an ID stem has no extension; a legacy stem was a .png (#1156)
+                try { file = decodeURIComponent(ll[1]); } catch (_) { resolve(null); return; }
+                if (!(typeof isPictureId === 'function' && isPictureId(file))) file += '.png';
                 /* global localGalleryImageUrl */
                 const png = typeof localGalleryImageUrl === 'function' ? localGalleryImageUrl(file) : `/images/${encodeURIComponent(file)}`;
                 loadImage(png).then(resolve);

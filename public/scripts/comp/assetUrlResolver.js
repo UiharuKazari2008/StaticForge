@@ -51,10 +51,108 @@ function localGalleryPreviewUrl(previewName) {
     return `/previews/${encodeURIComponent(previewName)}`;
 }
 
+// #1156 picture names: a new picture's name is an extensionless 36-char UUIDv7 (no .png); legacy
+// `x.png` / `x_upscaled.png` still occur. These helpers are the one place that tells them apart.
+
+/** The ID when `name` is an ID picture (extension tolerated), else ''. */
+// app-scope: allow shared picture-name helper other files call (#1156)
+function pictureIdOf(name) {
+    if (!name) return '';
+    const stem = String(name).replace(/\.(png|jpe?g|webp|jxl|gif)$/i, '');
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stem) ? stem : '';
+}
+
+// app-scope: allow shared picture-name helper other files call (#1156)
+function isPictureId(name) {
+    return !!pictureIdOf(name);
+}
+
+/** Name without a picture extension (only when one is present: an ID has none). */
+// app-scope: allow shared picture-name helper other files call (#1156)
+function pictureStem(name) {
+    return name ? String(name).replace(/\.(png|jpe?g|webp|jxl|gif)$/i, '') : '';
+}
+
+/** Creation time (ms) encoded in an ID name, else null (the UUIDv7 time is its first 48 bits). */
+// app-scope: allow shared picture-name helper other files call (#1156)
+function pictureIdTimeMs(name) {
+    const id = pictureIdOf(name);
+    if (!id) return null;
+    const ms = parseInt(id.slice(0, 8) + id.slice(9, 13), 16);
+    return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * True for an upscale. Takes a gallery item (server fields: `upscaled` flag or filename, `parent`)
+ * or a bare name (legacy `_upscaled` test; an ID name alone cannot tell, the server links it).
+ */
+// app-scope: allow shared picture-name helper other files call (#1156)
+function isUpscaledPicture(itemOrName) {
+    if (!itemOrName) return false;
+    if (typeof itemOrName === 'string') return /_upscaled(\.|$)/.test(itemOrName);
+    const it = itemOrName;
+    if (it.isUpscale === true || it.upscaled === true) return true;
+    if (typeof it.upscaled === 'string' && it.upscaled && (!it.filename || it.filename === it.upscaled)) return true;
+    return /_upscaled(\.|$)/.test(String(it.filename || ''));
+}
+
+/** Pixels of a gallery item or its metadata (server width/height, else the print's actual size); null when unknown. */
+// app-scope: allow shared picture-name helper other files call (#1156)
+function pictureResolutionPixels(item) {
+    if (!item || typeof item !== 'object') return null;
+    const md = item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+    const w = Number(item.width || md.actual_width || md.width);
+    const h = Number(item.height || md.actual_height || md.height);
+    return w > 0 && h > 0 ? w * h : null;
+}
+
+/**
+ * True when regenerating this picture is paid (over 1024x1024 pixels; Anlas), false when it is not, null when
+ * its size is unknown (a name test, `large_` / `wallpaper_`, is the caller's legacy fallback, #1156).
+ */
+// app-scope: allow shared picture-name helper other files call (#1156)
+function isPaidResolutionPicture(item) {
+    const px = pictureResolutionPixels(item);
+    return px == null ? null : px > 1024 * 1024;
+}
+
+// app-scope: allow shared picture-name helper other files call (#1156)
+function pictureExtForMime(mime) {
+    const m = String(mime || '').toLowerCase().split(';')[0].trim();
+    if (m === 'image/jxl') return 'jxl';
+    if (m === 'image/png') return 'png';
+    if (m === 'image/webp') return 'webp';
+    if (m === 'image/jpeg' || m === 'image/jpg') return 'jpg';
+    if (m === 'image/gif') return 'gif';
+    return '';
+}
+
+/** `<stem>.<ext>` for a download; replaces a picture extension, appends to an ID. */
+// app-scope: allow shared picture-name helper other files call (#1156)
+function pictureDownloadName(name, ext, suffix) {
+    return `${pictureStem(name)}${suffix || ''}${ext ? '.' + ext : ''}`;
+}
+
+/**
+ * href + download name for saving a gallery picture as PNG. A legacy `x.png` is served as stored; an ID picture
+ * (stored as JXL, no extension) is asked for as PNG and named `<id>.png` (#1156).
+ */
+// app-scope: allow shared picture-name helper other files call (#1156)
+function galleryPngDownload(filename) {
+    if (isPictureId(filename)) {
+        return { href: `${localGalleryImageUrl(filename)}?download=true&format=png`, name: pictureDownloadName(filename, 'png') };
+    }
+    return { href: localGalleryImageUrl(filename), name: filename };
+}
+
 /** Studio preview WebP for a gallery file: /previews/<stem>@studio.webp, made by the server from /images/ (#648). */
 function localStudioPreviewUrl(filename) {
-    if (!filename || !/\.(png|jpe?g)$/i.test(filename)) return '';
-    return localGalleryPreviewUrl(`${filename.replace(/\.(png|jpe?g)$/i, '')}@studio.webp`);
+    if (!filename) return '';
+    // Legacy names carry .png/.jpg; an ID has no extension (#1156).
+    if (isPictureId(filename)) return localGalleryPreviewUrl(`${pictureStem(filename)}@studio.webp`);
+    if (!/\.(png|jpe?g)$/i.test(filename)) return '';
+    const stem = filename.replace(/\.(png|jpe?g)$/i, '');
+    return localGalleryPreviewUrl(`${stem}@studio.webp`);
 }
 
 /**

@@ -285,8 +285,9 @@ class StageResultsReviewManager {
     previewChainFilename() {
         const image = currentManualPreviewImage;
         if (!image) return '';
-        if (image.original && !String(image.original).includes('_upscaled')) return image.original;
-        if (image.filename && !String(image.filename).includes('_upscaled')) return image.filename;
+        // isUpscaledPicture: public/scripts/comp/assetUrlResolver.js (legacy name test; an ID's own `original` is never its upscale)
+        if (image.original && !isUpscaledPicture(String(image.original))) return image.original;
+        if (image.filename && !isUpscaledPicture({ filename: String(image.filename), upscaled: image.upscaled === image.filename ? image.upscaled : null })) return image.filename;
         return image.original || image.filename || image.upscaled || '';
     }
 

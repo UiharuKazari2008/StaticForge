@@ -4803,8 +4803,10 @@ document.addEventListener('contextMenuAction', async (event) => {
                 const filename = shortcut.data.filename;
                 const link = document.createElement('a');
                 // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
-                link.href = localGalleryImageUrl(filename);
-                link.download = filename;
+                // galleryPngDownload: public/scripts/comp/assetUrlResolver.js (#1156: an ID has no extension)
+                const dl = galleryPngDownload(filename);
+                link.href = dl.href;
+                link.download = dl.name;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);

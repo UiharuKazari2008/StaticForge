@@ -125,7 +125,9 @@
 
     function typeName(filename, meta) {
         const ext = (String(filename).match(/\.([a-z0-9]+)$/i) || [])[1] || '';
-        const base = { png: 'PNG Image', jpg: 'JPEG Image', jpeg: 'JPEG Image', webp: 'WebP Image' }[ext.toLowerCase()] || `${ext.toUpperCase()} File`;
+        // an ID picture has no extension (#1156; isPictureId: assetUrlResolver.js)
+        const base = { png: 'PNG Image', jpg: 'JPEG Image', jpeg: 'JPEG Image', webp: 'WebP Image', jxl: 'JPEG XL Image' }[ext.toLowerCase()]
+            || (!ext && typeof isPictureId === 'function' && isPictureId(filename) ? 'Picture' : `${ext.toUpperCase()} File`);
         return meta && meta.upscaled ? `${base} (upscaled)` : base;
     }
 

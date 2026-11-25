@@ -7207,7 +7207,8 @@
             const href = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = href;
-            a.download = name;
+            // an ID name has no extension: the blob's type gives it one (#1156)
+            a.download = isPictureId(name) ? pictureDownloadName(name, pictureExtForMime(blob.type) || 'png') : name;
             a.dataset.wmNativeDownload = '1';
             document.body.appendChild(a);
             nativeAnchorClick.call(a);
@@ -12272,7 +12273,10 @@
         function itemTime(item) {
             const t = Number(item.mtime) || 0;
             if (t) return t;
-            const m = String(item.filename || item.original || '').match(/^(\d{12,13})_/);
+            const nm = item.filename || item.original || '';
+            const idTime = pictureIdTimeMs(nm); // assetUrlResolver.js (#1156)
+            if (idTime) return idTime;
+            const m = String(nm).match(/^(\d{12,13})_/);
             return m ? Number(m[1]) : 0;
         }
 
@@ -13480,7 +13484,7 @@
             const src = typeof d.src === 'string' ? d.src : '';
             const inline = /^(data|blob):/i.test(src);
             const name = file || rec.title || (src && !inline ? decodeURIComponent(src.split('/').pop().split('?')[0]) : '') || 'Picture';
-            const t = Number(rec.mtime) || Number((/^(\d{12,13})_/.exec(file) || [])[1]) || 0;
+            const t = Number(rec.mtime) || pictureIdTimeMs(file) || Number((/^(\d{12,13})_/.exec(file) || [])[1]) || 0; // #1156
             const meta = rec.metadata || {};
             return {
                 name,
@@ -13499,8 +13503,10 @@
         const f = viewerSlideFile();
         if (!f) return;
         const a = document.createElement('a');
-        a.href = f.src;
-        a.download = f.name || '';
+        // #1156: an ID name has no extension; the slide's own file is saved as PNG by name
+        const dlPng = isPictureId(f.name) && /^\/images\/[^?#]+$/.test(f.src) ? galleryPngDownload(f.name) : null;
+        a.href = dlPng ? dlPng.href : f.src;
+        a.download = dlPng ? dlPng.name : (isPictureId(f.name) ? pictureDownloadName(f.name, 'png') : (f.name || ''));
         document.body.appendChild(a);
         a.click();
         a.remove();

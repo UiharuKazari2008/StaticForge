@@ -24,14 +24,22 @@ async function rerollImage(image, event = null) {
 
         // Check if this is an upscaled image and show confirmation dialog if needed
         let isUpscaled = false;
-        if (image.upscaled || filenameForMetadata.includes('_upscaled')) {
+        if (image.upscaled || isUpscaledPicture(filenameForMetadata)) {
             isUpscaled = true;
         }
 
         // Check if this is a large or wallpaper image that will cost credits
-        let isLargeOrWallpaper = false;
-        if (filenameForMetadata.includes('large_') || filenameForMetadata.includes('wallpaper_')) {
-            isLargeOrWallpaper = true;
+        // The print's own resolution decides (an ID name carries nothing); the name test is the legacy fallback (#1156).
+        // isPaidResolutionPicture: public/scripts/comp/assetUrlResolver.js
+        let isLargeOrWallpaper = isPaidResolutionPicture(image);
+        if (isLargeOrWallpaper == null) {
+            try {
+                // getImageMetadata: public/scripts/comp/galleryView.js
+                isLargeOrWallpaper = isPaidResolutionPicture({ metadata: await getImageMetadata(filenameForMetadata) });
+            } catch (_) { isLargeOrWallpaper = null; }
+        }
+        if (isLargeOrWallpaper == null) {
+            isLargeOrWallpaper = filenameForMetadata.includes('large_') || filenameForMetadata.includes('wallpaper_');
         }
 
         // If upscaled and user hasn't already allowed paid requests, show confirmation
@@ -457,7 +465,9 @@ function animatedResultSource(image) {
     if (receipt && receipt.source_filename) return receipt.source_filename;
     const base = animatedResultFilename(image).replace(/\.[^.]+$/, '');
     const m = base.match(/^(.*)_animate_[0-9a-f]{8}$/i);
-    return m ? m[1] + '.png' : null;
+    // the source is named as the clip names it: an ID has no extension, a legacy stem was a .png (#1156)
+    if (!m) return null;
+    return isPictureId(m[1]) ? m[1] : m[1] + '.png';
 }
 
 async function openAnimatedResultInEmotion(image) {

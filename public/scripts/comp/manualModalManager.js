@@ -5737,13 +5737,16 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
             if (genFilename) {
                 window.lastGeneration.filename = genFilename;
             }
-            const isUpscaledName = !!(genFilename && String(genFilename).includes('_upscaled'));
+            // isUpscaledPicture: public/scripts/comp/assetUrlResolver.js. An ID name cannot show an upscale by
+            // itself; the server's `upscaled` flag / `parent` on the result do (#1156), the _upscaled test is legacy.
+            const isUpscaledName = !!(genFilename && (isUpscaledPicture(String(genFilename))
+                || (metadata && (metadata.upscaled === true || metadata.isUpscale === true))));
             const previous = window.currentManualPreviewImage;
-            const previousOriginal = previous && previous.original && !String(previous.original).includes('_upscaled')
+            const previousOriginal = previous && previous.original && !isUpscaledPicture(String(previous.original))
                 ? previous.original
                 : null;
             const derivedOriginal = isUpscaledName
-                ? String(genFilename).replace('_upscaled.png', '.png')
+                ? (metadata && metadata.parent) || String(genFilename).replace('_upscaled.png', '.png')
                 : genFilename;
             window.currentManualPreviewImage = {
                 filename: genFilename,

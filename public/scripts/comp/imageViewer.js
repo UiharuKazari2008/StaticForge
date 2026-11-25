@@ -1871,7 +1871,8 @@ class ImageViewer {
         // Create download link
         const link = document.createElement('a');
         link.href = this.imageSrc;
-        link.download = this.title || 'image.png';
+        // #1156: a title that is an ID has no extension
+        link.download = isPictureId(this.title) ? pictureDownloadName(this.title, 'png') : (this.title || 'image.png');
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

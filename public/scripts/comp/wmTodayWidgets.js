@@ -662,7 +662,10 @@
         const reroll = fnOf('rerollImage');
         const item = printItem(p);
         if (!reroll || !item) return;
-        const desktopAsks = !!item.upscaled || /_upscaled|large_|wallpaper_/.test(p.filename);
+        // isPaidResolutionPicture / isUpscaledPicture: assetUrlResolver.js (#1156: an ID says nothing; the name test is legacy)
+        const paid = isPaidResolutionPicture(item); // eslint-disable-line no-undef
+        const desktopAsks = !!item.upscaled || isUpscaledPicture(p.filename) // eslint-disable-line no-undef
+            || (paid == null ? /large_|wallpaper_/.test(p.filename) : paid);
         if (!desktopAsks) {
             let meta = null;
             try { meta = await sh.busy(() => getImageMetadata(p.filename), { paint: true }); } catch (_) { meta = null; } // eslint-disable-line no-undef

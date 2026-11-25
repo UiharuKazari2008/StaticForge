@@ -743,7 +743,7 @@ function omegasearchDsapResolveDetailImage(filename, metadata) {
         filename,
         original: filename,
         base,
-        upscaled: filename.includes('_upscaled') ? filename : undefined,
+        upscaled: isUpscaledPicture(filename) ? filename : undefined, // assetUrlResolver.js; an ID's link is the server's
         metadata: metadata || null
     };
 }

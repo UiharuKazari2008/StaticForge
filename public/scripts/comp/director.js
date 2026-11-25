@@ -6607,7 +6607,7 @@ class Director {
         if (!item) return false;
         if (item.source === 'workspace' || item.source === 'reference') return true;
         const name = item.name || item.filename || '';
-        return /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(name);
+        return /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(name) || (typeof isPictureId === 'function' && isPictureId(name));
     }
 
     // Gallery and cache previews, or the data URL kept on a file picked from this computer.
@@ -8306,7 +8306,9 @@ class Director {
             // the file; a picture that is gone (deleted NAX preview) leaves the row instead of a broken image.
             const chain = [];
             // the previews are named as the server's getBaseName names them: no _upscaled, no extension
-            const stem = gallery && /\.(png|jpe?g)$/i.test(filename) ? filename.replace(/_upscaled(?=\.)/, '').replace(/\.(png|jpe?g)$/i, '') : '';
+            // an ID picture is its own stem (no extension, an upscale is a separate ID; #1156)
+            const stem = gallery && /\.(png|jpe?g)$/i.test(filename) ? filename.replace(/_upscaled(?=\.)/, '').replace(/\.(png|jpe?g)$/i, '')
+                : (gallery && typeof isPictureId === 'function' && isPictureId(filename) ? pictureStem(filename) : '');
             // localGalleryPreviewUrl / studioPreviewDisplayUrl: public/scripts/comp/assetUrlResolver.js
             if (stem && typeof localGalleryPreviewUrl === 'function') chain.push(localGalleryPreviewUrl(`${stem}@2x.webp`));
             const studio = gallery && typeof studioPreviewDisplayUrl === 'function' ? studioPreviewDisplayUrl(src) : src;

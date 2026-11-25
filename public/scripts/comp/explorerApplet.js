@@ -2739,8 +2739,10 @@ class ExplorerApplet {
     async _downloadImageFilename(filename) {
         if (!filename) return;
         const link = document.createElement('a');
-        link.href = localGalleryImageUrl(filename);
-        link.download = filename;
+        // galleryPngDownload: public/scripts/comp/assetUrlResolver.js (#1156: an ID has no extension)
+        const dl = galleryPngDownload(filename);
+        link.href = dl.href;
+        link.download = dl.name;
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -4370,7 +4372,7 @@ class ExplorerApplet {
             filename,
             original: filename,
             base,
-            upscaled: filename.includes('_upscaled') ? filename : undefined
+            upscaled: isUpscaledPicture(filename) ? filename : undefined
         });
     }
 

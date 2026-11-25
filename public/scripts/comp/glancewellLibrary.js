@@ -1105,7 +1105,12 @@
                 const px = (it.width || 0) * (it.height || 0);
                 return !px ? ['Unknown', -1] : px < 480 * 640 ? ['Small', 0] : px < 1280 * 1024 ? ['Medium', 1] : px < 2560 * 1600 ? ['Large', 2] : ['Extra Large', 3];
             }
-            case 'type': { const x = SRC().extOf(it.name).toUpperCase(); return [x ? `${x} File` : 'File', x]; }
+            case 'type': {
+                const x = SRC().extOf(it.name).toUpperCase();
+                // an ID picture has no extension (#1156; isPictureId: assetUrlResolver.js)
+                if (!x && isPictureId(it.name)) return ['Picture', 'PICTURE'];
+                return [x ? `${x} File` : 'File', x];
+            }
             case 'favorite': return isFavorite(it) ? ['Favorites', 1] : ['Not a Favorite', 0];
             case 'folder': return [it.folder || 'Unknown', String(it.folder || '').toLowerCase()];
             case 'tag': { const t2 = tagNamesOf(it); return t2.length ? [t2[0], t2[0].toLowerCase()] : ['Not Tagged', '']; }
@@ -2570,8 +2575,9 @@
             try {
                 let blob = await (await fetch(it.full(), { credentials: 'same-origin' })).blob();
                 if (set.rotate && !it.video) blob = await uprightJpeg(blob);
-                const ext = (/\.[a-z0-9]+$/i.exec(it.name) || ['.jpg'])[0];
-                let name = it.name;
+                // the blob's own type names a file that has no extension (#1156; pictureExtForMime: assetUrlResolver.js)
+                const ext = (/\.[a-z0-9]+$/i.exec(it.name) || [`.${pictureExtForMime(blob.type) || 'jpg'}`])[0];
+                let name = /\.[a-z0-9]+$/i.test(it.name) ? it.name : `${it.name}${ext}`;
                 if (set.fileName === 'tag' && tag) name = `${tag} ${String(imported.length + 1).padStart(3, '0')}${ext}`;
                 let dir = target;
                 if (set.fileName === 'originalFolders' && it.folder) {
@@ -2967,7 +2973,7 @@
                 width: Number(meta.width || (meta.display && meta.display.width)) || 0,
                 height: Number(meta.height || (meta.display && meta.display.height)) || 0,
                 size: Number(meta.size) || 0,
-                taken: Number(meta.mtime) || Number((String(pic.title).match(/^(\d{13})_/) || [])[1]) || 0,
+                taken: Number(meta.mtime) || pictureIdTimeMs(pic.title) || Number((String(pic.title).match(/^(\d{13})_/) || [])[1]) || 0, // pictureIdTimeMs: assetUrlResolver.js (#1156)
                 modified: Number(meta.mtime) || 0,
                 pinned: !!meta.isPinned,
                 thumb: () => pic.src,

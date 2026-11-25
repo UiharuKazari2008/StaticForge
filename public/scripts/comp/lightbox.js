@@ -635,7 +635,7 @@ function renderGlancewellInfo() {
     // the file's date and size for Vista's "4/25/2005 12:00 AM" / "648 KB (1024 x 768)" lines:
     // the gallery record's mtime and size, else the epoch the print's name starts with
     const meta = pic.metadata || {};
-    const stamp = Number(meta.mtime) || Number((String(pic.title).match(/^(\d{13})_/) || [])[1]) || null;
+    const stamp = Number(meta.mtime) || pictureIdTimeMs(pic.title) || Number((String(pic.title).match(/^(\d{13})_/) || [])[1]) || null; // pictureIdTimeMs: assetUrlResolver.js (#1156)
     renderPhotoGalleryInfoPane(pane, {
         metadata: pic.metadata,
         src: pic.src,

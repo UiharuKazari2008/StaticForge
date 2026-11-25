@@ -1642,8 +1642,10 @@ class SpellbookModalManager {
 
         // Create download link
         const link = document.createElement('a');
-        link.href = localGalleryImageUrl(this.generatedFilename);
-        link.download = this.generatedFilename;
+        // galleryPngDownload: public/scripts/comp/assetUrlResolver.js (#1156: an ID has no extension)
+        const dl = galleryPngDownload(this.generatedFilename);
+        link.href = dl.href;
+        link.download = dl.name;
         link.style.display = 'none';
 
         document.body.appendChild(link);
