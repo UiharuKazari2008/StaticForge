@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * The Director's "turn is finished" is one notification on the phone (Yukimi, Nov 20 2026: 2-3 per turn, #997).
+ * The Director's finished turn is ONE notification on the phone, and it is the reply (Yukimi, Nov 20 2026: 2-3 per
+ * turn, #997; Nov 25 2026: "2 director notifications still when there should be 1 or 0").
  *
  * Replays the server's inbox pushes for two turns on one session (the same id director:<session>:turn each time)
  * through public/scripts/comp/wmNotificationInbox.js in a fake page, and checks wmShell's directorTurnWatch no
@@ -72,7 +73,7 @@ function page() {
 const flush = () => new Promise((r) => setImmediate(r));
 const ID = 'director:dirc_test:turn';
 const notice = (at, extra = {}) => Object.assign({
-    id: ID, app: 'director', cls: 'director', title: 'Director', text: '"Wren": the turn is finished.',
+    id: ID, app: 'director', cls: 'director', title: 'Director', text: 'Yumiya replied in "Wren".',
     data: { app: 'director', kind: 'director', sessionId: 'dirc_test' }, createdAt: at, updatedAt: at, state: 'new', alert: true,
 }, extra);
 

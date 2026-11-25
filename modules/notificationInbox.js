@@ -483,9 +483,12 @@ function pendingForPhones(user) {
 
 /**
  * A notice is sent to a phone once, the moment it is published; a phone whose background link was down
- * then (asleep, changing networks, the app restarting) never had it. When that link says hello again,
- * the notices still new are sent once more, marked catchUp: the app posts the ones it has not posted
- * and sounds only the newest.
+ * then (asleep, changing networks, the app restarting) never had it. When that link says hello again the
+ * backlog is NOT posted one by one - ONE notice goes, the newest, and quietly (Yukimi, Nov 25 2026: "every
+ * restart results in a massive stack of notifications. drop them all"). A catch-up is the whole backlog of
+ * a link that was down, and a notification per row in it buries the phone. Nothing is lost: every one of
+ * them is in the inbox still - the "..." holder lists them all and the title bar's count is theirs - so the
+ * single notice is the quiet pointer to them, and the phone's answer still confirms it.
  */
 function staleCatchUpMs() {
     try { return require('./callFilter').staleMs(); } catch (_e) { return 30 * 60 * 1000; }
@@ -497,21 +500,27 @@ function catchUpPhone(deviceId) {
     // what this phone already confirmed is not sent again (a hello on every network change would re-send it all)
     let done = new Set();
     try { done = new Set(database().prepare('SELECT user, id FROM deliveries WHERE device = ? AND postedAt IS NOT NULL').all(String(deviceId)).map((r) => `${r.user}\u0000${r.id}`)); } catch (_e) { /* send all */ }
-    // a test device catches up on the test lane only; a real phone never on it
+    // a test device catches up on the test lane only; a real phone never on it. The test lane is a fetch lane
+    // (the emulator harness reads what it was sent, modules/testDevices.js), so it still gets every notice.
     for (const user of (isTestDevice(deviceId) ? ['test'] : ['admin', 'dev_admin'])) {
-        for (const n of pendingForPhones(user)) {
-            if (done.has(`${user}\u0000${n.id}`)) continue;
-            // a text / call notice from before a long absence is not replayed one by one (a flood on return, #1107):
+        const testLane = user === 'test';
+        // newest last (pendingForPhones orders by createdAt): the one notice a real phone's catch-up carries
+        const missed = pendingForPhones(user).filter((n) => !done.has(`${user}\u0000${n.id}`));
+        if (!missed.length) continue;
+        const batch = testLane ? missed : [missed[missed.length - 1]];
+        for (const n of batch) {
+            // a text / call notice from before a long absence is not replayed at all (a flood on return, #1107):
             // the summary counts it
             if ((n.cls === 'sms' || n.cls === 'call') && nowFn() - Number(n.createdAt || 0) > staleCatchUpMs()) {
                 try { require('./callFilter').noteSkipped(n); } catch (_e) { /* best effort */ }
                 continue;
             }
             const sentTo = [];
-            try { sent += as.sendInboxNotice(gr, null, Object.assign({ user }, n, { alert: true, catchUp: true }), { deviceId, sentTo }); } catch (_e) { /* the link went again */ }
-            // a fresh round of tries for each (the app confirms it, or says it showed it already)
-            sentTo.forEach((device) => noteSent(device, user, n.id, true, true));
+            try { sent += as.sendInboxNotice(gr, null, Object.assign({ user }, n, { alert: testLane, catchUp: true }), { deviceId, sentTo }); } catch (_e) { /* the link went again */ }
+            // a fresh round of tries for it (the app confirms it, or says it showed it already)
+            sentTo.forEach((device) => noteSent(device, user, n.id, testLane, true));
         }
+        if (!testLane && missed.length > 1) console.log(`[notify-inbox] ${deviceId}: catch-up carries the newest of ${missed.length} waiting notice(s); the rest stay in the inbox`);
     }
     if (sent) console.log(`[notify-inbox] ${deviceId}: caught up ${sent} notice(s)`);
     return sent;

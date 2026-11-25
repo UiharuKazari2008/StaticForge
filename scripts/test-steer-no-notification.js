@@ -10,10 +10,11 @@
  *   - Director: a real Xi run (xiDirector startTail -> finishRun -> cursorDirector.broadcastDirectorStatus ->
  *     notificationInboxSources.onDirectorStatus), ended normally, ended by a steer (directorImpl director_abort steer),
  *     with and without a page watching the chat (clientInfo.directorWatch, the page's on-screen chat);
- *   - the page (public/scripts/comp/wmDirector.js, loaded whole in a fake page): its own "replied in" toast.
+ *   - the page (public/scripts/comp/wmDirector.js, loaded whole in a fake page): it must raise NOTHING of its own
+ *     (its "replied in" toast was the second notification of a turn and is gone, Nov 25 2026).
  * Before the fix (measured against HEAD, #1168): one steer = 1 emit (the cut turn's "finished" notice) + 1 page toast;
  * one turn = 1 emit while she watched it, plus a page toast when the page was hidden or another app was open; i.e. 2.
- * After: steer 0 + 0, watched turn 0 + 0, away turn 1 + 0. Real events still notify: a question, an erroring turn,
+ * After: steer 0 + 0, watched turn 0 + 0, away turn 1 + 0 (the page half is now 0 in every case). Real events still notify: a question, an erroring turn,
  * a turn finished while she is away or asleep / hidden / locked / idle / on another chat.
  *
  * PREFIX_SOURCES=<dir with HEAD's notificationInboxSources.js> PREFIX_PAGE=<HEAD's wmDirector.js> PRINT_ONLY=1 prints the
@@ -283,7 +284,7 @@ function pageToasts(file) {
     clients.clear();
     const err = turn('e1', 'Broken', { state: 'failed', sessionId: 'e1', error: 'engine stopped' });
     eq(err.join(','), 'director:e1:turn', 'an erroring turn notifies once');
-    eq(inbox.list('admin').find((n) => n.id === 'director:e1:turn').text, '"Broken": the turn stopped with an error.', 'and says it stopped with an error');
+    eq(inbox.list('admin').find((n) => n.id === 'director:e1:turn').text, 'Yozora stopped with an error in "Broken".', 'and says it stopped with an error');
     page('q1');
     src.onQuestion({ id: 'form-9', title: 'Pick a size', fields: [{ label: 'Size' }] });
     eq(take().join(','), 'question:form-9', 'a question waiting for an answer notifies even with a page watching');
@@ -308,26 +309,26 @@ function pageToasts(file) {
     assert.ok(statusPacket && Array.isArray(statusPacket.data.watched), 'director_computer_status carries watched');
     eq(statusPacket.data.watched.join(','), 'chat-seen', 'watched lists the chat her page shows');
     clients.clear();
-    let pw = pageToasts(file);
+    // ---- the page raises no notification of its own: the inbox notice is the one, steered turn or not
+    //      (Yukimi, Nov 25 2026: the page's own "replied in" toast was the second notification of a turn, and
+    //      "steering should result in 0 notifications")
+    const pw = pageToasts(file);
+    pw.status(run); pw.status(idle);
+    eq(pw.toasts.length, 0, 'a finished turn: this page raises nothing of its own');
     pw.status(run); pw.status(Object.assign({}, idle, { watched: ['s1'] }));
-    eq(pw.toasts.length, 0, 'another page of hers shows the chat: no toast on this shell page');
-    pw = pageToasts(file);
-    pw.status(run); pw.status(Object.assign({}, idle, { watched: ['other'] }));
-    eq(pw.toasts.length, 1, 'a chat nobody shows: the toast stays');
-    // (a turn ending with another app open on the phone: the page toasts, deduped with the inbox notice by title)
-    let p = pageToasts(file);
-    p.status(run); p.status(idle);
-    const visibleToasts = p.toasts.length;
-    p = pageToasts(file);
-    p.document.hidden = true;
-    p.status(run); p.status(idle);
-    eq(p.toasts.length, 0, 'page hidden: no toast of its own (the server notice is the one notification)');
-    p = pageToasts(file);
-    p.status(run); p.steerResponse('s1'); p.status(idle);
-    eq(p.toasts.length, 0, 'a steered turn: no toast');
-    p.status(run); p.status(idle);
-    eq(p.toasts.length, visibleToasts, 'the next turn end after a steer toasts as before');
-    eq(visibleToasts, 1, 'page visible on another app: one toast, as before (the inbox notice dedupes against it by title)');
+    eq(pw.toasts.length, 0, 'another page of hers shows the chat: still nothing here');
+    pw.status(run); pw.steerResponse('s1'); pw.status(idle);
+    eq(pw.toasts.length, 0, 'a steered turn: 0 notifications');
+    pw.status(run); pw.status(idle);
+    eq(pw.toasts.length, 0, 'the next turn end after a steer: still 0 here (the inbox notice is the one)');
+    const ph = pageToasts(file);
+    ph.document.hidden = true;
+    ph.status(run); ph.status(idle);
+    eq(ph.toasts.length, 0, 'page hidden: nothing here either');
+    // and nothing in wmDirector can raise a notification at all: no toast call, no note call
+    const pageSrc = fs.readFileSync(file, 'utf8');
+    assert.ok(!/showGlassToast\s*\(/.test(pageSrc), 'wmDirector calls no toast of its own');
+    assert.ok(!/wmShell\.notify|ws\.notify\s*\(/.test(pageSrc), 'wmDirector raises no shell notification of its own');
 
     if (PRINT) { console.log(mismatches ? `${mismatches} differences from the fixed behaviour` : 'no differences'); process.exit(0); }
     console.log('test-steer-no-notification: all checks passed');
