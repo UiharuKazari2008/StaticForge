@@ -1611,7 +1611,9 @@
     async function plSend(type, payload) {
         const c = window.wsClient;
         if (!c || typeof c.sendMessage !== 'function') throw new Error('Not connected to Dreamscape');
-        const r = await c.sendMessage(type, payload || {});
+        // the card shows a refusal itself (toast / Status line): no "Unhandled exception" window on top of it
+        const send = () => c.sendMessage(type, payload || {});
+        const r = await (typeof c.handlesErrors === 'function' ? c.handlesErrors(send) : send());
         const d = r && r.data && typeof r.data === 'object' ? r.data : (r || {});
         if (d.success === false) throw new Error(d.error || d.message || 'The server refused');
         return d;

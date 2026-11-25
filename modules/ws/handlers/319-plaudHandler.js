@@ -66,7 +66,9 @@ function registerPackets(handlersCtx) {
     reg('plaud_account_link_cancel', () => { plaud.linkCancel(); return fullStatus(); }, ADMIN_DESTRUCTIVE);
     reg('plaud_account_unlink', () => withDevice(plaud.unlink()), ADMIN_DESTRUCTIVE);
     reg('plaud_device_code_send', async (m) => {
-        const email = m.email || ((await plaud.status()).account || {}).email || '';
+        // a Google / Apple account has a made-up address at Plaud (google-<id>@plaud.ai) that receives no mail: never the default
+        const known = ((await plaud.status()).account || {}).email || '';
+        const email = m.email || (/^(google|apple)-[^@]*@plaud\.ai$/i.test(known) ? '' : known);
         await plaudDevice.sendCode(email);
         return fullStatus();
     }, ADMIN_DESTRUCTIVE);

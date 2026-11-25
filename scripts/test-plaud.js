@@ -256,9 +256,10 @@ t.setDeps({
             }
             if (u.pathname === '/auth/otp-send-code') return reply(200, { status: 0, msg: 'ok', token: 'CODETOKEN' });
             if (u.pathname === '/auth/otp-login') {
-                const form = new URLSearchParams(init.body);
-                if (form.get('code') !== '123456') return reply(422, { status: -1, msg: 'invalid request' });
-                assert.strictEqual(form.get('token'), 'CODETOKEN');
+                if (init.headers['Content-Type'] !== 'application/json') return reply(422, { status: -1, msg: 'invalid request' });
+                const sent = JSON.parse(init.body);
+                if (sent.code !== '123456') return reply(422, { detail: [{ loc: ['body', 'code'], msg: 'wrong code' }] });
+                assert.strictEqual(sent.token, 'CODETOKEN');
                 return reply(200, { status: 0, access_token: jwt });
             }
             if (u.pathname === '/device/list') {
@@ -286,18 +287,19 @@ t.setDeps({
     assert.strictEqual(dcalls[0].host, 'api.plaud.ai');
     assert.strictEqual(dcalls[1].host, 'api-euc1.plaud.ai', 'the -302 answer switches the region and repeats once');
     assert.strictEqual(dcalls[1].path, '/auth/otp-send-code');
-    assert.strictEqual(dcalls[1].body, 'username=y%40example.com');
-    assert.strictEqual(dcalls[1].headers['Content-Type'], 'application/x-www-form-urlencoded');
+    assert.strictEqual(dcalls[1].body, '{"username":"y@example.com"}');
+    assert.strictEqual(dcalls[1].headers['Content-Type'], 'application/json', 'Plaud takes these as JSON (seen live)');
     assert.ok(/Chrome/.test(dcalls[1].headers['User-Agent']) && dcalls[1].headers.Origin === 'https://web.plaud.ai');
     assert.strictEqual(dev.status().codeSent, true);
     assert.strictEqual(JSON.parse(fs.readFileSync(process.env.PLAUD_DEVICE_FILE, 'utf8')).base, 'https://api-euc1.plaud.ai', 'the region is stored');
 
-    await assert.rejects(dev.signIn('000000'), (e) => e.code === 'PLAUD_DEVICE_BAD_CODE' && /^Plaud did not accept that code/.test(e.message));
+    await assert.rejects(dev.signIn('000000'), (e) => e.code === 'PLAUD_DEVICE_BAD_CODE' && e.message === 'Plaud did not accept that code (wrong code)');
+    assert.strictEqual(dcalls[dcalls.length - 1].headers['Content-Type'], 'application/x-www-form-urlencoded', 'a 422 is tried once more as a form');
     assert.strictEqual(dev.state(), 'missing');
     await dev.signIn('123456');
     const login = dcalls.filter((c) => c.path === '/auth/otp-login').pop();   // the sign-in then reads the recorder once
     assert.strictEqual(login.host, 'api-euc1.plaud.ai');
-    assert.strictEqual(login.body, 'code=123456&token=CODETOKEN');
+    assert.strictEqual(login.body, '{"code":"123456","token":"CODETOKEN"}');
     assert.strictEqual(dev.state(), 'ok');
     assert.strictEqual(fs.statSync(process.env.PLAUD_DEVICE_FILE).mode & 0o777, 0o600);
     assert.strictEqual(JSON.parse(fs.readFileSync(process.env.PLAUD_DEVICE_FILE, 'utf8')).token, jwt);

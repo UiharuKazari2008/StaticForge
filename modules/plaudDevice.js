@@ -4,8 +4,8 @@
  * The Plaud app account (second sign-in, #1193): Plaud's private web API, used only to read the recorder
  * (name, model, battery, last sync) for Today's Plaud item. The developer account (plaudClient.js) has no device endpoint.
  * Unofficial API: https://api.plaud.ai (regional bases answer status -302 with data.domains.api), email code sign-in
- * (POST /auth/otp-send-code { username } -> { token }; POST /auth/otp-login { code, token } -> { access_token }, form
- * body, JSON when Plaud answers 422 with a detail list), GET /device/list with the bearer token.
+ * (POST /auth/otp-send-code { username } -> { token }; POST /auth/otp-login { code, token } -> { access_token }, JSON
+ * body, a form once more when Plaud answers 422), GET /device/list with the bearer token.
  * The access token is a JWT with an exp claim; there is no refresh token: when it ends she signs in again.
  *
  * Stored in .cache/plaud-device.json (0600; env PLAUD_DEVICE_FILE): { token, base, email, since, exp, asked }.
@@ -81,7 +81,7 @@ function stateName() {
 
 // ------------------------------------------------------------------------------------------ Plaud calls
 
-async function once(base, method, p, { token, fields: f, json } = {}) {
+async function once(base, method, p, { token, fields: f, form } = {}) {
     const headers = {
         Accept: 'application/json', 'User-Agent': UA, Origin: 'https://web.plaud.ai', Referer: 'https://web.plaud.ai/',
         'app-platform': 'web', 'edit-from': 'web'
@@ -89,8 +89,8 @@ async function once(base, method, p, { token, fields: f, json } = {}) {
     if (token) headers.Authorization = `bearer ${token}`;
     let body;
     if (f) {
-        if (json) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(f); }
-        else { headers['Content-Type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(f).toString(); }
+        if (form) { headers['Content-Type'] = 'application/x-www-form-urlencoded'; body = new URLSearchParams(f).toString(); }
+        else { headers['Content-Type'] = 'application/json'; body = JSON.stringify(f); }
     }
     let res;
     try {
@@ -104,7 +104,11 @@ async function once(base, method, p, { token, fields: f, json } = {}) {
     return { status: res.status, body: parsed };
 }
 
-/** One call; a -302 answer switches to the regional base (stored) and repeats once; a 422 with a detail list repeats as JSON. */
+/**
+ * One call; a -302 answer switches to the regional base (stored) and repeats once. Fields go as JSON (seen live Nov 25
+ * 2026: otp-send-code validates a JSON username and answers a form body "invalid request"); a 422 is tried once more as
+ * a form, and the JSON answer is kept when that fails too.
+ */
 async function request(method, p, opts = {}) {
     const s = load();
     let r = await once(s.base, method, p, opts);
@@ -114,11 +118,19 @@ async function request(method, p, opts = {}) {
         save();
         r = await once(s.base, method, p, opts);
     }
-    if (opts.fields && !opts.json && r.status === 422 && r.body && Array.isArray(r.body.detail)) r = await once(s.base, method, p, Object.assign({}, opts, { json: true }));
+    if (opts.fields && r.status === 422) {
+        const again = await once(s.base, method, p, Object.assign({}, opts, { form: true })).catch(() => null);
+        if (again && again.status < 300) r = again;
+    }
     return r;
 }
 
-const failMsg = (r, fallback) => (r.body && typeof r.body.msg === 'string' && r.body.msg ? `${fallback} (${r.body.msg.slice(0, 120)})` : fallback);
+function failMsg(r, fallback) {
+    const b = r.body || {};
+    const d = Array.isArray(b.detail) && b.detail[0] && typeof b.detail[0].msg === 'string' ? b.detail[0].msg : '';
+    const why = (typeof b.msg === 'string' && b.msg) || d;
+    return why ? `${fallback} (${why.slice(0, 120)})` : fallback;
+}
 
 // ------------------------------------------------------------------------------------------ sign in and out
 
