@@ -373,7 +373,17 @@ function recordUsage(row) {
 }
 
 /** messages -> { content, finish, engine, model }; records usage; fails over on a money refusal. */
+// Background jobs (titles, task lists, sizing, rule checks, usage...) share a budget of 20 engine calls a minute, so a
+// loop can never flood TokenRouter, whose rate limit Yozora shares; turn reviews always go through.
+const bgCalls = [];
+const BG_PER_MIN = Number(process.env.AGENT_SUPERVISOR_BG_PER_MIN) || 20;
 async function callEngine(gr, messages, opts = {}) {
+    if (opts.kind && !['review', 'json'].includes(opts.kind)) {
+        const now = Date.now();
+        while (bgCalls.length && bgCalls[0] < now - 60000) bgCalls.shift();
+        if (bgCalls.length >= BG_PER_MIN) throw new Error(`The Supervisor's background budget (${BG_PER_MIN} calls a minute) is used up; later`);
+        bgCalls.push(now);
+    }
     const s = settings(gr);
     const chain = engineChain(gr, s);
     let lastErr = null;

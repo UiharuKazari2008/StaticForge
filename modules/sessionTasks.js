@@ -219,16 +219,23 @@ function cleanTitleText(t) {
 }
 
 /** Writes the Supervisor's title when it is due: the first human message, then every 5 more. Returns the new title or ''. */
+// a title attempt at most every 2 minutes per session, 10 after an empty answer, 30 after a failure (Nov 24 2026: a failing title call was retried on
+// every transcript push - 5,000 calls in 30 minutes - and TokenRouter's rate limit starved Yozora)
+const titleTried = new Map();
 async function maybeTitle(sessionId, hum, recent) {
     const cur = titles().get(sessionId);
     if ((cur && cur.custom) || hum < 1 || !recent.length) return '';
     if (cur && hum - cur.hum < TITLE_EVERY) return '';
     if (!deps.enabled() || !deps.askJson) return '';
+    const last = titleTried.get(sessionId);
+    if (last && Date.now() < last) return '';
+    titleTried.set(sessionId, Date.now() + 2 * 60000); // in flight / just tried
     try { if (deps.customTitle(sessionId)) return ''; } catch (_) { /* unknown: go on */ }
     let o = null;
-    try { o = await deps.askJson(TITLE_SYSTEM, recent.map((t, i) => `${i + 1}. ${t}`).join('\n'), 'title', { maxTokens: 200 }); } catch (e) { console.warn(`[sessionTasks] title ${sessionId.slice(0, 8)}: ${e.message}`); return ''; }
+    try { o = await deps.askJson(TITLE_SYSTEM, recent.map((t, i) => `${i + 1}. ${t}`).join('\n'), 'title', { maxTokens: 200 }); } catch (e) { titleTried.set(sessionId, Date.now() + 30 * 60000); console.warn(`[sessionTasks] title ${sessionId.slice(0, 8)}: ${e.message}`); return ''; }
     const t = cleanTitleText(o && o.title);
-    if (!t) return '';
+    if (!t) { titleTried.set(sessionId, Date.now() + 10 * 60000); putTitle(sessionId, cur ? cur.title : '', false, hum); return ''; }
+    titleTried.delete(sessionId);
     putTitle(sessionId, t, false, hum);
     return t;
 }

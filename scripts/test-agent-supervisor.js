@@ -20,6 +20,7 @@ process.env.DREAMSCAPE_CLAUDE_HOME = tmp;
 process.env.AGENT_COORD_DB = path.join(tmp, 'state', 'coord.db');
 process.env.AGENT_SUPERVISOR_SOCKET = path.join(tmp, 'state', 'supervisor.sock');
 process.env.AGENT_SUPERVISOR_SETTLE_MS = '0';
+process.env.AGENT_SUPERVISOR_BG_PER_MIN = '100000';
 fs.mkdirSync(path.join(tmp, '.claude', 'projects', '-repo'), { recursive: true });
 fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
 
