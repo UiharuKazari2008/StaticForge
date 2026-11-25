@@ -2917,6 +2917,9 @@
             const defs = new Map(sh.todayItemDefs().map((w) => [w.id, w]));
             const rows = [...page.querySelectorAll(':scope > [data-row]')];
             let touched = false;
+            // the right key of the panel in the band: an item's own data can change it (Plaud's Review -> Open, #1193)
+            const keyNow = () => { const p = panels[skSel] || panels[sel]; const pg = p && p.pages[pageIndex(p)]; const k = (pg && pg.softKey) || (p && p.softKey); return k ? String(k.label || '') : ''; };
+            const keyWas = keyNow();
             for (const id of new Set(ids)) {
                 const i = panels.findIndex((p) => p.id === id);
                 const rowEl = rows.find((r) => r.dataset.row === id) || null;
@@ -2939,6 +2942,7 @@
             if (!touched) return true;
             drawRows();
             drawExpanded();
+            if (keyNow() !== keyWas) sh.refreshSoftKeys();
             return true;
         },
         softKeys(keys) {
