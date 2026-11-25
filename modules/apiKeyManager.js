@@ -174,6 +174,27 @@ class ApiKeyManager {
                     links: [['SiriusXM', 'https://www.siriusxm.com/']]
                 }
             },
+            // Yozora #1123: Wallet's bank balance (modules/plaidBank.js). The key value is the Plaid secret, the
+            // client id is a plain field. No status probe; the linked items live in secure config `plaidItems`.
+            plaid: {
+                label: 'Plaid',
+                description: 'The Plaid client the Wallet reads the linked bank accounts\' balances through (Spectra Federal Credit Union and others)',
+                icon: 'fas fa-building-columns',
+                requiresRestart: false,
+                keyLabel: 'Secret',
+                fields: [
+                    { field: 'clientId', label: 'Client ID', placeholder: 'the client_id from the Plaid dashboard', pattern: '^\\S{8,64}$' }
+                ],
+                fingerprint: (key) => (key.clientId ? String(key.clientId) : null),
+                howTo: {
+                    title: 'Which keys these are',
+                    steps: [
+                        'Plaid dashboard > Developers > Keys: copy the client_id and the secret of the environment the bank links were made in (Production).',
+                        'The Wallet reads only Plaid\'s cached balances (no billed balance calls). A bank that needs signing in again is re-linked from the Wallet.'
+                    ],
+                    links: [['Plaid dashboard', 'https://dashboard.plaid.com/developers/keys']]
+                }
+            },
             // Yozora #835: Lapis Remote (modules/lapisService.js through modules/bluelinkClient.js). The key
             // value is the BlueLink account's password; the e-mail and PIN are plain fields on the entry.
             // No status probe: a check would be a sign-in against Hyundai's limits.

@@ -31,6 +31,8 @@ const DORMANT_HOLD = new Map([
     ['vfs_updated', 'path'],
     ['xlink_status', 'all'],
     ['lapis_updated', 'last'],
+    // Wallet bank balances (modules/plaidBank.js, #1123): the whole list each time, so the newest only
+    ['plaid_balances', 'last'],
     ['traffic_updated', (d) => `dir:${d.direction || ''}`],
     // settings pushes (#907): the whole state each time, so the newest only
     ['traffic_settings_changed', 'last'],
@@ -175,7 +177,7 @@ const DESKTOP_ONLY_TYPES = new Set([
 // #890 round 5: Traffic's settings and leave-time reports (wmTraffic.js), the notification inbox
 // (wmNotificationInbox.js) - all mobile-shell only. #907: msg_new_state (wmShell.js envelope icons).
 const PHONE_ONLY_TYPES = new Set([
-    'lapis_updated', 'lapis_notice', 'traffic_updated',
+    'lapis_updated', 'lapis_notice', 'plaid_balances', 'traffic_updated',
     'traffic_settings_changed', 'traffic_report',
     'inbox_updated', 'msg_new_state',
     // Claude Accounts (wmClaudeAccounts.js): Remote Control reconnecting / connected / error, admins only
