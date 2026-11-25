@@ -42,7 +42,7 @@
     const STALE_MS = 60 * 1000;
     const TODAY_CACHE_MS = 15 * 1000;
     const SEEN_KEY = 'sf_wallet_seen_alerts'; // walletTray.js: alerts this session has shown
-    const ACTION_LABELS = { login: 'Log In', unlock: 'Unlock', 'novelai-site': 'Open NovelAI', 'app-requests': 'View Requests', 'claude-accounts': 'Claude Accounts' };
+    const ACTION_LABELS = { login: 'Log In', unlock: 'Unlock', 'novelai-site': 'Open NovelAI', 'app-requests': 'View Requests', 'claude-accounts': 'Fleet' };
     const DOT_TITLES = { ok: 'OK', warn: 'Needs attention', bad: 'Out', off: 'Unavailable' };
 
     let sh = null;
