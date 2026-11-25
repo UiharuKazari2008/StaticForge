@@ -5692,6 +5692,7 @@ class ServiceWorkerManager {
             if (both && mc && typeof mc.holdDexForRestart === 'function') mc.holdDexForRestart(true);
         } catch (err) { console.warn('[update] restart bookkeeping (restarting anyway)', err); }
         console.log(`🔄 Restart for updates: the phone restarts now${both ? ', the DeX window after it' : ''}`);
+        // app-scope: allow sets the accessor app.js defines on window (its own bypassConfirmation), no new page global
         window.bypassConfirmation = true;
         // the app's connection (Melaton Miniport, #815) starts fresh too, as winlogonPower's restart does
         try { if (mc && typeof mc.resetMiniport === 'function') mc.resetMiniport(); } catch (_) { /* restart anyway */ }
