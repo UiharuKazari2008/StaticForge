@@ -70,6 +70,7 @@ Before touching an area in this table, read its rule with the Read tool: "I didn
 | --- | --- |
 | `.cursor/rules/design-decisions.mdc` | changing how something looks or behaves; a change that contradicts `docs/design/design-decisions.md` is confirmed with Yukimi first |
 | `.cursor/rules/no-retype-on-move.mdc` | moving large blocks of code between files (copy by script with start/end markers, never retype) |
+| `.cursor/rules/client-update-never-in-place.mdc` | any client asset update: the service worker apply path, `update_client` / a restart decision, hot CSS, or anything that would put a changed asset into a running page (hard ban: a running client reloads, it never applies in place) |
 | `.cursor/rules/client-browser-testing.mdc` | testing the bound Dreamscape client tab via MCP (update, wait for download/ready, restart only for JS/HTML, then inspect) |
 | `.cursor/rules/phone-data-via-activesync.mdc` | the server's ADB does not see a phone or it is unauthorized (get its data through ActiveSync before asking Yukimi) |
 | `.cursor/rules/emulator-instances.mdc` | needing a Windows Mobile emulator (check out your own instance from the emulator manager `~/.config/wm-emu/emu`) |
