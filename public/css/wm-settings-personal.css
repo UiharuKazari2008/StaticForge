@@ -258,3 +258,23 @@ html.ui-mobile[data-wm-version="6.5"] .wm-form .wmsp-checkcombo .wm-check > span
     padding-top: calc(1.5 * var(--wm-px));
     line-height: calc(12.5 * var(--wm-px));
 }
+
+/* a labelled form row whose control is a sound combo + play button (Chime tab, wmSettingsChime.js): the pair fills the
+ * row's value column; on 6.5.1 the label goes above, as for every labelled drop-down there (wm65.css) */
+html.ui-mobile .wm-form .wm-form-row > .wmsp-sound-row {
+    margin: 0;
+    min-width: 0;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form-row:has(> .wmsp-sound-row) {
+    display: block;
+    margin-bottom: calc(3 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form-row:has(> .wmsp-sound-row) > .wm-form-label {
+    display: block;
+    height: calc(15 * var(--wm-px));
+    margin-bottom: calc(1 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+    text-align: left;
+}
