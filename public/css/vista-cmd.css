@@ -15,13 +15,13 @@
     margin: 0;
     padding: 0 !important;
     overflow: hidden;
-    background: #000 !important;
+    background: var(--console-cmd-0) !important;
     border-radius: 0;
 }
 
 .cmd-window .cmd-screen {
-    --cmd-bg: #000;
-    --cmd-fg: #c0c0c0;
+    --cmd-bg: var(--console-cmd-0);
+    --cmd-fg: var(--console-cmd-7);
     --cmd-font-size: 13px;
     --cmd-spacing: 0px;
     position: absolute;
@@ -34,7 +34,7 @@
     color: var(--cmd-fg);
     outline: none;
     cursor: text;
-    font-family: "Lucida Console", Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+    font-family: var(--console-font);
     font-size: var(--cmd-font-size);
     font-weight: 400;
     font-variant-ligatures: none;

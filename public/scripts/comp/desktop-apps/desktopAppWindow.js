@@ -60,7 +60,8 @@ function desktopAppApplyContentHeight(modal, fixed) {
  * until the shared openWindow lands (#851 slice 3). Writes the caption with the image icon, the
  * caption buttons, the focus overlay and the client; the caller fills the client and opens it.
  *   desktopAppCreateWindow({ id, identifier, title, icon16, taskbarIcon, className, fixed, minimize })
- *   -> { modal, content, close } (content: .modal-content.win7, empty; close: the caption's X)
+ *   -> { modal, content, close, titleText } (content: .modal-content.win7, empty; close: the caption's X;
+ *      titleText: the caption's text span, for a title that changes)
  */
 function desktopAppCreateWindow(opts) {
     const o = opts || {};
@@ -109,6 +110,6 @@ function desktopAppCreateWindow(opts) {
     content.className = 'modal-content win7';
     modal.append(title, focus, controls, content);
     document.body.appendChild(modal);
-    return { modal, content, close };
+    return { modal, content, close, titleText: text };
 }
 window.desktopAppCreateWindow = desktopAppCreateWindow;
