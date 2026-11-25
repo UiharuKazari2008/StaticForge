@@ -577,7 +577,7 @@
     display: none;
 }
 
-/* ---- Recordings (#1144): the newest Plaud recordings, the picked one's summary, the Yozora button */
+/* ---- Plaud (#1144, #1193): the newest Plaud recordings, the picked one's summary, the Yozora button */
 .wm-today-block.wtw-rec {
     align-items: flex-start;
     min-height: calc(21 * var(--wm-px));
@@ -633,6 +633,6 @@
     white-space: nowrap;
 }
 
-.wtw-rec-batt[hidden] {
+.wtw-rec-dev[hidden] {
     display: none;
 }

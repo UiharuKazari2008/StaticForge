@@ -19,6 +19,7 @@ function reply(status, body, headers) {
 }
 
 const calls = [];
+let failNet = false;
 let refreshAnswer = { access_token: 'acc2', expires_in: 3600 };
 const files = Array.from({ length: 30 }, (_, i) => ({ id: `f${i}`, name: i % 10 === 0 ? `UI Review ${i}` : `Meeting ${i}`, created_at: '2026-11-20T10:00:00Z', duration: 60000 }));
 const segments = [{ start_time: 0, end_time: 4000, speaker: 'Yukimi', content: 'The start menu is too slow.' }, { start_time: 65000, speaker: 'Yukimi', content: 'Fix the clock.' }];
@@ -26,6 +27,7 @@ const segments = [{ start_time: 0, end_time: 4000, speaker: 'Yukimi', content: '
 t.setDeps({
     lookup: async (host) => (host === 'evil.test' ? [{ address: '10.0.0.5' }] : [{ address: '52.1.2.3' }]),
     fetch: async (url, init) => {
+        if (failNet) throw new Error('offline');
         const u = new URL(url);
         const auth = (init && init.headers && init.headers.Authorization) || '';
         calls.push({ path: u.pathname, auth, body: init && init.body });
@@ -183,6 +185,58 @@ t.setDeps({
     const scopes = require('../modules/directorAppKeyScopes');
     assert.deepStrictEqual(scopes.PLAUD_KEY_TARGETS.map((x) => x.label), ['Xi']);
     assert.ok(!scopes.DIRECTOR_MCP_SCOPES.includes('sfapp_plaud'));
+
+    // ---- Today's Plaud item: list freshness and the one-press review ----
+    const today = require('../modules/plaudToday');
+    refreshAnswer = { access_token: 'acc2', expires_in: 3600 };
+    t.reset();
+    const l4 = plaud.linkStart();
+    await plaud.linkFinish(`${t.REDIRECT_URI}?code=CODE1&state=${new URL(l4.url).searchParams.get('state')}`);
+    const started = [];
+    const tagged = [];
+    let chatSources = [];
+    today._test.setDeps({
+        directorStart: {
+            startDirectorSession: async (gr, input) => { started.push(input); return { sessionId: 'chat1', started: true }; },
+            getDirectorSession: () => ({ status: 'running', issues: [] })
+        },
+        xiDirector: {
+            listChatBriefs: () => (chatSources.length ? [{ id: 'chat1', sources: chatSources }] : []),
+            tagStartedChat: async (id, patch) => { tagged.push([id, patch.source]); }
+        }
+    });
+    const before = Date.now();
+    const l1 = await today.list();
+    assert.strictEqual(l1.stale, false);
+    assert.strictEqual(l1.device, null);
+    assert.strictEqual(l1.battery, null);
+    assert.ok(l1.lastRead >= before && l1.lastRead <= Date.now());
+    failNet = true;
+    const l2 = await today.list();
+    failNet = false;
+    assert.strictEqual(l2.stale, true);
+    assert.strictEqual(l2.lastRead, l1.lastRead);
+    assert.deepStrictEqual(l2.recordings.map((x) => x.id), l1.recordings.map((x) => x.id));
+
+    // nothing unread: nothing starts
+    chatSources = l1.recordings.map((x) => x.source);
+    const none = await today.reviewNew({});
+    assert.deepStrictEqual(none, { started: false, none: true, count: 0, waiting: 0 });
+    assert.strictEqual(started.length, 0);
+
+    // two unread: one session on the newest source, every id in the prompt, the other tagged
+    chatSources = l1.recordings.slice(2).map((x) => x.source);
+    const two = await today.reviewNew({});
+    assert.strictEqual(started.length, 1);
+    assert.strictEqual(started[0].source, `plaud:${l1.recordings[0].id}`);
+    assert.strictEqual(started[0].persona, 'xi');
+    assert.ok(started[0].prompt.includes(`plaud:${l1.recordings[0].id}`) && started[0].prompt.includes(`plaud:${l1.recordings[1].id}`));
+    assert.ok(started[0].prompt.includes(require('../modules/plaudActionsPrompt').BODY));
+    assert.strictEqual(started[0].title, 'Plaud: 2 new recordings');
+    assert.deepStrictEqual(tagged, [['chat1', `plaud:${l1.recordings[1].id}`]]);
+    assert.strictEqual(two.count, 2);
+    assert.strictEqual(two.sessionId, 'chat1');
+    today._test.reset();
 
     fs.rmSync(dir, { recursive: true, force: true });
     console.log('test-plaud: ok');
