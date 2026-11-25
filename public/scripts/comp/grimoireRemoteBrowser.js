@@ -751,7 +751,12 @@ function grimoireTabFavicon(shell, url, changed) {
         }
         try {
             const res = await fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id) + '/page-icon?' + shell._grimoireRemoteViewQuery + '&kind=tab', { credentials: 'same-origin' });
-            const info = res.ok ? await res.json() : {};
+            // a failed answer (the server restarting, Alchemy busy) is not "this page has no icon": the next load asks again
+            if (!res.ok) {
+                grimoireFaviconCache.delete(url);
+                return;
+            }
+            const info = await res.json();
             const icon = typeof info.icon === 'string' ? info.icon : '';
             grimoireFaviconCache.set(url, icon);
             put(icon);
