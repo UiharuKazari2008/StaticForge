@@ -16,7 +16,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-today.is-titanium > [data-row] {
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti {
-    --u: var(--wm-px);
+    --u: calc(var(--wm-px) * var(--wm-ti-scale, 1.15));
     position: absolute;
     inset: 0;
     overflow: hidden;
@@ -419,6 +419,78 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-blur-in {
     transform: translate3d(var(--wm-ti-tx, 0%), calc(var(--wm-ti-par, 0) * var(--wm-ti-shift, 0%) + var(--wm-ti-ty, 0%)), 0) scale(var(--wm-ti-zoom, 1));
 }
 
+/* the light on the glass (glasslight; Yukimi, Nov 23: livelier, a bit of HTC Sense, still the 6.5 look): static
+ * layers on the art's glass (9 - 69 of 82 units), nothing animates. A light rim along the glass's top and
+ * bottom lines, a crisp light lip under the art's middle edge (24 units: the glass's upper band meets its
+ * lower body; 15 units into the glass), a faint diagonal sheen and one thin specular streak. */
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="glasslight"] .wm-ti-band::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(9 * var(--u));
+    height: calc(60 * var(--u));
+    pointer-events: none;
+    background:
+        /* the top rim: a bright hairline fading out toward the sides */
+        linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.6) 14%, rgba(255, 255, 255, 0.72) 50%, rgba(255, 255, 255, 0.6) 86%, rgba(255, 255, 255, 0)) 0 0 / 100% calc(0.75 * var(--u)) no-repeat,
+        /* the bottom rim, softer, with the glass's edge light just above it */
+        linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.48) 18%, rgba(255, 255, 255, 0.62) 50%, rgba(255, 255, 255, 0.48) 82%, rgba(255, 255, 255, 0)) 0 100% / 100% calc(0.75 * var(--u)) no-repeat,
+        linear-gradient(to top, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0)) 0 100% / 100% calc(5 * var(--u)) no-repeat,
+        /* the middle edge, crisp: a dark hairline on the edge, a light lip right under it, then a short fall-off */
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.4) 0, rgba(0, 0, 0, 0.4) calc(0.5 * var(--u)), rgba(255, 255, 255, 0.5) calc(0.5 * var(--u)), rgba(255, 255, 255, 0.5) calc(1.1 * var(--u)), rgba(255, 255, 255, 0.12) calc(1.1 * var(--u)), rgba(255, 255, 255, 0) calc(4 * var(--u))) 0 calc(14.5 * var(--u)) / 100% calc(4 * var(--u)) no-repeat,
+        /* the specular streak: one thin slanted line of light across the glass */
+        linear-gradient(104deg, rgba(255, 255, 255, 0) 61%, rgba(255, 255, 255, 0.18) 62.4%, rgba(255, 255, 255, 0.18) 63.4%, rgba(255, 255, 255, 0) 64.8%),
+        /* the sheen: two soft slanted bands of light, the left one stronger */
+        linear-gradient(104deg, rgba(255, 255, 255, 0) 12%, rgba(255, 255, 255, 0.11) 26%, rgba(255, 255, 255, 0.035) 40%, rgba(255, 255, 255, 0) 41%, rgba(255, 255, 255, 0) 52%, rgba(255, 255, 255, 0.05) 58%, rgba(255, 255, 255, 0) 70%);
+}
+
+/* the weather in the glass (wmTitanium.js syncWx, effect "weather"): over the frosted picture, under the art, the rows
+ * and the panel, exactly as high as the glass. Drops, flakes, stars, clouds, wind and leaves; transform / opacity only.
+ * is-paused (Today hidden or behind a program, screen off, page hidden) stops every animation. */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx {
+    --fall: calc(78 * var(--u));
+    --travel: calc(520 * var(--u));
+    position: absolute;
+    left: 0;
+    top: calc((var(--wm-ti-top, 99) + 9) * var(--u));
+    width: 100%;
+    height: calc(60 * var(--u));
+    overflow: hidden;
+    pointer-events: none;
+    contain: strict;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx > i {
+    position: absolute;
+    display: block;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx.is-paused > i,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-super .wm-ti-wxfx > i {
+    animation-play-state: paused;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx .wm-wx-drop { top: calc(-14 * var(--u)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx .wm-wx-flake { top: calc(-3 * var(--u)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx .wm-wx-fog { top: 5%; height: 80%; }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx .wm-wx-cloud { height: 60%; }
+/* the art's glass tints what lies under it: the glass's drops, stars, streaks and leaves are a little stronger than the Super Bar's */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx .wm-wx-drop { width: calc(0.9 * var(--u)); background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(235, 244, 255, 0.9)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx .wm-wx-star { width: calc(2 * var(--u)); height: calc(2 * var(--u)); box-shadow: 0 0 calc(3 * var(--u)) rgba(255, 255, 255, 0.95); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx .wm-wx-streak { height: calc(0.75 * var(--u)); background: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.75)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx .wm-wx-leaf { width: calc(var(--s) * 1.45 * var(--u)); height: calc(var(--s) * 0.9 * var(--u)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx .wm-wx-sun {
+    right: calc(-60 * var(--u));
+    top: calc(-95 * var(--u));
+    width: calc(190 * var(--u));
+}
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx .wm-wx-rays {
+    right: calc(-120 * var(--u));
+    top: calc(-165 * var(--u));
+    width: calc(330 * var(--u));
+}
+
 /* the glass catches the light as the list lands: a highlight over the band's upper glass, in and out */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-band::after {
     content: "";
@@ -514,7 +586,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-primed .wm-ti-focus {
  * are hidden only while the card lies exactly over them. */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-super .wm-ti-band,
 html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-super .wm-ti-focus,
-html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-super .wm-ti-blur {
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-super .wm-ti-blur,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-super .wm-ti-wxfx {
     visibility: hidden;
 }
 
@@ -1206,6 +1279,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > b {
 /* ---- weather inside the Super Bar (wmTitanium.js drawWeatherFx): behind the notifications, over the
  * darkening; transform and opacity only. --fall: the drop distance (set from the screen's height). */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-fx {
+    --travel: calc(520 * var(--u));
     position: absolute;
     inset: 0;
     overflow: hidden;
@@ -1230,8 +1304,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-wx-drop {
 }
 
 @keyframes wm-wx-fall {
-    from { transform: translate3d(0, 0, 0) rotate(10deg); }
-    to { transform: translate3d(calc(var(--fall) * -0.18), var(--fall), 0) rotate(10deg); }
+    from { transform: translate3d(0, 0, 0) rotate(var(--rot, 10deg)); }
+    to { transform: translate3d(calc(var(--fall) * var(--lean, -0.18)), var(--fall), 0) rotate(var(--rot, 10deg)); }
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-wx-flake {
@@ -1348,6 +1422,53 @@ html.ui-mobile[data-wm-version="6.5"] .wm-wx-star {
 @keyframes wm-wx-twinkle {
     from { opacity: 0.15; }
     to { opacity: 0.9; }
+}
+
+/* wind (a strong wind or a storm): rain leans into it, thin streaks race across, leaves tumble (CSS-drawn, no pictures).
+ * --travel: how far across (the box's width and a margin). */
+html.ui-mobile[data-wm-version="6.5"] [data-wind="1"] { --lean: -0.3; --rot: 15deg; }
+html.ui-mobile[data-wm-version="6.5"] [data-wind="2"] { --lean: -0.46; --rot: 22deg; }
+
+html.ui-mobile[data-wm-version="6.5"] .wm-wx-streak {
+    left: calc(-70 * var(--u));
+    width: calc(var(--w) * var(--u));
+    height: calc(0.5 * var(--u));
+    border-radius: calc(0.25 * var(--u));
+    background: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.4));
+    opacity: 0;
+    /* perf: allow design motion (Yukimi, Nov 23): wind in the Super Bar's weather and the band's glass; transform / opacity only, paused whenever the layer is not seen (wmTitanium.js syncWx) */
+    animation: wm-wx-streak var(--t) linear infinite;
+    animation-delay: var(--d);
+}
+
+@keyframes wm-wx-streak {
+    0% { transform: translate3d(0, 0, 0); opacity: 0; }
+    12% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { transform: translate3d(var(--travel), 0, 0); opacity: 0; }
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-wx-leaf {
+    left: calc(-12 * var(--u));
+    width: calc(var(--s) * var(--u));
+    height: calc(var(--s) * 0.62 * var(--u));
+    border-radius: 0 100% 0 100%;
+    background: var(--c);
+    box-shadow: inset 0 calc(-0.2 * var(--u)) 0 rgba(0, 0, 0, 0.18);
+    opacity: 0;
+    /* perf: allow design motion (Yukimi, Nov 23): blowing leaves in the Super Bar's weather and the band's glass; transform / opacity only, paused whenever the layer is not seen (wmTitanium.js syncWx) */
+    animation: wm-wx-leaf var(--t) linear infinite;
+    animation-delay: var(--d);
+}
+
+@keyframes wm-wx-leaf {
+    0% { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 0; }
+    8% { opacity: 0.95; }
+    20% { transform: translate3d(calc(var(--travel) * 0.2), calc(var(--y) * var(--u)), 0) rotate(160deg); }
+    40% { transform: translate3d(calc(var(--travel) * 0.4), calc(var(--y) * -0.7 * var(--u)), 0) rotate(330deg); }
+    60% { transform: translate3d(calc(var(--travel) * 0.6), calc(var(--y) * 0.9 * var(--u)), 0) rotate(520deg); }
+    80% { transform: translate3d(calc(var(--travel) * 0.8), calc(var(--y) * -0.5 * var(--u)), 0) rotate(700deg); opacity: 0.95; }
+    100% { transform: translate3d(var(--travel), calc(var(--y) * 0.4 * var(--u)), 0) rotate(880deg); opacity: 0; }
 }
 
 /* ---- the clock carrying the weather (wmTitanium.js clockPages, Yukimi Nov 15): the condition icon in

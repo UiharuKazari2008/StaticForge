@@ -51,6 +51,8 @@
         todayParallaxLevel: 'wmTodayParallaxLevel',
         // ... and the other effects, { name: false } for each one switched off (all on by default)
         todayFx: 'wmTodayFx',
+        // ... Today > Effects > Size: percent 100 - 130 in steps of 5, unset = 115 (wmTitanium.js)
+        todayScale: 'wmTodayScale',
         // ... Today > Text: the labels' weight and the glass item's, 'bold' / 'regular' / 'semilight' / 'light' (wmTitanium.js)
         todayRowWeight: 'wmTodayRowWeight',
         todayBandWeight: 'wmTodayBandWeight',
@@ -1545,6 +1547,7 @@
                 // rotation of Today (Yukimi, Nov 13: it applies to the Today screen only, so it lives here)
                 parallax: lsGet(K.todayParallax) === '1',
                 parallaxLevel: Math.max(1, Math.min(10, Math.round(Number(lsGet(K.todayParallaxLevel)) || 4))),
+                todayScale: (() => { const v = Number(lsGet(K.todayScale)); return v >= 100 && v <= 130 ? Math.round(v / 5) * 5 : 115; })(),
                 fx: (() => { try { const v = JSON.parse(lsGet(K.todayFx) || 'null'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } })(),
                 rowWeight: TEXT_WEIGHTS.some(([v]) => v === lsGet(K.todayRowWeight)) ? lsGet(K.todayRowWeight) : '',
                 bandWeight: TEXT_WEIGHTS.some(([v]) => v === lsGet(K.todayBandWeight)) ? lsGet(K.todayBandWeight) : '',
@@ -1664,6 +1667,8 @@
                         ['gloss', 'Light the items under the glass'],
                         ['digits', "Roll the clock's digits"],
                         ['blur', 'Frosted glass'],
+                        ['glasslight', 'Light the edges of the glass'],
+                        ['weather', 'Weather in the glass'],
                         ['haptics', 'Vibrate as items pass the glass'],
                         ['superbar', 'Tap the clock for the Super Bar'],
                         ['startopen', 'Start: icons come in from the corner'],
@@ -1673,13 +1678,18 @@
                     ];
                     el.innerHTML = `${check('wmTodayParallax', 'Parallax Effect', d.parallax)}
                         <div class="wm-form-sub">Distance</div><div data-f="parallax-level"></div>
+                        <div class="wm-form-sub">Size</div><div data-f="today-scale"></div>
                         <div class="wm-form-gap"></div>
-                        <div class="wm-listbox wm-opt-list" style="flex:0 1 auto;min-height:0;max-height:calc(150 * var(--wm-px))">${rows.map(([k, l]) => `<div class="wm-listbox-row">${check(`fx-${k}`, l, d.fx[k] !== false, `value="${k}"`)}</div>`).join('')}</div>
+                        <div class="wm-listbox wm-opt-list" style="flex:0 1 auto;min-height:0;max-height:calc(105 * var(--wm-px))">${rows.map(([k, l]) => `<div class="wm-listbox-row">${check(`fx-${k}`, l, d.fx[k] !== false, `value="${k}"`)}</div>`).join('')}</div>
                         <p class="wm-form-note">Moving effects are off while the phone asks for reduced motion.</p>`;
                     el.querySelector('input[name="wmTodayParallax"]').addEventListener('change', (e) => { d.parallax = e.target.checked; api.rerender(); });
                     ui.trackbar(el.querySelector('[data-f="parallax-level"]'), {
                         steps: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], value: d.parallaxLevel, lo: 'Slight', hi: 'A lot', label: 'Parallax distance',
                         disabled: !d.parallax, onChange: (v) => { d.parallaxLevel = v; }
+                    });
+                    ui.trackbar(el.querySelector('[data-f="today-scale"]'), {
+                        steps: [100, 105, 110, 115, 120, 125, 130], value: d.todayScale, lo: 'Normal', hi: 'Large', label: 'Today size',
+                        onChange: (v) => { d.todayScale = v; }
                     });
                     rows.forEach(([k]) => {
                         const c = el.querySelector(`input[name="fx-${k}"]`);
@@ -1834,12 +1844,13 @@
                 lsSet(K.titleBar, d.titleBar);
                 lsSet(K.todayParallax, d.parallax ? '1' : null);
                 lsSet(K.todayParallaxLevel, d.parallaxLevel === 4 ? null : d.parallaxLevel);
+                lsSet(K.todayScale, d.todayScale === 115 ? null : d.todayScale);
                 lsSet(K.todayFx, Object.keys(d.fx || {}).length ? JSON.stringify(d.fx) : null);
                 lsSet(K.todayRowWeight, d.rowWeight || null);
                 lsSet(K.todayBandWeight, d.bandWeight || null);
                 if (d.sbn && Object.keys(d.sbn).length) lsSet('wmSuperBarNotes', JSON.stringify(d.sbn));
                 applyTitleBar();
-                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY, K.todayParallax, K.todayParallaxLevel, K.todayFx, K.todayRowWeight, K.todayBandWeight, 'wmSuperBarNotes'];
+                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY, K.todayParallax, K.todayParallaxLevel, K.todayScale, K.todayFx, K.todayRowWeight, K.todayBandWeight, 'wmSuperBarNotes'];
                 // Rotation (a foldable's per-screen choices, or the one for a phone)
                 const rot = d.screen && d.screen.foldable
                     ? [[K.homeRotateCover, d.rotateCover ? '1' : null], [K.homeRotateMain, d.rotateMain ? null : '0']]
