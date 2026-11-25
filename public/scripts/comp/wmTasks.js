@@ -62,7 +62,6 @@
     let expanded = false;
     let barPri = 0; // the entry bar's toggle: 0 | 1 (high) | 9 (low)
     let barFocus = 'high';
-    let printTimer = null;
     let printKey = '';
     const recent = [];
 
@@ -981,30 +980,21 @@
         // read again when nothing is read for this workspace or a change may have been missed; the calendars'
         // changes come as vfs_updated (onVfsMessage), so not every show after 60 s (#890)
         if (!loadedAt || loadedFor !== workspaceId() || tasksDirty) reload(true);
-        clearInterval(printTimer);
-        printTimer = null;
-        syncPrintWatch();
+        printCheck();
     }
 
-    // a print that starts or ends changes the list (the requests are local: no push for them); looked at
-    // every 2 s only while Tasks is in front and seen - the screen off or another app in front stops it,
-    // and coming back looks at once
+    // a print that starts or ends changes the list: the client's pending requests announce each change
+    // (wsPendingChanged, websocket.js), looked at only while Tasks is in front and seen; coming back
+    // (printWake) looks at once
     const listSeen = () => !!page && ws.current === APP_ID && (!ws.onScreen || ws.onScreen(page));
     function printCheck() {
         if (view === 'list' && prints().map((x) => x.uid).join('|') !== printKey) renderList();
-    }
-    function syncPrintWatch() {
-        const on = listSeen();
-        // perf: allow only while the Tasks list is on screen (listSeen; cleared otherwise): the prints in progress are this page's own requests, with no push to follow
-        if (on && !printTimer) printTimer = setInterval(() => { if (listSeen()) printCheck(); else syncPrintWatch(); }, 2000);
-        else if (!on && printTimer) { clearInterval(printTimer); printTimer = null; }
     }
     let pageStale = false;
     let vfsPending = false;
     function printWake() {
         if (vfsPending && (!ws.onScreen || ws.onScreen())) { vfsPending = false; reload(true); }
-        syncPrintWatch();
-        if (!printTimer) return;
+        if (!listSeen()) return;
         if (pageStale && view !== 'form') render(); else printCheck();
     }
 
@@ -1080,7 +1070,7 @@
             sip: true,
             mount,
             show,
-            hide() { clearInterval(printTimer); printTimer = null; closePicker(); },
+            hide() { closePicker(); },
             // the device's title reads "Recent" while the Recently Viewed filter is on
             titleNow: () => (view === 'list' && filter().show === 'recent' ? 'Recent' : 'Tasks'),
             titleKind: () => (view === 'list' ? 'close' : 'ok'),
@@ -1116,6 +1106,7 @@
         window.addEventListener('melatonscreen', printWake, { signal: appScopeSignal });
         document.addEventListener('visibilitychange', printWake, { signal: appScopeSignal });
         document.addEventListener('wmBehind', printWake, { signal: appScopeSignal });
+        document.addEventListener('wsPendingChanged', () => { if (listSeen()) printCheck(); }, { signal: appScopeSignal });
     }
 
     if (window.wmShell) register();
