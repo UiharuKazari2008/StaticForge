@@ -1645,41 +1645,88 @@
 
     // ---------------------------------------------------------------- next hour
 
+    // One threshold for the bars and the sentence, so the text never contradicts the chart (#1125).
+    const WET = 0.05; // mm/h; a minute below it draws no bar and counts as dry
+    const NEXT_LIGHT = 1; // mm/h, below it: light (as modules/weatherService.js nextHourSummary)
+    const NEXT_HEAVY = 4; // mm/h, from it: heavy
+    const NEXT_SCALE_MIN = 6; // mm/h at the top of the chart; the grid lines sit at NEXT_LIGHT and NEXT_HEAVY
+
+    /** Sentence for the minutes array the bars are drawn from. Pure. -> { text, dry } */
+    function nextHourText(mins, step) {
+        const st = step || 1;
+        const total = mins.length * st;
+        const val = (x) => (num(x && x.mmh) || 0);
+        const isWet = (x) => val(x) >= WET;
+        const win = total <= 75 ? 'the next hour' : total <= 135 ? 'the next two hours' : `the next ${Math.round(total / 60)} hours`;
+        const first = mins.findIndex(isWet);
+        if (first < 0) return { text: `No precipitation for ${win}`, dry: true };
+        const wetNow = first === 0;
+        let end = mins.findIndex((x, i) => i > first && !isWet(x));
+        if (end < 0) end = mins.length;
+        const run = mins.slice(first, end);
+        const peak = Math.max(...run.map(val));
+        const snow = run.some((x) => x.type === 'snow' || x.precipType === 'snow');
+        const word = snow ? (peak < NEXT_LIGHT ? 'Light snow' : 'Snow') : (peak < NEXT_LIGHT ? 'Light rain' : peak >= NEXT_HEAVY ? 'Heavy rain' : 'Rain');
+        if (!wetNow) {
+            const n = first * st;
+            return { text: n < 90 ? `${word} starting in ${n} min` : `${word} starting in about ${Math.round(n / 60)} h`, dry: false };
+        }
+        if (end < mins.length) return { text: `${word} stopping in ${end * st} min`, dry: false };
+        return { text: `${word} for ${win}`, dry: false };
+    }
+
     function renderNextHour(data) {
         const m = data && data.minutely;
         const mins = m && Array.isArray(m.minutes) ? m.minutes : [];
         els.nextWrap.hidden = !mins.length;
         if (!mins.length) { els.next.innerHTML = ''; return; }
+        const step = m.stepMinutes || 1;
+        const sentence = nextHourText(mins, step);
         // dry the whole time: the sentence alone, no empty chart
-        if (!mins.some((x) => (num(x.mmh) || 0) > 0)) {
-            els.next.innerHTML = `<div class="wxw-next-summary is-dry">${ws.escapeHtml(m.summary || 'No precipitation expected')}</div>`;
+        if (sentence.dry) {
+            els.next.innerHTML = `<div class="wxw-next-summary is-dry">${ws.escapeHtml(sentence.text)}</div>`;
             return;
         }
         const W = 300;
         const H = 64;
-        const maxI = Math.max(2.5, ...mins.map((x) => num(x.mmh) || 0));
+        const maxI = Math.max(NEXT_SCALE_MIN, ...mins.map((x) => num(x.mmh) || 0));
+        const yOf = (v) => Math.max(2, Math.min(1, Math.sqrt(v / maxI)) * (H - 6));
         const bw = W / mins.length;
         const bars = mins.map((x, i) => {
             const v = num(x.mmh) || 0;
             const chance = (num(x.rain) || 0) / 100;
-            const h = v > 0 ? Math.max(2, Math.min(1, Math.sqrt(v / maxI)) * (H - 6)) : 0;
+            const h = v >= WET ? yOf(v) : 0;
             return h ? `<rect x="${(i * bw + bw * 0.12).toFixed(2)}" y="${(H - h).toFixed(2)}" width="${Math.max(0.8, bw * 0.76).toFixed(2)}" height="${h.toFixed(2)}" rx="${Math.min(1.5, bw / 3).toFixed(2)}" opacity="${(0.45 + chance * 0.55).toFixed(2)}"/>` : '';
         }).join('');
-        const step = m.stepMinutes || 1;
         const total = mins.length * step;
-        const marks = [0, 0.25, 0.5, 0.75, 1].map((f) => {
-            const t = Math.round(f * total);
-            return `<span style="left:${(f * 100).toFixed(1)}%">${f === 0 ? 'Now' : `${t} min`}</span>`;
-        }).join('');
-        els.next.innerHTML = `<div class="wxw-next-summary">${ws.escapeHtml(m.summary || '')}</div>
-            <svg class="wxw-next-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
-                <line x1="0" y1="${H - 0.5}" x2="${W}" y2="${H - 0.5}" class="wxw-axis"/>
-                <line x1="0" y1="${(H * 0.33).toFixed(1)}" x2="${W}" y2="${(H * 0.33).toFixed(1)}" class="wxw-grid"/>
-                <line x1="0" y1="${(H * 0.66).toFixed(1)}" x2="${W}" y2="${(H * 0.66).toFixed(1)}" class="wxw-grid"/>
-                <g class="wxw-next-bars">${bars}</g>
-            </svg>
-            <div class="wxw-next-axis">${marks}</div>
-            <div class="wxw-next-key"><span>Heavy</span><span>Moderate</span><span>Light</span></div>`;
+        // full clock hours inside the window: a tick in the svg, the time as HTML under it
+        const t0 = mins[0].time && mins[0].time.length >= 16 ? localMs(mins[0].time.slice(0, 16)) : placeNow(data);
+        const ticks = [];
+        for (let t = Math.ceil((t0 + 60000) / 3600000) * 3600000; t < t0 + total * 60000; t += 3600000) {
+            const f = (t - t0) / (total * 60000);
+            ticks.push({ f, label: hourLabel(new Date(t).toISOString().slice(0, 16)) });
+        }
+        const tickLines = ticks.map((k) => `<line x1="${(k.f * W).toFixed(1)}" y1="0" x2="${(k.f * W).toFixed(1)}" y2="${H}" class="wxw-grid wxw-next-tick"/>`).join('');
+        const end = total % 60 === 0 ? `${total / 60} h` : `${total} min`;
+        const marks = `<span data-left="0">Now</span>${ticks.filter((k) => k.f > 0.18 && k.f < 0.82).map((k) => `<span data-left="${(k.f * 100).toFixed(1)}">${k.label}</span>`).join('')}<span data-left="100">${end}</span>`;
+        const gy = (v) => (H - yOf(v)).toFixed(1);
+        const lbl = (txt, y) => `<span data-top="${(y / H * 100).toFixed(1)}">${txt}</span>`;
+        els.next.innerHTML = `<div class="wxw-next-summary">${ws.escapeHtml(sentence.text)}</div>
+            <div class="wxw-next-body">
+                <svg class="wxw-next-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+                    ${tickLines}
+                    <line x1="0" y1="${H - 0.5}" x2="${W}" y2="${H - 0.5}" class="wxw-axis"/>
+                    <line x1="0" y1="${gy(NEXT_LIGHT)}" x2="${W}" y2="${gy(NEXT_LIGHT)}" class="wxw-grid"/>
+                    <line x1="0" y1="${gy(NEXT_HEAVY)}" x2="${W}" y2="${gy(NEXT_HEAVY)}" class="wxw-grid"/>
+                    <g class="wxw-next-bars">${bars}</g>
+                </svg>
+                <div class="wxw-next-key">${lbl('Heavy', H - yOf(NEXT_HEAVY))}${lbl('Moderate', H - yOf(NEXT_LIGHT))}${lbl('Light', H - 4)}</div>
+                <div class="wxw-next-axis">${marks}</div>
+            </div>
+            <div class="wxw-next-unit">Bars: rain intensity &middot; right edge = ${end} from now</div>`;
+        // dynamic positions through the CSSOM (no style="" in templates)
+        els.next.querySelectorAll('[data-left]').forEach((el) => { el.style.left = `${el.dataset.left}%`; });
+        els.next.querySelectorAll('[data-top]').forEach((el) => { el.style.top = `${el.dataset.top}%`; });
     }
 
     // ---------------------------------------------------------------- conditions and sun & moon
@@ -1752,24 +1799,49 @@
         </svg>`;
     }
 
+    // The sun and moon ride one true semicircle (equal radii, never stretched).
+    const ARC = { cx: 100, cy: 92, r: 84 };
+    const MOON_DAY = 24.8 * 3600000; // a lunar day, to place a rise or set that falls on the neighbouring day
+
+    /** Point on the semicircle at fraction f (0 = left horizon, 1 = right horizon). */
+    function arcPoint(f) {
+        const ang = Math.PI * (1 - Math.max(0, Math.min(1, f)));
+        return { x: ARC.cx + Math.cos(ang) * ARC.r, y: ARC.cy - Math.sin(ang) * ARC.r };
+    }
+
+    /** The moon's current pass { f, up } from today's rise/set (ms, either may be null), or null when it cannot be told. Pure. */
+    function moonPass(rise, set, now) {
+        if (rise == null || set == null) return null;
+        const a = set > rise ? rise : (now < set ? rise - MOON_DAY : rise);
+        const b = set > rise ? set : (now < set ? set : set + MOON_DAY);
+        return { f: Math.max(0, Math.min(1, (now - a) / (b - a))), up: now >= a && now <= b };
+    }
+
     function renderSunMoon(data) {
         const today = data && data.daily && data.daily[0];
         if (!today) { els.sunmoon.innerHTML = ''; return; }
         const now = placeNow(data);
         const rise = today.sunrise ? localMs(today.sunrise) : null;
         const set = today.sunset ? localMs(today.sunset) : null;
+        const sunOk = rise && set && set > rise;
+        const moon = moonPass(today.moonrise ? localMs(today.moonrise) : null, today.moonset ? localMs(today.moonset) : null, now);
+        const pt = (p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
+        const half = `M${pt(arcPoint(0))} A${ARC.r} ${ARC.r} 0 0 1 ${pt(arcPoint(1))}`;
         let arc = '';
-        if (rise && set && set > rise) {
-            const f = Math.max(0, Math.min(1, (now - rise) / (set - rise)));
-            const ang = Math.PI * (1 - f);
-            const x = 100 + Math.cos(ang) * 84;
-            const y = 62 - Math.sin(ang) * 50;
-            const up = now > rise && now < set;
-            arc = `<svg class="wxw-sunarc" viewBox="0 0 200 70" aria-hidden="true">
-                <path d="M16 62 A84 50 0 0 1 184 62" class="wxw-sunarc-path"/>
-                <path d="M16 62 A84 50 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)}" class="wxw-sunarc-done"/>
-                <line x1="4" y1="62.5" x2="196" y2="62.5" class="wxw-axis"/>
-                ${up ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" class="wxw-sunarc-sun"/>` : ''}
+        if (sunOk || moon) {
+            let sunPart = '';
+            if (sunOk) {
+                const f = Math.max(0, Math.min(1, (now - rise) / (set - rise)));
+                const p = arcPoint(f);
+                const up = now > rise && now < set;
+                sunPart = `<path d="${half}" class="wxw-sunarc-path"/>
+                <path d="M${pt(arcPoint(0))} A${ARC.r} ${ARC.r} 0 0 1 ${pt(p)}" class="wxw-sunarc-done"/>
+                ${up ? `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="7" class="wxw-sunarc-sun"/>` : ''}`;
+            }
+            const moonPart = moon ? `<path d="${half}" class="wxw-sunarc-moonpath"/>${moon.up ? `<circle cx="${arcPoint(moon.f).x.toFixed(1)}" cy="${arcPoint(moon.f).y.toFixed(1)}" r="6" class="wxw-sunarc-moon"/>` : ''}` : '';
+            arc = `<svg class="wxw-sunarc" viewBox="0 0 200 100" aria-hidden="true">
+                <line x1="4" y1="${ARC.cy + 0.5}" x2="196" y2="${ARC.cy + 0.5}" class="wxw-axis"/>
+                ${moonPart}${sunPart}
             </svg>`;
         }
         const cell = (k, v) => `<div><span>${k}</span><b>${v || '--'}</b></div>`;
