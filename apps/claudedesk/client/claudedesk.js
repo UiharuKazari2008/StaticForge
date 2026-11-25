@@ -1476,7 +1476,17 @@
     const workOf = (id) => supWork().find((w) => String(w.id) === String(id)) || null;
     const WORK_STATE = { held: 'Waiting', queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Sent Back', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
     const WORK_SOURCE = { fleet: 'Fleet', plaud: 'Plaud', director: 'Director', agent: 'Agent', yozora: 'Yozora' };
-    const issueText = (w) => (w && w.issue ? `${String(w.issue.repo || '').split('/').pop()}#${w.issue.number}` : '');
+    const issueShort = (i) => `${String(i.repo || '').split('/').pop()}#${i.number}`;
+    /** Every issue a request carries (primary first); a server that sends only `issue` gives one. */
+    const issuesOf = (w) => (w && Array.isArray(w.issues) && w.issues.length ? w.issues : (w && w.issue ? [w.issue] : []));
+    /** `#1179`, or `#1179 +4` when the request is one run over several issues. */
+    const issueText = (w) => { const l = issuesOf(w); return l.length ? `${issueShort(l[0])}${l.length > 1 ? ` +${l.length - 1}` : ''}` : ''; };
+    /** The issues field of the wizard: refs (owner/repo#N) or issue URLs, separated by spaces or commas. */
+    const ISSUE_REF = /^[\w.-]+\/[\w.-]+#\d+$|^https?:\/\/\S+\/issues\/\d+\/?$/;
+    const issueRefs = (text) => String(text || '').split(/[\s,]+/).filter(Boolean);
+    /** The issues of a request as links (each opens in a new tab like the Open issue link). */
+    const issueLinks = (w) => issuesOf(w).map((i) => (i.url && /^https?:\/\//.test(i.url) ? `<span class="mmc-link" data-act="open-link" data-arg="${esc(i.url)}" title="${esc(i.title || i.url)}">${esc(issueShort(i))}</span>` : esc(issueShort(i)))).join(', ');
+    const issueBad = (text) => issueRefs(text).find((x) => !ISSUE_REF.test(x)) || '';
     const WORK_OPEN = new Set(['held', 'queued', 'starting', 'running', 'waiting']);
     const workIcon = (st) => ({ held: `${ITEMS}/date-and-time-16.png`, queued: `${VI}/info-16.png`, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || SESSION16);
     const supLocks = () => (S.sup.data && Array.isArray(S.sup.data.locks) ? S.sup.data.locks : []);
@@ -1923,6 +1933,7 @@
             { text: 'Start Selected', action: 'work-start-sel', disabled: start },
             { text: 'Queue Selected', action: 'work-queue-sel', disabled: start },
             { text: 'Move to Waiting', action: 'work-hold-sel', disabled: !ws.some((w) => WORK_HOLDABLE.has(w.state)) || busy },
+            { text: 'Queue as One Run...', action: 'work-merge', disabled: ws.length < 2 || !ws.every((w) => WORK_STARTABLE.has(w.state)) || busy },
             { text: 'Cancel Selected...', action: 'work-cancel-sel', disabled: !ws.length || busy }
         ];
     }
@@ -2000,10 +2011,12 @@
             ['Workers stage', esc(stageText(st.workers) || [w.model, w.effort].filter(Boolean).join(' / '))],
             ['Account', esc(w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)))],
             ['Folder', esc(w.cwd || '')],
-            ['Issue', esc(issueText(w))],
+            [issuesOf(w).length > 1 ? 'Issues' : 'Issue', issueLinks(w)],
+            ['Remote Control', w.remoteControl ? 'On' : 'Off'],
+            w.joinedInto ? ['Joined into', `<span class="mmc-link" data-act="work-goto" data-arg="${esc(w.joinedInto)}">Item ${esc(w.joinedInto)}</span> (one run)`] : null,
             ['Queued', esc(when(w.createdAt))],
             ['Note', esc([w.message, w.issueNote].filter(Boolean).join(' - '))]
-        ])}${links ? `<p>${links}</p>` : ''}
+        ].filter(Boolean))}${links ? `<p>${links}</p>` : ''}
             ${workCheckHtml(w)}<h4>Brief</h4><div class="cd-read">${esc(w.prompt || '')}</div>
             ${parts.length ? `<h4>Parts (${parts.length})</h4><table class="cd-table"><thead><tr><th>Part</th><th class="cd-w80">State</th></tr></thead><tbody>${parts.map((x) => `<tr><td>${esc(x.title || x.id)}</td><td>${esc(workState(x))}</td></tr>`).join('')}</tbody></table>` : ''}
             <h4>Plan</h4>${plan}</div>`;
@@ -2137,10 +2150,12 @@
                 ['Workers stage', esc(stageText(st.workers) || [w.model, w.effort].filter(Boolean).join(' / '))],
                 ['Account', esc(w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)))],
                 ['Folder', esc(w.cwd || '')],
-                ['Issue', esc(issueText(w))],
+                [issuesOf(w).length > 1 ? 'Issues' : 'Issue', issueLinks(w)],
+                ['Remote Control', w.remoteControl ? 'On' : 'Off'],
+                w.joinedInto ? ['Joined into', `<span class="mmc-link" data-act="work-goto" data-arg="${esc(w.joinedInto)}">Item ${esc(w.joinedInto)}</span> (one run)`] : null,
                 ['Queued', esc(when(w.createdAt))],
                 ['Note', esc([w.message, w.issueNote].filter(Boolean).join(' - '))]
-            ]) + (links ? `<p>${links}</p>` : '') + (w.prompt ? `<p class="cd-read">${esc(w.prompt)}</p>` : '') },
+            ].filter(Boolean)) + (links ? `<p>${links}</p>` : '') + (w.prompt ? `<p class="cd-read">${esc(w.prompt)}</p>` : '') },
             parts.length ? { id: 'cd-wi-parts', title: `Parts (${parts.length})`, body: `<table class="cd-table"><thead><tr><th>Part</th><th class="cd-w80">State</th><th class="cd-w80">Session</th></tr></thead><tbody>${parts.map((x) => `<tr><td>${esc(x.title || x.id)}</td><td>${esc(workState(x))}</td><td>${esc(x.sessionId ? shortId(x.sessionId) : '')}</td></tr>`).join('')}</tbody></table>` } : null
         ].filter(Boolean));
     }
@@ -3162,7 +3177,7 @@
         const agents = S.coord.agents.filter((a) => a.kind !== 'person');
         const overview = c.overview(`${A}/claudedesk-32.png`, [
             'Fleet manages the Claude accounts of this server, its Remote Control, the Claude sessions running on it and the agents coordinating on it.',
-            'Sessions started here run in Remote Control, outlive a Dreamscape restart, and can run on either account at the same time.'
+            'Sessions started here (in Remote Control when you tick it) outlive a Dreamscape restart, and can run on either account at the same time.'
         ]);
         const sections = [
             { id: 'cd-sum-engine', title: 'Accounts', body: c.props([
@@ -4823,7 +4838,7 @@
             case 'rc': return [{ text: 'Refresh Status', action: 'fleet-refresh' }];
             case 'co-builds': return [{ text: 'Post Message...', action: 'post' }];
             case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
-            case 'co-work': return [{ text: 'New Request...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
+            case 'co-work': return [{ text: 'New Request...', action: 'new-session' }, { text: 'Issues...', action: 'work-issues', disabled: !!S.sup.busy }, { text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
             case 'co-held':
             case 'aw-sup':
             case 'co-pending':
@@ -5241,6 +5256,15 @@
                 await supAct(c, { action: 'work_hold', ids }, 'Moving to Waiting...');
                 return true;
             }
+            case 'work-merge': {
+                const ids = wsel();
+                const ws = ids.map(workOf);
+                if (ids.length < 2 || !ws.every((w) => WORK_STARTABLE.has(w.state))) { c.note('Pick two or more requests that are waiting, queued, failed or cancelled.'); return true; }
+                await mergeBox(c, ws);
+                return true;
+            }
+            case 'work-issues': await issuePicker(c); return true;
+            case 'work-goto': if (workOf(arg)) c.select(`aw:w:${arg}`, true); return true;
             case 'work-cancel-sel': {
                 const ids = workPicked(c);
                 if (!ids.length) { c.note('Pick a request first.'); return true; }
@@ -5737,7 +5761,8 @@
             return `${acct}${modelRows}
                 <label><span>Folder:</span><input type="text" data-cd="cwd" value="${esc(W.cwd)}" spellcheck="false" autocomplete="off"></label>
                 <label class="cd-top"><span>Request:</span><textarea data-cd="prompt" data-cd-focus rows="5" spellcheck="true" placeholder="What should it do?">${esc(W.prompt)}</textarea></label>${modelRows2}
-                ${direct ? `<label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeSelect(W.mode || 'bypassPermissions')}</select></label>` : `<label><span>Link to issue:</span><input type="text" data-cd="issue" value="${esc(W.issue || '')}" spellcheck="false" autocomplete="off" placeholder="owner/repo#N or an issue URL (blank: a new issue is made)"></label>`}${err}`;
+                ${direct ? `<label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeSelect(W.mode || 'bypassPermissions')}</select></label>` : `<label><span>Link to issue:</span><input type="text" data-cd="issue" value="${esc(W.issue || '')}" spellcheck="false" autocomplete="off" placeholder="owner/repo#N or issue URLs, several = one run (blank: a new issue is made)"></label>`}
+                <label class="cd-opt" title="Open it in claude.ai and take it over from the phone; without it, work it from Fleet only"><input type="checkbox" data-cd="remoteControl"${W.remoteControl ? ' checked' : ''}><span>Remote Control (open it in claude.ai and take it over from the phone; without it, work it from Fleet only)</span></label>${err}`;
         }
         if (page === 'shape') {
             const desc = { direct: 'One agent does the whole request.', surfaces: 'An agent works on each surface; the queue shows the parts.', planner: 'A planner starts background agents for the parts.', auto: 'One planner reviews the request and its issue first, then picks the shape: do it itself, run background agents, or split it into sessions per surface (default).' };
@@ -5769,8 +5794,9 @@
                 rows.push(['Account', acctLabel(W.account)], ['Engine', engineName(W.engine)], ['Folder', W.cwd], ['Model', other ? (wizModel(W) || (engineOf(W.engine) || {}).defaultModel || 'The engine\'s default') : ((MODEL_CHOICES.find((m) => m[0] === modelOf(W)) || [])[1] || modelOf(W) || 'Sonnet')], ['Effort', (EFFORTS.find((e) => e[0] === (W.effort || '')) || [])[1] || 'Default']);
             }
             if (W.path === 'direct') rows.push(['Permissions', (MODES.find((m) => m[0] === W.mode) || [])[1] || W.mode]);
+            rows.push(['Remote Control', W.remoteControl ? 'On' : 'Off']);
             rows.push(['Checked by supervisor', W.path === 'supervised' ? 'Yes (queued on the Supervisor)' : 'No']);
-            if (W.path === 'supervised') rows.push(['Issue', W.issue || 'A new issue is made']);
+            if (W.path === 'supervised') rows.push([issueRefs(W.issue).length > 1 ? 'Issues' : 'Issue', issueRefs(W.issue).join(', ') || 'A new issue is made']);
         }
         return `<table class="cd-props">${rows.map(([k, v]) => `<tr><td>${esc(k)}:</td><td>${esc(v)}</td></tr>`).join('')}</table>
             ${W.path === 'plaud' ? '' : `<p><b>Request</b></p><p class="cd-read cd-summary-request">${esc(W.prompt)}</p>`}${err}`;
@@ -5849,6 +5875,7 @@
             W.account = fields.account; W.cwd = String(fields.cwd || '').trim(); W.prompt = String(fields.prompt || '').trim();
             if (page === 'direct') { W.model = fields.model; W.modelId = String(fields.modelId || '').trim(); W.effort = fields.effort || ''; W.engine = fields.engine || 'claude'; }
             W.issue = String(fields.issue || '').trim();
+            W.remoteControl = fields.remoteControl === true;
             if (page === 'direct') W.mode = fields.mode;
         }
         return value;
@@ -5860,6 +5887,8 @@
             if (page === 'direct' && !Number.isInteger(Number(W.account))) return 'Pick the account the request runs on.';
             if (!W.cwd) return 'Say which folder it works in.';
             if (!W.prompt) return 'Say what it should do.';
+            const bad = page === 'supervised' ? issueBad(W.issue) : '';
+            if (bad) return `"${bad}" is not an issue. Use owner/repo#N or an issue URL, separated by spaces or commas.`;
         }
         return '';
     }
@@ -5900,7 +5929,9 @@
                     const stages = { planner: stagePayload(W.stages.planner), workers: stagePayload(W.stages.workers) };
                     // model / effort / engine at the top stay the Workers stage's, for a server that does not read stages yet
                     const job = { action: 'enqueue', title: first.trim().slice(0, 80), prompt: W.prompt, cwd: W.cwd, topology: W.topology, stages, model: stages.workers.model, effort: stages.workers.effort, startNow: true, engine: stages.workers.engine };
-                    if (W.issue) job.issue = W.issue;
+                    const refs = issueRefs(W.issue);
+                    if (refs.length > 1) job.issues = refs; else if (refs.length) job.issue = refs[0];
+                    job.remoteControl = !!W.remoteControl;
                     if (acct !== 'auto') job.account = acct;
                     const rr = await send('claude_desk_supervisor', job);
                     if (rr.settings) supTake(rr);
@@ -5914,13 +5945,14 @@
                     c.note('');
                     return await wizDone(c, W, body, buttons, link);
                 }
-                const payload = { action: 'start', cwd: W.cwd, prompt: W.prompt, account: acct, model: wizModel(W), effort: W.effort || undefined, supervised: false, engine: W.engine || 'claude' };
+                const payload = { action: 'start', cwd: W.cwd, prompt: W.prompt, account: acct, model: wizModel(W), effort: W.effort || undefined, supervised: false, engine: W.engine || 'claude', remoteControl: !!W.remoteControl };
                 if (W.path === 'direct') payload.mode = W.mode;
                 const r = await send('claude_desk_session', payload);
                 const res = r.result || {};
                 if (res.state === 'failed') { c.note(''); W.err = `The session did not start. ${res.message || ''}`.trim(); return false; }
                 link = res.link || '';
-                body = `<p>The session is ${res.state === 'connected' || res.state === 'live' ? 'running in Remote Control' : 'starting'}${res.account ? ` on <b>${esc(res.account.name)}</b>` : ''}.</p>
+                const rcUp = res.state === 'connected' || res.state === 'live';
+                body = `<p>The session is ${rcUp ? 'running in Remote Control' : (res.state === 'running' && !link ? 'running (no Remote Control: work it from Fleet)' : 'starting')}${res.account ? ` on <b>${esc(res.account.name)}</b>` : ''}.</p>
                     <table class="cd-props"><tr><td>Session:</td><td>${esc(res.id || '')}</td></tr></table>${link ? `<p class="cd-link-line">${esc(link)}</p>` : ''}`;
                 if (link) buttons = [{ text: 'Open in claude.ai', value: 'open', className: 'btn-standard primary' }, { text: 'Copy Link', value: 'copy', className: 'btn-standard' }, { text: 'Close', value: false, className: 'btn-standard' }];
                 if (res.id) { await loadSessions(false); openChat(c, res.id); }
@@ -5936,6 +5968,101 @@
         if (go.value === 'open' && link) await call('openGrimoireUrl', link);
         else if (go.value === 'copy' && link) { await copy(link); c.note('The link was copied to the Clipboard.'); }
         return true;
+    }
+
+    /** Queue as One Run (Work Queue): the picked requests become one request (work_merge); the selection moves to it. */
+    async function mergeBox(c, ws) {
+        const lines = ws.map((w) => `<li>${esc(w.title || String(w.id))}${issuesOf(w).length ? ` <span class="mmc-hint">(${esc(issuesOf(w).map(issueShort).join(', '))})</span>` : ''}</li>`).join('');
+        const { value, fields } = await form(c, `<p>Join these ${ws.length} requests into one run? They share one session and one brief; the originals are marked as joined.</p><ul class="cd-merge-list">${lines}</ul>
+            <label><span>Title:</span><input type="text" data-cd="title" data-cd-focus value="${esc(ws[0].title || '')}" spellcheck="false" autocomplete="off"></label>
+            <label class="cd-opt"><input type="checkbox" data-cd="remoteControl"><span>Remote Control (open it in claude.ai and take it over from the phone; without it, work it from Fleet only)</span></label>`,
+        [{ text: 'Queue as One Run', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Queue as One Run', width: 520 });
+        if (value !== true) return;
+        const job = { action: 'work_merge', ids: ws.map((w) => w.id), remoteControl: fields.remoteControl === true };
+        const title = String(fields.title || '').trim();
+        if (title) job.title = title;
+        S.sup.busy = 'Joining the requests...';
+        c.note(S.sup.busy);
+        repaint();
+        try {
+            const r = await send('claude_desk_supervisor', job);
+            S.wsel = new Set(r && r.work ? [String(r.work.id)] : []);
+            await loadSupervisor(); // the list redraws in place (its scroll stays)
+            if (r && r.work) c.selectRow(`w:${r.work.id}`);
+        } catch (e) { supFail(e); await failBox(c, e); }
+        S.sup.busy = '';
+        c.note('');
+        repaint();
+    }
+
+    /** Issues... (Work Queue): the open issues of a repository with check boxes; the picked ones are queued as one run (or one request). */
+    async function issuePicker(c) {
+        const P = { repo: '', repos: [], list: [], picked: new Map(), q: '', title: '', titled: false, rc: false, err: '', loading: true };
+        const load = async (box) => {
+            P.loading = true; P.err = '';
+            paintList(box);
+            try {
+                const r = await send('claude_desk_supervisor', { action: 'issues_open', repo: P.repo || undefined });
+                P.repo = r.repo || P.repo;
+                P.repos = Array.isArray(r.repos) ? r.repos : [];
+                P.list = Array.isArray(r.issues) ? r.issues : [];
+            } catch (e) { P.list = []; P.err = isGone(e) ? NOT_YET : errText(e); }
+            P.loading = false;
+            const sel = box.querySelector('[data-iss="repo"]');
+            if (sel) sel.innerHTML = P.repos.map((x) => `<option value="${esc(x)}"${x === P.repo ? ' selected' : ''}>${esc(x)}</option>`).join('');
+            paintList(box);
+        };
+        const refOf = (i) => `${i.repo || P.repo}#${i.number}`;
+        const paintList = (box) => {
+            const el = box.querySelector('.cd-iss-list');
+            if (!el) return;
+            const top = el.scrollTop;
+            const q = P.q.trim().toLowerCase();
+            const rows = P.list.filter((i) => !q || `#${i.number} ${i.title} ${(i.labels || []).join(' ')}`.toLowerCase().includes(q));
+            el.innerHTML = P.loading ? '<p class="mmc-hint">Reading the open issues...</p>' : P.err ? `<p class="cd-err">${esc(P.err)}</p>` : !rows.length ? '<p class="mmc-hint">No open issue matches.</p>'
+                : rows.map((i) => `<label class="cd-opt" title="${esc(i.title)}"><input type="checkbox" data-pick="${esc(refOf(i))}"${P.picked.has(refOf(i)) ? ' checked' : ''}><span>#${esc(i.number)} ${esc(i.title)}${(i.labels || []).length ? ` <i class="mmc-hint">${esc(i.labels.map((l) => (l && l.name) || l).join(', '))}</i>` : ''}${i.item ? ` <i class="mmc-hint">in queue: item ${esc(i.item)}</i>` : ''}</span></label>`).join('');
+            el.scrollTop = top;
+        };
+        for (;;) {
+            const { value, fields } = await form(c, `<div class="cd-iss">
+                <label><span>Repository:</span><select class="vdt-select" data-iss="repo"><option value="">Reading...</option></select></label>
+                <label><span>Filter:</span><input type="text" data-iss="q" value="${esc(P.q)}" spellcheck="false" autocomplete="off" placeholder="Words in the title or labels"></label>
+                <div class="cd-carry cd-iss-list"></div>
+                <label><span>Title:</span><input type="text" data-cd="title" value="${esc(P.title)}" spellcheck="false" autocomplete="off"></label>
+                <label class="cd-opt"><input type="checkbox" data-cd="remoteControl"${P.rc ? ' checked' : ''}><span>Remote Control (open it in claude.ai and take it over from the phone; without it, work it from Fleet only)</span></label>
+                ${P.err && !P.loading && P.list.length ? `<p class="cd-err">${esc(P.err)}</p>` : ''}</div>`,
+            [{ text: 'Queue as One Run', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }],
+            {
+                title: 'Open Issues', width: 580,
+                ready: (box, signal) => {
+                    let t = 0;
+                    signal.addEventListener('abort', () => clearTimeout(t), { once: true });
+                    const ti = box.querySelector('[data-cd="title"]');
+                    ti.addEventListener('input', () => { P.titled = true; P.title = ti.value; }, { signal });
+                    box.querySelector('[data-iss="q"]').addEventListener('input', (ev) => { clearTimeout(t); t = setTimeout(() => { P.q = ev.target.value; paintList(box); }, 150); }, { signal });
+                    box.querySelector('[data-iss="repo"]').addEventListener('change', (ev) => { P.repo = ev.target.value; P.picked = new Map(); void load(box); }, { signal });
+                    box.addEventListener('change', (ev) => {
+                        const ck = ev.target.closest && ev.target.closest('[data-pick]');
+                        if (!ck) return;
+                        const ref = ck.dataset.pick;
+                        if (ck.checked) P.picked.set(ref, (P.list.find((i) => refOf(i) === ref) || {}).title || ''); else P.picked.delete(ref);
+                        if (!P.titled) { const first = P.picked.values().next(); ti.value = P.title = first.done ? '' : first.value; }
+                    }, { signal });
+                    if (P.list.length || P.repos.length) { P.loading = false; const sel = box.querySelector('[data-iss="repo"]'); sel.innerHTML = P.repos.map((x) => `<option value="${esc(x)}"${x === P.repo ? ' selected' : ''}>${esc(x)}</option>`).join(''); paintList(box); } else void load(box);
+                }
+            });
+            if (value !== true) return;
+            P.rc = fields.remoteControl === true;
+            P.title = String(fields.title || '').trim();
+            const refs = Array.from(P.picked.keys());
+            if (!refs.length) { P.err = 'Tick at least one issue.'; continue; }
+            P.err = '';
+            const names = refs.map((r) => `${r.split('/').pop()}`).join(', ');
+            const job = { action: 'enqueue', title: (P.title || P.picked.values().next().value || names).slice(0, 80), prompt: refs.length > 1 ? `Work these ${refs.length} related issues as one run: ${refs.join(', ')}.` : `Work issue ${refs[0]}.`, startNow: true, remoteControl: P.rc };
+            if (refs.length > 1) job.issues = refs; else job.issue = refs[0];
+            await supAct(c, job, 'Queueing the issues...');
+            return;
+        }
     }
 
     /** Work items as a small table: request, state, session. */

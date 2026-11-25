@@ -41,7 +41,10 @@ require('../modules/fleetYozora')._setFetch(async (url, opts) => {
     if (method === 'GET' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues\?state=open.*labels=fleet/.exec(u))) {
         return ok([...yzIssues.entries()].filter(([k, v]) => k.startsWith(`${m[1]}#`) && v.state === 'open' && v.external).map(([k, v]) => ({ number: Number(k.split('#')[1]), id: 1, title: v.title, body: v.body, labels: [{ name: 'fleet' }].concat(v.now ? [{ name: 'fleet:now' }] : []) })));
     }
-    if (method === 'GET' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)$/.exec(u))) { const v = yzIssues.get(`${m[1]}#${m[2]}`) || { state: 'open' }; return ok({ number: Number(m[2]), id: 9000, state: v.state, labels: [] }); }
+    if (method === 'GET' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues\?state=open&type=issues&limit=\d+(?:&q=.*)?$/.exec(u))) {
+        return ok([...yzIssues.entries()].filter(([k, v]) => k.startsWith(`${m[1]}#`) && v.state === 'open' && v.listed).map(([k, v]) => ({ number: Number(k.split('#')[1]), id: 9000 + Number(k.split('#')[1]), title: v.title, labels: [{ name: 'type:bug' }] })));
+    }
+    if (method === 'GET' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)$/.exec(u))) { const v = yzIssues.get(`${m[1]}#${m[2]}`) || { state: 'open' }; return ok({ number: Number(m[2]), id: 9000 + Number(m[2]), state: v.state, title: v.title || '', body: v.body || '', labels: [] }); }
     return ok({});
 });
 const launcher = require('../modules/claudeSessionLauncher');
@@ -1000,6 +1003,254 @@ sup._test.setFetch(async (url, opts) => {
         const srv = R.applicableRules(rules, ['modules/x.js']).map((r) => r.name);
         assert.ok(srv.includes('server-push-not-polling') && srv.includes('phone-power-server') && !srv.includes('ui-standard'));
         assert.ok(R.applicableRules(rules, ['public/scripts/comp/a.js']).map((r) => r.name).includes('tray-balloons'), 'a glob match');
+    });
+
+
+    // ------------------------------------------------------------ #1191: several issues in one run, Remote Control optional
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms || 80));
+    const waitFor = async (fn, what) => { for (let i = 0; i < 100; i += 1) { if (fn()) return; await settle(20); } throw new Error(`timed out: ${what}`); };
+    const putIssue = (n, extra) => yzIssues.set(`DreamScape/StaticForge#${n}`, Object.assign({ state: 'open', title: `Runtime Compile ${n}`, body: `Body of ${n}` }, extra || {}));
+    const RAW = () => require('../modules/agentCoord/store').open();
+    const R = (n) => `DreamScape/StaticForge#${n}`;
+    let multiId = null;
+
+    await test('several issues, one run: five refs become ONE item (primary + four carried); one ref is as before; Remote Control defaults off', async () => {
+        settingsCfg.agentSupervisor = Object.assign(settingsCfg.agentSupervisor, { maxConcurrent: 10, autoStart: false });
+        [1179, 1180, 1181, 1182, 1183, 1190].forEach((n) => putIssue(n));
+        yzIssues.get(R(1180)).body = 'x'.repeat(3000);
+        const before = sup.listWork({ limit: 300 }).length;
+        yzCalls.length = 0;
+        const w = sup.enqueue({ title: 'Runtime errors', prompt: 'Fix every runtime compile error', issues: [R(1179), `https://yozora.bluesteel.737.jp.net/${R(1180).replace('#', '/issues/')}`, R(1181), R(1182), R(1183), R(1179)] });
+        multiId = w.id;
+        assert.strictEqual(sup.listWork({ limit: 300 }).length, before + 1, 'one item, not five');
+        await settle();
+        const got = sup.getWork(w.id);
+        assert.strictEqual(got.issues.length, 5, JSON.stringify(got.issues));
+        assert.deepStrictEqual(got.issues.map((i) => i.number), [1179, 1180, 1181, 1182, 1183]);
+        assert.deepStrictEqual(got.issues.map((i) => i.primary), [true, false, false, false, false]);
+        assert.deepStrictEqual([got.issue.repo, got.issue.number], ['DreamScape/StaticForge', 1179], 'issue (singular) is the primary');
+        assert.strictEqual(got.issues[1].title, 'Runtime Compile 1180', 'titles come back from the link');
+        assert.strictEqual(got.remoteControl, false);
+        assert.strictEqual(JSON.parse(RAW().prepare('SELECT issue_refs FROM supervisor_work WHERE id = ?').get(w.id).issue_refs).length, 4, 'the primary is not repeated in issue_refs');
+        assert.strictEqual(yzCalls.filter((c) => c.method === 'POST' && /\/issues\/\d+\/labels$/.test(c.url)).length, 5, 'each is linked (the fleet label)');
+        assert.ok(!yzCalls.some((c) => c.method === 'POST' && /\/issues$/.test(c.url)), 'no issue of its own is made for a run that names its issues');
+        // a string with several refs
+        const w3 = sup.enqueue({ title: 'Strings', prompt: 'p', issues: `${R(1179)}, #1180 ${R(1181)}`, remoteControl: true });
+        assert.deepStrictEqual(sup.getWork(w3.id).issues.map((i) => i.number), [1179, 1180, 1181]);
+        assert.strictEqual(sup.getWork(w3.id).remoteControl, true);
+        // one ref (issue or issues): exactly today's single issue
+        const w1 = sup.enqueue({ title: 'Single', prompt: 'one', issue: R(1190) });
+        await settle();
+        const one = sup.getWork(w1.id);
+        assert.deepStrictEqual([one.issues.length, one.issue.number, one.issues[0].primary], [1, 1190, true]);
+        assert.strictEqual(RAW().prepare('SELECT issue_refs FROM supervisor_work WHERE id = ?').get(w1.id).issue_refs, null);
+        const w2 = sup.enqueue({ title: 'Single b', prompt: 'one', issues: [R(1190)] });
+        await settle();
+        assert.strictEqual(sup.getWork(w2.id).issues.length, 1);
+        assert.deepStrictEqual(sup.getWork(sup.enqueue({ title: 'None', prompt: 'x', source: 'yozora' }).id).issues, [], 'no issue: []');
+    });
+
+    await test('several issues, one run: the brief names every issue with title and excerpt, each extra gets its own start comment; a single issue brief is unchanged; Remote Control reaches the launcher', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart;
+        const realStart = launcher.start;
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        const starts = [];
+        let n = 0;
+        launcher.start = async (g, o) => { n += 1; starts.push(o); return { id: `bbbbbbbb-0000-0000-0000-0000000002${String(n).padStart(2, '0')}`, state: 'running', link: '' }; };
+        try {
+            yzCalls.length = 0;
+            const w = sup.enqueue({ title: 'Runtime errors started', prompt: 'Fix every runtime compile error', topology: 'direct', issues: [R(1179), R(1180), R(1181)], startNow: true }, { gr });
+            await waitFor(() => sup.getWork(w.id).state === 'running', 'multi item running');
+            const o = starts.find((x) => x.title === 'Runtime errors started');
+            assert.strictEqual(o.remoteControl, false, 'a work item starts without Remote Control unless asked');
+            assert.match(o.prompt, /covers 3 Yozora issues TOGETHER/);
+            [1179, 1180, 1181].forEach((i) => { assert.ok(o.prompt.includes(`DreamScape/StaticForge#${i}`) && o.prompt.includes(`Runtime Compile ${i}`) && o.prompt.includes(`https://yozora.bluesteel.737.jp.net/DreamScape/StaticForge/issues/${i}`), `names #${i}`); });
+            assert.ok(o.prompt.includes('Body of 1179'), 'a body excerpt');
+            assert.ok(/Close an issue only when its own ask is done/.test(o.prompt) && /Comment your progress on EACH/.test(o.prompt));
+            assert.ok(!/x{1501}/.test(o.prompt) && /x{1500}/.test(o.prompt), 'the excerpt is cut at 1500 characters');
+            await waitFor(() => yzCalls.filter((c) => /\/comments$/.test(c.url)).length >= 3, 'start comments');
+            const cm = yzCalls.filter((c) => /\/comments$/.test(c.url));
+            assert.ok(cm.some((c) => /issues\/1179\/comments/.test(c.url) && /started as a supervised session/.test(c.body.body)), 'the primary has the lifecycle comment');
+            const e1 = cm.find((c) => /issues\/1180\/comments/.test(c.url));
+            assert.match(e1.body.body, /part of the Fleet run on DreamScape\/StaticForge#1179, covering #1179, #1181/);
+            assert.ok(cm.some((c) => /issues\/1181\/comments/.test(c.url)), 'every extra has its own');
+            // a single issue: today's text
+            const s1 = sup.enqueue({ title: 'Single started', prompt: 'one issue', topology: 'direct', issue: R(1190), startNow: true }, { gr });
+            await waitFor(() => sup.getWork(s1.id).state === 'running', 'single running');
+            const so = starts.find((x) => x.title === 'Single started');
+            assert.match(so.prompt, /This work is tracked in Yozora DreamScape\/StaticForge#1190 \(https:\/\/yozora\.bluesteel\.737\.jp\.net\/DreamScape\/StaticForge\/issues\/1190, label fleet\)\. Comment your progress there as you go/);
+            assert.ok(!/TOGETHER/.test(so.prompt));
+            // Remote Control on
+            const rc = sup.enqueue({ title: 'With RC', prompt: 'rc', topology: 'direct', remoteControl: true, startNow: true }, { gr });
+            await waitFor(() => sup.getWork(rc.id).state === 'running', 'rc running');
+            assert.strictEqual(starts.find((x) => x.title === 'With RC').remoteControl, true);
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; }
+    });
+
+    await test('several issues, one run: at the end each issue closes only when its own ask is done, the others hear what is left; failed closes nothing', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart;
+        const realStart = launcher.start;
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        let n = 0;
+        launcher.start = async () => { n += 1; return { id: `cccccccc-0000-0000-0000-0000000003${String(n).padStart(2, '0')}`, state: 'running', link: '' }; };
+        const review = (sid, verdict, issues, missed) => RAW().prepare("INSERT INTO supervisor_reviews (session_id, at, trigger, verdict, summary, missed, issues) VALUES (?, ?, 'turn-end', ?, ?, ?, ?)")
+            .run(sid, Date.now(), verdict, 'sum', JSON.stringify(missed || []), issues ? JSON.stringify(issues) : null);
+        const closed = (since) => yzCalls.slice(since).filter((c) => c.method === 'PATCH' && c.body && c.body.state === 'closed').map((c) => Number(/issues\/(\d+)$/.exec(c.url)[1])).sort();
+        const commentsOn = (since, num) => yzCalls.slice(since).filter((c) => new RegExp(`issues/${num}/comments$`).test(c.url)).map((c) => c.body.body);
+        try {
+            [1301, 1302, 1303, 1304, 1305, 1306].forEach((i) => putIssue(i));
+            const a = sup.enqueue({ title: 'Three', prompt: 'three issues', topology: 'direct', issues: [R(1301), R(1302), R(1303)], startNow: true }, { gr });
+            await waitFor(() => sup.getWork(a.id).state === 'running', 'running');
+            await settle(150);
+            const mark = yzCalls.length;
+            const sidA = sup.getWork(a.id).sessionId;
+            review(sidA, 'ok', [{ ref: R(1301), done: true, left: '' }, { ref: R(1302), done: true, left: '' }, { ref: R(1303), done: false, left: 'the macro case still fails' }]);
+            sup.workAfterReview({ sessionId: sidA, verdict: 'ok', missed: [], summary: 'mostly' });
+            await waitFor(() => yzCalls.slice(mark).some((c) => /issues\/1303\/comments$/.test(c.url)) && closed(mark).length >= 2, 'end comments');
+            await settle(100);
+            assert.deepStrictEqual(closed(mark), [1301, 1302], 'only the issues whose own ask is done close');
+            assert.ok(commentsOn(mark, 1303).some((t) => /not finished/.test(t) && /Left: the macro case still fails/.test(t) && /Left open/.test(t)), commentsOn(mark, 1303).join(' | '));
+            assert.ok(commentsOn(mark, 1302).some((t) => /done - part of the Fleet run on DreamScape\/StaticForge#1301/.test(t)));
+            assert.ok(commentsOn(mark, 1301).some((t) => /found nothing missed/.test(t) && /Closing as done/.test(t)), 'the primary has the usual done comment');
+            assert.strictEqual(sup.getWork(a.id).state, 'done');
+            // ok and the review names no issues: every issue is done (an ok verdict means nothing was missed)
+            const b = sup.enqueue({ title: 'Two plain', prompt: 'two', topology: 'direct', issues: [R(1304), R(1305)], startNow: true }, { gr });
+            await waitFor(() => sup.getWork(b.id).state === 'running', 'b running');
+            await settle(150);
+            const markB = yzCalls.length;
+            sup.workAfterReview({ sessionId: sup.getWork(b.id).sessionId, verdict: 'ok', missed: [], summary: 'all' });
+            await waitFor(() => closed(markB).length >= 2, 'both closed');
+            assert.deepStrictEqual(closed(markB), [1304, 1305]);
+            // failed: nothing closed, each extra hears what is left from the last review
+            const c = sup.enqueue({ title: 'Fails', prompt: 'fails', topology: 'direct', issues: [R(1306), R(1301)], startNow: true }, { gr });
+            await waitFor(() => sup.getWork(c.id).state === 'running', 'c running');
+            await settle(150);
+            const markC = yzCalls.length;
+            const sidC = sup.getWork(c.id).sessionId;
+            review(sidC, 'gaps', [{ ref: R(1301), done: false, left: 'compile still red' }], [{ item: 'tests' }]);
+            sup.setWork(c.id, { state: 'failed', ended_at: Date.now(), message: 'It stopped with gaps' });
+            await waitFor(() => commentsOn(markC, 1301).length >= 1 && commentsOn(markC, 1306).length >= 1, 'failed comments');
+            await settle(100);
+            assert.deepStrictEqual(closed(markC), [], 'a failed run closes nothing');
+            assert.ok(commentsOn(markC, 1301).some((t) => /Nothing was closed/.test(t) && /compile still red/.test(t)), commentsOn(markC, 1301).join(' | '));
+            assert.ok(commentsOn(markC, 1306).some((t) => /did not finish/.test(t) && /Nothing was closed/.test(t)));
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; }
+    });
+
+    await test('several issues, one run: the review asks for per-issue answers; the verdict parser keeps them clean', () => {
+        const meta = { sessionId: 'x', issuesList: [{ repo: 'DreamScape/StaticForge', number: 1, title: 'One' }, { repo: 'DreamScape/StaticForge', number: 2, title: 'Two' }] };
+        const text = sup._test.promptFor(sup._test.capTurn({ request: 'r', steering: [], actions: [], final: 'f', said: [] }), meta);
+        assert.match(text, /## Issues this run covers \(2\)\n1\. DreamScape\/StaticForge#1 - One\n2\. DreamScape\/StaticForge#2 - Two/);
+        assert.match(text, /"issues":\[\{"ref":"owner\/repo#N","done":true\|false,"left"/);
+        assert.ok(!/Issues this run covers/.test(sup._test.promptFor(sup._test.capTurn({ request: 'r', steering: [], actions: [], final: 'f', said: [] }), { sessionId: 'x' })), 'a single-issue review is unchanged');
+        const v = sup._test.parseVerdict(JSON.stringify({ verdict: 'ok', summary: 's', missed: [], issues: [{ ref: '#1179', done: true }, { ref: 'https://yozora.bluesteel.737.jp.net/Org/Repo/issues/7', left: 'half' }, { ref: 'junk' }, 'bad'] }));
+        assert.deepStrictEqual(v.issues, [{ ref: 'DreamScape/StaticForge#1179', done: true, left: '' }, { ref: 'Org/Repo#7', done: false, left: 'half' }]);
+        assert.strictEqual(sup._test.parseVerdict('{"verdict":"ok","missed":[]}').issues, undefined);
+    });
+
+    await test('mergeWork: three waiting requests become one queued item with the union of their issues; the three are cancelled + joined with no cancel comment and no close', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart;
+        fleetMcp.pickForStart = async () => { throw new Error('no account in this test'); };
+        try {
+            [1401, 1402, 1403, 1404].forEach((i) => putIssue(i));
+            const a = sup.enqueue({ title: 'Req A', prompt: 'brief A', issue: R(1401), cwd: tmp, model: 'opus', effort: 'high' });
+            const b = sup.enqueue({ title: 'Req B', prompt: 'brief B', issues: [R(1402), R(1403)] });
+            const c = sup.enqueue({ title: 'Req C', prompt: 'brief C', issue: R(1401) });
+            await settle(150);
+            assert.deepStrictEqual([a, b, c].map((x) => sup.getWork(x.id).state), ['held', 'held', 'held']);
+            const mark = yzCalls.length;
+            const r = sup.mergeWork([a.id, b.id, c.id], { gr });
+            assert.deepStrictEqual(r.joined, [a.id, b.id, c.id]);
+            const nw = r.work;
+            assert.strictEqual(nw.state, 'queued', JSON.stringify(nw));
+            assert.strictEqual(nw.startNow, true, 'she picked it to run: it starts now by default');
+            assert.strictEqual(nw.title, 'Req A (+2 more)');
+            assert.deepStrictEqual(nw.issues.map((i) => [i.number, i.primary]), [[1401, true], [1402, false], [1403, false]], 'the union, the first item\'s primary first, no duplicates');
+            assert.deepStrictEqual([nw.cwd, nw.model, nw.effort, nw.source, nw.remoteControl, nw.joinedInto], [tmp, 'opus', 'high', 'fleet', false, null]);
+            const full = sup.workPrompt(nw.id);
+            assert.ok(full.startsWith('One run covering these Fleet requests together:') && ['Req A', 'brief A', 'Req B', 'brief B', 'Req C', 'brief C'].every((t) => full.includes(t)));
+            [a, b, c].forEach((x) => { const g = sup.getWork(x.id); assert.deepStrictEqual([g.state, g.joinedInto, g.message], ['cancelled', nw.id, `Joined into item ${nw.id} (one run)`]); });
+            await settle(150);
+            const sent = yzCalls.slice(mark);
+            assert.ok(!sent.some((x) => x.method === 'PATCH'), 'nothing closed');
+            assert.ok(!sent.some((x) => /\/comments$/.test(x.url) && /cancelled in Fleet/.test(x.body.body)), 'no cancel comment');
+            [1401, 1402, 1403].forEach((i) => {
+                const joined = sent.filter((x) => new RegExp(`issues/${i}/comments$`).test(x.url) && /Joined Fleet item/.test(x.body.body));
+                assert.strictEqual(joined.length, 1, `#${i} hears once`);
+                assert.ok(joined[0].body.body.includes(`Joined Fleet item ${nw.id}: one run with`), joined[0].body.body);
+            });
+            assert.ok(/#1402, #1403/.test(sent.find((x) => /issues\/1401\/comments$/.test(x.url)).body.body));
+            assert.deepStrictEqual(sup.listWork({ limit: 300 }).find((x) => x.id === nw.id).issues.length, 3);
+            // a joined item can be started again on its own: it is no longer joined
+            sup.holdWork(a.id);
+            assert.strictEqual(sup.getWork(a.id).joinedInto, null);
+        } finally { fleetMcp.pickForStart = realPick; }
+    });
+
+    await test('mergeWork: refuses a running item and a single id; names the one; leaves everything as it was', async () => {
+        const x = sup.enqueue({ title: 'M1', prompt: 'm1' });
+        const y = sup.enqueue({ title: 'M2', prompt: 'm2' });
+        RAW().prepare("UPDATE supervisor_work SET state = 'running' WHERE id = ?").run(x.id);
+        assert.throws(() => sup.mergeWork([x.id, y.id]), new RegExp(`Work item ${x.id} \\(M1\\) is running`));
+        assert.strictEqual(sup.getWork(y.id).state, 'held');
+        assert.throws(() => sup.mergeWork([y.id]), /Pick two or more/);
+        assert.throws(() => sup.mergeWork([y.id, y.id]), /Pick two or more/);
+        assert.throws(() => sup.mergeWork([y.id, 999999]), /No work item 999999/);
+        RAW().prepare("UPDATE supervisor_work SET state = 'held' WHERE id = ?").run(x.id);
+        const done = sup.mergeWork([x.id, y.id], { startNow: false, title: ' Both ', remoteControl: true });
+        assert.deepStrictEqual([done.work.title, done.work.state, done.work.remoteControl], ['Both', 'held', true], 'startNow false: waits to be started');
+        assert.throws(() => sup.mergeWork([x.id, y.id]), /already joined|is cancelled|only a waiting/, 'a joined item is not joined twice');
+    });
+
+    await test('several issues: pullIssues does not make an item of an issue a run carries; a closed extra does not end the run, a closed primary does', async () => {
+        settingsCfg.agentSupervisor.autoStart = false;
+        const mid = multiId;
+        [1180, 1181, 1182, 1183, 1179].forEach((i) => yzIssues.set(R(i), Object.assign(yzIssues.get(R(i)), { external: true })));
+        yzIssues.set(R(1999), { state: 'open', external: true, title: 'Unrelated', body: 'b' });
+        const r = await sup.pullIssues(gr, { force: true });
+        assert.strictEqual(r.added, 1, JSON.stringify(r));
+        assert.ok(!sup.listWork({ limit: 300 }).some((x) => x.id !== mid && x.source === 'yozora' && x.issue && [1180, 1181, 1182, 1183].includes(x.issue.number)), 'carried issues stay with their run');
+        // one of the carried issues closes: the run goes on
+        yzIssues.get(R(1181)).state = 'closed';
+        await sup.pullIssues(gr, { force: true });
+        assert.strictEqual(sup.getWork(mid).state, 'held', 'an extra closing does not end the item');
+        yzIssues.get(R(1179)).state = 'closed';
+        await sup.pullIssues(gr, { force: true });
+        assert.strictEqual(sup.getWork(mid).state, 'cancelled', 'the primary closing ends it, as today');
+    });
+
+    await test('issues_open: open issues of a watched repo newest first with the item carrying each; a title filter; an unwatched repo is refused', async () => {
+        [1501, 1502, 1503].forEach((i) => putIssue(i, { listed: true }));
+        const carrier = sup.enqueue({ title: 'Carries 1502', prompt: 'c', issue: R(1502) });
+        await settle(80);
+        const r = await sup.issuesOpen(gr, {});
+        assert.strictEqual(r.repo, 'DreamScape/StaticForge');
+        assert.ok(r.repos.includes('DreamScape/StaticForge'));
+        const byNum = new Map(r.issues.map((i) => [i.number, i]));
+        assert.deepStrictEqual([...byNum.keys()].filter((n) => n >= 1500), [1501, 1502, 1503]);
+        const one = byNum.get(1502);
+        assert.deepStrictEqual([one.repo, one.title, one.url, one.labels, one.item], ['DreamScape/StaticForge', 'Runtime Compile 1502', 'https://yozora.bluesteel.737.jp.net/DreamScape/StaticForge/issues/1502', ['type:bug'], carrier.id]);
+        assert.strictEqual(byNum.get(1501).item, null);
+        assert.ok(typeof byNum.get(1501).id === 'number');
+        const q = await sup.issuesOpen(gr, { q: '1503' });
+        assert.deepStrictEqual(q.issues.map((i) => i.number), [1503]);
+        await assert.rejects(() => sup.issuesOpen(gr, { repo: 'Nobody/Elsewhere' }), /not one of the watched repositories/);
+    });
+
+    await test('updateWork: remoteControl and issues (several) on an item that is not running; the socket op forwards them for the caller\'s own item', async () => {
+        [1601, 1602].forEach((i) => putIssue(i));
+        const w = sup.enqueue({ title: 'Edit issues', prompt: 'p' });
+        const u = sup.updateWork(w.id, { remoteControl: true, issues: [R(1601), R(1602)] });
+        assert.strictEqual(u.remoteControl, true);
+        assert.deepStrictEqual(u.issues.map((i) => [i.number, i.primary]), [[1601, true], [1602, false]]);
+        await settle(80);
+        assert.strictEqual(sup.getWork(w.id).issues[1].title, 'Runtime Compile 1602');
+        assert.strictEqual(sup.updateWork(w.id, { issues: [] }).issues.length, 1, 'an empty list drops the others, keeps the primary');
+        assert.throws(() => sup.updateWork(w.id, { issues: 'no issue here' }), /name issues as owner\/repo#N/);
+        assert.strictEqual(sup.updateWork(w.id, { remoteControl: false }).remoteControl, false);
     });
 
     require('../modules/agentCoord/store').close();

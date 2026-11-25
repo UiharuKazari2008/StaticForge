@@ -269,7 +269,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'pause') { await supervisor.pauseSession(String(message.sessionId || ''), { mode: message.mode, reason: message.reason, by: 'Fleet' }); return supervisorStatus(gr); }
     if (action === 'resume') { await supervisor.resumeSession(String(message.sessionId || ''), { note: message.note }); return supervisorStatus(gr); }
     if (action === 'enqueue') {
-        supervisor.enqueue({ title: message.title, prompt: message.prompt, cwd: message.cwd, account: message.account === 'auto' ? null : message.account, model: message.model, effort: message.effort, engine: message.engine, topology: message.topology, stages: message.stages, issue: message.issue, startNow: message.startNow === true, source: 'fleet' }, { gr });
+        supervisor.enqueue({ title: message.title, prompt: message.prompt, cwd: message.cwd, account: message.account === 'auto' ? null : message.account, model: message.model, effort: message.effort, engine: message.engine, topology: message.topology, stages: message.stages, issue: message.issue, issues: message.issues, remoteControl: message.remoteControl === true, startNow: message.startNow === true, source: 'fleet' }, { gr });
         return supervisorStatus(gr);
     }
     // work_start / work_hold take one id or ids (several picked in the list); work_start now:false waits for a slot
@@ -277,7 +277,21 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'work_start') { const errs = []; workIds().forEach((i) => { try { supervisor.startWork(i, { now: message.now !== false }); } catch (e) { errs.push(`#${i}: ${e.message}`); } }); return Object.assign(await supervisorStatus(gr), errs.length ? { errors: errs } : {}); }
     if (action === 'manager_set') { await supervisor.saveSettings(gr, { managerSessionId: String(message.sessionId || '') }); return supervisorStatus(gr); }
     if (action === 'work_hold') { const errs = []; workIds().forEach((i) => { try { supervisor.holdWork(i); } catch (e) { errs.push(`#${i}: ${e.message}`); } }); return Object.assign(await supervisorStatus(gr), errs.length ? { errors: errs } : {}); }
-    if (action === 'work_update') { supervisor.updateWork(message.id, { prompt: message.prompt }, { by: 'Yukimi (Fleet)' }); return supervisorStatus(gr); }
+    if (action === 'work_update') {
+        const f = { prompt: message.prompt };
+        if (typeof message.remoteControl === 'boolean') f.remoteControl = message.remoteControl;
+        if (message.issues !== undefined) f.issues = message.issues;
+        supervisor.updateWork(message.id, f, { by: 'Yukimi (Fleet)' });
+        return supervisorStatus(gr);
+    }
+    // "Queue as one run": the picked requests become one item (answers { work, joined }; the list follows through the status push)
+    if (action === 'work_merge') {
+        const r = supervisor.mergeWork(workIds(), { title: message.title, remoteControl: message.remoteControl === true, startNow: message.startNow !== false, gr });
+        poke();
+        return r;
+    }
+    // the issue picker: open issues of a watched repo (one request, newest first) with the item that carries each
+    if (action === 'issues_open') return supervisor.issuesOpen(gr, { repo: message.repo, q: message.q });
     if (action === 'work_cancel') { supervisor.cancelWork(message.id); return supervisorStatus(gr); }
     if (action === 'work_map') return { map: await workMap(gr, { id: message.id, sessionId: message.sessionId }) };
     if (action === 'lock_remove') { supervisor.removeLockFile(String(message.root || ''), String(message.file || '')); poke(); return supervisorStatus(gr); }
@@ -302,7 +316,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'maintenance_status') return { maintenance: maintenance.state(gr), report: message.runId ? maintenance.getRun(message.runId) : undefined };
     if (action === 'maintenance_run') { const r = maintenance.runNow({ trigger: 'manual', gr, dryRun: message.dryRun === true ? true : undefined }); return { maintenance: maintenance.state(gr), started: r.started }; }
     if (action === 'maintenance_save') { await maintenance.saveSettings(gr, message.settings || {}); return { maintenance: maintenance.state(gr) }; }
-    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, rules_explain, rules_proposal_accept, rules_proposal_reject, rules_finding_accept, pause, resume, enqueue, work_start, work_hold, work_update, work_cancel, lock_remove, artifact_clean, artifact_restore or artifact_forget');
+    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, rules_explain, rules_proposal_accept, rules_proposal_reject, rules_finding_accept, pause, resume, enqueue, work_start, work_hold, work_update, work_cancel, work_merge, work_map, issues_open, lock_remove, artifact_clean, artifact_restore or artifact_forget');
 });
 
 // ---------------------------------------------------------------- transcript watches (one per socket)
@@ -417,7 +431,7 @@ const handleSession = guard('claude_desk_session', async (gr, message) => {
             ? `${message.prompt}\n\n(This session is supervised: before you say a multi-part request is done, call coord_supervisor_check and address what it finds.)`
             : message.prompt;
         result = await launcher.start(gr, {
-            cwd: message.cwd || path.join(__dirname, '..', '..', '..'), prompt, title: message.title, account,
+            cwd: message.cwd || path.join(__dirname, '..', '..', '..'), prompt, title: message.title, account, remoteControl: message.remoteControl === true,
             mode: message.mode || defaults.defaultMode, engine: message.engine && message.engine !== 'claude' ? message.engine : undefined,
             model: message.model || (message.engine && message.engine !== 'claude' ? undefined : defaults.defaultModel) || undefined, effort: message.effort || defaults.defaultEffort || undefined
         });

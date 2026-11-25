@@ -195,6 +195,27 @@ async function openFleetIssues(repo) {
     return list.map((i) => ({ repo, number: i.number, id: i.id, title: i.title, body: i.body || '', url: issueUrl(repo, i.number), labels: (i.labels || []).map((l) => l.name), now: (i.labels || []).some((l) => l.name === LABEL_NOW), marker: (/<!-- fleet-work:(\d+) -->/.exec(i.body || '') || [])[1] || null }));
 }
 
+/** One issue: { repo, number, id, title, body, url, state } (several issues in one run: the brief names each, #1191). */
+async function getIssue(repo, number) {
+    const i = await call('GET', `/repos/${repo}/issues/${number}`);
+    if (!i) throw new Error(`No issue ${repo}#${number}`);
+    return { repo, number: i.number || number, id: i.id, title: i.title || '', body: i.body || '', url: issueUrl(repo, i.number || number), state: i.state };
+}
+
+/**
+ * Open issues of a repo, newest first (Gitea's default order), for the Work Queue's issue picker: one request, no polling.
+ * [{ repo, number, id, title, url, labels }]; q filters by title (and is passed to Gitea's own search).
+ */
+async function openIssues(repo, opts = {}) {
+    if (!REPO_RE.test(String(repo || ''))) throw new Error(`Not a repository: ${repo}`);
+    const limit = Math.max(1, Math.min(100, Number(opts.limit) || 100));
+    const q = String(opts.q || '').trim();
+    const list = (await call('GET', `/repos/${repo}/issues?state=open&type=issues&limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ''}`)) || [];
+    const want = q.toLowerCase();
+    return list.filter((i) => i && i.number && !i.pull_request && (!want || String(i.title || '').toLowerCase().includes(want)))
+        .map((i) => ({ repo, number: i.number, id: i.id, title: i.title || '', url: issueUrl(repo, i.number), labels: (i.labels || []).map((l) => l.name) }));
+}
+
 async function issueState(repo, number) {
     const i = await call('GET', `/repos/${repo}/issues/${number}`);
     return i ? i.state : null;
@@ -202,5 +223,5 @@ async function issueState(repo, number) {
 
 module.exports = {
     DEFAULT_REPO, LABEL, LABEL_NOW, repoForCwd, parseIssueRef, issueUrl, createIssue, linkIssue, comment, setStatus, addTime, close,
-    openFleetIssues, issueState, call, labels, _setFetch, _doneList: doneList, MARK
+    openFleetIssues, openIssues, getIssue, issueState, call, labels, _setFetch, _doneList: doneList, MARK
 };

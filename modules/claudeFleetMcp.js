@@ -53,14 +53,16 @@ const TOOLS = [
     tool('claude_fleet_status', 'Every Claude account: plan usage (current session / 5-hour and weekly percent used, resets), Remote Control (connected / stopped / error; own folder or the host\'s login), the sessions running on it (busy / idle, title, folder, link), and the coordination picture (agents, claims, open build gates). Read this before claude_dispatch.', {
         refresh: { type: 'boolean', description: 'Read usage now instead of the cached read (at most every 20 s)' }
     }),
-    tool('claude_dispatch', 'Hand work to the Supervisor: it becomes a work item that starts as a supervised Fleet session (Waiting until started; with startNow it starts when there is a slot and an account with room) on an account with a model and effort, in a folder, with a first prompt. The Supervisor checks each of its turns against the request. It runs in Remote Control (Yukimi sees it on claude.ai/code) with the agent-coord MCP (claims, busy locks, build gates). Answers its session id, account and link. Give the prompt the whole task: the Yozora issue, the files, the acceptance check, and that it must coord_claim before editing and coord_build_request before any build.', {
+    tool('claude_dispatch', 'Hand work to the Supervisor: it becomes a work item that starts as a supervised Fleet session (Waiting until started; with startNow it starts when there is a slot and an account with room) on an account with a model and effort, in a folder, with a first prompt. The Supervisor checks each of its turns against the request. It runs in a Fleet terminal (steerable from Fleet) WITHOUT Remote Control unless you pass remoteControl: true (then Yukimi also sees it on claude.ai/code and can take it over from the phone); it always has the agent-coord MCP (claims, busy locks, build gates). Several related Yozora issues can be one run: pass them all in issues. Answers its session id, account and link. Give the prompt the whole task: the Yozora issue, the files, the acceptance check, and that it must coord_claim before editing and coord_build_request before any build.', {
         prompt: str('The task, complete (it starts with nothing else)'),
         account: str('Account name or index from claude_fleet_status, or "auto" (default): the account with the most headroom'),
         model: str('Model alias (sonnet, opus, haiku, fable) or a full model id. Default sonnet (subagents-sonnet rule): pick another only for a named reason (undecided design, a bug Sonnet already failed on, a security review, Yukimi asked) and say it in modelReason. A planner (topology planner) is sized by the Supervisor when its stages are left unset: opus / high, opus / xhigh for large requests, fable / xhigh for very large or hard ones'),
         modelReason: str('Why not Sonnet, when model is not sonnet'),
         effort: { type: 'string', enum: EFFORTS, description: 'Reasoning effort (default: the CLI default)' },
         cwd: str('Absolute folder on the host (default: the Dreamscape repo)'),
-        title: str('Session title shown in claude.ai/code (default: the prompt\'s first line)'),
+        title: str('Session title shown in Fleet (and in claude.ai/code with remoteControl) (default: the prompt\'s first line)'),
+        remoteControl: { type: 'boolean', description: 'Start the session in Remote Control (claude.ai/code, takeover from the phone). Default false: it runs in a Fleet terminal only' },
+        issues: { type: 'array', items: { type: 'string' }, description: 'Yozora issues this one run covers, as "owner/repo#N" or issue URLs (the first is the primary; the others are named in the brief and get their own comments; the run closes only those whose own ask is done). Leave out and an issue is made for the request' },
         mode: { type: 'string', enum: ['bypassPermissions', 'acceptEdits', 'auto', 'default', 'plan'], description: 'Permission mode (default bypassPermissions, as Remote Control\'s)' },
         allowFull: { type: 'boolean', description: 'Allow an account at 95% or more of a limit' },
         startNow: { type: 'boolean', description: 'Start it now when there is room. Default false: the item lands in Waiting (held) until Yukimi starts it, or you do with fleet_work_start when she asked or agreed' },
@@ -93,7 +95,9 @@ const TOOLS = [
         stages: { type: 'object', description: '{ planner?: {engine?, model?, effort?}, workers?: {engine?, model?, effort?} }, merged over the item\'s' },
         account: str('Account name or index, or "auto"'),
         model: str('Model alias or id (Sonnet unless a named reason)'),
-        effort: { type: 'string', enum: EFFORTS, description: 'Reasoning effort' }
+        effort: { type: 'string', enum: EFFORTS, description: 'Reasoning effort' },
+        remoteControl: { type: 'boolean', description: 'Whether the session starts in Remote Control (default off)' },
+        issues: { type: 'array', items: { type: 'string' }, description: 'The Yozora issues this run covers ("owner/repo#N" or URLs; the first is the primary). Replaces the item\'s issues; an empty list drops all but the primary' }
     }, ['id']),
     tool('fleet_work_start', 'Start Waiting (or failed / cancelled) items: they join the queue and start when a slot and an account with room are free (now: true, the default, ignores the slot limit). Start only what Yukimi asked for or clearly agreed to.', {
         ids: { type: 'array', items: { type: 'number' }, description: 'Work item ids' },
@@ -231,7 +235,7 @@ function workRow(w) {
     return {
         id: w.id, title: w.title, state: STATE_LABEL[w.state] || w.state, source: w.source, account: w.account || 'auto',
         model: [w.engine && w.engine !== 'claude' ? w.engine : '', w.model, w.effort].filter(Boolean).join(' / '),
-        issue: issueRef(w), issueUrl: w.issue ? w.issue.url : null, parent: w.parentId || undefined, created: iso(w.createdAt),
+        issue: issueRef(w), issueUrl: w.issue ? w.issue.url : null, issues: w.issues && w.issues.length > 1 ? w.issues.map((i) => `${i.repo}#${i.number}`) : undefined, remoteControl: !!w.remoteControl, parent: w.parentId || undefined, created: iso(w.createdAt),
         note: String(w.message || '').slice(0, 200), check: checkBrief(w.check)
     };
 }
@@ -264,7 +268,7 @@ function workDispatch(sup, name, input) {
     }
     if (name === 'fleet_work_update') {
         const f = {};
-        ['title', 'prompt', 'appendNote', 'topology', 'stages', 'account', 'model', 'effort'].forEach((k) => { if (input[k] !== undefined) f[k] = input[k]; });
+        ['title', 'prompt', 'appendNote', 'topology', 'stages', 'account', 'model', 'effort', 'remoteControl', 'issues'].forEach((k) => { if (input[k] !== undefined) f[k] = input[k]; });
         const w = sup.updateWork(input.id, f, { by: 'Yozora' });
         return { item: workRow(w), changed: Object.keys(f) };
     }
@@ -356,13 +360,14 @@ async function dispatch(gr, name, input) {
         const sup = require('./agentSupervisor');
         let w = sup.enqueue({
             title: input.title, prompt, cwd, account: input.account && String(input.account).toLowerCase() !== 'auto' ? acc.index : null,
-            model: input.engine && input.engine !== 'claude' ? (input.model || undefined) : model, engine: input.engine, effort: input.effort || (acc.settings && acc.settings.defaultEffort) || undefined, startNow: input.startNow === true, source: 'director'
+            model: input.engine && input.engine !== 'claude' ? (input.model || undefined) : model, engine: input.engine, effort: input.effort || (acc.settings && acc.settings.defaultEffort) || undefined, startNow: input.startNow === true, source: 'director',
+            remoteControl: input.remoteControl === true, issues: input.issues
         }, { gr });
         await sup.pumpWork(gr);
         w = sup.getWork(w.id);
         return {
             work: w.id, state: w.state, session: w.sessionId || null, account: w.account || acc.name, model, effort: w.effort || null,
-            link: w.link || '', message: w.message,
+            link: w.link || '', message: w.message, remoteControl: !!w.remoteControl, issues: w.issues && w.issues.length ? w.issues.map((i) => `${i.repo}#${i.number}`) : undefined,
             modelReason: input.modelReason ? String(input.modelReason).slice(0, 300) : undefined,
             usageBefore: acc.usage ? acc.usage.limits : []
         };

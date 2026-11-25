@@ -5,17 +5,20 @@
  * Shares claudeSessions.js (the phone's Sessions tab): the same tmux socket, the same rc-<id8> session
  * names, the same live-session records, so either app sees and ends what the other started.
  *
- *   start({ cwd, prompt, title, account, mode, model, effort })   a new session: `claude --session-id
- *                                       <new uuid> --remote-control <title> --permission-mode <mode>
+ *   start({ cwd, prompt, title, account, mode, model, effort, remoteControl })   a new session: `claude --session-id
+ *                                       <new uuid> [--remote-control <title>] --permission-mode <mode>
  *                                       [--model <model>] [--effort <level>] [prompt]` (Yozora's
- *                                       claude_dispatch picks the model and effort, #1154)
+ *                                       claude_dispatch picks the model and effort, #1154). Remote Control is a
+ *                                       choice (#1191, Yukimi Nov 25 2026): only remoteControl: true adds the flag;
+ *                                       a new session without it runs in its tmux terminal (steerable from Fleet,
+ *                                       not in claude.ai/code) and the answer is state 'running' with no link
  *   resume(id, { account, mode, title })          a session that is not running, back in Remote Control
  *                                       (`--resume <uuid>`, no fork)
  *   steer(id, text)                    types a message into a running session's terminal (tmux); Claude
  *                                       Code takes it as the next prompt, or as steering while it works
  *   interrupt(id)                      Esc in its terminal (stops the current turn)
  *
- * Every session started here: Remote Control on (Yukimi watches them on claude.ai/code), the agent-coord
+ * Every session started here: Remote Control when asked for (resume / takeover always bring it back), the agent-coord
  * MCP server (modules/agentCoord/mcpServer.js, through --mcp-config), registered in the coordination
  * store with its account and title, and run in a detached tmux session owned by this user on the
  * socket dreamscape-claude-carry. That tmux server is started in a systemd user scope of its own
@@ -50,6 +53,11 @@ const RC_NUDGE_RE = claudeSessions._text.RC_NUDGE_RE;
 const FAIL_RE = /No conversation found|Session .{0,40}not found|could not resume|Invalid session|Not logged in|Please run \/login|Invalid API key|OAuth token has expired/i;
 const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,79}$/;
+// Claude Code's own prompt is up (a session started without Remote Control has no "/remote-control is active" to wait for):
+// the footer hints (mode line, shortcuts, "esc to interrupt" once a first prompt is running) or the input box glyph that is
+// not a numbered menu choice (the folder-trust dialog's "> 1. Yes")
+const READY_RE = /\? for shortcuts|shift\+tab to cycle|esc to interrupt|(?:bypass permissions|accept edits|plan mode|auto mode) on|^\s*[│|]?\s*[>❯]\s*(?!\d+[.)])\S?.*$/m;
+const TRUST_RE = /Do you trust the files in this folder|Is this a project you (?:created|trust)/i;
 const STRIP_ENV = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CONFIG_DIR', 'TMUX', 'TMUX_PANE'];
 
 function socket() { return process.env.DREAMSCAPE_CLAUDE_CARRY_SOCKET || 'dreamscape-claude-carry'; }
@@ -210,11 +218,14 @@ async function engineEnv(gr, engine, model, effort, id) {
 
 async function watch(name, opts = {}) {
     const until = Date.now() + (opts.timeoutMs || WAIT_MS);
+    const rc = opts.remoteControl === true;
     let nudged = false;
     let trusted = false;
     let link = '';
+    let polls = 0;
     while (Date.now() < until) {
         await new Promise((res) => setTimeout(res, opts.pollMs || POLL_MS));
+        polls += 1;
         const p = await tmux(['capture-pane', '-p', '-J', '-t', `=${name}:`, '-S', '-80']);
         if (p.code !== 0) return { state: 'failed', link: '', message: 'It ended right after starting' };
         const text = p.stdout || '';
@@ -223,14 +234,22 @@ async function watch(name, opts = {}) {
             await tmux(['kill-session', '-t', `=${name}`]);
             return { state: 'failed', link: '', message: cleanTitle(text.split('\n').find((l) => FAIL_RE.test(l)), 160) };
         }
-        if (RC_ACTIVE_RE.test(text)) {
+        if (rc && RC_ACTIVE_RE.test(text)) {
             if (!link) link = linkOf(name);
             return { state: 'connected', link, message: nudged ? 'In Remote Control (reconnected with /remote-control)' : 'In Remote Control' };
         }
-        if (!trusted && /Do you trust the files in this folder|Is this a project you (?:created|trust)/i.test(text)) {
+        const trustShown = TRUST_RE.test(text);
+        if (!trusted && trustShown) {
             // a folder this account has not trusted yet (its first option is Yes): started here on purpose
             trusted = true;
             await tmux(['send-keys', '-t', `=${name}:`, 'Enter']);
+            continue;
+        }
+        if (!rc) {
+            // no Remote Control: nothing to wait for or to nudge; running as soon as the CLI shows its prompt (or its
+            // session record is there, a few polls in, and no trust dialog is still waiting)
+            const recordUp = polls >= 3 && !(trustShown && !trusted) && claudeSessions.liveSessions().some((s) => s.tmuxSession === name || (opts.id && s.id === opts.id));
+            if ((READY_RE.test(text) && !(trustShown && !trusted)) || recordUp) return { state: 'running', link: '', message: 'Running (no Remote Control)' };
             continue;
         }
         if (!nudged && RC_NUDGE_RE.test(text)) {
@@ -238,6 +257,7 @@ async function watch(name, opts = {}) {
             await tmux(['send-keys', '-t', `=${name}:`, '/remote-control', 'Enter']);
         }
     }
+    if (!rc) return { state: 'running', link: '', message: 'Running (no Remote Control); its prompt was not seen in time' };
     return { state: 'started', link: link || linkOf(name), message: 'Running, but Remote Control did not say it is active yet' };
 }
 
@@ -246,13 +266,33 @@ function linkOf(name) {
     return l ? l.link : '';
 }
 
+/**
+ * The CLI's arguments for a launch (pure; mcpConfig is the --mcp-config file when agent-coord is not registered at user
+ * scope). --remote-control <title> only when o.remoteControl === true (a new session's choice; resume / takeover pass true).
+ */
+function buildArgs(o, extra = {}) {
+    const args = [o.resume ? '--resume' : '--session-id', o.id];
+    if (o.remoteControl === true) args.push('--remote-control', extra.title);
+    args.push('--permission-mode', MODES.has(o.mode) ? o.mode : DEFAULT_MODE);
+    if (extra.mcpConfig) args.push('--mcp-config', extra.mcpConfig);
+    if (o.model !== undefined && o.model !== null && o.model !== '') {
+        if (!MODEL_RE.test(String(o.model))) throw new Error('That is not a model name (an alias like opus / sonnet, or a full model id)');
+        args.push('--model', String(o.model));
+    }
+    if (o.effort !== undefined && o.effort !== null && o.effort !== '') {
+        if (!EFFORTS.has(String(o.effort))) throw new Error('effort is low, medium, high, xhigh or max');
+        args.push('--effort', String(o.effort));
+    }
+    if (!o.resume && o.prompt) args.push('--', String(o.prompt).slice(0, 20000));
+    return args;
+}
+
 async function launch(gr, o) {
     if (readOnly()) throw new Error('Sessions are read-only on this instance');
     const cwd = String(o.cwd || '');
     let isDir = false;
     try { isDir = path.isAbsolute(cwd) && (await fs.promises.stat(cwd)).isDirectory(); } catch (_) { isDir = false; }
     if (!isDir) throw new Error(`The folder ${cwd || '(none)'} is not on the host`);
-    const mode = MODES.has(o.mode) ? o.mode : DEFAULT_MODE;
     const { env, account } = await accountEnv(gr, o.account);
     // Fleet sessions work on Yozora as Yozora (director.yozora), never as claude (Yukimi, Nov 24 2026: "all the
     // fleet system should use Yozora's token not Claude, pretty much only the host session should use that"):
@@ -272,17 +312,7 @@ async function launch(gr, o) {
         other = await engineEnv(gr, engine, o.model, o.effort, o.id);
         o = Object.assign({}, o, { model: other.model, effort: undefined }); // the bridge carries the effort
     }
-    const args = [o.resume ? '--resume' : '--session-id', o.id, '--remote-control', title, '--permission-mode', mode];
-    if (!coordOk) args.push('--mcp-config', await mcpConfigFile());
-    if (o.model !== undefined && o.model !== null && o.model !== '') {
-        if (!MODEL_RE.test(String(o.model))) throw new Error('That is not a model name (an alias like opus / sonnet, or a full model id)');
-        args.push('--model', String(o.model));
-    }
-    if (o.effort !== undefined && o.effort !== null && o.effort !== '') {
-        if (!EFFORTS.has(String(o.effort))) throw new Error('effort is low, medium, high, xhigh or max');
-        args.push('--effort', String(o.effort));
-    }
-    if (!o.resume && o.prompt) args.push('--', String(o.prompt).slice(0, 20000));
+    const args = buildArgs(o, { title, mcpConfig: coordOk ? null : await mcpConfigFile() });
     const name = tmuxName(o.id);
     await ensureServer();
     if ((await tmux(['has-session', '-t', `=${name}`])).code === 0) {
@@ -299,7 +329,7 @@ async function launch(gr, o) {
 async function start(gr, opts = {}) {
     const id = crypto.randomUUID();
     const title = opts.title || (opts.prompt ? String(opts.prompt).split('\n')[0] : '') || path.basename(String(opts.cwd || '')) || 'Claude session';
-    return launch(gr, { id, cwd: opts.cwd, prompt: opts.prompt, title, task: opts.prompt ? cleanTitle(opts.prompt, 200) : title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, engine: opts.engine, dispatchedBy: opts.dispatchedBy, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
+    return launch(gr, { id, cwd: opts.cwd, prompt: opts.prompt, title, task: opts.prompt ? cleanTitle(opts.prompt, 200) : title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, engine: opts.engine, remoteControl: opts.remoteControl === true, dispatchedBy: opts.dispatchedBy, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
 }
 
 async function findFile(id) {
@@ -335,7 +365,7 @@ async function resume(gr, id, opts = {}) {
     if (live && live.remoteControl) return { id, state: 'live', link: live.link, tmuxSession: live.tmuxSession, message: 'Already in Remote Control' };
     if (live) throw new Error(`It is running already (${live.origin === 'server' ? 'Remote Control' : live.tmuxSession || 'a terminal'}) without Remote Control: type /remote-control there, or send it /remote-control from here`);
     const cwd = await cwdOf(file);
-    return launch(gr, { id, resume: true, cwd, title: opts.title || id.slice(0, 8), task: opts.title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
+    return launch(gr, { id, resume: true, cwd, title: opts.title || id.slice(0, 8), task: opts.title, account: opts.account, mode: opts.mode, remoteControl: true, model: opts.model, effort: opts.effort, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
 }
 
 /**
@@ -366,7 +396,7 @@ async function takeover(gr, id) {
     }
     if (claudeSessions.pidAlive(live.pid)) throw new Error('Its Remote Control process did not end');
     const cwd = live.cwd || (await cwdOf(await findFile(id)));
-    return launch(gr, { id, resume: true, cwd, title, task: title, account });
+    return launch(gr, { id, resume: true, cwd, title, task: title, account, remoteControl: true });
 }
 
 // ---------------------------------------------------------------- steering
@@ -450,4 +480,4 @@ async function screen(id) {
     return { id, lines: lines.slice(-40) };
 }
 
-module.exports = { ensureServer, start, resume, takeover, steer, interrupt, screen, mcpConfigFile, findFile, _setRunner, _commandLine: commandLine, DEFAULT_MODE, EFFORTS };
+module.exports = { ensureServer, start, resume, takeover, steer, interrupt, screen, mcpConfigFile, findFile, _setRunner, _commandLine: commandLine, DEFAULT_MODE, EFFORTS, _test: { buildArgs, READY_RE } };

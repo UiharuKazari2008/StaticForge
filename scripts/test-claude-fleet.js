@@ -226,6 +226,26 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
         assert.strictEqual(h.results[0].state, 'Waiting');
     });
 
+    await test('Remote Control and several issues: claude_dispatch / fleet_work_update take remoteControl and issues; rows show them', async () => {
+        require('../modules/fleetYozora')._setFetch(async () => ({ ok: true, status: 200, text: async () => '{}' }));
+        const sup = require('../modules/agentSupervisor');
+        const fm = require('../modules/claudeFleetMcp');
+        const { dispatch } = fm._test;
+        const tool = (n) => fm.TOOLS.find((t) => t.name === n);
+        ['claude_dispatch', 'fleet_work_update'].forEach((n) => {
+            const p = tool(n).inputSchema.properties;
+            assert.strictEqual(p.remoteControl.type, 'boolean', `${n} remoteControl`);
+            assert.deepStrictEqual([p.issues.type, p.issues.items.type], ['array', 'string'], `${n} issues`);
+        });
+        assert.ok(/WITHOUT Remote Control unless you pass remoteControl: true/.test(tool('claude_dispatch').description));
+        assert.ok(!/It runs in Remote Control \(Yukimi sees it/.test(tool('claude_dispatch').description));
+        const w = sup.enqueue({ title: 'Several', prompt: 'two issues' });
+        const up = await dispatch(null, 'fleet_work_update', { id: w.id, remoteControl: true, issues: ['Org/Repo#1', 'Org/Repo#2'] });
+        assert.deepStrictEqual(up.changed, ['remoteControl', 'issues']);
+        assert.deepStrictEqual([up.item.remoteControl, up.item.issues], [true, ['Org/Repo#1', 'Org/Repo#2']]);
+        assert.strictEqual((await dispatch(null, 'fleet_work_get', { id: w.id })).issue, 'Org/Repo#1', 'the first is the primary');
+    });
+
     await test('pace and renewal math (claudePace.js) and the client copies agree', async () => {
         const pace = require('../modules/claudePace');
         const H = 3600000;

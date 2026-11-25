@@ -42,7 +42,7 @@
  * Session wizard, a Plaud recording, Yozora's claude_dispatch, or an agent's coord_request_work) waits in
  * supervisor_work until there is a slot (settings.maxConcurrent supervised sessions at once, default 3) and
  * an account free to take work (claudeFleetMcp.pickForStart: preferred while free, else most headroom);
- * then it runs as a supervised Fleet session (tmux, Remote Control on, steerable from Fleet). Its state
+ * then it runs as a supervised Fleet session (tmux, Remote Control only when the item asks for it, steerable from Fleet). Its state
  * follows the session's reviews: running -> done (a turn ended with nothing missed) / waiting (gaps sent
  * back to it) / failed (it ended with gaps or did not start). autoStart off keeps items queued until Start
  * Now. The queue moves on enqueue, after every review and on every usage read (no timer).
@@ -318,7 +318,12 @@ function promptFor(t, meta) {
         '',
         '## Its final answer',
         t.final || '(no final text)'
-    ].concat(meta.list ? ['', meta.list] : []).join('\n');
+    ].concat(meta.list ? ['', meta.list] : []).concat(meta.issuesList && meta.issuesList.length > 1 ? [
+        '',
+        `## Issues this run covers (${meta.issuesList.length})`,
+        meta.issuesList.map((i, n) => `${n + 1}. ${i.repo}#${i.number}${i.title ? ` - ${i.title}` : ''}`).join('\n'),
+        'This run covers these issues together. In your JSON also answer "issues":[{"ref":"owner/repo#N","done":true|false,"left":"what is still open (empty when done)"}] with one entry per issue above: done is true only when that issue\'s own ask was done and shown to work; otherwise false, and say plainly what is left. verdict ok means every issue is done.'
+    ] : []).join('\n');
 }
 
 let fetchFn = (...a) => fetch(...a);
@@ -502,7 +507,15 @@ function parseVerdict(text) {
     let verdict = ['ok', 'gaps', 'unclear'].includes(o.verdict) ? o.verdict : (missed.length ? 'gaps' : 'unclear');
     if (verdict === 'ok' && missed.length) verdict = 'gaps';
     const done = (Array.isArray(o.done) ? o.done : []).map((x) => ({ id: Number(x && typeof x === 'object' ? x.id : x), evidence: String((x && x.evidence) || '').slice(0, 600) })).filter((x) => Number.isInteger(x.id)).slice(0, 40);
-    return Object.assign({ verdict, summary: String(o.summary || '').slice(0, 400), missed }, done.length ? { done } : {});
+    // per-issue answer of a run that covers several issues (#1191): [{ ref, done, left }], refs as owner/repo#N
+    const issues = (Array.isArray(o.issues) ? o.issues : []).map((x) => {
+        if (!x || typeof x !== 'object') return null;
+        const ref = canonRef(x.ref || x.issue || x.url || '');
+        if (!ref) return null;
+        const left = String(x.left || x.remaining || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+        return { ref, done: typeof x.done === 'boolean' ? x.done : !left, left };
+    }).filter(Boolean).slice(0, 40);
+    return Object.assign({ verdict, summary: String(o.summary || '').slice(0, 400), missed }, done.length ? { done } : {}, issues.length ? { issues } : {});
 }
 
 // ---------------------------------------------------------------- store (agent-coord DB)
@@ -541,7 +554,7 @@ function db() {
         `);
         const wcols = new Set(d.prepare('PRAGMA table_info(supervisor_work)').all().map((c) => c.name));
         if (!wcols.has('engine')) d.exec("ALTER TABLE supervisor_work ADD COLUMN engine TEXT NOT NULL DEFAULT 'claude'");
-        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
+        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT'], ['remote_control', 'INTEGER NOT NULL DEFAULT 0'], ['issue_refs', 'TEXT'], ['joined_into', 'INTEGER']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
         const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
         if (!cols.has('supervised')) d.exec('ALTER TABLE supervisor_state ADD COLUMN supervised INTEGER NOT NULL DEFAULT 0');
         const rcols = new Set(d.prepare('PRAGMA table_info(supervisor_reviews)').all().map((x) => x.name));
@@ -549,6 +562,8 @@ function db() {
         // rule violations of the turn (a JSON list) and what the rule check looked at (a JSON object)
         if (!rcols.has('violations')) d.exec("ALTER TABLE supervisor_reviews ADD COLUMN violations TEXT NOT NULL DEFAULT '[]'");
         if (!rcols.has('rulecheck')) d.exec('ALTER TABLE supervisor_reviews ADD COLUMN rulecheck TEXT');
+        // a run that covers several issues (#1191): the Supervisor's per-issue answer, a JSON list [{ ref, done, left }]
+        if (!rcols.has('issues')) d.exec('ALTER TABLE supervisor_reviews ADD COLUMN issues TEXT');
         db.ready = d;
     }
     return d;
@@ -561,7 +576,7 @@ function rowReview(r) {
         id: r.id, sessionId: r.session_id, agentId: r.agent_id || '', title: r.title || '', account: r.account || '', at: r.at,
         trigger: r.trigger, verdict: r.verdict, summary: r.summary, request: r.request, steering: j(r.steering, []),
         missed: j(r.missed, []), model: r.model, delivered: r.delivered || '', dismissed: !!r.dismissed, error: r.error || '',
-        resolved: r.resolved || '', violations: j(r.violations, []), ruleCheck: j(r.rulecheck, null)
+        resolved: r.resolved || '', violations: j(r.violations, []), ruleCheck: j(r.rulecheck, null), issues: j(r.issues, [])
     };
 }
 
@@ -670,6 +685,11 @@ async function review(sessionId, trigger, opts = {}) {
     const meta = metaFor(sessionId);
     // the user's list is brought up to date first, so the review judges against it (a failure here never stops a review)
     try { const T = sessionTasks(); await T.sync(sessionId); meta.list = T.promptSection(sessionId); } catch (e) { console.warn(`[supervisor] tasks ${sessionId.slice(0, 8)}: ${e.message}`); }
+    try {
+        const wi = activeItemOf(sessionId);
+        const list = wi ? allIssueRefs(wi) : [];
+        if (list.length > 1) meta.issuesList = list.map((i) => ({ repo: i.repo, number: i.number, title: i.title || issueTitles.get(`${i.repo}#${i.number}`) || '' }));
+    } catch (_) { /* no item */ }
     const turn = turnOf(messages);
     // a work item's session starts from its brief (the opening prompt, not a human message): that brief is the request
     // (Nov 25 2026: items stayed "running" forever after "No request in this turn")
@@ -700,9 +720,9 @@ async function review(sessionId, trigger, opts = {}) {
     if (result.skipped && trigger === 'turn-end') return null; // nothing asked: no row
     // the items a review names as done are ticked, with its evidence
     if (result.done && result.done.length) { try { sessionTasks().applyDone(sessionId, result.done); } catch (e) { console.warn(`[supervisor] tick: ${e.message}`); } }
-    const ins = d.prepare(`INSERT INTO supervisor_reviews (session_id, agent_id, title, account, at, trigger, verdict, summary, request, steering, missed, model, error, violations, rulecheck)
-        VALUES (@session_id, @agent_id, @title, @account, @at, @trigger, @verdict, @summary, @request, @steering, @missed, @model, @error, @violations, @rulecheck)`)
-        .run(Object.assign(base, { verdict: result.verdict, summary: result.summary || '', missed: JSON.stringify(result.missed || []), model: result.model || '', error: result.error || null, violations: JSON.stringify(rc ? rc.violations : []), rulecheck: rc ? JSON.stringify({ checked: rc.checked, files: rc.files, scripts: rc.scripts, rules: rc.rules, calls: rc.calls, error: rc.error, skipped: rc.skipped || '' }) : null }));
+    const ins = d.prepare(`INSERT INTO supervisor_reviews (session_id, agent_id, title, account, at, trigger, verdict, summary, request, steering, missed, model, error, violations, rulecheck, issues)
+        VALUES (@session_id, @agent_id, @title, @account, @at, @trigger, @verdict, @summary, @request, @steering, @missed, @model, @error, @violations, @rulecheck, @issues)`)
+        .run(Object.assign(base, { issues: result.issues && result.issues.length ? JSON.stringify(result.issues) : null, verdict: result.verdict, summary: result.summary || '', missed: JSON.stringify(result.missed || []), model: result.model || '', error: result.error || null, violations: JSON.stringify(rc ? rc.violations : []), rulecheck: rc ? JSON.stringify({ checked: rc.checked, files: rc.files, scripts: rc.scripts, rules: rc.rules, calls: rc.calls, error: rc.error, skipped: rc.skipped || '' }) : null }));
     let rv = getReview(ins.lastInsertRowid);
     resolveEarlier(rv, rc);
     if ((rv.verdict === 'gaps' || openViolations(rv).length) && trigger !== 'mcp') rv = await deliver(rv, s, { auto: true, fromSupervisor: turn.fromSupervisor }).catch(() => rv);
@@ -878,6 +898,91 @@ function isSupervised(sessionId) {
 const WORK_STATES = ['held', 'queued', 'starting', 'running', 'waiting', 'done', 'failed', 'cancelled'];
 const ACTIVE = ['starting', 'running', 'waiting'];
 
+// ---- several issues in one run (#1191): issue_repo / issue_number / issue_id stay the PRIMARY (the first picked), issue_refs
+// is a JSON list of the others [{ repo, number, id, title }] (the primary is not repeated)
+const issueTitles = new Map(); // "owner/repo#N" -> title, filled as issues are linked / listed / fetched (a row has no title column)
+function rememberTitle(repo, number, title) {
+    if (!repo || !number || !title) return;
+    if (issueTitles.size > 600) issueTitles.clear();
+    issueTitles.set(`${repo}#${number}`, String(title).slice(0, 200));
+}
+const issueKey = (i) => `${i.repo}#${i.number}`;
+/** "owner/repo#N", a Yozora URL or a bare #N -> "owner/repo#N" (null when it names no issue). */
+function canonRef(ref) {
+    const p = yz().parseIssueRef(String(ref || '').trim());
+    return p ? `${p.repo}#${p.number}` : '';
+}
+/** Refs from one string (several, separated by spaces / commas), an array of strings / { repo, number, id }, or nested lists: deduped, in order. */
+function parseRefs(...inputs) {
+    const out = [];
+    const seen = new Set();
+    const push = (x) => { const k = issueKey(x); if (seen.has(k)) return; seen.add(k); out.push(x); };
+    const one = (v) => {
+        if (v === null || v === undefined || v === '') return;
+        if (Array.isArray(v)) { v.forEach(one); return; }
+        if (typeof v === 'object') {
+            const n = Number(v.number);
+            if (typeof v.repo === 'string' && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(v.repo) && Number.isInteger(n) && n > 0) push({ repo: v.repo, number: n, id: v.id || null, title: v.title ? String(v.title).slice(0, 200) : '' });
+            else if (v.url || v.ref) one(v.url || v.ref);
+            return;
+        }
+        String(v).split(/[\s,;]+/).filter(Boolean).forEach((t) => { const p = yz().parseIssueRef(t); if (p) push({ repo: p.repo, number: p.number, id: null, title: '' }); });
+    };
+    inputs.forEach(one);
+    return out;
+}
+function refsOf(r) {
+    try { const a = JSON.parse((r && r.issue_refs) || '[]'); return Array.isArray(a) ? a.filter((x) => x && x.repo && x.number) : []; } catch (_) { return []; }
+}
+/** The row's issues, primary first (a raw supervisor_work row). */
+function allIssueRefs(r) {
+    if (!r) return [];
+    return (r.issue_repo && r.issue_number ? [{ repo: r.issue_repo, number: r.issue_number, id: r.issue_id || null, title: issueTitles.get(`${r.issue_repo}#${r.issue_number}`) || '' }] : []).concat(refsOf(r));
+}
+const shortRef = (i, rel) => (rel && i.repo === rel.repo ? `#${i.number}` : issueKey(i));
+function activeItemOf(sessionId) {
+    return db().prepare(`SELECT * FROM supervisor_work WHERE session_id = ? AND state IN (${ACTIVE.map(() => '?').join(',')})`).get(sessionId, ...ACTIVE);
+}
+/** The item's other issues in the row, and its primary, written once (background-safe: read-modify-write in one tick). */
+function enrichIssue(id, iss) {
+    if (!iss || !iss.repo) return;
+    rememberTitle(iss.repo, iss.number, iss.title);
+    const d = db();
+    const r = d.prepare('SELECT issue_repo, issue_number, issue_id, issue_refs FROM supervisor_work WHERE id = ?').get(Number(id));
+    if (!r) return;
+    if (r.issue_repo === iss.repo && r.issue_number === iss.number) {
+        if (iss.id && r.issue_id !== iss.id) d.prepare('UPDATE supervisor_work SET issue_id = ? WHERE id = ?').run(iss.id, Number(id));
+        return;
+    }
+    const refs = refsOf(r);
+    const hit = refs.find((x) => x.repo === iss.repo && x.number === iss.number);
+    if (!hit) return;
+    hit.id = iss.id || hit.id || null;
+    hit.title = iss.title || hit.title || '';
+    d.prepare('UPDATE supervisor_work SET issue_refs = ? WHERE id = ?').run(JSON.stringify(refs), Number(id));
+}
+/**
+ * Sets the item's issues: the first is the primary, the others go in issue_refs; each is linked on Yozora in the background (the
+ * fleet label; title and id come back). The refs are written at once: an item that names its issues must never get an issue of
+ * its own made because the link was still on the way (a single ref that then fails to link is taken back: opts.rollback).
+ */
+function setIssues(id, refs, opts = {}) {
+    if (!refs.length) return;
+    const [first, ...rest] = refs;
+    db().prepare('UPDATE supervisor_work SET issue_repo = ?, issue_number = ?, issue_id = ?, issue_refs = ?, issue_note = NULL WHERE id = ?')
+        .run(first.repo, first.number, first.id || null, rest.length ? JSON.stringify(rest) : null, Number(id));
+    refs.forEach((x, n) => {
+        yz().linkIssue(issueKey(x)).then((iss) => {
+            enrichIssue(id, iss);
+            emit({ work: getWork(id) });
+        }).catch((e) => {
+            // a single ref that does not link (no such issue) is not kept as the item's issue: the item gets one of its own
+            if (n === 0 && opts.rollback) db().prepare('UPDATE supervisor_work SET issue_repo = NULL, issue_number = NULL, issue_id = NULL WHERE id = ? AND issue_repo = ? AND issue_number = ? AND issue_id IS NULL').run(Number(id), x.repo, x.number);
+            noteIssue(Number(id), refs.length === 1 ? `Issue not linked: ${e.message}` : `Issue ${issueKey(x)} not linked: ${e.message}`);
+        });
+    });
+}
+
 function rowWork(r) {
     if (!r) return null;
     return {
@@ -886,6 +991,8 @@ function rowWork(r) {
         createdAt: r.created_at, startedAt: r.started_at, endedAt: r.ended_at, prompt: String(r.prompt || '').slice(0, 2000),
         topology: r.topology || 'planner', stages: (() => { try { return JSON.parse(r.stages || '{}'); } catch (_) { return {}; } })(), parentId: r.parent_id || null,
         issue: r.issue_repo && r.issue_number ? { repo: r.issue_repo, number: r.issue_number, url: yz().issueUrl(r.issue_repo, r.issue_number) } : null,
+        issues: allIssueRefs(r).map((i, n) => Object.assign({ repo: i.repo, number: i.number, url: yz().issueUrl(i.repo, i.number) }, i.title ? { title: i.title } : {}, { primary: n === 0 })),
+        remoteControl: !!r.remote_control, joinedInto: r.joined_into || null,
         issueNote: r.issue_note || '',
         check: (() => { try { return r.check_json ? JSON.parse(r.check_json) : null; } catch (_) { return null; } })()
     };
@@ -920,11 +1027,67 @@ async function ensureIssue(id) {
         const w = rowWork(r);
         const made = await yz().createIssue(Object.assign({}, w, { prompt: r.prompt }));
         db().prepare('UPDATE supervisor_work SET issue_repo = ?, issue_number = ?, issue_id = ?, issue_note = NULL WHERE id = ?').run(made.repo, made.number, made.id, r.id);
+        rememberTitle(made.repo, made.number, r.title);
     } catch (e) { noteIssue(r.id, `No issue yet: ${e.message}`); }
     return db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id));
 }
 
 const mins = (ms) => `${Math.max(1, Math.round(ms / 60000))} min`;
+
+/** The session's last review (what the Supervisor last said about it), or null. */
+function lastReviewOf(r) {
+    if (!r || !r.session_id) return null;
+    try { return rowReview(db().prepare('SELECT * FROM supervisor_reviews WHERE session_id = ? ORDER BY id DESC LIMIT 1').get(r.session_id)); } catch (_) { return null; }
+}
+/**
+ * Per issue of a several-issue run, from the last review: Map "owner/repo#N" -> { done, left }. An issue the review does not
+ * name is done when the item is (an ok verdict means nothing was missed); `left` falls back to the review's missed list.
+ */
+function issueResults(r, rv) {
+    const out = new Map();
+    const list = rv && Array.isArray(rv.issues) ? rv.issues : [];
+    const missed = rv && Array.isArray(rv.missed) ? rv.missed.map((m) => m.item).filter(Boolean).join('; ').slice(0, 500) : '';
+    allIssueRefs(r).forEach((i) => {
+        const hit = list.find((e) => e.ref === issueKey(i));
+        out.set(issueKey(i), hit ? { done: !!hit.done, left: hit.left || '', named: true } : { done: true, left: missed, named: false });
+    });
+    return out;
+}
+const CLOSE_OK_RE = /found nothing missed|All \d+ parts done/;
+
+/** The other issues of a several-issue run: a comment of their own at the start and the end, status labels, a close only when their own ask is done. */
+async function syncExtras(r, prevState, res, rv, closeOk) {
+    const Y = yz();
+    const refs = refsOf(r);
+    const all = allIssueRefs(r);
+    const prim = all[0];
+    const where = issueKey(prim);
+    const session = r.link ? ` Session: ${r.link}` : '';
+    for (const x of refs) {
+        const e = res.get(issueKey(x)) || { done: true, left: '' };
+        let text = '';
+        let status = '';
+        if (r.state === 'running' && prevState !== 'waiting') {
+            const others = all.filter((o) => issueKey(o) !== issueKey(x));
+            text = `**Fleet:** part of the Fleet run on ${where}, covering ${others.map((o) => shortRef(o, x)).join(', ')}. It started as one supervised session.${session} The session comments its progress here; the Supervisor comments again when the run ends.`;
+            status = 'running';
+        } else if (r.state === 'running') status = 'running';
+        else if (r.state === 'waiting') status = 'waiting';
+        else if (r.state === 'done') {
+            if (e.done) { text = `**Fleet / Supervisor:** done - part of the Fleet run on ${where}: the Supervisor checked the run and this issue's own ask is done. Closing as done.`; status = 'done'; }
+            else { text = `**Fleet / Supervisor:** the Fleet run on ${where} ended, but this issue's own ask is not finished. Left: ${e.left || 'what the run\'s last report names for it'}. Left open.`; status = 'running'; }
+        } else if (r.state === 'failed') {
+            const left = (e.named && !e.done ? e.left : '') || e.left || (rv && rv.summary) || 'not verified';
+            text = `**Fleet:** the Fleet run on ${where} did not finish: ${r.message || 'unknown'}. Nothing was closed. Left on this issue: ${left}`;
+            status = 'failed';
+        } else if (r.state === 'cancelled') text = `**Fleet:** the Fleet run on ${where} was cancelled in Fleet; this issue stays open.`;
+        try {
+            if (text) await Y.comment(x.repo, x.number, text);
+            if (status) await Y.setStatus(x.repo, x.number, x.id, status).catch(() => {});
+            if (r.state === 'done' && e.done && closeOk) await Y.close(x.repo, x.number);
+        } catch (err) { noteIssue(r.id, `Comment on ${issueKey(x)} failed: ${err.message}`); }
+    }
+}
 
 /** A state change, as a comment, status labels, the board card and (when it ends) tracked time. */
 async function syncIssue(id, prevState) {
@@ -936,12 +1099,20 @@ async function syncIssue(id, prevState) {
     const where = `${r.issue_repo}#${r.issue_number}`;
     const ran = r.started_at ? (r.ended_at || Date.now()) - r.started_at : 0;
     const session = r.link ? ` Session: ${r.link}` : (r.session_id ? ` Session ${r.session_id.slice(0, 8)} (Fleet).` : '');
+    const multi = refsOf(r).length > 0 && !r.parent_id;
+    const rv = multi && ['done', 'failed'].includes(r.state) ? lastReviewOf(r) : null;
+    const res = multi ? issueResults(r, rv) : null;
     let text = '';
     if (r.state === 'running' && prevState !== 'waiting') text = `**Fleet:** started as a supervised session on ${r.account || 'an account'} (${r.engine && r.engine !== 'claude' ? `${r.engine} ` : ''}${r.model || 'default model'}).${session} The Supervisor checks each turn against this issue.`;
     else if (r.state === 'running' && prevState === 'waiting') text = '**Fleet:** working again after the Supervisor\'s notes.';
     else if (r.state === 'waiting') text = `**Fleet / Supervisor:** after its last turn these look unaddressed, sent back to the session:\n${String(r.message || '').replace(/^Gaps sent back: /, '').split('; ').map((x) => `- ${x}`).join('\n')}`;
-    else if (r.state === 'done') text = `**Fleet / Supervisor:** done - the Supervisor checked the last turn against this issue (and its definition of done) and found nothing missed, with evidence it was tested. ${r.message || ''}\n\nRan ${mins(ran)} (added as tracked time).${session} Closing as done.`;
-    else if (r.state === 'failed') text = `**Fleet:** did not finish: ${r.message || 'unknown'}${ran ? `\n\nRan ${mins(ran)} (added as tracked time).` : ''}`;
+    else if (r.state === 'done') {
+        // a run that covers several issues closes each one whose own ask the last review says is done (#1191)
+        const mine = multi ? res.get(`${r.issue_repo}#${r.issue_number}`) : null;
+        const ending = !mine || mine.done ? ' Closing as done.' : `\n\nThis issue's own ask is not finished. Left: ${mine.left || 'what the run\'s last report names for it'}. Left open.`;
+        text = `**Fleet / Supervisor:** done - the Supervisor checked the last turn against this issue (and its definition of done) and found nothing missed, with evidence it was tested. ${r.message || ''}\n\nRan ${mins(ran)} (added as tracked time).${session}${ending}`;
+    }
+    else if (r.state === 'failed') text = `**Fleet:** did not finish: ${r.message || 'unknown'}${ran ? `\n\nRan ${mins(ran)} (added as tracked time).` : ''}${multi ? '\n\nNothing was closed: no issue of this run is closed just because the run ended.' : ''}`;
     else if (r.state === 'cancelled') text = '**Fleet:** cancelled in Fleet.';
     if (r.parent_id) {
         // a part of a split item: its own line on the parent's issue, no labels / closing (the parent has those)
@@ -950,12 +1121,27 @@ async function syncIssue(id, prevState) {
         return;
     }
     if (text) await Y.comment(r.issue_repo, r.issue_number, text);
-    if (['running', 'waiting', 'done', 'failed'].includes(r.state)) await Y.setStatus(r.issue_repo, r.issue_number, r.issue_id, r.state).catch(() => {});
+    const primaryDone = !multi || res.get(`${r.issue_repo}#${r.issue_number}`).done;
+    if (['running', 'waiting', 'done', 'failed'].includes(r.state)) await Y.setStatus(r.issue_repo, r.issue_number, r.issue_id, r.state === 'done' && !primaryDone ? 'running' : r.state).catch(() => {});
     if (['done', 'failed'].includes(r.state) && ran) await Y.addTime(r.issue_repo, r.issue_number, ran / 1000).catch(() => {});
     // done only ever comes from a Supervisor review that said ok (workAfterReview / settleParent): close it
-    if (r.state === 'done' && /found nothing missed|All \d+ parts done/.test(text + (r.message || ''))) await Y.close(r.issue_repo, r.issue_number).catch(() => {});
-    if (r.state === 'cancelled' && String(r.source) !== 'yozora') await Y.close(r.issue_repo, r.issue_number).catch(() => {});
+    const closeOk = r.state === 'done' && CLOSE_OK_RE.test(text + (r.message || ''));
+    if (closeOk && primaryDone) await Y.close(r.issue_repo, r.issue_number).catch(() => {});
+    // cancelling closes only the issue Fleet made for a single request; the issues a run was picked for stay open
+    if (r.state === 'cancelled' && String(r.source) !== 'yozora' && !multi) await Y.close(r.issue_repo, r.issue_number).catch(() => {});
+    if (multi) await syncExtras(r, prevState, res, rv, closeOk);
     noteIssue(id, `Synced ${new Date().toISOString().slice(11, 16)} (${where})`);
+}
+
+/** The repos Fleet watches for issues: the default, config agentSupervisor.yozoraRepos, and every repo an item uses (primary or carried). */
+function watchedRepos(gr) {
+    const g = gr || gResources;
+    let cfgRepos = [];
+    try { cfgRepos = ((g && g.getConfig && g.getConfig().agentSupervisor) || {}).yozoraRepos || []; } catch (_) { cfgRepos = []; }
+    const repos = new Set([yz().DEFAULT_REPO].concat(Array.isArray(cfgRepos) ? cfgRepos : []));
+    db().prepare('SELECT DISTINCT issue_repo FROM supervisor_work WHERE issue_repo IS NOT NULL').all().forEach((x) => repos.add(x.issue_repo));
+    db().prepare('SELECT issue_refs FROM supervisor_work WHERE issue_refs IS NOT NULL').all().forEach((x) => refsOf(x).forEach((i) => repos.add(i.repo)));
+    return repos;
 }
 
 let lastPull = 0;
@@ -964,10 +1150,11 @@ async function pullIssues(gr, opts = {}) {
     if (!opts.force && Date.now() - lastPull < 2 * 60 * 1000) return { skipped: true };
     lastPull = Date.now();
     const g = gr || gResources;
-    let cfgRepos = [];
-    try { cfgRepos = ((g && g.getConfig && g.getConfig().agentSupervisor) || {}).yozoraRepos || []; } catch (_) { cfgRepos = []; }
-    const repos = new Set([yz().DEFAULT_REPO].concat(Array.isArray(cfgRepos) ? cfgRepos : []));
-    db().prepare('SELECT DISTINCT issue_repo FROM supervisor_work WHERE issue_repo IS NOT NULL').all().forEach((x) => repos.add(x.issue_repo));
+    const repos = watchedRepos(g);
+    // issues a several-issue run carries (issue_refs) are not their own items: any item that is not cancelled, or was joined into another
+    const carried = new Set();
+    db().prepare('SELECT issue_refs FROM supervisor_work WHERE issue_refs IS NOT NULL AND (state != ? OR joined_into IS NOT NULL)').all('cancelled')
+        .forEach((x) => refsOf(x).forEach((i) => carried.add(issueKey(i))));
     let added = 0;
     let ended = 0;
     for (const repo of repos) {
@@ -976,13 +1163,14 @@ async function pullIssues(gr, opts = {}) {
         for (const i of open) {
             const have = db().prepare('SELECT id FROM supervisor_work WHERE issue_repo = ? AND issue_number = ?').get(repo, i.number)
                 || (i.marker ? db().prepare('SELECT id FROM supervisor_work WHERE id = ?').get(Number(i.marker)) : null);
-            if (have) continue;
+            if (have || carried.has(`${repo}#${i.number}`)) continue;
+            rememberTitle(repo, i.number, i.title);
             const prompt = `Yozora issue ${repo}#${i.number}: ${i.title}\n${i.url}\n\n${String(i.body || '').slice(0, 20000)}`;
             enqueue({ title: i.title, prompt, source: 'yozora', sourceRef: `issue:${repo}#${i.number}`, startNow: i.now, issueFields: { repo, number: i.number, id: i.id } }, { gr: g });
             added += 1;
         }
     }
-    // items whose issue was closed on Yozora
+    // items whose issue was closed on Yozora: its primary only; an item of several issues does not end because one of the others closed
     const active = db().prepare("SELECT * FROM supervisor_work WHERE issue_number IS NOT NULL AND state IN ('held','queued','starting','running','waiting')").all();
     for (const r of active) {
         let st = null;
@@ -997,7 +1185,7 @@ async function pullIssues(gr, opts = {}) {
 
 const SUPERVISED_NOTE = 'On Yozora you are Yozora (director.yozora), not claude: every Yozora API call uses the token in the file named by $YOZORA_TOKEN_FILE, and git pushes to Yozora with a plain `git push` (this session\'s git already signs in as director.yozora); never use ~/.secrets/yozora-claude.token or the claude credential helper from CLAUDE.md. You are a supervised Fleet session: claim files with agent-coord before editing (coord_claim), commit your own work at the end of every turn, open a build gate before any build / restart, and before you say a multi-part request is done call coord_supervisor_check and address what it finds. Work you find that should be done by another session: coord_request_work (startNow when it should start now).';
 
-/** Adds a work item and moves the queue. item: { title, prompt, cwd?, account?, model?, effort?, startNow?, source?, sourceRef? } */
+/** Adds a work item and moves the queue. item: { title, prompt, cwd?, account?, model?, effort?, startNow?, source?, sourceRef?, remoteControl? (default false: a new session starts without Remote Control), issue? / issues? (one or several: the first is the primary) } */
 function enqueue(item, opts = {}) {
     const prompt = String(item.prompt || '').trim();
     if (!prompt) throw new Error('A work item needs a prompt');
@@ -1015,15 +1203,19 @@ function enqueue(item, opts = {}) {
     const held = !item.startNow && !item.parentId && item.hold !== false;
     const r = db().prepare(`INSERT INTO supervisor_work (title, prompt, cwd, account, model, effort, source, source_ref, state, start_now, created_at, message, engine)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(title, prompt, item.cwd || null, item.account !== undefined && item.account !== null ? String(item.account) : null, item.model || null, item.effort || null, src, item.sourceRef || null, held ? 'held' : 'queued', item.startNow ? 1 : 0, Date.now(), held ? 'Waiting to be started' : 'Waiting for a slot', engine);
-    db().prepare('UPDATE supervisor_work SET topology = ?, stages = ?, parent_id = ? WHERE id = ?').run(topology, stages, item.parentId || null, r.lastInsertRowid);
+    db().prepare('UPDATE supervisor_work SET topology = ?, stages = ?, parent_id = ?, remote_control = ? WHERE id = ?').run(topology, stages, item.parentId || null, item.remoteControl === true ? 1 : 0, r.lastInsertRowid);
     if (item.issueFields && item.issueFields.repo && item.issueFields.number) {
         db().prepare('UPDATE supervisor_work SET issue_repo = ?, issue_number = ?, issue_id = ? WHERE id = ?').run(item.issueFields.repo, item.issueFields.number, item.issueFields.id || null, r.lastInsertRowid);
     }
     const w = getWork(r.lastInsertRowid);
-    // its Yozora issue: the one it names (item.issue: "owner/repo#N" / URL), else made in the background
-    if (item.issue) {
+    // its Yozora issue(s): the ones it names (item.issue / item.issues: "owner/repo#N", URLs, several in one string or a list;
+    // the first is the primary, the rest ride along in the same run), else one made in the background
+    const refs = parseRefs(item.issue, item.issues);
+    if (refs.length) setIssues(w.id, refs, { rollback: refs.length === 1 });
+    else if (item.issue) {
         yz().linkIssue(item.issue).then((iss) => {
             db().prepare('UPDATE supervisor_work SET issue_repo = ?, issue_number = ?, issue_id = ? WHERE id = ?').run(iss.repo, iss.number, iss.id, w.id);
+            rememberTitle(iss.repo, iss.number, iss.title);
             emit({ work: getWork(w.id) });
         }).catch((e) => noteIssue(w.id, `Issue not linked: ${e.message}`));
     } else if (src !== 'yozora') {
@@ -1180,6 +1372,27 @@ function partItem(w, p, stages) {
     };
 }
 
+/**
+ * The brief's part for a run that covers several issues (#1191): every issue with its ref, URL, title and a body excerpt (~1500
+ * characters; fetched now when not stored, the same 15 s best-effort wait as the issue itself), that the run covers them
+ * together, that it comments its progress on each, and that an issue is closed only when its own ask is done.
+ */
+async function issuesBrief(r) {
+    const list = allIssueRefs(r);
+    const fetched = await Promise.race([
+        Promise.all(list.map((i) => yz().getIssue(i.repo, i.number).catch(() => null))),
+        new Promise((res) => setTimeout(() => res(list.map(() => null)), 15000))
+    ]);
+    const blocks = list.map((i, n) => {
+        const f = fetched[n];
+        const title = (f && f.title) || i.title || issueTitles.get(issueKey(i)) || '';
+        if (f) rememberTitle(i.repo, i.number, f.title);
+        const body = f && f.body ? String(f.body).trim().slice(0, 1500) : '';
+        return `### ${n + 1}. ${issueKey(i)}${n === 0 ? ' (primary)' : ''}${title ? ` - ${title}` : ''}\n${yz().issueUrl(i.repo, i.number)}${body ? `\n\n${body}${String(f.body).trim().length > 1500 ? '\n[...cut: read the issue for the rest]' : ''}` : ''}`;
+    });
+    return `\n\nThis run covers ${list.length} Yozora issues TOGETHER (Fleet queued them as one run: it is one session, not one per issue). They are related; work them as one job and look for what they share. Each is tracked on Yozora with the label fleet:\n\n${blocks.join('\n\n')}\n\nComment your progress on EACH of these issues as you go (what you found and changed for that issue) and end with the Done comment the rules ask for on each. The Supervisor comments on the first (primary) issue when the run starts, sends gaps back and ends, and gives each of the others a comment of its own; it adds the time this session runs to the primary (do not start a stopwatch). Check each issue's Definition of done. Close an issue only when its own ask is done and shown to work; on every issue you leave open, say plainly what is left. Never close an issue just because the run is ending: the Supervisor closes the issues its last check finds done.`;
+}
+
 let pumping = null;
 /** Starts queued items while there are slots and accounts with room. One pump at a time. */
 function pumpWork(gr) {
@@ -1199,9 +1412,10 @@ function pumpWork(gr) {
             setWork(w.id, { state: 'starting', message: `Starting on ${pick.name}`, account: pick.name });
             emit({ work: getWork(w.id) });
             const tracked = await Promise.race([ensureIssue(w.id), new Promise((res) => setTimeout(() => res(null), 15000))]);
-            const track = tracked && tracked.issue_number
+            const multiTrack = tracked && tracked.issue_number && refsOf(tracked).length ? await issuesBrief(tracked) : '';
+            const track = multiTrack || (tracked && tracked.issue_number
                 ? `\n\nThis work is tracked in Yozora ${tracked.issue_repo}#${tracked.issue_number} (${yz().issueUrl(tracked.issue_repo, tracked.issue_number)}, label fleet). Comment your progress there as you go and end with the Done comment the rules ask for; the Supervisor comments when it starts, sends gaps back and ends, and adds the time this session runs (do not start a stopwatch). Check its Definition of done.`
-                : '';
+                : '');
             try {
                 const st = pick.settings || {};
                 const stages = cleanStages((() => { try { return JSON.parse(w.stages || '{}'); } catch (_) { return {}; } })());
@@ -1227,7 +1441,7 @@ function pumpWork(gr) {
                 const engine = (w.engine && w.engine !== 'claude') ? w.engine : (stage.engine !== 'claude' ? stage.engine : undefined);
                 const r = await require('./claudeSessionLauncher').start(g, {
                     cwd: w.cwd || path.join(__dirname, '..'), prompt: `${w.prompt}${track}${planFirst ? `\n\n${autoPlannerNote(stages, w.id)}` : (topology === 'planner' ? `\n\n${plannerNote(stages)}` : '')}\n\n${SUPERVISED_NOTE}`, title: w.title, account: pick.index,
-                    mode: st.defaultMode, engine,
+                    mode: st.defaultMode, engine, remoteControl: !!w.remote_control,
                     model: w.model || stage.model || (engine ? undefined : (st.defaultModel || 'sonnet')), effort: w.effort || stage.effort || st.defaultEffort || undefined, dispatchedBy: `Supervisor (${w.source}, ${topology})`
                 });
                 if (r.state === 'failed') { setWork(w.id, { state: 'failed', ended_at: Date.now(), message: r.message || 'It did not start', session_id: r.id || null }); }
@@ -1304,7 +1518,7 @@ function startWork(id, opts = {}) {
     const now = opts.now !== false;
     if (w.state === 'queued') setWork(w.id, { start_now: now ? 1 : 0 });
     else if (['held', 'failed', 'cancelled'].includes(w.state)) {
-        setWork(w.id, { state: 'queued', start_now: now ? 1 : 0, session_id: null, link: '', started_at: null, ended_at: null, message: 'Waiting for a slot' });
+        setWork(w.id, { state: 'queued', start_now: now ? 1 : 0, session_id: null, link: '', started_at: null, ended_at: null, joined_into: null, message: 'Waiting for a slot' });
     } else throw new Error(`It is ${w.state}`);
     emit({ work: getWork(w.id) });
     pumpWork().catch(() => {});
@@ -1351,8 +1565,17 @@ function updateWork(id, fields, opts = {}) {
         set.effort = f.effort || null;
     }
     if (f.engine !== undefined) set.engine = f.engine && f.engine !== 'claude' ? String(f.engine).slice(0, 60) : 'claude';
-    if (!Object.keys(set).length) return w;
-    setWork(w.id, set);
+    if (f.remoteControl !== undefined) set.remote_control = f.remoteControl === true ? 1 : 0;
+    // issues: one or several (the first is the primary); an empty list drops the other issues and keeps the primary
+    let newRefs = null;
+    if (f.issues !== undefined) {
+        newRefs = parseRefs(f.issues);
+        if (!newRefs.length && !(Array.isArray(f.issues) && !f.issues.length)) throw new Error('issues: name issues as owner/repo#N or a Yozora issue URL (a list, or several separated by spaces or commas)');
+        if (!newRefs.length) set.issue_refs = null;
+    }
+    if (!Object.keys(set).length && !newRefs) return w;
+    if (Object.keys(set).length) setWork(w.id, set);
+    if (newRefs && newRefs.length) setIssues(w.id, newRefs);
     if (briefChanged && w.issue) {
         const note = f.appendNote && String(f.appendNote).trim() ? `Note added: ${String(f.appendNote).trim()}` : prompt;
         yz().comment(w.issue.repo, w.issue.number, `**Fleet:** Brief updated by ${opts.by || 'Yozora'}: ${note.length > 1500 ? `${note.slice(0, 1500)}...` : note}`).catch((e) => noteIssue(w.id, `Brief comment failed: ${e.message}`));
@@ -1366,7 +1589,7 @@ function holdWork(id) {
     const w = getWork(id);
     if (!w) throw new Error('No such work item');
     if (!['queued', 'failed', 'cancelled', 'held'].includes(w.state)) throw new Error(`It is ${w.state}: end its session first`);
-    setWork(w.id, { state: 'held', start_now: 0, session_id: null, link: '', started_at: null, ended_at: null, message: 'Waiting to be started' });
+    setWork(w.id, { state: 'held', start_now: 0, session_id: null, link: '', started_at: null, ended_at: null, joined_into: null, message: 'Waiting to be started' });
     emit({ work: getWork(w.id) });
     return getWork(w.id);
 }
@@ -1378,6 +1601,69 @@ function cancelWork(id) {
     setWork(w.id, { state: 'cancelled', ended_at: Date.now(), message: 'Cancelled' });
     emit({ work: getWork(w.id) });
     return getWork(w.id);
+}
+
+/**
+ * "Queue as one run" (#1191): the picked requests (each held, queued, failed or cancelled) become ONE new item: the combined
+ * briefs, the first's folder / account / model / effort / engine / shape, and the union of their issues (the first item's primary
+ * stays primary). The picked items end as cancelled with joined_into set, written straight to the row: no Yozora comment about a
+ * cancel and no close (setWork would send both). Each issue gets one comment that it joined the run.
+ * opts: { title?, remoteControl? (default off), startNow? (default true: she picked it to run), gr }.
+ */
+function mergeWork(ids, opts = {}) {
+    const list = [...new Set((Array.isArray(ids) ? ids : [ids]).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+    if (list.length < 2) throw new Error('Pick two or more requests to queue as one run');
+    const rows = list.map((id) => {
+        const r = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(id);
+        if (!r) throw new Error(`No work item ${id}`);
+        if (!EDITABLE.includes(r.state)) throw new Error(`Work item ${r.id} (${r.title}) is ${r.state}: only a waiting, queued, failed or cancelled request is joined into a run`);
+        if (r.joined_into && r.state === 'cancelled') throw new Error(`Work item ${r.id} (${r.title}) was already joined into item ${r.joined_into}`);
+        if (r.parent_id) throw new Error(`Work item ${r.id} (${r.title}) is a part of a split request: join the whole request, not one part`);
+        return r;
+    });
+    const first = rows[0];
+    const issues = parseRefs(rows.map((r) => allIssueRefs(r)));
+    const prompt = `One run covering these Fleet requests together:\n\n${rows.map((r, n) => `## ${n + 1}. ${r.title} (Fleet item ${r.id})\n\n${String(r.prompt || '').trim()}`).join('\n\n---\n\n')}`;
+    const title = String(opts.title || '').replace(/\s+/g, ' ').trim().slice(0, 120) || `${first.title} (+${rows.length - 1} more)`.slice(0, 120);
+    let stages;
+    try { stages = JSON.parse(first.stages || '{}'); } catch (_) { stages = {}; }
+    // the picked items leave the queue BEFORE the new item exists: enqueue moves the queue at once and must not start them alone
+    const upd = db().prepare('UPDATE supervisor_work SET state = ?, ended_at = ?, joined_into = ?, message = ?, start_now = ? WHERE id = ?');
+    rows.forEach((r) => upd.run('cancelled', Date.now(), -1, 'Joining into one run', 0, r.id));
+    let made;
+    try { made = enqueue({
+        title, prompt, cwd: first.cwd || undefined, account: first.account, model: first.model || undefined, effort: first.effort || undefined, engine: first.engine || undefined,
+        topology: first.topology || undefined, stages, issues, remoteControl: opts.remoteControl === true, startNow: opts.startNow !== false, source: 'fleet'
+    }, { gr: opts.gr }); } catch (e) {
+        rows.forEach((r) => upd.run(r.state, r.ended_at || null, r.joined_into || null, r.message || '', r.start_now || 0, r.id));
+        throw e;
+    }
+    rows.forEach((r) => upd.run('cancelled', Date.now(), made.id, `Joined into item ${made.id} (one run)`, 0, r.id));
+    // each issue of the picked requests hears once that it joined the run (best effort, never a close)
+    const told = new Set();
+    rows.forEach((r) => allIssueRefs(r).forEach((i) => {
+        if (told.has(issueKey(i))) return;
+        told.add(issueKey(i));
+        const others = issues.filter((o) => issueKey(o) !== issueKey(i));
+        yz().comment(i.repo, i.number, `**Fleet:** Joined Fleet item ${made.id}: one run with ${others.length ? others.map((o) => shortRef(o, i)).join(', ') : `the other requests picked with it (${rows.length} in all)`}.`)
+            .catch((e) => noteIssue(r.id, `Join comment failed: ${e.message}`));
+    }));
+    rows.forEach((r) => emit({ work: getWork(r.id) }));
+    emit({ work: getWork(made.id) });
+    return { work: getWork(made.id), joined: rows.map((r) => r.id) };
+}
+
+/** Open issues of a watched repo for Fleet's issue picker (one request): { repo, repos, issues:[{ repo, number, id, title, url, labels, item }] }. */
+async function issuesOpen(gr, req = {}) {
+    const repos = [...watchedRepos(gr)];
+    const repo = String(req.repo || yz().DEFAULT_REPO);
+    if (!repos.includes(repo)) throw new Error(`${repo} is not one of the watched repositories (${repos.join(', ')})`);
+    const open = await yz().openIssues(repo, { q: req.q, limit: 100 });
+    const carrying = new Map(); // "repo#N" -> the active / held item that carries it
+    db().prepare("SELECT id, issue_repo, issue_number, issue_refs FROM supervisor_work WHERE state IN ('held','queued','starting','running','waiting') ORDER BY id").all()
+        .forEach((r) => allIssueRefs(r).forEach((i) => { if (!carrying.has(issueKey(i))) carrying.set(issueKey(i), r.id); }));
+    open.forEach((i) => rememberTitle(i.repo, i.number, i.title));
+    return { repo, repos, issues: open.map((i) => Object.assign({}, i, { item: carrying.get(issueKey(i)) || null })) };
 }
 
 // ---------------------------------------------------------------- Plaud recordings into the queue
@@ -2089,7 +2375,7 @@ async function fleetOp(req) {
     if (!ownsWork(w, by)) throw new Error(`Work item ${w.id} was not queued by you (${w.source}): only Yukimi or its creator changes it. Ask her, or coord_post the Supervisor's note`);
     if (op === 'fleet_work_update') {
         const f = {};
-        ['title', 'prompt', 'appendNote', 'model', 'effort'].forEach((k) => { if (req[k] !== undefined) f[k] = req[k]; });
+        ['title', 'prompt', 'appendNote', 'model', 'effort', 'remoteControl', 'issues'].forEach((k) => { if (req[k] !== undefined) f[k] = req[k]; });
         const u = updateWork(w.id, f, { by });
         return { item: fm.workRow(u), changed: Object.keys(f) };
     }
@@ -2577,7 +2863,7 @@ async function acceptRuleFinding(gr, findingId, edit = {}, opts = {}) {
 module.exports = {
     explainRuleIssue, acceptRuleProposal, rejectRuleProposal, acceptRuleFinding, listRuleProposals, getRuleProposal, proposalBrief,
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
+    _test: { parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
 };

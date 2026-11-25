@@ -177,7 +177,7 @@ async function main() {
     console.log('ok 2 account runtime');
 
     // 3. launching: a new session on account B in the carry socket, in a user scope, with RC + agent-coord
-    const started = await launcher.start(gr, { cwd: path.join(HOME, 'repo'), prompt: 'Do the thing', account: 1, pollMs: 5, timeoutMs: 500 });
+    const started = await launcher.start(gr, { cwd: path.join(HOME, 'repo'), prompt: 'Do the thing', account: 1, pollMs: 5, timeoutMs: 500, remoteControl: true });
     assert.strictEqual(started.state, 'connected');
     assert.strictEqual(started.link, 'https://claude.ai/code/session_01TESTabcdefgh');
     assert.ok(claudeSessions.SESSION_ID_RE.test(started.id));
@@ -196,6 +196,26 @@ async function main() {
     assert.ok(mcp.mcpServers['agent-coord'].args[0].endsWith(path.join('modules', 'agentCoord', 'mcpServer.js')));
     const ag = store.getAgent(`claude-${started.id.slice(0, 8)}`);
     assert.ok(ag && ag.account === 'Claude Work' && ag.sessionId === started.id, 'the launch is in the coordination store with its account');
+    // Remote Control is a choice (#1191): the default is off, with no /remote-control typed and no wait for its banner
+    {
+        const keep = paneText;
+        paneText = 'Welcome to Claude Code\n\u2502 > Try "fix the bug" \u2502\n  ? for shortcuts';
+        calls.length = 0;
+        const t0 = Date.now();
+        const plain = await launcher.start(gr, { cwd: path.join(HOME, 'repo'), prompt: 'No RC', account: 1, pollMs: 5, timeoutMs: 5000 });
+        assert.strictEqual(plain.state, 'running');
+        assert.strictEqual(plain.link, '');
+        assert.match(plain.message, /no Remote Control/);
+        assert.ok(Date.now() - t0 < 2000, 'running as soon as the prompt shows, not after the whole wait');
+        const plainCmd = calls.find((c) => c[0] === 'tmux' && c.includes('new-session')).pop();
+        assert.ok(!plainCmd.includes('--remote-control') && plainCmd.includes(`--session-id ${plain.id}`), plainCmd);
+        // a pane that asks to be nudged is never sent /remote-control without it
+        paneText = 'Previous session is unavailable\n? for shortcuts';
+        calls.length = 0;
+        await launcher.start(gr, { cwd: path.join(HOME, 'repo'), account: 1, pollMs: 5, timeoutMs: 300 });
+        assert.ok(!calls.some((c) => c.includes('send-keys') && c.includes('/remote-control')), 'no /remote-control nudge without Remote Control');
+        paneText = keep;
+    }
     // on the host account: no CLAUDE_CONFIG_DIR
     calls.length = 0;
     await launcher.start(gr, { cwd: path.join(HOME, 'repo'), account: 0, pollMs: 5, timeoutMs: 200 });
@@ -210,6 +230,20 @@ async function main() {
     assert.ok(!sessionsUp.has('rc-22222222'));
     const rcmd = calls.filter((c) => c[0] === 'tmux' && c.includes('new-session')).pop();
     assert.ok(rcmd[rcmd.length - 1].includes('--resume 22222222-2222-4333-8444-555555555555') && !rcmd[rcmd.length - 1].includes('--fork-session'), 'resume, no fork');
+    // resume (bringing a session back) keeps Remote Control, as takeover does
+    assert.ok(rcmd[rcmd.length - 1].includes('--remote-control'), 'a resume is back in Remote Control');
+    // the args builder: --remote-control only when asked for
+    {
+        const B = launcher._test.buildArgs;
+        const base = { id: '44444444-4444-4444-8444-444444444444', title: 't' };
+        assert.ok(!B(base, { title: 't' }).includes('--remote-control'), 'off by default');
+        assert.ok(!B(Object.assign({ remoteControl: false }, base), { title: 't' }).includes('--remote-control'));
+        assert.ok(!B(Object.assign({ remoteControl: 'yes' }, base), { title: 't' }).includes('--remote-control'), 'only true turns it on');
+        const on = B(Object.assign({ remoteControl: true }, base), { title: 'My title' });
+        assert.deepStrictEqual(on.slice(0, 4), ['--session-id', base.id, '--remote-control', 'My title']);
+        const rs = B({ id: base.id, resume: true, remoteControl: true }, { title: 't' });
+        assert.deepStrictEqual(rs.slice(0, 4), ['--resume', base.id, '--remote-control', 't']);
+    }
     paneText = 'Remote Control is active.';
     console.log('ok 3 launcher');
 
@@ -228,6 +262,18 @@ async function main() {
     await assert.rejects(() => launcher.steer('33333333-2222-4333-8444-555555555555', 'hi'), /not running/);
     const live = await launcher.resume(gr, SID, {});
     assert.strictEqual(live.state, 'live', 'a live Remote Control session is not started twice');
+    // a session started without Remote Control: in the live list with remoteControl false, steerable through its tmux pane
+    {
+        const rec = path.join(HOME, '.claude', 'sessions', `${process.pid}.json`);
+        write(rec, { pid: process.pid, sessionId: SID, cwd: path.join(HOME, 'repo'), status: 'idle', tmux: 'rc-11111111:@1.%7' });
+        const l = claudeSessions.liveSessions().find((x) => x.id === SID);
+        assert.ok(l && l.remoteControl === false && l.origin === 'rc' && l.tmuxSession === 'rc-11111111', JSON.stringify(l));
+        calls.length = 0;
+        const s2 = await launcher.steer(SID, 'steer without Remote Control');
+        assert.strictEqual(s2.sent, true);
+        assert.ok(calls.some((c) => c.includes('send-keys') && c.includes('-l') && c.includes('steer without Remote Control') && c.includes('%7')));
+        write(rec, { pid: process.pid, sessionId: SID, cwd: path.join(HOME, 'repo'), status: 'busy', tmux: 'rc-11111111:@1.%7', bridgeSessionId: 'session_01TESTabcdefgh' });
+    }
     console.log('ok 4 steering');
 
     // 4b. attachments: saved per session (0600), names cleaned, only images / text, size limit
