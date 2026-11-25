@@ -20,12 +20,15 @@ const plaudTransfer = require('../../plaudTransfer');
 function registerPackets(handlersCtx) {
     // the Plaud phone app's transfer notices (#1193): a change of the status is pushed to admins, never polled
     plaudTransfer.attach();
-    plaudTransfer.bind(() => {
+    const pushChanged = () => {
         const gr = handlersCtx && handlersCtx.globalResources;
         const srv = gr && (gr.getWebSocketServer ? gr.getWebSocketServer() : gr.webSocketServer);
         const admin = (info) => !!(info && info.authenticated !== false && /^(admin|dev_admin)$/.test(String(info.userType || '')));
         if (srv && typeof srv.broadcast === 'function') srv.broadcast({ type: 'plaud_today_changed', data: { transfer: plaudTransfer.state() }, timestamp: new Date().toISOString() }, admin);
-    });
+    };
+    plaudTransfer.bind(pushChanged);
+    // the recorder's battery word arrived from the phone (plaudDevice.battery): the page reads the list again
+    try { require('../../plaudDevice').onBattery(pushChanged); } catch (_) { /* no recorder module */ }
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             const { ws, message, clientInfo } = ctx;

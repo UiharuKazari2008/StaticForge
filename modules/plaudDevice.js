@@ -13,7 +13,13 @@
  * bind check). battery and lastSync are still taken if a field named like one ever appears, never made up.
  * An emailed code (auth/otp-login) is no way in: for a Google account it makes a second, empty Plaud account.
  *
- * Kept in .cache/plaud-device.json (0600; env PLAUD_DEVICE_FILE): { recorders, readAt, signedIn, asked }. No timers:
+ * The battery: Plaud's cloud has none and the percentage is inside the Plaud app's encrypted Bluetooth session, but the
+ * recorder carries Apple's Find My accessory information in the clear, with a four-step battery state (0 full,
+ * 1 medium, 2 low, 3 critical; it read 0 while the Plaud app showed 77 %). The Dreamscape app on the phone the recorder
+ * is connected to reads it on request (device op status.plaudBattery, DSApp PlaudBattery.kt): battery() asks an
+ * online phone at most every 30 minutes, in the background, and the word is shown for 12 hours.
+ *
+ * Kept in .cache/plaud-device.json (0600; env PLAUD_DEVICE_FILE): { recorders, readAt, signedIn, asked, battery, batteryAt }. No timers:
  * read only when Today (or the card) asks, at most once a day; the card's Read again forces it.
  */
 
@@ -30,6 +36,10 @@ const READ_MS = 24 * 60 * 60 * 1000;
 const RETRY_MS = 10 * 60 * 1000;
 const PAGE_TIMEOUT_MS = 25000;
 const NOTICE_ID = 'plaud:device-login';
+const BATTERY_OP = 'status.plaudBattery';
+const BATTERY_WORDS = ['full', 'medium', 'low', 'critical'];
+const BATTERY_MS = 30 * 60 * 1000;
+const BATTERY_KEEP_MS = 12 * 60 * 60 * 1000;
 const MIN_TIME = Date.UTC(2020, 0, 1);
 
 let deps = {};
@@ -40,6 +50,9 @@ let reading = null;
 let lastError = '';
 let broadcast = null;
 let resources = null;
+let batteryTried = 0;
+let batteryReading = null;
+let onBatteryChange = null;
 
 class PlaudError extends Error {
     constructor(message, code) { super(message); this.code = code || 'PLAUD_DEVICE_ERROR'; }
@@ -51,7 +64,8 @@ function load() {
     try { s = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch (_) { s = null; }
     state = {
         recorders: s && Array.isArray(s.recorders) ? s.recorders : [], readAt: (s && s.readAt) || 0,
-        signedIn: s && typeof s.signedIn === 'boolean' ? s.signedIn : null, asked: (s && s.asked) || ''
+        signedIn: s && typeof s.signedIn === 'boolean' ? s.signedIn : null, asked: (s && s.asked) || '',
+        battery: s && BATTERY_WORDS.includes(s.battery) ? s.battery : '', batteryAt: (s && Number(s.batteryAt)) || 0
     };
     return state;
 }
@@ -219,10 +233,54 @@ async function readNow() {
     return first();
 }
 
+/** The battery word while it is fresh, else what Plaud's device list carried (it never has one so far). */
+function batteryNow(f) {
+    const s = load();
+    if (s.battery && Date.now() - s.batteryAt < BATTERY_KEEP_MS) return s.battery;
+    return f ? f.battery : null;
+}
+
 function first() {
     const s = load();
     const f = s.signedIn === false ? null : s.recorders[0];
-    return f ? { name: f.name, model: f.model, battery: f.battery, lastSync: f.lastSync, readAt: s.readAt } : null;
+    return f ? { name: f.name, model: f.model, battery: batteryNow(f), lastSync: f.lastSync, readAt: s.readAt } : null;
+}
+
+// ------------------------------------------------------------------------------------------ the battery (from the phone)
+
+/** Ask the phones that are online (not test devices) until one has the recorder connected: { state, model } or null. */
+async function phoneBattery(gr) {
+    if (deps.phoneBattery) return deps.phoneBattery();
+    const as = require('./activeSync');
+    let ws = null;
+    try { ws = gr && typeof gr.getWebSocketServer === 'function' ? gr.getWebSocketServer() : null; } catch (_) { ws = null; }
+    if (!ws) return null;
+    let test = () => false;
+    try { test = require('./testDevices').isTestDevice; } catch (_) { /* no test devices */ }
+    const phones = as.list(gr, ws).devices.filter((d) => d.online && d.platform === 'android' && !test(d.deviceId));
+    for (const d of phones) {
+        try {
+            const r = await as.serverCall(gr, ws, d.deviceId, BATTERY_OP, {}, { timeoutMs: 25000, fromName: 'Plaud' });
+            if (r && r.found && Number.isInteger(r.batteryState)) return { state: r.batteryState, model: typeof r.model === 'string' ? r.model : '' };
+        } catch (_) { /* an older app, not allowed, or busy: the next phone */ }
+    }
+    return null;
+}
+
+/** Reads the battery in the background when the last try is 30 minutes old; the caller never waits for a phone. */
+function battery(gr) {
+    if (gr) resources = gr;
+    if (batteryReading || Date.now() - batteryTried < BATTERY_MS) return;
+    batteryTried = Date.now();
+    batteryReading = phoneBattery(resources).then((r) => {
+        const s = load();
+        const word = r && BATTERY_WORDS[r.state] ? BATTERY_WORDS[r.state] : '';
+        if (!word) return;
+        const was = batteryNow(null);
+        Object.assign(s, { battery: word, batteryAt: Date.now() });
+        save();
+        if (was !== word) { notify(); if (onBatteryChange) { try { onBatteryChange(); } catch (_) { /* the page learns on its next read */ } } }
+    }).catch(() => {}).finally(() => { batteryReading = null; });
 }
 
 function read() {
@@ -251,7 +309,8 @@ async function refresh() {
 function status() {
     const s = load();
     const name = stateName();
-    return { state: name, signedIn: s.signedIn === true, recorders: name === 'missing' ? [] : s.recorders, readAt: s.readAt, lastError, url: WEB_URL };
+    const list = name === 'missing' ? [] : s.recorders.map((r, i) => (i === 0 ? Object.assign({}, r, { battery: batteryNow(r) }) : r));
+    return { state: name, signedIn: s.signedIn === true, recorders: list, readAt: s.readAt, lastError, url: WEB_URL };
 }
 
 // ------------------------------------------------------------------------------------------ the ask
@@ -285,13 +344,15 @@ function ask(gr, linked) {
 
 module.exports = {
     PlaudError, WEB_URL,
-    status, recorder, refresh, ask,
+    status, recorder, refresh, ask, battery,
+    onBattery: (fn) => { onBatteryChange = typeof fn === 'function' ? fn : null; },
     state: stateName,
     attach: (gr) => { if (gr) resources = gr; },
     bind: (fn) => { broadcast = typeof fn === 'function' ? fn : null; },
     _test: {
         setDeps: (d) => { deps = Object.assign(deps, d || {}); },
-        reset: () => { state = null; fields = []; triedAt = 0; reading = null; lastError = ''; resources = null; },
+        reset: () => { state = null; fields = []; triedAt = 0; reading = null; lastError = ''; resources = null; batteryTried = 0; batteryReading = null; onBatteryChange = null; },
+        batteryDone: () => batteryReading || Promise.resolve(),
         fields: () => fields.slice(),
         mapDevice
     }

@@ -82,6 +82,8 @@ async function list(gr) {
     const rec = await recorderP;
     plaudTransfer.setLinked(!!st.linked);
     try { plaudDevice.ask(gr, !!st.linked); } catch (_) { /* the list does not depend on the notice */ }
+    // the recorder's battery state comes from the phone it is connected to: asked in the background, never awaited here
+    try { if (st.linked) plaudDevice.battery(gr); } catch (_) { /* no phone, no battery */ }
     const recordings = raw.map(withReview);
     return {
         linked: !!st.linked,

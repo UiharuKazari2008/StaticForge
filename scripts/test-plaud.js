@@ -292,6 +292,30 @@ t.setDeps({
     assert.strictEqual((await today.list('gr')).device.name, 'Hoshino Ai');
     assert.ok(/not running/.test(dev.status().lastError));
 
+    // the battery word comes from the phone the recorder is connected to (asked in the background, kept 12 hours)
+    let phoneAsked = 0;
+    let phoneAnswer = { state: 0, model: 'Plaud Note Pro' };
+    let batteryPushes = 0;
+    dev._test.reset();   // the lists above already tried a phone: start the 30 minute clock again
+    dev._test.setDeps({ phoneBattery: async () => { phoneAsked += 1; return phoneAnswer; } });
+    dev.onBattery(() => { batteryPushes += 1; });
+    assert.strictEqual((await dev.recorder()).battery, null);
+    dev.battery('gr');
+    await dev._test.batteryDone();
+    assert.strictEqual((await dev.recorder()).battery, 'full');
+    assert.strictEqual(dev.status().recorders[0].battery, 'full');
+    assert.strictEqual(batteryPushes, 1);
+    dev.battery('gr');
+    await dev._test.batteryDone();
+    assert.strictEqual(phoneAsked, 1, 'the phone is asked at most every 30 minutes');
+    assert.strictEqual((await today.list('gr')).battery, 'full');
+    dev._test.reset();
+    dev._test.setDeps({ phoneBattery: async () => null });
+    assert.strictEqual((await dev.recorder()).battery, 'full', 'the word survives a restart');
+    dev.battery('gr');
+    await dev._test.batteryDone();
+    assert.strictEqual((await dev.recorder()).battery, 'full', 'no phone answering keeps what is known');
+
     // a battery / last sync field is taken only when Plaud really sends one (also inside info)
     assert.deepStrictEqual(dev._test.mapDevice({ sn: 'S', name: 'P', model: 'm', version_number: 'v1', battery_level: 64, info: { last_sync_time: 1790000000 } }),
         { name: 'P', model: 'm', serial: '...S', firmware: 'v1', battery: 64, lastSync: 1790000000000 });
