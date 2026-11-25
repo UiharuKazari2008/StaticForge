@@ -3450,6 +3450,11 @@
         const have = new Set(Array.from(pane.querySelectorAll('[data-k]')).map((n) => n.dataset.k));
         const fresh = chat.messages.filter((m) => !have.has(msgKey(m)));
         if (!fresh.length) return;
+        // rows that belong above the last drawn one (an earlier page read meanwhile) are never appended at the end:
+        // the log is drawn again in order (Nov 24 2026: older rows landed under the newest)
+        const drawn = Array.from(pane.querySelectorAll('[data-at]')).map((n) => Number(n.dataset.at)).filter(Number.isFinite);
+        const lastAt = drawn.length ? Math.max(...drawn) : -1;
+        if (fresh.some((m) => Number(m.at) < lastAt)) { redrawLog(id); return; }
         const hint = pane.querySelector(':scope > .mmc-hint');
         if (hint) hint.remove();
         if (chat.messages.length > MSG_MAX + MSG_PAGE) {
