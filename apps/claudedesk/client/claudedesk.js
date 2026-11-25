@@ -2685,7 +2685,9 @@
             tile('co-held', `${ITEMS}/date-and-time-16.png`, held.length, 'Waiting for you'),
             tile('co-pending', `${VI}/info-16.png`, pendItems().length, 'Queued'),
             tile('co-pending', `${VI}/warning-16.png`, sentBack.length, 'Sent back', true),
-            tile('sessions', SESSION16, S.live.length, 'Sessions', false, busy ? `${busy} working` : ''),
+            // one number per tile: running sessions and the ones working now are two tiles (Yukimi, Nov 24 2026)
+            tile('sessions', SESSION16, S.live.length, 'Sessions running'),
+            tile('sessions', '/static_images/vista-cmdbar/gears.png', busy, 'Sessions working'),
             tile('bg-agents', `${ITEMS}/programs-and-features-16.png`, bgRunning().length, 'Background agents'),
             tile('sup-reviews', '/static_images/vista-cmdbar/paste.png', gaps, 'Reviews with gaps', true),
             tile('sup-asks', '/static_images/vista-cmdbar/clock.png', supAsks().length, 'Restart waits', true),
