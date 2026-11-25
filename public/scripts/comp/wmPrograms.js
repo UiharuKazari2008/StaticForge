@@ -2199,7 +2199,7 @@
                 // switch alone is 0 on both screens
                 crossCover: crossPref(K.statusCrossCover),
                 crossMain: crossPref(K.statusCrossMain),
-                splitLeft: lsGet(K.splitLeft) || 'start',
+                splitLeft: lsGet(K.splitLeft) || 'none',
                 soundIcon: lsGet(K.statusSoundIcon) || 'space',
                 powerIcon: lsGet(K.statusPowerIcon) || 'charging',
                 logoOpacity: Math.min(100, Math.max(10, Number(lsGet(K.bezelLogoOpacity)) || 55)),
@@ -2245,10 +2245,11 @@
                 }
                 // Open Fold (#1131): what stands left of a program on the inner screen
                 if (tab === 'fold') {
-                    const LEFT = [['start', 'Start screen'], ['today', 'Today'], ['none', 'Nothing (program full screen)']];
-                    el.innerHTML = `<p>On the open Fold a program opens on the right. The left side shows:</p>
+                    const LEFT = [['none', 'Nothing (program full screen)'], ['start', 'Start screen'], ['today', 'Today']];
+                    // off unless asked for: the pane is a choice, not something an unfold does to you (Yukimi, Nov 25 2026)
+                    el.innerHTML = `<p>On the open Fold a program fills the inner screen. A second pane beside it is off unless you pick one:</p>
                         <div class="wm-form-row is-wide"><span class="wm-form-label">Left side:</span>${ui.comboHtml('splitleft', (LEFT.find(([k]) => k === d.splitLeft) || LEFT[0])[1])}</div>
-                        <p>Closing Start there brings Today back.</p>`;
+                        <p>With the Start screen there, closing it brings Today back.</p>`;
                     ui.bindCombo(el.querySelector('[data-act="splitleft"]'), LEFT, d.splitLeft, (v) => { d.splitLeft = v; });
                     return;
                 }
@@ -2435,7 +2436,7 @@
                 for (const [k, v] of bezelSets) {
                     if ((lsGet(k) || null) !== v) { lsSet(k, v); keys.push(k); }
                 }
-                if (d.splitLeft !== (lsGet(K.splitLeft) || 'start')) { lsSet(K.splitLeft, d.splitLeft === 'start' ? null : d.splitLeft); keys.push(K.splitLeft); }
+                if (d.splitLeft !== (lsGet(K.splitLeft) || 'none')) { lsSet(K.splitLeft, d.splitLeft === 'none' ? null : d.splitLeft); keys.push(K.splitLeft); }
                 for (const [k, v, def] of [[K.statusSoundIcon, d.soundIcon, 'space'], [K.statusPowerIcon, d.powerIcon, 'charging']]) {
                     const want = v === def ? null : v;
                     if ((lsGet(k) || null) !== want) { lsSet(k, want); keys.push(k); }
