@@ -1411,6 +1411,8 @@
     function paceLine(f) {
         const p = f && f.availability && f.availability.pace;
         if (!p || p.state === 'unknown' || !Number.isFinite(p.usedToday)) return '';
+        // an account at or past a limit already says so in its bar above: no pace line under it
+        if (f.availability && ['exhausted', 'capped'].includes(f.availability.state)) return '';
         const word = { ok: 'On pace', ahead: 'Ahead of pace', over: 'Used today\'s share' }[p.state] || '';
         const tip = `Week ${p.weekPct}% of ${p.cap}%, ${p.expectedPct}% expected by now; ${p.dayStartPct}% when today began, ${p.daysLeft} days left`;
         return `<p class="mmc-hint cd-pace is-${esc(p.state)}" title="${esc(tip)}">Today: ${esc(String(p.usedToday))}% of ${esc(String(p.todayShare))}% share - ${esc(word)}</p>`;

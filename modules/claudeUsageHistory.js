@@ -94,7 +94,8 @@ function dayStartWeekPct(account, weekStartMs, weekPct, now) {
     const at = now || Date.now();
     try {
         const yKey = dayKey(at - DAY_MS);
-        if (yKey <= dayKey(weekStartMs)) return 0;
+        // the reset day itself counts (its max is kept only when it is not above today's, so a pre-reset value cannot leak in)
+        if (yKey < dayKey(weekStartMs)) return 0;
         const r = db().prepare('SELECT week_pct FROM claude_usage_daily WHERE day = ? AND account = ?').get(yKey, String(account));
         const v = r && Number(r.week_pct);
         return Number.isFinite(v) && v <= weekPct ? v : 0;
