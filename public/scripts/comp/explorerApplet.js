@@ -31,10 +31,12 @@ function isVfsOrImageFileDrag(dataTransfer) {
     if (types.includes('application/x-vfs-file-id')) return true;
     if (types.includes('Files')) {
         const files = [...(dataTransfer.files || [])];
-        return files.some((f) => f.type && f.type.startsWith('image/'));
+        return files.some(isVfsOrImageFileDrag.isPicture);
     }
     return false;
 }
+/** An image file, or a JPEG XL that came with no type (browsers give .jxl none; #1156). */
+isVfsOrImageFileDrag.isPicture = (f) => !!f && ((f.type && f.type.startsWith('image/')) || (!f.type && /\.jxl$/i.test(f.name || '')));
 
 /** Wire VFS/image drop onto Studio — lazy; skips text fields. public/scripts/comp/explorerApplet.js */
 function wireStudioVfsDrop() {
@@ -82,7 +84,7 @@ function wireStudioVfsDrop() {
         }
 
         const files = [...(e.dataTransfer.files || [])];
-        if (files.length && files[0].type.startsWith('image/') && typeof unifiedUploadModalManager !== 'undefined') {
+        if (files.length && isVfsOrImageFileDrag.isPicture(files[0]) && typeof unifiedUploadModalManager !== 'undefined') {
             unifiedUploadModalManager.handleFiles?.(files);
         }
     });
