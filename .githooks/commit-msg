@@ -1,0 +1,13 @@
+#!/bin/sh
+# Yozora (Gitea) closes an issue when a commit on main says "close/closes/closed/fix/fixes/fixed/resolve/resolves/resolved #N".
+# Fleet closes issues itself, only after the Supervisor's review (Nov 25 2026: a Manager Session commit that said
+# "the old review had closed #1193" closed the issue while its work item was still running).
+# Write "(#N)" or "for #N" instead; set ALLOW_ISSUE_CLOSE=1 only when the commit really is meant to close the issue.
+[ "${ALLOW_ISSUE_CLOSE:-}" = "1" ] && exit 0
+hit=$(grep -v '^#' "$1" | grep -oiE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]:]+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[0-9]+' | head -3)
+if [ -n "$hit" ]; then
+    echo "commit-msg: this message would make Yozora close an issue on push: $(echo "$hit" | tr '\n' ' ')" >&2
+    echo "commit-msg: reword it (\"(#N)\", \"for #N\"), or set ALLOW_ISSUE_CLOSE=1 if closing is intended." >&2
+    exit 1
+fi
+exit 0
