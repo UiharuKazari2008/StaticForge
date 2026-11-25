@@ -1279,10 +1279,30 @@ const expand = (p, cwd) => {
 const CLEAN_ROOTS = () => [os.tmpdir(), '/tmp', '/var/tmp', path.join(HOME, '.cache')].map((x) => path.normalize(x) + path.sep);
 const NEVER = () => [HOME, path.join(HOME, '.claude'), path.join(HOME, '.secrets'), path.join(HOME, '.config'), path.join(__dirname, '..'), '/', '/tmp', '/var/tmp', path.join(HOME, '.cache')].map((x) => path.normalize(x));
 
-function cleanable(full, kind) {
-    if (!full || NEVER().includes(full)) return false;
-    if (kind === 'worktree') return true;
-    return CLEAN_ROOTS().some((r) => full.startsWith(r) && full.length > r.length + 1) && !full.includes(`${path.sep}.claude${path.sep}`);
+/**
+ * Hard safety for Clean (Nov 24 2026: the tracker had read "/", the repo itself and the word "and" as work folders).
+ * Never: a protected folder or any folder above one (/, /home, ~, the repo), a path less than two levels deep (three for a worktree),
+ * a folder holding a .git directory (a real repository), a live session's folder or one above it, a "worktree" that
+ * is not a linked worktree (its .git must be a file pointing at another repository). Everything else must be under
+ * /tmp, /var/tmp or ~/.cache.
+ */
+function cleanable(fullIn, kind) {
+    if (!fullIn || !path.isAbsolute(fullIn)) return false;
+    const full = path.normalize(fullIn).replace(/\/+$/, '') || '/';
+    const never = NEVER();
+    if (never.some((n) => n === full || n.startsWith(`${full}${path.sep}`))) return false;
+    const depth = full.split(path.sep).filter(Boolean).length;
+    if (depth < 2 || (kind === 'worktree' && depth < 3)) return false;
+    if (full.includes(`${path.sep}.claude${path.sep}`) || full.includes(`${path.sep}.secrets`)) return false;
+    try {
+        const live = require('./claudeSessions').liveSessions().map((x) => x.cwd).filter(Boolean).map((c) => path.normalize(c));
+        if (live.some((c) => c === full || c.startsWith(`${full}${path.sep}`))) return false;
+    } catch (_) { return false; }
+    let gitStat = null;
+    try { gitStat = fs.lstatSync(path.join(full, '.git')); } catch (_) { gitStat = null; }
+    if (kind === 'worktree') return !!(gitStat && gitStat.isFile());
+    if (gitStat && gitStat.isDirectory()) return false;
+    return CLEAN_ROOTS().some((r) => full.startsWith(r) && full.length > r.length + 1);
 }
 
 function duBytes(full) {
@@ -1790,5 +1810,5 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, askJson, callEngine, spend, engineChain, TOPOLOGIES, cleanStages, decideTopology, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, queueReview, queue }
+    _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, queueReview, queue, cleanable }
 };
