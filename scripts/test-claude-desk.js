@@ -76,12 +76,15 @@ const calls = [];
 let panes = []; // [{ pane, pid }]
 let paneText = 'Remote Control is active. Continue at https://claude.ai/code/session_01TESTabcdefgh';
 let sessionsUp = new Set();
+let onKeys = null; // a test's view of keys sent to a pane (a menu that goes away on Enter)
 launcher._setRunner(async (cmd, args) => {
     calls.push([cmd, ...args]);
     if (cmd === 'systemd-run') return { code: 0, stdout: '', stderr: '' };
     if (cmd !== 'tmux') return { code: 1, stdout: '', stderr: 'unexpected' };
     const a = args[0] === '-L' ? args.slice(2) : args;
     if (a[0] === 'show') return { code: calls.some((c) => c[0] === 'systemd-run') ? 0 : 1, stdout: 'exit-empty off', stderr: '' };
+    if (a[0] === 'send-keys' && onKeys) onKeys(a);
+    if (a[0] === 'display-message') return { code: 0, stdout: 'rc-11111111\n', stderr: '' };
     if (a[0] === 'set' || a[0] === 'start-server' || a[0] === 'send-keys' || a[0] === 'set-buffer' || a[0] === 'paste-buffer' || a[0] === 'list-sessions') return { code: 0, stdout: '', stderr: '' };
     if (a[0] === 'has-session') return { code: sessionsUp.has(a[2].replace(/^=/, '')) ? 0 : 1, stdout: '', stderr: '' };
     if (a[0] === 'new-session') { sessionsUp.add(a[a.indexOf('-s') + 1]); return { code: 0, stdout: '', stderr: '' }; }
@@ -258,18 +261,36 @@ async function main() {
     calls.length = 0;
     await launcher.steer(SID, 'line one\nline two');
     assert.ok(calls.some((c) => c.includes('set-buffer')) && calls.some((c) => c.includes('paste-buffer') && c.includes('-p')), 'bracketed paste');
-    // a menu on its screen owns the keys: nothing is typed (its Enter would pick the highlighted choice) and the error names it
+    // a menu on its screen owns the keys (its Enter would pick the highlighted choice)
     {
         const before = paneText;
-        paneText = ['● Ready for your first request.', '─'.repeat(40), '  Make auto mode your default permission mode?', '  Auto mode lets Claude handle permission prompts automatically.',
-            '  ❯ Yes, set auto mode as my default permission mode', '    No, keep bypass permissions', '  Not answered yet · ↑/↓ to choose · Esc to cancel'].join('\n');
+        const menu = (on) => ['● Ready for your first request.', '─'.repeat(40), '  Make auto mode your default permission mode?', '',
+            '  Auto mode lets Claude handle permission prompts automatically.', '',
+            on === 0 ? '  ❯ Yes, set auto mode as my default permission mode' : '    Yes, set auto mode as my default permission mode',
+            on === 1 ? '  ❯ No, keep bypass permissions' : '    No, keep bypass permissions', '', '  Not answered yet · ↑/↓ to choose · Esc to cancel'].join('\n');
+        const box = ['● Ready for your first request.', '─'.repeat(40), '❯ ', '─'.repeat(40), '  ⏵⏵ bypass permissions on (shift+tab to cycle)'].join('\n');
+        // Claude Code's own offer: declined with its no-change choice, then the message goes in
+        let on = 0;
+        paneText = menu(0);
+        onKeys = (a) => { const k = a[a.length - 1]; if (paneText === box) return; if (k === 'Down') { on = 1; paneText = menu(1); } else if (k === 'Enter') { assert.strictEqual(on, 1, 'Enter only on "No, keep"'); paneText = box; } };
         calls.length = 0;
-        await assert.rejects(() => launcher.steer(SID, 'are you there'), (e) => e.code === 'SESSION_DIALOG' && /Make auto mode your default permission mode\?/.test(e.message));
-        assert.ok(!calls.some((c) => c.includes('send-keys') || c.includes('paste-buffer')), 'no keys go into a session showing a menu');
+        assert.strictEqual((await launcher.steer(SID, 'are you there')).sent, true);
+        const keys = calls.filter((c) => c.includes('send-keys')).map((c) => c[c.length - 1]);
+        assert.deepStrictEqual(keys, ['Down', 'Enter', 'are you there', 'Enter'], keys.join(','));
+        // a question the agent's work raised is never answered for her: refused, named, no keys
+        onKeys = null;
+        paneText = [' Bash command', '   rm -rf build', ' Do you want to proceed?', ' ❯ 1. Yes', "   2. Yes, and don't ask again", '   3. No, and tell Claude what to do differently (esc)', ' Esc to cancel'].join('\n');
+        calls.length = 0;
+        await assert.rejects(() => launcher.steer(SID, 'hello'), (e) => e.code === 'SESSION_DIALOG' && /Do you want to proceed\?/.test(e.message));
+        assert.ok(!calls.some((c) => c.includes('send-keys') || c.includes('paste-buffer')), 'no keys go into a permission prompt');
         // a busy session's own footer ("esc to interrupt") is not a menu
         paneText = ['✽ Churning… (7s)', '─'.repeat(40), '❯ ', '─'.repeat(40), '  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt'].join('\n');
         assert.strictEqual((await launcher.steer(SID, 'still sends')).sent, true);
         paneText = before;
+        // Show Screen's live terminal: tmux attached to the session's own tmux session
+        const at = await launcher.attachCommand(SID);
+        assert.strictEqual(at.file, 'tmux');
+        assert.deepStrictEqual(at.args.slice(-3), ['attach-session', '-t', '=rc-11111111'], at.args.join(' '));
     }
     await assert.rejects(() => launcher.steer(SID, '   '), /Nothing to send/);
     await assert.rejects(() => launcher.steer('33333333-2222-4333-8444-555555555555', 'hi'), /not running/);

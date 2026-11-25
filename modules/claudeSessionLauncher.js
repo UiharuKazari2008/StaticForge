@@ -443,6 +443,72 @@ async function paneFor(id) {
 
 /** The key hints Claude Code prints under a menu or confirmation that has taken over its input box. */
 const DIALOG_RE = /(↑\/↓|↑↓) to (choose|select|navigate)|\bEsc to cancel\b|\bEnter to (confirm|select)\b|Not answered yet/i;
+/**
+ * Menus Claude Code opens on its own (offers, tips, setup nags), answered for Yukimi with the choice that changes
+ * nothing, so a message is never stuck behind one nobody sees. A question the agent's own work raised (a tool's
+ * permission prompt, AskUserQuestion) is never in this list: those stay for her (Show Screen).
+ */
+const AUTO_ANSWER = [
+    { question: /Make auto mode your default permission mode\?/i, choice: /^No, keep\b/i }
+];
+/** Any other self-made offer whose menu has a plain decline. */
+const DECLINE_RE = /^(No, keep\b|Not now\b|Maybe later\b|Skip\b|No thanks\b|Don'?t show (this )?again\b)/i;
+const NEVER_AUTO_RE = /\bDo you want to (proceed|make this edit|create|run|allow)\b|\bpermission to\b|\ballow\b.*\btool\b/i;
+
+/**
+ * The menu on a screen (non-empty lines, right-trimmed), or null: { question, options: [{ text, on }] }.
+ * Claude Code draws the pointed option as "❯ text" and the others with their text in the same column; the
+ * question's explanation sits further left, so the column tells options from prose.
+ */
+function readDialog(lines) {
+    const tail = lines.map((l) => l.replace(/\s+$/, ''));
+    const hint = tail.slice(-4).findIndex((l) => DIALOG_RE.test(l));
+    if (hint < 0) return null;
+    const end = tail.length - Math.min(4, tail.length) + hint;
+    const lo = Math.max(0, end - 20);
+    const pi = tail.slice(lo, end).findIndex((l) => /^\s*❯\s*\S/.test(l) && !/^\s*❯\s*$/.test(l));
+    const options = [];
+    let qi = -1;
+    if (pi >= 0) {
+        const p = lo + pi;
+        const k = tail[p].indexOf('❯');
+        const col = k + 1 + tail[p].slice(k + 1).search(/\S/);
+        const isOpt = (l) => l.search(/\S/) === col;
+        let top = p;
+        while (top - 1 >= lo && isOpt(tail[top - 1])) top -= 1;
+        for (let i = top; i < end && (i === p || isOpt(tail[i])); i += 1) {
+            options.push({ text: tail[i].replace(/^\s*❯?\s*/, '').replace(/^\d+[.)]\s+/, '').trim(), on: i === p });
+        }
+        for (let i = top - 1; i >= lo; i -= 1) { if (/\?\s*$/.test(tail[i])) { qi = i; break; } }
+    } else {
+        for (let i = end - 1; i >= lo; i -= 1) { if (/\?\s*$/.test(tail[i])) { qi = i; break; } }
+    }
+    return { question: qi >= 0 ? tail[qi].trim() : '', options };
+}
+
+/** Answers a self-made menu with its no-change choice: true when it was answered and the input box is back. */
+async function autoAnswer(sock, pane, dlg) {
+    if (!dlg || !dlg.options.length || NEVER_AUTO_RE.test(dlg.question)) return false;
+    const known = AUTO_ANSWER.find((a) => a.question.test(dlg.question));
+    const want = dlg.options.findIndex((o) => (known ? known.choice : DECLINE_RE).test(o.text));
+    const at = dlg.options.findIndex((o) => o.on);
+    if (want < 0 || at < 0) return false;
+    const key = want > at ? 'Down' : 'Up';
+    for (let i = 0; i < Math.abs(want - at); i += 1) await runner('tmux', [...sock, 'send-keys', '-t', pane, key]);
+    await new Promise((res) => setTimeout(res, 80));
+    await runner('tmux', [...sock, 'send-keys', '-t', pane, 'Enter']);
+    console.log(`[claudeDesk] answered "${dlg.question.slice(0, 80)}" with "${dlg.options[want].text.slice(0, 60)}" before a message`);
+    for (let i = 0; i < 10; i += 1) {
+        await new Promise((res) => setTimeout(res, 150));
+        if (!readDialog(await paneTail(sock, pane))) return true;
+    }
+    return false;
+}
+
+async function paneTail(sock, pane) {
+    const shot = await runner('tmux', [...sock, 'capture-pane', '-p', '-J', '-t', pane, '-S', '-24']);
+    return String(shot.stdout || '').split('\n').filter((l) => l.trim());
+}
 
 /** Types text into a running session and presses Enter. */
 async function steer(id, text) {
@@ -451,13 +517,13 @@ async function steer(id, text) {
     if (!body) throw new Error('Nothing to send');
     if (body.length > 20000) throw new Error('That message is too long (20,000 characters at most)');
     const { sock, pane, live } = await paneFor(id);
-    // A question on its screen (a menu such as "Make auto mode your default permission mode?") owns the keys:
-    // typed text would be lost and its Enter would pick the menu's highlighted choice. Refuse instead, naming it.
-    const shot = await runner('tmux', [...sock, 'capture-pane', '-p', '-J', '-t', pane, '-S', '-20']);
-    const tail = String(shot.stdout || '').split('\n').map((l) => l.trim()).filter(Boolean);
-    if (tail.slice(-4).some((l) => DIALOG_RE.test(l))) {
-        const q = tail.slice(-20).find((l) => /\?$/.test(l)) || 'a question';
-        throw Object.assign(new Error(`Not sent: the session is showing ${q === 'a question' ? q : `"${require('./claudeTranscript').mask(q).slice(0, 160)}"`} in its terminal. Answer it there (Screen) first, then send again.`), { code: 'SESSION_DIALOG' });
+    // A menu on its screen (such as "Make auto mode your default permission mode?") owns the keys: typed text
+    // would be lost and its Enter would pick the highlighted choice. Claude Code's own offers are declined first;
+    // anything else is refused with the question named (Show Screen opens the terminal to answer it).
+    const dlg = readDialog(await paneTail(sock, pane));
+    if (dlg && !(await autoAnswer(sock, pane, dlg))) {
+        const q = dlg.question ? `"${require('./claudeTranscript').mask(dlg.question).slice(0, 160)}"` : 'a question';
+        throw Object.assign(new Error(`Not sent: the session is showing ${q} in its terminal. Answer it there (Show Screen) first, then send again.`), { code: 'SESSION_DIALOG' });
     }
     // multi-line text goes in as one paste (bracketed), so a newline does not send it early
     const lines = body.split('\n');
@@ -491,4 +557,16 @@ async function screen(id) {
     return { id, lines: lines.slice(-40) };
 }
 
-module.exports = { ensureServer, start, resume, takeover, steer, interrupt, screen, mcpConfigFile, findFile, _setRunner, _commandLine: commandLine, DEFAULT_MODE, EFFORTS, _test: { buildArgs, READY_RE } };
+/**
+ * The command that attaches a terminal to a running session's tmux pane (Show Screen's live terminal,
+ * modules/adminTerminal.js): { file, args, title }. Closing that terminal only detaches; the session runs on.
+ */
+async function attachCommand(id) {
+    const { sock, pane, live } = await paneFor(id);
+    const r = await runner('tmux', [...sock, 'display-message', '-p', '-t', pane, '#{session_name}']);
+    const name = String(r.stdout || '').trim();
+    if (r.code !== 0 || !name) throw new Error('Its terminal could not be found');
+    return { file: 'tmux', args: [...sock, 'attach-session', '-t', `=${name}`], title: name, sessionId: live.id };
+}
+
+module.exports = { ensureServer, start, resume, takeover, steer, interrupt, screen, attachCommand, mcpConfigFile, findFile, _setRunner, _commandLine: commandLine, DEFAULT_MODE, EFFORTS, _test: { buildArgs, READY_RE, readDialog } };
