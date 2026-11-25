@@ -95,6 +95,8 @@ function settings(gr) {
         enabled: cfg.enabled !== false,
         engine: String(cfg.engine || DEFAULT_ENGINE),
         model: String(cfg.model || ''),
+        // reasoning effort sent to the engine ('' = the engine's own default)
+        effort: SUP_EFFORTS.includes(cfg.effort) ? cfg.effort : '',
         delivery: DELIVERIES.includes(cfg.delivery) ? cfg.delivery : 'inbox',
         manageLocks: cfg.manageLocks !== false,
         trackArtifacts: cfg.trackArtifacts !== false,
@@ -113,6 +115,7 @@ async function saveSettings(gr, next) {
         enabled: next.enabled === undefined ? cur.enabled : next.enabled === true,
         engine: next.engine ? String(next.engine).slice(0, 60) : cur.engine,
         model: next.model !== undefined ? String(next.model || '').trim().slice(0, 120) : cur.model,
+        effort: next.effort === undefined ? cur.effort : (SUP_EFFORTS.includes(next.effort) ? next.effort : ''),
         delivery: DELIVERIES.includes(next.delivery) ? next.delivery : cur.delivery,
         manageLocks: next.manageLocks === undefined ? cur.manageLocks : next.manageLocks === true,
         trackArtifacts: next.trackArtifacts === undefined ? cur.trackArtifacts : next.trackArtifacts === true,
@@ -133,6 +136,8 @@ function tokenRouterBase() {
 }
 
 /** TokenRouter plus every custom model provider: { id, name, defaultModel, ready }. */
+const SUP_EFFORTS = ['none', 'low', 'medium', 'high'];
+
 function engines(gr) {
     const g = gr || gResources;
     const out = [];
@@ -154,13 +159,13 @@ function endpoint(gr, s) {
     if (s.engine === 'tokenrouter') {
         const key = gr.getApiKeyManager().getActiveApiKey('tokenrouter');
         if (!key) throw new Error('TokenRouter has no API key (Security Center > API keys)');
-        return { url: `${tokenRouterBase()}/v1/chat/completions`, key, model: s.model || DEFAULT_MODEL, name: 'TokenRouter' };
+        return { url: `${tokenRouterBase()}/v1/chat/completions`, key, model: s.model || DEFAULT_MODEL, name: 'TokenRouter', effort: s.effort || '' };
     }
     const cmp = require('./customModelProviders');
     const row = cmp.requireReady(gr, s.engine);
     const model = s.model || cmp.preferredModel(row);
     if (!model) throw new Error(`${row.name} has no default model: set one for the Supervisor`);
-    return { url: row.chatUrl, key: row.apiKey, model, name: row.name };
+    return { url: row.chatUrl, key: row.apiKey, model, name: row.name, effort: s.effort || '' };
 }
 
 // ---------------------------------------------------------------- the turn
@@ -266,7 +271,7 @@ async function callEngine(gr, messages, opts = {}) {
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), CALL_TIMEOUT_MS);
         try {
-            const res = await fetchFn(ep.url, { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.key}` }, body: JSON.stringify({ model: ep.model, temperature: 0, max_tokens: opts.maxTokens || 6000, response_format: { type: 'json_object' }, messages }) });
+            const res = await fetchFn(ep.url, { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.key}` }, body: JSON.stringify(Object.assign({ model: ep.model, temperature: 0, max_tokens: opts.maxTokens || 6000, response_format: { type: 'json_object' }, messages }, ep.effort ? { reasoning_effort: ep.effort } : {})) });
             const body = await res.text();
             if (!res.ok) {
                 const msg = `${ep.name} ${res.status}: ${body.replace(/\s+/g, ' ').slice(0, 200)}`;
@@ -575,7 +580,8 @@ function isSupervised(sessionId) {
 
 // ---------------------------------------------------------------- work queue
 
-const WORK_STATES = ['queued', 'starting', 'running', 'waiting', 'done', 'failed', 'cancelled'];
+// held: waiting for Yukimi to pick it (the default for new and imported items, Nov 24 2026); queued: start when a slot is free
+const WORK_STATES = ['held', 'queued', 'starting', 'running', 'waiting', 'done', 'failed', 'cancelled'];
 const ACTIVE = ['starting', 'running', 'waiting'];
 
 function rowWork(r) {
@@ -591,7 +597,7 @@ function rowWork(r) {
 }
 function listWork(opts = {}) {
     const lim = Math.max(1, Math.min(300, Number(opts.limit) || 100));
-    return db().prepare("SELECT * FROM supervisor_work ORDER BY CASE WHEN state IN ('queued','starting','running','waiting') THEN 0 ELSE 1 END, id DESC LIMIT ?").all(lim).map(rowWork);
+    return db().prepare("SELECT * FROM supervisor_work ORDER BY CASE WHEN state IN ('held','queued','starting','running','waiting') THEN 0 ELSE 1 END, id DESC LIMIT ?").all(lim).map(rowWork);
 }
 const getWork = (id) => rowWork(db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id)));
 const yz = () => require('./fleetYozora');
@@ -680,12 +686,12 @@ async function pullIssues(gr, opts = {}) {
         }
     }
     // items whose issue was closed on Yozora
-    const active = db().prepare("SELECT * FROM supervisor_work WHERE issue_number IS NOT NULL AND state IN ('queued','starting','running','waiting')").all();
+    const active = db().prepare("SELECT * FROM supervisor_work WHERE issue_number IS NOT NULL AND state IN ('held','queued','starting','running','waiting')").all();
     for (const r of active) {
         let st = null;
         try { st = await yz().issueState(r.issue_repo, r.issue_number); } catch (_) { st = null; }
         if (st !== 'closed') continue;
-        db().prepare('UPDATE supervisor_work SET state = ?, ended_at = ?, message = ? WHERE id = ?').run(r.state === 'queued' ? 'cancelled' : 'done', Date.now(), 'Its issue was closed on Yozora', r.id);
+        db().prepare('UPDATE supervisor_work SET state = ?, ended_at = ?, message = ? WHERE id = ?').run(r.state === 'queued' || r.state === 'held' ? 'cancelled' : 'done', Date.now(), 'Its issue was closed on Yozora', r.id);
         ended += 1;
     }
     if (added || ended) emit({ work: true });
@@ -708,8 +714,10 @@ function enqueue(item, opts = {}) {
     const engine = item.engine && item.engine !== 'claude' ? String(item.engine).slice(0, 60) : 'claude';
     const topology = TOPOLOGIES.includes(item.topology) ? item.topology : 'planner';
     const stages = JSON.stringify(cleanStages(item.stages));
+    // new items wait for Yukimi to pick them (held) unless they start now or are a part of a split item
+    const held = !item.startNow && !item.parentId && item.hold !== false;
     const r = db().prepare(`INSERT INTO supervisor_work (title, prompt, cwd, account, model, effort, source, source_ref, state, start_now, created_at, message, engine)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, 'Waiting for a slot', ?)`).run(title, prompt, item.cwd || null, item.account !== undefined && item.account !== null ? String(item.account) : null, item.model || null, item.effort || null, src, item.sourceRef || null, item.startNow ? 1 : 0, Date.now(), engine);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(title, prompt, item.cwd || null, item.account !== undefined && item.account !== null ? String(item.account) : null, item.model || null, item.effort || null, src, item.sourceRef || null, held ? 'held' : 'queued', item.startNow ? 1 : 0, Date.now(), held ? 'Waiting to be started' : 'Waiting for a slot', engine);
     db().prepare('UPDATE supervisor_work SET topology = ?, stages = ?, parent_id = ? WHERE id = ?').run(topology, stages, item.parentId || null, r.lastInsertRowid);
     if (item.issueFields && item.issueFields.repo && item.issueFields.number) {
         db().prepare('UPDATE supervisor_work SET issue_repo = ?, issue_number = ?, issue_id = ? WHERE id = ?').run(item.issueFields.repo, item.issueFields.number, item.issueFields.id || null, r.lastInsertRowid);
@@ -894,19 +902,35 @@ function settleParent(parentId) {
     setWork(parentId, { state: ok ? 'done' : 'failed', ended_at: Date.now(), message: ok ? `All ${kids.length} parts done` : `${kids.filter((k) => k.state !== 'done').length} of ${kids.length} parts did not finish` });
 }
 
-function startWork(id) {
+/** Start: a waiting (held) item joins the queue and starts when a slot is free; now = past the slot limit too.
+ *  A failed or cancelled item starts again from scratch. */
+function startWork(id, opts = {}) {
     const w = getWork(id);
     if (!w) throw new Error('No such work item');
-    if (w.state !== 'queued') throw new Error(`It is ${w.state}`);
-    setWork(w.id, { start_now: 1 });
+    const now = opts.now !== false;
+    if (w.state === 'queued') setWork(w.id, { start_now: now ? 1 : 0 });
+    else if (['held', 'failed', 'cancelled'].includes(w.state)) {
+        setWork(w.id, { state: 'queued', start_now: now ? 1 : 0, session_id: null, link: '', started_at: null, ended_at: null, message: 'Waiting for a slot' });
+    } else throw new Error(`It is ${w.state}`);
+    emit({ work: getWork(w.id) });
     pumpWork().catch(() => {});
+    return getWork(w.id);
+}
+
+/** Back to waiting (held): a queued, failed or cancelled item stops waiting for a slot until it is started. */
+function holdWork(id) {
+    const w = getWork(id);
+    if (!w) throw new Error('No such work item');
+    if (!['queued', 'failed', 'cancelled', 'held'].includes(w.state)) throw new Error(`It is ${w.state}: end its session first`);
+    setWork(w.id, { state: 'held', start_now: 0, session_id: null, link: '', started_at: null, ended_at: null, message: 'Waiting to be started' });
+    emit({ work: getWork(w.id) });
     return getWork(w.id);
 }
 
 function cancelWork(id) {
     const w = getWork(id);
     if (!w) throw new Error('No such work item');
-    if (w.state !== 'queued' && w.state !== 'failed') throw new Error('Only a queued item is cancelled here: end a running one from its session');
+    if (!['held', 'queued', 'failed'].includes(w.state)) throw new Error('Only a waiting or queued item is cancelled here: end a running one from its session');
     setWork(w.id, { state: 'cancelled', ended_at: Date.now(), message: 'Cancelled' });
     emit({ work: getWork(w.id) });
     return getWork(w.id);
@@ -1394,8 +1418,196 @@ function stop() {
     if (pullTimer) { clearInterval(pullTimer); pullTimer = null; }
 }
 
+// ---------------------------------------------------------------- rules review (Fleet > Rules > Rules Review)
+// The agent rules (.cursor/rules/*.mdc, imported by CLAUDE.md). Cheap file checks run first (missing @ imports,
+// named files that no longer exist, non-English text); the Supervisor's engine then reads the rules in a few
+// chunks for contradictions, overlap and unclear wording. The result is kept in the coord DB; clients see it
+// through the status push (emit), never by polling.
+
+const RULES_REPO = path.join(__dirname, '..');
+const RULES_CHUNK_CHARS = 36000;   // one engine call's rule text (a DeepSeek Flash context holds far more)
+const RULES_MAX_CALLS = 4;         // the short budget
+const RULES_EXCERPT = 900;         // chars of each rule shown to the cross-rule pass
+let rulesRun = null;               // { startedAt, done, total, step }
+
+function rulesDb() {
+    const d = db();
+    d.exec(`CREATE TABLE IF NOT EXISTS supervisor_rules_reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, engine TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '',
+        rule_count INTEGER NOT NULL DEFAULT 0, findings TEXT NOT NULL DEFAULT '[]', error TEXT NOT NULL DEFAULT ''
+    )`);
+    return d;
+}
+
+function rulesPaths(opts = {}) {
+    const repo = opts.repo || RULES_REPO;
+    return { repo, dir: opts.dir || path.join(repo, '.cursor', 'rules'), claudeMd: opts.claudeMd || path.join(repo, 'CLAUDE.md') };
+}
+
+function frontmatterOf(text) {
+    const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
+    const fm = {};
+    if (m) m[1].split(/\r?\n/).forEach((l) => { const k = /^(\w[\w-]*):\s*(.*)$/.exec(l); if (k) fm[k[1]] = k[2].replace(/^["']|["']$/g, ''); });
+    return { fm, body: m ? text.slice(m[0].length) : text };
+}
+
+/** Every rule file with its metadata (text only when withText). */
+function listRules(opts = {}) {
+    const { dir } = rulesPaths(opts);
+    let names = [];
+    try { names = fs.readdirSync(dir).filter((n) => /\.mdc$/.test(n)).sort(); } catch (_) { names = []; }
+    return names.map((file) => {
+        const p = path.join(dir, file);
+        let st = null; let text = '';
+        try { st = fs.statSync(p); text = fs.readFileSync(p, 'utf8'); } catch (_) { return null; }
+        const { fm, body } = frontmatterOf(text);
+        const r = { name: file.replace(/\.mdc?$/, ''), file, description: fm.description || '', alwaysApply: fm.alwaysApply === 'true', size: st.size, mtime: st.mtimeMs };
+        if (opts.withText) { r.text = text; r.body = body; }
+        return r;
+    }).filter(Boolean);
+}
+
+function ruleText(name, opts = {}) {
+    const r = listRules(Object.assign({}, opts, { withText: true })).find((x) => x.name === String(name));
+    if (!r) throw new Error('No such rule');
+    return { name: r.name, file: r.file, text: r.text };
+}
+
+/** Checks that need no model. Findings: { rules, kind, severity, text, suggestion }. */
+function staticRuleFindings(rules, opts = {}) {
+    const { repo, claudeMd } = rulesPaths(opts);
+    const out = [];
+    let md = '';
+    try { md = fs.readFileSync(claudeMd, 'utf8'); } catch (_) { /* none */ }
+    const listed = new Set();
+    (md.match(/^@\S+$/gm) || []).forEach((l) => { const m = /\.cursor\/rules\/([^/\s]+?)\.mdc?$/.exec(l); if (m) { listed.add(m[1]); } });
+    const have = new Set(rules.map((r) => r.name));
+    if (md) {
+        rules.forEach((r) => { if (!listed.has(r.name)) out.push({ rules: [r.name], kind: 'missing-import', severity: 'medium', text: `${r.file} is not in the @ list of CLAUDE.md, so Claude Code does not load it.`, suggestion: `Add @.cursor/rules/${r.file} to CLAUDE.md, or delete the rule if it is retired.` }); });
+        listed.forEach((n) => { if (!have.has(n)) out.push({ rules: ['CLAUDE.md'], kind: 'missing-file', severity: 'high', text: `CLAUDE.md imports ${n}.mdc but that rule file does not exist.`, suggestion: 'Remove the line or restore the rule.' }); });
+    }
+    const exists = (p) => {
+        const clean = p.replace(/[:#]\d+(-\d+)?$/, '').replace(/^~\//, `${os.homedir()}/`);
+        if (/[*<>{}$]/.test(clean) || /^https?:/.test(clean)) return true;
+        return [path.resolve(repo, clean), path.resolve(repo, '.cursor', 'rules', clean), path.isAbsolute(clean) ? clean : ''].some((x) => x && fs.existsSync(x));
+    };
+    rules.forEach((r) => {
+        const seen = new Set();
+        (r.body.match(/`[^`\n]{3,120}`/g) || []).map((t) => t.slice(1, -1).trim()).forEach((t) => {
+            const toks = /^node\s+(\S+)/.exec(t) ? [/^node\s+(\S+)/.exec(t)[1]] : [t];
+            toks.forEach((p) => {
+                // only paths with a folder: a bare file name may live in another repo (the app, the docs) where this check cannot look
+                if (seen.has(p) || /\s/.test(p) || !/^(~\/|\.\/)?(scripts|modules|apps|docs|public|\.cursor|\.githooks|config)\/[\w./-]+\.\w+(?::\d+)?$/.test(p)) return;
+                seen.add(p);
+                if (!exists(p)) out.push({ rules: [r.name], kind: 'outdated-reference', severity: 'medium', text: `${r.file} names \`${p}\`, which does not exist.`, suggestion: 'Update the path or remove the reference if it was renamed or deleted.' });
+            });
+        });
+        const cjk = (r.text.match(/[぀-ヿ㐀-鿿가-힯Ѐ-ӿ]/g) || []).length;
+        if (cjk > 20) out.push({ rules: [r.name], kind: 'not-english', severity: 'medium', text: `${r.file} has ${cjk} characters that are not English or Latin script.`, suggestion: 'Rules are written in English only; translate the text.' });
+        if (!r.description) out.push({ rules: [r.name], kind: 'unclear', severity: 'low', text: `${r.file} has no description in its front matter, so nobody can tell when it applies.`, suggestion: 'Add a one-sentence description.' });
+    });
+    return out;
+}
+
+const RULES_SYSTEM = 'You audit the written rules that steer a team of coding agents. You get the full text of some rules and a short list of every rule (name and description) for cross-checking. Find REAL problems only, no style nitpicks: "contradiction" (two rules demand incompatible things), "duplicate" (rules that say the same thing and should be merged), "unclear" (wording an agent cannot act on or check), "unenforceable" (asks for something no agent or script can verify), "outdated" (names a thing that the other rules show was replaced). Quote the rule names exactly as given. At most 12 findings; none is a valid answer. Answer ONLY {"findings":[{"rules":["name"],"kind":"contradiction|duplicate|unclear|unenforceable|outdated","severity":"high|medium|low","text":"the problem in one or two sentences","suggestion":"the concrete fix"}]}.';
+const RULE_KINDS = ['contradiction', 'duplicate', 'unclear', 'unenforceable', 'outdated', 'not-english', 'missing-import', 'missing-file', 'outdated-reference'];
+
+function cleanFinding(f, names, idx) {
+    const o = f && typeof f === 'object' ? f : {};
+    const rs = (Array.isArray(o.rules) ? o.rules : [o.rule]).map((x) => String(x || '').replace(/\.mdc?$/, '').slice(0, 80)).filter(Boolean).slice(0, 6);
+    const text = String(o.text || '').trim().slice(0, 700);
+    if (!text) return null;
+    return { id: String(idx), rules: rs.filter((x) => names.has(x) || x === 'CLAUDE.md'), kind: RULE_KINDS.includes(o.kind) ? o.kind : 'unclear', severity: ['high', 'medium', 'low'].includes(o.severity) ? o.severity : 'medium', text, suggestion: String(o.suggestion || '').trim().slice(0, 500), dismissed: false };
+}
+
+function rulesReviewRow(r) {
+    if (!r) return null;
+    let findings = [];
+    try { findings = JSON.parse(r.findings); } catch (_) { findings = []; }
+    return { id: r.id, at: r.at, engine: r.engine, model: r.model, ruleCount: r.rule_count, findings, error: r.error || '' };
+}
+
+function lastRulesReview() {
+    return rulesReviewRow(rulesDb().prepare('SELECT * FROM supervisor_rules_reviews ORDER BY id DESC LIMIT 1').get());
+}
+
+/** What the console shows: the rules, the last review and whether one is running. */
+function rulesState(opts = {}) {
+    return { rules: listRules(opts), last: lastRulesReview(), running: rulesRun ? Object.assign({}, rulesRun) : null };
+}
+
+/**
+ * Runs a rules review (one at a time) and stores it. Pushes a status change at the start, after each engine call
+ * and at the end. Answers the stored review.
+ */
+async function reviewRules(gr, opts = {}) {
+    if (rulesRun) throw new Error('A rules review is already running');
+    const rules = listRules(Object.assign({}, opts, { withText: true }));
+    if (!rules.length) throw new Error('No rules were found');
+    const names = new Set(rules.map((r) => r.name));
+    const g = gr || gResources;
+    const findings = staticRuleFindings(rules, opts);
+    // the cross-rule pass: each chunk holds full rule texts; every chunk also sees the one-line list of all rules
+    const index = rules.map((r) => `- ${r.name}: ${r.description.slice(0, 220)}`).join('\n');
+    const chunks = [];
+    let cur = []; let size = 0;
+    rules.forEach((r) => {
+        const body = `=== ${r.name} ===\n${r.body.slice(0, 7000)}`;
+        if (cur.length && size + body.length > RULES_CHUNK_CHARS) { chunks.push(cur); cur = []; size = 0; }
+        cur.push(body); size += body.length;
+    });
+    if (cur.length) chunks.push(cur);
+    const calls = chunks.slice(0, RULES_MAX_CALLS);
+    const hints = findings.filter((f) => f.kind === 'outdated-reference').map((f) => f.text).join('\n');
+    rulesRun = { startedAt: Date.now(), done: 0, total: calls.length, step: 'Checking the files' };
+    emit({ rules: true });
+    let engine = ''; let model = ''; let error = '';
+    try {
+        for (let i = 0; i < calls.length; i += 1) {
+            rulesRun.step = `Reading rules, part ${i + 1} of ${calls.length}`;
+            emit({ rules: true });
+            const user = `All rules (name: description):\n${index}\n\nFile checks already found:\n${hints || '(none)'}\n\nRules to audit in this part:\n\n${calls[i].join('\n\n')}`;
+            try {
+                const o = await askJson(g, RULES_SYSTEM, user, 'rules');
+                const arr = o && Array.isArray(o.findings) ? o.findings : [];
+                arr.forEach((f) => { const c = cleanFinding(f, names, 0); if (c && !['not-english', 'missing-import', 'missing-file', 'outdated-reference'].includes(c.kind)) findings.push(c); });
+            } catch (e) { error = e.message.slice(0, 300); break; }
+            rulesRun.done = i + 1;
+        }
+        try { const s = settings(g); engine = s.engine || ''; model = s.model || DEFAULT_MODEL || ''; } catch (_) { /* unknown */ }
+        // later calls may have failed over: the usage table knows the last model that answered
+        try { const u = db().prepare("SELECT engine, model FROM supervisor_usage WHERE kind = 'rules' AND ok = 1 ORDER BY id DESC LIMIT 1").get(); if (u) { engine = u.engine; model = u.model || model; } } catch (_) { /* none */ }
+    } finally {
+        rulesRun = null;
+    }
+    const final = findings.map((f, i) => Object.assign({}, f, { id: String(i), dismissed: false }));
+    const ins = rulesDb().prepare('INSERT INTO supervisor_rules_reviews (at, engine, model, rule_count, findings, error) VALUES (?, ?, ?, ?, ?, ?)').run(Date.now(), engine, model, rules.length, JSON.stringify(final), error);
+    const rv = rulesReviewRow(rulesDb().prepare('SELECT * FROM supervisor_rules_reviews WHERE id = ?').get(ins.lastInsertRowid));
+    emit({ rules: true });
+    return rv;
+}
+
+/** Start in the background: answers at once; the result arrives through the status push. */
+function startRulesReview(gr, opts = {}) {
+    if (rulesRun) throw new Error('A rules review is already running');
+    reviewRules(gr, opts).catch((e) => { console.warn(`[supervisor] rules review: ${e.message}`); emit({ rules: true }); });
+    return { running: true };
+}
+
+function dismissRuleFinding(findingId) {
+    const r = lastRulesReview();
+    if (!r) throw new Error('No rules review yet');
+    const f = r.findings.find((x) => String(x.id) === String(findingId));
+    if (!f) throw new Error('No such finding');
+    f.dismissed = true;
+    rulesDb().prepare('UPDATE supervisor_rules_reviews SET findings = ? WHERE id = ?').run(JSON.stringify(r.findings), r.id);
+    emit({ rules: true });
+    return lastRulesReview();
+}
+
 module.exports = {
-    start, stop, bind, settings, askJson, callEngine, spend, engineChain, TOPOLOGIES, cleanStages, decideTopology, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, startWork, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
+    listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
+    start, stop, bind, settings, askJson, callEngine, spend, engineChain, TOPOLOGIES, cleanStages, decideTopology, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath,
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, queueReview, queue }
 };

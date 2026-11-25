@@ -264,7 +264,10 @@ sup._test.setFetch(async (url, opts) => {
             sup.bind(gr);
             const a = sup.enqueue({ title: 'A', prompt: 'do A', topology: 'direct' }, { gr });
             await sup.pumpWork(gr);
-            const b = sup.enqueue({ title: 'B', prompt: 'do B', topology: 'direct' }, { gr });
+            assert.strictEqual(sup.getWork(a.id).state, 'held', 'a new item waits to be started');
+            sup.startWork(a.id, { now: false });
+            await sup.pumpWork(gr);
+            const b = sup.enqueue({ title: 'B', prompt: 'do B', topology: 'direct', hold: false }, { gr });
             await sup.pumpWork(gr);
             assert.strictEqual(sup.getWork(a.id).state, 'running');
             assert.strictEqual(sup.getWork(b.id).state, 'queued');
@@ -282,6 +285,8 @@ sup._test.setFetch(async (url, opts) => {
             const c = sup.enqueue({ title: 'C', prompt: 'do C', sourceRef: 'plaud:x1', source: 'plaud' }, { gr });
             assert.strictEqual(sup.enqueue({ title: 'C again', prompt: 'do C', sourceRef: 'plaud:x1', source: 'plaud' }, { gr }).id, c.id, 'one item per recording');
             assert.strictEqual(sup.cancelWork(c.id).state, 'cancelled');
+            assert.strictEqual(sup.holdWork(c.id).state, 'held', 'a cancelled item goes back to waiting');
+            assert.strictEqual(sup.cancelWork(c.id).state, 'cancelled');
             assert.ok(sup.summary().version > 0);
             // an agent asks over the socket
             sup.start(gr);
@@ -291,7 +296,7 @@ sup._test.setFetch(async (url, opts) => {
                 const sock = require('net').createConnection(process.env.AGENT_SUPERVISOR_SOCKET, () => sock.write(`${JSON.stringify({ op: 'enqueue', title: 'From an agent', prompt: 'do D' })}\n`));
                 sock.on('data', (ch) => { buf += ch; }); sock.on('end', () => resolve(JSON.parse(buf))); sock.on('error', reject);
             });
-            assert.ok(reply.ok && reply.work.source === 'agent' && reply.work.state === 'queued', JSON.stringify(reply));
+            assert.ok(reply.ok && reply.work.source === 'agent' && reply.work.state === 'held', JSON.stringify(reply));
             sup.stop();
         } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; }
     });
@@ -336,7 +341,7 @@ sup._test.setFetch(async (url, opts) => {
             settingsCfg.agentSupervisor.autoStart = false;
             const q = sup.enqueue({ title: 'Later', prompt: 'later', issueFields: { repo: 'DreamScape/StaticForge', number: 501 } }, { gr });
             await sup.pumpWork(gr);
-            assert.strictEqual(sup.getWork(q.id).state, 'queued');
+            assert.strictEqual(sup.getWork(q.id).state, 'held');
             yzIssues.set('DreamScape/StaticForge#501', { state: 'closed' });
             await sup.pullIssues(gr, { force: true });
             assert.strictEqual(sup.getWork(q.id).state, 'cancelled', 'closed ' + JSON.stringify(sup.getWork(q.id)));
@@ -426,6 +431,55 @@ sup._test.setFetch(async (url, opts) => {
         assert.ok(refused >= 1, 'the refusal is recorded');
         assert.ok(sp.failovers.length >= 1 && sp.failovers[0].fromEngine === 'tokenrouter', JSON.stringify(sp.failovers));
         assert.ok(today.some((x) => x.cost > 0.002), 'cost summed');
+    });
+
+    await test('rules review: file checks + stubbed engine findings stored, pushed, dismissable; one run at a time', async () => {
+        const rd = path.join(tmp, 'repo');
+        fs.mkdirSync(path.join(rd, '.cursor', 'rules'), { recursive: true });
+        fs.writeFileSync(path.join(rd, '.cursor', 'rules', 'alpha.mdc'), '---\ndescription: Alpha rule\nalwaysApply: true\n---\nRun `scripts/gone.js` first. Also `scripts/here.js`.\n');
+        fs.writeFileSync(path.join(rd, '.cursor', 'rules', 'beta.mdc'), '---\ndescription: Beta rule\n---\nNever run scripts/here.js.\n');
+        fs.writeFileSync(path.join(rd, '.cursor', 'rules', 'jp.mdc'), '---\ndescription: Japanese\n---\n' + '\u3053\u3093\u306b\u3061\u306f'.repeat(8) + '\n');
+        fs.mkdirSync(path.join(rd, 'scripts'), { recursive: true });
+        fs.writeFileSync(path.join(rd, 'scripts', 'here.js'), '');
+        fs.writeFileSync(path.join(rd, 'CLAUDE.md'), '# x\n@.cursor/rules/alpha.mdc\n@.cursor/rules/ghost.mdc\n');
+        const g3 = Object.assign({}, gr, { getConfig: () => ({ agentSupervisor: { enabled: true, engine: 'tokenrouter' } }) });
+        let prompts = 0; let release;
+        const gate = new Promise((r) => { release = r; });
+        sup._test.setFetch(async (url, opts) => {
+            prompts += 1;
+            await gate;
+            const content = JSON.stringify({ findings: [{ rules: ['alpha', 'beta'], kind: 'contradiction', severity: 'high', text: 'alpha says run here.js, beta says never.', suggestion: 'Pick one.' }, { rules: ['nope'], kind: 'duplicate', severity: 'low', text: 'dup', suggestion: 'merge' }] });
+            return { ok: true, status: 200, text: async () => JSON.stringify({ usage: { prompt_tokens: 100, completion_tokens: 20, cost: 0.0001 }, choices: [{ message: { content } }] }) };
+        });
+        let pushes = 0;
+        const off = sup.onReview(() => { pushes += 1; });
+        const opts = { repo: rd };
+        const run = sup.reviewRules(g3, opts);
+        await assert.rejects(() => sup.reviewRules(g3, opts), /already running/);
+        assert.ok(sup.rulesState(opts).running, 'running state is visible');
+        release();
+        const rv = await run;
+        off();
+        assert.ok(pushes >= 3, `status pushed (${pushes})`);
+        assert.strictEqual(prompts, 1);
+        const kinds = rv.findings.map((f) => f.kind);
+        ['missing-file', 'missing-import', 'outdated-reference', 'not-english', 'contradiction', 'duplicate'].forEach((k) => assert.ok(kinds.includes(k), `${k} in ${kinds}`));
+        assert.ok(!rv.findings.some((f) => /here\.js`, which/.test(f.text)), 'an existing file is not flagged');
+        assert.ok(rv.findings.some((f) => f.kind === 'outdated-reference' && /scripts\/gone\.js/.test(f.text)));
+        assert.ok(rv.model && rv.ruleCount === 3);
+        const st = sup.rulesState(opts);
+        assert.strictEqual(st.running, null);
+        assert.strictEqual(st.last.id, rv.id);
+        assert.deepStrictEqual(st.rules.map((r) => r.name), ['alpha', 'beta', 'jp']);
+        assert.strictEqual(st.rules[0].description, 'Alpha rule');
+        assert.ok(/gone\.js/.test(sup.ruleText('alpha', opts).text));
+        const id = rv.findings[0].id;
+        assert.strictEqual(sup.dismissRuleFinding(id).findings.find((f) => f.id === id).dismissed, true);
+        assert.throws(() => sup.dismissRuleFinding('999'), /No such finding/);
+        // an engine failure keeps the file checks and records the error
+        sup._test.setFetch(async () => ({ ok: false, status: 500, text: async () => 'boom' }));
+        const bad = await sup.reviewRules(g3, opts);
+        assert.ok(bad.error && bad.findings.some((f) => f.kind === 'missing-file'));
     });
 
     require('../modules/agentCoord/store').close();

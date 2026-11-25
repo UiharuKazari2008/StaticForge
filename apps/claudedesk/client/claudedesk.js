@@ -127,6 +127,7 @@
             winSeq: 0,
             wins: new Set(), // the item windows (a folded thinking / edit in full)
             engines: null, // claude_fleet_engines, read when a wizard or the queue needs it
+            wsel: new Set(), wscope: '', // the work requests picked in the list (Ctrl / Shift / check boxes)
             act: { rows: [], next: null, total: 0, kind: '', q: '', sessionId: '', loaded: false, loading: false, error: '', gone: false, seq: 0 }, // Activity
             mem: memBlank('active'), // Memory
             memRv: memBlank('review'), // Needs Review
@@ -196,7 +197,7 @@
             if (pushed) { S.spend.data = sp.spend; S.spend.loaded = true; S.spend.gone = false; }
             // version moves on every review, work item and lock change: the status is read again once per change
             if (ver !== S.sup.version) {
-                const shown = S.c && (S.c.node === 'co-work' || S.c.node === 'aw-sup' || S.c.node === 'co-pending' || S.c.node === 'co-supervisor' || S.c.node.startsWith('sup-'));
+                const shown = S.c && (S.c.node === 'co-work' || S.c.node === 'co-held' || S.c.node === 'aw-sup' || S.c.node === 'co-pending' || S.c.node === 'co-supervisor' || S.c.node.startsWith('sup-'));
                 if (S.sup.loaded && shown && !S.sup.loading) void loadSupervisor();
                 else S.sup.stale = true;
                 S.sup.version = ver;
@@ -250,6 +251,7 @@
         const c = ws();
         if (!c || typeof c.on !== 'function') return;
         const opts = { signal: app.signal };
+        bgWire(app);
         c.on('claude_desk_status', (msg) => {
             const d = msg && msg.changed ? msg : (msg && msg.data) || {};
             applyDesk(d.changed);
@@ -1021,14 +1023,31 @@
     const supReviews = () => (S.sup.data && Array.isArray(S.sup.data.reviews) ? S.sup.data.reviews : []);
     const supReview = (id) => supReviews().find((r) => String(r.id) === String(id)) || null;
     const supEngine = (id) => supEngines().find((e) => e.id === id) || null;
+    /** The models an engine offers (its list, else its own default); a stored value outside it stays selectable. */
+    const supModelList = (engineId) => { const e = supEngine(engineId); return e ? (Array.isArray(e.models) ? e.models.slice() : []).concat(e.defaultModel && !(e.models || []).includes(e.defaultModel) ? [e.defaultModel] : []) : []; };
+    function supModelOptions(engineId, cur) {
+        const e = supEngine(engineId);
+        const list = supModelList(engineId);
+        const opts = [`<option value=""${cur ? '' : ' selected'}>${esc(e && e.defaultModel ? `Engine default (${e.defaultModel})` : 'Engine default')}</option>`];
+        list.forEach((m) => opts.push(`<option value="${esc(m)}"${m === cur ? ' selected' : ''}>${esc(m)}</option>`));
+        if (cur && !list.includes(cur)) opts.push(`<option value="${esc(cur)}" selected>${esc(cur)}</option>`);
+        opts.push('<option value="__other">Other model ID...</option>');
+        return opts.join('');
+    }
+    const SUP_EFFORT_TEXT = { none: 'None (no reasoning)', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
+    function supEffortOptions(engineId, cur) {
+        const e = supEngine(engineId);
+        const list = (e && Array.isArray(e.efforts) && e.efforts.length) ? e.efforts : ['none', 'low', 'medium', 'high'];
+        return [`<option value=""${cur ? '' : ' selected'}>Engine default</option>`].concat(list.map((v) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(SUP_EFFORT_TEXT[v] || v)}</option>`)).join('');
+    }
     const SUP_GONE = /unknown message type/i;
     const supWork = () => (S.sup.data && Array.isArray(S.sup.data.work) ? S.sup.data.work : []);
     const workOf = (id) => supWork().find((w) => String(w.id) === String(id)) || null;
-    const WORK_STATE = { queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Waiting', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+    const WORK_STATE = { held: 'Waiting', queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Sent Back', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
     const WORK_SOURCE = { fleet: 'Fleet', plaud: 'Plaud', director: 'Director', agent: 'Agent', yozora: 'Yozora' };
     const issueText = (w) => (w && w.issue ? `${String(w.issue.repo || '').split('/').pop()}#${w.issue.number}` : '');
-    const WORK_OPEN = new Set(['queued', 'starting', 'running', 'waiting']);
-    const workIcon = (st) => ({ queued: `${VI}/info-16.png`, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || `${S.app.url('assets').replace(/\/$/, '')}/session-16.png`);
+    const WORK_OPEN = new Set(['held', 'queued', 'starting', 'running', 'waiting']);
+    const workIcon = (st) => ({ held: `${ITEMS}/date-and-time-16.png`, queued: `${VI}/info-16.png`, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || `${S.app.url('assets').replace(/\/$/, '')}/session-16.png`);
     const supLocks = () => (S.sup.data && Array.isArray(S.sup.data.locks) ? S.sup.data.locks : []);
     const supArtifacts = () => (S.sup.data && Array.isArray(S.sup.data.artifacts) ? S.sup.data.artifacts : []);
     const LOCK_STATE = { live: 'Live', idle: 'Idle', orphan: 'Orphan' };
@@ -1076,8 +1095,10 @@
         S.sup.busy = busy || 'Working...';
         c.note(S.sup.busy);
         repaint();
+        let errs = [];
         try {
             const r = await send('claude_desk_supervisor', payload);
+            if (Array.isArray(r.errors)) errs = r.errors.map(String);
             if (r.settings) supTake(r);
             else if (r.review) {
                 const list = supReviews().slice();
@@ -1091,6 +1112,7 @@
         S.sup.busy = '';
         c.note('');
         repaint();
+        if (errs.length) await c.box(`<p>${errs.length === 1 ? 'One request' : 'Some requests'} could not be changed:</p><ul>${errs.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`, null, { icon: 'warning' });
     }
 
     /** Session nodes left open in Active Work (the tree remembers them) read their agents once. */
@@ -1109,15 +1131,15 @@
         const sendable = r.verdict === 'gaps' && !r.delivered && (missed.length || steering.length);
         const bits = [
             `<p><b>${esc(r.title || shortId(r.sessionId))}</b> <span class="mmc-hint">${esc([r.account, TRIGGER[r.trigger] || r.trigger, when(r.at)].filter(Boolean).join(' - '))}</span></p>`,
+            `<p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="sup-send" data-arg="${esc(r.id)}"${sendable && live && !busy ? '' : ' disabled'}>Send to Session</button> `
+                + `<button type="button" class="btn-standard" data-act="sup-recheck" data-arg="${esc(r.sessionId)}"${busy ? ' disabled' : ''}>Re-check</button> `
+                + `<button type="button" class="btn-standard" data-act="sup-dismiss" data-arg="${esc(r.id)}"${r.dismissed || busy ? ' disabled' : ''}>Dismiss</button></p>`,
             r.summary ? `<p class="cd-read">${esc(r.summary)}</p>` : '',
             r.request ? `<p><b>What was asked</b></p><p class="cd-read">${esc(r.request)}</p>` : '',
             missed.length ? `<p><b>Missed</b></p><table class="cd-table"><thead><tr><th>Item</th><th>Evidence</th></tr></thead><tbody>${missed.map((m) => `<tr><td>${esc(m.item)}</td><td>${esc(m.evidence || '')}</td></tr>`).join('')}</tbody></table>` : '',
             steering.length ? `<p><b>Steering</b></p><ul class="cd-sup-steer">${steering.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '',
             r.delivered ? `<p class="mmc-hint">${r.delivered === 'steer' ? 'Typed into the session.' : 'Left in the inbox.'}</p>` : '',
-            r.dismissed ? '<p class="mmc-hint">Dismissed.</p>' : '',
-            `<p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="sup-send" data-arg="${esc(r.id)}"${sendable && live && !busy ? '' : ' disabled'}>Send to Session</button> `
-                + `<button type="button" class="btn-standard" data-act="sup-recheck" data-arg="${esc(r.sessionId)}"${busy ? ' disabled' : ''}>Re-check</button> `
-                + `<button type="button" class="btn-standard" data-act="sup-dismiss" data-arg="${esc(r.id)}"${r.dismissed || busy ? ' disabled' : ''}>Dismiss</button></p>`
+            r.dismissed ? '<p class="mmc-hint">Dismissed.</p>' : ''
         ];
         return bits.join('');
     }
@@ -1142,12 +1164,13 @@
         const engines = supEngines();
         const eng = supEngine(st.engine);
         const engineOpts = (eng ? engines : engines.concat([{ id: st.engine, name: st.engine }])).map((e) => `<option value="${esc(e.id)}"${e.id === st.engine ? ' selected' : ''}>${esc(e.name || e.id)}</option>`).join('');
-        const placeholder = (eng && eng.defaultModel) || (st.engine === 'tokenrouter' ? 'deepseek/deepseek-v4.1-flash' : '');
         const stats = (sup.data && sup.data.stats) || {};
         const form = `<div class="cd-sup-form">
             <label class="cd-opt"><input type="checkbox" data-sup="enabled"${st.enabled ? ' checked' : ''}><span>Enabled: review each agent turn against what was asked</span></label>
             <label><span>Engine:</span><select class="vdt-select" data-sup="engine">${engineOpts}</select></label>
-            <label><span>Model:</span><input type="text" data-sup="model" value="${esc(st.model || '')}" placeholder="${esc(placeholder)}" spellcheck="false" autocomplete="off"></label>
+            <label><span>Model:</span><select class="vdt-select" data-sup="model">${supModelOptions(st.engine, st.model)}</select></label>
+            <label><span>Effort:</span><select class="vdt-select" data-sup="effort">${supEffortOptions(st.engine, st.effort)}</select></label>
+            <label data-sup-other hidden><span>Model ID:</span><input type="text" data-sup="modelOther" value="" placeholder="A full model ID" spellcheck="false" autocomplete="off"></label>
             <label><span>Delivery:</span><select class="vdt-select" data-sup="delivery">${DELIVERY.map(([v, t]) => `<option value="${v}"${v === st.delivery ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
             <label><span>Max concurrent sessions:</span><input type="text" data-sup="maxConcurrent" value="${esc(st.maxConcurrent == null ? 3 : st.maxConcurrent)}" inputmode="numeric" autocomplete="off"></label>
             <label class="cd-opt"><input type="checkbox" data-sup="autoStart"${st.autoStart === false ? '' : ' checked'}><span>Start queued work automatically</span></label>
@@ -1171,6 +1194,33 @@
             { t: 'Summary', w: 250, key: 'summary', text: (d) => d.summary },
             { t: 'When', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => d.at }
         ], rows, { sortId: 'cd-sup', sort: { key: 'at', dir: -1 }, empty: sup.data && sup.data.settings && sup.data.settings.enabled ? 'No review yet. Each agent turn that ends is reviewed.' : 'The supervisor is off. Turn it on above to review finished agent turns.' });
+        if (part === 'sup-reviews') {
+            // Outlook's reading pane: the list on top, the selected review and its actions below, a divider between
+            return {
+                html: `<div class="cd-rv"><div class="cd-rv-top">${list}</div><div class="cd-rv-split" role="separator" aria-orientation="horizontal" title="Drag to resize"></div><div class="cd-rv-bot cd-sup-detail">${supDetailHtml()}</div></div>`,
+                list: true,
+                split: true,
+                mount: (pane) => {
+                    const box = pane.querySelector('.cd-rv');
+                    const top = pane.querySelector('.cd-rv-top');
+                    const bar = pane.querySelector('.cd-rv-split');
+                    if (!box || !top || !bar) return;
+                    if (S.rvH) top.style.flexBasis = `${S.rvH}px`;
+                    bar.addEventListener('pointerdown', (ev) => {
+                        ev.preventDefault();
+                        bar.setPointerCapture(ev.pointerId);
+                        const y0 = ev.clientY;
+                        const h0 = top.getBoundingClientRect().height;
+                        const room = box.getBoundingClientRect().height;
+                        const move = (e) => { S.rvH = Math.round(Math.max(60, Math.min(room - 90, h0 + e.clientY - y0))); top.style.flexBasis = `${S.rvH}px`; };
+                        const up = () => { bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); bar.removeEventListener('pointercancel', up); };
+                        bar.addEventListener('pointermove', move);
+                        bar.addEventListener('pointerup', up);
+                        bar.addEventListener('pointercancel', up);
+                    });
+                }
+            };
+        }
         const locks = supLocks();
         const arts = supArtifacts();
         const lockRows = locks.map((l) => ({ key: `lk:${l.root || ''}|${l.file}`, icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, cls: l.state === 'orphan' ? 'cd-stale' : '', data: { file: l.file, agent: l.agentName || l.agentId || '', state: LOCK_STATE[l.state] || l.state || '', by: PLANTED[l.plantedBy] || '', age: l.ageMinutes } }));
@@ -1193,7 +1243,7 @@
         const total = stats.artifactBytes != null ? stats.artifactBytes : arts.reduce((n, a) => n + (a.sizeBytes || 0), 0);
         const side = sup.busy || sup.error || `${stats.reviewed || 0} reviewed, ${stats.gaps || 0} with gaps${stats.lastAt ? `, last ${when(stats.lastAt)}` : ''}`;
         const holds = supHolds();
-        const holdRows = holds.map((h) => ({ key: `hd:${h.id}`, icon: `${VI}/warning-16.png`, data: { title: titleOf(rowOf(h.sessionId) || { id: h.sessionId }), mode: holdWord(h), reason: h.reason || '', kind: HOLD_KIND[h.kind] || h.kind || '', by: h.by || '', at: h.at || 0, paths: Array.isArray(h.paths) ? h.paths.join(', ') : '' } }));
+        const holdRows = holds.map((h) => ({ key: `hd:${h.id}`, icon: '/static_images/vista-cmdbar/pause.png', data: { title: titleOf(rowOf(h.sessionId) || { id: h.sessionId }), mode: holdWord(h), reason: h.reason || '', kind: HOLD_KIND[h.kind] || h.kind || '', by: h.by || '', at: h.at || 0, paths: Array.isArray(h.paths) ? h.paths.join(', ') : '' } }));
         const holdList = c.listView([
             { t: 'Session', w: 170, key: 'title', text: (d) => d.title },
             { t: 'Mode', w: 60, key: 'mode', text: (d) => d.mode },
@@ -1221,12 +1271,24 @@
                     const el = ev.target.closest('[data-sup]');
                     if (!el) return;
                     const d = S.sup.draft || Object.assign({}, SUP_DEFAULT, (S.sup.data && S.sup.data.settings) || {});
-                    d[el.dataset.sup] = el.type === 'checkbox' ? el.checked : el.value;
+                    const key = el.dataset.sup;
+                    if (key === 'model' && el.value === '__other') {
+                        const row = pane.querySelector('[data-sup-other]');
+                        if (row) { row.hidden = false; const t = row.querySelector('input'); if (t) t.focus(); }
+                        return;
+                    }
+                    d[key === 'modelOther' ? 'model' : key] = el.type === 'checkbox' ? el.checked : el.value;
                     S.sup.draft = d;
-                    if (el.dataset.sup === 'engine') {
-                        const e = supEngine(el.value);
-                        const m = pane.querySelector('[data-sup="model"]');
-                        if (m) m.placeholder = (e && e.defaultModel) || '';
+                    if (key === 'engine') {
+                        // the model list follows the engine
+                        d.model = '';
+                        const m = pane.querySelector('select[data-sup="model"]');
+                        if (m) m.innerHTML = supModelOptions(el.value, '');
+                        d.effort = '';
+                        const ef = pane.querySelector('select[data-sup="effort"]');
+                        if (ef) ef.innerHTML = supEffortOptions(el.value, '');
+                        const row = pane.querySelector('[data-sup-other]');
+                        if (row) row.hidden = true;
                     }
                     const note = pane.querySelector('.cd-sup-form .cd-sup-actions');
                     if (note && !note.querySelector('.mmc-hint')) note.insertAdjacentHTML('beforeend', ' <span class="mmc-hint">Not saved yet.</span>');
@@ -1236,8 +1298,27 @@
             }
         };
     }
+    const WORK_STARTABLE = new Set(['held', 'queued', 'failed', 'cancelled']);
+    const WORK_HOLDABLE = new Set(['queued', 'failed', 'cancelled']);
+    /** The requests picked in the list that are still in the queue (ids as strings). */
+    const wsel = () => Array.from(S.wsel).filter((id) => workOf(id)).map(String);
+    function workMultiItems() {
+        const ws = wsel().map(workOf);
+        const busy = !!S.sup.busy;
+        const start = !ws.some((w) => WORK_STARTABLE.has(w.state)) || busy;
+        return [
+            { separator: true },
+            { text: 'Start Selected', action: 'work-start-sel', disabled: start },
+            { text: 'Queue Selected', action: 'work-queue-sel', disabled: start },
+            { text: 'Move to Waiting', action: 'work-hold-sel', disabled: !ws.some((w) => WORK_HOLDABLE.has(w.state)) || busy },
+            { text: 'Cancel Selected...', action: 'work-cancel-sel', disabled: !ws.length || busy }
+        ];
+    }
+    const workPicked = (c) => { const ids = wsel(); if (ids.length) return ids; const one = workSel(c); return one ? [one] : []; };
+
     function workPage(c, scope = 'all') {
-        const T = { all: 'Work Queue', active: 'Active', pending: 'Pending' }[scope];
+        const T = { all: 'Work Queue', held: 'Waiting', active: 'Active', pending: 'Pending' }[scope];
+        if (S.wscope !== scope) { S.wscope = scope; S.wsel = new Set(); }
         if (!S.sup.loaded) { void loadSupervisor(); return c.page(T, '', [{ id: 'cd-wq-wait', title: T, body: '<p class="mmc-hint">Reading the work queue...</p>' }]); }
         if (S.sup.stale) { S.sup.stale = false; void loadSupervisor(); }
         if (S.sup.unavailable) return c.page(T, '', [{ id: 'cd-wq-gone', title: T, body: `<p>${NOT_YET}</p>` }]);
@@ -1245,10 +1326,10 @@
             key: `w:${w.id}`,
             icon: w.sessionId && holdOf(w.sessionId) ? `${VI}/warning-16.png` : workIcon(w.state),
             cls: w.state === 'running' || w.state === 'starting' ? 'cd-live' : (w.state === 'failed' ? 'cd-stale' : ''),
-            data: { title: w.title || String(w.id), state: workState(w), shape: shapeText(w), source: WORK_SOURCE[w.source] || w.source || '', account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), model: [w.engine && w.engine !== 'claude' ? engineName(w.engine) : '', w.model, w.effort].filter(Boolean).join(' / '), session: w.sessionId ? shortId(w.sessionId) : '', issue: issueText(w), at: w.createdAt || 0, message: [w.message, w.issueNote].filter(Boolean).join(' - ') }
+            data: { id: w.id, title: w.title || String(w.id), state: workState(w), shape: shapeText(w), source: WORK_SOURCE[w.source] || w.source || '', account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), model: [w.engine && w.engine !== 'claude' ? engineName(w.engine) : '', w.model, w.effort].filter(Boolean).join(' / '), session: w.sessionId ? shortId(w.sessionId) : '', issue: issueText(w), at: w.createdAt || 0, message: [w.message, w.issueNote].filter(Boolean).join(' - ') }
         }));
         const lv = c.listView([
-            { t: 'Request', w: 220, key: 'title', text: (d) => d.title },
+            { t: 'Request', w: 260, key: 'title', text: (d) => d.title, html: (d) => `<input type="checkbox" class="cd-wck" tabindex="-1" aria-label="Pick this request"${S.wsel.has(String(d.id)) ? ' checked' : ''}><i>${esc(d.title)}</i>` },
             { t: 'State', w: 76, key: 'state', text: (d) => d.state },
             { t: 'Shape / Parts', w: 170, key: 'shape', text: (d) => d.shape },
             { t: 'From', w: 66, key: 'source', text: (d) => d.source },
@@ -1258,8 +1339,63 @@
             { t: 'Issue', w: 110, key: 'issue', text: (d) => d.issue },
             { t: 'Queued', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => Number(d.at) || Date.parse(d.at) || 0 },
             { t: 'Note', w: 220, key: 'message', text: (d) => d.message }
-        ], rows, { sortId: `cd-work-${scope}`, sort: { key: 'at', dir: -1 }, empty: scope === 'active' ? 'No work item is running.' : scope === 'pending' ? 'No work item is waiting.' : 'The queue is empty. A request from New Session..., Plaud or an agent waits here until an account has room.', fit: true });
-        return { html: lv, list: true };
+        ], rows, { sortId: `cd-work-${scope}`, sort: { key: 'at', dir: -1 }, empty: scope === 'held' ? 'Nothing is waiting for you. A new or imported request waits here until you start it.' : scope === 'active' ? 'No work item is running.' : scope === 'pending' ? 'No work item is waiting.' : 'The queue is empty. A request from New Session..., Plaud or an agent waits here until an account has room.', fit: true });
+        let off = null;
+        return {
+            html: lv,
+            list: true,
+            mount: (pane) => {
+                let anchor = '';
+                const rows = () => Array.from(pane.querySelectorAll('.mmc-row[data-key^="w:"]'));
+                const paint = () => rows().forEach((r) => {
+                    const on = S.wsel.has(r.dataset.key.slice(2));
+                    r.classList.toggle('is-selected', S.wsel.size ? on : c.sel === r.dataset.key);
+                    const ck = r.querySelector('.cd-wck');
+                    if (ck) ck.checked = on;
+                });
+                const refresh = () => { paint(); c.renderActions(); c.renderStatus(); };
+                const onClick = (ev) => {
+                    const row = ev.target.closest('.mmc-row[data-key^="w:"]');
+                    if (!row) return;
+                    const key = row.dataset.key;
+                    const id = key.slice(2);
+                    if (ev.shiftKey && anchor) {
+                        const all = rows().map((r) => r.dataset.key.slice(2));
+                        const a = all.indexOf(anchor);
+                        const b = all.indexOf(id);
+                        const span = all.slice(Math.min(a, b), Math.max(a, b) + 1);
+                        S.wsel = new Set(ev.ctrlKey || ev.metaKey ? Array.from(S.wsel).concat(span) : span);
+                    } else if (ev.ctrlKey || ev.metaKey || ev.target.closest('.cd-wck')) {
+                        const next = new Set(S.wsel);
+                        if (!next.size && c.sel && c.sel.startsWith('w:') && c.sel !== key) next.add(c.sel.slice(2));
+                        if (next.has(id)) next.delete(id); else next.add(id);
+                        S.wsel = next;
+                        anchor = id;
+                    } else {
+                        S.wsel = new Set([id]);
+                        anchor = id;
+                        setTimeout(paint, 0);
+                        return;
+                    }
+                    ev.stopPropagation();
+                    ev.preventDefault();
+                    c.selectRow(key);
+                    refresh();
+                };
+                const onKey = (ev) => {
+                    if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'a' || ev.key === 'A') && ev.target.classList && ev.target.classList.contains('mmc-list')) {
+                        ev.preventDefault();
+                        S.wsel = new Set(rows().map((r) => r.dataset.key.slice(2)));
+                        refresh();
+                    }
+                };
+                pane.addEventListener('click', onClick, true);
+                pane.addEventListener('keydown', onKey);
+                off = () => { pane.removeEventListener('click', onClick, true); pane.removeEventListener('keydown', onKey); };
+                paint();
+            },
+            unmount: () => { if (off) off(); off = null; }
+        };
     }
 
     const askText = (g) => { const a = agentOf(g.agentId); return `Restart waiting on ${a ? (a.name || a.id) : (g.agentId || 'an agent')}${g.text ? `: ${String(g.text).replace(/\s+/g, ' ').slice(0, 160)}` : ''}${g.firstAt ? ` (since ${timeOnly(g.firstAt)})` : ''}${g.stale ? ' - it looks stuck' : ''}`; };
@@ -1310,6 +1446,321 @@
             ['Last activity', esc(when(x.lastActivity))],
             ['Messages', String(x.messages || 0)]
         ]) + `<p><span class="mmc-link" data-act="agent-open" data-arg="${esc(`${sid}|${agentId}`)}">Read its conversation</span> &nbsp; <span class="mmc-link" data-act="aw-agents-refresh" data-arg="${esc(sid)}">Read again</span></p>` }]);
+    }
+
+    // ---- Background Agents (under Activity): every running session's Agent-tool subagents, live -----------
+    // Feed claude_desk_agents (statusHub, pushed; subscribed while the window is open) lists them. Opening one
+    // reads its conversation read-only (claude_desk_session agent_page, earlier messages on scroll) and a watch
+    // (claude_desk_agent_watch) pushes its new messages (claude_desk_agent_append) while its page is open.
+
+    const BG_TREE_MS = 10 * 60 * 1000; // a finished agent stays in the tree this long after it was seen finished
+    let BG = bgBlank();
+    function bgBlank() { return { on: false, items: new Map(), loaded: false, error: '', pages: new Map(), watching: '', doneAt: new Map(), dropTimer: null, pin: '' }; }
+    const bgNodeId = (r) => `bga:${r.sessionId}:${r.agentId}`;
+    const bgKeyOf = (sid, aid) => `${sid}|${aid}`;
+    const bgRows = () => Array.from(BG.items.values());
+    const bgRunning = () => bgRows().filter((r) => r.state === 'running');
+    const bgRow = (sid, aid) => BG.items.get(`a:${sid}:${aid}`) || null;
+    const BG_STATE = { running: 'Running', idle: 'Idle', finished: 'Finished' };
+    const bgIcon = (r) => (r && r.state === 'running' ? `${VI}/application-16.png` : `${VI}/check-16.png`);
+
+    /** The children of the Activity node: the list and one node per running agent (finished ones for a while). */
+    function bgNodes() {
+        const now = Date.now();
+        const here = S.c ? S.c.node : '';
+        const kids = bgRows().filter((r) => r.state === 'running' || bgNodeId(r) === here || bgNodeId(r) === BG.pin || now - (BG.doneAt.get(r.key) || 0) < BG_TREE_MS)
+            .map((r) => ({ id: bgNodeId(r), name: r.description || r.agentId, icon: bgIcon(r), desc: `${r.sessionTitle || shortId(r.sessionId)} - ${BG_STATE[r.state] || ''}` }));
+        return [{ id: 'bg-agents', name: `Background Agents (${bgRunning().length} running)`, icon: `${ITEMS}/programs-and-features-16.png`, desc: 'The agents the running sessions started in the background, live', children: kids }];
+    }
+
+    function bgTake(changed, removed, whole) {
+        if (whole) { BG.items = new Map(); }
+        Object.entries(changed || {}).forEach(([k, r]) => {
+            if (!r || typeof r !== 'object') return;
+            BG.items.set(k, r);
+            if (r.state === 'running') BG.doneAt.delete(k);
+            else if (!BG.doneAt.has(k)) BG.doneAt.set(k, whole ? (r.lastActivity || Date.now()) : Date.now());
+        });
+        (removed || []).forEach((k) => { BG.items.delete(k); BG.doneAt.delete(k); });
+        BG.loaded = true;
+        // one timer for the oldest finished node still in the tree (not a poll)
+        clearTimeout(BG.dropTimer);
+        const now = Date.now();
+        const next = Array.from(BG.doneAt.values()).map((t) => t + BG_TREE_MS - now).filter((ms) => ms > 0).sort((a, b) => a - b)[0];
+        if (next != null) BG.dropTimer = setTimeout(() => bgRepaint(), Math.min(next + 500, 2147000000));
+    }
+
+    function bgRepaint() {
+        const c = S.c;
+        if (!c || !c.modal || !c.modal.isConnected) return;
+        c.renderTree();
+        if (c.node === 'bg-agents' || (c.node || '').startsWith('bga:')) c.render();
+        c.renderStatus();
+    }
+
+    async function bgFeed(on) {
+        if (on === BG.on) return;
+        BG.on = on;
+        if (!on) { try { await ws().sendMessage('status_unsubscribe', { feed: 'claude_desk_agents' }, false); } catch (_) { /* gone */ } return; }
+        try {
+            const r = await send('status_subscribe', { feed: 'claude_desk_agents' });
+            bgTake(r.items || {}, [], true);
+            BG.error = '';
+        } catch (e) { BG.on = false; BG.loaded = true; BG.error = isGone(e) ? NOT_YET : errText(e); }
+        bgRepaint();
+    }
+
+    function bgWire(app) {
+        BG = bgBlank();
+        const c = ws();
+        if (!c || typeof c.on !== 'function') return;
+        const opts = { signal: app.signal };
+        Object.assign(ACT_ICON, { 'bg-open': ACT_ICON['agent-open'], 'bg-session': ACT_ICON['open-session'], 'bg-refresh': ACT_ICON['act-refresh'], 'bg-earlier': ACT_ICON['act-refresh'] });
+        c.on('claude_desk_agents_status', (msg) => {
+            const d = msg && msg.changed ? msg : (msg && msg.data) || {};
+            bgTake(d.changed, d.removed, false);
+            bgRepaint();
+        }, opts);
+        c.on('claude_desk_agent_append', (msg) => {
+            const d = (msg && msg.data) || msg || {};
+            const pg = BG.pages.get(bgKeyOf(d.id, d.agentId));
+            if (!pg || !Array.isArray(d.messages)) return;
+            pg.end = d.end;
+            const seen = new Set(pg.messages.map(msgKey));
+            const fresh = shownOnly(d.messages).filter((m) => !seen.has(msgKey(m)));
+            if (!fresh.length) return;
+            fresh.forEach((m) => pg.messages.push(m));
+            if (S.c && S.c.node === `bga:${d.id}:${d.agentId}`) bgAppend(bgKeyOf(d.id, d.agentId));
+        }, opts);
+        // the server forgot this socket's subscription and watch
+        c.on('connected', () => {
+            if (!S.c) return;
+            BG.on = false;
+            void bgFeed(true);
+            const w = BG.watching;
+            BG.watching = '';
+            if (w) void bgWatch(w);
+        }, opts);
+    }
+
+    async function bgWatch(key) {
+        if (BG.watching === key) return;
+        const [sid, aid] = key.split('|');
+        const pg = BG.pages.get(key);
+        try {
+            await send('claude_desk_agent_watch', { id: sid, agentId: aid, from: pg ? pg.end : undefined, show: showNow() });
+            BG.watching = key;
+        } catch (_) { BG.watching = ''; }
+    }
+    async function bgUnwatch() {
+        if (!BG.watching) return;
+        BG.watching = '';
+        try { await send('claude_desk_agent_unwatch', {}); } catch (_) { /* gone */ }
+    }
+    function bgStop() { clearTimeout(BG.dropTimer); void bgUnwatch(); void bgFeed(false); }
+
+    /** The selection moved: leaving an agent's page stops its pushes; arriving reads it afresh and watches it. */
+    function bgSelected(id) {
+        const m = /^bga:([^:]+):(.+)$/.exec(id || '');
+        const key = m ? bgKeyOf(m[1], m[2]) : '';
+        if (BG.pin && id !== BG.pin) BG.pin = '';
+        if (BG.watching && BG.watching !== key) void bgUnwatch();
+        if (key) {
+            const pg = BG.pages.get(key);
+            if (!pg) void bgOpen(m[1], m[2]);
+            else if (pg.loaded) { BG.pages.delete(key); void bgOpen(m[1], m[2]); } // a visit before: read afresh (it may have grown while away)
+        }
+    }
+
+    async function bgOpen(sid, aid) {
+        const key = bgKeyOf(sid, aid);
+        await loadBgPage(sid, aid, false);
+        if (S.c && S.c.node === `bga:${sid}:${aid}`) await bgWatch(key);
+    }
+
+    async function loadBgPage(sid, aid, earlier) {
+        const key = bgKeyOf(sid, aid);
+        let pg = BG.pages.get(key);
+        if (!pg) { pg = { messages: [], start: 0, end: 0, more: false, loading: false, error: '', stick: true, fromBottom: null, loaded: false }; BG.pages.set(key, pg); }
+        if (pg.loading) return;
+        pg.loading = true;
+        try {
+            const show = showNow();
+            const r = unwrap(await send('claude_desk_session', earlier ? { action: 'agent_page', id: sid, agentId: aid, before: pg.start, limit: MSG_PAGE, show } : { action: 'agent_page', id: sid, agentId: aid, limit: MSG_PAGE, show }), 'messages');
+            pg.messages = earlier ? shownOnly(r.messages).concat(pg.messages) : shownOnly(r.messages);
+            pg.start = r.start;
+            if (!earlier) pg.end = r.end;
+            pg.more = !!r.more;
+            pg.error = '';
+        } catch (e) { pg.error = isGone(e) ? NOT_YET : errText(e); }
+        pg.loading = false;
+        pg.loaded = true;
+        bgRedraw(key, earlier);
+    }
+
+    const bgLog = (key) => (S.c && S.c.node === `bga:${key.replace('|', ':')}` ? S.c.modal.querySelector('.cd-bg-log') : null);
+
+    function bgLogInner(pg, key) {
+        const top = pg.more ? `<div class="cd-earlier"><button type="button" class="btn-standard" data-act="bg-earlier" data-arg="${esc(key)}"${pg.loading ? ' disabled' : ''}>Show Earlier Messages</button></div>` : '';
+        const body = pg.error ? `<p class="cd-err">${esc(pg.error)}</p>` : (pg.messages.length ? logHtml(pg) : `<p class="mmc-hint">${pg.loading || !pg.loaded ? 'Reading the agent\'s conversation...' : 'This agent has no messages yet.'}</p>`);
+        return top + body;
+    }
+
+    /** The log drawn again from the page's rows: earlier rows added above keep the reader's place; at the end it stays at the end. */
+    function bgRedraw(key, prepended) {
+        const pane = bgLog(key);
+        const pg = BG.pages.get(key);
+        if (!pane || !pg) return;
+        const h0 = pane.scrollHeight;
+        const t0 = pane.scrollTop;
+        pane.innerHTML = bgLogInner(pg, key);
+        if (prepended) pane.scrollTop = t0 + (pane.scrollHeight - h0);
+        else if (pg.stick !== false) pane.scrollTop = pane.scrollHeight;
+        else pane.scrollTop = pane.scrollHeight - (pg.fromBottom || 0);
+        const res = S.c.modal.querySelector('.mmc-result');
+        if (res) delete res.dataset.html;
+        bgMore(key, pane);
+    }
+
+    /** New rows go to the end of the log; the view follows only when the reader is at the bottom. */
+    function bgAppend(key) {
+        const pane = bgLog(key);
+        const pg = BG.pages.get(key);
+        if (!pane || !pg) return;
+        const atEnd = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 40;
+        const have = new Set(Array.from(pane.querySelectorAll('[data-k]')).map((n) => n.dataset.k));
+        const fresh = pg.messages.filter((m) => !have.has(msgKey(m)));
+        if (!fresh.length) return;
+        const hint = pane.querySelector(':scope > .mmc-hint');
+        if (hint) hint.remove();
+        if (atEnd && pg.messages.length > MSG_MAX + MSG_PAGE) {
+            let drop = pg.messages.length - MSG_MAX;
+            while (drop < pg.messages.length && pg.messages[drop - 1].at === pg.messages[drop].at) drop += 1;
+            pg.messages.splice(0, drop);
+            if (pg.messages.length) { pg.start = pg.messages[0].at; pg.more = true; }
+            pg.stick = true;
+            bgRedraw(key, false);
+            return;
+        }
+        pane.insertAdjacentHTML('beforeend', fresh.map(messageHtml).join(''));
+        const res = S.c.modal.querySelector('.mmc-result');
+        if (res) delete res.dataset.html;
+        if (atEnd) pane.scrollTop = pane.scrollHeight;
+        pg.fromBottom = pane.scrollHeight - pane.scrollTop;
+    }
+
+    function bgMore(key, pane) {
+        const pg = BG.pages.get(key);
+        if (!pg || pg.loading || pg.error || !pane || !pg.more) return;
+        if (pane.scrollTop < 160 || pane.scrollHeight - pane.clientHeight <= 4) { const [sid, aid] = key.split('|'); void loadBgPage(sid, aid, true); }
+    }
+
+    /** Opens an agent in the tree (its node is added if the list was the way in) and reads it. */
+    function bgOpenNode(c, sid, aid) {
+        const id = `bga:${sid}:${aid}`;
+        BG.pin = id;
+        c.open.add('activity');
+        c.open.add('bg-agents');
+        c.select(id, true);
+    }
+
+    /** The Background Agents list: running first. */
+    function bgListPage(c) {
+        const rows = bgRows().map((r) => ({
+            key: `bg:${r.sessionId}:${r.agentId}`,
+            icon: bgIcon(r),
+            cls: r.state === 'running' ? 'cd-live' : 'cd-stale',
+            data: { agent: r.description || r.agentId, session: r.sessionTitle || shortId(r.sessionId), state: r.state, messages: r.messages || 0, last: r.lastActivity || 0, type: r.type || '' }
+        }));
+        const rank = { running: 0, idle: 1, finished: 2 };
+        const empty = BG.error ? `The background agents could not be read. ${BG.error}` : (BG.loaded ? 'No running session has started a background agent yet.' : 'Reading the background agents...');
+        return { html: c.listView([
+            { t: 'Agent', w: 260, key: 'agent', text: (d) => d.agent },
+            { t: 'Session', w: 200, key: 'session', text: (d) => d.session },
+            { t: 'State', w: 70, key: 'state', text: (d) => BG_STATE[d.state] || d.state, value: (d) => rank[d.state] },
+            { t: 'Messages', w: 62, key: 'messages', num: true, text: (d) => String(d.messages), value: (d) => d.messages },
+            { t: 'Last Activity', w: 128, key: 'last', text: (d) => when(d.last), value: (d) => d.last }
+        ], rows, { sortId: 'cd-bg-agents', sort: { key: 'state', dir: 1 }, empty, fit: true }), list: true };
+    }
+
+    /** One agent's conversation, read-only. */
+    function bgAgentPage(c, sid, aid) {
+        const key = bgKeyOf(sid, aid);
+        const r = bgRow(sid, aid);
+        let pg = BG.pages.get(key);
+        if (!pg) { pg = { messages: [], start: 0, end: 0, more: false, loading: false, error: '', stick: true, fromBottom: null, loaded: false }; BG.pages.set(key, pg); void bgOpen(sid, aid); }
+        const title = r ? (r.description || aid) : aid;
+        const side = r ? [BG_STATE[r.state] || '', r.model, r.type, plural(r.messages || 0, 'message')].filter(Boolean).join(' - ') : 'No longer listed';
+        const sess = rowOf(sid);
+        const links = `<span class="mmc-link" data-act="bg-session" data-arg="${esc(sid)}">Open session: ${esc(r && r.sessionTitle ? r.sessionTitle : (sess ? titleOf(sess) : shortId(sid)))}</span> <span class="mmc-link" data-act="bg-refresh" data-arg="${esc(key)}">Read again</span>`;
+        return {
+            html: `<div class="cd-chat">
+                <div class="mmc-page-title"><b>${esc(title)}</b><span>${esc(side)}</span></div>
+                <div class="cd-chat-links">${links}</div>
+                ${showBar()}
+                <div class="cd-chat-log cd-bg-log" data-mmc-scroll>${bgLogInner(pg, key)}</div>
+            </div>`,
+            split: true,
+            mount: (pane) => {
+                const log = pane.querySelector('.cd-bg-log');
+                const mine = BG.pages.get(key) || pg;
+                if (log) log.scrollTop = mine.stick === false && mine.fromBottom != null ? log.scrollHeight - mine.fromBottom : log.scrollHeight;
+                let raf = 0;
+                log.addEventListener('scroll', () => {
+                    if (raf) return;
+                    raf = requestAnimationFrame(() => {
+                        raf = 0;
+                        mine.fromBottom = log.scrollHeight - log.scrollTop;
+                        mine.stick = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+                        bgMore(key, log);
+                    });
+                }, { passive: true });
+                log.addEventListener('click', (ev) => {
+                    const b = ev.target.closest('[data-cd-unfold]');
+                    if (b) { b.parentElement.classList.remove('is-folded'); b.remove(); return; }
+                    const t = ev.target.closest('[data-cd-toggle]');
+                    if (t) { t.parentElement.classList.toggle('is-open'); return; }
+                    const f = ev.target.closest('.cd-fold');
+                    if (f) void openFold(sid, aid, f);
+                });
+                log.addEventListener('keydown', (ev) => {
+                    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+                    const f = ev.target.closest && ev.target.closest('.cd-fold');
+                    if (f) { ev.preventDefault(); void openFold(sid, aid, f); }
+                });
+                // the view options reload this agent (its rows and its watch carry them)
+                pane.querySelectorAll('[data-cd-show]').forEach((cb) => cb.addEventListener('change', async () => {
+                    await setShow(cb.dataset.cdShow, cb.checked);
+                    await bgUnwatch();
+                    BG.pages.delete(key);
+                    void bgOpen(sid, aid);
+                    if (S.c) S.c.render();
+                }));
+                requestAnimationFrame(() => bgMore(key, log));
+            }
+        };
+    }
+
+    function bgCommands(n) {
+        if (n.id === 'bg-agents') return [{ text: 'Open Conversation', action: 'bg-open' }, { text: 'Read Again', action: 'bg-refresh' }];
+        return [{ text: 'Open Session', action: 'bg-session' }, { text: 'Read Again', action: 'bg-refresh' }];
+    }
+    const bgSelCommands = () => ({ title: 'Background Agent', items: [{ text: 'Open Conversation', action: 'bg-open' }, { text: 'Open Session', action: 'bg-session' }] });
+
+    /** Command and Action pane handlers: bg-open / bg-session (the selected row or the open agent), bg-refresh, bg-earlier. */
+    async function bgAction(a, c, arg) {
+        const sel = /^bg:([^:]+):(.+)$/.exec(c.sel || '') || /^bga:([^:]+):(.+)$/.exec(c.node || '');
+        const pair = /^([0-9a-f-]{36})\|(.+)$/.exec(String(arg || ''));
+        const sid = pair ? pair[1] : (/^[0-9a-f-]{36}$/.test(String(arg || '')) ? arg : (sel ? sel[1] : ''));
+        const aid = pair ? pair[2] : (sel ? sel[2] : '');
+        if (a === 'bg-open') { if (sid && aid) bgOpenNode(c, sid, aid); else c.note('Select a background agent first.'); return true; }
+        if (a === 'bg-session') { if (sid) { await loadSessions(false); openChat(c, sid); } else c.note('Select a background agent first.'); return true; }
+        if (a === 'bg-earlier') { if (sid && aid) await loadBgPage(sid, aid, true); return true; }
+        if (a === 'bg-refresh') {
+            if (c.node === 'bg-agents') { BG.on = false; await bgFeed(true); } else if (sid && aid) { await bgUnwatch(); BG.pages.delete(bgKeyOf(sid, aid)); void bgOpen(sid, aid); bgRepaint(); }
+            return true;
+        }
+        return false;
     }
 
     // ---- Activity page ------------------------------------------------------------------------------------
@@ -1446,6 +1897,69 @@
         };
     }
 
+    // ---- Rules: the agent rules and the Supervisor's review of them (claude_desk_supervisor rules_*) ---------
+
+    const rulesData = () => (S.sup.data && S.sup.data.rules) || { rules: [], last: null, running: null };
+    const rulesOpenFindings = () => ((rulesData().last && rulesData().last.findings) || []).filter((f) => !f.dismissed);
+    const RULE_SEV = { high: ['Serious', `${VI}/error-16.png`], medium: ['Should fix', `${VI}/warning-16.png`], low: ['Minor', `${VI}/info-16.png`] };
+    const RULE_KIND = { contradiction: 'Contradiction', duplicate: 'Duplicate', unclear: 'Unclear', unenforceable: 'Cannot be checked', outdated: 'Outdated', 'not-english': 'Not English', 'missing-import': 'Not in CLAUDE.md', 'missing-file': 'Missing file', 'outdated-reference': 'Outdated reference' };
+    const rulesIcon = `${ITEMS}/parental-controls-16.png`;
+
+    function rulesPage(c) {
+        const d = rulesData();
+        const rows = d.rules.map((r) => ({ key: `ru:${r.name}`, icon: rulesIcon, data: { name: r.name, desc: r.description, size: r.size, mtime: r.mtime } }));
+        const empty = S.sup.unavailable ? NOT_YET : (S.sup.loaded ? 'No rules were found.' : 'Reading the rules...');
+        return c.listView([
+            { t: 'Name', w: 190, key: 'name', text: (x) => x.name },
+            { t: 'Description', w: 420, key: 'desc', text: (x) => x.desc },
+            { t: 'Size', w: 70, key: 'size', num: true, text: (x) => bytesText(x.size), value: (x) => x.size },
+            { t: 'Modified', w: 128, key: 'mtime', text: (x) => when(x.mtime), value: (x) => x.mtime }
+        ], rows, { sortId: 'cd-rules', empty, fit: true });
+    }
+    function rulesReviewPage(c) {
+        const d = rulesData();
+        const run = d.running;
+        const busy = !!run || !!S.rulesBusy;
+        const last = d.last;
+        const status = run ? `${esc(run.step || 'Reviewing')} (${run.done} of ${run.total} done)`
+            : (S.rulesBusy ? 'Starting the review...' : (last ? `Reviewed ${esc(when(last.at))} by ${esc(last.model || last.engine || 'the Supervisor')}: ${plural(rulesOpenFindings().length, 'finding')} open in ${plural(last.ruleCount, 'rule')}.${last.error ? ` <span class="cd-err">${esc(last.error)}</span>` : ''}` : 'The rules have not been reviewed yet.'));
+        const bar = `<div class="cd-actbar"><span>${status}</span><button type="button" class="btn-standard primary" data-act="rules-review"${busy ? ' disabled' : ''}>Review Now</button></div>`;
+        const rows = rulesOpenFindings().map((f) => ({ key: `rf:${f.id}`, icon: (RULE_SEV[f.severity] || RULE_SEV.medium)[1], data: { rule: (f.rules || []).join(', '), kind: RULE_KIND[f.kind] || f.kind, text: f.text, fix: f.suggestion, sev: (RULE_SEV[f.severity] || RULE_SEV.medium)[0] } }));
+        const lv = c.listView([
+            { t: 'Rule', w: 150, key: 'rule', text: (x) => x.rule },
+            { t: 'Kind', w: 110, key: 'kind', text: (x) => x.kind },
+            { t: 'Issue', w: 330, key: 'text', text: (x) => x.text },
+            { t: 'Suggestion', w: 300, key: 'fix', text: (x) => x.fix }
+        ], rows, { sortId: 'cd-rules-review', empty: last ? 'No open findings.' : 'Nothing to show until a review has run.', fit: true });
+        return { html: `<div class="cd-list-wrap">${bar}${lv}</div>`, list: true, split: true };
+    }
+    async function ruleRead(c, name) {
+        if (!name) return;
+        try {
+            const r = unwrap(await send('claude_desk_supervisor', { action: 'rules_text', name }), 'rule');
+            await c.box(`<pre class="cd-pre cd-rule-text">${esc(r.text || '(empty)')}</pre>`, null, { icon: 'info', title: `${r.file || name}`, width: 640 });
+        } catch (e) { await failBox(c, e); }
+    }
+    async function rulesReviewStart(c) {
+        if (S.rulesBusy || rulesData().running) return;
+        S.rulesBusy = true;
+        repaint();
+        try {
+            const r = unwrap(await send('claude_desk_supervisor', { action: 'rules_review' }), 'rules');
+            S.sup.data = Object.assign({}, S.sup.data || {}, { rules: r.rules });
+        } catch (e) { await failBox(c, e); }
+        S.rulesBusy = false;
+        repaint();
+    }
+    async function ruleFindingDismiss(c, id) {
+        if (!id) return;
+        try {
+            const r = unwrap(await send('claude_desk_supervisor', { action: 'rules_dismiss', findingId: id }), 'rules');
+            S.sup.data = Object.assign({}, S.sup.data || {}, { rules: r.rules });
+        } catch (e) { await failBox(c, e); }
+        repaint();
+    }
+
     // ---- Contractors pages ---------------------------------------------------------------------------------
 
     function contractorsPage(c) {
@@ -1516,8 +2030,9 @@
     /** Work Queue groups: Active is what runs (starting, running); Pending is what waits (queued, waiting). Each item is in one. */
     const WORK_RUN = new Set(['starting', 'running']);
     const runItems = () => supWork().filter((w) => WORK_RUN.has(w.state));
-    const pendItems = () => supWork().filter((w) => WORK_OPEN.has(w.state) && !WORK_RUN.has(w.state));
-    const WORK_SCOPE = { all: () => supWork(), active: runItems, pending: pendItems };
+    const heldItems = () => supWork().filter((w) => w.state === 'held');
+    const pendItems = () => supWork().filter((w) => WORK_OPEN.has(w.state) && !WORK_RUN.has(w.state) && w.state !== 'held');
+    const WORK_SCOPE = { all: () => supWork(), held: heldItems, active: runItems, pending: pendItems };
 
     /** A session in the tree: paused ones carry the warning icon and the word. */
     function sessionNode(idPrefix, sid, A) {
@@ -1543,7 +2058,6 @@
 
     function nodes() {
         const A = S.app ? S.app.url('assets').replace(/\/$/, '') : '/melaton-apps/claudedesk/assets';
-        const running = S.live.length;
         const open = S.open.map((id) => {
             const row = rowOf(id);
             return { id: `t:${id}`, name: titleOf(row || { id }), icon: `${A}/session-16.png`, desc: 'The session\'s conversation' };
@@ -1569,42 +2083,37 @@
             children: [
                 { id: 'co-work', name: 'Work Queue', icon: `${A}/session-16.png`, desc: 'Requests waiting for, starting on and running on an account',
                     children: [
+                        { id: 'co-held', name: `Waiting (${heldItems().length})`, icon: `${ITEMS}/date-and-time-16.png`, desc: 'New and imported requests that wait for you to start them' },
                         { id: 'aw-sup', name: `Active (${runItems().length})`, icon: `${ITEMS}/parental-controls-16.png`, desc: 'Work items running now, their sessions and background agents', children: runNodes },
                         { id: 'co-pending', name: `Pending (${pendItems().length})`, icon: `${VI}/info-16.png`, desc: 'Work items waiting for an account to have room', children: pendNodes },
-                        { id: 'aw-uns', name: `Unsupervised (${uns.length})`, icon: `${A}/session-16.png`, desc: 'Running sessions no work item owns', children: uns }
+                        { id: 'aw-uns', name: `Unsupervised (${uns.length})`, icon: `${A}/session-16.png`, desc: 'Running sessions no work item owns', children: uns },
+                        { id: 'sessions', name: 'All Sessions', icon: `${A}/session-16.png`, desc: 'Every Claude session on the host, running or ended', children: open }
                     ] },
-                {
-                    id: 'sessions',
-                    name: 'Sessions',
-                    icon: `${A}/session-16.png`,
-                    desc: 'Every Claude session on the host',
-                    children: [{ id: 'running', name: `Running (${running})`, icon: `${A}/session-16.png`, desc: 'The sessions running now' }].concat(open)
-                },
-                { id: 'activity', name: 'Activity', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Every shell command, tool call and file edit of every session' },
+                { id: 'activity', name: 'Activity', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Every shell command, tool call and file edit of every session', children: bgNodes() },
                 { id: 'memory', name: 'Memory', icon: `${ITEMS}/personalization-16.png`, desc: 'The shared memory every Fleet agent reads and writes',
                     children: [
                         { id: 'mem-review', name: 'Needs Review', icon: `${VI}/warning-16.png`, desc: 'Proposed and flagged memories' },
                         { id: 'mem-digest', name: 'Session Digest', icon: `${VI}/info-16.png`, desc: 'The text every session starts with' }
                     ] },
-                { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Settings, reviews, coordination, pauses, locks and temp files',
+                {
+                    id: 'co-root',
+                    name: 'Coordination',
+                    icon: `${ITEMS}/people-near-me-16.png`,
+                    desc: 'The agents working now, their claims and messages',
+                    children: [
+                        { id: 'co-agents', name: 'Agents', icon: `${ITEMS}/user-accounts-16.png` },
+                        { id: 'co-claims', name: 'Claims', icon: FOLDER16 },
+                        { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
+                        { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
+                        { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
+                    ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: `${A}/session-16.png`, desc: 'What this agent is doing' }] : [])
+                },
+                { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Settings, reviews, restart waits, pauses, locks and temp files',
                     children: [
                         { id: 'sup-reviews', name: `Reviews (${reviewN})`, icon: `${VI}/check-16.png`, desc: 'What the Supervisor made of each finished agent turn' },
-                        {
-                            id: 'co-root',
-                            name: 'Coordination',
-                            icon: `${ITEMS}/people-near-me-16.png`,
-                            desc: 'The agents working now, their claims and messages',
-                            children: [
-                                { id: 'co-agents', name: 'Agents', icon: `${ITEMS}/user-accounts-16.png` },
-                                { id: 'co-claims', name: 'Claims', icon: FOLDER16 },
-                                { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
-                                { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
-                                { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
-                            ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: `${A}/session-16.png`, desc: 'What this agent is doing' }] : [])
-                        },
-                        { id: 'sup-asks', name: `Restart Waits (${supAsks().length})`, icon: supAsks().length ? `${VI}/warning-16.png` : `${VI}/info-16.png`, desc: 'Agents waiting to restart Dreamscape' },
-                        { id: 'sup-holds', name: `Paused Sessions (${supHolds().length})`, icon: supHolds().length ? `${VI}/warning-16.png` : `${VI}/info-16.png`, desc: 'Sessions the Supervisor or you paused' },
-                        { id: 'sup-locks', name: `Managed Locks (${supLocks().length})`, icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'Busy locks the Supervisor keeps for agents' },
+                        { id: 'sup-asks', name: `Restart Waits (${supAsks().length})`, icon: '/static_images/vista-cmdbar/clock.png', desc: 'Agents waiting to restart Dreamscape' },
+                        { id: 'sup-holds', name: `Paused Sessions (${supHolds().length})`, icon: '/static_images/vista-cmdbar/pause.png', desc: 'Sessions the Supervisor or you paused' },
+                        { id: 'sup-locks', name: `Managed Locks (${supLocks().length})`, icon: '/static_images/vista-cmdbar/lock.png', desc: 'Busy locks the Supervisor keeps for agents' },
                         { id: 'sup-arts', name: `Work Folders (${supArtifacts().length})`, icon: FOLDER16, desc: 'Work folders and temp files the agents left' }
                     ] },
                 { id: 'accounts', name: 'Accounts', icon: `${A}/account-16.png`, desc: 'The Claude accounts of this host' },
@@ -1615,6 +2124,7 @@
                     desc: 'Every Claude account\'s own Remote Control',
                     children: [{ id: 'rc-host', name: 'Host Login', icon: `${ITEMS}/network-and-sharing-center-16.png`, desc: 'claude-remote.service: the host\'s own claude.ai login' }]
                 },
+                { id: 'rules', name: 'Rules', icon: rulesIcon, desc: 'The rules the agents follow', children: [{ id: 'rules-review', name: `Rules Review (${plural(rulesOpenFindings().length, 'finding')})`, icon: `${ITEMS}/security-center-16.png`, desc: 'The Supervisor reads the rules for problems' }] },
                 { id: 'contractors', name: 'Contractors', icon: `${ITEMS}/network-and-sharing-center-16.png`, desc: 'Other machines that run Fleet work on their own projects', children: cons }
             ]
         }];
@@ -1705,7 +2215,7 @@
             { id: 'cd-sum-sessions', title: 'Sessions', body: c.props([
                 ['Running', `${S.live.length}${busy ? ` (${busy} working)` : ''}`],
                 ['On the host', S.sessionsLoaded ? String(S.sessionsTotal) : '']
-            ]) + `<p><span class="mmc-link" data-act="nav:running">Running sessions</span> &nbsp; <span class="mmc-link" data-act="new-session">New session...</span></p>` },
+            ]) + `<p><span class="mmc-link" data-act="nav:sessions">All sessions</span> &nbsp; <span class="mmc-link" data-act="new-session">New session...</span></p>` },
             { id: 'cd-sum-coord', title: 'Coordination', body: c.props([
                 ['Agents working', String(agents.length)],
                 ['Files claimed', String(S.coord.claims.length)],
@@ -2561,13 +3071,17 @@
     function page(n, c) {
         switch (n.id) {
             case 'root': return withBars(rootPage(c));
+            case 'co-held': return workPage(c, 'held');
             case 'aw-sup': return workPage(c, 'active');
             case 'co-pending': return workPage(c, 'pending');
             case 'aw-uns': return unsupervisedPage(c);
             case 'activity': return activityPage(c);
+            case 'bg-agents': return bgListPage(c);
             case 'memory': return memoryPage(c);
             case 'mem-review': return memReviewPage(c);
             case 'mem-digest': return memDigestPage(c);
+            case 'rules': return rulesPage(c);
+            case 'rules-review': return rulesReviewPage(c);
             case 'contractors': return contractorsPage(c);
             case 'accounts': return accountsPage(c);
             case 'rc': return rcPage(c);
@@ -2577,13 +3091,13 @@
             case 'co-supervisor': case 'sup-reviews': case 'sup-asks': case 'sup-holds': case 'sup-locks': case 'sup-arts': return supervisorPage(c, n.id);
             case 'co-work': return workPage(c, 'all');
             case 'sessions': return sessionsPage(c, false);
-            case 'running': return sessionsPage(c, true);
             case 'co-root': return withBars(rootPage(c));
             case 'co-agents': return agentsPage(c);
             case 'co-claims': return claimsPage(c);
             case 'co-messages': return messagesPage(c);
             default:
                 if (nodeSid(n.id)) return chatPage(c, nodeSid(n.id));
+                if (n.id.startsWith('bga:')) { const m = /^bga:([^:]+):(.+)$/.exec(n.id); return m ? bgAgentPage(c, m[1], m[2]) : ''; }
                 if (n.id.startsWith('aw:w:')) return workItemPage(c, n.id.slice(5));
                 if (n.id.startsWith('aw:a:')) { const m = /^aw:a:([^:]+):(.+)$/.exec(n.id); return m ? awAgentPage(c, m[1], m[2]) : ''; }
                 if (n.id.startsWith('aw:l:')) { void loadAwAgents(n.id.slice(5)); return c.page('Background Agents', '', [{ id: 'cd-al', title: 'Background Agents', body: '<p class="mmc-hint">Reading the session\'s agents...</p>' }]); }
@@ -2598,19 +3112,20 @@
     const ACT_ICON = (() => {
         const m = {};
         const put = (img, names) => names.split(' ').forEach((a) => { m[a] = `/static_images/vista-cmdbar/${img}.png`; });
-        put('refresh', 'sup-refresh fleet-refresh locks-refresh act-refresh mem-refresh con-refresh inspect-refresh aw-agents-refresh con-reread sup-recheck');
+        put('refresh', 'rules-refresh sup-refresh fleet-refresh locks-refresh act-refresh mem-refresh con-refresh inspect-refresh aw-agents-refresh con-reread sup-recheck');
         put('new', 'new-session new-session-on');
         put('add', 'add-account con-add');
-        put('go', 'open-session work-open agent-session sup-hold-open act-session inspect-session mem-open act-open con-open agent-open');
+        put('go', 'rules-open rules-goto open-session work-open agent-session sup-hold-open act-session inspect-session mem-open act-open con-open agent-open');
         put('mail', 'post post-to read-message mem-review-now');
         put('reply', 'reply');
         put('send', 'message sup-send');
         put('discuss', 'steer steer-agent con-steer');
         put('stop', 'interrupt con-interrupt con-stop rc-stop fleet-stop');
         put('power', 'end');
-        put('play', 'rc-start fleet-start work-start con-start resume-hold sup-resume');
+        put('play', 'rules-review rc-start fleet-start work-start work-start-sel con-start resume-hold sup-resume');
         put('restart', 'rc-reconnect fleet-reconnect switch resume');
-        put('pause', 'pause');
+        put('pause', 'pause work-hold-sel');
+        put('go', 'work-queue-sel');
         put('zip-folder', 'compact');
         put('gears', 'set-model set-effort');
         put('display', 'screen');
@@ -2622,8 +3137,8 @@
         put('shortcut', 'link');
         put('ban', 'unlink con-revoke mem-reject');
         put('save', 'sup-save');
-        put('delete', 'sup-lock-remove sup-art-clean work-cancel build-end mem-remove con-remove release-claim');
-        put('clear', 'sup-art-forget sup-dismiss mem-unflag');
+        put('delete', 'sup-lock-remove sup-art-clean work-cancel work-cancel-sel build-end mem-remove con-remove release-claim');
+        put('clear', 'rules-dismiss sup-art-forget sup-dismiss mem-unflag');
         put('checklist', 'mem-approve');
         put('favorites', 'mem-pin');
         put('rename', 'mem-edit');
@@ -2642,14 +3157,18 @@
             case 'rc': return [{ text: 'Refresh Status', action: 'fleet-refresh' }];
             case 'co-builds': return [{ text: 'Post Message...', action: 'post' }];
             case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
-            case 'co-work': return [{ text: 'New Request...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }];
+            case 'co-work': return [{ text: 'New Request...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
+            case 'co-held':
             case 'aw-sup':
             case 'co-pending':
-            case 'aw-uns': return [{ text: 'New Session...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }];
+            case 'aw-uns': return [{ text: 'New Session...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
             case 'activity': return [{ text: 'Read Again', action: 'act-refresh' }];
+            case 'bg-agents': return bgCommands(n);
             case 'memory': return [{ text: 'Read Again', action: 'mem-refresh' }];
             case 'mem-review': return [{ text: 'Ask the Supervisor to Review Now', action: 'mem-review-now', disabled: S.memBusy }, { text: 'Read Again', action: 'mem-refresh' }];
             case 'mem-digest': return [{ text: 'Read Again', action: 'mem-refresh' }];
+            case 'rules': return [{ text: 'Open Rule', action: 'rules-open' }, { text: 'Rules Review', action: 'rules-goto' }, { text: 'Read Again', action: 'sup-refresh' }];
+            case 'rules-review': return [{ text: 'Review Now', action: 'rules-review', disabled: !!(rulesData().running || S.rulesBusy) }, { text: 'Dismiss', action: 'rules-dismiss' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'contractors': return [{ text: 'Add Contractor...', action: 'con-add' }, { text: 'Read Again', action: 'con-refresh' }];
             case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }];
             case 'sup-reviews': return [{ text: 'Read Again', action: 'sup-refresh' }];
@@ -2662,8 +3181,7 @@
                 { text: 'Start', action: 'rc-start', disabled: !!(S.host && S.host.remoteControl && S.host.remoteControl.active === 'active') },
                 { text: 'Stop', action: 'rc-stop', disabled: !(S.host && S.host.remoteControl && S.host.remoteControl.active === 'active') }
             ];
-            case 'sessions':
-            case 'running': return [{ text: 'New Session...', action: 'new-session' }];
+            case 'sessions': return [{ text: 'New Session...', action: 'new-session' }];
             case 'co-root':
             case 'co-agents':
             case 'co-messages': return [{ text: 'Post Message...', action: 'post' }];
@@ -2673,6 +3191,7 @@
                     return sessionItems(id).concat(n.id.startsWith('t:') ? [{ separator: true }, { text: 'Close', action: 'close-chat', icon: 0 }] : []);
                 }
                 if (n.id.startsWith('aw:w:')) { const w = workOf(n.id.slice(5)); return w ? selCommands(n, `w:${w.id}`).items : []; }
+                if (n.id.startsWith('bga:')) return bgCommands(n);
                 if (n.id.startsWith('aw:a:')) { const m = /^aw:a:([^:]+):(.+)$/.exec(n.id); return m ? [{ text: 'Read Its Conversation', action: 'agent-open' }, { text: 'Read Again', action: 'aw-agents-refresh' }] : []; }
                 if (n.id.startsWith('ctS:')) return [{ text: 'Steer...', action: 'con-steer' }, { text: 'Stop Current Turn', action: 'con-interrupt' }, { text: 'Stop Session', action: 'con-stop' }, { text: 'Read Again', action: 'con-reread' }];
                 if (n.id.startsWith('ct:')) { const k = conOf(n.id.slice(3)); return [{ text: 'Start Session...', action: 'con-start', disabled: !(k && k.online) }, { separator: true }, { text: 'Revoke...', action: 'con-revoke', disabled: !k || k.revoked }, { text: 'Remove...', action: 'con-remove' }, { separator: true }, { text: 'Add Contractor...', action: 'con-add' }, { text: 'Read Again', action: 'con-refresh' }]; }
@@ -2777,7 +3296,8 @@
         if (key.startsWith('w:')) {
             const w = workOf(key.slice(2));
             if (!w) return null;
-            return { title: w.title || 'Request', items: [{ text: 'Start Now', action: 'work-start', disabled: w.state !== 'queued' || !!S.sup.busy }, { text: 'Cancel', action: 'work-cancel', disabled: !WORK_OPEN.has(w.state) || !!S.sup.busy }, { text: w.sessionId && holdOf(w.sessionId) ? 'Resume' : 'Pause...', action: w.sessionId && holdOf(w.sessionId) ? 'resume-hold' : 'pause', disabled: !w.sessionId || !liveOf(w.sessionId) }, { separator: true }, { text: 'Open Session', action: 'work-open', disabled: !w.sessionId }, { text: 'Open Issue', action: 'work-issue', disabled: !(w.issue && w.issue.url) }] };
+            if (wsel().length > 1) return null; // the node's own Actions already act on the picked set
+            return { title: w.title || 'Request', items: [{ text: 'Start Now', action: 'work-start', disabled: !WORK_STARTABLE.has(w.state) || !!S.sup.busy }, { text: 'Move to Waiting', action: 'work-hold-sel', disabled: !WORK_HOLDABLE.has(w.state) || !!S.sup.busy }, { text: 'Cancel', action: 'work-cancel', disabled: !WORK_OPEN.has(w.state) || !!S.sup.busy }, { text: w.sessionId && holdOf(w.sessionId) ? 'Resume' : 'Pause...', action: w.sessionId && holdOf(w.sessionId) ? 'resume-hold' : 'pause', disabled: !w.sessionId || !liveOf(w.sessionId) }, { separator: true }, { text: 'Open Session', action: 'work-open', disabled: !w.sessionId }, { text: 'Open Issue', action: 'work-issue', disabled: !(w.issue && w.issue.url) }] };
         }
         if (key.startsWith('lk:')) { const l = supLocks().find((x) => `${x.root || ''}|${x.file}` === key.slice(3)); return { title: 'Busy Lock', items: [{ text: 'Remove...', action: 'sup-lock-remove', disabled: !l || l.state !== 'orphan' || !!S.sup.busy }] }; }
         if (key.startsWith('ar:')) { const a = supArtifacts().find((x) => String(x.id) === key.slice(3)); return { title: 'Work Folder', items: [{ text: 'Clean...', action: 'sup-art-clean', disabled: !a || !a.cleanable || !!S.sup.busy }, { text: 'Forget', action: 'sup-art-forget', disabled: !a || !!S.sup.busy }] }; }
@@ -2786,6 +3306,7 @@
             if (!m) return null;
             return { title: m.title || 'Memory', items: [{ text: 'Open', action: 'mem-open' }, { separator: true }, { text: 'Approve', action: 'mem-approve', disabled: m.status !== 'proposed' }, { text: 'Reject...', action: 'mem-reject', disabled: m.status !== 'proposed' }, { text: m.pinned ? 'Unpin' : 'Pin', action: 'mem-pin' }, { text: 'Clear Flag', action: 'mem-unflag', disabled: !m.flagged }, { separator: true }, { text: 'Edit...', action: 'mem-edit' }, { text: 'Remove...', action: 'mem-remove' }] };
         }
+        if (key.startsWith('bg:')) return bgSelCommands();
         if (key.startsWith('x:')) { const r = S.act.rows.find((x) => String(x.id) === key.slice(2)); return { title: 'Activity', items: [{ text: 'Open Details', action: 'act-open' }, { text: 'Open Session', action: 'act-session', disabled: !(r && r.sessionId) }] }; }
         if (key.startsWith('hd:')) { const h = supHolds().find((x) => String(x.id) === key.slice(3)); return { title: 'Paused Session', items: [{ text: 'Resume', action: 'sup-resume', disabled: !h || !!S.sup.busy }, { text: 'Open Session', action: 'sup-hold-open', disabled: !h }] }; }
         if (key.startsWith('k:')) { const k = conOf(key.slice(2)); return { title: 'Contractor', items: [{ text: 'Open', action: 'con-open' }, { text: 'Start Session...', action: 'con-start', disabled: !(k && k.online) }, { text: 'Revoke...', action: 'con-revoke', disabled: !k || k.revoked }, { text: 'Remove...', action: 'con-remove' }, { separator: true }, { text: 'Add Contractor...', action: 'con-add' }] }; }
@@ -2815,6 +3336,7 @@
         if (!id) return;
         if (!S.open.includes(id)) S.open.push(id);
         if (S.open.length > 8) S.open.shift();
+        c.open.add('co-work');
         c.open.add('sessions');
         c.select(`t:${id}`, true);
     }
@@ -2823,6 +3345,7 @@
 
     async function action(a, c, arg) {
         if (a.startsWith('show:')) { await setShow(a.slice(5), !S.show[a.slice(5)]); return true; }
+        if (a.startsWith('bg-')) return bgAction(a, c, arg);
         const sid = arg && /^[0-9a-f-]{36}$/.test(arg) ? arg : (selId(c, 's:') || nodeSid(c.node) || ((supReview(selId(c, 'v:')) || {}).sessionId || '') || ((workOf(workSel(c)) || {}).sessionId || ''));
         switch (a) {
             case 'refresh':
@@ -2903,6 +3426,10 @@
                 if (r && r.sessionId) { await loadSessions(false); openChat(c, r.sessionId); }
                 return true;
             }
+            case 'rules-open': await ruleRead(c, selId(c, 'ru:')); return true;
+            case 'rules-goto': c.open.add('rules'); c.select('rules-review', true); return true;
+            case 'rules-review': await rulesReviewStart(c); return true;
+            case 'rules-dismiss': await ruleFindingDismiss(c, selId(c, 'rf:')); return true;
             case 'con-refresh': S.con.loaded = false; await loadContractors(); return true;
             case 'con-open': { const k = conOf(selId(c, 'k:')); if (k) { c.open.add('contractors'); c.select(`ct:${k.id}`, true); } return true; }
             case 'con-add': await contractorAddBox(c); return true;
@@ -2955,7 +3482,40 @@
             }
             case 'work-start': {
                 const w = workOf(workSel(c, arg));
-                if (w) await supAct(c, { action: 'work_start', id: w.id }, 'Starting the request...');
+                if (w) await supAct(c, { action: 'work_start', ids: [w.id] }, 'Starting the request...');
+                return true;
+            }
+            case 'work-start-sel':
+            case 'work-queue-sel': {
+                const ids = workPicked(c).filter((i) => WORK_STARTABLE.has((workOf(i) || {}).state));
+                if (!ids.length) { c.note('Pick a request that is waiting, queued, failed or cancelled first.'); return true; }
+                const now = a === 'work-start-sel';
+                await supAct(c, { action: 'work_start', ids, now }, now ? 'Starting...' : 'Queueing...');
+                return true;
+            }
+            case 'work-hold-sel': {
+                const ids = workPicked(c).filter((i) => WORK_HOLDABLE.has((workOf(i) || {}).state));
+                if (!ids.length) { c.note('Pick a queued, failed or cancelled request first.'); return true; }
+                await supAct(c, { action: 'work_hold', ids }, 'Moving to Waiting...');
+                return true;
+            }
+            case 'work-cancel-sel': {
+                const ids = workPicked(c);
+                if (!ids.length) { c.note('Pick a request first.'); return true; }
+                const ok = await c.box(`<p>Cancel ${ids.length === 1 ? `<b>${esc((workOf(ids[0]) || {}).title || ids[0])}</b>` : `<b>${plural(ids.length, 'request')}</b>`}? A running one has its session stopped; the others are taken off the queue.</p>`,
+                    [{ text: 'Cancel Requests', value: true, className: 'btn-standard primary' }, { text: 'Keep', value: false, className: 'btn-standard' }], { icon: 'warning' });
+                if (ok !== true) return true;
+                const errs = [];
+                S.sup.busy = 'Cancelling...';
+                c.note(S.sup.busy);
+                for (const id of ids) {
+                    try { await send('claude_desk_supervisor', { action: 'work_cancel', id }); } catch (e) { errs.push(`${(workOf(id) || {}).title || id}: ${errText(e)}`); }
+                }
+                S.sup.busy = '';
+                c.note('');
+                S.wsel = new Set();
+                await loadSupervisor();
+                if (errs.length) await c.box(`<p>Some requests could not be cancelled:</p><ul>${errs.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`, null, { icon: 'warning' });
                 return true;
             }
             case 'work-cancel': {
@@ -3003,7 +3563,7 @@
                 const extra = {};
                 if (d.autoPauseOnCollision !== undefined) extra.autoPauseOnCollision = !!d.autoPauseOnCollision;
                 if (String(d.maxAskMinutes == null ? '' : d.maxAskMinutes).trim() !== '') extra.maxAskMinutes = Math.max(1, Math.min(1440, Math.round(Number(d.maxAskMinutes)) || 15));
-                await supAct(c, { action: 'save', settings: Object.assign(extra, { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) }) }, 'Saving...');
+                await supAct(c, { action: 'save', settings: Object.assign(extra, { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), effort: d.effort || '', delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) }) }, 'Saving...');
                 return true;
             }
             case 'sup-send': {
@@ -3269,9 +3829,11 @@
         else if (key.startsWith('l:')) void action('lock-inspect', c);
         else if (key.startsWith('w:')) void action('work-open', c);
         else if (key.startsWith('x:')) void action('act-open', c);
+        else if (key.startsWith('bg:')) void action('bg-open', c);
         else if (key.startsWith('me:')) void action('mem-open', c);
         else if (key.startsWith('hd:')) void action('sup-hold-open', c);
         else if (key.startsWith('k:')) void action('con-open', c);
+        else if (key.startsWith('ru:')) void action('rules-open', c);
     }
 
     // ---- dialogs ------------------------------------------------------------------------------------------
@@ -4091,7 +4653,7 @@
             taskbarIcon: `${A}/claudedesk-24.png`,
             width: w,
             height: h,
-            expanded: ['root', 'co-work', 'aw-sup'],
+            expanded: ['root', 'co-work', 'co-held', 'aw-sup'],
             about: { version: VERSION, lines: ['Claude accounts, Remote Control, sessions and agent coordination.'] },
             nodes,
             page,
@@ -4102,13 +4664,15 @@
             rowOpen,
             status: (n) => {
                 if (n.id === 'sessions') return S.sessionsLoaded ? `${S.sessions.length} of ${S.sessionsTotal} sessions` : '';
-                if (n.id === 'running') return plural(S.live.length, 'session');
                 if (n.id === 'accounts') return plural(S.accounts.length, 'account');
                 if (n.id === 'rc') { const r = fleetRows(); return r.length ? `${r.filter((f) => f.state === 'connected').length} of ${plural(r.length, 'account')} connected` : ''; }
                 if (n.id === 'memory') return S.mem.gone ? NOT_YET : (S.mem.loaded ? `${S.mem.rows.length} shown` : '');
                 if (n.id === 'mem-review') return S.memRv.loaded ? `${S.memRv.rows.length} to review` : '';
+                if (n.id === 'bg-agents') return plural(bgRows().length, 'background agent');
+                if (n.id.startsWith('bga:')) { const m = /^bga:([^:]+):(.+)$/.exec(n.id); const r = m ? bgRow(m[1], m[2]) : null; return r ? `${BG_STATE[r.state] || ''}, read only` : ''; }
                 if (n.id === 'activity') return S.act.loaded ? `${S.act.rows.length} of ${S.act.total} calls` : '';
                 if (n.id === 'contractors') return S.con.gone ? NOT_YET : `${plural(S.con.list.length, 'contractor')}, ${S.con.list.filter((k) => k.online).length} online`;
+                if (n.id === 'co-held') return plural(heldItems().length, 'request') + ' waiting for you to start';
                 if (n.id === 'aw-sup') return plural(runItems().length, 'running work item');
                 if (n.id === 'co-pending') return plural(pendItems().length, 'waiting work item');
                 if (n.id === 'sup-holds') return plural(supHolds().length, 'paused session');
@@ -4132,6 +4696,7 @@
                 S.c = null;
                 Array.from(S.wins).forEach((w) => w.close());
                 void unwatch();
+                bgStop();
                 void usageWatch(false);
                 void memWatch(false);
                 void subscribe(false);
@@ -4172,6 +4737,7 @@
             void usageWatch(usageWanted(id));
             void memWatch(MEM_NODES.has(id));
             if (id && nodeSid(id) && S.chats.has(nodeSid(id))) void watch(nodeSid(id));
+            bgSelected(id);
         };
         if (programFaults()) programFaults().registerProgram(c.modal.id, { name: TITLE, terminate: () => app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: ID }) });
         app.onExit(() => {
@@ -4181,6 +4747,7 @@
             if (S.c && !S.exiting) { S.exiting = true; S.c.close(); }
         });
         await subscribe(true);
+        void bgFeed(true);
         void usageWatch(usageWanted(c.node));
         void memWatch(MEM_NODES.has(c.node));
         void loadSessions(false);

@@ -584,6 +584,17 @@
     content: none;
 }
 
+.mmc-window .mmc-grip {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    width: 5px;
+    cursor: col-resize;
+    touch-action: none;
+}
+
 .mmc-window .mmc-arrow {
     position: absolute;
     left: calc(50% - 6px);

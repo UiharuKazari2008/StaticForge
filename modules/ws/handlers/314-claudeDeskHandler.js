@@ -11,6 +11,9 @@
  *   claude_desk_transcript { id, before?, limit? }     a page of the chat (claudeTranscript.readPage)
  *   claude_desk_watch     { id } / claude_desk_unwatch the open transcript's new messages are pushed to this
  *                                                      socket as claude_desk_transcript_append { id, messages, end }
+ *   claude_desk_agent_watch { id, agentId, from?, show? } / claude_desk_agent_unwatch   one background agent's new messages as
+ *                                                      claude_desk_agent_append { id, agentId, messages, end }; the list of every running
+ *                                                      session's agents is the statusHub feed claude_desk_agents (see below)
  *   claude_desk_session   { action: start | resume | steer | attach | phone_shot | interrupt | screen | disconnect, ... }
  *   claude_desk_coord     { action: list | post | release, ... }
  *
@@ -125,7 +128,7 @@ function armSessionsWatch(feed) {
         sessionsWatcher = fs.watch(dir, { persistent: false }, () => {
             if (!feed.size) { try { sessionsWatcher.close(); } catch (_) { /* closed */ } sessionsWatcher = null; return; }
             clearTimeout(pokeTimer);
-            pokeTimer = setTimeout(() => feed.poke(), 1200);
+            pokeTimer = setTimeout(() => { feed.poke(); if (agentsFeed) agentsFeed.poke(); }, 1200);
         });
         sessionsWatcher.on('error', () => { sessionsWatcher = null; });
     } catch (_) { sessionsWatcher = null; }
@@ -219,7 +222,9 @@ async function supervisorStatus(gr) {
     try { gateAsks = coord.open().prepare('SELECT * FROM gate_asks ORDER BY first_at').all().map((r) => ({ agentId: r.agent_id, firstAt: r.first_at, lastAt: r.last_at, text: r.text, stale: !!r.stale })); } catch (_) { gateAsks = []; }
     let spend = null;
     try { spend = await Promise.race([supervisor.spend(gr), new Promise((r) => setTimeout(() => r(null), 4000))]); } catch (_) { spend = null; }
-    return { spend, settings: set, engines: supervisor.engines(gr), reviews: supervisor.listReviews({ limit: 80 }), work: supervisor.listWork({ limit: 100 }), holds: supervisor.listHolds(), gateAsks, topologies: supervisor.TOPOLOGIES, locks, artifacts, stats };
+    let rules = null;
+    try { rules = supervisor.rulesState(); } catch (e) { console.warn(`[claudeDesk] rules: ${e.message}`); }
+    return { rules, spend, settings: set, engines: supEnginesWithModels(gr), reviews: supervisor.listReviews({ limit: 80 }), work: supervisor.listWork({ limit: 100 }), holds: supervisor.listHolds(), gateAsks, topologies: supervisor.TOPOLOGIES, locks, artifacts, stats };
 }
 
 const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => {
@@ -236,12 +241,20 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
         supervisor.enqueue({ title: message.title, prompt: message.prompt, cwd: message.cwd, account: message.account === 'auto' ? null : message.account, model: message.model, effort: message.effort, engine: message.engine, topology: message.topology, stages: message.stages, issue: message.issue, startNow: message.startNow === true, source: 'fleet' }, { gr });
         return supervisorStatus(gr);
     }
-    if (action === 'work_start') { supervisor.startWork(message.id); return supervisorStatus(gr); }
+    // work_start / work_hold take one id or ids (several picked in the list); work_start now:false waits for a slot
+    const workIds = () => (Array.isArray(message.ids) ? message.ids : [message.id]).filter((x) => x != null).slice(0, 200);
+    if (action === 'work_start') { const errs = []; workIds().forEach((i) => { try { supervisor.startWork(i, { now: message.now !== false }); } catch (e) { errs.push(`#${i}: ${e.message}`); } }); return Object.assign(await supervisorStatus(gr), errs.length ? { errors: errs } : {}); }
+    if (action === 'work_hold') { const errs = []; workIds().forEach((i) => { try { supervisor.holdWork(i); } catch (e) { errs.push(`#${i}: ${e.message}`); } }); return Object.assign(await supervisorStatus(gr), errs.length ? { errors: errs } : {}); }
     if (action === 'work_cancel') { supervisor.cancelWork(message.id); return supervisorStatus(gr); }
     if (action === 'lock_remove') { supervisor.removeLockFile(String(message.root || ''), String(message.file || '')); poke(); return supervisorStatus(gr); }
     if (action === 'artifact_clean') { const r = supervisor.cleanArtifact(message.id); return Object.assign(await supervisorStatus(gr), { cleaned: r }); }
     if (action === 'artifact_forget') { supervisor.forgetArtifact(message.id); return supervisorStatus(gr); }
-    throw new Error('action must be status, save, recheck, send, dismiss, pause, resume, enqueue, work_start, work_cancel, lock_remove, artifact_clean or artifact_forget');
+    // Rules > Rules Review: the review runs in the background; its result reaches the console through the status push
+    if (action === 'rules_list') return { rules: supervisor.rulesState() };
+    if (action === 'rules_text') return { rule: supervisor.ruleText(message.name) };
+    if (action === 'rules_review') { supervisor.startRulesReview(gr); return { rules: supervisor.rulesState() }; }
+    if (action === 'rules_dismiss') { supervisor.dismissRuleFinding(message.findingId); return { rules: supervisor.rulesState() }; }
+    throw new Error('action must be status, save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, pause, resume, enqueue, work_start, work_hold, work_cancel, lock_remove, artifact_clean or artifact_forget');
 });
 
 // ---------------------------------------------------------------- transcript watches (one per socket)
@@ -524,10 +537,41 @@ async function sessionCommand(id, command, value) {
 }
 
 // the engines a session or work item can run on: Claude (the account's login) or another model through the bridge
-const handleEngines = guard('claude_fleet_engines', async (gr) => ({
-    engines: [{ id: 'claude', name: 'Claude (the account\'s plan)', defaultModel: 'sonnet', models: ['sonnet', 'opus', 'haiku', 'fable'], ready: true }]
-        .concat(supervisor.engines(gr).map((e) => ({ id: e.id === 'tokenrouter' ? 'tokenrouter' : (String(e.id).startsWith('custom:') ? e.id : `custom:${e.id}`), name: e.name, defaultModel: e.defaultModel, models: [], ready: e.ready })))
-}));
+/** An engine's model ids from its catalog (TokenRouter's pricing list, a provider's /models; both cached), [] when it can't be read in 6 s. */
+async function engineModels(gr, e) {
+    const within = (p) => Promise.race([p, new Promise((res) => setTimeout(() => res([]), 6000))]).catch(() => []);
+    const ids = (list) => (Array.isArray(list) ? list : []).map((m) => (typeof m === 'string' ? m : (m && (m.id || m.model)) || '')).filter(Boolean).slice(0, 300);
+    if (!e.ready) return [];
+    if (e.id === 'tokenrouter') {
+        return ids(await within(require('../../tokenRouterBridge').listModels({ cacheFile: require('path').join(require('os').homedir(), '.local', 'state', 'dreamscape-agents', 'tokenrouter-models.json') })));
+    }
+    return ids(await within(require('../../customModelProviders').listModels(gr, e.id)));
+}
+
+// the Supervisor page's engines with their model lists: read in the background (cached 10 min) so a status never waits on a catalog
+const supModelCache = new Map();
+function supEnginesWithModels(gr) {
+    return supervisor.engines(gr).map((e) => {
+        const hit = supModelCache.get(e.id);
+        if (e.ready && (!hit || (Date.now() - hit.at > 600000 && !hit.busy))) {
+            const slot = hit || { at: 0, models: [] };
+            slot.busy = true;
+            supModelCache.set(e.id, slot);
+            engineModels(gr, e).then((models) => { supModelCache.set(e.id, { at: Date.now(), models }); if (models.length && models.join() !== slot.models.join()) poke(); }).catch(() => { slot.busy = false; });
+        }
+        return Object.assign({}, e, { models: (hit && hit.models) || [], efforts: supervisor.SUP_EFFORTS });
+    });
+}
+
+const handleEngines = guard('claude_fleet_engines', async (gr) => {
+    const rows = supervisor.engines(gr);
+    const lists = await Promise.all(rows.map((e) => engineModels(gr, e)));
+    return {
+        efforts: supervisor.SUP_EFFORTS,
+        engines: [{ id: 'claude', name: 'Claude (the account\'s plan)', defaultModel: 'sonnet', models: ['sonnet', 'opus', 'haiku', 'fable'], efforts: ['low', 'medium', 'high', 'xhigh', 'max'], ready: true }]
+            .concat(rows.map((e, i) => ({ id: e.id === 'tokenrouter' ? 'tokenrouter' : (String(e.id).startsWith('custom:') ? e.id : `custom:${e.id}`), name: e.name, defaultModel: e.defaultModel, models: lists[i], efforts: supervisor.SUP_EFFORTS, ready: e.ready })))
+    };
+});
 
 // ---------------------------------------------------------------- Plaud into the Supervisor's queue (New Session wizard)
 
@@ -604,10 +648,230 @@ const handleCoord = guard('claude_desk_coord', async (gr, message, ws, clientInf
     throw new Error('action must be list, post, release, inspect, locks or build_end');
 });
 
+// ---------------------------------------------------------------- background agents of the running sessions (live list, one agent's watch)
+//
+// Every Agent-tool subagent writes <project>/<sessionId>/subagents/agent-<agentId>.jsonl with agent-<agentId>.meta.json
+// beside it. Feed claude_desk_agents (statusHub; items keyed `a:<sessionId>:<agentId>`) is read again only when
+// fs.watch on a running session's subagents folder fires (debounced) or a session starts / ends (the desk feed's
+// live set); its own timer is a slow safety net that runs only while a window is subscribed. The watches are
+// closed on the first event after the last window left. claude_desk_agent_watch pushes one agent's new messages
+// as claude_desk_agent_append { id, agentId, messages, end } (the same view options as a session chat).
+
+const AGENT_RUN_IDLE_MS = 20 * 60 * 1000; // unfinished and quiet for this long: Idle, not Running
+const AGENT_KEEP_DONE_MS = 24 * 3600 * 1000; // finished agents stay in the list this long
+const AGENT_MAX_ROWS = 300;
+const AGENT_APPEND_TYPE = 'claude_desk_agent_append';
+const AGENT_FILE_RE = /^agent-(a[0-9a-f]{8,40})\.meta\.json$/;
+
+const lineCache = new Map(); // file -> { size, lines }
+const doneRows = new Map(); // meta path -> row without the session fields (a finished agent never changes)
+const modelCache = new Map(); // jsonl path -> model
+const ownDirs = new Map(); // session id -> own folder
+
+/** Lines of a transcript, counting only what was appended since the last count. */
+async function countLinesSince(file, size) {
+    let c = lineCache.get(file);
+    if (!c || size < c.size) c = { size: 0, lines: 0 };
+    if (size > c.size) {
+        const fh = await fs.promises.open(file, 'r');
+        try {
+            const buf = Buffer.alloc(1024 * 1024);
+            let pos = c.size;
+            while (pos < size) {
+                const { bytesRead } = await fh.read(buf, 0, Math.min(buf.length, size - pos), pos);
+                if (!bytesRead) break;
+                for (let i = 0; i < bytesRead; i += 1) if (buf[i] === 10) c.lines += 1;
+                pos += bytesRead;
+            }
+            c.size = pos;
+        } finally { await fh.close(); }
+    }
+    lineCache.set(file, c);
+    if (lineCache.size > 3000) lineCache.delete(lineCache.keys().next().value);
+    return c.lines;
+}
+
+/** The model of an agent's last answer (the tail of its transcript), when the meta has none. */
+async function modelFromTail(file, size) {
+    if (modelCache.has(file)) return modelCache.get(file);
+    let model = '';
+    try {
+        const fh = await fs.promises.open(file, 'r');
+        try {
+            const len = Math.min(size, 64 * 1024);
+            const buf = Buffer.alloc(len);
+            await fh.read(buf, 0, len, size - len);
+            const all = buf.toString('utf8').match(/"model":"([^"]{1,80})"/g);
+            if (all && all.length) model = /"model":"([^"]+)"/.exec(all[all.length - 1])[1];
+        } finally { await fh.close(); }
+    } catch (_) { model = ''; }
+    if (model) { modelCache.set(file, model); if (modelCache.size > 3000) modelCache.delete(modelCache.keys().next().value); }
+    return model;
+}
+
+/**
+ * The background agents of the given sessions ([{ id, title, own }], own = the session's folder beside its transcript)
+ * as list rows: running first, then the newest. now / idleMs / keepMs are for tests.
+ */
+async function buildAgentsList(sessions, opts = {}) {
+    const now = opts.now || Date.now();
+    const idleMs = opts.idleMs || AGENT_RUN_IDLE_MS;
+    const keepMs = opts.keepMs || AGENT_KEEP_DONE_MS;
+    const rows = [];
+    for (const s of sessions) {
+        const dir = path.join(s.own, 'subagents');
+        let names = [];
+        try { names = (await fs.promises.readdir(dir)).filter((n) => AGENT_FILE_RE.test(n)); } catch (_) { continue; }
+        for (const n of names) {
+            const metaFile = path.join(dir, n);
+            let base = doneRows.get(metaFile);
+            if (!base) {
+                const agentId = AGENT_FILE_RE.exec(n)[1];
+                const jsonl = path.join(dir, `agent-${agentId}.jsonl`);
+                let meta = {};
+                try { meta = JSON.parse(await fs.promises.readFile(metaFile, 'utf8')); } catch (_) { meta = {}; }
+                let js = null;
+                try { js = await fs.promises.stat(jsonl); } catch (_) { js = null; }
+                base = {
+                    agentId,
+                    description: String(meta.description || '').replace(/\s+/g, ' ').slice(0, 200) || agentId,
+                    type: String(meta.agentType || ''),
+                    model: String(meta.model || meta.pickedEffortModel || '') || (js ? await modelFromTail(jsonl, js.size) : ''),
+                    finished: meta.finished === true,
+                    background: meta.requestShape === 'background',
+                    lastActivity: js ? Math.round(js.mtimeMs) : null,
+                    messages: js ? await countLinesSince(jsonl, js.size) : 0
+                };
+                if (base.finished) doneRows.set(metaFile, base);
+                if (doneRows.size > 3000) doneRows.delete(doneRows.keys().next().value);
+            }
+            const last = base.lastActivity || 0;
+            if (base.finished && now - last > keepMs) continue;
+            const state = base.finished ? 'finished' : (now - last > idleMs ? 'idle' : 'running');
+            rows.push(Object.assign({ key: `a:${s.id}:${base.agentId}`, sessionId: s.id, sessionTitle: s.title }, base, { state }));
+        }
+    }
+    const rank = (r) => (r.state === 'running' ? 0 : (r.state === 'idle' ? 1 : 2));
+    rows.sort((a, b) => rank(a) - rank(b) || (b.lastActivity || 0) - (a.lastActivity || 0));
+    return rows.slice(0, AGENT_MAX_ROWS);
+}
+
+async function ownDirOf(id) {
+    let own = ownDirs.get(id);
+    if (own) return own;
+    const file = await launcher.findFile(id);
+    if (!file) return null;
+    own = path.join(path.dirname(file), id);
+    ownDirs.set(id, own);
+    if (ownDirs.size > 500) ownDirs.delete(ownDirs.keys().next().value);
+    return own;
+}
+
+/** The running sessions with their folders (what the agents list covers). */
+async function liveSessionFolders() {
+    const out = [];
+    for (const l of claudeSessions.liveSessions()) {
+        const own = await ownDirOf(l.id);
+        if (own) out.push({ id: l.id, title: l.givenName || l.name || l.id.slice(0, 8), own });
+    }
+    return out;
+}
+
+let agentsFeed = null;
+let agentsPoke = null;
+const agentDirWatchers = new Map(); // folder -> fs.FSWatcher
+
+/** fs.watch on the subagents folder (or the session's own folder until that exists) of each running session; closed when no window listens. */
+function syncAgentWatches(sessions) {
+    const want = new Set();
+    sessions.forEach((s) => {
+        const sub = path.join(s.own, 'subagents');
+        want.add(fs.existsSync(sub) ? sub : (fs.existsSync(s.own) ? s.own : ''));
+    });
+    want.delete('');
+    for (const [dir, w] of agentDirWatchers) if (!want.has(dir)) { try { w.close(); } catch (_) { /* closed */ } agentDirWatchers.delete(dir); }
+    want.forEach((dir) => {
+        if (agentDirWatchers.has(dir)) return;
+        try {
+            const w = fs.watch(dir, { persistent: false }, () => {
+                if (!agentsFeed || !agentsFeed.size) { closeAgentWatches(); return; }
+                clearTimeout(agentsPoke);
+                agentsPoke = setTimeout(() => { if (agentsFeed) agentsFeed.poke(); }, 700);
+            });
+            w.on('error', () => { try { w.close(); } catch (_) { /* closed */ } agentDirWatchers.delete(dir); });
+            agentDirWatchers.set(dir, w);
+        } catch (_) { /* gone */ }
+    });
+}
+
+function closeAgentWatches() {
+    clearTimeout(agentsPoke);
+    for (const w of agentDirWatchers.values()) { try { w.close(); } catch (_) { /* closed */ } }
+    agentDirWatchers.clear();
+}
+
+function defineAgentsFeed() {
+    if (agentsFeed) return;
+    agentsFeed = statusHub.define({
+        name: 'claude_desk_agents',
+        pushType: 'claude_desk_agents_status',
+        intervalMs: 120000, // a safety net only: changes arrive through fs.watch and the desk feed's live set
+        allow: isAdmin,
+        sample: async () => {
+            const sessions = await liveSessionFolders();
+            syncAgentWatches(sessions);
+            const rows = await buildAgentsList(sessions);
+            const items = {};
+            rows.forEach((r) => { items[r.key] = r; });
+            return items;
+        }
+    });
+}
+
+// one agent's transcript pushed to the socket that opened it (separate from the session watch: both can be open)
+const agentWatches = new Map(); // ws -> { id, agentId, file, end, watcher, timer, reading, view }
+
+function agentUnwatch(ws) {
+    const w = agentWatches.get(ws);
+    if (!w) return;
+    clearTimeout(w.timer);
+    try { w.watcher.close(); } catch (_) { /* closed */ }
+    agentWatches.delete(ws);
+}
+
+async function watchAgent(handlersCtx, ws, id, agentId, from, view) {
+    agentUnwatch(ws);
+    const file = await subagentFile(id, agentId);
+    const st = await fs.promises.stat(file);
+    const w = { id, agentId, file, end: Number.isFinite(Number(from)) ? Number(from) : st.size, watcher: null, timer: null, reading: false, view: view || null };
+    const flush = async () => {
+        if (w.reading || agentWatches.get(ws) !== w) return;
+        w.reading = true;
+        try {
+            for (let i = 0; i < 8; i += 1) {
+                const r = await transcript.readSince(file, w.end, { view: w.view });
+                if (r.end === w.end) break;
+                w.end = r.end;
+                if (r.messages.length && ws.readyState === 1) handlersCtx.sendToClient(ws, { type: AGENT_APPEND_TYPE, data: { id, agentId, messages: r.messages, end: r.end }, timestamp: new Date().toISOString() });
+            }
+        } catch (_) { /* next change */ } finally { w.reading = false; }
+    };
+    w.watcher = fs.watch(file, { persistent: false }, () => { clearTimeout(w.timer); w.timer = setTimeout(flush, 400); });
+    w.watcher.on('error', () => agentUnwatch(ws));
+    agentWatches.set(ws, w);
+    if (typeof ws.once === 'function') ws.once('close', () => agentUnwatch(ws));
+    void flush();
+    return { id, agentId, watching: true, end: w.end };
+}
+
+const handleAgentWatch = guard('claude_desk_agent_watch', async (gr, message, ws, clientInfo, handlersCtx) => watchAgent(handlersCtx, ws, String(message.id || ''), String(message.agentId || ''), message.from, message.show ? transcript.viewFrom(message.show) : null));
+const handleAgentUnwatch = guard('claude_desk_agent_unwatch', async (gr, message, ws) => { agentUnwatch(ws); return { watching: false }; });
+
 function registerPackets(handlersCtx) {
     if (!handlersCtx) return;
     gResources = handlersCtx.globalResources;
     defineFeeds();
+    defineAgentsFeed();
     runtime.bind(gResources);
     // config dirs of accounts with parallel sessions: copy rotated logins back; the carry tmux server in its own scope
     setTimeout(() => {
@@ -627,6 +891,8 @@ function registerPackets(handlersCtx) {
     reg('claude_desk_transcript', handleTranscript);
     reg('claude_desk_watch', handleWatch);
     reg('claude_desk_unwatch', handleUnwatch);
+    reg('claude_desk_agent_watch', handleAgentWatch);
+    reg('claude_desk_agent_unwatch', handleAgentUnwatch);
     reg('claude_desk_session', handleSession, ADMIN_DESTRUCTIVE);
     reg('claude_desk_coord', handleCoord, ADMIN_DESTRUCTIVE);
     reg('claude_desk_supervisor', handleSupervisor, ADMIN_DESTRUCTIVE);
@@ -634,4 +900,4 @@ function registerPackets(handlersCtx) {
     reg('claude_fleet_engines', handleEngines);
 }
 
-module.exports = { registerPackets, _handlers: { handleSessions, handleTranscript, handleWatch, handleUnwatch, handleSession, handleCoord, handleSupervisor }, _sessionsPage: sessionsPage, _ownerOf: ownerOf };
+module.exports = { registerPackets, _handlers: { handleSessions, handleTranscript, handleWatch, handleUnwatch, handleSession, handleCoord, handleSupervisor }, _sessionsPage: sessionsPage, _ownerOf: ownerOf, _buildAgentsList: buildAgentsList };

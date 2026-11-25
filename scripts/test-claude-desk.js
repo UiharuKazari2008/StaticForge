@@ -337,6 +337,40 @@ async function main() {
     assert.strictEqual(sent[1].data.sent.from, 'desk-yukimi');
     console.log('ok 7 desktop handler');
 
+    // 8. background agents of running sessions: the list builder reads a temp subagents folder
+    const own = path.join(SANDBOX, 'agents-session');
+    const subs = path.join(own, 'subagents');
+    fs.mkdirSync(subs, { recursive: true });
+    const line = (o) => `${JSON.stringify(o)}\n`;
+    const t0 = Date.now();
+    fs.writeFileSync(path.join(subs, 'agent-a1111111111111111.meta.json'), JSON.stringify({ agentType: 'Explore', description: 'Find the thing', requestShape: 'background' }));
+    fs.writeFileSync(path.join(subs, 'agent-a1111111111111111.jsonl'), line({ type: 'user', message: { role: 'user', content: 'go' } }) + line({ type: 'assistant', message: { role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'text', text: 'ok' }] } }));
+    fs.writeFileSync(path.join(subs, 'agent-a2222222222222222.meta.json'), JSON.stringify({ description: 'Old job', finished: true, model: 'haiku' }));
+    fs.writeFileSync(path.join(subs, 'agent-a2222222222222222.jsonl'), line({ type: 'user', message: { role: 'user', content: 'x' } }));
+    fs.writeFileSync(path.join(subs, 'agent-a3333333333333333.meta.json'), JSON.stringify({ description: 'Stuck job' }));
+    fs.writeFileSync(path.join(subs, 'agent-a3333333333333333.jsonl'), line({ type: 'user', message: { role: 'user', content: 'y' } }));
+    fs.writeFileSync(path.join(subs, 'notes.txt'), 'not an agent');
+    const sessions = [{ id: SID, title: 'Test session', own }, { id: '00000000-0000-4000-8000-000000000000', title: 'No agents', own: path.join(SANDBOX, 'nowhere') }];
+    let agents = await desk._buildAgentsList(sessions, { now: t0 });
+    assert.deepStrictEqual(agents.map((r) => r.state), ['running', 'running', 'finished']);
+    assert.strictEqual(agents[2].agentId, 'a2222222222222222');
+    const first = agents.find((r) => r.agentId === 'a1111111111111111');
+    assert.strictEqual(first.messages, 2);
+    assert.strictEqual(first.model, 'claude-sonnet-5-5');
+    assert.strictEqual(first.sessionTitle, 'Test session');
+    assert.strictEqual(first.background, true);
+    assert.strictEqual(agents.find((r) => r.agentId === 'a2222222222222222').model, 'haiku');
+    // quiet for longer than the idle limit: Idle; a finished one older than the keep time drops out; running sort first
+    agents = await desk._buildAgentsList(sessions, { now: t0 + 21 * 60 * 1000 });
+    assert.ok(agents.every((r) => r.state !== 'running') && agents.some((r) => r.state === 'idle'));
+    agents = await desk._buildAgentsList(sessions, { now: t0 + 25 * 3600 * 1000 });
+    assert.ok(!agents.some((r) => r.state === 'finished'), 'finished agents drop from the list after a day');
+    // lines appended later are counted without reading the file again from the start
+    fs.appendFileSync(path.join(subs, 'agent-a1111111111111111.jsonl'), line({ type: 'user', message: { role: 'user', content: 'more' } }));
+    agents = await desk._buildAgentsList(sessions, { now: Date.now() });
+    assert.strictEqual(agents.find((r) => r.agentId === 'a1111111111111111').messages, 3);
+    console.log('ok 8 background agents list');
+
     store.close();
     console.log('all claude desk tests passed');
 }

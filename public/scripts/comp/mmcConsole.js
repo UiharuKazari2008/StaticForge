@@ -186,6 +186,7 @@
             const pane = this.el('.mmc-result');
             pane.addEventListener('mousedown', (ev) => { if (ev.button === 2) this.resultClick(ev, true); });
             pane.addEventListener('click', (ev) => this.resultClick(ev));
+            pane.addEventListener('pointerdown', (ev) => this.gripDown(ev));
             pane.addEventListener('dblclick', (ev) => this.resultDblClick(ev));
             pane.addEventListener('keydown', (ev) => this.listKey(ev));
             m.addEventListener('keydown', (ev) => {
@@ -573,12 +574,13 @@
          * open, cls }]; sortable when opts.sortId is given (the shell keeps the order per list).
          */
         listView(cols, rows, opts = {}) {
-            const tpl = opts.fit ? cols.map((col) => `minmax(${Math.min(col.w, col.min || 56)}px, ${col.w}fr)`).join(' ') + ' 0px'
+            const saved = opts.sortId ? this.colWidths(opts.sortId, cols.length) : null;
+            const tpl = saved ? saved.map((w, i) => `${w || cols[i].w}px`).join(' ') + ' minmax(0, 1fr)' : opts.fit ? cols.map((col) => `minmax(${Math.min(col.w, col.min || 56)}px, ${col.w}fr)`).join(' ') + ' 0px'
                 : cols.map((col) => `${col.w}px`).join(' ') + ' minmax(0, 1fr)';
             const sort = opts.sortId ? this.sortOf(opts.sortId, opts.sort) : null;
-            const head = cols.map((col) => {
+            const head = cols.map((col, i) => {
                 const sorted = sort && sort.key === col.key;
-                return `<span class="mmc-col${col.num ? ' is-num' : ''}${sorted ? ' is-sorted' : ''}"${sort && col.key ? ` data-sort="${esc(col.key)}" data-sort-id="${esc(opts.sortId)}"` : ''}>${sorted ? `<span class="mmc-arrow${sort.dir < 0 ? ' is-down' : ''}"></span>` : ''}${esc(col.t)}</span>`;
+                return `<span class="mmc-col${col.num ? ' is-num' : ''}${sorted ? ' is-sorted' : ''}"${sort && col.key ? ` data-sort="${esc(col.key)}" data-sort-id="${esc(opts.sortId)}"` : ''}>${sorted ? `<span class="mmc-arrow${sort.dir < 0 ? ' is-down' : ''}"></span>` : ''}${esc(col.t)}${opts.sortId ? `<i class="mmc-grip" data-grip="${i}"></i>` : ''}</span>`;
             }).join('') + '<span class="mmc-col mmc-col-rest"></span>';
             const list = sort ? this.sorted(rows, cols, opts.sortId, opts.sort) : rows;
             const cell = (col, r, i) => {
@@ -587,7 +589,48 @@
             };
             const body = list.length ? list.map((r) => `<div class="mmc-row${r.cls ? ` ${r.cls}` : ''}${r.key != null && String(r.key) === String(this.sel) ? ' is-selected' : ''}"${r.key != null ? ` data-key="${esc(r.key)}"` : ''}${r.open ? ` data-open="${esc(r.open)}"` : ''}>${cols.map((col, i) => cell(col, r, i)).join('')}<span></span></div>`).join('')
                 : `<div class="mmc-empty">${esc(opts.empty || 'There are no items to show in this view.')}</div>`;
-            return `<div class="mmc-list${opts.fit ? ' is-fit' : ''}" tabindex="0" style="--cols:${tpl}"><div class="mmc-lhead">${head}</div><div class="mmc-lbody">${body}</div></div>`;
+            return `<div class="mmc-list${opts.fit && !saved ? ' is-fit' : ''}" tabindex="0"${opts.sortId ? ` data-cols-id="${esc(opts.sortId)}"` : ''} style="--cols:${tpl}"><div class="mmc-lhead">${head}</div><div class="mmc-lbody">${body}</div></div>`;
+        }
+
+        /** The column widths the person dragged for a list (localStorage, per list id), or null. */
+        colWidths(id, n) {
+            try {
+                const v = JSON.parse(localStorage.getItem(`mmc.colw.${id}`) || 'null');
+                if (Array.isArray(v) && v.length === n && v.every((x) => typeof x === 'number' && x >= 24 && x < 4000)) return v;
+            } catch (_) { /* no storage */ }
+            return null;
+        }
+
+        /** Dragging a header divider (the grip at a column's right edge) resizes that column, as a Windows list view does. */
+        gripDown(ev) {
+            const grip = ev.target.closest && ev.target.closest('.mmc-grip');
+            if (!grip || ev.button > 0) return;
+            const list = grip.closest('.mmc-list');
+            if (!list) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            this.gripUntil = Infinity;
+            const heads = Array.from(list.querySelectorAll('.mmc-lhead > .mmc-col:not(.mmc-col-rest)'));
+            const widths = heads.map((h) => Math.round(h.getBoundingClientRect().width));
+            const i = Number(grip.dataset.grip);
+            const x0 = ev.clientX;
+            const w0 = widths[i];
+            list.classList.remove('is-fit');
+            const apply = () => list.style.setProperty('--cols', widths.map((w) => `${w}px`).join(' ') + ' minmax(0, 1fr)');
+            apply();
+            const move = (e) => { widths[i] = Math.max(32, w0 + e.clientX - x0); apply(); };
+            const up = () => {
+                grip.removeEventListener('pointermove', move);
+                grip.removeEventListener('pointerup', up);
+                grip.removeEventListener('pointercancel', up);
+                try { grip.releasePointerCapture(ev.pointerId); } catch (_) { /* gone */ }
+                if (list.dataset.colsId) { try { localStorage.setItem(`mmc.colw.${list.dataset.colsId}`, JSON.stringify(widths)); } catch (_) { /* no storage */ } }
+                this.gripUntil = Date.now() + 80; // the click that follows the drag must not sort the column
+            };
+            try { grip.setPointerCapture(ev.pointerId); } catch (_) { /* gone */ }
+            grip.addEventListener('pointermove', move);
+            grip.addEventListener('pointerup', up);
+            grip.addEventListener('pointercancel', up);
         }
 
         // ---- result pane events -----------------------------------------------------------------------
@@ -607,6 +650,7 @@
         }
 
         resultClick(ev, right) {
+            if (!right && (this.gripUntil || 0) > Date.now() && ev.target.closest('.mmc-lhead')) return;
             if (!right) {
                 const head = ev.target.closest('.mmc-sec-head');
                 if (head) {

@@ -1036,3 +1036,54 @@
     border-bottom: 1px solid var(--cd-c-d5d5d5);
     font-size: 12px;
 }
+
+/* ---- Supervisor > Reviews: the list on top, the selected review below (a reading pane), a divider between ---- */
+
+#mmcConsole_claudedesk .cd-rv {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+}
+
+#mmcConsole_claudedesk .cd-rv-top {
+    display: flex;
+    flex: 0 0 45%;
+    flex-direction: column;
+    min-height: 60px;
+    overflow: hidden;
+}
+
+#mmcConsole_claudedesk .cd-rv-top > .mmc-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+#mmcConsole_claudedesk .cd-rv-split {
+    flex: none;
+    height: 5px;
+    border-top: 1px solid var(--cd-c-d5d5d5);
+    border-bottom: 1px solid var(--cd-c-d5d5d5);
+    background: var(--cd-c-f0f0f0);
+    cursor: row-resize;
+    touch-action: none;
+}
+
+#mmcConsole_claudedesk .cd-rv-bot {
+    flex: 1;
+    min-height: 60px;
+    overflow: auto;
+    padding: 6px 10px;
+    background: var(--cd-c-fff);
+}
+
+#mmcConsole_claudedesk .cd-wck {
+    margin: 0 4px 0 2px;
+    vertical-align: middle;
+}
+
+#mmcConsole_claudedesk .cd-sup-form label[hidden] {
+    display: none;
+}
