@@ -27,7 +27,7 @@ the server's own variables (keys, pm2) are not passed.
 
 | Packet | Fields | Reply |
 | --- | --- | --- |
-| `admin_terminal_open` | `id`, `cols` (2-500, default 80), `rows` (1-200, default 25), `requestId` | `admin_terminal_open_response` `{ success, id, pid, cols, rows }`, or `error` (`BAD_ID`, `DUPLICATE`, `TOO_MANY`, `INSUFFICIENT_PERMISSIONS`) |
+| `admin_terminal_open` | `id`, `cols` (2-500, default 80), `rows` (1-200, default 25), `claudeSession` (optional: a running Fleet session's id; the terminal is then `tmux attach` to that session's pane instead of bash, for Fleet's Show Screen; closing it only detaches), `requestId` | `admin_terminal_open_response` `{ success, id, pid, cols, rows, title? }` (`title`: the attached tmux session's name), or `error` (`BAD_ID`, `DUPLICATE`, `TOO_MANY`, `INSUFFICIENT_PERMISSIONS`) |
 | `admin_terminal_input` | `id`, `data` (string, at most 256 K characters: keys typed or pasted) | none |
 | `admin_terminal_resize` | `id`, `cols`, `rows` (send after every fit; passed to the pty) | none |
 | `admin_terminal_ack` | `id`, `chars` (output characters xterm has written) | none |

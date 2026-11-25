@@ -2,7 +2,9 @@
 
 /**
  * Administrator Terminal packets (Yozora #1133; modules/adminTerminal.js; docs/client-api/ws/adminTerminal.md).
- *   admin_terminal_open   {id, cols, rows}  -> admin_terminal_open_response {success, id, pid, cols, rows}
+ *   admin_terminal_open   {id, cols, rows, claudeSession?}  -> admin_terminal_open_response {success, id, pid, cols, rows, title?}
+ *                         claudeSession: a running Fleet session's id - the terminal is tmux attached to that
+ *                         session's pane (Fleet's Show Screen) instead of bash; closing it only detaches.
  *   admin_terminal_input  {id, data}        (keys typed or pasted)
  *   admin_terminal_resize {id, cols, rows}
  *   admin_terminal_ack    {id, chars}       (output written into xterm: flow control)
@@ -58,8 +60,11 @@ function registerPackets() {
     };
     const send = (ctx) => (type, data) => ctx.wsServer.sendToClient(ctx.ws, { type, data, timestamp: new Date().toISOString() });
 
-    reg('admin_terminal_open', true, (ctx, m) => {
-        const info = terminal.open(ctx.ws, ctx.clientInfo.sessionId, { id: m.id, cols: m.cols, rows: m.rows }, send(ctx));
+    reg('admin_terminal_open', true, async (ctx, m) => {
+        let command = null;
+        if (m.claudeSession) command = await require('../../claudeSessionLauncher').attachCommand(String(m.claudeSession));
+        const info = terminal.open(ctx.ws, ctx.clientInfo.sessionId, { id: m.id, cols: m.cols, rows: m.rows, command }, send(ctx));
+        if (command) info.title = command.title;
         ctx.wsServer.sendToClient(ctx.ws, { type: 'admin_terminal_open_response', requestId: m.requestId, data: Object.assign({ success: true }, info), timestamp: new Date().toISOString() });
     });
     reg('admin_terminal_input', false, (ctx, m) => { terminal.write(ctx.ws, m.id, m.data); });

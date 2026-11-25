@@ -157,7 +157,7 @@ function hookSocket(ws) {
 }
 
 /**
- * Open a shell. `send(type, data)` delivers a packet to the owner's socket.
+ * Open a shell (or `opts.command`: { file, args }). `send(type, data)` delivers a packet to the owner's socket.
  * @returns {{ id: string, pid: number, cols: number, rows: number }}
  */
 function open(ws, ownerKey, opts, send) {
@@ -171,7 +171,10 @@ function open(ws, ownerKey, opts, send) {
     const rows = clampInt(o.rows, MIN_ROWS, MAX_ROWS, DEFAULT_ROWS);
     let cwd = os.homedir();
     try { if (!require('fs').statSync(cwd).isDirectory()) cwd = '/'; } catch (_) { cwd = '/'; }
-    const term = pty().spawn('/bin/bash', ['-l'], { name: 'xterm-256color', cols, rows, cwd, env: shellEnv() });
+    // `command` (from the packet handler only, never the client's text): another program than the login shell,
+    // e.g. tmux attached to a Claude session's pane (Fleet's Show Screen). Closing the window ends that program.
+    const cmd = o.command && typeof o.command.file === 'string' ? o.command : { file: '/bin/bash', args: ['-l'] };
+    const term = pty().spawn(cmd.file, Array.isArray(cmd.args) ? cmd.args.map(String) : [], { name: 'xterm-256color', cols, rows, cwd, env: shellEnv() });
     const s = { id, ws, ownerKey, term, pid: term.pid, send, chunks: [], size: 0, timer: null, unacked: 0, paused: false, closed: false, exited: false };
     sessions.set(keyOf(ws, id), s);
     hookSocket(ws);
