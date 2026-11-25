@@ -353,6 +353,8 @@ sup._test.setFetch(async (url, opts) => {
             assert.strictEqual(sup.getWork(b.id).state, 'running', 'Start Now passes the slot limit');
             sup.workAfterReview({ sessionId: sup.getWork(a.id).sessionId, verdict: 'gaps', missed: [{ item: 'tests' }], summary: '' });
             assert.strictEqual(sup.getWork(a.id).state, 'waiting');
+            // the session is idle when its review ends (a session still working keeps the item running: see the in-flight test)
+            fs.writeFileSync(path.join(tmp, '.claude', 'sessions', `${process.pid}1.json`), JSON.stringify({ pid: process.pid, sessionId: sup.getWork(a.id).sessionId, status: 'idle', cwd: tmp }));
             sup.workAfterReview({ sessionId: sup.getWork(a.id).sessionId, verdict: 'ok', missed: [], summary: 'all done' });
             assert.strictEqual(sup.getWork(a.id).state, 'done');
             const c = sup.enqueue({ title: 'C', prompt: 'do C', sourceRef: 'plaud:x1', source: 'plaud' }, { gr });
@@ -1286,6 +1288,7 @@ sup._test.setFetch(async (url, opts) => {
         const typed = [];
         const resumed = [];
         fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        settingsCfg.agentSupervisor = Object.assign(settingsCfg.agentSupervisor, { maxConcurrent: 50, autoStart: true });
         let n = 0;
         launcher.start = async () => { n += 1; return { id: `eeeeeeee-0000-0000-0000-0000000004${String(n).padStart(2, '0')}`, state: 'running', link: '' }; };
         launcher.steer = async (id, text) => { typed.push([id, text]); return { sent: true }; };
@@ -1353,6 +1356,7 @@ sup._test.setFetch(async (url, opts) => {
             const a = sup.enqueue({ title: 'Reopen A', prompt: 'do A', topology: 'direct', startNow: true }, { gr });
             await waitFor(() => sup.getWork(a.id).state === 'running', 'a running');
             const sid = sup.getWork(a.id).sessionId;
+            rec(sid, 'idle'); // its turn ended (a session still working keeps the item running)
             await sup.workAfterReview({ sessionId: sid, verdict: 'ok', missed: [], summary: 'done' });
             assert.strictEqual(sup.getWork(a.id).state, 'done');
             assert.ok(sup.getWork(a.id).endedAt);
@@ -1363,7 +1367,8 @@ sup._test.setFetch(async (url, opts) => {
             assert.strictEqual(sup.getWork(a.id).state, 'running');
             assert.strictEqual(sup.getWork(a.id).endedAt, null);
             assert.match(sup.getWork(a.id).message, /^Working again/);
-            // done again; an ok review leaves it done, a review with gaps reopens it
+            // done again (its turn ended); an ok review leaves it done, a review with gaps reopens it
+            rec(sid, 'idle');
             await sup.workAfterReview({ sessionId: sid, verdict: 'ok', missed: [], summary: 'done' });
             assert.strictEqual(sup.getWork(a.id).state, 'done');
             await sup.workAfterReview({ sessionId: sid, verdict: 'ok', missed: [], summary: 'again' });
@@ -1373,6 +1378,7 @@ sup._test.setFetch(async (url, opts) => {
             assert.strictEqual(sup.getWork(a.id).endedAt, null);
             // Send Back to Work: only done / failed, needs a note, steers and runs
             await assert.rejects(() => sup.reopenWork(a.id, { note: 'x' }), /only a done or failed item/);
+            rec(sid, 'idle');
             await sup.workAfterReview({ sessionId: sid, verdict: 'ok', missed: [], summary: 'done' });
             await assert.rejects(() => sup.reopenWork(a.id, { note: '  ' }), /Write what it should do next/);
             typed.length = 0;
@@ -1406,6 +1412,71 @@ sup._test.setFetch(async (url, opts) => {
             assert.strictEqual(sup.getWork(a.id).state, 'running');
             assert.strictEqual(yzIssues.get('DreamScape/StaticForge#7193').state, 'open');
         } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.steer = realSteer; launcher.resume = realResume; launcher.findFile = realFind; }
+    });
+
+    await test('in flight: an ok review with a running background agent keeps the item running; settleWork ends it when the agent finished; a queued review keeps it Active; nothing in flight is done as before', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart;
+        const realStart = launcher.start;
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        let n = 0;
+        launcher.start = async () => { n += 1; return { id: `eeeeeeee-0000-0000-0000-0000000007${String(n).padStart(2, '0')}`, state: 'running', link: '' }; };
+        const mkAgent = (sid, agentId, meta, ageMs) => {
+            const dir = path.join(tmp, '.claude', 'projects', '-repo', sid, 'subagents');
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, `agent-${agentId}.meta.json`), JSON.stringify(meta));
+            const jf = path.join(dir, `agent-${agentId}.jsonl`);
+            fs.writeFileSync(jf, '{}\n');
+            const t = new Date(Date.now() - (ageMs || 0));
+            fs.utimesSync(jf, t, t);
+            return path.join(dir, `agent-${agentId}.meta.json`);
+        };
+        try {
+            const mk = async (title) => {
+                const a = sup.enqueue({ title, prompt: 'x', topology: 'direct', startNow: true }, { gr });
+                await sup.pumpWork(gr);
+                await sup.pumpWork(gr);
+                await waitFor(() => sup.getWork(a.id).state === 'running', `${title} running ${JSON.stringify(sup.getWork(a.id))}`);
+                const sid = sup.getWork(a.id).sessionId;
+                fs.writeFileSync(path.join(tmp, '.claude', 'projects', '-repo', `${sid}.jsonl`), '');
+                return { id: a.id, sid };
+            };
+            // nothing in flight: done as before
+            const plain = await mk('Plain');
+            await sup.workAfterReview({ sessionId: plain.sid, verdict: 'ok', missed: [], summary: 'fine' });
+            assert.strictEqual(sup.getWork(plain.id).state, 'done');
+            // a running background agent: the item stays running with the reason
+            const a = await mk('Planner');
+            const metaFile = mkAgent(a.sid, 'a1111111111111111', { description: 'worker', requestShape: 'background' }, 1000);
+            mkAgent(a.sid, 'a2222222222222222', { description: 'old', finished: true }, 1000);
+            mkAgent(a.sid, 'a3333333333333333', { description: 'stale' }, 30 * 60 * 1000);
+            const f = sup.sessionInFlight(a.sid, { fresh: true });
+            assert.strictEqual(f.bgAgents, 1, 'only the unfinished, recently active agent runs');
+            assert.match(f.why, /1 agent/);
+            RAW().prepare('INSERT INTO supervisor_reviews (session_id, at, trigger, verdict, summary) VALUES (?, ?, ?, ?, ?)').run(a.sid, Date.now(), 'turn-end', 'ok', 'all planned');
+            await sup.workAfterReview({ sessionId: a.sid, verdict: 'ok', missed: [], summary: 'all planned' });
+            assert.strictEqual(sup.getWork(a.id).state, 'running');
+            assert.match(sup.getWork(a.id).message, /^Background work still running: 1 agent/);
+            assert.strictEqual(sup.settleWork(a.sid), false, 'still running: stays');
+            // the agent finishes: settleWork makes it done from the last ok review
+            fs.writeFileSync(metaFile, JSON.stringify({ description: 'worker', finished: true }));
+            assert.strictEqual(sup.settleWork(a.sid), true);
+            assert.strictEqual(sup.getWork(a.id).state, 'done');
+            assert.strictEqual(sup.getWork(a.id).message, 'all planned');
+            // a queued review keeps an item Active with the checking note; an ok review while another is queued stays running
+            const b = await mk('Queued');
+            sup._test.queue.push({ sessionId: b.sid, trigger: 'turn-end' }); // a review waiting in the queue
+            await sup.workAfterReview({ sessionId: b.sid, verdict: 'ok', missed: [], summary: 'ok' });
+            assert.strictEqual(sup.getWork(b.id).state, 'running');
+            assert.strictEqual(sup.getWork(b.id).message, 'The Supervisor is checking its last turn');
+            sup._test.queue.length = 0;
+            // a review that gets queued sets the note on its running item
+            const c = await mk('Checking');
+            sup._test.queueReview(c.sid, 'turn-end');
+            assert.strictEqual(sup.getWork(c.id).state, 'running', 'stays Active, never done during a review');
+            assert.ok(sup.listWork().some((w) => w.id === c.id && ['starting', 'running', 'waiting'].includes(w.state)));
+            sup._test.queue.length = 0;
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; }
     });
 
     require('../modules/agentCoord/store').close();

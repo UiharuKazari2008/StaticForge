@@ -2051,7 +2051,7 @@
                 const d = drafts[w.id] && drafts[w.id][i] != null ? drafts[w.id][i] : '';
                 return `<div class="cd-in-q"><p class="cd-cut" title="${esc(q.question)}"><img class="mmc-row-icon" src="${esc(`${VI}/info-16.png`)}" alt=""><b>${esc(q.question)}</b></p>
                     ${q.answer ? `<p class="mmc-hint cd-cut" title="${esc(q.answer)}">The Supervisor's proposed answer: ${esc(q.answer)}${q.why ? ` (${esc(q.why)})` : ''}</p>` : (q.ask ? `<p class="mmc-hint">${esc(q.why || 'Open as a request form: answer it there')}</p>` : `<p class="mmc-hint">Only you can decide this.${q.why ? ` ${esc(q.why)}` : ''}</p>`)}
-                    ${q.ask ? '' : `<textarea data-in-a="${esc(w.id)}:${i}" rows="2" spellcheck="true" placeholder="${q.answer ? 'Leave empty to send the Supervisor\'s answer' : 'Your answer'}" aria-label="Your answer to question ${i + 1}">${esc(d)}</textarea>`}</div>`;
+                    ${q.ask ? '' : `<textarea class="cd-answer" data-in-a="${esc(w.id)}:${i}" rows="2" spellcheck="true" placeholder="${q.answer ? 'Leave empty to send the Supervisor\'s answer' : 'Your answer'}" aria-label="Your answer to question ${i + 1}">${esc(d)}</textarea>`}</div>`;
             }).join('');
             return `<div class="cd-in-item"><h4 class="cd-cut" title="${esc(w.title || String(w.id))}">${esc(w.title || String(w.id))}</h4>
                 <p class="mmc-hint">${issuesOf(w).length ? `Issue ${issueLinks(w)} - ` : ''}${w.sessionId ? `<span class="mmc-link" data-act="work-open" data-arg="${esc(w.id)}">Open Session</span>` : ''}</p>
@@ -2932,7 +2932,7 @@
         if (w.sessionId) kids.push(sessionNode('aw:s:', w.sessionId, A));
         const h = w.sessionId ? holdOf(w.sessionId) : null;
         const topo = topoShort(w.topology);
-        return { id: `aw:w:${w.id}`, name: `${w.title || w.id}${topo && w.parentId == null ? ` - ${topo}` : ''}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? `${VI}/warning-16.png` : workIcon(w.state), desc: `${WORK_STATE[w.state] || w.state || ''}`, children: kids };
+        return { id: `aw:w:${w.id}`, name: `${w.title || w.id}${topo && w.parentId == null ? ` - ${topo}` : ''}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? `${VI}/warning-16.png` : workIcon(w.state), desc: `${WORK_STATE[w.state] || w.state || ''}${WORK_RUN.has(w.state) && w.message ? ` - ${w.message}` : ''}`, children: kids }; // the in-flight reason (background agents, a review) shows in the row note
     }
 
     function nodes() {
@@ -4841,6 +4841,7 @@
         put('go', 'rules-open rules-goto open-session work-open agent-session sup-hold-open act-session inspect-session mem-open act-open con-open agent-open');
         put('mail', 'post post-to read-message mem-review-now');
         put('reply', 'reply');
+        put('undo', 'work-reopen');
         put('send', 'message sup-send');
         put('discuss', 'steer steer-agent con-steer');
         put('stop', 'interrupt con-interrupt con-stop rc-stop fleet-stop');

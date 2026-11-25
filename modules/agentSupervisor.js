@@ -1505,6 +1505,140 @@ function pumpWork(gr) {
 
 const retryTries = new Map(); // work item id -> reviews that could not judge its idle session
 const sessionBusy = (sid) => { const l = liveSessionsById().get(sid); return !!(l && l.status === 'busy'); };
+
+// ---------------------------------------------------------------- what is still in flight for a session
+//
+// Yukimi, Nov 25 2026: "If there are subagents or background work or the supervisor is reviewing it, it's still active. It does
+// not drop out of Active until it's 100% complete." A review that says ok is not enough for Done while the session works, its
+// background agents run, or another review of it is queued: the item stays running and settleWork ends it when that work ends.
+
+const AGENT_RUN_IDLE_MS = 20 * 60 * 1000; // an unfinished agent quiet for this long is Idle, not Running (Fleet's agents list too)
+/** One rule for "is this background agent running": its meta says unfinished and its transcript moved within idleMs. Used by Fleet's agents list (314 handler) and sessionInFlight. */
+function agentRunState(finished, lastActivity, now, idleMs) {
+    if (finished) return 'finished';
+    return (now || Date.now()) - (lastActivity || 0) > (idleMs || AGENT_RUN_IDLE_MS) ? 'idle' : 'running';
+}
+const ownDirs = new Map(); // session id -> its own folder beside its transcript
+/** <project>/<sessionId>: where its subagents/ live ('' when the transcript is not found; a sync, cached lookup). */
+function sessionOwnDir(sessionId) {
+    let own = ownDirs.get(sessionId);
+    if (own) return own;
+    const root = path.join(process.env.DREAMSCAPE_CLAUDE_HOME || os.homedir(), '.claude', 'projects');
+    try {
+        for (const d of fs.readdirSync(root)) {
+            if (fs.existsSync(path.join(root, d, `${sessionId}.jsonl`))) {
+                own = path.join(root, d, sessionId);
+                ownDirs.set(sessionId, own);
+                if (ownDirs.size > 500) ownDirs.delete(ownDirs.keys().next().value);
+                return own;
+            }
+        }
+    } catch (_) { /* none */ }
+    return '';
+}
+const finishedAgents = new Set(); // meta paths that said finished (a finished agent never changes)
+/** The session's background agents running now, and its background shell tasks that wrote in the last 30 s (best effort: a quiet shell task is not seen). */
+function bgWorkOf(sessionId, now) {
+    const own = sessionOwnDir(sessionId);
+    const out = { agents: 0, shells: 0 };
+    if (!own) return out;
+    const dir = path.join(own, 'subagents');
+    let names = [];
+    try { names = fs.readdirSync(dir).filter((n) => /^agent-a[0-9a-f]+\.meta\.json$/.test(n)); } catch (_) { names = []; }
+    for (const n of names) {
+        const metaFile = path.join(dir, n);
+        if (finishedAgents.has(metaFile)) continue;
+        try {
+            const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+            if (meta.finished === true) { finishedAgents.add(metaFile); if (finishedAgents.size > 5000) finishedAgents.delete(finishedAgents.keys().next().value); continue; }
+            const js = fs.statSync(path.join(dir, `${n.slice(0, -'.meta.json'.length)}.jsonl`));
+            if (agentRunState(false, js.mtimeMs, now) === 'running') out.agents += 1;
+        } catch (_) { /* gone or unreadable: not counted */ }
+    }
+    try {
+        const uid = typeof process.getuid === 'function' ? process.getuid() : 0;
+        const tdir = path.join(os.tmpdir(), `claude-${uid}`, path.basename(path.dirname(own)), sessionId, 'tasks');
+        fs.readdirSync(tdir).filter((n) => n.endsWith('.output')).forEach((n) => {
+            try { const f = path.join(tdir, n); if (!fs.lstatSync(f).isSymbolicLink() && now - fs.statSync(f).mtimeMs < 30000) out.shells += 1; } catch (_) { /* gone */ }
+        });
+    } catch (_) { /* no task dir */ }
+    return out;
+}
+const reviewingNow = new Set(); // sessions whose review is running (review queue pump)
+const bgCache = new Map(); // session id -> { at, v }
+const BG_CACHE_MS = 3000;
+const CHECKING_MSG = 'The Supervisor is checking its last turn';
+/**
+ * Does the session still have work in flight? { busy, bgAgents, bgShells, reviewing, why }. Reads the session's subagents folder
+ * (mtimes and metas, finished ones remembered) once per decision, cached 3 s; no timer. opts: { fresh } skips the cache,
+ * { ignoreReviewing } leaves out the review that is running now (a review's own end asks).
+ * Workflow-tool runs have no folder of their own that is read: their agents show in subagents/ like any other, a Workflow that
+ * works without one is not seen.
+ */
+function sessionInFlight(sessionId, opts = {}) {
+    const sid = String(sessionId || '');
+    const now = Date.now();
+    let c = bgCache.get(sid);
+    if (opts.fresh || !c || now - c.at > BG_CACHE_MS) {
+        c = { at: now, v: bgWorkOf(sid, now) };
+        bgCache.set(sid, c);
+        if (bgCache.size > 300) bgCache.delete(bgCache.keys().next().value);
+    }
+    const busy = sessionBusy(sid);
+    const reviewing = queue.some((j) => j.sessionId === sid) || settling.has(sid) || (!opts.ignoreReviewing && reviewingNow.has(sid));
+    const bgAgents = c.v.agents;
+    const bgShells = c.v.shells;
+    let why = '';
+    if (reviewing) why = CHECKING_MSG;
+    else if (bgAgents || bgShells) why = `Background work still running: ${[bgAgents ? `${bgAgents} agent${bgAgents === 1 ? '' : 's'}` : '', bgShells ? `${bgShells} background task${bgShells === 1 ? '' : 's'}` : ''].filter(Boolean).join(', ')}`;
+    else if (busy) why = 'Its session is still working';
+    return { busy, bgAgents, bgShells, reviewing, why };
+}
+const inFlightAny = (f) => !!(f.busy || f.bgAgents || f.bgShells || f.reviewing);
+const HELD_RE = /^(Background work still running|Its session is still working)/;
+const holdTimers = new Map(); // session id -> timer: a held item is looked at again (only while it is held)
+const HOLD_RECHECK_MS = Number(process.env.AGENT_SUPERVISOR_HOLD_RECHECK_MS) > 0 ? Number(process.env.AGENT_SUPERVISOR_HOLD_RECHECK_MS) : 60000;
+function holdForRecheck(sessionId) {
+    clearTimeout(holdTimers.get(sessionId));
+    holdTimers.set(sessionId, setTimeout(() => { holdTimers.delete(sessionId); try { settleWork(sessionId); } catch (_) { /* later */ } }, HOLD_RECHECK_MS));
+    holdTimers.get(sessionId).unref();
+}
+/**
+ * The done decision again for an item an ok review held in Running because work was in flight: called when that work may have
+ * ended (the 314 handler's subagents fs.watch, a review's end, a recheck timer). Uses the session's last review (ok) - the
+ * model is not asked again; a new turn end is reviewed as usual. True when the item became done.
+ */
+function settleWork(sessionId) {
+    const sid = String(sessionId || '');
+    if (!sid) return false;
+    const w = db().prepare("SELECT * FROM supervisor_work WHERE session_id = ? AND state = 'running'").get(sid);
+    if (!w || !HELD_RE.test(String(w.message || ''))) return false;
+    const f = sessionInFlight(sid, { fresh: true });
+    if (inFlightAny(f)) {
+        if (f.why && f.why !== w.message) { setWork(w.id, { message: f.why }); emit({ work: getWork(w.id) }); }
+        holdForRecheck(sid);
+        return false;
+    }
+    clearTimeout(holdTimers.get(sid)); holdTimers.delete(sid);
+    const rv = db().prepare('SELECT verdict, summary FROM supervisor_reviews WHERE session_id = ? ORDER BY id DESC').get(sid);
+    if (!rv || rv.verdict !== 'ok') return false;
+    const openKids = db().prepare("SELECT COUNT(*) AS n FROM supervisor_work WHERE parent_id = ? AND state NOT IN ('done','failed','cancelled')").get(w.id).n;
+    if (openKids) { setWork(w.id, { message: `Its planner finished a turn; ${openKids} part${openKids === 1 ? ' is' : 's are'} still running` }); emit({ work: getWork(w.id) }); return false; }
+    setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done', input_questions: null });
+    settleParent(w.parent_id);
+    emit({ work: getWork(w.id) });
+    pumpWork().catch(() => {});
+    return true;
+}
+const settleSoonTimers = new Map();
+/** settleWork, debounced (the subagents folder writes in bursts). */
+function settleSoon(sessionId, ms = 4000) {
+    const sid = String(sessionId || '');
+    if (!sid || settleSoonTimers.has(sid)) return;
+    const t = setTimeout(() => { settleSoonTimers.delete(sid); try { settleWork(sid); } catch (_) { /* later */ } }, ms);
+    t.unref();
+    settleSoonTimers.set(sid, t);
+}
 /** The questions saved on a raw work row: [{ question, answer, why, ask? }]. */
 function savedQuestions(r) {
     try { const q = r && r.input_questions ? JSON.parse(r.input_questions) : []; return Array.isArray(q) ? q.filter((x) => x && x.question) : []; } catch (_) { return []; }
@@ -1561,7 +1695,12 @@ async function workAfterReview(rv, opts = {}) {
     const qJson = qs.length ? JSON.stringify(qs) : null;
     const openKids = db().prepare("SELECT COUNT(*) AS n FROM supervisor_work WHERE parent_id = ? AND state NOT IN ('done','failed','cancelled')").get(w.id).n;
     if (rv.verdict === 'ok' && openKids) setWork(w.id, { state: 'running', message: `Its planner finished a turn; ${openKids} part${openKids === 1 ? ' is' : 's are'} still running` });
-    else if (rv.verdict === 'ok') { setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done', input_questions: null }); settleParent(w.parent_id); }
+    else if (rv.verdict === 'ok') {
+        // an ok review is not Done while the session works, its background agents run or another review of it is queued (Yukimi, Nov 25 2026)
+        const f = sessionInFlight(rv.sessionId, { ignoreReviewing: true, fresh: true });
+        if (inFlightAny(f)) { setWork(w.id, { state: 'running', message: f.why }); holdForRecheck(rv.sessionId); }
+        else { setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done', input_questions: null }); settleParent(w.parent_id); }
+    }
     else if (rv.verdict === 'input' && qs.length) {
         const open = qs.filter((q) => !hasAnswer(q));
         let sent = false;
@@ -2424,9 +2563,15 @@ function pump() {
     while (running < MAX_PARALLEL && queue.length) {
         const job = queue.shift();
         running += 1;
+        reviewingNow.add(job.sessionId);
         review(job.sessionId, job.trigger)
             .catch((e) => console.warn(`[supervisor] ${job.sessionId.slice(0, 8)}: ${e.message}`))
-            .finally(() => { running -= 1; pump(); });
+            .finally(() => {
+                running -= 1; reviewingNow.delete(job.sessionId);
+                // a review that ended without moving its item (it failed): the "checking" note does not stay
+                try { const w = db().prepare("SELECT id FROM supervisor_work WHERE session_id = ? AND state = 'running' AND message = ?").get(job.sessionId, CHECKING_MSG); if (w) { setWork(w.id, { message: 'Turn ended' }); emit({ work: getWork(w.id) }); } } catch (_) { /* no item */ }
+                pump();
+            });
     }
 }
 
@@ -2434,6 +2579,8 @@ function queueReview(sessionId, trigger) {
     if (queue.some((j) => j.sessionId === sessionId)) return;
     if (queue.length > 50) return;
     queue.push({ sessionId, trigger });
+    // while its review waits or runs, a running item says so and stays in Active
+    try { const w = db().prepare("SELECT id, message FROM supervisor_work WHERE session_id = ? AND state = 'running'").get(sessionId); if (w && w.message !== CHECKING_MSG) { setWork(w.id, { message: CHECKING_MSG }); emit({ work: getWork(w.id) }); } } catch (_) { /* no item */ }
     pump();
 }
 
@@ -3096,7 +3243,7 @@ async function acceptRuleFinding(gr, findingId, edit = {}, opts = {}) {
 module.exports = {
     explainRuleIssue, acceptRuleProposal, rejectRuleProposal, acceptRuleFinding, listRuleProposals, getRuleProposal, proposalBrief,
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
 };

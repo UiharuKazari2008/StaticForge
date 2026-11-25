@@ -886,7 +886,7 @@ async function buildAgentsList(sessions, opts = {}) {
             }
             const last = base.lastActivity || 0;
             if (base.finished && now - last > keepMs) continue;
-            const state = base.finished ? 'finished' : (now - last > idleMs ? 'idle' : 'running');
+            const state = supervisor.agentRunState(base.finished, last, now, idleMs); // one rule with the Supervisor's in-flight check
             rows.push(Object.assign({ key: `a:${s.id}:${base.agentId}`, sessionId: s.id, sessionTitle: s.title }, base, { state }));
         }
     }
@@ -922,17 +922,18 @@ const agentDirWatchers = new Map(); // folder -> fs.FSWatcher
 
 /** fs.watch on the subagents folder (or the session's own folder until that exists) of each running session; closed when no window listens. */
 function syncAgentWatches(sessions) {
-    const want = new Set();
+    const want = new Map(); // folder -> session id
     sessions.forEach((s) => {
         const sub = path.join(s.own, 'subagents');
-        want.add(fs.existsSync(sub) ? sub : (fs.existsSync(s.own) ? s.own : ''));
+        want.set(fs.existsSync(sub) ? sub : (fs.existsSync(s.own) ? s.own : ''), s.id);
     });
     want.delete('');
     for (const [dir, w] of agentDirWatchers) if (!want.has(dir)) { try { w.close(); } catch (_) { /* closed */ } agentDirWatchers.delete(dir); }
-    want.forEach((dir) => {
+    want.forEach((sid, dir) => {
         if (agentDirWatchers.has(dir)) return;
         try {
             const w = fs.watch(dir, { persistent: false }, () => {
+                supervisor.settleSoon(sid); // a held work item ends when its background agents do
                 if (!agentsFeed || !agentsFeed.size) { closeAgentWatches(); return; }
                 clearTimeout(agentsPoke);
                 agentsPoke = setTimeout(() => { if (agentsFeed) agentsFeed.poke(); }, 700);
