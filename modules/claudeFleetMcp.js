@@ -13,6 +13,9 @@
  *   claude_session_send     a follow-up or steering message into a running session (resume: true starts a
  *                           stopped one again on its account first)
  *   claude_session_stop     Esc in its terminal (ends the current turn; the session stays)
+ *   fleet_work_list / fleet_work_get / fleet_work_update / fleet_work_start / fleet_work_hold / fleet_work_cancel
+ *                           the Supervisor's work queue (Fleet's Work Queue): read it, edit a not-running item's
+ *                           brief, start (Waiting -> queued), hold, cancel
  *
  * Gates, as Plaud's (modules/plaudMcp.js): the key names sfapp_claude_fleet itself ('universal' does not
  * count) and is Xi's own (application name "Xi"); directorAppKeyScopes widens only the Xi key. Nothing here
@@ -42,11 +45,15 @@ function tool(name, description, properties, required) {
     };
 }
 
+const WORK_FILTERS = ['held', 'queued', 'running', 'sent_back', 'done', 'failed', 'cancelled', 'open', 'all'];
+const STATE_LABEL = { held: 'Waiting', queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Sent Back', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+const FILTER_STATES = { held: ['held'], queued: ['queued'], running: ['starting', 'running'], sent_back: ['waiting'], done: ['done'], failed: ['failed'], cancelled: ['cancelled'], open: ['held', 'queued', 'starting', 'running', 'waiting'] };
+
 const TOOLS = [
     tool('claude_fleet_status', 'Every Claude account: plan usage (current session / 5-hour and weekly percent used, resets), Remote Control (connected / stopped / error; own folder or the host\'s login), the sessions running on it (busy / idle, title, folder, link), and the coordination picture (agents, claims, open build gates). Read this before claude_dispatch.', {
         refresh: { type: 'boolean', description: 'Read usage now instead of the cached read (at most every 20 s)' }
     }),
-    tool('claude_dispatch', 'Hand work to the Supervisor: it becomes a work item that starts as a supervised Fleet session (now when there is a slot and an account with room, else queued) on an account with a model and effort, in a folder, with a first prompt. The Supervisor checks each of its turns against the request. It runs in Remote Control (Yukimi sees it on claude.ai/code) with the agent-coord MCP (claims, busy locks, build gates). Answers its session id, account and link. Give the prompt the whole task: the Yozora issue, the files, the acceptance check, and that it must coord_claim before editing and coord_build_request before any build.', {
+    tool('claude_dispatch', 'Hand work to the Supervisor: it becomes a work item that starts as a supervised Fleet session (Waiting until started; with startNow it starts when there is a slot and an account with room) on an account with a model and effort, in a folder, with a first prompt. The Supervisor checks each of its turns against the request. It runs in Remote Control (Yukimi sees it on claude.ai/code) with the agent-coord MCP (claims, busy locks, build gates). Answers its session id, account and link. Give the prompt the whole task: the Yozora issue, the files, the acceptance check, and that it must coord_claim before editing and coord_build_request before any build.', {
         prompt: str('The task, complete (it starts with nothing else)'),
         account: str('Account name or index from claude_fleet_status, or "auto" (default): the account with the most headroom'),
         model: str('Model alias (sonnet, opus, haiku, fable) or a full model id. Default sonnet (subagents-sonnet rule): pick another only for a named reason (undecided design, a bug Sonnet already failed on, a security review, Yukimi asked) and say it in modelReason'),
@@ -56,7 +63,7 @@ const TOOLS = [
         title: str('Session title shown in claude.ai/code (default: the prompt\'s first line)'),
         mode: { type: 'string', enum: ['bypassPermissions', 'acceptEdits', 'auto', 'default', 'plan'], description: 'Permission mode (default bypassPermissions, as Remote Control\'s)' },
         allowFull: { type: 'boolean', description: 'Allow an account at 95% or more of a limit' },
-        startNow: { type: 'boolean', description: 'Start it now when there is room (default true); false leaves it queued for Yukimi or the Supervisor to start' },
+        startNow: { type: 'boolean', description: 'Start it now when there is room. Default false: the item lands in Waiting (held) until Yukimi starts it, or you do with fleet_work_start when she asked or agreed' },
         engine: str('claude (default: the account\'s plan), tokenrouter (DeepSeek V4.1 Flash unless model names another), or custom:<provider id> (custom:sloproxy, custom:deepinfra, custom:deepseek): another model runs the same Claude Code session through the Director\'s bridge')
     }, ['prompt']),
     tool('claude_session_read', 'A Claude session: busy / idle, account, model, its latest messages, the files it edited and its claims (from agent-coord).', {
@@ -69,6 +76,36 @@ const TOOLS = [
         resume: { type: 'boolean', description: 'Start it again first when it is not running' },
         account: str('With resume: the account to run it on (default: auto)')
     }, ['session', 'text']),
+    tool('fleet_work_list', 'Fleet\'s work queue, compact rows: id, title, state (Waiting = held, Queued, Running, Sent Back, Done, Failed, Cancelled), source, account, model / effort, its Yozora issue (ref + url), created, note and the Supervisor\'s maintenance verdict on a Waiting item. Use fleet_work_get for one item in full.', {
+        state: { type: 'string', enum: [...WORK_FILTERS], description: 'held (Waiting), queued, running, sent_back, done, failed, cancelled, open (everything not ended) or all. Default open' },
+        search: str('Words that must appear in the title, brief or issue ref'),
+        limit: { type: 'number', description: 'Most rows (default 40, max 200)' }
+    }),
+    tool('fleet_work_get', 'One work item in full: the whole brief, stages, shape, issue, session id and link, its parts, the Supervisor\'s latest review of its session, and the maintenance check (verdict, evidence, suggested brief).', {
+        id: { type: 'number', description: 'The work item id' }
+    }, ['id']),
+    tool('fleet_work_update', 'Edit a Waiting, Queued, Failed or Cancelled work item (a running one: claude_session_send). A changed brief is commented on its Yozora issue. Does not start it.', {
+        id: { type: 'number', description: 'The work item id' },
+        title: str('New title'),
+        prompt: str('The whole new brief (replaces the old)'),
+        appendNote: str('Text added to the end of the brief'),
+        topology: { type: 'string', enum: ['direct', 'surfaces', 'planner', 'auto'], description: 'How it runs' },
+        stages: { type: 'object', description: '{ planner?: {engine?, model?, effort?}, workers?: {engine?, model?, effort?} }, merged over the item\'s' },
+        account: str('Account name or index, or "auto"'),
+        model: str('Model alias or id (Sonnet unless a named reason)'),
+        effort: { type: 'string', enum: EFFORTS, description: 'Reasoning effort' }
+    }, ['id']),
+    tool('fleet_work_start', 'Start Waiting (or failed / cancelled) items: they join the queue and start when a slot and an account with room are free (now: true, the default, ignores the slot limit). Start only what Yukimi asked for or clearly agreed to.', {
+        ids: { type: 'array', items: { type: 'number' }, description: 'Work item ids' },
+        now: { type: 'boolean', description: 'Past the slot limit too (default true); false waits for a slot' }
+    }, ['ids']),
+    tool('fleet_work_hold', 'Put queued, failed or cancelled items back to Waiting (held).', {
+        ids: { type: 'array', items: { type: 'number' }, description: 'Work item ids' }
+    }, ['ids']),
+    tool('fleet_work_cancel', 'Cancel Waiting, queued or failed items (a running one is ended from its session). Closes the item\'s Yozora issue, so cancel only what Yukimi asked for or what is clearly done / outdated.', {
+        ids: { type: 'array', items: { type: 'number' }, description: 'Work item ids' },
+        reason: str('Why (added to the item\'s note and its issue)')
+    }, ['ids']),
     tool('claude_session_stop', 'Stop a session\'s current turn (Esc in its terminal). The session stays and can be sent more.', {
         session: str('Session id (or its first 8 characters)')
     }, ['session'])
@@ -187,7 +224,73 @@ function resolveSession(ref) {
     throw new Error(`No session ${ref}: pass its full id`);
 }
 
+const issueRef = (w) => (w.issue ? `${w.issue.repo}#${w.issue.number}` : null);
+const checkBrief = (c) => (c ? { verdict: c.verdict, at: iso(c.at), note: c.note || '' } : null);
+
+function workRow(w) {
+    return {
+        id: w.id, title: w.title, state: STATE_LABEL[w.state] || w.state, source: w.source, account: w.account || 'auto',
+        model: [w.engine && w.engine !== 'claude' ? w.engine : '', w.model, w.effort].filter(Boolean).join(' / '),
+        issue: issueRef(w), issueUrl: w.issue ? w.issue.url : null, parent: w.parentId || undefined, created: iso(w.createdAt),
+        note: String(w.message || '').slice(0, 200), check: checkBrief(w.check)
+    };
+}
+
+function workDispatch(sup, name, input) {
+    if (name === 'fleet_work_list') {
+        const want = input.state ? String(input.state) : 'open';
+        if (!WORK_FILTERS.includes(want)) throw new Error(`state is one of ${WORK_FILTERS.join(', ')}`);
+        const q = String(input.search || '').trim().toLowerCase();
+        const lim = Math.max(1, Math.min(200, Number(input.limit) || 40));
+        let rows = sup.listWork({ limit: 300 });
+        if (want !== 'all') rows = rows.filter((w) => FILTER_STATES[want].includes(w.state));
+        if (q) rows = rows.filter((w) => `${w.title}\n${w.prompt}\n${issueRef(w) || ''}\n${w.message}`.toLowerCase().includes(q));
+        return { count: rows.length, work: rows.slice(0, lim).map(workRow) };
+    }
+    if (name === 'fleet_work_get') {
+        const w = sup.getWork(input.id);
+        if (!w) throw new Error(`No work item ${input.id}`);
+        const out = Object.assign(workRow(w), {
+            brief: sup.workPrompt(w.id), shape: w.topology, stages: w.stages, engine: w.engine, folder: w.cwd, sessionId: w.sessionId || null, link: w.link || null,
+            startedAt: iso(w.startedAt), endedAt: iso(w.endedAt), issueNote: w.issueNote,
+            parts: sup.listWork({ limit: 300 }).filter((x) => x.parentId === w.id).map((x) => ({ id: x.id, title: x.title, state: STATE_LABEL[x.state] || x.state, note: String(x.message || '').slice(0, 160) })),
+            check: w.check || null
+        });
+        if (w.sessionId) {
+            const rv = sup.listReviews({ limit: 200 }).find((r) => r.sessionId === w.sessionId);
+            out.lastReview = rv ? { at: iso(rv.at), verdict: rv.verdict, summary: rv.summary, missed: rv.missed } : null;
+        }
+        return out;
+    }
+    if (name === 'fleet_work_update') {
+        const f = {};
+        ['title', 'prompt', 'appendNote', 'topology', 'stages', 'account', 'model', 'effort'].forEach((k) => { if (input[k] !== undefined) f[k] = input[k]; });
+        const w = sup.updateWork(input.id, f, { by: 'Yozora' });
+        return { item: workRow(w), changed: Object.keys(f) };
+    }
+    const ids = (Array.isArray(input.ids) ? input.ids : [input.ids]).map(Number).filter((n) => Number.isFinite(n) && n > 0).slice(0, 50);
+    if (!ids.length) throw new Error('Which work items? Pass ids');
+    const results = ids.map((id) => {
+        try {
+            let w;
+            if (name === 'fleet_work_start') w = sup.startWork(id, { now: input.now !== false });
+            else if (name === 'fleet_work_hold') w = sup.holdWork(id);
+            else {
+                w = sup.cancelWork(id);
+                if (input.reason && String(input.reason).trim()) {
+                    const why = String(input.reason).trim().slice(0, 300);
+                    sup.setWork(id, { message: `Cancelled: ${why}` });
+                    if (w.issue) require('./fleetYozora').comment(w.issue.repo, w.issue.number, `**Fleet:** cancelled by Yozora: ${why}`).catch(() => {});
+                }
+            }
+            return { id, ok: true, state: STATE_LABEL[w.state] || w.state };
+        } catch (e) { return { id, ok: false, error: e.message }; }
+    });
+    return { results };
+}
+
 async function dispatch(gr, name, input) {
+    if (/^fleet_work_/.test(name)) return workDispatch(require('./agentSupervisor'), name, input);
     if (name === 'claude_fleet_status') return snapshot(gr, { refresh: input.refresh === true });
     if (name === 'claude_dispatch') {
         const prompt = String(input.prompt || '').trim();
@@ -206,7 +309,7 @@ async function dispatch(gr, name, input) {
         const sup = require('./agentSupervisor');
         let w = sup.enqueue({
             title: input.title, prompt, cwd, account: input.account && String(input.account).toLowerCase() !== 'auto' ? acc.index : null,
-            model: input.engine && input.engine !== 'claude' ? (input.model || undefined) : model, engine: input.engine, effort: input.effort || (acc.settings && acc.settings.defaultEffort) || undefined, startNow: input.startNow !== false, source: 'director'
+            model: input.engine && input.engine !== 'claude' ? (input.model || undefined) : model, engine: input.engine, effort: input.effort || (acc.settings && acc.settings.defaultEffort) || undefined, startNow: input.startNow === true, source: 'director'
         }, { gr });
         await sup.pumpWork(gr);
         w = sup.getWork(w.id);
@@ -277,5 +380,5 @@ async function handleFleetTool(gr, req, name, args) {
 
 module.exports = {
     SCOPE, ROLE, TOOLS, isFleetTool, isFleetOwner, scopesHaveFleet, handleFleetTool, pickForStart,
-    _test: { pickAccount, snapshot }
+    _test: { pickAccount, snapshot, dispatch }
 };

@@ -31,10 +31,10 @@ const REPO = path.join(__dirname, '..');
 const DAY = 24 * 3600 * 1000;
 const HOUR = 3600 * 1000;
 const KEEP_DAYS = 30;
-const CHECK_IDS = ['workfolders', 'worktrees', 'branches', 'prs', 'errors', 'disk', 'thermals', 'sessions'];
+const CHECK_IDS = ['workfolders', 'worktrees', 'branches', 'prs', 'errors', 'disk', 'thermals', 'sessions', 'waiting'];
 const CHECK_TITLES = {
     workfolders: 'Work folders and temp files', worktrees: 'Git worktrees', branches: 'Branches', prs: 'Pull requests',
-    errors: 'Server errors', disk: 'Disk usage', thermals: 'Thermals and health', sessions: 'Sessions and agents'
+    errors: 'Server errors', disk: 'Disk usage', thermals: 'Thermals and health', sessions: 'Sessions and agents', waiting: 'Waiting work'
 };
 const DEFAULTS = {
     enabled: true, time: '04:30', dryRun: false, catchUp: false,
@@ -772,9 +772,109 @@ async function checkSessions(ctx) {
     return makeCheck('sessions', findings.some((f) => f.level === 'warn') ? 'warn' : 'ok', `${idle} idle Fleet session(s) without work, ${marked} stale agent(s) marked gone${ctx.dryRun ? ' (dry run)' : ''}`, actions, findings);
 }
 
+// ---------------------------------------------------------------- Waiting work
+
+const WAIT_VERDICTS = ['valid', 'done', 'outdated', 'duplicate', 'unclear'];
+const WAIT_CAP = 25;
+const WAIT_BATCH = 4;
+const WAIT_RECHECK = 3 * DAY;
+const WAIT_SYSTEM = 'You check queued coding requests ("Waiting work") of a Dreamscape / StaticForge team before anyone starts them. For each item you get its brief, its Yozora issue (state, labels, last comments), recent git commits that mention the issue, which of the files its brief names still exist, and the other waiting items. Verdict per item: "valid" (still to do as written), "done" (the evidence shows it was already done: name the commits or comments), "outdated" (the code or plan moved on so the brief needs changing: give "suggestedBrief", the complete corrected brief), "duplicate" (another item or issue covers it: give "duplicateOf" as "#<item id>" or the issue ref), "unclear" (cannot tell). Judge only from the evidence given, never invent. Answer ONLY {"verdicts":[{"id":<item id>,"verdict":"valid|done|outdated|duplicate|unclear","evidence":"one or two sentences","suggestedBrief":"only for outdated","duplicateOf":"only for duplicate"}]}.';
+
+/** File-looking paths a brief names (folder/name.ext), at most 12. */
+function briefPaths(text) {
+    const out = new Set();
+    const re = /(?:^|[\s`'"(\[])((?:[\w.-]+\/)+[\w.-]+\.[A-Za-z0-9]{1,6})(?=[\s`'")\]:,;.]|$)/g;
+    let m;
+    while ((m = re.exec(String(text || ''))) && out.size < 12) { if (!/^https?:|\/\//.test(m[1]) && !m[1].startsWith('/')) out.add(m[1]); }
+    return [...out];
+}
+
+/** Held items are checked against their issue, git history and the files they name; the Supervisor's engine gives a verdict per item (stored on the item, never applied). */
+async function checkWaiting(ctx) {
+    const sp = ctx.sup || sup();
+    const yz = ctx.yz;
+    const g = ctx.gr || gResources;
+    const ask = ctx.askJson || ((sys, user) => sp.askJson(g, sys, user, 'maintenance-waiting'));
+    const actions = [];
+    const findings = [];
+    const held = sp.listWork({ limit: 300 }).filter((w) => w.state === 'held');
+    if (!held.length) return makeCheck('waiting', 'ok', 'Nothing is waiting', [], [], { counts: {} });
+    // oldest checked first (never checked before checked), the parts of split items are not checked on their own
+    held.sort((a, b) => ((a.check && a.check.at) || 0) - ((b.check && b.check.at) || 0) || a.id - b.id);
+    const picked = [];
+    let fetched = 0;
+    let skipped = 0;
+    let closed = 0;
+    for (const w of held) {
+        if (picked.length >= WAIT_CAP || fetched >= 80) break;
+        if (w.parentId) continue;
+        let issue = null; let comments = [];
+        if (w.issue && yz) {
+            fetched += 1;
+            try {
+                issue = await yz.call('GET', `/repos/${w.issue.repo}/issues/${w.issue.number}`);
+                if (issue && issue.state === 'closed') {
+                    closed += 1;
+                    if (ctx.dryRun) actions.push(`Would cancel #${w.id} "${w.title}": its issue ${w.issue.repo}#${w.issue.number} is closed`);
+                    else { try { sp.cancelWork(w.id); sp.setWork(w.id, { message: 'Its issue was closed on Yozora' }); actions.push(`Cancelled #${w.id} "${w.title}": its issue is closed`); } catch (e) { findings.push(F(`#${w.id}: ${e.message}`, 'warn')); } }
+                    continue;
+                }
+                const prev = w.check || null;
+                if (prev && prev.at && Date.now() - prev.at < WAIT_RECHECK && (!issue || prev.issueUpdatedAt === issue.updated_at)) { skipped += 1; continue; }
+                comments = ((await yz.call('GET', `/repos/${w.issue.repo}/issues/${w.issue.number}/comments`).catch(() => [])) || []).slice(-3);
+            } catch (e) { findings.push(F(`#${w.id}: its issue could not be read (${e.message})`)); }
+        } else if (w.check && w.check.at && Date.now() - w.check.at < WAIT_RECHECK) { skipped += 1; continue; }
+        picked.push({ w, issue, comments });
+    }
+    const evidence = [];
+    for (const p of picked) {
+        const w = p.w;
+        const root = w.cwd && fs.existsSync(w.cwd) ? w.cwd : REPO;
+        let commits = [];
+        if (w.issue) {
+            const r = await git(root, ['log', '--oneline', '-n', '5', '-E', '--grep', `#${w.issue.number}([^0-9]|$)`], { timeout: 15000 });
+            if (r.ok) commits = r.out.split('\n').map((l) => l.trim()).filter(Boolean);
+        }
+        const paths = briefPaths(sp.workPrompt(w.id));
+        const missing = paths.filter((x) => !fs.existsSync(path.join(root, x)));
+        p.ev = {
+            id: w.id, title: w.title, created: new Date(w.createdAt).toISOString().slice(0, 10), brief: sp.workPrompt(w.id).slice(0, 3000),
+            issue: w.issue ? { ref: `${w.issue.repo}#${w.issue.number}`, state: p.issue ? p.issue.state : 'unknown', labels: p.issue ? (p.issue.labels || []).map((l) => l.name) : [], lastComments: p.comments.map((c) => `${(c.user && c.user.login) || '?'}: ${String(c.body || '').slice(0, 400)}`) } : null,
+            commitsMentioningIssue: commits, filesNamed: paths.length, filesMissing: missing
+        };
+        p.commits = commits; p.missing = missing;
+    }
+    const others = held.slice(0, 60).map((w) => `#${w.id} ${w.title}${w.issue ? ` (${w.issue.repo}#${w.issue.number})` : ''}`);
+    const counts = {};
+    let asked = 0; let failedBatches = 0;
+    for (let i = 0; i < picked.length; i += WAIT_BATCH) {
+        const batch = picked.slice(i, i + WAIT_BATCH);
+        let out = null;
+        try { out = await ask(WAIT_SYSTEM, JSON.stringify({ items: batch.map((p) => p.ev), allWaitingItems: others })); asked += 1; } catch (e) { failedBatches += 1; findings.push(F(`The Supervisor's engine could not check #${batch.map((p) => p.w.id).join(', #')} (${e.message}); they are checked next run`, 'warn')); continue; }
+        const byId = new Map(((out && Array.isArray(out.verdicts)) ? out.verdicts : []).map((v) => [Number(v && v.id), v]));
+        for (const p of batch) {
+            const v = byId.get(p.w.id);
+            if (!v) { findings.push(F(`#${p.w.id}: the Supervisor gave no verdict; checked next run`)); continue; }
+            const verdict = WAIT_VERDICTS.includes(v.verdict) ? v.verdict : 'unclear';
+            const check = {
+                verdict, evidence: String(v.evidence || '').slice(0, 600), at: Date.now(), issueUpdatedAt: p.issue ? p.issue.updated_at || null : null,
+                suggestedBrief: verdict === 'outdated' ? String(v.suggestedBrief || '').slice(0, 20000) : '', duplicateOf: verdict === 'duplicate' ? String(v.duplicateOf || '').slice(0, 80) : '',
+                commits: p.commits, filesMissing: p.missing
+            };
+            counts[verdict] = (counts[verdict] || 0) + 1;
+            if (!ctx.dryRun) { try { sp.setWork(p.w.id, { check_json: JSON.stringify(check), message: `Check: ${verdict}${check.evidence ? ` - ${check.evidence.slice(0, 120)}` : ''}` }); } catch (e) { findings.push(F(`#${p.w.id}: the verdict could not be stored (${e.message})`, 'warn')); } }
+            if (verdict !== 'valid') findings.push(F(`#${p.w.id} "${p.w.title}": ${verdict}${check.duplicateOf ? ` of ${check.duplicateOf}` : ''} - ${check.evidence}`));
+        }
+    }
+    if (!ctx.dryRun && picked.length && !failedBatches) { try { sp.emitChange(); } catch (_) { /* no listeners */ } }
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    const parts = WAIT_VERDICTS.filter((k) => counts[k]).map((k) => `${counts[k]} ${k}`);
+    return makeCheck('waiting', failedBatches ? 'warn' : 'ok', `${held.length} waiting; ${total} checked${parts.length ? ` (${parts.join(', ')})` : ''}, ${skipped} checked recently${closed ? `, ${closed} with a closed issue` : ''}${ctx.dryRun ? ' (dry run: nothing written)' : ''}`, actions, findings, { counts });
+}
+
 // ---------------------------------------------------------------- the run
 
-const RUNNERS = { workfolders: checkWorkfolders, worktrees: checkWorktrees, branches: checkBranches, prs: checkPrs, errors: checkErrors, disk: checkDisk, thermals: checkThermals, sessions: checkSessions };
+const RUNNERS = { workfolders: checkWorkfolders, worktrees: checkWorktrees, branches: checkBranches, prs: checkPrs, errors: checkErrors, disk: checkDisk, thermals: checkThermals, sessions: checkSessions, waiting: checkWaiting };
 const RANK = { ok: 0, skipped: 0, warn: 1, fail: 2 };
 
 function overall(checks) { return checks.reduce((w, c) => (RANK[c.state] > RANK[w] ? c.state : w), 'ok'); }
@@ -888,5 +988,5 @@ function state(gr) {
 
 module.exports = {
     start, stop, bind, arm, settings, saveSettings, state, runNow, execute, getRun, history, lastRun, onChange, nextRunAt, CHECK_IDS, DEFAULTS,
-    _test: { parseWorktrees, groupErrors, normaliseLine, parseDf, parseDu, parseThermal, parseSensors, parseMeminfo, parseFailedUnits, checkWorktrees, checkBranches, checkErrors, checkPrs, checkWorkfolders, checkDisk, checkThermals, checkSessions, notify, storeRun, sh }
+    _test: { parseWorktrees, groupErrors, normaliseLine, parseDf, parseDu, parseThermal, parseSensors, parseMeminfo, parseFailedUnits, checkWorktrees, checkBranches, checkErrors, checkPrs, checkWorkfolders, checkDisk, checkThermals, checkSessions, checkWaiting, notify, storeRun, sh }
 };

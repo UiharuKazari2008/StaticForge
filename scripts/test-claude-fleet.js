@@ -197,6 +197,34 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
         assert.ok(!f.scopesHaveFleet(['universal']) && f.scopesHaveFleet(['sfapp_claude_fleet']));
     });
 
+    await test('Waiting work tools: list / get / update / start / hold / cancel over the queue, per-id results', async () => {
+        const yzSent = [];
+        require('../modules/fleetYozora')._setFetch(async (url, opts) => { yzSent.push({ method: (opts && opts.method) || 'GET', url: String(url), body: opts && opts.body ? JSON.parse(opts.body) : null }); return { ok: true, status: 200, text: async () => '{}' }; });
+        const sup = require('../modules/agentSupervisor');
+        const { dispatch } = require('../modules/claudeFleetMcp')._test;
+        const names = require('../modules/claudeFleetMcp').TOOLS.map((t) => t.name);
+        ['fleet_work_list', 'fleet_work_get', 'fleet_work_update', 'fleet_work_start', 'fleet_work_hold', 'fleet_work_cancel'].forEach((n) => assert.ok(names.includes(n), n));
+        const w = sup.enqueue({ title: 'Fix the gizmo', prompt: 'Fix modules/gizmo.js', source: 'yozora', issueFields: { repo: 'Org/Repo', number: 77, id: 5 } });
+        assert.strictEqual(w.state, 'held');
+        const list = await dispatch(null, 'fleet_work_list', { state: 'held', search: 'gizmo' });
+        assert.strictEqual(list.count, 1);
+        assert.deepStrictEqual([list.work[0].state, list.work[0].issue], ['Waiting', 'Org/Repo#77']);
+        assert.strictEqual((await dispatch(null, 'fleet_work_list', { state: 'running' })).count, 0);
+        const got = await dispatch(null, 'fleet_work_get', { id: w.id });
+        assert.strictEqual(got.brief, 'Fix modules/gizmo.js');
+        await assert.rejects(() => dispatch(null, 'fleet_work_get', { id: 9999 }), /No work item/);
+        const up = await dispatch(null, 'fleet_work_update', { id: w.id, appendNote: 'Also add a test.', effort: 'low' });
+        assert.deepStrictEqual(up.changed, ['appendNote', 'effort']);
+        assert.match((await dispatch(null, 'fleet_work_get', { id: w.id })).brief, /Also add a test\.$/);
+        await new Promise((r) => setTimeout(r, 50));
+        assert.ok(yzSent.some((c) => c.method === 'POST' && /issues\/77\/comments/.test(c.url) && /Brief updated by Yozora/.test(c.body.body)), JSON.stringify(yzSent.map((c) => c.url)));
+        const c = await dispatch(null, 'fleet_work_cancel', { ids: [w.id, 9999], reason: 'obsolete' });
+        assert.deepStrictEqual(c.results.map((r) => r.ok), [true, false]);
+        assert.strictEqual((await dispatch(null, 'fleet_work_get', { id: w.id })).state, 'Cancelled');
+        const h = await dispatch(null, 'fleet_work_hold', { ids: [w.id] });
+        assert.strictEqual(h.results[0].state, 'Waiting');
+    });
+
     store.close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');

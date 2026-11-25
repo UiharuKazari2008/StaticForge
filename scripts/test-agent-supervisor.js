@@ -483,6 +483,37 @@ sup._test.setFetch(async (url, opts) => {
         assert.ok(bad.error && bad.findings.some((f) => f.kind === 'missing-file'));
     });
 
+    await test('updateWork: only items that are not running; validated as enqueue; a changed brief is commented on its issue and clears the check', async () => {
+        const w = sup.enqueue({ title: 'Edit me', prompt: 'old brief', source: 'yozora', issueFields: { repo: 'DreamScape/StaticForge', number: 601 } });
+        const store = require('../modules/agentCoord/store');
+        store.open().prepare('UPDATE supervisor_work SET check_json = ? WHERE id = ?').run(JSON.stringify({ verdict: 'outdated', suggestedBrief: 'x', at: 1 }), w.id);
+        assert.strictEqual(sup.getWork(w.id).check.verdict, 'outdated');
+        const before = yzCalls.length;
+        const u = sup.updateWork(w.id, { prompt: 'new brief', title: '  New   title ', topology: 'direct', stages: { workers: { effort: 'low' } }, account: 'auto', effort: 'high' });
+        assert.strictEqual(u.title, 'New title');
+        assert.strictEqual(sup.workPrompt(w.id), 'new brief');
+        assert.strictEqual(u.topology, 'direct');
+        assert.strictEqual(u.stages.workers.effort, 'low');
+        assert.strictEqual(u.stages.workers.model, 'sonnet', 'a partial stage keeps the rest');
+        assert.strictEqual(u.check, null, 'the check was about the old brief');
+        await new Promise((r) => setTimeout(r, 50));
+        assert.ok(yzCalls.slice(before).some((c) => c.method === 'POST' && /issues\/601\/comments/.test(c.url) && /Brief updated by Yozora: new brief/.test(c.body.body)));
+        const n = yzCalls.length;
+        sup.updateWork(w.id, { model: 'haiku' });
+        await new Promise((r) => setTimeout(r, 30));
+        assert.strictEqual(yzCalls.length, n, 'no brief change, no comment');
+        assert.strictEqual(sup.updateWork(w.id, { appendNote: 'More.' }).prompt, 'new brief\n\nMore.');
+        assert.throws(() => sup.updateWork(w.id, { prompt: '  ' }), /needs a prompt/);
+        assert.throws(() => sup.updateWork(w.id, { prompt: 'x'.repeat(60001) }), /too long/);
+        assert.throws(() => sup.updateWork(w.id, { topology: 'weird' }), /topology is one of/);
+        assert.throws(() => sup.updateWork(w.id, { effort: 'ultra' }), /effort is/);
+        assert.throws(() => sup.updateWork(w.id, { title: ' ' }), /needs a title/);
+        assert.throws(() => sup.updateWork(99999, { title: 'x' }), /No such work item/);
+        store.open().prepare("UPDATE supervisor_work SET state = 'running' WHERE id = ?").run(w.id);
+        assert.throws(() => sup.updateWork(w.id, { title: 'x' }), /running/);
+        store.open().prepare("UPDATE supervisor_work SET state = 'held' WHERE id = ?").run(w.id);
+    });
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');

@@ -1624,6 +1624,13 @@
     }
 
     /** The picked request in the Work Queue's reading pane: what was asked (the brief), how it runs, its parts and its plan. */
+    const CHECK_TEXT = { valid: 'Valid', done: 'Done already', outdated: 'Outdated', duplicate: 'Duplicate', unclear: 'Unclear' };
+    /** The Supervisor's maintenance check of a Waiting item: verdict, evidence and, for an outdated one, the suggested brief. */
+    function workCheckHtml(w) {
+        const k = w.check;
+        if (!k || !k.verdict) return '';
+        return `<h4>Supervisor's check</h4><p><b>${esc(CHECK_TEXT[k.verdict] || k.verdict)}</b>${k.duplicateOf ? ` of ${esc(k.duplicateOf)}` : ''}${k.at ? ` <span class="mmc-hint">(${esc(when(k.at))})</span>` : ''}</p>${k.evidence ? `<div class="cd-read">${esc(k.evidence)}</div>` : ''}${k.suggestedBrief ? `<p class="mmc-hint">Suggested brief:</p><div class="cd-read">${esc(k.suggestedBrief)}</div><p><button type="button" class="btn-standard" data-act="work-use-brief" data-arg="${esc(w.id)}">Use Suggested Brief</button></p>` : ''}`;
+    }
     function workDetailHtml(c, idIn) {
         const ids = wsel();
         const id = idIn || (ids.length === 1 ? ids[0] : (c && c.sel && c.sel.startsWith('w:') ? c.sel.slice(2) : ''));
@@ -1655,7 +1662,7 @@
             ['Queued', esc(when(w.createdAt))],
             ['Note', esc([w.message, w.issueNote].filter(Boolean).join(' - '))]
         ])}${links ? `<p>${links}</p>` : ''}
-            <h4>Brief</h4><div class="cd-read">${esc(w.prompt || '')}</div>
+            ${workCheckHtml(w)}<h4>Brief</h4><div class="cd-read">${esc(w.prompt || '')}</div>
             ${parts.length ? `<h4>Parts (${parts.length})</h4><table class="cd-table"><thead><tr><th>Part</th><th class="cd-w80">State</th></tr></thead><tbody>${parts.map((x) => `<tr><td>${esc(x.title || x.id)}</td><td>${esc(workState(x))}</td></tr>`).join('')}</tbody></table>` : ''}
             <h4>Plan</h4>${plan}</div>`;
     }
@@ -1674,7 +1681,7 @@
             key: `w:${w.id}`,
             icon: w.sessionId && holdOf(w.sessionId) ? `${VI}/warning-16.png` : workIcon(w.state),
             cls: w.state === 'running' || w.state === 'starting' ? 'cd-live' : (w.state === 'failed' ? 'cd-stale' : ''),
-            data: { id: w.id, title: w.title || String(w.id), state: workState(w), shape: shapeText(w), source: WORK_SOURCE[w.source] || w.source || '', account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), model: [w.engine && w.engine !== 'claude' ? engineName(w.engine) : '', w.model, w.effort].filter(Boolean).join(' / '), session: w.sessionId ? shortId(w.sessionId) : '', issue: issueText(w), at: w.createdAt || 0, message: [w.message, w.issueNote].filter(Boolean).join(' - ') }
+            data: { id: w.id, title: w.title || String(w.id), state: workState(w), shape: shapeText(w), source: WORK_SOURCE[w.source] || w.source || '', account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), model: [w.engine && w.engine !== 'claude' ? engineName(w.engine) : '', w.model, w.effort].filter(Boolean).join(' / '), session: w.sessionId ? shortId(w.sessionId) : '', issue: issueText(w), check: w.check && w.check.verdict ? CHECK_TEXT[w.check.verdict] || w.check.verdict : '', at: w.createdAt || 0, message: [w.message, w.issueNote].filter(Boolean).join(' - ') }
         }));
         const lv = c.listView([
             { t: 'Request', w: 260, key: 'title', text: (d) => d.title, html: (d) => `<input type="checkbox" class="cd-wck" tabindex="-1" aria-label="Pick this request"${S.wsel.has(String(d.id)) ? ' checked' : ''}><i>${esc(d.title)}</i>` },
@@ -1685,6 +1692,7 @@
             { t: 'Engine / Model / Effort', w: 150, key: 'model', text: (d) => d.model },
             { t: 'Session', w: 70, key: 'session', text: (d) => d.session },
             { t: 'Issue', w: 110, key: 'issue', text: (d) => d.issue },
+            { t: 'Check', w: 80, key: 'check', text: (d) => d.check },
             { t: 'Queued', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => Number(d.at) || Date.parse(d.at) || 0 },
             { t: 'Note', w: 220, key: 'message', text: (d) => d.message }
         ], rows, { sortId: `cd-work-${scope}`, sort: { key: 'at', dir: -1 }, empty: scope === 'held' ? 'Nothing is waiting for you. A new or imported request waits here until you start it.' : scope === 'active' ? 'No work item is running.' : scope === 'pending' ? 'No work item is waiting.' : 'The queue is empty. A request from New Session..., Plaud or an agent waits here until an account has room.', fit: true });
@@ -3937,6 +3945,11 @@
                 openChat(c, ssid);
                 const ch = chatOf(ssid);
                 if (ch) { ch.view = 'detail'; await loadDetail(ssid); if (ch.dt) { ch.dt.agentSel = aid; void loadAgentPage(ssid, aid, false); } c.render(); }
+                return true;
+            }
+            case 'work-use-brief': {
+                const w = workOf(workSel(c, arg));
+                if (w && w.check && w.check.suggestedBrief) await supAct(c, { action: 'work_update', id: w.id, prompt: w.check.suggestedBrief }, 'Updating the brief...');
                 return true;
             }
             case 'work-start': {

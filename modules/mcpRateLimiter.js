@@ -235,6 +235,12 @@ const TOOL_RATE_GROUPS = {
     claude_session_read: 'search',
     claude_session_send: 'write',
     claude_session_stop: 'write',
+    fleet_work_list: 'search',
+    fleet_work_get: 'search',
+    fleet_work_update: 'write',
+    fleet_work_start: 'write',
+    fleet_work_hold: 'write',
+    fleet_work_cancel: 'write',
     // Plaud (modules/plaudMcp.js): each call is one or two requests to Plaud
     plaud_list_recordings: 'search',
     plaud_get_recording: 'search',

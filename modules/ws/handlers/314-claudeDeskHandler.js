@@ -249,6 +249,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     const workIds = () => (Array.isArray(message.ids) ? message.ids : [message.id]).filter((x) => x != null).slice(0, 200);
     if (action === 'work_start') { const errs = []; workIds().forEach((i) => { try { supervisor.startWork(i, { now: message.now !== false }); } catch (e) { errs.push(`#${i}: ${e.message}`); } }); return Object.assign(await supervisorStatus(gr), errs.length ? { errors: errs } : {}); }
     if (action === 'work_hold') { const errs = []; workIds().forEach((i) => { try { supervisor.holdWork(i); } catch (e) { errs.push(`#${i}: ${e.message}`); } }); return Object.assign(await supervisorStatus(gr), errs.length ? { errors: errs } : {}); }
+    if (action === 'work_update') { supervisor.updateWork(message.id, { prompt: message.prompt }, { by: 'Yukimi (Fleet)' }); return supervisorStatus(gr); }
     if (action === 'work_cancel') { supervisor.cancelWork(message.id); return supervisorStatus(gr); }
     if (action === 'lock_remove') { supervisor.removeLockFile(String(message.root || ''), String(message.file || '')); poke(); return supervisorStatus(gr); }
     if (action === 'artifact_clean') { const r = supervisor.cleanArtifact(message.id); return Object.assign(await supervisorStatus(gr), { cleaned: r }); }
@@ -262,7 +263,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'maintenance_status') return { maintenance: maintenance.state(gr), report: message.runId ? maintenance.getRun(message.runId) : undefined };
     if (action === 'maintenance_run') { const r = maintenance.runNow({ trigger: 'manual', gr, dryRun: message.dryRun === true ? true : undefined }); return { maintenance: maintenance.state(gr), started: r.started }; }
     if (action === 'maintenance_save') { await maintenance.saveSettings(gr, message.settings || {}); return { maintenance: maintenance.state(gr) }; }
-    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, pause, resume, enqueue, work_start, work_hold, work_cancel, lock_remove, artifact_clean or artifact_forget');
+    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, pause, resume, enqueue, work_start, work_hold, work_update, work_cancel, lock_remove, artifact_clean or artifact_forget');
 });
 
 // ---------------------------------------------------------------- transcript watches (one per socket)

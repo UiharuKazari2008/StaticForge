@@ -192,6 +192,57 @@ const S = (over) => m.settings(null, Object.assign({ worktreeMinAgeDays: 0, bran
     assert.ok(pr.findings.some((f) => /#8.*not mergeable/.test(f.text)) && pr.findings.some((f) => /#9.*behind/.test(f.text)));
     ok('PRs: only the mergeable, up-to-date one is queued (never merged by the run)');
 
+    // ---- Waiting work: verdicts from a stubbed engine, a fake Yozora and a fake queue
+    const items = new Map();
+    const mk = (id, extra) => items.set(id, Object.assign({ id, title: `Item ${id}`, state: 'held', cwd: repo, createdAt: Date.now() - id * 1000, prompt: `Edit a.txt and gone/missing.js (item ${id})`, issue: { repo: 'Org/Repo', number: 100 + id }, check: null }, extra || {}));
+    [1, 2, 3, 4, 5, 6].forEach((i) => mk(i));
+    mk(7, { check: { verdict: 'valid', at: Date.now() - 3600 * 1000, issueUpdatedAt: 'same' } }); // checked an hour ago, issue unchanged: skipped
+    mk(8, { check: { verdict: 'valid', at: Date.now() - 3600 * 1000, issueUpdatedAt: 'old' } }); // issue changed since: checked again
+    mk(9, { state: 'running' });
+    const stored = []; const cancelled = []; const asks = [];
+    const wsup = {
+        listWork: () => [...items.values()], workPrompt: (id) => items.get(id).prompt,
+        setWork: (id, f) => { stored.push([id, f]); },
+        cancelWork: (id) => { cancelled.push(id); return items.get(id); }, emitChange: () => {}
+    };
+    const wyz = {
+        call: async (method, url) => {
+            const mm = /issues\/(\d+)(\/comments)?$/.exec(url);
+            const n = Number(mm[1]) - 100;
+            if (mm[2]) return [{ user: { login: 'u' }, body: 'c1' }, { user: { login: 'u' }, body: 'c2' }];
+            return { state: n === 6 ? 'closed' : 'open', labels: [{ name: 'fleet' }], updated_at: n === 7 ? 'same' : 'new' };
+        }
+    };
+    const verdicts = { 1: 'valid', 2: 'done', 3: 'outdated', 4: 'duplicate', 5: 'bogus', 8: 'valid' };
+    const wctx = (over) => Object.assign({ settings: S(), dryRun: false, sup: wsup, yz: wyz, askJson: async (sys, user) => {
+        const p = JSON.parse(user); asks.push(p);
+        return { verdicts: p.items.map((it) => ({ id: it.id, verdict: verdicts[it.id], evidence: `evidence ${it.id}`, suggestedBrief: it.id === 3 ? 'The new brief' : '', duplicateOf: it.id === 4 ? '#1' : '' })) };
+    } }, over || {});
+    const dryW = await T.checkWaiting(wctx({ dryRun: true }));
+    assert.ok(!stored.length && !cancelled.length, 'a dry run writes nothing');
+    assert.ok(dryW.actions.some((a) => /Would cancel #6/.test(a)));
+    const wr2 = await T.checkWaiting(wctx());
+    assert.strictEqual(wr2.id, 'waiting');
+    assert.strictEqual(wr2.title, 'Waiting work');
+    assert.deepStrictEqual(cancelled, [6], 'a closed issue cancels its held item');
+    const askedIds = [].concat(...asks.slice(-2).map((a) => a.items.map((i) => i.id))).sort();
+    assert.deepStrictEqual(askedIds, [1, 2, 3, 4, 5, 8], 'running, closed and recently checked items are not asked');
+    assert.ok(asks.every((a) => a.items.length <= 4), 'batched');
+    const st = new Map(stored.filter(([, f]) => f.check_json).map(([id, f]) => [id, JSON.parse(f.check_json)]));
+    assert.strictEqual(st.get(3).verdict, 'outdated');
+    assert.strictEqual(st.get(3).suggestedBrief, 'The new brief');
+    assert.strictEqual(st.get(4).duplicateOf, '#1');
+    assert.strictEqual(st.get(5).verdict, 'unclear', 'an unknown verdict becomes unclear');
+    assert.deepStrictEqual(st.get(1).filesMissing, ['gone/missing.js']);
+    assert.ok(stored.every(([, f]) => !('prompt' in f)), 'the brief is never rewritten');
+    assert.ok(/1 valid.*1 done|done.*outdated/.test(wr2.summary) && wr2.counts.outdated === 1, wr2.summary);
+    // an engine failure stores nothing and warns
+    stored.length = 0;
+    const bad = await T.checkWaiting(wctx({ askJson: async () => { throw new Error('boom'); } }));
+    assert.strictEqual(bad.state, 'warn');
+    assert.ok(!stored.some(([, f]) => f.check_json));
+    ok('waiting work: verdicts stored on the items, closed issue cancels, recent / running skipped, dry run and engine failure write nothing');
+
     // ---- disk and thermal parsers
     const df = T.parseDf('Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/nvme0n1p2 462217072 274742432 163921824 63% /\ntmpfs 7124736 2768148 4356588 39% /tmp\n');
     assert.deepStrictEqual(df.map((d) => [d.mount, d.pct]), [['/', 63], ['/tmp', 39]]);
@@ -218,7 +269,7 @@ const S = (over) => m.settings(null, Object.assign({ worktreeMinAgeDays: 0, bran
     // ---- a whole run on the fixtures stores its report; the history keeps it; a disabled check is skipped
     const rep = await m.execute({ trigger: 'manual', dryRun: true, settings: S({ checks: { prs: false, thermals: false, disk: false, sessions: false, errors: false, workfolders: false } }), ctx: { repos: [repo], liveCwds: [], yozoraRepos: [], yz: null, sup: { artifactStatus: () => [], listWork: () => [] }, liveSessions: [] } });
     assert.ok(rep.id > 0);
-    assert.strictEqual(rep.checks.length, 8);
+    assert.strictEqual(rep.checks.length, 9);
     assert.strictEqual(rep.checks.find((c) => c.id === 'prs').state, 'skipped');
     assert.strictEqual(m.lastRun().id, rep.id);
     assert.strictEqual(m.history()[0].id, rep.id);

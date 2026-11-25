@@ -390,7 +390,7 @@ function db() {
         `);
         const wcols = new Set(d.prepare('PRAGMA table_info(supervisor_work)').all().map((c) => c.name));
         if (!wcols.has('engine')) d.exec("ALTER TABLE supervisor_work ADD COLUMN engine TEXT NOT NULL DEFAULT 'claude'");
-        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
+        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
         const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
         if (!cols.has('supervised')) d.exec('ALTER TABLE supervisor_state ADD COLUMN supervised INTEGER NOT NULL DEFAULT 0');
         db.ready = d;
@@ -597,7 +597,8 @@ function rowWork(r) {
         createdAt: r.created_at, startedAt: r.started_at, endedAt: r.ended_at, prompt: String(r.prompt || '').slice(0, 2000),
         topology: r.topology || 'planner', stages: (() => { try { return JSON.parse(r.stages || '{}'); } catch (_) { return {}; } })(), parentId: r.parent_id || null,
         issue: r.issue_repo && r.issue_number ? { repo: r.issue_repo, number: r.issue_number, url: yz().issueUrl(r.issue_repo, r.issue_number) } : null,
-        issueNote: r.issue_note || ''
+        issueNote: r.issue_note || '',
+        check: (() => { try { return r.check_json ? JSON.parse(r.check_json) : null; } catch (_) { return null; } })()
     };
 }
 function listWork(opts = {}) {
@@ -606,6 +607,8 @@ function listWork(opts = {}) {
 }
 const getWork = (id) => rowWork(db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id)));
 const yz = () => require('./fleetYozora');
+/** The item's whole brief (rowWork cuts it at 2000 characters for lists). */
+function workPrompt(id) { const r = db().prepare('SELECT prompt FROM supervisor_work WHERE id = ?').get(Number(id)); return r ? String(r.prompt || '') : ''; }
 
 function setWork(id, fields) {
     const before = fields.state ? db().prepare('SELECT state FROM supervisor_work WHERE id = ?').get(Number(id)) : null;
@@ -919,6 +922,56 @@ function startWork(id, opts = {}) {
     } else throw new Error(`It is ${w.state}`);
     emit({ work: getWork(w.id) });
     pumpWork().catch(() => {});
+    return getWork(w.id);
+}
+
+const EDITABLE = ['held', 'queued', 'failed', 'cancelled'];
+/**
+ * Edits an item that is not running (held, queued, failed, cancelled), validated as enqueue is. fields: { title, prompt,
+ * appendNote (added to the end of the brief), topology, stages ({planner,workers} merged over the item's), account
+ * (index / name / 'auto'), model, effort, engine }. A changed brief clears the Supervisor's maintenance check (it was about
+ * the old one) and is commented on the item's Yozora issue ("Brief updated by <opts.by || 'Yozora'>: ...").
+ */
+function updateWork(id, fields, opts = {}) {
+    const w = getWork(id);
+    if (!w) throw new Error('No such work item');
+    if (!EDITABLE.includes(w.state)) throw new Error(`It is ${w.state}: only a waiting, queued, failed or cancelled item is edited here (steer a running one through its session)`);
+    const f = fields && typeof fields === 'object' ? fields : {};
+    const set = {};
+    let prompt = f.prompt !== undefined ? String(f.prompt || '').trim() : workPrompt(w.id);
+    if (!prompt) throw new Error('A work item needs a prompt');
+    if (f.appendNote !== undefined && String(f.appendNote).trim()) prompt = `${prompt}\n\n${String(f.appendNote).trim()}`;
+    if (prompt.length > 60000) throw new Error('That request is too long (60,000 characters at most): put the detail in a file and point to it');
+    const briefChanged = prompt !== workPrompt(w.id);
+    if (briefChanged) { set.prompt = prompt; set.check_json = null; }
+    if (f.title !== undefined) {
+        const t = String(f.title || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        if (!t) throw new Error('A work item needs a title');
+        set.title = t;
+    }
+    if (f.topology !== undefined) {
+        if (!TOPOLOGIES.includes(f.topology)) throw new Error(`topology is one of ${TOPOLOGIES.join(', ')}`);
+        set.topology = f.topology;
+    }
+    if (f.stages !== undefined) {
+        const cur = w.stages || {};
+        const g = f.stages && typeof f.stages === 'object' ? f.stages : {};
+        set.stages = JSON.stringify(cleanStages({ planner: Object.assign({}, cur.planner, g.planner), workers: Object.assign({}, cur.workers, g.workers) }));
+    }
+    if (f.account !== undefined) set.account = f.account === null || String(f.account).trim() === '' || String(f.account).toLowerCase() === 'auto' ? null : String(f.account);
+    if (f.model !== undefined) set.model = String(f.model || '').slice(0, 80) || null;
+    if (f.effort !== undefined) {
+        if (f.effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(f.effort)) throw new Error('effort is low, medium, high, xhigh or max');
+        set.effort = f.effort || null;
+    }
+    if (f.engine !== undefined) set.engine = f.engine && f.engine !== 'claude' ? String(f.engine).slice(0, 60) : 'claude';
+    if (!Object.keys(set).length) return w;
+    setWork(w.id, set);
+    if (briefChanged && w.issue) {
+        const note = f.appendNote && String(f.appendNote).trim() ? `Note added: ${String(f.appendNote).trim()}` : prompt;
+        yz().comment(w.issue.repo, w.issue.number, `**Fleet:** Brief updated by ${opts.by || 'Yozora'}: ${note.length > 1500 ? `${note.slice(0, 1500)}...` : note}`).catch((e) => noteIssue(w.id, `Brief comment failed: ${e.message}`));
+    }
+    emit({ work: getWork(w.id) });
     return getWork(w.id);
 }
 
@@ -1627,7 +1680,7 @@ function dismissRuleFinding(findingId) {
 
 module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, askJson, callEngine, spend, engineChain, TOPOLOGIES, cleanStages, decideTopology, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, askJson, callEngine, spend, engineChain, TOPOLOGIES, cleanStages, decideTopology, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, queueReview, queue }
 };
