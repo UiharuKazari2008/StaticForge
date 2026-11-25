@@ -2436,6 +2436,11 @@
      * in the left pane (back, last touch there) turns the pane into Today. Both panes are ordinary .wm-page elements of
      * the shell (CSS html[data-wm-split]); the left page runs its show() / hide() as a page does. One title and soft key
      * bar belong to the program on the right. Android programs next to Melaton: needs DSApp (adjacent launch), #870.
+     *
+     * Unset is 'none' (Yukimi, Nov 25 2026: "we should not have added it so fully fleshed out"): a Plaud wish in the
+     * plan became a whole second pane on every unfold, on her phone too, and it surprised her - a feature nobody asked
+     * for twice, turned on by default. The split is now opt-in: an unfolded program fills the inner screen exactly as
+     * it does on the cover screen unless the setting asks for a left pane.
      */
     let splitShown = null; // the app id in the left pane now
     let splitLeftNow = null; // this window's choice for the left pane (Start -> Today after Start was closed)
@@ -2444,7 +2449,7 @@
     function splitPref() {
         let v = null;
         try { v = localStorage.getItem('wmSplitLeft'); } catch (_) { /* storage off */ }
-        return v === 'today' || v === 'none' ? v : 'start';
+        return v === 'today' || v === 'start' ? v : 'none';
     }
     function splitWanted(id) {
         const app = id && apps.get(id);
