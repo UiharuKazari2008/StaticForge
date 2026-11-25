@@ -623,7 +623,7 @@ async function review(sessionId, trigger, opts = {}) {
     const gr = opts.gr || gResources;
     const s = settings(gr);
     // an unsupervised session is reviewed only when it asks (coord_supervisor_check) or someone re-checks it
-    if (trigger === 'turn-end' && s.reviewScope !== 'all' && !isSupervised(sessionId)) return null;
+    if (trigger === 'turn-end' && s.reviewScope !== 'all' && !reviewable(sessionId, s)) return null;
     const file = await transcriptFile(sessionId);
     if (!file) throw new Error('No transcript for that session');
     const d = db();
@@ -831,6 +831,15 @@ function markSupervised(sessionId) {
     if (!SESSION_ID_RE.test(String(sessionId || ''))) return;
     db().prepare(`INSERT INTO supervisor_state (session_id, status, supervised, updated_at) VALUES (?, 'seen', 1, ?)
         ON CONFLICT(session_id) DO UPDATE SET supervised = 1`).run(sessionId, Date.now());
+}
+/**
+ * Reviewed at turn end and its task list kept: supervised sessions and the Manager Session (Yukimi, Nov 24 2026: "no one
+ * is checking off these asks"). The Manager Session is never steered: its notes stay in the inbox (deliver uses isSupervised).
+ */
+function reviewable(sessionId, s) {
+    if (isSupervised(sessionId)) return true;
+    const set = s || settings();
+    return !!(set.managerSessionId && set.managerSessionId === String(sessionId));
 }
 function isSupervised(sessionId) {
     try { const r = db().prepare('SELECT supervised FROM supervisor_state WHERE session_id = ?').get(String(sessionId)); return !!(r && r.supervised); } catch (_) { return false; }
@@ -1910,7 +1919,7 @@ function scan(first) {
         // and the next, or while a queued message lands, is still in its turn)
         if (!first && prev === 'busy' && now !== 'busy' && settings().enabled) settleThenReview(r.sessionId);
         // a supervised session's new messages become its asks (cheap: the sync stats the transcript first); the others are read while a Fleet window watches them
-        if (settings().enabled && isSupervised(r.sessionId)) sessionTasks().poke(r.sessionId);
+        if (settings().enabled && reviewable(r.sessionId)) sessionTasks().poke(r.sessionId);
         if (!first && prev === undefined && now === 'busy') markPartial(r.sessionId);
     });
     [...statusBySession.keys()].forEach((id) => { if (!seen.has(id)) statusBySession.delete(id); });
