@@ -5,8 +5,8 @@
  *
  *   Queue     (the first tab, #1198) the work queue, as it is right now: a strip of counts (Running, Input, Waiting,
  *             Unsupervised working, usage flags) and a Dashboard row, then the sections Input Required, Active (Running /
- *             Sent Back), Waiting (held for you), Pending (queued), Unsupervised (live sessions no request owns) and
- *             Finished today (folded). Every row is one line: state dot, title, where it is up to ("Running 3/7").
+ *             Sent Back), Unsupervised (live sessions no request owns), Waiting (held for you; the first 8, then
+ *             "Show all"), Pending (queued) and Finished today (folded). Every row is one line: state dot, title, where it is up to ("Running 3/7").
  *             Fed by the claude_fleet_phone status feed (status_subscribe while the tab is shown and the screen is on;
  *             pushes only, no timer). A row opens its page: state, where its workflow is (doing, tasks, parts), account /
  *             model, issue (opens in Alchemy), the Supervisor's note and the session's last messages
@@ -100,6 +100,8 @@
     let qsel = null; // 'w:<work id>' or 'u:<session id>' while the detail page is up
     let qScroll = 0; // the list's scroll position while a page above it is up
     let qFin = false; // Finished today unfolded
+    let qAllHeld = false; // Waiting shows its first Q_HELD_SHOWN rows until unfolded (53 waiting buried the live sessions)
+    const Q_HELD_SHOWN = 8;
     const qdraft = {}; // typed answers ('a:<id>:<n>') and replies ('r:<session>'), kept across pushes
     let qtr = { sid: '', messages: [], state: 'idle', error: '' }; // the open page's last messages
 
@@ -1151,9 +1153,11 @@
 
     function qStrip() {
         const c = qCounts();
-        const loose = qLoose().filter((u) => u.status === 'busy').length;
+        const looseAll = qLoose(); // the chip counts what the Unsupervised section lists (the working ones in its tooltip)
+        const loose = looseAll.length;
+        const looseBusy = looseAll.filter((u) => u.status === 'busy').length;
         return `<div class="wca-chips" role="status">${qChip(c.running, 'Running', 'Work running now (starting, running, sent back)')}${qChip(c.input, 'Input', 'Work waiting for your answer', c.input > 0)}`
-            + `${qChip(c.held, 'Waiting', 'Work waiting for you to start it')}${qChip(loose, 'Unsup.', 'Unsupervised sessions working now')}${c.flags > 0 ? qChip(c.flags, 'Flags', 'Heavy usage flags', true) : ''}</div>`
+            + `${qChip(c.held, 'Waiting', 'Work waiting for you to start it')}${qChip(loose, 'Unsup.', `Unsupervised sessions: ${loose}, ${looseBusy} working now`)}${c.flags > 0 ? qChip(c.flags, 'Flags', 'Heavy usage flags', true) : ''}</div>`
             + '<div class="wca-q-row wca-q-link" role="button" data-wca-q="dashboard" title="Dashboard: usage, counts and Supervisor calls"><span class="wca-q-go">&gt;</span><span class="wca-q-title">Dashboard</span><span class="wca-q-state wca-muted">Usage, counts, calls</span></div>';
     }
 
@@ -1175,12 +1179,19 @@
         } else {
             if (input.length) parts.push(qSection('Input Required', input));
             parts.push(qSection('Active', active, active.length ? '' : '<div class="wac-note">Nothing is running.</div>'));
-            if (held.length) parts.push(qSection('Waiting', held));
-            if (pending.length) parts.push(qSection('Pending', pending));
+            // live sessions next to the running work: they are what can be answered now
             if (loose.length) parts.push(qSection('Unsupervised', loose));
+            const fold = (act, open, label) => `<div class="wca-q-row wca-q-link" role="button" data-wca-q="${act}" title="${esc(label)}"><span class="wca-q-go">${open ? '-' : '+'}</span><span class="wca-q-title">${esc(label)}</span></div>`;
+            if (held.length) {
+                const cut = !qAllHeld && held.length > Q_HELD_SHOWN;
+                const shown = cut ? held.slice(0, Q_HELD_SHOWN) : held;
+                const more = held.length > Q_HELD_SHOWN ? fold('allheld', qAllHeld, qAllHeld ? 'Show fewer' : `Show all ${held.length} waiting`) : '';
+                parts.push(qSection('Waiting', held, shown.map(([it, child]) => qRow(it, child)).join('') + more));
+            }
+            if (pending.length) parts.push(qSection('Pending', pending));
             if (done.length) {
-                const fold = (label) => `<div class="wca-q-row wca-q-link" role="button" data-wca-q="finished" title="${esc(label)}"><span class="wca-q-go">${qFin ? '-' : '+'}</span><span class="wca-q-title">${esc(label)}</span></div>`;
-                parts.push(qSection('Finished today', done, qFin ? done.map(([it, child]) => qRow(it, child)).join('') + fold('Hide finished') : fold(`Show ${done.length} finished`)));
+                const foldDone = (label) => `<div class="wca-q-row wca-q-link" role="button" data-wca-q="finished" title="${esc(label)}"><span class="wca-q-go">${qFin ? '-' : '+'}</span><span class="wca-q-title">${esc(label)}</span></div>`;
+                parts.push(qSection('Finished today', done, qFin ? done.map(([it, child]) => qRow(it, child)).join('') + foldDone('Hide finished') : foldDone(`Show ${done.length} finished`)));
             }
         }
         if (qErr) parts.push(`<div class="wac-note">${esc(qErr)}</div>`);
@@ -1219,7 +1230,11 @@
         const rows = [];
         const parent = it.kind === 'work' && hasId(d.parentId) ? qWork().find((w) => String(w.id) === String(d.parentId)) : null;
         rows.push(kvRow('State', esc(qStateText(it))));
-        if (d.held) rows.push(kvRow(askedHold(d.held), esc(d.held.reason || 'Paused')));
+        if (d.held) {
+            // a collision reason names both sessions and every file: the gist here, the whole text in the tooltip
+            const why = String(d.held.reason || 'Paused');
+            rows.push(kvRow(askedHold(d.held), why.length > 100 ? `<span title="${esc(why)}">${esc(`${why.slice(0, 99)}...`)}</span>` : esc(why)));
+        }
         rows.push(kvRow('Doing', d.doing ? esc(d.doing) : ''));
         if (d.tasks && d.tasks.total) rows.push(kvRow('Tasks', `${esc(d.tasks.done)} of ${esc(d.tasks.total)} done`));
         if (it.kind === 'work') {
@@ -1490,7 +1505,7 @@
         const a = el.dataset.wcaQ;
         if (a === 'open') qGo('detail', el.dataset.key);
         else if (a === 'dashboard') qGo('dashboard');
-        else if (a === 'finished') { qFin = !qFin; render(); } else if (a === 'issue') openLink(el.dataset.url);
+        else if (a === 'finished') { qFin = !qFin; render(); } else if (a === 'allheld') { qAllHeld = !qAllHeld; render(); } else if (a === 'issue') openLink(el.dataset.url);
         else if (a === 'answer') void answerItem(qItem(qsel));
         else if (a === 'reply') void replyItem(qItem(qsel));
     }
