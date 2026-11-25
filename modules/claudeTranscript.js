@@ -19,6 +19,7 @@
  */
 
 const fs = require('fs');
+const path = require('path');
 
 const CHUNK = 512 * 1024;
 const MAX_SCAN = 24 * 1024 * 1024; // a page never reads more than this far back
@@ -131,6 +132,18 @@ function messagesOf(o, at) {
 // A fold row is { kind: 'fold', of: 'thinking' | 'edit', at, part, title, size }; readItem(file, at, part)
 // answers its full content. Without opts.view the output is the old one (Supervisor, Yozora's tools).
 
+const SEND_FILE_TOOL = 'SendUserFile';
+const SEND_FILE_MAX = 20;
+
+/** The absolute file paths of a SendUserFile input (relative ones resolve against the line's cwd). */
+function sentFilesOf(input, cwd) {
+    const list = input && Array.isArray(input.files) ? input.files : (input && typeof input.file === 'string' ? [input.file] : []);
+    return list.filter((f) => typeof f === 'string' && f.trim() && f.length < 1024 && !f.includes('\0'))
+        .slice(0, SEND_FILE_MAX)
+        .map((f) => (path.isAbsolute(f) ? path.normalize(f) : (typeof cwd === 'string' && path.isAbsolute(cwd) ? path.resolve(cwd, f) : '')))
+        .filter(Boolean);
+}
+
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const ITEM_CAP = 60000;
 
@@ -152,6 +165,10 @@ function richOf(o, at) {
             const file = i.file_path || i.notebook_path || '';
             const edits = b.name === 'MultiEdit' && Array.isArray(i.edits) ? i.edits : [{ old_string: i.old_string, new_string: i.new_string !== undefined ? i.new_string : (i.content !== undefined ? i.content : i.new_source) }];
             out.push(Object.assign({}, base, { part, role: 'assistant', kind: 'edit', tool: b.name, toolUseId: b.id || '', file, edits }));
+        } else if (b.type === 'tool_use' && b.name === SEND_FILE_TOOL) {
+            // user-facing: the files Claude sent, shown inline even while tool calls are hidden
+            const i = b.input || {};
+            out.push(Object.assign({}, base, { part, role: 'assistant', kind: 'sendfile', toolUseId: b.id || '', files: sentFilesOf(i, o.cwd), caption: cap(i.caption || '', 600), display: i.display === 'attach' ? 'attach' : 'render' }));
         } else if (b.type === 'tool_use') out.push(Object.assign({}, base, { part, role: 'assistant', kind: 'tool_use', tool: String(b.name || 'tool'), toolUseId: b.id || '', text: inputSummary(b.name, b.input), agentDesc: (b.name === 'Agent' || b.name === 'Task') && b.input && b.input.run_in_background === true ? cap(b.input.description || b.input.subagent_type || 'agent', 80) : '' }));
     });
     return out;
@@ -268,6 +285,35 @@ async function size(file) {
     return st.size;
 }
 
+/**
+ * A sendfile row carries what the card shows: each file's name, size and kind, and the session id the file
+ * route checks it against (a sub-agent's transcript has none: its cards cannot be served).
+ */
+async function decorate(list, file) {
+    const sid = /[\\/]subagents[\\/]/.test(String(file)) ? '' : path.basename(String(file), '.jsonl');
+    for (const m of list) {
+        if (m.kind !== 'sendfile' || m.sid !== undefined) continue;
+        m.sid = sid;
+        m.files = await Promise.all(m.files.map(async (p) => {
+            const f = { path: p, name: path.basename(p), type: fileKind(p), size: 0, missing: false };
+            try { const st = await fs.promises.stat(p); f.size = st.size; f.missing = !st.isFile(); } catch (_) { f.missing = true; }
+            return f;
+        }));
+    }
+    return list;
+}
+
+const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+const TEXT_EXT = new Set(['.txt', '.md', '.markdown', '.log', '.json', '.csv', '.tsv', '.yml', '.yaml', '.xml', '.js', '.mjs', '.ts', '.css', '.html', '.htm', '.sh', '.py', '.sql', '.ini', '.conf', '.toml']);
+/** image | pdf | text | other, by extension. */
+function fileKind(p) {
+    const e = path.extname(String(p)).toLowerCase();
+    if (IMAGE_EXT.has(e)) return 'image';
+    if (e === '.pdf') return 'pdf';
+    if (TEXT_EXT.has(e)) return 'text';
+    return 'other';
+}
+
 /** The newest `limit` messages before byte `before`. */
 async function readPage(file, opts = {}) {
     const limit = Math.max(1, Math.min(400, Number(opts.limit) || 80));
@@ -306,6 +352,7 @@ async function readPage(file, opts = {}) {
     }
     const full = shown >= limit;
     const messages = opts.view ? collapse(found.reverse()) : found.reverse();
+    if (opts.view) await decorate(messages, file);
     // full page: earlier lines may hold more; short page: only when the scan stopped before the file's start
     return { messages, start: messages.length ? start : pos, end, more: full ? start > 0 : pos > 0 };
 }
@@ -334,6 +381,7 @@ async function readSince(file, offset, opts = {}) {
         if (l) parse(l, off, opts.view).forEach((m) => messages.push(m));
         off += Buffer.byteLength(l, 'utf8') + 1;
     });
+    if (opts.view) await decorate(messages, file);
     return { messages: opts.view ? collapse(messages) : messages, end: from + Buffer.byteLength(text, 'utf8') };
 }
 
@@ -343,4 +391,4 @@ function viewFrom(show) {
     return { thinking: s.thinking === true, edits: s.edits === true, tools: s.tools === true, results: s.results === true };
 }
 
-module.exports = { readPage, readSince, readItem, viewFrom, mask, messagesOf, _cap: cap };
+module.exports = { readPage, readSince, readItem, viewFrom, mask, messagesOf, richOf, fileKind, SEND_FILE_TOOL, sentFilesOf, _cap: cap };

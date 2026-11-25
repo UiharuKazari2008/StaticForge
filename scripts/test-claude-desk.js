@@ -461,6 +461,106 @@ async function main() {
         console.log('ok 10 daily usage history store and spend formatting');
     }
 
+    // 11. Markdown in the chat (the client's renderer, run out of its source) and the files Claude sent
+    {
+        const vm = require('vm');
+        const src = fs.readFileSync(path.join(__dirname, '..', 'apps', 'claudedesk', 'client', 'claudedesk.js'), 'utf8');
+        const block = (name) => { const i = src.indexOf(`    // -- ${name} begin`); const j = src.indexOf(`    // -- ${name} end`); assert.ok(i > 0 && j > i, `${name} block`); return src.slice(i, j); };
+        const ctx = vm.createContext({});
+        vm.runInContext(`const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));\n${block('markdown')}`, ctx);
+        const md = (t) => { ctx.t = t; return vm.runInContext('mdHtml(t)', ctx); };
+        const has = (t, re, what) => assert.ok(re.test(md(t)), `${what}: ${md(t)}`);
+        has('# Title\n## Two', /<h1 class="cd-md-h">Title<\/h1><h2 class="cd-md-h">Two<\/h2>/, 'headings');
+        has('a **bold** and *it* and ~~gone~~ and `x < y`', /<strong>bold<\/strong>.*<em>it<\/em>.*<del>gone<\/del>.*<code>x &lt; y<\/code>/, 'inline');
+        has('snake_case_word and 2*3*4', /^<p class="cd-md-p">snake_case_word and 2\*3\*4<\/p>$/, 'underscores and stars inside words stay');
+        has('```js\nconst a = "<b>";\n\nb();\n```\nafter', /<pre class="cd-md-code" data-lang="js"><code>const a = &quot;&lt;b&gt;&quot;;\n\nb\(\);<\/code><\/pre><p class="cd-md-p">after/, 'fenced code keeps blank lines');
+        has('```\nunclosed *x*', /<pre class="cd-md-code"><code>unclosed \*x\*<\/code>/, 'an unclosed fence');
+        has('- a\n- b\n  - c\n  - d\n- e', /<ul class="cd-md-l"><li>a<\/li><li>b<ul class="cd-md-l"><li>c<\/li><li>d<\/li><\/ul><\/li><li>e<\/li><\/ul>/, 'nested bullets');
+        has('1. one\n2. two\n   - x\n3. three', /<ol class="cd-md-l"><li>one<\/li><li>two<ul class="cd-md-l"><li>x<\/li><\/ul><\/li><li>three<\/li><\/ol>/, 'numbered with a nested bullet');
+        has('3. x\n4. y', /<ol class="cd-md-l" start="3">/, 'a numbered list keeps its start');
+        has('- [x] done\n- [ ] todo', /☑ done.*☐ todo/, 'task items');
+        has('| A | B |\n|---|:-:|\n| 1 | **2** |\n| 3 |', /<table class="cd-md-table"><thead><tr><th>A<\/th><th class="cd-md-c">B<\/th><\/tr><\/thead><tbody><tr><td>1<\/td><td class="cd-md-c"><strong>2<\/strong><\/td><\/tr><tr><td>3<\/td><td class="cd-md-c"><\/td><\/tr>/, 'a GFM table');
+        has('> quoted *line*\n> more\n\nafter', /<blockquote class="cd-md-q"><p class="cd-md-p">quoted <em>line<\/em><br>more<\/p><\/blockquote><p class="cd-md-p">after/, 'block quote');
+        has('one\n\n---\n\ntwo', /<p class="cd-md-p">one<\/p><hr class="cd-md-hr"><p class="cd-md-p">two<\/p>/, 'horizontal rule');
+        has('line one\nline two', /line one<br>line two/, 'line breaks');
+        has('[Site](https://example.com/a?b=1&c=2) and https://x.org/p.', /<a class="cd-md-a" href="https:\/\/example.com\/a\?b=1&amp;c=2" rel="noopener noreferrer">Site<\/a> and <a class="cd-md-a" href="https:\/\/x.org\/p"[^>]*>https:\/\/x.org\/p<\/a>\./, 'links');
+        // nothing from the text becomes markup or an attribute
+        const evil = md('<script>alert(1)</script> <img src=x onerror=alert(1)> [x](javascript:alert(1)) [y](https://a.com/"onmouseover="alert(1)) `<b>` **<i>**');
+        const tags = evil.match(/<[^>]*>/g) || [];
+        assert.ok(tags.every((t) => /^<\/?(p|code|strong|a)( class="cd-md-p"| class="cd-md-a" href="[^"<>]*" rel="noopener noreferrer")?>$/.test(t)), `only our own tags: ${tags.join(' ')}`);
+        assert.ok(!/<a [^>]*href="javascript/i.test(evil) && !/<(script|img)/i.test(evil), evil);
+        assert.ok(/&lt;script&gt;/.test(evil));
+        assert.ok(!/<a [^>]*href="javascript/i.test(md('[z](JavaScript:alert(1)) [d](data:text/html,x) [m](mailto:a@b.c)')), 'only http(s) and mailto links');
+        assert.ok(/mailto:a@b.c/.test(md('[m](mailto:a@b.c)')));
+
+        // SendUserFile: a user-facing row even with every view option off
+        const FSID = '33333333-3333-4333-8333-333333333333';
+        const out = path.join(SANDBOX, 'outbox');
+        fs.mkdirSync(out, { recursive: true });
+        const png = path.join(out, 'icons.png');
+        const pdf = path.join(out, 'doc.pdf');
+        const secret = path.join(out, 'secret.txt');
+        const big = path.join(out, 'big.bin');
+        fs.writeFileSync(png, Buffer.from('89504e470d0a1a0a', 'hex'));
+        fs.writeFileSync(pdf, '%PDF-1.4');
+        fs.writeFileSync(secret, 'not sent');
+        fs.writeFileSync(big, '');
+        fs.truncateSync(big, 50 * 1024 * 1024 + 1);
+        const fproj = path.join(HOME, '.claude', 'projects', '-repo');
+        const ffile = path.join(fproj, `${FSID}.jsonl`);
+        const sent = (id, input) => line({ type: 'assistant', cwd: out, uuid: id, timestamp: '2026-11-24T10:00:00.000Z', message: { role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'tool_use', id, name: 'SendUserFile', input }] } });
+        fs.writeFileSync(ffile, line({ type: 'user', message: { role: 'user', content: 'send it' } })
+            + sent('toolu_1', { files: [png, pdf, 'relative.txt'], caption: 'The **icons**', display: 'render' })
+            + sent('toolu_2', { files: [big] })
+            + line({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'Sent' }] } }));
+        const view = transcript.viewFrom({});
+        const fp = await transcript.readPage(ffile, { limit: 50, view });
+        const rows = fp.messages.filter((m) => m.kind === 'sendfile');
+        assert.strictEqual(rows.length, 2, 'SendUserFile rows show with tool calls hidden');
+        assert.deepStrictEqual(rows[0].files.map((f) => [f.name, f.type, f.size, f.missing]), [['icons.png', 'image', 8, false], ['doc.pdf', 'pdf', 8, false], ['relative.txt', 'text', 0, true]]);
+        assert.strictEqual(rows[0].files[0].path, png);
+        assert.strictEqual(rows[0].caption, 'The **icons**');
+        assert.strictEqual(rows[0].sid, FSID);
+        const since = await transcript.readSince(ffile, 0, { view });
+        assert.strictEqual(since.messages.filter((m) => m.kind === 'sendfile').length, 2, 'the live path carries them too');
+        assert.ok(!/base64|data:/.test(JSON.stringify(rows)), 'no inline picture data');
+
+        // the file route: only a path this session sent, regular file, size cap
+        const files = require('../modules/claudeDeskFiles');
+        const refuse = async (id, p, status) => { try { await files.resolve(id, p); } catch (e) { assert.strictEqual(e.status, status, `${p}: ${e.message}`); return; } assert.fail(`${p} was served`); };
+        assert.strictEqual((await files.resolve(FSID, png)).size, 8);
+        assert.strictEqual((await files.resolve(FSID, `${out}/./icons.png`)).name, 'icons.png', 'a path is compared normalised');
+        await refuse(FSID, secret, 403); // exists, but this session never sent it
+        await refuse(FSID, path.join(out, '..', 'outbox', 'secret.txt'), 403);
+        await refuse(FSID, '/etc/passwd', 403);
+        await refuse(FSID, 'icons.png', 404);
+        await refuse(FSID, big, 413);
+        await refuse('44444444-4444-4444-8444-444444444444', png, 404); // no such session
+        await refuse(SID, png, 403); // another session did not send it
+        await refuse('../../etc', png, 404);
+        // a file sent later is served after the transcript grows
+        await refuse(FSID, secret, 403);
+        fs.appendFileSync(ffile, sent('toolu_3', { files: [secret] }));
+        assert.strictEqual((await files.resolve(FSID, secret)).size, 8);
+        // a path that became a directory or a link to one is not a file
+        const dir = path.join(out, 'adir');
+        fs.mkdirSync(dir);
+        fs.appendFileSync(ffile, sent('toolu_4', { files: [dir] }));
+        await refuse(FSID, dir, 404);
+        // the handler streams the bytes with a type and no script rights
+        const res = { headers: {}, setHeader(k, v) { this.headers[k] = v; }, status(c) { this.code = c; return this; }, json(o) { this.body = o; this.done = true; }, chunks: [], write(c) { this.chunks.push(c); return true; }, end() { this.done = true; }, on() { return this; }, once() { return this; }, emit() { return true; }, removeListener() { return this; } };
+        const ok = new Promise((resolve) => { res.end = () => resolve(); res.on = (ev, fn) => { if (ev === 'finish') resolve(); return res; }; });
+        await files.handle({ params: { id: FSID }, query: { path: png } }, res);
+        await Promise.race([ok, new Promise((r) => setTimeout(r, 500))]);
+        assert.strictEqual(res.headers['Content-Type'], 'image/png');
+        assert.ok(/sandbox/.test(res.headers['Content-Security-Policy']) && res.headers['X-Content-Type-Options'] === 'nosniff');
+        assert.strictEqual(Buffer.concat(res.chunks.map((c) => Buffer.from(c))).length, 8);
+        const bad = { code: 0, status(c) { this.code = c; return this; }, json() {}, setHeader() {} };
+        await files.handle({ params: { id: FSID }, query: { path: '/etc/hostname' } }, bad);
+        assert.strictEqual(bad.code, 403);
+        console.log('ok 11 Markdown rendering, SendUserFile rows and the file route');
+    }
+
     store.close();
     console.log('all claude desk tests passed');
 }

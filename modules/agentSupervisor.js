@@ -840,7 +840,10 @@ function cleanStages(st) {
         };
     };
     const v = st && typeof st === 'object' ? st : {};
-    return { planner: Object.assign({ model: 'opus', effort: 'high' }, Object.fromEntries(Object.entries(one(v.planner)).filter(([, x]) => x))), workers: Object.assign({ model: 'sonnet', effort: 'medium' }, Object.fromEntries(Object.entries(one(v.workers)).filter(([, x]) => x))) };
+    const pl = one(v.planner);
+    // planner model / effort nobody picked: the Supervisor sizes the request when it starts (sizePlanner)
+    const auto = v.planner && v.planner.auto === false ? false : !(pl.model || pl.effort) || !!(v.planner && v.planner.auto);
+    return { planner: Object.assign({ model: 'opus', effort: 'high' }, Object.fromEntries(Object.entries(pl).filter(([, x]) => x)), { auto }), workers: Object.assign({ model: 'sonnet', effort: 'medium' }, Object.fromEntries(Object.entries(one(v.workers)).filter(([, x]) => x))) };
 }
 
 /** One JSON answer from the Supervisor's engine (the same engine / model as its reviews). */
@@ -858,6 +861,27 @@ async function decideTopology(gr, w) {
     return { topology: 'planner', reason: 'the Supervisor could not decide: the default' };
 }
 
+/**
+ * The planner's model and effort for a request nobody chose them for (Yukimi, Nov 24 2026: Opus is the planner
+ * default; Fable for very large or harder tasks). Rules (subagents-sonnet):
+ *   normal          -> opus  / high
+ *   large           -> opus  / xhigh  (many files or surfaces, ordered steps)
+ *   very large/hard -> fable / xhigh  (several surfaces and days of work, undecided architecture, a bug an earlier
+ *                                      attempt failed on, security-critical changes)
+ *   max effort only when the request asks for it or an xhigh attempt already failed.
+ */
+async function sizePlanner(gr, w) {
+    try {
+        const o = await askJson(gr, 'You size coding requests for a planner agent. Answer ONLY {"size":"normal"|"large"|"very_large","hard":true|false,"retry":true|false,"reason":"one sentence"}. large: many files or several areas, ordered steps. very_large: several surfaces or projects, days of work. hard: undecided architecture or design, a bug an earlier attempt failed to fix, security-critical or data-loss-risky changes. retry: the request says an earlier attempt failed.', String(w.prompt).slice(0, 12000), 'size', { maxTokens: 300 });
+        const size = ['normal', 'large', 'very_large'].includes(o && o.size) ? o.size : 'normal';
+        const hard = !!(o && o.hard);
+        const asksMax = /\b(max(imum)? effort|effort max)\b/i.test(String(w.prompt || ''));
+        const fable = size === 'very_large' || hard;
+        const effort = asksMax || (fable && o && o.retry) ? 'max' : (fable || size === 'large' ? 'xhigh' : 'high');
+        return { model: fable ? 'fable' : 'opus', effort, reason: `${size.replace('_', ' ')}${hard ? ', hard' : ''}: ${String((o && o.reason) || '').slice(0, 160)}` };
+    } catch (_) { return { model: 'opus', effort: 'high', reason: 'the Supervisor could not size it: the default' }; }
+}
+
 async function splitSurfaces(gr, w) {
     const o = await askJson(gr, 'Split this coding request into independent parts by surface (server / desktop UI / phone UI / docs / scripts / another project), each one a complete brief another agent can do alone: the goal for that surface, the files or folders it owns (no two parts own the same file), what it must not touch, and how to verify it with evidence. 2 to 6 parts; one part when it does not split. Answer ONLY {"parts":[{"title":"short","surface":"server","paths":["modules/..."],"brief":"the whole brief"}]}.', String(w.prompt).slice(0, 20000));
     const parts = (o && Array.isArray(o.parts) ? o.parts : []).filter((p) => p && p.brief).slice(0, 6);
@@ -865,7 +889,7 @@ async function splitSurfaces(gr, w) {
     return parts.map((p) => ({ title: String(p.title || p.surface || 'Part').slice(0, 100), surface: String(p.surface || '').slice(0, 40), paths: (Array.isArray(p.paths) ? p.paths : []).map(String).slice(0, 20), brief: String(p.brief).slice(0, 20000) }));
 }
 
-const plannerNote = (st) => `You are the PLANNER for this request (Supervisor -> Planner -> background agents). First research and plan (read the code, decide the approach, split it into parts with clear file ownership). Then do the work through background agents (the Agent tool, run_in_background), each with a complete brief (goal, files it owns, what it must not touch, how to verify with evidence) and model "${st.workers.model || 'sonnet'}"${st.workers.effort ? ` and effort "${st.workers.effort}"` : ''}; do trivial edits yourself only. Verify every agent's result with evidence (tests you ran, command output, screenshots you read) before you call a part done, integrate, commit, and report progress and holdups on the tracked issue as you go.`;
+const plannerNote = (st) => `You are the PLANNER for this request (Supervisor -> Planner -> background agents). First research and plan (read the code, decide the approach, split it into parts with clear file ownership). Then do the work through background agents (the Agent tool, run_in_background), each with a complete brief (goal, files it owns, what it must not touch, how to verify with evidence) and model "${st.workers.model || 'sonnet'}"${st.workers.effort ? ` and effort "${st.workers.effort}" by default (low for mechanical sweeps, high for tricky parts such as concurrency, migrations or security)` : ''}; do trivial edits yourself only. Verify every agent's result with evidence (tests you ran, command output, screenshots you read) before you call a part done, integrate, commit, and report progress and holdups on the tracked issue as you go.`;
 
 let pumping = null;
 /** Starts queued items while there are slots and accounts with room. One pump at a time. */
@@ -910,6 +934,12 @@ function pumpWork(gr) {
                     started += 1;
                     emit({ work: getWork(w.id) });
                     continue;
+                }
+                if (topology === 'planner' && stages.planner.auto) {
+                    const z = await sizePlanner(g, w);
+                    stages.planner = Object.assign({}, stages.planner, { model: z.model, effort: z.effort, auto: false });
+                    db().prepare('UPDATE supervisor_work SET stages = ? WHERE id = ?').run(JSON.stringify(stages), w.id);
+                    setWork(w.id, { message: `Planner: ${z.model} / ${z.effort} (${z.reason})` });
                 }
                 const stage = topology === 'planner' ? stages.planner : stages.workers;
                 const engine = (w.engine && w.engine !== 'claude') ? w.engine : (stage.engine !== 'claude' ? stage.engine : undefined);
@@ -1992,7 +2022,7 @@ function dismissRuleFinding(findingId) {
 
 module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, askJson, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, decideTopology, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, askJson, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, decideTopology, sizePlanner, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, resetPrices, queueReview, queue, cleanable }
 };

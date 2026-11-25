@@ -563,6 +563,22 @@ sup._test.setFetch(async (url, opts) => {
         assert.ok(bad.error && bad.findings.some((f) => f.kind === 'missing-file'));
     });
 
+    await test('sizePlanner: opus / high by default, opus / xhigh large, fable / xhigh very large or hard, max on a retry', async () => {
+        const w = { prompt: 'Build it.' };
+        sup._test.setFetch(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: JSON.stringify(answer) } }] }) }));
+        const g4 = Object.assign({}, gr, { getConfig: () => ({ agentSupervisor: { enabled: true, engine: 'tokenrouter' } }) });
+        answer = { size: 'normal', hard: false, retry: false, reason: 'small' };
+        let z = await sup.sizePlanner(g4, w); assert.deepStrictEqual([z.model, z.effort], ['opus', 'high'], JSON.stringify(z));
+        answer = { size: 'large', hard: false, retry: false, reason: 'many files' };
+        z = await sup.sizePlanner(g4, w); assert.deepStrictEqual([z.model, z.effort], ['opus', 'xhigh'], JSON.stringify(z));
+        answer = { size: 'very_large', hard: false, retry: false, reason: 'surfaces' };
+        z = await sup.sizePlanner(g4, w); assert.deepStrictEqual([z.model, z.effort], ['fable', 'xhigh'], JSON.stringify(z));
+        answer = { size: 'normal', hard: true, retry: true, reason: 'failed before' };
+        z = await sup.sizePlanner(g4, w); assert.deepStrictEqual([z.model, z.effort], ['fable', 'max'], JSON.stringify(z));
+        assert.strictEqual(sup.cleanStages({}).planner.auto, true, 'nobody picked: the Supervisor sizes it');
+        assert.strictEqual(sup.cleanStages({ planner: { model: 'opus', effort: 'high' } }).planner.auto, false, 'a picked planner stays');
+    });
+
     await test('updateWork: only items that are not running; validated as enqueue; a changed brief is commented on its issue and clears the check', async () => {
         const w = sup.enqueue({ title: 'Edit me', prompt: 'old brief', source: 'yozora', issueFields: { repo: 'DreamScape/StaticForge', number: 601 } });
         const store = require('../modules/agentCoord/store');

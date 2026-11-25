@@ -3863,6 +3863,9 @@ app.get('/director/image/:chatId/:filename', authMiddleware, async (req, res, ne
     }
 });
 
+// Fleet's session chat: a file Claude sent (SendUserFile) in that session, by URL (modules/claudeDeskFiles.js)
+app.get('/claude-desk/file/:id', authMiddleware, adminOnlyMiddleware, (req, res) => require('./modules/claudeDeskFiles').handle(req, res));
+
 // Serve trace attachments
 app.use('/traces/files', authMiddleware, adminOnlyMiddleware, (req, res, next) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');

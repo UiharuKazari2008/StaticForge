@@ -2160,6 +2160,7 @@
                 log.addEventListener('click', (ev) => {
                     const b = ev.target.closest('[data-cd-unfold]');
                     if (b) { b.parentElement.classList.remove('is-folded'); b.remove(); return; }
+                    if (chatClick(ev)) return;
                     const t = ev.target.closest('[data-cd-toggle]');
                     if (t) { t.parentElement.classList.toggle('is-open'); return; }
                     const f = ev.target.closest('.cd-fold');
@@ -3088,6 +3089,198 @@
 
     // ---- the chat ------------------------------------------------------------------------------------------
 
+    // -- markdown begin
+    // Markdown to HTML for the chat: the text is escaped first, then marked up; no raw HTML passes through, a link
+    // keeps only an http(s) / mailto address, and a click on it opens Alchemy (Melaton's browser), see chatClick.
+    const MD_SAFE_URL = /^(https?:\/\/|mailto:)/i;
+    const MD_MARK = /[]/g;
+    function mdInline(raw) {
+        const stash = [];
+        const hold = (html) => { stash.push(html); return `${stash.length - 1}`; };
+        let t = String(raw == null ? '' : raw).replace(MD_MARK, '');
+        t = t.replace(/(`+)([^`\n]|[^`\n][^\n]*?[^`\n])\1(?!`)/g, (m, f, code) => hold(`<code>${esc(code.trim())}</code>`));
+        t = esc(t);
+        const emph = (x) => x
+            .replace(/\*\*(?!\s)([^\n]+?)(?<!\s)\*\*/g, '<strong>$1</strong>')
+            .replace(/(^|[^\w])__(?!\s)([^\n]+?)(?<!\s)__(?!\w)/g, '$1<strong>$2</strong>')
+            .replace(/(^|[^\w*])\*(?![\s*])([^*\n]+?)(?<![\s*])\*(?![\w*])/g, '$1<em>$2</em>')
+            .replace(/(^|[^\w])_(?![\s_])([^_\n]+?)(?<![\s_])_(?!\w)/g, '$1<em>$2</em>')
+            .replace(/~~(?!\s)([^\n]+?)(?<!\s)~~/g, '<del>$1</del>');
+        const link = (label, url) => {
+            const plain = url.replace(/&amp;/g, '&');
+            return MD_SAFE_URL.test(plain) ? hold(`<a class="cd-md-a" href="${url}" rel="noopener noreferrer">${emph(label)}</a>`) : emph(label);
+        };
+        t = t.replace(/!\[([^\]\n]*)\]\(([^)\s]+)(?:\s+&quot;[^\n]*?&quot;)?\)/g, (m, alt, url) => link(alt || 'image', url));
+        t = t.replace(/\[([^\]\n]+)\]\(([^)\s]+)(?:\s+&quot;[^\n]*?&quot;)?\)/g, (m, label, url) => link(label, url));
+        t = t.replace(/(^|[\s(])(https?:\/\/[^\s<]*[^\s<.,;:!?)\]'])/g, (m, pre, url) => pre + hold(`<a class="cd-md-a" href="${url}" rel="noopener noreferrer">${url}</a>`));
+        t = emph(t);
+        for (let i = 0; i < 4 && /\d+/.test(t); i += 1) t = t.replace(/(\d+)/g, (m, n) => stash[Number(n)] || '');
+        return t;
+    }
+    const MD_FENCE = /^\s{0,3}(```+|~~~+)\s*([\w+#.-]*)[^\n]*$/;
+    const MD_HR = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/;
+    const MD_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
+    const MD_TABLE_RULE = /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)+\|?\s*$/;
+    const mdCells = (line) => { const s = line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, ''); return s.split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, '|').trim()); };
+    function mdBlocks(lines, tight, depth) {
+        if (depth > 6) return `<p>${esc(lines.join('\n'))}</p>`;
+        let out = '';
+        let i = 0;
+        const startsBlock = (l, next) => MD_FENCE.test(l) || /^\s{0,3}#{1,6}\s/.test(l) || MD_HR.test(l) || /^\s{0,3}>/.test(l) || MD_ITEM.test(l) || (l.includes('|') && next !== undefined && MD_TABLE_RULE.test(next));
+        while (i < lines.length) {
+            const line = lines[i];
+            if (!line.trim()) { i += 1; continue; }
+            const fence = MD_FENCE.exec(line);
+            if (fence) {
+                const body = [];
+                i += 1;
+                while (i < lines.length && !(lines[i].trim().startsWith(fence[1]) && /^\s*[`~]+\s*$/.test(lines[i]))) { body.push(lines[i]); i += 1; }
+                i += 1;
+                out += `<pre class="cd-md-code"${fence[2] ? ` data-lang="${esc(fence[2])}"` : ''}><code>${esc(body.join('\n'))}</code></pre>`;
+                continue;
+            }
+            const head = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/.exec(line);
+            if (head) { out += `<h${head[1].length} class="cd-md-h">${mdInline(head[2])}</h${head[1].length}>`; i += 1; continue; }
+            if (MD_HR.test(line)) { out += '<hr class="cd-md-hr">'; i += 1; continue; }
+            if (/^\s{0,3}>/.test(line)) {
+                const q = [];
+                while (i < lines.length && /^\s{0,3}>/.test(lines[i])) { q.push(lines[i].replace(/^\s{0,3}>\s?/, '')); i += 1; }
+                out += `<blockquote class="cd-md-q">${mdBlocks(q, false, depth + 1)}</blockquote>`;
+                continue;
+            }
+            if (line.includes('|') && i + 1 < lines.length && MD_TABLE_RULE.test(lines[i + 1])) {
+                const heads = mdCells(line);
+                const aligns = mdCells(lines[i + 1]).map((c) => (/^:-+:$/.test(c) ? ' class="cd-md-c"' : (/-:$/.test(c) ? ' class="cd-md-r"' : '')));
+                const rows = [];
+                i += 2;
+                while (i < lines.length && lines[i].trim() && lines[i].includes('|')) { rows.push(mdCells(lines[i])); i += 1; }
+                out += `<div class="cd-md-scroll"><table class="cd-md-table"><thead><tr>${heads.map((c, n) => `<th${aligns[n] || ''}>${mdInline(c)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${heads.map((c, n) => `<td${aligns[n] || ''}>${mdInline(r[n] || '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+                continue;
+            }
+            const item = MD_ITEM.exec(line);
+            if (item) {
+                const base = item[1].length;
+                const ordered = /\d/.test(item[2]);
+                const start = ordered ? parseInt(item[2], 10) : 0;
+                const items = [];
+                while (i < lines.length) {
+                    const m = MD_ITEM.exec(lines[i]);
+                    if (m && m[1].length < base + 2 && /\d/.test(m[2]) === ordered && !MD_HR.test(lines[i])) {
+                        items.push([m[3]]);
+                        i += 1;
+                    } else if (m && m[1].length < base + 2 && !MD_HR.test(lines[i])) {
+                        break; // the other kind of list at this level
+                    } else if (items.length && lines[i].trim() && (/^\s/.test(lines[i]) || !startsBlock(lines[i], lines[i + 1]))) {
+                        items[items.length - 1].push(lines[i]); // nested content, or a wrapped line
+                        i += 1;
+                    } else if (items.length && !lines[i].trim() && i + 1 < lines.length && (/^\s{2,}\S/.test(lines[i + 1]) || (MD_ITEM.exec(lines[i + 1]) && MD_ITEM.exec(lines[i + 1])[1].length < base + 2 && /\d/.test(MD_ITEM.exec(lines[i + 1])[2]) === ordered))) {
+                        items[items.length - 1].push(''); // a blank line inside the list
+                        i += 1;
+                    } else break;
+                }
+                const lis = items.map((it) => {
+                    const first = it[0];
+                    const rest = it.slice(1);
+                    const pad = rest.filter((l) => l.trim()).reduce((n, l) => Math.min(n, /^\s*/.exec(l)[0].length), 99);
+                    const body = rest.map((l) => l.slice(Math.min(pad === 99 ? 0 : pad, /^\s*/.exec(l)[0].length)));
+                    const task = /^\[([ xX])\]\s+/.exec(first);
+                    const lead = task ? `${task[1] === ' ' ? '☐' : '☑'} ` : '';
+                    const text = task ? first.slice(task[0].length) : first;
+                    const tail = body.length ? mdBlocks(body, true, depth + 1) : '';
+                    return `<li>${lead}${mdInline(text)}${tail}</li>`;
+                }).join('');
+                out += ordered ? `<ol class="cd-md-l"${start > 1 ? ` start="${start}"` : ''}>${lis}</ol>` : `<ul class="cd-md-l">${lis}</ul>`;
+                continue;
+            }
+            const para = [];
+            while (i < lines.length && lines[i].trim() && (para.length === 0 || !startsBlock(lines[i], lines[i + 1]))) { para.push(lines[i]); i += 1; }
+            const html = para.map((l) => mdInline(l)).join('<br>');
+            out += tight ? `<div class="cd-md-t">${html}</div>` : `<p class="cd-md-p">${html}</p>`;
+        }
+        return out;
+    }
+    function mdHtml(text) {
+        return mdBlocks(String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n'), false, 0);
+    }
+    // -- markdown end
+
+    // -- sendfile begin
+    // Claude's SendUserFile calls are user-facing: one inline card per file, shown even while tool calls are hidden.
+    // The bytes come by URL from the server (modules/claudeDeskFiles.js), which serves only what that session sent.
+    const FILE_ICON = `${VI}/explorer/file-16.png`;
+    const fileUrl = (sid, p, dl) => `/claude-desk/file/${encodeURIComponent(sid)}?path=${encodeURIComponent(p)}${dl ? '&dl=1' : ''}`;
+    function sizeText(n) {
+        const v = Number(n) || 0;
+        if (v < 1024) return `${v} B`;
+        if (v < 1048576) return `${(v / 1024).toFixed(v < 10240 ? 1 : 0)} KB`;
+        return `${(v / 1048576).toFixed(v < 10485760 ? 1 : 0)} MB`;
+    }
+    function fileCardHtml(m, k) {
+        const files = Array.isArray(m.files) ? m.files : [];
+        const cards = files.map((f, n) => {
+            const ok = !!m.sid && !f.missing;
+            const url = ok ? fileUrl(m.sid, f.path, false) : '';
+            const data = `data-cd-sid="${esc(m.sid || '')}" data-cd-file="${esc(f.path)}" data-cd-kind="${esc(f.type || 'other')}" data-cd-name="${esc(f.name || '')}" data-cd-size="${Number(f.size) || 0}"`;
+            if (f.type === 'image' && ok) {
+                return `<div class="cd-file is-image" ${data}><button type="button" class="cd-file-thumb" data-cd-fopen title="${esc(f.path)}"><img src="${esc(url)}" alt="${esc(f.name)}" loading="lazy"></button><div class="cd-file-row"><span class="cd-file-name">${esc(f.name)}</span><span class="cd-file-size">${esc(sizeText(f.size))}</span><button type="button" class="btn-standard" data-cd-fsave>Save</button></div></div>`;
+            }
+            const open = ok && f.type !== 'other';
+            return `<div class="cd-file" ${data}><img class="cd-file-ico" src="${FILE_ICON}" alt=""><div class="cd-file-info"><span class="cd-file-name" title="${esc(f.path)}">${esc(f.name)}</span><span class="cd-file-size">${esc(f.missing ? 'No longer on this host' : (ok ? sizeText(f.size) : 'Not available here'))}</span></div>${open ? '<button type="button" class="btn-standard" data-cd-fopen>Open</button>' : ''}${ok ? '<button type="button" class="btn-standard" data-cd-fsave>Save</button>' : ''}</div>`;
+        }).join('');
+        const cap = m.caption ? `<div class="cd-file-cap cd-md">${mdHtml(m.caption)}</div>` : '';
+        return `<div class="cd-msg cd-files"${k}><div class="cd-msg-head"><b>${esc(WHO.assistant)}</b><span>${esc(timeOnly(m.time))}</span></div>${cards}${cap}</div>`;
+    }
+    /** Open a file card: images and text in a Fleet window, a PDF in Adobe Reader. */
+    async function openFile(el) {
+        const sid = el.dataset.cdSid;
+        const p = el.dataset.cdFile;
+        const kind = el.dataset.cdKind;
+        const name = el.dataset.cdName || baseName(p);
+        const url = fileUrl(sid, p, false);
+        if (kind === 'pdf') {
+            if (root.melatonApps && typeof root.melatonApps.launch === 'function') { void root.melatonApps.launch({ packageId: 'reader', args: { url, name, size: Number(el.dataset.cdSize) || 0, location: 'Fleet' } }); return; }
+        }
+        if (!S.c) return;
+        const key = `file|${sid}|${p}`;
+        const have = Array.from(S.wins).find((x) => x.key === key);
+        if (have) { call('bringModalToFront', have.modal); return; }
+        if (kind === 'image') { openViewer({ key, title: name, body: `<img class="cd-viewer-img" src="${esc(url)}" alt="${esc(name)}">` }); return; }
+        const w = openViewer({ key, title: name, body: '<p class="mmc-hint">Reading...</p>' });
+        try {
+            const r = await fetch(url, { credentials: 'same-origin' });
+            if (!r.ok) throw new Error(r.status === 403 ? 'This session did not send that file.' : `The server answered ${r.status}.`);
+            const text = (await r.text()).slice(0, 2000000);
+            w.set(/\.(md|markdown)$/i.test(name) ? `<div class="cd-md cd-viewer-md">${mdHtml(text)}</div>` : `<pre class="cd-pre cd-viewer-text">${esc(text)}</pre>`);
+        } catch (e) { w.set(`<p class="cd-err">${esc(errText(e))}</p>`); }
+    }
+    function saveFile(el) {
+        const a = document.createElement('a');
+        a.href = fileUrl(el.dataset.cdSid, el.dataset.cdFile, true);
+        a.download = el.dataset.cdName || '';
+        a.hidden = true;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    }
+    /** Clicks inside a chat log that are not folds: Markdown links (Alchemy) and file cards. True when handled. */
+    function chatClick(ev) {
+        const a = ev.target.closest && ev.target.closest('a.cd-md-a');
+        if (a) {
+            ev.preventDefault();
+            const href = a.getAttribute('href') || '';
+            if (!MD_SAFE_URL.test(href)) return true;
+            if (typeof root.openGrimoireUrl === 'function') Promise.resolve().then(() => root.openGrimoireUrl(href)).catch(() => root.open(href, '_blank', 'noopener'));
+            else root.open(href, '_blank', 'noopener');
+            return true;
+        }
+        const card = ev.target.closest && ev.target.closest('.cd-file');
+        if (!card) return false;
+        if (ev.target.closest('[data-cd-fsave]')) { saveFile(card); return true; }
+        if (ev.target.closest('[data-cd-fopen]')) { void openFile(card); return true; }
+        return false;
+    }
+    // -- sendfile end
+
     const WHO = { user: 'You', assistant: 'Claude', tool: 'Result', system: 'Notice' };
 
     const baseName = (f) => String(f || '').split(/[\\/]/).filter(Boolean).pop() || String(f || '');
@@ -3134,10 +3327,11 @@
             const long = lines.length > 6 || m.text.length > 500;
             return `<div class="cd-msg cd-result${m.error ? ' is-error' : ''}${long ? ' is-folded' : ''}"${k}><pre class="cd-pre">${esc(m.text || '(no output)')}</pre>${long ? '<button type="button" class="cd-unfold" data-cd-unfold>Show all</button>' : ''}</div>`;
         }
+        if (m.kind === 'sendfile') return fileCardHtml(m, k);
         if (m.kind === 'command') return `<div class="cd-msg cd-note"${k}>${esc(m.text)}</div>`;
         if (m.role === 'system') return `<div class="cd-msg cd-note"${k}>${esc(m.text)}</div>`;
         const who = m.role === 'user' ? (m.origin && m.origin !== 'human' ? 'Steering' : WHO.user) : WHO[m.role] || m.role;
-        return `<div class="cd-msg cd-${m.role === 'user' ? 'user' : 'claude'}${m.sidechain ? ' is-side' : ''}"${k}><div class="cd-msg-head"><b>${esc(who)}</b>${showModel && m.model ? `<i class="cd-model" title="${esc(m.model)}">${esc(modelName(m.model))}</i>` : ''}<span>${esc(timeOnly(m.time))}</span></div><div class="cd-msg-text">${esc(m.text)}</div></div>`;
+        return `<div class="cd-msg cd-${m.role === 'user' ? 'user' : 'claude'}${m.sidechain ? ' is-side' : ''}"${k}><div class="cd-msg-head"><b>${esc(who)}</b>${showModel && m.model ? `<i class="cd-model" title="${esc(m.model)}">${esc(modelName(m.model))}</i>` : ''}<span>${esc(timeOnly(m.time))}</span></div><div class="cd-msg-text cd-md">${mdHtml(m.text)}</div></div>`;
     }
 
     function logHtml(chat) {
@@ -3266,6 +3460,7 @@
         box.dataset.cdFolds = '1';
         const agentOf2 = () => { if (kind !== 'agent') return ''; const ch = chatOf(id); return (ch && ch.dt && ch.dt.agentSel) || ''; };
         box.addEventListener('click', (ev) => {
+            if (chatClick(ev)) return;
             const t = ev.target.closest('[data-cd-toggle]');
             if (t) { t.parentElement.classList.toggle('is-open'); return; }
             const sm = ev.target.closest('.cd-sum-head');
