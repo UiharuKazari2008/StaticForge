@@ -24,7 +24,7 @@ async function handlePlaidLinkStart(handlers, ws, message, clientInfo, wsServer)
     try {
         plaidBank.attach(handlers.globalResources);
         const itemId = typeof message.itemId === 'string' && message.itemId ? message.itemId : null;
-        reply(wsServer, ws, 'plaid_link_start_response', message, await plaidBank.linkStart(itemId));
+        reply(wsServer, ws, 'plaid_link_start_response', message, await plaidBank.linkStart(itemId, { confirmCharge: message.confirmCharge === true }));
     } catch (error) {
         handlers.sendError(ws, 'Failed to start the bank link', error.message, message.requestId);
     }

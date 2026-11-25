@@ -343,8 +343,11 @@ function startWatcher(key, itemId, linkToken) {
 }
 
 /** plaid_link_start: Hosted Link url (update mode with itemId); the Link SDK token when Plaid refuses hosted_link. */
-async function linkStart(itemId) {
+// A new item carries a product (liabilities / transactions) Plaid may bill monthly, so it starts only when the user
+// confirmed that on the phone (confirmCharge); update mode (re-linking an item) adds no product and needs no confirm.
+async function linkStart(itemId, opts) {
     if (!credentials()) return { success: false, error: 'NOT_CONFIGURED' };
+    if (!itemId && !(opts && opts.confirmCharge === true)) return { success: false, error: 'CONFIRM_CHARGE' };
     let item = null;
     if (itemId) {
         item = readItems().find((i) => i.itemId === itemId);

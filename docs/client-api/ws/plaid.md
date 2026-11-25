@@ -18,7 +18,7 @@ Only Plaid's free calls are made: `/accounts/get` (Plaid's cached balances, neve
 | Request | Body -> reply |
 |---|---|
 | `plaid_status` | `{ requestId, refresh? }` -> `plaid_status_response` `{ requestId, data }` |
-| `plaid_link_start` | `{ requestId, itemId? }` -> `plaid_link_start_response` `{ requestId, data }` |
+| `plaid_link_start` | `{ requestId, itemId?, confirmCharge? }` -> `plaid_link_start_response` `{ requestId, data }` |
 | `plaid_link_cancel` | `{ requestId }` -> `plaid_link_cancel_response` `{ requestId, data: { success: true } }` |
 
 ## plaid_status
@@ -43,7 +43,8 @@ Link, no SDK) in the browser. On failure: `{ success: false, error }` (`NOT_CONF
 `NETWORK`, `TIMEOUT` or Plaid's `error_code`).
 
 - With `itemId`: update mode for that item (its access token, no products).
-- Without: a new item. This Plaid client is enabled for the products `liabilities` and `transactions` only
+- Without: a new item, only with `confirmCharge: true` (else `error: 'CONFIRM_CHARGE'`): the product it carries may add a
+  monthly Plaid charge, so the phone asks first. This Plaid client is enabled for the products `liabilities` and `transactions` only
   (`auth` answers `INVALID_PRODUCT`), so a new item is created with `liabilities` (then `transactions` when that is refused).
 - If Plaid ever refuses `hosted_link` itself, the reply is `{ success: true, hostedLinkUrl: null, linkToken, expiration, hostedLinkError }` and
   the page opens the Link SDK with `linkToken`. The server does not watch that session.
