@@ -35,6 +35,7 @@ const claudeLogin = require('../../claudeAccountLogin');
 const claudeSessions = require('../../claudeSessions');
 const launcher = require('../../claudeSessionLauncher');
 const transcript = require('../../claudeTranscript');
+const insight = require('../../claudeInsight');
 const runtime = require('../../claudeAccountRuntime');
 const coord = require('../../agentCoord/store');
 
@@ -201,6 +202,7 @@ const poke = () => { if (deskFeed) deskFeed.poke(); };
 // ---------------------------------------------------------------- Supervisor (#1154, modules/agentSupervisor.js)
 
 const supervisor = require('../../agentSupervisor');
+const maintenance = require('../../fleetMaintenance');
 
 /** The console refetches the review list only when lastReviewId moves (no polling). */
 function supervisorSummary() {
@@ -224,7 +226,9 @@ async function supervisorStatus(gr) {
     try { spend = await Promise.race([supervisor.spend(gr), new Promise((r) => setTimeout(() => r(null), 4000))]); } catch (_) { spend = null; }
     let rules = null;
     try { rules = supervisor.rulesState(); } catch (e) { console.warn(`[claudeDesk] rules: ${e.message}`); }
-    return { rules, spend, settings: set, engines: supEnginesWithModels(gr), reviews: supervisor.listReviews({ limit: 80 }), work: supervisor.listWork({ limit: 100 }), holds: supervisor.listHolds(), gateAsks, topologies: supervisor.TOPOLOGIES, locks, artifacts, stats };
+    let maint = null;
+    try { maint = maintenance.state(gr); } catch (e) { console.warn(`[claudeDesk] maintenance: ${e.message}`); }
+    return { maintenance: maint, rules, spend, settings: set, engines: supEnginesWithModels(gr), reviews: supervisor.listReviews({ limit: 80 }), work: supervisor.listWork({ limit: 100 }), holds: supervisor.listHolds(), gateAsks, topologies: supervisor.TOPOLOGIES, locks, artifacts, stats };
 }
 
 const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => {
@@ -254,7 +258,11 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'rules_text') return { rule: supervisor.ruleText(message.name) };
     if (action === 'rules_review') { supervisor.startRulesReview(gr); return { rules: supervisor.rulesState() }; }
     if (action === 'rules_dismiss') { supervisor.dismissRuleFinding(message.findingId); return { rules: supervisor.rulesState() }; }
-    throw new Error('action must be status, save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, pause, resume, enqueue, work_start, work_hold, work_cancel, lock_remove, artifact_clean or artifact_forget');
+    // Fleet > Supervisor > Maintenance: the daily run's report, history, settings; Run Now answers at once, the result arrives through the status push
+    if (action === 'maintenance_status') return { maintenance: maintenance.state(gr), report: message.runId ? maintenance.getRun(message.runId) : undefined };
+    if (action === 'maintenance_run') { const r = maintenance.runNow({ trigger: 'manual', gr, dryRun: message.dryRun === true ? true : undefined }); return { maintenance: maintenance.state(gr), started: r.started }; }
+    if (action === 'maintenance_save') { await maintenance.saveSettings(gr, message.settings || {}); return { maintenance: maintenance.state(gr) }; }
+    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, pause, resume, enqueue, work_start, work_hold, work_cancel, lock_remove, artifact_clean or artifact_forget');
 });
 
 // ---------------------------------------------------------------- transcript watches (one per socket)
@@ -283,7 +291,15 @@ async function watchTranscript(handlersCtx, ws, id, from, view) {
                 const r = await transcript.readSince(file, w.end, { view: w.view });
                 if (r.end === w.end) break;
                 w.end = r.end;
-                if (r.messages.length && ws.readyState === 1) handlersCtx.sendToClient(ws, { type: APPEND_TYPE, data: { id, messages: r.messages, end: r.end }, timestamp: new Date().toISOString() });
+                if (ws.readyState !== 1) continue;
+                // the insight summary (model, effort, context, turn ...) rides along: the file grew, so it changed
+                let ins = null;
+                try {
+                    const lv = claudeSessions.liveSessions().find((x) => x.id === id);
+                    ins = await insight.insightOf(file, { busy: !!(lv && lv.status === 'busy') });
+                    if (ins && lv && lv.status === 'busy') ins.agentsNow = await agentsNow(id).catch(() => []);
+                } catch (_) { ins = null; }
+                if (r.messages.length || ins) handlersCtx.sendToClient(ws, { type: APPEND_TYPE, data: { id, messages: r.messages, end: r.end, insight: ins }, timestamp: new Date().toISOString() });
             }
         } catch (_) { /* next change */ } finally { w.reading = false; }
     };
@@ -399,6 +415,41 @@ async function sessionDirs(id) {
     };
 }
 
+/** The background agents running now (their meta says unfinished, their file moved in the last 3 minutes): what each is on. */
+async function agentsNow(id) {
+    const d = await sessionDirs(id);
+    const dir = path.join(d.own, 'subagents');
+    let names = [];
+    try { names = (await fs.promises.readdir(dir)).filter((n) => /^agent-a[0-9a-f]+\.meta\.json$/.test(n)); } catch (_) { return []; }
+    const out = [];
+    for (const n of names.slice(-40)) {
+        const agentId = n.slice('agent-'.length, -'.meta.json'.length);
+        try {
+            const meta = JSON.parse(await fs.promises.readFile(path.join(dir, n), 'utf8'));
+            if (meta.finished === true) continue;
+            const file = path.join(dir, `agent-${agentId}.jsonl`);
+            const st = await fs.promises.stat(file);
+            if (Date.now() - st.mtimeMs > 180000) continue;
+            const want = Math.min(st.size, 32 * 1024);
+            const fh = await fs.promises.open(file, 'r');
+            let tail = '';
+            try { const buf = Buffer.alloc(want); await fh.read(buf, 0, want, st.size - want); tail = buf.toString('utf8'); } finally { await fh.close(); }
+            let doingText = 'Thinking...';
+            const lines = tail.split('\n').reverse();
+            for (const l of lines) {
+                if (!l.includes('"type":"assistant"') || !l.includes('"tool_use"')) continue;
+                try {
+                    const o = JSON.parse(l);
+                    const b = (o.message.content || []).filter((x) => x && x.type === 'tool_use').pop();
+                    if (b) { doingText = insight.doing(b.name, b.input); break; }
+                } catch (_) { /* a cut line */ }
+            }
+            out.push({ agentId, description: String(meta.description || agentId).slice(0, 120), doing: doingText });
+        } catch (_) { /* gone */ }
+    }
+    return out;
+}
+
 async function subagentFile(id, agentId) {
     if (!AGENT_ID_RE.test(String(agentId || ''))) throw new Error('An agent id');
     const d = await sessionDirs(id);
@@ -469,8 +520,13 @@ async function sessionDetail(gr, id) {
     tasks.sort((a, b) => b.modifiedAt - a.modifiedAt);
     let reviews = [];
     try { reviews = supervisor.listReviews({ limit: 200 }).filter((r) => r.sessionId === id).slice(0, 20).map((r) => ({ id: r.id, verdict: r.verdict, summary: r.summary, at: r.at, missed: r.missed })); } catch (_) { reviews = []; }
+    let ins = null;
+    try { ins = await insight.insightOf(d.file, { busy: !!(live && live.status === 'busy') }); } catch (_) { ins = null; }
+    if (ins && live && live.status === 'busy') ins.agentsNow = await agentsNow(id).catch(() => []);
+    if (ins && !ins.effort && agentRow && agentRow.effort) ins.effort = agentRow.effort;
     return {
         id,
+        insight: ins,
         title: (live && live.givenName) || (agentRow && agentRow.name) || (live && live.name) || id.slice(0, 8),
         status: live ? (live.status || 'idle') : 'stopped',
         live: !!live,
@@ -879,7 +935,7 @@ function registerPackets(handlersCtx) {
         if (process.env.DREAMSCAPE_CLAUDE_RC_READONLY !== '1') launcher.ensureServer().catch((e) => console.warn(`[claudeDesk] carry tmux server: ${e.message}`));
         // the Supervisor watches every session's turns end (fs.watch on ~/.claude/sessions) and serves agent-coord's check
         if (process.env.DREAMSCAPE_CLAUDE_RC_READONLY !== '1') {
-            try { supervisor.start(gResources); supervisor.onReview(() => poke()); } catch (e) { console.warn(`[claudeDesk] supervisor: ${e.message}`); }
+            try { supervisor.start(gResources); supervisor.onReview(() => poke()); maintenance.start(gResources); maintenance.onChange(() => { supervisor.emitChange(); poke(); }); } catch (e) { console.warn(`[claudeDesk] supervisor: ${e.message}`); }
         }
     }, 5000).unref();
     const reg = (type, handlerFn, meta = {}) => {

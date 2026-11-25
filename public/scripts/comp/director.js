@@ -2671,6 +2671,24 @@ class Director {
         this.paintPersonaToggle();
     }
 
+    /**
+     * Opens a new chat with Yozora (Xi) whose box already holds `text` (Fleet's "Ask Yozora..." on a work item puts
+     * the item's details there); the person writes the question and sends it. Returns false when Xi is off.
+     */
+    async askXi(text) {
+        await this.openDirectorWindow();
+        if (!this._xiEnabled) return false;
+        await this.setPersona('xi');
+        if (this.currentSession && !this.currentSession.draft) this.showNewSessionDraft();
+        const box = this.directorChatInput;
+        if (!box) return false;
+        box.value = String(text || '');
+        this.autoExpandTextarea(box);
+        box.focus();
+        try { box.setSelectionRange(box.value.length, box.value.length); } catch (_) { /* not a text box */ }
+        return true;
+    }
+
     async setPersona(name) {
         if (name === 'xi' && (!this._xiEnabled || !this.directorWindowIsOpen())) return;
         if (name === 'kabuki' && !this.kabukiAvailable()) return;

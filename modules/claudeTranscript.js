@@ -104,6 +104,15 @@ function messagesOf(o, at) {
         });
         return out;
     }
+    // a message typed while Claude works is stored as a queued_command attachment, not as a user line (Steering)
+    if (o.type === 'attachment' && o.attachment && o.attachment.type === 'queued_command') {
+        const a = o.attachment;
+        const t = typeof a.prompt === 'string' ? a.prompt : blockText(a.prompt);
+        if (a.commandMode === 'prompt' && a.origin && a.origin.kind === 'human' && t.trim() && !WRAPPER_RE.test(t)) {
+            out.push(Object.assign({}, base, { role: 'user', kind: 'text', text: cap(t, TEXT_CAP), origin: 'steering' }));
+        }
+        return out;
+    }
     if (o.type === 'system' && o.content && typeof o.content === 'string' && o.level !== 'debug') {
         out.push(Object.assign({}, base, { role: 'system', kind: 'notice', text: cap(o.content, 600) }));
     }
@@ -143,7 +152,7 @@ function richOf(o, at) {
             const file = i.file_path || i.notebook_path || '';
             const edits = b.name === 'MultiEdit' && Array.isArray(i.edits) ? i.edits : [{ old_string: i.old_string, new_string: i.new_string !== undefined ? i.new_string : (i.content !== undefined ? i.content : i.new_source) }];
             out.push(Object.assign({}, base, { part, role: 'assistant', kind: 'edit', tool: b.name, toolUseId: b.id || '', file, edits }));
-        } else if (b.type === 'tool_use') out.push(Object.assign({}, base, { part, role: 'assistant', kind: 'tool_use', tool: String(b.name || 'tool'), toolUseId: b.id || '', text: inputSummary(b.name, b.input) }));
+        } else if (b.type === 'tool_use') out.push(Object.assign({}, base, { part, role: 'assistant', kind: 'tool_use', tool: String(b.name || 'tool'), toolUseId: b.id || '', text: inputSummary(b.name, b.input), agentDesc: (b.name === 'Agent' || b.name === 'Task') && b.input && b.input.run_in_background === true ? cap(b.input.description || b.input.subagent_type || 'agent', 80) : '' }));
     });
     return out;
 }
@@ -164,9 +173,61 @@ function viewOf(m, view) {
         }
         return { kind: 'fold', of: 'edit', role: 'assistant', at: m.at, part: m.part, uuid: m.uuid, time: m.time, sidechain: m.sidechain, title, file: m.file, tool: m.tool, size: lines };
     }
-    if (m.kind === 'tool_use') return view.tools ? m : null;
-    if (m.kind === 'tool_result') return view.results ? m : null;
+    if (m.kind === 'tool_use') return view.tools ? m : { kind: 'hidden', of: 'tool', tool: m.tool, at: m.at, part: m.part, uuid: m.uuid, time: m.time, sidechain: m.sidechain, desc: m.agentDesc || '' };
+    if (m.kind === 'tool_result') return view.results ? m : { kind: 'hidden', of: 'result', at: m.at, part: m.part, uuid: m.uuid, time: m.time, sidechain: m.sidechain };
     return m;
+}
+
+// A run of hidden items between two shown messages becomes ONE summary row, so the chat never looks blank:
+//   { kind: 'summary', label, items: [{ of: 'thinking' | 'edit' | 'tool', at, part, title, file, tool }] }
+// The content stays unsent: only counts, names and the offsets that readItem opens. A lone thinking / edit
+// fold row stays as it is.
+
+const short = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
+const baseOf = (f) => String(f || '').split(/[\\/]/).filter(Boolean).pop() || String(f || '');
+const isHidden = (m) => m.kind === 'hidden' || m.kind === 'fold';
+
+function summaryOf(run) {
+    const first = run[0];
+    const think = run.filter((m) => m.kind === 'fold' && m.of === 'thinking');
+    const edits = run.filter((m) => m.kind === 'fold' && m.of === 'edit');
+    const tools = run.filter((m) => m.kind === 'hidden' && m.of === 'tool');
+    const parts = [];
+    if (think.length) parts.push(`Thinking (${short(think.reduce((n, m) => n + (m.size || 0), 0))} chars)`);
+    if (edits.length) {
+        const files = Array.from(new Set(edits.map((m) => m.file).filter(Boolean)));
+        const names = files.slice(0, 2).map(baseOf);
+        parts.push(`Edited ${plural(files.length || edits.length, 'file')}${names.length ? `: ${names.join(', ')}${files.length > 2 ? `, +${files.length - 2}` : ''}` : ''}`);
+    }
+    const agents = tools.filter((m) => m.desc);
+    const plain = tools.filter((m) => !m.desc);
+    if (plain.length) {
+        const by = new Map();
+        plain.forEach((m) => by.set(m.tool, (by.get(m.tool) || 0) + 1));
+        const top = Array.from(by.entries()).sort((a, b) => b[1] - a[1]);
+        parts.push(`${plural(plain.length, 'tool call')}: ${top.slice(0, 4).map(([n, c]) => (c > 1 ? `${n} \u00d7${c}` : n)).join(', ')}${top.length > 4 ? `, +${top.length - 4}` : ''}`);
+    }
+    if (agents.length) parts.push(`Background agent${agents.length === 1 ? '' : 's'} started: ${agents.map((m) => m.desc).slice(0, 2).join('; ')}${agents.length > 2 ? `, +${agents.length - 2}` : ''}`);
+    const items = run.filter((m) => m.kind === 'fold' || (m.kind === 'hidden' && m.of === 'tool')).slice(0, 60).map((m) => (m.kind === 'fold'
+        ? { of: m.of, at: m.at, part: m.part, title: m.title, file: m.file || '', tool: m.tool || '', size: m.size }
+        : { of: 'tool', at: m.at, part: m.part, title: m.desc ? `Agent: ${m.desc}` : m.tool, tool: m.tool }));
+    return { kind: 'summary', role: 'assistant', at: first.at, part: first.part == null ? 0 : first.part, uuid: first.uuid, time: first.time, sidechain: first.sidechain, label: parts.join(' \u00b7 '), items, more: Math.max(0, run.filter((m) => m.kind === 'fold' || (m.kind === 'hidden' && m.of === 'tool')).length - items.length) };
+}
+
+/** Runs of fold / hidden rows become one summary row (a lone fold row stays; a run of only hidden results vanishes). */
+function collapse(list) {
+    const out = [];
+    let run = [];
+    const flush = () => {
+        if (!run.length) return;
+        const real = run.filter((m) => !(m.kind === 'hidden' && m.of === 'result'));
+        if (real.length === 1 && real[0].kind === 'fold') out.push(real[0]);
+        else if (real.length) out.push(summaryOf(real));
+        run = [];
+    };
+    list.forEach((m) => { if (isHidden(m)) run.push(m); else { flush(); out.push(m); } });
+    flush();
+    return out;
 }
 
 function parse(line, at, view) {
@@ -215,10 +276,11 @@ async function readPage(file, opts = {}) {
     const stopAt = Math.max(0, pos - MAX_SCAN);
     const fh = await fs.promises.open(file, 'r');
     const found = []; // newest first while scanning
+    let shown = 0; // rows that count toward the limit (hidden / fold rows fold into summaries)
     let start = pos;
     try {
         let tail = Buffer.alloc(0); // bytes of a line that continues into the next chunk
-        while (pos > stopAt && found.length < limit) {
+        while (pos > stopAt && shown < limit) {
             const from = Math.max(stopAt, pos - CHUNK);
             const buf = Buffer.alloc(pos - from);
             await fh.read(buf, 0, buf.length, from);
@@ -230,9 +292,9 @@ async function readPage(file, opts = {}) {
             const lines = body.toString('utf8').split('\n');
             let off = from + cut + 1;
             const offsets = lines.map((l) => { const o = off; off += Buffer.byteLength(l, 'utf8') + 1; return o; });
-            for (let i = lines.length - 1; i >= 0 && found.length < limit; i -= 1) {
+            for (let i = lines.length - 1; i >= 0 && shown < limit; i -= 1) {
                 const msgs = parse(lines[i], offsets[i], opts.view);
-                for (let j = msgs.length - 1; j >= 0 && found.length < limit; j -= 1) found.push(msgs[j]);
+                for (let j = msgs.length - 1; j >= 0 && shown < limit; j -= 1) { found.push(msgs[j]); if (msgs[j].kind !== 'hidden' && msgs[j].kind !== 'fold') shown += 1; }
                 if (msgs.length) start = offsets[i];
             }
             tail = all.subarray(0, cut + 1 > 0 ? cut : 0);
@@ -242,8 +304,8 @@ async function readPage(file, opts = {}) {
     } finally {
         await fh.close();
     }
-    const full = found.length >= limit;
-    const messages = found.reverse();
+    const full = shown >= limit;
+    const messages = opts.view ? collapse(found.reverse()) : found.reverse();
     // full page: earlier lines may hold more; short page: only when the scan stopped before the file's start
     return { messages, start: messages.length ? start : pos, end, more: full ? start > 0 : pos > 0 };
 }
@@ -272,7 +334,7 @@ async function readSince(file, offset, opts = {}) {
         if (l) parse(l, off, opts.view).forEach((m) => messages.push(m));
         off += Buffer.byteLength(l, 'utf8') + 1;
     });
-    return { messages, end: from + Buffer.byteLength(text, 'utf8') };
+    return { messages: opts.view ? collapse(messages) : messages, end: from + Buffer.byteLength(text, 'utf8') };
 }
 
 /** A view from a request: { thinking, edits, tools, results } (all off = messages only). */

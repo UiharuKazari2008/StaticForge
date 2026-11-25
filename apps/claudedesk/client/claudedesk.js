@@ -292,10 +292,13 @@
             const chat = S.chats.get(d.id);
             if (!chat || !Array.isArray(d.messages)) return;
             chat.end = d.end;
+            if (d.insight) { chat.ins = d.insight; insUpdate(d.id); }
             // the far end is out of the page (the reader scrolled up through 300 rows): the push only moves the end
             if (chat.tailCut) return;
             const seen = new Set(chat.messages.map(msgKey));
-            shownOnly(d.messages).forEach((m) => { if (!seen.has(msgKey(m))) { chat.messages.push(m); seen.add(msgKey(m)); } });
+            const added = [];
+            shownOnly(d.messages).forEach((m) => { if (!seen.has(msgKey(m))) { chat.messages.push(m); seen.add(msgKey(m)); added.push(m); } });
+            pendingReconcile(chat, added);
             if (S.c && nodeSid(S.c.node) === d.id) appendChat(d.id);
         }, opts);
         // the server forgets a dropped socket's subscriptions and watches
@@ -708,6 +711,87 @@
         repaint();
     }
 
+    // ---- the insight strip (claudeInsight.js: model, effort, context, turn ...), read with detail and pushed with each append ----
+
+    const fmtN = (n) => { n = Number(n) || 0; return n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : (n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}k` : String(n)); };
+    const fmtDur = (ms) => { const t = Math.max(0, Math.round((Number(ms) || 0) / 1000)); const h = Math.floor(t / 3600); const m = Math.floor((t % 3600) / 60); return h ? `${h}h ${m}m` : (m ? `${m}m ${t % 60}s` : `${t}s`); };
+    /** claude-opus-5-5 -> Opus 5.5 (any other id as it is). */
+    const modelName = (id) => { const m = /^claude-(opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?/i.exec(String(id || '')); return m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ''}` : String(id || ''); };
+    /** The turn's running time counts on while the session works (the server sent the start). */
+    const insTurnMs = (ins, busy) => (busy && ins.turnStartedAt ? Date.now() - Date.parse(ins.turnStartedAt) : ins.turnMs);
+    /** "Opus 5.5 · effort high · 63% context · turn 12 · 4m 10s · 38 tool calls · 2 agents" */
+    function insLine(ins, busy, short) {
+        if (!ins) return '';
+        const ms = insTurnMs(ins, busy);
+        const parts = [ins.model ? modelName(ins.model) : '', ins.effort ? `effort ${ins.effort}` : '', ins.context && ins.context.used ? `${ins.context.percent}% context` : ''];
+        if (!short) {
+            parts.push(ins.turns ? `turn ${ins.turns}` : '', ms != null && ins.turns ? fmtDur(ms) : '', ins.turnTools ? plural(ins.turnTools, 'tool call') : '', ins.bgAgents ? plural(ins.bgAgents, 'agent') : '');
+        }
+        return parts.filter(Boolean).join(' \u00b7 ');
+    }
+    function insHtml(id) {
+        const chat = S.chats.get(id);
+        const l = liveOf(id);
+        const line = chat && chat.ins ? insLine(chat.ins, !!(l && l.status === 'busy')) : '';
+        return `${line ? esc(line) : '<span class="mmc-hint">Reading what the session is doing...</span>'} <span class="mmc-link" data-act="detail-toggle">More...</span>`;
+    }
+    function insUpdate(id) {
+        const el = S.c && nodeSid(S.c.node) === id ? S.c.modal.querySelector('[data-cd-ins]') : null;
+        if (el) el.innerHTML = insHtml(id);
+        pendingDraw(id);
+        insTick(id);
+    }
+    /** While the session works, the strip's turn time moves on every 10 s (one timer, only while the chat is open and busy). */
+    function insTick(id) {
+        const l = liveOf(id);
+        const chat = S.chats.get(id);
+        if (S.insTimer || !chat || !chat.ins || !(l && l.status === 'busy') || !S.c || nodeSid(S.c.node) !== id) return;
+        S.insTimer = setTimeout(() => { S.insTimer = 0; if (S.c && nodeSid(S.c.node) === id) insUpdate(id); }, 10000);
+    }
+    async function insLoad(id) {
+        const chat = S.chats.get(id);
+        if (!chat) return;
+        try {
+            const r = await send('claude_desk_session', { action: 'detail', id });
+            const d = unwrap(r, 'detail').detail || null;
+            if (d && d.insight) { chat.ins = d.insight; insUpdate(id); }
+        } catch (_) { /* the strip stays on its hint */ }
+    }
+
+    // ---- a steering message sent from the composer shows at once as a pending row, replaced by the real one ----
+
+    function pendingReconcile(chat, msgs) {
+        if (!chat.pending || !chat.pending.length || !msgs || !msgs.length) return;
+        const texts = new Set(msgs.filter((m) => m.role === 'user' && m.kind === 'text').map((m) => String(m.text || '').trim()));
+        chat.pending = chat.pending.filter((p) => !texts.has(p.text.trim()) && Date.now() - p.at < 600000);
+    }
+    function pendingHtml(chat) {
+        return (chat.pending || []).map((p) => `<div class="cd-msg cd-user is-pending" data-pend="${p.at}"><div class="cd-msg-head"><b>${p.steer ? 'You (steering)' : 'You'}</b><span>sending</span></div><div class="cd-msg-text">${esc(p.text)}</div></div>`).join('');
+    }
+    /** The live activity row at the end of a working session's log: what it does now, the turn's time, its background agents. */
+    function activityHtml(id) {
+        const chat = S.chats.get(id);
+        const l = liveOf(id);
+        const ins = chat && chat.ins;
+        if (!ins || !ins.now || !(l && l.status === 'busy') || chat.tailCut) return '';
+        const ms = insTurnMs(ins, true);
+        const subs = (ins.agentsNow || []).map((a) => `<div class="cd-act-sub">${esc(a.description)}: ${esc(a.doing)}</div>`).join('');
+        return `<div class="cd-activity" role="status"><span class="cd-working" aria-hidden="true"></span><div><b>${esc(ins.now)}</b>${ms != null && ins.turns ? ` <span class="mmc-hint">${esc(fmtDur(ms))}</span>` : ''}${subs}</div></div>`;
+    }
+    /** The rows after the messages (pending steering, the activity row) drawn again; the list follows only when it was at the end. */
+    function pendingDraw(id) {
+        const pane = logOf(id);
+        const chat = S.chats.get(id);
+        if (!pane || !chat) return;
+        const atEnd = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 80;
+        pane.querySelectorAll('.is-pending, .cd-activity').forEach((n) => n.remove());
+        const hint = pane.querySelector(':scope > .mmc-hint');
+        if (hint) hint.remove();
+        const html = (chat.tailCut ? '' : pendingHtml(chat)) + activityHtml(id);
+        if (html) pane.insertAdjacentHTML('beforeend', html);
+        if (atEnd) pane.scrollTop = pane.scrollHeight;
+    }
+
     /** What the view shows, as sent with every transcript request and watch. */
     const showNow = () => ({ thinking: !!S.show.thinking, edits: !!S.show.edits, tools: !!S.show.tools, results: !!S.show.results });
     /** A message's identity (a line's byte offset and its part), the same on a page, a push and in the DOM. */
@@ -773,6 +857,8 @@
                 chat.more = r.more;
                 chat.tailCut = false;
                 chat.stick = true;
+                pendingReconcile(chat, chat.messages);
+                void insLoad(id);
             }
             chat.error = '';
         } catch (e) { if (gen === chat.gen) chat.error = errText(e); } finally { if (gen === chat.gen) chat.loading = false; }
@@ -840,6 +926,7 @@
         try {
             const r = await send('claude_desk_session', { action: 'detail', id });
             dt.data = unwrap(r, 'detail').detail || null;
+            if (dt.data && dt.data.insight) chat.ins = dt.data.insight;
         } catch (e) { if (isGone(e)) dt.gone = true; else dt.error = errText(e); }
         dt.loading = false;
         if (S.c && nodeSid(S.c.node) === id) S.c.render();
@@ -1305,6 +1392,120 @@
             }
         };
     }
+    // ---- Maintenance (Fleet > Supervisor > Maintenance; claude_desk_supervisor maintenance_*) -------------------
+    // The daily run's checks, what each did and found, the past runs and the settings. Run Now answers at once; the
+    // result and the progress arrive through the supervisor status push (no polling).
+    const maintData = () => (S.sup.data && S.sup.data.maintenance) || null;
+    const maintUi = () => (S.maint || (S.maint = { sel: '', viewId: null, view: null, draft: null, busy: false }));
+    const MAINT_STATE = { ok: ['OK', `${VI}/check-16.png`], warn: ['Needs a look', `${VI}/warning-16.png`], fail: ['Failed', `${VI}/error-16.png`], skipped: ['Skipped', `${VI}/info-16.png`] };
+    const MAINT_TRIGGER = { daily: 'Daily', manual: 'By hand', 'catch-up': 'Catch-up' };
+    function maintReport() {
+        const u = maintUi();
+        const d = maintData();
+        return u.viewId && u.view && String(u.view.id) === String(u.viewId) ? u.view : ((d && d.last) || null);
+    }
+    function maintTake(r) {
+        if (r && r.maintenance) S.sup.data = Object.assign({}, S.sup.data || {}, { maintenance: r.maintenance });
+        if (r && r.report) { const u = maintUi(); u.view = r.report; u.viewId = r.report.id; }
+    }
+    function maintDetailHtml(c) {
+        const r = maintReport();
+        const ck = r && (r.checks || []).find((x) => x.id === maintUi().sel);
+        if (!ck) return '<p class="mmc-hint">Select a check above to see what it did and what it found.</p>';
+        const rows = []
+            .concat((ck.actions || []).map((t, i) => ({ key: `ma:${i}`, icon: `${VI}/check-16.png`, data: { kind: 'Did', text: t } })))
+            .concat((ck.findings || []).map((f, i) => ({ key: `mf:${i}`, icon: f.level === 'warn' ? `${VI}/warning-16.png` : `${VI}/info-16.png`, data: { kind: f.level === 'warn' ? 'Needs a look' : 'Found', text: f.text } })));
+        const lv = (c || S.c).listView([
+            { t: 'What', w: 90, key: 'kind', text: (d) => d.kind },
+            { t: 'Detail', w: 640, key: 'text', text: (d) => d.text }
+        ], rows, { sortId: 'cd-maint-items', empty: 'This check did nothing and found nothing to report.', fit: true });
+        return `<p><b>${esc(ck.title)}</b>: ${esc(ck.summary || '')}</p>${lv}`;
+    }
+    function maintSelect(key) {
+        const u = maintUi();
+        if (key.startsWith('mc:')) {
+            u.sel = key.slice(3);
+            const box = S.c && S.c.modal.querySelector('.cd-maint-detail');
+            if (box) box.innerHTML = maintDetailHtml(S.c);
+        } else if (key.startsWith('mh:')) {
+            const id = key.slice(3);
+            if (String(u.viewId) === id) return;
+            u.viewId = id;
+            void send('claude_desk_supervisor', { action: 'maintenance_status', runId: Number(id) }).then((r) => { maintTake(unwrap(r, 'maintenance')); repaint(); }).catch(() => {});
+        }
+    }
+    function maintenancePage(c) {
+        const sup = S.sup;
+        const T = 'Maintenance';
+        if (!sup.loaded) { void loadSupervisor(); return c.page(T, '', [{ id: 'cd-mt-wait', title: T, body: '<p class="mmc-hint">Reading the maintenance report...</p>' }]); }
+        if (sup.stale && !sup.loading) { sup.stale = false; void loadSupervisor(); }
+        const d = maintData();
+        if (sup.unavailable || !d) return c.page(T, '', [{ id: 'cd-mt-gone', title: T, body: `<p>${NOT_YET}</p>` }]);
+        const u = maintUi();
+        const st = u.draft || Object.assign({}, d.settings, { checks: Object.assign({}, d.settings.checks) });
+        const run = d.running;
+        const r = maintReport();
+        const prog = run ? `${esc(run.current ? ((d.checks.find((x) => x.id === run.current) || {}).title || run.current) : 'Starting')} (${run.done.length} of ${run.total} done)${run.dryRun ? ', dry run' : ''}` : '';
+        const status = run ? `Running: ${prog}` : (d.settings.enabled ? `Next run ${esc(when(d.nextAt))}` : 'The daily run is off');
+        const bar = `<div class="cd-actbar" role="toolbar" aria-label="Maintenance"><span>${status}</span><button type="button" class="btn-standard primary" data-act="maint-run"${run || u.busy ? ' disabled' : ''}>Run Now</button><button type="button" class="btn-standard" data-act="maint-dry"${run || u.busy ? ' disabled' : ''}>Dry Run</button></div>`;
+        const rows = ((r && r.checks) || []).map((x) => { const s = MAINT_STATE[x.state] || MAINT_STATE.ok; return { key: `mc:${x.id}`, icon: s[1], cls: x.state === 'fail' ? 'cd-stale' : '', data: { title: x.title, state: s[0], summary: x.summary || '' } }; });
+        const list = c.listView([
+            { t: 'Check', w: 190, key: 'title', text: (x) => x.title },
+            { t: 'State', w: 90, key: 'state', text: (x) => x.state },
+            { t: 'Summary', w: 460, key: 'summary', text: (x) => x.summary }
+        ], rows, { sortId: 'cd-maint', empty: 'No run yet. Use Run Now, or wait for the daily run.', fit: true });
+        const head = r ? `<p class="mmc-hint">${esc(when(r.startedAt))}, ${esc(MAINT_TRIGGER[r.trigger] || r.trigger || '')}${r.dryRun ? ', dry run (nothing was changed)' : ''}: ${esc(r.summary || '')}</p>` : '';
+        const hrows = (d.history || []).map((h) => ({ key: `mh:${h.id}`, icon: (MAINT_STATE[h.state] || MAINT_STATE.ok)[1], data: { at: h.startedAt, state: (MAINT_STATE[h.state] || MAINT_STATE.ok)[0], how: `${MAINT_TRIGGER[h.trigger] || h.trigger || ''}${h.dryRun ? ' (dry)' : ''}`, summary: h.summary || '' } }));
+        const hist = c.listView([
+            { t: 'Started', w: 128, key: 'at', text: (x) => when(x.at), value: (x) => x.at },
+            { t: 'State', w: 90, key: 'state', text: (x) => x.state },
+            { t: 'How', w: 90, key: 'how', text: (x) => x.how },
+            { t: 'Summary', w: 380, key: 'summary', text: (x) => x.summary }
+        ], hrows, { sortId: 'cd-maint-hist', sort: { key: 'at', dir: -1 }, empty: 'No run is stored yet (30 days are kept).' });
+        const form = `<div class="cd-sup-form">
+            <label class="cd-opt"><input type="checkbox" data-maint="enabled"${st.enabled ? ' checked' : ''}><span>Run every day</span></label>
+            <label><span>Time (server clock, HH:MM):</span><input type="text" data-maint="time" value="${esc(st.time)}" autocomplete="off" spellcheck="false"></label>
+            <label class="cd-opt"><input type="checkbox" data-maint="dryRun"${st.dryRun ? ' checked' : ''}><span>Dry run: report what would be done, change nothing</span></label>
+            <label class="cd-opt"><input type="checkbox" data-maint="deleteRemoteBranches"${st.deleteRemoteBranches ? ' checked' : ''}><span>Delete merged remote branches older than ${esc(st.remoteBranchDays == null ? 14 : st.remoteBranchDays)} days on Yozora (otherwise only listed)</span></label>
+            ${(d.checks || []).map((x) => `<label class="cd-opt"><input type="checkbox" data-maint="check:${esc(x.id)}"${st.checks[x.id] === false ? '' : ' checked'}><span>${esc(x.title)}</span></label>`).join('')}
+            <p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="maint-save"${u.busy ? ' disabled' : ''}>Save</button>${u.draft ? ' <span class="mmc-hint">Not saved yet.</span>' : ''}</p>
+        </div>`;
+        const html = c.page(T, run ? prog : (r ? `Last run ${when(r.startedAt)}` : ''), [
+            { id: 'cd-mt-bar', title: 'Run', body: `${bar}${head}` },
+            { id: 'cd-mt-list', title: 'Report', body: `<div class="cd-sup-list">${list}</div>` },
+            { id: 'cd-mt-detail', title: 'Selected Check', body: `<div class="cd-maint-detail">${maintDetailHtml(c)}</div>` },
+            { id: 'cd-mt-hist', title: `Past runs (${hrows.length})`, body: `<div class="cd-sup-list">${hist}</div><p class="mmc-hint">Select a past run to read its report above.</p>` },
+            { id: 'cd-mt-set', title: 'Settings', body: form }
+        ]);
+        return {
+            html,
+            mount: (pane) => {
+                const read = (ev) => {
+                    const el = ev.target.closest('[data-maint]');
+                    if (!el) return;
+                    const dr = maintUi().draft || Object.assign({}, d.settings, { checks: Object.assign({}, d.settings.checks) });
+                    const key = el.dataset.maint;
+                    const val = el.type === 'checkbox' ? el.checked : el.value;
+                    if (key.startsWith('check:')) dr.checks[key.slice(6)] = !!val; else dr[key] = val;
+                    maintUi().draft = dr;
+                    const note = pane.querySelector('.cd-sup-form .cd-sup-actions');
+                    if (note && !note.querySelector('.mmc-hint')) note.insertAdjacentHTML('beforeend', ' <span class="mmc-hint">Not saved yet.</span>');
+                };
+                pane.addEventListener('input', read);
+                pane.addEventListener('change', read);
+            }
+        };
+    }
+    async function maintAct(c, payload, busy) {
+        const u = maintUi();
+        u.busy = true;
+        c.note(busy);
+        repaint();
+        try { maintTake(unwrap(await send('claude_desk_supervisor', payload), 'maintenance')); if (payload.action === 'maintenance_save') u.draft = null; } catch (e) { await failBox(c, e); }
+        u.busy = false;
+        c.note('');
+        repaint();
+    }
     const WORK_STARTABLE = new Set(['held', 'queued', 'failed', 'cancelled']);
     const WORK_HOLDABLE = new Set(['queued', 'failed', 'cancelled']);
     /** The requests picked in the list that are still in the queue (ids as strings). */
@@ -1370,7 +1571,7 @@
         const st = w.stages || {};
         const stageText = (x) => (x ? [x.engine && x.engine !== 'claude' ? engineName(x.engine) : '', x.model, x.effort].filter(Boolean).join(' / ') : '');
         const parts = supWork().filter((x) => String(x.parentId) === String(w.id));
-        const links = [w.sessionId ? `<span class="mmc-link" data-act="work-open" data-arg="${esc(w.id)}">Open session</span>` : '', w.issue && w.issue.url ? '<span class="mmc-link" data-act="work-issue">Open issue</span>' : ''].filter(Boolean).join(' &nbsp; ');
+        const links = [`<button type="button" class="btn-standard" data-act="work-ask" data-arg="${esc(w.id)}">Ask Yozora...</button>`, w.sessionId ? `<span class="mmc-link" data-act="work-open" data-arg="${esc(w.id)}">Open session</span>` : '', w.issue && w.issue.url ? '<span class="mmc-link" data-act="work-issue">Open issue</span>' : ''].filter(Boolean).join(' &nbsp; ');
         let plan;
         if (!w.sessionId) plan = `<p class="mmc-hint">${w.topology === 'planner' || !w.topology ? 'The planner writes its plan when the request starts; until then the brief above is the plan.' : 'It has not started yet: the brief above is what the session will get.'}</p>`;
         else {
@@ -2203,7 +2404,8 @@
                         { id: 'sup-asks', name: `Restart Waits (${supAsks().length})`, icon: '/static_images/vista-cmdbar/clock.png', desc: 'Agents waiting to restart Dreamscape' },
                         { id: 'sup-holds', name: `Paused Sessions (${supHolds().length})`, icon: '/static_images/vista-cmdbar/pause.png', desc: 'Sessions the Supervisor or you paused' },
                         { id: 'sup-locks', name: `Managed Locks (${supLocks().length})`, icon: '/static_images/vista-cmdbar/lock.png', desc: 'Busy locks the Supervisor keeps for agents' },
-                        { id: 'sup-arts', name: `Work Folders (${supArtifacts().length})`, icon: FOLDER16, desc: 'Work folders and temp files the agents left' }
+                        { id: 'sup-arts', name: `Work Folders (${supArtifacts().length})`, icon: FOLDER16, desc: 'Work folders and temp files the agents left' },
+                        { id: 'sup-maint', name: 'Maintenance', icon: '/static_images/vista-cmdbar/tools.png', desc: 'The daily clean-up and health run: worktrees, branches, PRs, errors, disk, thermals' }
                     ] },
                 { id: 'accounts', name: 'Accounts', icon: `${A}/account-16.png`, desc: 'The Claude accounts of this host' },
                 {
@@ -2277,6 +2479,42 @@
         ])}`;
     }
 
+    /**
+     * The dashboard on Fleet's main page (Yukimi, Nov 24 2026: "a dashboard so I can see the work queue that's active"):
+     * count tiles that open their list, the work running now, and what waits for her to pick it.
+     */
+    function dashboardSections(c) {
+        if (!S.sup.loaded && !S.sup.loading) void loadSupervisor();
+        const run = runItems();
+        const sentBack = supWork().filter((w) => w.state === 'waiting');
+        const held = heldItems();
+        const busy = S.live.filter((s) => s.status === 'busy').length;
+        const gaps = supReviews().filter((r) => r.verdict === 'gaps' && !r.dismissed && !r.delivered).length;
+        const tile = (nav, icon, n, label, warn) => `<button type="button" class="cd-tile${warn && n ? ' is-warn' : ''}" data-act="nav:${nav}"><img src="${esc(icon)}" alt=""><b>${n}</b><span>${esc(label)}</span></button>`;
+        const tiles = `<div class="cd-tiles">${[
+            tile('aw-sup', '/static_images/vista-cmdbar/play.png', run.length, 'Running work'),
+            tile('co-held', `${ITEMS}/date-and-time-16.png`, held.length, 'Waiting for you'),
+            tile('co-pending', `${VI}/info-16.png`, pendItems().length, 'Queued'),
+            tile('co-pending', `${VI}/warning-16.png`, sentBack.length, 'Sent back', true),
+            tile('sessions', SESSION16, S.live.length, busy ? `Sessions (${busy} working)` : 'Sessions'),
+            tile('bg-agents', `${ITEMS}/programs-and-features-16.png`, bgRunning().length, 'Background agents'),
+            tile('sup-reviews', `${VI}/check-16.png`, gaps, 'Reviews with gaps', true),
+            tile('sup-asks', '/static_images/vista-cmdbar/clock.png', supAsks().length, 'Restart waits', true),
+            tile('sup-holds', '/static_images/vista-cmdbar/pause.png', supHolds().length, 'Paused', true)
+        ].join('')}</div>`;
+        const live = run.concat(sentBack);
+        const row = (w) => `<tr class="cd-dash-row" data-act="${w.state === 'held' ? 'nav:co-held' : `nav:aw:w:${esc(w.id)}`}"><td><img class="mmc-row-icon" src="${esc(workIcon(w.state))}" alt="">${esc(w.title || String(w.id))}</td><td>${esc(workState(w))}</td><td>${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}</td><td>${esc([w.model, w.effort].filter(Boolean).join(' / '))}</td><td>${esc(w.startedAt ? when(w.startedAt) : '')}</td><td>${esc(w.message || '')}</td></tr>`;
+        const table = (list, empty) => (list.length
+            ? `<table class="cd-table cd-dash"><thead><tr><th>Request</th><th class="cd-w80">State</th><th class="cd-w80">Account</th><th>Model</th><th>Started</th><th>Note</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>`
+            : `<p class="mmc-hint">${esc(empty)}</p>`);
+        const heldTop = held.slice(0, 8);
+        return [
+            { id: 'cd-dash-tiles', title: 'Dashboard', body: tiles },
+            { id: 'cd-dash-active', title: `Active Work (${live.length})`, body: table(live, 'No work is running. Pick requests in Waiting and start them.') + (live.length ? '<p><span class="mmc-link" data-act="nav:aw-sup">Open Active</span></p>' : '') },
+            { id: 'cd-dash-held', title: `Waiting for You (${held.length})`, body: table(heldTop, 'Nothing is waiting for you.') + (held.length ? `<p><span class="mmc-link" data-act="nav:co-held">${held.length > heldTop.length ? `See all ${held.length}` : 'Open Waiting'}</span></p>` : '') }
+        ];
+    }
+
     function rootPage(c) {
         const A = S.app.url('assets').replace(/\/$/, '');
         const act = activeAccount();
@@ -2310,7 +2548,7 @@
                 ['Build gates open', String((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length)]
             ]) + `<p><span class="mmc-link" data-act="nav:co-agents">Agents</span> &nbsp; <span class="mmc-link" data-act="nav:co-builds">Build gates</span></p>` }
         ];
-        return c.page(S.host && S.host.hostname ? `${TITLE} (${S.host.hostname})` : TITLE, S.error ? `Error: ${S.error}` : '', [{ id: 'cd-sum-overview', title: 'Overview', body: overview }, { id: 'cd-sum-usage', title: 'Plan Usage', body: `<div class="cd-usage">${usageHtml()}</div>${supervisorSpendHtml(c)}` }].concat(sections));
+        return c.page(S.host && S.host.hostname ? `${TITLE} (${S.host.hostname})` : TITLE, S.error ? `Error: ${S.error}` : '', dashboardSections(c).concat([{ id: 'cd-sum-usage', title: 'Plan Usage', body: `<div class="cd-usage">${usageHtml()}</div>${supervisorSpendHtml(c)}` }]).concat(sections, [{ id: 'cd-sum-overview', title: 'About Fleet', body: overview }]));
     }
 
     const ACCOUNT_COLS = [
@@ -2621,8 +2859,17 @@
         }).join('');
     }
 
-    function messageHtml(m) {
+    function messageHtml(m, showModel) {
         const k = ` data-at="${m.at}" data-k="${esc(msgKey(m))}"`;
+        if (m.kind === 'summary') {
+            // a run of hidden thinking / edits / tool calls: one row (counts and names only); it opens the items
+            const rows = (m.items || []).map((it) => {
+                const edit = it.of === 'edit';
+                const label = edit ? `${it.tool === 'Write' ? 'Wrote' : 'Edited'} ${baseName(it.file) || 'a file'}` : (it.of === 'thinking' ? `Thinking (${plural(Number(it.size) || 0, 'character')})` : it.title);
+                return `<div class="cd-fold is-${edit ? 'edit' : (it.of === 'thinking' ? 'thinking' : 'tool')}" data-at="${it.at}" data-part="${it.part == null ? 0 : it.part}" role="link" tabindex="0" title="${esc(edit && it.file ? it.file : 'Open in a window')}"><img src="${edit ? `${VI}/explorer/file-16.png` : `${VI}/info-16.png`}" alt=""><span>${esc(label)}</span></div>`;
+            }).join('');
+            return `<div class="cd-msg cd-sum"${k}><div class="cd-sum-head" role="button" tabindex="0" aria-expanded="false"><img src="${VI}/info-16.png" alt=""><span>${esc(m.label)}</span></div><div class="cd-sum-items" hidden>${rows}${m.more ? `<div class="mmc-hint">${m.more} more not listed.</div>` : ''}</div></div>`;
+        }
         if (m.kind === 'fold') {
             // a thinking block or file edit the view keeps closed: one row that opens it in its own window
             const edit = m.of === 'edit';
@@ -2646,16 +2893,19 @@
         if (m.kind === 'command') return `<div class="cd-msg cd-note"${k}>${esc(m.text)}</div>`;
         if (m.role === 'system') return `<div class="cd-msg cd-note"${k}>${esc(m.text)}</div>`;
         const who = m.role === 'user' ? (m.origin && m.origin !== 'human' ? 'Steering' : WHO.user) : WHO[m.role] || m.role;
-        return `<div class="cd-msg cd-${m.role === 'user' ? 'user' : 'claude'}${m.sidechain ? ' is-side' : ''}"${k}><div class="cd-msg-head"><b>${esc(who)}</b><span>${esc(timeOnly(m.time))}</span></div><div class="cd-msg-text">${esc(m.text)}</div></div>`;
+        return `<div class="cd-msg cd-${m.role === 'user' ? 'user' : 'claude'}${m.sidechain ? ' is-side' : ''}"${k}><div class="cd-msg-head"><b>${esc(who)}</b>${showModel && m.model ? `<i class="cd-model" title="${esc(m.model)}">${esc(modelName(m.model))}</i>` : ''}<span>${esc(timeOnly(m.time))}</span></div><div class="cd-msg-text">${esc(m.text)}</div></div>`;
     }
 
     function logHtml(chat) {
         let out = '';
         let day = '';
+        let prevModel = '';
         chat.messages.forEach((m) => {
             const k = m.time ? dateKey(m.time) : '';
             if (k && k !== day) { day = k; out += `<div class="cd-day">${esc(new Date(m.time).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}</div>`; }
-            out += messageHtml(m);
+            const sm = m.role === 'assistant' && m.kind === 'text' && !m.sidechain && m.model;
+            out += messageHtml(m, !!(sm && prevModel && m.model !== prevModel));
+            if (sm) prevModel = m.model;
         });
         return out;
     }
@@ -2665,7 +2915,7 @@
         const top = chat.more ? `<div class="cd-earlier"><button type="button" class="btn-standard" data-act="earlier" data-arg="${esc(id)}"${chat.loading ? ' disabled' : ''}>Show Earlier Messages</button></div>` : '';
         const body = chat.error ? `<p class="cd-err">${esc(chat.error)}</p>` : (chat.messages.length ? logHtml(chat) : `<p class="mmc-hint">${chat.loading ? 'Reading the conversation...' : 'No messages yet.'}</p>`);
         const bottom = chat.tailCut ? '<div class="cd-earlier"><span class="mmc-hint">Scroll down for later messages...</span></div>' : '';
-        return top + body + bottom;
+        return top + body + bottom + (chat.tailCut ? '' : pendingHtml(chat)) + activityHtml(id);
     }
 
     /** The view options as links' check boxes under the title: what the log shows. */
@@ -2754,8 +3004,9 @@
         const have = Array.from(S.wins).find((x) => x.key === key);
         if (have) { call('bringModalToFront', have.modal); return; }
         const edit = el.classList.contains('is-edit');
+        const tool = el.classList.contains('is-tool');
         const label = (el.querySelector('span') || {}).textContent || '';
-        const w = openViewer({ key, title: edit ? label.replace(/ \(\d+ lines?\)$/, '') : 'Thinking', body: '<p class="mmc-hint">Reading...</p>' });
+        const w = openViewer({ key, title: edit ? label.replace(/ \(\d+ lines?\)$/, '') : (tool ? label : 'Thinking'), body: '<p class="mmc-hint">Reading...</p>' });
         try {
             const r = agentId ? await send('claude_desk_session', { action: 'agent_page', id, agentId, item: { at, part } }) : await send('claude_desk_transcript', { id, item: { at, part } });
             const item = unwrap(r, 'item').item;
@@ -2773,11 +3024,15 @@
         box.addEventListener('click', (ev) => {
             const t = ev.target.closest('[data-cd-toggle]');
             if (t) { t.parentElement.classList.toggle('is-open'); return; }
+            const sm = ev.target.closest('.cd-sum-head');
+            if (sm) { const open = sm.getAttribute('aria-expanded') !== 'true'; sm.setAttribute('aria-expanded', String(open)); sm.nextElementSibling.hidden = !open; return; }
             const r = ev.target.closest('.cd-fold');
             if (r) void openFold(id, agentOf2(), r);
         });
         box.addEventListener('keydown', (ev) => {
             if (ev.key !== 'Enter' && ev.key !== ' ') return;
+            const sm = ev.target.closest && ev.target.closest('.cd-sum-head');
+            if (sm) { ev.preventDefault(); sm.click(); return; }
             const r = ev.target.closest && ev.target.closest('.cd-fold');
             if (r) { ev.preventDefault(); void openFold(id, agentOf2(), r); }
         });
@@ -2968,6 +3223,7 @@
                 <div class="mmc-page-title${l && l.status === 'busy' ? ' cd-title-busy' : ''}"><b>${esc(titleOf(row))}</b><span>${esc(side)}</span></div>
                 ${linkBits ? `<div class="cd-chat-links">${linkBits}</div>` : ''}
                 ${holdBar}
+                <div class="cd-insight" data-cd-ins role="status">${insHtml(id)}</div>
                 ${showBar()}
                 <div class="cd-chat-log" data-mmc-scroll>${logInner(chat, id)}</div>
                 ${composer}
@@ -2993,6 +3249,7 @@
                     if (b) { b.parentElement.classList.remove('is-folded'); b.remove(); }
                 });
                 wireFolds(log, id, '');
+                insTick(id);
                 pane.querySelectorAll('[data-cd-show]').forEach((cb) => cb.addEventListener('change', () => void setShow(cb.dataset.cdShow, cb.checked)));
                 requestAnimationFrame(() => pageMore(id, log));
                 attWire(S.c, pane, id);
@@ -3093,6 +3350,26 @@
         ], taskRows, { sortId: 'cd-dt-tk', sort: { key: 'at', dir: -1 }, empty: 'This session has no background tasks.' });
         const l = liveOf(id);
         const status = d.live === false ? 'Ended' : (STATUS_TEXT[d.status] || (l ? stateText(row) : d.status) || '');
+        const ins = d.insight || chat.ins || null;
+        const busyNow = !!(l && l.status === 'busy');
+        const tk = ins ? ins.tokens : null;
+        const insightSec = ins ? [{ id: 'cd-dt-insight', title: 'Insight', body: c.props([
+            ['Model', esc(ins.model ? `${modelName(ins.model)} (${ins.model})` : '')],
+            ['Model switches', ins.models && ins.models.length > 1 ? esc(ins.models.map((x) => `${modelName(x.model)} ${timeOnly(x.at)}`).join(' > ')) : 'None'],
+            ['Effort', esc(ins.effort || 'Default')],
+            ['Permission mode', esc(ins.mode || '')],
+            ['Context used', ins.context && ins.context.used ? `${esc(fmtN(ins.context.used))} of ${esc(fmtN(ins.context.window))} (${ins.context.percent}%, the window size is estimated)` : ''],
+            ['Turns', String(ins.turns || 0)],
+            ['This turn', ins.turnStartedAt ? `${esc(fmtDur(insTurnMs(ins, busyNow)))}, started ${esc(when(ins.turnStartedAt))}` : ''],
+            ['Tool calls this turn', String(ins.turnTools || 0)],
+            ['Last tool', ins.lastTool ? `${esc(ins.lastTool)} (${esc(when(ins.lastToolAt))})` : ''],
+            ['Files edited this turn', ins.turnFileCount ? esc(ins.turnFiles.map(baseName).join(', ') + (ins.turnFileCount > ins.turnFiles.length ? `, +${ins.turnFileCount - ins.turnFiles.length}` : '')) : 'None'],
+            ['Background agents running', String(ins.bgAgents || 0)],
+            ['Tokens, this session', tk ? `${esc(fmtN(tk.input))} in, ${esc(fmtN(tk.output))} out, ${esc(fmtN(tk.cacheRead))} cache read, ${esc(fmtN(tk.cacheWrite))} cache written` : ''],
+            ['Tokens, this turn', ins.turnTokens ? `${esc(fmtN(ins.turnTokens.input))} in, ${esc(fmtN(ins.turnTokens.output))} out, ${esc(fmtN(ins.turnTokens.cacheRead))} cache read, ${esc(fmtN(ins.turnTokens.cacheWrite))} cache written` : ''],
+            ['Cost (Claude Code\'s own figure)', ins.costUsd == null ? 'Not reported' : `$${ins.costUsd.toFixed(2)}`],
+            ['Claude Code', esc(ins.version || '')]
+        ]) }] : [];
         return c.page(d.title || title, status, [
             { id: 'cd-dt-info', title: 'Session', body: c.props([
                 ['Status', esc(status)],
@@ -3105,6 +3382,7 @@
                 ['Started', esc(when(d.startedAt))],
                 ['Last activity', esc(when(d.lastActivity))]
             ]) + `<p>${back}</p>` },
+            ...insightSec,
             { id: 'cd-dt-agents', title: `Background Agents (${agents.length})`, body: `<div class="cd-dt-list">${agentList}</div><div class="cd-dt-box cd-agent-box">${agentBoxHtml(chat)}</div>` },
             { id: 'cd-dt-tasks', title: `Background Tasks (${tasks.length})`, body: `<div class="cd-dt-list">${taskList}</div><div class="cd-dt-box cd-task-box">${taskBoxHtml(chat)}</div>` },
             { id: 'cd-dt-claims', title: `Claims (${claims.length})`, body: table([['Path']], claims.map((p) => `<tr><td>${esc(p)}</td></tr>`), 'It holds no claim.') },
@@ -3130,7 +3408,10 @@
             redrawLog(id);
             return;
         }
-        pane.insertAdjacentHTML('beforeend', fresh.map(messageHtml).join(''));
+        pane.querySelectorAll('.is-pending, .cd-activity').forEach((n) => n.remove());
+        let prev = '';
+        for (let i = chat.messages.indexOf(fresh[0]) - 1; i >= 0 && !prev; i -= 1) { const q = chat.messages[i]; if (q.role === 'assistant' && q.kind === 'text' && !q.sidechain && q.model) prev = q.model; }
+        pane.insertAdjacentHTML('beforeend', fresh.map((m) => { const sm = m.role === 'assistant' && m.kind === 'text' && !m.sidechain && m.model; const h = messageHtml(m, !!(sm && prev && m.model !== prev)); if (sm) prev = m.model; return h; }).join('') + pendingHtml(chat) + activityHtml(id));
         delete S.c.modal.querySelector('.mmc-result').dataset.html;
         if (atEnd) pane.scrollTop = pane.scrollHeight;
     }
@@ -3177,6 +3458,7 @@
             case 'co-builds': return buildsPage(c);
             case 'co-locks': return locksPage(c);
             case 'co-supervisor': case 'sup-reviews': case 'sup-asks': case 'sup-holds': case 'sup-locks': case 'sup-arts': return supervisorPage(c, n.id);
+            case 'sup-maint': return maintenancePage(c);
             case 'co-work': return workPage(c, 'all');
             case 'sessions': return sessionsPage(c, false);
             case 'co-root': return withBars(rootPage(c));
@@ -3263,6 +3545,7 @@
             case 'sup-asks': return [{ text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-holds': return [{ text: 'Resume', action: 'sup-resume' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-locks': return [{ text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Read Again', action: 'sup-refresh' }];
+            case 'sup-maint': return [{ text: 'Run Now', action: 'maint-run', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Dry Run', action: 'maint-dry', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Save Settings', action: 'maint-save', disabled: !maintUi().draft }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-arts': return [{ text: 'Clean...', action: 'sup-art-clean' }, { text: 'Forget', action: 'sup-art-forget' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'rc-host': return [
                 { text: 'Reconnect', action: 'rc-reconnect' },
@@ -3446,6 +3729,9 @@
             case 'fleet-refresh': await loadFleet(); return true;
             case 'fold-open': if (S.foldCtx) await openFold(S.foldCtx.id, S.foldCtx.agent, S.foldCtx.el); return true;
             case 'sup-refresh': await loadSupervisor(); return true;
+            case 'maint-run': await maintAct(c, { action: 'maintenance_run' }, 'Starting the maintenance run...'); return true;
+            case 'maint-dry': await maintAct(c, { action: 'maintenance_run', dryRun: true }, 'Starting a dry run...'); return true;
+            case 'maint-save': { const dr = maintUi().draft; if (dr) await maintAct(c, { action: 'maintenance_save', settings: { enabled: !!dr.enabled, time: String(dr.time || '').trim(), dryRun: !!dr.dryRun, deleteRemoteBranches: !!dr.deleteRemoteBranches, checks: dr.checks } }, 'Saving...'); return true; }
             case 'pause': if (sid) await pauseBox(c, sid); else c.note('Select a running session first.'); return true;
             case 'resume-hold': if (sid) await resumeHold(c, sid); return true;
             case 'sup-resume': {
@@ -3515,6 +3801,25 @@
                 return true;
             }
             case 'rules-open': await ruleRead(c, selId(c, 'ru:')); return true;
+            case 'work-ask': {
+                // Yozora as the item's assistant: a new chat with her, its box holding what the item is; the person asks
+                const w = workOf(arg || workSel(c));
+                if (!w) return true;
+                const lines = [
+                    `About Fleet work item #${w.id}: ${w.title || ''}`,
+                    `State: ${workState(w)}${w.account ? ` - account ${w.account && w.account.name ? w.account.name : w.account}` : ''}${w.topology ? ` - ${w.topology}` : ''}`,
+                    w.issue && w.issue.url ? `Issue: ${w.issue.url}` : '',
+                    w.sessionId ? `Session: ${w.sessionId}${w.link ? ` (${w.link})` : ''}` : '',
+                    w.cwd ? `Folder: ${w.cwd}` : '',
+                    '',
+                    ''
+                ].filter((x, i, a) => x !== '' || i >= a.length - 2);
+                const d = root.directorInstance;
+                let ok = false;
+                try { ok = !!(d && typeof d.askXi === 'function' && await d.askXi(lines.join('\n'))); } catch (_) { ok = false; }
+                if (!ok) await c.box('<p>Yozora is not available here: the Director is not loaded or Yozora is off in its settings.</p>', null, { icon: 'warning', title: 'Ask Yozora' });
+                return true;
+            }
             case 'rules-goto': c.open.add('memory'); c.open.add('rules'); c.select('rules-review', true); return true;
             case 'rules-review': await rulesReviewStart(c); return true;
             case 'rules-dismiss': await ruleFindingDismiss(c, selId(c, 'rf:')); return true;
@@ -3782,6 +4087,8 @@
                         text = `${text}${text ? '\n\n' : ''}Attached ${paths.length === 1 ? 'file' : 'files'} (read ${paths.length === 1 ? 'it' : 'them'} from disk):\n${paths.join('\n')}`;
                     }
                     await send('claude_desk_session', { action: 'steer', id: sid, text });
+                    const ch = chatOf(sid);
+                    if (ch) { (ch.pending = ch.pending || []).push({ text, at: Date.now(), steer: !!(liveOf(sid) && liveOf(sid).status === 'busy') }); ch.stick = true; pendingDraw(sid); }
                     attClear(sid);
                     if (input) input.value = '';
                     if (S.drafts) delete S.drafts[sid];
@@ -4768,6 +5075,7 @@
                 if (n.id === 'sup-holds') return plural(supHolds().length, 'paused session');
                 if (n.id === 'sup-locks') return plural(supLocks().length, 'lock');
                 if (n.id === 'sup-arts') return plural(supArtifacts().length, 'work folder');
+                if (n.id === 'sup-maint') { const m = maintData(); return m && m.running ? 'Running' : (m && m.last ? (MAINT_STATE[m.last.state] || [''])[0] : ''); }
                 if (n.id === 'aw-uns') return plural(unsupervised().length, 'session');
                 if (n.id === 'co-builds') return plural((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length, 'gate') + ' open';
                 if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
@@ -4775,10 +5083,10 @@
                 if (n.id === 'sup-reviews') return plural(supReviews().filter((r) => !r.dismissed).length, 'review');
                 if (n.id === 'sup-asks') return plural(supAsks().length, 'restart wait');
                 if (n.id === 'co-supervisor') return S.sup.busy || (S.sup.data && S.sup.data.stats ? `${plural(S.sup.data.stats.reviewed || 0, 'review')}, ${S.sup.data.stats.gaps || 0} with gaps` : '');
-                if (nodeSid(n.id)) { const ch = S.chats.get(nodeSid(n.id)); return ch ? plural(ch.messages.length, 'message') : ''; }
+                if (nodeSid(n.id)) { const ch = S.chats.get(nodeSid(n.id)); const il = ch && ch.ins ? insLine(ch.ins, false, true) : ''; return ch ? `${il ? `${il} \u00b7 ` : ''}${plural(ch.messages.length, 'message')}` : ''; }
                 return `Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`;
             },
-            onSelectRow: (key, n) => { if (key && key.startsWith('w:')) workDetailPaint(S.c, key.slice(2)); else if (n && SUP_PART[n.id]) supSelect(key); else if (n && nodeSid(n.id)) detailSelect(key, nodeSid(n.id)); },
+            onSelectRow: (key, n) => { if (key && key.startsWith('w:')) workDetailPaint(S.c, key.slice(2)); else if (key && (key.startsWith('mc:') || key.startsWith('mh:'))) maintSelect(key); else if (n && SUP_PART[n.id]) supSelect(key); else if (n && nodeSid(n.id)) detailSelect(key, nodeSid(n.id)); },
             onSelect: undefined,
             onOpen: () => {},
             onClose: () => {

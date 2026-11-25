@@ -202,5 +202,5 @@ async function issueState(repo, number) {
 
 module.exports = {
     DEFAULT_REPO, LABEL, LABEL_NOW, repoForCwd, parseIssueRef, issueUrl, createIssue, linkIssue, comment, setStatus, addTime, close,
-    openFleetIssues, issueState, _setFetch, _doneList: doneList, MARK
+    openFleetIssues, issueState, call, labels, _setFetch, _doneList: doneList, MARK
 };

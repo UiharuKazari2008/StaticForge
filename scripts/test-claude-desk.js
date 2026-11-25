@@ -371,6 +371,52 @@ async function main() {
     assert.strictEqual(agents.find((r) => r.agentId === 'a1111111111111111').messages, 3);
     console.log('ok 8 background agents list');
 
+    // 9: the insight builder (claudeInsight.js) and the hidden-run summary rows / steering rows of claudeTranscript
+    {
+        const ins = require('../modules/claudeInsight');
+        const J = (o) => `${JSON.stringify(o)}\n`;
+        const u = (n) => ({ n });
+        void u;
+        const fx = [
+            { type: 'user', uuid: 'u1', timestamp: '2026-11-24T10:00:00.000Z', permissionMode: 'auto', cwd: '/w', gitBranch: 'main', message: { role: 'user', content: 'do it' } },
+            { type: 'assistant', uuid: 'a1', timestamp: '2026-11-24T10:00:05.000Z', effort: 'high', message: { id: 'm1', model: 'claude-opus-5-5', usage: { input_tokens: 2, output_tokens: 10, cache_read_input_tokens: 1000, cache_creation_input_tokens: 500 }, content: [{ type: 'thinking', thinking: 'hmm' }] } },
+            { type: 'assistant', uuid: 'a2', timestamp: '2026-11-24T10:00:06.000Z', effort: 'high', message: { id: 'm1', model: 'claude-opus-5-5', usage: { input_tokens: 2, output_tokens: 10, cache_read_input_tokens: 1000, cache_creation_input_tokens: 500 }, content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: '/w/a.js', old_string: 'x', new_string: 'y' } }, { type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'npm test' } }, { type: 'tool_use', id: 't3', name: 'Agent', input: { description: 'audit', run_in_background: true } }] } },
+            { type: 'user', uuid: 'r1', timestamp: '2026-11-24T10:00:07.000Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }, { type: 'tool_result', tool_use_id: 't2', content: 'ok' }] } },
+            { type: 'attachment', uuid: 'q1', timestamp: '2026-11-24T10:00:08.000Z', attachment: { type: 'queued_command', prompt: 'please also lint', commandMode: 'prompt', origin: { kind: 'human' } } },
+            { type: 'assistant', uuid: 'a3', timestamp: '2026-11-24T10:00:09.000Z', message: { id: 'm2', model: 'claude-sonnet-5-5', stop_reason: 'end_turn', usage: { input_tokens: 3, output_tokens: 20, cache_read_input_tokens: 2000, cache_creation_input_tokens: 0 }, content: [{ type: 'text', text: 'done' }] } },
+            { type: 'cost-state', totalCostUSD: 1.5 }
+        ];
+        const file = path.join(SANDBOX, 'insight-fixture.jsonl');
+        fs.writeFileSync(file, fx.map(J).join(''));
+        const r = await ins.insightOf(file);
+        assert.strictEqual(r.model, 'claude-sonnet-5-5');
+        assert.strictEqual(r.models.length, 2, 'a model switch is recorded');
+        assert.strictEqual(r.effort, 'high');
+        assert.strictEqual(r.mode, 'auto');
+        assert.strictEqual(r.turns, 1);
+        assert.strictEqual(r.turnTools, 3);
+        assert.deepStrictEqual(r.turnFiles, ['/w/a.js']);
+        assert.strictEqual(r.tokens.output, 30, 'a reply written as several lines counts once');
+        assert.strictEqual(r.context.used, 2003);
+        assert.strictEqual(r.bgAgents, 1);
+        assert.strictEqual(r.costUsd, 1.5);
+        assert.strictEqual(r.turnMs, 9000);
+        // appended lines are read incrementally
+        fs.appendFileSync(file, J({ type: 'user', uuid: 'u2', timestamp: '2026-11-24T10:01:00.000Z', message: { role: 'user', content: 'again' } }));
+        assert.strictEqual((await ins.insightOf(file)).turns, 2);
+        const live = ins.summarize((function () { const st = ins.createState(); fx.slice(0, 3).forEach((o) => ins.feed(st, JSON.stringify(o))); return st; })(), Date.parse('2026-11-24T10:00:30.000Z'), true);
+        assert.ok(/agent|Bash/.test(live.now), 'the current tool is named while it works');
+        // the chat: steering shows as a user row; hidden thinking / edits / tool calls fold into one summary row
+        const page = await transcript.readPage(file, { limit: 20, view: transcript.viewFrom({}) });
+        const kinds = page.messages.map((m) => m.kind);
+        assert.ok(kinds.includes('summary'), 'hidden items become a summary row');
+        const sum = page.messages.find((m) => m.kind === 'summary');
+        assert.ok(/Thinking/.test(sum.label) && /Edited 1 file: a\.js/.test(sum.label) && /tool call/.test(sum.label) && /Background agent started: audit/.test(sum.label), sum.label);
+        const steer = page.messages.find((m) => m.origin === 'steering');
+        assert.ok(steer && steer.text === 'please also lint' && steer.role === 'user', 'a queued steering message shows as a user row');
+        console.log('ok 9 insight summary, hidden-run summaries and steering rows');
+    }
+
     store.close();
     console.log('all claude desk tests passed');
 }
