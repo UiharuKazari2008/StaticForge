@@ -925,6 +925,34 @@ html.ui-mobile #wmShell .wm-popup[data-side="dropdown"][data-wm-list="time"] > .
     display: none !important;
 }
 
+/* every other combo box list on 6.1 (Settings, Calendar, Tasks, ...): the time list's look above, found on the
+ * same device: plain rows in normal weight, no bullet, the selected row highlighted. 6.5 draws its own
+ * combo lists (wm65.css) and is left as it is. */
+html.ui-mobile:not([data-wm-version="6.5"]) #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] {
+    padding: 0 !important;
+    color: #000;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] > .wm-popup-item {
+    height: calc(16.75 * var(--wm-px)) !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 calc(2 * var(--wm-px)) !important;
+    color: inherit;
+    font-size: inherit !important;
+    font-weight: normal !important;
+    line-height: calc(16.75 * var(--wm-px)) !important;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] > .wm-popup-item.is-radio[aria-checked="true"] {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] > .wm-popup-item.is-radio::before {
+    display: none !important;
+}
+
 /* ---- the transport under a video or sound (wmSettings.ui.mediaBar): a push button, the WM
  * trackbar as the position (no scale line, no ticks) and the time, on a white strip under a rule */
 .wm-mediabar {
