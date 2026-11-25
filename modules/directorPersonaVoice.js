@@ -269,6 +269,16 @@ function personaVoiceLines(persona, mascot, opts) {
     const at = state ? cfg.order.indexOf(state.stage) : 0;
     const line = state ? growthStageLine(cfg, state) : '';
     const stage = line || `Growth stage: 1/${cfg.order.length} "${cfg.order[0]}" (${mascot ? 'the stage the client sent is not one this persona has' : 'not reported this turn'}): speak from Stage 1 of ${cfg.order.length} and never claim she has grown.`;
+    // later turns of the same CLI session (directorTurnPrompt.standingFull): only what changes turn to turn
+    if (opts && opts.compact) {
+        return [
+            stateLine(cfg, state),
+            (cfg.looks && cfg.looks[cfg.order[at]]) || '',
+            inBetweenLine(cfg, state),
+            'Your voice, body, want, bond and tone rules stand as in this session\'s first turn. Not every message is a job: when they are only talking to you, answer them as yourself and skip the work steps.'
+                + (opts.talk ? ' This message reads like them just talking to you.' : '')
+        ].filter(Boolean);
+    }
     return [
         // first, every turn: where she stands
         stateLine(cfg, state),

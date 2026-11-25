@@ -4670,6 +4670,7 @@ function transcriptBody(message, cutOff) {
 // The stage comes from the mascot the client reports on the send, so her lines and how hard she pushes
 // the picture move with her growth instead of staying at one flat voice.
 const directorPersonaVoice = require('./directorPersonaVoice');
+const directorTurnPrompt = require('./directorTurnPrompt');
 
 /**
  * Melaton Mobile (#732): director.js sends client {shell:'mobile', allowStudio, studioOpen} from a
@@ -4739,7 +4740,12 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     // Standing orders are in the project rule (wrenRules). This is the per-turn state only.
     // talk: this message reads like them just talking to her (a hint; she judges for herself)
     const talk = directorPersonaVoice.turnTalkHint(userText, Array.isArray(files) ? files.length : 0);
-    lines.push(...directorPersonaVoice.personaVoiceLines(options && options.persona, options && options.mascot, { talk }));
+    // The voice block is in the session's history from its first turn; later turns carry only what changes
+    // (directorTurnPrompt.js: every step re-sends the history, so a repeated block is paid again on every step).
+    const standingKey = `${(chat.inflight && chat.inflight.engine) || ''}|${chatAgentSession(chat) || ''}`;
+    const mascotStage = options && options.mascot && options.mascot.stage;
+    const fullStanding = directorTurnPrompt.standingFull(chat, standingKey, mascotStage, handoff || !!repaired || !!chat.replay || !priorMessages.length);
+    lines.push(...directorPersonaVoice.personaVoiceLines(options && options.persona, options && options.mascot, { talk, compact: !fullStanding }));
     lines.push(talk
         ? 'Turn: if this is a job, one get_session_state view live first and Read every new print before you answer (sections 2 and 4); if they are only talking to you, skip both and just answer them.'
         : 'Turn: one get_session_state view live first; Read every new print before you answer (sections 2 and 4).');
