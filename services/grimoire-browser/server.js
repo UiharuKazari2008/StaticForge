@@ -1228,6 +1228,14 @@ function clampSize(value, fallback, min, max) {
     return Math.max(min, Math.min(max, Math.round(n)));
 }
 
+// One viewer socket per IE window (#761): a socket that sent `switch` or `watch` (ws.multi) is re-pointed at the
+// window's front tab, and hears the control messages of the window's other tabs as {type:'bg', sessionId, msg}.
+// These are the server message types that go to watchers; frames, scroll, layers, pong, meta and the rest never do.
+const BG_TYPES = new Set(['navigating', 'location', 'popup', 'download', 'download-progress', 'dialog', 'file-chooser',
+    'closed', 'transferred', 'status', 'memory', 'memory-limit', 'feeds', 'restarting']);
+// every open viewer socket of the service (Alchemy Information: viewerSockets)
+const viewerSockets = new Set();
+
 function broadcast(session, payload, binary) {
     const data = binary ? payload : JSON.stringify(payload);
     for (const ws of session.sockets) {
@@ -1236,6 +1244,17 @@ function broadcast(session, payload, binary) {
         ws.sentAt = Date.now();
         // what each viewer was sent (binary: frames, tiles, audio), against what it says it got (automatic quality)
         if (binary) ws.txBytes = (ws.txBytes || 0) + data.length;
+    }
+    if (!binary && session.watchers.size && BG_TYPES.has(payload.type)) sendBg(session, data);
+}
+
+// data is the payload's JSON as sent to the bound sockets (the id is hex, so it needs no escaping)
+function sendBg(session, data) {
+    const wrapped = '{"type":"bg","sessionId":"' + session.id + '","msg":' + data + '}';
+    for (const ws of session.watchers) {
+        if (ws.readyState !== 1 || ws.session === session) continue;
+        ws.send(wrapped);
+        ws.sentAt = Date.now();
     }
 }
 
@@ -2646,8 +2665,9 @@ function armFileChooser(session) {
             accept = String((value && value.result && value.result.value) || '').slice(0, 500);
         } catch (_) {}
         const id = crypto.randomBytes(8).toString('hex');
-        session.fileChooser = { id, backendNodeId: ev.backendNodeId, multiple: ev.mode === 'selectMultiple', files: [] };
-        broadcast(session, { type: 'file-chooser', id, multiple: session.fileChooser.multiple, accept });
+        const ask = { type: 'file-chooser', id, multiple: ev.mode === 'selectMultiple', accept };
+        session.fileChooser = { id, backendNodeId: ev.backendNodeId, multiple: ask.multiple, files: [], ask };
+        broadcast(session, ask);
     });
 }
 
@@ -2910,10 +2930,9 @@ async function closeSession(id) {
     session.fileChooser = null;
     if (session.uploadDir) fs.promises.rm(session.uploadDir, { recursive: true, force: true }).catch(() => {});
     session.closing = true;
-    for (const ws of session.sockets) {
-        try { ws.close(1000, 'closed'); } catch (_) {}
-    }
-    session.sockets.clear();
+    // a popup's `closed` went to every socket above; a window's one multi-tab socket (#761) hears of any session that closes
+    if (!session.popup) announceToMulti(session, { type: 'closed' });
+    releaseViewers(session, 1000, 'closed');
     try {
         if (session.cdp) await session.cdp.send('Page.stopScreencast').catch(() => {});
     } catch (_) {}
@@ -3191,7 +3210,7 @@ async function adoptOrphan(target) {
     if (!page || page.isClosed() || ownPages.has(page)) return;
     let announce = null;
     for (const session of sessions.values()) {
-        if (session.sockets.size && (!announce || session.idleAt > announce.idleAt)) announce = session;
+        if ((session.sockets.size || session.watchers.size) && (!announce || session.idleAt > announce.idleAt)) announce = session;
     }
     if (!announce && (owned || pendingOrphans.length < MAX_SESSIONS)) {
         pendingOrphans.push(page);
@@ -4347,6 +4366,8 @@ async function createSession(body, adoptedPage) {
         feedsKey: '[]',
         settings: sessionSettings(body && body.settings, DEFAULT_SETTINGS),
         sockets: new Set(),
+        // multi-tab viewer sockets that watch this session from another tab's binding (#761)
+        watchers: new Set(),
         idleAt: Date.now() + IDLE_MS,
         // a popup or adopted tab belongs to whoever owns the page that opened it
         group: adoptedPage ? '' : windowGroup(ownerForPage),
@@ -4671,6 +4692,9 @@ function sessionPublic(session) {
         width: session.width,
         height: session.height,
         viewers: session.sockets.size,
+        // all open viewer sockets of the service, and the ones that watch this session from another tab (#761)
+        viewerSockets: viewerSockets.size,
+        watchers: session.watchers.size,
         popup: !!session.popup,
         parentId: session.parentId || '',
         viewKind: session.viewKind || 'desktop',
@@ -4859,13 +4883,7 @@ async function onViewerMessage(session, raw, ws) {
         session.viewHidden = !!msg.hidden;
         // back in front: a quality pushed down while it was behind (or before hidden tabs stopped counting) starts
         // again from the middle step; the link's own signals take it from there
-        if (!session.viewHidden && session.aq && session.aq.auto && session.aq.level > AQ_START) {
-            session.aq.level = AQ_START;
-            session.aq.why = 'tab shown again';
-            session.aq.changedAt = Date.now();
-            applyAutoQuality(session);
-            broadcast(session, encoderInfo(session));
-        }
+        if (!session.viewHidden && resetQualityOnShow(session)) broadcast(session, encoderInfo(session));
         if (!session.viewHidden && HEADFUL && session.group && session.page) session.page.bringToFront().catch(() => {});
         syncCapture(session);
         if (!session.viewHidden && session.previewWanted && !session.previewBytes) previewSchedule(session, 800);
@@ -5542,18 +5560,15 @@ async function handleRequest(req, res) {
         // the old viewer hears where the page went, then loses its token (#756: "This tab has been transferred")
         broadcast(session, { type: 'transferred', to: owner.deviceName || 'another device', kind: owner.deviceKind, at: Date.now() });
         session.viewerToken = crypto.randomBytes(24).toString('hex');
-        for (const ws of session.sockets) {
-            try { ws.close(4001, 'transferred'); } catch (_) {}
-        }
-        session.sockets.clear();
+        releaseViewers(session, 4001, 'transferred');
         session.owner = owner;
         session.leaseUntil = Date.now() + LEASE_GRACE_MS;
         for (const child of sessions.values()) {
             if (child.parentId === session.id) {
                 child.owner = Object.assign({}, owner);
                 child.viewerToken = crypto.randomBytes(24).toString('hex');
-                for (const ws of child.sockets) { try { ws.close(4001, 'transferred'); } catch (_) {} }
-                child.sockets.clear();
+                announceToMulti(child, { type: 'transferred', to: owner.deviceName || 'another device', kind: owner.deviceKind, at: Date.now() });
+                releaseViewers(child, 4001, 'transferred');
             }
         }
         if (body.width || body.height) {
@@ -5711,19 +5726,35 @@ async function handleRequest(req, res) {
     sendJson(res, 404, { error: 'not found' });
 }
 
-function attachViewer(ws, session) {
+// What the viewer can show (#990 round 2: image/jxl) is kept on its socket, so a socket re-pointed at another
+// session (#761) brings it along. Returns true when the screencast was restarted for it.
+function applyViewerCaps(ws, session) {
+    if (typeof ws.jxl !== 'boolean') return false;
+    session.jxl = ws.jxl;
+    // see-through frames follow what the viewers can show (JPEG XL or WebP)
+    if (session.alphaFrames && alphaCodec(session) !== session.alphaCodecNow) {
+        session.pixels = null;
+        restartScreencast(session).catch(() => {});
+        return true;
+    }
+    return false;
+}
+
+// Binds the socket to a session and sends what a new viewer needs to show it: the same burst for a first connect
+// and for a switch (#761, `switched` goes before it). session null = bound to nothing (control messages only).
+function bindViewer(ws, session, switched) {
+    ws.session = session;
+    if (switched) ws.send(JSON.stringify({ type: 'switched', sessionId: session ? session.id : '' }));
+    if (!session) return;
     // automatic quality starts at its middle step (a new link has said nothing yet); a later viewer joins at the current one
     applyAutoQuality(session);
     session.sockets.add(ws);
-    // the front proxy (nginx, 737.jp.net) closes a socket after 60 s with nothing sent to the client: a viewer whose page
-    // sends nothing (a tab behind another, capture paused) gets a ping after 25-40 s of silence, so it stays open; a page
-    // that streams sends no extra bytes
-    ws.sentAt = Date.now();
-    ws.keepAlive = setInterval(() => {
-        if (ws.readyState !== 1 || Date.now() - ws.sentAt < 25000) return;
-        try { ws.ping(); } catch (_) {}
-        ws.sentAt = Date.now();
-    }, 15000);
+    // a tab shown again starts from the middle step, and a page in a shared Chrome window comes to the front (#756)
+    if (switched) {
+        resetQualityOnShow(session);
+        if (HEADFUL && session.group && session.page) session.page.bringToFront().catch(() => {});
+    }
+    const restarted = applyViewerCaps(ws, session);
     ws.send(JSON.stringify(encoderInfo(session)));
     touch(session);
     session.viewHidden = false;
@@ -5754,6 +5785,8 @@ function attachViewer(ws, session) {
         else session.sheets.start().catch((err) => console.warn('[grimoire-browser] sheets off:', err.message));
     }
     if (!session.popup) flushOrphans(session);
+    // a screencast restarted for the viewer's caps sends a whole new frame; the last one may be in a format it cannot show
+    if (restarted) return;
     if (session.painted) {
         try { ws.send(session.painted); } catch (_) {}
         if (session.still && session.still.gen === session.stillGen) {
@@ -5764,19 +5797,131 @@ function attachViewer(ws, session) {
     } else {
         restartScreencast(session).catch(() => {});
     }
+}
+
+// instant: a switch, where the tab left behind is hidden at once (no 2 s grace for a reconnecting viewer); a closed
+// socket keeps the grace, as a reload or a transfer reconnects within it
+function unbindViewer(ws, instant) {
+    const session = ws.session;
+    if (!session) return;
+    ws.session = null;
+    session.sockets.delete(ws);
+    const settle = () => {
+        syncCapture(session);
+        // nobody watching: no layer reports, and every layer back in the frames
+        if (!session.sockets.size && session.sheets) session.sheets.stop();
+    };
+    if (!instant) { setTimeout(settle, 2000); return; }
+    if (!session.sockets.size) session.viewHidden = true;
+    settle();
+}
+
+// the tab came to the front: a quality pushed down while it was behind starts again from the middle step; the link's
+// own signals take it from there. True when it changed.
+function resetQualityOnShow(session) {
+    if (!session.aq || !session.aq.auto || session.aq.level <= AQ_START) return false;
+    session.aq.level = AQ_START;
+    session.aq.why = 'tab shown again';
+    session.aq.changedAt = Date.now();
+    applyAutoQuality(session);
+    return true;
+}
+
+// {type:'switch', sessionId, t}: re-point this socket at another session (#761); '' = bound to nothing. All of it is
+// synchronous, so the input that follows on the socket lands on the new session and nothing of the old one follows
+// `switched`.
+function viewerSwitch(ws, msg) {
+    ws.multi = true;
+    const id = typeof msg.sessionId === 'string' ? msg.sessionId : '';
+    const fail = (reason) => ws.send(JSON.stringify({ type: 'switch-failed', sessionId: id, reason }));
+    if (!id) {
+        unbindViewer(ws, true);
+        bindViewer(ws, null, true);
+        return;
+    }
+    const next = /^[a-f0-9]{32}$/.test(id) ? sessions.get(id) : null;
+    if (!next || next.closing) return fail('not found');
+    if (!tokenEquals(String(msg.t || ''), next.viewerToken)) return fail('forbidden');
+    // the same session again: a whole first frame, without hiding it in between
+    if (ws.session !== next) unbindViewer(ws, true);
+    bindViewer(ws, next, true);
+}
+
+// {type:'watch', sessions:[{sessionId, t}]}: replaces the sessions whose control messages this socket gets as bg (#761)
+function viewerWatch(ws, msg) {
+    ws.multi = true;
+    const next = new Set();
+    for (const entry of (Array.isArray(msg.sessions) ? msg.sessions : []).slice(0, 64)) {
+        const session = entry && typeof entry.sessionId === 'string' ? sessions.get(entry.sessionId) : null;
+        if (session && !session.closing && tokenEquals(String(entry.t || entry.token || ''), session.viewerToken)) next.add(session);
+    }
+    const prev = ws.watchSet || new Set();
+    for (const session of prev) if (!next.has(session)) session.watchers.delete(ws);
+    for (const session of next) {
+        if (prev.has(session)) continue;
+        session.watchers.add(ws);
+        touch(session);
+        // a dialog or file chooser already waiting for an answer is shown at once
+        if (session.dialog) sendBgTo(ws, session, session.dialog.ask);
+        if (session.fileChooser && session.fileChooser.ask) sendBgTo(ws, session, session.fileChooser.ask);
+    }
+    ws.watchSet = next;
+}
+
+function sendBgTo(ws, session, payload) {
+    if (ws.readyState !== 1 || ws.session === session) return;
+    ws.send(JSON.stringify({ type: 'bg', sessionId: session.id, msg: payload }));
+    ws.sentAt = Date.now();
+}
+
+// A multi-tab socket (#761) stays open when its session closes or changes hands: it is told (closed, transferred) and
+// bound to nothing, for the window's other tabs. Other sockets close as they always did.
+function releaseViewers(session, code, reason) {
+    for (const ws of session.sockets) {
+        if (ws.multi) ws.session = null;
+        else { try { ws.close(code, reason); } catch (_) {} }
+    }
+    session.sockets.clear();
+    for (const ws of session.watchers) if (ws.watchSet) ws.watchSet.delete(session);
+    session.watchers.clear();
+}
+
+// the message goes to the multi-tab sockets only (bound ones as it is, watching ones as bg); the others close as before
+function announceToMulti(session, payload) {
+    const data = JSON.stringify(payload);
+    for (const ws of session.sockets) {
+        if (ws.multi && ws.readyState === 1) { ws.send(data); ws.sentAt = Date.now(); }
+    }
+    if (session.watchers.size) sendBg(session, data);
+}
+
+function attachViewer(ws, session) {
+    ws.session = null;
+    ws.multi = false;
+    ws.watchSet = null;
+    viewerSockets.add(ws);
+    // the front proxy (nginx, 737.jp.net) closes a socket after 60 s with nothing sent to the client: a viewer whose page
+    // sends nothing (a tab behind another, capture paused) gets a ping after 25-40 s of silence, so it stays open; a page
+    // that streams sends no extra bytes
+    ws.sentAt = Date.now();
+    ws.keepAlive = setInterval(() => {
+        if (ws.readyState !== 1 || Date.now() - ws.sentAt < 25000) return;
+        try { ws.ping(); } catch (_) {}
+        ws.sentAt = Date.now();
+    }, 15000);
+    bindViewer(ws, session, false);
     ws.on('message', (data, isBinary) => {
         if (isBinary) return;
         const raw = data.toString();
         let preview = null;
         try { preview = JSON.parse(raw); } catch (_) {}
+        // the window's one socket changes tab or watches the others (#761); before any queue, so the order is exact
+        if (preview && preview.type === 'switch') { viewerSwitch(ws, preview); return; }
+        if (preview && preview.type === 'watch') { viewerWatch(ws, preview); return; }
         // what the viewer can show (#990 round 2): image/jxl
         if (preview && preview.type === 'caps') {
-            session.jxl = preview.jxl === true;
-            // see-through frames follow what the viewers can show (JPEG XL or WebP)
-            if (session.alphaFrames && alphaCodec(session) !== session.alphaCodecNow) {
-                session.pixels = null;
-                restartScreencast(session).catch(() => {});
-            }
+            ws.jxl = preview.jxl === true;
+            if (ws.session) applyViewerCaps(ws, ws.session);
             return;
         }
         // the window in front wants this host's audio on its socket (#990)
@@ -5784,6 +5929,15 @@ function attachViewer(ws, session) {
             setAudioListener(ws, preview.on === true);
             return;
         }
+        // read when the message arrives: what is queued below stays with this session, a later switch does not move it
+        const session = ws.session;
+        // bound to nothing: only the link's own questions are answered
+        if (!session) {
+            if (preview && preview.type === 'ping') ws.send(JSON.stringify({ type: 'pong', t: preview.t }));
+            return;
+        }
+        // an answer goes to this socket only while it is still bound to the session that was asked
+        const reply = () => (ws.session === session ? ws : undefined);
         const gesture = preview && (
             (preview.type === 'mouse' && (preview.kind === 'down' || preview.kind === 'up' || preview.kind === 'click'))
             || (preview.type === 'key' && preview.kind === 'down')
@@ -5862,23 +6016,20 @@ function attachViewer(ws, session) {
             });
             return;
         }
-        session.inputChain = session.inputChain.then(() => onViewerMessage(session, raw, ws)).catch((err) => {
+        session.inputChain = session.inputChain.then(() => onViewerMessage(session, raw, reply())).catch((err) => {
             console.error('[grimoire-browser] input', err && err.message);
-            if (ws.readyState === 1) {
+            if (ws.readyState === 1 && reply()) {
                 ws.send(JSON.stringify({ type: 'error', message: err.message || 'input failed' }));
             }
         });
     });
     ws.on('close', () => {
         clearInterval(ws.keepAlive);
-        session.sockets.delete(ws);
+        viewerSockets.delete(ws);
+        if (ws.watchSet) for (const watched of ws.watchSet) watched.watchers.delete(ws);
+        ws.watchSet = null;
         setAudioListener(ws, false);
-        // a moment's grace: a viewer reconnecting (a reload, a transfer) finds the capture still on
-        setTimeout(() => {
-            syncCapture(session);
-            // nobody watching: no layer reports, and every layer back in the frames
-            if (!session.sockets.size && session.sheets) session.sheets.stop();
-        }, 2000);
+        unbindViewer(ws, false);
     });
 }
 
@@ -5932,7 +6083,7 @@ async function main() {
 
     setInterval(() => {
         for (const session of sessions.values()) {
-            if (session.sockets.size && !session.popup) checkMemory(session).catch(() => {});
+            if ((session.sockets.size || session.watchers.size) && !session.popup) checkMemory(session).catch(() => {});
         }
     }, MEMORY_CHECK_MS).unref();
 
