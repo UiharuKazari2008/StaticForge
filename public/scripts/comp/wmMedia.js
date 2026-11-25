@@ -408,6 +408,7 @@
 
     function androidArt(s) {
         if (!s || !s.artKey) return '';
+        if (s.artUrl) return s.artUrl; // the app's cover as a file with an address (appassets media-art, #1128)
         if (artCache.has(s.artKey)) return artCache.get(s.artKey);
         let url = '';
         try { url = window.AndroidMediaSession.getArt(s.id) || ''; } catch (_) { url = ''; }

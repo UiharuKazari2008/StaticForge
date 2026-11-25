@@ -2200,7 +2200,7 @@
             const s = live.find((x) => x.id === st.active) || live.find((x) => x.state !== 'paused') || live[0];
             if (s) {
                 const acts = Array.isArray(s.actions) ? s.actions : [];
-                droid = { kind: 'android', id: s.id, pkg: s.package, title: s.title || s.artist, artist: s.title ? s.artist || s.album || '' : '', app: s.app || s.package, playing: s.state !== 'paused', key: androidKeys().get(s.package) || '', artKey: s.artKey || '', next: acts.includes('next'), previous: acts.includes('previous') };
+                droid = { kind: 'android', id: s.id, pkg: s.package, title: s.title || s.artist, artist: s.title ? s.artist || s.album || '' : '', app: s.app || s.package, playing: s.state !== 'paused', key: androidKeys().get(s.package) || '', artKey: s.artKey || '', artUrl: s.artUrl || '', next: acts.includes('next'), previous: acts.includes('previous') };
             }
         }
         let mel = null;
@@ -2214,6 +2214,8 @@
     }
 
     function musicArt(now) {
+        // the app's cover as a file with an address (appassets media-art, #1128); an older app's data string otherwise
+        if (now && now.kind === 'android' && now.artUrl) return now.artUrl;
         if (now && now.kind === 'android' && now.artKey) {
             if (now.artKey !== music.artKey) {
                 music.artKey = now.artKey;
