@@ -1915,6 +1915,24 @@ function settleThenReview(sessionId) {
 }
 
 /** Reads the session records and queues a review for every session that went busy -> idle. */
+/** Startup: review an idle session whose transcript has grown past what the Supervisor last read. */
+function catchUpReview(sessionId) {
+    try {
+        const st = db().prepare('SELECT file, offset FROM supervisor_state WHERE session_id = ?').get(sessionId);
+        transcriptFile(sessionId).then((file) => {
+            if (!file) return;
+            let size = 0;
+            try { size = fs.statSync(file).size; } catch (_) { return; }
+            if (st && st.file === file && st.offset >= size) return;
+            const last = db().prepare('SELECT MAX(at) at FROM supervisor_reviews WHERE session_id = ?').get(sessionId);
+            let mtime = 0;
+            try { mtime = fs.statSync(file).mtimeMs; } catch (_) { /* gone */ }
+            if (last && last.at && last.at >= mtime) return;
+            settleThenReview(sessionId);
+        }).catch(() => {});
+    } catch (_) { /* later */ }
+}
+
 function scan(first) {
     let names = [];
     try { names = fs.readdirSync(sessionsDir()).filter((n) => /^\d+\.json$/.test(n)); } catch (_) { return; }
@@ -1930,6 +1948,9 @@ function scan(first) {
         // a turn ended: reviewed once it stays ended for a while (a session that is idle for a moment between a message
         // and the next, or while a queued message lands, is still in its turn)
         if (!first && prev === 'busy' && now !== 'busy' && settings().enabled) settleThenReview(r.sessionId);
+        // a turn that ended while the server was down (a restart): an idle reviewable session whose transcript moved
+        // since its last review is reviewed now (Nov 24 2026: a work item stayed "running" on an idle session)
+        if (first && now !== 'busy' && settings().enabled && reviewable(r.sessionId)) catchUpReview(r.sessionId);
         // a supervised session's new messages become its asks (cheap: the sync stats the transcript first); the others are read while a Fleet window watches them
         if (settings().enabled && reviewable(r.sessionId)) sessionTasks().poke(r.sessionId);
         if (!first && prev === undefined && now === 'busy') markPartial(r.sessionId);
