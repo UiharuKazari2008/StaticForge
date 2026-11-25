@@ -188,7 +188,15 @@ async function close(repo, number) {
 
 /** Open issues labelled fleet in a repo: [{ repo, number, id, title, body, url, now, labels }]. */
 async function openFleetIssues(repo) {
-    const list = ((await call('GET', `/repos/${repo}/issues?state=open&type=issues&labels=${encodeURIComponent(LABEL)}&limit=50`)) || [])
+    // every page (#1214: one page of 50 left older labelled issues out of the queue for good once more than 50 carried
+    // `fleet`); 20 pages at most, one pull every 10 min
+    const all = [];
+    for (let page = 1; page <= 20; page += 1) {
+        const got = (await call('GET', `/repos/${repo}/issues?state=open&type=issues&labels=${encodeURIComponent(LABEL)}&limit=50&page=${page}`)) || [];
+        all.push(...got);
+        if (got.length < 50) break;
+    }
+    const list = all
         // Gitea ignores a label filter it cannot resolve and answers EVERY open issue (#1154, Nov 24: 50 issues
         // were queued that way): only issues that really carry the label count
         .filter((i) => (i.labels || []).some((l) => l && l.name === LABEL));
