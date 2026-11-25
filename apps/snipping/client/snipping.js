@@ -594,6 +594,8 @@
             const k = new Markup(this, res.canvas, res.scale || 1);
             this.markups.add(k);
             if (p.copy) void k.copy(true);
+            // a hook for programs that want the next snip (Fleet's Attach): window event 'snipping:snip', detail.toBlob() -> PNG Blob
+            try { root.dispatchEvent(new CustomEvent('snipping:snip', { detail: { toBlob: () => toBlob(k.flat()) } })); } catch (_) { /* no listener */ }
         }
 
         // ---- Options -------------------------------------------------------------------

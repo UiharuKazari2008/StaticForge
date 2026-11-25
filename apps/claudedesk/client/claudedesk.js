@@ -196,7 +196,7 @@
             if (pushed) { S.spend.data = sp.spend; S.spend.loaded = true; S.spend.gone = false; }
             // version moves on every review, work item and lock change: the status is read again once per change
             if (ver !== S.sup.version) {
-                const shown = S.c && (S.c.node === 'co-work' || S.c.node === 'co-supervisor');
+                const shown = S.c && (S.c.node === 'co-work' || S.c.node === 'aw-sup' || S.c.node === 'co-pending' || S.c.node === 'co-supervisor' || S.c.node.startsWith('sup-'));
                 if (S.sup.loaded && shown && !S.sup.loading) void loadSupervisor();
                 else S.sup.stale = true;
                 S.sup.version = ver;
@@ -1122,11 +1122,22 @@
         return bits.join('');
     }
 
-    function supervisorPage(c) {
+    /** The Supervisor's pages: the node itself (restart waits and settings) and one node per feature, each showing just its sections. */
+    const SUP_PART = {
+        'co-supervisor': ['cd-sup-asks', 'cd-sup-set'],
+        'sup-reviews': ['cd-sup-list', 'cd-sup-detail'],
+        'sup-asks': ['cd-sup-asks'],
+        'sup-holds': ['cd-sup-holds'],
+        'sup-locks': ['cd-sup-locks'],
+        'sup-arts': ['cd-sup-arts']
+    };
+    const SUP_TITLE = { 'co-supervisor': 'Supervisor', 'sup-reviews': 'Reviews', 'sup-asks': 'Restart Waits', 'sup-holds': 'Paused Sessions', 'sup-locks': 'Managed Locks', 'sup-arts': 'Work Folders and Temp Files' };
+
+    function supervisorPage(c, part = 'co-supervisor') {
         const sup = S.sup;
-        if (!sup.loaded) { void loadSupervisor(); return c.page('Supervisor', '', [{ id: 'cd-sup-wait', title: 'Supervisor', body: '<p class="mmc-hint">Reading the supervisor...</p>' }]); }
+        if (!sup.loaded) { void loadSupervisor(); return c.page(SUP_TITLE[part], '', [{ id: 'cd-sup-wait', title: SUP_TITLE[part], body: '<p class="mmc-hint">Reading the supervisor...</p>' }]); }
         if (sup.stale && !sup.loading) { sup.stale = false; void loadSupervisor(); }
-        if (sup.unavailable) return c.page('Supervisor', '', [{ id: 'cd-sup-gone', title: 'Supervisor', body: '<p>Supervisor is not available on this server yet.</p>' }]);
+        if (sup.unavailable) return c.page(SUP_TITLE[part], '', [{ id: 'cd-sup-gone', title: SUP_TITLE[part], body: '<p>Supervisor is not available on this server yet.</p>' }]);
         const st = supSettings();
         const engines = supEngines();
         const eng = supEngine(st.engine);
@@ -1194,15 +1205,15 @@
         ], holdRows, { sortId: 'cd-sup-holds', sort: { key: 'at', dir: -1 }, empty: 'No session is paused.' });
         const asks = supAsks();
         const askBody = asks.length ? asks.map((g) => `<div class="cd-infobar is-warning" role="alert"><img src="${VI}/warning-16.png" alt=""><span>${esc(askText(g))}</span></div>`).join('') : '';
-        const html = c.page('Supervisor', side, [
-            asks.length ? { id: 'cd-sup-asks', title: `Restart waits (${asks.length})`, body: `${askBody}<p class="mmc-hint">An agent asked to restart Dreamscape and waits for the others to be idle. The Supervisor checks the wait after the time set below.</p>` } : null,
+        const html = c.page(SUP_TITLE[part], side, [
+            asks.length || part === 'sup-asks' ? { id: 'cd-sup-asks', title: `Restart waits (${asks.length})`, body: `${askBody || '<p>No agent is waiting to restart Dreamscape.</p>'}<p class="mmc-hint">An agent asked to restart Dreamscape and waits for the others to be idle. The Supervisor checks the wait after the time set below.</p>` } : null,
             { id: 'cd-sup-set', title: 'Settings', body: form },
             { id: 'cd-sup-holds', title: `Paused sessions (${holds.length})`, body: `<div class="cd-sup-list">${holdList}</div><p class="cd-sup-actions"><button type="button" class="btn-standard" data-act="sup-resume"${sup.busy ? ' disabled' : ''}>Resume</button> <span class="mmc-hint">Resumes the selected session.</span></p>` },
             { id: 'cd-sup-list', title: `Reviews (${reviews.length})`, body: `<div class="cd-sup-list">${list}</div>` },
             { id: 'cd-sup-detail', title: 'Selected Review', body: `<div class="cd-sup-detail">${supDetailHtml()}</div>` },
             { id: 'cd-sup-locks', title: `Locks (${locks.length})`, body: `<div class="cd-sup-list">${lockList}</div><p class="cd-sup-actions"><button type="button" class="btn-standard" data-act="sup-lock-remove"${sup.busy ? ' disabled' : ''}>Remove</button> <span class="mmc-hint">Removes the selected lock when its agent is gone (an orphan).</span></p>` },
             { id: 'cd-sup-arts', title: `Work folders and temp files (${arts.length})`, body: `<div class="cd-sup-list">${artList}</div><p class="mmc-hint">${arts.length ? `${esc(bytesText(total))} in all.` : ''}</p><p class="cd-sup-actions"><button type="button" class="btn-standard" data-act="sup-art-clean"${sup.busy ? ' disabled' : ''}>Clean</button> <button type="button" class="btn-standard" data-act="sup-art-forget"${sup.busy ? ' disabled' : ''}>Forget</button> <span class="mmc-hint">Clean deletes it from disk; Forget only stops tracking it.</span></p>` }
-        ].filter(Boolean));
+        ].filter((x) => x && SUP_PART[part].includes(x.id)));
         return {
             html,
             mount: (pane) => {
@@ -1225,12 +1236,12 @@
             }
         };
     }
-    function workPage(c, onlyOpen) {
-        const T = onlyOpen ? 'Supervised Work' : 'Work Queue';
+    function workPage(c, scope = 'all') {
+        const T = { all: 'Work Queue', active: 'Active', pending: 'Pending' }[scope];
         if (!S.sup.loaded) { void loadSupervisor(); return c.page(T, '', [{ id: 'cd-wq-wait', title: T, body: '<p class="mmc-hint">Reading the work queue...</p>' }]); }
         if (S.sup.stale) { S.sup.stale = false; void loadSupervisor(); }
         if (S.sup.unavailable) return c.page(T, '', [{ id: 'cd-wq-gone', title: T, body: `<p>${NOT_YET}</p>` }]);
-        const rows = (onlyOpen ? activeItems() : supWork()).map((w) => ({
+        const rows = WORK_SCOPE[scope]().map((w) => ({
             key: `w:${w.id}`,
             icon: w.sessionId && holdOf(w.sessionId) ? `${VI}/warning-16.png` : workIcon(w.state),
             cls: w.state === 'running' || w.state === 'starting' ? 'cd-live' : (w.state === 'failed' ? 'cd-stale' : ''),
@@ -1247,36 +1258,10 @@
             { t: 'Issue', w: 110, key: 'issue', text: (d) => d.issue },
             { t: 'Queued', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => Number(d.at) || Date.parse(d.at) || 0 },
             { t: 'Note', w: 220, key: 'message', text: (d) => d.message }
-        ], rows, { sortId: onlyOpen ? 'cd-work-active' : 'cd-work', sort: { key: 'at', dir: -1 }, empty: onlyOpen ? 'No supervised work is running or waiting.' : 'The queue is empty. A request from New Session..., Plaud or an agent waits here until an account has room.', fit: true });
+        ], rows, { sortId: `cd-work-${scope}`, sort: { key: 'at', dir: -1 }, empty: scope === 'active' ? 'No work item is running.' : scope === 'pending' ? 'No work item is waiting.' : 'The queue is empty. A request from New Session..., Plaud or an agent waits here until an account has room.', fit: true });
         return { html: lv, list: true };
     }
 
-    /** Active Work: every open work item and every running session no item owns, in one list. */
-    function awPage(c) {
-        if (!S.sup.loaded) void loadSupervisor();
-        const A = S.app.url('assets').replace(/\/$/, '');
-        const items = activeItems().map((w) => ({
-            key: `w:${w.id}`,
-            icon: w.sessionId && holdOf(w.sessionId) ? `${VI}/warning-16.png` : workIcon(w.state),
-            cls: w.state === 'running' || w.state === 'starting' ? 'cd-live' : '',
-            data: { name: w.title || String(w.id), what: w.parentId != null && w.parentId !== '' ? 'Part' : 'Work item', state: workState(w), shape: shapeText(w), account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), session: w.sessionId ? titleOf(rowOf(w.sessionId) || { id: w.sessionId }) : '' }
-        }));
-        const uns = unsupervised().map((l) => {
-            const h = holdOf(l.id);
-            const row = rowOf(l.id) || { id: l.id, title: l.name };
-            return { key: `s:${l.id}`, icon: h ? `${VI}/warning-16.png` : `${A}/session-16.png`, cls: l.status === 'busy' ? 'cd-busy' : 'cd-live', data: { name: titleOf(row), what: 'Session', state: stateText(row), shape: 'Unsupervised', account: row.account ? row.account.name : '', session: '' } };
-        });
-        const bars = supAsks().map((g) => `<div class="cd-infobar is-warning" role="alert"><img src="${VI}/warning-16.png" alt=""><span>${esc(askText(g))}</span></div>`).join('');
-        const lv = c.listView([
-            { t: 'Name', w: 260, key: 'name', text: (d) => d.name },
-            { t: 'Kind', w: 80, key: 'what', text: (d) => d.what },
-            { t: 'State', w: 80, key: 'state', text: (d) => d.state },
-            { t: 'Shape', w: 180, key: 'shape', text: (d) => d.shape },
-            { t: 'Account', w: 100, key: 'account', text: (d) => d.account },
-            { t: 'Session', w: 180, key: 'session', text: (d) => d.session }
-        ], items.concat(uns), { sortId: 'cd-aw', empty: S.sup.loaded ? 'Nothing is running. Start work from New Session...' : 'Reading the work...', fit: true });
-        return { html: bars ? `<div class="cd-list-wrap">${bars}${lv}</div>` : lv, list: true, split: !!bars };
-    }
     const askText = (g) => { const a = agentOf(g.agentId); return `Restart waiting on ${a ? (a.name || a.id) : (g.agentId || 'an agent')}${g.text ? `: ${String(g.text).replace(/\s+/g, ' ').slice(0, 160)}` : ''}${g.firstAt ? ` (since ${timeOnly(g.firstAt)})` : ''}${g.stale ? ' - it looks stuck' : ''}`; };
 
     /** The running sessions no work item owns, as the Sessions list shows them. */
@@ -1528,6 +1513,11 @@
     /** The sessions no work item owns: running ones the Supervisor does not supervise. */
     const unsupervised = () => { const owned = new Set(supWork().filter((w) => WORK_OPEN.has(w.state) && w.sessionId).map((w) => w.sessionId)); return S.live.filter((l) => !owned.has(l.id)); };
     const activeItems = () => supWork().filter((w) => WORK_OPEN.has(w.state));
+    /** Work Queue groups: Active is what runs (starting, running); Pending is what waits (queued, waiting). Each item is in one. */
+    const WORK_RUN = new Set(['starting', 'running']);
+    const runItems = () => supWork().filter((w) => WORK_RUN.has(w.state));
+    const pendItems = () => supWork().filter((w) => WORK_OPEN.has(w.state) && !WORK_RUN.has(w.state));
+    const WORK_SCOPE = { all: () => supWork(), active: runItems, pending: pendItems };
 
     /** A session in the tree: paused ones carry the warning icon and the word. */
     function sessionNode(idPrefix, sid, A) {
@@ -1542,9 +1532,9 @@
         return node;
     }
     /** A work item: its parts (a surfaces item's child items, each with its session) and its own session. */
-    function workNode(w, A, seen) {
+    function workNode(w, A, seen, group) {
         seen.add(String(w.id));
-        const kids = activeItems().filter((x) => String(x.parentId) === String(w.id) && !seen.has(String(x.id))).map((x) => workNode(x, A, seen));
+        const kids = group().filter((x) => String(x.parentId) === String(w.id) && !seen.has(String(x.id))).map((x) => workNode(x, A, seen, group));
         if (w.sessionId) kids.push(sessionNode('aw:s:', w.sessionId, A));
         const h = w.sessionId ? holdOf(w.sessionId) : null;
         const topo = topoShort(w.topology);
@@ -1559,9 +1549,10 @@
             return { id: `t:${id}`, name: titleOf(row || { id }), icon: `${A}/session-16.png`, desc: 'The session\'s conversation' };
         });
         const seen = new Set();
-        const items = activeItems();
-        const tops = items.filter((w) => w.parentId == null || w.parentId === '' || !items.some((x) => String(x.id) === String(w.parentId)));
-        const supNodes = tops.map((w) => workNode(w, A, seen));
+        const tops = (group) => { const items = group(); return items.filter((w) => w.parentId == null || w.parentId === '' || !items.some((x) => String(x.id) === String(w.parentId))).map((w) => workNode(w, A, seen, group)); };
+        const runNodes = tops(runItems);
+        const pendNodes = tops(pendItems);
+        const reviewN = supReviews().filter((r) => !r.dismissed).length;
         const uns = unsupervised().map((l) => sessionNode('us:', l.id, A));
         const cons = S.con.list.map((k) => ({
             id: `ct:${k.id}`,
@@ -1576,12 +1567,12 @@
             name: host ? `${TITLE} (${host})` : TITLE,
             icon: `${A}/claudedesk-16.png`,
             children: [
-                { id: 'aw', name: 'Active Work', icon: `${A}/session-16.png`, desc: 'Who watches whom: the Supervisor, its work items, their sessions and background agents',
+                { id: 'co-work', name: 'Work Queue', icon: `${A}/session-16.png`, desc: 'Requests waiting for, starting on and running on an account',
                     children: [
-                        { id: 'aw-sup', name: 'Supervised Work', icon: `${ITEMS}/parental-controls-16.png`, desc: 'The Supervisor and the work it runs', children: supNodes },
-                        { id: 'aw-uns', name: `Unsupervised Sessions (${uns.length})`, icon: `${A}/session-16.png`, desc: 'Running sessions no work item owns', children: uns }
+                        { id: 'aw-sup', name: `Active (${runItems().length})`, icon: `${ITEMS}/parental-controls-16.png`, desc: 'Work items running now, their sessions and background agents', children: runNodes },
+                        { id: 'co-pending', name: `Pending (${pendItems().length})`, icon: `${VI}/info-16.png`, desc: 'Work items waiting for an account to have room', children: pendNodes },
+                        { id: 'aw-uns', name: `Unsupervised (${uns.length})`, icon: `${A}/session-16.png`, desc: 'Running sessions no work item owns', children: uns }
                     ] },
-                { id: 'co-work', name: 'Work Queue', icon: `${A}/session-16.png`, desc: 'Requests waiting for, starting on and running on an account' },
                 {
                     id: 'sessions',
                     name: 'Sessions',
@@ -1595,20 +1586,27 @@
                         { id: 'mem-review', name: 'Needs Review', icon: `${VI}/warning-16.png`, desc: 'Proposed and flagged memories' },
                         { id: 'mem-digest', name: 'Session Digest', icon: `${VI}/info-16.png`, desc: 'The text every session starts with' }
                     ] },
-                {
-                    id: 'co-root',
-                    name: 'Coordination',
-                    icon: `${ITEMS}/people-near-me-16.png`,
-                    desc: 'The agents working now, their claims and messages',
+                { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Settings, reviews, coordination, pauses, locks and temp files',
                     children: [
-                        { id: 'co-agents', name: 'Agents', icon: `${ITEMS}/user-accounts-16.png` },
-                        { id: 'co-claims', name: 'Claims', icon: FOLDER16 },
-                        { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
-                        { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
-                        { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
-                    ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: `${A}/session-16.png`, desc: 'What this agent is doing' }] : [])
-                },
-                { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Settings, reviews, pauses, locks and temp files' },
+                        { id: 'sup-reviews', name: `Reviews (${reviewN})`, icon: `${VI}/check-16.png`, desc: 'What the Supervisor made of each finished agent turn' },
+                        {
+                            id: 'co-root',
+                            name: 'Coordination',
+                            icon: `${ITEMS}/people-near-me-16.png`,
+                            desc: 'The agents working now, their claims and messages',
+                            children: [
+                                { id: 'co-agents', name: 'Agents', icon: `${ITEMS}/user-accounts-16.png` },
+                                { id: 'co-claims', name: 'Claims', icon: FOLDER16 },
+                                { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
+                                { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
+                                { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
+                            ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: `${A}/session-16.png`, desc: 'What this agent is doing' }] : [])
+                        },
+                        { id: 'sup-asks', name: `Restart Waits (${supAsks().length})`, icon: `${VI}/warning-16.png`, desc: 'Agents waiting to restart Dreamscape' },
+                        { id: 'sup-holds', name: `Paused Sessions (${supHolds().length})`, icon: `${VI}/warning-16.png`, desc: 'Sessions the Supervisor or you paused' },
+                        { id: 'sup-locks', name: `Managed Locks (${supLocks().length})`, icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'Busy locks the Supervisor keeps for agents' },
+                        { id: 'sup-arts', name: `Work Folders (${supArtifacts().length})`, icon: FOLDER16, desc: 'Work folders and temp files the agents left' }
+                    ] },
                 { id: 'accounts', name: 'Accounts', icon: `${A}/account-16.png`, desc: 'The Claude accounts of this host' },
                 {
                     id: 'rc',
@@ -2194,6 +2192,149 @@
         }
     }
 
+    // ---- attachments on a message (Attach..., paste, drop, Screenshot) -------------------------------------
+    // Held as Blobs (thumbnails are object URLs, never data: strings); Send saves each on the server under the
+    // session's folder and puts the absolute paths in the steer text. A phone screenshot is saved at once (path set).
+    const ATT_MAX = 20 * 1048576;
+    const ATT_ACCEPT = 'image/*,.png,.jpg,.jpeg,.gif,.webp,.bmp,.txt,.log,.md,.json,.csv,.xml';
+    const attOf = (id) => { S.att = S.att || {}; return (S.att[id] = S.att[id] || []); };
+
+    function attChipsHtml(id) {
+        return attOf(id).map((a) => `<span class="cd-att" title="${esc(a.name)} (${bytesText(a.size)})">${a.url ? `<img src="${esc(a.url)}" alt="">` : ''}<span class="cd-att-name">${esc(a.name)}</span><button type="button" class="cd-att-x" data-cd-att-x="${esc(a.key)}" aria-label="Remove ${esc(a.name)}">&times;</button></span>`).join('');
+    }
+
+    function attRefresh(id) {
+        const host = S.c && S.c.modal && S.c.modal.querySelector('.cd-atts');
+        if (!host || host.dataset.sid !== id) return;
+        host.innerHTML = attChipsHtml(id);
+        host.hidden = !attOf(id).length;
+    }
+
+    function attDrop(id, key) {
+        const list = attOf(id);
+        const i = list.findIndex((a) => a.key === key);
+        if (i < 0) return;
+        if (list[i].url) URL.revokeObjectURL(list[i].url);
+        list.splice(i, 1);
+        attRefresh(id);
+    }
+
+    function attAdd(id, item) {
+        const isImg = /^image\//.test(item.type || '');
+        attOf(id).push({ key: `a${Date.now()}${Math.random().toString(36).slice(2, 6)}`, name: item.name, type: item.type || '', size: item.size || (item.blob && item.blob.size) || 0, blob: item.blob || null, path: item.path || '', url: isImg && item.blob ? URL.createObjectURL(item.blob) : '' });
+        attRefresh(id);
+    }
+
+    function attFiles(c, id, files) {
+        for (const f of files) {
+            if (!f) continue;
+            const name = f.name || `pasted-${Date.now()}.${(/^image\/(\w+)/.exec(f.type) || [0, 'png'])[1]}`;
+            const okType = /^(image|text)\//.test(f.type) || /\.(png|jpe?g|gif|webp|bmp|txt|log|md|json|csv|xml|ini|ya?ml)$/i.test(name);
+            if (!okType) { c.note(`${name}: only images and text files can be attached.`); continue; }
+            if (f.size > ATT_MAX) { c.note(`${name} is larger than 20 MB.`); continue; }
+            attAdd(id, { name, type: f.type, size: f.size, blob: f });
+        }
+    }
+
+    async function attPick(c, id) {
+        const p = root.fileOpenPicker;
+        if (!p || typeof p.pick !== 'function') { c.note('The Open dialog is not available.'); return; }
+        const files = await p.pick({ accept: ATT_ACCEPT, multiple: true, title: 'Attach', owner: c.modal });
+        if (files && files.length) attFiles(c, id, files);
+    }
+
+    /** A blob as base64 for the socket (Dovecote's pattern); the picture is never shown from it. */
+    function blobBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result).slice(String(r.result).indexOf(',') + 1));
+            r.onerror = () => reject(new Error('Could not read the attachment'));
+            r.readAsDataURL(blob);
+        });
+    }
+
+    /** Uploads what is not on the server yet; the paths of all of them. */
+    async function attUpload(id) {
+        for (const a of attOf(id)) {
+            if (a.path) continue;
+            const r = await send('claude_desk_session', { action: 'attach', id, name: a.name, mimeType: a.type, base64: await blobBase64(a.blob) });
+            a.path = (r.result || r).path;
+        }
+        return attOf(id).map((a) => a.path);
+    }
+
+    function attClear(id) {
+        ((S.att && S.att[id]) || []).forEach((a) => { if (a.url) URL.revokeObjectURL(a.url); });
+        if (S.att) delete S.att[id];
+        attRefresh(id);
+    }
+
+    async function phoneShot(c, id, device) {
+        try {
+            c.note('Capturing the phone screen...');
+            const r = (await send('claude_desk_session', { action: 'phone_shot', id, device })).result || {};
+            if (r.devices) {
+                if (!r.devices.length) { await c.box('<p>No phone is online to capture.</p>', null, { icon: 'warning' }); return; }
+                const { value, fields } = await form(c, `<p>Which phone?</p><label><span>Phone:</span><select class="vdt-select" data-cd="device">${r.devices.map((d) => `<option value="${esc(d.deviceId)}">${esc(d.name)}</option>`).join('')}</select></label>`,
+                    [{ text: 'Capture', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Phone Screenshot' });
+                if (value === true && fields.device) await phoneShot(c, id, fields.device);
+                return;
+            }
+            let blob = null;
+            if (r.thumbBase64) { const bin = atob(r.thumbBase64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); blob = new Blob([u], { type: 'image/jpeg' }); }
+            attAdd(id, { name: r.name, type: r.mimeType, size: r.size, blob, path: r.path });
+        } catch (e) { await failBox(c, e); }
+    }
+
+    /** Snip the Desktop: the Snipping Tool opens and the next snip it takes is attached (its 'snipping:snip' event). */
+    function snipAttach(c, id) {
+        if (!root.melatonApps || typeof root.melatonApps.launch !== 'function') { c.note('The Snipping Tool is not available.'); return; }
+        if (S.snipWait) root.removeEventListener('snipping:snip', S.snipWait);
+        const on = async (ev) => {
+            root.removeEventListener('snipping:snip', on);
+            S.snipWait = null;
+            try {
+                const blob = await ev.detail.toBlob();
+                if (blob) { attAdd(id, { name: `snip-${Date.now()}.png`, type: 'image/png', size: blob.size, blob }); c.note('Snip attached.'); }
+            } catch (e) { await failBox(c, e); }
+        };
+        S.snipWait = on;
+        root.addEventListener('snipping:snip', on);
+        void root.melatonApps.launch({ packageId: 'snipping' });
+        c.note('Take a snip: it is attached to the message.');
+    }
+
+    function attWire(c, pane, id) {
+        const box = pane.querySelector('.cd-compose');
+        const chips = pane.querySelector('.cd-atts');
+        if (!box || !chips) return;
+        chips.dataset.sid = id;
+        chips.innerHTML = attChipsHtml(id);
+        chips.hidden = !attOf(id).length;
+        chips.addEventListener('click', (ev) => { const x = ev.target.closest('[data-cd-att-x]'); if (x) attDrop(id, x.dataset.cdAttX); });
+        const addBtn = pane.querySelector('[data-cd-attach]');
+        if (addBtn) addBtn.addEventListener('click', () => void attPick(c, id));
+        const shotBtn = pane.querySelector('[data-cd-shot]');
+        if (shotBtn && root.contextMenu && typeof root.contextMenu.attachClickMenuToElement === 'function') {
+            root.contextMenu.attachClickMenuToElement(shotBtn, {
+                onAction: (a) => { if (a === 'snip') snipAttach(c, id); else if (a === 'phone') void phoneShot(c, id); },
+                sections: [{ type: 'list', initfn: (sec) => { sec.items = [{ text: 'Snip the Desktop', action: 'snip' }, { text: 'Phone Screenshot', action: 'phone' }]; } }]
+            });
+        }
+        // paste an image (Ctrl+V) and drop files on the composer
+        box.addEventListener('paste', (ev) => {
+            const files = [...((ev.clipboardData && ev.clipboardData.files) || [])];
+            if (files.length) { ev.preventDefault(); attFiles(c, id, files); }
+        });
+        box.addEventListener('dragover', (ev) => { if (ev.dataTransfer && [...ev.dataTransfer.types].includes('Files')) { ev.preventDefault(); box.classList.add('is-drop'); } });
+        box.addEventListener('dragleave', () => box.classList.remove('is-drop'));
+        box.addEventListener('drop', (ev) => {
+            box.classList.remove('is-drop');
+            const files = [...((ev.dataTransfer && ev.dataTransfer.files) || [])];
+            if (files.length) { ev.preventDefault(); attFiles(c, id, files); }
+        });
+    }
+
     function chatPage(c, id) {
         let chat = S.chats.get(id);
         if (!chat) { void loadChat(id, false); chat = { messages: [], loading: true, row: rowOf(id) }; }
@@ -2210,10 +2351,15 @@
             composer = `<div class="cd-compose cd-ended"><span>This session runs inside Remote Control's server, so Fleet has no terminal to type into.</span><button type="button" class="btn-standard primary" data-act="takeover" data-arg="${esc(id)}">Take Over in Fleet...</button></div>`;
         } else if (l) {
             composer = `<div class="cd-compose">
-                <textarea class="cd-input" data-field="cd-input-${esc(id)}" rows="3" placeholder="${l.status === 'busy' ? 'Steer it: your message reaches it while it works' : 'Message this session'}" spellcheck="true"></textarea>
+                <div class="cd-compose-main">
+                    <div class="cd-atts" hidden></div>
+                    <textarea class="cd-input" data-field="cd-input-${esc(id)}" rows="3" placeholder="${l.status === 'busy' ? 'Steer it: your message reaches it while it works' : 'Message this session'}" spellcheck="true"></textarea>
+                </div>
                 <div class="cd-compose-btns">
                     <button type="button" class="btn-standard primary" data-act="send" data-arg="${esc(id)}">Send</button>
                     <button type="button" class="btn-standard" data-act="interrupt" data-arg="${esc(id)}"${l.status === 'busy' ? '' : ' disabled'}>Stop</button>
+                    <button type="button" class="btn-standard" data-cd-attach title="Attach an image or a text file (you can also paste or drop one here)">Attach...</button>
+                    <button type="button" class="btn-standard" data-cd-shot aria-haspopup="menu" title="Attach a screenshot">Screenshot &#9662;</button>
                 </div>
             </div>`;
         } else {
@@ -2251,6 +2397,7 @@
                 wireFolds(log, id, '');
                 pane.querySelectorAll('[data-cd-show]').forEach((cb) => cb.addEventListener('change', () => void setShow(cb.dataset.cdShow, cb.checked)));
                 requestAnimationFrame(() => pageMore(id, log));
+                attWire(S.c, pane, id);
                 const input = pane.querySelector('.cd-input');
                 if (input) {
                     if (S.drafts && S.drafts[id]) input.value = S.drafts[id];
@@ -2414,8 +2561,8 @@
     function page(n, c) {
         switch (n.id) {
             case 'root': return withBars(rootPage(c));
-            case 'aw': return awPage(c);
-            case 'aw-sup': return workPage(c, true);
+            case 'aw-sup': return workPage(c, 'active');
+            case 'co-pending': return workPage(c, 'pending');
             case 'aw-uns': return unsupervisedPage(c);
             case 'activity': return activityPage(c);
             case 'memory': return memoryPage(c);
@@ -2427,8 +2574,8 @@
             case 'rc-host': return hostRcPage(c);
             case 'co-builds': return buildsPage(c);
             case 'co-locks': return locksPage(c);
-            case 'co-supervisor': return supervisorPage(c);
-            case 'co-work': return workPage(c, false);
+            case 'co-supervisor': case 'sup-reviews': case 'sup-asks': case 'sup-holds': case 'sup-locks': case 'sup-arts': return supervisorPage(c, n.id);
+            case 'co-work': return workPage(c, 'all');
             case 'sessions': return sessionsPage(c, false);
             case 'running': return sessionsPage(c, true);
             case 'co-root': return withBars(rootPage(c));
@@ -2447,7 +2594,48 @@
         }
     }
 
-    function commands(n) {
+    /** The 16 px Vista command-bar picture of each Action pane link (MMC 3.0 shows it left of the text). */
+    const ACT_ICON = (() => {
+        const m = {};
+        const put = (img, names) => names.split(' ').forEach((a) => { m[a] = `/static_images/vista-cmdbar/${img}.png`; });
+        put('refresh', 'sup-refresh fleet-refresh locks-refresh act-refresh mem-refresh con-refresh inspect-refresh aw-agents-refresh con-reread sup-recheck');
+        put('new', 'new-session new-session-on');
+        put('add', 'add-account con-add');
+        put('go', 'open-session work-open agent-session sup-hold-open act-session inspect-session mem-open act-open con-open agent-open');
+        put('mail', 'post post-to read-message mem-review-now');
+        put('reply', 'reply');
+        put('send', 'message sup-send');
+        put('discuss', 'steer steer-agent con-steer');
+        put('stop', 'interrupt con-interrupt con-stop rc-stop fleet-stop');
+        put('power', 'end');
+        put('play', 'rc-start fleet-start work-start con-start resume-hold sup-resume');
+        put('restart', 'rc-reconnect fleet-reconnect switch resume');
+        put('pause', 'pause');
+        put('zip-folder', 'compact');
+        put('gears', 'set-model set-effort');
+        put('display', 'screen');
+        put('move-to', 'takeover fleet-move');
+        put('undo', 'fleet-leave');
+        put('properties', 'detail-toggle account-props fleet-props build-props');
+        put('internet', 'open-link work-issue');
+        put('copy', 'copy-link');
+        put('shortcut', 'link');
+        put('ban', 'unlink con-revoke mem-reject');
+        put('save', 'sup-save');
+        put('delete', 'sup-lock-remove sup-art-clean work-cancel build-end mem-remove con-remove release-claim');
+        put('clear', 'sup-art-forget sup-dismiss mem-unflag');
+        put('checklist', 'mem-approve');
+        put('favorites', 'mem-pin');
+        put('rename', 'mem-edit');
+        put('find', 'inspect lock-inspect');
+        return m;
+    })();
+    const withIcons = (list) => (Array.isArray(list) ? list.map((it) => (it.separator || it.icon !== undefined || !ACT_ICON[it.action] ? it : Object.assign({}, it, { icon: ACT_ICON[it.action] }))) : list);
+
+    function commands(n) { return withIcons(commandList(n)); }
+    function selCommands(n, key) { const r = selCommandList(n, key); return r ? Object.assign({}, r, { items: withIcons(r.items) }) : r; }
+
+    function commandList(n) {
         switch (n.id) {
             case 'root': return [{ text: 'Add Account...', action: 'add-account' }, { text: 'New Session...', action: 'new-session' }];
             case 'accounts': return [{ text: 'Add Account...', action: 'add-account' }];
@@ -2455,15 +2643,20 @@
             case 'co-builds': return [{ text: 'Post Message...', action: 'post' }];
             case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
             case 'co-work': return [{ text: 'New Request...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }];
-            case 'aw':
             case 'aw-sup':
+            case 'co-pending':
             case 'aw-uns': return [{ text: 'New Session...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'activity': return [{ text: 'Read Again', action: 'act-refresh' }];
             case 'memory': return [{ text: 'Read Again', action: 'mem-refresh' }];
             case 'mem-review': return [{ text: 'Ask the Supervisor to Review Now', action: 'mem-review-now', disabled: S.memBusy }, { text: 'Read Again', action: 'mem-refresh' }];
             case 'mem-digest': return [{ text: 'Read Again', action: 'mem-refresh' }];
             case 'contractors': return [{ text: 'Add Contractor...', action: 'con-add' }, { text: 'Read Again', action: 'con-refresh' }];
-            case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }, { separator: true }, { text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Clean...', action: 'sup-art-clean' }, { text: 'Forget', action: 'sup-art-forget' }];
+            case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }];
+            case 'sup-reviews': return [{ text: 'Read Again', action: 'sup-refresh' }];
+            case 'sup-asks': return [{ text: 'Read Again', action: 'sup-refresh' }];
+            case 'sup-holds': return [{ text: 'Resume', action: 'sup-resume' }, { text: 'Read Again', action: 'sup-refresh' }];
+            case 'sup-locks': return [{ text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Read Again', action: 'sup-refresh' }];
+            case 'sup-arts': return [{ text: 'Clean...', action: 'sup-art-clean' }, { text: 'Forget', action: 'sup-art-forget' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'rc-host': return [
                 { text: 'Reconnect', action: 'rc-reconnect' },
                 { text: 'Start', action: 'rc-start', disabled: !!(S.host && S.host.remoteControl && S.host.remoteControl.active === 'active') },
@@ -2514,7 +2707,7 @@
         ]);
     }
 
-    function selCommands(n, key) {
+    function selCommandList(n, key) {
         if (!key) return null;
         if (key.startsWith('s:')) { const row = rowOf(key.slice(2)); return { title: titleOf(row || { id: key.slice(2) }), items: sessionItems(key.slice(2)) }; }
         if (key.startsWith('a:')) {
@@ -2931,12 +3124,17 @@
             }
             case 'send': {
                 const input = c.modal.querySelector('.cd-input');
-                const text = input ? input.value.trim() : '';
-                if (!text) return true;
+                let text = input ? input.value.trim() : '';
+                if (!text && !attOf(sid).length) return true;
                 const btn = c.modal.querySelector('[data-act="send"]');
                 if (btn) btn.disabled = true;
                 try {
+                    if (attOf(sid).length) {
+                        const paths = await attUpload(sid);
+                        text = `${text}${text ? '\n\n' : ''}Attached ${paths.length === 1 ? 'file' : 'files'} (read ${paths.length === 1 ? 'it' : 'them'} from disk):\n${paths.join('\n')}`;
+                    }
                     await send('claude_desk_session', { action: 'steer', id: sid, text });
+                    attClear(sid);
                     if (input) input.value = '';
                     if (S.drafts) delete S.drafts[sid];
                     c.note('Sent.');
@@ -3893,7 +4091,7 @@
             taskbarIcon: `${A}/claudedesk-24.png`,
             width: w,
             height: h,
-            expanded: ['root', 'aw', 'aw-sup'],
+            expanded: ['root', 'co-work', 'aw-sup'],
             about: { version: VERSION, lines: ['Claude accounts, Remote Control, sessions and agent coordination.'] },
             nodes,
             page,
@@ -3911,16 +4109,22 @@
                 if (n.id === 'mem-review') return S.memRv.loaded ? `${S.memRv.rows.length} to review` : '';
                 if (n.id === 'activity') return S.act.loaded ? `${S.act.rows.length} of ${S.act.total} calls` : '';
                 if (n.id === 'contractors') return S.con.gone ? NOT_YET : `${plural(S.con.list.length, 'contractor')}, ${S.con.list.filter((k) => k.online).length} online`;
-                if (n.id === 'aw-sup') return plural(activeItems().length, 'open work item');
+                if (n.id === 'aw-sup') return plural(runItems().length, 'running work item');
+                if (n.id === 'co-pending') return plural(pendItems().length, 'waiting work item');
+                if (n.id === 'sup-holds') return plural(supHolds().length, 'paused session');
+                if (n.id === 'sup-locks') return plural(supLocks().length, 'lock');
+                if (n.id === 'sup-arts') return plural(supArtifacts().length, 'work folder');
                 if (n.id === 'aw-uns') return plural(unsupervised().length, 'session');
                 if (n.id === 'co-builds') return plural((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length, 'gate') + ' open';
                 if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
                 if (n.id === 'co-work') return S.sup.busy || (S.sup.counts ? `${S.sup.counts.active} running, ${S.sup.counts.queued} queued` : plural(supWork().filter((w) => WORK_OPEN.has(w.state)).length, 'open request'));
+                if (n.id === 'sup-reviews') return plural(supReviews().filter((r) => !r.dismissed).length, 'review');
+                if (n.id === 'sup-asks') return plural(supAsks().length, 'restart wait');
                 if (n.id === 'co-supervisor') return S.sup.busy || (S.sup.data && S.sup.data.stats ? `${plural(S.sup.data.stats.reviewed || 0, 'review')}, ${S.sup.data.stats.gaps || 0} with gaps` : '');
                 if (nodeSid(n.id)) { const ch = S.chats.get(nodeSid(n.id)); return ch ? plural(ch.messages.length, 'message') : ''; }
                 return `Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`;
             },
-            onSelectRow: (key, n) => { if (n && n.id === 'co-supervisor') supSelect(key); else if (n && nodeSid(n.id)) detailSelect(key, nodeSid(n.id)); },
+            onSelectRow: (key, n) => { if (n && SUP_PART[n.id]) supSelect(key); else if (n && nodeSid(n.id)) detailSelect(key, nodeSid(n.id)); },
             onSelect: undefined,
             onOpen: () => {},
             onClose: () => {

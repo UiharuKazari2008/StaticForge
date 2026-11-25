@@ -11,7 +11,7 @@
  *   claude_desk_transcript { id, before?, limit? }     a page of the chat (claudeTranscript.readPage)
  *   claude_desk_watch     { id } / claude_desk_unwatch the open transcript's new messages are pushed to this
  *                                                      socket as claude_desk_transcript_append { id, messages, end }
- *   claude_desk_session   { action: start | resume | steer | interrupt | screen | disconnect, ... }
+ *   claude_desk_session   { action: start | resume | steer | attach | phone_shot | interrupt | screen | disconnect, ... }
  *   claude_desk_coord     { action: list | post | release, ... }
  *
  * Status (rule server-push-not-polling): two statusHub feeds the window subscribes to while it is open:
@@ -333,6 +333,15 @@ const handleSession = guard('claude_desk_session', async (gr, message) => {
         result = await launcher.resume(gr, id, { account: message.account, mode: message.mode, title: message.title, model: message.model || undefined, effort: message.effort || undefined });
     } else if (action === 'steer') {
         result = await launcher.steer(id, message.text);
+    } else if (action === 'attach') {
+        // a file the composer attaches (Attach..., paste, drop, a snip): saved per session, the path goes in the steer text
+        const att = require('../../claudeDeskAttachments');
+        const b64 = String(message.base64 || '');
+        if (b64.length > Math.ceil(att.MAX_BYTES * 4 / 3) + 8) throw new Error('The attachment is too large');
+        result = att.save(id, { name: message.name, mimeType: message.mimeType, bytes: Buffer.from(b64, 'base64') });
+    } else if (action === 'phone_shot') {
+        const r = await require('../../claudeDeskAttachments').phoneShot(gr, id, { device: message.device, display: message.display });
+        result = r.devices ? { devices: r.devices } : Object.assign({}, r.attachment, r.thumb ? { thumbBase64: r.thumb.toString('base64') } : {});
     } else if (action === 'interrupt') {
         result = await launcher.interrupt(id);
     } else if (action === 'screen') {
@@ -352,7 +361,7 @@ const handleSession = guard('claude_desk_session', async (gr, message) => {
     } else if (action === 'command') {
         result = await sessionCommand(id, message.command, message.value);
     } else {
-        throw new Error('action must be start, resume, takeover, steer, interrupt, screen, disconnect, detail, agent_page, task_output or command');
+        throw new Error('action must be start, resume, takeover, steer, attach, phone_shot, interrupt, screen, disconnect, detail, agent_page, task_output or command');
     }
     poke();
     return { result };

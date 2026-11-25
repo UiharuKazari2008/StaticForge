@@ -201,9 +201,75 @@
 }
 
 #mmcConsole_claudedesk .cd-compose-btns {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 4px;
+    align-content: start;
+}
+
+#mmcConsole_claudedesk .cd-compose-main {
     display: flex;
+    flex: 1;
     flex-direction: column;
     gap: 4px;
+    min-width: 0;
+}
+
+#mmcConsole_claudedesk .cd-compose-main .cd-input {
+    flex: none;
+}
+
+#mmcConsole_claudedesk .cd-compose.is-drop {
+    outline: 2px dashed var(--cd-c-a00000);
+    outline-offset: -3px;
+}
+
+#mmcConsole_claudedesk .cd-atts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+#mmcConsole_claudedesk .cd-atts[hidden] {
+    display: none;
+}
+
+#mmcConsole_claudedesk .cd-att {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 220px;
+    padding: 2px 2px 2px 3px;
+    border: 1px solid var(--cd-c-d5d5d5);
+    background: #fff;
+    font: 11px var(--cd-font-ui);
+}
+
+#mmcConsole_claudedesk .cd-att img {
+    width: 24px;
+    height: 24px;
+    object-fit: cover;
+}
+
+#mmcConsole_claudedesk .cd-att-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#mmcConsole_claudedesk .cd-att-x {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: 13px/14px var(--cd-font-ui);
+    cursor: pointer;
+}
+
+#mmcConsole_claudedesk .cd-att-x:hover {
+    background: var(--cd-c-d5d5d5);
 }
 
 #mmcConsole_claudedesk .cd-compose.cd-ended {

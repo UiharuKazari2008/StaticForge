@@ -230,6 +230,19 @@ async function main() {
     assert.strictEqual(live.state, 'live', 'a live Remote Control session is not started twice');
     console.log('ok 4 steering');
 
+    // 4b. attachments: saved per session (0600), names cleaned, only images / text, size limit
+    {
+        process.env.DREAMSCAPE_CLAUDE_DESK_ATTACHMENTS = path.join(SANDBOX, 'attachments');
+        const att = require('../modules/claudeDeskAttachments');
+        const a = att.save(SID, { name: '../../evil name.png', mimeType: 'image/png', bytes: Buffer.from([137, 80, 78, 71]) });
+        assert.ok(a.path.startsWith(path.join(SANDBOX, 'attachments', SID) + path.sep) && /^\d+-evil name\.png$/.test(path.basename(a.path)), 'saved under the session folder with a clean name');
+        assert.strictEqual(fs.statSync(a.path).mode & 0o777, 0o600, 'attachment is 0600');
+        assert.throws(() => att.save(SID, { name: 'x.exe', mimeType: 'application/octet-stream', bytes: Buffer.from('MZ') }), /images and text/);
+        assert.throws(() => att.save(SID, { name: 'big.txt', mimeType: 'text/plain', bytes: Buffer.alloc(att.MAX_BYTES + 1) }), /too large/);
+        assert.throws(() => att.save('../x', { name: 'a.txt', mimeType: 'text/plain', bytes: Buffer.from('a') }), /session id/);
+        console.log('ok 4b attachments');
+    }
+
     // 5. coordination store: claims, conflicts, globs, shared, leases, inbox
     store.upsertAgent({ id: 'claude-aaaa', kind: 'claude', name: 'Desk worker', repo: 'staticforge', task: 'desktop app', pid: process.pid });
     store.upsertAgent({ id: 'claude-bbbb', kind: 'claude', name: 'Mobile worker', repo: 'staticforge', task: 'mobile tab', pid: 4242 });
