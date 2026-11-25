@@ -9,6 +9,7 @@ const path = require('path');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plaud-test-'));
 process.env.PLAUD_ACCOUNT_FILE = path.join(dir, 'plaud-account.json');
 process.env.PLAUD_DEVICE_FILE = path.join(dir, 'plaud-device.json');
+process.env.PLAUD_TRANSFER_FILE = path.join(dir, 'plaud-transfer.json');
 
 const plaud = require('../modules/plaudClient');
 const plaudMcp = require('../modules/plaudMcp');
@@ -296,6 +297,64 @@ t.setDeps({
         { name: 'P', model: 'm', serial: '...S', firmware: 'v1', battery: 64, lastSync: 1790000000000 });
     assert.strictEqual(dev._test.mapDevice({ battery_low_flag: 1, connect_count: 5 }).battery, null);
     assert.strictEqual(dev._test.mapDevice({ battery_low_flag: 1, connect_count: 5 }).lastSync, null);
+
+    // ---- the transfer status, from the Plaud phone app's notifications (#1193) ----
+    const ptr = require('../modules/plaudTransfer');
+    let clock = Date.now();
+    ptr._test.reset();
+    ptr._test.setDeps({ now: () => clock });
+    const trPushes = [];
+    ptr.bind(() => trPushes.push(ptr.state().state));
+    const P = ptr.PACKAGE;
+    const post = (title, text, key) => ptr.take('notify.posted', { package: P, title, text: text || '', key: key || 'k1' });
+    assert.strictEqual(P, 'ai.plaud.android.plaud');
+    assert.deepStrictEqual(ptr.state(), { state: 'none', at: 0, noteReadyAt: 0 });
+    ptr.take('notify.posted', { package: 'com.other', title: 'Transfer complete' });
+    assert.strictEqual(ptr.state().state, 'none', 'other apps are ignored');
+    post('File transfer in progress', 'Transferring recordings from Plaud NotePin...', 'n7');
+    assert.strictEqual(ptr.state().state, 'transferring');
+    const startedAt = ptr.state().at;
+    clock += 60000; post('File transfer in progress', 'Transferring recordings from Plaud NotePin...', 'n7');
+    assert.strictEqual(ptr.state().at, startedAt, 'a repeated update keeps the start');
+    assert.deepStrictEqual(trPushes, ['transferring'], 'a repeated update does not push');
+    ptr.take('notify.removed', { package: P, key: 'other' });
+    assert.strictEqual(ptr.state().state, 'transferring');
+    ptr.take('notify.removed', { package: P, key: 'n7' });
+    assert.strictEqual(ptr.state().state, 'none');
+    post('Transfer in progress'); post('Transfer failed');
+    assert.strictEqual(ptr.state().state, 'none');
+    post('Transferring', '', 'n8');
+    clock += 29 * 60000; assert.strictEqual(ptr.state().state, 'transferring');
+    clock += 2 * 60000; assert.strictEqual(ptr.state().state, 'none', 'a transfer older than 30 minutes without news is off');
+    post('Transferring', '', 'n9');
+    clock += 1000; post('Transfer complete');
+    const doneAt = clock;
+    assert.deepStrictEqual(ptr.state(), { state: 'complete', at: doneAt, noteReadyAt: 0 });
+    clock += 1000; post('Your note is ready');
+    assert.deepStrictEqual(ptr.state(), { state: 'complete', at: doneAt, noteReadyAt: clock });
+    const readyAt = clock;
+    // a restart keeps it
+    ptr._test.reset(); ptr._test.setDeps({ now: () => clock });
+    assert.deepStrictEqual(ptr.state(), { state: 'complete', at: doneAt, noteReadyAt: readyAt });
+    assert.strictEqual(JSON.parse(fs.readFileSync(process.env.PLAUD_TRANSFER_FILE, 'utf8')).completedAt, doneAt);
+    clock = doneAt + 12 * 3600000 + 1;
+    assert.strictEqual(ptr.state().state, 'none', 'complete shows for 12 hours');
+    // the push fires once per change
+    const pushes2 = [];
+    ptr.bind(() => pushes2.push(1));
+    post('Transfer complete'); post('Transfer complete'); clock += 1000; post('Transfer complete');
+    assert.strictEqual(pushes2.length, 2, 'a new completion time is a change, the same instant is not');
+    ptr.bind(() => pushes2.push(2));
+    ptr.take('notify.posted', { package: P, title: 'Something else', text: 'x' });
+    assert.strictEqual(pushes2.length, 2, 'an unrelated Plaud notice pushes nothing');
+    // the filter's keep follows the link
+    ptr.setLinked(false); assert.strictEqual(ptr.wantsKeep(), false);
+    ptr.setLinked(true); assert.strictEqual(ptr.wantsKeep(), true);
+    ptr._test.reset();
+    assert.strictEqual(ptr.wantsKeep(), true, 'kept in the file');
+    ptr._test.reset();
+    assert.strictEqual(typeof (await today.list('gr')).transfer.state, 'string', 'list carries transfer');
+    assert.strictEqual(ptr.wantsKeep(), true, 'list sets linked');
 
     fs.rmSync(dir, { recursive: true, force: true });
     console.log('test-plaud: ok');

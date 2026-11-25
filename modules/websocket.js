@@ -22,6 +22,7 @@ const DORMANT_HOLD = new Map([
     ['claude_remote_control_status', 'last'],
     ['claude_account_login_status', 'last'],
     ['plaud_account_changed', 'last'],
+    ['plaud_today_changed', 'last'],
     ['dovecote_mailbox_updated', 'last'],
     ['as_peers_updated', 'last'],
     ['runpod_pods_status_update', 'last'],

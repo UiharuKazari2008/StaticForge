@@ -1259,13 +1259,19 @@
      * review runs, a press): no timed poll.
      */
     const REC_RETRY_MS = 60 * 1000;
-    const rec = { list: null, linked: true, at: 0, busy: 0, stale: true, pick: '', sums: new Map(), wired: false, battery: null, device: null, lastRead: 0, lastSync: 0, deviceLogin: '', asking: false, failed: false };
+    const rec = { list: null, linked: true, at: 0, busy: 0, stale: true, pick: '', sums: new Map(), wired: false, battery: null, device: null, lastRead: 0, lastSync: 0, deviceLogin: '', transfer: null, asking: false, failed: false };
 
     function recWire() {
         const c = ws();
         if (rec.wired || !c || typeof c.on !== 'function') return;
         rec.wired = true;
         c.on('connected', () => { rec.stale = true; });
+        // the recorder's transfer status (the Plaud phone app's notices, pushed by the server): a finished transfer or a ready note is usually a new recording
+        c.on('plaud_today_changed', (m) => {
+            const d = m && (m.data || m);
+            if (d && d.transfer) rec.transfer = d.transfer;
+            rec.stale = true; repaintItems(['recordings']);
+        });
         // a review's turn starting or ending arrives with the Director's status: read again only while one runs
         c.on('director_computer_status', () => {
             if (rec.list && rec.list.some((r) => r.review && r.review.status === 'running')) { rec.stale = true; repaintItems(['recordings']); }
@@ -1280,7 +1286,7 @@
         if (!rec.stale && (rec.list || now - rec.at < REC_RETRY_MS)) return;
         rec.busy = now; rec.stale = false; rec.at = now;
         ask('plaud_today_list').then((d) => {
-            if (d && Array.isArray(d.recordings)) { rec.list = d.recordings; rec.linked = d.linked !== false; rec.battery = d.battery; rec.device = d.device || null; rec.lastRead = Number(d.lastRead) || 0; rec.lastSync = Number(d.lastSync) || 0; rec.deviceLogin = d.deviceLogin || ''; rec.failed = false; }
+            if (d && Array.isArray(d.recordings)) { rec.list = d.recordings; rec.linked = d.linked !== false; rec.battery = d.battery; rec.device = d.device || null; rec.lastRead = Number(d.lastRead) || 0; rec.lastSync = Number(d.lastSync) || 0; rec.deviceLogin = d.deviceLogin || ''; rec.transfer = d.transfer || null; rec.failed = false; }
             else repaintLater('recordings', REC_RETRY_MS + 50);
         }).finally(() => { rec.busy = 0; repaintItems(['recordings']); });
     }
@@ -1350,6 +1356,11 @@
     }
     // "Battery 80% - Synced 14:02" (recorder account) or "... - Last read 14:02": battery only when the server sent a number
     function recDevice() {
+        const tr = rec.transfer;
+        const today = (ms) => ms > 0 && new Date(ms).toDateString() === new Date().toDateString();
+        if (tr && tr.state === 'transferring') return 'Transferring from the recorder';
+        if (tr && today(tr.noteReadyAt) && tr.noteReadyAt > (tr.state === 'complete' ? tr.at : 0)) return `Note ready ${fmtTime.format(tr.noteReadyAt)}`;
+        if (tr && tr.state === 'complete' && today(tr.at)) return `Transfer complete ${fmtTime.format(tr.at)}`;
         const t = rec.lastSync || rec.lastRead;
         const stamp = t ? `${new Date(t).toDateString() === new Date().toDateString() ? '' : `${fmtDate.format(t)} `}${fmtTime.format(t)}` : '';
         const read = t ? `${rec.lastSync ? 'Synced' : 'Last read'} ${stamp}` : '';

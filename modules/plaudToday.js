@@ -13,6 +13,7 @@
 
 const plaud = require('./plaudClient');
 const plaudDevice = require('./plaudDevice');
+const plaudTransfer = require('./plaudTransfer');
 
 const LIST_LIMIT = 8;
 const SUMMARY_MAX = 1200;
@@ -49,7 +50,8 @@ function withReview(rec) {
  * (tested Nov 25 2026: /open/third-party/devices answers 404), so device comes from Plaud's web page in the server's
  * browser (plaudDevice.js), read at most once a day, capped at 4 s here, null on any failure; battery and lastSync stay
  * null (Plaud's cloud has neither). deviceLogin: 'ok' | 'missing' (that browser is not signed in to Plaud) | 'unknown'.
- * gr (optional) lets the one notice asking for that sign-in be published.
+ * transfer { state: 'transferring' | 'complete' | 'none', at, noteReadyAt } is the recorder's transfer status from the
+ * Plaud phone app's notifications (plaudTransfer.js). gr (optional) lets the one notice asking for that sign-in be published.
  */
 async function recorderRead() {
     let timer;
@@ -78,6 +80,7 @@ async function list(gr) {
     }
     const st = await plaud.status();
     const rec = await recorderP;
+    plaudTransfer.setLinked(!!st.linked);
     try { plaudDevice.ask(gr, !!st.linked); } catch (_) { /* the list does not depend on the notice */ }
     const recordings = raw.map(withReview);
     return {
@@ -87,6 +90,7 @@ async function list(gr) {
         battery: rec ? rec.battery : null,
         lastSync: rec ? rec.lastSync : null,
         deviceLogin: plaudDevice.state(),
+        transfer: plaudTransfer.state(),
         lastRead,
         stale,
         waiting: recordings.filter((x) => !x.review).length,

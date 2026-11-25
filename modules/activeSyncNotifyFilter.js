@@ -201,6 +201,8 @@ function handledContext() {
         if ((v.kick || []).some((c) => c.notify)) handled.set('com.kick.mobile', { by: 'Melaton Videos (Kick)' });
         for (const a of v.apps || []) if (a && PACKAGE_RE.test(String(a.package || ''))) keep.add(a.package);
     } catch (_) { /* no Videos state */ }
+    // the Plaud app's transfer notices feed Today's Plaud item (#1193); its progress channel must leave the phone
+    try { if (require('./plaudTransfer').wantsKeep()) keep.add('ai.plaud.android.plaud'); } catch (_) { /* no Plaud state */ }
     const key = JSON.stringify([[...handled].map(([p, h]) => [p, h.by, !!h.keep, !!h.channel]), [...keep].sort(), [...hashes.keys()].sort()]);
     const changed = ctxCache && ctxCache.key !== key;
     ctxCache = { at: Date.now(), key, handled, keep };
