@@ -376,6 +376,7 @@ function recordUsage(row) {
 // Background jobs (titles, task lists, sizing, rule checks, usage...) share a budget of 20 engine calls a minute, so a
 // loop can never flood TokenRouter, whose rate limit Yozora shares; turn reviews always go through.
 const bgCalls = [];
+const NO_EFFORT = new Set(); // engine|model pairs that refuse reasoning_effort
 const BG_PER_MIN = Number(process.env.AGENT_SUPERVISOR_BG_PER_MIN) || 20;
 async function callEngine(gr, messages, opts = {}) {
     if (opts.kind && !['review', 'json'].includes(opts.kind)) {
@@ -394,8 +395,18 @@ async function callEngine(gr, messages, opts = {}) {
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), CALL_TIMEOUT_MS);
         try {
-            const res = await fetchFn(ep.url, { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.key}` }, body: JSON.stringify(Object.assign({ model: ep.model, temperature: 0, max_tokens: opts.maxTokens || 6000, response_format: { type: 'json_object' }, messages }, ep.effort ? { reasoning_effort: ep.effort } : {})) });
-            const body = await res.text();
+            // a model that refuses reasoning_effort (DeepSeek through TokenRouter answers 400 InvalidParameter) is asked
+            // again without it, and remembered, so the setting never breaks every call (Nov 24 2026)
+            const noEffort = NO_EFFORT.has(`${link.engine}|${ep.model}`);
+            const post = (withEffort) => fetchFn(ep.url, { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.key}` }, body: JSON.stringify(Object.assign({ model: ep.model, temperature: 0, max_tokens: opts.maxTokens || 6000, response_format: { type: 'json_object' }, messages }, withEffort ? { reasoning_effort: ep.effort } : {})) });
+            let res = await post(!!ep.effort && !noEffort);
+            let body = await res.text();
+            if (!res.ok && res.status === 400 && ep.effort && !noEffort) {
+                NO_EFFORT.add(`${link.engine}|${ep.model}`);
+                console.warn(`[supervisor] ${ep.name} ${ep.model} refuses reasoning_effort; asking without it`);
+                res = await post(false);
+                body = await res.text();
+            }
             if (!res.ok) {
                 const msg = `${ep.name} ${res.status}: ${body.replace(/\s+/g, ' ').slice(0, 200)}`;
                 const funds = res.status === 402 || (res.status >= 400 && FUNDS_RE.test(body));
