@@ -156,6 +156,13 @@ async function run(gr, { vdb = require('./vfsDatabase'), vfs, lock } = {}) {
             }
         }
         if (typeof vfs.invalidatePathStatsCache === 'function') vfs.invalidatePathStatsCache();
+        // open Calendar / Tasks / Today read the set again (server push, as every other calendar write)
+        if (counts.moved || counts.trashed) {
+            try {
+                const wss = typeof gr.getWebSocketServer === 'function' ? gr.getWebSocketServer() : null;
+                if (wss && typeof wss.broadcast === 'function') wss.broadcast({ type: 'vfs_updated', data: { path: `/Workspaces/${defId}/Calendars` }, timestamp: new Date().toISOString() });
+            } catch (_) { /* no live clients */ }
+        }
         console.log(`[calendar-migrate] other workspaces' calendars: ${files.length - files.filter((f) => isDefault(f.workspaceId)).length} found, ${counts.moved} moved to Default, ${counts.trashed} trashed${counts.failed ? `, ${counts.failed} failed (will retry next boot)` : ''}`);
         if (!counts.failed) {
             await fs.promises.writeFile(markerPath(gr), JSON.stringify({ at: new Date().toISOString(), moved: counts.moved, trashed: counts.trashed }), 'utf8');
