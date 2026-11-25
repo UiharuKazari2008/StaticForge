@@ -4185,7 +4185,7 @@ class GlobalResources {
         // Async listings, and existence checks against the listing: ~193k existsSync
         // calls held the event loop ~1s right after boot.
         // x.jxl is listed as its picture's name x.png (#1134)
-        const files = imageStore.logicalNames(await fs.promises.readdir(imagesDir)).filter(f => f.match(/\.(png|jpg|jpeg|gif)$/i));
+        const files = imageStore.logicalNames(await fs.promises.readdir(imagesDir)).filter(f => imageStore.isPictureName(f));
         const previewEntries = await fs.promises.readdir(previewsDir);
         const previews = previewEntries.filter(f => f.endsWith('.webp'));
         const previewNames = new Set(previews);
@@ -4594,8 +4594,10 @@ class GlobalResources {
 
             // x.jxl counts as its picture x.png, once (imageStore.logicalNames, inlined: the perf test runs this
             // method's source on its own)
-            const imageNames = [...new Set(names.map(n => (/\.jxl$/i.test(n) ? n.slice(0, -4) + '.png' : n)))]
-                .filter(file => /\.(png|jpg|jpeg)$/i.test(file));
+            // (a picture ID, #1156, is its own name: `<uuid>.jxl` lists as `<uuid>`)
+            const idRe = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+            const imageNames = [...new Set(names.map(n => (/\.jxl$/i.test(n) ? (idRe.test(n.slice(0, -4)) ? n.slice(0, -4) : n.slice(0, -4) + '.png') : n)))]
+                .filter(file => /\.(png|jpg|jpeg)$/i.test(file) || idRe.test(file));
             if (imageNames.length === 0) {
                 console.warn('⚠️ No image files found in images directory');
                 return [];

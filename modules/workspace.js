@@ -4,6 +4,7 @@ const metadataWriteQueue = require('./metadataWriteQueue');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const imageStore = require('./imageStore');
+const pictureIds = require('./pictureIds');
 
 // modules/replicationJournal.js
 async function recordReplicationWorkspaceFilenameJournal(filename, workspaceId, { operation = 'INSERT' } = {}) {
@@ -1240,13 +1241,13 @@ class WorkspaceManager {
 
         // x.jxl is the picture x.png stored as JPEG XL (#1134)
         const allImageFiles = imageStore.logicalNames(fs.readdirSync(this.IMAGES_DIR))
-            .filter(f => f.match(/\.(png|jpg|jpeg)$/i))
+            .filter(f => imageStore.isPictureName(f))
             .filter(f => !f.startsWith('.'));
 
-        const upscaledFiles = allImageFiles.filter(f => f.includes('_upscaled'));
+        const upscaledFiles = allImageFiles.filter(f => pictureIds.isUpscale(f));
 
         for (const upscaledFile of upscaledFiles) {
-            const originalFile = upscaledFile.replace('_upscaled.', '.');
+            const originalFile = imageStore.originalNameFor(upscaledFile);
             const originalOwnership = await metadataDb.getGalleryOwnershipForFilename(originalFile);
             if (!originalOwnership) {
                 continue;
@@ -1673,14 +1674,18 @@ class WorkspaceManager {
             const baseName = this.globalResources.getPngMetadata().getBaseName(filename);
             const extMatch = filename.match(/\.(png|jpg|jpeg)$/i);
             const ext = extMatch ? extMatch[0] : '';
-            if (!baseName || !ext) {
+            if (!baseName || (!ext && !pictureIds.isId(filename))) {
                 continue;
             }
 
-            const candidates = [
+            // an ID picture (#1156) has no extension and its upscale is its own ID, linked to it
+            const candidates = ext ? [
                 `${baseName}${ext}`,
                 `${baseName}_upscaled${ext}`
-            ];
+            ] : [baseName];
+            const linkedUp = pictureIds.upscaleOf(baseName);
+            if (linkedUp) candidates.push(linkedUp);
+            if (ext && pictureIds.isId(baseName)) candidates.push(baseName);
             for (const candidate of candidates) {
                 // Already in the set (usually the moved file itself, or a sibling
                 // checked for an earlier file): adding again is a no-op, skip the stat.

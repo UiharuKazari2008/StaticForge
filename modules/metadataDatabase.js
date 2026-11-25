@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const logger = require('./logger');
 const imageStore = require('./imageStore');
+const pictureIds = require('./pictureIds');
 // Note: globalResources is NOT required here to avoid circular dependency
 // It will be accessed lazily when needed
 const { isImageLarge, getResolutionFromDimensions } = require('./imageTools');
@@ -824,12 +825,12 @@ async function extractImageMetadata(filePath) {
  * Determine if an image is upscaled and find its parent (stat only — no directory scan).
  */
 function determineImageRelationships(filename, imagesDir) {
-    const isUpscaled = filename.includes('_upscaled');
+    const isUpscaled = pictureIds.isUpscale(filename);
     let parent = null;
 
     if (isUpscaled) {
-        const originalName = filename.replace('_upscaled.png', '.png');
-        if (imageStore.existsSync(originalName, imagesDir)) {
+        const originalName = imageStore.originalNameFor(filename);
+        if (originalName !== filename && imageStore.existsSync(originalName, imagesDir)) {
             parent = originalName;
         }
     }
@@ -1339,7 +1340,7 @@ async function scanAndUpdateMetadata(imagesDir) {
         const existingFilesSet = new Set((await db.all('SELECT filename FROM images')).map(row => row.filename));
         
         // Get all image files from directory
-        const allFiles = imageStore.logicalNames(fs.readdirSync(imagesDir)).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
+        const allFiles = imageStore.logicalNames(fs.readdirSync(imagesDir)).filter(f => imageStore.isPictureName(f));
         const missingFiles = allFiles.filter(f => !existingFilesSet.has(f));
         
         let updatedCount = 0;
@@ -1381,7 +1382,7 @@ async function rebuildMetadataCache(imagesDir, progressCallback = null) {
         }
         
         // Get all image files from directory
-        const allFiles = imageStore.logicalNames(fs.readdirSync(imagesDir)).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
+        const allFiles = imageStore.logicalNames(fs.readdirSync(imagesDir)).filter(f => imageStore.isPictureName(f));
         
         let updatedCount = 0;
         let errorCount = 0;
@@ -4771,7 +4772,7 @@ function getGalleryBaseName(filename) {
         return '';
     }
     const base = filename.replace(/\.(png|jpg|jpeg)$/i, '');
-    return base.replace(/_upscaled$/, '');
+    return pictureIds.baseOf(base); // an ID's upscale shares its original's base; legacy _upscaled is stripped (#1156)
 }
 
 async function resolveGalleryItemLightweight(filename) {
@@ -4809,8 +4810,8 @@ async function resolveGalleryItemLightweight(filename) {
         width: null,
         height: null,
         size: 0,
-        upscaled: filename.includes('_upscaled'),
-        parent: null,
+        upscaled: pictureIds.isUpscale(filename),
+        parent: pictureIds.parentOf(filename),
         blurhash: null
     };
 }
@@ -4843,6 +4844,10 @@ function galleryFilenameCandidatesForBase(base) {
         candidates.push(`${base}${ext}`);
         candidates.push(`${base}_upscaled${ext}`);
     }
+    // picture IDs (#1156): the ID is the whole name, and the upscale is its own ID, linked
+    if (pictureIds.isId(base)) candidates.push(base);
+    const linked = pictureIds.upscaleOf(base);
+    if (linked) candidates.push(linked);
     return candidates;
 }
 
@@ -4908,7 +4913,7 @@ async function rebuildGalleryWorkspaceItem(workspaceId, bucket, base) {
     let original = null;
     let upscaled = null;
     for (const filename of matching) {
-        if (filename.includes('_upscaled')) {
+        if (pictureIds.isUpscale(filename)) {
             upscaled = filename;
         } else {
             original = filename;
@@ -8209,9 +8214,7 @@ async function findLatestImageFilenameByNovelNoteId(noteId) {
 }
 
 function similarImagePreviewUrl(filename) {
-    const base = String(filename || '')
-        .replace(/\.(png|jpg|jpeg)$/i, '')
-        .replace(/_upscaled$/i, '');
+    const base = pictureIds.baseOf(String(filename || '').replace(/\.(png|jpg|jpeg)$/i, ''));
     if (!base) return '';
     return `/previews/${encodeURIComponent(`${base}.webp`)}`;
 }

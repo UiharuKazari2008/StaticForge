@@ -168,7 +168,7 @@ class ParallelPreviewGenerator {
         
         // Get all image files
         const imageFiles = imageStore.logicalNames(fs.readdirSync(imagesDir)).filter(file => 
-            /\.(png|jpg|jpeg|webp)$/i.test(file) && !file.includes('_upscaled')
+            (/\.(png|jpg|jpeg|webp)$/i.test(file) || imageStore.isPictureName(file)) && !require('./pictureIds').isUpscale(file)
         );
         
         if (imageFiles.length === 0) {
@@ -184,10 +184,10 @@ class ParallelPreviewGenerator {
         const previewsDir = path.resolve('./.previews');
         
         // Get all image files
-        const imageFiles = imageStore.logicalNames(fs.readdirSync(imagesDir)).filter(file => 
-            /\.(png|jpg|jpeg|webp)$/i.test(file) && !file.includes('_upscaled')
+        const imageFiles = imageStore.logicalNames(fs.readdirSync(imagesDir)).filter(file =>
+            (/\.(png|jpg|jpeg|webp)$/i.test(file) || imageStore.isPictureName(file)) && !require('./pictureIds').isUpscale(file)
         );
-        
+
         // Filter to only images without previews
         const imagesNeedingPreviews = imageFiles.filter(imageFile => {
             const basename = this.globalResources.getPngMetadata().getBaseName(imageFile);

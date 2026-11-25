@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const imageStore = require('./imageStore');
 const pictureMeta = require('./pictureMeta');
+const pictureIds = require('./pictureIds');
 const { getResolutionFromDimensions } = require('./imageTools');
 const {
     signGeneratedImage,
@@ -1364,12 +1365,14 @@ class PngMetadata {
         if (typeof filename !== 'string' || !filename) {
             return '';
         }
-        return filename
+        const stem = filename
             .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
             .replace(/@blur(?=\.)/, '')  // Remove @blur suffix
             .replace(/@lq(?=\.)/, '')  // Remove @lq suffix
             .replace(/@2x(?=\.)/, '')  // Remove @2x suffix
-                .replace(/\.(png|jpg|jpeg|gif)$/i, '');  // Remove file extension
+            .replace(/\.(png|jpg|jpeg|gif|jxl)$/i, '');  // Remove file extension
+        // a picture ID's upscale is its own ID: its base is the original it is linked to (#1156)
+        return pictureIds.baseOf(stem);
     }
 
     // New comprehensive metadata extraction function for download URL functionality
