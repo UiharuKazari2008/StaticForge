@@ -295,11 +295,12 @@
             if (d.insight) { chat.ins = d.insight; insUpdate(d.id); }
             // the far end is out of the page (the reader scrolled up through 300 rows): the push only moves the end
             if (chat.tailCut) return;
-            const seen = new Set(chat.messages.map(msgKey));
+            const seen = new Set(chat.messages.map(msgKey).concat(Array.from(chat.absorbed || [])));
             const added = [];
             shownOnly(d.messages).forEach((m) => { if (!seen.has(msgKey(m))) { chat.messages.push(m); seen.add(msgKey(m)); added.push(m); } });
             pendingReconcile(chat, added);
-            if (S.c && nodeSid(S.c.node) === d.id) appendChat(d.id);
+            const merged = coalesce(chat);
+            if (S.c && nodeSid(S.c.node) === d.id) { if (merged) redrawLog(d.id); else appendChat(d.id); }
         }, opts);
         // the server forgets a dropped socket's subscriptions and watches
         c.on('connected', () => {
@@ -736,8 +737,8 @@
         return `${line ? esc(line) : '<span class="mmc-hint">Reading what the session is doing...</span>'} <span class="mmc-link" data-act="detail-toggle">More...</span>`;
     }
     function insUpdate(id) {
-        const el = S.c && nodeSid(S.c.node) === id ? S.c.modal.querySelector('[data-cd-ins]') : null;
-        if (el) el.innerHTML = insHtml(id);
+        // the line lives in the window's status bar (Yukimi, Nov 24 2026), not in a strip over the chat
+        if (S.c && nodeSid(S.c.node) === id) S.c.renderStatus();
         pendingDraw(id);
         insTick(id);
     }
@@ -800,6 +801,51 @@
     const shownOnly = (list) => (list || []).filter((m) => !((m.kind === 'tool_use' && !S.show.tools) || (m.kind === 'tool_result' && !S.show.results)));
     const logOf = (id) => (S.c && nodeSid(S.c.node) === id ? S.c.modal.querySelector('.cd-chat-log:not(.cd-agent-log)') : null);
 
+    /**
+     * One summary row per run of hidden items: two summary rows with nothing shown between them (a run that spans two
+     * pushes or pages) become one, its label counted again (Yukimi, Nov 24 2026: "a single summary item that's updated
+     * instead of constantly adding them"). Returns true when a row changed (the log is drawn again).
+     */
+    function sumLabel(items, more) {
+        const think = items.filter((i) => i.of === 'thinking');
+        const edits = items.filter((i) => i.of === 'edit');
+        const tools = items.filter((i) => i.of === 'tool');
+        const parts = [];
+        if (think.length) parts.push(`Thinking (${fmtN(think.reduce((n, i) => n + (Number(i.size) || 0), 0))} chars)`);
+        if (edits.length) {
+            const files = Array.from(new Set(edits.map((i) => i.file).filter(Boolean)));
+            const names = files.slice(0, 2).map(baseName);
+            parts.push(`Edited ${plural(files.length || edits.length, 'file')}${names.length ? `: ${names.join(', ')}${files.length > 2 ? `, +${files.length - 2}` : ''}` : ''}`);
+        }
+        const agents = tools.filter((i) => /^Agent: /.test(i.title || ''));
+        const plain = tools.filter((i) => !/^Agent: /.test(i.title || ''));
+        const extra = Number(more) || 0;
+        if (plain.length) {
+            const by = new Map();
+            plain.forEach((i) => by.set(i.tool || i.title, (by.get(i.tool || i.title) || 0) + 1));
+            const top = Array.from(by.entries()).sort((a, b) => b[1] - a[1]);
+            parts.push(`${plural(plain.length + extra, 'tool call')}: ${top.slice(0, 4).map(([n, k]) => (k > 1 ? `${n} \u00d7${k}` : n)).join(', ')}${top.length > 4 ? `, +${top.length - 4}` : ''}`);
+        }
+        if (agents.length) parts.push(`Background agent${agents.length === 1 ? '' : 's'} started: ${agents.map((i) => i.title.slice(7)).slice(0, 2).join('; ')}${agents.length > 2 ? `, +${agents.length - 2}` : ''}`);
+        return parts.join(' \u00b7 ');
+    }
+    function coalesce(chat) {
+        const list = chat.messages;
+        let changed = false;
+        for (let i = list.length - 1; i > 0; i -= 1) {
+            const a = list[i - 1];
+            const b = list[i];
+            if (a.kind !== 'summary' || b.kind !== 'summary' || !!a.sidechain !== !!b.sidechain) continue;
+            const items = (a.items || []).concat(b.items || []);
+            list[i - 1] = Object.assign({}, a, { items: items.slice(0, 200), more: (Number(a.more) || 0) + (Number(b.more) || 0) + Math.max(0, items.length - 200), merged: (a.merged || 0) + 1 });
+            list[i - 1].label = sumLabel(list[i - 1].items, list[i - 1].more);
+            list.splice(i, 1);
+            (chat.absorbed || (chat.absorbed = new Set())).add(msgKey(b));
+            changed = true;
+        }
+        return changed;
+    }
+
     /** Drop whole lines from the top / the end until at most MSG_MAX rows are left. */
     function trimRows(chat, fromEnd) {
         const list = chat.messages;
@@ -831,7 +877,7 @@
             if (earlier) {
                 const r = await send('claude_desk_transcript', { id, before: chat.start, limit: MSG_PAGE, show });
                 if (gen !== chat.gen) return;
-                const seen = new Set(chat.messages.map(msgKey));
+                const seen = new Set(chat.messages.map(msgKey).concat(Array.from(chat.absorbed || [])));
                 const fresh = shownOnly(r.messages).filter((m) => !seen.has(msgKey(m)));
                 chat.more = !!r.more && r.start < chat.start;
                 chat.start = r.start;
@@ -841,7 +887,7 @@
                 const last = chat.messages[chat.messages.length - 1];
                 const r = await send('claude_desk_transcript', { id, since: chat.fwd != null ? chat.fwd : (last ? last.at : chat.end), show });
                 if (gen !== chat.gen) return;
-                const seen = new Set(chat.messages.map(msgKey));
+                const seen = new Set(chat.messages.map(msgKey).concat(Array.from(chat.absorbed || [])));
                 const fresh = shownOnly(r.messages).filter((m) => !seen.has(msgKey(m)));
                 chat.messages = chat.messages.concat(fresh.slice(0, MSG_PAGE));
                 // read everything the chunk held: the next read starts where it ended (rows hidden by the view cost no loop)
@@ -852,6 +898,7 @@
                 const r = await send('claude_desk_transcript', { id, limit: MSG_PAGE, show });
                 if (gen !== chat.gen) return;
                 chat.messages = shownOnly(r.messages);
+                chat.absorbed = new Set();
                 chat.start = r.start;
                 chat.end = r.end;
                 chat.more = r.more;
@@ -860,6 +907,7 @@
                 pendingReconcile(chat, chat.messages);
                 void insLoad(id);
             }
+            coalesce(chat);
             chat.error = '';
         } catch (e) { if (gen === chat.gen) chat.error = errText(e); } finally { if (gen === chat.gen) chat.loading = false; }
         if (gen !== chat.gen) return;
@@ -985,7 +1033,7 @@
             S.watching = id;
             // a chat kept from before (the window reopened, the socket came back): the pushes start at the file's end,
             // so read what was written meanwhile (Nov 24 2026: a reopened chat stopped 40 minutes back)
-            if (chat && !chat.loading && chat.messages && chat.messages.length) void loadChat(id, false, true);
+            if (chat && !chat.loading && !again) void loadChat(id, false);
         } catch (_) { S.watching = null; }
     }
     async function unwatch() {
@@ -3226,7 +3274,6 @@
                 <div class="mmc-page-title${l && l.status === 'busy' ? ' cd-title-busy' : ''}"><b>${esc(titleOf(row))}</b><span>${esc(side)}</span></div>
                 ${linkBits ? `<div class="cd-chat-links">${linkBits}</div>` : ''}
                 ${holdBar}
-                <div class="cd-insight" data-cd-ins role="status">${insHtml(id)}</div>
                 ${showBar()}
                 <div class="cd-chat-log" data-mmc-scroll>${logInner(chat, id)}</div>
                 ${composer}
@@ -5086,7 +5133,7 @@
                 if (n.id === 'sup-reviews') return plural(supReviews().filter((r) => !r.dismissed).length, 'review');
                 if (n.id === 'sup-asks') return plural(supAsks().length, 'restart wait');
                 if (n.id === 'co-supervisor') return S.sup.busy || (S.sup.data && S.sup.data.stats ? `${plural(S.sup.data.stats.reviewed || 0, 'review')}, ${S.sup.data.stats.gaps || 0} with gaps` : '');
-                if (nodeSid(n.id)) { const ch = S.chats.get(nodeSid(n.id)); const il = ch && ch.ins ? insLine(ch.ins, false, true) : ''; return ch ? `${il ? `${il} \u00b7 ` : ''}${plural(ch.messages.length, 'message')}` : ''; }
+                if (nodeSid(n.id)) { const sid = nodeSid(n.id); const ch = S.chats.get(sid); const l = liveOf(sid); const il = ch && ch.ins ? insLine(ch.ins, !!(l && l.status === 'busy')) : ''; return ch ? (il || plural(ch.messages.length, 'message')) : ''; }
                 return `Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`;
             },
             onSelectRow: (key, n) => { if (key && key.startsWith('w:')) workDetailPaint(S.c, key.slice(2)); else if (key && (key.startsWith('mc:') || key.startsWith('mh:'))) maintSelect(key); else if (n && SUP_PART[n.id]) supSelect(key); else if (n && nodeSid(n.id)) detailSelect(key, nodeSid(n.id)); },
