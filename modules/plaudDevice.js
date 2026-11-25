@@ -39,6 +39,7 @@ const NOTICE_ID = 'plaud:device-login';
 const BATTERY_OP = 'status.plaudBattery';
 const BATTERY_WORDS = ['full', 'medium', 'low', 'critical'];
 const BATTERY_MS = 30 * 60 * 1000;
+const BATTERY_RETRY_MS = 2 * 60 * 1000;   // no phone answered (after a restart the phones are away for some seconds)
 const BATTERY_KEEP_MS = 12 * 60 * 60 * 1000;
 const MIN_TIME = Date.UTC(2020, 0, 1);
 
@@ -267,7 +268,7 @@ async function phoneBattery(gr) {
     return null;
 }
 
-/** Reads the battery in the background when the last try is 30 minutes old; the caller never waits for a phone. */
+/** Reads the battery in the background when the last reading is 30 minutes old (2 minutes after a try no phone answered); the caller never waits for a phone. */
 function battery(gr) {
     if (gr) resources = gr;
     if (batteryReading || Date.now() - batteryTried < BATTERY_MS) return;
@@ -275,7 +276,7 @@ function battery(gr) {
     batteryReading = phoneBattery(resources).then((r) => {
         const s = load();
         const word = r && BATTERY_WORDS[r.state] ? BATTERY_WORDS[r.state] : '';
-        if (!word) return;
+        if (!word) { batteryTried = Date.now() - BATTERY_MS + BATTERY_RETRY_MS; return; }
         const was = batteryNow(null);
         Object.assign(s, { battery: word, batteryAt: Date.now() });
         save();

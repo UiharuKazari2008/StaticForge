@@ -315,6 +315,11 @@ t.setDeps({
     dev.battery('gr');
     await dev._test.batteryDone();
     assert.strictEqual((await dev.recorder()).battery, 'full', 'no phone answering keeps what is known');
+    let retried = 0;
+    dev._test.setDeps({ phoneBattery: async () => { retried += 1; return null; } });
+    dev.battery('gr');
+    await dev._test.batteryDone();
+    assert.strictEqual(retried, 0, 'an unanswered try is repeated after 2 minutes, not at once');
 
     // a battery / last sync field is taken only when Plaud really sends one (also inside info)
     assert.deepStrictEqual(dev._test.mapDevice({ sn: 'S', name: 'P', model: 'm', version_number: 'v1', battery_level: 64, info: { last_sync_time: 1790000000 } }),
