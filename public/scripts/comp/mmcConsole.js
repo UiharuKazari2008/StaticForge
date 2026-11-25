@@ -77,7 +77,9 @@
             this.history = [];
             this.future = [];
             this.notes = '';
-            this.open = new Set(this.reg('Expanded', null) || (def.expanded || []));
+            // def.expandedKey: a console whose tree changed shape starts again from its defaults (the old key is left alone)
+            this.expandedKey = def.expandedKey || 'Expanded';
+            this.open = new Set(this.reg(this.expandedKey, null) || (def.expanded || []));
             this.collapsed = new Set(this.reg('CollapsedSections', []));
             this.actCollapsed = new Set();
             this.sorts = Object.assign({}, this.reg('Sorts', {}));
@@ -270,7 +272,7 @@
             const n = this.find(id);
             if (!n || !n.children || !n.children.length) return;
             if (this.open.has(id)) this.open.delete(id); else this.open.add(id);
-            this.setReg({ Expanded: [...this.open] });
+            this.setReg({ [this.expandedKey]: [...this.open] });
             this.renderTree();
         }
 

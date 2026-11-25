@@ -52,6 +52,8 @@
     const GATE_TEXT = { open: 'Waiting', running: 'Building', done: 'Ended', cancelled: 'Cancelled', expired: 'Lapsed' };
     const VOTE_TEXT = { ready: 'Ready', 'not-ready': 'Not ready', auto: 'Ready (idle)', pending: 'Not answered' };
     const VI = '/static_images/vista-icons';
+    // a session is a conversation: the speech bubble (Yukimi, Nov 24 2026: a better icon than the remote window)
+    const SESSION16 = '/static_images/vista-cmdbar/discuss.png';
     const ITEMS = '/static_images/vista-cpl/items';
     const FOLDER16 = `${VI}/explorer/folder-16.png`;
     const PAGE = 50;
@@ -1048,7 +1050,7 @@
     const WORK_SOURCE = { fleet: 'Fleet', plaud: 'Plaud', director: 'Director', agent: 'Agent', yozora: 'Yozora' };
     const issueText = (w) => (w && w.issue ? `${String(w.issue.repo || '').split('/').pop()}#${w.issue.number}` : '');
     const WORK_OPEN = new Set(['held', 'queued', 'starting', 'running', 'waiting']);
-    const workIcon = (st) => ({ held: `${ITEMS}/date-and-time-16.png`, queued: `${VI}/info-16.png`, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || `${S.app.url('assets').replace(/\/$/, '')}/session-16.png`);
+    const workIcon = (st) => ({ held: `${ITEMS}/date-and-time-16.png`, queued: `${VI}/info-16.png`, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || SESSION16);
     const supLocks = () => (S.sup.data && Array.isArray(S.sup.data.locks) ? S.sup.data.locks : []);
     const supArtifacts = () => (S.sup.data && Array.isArray(S.sup.data.artifacts) ? S.sup.data.artifacts : []);
     const LOCK_STATE = { live: 'Live', idle: 'Idle', orphan: 'Orphan' };
@@ -2124,10 +2126,10 @@
     function sessionNode(idPrefix, sid, A) {
         const row = rowOf(sid) || { id: sid, title: (liveOf(sid) || {}).name };
         const h = holdOf(sid);
-        const node = { id: `${idPrefix}${sid}`, name: `${titleOf(row)}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? `${VI}/warning-16.png` : `${A}/session-16.png`, desc: h ? holdLine(h) : 'The session\'s conversation' };
+        const node = { id: `${idPrefix}${sid}`, name: `${titleOf(row)}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? `${VI}/warning-16.png` : SESSION16, desc: h ? holdLine(h) : 'The session\'s conversation' };
         if (idPrefix === 'aw:s:') {
             const e = S.awAgents.get(sid);
-            if (e && e.agents) node.children = e.agents.map((x) => ({ id: `aw:a:${sid}:${x.agentId}`, name: x.description || x.agentId, icon: x.finished ? `${VI}/check-16.png` : `${A}/session-16.png`, desc: 'A background agent of this session' }));
+            if (e && e.agents) node.children = e.agents.map((x) => ({ id: `aw:a:${sid}:${x.agentId}`, name: x.description || x.agentId, icon: x.finished ? `${VI}/check-16.png` : SESSION16, desc: 'A background agent of this session' }));
             else if (liveOf(sid)) node.children = [{ id: `aw:l:${sid}`, name: 'Reading the agents...', icon: `${VI}/info-16.png` }];
         }
         return node;
@@ -2146,7 +2148,7 @@
         const A = S.app ? S.app.url('assets').replace(/\/$/, '') : '/melaton-apps/claudedesk/assets';
         const open = S.open.map((id) => {
             const row = rowOf(id);
-            return { id: `t:${id}`, name: titleOf(row || { id }), icon: `${A}/session-16.png`, desc: 'The session\'s conversation' };
+            return { id: `t:${id}`, name: titleOf(row || { id }), icon: SESSION16, desc: 'The session\'s conversation' };
         });
         const seen = new Set();
         const tops = (group) => { const items = group(); return items.filter((w) => w.parentId == null || w.parentId === '' || !items.some((x) => String(x.id) === String(w.parentId))).map((w) => workNode(w, A, seen, group)); };
@@ -2159,7 +2161,7 @@
             name: `${conName(k)}${k.revoked ? ' (revoked)' : (k.online ? '' : ' (offline)')}`,
             icon: k.revoked ? `${VI}/error-16.png` : (k.online ? `${ITEMS}/network-and-sharing-center-16.png` : `${VI}/warning-16.png`),
             desc: conState(k),
-            children: conSessions(k).filter((x) => x && x.live !== false).map((x) => ({ id: `ctS:${k.id}:${x.id}`, name: x.title || shortId(x.id), icon: `${A}/session-16.png`, desc: 'A session on this contractor' }))
+            children: conSessions(k).filter((x) => x && x.live !== false).map((x) => ({ id: `ctS:${k.id}:${x.id}`, name: x.title || shortId(x.id), icon: SESSION16, desc: 'A session on this contractor' }))
         }));
         const host = S.host && S.host.hostname ? S.host.hostname : '';
         return [{
@@ -2167,13 +2169,13 @@
             name: host ? `${TITLE} (${host})` : TITLE,
             icon: `${A}/claudedesk-16.png`,
             children: [
-                { id: 'co-work', name: 'Work Queue', icon: `${A}/session-16.png`, desc: 'Requests waiting for, starting on and running on an account',
+                { id: 'co-work', name: 'Work Queue', icon: '/static_images/vista-cmdbar/checklist.png', desc: 'Requests waiting for, starting on and running on an account',
                     children: [
                         { id: 'co-held', name: `Waiting (${heldItems().length})`, icon: `${ITEMS}/date-and-time-16.png`, desc: 'New and imported requests that wait for you to start them' },
                         { id: 'aw-sup', name: `Active (${runItems().length})`, icon: `${ITEMS}/parental-controls-16.png`, desc: 'Work items running now, their sessions and background agents', children: runNodes },
                         { id: 'co-pending', name: `Pending (${pendItems().length})`, icon: `${VI}/info-16.png`, desc: 'Work items waiting for an account to have room', children: pendNodes },
-                        { id: 'aw-uns', name: `Unsupervised (${uns.length})`, icon: `${A}/session-16.png`, desc: 'Running sessions no work item owns', children: uns },
-                        { id: 'sessions', name: 'All Sessions', icon: `${A}/session-16.png`, desc: 'Every Claude session on the host, running or ended', children: open }
+                        { id: 'aw-uns', name: `Unsupervised (${uns.length})`, icon: `${VI}/run-16.png`, desc: 'Running sessions no work item owns', children: uns },
+                        { id: 'sessions', name: 'All Sessions', icon: SESSION16, desc: 'Every Claude session on the host, running or ended', children: open }
                     ] },
                 { id: 'activity', name: 'Activity', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Every shell command, tool call and file edit of every session', children: bgNodes() },
                 { id: 'memory', name: 'Memory', icon: `${ITEMS}/personalization-16.png`, desc: 'The shared memory every Fleet agent reads and writes',
@@ -2193,7 +2195,7 @@
                         { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
                         { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
                         { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
-                    ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: `${A}/session-16.png`, desc: 'What this agent is doing' }] : [])
+                    ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: SESSION16, desc: 'What this agent is doing' }] : [])
                 },
                 { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Settings, reviews, restart waits, pauses, locks and temp files',
                     children: [
@@ -2421,7 +2423,7 @@
             const l = liveOf(r.id);
             return {
                 key: `s:${r.id}`,
-                icon: `${A}/session-16.png`,
+                icon: SESSION16,
                 cls: l ? (l.status === 'busy' ? 'cd-busy' : 'cd-live') : '',
                 data: {
                     title: titleOf(r), state: stateText(r), account: r.account ? r.account.name : (l ? '' : ''),
@@ -2449,7 +2451,7 @@
     function agentsPage(c) {
         const rows = S.coord.agents.map((a) => ({
             key: `g:${a.id}`,
-            icon: a.kind === 'person' ? `${ITEMS}/user-accounts-16.png` : `${S.app.url('assets').replace(/\/$/, '')}/session-16.png`,
+            icon: a.kind === 'person' ? `${ITEMS}/user-accounts-16.png` : SESSION16,
             data: {
                 name: a.name || a.id, kind: a.kind, account: a.account || '', task: a.task || '', branch: [a.repo, a.branch].filter(Boolean).join(' : '),
                 status: a.status === 'gone' ? 'Gone' : (a.live === 'busy' ? 'Working' : (a.live ? 'Idle' : a.status)),
@@ -3072,7 +3074,7 @@
         const claims = Array.isArray(d.claims) ? d.claims : [];
         const reviews = Array.isArray(d.reviews) ? d.reviews : supReviews().filter((r) => r.sessionId === id);
         const table = (head, rows, none) => (rows.length ? `<table class="cd-table"><colgroup>${head.map(([, w]) => `<col${w ? ` class="cd-w${w}"` : ''}>`).join('')}</colgroup><thead><tr>${head.map(([h]) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>` : `<p class="mmc-hint">${none}</p>`);
-        const agentRows = agents.map((x) => ({ key: `ag:${x.agentId}`, icon: `${A}/session-16.png`, cls: x.finished ? '' : 'cd-live', data: { desc: x.description || x.agentId, type: x.type || '', model: x.model || '', state: x.finished ? 'Finished' : 'Running', last: x.lastActivity || 0, messages: x.messages || 0 } }));
+        const agentRows = agents.map((x) => ({ key: `ag:${x.agentId}`, icon: SESSION16, cls: x.finished ? '' : 'cd-live', data: { desc: x.description || x.agentId, type: x.type || '', model: x.model || '', state: x.finished ? 'Finished' : 'Running', last: x.lastActivity || 0, messages: x.messages || 0 } }));
         const taskRows = tasks.map((x) => ({ key: `tk:${x.taskId}`, icon: `${ITEMS}/administrative-tools-16.png`, cls: x.running ? 'cd-live' : '', data: { id: x.taskId, kind: { shell: 'Shell', monitor: 'Monitor', agent: 'Agent' }[x.kind] || x.kind || '', state: x.running ? 'Running' : 'Ended', size: x.sizeBytes || 0, at: x.modifiedAt || 0 } }));
         const agentList = c.listView([
             { t: 'Description', w: 230, key: 'desc', text: (r) => r.desc },
@@ -4739,7 +4741,9 @@
             taskbarIcon: `${A}/claudedesk-24.png`,
             width: w,
             height: h,
-            expanded: ['root', 'co-work', 'co-held', 'aw-sup'],
+            expanded: ['root', 'co-work'],
+            // the tree was reorganised (Nov 24 2026): Memory, Coordination and Remote Control start closed
+            expandedKey: 'ExpandedV2',
             about: { version: VERSION, lines: ['Claude accounts, Remote Control, sessions and agent coordination.'] },
             nodes,
             page,

@@ -536,6 +536,9 @@ async function deliver(rv, s, opts = {}) {
     if (!rv || rv.verdict !== 'gaps' || !rv.missed.length) return rv;
     const set = s || settings();
     if (!opts.force && set.delivery === 'off') return rv;
+    // the session went on working while it was reviewed (a new message, a queued one): its turn is not over, so the
+    // gaps are not sent; its next turn end is reviewed again (Nov 24 2026: notes typed into a session mid-turn)
+    if (!opts.force) { const live = liveSessionsById().get(rv.sessionId); if (live && live.status === 'busy') return rv; }
     const d = db();
     let how = '';
     try {
@@ -1316,6 +1319,19 @@ function queueReview(sessionId, trigger) {
     pump();
 }
 
+const SETTLE_MS = Number(process.env.AGENT_SUPERVISOR_SETTLE_MS) >= 0 && process.env.AGENT_SUPERVISOR_SETTLE_MS !== undefined ? Number(process.env.AGENT_SUPERVISOR_SETTLE_MS) : 20000;
+const settling = new Map();
+function settleThenReview(sessionId) {
+    clearTimeout(settling.get(sessionId));
+    settling.set(sessionId, setTimeout(() => {
+        settling.delete(sessionId);
+        if (statusBySession.get(sessionId) === 'busy') return;
+        const live = liveSessionsById().get(sessionId);
+        if (live && live.status === 'busy') return;
+        queueReview(sessionId, 'turn-end');
+    }, SETTLE_MS));
+}
+
 /** Reads the session records and queues a review for every session that went busy -> idle. */
 function scan(first) {
     let names = [];
@@ -1329,7 +1345,9 @@ function scan(first) {
         const prev = statusBySession.get(r.sessionId);
         const now = String(r.status || '');
         statusBySession.set(r.sessionId, now);
-        if (!first && prev === 'busy' && now !== 'busy' && settings().enabled) queueReview(r.sessionId, 'turn-end');
+        // a turn ended: reviewed once it stays ended for a while (a session that is idle for a moment between a message
+        // and the next, or while a queued message lands, is still in its turn)
+        if (!first && prev === 'busy' && now !== 'busy' && settings().enabled) settleThenReview(r.sessionId);
         if (!first && prev === undefined && now === 'busy') markPartial(r.sessionId);
     });
     [...statusBySession.keys()].forEach((id) => { if (!seen.has(id)) statusBySession.delete(id); });
