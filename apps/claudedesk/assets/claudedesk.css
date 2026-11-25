@@ -1115,3 +1115,22 @@
 @media (prefers-reduced-motion: reduce) {
     .mmc-window .mmc-page-title.cd-title-busy::before { animation: none; }
 }
+
+/* the Work Queue's reading pane: the picked request's brief, stages and plan */
+#mmcConsole_claudedesk .cd-wd h3 {
+    margin: 2px 0 6px;
+    font-size: 14px;
+    font-weight: normal;
+    color: var(--cd-c-1e4e8c);
+}
+
+#mmcConsole_claudedesk .cd-wd h4 {
+    margin: 10px 0 4px;
+    font-size: 12px;
+    color: var(--cd-c-1e4e8c);
+}
+
+#mmcConsole_claudedesk .cd-wd .cd-read {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

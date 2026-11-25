@@ -585,12 +585,13 @@
 }
 
 .mmc-window .mmc-grip {
+    /* straddles the divider (4 px each side) so it is easy to catch, as a list view header's is */
     position: absolute;
     top: 0;
-    right: 0;
+    right: -4px;
     bottom: 0;
     z-index: 2;
-    width: 5px;
+    width: 9px;
     cursor: col-resize;
     touch-action: none;
 }

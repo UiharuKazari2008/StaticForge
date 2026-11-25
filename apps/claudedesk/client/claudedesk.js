@@ -1321,6 +1321,84 @@
     }
     const workPicked = (c) => { const ids = wsel(); if (ids.length) return ids; const one = workSel(c); return one ? [one] : []; };
 
+    /** The reading pane's divider (Reviews, the Work Queue): drag to give the list or the detail more room; the height is kept. */
+    function splitDrag(pane) {
+        const box = pane.querySelector('.cd-rv');
+        const top = pane.querySelector('.cd-rv-top');
+        const bar = pane.querySelector('.cd-rv-split');
+        if (!box || !top || !bar) return;
+        if (S.rvH) top.style.flexBasis = `${S.rvH}px`;
+        bar.addEventListener('pointerdown', (ev) => {
+            ev.preventDefault();
+            bar.setPointerCapture(ev.pointerId);
+            const y0 = ev.clientY;
+            const h0 = top.getBoundingClientRect().height;
+            const room = box.getBoundingClientRect().height;
+            const move = (e) => { S.rvH = Math.round(Math.max(60, Math.min(room - 90, h0 + e.clientY - y0))); top.style.flexBasis = `${S.rvH}px`; };
+            const up = () => { bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); bar.removeEventListener('pointercancel', up); };
+            bar.addEventListener('pointermove', move);
+            bar.addEventListener('pointerup', up);
+            bar.addEventListener('pointercancel', up);
+        });
+    }
+
+    /** The plan of a request that runs: the newest long answer of its session (a planner writes its plan there), read once per session turn. */
+    const plans = new Map();
+    async function loadPlan(sid) {
+        const have = plans.get(sid);
+        if (have && (have.loading || Date.now() - have.at < 60000)) return;
+        plans.set(sid, Object.assign({}, have || {}, { loading: true }));
+        try {
+            const r = await send('claude_desk_transcript', { id: sid, limit: 40 });
+            const said = (Array.isArray(r.messages) ? r.messages : []).filter((m) => m.role === 'assistant' && !m.sidechain && String(m.text || '').length > 0);
+            const long = said.filter((m) => String(m.text).length >= 400);
+            const pick = (long.length ? long : said).slice(-1)[0];
+            plans.set(sid, { at: Date.now(), text: pick ? String(pick.text) : '', time: pick ? pick.time : null });
+        } catch (e) { plans.set(sid, { at: Date.now(), text: '', error: errText(e) }); }
+        workDetailPaint(S.c);
+    }
+
+    /** The picked request in the Work Queue's reading pane: what was asked (the brief), how it runs, its parts and its plan. */
+    function workDetailHtml(c, idIn) {
+        const ids = wsel();
+        const id = idIn || (ids.length === 1 ? ids[0] : (c && c.sel && c.sel.startsWith('w:') ? c.sel.slice(2) : ''));
+        if (ids.length > 1 && !idIn) return `<p class="mmc-hint">${ids.length} requests picked. Pick one to read its brief and plan.</p>`;
+        const w = id ? workOf(id) : null;
+        if (!w) return '<p class="mmc-hint">Select a request to read its brief, how it will run and its plan.</p>';
+        const st = w.stages || {};
+        const stageText = (x) => (x ? [x.engine && x.engine !== 'claude' ? engineName(x.engine) : '', x.model, x.effort].filter(Boolean).join(' / ') : '');
+        const parts = supWork().filter((x) => String(x.parentId) === String(w.id));
+        const links = [w.sessionId ? `<span class="mmc-link" data-act="work-open" data-arg="${esc(w.id)}">Open session</span>` : '', w.issue && w.issue.url ? '<span class="mmc-link" data-act="work-issue">Open issue</span>' : ''].filter(Boolean).join(' &nbsp; ');
+        let plan;
+        if (!w.sessionId) plan = `<p class="mmc-hint">${w.topology === 'planner' || !w.topology ? 'The planner writes its plan when the request starts; until then the brief above is the plan.' : 'It has not started yet: the brief above is what the session will get.'}</p>`;
+        else {
+            const p = plans.get(w.sessionId);
+            if (!p || (!p.at && p.loading)) { void loadPlan(w.sessionId); plan = '<p class="mmc-hint">Reading the session...</p>'; }
+            else {
+                if (Date.now() - p.at > 60000) void loadPlan(w.sessionId);
+                plan = p.error ? `<p class="mmc-hint">${esc(p.error)}</p>` : (p.text ? `<p class="mmc-hint">The session's latest answer${p.time ? ` (${esc(timeOnly(p.time))})` : ''}:</p><div class="cd-read">${esc(p.text)}</div>` : '<p class="mmc-hint">The session has not answered yet.</p>');
+            }
+        }
+        return `<div class="cd-wd"><h3>${esc(w.title || String(w.id))}</h3>${(c || S.c).props([
+            ['State', esc(workState(w))],
+            ['Shape', esc((TOPO.find((x) => x[0] === w.topology) || [])[1] || '')],
+            ['Planner stage', esc(stageText(st.planner))],
+            ['Workers stage', esc(stageText(st.workers) || [w.model, w.effort].filter(Boolean).join(' / '))],
+            ['Account', esc(w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)))],
+            ['Folder', esc(w.cwd || '')],
+            ['Issue', esc(issueText(w))],
+            ['Queued', esc(when(w.createdAt))],
+            ['Note', esc([w.message, w.issueNote].filter(Boolean).join(' - '))]
+        ])}${links ? `<p>${links}</p>` : ''}
+            <h4>Brief</h4><div class="cd-read">${esc(w.prompt || '')}</div>
+            ${parts.length ? `<h4>Parts (${parts.length})</h4><table class="cd-table"><thead><tr><th>Part</th><th class="cd-w80">State</th></tr></thead><tbody>${parts.map((x) => `<tr><td>${esc(x.title || x.id)}</td><td>${esc(workState(x))}</td></tr>`).join('')}</tbody></table>` : ''}
+            <h4>Plan</h4>${plan}</div>`;
+    }
+    function workDetailPaint(c, id) {
+        const box = c && c.modal && c.modal.querySelector('.cd-work-detail');
+        if (box) { const top = box.scrollTop; box.innerHTML = workDetailHtml(c, id); box.scrollTop = id ? 0 : top; }
+    }
+
     function workPage(c, scope = 'all') {
         const T = { all: 'Work Queue', held: 'Waiting', active: 'Active', pending: 'Pending' }[scope];
         if (S.wscope !== scope) { S.wscope = scope; S.wsel = new Set(); }
@@ -1347,9 +1425,12 @@
         ], rows, { sortId: `cd-work-${scope}`, sort: { key: 'at', dir: -1 }, empty: scope === 'held' ? 'Nothing is waiting for you. A new or imported request waits here until you start it.' : scope === 'active' ? 'No work item is running.' : scope === 'pending' ? 'No work item is waiting.' : 'The queue is empty. A request from New Session..., Plaud or an agent waits here until an account has room.', fit: true });
         let off = null;
         return {
-            html: lv,
+            // Outlook's reading pane, as Reviews: the list on top, the picked request's brief and plan below
+            html: `<div class="cd-rv"><div class="cd-rv-top">${lv}</div><div class="cd-rv-split" role="separator" aria-orientation="horizontal" title="Drag to resize"></div><div class="cd-rv-bot cd-work-detail">${workDetailHtml(c)}</div></div>`,
             list: true,
+            split: true,
             mount: (pane) => {
+                splitDrag(pane);
                 let anchor = '';
                 const rows = () => Array.from(pane.querySelectorAll('.mmc-row[data-key^="w:"]'));
                 const paint = () => rows().forEach((r) => {
@@ -1358,7 +1439,7 @@
                     const ck = r.querySelector('.cd-wck');
                     if (ck) ck.checked = on;
                 });
-                const refresh = () => { paint(); c.renderActions(); c.renderStatus(); };
+                const refresh = () => { paint(); c.renderActions(); c.renderStatus(); workDetailPaint(c); };
                 const onClick = (ev) => {
                     const row = ev.target.closest('.mmc-row[data-key^="w:"]');
                     if (!row) return;
@@ -1379,7 +1460,7 @@
                     } else {
                         S.wsel = new Set([id]);
                         anchor = id;
-                        setTimeout(paint, 0);
+                        setTimeout(() => { paint(); workDetailPaint(c, id); }, 0);
                         return;
                     }
                     ev.stopPropagation();
@@ -4693,7 +4774,7 @@
                 if (nodeSid(n.id)) { const ch = S.chats.get(nodeSid(n.id)); return ch ? plural(ch.messages.length, 'message') : ''; }
                 return `Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`;
             },
-            onSelectRow: (key, n) => { if (n && SUP_PART[n.id]) supSelect(key); else if (n && nodeSid(n.id)) detailSelect(key, nodeSid(n.id)); },
+            onSelectRow: (key, n) => { if (key && key.startsWith('w:')) workDetailPaint(S.c, key.slice(2)); else if (n && SUP_PART[n.id]) supSelect(key); else if (n && nodeSid(n.id)) detailSelect(key, nodeSid(n.id)); },
             onSelect: undefined,
             onOpen: () => {},
             onClose: () => {
