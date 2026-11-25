@@ -31,6 +31,17 @@ function registerPackets(handlersCtx) {
         pushChanged();
         try { require('../../plaudDevice').battery(handlersCtx && handlersCtx.globalResources); } catch (_) { /* no recorder module */ }
     });
+    // a phone's background link came (back) online: its recorder can be asked again (the 30 / 2 minute limits still hold).
+    // Without this the battery was read only when a page asked for the list, which a page does once.
+    try {
+        require('../../activeSync').onDeviceHello((d) => {
+            if (!d || d.speaker !== 'service' || d.session !== 'partner') return;
+            const t = setTimeout(() => {
+                try { if (require('../../plaudTransfer').wantsKeep()) require('../../plaudDevice').battery(handlersCtx && handlersCtx.globalResources); } catch (_) { /* no recorder module */ }
+            }, 3000);   // once per hello, after its reply went out
+            if (t.unref) t.unref();
+        });
+    } catch (_) { /* no ActiveSync */ }
     // the recorder's battery word arrived from the phone (plaudDevice.battery): the page reads the list again
     try { require('../../plaudDevice').onBattery(pushChanged); } catch (_) { /* no recorder module */ }
     const reg = (type, fn, meta = {}) => {
