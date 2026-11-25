@@ -414,22 +414,52 @@ let dirWas = null; // { running, sessionId, name } from the last status
  * silences anything she cannot see.
  */
 const PRESENT_IDLE_MS = 10 * 60 * 1000;
-function present(sessionId) {
-    const sid = sessionId == null ? '' : String(sessionId);
-    if (!sid) return false;
+
+/** One socket: is it a page of hers, awake and in use right now? (A device link, a service link, a light socket, a test tab,
+ *  a sleeping phone or DeX page, a locked / logon desktop and a page quiet for PRESENT_IDLE_MS are not.) null: it is. */
+function notHer(info, isDormantPage, now) {
+    if (info.authenticated === false) return 'not-signed-in';
+    if (inbox.userOf(info) !== 'admin') return 'not-household';
+    if (info.deviceApp || info.deviceId || info.light || (info.as && info.as.speaker === 'service')) return 'no-page';
+    if (/HeadlessChrome/i.test(String(info.userAgent || ''))) return 'test-tab'; // an agent's bound tab is not her
+    if (isDormantPage(info)) return 'asleep';
+    const ds = info.desktopState;
+    if (ds && ds !== 'desktop' && ds !== 'ready') return `desktop-${ds}`;
+    const at = info.lastActivity instanceof Date ? info.lastActivity.getTime() : Date.parse(info.lastActivity || '');
+    if (Number.isFinite(at) && now - at > PRESENT_IDLE_MS) return 'idle';
+    return null;
+}
+
+/** The Director chats any of her pages shows right now: the union over every client (a phone's DeX window and the phone's own
+ *  shell page, a laptop, a tablet), so presence never depends on one particular client. */
+function watchedChats() {
     const { isDormantPage } = require('./wsSocketHeartbeat');
     const now = Date.now();
+    const out = new Set();
     for (const info of inbox.clients()) {
-        if (info.authenticated === false || inbox.userOf(info) !== 'admin') continue;
-        if (info.deviceApp || info.deviceId || info.light || (info.as && info.as.speaker === 'service')) continue; // no page
-        if (isDormantPage(info) || String(info.directorWatch || '') !== sid) continue;
-        const ds = info.desktopState;
-        if (ds && ds !== 'desktop' && ds !== 'ready') continue;
-        const at = info.lastActivity instanceof Date ? info.lastActivity.getTime() : Date.parse(info.lastActivity || '');
-        if (Number.isFinite(at) && now - at > PRESENT_IDLE_MS) continue;
-        return true;
+        const id = String(info.directorWatch || '');
+        if (id && !notHer(info, isDormantPage, now)) out.add(id);
     }
-    return false;
+    return out;
+}
+
+function present(sessionId) {
+    const sid = sessionId == null ? '' : String(sessionId);
+    return !!sid && watchedChats().has(sid);
+}
+
+/** One line per turn notice decision, so "why did it notify (not)" is answered from the log: chat, decision, and for each
+ *  socket its short id, the chat it watches and why it does not count. */
+function logNoticeDecision(sessionId, decision) {
+    try {
+        const { isDormantPage } = require('./wsSocketHeartbeat');
+        const now = Date.now();
+        const rows = inbox.clients().map((info) => {
+            const why = notHer(info, isDormantPage, now);
+            return `${String(info.clientId || '?').slice(0, 6)}:${String(info.directorWatch || '-').slice(0, 12)}${why ? `:${why}` : ''}`;
+        });
+        console.log(`[director-notice] ${String(sessionId).slice(0, 18)} ${decision} pages=[${rows.join(' ')}]`);
+    } catch (_e) { /* a log never breaks the notice */ }
 }
 
 /**
@@ -474,7 +504,9 @@ function onDirectorStatus(status) {
         }
         return null;
     }
-    if (steerCut(was.sessionId) || present(was.sessionId)) return null;
+    if (steerCut(was.sessionId)) { logNoticeDecision(was.sessionId, 'silent:steer'); return null; }
+    if (present(was.sessionId)) { logNoticeDecision(was.sessionId, 'silent:present'); return null; }
+    logNoticeDecision(was.sessionId, 'notify:away');
     const name = was.name;
     const who = name ? `"${name}"` : 'The session';
     const last = status.last && String(status.last.sessionId || '') === String(was.sessionId || '') ? status.last : null;
@@ -640,6 +672,7 @@ module.exports = {
     onChatReply,
     onDirectorStatus,
     noteSteer,
+    watchedChats,
     onPrintJob,
     bindPrintQueue,
     onWeatherAlert,
@@ -649,5 +682,6 @@ module.exports = {
         sweepDovecote,
         reset: () => { dirWas = null; steered.clear(); printsTold.clear(); queueBound = null; },
         present,
+        watchedChats,
     },
 };

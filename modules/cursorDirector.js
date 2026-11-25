@@ -3303,8 +3303,15 @@ async function directorStatus(sample) {
         last: { ...lastTurn },
         sessions,
         resources: sample ? await sampleDirectorResources() : (lastResourceSample || null),
-        xi: xiRuntimeStatus()
+        xi: xiRuntimeStatus(),
+        // the chats any of her pages shows now: a page of hers that does not show the chat whose turn ended (a phone's shell
+        // beside its DeX window) raises no toast of its own for it (#1168)
+        watched: watchedChatIds()
     };
+}
+
+function watchedChatIds() {
+    try { return Array.from(require('./notificationInboxSources').watchedChats()); } catch (_) { return []; }
 }
 
 function xiRuntimeStatus() {
