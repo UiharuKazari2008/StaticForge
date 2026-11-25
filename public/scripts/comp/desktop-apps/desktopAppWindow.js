@@ -63,6 +63,7 @@ function desktopAppApplyContentHeight(modal, fixed) {
  *   -> { modal, content, close, titleText } (content: .modal-content.win7, empty; close: the caption's X;
  *      titleText: the caption's text span, for a title that changes)
  */
+// app-scope: allow the shared window factory for built-in programs (check-ui-standard FACTORY_FILES), loaded once from app.html
 function desktopAppCreateWindow(opts) {
     const o = opts || {};
     const modal = document.createElement('div');

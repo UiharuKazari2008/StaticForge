@@ -168,13 +168,11 @@ const FEATURE_MANIFEST = {
     },
     // Command Prompt (Yozora #1133): cmd.exe over the workspace's VFS (C:) and the phone / host drives
     cmd: {
-        hot: true,
         styles: ['css/themes/vista/console.css', 'css/vista-cmd.css'],
         scripts: ['scripts/comp/desktop-apps/cmd/cmdApp.js']
     },
     // Administrator Terminal (Yozora #1133): raw bash on the server (xterm.js + node-pty), administrators only
     admin_terminal: {
-        hot: true,
         styles: ['scripts/vendor/xterm/xterm.css', 'css/themes/vista/console.css', 'css/admin-terminal.css'],
         scripts: ['scripts/vendor/xterm/xterm.js', 'scripts/vendor/xterm/addon-fit.js', 'scripts/comp/desktop-apps/adminTerminal/adminTerminalApp.js']
     },
