@@ -1081,6 +1081,7 @@
     function render() {
         if (!els || !page) return;
         renderStale = false;
+        try { loadDaily(); } catch (_e) { /* before the daily state is declared: the menu asks again */ }
         const list = places();
         const p = selected();
         els.empty.hidden = !!p;
@@ -3055,10 +3056,17 @@
         const season = Number.isFinite(p.lat) && p.lat < 0 ? south : north;
         const hour = now.getUTCHours();
         const part = cur.isDay === false ? (hour < 5 || hour >= 22 ? 'deep night' : 'night') : hour < 9 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-        const where = [p.name, p.here ? '' : p.region, p.here ? '' : p.country].filter(Boolean).join(', ');
+        const where = placeWords(p);
         const t = mainC(cur);
         const temp = Number.isFinite(t) ? `${Math.round(t)} degrees Celsius` : '';
         return `landscape of ${where}, ${DAYS[now.getUTCDay()]} ${part}, ${season}, ${String(cond.text || '').toLowerCase()}${temp ? `, ${temp}` : ''}, ${cur.isDay === false ? 'night lighting' : 'daylight'} matching the weather, atmospheric, detailed scenery`;
+    }
+
+    /** The place in words for a picture: its own name, and its region and country; Home / Work / Current location are left out. */
+    function placeWords(p) {
+        const generic = p.monitored || p.name === 'Current location' || Object.values(PLACE_LABEL).includes(p.name);
+        const parts = [generic ? '' : p.name, p.region, p.country].filter(Boolean);
+        return parts.length ? parts.join(', ') : (p.name || `${p.lat}, ${p.lon}`);
     }
 
     async function createPicture() {
@@ -3117,11 +3125,11 @@
             if (!daily) { const g = await ask('weather_daily_get'); if (g && g.places) daily = g; }
             const on = !dailyPlace();
             const r = await ask('weather_daily_set', on
-                ? { workspace, on: true, name: p.name, lat: Number(p.lat), lon: Number(p.lon) }
+                ? { workspace, on: true, name: placeWords(p), lat: Number(p.lat), lon: Number(p.lon) }
                 : { workspace, on: false });
             if (r && r.places) daily = r;
             const at = (r && r.time) || '07:30';
-            ws.messageBox({ title: 'Weather', icon: 'info', text: on ? `Each day at ${at} a picture of ${p.name} is drawn into this workspace.` : 'Daily pictures are off for this workspace.' });
+            ws.messageBox({ title: 'Weather', icon: 'info', text: on ? `Each day at ${at} a picture of ${placeWords(p)} is drawn into this workspace.` : 'Daily pictures are off for this workspace.' });
         } catch (err) {
             ws.messageBox({ title: 'Weather', icon: 'error', text: `The daily picture could not be changed. ${(err && err.message) || ''}`.trim() });
         }
