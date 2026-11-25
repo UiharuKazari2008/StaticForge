@@ -2053,7 +2053,9 @@
         // a turn that starts with a steer mark left (the abort found nothing to stop) drops it: a real end is never swallowed
         for (const id of now.keys()) if (!runningTurns.has(id)) steerCut.delete(id);
         runningTurns = now;
-        const told = ended.filter(([id]) => !steerCut.delete(id));
+        // another page of hers shows that chat (a phone's DeX window while this is its shell page): no second notification
+        const watched = Array.isArray(st.watched) ? st.watched.map(String) : [];
+        const told = ended.filter(([id]) => !steerCut.delete(id) && !watched.includes(id));
         if (!told.length || document.hidden || (shown && isCurrent()) || !prefs().notifyTurns || typeof showGlassToast !== 'function') return;
         told.forEach(([id, turn]) => {
             const s = (d.directorSessions || []).find((x) => String(x.id) === id);

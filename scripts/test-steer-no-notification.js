@@ -253,9 +253,24 @@ function pageToasts(file) {
     away('the page was last heard from 11 minutes ago', () => page('p1', { lastActivity: new Date(Date.now() - 11 * 60 * 1000) }));
     away('a test tab (dev_admin) watches it', () => page('p1', { userType: 'dev_admin' }));
     away('only the Android app\'s background link is connected', () => page('p1', { as: { speaker: 'service' } }));
+    away('an agent\'s bound test tab (HeadlessChrome) watches it', () => page('p1', { userAgent: 'Mozilla/5.0 (X11; Linux x86_64) HeadlessChrome/140 Safari/537.36' }));
     clients.clear();
     page('p1');
     eq(turn('p1', 'Presence').length, 0, 'silent: an awake household page watches this chat');
+    // two clients, one household (#1168 follow-up; the shapes are what the live server held, read through the inspector): the
+    // phone's DeX window shows the chat, the phone's own shell page shows none, service links and a device frame idle beside
+    const household = (watching) => {
+        clients.clear();
+        page('', { desktopState: 'ready', phone: { shell: 'mobile' }, as: { speaker: 'webview' }, clientId: 'dbf4f3' }); // the phone's shell page
+        page(watching, { desktopState: 'desktop', as: { speaker: 'webview' }, clientId: 'd28099' }); // the DeX window (a desktop page on the Fold)
+        page(undefined, { desktopState: null, as: { speaker: 'service' }, clientId: 'f2c2af' }); // the app's background link
+        page(undefined, { desktopState: null, deviceApp: 'DreamscapeFrame/1.4', deviceId: true, clientId: '8da920' }); // a picture frame
+    };
+    household('p3');
+    eq(turn('p3', 'DeX').length, 0, 'silent: the DeX window of the phone shows the chat (the phone\'s own shell page does not, and is not asked)');
+    eq(Array.from(src.watchedChats()).join(','), 'p3', 'watchedChats: the union over every client of hers');
+    household('some-other-chat');
+    eq(turn('p3', 'DeX').join(','), 'director:p3:turn', 'notifies: the DeX window shows another chat');
     // the same chat finishing twice while the first notice still waits is one notice (alert flag gone, #889 reversed)
     clients.clear();
     const first = turn('p2', 'Twice');
@@ -279,6 +294,26 @@ function pageToasts(file) {
     const file = process.env.PREFIX_PAGE || path.join(ROOT, 'public/scripts/comp/wmDirector.js');
     const run = { running: true, sessionId: 's1', sessionName: 'Chat', xi: { running: false } };
     const idle = { running: false, sessionId: null, xi: { running: false } };
+    // the status carries the chats her pages show now; the phone's shell page (this fake page) toasts nothing for a chat another
+    // page of hers shows (its DeX window), and still toasts for one nobody shows
+    clients.clear();
+    page('chat-seen');
+    const statusPacket = await new Promise((resolve) => {
+        packets.length = 0;
+        cursor.broadcastDirectorStatus(gr);
+        const t0 = Date.now();
+        const tick = () => { const pk = packets.find((x) => x.type === 'director_computer_status'); if (pk || Date.now() - t0 > 2000) resolve(pk); else setTimeout(tick, 30); };
+        tick();
+    });
+    assert.ok(statusPacket && Array.isArray(statusPacket.data.watched), 'director_computer_status carries watched');
+    eq(statusPacket.data.watched.join(','), 'chat-seen', 'watched lists the chat her page shows');
+    clients.clear();
+    let pw = pageToasts(file);
+    pw.status(run); pw.status(Object.assign({}, idle, { watched: ['s1'] }));
+    eq(pw.toasts.length, 0, 'another page of hers shows the chat: no toast on this shell page');
+    pw = pageToasts(file);
+    pw.status(run); pw.status(Object.assign({}, idle, { watched: ['other'] }));
+    eq(pw.toasts.length, 1, 'a chat nobody shows: the toast stays');
     // (a turn ending with another app open on the phone: the page toasts, deduped with the inbox notice by title)
     let p = pageToasts(file);
     p.status(run); p.status(idle);
