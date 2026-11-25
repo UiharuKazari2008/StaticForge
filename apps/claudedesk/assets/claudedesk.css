@@ -685,7 +685,7 @@
 }
 
 #mmcConsole_claudedesk .cd-policy td:not(:first-child) {
-    white-space: normal;
+    white-space: nowrap;
 }
 
 #mmcConsole_claudedesk .cd-policy select {
@@ -1494,9 +1494,11 @@
     table-layout: fixed;
 }
 
-#mmcConsole_claudedesk .cd-dash td.cd-cut {
-    white-space: normal;
-    overflow-wrap: anywhere;
+#mmcConsole_claudedesk .cd-dash td.cd-cut,
+#mmcConsole_claudedesk .cd-dash td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 #mmcConsole_claudedesk .cd-dash th:first-child {
@@ -1504,7 +1506,9 @@
 }
 
 #mmcConsole_claudedesk .cd-dash th {
-    overflow-wrap: anywhere;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 #mmcConsole_claudedesk .cd-tile.is-warn b {
@@ -1877,8 +1881,8 @@
 }
 
 #mmcConsole_claudedesk .cd-wm-node.is-working {
-    /* a working box is unmistakable: accent frame, tinted face and a running bar along its foot */
-    position: relative;
+    /* a working box is unmistakable: accent frame, tinted face and a running bar along its foot (the box keeps the
+       map's absolute placement; its bar is positioned against it) */
     overflow: hidden;
     border-color: var(--cd-busy-a);
     border-left-width: 4px;
