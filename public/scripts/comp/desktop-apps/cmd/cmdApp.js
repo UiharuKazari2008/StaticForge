@@ -775,7 +775,8 @@
         time: 'Displays or sets the system time.\n\nTIME [/T | time]\n\nType TIME with no parameters to display the current time setting and a prompt\nfor a new one.  Press ENTER to keep the same time.\n\nIf Command Extensions are enabled the TIME command supports\nthe /T switch which tells the command to just output the\ncurrent time, without prompting for a new time.'
     };
 
-    const COLOR_NAMES = ['#000000', '#000080', '#008000', '#008080', '#800000', '#800080', '#808000', '#C0C0C0', '#808080', '#0000FF', '#00FF00', '#00FFFF', '#FF0000', '#FF00FF', '#FFFF00', '#FFFFFF'];
+    // COLOR's 16 digits: the console theme's tokens (public/css/themes/vista/console.css)
+    const COLOR_NAMES = '0123456789abcdef'.split('').map((d) => `var(--console-cmd-${d})`);
 
     function matchName(entries, name) {
         const l = lc(name);
@@ -1921,7 +1922,7 @@
             this.scroller = w.content.querySelector('.cmd-screen');
             this.rowsEl = w.content.querySelector('.cmd-rows');
             this.cursorEl = w.content.querySelector('.cmd-cursor');
-            this.titleEl = m.querySelector('.modal-window-title-main span');
+            this.titleEl = w.titleText;
         }
 
         setTitle(text) {

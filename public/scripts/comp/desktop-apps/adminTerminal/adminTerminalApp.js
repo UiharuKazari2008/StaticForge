@@ -27,12 +27,20 @@
     // the segment this file loaded in: page listeners end with it (app-scope, #872/#890)
     const segmentSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || null;
 
-    // the console's colours (Windows console, readable on black)
-    const THEME = {
-        background: '#0c0c0c', foreground: '#cccccc', cursor: '#cccccc', cursorAccent: '#0c0c0c', selectionBackground: 'rgba(255,255,255,0.3)',
-        black: '#0c0c0c', red: '#c50f1f', green: '#13a10e', yellow: '#c19c00', blue: '#0037da', magenta: '#881798', cyan: '#3a96dd', white: '#cccccc',
-        brightBlack: '#767676', brightRed: '#e74856', brightGreen: '#16c60c', brightYellow: '#f9f1a5', brightBlue: '#3b78ff', brightMagenta: '#b4009e', brightCyan: '#61d6d6', brightWhite: '#f2f2f2'
-    };
+    // the console's colours: the console theme's tokens (public/css/themes/vista/console.css), read when a window opens
+    const THEME_KEYS = ['background', 'foreground', 'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+        'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite'];
+    function consoleTheme() {
+        const cs = root.getComputedStyle(doc.documentElement);
+        const token = (key) => cs.getPropertyValue('--console-term-' + key.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())).trim();
+        const theme = {};
+        THEME_KEYS.forEach((key) => { const v = token(key); if (v) theme[key] = v; });
+        theme.cursor = theme.foreground;
+        theme.cursorAccent = theme.background;
+        const sel = token('selection');
+        if (sel) theme.selectionBackground = sel;
+        return theme;
+    }
 
     let counter = 0;
 
@@ -165,7 +173,7 @@
                 scrollback: 5000,
                 cursorStyle: 'underline',
                 cursorBlink: false,
-                theme: THEME,
+                theme: consoleTheme(),
                 allowProposedApi: false,
                 macOptionIsMeta: true,
                 ariaLabel: TITLE

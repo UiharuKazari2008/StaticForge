@@ -1,0 +1,42 @@
+/* The console theme (Yozora #1133): the Command Prompt (vista-cmd.css, cmdApp.js) and the Administrator
+   Terminal (admin-terminal.css, adminTerminalApp.js) take their font and colours from these tokens.
+   --console-cmd-0 .. f: cmd.exe's 16 legacy console colours (COLOR's digits, Vista's defaults). The Administrator
+   Terminal's ANSI palette is the modern Windows console's (Campbell), readable on black. */
+:root {
+    --console-font: "Lucida Console", Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+    --console-cmd-0: #000000;
+    --console-cmd-1: #000080;
+    --console-cmd-2: #008000;
+    --console-cmd-3: #008080;
+    --console-cmd-4: #800000;
+    --console-cmd-5: #800080;
+    --console-cmd-6: #808000;
+    --console-cmd-7: #c0c0c0;
+    --console-cmd-8: #808080;
+    --console-cmd-9: #0000ff;
+    --console-cmd-a: #00ff00;
+    --console-cmd-b: #00ffff;
+    --console-cmd-c: #ff0000;
+    --console-cmd-d: #ff00ff;
+    --console-cmd-e: #ffff00;
+    --console-cmd-f: #ffffff;
+    --console-term-background: #0c0c0c;
+    --console-term-foreground: #cccccc;
+    --console-term-selection: rgba(255, 255, 255, 0.3);
+    --console-term-black: #0c0c0c;
+    --console-term-red: #c50f1f;
+    --console-term-green: #13a10e;
+    --console-term-yellow: #c19c00;
+    --console-term-blue: #0037da;
+    --console-term-magenta: #881798;
+    --console-term-cyan: #3a96dd;
+    --console-term-white: #cccccc;
+    --console-term-bright-black: #767676;
+    --console-term-bright-red: #e74856;
+    --console-term-bright-green: #16c60c;
+    --console-term-bright-yellow: #f9f1a5;
+    --console-term-bright-blue: #3b78ff;
+    --console-term-bright-magenta: #b4009e;
+    --console-term-bright-cyan: #61d6d6;
+    --console-term-bright-white: #f2f2f2;
+}
