@@ -1567,6 +1567,26 @@ device id. Errors are `{ success: false, code, error }`: `UNKNOWN_DEVICE` 404; `
 | `GET /api/activesync/host/:deviceId/packages` | `{ success, base, update, packages[] }` (components change through Melaton Update, not package actions). |
 | `POST /api/activesync/host/:deviceId/blob/:token` | The machine's own upload of what it was asked for (screenshot, diagnostics): only that device's session, a 32-hex one-time token, header `X-Blob-Kind`. `NOT_THE_DEVICE` 403, `GONE` 410 (nobody waiting), `TOO_LARGE` 413. |
 
+
+## Android app builds (admin)
+
+`modules/androidBuilds.js` (#821, Nov 25 2026). The server builds DSApp-Kotlin itself: its own clone of the repo gets
+`origin/main` plus every unmerged branch merged into `build/latest` (pushed), a worker (Ruiko over ssh by default;
+`secure.config.json` key `androidBuilds`) builds the release APK, and the server stores it and publishes a Release.
+versionCode = highest of last release + 1, highest phone-reported + 1 and minutes since 2020-01-01 UTC; versionName
+`1.0.<versionCode>`. **Auth required, admin only** (`403 FORBIDDEN`). Errors are `{ success: false, code, error }`.
+One build runs at a time.
+
+| Route | Notes |
+| --- | --- |
+| `POST /api/android-builds` | `{ note?, agentId? }` gives `{ success, id, state: 'running' }`. `409 BUSY` (`running` names the build) while one runs; `409 GATE_OPEN` (`gates[]`) while another agent's agent-coord build gate for DSApp-Kotlin is open or running (the gate of `agentId` does not block). While it builds, the server holds its own gate (`dsapp-apk`). |
+| `GET /api/android-builds` | `{ success, builds[] (Releases, newest first, without commit lists), jobs[], current, workers[], latest, maxReportedVersionCode }`. |
+| `GET /api/android-builds/:id` | `{ success, job: { id, state: running\|done\|failed, step, error, worker, startedAt, endedAt, log[] }, release }`; `?lines=n` (max 400) sets the log tail. `release` is null until the build is done. `404 NOT_FOUND`. |
+| `GET /api/android-builds/:id/apk` | The APK (`application/vnd.android.package-archive`, header `X-APK-SHA256`). `410 PRUNED` once it is not one of the last 10. |
+
+Release: `{ id, versionCode, versionName, sha, branches: [{ name, sha }], commits: [{ sha, subject }] (new since the
+previous release, at most 200), apkFile, sha256, size, worker, createdAt }`. Agents use the `dsapp_build` MCP tool
+(`request` / `status`, agent-coord server) instead of building on Ruiko by hand.
 ---
 
 ## Text Messaging and IMAP mail accounts

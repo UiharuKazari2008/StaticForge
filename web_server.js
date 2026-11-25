@@ -2445,10 +2445,14 @@ require('./modules/cafeReadyHost').mount(app, authMiddleware, globalResources);
 require('./modules/testDevicesRoute').mount(app, authMiddleware, globalResources);
 // modules/activeSyncWallpapers.js — the phones' wallpapers kept for Device Center (Yozora #827)
 require('./modules/activeSyncWallpapers').mount(app, authMiddleware, globalResources);
+// modules/androidAppUpdatePush.js — a new Android app build is staged on the phones behind it (hello + release events, Yozora #821)
+require('./modules/androidAppUpdatePush').start(globalResources);
 // CaféReady task code for the Android app: hashed manifest + files, api-gated by the app (#908)
 require('./modules/cafeTasksRoute').mount(app, authMiddleware);
 // DreamOS laptop updates: signed channel manifests + content-addressed images and components (#910)
 require('./modules/dreamosUpdates').mount(app, authMiddleware);
+// Android app builds from the server: DSApp-Kotlin main + unmerged branches -> versioned APK on a build worker (#821)
+require('./modules/androidBuilds').mount(app, authMiddleware, globalResources);
 // modules/offlineFilesRoute.js — Offline Files for CaféReady clients: folder settings, chunked write-back uploads (#910)
 require('./modules/offlineFilesRoute').mount(app, authMiddleware, globalResources);
 // modules/searchSuggest.js — Internet Search's predictions from Google / Bing (Yozora #830)

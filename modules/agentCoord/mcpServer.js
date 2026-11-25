@@ -230,6 +230,7 @@ const TOOLS = [
     { name: 'mem_flag', description: 'A memory is wrong or out of date: flag it with why (it stays visible with the flag until reviewed).', inputSchema: S({ id: { type: 'number' }, why: str('What is wrong, one or two lines') }, ['id', 'why']) },
     { name: 'mem_recent', description: 'The most recently changed active memories.', inputSchema: S({ limit: { type: 'number' } }) },
     { name: 'mem_digest', description: 'The short block every session starts with: pinned rules and preferences, pinned items of the repo, this week\'s gotchas and lessons.', inputSchema: S({ repo: str('Repo name (default: yours)') }) },
+    { name: 'dsapp_build', description: 'Build the Android app (DSApp-Kotlin) on the Dreamscape server: origin/main plus every unmerged branch is merged into build/latest, built on the build worker (Ruiko) and stored as a versioned APK that is then delivered to the phones. Use this instead of building on Ruiko by hand or running the joint build script. action request starts a build (refused while one runs or while another agent\'s build gate for DSApp-Kotlin is open: open your own gate first with coord_build_request, the server then builds past it); action status shows the running or last build (pass id for one build: state, step, log tail, release).', inputSchema: S({ action: { type: 'string', enum: ['request', 'status'], description: 'request | status' }, id: { type: 'number', description: 'status: a build id (omit for the list and the running build)' }, note: str('request: why / what it ships, one line') }, ['action']) },
     { name: 'coord_builds', description: 'Open and running build gates (recent: also the ones that ended in the last day).', inputSchema: S({ repo: str('Repo name'), recent: { type: 'boolean' } }) }
 ];
 
@@ -332,6 +333,9 @@ function run(name, args) {
     }
     case 'coord_request_work':
         return supervisorAsk({ op: 'enqueue', sourceRef: `agent:${ego.id}#${Date.now().toString(36)}`, title: a.title, prompt: a.prompt, startNow: a.start_now === true, cwd: a.cwd, model: a.model, effort: a.effort }, 20000).then((out) => ({ work: out.work }));
+    case 'dsapp_build':
+        if (a.action !== 'request' && a.action !== 'status') throw new Error('action must be request or status');
+        return androidBuildsAsk(a.action === 'request' ? { op: 'request', note: a.note, agentId: ego.id } : { op: 'status', id: a.id }).then((out) => out.result);
     case 'coord_builds':
         return { builds: store.builds({ repo: a.repo, recent: a.recent === true }) };
     case 'mem_search': return memory.search(a.query, { scope: a.scope, kind: a.kind, limit: a.limit, status: a.include === 'all' ? 'all' : undefined });
@@ -383,6 +387,26 @@ function supervisorAsk(req, timeoutMs) {
             return resolve(out);
         });
         sock.on('error', (e) => reject(new Error(e.code === 'ENOENT' || e.code === 'ECONNREFUSED' ? 'The Supervisor is not running (it runs inside the Dreamscape server)' : e.message)));
+    });
+}
+
+/** One request to the Dreamscape server's Android build job (modules/androidBuilds.js) over its unix socket. */
+function androidBuildsAsk(req) {
+    const net = require('net');
+    const file = process.env.AGENT_ANDROID_BUILDS_SOCKET || path.join(path.dirname(store.dbPath()), 'android-builds.sock');
+    return new Promise((resolve, reject) => {
+        let buf = '';
+        const sock = net.createConnection(file, () => sock.write(`${JSON.stringify(req)}\n`));
+        sock.setEncoding('utf8');
+        sock.setTimeout(20000, () => { sock.destroy(); reject(new Error('The build job did not answer in time')); });
+        sock.on('data', (c) => { buf += c; });
+        sock.on('end', () => {
+            let out = null;
+            try { out = JSON.parse(buf.trim()); } catch (e) { return reject(new Error('The build job answered something unreadable')); }
+            if (!out.ok) return reject(new Error(out.error || 'The build job failed'));
+            return resolve(out);
+        });
+        sock.on('error', (e) => reject(new Error(e.code === 'ENOENT' || e.code === 'ECONNREFUSED' ? 'The Android build job is not running (it runs inside the Dreamscape server)' : e.message)));
     });
 }
 
