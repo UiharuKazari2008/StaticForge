@@ -1483,20 +1483,34 @@ async function checkCollisions(sessionId, s) {
     const mineRow = (() => { try { return store.inspect(lockAgentId(sessionId), { limit: 300 }); } catch (_) { return null; } })();
     if (!mineRow) return [];
     const { root } = store.repoOf(me.cwd);
-    const mine = new Set(mineRow.edited.files.filter((f) => f.uncommitted).map((f) => f.path));
+    // an edit counts only when it is newer than the file's last commit: a session that committed its change no longer
+    // holds it, even while someone else has the file open again (Nov 25 2026: the Manager Session was paused over an
+    // xiDirector.js change it had committed hours before)
+    const commitAt = new Map();
+    const lastCommit = (p) => {
+        if (commitAt.has(p)) return commitAt.get(p);
+        let t = 0;
+        try { t = Number(require('child_process').execFileSync('git', ['-C', root, 'log', '-1', '--format=%ct', '--', p], { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] }).trim()) * 1000 || 0; } catch (_) { t = 0; }
+        commitAt.set(p, t);
+        return t;
+    };
+    const atOf = (f) => (typeof f.lastAt === 'number' ? f.lastAt : Date.parse(f.lastAt) || 0);
+    const live2 = (f) => f.uncommitted && atOf(f) > lastCommit(f.path);
+    const mine = new Set(mineRow.edited.files.filter(live2).map((f) => f.path));
     const found = [];
     for (const [id, other] of live) {
         if (id === sessionId || !other.cwd || store.repoOf(other.cwd).root !== root) continue;
         let r = null;
         try { r = store.inspect(lockAgentId(id), { limit: 300, git: true }); } catch (_) { r = null; }
         if (!r) continue;
-        const both = r.edited.files.filter((f) => f.uncommitted && mine.has(f.path)).map((f) => f.path);
+        const both = r.edited.files.filter((f) => live2(f) && mine.has(f.path)).map((f) => f.path);
         if (both.length) found.push({ sessionId: id, name: r.agent.name || id.slice(0, 8), paths: both, busy: other.status === 'busy' });
     }
     for (const c of found) {
         const text = `Collision: ${(mineRow.agent && mineRow.agent.name) || sessionId.slice(0, 8)} and ${c.name} both changed ${c.paths.slice(0, 5).join(', ')} without committing.`;
         try { store.post('supervisor', null, `${text} The Supervisor ${s.autoPauseOnCollision ? `paused ${c.name} until they no longer overlap` : 'left both running'}: commit your own hunks, coordinate with coord_post.`, { kind: 'note' }); } catch (_) { /* none */ }
-        if (s.autoPauseOnCollision && !activeHold(c.sessionId)) {
+        // the Manager Session is Yukimi's own: never paused by a collision (the note above still goes out)
+        if (s.autoPauseOnCollision && !activeHold(c.sessionId) && c.sessionId !== s.managerSessionId) {
             await pauseSession(c.sessionId, { mode: 'hold', reason: `${text} Wait while the other session commits`, by: 'Supervisor', kind: 'collision', paths: c.paths }).catch(() => {});
         }
     }
