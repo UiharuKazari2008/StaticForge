@@ -2466,6 +2466,7 @@ function grimoireShowBrowserUnavailable(host, shell, url) {
 // which survive the PAGE_KEYS swap (a window property such as _grimoireOpeningUrl would move with the swap).
 // one name on the page for all of it (rule app-scope-ownership); maxMs: an open that has not landed after this
 // long no longer counts as in flight (a hung request)
+// app-scope: allow the one name of the opens-in-flight helpers (owner, target, opening, discard, failed, land)
 const grimoireRemoteOpen = { openings: new WeakMap(), token: 0, maxMs: 30000 };
 
 // Who a shell is: { shell, tab, tabs, side, key }. tab is the tab that owns the page (the window's tab on show for
@@ -2520,6 +2521,7 @@ grimoireRemoteOpen.opening = function (shell) {
     const rec = shell ? grimoireRemoteOpen.openings.get(grimoireRemoteOpen.owner(shell, grimoireHostOf(shell)).key) : null;
     return rec && Date.now() - rec.at < grimoireRemoteOpen.maxMs ? rec.url : '';
 };
+// app-scope: allow the in-flight check grimoireTabs.js resume and tagWikiSearchModal.js refreshToolbar ask
 window.grimoireRemoteOpening = grimoireRemoteOpen.opening;
 
 // A session nobody will show (its tab went, or a newer open took its place) is let go.
