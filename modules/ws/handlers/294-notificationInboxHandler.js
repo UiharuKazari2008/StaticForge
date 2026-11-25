@@ -59,6 +59,7 @@ function registerPackets(handlersCtx) {
     try { require('../../notificationInboxSources').bindDovecote(); } catch (e) { console.warn(`[294-notificationInboxHandler] dovecote: ${e.message}`); }
     // calendar appointment and task reminders fire from the server (#876)
     try { reminders.start(handlersCtx.globalResources); } catch (e) { console.warn(`[294-notificationInboxHandler] reminders: ${e.message}`); }
+    try { require('../../shrineJobs').start(handlersCtx.globalResources); } catch (e) { console.warn(`[294-notificationInboxHandler] shrine job: ${e.message}`); }
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             if (!canUse(ctx.clientInfo)) {
@@ -98,7 +99,6 @@ function registerPackets(handlersCtx) {
         if (typeof m.smsAll === 'boolean') inbox.setPref(user, 'icon.smsAll', m.smsAll ? '1' : '0');
         reply(handlersCtx, ctx.ws, m, { ok: true });
     });
-    // the envelope icons' "new since last opened" (#907, modules/messageNew.js): a page asks once at start, the server
     // the hour / half-hour chime (#1108): choices kept here, the phones chime on their own (CaféReady task hour-chime)
     reg('hour_chime_get', (ctx) => { reply(handlersCtx, ctx.ws, ctx.message, { ok: true, chime: require('../../hourChime').get(inbox.userOf(ctx.clientInfo)) }); });
     reg('hour_chime_set', (ctx) => {
@@ -107,6 +107,7 @@ function registerPackets(handlersCtx) {
         try { require('../../phoneStatus').touch('chime'); } catch (_e) { /* no status */ }
         reply(handlersCtx, ctx.ws, m, { ok: true, chime });
     });
+    // the envelope icons' "new since last opened" (#907, modules/messageNew.js): a page asks once at start, the server
     // pushes msg_new_state on change; opening the mail / Text Messaging on a phone says so
     reg('msg_new_state', (ctx) => {
         reply(handlersCtx, ctx.ws, ctx.message, require('../../messageNew').state());
