@@ -6031,7 +6031,10 @@ class TagWikiSearchModal extends WikiDisplayBase {
             return;
         }
 
-        const searchUrl = `edtx://en.grimoire.jp/search?q=${encodeURIComponent(val)}`;
+        // the address bar searches the web (Bing unless another engine is chosen in the search box's menu); the Grimoire is the search box
+        const searchUrl = (typeof GrimoireIeChrome !== 'undefined' && GrimoireIeChrome.webSearchUrl)
+            ? GrimoireIeChrome.webSearchUrl(val)
+            : `https://www.bing.com/search?q=${encodeURIComponent(val)}`;
         // grimoireBareWebUrl / grimoireResolveBareWebUrl: public/scripts/comp/grimoireRemoteBrowser.js
         const bareWeb = grimoireBareWebUrl(val);
         if (bareWeb) {
@@ -6041,7 +6044,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             return;
         }
 
-        // Bare term → search page
+        // Bare term → web search
         this.navigate(searchUrl);
     }
 

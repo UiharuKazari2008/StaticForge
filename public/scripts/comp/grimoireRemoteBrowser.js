@@ -112,8 +112,13 @@ function grimoireAudioFollowPointer(ev) {
 
 // Web pages show as Alchemy. The taskbar copies the title bar's span and icon: modalUtils.js updateTaskbarWindows
 // title: string sets the span, null restores the Grimoire title, undefined leaves it.
+// the window factory's caption (its icon and title), as the taskbar reads it
+function grimoireCaptionOf(modal) {
+    return modal ? modal.querySelector('.modal-window-title-main') : null;
+}
+
 function grimoireSyncAlchemyIdentity(modal, web, title) {
-    const main = modal && modal.querySelector('.modal-window-title-main');
+    const main = grimoireCaptionOf(modal);
     if (!main) return;
     const icon = main.querySelector('i');
     const img = main.querySelector('img.icon-image');
@@ -128,13 +133,31 @@ function grimoireSyncAlchemyIdentity(modal, web, title) {
         modal.dataset.alchemy = web ? '1' : '';
         icon.className = web ? 'fas fa-atom icon-fa' : main.dataset.grimoireIcon;
         // resolveAppIconPath: public/scripts/comp/modalUtils.js
-        img.src = web ? resolveAppIconPath('alchemy.png', 64) : main.dataset.grimoireImage;
+        if (!web) delete main.dataset.alchemyFavicon;
+        img.src = web ? (main.dataset.alchemyFavicon || resolveAppIconPath('alchemy.png', 64)) : main.dataset.grimoireImage;
+        if (web && main.dataset.alchemyFavicon) img.removeAttribute('srcset');
     }
     const nextTitle = title === null ? main.dataset.grimoireTitle : title;
     const rename = typeof nextTitle === 'string' && span.textContent !== nextTitle;
     if (rename) span.textContent = nextTitle;
     // debouncedUpdateTaskbarWindows: public/scripts/comp/modalUtils.js
     if (swap || rename) debouncedUpdateTaskbarWindows();
+}
+
+// A standalone Alchemy window (a page's popup, Open in new window; data-alchemy-standalone) wears its page's own icon
+// (a served URL, never a data: string) in its caption and on its taskbar button (#1118). The main Grimoire window keeps
+// its tab strip's icons. The taskbar copies the caption img: modalUtils.js updateTaskbarActiveStates.
+function grimoireSetStandaloneFavicon(shell, icon) {
+    const modal = shell && shell.displayArea && shell.displayArea.closest('.modal');
+    if (!modal || modal.dataset.alchemyStandalone !== '1' || modal.dataset.alchemy !== '1') return;
+    const main = grimoireCaptionOf(modal);
+    const img = main && main.querySelector('img.icon-image');
+    if (!img || typeof icon !== 'string' || !/^(\/|https?:)/.test(icon) || main.dataset.alchemyFavicon === icon) return;
+    main.dataset.alchemyFavicon = icon;
+    img.src = icon;
+    img.removeAttribute('srcset');
+    // updateTaskbarActiveStates: public/scripts/comp/modalUtils.js
+    if (typeof updateTaskbarActiveStates === 'function') updateTaskbarActiveStates();
 }
 
 function grimoireNormalizeWebUrl(url) {
@@ -718,6 +741,7 @@ function grimoireTabFavicon(shell, url, changed) {
         const top = shell.history && shell.history[shell.historyIndex];
         if (!icon || !top || top.type !== 'web' || top.url !== url || top.favicon === icon) return;
         top.favicon = icon;
+        grimoireSetStandaloneFavicon(shell, icon);
         changed();
     };
     if (grimoireFaviconCache.has(url)) {
@@ -2281,6 +2305,7 @@ function grimoireOpenStandaloneWindow(url, popup, windowTitle, options) {
     const win = wikiWindowManager.createWindow(null, { title: label, name: small ? 'alchemy-popup' : label }, null,
         small ? { alchemyPopup: '1', windowMinWidth: '360', windowMinHeight: '420' } : null);
     if (!win) return;
+    if (win.modal) win.modal.dataset.alchemyStandalone = '1';
     if (options && options.isolated) win._alchemyIsolated = true;
     grimoireOpenRemoteBrowser(win, webUrl, { host: win, session, popup: !!popup });
 }

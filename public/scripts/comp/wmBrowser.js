@@ -63,6 +63,7 @@
     const TYPED_KEY = 'wmIeTyped';
     const VIEW_KEY = 'wmIeView';
     const ZOOM_KEY = 'wmIeZoom';
+    const KB_FIELD_MARGIN_PX = 56; // the page below a tapped field the raised frame still shows above the keyboard (#1118)
     const FULL_KEY = 'wmIeFullScreen';
     const MAX_HISTORY = 100;
     const MAX_TYPED = 10;
@@ -362,9 +363,27 @@
      * comes from Alchemy's still once the page settles: d = phone device px per page CSS px (3 on
      * a dpr 3 phone in One Column, more at Larger), capped at 4; Alchemy caps its pixels too.
      */
+    /**
+     * The soft keyboard is a temporary overlay (#1118), not a new page size: while it is up for the hidden text box the
+     * page keeps the height it had (the frame stays as tall as before, nothing is laid out again, nothing below is
+     * lost) and the frame is raised just enough that the tapped field stays above the keyboard. Returns the hold
+     * { vw, H, shift } of the window in W, or null once the keyboard is gone or the view really changed (rotation,
+     * fold, another width): then the page is laid out as the view is. (W is the window here, not geometry()'s width.)
+     */
+    function kbHoldOf(vw) {
+        const h = W && W.kbHold;
+        if (!h) return null;
+        const vh = els.view.clientHeight;
+        if (vw !== h.vw || vh >= h.H - 1) { W.kbHold = null; return null; }
+        const field = Number.isFinite(W.fieldY) ? W.fieldY : -1;
+        h.shift = field < 0 ? 0 : Math.max(0, Math.min(h.H - vh, Math.round(field + KB_FIELD_MARGIN_PX - vh)));
+        return h;
+    }
+
     function geometry() {
         const W = Math.max(1, els.view.clientWidth);
-        const H = Math.max(1, els.view.clientHeight);
+        const hold = kbHoldOf(W);
+        const H = hold ? hold.H : Math.max(1, els.view.clientHeight);
         // Desktop on a phone-sized screen is a 1024 px page shrunk to fit; on a wide screen the page
         // is as wide as the screen at the shell's touch size (1.5 CSS px a unit: the screen's own CSS
         // width on a phone or tablet), so sites lay out for the width there really is
@@ -378,15 +397,37 @@
         const L = Math.round(W * s);
         const z = Math.max(0.1, Math.min(4, L / V));
         const d = Math.min(4, (W * Math.max(1, window.devicePixelRatio || 1)) / (L / z));
-        return { W, H, s, V: L / z, L, Lh: Math.round(H * s), z, d: Math.round(d * 100) / 100 };
+        // shift: view px the frame is raised while the keyboard covers the page's lower part (0 otherwise)
+        return { W, H, s, V: L / z, L, Lh: Math.round(H * s), z, d: Math.round(d * 100) / 100, shift: hold ? hold.shift : 0 };
+    }
+
+    /** The keyboard opened or closed (wmShell's SIP): see kbHoldOf. Only the window on screen, only for typing into its page. */
+    function onSip(height) {
+        inWin(cur, () => {
+            if (!(height > 0)) {
+                if (W.kbHold) { W.kbHold = null; W.fieldY = null; layoutFrame(); }
+                return;
+            }
+            // the layout from before the keyboard (the view has already shrunk when this fires)
+            const laid = W.laid;
+            if (W.kbHold || !laid || !W.frame || !visible || onHome() || !W.dom || W.dom.frameWrap.hidden) return;
+            if (document.activeElement !== els.ime || laid.vw !== els.view.clientWidth || els.view.clientHeight >= laid.H - 1) return;
+            W.kbHold = { vw: laid.vw, H: laid.H, shift: 0 };
+            layoutFrame();
+        });
     }
 
     function layoutFrame() {
         if (!W.frame || !els.view.clientWidth) return;
         const g = geometry();
-        W.frame.style.width = `${g.L}px`;
-        W.frame.style.height = `${g.Lh}px`;
-        W.frame.style.transform = `scale(${1 / g.s})`;
+        if (!W.kbHold) W.laid = { vw: g.W, H: g.H };
+        const fs = W.frame.style;
+        const wpx = `${g.L}px`;
+        const hpx = `${g.Lh}px`;
+        const tf = `${g.shift ? `translateY(${-g.shift}px) ` : ''}scale(${1 / g.s})`;
+        if (fs.width !== wpx) fs.width = wpx;
+        if (fs.height !== hpx) fs.height = hpx;
+        if (fs.transform !== tf) fs.transform = tf;
         if (W.ready) {
             post({ type: 'grimoire-browser-zoom', value: g.z });
             // a still at the phone's own pixels once the page settles (older viewers ignore it)
@@ -1239,9 +1280,10 @@
     function fire(type, p, extra) {
         const canvas = viewerCanvas();
         if (!canvas) return false;
-        const s = geometry().s;
+        const g = geometry();
+        const s = g.s;
         const win = W.frame.contentWindow;
-        const init = Object.assign({ bubbles: true, cancelable: true, clientX: p.x * s, clientY: p.y * s, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true }, extra || {});
+        const init = Object.assign({ bubbles: true, cancelable: true, clientX: p.x * s, clientY: (p.y + g.shift) * s, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true }, extra || {});
         const Ctor = type.startsWith('pointer') ? win.PointerEvent : type === 'wheel' ? win.WheelEvent : win.MouseEvent;
         canvas.dispatchEvent(new Ctor(type, init));
         return true;
@@ -1274,7 +1316,7 @@
      */
     function parkPointer() {
         const g = geometry();
-        fire('pointermove', { x: g.W - 1, y: g.H - 1 }, { buttons: 0 });
+        fire('pointermove', { x: g.W - 1, y: g.H - 1 - g.shift }, { buttons: 0 });
     }
 
     function startFling(vx, vy, p) {
@@ -1301,7 +1343,7 @@
     function realTouch() { return !!(W.session && W.session.kind === 'mobile' && W.ready); }
 
     function sendTouch(t, kind, p, extra) {
-        post(Object.assign({ type: 'grimoire-browser-touch', kind, x: p.x * t.s, y: p.y * t.s, t: performance.now() }, extra || {}));
+        post(Object.assign({ type: 'grimoire-browser-touch', kind, x: p.x * t.s, y: (p.y + (t.shift || 0)) * t.s, t: performance.now() }, extra || {}));
     }
 
     /** The finger's touch leaves the page (6.5's header took the drag, or the device's menu the hold). */
@@ -1315,7 +1357,8 @@
         if (e.button > 0 || touch) return;
         stopFling();
         const p = localPoint(e);
-        touch = { id: e.pointerId, x0: p.x, y0: p.y, x: p.x, y: p.y, drag: false, held: false, real: realTouch(), s: geometry().s, samples: [{ t: performance.now(), x: p.x, y: p.y }] };
+        const tg = geometry();
+        touch = { id: e.pointerId, x0: p.x, y0: p.y, x: p.x, y: p.y, drag: false, held: false, real: realTouch(), s: tg.s, shift: tg.shift, samples: [{ t: performance.now(), x: p.x, y: p.y }] };
         try { els.touch.setPointerCapture(e.pointerId); } catch (_) { /* gone */ }
         if (touch.real) sendTouch(touch, 'start', p);
         touch.timer = setTimeout(() => {
@@ -1362,7 +1405,7 @@
             const tap = e.type !== 'pointercancel' && !t.drag && !t.held;
             sendTouch(t, e.type === 'pointercancel' ? 'cancel' : 'end', { x: t.x, y: t.y }, tap ? { tap: true } : null);
             // is it an edit field? the viewer's inspect answers; a tap there raises the keyboard
-            if (tap) { W.lastInputAt = Date.now(); askInspect('tap'); fire('contextmenu', { x: t.x0, y: t.y0 }, { buttons: 0, button: 2 }); }
+            if (tap) { W.lastInputAt = Date.now(); askInspect('tap', t.y0); fire('contextmenu', { x: t.x0, y: t.y0 }, { buttons: 0, button: 2 }); }
             return;
         }
         if (e.type === 'pointercancel' || t.held) return;
@@ -1384,12 +1427,14 @@
         if (!fire('pointerdown', p)) return;
         fire('pointerup', p);
         // is it an edit field? the viewer's inspect answers (grimoire-browser-menu); a tap there raises the keyboard
-        askInspect('tap');
+        askInspect('tap', y);
         fire('contextmenu', p, { buttons: 0, button: 2 });
     }
 
-    function askInspect(purpose) {
+    function askInspect(purpose, y) {
         W.pendingInspect = purpose;
+        // where on the page (not on the raised view) the tap landed: the field the keyboard must not cover
+        W.pendingY = Number.isFinite(y) ? y + (W.kbHold ? W.kbHold.shift : 0) : null;
         W.pendingInspectAt = Date.now();
     }
 
@@ -1414,8 +1459,11 @@
         // an answer that comes too late (the page was busy, or it moved on) is not the newest tap's
         if (!purpose || W !== cur || Date.now() - W.pendingInspectAt > INSPECT_MS) return;
         if (purpose === 'tap') {
+            W.fieldY = data.editable ? W.pendingY : null;
             if (data.editable) focusIme();
             else if (document.activeElement === els.ime) els.ime.blur();
+            // another field while the keyboard is up: raise the frame to it
+            if (W.kbHold) layoutFrame();
             return;
         }
         const items = [];
@@ -4423,6 +4471,8 @@
                 else focusIme();
             }, true);
             addEventListener('message', onMessage);
+            // the soft keyboard is an overlay on the page, not a new size for it (#1118; kbHoldOf)
+            document.addEventListener('wmSipChange', (e) => onSip(Number(e && e.detail && e.detail.height) || 0), { signal: appScopeSignal });
             // the shell's own signal for a new screen size (wmShell syncPixelScale, syncBezel)
             addEventListener('resize', onScreenResize);
             // a new pixel ratio (another screen, browser zoom) changes the frame size, not the page area

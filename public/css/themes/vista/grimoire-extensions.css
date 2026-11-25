@@ -1,6 +1,6 @@
 /* Grimoire (IE7) and Alchemy's extensions, Vista theme (Yukimi, Nov 21 2026: "extentions should be shown correctly
    like IE does possibly as icons in the tab bar ... allow them to popdown like in chrome would do").
-   grimoireIeChrome.js puts one button per extension after Tools ▾, as IE7 places add-on buttons; they take the
+   grimoireIeChrome.js puts one button per extension left of Home ▾, as Edge places them (Yukimi, Nov 23 2026); they take the
    command bar's flat face, hover and press from vista-explorer.css. A plain toolbar button is 30 px with its 16 px
    icon centred (the split buttons' main part is the same 30 px). The » lists the buttons that do not fit.
    grimoireRemoteBrowser.js drops the extension's popup (Alchemy's own popup window, streamed) from its button. */
@@ -34,7 +34,7 @@ body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoi
     filter: grayscale(1) opacity(0.55);
 }
 
-/* IE7's chevron: » at the end of the command bar when buttons are hidden */
+/* IE7's chevron: » after the extension buttons (before Home) when some are hidden */
 body.theme-vista.desktop-mode :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands > button.grimoire-ie-ext-chevron {
     justify-content: center;
     width: 14px;

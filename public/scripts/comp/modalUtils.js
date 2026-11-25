@@ -5309,6 +5309,10 @@ function updateTaskbarActiveStates() {
                     if (srcset && imageIconEl.getAttribute('srcset') !== srcset) {
                         imageIconEl.setAttribute('srcset', srcset);
                         imageIconEl.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.taskbar));
+                    } else if (!srcset && imageIconEl.hasAttribute('srcset')) {
+                        // a picture with no compiled sizes (a page's own icon): the old icon's srcset would win over src
+                        imageIconEl.removeAttribute('srcset');
+                        imageIconEl.removeAttribute('sizes');
                     }
                 }
 

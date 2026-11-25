@@ -8,12 +8,12 @@
  *                and the search box (searches the Grimoire or, from its ▾, Danbooru, e621 or the web)
  *   tab row      Favorites ☆ (Alchemy bookmarks) and Add to Favorites, one tab with the page's
  *                icon and title (IE's loading ring while a page loads), the new-tab stub (opens
- *                the page in a new window), and on the right the command bar: Home ▾ (the home
- *                page: Add or Change / Remove), Feeds ▾ (the feeds a web page advertises), Print ▾
- *                (Print / Print Preview), Page ▾ (New Window, Copy Address, Split View),
- *                Tools ▾ (the site menu), then each Alchemy extension's button as IE7 shows add-on
- *                buttons (its own icon; a » chevron lists those that do not fit); a button drops the
- *                extension's popup down from it, as Chrome does (openExtensionPopup)
+ *                the page in a new window), and on the right the command bar: first each Alchemy
+ *                extension's button, left of Home as Edge places them (its own icon; a » chevron lists
+ *                those that do not fit; a button drops the extension's popup down from it, as Chrome
+ *                does: openExtensionPopup), then Home ▾ (the home page: Add or Change / Remove),
+ *                Feeds ▾ (the feeds a web page advertises), Print ▾ (Print / Print Preview),
+ *                Page ▾ (New Window, Copy Address, Split View), Tools ▾ (the site menu)
  *   status bar   Done / Waiting, the zone (Alchemy's web pages: Internet | Protected Mode: On; the
  *                Grimoire's own pages: Local intranet | Protected Mode: Off, as IE7 shows them),
  *                and the zoom (click: 100 / 125 / 150 %, ▾: levels)
@@ -48,12 +48,23 @@
 
     // Search ▾ (ids match ALCHEMY_SEARCH_PROVIDERS in modules/grimoireBrowserBridge.js)
     let webSearchUrl = '';
+    // Address / title bar web search engines (%s is the query); Bing is the default, no network wait
+    const WEB_ENGINES = [
+        { id: 'bing', label: 'Bing', url: 'https://www.bing.com/search?q=%s' },
+        { id: 'google', label: 'Google', url: 'https://www.google.com/search?q=%s' },
+        { id: 'duckduckgo', label: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=%s' },
+        { id: 'yahoo', label: 'Yahoo', url: 'https://search.yahoo.com/search?p=%s' },
+        { id: 'ecosia', label: 'Ecosia', url: 'https://www.ecosia.org/search?q=%s' }
+    ];
+    function webSearchFor(q) {
+        return (webSearchUrl || WEB_ENGINES[0].url).split('%s').join(encodeURIComponent(q));
+    }
     const SEARCH_PROVIDERS = [
         { id: 'grimoire', label: 'Grimoire Search', url: (q) => 'edtx://en.grimoire.jp/search?q=' + encodeURIComponent(q) },
         { id: 'danbooru', label: 'Danbooru Wiki', url: (q) => wikiUrl(q, 'danbooru') },
         { id: 'e621', label: 'e621 Wiki', url: (q) => wikiUrl(q, 'e621') },
-        // Alchemy's default search engine (Internet Options > Search sets webSearchUrl), Google until one is chosen
-        { id: 'web', label: 'Web Search', url: (q) => (webSearchUrl || 'https://www.google.com/search?q=%s').replace('%s', encodeURIComponent(q)) }
+        // The address bar's search engine (webSearchUrl: the Address Bar Search group below, Internet Options > Search), Bing until one is chosen
+        { id: 'web', label: 'Web Search', url: (q) => webSearchFor(q) }
     ];
 
     // IE7's zoom levels (the status bar's ▾); clicking the cell steps 100 -> 125 -> 150 -> 100
@@ -169,12 +180,14 @@
             this.feedsDrop = this.tabRow.querySelector('#grimoireFeedsDropBtn');
             this.printBtn = this.tabRow.querySelector('#grimoirePrintBtn');
             this.printDrop = this.tabRow.querySelector('#grimoirePrintDropBtn');
-            // the extensions' buttons (loadExtensions) and IE7's » for those that do not fit
+            // the extensions' buttons (loadExtensions) and IE7's » for those that do not fit: left of Home, as Edge
+            // puts them before its own buttons (Yukimi, Nov 23 2026: "the extension icons need to be to the left of the
+            // home button in the tab bar ... what Edge does, not what Windows Explorer does for its add-ons")
             this.extensions = [];
             this.extButtons = [];
-            this.extChevron = button('', 'grimoire-ie-ext-chevron', 'More Commands');
+            this.extChevron = button('', 'grimoire-ie-ext-chevron', 'More Extensions');
             this.extChevron.hidden = true;
-            this.commands.appendChild(this.extChevron);
+            this.commands.insertBefore(this.extChevron, this.homeSplit);
 
             this.status = document.createElement('div');
             this.status.className = 'grimoire-ie-status';
@@ -398,6 +411,10 @@
             }
             if (action === 'search-provider' && item) {
                 this.saveSetting({ searchProvider: item.providerId });
+                return;
+            }
+            if (action === 'web-engine' && item) {
+                this.saveSetting({ webSearchUrl: item.engineUrl });
                 return;
             }
             if (action === 'zoom-in' || action === 'zoom-out') {
@@ -688,7 +705,10 @@
 
         searchItems() {
             const current = this.provider().id;
-            return SEARCH_PROVIDERS.map((p) => ({ text: p.label, action: 'search-provider', providerId: p.id, indicatorStyle: 'dot', checked: p.id === current }));
+            const web = webSearchUrl || WEB_ENGINES[0].url;
+            return SEARCH_PROVIDERS.map((p) => ({ text: p.label, action: 'search-provider', providerId: p.id, indicatorStyle: 'dot', checked: p.id === current }))
+                .concat([{ separator: true }, { text: 'Address Bar Search', disabled: true }])
+                .concat(WEB_ENGINES.map((e) => ({ text: e.label, action: 'web-engine', engineUrl: e.url, indicatorStyle: 'dot', checked: e.url === web })));
         }
 
         zoomItems() {
@@ -2584,6 +2604,9 @@
     GrimoireIeChrome.iePage = iePage;
     GrimoireIeChrome.errorPage = errorPage;
     GrimoireIeChrome.NEW_TAB_URL = NEW_TAB_URL;
+    // the address / title bar's web search (tagWikiSearchModal.js commitAddressFromInput): the chosen engine, Bing before settings load
+    GrimoireIeChrome.webSearchUrl = webSearchFor;
+    GrimoireIeChrome.WEB_ENGINES = WEB_ENGINES;
     root.GrimoireIeChrome = GrimoireIeChrome;
     if (typeof module !== 'undefined' && module.exports) module.exports = GrimoireIeChrome;
 })(typeof window !== 'undefined' ? window : globalThis);

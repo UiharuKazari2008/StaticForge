@@ -41,6 +41,12 @@
     pointer-events: none;
   }
   #debug[hidden] { display: none; }
+  /* The soft keyboard is a temporary overlay (#1118): while it covers the lower part of this viewer the page keeps
+     the size it had (the remote page is not laid out again) and the picture is raised just enough to keep the
+     tapped field above the keyboard. --kb-h is the page's height, --kb-shift how far the picture is raised;
+     the picture and the layers over it move together. */
+  html.kb-hold canvas { height: var(--kb-h); transform: translateY(calc(var(--kb-shift, 0px) * -1)); }
+  html.kb-hold #still, html.kb-hold #sheets, html.kb-hold #debug { inset: 0 0 auto 0; }
   #tabStatus {
     position: absolute;
     inset: 0;
@@ -494,6 +500,13 @@
       var aheadHeader = null;
       try { aheadHeader = JSON.parse(textDecoder.decode(bytes.subarray(3, 3 + aheadHeaderLength))); } catch (e) { return; }
       drawnAhead(aheadHeader, bytes.subarray(3 + aheadHeaderLength));
+      return;
+    }
+    if (kind === 7) {
+      var previewHeaderLength = bytes[1] | (bytes[2] << 8);
+      var previewHeader = null;
+      try { previewHeader = JSON.parse(textDecoder.decode(bytes.subarray(3, 3 + previewHeaderLength))); } catch (e) { return; }
+      pagePreview(previewHeader, bytes.subarray(3 + previewHeaderLength));
       return;
     }
     if (kind === 5) {
@@ -1321,6 +1334,51 @@
     if (debug.on) requestComposite();
   }
 
+  // ---- page preview (server.js capturePreview, #1118) ----
+  // One low-resolution picture of the whole document: the lowest layer, under the rows the frame and the cache have
+  // nothing of, so a scroll past them shows the page's shape instead of a checkerboard. Kept until the document changes
+  // (the server says so: preview-clear).
+  var preview = null; // { n, bmp, s (picture px per CSS px), dw, dh, w, h }
+  var previewGen = 0;
+  function pagePreview(header, body) {
+    if (!header || !(header.s > 0) || !(header.w > 0) || !(header.h > 0)) return;
+    var gen = ++previewGen;
+    createImageBitmap(new Blob([body], { type: frameType(header.f) })).then(function (bmp) {
+      // a newer one (or a clear) came while it decoded
+      if (gen !== previewGen) { releaseImage(bmp); return; }
+      if (preview) releaseImage(preview.bmp);
+      preview = { n: header.n, bmp: bmp, s: header.s, dw: header.dw || 0, dh: header.dh || 0, w: bmp.width, h: bmp.height };
+      requestComposite();
+    }, function () {});
+  }
+  function previewClear() {
+    previewGen += 1;
+    if (preview) releaseImage(preview.bmp);
+    preview = null;
+  }
+
+  // rows [y0, y1) of the view from the preview, where it has them; returns the rows still without (a [y0, y1] list is
+  // not built: the checkerboard takes the part above and below the picture)
+  function drawPreviewRows(y0, y1, docAtTop) {
+    var k = baseInfo.k;
+    if (!preview || !k || !(preview.s > 0)) return false;
+    var per = preview.s / k;                     // picture pixels per view pixel
+    var top = (docAtTop + y0) * per;             // picture rows of y0
+    var bottom = (docAtTop + y1) * per;
+    var pTop = Math.max(0, top);
+    var pBottom = Math.min(preview.h, bottom);
+    if (pBottom <= pTop) return false;
+    var left = (baseInfo.sx || 0) * preview.s;   // the horizontal scroll, in picture pixels
+    var sw = base.width * per;
+    var sLeft = Math.max(0, Math.min(left, preview.w - 1));
+    var sRight = Math.min(preview.w, left + sw);
+    if (sRight - sLeft < 1) return false;
+    var dy0 = y0 + (pTop - top) / per;
+    var dy1 = y1 - (bottom - pBottom) / per;
+    ctx.drawImage(preview.bmp, sLeft, pTop, sRight - sLeft, pBottom - pTop, (sLeft - left) / per, dy0, (sRight - sLeft) / per, dy1 - dy0);
+    return { y0: dy0, y1: dy1, x0: (sLeft - left) / per, x1: (sRight - left) / per };
+  }
+
   function pageBackground(b) {
     if (bgColor) return bgColor;
     try {
@@ -1375,6 +1433,15 @@
     var shift = ((docAtTop || 0) % size + size) % size;
     if (pattern.setTransform && typeof DOMMatrix === 'function') pattern.setTransform(new DOMMatrix([1, 0, 0, 1, 0, -shift]));
     ctx.fillStyle = pattern;
+    // the page preview first (the lowest layer); the checkerboard only where it has nothing
+    var drawn = preview ? drawPreviewRows(y0, y1, docAtTop || 0) : false;
+    if (drawn) {
+      if (drawn.y0 > y0) ctx.fillRect(0, y0, base.width, drawn.y0 - y0);
+      if (drawn.y1 < y1) ctx.fillRect(0, drawn.y1, base.width, y1 - drawn.y1);
+      if (drawn.x0 > 0) ctx.fillRect(0, drawn.y0, drawn.x0, drawn.y1 - drawn.y0);
+      if (drawn.x1 < base.width) ctx.fillRect(drawn.x1, drawn.y0, base.width - drawn.x1, drawn.y1 - drawn.y0);
+      return;
+    }
     ctx.fillRect(0, y0, base.width, y1 - y0);
   }
 
@@ -1711,6 +1778,7 @@
 
   function handleControl(msg) {
     if (!msg) return;
+    if (msg.type === 'inspect') noteFieldAnswer(msg);
     if (msg.type === 'meta' && msg.metadata) {
       meta = msg.metadata;
     } else if (msg.type === 'bin' && msg.data) {
@@ -1828,6 +1896,8 @@
       }
       // The page copied by itself (a copy button): this document has focus, so write here; the parent is the fallback.
       writeLocalClipboard(text);
+    } else if (msg.type === 'preview-clear') {
+      previewClear();
     } else if (msg.type === 'scroll') {
       var wasRoot = scrollInfo.root;
       scrollInfo = {
@@ -1982,7 +2052,70 @@
     };
   }
 
+  // The soft keyboard is a temporary overlay (#1118). Where this viewer's own window shrinks for it (the height
+  // drops, the width and pixel ratio stay) right after a tap on an edit field of the remote page, the page keeps
+  // its size (nothing is sent: it is not laid out again, nothing below is lost) and the picture is raised so
+  // the field stays above the keyboard; the keyboard going away puts everything back, and a real resize
+  // (width, pixel ratio, a shorter window without a field) is sent as before. Only resize events drive it.
+  var KB_MIN_DROP = 96;
+  var KB_MARGIN = 48;
+  var root = document.documentElement;
+  var kbHold = null;       // the size the remote page keeps while the keyboard is up
+  var kbShift = 0;
+  var editableFocus = false; // the last tap landed on an edit field of the remote page
+  var fieldProbe = false;   // an inspect asked by a tap is out
+  var probeY = 0;
+  var fieldY = -1;          // the field's top on the picture (CSS px from the canvas's top)
+  function probeField(clientY) {
+    fieldProbe = true;
+    probeY = clientY - canvas.getBoundingClientRect().top;
+  }
+  function noteFieldAnswer(msg) {
+    if (!fieldProbe) return;
+    fieldProbe = false;
+    editableFocus = !!msg.editable;
+    fieldY = editableFocus ? probeY : -1;
+    if (kbHold) updateKbShift(root.clientHeight);
+  }
+  function updateKbShift(vh) {
+    var shift = fieldY < 0 ? 0 : Math.max(0, Math.min(kbHold.height - vh, Math.round(fieldY + KB_MARGIN - vh)));
+    if (shift === kbShift) return;
+    kbShift = shift;
+    root.style.setProperty('--kb-shift', shift + 'px');
+  }
+  function releaseKb() {
+    kbHold = null;
+    kbShift = 0;
+    root.classList.remove('kb-hold');
+    root.style.removeProperty('--kb-h');
+    root.style.removeProperty('--kb-shift');
+  }
+  // true while the keyboard overlay holds the page's size (the caller then sends nothing)
+  function keyboardOverlay() {
+    var dpr = Math.round((window.devicePixelRatio || 1) * 1000) / 1000;
+    var w = Math.round(canvas.clientWidth || 0);
+    if (kbHold) {
+      var vh = root.clientHeight;
+      if (sendViewport.sent && !document.hidden && w === kbHold.width && dpr === kbHold.dpr && vh >= 64 && kbHold.height - vh >= KB_MIN_DROP / 2) {
+        updateKbShift(vh);
+        return true;
+      }
+      releaseKb();
+      return false;
+    }
+    var last = lastViewport;
+    if (!editableFocus || !last || !sendViewport.sent || document.hidden) return false;
+    var h = Math.round(canvas.clientHeight || 0);
+    if (w !== last.width || dpr !== last.dpr || h < 64 || last.height - h < Math.max(KB_MIN_DROP, last.height * 0.18)) return false;
+    kbHold = last;
+    root.style.setProperty('--kb-h', last.height + 'px');
+    updateKbShift(h);
+    root.classList.add('kb-hold');
+    return true;
+  }
+
   function sendViewport() {
+    if (keyboardOverlay()) return;
     var size = measuredViewport();
     if (!size) return;
     var same = lastViewport && lastViewport.width === size.width && lastViewport.height === size.height
@@ -2644,6 +2777,8 @@
     ev.preventDefault();
     var p = mapPoint(ev);
     press = { x: p.x, y: p.y, button: buttonName(ev.button), pointerId: ev.pointerId };
+    // a real mouse click is not a tap on a field of a phone: the keyboard overlay is for touch
+    if (ev.isTrusted && ev.pointerType === 'mouse') editableFocus = false;
     var body = mouseBody(ev, p);
     body.kind = 'down';
     send(body);
@@ -2671,6 +2806,11 @@
       }
     }
     press = null;
+    // a finger's tap on this window: is it an edit field? (answered through noteFieldAnswer)
+    if (tap && ev.isTrusted && ev.pointerType === 'touch') {
+      probeField(ev.clientY);
+      send({ type: 'inspect', x: p.x, y: p.y });
+    }
     if (replaced) {
       pumpOutbound();
       return;
@@ -2728,6 +2868,8 @@
   canvas.addEventListener('contextmenu', function (ev) {
     ev.preventDefault();
     var p = mapPoint(ev);
+    // a tap's own inspect (Internet Explorer's synthetic one, not a right click) tells whether a field has the keyboard
+    if (!ev.isTrusted) probeField(ev.clientY);
     pendingMenu = { clientX: ev.clientX, clientY: ev.clientY };
     send({ type: 'inspect', x: p.x, y: p.y });
   });
@@ -2928,9 +3070,11 @@
     var resizeTimer = 0;
     var observer = new ResizeObserver(function (entries) {
       for (var i = 0; i < entries.length; i++) {
-        var box = entries[i].devicePixelContentBoxSize;
+        var box = entries[i].target === canvas && entries[i].devicePixelContentBoxSize;
         if (box && box[0]) devicePx = { w: box[0].inlineSize, h: box[0].blockSize };
       }
+      // at once (the picture must not squash for the 80 ms): the keyboard overlay holds the page's size
+      if (keyboardOverlay()) return;
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(sendViewport, 80);
     });
@@ -2939,6 +3083,8 @@
     } catch (e) {
       observer.observe(document.body);
     }
+    // the window's own size: the canvas is held while the keyboard is up, so its size no longer tells when it goes
+    observer.observe(root);
   }
   document.addEventListener('visibilitychange', function () {
     if (!document.hidden) setTimeout(sendViewport, 80);

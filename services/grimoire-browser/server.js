@@ -2298,6 +2298,12 @@ const MSG_AUDIO = 2;
 const MSG_TILES = 3;
 // 4: a scroll pack - rows moved (ops [dst, src, rows]) then tiles, both on the frame before it (#990 round 2)
 const MSG_SCROLL = 4;
+// (5 and 6 are layerSheets.js: a sheet, a prefill)
+// 7: a low-resolution picture of the whole document (page preview, #1118): the viewer draws it under the rows it has no
+// pixels for, instead of a checkerboard. Header: n = the navigation it belongs to, dw / dh = the document in CSS pixels
+// (dh as far as captured), w / h = the picture's pixels, s = picture pixels per CSS pixel, f = 'webp'. Binary, never
+// a data: URL.
+const MSG_PREVIEW = 7;
 
 function frameHeader(session, meta) {
     const m = meta || session.meta || {};
@@ -2328,6 +2334,123 @@ function binaryMessage(kind, header, body) {
     head[0] = kind;
     head.writeUInt16LE(json.length, 1);
     return Buffer.concat([head, json, body]);
+}
+
+// ---- page preview (#1118) ----
+// One low-resolution capture of the whole document, sent after a page loads (and again when its height changes a lot),
+// so a viewer that scrolls past rows it has no pixels for sees the page's shape instead of a checkerboard. Event driven:
+// load events and the page's own scroll report (document height) arm one debounce timer; nothing polls.
+const PREVIEW_MAX_DOC_H = 20000;      // CSS pixels captured at most
+const PREVIEW_MAX_W = 400;            // picture pixels
+const PREVIEW_MAX_H = 4000;
+const PREVIEW_SCALE = 0.25;           // at most this many picture pixels per CSS pixel
+const PREVIEW_QUALITY = 40;
+const PREVIEW_MIN_RATIO = 1.3;        // a document shorter than this many viewports needs none
+
+function previewClear(session) {
+    clearTimeout(session.previewTimer);
+    session.previewTimer = 0;
+    session.previewTries = 0;
+    session.previewNav = (session.previewNav || 0) + 1;
+    session.previewDocH = 0;
+    const had = !!session.previewBytes;
+    session.previewBytes = null;
+    session.previewWanted = true;
+    if (had) broadcast(session, { type: 'preview-clear', n: session.previewNav });
+}
+
+function previewSchedule(session, delay) {
+    if (!session.cdp || session.closing || session.extensionPopup || session.previewBusy) return;
+    clearTimeout(session.previewTimer);
+    session.previewTimer = setTimeout(() => {
+        session.previewTimer = 0;
+        capturePreview(session).catch(() => { session.previewBusy = false; });
+    }, delay);
+}
+
+// the page's scroll report: the document's height moved a lot (lazy content) since the preview, or there is none yet
+function previewNoteHeight(session, doc, view) {
+    if (session.navigating || session.previewTimer || session.previewBusy || doc < view * PREVIEW_MIN_RATIO) return;
+    const moved = session.previewDocH && Math.abs(doc - session.previewDocH) > Math.max(800, session.previewDocH * 0.25)
+        && !(session.previewDocH >= PREVIEW_MAX_DOC_H && doc >= PREVIEW_MAX_DOC_H);
+    if (session.previewWanted || moved) previewSchedule(session, 2500);
+}
+
+async function capturePreview(session) {
+    if (!sessions.get(session.id) || session.closing || session.extensionPopup || session.previewBusy) return;
+    // only for a viewer that is there and showing; the wish stays and a viewer coming (or shown again) arms it
+    if (!session.sockets.size || session.viewHidden) return;
+    const sc = session.scroll;
+    if (!sc || !sc.root || sc.height < sc.view * PREVIEW_MIN_RATIO) { session.previewWanted = false; return; }
+    // the screencast comes first: frames, a scroll, a viewport change or a load in progress hold the capture back a
+    // little (a few tries; the next load event or height change arms it again)
+    if (session.viewportBusy || session.framePump || session.latestFrame || session.pendingScroll || scrollBurst(session)
+        || session.navigating || session.stillBusy || socketsCongested(session)) {
+        if ((session.previewTries = (session.previewTries || 0) + 1) <= 4) previewSchedule(session, 1500);
+        return;
+    }
+    const nav = session.previewNav || 0;
+    session.previewBusy = true;
+    session.previewTries = 0;
+    let shot = null;
+    let docW = 0;
+    let docH = 0;
+    try {
+        // a DevTools session of its own, as the full-resolution still: a capture on the screencast's session resets that
+        // session's device emulation
+        if (!session.captureCdp) session.captureCdp = await session.page.createCDPSession();
+        const metrics = await session.captureCdp.send('Page.getLayoutMetrics');
+        const size = metrics.cssContentSize || metrics.contentSize || {};
+        docW = Math.max(1, Math.ceil(size.width || session.width || 1));
+        docH = Math.max(1, Math.min(PREVIEW_MAX_DOC_H, Math.ceil(size.height || 1)));
+        const scale = Math.min(PREVIEW_SCALE, PREVIEW_MAX_W / docW, PREVIEW_MAX_H / docH);
+        // the capture reshapes the view for a moment (the over-render band goes, Chromium sends frames of its own for
+        // it): those are dropped as the refine capture's are, and the band is put back at once
+        session.refineEchoUntil = Date.now() + 1500;
+        try {
+            shot = await session.captureCdp.send('Page.captureScreenshot', {
+                format: 'webp',
+                quality: PREVIEW_QUALITY,
+                fromSurface: true,
+                captureBeyondViewport: true,
+                optimizeForSpeed: true,
+                clip: { x: 0, y: 0, width: docW, height: docH, scale }
+            });
+        } finally {
+            if (session.bandDip) await session.cdp.send('Emulation.setVisibleSize', { width: session.dipWidth, height: session.dipHeight + session.bandDip }).catch(() => {});
+            session.refineEchoUntil = Date.now() + 250;
+        }
+    } catch (err) {
+        if (PACK_DEBUG) console.log('[grimoire-browser] preview failed:', err && err.message);
+        shot = null;
+    } finally {
+        session.previewBusy = false;
+    }
+    if (!shot || !shot.data || !sessions.get(session.id) || session.closing || nav !== (session.previewNav || 0)) return;
+    let bytes = Buffer.from(shot.data, 'base64');
+    // the picture's real size (the capture's device scale is the browser's, not ours): too large a one is brought down
+    let w = 0;
+    let h = 0;
+    if (sharp) {
+        try {
+            const info = await sharp(bytes).metadata();
+            w = info.width || 0;
+            h = info.height || 0;
+            const want = Math.min(PREVIEW_SCALE, PREVIEW_MAX_W / docW, PREVIEW_MAX_H / docH);
+            if (w > docW * want * 1.5 + 2) {
+                const out = await sharp(bytes).resize({ width: Math.max(1, Math.round(docW * want)) }).webp({ quality: PREVIEW_QUALITY }).toBuffer({ resolveWithObject: true });
+                bytes = out.data;
+                w = out.info.width;
+                h = out.info.height;
+            }
+        } catch (_) { w = 0; h = 0; }
+    }
+    if (!w || !h) return;
+    if (nav !== (session.previewNav || 0) || !sessions.get(session.id)) return;
+    session.previewWanted = false;
+    session.previewDocH = docH;
+    session.previewBytes = binaryMessage(MSG_PREVIEW, { n: nav, dw: docW, dh: docH, w, h, s: w / docW, f: 'webp' }, bytes);
+    broadcast(session, session.previewBytes, true);
 }
 
 function beginNavigating(session, resetTimer) {
@@ -4292,6 +4415,8 @@ async function createSession(body, adoptedPage) {
         session.committedUrl = ev.frame.unreachableUrl || ((ev.frame.url || '') + (ev.frame.urlFragment || ''));
         // a new document: new layers, and none of the old sheets
         if (session.sheets) session.sheets.reset();
+        // and none of the old page's preview
+        previewClear(session);
     });
 
     // Isolated world: a page-visible binding (page.exposeFunction) makes Cloudflare Turnstile refuse the click.
@@ -4336,6 +4461,7 @@ async function createSession(body, adoptedPage) {
             // root / bandTop / bandBottom (#990): whether the document is the scroller, and its fixed bars (CSS pixels)
             session.scroll = { type: 'scroll', y, height, view, x, width, viewWidth, root: root ? 1 : 0, bandTop, bandBottom };
             broadcast(session, session.scroll);
+            if (root) previewNoteHeight(session, height, view);
             return;
         }
         if (!ev || ev.name !== '__alchemyTitle' || !sessions.get(id)) return;
@@ -4456,6 +4582,7 @@ async function createSession(body, adoptedPage) {
         try { session.title = await page.title(); } catch (_) {}
         endNavigating(session);
         if (ev.name === 'DOMContentLoaded' || ev.name === 'load') publishFeeds(session).catch(() => {});
+        if (ev.name === 'networkAlmostIdle' || ev.name === 'load') { session.previewWanted = true; previewSchedule(session, 1200); }
     });
 
     cdp.on('Network.dataReceived', (ev) => noteLoadBytes(session, Number(ev.encodedDataLength) || Number(ev.dataLength) || 0));
@@ -4741,6 +4868,7 @@ async function onViewerMessage(session, raw, ws) {
         }
         if (!session.viewHidden && HEADFUL && session.group && session.page) session.page.bringToFront().catch(() => {});
         syncCapture(session);
+        if (!session.viewHidden && session.previewWanted && !session.previewBytes) previewSchedule(session, 800);
         return;
     }
     if (msg.type === 'memory-override') {
@@ -5617,6 +5745,9 @@ function attachViewer(ws, session) {
     if (session.feeds && session.feeds.length) ws.send(JSON.stringify({ type: 'feeds', feeds: session.feeds }));
     if (session.dialog) ws.send(JSON.stringify(session.dialog.ask));
     if (session.scroll) ws.send(JSON.stringify(session.scroll));
+    // the page's preview (#1118): the last one for this document, else one is made now that someone watches
+    if (session.previewBytes) { try { ws.send(session.previewBytes); } catch (_) {} }
+    else if (session.previewWanted && session.scroll) previewSchedule(session, 800);
     if (session.layers) ws.send(JSON.stringify(Object.assign({}, session.layers, { reset: 1, v: session.layersVis || undefined })));
     if (session.sheets) {
         if (session.sheets.active) session.sheets.attach(ws);
