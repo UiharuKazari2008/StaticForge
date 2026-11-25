@@ -159,6 +159,8 @@
     const tileColors = (v) => TILE_COLORS[Math.min(TILE_COLORS.length - 1, Math.max(0, Math.round(Math.log2(v)) - 1))];
 
     function roundRect(ctx, x, y, w, h, r) {
+        // arcTo throws on a negative radius: a tiny tile (a hidden stage draws at its minimum size) gets square corners (#852)
+        r = Math.max(0, Math.min(r, w / 2, h / 2));
         ctx.beginPath();
         ctx.moveTo(x + r, y);
         ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -934,6 +936,8 @@
         }
 
         draw(ctx, st) {
+            // a closed or hidden window has a 0 px host: nothing to see, and the board would paint at its 8 px floor (#852)
+            if (st.host.clientWidth < 2 || st.host.clientHeight < 2) return;
             const g = this.g;
             const now = VG.now();
             ctx.drawImage(this.staticLayer(st), 0, 0, NATIVE_W, NATIVE_H);
