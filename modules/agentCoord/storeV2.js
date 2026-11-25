@@ -240,7 +240,9 @@ module.exports = function storeV2(core) {
                 } else if (c.name === 'Bash' && inp.command) {
                     shellArtifacts(inp.command).forEach((a) => artifacts.push(Object.assign(a, { at, cmd: text(String(inp.command).split('\n')[0], 200) })));
                     lockMentions(inp.command).forEach((n) => locksSeen.add(n));
-                    shellPaths(inp.command).forEach((p) => {
+                    // only what the command really writes (Nov 25 2026: read-only commands, URLs and git ranges were counted as
+                    // edits and caused false collision pauses)
+                    require('./activityIndex').shellWritePaths(inp.command).forEach((p) => {
                         if (edits.has(p) && edits.get(p).tool !== 'Bash') return;
                         const e = edits.get(p) || { tool: 'Bash', n: 0, first: at, last: at };
                         e.n += 1; e.last = at || e.last; if (!e.first) e.first = at;

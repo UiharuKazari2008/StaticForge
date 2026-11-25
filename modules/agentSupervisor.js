@@ -293,12 +293,14 @@ const SYSTEM = [
     'You are the Supervisor for coding agents (Claude Code sessions) working for Yukimi. After a turn you check, from the transcript summary given, whether the agent did EVERYTHING the user asked in the request and in every steering message sent while it worked.',
     'List each concrete thing asked (including small asides, questions to answer, files or checks named, "also ..." items, and changes of direction from steering). For each, decide from the actions and the final answer whether it was done, answered, or explicitly deferred with a reason. A later steering message that cancels or replaces an earlier ask overrides it.',
     'Only report real gaps: an ask that was not done, not answered, or done differently than asked without saying so. Do not report style, quality opinions, or things nobody asked for. Work the agent said it filed as a follow-up issue counts as addressed. If the turn ended with the agent waiting on the user, that is NOT ok and not a gap: see the next rule.',
-    'A turn that ends with the agent waiting on the user is verdict "input": it asks a question, asks for a decision or an approval, needs a login, credential or data only the user can give, says the item "stays open for Yukimi\'s answers", posted questions on the issue, or stops to "put the options to Yukimi". List every such question in "questions":[{"question":"...","answer":"...","why":"where the answer comes from"}]. Fill "answer" yourself whenever the request or brief, the steering, the user\'s list, Yukimi\'s standing rules (given below when available) or common sense already settle it, or when the step is plainly the agent\'s own job: "this needs another login" -> "Fine: build the code that asks for that login and carry on"; "should I also test it" -> "Yes". Write the answer as an instruction to the agent. Leave "answer" empty ONLY when Yukimi alone can decide (spending money, creating an account only she can make, giving a secret or a login, a product choice the brief gives no lead on). Keep "missed" and "questions" independent: report both when both exist (verdict gaps when anything was missed, else input when there are questions).',
+    'A turn that ends with the agent waiting on the user is verdict "input": it asks a question, asks for a decision or an approval, needs a login, credential or data only the user can give, says the item "stays open for Yukimi\'s answers", posted questions on the issue, or stops to "put the options to Yukimi". List every such question in "questions":[{"question":"...","answer":"...","why":"where the answer comes from"}]. Fill "answer" yourself whenever the request or brief, the steering, the user\'s list, Yukimi\'s standing rules (given below when available) or common sense already settle it, or when the step is plainly the agent\'s own job: "this needs another login" -> "Fine: build the code that asks for that login and carry on"; "should I also test it" -> "Yes". Write the answer as an instruction to the agent. Leave "answer" empty ONLY when Yukimi alone can decide (spending money, creating an account only she can make, giving a secret or a login, an irreversible outward action; a product choice is decided by you: the recommended option). Keep "missed" and "questions" independent: report both when both exist (verdict gaps when anything was missed, else input when there are questions).',
     'When the request is to build, change or fix something, it is only done with evidence it works: the agent ran tests, a build, the program, or looked at the result, and says what it saw. A build / fix turn that ends without any such evidence is a gap ("not shown to be tested").',
     'Work the agent handed to a background agent or subagent that is still running, and said so (what it does, that it reports back), is in progress, not a gap: the turn ending while it runs is expected. Only report it if the agent never started it or never said so.',
     'Answers along the way count as much as the final one: an ask answered or reported done in any of them is addressed. An agent that says an item was already done earlier (naming the commit, the check or what it saw) has addressed it: do not ask for it again.',
     'When "The user\'s list" is given, it holds everything the user asked over the whole session, with a tick and the evidence for the items already done: an open item without evidence that this turn was about and did not address is a gap; a ticked item with evidence is addressed. Name the open items this turn did, with what shows it, in "done".',
-    'Answer ONLY a JSON object: {"verdict":"ok"|"gaps"|"input"|"unclear","summary":"one sentence","missed":[{"item":"what was asked and not addressed","evidence":"why you think so, quoting the request"}],"questions":[{"question":"what the agent waits on","answer":"your answer or empty","why":"source of the answer"}],"done":[{"id":12,"evidence":"short proof from the actions or the answer"}]}. verdict ok means nothing missed and nothing waiting on the user; unclear means the summary is not enough to tell. "done" is optional (only ids from the user\'s list).'
+    'Standing rule from Yukimi: "I do not and should not have much involvement in the process. The point is for you to take control of getting the task completed and fully tested and reviewed." You own completion. Answer every question you reasonably can yourself: scope, approach, which option to take, whether to test, whether a second login / sign-in flow should be built, waiting on other agents. Send the agent back (gaps) until the work is built, tested with evidence and reviewed. Leave "answer" empty ONLY for what truly needs Yukimi: spending money, a secret / password / login only she has, creating an account only she can make, or an irreversible outward action (publishing, deleting her data). When in doubt you decide: take the recommended option (or the safest reasonable one) and say so in the answer ("Decided by the Supervisor: option B, the recommended one") instead of asking. "Which option do you prefer" with a recommended option is answered with that option, never escalated.',
+    'A turn that ends waiting on ANOTHER AGENT or EVENT (not on Yukimi) is not "input" and not done: the agent says it waits for someone to commit, to release claims, for a build gate or a restart to finish, for another session to end. Give verdict "ok" (or "gaps" when something else was missed) and record the wait in "waitsOn":{"kind":"commit"|"claims"|"build"|"restart"|"agent","who":"agent name or id when named","paths":["files named"],"what":"one line: what it waits for"}. The Supervisor watches the condition and tells the agent to continue when it clears. Omit "waitsOn" when nothing is waited on.',
+    'Answer ONLY a JSON object: {"verdict":"ok"|"gaps"|"input"|"unclear","summary":"one sentence","waitsOn":null,"missed":[{"item":"what was asked and not addressed","evidence":"why you think so, quoting the request"}],"questions":[{"question":"what the agent waits on","answer":"your answer or empty","why":"source of the answer"}],"done":[{"id":12,"evidence":"short proof from the actions or the answer"}]}. verdict ok means nothing missed and nothing waiting on the user; unclear means the summary is not enough to tell. "done" is optional (only ids from the user\'s list).'
 ].join('\n');
 
 function promptFor(t, meta) {
@@ -529,7 +531,19 @@ function parseVerdict(text) {
         const left = String(x.left || x.remaining || '').replace(/\s+/g, ' ').trim().slice(0, 600);
         return { ref, done: typeof x.done === 'boolean' ? x.done : !left, left };
     }).filter(Boolean).slice(0, 40);
-    return Object.assign({ verdict, summary: String(o.summary || '').slice(0, 400), missed }, questions.length ? { questions } : {}, done.length ? { done } : {}, issues.length ? { issues } : {});
+    const waitsOn = cleanWaitsOn(o.waitsOn || o.waits_on);
+    return Object.assign({ verdict, summary: String(o.summary || '').slice(0, 400), missed }, questions.length ? { questions } : {}, done.length ? { done } : {}, issues.length ? { issues } : {}, waitsOn ? { waitsOn } : {});
+}
+
+const WAIT_KINDS = ['commit', 'claims', 'build', 'restart', 'agent'];
+/** The review's "waitsOn": { kind, who, paths, what } or null (an unknown kind or no description is dropped). */
+function cleanWaitsOn(w) {
+    if (!w || typeof w !== 'object') return null;
+    const kind = String(w.kind || '').toLowerCase();
+    const what = String(w.what || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (!WAIT_KINDS.includes(kind) || !what) return null;
+    const paths = (Array.isArray(w.paths) ? w.paths : []).map((x) => String(x || '').trim().replace(/^\.\//, '')).filter((x) => x && x.length < 300).slice(0, 20);
+    return { kind, who: String(w.who || '').replace(/\s+/g, ' ').trim().slice(0, 80), paths, what };
 }
 
 // ---------------------------------------------------------------- store (agent-coord DB)
@@ -565,7 +579,15 @@ function db() {
                 id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, mode TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
                 by_who TEXT NOT NULL DEFAULT '', pids TEXT NOT NULL DEFAULT '[]', at INTEGER NOT NULL, ended_at INTEGER, kind TEXT NOT NULL DEFAULT 'manual', paths TEXT NOT NULL DEFAULT '[]'
             );
+            CREATE TABLE IF NOT EXISTS supervisor_waits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, work_id INTEGER NOT NULL, session_id TEXT NOT NULL, kind TEXT NOT NULL, who TEXT NOT NULL DEFAULT '',
+                paths TEXT NOT NULL DEFAULT '[]', what TEXT NOT NULL DEFAULT '', at INTEGER NOT NULL, boot INTEGER NOT NULL DEFAULT 0,
+                nudges INTEGER NOT NULL DEFAULT 0, last_nudge_at INTEGER, ended_at INTEGER, ended_why TEXT
+            );
+            CREATE TABLE IF NOT EXISTS supervisor_resumes (work_id INTEGER NOT NULL, at INTEGER NOT NULL, why TEXT NOT NULL DEFAULT '');
         `);
+        const hcols = new Set(d.prepare('PRAGMA table_info(supervisor_holds)').all().map((c) => c.name));
+        if (!hcols.has('other_session')) d.exec("ALTER TABLE supervisor_holds ADD COLUMN other_session TEXT NOT NULL DEFAULT ''");
         const wcols = new Set(d.prepare('PRAGMA table_info(supervisor_work)').all().map((c) => c.name));
         if (!wcols.has('engine')) d.exec("ALTER TABLE supervisor_work ADD COLUMN engine TEXT NOT NULL DEFAULT 'claude'");
         [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT'], ['remote_control', 'INTEGER NOT NULL DEFAULT 0'], ['issue_refs', 'TEXT'], ['joined_into', 'INTEGER'], ['input_questions', 'TEXT']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
@@ -580,6 +602,8 @@ function db() {
         if (!rcols.has('issues')) d.exec('ALTER TABLE supervisor_reviews ADD COLUMN issues TEXT');
         // questions the turn ended on (verdict input, or beside gaps): a JSON list [{ question, answer, why }]
         if (!rcols.has('questions')) d.exec('ALTER TABLE supervisor_reviews ADD COLUMN questions TEXT');
+        // what the turn ended waiting on (another agent / event, not Yukimi): a JSON object { kind, who, paths, what }
+        if (!rcols.has('waits_on')) d.exec('ALTER TABLE supervisor_reviews ADD COLUMN waits_on TEXT');
         db.ready = d;
     }
     return d;
@@ -592,7 +616,7 @@ function rowReview(r) {
         id: r.id, sessionId: r.session_id, agentId: r.agent_id || '', title: r.title || '', account: r.account || '', at: r.at,
         trigger: r.trigger, verdict: r.verdict, summary: r.summary, request: r.request, steering: j(r.steering, []),
         missed: j(r.missed, []), model: r.model, delivered: r.delivered || '', dismissed: !!r.dismissed, error: r.error || '',
-        resolved: r.resolved || '', violations: j(r.violations, []), ruleCheck: j(r.rulecheck, null), issues: j(r.issues, []), questions: j(r.questions, [])
+        resolved: r.resolved || '', violations: j(r.violations, []), ruleCheck: j(r.rulecheck, null), issues: j(r.issues, []), questions: j(r.questions, []), waitsOn: j(r.waits_on, null)
     };
 }
 
@@ -738,9 +762,9 @@ async function review(sessionId, trigger, opts = {}) {
     if (result.skipped && trigger === 'turn-end') return null; // nothing asked: no row
     // the items a review names as done are ticked, with its evidence
     if (result.done && result.done.length) { try { sessionTasks().applyDone(sessionId, result.done); } catch (e) { console.warn(`[supervisor] tick: ${e.message}`); } }
-    const ins = d.prepare(`INSERT INTO supervisor_reviews (session_id, agent_id, title, account, at, trigger, verdict, summary, request, steering, missed, model, error, violations, rulecheck, issues, questions)
-        VALUES (@session_id, @agent_id, @title, @account, @at, @trigger, @verdict, @summary, @request, @steering, @missed, @model, @error, @violations, @rulecheck, @issues, @questions)`)
-        .run(Object.assign(base, { issues: result.issues && result.issues.length ? JSON.stringify(result.issues) : null, questions: result.questions && result.questions.length ? JSON.stringify(result.questions) : null, verdict: result.verdict, summary: result.summary || '', missed: JSON.stringify(result.missed || []), model: result.model || '', error: result.error || null, violations: JSON.stringify(rc ? rc.violations : []), rulecheck: rc ? JSON.stringify({ checked: rc.checked, files: rc.files, scripts: rc.scripts, rules: rc.rules, calls: rc.calls, error: rc.error, skipped: rc.skipped || '' }) : null }));
+    const ins = d.prepare(`INSERT INTO supervisor_reviews (session_id, agent_id, title, account, at, trigger, verdict, summary, request, steering, missed, model, error, violations, rulecheck, issues, questions, waits_on)
+        VALUES (@session_id, @agent_id, @title, @account, @at, @trigger, @verdict, @summary, @request, @steering, @missed, @model, @error, @violations, @rulecheck, @issues, @questions, @waits_on)`)
+        .run(Object.assign(base, { waits_on: result.waitsOn ? JSON.stringify(result.waitsOn) : null, issues: result.issues && result.issues.length ? JSON.stringify(result.issues) : null, questions: result.questions && result.questions.length ? JSON.stringify(result.questions) : null, verdict: result.verdict, summary: result.summary || '', missed: JSON.stringify(result.missed || []), model: result.model || '', error: result.error || null, violations: JSON.stringify(rc ? rc.violations : []), rulecheck: rc ? JSON.stringify({ checked: rc.checked, files: rc.files, scripts: rc.scripts, rules: rc.rules, calls: rc.calls, error: rc.error, skipped: rc.skipped || '' }) : null }));
     let rv = getReview(ins.lastInsertRowid);
     resolveEarlier(rv, rc);
     if ((rv.verdict === 'gaps' || openViolations(rv).length) && trigger !== 'mcp') rv = await deliver(rv, s, { auto: true, fromSupervisor: turn.fromSupervisor }).catch(() => rv);
@@ -1478,10 +1502,10 @@ function runGroups(g, w, groups) {
     return kids;
 }
 
-const plannerNote = (st) => `You are the PLANNER for this request (Supervisor -> Planner -> background agents). First research and plan (read the code, decide the approach, split it into parts with clear file ownership). Then do the work through background agents (the Agent tool, run_in_background), each with a complete brief (goal, files it owns, what it must not touch, how to verify with evidence) and model "${st.workers.model || 'sonnet'}"${st.workers.effort ? ` and effort "${st.workers.effort}" by default (low for mechanical sweeps, high for tricky parts such as concurrency, migrations or security)` : ''}; do trivial edits yourself only. Verify every agent's result with evidence (tests you ran, command output, screenshots you read) before you call a part done, integrate, commit, and report progress and holdups on the tracked issue as you go.`;
+const plannerNote = (st) => `You are the PLANNER for this request (Supervisor -> Planner -> background agents). First research and plan (read the code, decide the approach, split it into parts with clear file ownership). Then do the work through background agents (the Agent tool, run_in_background), each with a complete brief (goal, files it owns, what it must not touch, how to verify with evidence) and model "${st.workers.model || 'sonnet'}"${st.workers.effort ? ` and effort "${st.workers.effort}" by default (low for mechanical sweeps, high for tricky parts such as concurrency, migrations or security)` : ''}; do trivial edits yourself only. Verify every agent's result with evidence (tests you ran, command output, screenshots you read) before you call a part done, integrate, commit, and report progress and holdups on the tracked issue as you go. Yukimi stays out of the process: decide options yourself (take the recommended one, say so in your note); only spending money, her secrets or logins, an account only she can create, or an irreversible outward action needs her.`;
 
 /** Plan first (topology auto): one planner session reviews the request, then picks the shape and reports it with fleet_work_shape. */
-const autoPlannerNote = (st, id) => `You are the PLANNER for Fleet work item ${id} and the Supervisor has not picked a shape: you do (Supervisor -> Planner -> shape). FIRST review the request (and its Yozora issue, when it names one) and plan the best approach: read the code it touches, decide what has to change, where, and in what order. THEN pick the shape and report it with the agent-coord tool fleet_work_shape { id: ${id}, topology, reason } before you start the work: "direct" = you do it yourself in this session (a small or single-area change, a question, a quick fix); "planner" = you run background agents per part (the Agent tool, run_in_background), each with a complete brief (goal, files it owns, what it must not touch, how to verify with evidence), model "${st.workers.model || 'sonnet'}"${st.workers.effort ? ` and effort "${st.workers.effort}" by default` : ''}; "surfaces" = the parts barely depend on each other and each deserves its own session: pass parts [{ title, surface, paths, brief }] (2 to 6, no two own the same file) and the Supervisor starts one supervised session per part (children of this item) while you integrate and verify. Until you report the shape the item shows "Planning". Then do the work that way, verify every result with evidence (tests you ran, command output, screenshots you read), integrate, commit, and report progress and holdups on the tracked issue as you go.`;
+const autoPlannerNote = (st, id) => `You are the PLANNER for Fleet work item ${id} and the Supervisor has not picked a shape: you do (Supervisor -> Planner -> shape). FIRST review the request (and its Yozora issue, when it names one) and plan the best approach: read the code it touches, decide what has to change, where, and in what order. THEN pick the shape and report it with the agent-coord tool fleet_work_shape { id: ${id}, topology, reason } before you start the work: "direct" = you do it yourself in this session (a small or single-area change, a question, a quick fix); "planner" = you run background agents per part (the Agent tool, run_in_background), each with a complete brief (goal, files it owns, what it must not touch, how to verify with evidence), model "${st.workers.model || 'sonnet'}"${st.workers.effort ? ` and effort "${st.workers.effort}" by default` : ''}; "surfaces" = the parts barely depend on each other and each deserves its own session: pass parts [{ title, surface, paths, brief }] (2 to 6, no two own the same file) and the Supervisor starts one supervised session per part (children of this item) while you integrate and verify. Until you report the shape the item shows "Planning". Then do the work that way, verify every result with evidence (tests you ran, command output, screenshots you read), integrate, commit, and report progress and holdups on the tracked issue as you go. Yukimi stays out of the process: do not stop to ask her which option, whether to test, or whether to build something; decide (take the recommended option), say so in your note and carry on. Only spending money, a secret or login only she has, an account only she can create, or an irreversible outward action (publishing, deleting her data) needs her.`;
 
 /**
  * The planner of an auto item reports the shape it chose (agent-coord fleet_work_shape). direct / planner only record it;
@@ -1821,7 +1845,13 @@ async function workAfterReview(rv, opts = {}) {
     const qs = Array.isArray(rv.questions) ? rv.questions : [];
     const qJson = qs.length ? JSON.stringify(qs) : null;
     const openKids = db().prepare("SELECT COUNT(*) AS n FROM supervisor_work WHERE parent_id = ? AND state NOT IN ('done','failed','cancelled')").get(w.id).n;
-    if (rv.verdict === 'ok' && openKids) setWork(w.id, { state: 'running', message: `Its planner finished a turn; ${openKids} part${openKids === 1 ? ' is' : 's are'} still running` });
+    if (rv.verdict === 'ok' && rv.waitsOn) {
+        // the turn ended waiting on another agent or event (not Yukimi): running, "Waiting for <what>", watched until it clears
+        setWork(w.id, { state: 'running', message: `Waiting for ${rv.waitsOn.what}`.slice(0, 240), input_questions: null });
+        recordWait(w, rv.waitsOn);
+        commentIssue(w, `**Fleet / Supervisor:** the agent is waiting for ${rv.waitsOn.what}; the Supervisor watches it and tells the agent to continue when it is clear (no answer needed from Yukimi).`);
+    }
+    else if (rv.verdict === 'ok' && openKids) setWork(w.id, { state: 'running', message: `Its planner finished a turn; ${openKids} part${openKids === 1 ? ' is' : 's are'} still running` });
     else if (rv.verdict === 'ok') {
         // an ok review is not Done while the session works, its background agents run or another review of it is queued (Yukimi, Nov 25 2026)
         const f = sessionInFlight(rv.sessionId, { ignoreReviewing: true, fresh: true });
@@ -1858,6 +1888,8 @@ async function workAfterReview(rv, opts = {}) {
             setWork(w.id, { state: 'failed', ended_at: Date.now(), message: `Stopped with its session idle; the Supervisor could not judge the last turn (${rv.summary || rv.verdict}). Open the session to check it, or Start Now to run it again.` });
         }
     } else setWork(w.id, { state: 'running', message: rv.summary || 'Turn ended' });
+    // its session ended without the item being done: started again, with the gaps / waits / answers in the note
+    try { await maybeRevive(w.id, rv); } catch (e) { console.warn(`[supervisor] revive: ${e.message}`); }
     emit({ work: getWork(w.id) });
     pumpWork().catch(() => {});
 }
@@ -2210,8 +2242,8 @@ async function intakePlaud(gr, recordingIds) {
 //           process group a Remote Control server shares); resume sends SIGCONT. Fleet / the Supervisor
 //           only, never an agent's tool. An API stream cut while frozen is retried by the CLI.
 // Collisions (settings.autoPauseOnCollision, default on): after a turn, a file this session changed and has
-// not committed that another live session has also changed and not committed pauses that other session
-// (hold) and tells both; the hold ends by itself once the two no longer overlap.
+// not committed that another live session has also changed and not committed pauses the LATER editor only (hold) and tells the
+// first to commit it including the other's hunks; the hold ends by itself (see "live collision logic" below).
 
 function descendants(pid) {
     const kids = new Map();
@@ -2234,7 +2266,7 @@ function activeHold(sessionId) {
     return db().prepare('SELECT * FROM supervisor_holds WHERE session_id = ? AND ended_at IS NULL ORDER BY id DESC').get(String(sessionId));
 }
 function listHolds() {
-    return db().prepare('SELECT * FROM supervisor_holds WHERE ended_at IS NULL ORDER BY id DESC').all().map((h) => ({ id: h.id, sessionId: h.session_id, mode: h.mode, reason: h.reason, by: h.by_who, at: h.at, kind: h.kind, paths: JSON.parse(h.paths || '[]') }));
+    return db().prepare('SELECT * FROM supervisor_holds WHERE ended_at IS NULL ORDER BY id DESC').all().map((h) => ({ id: h.id, sessionId: h.session_id, mode: h.mode, reason: h.reason, by: h.by_who, at: h.at, kind: h.kind, paths: JSON.parse(h.paths || '[]'), other: h.other_session || '' }));
 }
 
 async function pauseSession(sessionId, opts = {}) {
@@ -2258,8 +2290,9 @@ async function pauseSession(sessionId, opts = {}) {
         if (!coord().getAgent(lockAgentId(sessionId))) coord().upsertAgent({ id: lockAgentId(sessionId), kind: 'claude', name: live.givenName || live.name || sessionId.slice(0, 8), sessionId });
         coord().post('supervisor', lockAgentId(sessionId), `PAUSE (${by}, ${mode}): ${reason}. Do not edit files or run builds until RESUME.`, { kind: 'steer' });
     } catch (_) { /* inbox unavailable */ }
-    db().prepare('INSERT INTO supervisor_holds (session_id, mode, reason, by_who, pids, at, kind, paths) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(sessionId, mode, reason, by, JSON.stringify(pids), Date.now(), opts.kind || 'manual', JSON.stringify(opts.paths || []));
+    db().prepare('INSERT INTO supervisor_holds (session_id, mode, reason, by_who, pids, at, kind, paths, other_session) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(sessionId, mode, reason, by, JSON.stringify(pids), Date.now(), opts.kind || 'manual', JSON.stringify(opts.paths || []), opts.other || '');
     emit({ hold: sessionId });
+    if (opts.kind === 'collision') armWatch();
     return activeHold(sessionId);
 }
 
@@ -2275,57 +2308,435 @@ async function resumeSession(sessionId, opts = {}) {
     }
     db().prepare('UPDATE supervisor_holds SET ended_at = ? WHERE id = ?').run(Date.now(), h.id);
     emit({ hold: sessionId });
+    armWatch();
     return { sessionId, resumed: true };
 }
 
-/** After a turn: files this session and another live one both changed and did not commit. */
-async function checkCollisions(sessionId, s) {
-    const live = liveSessionsById();
-    const me = live.get(sessionId);
-    if (!me || !me.cwd) return [];
+// ---- live collision logic (Nov 25 2026: three sessions held each other over a file nobody edited: a deadlock)
+//   edited   a file counts for a session only when it really wrote it (an edit tool, or a shell command that clearly writes that
+//            path: activityIndex.shellWritePaths), the write is newer than the file's last commit, and the file still differs from HEAD
+//   one side the session that edited the file FIRST keeps running and is told to commit it including the other's hunks; the later
+//            editor is held. Never a session that is the counterpart of an open hold, never one whose other side is held or not
+//            live, never the Manager Session, never two holds for one pair
+//   ends     on every commit in the repo (fs.watch of .git/logs/HEAD while a hold or wait is open), a 60 s timer that exists only
+//            while one is open, and at each turn end; after 20 minutes the hold ends anyway
+
+const HOLD_MAX_MS = Number(process.env.AGENT_SUPERVISOR_HOLD_MAX_MS) > 0 ? Number(process.env.AGENT_SUPERVISOR_HOLD_MAX_MS) : 20 * 60 * 1000;
+const WAIT_NUDGE_MS = Number(process.env.AGENT_SUPERVISOR_WAIT_NUDGE_MS) > 0 ? Number(process.env.AGENT_SUPERVISOR_WAIT_NUDGE_MS) : 15 * 60 * 1000;
+const WAIT_MAX_NUDGES = 3;
+const WATCH_TICK_MS = Number(process.env.AGENT_SUPERVISOR_WATCH_MS) > 0 ? Number(process.env.AGENT_SUPERVISOR_WATCH_MS) : 60 * 1000;
+const BOOT_AT = Date.now();
+
+const gitOut = (root, args) => require('child_process').execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] });
+const GIT_DEFAULTS = {
+    /** { at (ms), hash } of the file's last commit ({ at: 0 } when none). */
+    lastCommit(root, p) {
+        try { const [t, h] = gitOut(root, ['log', '-1', '--format=%ct %h', '--', p]).trim().split(' '); return { at: (Number(t) || 0) * 1000, hash: h || '' }; } catch (_) { return { at: 0, hash: '' }; }
+    },
+    /** Does the file differ from HEAD (modified, staged or untracked)? */
+    differs(root, p) {
+        try { return !!gitOut(root, ['status', '--porcelain=v1', '--untracked-files=all', '--', p]).trim(); } catch (_) { return false; }
+    },
+    gitLogPath(root) { try { const f = gitOut(root, ['rev-parse', '--git-path', 'logs/HEAD']).trim(); return path.isAbsolute(f) ? f : path.join(root, f); } catch (_) { return ''; } }
+};
+let collisionDeps = {};
+/** Test hook: { git: {lastCommit, differs, gitLogPath}, live: () => Map, rootOf, tool: (sessionId) => [{ path, first, last }], shell: (sessionId, root) => Map } */
+function setCollisionDeps(o) { collisionDeps = o || {}; }
+const gitDep = (k) => (collisionDeps.git && collisionDeps.git[k]) || GIT_DEFAULTS[k];
+const liveNow = () => (collisionDeps.live ? collisionDeps.live() : liveSessionsById());
+
+function rootOf(sessionId, live) {
+    if (collisionDeps.rootOf) return collisionDeps.rootOf(sessionId);
+    const l = (live || liveNow()).get(sessionId);
+    let cwd = l && l.cwd;
+    if (!cwd) { try { const a = coord().getAgent(lockAgentId(sessionId)); cwd = a && a.cwd; } catch (_) { cwd = ''; } }
+    if (!cwd) return '';
+    try { return coord().repoOf(cwd).root || ''; } catch (_) { return ''; }
+}
+const nameOfSession = (sessionId, live) => { const l = (live || liveNow()).get(sessionId); return (l && (l.givenName || l.name)) || String(sessionId).slice(0, 8); };
+
+/** What the session's edit tools wrote in its repo: [{ path (repo-relative), first, last }]. */
+function toolEdits(sessionId, root) {
+    if (collisionDeps.tool) return collisionDeps.tool(sessionId, root);
     const store = coord();
-    const mineRow = (() => { try { return store.inspect(lockAgentId(sessionId), { limit: 300 }); } catch (_) { return null; } })();
-    if (!mineRow) return [];
-    const { root } = store.repoOf(me.cwd);
-    // an edit counts only when it is newer than the file's last commit: a session that committed its change no longer
-    // holds it, even while someone else has the file open again (Nov 25 2026: the Manager Session was paused over an
-    // xiDirector.js change it had committed hours before)
-    const commitAt = new Map();
-    const lastCommit = (p) => {
-        if (commitAt.has(p)) return commitAt.get(p);
-        let t = 0;
-        try { t = Number(require('child_process').execFileSync('git', ['-C', root, 'log', '-1', '--format=%ct', '--', p], { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] }).trim()) * 1000 || 0; } catch (_) { t = 0; }
-        commitAt.set(p, t);
-        return t;
-    };
-    const atOf = (f) => (typeof f.lastAt === 'number' ? f.lastAt : Date.parse(f.lastAt) || 0);
-    const live2 = (f) => f.uncommitted && atOf(f) > lastCommit(f.path);
-    const mine = new Set(mineRow.edited.files.filter(live2).map((f) => f.path));
+    const r = store.inspect(lockAgentId(sessionId), { limit: 300, git: false });
+    const firsts = new Map();
+    try {
+        const rel = (p) => (root && p.startsWith(`${root}/`) ? p.slice(root.length + 1) : p);
+        store.open().prepare('SELECT path, first_at FROM edits WHERE session_id = ?').all(sessionId).forEach((e) => firsts.set(rel(e.path), e.first_at));
+    } catch (_) { /* no first times */ }
+    return r.edited.files.filter((f) => f.via === 'tool').map((f) => ({ path: f.path, first: firsts.get(f.path) || f.lastAt || 0, last: f.lastAt || 0 }));
+}
+/** What the session's shell commands clearly wrote in its repo: Map repo-relative path -> { first, last }. */
+function shellEdits(sessionId, root) {
+    if (collisionDeps.shell) return collisionDeps.shell(sessionId, root);
+    const out = new Map();
+    const raw = require('./agentCoord/activityIndex').sessionShellWrites(sessionId, Date.now() - 24 * 3600 * 1000);
+    raw.forEach((v, p) => {
+        let rel = p;
+        if (path.isAbsolute(p)) { if (!root || !p.startsWith(`${root}/`)) return; rel = p.slice(root.length + 1); }
+        out.set(rel, v);
+    });
+    return out;
+}
+
+/** Files the session really wrote that are still uncommitted: Map path -> { first, last }. ctx memoises git answers for one pass. */
+function editedNow(sessionId, root, ctx = {}) {
+    const out = new Map();
+    if (!root) return out;
+    const commits = ctx.commits || (ctx.commits = new Map());
+    const diffs = ctx.diffs || (ctx.diffs = new Map());
+    const commitOf = (p) => { if (!commits.has(p)) commits.set(p, gitDep('lastCommit')(root, p)); return commits.get(p); };
+    const differs = (p) => { if (!diffs.has(p)) diffs.set(p, !!gitDep('differs')(root, p)); return diffs.get(p); };
+    const all = new Map();
+    const put = (p, first, last) => { const e = all.get(p); if (e) { e.first = Math.min(e.first || first, first || e.first); e.last = Math.max(e.last, last); } else all.set(p, { first: first || last, last }); };
+    try { toolEdits(sessionId, root).forEach((f) => put(f.path, f.first, f.last)); } catch (_) { /* none */ }
+    try { shellEdits(sessionId, root).forEach((v, p) => put(p, v.first, v.last)); } catch (_) { /* none */ }
+    all.forEach((e, p) => {
+        const c = commitOf(p);
+        if (e.last <= c.at) return;      // committed since
+        if (!differs(p)) return;         // equal to HEAD again
+        // the edit that is still uncommitted: its first time counts from the last commit on
+        out.set(p, { first: e.first > c.at ? e.first : e.last, last: e.last });
+    });
+    return out;
+}
+
+/** Types a note into a session (when it is idle: busy ones read the inbox note) and leaves it in its agent-coord inbox. */
+async function tellSession(sessionId, text, opts = {}) {
+    const live = liveNow().get(sessionId);
+    try {
+        if (!coord().getAgent(lockAgentId(sessionId))) coord().upsertAgent({ id: lockAgentId(sessionId), kind: 'claude', name: (live && (live.givenName || live.name)) || sessionId.slice(0, 8), sessionId });
+        coord().post('supervisor', lockAgentId(sessionId), text.replace(/^\[Supervisor\]\s*/, ''), { kind: 'steer' });
+    } catch (_) { /* inbox unavailable */ }
+    if (!opts.inboxOnly && (opts.always || !live || live.status !== 'busy')) { try { await require('./claudeSessionLauncher').steer(sessionId, text); return true; } catch (_) { return false; } }
+    return false;
+}
+function commentForSession(sessionId, text) {
+    try { const w = activeItemOf(sessionId); if (w) commentIssue(w, `**Fleet / Supervisor:** ${text}`); } catch (_) { /* no item */ }
+}
+
+/** Why a session may not be held for this pair now ('' when it may). */
+function holdBlocked(laterId, firstId, s, live) {
+    if (!live.has(laterId)) return 'it is not live';
+    if (!live.has(firstId)) return 'the other side is not live';
+    if (s.managerSessionId && laterId === s.managerSessionId) return 'it is the Manager Session';
+    if (activeHold(laterId)) return 'it is held already';
+    if (activeHold(firstId)) return 'the other side is held';
+    const open = listHolds();
+    if (open.some((h) => h.other === laterId)) return 'it is the counterpart of an open hold';
+    if (open.some((h) => (h.sessionId === laterId && h.other === firstId) || (h.sessionId === firstId && h.other === laterId))) return 'the pair has a hold';
+    return '';
+}
+
+/** After a turn: files this session and another live one both really wrote and did not commit. Holds the later editor only. */
+async function checkCollisions(sessionId, s) {
+    const live = liveNow();
+    const me = live.get(sessionId);
     const found = [];
-    for (const [id, other] of live) {
-        if (id === sessionId || !other.cwd || store.repoOf(other.cwd).root !== root) continue;
-        let r = null;
-        try { r = store.inspect(lockAgentId(id), { limit: 300, git: true }); } catch (_) { r = null; }
-        if (!r) continue;
-        const both = r.edited.files.filter((f) => live2(f) && mine.has(f.path)).map((f) => f.path);
-        if (both.length) found.push({ sessionId: id, name: r.agent.name || id.slice(0, 8), paths: both, busy: other.status === 'busy' });
-    }
-    for (const c of found) {
-        const text = `Collision: ${(mineRow.agent && mineRow.agent.name) || sessionId.slice(0, 8)} and ${c.name} both changed ${c.paths.slice(0, 5).join(', ')} without committing.`;
-        try { store.post('supervisor', null, `${text} The Supervisor ${s.autoPauseOnCollision ? `paused ${c.name} until they no longer overlap` : 'left both running'}: commit your own hunks, coordinate with coord_post.`, { kind: 'note' }); } catch (_) { /* none */ }
-        // the Manager Session is Yukimi's own: never paused by a collision (the note above still goes out)
-        if (s.autoPauseOnCollision && !activeHold(c.sessionId) && c.sessionId !== s.managerSessionId) {
-            await pauseSession(c.sessionId, { mode: 'hold', reason: `${text} Wait while the other session commits`, by: 'Supervisor', kind: 'collision', paths: c.paths }).catch(() => {});
+    if (me && (me.cwd || collisionDeps.rootOf)) {
+        const root = rootOf(sessionId, live);
+        if (root) {
+            const ctx = {};
+            const mine = editedNow(sessionId, root, ctx);
+            if (mine.size) {
+                for (const [id] of live) {
+                    if (id === sessionId || rootOf(id, live) !== root) continue;
+                    const theirs = editedNow(id, root, ctx);
+                    const both = [...mine.keys()].filter((p) => theirs.has(p));
+                    if (!both.length) continue;
+                    const firstMine = Math.min(...both.map((p) => mine.get(p).first));
+                    const firstTheirs = Math.min(...both.map((p) => theirs.get(p).first));
+                    const iFirst = firstMine < firstTheirs || (firstMine === firstTheirs && sessionId < id);
+                    found.push({ first: iFirst ? sessionId : id, later: iFirst ? id : sessionId, paths: both, root });
+                }
+            }
         }
     }
-    // collision holds whose overlap is gone end by themselves
-    for (const h of listHolds().filter((x) => x.kind === 'collision')) {
-        let r = null;
-        try { r = store.inspect(lockAgentId(h.sessionId), { limit: 300, git: true }); } catch (_) { r = null; }
-        const still = r && r.edited.files.some((f) => f.uncommitted && h.paths.includes(f.path) && [...live.keys()].some((id) => id !== h.sessionId && (() => { try { return store.inspect(lockAgentId(id), { limit: 300, git: false }).edited.files.some((g) => g.path === f.path); } catch (_) { return false; } })()));
-        if (!still) await resumeSession(h.sessionId, { note: 'the overlap is gone' }).catch(() => {});
+    for (const c of found) {
+        const fName = nameOfSession(c.first, live);
+        const lName = nameOfSession(c.later, live);
+        const list = c.paths.slice(0, 5).join(', ');
+        const text = `Collision: ${fName} and ${lName} both changed ${list} without committing.`;
+        const why = s.autoPauseOnCollision ? holdBlocked(c.later, c.first, s, live) : 'automatic pausing is off';
+        try { coord().post('supervisor', null, `${text} ${why ? `Nobody was paused (${why}).` : `The Supervisor paused ${lName}; ${fName} (edited it first) was told to commit it including the other session's hunks.`}`, { kind: 'note' }); } catch (_) { /* none */ }
+        if (why) continue;
+        const h = await pauseSession(c.later, { mode: 'hold', reason: `${text} ${fName} edited it first and was told to commit it including your hunks; wait for that commit`, by: 'Supervisor', kind: 'collision', paths: c.paths, other: c.first }).catch(() => null);
+        if (!h) continue;
+        await tellSession(c.first, `${STEER_PREFIX} Collision on ${list}: ${lName} also changed it and is paused until you commit. Commit ${c.paths.length === 1 ? 'that file' : 'those files'} now, including the other session's hunks (Yukimi wants other sessions' uncommitted edits committed with yours rather than left out), then carry on.`);
+        commentForSession(c.later, `paused ${lName} because ${fName} edited ${list} first and had not committed; ${fName} was told to commit it including ${lName}'s hunks. ${lName} continues by itself once that is committed.`);
     }
+    await recheckHolds().catch((e) => console.warn(`[supervisor] holds: ${e.message}`));
     return found;
+}
+
+/** Why an open collision hold can end now ('' when it cannot): { note, quiet } or null. */
+function holdCleared(h, live, ctx) {
+    if (!live.has(h.sessionId)) return { note: 'the held session ended', quiet: true };
+    if (Date.now() - h.at >= HOLD_MAX_MS) return { note: `held for ${Math.round((Date.now() - h.at) / 60000)} minutes: commit the file including the other session's hunks, then continue` };
+    const root = rootOf(h.sessionId, live);
+    const base = (p) => path.basename(p);
+    if (h.other) {
+        const oName = nameOfSession(h.other, live);
+        if (!live.has(h.other)) return { note: `${oName} ended: continue` };
+        const theirs = editedNow(h.other, root, ctx);
+        if (!h.paths.some((p) => theirs.has(p))) {
+            const p = h.paths[0];
+            const c = (ctx.commits && ctx.commits.get(p)) || gitDep('lastCommit')(root, p);
+            if (c.at > h.at && c.hash) return { note: `${oName} committed ${base(p)} in ${c.hash}: continue` };
+            if (!(ctx.diffs && ctx.diffs.get(p)) && !gitDep('differs')(root, p)) return { note: `${base(p)} no longer differs from HEAD: continue` };
+            return { note: `${oName} released ${h.paths.map(base).slice(0, 3).join(', ')}: continue` };
+        }
+    }
+    const mine = editedNow(h.sessionId, root, ctx);
+    if (!h.paths.some((p) => mine.has(p))) return { note: `${h.paths.map(base).slice(0, 3).join(', ')} is no longer changed by this session: continue` };
+    return null;
+}
+
+/** Ends the collision holds that are clear (commit, release, ended session, no difference, 20 minutes), then the waits. */
+async function recheckHolds() {
+    const live = liveNow();
+    const ctx = {};
+    let ended = 0;
+    for (const h of listHolds().filter((x) => x.kind === 'collision')) {
+        const r = holdCleared(h, live, ctx);
+        if (!r) continue;
+        if (r.quiet) { db().prepare('UPDATE supervisor_holds SET ended_at = ? WHERE id = ?').run(Date.now(), h.id); emit({ hold: h.sessionId }); ended += 1; continue; }
+        await resumeSession(h.sessionId, { note: r.note }).then(() => { ended += 1; commentForSession(h.sessionId, `resumed ${nameOfSession(h.sessionId, live)}: ${r.note}.`); }).catch(() => {});
+    }
+    armWatch();
+    return ended;
+}
+
+// ---- commit watch + short timer, only while a hold or a wait is open
+const watchers = new Map(); // repo root -> FSWatcher
+let watchTimer = null;
+let watchDebounce = null;
+function openWaits() { try { return db().prepare('SELECT * FROM supervisor_waits WHERE ended_at IS NULL ORDER BY id').all(); } catch (_) { return []; } }
+function rowWait(r) { return { id: r.id, workId: r.work_id, sessionId: r.session_id, kind: r.kind, who: r.who, paths: JSON.parse(r.paths || '[]'), what: r.what, at: r.at, boot: r.boot, nudges: r.nudges, lastNudgeAt: r.last_nudge_at }; }
+function watchedRoots() {
+    const live = liveNow();
+    const roots = new Set();
+    listHolds().filter((h) => h.kind === 'collision').forEach((h) => { const r = rootOf(h.sessionId, live); if (r) roots.add(r); });
+    openWaits().forEach((w) => { const r = rootOf(w.session_id, live); if (r) roots.add(r); });
+    return roots;
+}
+function onRepoCommit() {
+    clearTimeout(watchDebounce);
+    watchDebounce = setTimeout(() => { recheckAll().catch((e) => console.warn(`[supervisor] watch: ${e.message}`)); }, 1500);
+    if (watchDebounce.unref) watchDebounce.unref();
+}
+/** Arms the commit watch and the timer while something is open; closes both when nothing is. */
+function armWatch() {
+    const need = listHolds().some((h) => h.kind === 'collision') || openWaits().length > 0;
+    if (!need) { disarmWatch(); return false; }
+    const roots = watchedRoots();
+    for (const [r, w] of watchers) if (!roots.has(r)) { try { w.close(); } catch (_) { /* closed */ } watchers.delete(r); }
+    roots.forEach((r) => {
+        if (watchers.has(r)) return;
+        const f = gitDep('gitLogPath')(r);
+        if (!f) return;
+        try { const w = fs.watch(f, { persistent: false }, onRepoCommit); w.on('error', () => { try { w.close(); } catch (_) { /* closed */ } watchers.delete(r); }); watchers.set(r, w); } catch (_) { /* the timer covers it */ }
+    });
+    if (!watchTimer) { watchTimer = setInterval(() => { recheckAll().catch(() => {}); }, WATCH_TICK_MS); if (watchTimer.unref) watchTimer.unref(); }
+    return true;
+}
+function disarmWatch() {
+    for (const w of watchers.values()) { try { w.close(); } catch (_) { /* closed */ } }
+    watchers.clear();
+    if (watchTimer) { clearInterval(watchTimer); watchTimer = null; }
+    clearTimeout(watchDebounce); watchDebounce = null;
+}
+const watchState = () => ({ watchers: watchers.size, timer: !!watchTimer });
+async function recheckAll() {
+    const holds = await recheckHolds();
+    const waits = await recheckWaits();
+    armWatch();
+    return { holds, waits };
+}
+
+// ---- "waiting for X" (a turn that ended waiting on another agent or event)
+//
+// The review records it (waitsOn); the item stays running ("Waiting for <what>"), and the condition is watched with the commit watch
+// and the short timer. When it clears the session is told to continue; if it cannot be watched, or 15 minutes pass, it is told to
+// check and continue without waiting for Yukimi. At most 3 of those per wait.
+
+function recordWait(w, waitsOn) {
+    const d = db();
+    d.prepare('UPDATE supervisor_waits SET ended_at = ?, ended_why = ? WHERE work_id = ? AND ended_at IS NULL').run(Date.now(), 'replaced', w.id);
+    d.prepare('INSERT INTO supervisor_waits (work_id, session_id, kind, who, paths, what, at, boot) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(w.id, w.session_id, waitsOn.kind, waitsOn.who || '', JSON.stringify(waitsOn.paths || []), waitsOn.what, Date.now(), BOOT_AT);
+    armWatch();
+}
+function endWait(id, why) { db().prepare('UPDATE supervisor_waits SET ended_at = ?, ended_why = ? WHERE id = ?').run(Date.now(), why, id); }
+
+/** Evidence that the wait is over ('' when it is not, or cannot be told). */
+function waitCleared(wt, live, ctx) {
+    const root = rootOf(wt.sessionId, live);
+    const store = coord();
+    const agentOf = () => { try { return wt.who ? store.resolveAgent(wt.who) : null; } catch (_) { return null; } };
+    if (wt.kind === 'commit') {
+        if (wt.paths.length && root) {
+            const bits = [];
+            for (const p of wt.paths) {
+                const c = gitDep('lastCommit')(root, p);
+                if (gitDep('differs')(root, p)) return '';
+                bits.push(c.at > wt.at && c.hash ? `${path.basename(p)} committed in ${c.hash}` : `${path.basename(p)} has no uncommitted changes`);
+            }
+            return bits.slice(0, 3).join(', ');
+        }
+        const a = agentOf();
+        if (a && a.sessionId && root) return editedNow(a.sessionId, root, ctx).size ? '' : `${wt.who} has nothing uncommitted`;
+        return '';
+    }
+    if (wt.kind === 'claims') {
+        const a = agentOf();
+        if (!a) return '';
+        const claims = store.liveClaims({ agentId: a.id }).filter((c) => !wt.paths.length || wt.paths.some((p) => store.overlaps(c.path, p)));
+        return claims.length ? '' : `${wt.who} holds no claim${wt.paths.length ? ' on those paths' : ''}`;
+    }
+    if (wt.kind === 'build') {
+        let repo = '';
+        try { const l = live.get(wt.sessionId); repo = l && l.cwd ? store.repoOf(l.cwd).repo : ''; } catch (_) { repo = ''; }
+        let open = [];
+        try { open = store.builds(repo ? { repo } : {}); } catch (_) { return ''; }
+        return open.length ? '' : 'the build gate has ended';
+    }
+    if (wt.kind === 'restart') return Math.abs(BOOT_AT - wt.boot) > 1000 ? 'the server restarted' : '';
+    if (wt.kind === 'agent') {
+        const a = agentOf();
+        if (!a || !a.sessionId) return '';
+        const l = live.get(a.sessionId);
+        if (!l) return `${wt.who} ended`;
+        return l.status === 'busy' ? '' : `${wt.who} is idle`;
+    }
+    return '';
+}
+
+async function recheckWaits() {
+    const live = liveNow();
+    const ctx = {};
+    let acted = 0;
+    for (const raw of openWaits()) {
+        const wt = rowWait(raw);
+        const w = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(wt.workId);
+        if (!w || !['running', 'waiting'].includes(w.state) || w.session_id !== wt.sessionId) { endWait(wt.id, 'the item moved on'); continue; }
+        if (!live.has(wt.sessionId)) { endWait(wt.id, 'its session ended'); continue; }
+        if (live.get(wt.sessionId).status === 'busy') { endWait(wt.id, 'it is working again'); continue; }
+        const ev = waitCleared(wt, live, ctx);
+        if (ev) {
+            endWait(wt.id, `cleared: ${ev}`);
+            const sent = await tellSession(wt.sessionId, `${STEER_PREFIX} ${wt.what} is done (${ev}): continue the work now.`, { always: true });
+            setWork(w.id, { state: 'running', message: `Continuing: ${wt.what} is done (${ev})` });
+            emit({ work: getWork(w.id) });
+            commentIssue(w, `**Fleet / Supervisor:** the wait is over (${wt.what}: ${ev}); told the agent to continue${sent ? '' : ' (inbox note: its session could not be typed into)'}.`);
+            acted += 1;
+            continue;
+        }
+        const since = wt.lastNudgeAt || wt.at;
+        if (Date.now() - since < WAIT_NUDGE_MS) continue;
+        if (wt.nudges >= WAIT_MAX_NUDGES) { endWait(wt.id, 'gave up after 3 reminders'); continue; }
+        db().prepare('UPDATE supervisor_waits SET nudges = nudges + 1, last_nudge_at = ? WHERE id = ?').run(Date.now(), wt.id);
+        await tellSession(wt.sessionId, `${STEER_PREFIX} Check whether ${wt.what} is clear now and continue; do not wait for Yukimi.`, { always: true });
+        commentIssue(w, `**Fleet / Supervisor:** reminded the agent to check whether "${wt.what}" is clear and continue (${wt.nudges + 1} of ${WAIT_MAX_NUDGES}).`);
+        acted += 1;
+    }
+    return acted;
+}
+
+// ---- dead sessions come back by themselves
+let reviveOn = process.env.AGENT_SUPERVISOR_NO_REVIVE !== '1';
+const REVIVE_MAX = 3;
+const REVIVE_WINDOW_MS = 60 * 60 * 1000;
+
+async function endReason(sessionId) {
+    try {
+        const file = await transcriptFile(sessionId);
+        if (!file) return '';
+        const st = fs.statSync(file);
+        const fd = fs.openSync(file, 'r');
+        const len = Math.min(st.size, 8192);
+        const buf = Buffer.alloc(len);
+        try { fs.readSync(fd, buf, 0, len, st.size - len); } finally { fs.closeSync(fd); }
+        const t = buf.toString('utf8');
+        if (/usage limit|rate limit|limit reached|out of (credits|usage)/i.test(t)) return 'its account hit a usage limit';
+    } catch (_) { /* unknown */ }
+    return '';
+}
+
+/**
+ * A running / waiting item (or an Input Required one whose questions all have answers) whose session process ended without the item
+ * being done is started again: on its own account, else the one with room; with a note naming the open gaps, waits and answers.
+ * At most 3 a hour per item, then it fails with the reason. Never a cancelled item, a session under a hold, or an item waiting
+ * on Yukimi. Returns 'resumed' | 'failed' | 'waiting' | ''.
+ */
+async function maybeRevive(workId, rv, opts = {}) {
+    const w = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(workId));
+    if (!reviveOn || !w || !w.session_id || !gResources) return '';
+    const sid = w.session_id;
+    if (w.state === 'input') { const qs = savedQuestions(w); if (!qs.length || !qs.every(hasAnswer)) return ''; }
+    else if (!['running', 'waiting'].includes(w.state)) return '';
+    if (sessionRunning(sid, liveSessionsById())) return '';
+    if (activeHold(sid)) return '';
+    const d = db();
+    const recent = d.prepare('SELECT COUNT(*) n FROM supervisor_resumes WHERE work_id = ? AND at > ?').get(w.id, Date.now() - REVIVE_WINDOW_MS).n;
+    const why = opts.why || await endReason(sid) || 'it ended without finishing';
+    if (recent >= REVIVE_MAX) {
+        const msg = `Its session stopped ${recent + 1} times within an hour and was started again ${recent} times; giving up (${why}). Start Now runs it again.`;
+        setWork(w.id, { state: 'failed', ended_at: Date.now(), message: msg });
+        commentIssue(w, `**Fleet / Supervisor:** ${msg}`);
+        settleParent(w.parent_id);
+        emit({ work: getWork(w.id) });
+        return 'failed';
+    }
+    const fleet = require('./claudeFleetMcp');
+    let pick = null;
+    for (const want of [w.account || 'auto', 'auto']) {
+        try { pick = await fleet.pickForStart(gResources, want); break; } catch (_) { pick = null; }
+        if (want === 'auto') break;
+    }
+    if (!pick) { setWork(w.id, { message: 'Its session stopped; waiting for an account with room to start it again' }); emit({ work: getWork(w.id) }); return 'waiting'; }
+    d.prepare('INSERT INTO supervisor_resumes (work_id, at, why) VALUES (?, ?, ?)').run(w.id, Date.now(), why);
+    const launcher = require('./claudeSessionLauncher');
+    let res = null;
+    try { res = await launcher.resume(gResources, sid, { account: pick.index }); } catch (e) { res = { state: 'failed', message: e.message }; }
+    if (res && res.state === 'failed') { setWork(w.id, { message: `Its session stopped (${why}); starting it again failed: ${String(res.message || '').slice(0, 160)}` }); emit({ work: getWork(w.id) }); return 'waiting'; }
+    const bits = [];
+    const missed = rv && Array.isArray(rv.missed) ? rv.missed : [];
+    if (missed.length) bits.push(`Open gaps: ${missed.map((m, i) => `(${i + 1}) ${m.item}`).join(' ')}`);
+    const wo = rv && rv.waitsOn;
+    if (wo) bits.push(`You were waiting for ${wo.what}: check whether it is clear and continue; do not wait for Yukimi.`);
+    if (w.state === 'input') bits.push(answersNote(savedQuestions(w), 'The Supervisor\'s', '').slice(STEER_PREFIX.length + 1));
+    const text = `${STEER_PREFIX} Your session stopped (${why}) and was started again: carry on from where you were${bits.length ? `; ${bits.join(' ')}` : '.'}`;
+    try { await launcher.steer(sid, text); } catch (_) { /* its inbox note stands */ }
+    try { await tellSession(sid, text, { inboxOnly: true }); } catch (_) { /* inbox */ }
+    setWork(w.id, { state: 'running', ended_at: null, message: `Its session stopped (${why}) and was started again on ${pick.name}`, input_questions: w.state === 'input' ? null : w.input_questions });
+    commentIssue(w, `**Fleet / Supervisor:** the agent's session stopped (${why}); started it again on ${pick.name} (${recent + 1} of ${REVIVE_MAX} this hour)${bits.length ? ` with: ${bits.join(' ')}` : ''}.`);
+    emit({ work: getWork(w.id) });
+    return 'resumed';
+}
+
+/** A session whose process is gone but whose item is not done: running -> checked (its review then revives it), waiting -> revived now. */
+function sessionEnded(sessionId) {
+    if (!reviveOn) return false;
+    const w = activeItemOf(sessionId);
+    if (!w || !w.session_id || w.state === 'input' || w.state === 'starting') return false;
+    if (sessionRunning(sessionId, liveSessionsById())) return false;
+    if (w.state === 'waiting') {
+        const rv = db().prepare('SELECT * FROM supervisor_reviews WHERE session_id = ? ORDER BY id DESC').get(sessionId);
+        maybeRevive(w.id, rowReview(rv)).catch((e) => console.warn(`[supervisor] revive: ${e.message}`));
+        return true;
+    }
+    setWork(w.id, { state: 'waiting', message: 'Its session ended: the Supervisor is checking its last turn' });
+    emit({ work: getWork(w.id) });
+    queueReview(sessionId, 'turn-end');
+    return true;
+}
+/** Every active item whose session is gone (server start, an account getting room again). */
+function sweepDead() {
+    let n = 0;
+    try { db().prepare("SELECT session_id FROM supervisor_work WHERE session_id IS NOT NULL AND state IN ('running','waiting')").all().forEach((r) => { if (sessionEnded(r.session_id)) n += 1; }); } catch (e) { console.warn(`[supervisor] sweep: ${e.message}`); }
+    return n;
 }
 
 // ---------------------------------------------------------------- busy locks
@@ -2334,6 +2745,7 @@ const IDLE_UNLOCK_MS = 30 * 60 * 1000;
 const lockAgentId = (sessionId) => `claude-${String(sessionId).slice(0, 8)}`;
 
 function liveSessionsById() {
+    if (collisionDeps.live) return collisionDeps.live();
     const m = new Map();
     try { require('./claudeSessions').liveSessions().forEach((x) => m.set(x.id, x)); } catch (_) { /* none */ }
     return m;
@@ -2782,7 +3194,7 @@ function scan(first) {
         if (!first && prev === undefined && now === 'busy') markPartial(r.sessionId);
         if (!first && prev !== 'busy' && now === 'busy') { try { reopenOnWork(r.sessionId); } catch (_) { /* no item */ } }
     });
-    [...statusBySession.keys()].forEach((id) => { if (!seen.has(id)) statusBySession.delete(id); });
+    [...statusBySession.keys()].forEach((id) => { if (!seen.has(id)) { statusBySession.delete(id); if (!first && settings().enabled) { try { sessionEnded(id); } catch (_) { /* later */ } } } });
 }
 
 /** A session first seen mid-turn: its turn starts before what the Supervisor read. */
@@ -2961,7 +3373,7 @@ let usageHooked = false;
 function bind(gr) {
     if (gr) gResources = gr;
     // queued work starts when an account gets room again
-    if (!usageHooked && gResources) { usageHooked = true; try { require('./claudeUsage').onRead(() => { pumpWork().catch(() => {}); }); } catch (_) { usageHooked = false; } }
+    if (!usageHooked && gResources) { usageHooked = true; try { require('./claudeUsage').onRead(() => { pumpWork().catch(() => {}); sweepDead(); }); } catch (_) { usageHooked = false; } }
 }
 
 function start(gr) {
@@ -2979,6 +3391,9 @@ function start(gr) {
     }
     serveSocket();
     pumpWork().catch(() => {});
+    // work whose session ended while the server was down comes back; holds and waits left open are watched again (only when there are any)
+    const boot = setTimeout(() => { try { sweepDead(); armWatch(); recheckAll().catch(() => {}); } catch (_) { /* later */ } }, 20000);
+    if (boot.unref) boot.unref();
     // fleet issues filed on Yozora come in, closed ones end their item (server side, every 10 min; Fleet's own reads pull too)
     pullIssues(gr, { force: true }).catch(() => {});
     if (!pullTimer) { pullTimer = setInterval(() => pullIssues(null, { force: true }).catch(() => {}), 10 * 60 * 1000); if (pullTimer.unref) pullTimer.unref(); }
@@ -2990,6 +3405,7 @@ function stop() {
     clearTimeout(debounce);
     if (sockServer) { try { sockServer.close(); } catch (_) { /* closed */ } sockServer = null; }
     if (pullTimer) { clearInterval(pullTimer); pullTimer = null; }
+    disarmWatch();
 }
 
 // ---------------------------------------------------------------- rules review (Fleet > Rules > Rules Review)
@@ -3385,7 +3801,7 @@ async function acceptRuleFinding(gr, findingId, edit = {}, opts = {}) {
 module.exports = {
     explainRuleIssue, acceptRuleProposal, rejectRuleProposal, acceptRuleFinding, listRuleProposals, getRuleProposal, proposalBrief,
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
+    _test: { setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
 };

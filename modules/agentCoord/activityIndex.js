@@ -437,4 +437,177 @@ function detail(id) {
     return { row, input, output, why, session: { id: r.session_id, title: meta.title, account: meta.account, cwd: meta.cwd, link: meta.link } };
 }
 
-module.exports = { scanFile, refresh, query, detail, recentFiles, _db: db };
+// ---------------------------------------------------------------- which files a shell command really writes
+//
+// Nov 25 2026: collision holds were made from guessed shell "edits" (origin/main..HEAD, Mozilla/5.0, st.js). A file counts as
+// written by a command only when the command clearly writes that exact path: sed -i / perl -i, a > or >> redirect, tee, mv / cp
+// onto it, git checkout -- / restore of it, apply_patch headers, python / node writing a literal path. Read-only commands (cat,
+// grep, git diff / log / add / commit, node --check, curl args, URLs, user-agent strings, a..b ranges) never count.
+
+/** A shell-ish tokenizer: [{ words: [string], writes: [string] }] one entry per simple command (redirect targets in writes). */
+function shellSegments(cmd) {
+    const src = String(cmd || '');
+    const segs = [];
+    let words = [];
+    let writes = [];
+    let cur = '';
+    let has = false;
+    let pendingRedirect = false;
+    const endWord = () => {
+        if (!has) return;
+        if (pendingRedirect) { writes.push(cur); pendingRedirect = false; } else words.push(cur);
+        cur = ''; has = false;
+    };
+    const endSeg = () => { endWord(); pendingRedirect = false; if (words.length || writes.length) segs.push({ words, writes }); words = []; writes = []; };
+    for (let i = 0; i < src.length; i += 1) {
+        const ch = src[i];
+        if (ch === "'") { const j = src.indexOf("'", i + 1); const e = j < 0 ? src.length : j; cur += src.slice(i + 1, e); has = true; i = e; continue; }
+        if (ch === '"') {
+            let j = i + 1;
+            for (; j < src.length && src[j] !== '"'; j += 1) { if (src[j] === '\\' && j + 1 < src.length) { j += 1; cur += src[j]; } else cur += src[j]; }
+            has = true; i = j; continue;
+        }
+        if (ch === '\\' && i + 1 < src.length) { cur += src[i + 1]; has = true; i += 1; continue; }
+        if (ch === '$' && src[i + 1] === '(') {
+            let depth = 0; let j = i + 1;
+            for (; j < src.length; j += 1) { if (src[j] === '(') depth += 1; else if (src[j] === ')') { depth -= 1; if (!depth) break; } }
+            cur += src.slice(i, j + 1); has = true; i = j; continue;
+        }
+        if (ch === '`') { const j = src.indexOf('`', i + 1); const e = j < 0 ? src.length : j; cur += src.slice(i, e + 1); has = true; i = e; continue; }
+        if (ch === '\n' || ch === ';' || ch === '|' || (ch === '&' && src[i + 1] === '&')) { endSeg(); if ((ch === '|' || ch === '&') && src[i + 1] === ch) i += 1; continue; }
+        if (ch === '&' && src[i + 1] === '>') { endWord(); pendingRedirect = true; i += src[i + 2] === '>' ? 2 : 1; continue; }
+        if (ch === '&') { endSeg(); continue; }
+        if (ch === ' ' || ch === '\t') { endWord(); continue; }
+        if (ch === '<') { endWord(); if (src[i + 1] === '<') i += src[i + 2] === '<' ? 2 : 1; pendingRedirect = false; /* the next word is an input / heredoc tag */ words.push('\u0000in'); continue; }
+        if (ch === '>') {
+            // "2>file" and "1>file": the digits just read are the fd, not a word
+            if (has && /^\d+$/.test(cur)) { cur = ''; has = false; } else endWord();
+            if (src[i + 1] === '&') { // >&2 / 2>&1: not a file
+                let j = i + 2; while (j < src.length && /[\w-]/.test(src[j])) j += 1; i = j - 1; continue;
+            }
+            if (src[i + 1] === '>') i += 1;
+            pendingRedirect = true; continue;
+        }
+        cur += ch; has = true;
+    }
+    endSeg();
+    // drop the word after "<" / "<<" (its input file or heredoc tag)
+    segs.forEach((sg) => { const out = []; for (let k = 0; k < sg.words.length; k += 1) { if (sg.words[k] === '\u0000in') { k += 1; continue; } out.push(sg.words[k]); } sg.words = out; });
+    return segs;
+}
+
+function stripHeredocs(cmd) {
+    return String(cmd || '').replace(/<<-?\s*(['"]?)([A-Za-z_][\w]*)\1([^\n]*)\n[\s\S]*?(?:\n[ \t]*\2[ \t]*(?=\n|$)|$)/g, (m, q, tag, rest) => `<<${tag}${rest}`);
+}
+
+function cleanWritePath(p) {
+    let v = String(p || '').trim();
+    if (!v || v.length > 300 || v.startsWith('-') || /[\s*?$`{}()<>|;&\0]/.test(v) || /^[a-z][a-z0-9+.-]*:\/\//i.test(v)) return '';
+    v = v.replace(/^\.\//, '');
+    if (!v || v === '.' || v === '..' || v.endsWith('/') || /(^|\/)\.\.(\/|$)/.test(v) && v.startsWith('..')) return '';
+    if (/^(?:\/tmp|\/var\/tmp|\/dev|\/proc|\/sys)(?:\/|$)/.test(v) || /(^|\/)node_modules\//.test(v)) return '';
+    if (!/[\w]/.test(v) || /\.\.\.?$/.test(v) || /\.\.\w/.test(v) && !/\.\.\//.test(v) && v.includes('..')) return '';
+    return v;
+}
+
+const SHELL_HEADS = new Set(['bash', 'sh', 'zsh', 'dash']);
+const WRAPPERS = new Set(['sudo', 'env', 'time', 'nice', 'nohup', 'command', 'builtin', 'exec', 'stdbuf']);
+
+/** The paths a shell command clearly writes (repo-relative where it was relative, else as given). */
+function shellWritePaths(cmd, depth = 0) {
+    const full = String(cmd || '');
+    const out = new Set();
+    const add = (p) => { const v = cleanWritePath(p); if (v) out.add(v); };
+    // apply_patch headers
+    full.replace(/^\*\*\* (?:Update|Add|Delete) File:\s*(.+)$/gm, (m, p) => { add(p.trim()); return m; });
+    const flat = stripHeredocs(full);
+    shellSegments(flat).forEach((sg) => {
+        sg.writes.forEach(add);
+        let w = sg.words.slice();
+        // leading VAR=value, wrappers
+        while (w.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0]) || WRAPPERS.has(path.basename(w[0])))) w.shift();
+        if (!w.length) return;
+        const head = path.basename(w[0]);
+        const args = w.slice(1);
+        const opts = (a) => a.filter((x) => x.startsWith('-'));
+        const rest = (a) => a.filter((x) => !x.startsWith('-'));
+        if (SHELL_HEADS.has(head)) {
+            const ci = args.findIndex((x) => /^-[a-z]*c$/.test(x));
+            if (ci >= 0 && args[ci + 1] && depth < 2) shellWritePaths(args[ci + 1], depth + 1).forEach((p) => out.add(p));
+            return;
+        }
+        if (head === 'sed') {
+            if (!args.some((x) => /^-[A-Za-z]*i/.test(x) || x === '--in-place' || x.startsWith('--in-place='))) return;
+            const hasScriptOpt = args.some((x) => x === '-e' || x === '-f' || /^-[A-Za-z]*[ef]$/.test(x) || x.startsWith('--expression') || x.startsWith('--file'));
+            // values of -e / -f are scripts, not files
+            const files = []; let skip = false; let first = !hasScriptOpt;
+            for (const x of args) {
+                if (skip) { skip = false; continue; }
+                if (x === '-e' || x === '-f' || x === '--expression' || x === '--file') { skip = true; continue; }
+                if (x.startsWith('-')) continue;
+                if (first) { first = false; continue; }
+                files.push(x);
+            }
+            files.forEach(add); return;
+        }
+        if (head === 'perl') {
+            if (!args.some((x) => /^-[A-Za-z]*i/.test(x))) return;
+            const files = []; let skip = false;
+            for (const x of args) { if (skip) { skip = false; continue; } if (/^-[A-Za-z]*[eE]$/.test(x)) { skip = true; continue; } if (x.startsWith('-')) continue; files.push(x); }
+            files.forEach(add); return;
+        }
+        if (head === 'tee') { rest(args).forEach(add); return; }
+        if (head === 'mv' || head === 'cp' || head === 'install') {
+            const t = args.findIndex((x) => x === '-t' || x === '--target-directory');
+            if (t >= 0) return; // a folder: the files it receives are unknown here
+            const r = rest(args); if (r.length >= 2) add(r[r.length - 1]); return;
+        }
+        if (head === 'git') {
+            let a = args.slice();
+            while (a.length && (a[0] === '-C' || a[0] === '-c')) a = a.slice(2);
+            const sub = a[0]; a = a.slice(1);
+            if (sub === 'checkout') { const i = a.indexOf('--'); if (i >= 0) a.slice(i + 1).forEach(add); return; }
+            if (sub === 'restore') {
+                let skipNext = false;
+                for (const x of a) { if (skipNext) { skipNext = false; continue; } if (x === '-s' || x === '--source') { skipNext = true; continue; } if (x === '--') continue; if (x.startsWith('-')) continue; add(x); }
+            }
+            return;
+        }
+        if (/^python[0-9.]*$|^node$|^nodejs$|^ruby$|^php$/.test(head)) {
+            if (args.includes('--check') || args.includes('-c') && /^node/.test(head)) { /* syntax check only */ return; }
+            const re = [/open\(\s*['"]([^'"]+)['"]\s*,\s*['"][wa]\+?b?['"]/g, /\b(?:writeFileSync|appendFileSync|writeFile|appendFile)\(\s*['"]([^'"]+)['"]/g, /Path\(\s*['"]([^'"]+)['"]\s*\)\.write_(?:text|bytes)\(/g];
+            re.forEach((r) => { let m; while ((m = r.exec(full))) add(m[1]); });
+            // the usual heredoc edit: p = 'modules/x.js'; s = open(p).read(); ...; open(p, 'w').write(s) - a write through a
+            // variable counts the repo-file paths the script assigns to variables
+            if (/open\(\s*[A-Za-z_]\w*\s*,\s*['"][wa]\+?b?['"]|\b(?:writeFileSync|appendFileSync|writeFile|appendFile)\(\s*[A-Za-z_]\w*\s*[,)]|\b[A-Za-z_]\w*\.write_(?:text|bytes)\(/.test(full)) {
+                const av = /\b[A-Za-z_]\w*\s*=\s*(?:Path\()?['"]([^'"\s]+\/[^'"\s]+\.[A-Za-z0-9]{1,8})['"]/g;
+                let m; while ((m = av.exec(full))) add(m[1]);
+            }
+        }
+    });
+    return [...out].slice(0, 40);
+}
+
+/**
+ * The files a session really wrote with shell commands since `sinceMs`: Map path -> { first, last } (ms), from the activity index
+ * (the session's transcript is scanned from where it stopped first, a small step). A command's first line is what the index keeps.
+ */
+function sessionShellWrites(sessionId, sinceMs = 0) {
+    const out = new Map();
+    if (!SESSION_ID_RE.test(String(sessionId || ''))) return out;
+    try {
+        const d = db();
+        let sc = d.prepare('SELECT file FROM activity_scans WHERE file_key = ?').get(sessionId);
+        let file = sc && sc.file;
+        if (!file) {
+            try { for (const dir of fs.readdirSync(projectsDir())) { const f = path.join(projectsDir(), dir, `${sessionId}.jsonl`); if (fs.existsSync(f)) { file = f; break; } } } catch (_) { file = ''; }
+        }
+        if (file) { try { scanFile(file, sessionId, '', { cap: STEP }); } catch (_) { /* the stored rows stand */ } }
+        d.prepare("SELECT ts, target FROM activity WHERE session_id = ? AND kind = 'shell' AND ts >= ? ORDER BY ts").all(sessionId, Math.max(0, Number(sinceMs) || 0)).forEach((r) => {
+            shellWritePaths(r.target).forEach((p) => { const e = out.get(p); if (e) e.last = r.ts; else out.set(p, { first: r.ts, last: r.ts }); });
+        });
+    } catch (_) { /* no index */ }
+    return out;
+}
+
+module.exports = { scanFile, refresh, query, detail, recentFiles, shellWritePaths, sessionShellWrites, _db: db };

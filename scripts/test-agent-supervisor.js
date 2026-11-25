@@ -20,6 +20,7 @@ process.env.DREAMSCAPE_CLAUDE_HOME = tmp;
 process.env.AGENT_COORD_DB = path.join(tmp, 'state', 'coord.db');
 process.env.AGENT_SUPERVISOR_SOCKET = path.join(tmp, 'state', 'supervisor.sock');
 process.env.AGENT_SUPERVISOR_SETTLE_MS = '0';
+process.env.AGENT_SUPERVISOR_NO_REVIVE = '1'; // fake sessions here are not running: only the revive tests turn it on
 process.env.AGENT_SUPERVISOR_BG_PER_MIN = '100000';
 fs.mkdirSync(path.join(tmp, '.claude', 'projects', '-repo'), { recursive: true });
 fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
@@ -56,7 +57,7 @@ let failed = 0;
 // put an item back to queued (a test started it already)
 function db_setQueued(id) { require('../modules/agentCoord/store').open().prepare("UPDATE supervisor_work SET state = 'queued', session_id = NULL WHERE id = ?").run(id); }
 async function test(name, fn) {
-    try { await fn(); console.log(`ok   ${name}`); } catch (e) { failed += 1; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 3).join('\n     ')}`); }
+    try { await fn(); console.log(`ok   ${name}`); } catch (e) { failed += 1; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 8).join("\n     ")}`); }
 }
 
 const SID = 'aaaaaaaa-1111-2222-3333-444444444444';
@@ -1477,6 +1478,286 @@ sup._test.setFetch(async (url, opts) => {
             assert.ok(sup.listWork().some((w) => w.id === c.id && ['starting', 'running', 'waiting'].includes(w.state)));
             sup._test.queue.length = 0;
         } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; }
+    });
+
+    // ------------------------------------------------------------ Nov 25 2026: no false collisions, no deadlock, holds and waits end by themselves
+    await test('shell parser: read-only commands are not edits; sed -i, redirects, tee, mv / cp, git checkout --, python writes are', () => {
+        const { shellWritePaths: W } = require('../modules/agentCoord/activityIndex');
+        const none = ['git log origin/main..HEAD', 'curl -A "Mozilla/5.0" https://x.test/st.js', 'cat a.js | grep foo > /dev/null', 'sed -n 1,5p modules/a.js', 'node --check modules/a.js', 'git add modules/a.js && git commit -m "x"', 'git diff modules/a.js', 'git show HEAD:modules/a.js', 'ls modules/ 2>/dev/null', 'grep -rn foo modules/ | head', 'echo "a > b.js"', 'git status --short', 'node scripts/test-x.js'];
+        none.forEach((c) => assert.deepStrictEqual(W(c), [], c));
+        assert.deepStrictEqual(W('sed -i "s/a/b/" modules/a.js'), ['modules/a.js']);
+        assert.deepStrictEqual(W("sed -i -e 's/a/b/' k.js m.js"), ['k.js', 'm.js']);
+        assert.deepStrictEqual(W('echo hi > out.txt'), ['out.txt']);
+        assert.deepStrictEqual(W('echo x >> a/b.js 2>&1'), ['a/b.js']);
+        assert.deepStrictEqual(W('cat > f.js <<EOF\nhello > no.js\nEOF'), ['f.js']);
+        assert.deepStrictEqual(W('printf x | tee -a log.txt'), ['log.txt']);
+        assert.deepStrictEqual(W('mv a.js b.js && cp b.js c.js'), ['b.js', 'c.js']);
+        assert.deepStrictEqual(W('git checkout -- modules/a.js'), ['modules/a.js']);
+        assert.deepStrictEqual(W('git checkout main'), []);
+        assert.deepStrictEqual(W('git restore --source=HEAD~1 q.js'), ['q.js']);
+        assert.deepStrictEqual(W('python3 - <<E\nopen("z.py","w").write(1)\nE'), ['z.py']);
+        assert.deepStrictEqual(W('node -e "require(\'fs\').writeFileSync(\'w.json\', \'{}\')"'), ['w.json']);
+        assert.deepStrictEqual(W('bash -c "echo 1 > inner.js"'), ['inner.js']);
+        assert.deepStrictEqual(W('*** Begin Patch\n*** Update File: modules/p.js\n*** End Patch'), ['modules/p.js']);
+        assert.deepStrictEqual(W('echo x > /tmp/scratch.txt'), []);
+    });
+
+    await test('parseVerdict: waitsOn is kept with its kind, who, paths and what; an unknown kind or no description is dropped', () => {
+        const P = sup._test.parseVerdict;
+        const v = P('{"verdict":"ok","summary":"s","waitsOn":{"kind":"commit","who":"ba605089","paths":["./modules/a.js"],"what":"ba605089 to commit modules/a.js"}}');
+        assert.deepStrictEqual(v.waitsOn, { kind: 'commit', who: 'ba605089', paths: ['modules/a.js'], what: 'ba605089 to commit modules/a.js' });
+        assert.strictEqual(P('{"verdict":"ok","waitsOn":{"kind":"mood","what":"x"}}').waitsOn, undefined);
+        assert.strictEqual(P('{"verdict":"ok","waitsOn":{"kind":"build"}}').waitsOn, undefined);
+        assert.strictEqual(P('{"verdict":"ok","waitsOn":null}').waitsOn, undefined);
+    });
+
+    await test('standing rule: the review prompt makes the Supervisor own completion; a "which option do you prefer" question with a recommended option is answered, not escalated', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart; const realStart = launcher.start; const realSteer = launcher.steer;
+        const typed = [];
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        launcher.start = async () => ({ id: 'eeeeeeee-0000-0000-0000-000000000901', state: 'running', link: '' });
+        launcher.steer = async (id, t) => { typed.push(t); return { sent: true }; };
+        settingsCfg.agentSupervisor = Object.assign(settingsCfg.agentSupervisor, { maxConcurrent: 50, autoStart: true, delivery: 'steer' });
+        const prompts = [];
+        sup._test.setFetch(async (url, opts) => { const b = JSON.parse(opts.body); prompts.push(b.messages[0].content); return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: JSON.stringify({ verdict: 'input', summary: 'asks which option', questions: [{ question: 'Which option do you prefer, A or B? (B is recommended)', answer: 'Decided by the Supervisor: B, the recommended option', why: 'recommended' }] }) } }] }) }; });
+        try {
+            const w = sup.enqueue({ title: 'Options', prompt: 'do options', topology: 'direct', startNow: true }, { gr });
+            await waitFor(() => sup.getWork(w.id).state === 'running', 'running');
+            const sid = sup.getWork(w.id).sessionId;
+            const tf = path.join(tmp, '.claude', 'projects', '-repo', `${sid}.jsonl`);
+            fs.writeFileSync(tf, [user('do options', '2026-11-25T10:00:00Z'), asst([{ type: 'text', text: 'Which option do you prefer, A or B? B is recommended.' }], '2026-11-25T10:00:05Z')].join(''));
+            const rv = await sup.review(sid, 'recheck', { gr });
+            assert.match(prompts[0], /take control of getting the task completed and fully tested and reviewed/);
+            assert.match(prompts[0], /spending money, a secret \/ password \/ login only she has, creating an account only she can make, or an irreversible outward action/);
+            assert.match(prompts[0], /never escalated/);
+            assert.strictEqual(rv.verdict, 'input');
+            assert.ok(rv.questions[0].answer.length > 0);
+            assert.strictEqual(sup.getWork(w.id).state, 'running', 'answered by the Supervisor, not Input Required');
+            assert.ok(typed.some((t) => /answers to the questions you ended on/.test(t) && /B, the recommended option/.test(t)), JSON.stringify(typed));
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.steer = realSteer; settingsCfg.agentSupervisor.delivery = 'inbox'; }
+    });
+
+    const A1 = '11111111-aaaa-bbbb-cccc-000000000001'; const B1 = '22222222-aaaa-bbbb-cccc-000000000002';
+    const mkLive = (ids) => new Map(ids.map(([id, status, name]) => [id, { id, cwd: '/r', status, givenName: name, pid: 1 }]));
+    function collisionWorld(over) {
+        const w = { live: new Map(), tool: {}, shell: {}, commit: { at: 0, hash: '' }, dirty: true };
+        const deps = {
+            live: () => w.live, rootOf: () => '/r',
+            tool: (sid) => w.tool[sid] || [], shell: (sid) => w.shell[sid] || new Map(),
+            git: { lastCommit: () => w.commit, differs: () => w.dirty, gitLogPath: () => '' }
+        };
+        sup._test.setCollisionDeps(deps);
+        return Object.assign(w, over || {});
+    }
+
+    await test('collision: only the later editor is held, the first is told to commit including the other\'s hunks; no second hold, no deadlock', async () => {
+        const realSteer = launcher.steer; const realInt = launcher.interrupt;
+        const typed = [];
+        launcher.steer = async (id, t) => { typed.push([id, t]); return { sent: true }; };
+        launcher.interrupt = async () => ({ interrupted: true });
+        const w = collisionWorld();
+        w.live = mkLive([[A1, 'idle', 'alpha'], [B1, 'busy', 'beta']]);
+        const t0 = Date.now() - 600000;
+        w.tool[A1] = [{ path: 'modules/ws/handlers/314.js', first: t0, last: t0 + 1000 }];
+        w.tool[B1] = [{ path: 'modules/ws/handlers/314.js', first: t0 + 200000, last: t0 + 210000 }];
+        w.commit = { at: t0 - 100000, hash: 'old1234' };
+        const s = { autoPauseOnCollision: true, managerSessionId: '' };
+        try {
+            // checked from the first editor's turn end, and again from the later one's: one hold, the later editor's
+            await sup.checkCollisions(A1, s);
+            await sup.checkCollisions(B1, s);
+            const holds = sup.listHolds().filter((h) => h.kind === 'collision');
+            assert.deepStrictEqual(holds.map((h) => [h.sessionId, h.other]), [[B1, A1]], JSON.stringify(holds));
+            assert.ok(typed.some(([id, t]) => id === B1 && /PAUSE/.test(t)), 'the later editor is paused');
+            const tellFirst = typed.filter(([id]) => id === A1);
+            assert.ok(tellFirst.length === 1 && /Commit that file now/.test(tellFirst[0][1]) && /including the other session's hunks/.test(tellFirst[0][1]), JSON.stringify(typed));
+            assert.ok(sup._test.watchState().timer, 'the 60 s timer exists while a hold is open');
+            // a busy first editor is not typed into (inbox note only): fresh pair with the busy one first
+        } finally {
+            for (const h of sup.listHolds()) await sup.resumeSession(h.sessionId).catch(() => {});
+            launcher.steer = realSteer; launcher.interrupt = realInt; sup._test.setCollisionDeps({});
+        }
+        assert.ok(!sup._test.watchState().timer, 'no timer once no hold is open');
+    });
+
+    await test('collision: no hold when the other side is itself held, for the Manager Session, or for the counterpart of an open hold', async () => {
+        const realSteer = launcher.steer; const realInt = launcher.interrupt;
+        launcher.steer = async () => ({ sent: true }); launcher.interrupt = async () => ({ interrupted: true });
+        const C1 = '33333333-aaaa-bbbb-cccc-000000000003';
+        const w = collisionWorld();
+        w.live = mkLive([[A1, 'idle', 'alpha'], [B1, 'idle', 'beta'], [C1, 'idle', 'gamma']]);
+        const t0 = Date.now() - 600000;
+        const same = (first) => [{ path: 'f.js', first, last: first + 5000 }];
+        w.tool[A1] = same(t0); w.tool[B1] = same(t0 + 100000);
+        w.commit = { at: t0 - 1000, hash: 'x' };
+        try {
+            // the other side (A1, the first editor) is held by hand: nobody is held for the collision
+            w.live = mkLive([[A1, 'idle', 'alpha'], [B1, 'idle', 'beta']]);
+            await sup.pauseSession(A1, { mode: 'hold', reason: 'merging', by: 'Fleet' });
+            await sup.checkCollisions(B1, { autoPauseOnCollision: true, managerSessionId: '' });
+            assert.deepStrictEqual(sup.listHolds().filter((h) => h.kind === 'collision'), []);
+            await sup.resumeSession(A1);
+            // the Manager Session is never held
+            await sup.checkCollisions(B1, { autoPauseOnCollision: true, managerSessionId: B1 });
+            assert.ok(!sup.listHolds().some((h) => h.sessionId === B1), 'manager is not held');
+            // B1 is held for A1 (A1 edited first)
+            await sup.checkCollisions(B1, { autoPauseOnCollision: true, managerSessionId: '' });
+            assert.deepStrictEqual(sup.listHolds().filter((h) => h.kind === 'collision').map((h) => [h.sessionId, h.other]), [[B1, A1]]);
+            // a second file where B1 edited first and A1 later: A1 is the counterpart of the open hold and B1 is held: nobody else is held
+            w.tool[B1] = w.tool[B1].concat([{ path: 'g.js', first: t0, last: t0 + 1000 }]);
+            w.tool[A1] = w.tool[A1].concat([{ path: 'g.js', first: t0 + 300000, last: t0 + 310000 }]);
+            await sup.checkCollisions(A1, { autoPauseOnCollision: true, managerSessionId: '' });
+            assert.ok(!sup.listHolds().some((h) => h.sessionId === A1), 'the counterpart of an open hold is never held');
+            assert.strictEqual(sup.listHolds().filter((h) => h.kind === 'collision').length, 1, 'never two holds for one pair');
+            // a third session colliding with the held B1 only (C1 later than B1 on h.js): B1 is held, so C1 is not held over it
+            w.live = mkLive([[A1, 'idle', 'alpha'], [B1, 'idle', 'beta'], [C1, 'idle', 'gamma']]);
+            w.tool[B1] = w.tool[B1].concat([{ path: 'h.js', first: t0, last: t0 + 1000 }]);
+            w.tool[C1] = [{ path: 'h.js', first: t0 + 300000, last: t0 + 310000 }];
+            await sup.checkCollisions(C1, { autoPauseOnCollision: true, managerSessionId: '' });
+            assert.ok(!sup.listHolds().some((h) => h.sessionId === C1), 'no hold while the other side is itself held');
+        } finally {
+            for (const h of sup.listHolds()) await sup.resumeSession(h.sessionId).catch(() => {});
+            launcher.steer = realSteer; launcher.interrupt = realInt; sup._test.setCollisionDeps({});
+        }
+    });
+
+    await test('hold ends when the other side commits (named with the commit), when the file equals HEAD, and after 20 minutes', async () => {
+        const realSteer = launcher.steer; const realInt = launcher.interrupt;
+        const typed = [];
+        launcher.steer = async (id, t) => { typed.push([id, t]); return { sent: true }; };
+        launcher.interrupt = async () => ({ interrupted: true });
+        const w = collisionWorld();
+        w.live = mkLive([[A1, 'idle', 'ba605089'], [B1, 'idle', 'beta']]);
+        const t0 = Date.now() - 600000;
+        w.tool[A1] = [{ path: 'modules/ws/handlers/314-claudeDeskHandler.js', first: t0, last: t0 + 1000 }];
+        w.tool[B1] = [{ path: 'modules/ws/handlers/314-claudeDeskHandler.js', first: t0 + 100000, last: t0 + 110000 }];
+        w.commit = { at: t0 - 1000, hash: 'old' };
+        const s = { autoPauseOnCollision: true, managerSessionId: '' };
+        try {
+            await sup.checkCollisions(B1, s);
+            assert.strictEqual(sup.listHolds().length, 1);
+            assert.strictEqual(await sup.recheckHolds(), 0, 'still overlapping: stays');
+            // the counterpart commits the file: held session continues with the note naming what changed
+            w.commit = { at: Date.now() + 1000, hash: 'ead32be74' };
+            w.dirty = false;
+            assert.strictEqual(await sup.recheckHolds(), 1);
+            assert.strictEqual(sup.listHolds().length, 0);
+            const resumeNote = typed.filter(([id, t]) => id === B1 && /RESUME/.test(t)).pop();
+            assert.match(resumeNote[1], /ba605089 committed 314-claudeDeskHandler\.js in ead32be74: continue/);
+            assert.ok(!sup._test.watchState().timer);
+            // the file equals HEAD again (nobody committed it by name): the overlap is gone
+            w.commit = { at: t0 - 1000, hash: 'old' }; w.dirty = true;
+            await sup.checkCollisions(B1, s);
+            assert.strictEqual(sup.listHolds().length, 1);
+            w.dirty = false;
+            await sup.recheckHolds();
+            assert.strictEqual(sup.listHolds().length, 0);
+            assert.match(typed.filter(([id, t]) => id === B1 && /RESUME/.test(t)).pop()[1], /no longer differs from HEAD|committed|released/);
+            // 20 minutes: resumed anyway
+            w.dirty = true;
+            await sup.checkCollisions(B1, s);
+            assert.strictEqual(sup.listHolds().length, 1);
+            assert.strictEqual(await sup.recheckHolds(), 0);
+            require('../modules/agentCoord/store').open().prepare('UPDATE supervisor_holds SET at = ? WHERE ended_at IS NULL').run(Date.now() - 21 * 60000);
+            assert.strictEqual(await sup.recheckHolds(), 1);
+            assert.match(typed.filter(([id, t]) => id === B1 && /RESUME/.test(t)).pop()[1], /commit the file including the other session's hunks, then continue/);
+        } finally {
+            for (const h of sup.listHolds()) await sup.resumeSession(h.sessionId).catch(() => {});
+            launcher.steer = realSteer; launcher.interrupt = realInt; sup._test.setCollisionDeps({});
+        }
+    });
+
+    await test('a turn that ends waiting for a commit continues by itself when the commit lands; a wait nobody can watch is reminded after 15 minutes (3 times at most)', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart; const realStart = launcher.start; const realSteer = launcher.steer;
+        const typed = [];
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        let n = 0;
+        launcher.start = async () => { n += 1; return { id: `eeeeeeee-0000-0000-0000-0000000007${String(n).padStart(2, '0')}`, state: 'running', link: '' }; };
+        launcher.steer = async (id, t) => { typed.push([id, t]); return { sent: true }; };
+        settingsCfg.agentSupervisor = Object.assign(settingsCfg.agentSupervisor, { maxConcurrent: 50, autoStart: true });
+        const world = collisionWorld();
+        try {
+            const it = sup.enqueue({ title: 'Waits', prompt: 'waits', topology: 'direct', startNow: true }, { gr });
+            await waitFor(() => sup.getWork(it.id).state === 'running', 'running');
+            const sid = sup.getWork(it.id).sessionId;
+            world.live = mkLive([[sid, 'idle', 'waiter']]);
+            await sup.workAfterReview({ sessionId: sid, verdict: 'ok', missed: [], summary: 'waiting', waitsOn: { kind: 'commit', who: 'ba605089', paths: ['x.js'], what: 'ba605089 to commit x.js' } });
+            assert.strictEqual(sup.getWork(it.id).state, 'running', 'not done, not Input Required');
+            assert.strictEqual(sup.getWork(it.id).message, 'Waiting for ba605089 to commit x.js');
+            assert.strictEqual(sup._test.openWaits().length, 1);
+            assert.ok(sup._test.watchState().timer, 'timer exists only while a wait is open');
+            typed.length = 0;
+            await sup.recheckWaits();
+            assert.strictEqual(typed.length, 0, 'x.js is still uncommitted');
+            world.dirty = false; world.commit = { at: Date.now() + 1000, hash: 'abc1234' };
+            await sup.recheckAll();
+            assert.strictEqual(typed.length, 1);
+            assert.match(typed[0][1], /^\[Supervisor\] ba605089 to commit x\.js is done \(x\.js committed in abc1234\): continue the work now\./);
+            assert.match(sup.getWork(it.id).message, /^Continuing: ba605089 to commit x\.js is done/);
+            assert.strictEqual(sup._test.openWaits().length, 0);
+            assert.ok(!sup._test.watchState().timer);
+            // an unwatchable wait (no paths, no known agent): after 15 minutes "check and continue", at most 3 times
+            await sup.workAfterReview({ sessionId: sid, verdict: 'ok', missed: [], summary: 'w2', waitsOn: { kind: 'commit', who: 'someone', paths: [], what: 'someone to commit' } });
+            typed.length = 0;
+            const raw = () => require('../modules/agentCoord/store').open();
+            for (let i = 0; i < 5; i += 1) {
+                raw().prepare('UPDATE supervisor_waits SET at = at - 1000000, last_nudge_at = CASE WHEN last_nudge_at IS NULL THEN NULL ELSE last_nudge_at - 1000000 END WHERE ended_at IS NULL').run();
+                await sup.recheckWaits();
+            }
+            const nudges = typed.filter(([, t]) => /Check whether someone to commit is clear now and continue; do not wait for Yukimi\./.test(t));
+            assert.strictEqual(nudges.length, 3, JSON.stringify(typed));
+            // the session going busy again ends the wait without a word
+            await sup.workAfterReview({ sessionId: sid, verdict: 'ok', missed: [], summary: 'w3', waitsOn: { kind: 'agent', who: 'x', paths: [], what: 'x to finish' } });
+            world.live = mkLive([[sid, 'busy', 'waiter']]);
+            typed.length = 0;
+            await sup.recheckWaits();
+            assert.strictEqual(typed.length, 0); assert.strictEqual(sup._test.openWaits().length, 0);
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.steer = realSteer; sup._test.setCollisionDeps({}); }
+    });
+
+    await test('a dead session of a running item is resumed with the note (once per call, 3 an hour, then failed); a cancelled item or a held session is never resumed', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart; const realStart = launcher.start; const realSteer = launcher.steer; const realResume = launcher.resume;
+        const typed = []; const resumed = []; const picks = [];
+        fleetMcp.pickForStart = async (g, want) => { picks.push(want); return { index: 2, name: 'Second', settings: {} }; };
+        let n = 0;
+        launcher.start = async () => { n += 1; return { id: `eeeeeeee-0000-0000-0000-0000000008${String(n).padStart(2, '0')}`, state: 'running', link: '' }; };
+        launcher.steer = async (id, t) => { typed.push([id, t]); return { sent: true }; };
+        launcher.resume = async (g, id, o) => { resumed.push([id, o && o.account]); return { id, state: 'connected' }; };
+        settingsCfg.agentSupervisor = Object.assign(settingsCfg.agentSupervisor, { maxConcurrent: 50, autoStart: true });
+        const world = collisionWorld(); // no live sessions: every session is dead
+        sup._test.setRevive(true);
+        try {
+            const it = sup.enqueue({ title: 'Dies', prompt: 'dies', topology: 'direct', startNow: true, account: 'Main' }, { gr });
+            await waitFor(() => sup.getWork(it.id).state === 'running', 'running');
+            const sid = sup.getWork(it.id).sessionId;
+            const r1 = await sup.maybeRevive(it.id, { missed: [{ item: 'run the tests' }], waitsOn: { kind: 'commit', what: 'ba605089 to commit x.js' } });
+            assert.strictEqual(r1, 'resumed');
+            assert.deepStrictEqual(resumed, [[sid, 2]]);
+            assert.deepStrictEqual(picks[0], 'Main', 'its own account is asked first');
+            const note = typed[typed.length - 1][1];
+            assert.match(note, /^\[Supervisor\] Your session stopped \(.+\) and was started again: carry on from where you were; Open gaps: \(1\) run the tests You were waiting for ba605089 to commit x\.js/);
+            assert.strictEqual(sup.getWork(it.id).state, 'running');
+            assert.strictEqual(await sup.maybeRevive(it.id, null), 'resumed');
+            assert.strictEqual(await sup.maybeRevive(it.id, null), 'resumed');
+            assert.strictEqual(resumed.length, 3);
+            assert.strictEqual(await sup.maybeRevive(it.id, null), 'failed', 'a fourth stop within the hour fails the item');
+            assert.strictEqual(resumed.length, 3, 'not resumed a fourth time');
+            assert.strictEqual(sup.getWork(it.id).state, 'failed');
+            assert.match(sup.getWork(it.id).message, /giving up/);
+            // a cancelled item is never resumed
+            const c = sup.enqueue({ title: 'Cancelled', prompt: 'c', topology: 'direct' }, { gr });
+            sup.cancelWork(c.id);
+            require('../modules/agentCoord/store').open().prepare("UPDATE supervisor_work SET session_id = 'cccccccc-0000-0000-0000-000000000001' WHERE id = ?").run(c.id);
+            resumed.length = 0;
+            assert.strictEqual(await sup.maybeRevive(c.id, null), '');
+            assert.strictEqual(resumed.length, 0);
+            // an item whose session is under a hold is never resumed
+            const h = await sup.pauseSession('dddddddd-0000-0000-0000-000000000001', { mode: 'hold' }).catch(() => null);
+            assert.strictEqual(h, null, 'it was not live, so it cannot be held (nothing to resume)');
+        } finally { sup._test.setRevive(false); fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.steer = realSteer; launcher.resume = realResume; sup._test.setCollisionDeps({}); }
     });
 
     require('../modules/agentCoord/store').close();
