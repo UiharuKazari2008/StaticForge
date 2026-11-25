@@ -15,7 +15,6 @@
 (function () {
     'use strict';
 
-    const ART = '/static_images/wm61/status-camera';
     const AHEAD_S = 0.25; // pulses are scheduled this far ahead on the audio clock
     const TICK_MS = 100;
     const ATTACK_S = 0.008;
@@ -37,7 +36,8 @@
         root.setAttribute('aria-label', 'Speed camera ahead');
         // no touches except a tap that puts it away for this camera
         root.setAttribute('data-wm-no-hold', '');
-        const glyph = `<img src="${ART}.png" srcset="${ART}.png 1x, ${ART}@2x.png 2x, ${ART}@4x.png 4x" alt="" draggable="false">`;
+        // the camera glyph through the shell's art helper (the WM version's own art)
+        const glyph = '<i></i>';
         root.innerHTML = `<span class="trf-camov-ico">${glyph}</span>`
             + '<span class="trf-camov-title" data-live="title"></span>'
             + '<span class="trf-camov-street" data-live="street"></span>'
@@ -52,6 +52,8 @@
             if (last) dismissedId = last.id;
             teardown();
         });
+        const art = window.wmShell && typeof window.wmShell.statusArt === 'function' ? window.wmShell.statusArt('status-camera') : '';
+        if (art) root.style.setProperty('--trf-camov-glyph', art);
         const host = document.getElementById('wmShell') || document.body;
         host.appendChild(root);
         return root;

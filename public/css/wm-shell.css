@@ -78,6 +78,22 @@ html.ui-mobile {
     --wm-tm-count-bg: linear-gradient(to bottom, #fff 0, #dfe2e6 50%, #c4c8ce 51%, #e6e8eb 100%);
     --wm-tm-count-text: #17181b;
     --wm-tm-count-shadow: 0 0 0 calc(1 * var(--wm-px)) rgba(0, 0, 0, 0.55);
+    /* Traffic's speed camera strip (#1124): piano black, amber progress, the road sign for the limit; red over the limit */
+    --wm-camov-edge: #46505a;
+    --wm-camov-bg: linear-gradient(#2a3037, #14171b);
+    --wm-camov-edge-over: #b8301f;
+    --wm-camov-bg-over: linear-gradient(#4a1a15, #1c0c0a);
+    --wm-camov-text: #fff;
+    --wm-camov-street: #aab3bd;
+    --wm-camov-dist: #dfe6ed;
+    --wm-camov-speed-over: #ff6a58;
+    --wm-camov-sign-ring: #d4281c;
+    --wm-camov-sign: #fff;
+    --wm-camov-sign-text: #111;
+    --wm-camov-track: #0b0d10;
+    --wm-camov-track-edge: #3a424b;
+    --wm-camov-fill: rgb(242, 176, 30);
+    --wm-camov-fill-over: rgb(232, 52, 28);
     --wm-tm-btn: linear-gradient(to bottom, #6e7279 0, #474a50 50%, #2c2e32 51%, #3b3e43 100%);
     --wm-tm-btn-pressed: linear-gradient(to bottom, #2c2e32 0, #3b3e43 50%, #474a50 51%, #5a5e64 100%);
     --wm-tm-btn-edge: #0b0c0d;
