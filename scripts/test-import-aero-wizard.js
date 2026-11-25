@@ -17,7 +17,9 @@ const dialogs = require(path.join(ROOT, 'public/scripts/comp/vistaDialogs.js'));
 const G = 'body.desktop-mode:not(.windows-classic-theme)';
 
 // wiring
-assert.ok(html.includes('<link rel="stylesheet" href="/css/vista-visual-index.css">\n    <link rel="stylesheet" href="/css/vista-import-wizard.css">'), 'sheet linked after vista-visual-index.css');
+// the sheets are desktop-shell templates now (writeShellTags), one per line; the wizard sheet follows the one it overrides
+const sheetTag = (n) => `<template data-shell="desktop"><link rel="stylesheet" href="/css/${n}.css"></template><script>writeShellTags()</script>`;
+assert.ok(html.includes(sheetTag('vista-visual-index') + '\n    ' + sheetTag('vista-import-wizard')), 'sheet linked after vista-visual-index.css');
 assert.ok(html.includes('<script src="scripts/comp/vistaDialogs.js"></script>\n    <script src="scripts/comp/vistaImportWizard.js"></script>'), 'script loads after vistaDialogs.js');
 assert.ok(JSON.parse(read('package.json')).scripts['test:import-aero-wizard'] === 'node scripts/test-import-aero-wizard.js', 'npm run test:import-aero-wizard');
 
@@ -26,7 +28,7 @@ const start = html.indexOf('<!-- Unified Upload Modal -->');
 const end = html.indexOf('<!-- Explorer Modal -->', start);
 assert.ok(start > 0 && end > start, 'the Unified Upload Modal block exists');
 const block = html.slice(start, end);
-assert.ok(block.includes('id="unifiedUploadModal" class="modal hidden tool-window on-top"'), 'the modal keeps its classes');
+assert.ok(block.includes('id="unifiedUploadModal" class="modal hidden owned-window on-top"'), 'the modal keeps its classes');
 
 // the light client: vistaDialogs.js tags the modal as a form dialog (data-window-client="light" + .win7)
 assert.ok(dialogs.FORM_IDS.includes('unifiedUploadModal'), 'the modal is a light form dialog');
@@ -80,13 +82,13 @@ assert.ok(js.includes('<i class="nai-import icon-fa"></i>') && js.includes('<img
 assert.ok(css.includes('.modal-window-title .modal-window-title-main > .icon-fa {\n    display: none;'), 'the caption shows the image, not the Font Awesome twin');
 assert.ok(js.includes("backBtn.disabled = page === '1'"), 'Back is greyed on page 1');
 assert.ok(css.includes(`${G} #unifiedUploadModal {\n    --modal-title-chrome-height: 40px;\n    width: 766px;`) && css.includes('height: 554px;'), 'a 750x505 client under the 40 px caption');
-assert.ok(css.includes("background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;") && css.includes('.vista-wizard-back:disabled {\n    background-position: 0 -81px;'), "the theme's navigation orb, greyed when disabled");
+assert.ok(css.includes("background: image-set(url('/static_images/vista-explorer/nav-back.png') 1x,") && css.includes(") no-repeat 0 0;") && css.includes('.vista-wizard-back:disabled {\n    background-position: 0 -81px;'), "the theme's navigation orb, greyed when disabled");
 assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-explorer/nav-back.png')), 'the orb sprite exists');
 
 // the look
 assert.ok(css.includes(`${G} #unifiedUploadModal > .modal-content {\n    position: relative;\n    display: flex;\n    flex-direction: column;\n    padding: 0;\n    overflow: hidden;\n    background: #fff;`), 'a white page');
 assert.ok(css.includes('color: #003399;\n    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;\n    font-size: 12pt;') && css.includes('padding: 18px 19px 11px 38px;'), 'the main instruction, 12 pt #003399, 38 px in and 18 px down');
-assert.ok(css.includes(`${G} #unifiedUploadModal :is(.vista-command-link, .upload-option-btn) {\n    display: grid;\n    grid-template-columns: 25px minmax(0, 1fr);`) && css.includes('color: #151c55;'), 'command links: the glyph column and the text');
+assert.ok(css.includes(`${G} #unifiedUploadModal .vista-command-link,\n${G} #unifiedUploadModal .upload-option-btn {\n    display: grid;\n    grid-template-columns: 25px minmax(0, 1fr);`) && css.includes('color: #151c55;'), 'command links: the glyph column and the text');
 assert.ok(css.includes('background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABkAAAB9') && css.includes('background-position: 0 -25px;'), "the theme's green arrow glyph, hot state");
 assert.ok(css.includes('background: linear-gradient(#fff, #f6f6f6);\n        border-color: #c6c6c6;') && css.includes('color: #074ae5;'), 'hover: the light gradient, the 1 px border, the hot text');
 assert.ok(css.includes('.vista-command-link-note {\n    display: block;\n    grid-column: 2;\n    margin-top: 1px;\n    font-size: 9pt;\n    line-height: 15px;'), 'the 9 pt note');

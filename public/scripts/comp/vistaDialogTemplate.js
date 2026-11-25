@@ -1661,8 +1661,10 @@
                 },
                 init(ctx) {
                     const content = ctx.content;
-                    // collapsed, the window is 148 DLU wide (the boxes' 144 and the margin): 222 px on the VM
-                    const collapsed = Math.round((148 * 6) / 4) - 16;
+                    // collapsed, the client is 148 DLU wide (the boxes end at 144 and the margin is 4), in the dialog's own
+                    // MS Shell Dlg base units like the 298 DLU expanded client: 222 px on the VM (not less the 16 px of frame,
+                    // content.style.width is the client, which cut the Define Custom Colors button's last 9 px) (#852)
+                    const collapsed = px(units({ f: ['MS Shell Dlg', 8] }), 148, 'x');
                     const full = parseInt(content.style.width, 10);
                     const spec = content.querySelector('.vdt-cc-spectrum');
                     const lum = content.querySelector('.vdt-cc-lum');
