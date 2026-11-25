@@ -258,6 +258,19 @@ async function main() {
     calls.length = 0;
     await launcher.steer(SID, 'line one\nline two');
     assert.ok(calls.some((c) => c.includes('set-buffer')) && calls.some((c) => c.includes('paste-buffer') && c.includes('-p')), 'bracketed paste');
+    // a menu on its screen owns the keys: nothing is typed (its Enter would pick the highlighted choice) and the error names it
+    {
+        const before = paneText;
+        paneText = ['● Ready for your first request.', '─'.repeat(40), '  Make auto mode your default permission mode?', '  Auto mode lets Claude handle permission prompts automatically.',
+            '  ❯ Yes, set auto mode as my default permission mode', '    No, keep bypass permissions', '  Not answered yet · ↑/↓ to choose · Esc to cancel'].join('\n');
+        calls.length = 0;
+        await assert.rejects(() => launcher.steer(SID, 'are you there'), (e) => e.code === 'SESSION_DIALOG' && /Make auto mode your default permission mode\?/.test(e.message));
+        assert.ok(!calls.some((c) => c.includes('send-keys') || c.includes('paste-buffer')), 'no keys go into a session showing a menu');
+        // a busy session's own footer ("esc to interrupt") is not a menu
+        paneText = ['✽ Churning… (7s)', '─'.repeat(40), '❯ ', '─'.repeat(40), '  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt'].join('\n');
+        assert.strictEqual((await launcher.steer(SID, 'still sends')).sent, true);
+        paneText = before;
+    }
     await assert.rejects(() => launcher.steer(SID, '   '), /Nothing to send/);
     await assert.rejects(() => launcher.steer('33333333-2222-4333-8444-555555555555', 'hi'), /not running/);
     const live = await launcher.resume(gr, SID, {});

@@ -441,6 +441,9 @@ async function paneFor(id) {
     throw new Error('It does not run in tmux: type into its own terminal');
 }
 
+/** The key hints Claude Code prints under a menu or confirmation that has taken over its input box. */
+const DIALOG_RE = /(↑\/↓|↑↓) to (choose|select|navigate)|\bEsc to cancel\b|\bEnter to (confirm|select)\b|Not answered yet/i;
+
 /** Types text into a running session and presses Enter. */
 async function steer(id, text) {
     if (readOnly()) throw new Error('Sessions are read-only on this instance');
@@ -448,6 +451,14 @@ async function steer(id, text) {
     if (!body) throw new Error('Nothing to send');
     if (body.length > 20000) throw new Error('That message is too long (20,000 characters at most)');
     const { sock, pane, live } = await paneFor(id);
+    // A question on its screen (a menu such as "Make auto mode your default permission mode?") owns the keys:
+    // typed text would be lost and its Enter would pick the menu's highlighted choice. Refuse instead, naming it.
+    const shot = await runner('tmux', [...sock, 'capture-pane', '-p', '-J', '-t', pane, '-S', '-20']);
+    const tail = String(shot.stdout || '').split('\n').map((l) => l.trim()).filter(Boolean);
+    if (tail.slice(-4).some((l) => DIALOG_RE.test(l))) {
+        const q = tail.slice(-20).find((l) => /\?$/.test(l)) || 'a question';
+        throw Object.assign(new Error(`Not sent: the session is showing ${q === 'a question' ? q : `"${require('./claudeTranscript').mask(q).slice(0, 160)}"`} in its terminal. Answer it there (Screen) first, then send again.`), { code: 'SESSION_DIALOG' });
+    }
     // multi-line text goes in as one paste (bracketed), so a newline does not send it early
     const lines = body.split('\n');
     if (lines.length > 1) {
