@@ -197,8 +197,8 @@
             if (pushed) { S.spend.data = sp.spend; S.spend.loaded = true; S.spend.gone = false; }
             // version moves on every review, work item and lock change: the status is read again once per change
             if (ver !== S.sup.version) {
-                const shown = S.c && (S.c.node === 'co-work' || S.c.node === 'co-held' || S.c.node === 'aw-sup' || S.c.node === 'co-pending' || S.c.node === 'co-supervisor' || S.c.node.startsWith('sup-'));
-                if (S.sup.loaded && shown && !S.sup.loading) void loadSupervisor();
+                // the tree's counts (Waiting, Active, Reviews...) come from it too: read once per change, whatever page is shown
+                if (!S.sup.loading) void loadSupervisor();
                 else S.sup.stale = true;
                 S.sup.version = ver;
                 if (!pushed) { if (S.c && usageWanted(S.c.node)) void loadSpend(); else S.spend.loaded = false; }
@@ -225,6 +225,7 @@
             const r = await send('status_subscribe', { feed: 'claude_desk' });
             applyDesk(r.items || {});
             S.error = '';
+            if (!S.sup.loaded && !S.sup.loading) void loadSupervisor();
         } catch (e) {
             S.subscribed = false;
             S.error = errText(e);
@@ -1085,8 +1086,12 @@
         if (SUP_GONE.test(errText(e))) { S.sup.unavailable = true; S.sup.error = ''; } else S.sup.error = errText(e);
     }
     async function loadSupervisor() {
+        if (S.sup.loading) { S.sup.stale = true; return; }
+        S.sup.loading = true;
         void loadEngines();
-        try { supTake(await send('claude_desk_supervisor', { action: 'status' })); S.sup.loaded = true; } catch (e) { S.sup.loaded = true; supFail(e); }
+        try { supTake(await send('claude_desk_supervisor', { action: 'status' })); S.sup.loaded = true; } catch (e) { S.sup.loaded = true; supFail(e); } finally { S.sup.loading = false; }
+        // a change that came in while it was being read: read once more
+        if (S.sup.stale) { S.sup.stale = false; void loadSupervisor(); return; }
         openAgents();
         repaint();
     }
