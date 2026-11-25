@@ -61,8 +61,8 @@
             const c = d.chime;
             if (!c) { el.innerHTML = ui.note(d.failed ? 'The chime settings could not be read.' : 'Reading the chime settings...'); return; }
             const off = c.mode === 'off';
-            const row = (key, text) => `<div class="wm-form-row is-wide"><span class="wm-form-label">${text}</span>${ui.comboHtml(key, label(CHOICES, c[key === 'hourSound' ? 'hourSound' : 'halfSound']), off)}
-                <button type="button" class="wm-button wmsp-play" data-act="play-${key}" aria-label="Play"></button></div>`;
+            const row = (key, text) => `<div class="wm-form-row is-wide"><span class="wm-form-label">${text}</span><div class="wmsp-sound-row">${ui.comboHtml(key, label(CHOICES, c[key]), off)}
+                <button type="button" class="wm-button wmsp-play" data-act="play-${key}" aria-label="Play"${off ? ' disabled' : ''}></button></div></div>`;
             el.innerHTML = `<div class="wm-form-row is-wide"><span class="wm-form-label">Chime:</span>${ui.comboHtml('mode', label(MODES, c.mode))}</div>
                 ${row('hourSound', 'Hour sound:')}
                 ${c.mode === 'half' ? row('halfSound', 'Half hour sound:') : ''}
