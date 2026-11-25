@@ -507,13 +507,10 @@
         // an RCS account not paired yet: only the note, no list
         const list = unpaired(acct()) ? [] : visibleChats();
         if (!selectedGuid || !list.some((c) => c.guid === selectedGuid)) selectedGuid = list.length ? list[0].guid : null;
-        const lbox = page.querySelector('.wch-list');
-        const keepTop = lbox.parentNode.scrollTop; // keeps its scroll position (rule: scroll-lists-keep-position)
-        lbox.innerHTML = list.map(rowHtml).join('');
+        page.querySelector('.wch-list').innerHTML = list.map(rowHtml).join('');
         const empty = page.querySelector('.wch-empty');
         empty.hidden = !!list.length || !loaded;
         empty.textContent = emptyText();
-        if (keepTop) lbox.parentNode.scrollTop = keepTop;
         paintStatus();
         const f = folderOf(folder);
         const name = page.querySelector('.wch-folder-name');

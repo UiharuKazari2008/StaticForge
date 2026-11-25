@@ -5092,7 +5092,6 @@ async function handleVibeEncodingConfirm() {
 function displayVibeManagerImages() {
     if (!vibeManagerGallery) return;
 
-    const keptScrollTop = vibeManagerGallery.scrollTop; // keeps its scroll position (rule: scroll-lists-keep-position)
     vibeManagerGallery.innerHTML = '';
 
     if (vibeManagerImages.length === 0) {
@@ -5109,7 +5108,6 @@ function displayVibeManagerImages() {
         const galleryItem = createVibeManagerGalleryItem(vibeImage);
         vibeManagerGallery.appendChild(galleryItem);
     });
-    if (keptScrollTop) vibeManagerGallery.scrollTop = keptScrollTop;
 }
 
 function createVibeManagerGalleryItem(vibeImage) {

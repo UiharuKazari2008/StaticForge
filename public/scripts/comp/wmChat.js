@@ -443,13 +443,11 @@
         // the device keeps a conversation selected: the first one when none is
         if (!selectedId || !list.some((s) => s.id === selectedId)) selectedId = list.length ? list[0].id : null;
         const box = page.querySelector('.wch-list');
-        const keepTop = box.parentNode.scrollTop; // keeps its scroll position (rule: scroll-lists-keep-position)
         box.innerHTML = list.map(rowHtml).join('');
         const empty = page.querySelector('.wch-empty');
         empty.hidden = !!list.length || !loaded;
         empty.textContent = smsFolder !== 'inbox' ? 'No messages.' : 'To start a conversation, tap Menu, then New, and choose a picture for the persona.';
         const n = selectedId ? 1 : 0;
-        if (keepTop) box.parentNode.scrollTop = keepTop;
         page.querySelector('.wch-status').textContent = `${n} conversation${n === 1 ? '' : 's'} selected`;
         page.querySelector('.wch-folder-name').textContent = FOLDER_LABELS[smsFolder] || 'Inbox';
         page.querySelector('.wch-sort span').textContent = sort === 'name' ? 'From' : 'Received';

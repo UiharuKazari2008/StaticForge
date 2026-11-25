@@ -334,7 +334,6 @@
             renderBar();
             const list = page.querySelector('.nt-list');
             list.setAttribute('aria-multiselectable', 'true');
-            const keepTop = list.parentNode.scrollTop; // keeps its scroll position (rule: scroll-lists-keep-position)
             list.innerHTML = items.map((i) => `<div class="nt-row${selected.has(i.id) ? ' is-selected' : ''}" role="option" aria-selected="${selected.has(i.id)}" data-id="${esc(i.id)}">`
                 + `<span class="nt-ico">${icon(isVoice(i) ? 'notes-recording' : 'notes-note')}</span>`
                 + `<span class="nt-name">${esc(i.name)}</span>`
@@ -343,7 +342,6 @@
             const empty = page.querySelector('.nt-empty');
             empty.textContent = failed || '';
             empty.hidden = !failed;
-            if (keepTop) list.parentNode.scrollTop = keepTop;
         }
 
         function paintSelection() {

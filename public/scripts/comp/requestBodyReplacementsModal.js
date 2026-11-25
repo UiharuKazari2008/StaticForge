@@ -909,9 +909,6 @@ function renderRequestBodyReplacementsList() {
     listContainer.querySelectorAll('.custom-dropdown').forEach((dropdown) => {
         teardownDropdown(dropdown);
     });
-    // keeps its scroll position (rule: scroll-lists-keep-position); the scroller is the list's container
-    const scroller = listContainer.closest('.text-replacement-list-container') || listContainer;
-    const keptScrollTop = scroller.scrollTop;
     listContainer.innerHTML = '';
 
     if (requestBodyReplacements.length === 0) {
@@ -928,7 +925,6 @@ function renderRequestBodyReplacementsList() {
         const itemElement = createRequestBodyReplacementItem(replacement, index);
         listContainer.appendChild(itemElement);
     });
-    if (keptScrollTop) scroller.scrollTop = keptScrollTop;
     refreshCounts();
 }
 

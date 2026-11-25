@@ -285,10 +285,7 @@ function studioActivityRender() {
     }
     const frag = document.createDocumentFragment();
     rows.forEach((entry) => frag.appendChild(studioActivityBuildRow(entry)));
-    const scroller = log.parentElement; // keeps its scroll position (rule: scroll-lists-keep-position)
-    const keptScrollTop = scroller ? scroller.scrollTop : 0;
     log.replaceChildren(frag);
-    if (scroller && keptScrollTop) scroller.scrollTop = keptScrollTop;
     if (empty) empty.classList.toggle('hidden', rows.length > 0);
     studioActivityUpdateBand(rows.length);
     studioActivityRenderPreview();

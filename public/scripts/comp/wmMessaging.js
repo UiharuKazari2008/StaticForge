@@ -1597,8 +1597,6 @@
         const list = page.querySelector('.msg-list');
         const empty = page.querySelector('.msg-empty');
         if (!list) return;
-        const sc = list.parentNode;
-        const keepTop = sc.scrollTop; // keeps its scroll position (rule: scroll-lists-keep-position)
         let text = '';
         if (isList()) {
             const rows = sorted(mail);
@@ -1619,7 +1617,6 @@
         }
         empty.textContent = text;
         empty.hidden = !text;
-        if (keepTop) sc.scrollTop = keepTop;
         page.querySelector('.msg-view[data-view="list"]').classList.toggle('is-several', several);
         renderStatus();
     }

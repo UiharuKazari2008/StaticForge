@@ -652,17 +652,10 @@ const similarDsapDriver = {
         const help = state.tabId === 'reviewed'
             ? '<p class="similar-help">Reviewed means you kept the group in this browser. Images were not deleted. Scrap still works from this tab.</p>'
             : '<p class="similar-help">Newest image in each group starts unchecked (the keep). Checked thumbs are the scrap set. Keep parks the group without deleting. Scrap uses the existing bulk delete.</p>';
-        // keeps its scroll position (rule: scroll-lists-keep-position): ticking a thumb, Keep, un-review and Scrap re-render
-        // the view; the scroller is the nearest scrolling ancestor
-        let scroller = view.parentElement;
-        while (scroller && scroller !== root.parentElement && scroller.scrollHeight <= scroller.clientHeight) scroller = scroller.parentElement;
-        const keepTop = scroller ? scroller.scrollTop : 0;
         view.innerHTML = `${dsapSmfBuildSectionHdr(state.tabId === 'reviewed' ? 'Kept groups' : 'Similar groups')}
 ${stats}
 ${help}
 ${body}`;
-        if (scroller && keepTop && state._renderedTab === state.tabId) scroller.scrollTop = keepTop;
-        state._renderedTab = state.tabId; // another tab is a new screen and starts at the top
     }
 };
 
