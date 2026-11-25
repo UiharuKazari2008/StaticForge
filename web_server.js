@@ -2193,7 +2193,18 @@ app.use('/cache/explore_files', authMiddleware, async (req, res, next) => {
         return next();
     }
 });
+// .cache also holds databases, secrets/ and account state, so /cache serves only the asset
+// folders clients request (Yozora #1224); anything else is a 404, never a file.
+const CACHE_SERVED_FOLDERS = new Set([
+    'preview', 'upload', 'vibe', 'wallpapers', 'dynGenPreview', 'explore_files', 'quickstart',
+    'site-icons', 'wiki', 'wiki_files', 'packages', 'account-pictures', 'provider-logos', 'lapis-picture'
+]);
 app.use('/cache', authMiddleware, (req, res, next) => {
+    let first = '';
+    try { first = decodeURIComponent(req.path.split('/')[1] || ''); } catch (_e) { first = ''; }
+    if (!CACHE_SERVED_FOLDERS.has(first) || !req.path.slice(first.length + 1).startsWith('/')) {
+        return res.status(404).end();
+    }
     // Wallpapers reuse a stable per-workspace path (/cache/wallpapers/<id>.png) but the
     // content is overwritten on every upload, so they must revalidate (ETag/Last-Modified)
     // instead of being served stale from the browser cache. Other /cache entries are
