@@ -222,34 +222,23 @@
         };
     }
 
+    // A client never takes a changed asset in place (.cursor/rules/client-update-never-in-place.mdc, #1167): what the
+    // download brought is waiting for a reload, whatever its kind. There is no appliedWithoutRestart in the reply.
     async function settlePreparedClientUpdate(sw, filesToUpdate, dl) {
-        const list = (filesToUpdate && filesToUpdate.length) ? filesToUpdate : (sw.pendingApplyFiles || []);
+        const list = (filesToUpdate && filesToUpdate.length) ? filesToUpdate : [];
         const counts = downloadCountsFromClientUpdate(dl, list);
         if (!list.length) {
             return {
                 ok: true,
-                appliedWithoutRestart: false,
                 ...clientUpdateStatusSnapshot(),
                 ...counts
             };
         }
-        // classifyStaticCacheUpdate / applyStaticCacheUpdate: public/scripts/comp/serviceWorkerManager.js
+        // classifyStaticCacheUpdate: public/scripts/comp/serviceWorkerManager.js ('restart' or 'unused', never an apply kind)
         const kind = sw.classifyStaticCacheUpdate(list);
-        if (kind === 'css-only' || kind === 'apply-safe') {
-            await sw.applyStaticCacheUpdate(list, { silent: true });
-            return {
-                ok: true,
-                appliedWithoutRestart: true,
-                alreadyCurrent: true,
-                readyForRestart: false,
-                pendingUpdateKind: kind,
-                ...counts
-            };
-        }
         const after = clientUpdateStatusSnapshot();
         return {
             ok: true,
-            appliedWithoutRestart: false,
             readyForRestart: true,
             alreadyCurrent: false,
             pendingUpdateKind: kind || after.pendingUpdateKind || 'restart',
@@ -263,9 +252,6 @@
         if (!sw || sw.agentSession) {
             return { ok: true, ...baseline };
         }
-        if (baseline.readyForRestart && (baseline.pendingUpdateKind === 'css-only' || baseline.pendingUpdateKind === 'apply-safe')) {
-            return settlePreparedClientUpdate(sw, sw.pendingApplyFiles, null);
-        }
         try {
             // Same as desktop context-menu Update (refresh-cache):
             // refreshServerCache: public/scripts/websocket.js
@@ -276,7 +262,7 @@
             if (sw.isUpdating) {
                 // attachToDownloadProgress: public/scripts/comp/serviceWorkerManager.js
                 const dl = await sw.attachToDownloadProgress({ allowSkip: false });
-                return settlePreparedClientUpdate(sw, sw.pendingApplyFiles, dl);
+                return settlePreparedClientUpdate(sw, null, dl);
             }
             const response = await fetch('/', {
                 method: 'OPTIONS',

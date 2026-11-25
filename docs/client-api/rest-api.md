@@ -416,7 +416,7 @@ The HTTP response waits until Cancel or countdown 0 (about 20s). Apply+restart s
 
 Ingest / Cursor testing uses the silent pair instead of this dialog:
 
-- `POST /agent/session/prepare-update` (MCP `update_client`) — desktop Update path; `appliedWithoutRestart` / `readyForRestart` / `alreadyCurrent`
+- `POST /agent/session/prepare-update` (MCP `update_client`) — desktop Update path; `readyForRestart` / `alreadyCurrent` (never `appliedWithoutRestart`: a client never takes a changed asset in place)
 - `POST /agent/session/restart` (MCP `restart_client`) — reload + reattach **only** when `readyForRestart`. MCP waits at most 45s and may return `pending: true` with `restartId`; call again with `{restartId}` until `reattached`. The same `clientId` counts once `get_state` answers.
 - `POST /agent/session/js` / `POST /agent/session/inspect` — then test
 
@@ -424,11 +424,11 @@ Ingest / Cursor testing uses the silent pair instead of this dialog:
 
 **Auth:** Same as `GET /agent`. Requires a live bind.
 
-Silent SW update on the bound tab (same as desktop context-menu **Update** / `refresh-cache`): `refreshServerCache` then download. No 15s dialog. HTTP waits until the tab replies (`appliedWithoutRestart`, `readyForRestart`, or `alreadyCurrent`), up to 120s.
+Silent SW update on the bound tab (same as desktop context-menu **Update** / `refresh-cache`): `refreshServerCache` then download. No 15s dialog. HTTP waits until the tab replies (`readyForRestart`, or `alreadyCurrent`), up to 120s.
 
-**Success:** `200` `{ "success": true, "ok": true, "appliedWithoutRestart": true, "readyForRestart": false, "alreadyCurrent": true, "pendingUpdateKind": "css-only", "filesDownloaded": N }`
+**Success:** `200` `{ "success": true, "ok": true, "readyForRestart": true, "alreadyCurrent": false, "pendingUpdateKind": "restart", "filesDownloaded": N }`
 
-CSS/apply-safe swaps stylesheets in place (`appliedWithoutRestart`). Do **not** restart after that — a reload can keep stale HTML hashes. JS/HTML sets `readyForRestart` for `POST /agent/session/restart`.
+Every changed asset, CSS included, sets `readyForRestart` for `POST /agent/session/restart`; nothing is applied into the running page (hard ban, `.cursor/rules/client-update-never-in-place.mdc`).
 
 ### `POST /agent/session/restart`
 

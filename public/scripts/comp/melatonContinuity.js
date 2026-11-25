@@ -628,31 +628,6 @@
     };
     /** serviceWorkerManager.forceRestart (phone window): what the coming restart installs. */
     api.restartScope = (scope) => { keepDexOnRestart = scope !== 'both'; };
-    /** serviceWorkerManager.applyStaticCacheUpdate (phone window): CSS and safe files applied live go to the DeX window too. */
-    api.relayApply = (files) => {
-        if (!isPhone() || !api.peers().includes('desktop')) return;
-        api.post({ type: 'apply-update', files: files.map((f) => ({ url: f.url, hash: f.hash })) });
-    };
-    api.on('apply-update', (m) => {
-        const sw = root.serviceWorkerManager;
-        if (!isDw() || !sw || !Array.isArray(m.files) || typeof sw.applyStaticCacheUpdate !== 'function') return;
-        // this window may run files the phone's page does not (#872): it decides for itself
-        const kind = typeof sw.classifyStaticCacheUpdate === 'function' ? sw.classifyStaticCacheUpdate(m.files) : 'apply-safe';
-        if (kind === 'restart') {
-            sw.pendingUpdateKind = 'restart';
-            // this window's own (#951): the phone's next state push must not clear it
-            if (!(sw._localPending instanceof Set)) sw._localPending = new Set();
-            if (!sw.pendingUpdateUrls) sw.pendingUpdateUrls = new Set();
-            m.files.forEach((f) => { if (f && f.url) { sw._localPending.add(f.url); sw.pendingUpdateUrls.add(f.url); } });
-            if (typeof sw._pendingMerge === 'function') sw._pendingMerge(m.files);
-            sw.tripPendingUpdateFuse(m.files.length);
-            if (typeof sw._scheduleUpdateCompleteToast === 'function') sw._scheduleUpdateCompleteToast('restart');
-            return;
-        }
-        if (kind === 'segments' && typeof sw.applySegmentUpdate === 'function') { void sw.applySegmentUpdate(m.files, { fromPhone: true }); return; }
-        sw.applyStaticCacheUpdate(m.files, { silent: true, fromPhone: true });
-    });
-
     let pocketPc = false;
     const cancelBtn = () => document.getElementById('desktopPreStartupCancelBtn');
     function pocketPcRestart() {

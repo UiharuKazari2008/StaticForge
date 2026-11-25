@@ -334,7 +334,7 @@ class ServiceWorkerManager {
         this.lastPingResponseTime = null;
         this.healthCheckInterval = null;
         this.healthCheckStartTime = null;
-        this.swConfig = { cssOnlyAutoApply: true };
+        this.swConfig = {};
         this.pendingApplyFiles = null;
         this.pendingUpdateKind = 'restart';
         this.lastAppliedWorkspaceCssHash = null;
@@ -1332,7 +1332,6 @@ class ServiceWorkerManager {
      * restarted the phone for a style update; the classic tray popup's "Download now" only checked again).
      *   null        nothing waits (or an agent session, whose files its agent updates)
      *   'busy'      a download is running
-     *   'apply'     downloaded styles / pictures that install live (pendingApplyFiles)
      *   'restart'   downloaded updates, or a service pack, that a restart installs
      *   'install'   counted, not downloaded (notify mode, or files that failed): { restart } says whether they need one
      */
@@ -1340,9 +1339,6 @@ class ServiceWorkerManager {
         if (this.agentSession) return null;
         if (this.isUpdating) return { kind: 'busy' };
         if (this.servicePack && this.servicePack.label) return { kind: 'restart', upgrade: true };
-        if (Array.isArray(this.pendingApplyFiles) && this.pendingApplyFiles.length && this.pendingUpdateKind !== 'restart') {
-            return { kind: 'apply', files: this.pendingApplyFiles.length };
-        }
         if (this.hasPendingUpdates()) return { kind: 'restart', files: this.pendingUpdateFilesTotal || 0 };
         const count = this.availableUpdateCount();
         if (count > 0) {
@@ -1375,15 +1371,6 @@ class ServiceWorkerManager {
         if (kind === 'restart') {
             this.forceRestart(opts.restart || {});
             return 'restart';
-        }
-        if (kind === 'apply') {
-            const files = this.pendingApplyFiles.slice();
-            await this.applyStaticCacheUpdate(files, { silent: !!opts.silent });
-            this.recordUpdateHistory({ name: `Melaton update (${files.length} ${files.length === 1 ? 'file' : 'files'})`, status: 'Successful', importance: 'Important' });
-            // counted updates beside it install too, the same way
-            const next = this.updateAction();
-            if (next && next.kind === 'install') await this.installUpdates(Object.assign({}, opts, { check: false }));
-            return 'applied';
         }
         if (kind === 'install') {
             if (action.restart && window.uiShell === 'mobile' && !this._isContinuityDexWindow()) {
@@ -1941,12 +1928,10 @@ class ServiceWorkerManager {
                 this._hideServiceWorkerTrayPopup();
             });
 
-            // styles and pictures install live: Install, not a restart (#1022)
-            const live = (this.updateAction() || {}).kind === 'apply';
             const restartBtn = document.createElement('button');
             restartBtn.type = 'button';
             restartBtn.className = 'btn-standard';
-            restartBtn.textContent = live ? 'Install' : 'Restart';
+            restartBtn.textContent = 'Restart';
             restartBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -3083,10 +3068,7 @@ class ServiceWorkerManager {
             return this.swConfig;
         }
         try {
-            const response = await this._requestSwConfig();
-            if (response && typeof response.cssOnlyAutoApply === 'boolean') {
-                this.swConfig = { cssOnlyAutoApply: response.cssOnlyAutoApply };
-            }
+            await this._requestSwConfig();
         } catch (_) { /* keep default */ }
         return this.swConfig;
     }
@@ -3117,29 +3099,11 @@ class ServiceWorkerManager {
         });
     }
 
-    isCssOnlyAutoApplyEnabled() {
-        return this.swConfig.cssOnlyAutoApply !== false;
-    }
-
-    isCssOnlyUpdate(files) {
-        if (!Array.isArray(files) || files.length === 0) {
-            return false;
-        }
-        return files.every((file) => isCssStaticFilePath(normalizeStaticFilePath(file.url)));
-    }
-
     hasScriptUpdate(files) {
         if (!Array.isArray(files) || files.length === 0) {
             return false;
         }
         return files.some((file) => isScriptStaticFilePath(normalizeStaticFilePath(file.url)));
-    }
-
-    isApplySafeUpdate(files) {
-        if (!Array.isArray(files) || files.length === 0) {
-            return false;
-        }
-        return files.every((file) => isApplySafeStaticFilePath(normalizeStaticFilePath(file.url)));
     }
 
     /**
@@ -3224,77 +3188,23 @@ class ServiceWorkerManager {
         this.recordUpdateHistory({ key, name: `Update for ${name}`, status: 'Successful', importance: 'Recommended' });
     }
 
-    /** { features: Set of loaded hot features the files belong to, rest: the other files } (#872) */
-    splitHotFeatureFiles(files) {
-        const fl = window.featureLoader;
-        const features = new Set();
-        const rest = [];
-        for (const file of files || []) {
-            const name = fl && typeof fl.hotFeatureOf === 'function' ? fl.hotFeatureOf(normalizeStaticFilePath(file.url)) : null;
-            if (name) features.add(name);
-            else rest.push(file);
-        }
-        return { features, rest };
-    }
-
-    /**
-     * A 'segments' update (#872): CSS / assets apply live, each loaded hot feature it touches is
-     * swapped (or waits for its windows to close). Nothing restarts.
-     */
-    async applySegmentUpdate(files, options = {}) {
-        const used = this.filesUsedByPage(files);
-        const { features } = this.splitHotFeatureFiles(used);
-        this._noteStaticHashUpdate(files);
-        // keepPending (#1022): a restart owed before this update stays owed (its fuse, files, saved record, prompt)
-        await this.applyStaticCacheUpdate(files, { silent: true, fromPhone: options.fromPhone, keepPending: !!options.keepPending });
-        const results = {};
-        // a feature swapped as another's dependent (featureLoader cascades) is not swapped twice
-        const fl = window.featureLoader;
-        const covered = new Set();
-        for (const name of features) {
-            if (fl && typeof fl._loadedDependents === 'function') fl._loadedDependents(name).forEach((d) => covered.add(d));
-        }
-        for (const name of features) {
-            if (covered.has(name)) { results[name] = { withDependency: true }; continue; }
-            try { results[name] = await window.featureLoader.swapFeature(name); } catch (err) {
-                console.error(`[update] ${name} could not be swapped; it updates at the next restart`, err);
-                results[name] = { error: err.message };
-                this.tripPendingUpdateFuse(1);
-                this.pendingUpdateKind = 'restart';
-            }
-        }
-        return results;
-    }
-
     /** The files of an update this page uses (the rest change nothing until they are next loaded). */
     filesUsedByPage(files) {
         return (files || []).filter((file) => !this._pageNeverUsed(normalizeStaticFilePath(file.url)));
     }
 
+    /**
+     * 'restart' for every changed file this page runs, 'unused' for files nothing here runs (they sit in the cache
+     * for the next load). There is no kind that applies a file into the running page: a client never takes a changed
+     * asset in place, it reloads (.cursor/rules/client-update-never-in-place.mdc, #1167).
+     */
     classifyStaticCacheUpdate(files) {
         if (!Array.isArray(files) || files.length === 0) {
             return 'restart';
         }
-        // only the files this page runs decide; an update of nothing in use applies as it is (#872)
-        const used = this.filesUsedByPage(files);
-        if (!used.length) {
+        // only the files this page runs decide (#872)
+        if (!this.filesUsedByPage(files).length) {
             return 'unused';
-        }
-        // files of a loaded hot feature swap with it (featureLoader.swapFeature); the rest decide
-        const { rest } = this.splitHotFeatureFiles(used);
-        if (rest.length < used.length) {
-            if (!rest.length || rest.every((file) => isApplySafeStaticFilePath(normalizeStaticFilePath(file.url)))) return 'segments';
-            return 'restart';
-        }
-        files = used;
-        if (this.hasScriptUpdate(files)) {
-            return 'restart';
-        }
-        if (this.isCssOnlyUpdate(files)) {
-            return 'css-only';
-        }
-        if (this.isApplySafeUpdate(files)) {
-            return 'apply-safe';
         }
         return 'restart';
     }
@@ -3335,119 +3245,6 @@ class ServiceWorkerManager {
         return 'No new updates found. Restart to apply pending updates.';
     }
 
-    refreshStaticStylesheet(pathname, hash) {
-        const nextUrl = buildShaBustUrl(pathname, hash);
-        document.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
-            const href = link.getAttribute('href');
-            if (!href || !pathnameMatchesAssetUrl(pathname, href)) {
-                return;
-            }
-            // Never rewrite a loaded sheet's href in place: the browser drops its rules at once and the page runs
-            // unstyled until the new sheet arrives (a flash on every CSS-only update, #1167). The new sheet loads
-            // beside the old one, which goes only when the new one has loaded; on an error the old one stays.
-            if (link.href === new URL(nextUrl, document.baseURI).href) return;
-            const fresh = link.cloneNode(false);
-            fresh.setAttribute('href', nextUrl);
-            let settled = false;
-            const finish = (ok) => {
-                if (settled) return;
-                settled = true;
-                clearTimeout(timer);
-                fresh.removeEventListener('load', onLoad);
-                fresh.removeEventListener('error', onError);
-                (ok ? link : fresh).remove();
-            };
-            const onLoad = () => finish(true);
-            const onError = () => finish(false);
-            const timer = setTimeout(() => finish(true), 8000);
-            fresh.addEventListener('load', onLoad);
-            fresh.addEventListener('error', onError);
-            link.after(fresh);
-        });
-    }
-
-    bumpStaticAssetReferences(pathname, hash) {
-        const nextUrl = buildShaBustUrl(pathname, hash);
-        document.querySelectorAll(`link[href*="${pathname}"], script[src*="${pathname}"], img[src*="${pathname}"], source[src*="${pathname}"]`).forEach((el) => {
-            // a script already ran: its tag's src changes nothing (the restart loads it); a picture draws again (#951)
-            const attr = el.tagName === 'LINK' ? 'href' : 'src';
-            const val = el.getAttribute(attr);
-            if (!val || !pathnameMatchesAssetUrl(pathname, val)) {
-                return;
-            }
-            el.setAttribute(attr, nextUrl);
-        });
-    }
-
-    async applyStaticCacheUpdate(files, options = {}) {
-        const list = Array.isArray(files) && files.length > 0 ? files : this.pendingApplyFiles;
-        if (!Array.isArray(list) || list.length === 0) {
-            return;
-        }
-        // Continuity (#798): the DeX window shares the cache but not this page: it applies the same files
-        const mc = window.melatonContinuity;
-        if (!options.fromPhone && mc && typeof mc.relayApply === 'function') mc.relayApply(list);
-
-        const workspaceUpdates = [];
-        const cssUpdates = [];
-        const assetUpdates = [];
-
-        for (const file of list) {
-            const pathname = normalizeStaticFilePath(file.url);
-            if (pathname.endsWith('/css/workspaces.css')) {
-                workspaceUpdates.push(file.hash);
-            } else if (isCssStaticFilePath(pathname)) {
-                cssUpdates.push({ pathname, hash: file.hash });
-            } else if (isApplySafeStaticFilePath(pathname)) {
-                assetUpdates.push({ pathname, hash: file.hash });
-            }
-        }
-
-        await new Promise((resolve) => {
-            requestAnimationFrame(() => {
-                cssUpdates.forEach((entry) => {
-                    this.refreshStaticStylesheet(entry.pathname, entry.hash);
-                });
-                assetUpdates.forEach((entry) => {
-                    this.bumpStaticAssetReferences(entry.pathname, entry.hash);
-                });
-                resolve();
-            });
-        });
-
-        for (const hash of workspaceUpdates) {
-            // refreshWorkspaceStylesheet: public/scripts/comp/workspaceUtils.js
-            await refreshWorkspaceStylesheet(hash);
-            this.lastAppliedWorkspaceCssHash = hash || this.lastAppliedWorkspaceCssHash;
-        }
-
-        // switchWorkspaceTheme: public/scripts/comp/workspaceUtils.js (only when something on screen changed)
-        if (cssUpdates.length || assetUpdates.length || workspaceUpdates.length) switchWorkspaceTheme(activeWorkspace);
-
-        // keepPending (#951): applied beside a restart that is still owed - its fuse, kind and files stay
-        if (!options.keepPending) {
-            this.pendingApplyFiles = null;
-            this.pendingUpdateKind = 'restart';
-            this.resetPendingUpdateFuse();
-            this.hideUpdateToast();
-        }
-
-        if (this._isDesktopTrayMode() && !options.keepPending) {
-            this._hideServiceWorkerTrayPopup();
-        }
-
-        if (!options.silent && typeof showGlassToast === 'function') {
-            showGlassToast(
-                'success',
-                'Updates Applied',
-                'Styles and assets refreshed without restarting.',
-                false,
-                3000,
-                '<i class="fas fa-check-circle"></i>'
-            );
-        }
-    }
-
     _processStaticCacheComplete(data) {
         // what was available and has now come down is no longer "available" (#951)
         if (this.availableUpdates && this.availableUpdates.length) this._clearAvailableUpdates(this._resolveUpdatedFilesFromCacheComplete(data));
@@ -3461,56 +3258,22 @@ class ServiceWorkerManager {
             return;
         }
 
-        const silent = data.silent === true;
         const updatedFiles = this._resolveUpdatedFilesFromCacheComplete(data);
         // Continuity (#798): what this restart brings, so a hybrid phone knows whether its DeX window needs it
         if (!this.pendingUpdateUrls) this.pendingUpdateUrls = new Set();
         updatedFiles.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this.pendingUpdateUrls.add(u); });
-        // A restart already pending (scripts waiting to load) takes later batches with it: applying a
-        // CSS-only batch live would run the old scripts on new CSS (seen on phones, #709), and the
-        // apply resets the fuse, so the pending script restart would be forgotten
-        // (#951) only what would mix old scripts with new styling joins it: stylesheets and scripts. Files nothing here
-        // runs, hot features and pictures / sounds / pages apply live, and the restart stays owed for the rest.
+        // Never in place (#1167): the running page keeps all of its old assets until the restart. A changed file
+        // this page runs is owed a restart; a file nothing here runs is only noted (it sits in the cache).
         const restartPending = this.pendingUpdateFuse && this.pendingUpdateKind === 'restart';
-        let updateKind = this.classifyStaticCacheUpdate(updatedFiles);
-        if (restartPending && (updateKind === 'css-only'
-            || (updateKind === 'apply-safe' && updatedFiles.some((f) => isCssStaticFilePath(normalizeStaticFilePath(typeof f === 'string' ? f : f.url)))))) updateKind = 'restart';
+        const updateKind = this.classifyStaticCacheUpdate(updatedFiles);
         console.log('Static cache update classified:', updateKind, updatedFiles, restartPending ? '(a restart is pending)' : '');
-        // nothing this page runs changed (#872): the new copies are in the cache for the next load
         if (updateKind === 'unused') {
             this._noteStaticHashUpdate(updatedFiles);
             updatedFiles.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this.pendingUpdateUrls.delete(u); });
-            this.applyStaticCacheUpdate(updatedFiles, { silent: true, keepPending: restartPending });
             return;
         }
-        if (updateKind === 'segments') {
-            updatedFiles.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this.pendingUpdateUrls.delete(u); });
-            if (!restartPending) this.pendingUpdateKind = null;
-            void this.applySegmentUpdate(updatedFiles, { keepPending: restartPending });
-            return;
-        }
-        // pictures, sounds, pages with a restart already owed: on screen now, the restart still waits
-        if (restartPending && updateKind === 'apply-safe') {
-            this._noteStaticHashUpdate(updatedFiles);
-            this.applyStaticCacheUpdate(updatedFiles, { silent: true, keepPending: true });
-            return;
-        }
-        this.pendingUpdateKind = updateKind;
-        const canApplyWithoutRestart = updateKind === 'css-only' || updateKind === 'apply-safe';
-        this.pendingApplyFiles = canApplyWithoutRestart ? updatedFiles.slice() : null;
-
-        if (canApplyWithoutRestart) {
-            // Install updates automatically (#951): what needs no restart is installed as it arrives, as Vista's
-            // automatic updates install; Download but let me choose waits for Install updates
-            if ((silent && this.isCssOnlyAutoApplyEnabled()) || this._updateMode() === 'auto') {
-                this.applyStaticCacheUpdate(updatedFiles, { silent: true });
-                return;
-            }
-            this.tripPendingUpdateFuse(filesCount);
-            this.trayPopup.dismissedUntilComplete = false;
-            this._scheduleUpdateCompleteToast('apply');
-            return;
-        }
+        this.pendingUpdateKind = 'restart';
+        this.pendingApplyFiles = null;
 
         this._noteUpdateBatch(updatedFiles);
         // kept across reloads and counted as one set with any earlier batch (#951)
@@ -5294,22 +5057,11 @@ class ServiceWorkerManager {
             }
 
             const updateKind = this.classifyStaticCacheUpdate(files);
-            const canApplyWithoutRestart = (updateKind === 'css-only' || updateKind === 'apply-safe')
-                && this.isCssOnlyAutoApplyEnabled();
-
-            if (canApplyWithoutRestart) {
-                await this.applyStaticCacheUpdate(files);
-                return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'apply' };
-            }
-
-            // Boot init downloads (#951): the start never restarts by itself (it was an unasked second restart, and
-            // with files nothing on the page runs yet it was no restart at all). Files no page code has loaded
-            // ('unused') or that swap live ('segments') are in place now; files this page runs an older copy of wait
-            // for the restart the person chooses, as any other update.
-            if (updateKind === 'unused' || updateKind === 'segments') {
+            // Boot init downloads (#951): the start never restarts by itself. Files no page code has loaded ('unused')
+            // sit in the cache for the next load; files this page runs an older copy of wait for the restart the
+            // person chooses, as any other update. Nothing is put into the running page (#1167).
+            if (updateKind === 'unused') {
                 this._noteStaticHashUpdate(files);
-                if (updateKind === 'segments' && typeof this.applySegmentUpdate === 'function') await this.applySegmentUpdate(files);
-                else this.applyStaticCacheUpdate(files, { silent: true });
                 return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'apply' };
             }
             const loadedStale = this._filesNewerThanLoaded(files);
@@ -5795,50 +5547,12 @@ class ServiceWorkerManager {
         if (screen) hideWinlogonStatus();
     }
 
-    // Show update complete toast with restart or apply button
+    // Show the update complete toast: restart (an update is only ever applied by a reload, #1167)
     showUpdateCompleteToast(mode = 'restart') {
         // Manual re-check already showed the pending-restart prompt — don't overwrite it.
         if (this.trayPopup.state === 'complete' && this.trayPopup.kind === 'sw-update'
             && typeof this.trayPopup.message === 'string'
             && this.trayPopup.message.startsWith('No new updates found')) {
-            return;
-        }
-
-        if (mode === 'apply') {
-            if (this._isDesktopTrayMode()) {
-                const filesTotal = this.pendingUpdateFilesTotal || this.trayPopup.filesTotal || 0;
-                this._showServiceWorkerTrayPopup('complete', {
-                    kind: 'sw-update',
-                    filesTotal,
-                    progress: 100,
-                    message: 'Updates ready — apply without restart'
-                });
-                this.updateToastId = 'service-worker-tray-popup';
-            } else if (this.updateToastId && typeof updateGlassToastButtons === 'function') {
-                const applyButton = {
-                    text: 'Apply Now',
-                    type: 'primary',
-                    onClick: () => { void this.installUpdates(); },
-                    closeOnClick: true
-                };
-                const laterButton = {
-                    text: 'Later',
-                    type: 'secondary',
-                    onClick: () => {},
-                    closeOnClick: true
-                };
-                updateGlassToastButtons(this.updateToastId, [applyButton, laterButton]);
-                if (typeof updateGlassToastComplete === 'function') {
-                    updateGlassToastComplete(this.updateToastId, {
-                        type: 'success',
-                        title: 'Updates Complete',
-                        message: 'CSS and assets can be applied without restarting.',
-                        customIcon: '<i class="fas fa-check-circle"></i>',
-                        // the download is done: no empty progress bar under the result
-                        showProgress: false
-                    });
-                }
-            }
             return;
         }
 
