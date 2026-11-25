@@ -373,6 +373,7 @@
                 priority: st.priority || 'normal',
                 maxWeeklyPct: pctText(st.maxWeeklyPct),
                 maxSessionPct: pctText(st.maxSessionPct),
+                renewalDay: pctText(st.renewalDay),
                 defaultModel: st.defaultModel || '',
                 defaultEffort: st.defaultEffort || '',
                 defaultMode: st.defaultMode || ''
@@ -402,6 +403,7 @@
                 ${ui.row('Priority', ui.comboHtml('priority', label(prio, d.priority)), { wide: true })}
                 ${ui.row('Max weekly usage %', ui.edit('wca-f-week', d.maxWeeklyPct, 'inputmode="numeric" maxlength="3" placeholder="None" data-f="maxWeeklyPct"'), { for: 'wca-f-week', wide: true })}
                 ${ui.row('Max session usage %', ui.edit('wca-f-sess', d.maxSessionPct, 'inputmode="numeric" maxlength="3" placeholder="None" data-f="maxSessionPct"'), { for: 'wca-f-sess', wide: true })}
+                ${ui.row('Renewal day', ui.edit('wca-f-renew', d.renewalDay, 'inputmode="numeric" maxlength="2" placeholder="Day of month" data-f="renewalDay"'), { for: 'wca-f-renew', wide: true })}
                 ${ui.row('Default model', ui.comboHtml('model', label(model, d.defaultModel)), { wide: true })}
                 ${ui.row('Default effort', ui.comboHtml('effort', label(effort, d.defaultEffort)), { wide: true })}
                 ${ui.row('Permission mode', ui.comboHtml('mode', label(mode, d.defaultMode)), { wide: true })}
@@ -450,11 +452,13 @@
         if (!wk.ok) return;
         const se = pct(d.maxSessionPct, 'Max session usage');
         if (!se.ok) return;
+        const rt = String(d.renewalDay == null ? '' : d.renewalDay).trim();
+        if (rt && !(/^\d{1,2}$/.test(rt) && Number(rt) >= 1 && Number(rt) <= 31)) { formError('Renewal day must be a day of the month from 1 to 31, or blank.'); return; }
         formError('');
         e.saving = true;
         try {
             const r = await send('claude_fleet_account', {
-                action: 'save', index: e.index, name, preferred: !!d.preferred, priority: d.priority || 'normal', maxWeeklyPct: wk.value, maxSessionPct: se.value,
+                action: 'save', index: e.index, name, preferred: !!d.preferred, priority: d.priority || 'normal', maxWeeklyPct: wk.value, maxSessionPct: se.value, renewalDay: rt ? Number(rt) : null,
                 defaultModel: d.defaultModel || '', defaultEffort: d.defaultEffort || '', defaultMode: d.defaultMode || ''
             });
             take(r);
@@ -649,6 +653,52 @@
     };
     const usageRank = (l) => (l.kind === 'session' || l.kind === 'five_hour' ? 0 : l.kind === 'weekly_all' || l.kind === 'seven_day' ? 1 : 2);
     const resetText = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    // pace and renewal: a copy of modules/claudePace.js (the browser cannot require it; test-claude-fleet.js checks the copies agree)
+    function paceOf(l, now) {
+        const HOUR = 3600000;
+        const k = String((l && l.kind) || '');
+        const win = k === 'session' || k === 'five_hour' ? 5 * HOUR : (k.startsWith('weekly') || k.startsWith('seven_day') ? 168 * HOUR : 0);
+        if (!win || !(l.resetsAt > now) || !Number.isFinite(l.percent)) return null;
+        const elapsed = Math.max(0, Math.min(1, (now - (l.resetsAt - win)) / win));
+        const percent = Math.max(0, l.percent);
+        const elapsedPct = elapsed * 100;
+        let runOutAt = null;
+        let far = false;
+        if (percent > 0 && elapsed >= 0.05) {
+            const at = now + (100 - percent) * (elapsed * win) / percent;
+            if (percent >= 100 || at < l.resetsAt) { far = true; runOutAt = percent >= 100 ? null : Math.round(at); }
+        }
+        return { elapsedPct, percent, ahead: Math.round(percent - elapsedPct), state: far ? 'far' : (percent > elapsedPct ? 'over' : 'ok'), runOutAt };
+    }
+    function renewalAfter(day, now) {
+        const d = Math.round(Number(day));
+        if (!(d >= 1 && d <= 31)) return null;
+        const base = new Date(now);
+        for (let m = 0; m < 3; m++) {
+            const y = base.getFullYear();
+            const mo = base.getMonth() + m;
+            const last = new Date(y, mo + 1, 0).getDate();
+            const t = new Date(y, mo, Math.min(d, last), 23, 59, 59).getTime();
+            if (t > now) return new Date(y, mo, Math.min(d, last)).getTime();
+        }
+        return null;
+    }
+    const dayText = (ms) => new Date(ms).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    /** { text, tip } of the account's renewal: the day the user set, else the day its subscription began (an estimate). */
+    function renewalOf(a, u, now) {
+        const fa = fleetAcc(a.index);
+        const set = fa && fa.settings && fa.settings.renewalDay;
+        const day = set || (u && u.billingDay);
+        const at = day ? renewalAfter(day, now) : null;
+        if (!at) return null;
+        return { text: `Renews ${dayText(at)}`, tip: set ? `Renews on day ${set} of each month (set by you)` : `Estimated from the day this subscription started (day ${day} of the month)` };
+    }
+    function paceTip(p) {
+        if (!p) return '';
+        const n = Math.abs(p.ahead);
+        const rel = p.ahead === 0 ? 'on pace' : `you are ${n} point${n === 1 ? '' : 's'} ${p.ahead > 0 ? 'ahead' : 'behind'}`;
+        return `Even pace: ${Math.round(p.elapsedPct)}% by now - ${rel}`;
+    }
     /** The account's usage: the fleet snapshot's own (pushed whenever the server reads it again), else the claude_usage feed's row. */
     function usageOf(a) {
         const fa = fleetAcc(a.index);
@@ -662,19 +712,27 @@
         const now = Date.now();
         const limits = (Array.isArray(u.limits) ? u.limits : []).filter((l) => l && l.percent != null).sort((x, y) => usageRank(x) - usageRank(y));
         if (!limits.length) return `<div class="wac-line wca-muted">${esc(u.needsLogin ? (u.error || 'No login linked: no usage') : `Usage unavailable${u.error ? `: ${u.error}` : ''}`)}</div>`;
-        return limits.map((l) => {
+        const ren = renewalOf(a, u, now);
+        const head = ren ? `<div class="wca-use-renews wca-muted" title="${esc(ren.tip)}">${esc(ren.text)}</div>` : '';
+        return head + limits.map((l) => {
             const stale = l.resetsAt && l.resetsAt <= now;
+            const pace = stale ? null : paceOf(l, now);
             const w = stale ? 0 : Math.max(0, Math.min(100, Math.round(Number(l.percent) || 0)));
-            const resets = !l.resetsAt ? '' : stale ? 'reset' : `resets ${resetText(l.resetsAt)}`;
+            const wk = /^(weekly|seven_day)/.test(String(l.kind || ''));
+            const resets = !l.resetsAt ? '' : stale ? 'reset' : (pace && pace.state === 'far' && pace.runOutAt ? `at this rate: out ${resetText(pace.runOutAt)}, ` : '') + `${wk ? 'weekly resets' : 'resets'} ${resetText(l.resetsAt)}`;
+            const lv = pace && pace.state === 'far' ? 'bad' : (usageLevel(l) === 'ok' && pace && pace.state === 'over' ? 'warn' : usageLevel(l));
             // 0 draws no fill at all and 100 fills the whole inside (the fill's width in % leaves a hairline or a sliver
             // at fractional device pixels); these two states are classes, not widths
             const edge = w >= 100 ? ' wca-f-full' : w <= 0 ? ' wca-f-zero' : '';
             return `<div class="wca-use"><span class="wca-use-label">${esc(l.label || l.short || l.kind)}</span>`
-                + `<span class="wac-meter wac-lv-${usageLevel(l)}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${w}"><i class="${edge.trim()}" data-w="${w}"></i></span>`
-                + `<span class="wca-use-pct">${stale ? '' : `${w}%`}</span><span class="wca-use-reset wca-muted">${esc(resets)}</span></div>`;
+                + `<span class="wac-meter wac-lv-${lv}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${w}"><i class="${edge.trim()}" data-w="${w}"></i>${pace ? `<b class="wca-pace" data-pace="${pace.elapsedPct.toFixed(1)}" title="${esc(paceTip(pace))}"></b>` : ''}</span>`
+                + `<span class="wca-use-pct">${stale ? '' : `${w}%`}</span><span class="wca-use-reset wca-muted"${pace ? ` title="${esc(paceTip(pace))}"` : ''}>${esc(resets)}</span></div>`;
         }).join('');
     }
-    function paintBars(root0) { root0.querySelectorAll('i[data-w]').forEach((el) => { el.style.width = `${el.dataset.w}%`; }); }
+    function paintBars(root0) {
+        root0.querySelectorAll('i[data-w]').forEach((el) => { el.style.width = `${el.dataset.w}%`; });
+        root0.querySelectorAll('b[data-pace]').forEach((el) => { el.style.left = `${Math.max(0, Math.min(100, Number(el.dataset.pace) || 0))}%`; });
+    }
 
     // ---- availability (server: fleet.accounts[].availability): near a limit = warning, capped / exhausted = error ----
     /** { level: 'warn' | 'bad', text } for an account that is near its limits or no longer free to schedule work on, else null. */
@@ -967,7 +1025,7 @@
         else if (editing) { if (!editing.built) buildSettings(accountsPanel); }
         else if (adding) setHtmlKeep(accountsPanel, addHtml());
         else setHtml(accountsPanel, list);
-        if (tab === 'accounts' && !picking && !adding && !editing && accountsPanel.querySelector('i[data-w]:not([style])')) paintBars(accountsPanel);
+        if (tab === 'accounts' && !picking && !adding && !editing && accountsPanel.querySelector('i[data-w]:not([style]), b[data-pace]:not([style])')) paintBars(accountsPanel);
         setHtml(hostPanel, hostHtml());
         if (tab === 'sessions') setHtml(sessionsPanel, sessionsHtml());
         page.querySelectorAll('.wm-tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === tab)));

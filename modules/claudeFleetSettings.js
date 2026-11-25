@@ -26,7 +26,7 @@ const NEAR_PCT = 80;
 const NEAR_CAP = 10;
 
 const PRIORITIES = ['high', 'normal', 'low'];
-const DEFAULTS = { priority: 'normal', preferred: false, maxWeeklyPct: null, maxSessionPct: null, defaultModel: 'sonnet', defaultEffort: '', defaultMode: 'bypassPermissions' };
+const DEFAULTS = { priority: 'normal', preferred: false, maxWeeklyPct: null, maxSessionPct: null, defaultModel: 'sonnet', defaultEffort: '', defaultMode: 'bypassPermissions', renewalDay: null };
 
 function all(gr) {
     try { return (gr && gr.getConfig && gr.getConfig().fleet && gr.getConfig().fleet.accounts) || {}; } catch (_) { return {}; }
@@ -41,7 +41,8 @@ function get(gr, id) {
         maxSessionPct: Number.isFinite(v.maxSessionPct) ? v.maxSessionPct : null,
         defaultModel: typeof v.defaultModel === 'string' && v.defaultModel ? v.defaultModel : DEFAULTS.defaultModel,
         defaultEffort: EFFORTS.has(v.defaultEffort) ? v.defaultEffort : DEFAULTS.defaultEffort,
-        defaultMode: MODES.has(v.defaultMode) ? v.defaultMode : DEFAULTS.defaultMode
+        defaultMode: MODES.has(v.defaultMode) ? v.defaultMode : DEFAULTS.defaultMode,
+        renewalDay: Number.isInteger(v.renewalDay) && v.renewalDay >= 1 && v.renewalDay <= 31 ? v.renewalDay : null
     };
 }
 
@@ -71,6 +72,15 @@ async function save(gr, index, patch = {}) {
     }
     if (patch.maxWeeklyPct !== undefined) next.maxWeeklyPct = pct(patch.maxWeeklyPct);
     if (patch.maxSessionPct !== undefined) next.maxSessionPct = pct(patch.maxSessionPct);
+    if (patch.renewalDay !== undefined) {
+        // the subscription's billing day of month (the profile does not carry a renewal date); blank clears it
+        if (patch.renewalDay === null || patch.renewalDay === '') next.renewalDay = null;
+        else {
+            const d = Number(patch.renewalDay);
+            if (!Number.isInteger(d) || d < 1 || d > 31) throw new Error('The renewal day is a day of the month from 1 to 31 (blank for none)');
+            next.renewalDay = d;
+        }
+    }
     if (patch.defaultModel !== undefined) {
         const m = String(patch.defaultModel || '').trim();
         if (m && !MODEL_RE.test(m)) throw new Error('That is not a model name');
@@ -149,7 +159,7 @@ function usageFor(index) {
         const snap = require('./claudeUsage').cached();
         const row = snap && (snap.accounts || []).find((a) => a.index === index);
         if (!row) return null;
-        return { plan: row.plan || '', limits: row.limits || [], at: row.at || null, error: row.error || null, extra: row.extra || null, extraEnabled: !!row.extraEnabled };
+        return { plan: row.plan || '', limits: row.limits || [], at: row.at || null, error: row.error || null, extra: row.extra || null, extraEnabled: !!row.extraEnabled, billingDay: row.billingDay || null };
     } catch (_) { return null; }
 }
 

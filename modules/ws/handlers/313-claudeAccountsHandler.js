@@ -143,7 +143,7 @@ const handleFleet = guard('claude_remote_fleet', async (gr, message) => {
 const handleFleetAccount = guard('claude_fleet_account', async (gr, message) => {
     if (String(message.action || 'save') !== 'save') throw new Error('action must be save');
     const patch = {};
-    ['name', 'preferred', 'maxWeeklyPct', 'maxSessionPct', 'defaultModel', 'defaultEffort', 'defaultMode'].forEach((k) => { if (message[k] !== undefined) patch[k] = message[k]; });
+    ['name', 'preferred', 'priority', 'renewalDay', 'maxWeeklyPct', 'maxSessionPct', 'defaultModel', 'defaultEffort', 'defaultMode'].forEach((k) => { if (message[k] !== undefined) patch[k] = message[k]; });
     await require('../../claudeFleetSettings').save(gr, message.index, patch);
     fleet.broadcast();
     return { fleet: await fleet.status(gr) };

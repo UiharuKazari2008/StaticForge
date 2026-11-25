@@ -1123,10 +1123,59 @@
         if (l.percent >= 75 || /warn|elevat|approach/.test(sev)) return 'paused';
         return '';
     }
+    // pace and renewal: a copy of modules/claudePace.js (the browser cannot require it; test-claude-fleet.js checks the copies agree)
+    function paceOf(l, now) {
+        const HOUR = 3600000;
+        const k = String((l && l.kind) || '');
+        const win = k === 'session' || k === 'five_hour' ? 5 * HOUR : (k.startsWith('weekly') || k.startsWith('seven_day') ? 168 * HOUR : 0);
+        if (!win || !(l.resetsAt > now) || !Number.isFinite(l.percent)) return null;
+        const elapsed = Math.max(0, Math.min(1, (now - (l.resetsAt - win)) / win));
+        const percent = Math.max(0, l.percent);
+        const elapsedPct = elapsed * 100;
+        let runOutAt = null;
+        let far = false;
+        if (percent > 0 && elapsed >= 0.05) {
+            const at = now + (100 - percent) * (elapsed * win) / percent;
+            if (percent >= 100 || at < l.resetsAt) { far = true; runOutAt = percent >= 100 ? null : Math.round(at); }
+        }
+        return { elapsedPct, percent, ahead: Math.round(percent - elapsedPct), state: far ? 'far' : (percent > elapsedPct ? 'over' : 'ok'), runOutAt };
+    }
+    function renewalAfter(day, now) {
+        const d = Math.round(Number(day));
+        if (!(d >= 1 && d <= 31)) return null;
+        const base = new Date(now);
+        for (let m = 0; m < 3; m++) {
+            const y = base.getFullYear();
+            const mo = base.getMonth() + m;
+            const last = new Date(y, mo + 1, 0).getDate();
+            const t = new Date(y, mo, Math.min(d, last), 23, 59, 59).getTime();
+            if (t > now) return new Date(y, mo, Math.min(d, last)).getTime();
+        }
+        return null;
+    }
+    const dayText = (ms) => new Date(ms).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const whenText = (ms) => new Date(ms).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    /** { text, tip } of the account's renewal: the day the user set, else the day its subscription began (an estimate). */
+    function renewalOf(a, now) {
+        const f = fleetOf(a.index);
+        const set = f && f.settings && f.settings.renewalDay;
+        const day = set || a.billingDay;
+        const at = day ? renewalAfter(day, now) : null;
+        if (!at) return null;
+        return { text: `Renews ${dayText(at)}`, tip: set ? `Renews on day ${set} of each month (set by you)` : `Estimated from the day this subscription started (day ${day} of the month). Set the real renewal day in the account's Properties.` };
+    }
+    function paceTip(p) {
+        if (!p) return '';
+        const n = Math.abs(p.ahead);
+        const rel = p.ahead === 0 ? 'on pace' : `you are ${n} point${n === 1 ? '' : 's'} ${p.ahead > 0 ? 'ahead' : 'behind'}`;
+        return `Even pace: ${Math.round(p.elapsedPct)}% by now - ${rel}`;
+    }
     function resetText(l, now) {
         if (!l.resetsAt) return '';
         if (l.resetsAt <= now) return 'Reset since the last reading';
-        return `Resets ${new Date(l.resetsAt).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
+        const p = paceOf(l, now);
+        const reset = `${/^(weekly|seven_day)/.test(String(l.kind || '')) ? 'Weekly resets' : 'Resets'} ${whenText(l.resetsAt)}`;
+        return p && p.state === 'far' && p.runOutAt ? `At this rate: out ${whenText(p.runOutAt)}, ${reset.charAt(0).toLowerCase()}${reset.slice(1)}` : reset;
     }
     const isPreferred = (idx) => { const f = fleetOf(idx); return !!(f && f.settings && f.settings.preferred); };
     const PRIORITY = [['high', 'High'], ['normal', 'Normal'], ['low', 'Low']];
@@ -1169,12 +1218,13 @@
         let body;
         if (limits.length) {
             body = limits.map((l) => {
-                const lv = levelOf(l);
+                const pace = paceOf(l, now);
+                const lv = pace && pace.state === 'far' ? 'error' : (levelOf(l) || (pace && pace.state === 'over' ? 'paused' : ''));
                 const pct = Math.max(0, Math.min(100, Math.round(l.percent)));
                 const stale = l.resetsAt && l.resetsAt <= now;
                 return `<div class="cd-usage-row"><span class="cd-usage-label">${esc(l.label || l.short || l.kind)}</span>`
-                    + `<div class="mmc-progress"><div role="progressbar"${lv ? ` class="${lv}"` : ''} aria-valuemin="0" aria-valuemax="100" aria-valuenow="${stale ? 0 : pct}"><div class="cd-fill" data-w="${stale ? 0 : pct}"></div></div><span>${stale ? '' : `${pct}%`}</span></div>`
-                    + `<span class="cd-usage-reset mmc-hint">${esc(resetText(l, now))}</span></div>`;
+                    + `<div class="mmc-progress"><div role="progressbar"${lv ? ` class="${lv}"` : ''} aria-valuemin="0" aria-valuemax="100" aria-valuenow="${stale ? 0 : pct}"><div class="cd-fill" data-w="${stale ? 0 : pct}"></div>${pace ? `<i class="cd-pace" data-pace="${pace.elapsedPct.toFixed(1)}" title="${esc(paceTip(pace))}"></i>` : ''}</div><span>${stale ? '' : `${pct}%`}</span></div>`
+                    + `<span class="cd-usage-reset mmc-hint"${pace ? ` title="${esc(paceTip(pace))}"` : ''}>${esc(resetText(l, now))}</span></div>`;
             }).join('');
         } else {
             body = `<p class="mmc-hint">${esc(a.needsLogin ? (a.error || 'Link a claude.ai login to see its usage.') : `Usage unavailable${a.error ? `: ${a.error}` : ''}`)}</p>`;
@@ -1182,8 +1232,9 @@
         const x = a.extra;
         const extra = x && x.enabled ? `<p class="mmc-hint">Extra usage is on${x.limitReached ? ' (limit reached)' : ''}.</p>` : '';
         const err = limits.length && a.error ? `<p class="mmc-hint">${esc(a.error)}</p>` : '';
+        const ren = renewalOf(a, now);
         return `<div class="cd-usage-acct"><div class="cd-usage-head"><img src="${esc(S.app.url('assets').replace(/\/$/, ''))}/account-16.png" alt=""><b>${esc(a.name)}</b>`
-            + `<span class="mmc-hint">${esc([planText, who, isPreferred(a.index) ? 'Preferred' : '', priorityTag(a.index)].filter(Boolean).join(' - '))}</span></div>${availBar(fleetOf(a.index), false)}${body}${extra}${err}</div>`;
+            + `<span class="mmc-hint">${esc([planText, who, isPreferred(a.index) ? 'Preferred' : '', priorityTag(a.index)].filter(Boolean).join(' - '))}</span>${ren ? `<span class="mmc-hint cd-renews" title="${esc(ren.tip)}">${esc(ren.text)}</span>` : ''}</div>${availBar(fleetOf(a.index), false)}${body}${extra}${err}</div>`;
     }
     function usageHtml() {
         const rows = [...S.usage.values()].sort((a, b) => (a.index || 0) - (b.index || 0));
@@ -3693,6 +3744,7 @@
             el.classList.toggle('is-empty', p <= 0);
             el.classList.toggle('is-short', p > 0 && outer[i] * p / 100 < 18);
         });
+        pane.querySelectorAll('i[data-pace]').forEach((el) => el.style.setProperty('--cd-pace', String(Math.max(0, Math.min(100, Number(el.dataset.pace) || 0)))));
     }
     function withBars(html) {
         return { html, mount: (pane) => paintBars(pane) };
@@ -4901,7 +4953,7 @@
             ['Plan', l ? l.plan : ''], ['Linked', l ? when(l.linkedAt) : '']].filter(([, v]) => v);
         let err = '';
         // what the boxes show: the saved settings, then what was typed when a retry is needed
-        let cur = { name: a.name, preferred: !!st.preferred, priority: st.priority || 'normal', maxWeekly: st.maxWeeklyPct == null ? '' : st.maxWeeklyPct, maxSession: st.maxSessionPct == null ? '' : st.maxSessionPct,
+        let cur = { name: a.name, preferred: !!st.preferred, priority: st.priority || 'normal', maxWeekly: st.maxWeeklyPct == null ? '' : st.maxWeeklyPct, maxSession: st.maxSessionPct == null ? '' : st.maxSessionPct, renewalDay: st.renewalDay == null ? '' : st.renewalDay,
             model: known ? model : 'sonnet', modelId: known ? '' : model, effort: st.defaultEffort || '', mode: st.defaultMode || 'bypassPermissions' };
         for (;;) {
             const { value, fields } = await form(c, `
@@ -4913,6 +4965,7 @@
                 <p class="mmc-hint cd-prio-hint">An account with a lower priority gets work only after the higher ones.</p>
                 <label><span>Max weekly usage:</span><input type="text" data-cd="maxWeekly" value="${esc(cur.maxWeekly)}" inputmode="numeric" placeholder="% (blank: no limit)" autocomplete="off"></label>
                 <label><span>Max session usage:</span><input type="text" data-cd="maxSession" value="${esc(cur.maxSession)}" inputmode="numeric" placeholder="% (blank: no limit)" autocomplete="off"></label>
+                <label><span>Renewal day:</span><input type="text" data-cd="renewalDay" value="${esc(cur.renewalDay)}" inputmode="numeric" placeholder="Day of the month (blank: unknown)" autocomplete="off"></label>
                 <label><span>Default model:</span><select class="vdt-select" data-cd="model">${modelOptions(cur.model)}</select></label>
                 <label><span>Or model ID:</span><input type="text" data-cd="modelId" value="${esc(cur.modelId)}" spellcheck="false" autocomplete="off" placeholder="A full model ID (optional)"></label>
                 <label><span>Default effort:</span><select class="vdt-select" data-cd="effort">${effortOptions(cur.effort)}</select></label>
@@ -4920,14 +4973,16 @@
                 ${err ? `<p class="cd-err">${esc(err)}</p>` : ''}`,
             [{ text: 'Save', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: `${a.name} Properties`, width: 480, icon: 'fas fa-circle-info' });
             if (value !== true) return;
-            cur = { name: fields.name, preferred: !!fields.preferred, priority: fields.priority || 'normal', maxWeekly: fields.maxWeekly, maxSession: fields.maxSession, model: fields.model, modelId: fields.modelId, effort: fields.effort, mode: fields.mode };
+            cur = { name: fields.name, preferred: !!fields.preferred, priority: fields.priority || 'normal', maxWeekly: fields.maxWeekly, maxSession: fields.maxSession, renewalDay: fields.renewalDay, model: fields.model, modelId: fields.modelId, effort: fields.effort, mode: fields.mode };
             const weekly = pctOf(fields.maxWeekly);
             const session = pctOf(fields.maxSession);
             const name = String(fields.name || '').trim();
+            const rd = String(fields.renewalDay || '').trim();
+            if (rd && !(/^\d{1,2}$/.test(rd) && Number(rd) >= 1 && Number(rd) <= 31)) { err = 'The renewal day is a day of the month from 1 to 31, or blank.'; continue; }
             if (weekly.error || session.error) { err = 'A maximum usage is a percentage from 1 to 100, or blank for none.'; continue; }
             if (!name) { err = 'The account needs a name.'; continue; }
             try {
-                const r = await send('claude_fleet_account', { action: 'save', index, name, preferred: !!fields.preferred, priority: fields.priority || 'normal', maxWeeklyPct: weekly.value, maxSessionPct: session.value, defaultModel: modelOf(fields) || 'sonnet', defaultEffort: fields.effort || '', defaultMode: fields.mode });
+                const r = await send('claude_fleet_account', { action: 'save', index, name, preferred: !!fields.preferred, priority: fields.priority || 'normal', maxWeeklyPct: weekly.value, maxSessionPct: session.value, renewalDay: rd ? Number(rd) : null, defaultModel: modelOf(fields) || 'sonnet', defaultEffort: fields.effort || '', defaultMode: fields.mode });
                 if (r.fleet) S.fleet = r.fleet;
                 c.note(`${name}: settings saved.`);
                 await refreshAccounts();

@@ -549,6 +549,27 @@
     border-width: 0;
 }
 
+/* The pace chip: a marker at the share of the window that has passed, where an even spend would be (paceOf) */
+#mmcConsole_claudedesk .cd-usage-row [role="progressbar"] {
+    position: relative;
+}
+
+#mmcConsole_claudedesk .cd-usage-row .cd-pace {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    left: calc(var(--cd-pace, 0) * 1%);
+    width: 2px;
+    margin-left: -1px;
+    background: var(--cd-c-000);
+    box-shadow: 0 0 0 1px var(--cd-c-fff);
+    pointer-events: auto;
+}
+
+#mmcConsole_claudedesk .cd-renews {
+    margin-left: auto;
+}
+
 /* Vista's information bar (as Explorer's, vista-explorer.css .explorer-net-infobar): #ffffe1, a #b3b3b3 rule under it */
 #mmcConsole_claudedesk .cd-infobar {
     display: flex;

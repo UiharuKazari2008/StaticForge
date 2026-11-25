@@ -148,6 +148,20 @@
     align-items: center;
 }
 
+.wm-claude-accounts .wca-use-renews { margin: 0 0 calc(2 * var(--wm-px)); }
+
+/* the pace chip: where an even spend of the window would be; white and black edges show on any fill */
+.wm-claude-accounts .wac-meter > b.wca-pace {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: calc(1 * var(--wm-px));
+    border-left: calc(1 * var(--wm-px)) solid Window;
+    border-right: calc(1 * var(--wm-px)) solid WindowText;
+    box-sizing: content-box;
+    pointer-events: none;
+}
+
 .wm-claude-accounts .wca-use-pct {
     text-align: right;
 }

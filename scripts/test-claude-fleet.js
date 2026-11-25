@@ -226,6 +226,62 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
         assert.strictEqual(h.results[0].state, 'Waiting');
     });
 
+    await test('pace and renewal math (claudePace.js) and the client copies agree', async () => {
+        const pace = require('../modules/claudePace');
+        const H = 3600000;
+        const reset = Date.UTC(2026, 10, 25, 12);
+        const wk = (percent) => ({ kind: 'weekly_all', percent, resetsAt: reset });
+        // start of the window: nothing elapsed, no projection
+        const start = pace.paceOf(wk(0), reset - 168 * H);
+        assert.deepStrictEqual([start.elapsedPct, start.state, start.runOutAt], [0, 'ok', null]);
+        // mid window: 50% used at 50% elapsed is on pace; 40% is behind; 60% is over but would last to the reset only if under
+        const mid = reset - 84 * H;
+        assert.deepStrictEqual([pace.paceOf(wk(50), mid).ahead, pace.paceOf(wk(50), mid).state], [0, 'ok']);
+        assert.strictEqual(pace.paceOf(wk(40), mid).ahead, -10);
+        // 55% at 50% elapsed: over pace, and it runs out before the reset (55/50 > 1): amber is only "over", red is "far"
+        const over = pace.paceOf(wk(55), mid);
+        assert.strictEqual(over.state, 'far');
+        assert.strictEqual(over.runOutAt, Math.round(mid + 45 * (84 * H) / 55));
+        assert.ok(over.runOutAt < reset);
+        // 12 h from the end of a week at 43% is ahead of nothing: 43 vs 92.9 elapsed
+        assert.strictEqual(pace.paceOf(wk(43), reset - 12 * H).state, 'ok');
+        // under 5% of the window gone: never far, only over
+        assert.strictEqual(pace.paceOf(wk(30), reset - 168 * H + 2 * H).state, 'over');
+        // the session window is 5 hours; other kinds and past resets have no pace
+        assert.strictEqual(pace.paceOf({ kind: 'session', percent: 10, resetsAt: reset }, reset - 2.5 * H).elapsedPct, 50);
+        assert.strictEqual(pace.paceOf({ kind: 'extra', percent: 10, resetsAt: reset }, reset - H), null);
+        assert.strictEqual(pace.paceOf(wk(10), reset + 1), null);
+        // renewal day: this month if still ahead, else next; the 31st clamps to a short month's last day
+        const L = (y, m, d, h = 12) => new Date(y, m - 1, d, h).getTime();
+        assert.strictEqual(pace.renewalAfter(8, L(2026, 11, 24)), L(2026, 12, 8, 0));
+        assert.strictEqual(pace.renewalAfter(28, L(2026, 11, 24)), L(2026, 11, 28, 0));
+        assert.strictEqual(pace.renewalAfter(24, L(2026, 11, 24)), L(2026, 11, 24, 0));
+        assert.strictEqual(pace.renewalAfter(31, L(2026, 2, 3)), L(2026, 2, 28, 0));
+        assert.strictEqual(pace.renewalAfter(31, L(2026, 11, 24)), L(2026, 11, 30, 0));
+        assert.strictEqual(pace.renewalAfter(30, L(2028, 2, 3)), L(2028, 2, 29, 0));
+        assert.strictEqual(pace.renewalAfter(5, L(2026, 12, 20)), L(2027, 1, 5, 0));
+        assert.strictEqual(pace.renewalAfter(0, L(2026, 11, 24)), null);
+        // the copies in the two clients give the same answers
+        const load = (file) => {
+            const src = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+            const a = src.indexOf('function paceOf'); const b = src.indexOf('function renewalAfter');
+            const end = src.indexOf('\n    }\n', b) + 6;
+            return new Function(`${src.slice(a, end)}; return { paceOf, renewalAfter };`)();
+        };
+        for (const f of ['apps/claudedesk/client/claudedesk.js', 'public/scripts/comp/wmClaudeAccounts.js']) {
+            const c = load(f);
+            for (const [pc, at] of [[0, reset - 168 * H], [55, mid], [43, reset - 12 * H], [30, reset - 166 * H]]) assert.deepStrictEqual(c.paceOf(wk(pc), at), pace.paceOf(wk(pc), at), f);
+            for (const [d, at] of [[31, L(2026, 2, 3)], [8, L(2026, 11, 24)], [5, L(2026, 12, 20)]]) assert.strictEqual(c.renewalAfter(d, at), pace.renewalAfter(d, at), f);
+        }
+    });
+
+    await test('renewalDay is a setting (1 to 31, blank clears it)', async () => {
+        const fs8 = require('../modules/claudeFleetSettings');
+        assert.strictEqual(fs8.DEFAULTS.renewalDay, null);
+        assert.strictEqual(fs8.get({ getConfig: () => ({ fleet: { accounts: { a: { renewalDay: 8 } } } }) }, 'a').renewalDay, 8);
+        assert.strictEqual(fs8.get({ getConfig: () => ({ fleet: { accounts: { a: { renewalDay: 40 } } } }) }, 'a').renewalDay, null);
+    });
+
     store.close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');

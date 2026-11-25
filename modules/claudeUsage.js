@@ -279,6 +279,7 @@ async function readAccount(gr, acc, liveDirs) {
         limits: [],
         extra: null,
         extraEnabled: false,
+        billingDay: null,
         needsLogin: false,
         error: null
     };
@@ -287,6 +288,9 @@ async function readAccount(gr, acc, liveDirs) {
     const creds = got.creds;
     const profile = await profileFor(acc).catch(() => null);
     base.extraEnabled = !!(profile && profile.hasExtraUsageEnabled);
+    // the profile has no renewal date, only when the subscription began: its day of month is the billing day unless the user sets one
+    const sub = profile && Date.parse(profile.subscriptionCreatedAt || '');
+    base.billingDay = Number.isFinite(sub) ? new Date(sub).getDate() : null;
     if (creds && oauthOf(creds)) base.plan = planName(oauthOf(creds), profile);
     else if (login) base.plan = planName({ subscriptionType: login.plan, rateLimitTier: login.rateLimitTier }, profile);
     if (!creds || !oauthOf(creds) || !oauthOf(creds).accessToken) {
