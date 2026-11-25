@@ -1135,9 +1135,23 @@ async function syncIssue(id, prevState) {
     if (!r.issue_repo || !r.issue_number) return;
     const Y = yz();
     const where = `${r.issue_repo}#${r.issue_number}`;
+    if (r.topology === 'groups') {
+        // a run split into planners (#1197): its planners (children) label, time and close their own issues; the run itself says only how it ended
+        if (['done', 'failed'].includes(r.state)) {
+            const kids = db().prepare('SELECT state FROM supervisor_work WHERE parent_id = ?').all(r.id);
+            const bad = kids.filter((k) => k.state !== 'done').length;
+            await Y.comment(r.issue_repo, r.issue_number, r.state === 'done' && !bad
+                ? `**Fleet / Supervisor:** all ${kids.length} planners of this run are done. The run itself closes nothing: each planner's own check closed the issues it found done.`
+                : `**Fleet:** ${bad} of ${kids.length} planners of this run did not finish; nothing was closed by the run itself. ${r.message || ''}`.trim());
+        }
+        return;
+    }
     const ran = r.started_at ? (r.ended_at || Date.now()) - r.started_at : 0;
     const session = r.link ? ` Session: ${r.link}` : (r.session_id ? ` Session ${r.session_id.slice(0, 8)} (Fleet).` : '');
-    const multi = refsOf(r).length > 0 && !r.parent_id;
+    // a part of a surfaces split comments on its parent's issue; a planner of a groups run is a top-level item over its own issues
+    const par = r.parent_id ? db().prepare('SELECT topology FROM supervisor_work WHERE id = ?').get(r.parent_id) : null;
+    const groupKid = !!(par && par.topology === 'groups');
+    const multi = refsOf(r).length > 0 && (!r.parent_id || groupKid);
     const rv = multi && ['done', 'failed'].includes(r.state) ? lastReviewOf(r) : null;
     const res = multi ? issueResults(r, rv) : null;
     let text = '';
@@ -1155,7 +1169,7 @@ async function syncIssue(id, prevState) {
     }
     else if (r.state === 'failed') text = `**Fleet:** did not finish: ${r.message || 'unknown'}${ran ? `\n\nRan ${mins(ran)} (added as tracked time).` : ''}${multi ? '\n\nNothing was closed: no issue of this run is closed just because the run ended.' : ''}`;
     else if (r.state === 'cancelled') text = '**Fleet:** cancelled in Fleet.';
-    if (r.parent_id) {
+    if (r.parent_id && !groupKid) {
         // a part of a split item: its own line on the parent's issue, no labels / closing (the parent has those)
         if (text) await Y.comment(r.issue_repo, r.issue_number, text.replace('**Fleet', `**Fleet (part: ${r.title})`));
         if (['done', 'failed'].includes(r.state) && ran) await Y.addTime(r.issue_repo, r.issue_number, ran / 1000).catch(() => {});
@@ -1170,7 +1184,7 @@ async function syncIssue(id, prevState) {
     const closeOk = r.state === 'done' && CLOSE_OK_RE.test(text + (r.message || ''));
     if (closeOk && primaryDone) await Y.close(r.issue_repo, r.issue_number).catch(() => {});
     // cancelling closes only the issue Fleet made for a single request; the issues a run was picked for stay open
-    if (r.state === 'cancelled' && String(r.source) !== 'yozora' && !multi) await Y.close(r.issue_repo, r.issue_number).catch(() => {});
+    if (r.state === 'cancelled' && String(r.source) !== 'yozora' && !multi && !groupKid) await Y.close(r.issue_repo, r.issue_number).catch(() => {});
     if (multi) await syncExtras(r, prevState, res, rv, closeOk);
     noteIssue(id, `Synced ${new Date().toISOString().slice(11, 16)} (${where})`);
 }
@@ -1215,11 +1229,13 @@ async function pullIssues(gr, opts = {}) {
     // items whose issue was closed on Yozora: its primary only; an item of several issues does not end because one of the others closed
     const active = db().prepare("SELECT * FROM supervisor_work WHERE issue_number IS NOT NULL AND state IN ('held','queued','starting','running','waiting','input')").all();
     for (const r of active) {
+        if (r.topology === 'groups') continue; // its planners end with their own issues; one of them closing must not end the run
         let st = null;
         try { st = await yz().issueState(r.issue_repo, r.issue_number); } catch (_) { st = null; }
         if (st !== 'closed') continue;
         db().prepare('UPDATE supervisor_work SET state = ?, ended_at = ?, message = ? WHERE id = ?').run(r.state === 'queued' || r.state === 'held' ? 'cancelled' : 'done', Date.now(), ISSUE_CLOSED_MSG, r.id);
         ended += 1;
+        if (r.parent_id) settleParent(r.parent_id);
     }
     if (added || ended) emit({ work: true });
     return { added, ended, repos: [...repos] };
@@ -1373,6 +1389,95 @@ async function splitSurfaces(gr, w) {
     return parts.map((p) => ({ title: String(p.title || p.surface || 'Part').slice(0, 100), surface: String(p.surface || '').slice(0, 40), paths: (Array.isArray(p.paths) ? p.paths : []).map(String).slice(0, 20), brief: String(p.brief).slice(0, 20000) }));
 }
 
+const GROUP_MAX = 6;
+/** Fetches a list of issues at once, best effort: the same 15 s wait issuesBrief has (a slow Yozora is a list of nulls). */
+async function fetchIssues(list) {
+    return Promise.race([
+        Promise.all(list.map((i) => yz().getIssue(i.repo, i.number).catch(() => null))),
+        new Promise((res) => setTimeout(() => res(list.map(() => null)), 15000))
+    ]);
+}
+/**
+ * Groups the work of a run that covers several issues (#1197, "queue as one run") into logical tasks: related issues share a
+ * planner, unrelated ones get their own. The units are the requests joined into the item (rows with joined_into = item id: a
+ * request with all its issues), else each issue of the item on its own. The Supervisor's engine groups them; anything it
+ * answers that cannot be used (an error, junk, no group named) is one group: exactly today's single planner. Returns null when
+ * there are fewer than 2 units, else 1 to GROUP_MAX groups [{ title, reason, issues, prompt }]: no issue is in two groups,
+ * every unit is in one.
+ */
+async function groupRun(gr, w) {
+    const joined = db().prepare('SELECT * FROM supervisor_work WHERE joined_into = ? ORDER BY id').all(Number(w.id));
+    let units;
+    if (joined.length) {
+        units = joined.map((j) => ({ title: String(j.title || '').slice(0, 120), text: String(j.prompt || '').trim(), issues: allIssueRefs(j), joined: true }));
+    } else {
+        const list = allIssueRefs(w);
+        const fetched = await fetchIssues(list);
+        units = list.map((i, n) => {
+            const f = fetched[n];
+            if (f) rememberTitle(i.repo, i.number, f.title);
+            const title = (f && f.title) || i.title || issueTitles.get(issueKey(i)) || issueKey(i);
+            return { title: String(title).slice(0, 120), text: f && f.body ? String(f.body).trim() : '', issues: [i], joined: false };
+        });
+    }
+    if (units.length < 2) return null;
+    const whole = String(w.prompt || '');
+    const build = (idx, title, reason) => {
+        const us = idx.map((k) => units[k - 1]);
+        const issues = parseRefs(us.map((u) => u.issues));
+        const body = us.some((u) => u.joined)
+            ? us.map((u) => `## ${u.title}\n\n${u.text}`).join('\n\n---\n\n')
+            : `${whole}\n\nThis planner covers only ${issues.map(issueKey).join(', ')}.`;
+        return { title: String(title || '').replace(/\s+/g, ' ').trim().slice(0, 80) || us[0].title.slice(0, 80), reason: String(reason || '').slice(0, 200), issues, prompt: body };
+    };
+    const all = units.map((_, k) => k + 1);
+    const one = (why) => [build(all, w.title, why)];
+    let groups;
+    try {
+        const o = await askJson(gr, 'You group the work of one Fleet run into logical tasks, each done by its own planner agent. Every numbered unit is one request or issue. Put units in one group when they touch the same feature or area or one depends on another; keep unrelated work apart so it gets its own planner. When everything is related, one group is the right answer. Every unit goes in exactly one group. Answer ONLY {"groups":[{"title":"short","units":[1,2],"reason":"one sentence"}]}.',
+            units.map((u, k) => `${k + 1}. ${u.title}${u.issues.length ? ` [${u.issues.map(issueKey).join(', ')}]` : ''}\n${u.text.replace(/\s+/g, ' ').slice(0, 1000)}`).join('\n\n').slice(0, 24000), 'group', { maxTokens: 1200 });
+        const seen = new Set();
+        const made = [];
+        (o && Array.isArray(o.groups) ? o.groups : []).forEach((g) => {
+            const idx = [...new Set((g && Array.isArray(g.units) ? g.units : []).map(Number))].filter((x) => Number.isInteger(x) && x >= 1 && x <= units.length && !seen.has(x));
+            if (!idx.length) return;
+            idx.forEach((x) => seen.add(x));
+            made.push({ idx, title: g.title, reason: g.reason });
+        });
+        if (!made.length) return one('the Supervisor gave no usable grouping: one planner');
+        all.filter((x) => !seen.has(x)).forEach((x) => made.push({ idx: [x], title: units[x - 1].title, reason: '' }));
+        while (made.length > GROUP_MAX) { const x = made.pop(); made[made.length - 1].idx.push(...x.idx); }
+        const taken = new Set();
+        groups = made.map((m) => build(m.idx, m.title, m.reason)).map((gp) => Object.assign(gp, { issues: gp.issues.filter((i) => !taken.has(issueKey(i)) && taken.add(issueKey(i))) }));
+    } catch (_) { return one('the Supervisor could not group them: one planner'); }
+    return groups;
+}
+
+/**
+ * The parent of a run split into planners (#1197): topology 'groups', no session of its own; one child item per group (planner
+ * topology, the parent's stages so each child is sized on its own, parent_id = the parent), each on its own issues. Every issue
+ * hears which planner carries it. Returns the children.
+ */
+function runGroups(g, w, groups) {
+    const stages = cleanStages((() => { try { return JSON.parse(w.stages || '{}'); } catch (_) { return {}; } })());
+    const n = groups.length;
+    const list = (gp) => gp.issues.map(issueKey).join(', ') || 'no Yozora issue yet';
+    db().prepare("UPDATE supervisor_work SET topology = 'groups' WHERE id = ?").run(w.id);
+    const kids = groups.map((gp, k) => enqueue({
+        title: `${w.title}: ${gp.title}`,
+        prompt: `You are planner ${k + 1} of ${n} for Fleet item ${w.id} ("${w.title}"): the run was split into ${n} planners, each on its own related work, running in parallel. Your issues: ${list(gp)}. The other planners carry ${groups.map((o, j) => (j === k ? '' : `planner ${j + 1}: ${list(o)}`)).filter(Boolean).join('; ')}: do not work those.\n\n${gp.prompt}`.slice(0, 60000),
+        cwd: w.cwd || undefined, account: w.account, model: w.model || undefined, effort: w.effort || undefined, engine: w.engine || undefined,
+        topology: 'planner', stages, issues: gp.issues, parentId: w.id, startNow: !!w.start_now, source: w.source, remoteControl: !!w.remote_control
+    }, { gr: g }));
+    setWork(w.id, { state: 'running', started_at: Date.now(), message: `Planned as ${n} planners` });
+    groups.forEach((gp, k) => gp.issues.forEach((i) => {
+        const mates = gp.issues.filter((o) => issueKey(o) !== issueKey(i));
+        yz().comment(i.repo, i.number, `**Fleet:** Fleet item ${w.id} was split into ${n} planners. This issue is under planner ${k + 1} of ${n} (Fleet item ${kids[k].id}: ${gp.title})${mates.length ? `, together with ${mates.map((o) => shortRef(o, i)).join(', ')}` : ''}${gp.reason ? `. ${gp.reason}` : ''}.`.replace(/\.\.$/, '.'))
+            .catch((e) => noteIssue(w.id, `Planner comment on ${issueKey(i)} failed: ${e.message}`));
+    }));
+    return kids;
+}
+
 const plannerNote = (st) => `You are the PLANNER for this request (Supervisor -> Planner -> background agents). First research and plan (read the code, decide the approach, split it into parts with clear file ownership). Then do the work through background agents (the Agent tool, run_in_background), each with a complete brief (goal, files it owns, what it must not touch, how to verify with evidence) and model "${st.workers.model || 'sonnet'}"${st.workers.effort ? ` and effort "${st.workers.effort}" by default (low for mechanical sweeps, high for tricky parts such as concurrency, migrations or security)` : ''}; do trivial edits yourself only. Verify every agent's result with evidence (tests you ran, command output, screenshots you read) before you call a part done, integrate, commit, and report progress and holdups on the tracked issue as you go.`;
 
 /** Plan first (topology auto): one planner session reviews the request, then picks the shape and reports it with fleet_work_shape. */
@@ -1445,8 +1550,15 @@ function pumpWork(gr) {
         if (!g) return 0;
         const set = settings(g);
         let started = 0;
+        let regroup = false;
         const queued = db().prepare("SELECT * FROM supervisor_work WHERE state = 'queued' ORDER BY start_now DESC, id").all();
         for (const w of queued) {
+            // a run split into planners has none of its own session: its planners run (a requeued one with no planners runs as one planner)
+            if (w.topology === 'groups') {
+                if (db().prepare('SELECT COUNT(*) AS n FROM supervisor_work WHERE parent_id = ?').get(w.id).n) { setWork(w.id, { state: 'running', message: 'Its planners are running' }); settleParent(w.id); continue; }
+                db().prepare("UPDATE supervisor_work SET topology = 'planner' WHERE id = ?").run(w.id);
+                w.topology = 'planner';
+            }
             const forced = !!w.start_now;
             if (!set.autoStart && !forced) continue;
             if (!forced && activeCount() >= set.maxConcurrent) { setWork(w.id, { message: `Waiting for a slot (${set.maxConcurrent} supervised sessions at once)` }); continue; }
@@ -1454,12 +1566,24 @@ function pumpWork(gr) {
             try { pick = await require('./claudeFleetMcp').pickForStart(g, w.account || 'auto'); } catch (e) { setWork(w.id, { message: `Waiting for an account with room: ${e.message.slice(0, 160)}` }); continue; }
             setWork(w.id, { state: 'starting', message: `Starting on ${pick.name}`, account: pick.name });
             emit({ work: getWork(w.id) });
-            const tracked = await Promise.race([ensureIssue(w.id), new Promise((res) => setTimeout(() => res(null), 15000))]);
-            const multiTrack = tracked && tracked.issue_number && refsOf(tracked).length ? await issuesBrief(tracked) : '';
-            const track = multiTrack || (tracked && tracked.issue_number
-                ? `\n\nThis work is tracked in Yozora ${tracked.issue_repo}#${tracked.issue_number} (${yz().issueUrl(tracked.issue_repo, tracked.issue_number)}, label fleet). Comment your progress there as you go and end with the Done comment the rules ask for; the Supervisor comments when it starts, sends gaps back and ends, and adds the time this session runs (do not start a stopwatch). Check its Definition of done.`
-                : '');
             try {
+                // a run that covers several issues (queue as one run, #1197): related ones share a planner, unrelated ones get their own.
+                // Before the issue fetch below: the planners' own sessions do that for their issues
+                if (!w.parent_id && w.topology !== 'groups' && ['planner', 'auto'].includes(TOPOLOGIES.includes(w.topology) ? w.topology : 'planner') && allIssueRefs(w).length >= 2) {
+                    const groups = await groupRun(g, w).catch(() => null);
+                    if (groups && groups.length >= 2) {
+                        runGroups(g, w, groups);
+                        started += 1;
+                        regroup = true;
+                        emit({ work: getWork(w.id) });
+                        continue;
+                    }
+                }
+                const tracked = await Promise.race([ensureIssue(w.id), new Promise((res) => setTimeout(() => res(null), 15000))]);
+                const multiTrack = tracked && tracked.issue_number && refsOf(tracked).length ? await issuesBrief(tracked) : '';
+                const track = multiTrack || (tracked && tracked.issue_number
+                    ? `\n\nThis work is tracked in Yozora ${tracked.issue_repo}#${tracked.issue_number} (${yz().issueUrl(tracked.issue_repo, tracked.issue_number)}, label fleet). Comment your progress there as you go and end with the Done comment the rules ask for; the Supervisor comments when it starts, sends gaps back and ends, and adds the time this session runs (do not start a stopwatch). Check its Definition of done.`
+                    : '');
                 const st = pick.settings || {};
                 const stages = cleanStages((() => { try { return JSON.parse(w.stages || '{}'); } catch (_) { return {}; } })());
                 let topology = TOPOLOGIES.includes(w.topology) ? w.topology : 'planner';
@@ -1487,7 +1611,7 @@ function pumpWork(gr) {
                     mode: st.defaultMode, engine, remoteControl: !!w.remote_control,
                     model: w.model || stage.model || (engine ? undefined : (st.defaultModel || 'sonnet')), effort: w.effort || stage.effort || st.defaultEffort || undefined, dispatchedBy: `Supervisor (${w.source}, ${topology})`
                 });
-                if (r.state === 'failed') { setWork(w.id, { state: 'failed', ended_at: Date.now(), message: r.message || 'It did not start', session_id: r.id || null }); }
+                if (r.state === 'failed') { setWork(w.id, { state: 'failed', ended_at: Date.now(), message: r.message || 'It did not start', session_id: r.id || null }); settleParent(w.parent_id); }
                 else {
                     markSupervised(r.id);
                     setWork(w.id, { state: 'running', session_id: r.id, link: r.link || '', started_at: Date.now(), message: planFirst ? `Planning: reviewing the request on ${pick.name}` : `Running on ${pick.name}` });
@@ -1495,9 +1619,12 @@ function pumpWork(gr) {
                 }
             } catch (e) {
                 setWork(w.id, { state: 'failed', ended_at: Date.now(), message: e.message.slice(0, 300) });
+                settleParent(w.parent_id);
             }
             emit({ work: getWork(w.id) });
         }
+        // the planners of a split run were queued while this pump ran: one more pass starts them (not a poll)
+        if (regroup) setImmediate(() => pumpWork(g).catch(() => {}));
         return started;
     })().finally(() => { pumping = null; });
     return pumping;
@@ -1848,13 +1975,16 @@ function workTree(ref = {}) {
     return { root: items[0], items };
 }
 
-/** A surfaces parent ends when all its parts have: done when they all are, else failed. */
+/** A surfaces / groups parent ends when all its parts (planners) have: done when they all are, else failed. */
 function settleParent(parentId) {
     if (!parentId) return;
     const kids = db().prepare('SELECT state FROM supervisor_work WHERE parent_id = ?').all(parentId);
     if (!kids.length || kids.some((k) => !['done', 'failed', 'cancelled'].includes(k.state))) return;
+    const par = db().prepare('SELECT state, topology FROM supervisor_work WHERE id = ?').get(parentId);
+    if (!par) return;
     const ok = kids.every((k) => k.state === 'done');
-    setWork(parentId, { state: ok ? 'done' : 'failed', ended_at: Date.now(), message: ok ? `All ${kids.length} parts done` : `${kids.filter((k) => k.state !== 'done').length} of ${kids.length} parts did not finish` });
+    const what = par.topology === 'groups' ? 'planner' : 'part';
+    setWork(parentId, { state: ok ? 'done' : 'failed', ended_at: Date.now(), message: ok ? `All ${kids.length} ${what}s done` : `${kids.filter((k) => k.state !== 'done').length} of ${kids.length} ${what}s did not finish` });
 }
 
 /** Start: a waiting (held) item joins the queue and starts when a slot is free; now = past the slot limit too.
@@ -1863,6 +1993,16 @@ function startWork(id, opts = {}) {
     const w = getWork(id);
     if (!w) throw new Error('No such work item');
     const now = opts.now !== false;
+    if (w.topology === 'groups') {
+        // a run split into planners has no session of its own: Start runs its planners that did not finish
+        if (!['failed', 'cancelled', 'running'].includes(w.state)) throw new Error(`It is ${w.state}`);
+        const kids = db().prepare("SELECT id FROM supervisor_work WHERE parent_id = ? AND state IN ('held','failed','cancelled')").all(w.id);
+        if (!kids.length) throw new Error('All its planners are running or done');
+        kids.forEach((k) => startWork(k.id, opts));
+        setWork(w.id, { state: 'running', ended_at: null, message: `Restarted ${kids.length} planner${kids.length === 1 ? '' : 's'}` });
+        emit({ work: getWork(w.id) });
+        return getWork(w.id);
+    }
     if (w.state === 'queued') setWork(w.id, { start_now: now ? 1 : 0 });
     else if (['held', 'failed', 'cancelled'].includes(w.state)) {
         setWork(w.id, { state: 'queued', start_now: now ? 1 : 0, session_id: null, link: '', started_at: null, ended_at: null, joined_into: null, message: 'Waiting for a slot' });
@@ -1946,6 +2086,7 @@ function cancelWork(id) {
     if (!w) throw new Error('No such work item');
     if (!['held', 'queued', 'failed'].includes(w.state)) throw new Error('Only a waiting or queued item is cancelled here: end a running one from its session');
     setWork(w.id, { state: 'cancelled', ended_at: Date.now(), message: 'Cancelled' });
+    settleParent(w.parentId);
     emit({ work: getWork(w.id) });
     return getWork(w.id);
 }
@@ -1966,6 +2107,7 @@ function mergeWork(ids, opts = {}) {
         if (!EDITABLE.includes(r.state)) throw new Error(`Work item ${r.id} (${r.title}) is ${r.state}: only a waiting, queued, failed or cancelled request is joined into a run`);
         if (r.joined_into && r.state === 'cancelled') throw new Error(`Work item ${r.id} (${r.title}) was already joined into item ${r.joined_into}`);
         if (r.parent_id) throw new Error(`Work item ${r.id} (${r.title}) is a part of a split request: join the whole request, not one part`);
+        if (r.topology === 'groups') throw new Error(`Work item ${r.id} (${r.title}) is a run split into planners: it is not joined into another run`);
         return r;
     });
     const first = rows[0];

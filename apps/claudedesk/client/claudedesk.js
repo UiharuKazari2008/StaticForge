@@ -1512,13 +1512,19 @@
         ['planner', 'Supervisor -> Claude planner -> background agents', 'Planner and agents'],
         ['auto', 'Let the Supervisor decide', 'Supervisor decides']
     ];
-    const topoShort = (t) => (TOPO.find((x) => x[0] === t) || [])[2] || '';
+    // 'groups' is stored by the server for an item planned as several planners; it is never offered in the shape picker (not in TOPO)
+    const topoShort = (t) => (t === 'groups' ? 'Planner per group' : ((TOPO.find((x) => x[0] === t) || [])[2] || ''));
+    const isGroups = (w) => !!w && w.topology === 'groups';
+    /** A planner of a groups item: the child of a parent whose shape is groups. */
+    const groupParentOf = (w) => { if (!w || w.parentId == null || w.parentId === '') return null; const p = workOf(w.parentId); return isGroups(p) ? p : null; };
+    const plannerLabel = (w, p) => { const sib = supWork().filter((x) => String(x.parentId) === String(p.id)); const i = sib.findIndex((x) => String(x.id) === String(w.id)); return i >= 0 ? `Planner ${i + 1} of ${sib.length}` : 'Planner'; };
     const STAGES = { planner: { label: 'Planner', engine: 'claude', model: 'opus', effort: 'high', uses: ['planner', 'auto'] }, workers: { label: 'Workers', engine: 'claude', model: 'sonnet', effort: 'medium', uses: ['direct', 'surfaces', 'planner', 'auto'] } };
     const workState = (w) => { const h = w.sessionId ? holdOf(w.sessionId) : null; return h ? holdWord(h) : (w.topology === 'auto' && (w.state === 'running' || w.state === 'starting') ? 'Planning' : (WORK_STATE[w.state] || w.state || '')); };
     const shapeText = (w) => {
-        if (w.parentId != null && w.parentId !== '') { const p = workOf(w.parentId); return `Part of ${p ? (p.title || p.id) : w.parentId}`; }
+        if (w.parentId != null && w.parentId !== '') { const p = workOf(w.parentId); return isGroups(p) ? `${plannerLabel(w, p)} of ${p.title || p.id}` : `Part of ${p ? (p.title || p.id) : w.parentId}`; }
         const parts = supWork().filter((x) => String(x.parentId) === String(w.id));
         const t = topoShort(w.topology);
+        if (isGroups(w)) return `${t} (${plural(parts.length, 'planner')}, ${parts.filter((x) => x.state === 'done').length} done)`;
         return parts.length ? `${t || 'One agent per surface'} (${plural(parts.length, 'part')}, ${parts.filter((x) => x.state === 'done').length} done)` : t;
     };
 
@@ -2008,7 +2014,7 @@
         }
         return `<div class="cd-wd"><h3>${esc(w.title || String(w.id))}</h3>${(c || S.c).props([
             ['State', esc(workState(w))],
-            ['Shape', esc((TOPO.find((x) => x[0] === w.topology) || [])[1] || '')],
+            ['Shape', esc(isGroups(w) ? 'Supervisor -> a Claude planner per group of related issues' : ((TOPO.find((x) => x[0] === w.topology) || [])[1] || ''))],
             ['Planner stage', esc(stageText(st.planner))],
             ['Workers stage', esc(stageText(st.workers) || [w.model, w.effort].filter(Boolean).join(' / '))],
             ['Account', esc(w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)))],
@@ -2020,7 +2026,7 @@
             ['Note', esc([w.message, w.issueNote].filter(Boolean).join(' - '))]
         ].filter(Boolean))}${links ? `<p>${links}</p>` : ''}
             ${workCheckHtml(w)}<h4>Brief</h4><div class="cd-read">${esc(w.prompt || '')}</div>
-            ${parts.length ? `<h4>Parts (${parts.length})</h4><table class="cd-table"><thead><tr><th>Part</th><th class="cd-w80">State</th></tr></thead><tbody>${parts.map((x) => `<tr><td>${esc(x.title || x.id)}</td><td>${esc(workState(x))}</td></tr>`).join('')}</tbody></table>` : ''}
+            ${parts.length ? `<h4>${isGroups(w) ? 'Planners' : 'Parts'} (${parts.length})</h4><table class="cd-table"><thead><tr><th>${isGroups(w) ? 'Planner' : 'Part'}</th><th class="cd-w80">State</th></tr></thead><tbody>${parts.map((x) => `<tr><td>${esc(x.title || x.id)}</td><td>${esc(workState(x))}</td></tr>`).join('')}</tbody></table>` : ''}
             <h4>Plan</h4>${plan}</div>`;
     }
     function workDetailPaint(c, id) {
@@ -2183,7 +2189,7 @@
             h ? { id: 'cd-wi-hold', title: holdWord(h), body: `<p>${esc(holdLine(h))}</p><p class="mmc-hint">${esc([HOLD_KIND[h.kind] || h.kind, h.by ? `by ${h.by}` : '', when(h.at)].filter(Boolean).join(' - '))}</p><p><span class="mmc-link" data-act="resume-hold" data-arg="${esc(w.sessionId)}">Resume</span></p>` } : null,
             { id: 'cd-wi-info', title: 'Request', body: c.props([
                 ['State', esc(workState(w))],
-                ['Shape', esc((TOPO.find((x) => x[0] === w.topology) || [])[1] || '')],
+                ['Shape', esc(isGroups(w) ? 'Supervisor -> a Claude planner per group of related issues' : ((TOPO.find((x) => x[0] === w.topology) || [])[1] || ''))],
                 ['Planner stage', esc(stageText(st.planner))],
                 ['Workers stage', esc(stageText(st.workers) || [w.model, w.effort].filter(Boolean).join(' / '))],
                 ['Account', esc(w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)))],
@@ -2194,7 +2200,7 @@
                 ['Queued', esc(when(w.createdAt))],
                 ['Note', esc([w.message, w.issueNote].filter(Boolean).join(' - '))]
             ].filter(Boolean)) + (links ? `<p>${links}</p>` : '') + (w.prompt ? `<p class="cd-read">${esc(w.prompt)}</p>` : '') },
-            parts.length ? { id: 'cd-wi-parts', title: `Parts (${parts.length})`, body: `<table class="cd-table"><thead><tr><th>Part</th><th class="cd-w80">State</th><th class="cd-w80">Session</th></tr></thead><tbody>${parts.map((x) => `<tr><td>${esc(x.title || x.id)}</td><td>${esc(workState(x))}</td><td>${esc(x.sessionId ? shortId(x.sessionId) : '')}</td></tr>`).join('')}</tbody></table>` } : null
+            parts.length ? { id: 'cd-wi-parts', title: `${isGroups(w) ? 'Planners' : 'Parts'} (${parts.length})`, body: `<table class="cd-table"><thead><tr><th>${isGroups(w) ? 'Planner' : 'Part'}</th><th class="cd-w80">State</th><th class="cd-w80">Session</th></tr></thead><tbody>${parts.map((x) => `<tr><td>${esc(x.title || x.id)}</td><td>${esc(workState(x))}</td><td>${esc(x.sessionId ? shortId(x.sessionId) : '')}</td></tr>`).join('')}</tbody></table>` } : null
         ].filter(Boolean));
     }
 
@@ -2927,14 +2933,32 @@
         }
         return node;
     }
+    /** The Yozora issues a planner carries, as leaves: shown when it carries 2+ or is a planner of a groups item (the groups parent itself lists none). */
+    function issueNodes(w) {
+        const l = issuesOf(w);
+        if (isGroups(w) || !(l.length > 1 || (l.length && groupParentOf(w)))) return [];
+        const main = l.find((i) => i.primary) || l[0];
+        return l.map((i) => ({ id: `aw:i:${w.id}:${i.repo}#${i.number}`, name: `${i.repo && main && i.repo !== main.repo ? `${i.repo}` : ''}#${i.number}${i.title ? ` - ${i.title}` : ''}`, icon: `${VI}/info-16.png`, desc: 'A Yozora issue this planner carries' }));
+    }
     /** A work item: its parts (a surfaces item's child items, each with its session) and its own session. */
     function workNode(w, A, seen, group) {
         seen.add(String(w.id));
         const kids = group().filter((x) => String(x.parentId) === String(w.id) && !seen.has(String(x.id))).map((x) => workNode(x, A, seen, group));
+        kids.unshift(...issueNodes(w));
         if (w.sessionId) kids.push(sessionNode('aw:s:', w.sessionId, A));
         const h = w.sessionId ? holdOf(w.sessionId) : null;
         const topo = topoShort(w.topology);
         return { id: `aw:w:${w.id}`, name: `${w.title || w.id}${topo && w.parentId == null ? ` - ${topo}` : ''}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? `${VI}/warning-16.png` : workIcon(w.state), desc: `${WORK_STATE[w.state] || w.state || ''}${WORK_RUN.has(w.state) && w.message ? ` - ${w.message}` : ''}`, children: kids }; // the in-flight reason (background agents, a review) shows in the row note
+    }
+
+    /** The page of an issue leaf: what the issue is and a link that opens it (like the issue links of the request page). */
+    function awIssuePage(c, id) {
+        const m = /^aw:i:([^:]+):(.+)#(\d+)$/.exec(id);
+        const w = m ? workOf(m[1]) : null;
+        const i = w ? issuesOf(w).find((x) => x.repo === m[2] && String(x.number) === m[3]) : null;
+        if (!i) return c.page('Issue', '', [{ id: 'cd-ai', title: 'Issue', body: '<p class="mmc-hint">This issue is no longer listed.</p>' }]);
+        const link = i.url && /^https?:\/\//.test(i.url) ? `<p><span class="mmc-link" data-act="open-link" data-arg="${esc(i.url)}">Open issue</span></p>` : '';
+        return c.page(`${i.repo}#${i.number}`, '', [{ id: 'cd-ai', title: 'Issue', body: c.props([['Issue', esc(`${i.repo}#${i.number}`)], i.title ? ['Title', esc(i.title)] : null, ['Carried by', `<span class="mmc-link" data-act="work-goto" data-arg="${esc(w.id)}">${esc(w.title || String(w.id))}</span>`]].filter(Boolean)) + link }]);
     }
 
     function nodes() {
@@ -4824,6 +4848,7 @@
                 if (nodeSid(n.id)) return chatPage(c, nodeSid(n.id));
                 if (n.id.startsWith('bga:')) { const m = /^bga:([^:]+):(.+)$/.exec(n.id); return m ? bgAgentPage(c, m[1], m[2]) : ''; }
                 if (n.id.startsWith('aw:w:')) return workItemPage(c, n.id.slice(5));
+                if (n.id.startsWith('aw:i:')) return awIssuePage(c, n.id);
                 if (n.id.startsWith('aw:a:')) { const m = /^aw:a:([^:]+):(.+)$/.exec(n.id); return m ? awAgentPage(c, m[1], m[2]) : ''; }
                 if (n.id.startsWith('aw:l:')) { void loadAwAgents(n.id.slice(5)); return c.page('Background Agents', '', [{ id: 'cd-al', title: 'Background Agents', body: '<p class="mmc-hint">Reading the session\'s agents...</p>' }]); }
                 if (n.id.startsWith('ct:')) return contractorPage(c, n.id.slice(3));
