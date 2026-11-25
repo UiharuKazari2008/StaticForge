@@ -241,7 +241,7 @@
     max-width: 220px;
     padding: 2px 2px 2px 3px;
     border: 1px solid var(--cd-c-d5d5d5);
-    background: #fff;
+    background: var(--cd-c-fff);
     font: 11px var(--cd-font-ui);
 }
 
@@ -1086,4 +1086,32 @@
 
 #mmcConsole_claudedesk .cd-sup-form label[hidden] {
     display: none;
+}
+
+/* a working session's title bar: a slow colour sweep says "this session is active" (Yukimi, Nov 24 2026).
+   The sweep is a transform on a pseudo-element (composited, no repaint per frame); still without motion when the
+   user asks for reduced motion, and it stops with the page when the session goes idle (the class goes away). */
+.mmc-window .mmc-page-title.cd-title-busy {
+    position: relative;
+    isolation: isolate;
+    background: var(--cd-busy-a);
+}
+
+.mmc-window .mmc-page-title.cd-title-busy::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 300%;
+    z-index: -1;
+    background: linear-gradient(90deg, var(--cd-busy-a) 0%, var(--cd-busy-b) 16%, var(--cd-busy-c) 33%, var(--cd-busy-a) 50%, var(--cd-busy-b) 66%, var(--cd-busy-c) 83%, var(--cd-busy-a) 100%);
+    animation: cd-title-sweep 6s linear infinite; /* perf: allow only while the session works (the class goes when it idles) and only in the open Fleet desktop window, never on the phone */
+}
+
+@keyframes cd-title-sweep {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mmc-window .mmc-page-title.cd-title-busy::before { animation: none; }
 }

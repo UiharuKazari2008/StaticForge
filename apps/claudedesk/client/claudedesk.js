@@ -1903,7 +1903,7 @@
     const rulesOpenFindings = () => ((rulesData().last && rulesData().last.findings) || []).filter((f) => !f.dismissed);
     const RULE_SEV = { high: ['Serious', `${VI}/error-16.png`], medium: ['Should fix', `${VI}/warning-16.png`], low: ['Minor', `${VI}/info-16.png`] };
     const RULE_KIND = { contradiction: 'Contradiction', duplicate: 'Duplicate', unclear: 'Unclear', unenforceable: 'Cannot be checked', outdated: 'Outdated', 'not-english': 'Not English', 'missing-import': 'Not in CLAUDE.md', 'missing-file': 'Missing file', 'outdated-reference': 'Outdated reference' };
-    const rulesIcon = `${ITEMS}/parental-controls-16.png`;
+    const rulesIcon = `${ITEMS}/default-programs-16.png`;
 
     function rulesPage(c) {
         const d = rulesData();
@@ -2093,7 +2093,8 @@
                 { id: 'memory', name: 'Memory', icon: `${ITEMS}/personalization-16.png`, desc: 'The shared memory every Fleet agent reads and writes',
                     children: [
                         { id: 'mem-review', name: 'Needs Review', icon: `${VI}/warning-16.png`, desc: 'Proposed and flagged memories' },
-                        { id: 'mem-digest', name: 'Session Digest', icon: `${VI}/info-16.png`, desc: 'The text every session starts with' }
+                        { id: 'mem-digest', name: 'Session Digest', icon: `${VI}/info-16.png`, desc: 'The text every session starts with' },
+                        { id: 'rules', name: 'Rules', icon: rulesIcon, desc: 'The rules the agents follow', children: [{ id: 'rules-review', name: `Rules Review (${plural(rulesOpenFindings().length, 'finding')})`, icon: `${ITEMS}/security-center-16.png`, desc: 'The Supervisor reads the rules for problems' }] }
                     ] },
                 {
                     id: 'co-root',
@@ -2120,12 +2121,11 @@
                 {
                     id: 'rc',
                     name: 'Remote Control',
-                    icon: `${ITEMS}/network-and-sharing-center-16.png`,
+                    icon: `${VI}/remote-access-16.png`,
                     desc: 'Every Claude account\'s own Remote Control',
                     children: [{ id: 'rc-host', name: 'Host Login', icon: `${ITEMS}/network-and-sharing-center-16.png`, desc: 'claude-remote.service: the host\'s own claude.ai login' }]
                 },
-                { id: 'rules', name: 'Rules', icon: rulesIcon, desc: 'The rules the agents follow', children: [{ id: 'rules-review', name: `Rules Review (${plural(rulesOpenFindings().length, 'finding')})`, icon: `${ITEMS}/security-center-16.png`, desc: 'The Supervisor reads the rules for problems' }] },
-                { id: 'contractors', name: 'Contractors', icon: `${ITEMS}/network-and-sharing-center-16.png`, desc: 'Other machines that run Fleet work on their own projects', children: cons }
+                { id: 'contractors', name: 'Contractors', icon: `${ITEMS}/system-16.png`, desc: 'Other machines that run Fleet work on their own projects', children: cons }
             ]
         }];
     }
@@ -2877,7 +2877,7 @@
         }
         return {
             html: `<div class="cd-chat">
-                <div class="mmc-page-title"><b>${esc(titleOf(row))}</b><span>${esc(side)}</span></div>
+                <div class="mmc-page-title${l && l.status === 'busy' ? ' cd-title-busy' : ''}"><b>${esc(titleOf(row))}</b><span>${esc(side)}</span></div>
                 ${linkBits ? `<div class="cd-chat-links">${linkBits}</div>` : ''}
                 ${holdBar}
                 ${showBar()}
@@ -3427,7 +3427,7 @@
                 return true;
             }
             case 'rules-open': await ruleRead(c, selId(c, 'ru:')); return true;
-            case 'rules-goto': c.open.add('rules'); c.select('rules-review', true); return true;
+            case 'rules-goto': c.open.add('memory'); c.open.add('rules'); c.select('rules-review', true); return true;
             case 'rules-review': await rulesReviewStart(c); return true;
             case 'rules-dismiss': await ruleFindingDismiss(c, selId(c, 'rf:')); return true;
             case 'con-refresh': S.con.loaded = false; await loadContractors(); return true;

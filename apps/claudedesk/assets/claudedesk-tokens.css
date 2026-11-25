@@ -1,5 +1,8 @@
 /* Claude Fleet (apps/claudedesk) colour and font tokens: the theme owns the literals (ui-standard). */
 :root {
+    --cd-busy-a: #2b5797;
+    --cd-busy-b: #3a8fd9;
+    --cd-busy-c: #6a4fc2;
     --cd-c-000: #000;
     --cd-c-003399: #003399;
     --cd-c-0066cc: #0066cc;
