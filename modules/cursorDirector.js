@@ -3634,6 +3634,7 @@ const TOOL_LABELS = {
     create_phasewalker: 'Phasewalker',
     decompile_phasewalker: 'Decompile phase',
     compare_images: 'Compare',
+    image_inspect: 'Inspect',
     Shell: 'Shell',
     Read: 'Read',
     Glob: 'Find files',

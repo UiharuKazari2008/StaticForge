@@ -158,6 +158,7 @@ const TOOL_RATE_GROUPS = {
     open_in_studio: 'free',
     open_in_glancewell: 'free',
     compare_images: 'gallery',
+    image_inspect: 'gallery',
     evaluate_workspace_themes: 'search',
     vfs_list: 'free',
     vfs_read: 'gallery',

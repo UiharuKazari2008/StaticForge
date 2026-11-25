@@ -18,7 +18,7 @@ const NEG_BEFORE = /\b(?:not|never|no|isn'?t|wasn'?t|aren'?t|don'?t|doesn'?t|did
 
 const TOOL_CUES = [
     [/^(get_session_state|get_studio_state|read_image_metadata|get_open_windows|list_|get_workspaces)/, { expression: 'focused', action: 'lean-in', holdMs: 5000 }],
-    [/^(get_generated_image|show_chat_image|compare_images|Read|resolve_lookback|open_in_)/, { expression: 'focused', action: 'lean-in', holdMs: 5000 }],
+    [/^(get_generated_image|show_chat_image|compare_images|image_inspect|Read|resolve_lookback|open_in_)/, { expression: 'focused', action: 'lean-in', holdMs: 5000 }],
     [/^(apply_studio_changes|print_studio|generate_image|generate_preset|create_phasewalker|decompile_phasewalker|expand_image|upscale_image|animate_image)/, { expression: 'smug', action: 'nod', holdMs: 6000 }],
     [/^(await_generation_job|get_generation_job)/, { expression: 'thinking', holdMs: 8000 }],
     [/^request_form/, { expression: 'thinking', action: 'tilt', holdMs: 6000 }],

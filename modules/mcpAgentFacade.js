@@ -59,7 +59,7 @@ const {
     buildAgentScopePayload
 } = require('./agentClientBridge');
 const { isGenerateTool, summarizeArgs, summarizeResult, recordActivity, beginCall, endCall } = require('./mcpActivity');
-const { compareImageFiles, evaluateThemeRows } = require('./mcpInsights');
+const { compareImageFiles, inspectImageFile, dHash, hashDistance, evaluateThemeRows } = require('./mcpInsights');
 const { buildStudioSettingsCatalog, slimStudioSettingsCatalog, applyCatalogToListedTool } = require('./studioSettingsCatalog');
 const { buildMcpServerInfo, hashMcpToolsRevision, resolveMcpPublicBaseUrl } = require('./mcpServerInfo');
 // modules/tagModelCutoff.js — offline tag suggest cutoffs
@@ -2601,7 +2601,7 @@ const TOOL_DEFS = [
     {
         name: 'compare_images',
         core: true,
-        description: 'Pixel-diff two gallery images (same seed preferred). Returns change stats plus a magenta difference webp.',
+        description: 'Compare two images and see WHERE they differ. Gallery names (filenameA/filenameB) or files (pathA/pathB: chats/<id>/inbox/<file>, /workspace/chats/..., /workspace/images/...). Different sizes are padded, never stretched (the reply says what was padded). Returns changedPercent, meanDelta, regions (bounding boxes in percent of the image, biggest change first) and ONE image: A | difference | B with the regions boxed and numbered.',
         scope: 'gallery',
         inputSchema: {
             type: 'object',
@@ -2611,9 +2611,45 @@ const TOOL_DEFS = [
                 filenameB: { type: 'string' },
                 a: { type: 'string' },
                 b: { type: 'string' },
+                pathA: { type: 'string', description: 'File instead of a gallery name' },
+                pathB: { type: 'string', description: 'File instead of a gallery name' },
+                regions: { type: 'number', description: 'How many change regions to list (default 8, max 20)' },
                 workspace: { type: 'string' },
                 workspaceId: { type: 'string' }
             }
+        }
+    },
+    {
+        name: 'image_inspect',
+        core: true,
+        description: 'Look closer at one image. mode crop = return a region enlarged (face, hands, text, a small change). mode stats = size, aspect ratio, brightness, mean colour and dominant colours of the image or a region. mode ocr = read text in the image. mode similar = perceptual hash distance to another image (second) or to the latest prints of the workspace. Source: filename (gallery) or path (chats/<id>/inbox/<file>, /workspace/chats/..., /workspace/images/...). region = {x,y,w,h} as fractions 0-1 (default), or unit "percent" / "px".',
+        scope: 'gallery',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                mode: { type: 'string', enum: ['crop', 'stats', 'ocr', 'similar'] },
+                filename: { type: 'string' },
+                path: { type: 'string' },
+                region: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        x: { type: 'number' }, y: { type: 'number' }, w: { type: 'number' }, h: { type: 'number' },
+                        unit: { type: 'string', enum: ['fraction', 'percent', 'px'] }
+                    }
+                },
+                zoom: { type: 'number', description: 'crop: scale factor (default: fit to maxSide)' },
+                maxSide: { type: 'number', description: 'crop: longest output side, default 1024, max 1536' },
+                colors: { type: 'number', description: 'stats: how many dominant colours (default 5)' },
+                lang: { type: 'string', description: 'ocr: tesseract language, default eng' },
+                second: { type: 'string', description: 'similar: gallery filename to compare with' },
+                secondPath: { type: 'string', description: 'similar: file to compare with' },
+                limit: { type: 'number', description: 'similar: how many latest prints to scan (default 30, max 100)' },
+                workspace: { type: 'string' },
+                workspaceId: { type: 'string' }
+            },
+            required: ['mode']
         }
     },
     {
@@ -8260,6 +8296,27 @@ function resolveMetadataFilePath(globalResources, raw) {
     return resolveDirectorSourcePath(text);
 }
 
+/** One image for compare_images / image_inspect: a gallery name or a Dreamspace file path. */
+async function resolveInspectSource(globalResources, req, workspaceId, name, askedPath, optional) {
+    const filePath = String(askedPath || '').trim();
+    const given = String(name || '').trim();
+    const asPath = filePath || (given.includes('/') ? given : '');
+    if (asPath) {
+        const resolved = resolveMetadataFilePath(globalResources, asPath);
+        if (resolved.error) return { error: resolved.error };
+        const abs = resolved.galleryName
+            ? await imageStore.pngPath(resolved.galleryName, resolved.imagesDir)
+            : resolved.absPath;
+        if (!abs) return { error: `Image not found: ${asPath}` };
+        return { file: abs, label: asPath, filename: resolved.galleryName || undefined };
+    }
+    if (!given && optional) return {};
+    const looked = await resolveGalleryFilename(globalResources, req, { filename: given, workspace: workspaceId });
+    if (!looked.filename) return { error: 'Pass a gallery filename or a path (chats/<id>/inbox/<file>).' };
+    const px = await resolveGalleryPixelPath(globalResources, looked.filename);
+    return { file: px.filePath, label: looked.filename, filename: looked.filename };
+}
+
 async function readImageMetadataTool(globalResources, req, input) {
     const askedName = String((input && input.filename) || '').trim();
     const askedPath = String((input && (input.path || input.sourcePath)) || '').trim();
@@ -8703,38 +8760,29 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'compare_images') {
         const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
-        const lookedA = await resolveGalleryFilename(globalResources, req, {
-            filename: input.filenameA || input.a || input.filename,
-            workspace: workspaceId
-        });
-        const lookedB = await resolveGalleryFilename(globalResources, req, {
-            filename: input.filenameB || input.b,
-            workspace: workspaceId
-        });
-        if (!lookedA.filename || !lookedB.filename) {
-            return mcpTextResult({
-                success: false,
-                error: 'Two gallery filenames are required (filenameA and filenameB).'
-            }, true);
+        const srcA = await resolveInspectSource(globalResources, req, workspaceId, input.filenameA || input.a || input.filename, input.pathA);
+        const srcB = await resolveInspectSource(globalResources, req, workspaceId, input.filenameB || input.b, input.pathB);
+        if (srcA.error || srcB.error) {
+            return mcpTextResult({ success: false, error: srcA.error || srcB.error }, true);
         }
-        if (lookedA.filename === lookedB.filename) {
+        if (srcA.file === srcB.file) {
             return mcpTextResult({ success: false, error: 'Pick two different files to compare.' }, true);
         }
-        const pathA = await resolveGalleryPixelPath(globalResources, lookedA.filename);
-        const pathB = await resolveGalleryPixelPath(globalResources, lookedB.filename);
-        const metaA = flattenPacket(await dispatchPacketTool(globalResources, req, 'request_image_metadata', {
-            filename: lookedA.filename
-        }));
-        const metaB = flattenPacket(await dispatchPacketTool(globalResources, req, 'request_image_metadata', {
-            filename: lookedB.filename
-        }));
-        const seedA = metaA.seed != null ? String(metaA.seed) : null;
-        const seedB = metaB.seed != null ? String(metaB.seed) : null;
-        const diff = await compareImageFiles(pathA.filePath, pathB.filePath);
+        let seedA = null;
+        let seedB = null;
+        if (srcA.filename && srcB.filename) {
+            const metaA = flattenPacket(await dispatchPacketTool(globalResources, req, 'request_image_metadata', { filename: srcA.filename }));
+            const metaB = flattenPacket(await dispatchPacketTool(globalResources, req, 'request_image_metadata', { filename: srcB.filename }));
+            seedA = metaA.seed != null ? String(metaA.seed) : null;
+            seedB = metaB.seed != null ? String(metaB.seed) : null;
+        }
+        const diff = await compareImageFiles(srcA.file, srcB.file, { regions: input.regions });
         return mcpImageResult({
             success: true,
-            filenameA: lookedA.filename,
-            filenameB: lookedB.filename,
+            a: srcA.label,
+            b: srcB.label,
+            filenameA: srcA.filename || undefined,
+            filenameB: srcB.filename || undefined,
             seedA,
             seedB,
             sameSeed: !!(seedA && seedB && seedA === seedB),
@@ -8743,11 +8791,61 @@ async function callTool(globalResources, req, name, args) {
                 : undefined,
             width: diff.width,
             height: diff.height,
+            sizeA: diff.sizeA,
+            sizeB: diff.sizeB,
+            padded: diff.padded,
+            downscaledTo: diff.downscaledTo,
             changedPercent: diff.changedPercent,
             meanDelta: diff.meanDelta,
             changedPixels: diff.changedPixels,
+            regions: diff.regions,
+            layout: diff.layout,
             imageKind: 'grok'
         }, diff.image);
+    }
+
+    if (name === 'image_inspect') {
+        const workspaceId = resolveWorkspaceId(input.workspace || input.workspaceId, globalResources);
+        const mode = String(input.mode || '').toLowerCase();
+        const src = await resolveInspectSource(globalResources, req, workspaceId, input.filename, input.path);
+        if (src.error) return mcpTextResult({ success: false, error: src.error }, true);
+        try {
+            if (mode === 'similar') {
+                const hash = await dHash(src.file);
+                const near = (d) => (d <= 5 ? 'practically the same picture' : d <= 12 ? 'similar' : 'different');
+                const second = await resolveInspectSource(globalResources, req, workspaceId, input.second, input.secondPath, true);
+                if (second.error) return mcpTextResult({ success: false, error: second.error }, true);
+                if (second.file) {
+                    const d = hashDistance(hash, await dHash(second.file));
+                    return mcpTextResult({ success: true, mode, source: src.label, other: second.label, distance: d, of: 64, verdict: near(d) });
+                }
+                const metadataDb = globalResources.getMetadataDatabase && globalResources.getMetadataDatabase();
+                if (!metadataDb || typeof metadataDb.listWorkspaceGalleryImageRows !== 'function') {
+                    return mcpTextResult({ success: false, error: 'Metadata database is not ready' }, true);
+                }
+                const limit = Math.min(100, Math.max(1, Number(input.limit) || 30));
+                const rows = (await metadataDb.listWorkspaceGalleryImageRows(workspaceId)).slice(0, limit);
+                const scored = [];
+                for (const row of rows) {
+                    if (!row || row.filename === src.filename) continue;
+                    try {
+                        const p = await resolveGalleryPixelPath(globalResources, row.filename);
+                        scored.push({ filename: row.filename, distance: hashDistance(hash, await dHash(p.filePath)) });
+                    } catch (_) { /* unreadable print: skip */ }
+                }
+                scored.sort((l, r) => l.distance - r.distance);
+                return mcpTextResult({
+                    success: true, mode, source: src.label, scanned: scored.length,
+                    closest: scored.slice(0, 5).map((row) => ({ ...row, verdict: near(row.distance) }))
+                });
+            }
+            const out = await inspectImageFile(src.file, mode, input);
+            return out.image
+                ? mcpImageResult({ success: true, source: src.label, ...out.meta }, out.image)
+                : mcpTextResult({ success: true, source: src.label, ...out.meta });
+        } catch (err) {
+            return mcpTextResult({ success: false, error: err.message || String(err) }, true);
+        }
     }
 
     if (name === 'evaluate_workspace_themes') {

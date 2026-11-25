@@ -43,7 +43,7 @@ const MODULE_DEFS = {
         tools: [
             'get_generated_image', 'resolve_lookback', 'get_latest_image', 'get_images',
             'delete_images', 'open_in_lumen', 'open_in_studio', 'open_in_glancewell', 'ledge',
-            'compare_images', 'evaluate_workspace_themes'
+            'compare_images', 'image_inspect', 'evaluate_workspace_themes'
         ]
     },
     core_workspace: {
