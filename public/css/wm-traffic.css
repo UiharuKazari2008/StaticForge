@@ -828,7 +828,7 @@
 .trf-camov-ico img, .trf-camov-end img { display: block; width: 100%; height: 100%; }
 .trf-camov-title { left: calc(32 * var(--u)); right: calc(116 * var(--u)); top: calc(6 * var(--u)); height: calc(18 * var(--u)); line-height: calc(18 * var(--u)); font-size: calc(13 * var(--u)); font-weight: bold; color: #fff; text-overflow: ellipsis; }
 .trf-camov-street { right: calc(12 * var(--u)); width: calc(96 * var(--u)); top: calc(6 * var(--u)); height: calc(18 * var(--u)); line-height: calc(18 * var(--u)); font-size: calc(12 * var(--u)); color: #aab3bd; text-align: right; text-overflow: ellipsis; }
-.trf-camov-speed { left: calc(12 * var(--u)); width: calc(170 * var(--u)); top: calc(26 * var(--u)); height: calc(32 * var(--u)); line-height: calc(32 * var(--u)); font-size: calc(26 * var(--u)); font-weight: bold; color: #fff; }
+.trf-camov-speed { left: calc(12 * var(--u)); width: calc(170 * var(--u)); top: calc(23 * var(--u)); height: calc(32 * var(--u)); line-height: calc(32 * var(--u)); font-size: calc(26 * var(--u)); font-weight: bold; color: #fff; }
 .trf-camov.is-over .trf-camov-speed { color: #ff6a58; }
 /* the road sign: white disc, red ring */
 .trf-camov-sign { right: calc(14 * var(--u)); top: calc(25 * var(--u)); width: calc(34 * var(--u)); height: calc(34 * var(--u)); border-radius: 50%; border: calc(4 * var(--u)) solid #d4281c; background: #fff; overflow: hidden; }
