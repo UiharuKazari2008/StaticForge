@@ -691,7 +691,8 @@
             const list = sort && !opts.presorted ? this.sorted(rows, cols, opts.sortId, opts.sort) : rows; // presorted: the caller orders the rows (a tree sorts within each level)
             const cell = (col, r, i) => {
                 const inner = col.html ? col.html(r.data) : `<i>${esc(col.text(r.data))}</i>`;
-                return `<span${col.num ? ' class="is-num"' : ''}>${i === 0 && r.icon ? `<img class="mmc-row-icon" src="${esc(r.icon)}" alt="">` : ''}${inner}</span>`;
+                const tip = col.text ? String(col.text(r.data) == null ? '' : col.text(r.data)) : '';
+                return `<span${col.num ? ' class="is-num"' : ''}${tip ? ` title="${esc(tip)}"` : ''}>${i === 0 && r.icon ? `<img class="mmc-row-icon" src="${esc(r.icon)}" alt="">` : ''}${inner}</span>`;
             };
             const body = list.length ? list.map((r) => `<div class="mmc-row${r.cls ? ` ${r.cls}` : ''}${r.key != null && String(r.key) === String(this.sel) ? ' is-selected' : ''}"${r.key != null ? ` data-key="${esc(r.key)}"` : ''}${r.open ? ` data-open="${esc(r.open)}"` : ''}>${cols.map((col, i) => cell(col, r, i)).join('')}<span></span></div>`).join('')
                 : `<div class="mmc-empty">${esc(opts.empty || 'There are no items to show in this view.')}</div>`;

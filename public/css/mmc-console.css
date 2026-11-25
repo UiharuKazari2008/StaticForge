@@ -556,25 +556,13 @@
     min-width: 0;
 }
 
-.mmc-window .mmc-list.is-wrap .mmc-row {
-    height: auto;
-    min-height: 19px;
-    align-items: start;
-}
-
-.mmc-window .mmc-list.is-wrap .mmc-row > span {
-    overflow: visible;
-    padding-top: 2px;
-    padding-bottom: 2px;
-    white-space: normal;
-}
-
+.mmc-window .mmc-list.is-wrap .mmc-row > span,
 .mmc-window .mmc-list.is-wrap .mmc-row > span > i {
-    overflow: visible;
-    /* wrap between words; break inside a word only when one word alone is wider than the column */
-    overflow-wrap: break-word;
-    word-break: normal;
-    text-overflow: clip;
+    /* list rows stay one line, as a Windows list view's do (Yukimi, Nov 24 2026): columns fit the pane, long text
+       ends in an ellipsis and shows whole in its tooltip and the reading pane */
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .mmc-window .mmc-lhead {
