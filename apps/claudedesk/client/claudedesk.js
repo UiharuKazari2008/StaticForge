@@ -54,6 +54,12 @@
     const VI = '/static_images/vista-icons';
     // a session is a conversation: the speech bubble (Yukimi, Nov 24 2026: a better icon than the remote window)
     const SESSION16 = '/static_images/vista-cmdbar/discuss.png';
+    /** A session's icon says what it does now (Yukimi, Nov 25 2026): working (green dot), idle (the bubble), ended (grey). */
+    const sessIcon = (sid) => {
+        const A = S.app ? S.app.url('assets').replace(/\/$/, '') : '/melaton-apps/claudedesk/assets';
+        const l = liveOf(sid);
+        return `${A}/session-${l ? (l.status === 'busy' ? 'working' : 'idle') : 'ended'}-16.png`;
+    };
     const ITEMS = '/static_images/vista-cpl/items';
     const FOLDER16 = `${VI}/explorer/folder-16.png`;
     const PAGE = 50;
@@ -2846,7 +2852,7 @@
     function sessionNode(idPrefix, sid, A) {
         const row = rowOf(sid) || { id: sid, title: (liveOf(sid) || {}).name };
         const h = holdOf(sid);
-        const node = { id: `${idPrefix}${sid}`, name: `${titleOf(row)}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h || usgFlagged(sid) ? `${VI}/warning-16.png` : SESSION16, desc: h ? holdLine(h) : (usgFlagged(sid) ? 'Heavy usage: see Usage > Flags' : 'The session\'s conversation') };
+        const node = { id: `${idPrefix}${sid}`, name: `${titleOf(row)}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? `${VI}/warning-16.png` : sessIcon(sid), desc: h ? holdLine(h) : (usgFlagged(sid) ? 'Heavy usage: see Usage > Flags' : 'The session\'s conversation') };
         if (idPrefix === 'aw:s:') {
             const e = S.awAgents.get(sid);
             if (e && e.agents) node.children = e.agents.map((x) => ({ id: `aw:a:${sid}:${x.agentId}`, name: x.description || x.agentId, icon: x.finished ? `${VI}/check-16.png` : SESSION16, desc: 'A background agent of this session' }));
@@ -2868,7 +2874,7 @@
         const A = S.app ? S.app.url('assets').replace(/\/$/, '') : '/melaton-apps/claudedesk/assets';
         const open = S.open.map((id) => {
             const row = rowOf(id);
-            return { id: `t:${id}`, name: titleOf(row || { id }), icon: SESSION16, desc: 'The session\'s conversation' };
+            return { id: `t:${id}`, name: titleOf(row || { id }), icon: sessIcon(id), desc: 'The session\'s conversation' };
         });
         const seen = new Set();
         const tops = (group) => { const items = group(); return items.filter((w) => w.parentId == null || w.parentId === '' || !items.some((x) => String(x.id) === String(w.parentId))).map((w) => workNode(w, A, seen, group)); };
@@ -3279,7 +3285,7 @@
             const l = liveOf(r.id);
             return {
                 key: `s:${r.id}`,
-                icon: usgFlagged(r.id) ? `${VI}/warning-16.png` : SESSION16,
+                icon: sessIcon(r.id),
                 cls: l ? (l.status === 'busy' ? 'cd-busy' : 'cd-live') : '',
                 data: {
                     title: titleOf(r), state: stateText(r), account: r.account ? r.account.name : (l ? '' : ''),
