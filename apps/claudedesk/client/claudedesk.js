@@ -2834,7 +2834,8 @@
     const unsupervised = () => { const owned = new Set(supWork().filter((w) => WORK_OPEN.has(w.state) && w.sessionId).map((w) => w.sessionId)); return S.live.filter((l) => !owned.has(l.id)); };
     const activeItems = () => supWork().filter((w) => WORK_OPEN.has(w.state));
     /** Work Queue groups: Active is what runs (starting, running); Pending is what waits (queued, waiting). Each item is in one. */
-    const WORK_RUN = new Set(['starting', 'running']);
+    // Sent Back (waiting) is active work: its session is working through the Supervisor's notes, not queued for a slot
+    const WORK_RUN = new Set(['starting', 'running', 'waiting']);
     const runItems = () => supWork().filter((w) => WORK_RUN.has(w.state));
     const heldItems = () => supWork().filter((w) => w.state === 'held');
     const pendItems = () => supWork().filter((w) => WORK_OPEN.has(w.state) && !WORK_RUN.has(w.state) && w.state !== 'held');
@@ -3107,7 +3108,7 @@
             tile('aw-sup', '/static_images/vista-cmdbar/play.png', run.length, 'Running work'),
             tile('co-held', `${ITEMS}/date-and-time-16.png`, held.length, 'Waiting for you'),
             tile('co-pending', `${VI}/info-16.png`, pendItems().length, 'Queued'),
-            tile('co-pending', `${VI}/warning-16.png`, sentBack.length, 'Sent back', true),
+            tile('aw-sup', `${VI}/warning-16.png`, sentBack.length, 'Sent back', true),
             // one number per tile: running sessions and the ones working now are two tiles (Yukimi, Nov 24 2026)
             tile('sessions', SESSION16, S.live.length, 'Sessions running'),
             tile('sessions', '/static_images/vista-cmdbar/gears.png', busy, 'Sessions working'),
@@ -3117,7 +3118,7 @@
             tile('sup-holds', '/static_images/vista-cmdbar/pause.png', supHolds().length, 'Paused', true),
             tile('usage-flags', `${VI}/warning-16.png`, usgOpenFlags(), 'Heavy usage', true)
         ].join('')}</div>`;
-        const live = run.concat(sentBack);
+        const live = run; // Sent Back items are in it (WORK_RUN)
         const row = (w) => `<tr class="cd-dash-row" data-act="${w.state === 'held' ? 'nav:co-held' : `nav:aw:w:${esc(w.id)}`}"><td class="cd-cut" title="${esc(w.title || String(w.id))}"><img class="mmc-row-icon" src="${esc(workIcon(w.state))}" alt="">${esc(w.title || String(w.id))}</td><td class="cd-cut" title="${esc(workState(w))}">${esc(workState(w))}</td><td class="cd-cut" title="${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}">${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}</td><td class="cd-cut" title="${esc([w.model, w.effort].filter(Boolean).join(' / '))}">${esc([w.model, w.effort].filter(Boolean).join(' / '))}</td><td class="cd-cut" title="${esc(w.startedAt ? when(w.startedAt) : '')}">${esc(w.startedAt ? when(w.startedAt) : '')}</td><td class="cd-cut" title="${esc(w.message || '')}">${esc(w.message || '')}</td></tr>`;
         const table = (list, empty) => (list.length
             ? `<table class="cd-table cd-dash"><thead><tr><th>Request</th><th class="cd-w80">State</th><th class="cd-w80">Account</th><th>Model</th><th>Started</th><th>Note</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>`
