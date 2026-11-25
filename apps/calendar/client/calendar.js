@@ -439,7 +439,18 @@
             if (!this.loaded || this.app.signal.aborted) return;
             clearTimeout(this.pushTimer);
             this.pushTimer = setTimeout(() => {
-                if (this.modal || this.saveTimers.size || this.reloading) return;
+                if (this.reloading) return;
+                // a field of the details pane being typed in, or a save waiting: read when the field is left
+                // (this.modal is the window itself, always there: it is not "an edit is open")
+                const a = doc.activeElement;
+                const typing = !!(a && this.modal && this.modal.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+                if (typing || this.saveTimers.size) {
+                    if (this.modal && !this.pushWaits) {
+                        this.pushWaits = true;
+                        this.modal.addEventListener('focusout', () => { this.pushWaits = false; this.reloadFromPush(path); }, { once: true, signal: this.app.signal });
+                    }
+                    return;
+                }
                 this.reloading = true;
                 const old = this.calendars;
                 this.calendars = [];
