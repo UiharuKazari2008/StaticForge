@@ -762,6 +762,7 @@
     let superMedia = false; // the open card was drawn with a media row
     let superArtKey = '';
     let superArtUrl = ''; // blob URL of the cover (revoked when the cover changes or the bar closes)
+    let superOutput = null; // the playing route (AndroidMediaSession getState().output): { name, kind }
     const SUPER_MEDIA_H = 44; // units
     const mediaBridge = () => { const b = window.AndroidMediaSession; return b && typeof b.getState === 'function' ? b : null; };
 
@@ -771,6 +772,7 @@
         if (!b) return null;
         let st = null;
         try { st = JSON.parse(b.getState() || 'null'); } catch (_) { st = null; }
+        superOutput = (st && st.output && st.output.name) ? st.output : null;
         const A = window.wmMediaApps;
         const hidden = A && typeof A.hidden === 'function' ? A.hidden() : new Set();
         const list = ((st && st.sessions) || []).filter((x) => !/^jp\.net\.seventhreeseven\.dreamscape/.test(x.package || '') && !hidden.has(x.package) && x.state !== 'none' && (x.title || x.state === 'playing' || x.state === 'paused'));
@@ -778,8 +780,15 @@
         return list.find((x) => x.id === st.active) || list.find((x) => x.state === 'playing') || list[0];
     }
 
-    /** The cover as a file with an address: the bridge's data string made a blob once per cover, the last one revoked. */
+    /**
+     * The cover as a file with an address: the app's own (artUrl, appassets media-art), else on an older app
+     * the bridge's data string made a blob once per cover, the last one revoked.
+     */
     function superMediaArt(ms) {
+        if (ms.artUrl) {
+            if (superArtUrl) { URL.revokeObjectURL(superArtUrl); superArtUrl = ''; superArtKey = ''; }
+            return ms.artUrl;
+        }
         const b = mediaBridge();
         if (!b || !ms.artKey || typeof b.getArt !== 'function') return '';
         if (ms.artKey === superArtKey) return superArtUrl;
@@ -810,13 +819,16 @@
         const playing = ms.state === 'playing' || ms.state === 'buffering';
         const b = mediaBridge();
         const out = b && typeof b.openOutputSwitcher === 'function';
-        const btn = (k, label, glyph, off) => `<button type="button" class="wm-ti-super-mbtn" data-super="media-${k}" aria-label="${label}"${off ? ' disabled' : ''}>${glyph}</button>`;
+        const btn = (k, label, glyph, off) => `<button type="button" class="wm-ti-super-mbtn" data-super="media-${k}" aria-label="${esc(label)}" title="${esc(label)}"${off ? ' disabled' : ''}>${glyph}</button>`;
+        // the output button shows where it plays (headphones, a speaker, a cast device) and names it
+        const o = superOutput;
+        const oGlyph = o && (o.kind === 'headphones' || o.kind === 'bluetooth') ? '\u{1f3a7}' : o && o.kind === 'cast' ? '\u{1f4fa}' : '\u{1f50a}';
         el.innerHTML = `<span class="wm-ti-super-cover">${art ? `<img src="${esc(art)}" alt="" draggable="false">` : ''}</span>`
             + `<span class="wm-ti-super-mtext"><span class="wm-ti-super-mtitle">${esc(ms.title || ms.app || 'Playing')}</span><span class="wm-ti-super-martist">${esc([ms.artist, ms.album].filter(Boolean).join(' \u00b7 ') || ms.app || '')}</span></span>`
             + btn('prev', 'Previous', '\u23ee', !can('previous'))
             + btn('toggle', playing ? 'Pause' : 'Play', playing ? '\u23f8' : '\u25b6', false)
             + btn('next', 'Next', '\u23ed', !can('next'))
-            + btn('output', 'Output', '\u{1f50a}', !out);
+            + btn('output', o ? `Output: ${o.name}` : 'Output', oGlyph, !out);
     }
 
     function mediaAction(kind) {
