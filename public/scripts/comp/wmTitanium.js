@@ -825,9 +825,10 @@
         const oGlyph = o && (o.kind === 'headphones' || o.kind === 'bluetooth') ? '\u{1f3a7}' : o && o.kind === 'cast' ? '\u{1f4fa}' : '\u{1f50a}';
         el.innerHTML = `<span class="wm-ti-super-cover">${art ? `<img src="${esc(art)}" alt="" draggable="false">` : ''}</span>`
             + `<span class="wm-ti-super-mtext"><span class="wm-ti-super-mtitle">${esc(ms.title || ms.app || 'Playing')}</span><span class="wm-ti-super-martist">${esc([ms.artist, ms.album].filter(Boolean).join(' \u00b7 ') || ms.app || '')}</span></span>`
-            + btn('prev', 'Previous', '\u23ee', !can('previous'))
+            // a skip the player does not offer is left out, not greyed: its room goes to the title (A53, #1128)
+            + (can('previous') ? btn('prev', 'Previous', '\u23ee', false) : '')
             + btn('toggle', playing ? 'Pause' : 'Play', playing ? '\u23f8' : '\u25b6', false)
-            + btn('next', 'Next', '\u23ed', !can('next'))
+            + (can('next') ? btn('next', 'Next', '\u23ed', false) : '')
             + btn('output', o ? `Output: ${o.name}` : 'Output', oGlyph, !out);
     }
 

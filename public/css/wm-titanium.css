@@ -744,7 +744,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-martist {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-mbtn {
     flex: none;
-    width: calc(26 * var(--u));
+    width: calc(24 * var(--u));
     height: calc(32 * var(--u));
     margin: 0;
     padding: 0;
