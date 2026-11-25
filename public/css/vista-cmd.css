@@ -1,0 +1,164 @@
+/* Command Prompt (public/scripts/comp/desktop-apps/cmd/cmdApp.js; Yozora #1133): Vista's cmd.exe console.
+   A black client of 80 x 25 cells of 8 x 16 px (640 x 400) and the desktop's Vista scroll bar (17 px, the
+   native scroller: css/vista-scrollbars.css) at its right; the buffer is 300 rows of 16 px. Light grey text on
+   black, the cursor an underscore two cells' bottom rows high that blinks with a CSS animation (no timer). */
+
+.cmd-window.cmd-window {
+    width: calc(657px + var(--cmd-frame-w, 16px));
+}
+
+.cmd-window .cmd-client.cmd-client {
+    position: relative;
+    box-sizing: content-box;
+    width: 657px;
+    height: 400px;
+    margin: 0;
+    padding: 0 !important;
+    overflow: hidden;
+    background: #000 !important;
+    border-radius: 0;
+}
+
+.cmd-window .cmd-screen {
+    --cmd-bg: #000;
+    --cmd-fg: #c0c0c0;
+    --cmd-font-size: 13px;
+    --cmd-spacing: 0px;
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: scroll;
+    overflow-anchor: none;
+    background: var(--cmd-bg);
+    color: var(--cmd-fg);
+    outline: none;
+    cursor: text;
+    font-family: "Lucida Console", Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+    font-size: var(--cmd-font-size);
+    font-weight: 400;
+    font-variant-ligatures: none;
+    font-kerning: none;
+    line-height: 16px;
+    letter-spacing: var(--cmd-spacing);
+    text-rendering: optimizeSpeed;
+    -webkit-font-smoothing: auto;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.cmd-window .cmd-rows {
+    position: relative;
+    width: 640px;
+    height: 4800px;
+}
+
+.cmd-window .cmd-row {
+    box-sizing: border-box;
+    width: 640px;
+    height: 16px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    white-space: pre;
+    tab-size: 8;
+}
+
+.cmd-window .cmd-row.cmd-probe {
+    position: absolute;
+    left: 0;
+    top: 0;
+    visibility: hidden;
+    overflow: visible;
+    width: auto;
+}
+
+/* glyphs the grid font may not have: each in its own cell box so a wider fallback cannot push the row */
+.cmd-window .cmd-c,
+.cmd-window .cmd-w {
+    display: inline-block;
+    overflow: visible;
+    text-align: center;
+    white-space: pre;
+    vertical-align: top;
+    letter-spacing: 0;
+}
+
+.cmd-window .cmd-c { width: 8px; }
+.cmd-window .cmd-w { width: 16px; }
+
+.cmd-window .cmd-cursor {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 8px;
+    height: 16px;
+    pointer-events: none;
+}
+
+.cmd-window .cmd-cursor::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 1px;
+    height: 3px;
+    background: var(--cmd-fg);
+    visibility: hidden;
+}
+
+.cmd-window .cmd-screen.cmd-focused .cmd-cursor::after {
+    visibility: visible;
+    /* perf: allow cursor blink (Yukimi's brief for #1133 names a CSS animation): only on the focused console, one 8 x 3 px box, visibility steps; a blurred window stops it */
+    animation: cmd-blink 1060ms steps(1, end) infinite;
+}
+
+/* Insert pressed: the cursor is a block */
+.cmd-window .cmd-screen.cmd-overwrite .cmd-cursor::after {
+    height: 16px;
+    bottom: 0;
+    opacity: 0.6;
+}
+
+@keyframes cmd-blink {
+    0%, 59.99% { visibility: visible; }
+    60%, 100% { visibility: hidden; }
+}
+
+/* the console marks a selection by swapping the colours */
+.cmd-window .cmd-screen ::selection {
+    background: var(--cmd-fg);
+    color: var(--cmd-bg);
+}
+
+.cmd-window .cmd-max-btn {
+    opacity: 0.55;
+}
+
+/* box-drawing characters: four arms from the cell's centre, so a column of them is one unbroken line (the text stays for copying) */
+.cmd-window .cmd-bx {
+    color: transparent;
+    background-image: var(--bu, none), var(--bd, none), var(--bl, none), var(--br, none);
+    background-position: 4px 0, 4px 8px, 0 8px, 4px 8px;
+    background-size: 1px 9px, 1px 8px, 5px 1px, 4px 1px;
+    background-repeat: no-repeat;
+}
+
+.cmd-window .cmd-bx-u { --bu: linear-gradient(var(--cmd-fg), var(--cmd-fg)); }
+.cmd-window .cmd-bx-d { --bd: linear-gradient(var(--cmd-fg), var(--cmd-fg)); }
+.cmd-window .cmd-bx-l { --bl: linear-gradient(var(--cmd-fg), var(--cmd-fg)); }
+.cmd-window .cmd-bx-r { --br: linear-gradient(var(--cmd-fg), var(--cmd-fg)); }
+
+/* text can be marked (QuickEdit): the window's blanket no-select does not reach the console's rows */
+.cmd-window .cmd-screen,
+.cmd-window .cmd-screen .cmd-rows,
+.cmd-window .cmd-screen .cmd-row,
+.cmd-window .cmd-screen .cmd-row * {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+}
+
+.cmd-window .cmd-screen .cmd-cursor {
+    -webkit-user-select: none !important;
+    user-select: none !important;
+}

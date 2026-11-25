@@ -7206,6 +7206,10 @@ function buildToolsSubmenuItems(opts) {
         // Accessories > System Tools > Disk Cleanup (public/scripts/comp/diskCleanup.js, in the Control Panel feature, #945)
         { launchId: 'disk-cleanup', icon: 'fas fa-broom', imageIcon: '/static_images/vista-cleanmgr/cleanmgr-48.png', text: 'Disk Cleanup', appMenuLocation: 'tools', desktopOnly: true, action: async () => { await featureLoader.loadFeature('control_panel'); if (typeof window.openDiskCleanup === 'function') window.openDiskCleanup(); } },
         { launchId: 'charmap', icon: 'fas fa-font', imageIcon: 'vista-charmap.png', text: 'Character Map', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('charmap'); window.openMelatonCharmap(); } },
+        // Accessories > Command Prompt (Yozora #1133; public/scripts/comp/desktop-apps/cmd/cmdApp.js)
+        { launchId: 'cmd', icon: 'fas fa-terminal', imageIcon: 'vista-cmd.png', text: 'Command Prompt', appMenuLocation: 'tools', desktopOnly: true, action: async () => { await featureLoader.loadFeature('cmd'); window.openMelatonCommandPrompt(); } },
+        // Administrative Tools > Administrator Terminal (Yozora #1133): bash on the server, administrators only
+        { launchId: 'admin-terminal', icon: 'fas fa-terminal', imageIcon: 'vista-cmd.png', text: 'Administrator Terminal', appMenuLocation: 'tools', desktopOnly: true, startMenu: localStorage.getItem('userType') === 'admin', appMenu: localStorage.getItem('userType') === 'admin', action: async () => { await featureLoader.loadFeature('admin_terminal'); window.openMelatonAdminTerminal(); } },
         // Accessories > Notepad: a blank Untitled document (Yozora #632; public/scripts/comp/notepadVista.js)
         { launchId: 'notepad', icon: 'fas fa-file-lines', imageIcon: 'vista-notepad.png', text: 'Notepad', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('notepad'); window.notepadVista.openBlank(); } },
         // Accessories > Windows Mobility Center (Vista's place for mblctr; public/scripts/comp/mobilityCenter.js, in the
@@ -8514,6 +8518,8 @@ const START_MENU_SYSTEM_PLACES = {
     'media-player': { at: 'top' },                 // Windows Media Player
     'adobe-reader': { at: 'top' },                 // Adobe Reader 8 (#910): its installer's "Adobe Reader 8.lnk" in Programs
     'remote-desktop-connection': { at: 'accessories' },
+    cmd: { at: 'accessories' },                    // Accessories > Command Prompt
+    'admin-terminal': { at: 'administrative-tools' }, // Administrative Tools > Administrator Terminal (#1133)
     charmap: { at: 'system-tools' },               // Accessories > System Tools > Character Map
     'disk-cleanup': { at: 'system-tools' },        // Accessories > System Tools > Disk Cleanup
     taskmgr: { at: 'system-tools' },               // not listed on Vista; System Tools is its nearest home

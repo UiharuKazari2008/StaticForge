@@ -43,6 +43,10 @@ function applyAuthContext(req, context) {
     req.applicationAuth = context;
     req.sessionId = context.sessionId || req.sessionId;
     if (req.session) {
+        // A session an application key (or token) opened records how it got in, so checks that need a person's
+        // own sign-in (the Administrator Terminal, Remote Desktop, #1133) refuse it on later cookie-only requests.
+        // A session that was already signed in keeps its own way in; a PIN login regenerates the session.
+        if (req.session.authenticated !== true && context.authMethod) req.session.authMethod = context.authMethod;
         req.session.authenticated = true;
         req.session.userType = context.userType;
     }
