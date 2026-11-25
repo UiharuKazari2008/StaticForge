@@ -1,6 +1,6 @@
 {
-  "version": 30,
-  "updatedAt": "2026-11-23T07:27:39.270Z",
+  "version": 32,
+  "updatedAt": "2026-11-25T06:44:25.229Z",
   "icons": {
     "com.google.android.youtube": {
       "name": "com-google-android-youtube-c938df-mwsxmr9g",
@@ -565,6 +565,183 @@
       "updatedAt": "2026-11-23T07:25:11.683Z",
       "wm65": true,
       "vista": true
+    },
+    "ai.plaud.android.plaud/ai.plaud.android.plaud.MainActivity": {
+      "name": "ai-plaud-android-plaud-93183f-mwvpaspe",
+      "package": "ai.plaud.android.plaud",
+      "label": "Plaud",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T05:46:32.212Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A sheet of paper with a folded top-right corner and ruled lines, a pencil lying across its lower right"
+    },
+    "com.onepassword.android/com.onepassword.android.app.StartActivity": {
+      "name": "com-onepassword-android-aecbf8-mwvrcbpv",
+      "package": "com.onepassword.android",
+      "label": "1Password",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:43:42.706Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A closed padlock with a key leaning against its lower right"
+    },
+    "com.amazon.mShop.android.shopping/com.amazon.mShop.home.HomeActivity@u10": {
+      "name": "com-amazon-mshop-android-shopping-71c36c-mwvrcdga",
+      "package": "com.amazon.mShop.android.shopping",
+      "label": "Amazon Shopping",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:43:45.081Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A shop price tag hanging from a short loop of string, its corners clipped and a round eyelet at the top"
+    },
+    "com.squareup.cash/com.squareup.cash.ui.MainActivity@u10": {
+      "name": "com-squareup-cash-fc4ef2-mwvrcf7q",
+      "package": "com.squareup.cash",
+      "label": "Cash App",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:43:47.296Z",
+      "wm65": true,
+      "vista": true,
+      "object": "Two payment cards standing at a slant, the front one overlapping the back one"
+    },
+    "org.floens.chan/org.floens.chan.ui.activity.BoardActivity": {
+      "name": "org-floens-chan-56a6cb-mwvrcgx5",
+      "package": "org.floens.chan",
+      "label": "Clover",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:43:49.765Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A bust of a person in front of a second, paler bust, like two contacts"
+    },
+    "com.samsung.android.app.find/com.samsung.android.app.find.MainActivity": {
+      "name": "com-samsung-android-app-find-2bd857-mwvrciu4",
+      "package": "com.samsung.android.app.find",
+      "label": "Find",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:43:51.846Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A paper map folded in three panels lying at a slight angle, with a round-headed map pin standing in it"
+    },
+    "jp.pxv.android/jp.pxv.android.activity.RoutingActivity": {
+      "name": "jp-pxv-android-645ab1-mwvrckjw",
+      "package": "jp.pxv.android",
+      "label": "pixiv",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:43:54.309Z",
+      "wm65": true,
+      "vista": true,
+      "object": "An artist's wooden palette with dabs of paint and a brush lying across it"
+    },
+    "org.zwanoo.android.speedtest/com.ookla.mobile4.screens.main.MainActivity": {
+      "name": "org-zwanoo-android-speedtest-179e75-mwvrcme3",
+      "package": "org.zwanoo.android.speedtest",
+      "label": "Speedtest",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:43:57.189Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A round analogue dial gauge with tick marks around its upper half and a needle pointing up and right"
+    },
+    "com.spothero.spothero/com.spothero.android.activity.HomeActivity": {
+      "name": "com-spothero-spothero-a505de-mwvrcoq9",
+      "package": "com.spothero.spothero",
+      "label": "SpotHero",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:44:00.195Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A paper map folded in three panels lying at a slight angle, with a round-headed map pin standing in it"
+    },
+    "com.valvesoftware.android.steam.community/com.valvesoftware.android.steam.community.MainActivity": {
+      "name": "com-valvesoftware-android-steam-community-ea5531-mwvrcqwg",
+      "package": "com.valvesoftware.android.steam.community",
+      "label": "Steam",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:44:02.329Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A shop price tag hanging from a short loop of string, its corners clipped and a round eyelet at the top"
+    },
+    "com.valvesoftware.steamlink/com.valvesoftware.steamlink.SteamShellActivity": {
+      "name": "com-valvesoftware-steamlink-51b0a4-mwvrcsq5",
+      "package": "com.valvesoftware.steamlink",
+      "label": "Steam Link",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:44:04.868Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A flat monitor on its stand, the screen lit, with a second smaller screen overlapping its lower right"
+    },
+    "com.sec.android.app.samsungapps/com.sec.android.app.samsungapps.SamsungAppsMainActivity": {
+      "name": "com-sec-android-app-samsungapps-20dc75-mwvrcui9",
+      "package": "com.sec.android.app.samsungapps",
+      "label": "Store",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:44:07.271Z",
+      "wm65": true,
+      "vista": true
+    },
+    "com.target.ui/com.target.ui.activity.NavigationActivity": {
+      "name": "com-target-ui-c9f673-mwvrcwac",
+      "package": "com.target.ui",
+      "label": "Target",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:44:09.784Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A shop price tag hanging from a short loop of string, its corners clipped and a round eyelet at the top"
+    },
+    "com.termux/com.termux.app.TermuxActivity": {
+      "name": "com-termux-021519-mwvrcyb8",
+      "package": "com.termux",
+      "label": "Termux",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:44:12.188Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A program window with a title bar and several lines of text"
+    },
+    "com.google.android.apps.translate/com.google.android.apps.translate.TranslateActivity": {
+      "name": "com-google-android-apps-translate-185be7-mwvrd065",
+      "package": "com.google.android.apps.translate",
+      "label": "Translate",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:44:14.700Z",
+      "wm65": true,
+      "vista": true
+    },
+    "com.wawa.android.appv2/com.wawa.android.appv2.SplashActivity": {
+      "name": "com-wawa-android-appv2-5b0cea-mwvrd288",
+      "package": "com.wawa.android.appv2",
+      "label": "Wawa",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:44:17.272Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A closed paper take-away food box with a wire handle, seen from the front and a little above"
+    },
+    "com.waze/com.waze.FreeMapAppActivity": {
+      "name": "com-waze-c936e8-mwvrd3zc",
+      "package": "com.waze",
+      "label": "Waze",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:44:19.328Z",
+      "wm65": true,
+      "vista": true
+    },
+    "com.yubico.yubioath/com.yubico.yubioath.ui.main.MainActivity": {
+      "name": "com-yubico-yubioath-9336a2-mwvrd844",
+      "package": "com.yubico.yubioath",
+      "label": "Yubico Authenticator",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-25T06:44:25.229Z",
+      "wm65": true,
+      "vista": true,
+      "object": "A closed padlock with a key leaning against its lower right"
     }
   }
 }

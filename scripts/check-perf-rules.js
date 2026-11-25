@@ -313,7 +313,7 @@ function readBaseline() {
 function stagedFiles() {
     try {
         return execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACMR'], { cwd: root, encoding: 'utf8' })
-            .split('\n').filter(Boolean).filter((f) => kindOf(f));
+            .split('\n').filter(Boolean).filter((f) => kindOf(f) && !SKIP.test(f)); // vendor/ etc. as the full scan skips them
     } catch (_) { return []; }
 }
 

@@ -590,8 +590,12 @@ function guacProxyAllowed(method, rawPath) {
 
 // Remote Desktop hands out the shared Guacamole token, so it needs a full sign-in: not the
 // read-only PIN, and not an application key.
+// A session an application key or token opened (modules/auth.js applyAuthContext records it, #1133) is not a sign-in
+const GUAC_KEY_METHODS = new Set(['application_key', 'temp_token', 'oauth_access_token']);
+
 function guacFullSession(req, res, next) {
-    if (req.userType === 'admin' && !req.applicationAuth) return next();
+    const via = req.session && req.session.authMethod;
+    if (req.userType === 'admin' && !req.applicationAuth && !GUAC_KEY_METHODS.has(via)) return next();
     res.status(403).json({ ok: false, error: 'Remote Desktop needs a full sign-in' });
 }
 

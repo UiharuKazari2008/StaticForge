@@ -1,0 +1,33 @@
+/* Administrator Terminal (Yozora #1133; public/scripts/comp/desktop-apps/adminTerminal/adminTerminalApp.js):
+   a console-black client holding xterm.js. Layout only: xterm draws the cells, the FitAddon sizes them to .at-host. */
+
+.at-window .modal-content.at-client {
+    display: flex;
+    flex-direction: column;
+    padding: 0 !important;
+    background: #0c0c0c;
+    overflow: hidden;
+}
+
+.at-window .at-host {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    padding: 2px 0 4px 6px;
+    background: #0c0c0c;
+    color: #cccccc;
+    overflow: hidden;
+}
+
+.at-window .at-host .xterm {
+    height: 100%;
+}
+
+.at-window .at-host .xterm-viewport {
+    background-color: #0c0c0c !important;
+}
+
+.at-window .at-host .xterm-helper-textarea {
+    /* the input textarea never shows (xterm positions it under the cursor) */
+    caret-color: transparent;
+}
