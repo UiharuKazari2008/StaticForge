@@ -741,7 +741,10 @@
             }));
             if (open) rows.push(...folderRows(box.owner, 2));
         });
+        const keepTop = tree.scrollTop;
         tree.replaceChildren(...rows);
+        // keeps its scroll position (rule: scroll-lists-keep-position)
+        if (keepTop) tree.scrollTop = keepTop;
     };
 
     // A tree row or View > Go to Folder: another mailbox switches to it (read-only for bots),
@@ -1637,6 +1640,11 @@
         if (!desktopDovecoteEls) return;
         const rows = desktopDovecoteEls.rows;
         if (!rows) return;
+        // keeps its scroll position (rule: scroll-lists-keep-position) across marking, deleting and pushes;
+        // another folder, mailbox, account or search is a new list and starts at the top
+        const listKey = [desktopDovecote.viewAsOwner, desktopDovecote.account, desktopDovecote.folder, desktopDovecote.searchText].join('|');
+        const keepTop = rows.dataset.doveListKey === listKey ? rows.scrollTop : 0;
+        rows.dataset.doveListKey = listKey;
         rows.replaceChildren();
         // Windows Mail marks the sorted column: header arrow + tinted cells (dovecote.css)
         rows.parentNode.dataset.sortKey = desktopDovecote.sortKey;
@@ -1734,6 +1742,7 @@
             rows.appendChild(more);
             doveObserveLoadMore(more);
         }
+        if (keepTop) rows.scrollTop = keepTop;
         doveRenderStatusCounts();
         doveRenderToolbarState();
     };

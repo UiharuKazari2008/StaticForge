@@ -728,10 +728,12 @@
         renderBar();
         const list = page.querySelector('.fe-list');
         list.classList.toggle('fe-grid', viewMode === 'thumbs');
+        const keepTop = list.parentNode.scrollTop; // keeps its scroll position (rule: scroll-lists-keep-position)
         list.innerHTML = items.map(viewMode === 'thumbs' ? tileHtml : rowHtml).join('');
         const empty = page.querySelector('.fe-empty');
         empty.textContent = listError;
         empty.hidden = !listError;
+        if (keepTop) list.parentNode.scrollTop = keepTop;
         if (renamingId) beginRenameUi(renamingId);
     }
 

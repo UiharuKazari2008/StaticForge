@@ -487,10 +487,17 @@ const menmaDsapDriver = {
         if (stamp) {
             stamp.textContent = data.updated_at ? `Updated ${menmaDsapFormatWhen(data.updated_at)}` : '';
         }
+        // keeps its scroll position (rule: scroll-lists-keep-position): the poll and account/keep actions re-render
+        // the view; the scroller is the nearest scrolling ancestor
+        let scroller = view.parentElement;
+        while (scroller && scroller !== root.parentElement && scroller.scrollHeight <= scroller.clientHeight) scroller = scroller.parentElement;
+        const keepTop = scroller ? scroller.scrollTop : 0;
         const activeId = state.activeAccountId || 'menma';
         if (state.tabId === 'work') view.innerHTML = menmaDsapWorkHtml(data, activeId);
         else if (state.tabId === 'log') view.innerHTML = menmaDsapLogHtml(data, activeId);
         else view.innerHTML = menmaDsapStatusHtml(data, activeId);
+        if (scroller && keepTop && state._renderedTab === state.tabId) scroller.scrollTop = keepTop;
+        state._renderedTab = state.tabId; // another tab is a new screen and starts at the top
     }
 };
 
