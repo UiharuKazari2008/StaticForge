@@ -995,6 +995,15 @@ html.ui-mobile[data-wm-app="today"] #wmShell > .wm-content {
     display: none !important;
 }
 
+/* the open Fold (#1131, wmShell applySplit): the left pane (Start / Today) and the program on the right, one shell */
+html[data-wm-split] .wm-page.is-split-left {
+    right: 50%;
+    border-right: 1px solid rgba(128, 128, 128, 0.45);
+}
+html[data-wm-split] .wm-page.is-split-right {
+    left: 50%;
+}
+
 /* ---- soft-key bar: 1 px rule, 11 px gloss, 14 px base ---- */
 .wm-softkeys {
     flex: 0 0 auto;

@@ -71,6 +71,8 @@
         // how many status icons may go past the camera, cover / main screen (#1057): 'any' or the count
         statusCrossCover: 'wmStatusCrossCover',
         statusCrossMain: 'wmStatusCrossMain',
+        // the open Fold (#1131): the left pane beside a program, 'start' (default) | 'today' | 'none'
+        splitLeft: 'wmSplitLeft',
         // ... the sound (volume) icon: 'possible' (only on Vibrate / Off and just after a volume change), '' (steps
         // aside when space is needed), 'never' (always shown); the power (battery) icon: 'home' (only on the home
         // screen), '' (charging steps aside when space is needed), 'never' (always shown) (Yukimi, Nov 17)
@@ -123,6 +125,10 @@
     const WM_FLAG_SRCSET = '/static_images/wm61/start-flag.png 1x, /static_images/wm61/start-flag@2x.png 2x, /static_images/wm61/start-flag@4x.png 4x';
 
     const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+    /** A foldable phone (the Open Fold tab of Settings > Screen). */
+    function foldableDevice() {
+        try { const D = window.AndroidDisplay; const i = D && typeof D.getScreenInfo === 'function' ? JSON.parse(D.getScreenInfo() || 'null') : null; return !!(i && i.foldable); } catch (_) { return false; }
+    }
     // Settings > Screen: the status icons that may go past the camera on a screen (#1057, wmShell statusCrossMax): the
     // count, or null for no limit; unset, the older do-not-cross switch (wmStatusNoCross) is 0
     const crossPref = (k) => {
@@ -2172,7 +2178,7 @@
             // Text Size, the Bezel (the top of the screen and what is printed on it), the Status Bar (its icons, and how it
             // is drawn over Android programs), Navigation (the gesture bar, the soft key bar and the gestures) and Android
             // (the bars over Android programs, the lock screen and the rest) - one subject a tab (Yukimi, Nov 23 2026)
-            tabs: [['textsize', 'Text Size'], ['bezel', 'Bezel'], ['status', 'Status Bar'], ['nav', 'Navigation']].concat(window.AndroidBars ? [['bars', 'Android']] : []),
+            tabs: [['textsize', 'Text Size'], ['bezel', 'Bezel'], ['status', 'Status Bar'], ['nav', 'Navigation']].concat(foldableDevice() ? [['fold', 'Open Fold']] : []).concat(window.AndroidBars ? [['bars', 'Android']] : []),
             init: () => ({
                 barsState: barsState(),
                 scale: currentScale(), segoe: lsGet(K.systemFont) === 'segoe', camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
@@ -2182,6 +2188,7 @@
                 // switch alone is 0 on both screens
                 crossCover: crossPref(K.statusCrossCover),
                 crossMain: crossPref(K.statusCrossMain),
+                splitLeft: lsGet(K.splitLeft) || 'start',
                 soundIcon: lsGet(K.statusSoundIcon) || 'space',
                 powerIcon: lsGet(K.statusPowerIcon) || 'charging',
                 logoOpacity: Math.min(100, Math.max(10, Number(lsGet(K.bezelLogoOpacity)) || 55)),
@@ -2223,6 +2230,15 @@
                     // (only with the Windows status bar running to the camera: Bezel > Top of screen)
                     [xcv, xmn].forEach((x) => x.setDisabled(off || d.camera === 'bezel'));
                     if (bars) bars.bind();
+                    return;
+                }
+                // Open Fold (#1131): what stands left of a program on the inner screen
+                if (tab === 'fold') {
+                    const LEFT = [['start', 'Start screen'], ['today', 'Today'], ['none', 'Nothing (program full screen)']];
+                    el.innerHTML = `<p>On the open Fold a program opens on the right. The left side shows:</p>
+                        <div class="wm-form-row is-wide"><span class="wm-form-label">Left side:</span>${ui.comboHtml('splitleft', (LEFT.find(([k]) => k === d.splitLeft) || LEFT[0])[1])}</div>
+                        <p>Closing Start there brings Today back.</p>`;
+                    ui.bindCombo(el.querySelector('[data-act="splitleft"]'), LEFT, d.splitLeft, (v) => { d.splitLeft = v; });
                     return;
                 }
                 // Navigation: the bottom of the screen - Android's gesture bar, the soft key bar over Android programs and
@@ -2408,6 +2424,7 @@
                 for (const [k, v] of bezelSets) {
                     if ((lsGet(k) || null) !== v) { lsSet(k, v); keys.push(k); }
                 }
+                if (d.splitLeft !== (lsGet(K.splitLeft) || 'start')) { lsSet(K.splitLeft, d.splitLeft === 'start' ? null : d.splitLeft); keys.push(K.splitLeft); }
                 for (const [k, v, def] of [[K.statusSoundIcon, d.soundIcon, 'space'], [K.statusPowerIcon, d.powerIcon, 'charging']]) {
                     const want = v === def ? null : v;
                     if ((lsGet(k) || null) !== want) { lsSet(k, want); keys.push(k); }

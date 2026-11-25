@@ -2427,6 +2427,67 @@
         }
     }
 
+    // ---------------------------------------------------------------- the open Fold: two panes (#1131)
+
+    /**
+     * A foldable phone on its inner screen has room for two windows (Yukimi, Nov 23 2026): the program that was opened
+     * stands on the right and the left pane keeps the Start screen, Today or nothing (Settings > Screen > Open Fold, key
+     * wmSplitLeft 'start' | 'today' | 'none'; none = the program fills the screen as on the cover screen). Closing Start
+     * in the left pane (back, last touch there) turns the pane into Today. Both panes are ordinary .wm-page elements of
+     * the shell (CSS html[data-wm-split]); the left page runs its show() / hide() as a page does. One title and soft key
+     * bar belong to the program on the right. Android programs next to Melaton: needs DSApp (adjacent launch), #870.
+     */
+    let splitShown = null; // the app id in the left pane now
+    let splitLeftNow = null; // this window's choice for the left pane (Start -> Today after Start was closed)
+    let splitLast = 'right'; // the pane touched last
+    const SPLIT_NONE = new Set(['today', 'start']);
+    function splitPref() {
+        let v = null;
+        try { v = localStorage.getItem('wmSplitLeft'); } catch (_) { /* storage off */ }
+        return v === 'today' || v === 'none' ? v : 'start';
+    }
+    function splitWanted(id) {
+        const app = id && apps.get(id);
+        return !!(app && !SPLIT_NONE.has(id) && typeof app.launch !== 'function' && unfoldedScreen() && splitPref() !== 'none' && root.dataset.wmBoot === 'done');
+    }
+    function applySplit() {
+        const want = splitWanted(current);
+        const leftId = want ? (splitLeftNow || (splitLeftNow = splitPref())) : null;
+        const leftApp = leftId && apps.get(leftId);
+        if (splitShown && splitShown !== (leftApp && leftId)) {
+            const old = apps.get(splitShown);
+            if (old && old.page) {
+                old.page.classList.remove('is-split-left');
+                if (splitShown !== current) { old.page.hidden = true; try { if (typeof old.hide === 'function') old.hide(); } catch (err) { console.warn('[wmShell] split hide', err); } }
+            }
+            splitShown = null;
+        }
+        (shell || document).querySelectorAll('.is-split-right').forEach((p) => { if (!leftApp || p !== (apps.get(current) || {}).page) p.classList.remove('is-split-right'); });
+        if (!want) splitLeftNow = null;
+        if (root.hasAttribute('data-wm-split') !== !!leftApp) root.toggleAttribute('data-wm-split', !!leftApp);
+        if (!leftApp) return;
+        const cur = apps.get(current);
+        if (cur && cur.page) cur.page.classList.add('is-split-right');
+        const page = pageFor(leftApp);
+        page.classList.add('is-split-left');
+        const fresh = splitShown !== leftId || page.hidden;
+        page.hidden = false;
+        splitShown = leftId;
+        if (fresh) { try { if (typeof leftApp.show === 'function') leftApp.show(page); } catch (err) { console.warn('[wmShell] split show', err); } }
+    }
+    /** Back with the last touch in the left pane on Start: Start closes, the pane shows Today. */
+    function splitBack() {
+        if (!splitShown || splitShown !== 'start' || splitLast !== 'left') return false;
+        splitLeftNow = 'today';
+        applySplit();
+        return true;
+    }
+    document.addEventListener('pointerdown', (e) => { splitLast = e.target.closest && e.target.closest('.is-split-left') ? 'left' : 'right'; }, { capture: true, passive: true, signal: appScopeSignal });
+    // the screen folds or unfolds, the setting changes: panes come or go
+    const splitRefresh = () => { if (current) applySplit(); };
+    window.addEventListener('resize', splitRefresh, { signal: appScopeSignal });
+    document.addEventListener('wmSettingsChange', splitRefresh, { signal: appScopeSignal });
+
     function activate(id, opts) {
         const app = apps.get(id);
         if (!app) return;
@@ -2470,6 +2531,7 @@
             if (before && before.app === 'start' && id !== 'today' && id !== 'start' && !firstMount) { root.dataset.wmBar = 'glass'; glassTitle = titleText; }
             else if (!(before && before.app === id)) delete root.dataset.wmBar; // the same program again (a Settings page opening) keeps it
         }
+        applySplit();
         stagePlay(before, id, page, firstMount, opts);
     }
 
@@ -2601,6 +2663,7 @@
         closeMenus(true);
         // the picture view is the top layer: back closes it first, as the title's ok and the back key do
         if (!(opts && opts.app) && viewerActive && !viewerClosing) { viewerClosing = true; closeViewer(); return; }
+        if (!(opts && opts.app) && splitBack()) return;
         if (stack.length > 1) stack.pop();
         activate(stack[stack.length - 1] || 'today');
         syncHistory();
@@ -14805,7 +14868,9 @@
             switchCover(id, ms) { showSwitchCover(id); setTimeout(() => { void settleSwitchCover(id); }, ms || 1500); }
         },
         deriveRoles,
-        get current() { return current; }
+        get current() { return current; },
+        /** the app is on screen: in front, or in the left pane of the open Fold's split (#1131) */
+        shown(id) { return current === id || splitShown === id; }
     };
 
     if (document.body) init();

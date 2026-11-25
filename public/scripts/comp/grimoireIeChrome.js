@@ -1251,6 +1251,9 @@
 
         toggleQuickTabs(force) {
             const open = force === undefined ? !this.isQuickTabsOpen() : force;
+            // a rebuild under an open grid (tab closed/opened) keeps the scroll position (rule: scroll-lists-keep-position)
+            const oldPanel = open && this.quickView ? this.quickView.querySelector('.grimoire-ie-quickpanel') : null;
+            const keepTop = oldPanel ? oldPanel.scrollTop : 0;
             if (this.quickView) this.quickView.remove();
             this.quickView = null;
             this.quickTabsBtn.classList.remove('is-pressed');
@@ -1290,6 +1293,7 @@
                 tabs.activate(tab);
             });
             wrap.appendChild(view);
+            if (keepTop) panel.scrollTop = keepTop;
             this.quickView = view;
             this.quickCount = tabs.count();
             this.quickTabsBtn.classList.add('is-pressed');

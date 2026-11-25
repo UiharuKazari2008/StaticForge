@@ -1216,7 +1216,7 @@
             // WM's tap: the item is selected (the glow), then opens
             select(hit, true);
             // the glow and the wait cursor paint together, then the item opens (a slow open shows the tap was taken)
-            sh.busy(() => { if (sh.current === 'start' && selected === hit) return openItem(hit); return undefined; }, { paint: true, timeout: 15000 });
+            sh.busy(() => { if (sh.shown('start') && selected === hit) return openItem(hit); return undefined; }, { paint: true, timeout: 15000 });
         };
         view.addEventListener('pointerup', (e) => release(e, false));
         view.addEventListener('pointercancel', (e) => release(e, true));
@@ -1256,7 +1256,7 @@
     function register() {
         sh = window.wmShell;
         if (!sh || typeof sh.registerApp !== 'function') return;
-        loadManifest().then(() => { if (page && page.isConnected && sh.current === 'start') { const keep = y; const sel = selected; render(); place(Math.min(maxY, keep)); select(sel, false); } });
+        loadManifest().then(() => { if (page && page.isConnected && sh.shown('start')) { const keep = y; const sel = selected; render(); place(Math.min(maxY, keep)); select(sel, false); } });
         // the shell sets html[data-wm-app] before it calls show(); the observer runs after it, so
         // show() still reads the program that was on screen
         shownApp = root.dataset.wmApp || '';
@@ -1403,7 +1403,7 @@
         lockNow: () => lock(),
         resetOrder() {
             saveLayout({ top: [], order: {} });
-            if (page && page.isConnected && sh && sh.current === 'start') { endDrag(false); render(); place(Math.max(0, Math.min(maxY, y))); select(selected, false); }
+            if (page && page.isConnected && sh && sh.shown('start')) { endDrag(false); render(); place(Math.max(0, Math.min(maxY, y))); select(selected, false); }
             return true;
         }
     };

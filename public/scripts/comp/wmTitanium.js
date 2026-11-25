@@ -661,6 +661,7 @@
             // the card lies on the band again: the band and panel come back under it, then it goes
             host.classList.remove('is-super');
             superEl.hidden = true;
+            if (superArtUrl) { URL.revokeObjectURL(superArtUrl); superArtUrl = ''; superArtKey = ''; }
             if (superAnim) superAnim.forEach((a) => a.cancel());
             superAnim = null;
             superBusy = false;
@@ -729,6 +730,7 @@
             const row = e.target.closest('[data-super]');
             if (!row || superBusy) return;
             const kind = row.dataset.super;
+            if (kind.startsWith('media-')) { mediaAction(kind); return; }
             if (kind === 'weather') {
                 closeSuper(true);
                 if (window.wmWeather && typeof window.wmWeather.open === 'function') window.wmWeather.open();
@@ -748,9 +750,85 @@
         });
         host.appendChild(superEl);
         window.addEventListener('androidnotifications', () => { if (superOpen) refreshNotes(); });
+        // what plays changes while the bar is open: only the row draws again (#1128)
+        window.addEventListener('dreamscape:media', () => { if (superOpen && superMedia) paintSuperMedia(); });
         // an app added to or removed from Messaging (#885) leaves or rejoins the list
         const t = window.textMessaging;
         if (t && typeof t.on === 'function') t.on('account', () => { if (superOpen) setTimeout(refreshNotes, 300); });
+    }
+
+    // ---- now playing in the Super Bar (#1128): title, artist, cover and controls from the phone's media
+    // session (DSApp AndroidMediaSession, 'dreamscape:media'); the output button opens Android's own output picker
+    let superMedia = false; // the open card was drawn with a media row
+    let superArtKey = '';
+    let superArtUrl = ''; // blob URL of the cover (revoked when the cover changes or the bar closes)
+    const SUPER_MEDIA_H = 44; // units
+    const mediaBridge = () => { const b = window.AndroidMediaSession; return b && typeof b.getState === 'function' ? b : null; };
+
+    /** The session the row shows: the one Today's Music item follows (the apps Options... hides stay hidden); null when nothing is on. */
+    function superMediaSession() {
+        const b = mediaBridge();
+        if (!b) return null;
+        let st = null;
+        try { st = JSON.parse(b.getState() || 'null'); } catch (_) { st = null; }
+        const A = window.wmMediaApps;
+        const hidden = A && typeof A.hidden === 'function' ? A.hidden() : new Set();
+        const list = ((st && st.sessions) || []).filter((x) => !/^jp\.net\.seventhreeseven\.dreamscape/.test(x.package || '') && !hidden.has(x.package) && x.state !== 'none' && (x.title || x.state === 'playing' || x.state === 'paused'));
+        if (!list.length) return null;
+        return list.find((x) => x.id === st.active) || list.find((x) => x.state === 'playing') || list[0];
+    }
+
+    /** The cover as a file with an address: the bridge's data string made a blob once per cover, the last one revoked. */
+    function superMediaArt(ms) {
+        const b = mediaBridge();
+        if (!b || !ms.artKey || typeof b.getArt !== 'function') return '';
+        if (ms.artKey === superArtKey) return superArtUrl;
+        let data = '';
+        try { data = b.getArt(ms.id) || ''; } catch (_) { data = ''; }
+        if (superArtUrl) { URL.revokeObjectURL(superArtUrl); superArtUrl = ''; }
+        superArtKey = ms.artKey;
+        const m = /^data:([^;,]+);base64,(.*)$/.exec(data);
+        if (m) {
+            try {
+                const bin = atob(m[2]);
+                const arr = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                superArtUrl = URL.createObjectURL(new Blob([arr], { type: m[1] }));
+            } catch (_) { superArtUrl = ''; }
+        }
+        return superArtUrl;
+    }
+
+    function paintSuperMedia() {
+        const el = superEl && superEl.querySelector('.wm-ti-super-media');
+        if (!el) return;
+        const ms = superMediaSession();
+        if (!ms) { el.innerHTML = ''; el.hidden = true; return; }
+        el.hidden = false;
+        const art = superMediaArt(ms);
+        const can = (a) => !ms.actions || ms.actions.includes(a);
+        const playing = ms.state === 'playing' || ms.state === 'buffering';
+        const b = mediaBridge();
+        const out = b && typeof b.openOutputSwitcher === 'function';
+        const btn = (k, label, glyph, off) => `<button type="button" class="wm-ti-super-mbtn" data-super="media-${k}" aria-label="${label}"${off ? ' disabled' : ''}>${glyph}</button>`;
+        el.innerHTML = `<span class="wm-ti-super-cover">${art ? `<img src="${esc(art)}" alt="" draggable="false">` : ''}</span>`
+            + `<span class="wm-ti-super-mtext"><span class="wm-ti-super-mtitle">${esc(ms.title || ms.app || 'Playing')}</span><span class="wm-ti-super-martist">${esc([ms.artist, ms.album].filter(Boolean).join(' \u00b7 ') || ms.app || '')}</span></span>`
+            + btn('prev', 'Previous', '\u23ee', !can('previous'))
+            + btn('toggle', playing ? 'Pause' : 'Play', playing ? '\u23f8' : '\u25b6', false)
+            + btn('next', 'Next', '\u23ed', !can('next'))
+            + btn('output', 'Output', '\u{1f50a}', !out);
+    }
+
+    function mediaAction(kind) {
+        const b = mediaBridge();
+        const ms = superMediaSession();
+        if (!b || !ms) return;
+        try {
+            if (kind === 'media-toggle') b.toggle(ms.id);
+            else if (kind === 'media-prev') b.previous(ms.id);
+            else if (kind === 'media-next') b.next(ms.id);
+            else if (kind === 'media-output' && typeof b.openOutputSwitcher === 'function') b.openOutputSwitcher(ms.id);
+        } catch (_) { /* bridge gone */ }
     }
 
     function drawSuper(clock) {
@@ -777,6 +855,15 @@
             extra.innerHTML = '';
             superGrow = 0;
         }
+        // what plays (#1128): the phone's media session under the weather; the card grows by its row
+        const ms = superMediaSession();
+        superMedia = !!ms;
+        if (ms) {
+            extra.insertAdjacentHTML('beforeend', '<div class="wm-ti-super-media" data-role="media"></div>');
+            paintSuperMedia();
+            superGrow += SUPER_MEDIA_H + (cur ? 4 : 0);
+            if (!cur) extra.style.top = `${64 * unit()}px`; else extra.style.top = '';
+        } else extra.style.top = '';
         const uu = unit();
         superEl.querySelector('.wm-ti-super-body').style.top = `${(62 + superGrow) * uu}px`;
         superEl.style.setProperty('--fall', `${Math.round(host.clientHeight * 1.15)}px`);
