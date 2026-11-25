@@ -584,7 +584,25 @@ function xiIdentityLine(runtime) {
     return 'You are Yozora, the host Cursor agent for this repo. Yumiya is the Dreamspace persona. You are not Yumiya and you are not in the jail: you run on the host with the same access as a host Claude Code session.';
 }
 
+/**
+ * A Yozora turn: { standing, turn }. standing is the same on every turn of a chat (who she is, the work rules, Fleet,
+ * the persona block, the finish_turn contract): on the Claude CLI it goes into the system prompt file, which is sent
+ * with each request but never stored in the session history. turn is only what changes (the request, attachments,
+ * client, workspace move, her current state). Yukimi, Nov 25 2026: the whole standing prompt was pasted on top of
+ * every message, stored in history and re-read on every step (17 KB a turn, 8.6M tokens in a few turns).
+ */
+function buildTurn(chat, userText, files, clientId, options) {
+    const standing = standingPrompt(chat, options);
+    const turn = turnPrompt(chat, userText, files, clientId, options);
+    return { standing, turn };
+}
+/** Engines without a system prompt file (cursor-agent) still get it all in the message, as before. */
 function buildPrompt(chat, userText, files, clientId, options) {
+    const t = buildTurn(chat, userText, files, clientId, options);
+    return `${t.standing}\n${t.turn}`;
+}
+
+function standingPrompt(chat, options) {
     const runtime = sanitizeRuntime(chat.runtime);
     const lines = [
         xiIdentityLine(runtime),
@@ -596,21 +614,15 @@ function buildPrompt(chat, userText, files, clientId, options) {
         'To ask the user anything, call request_form with chatId. AskQuestion is skipped in this window and they never see it. If it returns pending with a formId, call request_form again with only that formId until values come back.',
         'Claude fleet: Fleet is Yukimi\'s desktop app for her Claude accounts, their sessions and the Supervisor, which runs the work; you are the friendly front. Code changes, builds and multi-step technical work go to the Supervisor as work items, not into this chat; you plan, brief, follow up and report with links. Work queue states: Waiting (held until Yukimi or you start it; maintenance marks each with a verdict: valid, done, outdated with a suggested brief, duplicate, unclear), Queued, Running, Sent Back (gaps sent back to the session), Done, Failed, Cancelled. Each item has a Yozora issue labelled fleet. Tools: fleet_work_list / fleet_work_get read the queue (never hunt for an item by hand); fleet_work_update edits an item that is not running; fleet_work_start / _hold / _cancel move items (start only what Yukimi asked for or clearly agreed to). claude_dispatch adds NEW work, landing in Waiting unless startNow: account (or auto), model and effort (Sonnet, subagents-sonnet rule: opus only with a modelReason), folder, and a complete prompt (issue, files, acceptance check; coord_claim before editing, coord_build_request before any build or restart, commit every turn); no two sessions own the same files. claude_fleet_status shows usage, sessions, claims and build gates; claude_session_read / _send / _stop steer a running session. A chat that starts "About Fleet work item #N: ..." (Ask Yozora in Fleet): fleet_work_get N first. Only you have these tools.',        'A client reload is normal. Continue this chat. Do not redo a finished step.',
         `Director chat id: ${chat.id}. Pass chatId on session tools.`,
-        options && options.clientWorkspaceId
-            ? `This chat is not tied to a Dreamscape workspace. The client that sent this message is in workspace id: ${options.clientWorkspaceId}; Dreamscape tools act in the workspace of the client you use. To move the user's client to another workspace, call request_workspace_switch with workspace (it shows a card and waits for their answer).`
-            : 'This chat is not tied to a Dreamscape workspace; Dreamscape tools act in the workspace of the client you use. To move the user\'s client to another workspace, call request_workspace_switch with workspace.',
+        'Each message carries only what changed for that turn (her state, the client, attachments, the request); these standing rules hold for every turn.',
         `Workspace: ${workspacePath(boundGr)}`
     ];
-    // Who she is and where she stands (stage, points), on every turn (#742): the coding variant of
-    // the persona block. The work rules above still decide how the work is done and reported.
+    // Who she is and where she stands, in full here once (#742); each turn carries her current state in short.
     {
         const voice = require('./directorPersonaVoice');
-        const talk = voice.turnTalkHint(userText, files.length);
-        lines.push(...voice.personaVoiceLines('xi', options && options.mascot, { coding: true, talk }));
+        lines.push(...voice.personaVoiceLines('xi', options && options.mascot, { coding: true }));
     }
-    // The finish_turn contract, in the turn prompt the way the Director window carries it (#1146).
-    // Her coding prompt never had it, so she ended every turn with plain text: no report card and,
-    // the part Yukimi noticed, no suggested replies at all. She makes no prints, so no reportCard.
+    // The finish_turn contract (#1146): she ended turns with plain text and no suggested replies without it.
     lines.push('End the turn with one finish_turn {summary, spoken, suggestions} call as your last tool call: '
         + 'summary is your reply (markdown) and replaces a written reply; spoken is one to three plain sentences you would say out loud; '
         + 'suggestions are 2 to 4 next replies THEY might send, written as they would say them, each one a whole message that makes sense on its own. '
@@ -618,11 +630,26 @@ function buildPrompt(chat, userText, files, clientId, options) {
     if (options && options.memoryStore === 'obliterated') {
         lines.push('Memory store: Obliterated Memories. list_memories, search_memories, get_memory, and save_memory use that shared store. It is not the Studio memory database. Do not pass a Studio model filter.');
     }
-    if (options && options.sessionRestarted) {
-        lines.push(`This chat had earlier turns, but their Claude session was lost, so they are not in your context. If the request depends on them, read the chat log in ${path.join(chatsDir(), chat.id)} (index.json in ${layout().root} holds the messages) or ask with request_form.`);
-    }
     if (options && options.ageTool === false) {
         lines.push('lookup_character_age is turned off for this engine. Do not call it.');
+    }
+    return lines.join('\n');
+}
+
+function turnPrompt(chat, userText, files, clientId, options) {
+    const lines = [
+        options && options.clientWorkspaceId
+            ? `This chat is not tied to a Dreamscape workspace. The client that sent this message is in workspace id: ${options.clientWorkspaceId}; Dreamscape tools act in the workspace of the client you use. To move the user's client to another workspace, call request_workspace_switch with workspace (it shows a card and waits for their answer).`
+            : 'This chat is not tied to a Dreamscape workspace; Dreamscape tools act in the workspace of the client you use. To move the user\'s client to another workspace, call request_workspace_switch with workspace.'
+    ];
+    // her state now, in short (the full persona block is in the standing prompt)
+    {
+        const voice = require('./directorPersonaVoice');
+        const talk = voice.turnTalkHint(userText, files.length);
+        lines.push(...voice.personaVoiceLines('xi', options && options.mascot, { coding: true, talk, compact: true }));
+    }
+    if (options && options.sessionRestarted) {
+        lines.push(`This chat had earlier turns, but their Claude session was lost, so they are not in your context. If the request depends on them, read the chat log in ${path.join(chatsDir(), chat.id)} (index.json in ${layout().root} holds the messages) or ask with request_form.`);
     }
     if (clientId) lines.push(`Studio clientId: ${clientId}. If a tool says not bound, bind_session once with it.`);
     if (files.length) {
@@ -704,11 +731,12 @@ function claudeProjectPrompt(workspace) {
 
 // Written into the chat's folder (visible to the CLI sandboxed or not, like its inbox);
 // rewritten only when the text changed.
-function writeProjectPromptFile(sessionId, workspace) {
+function writeProjectPromptFile(sessionId, workspace, standing) {
     const dir = path.join(layout().chats, sessionId);
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, 'project-prompt.md');
-    const text = claudeProjectPrompt(workspace);
+    // Yozora's standing turn rules ride here (system prompt, never stored in the history), after the project rules
+    const text = [claudeProjectPrompt(workspace), standing ? `## Yozora: standing rules for every turn\n\n${standing}` : ''].filter(Boolean).join('\n\n');
     let prior = null;
     try { prior = fs.readFileSync(file, 'utf8'); } catch (_) { prior = null; }
     if (prior !== text) fs.writeFileSync(file, text, { mode: 0o600 });
@@ -1739,9 +1767,13 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 : '';
             const ageTool = !customProviders.isEngine(runtime) || customProviders.ageToolEnabled(gr, runtime);
             const clientWorkspaceId = typeof message.workspaceId === 'string' ? message.workspaceId.trim() : '';
-            const prompt = buildPrompt(chat, userText, files, clientId, { memoryStore, ageTool, sessionRestarted, clientWorkspaceId, mascot: require('./directorPersonaVoice').sanitizeMascotState(message.mascot) });
+            const built = buildTurn(chat, userText, files, clientId, { memoryStore, ageTool, sessionRestarted, clientWorkspaceId, mascot: require('./directorPersonaVoice').sanitizeMascotState(message.mascot) });
+            // the Claude CLI takes the standing rules in its system prompt file (never stored in the session history);
+            // other engines still get them in the message
+            const prompt = usesClaudeCli(runtime) ? built.turn : `${built.standing}\n${built.turn}`;
+            const standing = built.standing;
             writeIndex(index);
-            return { prompt, cursorId, claudeSessionId, claudeFirstTurn, model: chat.model, name: chat.name, round, runtime };
+            return { prompt, standing, cursorId, claudeSessionId, claudeFirstTurn, model: chat.model, name: chat.name, round, runtime };
         });
         if (!prepared) {
             handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
@@ -1761,7 +1793,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 '--strict-mcp-config',
                 '--mcp-config', claudeMcpConfigArg(),
                 // a file: the rules + shared MCP text outgrew one argv string (128 KB, E2BIG, Nov 23 2026)
-                '--append-system-prompt-file', writeProjectPromptFile(sessionId, workspace),
+                '--append-system-prompt-file', writeProjectPromptFile(sessionId, workspace, prepared.standing),
                 ...(runtime === 'tokenrouter' || customProviders.isEngine(runtime) ? ['--model', prepared.model] : ['--effort', claudeEffort]),
                 prepared.claudeFirstTurn ? '--session-id' : '--resume', prepared.claudeSessionId,
                 '--',
@@ -2091,7 +2123,7 @@ module.exports = {
     handleDirectorMoveSession,
     handleDirectorToolDiff,
     _test: {
-        shouldPark, markToolDiffs, readToolDiffText, buildPrompt, launchPlan,
+        shouldPark, markToolDiffs, readToolDiffText, buildPrompt, buildTurn, launchPlan,
         layout, readIndex, writeIndex, peekIndex, readProjectCursorRules,
         sanitizeRuntime, assertRuntimeUnchanged, publicXiSession, consumeClaudeStreamLine,
         claudeProjectPrompt, writeProjectPromptFile, claudeMcpConfigArg, sanitizeClaudeEffort,
