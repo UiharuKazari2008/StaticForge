@@ -1256,6 +1256,19 @@ sup._test.setFetch(async (url, opts) => {
         assert.strictEqual(sup.updateWork(w.id, { remoteControl: false }).remoteControl, false);
     });
 
+    await test('backstop: an ok review whose final answer waits on Yukimi becomes input (item 72); plain done stays ok; gaps stay gaps', async () => {
+        const B = sup._test.waitBackstop;
+        const ok = { verdict: 'ok', summary: 'fine', missed: [] };
+        const a = B(ok, 'Nothing changed this turn, so there is nothing to commit. #1193 stays open for Yukimi\'s two answers (battery source, and what the tap should open).');
+        assert.strictEqual(a.verdict, 'input');
+        assert.ok(/stays open/.test(a.questions[0].question), JSON.stringify(a.questions));
+        const b = B(ok, 'Built it. Should the card say Plaud or Voice Notes? Which do you prefer?');
+        assert.strictEqual(b.verdict, 'input');
+        assert.ok(b.questions.some((q) => /Which do you prefer\?/.test(q.question)));
+        assert.strictEqual(B(ok, 'Built, tested (12 passed) and pushed as abc123. Closing as done.').verdict, 'ok');
+        assert.strictEqual(B({ verdict: 'gaps', missed: [{ item: 'x' }] }, 'stays open for your answers').verdict, 'gaps');
+    });
+
     await test('input verdict: the parser keeps questions; answered ones are typed in, open ones wait as Input Required; Yukimi\'s answers send it back; input counts as active', async () => {
         const P = sup._test.parseVerdict;
         const pv = P('{"verdict":"ok","summary":"s","questions":[{"question":"Which login?","answer":"Build the login code","why":"its own job"},"Pay for it?"]}');

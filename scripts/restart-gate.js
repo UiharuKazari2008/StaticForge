@@ -134,6 +134,17 @@ function selfSessionId() {
     return '';
 }
 
+/** Whether a claim path (a file, a folder, '.', or a glob with * / **) covers a repo-relative file. */
+function claimCovers(claim, file) {
+    const c = String(claim || '').replace(/^\.\//, '').replace(/\/+$/, '');
+    if (!c || c === '.') return true;
+    if (/[*?]/.test(c)) {
+        const re = new RegExp(`^${c.split('**').map((part) => part.split('*').map((x) => x.replace(/[.+^${}()|[\]\\?]/g, '\\$&')).join('[^/]*')).join('.*')}$`);
+        return re.test(file);
+    }
+    return file === c || file.startsWith(`${c}/`);
+}
+
 function checkAgents(store, dirty) {
     if (!store) return;
     const self = selfSessionId();
@@ -153,7 +164,9 @@ function checkAgents(store, dirty) {
         // its edit counts only when it came after that file's last commit (an older edit is in a commit already;
         // the file is dirty again from someone else)
         const serverEdits = inThisRepo ? r.edited.files.filter((f) => SERVER_PATH_RE.test(f.path) && dirtySet.has(f.path) && (f.lastAt || 0) > lastCommitMs(f.path)) : [];
-        const serverClaims = r.claims.filter((c) => SERVER_PATH_RE.test(c.path) || c.path === '.' || c.path === 'modules');
+        // a claim holds the restart only while an uncommitted server file lies under it: a claim on files already committed
+        // loads nothing half done (Nov 25 2026: the Manager Session's committed claims held a restart until it released them)
+        const serverClaims = r.claims.filter((c) => (SERVER_PATH_RE.test(c.path) || c.path === '.' || c.path === 'modules') && dirty.some((f) => claimCovers(c.path, f.path)));
         serverEdits.forEach((f) => owned.add(f.path));
         if (serverEdits.length || serverClaims.length) {
             const name = r.agent.name || agentId;

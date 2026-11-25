@@ -731,6 +731,7 @@ async function review(sessionId, trigger, opts = {}) {
             delete result.retry;
         } catch (e) { result = { verdict: 'error', summary: e.message.slice(0, 300), missed: [], model: '', error: e.message }; }
     }
+    result = waitBackstop(result, turn.final);
     // the rule check: the turn's changed files against the check scripts and the rules that apply (never on an MCP ask)
     let rc = null;
     if (!result.skipped && trigger !== 'mcp' && s.ruleCheck) rc = await ruleCheckFor(sessionId, messages, s, gr);
@@ -747,6 +748,24 @@ async function review(sessionId, trigger, opts = {}) {
     try { await workAfterReview(rv, { fromSupervisor: turn.fromSupervisor }); } catch (e) { console.warn(`[supervisor] work state: ${e.message}`); }
     emit(rv);
     return rv;
+}
+
+/**
+ * The backstop under the review model (item 72, Nov 25 2026: the review said ok, Fleet closed #1193, while the agent's own
+ * final answer said "#1193 stays open for Yukimi's two answers"): an ok verdict whose final answer plainly waits on Yukimi
+ * becomes input, with the final answer's questions (or the waiting sentence) as the open questions. Never turns gaps into input.
+ */
+const WAIT_RE = /\b(stays? open (for|until)|left open for|(not|never) clos(e|ing) it|waiting (on|for) (yukimi|you|your|her)\b|(need|needs|needed) (your|yukimi'?s|her) (answer|answers|decision|go|ok|approval|input|login|sign-?in)|(your|yukimi'?s|her) (two |three |)(answers?|decisions?|go-ahead) (are|is|still)?\s*(open|needed|pending)|put (the|these) options to (yukimi|you)|which (one )?do you (want|prefer)|let me know (which|whether|if))/i;
+function waitBackstop(result, final) {
+    if (!result || result.verdict !== 'ok') return result;
+    const text = String(final || '');
+    const tail = text.slice(-1500);
+    if (!WAIT_RE.test(tail)) return result;
+    const sentences = tail.replace(/\s+/g, ' ').split(/(?<=[.?!])\s+/);
+    let qs = sentences.filter((x) => /\?$/.test(x.trim()) && x.length > 8).slice(-4);
+    if (!qs.length) qs = sentences.filter((x) => WAIT_RE.test(x)).slice(-2);
+    const questions = qs.map((q) => ({ question: q.replace(/^[-*\s\d.)]+/, '').trim().slice(0, 400), answer: '', why: 'its final answer waits on Yukimi (backstop)' }));
+    return Object.assign({}, result, { verdict: 'input', questions: (result.questions || []).concat(questions), summary: `${result.summary || ''} [its final answer waits on Yukimi]`.trim() });
 }
 
 /**
@@ -3079,5 +3098,5 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
+    _test: { parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
 };
