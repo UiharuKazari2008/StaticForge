@@ -1668,7 +1668,7 @@
                         ['digits', "Roll the clock's digits"],
                         ['blur', 'Frosted glass'],
                         ['glasslight', 'Light the edges of the glass'],
-                        ['weather', 'Weather in the glass'],
+                        ['weather', 'Weather on the clock item'],
                         ['haptics', 'Vibrate as items pass the glass'],
                         ['superbar', 'Tap the clock for the Super Bar'],
                         ['startopen', 'Start: icons come in from the corner'],

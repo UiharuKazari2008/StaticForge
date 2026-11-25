@@ -44,7 +44,16 @@
         'contextMenuFadeIn': true,
         'contextMenuFadeOut': true,
         'confettiFall': true,
-        'sakuraPetalFall': true
+        'sakuraPetalFall': true,
+        // the weather in Today's glass and the Super Bar (wmTitanium.js drawWeatherFx, #1109): drops, flakes,
+        // clouds, streaks and leaves start outside their clipped box and move in, so an observer would hold
+        // them before they ever show; syncWx pauses them itself while Today is not seen
+        'wm-wx-fall': true,
+        'wm-wx-snow': true,
+        'wm-wx-cloud': true,
+        'wm-wx-drift': true,
+        'wm-wx-streak': true,
+        'wm-wx-leaf': true
     };
 
     const io = new IntersectionObserver((entries) => {
@@ -230,6 +239,17 @@
         'wm-ds-marquee': 'phone Dreamscape settings progress bar while a job runs',
         'wm-sys-marquee': 'phone system settings progress bar while a job runs',
         'wm-ti-super-marquee': 'Super Bar progress while a job runs',
+        // the weather in Today's glass and the Super Bar (#1109): runs only while Today is seen (wmTitanium.js syncWx)
+        'wm-wx-fall': "weather in Today's glass, paused while Today is not seen",
+        'wm-wx-snow': "weather in Today's glass, paused while Today is not seen",
+        'wm-wx-cloud': "weather in Today's glass, paused while Today is not seen",
+        'wm-wx-drift': "weather in Today's glass, paused while Today is not seen",
+        'wm-wx-streak': "weather in Today's glass, paused while Today is not seen",
+        'wm-wx-leaf': "weather in Today's glass, paused while Today is not seen",
+        'wm-wx-twinkle': "weather in Today's glass, paused while Today is not seen",
+        'wm-wx-glow': "weather in Today's glass, paused while Today is not seen",
+        'wm-wx-turn': "weather in Today's glass, paused while Today is not seen",
+        'wm-wx-flash': "weather in Today's glass, paused while Today is not seen",
         'asw-marquee': 'ActiveSync wizard progress while it connects',
         'wkm-marquee': 'Wiki console progress while it loads',
         'rdc-banner-marquee': 'Remote Desktop connecting banner, only while connecting',
