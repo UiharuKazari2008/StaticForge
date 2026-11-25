@@ -62,7 +62,8 @@
     };
     const ITEMS = '/static_images/vista-cpl/items';
     const QUESTION16 = '/static_images/vista-explorer/help-16.png';
-    const SENTBACK16 = '/static_images/vista-cmdbar/undo.png'; // Sent Back: the Supervisor's notes went back to it (not the plain session icon) // Input Required: a question, not Pending's info icon
+    const SENTBACK16 = '/static_images/vista-cmdbar/undo.png';
+    const PAUSE16 = '/static_images/vista-cmdbar/pause.png'; // a paused session: the blue pause sign, not a warning (Yukimi: a pause is not a fault) // Sent Back: the Supervisor's notes went back to it (not the plain session icon) // Input Required: a question, not Pending's info icon
     const FOLDER16 = `${VI}/explorer/folder-16.png`;
     const PAGE = 50;
     const MSG_PAGE = 40; // messages a session view loads at a time
@@ -2088,7 +2089,7 @@
         if (S.sup.unavailable) return c.page(T, '', [{ id: 'cd-wq-gone', title: T, body: `<p>${NOT_YET}</p>` }]);
         const rows = WORK_SCOPE[scope]().map((w) => ({
             key: `w:${w.id}`,
-            icon: w.sessionId && holdOf(w.sessionId) ? `${VI}/warning-16.png` : workIcon(w.state),
+            icon: w.sessionId && holdOf(w.sessionId) ? PAUSE16 : workIcon(w.state),
             cls: w.state === 'running' || w.state === 'starting' ? 'cd-live' : (w.state === 'failed' ? 'cd-stale' : ''),
             data: { id: w.id, title: w.title || String(w.id), state: workState(w), shape: shapeText(w), source: WORK_SOURCE[w.source] || w.source || '', account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), model: [w.engine && w.engine !== 'claude' ? engineName(w.engine) : '', w.model, w.effort].filter(Boolean).join(' / '), session: w.sessionId ? shortId(w.sessionId) : '', issue: issueText(w), check: w.check && w.check.verdict ? CHECK_TEXT[w.check.verdict] || w.check.verdict : '', at: w.createdAt || 0, message: [w.message, w.issueNote].filter(Boolean).join(' - ') }
         }));
@@ -2925,7 +2926,7 @@
     function sessionNode(idPrefix, sid, A) {
         const row = rowOf(sid) || { id: sid, title: (liveOf(sid) || {}).name };
         const h = holdOf(sid);
-        const node = { id: `${idPrefix}${sid}`, name: `${titleOf(row)}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? `${VI}/warning-16.png` : sessIcon(sid), desc: h ? holdLine(h) : (usgFlagged(sid) ? 'Heavy usage: see Usage > Flags' : 'The session\'s conversation') };
+        const node = { id: `${idPrefix}${sid}`, name: `${titleOf(row)}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? PAUSE16 : sessIcon(sid), desc: h ? holdLine(h) : (usgFlagged(sid) ? 'Heavy usage: see Usage > Flags' : 'The session\'s conversation') };
         if (idPrefix === 'aw:s:') {
             const e = S.awAgents.get(sid);
             if (e && e.agents) node.children = e.agents.map((x) => ({ id: `aw:a:${sid}:${x.agentId}`, name: x.description || x.agentId, icon: x.finished ? `${VI}/check-16.png` : SESSION16, desc: 'A background agent of this session' }));
@@ -2948,7 +2949,7 @@
         if (w.sessionId) kids.push(sessionNode('aw:s:', w.sessionId, A));
         const h = w.sessionId ? holdOf(w.sessionId) : null;
         const topo = topoShort(w.topology);
-        return { id: `aw:w:${w.id}`, name: `${w.title || w.id}${topo && w.parentId == null ? ` - ${topo}` : ''}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? `${VI}/warning-16.png` : workIcon(w.state), desc: `${WORK_STATE[w.state] || w.state || ''}${WORK_RUN.has(w.state) && w.message ? ` - ${w.message}` : ''}`, children: kids }; // the in-flight reason (background agents, a review) shows in the row note
+        return { id: `aw:w:${w.id}`, name: `${w.title || w.id}${topo && w.parentId == null ? ` - ${topo}` : ''}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? PAUSE16 : workIcon(w.state), desc: `${WORK_STATE[w.state] || w.state || ''}${WORK_RUN.has(w.state) && w.message ? ` - ${w.message}` : ''}`, children: kids }; // the in-flight reason (background agents, a review) shows in the row note
     }
 
     /** The page of an issue leaf: what the issue is and a link that opens it (like the issue links of the request page). */
@@ -4183,7 +4184,7 @@
         const acct = row.account ? row.account.name : '';
         const side = [stateText(row), acct, row.folder].filter(Boolean).join(' - ');
         const hold = holdOf(id);
-        const holdBar = hold ? `<div class="cd-infobar is-warning" role="alert"><img src="${VI}/warning-16.png" alt=""><span><b>${esc(holdWord(hold))}</b>${hold.reason ? `: ${esc(hold.reason)}` : ''}${hold.by ? ` <i>(${esc(HOLD_KIND[hold.kind] || hold.kind || '')} by ${esc(hold.by)})</i>` : ''} <span class="mmc-link" data-act="resume-hold" data-arg="${esc(id)}">Resume</span></span></div>` : '';
+        const holdBar = hold ? `<div class="cd-infobar is-warning" role="status"><img src="${PAUSE16}" alt=""><span><b>${esc(holdWord(hold))}</b>${hold.reason ? `: ${esc(hold.reason)}` : ''}${hold.by ? ` <i>(${esc(HOLD_KIND[hold.kind] || hold.kind || '')} by ${esc(hold.by)})</i>` : ''} <span class="mmc-link" data-act="resume-hold" data-arg="${esc(id)}">Resume</span></span></div>` : '';
         const linkBits = `<span class="mmc-link" data-act="detail-toggle">Details</span> <span class="mmc-link" data-act="tasks-toggle" aria-expanded="${TK.open ? 'true' : 'false'}" data-cd-tasks-link>${esc(tasksLinkText(id))}</span>${l && !hold ? ` <span class="mmc-link" data-act="pause" data-arg="${esc(id)}">Pause...</span>` : ''}${l && serverOrigin(id) ? ' <span class="mmc-link" data-act="takeover">Take Over in Fleet</span>' : ''}${l && l.link ? ` <span class="mmc-link" data-act="open-link" data-arg="${esc(l.link)}">Open in claude.ai</span> <span class="mmc-link" data-act="copy-link" data-arg="${esc(l.link)}">Copy link</span>` : ''}`;
         let composer;
         if (l && serverOrigin(id)) {
