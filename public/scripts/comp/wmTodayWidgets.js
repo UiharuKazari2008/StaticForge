@@ -1354,7 +1354,7 @@
         const a = recPlaudApp();
         if (a && typeof window.wmAndroidLaunch === 'function') void window.wmAndroidLaunch(a.id, a.label);
     }
-    // "Battery 80% - Synced 14:02" (recorder account) or "... - Last read 14:02": battery only when the server sent a number
+    // the transfer status, else "Last read 14:02". No battery line (Yukimi, Nov 25 2026): the recorder gives its percentage only to the Plaud app
     function recDevice() {
         const tr = rec.transfer;
         const today = (ms) => ms > 0 && new Date(ms).toDateString() === new Date().toDateString();
@@ -1364,8 +1364,7 @@
         const t = rec.lastSync || rec.lastRead;
         const stamp = t ? `${new Date(t).toDateString() === new Date().toDateString() ? '' : `${fmtDate.format(t)} `}${fmtTime.format(t)}` : '';
         const read = t ? `${rec.lastSync ? 'Synced' : 'Last read'} ${stamp}` : '';
-        const b = rec.device && rec.device.battery != null ? rec.device.battery : rec.battery;
-        return `${b != null && Number.isFinite(Number(b)) ? `Battery ${Math.round(Number(b))}% - ` : ''}${read}`.replace(/ - $/, '');
+        return read;
     }
 
     function recModel() {

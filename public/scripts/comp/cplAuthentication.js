@@ -1644,7 +1644,6 @@
             const lines = list.map((r) => {
                 const bits = [`${r.name || 'Plaud recorder'}${r.model ? ` (model ${r.model})` : ''}`];
                 if (r.firmware) bits.push(`Firmware ${r.firmware}`);
-                if (typeof r.battery === 'number' && Number.isFinite(r.battery)) bits.push(`Battery ${Math.round(r.battery)}%`);
                 if (r.lastSync) bits.push(`Last sync ${new Date(r.lastSync).toLocaleString()}`);
                 return bits.join(' - ');
             });
