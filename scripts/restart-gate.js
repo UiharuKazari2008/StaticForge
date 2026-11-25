@@ -102,11 +102,15 @@ function checkGates(store) {
     let gates = [];
     try { gates = store.builds({ repo: 'staticforge' }).concat(store.builds({ repo: '' }).filter((g) => g.build.target === 'hold-restart')); } catch (_) { gates = []; }
     const seen = new Set();
+    const self = selfSessionId();
+    const mine = self ? `claude-${self.slice(0, 8)}` : '';
     gates.forEach((g) => {
         const b = g.build;
         if (seen.has(b.id)) return;
         seen.add(b.id);
         const who = (store.getAgent(b.requestedBy) || {}).name || b.requestedBy;
+        // the caller's own dreamscape-restart gate (opened and begun before restart-dreamscape.sh, as agent-coord asks) never holds it
+        if (b.state === 'running' && b.target === 'dreamscape-restart' && mine && b.requestedBy === mine) return;
         if (b.target === 'hold-restart' && (b.state === 'open' || b.state === 'running')) add('wait', `wait for ${who}: hold-restart${b.note ? ` (${b.note})` : ''}`, { agent: b.requestedBy });
         else if (b.state === 'running') add('wait', `wait for build ${b.id} (${b.target}) by ${who}`, { agent: b.requestedBy });
     });
