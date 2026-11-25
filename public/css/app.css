@@ -3975,34 +3975,10 @@ body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.mi
     will-change: transform, opacity;
 }
 
-.floating-bar-right:hover:not(:disabled) .main-menu-bar-overlay,
-.floating-bar-left:hover:not(:disabled) .main-menu-bar-overlay,
-#main-controls-bar:hover:not(:disabled) .main-menu-bar-overlay .balanceDisplay {
-    /* perf: allow only while the bar is hovered */
-    will-change: opacity;
-}
-
-.taskbar-start-button:not(.orb):hover:not(:disabled) {
-    /* perf: allow only while the Start button is hovered (desktop pointer) */
-    will-change: backdrop-filter, transform;
-}
-
-.taskbar-tray-icon:hover:not(:disabled) {
-    /* perf: allow only while a tray icon is hovered (desktop pointer) */
-    will-change: opacity;
-}
-
-.gallery-toggle-group:has(.gallery-toggle-btn:hover:not(:disabled)) .gallery-toggle-slider,
-.gallery-toggle-group:has(.gallery-toggle-btn:focus-visible:not(:disabled)) .gallery-toggle-slider {
-    /* perf: allow only while a toggle button is hovered or keyboard-focused: promotes the slider before a click moves it */
-    will-change: transform;
-}
-
-.character-prompt-item:has(.character-prompt-collapse-toggle:hover:not(:disabled)),
-.character-prompt-item:has(.character-prompt-collapse-toggle:focus-visible:not(:disabled)) {
-    /* perf: allow only while the collapse toggle is hovered or keyboard-focused */
-    will-change: opacity;
-}
+/* No will-change on :hover / :focus-visible anywhere (#1162): a hint switched on at mouse-in and back to auto at
+   mouse-out builds and drops a layer on every hover. A real opacity/transform transition is promoted by the browser
+   for as long as it runs, so no hover hint is needed for the bar overlay, Start button, tray icons, toggle sliders
+   or the prompt collapse toggle. */
 
 /* Remove permanent will-change on selection-mode grid tiles to prevent GPU layer thrashing during virtual scrolling */
 
