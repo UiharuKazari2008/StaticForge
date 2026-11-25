@@ -17,7 +17,13 @@
  * Data: traffic_get (Home / Work, the reports; refreshed at each drive's start and on traffic_updated /
  * traffic_settings_changed pushes), traffic_nearby, the police feed - all over the CaféReady link.
  * Output (window.AndroidTasks.output('drive-alerts') on the page): { active, mode: 'route' | 'area' | '',
- * direction, alerted: [id], driveSince }.
+ * direction, alerted: [id], driveSince, approach: id | null }.
+ *
+ * The approach (#1124): when the host's start event says it can ('approach' in host.ops), the nearest camera / police
+ * item ahead within 1 mi is not a notification but an approach: ctx.approach({ progress, speed, limit, tones, ... })
+ * on every fix that already comes (the app's bottom overlay and two tones), and ctx.approach(null) once when it is
+ * passed, the car leaves it, stops at Home / Work or the drive ends. An older host (start data {}) keeps the 1 mi
+ * notification. No timers, no extra requests.
  *
  * The pure parts are CafeTasks.lib.drive: the page's Traffic uses the same functions.
  */
@@ -34,6 +40,8 @@
     const REPEAT_MS = 2 * 3600 * 1000;
     const REPORTS_FRESH_MS = 30 * 60 * 1000;
     const AREA_RETRY_MS = 60 * 1000;
+    const MPH = 0.44704;
+    const PASSED_GROW_M = 30;
 
     // ------------------------------------------------------------------ pure parts (the page uses them too)
     const lib = {
@@ -110,6 +118,53 @@
                 .filter((c) => Number.isFinite(c.aheadM) && c.aheadM > 0 && c.aheadM <= watchM)
                 .sort((a, b) => a.aheadM - b.aheadM);
         },
+        /** An OSM maxspeed value as metres per second, or null (none, signals, walk, unknown). '50;30' takes the first. */
+        parseLimit(maxspeed) {
+            if (maxspeed == null) return null;
+            const v = String(maxspeed).split(';')[0].trim().toLowerCase();
+            if (!v) return null;
+            const named = { 'gb:nsl_single': 60, 'gb:nsl_dual': 70, 'gb:motorway': 70, 'gb:nsl_restricted': 30 };
+            if (named[v]) return named[v] * MPH;
+            const m = /^(\d+(?:\.\d+)?)\s*(mph|km\/h|kmh|kph)?$/.exec(v);
+            if (!m) return null;
+            const n = parseFloat(m[1]);
+            if (!(n > 0)) return null;
+            return m[2] === 'mph' ? n * MPH : (n * 1000) / 3600;
+        },
+        mph: (mps) => (Number.isFinite(mps) ? `${Math.round(mps / MPH)} mph` : ''),
+        /** The two tones of an approach (the contract in #1124): { periodMs, speedPeriodMs, limitHz, speedHz, gain, toneMs }. */
+        tonePlan(progress, speedMps, limitMps) {
+            const p = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
+            const periodMs = Math.round(1400 - 800 * p);
+            const over = Number.isFinite(speedMps) && Number.isFinite(limitMps) && limitMps > 0 && speedMps > limitMps * 1.02;
+            const speedPeriodMs = over ? Math.round(Math.max(periodMs * 0.5, (periodMs * limitMps) / speedMps)) : periodMs;
+            return { periodMs, speedPeriodMs, limitHz: Number.isFinite(limitMps) && limitMps > 0 ? 587.33 : 0, speedHz: 880, gain: 0.35, toneMs: 260 };
+        },
+        /** The approach object the host shows (contract in #1124) for an item aheadM metres away; spanM = where it began. */
+        approachOf(item, aheadM, spanM, fix) {
+            const f = fix || {};
+            const span = spanM > 0 ? spanM : Math.max(aheadM, 1);
+            const progress = Math.max(0, Math.min(1, 1 - aheadM / span));
+            const speedMps = Number.isFinite(f.speed) ? f.speed : null;
+            const limitMps = lib.parseLimit(item.maxspeed);
+            return {
+                id: lib.keyOf(item),
+                title: lib.alertText(item, aheadM).title,
+                street: item.street || '',
+                label: item.label || 'Speed camera',
+                aheadM: Math.round(aheadM),
+                spanM: Math.round(span),
+                progress: Math.round(progress * 1000) / 1000,
+                speedMps,
+                limitMps,
+                speedText: lib.mph(speedMps),
+                limitText: limitMps == null ? '' : String(Math.round(limitMps / MPH)),
+                distText: lib.miles(aheadM),
+                over: speedMps != null && limitMps != null && speedMps > limitMps * 1.02,
+                tones: lib.tonePlan(progress, speedMps, limitMps),
+                at: Number.isFinite(f.at) ? f.at : Date.now()
+            };
+        },
         miles: (m) => (m == null ? '' : `${(m / MI).toFixed(m < 16093 ? 1 : 0)} mi`),
         /** The alert's words, the same on the page and in the app. */
         alertText(t, aheadM) {
@@ -155,6 +210,38 @@
         ctx.notify({ id, kind: 'traffic-camera', title: words.title, text: words.text });
     }
 
+    const canApproach = (s) => Array.isArray(s.hostOps) && s.hostOps.indexOf('approach') >= 0;
+
+    /** The overlay off (once): the camera is passed, the car left it or the drive is over. */
+    function endApproach(ctx) {
+        const s = ctx.state;
+        if (!s.appr) return;
+        s.appr = null;
+        ctx.approach(null);
+    }
+
+    /**
+     * One fix of an approach. cands: [{ item, aheadM }] ahead within ALERT_M (the current one included while it
+     * still is). The nearest starts an approach when none runs; a running one goes on until it is no longer a candidate.
+     */
+    function approach(ctx, fix, cands, stillHere) {
+        const s = ctx.state;
+        let cur = null;
+        if (s.appr) {
+            cur = cands.find((c) => lib.keyOf(c.item) === s.appr.id) || (stillHere && stillHere(s.appr.id)) || null;
+            if (!cur) endApproach(ctx);
+        }
+        if (!cur) {
+            cur = cands.slice().sort((a, b) => a.aheadM - b.aheadM)[0] || null;
+            if (!cur) return;
+            const id = lib.keyOf(cur.item);
+            s.alerted[id] = ctx.now;
+            s.appr = { id, spanM: Math.round(cur.aheadM), nearestM: Math.round(cur.aheadM) };
+        }
+        if (cur.aheadM < s.appr.nearestM) s.appr.nearestM = Math.round(cur.aheadM);
+        ctx.approach(lib.approachOf(cur.item, cur.aheadM, s.appr.spanM, Object.assign({}, fix, { at: fix.at || ctx.now })));
+    }
+
     function setLevel(ctx, level) {
         if (ctx.state.level === level) return;
         ctx.state.level = level;
@@ -171,7 +258,7 @@
 
     function publish(ctx) {
         const s = ctx.state;
-        const out = { active: s.active, mode: s.mode, direction: s.direction, alerted: Object.keys(s.alerted).sort(), driveSince: s.driveSince };
+        const out = { active: s.active, mode: s.mode, direction: s.direction, alerted: Object.keys(s.alerted).sort(), driveSince: s.driveSince, approach: s.appr ? s.appr.id : null };
         const sig = JSON.stringify(out);
         if (sig === s.outSig) return;
         s.outSig = sig;
@@ -217,15 +304,18 @@
         if (!s.active || !Number.isFinite(fix.lat) || !Number.isFinite(fix.lon)) return;
         if ((fix.accuracyM || 0) > 500) return;
         const done = alertedSet(s, ctx.now);
-        if (atPlace(s, fix)) { s.mode = ''; setFeed(ctx, ''); setLevel(ctx, 'low'); publish(ctx); return; }
+        const appr = canApproach(s);
+        if (atPlace(s, fix)) { endApproach(ctx); s.mode = ''; setFeed(ctx, ''); setLevel(ctx, 'low'); publish(ctx); return; }
         const route = onRoute(s, fix);
         if (route) {
             s.mode = 'route';
             s.direction = route.dir;
             setFeed(ctx, `traffic_police_${route.dir}`);
-            const ahead = lib.camerasAhead(lib.warnings(route.r), route.f, route.totalM).filter((c) => !done.has(lib.keyOf(c.trap)));
-            ahead.filter((c) => c.aheadM <= ALERT_M).forEach((c) => alert(ctx, c.trap, c.aheadM));
-            setLevel(ctx, ahead.some((c) => c.aheadM > ALERT_M) ? 'high' : 'low');
+            const curId = s.appr ? s.appr.id : '';
+            const ahead = lib.camerasAhead(lib.warnings(route.r), route.f, route.totalM).filter((c) => !done.has(lib.keyOf(c.trap)) || (appr && lib.keyOf(c.trap) === curId));
+            if (appr) approach(ctx, fix, ahead.filter((c) => c.aheadM <= ALERT_M).map((c) => ({ item: c.trap, aheadM: c.aheadM })));
+            else ahead.filter((c) => c.aheadM <= ALERT_M).forEach((c) => alert(ctx, c.trap, c.aheadM));
+            setLevel(ctx, ahead.some((c) => c.aheadM > ALERT_M) || (appr && s.appr) ? 'high' : 'low');
             publish(ctx);
             return;
         }
@@ -237,11 +327,22 @@
             ctx.request('traffic_nearby', { lat: Math.round(fix.lat * 1e5) / 1e5, lon: Math.round(fix.lon * 1e5) / 1e5 }, 'area');
         }
         if (s.area.box) {
+            if (appr && s.appr) done.delete(s.appr.id);
             const r = lib.ahead(fix, s.area.items, done, new Map(Object.entries(s.last)), ALERT_M);
             s.last = Object.fromEntries(r.last);
-            r.alerts.forEach(({ item, distM }) => alert(ctx, item, distM));
-            setLevel(ctx, r.nearestM <= AREA_HIGH_M ? 'high' : 'low');
+            if (appr) {
+                // the car at the camera itself: the bearing flips, so it counts as passed once it moves away
+                const stillHere = (id) => {
+                    const it = s.area.items.find((t) => lib.keyOf(t) === id);
+                    if (!it) return null;
+                    const d = Math.min(...(Array.isArray(it.line) && it.line.length ? it.line.map(([lat, lon]) => lib.distM(fix, { lat, lon })) : [lib.distM(fix, it)]));
+                    return d <= 40 && d <= s.appr.nearestM + PASSED_GROW_M ? { item: it, aheadM: d } : null;
+                };
+                approach(ctx, fix, r.alerts.map(({ item, distM }) => ({ item, aheadM: distM })), stillHere);
+            } else r.alerts.forEach(({ item, distM }) => alert(ctx, item, distM));
+            setLevel(ctx, r.nearestM <= AREA_HIGH_M || (appr && s.appr) ? 'high' : 'low');
         } else {
+            endApproach(ctx);
             setLevel(ctx, 'low');
         }
         publish(ctx);
@@ -252,10 +353,12 @@
         const driving = d && d.state === 'driving';
         if (driving === s.active) return;
         s.active = driving;
+        if (!driving) endApproach(ctx);
         if (driving) {
             s.driveSince = d.since || ctx.now;
             s.along = {};
             s.last = {};
+            s.appr = null;
             ctx.link(true);
             askReports(ctx, true);
             setLevel(ctx, 'low');
@@ -283,11 +386,13 @@
         name: 'drive-alerts',
         api: 1,
         init(s) {
-            Object.assign(s, { active: false, driveSince: 0, mode: '', direction: '', level: 'off', feed: '', reports: {}, reportsAt: 0, places: null, area: { box: null, items: [] }, along: {}, last: {}, alerted: {}, asking: {}, outSig: '' });
+            Object.assign(s, { active: false, driveSince: 0, mode: '', direction: '', level: 'off', feed: '', reports: {}, reportsAt: 0, places: null, area: { box: null, items: [] }, along: {}, last: {}, alerted: {}, asking: {}, outSig: '', hostOps: [], appr: null });
         },
         on: {
-            start(ctx) {
+            start(ctx, d) {
                 const s = ctx.state;
+                s.hostOps = d && d.host && Array.isArray(d.host.ops) ? d.host.ops.map(String) : [];
+                if (!canApproach(s)) s.appr = null;
                 // the host starts with no position and no feed: what this state asked for is asked again
                 if (s.active) ctx.link(true);
                 const level = s.level; s.level = 'off'; if (s.active) setLevel(ctx, level === 'off' ? 'low' : level);

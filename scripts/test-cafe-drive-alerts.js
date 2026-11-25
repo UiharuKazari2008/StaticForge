@@ -93,4 +93,79 @@ assert.deepStrictEqual(ops(a, 'link').map((x) => x.on), [false], 'parked lets th
 a = send('fix', { lat: 0.1, lon: 0.505, accuracyM: 10 });
 assert.strictEqual(a.length, 0, 'not driving: fixes do nothing');
 
+// ---------------------------------------------------------------- #1124 the camera approach
+const lib = g.CafeTasks.lib.drive;
+const MPH = 0.44704;
+const near = (x, y, e = 0.001) => assert.ok(Math.abs(x - y) <= e, `${x} != ${y}`);
+near(lib.parseLimit('50'), 50 / 3.6);
+near(lib.parseLimit('30 mph'), 30 * MPH);
+near(lib.parseLimit('50 km/h'), 50 / 3.6);
+near(lib.parseLimit('GB:nsl_single'), 60 * MPH);
+near(lib.parseLimit('GB:nsl_dual'), 70 * MPH);
+near(lib.parseLimit('GB:motorway'), 70 * MPH);
+near(lib.parseLimit('50;30'), 50 / 3.6);
+['none', 'signals', 'walk', '', null, undefined, 'foo'].forEach((v) => assert.strictEqual(lib.parseLimit(v), null, String(v)));
+assert.strictEqual(lib.mph(21.3), '48 mph');
+assert.strictEqual(lib.mph(null), '');
+let tp = lib.tonePlan(0, 20, 20);
+assert.strictEqual(tp.periodMs, 1400);
+assert.strictEqual(lib.tonePlan(1, 20, 20).periodMs, 600);
+assert.strictEqual(tp.speedPeriodMs, tp.periodMs, 'at the limit: locked');
+tp = lib.tonePlan(0.5, 24, 20);
+assert.strictEqual(tp.periodMs, 1000);
+assert.strictEqual(tp.speedPeriodMs, Math.round(1000 * 20 / 24), '20 % over');
+assert.strictEqual(lib.tonePlan(0.5, 60, 20).speedPeriodMs, 500, '3x over clamps at half the period');
+assert.strictEqual(lib.tonePlan(0.5, 20.2, 20).speedPeriodMs, 1000, 'within 2 %: locked');
+tp = lib.tonePlan(0.5, 30, null);
+assert.strictEqual(tp.limitHz, 0);
+assert.strictEqual(tp.speedPeriodMs, tp.periodMs);
+assert.deepStrictEqual([tp.speedHz, tp.gain, tp.toneMs], [880, 0.35, 260]);
+assert.strictEqual(lib.tonePlan(0.5, 30, 20).limitHz, 587.33);
+const ap = lib.approachOf({ id: 'c', label: 'Red light camera', street: 'A38', maxspeed: '50' }, 800, 1600, { speed: 25 });
+assert.strictEqual(ap.limitText, '31');
+assert.strictEqual(ap.progress, 0.5);
+assert.strictEqual(ap.title, 'Red light camera ahead');
+assert.strictEqual(ap.speedText, '56 mph');
+assert.strictEqual(ap.over, true);
+assert.strictEqual(ap.distText, '0.5 mi');
+
+function drive(hostData, fixes, areaReply) {
+    g = load(); state = null; first = true;
+    send('start', hostData);
+    send('drive', { state: 'driving', since: 1000 });
+    send('reply', { tag: 'reports', ok: true, data: { settings: { home: { lat: 0, lon: 0 }, work: { lat: 0.2, lon: 0 }, radiusKm: 1 }, latest: { work: report('work'), home: report('home') } } });
+    if (areaReply) { send('fix', { lat: 0.1, lon: 0.5, accuracyM: 10, speed: 20, heading: 90 }); send('reply', { tag: 'area', ok: true, data: areaReply }); }
+    return fixes.map((f) => send('fix', Object.assign({ accuracyM: 10, speed: 20, heading: f.lon ? 90 : 0 }, f)));
+}
+const routeFixes = [0.03, 0.0675, 0.0700, 0.0750, 0.0800, 0.0850, 0.0900].map((lat) => ({ lat, lon: 0 }));
+// cam40 is at 8896 m = lat 0.0800; 1 mi before it is lat 0.0655
+let res = drive({ host: { api: 1, ops: ['approach'] } }, routeFixes);
+const all = [].concat(...res);
+assert.strictEqual(ops(all, 'notify').length, 0, 'the overlay replaces the notification');
+const aps = ops(all, 'approach').map((x) => x.approach);
+const live = aps.filter((x) => x);
+assert.ok(live.length >= 4, 'an approach on each fix within a mile');
+assert.ok(live.every((x) => x.id === 'cam40' && x.limitText === '45' && x.street === 'Main St'));
+for (let i = 1; i < live.length; i++) assert.ok(live[i].progress > live[i - 1].progress, 'progress grows');
+assert.ok(live[0].progress < 0.05 && live[0].spanM > 1000 && live[0].spanM <= 1610);
+assert.strictEqual(aps.filter((x) => x === null).length, 1, 'one null once it is passed');
+assert.strictEqual(aps[aps.length - 1], null);
+// a drive that ends sends the null
+res = drive({ host: { api: 1, ops: ['approach'] } }, routeFixes.slice(0, 3));
+a = send('drive', { state: 'parked_in_car', since: 5000 });
+assert.deepStrictEqual(ops(a, 'approach').map((x) => x.approach), [null], 'the drive ends the approach');
+// an old host: the notification, no approach
+res = drive({}, routeFixes);
+assert.strictEqual(ops([].concat(...res), 'approach').length, 0);
+assert.deepStrictEqual(ops([].concat(...res), 'notify').map((x) => x.id), ['cam40']);
+// area mode
+const osm = { box: { s: 0, w: 0.375, n: 0.25, e: 0.625 }, cameras: [{ id: 'osm1', label: 'Speed camera', lat: 0.1, lon: 0.51, maxspeed: '30 mph' }], police: [] };
+res = drive({ host: { api: 1, ops: ['approach'] } }, [0.4975, 0.5, 0.505, 0.5095, 0.5105, 0.512, 0.516].map((lon) => ({ lat: 0.1, lon })), osm);
+const aall = [].concat(...res);
+assert.strictEqual(ops(aall, 'notify').length, 0);
+const aaps = ops(aall, 'approach').map((x) => x.approach);
+assert.ok(aaps.filter((x) => x).length >= 3 && aaps.filter((x) => x).every((x) => x.id === 'osm1' && x.limitText === '30'));
+assert.strictEqual(aaps.filter((x) => x === null).length, 1);
+assert.strictEqual(aaps[aaps.length - 1], null);
+
 console.log('test-cafe-drive-alerts: ok');

@@ -11,7 +11,8 @@
  *
  * A task: CafeTasks.define({ name, api, init(state), on: { <event>: (ctx, data) => {} } }).
  * Events from the host:
- *   start {}                    the task was loaded (app start, the host woke it)
+ *   start { host? }             the task was loaded (app start, the host woke it); host: { api, ops: [string] } what the host can do beyond
+ *                               the basics ('approach' = ctx.approach); an older app sends {} and the task keeps its old behaviour
  *   link { connected }          the CaféReady link (Melaton Café Miniport) came up / went
  *   drive { ...getDriveState }  the app's drive state changed (DSApp DriveState)
  *   fix { lat, lon, accuracyM, speed, heading, at }   a position, only while the task asked for one
@@ -24,6 +25,7 @@
  *   notify({ id, kind, title, text, sound?, strikes? }) (sound: a name of the app's sound set; strikes: play it that many times), location('off' | 'low' | 'high'), request(type, data, tag),
  *   subscribe([type]) (broadcast types it hears as push), feed(name, on) (statusHub feeds), output(obj)
  *   (what the app's native parts and the page read), timer(ms) (one, inexact, never repeating; 0 cancels),
+ *   approach(a | null) (the camera approach overlay and tones, only when host.ops has 'approach'; null ends it; shape: #1124 contract),
  *   log(text).
  * Host -> runtime: CafeTasks.dispatch(name, eventType, dataJson, stateJson?) -> JSON
  *   { patch?: { key: value } (the state's top-level keys that changed), drop?: [key] (keys removed),
@@ -94,6 +96,7 @@
             feed: (feed, on) => actions.push({ op: 'feed', feed: String(feed), on: !!on }),
             output: (o) => actions.push({ op: 'output', output: o || {} }),
             timer: (ms) => actions.push({ op: 'timer', ms: Math.max(0, Math.round(Number(ms) || 0)) }),
+            approach: (a) => actions.push({ op: 'approach', approach: a == null ? null : a }),
             log: (text) => actions.push({ op: 'log', text: String(text) })
         };
         let error;
