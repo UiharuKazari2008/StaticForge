@@ -191,6 +191,8 @@
     }
 
     function tabIcon(tab) {
+        // the page's own icon when the session kept its address (never an inline picture, no-base64-images)
+        if (tab.icon && !/^data:/i.test(String(tab.icon))) return esc(tab.icon);
         if (tab.kind === 'alchemy') return `${IE_ART}/page-ie.png`;
         return BOOKS_ICON;
     }
@@ -311,7 +313,7 @@
 
     /** The tab's back list as it was: web entries (wiki pages keep only their address). */
     function applyHistory(win, tabObj, data) {
-        const list = (data.history || []).filter((h) => h && h.url && h.type === 'web').map((h) => ({ type: 'web', url: h.url, title: h.title || h.url }));
+        const list = (data.history || []).filter((h) => h && h.url && h.type === 'web').map((h) => ({ type: 'web', url: h.url, title: h.title || h.url, favicon: h.icon || undefined }));
         if (list.length < 2) return;
         const shell = !win.tabs || win.tabs.isActive(tabObj) ? win : tabObj.state;
         if (!shell) return;
@@ -321,7 +323,11 @@
         if (shell === win && typeof win.updateNavigationButtons === 'function') win.updateNavigationButtons();
     }
 
-    /** Restore's windows into Grimoire: the first one into the main window if it is closed, the rest as new windows. */
+    /**
+     * Restore's windows into Grimoire: the first one into the main window if it is closed, the rest as new windows.
+     * Only the tab that was on show loads; every other tab is added asleep (grimoireTabs.js addSleeping), shown with
+     * its icon and title and dimmed, and loads when it is opened.
+     */
     async function restoreWindows(windows) {
         if (!windows.length) return;
         if (root.featureLoader) await root.featureLoader.loadFeature('grimoire');
@@ -329,6 +335,8 @@
             const data = windows[w];
             const tabs = data.tabs || [];
             if (!tabs.length) continue;
+            const activeAt = Math.max(0, tabs.findIndex((tab) => tab.active));
+            const lead = tabs[activeAt];
             const all = typeof root.grimoireAllWindows === 'function' ? root.grimoireAllWindows() : [];
             const main = all[0];
             const mainClosed = main && main.modal && (main.modal.classList.contains('hidden') || main.modal.classList.contains('hidden-alt'));
@@ -337,23 +345,27 @@
                 main.open('', { skipInitialHome: true });
                 win = main;
                 await wait(60);
-                if (win.tabs) win.tabs.load(targetOf(tabs[0]));
-                else win.navigate(tabs[0].url);
+                if (win.tabs) win.tabs.load(targetOf(lead));
+                else win.navigate(lead.url);
             } else if (typeof TagWikiSearchModal !== 'undefined' && TagWikiSearchModal.openNewWindow) {
                 // eslint-disable-next-line no-undef
-                win = await TagWikiSearchModal.openNewWindow(targetOf(tabs[0]));
+                win = await TagWikiSearchModal.openNewWindow(targetOf(lead));
                 await wait(80);
             }
             if (!win) continue;
-            const made = [win.tabs ? win.tabs.active : null];
-            for (let t = 1; t < tabs.length; t += 1) {
-                if (win.tabs && win.tabs.available()) made.push(win.tabs.open(targetOf(tabs[t])));
+            const strip = !!(win.tabs && win.tabs.available());
+            const leadTab = win.tabs ? win.tabs.active : null;
+            // the history is applied once the page has made its first entry; a single entry needs nothing
+            if (leadTab && (lead.history || []).filter((h) => h && h.type === 'web' && h.url).length > 1) {
+                await wait(700);
+                applyHistory(win, leadTab, lead);
+            }
+            const lead0 = strip ? win.tabs.list().indexOf(leadTab) : 0;
+            for (let t = 0; t < tabs.length; t += 1) {
+                if (t === activeAt) continue;
+                if (strip) win.tabs.addSleeping(tabs[t], { at: lead0 + t });
                 else if (typeof root.grimoireOpenStandaloneWindow === 'function' && targetOf(tabs[t]).url) root.grimoireOpenStandaloneWindow(tabs[t].url, tabs[t].session || null);
             }
-            await wait(700);
-            tabs.forEach((tab, i) => { if (made[i] && win.tabs) applyHistory(win, made[i], tab); });
-            const activeAt = tabs.findIndex((tab) => tab.active);
-            if (win.tabs && activeAt >= 0 && made[activeAt]) win.tabs.activate(made[activeAt]);
         }
         if (root.browsingSessions) root.browsingSessions.changed();
     }

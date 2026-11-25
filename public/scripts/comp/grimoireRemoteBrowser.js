@@ -2459,97 +2459,247 @@ function grimoireShowBrowserUnavailable(host, shell, url) {
     host.finishGrimoireNavigationLoading();
 }
 
+// ---- opens in flight: the page lands in the tab that asked for it ----
+// A tab asks for its page, the session takes a moment, and the user may be on another tab by then (grimoireTabs.js
+// swaps the page state of the window into that tab's state object). The open remembers its tab and writes there.
+// Marker for an open in flight: a WeakMap keyed by the asking tab (left page) or the right pane object, both of
+// which survive the PAGE_KEYS swap (a window property such as _grimoireOpeningUrl would move with the swap).
+// one name on the page for all of it (rule app-scope-ownership); maxMs: an open that has not landed after this
+// long no longer counts as in flight (a hung request)
+const grimoireRemoteOpen = { openings: new WeakMap(), token: 0, maxMs: 30000 };
+
+// Who a shell is: { shell, tab, tabs, side, key }. tab is the tab that owns the page (the window's tab on show for
+// the window itself, its right pane or a background tab's state), null for a window without tabs.
+grimoireRemoteOpen.owner = function (shell, host, askTab) {
+    const tabs = host && host.tabs;
+    const owner = { shell, tab: null, tabs: null, side: 'left', key: shell };
+    if (!shell || !tabs || typeof tabs.backgroundTabOf !== 'function') return owner;
+    if (shell === host) {
+        owner.tab = askTab || tabs.active;
+        owner.tabs = tabs;
+        owner.key = owner.tab;
+        return owner;
+    }
+    if (shell === host.rightPane) {
+        owner.tab = tabs.active;
+        owner.tabs = tabs;
+        owner.side = 'right';
+        return owner;
+    }
+    const tab = tabs.backgroundTabOf(shell);
+    if (tab) {
+        owner.tab = tab;
+        owner.tabs = tabs;
+        owner.side = tabs.sideOf(tab, shell);
+        owner.key = owner.side === 'right' ? shell : tab;
+    }
+    return owner;
+};
+
+// Where the asking page is now: { shell, front } (front: its tab is on show, so shell is the window or its right
+// pane), or null when the page is gone (its tab or window closed).
+grimoireRemoteOpen.target = function (owner, host) {
+    const tab = owner.tab;
+    if (!tab || !owner.tabs) {
+        const area = owner.shell && owner.shell.displayArea;
+        return !area || area.isConnected === false ? null : { shell: owner.shell, front: true };
+    }
+    const tabs = owner.tabs;
+    if (tabs.list().indexOf(tab) < 0 || (host.modal && host.modal.isConnected === false)) return null;
+    if (tabs.active === tab) {
+        if (owner.side === 'right') return host.rightPane === owner.shell ? { shell: owner.shell, front: true } : null;
+        return { shell: host, front: true };
+    }
+    if (!tab.state) return null;
+    if (owner.side === 'right') return tab.state.rightPane === owner.shell ? { shell: owner.shell, front: false } : null;
+    return { shell: tab.state, front: false };
+};
+
+/** The address of the open in flight for this page (a tab's page that is being opened), '' when none. */
+grimoireRemoteOpen.opening = function (shell) {
+    const rec = shell ? grimoireRemoteOpen.openings.get(grimoireRemoteOpen.owner(shell, grimoireHostOf(shell)).key) : null;
+    return rec && Date.now() - rec.at < grimoireRemoteOpen.maxMs ? rec.url : '';
+};
+window.grimoireRemoteOpening = grimoireRemoteOpen.opening;
+
+// A session nobody will show (its tab went, or a newer open took its place) is let go.
+grimoireRemoteOpen.discard = function (payload) {
+    const id = payload && payload.sessionId;
+    if (!id) return;
+    if (payload.local === true) {
+        if (window.dreamosPortal) window.dreamosPortal.sessionClosed(id);
+        return;
+    }
+    fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id), {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        keepalive: true
+    }).catch(() => {});
+};
+
+// opts.tab: the tab that asked, when it is not the one on show (a tab that wakes its page after the user moved on)
 async function grimoireOpenRemoteBrowser(shell, url, options) {
     const opts = options || {};
     const host = opts.host || shell;
     const webUrl = grimoireNormalizeWebUrl(url);
     if (!shell || !shell.displayArea || (!webUrl && !opts.session)) return;
 
+    const owner = grimoireRemoteOpen.owner(shell, host, opts.tab);
+    const first = grimoireRemoteOpen.target(owner, host);
+    if (!first) {
+        // its tab or window is gone: a session that came with the call belongs to nobody
+        grimoireRemoteOpen.discard(opts.session);
+        return;
+    }
+    const front = first.front;
+    // the page and its state are the asking tab's: the window itself while the tab shows, else its state object
+    shell = first.shell;
+
+    // the same page is already on its way (a tab shown again while it loads asks once more): that one lands
+    const flying = grimoireRemoteOpen.openings.get(owner.key);
+    if (flying && !opts.session && opts.skipHistory && flying.url === webUrl && Date.now() - flying.at < grimoireRemoteOpen.maxMs) {
+        if (front) grimoireStartNavigationSpinner(host, webUrl, true);
+        return;
+    }
+
     grimoireBindRemoteBrowserMessages();
     shell._browsingTransferred = null;
     if (shell.displayArea) shell.displayArea.querySelectorAll(':scope > .grimoire-transferred').forEach((el) => el.remove());
-    // exitAddressEdit / setNavigationLoading: public/scripts/comp/tagWikiSearchModal.js
-    host.exitAddressEdit();
-    grimoireStartNavigationSpinner(host, webUrl, true);
-    host.setAddress({ displayUrl: webUrl, mode: grimoireWebMode(webUrl) }, { force: shell !== host });
+    if (front) {
+        // exitAddressEdit / setNavigationLoading: public/scripts/comp/tagWikiSearchModal.js
+        host.exitAddressEdit();
+        grimoireStartNavigationSpinner(host, webUrl, true);
+        host.setAddress({ displayUrl: webUrl, mode: grimoireWebMode(webUrl) }, { force: shell !== host });
+    }
 
     // deactivateDsapOnShell: public/scripts/comp/dsapRegistry.js
     deactivateDsapOnShell(shell);
-    host._searchPageMode = false;
-    if (host.searchBody) host.searchBody.classList.remove('search-page-view');
+    if (front) {
+        host._searchPageMode = false;
+        if (host.searchBody) host.searchBody.classList.remove('search-page-view');
+    } else {
+        shell._searchPageMode = false;
+    }
 
     const existing = grimoireRemoteFrame(shell);
     if (existing && existing.contentWindow && shell._grimoireRemoteSessionId) {
         existing.contentWindow.postMessage({ type: 'grimoire-browser-navigate', url: webUrl }, '*');
-        if (!opts.skipHistory) {
-            shell.addToHistory({ type: 'web', url: webUrl, title: webUrl });
-        }
-        host.updateNavigationButtons();
+        if (!opts.skipHistory) grimoirePushWebEntry(shell, { type: 'web', url: webUrl, title: webUrl });
+        if (front) host.updateNavigationButtons();
+        else if (host.tabs) host.tabs.emit();
         return;
     }
 
     grimoireCloseRemoteBrowser(shell);
 
-    let payload = opts.session;
-    if (!payload) {
-        const create = () => fetch('/api/grimoire-browser/sessions', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url: webUrl,
-                width: Math.max(320, shell.displayArea.clientWidth || 1280),
-                height: Math.max(240, shell.displayArea.clientHeight || 800),
-                // the page loads at this screen's pixel ratio from the start (Alchemy 1:1 frames, #990)
-                pixelRatio: window.devicePixelRatio || 1,
-                popup: !!opts.popup,
-                // every session this window makes stays private (a reopened page too)
-                isolated: shell._alchemyIsolated === true || undefined,
-                // the device, IE window and tab that own the page (#756; browsingSessions.js)
-                owner: window.browsingSessions ? window.browsingSessions.ownerForShell(shell) : null
-            })
-        });
-        let response;
-        try {
-            response = await create();
-            // the service's session cap: a background tab gives its session up (grimoireTabs.js freeSession),
-            // the window used longest ago first (#615)
-            if (response.status === 429 && !opts.popup) {
-                const windows = grimoireFullWindows().filter((win) => win.tabs).sort((a, b) => (a.lastActive || 0) - (b.lastActive || 0));
-                for (const win of windows) {
-                    if (await win.tabs.freeSession()) {
-                        response = await create();
-                        break;
+    // the size is read now: a tab behind has no size of its own
+    const width = Math.max(320, shell.displayArea.clientWidth || 1280);
+    const height = Math.max(240, shell.displayArea.clientHeight || 800);
+    // read for the asking page now too (the window's flag and the tab that owns the page)
+    const isolated = owner.shell._alchemyIsolated === true || undefined;
+    const ownerInfo = window.browsingSessions ? window.browsingSessions.ownerForShell(shell) : null;
+    const rec = { url: webUrl || '(session)', at: Date.now(), token: ++grimoireRemoteOpen.token, skipHistory: !!opts.skipHistory };
+    grimoireRemoteOpen.openings.set(owner.key, rec);
+    // where the page goes now: null when its tab went or a newer open for the same page took over
+    const landing = () => (grimoireRemoteOpen.openings.get(owner.key) === rec ? grimoireRemoteOpen.target(owner, host) : null);
+    try {
+        let payload = opts.session;
+        if (!payload) {
+            const create = () => fetch('/api/grimoire-browser/sessions', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url: webUrl,
+                    width,
+                    height,
+                    // the page loads at this screen's pixel ratio from the start (Alchemy 1:1 frames, #990)
+                    pixelRatio: window.devicePixelRatio || 1,
+                    popup: !!opts.popup,
+                    // every session this window makes stays private (a reopened page too)
+                    isolated,
+                    // the device, IE window and tab that own the page (#756; browsingSessions.js)
+                    owner: ownerInfo
+                })
+            });
+            let response;
+            try {
+                response = await create();
+                // the service's session cap: a background tab gives its session up (grimoireTabs.js freeSession),
+                // the window used longest ago first (#615)
+                if (response.status === 429 && !opts.popup) {
+                    const windows = grimoireFullWindows().filter((win) => win.tabs).sort((a, b) => (a.lastActive || 0) - (b.lastActive || 0));
+                    for (const win of windows) {
+                        if (await win.tabs.freeSession()) {
+                            response = await create();
+                            break;
+                        }
                     }
                 }
+            } catch (e) {
+                const at = landing();
+                if (at) grimoireRemoteOpen.failed(at, host, webUrl, opts);
+                return;
             }
-        } catch (e) {
-            grimoireShowBrowserUnavailable(host, shell, webUrl);
-            return;
+            try { payload = await response.json(); } catch (e) { payload = {}; }
+            if (!response.ok || !payload.viewUrl) {
+                const at = landing();
+                if (at) grimoireRemoteOpen.failed(at, host, webUrl, opts);
+                return;
+            }
         }
-        try { payload = await response.json(); } catch (e) { payload = {}; }
-        if (!response.ok || !payload.viewUrl) {
-            grimoireShowBrowserUnavailable(host, shell, webUrl);
-            return;
-        }
-    }
 
-    shell._grimoireRemoteSessionId = payload.sessionId || '';
+        const at = landing();
+        if (!at) {
+            grimoireRemoteOpen.discard(payload);
+            return;
+        }
+        grimoireRemoteOpen.land(at, host, webUrl, payload, opts);
+    } finally {
+        if (grimoireRemoteOpen.openings.get(owner.key) === rec) grimoireRemoteOpen.openings.delete(owner.key);
+    }
+}
+
+// The open failed: the tab on show says so; a tab behind keeps its address and tries again when it shows
+// (grimoireTabs.js resume opens a web page without a session).
+grimoireRemoteOpen.failed = function (at, host, webUrl, opts) {
+    if (at.front) {
+        grimoireShowBrowserUnavailable(host, at.shell, webUrl);
+        return;
+    }
+    if (!opts.skipHistory && webUrl) grimoirePushWebEntry(at.shell, { type: 'web', url: webUrl, title: webUrl });
+    if (host.tabs) host.tabs.emit();
+};
+
+// The session's viewer goes into the page's own display area (the window's, or the state object's of a tab behind).
+grimoireRemoteOpen.land = function (at, host, webUrl, payload, opts) {
+    const target = at.shell;
+    target._grimoireRemoteSessionId = payload.sessionId || '';
     // a session the laptop's own host runs (DreamOS, dreamosPortal.js): same viewer, served by the host
-    shell._grimoireLocalAlchemy = payload.local === true;
-    shell._grimoireRemoteViewQuery = String(payload.viewUrl || '').split('?')[1] || '';
-    shell.displayArea.innerHTML = '';
+    target._grimoireLocalAlchemy = payload.local === true;
+    target._grimoireRemoteViewQuery = String(payload.viewUrl || '').split('?')[1] || '';
+    target.displayArea.innerHTML = '';
     const frame = document.createElement('iframe');
     frame.src = payload.viewUrl;
     frame.setAttribute('title', 'Web');
     frame.setAttribute('referrerpolicy', 'no-referrer');
     frame.setAttribute('allow', 'autoplay; clipboard-read; clipboard-write');
-    shell.displayArea.appendChild(frame);
-    grimoireSetAudioShell(shell);
-
-    if (!opts.skipHistory && webUrl) {
-        shell.addToHistory({ type: 'web', url: webUrl, title: webUrl });
+    target.displayArea.appendChild(frame);
+    if (at.front) {
+        grimoireSetAudioShell(target);
+    } else {
+        // a viewer that connects behind another tab is not captured (#756); its 'ready' says so too (grimoireBackgroundRemoteMessage)
+        frame.addEventListener('load', () => {
+            if (host.tabs && host.tabs.backgroundTabOf(target) && typeof GrimoireTabs !== 'undefined') GrimoireTabs.postVisibility(target, true);
+        });
+        if (webUrl) {
+            target.currentAddress = { fullUrl: webUrl, displayPath: webUrl, mode: grimoireWebMode(webUrl) };
+            target._currentAddress = { displayUrl: webUrl, fullUrl: webUrl, mode: grimoireWebMode(webUrl) };
+        }
     }
-    shell.blank = false;
-    host.updateNavigationButtons();
-}
+
+    if (!opts.skipHistory && webUrl) grimoirePushWebEntry(target, { type: 'web', url: webUrl, title: webUrl });
+    target.blank = false;
+    if (at.front) host.updateNavigationButtons();
+    else if (host.tabs) host.tabs.emit();
+};

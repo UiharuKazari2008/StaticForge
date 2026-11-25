@@ -95,13 +95,21 @@ function settings() {
 
 // ---- shapes ----
 
+/** A favicon address: a same-origin path or an https URL, never a data: string (rule no-base64-images). */
+function cleanIcon(value) {
+    const icon = text(value, 2001);
+    if (icon.length > 2000) return '';
+    if (/^\/[^/\\]/.test(icon) || /^https:\/\/[^\s]/i.test(icon)) return icon;
+    return '';
+}
+
 function cleanHistory(list) {
     const out = [];
     for (const entry of Array.isArray(list) ? list.slice(-MAX_HISTORY) : []) {
         if (!entry || typeof entry !== 'object') continue;
         const url = text(entry.url || entry.address, 2000);
         if (!url) continue;
-        out.push({ type: entry.type === 'web' ? 'web' : text(entry.type || 'page', 16), url, title: text(entry.title, 300) });
+        out.push({ type: entry.type === 'web' ? 'web' : text(entry.type || 'page', 16), url, title: text(entry.title, 300), icon: cleanIcon(entry.icon) });
     }
     return out;
 }
@@ -121,7 +129,7 @@ function cleanTab(raw) {
         alchemyId,
         url: text(raw.url || (top && top.url) || '', 2000),
         title: text(raw.title || (top && top.title) || '', 300),
-        icon: text(raw.icon, 2000),
+        icon: cleanIcon(raw.icon) || (top && top.icon) || '',
         history,
         historyIndex,
         active: !!raw.active

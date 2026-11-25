@@ -6157,7 +6157,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
                     const note = page && page.querySelector('.grimoire-nav-error-detail');
                     if (note) note.textContent = 'Alchemy is starting. This page opens again by itself in a moment.';
                     setTimeout(() => {
-                        if (page && page.isConnected && !page.closest('[hidden]')) retryNow();
+                        // not for a page in a tab behind (retryNow works on this window's tab on show; the tab opens it when shown)
+                        if (page && page.isConnected && !page.closest('[hidden]') && (!this.displayArea || this.displayArea.contains(page))) retryNow();
                     }, wait);
                 }
             }
@@ -6726,8 +6727,25 @@ class TagWikiSearchModal extends WikiDisplayBase {
         return win;
     }
 
+    /**
+     * A web page whose Alchemy session is gone (suspended, freed to the session cap or closed) is still the page of
+     * its history entry: Refresh opens its address again in the same tab, not the Grimoire home. True when it
+     * opened or an open for this page is already on its way (that one lands; no second session).
+     */
+    reopenDeadWebPage(pane) {
+        const entry = pane && pane.history && pane.history[pane.historyIndex];
+        const url = entry && entry.url;
+        // grimoireNormalizeWebUrl / grimoireRemoteOpening / grimoireOpenRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
+        if (!entry || !url || (entry.type !== 'web' && entry.type !== 'nav-error') || !grimoireNormalizeWebUrl(url)) return false;
+        if (grimoireRemoteOpening(pane)) return true;
+        grimoireOpenRemoteBrowser(pane, url, { host: this, skipHistory: true });
+        return true;
+    }
+
     async refreshToolbar() {
         const p = this.activePane;
+        // the open the page starts runs its own spinner (grimoireStartNavigationSpinner)
+        let opening = false;
         if (p !== this) {
             // Right pane (split): best-effort refresh using the pane's own state.
             // Most right-pane usage is wiki pages or static docs.
@@ -6735,6 +6753,10 @@ class TagWikiSearchModal extends WikiDisplayBase {
             try {
                 // grimoireRemoteBrowserReload: public/scripts/comp/grimoireRemoteBrowser.js
                 if (grimoireRemoteBrowserReload(p)) return;
+                if (this.reopenDeadWebPage(p)) {
+                    opening = true;
+                    return;
+                }
 
                 const tag = (typeof p.getCurrentTagName === 'function') ? p.getCurrentTagName() : null;
                 if (tag && typeof p.refreshFromOnline === 'function') {
@@ -6754,7 +6776,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                     }
                 }
             } finally {
-                this.setNavigationLoading(false);
+                if (!opening) this.setNavigationLoading(false);
             }
             return;
         }
@@ -6769,6 +6791,11 @@ class TagWikiSearchModal extends WikiDisplayBase {
         try {
             // grimoireRemoteBrowserReload: public/scripts/comp/grimoireRemoteBrowser.js
             if (grimoireRemoteBrowserReload(p)) return;
+            // a web page without its session opens again (a dead tab: never the home or the search box's query)
+            if (this.reopenDeadWebPage(p)) {
+                opening = true;
+                return;
+            }
 
             // Wiki tag page? Use getter (currentSelectedTag may be set even if currentTagName is not after some restores)
             let tag = this.getCurrentTagName();
@@ -6835,6 +6862,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                     return;
                 }
                 if (entry.type === 'nav-error' && entry.url) {
+                    // (a nav-error entry of a web address was reopened above)
                     this.showGrimoireNavigateErrorPage({
                         url: entry.url,
                         kind: entry.kind || 'not_found',
@@ -6866,7 +6894,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         } finally {
             // Slight delay so the nav loading state is visible even for fast synchronous contexts (home, static re-fetch).
             // For search-page refreshes we schedule a longer delay above before returning.
-            setTimeout(() => this.setNavigationLoading(false), 90);
+            if (!opening) setTimeout(() => this.setNavigationLoading(false), 90);
         }
     }
     

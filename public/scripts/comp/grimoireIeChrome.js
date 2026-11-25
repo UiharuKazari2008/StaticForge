@@ -1080,6 +1080,8 @@
         }
 
         backgroundTabInfo(tab) {
+            // a restored tab still asleep (grimoireTabs.js addSleeping): the server's title and icon, nothing loaded (#1116)
+            if (tab.sleeping && tab.sleepInfo) return { title: tab.sleepInfo.title || 'Grimoire', icon: tab.sleepInfo.icon || `${ART}/page-ie.png`, loading: false };
             const pane = this.host.tabs.paneOf(tab) || {};
             const entry = pane.history ? pane.history[pane.historyIndex] : null;
             const label = entry && typeof this.host.getHistoryEntryDisplayText === 'function'
@@ -1120,6 +1122,8 @@
                 setIf(el, 'title', info.title);
                 el.classList.toggle('is-active', active);
                 el.classList.toggle('is-loading', info.loading);
+                // asleep or suspended: icon and title dimmed until the tab is opened (#1116)
+                el.classList.toggle('is-sleeping', !!(tabs && typeof tabs.isDimmed === 'function' && tabs.isDimmed(tab)));
                 if (el.getAttribute('aria-selected') !== (active ? 'true' : 'false')) el.setAttribute('aria-selected', active ? 'true' : 'false');
                 if (active) {
                     this.tabTitle = titleEl;
@@ -1539,8 +1543,16 @@
                 if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'grimoire-browser-reload' }, '*');
                 else if (list.length === 1) showAndRefresh = tab;
             });
-            if (showAndRefresh) tabs.activate(showAndRefresh);
-            if (showAndRefresh || list.some((tab) => tabs.isActive(tab))) {
+            // a dead tab (asleep, suspended or its page given up) loads its own page when it shows (grimoireTabs.js
+            // activate / resume); a Refresh on top of that opened something else while the page was still coming (#1116)
+            let woken = false;
+            if (showAndRefresh) {
+                const pane = tabs.paneOf(showAndRefresh);
+                const top = pane && pane.history ? pane.history[pane.historyIndex] : null;
+                woken = !!(showAndRefresh.sleeping || showAndRefresh.suspended || (top && top.type === 'web' && !(pane && pane._grimoireRemoteSessionId)));
+                tabs.activate(showAndRefresh);
+            }
+            if (!woken && (showAndRefresh || list.some((tab) => tabs.isActive(tab)))) {
                 if (this.host.refreshBtn) this.host.refreshBtn.click();
             }
         }

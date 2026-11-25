@@ -35,11 +35,24 @@
     // tab suspension (#628): checked every minute; background tabs unused 20 minutes are suspended
     const SUSPEND_CHECK_MS = 60000;
     const DEFAULT_SUSPEND_MINUTES = 20;
+    // what a sleeping tab shows in the strip before its page is known (grimoireIeChrome.js pageFavicon uses the same pictures)
+    const SLEEP_ICON_WEB = '/static_images/vista-ie/page-ie.png';
+    const SLEEP_ICON_GRIMOIRE = '/static_images/app_icons/books.webp';
 
     function show(el, on) {
         if (!el) return;
         if (on) el.style.removeProperty('display');
         else el.style.display = 'none';
+    }
+
+    /** Ends an Alchemy session in the service (grimoireCloseRemoteBrowser does the same for a shell that holds one). */
+    function closeServiceSession(id) {
+        if (!id || typeof root.fetch !== 'function') return Promise.resolve();
+        return Promise.resolve(root.fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id), {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            keepalive: true
+        })).catch(() => {});
     }
 
     class GrimoireTabs {
@@ -117,7 +130,7 @@
             let next = Infinity;
             for (const tab of this.tabs) {
                 if (tab === this.active || !tab.state) continue;
-                const live = [tab.state, tab.state.rightPane].some((shell) => shell && shell._grimoireRemoteSessionId
+                const live = GrimoireTabs.sleepSessionId(tab) || [tab.state, tab.state.rightPane].some((shell) => shell && shell._grimoireRemoteSessionId
                     && !(typeof root.grimoireIsAudioShell === 'function' && root.grimoireIsAudioShell(shell)));
                 if (!live) continue;
                 const due = (tab.lastActive || now) + after;
@@ -162,6 +175,7 @@
             let count = 0;
             for (const tab of this.tabs) {
                 if (tab === this.active || !tab.state || now - (tab.lastActive || now) < after) continue;
+                if (await this.releaseSleepSession(tab)) count += 1;
                 for (const shell of [tab.state, tab.state.rightPane]) {
                     if (!shell || !shell._grimoireRemoteSessionId) continue;
                     if (typeof root.grimoireIsAudioShell === 'function' && root.grimoireIsAudioShell(shell)) continue;
@@ -189,6 +203,28 @@
 
         isActive(tab) {
             return tab === this.active;
+        }
+
+        /** A tab behind that holds no page (restored and not opened yet, or suspended) is drawn dimmed in the strip. */
+        isDimmed(tab) {
+            return !this.isActive(tab) && !!(tab && (tab.sleeping || tab.suspended));
+        }
+
+        /** The Alchemy session id a sleeping tab holds for its page ('' when none). */
+        static sleepSessionId(tab) {
+            const session = tab && tab.sleeping && tab.wake && tab.wake.session;
+            return session && session.sessionId ? String(session.sessionId) : '';
+        }
+
+        /** A sleeping tab gives up the live session it was restored with; it keeps its address and loads again when opened. */
+        async releaseSleepSession(tab) {
+            const id = GrimoireTabs.sleepSessionId(tab);
+            if (!id) return false;
+            tab.wake.session = null;
+            if (tab.state && tab.state._grimoireSleep) tab.state._grimoireSleep.session = null;
+            tab.suspended = true;
+            await closeServiceSession(id);
+            return true;
         }
 
         /** Tabs need the strip: IE7's chrome on the Vista desktop (grimoireIeChrome.js). */
@@ -306,6 +342,8 @@
             if (typeof root.grimoireRetargetAudio === 'function') root.grimoireRetargetAudio(host, old.state);
 
             const bag = tab.state;
+            // a tab restored asleep loads when it is opened, once (addSleeping)
+            const wake = tab.sleeping ? tab.wake : null;
             this.restore(tab);
             tab.state = null;
             this.active = tab;
@@ -323,7 +361,8 @@
 
             host.syncAddressAndControlsToActive();
             [host, host.rightPane].forEach((shell) => GrimoireTabs.postVisibility(shell, false));
-            this.resume(tab);
+            const woke = wake ? this.wakeTab(tab, bag, wake) : null;
+            this.resume(tab, woke);
             if (host.ieChrome && typeof host.ieChrome.showMemory === 'function') host.ieChrome.showMemory(host.activePane || host);
             // a page that hit its memory limit while behind asks now that it shows
             [host, host.rightPane].forEach((shell) => {
@@ -338,7 +377,7 @@
         }
 
         /** What waited for the tab: a page that failed, a session given up to the cap or a browser restart, the scrollbar, the spinner. */
-        resume(tab) {
+        resume(tab, woke) {
             const host = this.host;
             const shells = [host, host.rightPane].filter(Boolean);
             const pending = tab.pending || {};
@@ -351,6 +390,11 @@
                     root.grimoireShowRemoteTabPage(shell, status.state, status.url);
                     return;
                 }
+                // a tab that woke just now loads its page through wakeTab, not a second time here
+                if (woke && woke === shell) return;
+                // a page still coming for this tab (left and shown again before it arrived) lands on its own
+                // (grimoireRemoteBrowser.js grimoireRemoteOpening); a second open would replace what was typed
+                if (!shell._grimoireRemoteSessionId && typeof root.grimoireRemoteOpening === 'function' && root.grimoireRemoteOpening(shell)) return;
                 if (top && top.type === 'web' && top.url && !shell._grimoireRemoteSessionId) {
                     root.grimoireOpenRemoteBrowser(shell, top.url, { host, skipHistory: true });
                     return;
@@ -390,6 +434,73 @@
 
             this.load(o);
             return tab;
+        }
+
+        /**
+         * A tab added asleep (Restore Session): it sits in the strip with its icon and title, holds no remote
+         * session and no page, and loads when it is opened (activate -> wakeTab). data is a restored tab
+         * ({ kind, url, title, icon, history, historyIndex, session }); opts.at is its place in the strip.
+         */
+        addSleeping(data, opts) {
+            const o = opts || {};
+            const d = data || {};
+            const host = this.host;
+            const made = this.newArea();
+            const leftWraps = this.tabs.map((t) => t.wrap).filter(Boolean);
+            const anchor = leftWraps[leftWraps.length - 1];
+            if (anchor && anchor.parentNode) anchor.after(made.wrap);
+            else if (host.searchBody) host.searchBody.appendChild(made.wrap);
+            const tab = this.makeTab(made.area, made.wrap);
+            const url = String(d.url || '');
+            const web = d.kind === 'alchemy' || (d.kind !== 'grimoire' && /^https?:/i.test(url));
+            const state = this.fresh(made.area);
+            if (web) {
+                const list = (d.history || []).filter((h) => h && h.url && h.type === 'web')
+                    .map((h) => ({ type: 'web', url: h.url, title: h.title || h.url, favicon: h.icon || undefined }));
+                if (!list.length) list.push({ type: 'web', url, title: d.title || url, favicon: d.icon || undefined });
+                let at = list.findIndex((h) => h.url === url);
+                if (at < 0) at = Number.isInteger(d.historyIndex) ? Math.min(Math.max(d.historyIndex, 0), list.length - 1) : list.length - 1;
+                if (!list[at].favicon && d.icon) list[at].favicon = d.icon;
+                state.history = list;
+                state.historyIndex = at;
+                state._grimoireRemoteTitle = d.title || '';
+            } else {
+                state._currentAddress = { fullUrl: url, displayUrl: url };
+            }
+            const session = web && d.session ? d.session : null;
+            state._grimoireSleep = { title: d.title || '', icon: d.icon || '', url: web ? url : '', address: web ? '' : url, session };
+            tab.state = state;
+            tab.sleeping = true;
+            tab.wake = { url: web ? url : '', address: web ? '' : url, session };
+            tab.sleepInfo = { title: d.title || url, icon: d.icon || (web ? SLEEP_ICON_WEB : SLEEP_ICON_GRIMOIRE) };
+            const at = Number.isInteger(o.at) ? Math.min(Math.max(o.at, 0), this.tabs.length) : this.tabs.length;
+            this.tabs.splice(at, 0, tab);
+            made.wrap.style.display = 'none';
+            made.area.addEventListener('mousedown', () => host.setActivePane('left'), true);
+            this.emit();
+            return tab;
+        }
+
+        /**
+         * The page of a tab that was added asleep loads now that it shows (the state is already swapped in).
+         * Returns the shell it loads into so resume() leaves that page alone.
+         */
+        wakeTab(tab, bag, wake) {
+            const host = this.host;
+            tab.sleeping = false;
+            tab.wake = null;
+            tab.sleepInfo = null;
+            if (bag) delete bag._grimoireSleep;
+            if (typeof host.attachWikiDisplayContextMenu === 'function') host.attachWikiDisplayContextMenu();
+            if (wake.url) {
+                // the history came with the tab; a session the service still holds streams as is
+                Promise.resolve(root.grimoireOpenRemoteBrowser(host, wake.url, { host, tab, session: wake.session || null, skipHistory: true })).catch(() => {});
+            } else if (wake.address) {
+                host.navigate(wake.address);
+            } else {
+                return null;
+            }
+            return host;
         }
 
         /** What a tab opens with (open's options), into the tab on show. */
@@ -437,6 +548,9 @@
         /** A background tab goes: its Alchemy sessions end, its applet is torn down, its areas leave the page. */
         dispose(tab) {
             const state = tab.state;
+            // a tab restored asleep may still hold the Alchemy session it came with
+            const sleepId = GrimoireTabs.sleepSessionId(tab);
+            if (sleepId) closeServiceSession(sleepId);
             if (!state) return;
             [state, state.rightPane].filter(Boolean).forEach((shell) => {
                 if (shell._grimoireRemoteSessionId) root.grimoireCloseRemoteBrowser(shell);
@@ -528,9 +642,17 @@
                 .sort((a, b) => a.lastActive - b.lastActive);
             for (const tab of candidates) {
                 const shell = [tab.state, tab.state.rightPane].find((s) => s && s._grimoireRemoteSessionId);
-                if (!shell) continue;
+                if (!shell) {
+                    // a tab restored asleep with its live session: the session goes, the tab keeps its address
+                    if (await this.releaseSleepSession(tab)) {
+                        this.emit();
+                        return true;
+                    }
+                    continue;
+                }
                 tab.snapshot = this.frameSnapshot(shell);
                 await root.grimoireCloseRemoteBrowser(shell);
+                tab.suspended = true;
                 this.emit();
                 return true;
             }

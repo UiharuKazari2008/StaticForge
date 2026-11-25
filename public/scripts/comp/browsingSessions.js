@@ -279,7 +279,8 @@
         return (shell && Array.isArray(shell.history) ? shell.history : []).map((entry) => ({
             type: entry && entry.type === 'web' ? 'web' : 'page',
             url: (entry && (entry.url || (entry.type === 'apocrypha' && entry.url))) || '',
-            title: (entry && (entry.title || (entry.tag && (entry.tag.title || entry.tag.name)))) || ''
+            title: (entry && (entry.title || (entry.tag && (entry.tag.title || entry.tag.name)))) || '',
+            icon: (entry && entry.type === 'web' && entry.favicon) || ''
         }));
     }
 
@@ -298,17 +299,28 @@
                 if (!shell || (shell._browsingTransferred && shell.displayArea && shell.displayArea.querySelector(':scope > .grimoire-transferred'))) return;
                 const history = grimoireHistory(shell);
                 const top = shell.history && shell.history[shell.historyIndex];
-                const url = grimoireAddress(shell);
+                // a sleeping background tab keeps its title, icon, address and Alchemy session in _grimoireSleep (grimoireTabs.js)
+                const sleep = (!active && shell._grimoireSleep) || {};
+                const url = grimoireAddress(shell) || sleep.url || sleep.address || '';
                 if (!url && !history.length) return;
                 // a captive portal's sign-in page (the local Alchemy, dreamosPortal.js) is this laptop's alone: not kept, not offered to other devices
                 if (shell._grimoireLocalAlchemy) return;
+                // the server keeps only entries with an address: the current entry's place is counted inside that list
+                const kept = [];
+                let historyIndex = 0;
+                history.forEach((h, i) => {
+                    if (!h.url) return;
+                    kept.push(h);
+                    if (i <= shell.historyIndex) historyIndex = kept.length - 1;
+                });
                 rows.push({
                     id: winId + ':' + tab.id,
-                    alchemyId: shell._grimoireRemoteSessionId || '',
+                    alchemyId: shell._grimoireRemoteSessionId || (sleep.session && sleep.session.sessionId) || '',
                     url,
-                    title: shell._grimoireRemoteTitle || (top && top.title) || '',
-                    history: history.filter((h) => h.url),
-                    historyIndex: Math.max(0, Math.min(history.filter((h) => h.url).length - 1, shell.historyIndex)),
+                    title: shell._grimoireRemoteTitle || (top && top.title) || sleep.title || '',
+                    icon: (top && top.type === 'web' && top.favicon) || sleep.icon || '',
+                    history: kept,
+                    historyIndex,
                     active
                 });
             });
