@@ -3126,8 +3126,14 @@ function paintGalleryRerollPlaceholder(percent, status, previewData) {
     if (ui.bar) ui.bar.style.width = `${pct}%`;
     if (status && ui.status) ui.status.textContent = status;
     if (previewData && ui.preview) {
-        const src = previewData.startsWith('data:') ? previewData : `data:image/jpeg;base64,${previewData}`;
-        if (ui.preview.src !== src) ui.preview.src = src;
+        // each step's preview is one object URL of the session (no-base64-images), the previous one revoked, the last when the session ends
+        if (s.previewData !== previewData) {
+            const prev = s.previewUrl;
+            s.previewData = previewData;
+            s.previewUrl = typeof base64PictureUrlOnce === 'function' ? base64PictureUrlOnce(previewData, 'image/jpeg') : '';
+            if (s.previewUrl) ui.preview.src = s.previewUrl;
+            if (prev) URL.revokeObjectURL(prev);
+        }
         ui.preview.classList.remove('hidden');
     }
 }
@@ -3423,6 +3429,7 @@ function clearGalleryRerollSession(removePlaceholder) {
         s.ui.root.remove();
     }
     setGalleryRerollLock(false);
+    if (s.previewUrl) URL.revokeObjectURL(s.previewUrl);
     activeGalleryRerollSession = null;
 }
 

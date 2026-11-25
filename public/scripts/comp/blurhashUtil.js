@@ -126,7 +126,7 @@
     const dataUrlCache = new Map();
 
     /**
-     * RGBA pixels -> uncompressed 32-bit BMP data URL. A canvas + toDataURL('image/png') cost
+     * RGBA pixels -> uncompressed 32-bit BMP data URL. A canvas PNG encode cost
      * ~1.6-2.2 ms per hash (PNG encode and readback); this is plain JS. Same pixels either way.
      */
     function pixelsToBmpDataUrl(pixels, width, height) {
@@ -155,6 +155,7 @@
         for (let i = 0; i < bytes.length; i += 8192) {
             binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
         }
+        // no-base64-images: tiny (a 32x32 BMP, about 5 KB; the cache holds at most 400)
         return 'data:image/bmp;base64,' + btoa(binary);
     }
 

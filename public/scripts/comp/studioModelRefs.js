@@ -286,6 +286,7 @@
             const r = new FileReader();
             r.onload = () => resolve(String(r.result).split(',')[1] || '');
             r.onerror = () => reject(r.error);
+            // no-base64-images: transport (the blob is sent to NovelAI / the server for encoding as base64)
             r.readAsDataURL(blob);
         });
     }
@@ -472,7 +473,9 @@
     function saveMask(grid) {
         if (!grid || !grid.width || !grid.height) return false;
         const t = maskTarget();
-        window.currentMaskData = scaled(grid, t.width, t.height).toDataURL('image/png');
+        // no-base64-images: shown once (turned into the object URL setCurrentMaskData keeps, at once)
+        setCurrentMaskData(scaled(grid, t.width, t.height).toDataURL('image/png'));
+        // no-base64-images: transport (the compressed mask is sent to the server as base64)
         window.currentMaskCompressed = scaled(grid, grid.width, grid.height).toDataURL('image/png').replace('data:image/png;base64,', '');
         maskButton(true);
         afterMask();
@@ -480,7 +483,7 @@
     }
 
     function deleteMask() {
-        window.currentMaskData = null;
+        setCurrentMaskData(null);
         window.currentMaskCompressed = null;
         maskButton(false);
         afterMask();

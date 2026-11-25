@@ -89,12 +89,14 @@ function _blobToBase64(blob) {
             resolve(comma >= 0 ? String(dataUrl).slice(comma + 1) : String(dataUrl));
         };
         reader.onerror = () => reject(reader.error || new Error('Failed to read blob'));
+        // no-base64-images: transport (clipboard payload: the bytes are sent over the wire as base64)
         reader.readAsDataURL(blob);
     });
 }
 
 function _stripDataUrlBase64(value) {
     if (!value) return '';
+    // no-base64-images: transport (strips the prefix of a pasted data: URL; decoded to a Blob at once)
     const match = String(value).match(/^data:[^;]+;base64,(.+)$/);
     return match ? match[1] : String(value);
 }
@@ -131,6 +133,7 @@ function _normalizeAndroidItem(item) {
                 normalized.file = new File([normalized.blob], item.name, { type: mime });
             }
         } else if (item.dataUrl && kind === 'image') {
+            // no-base64-images: transport (reads the type of a pasted data: URL; decoded to a Blob at once)
             const mimeMatch = String(item.dataUrl).match(/^data:([^;]+);base64,/);
             const mime = item.mime || (mimeMatch ? mimeMatch[1] : 'image/png');
             const base64 = _stripDataUrlBase64(item.dataUrl);
@@ -216,6 +219,7 @@ function _filesFromClipboardHtml(html) {
     let match;
     while ((match = re.exec(html))) {
         const dataUrl = match[1];
+        // no-base64-images: transport (reads the type of a data: URL pasted as HTML; decoded to a Blob at once)
         const mimeMatch = dataUrl.match(/^data:([^;]+);base64,/);
         const mime = mimeMatch ? mimeMatch[1] : 'image/png';
         const blob = _base64ToBlob(_stripDataUrlBase64(dataUrl), mime);
@@ -256,6 +260,7 @@ async function _buildDreamscapeImagesPayload(list) {
 
 function _dreamscapeImagesToHtml(images) {
     const imgs = images.map((img) =>
+        // no-base64-images: transport (clipboard HTML written for another app; the page never shows this string)
         `<img src="data:${img.mime};base64,${img.base64}" alt="${_escapeClipboardHtml(img.name)}">`
     ).join('');
     return `<html><body><!--dreamscape-images:${images.length}-->${imgs}</body></html>`;

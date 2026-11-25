@@ -229,6 +229,7 @@ async function addImageAsReference(image) {
 function blobToBase64(blob) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
+        // no-base64-images: transport (the blob is sent to the server as base64)
         reader.readAsDataURL(blob);
         reader.onload = () => {
             const base64 = reader.result.split(',')[1]; // Remove data URL prefix

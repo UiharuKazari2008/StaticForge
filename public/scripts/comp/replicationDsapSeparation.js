@@ -259,6 +259,7 @@ async function replicationSepApplyBundle(root) {
                     resolve(base64);
                 };
                 reader.onerror = reject;
+                // no-base64-images: transport (the archive file, not a picture, goes to the server as base64)
                 reader.readAsDataURL(state.archiveFile);
             });
 

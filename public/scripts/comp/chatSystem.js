@@ -50,6 +50,26 @@ function wireChatVerbosityPicker(config) {
 }
 
 class ChatSystem {
+    /**
+     * The persona's photo (stored as base64 in the settings) as ONE object URL shared by every message avatar,
+     * made once per photo and revoked when the photo changes (no-base64-images: the stored base64 is never an img src).
+     */
+    personaAvatarUrl() {
+        const b64 = this.personaSettings && this.personaSettings.profile_photo_base64;
+        if (!b64) return '';
+        if (this._avatarKey === b64 && this._avatarUrl) return this._avatarUrl;
+        if (this._avatarUrl) URL.revokeObjectURL(this._avatarUrl);
+        this._avatarUrl = '';
+        this._avatarKey = b64;
+        try {
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            this._avatarUrl = URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' }));
+        } catch (_) { /* a bad photo: the default avatar */ }
+        return this._avatarUrl;
+    }
+
     constructor() {
         this.currentChatId = null;
         this.pendingChatId = null; // Track chatId being created to handle streaming events early
@@ -556,7 +576,7 @@ class ChatSystem {
             
                 let avatarSrc = '/static_images/icon-96x96.png';
                 if (this.personaSettings?.profile_photo_base64) {
-                    avatarSrc = `data:image/jpeg;base64,${this.personaSettings.profile_photo_base64}`;
+                    avatarSrc = this.personaAvatarUrl() || avatarSrc;
                 }
                 
                 messageElement.innerHTML = `
@@ -1039,7 +1059,7 @@ class ChatSystem {
         
         let avatarSrc = '/static_images/icon-96x96.png';
         if (messageType === 'user' && this.personaSettings?.profile_photo_base64) {
-            avatarSrc = `data:image/jpeg;base64,${this.personaSettings.profile_photo_base64}`;
+            avatarSrc = this.personaAvatarUrl() || avatarSrc;
         } else if (messageType === 'assistant') {
             avatarSrc = localGalleryImageUrl(this.currentFilename);
         }

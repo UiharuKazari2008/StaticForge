@@ -6588,17 +6588,22 @@ class Director {
             }
             const reader = new FileReader();
             reader.onload = () => {
+                // no-base64-images: transport (the attachment's data is sent to the server as base64); the chip's picture is an object URL
                 const raw = String(reader.result || '');
                 const data = raw.includes(',') ? raw.split(',')[1] : raw;
                 const image = (file.type || '').startsWith('image/');
+                // the chip picture is an object URL over the file, revoked by renderAttachChips once its attachment is gone
+                const preview = image ? URL.createObjectURL(file) : '';
+                if (preview) (this._attachPreviewUrls || (this._attachPreviewUrls = new Set())).add(preview);
                 this.pendingAttachments.push({
                     source: 'client',
                     name: file.name,
                     data,
-                    preview: image ? raw : ''
+                    preview
                 });
                 this.renderAttachChips();
             };
+            // no-base64-images: transport (read once to send; the chip picture is an object URL)
             reader.readAsDataURL(file);
         });
     }
@@ -6662,6 +6667,17 @@ class Director {
     }
 
     renderAttachChips() {
+        // chip pictures handed in by other windows (wmPhoneGallery.js, via wmDirectorApp.attach) are object URLs too: adopt them here
+        this.pendingAttachments.forEach((item) => {
+            if (item && typeof item.preview === 'string' && item.preview.startsWith('blob:')) (this._attachPreviewUrls || (this._attachPreviewUrls = new Set())).add(item.preview);
+        });
+        if (this._attachPreviewUrls && this._attachPreviewUrls.size) {
+            // revoke the chip pictures (object URLs) whose attachment left the composer
+            const live = new Set(this.pendingAttachments.map((item) => item && item.preview));
+            this._attachPreviewUrls.forEach((url) => {
+                if (!live.has(url)) { URL.revokeObjectURL(url); this._attachPreviewUrls.delete(url); }
+            });
+        }
         if (!this.directorAttachChips) return;
         const lookbacks = this.lookbacksInComposer();
         this._chipLookbackKey = this.lookbackChipKey(lookbacks);

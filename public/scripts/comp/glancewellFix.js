@@ -597,6 +597,7 @@
     }
 
     const blobOf = (canvas, type, q) => new Promise((resolve) => canvas.toBlob(resolve, type, q));
+    // no-base64-images: transport (the saved picture goes to the server / the file system as base64)
     const b64Of = (blob) => new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, '')); r.onerror = () => resolve(''); r.readAsDataURL(blob); });
 
     async function save(mode) {

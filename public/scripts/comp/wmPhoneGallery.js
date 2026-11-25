@@ -1167,16 +1167,18 @@
             const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = reject; i.src = url; });
             const k = Math.min(1, DIRECTOR_EDGE / Math.max(img.naturalWidth, img.naturalHeight));
             if (k === 1 && file.size < 6 * 1024 * 1024 && /^image\/(png|jpeg|webp|gif)$/.test(file.type)) {
-                const data = await toBase64(file);
-                return { source: 'client', name: file.name, data, preview: `data:${file.type};base64,${data}` }; // no-base64-images: shown once (the Director's attach chip until sent; that chip lives in director.js, outside this change)
+                const data = await toBase64(file); // no-base64-images: transport (the attachment's data goes to the Director as base64)
+                // the chip's picture is an object URL the Director owns: it revokes it when the chip is removed or sent (director.js renderAttachChips)
+                return { source: 'client', name: file.name, data, preview: URL.createObjectURL(file) };
             }
             const c = document.createElement('canvas');
             c.width = Math.round(img.naturalWidth * k);
             c.height = Math.round(img.naturalHeight * k);
             c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-            const preview = c.toDataURL('image/jpeg', 0.9); // no-base64-images: transport + shown once (the Director's attach chip until sent)
+            const jpeg = await new Promise((resolve) => c.toBlob(resolve, 'image/jpeg', 0.9));
+            if (!jpeg) throw new Error('The picture could not be encoded.');
             const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
-            return { source: 'client', name, data: preview.slice(preview.indexOf(',') + 1), preview };
+            return { source: 'client', name, data: await toBase64(jpeg), preview: URL.createObjectURL(jpeg) };
         } finally { URL.revokeObjectURL(url); }
     }
 

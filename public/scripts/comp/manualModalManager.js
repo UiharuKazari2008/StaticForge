@@ -4580,17 +4580,17 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 const targetHeight = data.height || 1024;
 
                 try {
-                    window.currentMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
+                    setCurrentMaskData(await processCompressedMask(data.mask_compressed, targetWidth, targetHeight)); // an object URL (utils/referenceUtils.js)
                     updateInpaintButtonState();
                 } catch (error) {
                     console.error('❌ Failed to process compressed mask for regular image:', error);
                     // Fallback to regular mask if available
                     if (data.mask !== undefined && data.mask !== null) {
-                        window.currentMaskData = `data:${String(data.mask).startsWith('UklGR') ? 'image/webp' : 'image/png'};base64,${data.mask}`;
+                        setCurrentMaskData(data.mask, String(data.mask).startsWith('UklGR') ? 'image/webp' : 'image/png'); // an object URL (utils/referenceUtils.js)
                     }
                 }
             } else if (data.mask !== undefined && data.mask !== null) {
-                window.currentMaskData = `data:${String(data.mask).startsWith('UklGR') ? 'image/webp' : 'image/png'};base64,${data.mask}`;
+                setCurrentMaskData(data.mask, String(data.mask).startsWith('UklGR') ? 'image/webp' : 'image/png'); // an object URL (utils/referenceUtils.js)
                 try {
                     const compressedMask = await convertStandardMaskToCompressed(data.mask, data.width || 1024, data.height || 1024);
                     if (compressedMask) {
@@ -5346,11 +5346,13 @@ async function handleManualGeneration(e, options = {}) {
 
         // Add mask data if it exists
         if (window.currentMaskCompressed) {
+            // no-base64-images: transport (the compressed mask is sent to the server as base64; the prefix is only stripped)
             requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
         } else if (window.currentMaskData) {
             // Add compressed mask for server processing
             const compressedMask = saveMaskCompressed();
             if (compressedMask) {
+                // no-base64-images: transport (the compressed mask is sent to the server as base64; the prefix is only stripped)
                 requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
             }
         }
@@ -6974,10 +6976,12 @@ async function saveRequestAsDesktopShortcut(options = {}) {
             }
 
             if (window.currentMaskCompressed) {
+                // no-base64-images: transport (the compressed mask is sent to the server as base64; the prefix is only stripped)
                 requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
             } else if (window.currentMaskData) {
                 const compressedMask = saveMaskCompressed();
                 if (compressedMask) {
+                    // no-base64-images: transport (the compressed mask is sent to the server as base64; the prefix is only stripped)
                     requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
                 }
             }
@@ -7035,6 +7039,7 @@ async function saveRequestAsDesktopShortcut(options = {}) {
                 const sourceY = (img.height - sourceSize) / 2;
 
                 ctx.drawImage(img, sourceX, sourceY, sourceSize, sourceSize, 0, 0, 256, 256);
+                // no-base64-images: transport (the preset's preview is saved as base64 on the server; never shown from this string)
                 embeddedPreview = canvas.toDataURL('image/png').split(',')[1];
 
                 releaseManualPreviewElementImageSrc(img);

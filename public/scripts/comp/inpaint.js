@@ -138,10 +138,23 @@ window.wsClient.registerInitStep(39, 'Initializing Inpaint Editor', async () => 
     negativeBtn.addEventListener('click', invertMask);
 });
 
+// window.currentMaskData (the saved inpaint mask the page shows and redraws: here, manualModalManager.js,
+// studioModelRefs.js) is an object URL, never a data: string (no-base64-images; utils/referenceUtils.js). Set it only through here: the
+// previous URL is revoked, null clears it. The value is a data URL / base64 string (or null).
+let _maskDataObjectUrl = null;
+function setCurrentMaskData(value, mime) {
+    const prev = _maskDataObjectUrl;
+    _maskDataObjectUrl = value ? (window.base64PictureUrlOnce(value, mime || 'image/png') || null) : null;
+    window.currentMaskData = _maskDataObjectUrl;
+    if (prev) URL.revokeObjectURL(prev);
+    return _maskDataObjectUrl;
+}
+
+
 function resetInpaint() {
     inpaintBtn.setAttribute('data-state', 'off');
     inpaintBtn.classList.remove('active');
-    window.currentMaskData = null;
+    setCurrentMaskData(null);
     window.currentMaskCompressed = null;
     isDrawing = false;
     currentTool = 'brush';
@@ -1064,10 +1077,11 @@ function saveMask() {
         tempCtx.putImageData(imageData, 0, 0);
 
         // Convert to base64
+        // no-base64-images: shown once (turned into an object URL at once by setCurrentMaskData below)
         const base64Data = tempCanvas.toDataURL('image/png');
 
         // Store the mask data in a global variable
-        window.currentMaskData = base64Data;
+        setCurrentMaskData(base64Data); // an object URL (utils/referenceUtils.js)
 
         // Also store the compressed version for server processing
         const compressedMask = saveMaskCompressed();
@@ -1144,6 +1158,7 @@ function saveMaskCompressed() {
         tempCtx.putImageData(imageData, 0, 0);
 
         // Convert to base64 (without data URL prefix)
+        // no-base64-images: transport (the compressed mask is sent to the server as base64)
         const base64Data = tempCanvas.toDataURL('image/png').replace('data:image/png;base64,', '');
 
         return base64Data;
@@ -1265,6 +1280,7 @@ async function convertStandardMaskToCompressed(standardMaskBase64, originalWidth
                 tempCtx.putImageData(imageData, 0, 0);
 
                 // Convert to base64 (without data URL prefix)
+                // no-base64-images: transport (the compressed mask is sent to the server as base64)
                 const compressedMaskBase64 = tempCanvas.toDataURL('image/png').replace('data:image/png;base64,', '');
 
                 // Resolve the promise
@@ -1288,6 +1304,7 @@ async function convertStandardMaskToCompressed(standardMaskBase64, originalWidth
         };
 
         // its real type: masks the server made are lossless WebP since #1156 (base64 "UklGR"), the editor's PNG
+        // no-base64-images: shown once (decoded into the canvas above at once, never displayed)
         img.src = `data:${String(standardMaskBase64).startsWith('UklGR') ? 'image/webp' : 'image/png'};base64,${standardMaskBase64}`;
     });
 }
@@ -1362,6 +1379,7 @@ function processCompressedMask(compressedMaskBase64, targetWidth, targetHeight, 
                 tempCtx.putImageData(imageData, 0, 0);
 
                 // Convert to base64
+                // no-base64-images: shown once (the result is drawn / turned into an object URL by its caller at once)
                 const base64Data = tempCanvas.toDataURL('image/png');
 
                 // Call the callback with the processed mask if provided
@@ -1390,6 +1408,7 @@ function processCompressedMask(compressedMaskBase64, targetWidth, targetHeight, 
         };
 
         // its real type: masks the server made are lossless WebP since #1156 (base64 "UklGR"), the editor's PNG
+        // no-base64-images: shown once (decoded into the canvas above at once, never displayed)
         img.src = `data:${String(compressedMaskBase64).startsWith('UklGR') ? 'image/webp' : 'image/png'};base64,${compressedMaskBase64}`;
     });
 }
@@ -1397,7 +1416,7 @@ function processCompressedMask(compressedMaskBase64, targetWidth, targetHeight, 
 // Move to mask.js: Delete mask
 async function deleteMask() {
     // Clear the stored mask data
-    window.currentMaskData = null;
+    setCurrentMaskData(null);
 
     // Set inpaint button to off
     if (inpaintBtn) {
@@ -1573,6 +1592,7 @@ function openMaskEditor() {
             placeholderCtx.fillRect(0, 0, targetWidth, targetHeight);
 
             // Convert to data URL and store as placeholder
+            // no-base64-images: tiny (a flat black PNG, a few KB: the empty base image of a mask-only edit)
             window.uploadedImageData.image_source = placeholderCanvas.toDataURL('image/png');
             window.uploadedImageData.isPlaceholder = true;
 
@@ -1838,7 +1858,7 @@ async function updateMaskPreview() {
     }
 
     // Validate mask data format
-    if (typeof maskData !== 'string' || !maskData.startsWith('data:image/')) {
+    if (typeof maskData !== 'string' || !(maskData.startsWith('data:image/') || maskData.startsWith('blob:'))) {
         console.warn('Invalid mask data format:', typeof maskData, maskData ? maskData.substring(0, 50) + '...' : 'null');
         if (maskPreviewCanvas) {
             maskPreviewCanvas.classList.add('hidden');
@@ -2178,10 +2198,11 @@ async function autoFillMaskFromTransparentPixels() {
                 finalCtx.drawImage(transformedCanvas, 0, 0, finalCanvas.width, finalCanvas.height);
 
                 // Convert mask to base64
+                // no-base64-images: shown once (turned into an object URL at once by setCurrentMaskData below)
                 const maskBase64 = finalCanvas.toDataURL('image/png');
 
                 // Store the mask data
-                window.currentMaskData = maskBase64;
+                setCurrentMaskData(maskBase64); // an object URL (utils/referenceUtils.js)
 
                 // Set inpaint button to on
                 if (inpaintBtn) {

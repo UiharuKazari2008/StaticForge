@@ -3335,6 +3335,7 @@ function renderExpansionDirectorGuide(layout) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, layout.left * scale, layout.top * scale, layout.scaledWidth * scale, layout.scaledHeight * scale);
     try {
+        // no-base64-images: transport (the padded source is sent to NovelAI as base64, never shown from it)
         return canvas.toDataURL('image/png').split(',')[1];
     } catch (_) {
         return null;

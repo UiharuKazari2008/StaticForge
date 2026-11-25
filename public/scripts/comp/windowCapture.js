@@ -306,6 +306,7 @@
             const fr = new FileReader();
             fr.onload = () => resolve(String(fr.result));
             fr.onerror = () => resolve('');
+            // no-base64-images: transport (the capture's SVG image can load nothing outside itself, so resources are inlined; shown once, capped by DATA_URL_BUDGET)
             fr.readAsDataURL(blob);
         });
     }
@@ -334,6 +335,7 @@
                         c.height = Math.max(1, Math.round(bmp.height * s));
                         c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
                         bmp.close();
+                        // no-base64-images: transport (inlined into the capture's SVG, shown once; see DATA_URL_BUDGET)
                         return c.toDataURL('image/webp', 0.9);
                     } catch (_) { /* fall through to the file itself */ }
                 }

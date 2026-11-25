@@ -2587,6 +2587,7 @@
                     if (hit) dir = hit.navPath || `${target}/${hit.id}`;
                     else { const res = await quiet(() => vfs().createFolder(target, it.folder)); const made = res && (res.folder || res); if (made && made.id) dir = `${target}/${made.id}`; }
                 }
+                // no-base64-images: transport (the picture is uploaded to the VFS as base64)
                 const data = await new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, '')); r.onerror = () => resolve(''); r.readAsDataURL(blob); });
                 const up = await quiet(() => vfs().uploadFile(dir, data, name, blob.type || 'image/jpeg'));
                 const id = up && ((up.file && up.file.id) || up.id || (up.item && up.item.id));
@@ -3003,6 +3004,7 @@
                 const r = new FileReader();
                 r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
                 r.onerror = () => resolve('');
+                // no-base64-images: transport (the picture is attached to a mail as base64)
                 r.readAsDataURL(blob);
             });
             open({ mode: 'create', to: '', subject: base, body: '', attachments: [{ name, mimeType: blob.type || 'image/png', size: blob.size, base64 }] });

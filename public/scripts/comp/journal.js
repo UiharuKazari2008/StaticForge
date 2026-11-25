@@ -1039,8 +1039,17 @@
                 const data = res && (res.base64 != null ? res : res.data);
                 if (!data || !data.base64) throw new Error('The recording was not found.');
                 if (this.player) this.player.pause();
-                this.player = new Audio(`data:${data.mime || 'audio/webm'};base64,${data.base64}`);
-                await this.player.play();
+                if (this.playerUrl) { URL.revokeObjectURL(this.playerUrl); this.playerUrl = ''; }
+                // an object URL over the decoded bytes (not a data: string), revoked when the clip ends or the next one starts
+                const bin = atob(data.base64);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                const url = URL.createObjectURL(new Blob([bytes], { type: data.mime || 'audio/webm' }));
+                this.playerUrl = url;
+                const player = new Audio(url);
+                this.player = player;
+                player.addEventListener('ended', () => { if (this.playerUrl === url) { URL.revokeObjectURL(url); this.playerUrl = ''; } }, { once: true });
+                await player.play();
             } catch (err) {
                 if (typeof root.showGlassToast === 'function') root.showGlassToast('error', 'Melaton Journal', `Cannot play the recording. ${err && err.message ? err.message : ''}`, false, 4000);
             }
@@ -1122,6 +1131,7 @@
                 const r = new FileReader();
                 r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
                 r.onerror = () => reject(r.error);
+                // no-base64-images: transport (the recording goes to the server as base64)
                 r.readAsDataURL(blob.blob);
             });
             const taken = new Set(this.audio.map((a) => String(a.name || '').toLowerCase()));

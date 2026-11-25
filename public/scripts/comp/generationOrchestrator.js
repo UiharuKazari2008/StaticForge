@@ -104,11 +104,13 @@ async function handleManualSave(options = {}) {
 
         // Add mask data if it exists
         if (window.currentMaskCompressed) {
+            // no-base64-images: transport (the compressed mask is sent to the server as base64; the prefix is only stripped)
             requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
         } else if (window.currentMaskData) {
             // Add compressed mask for server processing
             const compressedMask = saveMaskCompressed();
             if (compressedMask) {
+                // no-base64-images: transport (the compressed mask is sent to the server as base64; the prefix is only stripped)
                 requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
             }
         }

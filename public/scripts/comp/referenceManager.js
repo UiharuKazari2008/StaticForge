@@ -139,7 +139,7 @@ function getPreciseReferencePreviewUrl(refData) {
     if (!refData) return null;
     if (refData.url) return refData.url;
     if (refData.type === 'base64' && refData.source) {
-        return `data:image/png;base64,${refData.source}`;
+        return base64PictureUrl(refData.source, 'image/png'); // object URL (utils/referenceUtils.js), not a data: string
     }
     if (refData.type === 'cache') {
         const hash = refData.hash || refData.id;
@@ -155,7 +155,7 @@ function getPreciseReferencePreviewUrl(refData) {
 function getPreciseReferenceFullImageUrl(refData) {
     if (!refData) return null;
     if (refData.type === 'base64' && refData.source) {
-        return `data:image/png;base64,${refData.source}`;
+        return base64PictureUrl(refData.source, 'image/png'); // object URL (utils/referenceUtils.js), not a data: string
     }
     if (refData.type === 'cache') {
         const hash = refData.hash || refData.id;
@@ -1564,7 +1564,7 @@ function updateVibeReferenceItemInPlace(item, vibeRef) {
         if (vibeRef.preview) {
             newSrc = localCachePreviewUrl(vibeRef.preview);
         } else if (vibeRef.type === 'base64' && vibeRef.image) {
-            newSrc = `data:image/png;base64,${vibeRef.image}`;
+            newSrc = base64PictureUrl(vibeRef.image, 'image/png');
         } else {
             newSrc = '/static_images/background.jpg';
         }
@@ -1768,7 +1768,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     if (vibeRef.preview) {
         preview.src = localCachePreviewUrl(vibeRef.preview);
     } else if (vibeRef.type === 'base64' && vibeRef.image) {
-        preview.src = `data:image/png;base64,${vibeRef.image}`;
+        preview.src = base64PictureUrl(vibeRef.image, 'image/png');
     } else {
         // Fallback to a placeholder
         preview.src = '/static_images/background.jpg';
@@ -1800,7 +1800,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
         // Get the full image source - prefer original image if available
         let imageSrc;
         if (vibeRef.type === 'base64' && vibeRef.source) {
-            imageSrc = `data:image/png;base64,${vibeRef.source}`;
+            imageSrc = base64PictureUrl(vibeRef.source, 'image/png');
         } else if (vibeRef.type === 'cache' && vibeRef.source) {
             imageSrc = localCacheUploadUrl(vibeRef.source);
         } else if (vibeRef.preview) {
@@ -4825,7 +4825,7 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
             if (vibeEncodingConfirmText) vibeEncodingConfirmText.textContent = 'Encode';
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = false;
             if (backgroundImage && window.galleryToolbarVibeImage) {
-                backgroundImage.src = `data:image/png;base64,${window.galleryToolbarVibeImage}`;
+                backgroundImage.src = base64PictureUrl(window.galleryToolbarVibeImage, 'image/png');
             }
             if (modeDisplay) modeDisplay.textContent = 'Gallery Mode';
             break;
@@ -5230,7 +5230,7 @@ function createVibeManagerGalleryItem(vibeImage) {
         // Get the full image source
         let imageSrc;
         if (vibeImage.type === 'base64' && vibeImage.source) {
-            imageSrc = `data:image/png;base64,${vibeImage.source}`;
+            imageSrc = base64PictureUrl(vibeImage.source, 'image/png');
         } else if (vibeImage.type === 'cache' && vibeImage.source) {
             imageSrc = localCacheUploadUrl(vibeImage.source);
         } else if (vibeImage.preview) {
@@ -5476,13 +5476,13 @@ async function handleVibeBundleFile(file, backgroundImage) {
                 // Set background image to first vibe's thumbnail or image
                 const firstVibe = vibes[0];
                 if (firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
-                    backgroundImage.src = firstVibe.thumbnail;
+                    backgroundImage.src = base64PictureUrl(firstVibe.thumbnail);
                 } else if (firstVibe.image && firstVibe.image.startsWith('data:image/')) {
-                    backgroundImage.src = firstVibe.image;
+                    backgroundImage.src = base64PictureUrl(firstVibe.image);
                 } else if (firstVibe.image && (firstVibe.image.startsWith('/9j/') || firstVibe.image.startsWith('iVBOR'))) {
                     // Handle base64 data without data:image/ prefix
                     const mimeType = firstVibe.image.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
-                    backgroundImage.src = `data:${mimeType};base64,${firstVibe.image}`;
+                    backgroundImage.src = base64PictureUrl(firstVibe.image, mimeType);
                 } else {
                     backgroundImage.src = '/static_images/background.jpg';
                 }
@@ -6286,7 +6286,7 @@ function showVibeBundlePreview(vibes) {
         const img = document.createElement('img');
         img.className = 'vibe-bundle-item-image';
         if (vibe.thumbnail && vibe.thumbnail.startsWith('data:image/')) {
-            img.src = vibe.thumbnail;
+            img.src = base64PictureUrl(vibe.thumbnail);
         } else if (vibe.thumbnail) {
             img.src = `/cache/${vibe.thumbnail}.webp`;
         } else if (unifiedUploadPendingPreviewUrl) {
@@ -6416,10 +6416,11 @@ function showVibeBundlePreview(vibes) {
                     if (selectedFile) {
                         try {
                             const base64 = await fileToBase64(selectedFile);
+                            // no-base64-images: transport (the thumbnail override travels inside the vibe JSON on import); the preview below is an object URL
                             vibe.thumbnail = 'data:image/png;base64,' + base64;
                             
                             // Update the image preview
-                            img.src = vibe.thumbnail;
+                            img.src = base64PictureUrl(base64, 'image/png');
                             
                             // Update button to show success
                             thumbnailButton.innerHTML = '<i class="fas fa-check"></i>';
@@ -7342,7 +7343,7 @@ let unifiedUploadPendingPreviewUrl = null;
 /** Best preview source for vibe import wizard (NAX thumbnails — naxVibesApplet.js) */
 function getVibeWizardPreviewSrc(vibe) {
     if (vibe && vibe.thumbnail && String(vibe.thumbnail).startsWith('data:image/')) {
-        return vibe.thumbnail;
+        return base64PictureUrl(vibe.thumbnail);
     }
     if (unifiedUploadPendingPreviewUrl) {
         return unifiedUploadPendingPreviewUrl;
@@ -7357,6 +7358,7 @@ async function fetchRemoteImageAsDataUrl(url) {
         const resp = await wsClient.fetchUrlInfo(url, { method: 'GET', timeout: 20000 }, 'base64');
         if (!resp || !resp.success || !resp.data) return null;
         const mime = (resp.contentType || 'image/jpeg').split(';')[0].trim();
+        // no-base64-images: transport (stored in the vibe JSON as its thumbnail override on import; shown through base64PictureUrl)
         return `data:${mime};base64,${resp.data}`;
     } catch (e) {
         console.warn('fetchRemoteImageAsDataUrl:', e);

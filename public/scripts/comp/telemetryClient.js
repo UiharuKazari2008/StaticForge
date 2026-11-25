@@ -26,6 +26,7 @@ function checkTelemetryWebPSupport() {
         const canvas = document.createElement('canvas');
         canvas.width = 1;
         canvas.height = 1;
+        // no-base64-images: tiny (a 1x1 canvas, only asks whether WebP encodes)
         return canvas.toDataURL('image/webp').indexOf('data:image/webp') === 0;
     } catch (e) {
         return false;

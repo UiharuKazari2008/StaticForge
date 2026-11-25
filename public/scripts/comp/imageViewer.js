@@ -2168,9 +2168,9 @@ window.openReferenceImageInViewer = function (cacheImage) {
     let imageSrc;
     if (cacheImage.isStandalone) {
         if (cacheImage.type === 'base64' && cacheImage.source) {
-            imageSrc = `data:image/png;base64,${cacheImage.source}`;
+            imageSrc = base64PictureUrl(cacheImage.source, 'image/png'); // an object URL (utils/referenceUtils.js), not a data: string
         } else if (cacheImage.type === 'vibe' && cacheImage.source) {
-            imageSrc = `data:image/png;base64,${cacheImage.source}`;
+            imageSrc = base64PictureUrl(cacheImage.source, 'image/png'); // an object URL (utils/referenceUtils.js), not a data: string
         } else if (cacheImage.hasPreview) {
             imageSrc = localCachePreviewUrl(cacheImage.hasPreview);
         }
