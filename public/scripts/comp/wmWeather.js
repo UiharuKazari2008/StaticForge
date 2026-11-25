@@ -3039,8 +3039,11 @@
     /**
      * Menu > Create Picture (#1126): Studio opens with a prompt made from the selected place, its local day and
      * season, the hour of the day and the current conditions, and Generate is pressed. The picture is the user's
-     * own Studio print (workspace, model and settings as Studio holds them). The daily per-workspace pictures are
-     * the server's (modules/weatherDaily.js).
+     * own Studio print (workspace, model and settings as Studio holds them). On the desktop that is the manual
+     * modal's #manualGenerateBtn; on the phone DreamStudio wraps openManualModalWithContent (wmDreamStudio.js
+     * wrapEntryPoints) and keeps no such button on screen, so the print goes through studioModel.generate(), the
+     * call DreamStudio's own Print button makes (wmDreamStudio.js:1335). Menu > Daily Picture is the server's
+     * daily per-workspace picture (modules/weatherDaily.js, weather_daily_get / weather_daily_set).
      */
     function pictureBrief(p, data) {
         const cur = data.current;
@@ -3068,13 +3071,68 @@
             return;
         }
         await open({ type: 'metadata', data: { prompt: pictureBrief(p, data) }, title: `Weather - ${p.name}` });
+        const M = window.studioModel;
+        if (MOBILE && M && typeof M.generate === 'function') {
+            // DreamStudio brings its Studio session up after the open returns: print once it says it is ready
+            // (its 'change' event, no polling), or say so after 30 s
+            if (!M.ready() && typeof M.on === 'function') {
+                await new Promise((resolve) => {
+                    const done = () => { clearTimeout(t); if (typeof M.off === 'function') M.off('change', check); resolve(); };
+                    const check = () => { if (M.ready()) done(); };
+                    const t = setTimeout(done, 30000);
+                    M.on('change', check);
+                });
+            }
+            if (M.ready()) M.generate();
+            else ws.messageBox({ title: 'Weather', icon: 'info', text: 'Studio is not ready yet. The prompt is in DreamStudio; press Print there.' });
+            return;
+        }
         const btn = document.getElementById('manualGenerateBtn');
         if (btn && !btn.disabled) btn.click();
     }
 
+    // The daily pictures the server draws (weather_daily_get), read once and kept; a set answers with the new list.
+    let daily = null;
+    let dailyAsked = false;
+
+    const workspaceId = () => {
+        const id = typeof activeWorkspace !== 'undefined' ? activeWorkspace : window.activeWorkspace;
+        return id == null ? '' : String(id);
+    };
+    const dailyPlace = () => (daily && daily.places || []).find((d) => d.workspace === workspaceId()) || null;
+
+    /** Read the daily picture list once (the first time the menu opens); no polling. */
+    function loadDaily() {
+        if (dailyAsked || !wsClient()) return;
+        dailyAsked = true;
+        ask('weather_daily_get').then((r) => { if (r && r.places) daily = r; }).catch(() => { dailyAsked = false; });
+    }
+
+    async function toggleDaily() {
+        const p = selected();
+        const workspace = workspaceId();
+        if (!p || !workspace) return;
+        try {
+            // the menu may have opened before the first read answered: decide on the server's list
+            if (!daily) { const g = await ask('weather_daily_get'); if (g && g.places) daily = g; }
+            const on = !dailyPlace();
+            const r = await ask('weather_daily_set', on
+                ? { workspace, on: true, name: p.name, lat: Number(p.lat), lon: Number(p.lon) }
+                : { workspace, on: false });
+            if (r && r.places) daily = r;
+            const at = (r && r.time) || '07:30';
+            ws.messageBox({ title: 'Weather', icon: 'info', text: on ? `Each day at ${at} a picture of ${p.name} is drawn into this workspace.` : 'Daily pictures are off for this workspace.' });
+        } catch (err) {
+            ws.messageBox({ title: 'Weather', icon: 'error', text: `The daily picture could not be changed. ${(err && err.message) || ''}`.trim() });
+        }
+    }
+
     function mainMenu() {
+        loadDaily();
+        const sel = selected();
         return [
-            { label: 'Create Picture', disabled: !(selected() && dataOf(selected()) && dataOf(selected()).current) || MOBILE, action: createPicture },
+            { label: 'Create Picture', disabled: !(sel && dataOf(sel) && dataOf(sel).current), action: createPicture },
+            { label: 'Daily Picture', checked: !!dailyPlace(), disabled: !(sel && Number.isFinite(Number(sel.lat)) && Number.isFinite(Number(sel.lon)) && wsClient() && workspaceId()), action: toggleDaily },
             '-',
             { label: 'Locations', action: openPlaces },
             { label: 'Add Location...', action: openAdd },
