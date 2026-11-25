@@ -983,6 +983,9 @@
             // the watch is told what the view shows, so a push carries only that (a new view is a new watch)
             await send('claude_desk_watch', { id, from: chat ? chat.end : undefined, show: showNow() });
             S.watching = id;
+            // a chat kept from before (the window reopened, the socket came back): the pushes start at the file's end,
+            // so read what was written meanwhile (Nov 24 2026: a reopened chat stopped 40 minutes back)
+            if (chat && !chat.loading && chat.messages && chat.messages.length) void loadChat(id, false, true);
         } catch (_) { S.watching = null; }
     }
     async function unwatch() {
@@ -5094,6 +5097,8 @@
                 S.c = null;
                 Array.from(S.wins).forEach((w) => w.close());
                 void unwatch();
+                // chats are read fresh when the window opens again (the module outlives the window)
+                S.chats.clear();
                 bgStop();
                 void usageWatch(false);
                 void memWatch(false);
