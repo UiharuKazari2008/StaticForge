@@ -112,13 +112,10 @@ function grimoireAudioFollowPointer(ev) {
 
 // Web pages show as Alchemy. The taskbar copies the title bar's span and icon: modalUtils.js updateTaskbarWindows
 // title: string sets the span, null restores the Grimoire title, undefined leaves it.
-// the window factory's caption (its icon and title), as the taskbar reads it
-function grimoireCaptionOf(modal) {
-    return modal ? modal.querySelector('.modal-window-title-main') : null;
-}
-
-function grimoireSyncAlchemyIdentity(modal, web, title) {
-    const main = grimoireCaptionOf(modal);
+// favicon (#1118): a standalone Alchemy window (a page's popup, Open in new window; data-alchemy-standalone) wears its
+// page's own icon (a served URL, never a data: string) in its caption and so on its taskbar button
+function grimoireSyncAlchemyIdentity(modal, web, title, favicon) {
+    const main = modal && modal.querySelector('.modal-window-title-main');
     if (!main) return;
     const icon = main.querySelector('i');
     const img = main.querySelector('img.icon-image');
@@ -140,24 +137,15 @@ function grimoireSyncAlchemyIdentity(modal, web, title) {
     const nextTitle = title === null ? main.dataset.grimoireTitle : title;
     const rename = typeof nextTitle === 'string' && span.textContent !== nextTitle;
     if (rename) span.textContent = nextTitle;
+    const iconNow = typeof favicon === 'string' && /^(\/|https?:)/.test(favicon) && web && modal.dataset.alchemyStandalone === '1'
+        && main.dataset.alchemyFavicon !== favicon;
+    if (iconNow) {
+        main.dataset.alchemyFavicon = favicon;
+        img.src = favicon;
+        img.removeAttribute('srcset');
+    }
     // debouncedUpdateTaskbarWindows: public/scripts/comp/modalUtils.js
-    if (swap || rename) debouncedUpdateTaskbarWindows();
-}
-
-// A standalone Alchemy window (a page's popup, Open in new window; data-alchemy-standalone) wears its page's own icon
-// (a served URL, never a data: string) in its caption and on its taskbar button (#1118). The main Grimoire window keeps
-// its tab strip's icons. The taskbar copies the caption img: modalUtils.js updateTaskbarActiveStates.
-function grimoireSetStandaloneFavicon(shell, icon) {
-    const modal = shell && shell.displayArea && shell.displayArea.closest('.modal');
-    if (!modal || modal.dataset.alchemyStandalone !== '1' || modal.dataset.alchemy !== '1') return;
-    const main = grimoireCaptionOf(modal);
-    const img = main && main.querySelector('img.icon-image');
-    if (!img || typeof icon !== 'string' || !/^(\/|https?:)/.test(icon) || main.dataset.alchemyFavicon === icon) return;
-    main.dataset.alchemyFavicon = icon;
-    img.src = icon;
-    img.removeAttribute('srcset');
-    // updateTaskbarActiveStates: public/scripts/comp/modalUtils.js
-    if (typeof updateTaskbarActiveStates === 'function') updateTaskbarActiveStates();
+    if (swap || rename || iconNow) debouncedUpdateTaskbarWindows();
 }
 
 function grimoireNormalizeWebUrl(url) {
@@ -741,7 +729,9 @@ function grimoireTabFavicon(shell, url, changed) {
         const top = shell.history && shell.history[shell.historyIndex];
         if (!icon || !top || top.type !== 'web' || top.url !== url || top.favicon === icon) return;
         top.favicon = icon;
-        grimoireSetStandaloneFavicon(shell, icon);
+        // a popup / standalone window's caption and taskbar icon (#1118)
+        const modal = shell.displayArea && shell.displayArea.closest('.modal');
+        if (modal && modal.dataset.alchemyStandalone === '1' && modal.dataset.alchemy === '1') grimoireSyncAlchemyIdentity(modal, true, undefined, icon);
         changed();
     };
     if (grimoireFaviconCache.has(url)) {
