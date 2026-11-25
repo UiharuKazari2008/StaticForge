@@ -531,9 +531,53 @@
             }).catch(() => { offRoute.failedAt = Date.now(); }).finally(() => { offRoute.asking = false; });
         }
         if (!offRoute.box) return;
+        const strip = camOverlayOn();
+        // the camera on the strip stays a candidate while it is ahead
+        if (strip && camAppr.id) offRoute.alerted.delete(camAppr.id);
         const r = OffRoute.ahead(here, offRoute.items, offRoute.alerted, offRoute.last, CAM_ALERT_M);
         offRoute.last = r.last;
+        if (strip) {
+            // the car at the camera itself: the bearing flips, so it counts as passed once it moves away
+            const stillHere = (id) => {
+                const it = offRoute.items.find((t) => camKey(t) === id);
+                if (!it) return null;
+                const d = Math.min(...(Array.isArray(it.line) && it.line.length ? it.line.map(([lat, lon]) => OffRoute.distM(here, { lat, lon })) : [OffRoute.distM(here, it)]));
+                return d <= 40 && d <= camAppr.nearestM + 30 ? { item: it, aheadM: d } : null;
+            };
+            camApproach(r.alerts.map(({ item, distM }) => ({ item, aheadM: distM })), offRoute.alerted, stillHere);
+            return;
+        }
         r.alerts.forEach(({ item, distM }) => { offRoute.alerted.add(camKey(item)); cameraNote(item, distM); });
+    }
+
+    // ---- the camera approach strip (#1124): the page's warning when the page does the warnings itself. The nearest camera
+    // within CAM_ALERT_M ahead is the approach; every fix updates the strip (speed from the fix, m/s), it goes away when the
+    // camera is passed, the car leaves it or the drive ends. Without wmCamOverlay the old notification (cameraNote) warns.
+    const camAppr = { id: '', spanM: 0, nearestM: 0 };
+    const camOverlayOn = () => !!(window.wmCamOverlay && DriveLib && typeof DriveLib.approachOf === 'function');
+    function camApproachEnd() {
+        if (!camAppr.id) return;
+        camAppr.id = '';
+        if (window.wmCamOverlay) window.wmCamOverlay.hide();
+    }
+    /** cands: [{ item, aheadM }] ahead within CAM_ALERT_M (the one on screen included while it still is); alerted: the drive's set. */
+    function camApproach(cands, alerted, stillHere) {
+        let cur = null;
+        if (camAppr.id) {
+            cur = cands.find((c) => camKey(c.item) === camAppr.id) || (stillHere && stillHere(camAppr.id)) || null;
+            if (!cur) camApproachEnd();
+        }
+        if (!cur) {
+            cur = cands.filter((c) => !alerted.has(camKey(c.item))).sort((a, b) => a.aheadM - b.aheadM)[0] || null;
+            if (!cur) return;
+            camAppr.id = camKey(cur.item);
+            camAppr.spanM = Math.round(cur.aheadM);
+            camAppr.nearestM = camAppr.spanM;
+            alerted.add(camAppr.id);
+        }
+        if (cur.aheadM < camAppr.nearestM) camAppr.nearestM = Math.round(cur.aheadM);
+        const sp = here && Number.isFinite(here.speed) && here.speed >= 0 ? here.speed : null;
+        window.wmCamOverlay.update(DriveLib.approachOf(cur.item, cur.aheadM, camAppr.spanM, { speed: sp, at: Date.now() }));
     }
 
     const camDrive = { key: '', alerted: new Set() };
@@ -542,21 +586,28 @@
 
     function watchCameras() {
         // the app warns (its drive-alerts task, from its own drive state and positions): the page only shows the drive
-        if (appOwnsAlerts) { stopCamWatch(); syncPoliceWatch(); return; }
+        if (appOwnsAlerts) { camApproachEnd(); stopCamWatch(); syncPoliceWatch(); return; }
         const dv = driving();
         const r = dv ? latest[dv.direction] : null;
         syncPoliceWatch();
         // a drive the app sees but no commute route has (yet): the live position finds out where the car is
         if (!dv && nativeDriving()) { startCamWatch(); warnOffRoute(); return; }
-        if (!dv || !r || !r.traps) { stopCamWatch(); return; }
+        if (!dv || !r || !r.traps) { camApproachEnd(); stopCamWatch(); return; }
         const key = `${dv.direction}:${dv.leaveAt}`;
         if (camDrive.key !== key) { camDrive.key = key; camDrive.alerted.clear(); }
         nativeAlerted(key).forEach((id) => camDrive.alerted.add(id));
         // the app's own watch has this drive: it alerts (locked or not), the page only keeps count (#810)
         const native = nativeDrive.active && nativeDrive.key === key;
-        const ahead = camerasAhead(warnings(r), dv.at, dv.totalM).filter((c) => !camDrive.alerted.has(camKey(c.trap)));
-        ahead.filter((c) => c.aheadM <= CAM_ALERT_M).forEach((c) => { camDrive.alerted.add(camKey(c.trap)); if (!native) cameraNote(c.trap, c.aheadM); });
-        if (ahead.some((c) => c.aheadM > CAM_ALERT_M)) startCamWatch(); else stopCamWatch();
+        const all = camerasAhead(warnings(r), dv.at, dv.totalM);
+        const ahead = all.filter((c) => !camDrive.alerted.has(camKey(c.trap)));
+        if (camOverlayOn() && !native) {
+            camApproach(all.filter((c) => c.aheadM <= CAM_ALERT_M).map((c) => ({ item: c.trap, aheadM: c.aheadM })), camDrive.alerted);
+        } else {
+            camApproachEnd();
+            ahead.filter((c) => c.aheadM <= CAM_ALERT_M).forEach((c) => { camDrive.alerted.add(camKey(c.trap)); if (!native) cameraNote(c.trap, c.aheadM); });
+        }
+        // the watch goes on while a camera is further ahead and while the strip shows one (it needs every fix)
+        if (camAppr.id || ahead.some((c) => c.aheadM > CAM_ALERT_M)) startCamWatch(); else stopCamWatch();
     }
 
     // The Android app's own watch (DSApp window.AndroidDriveWatch, #810): the page is paused while the

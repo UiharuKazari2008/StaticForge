@@ -799,3 +799,43 @@
 @media (prefers-reduced-motion: reduce) {
     .wm-traffic .trf-dash.is-checking .trf-lcd { animation: none; }
 }
+
+/* ---- the camera approach strip (wmCamOverlay.js, #1124): on the soft key bar over every program, in Traffic's dashboard
+ * look (piano black, amber progress, the road sign for the limit). Fixed boxes, so the app's copy (kit lists.camOverlay)
+ * has the same places. A tap puts it away for this camera. ---- */
+.trf-camov {
+    --u: var(--wm-px, 1px);
+    position: absolute;
+    left: var(--wm-safe-left, 0px);
+    right: var(--wm-safe-right, 0px);
+    bottom: 0;
+    height: calc(84 * var(--u));
+    z-index: 8;
+    box-sizing: border-box;
+    border-top: calc(1 * var(--u)) solid #46505a;
+    border-radius: calc(8 * var(--u)) calc(8 * var(--u)) 0 0;
+    background: linear-gradient(#2a3037, #14171b);
+    color: #fff;
+    font-family: 'Segoe UI', Tahoma, Verdana, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.trf-camov[hidden] { display: none; }
+.trf-camov.is-over { border-top-color: #b8301f; background: linear-gradient(#4a1a15, #1c0c0a); }
+.trf-camov > * { position: absolute; display: block; box-sizing: border-box; white-space: nowrap; overflow: hidden; }
+.trf-camov-ico { left: calc(10 * var(--u)); top: calc(7 * var(--u)); width: calc(16 * var(--u)); height: calc(16 * var(--u)); }
+.trf-camov-ico img, .trf-camov-end img { display: block; width: 100%; height: 100%; }
+.trf-camov-title { left: calc(32 * var(--u)); right: calc(116 * var(--u)); top: calc(6 * var(--u)); height: calc(18 * var(--u)); line-height: calc(18 * var(--u)); font-size: calc(13 * var(--u)); font-weight: bold; color: #fff; text-overflow: ellipsis; }
+.trf-camov-street { right: calc(12 * var(--u)); width: calc(96 * var(--u)); top: calc(6 * var(--u)); height: calc(18 * var(--u)); line-height: calc(18 * var(--u)); font-size: calc(12 * var(--u)); color: #aab3bd; text-align: right; text-overflow: ellipsis; }
+.trf-camov-speed { left: calc(12 * var(--u)); width: calc(170 * var(--u)); top: calc(26 * var(--u)); height: calc(32 * var(--u)); line-height: calc(32 * var(--u)); font-size: calc(26 * var(--u)); font-weight: bold; color: #fff; }
+.trf-camov.is-over .trf-camov-speed { color: #ff6a58; }
+/* the road sign: white disc, red ring */
+.trf-camov-sign { right: calc(14 * var(--u)); top: calc(25 * var(--u)); width: calc(34 * var(--u)); height: calc(34 * var(--u)); border-radius: 50%; border: calc(4 * var(--u)) solid #d4281c; background: #fff; overflow: hidden; }
+.trf-camov.is-nolimit .trf-camov-sign { display: none; }
+.trf-camov-limit { left: 0; top: 0; right: 0; bottom: 0; position: absolute; text-align: center; line-height: calc(26 * var(--u)); font-size: calc(14 * var(--u)); font-weight: bold; color: #111; }
+.trf-camov-track { left: calc(12 * var(--u)); right: calc(112 * var(--u)); bottom: calc(14 * var(--u)); height: calc(12 * var(--u)); border-radius: calc(6 * var(--u)); background: #0b0d10; border: calc(1 * var(--u)) solid #3a424b; padding: calc(2 * var(--u)); }
+.trf-camov-fill { display: block; height: 100%; width: 0; border-radius: calc(4 * var(--u)); background: rgb(242, 176, 30); }
+.trf-camov.is-over .trf-camov-fill { background: rgb(232, 52, 28); }
+.trf-camov-end { right: calc(94 * var(--u)); bottom: calc(11 * var(--u)); width: calc(18 * var(--u)); height: calc(18 * var(--u)); }
+.trf-camov-dist { right: calc(12 * var(--u)); width: calc(56 * var(--u)); bottom: calc(10 * var(--u)); height: calc(18 * var(--u)); line-height: calc(18 * var(--u)); font-size: calc(12 * var(--u)); font-weight: bold; color: #dfe6ed; text-align: right; }
