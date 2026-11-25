@@ -251,6 +251,17 @@
     object-fit: cover;
 }
 
+#mmcConsole_claudedesk .cd-att.is-error {
+    border-color: var(--cd-c-c42b1c);
+}
+
+#mmcConsole_claudedesk .cd-att img.cd-att-bad {
+    width: 16px;
+    height: 16px;
+    margin: 4px;
+    object-fit: none;
+}
+
 #mmcConsole_claudedesk .cd-att-name {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1235,10 +1246,10 @@
 
 #mmcConsole_claudedesk .cd-tile {
     display: grid;
-    grid-template-columns: 16px auto;
-    grid-template-rows: auto auto;
+    grid-template-columns: 16px minmax(0, 1fr);
     column-gap: 8px;
     align-items: center;
+    min-width: 0;
     padding: 6px 10px;
     border: 1px solid var(--cd-c-d5d5d5);
     border-radius: 3px;
@@ -1253,7 +1264,7 @@
 }
 
 #mmcConsole_claudedesk .cd-tile img {
-    grid-row: 1 / 3;
+    grid-row: 1 / span 3;
 }
 
 #mmcConsole_claudedesk .cd-tile b {
@@ -1262,8 +1273,39 @@
     color: var(--cd-c-1e4e8c);
 }
 
-#mmcConsole_claudedesk .cd-tile span {
+#mmcConsole_claudedesk .cd-tile span,
+#mmcConsole_claudedesk .cd-tile small {
+    min-width: 0;
+    overflow: hidden;
     color: var(--cd-c-555);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#mmcConsole_claudedesk .cd-tile small {
+    font-size: 11px;
+    color: var(--cd-c-6d6d6d);
+}
+
+/* dashboard tables: one line per row, long text cut with an ellipsis (the full text is the tooltip) */
+#mmcConsole_claudedesk .cd-dash {
+    table-layout: fixed;
+}
+
+#mmcConsole_claudedesk .cd-dash td.cd-cut {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
+
+#mmcConsole_claudedesk .cd-dash th:first-child {
+    width: 34%;
+}
+
+#mmcConsole_claudedesk .cd-dash th {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 #mmcConsole_claudedesk .cd-tile.is-warn b {
@@ -1277,3 +1319,84 @@
 #mmcConsole_claudedesk .cd-dash-row:hover td {
     background: var(--cd-c-f0f0f0);
 }
+
+/* the Supervisor's cost in Plan Usage: big figures first, then the details */
+#mmcConsole_claudedesk .cd-spend {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 6px;
+    margin: 4px 0 8px;
+}
+
+#mmcConsole_claudedesk .cd-spend-cell {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--cd-c-d5d5d5);
+    border-radius: 3px;
+    background: var(--cd-c-fff);
+}
+
+#mmcConsole_claudedesk .cd-spend-label {
+    color: var(--cd-c-555);
+}
+
+#mmcConsole_claudedesk .cd-spend-cost {
+    font-size: 22px;
+    font-weight: normal;
+    color: var(--cd-c-1e4e8c);
+    overflow-wrap: anywhere;
+}
+
+#mmcConsole_claudedesk .cd-spend-sub {
+    font-size: 12px;
+    color: var(--cd-c-444);
+}
+
+#mmcConsole_claudedesk .cd-spend-warn {
+    font-size: 11px;
+    color: var(--cd-c-a00000);
+}
+
+/* Last 30 days: inline SVG, day columns with the newest at the right */
+#mmcConsole_claudedesk .cd-ch-scroll {
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+#mmcConsole_claudedesk .cd-ch {
+    display: block;
+    max-width: none;
+}
+
+#mmcConsole_claudedesk .cd-ch-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin-bottom: 4px;
+    color: var(--cd-c-444);
+}
+
+#mmcConsole_claudedesk .cd-ch-sw {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 4px;
+    border: 1px solid var(--cd-c-d5d5d5);
+}
+
+#mmcConsole_claudedesk .cd-ch-sw.is-cost { background: var(--cd-chart-cost); }
+#mmcConsole_claudedesk .cd-ch-sw.is-sess { background: var(--cd-chart-sess); }
+#mmcConsole_claudedesk .cd-ch-sw.is-week { background: var(--cd-chart-week); border-radius: 5px; }
+
+#mmcConsole_claudedesk .cd-ch-cost { fill: var(--cd-chart-cost); }
+#mmcConsole_claudedesk .cd-ch-sess { fill: var(--cd-chart-sess); }
+#mmcConsole_claudedesk .cd-ch-week { fill: none; stroke: var(--cd-chart-week); stroke-width: 1.5; }
+#mmcConsole_claudedesk .cd-ch-dot { fill: var(--cd-chart-week); }
+#mmcConsole_claudedesk .cd-ch-hit { fill: transparent; }
+#mmcConsole_claudedesk .cd-ch-hit:hover { fill: var(--cd-c-eaf6fd); }
+#mmcConsole_claudedesk .cd-ch-grid { stroke: var(--cd-chart-grid); stroke-width: 1; }
+#mmcConsole_claudedesk .cd-ch-grid.is-dash { stroke-dasharray: 2 3; }
+#mmcConsole_claudedesk .cd-ch-lane { fill: var(--cd-c-333); font: 12px var(--cd-font-ui); }
+#mmcConsole_claudedesk .cd-ch-tick { fill: var(--cd-chart-text); font: 10px var(--cd-font-ui); }

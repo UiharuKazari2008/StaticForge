@@ -121,6 +121,10 @@ function open() {
     });
     const lockCols = new Set(db.prepare('PRAGMA table_info(locks)').all().map((c) => c.name));
     if (!lockCols.has('planted_by')) db.exec("ALTER TABLE locks ADD COLUMN planted_by TEXT NOT NULL DEFAULT 'agent'");
+    const artCols = new Set(db.prepare('PRAGMA table_info(artifacts)').all().map((c) => c.name));
+    [['decision', "TEXT NOT NULL DEFAULT ''"], ['decision_reason', "TEXT NOT NULL DEFAULT ''"], ['decided_at', 'INTEGER'], ['trash_path', "TEXT NOT NULL DEFAULT ''"]].forEach(([c, t]) => {
+        if (!artCols.has(c)) db.exec(`ALTER TABLE artifacts ADD COLUMN ${c} ${t}`);
+    });
     try { fs.chmodSync(file, 0o600); } catch (_) { /* kept */ }
     return db;
 }

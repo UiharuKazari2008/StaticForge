@@ -1,5 +1,11 @@
 /* Claude Fleet (apps/claudedesk) colour and font tokens: the theme owns the literals (ui-standard). */
 :root {
+    --cd-c-c42b1c: #c42b1c;
+    --cd-chart-cost: #3a8fd9;
+    --cd-chart-sess: #8fbf7a;
+    --cd-chart-week: #c2571a;
+    --cd-chart-grid: #d5d5d5;
+    --cd-chart-text: #555;
     --cd-busy-green: #3ca636;
     --cd-busy-a: #2b5797;
     --cd-busy-b: #3a8fd9;

@@ -417,6 +417,50 @@ async function main() {
         console.log('ok 9 insight summary, hidden-run summaries and steering rows');
     }
 
+    {
+        // Last 30 days: the daily usage store keeps the max per account and day, trims to 90 days, and joins the Supervisor's cost
+        const hist = require('../modules/claudeUsageHistory');
+        const DAY = 86400000;
+        const now = new Date(2026, 10, 24, 12, 0, 0).getTime();
+        const snap = (sess, week) => ({ at: now, accounts: [{ id: 'acc1', name: 'Main', limits: [{ kind: 'session', percent: sess }, { kind: 'weekly_all', percent: week }] }, { id: 'acc2', name: 'Other', limits: [] }] });
+        assert.strictEqual(hist.record(snap(30, 10), now), 1, 'an account with no limits is not stored');
+        hist.record(snap(80, 12), now);
+        hist.record(snap(20, 15), now + 1000);
+        hist.record(snap(55, 5), now - 3 * DAY);
+        hist.record(snap(5, 1), now - 100 * DAY);
+        const d = store.open();
+        d.exec('CREATE TABLE IF NOT EXISTS supervisor_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, kind TEXT NOT NULL, engine TEXT NOT NULL, model TEXT, prompt_tokens INTEGER, completion_tokens INTEGER, cost REAL, ok INTEGER NOT NULL, error TEXT, failover_from TEXT)');
+        const ins = d.prepare('INSERT INTO supervisor_usage (at, kind, engine, model, prompt_tokens, completion_tokens, cost, ok) VALUES (?, ?, ?, ?, ?, ?, ?, 1)');
+        ins.run(now, 'review', 'tokenrouter', 'm', 1000, 500, 0.0042);
+        ins.run(now, 'review', 'tokenrouter', 'm', 100, 50, null);
+        ins.run(now - 2 * DAY, 'review', 'tokenrouter', 'm', 10, 5, 0.5);
+        const h = hist.history(30, now);
+        assert.strictEqual(h.days.length, 30);
+        assert.strictEqual(h.days[29], '2026-11-24');
+        assert.strictEqual(h.accounts.length, 1);
+        const today = h.accounts[0].days['2026-11-24'];
+        assert.deepStrictEqual([today.session, today.week], [80, 15], 'the highest percent of the day is kept');
+        assert.strictEqual(h.accounts[0].days['2026-11-21'].session, 55);
+        assert.ok(!d.prepare("SELECT 1 FROM claude_usage_daily WHERE day < '2026-08-01'").get(), 'older than 90 days is dropped');
+        assert.ok(Math.abs(h.supervisor['2026-11-24'].cost - 0.0042) < 1e-9 && h.supervisor['2026-11-24'].unpriced === 1 && h.supervisor['2026-11-24'].tokens === 1650, JSON.stringify(h.supervisor));
+        assert.strictEqual(h.supervisor['2026-11-22'].cost, 0.5);
+        assert.strictEqual(hist.history(1, now).days.length, 1, 'only today is fine');
+        // spend formatting (the client's own functions, run out of its source)
+        const vm = require('vm');
+        const src = fs.readFileSync(path.join(__dirname, '..', 'apps', 'claudedesk', 'client', 'claudedesk.js'), 'utf8');
+        const grab = (name) => { const i = src.indexOf(`    function ${name}(`); const j = src.indexOf('\n    }\n', i); return src.slice(i, j + 6); };
+        const ctx = vm.createContext({});
+        vm.runInContext(`${grab('moneyText')}\nconst countText = (n) => (Number(n) || 0).toLocaleString('en-US');\n${grab('spendFigures')}`, ctx);
+        assert.strictEqual(vm.runInContext('moneyText(0.0042)', ctx), '$0.0042');
+        assert.strictEqual(vm.runInContext('moneyText(0.000123)', ctx), '$0.00012');
+        assert.strictEqual(vm.runInContext('moneyText(0.056)', ctx), '$0.056');
+        assert.strictEqual(vm.runInContext('moneyText(12.3456)', ctx), '$12.35');
+        assert.strictEqual(vm.runInContext('moneyText(0)', ctx), '$0.00');
+        assert.strictEqual(vm.runInContext('countText(1234567)', ctx), '1,234,567');
+        assert.strictEqual(vm.runInContext("JSON.stringify(spendFigures([{ cost: 0.1, calls: 2, prompt: 1000, completion: 500, unpriced: 1 }, { cost: 0.2, calls: 1, prompt: 10, completion: 5 }]))", ctx), '{"cost":0.30000000000000004,"calls":3,"prompt":1010,"completion":505,"tokens":1515,"unpriced":1}');
+        console.log('ok 10 daily usage history store and spend formatting');
+    }
+
     store.close();
     console.log('all claude desk tests passed');
 }

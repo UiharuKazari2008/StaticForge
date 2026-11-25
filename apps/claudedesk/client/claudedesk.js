@@ -124,6 +124,7 @@
             usageLoaded: false,
             usageError: '',
             spend: { data: null, loaded: false, loading: false, gone: false, error: '' }, // the Supervisor's cost and balances (Plan Usage)
+            hist: { data: null, loaded: false, loading: false, gone: false, error: '', at: 0 }, // the daily cost and usage timeline (Dashboard, Last 30 days)
             sup: { loaded: false, data: null, draft: null, sel: '', busy: '', error: '', unavailable: false, lastReviewId: null },
             liveKey: '',
             show: Object.assign({}, SHOW_DEFAULT), // what the session view shows (saved per user: registry ShowView)
@@ -1233,7 +1234,8 @@
     const LOCK_STATE = { live: 'Live', idle: 'Idle', orphan: 'Orphan' };
     const PLANTED = { agent: 'Agent', supervisor: 'Supervisor', unknown: 'Unknown' };
     const ART_KIND = { dir: 'Folder', file: 'File', worktree: 'Worktree' };
-    const ART_STATE = { live: 'In use', orphan: 'Orphan', gone: 'Gone' };
+    const ART_STATE = { live: 'In use', orphan: 'Orphan', gone: 'Gone', trashed: 'In trash' };
+    const ART_DECISION = { refused: 'Refused', unsafe: 'Judged unsafe', trashed: 'Trashed', removed: 'Removed', restored: 'Restored', purged: 'Deleted' };
     // pauses (claude_desk_supervisor pause / resume) and the restart waits the Supervisor watches
     const supHolds = () => (S.sup.data && Array.isArray(S.sup.data.holds) ? S.sup.data.holds : []);
     const holdOf = (sid) => supHolds().find((h) => h.sessionId === sid) || null;
@@ -1415,14 +1417,15 @@
             { t: 'Planted By', w: 80, key: 'by', text: (d) => d.by },
             { t: 'Age', w: 70, key: 'age', num: true, text: (d) => (d.age == null ? '' : ageText(d.age)), value: (d) => d.age || 0 }
         ], lockRows, { sortId: 'cd-sup-locks', sort: { key: 'age', dir: -1 }, empty: 'No agent holds a busy lock.' });
-        const artRows = arts.map((a) => ({ key: `ar:${a.id}`, icon: a.kind === 'file' ? `${VI}/explorer/file-16.png` : FOLDER16, cls: a.state === 'orphan' ? 'cd-stale' : '', data: { path: a.path, kind: ART_KIND[a.kind] || a.kind || '', who: a.agentName || shortId(a.sessionId), size: a.sizeBytes, age: a.ageHours, state: ART_STATE[a.state] || a.state || '' } }));
+        const artRows = arts.map((a) => ({ key: `ar:${a.id}`, icon: a.kind === 'file' ? `${VI}/explorer/file-16.png` : FOLDER16, cls: a.state === 'orphan' ? 'cd-stale' : '', data: { path: a.path, kind: ART_KIND[a.kind] || a.kind || '', who: a.agentName || shortId(a.sessionId), size: a.sizeBytes, age: a.ageHours, state: ART_STATE[a.state] || a.state || '', decision: a.decision ? `${ART_DECISION[a.decision] || a.decision}${a.decisionReason ? `: ${a.decisionReason}` : ''}` : '' } }));
         const artList = c.listView([
             { t: 'Path', w: 230, key: 'path', text: (d) => d.path },
             { t: 'Kind', w: 70, key: 'kind', text: (d) => d.kind },
             { t: 'Session', w: 110, key: 'who', text: (d) => d.who },
             { t: 'Size', w: 64, key: 'size', num: true, text: (d) => bytesText(d.size), value: (d) => d.size || 0 },
             { t: 'Age', w: 60, key: 'age', num: true, text: (d) => (d.age == null ? '' : ageText(Math.round(d.age * 60))), value: (d) => d.age || 0 },
-            { t: 'State', w: 64, key: 'state', text: (d) => d.state }
+            { t: 'State', w: 64, key: 'state', text: (d) => d.state },
+            { t: 'Decision', w: 300, key: 'decision', text: (d) => d.decision }
         ], artRows, { sortId: 'cd-sup-arts', sort: { key: 'age', dir: -1 }, empty: st.trackArtifacts ? 'No work folder or temp file is tracked.' : 'Tracking is off. Tick "Track work folders and temp files" above.' });
         const total = stats.artifactBytes != null ? stats.artifactBytes : arts.reduce((n, a) => n + (a.sizeBytes || 0), 0);
         const side = sup.busy || sup.error || `${stats.reviewed || 0} reviewed, ${stats.gaps || 0} with gaps${stats.lastAt ? `, last ${when(stats.lastAt)}` : ''}`;
@@ -2543,13 +2546,26 @@
         P.loaded = true;
         repaint();
     }
-    function spendSum(rows) {
+    /** Dollars readable at any size: $12.34, $0.056, $0.0042, $0.00042 (never "$0.00" for a real cost), $0.00 for none. */
+    function moneyText(n) {
+        const v = Number(n) || 0;
+        if (v <= 0) return '$0.00';
+        if (v >= 1) return `$${v.toFixed(2)}`;
+        if (v >= 0.1) return `$${v.toFixed(3)}`;
+        if (v >= 0.01) return `$${v.toFixed(3)}`;
+        if (v >= 0.001) return `$${v.toFixed(4)}`;
+        return `$${v.toFixed(5)}`;
+    }
+    const countText = (n) => (Number(n) || 0).toLocaleString('en-US');
+    /** One window's rows (per engine) as { cost, calls, tokens, prompt, completion, unpriced }. */
+    function spendFigures(rows) {
         const list = Array.isArray(rows) ? rows : [];
         const sum = (k) => list.reduce((n, r) => n + (Number(r[k]) || 0), 0);
-        const un = sum('unpriced');
-        const tok = sum('prompt') + sum('completion');
-        const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : (n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n)));
-        return `$${sum('cost').toFixed(2)}${un ? ` (+${plural(un, 'call')} unpriced)` : ''}, ${plural(sum('calls'), 'call')}, ${k(tok)} tokens`;
+        return { cost: sum('cost'), calls: sum('calls'), prompt: sum('prompt'), completion: sum('completion'), tokens: sum('prompt') + sum('completion'), unpriced: sum('unpriced') };
+    }
+    function spendCell(label, f, why) {
+        const un = f.unpriced ? `<span class="cd-spend-warn" title="${esc(why || '')}">${esc(plural(f.unpriced, 'call'))} without a price</span>` : '';
+        return `<div class="cd-spend-cell"><span class="cd-spend-label">${esc(label)}</span><b class="cd-spend-cost">${esc(moneyText(f.cost))}</b><span class="cd-spend-sub">${esc(plural(f.calls, 'call'))}</span><span class="cd-spend-sub" title="${esc(`${countText(f.prompt)} in, ${countText(f.completion)} out`)}">${esc(countText(f.tokens))} tokens</span>${un}</div>`;
     }
     function supervisorSpendHtml(c) {
         const P = S.spend;
@@ -2568,13 +2584,88 @@
         }
         const w = d.windows || {};
         const bal = (d.balances || []).map((b) => `${esc(b.name || b.title || b.engine)}: ${esc(b.balanceText || (b.balance != null ? `${b.balance}${b.currency ? ` ${b.currency}` : ''}` : (b.error || 'unknown')))}`);
-        return `<h4 class="cd-sp-h">Supervisor</h4>${bar}${c.props([
+        const why = (d.unpricedWhy || []).map((u) => `${u.engine}/${u.model || '?'}: ${plural(u.calls, 'call')} (the provider sent no cost and the catalog has no price for the model)`).join('; ');
+        return `<h4 class="cd-sp-h">Supervisor</h4>${bar}<div class="cd-spend">${spendCell('Today', spendFigures(w.today), why)}${spendCell('7 days', spendFigures(w.week), why)}${spendCell('30 days', spendFigures(w.month), why)}</div>${c.props([
             ['Runs on', esc([run.engine, run.model].filter(Boolean).join(' / ') || 'Not set')],
-            ['Cost today', esc(spendSum(w.today))],
-            ['Cost, 7 days', esc(spendSum(w.week))],
-            ['Cost, 30 days', esc(spendSum(w.month))],
             ['Balances', bal.length ? bal.join('<br>') : 'None reported']
         ])}`;
+    }
+
+    // ---- Last 30 days: the Supervisor's cost and each account's usage per day (claude_desk_supervisor usage_history) ----
+
+    async function loadHistory() {
+        const P = S.hist;
+        if (P.loading) return;
+        P.loading = true;
+        try {
+            P.data = unwrap(await send('claude_desk_supervisor', { action: 'usage_history', days: 30 }), 'usage_history').history || null;
+            P.error = '';
+            P.gone = false;
+        } catch (e) { if (isGone(e)) P.gone = true; else P.error = errText(e); }
+        P.loading = false;
+        P.loaded = true;
+        P.at = Date.now();
+        repaint();
+    }
+    const dayLabel = (day, full) => {
+        const [y, m, d] = String(day).split('-').map(Number);
+        return full ? new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' }) : String(d);
+    };
+    /** Day columns, newest at the right: cost bars on top, then one lane per account (bar = session peak %, line = weekly %). */
+    function historyHtml() {
+        const P = S.hist;
+        if (!P.loaded && !P.loading) void loadHistory();
+        else if (P.loaded && !P.loading && Date.now() - P.at > 300000) void loadHistory();
+        if (P.gone) return '';
+        const h = P.data;
+        if (!h) return `<p class="${P.error ? 'cd-err' : 'mmc-hint'}">${esc(P.error || 'Reading the daily history...')}</p>`;
+        const days = h.days || [];
+        const n = days.length;
+        if (!n) return '<p class="mmc-hint">No history yet.</p>';
+        const colW = 18; const gutter = 100; const right = 8;
+        const W = gutter + n * colW + right;
+        const costH = 64; const laneH = 40; const gap = 14; const axisH = 22;
+        const accs = h.accounts || [];
+        const H = 14 + costH + gap + accs.length * (laneH + gap) + axisH;
+        const x = (i) => gutter + i * colW;
+        const parts = [];
+        const maxCost = Math.max(0, ...days.map((d) => (h.supervisor[d] ? h.supervisor[d].cost : 0)));
+        parts.push(`<text class="cd-ch-lane" x="4" y="26">Supervisor cost</text><text class="cd-ch-tick" x="4" y="40">${esc(maxCost > 0 ? `top ${moneyText(maxCost)}` : 'no cost yet')}</text>`);
+        parts.push(`<line class="cd-ch-grid" x1="${gutter}" y1="${14 + costH}" x2="${W - right}" y2="${14 + costH}"/>`);
+        days.forEach((d, i) => {
+            const r = h.supervisor[d];
+            const bh = r && r.cost > 0 && maxCost > 0 ? Math.max(2, Math.round((r.cost / maxCost) * (costH - 4))) : 0;
+            const tip = r ? `${dayLabel(d, true)}: ${moneyText(r.cost)}, ${plural(r.calls, 'call')}, ${countText(r.tokens)} tokens${r.unpriced ? `, ${r.unpriced} unpriced` : ''}` : `${dayLabel(d, true)}: no Supervisor calls`;
+            parts.push(`<g><title>${esc(tip)}</title><rect class="cd-ch-hit" x="${x(i)}" y="14" width="${colW}" height="${costH}"/>${bh ? `<rect class="cd-ch-cost" x="${x(i) + 3}" y="${14 + costH - bh}" width="${colW - 6}" height="${bh}"/>` : ''}</g>`);
+        });
+        accs.forEach((a, k) => {
+            const top = 14 + costH + gap + k * (laneH + gap);
+            const nm = String(a.name || a.id);
+            parts.push(`<text class="cd-ch-lane" x="4" y="${top + 14}">${esc(nm.length > 14 ? `${nm.slice(0, 13)}...` : nm)}<title>${esc(nm)}</title></text><text class="cd-ch-tick" x="4" y="${top + 28}">session / week %</text>`);
+            parts.push(`<line class="cd-ch-grid" x1="${gutter}" y1="${top + laneH}" x2="${W - right}" y2="${top + laneH}"/><line class="cd-ch-grid is-dash" x1="${gutter}" y1="${top}" x2="${W - right}" y2="${top}"/>`);
+            const pts = [];
+            days.forEach((d, i) => {
+                const r = a.days[d];
+                const s1 = r && r.session != null ? r.session : null;
+                const w1 = r && r.week != null ? r.week : null;
+                const tip = r ? `${a.name || a.id}, ${dayLabel(d, true)}: session peak ${s1 != null ? `${Math.round(s1)}%` : 'unknown'}, weekly ${w1 != null ? `${Math.round(w1)}%` : 'unknown'}` : `${a.name || a.id}, ${dayLabel(d, true)}: not read`;
+                const bh = s1 != null && s1 > 0 ? Math.max(2, Math.round(Math.min(100, s1) / 100 * (laneH - 2))) : 0;
+                parts.push(`<g><title>${esc(tip)}</title><rect class="cd-ch-hit" x="${x(i)}" y="${top}" width="${colW}" height="${laneH}"/>${bh ? `<rect class="cd-ch-sess" x="${x(i) + 3}" y="${top + laneH - bh}" width="${colW - 6}" height="${bh}"/>` : ''}</g>`);
+                if (w1 != null) pts.push(`${x(i) + colW / 2},${top + laneH - Math.round(Math.min(100, w1) / 100 * (laneH - 2))}`);
+            });
+            if (pts.length > 1) parts.push(`<polyline class="cd-ch-week" points="${pts.join(' ')}"/>`);
+            pts.forEach((pt) => { const [px, py] = pt.split(','); parts.push(`<circle class="cd-ch-dot" cx="${px}" cy="${py}" r="2.5"/>`); });
+        });
+        const axisY = H - 8;
+        days.forEach((d, i) => {
+            if ((n - 1 - i) % 3 !== 0) return;
+            const first = i === n - 1 || d.endsWith('-01');
+            parts.push(`<text class="cd-ch-tick is-day" x="${x(i) + colW / 2}" y="${axisY}" text-anchor="middle">${esc(first ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) : dayLabel(d))}</text>`);
+        });
+        const have = days.filter((d) => h.supervisor[d] || accs.some((a) => a.days[d])).length;
+        const note = have < 2 ? '<p class="mmc-hint">History starts today; each day fills in as the usage is read.</p>' : '';
+        const legend = '<div class="cd-ch-legend"><span><i class="cd-ch-sw is-cost"></i>Supervisor cost per day</span><span><i class="cd-ch-sw is-sess"></i>Highest session use of the day</span><span><i class="cd-ch-sw is-week"></i>Weekly use</span></div>';
+        return `${legend}<div class="cd-ch-scroll"><svg class="cd-ch" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Last 30 days: the Supervisor's cost and each account's usage per day">${parts.join('')}</svg></div>${note}`;
     }
 
     /**
@@ -2588,26 +2679,27 @@
         const held = heldItems();
         const busy = S.live.filter((s) => s.status === 'busy').length;
         const gaps = supReviews().filter((r) => r.verdict === 'gaps' && !r.dismissed && !r.delivered).length;
-        const tile = (nav, icon, n, label, warn) => `<button type="button" class="cd-tile${warn && n ? ' is-warn' : ''}" data-act="nav:${nav}"><img src="${esc(icon)}" alt=""><b>${n}</b><span>${esc(label)}</span></button>`;
+        const tile = (nav, icon, n, label, warn, extra) => `<button type="button" class="cd-tile${warn && n ? ' is-warn' : ''}" data-act="nav:${nav}" title="${esc(extra ? `${label}: ${extra}` : label)}"><img src="${esc(icon)}" alt=""><b>${n}</b><span>${esc(label)}</span>${extra ? `<small>${esc(extra)}</small>` : ''}</button>`;
         const tiles = `<div class="cd-tiles">${[
             tile('aw-sup', '/static_images/vista-cmdbar/play.png', run.length, 'Running work'),
             tile('co-held', `${ITEMS}/date-and-time-16.png`, held.length, 'Waiting for you'),
             tile('co-pending', `${VI}/info-16.png`, pendItems().length, 'Queued'),
             tile('co-pending', `${VI}/warning-16.png`, sentBack.length, 'Sent back', true),
-            tile('sessions', SESSION16, S.live.length, busy ? `Sessions (${busy} working)` : 'Sessions'),
+            tile('sessions', SESSION16, S.live.length, 'Sessions', false, busy ? `${busy} working` : ''),
             tile('bg-agents', `${ITEMS}/programs-and-features-16.png`, bgRunning().length, 'Background agents'),
             tile('sup-reviews', '/static_images/vista-cmdbar/paste.png', gaps, 'Reviews with gaps', true),
             tile('sup-asks', '/static_images/vista-cmdbar/clock.png', supAsks().length, 'Restart waits', true),
             tile('sup-holds', '/static_images/vista-cmdbar/pause.png', supHolds().length, 'Paused', true)
         ].join('')}</div>`;
         const live = run.concat(sentBack);
-        const row = (w) => `<tr class="cd-dash-row" data-act="${w.state === 'held' ? 'nav:co-held' : `nav:aw:w:${esc(w.id)}`}"><td><img class="mmc-row-icon" src="${esc(workIcon(w.state))}" alt="">${esc(w.title || String(w.id))}</td><td>${esc(workState(w))}</td><td>${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}</td><td>${esc([w.model, w.effort].filter(Boolean).join(' / '))}</td><td>${esc(w.startedAt ? when(w.startedAt) : '')}</td><td>${esc(w.message || '')}</td></tr>`;
+        const row = (w) => `<tr class="cd-dash-row" data-act="${w.state === 'held' ? 'nav:co-held' : `nav:aw:w:${esc(w.id)}`}"><td class="cd-cut" title="${esc(w.title || String(w.id))}"><img class="mmc-row-icon" src="${esc(workIcon(w.state))}" alt="">${esc(w.title || String(w.id))}</td><td class="cd-cut" title="${esc(workState(w))}">${esc(workState(w))}</td><td class="cd-cut" title="${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}">${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}</td><td class="cd-cut" title="${esc([w.model, w.effort].filter(Boolean).join(' / '))}">${esc([w.model, w.effort].filter(Boolean).join(' / '))}</td><td class="cd-cut" title="${esc(w.startedAt ? when(w.startedAt) : '')}">${esc(w.startedAt ? when(w.startedAt) : '')}</td><td class="cd-cut" title="${esc(w.message || '')}">${esc(w.message || '')}</td></tr>`;
         const table = (list, empty) => (list.length
             ? `<table class="cd-table cd-dash"><thead><tr><th>Request</th><th class="cd-w80">State</th><th class="cd-w80">Account</th><th>Model</th><th>Started</th><th>Note</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>`
             : `<p class="mmc-hint">${esc(empty)}</p>`);
         const heldTop = held.slice(0, 8);
         return [
             { id: 'cd-dash-tiles', title: 'Dashboard', body: tiles },
+            { id: 'cd-dash-days', title: 'Last 30 days', body: historyHtml() },
             { id: 'cd-dash-active', title: `Active Work (${live.length})`, body: table(live, 'No work is running. Pick requests in Waiting and start them.') + (live.length ? '<p><span class="mmc-link" data-act="nav:aw-sup">Open Active</span></p>' : '') },
             { id: 'cd-dash-held', title: `Waiting for You (${held.length})`, body: table(heldTop, 'Nothing is waiting for you.') + (held.length ? `<p><span class="mmc-link" data-act="nav:co-held">${held.length > heldTop.length ? `See all ${held.length}` : 'Open Waiting'}</span></p>` : '') }
         ];
@@ -3151,7 +3243,7 @@
     const attOf = (id) => { S.att = S.att || {}; return (S.att[id] = S.att[id] || []); };
 
     function attChipsHtml(id) {
-        return attOf(id).map((a) => `<span class="cd-att" title="${esc(a.name)} (${bytesText(a.size)})">${a.url ? `<img src="${esc(a.url)}" alt="">` : ''}<span class="cd-att-name">${esc(a.name)}</span><button type="button" class="cd-att-x" data-cd-att-x="${esc(a.key)}" aria-label="Remove ${esc(a.name)}">&times;</button></span>`).join('');
+        return attOf(id).map((a) => `<span class="cd-att${a.state === 'error' ? ' is-error' : ''}" title="${esc(a.state === 'error' ? `${a.name}: ${a.err || 'could not be read'}` : `${a.name} (${bytesText(a.size)})`)}">${a.state === 'error' ? `<img src="${VI}/warning-16.png" alt="" class="cd-att-bad">` : a.url ? `<img src="${esc(a.url)}" alt="" data-cd-att-img="${esc(a.key)}">` : ''}<span class="cd-att-name">${esc(a.name)}</span><button type="button" class="cd-att-x" data-cd-att-x="${esc(a.key)}" aria-label="Remove ${esc(a.name)}">&times;</button></span>`).join('');
     }
 
     function attRefresh(id) {
@@ -3170,10 +3262,31 @@
         attRefresh(id);
     }
 
+    /** The real bytes of a Blob/File in memory (a pasted picture from the Android clipboard can be a File that reads 0 bytes
+     *  or throws: it is read once here, so the thumbnail, the size and the upload all use the same bytes). */
+    async function attBytes(blob) {
+        if (!blob || typeof blob.arrayBuffer !== 'function') throw new Error('nothing was attached');
+        const buf = await blob.arrayBuffer();
+        if (!buf.byteLength) throw new Error('the picture is empty (0 bytes)');
+        return buf;
+    }
+
     function attAdd(id, item) {
         const isImg = /^image\//.test(item.type || '');
-        attOf(id).push({ key: `a${Date.now()}${Math.random().toString(36).slice(2, 6)}`, name: item.name, type: item.type || '', size: item.size || (item.blob && item.blob.size) || 0, blob: item.blob || null, path: item.path || '', url: isImg && item.blob ? URL.createObjectURL(item.blob) : '' });
+        const a = { key: `a${Date.now()}${Math.random().toString(36).slice(2, 6)}`, name: item.name, type: item.type || '', size: item.size || (item.blob && item.blob.size) || 0, blob: item.blob || null, path: item.path || '', url: '', state: 'ready', err: '' };
+        if (!a.path || !a.blob) {
+            // not on the server yet: read it into memory first; the chip shows its error if that fails
+            a.state = 'loading';
+            a.ready = attBytes(a.blob).then((buf) => {
+                a.blob = new Blob([buf], { type: a.type || (a.blob && a.blob.type) || 'application/octet-stream' });
+                a.size = buf.byteLength;
+                if (isImg) a.url = URL.createObjectURL(a.blob);
+                a.state = 'ready';
+            }).catch((e) => { a.state = 'error'; a.err = (e && e.message) || 'could not be read'; }).then(() => attRefresh(id));
+        } else if (isImg) a.url = URL.createObjectURL(a.blob);
+        attOf(id).push(a);
         attRefresh(id);
+        return a;
     }
 
     function attFiles(c, id, files) {
@@ -3185,6 +3298,22 @@
             if (f.size > ATT_MAX) { c.note(`${name} is larger than 20 MB.`); continue; }
             attAdd(id, { name, type: f.type, size: f.size, blob: f });
         }
+    }
+
+    /** A pasted picture when the paste event carried none (or an empty one): Melaton's clipboard (the Android app's clipboard
+     *  in the app, the browser's in a tab), then the Snipping Tool's own last copy. */
+    async function attClipboardImages() {
+        const out = [];
+        try {
+            if (typeof root.readClipboard === 'function' && typeof root.getAllImageFilesFromClipboardResult === 'function') {
+                out.push(...root.getAllImageFilesFromClipboardResult(await root.readClipboard()));
+            }
+        } catch (_) { /* below */ }
+        if (!out.length && root.melatonClipboardImage && typeof root.melatonClipboardImage.toBlob === 'function') {
+            const blob = await new Promise((r) => root.melatonClipboardImage.toBlob(r, 'image/png'));
+            if (blob) out.push(new File([blob], `snip-${Date.now()}.png`, { type: 'image/png' }));
+        }
+        return out;
     }
 
     async function attPick(c, id) {
@@ -3206,9 +3335,15 @@
 
     /** Uploads what is not on the server yet; the paths of all of them. */
     async function attUpload(id) {
-        for (const a of attOf(id)) {
+        const list = attOf(id);
+        for (const a of list) if (a.ready) await a.ready;
+        const bad = list.filter((a) => !a.path && (a.state === 'error' || !a.blob || !a.blob.size));
+        if (bad.length) throw new Error(`Cannot send: ${bad.map((a) => `${a.name} (${a.err || 'it is empty'})`).join(', ')}. Remove ${bad.length === 1 ? 'it' : 'them'} and attach again.`);
+        for (const a of list) {
             if (a.path) continue;
-            const r = await send('claude_desk_session', { action: 'attach', id, name: a.name, mimeType: a.type, base64: await blobBase64(a.blob) });
+            const base64 = await blobBase64(a.blob);
+            if (!base64) throw new Error(`Cannot send: ${a.name} read as empty. Remove it and attach again.`);
+            const r = await send('claude_desk_session', { action: 'attach', id, name: a.name, mimeType: a.type, base64 });
             a.path = (r.result || r).path;
         }
         return attOf(id).map((a) => a.path);
@@ -3247,6 +3382,7 @@
             try {
                 const blob = await ev.detail.toBlob();
                 if (blob) { attAdd(id, { name: `snip-${Date.now()}.png`, type: 'image/png', size: blob.size, blob }); c.note('Snip attached.'); }
+                else c.note('The snip had no picture.');
             } catch (e) { await failBox(c, e); }
         };
         S.snipWait = on;
@@ -3262,6 +3398,11 @@
         chips.dataset.sid = id;
         chips.innerHTML = attChipsHtml(id);
         chips.hidden = !attOf(id).length;
+        chips.addEventListener('error', (ev) => {
+            const k = ev.target && ev.target.dataset && ev.target.dataset.cdAttImg;
+            const a = k && attOf(id).find((q) => q.key === k);
+            if (a) { a.state = 'error'; a.err = 'the picture could not be shown'; if (a.url) { URL.revokeObjectURL(a.url); a.url = ''; } attRefresh(id); }
+        }, true);
         chips.addEventListener('click', (ev) => { const x = ev.target.closest('[data-cd-att-x]'); if (x) attDrop(id, x.dataset.cdAttX); });
         const addBtn = pane.querySelector('[data-cd-attach]');
         if (addBtn) addBtn.addEventListener('click', () => void attPick(c, id));
@@ -3274,8 +3415,24 @@
         }
         // paste an image (Ctrl+V) and drop files on the composer
         box.addEventListener('paste', (ev) => {
-            const files = [...((ev.clipboardData && ev.clipboardData.files) || [])];
-            if (files.length) { ev.preventDefault(); attFiles(c, id, files); }
+            const cd = ev.clipboardData;
+            let files = [...((cd && cd.files) || [])];
+            if (!files.length && cd && cd.items) files = [...cd.items].filter((it) => it.kind === 'file').map((it) => it.getAsFile()).filter(Boolean);
+            const hasText = !!(cd && cd.types && [...cd.types].includes('text/plain') && cd.getData('text/plain'));
+            if (files.length) {
+                ev.preventDefault();
+                // a File the WebView hands over can read as 0 bytes: those are replaced by Melaton's clipboard picture
+                void (async () => {
+                    const real = [];
+                    for (const f of files) { try { if ((await f.arrayBuffer()).byteLength) real.push(f); } catch (_) { /* dropped */ } }
+                    if (real.length) attFiles(c, id, real);
+                    else { const alt = await attClipboardImages(); if (alt.length) attFiles(c, id, alt); else attFiles(c, id, files); }
+                })();
+            } else if (!hasText) {
+                // nothing in the event (the Android WebView pastes no picture): ask Melaton's clipboard
+                ev.preventDefault();
+                void attClipboardImages().then((alt) => { if (alt.length) attFiles(c, id, alt); });
+            }
         });
         box.addEventListener('dragover', (ev) => { if (ev.dataTransfer && [...ev.dataTransfer.types].includes('Files')) { ev.preventDefault(); box.classList.add('is-drop'); } });
         box.addEventListener('dragleave', () => box.classList.remove('is-drop'));
@@ -3648,7 +3805,7 @@
             case 'sup-holds': return [{ text: 'Resume', action: 'sup-resume' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-locks': return [{ text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-maint': return [{ text: 'Run Now', action: 'maint-run', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Dry Run', action: 'maint-dry', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Save Settings', action: 'maint-save', disabled: !maintUi().draft }, { text: 'Read Again', action: 'sup-refresh' }];
-            case 'sup-arts': return [{ text: 'Clean...', action: 'sup-art-clean' }, { text: 'Forget', action: 'sup-art-forget' }, { text: 'Read Again', action: 'sup-refresh' }];
+            case 'sup-arts': return [{ text: 'Clean...', action: 'sup-art-clean' }, { text: 'Restore', action: 'sup-art-restore' }, { text: 'Forget', action: 'sup-art-forget' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'rc-host': return [
                 { text: 'Reconnect', action: 'rc-reconnect' },
                 { text: 'Start', action: 'rc-start', disabled: !!(S.host && S.host.remoteControl && S.host.remoteControl.active === 'active') },
@@ -3773,7 +3930,7 @@
             return { title: w.title || 'Request', items: [{ text: 'Start Now', action: 'work-start', disabled: !WORK_STARTABLE.has(w.state) || !!S.sup.busy }, { text: 'Move to Waiting', action: 'work-hold-sel', disabled: !WORK_HOLDABLE.has(w.state) || !!S.sup.busy }, { text: 'Cancel', action: 'work-cancel', disabled: !WORK_OPEN.has(w.state) || !!S.sup.busy }, { text: w.sessionId && holdOf(w.sessionId) ? 'Resume' : 'Pause...', action: w.sessionId && holdOf(w.sessionId) ? 'resume-hold' : 'pause', disabled: !w.sessionId || !liveOf(w.sessionId) }, { separator: true }, { text: 'Open Session', action: 'work-open', disabled: !w.sessionId }, { text: 'Open Issue', action: 'work-issue', disabled: !(w.issue && w.issue.url) }] };
         }
         if (key.startsWith('lk:')) { const l = supLocks().find((x) => `${x.root || ''}|${x.file}` === key.slice(3)); return { title: 'Busy Lock', items: [{ text: 'Remove...', action: 'sup-lock-remove', disabled: !l || l.state !== 'orphan' || !!S.sup.busy }] }; }
-        if (key.startsWith('ar:')) { const a = supArtifacts().find((x) => String(x.id) === key.slice(3)); return { title: 'Work Folder', items: [{ text: 'Clean...', action: 'sup-art-clean', disabled: !a || !a.cleanable || !!S.sup.busy }, { text: 'Forget', action: 'sup-art-forget', disabled: !a || !!S.sup.busy }] }; }
+        if (key.startsWith('ar:')) { const a = supArtifacts().find((x) => String(x.id) === key.slice(3)); return { title: 'Work Folder', items: [{ text: 'Clean...', action: 'sup-art-clean', disabled: !a || !a.cleanable || !!S.sup.busy }, { text: 'Restore', action: 'sup-art-restore', disabled: !a || !a.canRestore || !!S.sup.busy }, { text: 'Forget', action: 'sup-art-forget', disabled: !a || !!S.sup.busy }] }; }
         if (key.startsWith('me:')) {
             const m = memOf(key.slice(3));
             if (!m) return null;
@@ -4052,9 +4209,15 @@
                 if (!art) { c.note('Select a work folder or temp file first.'); return true; }
                 const clean = a === 'sup-art-clean';
                 if (clean && !art.cleanable) { await c.box(`<p><b>${esc(art.path)}</b> cannot be cleaned${art.state === 'live' ? ': its session is still using it' : art.state === 'gone' ? ': it is already gone from the disk' : ''}.</p>`, null, { icon: 'info', title: 'Clean' }); return true; }
-                const ok = await c.box(clean ? `<p>Delete <b>${esc(art.path)}</b> from the disk? That frees <b>${esc(bytesText(art.sizeBytes) || '0 B')}</b> and cannot be undone.</p>` : `<p>Forget <b>${esc(art.path)}</b>? It stays on the disk; it is only no longer tracked here.</p>`,
+                const ok = await c.box(clean ? `<p>Clean <b>${esc(art.path)}</b> (<b>${esc(bytesText(art.sizeBytes) || '0 B')}</b>)?</p><p>The Supervisor checks it first (recent changes, unsaved git work, running programs). If it is safe, it goes to the trash for 7 days and can be restored from here.</p>` : `<p>Forget <b>${esc(art.path)}</b>? It stays on the disk; it is only no longer tracked here.</p>`,
                     [{ text: clean ? 'Clean' : 'Forget', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'warning' });
-                if (ok === true) await supAct(c, { action: clean ? 'artifact_clean' : 'artifact_forget', id: art.id }, clean ? 'Cleaning...' : 'Forgetting...');
+                if (ok === true) await supAct(c, { action: clean ? 'artifact_clean' : 'artifact_forget', id: art.id }, clean ? 'The Supervisor is checking it...' : 'Forgetting...');
+                return true;
+            }
+            case 'sup-art-restore': {
+                const art = supArtifacts().find((x) => String(x.id) === selId(c, 'ar:'));
+                if (!art || !art.canRestore) { c.note('Select a folder that is in the trash first.'); return true; }
+                await supAct(c, { action: 'artifact_restore', id: art.id }, 'Restoring...');
                 return true;
             }
             case 'sup-save': {

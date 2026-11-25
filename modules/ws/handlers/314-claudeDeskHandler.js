@@ -239,6 +239,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'send') return { review: await supervisor.send(message.reviewId) };
     if (action === 'dismiss') { supervisor.dismiss(message.reviewId); return supervisorStatus(gr); }
     if (action === 'spend') return { spend: await supervisor.spend(gr) };
+    if (action === 'usage_history') return { history: require('../../claudeUsageHistory').history(message.days) };
     if (action === 'pause') { await supervisor.pauseSession(String(message.sessionId || ''), { mode: message.mode, reason: message.reason, by: 'Fleet' }); return supervisorStatus(gr); }
     if (action === 'resume') { await supervisor.resumeSession(String(message.sessionId || ''), { note: message.note }); return supervisorStatus(gr); }
     if (action === 'enqueue') {
@@ -252,7 +253,13 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'work_update') { supervisor.updateWork(message.id, { prompt: message.prompt }, { by: 'Yukimi (Fleet)' }); return supervisorStatus(gr); }
     if (action === 'work_cancel') { supervisor.cancelWork(message.id); return supervisorStatus(gr); }
     if (action === 'lock_remove') { supervisor.removeLockFile(String(message.root || ''), String(message.file || '')); poke(); return supervisorStatus(gr); }
-    if (action === 'artifact_clean') { const r = supervisor.cleanArtifact(message.id); return Object.assign(await supervisorStatus(gr), { cleaned: r }); }
+    // Clean is a Supervisor review (evidence, engine verdict, trash): it answers at once and the result arrives through the status push
+    if (action === 'artifact_clean') {
+        const id = message.id;
+        supervisor.cleanArtifact(id, { gr }).catch((e) => { console.warn(`[claudeDesk] artifact_clean: ${e.message}`); }).finally(() => poke());
+        return { started: true, id };
+    }
+    if (action === 'artifact_restore') { const r = supervisor.restoreArtifact(message.id); poke(); return Object.assign(await supervisorStatus(gr), { restored: r }); }
     if (action === 'artifact_forget') { supervisor.forgetArtifact(message.id); return supervisorStatus(gr); }
     // Rules > Rules Review: the review runs in the background; its result reaches the console through the status push
     if (action === 'rules_list') return { rules: supervisor.rulesState() };
@@ -263,7 +270,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'maintenance_status') return { maintenance: maintenance.state(gr), report: message.runId ? maintenance.getRun(message.runId) : undefined };
     if (action === 'maintenance_run') { const r = maintenance.runNow({ trigger: 'manual', gr, dryRun: message.dryRun === true ? true : undefined }); return { maintenance: maintenance.state(gr), started: r.started }; }
     if (action === 'maintenance_save') { await maintenance.saveSettings(gr, message.settings || {}); return { maintenance: maintenance.state(gr) }; }
-    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, pause, resume, enqueue, work_start, work_hold, work_update, work_cancel, lock_remove, artifact_clean or artifact_forget');
+    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, pause, resume, enqueue, work_start, work_hold, work_update, work_cancel, lock_remove, artifact_clean, artifact_restore or artifact_forget');
 });
 
 // ---------------------------------------------------------------- transcript watches (one per socket)

@@ -40,10 +40,29 @@ function shellPaths(cmd) {
 // and temp files that can get lost and forgotten and will waste space"): mkdir, git worktree add, and writes
 // (redirects, tee, -o / --output, cp / mv targets, Write) to paths outside the repo
 const ARTIFACT_ROOT_RE = /^(?:\/tmp\/|\/var\/tmp\/|~\/|\/home\/[^/]+\/)/;
+/**
+ * The one gate for what the tracker records (Nov 24 2026: it had read "/", the repo, the word "and" and a relative path).
+ * Only an absolute or ~/ path, resolved; never "/", a path less than two levels deep, a protected folder or a folder
+ * above one (HOME, the repo, ~/.claude, ~/.secrets, ~/.config, /tmp, /var/tmp, ~/.cache). Returns the resolved path or ''.
+ */
+function acceptArtifactPath(p) {
+    let v = String(p || '').trim();
+    if (!v || v.length > 400 || /[\0*?$`]/.test(v)) return '';
+    const home = os.homedir();
+    if (v === '~') return '';
+    if (v.startsWith('~/')) v = path.join(home, v.slice(2));
+    if (!path.isAbsolute(v)) return '';
+    v = path.normalize(v).replace(/\/+$/, '');
+    if (!v || v === '/' || v.split(path.sep).filter(Boolean).length < 2) return '';
+    const protectedPaths = [home, path.join(__dirname, '..', '..'), path.join(home, '.claude'), path.join(home, '.secrets'), path.join(home, '.config'), '/tmp', '/var/tmp', path.join(home, '.cache'), '/']
+        .map((x) => path.normalize(x).replace(/\/+$/, '') || '/');
+    if (protectedPaths.some((n) => n === v || n.startsWith(`${v}${path.sep}`))) return '';
+    return v;
+}
 function shellArtifacts(cmd) {
     const c = String(cmd || '');
     const out = [];
-    const add = (p, kind) => { const v = String(p || '').replace(/^["']|["']$/g, '').replace(/[;,)]+$/, ''); if (v && v.length < 400 && !/[*?$`]/.test(v)) out.push({ path: v, kind }); };
+    const add = (p, kind) => { const v = acceptArtifactPath(String(p || '').replace(/^["']|["']$/g, '').replace(/[;,)]+$/, '')); if (v) out.push({ path: v, kind }); };
     let m;
     const mk = /\bmkdir\s+(?:-[a-zA-Z]+\s+)*((?:"[^"]+"|'[^']+'|[^\s;&|]+)(?:\s+(?:"[^"]+"|'[^']+'|[^\s;&|-][^\s;&|]*))*)/g;
     while ((m = mk.exec(c))) m[1].split(/\s+/).forEach((p) => add(p, 'dir'));
@@ -214,7 +233,7 @@ module.exports = function storeV2(core) {
                     const p = inp.file_path || inp.notebook_path;
                     if (!p) return;
                     if (c.name === 'Write' && /\/\.agent-[A-Za-z0-9_.-]+$/.test(p)) locksSeen.add(path.basename(p));
-                    if (c.name === 'Write' && ARTIFACT_ROOT_RE.test(p)) artifacts.push({ path: p, kind: 'file', at, cmd: `Write ${p}` });
+                    if (c.name === 'Write' && ARTIFACT_ROOT_RE.test(p) && acceptArtifactPath(p)) artifacts.push({ path: acceptArtifactPath(p), kind: 'file', at, cmd: `Write ${p}` });
                     const e = edits.get(p) || { tool: c.name, n: 0, first: at, last: at };
                     e.n += 1; e.tool = c.name; e.last = at || e.last; if (!e.first) e.first = at;
                     edits.set(p, e);
@@ -476,7 +495,7 @@ module.exports = function storeV2(core) {
     }
 
     return {
-        shellArtifacts, lockMentions,
+        shellArtifacts, acceptArtifactPath, lockMentions,
         plantLock, removeLocks, lockFiles, liveRecord, isBusy,
         scanSession, inspect, editorsOf, gitDirty,
         buildRequest, buildReady, buildBegin, buildEnd, adminEndBuild, builds, gateState

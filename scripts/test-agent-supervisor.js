@@ -239,11 +239,74 @@ sup._test.setFetch(async (url, opts) => {
         assert.ok(dir && dir.exists && dir.sizeBytes >= 4096 && dir.state === 'orphan' && dir.cleanable, JSON.stringify(arts));
         const inRepo = arts.find((a) => a.path.endsWith(`${path.sep}repo${path.sep}build`));
         assert.ok(inRepo && !inRepo.cleanable, 'a folder outside /tmp-like roots is never cleaned from here');
-        const r = sup.cleanArtifact(dir.id);
-        assert.ok(r.freedBytes >= 4096 && !fs.existsSync(scratch));
-        assert.throws(() => sup.cleanArtifact(inRepo.id), /Only work folders/);
+        // supervised Clean: hard guard first (never reaches the engine)
+        calls = [];
+        const g1 = await sup.cleanArtifact(inRepo.id, { gr });
+        assert.ok(g1.decision === 'refused' && /Only work folders/.test(g1.reason) && calls.length === 0, JSON.stringify(g1));
+        // modified in the last 2 hours: refused without asking the engine
+        const r0 = await sup.cleanArtifact(dir.id, { gr });
+        assert.ok(r0.decision === 'refused' && /last 2 hours/.test(r0.reason) && calls.length === 0 && fs.existsSync(scratch), JSON.stringify(r0));
+        const old = new Date(Date.now() - 5 * 3600 * 1000);
+        const age = (p) => { fs.utimesSync(path.join(p, 'big.bin'), old, old); fs.utimesSync(path.join(p, 'log.txt'), old, old); fs.utimesSync(p, old, old); };
+        fs.writeFileSync(path.join(scratch, 'log.txt'), 'x');
+        // a busy lock inside
+        fs.writeFileSync(path.join(scratch, '.agent-x'), 'a'); age(scratch); fs.utimesSync(path.join(scratch, '.agent-x'), old, old);
+        const rl = await sup.cleanArtifact(dir.id, { gr });
+        assert.ok(rl.decision === 'refused' && /busy lock/.test(rl.reason) && calls.length === 0, JSON.stringify(rl));
+        fs.unlinkSync(path.join(scratch, '.agent-x'));
+        age(scratch);
+        // the engine says unsafe
+        answer = { verdict: 'unsafe', reason: 'It looks like a database' };
+        const ru = await sup.cleanArtifact(dir.id, { gr });
+        assert.ok(ru.decision === 'unsafe' && /database/.test(ru.reason) && calls.length === 1 && fs.existsSync(scratch), JSON.stringify(ru));
+        assert.strictEqual(sup.artifactStatus().find((a) => a.id === dir.id).decision, 'unsafe');
+        // safe -> trashed -> restored
+        answer = { verdict: 'safe', reason: 'build scratch' };
+        const r = await sup.cleanArtifact(dir.id, { gr });
+        assert.ok(r.decision === 'trashed' && r.freedBytes >= 4096 && !fs.existsSync(scratch) && fs.existsSync(r.trash) && r.trash.includes('.fleet-trash'), JSON.stringify(r));
+        const ts = sup.artifactStatus().find((a) => a.id === dir.id);
+        assert.ok(ts.state === 'trashed' && ts.canRestore && !ts.cleanable, JSON.stringify(ts));
+        sup.restoreArtifact(dir.id);
+        assert.ok(fs.existsSync(path.join(scratch, 'big.bin')) && sup.artifactStatus().find((a) => a.id === dir.id).decision === 'restored');
+        // trashed again, then purged after 7 days
+        age(scratch);
+        const r2 = await sup.cleanArtifact(dir.id, { gr });
+        assert.strictEqual(r2.decision, 'trashed', JSON.stringify(r2));
+        assert.deepStrictEqual(sup.purgeTrash(), []);
+        require('../modules/agentCoord/store').open().prepare('UPDATE artifacts SET decided_at = ? WHERE id = ?').run(Date.now() - 8 * 86400000, dir.id);
+        assert.strictEqual(sup.purgeTrash().length, 1);
+        assert.ok(!fs.existsSync(r2.trash) && sup.artifactStatus().find((a) => a.id === dir.id).decision === 'purged');
+        // engine budget: a run past its cap defers
+        assert.strictEqual((await sup.cleanArtifact(inRepo.id, { gr, budget: { calls: 10, max: 10 } })).decision, 'refused');
         sup.forgetArtifact(inRepo.id);
         assert.ok(!sup.artifactStatus().some((a) => a.id === inRepo.id));
+    });
+
+    await test('artifacts: the parser never records /, the repo, HOME, bare words or relative paths; a dirty worktree is refused', async () => {
+        const store = require('../modules/agentCoord/store');
+        const repoRoot = path.join(__dirname, '..');
+        const got = store.shellArtifacts(`mkdir / ; mkdir ${repoRoot}/ ; mkdir ${os.homedir()} ; git worktree add and ; git worktree add ../wt/feature-x ; mkdir -p build ; mkdir ~/.cache ; mkdir /tmp ; mkdir /tmp/ok-dir ; git worktree add -b f /tmp/wt-real`).map((a) => `${a.kind}:${a.path}`);
+        assert.deepStrictEqual(got, ['dir:/tmp/ok-dir', 'worktree:/tmp/wt-real'], JSON.stringify(got));
+        assert.strictEqual(store.acceptArtifactPath('~/.claude/x'), `${os.homedir()}/.claude/x`);
+        ['/', '/tmp', '/home', os.homedir(), repoRoot, 'and', '../x', '~'].forEach((p) => assert.strictEqual(store.acceptArtifactPath(p), '', p));
+        // dirty worktree in /tmp: refused with git evidence, engine never asked
+        const cp = require('child_process');
+        const base = fs.mkdtempSync(path.join(os.tmpdir(), 'sup-wt-'));
+        const main = path.join(base, 'main'); const wt = path.join(base, 'wt');
+        fs.mkdirSync(main);
+        const git = (cwd, ...a) => cp.execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd, stdio: 'ignore' });
+        git(main, 'init', '-q'); fs.writeFileSync(path.join(main, 'a'), '1'); git(main, 'add', '.'); git(main, 'commit', '-qm', 'i');
+        git(main, 'worktree', 'add', '-q', '-b', 'feat', wt);
+        const SID4 = 'dddddddd-5555-6666-7777-888888888888';
+        const d = store.open();
+        d.prepare('INSERT INTO artifacts (session_id, path, kind, created_at, cmd, cwd) VALUES (?, ?, ?, ?, ?, ?)').run(SID4, wt, 'worktree', Date.now() - 86400000, 'git worktree add', '');
+        const row = d.prepare('SELECT id FROM artifacts WHERE session_id = ?').get(SID4);
+        const old = new Date(Date.now() - 5 * 3600 * 1000);
+        const ageAll = () => { [wt, path.join(wt, 'a'), path.join(wt, '.git')].forEach((p) => fs.utimesSync(p, old, old)); };
+        fs.writeFileSync(path.join(wt, 'dirty'), 'x'); fs.utimesSync(path.join(wt, 'dirty'), old, old); ageAll();
+        calls = [];
+        const rd = await sup.cleanArtifact(row.id, { gr });
+        assert.ok(rd.decision === 'refused' && /uncommitted/.test(rd.reason) && calls.length === 0 && fs.existsSync(wt), JSON.stringify(rd));
     });
 
     await test('work queue: starts supervised sessions up to the slot limit; Start Now passes it; reviews set done / waiting', async () => {
@@ -432,6 +495,19 @@ sup._test.setFetch(async (url, opts) => {
         assert.ok(refused >= 1, 'the refusal is recorded');
         assert.ok(sp.failovers.length >= 1 && sp.failovers[0].fromEngine === 'tokenrouter', JSON.stringify(sp.failovers));
         assert.ok(today.some((x) => x.cost > 0.002), 'cost summed');
+    });
+
+    await test('spend: a call TokenRouter sends no cost for is priced from the catalog (per million tokens)', async () => {
+        const f = path.join(os.tmpdir(), `ds-sup-catalog-${process.pid}.json`);
+        fs.writeFileSync(f, JSON.stringify({ at: Date.now(), families: [{ id: 'cat/model-x', input: 0.15, output: 0.6 }] }));
+        process.env.DREAMSCAPE_TOKENROUTER_CATALOG = f;
+        sup._test.resetPrices();
+        try {
+            const c = sup.priceCall('tokenrouter', 'cat/model-x', 1000000, 500000);
+            assert.ok(Math.abs(c - 0.45) < 1e-9, String(c));
+            assert.strictEqual(sup.priceCall('tokenrouter', 'cat/unknown', 10, 10), null);
+            assert.strictEqual(sup.priceCall('other', 'cat/model-x', 10, 10), null);
+        } finally { delete process.env.DREAMSCAPE_TOKENROUTER_CATALOG; sup._test.resetPrices(); fs.rmSync(f, { force: true }); }
     });
 
     await test('rules review: file checks + stubbed engine findings stored, pushed, dismissable; one run at a time', async () => {

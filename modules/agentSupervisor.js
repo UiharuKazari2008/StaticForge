@@ -264,6 +264,28 @@ function engineChain(gr, s) {
     return chain.filter((c) => { const k = `${c.engine}|${c.model || ''}`; if (seen.has(k)) return false; seen.add(k); return true; });
 }
 
+// TokenRouter's reply carries no cost, so a call is priced from the gateway's catalog (USD per million tokens, the
+// same list the model picker shows; saved in tokenrouter-models.json, so no request is made here).
+let priceCache = { at: 0, byId: null };
+const resetPrices = () => { priceCache = { at: 0, byId: null }; };
+function catalogPrice(model) {
+    if (!priceCache.byId || Date.now() - priceCache.at > 600000) {
+        const byId = new Map();
+        try {
+            const j = JSON.parse(fs.readFileSync(process.env.DREAMSCAPE_TOKENROUTER_CATALOG || path.join(os.homedir(), '.local', 'state', 'dreamscape-agents', 'tokenrouter-models.json'), 'utf8'));
+            (j.families || []).forEach((f) => { if (f && f.id && Number.isFinite(f.input) && Number.isFinite(f.output)) byId.set(f.id, f); });
+        } catch (_) { /* no catalog saved yet: nothing to price with */ }
+        priceCache = { at: Date.now(), byId };
+    }
+    return priceCache.byId.get(model) || null;
+}
+/** USD for one call from the catalog price, or null when the engine/model has none. */
+function priceCall(engine, model, promptTokens, completionTokens) {
+    if (engine !== 'tokenrouter' || !(promptTokens || completionTokens)) return null;
+    const p = catalogPrice(model);
+    return p ? ((Number(promptTokens) || 0) * p.input + (Number(completionTokens) || 0) * p.output) / 1e6 : null;
+}
+
 function recordUsage(row) {
     try {
         db().prepare(`INSERT INTO supervisor_usage (at, kind, engine, model, prompt_tokens, completion_tokens, cost, ok, error, failover_from)
@@ -296,7 +318,7 @@ async function callEngine(gr, messages, opts = {}) {
             const j = JSON.parse(body);
             const u = j.usage || {};
             const cost = Number.isFinite(Number(u.cost)) ? Number(u.cost) : (Number.isFinite(Number(u.total_cost)) ? Number(u.total_cost) : null);
-            recordUsage({ kind: opts.kind || 'call', engine: link.engine, model: ep.model, prompt_tokens: u.prompt_tokens || null, completion_tokens: u.completion_tokens || null, cost, ok: 1, failover_from: from });
+            recordUsage({ kind: opts.kind || 'call', engine: link.engine, model: ep.model, prompt_tokens: u.prompt_tokens || null, completion_tokens: u.completion_tokens || null, cost: cost !== null ? cost : priceCall(link.engine, ep.model, u.prompt_tokens, u.completion_tokens), ok: 1, failover_from: from });
             const choice = (j.choices || [])[0] || {};
             return { content: (choice.message || {}).content || '', finish: choice.finish_reason, engine: ep.name, model: ep.model, failedOverFrom: from };
         } finally { clearTimeout(timer); }
@@ -310,10 +332,16 @@ async function spend(gr) {
     const now = Date.now();
     const windows = { today: now - (now % 86400000), week: now - 7 * 86400000, month: now - 30 * 86400000 };
     const out = {};
+    try {   // calls recorded before the catalog price was used: price them now
+        const upd = d.prepare('UPDATE supervisor_usage SET cost = ? WHERE id = ?');
+        d.prepare("SELECT id, engine, model, prompt_tokens, completion_tokens FROM supervisor_usage WHERE ok = 1 AND cost IS NULL AND engine = 'tokenrouter' AND (prompt_tokens > 0 OR completion_tokens > 0)").all()
+            .forEach((r) => { const c = priceCall(r.engine, r.model, r.prompt_tokens, r.completion_tokens); if (c !== null) upd.run(c, r.id); });
+    } catch (e) { console.warn(`[supervisor] backfill prices: ${e.message}`); }
     for (const [k, since] of Object.entries(windows)) {
         out[k] = d.prepare(`SELECT engine, COUNT(*) calls, SUM(ok) ok, SUM(COALESCE(prompt_tokens,0)) prompt, SUM(COALESCE(completion_tokens,0)) completion,
             SUM(cost) cost, SUM(CASE WHEN ok = 1 AND cost IS NULL THEN 1 ELSE 0 END) unpriced FROM supervisor_usage WHERE at >= ? GROUP BY engine ORDER BY calls DESC`).all(since);
     }
+    const unpricedWhy = d.prepare('SELECT engine, model, COUNT(*) calls FROM supervisor_usage WHERE ok = 1 AND cost IS NULL AND at >= ? GROUP BY engine, model ORDER BY calls DESC LIMIT 5').all(windows.month);
     const lastOk = d.prepare('SELECT engine, model, at FROM supervisor_usage WHERE ok = 1 ORDER BY id DESC LIMIT 1').get();
     const failovers = d.prepare('SELECT at, failover_from AS fromEngine, engine AS toEngine, kind FROM supervisor_usage WHERE failover_from IS NOT NULL AND ok = 1 ORDER BY id DESC LIMIT 10').all();
     const lastRefusal = d.prepare('SELECT at, engine, error FROM supervisor_usage WHERE ok = 0 ORDER BY id DESC LIMIT 1').get();
@@ -327,7 +355,7 @@ async function spend(gr) {
         balances = rows.filter((r) => mine.has(r.engine) || mine.has(r.engine.replace(/^custom:/, '')));
     } catch (e) { balances = [{ engine: '', name: 'Balances', error: e.message }]; }
     const s = settings(gr);
-    return { configured: { engine: s.engine, model: s.model || '' }, active: lastOk || null, failedOver: !!(lastOk && failovers[0] && failovers[0].at === lastOk.at) || (lastOk && lastOk.engine !== s.engine), failovers, lastRefusal: lastRefusal || null, windows: out, balances };
+    return { configured: { engine: s.engine, model: s.model || '' }, active: lastOk || null, failedOver: !!(lastOk && failovers[0] && failovers[0].at === lastOk.at) || (lastOk && lastOk.engine !== s.engine), failovers, lastRefusal: lastRefusal || null, windows: out, unpricedWhy, balances };
 }
 function pickBalance(x) {
     return { balance: x.balance !== undefined ? x.balance : (x.remaining !== undefined ? x.remaining : null), balanceText: x.balanceText || x.text || '', currency: x.currency || '', state: x.state || '', title: x.title || '' };
@@ -809,8 +837,8 @@ function cleanStages(st) {
 }
 
 /** One JSON answer from the Supervisor's engine (the same engine / model as its reviews). */
-async function askJson(gr, system, user, kind) {
-    const r = await callEngine(gr, [{ role: 'system', content: system }, { role: 'user', content: user }], { kind: kind || 'json' });
+async function askJson(gr, system, user, kind, opts = {}) {
+    const r = await callEngine(gr, [{ role: 'system', content: system }, { role: 'user', content: user }], { kind: kind || 'json', maxTokens: opts.maxTokens });
     const raw = String(r.content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
     try { return JSON.parse(raw); } catch (_) { const m = /\{[\s\S]*\}/.exec(raw); return m ? JSON.parse(m[0]) : null; }
 }
@@ -1291,6 +1319,7 @@ function cleanable(fullIn, kind) {
     const full = path.normalize(fullIn).replace(/\/+$/, '') || '/';
     const never = NEVER();
     if (never.some((n) => n === full || n.startsWith(`${full}${path.sep}`))) return false;
+    if (full.includes(`${path.sep}.fleet-trash`)) return false;
     const depth = full.split(path.sep).filter(Boolean).length;
     if (depth < 2 || (kind === 'worktree' && depth < 3)) return false;
     if (full.includes(`${path.sep}.claude${path.sep}`) || full.includes(`${path.sep}.secrets`)) return false;
@@ -1338,29 +1367,177 @@ function artifactStatus() {
         const full = expand(r.path, r.cwd);
         if (!names.has(r.session_id)) { const a = coord().getAgent(lockAgentId(r.session_id)); names.set(r.session_id, (a && a.name) || r.session_id.slice(0, 8)); }
         const exists = r.exists_now === null ? null : !!r.exists_now;
-        const state = exists === false ? 'gone' : (live.has(r.session_id) ? 'live' : 'orphan');
+        const trashed = r.decision === 'trashed' && !!r.trash_path;
+        const state = trashed ? 'trashed' : (exists === false ? 'gone' : (live.has(r.session_id) ? 'live' : 'orphan'));
         return {
             id: r.id, path: full || r.path, kind: r.kind, sessionId: r.session_id, agentName: names.get(r.session_id), createdAt: r.created_at, cmd: r.cmd,
             exists, sizeBytes: r.size_bytes, checkedAt: r.checked_at, ageHours: Math.round((Date.now() - r.created_at) / 3600000), state,
-            cleanable: exists !== false && state !== 'live' && cleanable(full, r.kind)
+            cleanable: exists !== false && state !== 'live' && cleanable(full, r.kind),
+            decision: r.decision || '', decisionReason: r.decision_reason || '', decidedAt: r.decided_at || null, trashPath: r.trash_path || '', canRestore: trashed
         };
     });
 }
 
-function cleanArtifact(id) {
+function cleanArtifactGuardMessage(a) {
+    return a && a.state === 'live' ? 'Its session is still running: let it clean up, or stop it first' : 'Only work folders and temp files under /tmp, /var/tmp, ~/.cache or a git worktree are cleaned from here';
+}
+
+/** Cheap walk with a budget: size, file count (capped), newest mtime, .agent-* locks, symlinks. Never follows links. */
+function walkEvidence(root, budgetMs = 1500, fileCap = 20000) {
+    const until = Date.now() + budgetMs;
+    const ev = { files: 0, truncated: false, newestMtimeMs: 0, locks: [], symlinks: 0 };
+    const stack = [root];
+    while (stack.length) {
+        if (Date.now() > until || ev.files >= fileCap) { ev.truncated = true; break; }
+        const dir = stack.pop();
+        let st = null;
+        try { st = fs.lstatSync(dir); } catch (_) { continue; }
+        ev.newestMtimeMs = Math.max(ev.newestMtimeMs, st.mtimeMs);
+        if (st.isSymbolicLink()) { ev.symlinks += 1; continue; }
+        if (!st.isDirectory()) { ev.files += 1; if (/^\.agent-/.test(path.basename(dir))) ev.locks.push(dir); continue; }
+        let names = [];
+        try { names = fs.readdirSync(dir); } catch (_) { continue; }
+        names.forEach((n) => stack.push(path.join(dir, n)));
+    }
+    return ev;
+}
+
+function gitEvidence(full) {
+    const cp = require('child_process');
+    const run = (args) => { try { return { ok: true, out: cp.execFileSync('git', ['-C', full, ...args], { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }) }; } catch (_) { return { ok: false, out: '' }; } };
+    if (!fs.existsSync(path.join(full, '.git'))) return null;
+    const st = run(['status', '--porcelain']);
+    const un = run(['log', 'HEAD', '--not', '--remotes', '--oneline', '-n', '20']);
+    return { statusOk: st.ok, dirty: st.out.split('\n').filter(Boolean).slice(0, 20), unpushedOk: un.ok, unpushed: un.out.split('\n').filter(Boolean) };
+}
+
+function openUsers(full) {
+    try {
+        const out = require('child_process').execFileSync('lsof', ['-t', '+D', full], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+        return out.split('\n').map((x) => Number(x)).filter((n) => n > 1 && n !== process.pid);
+    } catch (e) {
+        if (e && e.status === 1) return []; // lsof: nothing open
+        return null; // not installed / timed out: unknown
+    }
+}
+
+const RECENT_MS = 2 * 3600 * 1000;
+const TRASH_DAYS = 7;
+const cleaning = new Set();
+
+function recordDecision(id, decision, reason, extra = {}) {
+    coord().open().prepare('UPDATE artifacts SET decision = ?, decision_reason = ?, decided_at = ?, trash_path = COALESCE(?, trash_path), exists_now = COALESCE(?, exists_now), size_bytes = CASE WHEN ? = 0 THEN NULL ELSE size_bytes END, checked_at = ? WHERE id = ?')
+        .run(decision, String(reason || '').slice(0, 400), Date.now(), extra.trashPath === undefined ? null : extra.trashPath, extra.exists === undefined ? null : extra.exists, extra.exists === undefined ? 1 : extra.exists, Date.now(), id);
+    emit({ artifacts: true });
+}
+
+/** Everything the review looks at (pure reading; nothing is changed). */
+function artifactEvidence(r, a) {
+    const ev = { path: a.path, kind: r.kind, command: r.cmd || '', session: a.agentName || r.session_id.slice(0, 8), sessionState: a.state, createdHoursAgo: a.ageHours };
+    let real = a.path;
+    try { real = fs.realpathSync(a.path); } catch (_) { real = a.path; }
+    ev.realPath = real;
+    ev.symlinkRedirect = real !== a.path && real !== path.normalize(a.path);
+    ev.sizeBytes = a.sizeBytes != null ? a.sizeBytes : duBytes(a.path);
+    const w = walkEvidence(a.path);
+    ev.fileCount = w.files; ev.truncatedWalk = w.truncated; ev.symlinksInside = w.symlinks;
+    ev.newestMtime = w.newestMtimeMs ? new Date(w.newestMtimeMs).toISOString() : null;
+    ev.newestMtimeMs = w.newestMtimeMs;
+    ev.busyLocks = w.locks.map((l) => path.relative(a.path, l));
+    ev.git = gitEvidence(a.path);
+    ev.openByPids = openUsers(a.path);
+    return ev;
+}
+
+/** Automatic refusals (no engine call): returns a reason or ''. */
+function autoRefusal(ev) {
+    if (ev.symlinkRedirect && !cleanable(ev.realPath, ev.kind)) return `It is a link to ${ev.realPath}, which is not a place cleaned from here`;
+    if (ev.newestMtimeMs && Date.now() - ev.newestMtimeMs < RECENT_MS) return `Something inside changed in the last 2 hours (${ev.newestMtime})`;
+    if (ev.busyLocks.length) return `It holds a busy lock (${ev.busyLocks[0]}): an agent works in it`;
+    if (ev.openByPids && ev.openByPids.length) return `A running process uses it (pid ${ev.openByPids.slice(0, 3).join(', ')})`;
+    if (ev.git) {
+        if (!ev.git.statusOk || !ev.git.unpushedOk) return 'Git could not say whether it holds unsaved work';
+        if (ev.git.dirty.length) return `It has ${ev.git.dirty.length} uncommitted change(s)`;
+        if (ev.git.unpushed.length) return `It has ${ev.git.unpushed.length} commit(s) that are not pushed anywhere`;
+    }
+    return '';
+}
+
+const REVIEW_SYSTEM = 'You are the safety reviewer of an agent Supervisor. A coding agent created a work folder or temp file; the user pressed Clean. You get the evidence (path, size, file count, newest modification, git state, the command that made it, which session made it). Decide if moving it to a 7-day trash is safe. It is UNSAFE when the path looks like it holds something important or personal (a repository with real history, databases, backups, photos, documents, credentials, a user data folder), when it is not obviously scratch output, or when the evidence is thin or odd. It is SAFE for build output, test scratch folders, downloaded temp files, logs, and clones the agent made for a job that is over. Answer ONLY {"verdict":"safe"|"unsafe","reason":"one sentence"}.';
+
+/**
+ * Supervised Clean: hard guard -> evidence -> automatic refusals -> the engine's verdict -> trash (a git worktree is removed
+ * without --force, only when clean). Every decision is stored on the row. opts: { gr, budget: { calls, max } }.
+ * Returns { id, decision: refused|unsafe|trashed|removed|deferred, reason, cleaned?, freedBytes?, trash? }.
+ */
+async function cleanArtifact(id, opts = {}) {
     const d = coord().open();
     const r = d.prepare('SELECT * FROM artifacts WHERE id = ?').get(Number(id));
     if (!r) throw new Error('No such entry');
-    const a = artifactStatus().find((x) => x.id === r.id);
-    if (!a || !a.cleanable) throw new Error(a && a.state === 'live' ? 'Its session is still running: let it clean up, or stop it first' : 'Only work folders and temp files under /tmp, /var/tmp, ~/.cache or a git worktree are cleaned from here');
-    if (r.kind === 'worktree') {
-        const cp = require('child_process');
-        try { cp.execFileSync('git', ['-C', a.path, 'worktree', 'remove', '--force', a.path], { timeout: 20000, stdio: 'ignore' }); } catch (e) { throw new Error(`git worktree remove failed: ${e.message.slice(0, 160)}`); }
-    } else {
-        fs.rmSync(a.path, { recursive: true, force: true });
-    }
-    d.prepare('UPDATE artifacts SET exists_now = 0, size_bytes = NULL, checked_at = ? WHERE id = ?').run(Date.now(), r.id);
-    return { cleaned: a.path, freedBytes: a.sizeBytes || 0 };
+    if (cleaning.has(r.id)) return { id: r.id, decision: 'refused', reason: 'It is already being checked' };
+    cleaning.add(r.id);
+    try {
+        const refuse = (reason, decision = 'refused') => { recordDecision(r.id, decision, reason); return { id: r.id, decision, reason }; };
+        const a = artifactStatus().find((x) => x.id === r.id);
+        if (!a || !a.cleanable) return refuse(cleanArtifactGuardMessage(a));
+        const ev = artifactEvidence(r, a);
+        const auto = autoRefusal(ev);
+        if (auto) return refuse(auto);
+        // the engine decides last; with no way to ask, nothing is deleted
+        if (opts.budget) { if (opts.budget.calls >= opts.budget.max) return { id: r.id, decision: 'deferred', reason: 'Too many reviews in one run: left for the next' }; opts.budget.calls += 1; }
+        let v = null;
+        try {
+            const brief = Object.assign({}, ev, { openByPids: undefined, newestMtimeMs: undefined, git: ev.git && { dirtyCount: ev.git.dirty.length, unpushedCount: ev.git.unpushed.length } });
+            v = await askJson(opts.gr, REVIEW_SYSTEM, JSON.stringify(brief), 'artifact-clean', { maxTokens: 300 });
+        } catch (e) { return refuse(`The Supervisor could not review it (${String(e.message).slice(0, 120)}): nothing was removed`); }
+        if (!v || v.verdict !== 'safe') return refuse(`The Supervisor judged it unsafe: ${String((v && v.reason) || 'no reason given').slice(0, 250)}`, 'unsafe');
+        // re-check right before acting: the world may have moved while the engine thought
+        const a2 = artifactStatus().find((x) => x.id === r.id);
+        if (!a2 || !a2.cleanable) return refuse(cleanArtifactGuardMessage(a2));
+        const auto2 = autoRefusal(artifactEvidence(r, a2));
+        if (auto2) return refuse(auto2);
+        const why = String(v.reason || 'safe').slice(0, 200);
+        if (r.kind === 'worktree') {
+            try { require('child_process').execFileSync('git', ['-C', a.path, 'worktree', 'remove', a.path], { timeout: 20000, stdio: 'ignore' }); } catch (e) { return refuse(`git worktree remove refused it (no --force): ${String(e.message).slice(0, 120)}`); }
+            recordDecision(r.id, 'removed', `Clean worktree removed (no uncommitted or unpushed work). ${why}`, { exists: 0 });
+            return { id: r.id, decision: 'removed', reason: why, cleaned: a.path, freedBytes: ev.sizeBytes || 0 };
+        }
+        const root = CLEAN_ROOTS().find((x) => a.path.startsWith(x));
+        if (!root) return refuse('It is not under a cleaned folder');
+        const trashDir = path.join(root, '.fleet-trash');
+        const trash = path.join(trashDir, `${Date.now()}-${path.basename(a.path)}`);
+        try { fs.mkdirSync(trashDir, { recursive: true, mode: 0o700 }); fs.renameSync(a.path, trash); } catch (e) { return refuse(`It could not be moved to the trash (${String(e.code || e.message).slice(0, 80)}): nothing was removed`); }
+        recordDecision(r.id, 'trashed', `Moved to the trash for ${TRASH_DAYS} days. ${why}`, { trashPath: trash, exists: 0 });
+        return { id: r.id, decision: 'trashed', reason: why, cleaned: a.path, freedBytes: ev.sizeBytes || 0, trash };
+    } finally { cleaning.delete(r.id); }
+}
+
+function restoreArtifact(id) {
+    const d = coord().open();
+    const r = d.prepare('SELECT * FROM artifacts WHERE id = ?').get(Number(id));
+    if (!r || r.decision !== 'trashed' || !r.trash_path) throw new Error('Only a folder in the trash can be restored');
+    const full = expand(r.path, r.cwd);
+    if (!full || !r.trash_path.includes(`${path.sep}.fleet-trash${path.sep}`)) throw new Error('The trash location is not valid');
+    if (!fs.existsSync(r.trash_path)) { recordDecision(r.id, 'purged', 'The trash copy is gone'); throw new Error('The trash copy is gone'); }
+    if (fs.existsSync(full)) throw new Error('Something already exists at the original path');
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.renameSync(r.trash_path, full);
+    recordDecision(r.id, 'restored', 'Restored from the trash', { trashPath: '', exists: 1 });
+    return { id: r.id, restored: full };
+}
+
+/** Deletes trash older than 7 days (the only place anything is really removed). */
+function purgeTrash(opts = {}) {
+    const days = opts.days == null ? TRASH_DAYS : opts.days;
+    const rows = coord().open().prepare("SELECT * FROM artifacts WHERE decision = 'trashed' AND trash_path != '' AND decided_at < ?").all(Date.now() - days * 86400000);
+    const out = [];
+    rows.forEach((r) => {
+        if (!r.trash_path.includes(`${path.sep}.fleet-trash${path.sep}`)) return;
+        try { fs.rmSync(r.trash_path, { recursive: true, force: true }); } catch (_) { return; }
+        recordDecision(r.id, 'purged', `Deleted from the trash after ${days} days`, { trashPath: '' });
+        out.push(r.trash_path);
+    });
+    return out;
 }
 
 function forgetArtifact(id) {
@@ -1808,7 +1985,7 @@ function dismissRuleFinding(findingId) {
 
 module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, askJson, callEngine, spend, engineChain, TOPOLOGIES, cleanStages, decideTopology, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, askJson, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, decideTopology, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, queueReview, queue, cleanable }
+    _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, resetPrices, queueReview, queue, cleanable }
 };

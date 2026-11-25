@@ -369,15 +369,24 @@ async function checkWorkfolders(ctx) {
     const findings = [];
     try { if (sp.refreshArtifacts) sp.refreshArtifacts({ budgetMs: 4000 }); } catch (_) { /* stale sizes */ }
     const list = sp.artifactStatus();
-    let freed = 0; let cleaned = 0; let keptYoung = 0; let wtN = 0;
+    let freed = 0; let cleaned = 0; let keptYoung = 0; let wtN = 0; let deferred = 0;
+    const budget = { calls: 0, max: 10 };
     for (const a of list) {
-        if (!a.cleanable || a.exists === false) continue;
+        if (!a.cleanable || a.exists === false || a.decision === 'unsafe' || a.decision === 'refused') continue;
         if (a.kind === 'worktree') { wtN += 1; continue; } // worktrees go through the worktree check (safe criteria), never a forced remove
         if (a.state === 'live') continue;
         if (a.ageHours < s.artifactMinAgeDays * 24) { keptYoung += 1; continue; }
         if (ctx.dryRun) { actions.push(`Would clean ${a.path} (${bytes(a.sizeBytes)})`); freed += a.sizeBytes || 0; continue; }
-        try { const r = sp.cleanArtifact(a.id); freed += r.freedBytes || 0; cleaned += 1; actions.push(`Cleaned ${r.cleaned} (${bytes(r.freedBytes)})`); } catch (e) { findings.push(F(`${a.path}: ${e.message}`, 'warn')); }
+        // the same supervised path as the Clean button (guard, evidence, engine verdict, trash); at most 10 engine calls per run
+        try {
+            const r = await sp.cleanArtifact(a.id, { gr: ctx.gr, budget });
+            if (r.decision === 'trashed' || r.decision === 'removed') { freed += r.freedBytes || 0; cleaned += 1; actions.push(`${r.decision === 'trashed' ? 'Moved to the trash' : 'Removed'} ${r.cleaned} (${bytes(r.freedBytes)})`); }
+            else if (r.decision === 'deferred') deferred += 1;
+            else findings.push(F(`${a.path}: ${r.decision === 'unsafe' ? 'kept, ' : ''}${r.reason}`));
+        } catch (e) { findings.push(F(`${a.path}: ${e.message}`, 'warn')); }
     }
+    if (deferred) findings.push(F(`${deferred} folder(s) wait for the next run (at most ${budget.max} reviews per run)`));
+    if (!ctx.dryRun && sp.purgeTrash) { try { const gone = sp.purgeTrash(); if (gone.length) actions.push(`Deleted ${gone.length} item(s) from the trash after 7 days`); } catch (e) { findings.push(F(`Trash purge: ${e.message}`, 'warn')); } }
     if (keptYoung) findings.push(F(`${keptYoung} cleanable folder(s) are younger than ${s.artifactMinAgeDays} days and were left`));
     if (wtN) findings.push(F(`${wtN} tracked worktree(s) are handled by the worktree check`));
     const warn = findings.some((f) => f.level === 'warn');
@@ -883,7 +892,7 @@ function overall(checks) { return checks.reduce((w, c) => (RANK[c.state] > RANK[
 async function execute(opts = {}) {
     const g = opts.gr || gResources;
     const s = opts.settings || settings(g);
-    const ctx = Object.assign({ settings: s, dryRun: opts.dryRun !== undefined ? opts.dryRun === true : s.dryRun }, opts.ctx || {});
+    const ctx = Object.assign({ gr: g, settings: s, dryRun: opts.dryRun !== undefined ? opts.dryRun === true : s.dryRun }, opts.ctx || {});
     if (!ctx.yozoraRepos) { try { ctx.yozoraRepos = sup().settings(g).yozoraRepos || []; } catch (_) { ctx.yozoraRepos = []; } }
     if (ctx.yz === undefined) { try { ctx.yz = yzMod(); } catch (_) { ctx.yz = null; } }
     const startedAt = Date.now();

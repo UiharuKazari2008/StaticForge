@@ -340,6 +340,7 @@ async function read(gr, options = {}) {
     if (!inflight) {
         inflight = collect(gr).then((next) => {
             cache = next;
+            try { require('./claudeUsageHistory').record(next); } catch (_) { /* the daily history is optional */ }
             readers.forEach((fn) => { try { fn(next); } catch (_) { /* a listener's own trouble */ } });
             return next;
         }).finally(() => { inflight = null; });
