@@ -912,7 +912,7 @@
         const r = new FileReader();
         r.onload = () => { const s = String(r.result || ''); resolve(s.slice(s.indexOf(',') + 1)); };
         r.onerror = () => reject(r.error);
-        r.readAsDataURL(blob);
+        r.readAsDataURL(blob); // no-base64-images: transport (attachment bytes for the mail API)
     });
 
     /** A background job with WM's progress notification: run(each(entry, i)). */
@@ -1168,13 +1168,13 @@
             const k = Math.min(1, DIRECTOR_EDGE / Math.max(img.naturalWidth, img.naturalHeight));
             if (k === 1 && file.size < 6 * 1024 * 1024 && /^image\/(png|jpeg|webp|gif)$/.test(file.type)) {
                 const data = await toBase64(file);
-                return { source: 'client', name: file.name, data, preview: `data:${file.type};base64,${data}` };
+                return { source: 'client', name: file.name, data, preview: `data:${file.type};base64,${data}` }; // no-base64-images: shown once (the Director's attach chip until sent; that chip lives in director.js, outside this change)
             }
             const c = document.createElement('canvas');
             c.width = Math.round(img.naturalWidth * k);
             c.height = Math.round(img.naturalHeight * k);
             c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-            const preview = c.toDataURL('image/jpeg', 0.9);
+            const preview = c.toDataURL('image/jpeg', 0.9); // no-base64-images: transport + shown once (the Director's attach chip until sent)
             const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
             return { source: 'client', name, data: preview.slice(preview.indexOf(',') + 1), preview };
         } finally { URL.revokeObjectURL(url); }

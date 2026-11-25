@@ -103,6 +103,19 @@
         } catch (_) { return null; }
     }
 
+    // The progress preview arrives as base64 (transport); it is shown as one object URL, revoked when the next preview replaces it or the job ends.
+    function setFilmstrip(b64) {
+        if (st.filmstrip) { try { URL.revokeObjectURL(st.filmstrip); } catch (_) { /* gone */ } }
+        st.filmstrip = null;
+        if (!b64) return;
+        try {
+            const bin = atob(b64);
+            const u8 = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+            st.filmstrip = URL.createObjectURL(new Blob([u8], { type: 'image/jpeg' }));
+        } catch (_) { /* a bad preview is skipped */ }
+    }
+
     function applyUpdate(job) {
         if (!job) return;
         const pct = Math.round(Number(job.progress) || 0);
@@ -111,7 +124,7 @@
         st.label = `${stage}${job.step != null && job.totalSteps ? `, step ${job.step} of ${job.totalSteps}` : ''}`;
         if (job.previewBase64 && job.previewSeq > st.previewSeq) {
             st.previewSeq = job.previewSeq;
-            st.filmstrip = `data:image/jpeg;base64,${job.previewBase64}`;
+            setFilmstrip(job.previewBase64);
         }
         renderStage();
     }
@@ -208,7 +221,7 @@
         onProgress = null;
         st.running = false;
         st.requestId = null;
-        st.filmstrip = null;
+        setFilmstrip(null);
         if (result && result.filename) st.result = { filename: result.filename, formats: result.formats || {} };
         render();
         if (error) {
@@ -245,7 +258,7 @@
         st.requestId = requestId;
         st.progress = 0;
         st.previewSeq = -1;
-        st.filmstrip = null;
+        setFilmstrip(null);
         st.result = null;
         st.label = 'Starting...';
         startPoll(requestId);
@@ -268,7 +281,7 @@
         stopFollow();
         st.running = false;
         st.requestId = null;
-        st.filmstrip = null;
+        setFilmstrip(null);
         if (id && window.wsClient && typeof window.wsClient.sendAcklessMessage === 'function') {
             try { window.wsClient.sendAcklessMessage('cancel_generation', { cancelledRequestIds: [id] }); } catch (_) { /* best effort, as on the desktop */ }
         }

@@ -233,7 +233,7 @@
             const r = new FileReader();
             r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
             r.onerror = () => reject(r.error);
-            r.readAsDataURL(new Blob([t], { type: 'text/calendar' }));
+            r.readAsDataURL(new Blob([t], { type: 'text/calendar' })); // no-base64-images: transport (bytes for an API that takes base64, not a shown picture)
         });
     }
 

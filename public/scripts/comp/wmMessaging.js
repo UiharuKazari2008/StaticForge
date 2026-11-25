@@ -2255,6 +2255,7 @@
      * A tap on an attachment: its bytes (dovecote_get_attachment) under the wait cursor, then a picture in
      * the shell's picture view (lightbox.js), anything else saved (the desktop's Dovecote does the same).
      */
+    let attImgUrl = ''; // the open image attachment's object URL (revoked on replacement)
     async function openAttachment(n) {
         const m = reading;
         const a = m && m.attachments && m.attachments[n];
@@ -2287,7 +2288,15 @@
         const type = String(a.mimeType || 'application/octet-stream');
         const name = a.name || 'attachment';
         if (type.startsWith('image/') && typeof showLightbox === 'function') { // eslint-disable-line no-undef
-            try { showLightbox({ url: `data:${type};base64,${base64}`, title: name }); return; } catch (_) { /* saved below */ } // eslint-disable-line no-undef
+            try {
+                // one object URL for the open attachment, revoked when the next attachment replaces it (the lightbox has no close hook)
+                if (attImgUrl) { try { URL.revokeObjectURL(attImgUrl); } catch (_) { /* gone */ } attImgUrl = ''; }
+                const ibin = atob(base64);
+                const ibytes = new Uint8Array(ibin.length);
+                for (let i = 0; i < ibin.length; i++) ibytes[i] = ibin.charCodeAt(i);
+                attImgUrl = URL.createObjectURL(new Blob([ibytes], { type }));
+                showLightbox({ url: attImgUrl, title: name }); return; // eslint-disable-line no-undef
+            } catch (_) { /* saved below */ }
         }
         try {
             const bin = atob(base64);
@@ -2680,6 +2689,7 @@
             addImapFile(new File([blob], `Voice Note ${at} (${secs0}s).${ext}`, { type: blob.type.split(';')[0] }));
             return;
         }
+        // no-base64-images: transport (voice note bytes for the mail attachment API, never shown as a picture)
         const base64 = await new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1] || ''); r.readAsDataURL(blob); });
         const secs = Math.max(1, Math.round((Date.now() - started) / 1000));
         const hhmm = new Date(started).toTimeString().slice(0, 5).replace(':', '');
@@ -2954,14 +2964,14 @@
             const file = input.files && input.files[0];
             if (!file || !compose) return;
             if (compose.imapId) { addImapFile(file); return; }
-            const reader = new FileReader();
+            const reader = new FileReader(); // no-base64-images: transport (attachment bytes for the mail API, not a shown picture)
             reader.onload = () => {
                 if (!compose) return;
                 const s = String(reader.result || '');
                 compose.attachments.push({ name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size, base64: s.slice(s.indexOf(',') + 1) });
                 renderAtts();
             };
-            reader.readAsDataURL(file);
+            reader.readAsDataURL(file); // no-base64-images: transport (attachment bytes)
         });
         // WM's Open dialog (fileOpenPicker.js): My Documents and the phone's storage, Browse device... in Menu
         void (window.fileOpenPicker ? window.fileOpenPicker.open(input, { title: 'Insert' }) : input.click());

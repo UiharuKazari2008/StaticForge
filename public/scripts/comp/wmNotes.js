@@ -138,7 +138,7 @@
             const r = new FileReader();
             r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
             r.onerror = () => reject(r.error);
-            r.readAsDataURL(blob);
+            r.readAsDataURL(blob); // no-base64-images: transport (bytes for an API that takes base64, not a shown picture)
         });
     }
 
@@ -2455,7 +2455,7 @@
             cv.width = Math.max(1, Math.round(img.naturalWidth * sc));
             cv.height = Math.max(1, Math.round(img.naturalHeight * sc));
             cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-            return cv.toDataURL('image/jpeg', 0.9);
+            return cv.toDataURL('image/jpeg', 0.9); // no-base64-images: transport to the phone's contact store (bridge takes base64); the draft preview is shown until Save, then the phone serves /contact-photo/
         }
 
         function pictureMenu(row, x, y) {

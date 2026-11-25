@@ -98,10 +98,25 @@
         return it.hasPreview ? previewUrl(`${it.hash}.webp`) : `/cache/${encodeURIComponent(it.hash)}`;
     }
 
+    // A vibe reference kept as base64 by the server: one object URL for the last picture, revoked when another replaces it (no data: string kept)
+    let vibeSlot = { b64: '', url: '' };
+    function vibeUrl(b64) {
+        if (vibeSlot.b64 === b64) return vibeSlot.url;
+        if (vibeSlot.url) { try { URL.revokeObjectURL(vibeSlot.url); } catch (_) { /* gone */ } }
+        vibeSlot = { b64: '', url: '' };
+        try {
+            const bin = atob(b64);
+            const u8 = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+            vibeSlot = { b64, url: URL.createObjectURL(new Blob([u8], { type: 'image/png' })) };
+        } catch (_) { /* not a picture */ }
+        return vibeSlot.url;
+    }
+
     /** The full picture (openReferenceImageInViewer's rule). */
     function fullOf(it) {
         if (it.isStandalone) {
-            if ((it.type === 'base64' || it.type === 'vibe') && it.source && String(it.source).length > 200) return `data:image/png;base64,${it.source}`;
+            if ((it.type === 'base64' || it.type === 'vibe') && it.source && String(it.source).length > 200) return vibeUrl(String(it.source)) || (it.hasPreview ? previewUrl(it.hasPreview) : '/static_images/background.jpg');
             return it.hasPreview ? previewUrl(it.hasPreview) : '/static_images/background.jpg';
         }
         return `/cache/upload/${encodeURIComponent(it.hash)}`;
@@ -391,12 +406,13 @@
         renderGrid();
     }
 
+    // no-base64-images: transport (upload bytes for the reference API)
     function blobToBase64(blob) {
         return new Promise((resolve, reject) => {
             const r = new FileReader();
             r.onload = () => resolve(String(r.result).split(',')[1] || '');
             r.onerror = () => reject(r.error || new Error('The picture could not be read.'));
-            r.readAsDataURL(blob);
+            r.readAsDataURL(blob); // no-base64-images: transport (upload bytes)
         });
     }
 

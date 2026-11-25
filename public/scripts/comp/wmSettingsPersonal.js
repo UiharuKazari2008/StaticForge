@@ -1152,7 +1152,7 @@
                 canvas.height = 128;
                 canvas.getContext('2d').drawImage(img, (img.naturalWidth - size) / 2, (img.naturalHeight - size) / 2, size, size, 0, 0, 128, 128);
                 URL.revokeObjectURL(url);
-                resolve(canvas.toDataURL('image/png'));
+                resolve(canvas.toDataURL('image/png')); // no-base64-images: tiny (128 px tile, a few KB) and transport to setAccountPicture
             };
             img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not a picture.')); };
             img.src = url;

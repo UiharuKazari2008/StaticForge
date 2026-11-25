@@ -1323,8 +1323,9 @@
             cv.width = Math.max(1, Math.round(bmp.width * k));
             cv.height = Math.max(1, Math.round(bmp.height * k));
             cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+            // no-base64-images: transport (lapis_picture_save takes a data URL; the form then shows the saved file by address)
             let url = cv.toDataURL('image/webp', 0.86);
-            if (!/^data:image\/webp/.test(url)) url = cv.toDataURL('image/png');
+            if (!/^data:image\/webp/.test(url)) url = cv.toDataURL('image/png'); // no-base64-images: transport, as above
             await savePicture(url);
         } catch (err) {
             ws.messageBox({ title: TITLE, icon: 'error', text: `The picture could not be used.\n\n${(err && err.message) || ''}`.trim() });

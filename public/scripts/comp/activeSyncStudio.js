@@ -56,7 +56,7 @@
                 body.noise = num(document.getElementById('manualNoiseValue'), 0.1);
                 if (up) body.image_bias = up.image_bias || up.bias;
                 const mask = root.currentMaskCompressed || (root.currentMaskData && fn('saveMaskCompressed') ? fn('saveMaskCompressed')() : null);
-                if (mask) body.mask_compressed = String(mask).replace('data:image/png;base64,', '');
+                if (mask) body.mask_compressed = String(mask).replace('data:image/png;base64,', ''); // no-base64-images: transport (the API takes the mask as base64)
             }
         }
         shared(body, values);

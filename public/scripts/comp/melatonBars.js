@@ -142,6 +142,7 @@
     function pack(canvas, regions) {
         if (!canvas) return null;
         let png = '';
+        // no-base64-images: transport (PNG bytes handed to NativeBar, which draws them; not shown by the page)
         try { png = canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, ''); } catch (_) { png = ''; }
         return png ? { png, w: canvas.width, h: canvas.height, regions } : null;
     }
@@ -875,7 +876,7 @@
                 const g = cv.getContext('2d');
                 g.imageSmoothingEnabled = false;
                 g.drawImage(img, 0, 0, w, h);
-                svgPngs.set(key, cv.toDataURL('image/png'));
+                svgPngs.set(key, cv.toDataURL('image/png')); // no-base64-images: transport (glyph PNG inside the layouts sent to NativeBar, which cannot open page blobs; tiny, cache capped at 64)
             } catch (_) { svgPngs.delete(key); return; }
             // the layouts again with it (once for a batch of new drawings)
             if (!svgAgain && layoutsRoles) svgAgain = setTimeout(() => { svgAgain = null; if (layoutsRoles) pushLayouts(layoutsRoles); }, 50);
@@ -1465,6 +1466,7 @@
             if (dataUrls.has(u)) continue;
             try {
                 const b = await (await fetch(u)).blob();
+                // no-base64-images: transport (the native bar cannot open this page's blob; copies capped at 8 and dropped with their layout)
                 dataUrls.set(u, await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(''); r.readAsDataURL(b); }));
             } catch (_) { dataUrls.set(u, ''); }
         }
@@ -1503,6 +1505,7 @@
             g.imageSmoothingEnabled = true;
             g.imageSmoothingQuality = 'high';
             g.drawImage(img, 0, 0, c.width, c.height);
+            // no-base64-images: transport (wait-cursor strip bytes for NativeBar, cached once per size)
             const out = { png: c.toDataURL('image/png').replace(/^data:image\/png;base64,/, ''), w, h, n: spec.n, ms: spec.ms };
             waitCache = { key, out };
             return Object.assign({}, out, { x: Math.round(spec.left * dpr), y: Math.round(spec.top * dpr) });

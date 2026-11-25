@@ -796,6 +796,7 @@
         try { data = b.getArt(ms.id) || ''; } catch (_) { data = ''; }
         if (superArtUrl) { URL.revokeObjectURL(superArtUrl); superArtUrl = ''; }
         superArtKey = ms.artKey;
+        // no-base64-images: transport (the bridge hands the art as a data string; it is turned into one object URL at once, revoked on the next track)
         const m = /^data:([^;,]+);base64,(.*)$/.exec(data);
         if (m) {
             try {

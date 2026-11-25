@@ -140,9 +140,24 @@
     /** WM's threaded messages call the phone's owner "Me". */
     const userName = () => 'Me';
 
+    // The persona settings keep the owner photo as base64: one object URL for the last picture, revoked when another replaces it (no data: string kept)
+    let photoSlot = { b64: '', url: '' };
+    function photoUrl(b64) {
+        if (photoSlot.b64 === b64) return photoSlot.url;
+        if (photoSlot.url) { try { URL.revokeObjectURL(photoSlot.url); } catch (_) { /* gone */ } }
+        photoSlot = { b64: '', url: '' };
+        try {
+            const bin = atob(b64);
+            const u8 = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+            photoSlot = { b64, url: URL.createObjectURL(new Blob([u8], { type: 'image/jpeg' })) };
+        } catch (_) { /* not a picture */ }
+        return photoSlot.url;
+    }
+
     function userPicture() {
         const p = window.chatSystem && window.chatSystem.personaSettings;
-        return p && p.profile_photo_base64 ? `data:image/jpeg;base64,${p.profile_photo_base64}` : null;
+        return p && p.profile_photo_base64 ? (photoUrl(p.profile_photo_base64) || null) : null;
     }
 
     /** ms of a date value (0 when unknown). */

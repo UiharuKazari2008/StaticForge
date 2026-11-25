@@ -2353,7 +2353,7 @@
         if (box && box === w.dom.frameWrap) {
             try {
                 const c = w.frame && w.frame.contentDocument && w.frame.contentDocument.querySelector('canvas');
-                if (c && c.width > 1) { node = new Image(); node.src = c.toDataURL('image/jpeg', 0.7); node.className = 'wmb-wt-shot'; }
+                if (c && c.width > 1) { node = new Image(); node.src = c.toDataURL('image/jpeg', 0.7); /* no-base64-images: shown once (window switcher thumbnail, dropped with the switcher) */ node.className = 'wmb-wt-shot'; }
             } catch (_) { node = null; }
         } else if (box && (box.childElementCount || box.textContent.trim())) {
             const copy = box.cloneNode(true);

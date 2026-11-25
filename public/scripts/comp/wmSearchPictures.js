@@ -480,7 +480,7 @@
         const r = new FileReader();
         r.onload = () => { const s = String(r.result || ''); resolve(s.slice(s.indexOf(',') + 1)); };
         r.onerror = () => reject(r.error);
-        r.readAsDataURL(blob);
+        r.readAsDataURL(blob); // no-base64-images: transport (bytes for an API that takes base64, not a shown picture)
     });
 
     async function sendMail(file) {

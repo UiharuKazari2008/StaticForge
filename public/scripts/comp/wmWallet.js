@@ -451,10 +451,29 @@
         return bwipLoad;
     }
 
-    // drawn barcodes by format + value + size (data URLs), so Today's repaint draws nothing twice
+    // drawn art (barcodes, card faces) is cached as object URLs, never as data: strings; the caches hold at most
+    // ART_CAP pictures and revoke the oldest one's URL when a new one comes (a repaint of an evicted one draws it again)
+    const ART_CAP = 48;
+    function artUrl(canvas) {
+        const d = canvas.toDataURL('image/png'); // no-base64-images: transient, turned into a blob at once and not kept
+        return URL.createObjectURL(dataToBlob(d));
+    }
+    function artSet(map, k, url) {
+        map.delete(k);
+        map.set(k, url);
+        if (map.size <= ART_CAP) return;
+        for (const [ok, ov] of map) {
+            if (ok === k) continue;
+            if (typeof ov === 'string' && ov.startsWith('blob:')) { try { URL.revokeObjectURL(ov); } catch (_) { /* gone */ } }
+            map.delete(ok);
+            if (map.size <= ART_CAP) break;
+        }
+    }
+
+    // drawn barcodes by format + value + size (object URLs), so Today's repaint draws nothing twice
     const codeArt = new Map();
     function barcodeKey(it, big) { return `${it.format}|${it.value}|${big ? 1 : 0}|q2`; }
-    /** The barcode as a PNG data URL (null while bwip-js loads; Today repaints when it is ready). */
+    /** The barcode as a PNG object URL (null while bwip-js loads; Today repaints when it is ready). */
     function barcodeUrl(it, big) {
         // Samsung Wallet's own barcode picture, when its type could not be read
         if (it.format === 'image') return codeOf(it) || (it.hasCode ? null : 'bad');
@@ -479,7 +498,7 @@
                     paddingheight: 4,
                     backgroundcolor: 'FFFFFF'
                 });
-                codeArt.set(k, c.toDataURL('image/png'));
+                artSet(codeArt, k, artUrl(c));
             } catch (err) {
                 codeArt.set(k, 'bad');
                 console.warn('[wmWallet] barcode', it.format, err && err.message);
@@ -600,8 +619,8 @@
         g.font = 'bold italic 14px Tahoma, Segoe UI, sans-serif';
         g.textAlign = 'right';
         g.fillText(it.network && it.network !== 'other' ? label(NETWORKS, it.network).toUpperCase().replace('AMERICAN EXPRESS', 'AMEX') : '', 160, 92);
-        const url = c.toDataURL('image/png');
-        cardArt.set(k, url);
+        const url = artUrl(c);
+        artSet(cardArt, k, url);
         return url;
     }
 
@@ -1111,7 +1130,7 @@
             c.width = img.naturalWidth;
             c.height = img.naturalHeight;
             c.getContext('2d').drawImage(img, 0, 0);
-            const out = c.toDataURL('image/webp', 0.9);
+            const out = c.toDataURL('image/webp', 0.9); // no-base64-images: transport/transient (imported card art; save() turns it into a Blob in IndexedDB and a blob URL)
             return out.startsWith('data:image/webp') && out.length < dataUrl.length ? out : dataUrl;
         } catch (_) { return dataUrl; }
     }
@@ -1264,7 +1283,7 @@
         c.width = 344;
         c.height = 216;
         c.getContext('2d').drawImage(v, sx, sy, gw / scale, gh / scale, 0, 0, c.width, c.height);
-        form.item.photo = c.toDataURL('image/jpeg', 0.8);
+        form.item.photo = c.toDataURL('image/jpeg', 0.8); // no-base64-images: transient (camera shot; shown via blobOf() blob URL, saved as a Blob by save())
         delete form.item.photoRemoved;
         stopScan();
         pop();

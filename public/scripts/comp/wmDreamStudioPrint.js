@@ -519,7 +519,7 @@
             const el = pt.el;
             if (!el || !pt.orig) return;
             const cv = el.querySelector('canvas');
-            const b64 = cv.toDataURL('image/png').split(',')[1];
+            const b64 = cv.toDataURL('image/png').split(',')[1]; // no-base64-images: transport (savePicture API takes base64)
             const name = `${baseName(pt.file) || 'untitled'}.png`;
             sh().busy(M.savePicture(b64, name).then((res) => {
                 pt.dirty = false;

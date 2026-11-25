@@ -203,7 +203,7 @@
                 const fr = new FileReader();
                 fr.onload = () => resolve(fr.result);
                 fr.onerror = () => resolve(null);
-                fr.readAsDataURL(b);
+                fr.readAsDataURL(b); // no-base64-images: transport (launch cursor handed to the bridge)
             }))
             .then((url) => {
                 const ok = !!url && bridge.setLaunchCursor(spec.key, url) === true;
@@ -749,7 +749,7 @@
             if (!res.ok) return null;
             const blob = await res.blob();
             if (blob.size > 12 * 1024 * 1024) return null;
-            return await new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.onerror = () => resolve(null); fr.readAsDataURL(blob); });
+            return await new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.onerror = () => resolve(null); fr.readAsDataURL(blob); }); // no-base64-images: transport (picture handed to the Program Icons job)
         } catch (_) { return null; }
     }
 
@@ -765,7 +765,7 @@
                 const fr = new FileReader();
                 fr.onload = () => resolve(fr.result);
                 fr.onerror = () => resolve(null);
-                fr.readAsDataURL(blob);
+                fr.readAsDataURL(blob); // no-base64-images: transport (icon handed to the Program Icons job)
             });
         } catch (_) { return null; }
     }
@@ -1479,7 +1479,7 @@
 
         // ---------------------------------------------------------------- the mirror (Synchronize)
 
-        const b64 = (text) => new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(new Blob([text], { type: 'text/plain' })); });
+        const b64 = (text) => new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(new Blob([text], { type: 'text/plain' })); }); // no-base64-images: transport (text for the VFS upload, not a picture)
         /* global vfsClient, activeWorkspace */
         const wsRoot = () => { let w = 'Default'; try { if (typeof activeWorkspace !== 'undefined' && activeWorkspace) w = activeWorkspace; } catch (_) { /* none */ } return `/Workspaces/${w}`; };
 
@@ -1511,7 +1511,7 @@
                 cv.width = Math.max(1, Math.round(img.naturalWidth * s));
                 cv.height = Math.max(1, Math.round(img.naturalHeight * s));
                 cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-                return cv.toDataURL('image/jpeg', 0.85);
+                return cv.toDataURL('image/jpeg', 0.85); // no-base64-images: transport (256 px photo embedded in the vCard)
             } catch (_) { return ''; }
         }
 

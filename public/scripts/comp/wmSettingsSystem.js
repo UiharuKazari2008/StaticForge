@@ -1811,7 +1811,7 @@
                     cv.width = 160; cv.height = 160;
                     // the face is near the top of a portrait print
                     cv.getContext('2d').drawImage(img, (img.naturalWidth - s) / 2, Math.max(0, (img.naturalHeight - s) * 0.2), s, s, 0, 0, 160, 160);
-                    resolve(cv.toDataURL('image/jpeg', 0.85).split(',')[1]);
+                    resolve(cv.toDataURL('image/jpeg', 0.85).split(',')[1]); // no-base64-images: transport (160 px avatar for the persona settings)
                 } catch (err) { reject(err); }
             };
             img.onerror = () => reject(new Error('The picture could not be read.'));
@@ -1863,6 +1863,7 @@
         }
         if (tab === 'myinfo') {
             if (!d.persona) { el.innerHTML = ui.text(d.loadError || 'Reading your information...'); return; }
+            // no-base64-images: tiny (160 px avatar, ~10 KB) shown in this one form
             const pic = d.me.photo ? `data:image/jpeg;base64,${d.me.photo}` : '';
             const nameId = ui.uid('wmChatMe');
             el.innerHTML = `${ui.row('Name:', ui.edit(nameId, d.me.user_name, 'name="user_name" placeholder="How the personas call you"'), { wide: true, for: nameId })}

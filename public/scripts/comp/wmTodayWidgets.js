@@ -550,12 +550,24 @@
                 const d = message && message.data;
                 if (!d) return;
                 const prev = studio.progress && Date.now() - studio.progress.at < 120000 ? studio.progress : null;
+                // the progress frame arrives as base64 (transport); one object URL at a time, the previous one revoked
+                let frame = prev ? prev.frame : '';
+                if (d.imageData) {
+                    try {
+                        const bin = atob(d.imageData);
+                        const u8 = new Uint8Array(bin.length);
+                        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+                        frame = URL.createObjectURL(new Blob([u8], { type: `image/${d.imageFormat || 'webp'}` }));
+                    } catch (_) { /* the last frame stays */ }
+                }
+                const old = studio.progress && studio.progress.frame;
+                if (old && old !== frame && String(old).startsWith('blob:')) { try { URL.revokeObjectURL(old); } catch (_) { /* gone */ } }
                 studio.progress = {
                     at: Date.now(),
                     phase: d.phase || '',
                     step: Number(d.currentStep) || (prev ? prev.step : 0),
                     steps: Number(d.totalSteps) || (prev ? prev.steps : 0),
-                    frame: d.imageData ? `data:image/${d.imageFormat || 'webp'};base64,${d.imageData}` : (prev ? prev.frame : '')
+                    frame
                 };
                 // the print's step and frame on Today as they come (only this item, only on screen: off
                 // screen Today draws in full at show); at most one draw a second

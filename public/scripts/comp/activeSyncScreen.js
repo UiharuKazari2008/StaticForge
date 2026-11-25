@@ -64,7 +64,7 @@
                         c.width = Math.max(1, Math.round(im.naturalWidth * k));
                         c.height = Math.max(1, Math.round(im.naturalHeight * k));
                         c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
-                        const data = c.toDataURL('image/jpeg', 0.8);
+                        const data = c.toDataURL('image/jpeg', 0.8); // no-base64-images: transport (wallpaper posted to the server for Device Center, never shown by this page; cache capped at 4)
                         // a few pictures at most (each JPEG is ~100 KB of string; every Today change added one)
                         if (wallCache.size >= 4) wallCache.delete(wallCache.keys().next().value);
                         wallCache.set(url, data);
@@ -128,7 +128,7 @@
             if (!value) return null;
             if (!/^data:/.test(value)) return `path:${value}`;
             if (hashCache.has(value)) return hashCache.get(value);
-            const m = /^data:[^,]*;base64,(.*)$/.exec(value);
+            const m = /^data:[^,]*;base64,(.*)$/.exec(value); // no-base64-images: transport (hashing the wallpaper bytes before the post)
             if (!subtle || !m) return '';
             try {
                 const bin = root.atob(m[1].replace(/\s+/g, ''));

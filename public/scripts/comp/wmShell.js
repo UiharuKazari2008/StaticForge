@@ -319,15 +319,16 @@
         roles['--wm-caption'] = `hsl(${hl.h.toFixed(1)} ${hl.s.toFixed(1)}% ${capL}%)`;
         roles['--wm-band'] = `hsl(${hl.h.toFixed(1)} ${hl.s.toFixed(1)}% ${bandL}%)`;
         const ART = ['listviewselector', 'menuselector', 'menuuparrowbackground-l', 'menuuparrowbackground-m', 'menuuparrowbackground-r', 'menudownarrowbackground-l', 'menudownarrowbackground-m', 'menudownarrowbackground-r', 'msgboxtitle', 'scrollbaruparrowbuttonselected', 'scrollbardownarrowbuttonselected', 'scrollbaruparrowbuttonselected-4x', 'scrollbardownarrowbuttonselected-4x', 'tabcurve-face-face', 'tabcurve-face-white', 'tabcurve-white-face', 'tabcurve-face-black'];
-        const art = applyTheme.art || (applyTheme.art = { key: '', vars: {}, pending: '', images: {} });
+        const art = applyTheme.art || (applyTheme.art = { key: '', vars: {}, cache: {}, urls: [], pending: '', images: {} });
         const artKey = `${roles['--wm65-dh']}|${roles['--wm65-k']}|${roles['--wm65-lm']}|${roles['--wm65-near']}`;
         const plain = dh === 0 && k65 === 1 && lm === 1;
-        if (plain) { art.key = artKey; art.vars = {}; art.pending = ''; }
-        if (art.key === artKey) Object.assign(roles, art.vars);
+        if (plain) { art.key = artKey; art.vars = {}; art.cache = {}; art.pending = ''; revokeArtUrls(art.urls); art.urls = []; }
+        const persist = Object.assign({}, roles); // what the next boot's splash reads: data URLs (blob URLs die with the page)
+        if (art.key === artKey) { Object.assign(roles, art.vars); Object.assign(persist, art.cache); }
         for (const [name, value] of Object.entries(roles)) root.style.setProperty(name, value);
         // the art of another colour stays until the new set is drawn; none is left in the ROM's blue
         if (art.key === artKey) for (const name of ART) if (!(`--wm65-art-${name}` in roles)) root.style.removeProperty(`--wm65-art-${name}`);
-        try { localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(roles)); } catch (_) { /* storage off */ }
+        try { localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(persist)); } catch (_) { /* storage off */ }
         if (!WM65 || art.key === artKey || art.pending === artKey) return;
         art.pending = artKey;
         const load = (name) => art.images[name] || (art.images[name] = new Promise((resolve) => {
@@ -345,6 +346,8 @@
         Promise.all(ART.map(load)).then((images) => {
             if (art.pending !== artKey) return;
             const vars = {};
+            const cache = {};
+            const urls = [];
             images.forEach((img, i) => {
                 if (!img) return;
                 try {
@@ -391,7 +394,7 @@
                             }
                         }
                         ctx.putImageData(data, 0, 0);
-                        vars[`--wm65-art-${ART[i]}`] = `url("${canvas.toDataURL('image/png')}")`;
+                        vars[`--wm65-art-${ART[i]}`] = artVar(canvas, cache, urls, `--wm65-art-${ART[i]}`);
                         return;
                     }
                     for (let p = 0; p < px.length; p += 4) {
@@ -405,19 +408,44 @@
                         px[p + 2] = Math.round(rgb[2] * 255);
                     }
                     ctx.putImageData(data, 0, 0);
-                    vars[`--wm65-art-${ART[i]}`] = `url("${canvas.toDataURL('image/png')}")`;
+                    vars[`--wm65-art-${ART[i]}`] = artVar(canvas, cache, urls, `--wm65-art-${ART[i]}`);
                 } catch (_) { /* this piece keeps the ROM's blue */ }
             });
+            revokeArtUrls(art.urls);
+            revokeArtUrls(cachedArtUrls);
+            cachedArtUrls = [];
             art.key = artKey;
             art.vars = vars;
+            art.cache = cache;
+            art.urls = urls;
             art.pending = '';
             for (const name of ART) {
                 const prop = `--wm65-art-${name}`;
                 if (prop in vars) root.style.setProperty(prop, vars[prop]);
                 else root.style.removeProperty(prop);
             }
-            try { localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(Object.assign({}, roles, vars))); } catch (_) { /* storage off */ }
+            try { localStorage.setItem(THEME_CACHE_KEY, JSON.stringify(Object.assign({}, roles, cache))); } catch (_) { /* storage off */ }
         });
+    }
+
+    // The recoloured Melaton Mobile art pieces are canvases shown as CSS vars: each var holds an object URL, revoked when the
+    // next drawn set replaces it. The splash cache (localStorage) keeps the pieces as data URLs for the next boot only;
+    // applyCachedTheme turns those into object URLs at once.
+    let cachedArtUrls = [];
+    function revokeArtUrls(list) { for (const u of list) { try { URL.revokeObjectURL(u); } catch (_) { /* gone */ } } }
+    function dataUrlBlobUrl(d) {
+        const comma = d.indexOf(',');
+        const bin = atob(d.slice(comma + 1));
+        const u8 = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        return URL.createObjectURL(new Blob([u8], { type: 'image/png' }));
+    }
+    function artVar(canvas, cache, urls, prop) {
+        const d = canvas.toDataURL('image/png'); // no-base64-images: persisted for the splash cache only (tiny ROM art piece); shown via an object URL
+        cache[prop] = `url("${d}")`;
+        const u = dataUrlBlobUrl(d);
+        urls.push(u);
+        return `url("${u}")`;
     }
 
     /** The last workspace theme, so the splash already has it before the workspace CSS loads. */
@@ -427,7 +455,14 @@
             // a cache from before a role was added: the highlight role is the workspace colour's
             // hue and saturation at WM's lightness, so every role comes again from it
             if (roles && roles['--wm-highlight'] && Object.keys(ROLES).some((k) => !(k in roles))) roles = deriveRoles(roles['--wm-highlight']) || roles;
-            if (roles) for (const [name, value] of Object.entries(roles)) root.style.setProperty(name, value);
+            if (roles) {
+                for (const [name, value] of Object.entries(roles)) {
+                    // no-base64-images: the splash cache's data URL is turned into an object URL at once
+                    const m = /^--wm65-art-/.test(name) && /^url\("data:image\/png;base64,([^"]*)"\)$/.exec(value);
+                    if (m) { try { const u = dataUrlBlobUrl(`,${m[1]}`); cachedArtUrls.push(u); root.style.setProperty(name, `url("${u}")`); continue; } catch (_) { /* the ROM's blue */ } }
+                    root.style.setProperty(name, value);
+                }
+            }
         } catch (_) { /* no cache */ }
     }
 
@@ -7140,7 +7175,7 @@
         const raw = s.length > 64 && /^[A-Za-z0-9+/]+={0,2}$/.test(s.slice(0, 4096).replace(/\s+/g, '')) && !/^\/(images|previews|cache|static_images|fs|api)\//.test(s);
         if (!raw) return s;
         const type = s.startsWith('/9j/') ? 'jpeg' : s.startsWith('UklGR') ? 'webp' : s.startsWith('R0lGOD') ? 'gif' : 'png';
-        return `data:image/${type};base64,${s}`;
+        return `data:image/${type};base64,${s}`; // no-base64-images: shown once (a progress preview frame, replaced by the next)
     }
 
     function hideProgress(box) {
