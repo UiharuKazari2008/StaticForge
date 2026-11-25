@@ -421,7 +421,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-blur-in {
 
 /* the light on the glass (glasslight; Yukimi, Nov 23: livelier, a bit of HTC Sense, still the 6.5 look): static
  * layers on the art's glass (9 - 69 of 82 units), nothing animates. A light rim along the glass's top and
- * bottom lines, a crisp light lip under the art's middle edge (24 units: the glass's upper band meets its
+ * bottom lines (a hint only), a crease at the art's middle edge (24 units: the glass's upper band meets its
  * lower body; 15 units into the glass), a faint diagonal sheen and one thin specular streak. */
 html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="glasslight"] .wm-ti-band::before {
     content: "";
@@ -432,13 +432,14 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="glasslight"] .wm-ti-band::
     height: calc(60 * var(--u));
     pointer-events: none;
     background:
-        /* the top rim: a bright hairline fading out toward the sides */
-        linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.6) 14%, rgba(255, 255, 255, 0.72) 50%, rgba(255, 255, 255, 0.6) 86%, rgba(255, 255, 255, 0)) 0 0 / 100% calc(0.75 * var(--u)) no-repeat,
-        /* the bottom rim, softer, with the glass's edge light just above it */
-        linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.48) 18%, rgba(255, 255, 255, 0.62) 50%, rgba(255, 255, 255, 0.48) 82%, rgba(255, 255, 255, 0)) 0 100% / 100% calc(0.75 * var(--u)) no-repeat,
+        /* the top rim: only a hint of edge light, the art draws its own top line (Yukimi, Nov 25: 0.6 / 0.72 read as a lit edge) */
+        linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.2) 14%, rgba(255, 255, 255, 0.28) 50%, rgba(255, 255, 255, 0.2) 86%, rgba(255, 255, 255, 0)) 0 0 / 100% calc(0.75 * var(--u)) no-repeat,
+        /* the bottom rim, fainter still (the art's bottom edge carries it), with the glass's edge light just above it */
+        linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.14) 18%, rgba(255, 255, 255, 0.2) 50%, rgba(255, 255, 255, 0.14) 82%, rgba(255, 255, 255, 0)) 0 100% / 100% calc(0.75 * var(--u)) no-repeat,
         linear-gradient(to top, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0)) 0 100% / 100% calc(5 * var(--u)) no-repeat,
-        /* the middle edge, crisp: a dark hairline on the edge, a light lip right under it, then a short fall-off */
-        linear-gradient(to bottom, rgba(0, 0, 0, 0.4) 0, rgba(0, 0, 0, 0.4) calc(0.5 * var(--u)), rgba(255, 255, 255, 0.5) calc(0.5 * var(--u)), rgba(255, 255, 255, 0.5) calc(1.1 * var(--u)), rgba(255, 255, 255, 0.12) calc(1.1 * var(--u)), rgba(255, 255, 255, 0) calc(4 * var(--u))) 0 calc(14.5 * var(--u)) / 100% calc(4 * var(--u)) no-repeat,
+        /* the middle edge, a crease (Yukimi, Nov 25: a 0.5 white lip read as a line drawn on the glass): the dark
+         * hairline, a barely-there catch of light on its lip, then a soft fall-off */
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.4) 0, rgba(0, 0, 0, 0.4) calc(0.5 * var(--u)), rgba(255, 255, 255, 0.16) calc(0.5 * var(--u)), rgba(255, 255, 255, 0.16) calc(1.1 * var(--u)), rgba(255, 255, 255, 0.05) calc(2.2 * var(--u)), rgba(255, 255, 255, 0) calc(4 * var(--u))) 0 calc(14.5 * var(--u)) / 100% calc(4 * var(--u)) no-repeat,
         /* the specular streak: one thin slanted line of light across the glass */
         linear-gradient(104deg, rgba(255, 255, 255, 0) 61%, rgba(255, 255, 255, 0.18) 62.4%, rgba(255, 255, 255, 0.18) 63.4%, rgba(255, 255, 255, 0) 64.8%),
         /* the sheen: two soft slanted bands of light, the left one stronger */
@@ -459,6 +460,11 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx {
     overflow: hidden;
     pointer-events: none;
     contain: strict;
+}
+
+/* the weather belongs to the clock item: any other item in the glass hides the layer (wmTitanium.js syncWx) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx[hidden] {
+    display: none;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-wxfx > i {
@@ -1495,7 +1501,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-wx {
     position: absolute;
     /* the AM / PM and date column (it follows the time's box, --ti-time-w) */
     left: calc((var(--ti-time-w, 93) + 20) * var(--u));
-    right: calc(56 * var(--u));
+    /* up to the moon / sun drawing itself, over its icon box's clear left edge: at a larger Today size
+     * (Effects > Size) 56 cut the weather line short (#1109) */
+    right: calc(50 * var(--u));
     top: calc(18 * var(--u));
     font-size: calc(10.667 * var(--u));
     line-height: 1.2075;

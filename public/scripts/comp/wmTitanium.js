@@ -973,14 +973,20 @@
     // weather); the sky is read again only when wmWeatherChange said it changed.
     let wxEl = null;
     let wxDirty = true;
+    // the weather belongs to the clock item (Yukimi, Nov 25): with any other item in the glass the layer goes
+    function wxOnClock() { return !!(panels[sel] && panels[sel].clock); }
     function wxWanted() {
         return !!(fx.weather && host && !host.hidden && root.dataset.wmApp === 'today' && !document.hidden
-            && root.dataset.screenOff === undefined && root.dataset.wmBehind === undefined && !host.classList.contains('is-super'));
+            && root.dataset.screenOff === undefined && root.dataset.wmBehind === undefined && !host.classList.contains('is-super')
+            && wxOnClock());
     }
     function syncWx() {
         if (!wxWanted()) {
             // not seen: paused (stopped, not redrawn); a changed sky is read when Today shows again
             if (wxEl && !wxEl.classList.contains('is-paused')) wxEl.classList.add('is-paused');
+            // another item in the glass: not drawn at all (a frozen sky over Mail would still show)
+            const off = !wxOnClock();
+            if (wxEl && wxEl.hidden !== off) wxEl.hidden = off;
             if (!fx.weather && wxEl && wxEl.dataset.scene) { wxEl.innerHTML = ''; wxEl.dataset.scene = ''; wxDirty = true; }
             return;
         }
@@ -996,6 +1002,7 @@
             if (cur) wxDirty = false;
             drawWeatherFx(wxEl, cur, { k: 0.6, band: true });
         }
+        if (wxEl.hidden) wxEl.hidden = false;
         if (wxEl.classList.contains('is-paused')) wxEl.classList.remove('is-paused');
     }
     document.addEventListener('wmWeatherChange', () => { wxDirty = true; syncWx(); }, { signal: appScopeSignal });
@@ -2140,6 +2147,8 @@
     let expKey = '';
     function drawExpanded() {
         const p = panels[sel];
+        // the glass's weather comes and goes with the clock item (compare-first, nothing written when unchanged)
+        syncWx();
         const exp = host.querySelector('.wm-ti-exp');
         if (!p) { exp.innerHTML = ''; expKey = ''; return; }
         const n = p.pages.length;
