@@ -1646,7 +1646,8 @@
                 return bits.length ? `${head} - ${bits.join(' - ')}` : head;
             });
             const box = document.createElement('div');
-            (lines.length ? lines : ['No recorder found on this account']).forEach((t) => { const row = document.createElement('div'); row.textContent = t; box.appendChild(row); });
+            // a code for an address Plaud does not know makes a new, empty account there
+            (lines.length ? lines : [dev.newAccount ? 'Plaud made a new, empty account for this address: the recorder is on another account. Sign out of recorder; the address must be the one the recorder\'s account uses.' : 'No recorder found on this account']).forEach((t) => { const row = document.createElement('div'); row.textContent = t; box.appendChild(row); });
             details.append(customField('Recorder', box), customField('Recorder account', tmText(dev.email || 'Signed in')));
             if (dev.lastError) details.append(customField('Recorder status', tmText(`Error: ${dev.lastError}`, 'cpl-tm-error')));
             actions.append(tmButton('Sign out of recorder', async () => {

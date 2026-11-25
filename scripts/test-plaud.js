@@ -260,7 +260,7 @@ t.setDeps({
                 const sent = JSON.parse(init.body);
                 if (sent.code !== '123456') return reply(422, { detail: [{ loc: ['body', 'code'], msg: 'wrong code' }] });
                 assert.strictEqual(sent.token, 'CODETOKEN');
-                return reply(200, { status: 0, msg: 'success', data: { user: { id: 1 }, auth: { user_token: jwt } } });   // not where the write-ups say
+                return reply(200, { status: 0, msg: 'success', access_token: jwt, token_type: 'bearer', refresh_token: 'R', is_new_user: false, ut_expire_at: Math.floor(Date.now() / 1000) + 3600 });   // the shape seen live
             }
             if (u.pathname === '/device/list') {
                 if (deviceStatus === 401) return reply(401, { detail: 'no' });

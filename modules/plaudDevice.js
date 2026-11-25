@@ -35,6 +35,7 @@ let reading = null;
 let lastError = '';
 let broadcast = null;
 let resources = null;
+let newAccount = false; // the last sign-in made a new Plaud account (no recorder on it)
 
 class PlaudError extends Error {
     constructor(message, code) { super(message); this.code = code || 'PLAUD_DEVICE_ERROR'; }
@@ -48,6 +49,7 @@ function load() {
         token: (s && s.token) || '', base: (s && s.base) || DEFAULT_BASE, email: (s && s.email) || '',
         since: (s && s.since) || 0, exp: (s && s.exp) || 0, asked: (s && s.asked) || '', dead: !!(s && s.dead)
     };
+    newAccount = !!(s && s.newAccount);
     return state;
 }
 
@@ -70,6 +72,9 @@ function jwtExp(token) {
         return Number(p.exp) > 0 ? Number(p.exp) * 1000 : 0;
     } catch (_) { return 0; }
 }
+
+/** ut_expire_at: seconds or ms. */
+function expOf(v) { const n = Number(v); return n > 0 ? (n < 1e11 ? Math.round(n * 1000) : Math.round(n)) : 0; }
 
 function isExpired(s) { return !!s.token && ((s.exp > 0 && s.exp <= Date.now()) || s.dead === true); }
 
@@ -138,7 +143,8 @@ function failMsg(r, fallback) {
 function findToken(body) {
     const b = body && typeof body === 'object' ? body : {};
     const d = b.data && typeof b.data === 'object' ? b.data : {};
-    for (const v of [b.access_token, d.access_token, b.token, d.token]) if (typeof v === 'string' && v.split('.').length === 3) return v;
+    // seen live Nov 25 2026: { access_token, token_type, refresh_token, ut_expire_at, is_new_user, ... } at the root, and the token is not a JWT
+    for (const v of [b.access_token, d.access_token]) if (typeof v === 'string' && v.length >= 16) return v;
     let found = '';
     const walk = (o, depth) => {
         if (found || !o || typeof o !== 'object' || depth > 4) return;
@@ -189,7 +195,11 @@ async function signIn(code) {
         throw new PlaudError(lastError, accepted ? 'PLAUD_DEVICE_NO_TOKEN' : 'PLAUD_DEVICE_BAD_CODE');
     }
     const s = load();
-    Object.assign(s, { token: String(access), email: pending.email, since: Date.now(), exp: jwtExp(access), asked: '', dead: false });
+    const src = r.body && typeof r.body.access_token === 'string' ? r.body : ((r.body && r.body.data) || {});
+    // a code for an address Plaud does not know makes a new, empty account (a Google / Apple account has its own made-up address)
+    newAccount = src.is_new_user === true;
+    if (newAccount) console.warn('[plaud-device] Plaud made a new account for that address: it is not the account the recorder is on');
+    Object.assign(s, { token: String(access), email: pending.email, since: Date.now(), exp: jwtExp(access) || expOf(src.ut_expire_at), asked: '', dead: false, newAccount });
     pending = null;
     lastError = '';
     recorders = []; readAt = 0;
@@ -202,7 +212,7 @@ async function signIn(code) {
 function signOut() {
     const s = load();
     Object.assign(s, { token: '', email: '', since: 0, exp: 0, asked: '', dead: false });
-    pending = null; recorders = []; fields = []; readAt = 0; lastError = '';
+    pending = null; recorders = []; fields = []; readAt = 0; lastError = ''; newAccount = false; s.newAccount = false;
     try { fs.unlinkSync(FILE); } catch (_) { /* no file */ }
     clearAsk();
     notify();
@@ -283,6 +293,7 @@ function status() {
         since: s.token ? s.since : 0,
         expiresAt: s.token ? s.exp : 0,
         codeSent: !!(pending && pending.until > Date.now()),
+        newAccount: name === 'missing' ? false : newAccount,
         lastError,
         recorders: name === 'missing' ? [] : recorders.map((d) => ({
             name: d.name, model: d.model, serial: d.serial ? `...${d.serial.slice(-4)}` : '', firmware: d.firmware, battery: d.battery, lastSync: d.lastSync
