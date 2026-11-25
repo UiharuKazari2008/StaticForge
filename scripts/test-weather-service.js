@@ -266,6 +266,40 @@ function appleFixture() {
         assert.strictEqual(w.placeFor(41.5, -74.0), null);
     });
 
+    await test('Current location follows the places\' Weather Alerts switch (#1127)', async () => {
+        // the phone 130 km from Home: outside its radius, so the monitor watches it as its own place
+        const hereAt = { lat: 38.9, lon: -77.03 };
+        const once = async (alerts, alertId) => {
+            const sent = [];
+            const cfg = { weather: { places: { home: { name: 'Home', lat: 40.71, lon: -74.01, radiusKm: 3, alerts, rainAlarm: false, rainLeadMin: 15 } } } };
+            const gr = {
+                getConfig: ({ path: p }) => p.split('.').reduce((o, k) => (o == null ? o : o[k]), cfg),
+                getSecureConfig: () => null,
+                getApiKeyManager: () => null,
+                getWebSocketServer: () => ({ broadcast: (msg) => sent.push(msg) })
+            };
+            delete require.cache[require.resolve('../modules/weatherService')];
+            const w = require('../modules/weatherService');
+            w.bind(gr);
+            const tz = 'America/New_York';
+            const om = w._test.normaliseOpenMeteo({ timezone: tz, utc_offset_seconds: -18000, current: { time: '2026-11-25T16:00', temperature_2m: 10, weather_code: 3, is_day: 1 }, hourly: { time: [] }, daily: { time: [] } });
+            w._test.jsonCache.set(`om:fc:${hereAt.lat}:${hereAt.lon}`, { ok: true, value: om, at: Date.now(), expires: Date.now() + 60000 });
+            w._test.jsonCache.set('geo:country:38.9:-77', { ok: true, value: { code: 'US', city: 'Manassas', region: 'Virginia', country: 'United States' }, at: Date.now(), expires: Date.now() + 60000 });
+            w._test.jsonCache.set(`nws:alerts:${hereAt.lat}:${hereAt.lon}`, { ok: true, value: [{ id: alertId, title: 'Severe Thunderstorm Warning', severity: 'severe', expires: '2099-01-01T00:00', provider: 'nws' }], at: Date.now(), expires: Date.now() + 60000 });
+            // Home itself, quiet: the look under test is Current location's, and no host is asked (hermetic)
+            w._test.jsonCache.set('om:fc:40.71:-74.01', { ok: true, value: om, at: Date.now(), expires: Date.now() + 60000 });
+            w._test.jsonCache.set('geo:country:40.7:-74', { ok: true, value: { code: 'US', city: 'New York', region: 'New York', country: 'United States' }, at: Date.now(), expires: Date.now() + 60000 });
+            w._test.jsonCache.set('nws:alerts:40.71:-74.01', { ok: true, value: [], at: Date.now(), expires: Date.now() + 60000 });
+            w.setHere(hereAt);
+            await w.pollPlaces();
+            return sent.filter((m) => m.type === 'weather_alert_issued');
+        };
+        assert.strictEqual((await once(false, 'yr-here-off')).length, 0, 'Weather Alerts off for Home: nothing arrives from Current location either');
+        const on = await once(true, 'yr-here-on');
+        assert.strictEqual(on.length, 1, 'with them on, the same look does broadcast');
+        assert.strictEqual(on[0].data.place.label, 'Current location');
+    });
+
     await test('a setting on the stand-in Home keeps its coordinates and saves it', async () => {
         const cfg = { weather: {} };
         const writes = [];
