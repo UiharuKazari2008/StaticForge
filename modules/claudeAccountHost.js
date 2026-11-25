@@ -344,13 +344,21 @@ function cleanPane(text) {
 
 function parsePane(text) {
     const lines = cleanPane(text);
-    const statusLine = lines.find((l) => /\b(Connected|Connecting|Reconnecting|Disconnected)\b/i.test(l)) || '';
+    // the LAST status line counts (the pane keeps history): "✔ Ready" (no sessions running) and "Connected" are both
+    // healthy; a "[time] Session failed: ..." line above it is the log of one session ending, not the server's state
+    // (#1154, Nov 24: every server read as an error after its sessions were closed)
+    const STATUS_RE = /\b(Connected|Ready|Connecting|Reconnecting|Disconnected)\b/i;
+    const statusIdx = (() => { for (let i = lines.length - 1; i >= 0; i -= 1) if (STATUS_RE.test(lines[i]) && !/^\[\d{1,2}:\d{2}(:\d{2})?\]/.test(lines[i])) return i; return -1; })();
+    const statusLine = statusIdx >= 0 ? lines[statusIdx] : '';
     const cap = lines.map((l) => /Capacity:\s*(\d+)\s*\/\s*(\d+)/i.exec(l)).find(Boolean);
-    const errorLine = lines.find((l) => /\b(error|failed|not logged in|log ?in|unauthori[sz]ed|expired)\b/i.test(l)) || '';
+    const ERR_RE = /\b(error|failed|not logged in|log ?in|unauthori[sz]ed|expired)\b/i;
+    const sessionLog = (l) => /^\[\d{1,2}:\d{2}(:\d{2})?\]\s*Session\b/i.test(l);
+    // an error counts only when it is the server's own (not a session's log line) and comes after the last status
+    const errorLine = lines.slice(statusIdx + 1).find((l) => ERR_RE.test(l) && !sessionLog(l)) || (statusIdx < 0 ? (lines.find((l) => ERR_RE.test(l) && !sessionLog(l)) || '') : '');
     let state = 'unknown';
-    if (/\bConnected\b/.test(statusLine) && !/Disconnected/i.test(statusLine)) state = 'connected';
+    if (/\b(Connected|Ready)\b/i.test(statusLine) && !/Disconnected/i.test(statusLine) && !errorLine) state = 'connected';
     else if (/Connecting|Reconnecting/i.test(statusLine)) state = 'reconnecting';
-    else if (errorLine) state = 'error';
+    else if (errorLine || /Disconnected/i.test(statusLine)) state = 'error';
     return {
         state,
         statusLine: statusLine.replace(/^[^A-Za-z]+/, '').trim(),

@@ -269,10 +269,28 @@
     color: var(--cd-c-a00000);
 }
 
+/* a property table stays inside its dialog / pane: the label column takes what it needs, values wrap
+   (long service names and status lines overflowed the Remote Control box, Nov 24 2026) */
+.cd-props {
+    width: 100%;
+    max-width: 100%;
+    table-layout: auto;
+    border-collapse: collapse;
+}
+
+.cd-props td {
+    vertical-align: top;
+}
+
 .cd-props td:first-child {
     padding-right: 10px;
     white-space: nowrap;
-    vertical-align: top;
+    width: 1%;
+}
+
+.cd-props td:last-child {
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .cd-read {
