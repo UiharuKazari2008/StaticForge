@@ -417,6 +417,35 @@ async function main() {
         console.log('ok 9 insight summary, hidden-run summaries and steering rows');
     }
 
+    // 9b: the workflow map (claude_desk_supervisor work_map): Supervisor -> session -> background agents -> their tasks, from transcripts
+    {
+        const J = (o) => `${JSON.stringify(o)}\n`;
+        const file = await launcher.findFile(SID);
+        assert.ok(file, 'the fixture session has a transcript');
+        const sub = path.join(path.dirname(file), SID, 'subagents');
+        fs.mkdirSync(sub, { recursive: true });
+        fs.writeFileSync(path.join(sub, 'agent-a9999999999999999.meta.json'), JSON.stringify({ agentType: 'general-purpose', description: 'Build the thing', requestShape: 'background', model: 'sonnet' }));
+        const side = (o) => Object.assign({ isSidechain: true }, o);
+        fs.writeFileSync(path.join(sub, 'agent-a9999999999999999.jsonl'), [
+            side({ type: 'user', timestamp: '2026-11-24T10:00:00.000Z', message: { role: 'user', content: 'build' } }),
+            side({ type: 'assistant', timestamp: '2026-11-24T10:00:05.000Z', effort: 'medium', message: { id: 'x1', model: 'claude-sonnet-5-5', usage: { input_tokens: 5, output_tokens: 40, cache_read_input_tokens: 900, cache_creation_input_tokens: 100 }, content: [{ type: 'tool_use', id: 'tb1', name: 'Bash', input: { command: 'npm run build', description: 'Build it', run_in_background: true } }, { type: 'tool_use', id: 'tb2', name: 'Bash', input: { command: 'sleep 99', description: 'Wait', run_in_background: true } }] } }),
+            { type: 'attachment', timestamp: '2026-11-24T10:00:30.000Z', attachment: { type: 'queued_command', prompt: '<task-notification>\n<task-id>b1</task-id>\n<tool-use-id>tb1</tool-use-id>\n<status>completed</status>\n</task-notification>', commandMode: 'task-notification' } }
+        ].map(J).join(''));
+        const map = await desk._workMap(gr, { sessionId: SID });
+        const byKind = (k) => map.nodes.filter((n) => n.kind === k);
+        assert.strictEqual(byKind('supervisor').length, 1);
+        const sn = byKind('session')[0];
+        assert.ok(sn && sn.sessionId === SID && sn.col === 1 && sn.parent === 'sup', JSON.stringify(sn));
+        const an = byKind('agent')[0];
+        assert.ok(an && an.parent === sn.key && an.col === 2 && an.label === 'Build the thing' && an.model === 'sonnet', JSON.stringify(an));
+        assert.strictEqual(an.effort, 'medium');
+        assert.strictEqual(an.tokens, 145, 'input + output + cache written, sidechain lines counted');
+        const tasks = byKind('task');
+        assert.deepStrictEqual(tasks.map((t) => [t.parent, t.col, t.state]), [[an.key, 3, 'done'], [an.key, 3, 'working']], 'the finished command is done by its notification, the other still runs');
+        assert.ok(map.nodes.every((n) => n.key && typeof n.col === 'number'));
+        console.log('ok 9b workflow map');
+    }
+
     {
         // Last 30 days: the daily usage store keeps the max per account and day, trims to 90 days, and joins the Supervisor's cost
         const hist = require('../modules/claudeUsageHistory');

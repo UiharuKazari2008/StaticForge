@@ -545,6 +545,36 @@
     overflow-x: hidden;
 }
 
+/* wrap: text-heavy lists fit the pane, cell text wraps and rows grow with it (no horizontal scroll) */
+.mmc-window .mmc-list.is-wrap {
+    overflow-x: hidden;
+}
+
+.mmc-window .mmc-list.is-wrap .mmc-lhead,
+.mmc-window .mmc-list.is-wrap .mmc-row,
+.mmc-window .mmc-list.is-wrap .mmc-lbody {
+    min-width: 0;
+}
+
+.mmc-window .mmc-list.is-wrap .mmc-row {
+    height: auto;
+    min-height: 19px;
+    align-items: start;
+}
+
+.mmc-window .mmc-list.is-wrap .mmc-row > span {
+    overflow: visible;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    white-space: normal;
+}
+
+.mmc-window .mmc-list.is-wrap .mmc-row > span > i {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+}
+
 .mmc-window .mmc-lhead {
     position: sticky;
     top: 0;

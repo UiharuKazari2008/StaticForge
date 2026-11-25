@@ -256,6 +256,7 @@
         const c = ws();
         if (!c || typeof c.on !== 'function') return;
         const opts = { signal: app.signal };
+        document.addEventListener('visibilitychange', () => { wmSync(); if (!document.hidden) wmPoke(); }, opts); // the workflow map's timer rests while hidden
         bgWire(app);
         c.on('claude_desk_status', (msg) => {
             const d = msg && msg.changed ? msg : (msg && msg.data) || {};
@@ -760,6 +761,7 @@
         if (S.c && nodeSid(S.c.node) === id) S.c.renderStatus();
         pendingDraw(id);
         insTick(id);
+        wmPoke();
     }
     /** While the session works, the strip's turn time moves on every 10 s (one timer, only while the chat is open and busy). */
     function insTick(id) {
@@ -778,14 +780,170 @@
         } catch (_) { /* the strip stays on its hint */ }
     }
 
+    // ---- the workflow map (claude_desk_supervisor work_map): Supervisor -> sessions -> background agents -> their tasks ----
+    // Drawn at the top of a work item's page and of a supervised session's chat. Nothing polls: the map is asked for again
+    // (debounced) when a push the window already gets changes something (the work list, the agents feed, a transcript
+    // append). One shared 1 s timer moves the elapsed times, only while a working node is on screen and the window shows.
+
+    const WM = { maps: new Map(), loading: new Set(), again: new Set(), debounce: 0, tick: 0, collapsed: false };
+    try { WM.collapsed = localStorage.getItem('cd-wm-collapsed') === '1'; } catch (_) { WM.collapsed = false; }
+    const WM_W = 176;
+    const WM_H = 58;
+    const WM_GAP_X = 34;
+    const WM_GAP_Y = 8;
+    const WM_STATE = { working: 'Working', idle: 'Idle', done: 'Done', failed: 'Failed' };
+    const WM_KIND = { supervisor: 'Supervisor', session: 'Session', item: 'Queued', agent: 'Agent', task: 'Task' };
+
+    /** Left-to-right tree layout: a leaf takes the next row, a parent sits at the middle of its children. */
+    function wmLayout(nodes) {
+        const kids = new Map();
+        nodes.forEach((n) => { const p = n.parent || ''; if (!kids.has(p)) kids.set(p, []); kids.get(p).push(n); });
+        let row = 0;
+        const pos = new Map();
+        const walk = (n) => {
+            const ks = kids.get(n.key) || [];
+            let y;
+            if (!ks.length) { y = row; row += 1; } else { const ys = ks.map(walk); y = (ys[0] + ys[ys.length - 1]) / 2; }
+            pos.set(n.key, { col: n.col, y });
+            return y;
+        };
+        (kids.get('') || []).forEach(walk);
+        const cols = Math.max(0, ...nodes.map((n) => n.col)) + 1;
+        const at = (k) => { const p = pos.get(k); return { x: p.col * (WM_W + WM_GAP_X), y: p.y * (WM_H + WM_GAP_Y) }; };
+        return { at, pos, cols, rows: Math.max(1, row), width: cols * WM_W + (cols - 1) * WM_GAP_X, height: Math.max(1, row) * WM_H + (Math.max(1, row) - 1) * WM_GAP_Y };
+    }
+
+    function wmNodeHtml(n, lay, now) {
+        const p = lay.at(n.key);
+        const end = n.endedAt || now;
+        const live = n.state === 'working' && n.startedAt;
+        const ms = n.startedAt ? Math.max(0, end - n.startedAt) : null;
+        const model = [n.model ? modelName(n.model) : '', n.effort || ''].filter(Boolean).join(' / ');
+        const bits = [ms != null ? `<span class="cd-wm-t"${live ? ` data-since="${n.startedAt}"` : ''}>${esc(fmtDur(ms))}</span>` : '', n.messages ? `<span>${esc(plural(n.messages, 'msg'))}</span>` : '', n.tokens ? `<span>${esc(fmtN(n.tokens))} tok</span>` : ''].filter(Boolean).join('');
+        const arg = [n.kind, n.sessionId || '', n.agentId || '', n.workId != null ? n.workId : ''].join('|');
+        const clickable = n.kind === 'session' || n.kind === 'agent' || (n.kind === 'item' && n.workId != null);
+        const note = n.note ? `<span class="cd-wm-note">${esc(n.note)}</span>` : '';
+        return `<${clickable ? 'button type="button"' : 'div'} class="cd-wm-node is-${esc(n.state)} k-${esc(n.kind)}" data-x="${p.x}" data-y="${p.y}" ${clickable ? `data-act="wm-open" data-arg="${esc(arg)}"` : ''} title="${esc(`${WM_KIND[n.kind] || ''}: ${n.label} - ${WM_STATE[n.state] || n.state}${model ? ` - ${model}` : ''}`)}">`
+            + `<b>${esc(n.label)}</b><i>${esc([model, n.kind === 'supervisor' ? '' : (n.note ? '' : (WM_STATE[n.state] || ''))].filter(Boolean).join(' - ') || (WM_STATE[n.state] || ''))}${note ? ` ${note}` : ''}</i><em>${bits || '&nbsp;'}</em></${clickable ? 'button' : 'div'}>`;
+    }
+
+    function wmBodyHtml(map) {
+        if (!map) return '<p class="mmc-hint">Reading the workflow...</p>';
+        if (!map.nodes || !map.nodes.length) return '<p class="mmc-hint">Nothing has started yet.</p>';
+        const lay = wmLayout(map.nodes);
+        const now = Date.now();
+        const lines = map.nodes.filter((n) => n.parent && lay.pos.has(n.parent)).map((n) => {
+            const a = lay.at(n.parent);
+            const b = lay.at(n.key);
+            const x1 = a.x + WM_W;
+            const y1 = a.y + WM_H / 2;
+            const x2 = b.x;
+            const y2 = b.y + WM_H / 2;
+            const xm = x1 + WM_GAP_X / 2;
+            return `<path d="M${x1} ${y1}H${xm}V${y2}H${x2}"/>`;
+        }).join('');
+        return `<div class="cd-wm-scroll"><div class="cd-wm-canvas" data-w="${lay.width}" data-h="${lay.height}"><svg class="cd-wm-lines" width="${lay.width}" height="${lay.height}" aria-hidden="true">${lines}</svg>${map.nodes.map((n) => wmNodeHtml(n, lay, now)).join('')}</div></div>`;
+    }
+
+    /** The panel for a work item (its id): the head (collapse) and the body from the last map; asks for a fresh one when it has none. */
+    function wmHtml(workId) {
+        const key = String(workId);
+        const e = WM.maps.get(key);
+        if (!e && !WM.loading.has(key)) void wmLoad(key);
+        else if (e && Date.now() - e.at > 30000) void wmLoad(key);
+        setTimeout(wmSync, 0);
+        const working = e && e.map && e.map.nodes ? e.map.nodes.filter((n) => n.state === 'working' && n.kind !== 'supervisor').length : 0;
+        return `<div class="cd-wm${WM.collapsed ? ' is-collapsed' : ''}" data-wm="${esc(key)}"><div class="cd-wm-head"><span class="mmc-link" data-act="wm-toggle">${WM.collapsed ? 'Show workflow' : 'Hide workflow'}</span><span class="mmc-hint cd-wm-sum">${esc(working ? `${working} working` : '')}</span></div><div class="cd-wm-body"${WM.collapsed ? ' hidden' : ''}>${WM.collapsed ? '' : wmBodyHtml(e && e.map)}</div></div>`;
+    }
+
+    /** Puts the nodes and the canvas at their computed places (done by property, not by style attributes in the markup). */
+    function wmPlace() {
+        document.querySelectorAll('.cd-wm-canvas[data-w]').forEach((cv) => {
+            cv.style.width = `${cv.dataset.w}px`;
+            cv.style.height = `${cv.dataset.h}px`;
+            cv.removeAttribute('data-w');
+            cv.querySelectorAll('.cd-wm-node[data-x]').forEach((n) => { n.style.left = `${n.dataset.x}px`; n.style.top = `${n.dataset.y}px`; n.removeAttribute('data-x'); });
+        });
+    }
+
+    async function wmLoad(key) {
+        if (WM.loading.has(key)) { WM.again.add(key); return; }
+        WM.loading.add(key);
+        try {
+            const r = await send('claude_desk_supervisor', { action: 'work_map', id: Number(key) });
+            WM.maps.set(key, { map: unwrap(r, 'map'), at: Date.now() });
+        } catch (_) { if (!WM.maps.has(key)) WM.maps.set(key, { map: { nodes: [] }, at: Date.now() }); }
+        WM.loading.delete(key);
+        wmPaint(key);
+        if (WM.again.delete(key)) wmPoke();
+    }
+
+    /** Draws the body of every panel on screen for this map (in place: the page's scroll stays). */
+    function wmPaint(key) {
+        const e = WM.maps.get(key);
+        document.querySelectorAll('.cd-wm').forEach((p) => {
+            if (p.dataset.wm !== key) return;
+            const body = p.querySelector('.cd-wm-body');
+            if (body && !WM.collapsed) { const sc = body.querySelector('.cd-wm-scroll'); const left = sc ? sc.scrollLeft : 0; body.innerHTML = wmBodyHtml(e && e.map); const s2 = body.querySelector('.cd-wm-scroll'); if (s2) s2.scrollLeft = left; }
+            const sum = p.querySelector('.cd-wm-sum');
+            const working = e && e.map && e.map.nodes ? e.map.nodes.filter((n) => n.state === 'working' && n.kind !== 'supervisor').length : 0;
+            if (sum) sum.textContent = working ? `${working} working` : '';
+        });
+        wmSync();
+    }
+
+    /** A push changed something: ask again (debounced) when a panel is on screen and open. */
+    function wmPoke() {
+        if (!WM.maps.size || WM.debounce) return;
+        WM.debounce = setTimeout(() => {
+            WM.debounce = 0;
+            if (document.hidden) return;
+            const keys = new Set(Array.from(document.querySelectorAll('.cd-wm')).filter((p) => !WM.collapsed && p.isConnected).map((p) => p.dataset.wm));
+            keys.forEach((k) => void wmLoad(k));
+        }, 1000);
+    }
+
+    /** The shared 1 s timer: runs only while a working node is on screen and the window shows; stops otherwise. */
+    function wmSync() {
+        wmPlace();
+        const live = !document.hidden && document.querySelector('.cd-wm:not(.is-collapsed) .cd-wm-t[data-since]');
+        if (!live) { if (WM.tick) { clearInterval(WM.tick); WM.tick = 0; } return; }
+        if (WM.tick) return;
+        WM.tick = setInterval(() => {
+            const els = document.querySelectorAll('.cd-wm:not(.is-collapsed) .cd-wm-t[data-since]');
+            if (!els.length || document.hidden) { clearInterval(WM.tick); WM.tick = 0; return; }
+            const now = Date.now();
+            els.forEach((el) => { el.textContent = fmtDur(now - Number(el.dataset.since)); });
+        }, 1000);
+    }
+
+    function wmToggle() {
+        WM.collapsed = !WM.collapsed;
+        try { localStorage.setItem('cd-wm-collapsed', WM.collapsed ? '1' : '0'); } catch (_) { /* per-viewer only */ }
+        document.querySelectorAll('.cd-wm').forEach((p) => {
+            const key = p.dataset.wm;
+            p.outerHTML = wmHtml(key);
+        });
+        if (!WM.collapsed) wmPoke();
+    }
+
     // ---- a steering message sent from the composer shows at once as a pending row, replaced by the real one ----
 
-    function pendingReconcile(chat, msgs) {
-        if (!chat.pending || !chat.pending.length || !msgs || !msgs.length) return;
-        const texts = new Set(msgs.filter((m) => m.role === 'user' && m.kind === 'text').map((m) => String(m.text || '').trim()));
-        chat.pending = chat.pending.filter((p) => !texts.has(p.text.trim()) && Date.now() - p.at < 600000);
+    /**
+     * A sent message's "sending" row goes once its real row is in the transcript. The session may wrap it (Claude
+     * Code puts pasted text in <pasted_content> tags) or trim it, so the comparison ignores those tags, spacing and
+     * case, and a prefix of 160 characters is enough. A row still unmatched after 3 minutes goes as well.
+     */
+    const pendNorm = (t) => String(t || '').replace(/<\/?pasted_content[^>]*>/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    function pendingReconcile(chat, msgsIn) {
+        if (!chat.pending || !chat.pending.length) return;
+        const msgs = (msgsIn && msgsIn.length ? msgsIn : []).concat(chat.messages || []);
+        const texts = msgs.filter((m) => m.role === 'user' && m.kind === 'text').map((m) => pendNorm(m.text));
+        const seen = (p) => { const n = pendNorm(p.text); const head = n.slice(0, 160); return texts.some((t) => t && (t === n || (head && (t.includes(head) || (t.length >= 40 && n.includes(t.slice(0, 160))))))); };
+        chat.pending = chat.pending.filter((p) => !seen(p) && Date.now() - p.at < 180000);
     }
     function pendingHtml(chat) {
+        if (chat.pending && chat.pending.length) chat.pending = chat.pending.filter((p) => Date.now() - p.at < 180000);
         return (chat.pending || []).map((p) => `<div class="cd-msg cd-user is-pending" data-pend="${p.at}"><div class="cd-msg-head"><b>${p.steer ? 'You (steering)' : 'You'}</b><span>sending</span></div><div class="cd-msg-text">${esc(p.text)}</div></div>`).join('');
     }
     /** The live activity row at the end of a working session's log: what it does now, the turn's time, its background agents. */
@@ -1245,6 +1403,10 @@
 
     // ---- the supervisor (claude_desk_supervisor) -----------------------------------------------------------
 
+    const POLICY_JOBS = [['sweep', 'Mechanical sweep'], ['part', 'Well-defined part (worker default)'], ['tricky', 'Tricky part (concurrency, migrations, security)'], ['plan', 'Planning a normal request (planner default)'], ['large', 'Planning a large request'], ['huge', 'Very large or hard request'], ['max', 'Max (explicit request only)']];
+    const POLICY_MODELS = ['haiku', 'sonnet', 'opus', 'fable'];
+    const POLICY_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+    const POLICY_FALLBACK = { sweep: { model: 'sonnet', effort: 'low', maxModel: 'sonnet', maxEffort: 'medium' }, part: { model: 'sonnet', effort: 'medium', maxModel: 'sonnet', maxEffort: 'high' }, tricky: { model: 'sonnet', effort: 'high', maxModel: 'opus', maxEffort: 'high' }, plan: { model: 'opus', effort: 'high', maxModel: 'opus', maxEffort: 'xhigh' }, large: { model: 'opus', effort: 'xhigh', maxModel: 'opus', maxEffort: 'xhigh' }, huge: { model: 'fable', effort: 'xhigh', maxModel: 'fable', maxEffort: 'xhigh' }, max: { model: 'fable', effort: 'max', maxModel: 'fable', maxEffort: 'max' } };
     const SUP_DEFAULT = { enabled: false, engine: 'tokenrouter', model: '', delivery: 'inbox', manageLocks: false, trackArtifacts: false, maxConcurrent: 3, autoStart: true, yozoraRepos: ['DreamScape/StaticForge'] };
     const SUP_FALLBACK_ENGINES = [{ id: 'tokenrouter', name: 'TokenRouter', defaultModel: 'deepseek/deepseek-v4.1-flash' }];
     const DELIVERY = [['inbox', 'Inbox only'], ['steer', 'Type into the session'], ['off', 'Off']];
@@ -1303,7 +1465,7 @@
     ];
     const topoShort = (t) => (TOPO.find((x) => x[0] === t) || [])[2] || '';
     const STAGES = { planner: { label: 'Planner', engine: 'claude', model: 'opus', effort: 'high', uses: ['planner', 'auto'] }, workers: { label: 'Workers', engine: 'claude', model: 'sonnet', effort: 'medium', uses: ['direct', 'surfaces', 'planner', 'auto'] } };
-    const workState = (w) => { const h = w.sessionId ? holdOf(w.sessionId) : null; return h ? holdWord(h) : (WORK_STATE[w.state] || w.state || ''); };
+    const workState = (w) => { const h = w.sessionId ? holdOf(w.sessionId) : null; return h ? holdWord(h) : (w.topology === 'auto' && (w.state === 'running' || w.state === 'starting') ? 'Planning' : (WORK_STATE[w.state] || w.state || '')); };
     const shapeText = (w) => {
         if (w.parentId != null && w.parentId !== '') { const p = workOf(w.parentId); return `Part of ${p ? (p.title || p.id) : w.parentId}`; }
         const parts = supWork().filter((x) => String(x.parentId) === String(w.id));
@@ -1312,6 +1474,7 @@
     };
 
     function supTake(r) {
+        wmPoke();
         if (r && r.settings) { S.sup.data = Object.assign({}, S.sup.data || {}, r); S.sup.draft = null; S.sup.loaded = true; S.sup.unavailable = false; S.sup.error = ''; S.sup.stale = false; }
     }
     function supFail(e) {
@@ -1383,14 +1546,47 @@
 
     /** The Supervisor's pages: the node itself (restart waits and settings) and one node per feature, each showing just its sections. */
     const SUP_PART = {
-        'co-supervisor': ['cd-sup-asks', 'cd-sup-set'],
+        'co-supervisor': ['cd-sup-tiles', 'cd-sup-recent'],
+        'sup-settings': ['cd-sup-set'],
         'sup-reviews': ['cd-sup-list', 'cd-sup-detail'],
         'sup-asks': ['cd-sup-asks'],
         'sup-holds': ['cd-sup-holds'],
         'sup-locks': ['cd-sup-locks'],
         'sup-arts': ['cd-sup-arts']
     };
-    const SUP_TITLE = { 'co-supervisor': 'Supervisor', 'sup-reviews': 'Reviews', 'sup-asks': 'Restart Waits', 'sup-holds': 'Paused Sessions', 'sup-locks': 'Managed Locks', 'sup-arts': 'Work Folders and Temp Files' };
+    const SUP_TITLE = { 'co-supervisor': 'Supervisor', 'sup-settings': 'Supervisor Settings', 'sup-reviews': 'Reviews', 'sup-asks': 'Restart Waits', 'sup-holds': 'Paused Sessions', 'sup-locks': 'Managed Locks', 'sup-arts': 'Work Folders and Temp Files' };
+
+    /** The Supervisor node's dashboard: figures that link to their pages (reviews, cost, pauses, waits, locks, folders, maintenance). */
+    function supDashTiles(st, reviews, asks, holds, locks, arts, total) {
+        const P = S.spend;
+        if (!P.loaded && !P.loading) void loadSpend();
+        const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+        const live = reviews.filter((r) => !r.dismissed);
+        const today = live.filter((r) => (Number(r.at) || 0) >= day0.getTime());
+        const gaps = live.filter((r) => r.verdict === 'gaps');
+        const w = (P.data && P.data.windows) || {};
+        const money = (rows) => (P.data ? moneyText(spendFigures(rows).cost) : '...');
+        const m = maintData();
+        const ml = m && m.running ? 'Running' : (m && m.last ? (MAINT_STATE[m.last.state] || [m.last.state || ''])[0] : 'No run yet');
+        const tile = (nav, icon, n, label, warn, title) => `<button type="button" class="cd-tile${warn && n ? ' is-warn' : ''}" data-act="nav:${nav}" title="${esc(title || label)}"><img src="${esc(icon)}" alt=""><b>${esc(String(n))}</b><small>${esc(label)}</small></button>`;
+        const eng = supEngine(st.engine);
+        return `<div class="cd-tiles">${[
+            tile('sup-reviews', '/static_images/vista-cmdbar/paste.png', today.length, 'Reviews today'),
+            tile('sup-reviews', `${VI}/warning-16.png`, gaps.length, 'Reviews with gaps', true),
+            tile('co-supervisor', '/static_images/vista-cmdbar/gears.png', money(w.today), 'Cost today'),
+            tile('co-supervisor', '/static_images/vista-cmdbar/gears.png', money(w.week), 'Cost, 7 days'),
+            tile('sup-holds', '/static_images/vista-cmdbar/pause.png', holds.length, 'Paused sessions', true),
+            tile('sup-asks', '/static_images/vista-cmdbar/clock.png', asks.length, 'Restart waits', true),
+            tile('sup-locks', '/static_images/vista-cmdbar/lock.png', locks.length, 'Managed locks'),
+            tile('sup-arts', FOLDER16, arts.length, 'Work folders', false, `${arts.length} folders, ${bytesText(total)}`),
+            tile('sup-maint', '/static_images/vista-cmdbar/tools.png', ml, 'Last maintenance run')
+        ].join('')}</div><p class="mmc-hint">Runs on ${esc([(eng && eng.name) || st.engine, st.model || 'the engine default'].join(' / '))}${st.enabled ? '' : ' (off)'}. ${arts.length ? `Work folders: ${esc(bytesText(total))}. ` : ''}<span class="mmc-link" data-act="nav:sup-settings">Settings</span> <span class="mmc-link" data-act="nav:sup-maint">Maintenance</span></p>`;
+    }
+    function supGapTable(reviews) {
+        const list = reviews.filter((r) => !r.dismissed && r.verdict === 'gaps').sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0)).slice(0, 6);
+        if (!list.length) return '<p class="mmc-hint">No review has gaps.</p>';
+        return `<table class="cd-table"><thead><tr><th class="cd-w130">Session</th><th>Summary</th><th class="cd-w100">When</th></tr></thead><tbody>${list.map((r) => `<tr class="cd-dash-row" data-act="nav:sup-reviews"><td>${esc(r.title || shortId(r.sessionId))}</td><td>${esc(r.summary || '')}</td><td>${esc(when(r.at))}</td></tr>`).join('')}</tbody></table><p><span class="mmc-link" data-act="nav:sup-reviews">Open Reviews</span></p>`;
+    }
 
     function supervisorPage(c, part = 'co-supervisor') {
         const sup = S.sup;
@@ -1418,6 +1614,13 @@
             <label><span>Verify a restart wait after (minutes):</span><input type="text" data-sup="maxAskMinutes" value="${esc(st.maxAskMinutes == null ? '' : st.maxAskMinutes)}" inputmode="numeric" autocomplete="off" placeholder="Ask the Supervisor to verify a restart wait after N minutes"></label>
             <label class="cd-top"><span>Yozora repositories to watch:</span><textarea data-sup="yozoraRepos" rows="3" spellcheck="false" placeholder="owner/repo, one per line">${esc(Array.isArray(st.yozoraRepos) ? st.yozoraRepos.join('\n') : String(st.yozoraRepos || ''))}</textarea></label>
             <p class="mmc-hint">An open issue labelled fleet in these repositories joins the Work Queue by itself.</p>
+            <h4 class="cd-sup-sub">Models and effort</h4>
+            <table class="cd-table cd-policy"><thead><tr><th>Job</th><th>Default</th><th>Maximum</th></tr></thead><tbody>${POLICY_JOBS.map(([job, label]) => {
+                const r = (st.modelPolicy && st.modelPolicy[job]) || POLICY_FALLBACK[job];
+                const sel = (field, list, cur) => `<select class="vdt-select" data-policy="${job}.${field}" aria-label="${esc(label)} ${field}">${list.map((v) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
+                return `<tr><td>${esc(label)}</td><td>${sel('model', POLICY_MODELS, r.model)} ${sel('effort', POLICY_EFFORTS, r.effort)}</td><td>${sel('maxModel', POLICY_MODELS, r.maxModel)} ${sel('maxEffort', POLICY_EFFORTS, r.maxEffort)}</td></tr>`;
+            }).join('')}</tbody></table>
+            <p class="mmc-hint">The default is what the Supervisor starts a job with; the maximum is the most it may pick (the max row only on an explicit request). A default above its maximum is cut down on save.</p>
             <p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="sup-save"${sup.busy ? ' disabled' : ''}>Save</button>${sup.draft ? ' <span class="mmc-hint">Not saved yet.</span>' : ''}</p>
         </div>`;
         const reviews = supReviews().filter((r) => !r.dismissed);
@@ -1431,7 +1634,7 @@
             { t: 'Verdict', w: 80, key: 'verdict', text: (d) => d.verdict },
             { t: 'Summary', w: 250, key: 'summary', text: (d) => d.summary },
             { t: 'When', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => d.at }
-        ], rows, { sortId: 'cd-sup', sort: { key: 'at', dir: -1 }, empty: sup.data && sup.data.settings && sup.data.settings.enabled ? 'No review yet. Each agent turn that ends is reviewed.' : 'The supervisor is off. Turn it on above to review finished agent turns.' });
+        ], rows, { wrap: true, sortId: 'cd-sup', sort: { key: 'at', dir: -1 }, empty: sup.data && sup.data.settings && sup.data.settings.enabled ? 'No review yet. Each agent turn that ends is reviewed.' : 'The supervisor is off. Turn it on in Supervisor Settings to review finished agent turns.' });
         if (part === 'sup-reviews') {
             // Outlook's reading pane: the list on top, the selected review and its actions below, a divider between
             return {
@@ -1496,6 +1699,8 @@
         const askBody = asks.length ? asks.map((g) => `<div class="cd-infobar is-warning" role="alert"><img src="${VI}/warning-16.png" alt=""><span>${esc(askText(g))}</span></div>`).join('') : '';
         const html = c.page(SUP_TITLE[part], side, [
             asks.length || part === 'sup-asks' ? { id: 'cd-sup-asks', title: `Restart waits (${asks.length})`, body: `${askBody || '<p>No agent is waiting to restart Dreamscape.</p>'}<p class="mmc-hint">An agent asked to restart Dreamscape and waits for the others to be idle. The Supervisor checks the wait after the time set below.</p>` } : null,
+            { id: 'cd-sup-tiles', title: 'Dashboard', body: supDashTiles(st, reviews, asks, holds, locks, arts, total) },
+            { id: 'cd-sup-recent', title: 'Latest reviews with gaps', body: supGapTable(reviews) },
             { id: 'cd-sup-set', title: 'Settings', body: form },
             { id: 'cd-sup-holds', title: `Paused sessions (${holds.length})`, body: `<div class="cd-sup-list">${holdList}</div><p class="cd-sup-actions"><button type="button" class="btn-standard" data-act="sup-resume"${sup.busy ? ' disabled' : ''}>Resume</button> <span class="mmc-hint">Resumes the selected session.</span></p>` },
             { id: 'cd-sup-list', title: `Reviews (${reviews.length})`, body: `<div class="cd-sup-list">${list}</div>` },
@@ -1507,6 +1712,18 @@
             html,
             mount: (pane) => {
                 const read = (ev) => {
+                    const pol = ev.target.closest('[data-policy]');
+                    if (pol) {
+                        const dp = S.sup.draft || Object.assign({}, SUP_DEFAULT, (S.sup.data && S.sup.data.settings) || {});
+                        const [job, field] = pol.dataset.policy.split('.');
+                        const cur = JSON.parse(JSON.stringify(dp.modelPolicy || (S.sup.data && S.sup.data.settings && S.sup.data.settings.modelPolicy) || POLICY_FALLBACK));
+                        cur[job] = Object.assign({}, POLICY_FALLBACK[job], cur[job], { [field]: pol.value });
+                        dp.modelPolicy = cur;
+                        S.sup.draft = dp;
+                        const hint = pane.querySelector('.cd-sup-form .cd-sup-actions');
+                        if (hint && !hint.querySelector('.mmc-hint')) hint.insertAdjacentHTML('beforeend', ' <span class="mmc-hint">Not saved yet.</span>');
+                        return;
+                    }
                     const el = ev.target.closest('[data-sup]');
                     if (!el) return;
                     const d = S.sup.draft || Object.assign({}, SUP_DEFAULT, (S.sup.data && S.sup.data.settings) || {});
@@ -1563,7 +1780,7 @@
         const lv = (c || S.c).listView([
             { t: 'What', w: 90, key: 'kind', text: (d) => d.kind },
             { t: 'Detail', w: 640, key: 'text', text: (d) => d.text }
-        ], rows, { sortId: 'cd-maint-items', empty: 'This check did nothing and found nothing to report.', fit: true });
+        ], rows, { wrap: true, sortId: 'cd-maint-items', empty: 'This check did nothing and found nothing to report.', fit: true });
         return `<p><b>${esc(ck.title)}</b>: ${esc(ck.summary || '')}</p>${lv}`;
     }
     function maintSelect(key) {
@@ -1598,7 +1815,7 @@
             { t: 'Check', w: 190, key: 'title', text: (x) => x.title },
             { t: 'State', w: 90, key: 'state', text: (x) => x.state },
             { t: 'Summary', w: 460, key: 'summary', text: (x) => x.summary }
-        ], rows, { sortId: 'cd-maint', empty: 'No run yet. Use Run Now, or wait for the daily run.', fit: true });
+        ], rows, { wrap: true, sortId: 'cd-maint', empty: 'No run yet. Use Run Now, or wait for the daily run.', fit: true });
         const head = r ? `<p class="mmc-hint">${esc(when(r.startedAt))}, ${esc(MAINT_TRIGGER[r.trigger] || r.trigger || '')}${r.dryRun ? ', dry run (nothing was changed)' : ''}: ${esc(r.summary || '')}</p>` : '';
         const hrows = (d.history || []).map((h) => ({ key: `mh:${h.id}`, icon: (MAINT_STATE[h.state] || MAINT_STATE.ok)[1], data: { at: h.startedAt, state: (MAINT_STATE[h.state] || MAINT_STATE.ok)[0], how: `${MAINT_TRIGGER[h.trigger] || h.trigger || ''}${h.dryRun ? ' (dry)' : ''}`, summary: h.summary || '' } }));
         const hist = c.listView([
@@ -1606,7 +1823,7 @@
             { t: 'State', w: 90, key: 'state', text: (x) => x.state },
             { t: 'How', w: 90, key: 'how', text: (x) => x.how },
             { t: 'Summary', w: 380, key: 'summary', text: (x) => x.summary }
-        ], hrows, { sortId: 'cd-maint-hist', sort: { key: 'at', dir: -1 }, empty: 'No run is stored yet (30 days are kept).' });
+        ], hrows, { wrap: true, sortId: 'cd-maint-hist', sort: { key: 'at', dir: -1 }, empty: 'No run is stored yet (30 days are kept).' });
         const form = `<div class="cd-sup-form">
             <label class="cd-opt"><input type="checkbox" data-maint="enabled"${st.enabled ? ' checked' : ''}><span>Run every day</span></label>
             <label><span>Time (server clock, HH:MM):</span><input type="text" data-maint="time" value="${esc(st.time)}" autocomplete="off" spellcheck="false"></label>
@@ -1778,7 +1995,7 @@
             { t: 'Check', w: 80, key: 'check', text: (d) => d.check },
             { t: 'Queued', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => Number(d.at) || Date.parse(d.at) || 0 },
             { t: 'Note', w: 220, key: 'message', text: (d) => d.message }
-        ], rows, { sortId: `cd-work-${scope}`, sort: { key: 'at', dir: -1 }, empty: scope === 'held' ? 'Nothing is waiting for you. A new or imported request waits here until you start it.' : scope === 'active' ? 'No work item is running.' : scope === 'pending' ? 'No work item is waiting.' : 'The queue is empty. A request from New Session..., Plaud or an agent waits here until an account has room.', fit: true });
+        ], rows, { wrap: true, sortId: `cd-work-${scope}`, sort: { key: 'at', dir: -1 }, empty: scope === 'held' ? 'Nothing is waiting for you. A new or imported request waits here until you start it.' : scope === 'active' ? 'No work item is running.' : scope === 'pending' ? 'No work item is waiting.' : 'The queue is empty. A request from New Session..., Plaud or an agent waits here until an account has room.', fit: true });
         let off = null;
         return {
             // Outlook's reading pane, as Reviews: the list on top, the picked request's brief and plan below
@@ -1859,6 +2076,7 @@
         const stageText = (x) => (x ? [x.engine && x.engine !== 'claude' ? engineName(x.engine) : '', x.model, x.effort].filter(Boolean).join(' / ') : '');
         const links = [w.sessionId ? `<span class="mmc-link" data-act="work-open" data-arg="${esc(w.id)}">Open session</span>` : '', w.issue && w.issue.url ? '<span class="mmc-link" data-act="work-issue">Open issue</span>' : ''].filter(Boolean).join(' &nbsp; ');
         return c.page(w.title || String(w.id), workState(w), [
+            { id: 'cd-wi-map', title: 'Workflow', body: wmHtml(w.id) },
             h ? { id: 'cd-wi-hold', title: holdWord(h), body: `<p>${esc(holdLine(h))}</p><p class="mmc-hint">${esc([HOLD_KIND[h.kind] || h.kind, h.by ? `by ${h.by}` : '', when(h.at)].filter(Boolean).join(' - '))}</p><p><span class="mmc-link" data-act="resume-hold" data-arg="${esc(w.sessionId)}">Resume</span></p>` } : null,
             { id: 'cd-wi-info', title: 'Request', body: c.props([
                 ['State', esc(workState(w))],
@@ -1962,6 +2180,7 @@
             const d = msg && msg.changed ? msg : (msg && msg.data) || {};
             bgTake(d.changed, d.removed, false);
             bgRepaint();
+            wmPoke();
         }, opts);
         c.on('claude_desk_agent_append', (msg) => {
             const d = (msg && msg.data) || msg || {};
@@ -2237,7 +2456,7 @@
             { t: 'Session', w: 160, key: 'session', text: (d) => d.session },
             { t: 'Background Agent', w: 130, key: 'who', text: (d) => d.who },
             { t: 'Result', w: 54, key: 'result', text: (d) => d.result }
-        ], rows, { sortId: 'cd-activity', sort: { key: 'ts', dir: -1 }, empty, fit: true });
+        ], rows, { wrap: true, sortId: 'cd-activity', sort: { key: 'ts', dir: -1 }, empty, fit: true });
         const more = A.loaded ? `<div class="cd-more"><span>${A.rows.length} of ${A.total}</span><button type="button" class="btn-standard" data-act="act-more"${A.next == null || A.loading ? ' disabled' : ''}>More</button></div>` : '';
         return {
             html: `<div class="cd-list-wrap">${bar}${lv}${more}</div>`,
@@ -2357,7 +2576,7 @@
             { t: 'Description', w: 420, key: 'desc', text: (x) => x.desc },
             { t: 'Size', w: 70, key: 'size', num: true, text: (x) => bytesText(x.size), value: (x) => x.size },
             { t: 'Modified', w: 128, key: 'mtime', text: (x) => when(x.mtime), value: (x) => x.mtime }
-        ], rows, { sortId: 'cd-rules', empty, fit: true });
+        ], rows, { wrap: true, sortId: 'cd-rules', empty, fit: true });
     }
     function rulesReviewPage(c) {
         const d = rulesData();
@@ -2373,7 +2592,7 @@
             { t: 'Kind', w: 110, key: 'kind', text: (x) => x.kind },
             { t: 'Issue', w: 330, key: 'text', text: (x) => x.text },
             { t: 'Suggestion', w: 300, key: 'fix', text: (x) => x.fix }
-        ], rows, { sortId: 'cd-rules-review', empty: last ? 'No open findings.' : 'Nothing to show until a review has run.', fit: true });
+        ], rows, { wrap: true, sortId: 'cd-rules-review', empty: last ? 'No open findings.' : 'Nothing to show until a review has run.', fit: true });
         return { html: `<div class="cd-list-wrap">${bar}${lv}</div>`, list: true, split: true };
     }
     async function ruleRead(c, name) {
@@ -2554,6 +2773,7 @@
                 },
                 { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Settings, reviews, restart waits, pauses, locks and temp files',
                     children: [
+                        { id: 'sup-settings', name: 'Settings', icon: '/static_images/vista-cmdbar/properties.png', desc: 'Engine, model, delivery, limits and the models and effort per job' },
                         { id: 'sup-reviews', name: `Reviews (${reviewN})`, icon: '/static_images/vista-cmdbar/paste.png', desc: 'What the Supervisor made of each finished agent turn' },
                         { id: 'sup-asks', name: `Restart Waits (${supAsks().length})`, icon: '/static_images/vista-cmdbar/clock.png', desc: 'Agents waiting to restart Dreamscape' },
                         { id: 'sup-holds', name: `Paused Sessions (${supHolds().length})`, icon: '/static_images/vista-cmdbar/pause.png', desc: 'Sessions the Supervisor or you paused' },
@@ -3692,6 +3912,12 @@
         });
     }
 
+    /** The workflow map over a supervised session's chat (a session some work item owns). */
+    function wmChatHtml(sid) {
+        const w = supWork().find((x) => x.sessionId === sid);
+        return w ? wmHtml(w.id) : '';
+    }
+
     function chatPage(c, id) {
         let chat = S.chats.get(id);
         if (!chat) { void loadChat(id, false); chat = { messages: [], loading: true, row: rowOf(id) }; }
@@ -3727,6 +3953,7 @@
                 <div class="mmc-page-title${l && l.status === 'busy' ? ' cd-title-busy' : ''}"><b>${esc(titleOf(row))}</b><span>${esc(side)}</span></div>
                 ${linkBits ? `<div class="cd-chat-links">${linkBits}</div>` : ''}
                 ${holdBar}
+                ${wmChatHtml(id)}
                 ${showBar()}
                 <div class="cd-chat-log" data-mmc-scroll>${logInner(chat, id)}</div>
                 ${composer}
@@ -3758,14 +3985,40 @@
                 attWire(S.c, pane, id);
                 const input = pane.querySelector('.cd-input');
                 if (input) {
-                    if (S.drafts && S.drafts[id]) input.value = S.drafts[id];
-                    input.addEventListener('input', () => { S.drafts = S.drafts || {}; S.drafts[id] = input.value; });
+                    const kept = draftGet(id);
+                    if (kept) input.value = kept;
+                    input.addEventListener('input', () => draftSet(id, input.value));
                     input.addEventListener('keydown', (ev) => {
                         if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); void action('send', S.c, id); }
                     });
                 }
             }
         };
+    }
+
+    /**
+     * What is typed into a session's box outlives a restart, a reload and moving to another page (Yukimi, Nov 24
+     * 2026): kept in memory and in localStorage per session (written 400 ms after typing stops), dropped on Send.
+     * Old drafts (30 days) are pruned when one is written.
+     */
+    const DRAFT_KEY = 'claudedesk.drafts';
+    function draftsAll() {
+        if (S.draftsLoaded) return S.drafts || {};
+        S.draftsLoaded = true;
+        try { S.drafts = Object.assign(JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}') || {}, S.drafts || {}); } catch (_) { S.drafts = S.drafts || {}; }
+        return S.drafts;
+    }
+    function draftGet(id) { const d = draftsAll()[id]; return d && typeof d === 'object' ? String(d.text || '') : (typeof d === 'string' ? d : ''); }
+    function draftSet(id, text, now) {
+        const all = draftsAll();
+        if (text) all[id] = { text: String(text).slice(0, 100000), at: Date.now() }; else delete all[id];
+        clearTimeout(S.draftTimer);
+        const write = () => {
+            const cut = Date.now() - 30 * 86400000;
+            Object.keys(all).forEach((k) => { if (all[k] && typeof all[k] === 'object' && all[k].at < cut) delete all[k]; });
+            try { localStorage.setItem(DRAFT_KEY, JSON.stringify(all)); } catch (_) { /* no storage: memory only */ }
+        };
+        if (now) write(); else S.draftTimer = setTimeout(write, 400);
     }
 
     const bytesText = (n) => (n == null ? '' : (n < 1024 ? `${n} B` : (n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`)));
@@ -3966,7 +4219,7 @@
             case 'rc-host': return hostRcPage(c);
             case 'co-builds': return buildsPage(c);
             case 'co-locks': return locksPage(c);
-            case 'co-supervisor': case 'sup-reviews': case 'sup-asks': case 'sup-holds': case 'sup-locks': case 'sup-arts': return supervisorPage(c, n.id);
+            case 'co-supervisor': case 'sup-settings': case 'sup-reviews': case 'sup-asks': case 'sup-holds': case 'sup-locks': case 'sup-arts': return supervisorPage(c, n.id);
             case 'sup-maint': return maintenancePage(c);
             case 'co-work': return workPage(c, 'all');
             case 'sessions': return sessionsPage(c, false);
@@ -4049,7 +4302,8 @@
             case 'rules': return [{ text: 'Open Rule', action: 'rules-open' }, { text: 'Rules Review', action: 'rules-goto' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'rules-review': return [{ text: 'Review Now', action: 'rules-review', disabled: !!(rulesData().running || S.rulesBusy) }, { text: 'Dismiss', action: 'rules-dismiss' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'contractors': return [{ text: 'Add Contractor...', action: 'con-add' }, { text: 'Read Again', action: 'con-refresh' }];
-            case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }];
+            case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }];
+            case 'sup-settings': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }];
             case 'sup-reviews': return [{ text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-asks': return [{ text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-holds': return [{ text: 'Resume', action: 'sup-resume' }, { text: 'Read Again', action: 'sup-refresh' }];
@@ -4438,6 +4692,13 @@
                 if (w && w.issue && /^https?:\/\//.test(w.issue.url || '')) await call('openGrimoireUrl', w.issue.url); else c.note('It has no issue yet.');
                 return true;
             }
+            case 'wm-toggle': wmToggle(); return true;
+            case 'wm-open': {
+                const [kind, wsid, waid, wid] = String(arg || '').split('|');
+                if (kind === 'agent' && wsid && waid) return action('agent-open', c, `${wsid}|${waid}`);
+                if (kind === 'session' && wsid) { await loadSessions(false); openChat(c, wsid); } else if (wid) c.select(`aw:w:${wid}`, true);
+                return true;
+            }
             case 'work-open': {
                 const w = workOf(workSel(c, arg));
                 if (w && w.sessionId) { await loadSessions(false); openChat(c, w.sessionId); } else c.note('It has no session yet.');
@@ -4477,7 +4738,7 @@
                 if (d.autoPauseOnCollision !== undefined) extra.autoPauseOnCollision = !!d.autoPauseOnCollision;
                 if (d.reviewScope) extra.reviewScope = d.reviewScope === 'all' ? 'all' : 'supervised';
                 if (String(d.maxAskMinutes == null ? '' : d.maxAskMinutes).trim() !== '') extra.maxAskMinutes = Math.max(1, Math.min(1440, Math.round(Number(d.maxAskMinutes)) || 15));
-                await supAct(c, { action: 'save', settings: Object.assign(extra, { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), effort: d.effort || '', delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) }) }, 'Saving...');
+                await supAct(c, { action: 'save', settings: Object.assign(extra, { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), effort: d.effort || '', delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, modelPolicy: d.modelPolicy || undefined, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) }) }, 'Saving...');
                 return true;
             }
             case 'sup-send': {
@@ -4610,9 +4871,12 @@
                     await send('claude_desk_session', { action: 'steer', id: sid, text });
                     const ch = chatOf(sid);
                     if (ch) { (ch.pending = ch.pending || []).push({ text, at: Date.now(), steer: !!(liveOf(sid) && liveOf(sid).status === 'busy') }); ch.stick = true; pendingDraw(sid); }
+                    // the page may have been drawn again while it was sent: clear the draft first, then the box on screen now
+                    draftSet(sid, '', true);
                     attClear(sid);
-                    if (input) input.value = '';
-                    if (S.drafts) delete S.drafts[sid];
+                    const now = c.modal.querySelector('.cd-chat .cd-input') || input;
+                    if (now) { now.value = ''; now.dispatchEvent(new Event('input', { bubbles: true })); }
+                    if (input && input !== now) input.value = '';
                     c.note('Sent.');
                 } catch (e) { await failBox(c, e); }
                 if (btn) btn.disabled = false;
@@ -4891,7 +5155,7 @@
                 ${direct ? `<label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeSelect(W.mode || 'bypassPermissions')}</select></label>` : `<label><span>Link to issue:</span><input type="text" data-cd="issue" value="${esc(W.issue || '')}" spellcheck="false" autocomplete="off" placeholder="owner/repo#N or an issue URL (blank: a new issue is made)"></label>`}${err}`;
         }
         if (page === 'shape') {
-            const desc = { direct: 'One agent does the whole request.', surfaces: 'An agent works on each surface; the queue shows the parts.', planner: 'A planner starts background agents for the parts (default).', auto: 'The Supervisor picks the shape when it starts.' };
+            const desc = { direct: 'One agent does the whole request.', surfaces: 'An agent works on each surface; the queue shows the parts.', planner: 'A planner starts background agents for the parts.', auto: 'One planner reviews the request and its issue first, then picks the shape: do it itself, run background agents, or split it into sessions per surface (default).' };
             const stage = (k) => {
                 const st = W.stages[k];
                 const def = STAGES[k];
@@ -5100,7 +5364,7 @@
         if (!pinned && defaultAccount() == null) W.account = 'auto';
         let page = 'type';
         W.engine = 'claude';
-        W.topology = 'planner';
+        W.topology = 'auto';
         W.stages = { planner: Object.assign({ modelId: '' }, STAGES.planner), workers: Object.assign({ modelId: '' }, STAGES.workers) };
         await loadEngines();
         for (;;) {

@@ -387,6 +387,7 @@
 /* small report tables inside a page section or a message box (Inspect, Properties) */
 .cd-table {
     width: 100%;
+    max-width: 100%;
     border-collapse: collapse;
     font: 12px var(--cd-font-ui);
     table-layout: fixed;
@@ -399,7 +400,7 @@
     color: var(--cd-c-444);
     font-weight: normal;
     text-align: left;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 
 .cd-table td {
@@ -511,6 +512,26 @@
 
 #mmcConsole_claudedesk .cd-sup-actions {
     margin: 8px 0 0;
+}
+
+/* Models and effort: job | default | maximum; the selects wrap under each other rather than scroll */
+#mmcConsole_claudedesk .cd-sup-sub {
+    margin: 12px 0 4px;
+    font: bold 12px var(--cd-font-ui);
+}
+
+#mmcConsole_claudedesk .cd-policy th:first-child {
+    width: 40%;
+}
+
+#mmcConsole_claudedesk .cd-policy td:not(:first-child) {
+    white-space: normal;
+}
+
+#mmcConsole_claudedesk .cd-policy select {
+    flex: none;
+    width: 76px;
+    margin: 0 2px 2px 0;
 }
 
 #mmcConsole_claudedesk .cd-sup-list {
@@ -1314,10 +1335,8 @@
 }
 
 #mmcConsole_claudedesk .cd-dash td.cd-cut {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    overflow-wrap: normal;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 #mmcConsole_claudedesk .cd-dash th:first-child {
@@ -1325,8 +1344,7 @@
 }
 
 #mmcConsole_claudedesk .cd-dash th {
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
 }
 
 #mmcConsole_claudedesk .cd-tile.is-warn b {
@@ -1617,4 +1635,95 @@
 #mmcConsole_claudedesk .cd-file-cap {
     margin-top: 2px;
     color: var(--cd-c-444);
+}
+
+/* the workflow map (work item page and supervised session chat): Supervisor -> sessions -> background agents -> tasks */
+#mmcConsole_claudedesk .cd-wm {
+    margin: 0 0 8px;
+    border: 1px solid var(--cd-c-d5d5d5);
+    background: var(--cd-c-f5f5f5);
+}
+
+#mmcConsole_claudedesk .cd-wm-head {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 2px 8px;
+}
+
+#mmcConsole_claudedesk .cd-wm-scroll {
+    overflow: auto;
+    max-height: 260px;
+    padding: 6px 8px 8px;
+}
+
+#mmcConsole_claudedesk .cd-wm-canvas {
+    position: relative;
+}
+
+#mmcConsole_claudedesk .cd-wm-lines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    fill: none;
+    stroke: var(--cd-c-828790);
+    stroke-width: 1;
+    pointer-events: none;
+}
+
+#mmcConsole_claudedesk .cd-wm-node {
+    position: absolute;
+    display: flex;
+    overflow: hidden;
+    width: 176px;
+    height: 58px;
+    box-sizing: border-box;
+    flex-direction: column;
+    justify-content: center;
+    padding: 2px 6px 2px 8px;
+    border: 1px solid var(--cd-c-b3b3b3);
+    border-left: 4px solid var(--cd-c-828790);
+    background: var(--cd-c-fff);
+    color: var(--cd-c-333);
+    font: 11px var(--cd-font-ui);
+    text-align: left;
+}
+
+#mmcConsole_claudedesk button.cd-wm-node {
+    cursor: pointer;
+}
+
+#mmcConsole_claudedesk button.cd-wm-node:hover {
+    background: var(--cd-c-eaf6fd);
+}
+
+#mmcConsole_claudedesk .cd-wm-node b,
+#mmcConsole_claudedesk .cd-wm-node i,
+#mmcConsole_claudedesk .cd-wm-node em {
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-style: normal;
+}
+
+#mmcConsole_claudedesk .cd-wm-node i,
+#mmcConsole_claudedesk .cd-wm-node em {
+    color: var(--cd-c-6d6d6d);
+}
+
+#mmcConsole_claudedesk .cd-wm-node em span + span::before {
+    content: " \00b7  ";
+}
+
+#mmcConsole_claudedesk .cd-wm-node.is-working {
+    border-left-color: var(--cd-busy-a);
+}
+
+#mmcConsole_claudedesk .cd-wm-node.is-done {
+    border-left-color: var(--cd-busy-green);
+}
+
+#mmcConsole_claudedesk .cd-wm-node.is-failed {
+    border-left-color: var(--cd-c-c42b1c);
 }

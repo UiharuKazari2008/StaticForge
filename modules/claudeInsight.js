@@ -22,8 +22,9 @@ const AGENT_TOOLS = new Set(['Agent', 'Task']);
 const WRAPPER_RE = /^\s*<(command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat|system-reminder|user-prompt-submit-hook|bash-input|bash-stdout|bash-stderr|task-notification)/i;
 const MAX_SWITCHES = 20;
 
-function createState() {
+function createState(opts = {}) {
     return {
+        sidechain: opts.sidechain === true, firstAt: null, tasks: new Map(),
         offset: 0, model: '', models: [], effort: '', mode: '', cwd: '', branch: '', version: '',
         totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0 },
         last: { id: '', input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -66,7 +67,7 @@ function feed(s, line) {
     if (!isAssistant && !isUser && !isCost && !isQueued) return;
     let o;
     try { o = JSON.parse(line); } catch (_) { return; }
-    if (o.timestamp) s.lastAt = o.timestamp;
+    if (o.timestamp) { s.lastAt = o.timestamp; if (!s.firstAt) s.firstAt = o.timestamp; }
     if (o.cwd) s.cwd = o.cwd;
     if (o.gitBranch) s.branch = o.gitBranch;
     if (o.version) s.version = o.version;
@@ -80,11 +81,15 @@ function feed(s, line) {
         // a finished background agent: its notification names the tool call that started it
         const a = o.attachment || {};
         const m = /<tool-use-id>([^<]+)<\/tool-use-id>/.exec(String(a.prompt || ''));
-        if (m) s.bg.delete(m[1]);
+        if (m) {
+            s.bg.delete(m[1]);
+            const t = s.tasks.get(m[1]);
+            if (t) { const st = /<status>([^<]+)<\/status>/.exec(String(a.prompt || '')); t.state = st && /fail|error|kill/i.test(st[1]) ? 'failed' : 'done'; t.endAt = o.timestamp || s.lastAt; }
+        }
         return;
     }
     if (isUser) {
-        if (o.isMeta || o.isSidechain) return;
+        if (o.isMeta || (o.isSidechain && !s.sidechain)) return;
         if (o.permissionMode) s.mode = o.permissionMode;
         const kind = o.origin && o.origin.kind;
         if (kind && kind !== 'human') return;
@@ -103,7 +108,7 @@ function feed(s, line) {
     }
     // assistant
     const m = o.message || {};
-    if (o.isSidechain) return;
+    if (o.isSidechain && !s.sidechain) return;
     if (m.model && m.model !== '<synthetic>') {
         if (m.model !== s.model) {
             s.model = m.model;
@@ -148,6 +153,11 @@ function feed(s, line) {
             if (f && !s.turnFiles.includes(f)) s.turnFiles.push(f);
         }
         if (AGENT_TOOLS.has(b.name) && i.run_in_background === true && b.id) s.bg.add(b.id);
+        // background work this session started: an agent or a Bash command run_in_background (its notification ends it)
+        if (b.id && i.run_in_background === true && (b.name === 'Bash' || AGENT_TOOLS.has(b.name)) && !s.tasks.has(b.id)) {
+            s.tasks.set(b.id, { id: b.id, kind: b.name === 'Bash' ? 'bash' : 'agent', label: String(i.description || i.command || b.name).replace(/\s+/g, ' ').slice(0, 120), startAt: o.timestamp || null, endAt: null, state: 'running' });
+            if (s.tasks.size > 60) s.tasks.delete(s.tasks.keys().next().value);
+        }
     });
 }
 
@@ -165,18 +175,19 @@ function summarize(s, now, busy) {
         turns: s.turns, turnStartedAt: s.turnAt, turnMs: Number.isFinite(turnStart) && Number.isFinite(turnEnd) ? Math.max(0, turnEnd - turnStart) : null,
         turnTools: s.turnTools, turnFiles: s.turnFiles.slice(0, 40), turnFileCount: s.turnFiles.length,
         now: busy ? (s.pending.size ? Array.from(s.pending.values()).pop() : 'Thinking...') : '',
-        lastTool: s.lastTool, lastToolAt: s.lastToolAt, lastAt: s.lastAt, bgAgents: s.bg.size, stopReason: s.stopReason
+        lastTool: s.lastTool, lastToolAt: s.lastToolAt, lastAt: s.lastAt, bgAgents: s.bg.size, stopReason: s.stopReason,
+        firstAt: s.firstAt, tasks: Array.from(s.tasks.values())
     };
 }
 
 // ---------------------------------------------------------------- the cached file reader
 
 const cache = new Map(); // file -> { state, pending }
-const MAX_CACHED = 24;
+const MAX_CACHED = 120; // a session, plus its background agents when a workflow map reads them
 
 async function advance(file, ent) {
     const st = await fs.promises.stat(file);
-    if (st.size < ent.state.offset) { ent.state = createState(); } // the file was replaced
+    if (st.size < ent.state.offset) { ent.state = createState({ sidechain: ent.state.sidechain }); } // the file was replaced
     let len = CHUNK;
     const fh = await fs.promises.open(file, 'r');
     try {
@@ -203,7 +214,7 @@ async function insightOf(file, opts = {}) {
     let ent = cache.get(file);
     if (!ent) {
         if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value);
-        ent = { state: createState(), pending: null };
+        ent = { state: createState({ sidechain: opts.sidechain === true }), pending: null };
         cache.set(file, ent);
     }
     if (!ent.pending) ent.pending = advance(file, ent).finally(() => { ent.pending = null; });

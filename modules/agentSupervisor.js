@@ -87,6 +87,54 @@ function emit(review) { version += 1; listeners.forEach((fn) => { try { fn(revie
 
 // ---------------------------------------------------------------- settings + engines
 
+// Models and effort per job (subagents-sonnet "Planners and effort"; Fleet's Supervisor settings hold the live values).
+// Per row: the default model + effort and the maximum model + effort (the default is never above the maximum).
+const POLICY_MODELS = ['haiku', 'sonnet', 'opus', 'fable'];
+const POLICY_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const POLICY_JOBS = [
+    ['sweep', 'Mechanical sweep (renames, lists, greps, test runs)'],
+    ['part', 'Well-defined part (worker default)'],
+    ['tricky', 'Tricky part (concurrency, migrations, security)'],
+    ['plan', 'Planning a normal request (planner default)'],
+    ['large', 'Planning a large request'],
+    ['huge', 'Very large or hard request'],
+    ['max', 'Max (only on an explicit request or after an xhigh attempt failed)']
+];
+const POLICY_DEFAULT = {
+    sweep: { model: 'sonnet', effort: 'low', maxModel: 'sonnet', maxEffort: 'medium' },
+    part: { model: 'sonnet', effort: 'medium', maxModel: 'sonnet', maxEffort: 'high' },
+    tricky: { model: 'sonnet', effort: 'high', maxModel: 'opus', maxEffort: 'high' },
+    plan: { model: 'opus', effort: 'high', maxModel: 'opus', maxEffort: 'xhigh' },
+    large: { model: 'opus', effort: 'xhigh', maxModel: 'opus', maxEffort: 'xhigh' },
+    huge: { model: 'fable', effort: 'xhigh', maxModel: 'fable', maxEffort: 'xhigh' },
+    max: { model: 'fable', effort: 'max', maxModel: 'fable', maxEffort: 'max' }
+};
+/** Validated model policy: every job, model / effort inside the lists, the default never above the maximum. */
+function cleanPolicy(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const out = {};
+    for (const [job] of POLICY_JOBS) {
+        const d = POLICY_DEFAULT[job];
+        const r = src[job] && typeof src[job] === 'object' ? src[job] : {};
+        const pick = (v, list, fb) => (list.includes(v) ? v : fb);
+        const row = { model: pick(r.model, POLICY_MODELS, d.model), effort: pick(r.effort, POLICY_EFFORTS, d.effort), maxModel: pick(r.maxModel, POLICY_MODELS, d.maxModel), maxEffort: pick(r.maxEffort, POLICY_EFFORTS, d.maxEffort) };
+        if (POLICY_MODELS.indexOf(row.model) > POLICY_MODELS.indexOf(row.maxModel)) row.model = row.maxModel;
+        if (POLICY_EFFORTS.indexOf(row.effort) > POLICY_EFFORTS.indexOf(row.maxEffort)) row.effort = row.maxEffort;
+        out[job] = row;
+    }
+    return out;
+}
+/** The default and maximum for a job (sweep, part, tricky, plan, large, huge, max): { model, effort, maxModel, maxEffort }. */
+function policyFor(job, gr) { return (settings(gr).modelPolicy || cleanPolicy())[job] || cleanPolicy()[job] || cleanPolicy().part; }
+/** Cuts a model / effort pick down to a job's maximum. */
+function capToPolicy(job, model, effort, gr) {
+    const p = policyFor(job, gr);
+    return {
+        model: POLICY_MODELS.indexOf(model) > POLICY_MODELS.indexOf(p.maxModel) ? p.maxModel : model,
+        effort: POLICY_EFFORTS.indexOf(effort) > POLICY_EFFORTS.indexOf(p.maxEffort) ? p.maxEffort : effort
+    };
+}
+
 function settings(gr) {
     const g = gr || gResources;
     let cfg = {};
@@ -107,6 +155,7 @@ function settings(gr) {
         reviewScope: cfg.reviewScope === 'all' ? 'all' : 'supervised',
         fallbackEngines: Array.isArray(cfg.fallbackEngines) ? cfg.fallbackEngines.filter((e) => e && e.engine).map((e) => ({ engine: String(e.engine), model: String(e.model || '') })) : [],
         autoPauseOnCollision: cfg.autoPauseOnCollision !== false,
+        modelPolicy: cleanPolicy(cfg.modelPolicy),
         maxAskMinutes: Number.isFinite(cfg.maxAskMinutes) && cfg.maxAskMinutes >= 1 ? Math.min(240, cfg.maxAskMinutes) : 15,
         yozoraRepos: Array.isArray(cfg.yozoraRepos) ? cfg.yozoraRepos.filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)) : ['DreamScape/StaticForge']
     };
@@ -127,6 +176,7 @@ async function saveSettings(gr, next) {
         reviewScope: next.reviewScope === undefined ? cur.reviewScope : (next.reviewScope === 'all' ? 'all' : 'supervised'),
         fallbackEngines: Array.isArray(next.fallbackEngines) ? next.fallbackEngines.filter((e) => e && e.engine).slice(0, 6).map((e) => ({ engine: String(e.engine).slice(0, 60), model: String(e.model || '').slice(0, 120) })) : cur.fallbackEngines,
         autoPauseOnCollision: next.autoPauseOnCollision === undefined ? cur.autoPauseOnCollision : next.autoPauseOnCollision === true,
+        modelPolicy: next.modelPolicy === undefined ? cur.modelPolicy : cleanPolicy(next.modelPolicy),
         maxAskMinutes: next.maxAskMinutes === undefined ? cur.maxAskMinutes : Math.max(1, Math.min(240, Math.round(Number(next.maxAskMinutes)) || cur.maxAskMinutes)),
         yozoraRepos: Array.isArray(next.yozoraRepos) ? next.yozoraRepos.map(String).filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)).slice(0, 20) : cur.yozoraRepos
     };
@@ -843,7 +893,9 @@ function cleanStages(st) {
     const pl = one(v.planner);
     // planner model / effort nobody picked: the Supervisor sizes the request when it starts (sizePlanner)
     const auto = v.planner && v.planner.auto === false ? false : !(pl.model || pl.effort) || !!(v.planner && v.planner.auto);
-    return { planner: Object.assign({ model: 'opus', effort: 'high' }, Object.fromEntries(Object.entries(pl).filter(([, x]) => x)), { auto }), workers: Object.assign({ model: 'sonnet', effort: 'medium' }, Object.fromEntries(Object.entries(one(v.workers)).filter(([, x]) => x))) };
+    const pp = policyFor('plan');
+    const wp = policyFor('part');
+    return { planner: Object.assign({ model: pp.model, effort: pp.effort }, Object.fromEntries(Object.entries(pl).filter(([, x]) => x)), { auto }), workers: Object.assign({ model: wp.model, effort: wp.effort }, Object.fromEntries(Object.entries(one(v.workers)).filter(([, x]) => x))) };
 }
 
 /** One JSON answer from the Supervisor's engine (the same engine / model as its reviews). */
@@ -877,9 +929,12 @@ async function sizePlanner(gr, w) {
         const hard = !!(o && o.hard);
         const asksMax = /\b(max(imum)? effort|effort max)\b/i.test(String(w.prompt || ''));
         const fable = size === 'very_large' || hard;
-        const effort = asksMax || (fable && o && o.retry) ? 'max' : (fable || size === 'large' ? 'xhigh' : 'high');
-        return { model: fable ? 'fable' : 'opus', effort, reason: `${size.replace('_', ' ')}${hard ? ', hard' : ''}: ${String((o && o.reason) || '').slice(0, 160)}` };
-    } catch (_) { return { model: 'opus', effort: 'high', reason: 'the Supervisor could not size it: the default' }; }
+        const wantMax = asksMax || (fable && o && o.retry);
+        const row = wantMax ? 'max' : (fable ? 'huge' : (size === 'large' ? 'large' : 'plan'));
+        // the row's default picks; the row's maximum caps it (the max row is reached only on an explicit request)
+        const pick = capToPolicy(row, policyFor(row, gr).model, policyFor(row, gr).effort, gr);
+        return { model: pick.model, effort: pick.effort, reason: `${size.replace('_', ' ')}${hard ? ', hard' : ''}: ${String((o && o.reason) || '').slice(0, 160)}` };
+    } catch (_) { const d = policyFor('plan', gr); return { model: d.model, effort: d.effort, reason: 'the Supervisor could not size it: the default' }; }
 }
 
 async function splitSurfaces(gr, w) {
@@ -890,6 +945,46 @@ async function splitSurfaces(gr, w) {
 }
 
 const plannerNote = (st) => `You are the PLANNER for this request (Supervisor -> Planner -> background agents). First research and plan (read the code, decide the approach, split it into parts with clear file ownership). Then do the work through background agents (the Agent tool, run_in_background), each with a complete brief (goal, files it owns, what it must not touch, how to verify with evidence) and model "${st.workers.model || 'sonnet'}"${st.workers.effort ? ` and effort "${st.workers.effort}" by default (low for mechanical sweeps, high for tricky parts such as concurrency, migrations or security)` : ''}; do trivial edits yourself only. Verify every agent's result with evidence (tests you ran, command output, screenshots you read) before you call a part done, integrate, commit, and report progress and holdups on the tracked issue as you go.`;
+
+/** Plan first (topology auto): one planner session reviews the request, then picks the shape and reports it with fleet_work_shape. */
+const autoPlannerNote = (st, id) => `You are the PLANNER for Fleet work item ${id} and the Supervisor has not picked a shape: you do (Supervisor -> Planner -> shape). FIRST review the request (and its Yozora issue, when it names one) and plan the best approach: read the code it touches, decide what has to change, where, and in what order. THEN pick the shape and report it with the agent-coord tool fleet_work_shape { id: ${id}, topology, reason } before you start the work: "direct" = you do it yourself in this session (a small or single-area change, a question, a quick fix); "planner" = you run background agents per part (the Agent tool, run_in_background), each with a complete brief (goal, files it owns, what it must not touch, how to verify with evidence), model "${st.workers.model || 'sonnet'}"${st.workers.effort ? ` and effort "${st.workers.effort}" by default` : ''}; "surfaces" = the parts barely depend on each other and each deserves its own session: pass parts [{ title, surface, paths, brief }] (2 to 6, no two own the same file) and the Supervisor starts one supervised session per part (children of this item) while you integrate and verify. Until you report the shape the item shows "Planning". Then do the work that way, verify every result with evidence (tests you ran, command output, screenshots you read), integrate, commit, and report progress and holdups on the tracked issue as you go.`;
+
+/**
+ * The planner of an auto item reports the shape it chose (agent-coord fleet_work_shape). direct / planner only record it;
+ * surfaces starts one child item per part (the planner's own parts, else the Supervisor's model splits the request).
+ */
+async function shapeWork(id, req = {}, opts = {}) {
+    const w = getWork(id);
+    if (!w) throw new Error(`No work item ${id}`);
+    const sid = String(req.sessionId || '');
+    if (!sid || !w.sessionId || sid !== w.sessionId) throw new Error(`Work item ${w.id} is not this session's: only its own planner reports its shape`);
+    if (w.topology !== 'auto') throw new Error(`Work item ${w.id} already has its shape (${w.topology})`);
+    const topology = String(req.topology || '');
+    if (!['direct', 'planner', 'surfaces'].includes(topology)) throw new Error('topology is direct, planner or surfaces');
+    const reason = String(req.reason || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    setWork(w.id, { topology, message: `Planned: ${topology}${reason ? ` - ${reason}` : ''}` });
+    let made = 0;
+    if (topology === 'surfaces') {
+        const g = opts.gr || gResources;
+        let parts = (Array.isArray(req.parts) ? req.parts : []).filter((p) => p && p.brief).slice(0, 6).map((p) => ({ title: String(p.title || p.surface || 'Part').slice(0, 100), surface: String(p.surface || '').slice(0, 40), paths: (Array.isArray(p.paths) ? p.paths : []).map(String).slice(0, 20), brief: String(p.brief).slice(0, 20000) }));
+        if (!parts.length) parts = await splitSurfaces(g, Object.assign({}, w, { prompt: workPrompt(w.id) }));
+        const stages = cleanStages(w.stages);
+        parts.forEach((p) => enqueue(partItem(w, p, stages), { gr: g }));
+        made = parts.length;
+        setWork(w.id, { message: `Planned: split into ${made} parts by surface${reason ? ` - ${reason}` : ''}` });
+    }
+    emit({ work: getWork(w.id) });
+    return { item: getWork(w.id), parts: made };
+}
+
+/** The work item of one surface part of a split item (w: a work row or an item). */
+function partItem(w, p, stages) {
+    return {
+        title: `${w.title}: ${p.title}`, prompt: `Part of "${w.title}" (Fleet item ${w.id}), surface ${p.surface || p.title}. You own ${p.paths.join(', ') || 'only what this brief names'}; other parts run in parallel on the other surfaces: do not edit their files.\n\n${p.brief}`,
+        cwd: w.cwd, account: w.account, topology: 'direct', stages, startNow: !!w.startNow || !!w.start_now, source: w.source, parentId: w.id,
+        issueFields: w.issue_repo ? { repo: w.issue_repo, number: w.issue_number, id: w.issue_id } : (w.issue ? { repo: w.issue.repo, number: w.issue.number } : null)
+    };
+}
 
 let pumping = null;
 /** Starts queued items while there are slots and accounts with room. One pump at a time. */
@@ -917,41 +1012,34 @@ function pumpWork(gr) {
                 const st = pick.settings || {};
                 const stages = cleanStages((() => { try { return JSON.parse(w.stages || '{}'); } catch (_) { return {}; } })());
                 let topology = TOPOLOGIES.includes(w.topology) ? w.topology : 'planner';
-                if (topology === 'auto') {
-                    const d = await decideTopology(g, w);
-                    topology = d.topology;
-                    setWork(w.id, { topology, message: `The Supervisor picked ${topology}: ${d.reason}` });
-                }
+                // auto: plan first. One planner session reviews the request, then reports the shape it picks (fleet_work_shape); until then the item shows Planning
+                const planFirst = topology === 'auto';
                 if (topology === 'surfaces' && !w.parent_id) {
                     const parts = await splitSurfaces(g, w);
-                    parts.forEach((p) => enqueue({
-                        title: `${w.title}: ${p.title}`, prompt: `Part of "${w.title}" (Fleet item ${w.id}), surface ${p.surface || p.title}. You own ${p.paths.join(', ') || 'only what this brief names'}; other parts run in parallel on the other surfaces: do not edit their files.\n\n${p.brief}`,
-                        cwd: w.cwd, account: w.account, topology: 'direct', stages, startNow: !!w.start_now, source: w.source, parentId: w.id,
-                        issueFields: w.issue_repo ? { repo: w.issue_repo, number: w.issue_number, id: w.issue_id } : null
-                    }, { gr: g }));
+                    parts.forEach((p) => enqueue(partItem(w, p, stages), { gr: g }));
                     setWork(w.id, { state: 'running', started_at: Date.now(), message: `Split into ${parts.length} parts by surface` });
                     if (w.issue_repo) yz().comment(w.issue_repo, w.issue_number, `**Fleet / Supervisor:** split into ${parts.length} parts by surface, each its own supervised session:\n${parts.map((p) => `- ${p.title} (${p.paths.slice(0, 4).join(', ') || p.surface})`).join('\n')}`).catch(() => {});
                     started += 1;
                     emit({ work: getWork(w.id) });
                     continue;
                 }
-                if (topology === 'planner' && stages.planner.auto) {
+                if ((topology === 'planner' || planFirst) && stages.planner.auto) {
                     const z = await sizePlanner(g, w);
                     stages.planner = Object.assign({}, stages.planner, { model: z.model, effort: z.effort, auto: false });
                     db().prepare('UPDATE supervisor_work SET stages = ? WHERE id = ?').run(JSON.stringify(stages), w.id);
                     setWork(w.id, { message: `Planner: ${z.model} / ${z.effort} (${z.reason})` });
                 }
-                const stage = topology === 'planner' ? stages.planner : stages.workers;
+                const stage = topology === 'planner' || planFirst ? stages.planner : stages.workers;
                 const engine = (w.engine && w.engine !== 'claude') ? w.engine : (stage.engine !== 'claude' ? stage.engine : undefined);
                 const r = await require('./claudeSessionLauncher').start(g, {
-                    cwd: w.cwd || path.join(__dirname, '..'), prompt: `${w.prompt}${track}${topology === 'planner' ? `\n\n${plannerNote(stages)}` : ''}\n\n${SUPERVISED_NOTE}`, title: w.title, account: pick.index,
+                    cwd: w.cwd || path.join(__dirname, '..'), prompt: `${w.prompt}${track}${planFirst ? `\n\n${autoPlannerNote(stages, w.id)}` : (topology === 'planner' ? `\n\n${plannerNote(stages)}` : '')}\n\n${SUPERVISED_NOTE}`, title: w.title, account: pick.index,
                     mode: st.defaultMode, engine,
                     model: w.model || stage.model || (engine ? undefined : (st.defaultModel || 'sonnet')), effort: w.effort || stage.effort || st.defaultEffort || undefined, dispatchedBy: `Supervisor (${w.source}, ${topology})`
                 });
                 if (r.state === 'failed') { setWork(w.id, { state: 'failed', ended_at: Date.now(), message: r.message || 'It did not start', session_id: r.id || null }); }
                 else {
                     markSupervised(r.id);
-                    setWork(w.id, { state: 'running', session_id: r.id, link: r.link || '', started_at: Date.now(), message: `Running on ${pick.name}` });
+                    setWork(w.id, { state: 'running', session_id: r.id, link: r.link || '', started_at: Date.now(), message: planFirst ? `Planning: reviewing the request on ${pick.name}` : `Running on ${pick.name}` });
                     started += 1;
                 }
             } catch (e) {
@@ -969,11 +1057,26 @@ function workAfterReview(rv) {
     if (!rv || !rv.sessionId) return;
     const w = db().prepare(`SELECT * FROM supervisor_work WHERE session_id = ? AND state IN (${ACTIVE.map(() => '?').join(',')})`).get(rv.sessionId, ...ACTIVE);
     if (!w) { pumpWork().catch(() => {}); return; }
-    if (rv.verdict === 'ok') { setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done' }); settleParent(w.parent_id); }
+    const openKids = db().prepare("SELECT COUNT(*) AS n FROM supervisor_work WHERE parent_id = ? AND state NOT IN ('done','failed','cancelled')").get(w.id).n;
+    if (rv.verdict === 'ok' && openKids) setWork(w.id, { state: 'running', message: `Its planner finished a turn; ${openKids} part${openKids === 1 ? ' is' : 's are'} still running` });
+    else if (rv.verdict === 'ok') { setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done' }); settleParent(w.parent_id); }
     else if (rv.verdict === 'gaps') setWork(w.id, { state: 'waiting', message: `Gaps sent back: ${rv.missed.map((m) => m.item).join('; ').slice(0, 240)}` });
     else setWork(w.id, { state: 'running', message: rv.summary || 'Turn ended' });
     emit({ work: getWork(w.id) });
     pumpWork().catch(() => {});
+}
+
+/** The item's whole tree for the workflow map: the top item of its split and every part under it (an id, or a session id). */
+function workTree(ref = {}) {
+    const one = (sql, v) => db().prepare(sql).get(v);
+    let r = ref.id != null && ref.id !== '' ? one('SELECT * FROM supervisor_work WHERE id = ?', Number(ref.id)) : one('SELECT * FROM supervisor_work WHERE session_id = ? ORDER BY id DESC', String(ref.sessionId || ''));
+    if (!r) return null;
+    for (let i = 0; i < 5 && r.parent_id; i += 1) { const p = one('SELECT * FROM supervisor_work WHERE id = ?', r.parent_id); if (!p) break; r = p; }
+    const items = [rowWork(r)];
+    for (let i = 0; i < items.length && items.length < 40; i += 1) {
+        db().prepare('SELECT * FROM supervisor_work WHERE parent_id = ? ORDER BY id').all(items[i].id).forEach((k) => items.push(rowWork(k)));
+    }
+    return { root: items[0], items };
 }
 
 /** A surfaces parent ends when all its parts have: done when they all are, else failed. */
@@ -1722,7 +1825,7 @@ async function askUser(req, onId) {
 
 // Fleet tools for every agent (agent-coord fleet_*): read-only views, plus update / hold / cancel of the items the
 // caller itself queued (source 'agent', sourceRef 'agent:<its id>#<n>'). Starting is Yukimi's: there is no start op.
-const FLEET_OPS = ['fleet_status', 'fleet_work_list', 'fleet_work_get', 'fleet_work_update', 'fleet_work_hold', 'fleet_work_cancel', 'fleet_session_read', 'fleet_maintenance_report'];
+const FLEET_OPS = ['fleet_status', 'fleet_work_list', 'fleet_work_get', 'fleet_work_update', 'fleet_work_hold', 'fleet_work_cancel', 'fleet_work_shape', 'fleet_session_read', 'fleet_maintenance_report'];
 function ownsWork(w, by) { return !!by && w.source === 'agent' && String(w.sourceRef || '').startsWith(`agent:${by}#`); }
 async function fleetOp(req) {
     const fm = require('./claudeFleetMcp');
@@ -1731,6 +1834,7 @@ async function fleetOp(req) {
     if (op === 'fleet_work_list' || op === 'fleet_work_get') return fm.workDispatch(module.exports, op, { id: req.id, state: req.state, search: req.search, limit: req.limit });
     if (op === 'fleet_session_read') return fm.sessionBrief(gResources, req.session);
     if (op === 'fleet_maintenance_report') return fm.maintenanceBrief();
+    if (op === 'fleet_work_shape') return shapeWork(req.id, req);
     // update / hold / cancel: only the caller's own items
     const by = String(req.by || '').slice(0, 80);
     const w = getWork(req.id);
@@ -1761,7 +1865,7 @@ function serveSocket() {
         sock.on('data', async (chunk) => {
             buf += chunk;
             const i = buf.indexOf('\n');
-            if (i < 0) { if (buf.length > (/^\{"op":"(ask_user|enqueue|fleet_work_update)"/.test(buf) ? 262144 : 4096)) sock.destroy(); return; }
+            if (i < 0) { if (buf.length > (/^\{"op":"(ask_user|enqueue|fleet_work_update|fleet_work_shape)"/.test(buf) ? 262144 : 4096)) sock.destroy(); return; }
             let req = null;
             try { req = JSON.parse(buf.slice(0, i)); } catch (_) { req = null; }
             buf = '';
@@ -2022,7 +2126,7 @@ function dismissRuleFinding(findingId) {
 
 module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, askJson, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, decideTopology, sizePlanner, splitSurfaces, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, askJson, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, resetPrices, queueReview, queue, cleanable }
 };

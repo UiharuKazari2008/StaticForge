@@ -252,6 +252,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'work_hold') { const errs = []; workIds().forEach((i) => { try { supervisor.holdWork(i); } catch (e) { errs.push(`#${i}: ${e.message}`); } }); return Object.assign(await supervisorStatus(gr), errs.length ? { errors: errs } : {}); }
     if (action === 'work_update') { supervisor.updateWork(message.id, { prompt: message.prompt }, { by: 'Yukimi (Fleet)' }); return supervisorStatus(gr); }
     if (action === 'work_cancel') { supervisor.cancelWork(message.id); return supervisorStatus(gr); }
+    if (action === 'work_map') return { map: await workMap(gr, { id: message.id, sessionId: message.sessionId }) };
     if (action === 'lock_remove') { supervisor.removeLockFile(String(message.root || ''), String(message.file || '')); poke(); return supervisorStatus(gr); }
     // Clean is a Supervisor review (evidence, engine verdict, trash): it answers at once and the result arrives through the status push
     if (action === 'artifact_clean') {
@@ -928,6 +929,98 @@ async function watchAgent(handlersCtx, ws, id, agentId, from, view) {
     return { id, agentId, watching: true, end: w.end };
 }
 
+// ---------------------------------------------------------------- workflow map (a work item's page and a supervised session's chat)
+//
+// claude_desk_supervisor work_map { id | sessionId } answers the whole tree in one place: Supervisor -> the sessions of the
+// item (and of its surface parts) -> their background agents -> those agents' background tasks (Bash run_in_background, nested
+// agents; read from the transcripts by claudeInsight). Nothing is pushed on its own: the client asks again when a push it
+// already gets changes something (the work list, the agents feed, a transcript append). The answer is cached ~1.5 s per
+// request and every transcript is read incrementally by claudeInsight.
+
+const WM_TTL_MS = 1500;
+const WM_AGENT_INSIGHTS = 24;
+const wmCache = new Map(); // key -> { at, p }
+
+const wmTokens = (ins) => (ins && ins.tokens ? ins.tokens.input + ins.tokens.output + ins.tokens.cacheWrite : null);
+const wmMs = (t) => { const n = Date.parse(t || ''); return Number.isFinite(n) ? n : null; };
+const WM_ITEM_STATE = { done: 'done', failed: 'failed', cancelled: 'failed', waiting: 'idle', held: 'idle', queued: 'idle', starting: 'working', running: 'working' };
+
+async function buildWorkMap(gr, ref) {
+    const tree = supervisor.workTree(ref);
+    const items = tree ? tree.items : [];
+    if (!tree && ref.sessionId) items.push({ id: null, title: '', state: 'running', sessionId: String(ref.sessionId), topology: '', message: '' });
+    if (!items.length) return { rootId: null, nodes: [] };
+    const live = new Map(claudeSessions.liveSessions().map((l) => [l.id, l]));
+    let set = {};
+    try { set = supervisor.settings(gr) || {}; } catch (_) { set = {}; }
+    const nodes = [];
+    const sup = { key: 'sup', col: 0, kind: 'supervisor', label: 'Supervisor', model: String(set.model || ''), effort: '', state: 'idle', parent: null };
+    nodes.push(sup);
+    const sessions = [];
+    for (const it of items) {
+        const sid = it.sessionId || '';
+        const lv = sid ? live.get(sid) : null;
+        let ins = null;
+        let file = null;
+        if (sid) {
+            file = await launcher.findFile(sid).catch(() => null);
+            if (file) ins = await insight.insightOf(file, { busy: !!(lv && lv.status === 'busy') }).catch(() => null);
+        }
+        const planning = it.topology === 'auto' && ['starting', 'running'].includes(it.state);
+        let state = WM_ITEM_STATE[it.state] || 'idle';
+        if (sid && state === 'working' && lv && lv.status !== 'busy') state = 'idle';
+        const startedAt = it.startedAt || wmMs(ins && ins.firstAt);
+        const top = items[0] === it;
+        nodes.push({
+            key: sid ? `s:${sid}` : `i:${it.id}`, col: 1, kind: sid ? 'session' : 'item', label: it.title || (lv && (lv.givenName || lv.name)) || sid.slice(0, 8) || `Item ${it.id}`,
+            note: planning ? 'Planning' : [it.topology && it.topology !== 'direct' && top ? `Shape: ${it.topology}` : '', it.parentId ? 'Part' : ''].filter(Boolean).join(' - '),
+            model: (ins && ins.model) || it.model || (it.stages && it.stages.planner && it.topology !== 'direct' ? it.stages.planner.model : '') || '', effort: (ins && ins.effort) || it.effort || '',
+            state, startedAt, endedAt: state === 'done' || state === 'failed' ? (it.endedAt || wmMs(ins && ins.lastAt)) : null,
+            messages: ins ? ins.tokens.messages : 0, tokens: wmTokens(ins), sessionId: sid || null, workId: it.id, parent: 'sup'
+        });
+        if (sid && file) sessions.push({ id: sid, title: it.title || sid.slice(0, 8), own: path.join(path.dirname(file), sid), key: `s:${sid}`, ins });
+    }
+    // the sessions' own background Bash commands sit beside their agents
+    for (const s of sessions) {
+        ((s.ins && s.ins.tasks) || []).filter((t) => t.kind === 'bash').slice(-8).forEach((t) => {
+            nodes.push({ key: `t:${s.id}:${t.id}`, col: 2, kind: 'task', label: t.label, state: t.state === 'running' ? 'working' : t.state, startedAt: wmMs(t.startAt), endedAt: wmMs(t.endAt), messages: 0, tokens: null, model: '', effort: '', sessionId: s.id, parent: s.key });
+        });
+    }
+    const rows = await buildAgentsList(sessions);
+    let nIns = 0;
+    for (const r of rows) {
+        const file = path.join(sessions.find((x) => x.id === r.sessionId).own, 'subagents', `agent-${r.agentId}.jsonl`);
+        let ins = null;
+        if (nIns < WM_AGENT_INSIGHTS) { nIns += 1; ins = await insight.insightOf(file, { sidechain: true, busy: r.state === 'running' }).catch(() => null); }
+        const state = r.state === 'running' ? 'working' : (r.state === 'finished' ? 'done' : 'idle');
+        const key = `a:${r.sessionId}:${r.agentId}`;
+        nodes.push({
+            key, col: 2, kind: 'agent', label: r.description, note: r.type, model: r.model || (ins && ins.model) || '', effort: (ins && ins.effort) || '', state,
+            startedAt: wmMs(ins && ins.firstAt), endedAt: state === 'done' ? r.lastActivity : null, messages: r.messages, tokens: wmTokens(ins),
+            sessionId: r.sessionId, agentId: r.agentId, parent: `s:${r.sessionId}`
+        });
+        ((ins && ins.tasks) || []).slice(-6).forEach((t) => {
+            nodes.push({ key: `t:${r.agentId}:${t.id}`, col: 3, kind: 'task', label: t.label, note: t.kind === 'agent' ? 'Agent' : 'Command', state: t.state === 'running' ? 'working' : t.state, startedAt: wmMs(t.startAt), endedAt: wmMs(t.endAt), messages: 0, tokens: null, model: '', effort: '', sessionId: r.sessionId, parent: key });
+        });
+    }
+    // the Supervisor is working while anything under it is
+    if (nodes.some((n) => n.state === 'working' && n.kind !== 'supervisor')) sup.state = 'working';
+    else if (items.every((i) => i.state === 'done')) sup.state = 'done';
+    return { rootId: tree ? tree.root.id : null, nodes, at: Date.now() };
+}
+
+/** work_map with a short cache: one build at a time per request, shared by everyone asking in the same moment. */
+function workMap(gr, ref) {
+    const key = ref.id != null && ref.id !== '' ? `i:${ref.id}` : `s:${ref.sessionId}`;
+    const hit = wmCache.get(key);
+    if (hit && Date.now() - hit.at < WM_TTL_MS) return hit.p;
+    const p = buildWorkMap(gr, ref);
+    wmCache.set(key, { at: Date.now(), p });
+    if (wmCache.size > 40) wmCache.delete(wmCache.keys().next().value);
+    p.catch(() => wmCache.delete(key));
+    return p;
+}
+
 const handleAgentWatch = guard('claude_desk_agent_watch', async (gr, message, ws, clientInfo, handlersCtx) => watchAgent(handlersCtx, ws, String(message.id || ''), String(message.agentId || ''), message.from, message.show ? transcript.viewFrom(message.show) : null));
 const handleAgentUnwatch = guard('claude_desk_agent_unwatch', async (gr, message, ws) => { agentUnwatch(ws); return { watching: false }; });
 
@@ -964,4 +1057,4 @@ function registerPackets(handlersCtx) {
     reg('claude_fleet_engines', handleEngines);
 }
 
-module.exports = { registerPackets, _handlers: { handleSessions, handleTranscript, handleWatch, handleUnwatch, handleSession, handleCoord, handleSupervisor }, _sessionsPage: sessionsPage, _ownerOf: ownerOf, _buildAgentsList: buildAgentsList };
+module.exports = { registerPackets, _handlers: { handleSessions, handleTranscript, handleWatch, handleUnwatch, handleSession, handleCoord, handleSupervisor }, _sessionsPage: sessionsPage, _ownerOf: ownerOf, _buildAgentsList: buildAgentsList, _workMap: buildWorkMap };

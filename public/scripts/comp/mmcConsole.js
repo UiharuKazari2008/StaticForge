@@ -27,7 +27,7 @@
  *   c.node / c.sel      the selected node id / list row key
  *   c.select(id, record = true), c.render(), c.refresh(), c.renderActions(), c.note(text)
  *   c.page(title, side, sections), c.overview(img, paras), c.props(rows), c.state(ok, text, warn),
- *   c.listView(cols, rows, { sortId, sort, sortable, empty, fit }), c.sorted(rows, cols, sortId),
+ *   c.listView(cols, rows, { sortId, sort, sortable, empty, fit, wrap }), c.sorted(rows, cols, sortId),
  *   c.box(html, buttons, opts), c.reg(name, def), c.setReg(values), c.close(), c.data (snap-in state)
  *
  * mmcConsole.compose(hostDef, [{ key, def }]): a console that hosts other snap-ins' trees (see below).
@@ -577,8 +577,10 @@
          */
         listView(cols, rows, opts = {}) {
             const saved = opts.sortId ? this.colWidths(opts.sortId, cols.length) : null;
-            const tpl = saved ? saved.map((w, i) => `${w || cols[i].w}px`).join(' ') + ' minmax(0, 1fr)' : opts.fit ? cols.map((col) => `minmax(${Math.min(col.w, col.min || 56)}px, ${col.w}fr)`).join(' ') + ' 0px'
-                : cols.map((col) => `${col.w}px`).join(' ') + ' minmax(0, 1fr)';
+            // the last column takes the width that is left (no empty strip after it); opts.wrap lets the other columns
+            // shrink with the pane and the cell text wrap instead of being cut with an ellipsis
+            const tpl = opts.fit && !saved ? cols.map((col) => `minmax(${Math.min(col.w, col.min || 56)}px, ${col.w}fr)`).join(' ') + ' 0px'
+                : this.colsTemplate(cols.map((col, i) => (saved && saved[i]) || col.w), !!opts.wrap);
             const sort = opts.sortId ? this.sortOf(opts.sortId, opts.sort) : null;
             const head = cols.map((col, i) => {
                 const sorted = sort && sort.key === col.key;
@@ -591,7 +593,13 @@
             };
             const body = list.length ? list.map((r) => `<div class="mmc-row${r.cls ? ` ${r.cls}` : ''}${r.key != null && String(r.key) === String(this.sel) ? ' is-selected' : ''}"${r.key != null ? ` data-key="${esc(r.key)}"` : ''}${r.open ? ` data-open="${esc(r.open)}"` : ''}>${cols.map((col, i) => cell(col, r, i)).join('')}<span></span></div>`).join('')
                 : `<div class="mmc-empty">${esc(opts.empty || 'There are no items to show in this view.')}</div>`;
-            return `<div class="mmc-list${opts.fit && !saved ? ' is-fit' : ''}" tabindex="0"${opts.sortId ? ` data-cols-id="${esc(opts.sortId)}"` : ''} style="--cols:${tpl}"><div class="mmc-lhead">${head}</div><div class="mmc-lbody">${body}</div></div>`;
+            return `<div class="mmc-list${opts.fit && !saved ? ' is-fit' : ''}${opts.wrap ? ' is-wrap' : ''}" tabindex="0"${opts.sortId ? ` data-cols-id="${esc(opts.sortId)}"` : ''} style="--cols:${tpl}"><div class="mmc-lhead">${head}</div><div class="mmc-lbody">${body}</div></div>`;
+        }
+
+        /** The grid columns for pixel widths: every column but the last fixed (shrinkable in a wrap list), the last takes the rest. */
+        colsTemplate(widths, wrap) {
+            const n = widths.length;
+            return widths.map((w, i) => (i === n - 1 ? 'minmax(0, 1fr)' : wrap ? `minmax(0, ${w}px)` : `${w}px`)).join(' ') + ' 0px';
         }
 
         /** The column widths the person dragged for a list (localStorage, per list id), or null. */
@@ -618,7 +626,7 @@
             const x0 = ev.clientX;
             const w0 = widths[i];
             list.classList.remove('is-fit');
-            const apply = () => list.style.setProperty('--cols', widths.map((w) => `${w}px`).join(' ') + ' minmax(0, 1fr)');
+            const apply = () => list.style.setProperty('--cols', this.colsTemplate(widths, list.classList.contains('is-wrap')));
             apply();
             const move = (e) => { widths[i] = Math.max(32, w0 + e.clientX - x0); apply(); };
             const up = () => {

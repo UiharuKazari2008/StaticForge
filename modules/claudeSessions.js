@@ -129,7 +129,10 @@ function eatLine(info, line) {
     const p = promptOf(o);
     if (p) {
         info.userMessages += 1;
-        if (!info.firstPrompt) info.firstPrompt = cleanTitle(p);
+        // the first real ask names the session: not the "continued from a previous conversation" summary, a
+        // Supervisor note or the tags around pasted text (Nov 24 2026: a session titled "This session is being continued...")
+        const real = String(p).replace(/<\/?pasted_content[^>]*>/gi, ' ').trim();
+        if (!info.firstPrompt && real && !/^(This session is being continued|\[Supervisor\]|Caveat:|<command-|<local-command)/i.test(real)) info.firstPrompt = cleanTitle(real);
         info.lastPrompt = cleanTitle(p, 140);
         info.lastPromptAt = o.timestamp || info.lastPromptAt;
     }

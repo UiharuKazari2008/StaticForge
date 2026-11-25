@@ -440,7 +440,7 @@ sup._test.setFetch(async (url, opts) => {
         } finally { child.kill('SIGKILL'); fs.rmSync(rec, { force: true }); launcher.steer = realSteer; launcher.interrupt = realInt; }
     });
 
-    await test('fan-out: auto asks the Supervisor model; surfaces splits into child items and the parent settles; planner gets the stage models', async () => {
+    await test('fan-out: auto plans first (a planner reports its shape); surfaces splits into child items and the parent settles; planner gets the stage models', async () => {
         const fleetMcp = require('../modules/claudeFleetMcp');
         const realPick = fleetMcp.pickForStart;
         const realStart = launcher.start;
@@ -458,11 +458,39 @@ sup._test.setFetch(async (url, opts) => {
             assert.deepStrictEqual([ps.model, ps.effort], ['fable', 'xhigh']);
             assert.match(ps.prompt, /You are the PLANNER/);
             assert.match(ps.prompt, /model "haiku" and effort "low"/);
-            replies.push({ topology: 'direct', reason: 'small' });
+            // auto: plan first. ONE planner session starts (no model call guesses a shape); it reports the shape with fleet_work_shape
+            const nReplies = replies.length;
             const a = sup.enqueue({ title: 'Auto', prompt: 'tiny fix', topology: 'auto', startNow: true }, { gr });
             await sup.pumpWork(gr);
-            assert.strictEqual(sup.getWork(a.id).topology, 'direct');
-            assert.doesNotMatch(starts.find((o) => o.title === 'Auto').prompt, /PLANNER/);
+            const as = starts.find((o) => o.title === 'Auto');
+            assert.match(as.prompt, /You are the PLANNER for Fleet work item/);
+            assert.match(as.prompt, /fleet_work_shape/);
+            assert.ok(as.prompt.includes(`id: ${a.id}`), 'the item id is in its prompt');
+            assert.strictEqual(sup.getWork(a.id).topology, 'auto', 'until the planner reports, the shape is open');
+            assert.match(sup.getWork(a.id).message, /^Planning/);
+            assert.strictEqual(replies.length, nReplies);
+            await assert.rejects(sup.shapeWork(a.id, { sessionId: 'someone-else', topology: 'direct' }), /not this session's/);
+            await assert.rejects(sup.shapeWork(a.id, { sessionId: sup.getWork(a.id).sessionId, topology: 'bogus' }), /topology is/);
+            const sd = await sup.shapeWork(a.id, { sessionId: sup.getWork(a.id).sessionId, topology: 'direct', reason: 'one file' });
+            assert.strictEqual(sd.item.topology, 'direct');
+            assert.match(sd.item.message, /Planned: direct - one file/);
+            await assert.rejects(sup.shapeWork(a.id, { sessionId: sup.getWork(a.id).sessionId, topology: 'planner' }), /already has its shape/);
+            // an auto item whose planner picks surfaces: parts become child items (parentId); the parent stays open until they end
+            const b = sup.enqueue({ title: 'AutoSplit', prompt: 'server and ui', topology: 'auto', startNow: true }, { gr });
+            await sup.pumpWork(gr);
+            const bsid = sup.getWork(b.id).sessionId;
+            const sb = await sup.shapeWork(b.id, { sessionId: bsid, topology: 'surfaces', reason: 'independent', parts: [{ title: 'Srv', surface: 'server', paths: ['modules/q.js'], brief: 'srv brief' }, { title: 'Ui', surface: 'ui', paths: ['apps/q'], brief: 'ui brief' }] });
+            assert.strictEqual(sb.parts, 2);
+            const bk = sup.listWork().filter((x) => x.parentId === b.id);
+            assert.strictEqual(bk.length, 2);
+            assert.ok(bk.every((k) => k.topology === 'direct'));
+            assert.deepStrictEqual(sup.workTree({ id: bk[0].id }).items.map((x) => x.id).sort((x, y) => x - y), [b.id, bk[0].id, bk[1].id].sort((x, y) => x - y), 'the tree climbs to the top item');
+            assert.strictEqual(sup.workTree({ sessionId: bsid }).root.id, b.id);
+            sup.workAfterReview({ sessionId: bsid, verdict: 'ok', missed: [], summary: 'planner turn' });
+            assert.strictEqual(sup.getWork(b.id).state, 'running', 'its parts are still open');
+            await sup.pumpWork(gr);
+            await sup.pumpWork(gr);
+            assert.ok(starts.some((o) => /AutoSplit: Srv/.test(o.title)), 'the parts start as sessions');
             replies.push({ parts: [{ title: 'Server', surface: 'server', paths: ['modules/x.js'], brief: 'do server' }, { title: 'Desktop', surface: 'desktop', paths: ['apps/y'], brief: 'do desktop' }] });
             const sp = sup.enqueue({ title: 'Split', prompt: 'server and desktop', topology: 'surfaces', startNow: true }, { gr });
             await sup.pumpWork(gr);
@@ -575,6 +603,18 @@ sup._test.setFetch(async (url, opts) => {
         z = await sup.sizePlanner(g4, w); assert.deepStrictEqual([z.model, z.effort], ['fable', 'xhigh'], JSON.stringify(z));
         answer = { size: 'normal', hard: true, retry: true, reason: 'failed before' };
         z = await sup.sizePlanner(g4, w); assert.deepStrictEqual([z.model, z.effort], ['fable', 'max'], JSON.stringify(z));
+        // the model policy: defaults are the rule's table, a changed maximum caps the pick, junk is validated away
+        const pol = sup.settings(g4).modelPolicy;
+        assert.deepStrictEqual([pol.plan.model, pol.plan.effort, pol.huge.model, pol.part.effort], ['opus', 'high', 'fable', 'medium']);
+        const clean = sup.cleanPolicy({ plan: { model: 'gpt', effort: 'xhigh', maxModel: 'opus', maxEffort: 'medium' }, huge: 5 });
+        assert.deepStrictEqual([clean.plan.model, clean.plan.effort, clean.plan.maxEffort, clean.huge.model], ['opus', 'medium', 'medium', 'fable'], 'bad model falls back, a default above its maximum is cut down');
+        const g5 = Object.assign({}, gr, { getConfig: () => ({ agentSupervisor: { enabled: true, engine: 'tokenrouter', modelPolicy: { large: { model: 'opus', effort: 'xhigh', maxModel: 'opus', maxEffort: 'high' }, huge: { model: 'opus', effort: 'high', maxModel: 'opus', maxEffort: 'high' } } } }) });
+        answer = { size: 'large', hard: false, retry: false, reason: 'many files' };
+        z = await sup.sizePlanner(g5, w); assert.deepStrictEqual([z.model, z.effort], ['opus', 'high'], 'the row maximum caps xhigh: ' + JSON.stringify(z));
+        answer = { size: 'very_large', hard: false, retry: false, reason: 'surfaces' };
+        z = await sup.sizePlanner(g5, w); assert.deepStrictEqual([z.model, z.effort], ['opus', 'high'], JSON.stringify(z));
+        assert.deepStrictEqual(sup.capToPolicy('part', 'fable', 'max', g4), { model: 'sonnet', effort: 'high' });
+        assert.strictEqual(sup.policyFor('part', g4).effort, 'medium');
         assert.strictEqual(sup.cleanStages({}).planner.auto, true, 'nobody picked: the Supervisor sizes it');
         assert.strictEqual(sup.cleanStages({ planner: { model: 'opus', effort: 'high' } }).planner.auto, false, 'a picked planner stays');
     });
