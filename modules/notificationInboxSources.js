@@ -16,7 +16,8 @@
  *   sms:<account>:<chatGuid>          New Text Message (the conversation's newest line)
  *   tm-signin:<account>               Text messages stopped (RCS pairing ended / signed out)
  *   chat:<chatId>                     Dreamscape Messenger: a persona's reply to the phone
- *   director:<sessionId>:turn         Director: the turn is finished
+ *   director:<sessionId>:turn         Director: the turn is finished (once per turn; none while she watches that chat on a
+ *                                     live page, none for a turn a steer cut short - #1168, design-decisions.md)
  *   print:<jobId>                     DreamStudio: a print the phone asked for failed (a finished print
  *                                     raises nothing: Yukimi, Nov 22 2026, #1040)
  *   wx:<placeId>:<alertId>            a weather alert for Home / Work
@@ -401,7 +402,59 @@ function onChatReply({ chatId, session, parsed, raw, clientInfo, ws } = {}) {
 
 let dirWas = null; // { running, sessionId, name } from the last status
 
-/** cursorDirector.broadcastDirectorStatus(status): running -> idle is "the turn is finished". */
+/**
+ * Presence (Yukimi, Nov 25 2026, #1168: "I am using the desktop client on the phone so why should I see it on the phone"):
+ * she is present on a Director chat when an open, signed-in, awake page of the household has that chat on screen
+ * (clientInfo.directorWatch: cursorDirector watchDirectorStream; the page sends '' when hidden, asleep or the chat closed),
+ * is at its desktop (not logon / locked) and was heard from within PRESENT_IDLE_MS (the stream acks keep a watching
+ * page fresh). A notice for what she is looking at is no news; away, it goes out. Presence, not power: it never
+ * silences anything she cannot see.
+ */
+const PRESENT_IDLE_MS = 10 * 60 * 1000;
+function present(sessionId) {
+    const sid = sessionId == null ? '' : String(sessionId);
+    if (!sid) return false;
+    const { isDormantPage } = require('./wsSocketHeartbeat');
+    const now = Date.now();
+    for (const info of inbox.clients()) {
+        if (info.authenticated === false || inbox.userOf(info) !== 'admin') continue;
+        if (info.deviceApp || info.deviceId || info.light || (info.as && info.as.speaker === 'service')) continue; // no page
+        if (isDormantPage(info) || String(info.directorWatch || '') !== sid) continue;
+        const ds = info.desktopState;
+        if (ds && ds !== 'desktop' && ds !== 'ready') continue;
+        const at = info.lastActivity instanceof Date ? info.lastActivity.getTime() : Date.parse(info.lastActivity || '');
+        if (Number.isFinite(at) && now - at > PRESENT_IDLE_MS) continue;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * A steer (director_abort steer: true, ws/handlers/directorImpl.js) cuts the running turn short and sends the new text as
+ * the next turn: the cut turn's running -> idle is no "finished" (the transcript row is the record). One mark per
+ * session, used by the next idle of that session; a new turn starting with a mark left (the abort found nothing to
+ * stop) drops it, so a real finish is never swallowed.
+ */
+const STEER_MS = 2 * 60 * 1000;
+const steered = new Map();
+function noteSteer(sessionId) {
+    if (!sessionId) return;
+    steered.set(String(sessionId), Date.now());
+    if (steered.size > 50) steered.delete(steered.keys().next().value);
+}
+function steerCut(sessionId) {
+    const key = String(sessionId || '');
+    const at = steered.get(key);
+    if (at == null) return false;
+    steered.delete(key);
+    return Date.now() - at <= STEER_MS;
+}
+
+/**
+ * cursorDirector.broadcastDirectorStatus(status): running -> idle is "the turn is finished" - one notice per turn
+ * (no alert flag: a finish under an id still waiting in the inbox changes it in place, silently; #1168 reverses #889's
+ * "each finished turn is news"), none for a steered turn, none while she watches that chat (present).
+ */
 function onDirectorStatus(status) {
     if (!status) return null;
     const xi = status.xi && status.xi.running ? status.xi : null;
@@ -412,18 +465,23 @@ function onDirectorStatus(status) {
     dirWas = now.running ? now : Object.assign({}, now, { sessionId: was && was.running ? was.sessionId : now.sessionId, name: was && was.running ? was.name : now.name });
     if (!was || !was.running || now.running) {
         // a new turn on a session: its last "finished" notice is old news
-        if (now.running && now.sessionId && (!was || !was.running)) clear('admin', `director:${now.sessionId}:turn`);
+        if (now.running && now.sessionId && (!was || !was.running)) {
+            steered.delete(String(now.sessionId));
+            clear('admin', `director:${now.sessionId}:turn`);
+        }
         return null;
     }
+    if (steerCut(was.sessionId) || present(was.sessionId)) return null;
     const name = was.name;
     const who = name ? `"${name}"` : 'The session';
+    const last = status.last && String(status.last.sessionId || '') === String(was.sessionId || '') ? status.last : null;
+    const failed = !!(last && last.state === 'failed');
     return publish({
         app: 'director',
         id: `director:${was.sessionId || 'session'}:turn`,
         cls: 'director',
-        alert: true, // each finished turn is news (#889)
         title: 'Director',
-        text: `${who}: the turn is finished.`,
+        text: failed ? `${who}: the turn stopped with an error.` : `${who}: the turn is finished.`,
         data: { app: 'director', kind: 'director', sessionId: was.sessionId || null },
         ttlMs: DAY,
     });
@@ -559,6 +617,7 @@ module.exports = {
     onTextEvent,
     onChatReply,
     onDirectorStatus,
+    noteSteer,
     onPrintJob,
     bindPrintQueue,
     onWeatherAlert,
@@ -566,6 +625,7 @@ module.exports = {
     _test: {
         saidOf,
         sweepDovecote,
-        reset: () => { dirWas = null; printsTold.clear(); queueBound = null; },
+        reset: () => { dirWas = null; steered.clear(); printsTold.clear(); queueBound = null; },
+        present,
     },
 };

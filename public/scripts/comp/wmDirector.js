@@ -2035,8 +2035,13 @@
      * A turn that ends while the Director is not on screen: a WM notification (the shell draws the
      * toast as its bubble, with its sound; the Android app posts it as a phone notification), View
      * opens the app. The title bar's Director glyph already shows while a turn runs.
+     * Never for a turn a steer cut short (director_message_response steer: true arrives before the idle status: the
+     * transcript row is the record), and never while this page is hidden: the server's inbox notice (the Android app
+     * posts it) is that one notification, and a toast here would be the second (#1168). The server notice itself
+     * is silent while she watches that chat.
      */
     let runningTurns = new Map(); // session id -> { name, xi }
+    const steerCut = new Set(); // session ids whose turn a steer ended; used once by the next idle status
     function noteTurns() {
         const d = dir();
         const st = d && d._status;
@@ -2045,9 +2050,12 @@
         if (st.running && st.sessionId) now.set(String(st.sessionId), { name: st.sessionName || '', xi: false, last: st.last });
         if (st.xi && st.xi.running && st.xi.sessionId) now.set(String(st.xi.sessionId), { name: st.xi.sessionName || '', xi: true });
         const ended = [...runningTurns.entries()].filter(([id]) => !now.has(id));
+        // a turn that starts with a steer mark left (the abort found nothing to stop) drops it: a real end is never swallowed
+        for (const id of now.keys()) if (!runningTurns.has(id)) steerCut.delete(id);
         runningTurns = now;
-        if (!ended.length || (shown && isCurrent()) || !prefs().notifyTurns || typeof showGlassToast !== 'function') return;
-        ended.forEach(([id, turn]) => {
+        const told = ended.filter(([id]) => !steerCut.delete(id));
+        if (!told.length || document.hidden || (shown && isCurrent()) || !prefs().notifyTurns || typeof showGlassToast !== 'function') return;
+        told.forEach(([id, turn]) => {
             const s = (d.directorSessions || []).find((x) => String(x.id) === id);
             const persona = turn.xi ? 'xi' : (s && s.memoryStore === 'obliterated' ? 'kabuki' : 'wren');
             const name = turn.name || (s && s.name) || '';
@@ -2191,6 +2199,12 @@
                 try { window.wsClient.on(t, () => setTimeout(refresh, 50)); } catch (_) { /* no such event */ }
             });
             try { window.wsClient.on('director_computer_status', () => setTimeout(noteTurns, 60)); } catch (_) { /* no such event */ }
+            try {
+                window.wsClient.on('director_message_response', (m) => {
+                    const d = m && (m.data || m);
+                    if (d && d.steer === true && d.sessionId) steerCut.add(String(d.sessionId));
+                }, { signal: appScopeSignal });
+            } catch (_) { /* no such event */ }
             try { window.wsClient.on('director_session_image', (msg) => setTimeout(() => openNewPrint(msg), 1400)); } catch (_) { /* no such event */ }
         }
     }

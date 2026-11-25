@@ -38,7 +38,13 @@ module.exports = {
     handleDirectorCustomProvidersBalance: cursor.handleDirectorCustomProvidersBalance,
     handleRentanAgentGet: cursor.handleRentanAgentGet,
     handleRentanAgentSetDefault: cursor.handleRentanAgentSetDefault,
-    handleDirectorAbort: route(xi.handleDirectorAbort, cursor.handleDirectorAbort),
+    // a steer cuts the turn short: its idle is no "turn finished" notice (notificationInboxSources noteSteer, #1168)
+    handleDirectorAbort: function (handler, ws, message, clientInfo, wsServer) {
+        if (message && message.steer === true) {
+            try { require('../../notificationInboxSources').noteSteer(message.sessionId); } catch (_e) { /* best effort */ }
+        }
+        return route(xi.handleDirectorAbort, cursor.handleDirectorAbort)(handler, ws, message, clientInfo, wsServer);
+    },
     handleDirectorToolDiff: xi.handleDirectorToolDiff,
     handleDirectorToolPayload: cursor.handleDirectorToolPayload,
     handleRequestFormSubmit: function (_handler, _ws, message) {

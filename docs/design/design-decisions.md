@@ -45,7 +45,8 @@ The register of decisions about how Dreamscape looks and behaves. Rule:
 | Phone shows real device quirks (WM glitches, draw order, slowdowns) | Yukimi, Nov 2026 | memory `copy-device-quirks` |
 | Dialogs for in-app information, notifications for background events (phone) | Yukimi, Nov 2026 | memory `wm-phone-ui-feedback` |
 | Test UI by real taps through the visible path, on the hardware phone for phone UI | Yukimi, Nov 2026 | `client-browser-testing.mdc` |
+| A Director turn raises no notification while she is watching that chat on a live page (she sees it there; the phone does not repeat it), none for a turn a steer cut short, and at most one notice per turn when she is away (a finish under an id still waiting changes it in place, silently). Question, error and finished-while-away notices still go out. This is presence-based, not power-based: it never silences what she cannot see, so "Notifications and status indicators are never silenced to save power" stands | Yukimi, Nov 25 2026, #1168 | `modules/notificationInboxSources.js` (`present`, `noteSteer`, `onDirectorStatus`), `modules/ws/handlers/directorImpl.js` (director_abort steer), `public/scripts/comp/wmDirector.js` (`noteTurns`), `scripts/test-steer-no-notification.js` |
 
 ## Superseded
 
-None yet.
+- **Each finished Director turn is news** (the notice sounds again under the same id: `alert: true` in `onDirectorStatus`, Yozora #889). Superseded Nov 25 2026 by Yukimi, #1168: "there should not be 2 or even 1" while she uses the desktop client on the phone. Now see the Director turn row under Behaviour; the notice no longer carries the alert flag.

@@ -569,6 +569,20 @@ function server() {
     return gr && (gr.getWebSocketServer ? gr.getWebSocketServer() : gr.webSocketServer);
 }
 
+/**
+ * The open sockets' client records (ws server.clients): who is connected right now. The Director turn notice asks it
+ * whether she is watching the chat the turn belongs to (notificationInboxSources present, #1168).
+ */
+function clients() {
+    const out = [];
+    try {
+        const srv = server();
+        if (!srv || !srv.clients || typeof srv.clients.forEach !== 'function') return out;
+        srv.clients.forEach((info, ws) => { if (info && (!ws || ws.readyState === undefined || ws.readyState === 1)) out.push(info); });
+    } catch (_e) { /* none */ }
+    return out;
+}
+
 function broadcast(user, message) {
     try {
         const srv = server();
@@ -601,6 +615,7 @@ module.exports = {
     setPref,
     openDeliveries,
     broadcast,
+    clients,
     _test: {
         resendDue,
         setNow: (fn) => {
