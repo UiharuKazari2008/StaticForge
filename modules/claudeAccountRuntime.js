@@ -132,6 +132,7 @@ async function prepare(id) {
     // only when something changed: the account's own Remote Control CLI writes this file as it runs
     if (JSON.stringify(cj) !== before) await writeJsonAtomic(path.join(cdir, '.claude.json'), cj, 0o600);
     await ensureCoordMcp(cdir).catch((e) => console.warn(`[claudeRuntime] agent-coord: ${e.message}`));
+    await ensureGiteaMcp(cdir).catch((e) => console.warn(`[claudeRuntime] yozora MCP: ${e.message}`));
     watch(id);
     return { dir: cdir, email: (meta.oauthAccount && meta.oauthAccount.emailAddress) || '' };
 }
@@ -175,6 +176,36 @@ async function ensureCoordMcp(dir, opts = {}) {
     if (cur) await run(['mcp', 'remove', '--scope', 'user', COORD_NAME], env);
     const r = await run(['mcp', 'add', '--scope', 'user', COORD_NAME, '--', want.command, ...want.args], env);
     if (r.code !== 0) console.warn(`[claudeRuntime] agent-coord not registered in ${dir || '~/.claude.json'}: ${String(r.stderr || r.stdout || '').trim().slice(0, 160)}`);
+    return r.code === 0;
+}
+
+// ---------------------------------------------------------------- Yozora (gitea-mcp) for every session
+
+const GITEA_NAME = 'yozora';
+let giteaMissingLogged = false;
+function giteaBin() { return process.env.DREAMSCAPE_GITEA_MCP_BIN || path.join(os.homedir(), '.local', 'bin', 'gitea-mcp'); }
+function giteaServer() {
+    // the wrapper picks the token file per session (FLEET_SESSION) at start; no token is ever in the config
+    return { command: path.join(__dirname, '..', 'scripts', 'gitea-mcp.sh'), args: [] };
+}
+
+/** Gitea's official MCP server (scripts/install-gitea-mcp.sh) as "yozora" at user scope, like ensureCoordMcp. */
+async function ensureGiteaMcp(dir, opts = {}) {
+    if (process.env.DREAMSCAPE_CLAUDE_GITEA_MCP === '0' || process.env.DREAMSCAPE_CLAUDE_COORD_MCP === '0') return false;
+    if (!fs.existsSync(giteaBin())) {
+        if (!giteaMissingLogged) { giteaMissingLogged = true; console.warn(`[claudeRuntime] yozora MCP skipped: ${giteaBin()} is missing (run scripts/install-gitea-mcp.sh)`); }
+        return false;
+    }
+    const file = dir ? path.join(dir, '.claude.json') : hostJson();
+    const cj = (await readJson(file)) || {};
+    const want = giteaServer();
+    const cur = cj.mcpServers && cj.mcpServers[GITEA_NAME];
+    if (cur && cur.command === want.command && JSON.stringify(cur.args || []) === JSON.stringify(want.args)) return true;
+    const run = opts.runner || cliRunner;
+    const env = dir ? { CLAUDE_CONFIG_DIR: dir } : {};
+    if (cur) await run(['mcp', 'remove', '--scope', 'user', GITEA_NAME], env);
+    const r = await run(['mcp', 'add', '--scope', 'user', GITEA_NAME, '--', want.command, ...want.args], env);
+    if (r.code !== 0) console.warn(`[claudeRuntime] yozora MCP not registered in ${dir || '~/.claude.json'}: ${String(r.stderr || r.stdout || '').trim().slice(0, 160)}`);
     return r.code === 0;
 }
 
@@ -253,4 +284,4 @@ function stopAll() {
     watchers.clear();
 }
 
-module.exports = { prepare, configFor, syncBack, armAll, bind, stopAll, configDir, accountDir, fleetInfo, isMoved, writeFleetInfo, ensureCoordMcp, coordServer, readJson, writeJsonAtomic, fresher, _fresher: fresher };
+module.exports = { prepare, configFor, syncBack, armAll, bind, stopAll, configDir, accountDir, fleetInfo, isMoved, writeFleetInfo, ensureCoordMcp, ensureGiteaMcp, giteaServer, coordServer, readJson, writeJsonAtomic, fresher, _fresher: fresher };

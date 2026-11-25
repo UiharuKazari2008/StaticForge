@@ -264,6 +264,7 @@ async function launch(gr, o) {
     // agent-coord: user scope in the account's config dir / the host's (every session there has it, #1154);
     // a launch-only config only when that could not be registered
     const coordOk = await runtime.ensureCoordMcp(env.CLAUDE_CONFIG_DIR || null).catch(() => false);
+    await runtime.ensureGiteaMcp(env.CLAUDE_CONFIG_DIR || null).catch(() => false); // yozora (gitea-mcp), user scope like agent-coord
     const engine = o.engine && o.engine !== 'claude' ? String(o.engine) : '';
     let other = null;
     if (engine) {
