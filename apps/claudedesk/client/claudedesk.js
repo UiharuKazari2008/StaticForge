@@ -299,7 +299,9 @@
             const added = [];
             shownOnly(d.messages).forEach((m) => { if (!seen.has(msgKey(m))) { chat.messages.push(m); seen.add(msgKey(m)); added.push(m); } });
             pendingReconcile(chat, added);
-            const merged = coalesce(chat);
+            // a push can carry rows from before the newest drawn one (a watch that started at an older offset): keep file order
+            const unsorted = sortRows(chat);
+            const merged = coalesce(chat) || unsorted;
             if (S.c && nodeSid(S.c.node) === d.id) { if (merged) redrawLog(d.id); else appendChat(d.id); }
         }, opts);
         // the server forgets a dropped socket's subscriptions and watches
@@ -829,6 +831,14 @@
         if (agents.length) parts.push(`Background agent${agents.length === 1 ? '' : 's'} started: ${agents.map((i) => i.title.slice(7)).slice(0, 2).join('; ')}${agents.length > 2 ? `, +${agents.length - 2}` : ''}`);
         return parts.join(' \u00b7 ');
     }
+    /** Rows in file order (byte offset, then part); true when they were not. */
+    function sortRows(chat) {
+        const list = chat.messages;
+        const ord = (m) => Number(m.at) * 1000 + (Number(m.part) || 0);
+        if (list.every((m, i) => !i || ord(m) >= ord(list[i - 1]))) return false;
+        list.sort((a, b) => ord(a) - ord(b));
+        return true;
+    }
     function coalesce(chat) {
         const list = chat.messages;
         let changed = false;
@@ -907,6 +917,7 @@
                 pendingReconcile(chat, chat.messages);
                 void insLoad(id);
             }
+            sortRows(chat);
             coalesce(chat);
             chat.error = '';
         } catch (e) { if (gen === chat.gen) chat.error = errText(e); } finally { if (gen === chat.gen) chat.loading = false; }
