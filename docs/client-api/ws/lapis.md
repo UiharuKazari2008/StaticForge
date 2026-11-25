@@ -19,7 +19,7 @@ The server reads the car on its own clock and pushes what changed. Clients do no
 | `lapis_vehicles` | `{}` -> `{ vehicles }`. Admin. |
 | `lapis_settings_save` | `{ settings }`, merged into config `lapis` -> `{ settings }`. Admin, destructive. `settings.notify` switches: `unlocked`, `lowFuel`, `refuel`, `service`, `health` (all five health alerts), `battery12`, `tire`, `brake`, `washer`, `key`. |
 | `lapis_service_done` | `{ id }` marks a maintenance item done now -> `{ settings }`. Admin, destructive. |
-| `lapis_picture_get` | `{}` -> `{ picture, dataUrl? }` |
+| `lapis_picture_get` | `{}` -> `{ picture, url? }` (url: the picture's /cache address) |
 | `lapis_picture_save` | `{ dataUrl }` (PNG, JPEG or WebP, 900 KB at most) or `{ dataUrl: null }` for the built-in picture. Admin, destructive. |
 
 `start` options: `{ auto?, temp, minutes, defrost, heating, seat, passengerSeat }`. With `auto` not false and

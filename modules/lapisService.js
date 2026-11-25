@@ -1196,9 +1196,7 @@ function getPicture() {
     try {
         const url = require('./servedPictures').servedUrl(pictureFile(), 'lapis-picture', 'lapis', p.type === 'image/jpeg' ? 'jpg' : p.type === 'image/webp' ? 'webp' : 'png');
         if (!url) return { picture: null };
-        // dataUrl stays only for the old reader in wmLapis.js (not this file's owner); it should read url
-        // no-base64-images: legacy field, to be dropped once wmLapis.js uses url
-        return { picture: p, url, dataUrl: `data:${p.type};base64,${fs.readFileSync(pictureFile()).toString('base64')}` };
+        return { picture: p, url }; // no-base64-images: shown by its /cache address, never as a data URL
     } catch (_e) {
         return { picture: null };
     }

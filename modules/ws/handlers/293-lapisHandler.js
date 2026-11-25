@@ -14,7 +14,7 @@ const lapisService = require('../../lapisService');
 //   lapis_vehicles       {}                       admins; the account's vehicles
 //   lapis_settings_save  { settings }             admins; merged into config `lapis` -> { settings }
 //   lapis_service_done   { id }                   admins; marks a maintenance item done now -> { settings }
-//   lapis_picture_get    {}                       { picture, dataUrl? }: the saved car picture, if any
+//   lapis_picture_get    {}                       { picture, url? }: the saved car picture, if any (url: its /cache address)
 //   lapis_picture_save   { dataUrl | null }       admins; null goes back to the built-in picture
 //
 // Broadcasts to admin clients:

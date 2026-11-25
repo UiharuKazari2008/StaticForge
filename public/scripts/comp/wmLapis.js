@@ -189,7 +189,7 @@
         if (!rev) { changed(); return; }
         try {
             const d = await ask('lapis_picture_get', {});
-            if (d && d.dataUrl && picture.rev === rev) { picture.url = d.dataUrl; changed(); }
+            if (d && d.url && picture.rev === rev) { picture.url = d.url; changed(); } // the served copy's address (#1012)
         } catch (_) { /* the built-in picture stays */ }
     }
 
