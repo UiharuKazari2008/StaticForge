@@ -61,6 +61,7 @@
         return `${A}/session-${l ? (l.status === 'busy' ? 'working' : 'idle') : 'ended'}-16.png`;
     };
     const ITEMS = '/static_images/vista-cpl/items';
+    const QUESTION16 = '/static_images/vista-explorer/help-16.png'; // Input Required: a question, not Pending's info icon
     const FOLDER16 = `${VI}/explorer/folder-16.png`;
     const PAGE = 50;
     const MSG_PAGE = 40; // messages a session view loads at a time
@@ -1488,7 +1489,7 @@
     const issueLinks = (w) => issuesOf(w).map((i) => (i.url && /^https?:\/\//.test(i.url) ? `<span class="mmc-link" data-act="open-link" data-arg="${esc(i.url)}" title="${esc(i.title || i.url)}">${esc(issueShort(i))}</span>` : esc(issueShort(i)))).join(', ');
     const issueBad = (text) => issueRefs(text).find((x) => !ISSUE_REF.test(x)) || '';
     const WORK_OPEN = new Set(['held', 'queued', 'starting', 'running', 'waiting', 'input']);
-    const workIcon = (st) => ({ held: `${ITEMS}/date-and-time-16.png`, queued: `${VI}/info-16.png`, input: `${VI}/info-16.png`, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || SESSION16);
+    const workIcon = (st) => ({ held: `${ITEMS}/date-and-time-16.png`, queued: `${VI}/info-16.png`, input: QUESTION16, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || SESSION16);
     const supLocks = () => (S.sup.data && Array.isArray(S.sup.data.locks) ? S.sup.data.locks : []);
     const supArtifacts = () => (S.sup.data && Array.isArray(S.sup.data.artifacts) ? S.sup.data.artifacts : []);
     const LOCK_STATE = { live: 'Live', idle: 'Idle', orphan: 'Orphan' };
@@ -2049,7 +2050,7 @@
             const asked = qs.some((q) => q.ask);
             const rows = qs.map((q, i) => {
                 const d = drafts[w.id] && drafts[w.id][i] != null ? drafts[w.id][i] : '';
-                return `<div class="cd-in-q"><p class="cd-cut" title="${esc(q.question)}"><img class="mmc-row-icon" src="${esc(`${VI}/info-16.png`)}" alt=""><b>${esc(q.question)}</b></p>
+                return `<div class="cd-in-q"><p class="cd-cut" title="${esc(q.question)}"><img class="mmc-row-icon" src="${esc(QUESTION16)}" alt=""><b>${esc(q.question)}</b></p>
                     ${q.answer ? `<p class="mmc-hint cd-cut" title="${esc(q.answer)}">The Supervisor's proposed answer: ${esc(q.answer)}${q.why ? ` (${esc(q.why)})` : ''}</p>` : (q.ask ? `<p class="mmc-hint">${esc(q.why || 'Open as a request form: answer it there')}</p>` : `<p class="mmc-hint">Only you can decide this.${q.why ? ` ${esc(q.why)}` : ''}</p>`)}
                     ${q.ask ? '' : `<textarea class="cd-answer" data-in-a="${esc(w.id)}:${i}" rows="2" spellcheck="true" placeholder="${q.answer ? 'Leave empty to send the Supervisor\'s answer' : 'Your answer'}" aria-label="Your answer to question ${i + 1}">${esc(d)}</textarea>`}</div>`;
             }).join('');
@@ -2963,7 +2964,7 @@
                 { id: 'co-work', name: 'Work Queue', icon: '/static_images/vista-cmdbar/checklist.png', desc: 'Requests waiting for, starting on and running on an account',
                     children: [
                         { id: 'co-held', name: `Waiting (${heldItems().length})`, icon: `${ITEMS}/date-and-time-16.png`, desc: 'New and imported requests that wait for you to start them' },
-                        { id: 'co-input', name: `Input Required (${inputItems().length})`, icon: `${VI}/info-16.png`, desc: 'Work that stopped on a question only you can answer' },
+                        { id: 'co-input', name: `Input Required (${inputItems().length})`, icon: QUESTION16, desc: 'Work that stopped on a question only you can answer' },
                         { id: 'aw-sup', name: `Active (${runItems().length})`, icon: `${ITEMS}/parental-controls-16.png`, desc: 'Work items running now, their sessions and background agents', children: runNodes },
                         { id: 'co-pending', name: `Pending (${pendItems().length})`, icon: `${VI}/info-16.png`, desc: 'Work items waiting for an account to have room', children: pendNodes },
                         { id: 'aw-uns', name: `Unsupervised (${uns.length})`, icon: `${VI}/run-16.png`, desc: 'Sessions no work item owns that are working or were active in the last hour', children: uns },
@@ -3181,7 +3182,7 @@
         const tile = (nav, icon, n, label, warn, extra) => `<button type="button" class="cd-tile${warn && n ? ' is-warn' : ''}" data-act="nav:${nav}" title="${esc(extra ? `${label}: ${extra}` : label)}"><img src="${esc(icon)}" alt=""><b>${n}</b><span>${esc(label)}</span>${extra ? `<small>${esc(extra)}</small>` : ''}</button>`;
         const tiles = `<div class="cd-tiles">${[
             tile('aw-sup', '/static_images/vista-cmdbar/play.png', run.length, 'Running work'),
-            tile('co-input', `${VI}/info-16.png`, inputItems().length, 'Input required', true),
+            tile('co-input', QUESTION16, inputItems().length, 'Input required', true),
             tile('co-held', `${ITEMS}/date-and-time-16.png`, held.length, 'Waiting for you'),
             tile('co-pending', `${VI}/info-16.png`, pendItems().length, 'Queued'),
             tile('aw-sup', `${VI}/warning-16.png`, sentBack.length, 'Sent back', true),

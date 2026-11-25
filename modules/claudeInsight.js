@@ -60,6 +60,20 @@ function feed(s, line) {
     if (s.pending.size && line.includes('"tool_result"')) {
         for (const id of Array.from(s.pending.keys())) if (line.includes(id)) s.pending.delete(id);
     }
+    // a background task's end, in every form Claude Code writes it (Nov 25 2026: a "queue-operation" enqueue and a plain user
+    // message carry the <task-notification> too, not only queued_command attachments, so finished Bash tasks showed "Working"
+    // in Fleet's workflow map for 40 minutes)
+    if (line.includes('<task-notification>') && (s.tasks.size || s.bg.size)) {
+        const re = /<tool-use-id>([^<]+)<\/tool-use-id>[\s\S]*?<status>([^<]+)<\/status>/g;
+        let m;
+        let at = null;
+        try { at = JSON.parse(line).timestamp || null; } catch (_) { at = null; }
+        while ((m = re.exec(line))) {
+            s.bg.delete(m[1]);
+            const t = s.tasks.get(m[1]);
+            if (t && t.state === 'running') { t.state = /fail|error|kill/i.test(m[2]) ? 'failed' : 'done'; t.endAt = at || s.lastAt; }
+        }
+    }
     const isAssistant = line.includes('"type":"assistant"');
     const isUser = !isAssistant && line.includes('"type":"user"') && !line.includes('"type":"tool_result"');
     const isCost = !isAssistant && !isUser && line.includes('"type":"cost-state"');
