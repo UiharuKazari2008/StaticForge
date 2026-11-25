@@ -4819,7 +4819,7 @@
             case 'sup-locks': return [{ text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-maint': return [{ text: 'Run Now', action: 'maint-run', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Dry Run', action: 'maint-dry', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Save Settings', action: 'maint-save', disabled: !maintUi().draft }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'usage': return [{ text: 'Last 24 Hours', action: 'usage-d1', disabled: usgUi().days === 1 }, { text: 'Last 7 Days', action: 'usage-d7', disabled: usgUi().days === 7 }, { text: 'Read Again', action: 'usage-refresh' }];
-            case 'usage-flags': return [{ text: 'Acknowledge', action: 'usage-ack', disabled: !selId(c, 'ux:f:') }, { text: 'Read Again', action: 'usage-refresh' }];
+            case 'usage-flags': return [{ text: 'Acknowledge', action: 'usage-ack', disabled: !(S.c && selId(S.c, 'ux:f:')) }, { text: 'Read Again', action: 'usage-refresh' }];
             case 'sup-arts': return [{ text: 'Clean...', action: 'sup-art-clean' }, { text: 'Restore', action: 'sup-art-restore' }, { text: 'Forget', action: 'sup-art-forget' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'rc-host': return [
                 { text: 'Reconnect', action: 'rc-reconnect' },

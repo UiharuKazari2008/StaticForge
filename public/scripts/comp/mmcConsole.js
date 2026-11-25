@@ -67,6 +67,101 @@
         return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()} ${(h % 12) || 12}:${String(d.getMinutes()).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
     }
 
+    // ---- keyed in-place patching: a redraw replaces only the parts whose markup changed ----------------------
+    // A pane keeps the node tree of its latest markup (virt). The next markup is compared with it child by child
+    // (matched by data-key / data-sec / data-node / id, else by position): equal parts are not touched (their
+    // animations, images, scroll, focus, selection and typed text stay), differing parts recurse, and only new or
+    // unmatched ones are inserted. Nothing replays on a push that changed one number.
+    const MORPH_DEPTH = 9;
+    const virt = new WeakMap(); // live node -> the node of the latest markup it was made from
+    const fresh = new WeakSet(); // live roots inserted by a patch (they still need their listeners)
+    const FORMS = /^(INPUT|TEXTAREA|SELECT)$/;
+    const keyOf = (n) => (n && n.nodeType === 1 ? (n.getAttribute('data-key') || n.getAttribute('data-sec') || n.getAttribute('data-node') || n.id || '') : '');
+
+    function link(live, v, d) {
+        virt.set(live, v);
+        if (d <= 0 || live.childNodes.length !== v.childNodes.length) return;
+        for (let i = 0; i < live.childNodes.length; i++) link(live.childNodes[i], v.childNodes[i], d - 1);
+    }
+    function put(x, d) {
+        const c = x.cloneNode(true);
+        fresh.add(c);
+        link(c, x, d);
+        return c;
+    }
+    function syncAttrs(m, v, x) {
+        Array.from(x.attributes).forEach((a) => { if (v.getAttribute(a.name) !== a.value) m.setAttribute(a.name, a.value); });
+        Array.from(v.attributes).forEach((a) => { if (!x.hasAttribute(a.name)) m.removeAttribute(a.name); });
+    }
+    function morphKids(live, nv, d, st) {
+        const nk = Array.from(nv.childNodes);
+        const old = Array.from(live.childNodes).filter((n) => virt.has(n));
+        const byKey = new Map();
+        old.forEach((n) => { const k = keyOf(virt.get(n)); if (k) { if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(n); } });
+        const used = new Set();
+        const keep = new Set();
+        let pi = 0;
+        let cursor = null;
+        nk.forEach((x) => {
+            const k = keyOf(x);
+            let m = null;
+            if (k) m = (byKey.get(k) || []).shift() || null; // a repeated key is matched in order
+            else {
+                while (pi < old.length && (used.has(old[pi]) || keyOf(virt.get(old[pi])))) pi++;
+                const c = old[pi];
+                if (c && virt.get(c).nodeName === x.nodeName) { m = c; pi++; }
+            }
+            let el;
+            if (m) {
+                used.add(m);
+                const v = virt.get(m);
+                if (m.nodeType !== 1) {
+                    if (m.nodeValue !== x.nodeValue) { m.nodeValue = x.nodeValue; st.changed = true; }
+                    virt.set(m, x);
+                    el = m;
+                } else if (v.isEqualNode(x) || (m === doc.activeElement && FORMS.test(m.nodeName))) {
+                    virt.set(m, x);
+                    el = m;
+                } else if (d > 0 && v.nodeName === x.nodeName) {
+                    syncAttrs(m, v, x);
+                    morphKids(m, x, d - 1, st);
+                    virt.set(m, x);
+                    st.changed = true;
+                    el = m;
+                }
+            }
+            if (!el) { el = put(x, d); st.changed = true; st.fresh = true; }
+            keep.add(el);
+            const ref = cursor ? cursor.nextSibling : live.firstChild;
+            if (el !== ref) live.insertBefore(el, ref);
+            cursor = el;
+        });
+        old.forEach((n) => { if (!keep.has(n)) { n.remove(); st.changed = true; } });
+    }
+    /** Make el hold html, touching only what differs from its last markup; { changed, fresh, first } says what was done. */
+    function patch(el, html, d = MORPH_DEPTH) {
+        const t = doc.createElement('template');
+        t.innerHTML = html;
+        const nv = t.content;
+        const st = { changed: false, fresh: false, first: !virt.has(el) };
+        if (st.first) {
+            el.replaceChildren();
+            Array.from(nv.childNodes).forEach((x) => el.appendChild(put(x, d)));
+            st.changed = true;
+            st.fresh = true;
+        } else morphKids(el, nv, d, st);
+        virt.set(el, nv);
+        return st;
+    }
+    const isFresh = (n, root) => { for (let x = n; x && x !== root; x = x.parentNode) if (fresh.has(x)) return true; return false; };
+    /** Run a page's mount again after a patch: listeners go only on the nodes the patch inserted (kept nodes still have theirs). */
+    function remount(pane, fn) {
+        const proto = Element.prototype;
+        const orig = proto.addEventListener;
+        proto.addEventListener = function patched(...a) { return isFresh(this, null) ? orig.apply(this, a) : undefined; };
+        try { fn(); } finally { proto.addEventListener = orig; }
+    }
+
     class Console {
         constructor(def) {
             this.def = def;
@@ -265,7 +360,7 @@
             });
             const html = rows.join('');
             const tree = this.el('.mmc-tree');
-            if (tree.dataset.html !== html) { tree.innerHTML = html; tree.dataset.html = html; }
+            if (tree.dataset.html !== html) { patch(tree, html, 4); tree.dataset.html = html; }
         }
 
         toggle(id) {
@@ -309,6 +404,7 @@
             const pane = this.el('.mmc-result');
             this.unmountPage();
             pane.innerHTML = '';
+            virt.delete(pane);
             delete pane.dataset.html;
             this.render();
         }
@@ -375,7 +471,7 @@
                 + (ownHtml ? ownHtml + sep : '')
                 + b('help', 15, 'Help') + b('actions', 17, 'Show/Hide Action Pane', { pressed: this.modal.classList.contains('has-actions') });
             const tb = this.el('.mmc-toolbar');
-            if (tb.dataset.html !== html) { tb.innerHTML = html; tb.dataset.html = html; }
+            if (tb.dataset.html !== html) { patch(tb, html, 4); tb.dataset.html = html; }
         }
 
         /** MMC's Action pane: "Actions", the node's group, the selected row's group. */
@@ -388,7 +484,7 @@
             const group = (key, title, list) => `<div class="mmc-act-group${this.actCollapsed.has(key) ? ' is-collapsed' : ''}" data-group="${esc(key)}" title="${esc(title)}">${esc(title)}</div><div class="mmc-act-items">${items(list)}</div>`;
             const s = this.selCommands();
             const html = `<div class="mmc-act-head">Actions</div>${group('node', n ? n.name : '', this.commands())}${s ? group('sel', s.title, s.items) : ''}`;
-            if (pane.dataset.html !== html) { pane.innerHTML = html; pane.dataset.html = html; }
+            if (pane.dataset.html !== html) { patch(pane, html, 4); pane.dataset.html = html; }
         }
 
         async action(a, arg) {
@@ -487,17 +583,23 @@
                 const pos = scrollers.map((s) => [s.scrollTop, s.scrollLeft]);
                 const focused = pane.contains(doc.activeElement) ? doc.activeElement : null;
                 const focusKey = focused && (focused.id || focused.dataset.field || focused.getAttribute('name'));
-                this.unmountPage();
-                pane.innerHTML = spec.html;
+                const prev = this.mounted;
+                const st = patch(pane, spec.html);
                 pane.dataset.html = spec.html;
                 Array.from(pane.querySelectorAll('.mmc-page-body, .mmc-list, [data-mmc-scroll]')).forEach((s, i) => {
-                    if (pos[i]) { s.scrollTop = pos[i][0]; s.scrollLeft = pos[i][1]; }
+                    if (pos[i] && (s.scrollTop !== pos[i][0] || s.scrollLeft !== pos[i][1])) { s.scrollTop = pos[i][0]; s.scrollLeft = pos[i][1]; }
                 });
-                if (typeof spec.mount === 'function') {
-                    this.mounted = spec;
-                    try { spec.mount(pane, this); } catch (err) { console.error(`${this.def.title}: mount`, err); }
+                if (st.changed) {
+                    const run = () => {
+                        if (typeof spec.mount !== 'function') return;
+                        this.mounted = spec;
+                        try { spec.mount(pane, this); } catch (err) { console.error(`${this.def.title}: mount`, err); }
+                    };
+                    // a page that undoes its mount (unmount) is mounted again whole; one without wires only the inserted nodes
+                    if (st.first || (prev && typeof prev.unmount === 'function')) { this.unmountPage(); run(); }
+                    else { if (typeof spec.mount !== 'function') this.unmountPage(); remount(pane, run); }
                 }
-                if (focused) {
+                if (focused && !focused.isConnected) {
                     const again = focusKey && (pane.querySelector(`#${CSS.escape(focusKey)}`) || pane.querySelector(`[data-field="${CSS.escape(focusKey)}"], [name="${CSS.escape(focusKey)}"]`));
                     const target = again || pane.querySelector('.mmc-list');
                     if (target) target.focus({ preventScroll: true });
