@@ -135,6 +135,13 @@ const wx = (extra) => Object.assign({ id: 'A', title: 'Wind Advisory', severity:
     assert.strictEqual(inbox.publish({ user: 'test', app: 'x', id: 't', cls: 'notification', title: 'T', text: 't', alert: true, returning: true }).alert, true, 'a snooze ending comes back loud');
     assert.strictEqual(inbox.get('test', 't').state, 'new');
 
+    // a rain alarm is once per spell: a later spell with the same words is a new event, loud even after a dismissal
+    const rain = { place: { id: 'home', label: 'Home' }, startsInMin: 10, endsInMin: 40, kind: 'Rain' };
+    assert.strictEqual(src.onRainAlarm(rain).alert, true, 'the first spell sounds');
+    inbox.clear('admin', 'rain:home', 'x');
+    now += 1000;
+    assert.strictEqual(src.onRainAlarm(rain).alert, true, 'the next spell sounds though its words are the same');
+
     console.log('notification inbox dedup: ok');
     process.exit(0); // phoneStatus.touch leaves a debounce timer open
 })().catch((e) => { console.error(e); process.exit(1); });

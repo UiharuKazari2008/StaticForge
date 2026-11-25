@@ -34,6 +34,8 @@ const clip = (s, n) => {
     return t.length > n ? `${t.slice(0, n - 3)}...` : t;
 };
 const DAY = 24 * 60 * 60 * 1000;
+// one per published event that keeps a fixed id (a Director turn, a rain spell): two in one millisecond still differ (#1194)
+let eventSeq = 0;
 
 function publish(notice) {
     try { return inbox.publish(notice); } catch (e) { console.warn(`[notify-inbox] ${notice && notice.id}: ${e.message}`); return null; }
@@ -514,6 +516,9 @@ function onDirectorStatus(status) {
     return publish({
         app: 'director',
         id: `director:${was.sessionId || 'session'}:turn`,
+        // each finished turn is its own event (#1194 x #1168): the last turn's notice was cleared when this one started, and
+        // the same words again must still come back loud; no alert flag, so a row still waiting updates in place, silent
+        digest: `turn:${was.sessionId || 'session'}:${Date.now()}:${(eventSeq += 1)}`,
         cls: 'director',
         title: 'Director',
         text: failed ? `${who}: the turn stopped with an error.` : `${who}: the turn is finished.`,
@@ -649,6 +654,8 @@ function onRainAlarm(d) {
     return publish({
         app: 'weather',
         id: `rain:${d.place.id || 'place'}`,
+        // weatherService raises it once per spell: each spell is its own event, so a later spell with the same words still sounds
+        digest: `rain:${d.place.id || 'place'}:${Date.now()}:${(eventSeq += 1)}`,
         cls: 'rain-alarm',
         title,
         text,
