@@ -85,4 +85,20 @@ function history(daysWanted, now) {
     return out;
 }
 
-module.exports = { record, history, dayKey, KEEP_DAYS, _setDb(d) { dbOverride = d; } };
+/**
+ * The weekly % an account stood at when today began (Fleet pace): the highest week_pct yesterday's row holds, when
+ * yesterday lies inside the current weekly window (a later day than the window's first, and not above today's value:
+ * a reset in between makes the old row look higher); otherwise 0 (the window began today or yesterday, or no row).
+ */
+function dayStartWeekPct(account, weekStartMs, weekPct, now) {
+    const at = now || Date.now();
+    try {
+        const yKey = dayKey(at - DAY_MS);
+        if (yKey <= dayKey(weekStartMs)) return 0;
+        const r = db().prepare('SELECT week_pct FROM claude_usage_daily WHERE day = ? AND account = ?').get(yKey, String(account));
+        const v = r && Number(r.week_pct);
+        return Number.isFinite(v) && v <= weekPct ? v : 0;
+    } catch (_) { return 0; }
+}
+
+module.exports = { record, history, dayKey, dayStartWeekPct, KEEP_DAYS, _setDb(d) { dbOverride = d; } };

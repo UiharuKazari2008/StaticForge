@@ -119,6 +119,7 @@ function limitCap(limit, s) {
  */
 function availability(usage, s) {
     const out = availabilityOf(usage, s);
+    out.pace = paceFor(usage, s);
     const extra = usage && (usage.extraEnabled || (usage.extra && usage.extra.enabled));
     if (!extra) return Object.assign(out, { costWarning: '' });
     const x = (usage && usage.extra) || {};
@@ -153,14 +154,51 @@ function availabilityOf(usage, s) {
     return { state: 'free', schedulable: true, message: '', resetsAt: null };
 }
 
+const DAY_MS = 86400000;
+const AHEAD_PTS = 10;
+
+/**
+ * Pace of an account's week (Yukimi Nov 25: tap another account when one is using up today's share of the week).
+ * Pure: weekly = { percent, resetsAt (ms) }, cap = the account's own maxWeeklyPct or null (100), dayStartPct = the
+ * weekly % when today began, now. todayShare is the even share of what was left this morning (cap - dayStartPct over
+ * the days left then, at least 1); state is over (used today's share), ahead (more than 10 points ahead of an even
+ * week) or ok; unknown (treated as ok) without a weekly row.
+ */
+function pace(weekly, cap, dayStartPct, now) {
+    if (!weekly || !Number.isFinite(weekly.percent) || !Number.isFinite(weekly.resetsAt)) return { state: 'unknown', message: 'No weekly usage row: pace unknown, treated as on pace' };
+    const at = now || Date.now();
+    const top = Number.isFinite(cap) && cap > 0 ? cap : 100;
+    const weekPct = weekly.percent;
+    const start = Number.isFinite(dayStartPct) ? Math.min(Math.max(dayStartPct, 0), weekPct) : 0;
+    const e = Math.min(1, Math.max(0, 1 - (weekly.resetsAt - at) / (7 * DAY_MS)));
+    const d = new Date(at); d.setHours(0, 0, 0, 0);
+    const daysLeft = Math.max(1, (weekly.resetsAt - d.getTime()) / DAY_MS);
+    const todayShare = Math.max(0, (top - start) / daysLeft);
+    const usedToday = weekPct - start;
+    const expected = e * top;
+    const r1 = (n) => Math.round(n * 10) / 10;
+    const state = usedToday >= todayShare ? 'over' : (weekPct > expected + AHEAD_PTS ? 'ahead' : 'ok');
+    const message = state === 'over' ? `Used today's share (${r1(usedToday)}% of ${r1(todayShare)}%)` : (state === 'ahead' ? `Ahead of pace (${r1(weekPct)}% used, ${r1(expected)}% expected)` : 'On pace');
+    return { state, weekPct: r1(weekPct), dayStartPct: r1(start), usedToday: r1(usedToday), todayShare: r1(todayShare), expectedPct: r1(expected), cap: top, daysLeft: r1(daysLeft), ratio: todayShare > 0 ? usedToday / todayShare : 99, message };
+}
+
+/** Pace from a usage row ({ id, limits }) and the account's settings, with today's starting % from the usage history. */
+function paceFor(usage, s) {
+    const l = usage && Array.isArray(usage.limits) ? usage.limits.find((x) => x && (x.kind === 'weekly_all' || x.kind === 'seven_day') && Number.isFinite(x.percent) && Number.isFinite(x.resetsAt)) : null;
+    if (!l) return pace(null);
+    let start = 0;
+    if (usage.id) { try { start = require('./claudeUsageHistory').dayStartWeekPct(usage.id, l.resetsAt - 7 * DAY_MS, l.percent); } catch (_) { start = 0; } }
+    return pace(l, s && s.maxWeeklyPct, start);
+}
+
 /** The usage row for an account index from claudeUsage's last read (no fetch). */
 function usageFor(index) {
     try {
         const snap = require('./claudeUsage').cached();
         const row = snap && (snap.accounts || []).find((a) => a.index === index);
         if (!row) return null;
-        return { plan: row.plan || '', limits: row.limits || [], at: row.at || null, error: row.error || null, extra: row.extra || null, extraEnabled: !!row.extraEnabled, billingDay: row.billingDay || null };
+        return { id: row.id || null, plan: row.plan || '', limits: row.limits || [], at: row.at || null, error: row.error || null, extra: row.extra || null, extraEnabled: !!row.extraEnabled, billingDay: row.billingDay || null };
     } catch (_) { return null; }
 }
 
-module.exports = { get, save, availability, usageFor, DEFAULTS, PRIORITIES, _limitCap: limitCap };
+module.exports = { get, save, availability, pace, usageFor, DEFAULTS, PRIORITIES, _limitCap: limitCap };

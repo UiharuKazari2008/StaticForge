@@ -154,6 +154,7 @@ async function snapshot(gr, opts = {}) {
     const byIndex = new Map((use.accounts || []).map((u) => [u.index, u]));
     const accounts = rc.accounts.map((a) => ({
         index: a.index,
+        id: a.id,
         name: a.name,
         engineDefault: a.active,
         ownFolder: a.moved,
@@ -163,6 +164,7 @@ async function snapshot(gr, opts = {}) {
         preferred: !!(a.settings && a.settings.preferred),
         settings: a.settings || null,
         availability: a.availability || null,
+        pace: (a.availability && a.availability.pace) || null,
         usage: usageBrief(byIndex.get(a.index)),
         sessions: a.sessions
     }));
@@ -186,6 +188,7 @@ async function snapshot(gr, opts = {}) {
  */
 function pickAccount(snap, want, allowFull) {
     const usable = (a) => !a.availability || a.availability.schedulable !== false;
+    const sessionOf = (a) => { const l = a.usage && (a.usage.limits || []).find((x) => x.kind === 'session'); return l && Number.isFinite(l.percent) ? l.percent : (a.usage && Number.isFinite(a.usage.worstPercent) ? a.usage.worstPercent : 50); };
     const worstOf = (a) => (a.usage && Number.isFinite(a.usage.worstPercent) ? a.usage.worstPercent : 50);
     if (want !== undefined && want !== null && String(want).trim() !== '' && String(want).toLowerCase() !== 'auto') {
         const w = String(want).trim().toLowerCase();
@@ -199,11 +202,17 @@ function pickAccount(snap, want, allowFull) {
     }
     const runnable = snap.accounts.filter((a) => a.canRun && (allowFull || (usable(a) && worstOf(a) < FULL_PCT)));
     if (!runnable.length) throw new Error('No Claude account has room (every runnable account is at its limit, past its own max, or cannot run): wait for a reset or pass allowFull');
-    const preferred = runnable.find((a) => a.preferred && (!a.availability || a.availability.state !== 'near'));
+    // pace (Yukimi Nov 25): an account that used today's share of its week ranks after every one that did not; ahead of pace after ok
+    const paceOf = (a) => (a.availability && a.availability.pace) || null;
+    const paceState = (a) => { const p = paceOf(a); return p && p.state ? p.state : 'ok'; };
+    const paceTier = (a) => ({ over: 2, ahead: 1 }[paceState(a)] || 0);
+    const ratio = (a) => { const p = paceOf(a); return p && Number.isFinite(p.ratio) ? p.ratio : 0; };
+    const preferred = runnable.find((a) => a.preferred && paceState(a) === 'ok' && (!a.availability || a.availability.state !== 'near'));
     if (preferred) return preferred;
-    // account priority (Fleet settings): high before normal before low; then the most headroom
+    // an over-share account sits behind all others; within a group: priority (high, normal, low), ahead after ok, the most weekly headroom against its pace, 5-hour %, fewest sessions
     const rank = (a) => ({ high: 0, normal: 1, low: 2 }[(a.settings && a.settings.priority) || 'normal']);
-    return runnable.slice().sort((x, y) => rank(x) - rank(y) || worstOf(x) - worstOf(y) || x.sessions.length - y.sessions.length)[0];
+    const group = (a) => (paceState(a) === 'over' ? 1 : 0);
+    return runnable.slice().sort((x, y) => group(x) - group(y) || rank(x) - rank(y) || paceTier(x) - paceTier(y) || ratio(x) - ratio(y) || sessionOf(x) - sessionOf(y) || x.sessions.length - y.sessions.length)[0];
 }
 
 /** For Fleet's New Session "Auto" and an account's defaults: { index, name, settings }. */

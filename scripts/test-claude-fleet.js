@@ -189,6 +189,66 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
         assert.strictEqual(pickAccount(snap, 'auto').name, 'Main', 'a low-priority account (Ops, the most headroom) waits behind normal ones');
     });
 
+    await test('pace: mid-week on pace, over today\'s share, after a reset, with maxWeeklyPct', () => {
+        const { pace } = require('../modules/claudeFleetSettings');
+        const DAY = 86400000;
+        const d0 = new Date(2026, 10, 25, 12, 0, 0).getTime(); // noon
+        const mid = new Date(2026, 10, 25, 0, 0, 0).getTime();
+        const resets = mid + 3.5 * DAY; // 3.5 days to go from midnight: halfway through the week
+        const wk = (percent) => ({ percent, resetsAt: resets });
+        let p = pace(wk(50), null, 46, d0);
+        assert.strictEqual(p.state, 'ok');
+        assert.strictEqual(p.todayShare, 15.4); // (100 - 46) / 3.5
+        assert.strictEqual(p.usedToday, 4);
+        p = pace(wk(50), null, 40, d0); // used 10 of a 17.1 share, week 50 vs 50 expected (noon of 3.5 days left = 3.0)
+        assert.strictEqual(p.state, 'ok');
+        p = pace(wk(60), null, 40, d0); // 20 used today >= 17.1 share
+        assert.strictEqual(p.state, 'over');
+        p = pace(wk(70), null, 66, d0); // within today's share but 70 vs ~57 expected
+        assert.strictEqual(p.state, 'ahead');
+        p = pace(wk(9), null, 0, new Date(2026, 10, 25, 12).getTime()); // after a reset: week began today, 7 days left
+        assert.strictEqual(pace({ percent: 9, resetsAt: mid + 7 * DAY }, null, 0, d0).todayShare, 14.3);
+        assert.strictEqual(pace({ percent: 9, resetsAt: mid + 7 * DAY }, null, 0, d0).state, 'ok');
+        p = pace({ percent: 15, resetsAt: mid + 7 * DAY }, null, 0, d0);
+        assert.strictEqual(p.state, 'over');
+        p = pace({ percent: 15, resetsAt: mid + 7 * DAY }, 60, 0, d0); // own max 60: share 8.6
+        assert.strictEqual(p.todayShare, 8.6);
+        assert.strictEqual(p.state, 'over');
+        assert.strictEqual(pace({ percent: 5, resetsAt: mid + 7 * DAY }, 60, 0, d0).state, 'ok');
+        assert.strictEqual(pace(null).state, 'unknown');
+        // the history helper: yesterday's row inside the window counts, after a reset (higher) or before the window it does not
+        const hist = require('../modules/claudeUsageHistory');
+        const Database = require('better-sqlite3');
+        const mem = new Database(':memory:');
+        hist._setDb(mem);
+        hist.record({ accounts: [{ id: 'x', name: 'X', limits: [{ kind: 'weekly_all', percent: 30 }] }] }, d0 - DAY);
+        assert.strictEqual(hist.dayStartWeekPct('x', d0 - 5 * DAY, 45, d0), 30);
+        assert.strictEqual(hist.dayStartWeekPct('x', d0 - 5 * DAY, 20, d0), 0, 'above today: a reset happened');
+        assert.strictEqual(hist.dayStartWeekPct('x', d0 - 0.5 * DAY, 45, d0), 0, 'the window began after yesterday began');
+        assert.strictEqual(hist.dayStartWeekPct('nobody', d0 - 5 * DAY, 45, d0), 0);
+        hist._setDb(null);
+        mem.close();
+    });
+
+    await test('auto pick by pace: an over-share preferred / high account loses to an ok normal one; all over -> best; named honoured', () => {
+        const { pickAccount } = require('../modules/claudeFleetMcp')._test;
+        const acc = (index, name, state, ratio, extra) => Object.assign({ index, name, canRun: true, sessions: [], remoteControl: { message: '' }, usage: { worstPercent: 30 }, availability: { state: 'free', schedulable: true, pace: { state, ratio } } }, extra || {});
+        const snap = { accounts: [acc(0, 'Pref', 'over', 1.2, { preferred: true }), acc(1, 'High', 'over', 1.1, { settings: { priority: 'high' } }), acc(2, 'Normal', 'ok', 0.4, { settings: { priority: 'normal' } })] };
+        assert.strictEqual(pickAccount(snap, 'auto').name, 'Normal');
+        snap.accounts.push(acc(3, 'NormalAhead', 'ahead', 0.1));
+        assert.strictEqual(pickAccount(snap, 'auto').name, 'Normal', 'ahead ranks after ok in the same priority');
+        snap.accounts[2].settings = { priority: 'low' };
+        assert.strictEqual(pickAccount(snap, 'auto').name, 'NormalAhead', 'priority first among the not-over ones');
+        snap.accounts[2].availability.pace = { state: 'ok', ratio: 0.2 };
+        snap.accounts[2].preferred = true; // preferred and ok: taken first
+        assert.strictEqual(pickAccount(snap, 'auto').name, 'Normal');
+        const allOver = { accounts: [acc(0, 'A', 'over', 1.5), acc(1, 'B', 'over', 1.05, { settings: { priority: 'high' } }), acc(2, 'C', 'over', 1.1)] };
+        assert.strictEqual(pickAccount(allOver, 'auto').name, 'B', 'all over: still the best of them');
+        assert.strictEqual(pickAccount(allOver, 'A').name, 'A', 'a named account is honoured');
+        const same = { accounts: [acc(0, 'A', 'over', 1.5), acc(1, 'C', 'over', 1.1)] };
+        assert.strictEqual(pickAccount(same, 'auto').name, 'C', 'then the most headroom against its pace');
+    });
+
     await test('MCP tools: agent-coord lists the v2 tools; the fleet module is Xi-only', () => {
         const names = require('../modules/agentCoord/mcpServer').TOOLS.map((t) => t.name);
         ['coord_inspect', 'coord_editors', 'coord_locks', 'coord_build_request', 'coord_build_ready', 'coord_build_begin', 'coord_build_end', 'coord_builds', 'fleet_status', 'fleet_work_list', 'fleet_work_get', 'fleet_work_update', 'fleet_work_hold', 'fleet_work_cancel', 'fleet_session_read', 'fleet_maintenance_report'].forEach((n) => assert.ok(names.includes(n), n));

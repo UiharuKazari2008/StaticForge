@@ -1407,6 +1407,15 @@
         return `<div class="cd-infobar is-${icon}" role="alert"><img src="${VI}/${icon}-16.png" alt=""><span>${withName && !msg.includes(f.name) ? `<b>${esc(f.name)}</b>: ` : ''}${esc(text)}</span></div>`;
     }
 
+    /** "Today: 9% of 14% share - On pace" from the fleet row's availability.pace; a hint, not an error (over / ahead only say so in words). */
+    function paceLine(f) {
+        const p = f && f.availability && f.availability.pace;
+        if (!p || p.state === 'unknown' || !Number.isFinite(p.usedToday)) return '';
+        const word = { ok: 'On pace', ahead: 'Ahead of pace', over: 'Used today\'s share' }[p.state] || '';
+        const tip = `Week ${p.weekPct}% of ${p.cap}%, ${p.expectedPct}% expected by now; ${p.dayStartPct}% when today began, ${p.daysLeft} days left`;
+        return `<p class="mmc-hint cd-pace is-${esc(p.state)}" title="${esc(tip)}">Today: ${esc(String(p.usedToday))}% of ${esc(String(p.todayShare))}% share - ${esc(word)}</p>`;
+    }
+
     function usageBlock(a, now) {
         const planText = a.plan ? String(a.plan).replace(/^\w/, (ch) => ch.toUpperCase()) : '';
         const who = [a.engine ? 'Director' : '', a.onHost ? 'Remote Control' : ''].filter(Boolean).join(', ');
@@ -1430,7 +1439,7 @@
         const err = limits.length && a.error ? `<p class="mmc-hint">${esc(a.error)}</p>` : '';
         const ren = renewalOf(a, now);
         return `<div class="cd-usage-acct"><div class="cd-usage-head"><img src="${esc(S.app.url('assets').replace(/\/$/, ''))}/account-16.png" alt=""><b>${esc(a.name)}</b>`
-            + `<span class="mmc-hint">${esc([planText, who, isPreferred(a.index) ? 'Preferred' : '', priorityTag(a.index)].filter(Boolean).join(' - '))}</span>${ren ? `<span class="mmc-hint cd-renews" title="${esc(ren.tip)}">${esc(ren.text)}</span>` : ''}</div>${availBar(fleetOf(a.index), false)}${body}${extra}${err}</div>`;
+            + `<span class="mmc-hint">${esc([planText, who, isPreferred(a.index) ? 'Preferred' : '', priorityTag(a.index)].filter(Boolean).join(' - '))}</span>${ren ? `<span class="mmc-hint cd-renews" title="${esc(ren.tip)}">${esc(ren.text)}</span>` : ''}</div>${availBar(fleetOf(a.index), false)}${paceLine(fleetOf(a.index))}${body}${extra}${err}</div>`;
     }
     function usageHtml() {
         const rows = [...S.usage.values()].sort((a, b) => (a.index || 0) - (b.index || 0));
