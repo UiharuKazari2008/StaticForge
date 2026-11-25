@@ -240,7 +240,14 @@
         if (!md || !md.getDisplayMedia) return null;
         let stream = null;
         try {
-            stream = await md.getDisplayMedia({ video: { displaySurface: 'browser', frameRate: 5 }, audio: false, preferCurrentTab: true, selfBrowserSurface: 'include' });
+            // (the browser's own question may never be answered, a headless tab has nobody to ask: after 12 s the drawn desktop is
+            // taken instead, so the tool's windows are never left hidden behind an open prompt; a stream that arrives late is stopped)
+            const ask = md.getDisplayMedia({ video: { displaySurface: 'browser', frameRate: 5 }, audio: false, preferCurrentTab: true, selfBrowserSurface: 'include' });
+            let late = false;
+            const timer = new Promise((r) => setTimeout(() => { late = true; r(null); }, 12000));
+            ask.then((st) => { if (late && st) st.getTracks().forEach((t) => t.stop()); }, () => {});
+            stream = await Promise.race([ask, timer]);
+            if (!stream) return null;
             const v = doc.createElement('video');
             v.muted = true;
             v.srcObject = stream;
