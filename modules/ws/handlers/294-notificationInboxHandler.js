@@ -60,6 +60,7 @@ function registerPackets(handlersCtx) {
     // calendar appointment and task reminders fire from the server (#876)
     try { reminders.start(handlersCtx.globalResources); } catch (e) { console.warn(`[294-notificationInboxHandler] reminders: ${e.message}`); }
     try { require('../../shrineJobs').start(handlersCtx.globalResources); } catch (e) { console.warn(`[294-notificationInboxHandler] shrine job: ${e.message}`); }
+    try { require('../../weatherDaily').start(handlersCtx.globalResources); } catch (e) { console.warn(`[294-notificationInboxHandler] weather daily: ${e.message}`); }
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             if (!canUse(ctx.clientInfo)) {
@@ -136,6 +137,24 @@ function registerPackets(handlersCtx) {
     }, { destructive: true });
     reg('reminder_status', (ctx) => {
         reply(handlersCtx, ctx.ws, ctx.message, reminders.status());
+    });
+    // daily weather pictures per workspace (#1126, modules/weatherDaily.js)
+    const weatherReply = (ctx) => {
+        const wd = require('../../weatherDaily');
+        reply(handlersCtx, ctx.ws, ctx.message, Object.assign({ ok: true }, wd.getSettings(), { status: wd.status() }));
+    };
+    reg('weather_daily_get', weatherReply);
+    reg('weather_daily_set', (ctx) => {
+        try { require('../../weatherDaily').setPlace(ctx.message); } catch (e) {
+            handlersCtx.sendError(ctx.ws, e.message, 'INVALID_PARAMS', ctx.message.requestId);
+            return;
+        }
+        weatherReply(ctx);
+    }, { destructive: true });
+    reg('weather_daily_run', async (ctx) => {
+        const ws = ctx.message.workspace;
+        const run = await require('../../weatherDaily').runNow(typeof ws === 'string' && ws ? ws : undefined);
+        reply(handlersCtx, ctx.ws, ctx.message, { ok: true, results: run.results, at: run.at });
     });
 }
 
