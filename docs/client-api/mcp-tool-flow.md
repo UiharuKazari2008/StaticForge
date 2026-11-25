@@ -293,7 +293,7 @@ Cursor ingest / QA on the **running Dreamscape tab** (port 9220). Do **not** use
 1. After `public/` JS/CSS/HTML edits: `bash scripts/notify-service-worker-update.sh`
 2. `update_client` — same as desktop context-menu **Update** (`refresh-cache`): `refreshServerCache` then SW download
 3. Branch on the result:
-   - `appliedWithoutRestart` — CSS/assets are live (stylesheet swap). **Do not** `restart_client` (a reload can keep stale HTML hashes).
+   - There is no `appliedWithoutRestart`: a client never takes a changed asset in place (hard ban, `client-update-never-in-place.mdc`); every changed asset, CSS included, comes back as `readyForRestart`.
    - `readyForRestart` — JS/HTML. Then `restart_client`. `reattached: true` with `desktopReady: true` means inspect/js now; `desktopReady: false` means the tab is back but still booting / at logon / locked: poll `get_session_state` `clientLink.desktopReady` (or `list_clients`) until true. `pending: true` with `restartId` means call `restart_client` again with only `{restartId}` until `reattached` (one call stays under the MCP limit).
    - `alreadyCurrent` — nothing to apply; inspect/js now
 4. Then `inspect_elements` (`selectors`, optional `html` / `style` / `text` / `box` / `attrs`) and/or `run_client_js` (`script`; Promises are awaited)

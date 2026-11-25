@@ -206,8 +206,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(aslinkFromPage(event.clientId, request).catch(() => fetch(request)));
 });
 
-// Compile-time: auto-apply CSS-only / apply-safe static cache updates without restart prompt
-const CSS_ONLY_AUTO_APPLY = true;
+// A changed asset never goes into a running page; the client reloads (.cursor/rules/client-update-never-in-place.mdc, #1167)
 const SW_SCRIPT_EPOCH = 13; // bump on breaking SW changes
 
 // Enable Workbox logging in development
@@ -3349,7 +3348,6 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
 
 function getSwConfig(requestId, source = null) {
     const payload = {
-        cssOnlyAutoApply: CSS_ONLY_AUTO_APPLY === true,
         epoch: SW_SCRIPT_EPOCH
     };
     if (!requestId) {
@@ -3358,7 +3356,6 @@ function getSwConfig(requestId, source = null) {
     replyToSource(source, {
         type: 'SW_CONFIG',
         requestId,
-        cssOnlyAutoApply: payload.cssOnlyAutoApply,
         epoch: payload.epoch
     });
     return payload;

@@ -1494,14 +1494,14 @@ const TOOL_DEFS = [
     {
         name: 'update_client',
         core: true,
-        description: 'Silent bound-tab SW update, same as desktop context-menu Update (refresh-cache): refreshServerCache then download. CSS/apply-safe swaps stylesheets in place and returns appliedWithoutRestart (do not restart_client — a reload can keep stale HTML hashes). JS/HTML returns readyForRestart for restart_client. alreadyCurrent means nothing to apply. No 15s dialog. Run scripts/notify-service-worker-update.sh first after client-asset edits. Distinct from POST /agent/session/update (human Cancel dialog).',
+        description: 'Silent bound-tab SW update, same as desktop context-menu Update (refresh-cache): refreshServerCache then download. A client never takes a changed asset in place, so there is no appliedWithoutRestart: every changed asset (CSS, JS, HTML) returns readyForRestart and takes effect with restart_client. alreadyCurrent means nothing changed. No 15s dialog. Run scripts/notify-service-worker-update.sh first after client-asset edits. Distinct from POST /agent/session/update (human Cancel dialog).',
         scope: 'generation',
         inputSchema: { type: 'object', additionalProperties: false, properties: {} }
     },
     {
         name: 'restart_client',
         core: true,
-        description: 'Restart the bound Dreamscape tab and wait until that login session reconnects (the same clientId counts), this key rebinds, and get_state answers, then for the desktop to finish loading (desktopState desktop / ready; reported as desktopReady). One call waits at most 45s, under the MCP client limit. pending true with restartId means it has not reattached yet: call restart_client again with only {restartId}. No 15s dialog. Call only after update_client returns readyForRestart (JS/HTML). Skip when appliedWithoutRestart or alreadyCurrent. Then run inspect_elements / run_client_js.',
+        description: 'Restart the bound Dreamscape tab and wait until that login session reconnects (the same clientId counts), this key rebinds, and get_state answers, then for the desktop to finish loading (desktopState desktop / ready; reported as desktopReady). One call waits at most 45s, under the MCP client limit. pending true with restartId means it has not reattached yet: call restart_client again with only {restartId}. No 15s dialog. Call after update_client returns readyForRestart (any changed asset, CSS included). Skip when alreadyCurrent (there is no appliedWithoutRestart). Then run inspect_elements / run_client_js.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -9983,11 +9983,9 @@ async function callTool(globalResources, req, name, args) {
             autoBound: !!bind.auto,
             next: failed
                 ? null
-                : (data.appliedWithoutRestart
-                    ? 'appliedWithoutRestart — CSS/assets are live. Do not restart_client. inspect_elements / run_client_js now.'
-                    : (data.readyForRestart
-                        ? 'Call restart_client. If it returns pending and restartId, call restart_client again with only {restartId} until reattached, then inspect_elements / run_client_js.'
-                        : 'alreadyCurrent — inspect/js now. Do not restart_client.')),
+                : (data.readyForRestart
+                    ? 'Call restart_client. If it returns pending and restartId, call restart_client again with only {restartId} until reattached, then inspect_elements / run_client_js.'
+                    : 'alreadyCurrent — inspect/js now. Do not restart_client.'),
             ...data
         }, failed);
     }

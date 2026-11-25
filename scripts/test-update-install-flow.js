@@ -71,16 +71,11 @@ function manager(state = {}) {
     assert.strictEqual(await m.installUpdates(), null);
     assert.deepStrictEqual(m.calls, []);
 
-    // styles downloaded in "let me choose" (fuse tripped, kind css-only): installed live, never a restart
-    m = manager({ pendingApplyFiles: css, pendingUpdateKind: 'css-only', pendingUpdateFuse: true });
-    assert.strictEqual(m.updateAction().kind, 'apply');
-    assert.strictEqual(await m.installUpdates(), 'applied');
-    assert.deepStrictEqual(m.calls, [['apply', 1], ['history', 'Successful']]);
-
-    // applied, with updates counted beside it: they install too
-    m = manager({ pendingApplyFiles: css, pendingUpdateKind: 'apply-safe', pendingUpdateFuse: true, availableUpdates: css, kindOf: 'css-only' });
-    await m.installUpdates();
-    assert.deepStrictEqual(m.calls.map((c) => c[0]), ['apply', 'history', 'installAvailable']);
+    // no apply kind exists any more (#1167): a client never takes an asset in place; downloaded files are a restart
+    m = manager({ pendingApplyFiles: css, pendingUpdateKind: 'restart', pendingUpdateFuse: true });
+    assert.strictEqual(m.updateAction().kind, 'restart');
+    assert.strictEqual(await m.installUpdates(), 'restart');
+    assert.ok(!m.calls.some((c) => c[0] === 'apply'), 'nothing is applied into the page');
 
     // a restart owed: forceRestart, its options passed on
     m = manager({ pendingUpdateFuse: true, pendingUpdateKind: 'restart' });
@@ -95,12 +90,12 @@ function manager(state = {}) {
     assert.deepStrictEqual(m.updateAction(), { kind: 'install', count: 1, restart: true });
     assert.strictEqual(await m.installUpdates(), 'install');
     assert.deepStrictEqual(m.calls, [['installAvailable']]);
-    // ... on the phone: restart at once when they need one (#1014), download when they apply live
+    // ... on the phone: restart at once when they need one (#1014), download when this page runs none of what they change
     window.uiShell = 'mobile';
     m = manager({ availableUpdates: css, kindOf: 'restart' });
     assert.strictEqual(await m.installUpdates(), 'restart');
     assert.deepStrictEqual(m.calls, [['forceRestart', {}]]);
-    m = manager({ availableUpdates: css, kindOf: 'css-only' });
+    m = manager({ availableUpdates: css, kindOf: 'unused' });
     assert.strictEqual(await m.installUpdates(), 'install');
     assert.deepStrictEqual(m.calls, [['installAvailable']]);
     window.uiShell = 'desktop';
@@ -113,12 +108,7 @@ function manager(state = {}) {
     const specFn = new Function('window', `${block(shellSrc, ['\n    function updateNoteSpec('])}; return updateNoteSpec;`);
     const w = { serviceWorkerManager: null };
     const spec = specFn(w);
-    w.serviceWorkerManager = manager({ pendingApplyFiles: css, pendingUpdateKind: 'css-only', pendingUpdateFuse: true });
-    let s = spec();
-    assert.strictEqual(s.action.text, 'Install Now', 'a style update is installed, not restarted for');
-    s.action.run();
-    await new Promise((r) => setTimeout(r, 0));
-    assert.deepStrictEqual(w.serviceWorkerManager.calls.map((c) => c[0]), ['apply', 'history']);
+    let s;
     w.serviceWorkerManager = manager({ pendingUpdateFuse: true, pendingUpdateKind: 'restart', pendingUpdateFilesTotal: 4 });
     s = spec();
     assert.strictEqual(s.action.text, 'Restart Now');

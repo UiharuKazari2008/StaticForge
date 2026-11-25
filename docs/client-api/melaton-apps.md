@@ -189,9 +189,9 @@ A window a shared helper builds for an app (found from the call stack when it is
 featureLoader features update live too when their `FEATURE_MANIFEST` entry says `hot: true`
 (35 so far: the Vista games, Paint, Charmap, Media Player, MMC snap-ins ...). Their scripts load as one
 segment that owns their template markup; their stylesheets stay page stylesheets (features share
-them). An update to a hot feature's scripts or template is a `segments` update
-(`serviceWorkerManager.applySegmentUpdate`): CSS applies live and `featureLoader.swapFeature`
-unloads and reloads the feature, waiting while one of its windows is open.
+them). An update to a hot feature's scripts or template is a restart like any other changed
+asset: the client never swaps a feature or a stylesheet into a running page (hard ban,
+`.cursor/rules/client-update-never-in-place.mdc`).
 
 A feature may be marked hot only when `node scripts/check-app-scope.js --features` lists it (no other
 file, none of its own other scripts and not its template uses a name it puts on the page implicitly;
