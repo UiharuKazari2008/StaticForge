@@ -9079,9 +9079,29 @@ const startMenuKit = (() => {
         return false;
     }
 
+    /** Enter in the search box: the hot result runs (once, however the keyboard delivered the Enter). */
+    let startMenuEnterPending = 0;
+    function startMenuRunHotResult() {
+        startMenuEnterPending = 0;
+        const hot = startMenuEls.list.querySelector('.start-menu-row.is-hot');
+        if (hot && startMenuView === 'search') hot.click();
+    }
+
     function onStartMenuKeydown(e) {
         if (!startMenuEls || !startMenu || startMenu.classList.contains('hidden') || !startMenu.contains(document.activeElement)) return;
-        if (e.altKey || e.ctrlKey || e.metaKey || e.isComposing) return;
+        if (e.altKey || e.ctrlKey || e.metaKey) return;
+        if (e.isComposing || e.keyCode === 229) {
+            // A keyboard that composes words (the phone's or DeX's on-screen / Samsung keyboard, an IME) sends the
+            // Enter while the word is still being composed: that Enter only commits the word, so the hot result
+            // runs once the composition has ended (the search has re-run on the committed text by then).
+            if ((e.key === 'Enter' || e.keyCode === 13) && e.target === startMenuEls.search) {
+                const token = ++startMenuEnterPending;
+                const run = () => { if (startMenuEnterPending === token) setTimeout(() => { if (startMenuEnterPending === token) startMenuRunHotResult(); }, 0); };
+                startMenuEls.search.addEventListener('compositionend', run, { once: true });
+                setTimeout(run, 400); // a keyboard that never reports the composition's end
+            }
+            return;
+        }
         const key = e.key;
         const stop = () => { e.preventDefault(); e.stopPropagation(); };
         // a menu of the Start menu's own is open: arrows and Enter are the menu's (contextMenu.js); Esc closes it alone
@@ -9111,8 +9131,8 @@ const startMenuKit = (() => {
                 if (zone === 'search') {
                     if (key !== 'Enter') return;
                     stop();
-                    const hot = startMenuEls.list.querySelector('.start-menu-row.is-hot');
-                    if (hot && startMenuView === 'search') hot.click();
+                    // a keyboard that sends a plain Enter after the composing one: the pending run is this one
+                    startMenuRunHotResult();
                     return;
                 }
                 stop();
