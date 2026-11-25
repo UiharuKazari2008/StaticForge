@@ -317,7 +317,7 @@
             if (c) {
                 if (!updated) {
                     c.last = m;
-                    if (!m.fromMe && !open) c.unread = true;
+                    if (!m.fromMe && (!open || true)) c.unread = true;
                     chats = [c].concat(chats.filter((x) => x !== c));
                 } else if (c.last && c.last.guid === m.guid) {
                     c.last = m;
@@ -346,7 +346,11 @@
         if (!m.fromMe) stopTyping(g);
         entriesChanged([at >= 0 ? at : list.length - 1]);
         // read only when it is seen: with the screen off or locked it stays unread (and gets its notification)
-        if (!updated && !m.fromMe && view() === 'conv' && readable()) markRead();
+        // (#1122) arrival while the thread is open stays unread until it is read by the rules (scroll to the end, touch, send)
+        if (!updated && !m.fromMe && conv && conv.guid === g && conv.accountId === d.accountId) {
+            conv.unreadSet.add(m.guid);
+            if (page) markEntryEl(m.guid);
+        }
     }
 
     function onReaction(d) {
@@ -692,7 +696,7 @@
         if (!c) return;
         if (conv && conv.guid !== c.guid) leaveConv();
         const tok = ++convTok;
-        conv = { accountId, guid: c.guid, chat: c, messages: [], more: false, unreadFrom: c.unread ? toMs(c.last && c.last.date) - 1 : Infinity };
+        conv = { accountId, guid: c.guid, chat: c, messages: [], more: false, unreadFrom: c.unread ? toMs(c.last && c.last.date) - 1 : Infinity, unreadSet: new Set(), userAt: 0 };
         selectedGuid = c.guid;
         selMsg = null;
         replyTo = null;
@@ -718,13 +722,51 @@
                     const lastMine = conv.messages.reduce((ms, m) => (m.fromMe ? Math.max(ms, toMs(m.date)) : ms), 0);
                     const firstNew = conv.messages.find((m) => !m.fromMe && !m.dateRead && toMs(m.date) > lastMine);
                     conv.unreadFrom = firstNew ? toMs(firstNew.date) - 1 : Infinity;
+                    conv.messages.forEach((m) => { if (!m.fromMe && !m._local && toMs(m.date) > conv.unreadFrom) conv.unreadSet.add(m.guid); });
+                    if (!conv.unreadSet.size) { const n = newestIncoming(); if (n) conv.unreadSet.add(n); }
                 }
             }, { paint: true });
         } catch (err) { errorBox('The conversation could not be read.', err); }
         if (tok !== convTok) return;
         renderEntries(true);
-        markRead();
+        // (#1122) opening does not read: the thread rests on the last unread message, and only the rules below mark it
+        jumpToUnread();
+        if (!conv.unreadSet.size) markRead();
         if (isCurrent()) sh.refreshSoftKeys();
+    }
+
+    /** Rest on the last unread message (the end when all is read). */
+    function jumpToUnread() {
+        if (!page || !conv) return;
+        const box = page.querySelector('.wch-history');
+        let last = null;
+        conv.unreadSet.forEach((g) => { last = g; });
+        const el = last ? box.querySelector(`.wtm-entry[data-guid="${CSS.escape(last)}"]`) : null;
+        if (el) el.scrollIntoView({ block: 'end' }); else box.scrollTop = box.scrollHeight;
+    }
+
+    function markEntryEl(guid, read) {
+        if (!page) return;
+        const el = page.querySelector(`.wtm-entry[data-guid="${CSS.escape(guid)}"]`);
+        if (!el) return;
+        el.classList.toggle('is-unread', !read);
+        const ico = el.querySelector('.wch-eico');
+        if (ico) ico.dataset.ico = read ? 'msg-read' : 'msg-unread';
+    }
+
+    /** One message read (touched). The server hears it when the last unread one is read. */
+    function markOneRead(guid) {
+        if (!conv || !conv.unreadSet.delete(guid)) return;
+        markEntryEl(guid, true);
+        if (!conv.unreadSet.size) markRead({ clear: true });
+    }
+
+    /** The user scrolled by hand to the very end of the thread: everything is read. */
+    function scrolledToEnd() {
+        if (!conv || !conv.unreadSet.size || Date.now() - conv.userAt > 1500) return;
+        if (view() !== 'conv' || !isCurrent() || document.visibilityState === 'hidden') return;
+        const box = page.querySelector('.wch-history');
+        if (box.scrollHeight - box.scrollTop - box.clientHeight < 24) markRead({ clear: true });
     }
 
     async function reloadConv() {
@@ -760,24 +802,22 @@
         const newest = newestIncoming();
         const due = !!(c && c.unread) || conv.readTo !== newest;
         if (c) c.unread = false;
+        if (opts.clear) conv.unreadSet.clear();
         if (opts.clear && conv.unreadFrom !== Infinity) {
             conv.unreadFrom = Infinity;
-            if (page) page.querySelectorAll('.wtm-entry.is-unread').forEach((el) => {
-                el.classList.remove('is-unread');
-                const ico = el.querySelector('.wch-eico');
-                if (ico) ico.dataset.ico = 'msg-read';
-            });
         }
+        if (opts.clear && page) page.querySelectorAll('.wtm-entry.is-unread').forEach((el) => {
+            el.classList.remove('is-unread');
+            const ico = el.querySelector('.wch-eico');
+            if (ico) ico.dataset.ico = 'msg-read';
+        });
         if (!due) return;
         conv.readTo = newest;
         if (t && typeof t.markRead === 'function') t.markRead(conv.accountId, conv.guid, newest || undefined).catch(() => { if (conv) conv.readTo = undefined; });
     }
 
     /** You did something in the open conversation (scrolled, touched, typed, replied): it is read. */
-    function engaged() {
-        if (!conv || view() !== 'conv' || !isCurrent() || document.visibilityState === 'hidden') return;
-        markRead({ clear: true });
-    }
+    function engaged() { /* (#1122) touching, opening, typing and links no longer read; see markOneRead / scrolledToEnd / send */ }
 
     async function loadOlder() {
         if (!conv || !conv.more) return;
@@ -845,7 +885,7 @@
 
     function entryHtml(m, n, lastMine) {
         if (m.groupEvent && !m.text) return `<div class="wtm-event" data-n="${n}">${esc(groupEventText(m))}</div>`;
-        const unread = !m.fromMe && conv && toMs(m.date) > conv.unreadFrom;
+        const unread = !m.fromMe && conv && conv.unreadSet.has(m.guid);
         let body = '';
         if (m.replyTo) body += quoteHtml(m.replyTo);
         if (m.retracted) {
@@ -1627,10 +1667,11 @@
                 return;
             }
             const el = e.target.closest('.wtm-entry');
-            if (el) selectEntry(el.dataset.guid);
+            if (el) { selectEntry(el.dataset.guid); markOneRead(el.dataset.guid); }
         });
         // looking at the conversation reads it: a touch, a scroll by finger, wheel or keys
-        ['pointerdown', 'wheel', 'keydown'].forEach((type) => hist.addEventListener(type, engaged, { passive: true }));
+        ['pointerdown', 'wheel', 'keydown', 'touchmove'].forEach((type) => hist.addEventListener(type, () => { if (conv) conv.userAt = Date.now(); }, { passive: true }));
+        hist.addEventListener('scroll', scrolledToEnd, { passive: true });
         p.querySelector('.wtm-atts').addEventListener('click', (e) => {
             const a = e.target.closest('.msg-att');
             if (!a) return;
@@ -1697,7 +1738,7 @@
         const back = () => setTimeout(() => {
             if (!seen()) return;
             if (listStale && (view() === 'list' || isDual())) renderList();
-            if (conv && view() === 'conv') { if (convStale) renderEntries(); if (readable()) markRead(); }
+            if (conv && view() === 'conv') { if (convStale) renderEntries(); }
         }, 0);
         document.addEventListener('visibilitychange', back, { signal: appScopeSignal });
         window.addEventListener('melatonscreen', back, { signal: appScopeSignal });
@@ -1721,7 +1762,7 @@
                 // what pushes changed while it was away, at once (a read follows only when one may be missing)
                 if (listStale && (view() === 'list' || isDual())) renderList();
                 if (view() === 'list' && (listDirty || !loaded || Date.now() - listReadAt > LIST_STALE_MS)) refresh({ quiet: loaded });
-                else if (view() === 'conv') { renderEntries(); markRead(); }
+                else if (view() === 'conv') { renderEntries(); }
             },
             hide() {
                 if (conv && feat('typing')) { const t = tm(); if (t) t.typing(conv.accountId, conv.guid, false); }
