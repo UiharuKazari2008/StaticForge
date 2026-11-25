@@ -332,14 +332,22 @@
     };
 
     /**
-     * Win+Shift+S (Yukimi, Nov 24 2026): the Snipping Tool, a rectangle snip at once over the screen as it is (Android
-     * windows taken with it, then put aside while the snip is chosen, back after - apps/snipping). Already open: a new snip.
+     * Win+Shift+S (Yukimi, Nov 24 2026): the Snipping Tool, a snip at once over the screen as it is, in its start mode (the
+     * last selection mode, or Rectangular Snip when Options > Start in the last selection mode is off; a last mode of
+     * Full-screen Snip snips at once too). Android windows are taken with it, then put aside while the snip is chosen, back
+     * after - apps/snipping. Already open: a new snip (one being chosen is started over). Not running: 'start' asks the tool
+     * to resolve the start mode when it launches.
      */
     function snipNow() {
         const S = root.melatonSnipping;
         const t = S && typeof S._running === 'function' ? S._running() : null;
-        if (t && typeof t.snip === 'function') { t.openMain(); void t.snip('rect'); return; }
-        root.melatonSnipQuick = 'rect';
+        if (t && typeof t.snip === 'function' && typeof S.startMode === 'function') {
+            t.openMain();
+            const mode = S.startMode();
+            void (typeof t.restart === 'function' ? t.restart(mode) : t.snip(mode));
+            return;
+        }
+        root.melatonSnipQuick = 'start';
         if (root.melatonApps) void root.melatonApps.launch({ packageId: 'snipping' });
     }
 

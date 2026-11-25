@@ -17,6 +17,16 @@
     height: 85px !important;
 }
 
+/* Hide instruction text: no message strip (and no Help), the client is the 38 px toolbar (window 300x74) */
+.snip-window.snip-main.is-compact .snip-client {
+    height: 38px !important;
+    min-height: 38px !important; /* (the shared .modal-content floor is 40 px: measured 284x40 on the Fold before this) */
+}
+
+.snip-main.is-compact .snip-message {
+    display: none;
+}
+
 .snip-window .snip-toolbar {
     position: absolute;
     left: 0;
@@ -237,9 +247,27 @@
     cursor: url('/static_images/vista-cmdbar/paint-eraser.png') 3 13, cell;
 }
 
-/* hidden while the screen is taken */
-.modal.snip-hide {
+/* hidden while the screen is taken: the tool's windows and taskbar buttons, menus and tooltips (quietScreen) */
+.snip-hide {
     visibility: hidden !important;
+}
+
+/* the main window over the frozen screen while snipping (a class: the window manager's own z-order cannot lower it) */
+.modal.snip-lifted {
+    z-index: 2147483001 !important;
+}
+
+/* New's mode menu (and the layer that catches the click outside it) over the frozen screen */
+body.snip-active .context-menu-overlay {
+    z-index: 2147483002;
+}
+
+body.snip-active .context-menu {
+    z-index: 2147483003;
+}
+
+body.snip-active .context-menu-submenu {
+    z-index: 2147483004;
 }
 
 /* snipping: the frozen screen over everything */

@@ -16,6 +16,17 @@
  * which the browser asks about each time). Saves go to Documents (PNG, GIF, JPEG, Single file
  * HTML); Copy puts a PNG on the clipboard; Send Snip opens Dovecote with the snip.
  *
+ * 1.1 (Yozora #1161):
+ *   - the tool is never in its own picture: quietScreen() dismisses menus / hover tooltips at once, hides the tool's windows
+ *     (also ones still closing, its dialogs) and their taskbar buttons, waits until they are really hidden (bounded), and
+ *     every capture path (native / exact / composite) runs inside it; programs may add an element with
+ *     melatonSnipping.hideForSnip(el). Each shot says which path made it (shot.path, logged once as '[snipping] grab').
+ *   - the New split button works during a snip too (the menus are lifted above the frozen screen while snipping), by
+ *     keyboard (Alt+N, Down / Alt+Down on New or its arrow) and a snip never leaves the screen frozen
+ *   - StartInLastMode (default on): the tool and Win+Shift+S start in the last selection mode (CaptureMode), off: always
+ *     Rectangular Snip (startMode())
+ *   - Hide instruction text also takes the message strip away: the window gets 47 px shorter (is-compact)
+ *
  *   melatonApps.define('snipping', start)
  */
 (function (root) {
@@ -49,6 +60,8 @@
     function prefs() {
         return {
             mode: reg('CaptureMode', 'rect'),
+            // (HKCU\...\Snip StartInLastMode: the tool and Win+Shift+S start in the last mode, off: Rectangular Snip)
+            startLast: reg('StartInLastMode', true) !== false,
             hideText: reg('HideInstructions', false) === true,
             copy: reg('AlwaysCopy', true) !== false,
             prompt: reg('PromptToSave', true) !== false,
@@ -63,6 +76,13 @@
         };
     }
 
+
+    /** The mode a new snip starts in: the last one (CaptureMode) with Start in the last selection mode, else Rectangular Snip. */
+    function startMode() {
+        const p = prefs();
+        if (!p.startLast) return 'rect';
+        return MODES.some((x) => x[0] === p.mode) ? p.mode : 'rect';
+    }
 
     function blobToBase64(blob) {
         return new Promise((resolve, reject) => {
@@ -85,22 +105,94 @@
 
     // ---- the screen --------------------------------------------------------------------------
 
-    /** The desktop as it shows (without the Snipping Tool's own windows): { canvas, scale, rects }. */
-    async function grabScreen(app, hideEls) {
+    const OWN_ID = 'melatonSnipping';
+    // elements other programs asked to leave out of the next grab (melatonSnipping.hideForSnip)
+    const extraHide = new Set();
+    const hideForSnip = (x) => { (Array.isArray(x) ? x : [x]).forEach((el) => { if (el && el.classList) extraHide.add(el); }); };
+    const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+    /** n frames (a background tab draws none: a timer stands in for each). */
+    async function frames(n) {
+        for (let i = 0; i < n; i += 1) await new Promise((r) => { let d = false; const go = () => { if (!d) { d = true; r(); } }; requestAnimationFrame(go); setTimeout(go, 60); });
+    }
+    const drawn = (el) => {
+        if (!el || !el.isConnected) return false;
+        const cs = getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+    };
+
+    /** The tool's windows in the page (also ones still closing, and its dialogs), the ones the tool lists included. */
+    function ownModals(listed) {
+        const set = new Set((listed || []).filter(Boolean));
+        doc.querySelectorAll('body > .modal').forEach((m) => {
+            if (String(m.dataset.windowIdentifier || '').startsWith(OWN_ID) || m.id === 'snipOptions' || m.id === 'snipCustomize') set.add(m);
+        });
+        return Array.from(set);
+    }
+
+    /** The taskbar buttons of those windows (a group button only when all its windows are the tool's). */
+    function ownTaskbarItems(modals) {
+        const ids = new Set(modals.map((m) => m.id).filter(Boolean));
+        const out = [];
+        doc.querySelectorAll('#taskbarWindows .taskbar-window-item').forEach((it) => {
+            let own = [];
+            if (it.dataset.modalId) own = [it.dataset.modalId];
+            else if (it.dataset.groupedModals) { try { own = JSON.parse(it.dataset.groupedModals) || []; } catch (_) { own = []; } }
+            if (own.length && own.every((id) => ids.has(id))) out.push(it);
+        });
+        return out;
+    }
+
+    /**
+     * Everything of the tool and of what started the snip leaves the screen before it is taken: the open menu (instantly, a
+     * Vista menu fades for ~250 ms), hover tooltips, the tool's windows and taskbar buttons, what other programs asked for.
+     * Waits (at most ~400 ms, so a snip never hangs) until all of it really is hidden, then two frames. Returns { hidden, restore }.
+     */
+    async function quietScreen(listed) {
+        const CM = root.contextMenu;
+        try { for (let i = 0; i < 6 && CM && CM.isOpen && typeof CM.hideMenu === 'function'; i += 1) CM.hideMenu({ instant: true }); } catch (_) { /* gone */ }
+        const modals = ownModals(listed);
+        const list = new Set([...modals, ...ownTaskbarItems(modals), ...extraHide]);
+        extraHide.clear();
+        // a menu still fading out (and its click-catching layer), and the tooltips the pointer made
+        doc.querySelectorAll('.context-menu, .context-menu-submenu, .context-menu-overlay').forEach((el) => { if (!el.classList.contains('hidden')) list.add(el); });
+        const PM = root.PopoverManager;
+        if (PM && PM.activePopovers) {
+            PM.activePopovers.forEach((data, el) => {
+                if (!data || !data.popover || !data.hoverOnly || !data.popover.classList.contains('show')) return;
+                try { PM.hide(el); } catch (_) { /* gone */ }
+                list.add(data.popover);
+            });
+        }
+        const hidden = Array.from(list).filter((el) => !el.classList.contains('snip-hide'));
+        hidden.forEach((el) => el.classList.add('snip-hide'));
+        const restore = () => hidden.forEach((el) => el.classList.remove('snip-hide'));
+        const t0 = performance.now();
+        await frames(2);
+        const menuUp = () => Array.from(doc.querySelectorAll('.context-menu, .context-menu-submenu')).some((el) => !el.classList.contains('snip-hide') && drawn(el));
+        while (performance.now() - t0 < 400 && (hidden.some((el) => el.isConnected && getComputedStyle(el).visibility !== 'hidden') || menuUp())) await frames(1);
+        await frames(1);
+        // (the WebView's compositor is a frame or two behind the DOM)
+        await delay(root.AndroidScreenGrab ? 40 : 0);
+        return { hidden: Array.from(list), restore };
+    }
+
+    /** The desktop as it shows (without the Snipping Tool's own windows): { canvas, scale, rects, path }. */
+    async function grabScreen(tool) {
         const W = root.innerWidth;
         const H = root.innerHeight;
-        hideEls.forEach((m) => m.classList.add('snip-hide'));
-        // a frame for the windows to go (a background tab draws no frames: a timer stands in)
-        await new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(r)); setTimeout(r, 80); });
+        const quiet = await quietScreen(tool.ownWindows());
         let shot = null;
         try {
             // inside the Android app: the screen itself (every window, web page and Vista scrollbar as it shows)
             shot = await grabNative(W);
             if (!shot && prefs().exact) shot = await grabExact(W);
-            if (!shot) shot = await grabComposite(W, H, hideEls);
+            if (!shot) shot = await grabComposite(W, H, quiet.hidden);
         } finally {
-            hideEls.forEach((m) => m.classList.remove('snip-hide'));
+            quiet.restore();
         }
+        if (shot) console.info('[snipping] grab', shot.path);
         return shot;
     }
 
@@ -138,7 +230,7 @@
             c.width = img.naturalWidth;
             c.height = img.naturalHeight;
             c.getContext('2d').drawImage(img, 0, 0);
-            return { canvas: c, scale: c.width / W, exact: true };
+            return { canvas: c, scale: c.width / W, exact: true, path: 'native' };
         } catch (_) { return null; }
     }
 
@@ -158,7 +250,7 @@
             c.width = v.videoWidth;
             c.height = v.videoHeight;
             c.getContext('2d').drawImage(v, 0, 0);
-            return { canvas: c, scale: c.width / W, exact: true };
+            return { canvas: c, scale: c.width / W, exact: true, path: 'exact' };
         } catch (_) {
             return null; // declined, or not allowed here: the drawn desktop instead
         } finally {
@@ -208,7 +300,7 @@
             const src = WC.composite(pic);
             x.drawImage(src, 2, 2, src.width - 4, src.height - 4, r.left, r.top, pic.w, pic.h);
         }
-        return { canvas: c, scale, exact: false };
+        return { canvas: c, scale, exact: false, path: 'composite' };
     }
 
     /** The wallpaper element's CSS background (cover / contain / tile, its position and colour). */
@@ -256,25 +348,37 @@
             this.mode = mode;
             this.done = done;
             this.p = prefs();
+            this.ended = false;
             const o = doc.createElement('div');
             o.className = `snip-overlay is-${mode}`;
             o.innerHTML = '<canvas class="snip-overlay-view"></canvas>';
-            doc.body.appendChild(o);
             this.el = o;
-            this.view = o.querySelector('canvas');
-            this.view.width = root.innerWidth;
-            this.view.height = root.innerHeight;
-            this.vx = this.view.getContext('2d');
-            this.targets = mode === 'window' ? windowTargets(tool.ownWindows()) : [];
-            this.hot = null;
-            this.path = null;
-            this.draw();
             this.onKey = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); this.finish(null); } };
-            doc.addEventListener('keydown', this.onKey, true);
-            o.addEventListener('pointerdown', (ev) => this.down(ev));
-            o.addEventListener('pointermove', (ev) => this.move(ev));
-            o.addEventListener('pointerup', (ev) => this.up(ev));
-            o.addEventListener('contextmenu', (ev) => ev.preventDefault());
+            try {
+                doc.body.appendChild(o);
+                this.view = o.querySelector('canvas');
+                this.view.width = root.innerWidth;
+                this.view.height = root.innerHeight;
+                this.vx = this.view.getContext('2d');
+                this.targets = mode === 'window' ? windowTargets(ownModals(tool.ownWindows())) : [];
+                this.hot = null;
+                this.path = null;
+                this.draw();
+                doc.addEventListener('keydown', this.onKey, true);
+                o.addEventListener('pointerdown', (ev) => this.down(ev));
+                o.addEventListener('pointermove', (ev) => this.move(ev));
+                o.addEventListener('pointerup', (ev) => this.up(ev));
+                o.addEventListener('pointercancel', () => { this.start = null; });
+                o.addEventListener('contextmenu', (ev) => ev.preventDefault());
+                // the menus (New's mode menu) come up above the frozen screen while it is chosen
+                doc.body.classList.add('snip-active');
+            } catch (err) {
+                // never a frozen screen left behind by a constructor that fell over
+                doc.removeEventListener('keydown', this.onKey, true);
+                doc.body.classList.remove('snip-active');
+                o.remove();
+                throw err;
+            }
         }
 
         /** The frozen screen, washed white where it is not being taken (Show screen overlay). */
@@ -322,7 +426,7 @@
 
         down(ev) {
             if (ev.button !== 0) { if (ev.button === 2) this.finish(null); return; }
-            this.el.setPointerCapture(ev.pointerId);
+            try { this.el.setPointerCapture(ev.pointerId); } catch (_) { /* a synthetic pointer */ }
             const p = { x: ev.clientX, y: ev.clientY };
             this.start = p;
             if (this.mode === 'free') this.path = [p];
@@ -404,7 +508,10 @@
         }
 
         finish(result) {
+            if (this.ended) return;
+            this.ended = true;
             doc.removeEventListener('keydown', this.onKey, true);
+            doc.body.classList.remove('snip-active');
             this.el.remove();
             this.done(result);
         }
@@ -444,8 +551,8 @@
             this.main = null;
             this.markups = new Set();
             this.busy = false;
-            this.mode = prefs().mode;
-            if (!MODES.some((x) => x[0] === this.mode)) this.mode = 'rect';
+            this.running = null;
+            this.mode = startMode();
         }
 
         ownWindows() {
@@ -456,8 +563,11 @@
 
         openMain() {
             if (this.main && this.main.isConnected) { call('bringModalToFront', this.main); return this.main; }
-            const m = chrome('Snipping Tool', 'snip-main');
+            // (minHeight: the 121 px window, or the 74 px one with the instructions hidden, is positioned by its real height)
+            const m = chrome('Snipping Tool', 'snip-main', { minHeight: 60 });
             const p = prefs();
+            // the window opens at its size (Hide instruction text: without the message strip), no flash of the tall one
+            if (p.hideText) m.classList.add('is-compact');
             // measured on the VM: a 284x85 client, the toolbar (38 px, #f0f0f0) over the message
             m.querySelector('.snip-client').innerHTML = `
                 <div class="snip-toolbar" role="toolbar">
@@ -470,11 +580,12 @@
             this.main = m;
             this.syncMain();
             m.querySelector('.snip-close').addEventListener('click', () => this.closeWindow(m));
-            m.querySelector('.snip-new').addEventListener('click', () => void this.snip(this.mode));
+            m.querySelector('.snip-new').addEventListener('click', () => void this.restart(this.mode));
             m.querySelector('.snip-cancel').addEventListener('click', () => { if (this.session) this.session.finish(null); });
             m.querySelector('.snip-options').addEventListener('click', () => this.options(m));
             m.querySelector('.snip-help').addEventListener('click', () => this.help());
             this.modeMenu(m.querySelector('.snip-drop'), m);
+            this.splitKeys(m);
             this.track(m);
             this.show(m);
             return m;
@@ -484,7 +595,14 @@
             const m = this.main;
             if (!m) return;
             const t = m.querySelector('.snip-text');
-            if (t) { t.textContent = this.session ? (MODE_TEXT[this.mode] || IDLE_TEXT) : IDLE_TEXT; t.hidden = prefs().hideText; }
+            const hide = prefs().hideText;
+            if (t) { t.textContent = this.session ? (MODE_TEXT[this.mode] || IDLE_TEXT) : IDLE_TEXT; t.hidden = hide; }
+            // Hide instruction text: the message strip (and Help) goes and the window is 47 px shorter, its top-left kept
+            if (m.classList.contains('is-compact') !== hide) {
+                const r = m.dataset.snipPlaced ? m.getBoundingClientRect() : null;
+                m.classList.toggle('is-compact', hide);
+                if (r) call('setModalOffsetsFromViewportTopLeft', m, Math.round(r.left), Math.round(r.top), { allowPartialBottomOverflow: true });
+            }
             const c = m.querySelector('.snip-cancel');
             if (c) { c.disabled = !this.session; c.querySelector('.snip-icon').classList.toggle('is-off', !this.session); }
         }
@@ -492,12 +610,23 @@
         modeMenu(btn, owner) {
             if (!root.contextMenu || !btn) return;
             root.contextMenu.attachClickMenuToElement(btn, {
-                onAction: (a) => { if (a.startsWith('mode-')) { this.setMode(a.slice(5)); void this.snip(this.mode); } },
+                // (measured on the VM: the menu opens under the whole New button, at its left edge, not under the arrow)
+                anchorElement: () => (owner && owner.querySelector('.snip-new')) || btn,
+                onAction: (a) => { const id = a.startsWith('mode-') ? a.slice(5) : ''; if (MODES.some((x) => x[0] === id)) { this.setMode(id); void this.restart(id); } },
                 sections: [{ type: 'list', initfn: (section) => {
-                    section.items = MODES.map(([id, text]) => ({ text, action: `mode-${id}`, showIndicator: true, checked: this.mode === id }));
+                    section.items = MODES.map(([id, text]) => ({ text, action: `mode-${id}`, showIndicator: true, indicatorMark: 'radio', checked: this.mode === id }));
                 } }]
             });
             void owner;
+        }
+
+        /** Alt+N / Alt+C / Alt+O on the main window (measured on the VM: Alt+N snips in the last mode; Down / Alt+Down do nothing there). */
+        splitKeys(m) {
+            m.addEventListener('keydown', (ev) => {
+                if (!ev.altKey || ev.ctrlKey || ev.metaKey) return;
+                const hit = { n: () => this.restart(this.mode), c: () => { if (this.session) this.session.finish(null); }, o: () => this.options(m) }[ev.key.toLowerCase()];
+                if (hit) { ev.preventDefault(); ev.stopPropagation(); void hit(); }
+            });
         }
 
         setMode(m) {
@@ -530,6 +659,8 @@
         }
 
         closeWindow(m) {
+            // closing the main window while the screen is frozen ends the snip (no overlay without its Cancel)
+            if (this.session && m === this.main) this.session.finish(null);
             try { call('closeModal', m); } catch (_) { /* gone */ }
             setTimeout(() => m.remove(), 300);
             if (m === this.main) this.main = null;
@@ -539,50 +670,74 @@
 
         // ---- a snip --------------------------------------------------------------------
 
-        async snip(mode) {
-            if (this.busy) return;
+        /** A snip in `mode` (one at a time; the promise ends with the snip). */
+        snip(mode) {
+            if (this.busy) return Promise.resolve();
             this.busy = true;
+            const p = this.runSnip(mode).finally(() => { this.busy = false; });
+            this.running = p;
+            return p;
+        }
+
+        /** New (or a mode of its menu) while a snip is chosen: that one ends, the new one starts. */
+        async restart(mode) {
+            if (!MODES.some((x) => x[0] === mode)) return;
+            if (this.busy && !this.session) return; // the screen is being taken right now
+            if (this.session) { this.session.finish(null); if (this.running) await this.running; }
+            await this.snip(mode);
+        }
+
+        /** Never rejects and never leaves the screen frozen, the windows hidden or this.busy set. */
+        async runSnip(mode) {
             this.mode = mode;
             this.syncMain();
-            const own = this.ownWindows();
+            // the DeX desktop's Android windows are in the picture, but over the page they would hide the snipping
+            // overlay: put aside (minimised) while the snip is chosen, back in their order after (Yukimi, Nov 24 2026)
+            const T = root.melatonAndroidTaskbar;
+            let aside = [];
+            const giveBack = () => { if (aside.length && T && typeof T.restore === 'function') { const ids = aside; aside = []; setTimeout(() => { try { T.restore(ids); } catch (_) { /* gone */ } }, 60); } };
+            let hidden = [];
+            const release = () => {
+                this.session = null;
+                giveBack();
+                hidden.forEach((m) => m.classList.remove('snip-hide'));
+                hidden = [];
+                doc.body.classList.remove('snip-active');
+                this.lift(false);
+                this.syncMain();
+            };
             try {
-                const shot = await grabScreen(this.app, own);
+                const shot = await grabScreen(this);
                 if (!shot) return;
                 if (mode === 'full') { this.captured({ canvas: shot.canvas, scale: shot.scale }); return; }
-                // the DeX desktop's Android windows are in the picture, but over the page they would hide the snipping
-                // overlay: put aside (minimised) while the snip is chosen, back in their order after (Yukimi, Nov 24 2026)
-                const T = root.melatonAndroidTaskbar;
-                let aside = [];
                 if (T && typeof T.minimizeShown === 'function') { try { aside = T.minimizeShown() || []; } catch (_) { aside = []; } }
-                const giveBack = () => { if (aside.length && T && typeof T.restore === 'function') { const ids = aside; aside = []; setTimeout(() => { try { T.restore(ids); } catch (_) { /* gone */ } }, 60); } };
                 // the Snipping Tool's window stays over the frozen screen (Vista), the others go
-                const hidden = [...this.markups].map((k) => k.modal);
+                hidden = [...this.markups].map((k) => k.modal);
                 hidden.forEach((m) => m.classList.add('snip-hide'));
                 await new Promise((resolve) => {
                     this.session = new Session(this, shot, mode, (res) => {
-                        this.session = null;
-                        giveBack();
-                        hidden.forEach((m) => m.classList.remove('snip-hide'));
-                        this.lift(false);
-                        this.syncMain();
-                        if (res) this.captured(res);
-                        else if (!this.main && !this.markups.size) this.app.exit();
-                        resolve();
+                        release();
+                        try {
+                            if (res) this.captured(res);
+                            else if (!this.main && !this.markups.size) this.app.exit();
+                        } catch (err) { console.warn('[snipping] captured', err); } finally { resolve(); }
                     });
                     if (this.main) this.lift(true);
                     this.syncMain();
                 });
-            } finally {
-                this.busy = false;
+            } catch (err) {
+                console.warn('[snipping] snip', err);
+                if (this.session) this.session.finish(null);
+                release();
             }
         }
 
-        /** The main window over the overlay while snipping, and back after. */
+        /** The main window over the overlay while snipping, and back after (a class: bringModalToFront cannot lower it). */
         lift(on) {
             if (!this.main) return;
-            if (on) { this.main.dataset.snipZ = this.main.style.zIndex || ''; this.main.style.zIndex = '2147483001'; } else if ('snipZ' in this.main.dataset) {
-                this.main.style.zIndex = this.main.dataset.snipZ;
-                delete this.main.dataset.snipZ;
+            if (on) this.main.classList.add('snip-lifted');
+            else if (this.main.classList.contains('snip-lifted')) {
+                this.main.classList.remove('snip-lifted');
                 call('bringModalToFront', this.main);
             }
         }
@@ -609,14 +764,15 @@
                 id: 'snipOptions', key: 'snippingtool:107', icon: ICON16, owner,
                 init: (ctx) => {
                     ctx.set(1025, p.hideText); ctx.set(1022, p.copy); ctx.set(1018, p.includeUrl); ctx.set(1026, p.prompt);
-                    ctx.set(1015, p.quickLaunch); ctx.set(1016, p.overlay); ctx.set(1023, p.showInk);
+                    ctx.set(1015, p.quickLaunch); ctx.set(1016, p.overlay); ctx.set(1023, p.showInk); ctx.set(1027, p.startLast);
                     const s = ctx.el(1019);
                     if (s) { s.innerHTML = INK.map(([v, t]) => `<option value="${v}">${t}</option>`).join(''); s.value = INK.some((x) => x[0] === p.ink) ? p.ink : '#ff0000'; }
                 },
                 ok: (ctx) => {
                     setReg({
                         HideInstructions: !!ctx.get(1025), AlwaysCopy: !!ctx.get(1022), IncludeUrl: !!ctx.get(1018), PromptToSave: !!ctx.get(1026),
-                        QuickLaunchIcon: !!ctx.get(1015), ShowScreenOverlay: !!ctx.get(1016), SelectionInkColor: String(ctx.get(1019) || '#ff0000'), ShowSelectionInk: !!ctx.get(1023)
+                        QuickLaunchIcon: !!ctx.get(1015), ShowScreenOverlay: !!ctx.get(1016), SelectionInkColor: String(ctx.get(1019) || '#ff0000'), ShowSelectionInk: !!ctx.get(1023),
+                        StartInLastMode: !!ctx.get(1027)
                     });
                     setTimeout(() => this.syncMain(), 50);
                     return true;
@@ -696,7 +852,7 @@
                     sections: [{ type: 'list', initfn: (section) => { section.items = this.menu(t.dataset.snipMenu); } }]
                 });
             });
-            m.querySelector('.snip-new').addEventListener('click', () => void this.tool.snip(this.tool.mode));
+            m.querySelector('.snip-new').addEventListener('click', () => void this.tool.restart(this.tool.mode));
             m.querySelectorAll('.snip-toolbar [data-a]').forEach((b) => b.addEventListener('click', () => void this.action(b.dataset.a)));
             const dropMenu = (sel, items) => root.contextMenu.attachClickMenuToElement(m.querySelector(sel), {
                 onAction: (a) => void this.action(a),
@@ -753,7 +909,7 @@
         async action(a) {
             if (a.startsWith('pen-')) { this.pen = a.slice(4); this.mode = 'pen'; this.syncTools(); return; }
             switch (a) {
-                case 'new': void this.tool.snip(this.tool.mode); return;
+                case 'new': void this.tool.restart(this.tool.mode); return;
                 case 'save': await this.saveAs(); return;
                 case 'copy': await this.copy(false); return;
                 case 'send': await this.send(); return;
@@ -1020,10 +1176,17 @@
     async function start(app) {
         // Options and Customize Pens are Vista dialog templates, a feature loaded on demand
         if (root.featureLoader && !root.vistaDialogTemplate) { try { await root.featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* no dialogs */ } }
+        // the shortcut's ask: 'start' is the start mode (the last one or Rectangular, Options), a mode name that mode
+        const quick = root.melatonSnipQuick;
+        root.melatonSnipQuick = null;
+        const quickMode = quick ? (MODES.some((x) => x[0] === quick) ? quick : startMode()) : null;
         if (running) {
             // already open: the main window comes up (Vista runs one Snipping Tool)
             running.openMain();
             app.exit();
+            // a launch from another program (Fleet's Snip the Desktop, the Start menu) snips as a fresh launch does
+            const again = quickMode || (startMode() !== 'full' ? startMode() : null);
+            if (again) void running.restart(again);
             return;
         }
         const tool = new SnippingTool(app);
@@ -1034,13 +1197,12 @@
             tool.ownWindows().forEach((m) => { try { call('closeModal', m); } catch (_) { /* gone */ } m.remove(); });
         });
         tool.openMain();
-        // Vista starts snipping straight away, in the last mode (Win+Shift+S: a rectangle, desktopHotkeys.js snipNow)
-        const quick = root.melatonSnipQuick;
-        root.melatonSnipQuick = null;
-        if (quick) setTimeout(() => void tool.snip(quick), 250);
+        // Vista starts snipping straight away, in the start mode (desktopHotkeys.js snipNow asks for it by the 'start' sentinel; a
+        // plain launch does not take a full-screen snip at once, the shortcut does)
+        if (quickMode) setTimeout(() => void tool.snip(quickMode), 250);
         else if (tool.mode !== 'full') setTimeout(() => void tool.snip(tool.mode), 250);
     }
 
-    root.melatonSnipping = { start, Session, grabComposite, layers, _running: () => running };
+    root.melatonSnipping = { start, startMode, hideForSnip, Session, grabComposite, layers, _running: () => running };
     if (typeof melatonApps !== 'undefined') melatonApps.define('snipping', start); // eslint-disable-line no-undef
 })(typeof window !== 'undefined' ? window : globalThis);
