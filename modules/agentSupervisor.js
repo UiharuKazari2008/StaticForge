@@ -403,7 +403,7 @@ async function callEngine(gr, messages, opts = {}) {
     let from = null;
     for (const link of chain) {
         let ep;
-        try { ep = endpoint(gr, Object.assign({}, s, link)); ep.effort = effortFor(opts.kind, ep.effort); } catch (e) { lastErr = e; continue; }
+        try { ep = endpoint(gr, Object.assign({}, s, link)); ep.effort = opts.effort !== undefined ? opts.effort : effortFor(opts.kind, ep.effort); } catch (e) { lastErr = e; continue; }
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), CALL_TIMEOUT_MS);
         try {
@@ -473,9 +473,9 @@ function pickBalance(x) {
     return { balance: x.balance !== undefined ? x.balance : (x.remaining !== undefined ? x.remaining : null), balanceText: x.balanceText || x.text || '', currency: x.currency || '', state: x.state || '', title: x.title || '' };
 }
 
-async function askModel(gr, s, userText) {
+async function askModel(gr, s, userText, opts = {}) {
     {
-        const r = await callEngine(gr, [{ role: 'system', content: SYSTEM }, { role: 'user', content: userText }], { kind: 'review' });
+        const r = await callEngine(gr, [{ role: 'system', content: SYSTEM }, { role: 'user', content: userText }], Object.assign({ kind: 'review' }, opts));
         const ep = { name: r.engine, model: r.model };
         const choice = { finish_reason: r.finish };
         const content = r.content;
@@ -483,7 +483,7 @@ async function askModel(gr, s, userText) {
         if (out.unparsed) {
             // kept for the console: why the answer was not a verdict (cut off, prose, empty)
             out.error = `finish ${choice.finish_reason || '?'}, ${String(content).length} chars: ${String(content).replace(/\s+/g, ' ').slice(0, 300)}`;
-            delete out.unparsed;
+            out.retry = true; // review() asks once more, without reasoning and with more room
         }
         return out;
     }
@@ -688,7 +688,10 @@ async function review(sessionId, trigger, opts = {}) {
         const ask = () => askModel(gr, s, promptFor(capTurn(turn), Object.assign({ partial }, meta)));
         try {
             result = await ask();
-            if (result.unparsed) result = await ask(); // one more try: a cut-off or prose answer is usually fine the second time
+            // an empty or cut-off answer (the reasoning used the whole budget: "finish length, 0 chars") is asked once more
+            // with no reasoning and twice the room
+            if (result.retry) result = await askModel(gr, s, promptFor(capTurn(turn), Object.assign({ partial }, meta)), { effort: 'none', maxTokens: 12000 });
+            delete result.retry;
         } catch (e) { result = { verdict: 'error', summary: e.message.slice(0, 300), missed: [], model: '', error: e.message }; }
     }
     // the rule check: the turn's changed files against the check scripts and the rules that apply (never on an MCP ask)
