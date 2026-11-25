@@ -1587,6 +1587,41 @@ function loginFailover(w, pick, message) {
     return true;
 }
 
+async function loginMove(w, rv, qs) {
+    const fs8 = require('./claudeFleetSettings');
+    const text = [rv.summary, rv.error, ...qs.map((q) => q.question)].filter(Boolean).join(' ');
+    if (!fs8.isLoginError(text) && !/login (has )?expired|run \/login/i.test(text)) return false;
+    if (sessionBusy(rv.sessionId)) return false;
+    // a live session moves to another account with its conversation (loginTurn); only an ended one starts again
+    if (liveSessionsById().has(rv.sessionId)) {
+        let moved = false;
+        try { moved = await loginTurn(rv.sessionId); } catch (_) { moved = false; }
+        if (moved) {
+            setWork(w.id, { state: 'running', input_questions: null, message: `Login expired on ${w.account || 'its account'}: moved to another account to carry on` });
+            emit({ work: getWork(w.id) });
+            return true;
+        }
+    }
+    let idx = null;
+    try {
+        const snap = await require('./claudeFleetMcp')._test.snapshot(gResources);
+        const a = ((snap && snap.accounts) || []).find((x) => x.name === w.account);
+        if (a) idx = a.index;
+    } catch (_) { /* unknown account: the item is still started again */ }
+    try {
+        const l = liveSessionsById().get(rv.sessionId);
+        if (l && l.tmuxSession) require('child_process').execFileSync('tmux', ['kill-session', '-t', `=${l.tmuxSession}`], { timeout: 5000, stdio: 'ignore' });
+    } catch (_) { /* gone already */ }
+    if (Number.isFinite(idx)) fs8.markLoginFailed(idx, 'Login expired', w.account);
+    const tried = loginTried.get(w.id) || new Set();
+    if (Number.isFinite(idx)) tried.add(idx);
+    loginTried.set(w.id, tried);
+    setWork(w.id, { state: 'queued', session_id: null, link: '', started_at: null, input_questions: null, message: `Login expired on ${w.account || 'its account'}: starting again on the next account` });
+    emit({ work: getWork(w.id) });
+    pumpWork().catch(() => {});
+    return true;
+}
+
 function pumpWork(gr) {
     if (pumping) return pumping;
     pumping = (async () => {
@@ -1876,6 +1911,10 @@ async function workAfterReview(rv, opts = {}) {
         w = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(ended.id);
     }
     const qs = Array.isArray(rv.questions) ? rv.questions : [];
+    // a turn that stopped on the account's expired login is not a question for Yukimi (Nov 25 2026: four items sat in
+    // Input Required asking her to run /login): the account is marked, the dead session ends, and the item starts
+    // again on the next account with room
+    if (await loginMove(w, rv, qs)) return;
     const qJson = qs.length ? JSON.stringify(qs) : null;
     const openKids = db().prepare("SELECT COUNT(*) AS n FROM supervisor_work WHERE parent_id = ? AND state NOT IN ('done','failed','cancelled')").get(w.id).n;
     if (rv.verdict === 'ok' && rv.waitsOn) {
@@ -1962,6 +2001,128 @@ async function steerResumed(r, text) {
         if (res && res.state === 'failed') throw new Error(res.message || 'Its session did not start again');
     }
     await require('./claudeSessionLauncher').steer(sid, text);
+}
+
+// ---------------------------------------------------------------- an account's login expired under running sessions
+// Yukimi Nov 25 2026: "get the sessions off the nonresponding account". A session whose turn ended with the API error
+// authentication_failed ("Login expired - Please run /login") sits there; the usage read uses another token, so the account looked
+// free. Seen at the turn end already watched (scan: busy -> idle): the account is marked login-failed (runtime mark: only a new
+// credentials file clears it) and the stuck sessions move to the best other account, each with a note to carry on.
+const LOGIN_MOVE_GAP_MS = 10 * 60 * 1000;
+const LOGIN_MOVE_MAX = 3; // per session per hour
+const loginMoves = new Map(); // session id -> move timestamps
+const loginNoRoomNoted = new Map(); // account index -> when the "no account has room" note was posted
+const failoverDeps = {}; // test hook: { kill(live) }
+function setFailoverDeps(o) { Object.keys(failoverDeps).forEach((k) => delete failoverDeps[k]); Object.assign(failoverDeps, o || {}); }
+
+/** { index, name, configDir } of the account a live session runs on (its config dir is an account's own folder), else null. */
+function accountOfLive(live) {
+    if (!live || !live.configDir) return null;
+    try {
+        const id = path.basename(path.dirname(live.configDir));
+        const a = require('./claudeAccountHost').listAccounts(gResources).find((x) => x.id === id);
+        return a ? { index: a.index, name: a.name, configDir: live.configDir } : null;
+    } catch (_) { return null; }
+}
+
+/** Did the session's last turn end on an authentication_failed API error? Reads the transcript's tail; the last user / assistant record decides. */
+async function lastTurnLoginFailed(sessionId) {
+    const file = await transcriptFile(sessionId);
+    if (!file) return '';
+    let text = '';
+    try {
+        const fd = await fs.promises.open(file, 'r');
+        try {
+            const size = (await fd.stat()).size;
+            const len = Math.min(size, 131072);
+            const buf = Buffer.alloc(len);
+            await fd.read(buf, 0, len, size - len);
+            text = buf.toString('utf8');
+        } finally { await fd.close(); }
+    } catch (_) { return ''; }
+    const lines = text.split('\n');
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+        let r = null;
+        try { r = JSON.parse(lines[i]); } catch (_) { continue; }
+        if (!r || r.isSidechain || (r.type !== 'assistant' && r.type !== 'user')) continue;
+        if (r.type !== 'assistant' || !r.isApiErrorMessage) return '';
+        const c = r.message && r.message.content;
+        const t = (Array.isArray(c) ? c.map((x) => (x && x.text) || '').join(' ') : String(c || '')).trim();
+        return r.error === 'authentication_failed' || require('./claudeFleetSettings').isLoginError(t) ? (t || 'Login expired').slice(0, 200) : '';
+    }
+    return '';
+}
+
+async function endProcess(live) {
+    if (failoverDeps.kill) return failoverDeps.kill(live);
+    const sessions = require('./claudeSessions');
+    try { process.kill(live.pid, 'SIGTERM'); } catch (e) { if (e.code !== 'ESRCH') throw e; }
+    const until = Date.now() + 15000;
+    let killed = false;
+    while (sessions.pidAlive(live.pid) && Date.now() < until) {
+        await new Promise((r) => setTimeout(r, 250));
+        if (!killed && Date.now() > until - 5000) { killed = true; try { process.kill(live.pid, 'SIGKILL'); } catch (_) { /* gone */ } }
+    }
+    if (live.tmuxSession) {
+        try { require('child_process').execFileSync('tmux', ['-L', process.env.DREAMSCAPE_CLAUDE_CARRY_SOCKET || 'dreamscape-claude-carry', 'kill-session', '-t', `=${live.tmuxSession}`], { stdio: 'ignore', timeout: 5000 }); } catch (_) { /* no such session */ }
+    }
+}
+
+/**
+ * Called when a session's turn ended (and at start for idle ones): when it ended on "Login expired", its account is marked and the session
+ * moves to the best other account. Every other idle session on that account whose last turn failed the same way moves too. A busy session is
+ * never killed. Resolves true when this session's last turn was a login failure (no review model call is spent on it).
+ */
+async function loginTurn(sessionId, opts = {}) {
+    const live = liveSessionsById().get(sessionId);
+    if (!live || live.status === 'busy') return false;
+    const msg = await lastTurnLoginFailed(sessionId);
+    if (!msg) return false;
+    const acct = accountOfLive(live);
+    if (!acct) return true;
+    const fs8 = require('./claudeFleetSettings');
+    fs8.markLoginFailed(acct.index, msg, acct.name, { runtime: true, configDir: acct.configDir });
+    try {
+        const now = Date.now();
+        const moves = (loginMoves.get(sessionId) || []).filter((t) => now - t < 3600000);
+        if (moves.length && now - moves[moves.length - 1] < LOGIN_MOVE_GAP_MS) return true;
+        if (moves.length >= LOGIN_MOVE_MAX) return true;
+        let pick = null;
+        try { pick = await require('./claudeFleetMcp').pickForStart(gResources, 'auto'); } catch (_) { pick = null; }
+        if (!pick || pick.index === acct.index) {
+            if (now - (loginNoRoomNoted.get(acct.index) || 0) > LOGIN_MOVE_GAP_MS) {
+                loginNoRoomNoted.set(acct.index, now);
+                try { coord().post('supervisor', null, `The ${acct.name} account login expired and no other account has room: its sessions stay put (sign in again in Fleet > Accounts).`, { kind: 'note' }); } catch (_) { /* none */ }
+            }
+            return true;
+        }
+        loginMoves.set(sessionId, moves.concat(now));
+        await endProcess(live);
+        const got = await resumeOnAccount(sessionId, [pick.name, 'auto']);
+        const res = got.res;
+        if (!got.pick || (res && res.state === 'failed')) { console.warn(`[supervisor] login move of ${sessionId.slice(0, 8)} off ${acct.name}: ${(res && res.message) || 'no account with a working login'}`); return true; }
+        const to = got.pick;
+        const text = `${STEER_PREFIX} The ${acct.name} account login expired, so your last turn stopped with "Login expired". This session now runs on the ${to.name} account: continue exactly where you were (redo the step that failed) and finish your task.`;
+        try { await require('./claudeSessionLauncher').steer(sessionId, text); } catch (e) { console.warn(`[supervisor] login move steer: ${e.message}`); }
+        const note = `Session ${sessionId.slice(0, 8)} moved from ${acct.name} (login expired) to ${to.name}.`;
+        console.log(`[supervisor] ${note}`);
+        try { coord().post('supervisor', null, note, { kind: 'note' }); } catch (_) { /* none */ }
+        const w = activeItemOf(sessionId);
+        if (w) {
+            setWork(w.id, { account: to.name, message: `Login expired on ${acct.name}: moved to ${to.name}` });
+            commentIssue(w, `**Fleet / Supervisor:** the ${acct.name} account login expired and this session's turn stopped; moved it to ${to.name} and told it to continue.`);
+            emit({ work: getWork(w.id) });
+        }
+    } catch (e) { console.warn(`[supervisor] login move: ${e.message}`); }
+    // the other sessions stuck on the same account go too
+    if (!opts.noSweep) {
+        for (const [id, l] of liveSessionsById()) {
+            if (id === sessionId || l.status === 'busy') continue;
+            const a = accountOfLive(l);
+            if (a && a.index === acct.index) { try { await loginTurn(id, { noSweep: true }); } catch (_) { /* next */ } }
+        }
+    }
+    return true;
 }
 
 const ISSUE_CLOSED_MSG = 'Its issue was closed on Yozora';
@@ -3209,11 +3370,15 @@ const SETTLE_MS = Number(process.env.AGENT_SUPERVISOR_SETTLE_MS) >= 0 && process
 const settling = new Map();
 function settleThenReview(sessionId) {
     clearTimeout(settling.get(sessionId));
-    settling.set(sessionId, setTimeout(() => {
+    settling.set(sessionId, setTimeout(async () => {
         settling.delete(sessionId);
         if (statusBySession.get(sessionId) === 'busy') return;
         const live = liveSessionsById().get(sessionId);
         if (live && live.status === 'busy') return;
+        // a turn that ended "Login expired" moves the session to another account and is not reviewed (no model call for it)
+        let loginStopped = false;
+        try { loginStopped = await loginTurn(sessionId); } catch (_) { loginStopped = false; }
+        if (loginStopped || !settings().enabled) return;
         emit({ turnEnd: sessionId }); // Fleet > Usage judges the finished turn (modules/claudeUsageAudit.js)
         queueReview(sessionId, 'turn-end');
     }, SETTLE_MS));
@@ -3252,7 +3417,10 @@ function scan(first) {
         statusBySession.set(r.sessionId, now);
         // a turn ended: reviewed once it stays ended for a while (a session that is idle for a moment between a message
         // and the next, or while a queued message lands, is still in its turn)
-        if (!first && prev === 'busy' && now !== 'busy' && settings().enabled) settleThenReview(r.sessionId);
+        // (the login check of a finished turn runs with the Supervisor off too: Yukimi's own sessions move off an expired account)
+        if (!first && prev === 'busy' && now !== 'busy') settleThenReview(r.sessionId);
+        // idle at server start and stuck on "Login expired": moved now
+        if (first && now !== 'busy') loginTurn(r.sessionId).catch(() => {});
         // a turn that ended while the server was down (a restart): an idle reviewable session whose transcript moved
         // since its last review is reviewed now (Nov 24 2026: a work item stayed "running" on an idle session)
         if (first && now !== 'busy' && settings().enabled && reviewable(r.sessionId)) catchUpReview(r.sessionId);
@@ -3870,5 +4038,5 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { resumeOnAccount, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
+    _test: { resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
 };
