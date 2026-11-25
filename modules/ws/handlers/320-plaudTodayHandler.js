@@ -26,7 +26,11 @@ function registerPackets(handlersCtx) {
         const admin = (info) => !!(info && info.authenticated !== false && /^(admin|dev_admin)$/.test(String(info.userType || '')));
         if (srv && typeof srv.broadcast === 'function') srv.broadcast({ type: 'plaud_today_changed', data: { transfer: plaudTransfer.state() }, timestamp: new Date().toISOString() }, admin);
     };
-    plaudTransfer.bind(pushChanged);
+    // a transfer notice means the recorder is awake beside the phone: the moment to read its battery again (no timer does)
+    plaudTransfer.bind(() => {
+        pushChanged();
+        try { require('../../plaudDevice').battery(handlersCtx && handlersCtx.globalResources); } catch (_) { /* no recorder module */ }
+    });
     // the recorder's battery word arrived from the phone (plaudDevice.battery): the page reads the list again
     try { require('../../plaudDevice').onBattery(pushChanged); } catch (_) { /* no recorder module */ }
     const reg = (type, fn, meta = {}) => {

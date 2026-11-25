@@ -27,21 +27,28 @@ let lastRead = 0;
 function directorStart() { return deps.directorStart || require('./directorStart'); }
 function xiDirector() { return deps.xiDirector || require('./xiDirector'); }
 
-/** The Xi chat that took this recording, from its tagged sources: no Plaud call, no start. */
-function sessionFor(source) {
+/** Xi's chats that carry a source, read once: list() looks eight recordings up in it (#1193: it was read per recording). */
+function taggedChats() {
     try {
         const backend = xiDirector();
         const chats = typeof backend.listChatBriefs === 'function' ? backend.listChatBriefs() : [];
-        const chat = chats.find((c) => Array.isArray(c.sources) && c.sources.includes(source));
+        return chats.filter((c) => Array.isArray(c.sources) && c.sources.length);
+    } catch (_) { return []; }
+}
+
+/** The Xi chat that took this recording, from its tagged sources: no Plaud call, no start. chats: taggedChats() when the caller has it. */
+function sessionFor(source, chats) {
+    try {
+        const chat = (chats || taggedChats()).find((c) => c.sources.includes(source));
         if (!chat) return null;
         const info = directorStart().getDirectorSession(null, { sessionId: chat.id });
         return { sessionId: chat.id, status: info.status, issues: info.issues || [], updatedAt: info.updatedAt || null, engine: chat.runtime || null };
     } catch (_) { return null; }
 }
 
-function withReview(rec) {
+function withReview(rec, chats) {
     const source = `plaud:${rec.id}`;
-    return Object.assign({}, rec, { source, review: sessionFor(source) });
+    return Object.assign({}, rec, { source, review: sessionFor(source, chats) });
 }
 
 /**
@@ -84,7 +91,8 @@ async function list(gr) {
     try { plaudDevice.ask(gr, !!st.linked); } catch (_) { /* the list does not depend on the notice */ }
     // the recorder's battery state comes from the phone it is connected to: asked in the background, never awaited here
     try { if (st.linked) plaudDevice.battery(gr); } catch (_) { /* no phone, no battery */ }
-    const recordings = raw.map(withReview);
+    const chats = taggedChats();
+    const recordings = raw.map((r) => withReview(r, chats));
     return {
         linked: !!st.linked,
         recordings,
