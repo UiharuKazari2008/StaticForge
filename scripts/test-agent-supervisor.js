@@ -34,7 +34,7 @@ require('../modules/fleetYozora')._setFetch(async (url, opts) => {
     yzCalls.push({ method, url: u, body });
     const ok = (o) => ({ ok: true, status: 200, text: async () => JSON.stringify(o) });
     let m;
-    if (method === 'GET' && /\/labels\?/.test(u)) return ok([{ id: 1, name: 'fleet' }, { id: 2, name: 'status:ready' }, { id: 3, name: 'status:in-progress' }, { id: 4, name: 'status:review' }, { id: 5, name: 'status:blocked' }]);
+    if (method === 'GET' && /\/labels\?/.test(u)) return ok([{ id: 1, name: 'fleet' }, { id: 2, name: 'status:ready' }, { id: 3, name: 'status:in-progress' }, { id: 4, name: 'status:review' }, { id: 5, name: 'status:blocked' }, { id: 6, name: 'status:done' }]);
     if (method === 'POST' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues$/.exec(u))) { const n = yzNext++; yzIssues.set(`${m[1]}#${n}`, { state: 'open', labels: body.labels, body: body.body, title: body.title }); return ok({ number: n, id: 9000 + n }); }
     if (method === 'GET' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues\?state=open.*labels=fleet/.exec(u))) {
         return ok([...yzIssues.entries()].filter(([k, v]) => k.startsWith(`${m[1]}#`) && v.state === 'open' && v.external).map(([k, v]) => ({ number: Number(k.split('#')[1]), id: 1, title: v.title, body: v.body, labels: [{ name: 'fleet' }].concat(v.now ? [{ name: 'fleet:now' }] : []) })));
@@ -323,7 +323,8 @@ sup._test.setFetch(async (url, opts) => {
             const comments = yzCalls.filter((c) => /\/comments$/.test(c.url)).map((c) => c.body.body);
             assert.ok(comments.some((t) => /sent back to the session:\n- docs/.test(t)), comments.join(' | '));
             assert.ok(comments.some((t) => /found nothing missed/.test(t)));
-            assert.ok(yzCalls.some((c) => c.method === 'PUT' && /\/labels$/.test(c.url) && c.body.labels.includes(4)), 'status:review on done');
+            assert.ok(yzCalls.some((c) => c.method === 'PUT' && /\/labels$/.test(c.url) && c.body.labels.includes(6)), 'status:done on done');
+            assert.ok(yzCalls.some((c) => c.method === 'PATCH' && c.body && c.body.state === 'closed'), 'closed once the Supervisor verified it');
             // pull: an issue filed on Yozora with fleet + fleet:now
             yzIssues.set('DreamScape/StaticForge#500', { state: 'open', external: true, now: true, title: 'From Yozora', body: 'Please do X' });
             const pulled = await sup.pullIssues(gr, { force: true });

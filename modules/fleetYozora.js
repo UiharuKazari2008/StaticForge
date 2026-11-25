@@ -39,7 +39,10 @@ const DEFAULT_REPO = 'DreamScape/StaticForge';
 const LABEL = 'fleet';
 const LABEL_NOW = 'fleet:now';
 const BOARD = { org: 'DreamScape', project: 5, columns: { queued: 23, running: 24, waiting: 24, done: 25, failed: 26 } };
-const STATUS_LABEL = { queued: 'status:ready', starting: 'status:in-progress', running: 'status:in-progress', waiting: 'status:in-progress', done: 'status:review', failed: 'status:blocked' };
+// done = the Supervisor checked the work itself (nothing missed, tested with evidence): the issue closes as done.
+// Yukimi, Nov 24 2026: "review at this point means the supervisor needs to look over the work and review it itself
+// ... I don't and should not have to review a task, that's the point of the supervisor."
+const STATUS_LABEL = { queued: 'status:ready', starting: 'status:in-progress', running: 'status:in-progress', waiting: 'status:in-progress', done: 'status:done', failed: 'status:blocked' };
 const MARK = (id) => `<!-- fleet-work:${id} -->`;
 
 function token() {

@@ -637,7 +637,7 @@ async function syncIssue(id, prevState) {
     if (r.state === 'running' && prevState !== 'waiting') text = `**Fleet:** started as a supervised session on ${r.account || 'an account'} (${r.engine && r.engine !== 'claude' ? `${r.engine} ` : ''}${r.model || 'default model'}).${session} The Supervisor checks each turn against this issue.`;
     else if (r.state === 'running' && prevState === 'waiting') text = '**Fleet:** working again after the Supervisor\'s notes.';
     else if (r.state === 'waiting') text = `**Fleet / Supervisor:** after its last turn these look unaddressed, sent back to the session:\n${String(r.message || '').replace(/^Gaps sent back: /, '').split('; ').map((x) => `- ${x}`).join('\n')}`;
-    else if (r.state === 'done') text = `**Fleet / Supervisor:** the last turn's check found nothing missed. ${r.message || ''}\n\nRan ${mins(ran)} (added as tracked time).${session} Status: review.`;
+    else if (r.state === 'done') text = `**Fleet / Supervisor:** done - the Supervisor checked the last turn against this issue (and its definition of done) and found nothing missed, with evidence it was tested. ${r.message || ''}\n\nRan ${mins(ran)} (added as tracked time).${session} Closing as done.`;
     else if (r.state === 'failed') text = `**Fleet:** did not finish: ${r.message || 'unknown'}${ran ? `\n\nRan ${mins(ran)} (added as tracked time).` : ''}`;
     else if (r.state === 'cancelled') text = '**Fleet:** cancelled in Fleet.';
     if (r.parent_id) {
@@ -649,6 +649,8 @@ async function syncIssue(id, prevState) {
     if (text) await Y.comment(r.issue_repo, r.issue_number, text);
     if (['running', 'waiting', 'done', 'failed'].includes(r.state)) await Y.setStatus(r.issue_repo, r.issue_number, r.issue_id, r.state).catch(() => {});
     if (['done', 'failed'].includes(r.state) && ran) await Y.addTime(r.issue_repo, r.issue_number, ran / 1000).catch(() => {});
+    // done only ever comes from a Supervisor review that said ok (workAfterReview / settleParent): close it
+    if (r.state === 'done' && /found nothing missed|All \d+ parts done/.test(text + (r.message || ''))) await Y.close(r.issue_repo, r.issue_number).catch(() => {});
     if (r.state === 'cancelled' && String(r.source) !== 'yozora') await Y.close(r.issue_repo, r.issue_number).catch(() => {});
     noteIssue(id, `Synced ${new Date().toISOString().slice(11, 16)} (${where})`);
 }
@@ -743,7 +745,11 @@ function activeCount() {
     let n = 0;
     db().prepare(`SELECT id, session_id, state FROM supervisor_work WHERE state IN (${ACTIVE.map(() => '?').join(',')})`).all(...ACTIVE).forEach((w) => {
         if (w.state === 'starting' || (w.session_id && sessionRunning(w.session_id, live))) n += 1;
-        else if (w.session_id) setWork(w.id, { state: 'done', ended_at: Date.now(), message: 'Its session ended' });
+        else if (w.session_id && w.state !== 'waiting') {
+            // its session ended: never "done" without the Supervisor's own check of what it did (Yukimi, Nov 24 2026)
+            setWork(w.id, { state: 'waiting', message: 'Its session ended: the Supervisor is checking its last turn' });
+            queueReview(w.session_id, 'turn-end');
+        }
     });
     return n;
 }
