@@ -2024,7 +2024,7 @@
     const MANAGER_BRIEF = 'You are the Manager Session for Fleet (apps/claudedesk, the Supervisor in modules/agentSupervisor.js, agent-coord, the maintenance in modules/fleetMaintenance.js) in /home/kanmi/staticforge. Yukimi uses you to fix issues and bugs in the Fleet / Supervisor system itself as she finds them. Read CLAUDE.md first. Delegate defined parts to Sonnet background agents, check every change on screen or with tests, commit and push each turn, restart only through scripts/restart-dreamscape.sh. Wait for her first request.';
 
     function workPage(c, scope = 'all') {
-        const T = { all: 'Work Queue', held: 'Waiting', active: 'Active', pending: 'Pending' }[scope];
+        const T = { all: 'Work Queue', held: 'Waiting', active: 'Active', pending: 'Pending', done: 'Completed' }[scope];
         if (S.wscope !== scope) { S.wscope = scope; S.wsel = new Set(); }
         if (!S.sup.loaded) { void loadSupervisor(); return c.page(T, '', [{ id: 'cd-wq-wait', title: T, body: '<p class="mmc-hint">Reading the work queue...</p>' }]); }
         if (S.sup.stale) { S.sup.stale = false; void loadSupervisor(); }
@@ -2112,9 +2112,9 @@
     const askText = (g) => { const a = agentOf(g.agentId); return `Restart waiting on ${a ? (a.name || a.id) : (g.agentId || 'an agent')}${g.text ? `: ${String(g.text).replace(/\s+/g, ' ').slice(0, 160)}` : ''}${g.firstAt ? ` (since ${timeOnly(g.firstAt)})` : ''}${g.stale ? ' - it looks stuck' : ''}`; };
 
     /** The running sessions no work item owns, as the Sessions list shows them. */
-    function unsupervisedPage(c) {
+    function unsupervisedPage(c, quiet) {
         if (!S.sessionsLoaded && !S.sessionsLoading) void loadSessions(false);
-        const list = unsupervised().map((l) => rowOf(l.id) || { id: l.id, title: l.name, folder: l.cwd ? l.cwd.split('/').pop() : '', lastActivity: l.startedAt ? new Date(l.startedAt).toISOString() : '', messages: 0 });
+        const list = (quiet ? unsupervisedQuiet() : unsupervisedActive()).map((l) => rowOf(l.id) || { id: l.id, title: l.name, folder: l.cwd ? l.cwd.split('/').pop() : '', lastActivity: l.startedAt ? new Date(l.startedAt).toISOString() : '', messages: 0 });
         return { html: c.listView(SESSION_COLS, sessionRows(list), { sortId: 'cd-unsup', sort: { key: 'last', dir: -1 }, empty: 'Every running session belongs to a work item, or none is running.' }), list: true };
     }
 
@@ -2846,7 +2846,20 @@
     const runItems = () => supWork().filter((w) => WORK_RUN.has(w.state));
     const heldItems = () => supWork().filter((w) => w.state === 'held');
     const pendItems = () => supWork().filter((w) => WORK_OPEN.has(w.state) && !WORK_RUN.has(w.state) && w.state !== 'held');
-    const WORK_SCOPE = { all: () => supWork(), held: heldItems, active: runItems, pending: pendItems };
+    // finished work leaves Active / Pending: done, failed and cancelled items of the last 7 days (Yukimi, Nov 25 2026)
+    const WORK_DONE = new Set(['done', 'failed', 'cancelled']);
+    const doneItems = () => supWork().filter((w) => WORK_DONE.has(w.state) && (Number(w.endedAt) || Date.parse(w.endedAt) || 0) > Date.now() - 7 * 86400000);
+    const WORK_SCOPE = { all: () => supWork(), held: heldItems, active: runItems, pending: pendItems, done: doneItems };
+    /** A running session counts as finished when it is idle and quiet for an hour (the Manager Session never is). */
+    const QUIET_MS = 60 * 60 * 1000;
+    const quietSession = (l) => {
+        if (!l || l.status === 'busy' || l.id === managerSid()) return false;
+        const row = rowOf(l.id);
+        const last = Date.parse((row && row.lastActivity) || '') || Number(l.startedAt) || 0;
+        return Date.now() - last > QUIET_MS;
+    };
+    const unsupervisedActive = () => unsupervised().filter((l) => !quietSession(l));
+    const unsupervisedQuiet = () => unsupervised().filter(quietSession);
 
     /** A session in the tree: paused ones carry the warning icon and the word. */
     function sessionNode(idPrefix, sid, A) {
@@ -2881,7 +2894,7 @@
         const runNodes = tops(runItems);
         const pendNodes = tops(pendItems);
         const reviewN = supReviews().filter((r) => !r.dismissed).length;
-        const uns = unsupervised().map((l) => sessionNode('us:', l.id, A));
+        const uns = unsupervisedActive().map((l) => sessionNode('us:', l.id, A));
         const cons = S.con.list.map((k) => ({
             id: `ct:${k.id}`,
             name: `${conName(k)}${k.revoked ? ' (revoked)' : (k.online ? '' : ' (offline)')}`,
@@ -2900,7 +2913,9 @@
                         { id: 'co-held', name: `Waiting (${heldItems().length})`, icon: `${ITEMS}/date-and-time-16.png`, desc: 'New and imported requests that wait for you to start them' },
                         { id: 'aw-sup', name: `Active (${runItems().length})`, icon: `${ITEMS}/parental-controls-16.png`, desc: 'Work items running now, their sessions and background agents', children: runNodes },
                         { id: 'co-pending', name: `Pending (${pendItems().length})`, icon: `${VI}/info-16.png`, desc: 'Work items waiting for an account to have room', children: pendNodes },
-                        { id: 'aw-uns', name: `Unsupervised (${uns.length})`, icon: `${VI}/run-16.png`, desc: 'Running sessions no work item owns', children: uns },
+                        { id: 'aw-uns', name: `Unsupervised (${uns.length})`, icon: `${VI}/run-16.png`, desc: 'Sessions no work item owns that are working or were active in the last hour', children: uns },
+                        { id: 'co-done', name: `Completed (${doneItems().length})`, icon: `${VI}/check-16.png`, desc: 'Work items done, failed or cancelled in the last 7 days' },
+                        { id: 'aw-quiet', name: `Finished Sessions (${unsupervisedQuiet().length})`, icon: `${A}/session-ended-16.png`, desc: 'Sessions still open but idle for over an hour, with no work item' },
                         { id: 'sessions', name: 'All Sessions', icon: SESSION16, desc: 'Every Claude session on the host, running or ended', children: open }
                     ] },
                 { id: 'activity', name: 'Activity', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Every shell command, tool call and file edit, the background agents, what it all cost, and who is coordinating',
@@ -4722,6 +4737,8 @@
             case 'aw-sup': return workPage(c, 'active');
             case 'co-pending': return workPage(c, 'pending');
             case 'aw-uns': return unsupervisedPage(c);
+            case 'aw-quiet': return unsupervisedPage(c, true);
+            case 'co-done': return workPage(c, 'done');
             case 'activity': return activityPage(c);
             case 'bg-agents': return bgListPage(c);
             case 'memory': return memoryPage(c);
@@ -4810,6 +4827,8 @@
             case 'co-held':
             case 'aw-sup':
             case 'co-pending':
+            case 'aw-quiet': return [{ text: 'Read Again', action: 'sup-refresh' }];
+            case 'co-done': return [{ text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
             case 'aw-uns': return [{ text: 'New Session...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
             case 'activity': return [{ text: 'Read Again', action: 'act-refresh' }];
             case 'bg-agents': return bgCommands(n);
@@ -6425,6 +6444,8 @@
                 if (n.id === 'contractors') return S.con.gone ? NOT_YET : `${plural(S.con.list.length, 'contractor')}, ${S.con.list.filter((k) => k.online).length} online`;
                 if (n.id === 'co-held') return plural(heldItems().length, 'request') + ' waiting for you to start';
                 if (n.id === 'aw-sup') return plural(runItems().length, 'running work item');
+                if (n.id === 'co-done') return `${plural(doneItems().length, 'work item')} finished in the last 7 days`;
+                if (n.id === 'aw-quiet') return `${plural(unsupervisedQuiet().length, 'session')} idle for over an hour - select one to end it`;
                 if (n.id === 'co-pending') return plural(pendItems().length, 'waiting work item');
                 if (n.id === 'sup-holds') return plural(supHolds().length, 'paused session');
                 if (n.id === 'sup-locks') return plural(supLocks().length, 'lock');
