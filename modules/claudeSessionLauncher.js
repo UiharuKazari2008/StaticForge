@@ -332,16 +332,11 @@ async function start(gr, opts = {}) {
     return launch(gr, { id, cwd: opts.cwd, prompt: opts.prompt, title, task: opts.prompt ? cleanTitle(opts.prompt, 200) : title, account: opts.account, mode: opts.mode, model: opts.model, effort: opts.effort, engine: opts.engine, remoteControl: opts.remoteControl === true, dispatchedBy: opts.dispatchedBy, timeoutMs: opts.timeoutMs, pollMs: opts.pollMs });
 }
 
+/** A session's transcript file; a conversation handed on to another session id (`continued-in`) is followed (claudeSessions). */
 async function findFile(id) {
     if (!SESSION_ID_RE.test(String(id || ''))) return null;
-    const dir = path.join(process.env.DREAMSCAPE_CLAUDE_HOME || os.homedir(), '.claude', 'projects');
-    let dirs = [];
-    try { dirs = await fs.promises.readdir(dir); } catch (_) { return null; }
-    for (const d of dirs) {
-        const file = path.join(dir, d, `${id}.jsonl`);
-        try { await fs.promises.access(file); return file; } catch (_) { /* next */ }
-    }
-    return null;
+    const t = claudeSessions._findTranscript(String(id));
+    return t ? t.file : null;
 }
 
 async function cwdOf(file) {

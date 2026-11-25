@@ -185,15 +185,62 @@ function transcriptFiles() {
     return out;
 }
 
-function findTranscript(id) {
+function findTranscriptFile(id) {
     if (!SESSION_ID_RE.test(String(id || ''))) return null;
     let dirs = [];
     try { dirs = fs.readdirSync(projectsDir()); } catch (_) { return null; }
     for (const d of dirs) {
         const file = path.join(projectsDir(), d, `${id}.jsonl`);
-        if (fs.existsSync(file)) return { id, file, project: d };
+        if (fs.existsSync(file)) return { file, project: d };
     }
     return null;
+}
+
+/**
+ * The session a transcript was handed on to: Claude Code ends it with a `continued-in` line when the conversation
+ * moves to another session id (sent to the background, or a fork). Read from the file's tail; cached per size.
+ */
+const handoffs = new Map(); // file -> { size, to }
+function continuedInOf(file) {
+    let st;
+    try { st = fs.statSync(file); } catch (_) { return null; }
+    const hit = handoffs.get(file);
+    if (hit && hit.size === st.size) return hit.to;
+    let to = null;
+    try {
+        const n = Math.min(st.size, 2048);
+        const buf = Buffer.alloc(n);
+        const fd = fs.openSync(file, 'r');
+        try { fs.readSync(fd, buf, 0, n, st.size - n); } finally { fs.closeSync(fd); }
+        const last = buf.toString('utf8').split('\n').map((l) => l.trim()).filter(Boolean).pop() || '';
+        if (last.includes('"continued-in"')) {
+            const o = JSON.parse(last);
+            if (o && o.type === 'continued-in' && SESSION_ID_RE.test(String(o.continuedInSessionId || ''))) to = o.continuedInSessionId;
+        }
+    } catch (_) { to = null; }
+    if (handoffs.size > 500) handoffs.clear();
+    handoffs.set(file, { size: st.size, to });
+    return to;
+}
+
+/**
+ * A session's transcript: { id, file, project, continuedIn? }. A conversation Claude Code handed on to another
+ * session id (`continued-in`) is followed, so a chat open on the old id keeps showing it (Nov 25 2026: the
+ * Fleet Manager moved to a background session and its chat in Fleet went quiet).
+ */
+function findTranscript(id) {
+    let cur = findTranscriptFile(id);
+    if (!cur) return null;
+    let at = String(id);
+    for (let hop = 0; hop < 5; hop += 1) {
+        const to = continuedInOf(cur.file);
+        if (!to || to === at) break;
+        const next = findTranscriptFile(to);
+        if (!next) break;
+        cur = next;
+        at = to;
+    }
+    return at === String(id) ? { id, file: cur.file, project: cur.project } : { id, file: cur.file, project: cur.project, continuedIn: at };
 }
 
 // ---------------------------------------------------------------- live sessions
@@ -462,5 +509,6 @@ module.exports = {
     _setRunner,
     _setPidAlive,
     _text: { cleanTitle, paneLink, linkFor, promptOf, RC_ACTIVE_RE, RC_NUDGE_RE, tmuxName },
-    _scans: scans
+    _scans: scans,
+    _findTranscript: (id) => findTranscript(id)
 };

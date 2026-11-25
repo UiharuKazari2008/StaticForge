@@ -316,6 +316,22 @@ async function main() {
         assert.ok(calls.some((c) => c.includes('send-keys') && c.includes('-l') && c.includes('steer without Remote Control') && c.includes('%7')));
         write(rec, { pid: process.pid, sessionId: SID, cwd: path.join(HOME, 'repo'), status: 'busy', tmux: 'rc-11111111:@1.%7', bridgeSessionId: 'session_01TESTabcdefgh' });
     }
+    // a conversation Claude Code handed on to another session id (continued-in, e.g. sent to the background): the old id's
+    // transcript is the new one, so a chat open on it keeps showing the conversation
+    {
+        const OLD = '44444444-1111-4222-8333-444444444444';
+        const NEW = '55555555-1111-4222-8333-555555555555';
+        const pd = path.join(HOME, '.claude', 'projects', '-handoff');
+        fs.mkdirSync(pd, { recursive: true });
+        fs.writeFileSync(path.join(pd, `${OLD}.jsonl`), sessionLines(OLD, path.join(HOME, 'repo'), 'owner') + JSON.stringify({ type: 'continued-in', sessionId: OLD, continuedInSessionId: NEW }) + '\n');
+        assert.strictEqual(claudeSessions._findTranscript(OLD).file, path.join(pd, `${OLD}.jsonl`), 'a hand-off to a transcript that is not there yet stays');
+        fs.writeFileSync(path.join(pd, `${NEW}.jsonl`), sessionLines(NEW, path.join(HOME, 'repo'), 'owner'));
+        const t = claudeSessions._findTranscript(OLD);
+        assert.ok(t.file.endsWith(`${NEW}.jsonl`) && t.continuedIn === NEW, JSON.stringify(t));
+        assert.strictEqual(await launcher.findFile(OLD), path.join(pd, `${NEW}.jsonl`));
+        assert.strictEqual(claudeSessions._findTranscript(NEW).continuedIn, undefined);
+        fs.rmSync(pd, { recursive: true, force: true });
+    }
     console.log('ok 4 steering');
 
     // 4b. attachments: saved per session (0600), names cleaned, only images / text, size limit

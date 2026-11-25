@@ -68,7 +68,6 @@ function guard(type, fn) {
 
 // ---------------------------------------------------------------- which account a session is on
 
-const projectsDir = () => path.join(process.env.DREAMSCAPE_CLAUDE_HOME || os.homedir(), '.claude', 'projects');
 const ownerCache = new Map(); // file -> { size, uuid }
 
 /** The claude.ai account uuid a transcript was last written under (its newest session-owner line). */
@@ -92,12 +91,10 @@ async function ownerOf(file, sizeBytes) {
 }
 
 async function fileOf(row) {
-    const dirs = await fs.promises.readdir(projectsDir()).catch(() => []);
-    for (const d of dirs) {
-        const f = path.join(projectsDir(), d, `${row.id}.jsonl`);
-        try { await fs.promises.access(f); return f; } catch (_) { /* next */ }
-    }
-    return null;
+    // a conversation Claude Code handed on to another session id (`continued-in`: sent to the background, a fork)
+    // is followed, so a chat open on the old id keeps showing it (claudeSessions.findTranscript)
+    const t = claudeSessions._findTranscript(String((row && row.id) || ''));
+    return t ? t.file : null;
 }
 
 async function sessionsPage(gr, message) {
@@ -363,6 +360,15 @@ async function watchTranscript(handlersCtx, ws, id, from, view) {
                 if (r.messages.length) { try { supervisor.sessionTasks().poke(id); } catch (_) { /* later */ } }
             }
         } catch (_) { /* next change */ } finally { w.reading = false; }
+        // the conversation was handed on to another session id (`continued-in`, its last line here): the open chat
+        // follows it to the new transcript from its current end
+        try {
+            const now = await launcher.findFile(id);
+            if (now && now !== file && watches.get(ws) === w) {
+                const at = (await fs.promises.stat(now)).size;
+                await watchTranscript(handlersCtx, ws, id, at, w.view);
+            }
+        } catch (_) { /* stays on the old file */ }
     };
     w.watcher = fs.watch(file, { persistent: false }, () => { clearTimeout(w.timer); w.timer = setTimeout(flush, 400); });
     w.watcher.on('error', () => unwatch(ws));
