@@ -96,15 +96,28 @@
   var parts = location.pathname.split('/');
   var sessionId = parts[parts.length - 1] || '';
   var relay = location.pathname.indexOf('/api/grimoire-browser/view/') !== -1;
+  // #761: the session this viewer shows (sessionId / token) can change under a running page: the parent re-points
+  // the one viewer of an IE window at another Alchemy tab (grimoire-browser-switch). initialId / initialToken are
+  // what the page was opened with; anchorId / anchorToken the last session that was not '' (a parked viewer has
+  // none, but a reconnect still needs some session to open its socket on).
+  var initialId = sessionId;
+  var initialToken = token;
+  var anchorId = sessionId;
+  var anchorToken = token;
   var socket = null;
   // #990: the viewer's own WebSocket (straight to Alchemy, or through Dreamscape's relay socket). Only when that
   // cannot open does it fall back to the NDJSON stream with one POST per input event.
   var fallback = false;
   var pendingClipboard = null;
   var pendingMenu = null;
-  var inputUrl = relay
-    ? '/api/grimoire-browser/sessions/' + encodeURIComponent(sessionId) + '/input?t=' + encodeURIComponent(token)
-    : '';
+  function buildInputUrl() {
+    var id = sessionId || anchorId;
+    var t = sessionId ? token : anchorToken;
+    return relay
+      ? '/api/grimoire-browser/sessions/' + encodeURIComponent(id) + '/input?t=' + encodeURIComponent(t)
+      : '';
+  }
+  var inputUrl = buildInputUrl();
   var outbound = [];
   var sending = false;
   var pendingMove = null;
@@ -339,6 +352,7 @@
       releaseImage(img);
       stillCanvas.hidden = false;
       cacheStill();
+      notePicture();
     }, function () {});
   }
 
@@ -381,6 +395,7 @@
         if (job.arrival > stillArrival) hideStill();
         frameReady(job.header);
         flushTiles();
+        notePicture();
         // a frame: the page is there (whatever was said of it before: not responding, failed, restarting)
         if (tabState !== 'ok') showTabStatus('ok');
       }
@@ -484,6 +499,8 @@
   // bytes and messages per kind (stats): 1 frames, 2 audio, 3 tiles, 4 scroll packs
   var traffic = {};
   function handleBinary(data) {
+    // a switch is asked for and not answered: this is the session being left
+    if (switching) return;
     var bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
     if (!bytes.length) return;
     var kind = bytes[0];
@@ -845,7 +862,10 @@
     var gen = Number(header.gen) || 0;
     // JPEG XL or WebP (lossless for text and flat layers), PNG from an older Alchemy
     var type = header.f === 'jxl' ? 'image/jxl' : (header.f === 'webp' ? 'image/webp' : 'image/png');
+    var epoch = sessionEpoch;
     createImageBitmap(new Blob([body], { type: type })).then(function (bmp) {
+      // decoded after the viewer moved to another session: not this one's picture
+      if (epoch !== sessionEpoch) { bmp.close(); return; }
       var prev = sheetImgs.get(header.id);
       if (prev && prev.gen >= gen) { bmp.close(); return; }
       if (prev) prev.bmp.close();
@@ -1290,9 +1310,10 @@
   // cache where it has nothing (a frame there replaces it), so a scroll finds rows above and below ready
   function drawnAhead(header, body) {
     if (!header || !cache.width || !baseInfo.k || Math.abs((Number(header.k) || 0) - baseInfo.k) > 1e-6) return;
+    var epoch = sessionEpoch;
     if (header.layer) {
       createImageBitmap(new Blob([body], { type: 'image/webp' })).then(function (bmp) {
-        if (bmp.width === cache.width && Math.abs(header.k - baseInfo.k) < 1e-6) {
+        if (epoch === sessionEpoch && bmp.width === cache.width && Math.abs(header.k - baseInfo.k) < 1e-6) {
           if (lcache.width !== bmp.width || Math.abs(lcache.k - header.k) > 1e-6) {
             lcacheClear();
             lcache.width = bmp.width;
@@ -1307,7 +1328,7 @@
       return;
     }
     createImageBitmap(new Blob([body], { type: 'image/webp' })).then(function (bmp) {
-      if (bmp.width === cache.width && Math.abs(header.k - cache.k) < 1e-6) {
+      if (epoch === sessionEpoch && bmp.width === cache.width && Math.abs(header.k - cache.k) < 1e-6) {
         cacheWrite(bmp, 0, 0, bmp.width, bmp.height, Math.round(header.y * header.k), 1, false, true);
         noteAhead(header.y, header.y + header.h);
         if (debug.on) requestComposite();
@@ -1772,13 +1793,125 @@
     requestComposite();
   }
 
+  // Every payload the viewer posts says which session it is about: viewerSession (not sessionId: the popup payload
+  // uses that for the popup's own session). A payload that already has one (a switch that failed, a background tab's
+  // message) keeps it. #761
   function postParent(payload) {
-    if (window.parent && window.parent !== window) window.parent.postMessage(payload, '*');
+    if (!window.parent || window.parent === window) return;
+    if (payload.viewerSession === undefined) payload.viewerSession = sessionId;
+    window.parent.postMessage(payload, '*');
+  }
+
+  // What an Alchemy message tells the parent (Grimoire): the grimoire-browser-* payload, or null when the message
+  // is not one for the parent (or lacks what it needs). Pure: no viewer state is read or written; url is the page's
+  // last address, for the messages that carry none ('transferred'). The front session's handleControl and a
+  // background tab's 'bg' message (handleBackground) both go through it, so a tab behind another reports exactly
+  // what it would have in front. #761
+  function parentPayloadFor(msg, url) {
+    if (!msg || typeof msg !== 'object') return null;
+    switch (msg.type) {
+      case 'popup':
+        if (!(msg.url || msg.sessionId)) return null;
+        return { type: 'grimoire-browser-popup', url: msg.url || '', sessionId: msg.sessionId || '', viewerToken: msg.viewerToken || '', tab: !!msg.tab };
+      case 'closed':
+        return { type: 'grimoire-browser-closed' };
+      case 'memory':
+      case 'memory-limit':
+        // the tab's memory against Internet Properties' limit (#756): the IE status bar shows it, the limit asks
+        return { type: msg.type === 'memory' ? 'grimoire-browser-memory' : 'grimoire-browser-memory-limit', level: msg.level || 'over', usedMb: msg.usedMb || 0, limitMb: msg.limitMb || 0 };
+      case 'transferred':
+        // another device took this page (#756); the parent shows "This tab has been transferred to another device"
+        return { type: 'grimoire-browser-transferred', to: msg.to || '', kind: msg.kind || '', at: msg.at || Date.now(), url: url || '' };
+      case 'file-chooser':
+        // an upload field: the desktop picks the files (grimoireRemoteBrowser.js, #628)
+        if (!msg.id) return null;
+        return { type: 'grimoire-browser-file-chooser', id: msg.id, multiple: !!msg.multiple, accept: msg.accept || '' };
+      case 'dialog':
+        if (!msg.id) return null;
+        return {
+          type: 'grimoire-browser-dialog',
+          id: msg.id,
+          kind: msg.kind || 'alert',
+          message: msg.message || '',
+          defaultValue: msg.defaultValue || '',
+          realm: msg.realm || ''
+        };
+      case 'status':
+        // the front session shows its own failed / restarting page too (showTabStatus); a background tab only reports
+        return { type: 'grimoire-browser-status', state: msg.state || 'failed', url: msg.url || url || '' };
+      case 'navigating':
+      case 'location':
+        return {
+          type: msg.navigating ? 'grimoire-browser-navigating' : 'grimoire-browser-location',
+          url: msg.url || '',
+          title: msg.title || '',
+          navigating: !!msg.navigating,
+          // the page's security zone, by the address it came from (server.js zoneOfUrl): 'intranet' | 'internet'
+          zone: msg.zone || ''
+        };
+      case 'feeds':
+        return { type: 'grimoire-browser-feeds', feeds: Array.isArray(msg.feeds) ? msg.feeds : [] };
+      case 'print-info':
+      case 'print-pdf': {
+        // Grimoire's Print dialog: what the page offers, then the PDF waiting in the downloads route (server.js printPagePdf)
+        var copy = Object.assign({}, msg);
+        copy.type = 'grimoire-browser-' + msg.type;
+        return copy;
+      }
+      case 'print':
+        return { type: 'grimoire-browser-print', id: msg.id || '', image: msg.image || '', width: msg.width || 0, height: msg.height || 0, title: msg.title || '', url: msg.url || '', error: msg.error || '' };
+      case 'error':
+      case 'navigation-failed':
+        return { type: 'grimoire-browser-navigation-failed' };
+      case 'encoder':
+        // what Alchemy encodes this tab with now, and why (Grimoire's Alchemy information)
+        return { type: 'grimoire-browser-encoder', info: msg };
+      case 'history-end':
+        return { type: 'grimoire-browser-history-end', dir: msg.dir === 1 ? 1 : -1 };
+      case 'download-progress':
+        return { type: 'grimoire-browser-download-progress', id: msg.id || '', filename: msg.filename || 'download', received: msg.received || 0, total: msg.total || 0, canceled: !!msg.canceled };
+      case 'progress':
+        return { type: 'grimoire-browser-progress', value: Number(msg.value) || 0, bytes: Number(msg.bytes) || 0 };
+      case 'download':
+        return { type: 'grimoire-browser-download', id: msg.id || '', filename: msg.filename || 'download' };
+      default:
+        return null;
+    }
+  }
+
+  // a watched tab (not the one on show): its control messages arrive as { type: 'bg', sessionId, msg } and go to the
+  // parent as the payload they would be in front, tagged with that session and background: true. Nothing of this
+  // viewer's own state changes (closed flag, lastUrl, canvas, dialogs, status page). The tab's last address is kept
+  // here only for the messages that carry none.
+  var bgUrls = new Map();
+  function handleBackground(msg) {
+    var id = typeof msg.sessionId === 'string' ? msg.sessionId : '';
+    var inner = msg.msg;
+    if (!id || !inner || typeof inner !== 'object') return;
+    if ((inner.type === 'navigating' || inner.type === 'location') && inner.url) bgUrls.set(id, inner.url);
+    var out = parentPayloadFor(inner, bgUrls.get(id) || '');
+    if (inner.type === 'closed' || inner.type === 'transferred') bgUrls.delete(id);
+    if (!out) return;
+    out.viewerSession = id;
+    out.background = true;
+    postParent(out);
   }
 
   function handleControl(msg) {
     if (!msg) return;
+    if (msg.type === 'bg') {
+      handleBackground(msg);
+      return;
+    }
+    if (msg.type === 'switched' || msg.type === 'switch-failed') {
+      handleSwitchReply(msg);
+      return;
+    }
+    // asked to show another session and not answered yet: whatever comes belongs to the one being left
+    if (switching) return;
     if (msg.type === 'inspect') noteFieldAnswer(msg);
+    // what only tells the parent; 'status' goes through showTabStatus below (it also shows the failed page)
+    var out = msg.type === 'status' ? null : parentPayloadFor(msg, lastUrl);
     if (msg.type === 'meta' && msg.metadata) {
       meta = msg.metadata;
     } else if (msg.type === 'bin' && msg.data) {
@@ -1805,30 +1938,10 @@
       // another window took the sound (it comes back with a click or a key here), or this Alchemy has none
       engineStop();
       if (msg.reason === 'taken') audioTaken = true;
-    } else if (msg.type === 'popup' && (msg.url || msg.sessionId)) {
-      postParent({ type: 'grimoire-browser-popup', url: msg.url || '', sessionId: msg.sessionId || '', viewerToken: msg.viewerToken || '', tab: !!msg.tab });
     } else if (msg.type === 'closed') {
       closed = true;
-      postParent({ type: 'grimoire-browser-closed' });
-    } else if (msg.type === 'memory' || msg.type === 'memory-limit') {
-      // the tab's memory against Internet Properties' limit (#756): the IE status bar shows it, the limit asks
-      postParent({ type: msg.type === 'memory' ? 'grimoire-browser-memory' : 'grimoire-browser-memory-limit', level: msg.level || 'over', usedMb: msg.usedMb || 0, limitMb: msg.limitMb || 0 });
     } else if (msg.type === 'transferred') {
-      // another device took this page (#756); the parent shows "This tab has been transferred to another device"
       closed = true;
-      postParent({ type: 'grimoire-browser-transferred', to: msg.to || '', kind: msg.kind || '', at: msg.at || Date.now(), url: lastUrl });
-    } else if (msg.type === 'file-chooser' && msg.id) {
-      // an upload field: the desktop picks the files (grimoireRemoteBrowser.js, #628)
-      postParent({ type: 'grimoire-browser-file-chooser', id: msg.id, multiple: !!msg.multiple, accept: msg.accept || '' });
-    } else if (msg.type === 'dialog' && msg.id) {
-      postParent({
-        type: 'grimoire-browser-dialog',
-        id: msg.id,
-        kind: msg.kind || 'alert',
-        message: msg.message || '',
-        defaultValue: msg.defaultValue || '',
-        realm: msg.realm || ''
-      });
     } else if (msg.type === 'select' && Array.isArray(msg.options)) {
       var box = canvas.getBoundingClientRect();
       postParent({
@@ -1850,28 +1963,10 @@
       }
       if (msg.url) lastUrl = msg.url;
       if (tabState === 'unresponsive') showTabStatus('ok');
-      postParent({
-        type: msg.navigating ? 'grimoire-browser-navigating' : 'grimoire-browser-location',
-        url: msg.url || '',
-        title: msg.title || '',
-        navigating: !!msg.navigating,
-        // the page's security zone, by the address it came from (server.js zoneOfUrl): 'intranet' | 'internet'
-        zone: msg.zone || ''
-      });
-    } else if (msg.type === 'feeds') {
-      postParent({ type: 'grimoire-browser-feeds', feeds: Array.isArray(msg.feeds) ? msg.feeds : [] });
-    } else if (msg.type === 'print-info' || msg.type === 'print-pdf') {
-      // Grimoire's Print dialog: what the page offers, then the PDF waiting in the downloads route (server.js printPagePdf)
-      msg.type = 'grimoire-browser-' + msg.type;
-      postParent(msg);
-    } else if (msg.type === 'print') {
-      postParent({ type: 'grimoire-browser-print', id: msg.id || '', image: msg.image || '', width: msg.width || 0, height: msg.height || 0, title: msg.title || '', url: msg.url || '', error: msg.error || '' });
-    } else if (msg.type === 'error') {
-      postParent({ type: 'grimoire-browser-navigation-failed' });
     } else if (msg.type === 'inspect' && pendingMenu && window.parent && window.parent !== window) {
       var menu = pendingMenu;
       pendingMenu = null;
-      window.parent.postMessage({
+      postParent({
         type: 'grimoire-browser-menu',
         clientX: menu.clientX,
         clientY: menu.clientY,
@@ -1883,7 +1978,7 @@
         editable: !!msg.editable,
         // the point, picture size, background, field state and word under the pointer (Grimoire's IE7 menu)
         more: msg.more && typeof msg.more === 'object' ? msg.more : null
-      }, '*');
+      });
     } else if (msg.type === 'restarting') {
       restarting = true;
     } else if (msg.type === 'clipboard') {
@@ -1941,22 +2036,9 @@
     } else if (msg.type === 'sheets') {
       setSheets(msg.list);
     } else if (msg.type === 'encoder') {
-      // what Alchemy encodes this tab with now, and why (Grimoire's Alchemy information)
       encoder = msg;
-      postParent({ type: 'grimoire-browser-encoder', info: msg });
-    } else if (msg.type === 'history-end') {
-      postParent({ type: 'grimoire-browser-history-end', dir: msg.dir === 1 ? 1 : -1 });
-    } else if (msg.type === 'download-progress') {
-      postParent({ type: 'grimoire-browser-download-progress', id: msg.id || '', filename: msg.filename || 'download', received: msg.received || 0, total: msg.total || 0, canceled: !!msg.canceled });
-    } else if (msg.type === 'progress') {
-      postParent({ type: 'grimoire-browser-progress', value: Number(msg.value) || 0, bytes: Number(msg.bytes) || 0 });
-    } else if (msg.type === 'download' && window.parent && window.parent !== window) {
-      window.parent.postMessage({
-        type: 'grimoire-browser-download',
-        id: msg.id || '',
-        filename: msg.filename || 'download'
-      }, '*');
     }
+    if (out) postParent(out);
   }
 
   function writeLocalClipboard(text) {
@@ -2015,15 +2097,11 @@
       navigator.clipboard.readText().then(function (text) {
         if (text) send({ type: 'paste', text: text });
       }).catch(function () {
-        if (window.parent && window.parent !== window) {
-          window.parent.postMessage({ type: 'grimoire-browser-paste-request' }, '*');
-        }
+        postParent({ type: 'grimoire-browser-paste-request' });
       });
       return;
     }
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'grimoire-browser-paste-request' }, '*');
-    }
+    postParent({ type: 'grimoire-browser-paste-request' });
   }
 
   // The page keeps the size of the last time it was on screen. A hidden tab (display: none) or a
@@ -2115,6 +2193,8 @@
   }
 
   function sendViewport() {
+    // parked: no session to size
+    if (!sessionId) return;
     if (keyboardOverlay()) return;
     var size = measuredViewport();
     if (!size) return;
@@ -2222,9 +2302,12 @@
     sendViewport();
     // the sound was asked for before the socket was up
     if (audioWanted && engine) send({ type: 'audio', on: true });
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'grimoire-browser-ready' }, '*');
-    }
+    postParent({ type: 'grimoire-browser-ready' });
+    // #761: the sessions the window's other tabs are, again after a (re)connect (a new socket watches nothing)
+    sendWatch();
+    // a socket that opened on another session than the one to show (the parent switched it while it connected, or a
+    // parked viewer came back): the switch goes first
+    if (!fallback && boundId !== sessionId) requestSwitch(sessionId, token, true);
   }
 
   function lostConnection() {
@@ -2232,6 +2315,16 @@
     clearInterval(rttProbe);
     rttProbe = 0;
     engineStop();
+    // asked to switch when the link went: the new session is the one to come back to
+    if (switching) {
+      var sw = switching;
+      clearTimeout(sw.timer);
+      switching = null;
+      adoptSession(sw.id, sw.token);
+      afterSwitched(sw.quiet);
+    }
+    // parked: nothing is shown, so nothing to recover; the next switch opens a socket again
+    if (!sessionId) return;
     recoverSession();
   }
 
@@ -2262,13 +2355,13 @@
     var sawDown = false;
     showRestarting();
     function probe() {
-      if (closed) { recovering = false; return; }
-      fetch(location.href, { cache: 'no-store', credentials: 'same-origin' }).then(function (res) {
+      if (closed || !sessionId) { recovering = false; return; }
+      fetch(currentViewHref(), { cache: 'no-store', credentials: 'same-origin' }).then(function (res) {
         var status = res.status;
         if (res.body && res.body.cancel) res.body.cancel().catch(function () {});
         return status;
       }, function () { return 0; }).then(function (status) {
-        if (closed) { recovering = false; return; }
+        if (closed || !sessionId) { recovering = false; return; }
         if (!status || status >= 500) sawDown = true;
         if (status === 200) {
           recovering = false;
@@ -2323,23 +2416,324 @@
     };
   }
 
+  // ---- one viewer for several sessions (#761) ----
+  // An IE window holds ONE viewer and ONE socket; the parent re-points them at the Alchemy tab on show:
+  //   grimoire-browser-switch { sessionId, token }   -> { type: 'switch' } on the socket, answered by 'switched'
+  //   grimoire-browser-watch { sessions }            -> { type: 'watch' }: the other tabs' control messages arrive as 'bg'
+  // sessionId / token are the session whose picture this viewer shows now; they change only when 'switched' comes
+  // (or when the viewer had no socket to ask on). sessionId '' parks the viewer: control only, no picture.
+  var sessionEpoch = 0;       // +1 per session change: a decode that started before one is dropped when it ends
+  var boundId = sessionId;    // the session the server has this socket on, as far as this viewer knows
+  var switching = null;       // { id, token, timer, quiet }: a switch asked for and not answered yet
+  var switchCount = 0;
+  var lastSwitchMs = null;    // switch asked -> first picture of the new session drawn
+  var switchSentAt = 0;
+  var awaitingPicture = false; // 'switched' came and the new session has not drawn yet: the old picture stays
+  var holdTimer = 0;
+  var watchList = null;       // [{ sessionId, t }] from the parent, null until it sends one
+  var fallbackGen = 0;        // NDJSON stream generation: the reader of an aborted one stops quietly
+  var fallbackAbort = null;
+  var SWITCH_WAIT_MS = 2000;  // no 'switched' by then: an Alchemy from before #761, reconnect instead
+  var HOLD_PICTURE_MS = 500;  // the old picture stays this long for the new one to come
+
+  // the session a (re)connect opens on: the current one, or for a parked viewer the last real one (the socket is
+  // then parked again as soon as it is open)
+  function streamTarget() {
+    return sessionId ? { id: sessionId, token: token } : { id: anchorId, token: anchorToken };
+  }
+
+  // this viewer's own address for the session it shows (the recovery probe asks it)
+  function currentViewHref() {
+    var target = streamTarget();
+    if (target.id === initialId && target.token === initialToken) return location.href;
+    return parts.slice(0, -1).join('/') + '/' + encodeURIComponent(target.id) + '?t=' + encodeURIComponent(target.token);
+  }
+
+  function sendSocket(obj) {
+    if (fallback || !socket || socket.readyState !== 1) return false;
+    socket.send(JSON.stringify(obj));
+    return true;
+  }
+
+  function sendWatch() {
+    if (watchList) sendSocket({ type: 'watch', sessions: watchList });
+  }
+
+  function setWatch(sessions) {
+    var list = [];
+    var keep = {};
+    for (var i = 0; i < sessions.length && list.length < 64; i++) {
+      var s = sessions[i];
+      if (!s || typeof s.sessionId !== 'string' || !s.sessionId || keep[s.sessionId]) continue;
+      keep[s.sessionId] = 1;
+      list.push({ sessionId: s.sessionId, t: typeof s.token === 'string' ? s.token : '' });
+    }
+    watchList = list;
+    bgUrls.forEach(function (url, id) { if (!keep[id]) bgUrls.delete(id); });
+    sendWatch();
+  }
+
+  // Everything that belongs to one session goes back to what a freshly loaded viewer has. The page is the same, the
+  // socket and the window-wide things stay: the sound (the whole browser's mix, bound to the socket), the clock, the
+  // link's round trip and decode times (rttMs, decWin), the socket's byte counters (rxTotal, traffic), the debug
+  // switches the parent set, the keyboard overlay, the parent's tab-hidden flag. The picture on the canvas is NOT
+  // cleared here: it stays until the new session draws (notePicture) or HOLD_PICTURE_MS passes (clearPicture).
+  function resetSessionState() {
+    sessionEpoch += 1;
+    // input of the old session still on its way (the new one must not get half a gesture)
+    outbound = [];
+    pendingMove = null;
+    if (moveTimer) { clearTimeout(moveTimer); moveTimer = 0; }
+    press = null;
+    wheelAcc = null;
+    if (wheelRaf) { cancelAnimationFrame(wheelRaf); wheelRaf = 0; }
+    clearTimeout(pasteFallback);
+    pasteFallback = 0;
+    if (pendingClipboard) {
+      clearTimeout(pendingClipboard.timer);
+      pendingClipboard.reject(new Error('switched'));
+    }
+    pendingClipboard = null;
+    pendingMenu = null;
+    fieldProbe = false;
+    editableFocus = false;
+    fieldY = -1;
+    probeY = 0;
+    if (kbHold) updateKbShift(root.clientHeight);
+    // the page: its metadata, address, health page and flags
+    meta = { deviceWidth: 1280, deviceHeight: 800 };
+    lastUrl = '';
+    tabState = 'ok';
+    restarting = false;
+    closed = false;
+    statusEl.hidden = true;
+    encoder = null;
+    contentMap = null;
+    // frames: nothing queued or half decoded, base empty, the arrival order starts over (arrivals itself only counts up)
+    queuedJob = null;
+    paintGen += 1;
+    tileQueue = [];
+    base.width = 0;
+    base.height = 0;
+    if (scratch) { scratch.width = 0; scratch.height = 0; }
+    scratch = null;
+    baseInfo = { sy: 0, sx: 0, k: 0, p: 0, t: 0, vh: 0 };
+    baseSrc = [];
+    stillKey = '';
+    stillArrival = 0;
+    frameArrival = 0;
+    stillBase = 0;
+    frameCount = 0;
+    stillCount = 0;
+    lastReportFrames = 0;
+    // sheets (the sentinel makes the next drawSheets hide the sheet canvas), layers, the backdrop
+    sheetImgs.forEach(function (img) { img.bmp.close(); });
+    sheetImgs.clear();
+    sheetList = [];
+    sheetGen += 1;
+    sheetDrawn = '!reset';
+    layers = { f: [], cover: 0, backdrop: 0 };
+    visRects = [];
+    visRanges = [];
+    visCols = [];
+    backdropCanvas = null;
+    backdropCtx = null;
+    keepCanvas = null;
+    // the scroll cache, the layer cache and the page preview
+    cacheClear();
+    cache.width = 0;
+    cache.k = 0;
+    lcache.width = 0;
+    lcache.k = 0;
+    cacheLastSy = null;
+    aheadRanges = [];
+    layeredRuns = null;
+    bgColor = '';
+    checker = null;
+    previewClear();
+    // scrolling ahead of the page
+    scrollInfo = { y: 0, height: 0, view: 0, x: 0, width: 0, viewWidth: 0, root: 1, bandTop: 0, bandBottom: 0 };
+    pred = { waitSeq: 0, ackSeq: 0, ackAt: 0, active: false, converging: false, target: 0, display: 0, startSy: 0, sum: 0, lastInput: 0, smooth: false, distrustUntil: 0, posted: null };
+    lastRafAt = 0;
+    stepSeq = 0;
+    travel = { dir: 0, v: 0, lastY: null, lastT: 0, sentAt: 0, sentKey: '' };
+    // the size the new session is told (sendViewport sends it again)
+    lastViewport = null;
+    sendViewport.sent = false;
+  }
+
+  // the picture (and what lies over it) goes: the new session had nothing to show in time, or none (parked)
+  function clearPicture() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    stillCanvas.hidden = true;
+    sheetCanvas.hidden = true;
+    sheetDrawn = '';
+    debugCanvas.hidden = true;
+  }
+
+  // the first picture (frame or still) of the new session is drawn
+  function notePicture() {
+    if (!awaitingPicture) return;
+    awaitingPicture = false;
+    clearTimeout(holdTimer);
+    holdTimer = 0;
+    lastSwitchMs = Math.round(performance.now() - switchSentAt);
+    // the old session's sheets must not stay over the new picture
+    drawSheets();
+  }
+
+  function adoptSession(id, tok) {
+    sessionId = id;
+    token = tok;
+    if (id) {
+      anchorId = id;
+      anchorToken = tok;
+    }
+    inputUrl = buildInputUrl();
+    resetSessionState();
+  }
+
+  // the new session is the viewer's now: tell the parent, ask the new session for what the old one had been told
+  function afterSwitched(quiet) {
+    // quiet: the parent was told when the viewer adopted the session without a socket; the server's answer comes later
+    if (!quiet) {
+      switchCount += 1;
+      postParent({ type: 'grimoire-browser-switched' });
+    }
+    clearTimeout(holdTimer);
+    holdTimer = 0;
+    awaitingPicture = false;
+    if (!sessionId) {
+      clearPicture();
+      return;
+    }
+    // the window can be hidden (minimised) while the tab changes: the new session is told as the old one was
+    if (tabHidden) send({ type: 'visibility', hidden: true });
+    if (debug.content) send({ type: 'want-content', on: true });
+    sendViewport();
+    awaitingPicture = true;
+    holdTimer = setTimeout(function () {
+      holdTimer = 0;
+      if (!awaitingPicture) return;
+      awaitingPicture = false;
+      clearPicture();
+    }, HOLD_PICTURE_MS);
+  }
+
+  // the parent wants another session shown (grimoire-browser-switch)
+  function switchTo(id, tok) {
+    var current = switching ? switching.id : sessionId;
+    if (id === current) return;
+    if (fallback) {
+      switchFallback(id, tok);
+    } else if (socket && socket.readyState === 1) {
+      requestSwitch(id, tok, false);
+    } else {
+      switchWhileDown(id, tok);
+    }
+  }
+
+  // socket mode: ask the server; nothing else changes until it answers
+  function requestSwitch(id, tok, quiet) {
+    // the old session gets the end of what it was doing (a button held, a wheel turn) before it is left
+    letGo();
+    if (wheelRaf) cancelAnimationFrame(wheelRaf);
+    flushWheel();
+    if (switching) clearTimeout(switching.timer);
+    var sw = { id: id, token: tok, timer: 0, quiet: !!quiet };
+    switching = sw;
+    switchSentAt = performance.now();
+    sw.timer = setTimeout(function () { switchTimedOut(sw); }, SWITCH_WAIT_MS);
+    sendSocket({ type: 'switch', sessionId: id, t: tok });
+  }
+
+  function handleSwitchReply(msg) {
+    var sw = switching;
+    if (!sw || (msg.sessionId || '') !== sw.id) return;
+    switching = null;
+    clearTimeout(sw.timer);
+    if (msg.type === 'switch-failed') {
+      // the old binding stays
+      postParent({ type: 'grimoire-browser-switch-failed', viewerSession: sw.id, reason: String(msg.reason || '') });
+      return;
+    }
+    boundId = sw.id;
+    adoptSession(sw.id, sw.token);
+    afterSwitched(sw.quiet);
+  }
+
+  // an Alchemy from before #761 does not answer 'switch': leave this socket and open one on the new session
+  function switchTimedOut(sw) {
+    if (switching !== sw) return;
+    switching = null;
+    var old = socket;
+    socket = null;
+    connected = false;
+    clearInterval(rttProbe);
+    rttProbe = 0;
+    adoptSession(sw.id, sw.token);
+    try { if (old) old.close(); } catch (e) {}
+    afterSwitched(sw.quiet);
+    // a parked viewer on such an Alchemy stays down (the next switch opens a socket)
+    if (sessionId) connectSocket();
+  }
+
+  // no open socket (it is connecting, or the link is down and recoverSession is probing): the session to show is
+  // simply the new one; the connection, when it is there, opens on it (or switches to it, announceReady)
+  function switchWhileDown(id, tok) {
+    if (switching) {
+      clearTimeout(switching.timer);
+      switching = null;
+    }
+    switchSentAt = performance.now();
+    adoptSession(id, tok);
+    afterSwitched(false);
+    if (id && !socket && !recovering) connectSocket();
+  }
+
+  // NDJSON fallback: the stream is per session, so the old one is dropped and one for the new session starts
+  function switchFallback(id, tok) {
+    letGo();
+    fallbackGen += 1;
+    if (fallbackAbort) { try { fallbackAbort.abort(); } catch (e) {} }
+    fallbackAbort = null;
+    switchSentAt = performance.now();
+    adoptSession(id, tok);
+    if (!id) {
+      afterSwitched(false);
+      return;
+    }
+    startFallback(true);
+  }
+
   // The NDJSON stream through Dreamscape (before #990 the only way; now for a link that will not hold a socket).
-  function startFallback() {
+  // afterSwitch: it starts for a session the parent just switched to (the 'switched' is told when it answers).
+  function startFallback(afterSwitch) {
     fallback = true;
-    var framesUrl = '/api/grimoire-browser/sessions/' + encodeURIComponent(sessionId) + '/frames?t=' + encodeURIComponent(token);
-    fetch(framesUrl, { credentials: 'same-origin', headers: { 'X-No-Compression': '1' } }).then(function (res) {
+    var gen = ++fallbackGen;
+    if (fallbackAbort) { try { fallbackAbort.abort(); } catch (e) {} }
+    var abort = fallbackAbort = typeof AbortController === 'function' ? new AbortController() : null;
+    var target = streamTarget();
+    var framesUrl = '/api/grimoire-browser/sessions/' + encodeURIComponent(target.id) + '/frames?t=' + encodeURIComponent(target.token);
+    var opts = { credentials: 'same-origin', headers: { 'X-No-Compression': '1' } };
+    if (abort) opts.signal = abort.signal;
+    fetch(framesUrl, opts).then(function (res) {
+      if (gen !== fallbackGen) return;
       if (!res.ok || !res.body) {
         connected = false;
         recoverSession();
         return;
       }
-      announceReady();
+      if (afterSwitch) afterSwitched(false);
+      else announceReady();
       pumpOutbound();
       var reader = res.body.getReader();
       var decoder = new TextDecoder();
       var buf = '';
       function pump() {
         return reader.read().then(function (result) {
+          // a stream the viewer dropped (switched away, or a newer one started): no more of it
+          if (gen !== fallbackGen) return;
           if (result.done) {
             lostConnection();
             return;
@@ -2358,13 +2752,16 @@
       }
       return pump();
     }).catch(function () {
+      if (gen !== fallbackGen) return;
       lostConnection();
     });
   }
 
   function connectSocket() {
     var wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    var streamPath = (relay ? '/api/grimoire-browser/sessions/' : '/sessions/') + encodeURIComponent(sessionId) + '/stream?t=' + encodeURIComponent(token);
+    var target = streamTarget();
+    boundId = target.id;
+    var streamPath = (relay ? '/api/grimoire-browser/sessions/' : '/sessions/') + encodeURIComponent(target.id) + '/stream?t=' + encodeURIComponent(target.token);
     var opened = false;
     var ws;
     try {
@@ -2414,9 +2811,14 @@
     var st = lcache.strips.get(i);
     return st ? st.canvas.toDataURL('image/png') : '';
   };
+  // the mapping of Alchemy's control messages to the parent's payloads, for tests (pure)
+  window.__alchemyParentPayloadFor = parentPayloadFor;
   window.__alchemyViewerStats = function () {
     var ext = cacheExtent();
     return {
+      sessionId: sessionId,
+      switches: switchCount,
+      lastSwitchMs: lastSwitchMs,
       encoder: encoder,
       transport: fallback ? 'ndjson' : (socket && socket.readyState === 1 ? 'websocket' : 'none'),
       still: stillCanvas.hidden ? null : { width: stillCanvas.width, height: stillCanvas.height },
@@ -2457,7 +2859,11 @@
   var audioVolume = 1;
   var audioFails = 0;
   var audioTrimTimer = 0;
-  var audioUrl = (relay ? '/api/grimoire-browser' : '') + '/sessions/' + encodeURIComponent(sessionId) + '/audio?t=' + encodeURIComponent(token);
+  // the whole browser's mix: any live session's token may listen, so the viewer's current one (#761)
+  function audioUrlNow() {
+    var target = streamTarget();
+    return (relay ? '/api/grimoire-browser' : '') + '/sessions/' + encodeURIComponent(target.id) + '/audio?t=' + encodeURIComponent(target.token);
+  }
   var engine = null;
   var engineBroken = false;
   var videoDelay = 0;
@@ -2710,7 +3116,7 @@
 
   function startLegacyAudio() {
     if (audio || !audioWanted) return;
-    var el = new Audio(audioUrl + '&n=' + Date.now());
+    var el = new Audio(audioUrlNow() + '&n=' + Date.now());
     el.volume = audioVolume;
     el.preservesPitch = true;
     audio = el;
@@ -2771,9 +3177,7 @@
     }
     canvas.focus();
     try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
-    if (window.parent && window.parent !== window) {
-      window.parent.postMessage({ type: 'grimoire-browser-focus' }, '*');
-    }
+    postParent({ type: 'grimoire-browser-focus' });
     ev.preventDefault();
     var p = mapPoint(ev);
     press = { x: p.x, y: p.y, button: buttonName(ev.button), pointerId: ev.pointerId };
@@ -2942,6 +3346,15 @@
       send({ type: 'encoder?' });
       return;
     }
+    // #761: the window's one viewer is pointed at another tab's session, and told which others to report on
+    if (data.type === 'grimoire-browser-switch' && typeof data.sessionId === 'string') {
+      switchTo(data.sessionId, typeof data.token === 'string' ? data.token : '');
+      return;
+    }
+    if (data.type === 'grimoire-browser-watch' && Array.isArray(data.sessions)) {
+      setWatch(data.sessions);
+      return;
+    }
     // Grimoire's Alchemy Information tool window asks (every 2 s at most, only while it shows): this viewer's own
     // numbers, plus the bytes received and the decode time so far
     if (data.type === 'grimoire-browser-debug') {
@@ -3015,7 +3428,7 @@
       // a finger on the phone's page (Internet Explorer on the phone): x, y in this window's CSS pixels
       if (data.kind === 'start') {
         playAudio();
-        if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'grimoire-browser-focus' }, '*');
+        postParent({ type: 'grimoire-browser-focus' });
       }
       var tp = mapPoint({ clientX: data.x, clientY: data.y });
       send({ type: 'touch', kind: data.kind, x: tp.x, y: tp.y, t: Number(data.t) || 0, tap: !!data.tap });
