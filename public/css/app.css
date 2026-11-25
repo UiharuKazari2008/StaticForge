@@ -4006,29 +4006,10 @@ body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.mi
 
 /* Remove permanent will-change on selection-mode grid tiles to prevent GPU layer thrashing during virtual scrolling */
 
-/* Interactive glass controls: will-change only while hovered/focused/open */
-.btn-primary:hover:not(:disabled),
-.btn-primary:focus-visible:not(:disabled),
-.btn-secondary:hover:not(:disabled),
-.btn-secondary:focus-visible:not(:disabled),
-.btn-danger:hover:not(:disabled),
-.btn-danger:focus-visible:not(:disabled),
-.btn-warning:hover:not(:disabled),
-.btn-warning:focus-visible:not(:disabled),
-.pswp__button--custom:hover:not(:disabled),
-.pswp__button--custom:focus-visible:not(:disabled),
-.round-button:hover:not(:disabled),
-.round-button:focus-visible:not(:disabled),
-.lightbox-close-btn:hover:not(:disabled),
-.lightbox-close-btn:focus-visible:not(:disabled),
-.lightbox-nav-btn:hover:not(:disabled),
-.lightbox-nav-btn:focus-visible:not(:disabled),
-.image-preview-nav-btn:hover:not(:disabled),
-.image-preview-nav-btn:focus-visible:not(:disabled),
+/* Open menus and overlays only. Hovered and focused buttons get no will-change: their states are paint-only and a hint
+   switched on at mouse-in and off at mouse-out created and dropped a layer on every hover (#1162). */
 .character-autocomplete-overlay:not(.hidden),
 .preset-autocomplete-overlay:not(.hidden),
-.custom-dropdown-btn:hover:not(:disabled),
-.custom-dropdown-btn:focus-visible:not(:disabled),
 .custom-dropdown-btn.active,
 .custom-dropdown-btn.context-open,
 .custom-dropdown-menu:not(.hidden),
@@ -4036,7 +4017,7 @@ body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.mi
 .context-menu-submenu:not(.hidden),
 .show-preview .manual-modal-preview-section,
 .manual-modal-preview-section.active {
-    /* perf: allow hovered/focused buttons and open menus only; and the Studio preview pane while it shows, where the opacity / backdrop-filter hint makes it the backdrop root its glass children blur against (dropping it changes the live-glass look) */
+    /* perf: allow open menus and overlays only; and the Studio preview pane while it shows, where the opacity / backdrop-filter hint makes it the backdrop root its glass children blur against (dropping it changes the live-glass look) */
     will-change: backdrop-filter, transform, opacity, top;
 }
 

@@ -1,5 +1,5 @@
 /* Desktop shell: taskbar, start menu, wallpaper, icons, gallery window */
-/* will-change only for the time a button moves or is hovered; paint-only properties (colours, shadows,
+/* will-change only for the time a button moves (no hover hint, #1162); paint-only properties (colours, shadows,
    sizes) left out, a hint on them makes no layer (#890) */
 .taskbar-window-item.entering,
 .taskbar-window-item.leaving {
@@ -11,14 +11,6 @@
 .taskbar-window-item.leaving .taskbar-window-item-content {
     /* perf: allow only while a taskbar button slides in or out */
     will-change: opacity, transform;
-}
-.taskbar-start-button:not(.orb):hover:not(:disabled) {
-    /* perf: allow only while the Start button is hovered (desktop pointer) */
-    will-change: transform;
-}
-.taskbar-tray-icon:hover:not(:disabled) {
-    /* perf: allow only while a tray icon is hovered (desktop pointer) */
-    will-change: opacity;
 }
 /* Gallery Window - Desktop Mode Styles */
 /* Default: Maximized/full view - gallery is static, not a modal */

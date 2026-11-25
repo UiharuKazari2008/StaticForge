@@ -969,36 +969,9 @@ body:not(.windows-classic-theme) #directorWindow {
     box-shadow: inset var(--glass-shadow-2);
 }
 
-/* Titlebar toolbar: will-change only while hovered/focused (no transition — instant hover) */
-.modal-window-title-toolbar [class^="btn-"]:hover:not(:disabled),
-.modal-window-title-toolbar .form-control:hover:not(:disabled),
-.modal-window-title-toolbar input.form-control:hover:not(:disabled),
-.modal-window-title-toolbar .gallery-toggle-btn:hover:not(:disabled),
-.modal-window-title-toolbar .wiki-address-bar:hover:not(.nav-loading):not(.edit-active),
-.modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])):has(
-    .toolbar-input-segment:hover:not(:disabled),
-    .toolbar-input-segment.active,
-    input.toolbar-input-segment:focus
-),
-.modal-window-title-toolbar > .button-group:not(:has(.form-control, input:not([type="hidden"]))):has(> .toolbar-input-segment):has(
-    .toolbar-input-segment:hover:not(:disabled),
-    .toolbar-input-segment.active
-),
-.modal.toolbar-visible .modal-window-title-toolbar > .button-group:has(> .toolbar-input-segment):has(> .toolbar-input-segment:hover:not(:disabled)),
-.modal.toolbar-visible .modal-window-title-toolbar > .wiki-address-bar:hover:not(.nav-loading):not(.edit-active) {
-    /* perf: allow only while a toolbar control is hovered (or a segment is active); the colour and shadow hints made no layer and are gone */
-    will-change: filter;
-}
-
-.modal-window-title-toolbar [class^="btn-"]:not(:hover):not(:focus-visible):not(:disabled),
-.modal-window-title-toolbar .form-control:not(:hover):not(:focus):not(:disabled),
-.modal-window-title-toolbar input.form-control:not(:hover):not(:focus):not(:disabled),
-.modal-window-title-toolbar .gallery-toggle-btn:not(:hover):not(:focus-visible):not(:disabled),
-.modal-window-title-toolbar .wiki-address-bar:not(:hover),
-.modal-window-title-toolbar .button-group:not(:has(.toolbar-input-segment:hover:not(:disabled))):not(:has(input.toolbar-input-segment:focus)) {
-    /* perf: allow a reset to auto (no layer): it keeps the open-menu hints of custom-dropdown.css off toolbar buttons at rest */
-    will-change: auto;
-}
+/* Titlebar toolbar: no will-change on hover or focus. The hovered states change colour, background, border and
+   shadow only (paint), where the hint makes no layer; a hint switched on at mouse-in and back to auto at mouse-out
+   created and dropped a layer on every hover and flashed the title bar on the Android WebView (#1162). */
 
 .modal-window-title-toolbar>.form-control:focus,
 .modal-window-title-toolbar>.form-control:active,

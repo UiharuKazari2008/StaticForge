@@ -370,8 +370,9 @@ html.disable-blur .director-session-overlay {
     grid-template-columns: 1fr 1fr;
 }
 
+/* The slider is inset 2px on each side of its column (left: 2px, width: column - 4px), so a step is its own width + 4px and it lands on the active button's box */
 #directorPersonaGroup .gallery-toggle-slider {
-    width: calc(50% - 2px);
+    width: calc(50% - 4px);
 }
 
 /* Wren | Kabuki | Xi (director.js paintPersonaToggle sets data-count and data-index) */
@@ -380,7 +381,7 @@ html.disable-blur .director-session-overlay {
 }
 
 #directorPersonaGroup[data-count="3"] .gallery-toggle-slider {
-    width: calc(calc(100% / 3) - 2px);
+    width: calc(calc(100% / 3) - 4px);
 }
 
 #directorPersonaGroup .gallery-toggle-btn {
@@ -391,15 +392,11 @@ html.disable-blur .director-session-overlay {
 }
 
 #directorPersonaGroup[data-index="1"] .gallery-toggle-slider {
-    transform: translateX(100%);
+    transform: translateX(calc(100% + 4px));
 }
 
-#directorPersonaGroup[data-count="3"][data-index="1"] .gallery-toggle-slider {
-    transform: translateX(calc(100% + 2px));
-}
-
-#directorPersonaGroup[data-count="3"][data-index="2"] .gallery-toggle-slider {
-    transform: translateX(calc(200% + 4px));
+#directorPersonaGroup[data-index="2"] .gallery-toggle-slider {
+    transform: translateX(calc(200% + 8px));
 }
 
 /* Inactive names: light text on the dark track (the Vista light-face blue vanished there). */
@@ -414,17 +411,34 @@ body #directorSessionList #directorPersonaGroup .gallery-toggle-btn:not(.active)
     opacity: 1;
 }
 
-/* Kabuki: the back-room tab, a red lantern tint */
+/* One slider and active-text colour per persona, from the theme status tokens: Wren blue, Kabuki red lantern, Xi green */
+#directorPersonaGroup[data-persona="wren"] .gallery-toggle-slider {
+    background: var(--status-info-bg);
+    border-color: var(--status-info-border);
+}
+
+#directorPersonaGroup[data-persona="wren"] .gallery-toggle-btn.active {
+    color: var(--status-info-text);
+}
+
 #directorPersonaGroup[data-persona="kabuki"] .gallery-toggle-slider {
-    background: hsl(350deg 100% 50% / 26%);
-    border-color: hsl(350deg 100% 62% / 48%);
+    background: var(--status-error-bg);
+    border-color: var(--status-error-border);
 }
 
 #directorPersonaGroup[data-persona="kabuki"] .gallery-toggle-btn.active {
-    color: #ff9db0;
+    color: var(--status-error-text);
 }
 
-/* Xi is a coding chat. Wren's print thumbnails and browser stills stay off. Xi quick tasks: DIRECTOR_XI_QUICK_STARTS (director.js) */
+#directorPersonaGroup[data-persona="xi"] .gallery-toggle-slider {
+    background: var(--status-success-bg);
+    border-color: var(--status-success-border);
+}
+
+#directorPersonaGroup[data-persona="xi"] .gallery-toggle-btn.active {
+    color: var(--status-success-text);
+}
+
 #directorCommonHeader[data-persona="xi"] #directorSessionPreviewContainer,
 #directorCommonHeader[data-persona="xi"] #directorHeaderActionsNewSession,
 #directorContainer[data-persona="xi"] .director-session-item > .director-session-preview,

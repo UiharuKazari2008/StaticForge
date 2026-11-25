@@ -9,13 +9,11 @@
     width: 100%;
 }
 
-/* will-change while interactive (the colour and shadow hints made no layer and are gone, #890) */
-.custom-dropdown-btn:hover:not(:disabled),
-.custom-dropdown-btn:focus-visible:not(:disabled),
+/* will-change while open (the colour and shadow hints made no layer and are gone, #890) */
 .custom-dropdown-btn.active,
 .custom-dropdown-btn.context-open,
 .custom-dropdown-menu:not(.hidden) {
-    /* perf: allow only while a dropdown button is hovered, focused or open, and while its menu is open */
+    /* perf: allow only while a dropdown button is open, and while its menu is open */
     will-change: backdrop-filter, transform, opacity, top;
 }
 
