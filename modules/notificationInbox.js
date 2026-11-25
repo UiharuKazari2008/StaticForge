@@ -202,8 +202,8 @@ function publish(notice = {}) {
     //   - a legacy row (digest NULL, from before this column): its digest is worked out from what it stored; when the
     //     producer gives a custom digest, the same title and class counts as unchanged.
     //   - returning: true (a snooze ending): the user asked for it back, so it sounds and is new again whatever it says.
-    //   - the test lane (user 'test', modules/testDevices.js) keeps the old rule: every alert: true sounds, every
-    //     publish over a done row is new again - it exists to fire the same notice at the emulator over and over.
+    //   - the test lane (user 'test', modules/testDevices.js) follows the same rule, so a test device proves it; its
+    //     snooze comes back with returning: true like the household's.
     const custom = typeof notice.digest === 'string' && notice.digest !== '';
     const dataObj = notice.data && typeof notice.data === 'object' ? notice.data : {};
     row.digest = custom ? sha1(`c|${notice.digest}`) : defaultDigest(row.cls, row.title, row.text, dataObj.stamp);
@@ -212,9 +212,7 @@ function publish(notice = {}) {
         const cur = database().prepare('SELECT state, digest, title, text, cls, data, expiresAt FROM notices WHERE user = ? AND id = ?').get(user, id);
         if (cur) {
             const done = cur.state === 'acted' || cur.state === 'cleared';
-            if (user === 'test') {
-                if (!done && notice.alert !== true) alert = false;
-            } else {
+            {
                 const escalated = classRank(row.cls) > classRank(cur.cls);
                 // returning: the user asked for it back (a snooze ending, reminderScheduler.fireSnoozed) - loud by request
                 const changed = escalated || notice.returning === true || digestChanged(cur, row, custom);

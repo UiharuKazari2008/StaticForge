@@ -123,7 +123,7 @@ const wx = (extra) => Object.assign({ id: 'A', title: 'Wind Advisory', severity:
     assert.strictEqual(changed.alert, true, 'other words are news');
     assert.strictEqual(changed.state, 'new');
 
-    // a legacy row (no digest) is judged on what it stored; the test lane keeps the old rule
+    // a legacy row (no digest) is judged on what it stored; the test lane follows the same rule
     inbox.publish({ app: 'x', id: 'old', cls: 'notification', title: 'Old', text: 'row' });
     inbox._test.database().prepare("UPDATE notices SET digest = NULL, state = 'cleared' WHERE id = 'old'").run();
     assert.strictEqual(inbox.publish({ app: 'x', id: 'old', cls: 'notification', title: 'Old', text: 'row' }).alert, false, 'legacy row, same words: unchanged');
@@ -131,7 +131,9 @@ const wx = (extra) => Object.assign({ id: 'A', title: 'Wind Advisory', severity:
     assert.strictEqual(inbox.publish({ app: 'x', id: 'old', cls: 'notification', title: 'Old', text: 'row', digest: 'k' }).alert, false, 'legacy row, custom digest, same title and class: unchanged');
     inbox.publish({ user: 'test', app: 'x', id: 't', cls: 'notification', title: 'T', text: 't', alert: true });
     inbox.clear('test', 't', 'x');
-    assert.strictEqual(inbox.publish({ user: 'test', app: 'x', id: 't', cls: 'notification', title: 'T', text: 't', alert: true }).alert, true, 'the test lane repeats a notice');
+    assert.strictEqual(inbox.publish({ user: 'test', app: 'x', id: 't', cls: 'notification', title: 'T', text: 't', alert: true }).alert, false, 'the test lane follows the same rule: dismissed and unchanged stays quiet');
+    assert.strictEqual(inbox.publish({ user: 'test', app: 'x', id: 't', cls: 'notification', title: 'T', text: 't', alert: true, returning: true }).alert, true, 'a snooze ending comes back loud');
+    assert.strictEqual(inbox.get('test', 't').state, 'new');
 
     console.log('notification inbox dedup: ok');
     process.exit(0); // phoneStatus.touch leaves a debounce timer open

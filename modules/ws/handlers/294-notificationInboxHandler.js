@@ -35,7 +35,7 @@ function testSnooze(id, m) {
     const at = Number.isFinite(Number(m.at)) && Number(m.at) > now ? Number(m.at) : now + Math.max(1, Math.min(1440, Number(m.minutes) || 5)) * 60000;
     inbox.clear('test', id, 'snooze');
     const t = setTimeout(() => {
-        inbox.publish({ user: 'test', id, app: held.app, cls: held.cls, title: held.title, text: held.text, actions: held.actions, data: held.data, alert: true });
+        inbox.publish({ user: 'test', id, app: held.app, cls: held.cls, title: held.title, text: held.text, actions: held.actions, data: held.data, alert: true, returning: true });
     }, at - now);
     if (t.unref) t.unref();
     return { ok: true, at, test: true };
