@@ -4820,7 +4820,8 @@
         put('save', 'sup-save');
         put('delete', 'sup-lock-remove sup-art-clean work-cancel work-cancel-sel build-end mem-remove con-remove release-claim');
         put('clear', 'rules-dismiss sup-art-forget sup-dismiss mem-unflag usage-ack usage-ack-all');
-        put('checklist', 'mem-approve rules-accept');
+        put('checklist', 'mem-approve rules-accept work-issues');
+        put('attach', 'work-merge');
         put('favorites', 'mem-pin');
         put('rename', 'mem-edit');
         put('find', 'inspect lock-inspect');
@@ -5761,7 +5762,7 @@
             return `${acct}${modelRows}
                 <label><span>Folder:</span><input type="text" data-cd="cwd" value="${esc(W.cwd)}" spellcheck="false" autocomplete="off"></label>
                 <label class="cd-top"><span>Request:</span><textarea data-cd="prompt" data-cd-focus rows="5" spellcheck="true" placeholder="What should it do?">${esc(W.prompt)}</textarea></label>${modelRows2}
-                ${direct ? `<label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeSelect(W.mode || 'bypassPermissions')}</select></label>` : `<label><span>Link to issue:</span><input type="text" data-cd="issue" value="${esc(W.issue || '')}" spellcheck="false" autocomplete="off" placeholder="owner/repo#N or issue URLs, several = one run (blank: a new issue is made)"></label>`}
+                ${direct ? `<label><span>Permissions:</span><select class="vdt-select" data-cd="mode">${modeSelect(W.mode || 'bypassPermissions')}</select></label>` : `<label><span>Link to issue:</span><input type="text" data-cd="issue" value="${esc(W.issue || '')}" spellcheck="false" autocomplete="off" placeholder="owner/repo#N, several = one run; blank: new issue" title="owner/repo#N or issue URLs, separated by spaces or commas; several run as one. Blank: a new issue is made."></label>`}
                 <label class="cd-opt" title="Open it in claude.ai and take it over from the phone; without it, work it from Fleet only"><input type="checkbox" data-cd="remoteControl"${W.remoteControl ? ' checked' : ''}><span>Remote Control (open it in claude.ai and take it over from the phone; without it, work it from Fleet only)</span></label>${err}`;
         }
         if (page === 'shape') {
