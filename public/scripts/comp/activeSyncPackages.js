@@ -4,7 +4,7 @@
  *
  * The phone answers over ActiveSync (DSApp ActiveSyncPackages.kt):
  *   apps.packages { system }   the programs (label, package, version, size, system, enabled, protected)
- *   apps.icon { package, size } a PNG data URL
+ *   apps.icon { package, size } { icon, label }: the icon as the server's stored file URL (modules/activeSyncIcons.js)
  *   apps.manage { package, action }  uninstall | disable | enable | stop | clear | open, over the phone's
  *                              Developer Bridge, the phone's own ADB (Android Bridge > Advanced Tools: Install Android Applications)
  *

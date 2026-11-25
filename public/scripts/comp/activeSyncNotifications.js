@@ -31,7 +31,7 @@
     const REG = 'HKCU\\Software\\Xyridian\\Melaton Mobile Device Center';
     const MAX_PER_DEVICE = 200;
     const lists = new Map();    // deviceId -> Map(key -> notification)
-    const icons = new Map();    // deviceId -> Map(package -> data URL)
+    const icons = new Map();    // deviceId -> Map(package -> the icon's URL)
     const synced = new Set();   // devices whose current list was asked for since they connected
     const filters = new Map();  // deviceId -> the partnership's map { v, apps: { pkg: { s, t, ch: { id: [s, t] } } } } (#979)
     const listeners = [];
@@ -45,9 +45,15 @@
         listeners.slice().forEach((fn) => { try { fn(deviceId); } catch (e) { console.warn('[activeSync notifications] listener failed:', e); } });
     }
 
-    /** Only a small PNG / JPEG / WebP data URL is ever used as an image source. */
+    /**
+     * An icon is the server's stored file (/api/activesync/icons/<sha1>.<ext>, modules/activeSyncIcons.js: no pixels
+     * held as text here). A tiny data URL (a few KB: a server not yet restarted sends them) is still taken.
+     */
     function safeIcon(v) {
-        return typeof v === 'string' && v.length < 40000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v) ? v : null;
+        if (typeof v !== 'string') return null;
+        if (/^\/api\/activesync\/icons\/[0-9a-f]{40}\.(png|jpg|webp)$/.test(v)) return v;
+        // no-base64-images: tiny, and only until the server sends addresses
+        return v.length < 8000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v) ? v : null;
     }
 
     function take(deviceId, raw) {

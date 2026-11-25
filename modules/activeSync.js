@@ -371,6 +371,9 @@ function getLog(globalResources, deviceId, limit) {
 
 // ---------------------------------------------------------------- live peers
 
+/** Stored phone pictures (modules/activeSyncIcons.js; loaded when first asked: it requires nothing from here). */
+function icons() { return require('./activeSyncIcons'); }
+
 function liveSockets(wsServer, kind, id) {
     const out = [];
     if (!wsServer || !wsServer.clients) return out;
@@ -830,7 +833,7 @@ function onSocketClosed(globalResources, wsServer, clientInfo) {
             statusWrites.delete(as.id);
             // the closing socket is already out of wsServer.clients (or about to be): count the others
             const others = liveSockets(server, 'device', as.id).filter((s) => s.info !== clientInfo);
-            if (!others.length) logEvent(globalResources, as.id, 'info', 'Disconnected');
+            if (!others.length) { logEvent(globalResources, as.id, 'info', 'Disconnected'); icons().releaseDevice(globalResources, as.id); }
         } catch (err) {
             console.warn('[activeSync] close failed:', err.message);
         }
@@ -926,7 +929,10 @@ async function call(globalResources, wsServer, clientInfo, data) {
         if (!res.ok) throw fail(res.error.code, res.error.message);
         if (target.info.as.speaker === 'service') { try { noteReceivedLive(globalResources, server, to, op, args, me.name); } catch (e) { console.warn('[activeSync] received note failed:', e.message); } }
         noteSynced(globalResources, server, to, op);
-        return { success: true, result: res.result };
+        // icons (notify.list, apps.icon) come back as files with addresses, not data URLs (#1012)
+        let result = res.result;
+        if (op === 'notify.list' || op === 'apps.icon') { try { result = icons().relayResult(globalResources, to, op, args, result); } catch (err) { console.warn('[activeSync] icon store failed:', err.message); } }
+        return { success: true, result };
     }
 
     // a device asks a computer
@@ -1195,6 +1201,8 @@ function event(globalResources, wsServer, clientInfo, data) {
         try { detail = relayFilter(globalResources, me, name, detail); } catch (err) { console.warn('[activeSync] relay filter failed:', err.message); }
         if (detail === undefined) return 0;
     }
+    // a phone's app icon arrives as a small data URL (transport): computers get the stored file's URL (#1012)
+    if (me.kind === 'device' && detail) { try { detail = icons().relayEvent(globalResources, me.id, name, detail); } catch (err) { console.warn('[activeSync] icon store failed:', err.message); } }
     const msg = { type: 'as_event', data: { from: fromOf(clientInfo), event: name, detail }, timestamp: new Date().toISOString() };
     let n = 0;
     for (const s of liveSockets(server, me.kind === 'device' ? 'computer' : 'device')) {
@@ -1539,6 +1547,7 @@ function forget(globalResources, wsServer, deviceId) {
     const d = getDb(globalResources);
     const res = d.prepare('DELETE FROM as_devices WHERE device_id = ?').run(deviceId);
     releaseQueue(globalResources, deviceId);
+    try { icons().releaseDevice(globalResources, deviceId); } catch (_) { /* none stored */ }
     d.prepare('DELETE FROM as_log WHERE device_id = ?').run(deviceId);
     if (primaryOf(globalResources) === deviceId) setPrimary(globalResources, server, '');
     for (const fn of endTaps) { try { fn(deviceId); } catch (_) { /* the tap's own fault */ } }

@@ -1111,9 +1111,17 @@ const vsbPuzzleApply = async function (inst) {
             canvas.width = canvas.height = VSB_PUZZLE_TILE * 4;
             const side = Math.min(img.naturalWidth, img.naturalHeight);
             canvas.getContext('2d').drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, canvas.width, canvas.height);
-            const url = `url(${canvas.toDataURL('image/jpeg', 0.9)})`;
+            // the picture shows on 16 pieces for as long as the gadget lives: a blob URL owned by the gadget, revoked
+            // when the picture changes or the gadget goes (no-base64-images)
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+            if (!blob) throw new Error('no picture');
+            if (inst.destroyed || inst.loadedBase !== s.base) return;
+            const made = URL.createObjectURL(blob);
+            const url = `url(${made})`;
             inst.parts.tiles.forEach((t) => { t.style.backgroundImage = url; });
             inst.parts.picture.style.backgroundImage = url;
+            if (inst.puzzleUrl) URL.revokeObjectURL(inst.puzzleUrl);
+            inst.puzzleUrl = made;
         } catch (_) {
             inst.loadedBase = null;
         }
@@ -3075,6 +3083,7 @@ Object.assign(VSB_GADGETS.outlook, { mount: vsbOutlookMount, apply: (inst) => vs
 Object.assign(VSB_GADGETS.puzzle, {
     mount: vsbPuzzleMount,
     apply: vsbPuzzleApply,
+    destroy: (inst) => { if (inst.puzzleUrl) { URL.revokeObjectURL(inst.puzzleUrl); inst.puzzleUrl = null; } },
     form: vsbSourceOptions,
     menu: [{ text: 'New Picture', action: 'vsb-puzzle-new' }]
 });

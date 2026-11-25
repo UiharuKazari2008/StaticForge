@@ -289,6 +289,9 @@ function mount(app, authMiddleware, globalResources) {
             res.end(buf);
         });
     });
+
+    // the phones' app icons (notifications, Programs) as files with addresses (#1012)
+    require('./activeSyncIcons').mount(app, authMiddleware, globalResources);
 }
 
 module.exports = { mount, describe, store, storeDetailed, hashes, stampOf, KINDS };
