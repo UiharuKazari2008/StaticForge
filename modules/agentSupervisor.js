@@ -671,13 +671,25 @@ async function review(sessionId, trigger, opts = {}) {
     // the user's list is brought up to date first, so the review judges against it (a failure here never stops a review)
     try { const T = sessionTasks(); await T.sync(sessionId); meta.list = T.promptSection(sessionId); } catch (e) { console.warn(`[supervisor] tasks ${sessionId.slice(0, 8)}: ${e.message}`); }
     const turn = turnOf(messages);
+    // a work item's session starts from its brief (the opening prompt, not a human message): that brief is the request
+    // (Nov 25 2026: items stayed "running" forever after "No request in this turn")
+    if (!turn.request) {
+        try {
+            const wi = db().prepare(`SELECT id, prompt FROM supervisor_work WHERE session_id = ? AND state IN (${ACTIVE.map(() => '?').join(',')})`).get(sessionId, ...ACTIVE);
+            if (wi && wi.prompt) turn.request = String(wi.prompt);
+        } catch (_) { /* no item */ }
+    }
     const base = { session_id: sessionId, agent_id: meta.agentId, title: meta.title, account: meta.account, at: Date.now(), trigger, request: turn.request.slice(0, 4000), steering: JSON.stringify(turn.steering.map((x) => x.slice(0, 1500)).slice(0, 12)) };
     d.prepare(`INSERT INTO supervisor_state (session_id, file, offset, status, updated_at) VALUES (?, ?, ?, 'seen', ?)
         ON CONFLICT(session_id) DO UPDATE SET file = excluded.file, offset = excluded.offset, status = 'seen', updated_at = excluded.updated_at`).run(sessionId, file, end || 0, Date.now());
     let result;
     if (!turn.request) result = { verdict: 'unclear', summary: 'No request in this turn', missed: [], model: '', skipped: true };
     else {
-        try { result = await askModel(gr, s, promptFor(capTurn(turn), Object.assign({ partial }, meta))); } catch (e) { result = { verdict: 'error', summary: e.message.slice(0, 300), missed: [], model: '', error: e.message }; }
+        const ask = () => askModel(gr, s, promptFor(capTurn(turn), Object.assign({ partial }, meta)));
+        try {
+            result = await ask();
+            if (result.unparsed) result = await ask(); // one more try: a cut-off or prose answer is usually fine the second time
+        } catch (e) { result = { verdict: 'error', summary: e.message.slice(0, 300), missed: [], model: '', error: e.message }; }
     }
     // the rule check: the turn's changed files against the check scripts and the rules that apply (never on an MCP ask)
     let rc = null;
@@ -1232,6 +1244,8 @@ function pumpWork(gr) {
 }
 
 /** A work item's session ended a turn: done when nothing was missed, waiting while gaps go back to it. */
+const retryTries = new Map(); // work item id -> reviews that could not judge its idle session
+const sessionBusy = (sid) => { const l = liveSessionsById().get(sid); return !!(l && l.status === 'busy'); };
 function workAfterReview(rv) {
     if (!rv || !rv.sessionId) return;
     const w = db().prepare(`SELECT * FROM supervisor_work WHERE session_id = ? AND state IN (${ACTIVE.map(() => '?').join(',')})`).get(rv.sessionId, ...ACTIVE);
@@ -1240,7 +1254,19 @@ function workAfterReview(rv) {
     if (rv.verdict === 'ok' && openKids) setWork(w.id, { state: 'running', message: `Its planner finished a turn; ${openKids} part${openKids === 1 ? ' is' : 's are'} still running` });
     else if (rv.verdict === 'ok') { setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done' }); settleParent(w.parent_id); }
     else if (rv.verdict === 'gaps') setWork(w.id, { state: 'waiting', message: `Gaps sent back: ${rv.missed.map((m) => m.item).join('; ').slice(0, 240)}` });
-    else setWork(w.id, { state: 'running', message: rv.summary || 'Turn ended' });
+    else if (['unclear', 'error'].includes(rv.verdict) && !sessionBusy(rv.sessionId)) {
+        // its session is idle and the Supervisor could not tell: re-checked once in 3 minutes, then it fails with why,
+        // so it leaves Running (Completed lists it; Start Now runs it again)
+        const tries = (retryTries.get(w.id) || 0) + 1;
+        retryTries.set(w.id, tries);
+        if (tries <= 1) {
+            setWork(w.id, { state: 'running', message: `The Supervisor could not judge the last turn (${rv.summary || rv.verdict}); checking again shortly` });
+            setTimeout(() => { if (!sessionBusy(rv.sessionId)) queueReview(rv.sessionId, 'recheck'); }, 3 * 60000).unref();
+        } else {
+            retryTries.delete(w.id);
+            setWork(w.id, { state: 'failed', ended_at: Date.now(), message: `Stopped with its session idle; the Supervisor could not judge the last turn (${rv.summary || rv.verdict}). Open the session to check it, or Start Now to run it again.` });
+        }
+    } else setWork(w.id, { state: 'running', message: rv.summary || 'Turn ended' });
     emit({ work: getWork(w.id) });
     pumpWork().catch(() => {});
 }
