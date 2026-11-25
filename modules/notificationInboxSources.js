@@ -486,20 +486,44 @@ function steerCut(sessionId) {
 }
 
 /**
- * cursorDirector.broadcastDirectorStatus(status): running -> idle is "the turn is finished" - one notice per turn
- * (no alert flag: a finish under an id still waiting in the inbox changes it in place, silently; #1168 reverses #889's
- * "each finished turn is news"), none for a steered turn, none while she watches that chat (present).
+ * cursorDirector.broadcastDirectorStatus(status): running -> idle is the Director's answer - one notice per turn, and
+ * THE one notification for it: the page no longer raises a turn notification of its own beside this one (#1168,
+ * Yukimi Nov 25 2026: "we have no need for turn end as we have on reply" - the notice is the reply, worded as one).
+ * None for a steered turn, none while she watches that chat (present). No alert flag: it reaches the phone through the
+ * app whether the page is running or not.
  */
+function directorPersona(status, was) {
+    if (was && was.xi) return 'xi';
+    const id = String((was && was.sessionId) || '');
+    const s = (Array.isArray(status && status.sessions) ? status.sessions : []).find((x) => x && String(x.id) === id);
+    let obliterated = 'obliterated';
+    try { obliterated = require('./customModelProviders').OBLITERATED_STORE || obliterated; } catch (_e) { /* its own default */ }
+    return s && s.memoryStore === obliterated ? 'kabuki' : 'wren';
+}
+
+/** The persona's display name (directorPersonaVoice, the page's personaName). */
+function directorWho(persona) {
+    try {
+        const v = require('./directorPersonaVoice').PERSONA_VOICES || {};
+        return (v[persona] && v[persona].name) || 'The Director';
+    } catch (_e) { return 'The Director'; }
+}
+
 function onDirectorStatus(status) {
     if (!status) return null;
     const xi = status.xi && status.xi.running ? status.xi : null;
     const now = xi
-        ? { running: true, sessionId: xi.sessionId || null, name: xi.sessionName || '' }
-        : { running: !!status.running, sessionId: status.sessionId || null, name: status.sessionName || '' };
+        ? { running: true, sessionId: xi.sessionId || null, name: xi.sessionName || '', xi: true }
+        : { running: !!status.running, sessionId: status.sessionId || null, name: status.sessionName || '', xi: false };
     const was = dirWas;
-    dirWas = now.running ? now : Object.assign({}, now, { sessionId: was && was.running ? was.sessionId : now.sessionId, name: was && was.running ? was.name : now.name });
+    dirWas = now.running ? now : Object.assign({}, now, {
+        sessionId: was && was.running ? was.sessionId : now.sessionId,
+        name: was && was.running ? was.name : now.name,
+        // which persona answered is kept with the turn: the idle status has no running xi to read it from
+        xi: was && was.running ? was.xi : now.xi
+    });
     if (!was || !was.running || now.running) {
-        // a new turn on a session: its last "finished" notice is old news
+        // a new turn on a session: its last reply notice is old news
         if (now.running && now.sessionId && (!was || !was.running)) {
             steered.delete(String(now.sessionId));
             clear('admin', `director:${now.sessionId}:turn`);
@@ -509,8 +533,8 @@ function onDirectorStatus(status) {
     if (steerCut(was.sessionId)) { logNoticeDecision(was.sessionId, 'silent:steer'); return null; }
     if (present(was.sessionId)) { logNoticeDecision(was.sessionId, 'silent:present'); return null; }
     logNoticeDecision(was.sessionId, 'notify:away');
-    const name = was.name;
-    const who = name ? `"${name}"` : 'The session';
+    const who = directorWho(directorPersona(status, was));
+    const where = was.name ? ` in "${was.name}"` : '';
     const last = status.last && String(status.last.sessionId || '') === String(was.sessionId || '') ? status.last : null;
     const failed = !!(last && last.state === 'failed');
     return publish({
@@ -521,7 +545,7 @@ function onDirectorStatus(status) {
         digest: `turn:${was.sessionId || 'session'}:${Date.now()}:${(eventSeq += 1)}`,
         cls: 'director',
         title: 'Director',
-        text: failed ? `${who}: the turn stopped with an error.` : `${who}: the turn is finished.`,
+        text: failed ? `${who} stopped with an error${where}.` : `${who} replied${where}.`,
         data: { app: 'director', kind: 'director', sessionId: was.sessionId || null },
         ttlMs: DAY,
     });

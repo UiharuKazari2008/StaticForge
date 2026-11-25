@@ -96,9 +96,6 @@
      *   allowStudio   the Director may open Studio (off: she prints on the server unless Studio is
      *                 already open; the server refuses her Studio tools, mcpAgentFacade refuseStudioOnPhone)
      *   openPrints    a new print of the open chat opens in the picture view
-     *   notifyTurns   this page's own notification for a finished turn, raised only while the message is off
-     *                 on screen (Settings > Sounds & Notifications > Director: Turn finished): with it on, the
-     *                 inbox notice is that one notification and a toast here would be a second one (#1168)
      *   printStrip    her prints as a strip under the text box (the desktop's prints sidebar)
      *   stripFolded   the strip folded down to its handle (#1148: the handle at its end folds it and back)
      *   wideLog       wide screens show the log beside her (off: the prints gallery column)
@@ -108,7 +105,7 @@
      *                 lays the log over her, Reply opens the composer at the bottom)
      */
     const PREF_KEY = 'wmDirectorPhone';
-    const PREF_DEFAULTS = Object.freeze({ allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, stripFolded: false, wideLog: false, wideSolo: false, xiWideSolo: false });
+    const PREF_DEFAULTS = Object.freeze({ allowStudio: false, openPrints: false, printStrip: true, stripFolded: false, wideLog: false, wideSolo: false, xiWideSolo: false });
     let prefCache = null;
     function prefs() {
         if (prefCache) return prefCache;
@@ -2033,66 +2030,20 @@
 
     // ---------------------------------------------------------------- turn notifications
 
-    /**
-     * A turn that ends while the Director is not on screen: a toast (the shell draws it as its bubble,
-     * wmShell eventPrefs' Director sound plays beside it), View opens the app. The title bar's Director
-     * glyph already shows while a turn runs.
-     * Never for a turn a steer cut short (director_message_response steer: true arrives before the idle status: the
-     * transcript row is the record), and never while she watches that chat or while this page is hidden.
+    /*
+     * A finished turn is announced by ONE notification, and it is not raised here: the server's inbox notice
+     * director:<session>:turn, worded as the answer it is ("Yozora replied in "<name>".", notificationInboxSources
+     * onDirectorStatus). This page shows it as a WM note while it is running, the app posts it natively when it is
+     * not, and a dismissal anywhere clears it everywhere (#1168).
      *
-     * ONE notification per finished turn (#1168, Yukimi Nov 25 2026: "2 director notifications still when there
-     * should be 1 or 0"). The server's inbox notice director:<session>:turn is that one: this page shows it as a
-     * WM note here, and the app posts it natively when the page is not running. This page's own toast went out
-     * beside it whenever the Director app was up but on another chat, so a turn read as two - "Yozora replied in
-     * ..." from here and "<name>: the turn is finished." from the inbox. So the toast is kept for the one case
-     * where nothing else would tell her: the message is off on screen (Settings > Sounds & Notifications >
-     * Director: Turn finished > Display message on screen), which is also the switch the shell's sound follows.
+     * This page used to raise a toast of its own beside that notice ("Yozora replied in ..." beside the notice's "the
+     * turn is finished"), so a turn read as two notifications - Yukimi, Nov 25 2026: "2 director notifications still
+     * when there should be 1 or 0". The guard meant to keep the two apart tested document.hidden, which is false on a
+     * phone with the screen off or the app behind an Android program (wmShell.awake), and the server's notice goes out
+     * whenever she is not watching that chat, so neither side yielded. The toast is gone; the notice carries the reply
+     * ("we have no need for turn end as we have on reply"). A steered turn and a chat another page of hers is showing
+     * are already silent on the server (notificationInboxSources steerCut / present), so nothing is tracked here.
      */
-    let runningTurns = new Map(); // session id -> { name, xi }
-    const steerCut = new Set(); // session ids whose turn a steer ended; used once by the next idle status
-    /** Whether the inbox notice for a finished turn is shown on screen (wmShell SND_EVENTS 'director'). */
-    function noticeOnScreen() {
-        const shell = window.wmShell;
-        const p = shell && typeof shell.eventPrefs === 'function' ? shell.eventPrefs('director') : null;
-        return !(p && p.display === false);
-    }
-    function noteTurns() {
-        const d = dir();
-        const st = d && d._status;
-        if (!st) return;
-        const now = new Map();
-        if (st.running && st.sessionId) now.set(String(st.sessionId), { name: st.sessionName || '', xi: false, last: st.last });
-        if (st.xi && st.xi.running && st.xi.sessionId) now.set(String(st.xi.sessionId), { name: st.xi.sessionName || '', xi: true });
-        const ended = [...runningTurns.entries()].filter(([id]) => !now.has(id));
-        // a turn that starts with a steer mark left (the abort found nothing to stop) drops it: a real end is never swallowed
-        for (const id of now.keys()) if (!runningTurns.has(id)) steerCut.delete(id);
-        runningTurns = now;
-        // another page of hers shows that chat (a phone's DeX window while this is its shell page): no second notification
-        const watched = Array.isArray(st.watched) ? st.watched.map(String) : [];
-        const told = ended.filter(([id]) => !steerCut.delete(id) && !watched.includes(id));
-        if (!told.length || document.hidden || (shown && isCurrent()) || !prefs().notifyTurns || noticeOnScreen() || typeof showGlassToast !== 'function') return;
-        told.forEach(([id, turn]) => {
-            const s = (d.directorSessions || []).find((x) => String(x.id) === id);
-            const persona = turn.xi ? 'xi' : (s && s.memoryStore === 'obliterated' ? 'kabuki' : 'wren');
-            const name = turn.name || (s && s.name) || '';
-            const last = st.last && String(st.last.sessionId) === id ? st.last : null;
-            const failed = !!(last && (last.state === 'error' || last.error));
-            const who = personaName(persona);
-            const text = failed
-                ? `${who} stopped with an error${name ? ` in "${name}"` : ''}.`
-                : `${who} replied${name ? ` in "${name}"` : ''}.`;
-            /* global showGlassToast */
-            showGlassToast(failed ? 'error' : 'info', 'Director', text, false, 8000, null, [{
-                text: 'View',
-                onClick: () => {
-                    ws.open(APP_ID);
-                    const dd = dir();
-                    const ss = dd && (dd.directorSessions || []).find((x) => String(x.id) === id);
-                    if (dd && ss && !(dd.currentSession && String(dd.currentSession.id) === id)) void busyOf(() => { const arrived = messagesArrived(ss.id); return Promise.resolve(dd.showSessionChat(ss)).then(() => arrived); });
-                }
-            }]);
-        });
-    }
 
     /**
      * Settings > Director > Phone > Open new prints: a print of the chat on screen opens in the picture
@@ -2214,13 +2165,6 @@
             ['director_computer_status', 'director_message_response', 'director_messages_updated', 'director_get_messages_response', 'director_get_sessions_response', 'director_create_session_response', 'director_delete_session_response', 'director_fork_session_response', 'director_move_session_response', 'director_session_image', 'director_session_renamed'].forEach((t) => {
                 try { window.wsClient.on(t, () => setTimeout(refresh, 50)); } catch (_) { /* no such event */ }
             });
-            try { window.wsClient.on('director_computer_status', () => setTimeout(noteTurns, 60)); } catch (_) { /* no such event */ }
-            try {
-                window.wsClient.on('director_message_response', (m) => {
-                    const d = m && (m.data || m);
-                    if (d && d.steer === true && d.sessionId) steerCut.add(String(d.sessionId));
-                }, { signal: appScopeSignal });
-            } catch (_) { /* no such event */ }
             try { window.wsClient.on('director_session_image', (msg) => setTimeout(() => openNewPrint(msg), 1400)); } catch (_) { /* no such event */ }
         }
     }

@@ -382,7 +382,7 @@
 
     // ---- Phone (#732): this device's Director options (wmDirector.js wmDirectorPhonePrefs, localStorage)
     const PHONE_KEY = 'wmDirectorPhone';
-    const PHONE_DEFAULTS = { allowStudio: false, openPrints: false, notifyTurns: true, printStrip: true, wideLog: false, wideSolo: false, xiWideSolo: false };
+    const PHONE_DEFAULTS = { allowStudio: false, openPrints: false, printStrip: true, wideLog: false, wideSolo: false, xiWideSolo: false };
     function phoneRead() {
         const api = window.wmDirectorPhonePrefs;
         if (api && typeof api.get === 'function') return api.get();
@@ -400,7 +400,6 @@
     const PHONE_ROWS = [
         ['allowStudio', 'Allow the Director to open Studio'],
         ['openPrints', 'Open new prints in the picture view'],
-        ['notifyTurns', 'Notify me when a turn ends (when its message is off on screen)'],
         ['printStrip', 'Show prints under her text box'],
         ['wideLog', 'Show the log beside her on wide screens'],
         ['wideSolo', 'Show only her on wide screens'],

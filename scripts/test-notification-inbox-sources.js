@@ -97,7 +97,7 @@ const byId = (id, user = 'admin') => inbox.list(user, { includeCleared: true }).
     src.onDirectorStatus({ running: false, sessionId: null, sessionName: null });
     n = byId('director:s1:turn');
     assert.strictEqual(n.title, 'Director');
-    assert.strictEqual(n.text, '"Morning prints": the turn is finished.');
+    assert.strictEqual(n.text, 'Yumiya replied in "Morning prints".', 'the notice is the reply, not the turn end');
     assert.strictEqual(n.state, 'seen', 'quiet when the phone says so (Display message off)');
     assert.strictEqual(toPhones.length, 0, 'a quiet class is not posted on the phones');
     // the phone switched Display message on: posted
@@ -105,11 +105,15 @@ const byId = (id, user = 'admin') => inbox.list(user, { includeCleared: true }).
     src.onDirectorStatus({ running: false, xi: { running: true, sessionId: 'x2', sessionName: '' } });
     src.onDirectorStatus({ running: false, xi: { running: false } });
     n = byId('director:x2:turn');
-    assert.strictEqual(n.text, 'The session: the turn is finished.', 'Xi, no name');
+    assert.strictEqual(n.text, 'Yozora replied.', 'Xi, no name');
     assert.strictEqual(n.state, 'new');
     assert.strictEqual(toPhones.pop().id, 'director:x2:turn');
     src.onDirectorStatus({ running: true, xi: null, sessionId: 'x2' });
     assert.strictEqual(byId('director:x2:turn').state, 'cleared', 'a new turn clears the last finished notice');
+    // the persona that answered names the reply: a Chiyo session (its own memory store) is not read as Yumiya
+    src.onDirectorStatus({ running: true, sessionId: 's3', sessionName: 'Night shift', sessions: [{ id: 's3', name: 'Night shift', memoryStore: 'obliterated' }] });
+    src.onDirectorStatus({ running: false, sessionId: null, sessionName: null, sessions: [{ id: 's3', name: 'Night shift', memoryStore: 'obliterated' }] });
+    assert.strictEqual(byId('director:s3:turn').text, 'Chiyo replied in "Night shift".');
 
     // ---- prints: the FIFO's phone jobs only; failures only (#1040); once per job
     const listeners = [];
