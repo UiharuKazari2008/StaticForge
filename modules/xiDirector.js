@@ -20,6 +20,9 @@ const customProviders = require('./customModelProviders');
 
 // Xi runs as long as its log keeps growing; 10 minutes of silence stops it. No total cap.
 const RUN_IDLE_MS = 10 * 60 * 1000;
+// How long a CLI process may outlive its terminal `result` event before the turn is ended and the
+// leftover process killed (#1150). XI_TURN_END_GRACE_MS overrides it (tests).
+const TURN_END_GRACE_MS = Math.max(0, Number(process.env.XI_TURN_END_GRACE_MS)) || 1500;
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'StrReplace', 'Delete', 'ApplyPatch']);
 const YOZORA_ISSUE = 'https://yozora.bluesteel.737.jp.net/DreamScape/StaticForge/issues/';
 
@@ -270,7 +273,7 @@ function runtimeStatus() {
     }
     return {
         enabled: isEnabled(boundGr),
-        running: runs.size > 0,
+        running: Array.from(runs.values()).some((run) => !run.settled),
         sessionId,
         sessionName
     };
@@ -1056,6 +1059,7 @@ function consumeClaudeStreamLine(line, state) {
     if (!state.openTools) state.openTools = new Map();
     if (evt.type === 'system' && evt.subtype === 'init') {
         if (evt.session_id) state.sessionId = evt.session_id;
+        state.finished = false;
         return;
     }
     if (evt.type === 'rate_limit_event') {
@@ -1063,6 +1067,8 @@ function consumeClaudeStreamLine(line, state) {
         return;
     }
     if (evt.type === 'assistant') {
+        // work after a result (a background task waking the CLI) means the turn is not over
+        state.finished = false;
         const blocks = evt.message && Array.isArray(evt.message.content) ? evt.message.content : [];
         blocks.forEach((block) => {
             if (!block) return;
@@ -1231,6 +1237,24 @@ function startTail(meta) {
             return;
         }
         const now = Date.now();
+        // The turn is over once the CLI has written its terminal `result` (#1150): a process that
+        // outlives it (a hung MCP child, a background task) must not keep the chat busy. After the
+        // grace the leftover is reaped and the run ends as a normal finish; a run with no result
+        // yet is left alone.
+        if (run.stream.finished) {
+            if (!run.resultAt) run.resultAt = now;
+            else if (now - run.resultAt >= TURN_END_GRACE_MS) {
+                readNew(run);
+                if (run.buffer.trim()) consumeXiStreamLine(run.runtime, run.buffer, run.stream);
+                run.buffer = '';
+                killPid(run.pid, 'SIGTERM');
+                setTimeout(() => { if (pidAlive(run.pid)) killPid(run.pid, 'SIGKILL'); }, 500);
+                finishRun(run, 'exit');
+                return;
+            }
+        } else {
+            run.resultAt = 0;
+        }
         if (now - run.lastActivity >= RUN_IDLE_MS) {
             run.cancelled = true;
             killPid(run.pid);
@@ -2067,6 +2091,7 @@ module.exports = {
         layout, readIndex, writeIndex, peekIndex, readProjectCursorRules,
         sanitizeRuntime, assertRuntimeUnchanged, publicXiSession, consumeClaudeStreamLine,
         claudeProjectPrompt, writeProjectPromptFile, claudeMcpConfigArg, sanitizeClaudeEffort,
-        usesClaudeCli, xiIdentityLine, sweepAbortedRuns, reattachAll, XI_TOKENROUTER_DEFAULT_MODEL
+        usesClaudeCli, xiIdentityLine, sweepAbortedRuns, reattachAll, XI_TOKENROUTER_DEFAULT_MODEL,
+        startTail, pidAlive, TURN_END_GRACE_MS, setBoundGr: (gr) => { boundGr = gr; }
     }
 };

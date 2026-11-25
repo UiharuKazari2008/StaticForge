@@ -147,7 +147,8 @@ function collect(options) {
         if (row && row.sessionId) reasons.push(`director:${row.sessionId}`);
     });
     xi.forEach((row) => {
-        if (row && row.sessionId) reasons.push(`xi:${row.sessionId}`);
+        // a settled run has finished (its tail is only closing the books): not busy
+        if (row && row.sessionId && row.settled !== true) reasons.push(`xi:${row.sessionId}`);
     });
     if (generation && generation.processing) reasons.push('generation-queue');
     jobs.forEach((job) => {
