@@ -1474,7 +1474,7 @@
     const SUP_GONE = /unknown message type/i;
     const supWork = () => (S.sup.data && Array.isArray(S.sup.data.work) ? S.sup.data.work : []);
     const workOf = (id) => supWork().find((w) => String(w.id) === String(id)) || null;
-    const WORK_STATE = { held: 'Waiting', queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Sent Back', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+    const WORK_STATE = { held: 'Waiting', queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Sent Back', input: 'Input Required', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
     const WORK_SOURCE = { fleet: 'Fleet', plaud: 'Plaud', director: 'Director', agent: 'Agent', yozora: 'Yozora' };
     const issueShort = (i) => `${String(i.repo || '').split('/').pop()}#${i.number}`;
     /** Every issue a request carries (primary first); a server that sends only `issue` gives one. */
@@ -1487,8 +1487,8 @@
     /** The issues of a request as links (each opens in a new tab like the Open issue link). */
     const issueLinks = (w) => issuesOf(w).map((i) => (i.url && /^https?:\/\//.test(i.url) ? `<span class="mmc-link" data-act="open-link" data-arg="${esc(i.url)}" title="${esc(i.title || i.url)}">${esc(issueShort(i))}</span>` : esc(issueShort(i)))).join(', ');
     const issueBad = (text) => issueRefs(text).find((x) => !ISSUE_REF.test(x)) || '';
-    const WORK_OPEN = new Set(['held', 'queued', 'starting', 'running', 'waiting']);
-    const workIcon = (st) => ({ held: `${ITEMS}/date-and-time-16.png`, queued: `${VI}/info-16.png`, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || SESSION16);
+    const WORK_OPEN = new Set(['held', 'queued', 'starting', 'running', 'waiting', 'input']);
+    const workIcon = (st) => ({ held: `${ITEMS}/date-and-time-16.png`, queued: `${VI}/info-16.png`, input: `${VI}/info-16.png`, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || SESSION16);
     const supLocks = () => (S.sup.data && Array.isArray(S.sup.data.locks) ? S.sup.data.locks : []);
     const supArtifacts = () => (S.sup.data && Array.isArray(S.sup.data.artifacts) ? S.sup.data.artifacts : []);
     const LOCK_STATE = { live: 'Live', idle: 'Idle', orphan: 'Orphan' };
@@ -2035,6 +2035,42 @@
             <p><button type="button" class="btn-standard primary" data-act="mg-start">Start a New Manager Session...</button> <span class="mmc-hint">Opus, high effort, in the Dreamscape folder, with a brief for this job.</span></p>` }]);
     }
     const MANAGER_BRIEF = 'You are the Manager Session for Fleet (apps/claudedesk, the Supervisor in modules/agentSupervisor.js, agent-coord, the maintenance in modules/fleetMaintenance.js) in /home/kanmi/staticforge. Yukimi uses you to fix issues and bugs in the Fleet / Supervisor system itself as she finds them. Read CLAUDE.md first. Delegate defined parts to Sonnet background agents, check every change on screen or with tests, commit and push each turn, restart only through scripts/restart-dreamscape.sh. Wait for her first request.';
+
+    /** Input Required: work that stopped on a question; each question with the Supervisor's proposed answer (if any) and a field for Yukimi's. */
+    function inputPage(c) {
+        const T = 'Input Required';
+        if (!S.sup.loaded) { void loadSupervisor(); return c.page(T, '', [{ id: 'cd-in-wait', title: T, body: '<p class="mmc-hint">Reading the work queue...</p>' }]); }
+        if (S.sup.stale) { S.sup.stale = false; void loadSupervisor(); }
+        if (S.sup.unavailable) return c.page(T, '', [{ id: 'cd-in-gone', title: T, body: `<p>${NOT_YET}</p>` }]);
+        const drafts = S.inDraft || (S.inDraft = {});
+        const items = inputItems();
+        const block = (w) => {
+            const qs = Array.isArray(w.questions) ? w.questions : [];
+            const asked = qs.some((q) => q.ask);
+            const rows = qs.map((q, i) => {
+                const d = drafts[w.id] && drafts[w.id][i] != null ? drafts[w.id][i] : '';
+                return `<div class="cd-in-q"><p class="cd-cut" title="${esc(q.question)}"><img class="mmc-row-icon" src="${esc(`${VI}/info-16.png`)}" alt=""><b>${esc(q.question)}</b></p>
+                    ${q.answer ? `<p class="mmc-hint cd-cut" title="${esc(q.answer)}">The Supervisor's proposed answer: ${esc(q.answer)}${q.why ? ` (${esc(q.why)})` : ''}</p>` : (q.ask ? `<p class="mmc-hint">${esc(q.why || 'Open as a request form: answer it there')}</p>` : `<p class="mmc-hint">Only you can decide this.${q.why ? ` ${esc(q.why)}` : ''}</p>`)}
+                    ${q.ask ? '' : `<textarea data-in-a="${esc(w.id)}:${i}" rows="2" spellcheck="true" placeholder="${q.answer ? 'Leave empty to send the Supervisor\'s answer' : 'Your answer'}" aria-label="Your answer to question ${i + 1}">${esc(d)}</textarea>`}</div>`;
+            }).join('');
+            return `<div class="cd-in-item"><h4 class="cd-cut" title="${esc(w.title || String(w.id))}">${esc(w.title || String(w.id))}</h4>
+                <p class="mmc-hint">${issuesOf(w).length ? `Issue ${issueLinks(w)} - ` : ''}${w.sessionId ? `<span class="mmc-link" data-act="work-open" data-arg="${esc(w.id)}">Open Session</span>` : ''}</p>
+                ${rows || `<p class="mmc-hint">${esc(w.message || '')}</p>`}
+                <p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="work-answer" data-arg="${esc(w.id)}"${asked || !qs.length || S.sup.busy ? ' disabled' : ''}>Send Answers</button></p></div>`;
+        };
+        const html = c.page(T, '', [{ id: 'cd-in', title: `${T} (${items.length})`, body: items.length ? items.map(block).join('') : '<p class="mmc-hint">Nothing needs your input. Work that stops on a question only you can answer waits here.</p>' }]);
+        return {
+            html,
+            mount: (pane) => {
+                pane.addEventListener('input', (ev) => {
+                    const t = ev.target.closest('[data-in-a]');
+                    if (!t) return;
+                    const [id, i] = t.dataset.inA.split(':');
+                    (drafts[id] || (drafts[id] = []))[Number(i)] = t.value;
+                });
+            }
+        };
+    }
 
     function workPage(c, scope = 'all') {
         const T = { all: 'Work Queue', held: 'Waiting', active: 'Active', pending: 'Pending', done: 'Completed' }[scope];
@@ -2860,7 +2896,8 @@
     const WORK_RUN = new Set(['starting', 'running', 'waiting']);
     const runItems = () => supWork().filter((w) => WORK_RUN.has(w.state));
     const heldItems = () => supWork().filter((w) => w.state === 'held');
-    const pendItems = () => supWork().filter((w) => WORK_OPEN.has(w.state) && !WORK_RUN.has(w.state) && w.state !== 'held');
+    const pendItems = () => supWork().filter((w) => WORK_OPEN.has(w.state) && !WORK_RUN.has(w.state) && w.state !== 'held' && w.state !== 'input');
+    const inputItems = () => supWork().filter((w) => w.state === 'input');
     // finished work leaves Active / Pending: done, failed and cancelled items of the last 7 days (Yukimi, Nov 25 2026)
     const WORK_DONE = new Set(['done', 'failed', 'cancelled']);
     const doneItems = () => supWork().filter((w) => WORK_DONE.has(w.state) && (Number(w.endedAt) || Date.parse(w.endedAt) || 0) > Date.now() - 7 * 86400000);
@@ -2926,6 +2963,7 @@
                 { id: 'co-work', name: 'Work Queue', icon: '/static_images/vista-cmdbar/checklist.png', desc: 'Requests waiting for, starting on and running on an account',
                     children: [
                         { id: 'co-held', name: `Waiting (${heldItems().length})`, icon: `${ITEMS}/date-and-time-16.png`, desc: 'New and imported requests that wait for you to start them' },
+                        { id: 'co-input', name: `Input Required (${inputItems().length})`, icon: `${VI}/info-16.png`, desc: 'Work that stopped on a question only you can answer' },
                         { id: 'aw-sup', name: `Active (${runItems().length})`, icon: `${ITEMS}/parental-controls-16.png`, desc: 'Work items running now, their sessions and background agents', children: runNodes },
                         { id: 'co-pending', name: `Pending (${pendItems().length})`, icon: `${VI}/info-16.png`, desc: 'Work items waiting for an account to have room', children: pendNodes },
                         { id: 'aw-uns', name: `Unsupervised (${uns.length})`, icon: `${VI}/run-16.png`, desc: 'Sessions no work item owns that are working or were active in the last hour', children: uns },
@@ -3143,6 +3181,7 @@
         const tile = (nav, icon, n, label, warn, extra) => `<button type="button" class="cd-tile${warn && n ? ' is-warn' : ''}" data-act="nav:${nav}" title="${esc(extra ? `${label}: ${extra}` : label)}"><img src="${esc(icon)}" alt=""><b>${n}</b><span>${esc(label)}</span>${extra ? `<small>${esc(extra)}</small>` : ''}</button>`;
         const tiles = `<div class="cd-tiles">${[
             tile('aw-sup', '/static_images/vista-cmdbar/play.png', run.length, 'Running work'),
+            tile('co-input', `${VI}/info-16.png`, inputItems().length, 'Input required', true),
             tile('co-held', `${ITEMS}/date-and-time-16.png`, held.length, 'Waiting for you'),
             tile('co-pending', `${VI}/info-16.png`, pendItems().length, 'Queued'),
             tile('aw-sup', `${VI}/warning-16.png`, sentBack.length, 'Sent back', true),
@@ -3156,17 +3195,19 @@
             tile('usage-flags', `${VI}/warning-16.png`, usgOpenFlags(), 'Heavy usage', true)
         ].join('')}</div>`;
         const live = run; // Sent Back items are in it (WORK_RUN)
-        const row = (w) => `<tr class="cd-dash-row" data-act="${w.state === 'held' ? 'nav:co-held' : `nav:aw:w:${esc(w.id)}`}"><td class="cd-cut" title="${esc(w.title || String(w.id))}"><img class="mmc-row-icon" src="${esc(workIcon(w.state))}" alt="">${esc(w.title || String(w.id))}</td><td class="cd-cut" title="${esc(workState(w))}">${esc(workState(w))}</td><td class="cd-cut" title="${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}">${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}</td><td class="cd-cut" title="${esc([w.model, w.effort].filter(Boolean).join(' / '))}">${esc([w.model, w.effort].filter(Boolean).join(' / '))}</td><td class="cd-cut" title="${esc(w.startedAt ? when(w.startedAt) : '')}">${esc(w.startedAt ? when(w.startedAt) : '')}</td><td class="cd-cut" title="${esc(w.message || '')}">${esc(w.message || '')}</td></tr>`;
+        const row = (w) => `<tr class="cd-dash-row" data-act="${w.state === 'held' ? 'nav:co-held' : (w.state === 'input' ? 'nav:co-input' : `nav:aw:w:${esc(w.id)}`)}"><td class="cd-cut" title="${esc(w.title || String(w.id))}"><img class="mmc-row-icon" src="${esc(workIcon(w.state))}" alt="">${esc(w.title || String(w.id))}</td><td class="cd-cut" title="${esc(workState(w))}">${esc(workState(w))}</td><td class="cd-cut" title="${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}">${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}</td><td class="cd-cut" title="${esc([w.model, w.effort].filter(Boolean).join(' / '))}">${esc([w.model, w.effort].filter(Boolean).join(' / '))}</td><td class="cd-cut" title="${esc(w.startedAt ? when(w.startedAt) : '')}">${esc(w.startedAt ? when(w.startedAt) : '')}</td><td class="cd-cut" title="${esc(w.message || '')}">${esc(w.message || '')}</td></tr>`;
         const table = (list, empty) => (list.length
             ? `<table class="cd-table cd-dash"><thead><tr><th>Request</th><th class="cd-w80">State</th><th class="cd-w80">Account</th><th>Model</th><th>Started</th><th>Note</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>`
             : `<p class="mmc-hint">${esc(empty)}</p>`);
         const heldTop = held.slice(0, 8);
+        const inp = inputItems();
         return [
             { id: 'cd-dash-tiles', title: 'Dashboard', body: tiles },
-            { id: 'cd-dash-days', title: 'Last 30 days', body: historyHtml() },
+            { id: 'cd-dash-days', title: 'Last 30 days', body: historyHtml() }
+        ].concat(inp.length ? [{ id: 'cd-dash-input', title: `Input Required (${inp.length})`, body: table(inp.slice(0, 8), 'Nothing needs your input.') + '<p><span class="mmc-link" data-act="nav:co-input">Answer them</span></p>' }] : []).concat([
             { id: 'cd-dash-active', title: `Active Work (${live.length})`, body: table(live, 'No work is running. Pick requests in Waiting and start them.') + (live.length ? '<p><span class="mmc-link" data-act="nav:aw-sup">Open Active</span></p>' : '') },
             { id: 'cd-dash-held', title: `Waiting for You (${held.length})`, body: table(heldTop, 'Nothing is waiting for you.') + (held.length ? `<p><span class="mmc-link" data-act="nav:co-held">${held.length > heldTop.length ? `See all ${held.length}` : 'Open Waiting'}</span></p>` : '') }
-        ];
+        ]);
     }
 
     function rootPage(c) {
@@ -4749,6 +4790,7 @@
             case 'usage-flags': return usageFlagsPage(c);
             case 'root': return withBars(rootPage(c));
             case 'co-held': return workPage(c, 'held');
+            case 'co-input': return inputPage(c);
             case 'aw-sup': return workPage(c, 'active');
             case 'co-pending': return workPage(c, 'pending');
             case 'aw-uns': return unsupervisedPage(c);
@@ -4841,10 +4883,11 @@
             case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
             case 'co-work': return [{ text: 'New Request...', action: 'new-session' }, { text: 'Issues...', action: 'work-issues', disabled: !!S.sup.busy }, { text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
             case 'co-held':
+            case 'co-input':
             case 'aw-sup':
             case 'co-pending':
             case 'aw-quiet': return [{ text: 'Read Again', action: 'sup-refresh' }];
-            case 'co-done': return [{ text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
+            case 'co-done': return [{ text: 'Send Back to Work...', action: 'work-reopen', disabled: !!S.sup.busy }, { text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
             case 'aw-uns': return [{ text: 'New Session...', action: 'new-session' }, { text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
             case 'activity': return [{ text: 'Read Again', action: 'act-refresh' }];
             case 'bg-agents': return bgCommands(n);
@@ -4986,7 +5029,7 @@
             const w = workOf(key.slice(2));
             if (!w) return null;
             if (wsel().length > 1) return null; // the node's own Actions already act on the picked set
-            return { title: w.title || 'Request', items: [{ text: 'Start Now', action: 'work-start', disabled: !WORK_STARTABLE.has(w.state) || !!S.sup.busy }, { text: 'Move to Waiting', action: 'work-hold-sel', disabled: !WORK_HOLDABLE.has(w.state) || !!S.sup.busy }, { text: 'Cancel', action: 'work-cancel', disabled: !WORK_OPEN.has(w.state) || !!S.sup.busy }, { text: w.sessionId && holdOf(w.sessionId) ? 'Resume' : 'Pause...', action: w.sessionId && holdOf(w.sessionId) ? 'resume-hold' : 'pause', disabled: !w.sessionId || !liveOf(w.sessionId) }, { separator: true }, { text: 'Open Session', action: 'work-open', disabled: !w.sessionId }, { text: 'Open Issue', action: 'work-issue', disabled: !(w.issue && w.issue.url) }] };
+            return { title: w.title || 'Request', items: [{ text: 'Start Now', action: 'work-start', disabled: !WORK_STARTABLE.has(w.state) || !!S.sup.busy }, { text: 'Move to Waiting', action: 'work-hold-sel', disabled: !WORK_HOLDABLE.has(w.state) || !!S.sup.busy }, { text: 'Cancel', action: 'work-cancel', disabled: !WORK_OPEN.has(w.state) || !!S.sup.busy }, { text: w.sessionId && holdOf(w.sessionId) ? 'Resume' : 'Pause...', action: w.sessionId && holdOf(w.sessionId) ? 'resume-hold' : 'pause', disabled: !w.sessionId || !liveOf(w.sessionId) }, { separator: true }, { text: 'Open Session', action: 'work-open', disabled: !w.sessionId }, { text: 'Send Back to Work...', action: 'work-reopen', disabled: !(['done', 'failed'].includes(w.state) && w.sessionId) || !!S.sup.busy }, { text: 'Open Issue', action: 'work-issue', disabled: !(w.issue && w.issue.url) }] };
         }
         if (key.startsWith('lk:')) { const l = supLocks().find((x) => `${x.root || ''}|${x.file}` === key.slice(3)); return { title: 'Busy Lock', items: [{ text: 'Remove...', action: 'sup-lock-remove', disabled: !l || l.state !== 'orphan' || !!S.sup.busy }] }; }
         if (key.startsWith('ar:')) { const a = supArtifacts().find((x) => String(x.id) === key.slice(3)); return { title: 'Work Folder', items: [{ text: 'Clean...', action: 'sup-art-clean', disabled: !a || !a.cleanable || !!S.sup.busy }, { text: 'Restore', action: 'sup-art-restore', disabled: !a || !a.canRestore || !!S.sup.busy }, { text: 'Forget', action: 'sup-art-forget', disabled: !a || !!S.sup.busy }] }; }
@@ -5236,6 +5279,23 @@
             case 'work-use-brief': {
                 const w = workOf(workSel(c, arg));
                 if (w && w.check && w.check.suggestedBrief) await supAct(c, { action: 'work_update', id: w.id, prompt: w.check.suggestedBrief }, 'Updating the brief...');
+                return true;
+            }
+            case 'work-answer': {
+                const w = workOf(arg);
+                if (!w || w.state !== 'input') { c.note('That item no longer waits for input.'); return true; }
+                const d = (S.inDraft || {})[w.id] || [];
+                const answers = (w.questions || []).map((q, i) => String(d[i] || '').trim());
+                await supAct(c, { action: 'work_answer', id: w.id, answers }, 'Sending answers...');
+                if (S.inDraft && !S.sup.error) delete S.inDraft[w.id];
+                return true;
+            }
+            case 'work-reopen': {
+                const w = workOf(workSel(c, arg));
+                if (!w || !['done', 'failed'].includes(w.state) || !w.sessionId) { c.note('Pick a done or failed request that has a session.'); return true; }
+                const { value, fields } = await form(c, `<p>Send <b>${esc(w.title || w.id)}</b> back to work. Its session gets your note and the request runs again.</p><label class="cd-top"><span>Note:</span><textarea data-cd="note" data-cd-focus rows="5" spellcheck="true" placeholder="What should it do next?"></textarea></label>`, [{ text: 'Send Back', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Send Back to Work' });
+                if (value !== true || !String(fields.note || '').trim()) return true;
+                await supAct(c, { action: 'work_reopen', id: w.id, note: String(fields.note).trim() }, 'Sending it back...');
                 return true;
             }
             case 'work-start': {
@@ -6391,7 +6451,16 @@
         await sessionCommand(c, id, what, v, `Setting the ${what}...`);
     }
 
+    /** The session's real terminal (its tmux pane, live) so menus Claude Code shows can be answered; false when the desktop has none. */
+    async function openLiveTerminal(id) {
+        try { if (root.featureLoader) await root.featureLoader.loadFeature('admin_terminal'); } catch (_) { /* fallback below */ }
+        if (typeof root.openClaudeSessionTerminal !== 'function') return false;
+        root.openClaudeSessionTerminal(id, titleOf(rowOf(id) || { id }));
+        return true;
+    }
+
     async function screenBox(c, id) {
+        if (await openLiveTerminal(id)) return;
         try {
             const r = await send('claude_desk_session', { action: 'screen', id });
             const lines = (r.result && r.result.lines) || [];
@@ -6407,7 +6476,11 @@
             <textarea data-cd="text" data-cd-focus rows="6" spellcheck="true"></textarea>`,
         [{ text: 'Send', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Send Message' });
         if (value !== true || !String(fields.text || '').trim()) return;
-        try { await send('claude_desk_session', { action: 'steer', id, text: fields.text }); c.note('Sent.'); } catch (e) { await failBox(c, e); }
+        try { await send('claude_desk_session', { action: 'steer', id, text: fields.text }); c.note('Sent.'); } catch (e) {
+            // a menu on its screen owns the keys: open its terminal so she can answer it there
+            if ((e.code === 'SESSION_DIALOG' || /^Not sent: the session is showing/.test(e.message || '')) && await openLiveTerminal(id)) { c.note('It is showing a question in its terminal: answer it there, then send again.'); return; }
+            await failBox(c, e);
+        }
     }
 
     async function postBox(c, to, kind) {
@@ -6571,6 +6644,7 @@
                 if (n.id === 'activity') return S.act.loaded ? `${S.act.rows.length} of ${S.act.total} calls` : '';
                 if (n.id === 'contractors') return S.con.gone ? NOT_YET : `${plural(S.con.list.length, 'contractor')}, ${S.con.list.filter((k) => k.online).length} online`;
                 if (n.id === 'co-held') return plural(heldItems().length, 'request') + ' waiting for you to start';
+                if (n.id === 'co-input') return plural(inputItems().length, 'work item') + ' stopped on a question only you can answer';
                 if (n.id === 'aw-sup') return plural(runItems().length, 'running work item');
                 if (n.id === 'co-done') return `${plural(doneItems().length, 'work item')} finished in the last 7 days`;
                 if (n.id === 'aw-quiet') return `${plural(unsupervisedQuiet().length, 'session')} idle for over an hour - select one to end it`;

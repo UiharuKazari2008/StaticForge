@@ -293,6 +293,10 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     // the issue picker: open issues of a watched repo (one request, newest first) with the item that carries each
     if (action === 'issues_open') return supervisor.issuesOpen(gr, { repo: message.repo, q: message.q });
     if (action === 'work_cancel') { supervisor.cancelWork(message.id); return supervisorStatus(gr); }
+    // Yukimi's answers to an Input Required item: one text per question (empty = keep the Supervisor's proposed answer); the item runs again
+    // "Send Back to Work": a done or failed item gets Yukimi's note and runs again
+    if (action === 'work_reopen') { await supervisor.reopenWork(message.id, { note: message.note }); poke(); return supervisorStatus(gr); }
+    if (action === 'work_answer') { await supervisor.answerWork(message.id, { answers: (Array.isArray(message.answers) ? message.answers : []).slice(0, 12).map((x) => String(x || '')), note: message.note }); poke(); return supervisorStatus(gr); }
     if (action === 'work_map') return { map: await workMap(gr, { id: message.id, sessionId: message.sessionId }) };
     if (action === 'lock_remove') { supervisor.removeLockFile(String(message.root || ''), String(message.file || '')); poke(); return supervisorStatus(gr); }
     // Clean is a Supervisor review (evidence, engine verdict, trash): it answers at once and the result arrives through the status push

@@ -1253,6 +1253,128 @@ sup._test.setFetch(async (url, opts) => {
         assert.strictEqual(sup.updateWork(w.id, { remoteControl: false }).remoteControl, false);
     });
 
+    await test('input verdict: the parser keeps questions; answered ones are typed in, open ones wait as Input Required; Yukimi\'s answers send it back; input counts as active', async () => {
+        const P = sup._test.parseVerdict;
+        const pv = P('{"verdict":"ok","summary":"s","questions":[{"question":"Which login?","answer":"Build the login code","why":"its own job"},"Pay for it?"]}');
+        assert.strictEqual(pv.verdict, 'input', 'ok with questions is input');
+        assert.deepStrictEqual(pv.questions.map((q) => [q.question, q.answer]), [['Which login?', 'Build the login code'], ['Pay for it?', '']]);
+        assert.strictEqual(P('{"verdict":"input","missed":[{"item":"x"}],"questions":["q"]}').verdict, 'gaps', 'gaps win, both are kept');
+        assert.strictEqual(P('{"verdict":"input","missed":[{"item":"x"}],"questions":["q"]}').questions.length, 1);
+        assert.strictEqual(P('{"verdict":"input","summary":"Waiting on the battery source"}').questions[0].question, 'Waiting on the battery source');
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart;
+        const realStart = launcher.start;
+        const realSteer = launcher.steer;
+        const realResume = launcher.resume;
+        const realFind = launcher.findFile;
+        const typed = [];
+        const resumed = [];
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        let n = 0;
+        launcher.start = async () => { n += 1; return { id: `eeeeeeee-0000-0000-0000-0000000004${String(n).padStart(2, '0')}`, state: 'running', link: '' }; };
+        launcher.steer = async (id, text) => { typed.push([id, text]); return { sent: true }; };
+        launcher.resume = async (g, id) => { resumed.push(id); return { id, state: 'connected' }; };
+        launcher.findFile = async () => '/nonexistent/transcript.jsonl';
+        try {
+            const mk = async (title) => {
+                const w = sup.enqueue({ title, prompt: `do ${title}`, topology: 'direct', startNow: true }, { gr });
+                await waitFor(() => sup.getWork(w.id).state === 'running', `${title} running`);
+                return sup.getWork(w.id);
+            };
+            // every question answered by the Supervisor: typed in, running again
+            const a = await mk('InputAnswered');
+            await sup.workAfterReview({ sessionId: a.sessionId, agentId: 'claude-x', verdict: 'input', missed: [], summary: 's', questions: [{ question: 'Needs another login?', answer: 'Fine: build the code that asks for the login and continue', why: 'its own job' }] });
+            assert.strictEqual(sup.getWork(a.id).state, 'running');
+            assert.match(sup.getWork(a.id).message, /Supervisor answered 1 question/);
+            assert.ok(typed.length === 1 && typed[0][0] === a.sessionId && /answers to the questions you ended on/.test(typed[0][1]) && /asks for the login/.test(typed[0][1]) && /do not wait for Yukimi/.test(typed[0][1]), JSON.stringify(typed));
+            // one open question: Input Required, nothing typed, questions saved (the answered one with the Supervisor's answer)
+            const b = await mk('InputOpen');
+            typed.length = 0;
+            await sup.workAfterReview({ sessionId: b.sessionId, verdict: 'input', missed: [], summary: 's', questions: [{ question: 'Should I also test it?', answer: 'Yes', why: 'asked' }, { question: 'Spend 20 USD on credits?', answer: '', why: '' }] });
+            const wb = sup.getWork(b.id);
+            assert.strictEqual(wb.state, 'input');
+            assert.match(wb.message, /^Input Required: Spend 20 USD/);
+            assert.deepStrictEqual(wb.questions.map((q) => q.answer), ['Yes', '']);
+            assert.strictEqual(typed.length, 0, 'nothing typed into the session yet');
+            // input is active: it carries its issue (issuesOpen) and holds no slot
+            await assert.rejects(() => sup.answerWork(a.id, { answers: ['x'] }), /only an item that is Input Required/);
+            // Yukimi answers: her text, else the Supervisor's proposal; a stopped session is resumed first
+            const w2 = await sup.answerWork(b.id, { answers: ['', 'No, stay within the free quota'] });
+            assert.strictEqual(w2.state, 'running');
+            assert.match(w2.message, /Yukimi answered 2 questions/);
+            assert.deepStrictEqual(w2.questions, []);
+            assert.deepStrictEqual(resumed, [b.sessionId], 'its session was not live: resumed first');
+            const sent = typed[typed.length - 1][1];
+            assert.ok(/Should I also test it\? - Yes/.test(sent) && /Spend 20 USD on credits\? - No, stay within the free quota/.test(sent), sent);
+            // input rows are active for the issue logic
+            putIssue(1701, { listed: true });
+            const c = sup.enqueue({ title: 'InputIssue', prompt: 'p', topology: 'direct', startNow: true, issues: [R(1701)] }, { gr });
+            await waitFor(() => sup.getWork(c.id).state === 'running', 'c running');
+            await sup.workAfterReview({ sessionId: sup.getWork(c.id).sessionId, verdict: 'input', missed: [], summary: 's', questions: [{ question: 'Which colour?', answer: '' }] });
+            assert.strictEqual(sup.getWork(c.id).state, 'input');
+            await settle(100);
+            const open = await sup.issuesOpen(gr, {});
+            assert.strictEqual((open.issues.find((i) => i.number === 1701) || {}).item, c.id, 'an Input Required item still carries its issue');
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.steer = realSteer; launcher.resume = realResume; launcher.findFile = realFind; }
+    });
+
+    await test('finished items work again: a busy session reopens its done item; a review that finds more reopens it; Send Back to Work steers and runs it; cancelled stays', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart;
+        const realStart = launcher.start;
+        const realSteer = launcher.steer;
+        const realResume = launcher.resume;
+        const realFind = launcher.findFile;
+        const typed = [];
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        let n = 0;
+        launcher.start = async () => { n += 1; return { id: `ffffffff-0000-0000-0000-0000000005${String(n).padStart(2, '0')}`, state: 'running', link: '' }; };
+        launcher.steer = async (id, text) => { typed.push([id, text]); return { sent: true }; };
+        launcher.resume = async (g, id) => ({ id, state: 'connected' });
+        launcher.findFile = async () => '/nonexistent/transcript.jsonl';
+        const rec = (sid, status) => fs.writeFileSync(path.join(tmp, '.claude', 'sessions', `${process.pid}88.json`), JSON.stringify({ pid: process.pid, sessionId: sid, status, cwd: tmp }));
+        try {
+            const a = sup.enqueue({ title: 'Reopen A', prompt: 'do A', topology: 'direct', startNow: true }, { gr });
+            await waitFor(() => sup.getWork(a.id).state === 'running', 'a running');
+            const sid = sup.getWork(a.id).sessionId;
+            await sup.workAfterReview({ sessionId: sid, verdict: 'ok', missed: [], summary: 'done' });
+            assert.strictEqual(sup.getWork(a.id).state, 'done');
+            assert.ok(sup.getWork(a.id).endedAt);
+            // the session is told to continue: it goes busy again
+            rec(sid, 'idle'); sup._test.scan(false);
+            assert.strictEqual(sup.getWork(a.id).state, 'done', 'idle is not working');
+            rec(sid, 'busy'); sup._test.scan(false);
+            assert.strictEqual(sup.getWork(a.id).state, 'running');
+            assert.strictEqual(sup.getWork(a.id).endedAt, null);
+            assert.match(sup.getWork(a.id).message, /^Working again/);
+            // done again; an ok review leaves it done, a review with gaps reopens it
+            await sup.workAfterReview({ sessionId: sid, verdict: 'ok', missed: [], summary: 'done' });
+            assert.strictEqual(sup.getWork(a.id).state, 'done');
+            await sup.workAfterReview({ sessionId: sid, verdict: 'ok', missed: [], summary: 'again' });
+            assert.strictEqual(sup.getWork(a.id).state, 'done');
+            await sup.workAfterReview({ sessionId: sid, verdict: 'gaps', missed: [{ item: 'tests' }], summary: '' });
+            assert.strictEqual(sup.getWork(a.id).state, 'waiting');
+            assert.strictEqual(sup.getWork(a.id).endedAt, null);
+            // Send Back to Work: only done / failed, needs a note, steers and runs
+            await assert.rejects(() => sup.reopenWork(a.id, { note: 'x' }), /only a done or failed item/);
+            await sup.workAfterReview({ sessionId: sid, verdict: 'ok', missed: [], summary: 'done' });
+            await assert.rejects(() => sup.reopenWork(a.id, { note: '  ' }), /Write what it should do next/);
+            typed.length = 0;
+            const r = await sup.reopenWork(a.id, { note: 'Also handle the empty case' });
+            assert.strictEqual(r.state, 'running');
+            assert.match(r.message, /^Working again: Also handle the empty case/);
+            assert.ok(typed.length === 1 && /^\[Supervisor\] Sent back by Yukimi: Also handle the empty case/.test(typed[0][1]), JSON.stringify(typed));
+            // cancelled items and items whose issue closed are never reopened
+            await sup.workAfterReview({ sessionId: sid, verdict: 'ok', missed: [], summary: 'done' });
+            RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(a.id);
+            rec(sid, 'idle'); sup._test.scan(false); rec(sid, 'busy'); sup._test.scan(false);
+            assert.strictEqual(sup.getWork(a.id).state, 'cancelled');
+            RAW().prepare("UPDATE supervisor_work SET state = 'done', message = ? WHERE id = ?").run('Its issue was closed on Yozora', a.id);
+            await sup.workAfterReview({ sessionId: sid, verdict: 'gaps', missed: [{ item: 'x' }], summary: '' });
+            assert.strictEqual(sup.getWork(a.id).state, 'done', 'a closed issue is not reopened');
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.steer = realSteer; launcher.resume = realResume; launcher.findFile = realFind; }
+    });
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');

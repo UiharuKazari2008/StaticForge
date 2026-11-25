@@ -292,12 +292,13 @@ function capTurn(t) {
 const SYSTEM = [
     'You are the Supervisor for coding agents (Claude Code sessions) working for Yukimi. After a turn you check, from the transcript summary given, whether the agent did EVERYTHING the user asked in the request and in every steering message sent while it worked.',
     'List each concrete thing asked (including small asides, questions to answer, files or checks named, "also ..." items, and changes of direction from steering). For each, decide from the actions and the final answer whether it was done, answered, or explicitly deferred with a reason. A later steering message that cancels or replaces an earlier ask overrides it.',
-    'Only report real gaps: an ask that was not done, not answered, or done differently than asked without saying so. Do not report style, quality opinions, or things nobody asked for. Work the agent said it filed as a follow-up issue counts as addressed. If the turn ended with the agent waiting on the user (a question, an approval) that is not a gap.',
+    'Only report real gaps: an ask that was not done, not answered, or done differently than asked without saying so. Do not report style, quality opinions, or things nobody asked for. Work the agent said it filed as a follow-up issue counts as addressed. If the turn ended with the agent waiting on the user, that is NOT ok and not a gap: see the next rule.',
+    'A turn that ends with the agent waiting on the user is verdict "input": it asks a question, asks for a decision or an approval, needs a login, credential or data only the user can give, says the item "stays open for Yukimi\'s answers", posted questions on the issue, or stops to "put the options to Yukimi". List every such question in "questions":[{"question":"...","answer":"...","why":"where the answer comes from"}]. Fill "answer" yourself whenever the request or brief, the steering, the user\'s list, Yukimi\'s standing rules (given below when available) or common sense already settle it, or when the step is plainly the agent\'s own job: "this needs another login" -> "Fine: build the code that asks for that login and carry on"; "should I also test it" -> "Yes". Write the answer as an instruction to the agent. Leave "answer" empty ONLY when Yukimi alone can decide (spending money, creating an account only she can make, giving a secret or a login, a product choice the brief gives no lead on). Keep "missed" and "questions" independent: report both when both exist (verdict gaps when anything was missed, else input when there are questions).',
     'When the request is to build, change or fix something, it is only done with evidence it works: the agent ran tests, a build, the program, or looked at the result, and says what it saw. A build / fix turn that ends without any such evidence is a gap ("not shown to be tested").',
     'Work the agent handed to a background agent or subagent that is still running, and said so (what it does, that it reports back), is in progress, not a gap: the turn ending while it runs is expected. Only report it if the agent never started it or never said so.',
     'Answers along the way count as much as the final one: an ask answered or reported done in any of them is addressed. An agent that says an item was already done earlier (naming the commit, the check or what it saw) has addressed it: do not ask for it again.',
     'When "The user\'s list" is given, it holds everything the user asked over the whole session, with a tick and the evidence for the items already done: an open item without evidence that this turn was about and did not address is a gap; a ticked item with evidence is addressed. Name the open items this turn did, with what shows it, in "done".',
-    'Answer ONLY a JSON object: {"verdict":"ok"|"gaps"|"unclear","summary":"one sentence","missed":[{"item":"what was asked and not addressed","evidence":"why you think so, quoting the request"}],"done":[{"id":12,"evidence":"short proof from the actions or the answer"}]}. verdict ok means nothing missed; unclear means the summary is not enough to tell. "done" is optional (only ids from the user\'s list).'
+    'Answer ONLY a JSON object: {"verdict":"ok"|"gaps"|"input"|"unclear","summary":"one sentence","missed":[{"item":"what was asked and not addressed","evidence":"why you think so, quoting the request"}],"questions":[{"question":"what the agent waits on","answer":"your answer or empty","why":"source of the answer"}],"done":[{"id":12,"evidence":"short proof from the actions or the answer"}]}. verdict ok means nothing missed and nothing waiting on the user; unclear means the summary is not enough to tell. "done" is optional (only ids from the user\'s list).'
 ].join('\n');
 
 function promptFor(t, meta) {
@@ -318,7 +319,7 @@ function promptFor(t, meta) {
         '',
         '## Its final answer',
         t.final || '(no final text)'
-    ].concat(meta.list ? ['', meta.list] : []).concat(meta.issuesList && meta.issuesList.length > 1 ? [
+    ].concat(meta.list ? ['', meta.list] : []).concat(meta.standing ? ['', '## Yukimi\'s standing rules (shared memory)', String(meta.standing).slice(0, 3000)] : []).concat(meta.issuesList && meta.issuesList.length > 1 ? [
         '',
         `## Issues this run covers (${meta.issuesList.length})`,
         meta.issuesList.map((i, n) => `${n + 1}. ${i.repo}#${i.number}${i.title ? ` - ${i.title}` : ''}`).join('\n'),
@@ -494,6 +495,15 @@ async function askModel(gr, s, userText, opts = {}) {
     }
 }
 
+/** [{ question, answer, why }] from the model's list (strings or objects); answer empty = only Yukimi can decide. */
+function cleanQuestions(list) {
+    return (Array.isArray(list) ? list : []).map((x) => {
+        if (typeof x === 'string') return { question: x.replace(/\s+/g, ' ').trim().slice(0, 400), answer: '', why: '' };
+        if (!x || typeof x !== 'object') return null;
+        return { question: String(x.question || x.item || '').replace(/\s+/g, ' ').trim().slice(0, 400), answer: String(x.answer || '').replace(/\s+/g, ' ').trim().slice(0, 800), why: String(x.why || x.source || '').replace(/\s+/g, ' ').trim().slice(0, 300) };
+    }).filter((x) => x && x.question).slice(0, 12);
+}
+
 function parseVerdict(text) {
     const raw = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
     let o = null;
@@ -504,8 +514,12 @@ function parseVerdict(text) {
     if (!o || typeof o !== 'object') return { verdict: 'unclear', summary: 'The Supervisor\'s answer was not JSON', missed: [], unparsed: true };
     // items as { item, evidence } or plain strings (models do both)
     const missed = (Array.isArray(o.missed) ? o.missed : []).map((x) => (typeof x === 'string' ? { item: x.slice(0, 400), evidence: '' } : { item: String((x && x.item) || '').slice(0, 400), evidence: String((x && x.evidence) || '').slice(0, 600) })).filter((x) => x.item).slice(0, 20);
-    let verdict = ['ok', 'gaps', 'unclear'].includes(o.verdict) ? o.verdict : (missed.length ? 'gaps' : 'unclear');
-    if (verdict === 'ok' && missed.length) verdict = 'gaps';
+    const questions = cleanQuestions(o.questions);
+    let verdict = ['ok', 'gaps', 'input', 'unclear'].includes(o.verdict) ? o.verdict : (missed.length ? 'gaps' : (questions.length ? 'input' : 'unclear'));
+    if (['ok', 'input'].includes(verdict) && missed.length) verdict = 'gaps';
+    if (verdict === 'ok' && questions.length) verdict = 'input';
+    // "input" with no question listed: the summary is the one open question, for Yukimi
+    if (verdict === 'input' && !questions.length) questions.push({ question: String(o.summary || 'The agent is waiting on you').replace(/\s+/g, ' ').trim().slice(0, 400), answer: '', why: '' });
     const done = (Array.isArray(o.done) ? o.done : []).map((x) => ({ id: Number(x && typeof x === 'object' ? x.id : x), evidence: String((x && x.evidence) || '').slice(0, 600) })).filter((x) => Number.isInteger(x.id)).slice(0, 40);
     // per-issue answer of a run that covers several issues (#1191): [{ ref, done, left }], refs as owner/repo#N
     const issues = (Array.isArray(o.issues) ? o.issues : []).map((x) => {
@@ -515,7 +529,7 @@ function parseVerdict(text) {
         const left = String(x.left || x.remaining || '').replace(/\s+/g, ' ').trim().slice(0, 600);
         return { ref, done: typeof x.done === 'boolean' ? x.done : !left, left };
     }).filter(Boolean).slice(0, 40);
-    return Object.assign({ verdict, summary: String(o.summary || '').slice(0, 400), missed }, done.length ? { done } : {}, issues.length ? { issues } : {});
+    return Object.assign({ verdict, summary: String(o.summary || '').slice(0, 400), missed }, questions.length ? { questions } : {}, done.length ? { done } : {}, issues.length ? { issues } : {});
 }
 
 // ---------------------------------------------------------------- store (agent-coord DB)
@@ -554,7 +568,7 @@ function db() {
         `);
         const wcols = new Set(d.prepare('PRAGMA table_info(supervisor_work)').all().map((c) => c.name));
         if (!wcols.has('engine')) d.exec("ALTER TABLE supervisor_work ADD COLUMN engine TEXT NOT NULL DEFAULT 'claude'");
-        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT'], ['remote_control', 'INTEGER NOT NULL DEFAULT 0'], ['issue_refs', 'TEXT'], ['joined_into', 'INTEGER']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
+        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT'], ['remote_control', 'INTEGER NOT NULL DEFAULT 0'], ['issue_refs', 'TEXT'], ['joined_into', 'INTEGER'], ['input_questions', 'TEXT']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
         const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
         if (!cols.has('supervised')) d.exec('ALTER TABLE supervisor_state ADD COLUMN supervised INTEGER NOT NULL DEFAULT 0');
         const rcols = new Set(d.prepare('PRAGMA table_info(supervisor_reviews)').all().map((x) => x.name));
@@ -564,6 +578,8 @@ function db() {
         if (!rcols.has('rulecheck')) d.exec('ALTER TABLE supervisor_reviews ADD COLUMN rulecheck TEXT');
         // a run that covers several issues (#1191): the Supervisor's per-issue answer, a JSON list [{ ref, done, left }]
         if (!rcols.has('issues')) d.exec('ALTER TABLE supervisor_reviews ADD COLUMN issues TEXT');
+        // questions the turn ended on (verdict input, or beside gaps): a JSON list [{ question, answer, why }]
+        if (!rcols.has('questions')) d.exec('ALTER TABLE supervisor_reviews ADD COLUMN questions TEXT');
         db.ready = d;
     }
     return d;
@@ -576,7 +592,7 @@ function rowReview(r) {
         id: r.id, sessionId: r.session_id, agentId: r.agent_id || '', title: r.title || '', account: r.account || '', at: r.at,
         trigger: r.trigger, verdict: r.verdict, summary: r.summary, request: r.request, steering: j(r.steering, []),
         missed: j(r.missed, []), model: r.model, delivered: r.delivered || '', dismissed: !!r.dismissed, error: r.error || '',
-        resolved: r.resolved || '', violations: j(r.violations, []), ruleCheck: j(r.rulecheck, null), issues: j(r.issues, [])
+        resolved: r.resolved || '', violations: j(r.violations, []), ruleCheck: j(r.rulecheck, null), issues: j(r.issues, []), questions: j(r.questions, [])
     };
 }
 
@@ -690,6 +706,7 @@ async function review(sessionId, trigger, opts = {}) {
         const list = wi ? allIssueRefs(wi) : [];
         if (list.length > 1) meta.issuesList = list.map((i) => ({ repo: i.repo, number: i.number, title: i.title || issueTitles.get(`${i.repo}#${i.number}`) || '' }));
     } catch (_) { /* no item */ }
+    try { meta.standing = require('./agentCoord/memoryStore').digest({}); } catch (_) { /* no shared memory */ }
     const turn = turnOf(messages);
     // a work item's session starts from its brief (the opening prompt, not a human message): that brief is the request
     // (Nov 25 2026: items stayed "running" forever after "No request in this turn")
@@ -720,14 +737,14 @@ async function review(sessionId, trigger, opts = {}) {
     if (result.skipped && trigger === 'turn-end') return null; // nothing asked: no row
     // the items a review names as done are ticked, with its evidence
     if (result.done && result.done.length) { try { sessionTasks().applyDone(sessionId, result.done); } catch (e) { console.warn(`[supervisor] tick: ${e.message}`); } }
-    const ins = d.prepare(`INSERT INTO supervisor_reviews (session_id, agent_id, title, account, at, trigger, verdict, summary, request, steering, missed, model, error, violations, rulecheck, issues)
-        VALUES (@session_id, @agent_id, @title, @account, @at, @trigger, @verdict, @summary, @request, @steering, @missed, @model, @error, @violations, @rulecheck, @issues)`)
-        .run(Object.assign(base, { issues: result.issues && result.issues.length ? JSON.stringify(result.issues) : null, verdict: result.verdict, summary: result.summary || '', missed: JSON.stringify(result.missed || []), model: result.model || '', error: result.error || null, violations: JSON.stringify(rc ? rc.violations : []), rulecheck: rc ? JSON.stringify({ checked: rc.checked, files: rc.files, scripts: rc.scripts, rules: rc.rules, calls: rc.calls, error: rc.error, skipped: rc.skipped || '' }) : null }));
+    const ins = d.prepare(`INSERT INTO supervisor_reviews (session_id, agent_id, title, account, at, trigger, verdict, summary, request, steering, missed, model, error, violations, rulecheck, issues, questions)
+        VALUES (@session_id, @agent_id, @title, @account, @at, @trigger, @verdict, @summary, @request, @steering, @missed, @model, @error, @violations, @rulecheck, @issues, @questions)`)
+        .run(Object.assign(base, { issues: result.issues && result.issues.length ? JSON.stringify(result.issues) : null, questions: result.questions && result.questions.length ? JSON.stringify(result.questions) : null, verdict: result.verdict, summary: result.summary || '', missed: JSON.stringify(result.missed || []), model: result.model || '', error: result.error || null, violations: JSON.stringify(rc ? rc.violations : []), rulecheck: rc ? JSON.stringify({ checked: rc.checked, files: rc.files, scripts: rc.scripts, rules: rc.rules, calls: rc.calls, error: rc.error, skipped: rc.skipped || '' }) : null }));
     let rv = getReview(ins.lastInsertRowid);
     resolveEarlier(rv, rc);
     if ((rv.verdict === 'gaps' || openViolations(rv).length) && trigger !== 'mcp') rv = await deliver(rv, s, { auto: true, fromSupervisor: turn.fromSupervisor }).catch(() => rv);
     afterTurn(sessionId, s).catch((e) => console.warn(`[supervisor] upkeep ${sessionId.slice(0, 8)}: ${e.message}`));
-    try { workAfterReview(rv); } catch (e) { console.warn(`[supervisor] work state: ${e.message}`); }
+    try { await workAfterReview(rv, { fromSupervisor: turn.fromSupervisor }); } catch (e) { console.warn(`[supervisor] work state: ${e.message}`); }
     emit(rv);
     return rv;
 }
@@ -895,8 +912,9 @@ function isSupervised(sessionId) {
 // ---------------------------------------------------------------- work queue
 
 // held: waiting for Yukimi to pick it (the default for new and imported items, Nov 24 2026); queued: start when a slot is free
-const WORK_STATES = ['held', 'queued', 'starting', 'running', 'waiting', 'done', 'failed', 'cancelled'];
-const ACTIVE = ['starting', 'running', 'waiting'];
+const WORK_STATES = ['held', 'queued', 'starting', 'running', 'waiting', 'input', 'done', 'failed', 'cancelled'];
+// input: stopped on a question only Yukimi can answer (Input Required); the session may sit idle, its next turn is still reviewed
+const ACTIVE = ['starting', 'running', 'waiting', 'input'];
 
 // ---- several issues in one run (#1191): issue_repo / issue_number / issue_id stay the PRIMARY (the first picked), issue_refs
 // is a JSON list of the others [{ repo, number, id, title }] (the primary is not repeated)
@@ -994,12 +1012,13 @@ function rowWork(r) {
         issues: allIssueRefs(r).map((i, n) => Object.assign({ repo: i.repo, number: i.number, url: yz().issueUrl(i.repo, i.number) }, i.title ? { title: i.title } : {}, { primary: n === 0 })),
         remoteControl: !!r.remote_control, joinedInto: r.joined_into || null,
         issueNote: r.issue_note || '',
+        questions: (() => { try { const q = r.input_questions ? JSON.parse(r.input_questions) : []; return Array.isArray(q) ? q : []; } catch (_) { return []; } })(),
         check: (() => { try { return r.check_json ? JSON.parse(r.check_json) : null; } catch (_) { return null; } })()
     };
 }
 function listWork(opts = {}) {
     const lim = Math.max(1, Math.min(300, Number(opts.limit) || 100));
-    return db().prepare("SELECT * FROM supervisor_work ORDER BY CASE WHEN state IN ('held','queued','starting','running','waiting') THEN 0 ELSE 1 END, id DESC LIMIT ?").all(lim).map(rowWork);
+    return db().prepare("SELECT * FROM supervisor_work ORDER BY CASE WHEN state IN ('held','queued','starting','running','waiting','input') THEN 0 ELSE 1 END, id DESC LIMIT ?").all(lim).map(rowWork);
 }
 const getWork = (id) => rowWork(db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id)));
 const yz = () => require('./fleetYozora');
@@ -1067,12 +1086,12 @@ async function syncExtras(r, prevState, res, rv, closeOk) {
         const e = res.get(issueKey(x)) || { done: true, left: '' };
         let text = '';
         let status = '';
-        if (r.state === 'running' && prevState !== 'waiting') {
+        if (r.state === 'running' && !['waiting', 'input', 'done', 'failed'].includes(prevState)) {
             const others = all.filter((o) => issueKey(o) !== issueKey(x));
             text = `**Fleet:** part of the Fleet run on ${where}, covering ${others.map((o) => shortRef(o, x)).join(', ')}. It started as one supervised session.${session} The session comments its progress here; the Supervisor comments again when the run ends.`;
             status = 'running';
         } else if (r.state === 'running') status = 'running';
-        else if (r.state === 'waiting') status = 'waiting';
+        else if (r.state === 'waiting' || r.state === 'input') status = 'waiting';
         else if (r.state === 'done') {
             if (e.done) { text = `**Fleet / Supervisor:** done - part of the Fleet run on ${where}: the Supervisor checked the run and this issue's own ask is done. Closing as done.`; status = 'done'; }
             else { text = `**Fleet / Supervisor:** the Fleet run on ${where} ended, but this issue's own ask is not finished. Left: ${e.left || 'what the run\'s last report names for it'}. Left open.`; status = 'running'; }
@@ -1103,8 +1122,11 @@ async function syncIssue(id, prevState) {
     const rv = multi && ['done', 'failed'].includes(r.state) ? lastReviewOf(r) : null;
     const res = multi ? issueResults(r, rv) : null;
     let text = '';
-    if (r.state === 'running' && prevState !== 'waiting') text = `**Fleet:** started as a supervised session on ${r.account || 'an account'} (${r.engine && r.engine !== 'claude' ? `${r.engine} ` : ''}${r.model || 'default model'}).${session} The Supervisor checks each turn against this issue.`;
+    if (r.state === 'running' && !['waiting', 'input', 'done', 'failed'].includes(prevState)) text = `**Fleet:** started as a supervised session on ${r.account || 'an account'} (${r.engine && r.engine !== 'claude' ? `${r.engine} ` : ''}${r.model || 'default model'}).${session} The Supervisor checks each turn against this issue.`;
+    else if (r.state === 'running' && prevState === 'input') text = `**Fleet:** working again after the questions it waited on were answered. ${r.message || ''}`.trim();
+    else if (r.state === 'running' && ['done', 'failed'].includes(prevState)) text = `**Fleet:** working again: ${String(r.message || '').replace(/^Working again:?\s*/, '') || 'its session started a new turn'}`;
     else if (r.state === 'running' && prevState === 'waiting') text = '**Fleet:** working again after the Supervisor\'s notes.';
+    else if (r.state === 'input') text = `**Fleet / Supervisor:** waiting on Yukimi before it can go on:\n${inputOpenQuestions(r).map((x) => `- ${x}`).join('\n') || `- ${String(r.message || '').replace(/^Input Required: /, '')}`}`;
     else if (r.state === 'waiting') text = `**Fleet / Supervisor:** after its last turn these look unaddressed, sent back to the session:\n${String(r.message || '').replace(/^Gaps sent back: /, '').split('; ').map((x) => `- ${x}`).join('\n')}`;
     else if (r.state === 'done') {
         // a run that covers several issues closes each one whose own ask the last review says is done (#1191)
@@ -1122,7 +1144,8 @@ async function syncIssue(id, prevState) {
     }
     if (text) await Y.comment(r.issue_repo, r.issue_number, text);
     const primaryDone = !multi || res.get(`${r.issue_repo}#${r.issue_number}`).done;
-    if (['running', 'waiting', 'done', 'failed'].includes(r.state)) await Y.setStatus(r.issue_repo, r.issue_number, r.issue_id, r.state === 'done' && !primaryDone ? 'running' : r.state).catch(() => {});
+    // input (Input Required) is a wait like waiting: its status label and board column are the waiting ones; it never closes the issue
+    if (['running', 'waiting', 'input', 'done', 'failed'].includes(r.state)) await Y.setStatus(r.issue_repo, r.issue_number, r.issue_id, r.state === 'done' && !primaryDone ? 'running' : (r.state === 'input' ? 'waiting' : r.state)).catch(() => {});
     if (['done', 'failed'].includes(r.state) && ran) await Y.addTime(r.issue_repo, r.issue_number, ran / 1000).catch(() => {});
     // done only ever comes from a Supervisor review that said ok (workAfterReview / settleParent): close it
     const closeOk = r.state === 'done' && CLOSE_OK_RE.test(text + (r.message || ''));
@@ -1171,12 +1194,12 @@ async function pullIssues(gr, opts = {}) {
         }
     }
     // items whose issue was closed on Yozora: its primary only; an item of several issues does not end because one of the others closed
-    const active = db().prepare("SELECT * FROM supervisor_work WHERE issue_number IS NOT NULL AND state IN ('held','queued','starting','running','waiting')").all();
+    const active = db().prepare("SELECT * FROM supervisor_work WHERE issue_number IS NOT NULL AND state IN ('held','queued','starting','running','waiting','input')").all();
     for (const r of active) {
         let st = null;
         try { st = await yz().issueState(r.issue_repo, r.issue_number); } catch (_) { st = null; }
         if (st !== 'closed') continue;
-        db().prepare('UPDATE supervisor_work SET state = ?, ended_at = ?, message = ? WHERE id = ?').run(r.state === 'queued' || r.state === 'held' ? 'cancelled' : 'done', Date.now(), 'Its issue was closed on Yozora', r.id);
+        db().prepare('UPDATE supervisor_work SET state = ?, ended_at = ?, message = ? WHERE id = ?').run(r.state === 'queued' || r.state === 'held' ? 'cancelled' : 'done', Date.now(), ISSUE_CLOSED_MSG, r.id);
         ended += 1;
     }
     if (added || ended) emit({ work: true });
@@ -1241,6 +1264,7 @@ function activeCount() {
     const live = liveSessionsById();
     let n = 0;
     db().prepare(`SELECT id, session_id, state FROM supervisor_work WHERE state IN (${ACTIVE.map(() => '?').join(',')})`).all(...ACTIVE).forEach((w) => {
+        if (w.state === 'input') return; // stopped on a question for Yukimi: holds no slot, and an idle or ended session is expected
         if (w.state === 'starting' || (w.session_id && sessionRunning(w.session_id, live))) n += 1;
         else if (w.session_id && w.state !== 'waiting') {
             // its session ended: never "done" without the Supervisor's own check of what it did (Yukimi, Nov 24 2026)
@@ -1460,17 +1484,82 @@ function pumpWork(gr) {
     return pumping;
 }
 
-/** A work item's session ended a turn: done when nothing was missed, waiting while gaps go back to it. */
 const retryTries = new Map(); // work item id -> reviews that could not judge its idle session
 const sessionBusy = (sid) => { const l = liveSessionsById().get(sid); return !!(l && l.status === 'busy'); };
-function workAfterReview(rv) {
+/** The questions saved on a raw work row: [{ question, answer, why, ask? }]. */
+function savedQuestions(r) {
+    try { const q = r && r.input_questions ? JSON.parse(r.input_questions) : []; return Array.isArray(q) ? q.filter((x) => x && x.question) : []; } catch (_) { return []; }
+}
+const hasAnswer = (q) => !!String((q && q.answer) || '').trim();
+/** The texts of the questions nobody has answered yet (a raw work row). */
+function inputOpenQuestions(r) { return savedQuestions(r).filter((q) => !hasAnswer(q)).map((q) => q.question); }
+
+function answersNote(qs, who, extra) {
+    return `${STEER_PREFIX} ${who} answers to the questions you ended on: ${qs.map((q, i) => `(${i + 1}) ${q.question} - ${q.answer || 'no answer given: use your best judgment and say what you chose'}`).join(' ')}${extra ? ` Note: ${extra}` : ''} Carry on with the work now; do not wait for Yukimi on these.`;
+}
+
+/** Types the answers into the session (and leaves an inbox note). Not sent (false) when delivery is off, the auto-steer limit is reached, or the session cannot be typed into. */
+async function sendAnswers(rv, qs, opts = {}) {
+    const set = settings();
+    if (set.delivery === 'off') return false;
+    const d = db();
+    const st = d.prepare('SELECT auto_steers FROM supervisor_state WHERE session_id = ?').get(rv.sessionId) || { auto_steers: 0 };
+    const autoSteers = opts.fromSupervisor ? st.auto_steers : 0;
+    if (autoSteers >= MAX_AUTO_STEERS) return false;
+    const text = answersNote(qs, 'The Supervisor\'s', '');
+    try {
+        const me = coord().upsertAgent({ id: 'supervisor', kind: 'other', name: 'Supervisor', task: 'Checks that every turn did what was asked', pid: null });
+        if (rv.agentId && !coord().getAgent(rv.agentId)) coord().upsertAgent({ id: rv.agentId, kind: 'claude', name: rv.title || rv.agentId, sessionId: rv.sessionId, account: rv.account || undefined });
+        if (rv.agentId) coord().post(me.id, rv.agentId, text.slice(STEER_PREFIX.length + 1), { kind: 'question' });
+    } catch (_) { /* the typed note stands */ }
+    try { await require('./claudeSessionLauncher').steer(rv.sessionId, text); } catch (_) { return false; }
+    d.prepare('INSERT INTO supervisor_state (session_id, status, auto_steers, updated_at) VALUES (?, \'seen\', ?, ?) ON CONFLICT(session_id) DO UPDATE SET auto_steers = excluded.auto_steers').run(rv.sessionId, autoSteers + 1, Date.now());
+    return true;
+}
+
+/** Best effort comment on the item's Yozora issue (the Supervisor's own round, with no state change to sync). */
+function commentIssue(w, text) {
+    if (!w || !w.issue_repo || !w.issue_number) return;
+    yz().comment(w.issue_repo, w.issue_number, text).catch((e) => noteIssue(w.id, `Comment failed: ${e.message}`));
+}
+
+/**
+ * A work item's session ended a turn: done when nothing was missed, waiting while gaps go back to it, Input Required when it
+ * ended on a question (the Supervisor answers what it can and types it in; what only Yukimi can answer waits for her).
+ * opts: { fromSupervisor } (the turn answered a Supervisor note: the auto-steer limit applies).
+ */
+async function workAfterReview(rv, opts = {}) {
     if (!rv || !rv.sessionId) return;
-    const w = db().prepare(`SELECT * FROM supervisor_work WHERE session_id = ? AND state IN (${ACTIVE.map(() => '?').join(',')})`).get(rv.sessionId, ...ACTIVE);
-    if (!w) { pumpWork().catch(() => {}); return; }
+    let w = db().prepare(`SELECT * FROM supervisor_work WHERE session_id = ? AND state IN (${ACTIVE.map(() => '?').join(',')})`).get(rv.sessionId, ...ACTIVE);
+    if (!w) {
+        // a done / failed item whose session worked again: a review that finds more to do reopens it; an ok one leaves it done
+        const ended = rv.verdict === 'ok' ? null : endedItemOf(rv.sessionId);
+        if (!ended) { pumpWork().catch(() => {}); return; }
+        setWork(ended.id, { state: 'running', ended_at: null, message: 'Working again' });
+        w = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(ended.id);
+    }
+    const qs = Array.isArray(rv.questions) ? rv.questions : [];
+    const qJson = qs.length ? JSON.stringify(qs) : null;
     const openKids = db().prepare("SELECT COUNT(*) AS n FROM supervisor_work WHERE parent_id = ? AND state NOT IN ('done','failed','cancelled')").get(w.id).n;
     if (rv.verdict === 'ok' && openKids) setWork(w.id, { state: 'running', message: `Its planner finished a turn; ${openKids} part${openKids === 1 ? ' is' : 's are'} still running` });
-    else if (rv.verdict === 'ok') { setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done' }); settleParent(w.parent_id); }
-    else if (rv.verdict === 'gaps') setWork(w.id, { state: 'waiting', message: `Gaps sent back: ${rv.missed.map((m) => m.item).join('; ').slice(0, 240)}` });
+    else if (rv.verdict === 'ok') { setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done', input_questions: null }); settleParent(w.parent_id); }
+    else if (rv.verdict === 'input' && qs.length) {
+        const open = qs.filter((q) => !hasAnswer(q));
+        let sent = false;
+        if (!open.length) sent = await sendAnswers(rv, qs, opts).catch(() => false);
+        if (sent) {
+            const list = qs.map((q) => q.question).join('; ').slice(0, 200);
+            db().prepare('UPDATE supervisor_reviews SET delivered = ? WHERE id = ?').run('steer', rv.id);
+            setWork(w.id, { state: 'running', message: `The Supervisor answered ${qs.length} question${qs.length === 1 ? '' : 's'}: ${list}`, input_questions: null });
+            commentIssue(w, `**Fleet / Supervisor:** answered the agent's questions and sent it back to work:\n${qs.map((q) => `- ${q.question} -> ${q.answer}`).join('\n')}`);
+        } else {
+            // not sent (an open question, delivery off, steer limit, a session that cannot be typed into): Yukimi sees it, the Supervisor's answers prefilled
+            const text = open.length ? open.map((q) => q.question).join('; ') : qs.map((q) => q.question).join('; ');
+            setWork(w.id, { state: 'input', message: `Input Required: ${text}`.slice(0, 240), input_questions: qJson });
+            if (w.state === 'input') commentIssue(w, `**Fleet / Supervisor:** still waiting on Yukimi before it can go on:\n${(open.length ? open : qs).map((q) => `- ${q.question}`).join('\n')}`);
+        }
+    }
+    else if (rv.verdict === 'gaps') setWork(w.id, { state: 'waiting', message: `Gaps sent back: ${rv.missed.map((m) => m.item).join('; ').slice(0, 240)}`, input_questions: qJson });
     else if (['unclear', 'error'].includes(rv.verdict) && !sessionBusy(rv.sessionId)) {
         // its session is idle and the Supervisor could not tell: re-checked once in 3 minutes, then it fails with why,
         // so it leaves Running (Completed lists it; Start Now runs it again)
@@ -1486,6 +1575,84 @@ function workAfterReview(rv) {
     } else setWork(w.id, { state: 'running', message: rv.summary || 'Turn ended' });
     emit({ work: getWork(w.id) });
     pumpWork().catch(() => {});
+}
+
+/** Types a message into an item's session; a session that is not running is resumed first (on the item's account, else the best with room). */
+async function steerResumed(r, text) {
+    const sid = r.session_id;
+    if (!liveSessionsById().get(sid)) {
+        const pick = await require('./claudeFleetMcp').pickForStart(gResources, r.account || 'auto');
+        const res = await require('./claudeSessionLauncher').resume(gResources, sid, { account: pick.index });
+        if (res && res.state === 'failed') throw new Error(res.message || 'Its session did not start again');
+    }
+    await require('./claudeSessionLauncher').steer(sid, text);
+}
+
+const ISSUE_CLOSED_MSG = 'Its issue was closed on Yozora';
+const oneLine = (t, n) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, n);
+/** The newest done / failed item of a session that may work again (never cancelled, never one whose issue was closed on Yozora). */
+function endedItemOf(sessionId) {
+    const r = db().prepare("SELECT * FROM supervisor_work WHERE session_id = ? ORDER BY id DESC").get(String(sessionId));
+    return r && ['done', 'failed'].includes(r.state) && r.message !== ISSUE_CLOSED_MSG ? r : null;
+}
+/** A finished item's session went busy again: the item runs again (Yukimi: item 72 stayed Done after its session was told to continue). */
+function reopenOnWork(sessionId) {
+    const r = endedItemOf(sessionId);
+    if (!r) return;
+    setWork(r.id, { state: 'running', ended_at: null, message: 'Working again: its session started a new turn' });
+    emit({ work: getWork(r.id) });
+    // the new prompt or steer, when the transcript has it (best effort)
+    (async () => {
+        try {
+            const file = await transcriptFile(sessionId);
+            if (!file) return;
+            const page = await require('./claudeTranscript').readPage(file, { limit: 12 });
+            const last = (page.messages || []).filter((m) => m.role === 'user' && m.kind === 'text').pop();
+            const t = oneLine(last && last.text, 120);
+            if (t) { const cur = db().prepare('SELECT state, message FROM supervisor_work WHERE id = ?').get(r.id); if (cur && cur.state === 'running' && /^Working again/.test(cur.message)) { setWork(r.id, { message: `Working again: ${t}` }); emit({ work: getWork(r.id) }); } }
+        } catch (_) { /* the generic message stands */ }
+    })();
+}
+
+/** "Send Back to Work": a done or failed item whose session still exists gets Yukimi's note and runs again. */
+async function reopenWork(id, opts = {}) {
+    const r = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id));
+    if (!r) throw new Error('No such work item');
+    if (!['done', 'failed'].includes(r.state)) throw new Error(`It is ${r.state}: only a done or failed item is sent back to work`);
+    if (!r.session_id) throw new Error('It has no session to send back to');
+    const note = oneLine(opts.note, 2000);
+    if (!note) throw new Error('Write what it should do next');
+    if (!await transcriptFile(r.session_id)) throw new Error('Its session no longer exists');
+    await steerResumed(r, `${STEER_PREFIX} Sent back by Yukimi: ${note}`);
+    setWork(r.id, { state: 'running', ended_at: null, message: `Working again: ${oneLine(note, 120)}` });
+    emit({ work: getWork(r.id) });
+    return getWork(r.id);
+}
+
+/**
+ * Yukimi's answers to an Input Required item (Fleet's Send Answers): one message with every question and its answer (her text,
+ * else the answer the Supervisor proposed) typed into the session (a stopped session is resumed first), then the item runs again.
+ * body: { answers: [text per question index], note }.
+ */
+async function answerWork(id, body = {}) {
+    const r = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id));
+    if (!r) throw new Error('No such work item');
+    if (r.state !== 'input') throw new Error(`It is ${r.state}: only an item that is Input Required takes answers`);
+    const qs = savedQuestions(r);
+    if (!qs.length) throw new Error('It has no open questions');
+    if (qs.some((q) => q.ask)) throw new Error('This question is open as a request form (notification): answer it there');
+    const typed = Array.isArray(body.answers) ? body.answers : [];
+    const note = String(body.note || '').replace(/\s+/g, ' ').trim().slice(0, 1000);
+    const given = qs.map((q, i) => ({ question: q.question, answer: String(typed[i] || '').trim().slice(0, 4000) || String(q.answer || '').trim() }));
+    if (!given.some((q) => q.answer) && !note) throw new Error('Type an answer first');
+    if (!r.session_id) throw new Error('It has no session to send the answers to');
+    const sid = r.session_id;
+    await steerResumed(r, answersNote(given, 'Yukimi\'s', note));
+    db().prepare('INSERT INTO supervisor_state (session_id, status, auto_steers, updated_at) VALUES (?, \'seen\', 0, ?) ON CONFLICT(session_id) DO UPDATE SET auto_steers = 0').run(sid, Date.now());
+    const n = given.length;
+    setWork(r.id, { state: 'running', message: `Yukimi answered ${n} question${n === 1 ? '' : 's'}`, input_questions: null });
+    emit({ work: getWork(r.id) });
+    return getWork(r.id);
 }
 
 /** The item's whole tree for the workflow map: the top item of its split and every part under it (an id, or a session id). */
@@ -1660,7 +1827,7 @@ async function issuesOpen(gr, req = {}) {
     if (!repos.includes(repo)) throw new Error(`${repo} is not one of the watched repositories (${repos.join(', ')})`);
     const open = await yz().openIssues(repo, { q: req.q, limit: 100 });
     const carrying = new Map(); // "repo#N" -> the active / held item that carries it
-    db().prepare("SELECT id, issue_repo, issue_number, issue_refs FROM supervisor_work WHERE state IN ('held','queued','starting','running','waiting') ORDER BY id").all()
+    db().prepare("SELECT id, issue_repo, issue_number, issue_refs FROM supervisor_work WHERE state IN ('held','queued','starting','running','waiting','input') ORDER BY id").all()
         .forEach((r) => allIssueRefs(r).forEach((i) => { if (!carrying.has(issueKey(i))) carrying.set(issueKey(i), r.id); }));
     open.forEach((i) => rememberTitle(i.repo, i.number, i.title));
     return { repo, repos, issues: open.map((i) => Object.assign({}, i, { item: carrying.get(issueKey(i)) || null })) };
@@ -2283,6 +2450,7 @@ function scan(first) {
         // a supervised session's new messages become its asks (cheap: the sync stats the transcript first); the others are read while a Fleet window watches them
         if (settings().enabled && reviewable(r.sessionId)) sessionTasks().poke(r.sessionId);
         if (!first && prev === undefined && now === 'busy') markPartial(r.sessionId);
+        if (!first && prev !== 'busy' && now === 'busy') { try { reopenOnWork(r.sessionId); } catch (_) { /* no item */ } }
     });
     [...statusBySession.keys()].forEach((id) => { if (!seen.has(id)) statusBySession.delete(id); });
 }
@@ -2321,6 +2489,27 @@ function askFields(questions) {
     });
     return fields;
 }
+/** The session's work item shows Input Required while its AskUserQuestion form is open (null when it has no active item). */
+function markAsk(sessionId, questions) {
+    try {
+        const w = activeItemOf(String(sessionId || ''));
+        if (!w || !['starting', 'running', 'waiting'].includes(w.state)) return null;
+        const qs = questions.map((q) => ({ question: String(q.question).replace(/\s+/g, ' ').trim().slice(0, 400), answer: '', why: 'Asked in the session (AskUserQuestion): answer the request form', ask: true }));
+        setWork(w.id, { state: 'input', message: `Input Required: ${qs.map((q) => q.question).join('; ')}`.slice(0, 240), input_questions: JSON.stringify(qs) });
+        emit({ work: getWork(w.id) });
+        return w.id;
+    } catch (_) { return null; }
+}
+/** The form was answered, cancelled or timed out: the item runs again (only when it still shows that ask). */
+function clearAsk(id) {
+    if (!id) return;
+    try {
+        const r = db().prepare('SELECT state, input_questions FROM supervisor_work WHERE id = ?').get(id);
+        if (!r || r.state !== 'input' || !savedQuestions(r).some((q) => q.ask)) return;
+        setWork(id, { state: 'running', message: 'The question was answered in its request form', input_questions: null });
+        emit({ work: getWork(id) });
+    } catch (_) { /* gone */ }
+}
 async function askUser(req, onId) {
     const questions = (Array.isArray(req.questions) ? req.questions : []).filter((q) => q && q.question).slice(0, 4);
     if (!questions.length) throw new Error('no questions');
@@ -2333,13 +2522,16 @@ async function askUser(req, onId) {
     form.fields.unshift({ id: 'session', label: `Session: ${title}${account ? ` (${account})` : ''}`.slice(0, 80), type: 'text', sub: 'Read only: the Claude session that asks', data: { default: String(req.sessionId || '').slice(0, 8), placeholder: '', options: [], required: false, min: null, max: null, step: null } });
     const id = rf.askRequestForm(gResources, { title: form.title, submitLabel: form.submitLabel, fields: form.fields, chatId: null, claude: { sessionId: String(req.sessionId || ''), question: String(questions[0].question).slice(0, 200), count: questions.length } });
     onId(id);
+    const askItem = markAsk(req.sessionId, questions);
     const deadline = Date.now() + ASK_WAIT_MS;
     let ans = null;
-    while (Date.now() < deadline) {
-        ans = await rf.awaitRequestForm(id);
-        if (!ans.pending) break;
-        ans = null;
-    }
+    try {
+        while (Date.now() < deadline) {
+            ans = await rf.awaitRequestForm(id);
+            if (!ans.pending) break;
+            ans = null;
+        }
+    } finally { clearAsk(askItem); }
     if (!ans) { rf.submitRequestForm({ id, cancelled: true }); return { ok: true, timeout: true }; }
     if (ans.cancelled || !ans.values) return { ok: true, timeout: true };
     const answers = {};
@@ -2863,7 +3055,7 @@ async function acceptRuleFinding(gr, findingId, edit = {}, opts = {}) {
 module.exports = {
     explainRuleIssue, acceptRuleProposal, rejectRuleProposal, acceptRuleFinding, listRuleProposals, getRuleProposal, proposalBrief,
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
 };

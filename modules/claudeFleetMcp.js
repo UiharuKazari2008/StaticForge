@@ -45,9 +45,9 @@ function tool(name, description, properties, required) {
     };
 }
 
-const WORK_FILTERS = ['held', 'queued', 'running', 'sent_back', 'done', 'failed', 'cancelled', 'open', 'all'];
-const STATE_LABEL = { held: 'Waiting', queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Sent Back', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
-const FILTER_STATES = { held: ['held'], queued: ['queued'], running: ['starting', 'running'], sent_back: ['waiting'], done: ['done'], failed: ['failed'], cancelled: ['cancelled'], open: ['held', 'queued', 'starting', 'running', 'waiting'] };
+const WORK_FILTERS = ['held', 'queued', 'running', 'sent_back', 'input', 'done', 'failed', 'cancelled', 'open', 'all'];
+const STATE_LABEL = { held: 'Waiting', queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Sent Back', input: 'Input Required', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+const FILTER_STATES = { held: ['held'], queued: ['queued'], running: ['starting', 'running'], sent_back: ['waiting'], input: ['input'], done: ['done'], failed: ['failed'], cancelled: ['cancelled'], open: ['held', 'queued', 'starting', 'running', 'waiting', 'input'] };
 
 const TOOLS = [
     tool('claude_fleet_status', 'Every Claude account: plan usage (current session / 5-hour and weekly percent used, resets), Remote Control (connected / stopped / error; own folder or the host\'s login), the sessions running on it (busy / idle, title, folder, link), and the coordination picture (agents, claims, open build gates). Read this before claude_dispatch.', {
@@ -79,7 +79,7 @@ const TOOLS = [
         account: str('With resume: the account to run it on (default: auto)')
     }, ['session', 'text']),
     tool('fleet_work_list', 'Fleet\'s work queue, compact rows: id, title, state (Waiting = held, Queued, Running, Sent Back, Done, Failed, Cancelled), source, account, model / effort, its Yozora issue (ref + url), created, note and the Supervisor\'s maintenance verdict on a Waiting item. Use fleet_work_get for one item in full.', {
-        state: { type: 'string', enum: [...WORK_FILTERS], description: 'held (Waiting), queued, running, sent_back, done, failed, cancelled, open (everything not ended) or all. Default open' },
+        state: { type: 'string', enum: [...WORK_FILTERS], description: 'held (Waiting), queued, running, sent_back, input (Input Required), done, failed, cancelled, open (everything not ended) or all. Default open' },
         search: str('Words that must appear in the title, brief or issue ref'),
         limit: { type: 'number', description: 'Most rows (default 40, max 200)' }
     }),
