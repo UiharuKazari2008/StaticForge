@@ -58,7 +58,7 @@ const line = (o) => `${JSON.stringify(o)}\n`;
 const user = (text, ts) => line({ type: 'user', uuid: `u${ts}`, timestamp: ts, message: { role: 'user', content: text } });
 const asst = (content, ts) => line({ type: 'assistant', uuid: `a${ts}`, timestamp: ts, message: { role: 'assistant', content } });
 
-const settingsCfg = { agentSupervisor: { enabled: true, engine: 'tokenrouter', delivery: 'inbox' } };
+const settingsCfg = { agentSupervisor: { enabled: true, engine: 'tokenrouter', delivery: 'inbox', reviewScope: 'all' } };
 const gr = {
     getConfig: () => settingsCfg,
     modifyConfig: () => ({ assign: async (p, v) => { settingsCfg[p[0]] = v; } }),
@@ -148,6 +148,7 @@ sup._test.setFetch(async (url, opts) => {
 
     await test('steer delivery: typed in, but at most 2 automatic steers while the turns are the Supervisor\'s own', async () => {
         settingsCfg.agentSupervisor.delivery = 'steer';
+        sup.markSupervised(SID); // steering goes only into supervised sessions
         answer = { verdict: 'gaps', summary: 'missed', missed: [{ item: 'x', evidence: 'y' }] };
         const typed = [];
         const realSteer = launcher.steer;

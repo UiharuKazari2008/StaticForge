@@ -102,6 +102,9 @@ function settings(gr) {
         trackArtifacts: cfg.trackArtifacts !== false,
         maxConcurrent: Number.isInteger(cfg.maxConcurrent) && cfg.maxConcurrent >= 1 && cfg.maxConcurrent <= 12 ? cfg.maxConcurrent : 3,
         autoStart: cfg.autoStart !== false,
+        // which sessions it reviews on its own: only supervised ones (work items, sessions started as supervised), or
+        // every session (Yukimi, Nov 24 2026: "this is an unsupervised session, why is the Supervisor watching it?")
+        reviewScope: cfg.reviewScope === 'all' ? 'all' : 'supervised',
         fallbackEngines: Array.isArray(cfg.fallbackEngines) ? cfg.fallbackEngines.filter((e) => e && e.engine).map((e) => ({ engine: String(e.engine), model: String(e.model || '') })) : [],
         autoPauseOnCollision: cfg.autoPauseOnCollision !== false,
         maxAskMinutes: Number.isFinite(cfg.maxAskMinutes) && cfg.maxAskMinutes >= 1 ? Math.min(240, cfg.maxAskMinutes) : 15,
@@ -121,6 +124,7 @@ async function saveSettings(gr, next) {
         trackArtifacts: next.trackArtifacts === undefined ? cur.trackArtifacts : next.trackArtifacts === true,
         maxConcurrent: next.maxConcurrent === undefined ? cur.maxConcurrent : Math.max(1, Math.min(12, Math.round(Number(next.maxConcurrent)) || cur.maxConcurrent)),
         autoStart: next.autoStart === undefined ? cur.autoStart : next.autoStart === true,
+        reviewScope: next.reviewScope === undefined ? cur.reviewScope : (next.reviewScope === 'all' ? 'all' : 'supervised'),
         fallbackEngines: Array.isArray(next.fallbackEngines) ? next.fallbackEngines.filter((e) => e && e.engine).slice(0, 6).map((e) => ({ engine: String(e.engine).slice(0, 60), model: String(e.model || '').slice(0, 120) })) : cur.fallbackEngines,
         autoPauseOnCollision: next.autoPauseOnCollision === undefined ? cur.autoPauseOnCollision : next.autoPauseOnCollision === true,
         maxAskMinutes: next.maxAskMinutes === undefined ? cur.maxAskMinutes : Math.max(1, Math.min(240, Math.round(Number(next.maxAskMinutes)) || cur.maxAskMinutes)),
@@ -515,6 +519,8 @@ async function review(sessionId, trigger, opts = {}) {
     if (!SESSION_ID_RE.test(String(sessionId || ''))) throw new Error('A session id');
     const gr = opts.gr || gResources;
     const s = settings(gr);
+    // an unsupervised session is reviewed only when it asks (coord_supervisor_check) or someone re-checks it
+    if (trigger === 'turn-end' && s.reviewScope !== 'all' && !isSupervised(sessionId)) return null;
     const file = await transcriptFile(sessionId);
     if (!file) throw new Error('No transcript for that session');
     const d = db();
@@ -592,7 +598,7 @@ async function deliver(rv, s, opts = {}) {
     const st = d.prepare('SELECT auto_steers FROM supervisor_state WHERE session_id = ?').get(rv.sessionId) || { auto_steers: 0 };
     const autoSteers = opts.fromSupervisor ? st.auto_steers : 0;
     const supervisedSession = isSupervised(rv.sessionId);
-    const wantSteer = opts.force || ((set.delivery === 'steer' || supervisedSession) && autoSteers < MAX_AUTO_STEERS);
+    const wantSteer = opts.force || (supervisedSession && (set.delivery === 'steer' || set.delivery === 'inbox') && autoSteers < MAX_AUTO_STEERS);
     if (wantSteer) {
         try {
             await require('./claudeSessionLauncher').steer(rv.sessionId, gapText(rv));

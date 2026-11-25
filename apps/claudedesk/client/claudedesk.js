@@ -1408,6 +1408,7 @@
             <label><span>Model:</span><select class="vdt-select" data-sup="model">${supModelOptions(st.engine, st.model)}</select></label>
             <label><span>Effort:</span><select class="vdt-select" data-sup="effort">${supEffortOptions(st.engine, st.effort)}</select></label>
             <label data-sup-other hidden><span>Model ID:</span><input type="text" data-sup="modelOther" value="" placeholder="A full model ID" spellcheck="false" autocomplete="off"></label>
+            <label><span>Reviews:</span><select class="vdt-select" data-sup="reviewScope">${[['supervised', 'Supervised sessions only'], ['all', 'Every session']].map(([v, t]) => `<option value="${v}"${v === (st.reviewScope || 'supervised') ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
             <label><span>Delivery:</span><select class="vdt-select" data-sup="delivery">${DELIVERY.map(([v, t]) => `<option value="${v}"${v === st.delivery ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
             <label><span>Max concurrent sessions:</span><input type="text" data-sup="maxConcurrent" value="${esc(st.maxConcurrent == null ? 3 : st.maxConcurrent)}" inputmode="numeric" autocomplete="off"></label>
             <label class="cd-opt"><input type="checkbox" data-sup="autoStart"${st.autoStart === false ? '' : ' checked'}><span>Start queued work automatically</span></label>
@@ -4279,6 +4280,7 @@
                 const d = S.sup.draft;
                 const extra = {};
                 if (d.autoPauseOnCollision !== undefined) extra.autoPauseOnCollision = !!d.autoPauseOnCollision;
+                if (d.reviewScope) extra.reviewScope = d.reviewScope === 'all' ? 'all' : 'supervised';
                 if (String(d.maxAskMinutes == null ? '' : d.maxAskMinutes).trim() !== '') extra.maxAskMinutes = Math.max(1, Math.min(1440, Math.round(Number(d.maxAskMinutes)) || 15));
                 await supAct(c, { action: 'save', settings: Object.assign(extra, { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), effort: d.effort || '', delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) }) }, 'Saving...');
                 return true;
