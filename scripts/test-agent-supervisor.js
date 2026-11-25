@@ -500,6 +500,62 @@ sup._test.setFetch(async (url, opts) => {
         } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.resume = realResume; fs8.clearLoginFailed(0); fs8.clearLoginFailed(1); }
     });
 
+    await test('login expired under a running session: the turn ending authentication_failed marks the account (runtime), kills + resumes the session on another account, steers; busy is never killed; debounce; usage read does not clear; newer credentials do', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const fs8 = require('../modules/claudeFleetSettings');
+        const host = require('../modules/claudeAccountHost');
+        const realPick = fleetMcp.pickForStart; const realList = host.listAccounts; const realFind = launcher.findFile;
+        const realResume = launcher.resume; const realSteer = launcher.steer;
+        const SA = 'c1c1c1c1-0000-0000-0000-00000000000a'; const SB = 'c1c1c1c1-0000-0000-0000-00000000000b'; const SC = 'c1c1c1c1-0000-0000-0000-00000000000c';
+        const cfgA = path.join(tmp, 'claude-accounts', 'idA', 'config'); fs.mkdirSync(cfgA, { recursive: true });
+        const files = {};
+        const failLine = JSON.stringify({ type: 'assistant', isApiErrorMessage: true, error: 'authentication_failed', message: { content: [{ type: 'text', text: 'Login expired · Please run /login' }] } }) + '\n';
+        const okLine = JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } }) + '\n';
+        [[SA, failLine], [SB, failLine], [SC, okLine]].forEach(([id, line]) => { files[id] = path.join(tmp, `${id}.jsonl`); fs.writeFileSync(files[id], JSON.stringify({ type: 'user', message: { content: 'hi' } }) + '\n' + line); });
+        const status = { [SA]: 'idle', [SB]: 'busy', [SC]: 'idle' };
+        const live = () => new Map([SA, SB, SC].map((id) => [id, { id, pid: 1, status: status[id], configDir: cfgA, tmuxSession: `rc-${id.slice(0, 8)}` }]));
+        const killed = []; const resumed = []; const typed = []; const posts = [];
+        sup._test.setFailoverDeps({ kill: async (l) => { killed.push(l.id); } });
+        sup._test.setCollisionDeps({ live });
+        host.listAccounts = () => [{ index: 0, id: 'idA', name: 'A' }, { index: 1, id: 'idB', name: 'B' }];
+        fleetMcp.pickForStart = async () => { const a = [{ index: 0, name: 'A' }, { index: 1, name: 'B' }].find((x) => !fs8.loginFailedOf(x.index)); if (!a) throw new Error('No Claude account has room'); return Object.assign({ settings: {} }, a); };
+        launcher.findFile = async (id) => files[id] || null;
+        launcher.resume = async (g, id, o) => { resumed.push([id, o.account]); return { id, state: 'connected' }; };
+        launcher.steer = async (id, text) => { typed.push([id, text]); };
+        try {
+            fs8.clearLoginFailed(0);
+            assert.strictEqual(await sup._test.loginTurn(SC), false, 'an ok turn is left alone');
+            assert.strictEqual(fs8.loginFailedOf(0), null);
+            assert.strictEqual(await sup._test.loginTurn(SB), false, 'a busy session is never killed');
+            assert.deepStrictEqual(killed, []);
+            assert.strictEqual(await sup._test.loginTurn(SA), true);
+            assert.ok(fs8.loginFailedOf(0) && fs8.loginFailedOf(0).runtime, 'account A marked (runtime)');
+            assert.deepStrictEqual(killed, [SA]);
+            assert.deepStrictEqual(resumed, [[SA, 1]]);
+            assert.strictEqual(typed.length, 1);
+            assert.match(typed[0][1], /^\[Supervisor\] The A account login expired.*now runs on the B account: continue exactly where you were/);
+            // the idle session whose turn did not fail stayed; the busy one moves the moment it ends its (failed) turn
+            status[SB] = 'idle';
+            assert.strictEqual(await sup._test.loginTurn(SB), true);
+            assert.deepStrictEqual(killed, [SA, SB]);
+            // debounce: the same session again within 10 minutes is not moved again
+            assert.strictEqual(await sup._test.loginTurn(SA), true);
+            assert.deepStrictEqual(killed, [SA, SB], 'debounced');
+            // a usage read (other token) does not clear the runtime mark
+            const lim = [{ kind: 'session', label: 'session', percent: 5, resetsAt: 1 }];
+            assert.strictEqual(fs8.availability({ index: 0, limits: lim, at: Date.now() + 5000 }, Object.assign({}, fs8.DEFAULTS)).state, 'login');
+            assert.ok(fs8.loginFailedOf(0));
+            // a newer credentials file does
+            const cred = path.join(cfgA, '.credentials.json'); fs.writeFileSync(cred, '{}');
+            const later = new Date(Date.now() + 5000); fs.utimesSync(cred, later, later);
+            assert.notStrictEqual(fs8.availability({ index: 0, limits: lim, at: Date.now() }, Object.assign({}, fs8.DEFAULTS)).state, 'login');
+            assert.strictEqual(fs8.loginFailedOf(0), null);
+        } finally {
+            sup._test.setFailoverDeps(null); sup._test.setCollisionDeps(null); fleetMcp.pickForStart = realPick; host.listAccounts = realList; launcher.findFile = realFind; launcher.resume = realResume; launcher.steer = realSteer;
+            fs8.clearLoginFailed(0); fs8.clearLoginFailed(1); sup._test.loginMoves.clear();
+        }
+    });
+
     await test('fan-out: auto plans first (a planner reports its shape); surfaces splits into child items and the parent settles; planner gets the stage models', async () => {
         const fleetMcp = require('../modules/claudeFleetMcp');
         const realPick = fleetMcp.pickForStart;

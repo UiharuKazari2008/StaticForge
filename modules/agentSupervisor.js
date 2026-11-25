@@ -1587,10 +1587,10 @@ function loginFailover(w, pick, message) {
     return true;
 }
 
+const loginStopText = (rv, qs) => [rv.summary, rv.error, ...qs.map((q) => q.question)].filter(Boolean).join(' ');
+const isLoginStop = (text) => require('./claudeFleetSettings').isLoginError(text) || /login (has )?expired|run \/login/i.test(text);
 async function loginMove(w, rv, qs) {
     const fs8 = require('./claudeFleetSettings');
-    const text = [rv.summary, rv.error, ...qs.map((q) => q.question)].filter(Boolean).join(' ');
-    if (!fs8.isLoginError(text) && !/login (has )?expired|run \/login/i.test(text)) return false;
     if (sessionBusy(rv.sessionId)) return false;
     // a live session moves to another account with its conversation (loginTurn); only an ended one starts again
     if (liveSessionsById().has(rv.sessionId)) {
@@ -1914,7 +1914,7 @@ async function workAfterReview(rv, opts = {}) {
     // a turn that stopped on the account's expired login is not a question for Yukimi (Nov 25 2026: four items sat in
     // Input Required asking her to run /login): the account is marked, the dead session ends, and the item starts
     // again on the next account with room
-    if (await loginMove(w, rv, qs)) return;
+    if (isLoginStop(loginStopText(rv, qs)) && await loginMove(w, rv, qs)) return; // (no await otherwise: the state below is set in the same tick)
     const qJson = qs.length ? JSON.stringify(qs) : null;
     const openKids = db().prepare("SELECT COUNT(*) AS n FROM supervisor_work WHERE parent_id = ? AND state NOT IN ('done','failed','cancelled')").get(w.id).n;
     if (rv.verdict === 'ok' && rv.waitsOn) {

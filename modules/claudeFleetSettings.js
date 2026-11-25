@@ -140,16 +140,30 @@ const loginFailed = new Map(); // account index -> { at, message, name }: a star
 
 /** Is this error / note text a login-expiry one (a usage read's or the launcher's)? */
 function isLoginError(text) { return LOGIN_RE.test(String(text || '')); }
-function markLoginFailed(index, message, name) { if (Number.isFinite(index)) loginFailed.set(Number(index), { at: Date.now(), message: String(message || '').slice(0, 200), name: name || '' }); }
+/**
+ * extra = { runtime: true, configDir } marks a failure a RUNNING session hit (its turn ended "Login expired"): the usage read uses another token, so a good
+ * usage read proves nothing and never clears it; it clears when the account's credentials file changes (checked when availability is asked) or a start succeeds.
+ */
+function markLoginFailed(index, message, name, extra) {
+    if (!Number.isFinite(index)) return;
+    const x = extra || {};
+    loginFailed.set(Number(index), { at: Date.now(), message: String(message || '').slice(0, 200), name: name || '', runtime: !!x.runtime, configDir: x.configDir ? String(x.configDir) : '' });
+}
 function loginFailedOf(index) { return loginFailed.get(Number(index)) || null; }
 function clearLoginFailed(index) { return loginFailed.delete(Number(index)); }
 
 function availabilityOf(usage, s) {
     const idx = usage && Number.isFinite(usage.index) ? usage.index : null;
     const hasRows = !!(usage && Array.isArray(usage.limits) && usage.limits.some((l) => Number.isFinite(l.percent)));
-    const failed = idx !== null ? loginFailedOf(idx) : null;
-    // a later good usage read (limits, no needsLogin) clears a recorded start failure
-    if (failed && hasRows && !usage.needsLogin && !isLoginError(usage.error || usage.note) && Number.isFinite(usage.at) && usage.at > failed.at) { clearLoginFailed(idx); }
+    let failed = idx !== null ? loginFailedOf(idx) : null;
+    // a runtime failure (a session's turn ended "Login expired"): only a newer credentials file clears it (stat on ask, no timer)
+    if (failed && failed.runtime && failed.configDir) {
+        let m = 0;
+        try { m = require('fs').statSync(require('path').join(failed.configDir, '.credentials.json')).mtimeMs; } catch (_) { m = 0; }
+        if (m > failed.at) { clearLoginFailed(idx); failed = null; }
+    }
+    // a later good usage read (limits, no needsLogin) clears a recorded START failure, not a runtime one (another token)
+    if (failed && !failed.runtime && hasRows && !usage.needsLogin && !isLoginError(usage.error || usage.note) && Number.isFinite(usage.at) && usage.at > failed.at) { clearLoginFailed(idx); }
     const stillFailed = idx !== null ? loginFailedOf(idx) : null;
     if ((usage && (usage.needsLogin || isLoginError(usage.error || usage.note))) || stillFailed) return { state: 'login', schedulable: false, message: LOGIN_MSG, resetsAt: null };
     const limits = (usage && Array.isArray(usage.limits) ? usage.limits : []).filter((l) => Number.isFinite(l.percent));

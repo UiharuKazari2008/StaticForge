@@ -194,6 +194,18 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
         assert.strictEqual(fs8.availability({ index: 8, limits: [] }, s).state, 'login');
         assert.strictEqual(fs8.availability({ index: 8, limits: lim, at: Date.now() + 1000 }, s).state, 'free', 'a later good read clears it');
         assert.strictEqual(fs8.loginFailedOf(8), null);
+        // a runtime mark (a running session's turn ended "Login expired"): a good usage read never clears it (other token); a newer credentials file does
+        const cfg = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'login-cfg-'));
+        fs8.markLoginFailed(9, 'Login expired', 'Doug', { runtime: true, configDir: cfg });
+        assert.strictEqual(fs8.availability({ index: 9, limits: lim, at: Date.now() + 60000 }, s).state, 'login', 'a later good usage read does not clear a runtime mark');
+        const cred = require('path').join(cfg, '.credentials.json');
+        require('fs').writeFileSync(cred, '{}');
+        const old = new Date(Date.now() - 60000); require('fs').utimesSync(cred, old, old);
+        assert.strictEqual(fs8.availability({ index: 9, limits: lim }, s).state, 'login', 'an older credentials file does not clear it');
+        const newer = new Date(Date.now() + 5000); require('fs').utimesSync(cred, newer, newer);
+        assert.strictEqual(fs8.availability({ index: 9, limits: lim }, s).state, 'free', 'a newer credentials file clears it');
+        assert.strictEqual(fs8.loginFailedOf(9), null);
+        require('fs').rmSync(cfg, { recursive: true, force: true });
         fs8.markLoginFailed(8, 'x'); fs8.clearLoginFailed(8);
         assert.strictEqual(fs8.loginFailedOf(8), null);
         const acc = (index, name, availability) => ({ index, name, canRun: true, sessions: [], remoteControl: { message: '' }, usage: { worstPercent: 5 }, availability });
