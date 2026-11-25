@@ -621,14 +621,18 @@
             this.emit();
         }
 
-        /** The Alchemy page's last frame as a JPEG data URL ('' when there is none); the viewer is same-origin. */
+        /**
+         * The Alchemy page's last frame as a JPEG Blob (null when there is none); the viewer is same-origin. A Blob, not
+         * a data: string: the one who shows it makes an object URL and revokes it once the picture has loaded.
+         */
         frameSnapshot(shell) {
             const frame = typeof root.grimoireRemoteFrame === 'function' ? root.grimoireRemoteFrame(shell) : null;
             try {
                 const canvas = frame && frame.contentDocument && frame.contentDocument.querySelector('canvas');
-                return canvas && canvas.width ? canvas.toDataURL('image/jpeg', 0.8) : '';
+                // no-base64-images: shown once (the frame is turned into a Blob at once; no string is kept)
+                return canvas && canvas.width && typeof root.base64PictureBlob === 'function' ? root.base64PictureBlob(canvas.toDataURL('image/jpeg', 0.8), 'image/jpeg') : null;
             } catch (_err) {
-                return '';
+                return null;
             }
         }
 

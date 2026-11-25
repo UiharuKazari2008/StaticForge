@@ -847,6 +847,7 @@ function grimoireRemoteMenuAction(found, action, data) {
             const reader = new FileReader();
             reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
             reader.onerror = () => resolve('');
+            // no-base64-images: transport (the file is uploaded to the VFS as base64)
             reader.readAsDataURL(blob);
         });
         studioOpenFolderDialog('save', {

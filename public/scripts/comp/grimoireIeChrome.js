@@ -921,6 +921,7 @@
                     const reader = new FileReader();
                     reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ''));
                     reader.onerror = () => resolve('');
+                    // no-base64-images: transport (the printed document's bytes go to the print dialog / server as base64)
                     reader.readAsDataURL(blob);
                 });
             } catch (_) {
@@ -1525,12 +1526,17 @@
             const pane = tabs.paneOf(tab);
             const top = pane && pane.history ? pane.history[pane.historyIndex] : null;
             // an Alchemy page: its last frame (grimoireTabs.js frameSnapshot), or the one kept when its session was given up
-            const picture = pane && pane._grimoireRemoteSessionId ? tabs.frameSnapshot(pane) : (top && top.type === 'web' ? tab.snapshot || '' : '');
+            const picture = pane && pane._grimoireRemoteSessionId ? tabs.frameSnapshot(pane) : (top && top.type === 'web' ? tab.snapshot || null : null);
             if (picture || (top && top.type === 'web')) {
                 if (picture) {
                     const img = document.createElement('img');
                     img.alt = '';
-                    img.src = picture;
+                    // the kept frame is a Blob: an object URL for this tile, revoked once the picture has loaded
+                    const pictureUrl = typeof picture === 'string' ? picture : URL.createObjectURL(picture);
+                    if (typeof picture !== 'string') {
+                        img.onload = img.onerror = () => { URL.revokeObjectURL(pictureUrl); img.onload = img.onerror = null; };
+                    }
+                    img.src = pictureUrl;
                     shot.appendChild(img);
                 }
                 return tile;
