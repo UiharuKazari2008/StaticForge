@@ -216,12 +216,31 @@ async function openIssues(repo, opts = {}) {
         .map((i) => ({ repo, number: i.number, id: i.id, title: i.title || '', url: issueUrl(repo, i.number), labels: (i.labels || []).map((l) => l.name) }));
 }
 
+async function reopen(repo, number) {
+    return call('PATCH', `/repos/${repo}/issues/${number}`, { state: 'open' });
+}
+
+// Fleet's own logins: an issue one of them closed was closed by Fleet's sync, not by Yukimi (item 72, Nov 25 2026)
+const FLEET_LOGINS = ['director.yozora', 'claude', 'grok.cursor'];
+let selfLogin = null;
+/** Whether the issue is closed and Fleet closed it: { closed, byFleet, by }. */
+async function closedByFleet(repo, number) {
+    const i = await call('GET', `/repos/${repo}/issues/${number}`);
+    if (!i || i.state !== 'closed') return { closed: false, byFleet: false, by: '' };
+    if (selfLogin === null) selfLogin = await call('GET', '/user').then((u) => (u && u.login) || '').catch(() => '');
+    const since = i.closed_at ? new Date(Date.parse(i.closed_at) - 5000).toISOString() : '';
+    const t = (await call('GET', `/repos/${repo}/issues/${number}/timeline?limit=50${since ? `&since=${encodeURIComponent(since)}` : ''}`).catch(() => [])) || [];
+    const ev = t.filter((e) => e && e.type === 'close').pop();
+    const by = (ev && ev.user && ev.user.login) || '';
+    return { closed: true, byFleet: !!by && (by === selfLogin || FLEET_LOGINS.includes(by)), by };
+}
+
 async function issueState(repo, number) {
     const i = await call('GET', `/repos/${repo}/issues/${number}`);
     return i ? i.state : null;
 }
 
 module.exports = {
-    DEFAULT_REPO, LABEL, LABEL_NOW, repoForCwd, parseIssueRef, issueUrl, createIssue, linkIssue, comment, setStatus, addTime, close,
+    DEFAULT_REPO, LABEL, LABEL_NOW, repoForCwd, parseIssueRef, issueUrl, createIssue, linkIssue, comment, setStatus, addTime, close, reopen, closedByFleet,
     openFleetIssues, openIssues, getIssue, issueState, call, labels, _setFetch, _doneList: doneList, MARK
 };

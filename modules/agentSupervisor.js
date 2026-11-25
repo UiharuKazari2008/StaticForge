@@ -1598,7 +1598,17 @@ function endedItemOf(sessionId) {
 /** A finished item's session went busy again: the item runs again (Yukimi: item 72 stayed Done after its session was told to continue). */
 function reopenOnWork(sessionId) {
     const r = endedItemOf(sessionId);
-    if (!r) return;
+    if (!r) {
+        // an item that ended because its issue closed runs again only when Fleet's own sync closed the issue (it is reopened
+        // then); an issue Yukimi closed stays closed and its item stays done (item 72, Nov 25 2026: the old review had closed
+        // #1193 while the agent waited on her answers, and the issue sweep then put the sent-back item back to Done)
+        const c = db().prepare('SELECT * FROM supervisor_work WHERE session_id = ? ORDER BY id DESC').get(String(sessionId));
+        if (c && c.state === 'done' && c.message === ISSUE_CLOSED_MSG && c.issue_repo && c.issue_number) {
+            reopenClosedIssue(c, false).then((ok) => { if (ok) { setWork(c.id, { state: 'running', ended_at: null, message: 'Working again: its session started a new turn (Fleet had closed its issue; reopened)' }); emit({ work: getWork(c.id) }); } })
+                .catch((e) => console.warn(`[supervisor] reopen issue ${c.issue_number}: ${e.message}`));
+        }
+        return;
+    }
     setWork(r.id, { state: 'running', ended_at: null, message: 'Working again: its session started a new turn' });
     emit({ work: getWork(r.id) });
     // the new prompt or steer, when the transcript has it (best effort)
@@ -1614,6 +1624,16 @@ function reopenOnWork(sessionId) {
     })();
 }
 
+/** Reopens the item's closed issue: always when Yukimi sent it back (any), else only when Fleet closed it. True when it is open now. */
+async function reopenClosedIssue(r, any) {
+    const Y = yz();
+    const st = await Y.closedByFleet(r.issue_repo, r.issue_number);
+    if (!st.closed) return true;
+    if (!any && !st.byFleet) return false;
+    await Y.reopen(r.issue_repo, r.issue_number);
+    return true;
+}
+
 /** "Send Back to Work": a done or failed item whose session still exists gets Yukimi's note and runs again. */
 async function reopenWork(id, opts = {}) {
     const r = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id));
@@ -1623,6 +1643,8 @@ async function reopenWork(id, opts = {}) {
     const note = oneLine(opts.note, 2000);
     if (!note) throw new Error('Write what it should do next');
     if (!await transcriptFile(r.session_id)) throw new Error('Its session no longer exists');
+    // her own Send Back reopens its issue whoever closed it, so the issue sweep does not end the item again
+    if (r.issue_repo && r.issue_number) await reopenClosedIssue(r, true).catch((e) => console.warn(`[supervisor] reopen issue ${r.issue_number}: ${e.message}`));
     await steerResumed(r, `${STEER_PREFIX} Sent back by Yukimi: ${note}`);
     setWork(r.id, { state: 'running', ended_at: null, message: `Working again: ${oneLine(note, 120)}` });
     emit({ work: getWork(r.id) });

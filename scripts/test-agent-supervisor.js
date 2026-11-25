@@ -44,6 +44,9 @@ require('../modules/fleetYozora')._setFetch(async (url, opts) => {
     if (method === 'GET' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues\?state=open&type=issues&limit=\d+(?:&q=.*)?$/.exec(u))) {
         return ok([...yzIssues.entries()].filter(([k, v]) => k.startsWith(`${m[1]}#`) && v.state === 'open' && v.listed).map(([k, v]) => ({ number: Number(k.split('#')[1]), id: 9000 + Number(k.split('#')[1]), title: v.title, labels: [{ name: 'type:bug' }] })));
     }
+    if (method === 'GET' && u === '/user') return ok({ login: 'director.yozora' });
+    if (method === 'GET' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/timeline/.exec(u))) { const v = yzIssues.get(`${m[1]}#${m[2]}`) || {}; return ok(v.closedBy ? [{ type: 'comment', user: { login: 'x' } }, { type: 'close', user: { login: v.closedBy } }] : []); }
+    if (method === 'PATCH' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)$/.exec(u))) { const k = `${m[1]}#${m[2]}`; const v = yzIssues.get(k) || {}; if (body && body.state) v.state = body.state; yzIssues.set(k, v); return ok({ number: Number(m[2]), state: v.state }); }
     if (method === 'GET' && (m = /^\/repos\/([^/]+\/[^/]+)\/issues\/(\d+)$/.exec(u))) { const v = yzIssues.get(`${m[1]}#${m[2]}`) || { state: 'open' }; return ok({ number: Number(m[2]), id: 9000 + Number(m[2]), state: v.state, title: v.title || '', body: v.body || '', labels: [] }); }
     return ok({});
 });
@@ -1372,6 +1375,23 @@ sup._test.setFetch(async (url, opts) => {
             RAW().prepare("UPDATE supervisor_work SET state = 'done', message = ? WHERE id = ?").run('Its issue was closed on Yozora', a.id);
             await sup.workAfterReview({ sessionId: sid, verdict: 'gaps', missed: [{ item: 'x' }], summary: '' });
             assert.strictEqual(sup.getWork(a.id).state, 'done', 'a closed issue is not reopened');
+            // an issue Fleet's own sync closed is reopened when the session works again; one Yukimi closed stays closed
+            RAW().prepare("UPDATE supervisor_work SET issue_repo = 'DreamScape/StaticForge', issue_number = 7193 WHERE id = ?").run(a.id);
+            yzIssues.set('DreamScape/StaticForge#7193', { state: 'closed', closedBy: 'yukimi', title: 't' });
+            rec(sid, 'idle'); sup._test.scan(false); rec(sid, 'busy'); sup._test.scan(false);
+            await new Promise((res) => setTimeout(res, 50));
+            assert.strictEqual(sup.getWork(a.id).state, 'done', 'closed by Yukimi: stays done');
+            assert.strictEqual(yzIssues.get('DreamScape/StaticForge#7193').state, 'closed');
+            yzIssues.get('DreamScape/StaticForge#7193').closedBy = 'director.yozora';
+            rec(sid, 'idle'); sup._test.scan(false); rec(sid, 'busy'); sup._test.scan(false);
+            await waitFor(() => sup.getWork(a.id).state === 'running', 'fleet-closed issue reopens');
+            assert.strictEqual(yzIssues.get('DreamScape/StaticForge#7193').state, 'open');
+            // Send Back to Work reopens its issue whoever closed it
+            RAW().prepare("UPDATE supervisor_work SET state = 'done', message = ? WHERE id = ?").run('Its issue was closed on Yozora', a.id);
+            yzIssues.set('DreamScape/StaticForge#7193', { state: 'closed', closedBy: 'yukimi', title: 't' });
+            await sup.reopenWork(a.id, { note: 'Finish the login' });
+            assert.strictEqual(sup.getWork(a.id).state, 'running');
+            assert.strictEqual(yzIssues.get('DreamScape/StaticForge#7193').state, 'open');
         } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.steer = realSteer; launcher.resume = realResume; launcher.findFile = realFind; }
     });
 
