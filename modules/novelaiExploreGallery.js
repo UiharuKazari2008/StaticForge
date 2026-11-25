@@ -1641,12 +1641,25 @@ async function resolveExploreUploadFilePath(filename, imagesDir) {
         throw err;
     }
     if (!imagesDir) throw new Error('Images directory not configured');
-    // a real PNG: the picture's own file, or the copy rebuilt from x.jxl (#1134)
-    const filePath = await imageStore.pngPath(name, imagesDir);
-    if (!filePath) {
+    // the stored file (#1156: no PNG is made for it); the upload's bytes come from exploreUploadBytes
+    const loc = await imageStore.locate(name, imagesDir);
+    if (!loc) {
         throw new Error(`Image not found: ${name}`);
     }
-    return { filename: name, filePath };
+    return { filename: name, filePath: loc.path, loc, imagesDir };
+}
+
+/**
+ * The bytes Explore gets: lossless WebP with the picture's fields as EXIF in NovelAI's layout (the format NovelAI
+ * itself answers in; this module's accept list is PNG or WebP). A picture stored as WebP / PNG goes up as it is;
+ * a JXL-stored one (a picture ID, or x.png kept as JXL) is encoded from its pixels, never through a PNG (#1156).
+ */
+async function exploreUploadBytes(resolved) {
+    if (resolved.loc.kind === 'jxl') {
+        const webp = await imageStore.webpBytes(resolved.filename, resolved.imagesDir, { fields: true, effort: 4 });
+        if (webp) return webp;
+    }
+    return fs.promises.readFile(resolved.filePath);
 }
 
 /**
@@ -1656,10 +1669,11 @@ async function resolveExploreUploadFilePath(filename, imagesDir) {
 async function checkExploreUploadImage(filename, options = {}) {
     assertExploreUploadsEnabled(options);
 
-    const { filePath, filename: safeName } = await resolveExploreUploadFilePath(
+    const resolved = await resolveExploreUploadFilePath(
         filename,
         options.imagesDir
     );
+    const safeName = resolved.filename;
 
     const userSelf = await getExploreUserSelf({
         forceRefresh: !!options.forceRefreshUser,
@@ -1677,7 +1691,8 @@ async function checkExploreUploadImage(filename, options = {}) {
         throw err;
     }
 
-    const buffer = await fs.promises.readFile(filePath);
+    // the stored bytes (JXL or PNG): pngMetadata reads the fields of PNG, WebP and JXL alike (#1156)
+    const buffer = await fs.promises.readFile(resolved.filePath);
     const pngMetadata = options.pngMetadata;
     let tEXt = null;
     if (pngMetadata && typeof pngMetadata.readMetadata === 'function') {
@@ -1730,11 +1745,12 @@ async function uploadExploreImage(filename, title, options = {}) {
         throw err;
     }
 
-    const { filePath, filename: safeName } = await resolveExploreUploadFilePath(
+    const resolved = await resolveExploreUploadFilePath(
         filename,
         options.imagesDir
     );
-    const buffer = await fs.promises.readFile(filePath);
+    const safeName = resolved.filename;
+    const buffer = await exploreUploadBytes(resolved);
     const { apiKey, apiKeyManager } = await resolveExploreApiKey(options);
 
     await waitUpstreamGap();

@@ -185,8 +185,12 @@ async function readAssetBuffer(kind, key, globalResources = null, options = {}) 
 
     const localPath = resolveLocalPath(gr, kind, key);
     if (localPath && kind === 'gallery-image' && imageStore.cleanName(key)) {
-        // PNG bytes, a JXL-stored picture decoded
-        const buffer = await imageStore.readPng(key, path.dirname(localPath));
+        // the stored bytes (JPEG XL, or a legacy PNG) as they are (#1156); options.as asks for another form:
+        // 'webp' (lossless, for a consumer that decodes pixels with sharp) or 'png' (a real export)
+        const dir = path.dirname(localPath);
+        const buffer = options.as === 'webp' ? await imageStore.webpBytes(key, dir)
+            : options.as === 'png' ? await imageStore.exportPng(key, dir)
+                : await imageStore.readStored(key, dir);
         if (buffer) {
             return { buffer, storage: 'local', localPath };
         }
@@ -225,7 +229,13 @@ async function readAssetBuffer(kind, key, globalResources = null, options = {}) 
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
             }
-            fs.writeFileSync(localPath, buffer);
+            if (kind === 'gallery-image' && imageStore.isStorableName(key)) {
+                // the master sends the picture's stored bytes (a JPEG XL as it is stored, or a PNG from an older master):
+                // writePicture keeps them as <id>.jxl / x.jxl with their fields and times (#1156)
+                await imageStore.writePicture(key, buffer, { dir });
+            } else {
+                fs.writeFileSync(localPath, buffer);
+            }
             await registry.promoteToLocal(kind, key);
         }
         return { buffer, storage: 'remote', localPath: options.cacheToLocal ? localPath : null };

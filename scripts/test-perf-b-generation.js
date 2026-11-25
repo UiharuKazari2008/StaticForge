@@ -281,9 +281,11 @@ sections.forge624 = async function forge624() {
     const da = await require('../modules/imageStore').readPng('pa.png', imagesDir);
     const db = await require('../modules/imageStore').readPng('pb.png', imagesDir);
     assert.ok(da.equals(db), 'buffer path writes the same parent bytes');
-    assert.strictEqual(ra.md5, rb.md5);
-    assert.strictEqual(rb.md5, crypto.createHash('md5').update(db).digest('hex'));
-    assert.strictEqual(ra.size, rb.size);
+    // images.md5 is the md5 of the stored file (#1156 phase 5), not of a PNG rebuilt from it; two JXL files of the
+    // same picture differ in their sfFT time box, so each row matches its own file
+    const md5Of = async (n) => crypto.createHash('md5').update(await require('../modules/imageStore').readStored(n, imagesDir)).digest('hex');
+    assert.strictEqual(ra.md5, await md5Of('pa.png'));
+    assert.strictEqual(rb.md5, await md5Of('pb.png'));
     assert.deepStrictEqual(ra.metadata, rb.metadata);
     assert.deepStrictEqual(ra.receipt, rb.receipt);
 

@@ -6,6 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const replicationTokenAuth = require('../../replicationTokenAuth');
 const imageStore = require('../../imageStore');
+// was never required here: every asset request threw a ReferenceError (found with #1156)
+const replicationRemoteFetch = require('../../replicationRemoteFetch');
 const { REPLICATION_ERROR_CODES, REPLICATION_TOKEN_SCOPES } = require('../replicationContracts');
 
 function setReplicationCors(req, res) {
@@ -48,6 +50,7 @@ function replicationReadAuth(globalResources) {
 
 function resolveContentType(kind, filePath) {
     const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.jxl') return 'image/jxl';
     if (ext === '.webp') return 'image/webp';
     if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
     if (ext === '.png') return 'image/png';
@@ -57,12 +60,21 @@ function resolveContentType(kind, filePath) {
     return 'application/octet-stream';
 }
 
-// A gallery picture may be stored as x.jxl under its name x.png (#1134): the replica always gets the PNG.
-async function resolveServedPath(globalResources, kind, key) {
+// A gallery picture is served as its STORED bytes under its name (#1156): `<id>.jxl` for a picture ID, x.jxl for a
+// legacy x.png kept as JXL, x.png when it still is one; the Content-Type follows the file. That is also what the
+// journal hashes (replicationJournal.recordGallerySave), so checksum and bytes agree, and the fetching peer stores
+// what it gets with imageStore.writePicture (replicationRemoteFetch.readAssetBuffer). ?format=png serves a PNG
+// instead (imageStore.exportPngPath: for a peer from before this change, which wrote the bytes raw under x.png).
+async function resolveServedPath(globalResources, kind, key, req = null) {
     const localPath = replicationRemoteFetch.resolveLocalPath(globalResources, kind, key);
     if (!localPath) return null;
     if (kind === 'gallery-image' && imageStore.cleanName(key) === key) {
-        return imageStore.pngPath(key, path.dirname(localPath));
+        const dir = path.dirname(localPath);
+        if (req && req.query && String(req.query.format || '').toLowerCase() === 'png') {
+            return imageStore.exportPngPath(key, dir);
+        }
+        const loc = await imageStore.locate(key, dir);
+        return loc ? loc.path : null;
     }
     return localPath;
 }
@@ -78,7 +90,7 @@ function register(app, globalResources) {
     app.head('/replication/assets/:kind/:key(*)', readAuth, async (req, res) => {
         const kind = req.params.kind;
         const key = decodeURIComponent(req.params.key || '');
-        const localPath = await resolveServedPath(globalResources, kind, key);
+        const localPath = await resolveServedPath(globalResources, kind, key, req);
         const stat = localPath ? await fs.promises.stat(localPath).catch(() => null) : null;
         if (!stat) {
             return res.status(404).end();
@@ -96,7 +108,7 @@ function register(app, globalResources) {
             return res.status(400).json({ success: false, error: 'Missing asset key' });
         }
 
-        const localPath = await resolveServedPath(globalResources, kind, key);
+        const localPath = await resolveServedPath(globalResources, kind, key, req);
         const stat = localPath ? await fs.promises.stat(localPath).catch(() => null) : null;
         if (!stat) {
             return res.status(404).json({

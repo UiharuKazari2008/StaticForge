@@ -673,8 +673,9 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
                 } else if (item && item.kind === 'image') {
                     const filename = path.basename(String(item.filename || ''));
                     if (!filename) continue;
-                    // the picture's own file, or the PNG rebuilt from x.jxl (#1134); '' when it is not there
-                    filePath = (await imageStore.pngPath(filename, globalResources.getPath('images'))) || '';
+                    // A remote page's file chooser takes any page's upload form (PNG is what pages accept): an explicit PNG
+                    // export (#1156), the picture's own file or the PNG rebuilt from its JXL (export cache); '' when missing
+                    filePath = (await imageStore.exportPngPath(filename, globalResources.getPath('images'))) || '';
                     // PNG bytes go by `<stem>.png` (a picture ID has no extension, #1156); a legacy .jpg / .gif keeps its name
                     name = /\.(jpe?g|gif)$/i.test(filename) ? filename : `${require('./pictureIds').stemOf(filename)}.png`;
                 }

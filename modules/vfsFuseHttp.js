@@ -23,10 +23,14 @@
 //        -> { success, path, canonicalPath, totalCount, totalSizeBytes, hasMore,
 //             entries: [{ path, name, kind: 'dir'|'file', size, sizeExact, mtime, mimeType,
 //                         targetKind, targetId, readOnly, systemFileKey }] }
-//        A gallery picture may be stored as JPEG XL (#1134); /fs/read always sends a PNG. When the
-//        server does not know that PNG's size yet, a list entry carries the stored size and
-//        sizeExact: false: the client must /fs/stat it (always exact) before trusting the size,
-//        or read to EOF.
+//        Gallery pictures (#1156): a picture ID (a new print; stored as <id>.jxl, no extension of
+//        its own) is listed as `<id>.jxl` with mimeType image/jxl, and /fs/read sends the STORED
+//        JPEG XL bytes as they are (no decode, no PNG); its size is the stored file's, always exact.
+//        `<id>` without the suffix still resolves. A legacy picture named `x.png` may lie on disk as
+//        x.jxl (#1134); it keeps its name and /fs/read sends a PNG of it (the mount shows .png and
+//        its readers expect one). When the server does not know that PNG's size yet, a list entry
+//        carries the stored size and sizeExact: false: the client must /fs/stat it (always exact)
+//        before trusting the size, or read to EOF.
 //        `mtime` is unix seconds or an ISO string, depending on the backing store.
 //
 //   GET  /fs/stat?path=
@@ -62,6 +66,7 @@ const path = require('path');
 const { md5HexAsync, writeFileIfMissing } = require('./vfsPerfHelpers');
 // gallery pictures may be stored as x.jxl under the name x.png (#1134)
 const imageStore = require('./imageStore');
+const pictureIds = require('./pictureIds');
 
 const LIST_HARD_LIMIT = 100000;
 const LIST_DEFAULT_LIMIT = 1000;
@@ -129,24 +134,39 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
         return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
     }
 
+    // A picture ID stored as <id>.jxl (#1156): the mount shows `<id>.jxl` and reads its stored bytes (no PNG is made).
+    function isStoredIdPicture(item) {
+        return !!item && item.storedAs === 'jxl' && (item.targetKind === 'image' || item.targetKind === 'scrap')
+            && pictureIds.isId(String(item.targetId || '')) && String(item.targetId).length === 36;
+    }
+
+    // the name a listing shows for an entry (an ID picture gets the extension of the bytes /fs/read sends)
+    function fuseName(item) {
+        return isStoredIdPicture(item) ? `${item.name}.jxl` : item.name;
+    }
+
     function describeEntry(item, itemPath) {
-        // a picture stored as x.jxl (#1134) is read as its rebuilt PNG: list that PNG's size when it is known
-        // (imageStore keeps it once the picture was rebuilt); otherwise the stored size, with sizeExact false
         let size = item.size || 0;
         let sizeExact = true;
-        if (item.storedAs === 'jxl') {
+        let mimeType = item.mimeType || null;
+        if (isStoredIdPicture(item)) {
+            // sent as stored: the listing's size is the stored file's
+            mimeType = 'image/jxl';
+        } else if (item.storedAs === 'jxl') {
+            // a legacy x.png stored as x.jxl (#1134) is read as its rebuilt PNG: list that PNG's size when it is
+            // known (imageStore keeps it once the picture was rebuilt); otherwise the stored size, sizeExact false
             const known = imageStore.knownPngSize(String(item.targetId || ''), Number(item.modifiedAt) * 1000);
             if (known != null) size = known;
             else sizeExact = false;
         }
         return {
             path: itemPath,
-            name: item.name,
+            name: fuseName(item),
             kind: item.kind === 'folder' ? 'dir' : 'file',
             size,
             sizeExact,
             mtime: item.modifiedAt || null,
-            mimeType: item.mimeType || null,
+            mimeType,
             targetKind: item.targetKind || null,
             targetId: item.targetId || null,
             readOnly: !!(item.protected || item.system || item.readOnly),
@@ -165,7 +185,17 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
         } catch (_) { /* HTTP mutations must not depend on a live WS server */ }
     }
 
+    // `<id>.jxl` (the name an ID picture is listed under) is looked up as its bare ID; only a picture stored as JXL answers
     async function findChild(dirPath, name) {
+        const m = /^([0-9a-f-]{36})\.jxl$/i.exec(name);
+        if (m && pictureIds.isId(m[1])) {
+            const item = await findChildByName(dirPath, m[1]);
+            if (isStoredIdPicture(item)) return item;
+        }
+        return findChildByName(dirPath, name);
+    }
+
+    async function findChildByName(dirPath, name) {
         // Canonical gallery folders (navPath of Pictures/Scraps) skip the full gallery listing.
         if (/^\/Workspaces\/[^/]+\/(Pictures|Scraps)$/.test(dirPath)) {
             const direct = await vfs().findGalleryChildByName(dirPath, name);
@@ -292,8 +322,16 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
         if (kind === 'image' || kind === 'scrap') {
             // Membership was already proven by the workspace listing that produced this item.
             const filename = path.basename(String(item.targetId || ''));
-            // the real PNG (a picture stored as x.jxl is read as its decoded copy, #1134)
-            const abs = filename ? await imageStore.pngPath(filename, globalResources.getPath('images')) : null;
+            const imagesDir = globalResources.getPath('images');
+            // a picture ID is sent as its stored JPEG XL, no decode (#1156); a legacy x.png name is sent as a PNG
+            // (exportPng: the mount shows .png and its readers expect one; stored as x.jxl it is decoded once, #1134)
+            const loc = filename && pictureIds.isId(filename) && filename.length === 36 ? await imageStore.locate(filename, imagesDir) : null;
+            if (loc && loc.kind === 'jxl') {
+                res.setHeader('Content-Type', 'image/jxl');
+                res.setHeader('Content-Length', String(loc.stat.size));
+                return fs.createReadStream(loc.path).pipe(res);
+            }
+            const abs = filename ? await imageStore.exportPngPath(filename, imagesDir) : null;
             const st = abs ? await fs.promises.stat(abs).catch(() => null) : null;
             if (!st) return fail(res, 404, 'Image not found');
             res.setHeader('Content-Type', item.mimeType || 'image/png');
@@ -360,7 +398,7 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
                 totalCount: result.totalCount,
                 totalSizeBytes: result.totalSizeBytes,
                 hasMore: result.hasMore,
-                entries: (result.items || []).map(item => describeEntry(item, childPath(base, item.name)))
+                entries: (result.items || []).map(item => describeEntry(item, childPath(base, fuseName(item))))
             });
         } catch (e) {
             fail(res, statusForError(e), e.message);
@@ -393,9 +431,13 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
                 });
             }
             const described = describeEntry(entry.item, base);
-            // a picture: always the exact size /fs/read sends (a JXL-stored one is rebuilt once to know it, #1152)
+            // a picture: always the exact size /fs/read sends: an ID's stored JXL (a stat, #1156); for a legacy name
+            // stored as JXL the rebuilt PNG (decoded once to know it, #1152)
             const kind = entry.item.targetKind;
-            if (kind === 'image' || kind === 'scrap') {
+            if (isStoredIdPicture(entry.item)) {
+                const st = await imageStore.stat(String(entry.item.targetId), {}, globalResources.getPath('images')).catch(() => null);
+                if (st) { described.size = st.size; described.sizeExact = true; }
+            } else if (kind === 'image' || kind === 'scrap') {
                 const exact = await imageStore.pngSize(path.basename(String(entry.item.targetId || '')),
                     { decode: true }, globalResources.getPath('images')).catch(() => null);
                 if (exact != null) { described.size = exact; described.sizeExact = true; }

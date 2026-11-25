@@ -8,8 +8,12 @@
  *   stealth bits in the alpha channel (lossless pixels) and NovelAI's signature (pixels + Comment). Files from
  *   before #1156 carry the PNG's own metadata chunks raw in `sfPN` instead; they are still read (sfMD first).
  * - Code that only reads pixels with sharp asks pixelPath(name): the JXL itself when sharp reads JXL.
- * - Whatever needs a real PNG asks pngPath(name): the original, or a decoded copy in .cache/jxl-png (one decode
- *   per name at a time, the oldest copies dropped past CACHE_MAX_BYTES).
+ * - A browser that cannot show JXL is sent a lossless WebP: displayWebpPath(name), encoded once per picture into
+ *   .cache/jxl-webp (the display cache; #1156).
+ * - Whatever needs a real PNG asks exportPng / exportPngPath (= readPng / pngPath): the original, or a decoded copy
+ *   in .cache/jxl-png. That directory is an EXPORT cache (PNG downloads, the clipboard, legacy FUSE names,
+ *   Sequenzia, Grimoire, Explore); new pictures never seed it (#1156). One decode per name at a time, the oldest
+ *   copies dropped past CACHE_MAX_BYTES.
  *
  * Decoding uses `djxl` (libjxl-tools on the host); nothing here runs unless a .jxl is actually on disk.
  */
@@ -23,7 +27,12 @@ const pictureIds = require('./pictureIds');
 
 const ROOT = path.resolve(__dirname, '..');
 const IMAGES_DIR = path.join(ROOT, 'images');
-const CACHE_DIR = path.join(ROOT, '.cache', 'jxl-png');
+// IMAGESTORE_CACHE_ROOT moves both caches (tests); the server never sets it
+const CACHE_ROOT = process.env.IMAGESTORE_CACHE_ROOT ? path.resolve(process.env.IMAGESTORE_CACHE_ROOT) : path.join(ROOT, '.cache');
+// export cache: PNGs decoded from JXL for consumers that ask for a PNG (see the header)
+const CACHE_DIR = path.join(CACHE_ROOT, 'jxl-png');
+// display cache: lossless WebPs of JXL pictures for browsers that cannot show JXL (#1156)
+const WEBP_CACHE_DIR = path.join(CACHE_ROOT, 'jxl-webp');
 const CACHE_MAX_BYTES = 2 * 1024 * 1024 * 1024;
 const BOX_TYPE = 'sfPN';
 // the original PNG file's birth and modified times (date created / modified kept across the swap)
@@ -53,6 +62,12 @@ function isPngName(name) {
 function jxlNameFor(name) {
     if (isPngName(name)) return name.slice(0, -4) + '.jxl';
     return name.length === 36 && pictureIds.isId(name) ? name + '.jxl' : null;
+}
+
+/** A name writePicture takes: a picture ID or a legacy x.png (not x.jpg / x.gif, which are stored as they are). */
+function isStorableName(name) {
+    const n = cleanName(name);
+    return !!n && (isPngName(n) || (n.length === 36 && pictureIds.isId(n)));
 }
 
 /** A gallery picture's name: a legacy image file name, or a picture ID (#1156, no extension). */
@@ -456,16 +471,35 @@ function readSizeSync(name, dir = IMAGES_DIR) {
  * Where a picture's decoded copy lives: by name for images/; per folder for any other (tests, temp folders), so
  * the same name in two folders never shares a copy.
  */
-function cacheFileFor(name, dir) {
-    if (!dir || path.resolve(dir) === IMAGES_DIR) return path.join(CACHE_DIR, name);
+function cacheFileFor(name, dir, base = CACHE_DIR) {
+    if (!dir || path.resolve(dir) === IMAGES_DIR) return path.join(base, name);
     const tag = require('crypto').createHash('sha1').update(path.resolve(dir)).digest('hex').slice(0, 12);
-    const sub = path.join(CACHE_DIR, `d-${tag}`);
+    const sub = path.join(base, `d-${tag}`);
     try { fs.mkdirSync(sub, { recursive: true }); } catch (_) { /* exists */ }
     return path.join(sub, name);
 }
 
+/** The display WebP's place in the display cache (same layout as the export cache). */
+function webpCacheFileFor(name, dir) {
+    return cacheFileFor(name, dir, WEBP_CACHE_DIR);
+}
+
+// A copy is valid while it carries its JXL's mtime. Compared within a millisecond: a Date / float-seconds round trip
+// moves the sub-millisecond part, and the nightly re-encode keeps the picture's mtime on purpose (same pixels).
+function sameMtime(a, b) {
+    return Math.abs(a - b) < 1;
+}
+
 const inflight = new Map();
-let cacheBytesKnown = null;
+// bytes in each cache directory, known after a trim or from what was added since (null: never measured)
+const cacheBytes = new Map();
+/** Count bytes added to a cache directory; true when it may be over its cap (the caller then trims). */
+function cacheGrew(base, added) {
+    const known = cacheBytes.get(base);
+    if (known == null) return true;
+    cacheBytes.set(base, known + added);
+    return known + added > CACHE_MAX_BYTES;
+}
 
 // The size of each picture's rebuilt PNG (what pngPath / FUSE reads send), by name: { m: the JXL's mtimeMs, s: bytes }.
 // djxl and the rebuild are deterministic, so a size stays right while the JXL is unchanged. Kept in
@@ -569,34 +603,35 @@ async function decodeJxlToPngBuffer(jxlPath) {
     return rebuildPng(decoded, stored, fields, md);
 }
 
-async function trimCache() {
+async function trimCache(base = CACHE_DIR) {
     let entries;
     try {
-        entries = await fs.promises.readdir(CACHE_DIR, { withFileTypes: true });
+        entries = await fs.promises.readdir(base, { withFileTypes: true });
     } catch (_) {
         return;
     }
     const files = [];
     for (const e of entries) {
         if (!e.isFile() || e.name.startsWith('.')) continue;
-        const p = path.join(CACHE_DIR, e.name);
+        const p = path.join(base, e.name);
         const s = await statOrNull(p);
         if (s) files.push({ p, size: s.size, used: s.atimeMs > s.mtimeMs ? s.atimeMs : s.mtimeMs });
     }
     let total = files.reduce((a, f) => a + f.size, 0);
-    if (total <= CACHE_MAX_BYTES) { cacheBytesKnown = total; return; }
+    if (total <= CACHE_MAX_BYTES) { cacheBytes.set(base, total); return; }
     files.sort((a, b) => a.used - b.used);
     for (const f of files) {
         if (total <= CACHE_MAX_BYTES * 0.8) break;
         await fs.promises.unlink(f.p).catch(() => {});
         total -= f.size;
     }
-    cacheBytesKnown = total;
+    cacheBytes.set(base, total);
 }
 
 /**
- * A real PNG file for the picture: its own file, or the decoded copy of its JXL (made once, kept in the cache
- * while its JXL is unchanged). null when the picture is not there.
+ * A real PNG file for the picture: its own file, or the decoded copy of its JXL (made once, kept in the export
+ * cache while its JXL is unchanged). null when the picture is not there. Only for an explicit PNG export
+ * (exportPngPath is the name to call it by, #1156); fields and pixels are read with readStored / pixelPath.
  */
 async function pngPath(name, dir = IMAGES_DIR) {
     const loc = await locate(name, dir);
@@ -605,10 +640,10 @@ async function pngPath(name, dir = IMAGES_DIR) {
     const n = cleanName(name);
     const cached = cacheFileFor(n, dir);
     const cs = await statOrNull(cached);
-    if (cs && cs.mtimeMs === loc.stat.mtimeMs) {
+    if (cs && sameMtime(cs.mtimeMs, loc.stat.mtimeMs)) {
         notePngSize(n, loc.stat.mtimeMs, cs.size);
         // used: the trim keeps it (atime is not always kept by the mount)
-        fs.promises.utimes(cached, new Date(), loc.stat.mtime).catch(() => {});
+        fs.promises.utimes(cached, new Date(), loc.stat.mtimeMs / 1000).catch(() => {});
         return cached;
     }
     if (inflight.has(cached)) return inflight.get(cached);
@@ -617,15 +652,52 @@ async function pngPath(name, dir = IMAGES_DIR) {
         const tmp = cached + `.${process.pid}.tmp`;
         await fs.promises.writeFile(tmp, buf);
         // the copy carries the JXL's mtime: a later JXL (re-encode) is seen as new
-        await fs.promises.utimes(tmp, new Date(), loc.stat.mtime);
+        await fs.promises.utimes(tmp, new Date(), loc.stat.mtimeMs / 1000);
         await fs.promises.rename(tmp, cached);
         notePngSize(n, loc.stat.mtimeMs, buf.length);
-        if (cacheBytesKnown === null || (cacheBytesKnown += buf.length) > CACHE_MAX_BYTES) void trimCache();
+        if (cacheGrew(CACHE_DIR, buf.length)) void trimCache(CACHE_DIR);
         return cached;
     })().finally(() => inflight.delete(cached));
     inflight.set(cached, job);
     return job;
 }
+
+/**
+ * A lossless WebP file of a JXL-stored picture for a browser that cannot show JXL (#1156: the display copy; a PNG
+ * is only made for a PNG export). Encoded once, kept in .cache/jxl-webp while its JXL is unchanged (the copy carries
+ * the JXL's mtime), one encode per picture at a time, the oldest copies dropped past CACHE_MAX_BYTES. A WebP encode
+ * costs about a second, so it is never done per request. null when the picture is missing or is not stored as JXL
+ * (a stored PNG / JPEG / GIF is sent as it is: no work).
+ */
+async function displayWebpPath(name, dir = IMAGES_DIR) {
+    const loc = await locate(name, dir);
+    if (!loc || loc.kind !== 'jxl') return null;
+    const n = cleanName(name);
+    const cached = webpCacheFileFor(n, dir);
+    const cs = await statOrNull(cached);
+    if (cs && sameMtime(cs.mtimeMs, loc.stat.mtimeMs)) {
+        // used: the trim keeps it (atime is not always kept by the mount)
+        fs.promises.utimes(cached, new Date(), loc.stat.mtimeMs / 1000).catch(() => {});
+        return cached;
+    }
+    if (inflight.has(cached)) return inflight.get(cached);
+    const job = (async () => {
+        const buf = await webpBytes(name, dir, { fields: true, effort: DISPLAY_WEBP_EFFORT });
+        if (!buf) return null;
+        await fs.promises.mkdir(path.dirname(cached), { recursive: true });
+        const tmp = cached + `.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+        await fs.promises.writeFile(tmp, buf);
+        // a later JXL (another write) is seen as new
+        await fs.promises.utimes(tmp, new Date(), loc.stat.mtimeMs / 1000);
+        await fs.promises.rename(tmp, cached);
+        if (cacheGrew(WEBP_CACHE_DIR, buf.length)) void trimCache(WEBP_CACHE_DIR);
+        return cached;
+    })().finally(() => inflight.delete(cached));
+    inflight.set(cached, job);
+    return job;
+}
+// libwebp effort for the display copy: the first show waits for it, so the fast setting (the copy is made once)
+const DISPLAY_WEBP_EFFORT = 0;
 
 let sharpJxl = null;
 /** sharp reads JPEG XL itself (built against the system libvips 8.16 with libjxl; the prebuilt one does not). */
@@ -716,16 +788,22 @@ async function encodeLossless(pngBuf, effort) {
     }
 }
 
+/** Drop a picture's decoded PNG, display WebP and remembered PNG size (stale after a rewrite, a removal, a rename). */
+function dropCachedCopies(n, dir) {
+    fs.promises.unlink(cacheFileFor(n, dir)).catch(() => {});
+    fs.promises.unlink(webpCacheFileFor(n, dir)).catch(() => {});
+    if (sizesMap().delete(n)) scheduleSizesSave();
+}
+
 /**
  * Store a picture (Yukimi, Nov 24 2026: "after generating an image it directly writes the output as JPEG XL, never
  * PNG; PNG is only legacy"). buffer is the picture as made: a PNG, WebP or JPEG XL (#1156). Its text fields and
  * alpha stealth data are kept (lossless pixels, sfMD box). A JXL is stored as it is (its boxes kept, sfFT set); a
- * WebP / JPEG is encoded to JXL from its pixels with its fields; a PNG through cjxl, and its bytes go into the
- * decoded cache with the JXL's mtime, so whatever reads the new picture next as PNG gets it without a decode.
+ * WebP / JPEG is encoded to JXL from its pixels with its fields; a PNG through cjxl.
  * Writes x.jxl atomically and removes any x.png; a rewrite of an existing picture keeps its date created.
- * Resolves { path (the stored file), pngPath (a PNG file of it; null for a WebP / JXL input: ask pngPath(name)
- * only when a PNG is really needed), pixelPath (a file sharp reads), kind }. With no JPEG XL encoder on the host it
- * writes a PNG.
+ * Resolves { path (the stored file), pngPath (null for a stored JXL: no PNG is made or cached for it; exportPng(name)
+ * when a PNG is really needed), pixelPath (a file sharp reads; null when sharp cannot read JXL), kind }. With no JPEG
+ * XL encoder on the host it writes a PNG (kind 'png', pngPath set).
  */
 async function writePicture(name, buffer, opts = {}) {
     const n = cleanName(name);
@@ -752,18 +830,10 @@ async function writePicture(name, buffer, opts = {}) {
     await fs.promises.utimes(tmp, now / 1000, now / 1000);
     await fs.promises.rename(tmp, jxlP);
     if (prior && prior.kind === 'png') await fs.promises.unlink(pngP).catch(() => {});
-    // the original PNG as this picture's decoded copy (valid while the JXL keeps this mtime)
-    const cached = cacheFileFor(n, dir);
-    try {
-        await fs.promises.writeFile(cached + '.seed', pngBuf);
-        await fs.promises.utimes(cached + '.seed', now / 1000, now / 1000);
-        await fs.promises.rename(cached + '.seed', cached);
-        notePngSize(n, now, pngBuf.length);
-        if (cacheBytesKnown === null || (cacheBytesKnown += pngBuf.length) > CACHE_MAX_BYTES) void trimCache();
-    } catch (_) {
-        return { path: jxlP, pngPath: await pngPath(n, dir), pixelPath: await pixelPath(n, dir), kind: 'jxl' };
-    }
-    return { path: jxlP, pngPath: cached, pixelPath: sharpReadsJxl() ? jxlP : cached, kind: 'jxl' };
+    // #1156: no PNG copy is seeded. A rewrite of a name drops the older decoded copies (their mtime no longer
+    // matches the new JXL anyway; dropped so the caches do not hold them)
+    dropCachedCopies(n, dir);
+    return { path: jxlP, pngPath: null, pixelPath: sharpReadsJxl() ? jxlP : null, kind: 'jxl' };
 }
 
 /** writePicture for a JXL (stored as it is) or a WebP / JPEG (encoded to JXL from its pixels, its fields kept). */
@@ -802,9 +872,8 @@ async function writeOtherPicture(n, buffer, fmt, opts) {
     await fs.promises.utimes(tmp, now / 1000, now / 1000);
     await fs.promises.rename(tmp, jxlP);
     if (prior && prior.kind === 'png') await fs.promises.unlink(pngP).catch(() => {});
-    // an older decoded copy is stale (its mtime no longer matches); dropped now so the cache does not hold it
-    fs.promises.unlink(cacheFileFor(n, dir)).catch(() => {});
-    if (sizesMap().delete(n)) scheduleSizesSave();
+    // an older decoded copy is stale (its mtime no longer matches); dropped now so the caches do not hold it
+    dropCachedCopies(n, dir);
     return { path: jxlP, pngPath: null, pixelPath: sharpReadsJxl() ? jxlP : null, kind: 'jxl' };
 }
 
@@ -872,7 +941,7 @@ async function remove(name, dir = IMAGES_DIR) {
     for (const t of targets) {
         try { await fs.promises.unlink(t); removed = true; } catch (_) { /* not that form */ }
     }
-    fs.promises.unlink(cacheFileFor(n, dir)).catch(() => {});
+    dropCachedCopies(n, dir);
     return removed;
 }
 
@@ -886,8 +955,7 @@ async function dropStaleJxl(name, dir = IMAGES_DIR) {
     if (!j) return false;
     let dropped = false;
     try { await fs.promises.unlink(path.join(dir, j)); dropped = true; } catch (_) { /* none */ }
-    fs.promises.unlink(cacheFileFor(n, dir)).catch(() => {});
-    if (sizesMap().delete(n)) scheduleSizesSave();
+    dropCachedCopies(n, dir);
     return dropped;
 }
 
@@ -901,7 +969,7 @@ async function rename(oldName, newName, dir = IMAGES_DIR) {
     if (loc.kind === 'jxl' && !newJxl) throw new Error('rename: a JPEG XL picture needs a picture ID or .png name');
     const target = loc.kind === 'jxl' ? path.join(dir, newJxl) : path.join(dir, nn);
     await fs.promises.rename(loc.path, target);
-    fs.promises.unlink(cacheFileFor(cleanName(oldName), dir)).catch(() => {});
+    dropCachedCopies(cleanName(oldName), dir);
     return target;
 }
 
@@ -913,6 +981,7 @@ module.exports = {
     jxlNameFor,
     logicalNames,
     isPictureName,
+    isStorableName,
     upscaleNameFor,
     originalNameFor,
     locate,
@@ -920,6 +989,12 @@ module.exports = {
     exists,
     existsSync,
     pngPath,
+    displayWebpPath,
+    WEBP_CACHE_DIR,
+    // #1156: the name for a PNG made for a consumer that asks for PNG (a PNG download, Sequenzia, a remote file
+    // chooser); readers of fields or pixels use readStored / pixelPath instead
+    exportPngPath: pngPath,
+    exportPng: readPng,
     pixelPath,
     readSizeSync,
     jxlSizeFromHead,

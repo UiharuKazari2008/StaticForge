@@ -681,12 +681,17 @@ Service worker cache miss handler. **No auth.**
 
 **Auth required.** Session cookie, `X-Dreamscape-Login-Key`, or `Authorization: Bearer <loginKey>`. Do not put the login key in the query string. An approved client IP is signed in before this check.
 
+`:filename` is a picture name: an extensionless picture ID (`01a21141-79a2-73e2-8c5d-4e69bdc73baa`, new pictures since #1156) or a legacy `x.png` / `x.jpg` name. The name never says what the bytes are; `Content-Type` does. Formats per consumer: [docs/pictures-formats.md](../pictures-formats.md).
+
 | Query | Description |
 |-------|-------------|
-| `download=true` | `Content-Disposition: attachment` |
-| `stripContext=true` | PNG only — strip dynamic_generation compiled context from Comment chunk |
+| `download=true` | `Content-Disposition: attachment; filename="<stem>.<ext>"` |
+| `format=png\|jxl\|webp\|jpeg` | With `download=true`: PNG (default; `X-NovelAI-Signature-Valid` / `X-Forge-Signature-Valid` headers), the stored JPEG XL, lossless WebP (fields in EXIF), JPEG (quality 90, fields in EXIF) |
+| `info=formats` | JSON `{ success, stored, formats, png, jxl, webp, jpeg }`: sizes in bytes where known, else `null` |
+| `clipboard=true`, `clipboardOrigin=true` | PNG for the browser clipboard |
+| `stripContext=true` | PNG with dynamic_generation compiled context stripped from the Comment field |
 
-**Success:** Image bytes (`image/png` or `image/jpeg` by extension)  
+**Success:** Image bytes. With none of the queries above: the stored JPEG XL for a client that shows JXL (`Accept: image/jxl` or the `melaton_jxl=1-` cookie on an image request); lossless WebP (cached) for an image request (`Sec-Fetch-Dest: image` / `X-Melaton-Image-Dest: image`) from any other client; PNG for a `fetch()` reader. A legacy `.jpg` / `.gif` is sent as it is.  
 **Errors:** 404 `{ "success": false, "error": "Image not found" }`
 
 **Headers:** `Cache-Control: private, max-age=259200`, `Content-Length`, `ETag`, `Last-Modified`
@@ -1379,7 +1384,7 @@ Registered by `modules/vfsSequenzia.js`. Sequenzia shows in Explorer under Compu
 |-------|----------|-------------|
 | `ws` | Yes | Workspace id — file must be in workspace files/scraps |
 
-**Success:** PNG stream  
+**Success:** the picture: the stored JPEG XL with `Accept: image/jxl`, else lossless WebP (#1156)  
 **Errors:** 400 missing ws, 403 access denied, 404 not found
 
 ---

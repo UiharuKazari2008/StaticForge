@@ -1642,11 +1642,40 @@ function clientShowsJxl(req) {
     const shown = req.headers['sec-fetch-dest'] === 'image' || req.headers['x-melaton-image-dest'] === 'image';
     return shown && /(?:^|;\s*)melaton_jxl=1-/.test(String(req.headers.cookie || ''));
 }
+// A picture request that only shows it: the browser's own image request, or the service worker's on its behalf.
+// fetch() readers (clipboard copy, uploads, Paint, metadata reads) say 'empty' and keep getting a PNG: several of
+// them hand the bytes to the browser clipboard (PNG only) or parse them (#1156 phase 5).
+function pictureIsShown(req) {
+    return req.headers['sec-fetch-dest'] === 'image' || req.headers['x-melaton-image-dest'] === 'image';
+}
+// PNG export (a PNG download, the clipboard, a fetch() reader): the decoded copy lives in the export cache
 function galleryPngPath(name) {
-    return imageStore.pngPath(name).catch((e) => {
+    return imageStore.exportPngPath(name).catch((e) => {
         console.error('[imageStore] no PNG for', name, ':', e.message);
         return null;
     });
+}
+// What a request that shows a picture is sent (#1156): a JXL-stored picture goes out as its lossless WebP from the
+// display cache (encoded once, imageStore.displayWebpPath), or as the stored JXL for a client that decodes JPEG
+// XL; anything stored as PNG / JPEG / GIF goes out as it is. null: the picture is not there.
+// Resolves { path, type, loc, size, tag } (size of the sent file; tag ends its ETag; the validators come from loc).
+async function pictureDisplayFile(req, name, loc) {
+    loc = loc || await imageStore.locate(name);
+    if (!loc) return null;
+    if (loc.kind === 'jxl') {
+        if (clientShowsJxl(req)) return { path: loc.path, type: 'image/jxl', loc, size: loc.stat.size, tag: 'jxl' };
+        const webp = await imageStore.displayWebpPath(name).catch((e) => {
+            console.error('[imageStore] no display WebP for', name, ':', e.message);
+            return null;
+        });
+        const st = webp ? await statOrNull(webp) : null;
+        if (st) return { path: webp, type: 'image/webp', loc, size: st.size, tag: 'webp' };
+        // the encode failed: the PNG, as before
+        const png = await galleryPngPath(name);
+        const pst = png ? await statOrNull(png) : null;
+        return pst ? { path: png, type: 'image/png', loc, size: pst.size, tag: null } : null;
+    }
+    return { path: loc.path, type: sentImageType(loc, name), loc, size: loc.stat.size, tag: null };
 }
 // #1156: a picture's name says nothing about its bytes (an ID has no extension, is stored as <id>.jxl and is sent
 // as the decoded PNG), so a route sets Content-Type, the download's file name and its PNG-only steps from what it
@@ -2063,15 +2092,16 @@ app.use('/previews/:preview', authMiddleware, async (req, res, next) => {
         const waitFor = !!(req.query && req.query.wait === '1');
         if (!await studioPreview.ensureFitPreview(imagesDir, previewsDir, previewFile, waitFor ? { wait: false } : undefined)) {
             const source = waitFor ? await studioPreview.fitPreviewSource(imagesDir, previewFile) : null;
-            // the picture's real PNG (a .jxl source is sent as its decoded copy)
-            const sourcePath = source
-                ? await imageStore.pngPath(imageStore.logicalNames([path.basename(source.path)])[0])
-                : null;
-            if (sourcePath) {
+            // the picture itself, as a client shows it (#1156): a JXL-stored source is the stored JXL or its lossless
+            // WebP from the display cache, not a decoded PNG
+            const sourceName = source ? imageStore.logicalNames([path.basename(source.path)])[0] : null;
+            const shown = sourceName ? await pictureDisplayFile(req, sourceName) : null;
+            if (shown) {
                 res.setHeader('Cache-Control', 'no-store');
-                // an ID's decoded copy has no extension: the type comes from the bytes' kind (#1156)
-                res.setHeader('Content-Type', sentImageType(await imageStore.locate(imageStore.logicalNames([path.basename(source.path)])[0]), source.name));
-                return res.sendFile(sourcePath, (err) => {
+                // an ID has no extension: the type comes from the bytes' kind
+                res.setHeader('Content-Type', shown.type);
+                res.setHeader('Vary', 'Accept, Cookie, Sec-Fetch-Dest, X-Melaton-Image-Dest');
+                return res.sendFile(shown.path, (err) => {
                     if (err && !res.headersSent) res.status(404).end();
                 });
             }
@@ -2491,8 +2521,9 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     }
     // A picture shown (an <img> / CSS image: Sec-Fetch-Dest image) on a client that decodes JPEG XL gets the JXL
     // itself, no decode here (#1134): the client said so with the melaton_jxl cookie (assetPackages.js checks
-    // after boot), or its Accept lists image/jxl. fetch() readers (Paint, uploads, clipboard), downloads and
-    // the metadata variants below always get the PNG.
+    // after boot), or its Accept lists image/jxl. A picture shown on a browser that cannot show JXL gets a lossless
+    // WebP (display cache). fetch() readers (Paint, uploads, clipboard), downloads and the metadata variants below
+    // always get the PNG.
     res.setHeader('Vary', 'Accept, Cookie, Sec-Fetch-Dest, X-Melaton-Image-Dest');
     if (loc && loc.kind === 'jxl' && req.query.download !== 'true' && req.query.clipboard !== 'true'
         && req.query.clipboardOrigin !== 'true' && req.query.stripContext !== 'true' && clientShowsJxl(req)) {
@@ -2506,23 +2537,32 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
             if (err && !res.headersSent) res.status(404).json({ success: false, error: 'Image not found' });
         });
     }
-    const filePath = loc ? (loc.kind === 'jxl' ? await galleryPngPath(filename) : loc.path) : null;
+    // A plain display request (an <img>, the service worker's) on a browser that cannot show JXL gets the lossless
+    // WebP of a JXL-stored picture from the display cache (#1156). Everything below that asks for a PNG (downloads,
+    // the clipboard, stripContext) and fetch() readers keep the PNG.
+    const plainRead = req.query.download !== 'true' && req.query.clipboard !== 'true'
+        && req.query.clipboardOrigin !== 'true' && req.query.stripContext !== 'true';
+    let display = null;
+    if (loc && loc.kind === 'jxl' && plainRead && pictureIsShown(req)) {
+        display = await pictureDisplayFile(req, filename, loc);
+    }
+    const filePath = display ? display.path : (loc ? (loc.kind === 'jxl' ? await galleryPngPath(filename) : loc.path) : null);
     // Last-Modified / ETag from the stored file (the swap keeps the PNG's mtime), Content-Length of the sent one
     const fileStat = loc && filePath ? loc.stat : null;
-    const sentStat = filePath && loc.kind === 'jxl' ? await statOrNull(filePath) : fileStat;
+    const sentStat = filePath && loc.kind === 'jxl' ? (display ? { size: display.size } : await statOrNull(filePath)) : fileStat;
     if (!fileStat || !sentStat) {
         return res.status(404).json({ success: false, error: 'Image not found' });
     }
 
     // Set appropriate headers
     // the bytes sent, not the name (an ID has no extension, #1156); the PNG-only steps below key on this too
-    const sentType = sentImageType(loc, filename);
+    const sentType = display ? display.type : sentImageType(loc, filename);
     const sendsPng = sentType === 'image/png';
     res.setHeader('Content-Type', sentType);
     res.setHeader('Cache-Control', 'private, max-age=259200');
     res.setHeader('Content-Length', sentStat.size);
     res.setHeader('Last-Modified', new Date(fileStat.mtime).toUTCString());
-    res.setHeader('ETag', `"${fileStat.mtime.getTime()}"`);
+    res.setHeader('ETag', `"${fileStat.mtime.getTime()}${display && display.tag ? '-' + display.tag : ''}"`);
     res.setHeader('Expires', '0');
     
     // Handle download request
@@ -3828,10 +3868,13 @@ app.get('/traces/:id', authMiddleware, adminOnlyMiddleware, (req, res) => {
             if (!ws) return res.status(404).json({ success: false, error: 'Workspace not found' });
             const inFiles = (ws.files || []).includes(filename) || (ws.scraps || []).includes(filename);
             if (!inFiles) return res.status(403).json({ success: false, error: 'Access denied' });
-            const imagePath = await imageStore.pngPath(filename);
-            if (!imagePath) return res.status(404).send('Not found');
-            res.setHeader('Content-Type', sentImageType(await imageStore.locate(filename), filename));
-            fs.createReadStream(imagePath).pipe(res);
+            // #1156: the stored JXL for a client that decodes it, else a lossless WebP (display cache), not a decoded PNG
+            const shown = await pictureDisplayFile(req, filename);
+            if (!shown) return res.status(404).send('Not found');
+            res.setHeader('Content-Type', shown.type);
+            res.setHeader('Content-Length', String(shown.size));
+            res.setHeader('Vary', 'Accept, Cookie, Sec-Fetch-Dest, X-Melaton-Image-Dest');
+            fs.createReadStream(shown.path).pipe(res);
         } catch (e) {
             res.status(500).send(e.message);
         }

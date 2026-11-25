@@ -124,8 +124,10 @@ async function animateImageWebSocket(globalResources, filename, workspaceId, use
     let jobState = null;
     try {
         const imagesDir = __runtimeGr.getPath('images');
-        // PNG bytes, also when the still is stored as JXL
-        const imageBuffer = await imageStore.readPng(filename, imagesDir);
+        // The Ruiko worker opens the still with PIL (services/ruiko-upscaler app.py _check_dimensions, infer_animate.py),
+        // which reads WebP: lossless WebP of the picture's pixels, no PNG decode (#1156). Bare pixels, the worker
+        // needs no fields.
+        const imageBuffer = await imageStore.webpBytes(filename, imagesDir, { fields: false });
         if (!imageBuffer) {
             throw new Error('Image not found');
         }

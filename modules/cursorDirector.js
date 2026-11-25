@@ -4817,7 +4817,7 @@ async function readAttachment(gr, attachment) {
         let buffer = null;
         if (insideDir(dir, filePath)) {
             buffer = await imageStore.webpBytes(filename, dir, { fields: true, effort: 2 }).catch(() => null);
-            if (!buffer) buffer = await imageStore.readPng(filename, dir);
+            if (!buffer) buffer = await imageStore.exportPng(filename, dir); // the last-resort PNG export, #1156
         }
         if (!buffer) {
             throw new Error('Workspace image was not found');

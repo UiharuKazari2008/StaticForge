@@ -158,23 +158,22 @@ function isReplicationRecording() {
 }
 
 /**
- * buffer: PNG bytes the caller just wrote (hashed in memory, no re-read).
+ * The checksum is the sha256 of the picture's STORED bytes (#1156): the same bytes /replication/assets/gallery-image/<name>
+ * serves (a JPEG XL for a new picture, x.jxl for a legacy x.png kept as JXL, x.png when it still is one). `buffer` (what
+ * the caller wrote: a PNG or a WebP) is not those bytes, so it is no longer hashed; the stored file is read once, streamed.
+ * The nightly JPEG XL converter can later re-encode the file (same pixels, other bytes): the checksum is the save-time one.
  * Standalone nodes keep the journal row (user cargo export lists it) but skip the checksum:
- * nothing reads it without a replica, and hashing meant a full read of every saved PNG.
+ * nothing reads it without a replica, and hashing meant a full read of every saved picture.
  */
 async function recordGallerySave(filename, { workspaceId = null, imagesDir = null, buffer = null } = {}) {
     if (!filename) return null;
     let checksum = null;
     if (await ensureReady() && isReplicationRecording()) {
-        if (Buffer.isBuffer(buffer)) {
-            checksum = crypto.createHash('sha256').update(buffer).digest('hex');
-        } else {
-            const dir = imagesDir || (globalResourcesRef ? globalResourcesRef.getPath('images') : null);
-            // a real PNG (a JXL-stored picture decoded); a missing one has no checksum, as before
-            const pngFile = dir ? await imageStore.pngPath(filename, dir) : null;
-            if (pngFile) {
-                checksum = await sha256FileAsync(pngFile);
-            }
+        const dir = imagesDir || (globalResourcesRef ? globalResourcesRef.getPath('images') : null);
+        const loc = dir ? await imageStore.locate(filename, dir) : null;
+        // a missing picture has no checksum, as before
+        if (loc) {
+            checksum = await sha256FileAsync(loc.path);
         }
     }
     return recordEntry({

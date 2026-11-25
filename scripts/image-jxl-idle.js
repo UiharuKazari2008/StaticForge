@@ -27,9 +27,11 @@ const sharp = require('sharp');
 const store = require('../modules/imageStore');
 
 const ROOT = path.resolve(__dirname, '..');
-const STATE = path.join(ROOT, '.cache', 'image-jxl');
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
+// --images-dir / --state-dir: a copy of some pictures and a scratch state folder (tests; the nightly run uses neither)
+const IMAGES = path.resolve(opt('--images-dir', store.IMAGES_DIR));
+const STATE = path.resolve(opt('--state-dir', path.join(ROOT, '.cache', 'image-jxl')));
 const DRY = args.includes('--dry-run');
 const IDLE_WAIT = !args.includes('--no-idle-wait');
 const LIMIT = parseInt(opt('--limit', '0'), 10) || 0;
@@ -66,8 +68,8 @@ const pictureMeta = require('../modules/pictureMeta');
 const chunkKey = (buf) => JSON.stringify([pictureMeta.readFields(buf), pictureMeta.extrasOf(buf)]);
 
 async function convertOne(name) {
-    const pngP = path.join(store.IMAGES_DIR, name);
-    const jxlP = path.join(store.IMAGES_DIR, store.jxlNameFor(name));
+    const pngP = path.join(IMAGES, name);
+    const jxlP = path.join(IMAGES, store.jxlNameFor(name));
     const raw = jxlP + '.enc.tmp';
     const tmp = jxlP + '.tmp';
     const st = fs.statSync(pngP);
@@ -91,9 +93,14 @@ async function convertOne(name) {
     }
 }
 
-/** A JXL written at a lower effort, re-encoded at effort 7; resolves the bytes saved (0 when not smaller). */
+/**
+ * A JXL written at a lower effort, re-encoded at effort 7; resolves the bytes saved (0 when not smaller). Picture IDs
+ * (#1156: stored from WebP / JXL with only an sfMD box, no legacy PNG) go through the same path: the PNG is a throwaway
+ * round trip decoded straight from the file (decodeJxlToPngBuffer, a temp file beside the export cache, never
+ * the cache itself), and the check compares pixels, fields and extras before the file is replaced.
+ */
 async function upgradeOne(file) {
-    const jxlP = path.join(store.IMAGES_DIR, file);
+    const jxlP = path.join(IMAGES, file);
     const st = fs.statSync(jxlP);
     const times = store.readFileTimesSync(jxlP);
     if (!times) return 0;
@@ -131,13 +138,13 @@ async function main() {
     const upgradeCutoff = Date.now() - UPGRADE_AGE_MS;
     const due = [];
     const upgrades = [];
-    for (const e of fs.readdirSync(store.IMAGES_DIR, { withFileTypes: true })) {
+    for (const e of fs.readdirSync(IMAGES, { withFileTypes: true })) {
         if (!e.isFile() || e.name.startsWith('.') || failed.has(e.name)) continue;
         if (/\.png$/i.test(e.name)) {
-            const st = fs.statSync(path.join(store.IMAGES_DIR, e.name));
+            const st = fs.statSync(path.join(IMAGES, e.name));
             if (st.mtimeMs < cutoff) due.push({ name: e.name, mtimeMs: st.mtimeMs });
         } else if (/\.jxl$/i.test(e.name)) {
-            const p = path.join(store.IMAGES_DIR, e.name);
+            const p = path.join(IMAGES, e.name);
             const t = store.readFileTimesSync(p);
             // a recorded effort under 7 (0 = not known) is re-encoded; no recorded effort = the effort-7 backlog
             if (t && t.effort !== null && t.effort < TARGET_EFFORT && fs.statSync(p).mtimeMs < upgradeCutoff) upgrades.push(e.name);

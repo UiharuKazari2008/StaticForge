@@ -1062,7 +1062,7 @@ class ReferencesWebSocketHandlers {
                             'gallery-image',
                             filename,
                             this.globalResources,
-                            { cacheToLocal: true }
+                            { cacheToLocal: true, as: 'webp' } // stored bytes are JXL now (#1156); sharp may not read them
                         );
                         imageBuffer = fetched.buffer;
                     } catch (fetchError) {

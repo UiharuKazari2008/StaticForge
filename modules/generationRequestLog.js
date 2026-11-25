@@ -417,14 +417,15 @@ function handleMcpGalleryImageDownload(globalResources, req, res) {
         res.status(400).json({ success: false, error: 'filename must be a gallery basename' });
         return;
     }
-    // the stored file (x.png may lie on disk as x.jxl: then its PNG is rebuilt off the sync path)
     const loc = imageStore.locateSync(filename, imagesDir);
     if (!loc) {
         res.status(404).json({ success: false, error: 'Image not found' });
         return;
     }
+    // the stored file (x.png, or an ID, may lie on disk as .jxl: then the lossless WebP of it from the display cache,
+    // made off the sync path and kept; no PNG is decoded for it, #1156). sendGalleryImageBytes names the type from the bytes.
     if (loc.kind === 'jxl') {
-        return imageStore.readPng(filename, imagesDir).then((bytes) => {
+        return imageStore.displayWebpPath(filename, imagesDir).then((webpFile) => (webpFile ? fs.promises.readFile(webpFile) : null)).then((bytes) => {
             if (!bytes) {
                 res.status(404).json({ success: false, error: 'Image not found' });
                 return;
