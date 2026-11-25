@@ -263,7 +263,8 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'usage_tree') return usageTreeFor(gr, message);
     if (action === 'usage_detail') return { detail: await usageAudit.detail(String(message.kind || 'session'), String(message.id || ''), { gr, days: Number(message.days) || 7 }) };
     if (action === 'usage_flags') return { flags: usageAudit.flagsList({ all: message.all === true, days: Number(message.days) || 7 }), summary: usageAudit.summary() };
-    if (action === 'usage_ack') { usageAudit.ack(message.id, message.on); poke(); return { flags: usageAudit.flagsList({ all: true, days: 30 }), summary: usageAudit.summary() }; }
+    if (action === 'usage_ack_all') { usageAudit.ackAll(); poke(); return { flags: usageAudit.flagsList({ all: false, days: 30 }), summary: usageAudit.summary() }; }
+    if (action === 'usage_ack') { usageAudit.ack(message.id, message.on); poke(); return { flags: usageAudit.flagsList({ all: false, days: 30 }), summary: usageAudit.summary() }; }
     if (action === 'usage_history') return { history: require('../../claudeUsageHistory').history(message.days) };
     if (action === 'pause') { await supervisor.pauseSession(String(message.sessionId || ''), { mode: message.mode, reason: message.reason, by: 'Fleet' }); return supervisorStatus(gr); }
     if (action === 'resume') { await supervisor.resumeSession(String(message.sessionId || ''), { note: message.note }); return supervisorStatus(gr); }

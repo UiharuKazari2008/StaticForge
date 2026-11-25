@@ -4562,7 +4562,7 @@
         repaint();
     }
     async function usgLoadFlags() {
-        try { const r = unwrap(await send('claude_desk_supervisor', { action: 'usage_flags', all: true, days: 30 }), 'flags'); usgUi().flags = r.flags || []; } catch (_) { /* later */ }
+        try { const r = unwrap(await send('claude_desk_supervisor', { action: 'usage_flags', all: false, days: 30 }), 'flags'); usgUi().flags = r.flags || []; } catch (_) { /* later */ }
         repaint();
     }
 
@@ -4787,7 +4787,7 @@
         put('ban', 'unlink con-revoke mem-reject rules-reject');
         put('save', 'sup-save');
         put('delete', 'sup-lock-remove sup-art-clean work-cancel work-cancel-sel build-end mem-remove con-remove release-claim');
-        put('clear', 'rules-dismiss sup-art-forget sup-dismiss mem-unflag');
+        put('clear', 'rules-dismiss sup-art-forget sup-dismiss mem-unflag usage-ack usage-ack-all');
         put('checklist', 'mem-approve rules-accept');
         put('favorites', 'mem-pin');
         put('rename', 'mem-edit');
@@ -4827,7 +4827,7 @@
             case 'sup-locks': return [{ text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-maint': return [{ text: 'Run Now', action: 'maint-run', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Dry Run', action: 'maint-dry', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Save Settings', action: 'maint-save', disabled: !maintUi().draft }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'usage': return [{ text: 'Last 24 Hours', action: 'usage-d1', disabled: usgUi().days === 1 }, { text: 'Last 7 Days', action: 'usage-d7', disabled: usgUi().days === 7 }, { text: 'Read Again', action: 'usage-refresh' }];
-            case 'usage-flags': return [{ text: 'Acknowledge', action: 'usage-ack', disabled: !(S.c && selId(S.c, 'ux:f:')) }, { text: 'Read Again', action: 'usage-refresh' }];
+            case 'usage-flags': return [{ text: 'Acknowledge', action: 'usage-ack', disabled: !(S.c && selId(S.c, 'ux:f:')) }, { text: 'Acknowledge All', action: 'usage-ack-all', disabled: !usgOpenFlags() }, { text: 'Read Again', action: 'usage-refresh' }];
             case 'sup-arts': return [{ text: 'Clean...', action: 'sup-art-clean' }, { text: 'Restore', action: 'sup-art-restore' }, { text: 'Forget', action: 'sup-art-forget' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'rc-host': return [
                 { text: 'Reconnect', action: 'rc-reconnect' },
@@ -5016,6 +5016,16 @@
             case 'usage-d1': case 'usage-d7': { const u = usgUi(); u.days = a === 'usage-d7' ? 7 : 1; u.data = null; u.sel = ''; u.det.clear(); void usgLoad(); repaint(); return true; }
             case 'usage-refresh': { const u = usgUi(); u.det.clear(); u.flags = null; void usgLoad(); void loadSupervisor(); repaint(); return true; }
             case 'usage-ack': await usgAck(c, arg); return true;
+            case 'usage-ack-all': {
+                // seen flags go: the list shows only open ones (a flag not seen again for a day also clears itself)
+                try {
+                    const r = unwrap(await send('claude_desk_supervisor', { action: 'usage_ack_all' }), 'flags');
+                    usgUi().flags = r.flags || [];
+                    if (r.summary && S.sup.data) S.sup.data = Object.assign({}, S.sup.data, { usage: r.summary });
+                } catch (e) { await failBox(c, e); }
+                repaint();
+                return true;
+            }
             case 'maint-run': await maintAct(c, { action: 'maintenance_run' }, 'Starting the maintenance run...'); return true;
             case 'maint-dry': await maintAct(c, { action: 'maintenance_run', dryRun: true }, 'Starting a dry run...'); return true;
             case 'maint-save': { const dr = maintUi().draft; if (dr) await maintAct(c, { action: 'maintenance_save', settings: { enabled: !!dr.enabled, time: String(dr.time || '').trim(), dryRun: !!dr.dryRun, deleteRemoteBranches: !!dr.deleteRemoteBranches, checks: dr.checks } }, 'Saving...'); return true; }

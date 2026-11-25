@@ -561,10 +561,19 @@ function rowFlag(r) {
 /** Stored flags, newest first; { all: true } includes acknowledged ones, { days } limits by last seen. */
 function flagsList(opts = {}) {
     try {
+        // a flag clears itself once it is stale: not seen again for a day (its session moved on or ended)
+        db().prepare('UPDATE usage_flags SET ack_at = ? WHERE ack_at IS NULL AND last_seen < ?').run(Date.now(), Date.now() - DAY);
         const since = opts.days ? Date.now() - Number(opts.days) * DAY : 0;
         const rows = db().prepare(`SELECT * FROM usage_flags WHERE last_seen >= ? ${opts.all ? '' : 'AND ack_at IS NULL'} ORDER BY last_seen DESC LIMIT 300`).all(since);
         return rows.map(rowFlag);
     } catch (e) { console.warn(`[usage] flags: ${e.message}`); return []; }
+}
+
+/** Every open flag acknowledged at once (Fleet's Acknowledge All). */
+function ackAll() {
+    const r = db().prepare('UPDATE usage_flags SET ack_at = ? WHERE ack_at IS NULL').run(Date.now());
+    changed();
+    return r.changes;
 }
 
 function ack(id, on) {
@@ -783,6 +792,7 @@ async function checkUsage(ctx) {
 }
 
 module.exports = {
+    ackAll,
     start, settings, scan, tree, detail, flagsList, ack, summary, evaluate, evaluateAll, checkUsage, judge, figures, createState, feed, fmtTok, REASONS, DEFAULTS,
     _test: { files, judge, digest, costOf }
 };
