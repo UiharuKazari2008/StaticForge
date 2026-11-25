@@ -385,7 +385,33 @@ class ServiceWorkerManager {
     }
 
     hasPendingUpdates() {
+        this.reconcilePendingUpdates();
         return this.pendingUpdateFuse;
+    }
+
+    /**
+     * A restart owed for files this page does not run is not owed (#1167). The set can outlive its reason: a batch
+     * classified as restart while a file was in use, then the page no longer using any of them (a Continuity DeX
+     * window, a feature unloaded, a reload). Left alone the balloon "Restart Melaton to finish installing updates"
+     * and the count stay, and the restart does not finish anything. So whenever the state is read, files that are
+     * downloaded (that is how they got here) and that nothing on this page uses are dropped, and an emptied set
+     * clears the fuse, the kind, the saved record and the balloon. Returns true when it cleared the state.
+     */
+    reconcilePendingUpdates() {
+        if (!this.pendingUpdateFuse || this.pendingUpdateKind !== 'restart' || this.pendingApplyFiles) return false;
+        const urls = this.pendingUpdateUrls ? [...this.pendingUpdateUrls] : [];
+        if (!urls.length) return false;
+        const kept = urls.filter((u) => !this._pageNeverUsed(normalizeStaticFilePath(u)));
+        urls.forEach((u) => { if (!kept.includes(u)) this.pendingUpdateUrls.delete(u); });
+        if (kept.length) {
+            if (kept.length < urls.length) this.tripPendingUpdateFuse(kept.length);
+            return false;
+        }
+        this.resetPendingUpdateFuse();
+        this.pendingUpdateKind = null;
+        this.hideUpdateToast();
+        if (this._isDesktopTrayMode()) this._hideServiceWorkerTrayPopup();
+        return true;
     }
 
     tripPendingUpdateFuse(filesCount = null) {
