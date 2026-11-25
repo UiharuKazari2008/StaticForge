@@ -1269,6 +1269,9 @@
             const ref = this.host.displayArea;
             const refWidth = Math.max(320, (ref && ref.clientWidth) || 800);
             tabs.list().forEach((tab) => panel.appendChild(this.quickTile(tab, refWidth)));
+            // the old grid's Other Devices rows stay until fillOtherDevices replaces them, so the panel is
+            // as tall as before when keepTop is put back (it would clamp to the own tabs' height otherwise)
+            if (oldPanel) oldPanel.querySelectorAll('.grimoire-ie-quick-other').forEach((el) => panel.appendChild(el));
             this.fillOtherDevices(panel);
             view.addEventListener('click', (ev) => {
                 const forget = ev.target.closest('.grimoire-ie-quick-device-close');
@@ -1377,6 +1380,7 @@
             let res;
             try { res = await bs.list(); } catch (_) { return; }
             if (!panel.isConnected) return;
+            const keepTop = panel.scrollTop;
             panel.querySelectorAll('.grimoire-ie-quick-other').forEach((el) => el.remove());
             const others = ((res && res.sessions) || []).filter((s) => !s.own);
             GrimoireIeChrome.noteOtherSessions(others);
@@ -1436,6 +1440,8 @@
                     panel.appendChild(tile);
                 }));
             });
+            // the refill under an open grid keeps its scroll position (rule: scroll-lists-keep-position)
+            if (keepTop && panel.scrollTop !== keepTop) panel.scrollTop = keepTop;
         }
 
         /** Close an old session of Other Devices on the server (its tabs and pages go); the grid follows the change push. */
