@@ -23,7 +23,7 @@ let lastRun = null;
 
 function settings() {
     let cfg = {};
-    try { cfg = (gr && gr.config && gr.config.shrineJobs) || {}; } catch (_e) { cfg = {}; }
+    try { const c = gr && (typeof gr.getConfig === 'function' ? gr.getConfig() : gr.config); cfg = (c && c.shrineJobs) || {}; } catch (_e) { cfg = {}; }
     const m = /^(\d{1,2}):(\d{2})$/.exec(String(cfg.time || '07:00'));
     return { enabled: cfg.enabled !== false, hour: m ? Math.min(23, +m[1]) : 7, minute: m ? Math.min(59, +m[2]) : 0 };
 }
