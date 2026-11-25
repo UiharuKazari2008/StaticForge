@@ -61,7 +61,8 @@
         return `${A}/session-${l ? (l.status === 'busy' ? 'working' : 'idle') : 'ended'}-16.png`;
     };
     const ITEMS = '/static_images/vista-cpl/items';
-    const QUESTION16 = '/static_images/vista-explorer/help-16.png'; // Input Required: a question, not Pending's info icon
+    const QUESTION16 = '/static_images/vista-explorer/help-16.png';
+    const SENTBACK16 = '/static_images/vista-cmdbar/undo.png'; // Sent Back: the Supervisor's notes went back to it (not the plain session icon) // Input Required: a question, not Pending's info icon
     const FOLDER16 = `${VI}/explorer/folder-16.png`;
     const PAGE = 50;
     const MSG_PAGE = 40; // messages a session view loads at a time
@@ -1489,7 +1490,7 @@
     const issueLinks = (w) => issuesOf(w).map((i) => (i.url && /^https?:\/\//.test(i.url) ? `<span class="mmc-link" data-act="open-link" data-arg="${esc(i.url)}" title="${esc(i.title || i.url)}">${esc(issueShort(i))}</span>` : esc(issueShort(i)))).join(', ');
     const issueBad = (text) => issueRefs(text).find((x) => !ISSUE_REF.test(x)) || '';
     const WORK_OPEN = new Set(['held', 'queued', 'starting', 'running', 'waiting', 'input']);
-    const workIcon = (st) => ({ held: `${ITEMS}/date-and-time-16.png`, queued: `${VI}/info-16.png`, input: QUESTION16, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || SESSION16);
+    const workIcon = (st) => ({ held: `${ITEMS}/date-and-time-16.png`, queued: `${VI}/info-16.png`, input: QUESTION16, waiting: SENTBACK16, failed: `${VI}/error-16.png`, cancelled: `${VI}/warning-16.png`, done: `${VI}/check-16.png` }[st] || SESSION16);
     const supLocks = () => (S.sup.data && Array.isArray(S.sup.data.locks) ? S.sup.data.locks : []);
     const supArtifacts = () => (S.sup.data && Array.isArray(S.sup.data.artifacts) ? S.sup.data.artifacts : []);
     const LOCK_STATE = { live: 'Live', idle: 'Idle', orphan: 'Orphan' };
@@ -3185,7 +3186,7 @@
             tile('co-input', QUESTION16, inputItems().length, 'Input required', true),
             tile('co-held', `${ITEMS}/date-and-time-16.png`, held.length, 'Waiting for you'),
             tile('co-pending', `${VI}/info-16.png`, pendItems().length, 'Queued'),
-            tile('aw-sup', `${VI}/warning-16.png`, sentBack.length, 'Sent back', true),
+            tile('aw-sup', SENTBACK16, sentBack.length, 'Sent back', true),
             // one number per tile: running sessions and the ones working now are two tiles (Yukimi, Nov 24 2026)
             tile('sessions', SESSION16, S.live.length, 'Sessions running'),
             tile('sessions', '/static_images/vista-cmdbar/gears.png', busy, 'Sessions working'),
