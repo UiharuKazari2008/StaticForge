@@ -1657,8 +1657,10 @@
             }));
             return;
         }
-        const hint = 'Sign in with your Plaud app account to show your recorder\'s name and battery on Today. Plaud emails you a code; no password is kept.';
-        const email = customInput(plDevEmail != null ? plDevEmail : ((st.account && st.account.email) || ''), 'Plaud app account email');
+        const hint = 'Sign in with your Plaud app account to show your recorder\'s name and battery on Today. Plaud emails a code to the account\'s address (your Google or Apple address if you sign in with those); no password is kept.';
+        // a Google / Apple sign-in has a made-up address at Plaud (google-<id>@plaud.ai) that receives no mail: not offered
+        const known = (st.account && st.account.email) || '';
+        const email = customInput(plDevEmail != null ? plDevEmail : (/^(google|apple)-[^@]*@plaud\.ai$/i.test(known) ? '' : known), 'Plaud app account email');
         email.type = 'email';
         email.autocomplete = 'email';
         email.spellcheck = false;
