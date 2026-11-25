@@ -1424,6 +1424,8 @@
     const supSettings = () => S.sup.draft || Object.assign({}, SUP_DEFAULT, (S.sup.data && S.sup.data.settings) || {});
     const supReviews = () => (S.sup.data && Array.isArray(S.sup.data.reviews) ? S.sup.data.reviews : []);
     const supReview = (id) => supReviews().find((r) => String(r.id) === String(id)) || null;
+    /** The rule violations a review still has open (its rule check at turn end: check scripts + the Supervisor's judgement). */
+    const supViolations = (r) => (Array.isArray(r && r.violations) ? r.violations : []).filter((v) => !v.resolved);
     const supEngine = (id) => supEngines().find((e) => e.id === id) || null;
     /** The models an engine offers (its list, else its own default); a stored value outside it stays selectable. */
     const supModelList = (engineId) => { const e = supEngine(engineId); return e ? (Array.isArray(e.models) ? e.models.slice() : []).concat(e.defaultModel && !(e.models || []).includes(e.defaultModel) ? [e.defaultModel] : []) : []; };
@@ -1536,7 +1538,8 @@
         const steering = Array.isArray(r.steering) ? r.steering : [];
         const live = !!liveOf(r.sessionId);
         const busy = !!S.sup.busy;
-        const sendable = r.verdict === 'gaps' && !r.delivered && (missed.length || steering.length);
+        const viols = Array.isArray(r.violations) ? r.violations : [];
+        const sendable = (r.verdict === 'gaps' && !r.delivered && (missed.length || steering.length)) || (!r.delivered && supViolations(r).length > 0);
         const bits = [
             `<p><b>${esc(r.title || shortId(r.sessionId))}</b> <span class="mmc-hint">${esc([r.account, TRIGGER[r.trigger] || r.trigger, when(r.at)].filter(Boolean).join(' - '))}</span></p>`,
             `<p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="sup-send" data-arg="${esc(r.id)}"${sendable && live && !busy ? '' : ' disabled'}>Send to Session</button> `
@@ -1545,6 +1548,8 @@
             r.summary ? `<p class="cd-read">${esc(r.summary)}</p>` : '',
             r.request ? `<p><b>What was asked</b></p><p class="cd-read">${esc(r.request)}</p>` : '',
             missed.length ? `<p><b>Missed</b></p><table class="cd-table"><thead><tr><th>Item</th><th>Evidence</th></tr></thead><tbody>${missed.map((m) => `<tr><td>${esc(m.item)}</td><td>${esc(m.evidence || '')}</td></tr>`).join('')}</tbody></table>` : '',
+            viols.length ? `<p><b>Rule violations</b></p><table class="cd-table"><thead><tr><th class="cd-w130">Rule</th><th>File</th><th>What and how to fix</th></tr></thead><tbody>${viols.map((v) => `<tr><td>${esc(v.rule)}${v.source === 'script' ? ' (check)' : ''}</td><td>${esc(v.file)}${v.line ? `:${esc(v.line)}` : ''}</td><td>${v.resolved ? `<s>${esc(v.why)}</s> ${esc(v.resolved)}` : `${esc(v.why)} - ${esc(v.fix)}`}${v.quote ? `<br><code>${esc(v.quote)}</code>` : ''}</td></tr>`).join('')}</tbody></table>` : '',
+            r.ruleCheck && r.ruleCheck.checked ? `<p class="mmc-hint">Rule check: ${esc(String(r.ruleCheck.files.length))} file(s), ${esc((r.ruleCheck.scripts || []).join(', '))}${r.ruleCheck.calls ? `, ${esc(String(r.ruleCheck.calls))} engine call(s) on ${esc(String((r.ruleCheck.rules || []).length))} rule(s)` : ''}${r.ruleCheck.error ? `; ${esc(r.ruleCheck.error)}` : ''}.</p>` : '',
             steering.length ? `<p><b>Steering</b></p><ul class="cd-sup-steer">${steering.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '',
             r.delivered ? `<p class="mmc-hint">${r.delivered === 'steer' ? 'Typed into the session.' : 'Left in the inbox.'}</p>` : '',
             r.dismissed ? '<p class="mmc-hint">Dismissed.</p>' : ''
@@ -1581,6 +1586,7 @@
         return `<div class="cd-tiles">${[
             tile('sup-reviews', '/static_images/vista-cmdbar/paste.png', today.length, 'Reviews today'),
             tile('sup-reviews', `${VI}/warning-16.png`, gaps.length, 'Reviews with gaps', true),
+            tile('sup-reviews', `${VI}/warning-16.png`, live.reduce((n, r) => n + supViolations(r).length, 0), 'Rule violations', true, 'Open ones the rule check found at turn end'),
             tile('co-supervisor', '/static_images/vista-cmdbar/gears.png', money(w.today), 'Cost today'),
             tile('co-supervisor', '/static_images/vista-cmdbar/gears.png', money(w.week), 'Cost, 7 days'),
             tile('sup-holds', '/static_images/vista-cmdbar/pause.png', holds.length, 'Paused sessions', true),
@@ -1618,6 +1624,7 @@
             <label class="cd-opt"><input type="checkbox" data-sup="autoStart"${st.autoStart === false ? '' : ' checked'}><span>Start queued work automatically</span></label>
             <label class="cd-opt"><input type="checkbox" data-sup="manageLocks"${st.manageLocks ? ' checked' : ''}><span>Manage busy locks for agents</span></label>
             <label class="cd-opt"><input type="checkbox" data-sup="trackArtifacts"${st.trackArtifacts ? ' checked' : ''}><span>Track work folders and temp files</span></label>
+            <label class="cd-opt"><input type="checkbox" data-sup="ruleCheck"${st.ruleCheck === false ? '' : ' checked'}><span>Check each finished turn's changed files against the rules (check scripts and a judgement call)</span></label>
             <label class="cd-opt"><input type="checkbox" data-sup="autoPauseOnCollision"${st.autoPauseOnCollision ? ' checked' : ''}><span>Pause the later agent when two collide on the same files</span></label>
             <label><span>Verify a restart wait after (minutes):</span><input type="text" data-sup="maxAskMinutes" value="${esc(st.maxAskMinutes == null ? '' : st.maxAskMinutes)}" inputmode="numeric" autocomplete="off" placeholder="Ask the Supervisor to verify a restart wait after N minutes"></label>
             <label class="cd-top"><span>Yozora repositories to watch:</span><textarea data-sup="yozoraRepos" rows="3" spellcheck="false" placeholder="owner/repo, one per line">${esc(Array.isArray(st.yozoraRepos) ? st.yozoraRepos.join('\n') : String(st.yozoraRepos || ''))}</textarea></label>
@@ -1634,7 +1641,7 @@
         const reviews = supReviews().filter((r) => !r.dismissed);
         const rows = reviews.map((r) => {
             const v = VERDICT[r.verdict] || [r.verdict || '', `${VI}/info-16.png`];
-            return { key: `v:${r.id}`, icon: v[1], data: { title: r.title || shortId(r.sessionId), account: r.account || '', verdict: v[0], summary: r.summary || '', at: r.at || 0 } };
+            return { key: `v:${r.id}`, icon: v[1], data: { title: r.title || shortId(r.sessionId), account: r.account || '', verdict: v[0], summary: `${r.summary || ''}${supViolations(r).length ? ` [${supViolations(r).length} rule violation${supViolations(r).length === 1 ? '' : 's'}]` : ''}`, at: r.at || 0 } };
         });
         const list = c.listView([
             { t: 'Session', w: 140, key: 'title', text: (d) => d.title },
@@ -4439,7 +4446,7 @@
             { id: 'cd-dt-tasks', title: `Background Tasks (${tasks.length})`, body: `<div class="cd-dt-list">${taskList}</div><div class="cd-dt-box cd-task-box">${taskBoxHtml(chat)}</div>` },
             { id: 'cd-dt-claims', title: `Claims (${claims.length})`, body: table([['Path']], claims.map((p) => `<tr><td>${esc(p)}</td></tr>`), 'It holds no claim.') },
             { id: 'cd-dt-files', title: `Files Edited (${d.edited ? d.edited.total || edited.length : 0})`, body: table([['File'], ['Via', 76], ['Edits', 46], ['Uncommitted', 84]], edited.map((f) => `<tr><td>${esc(f.path)}</td><td>${f.via === 'shell' ? 'Shell' : esc(f.via || '')}</td><td class="is-num">${f.edits == null ? '' : f.edits}</td><td>${f.uncommitted == null ? '' : (f.uncommitted ? 'Yes' : 'No')}</td></tr>`), 'It has edited no file.') },
-            { id: 'cd-dt-reviews', title: `Supervisor Reviews (${reviews.length})`, body: table([['Verdict', 100], ['Summary'], ['When', 130]], reviews.map((r) => `<tr><td>${esc((VERDICT[r.verdict] || [r.verdict || ''])[0])}</td><td>${esc(r.summary || '')}</td><td>${esc(when(r.at))}</td></tr>`), 'The supervisor has not reviewed this session.') }
+            { id: 'cd-dt-reviews', title: `Supervisor Reviews (${reviews.length})`, body: table([['Verdict', 100], ['Summary'], ['When', 130]], reviews.map((r) => `<tr><td>${esc((VERDICT[r.verdict] || [r.verdict || ''])[0])}</td><td>${esc(r.summary || '')}${supViolations(r).length ? ` [${esc(String(supViolations(r).length))} rule violation(s)]` : ''}</td><td>${esc(when(r.at))}</td></tr>`), 'The supervisor has not reviewed this session.') }
         ]);
     }
 
@@ -5253,6 +5260,7 @@
                 const d = S.sup.draft;
                 const extra = {};
                 if (d.autoPauseOnCollision !== undefined) extra.autoPauseOnCollision = !!d.autoPauseOnCollision;
+                if (d.ruleCheck !== undefined) extra.ruleCheck = !!d.ruleCheck;
                 if (d.reviewScope) extra.reviewScope = d.reviewScope === 'all' ? 'all' : 'supervised';
                 if (String(d.maxAskMinutes == null ? '' : d.maxAskMinutes).trim() !== '') extra.maxAskMinutes = Math.max(1, Math.min(1440, Math.round(Number(d.maxAskMinutes)) || 15));
                 await supAct(c, { action: 'save', settings: Object.assign(extra, { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), effort: d.effort || '', delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, modelPolicy: d.modelPolicy || undefined, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) }) }, 'Saving...');

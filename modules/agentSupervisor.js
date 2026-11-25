@@ -172,6 +172,9 @@ function settings(gr) {
         managerSessionId: SESSION_ID_RE.test(String(cfg.managerSessionId || '')) ? String(cfg.managerSessionId) : '',
         fallbackEngines: Array.isArray(cfg.fallbackEngines) ? cfg.fallbackEngines.filter((e) => e && e.engine).map((e) => ({ engine: String(e.engine), model: String(e.model || '') })) : [],
         autoPauseOnCollision: cfg.autoPauseOnCollision !== false,
+        // the rule check at turn end (modules/supervisorRuleCheck.js): check scripts + a judgement call on the turn's changed files
+        ruleCheck: cfg.ruleCheck !== false,
+        ruleCheckCalls: Number.isInteger(cfg.ruleCheckCalls) && cfg.ruleCheckCalls >= 1 && cfg.ruleCheckCalls <= 4 ? cfg.ruleCheckCalls : 1,
         modelPolicy: cleanPolicy(cfg.modelPolicy),
         maxAskMinutes: Number.isFinite(cfg.maxAskMinutes) && cfg.maxAskMinutes >= 1 ? Math.min(240, cfg.maxAskMinutes) : 15,
         yozoraRepos: Array.isArray(cfg.yozoraRepos) ? cfg.yozoraRepos.filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)) : ['DreamScape/StaticForge']
@@ -194,6 +197,8 @@ async function saveSettings(gr, next) {
         managerSessionId: next.managerSessionId === undefined ? cur.managerSessionId : (SESSION_ID_RE.test(String(next.managerSessionId || '')) ? String(next.managerSessionId) : ''),
         fallbackEngines: Array.isArray(next.fallbackEngines) ? next.fallbackEngines.filter((e) => e && e.engine).slice(0, 6).map((e) => ({ engine: String(e.engine).slice(0, 60), model: String(e.model || '').slice(0, 120) })) : cur.fallbackEngines,
         autoPauseOnCollision: next.autoPauseOnCollision === undefined ? cur.autoPauseOnCollision : next.autoPauseOnCollision === true,
+        ruleCheck: next.ruleCheck === undefined ? cur.ruleCheck : next.ruleCheck === true,
+        ruleCheckCalls: next.ruleCheckCalls === undefined ? cur.ruleCheckCalls : Math.max(1, Math.min(4, Math.round(Number(next.ruleCheckCalls)) || cur.ruleCheckCalls)),
         modelPolicy: next.modelPolicy === undefined ? cur.modelPolicy : cleanPolicy(next.modelPolicy),
         maxAskMinutes: next.maxAskMinutes === undefined ? cur.maxAskMinutes : Math.max(1, Math.min(240, Math.round(Number(next.maxAskMinutes)) || cur.maxAskMinutes)),
         yozoraRepos: Array.isArray(next.yozoraRepos) ? next.yozoraRepos.map(String).filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)).slice(0, 20) : cur.yozoraRepos
@@ -508,6 +513,9 @@ function db() {
         if (!cols.has('supervised')) d.exec('ALTER TABLE supervisor_state ADD COLUMN supervised INTEGER NOT NULL DEFAULT 0');
         const rcols = new Set(d.prepare('PRAGMA table_info(supervisor_reviews)').all().map((x) => x.name));
         if (!rcols.has('resolved')) d.exec('ALTER TABLE supervisor_reviews ADD COLUMN resolved TEXT');
+        // rule violations of the turn (a JSON list) and what the rule check looked at (a JSON object)
+        if (!rcols.has('violations')) d.exec("ALTER TABLE supervisor_reviews ADD COLUMN violations TEXT NOT NULL DEFAULT '[]'");
+        if (!rcols.has('rulecheck')) d.exec('ALTER TABLE supervisor_reviews ADD COLUMN rulecheck TEXT');
         db.ready = d;
     }
     return d;
@@ -520,7 +528,7 @@ function rowReview(r) {
         id: r.id, sessionId: r.session_id, agentId: r.agent_id || '', title: r.title || '', account: r.account || '', at: r.at,
         trigger: r.trigger, verdict: r.verdict, summary: r.summary, request: r.request, steering: j(r.steering, []),
         missed: j(r.missed, []), model: r.model, delivered: r.delivered || '', dismissed: !!r.dismissed, error: r.error || '',
-        resolved: r.resolved || ''
+        resolved: r.resolved || '', violations: j(r.violations, []), ruleCheck: j(r.rulecheck, null)
     };
 }
 
@@ -538,7 +546,8 @@ function summary() {
     const gaps = d.prepare("SELECT COUNT(*) n FROM supervisor_reviews WHERE verdict = 'gaps'").get().n;
     const active = d.prepare("SELECT COUNT(*) n FROM supervisor_work WHERE state IN ('starting','running','waiting')").get().n;
     const queued = d.prepare("SELECT COUNT(*) n FROM supervisor_work WHERE state = 'queued'").get().n;
-    return { lastReviewId: last ? last.id : 0, version, open, reviewed, gaps, lastAt: last ? last.at : null, workActive: active, workQueued: queued };
+    const violations = d.prepare("SELECT COUNT(*) n FROM supervisor_reviews WHERE dismissed = 0 AND violations != '[]'").get().n;
+    return { lastReviewId: last ? last.id : 0, version, open, reviewed, gaps, violations, lastAt: last ? last.at : null, workActive: active, workQueued: queued };
 }
 
 function dismiss(id) {
@@ -637,15 +646,18 @@ async function review(sessionId, trigger, opts = {}) {
     else {
         try { result = await askModel(gr, s, promptFor(capTurn(turn), Object.assign({ partial }, meta))); } catch (e) { result = { verdict: 'error', summary: e.message.slice(0, 300), missed: [], model: '', error: e.message }; }
     }
+    // the rule check: the turn's changed files against the check scripts and the rules that apply (never on an MCP ask)
+    let rc = null;
+    if (!result.skipped && trigger !== 'mcp' && s.ruleCheck) rc = await ruleCheckFor(sessionId, messages, s, gr);
     if (result.skipped && trigger === 'turn-end') return null; // nothing asked: no row
     // the items a review names as done are ticked, with its evidence
     if (result.done && result.done.length) { try { sessionTasks().applyDone(sessionId, result.done); } catch (e) { console.warn(`[supervisor] tick: ${e.message}`); } }
-    const ins = d.prepare(`INSERT INTO supervisor_reviews (session_id, agent_id, title, account, at, trigger, verdict, summary, request, steering, missed, model, error)
-        VALUES (@session_id, @agent_id, @title, @account, @at, @trigger, @verdict, @summary, @request, @steering, @missed, @model, @error)`)
-        .run(Object.assign(base, { verdict: result.verdict, summary: result.summary || '', missed: JSON.stringify(result.missed || []), model: result.model || '', error: result.error || null }));
+    const ins = d.prepare(`INSERT INTO supervisor_reviews (session_id, agent_id, title, account, at, trigger, verdict, summary, request, steering, missed, model, error, violations, rulecheck)
+        VALUES (@session_id, @agent_id, @title, @account, @at, @trigger, @verdict, @summary, @request, @steering, @missed, @model, @error, @violations, @rulecheck)`)
+        .run(Object.assign(base, { verdict: result.verdict, summary: result.summary || '', missed: JSON.stringify(result.missed || []), model: result.model || '', error: result.error || null, violations: JSON.stringify(rc ? rc.violations : []), rulecheck: rc ? JSON.stringify({ checked: rc.checked, files: rc.files, scripts: rc.scripts, rules: rc.rules, calls: rc.calls, error: rc.error, skipped: rc.skipped || '' }) : null }));
     let rv = getReview(ins.lastInsertRowid);
-    resolveEarlier(rv);
-    if (rv.verdict === 'gaps' && trigger !== 'mcp') rv = await deliver(rv, s, { auto: true, fromSupervisor: turn.fromSupervisor }).catch(() => rv);
+    resolveEarlier(rv, rc);
+    if ((rv.verdict === 'gaps' || openViolations(rv).length) && trigger !== 'mcp') rv = await deliver(rv, s, { auto: true, fromSupervisor: turn.fromSupervisor }).catch(() => rv);
     afterTurn(sessionId, s).catch((e) => console.warn(`[supervisor] upkeep ${sessionId.slice(0, 8)}: ${e.message}`));
     try { workAfterReview(rv); } catch (e) { console.warn(`[supervisor] work state: ${e.message}`); }
     emit(rv);
@@ -657,13 +669,78 @@ async function review(sessionId, trigger, opts = {}) {
  * it has verified it's fixed"): an ok review resolves them as fixed; a newer gaps review supersedes them (its own list
  * is what is still open). Each gets the reason, so the Reviews list shows why it closed.
  */
-function resolveEarlier(rv) {
-    if (!rv || !['ok', 'gaps'].includes(rv.verdict)) return 0;
+function resolveEarlier(rv, rc) {
+    if (!rv) return 0;
+    let n = 0;
+    // earlier rule violations: fixed when this review checked their file and no longer finds the same rule there
+    if (rc && rc.checked) n += resolveViolations(rv, rc);
+    if (!['ok', 'gaps'].includes(rv.verdict)) return n;
     const note = rv.verdict === 'ok' ? `Fixed: review #${rv.id} found nothing missed` : `Superseded by review #${rv.id}`;
     try {
         const r = db().prepare("UPDATE supervisor_reviews SET dismissed = 1, resolved = ? WHERE session_id = ? AND id < ? AND verdict = 'gaps' AND dismissed = 0").run(note, rv.sessionId, rv.id);
-        return r.changes;
-    } catch (e) { console.warn(`[supervisor] resolve: ${e.message}`); return 0; }
+        return n + r.changes;
+    } catch (e) { console.warn(`[supervisor] resolve: ${e.message}`); return n; }
+}
+
+function resolveViolations(rv, rc) {
+    let n = 0;
+    try {
+        const d = db();
+        d.prepare("SELECT id, violations, verdict FROM supervisor_reviews WHERE session_id = ? AND id < ? AND dismissed = 0 AND violations != '[]'").all(rv.sessionId, rv.id).forEach((row) => {
+            let list = [];
+            try { list = JSON.parse(row.violations); } catch (_) { return; }
+            let changed = false;
+            list.forEach((v) => {
+                if (v.resolved || !rc.files.includes(v.file)) return;
+                if (rc.violations.some((x) => x.rule === v.rule && x.file === v.file)) return;
+                v.resolved = `Fixed: review #${rv.id} no longer finds it`;
+                changed = true; n += 1;
+            });
+            if (!changed) return;
+            // a review that was only rule violations closes with the last of them; one with gaps stays for its gaps
+            const allDone = list.every((v) => v.resolved);
+            d.prepare('UPDATE supervisor_reviews SET violations = ?, dismissed = CASE WHEN ? = 1 AND verdict != ? THEN 1 ELSE dismissed END, resolved = CASE WHEN ? = 1 AND verdict != ? THEN ? ELSE resolved END WHERE id = ?')
+                .run(JSON.stringify(list), allDone ? 1 : 0, 'gaps', allDone ? 1 : 0, 'gaps', `Fixed: review #${rv.id} found the rule violations fixed`, row.id);
+        });
+    } catch (e) { console.warn(`[supervisor] resolve violations: ${e.message}`); }
+    return n;
+}
+
+const openViolations = (rv) => (Array.isArray(rv && rv.violations) ? rv.violations : []).filter((v) => !v.resolved);
+
+/** Open violations not already told to the agent by an earlier review of the session (the same rule in the same file is said once). */
+function newViolations(rv) {
+    const open = openViolations(rv);
+    if (!open.length) return [];
+    let told = new Set();
+    try {
+        db().prepare("SELECT violations FROM supervisor_reviews WHERE session_id = ? AND id < ? AND dismissed = 0 AND delivered != '' AND violations != '[]'").all(rv.sessionId, rv.id)
+            .forEach((r) => { try { JSON.parse(r.violations).forEach((v) => { if (!v.resolved) told.add(`${v.rule}\u0000${v.file}`); }); } catch (_) { /* skipped */ } });
+    } catch (_) { told = new Set(); }
+    return open.filter((v) => !told.has(`${v.rule}\u0000${v.file}`));
+}
+
+// ---- the rule check, wired to this Supervisor (the engine, the rule files, agent-coord's edits)
+const RULE_CHECK_DEPS = {};
+function changedSince(sessionId, since) {
+    try { if (typeof coord().scanSession === 'function') coord().scanSession(sessionId); } catch (_) { /* the stored list stands */ }
+    return db().prepare('SELECT path FROM edits WHERE session_id = ? AND COALESCE(last_at, 0) >= ?').all(sessionId, since).map((r) => r.path);
+}
+
+async function ruleCheckFor(sessionId, messages, s, gr) {
+    try {
+        const times = (messages || []).map((m) => Date.parse(m.time || '')).filter(Number.isFinite);
+        const since = times.length ? Math.min(...times) : 0;
+        if (!since) return null;
+        const open = [];
+        try { db().prepare("SELECT violations FROM supervisor_reviews WHERE session_id = ? AND dismissed = 0 AND violations != '[]'").all(sessionId).forEach((r) => JSON.parse(r.violations).forEach((v) => { if (!v.resolved && v.file) open.push(v.file); })); } catch (_) { /* none */ }
+        const rules = listRules({ withText: true });
+        const R = require('./supervisorRuleCheck');
+        const deps = Object.assign({ changedFiles: changedSince }, RULE_CHECK_DEPS);
+        const rc = await R.runRuleCheck({ repo: RULES_REPO, sessionId, since, rules, openFiles: open, calls: s.ruleCheckCalls, deps, ask: (system, user) => askJson(gr, system, user, 'rulecheck', { maxTokens: 2500 }) });
+        if (rc.error) console.warn(`[supervisor] rule check ${sessionId.slice(0, 8)}: ${rc.error}`);
+        return rc;
+    } catch (e) { console.warn(`[supervisor] rule check ${sessionId.slice(0, 8)}: ${e.message}`); return null; }
 }
 
 /** Maintenance: reviews older than keepDays go (dismissed ones after half that), so the list and the db stay small. */
@@ -679,9 +756,18 @@ function gapText(rv) {
     return `${STEER_PREFIX} Your last turn may have left these unaddressed: ${rv.missed.map((m, i) => `(${i + 1}) ${m.item}`).join(' ')} Please do them now, or say why not.`;
 }
 
+/** The one note a review sends: its gaps, then its new rule violations ("Rule check: (1) <rule>: <file>: <why> - <fix>"). */
+function noteText(rv) {
+    const gaps = rv.verdict === 'gaps' && rv.missed.length ? gapText(rv) : '';
+    const nv = newViolations(rv);
+    if (!nv.length) return gaps;
+    const rt = `Rule check: ${nv.map((v, i) => `(${i + 1}) ${v.rule}: ${v.file}${v.line ? `:${v.line}` : ''}: ${v.why} - ${v.fix}`).join(' ')} Please fix these now, or say why not.`;
+    return gaps ? `${gaps} ${rt}` : `${STEER_PREFIX} ${rt}`;
+}
+
 /** Sends a gap review to its session: inbox note, and typed in when delivery is steer (or force). */
 async function deliver(rv, s, opts = {}) {
-    if (!rv || rv.verdict !== 'gaps' || !rv.missed.length) return rv;
+    if (!rv || !noteText(rv)) return rv;
     const set = s || settings();
     if (!opts.force && set.delivery === 'off') return rv;
     // the session went on working while it was reviewed (a new message, a queued one): its turn is not over, so the
@@ -693,7 +779,7 @@ async function deliver(rv, s, opts = {}) {
         const me = coord().upsertAgent({ id: 'supervisor', kind: 'other', name: 'Supervisor', task: 'Checks that every turn did what was asked', pid: null });
         // a session that never called agent-coord has no row yet: make it, so the note waits in its inbox
         if (!coord().getAgent(rv.agentId)) coord().upsertAgent({ id: rv.agentId, kind: 'claude', name: rv.title || rv.agentId, sessionId: rv.sessionId, account: rv.account || undefined });
-        coord().post(me.id, rv.agentId, gapText(rv).slice(STEER_PREFIX.length + 1), { kind: 'question' });
+        coord().post(me.id, rv.agentId, noteText(rv).slice(STEER_PREFIX.length + 1), { kind: 'question' });
         how = 'inbox';
     } catch (_) { how = ''; }
     const st = d.prepare('SELECT auto_steers FROM supervisor_state WHERE session_id = ?').get(rv.sessionId) || { auto_steers: 0 };
@@ -702,7 +788,7 @@ async function deliver(rv, s, opts = {}) {
     const wantSteer = opts.force || (supervisedSession && (set.delivery === 'steer' || set.delivery === 'inbox') && autoSteers < MAX_AUTO_STEERS);
     if (wantSteer) {
         try {
-            await require('./claudeSessionLauncher').steer(rv.sessionId, gapText(rv));
+            await require('./claudeSessionLauncher').steer(rv.sessionId, noteText(rv));
             how = 'steer';
             if (opts.auto) d.prepare('UPDATE supervisor_state SET auto_steers = ? WHERE session_id = ?').run(autoSteers + 1, rv.sessionId);
         } catch (_) { /* not in tmux (Remote Control's own): the inbox note stands */ }
@@ -714,7 +800,7 @@ async function deliver(rv, s, opts = {}) {
 async function send(id) {
     const rv = getReview(id);
     if (!rv) throw new Error('No such review');
-    if (rv.verdict !== 'gaps') throw new Error('Only a review with gaps can be sent');
+    if (rv.verdict !== 'gaps' && !openViolations(rv).length) throw new Error('Only a review with gaps or rule violations can be sent');
     const out = await deliver(rv, settings(), { force: true });
     emit(out);
     return out;
@@ -2387,5 +2473,5 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, resetPrices, queueReview, queue, cleanable }
+    _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
 };

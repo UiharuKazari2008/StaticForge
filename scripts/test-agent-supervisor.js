@@ -915,6 +915,92 @@ sup._test.setFetch(async (url, opts) => {
         assert.ok(T.list(SID2).asks.length >= 2);
     });
 
+    await test('rule check: scripts + judged violations join the turn-end review, are typed in once, and a later clean review resolves them', async () => {
+        const SID3 = 'cccccccc-1111-2222-3333-444444444444';
+        const file3 = path.join(tmp, '.claude', 'projects', '-repo', `${SID3}.jsonl`);
+        const target = 'modules/agentSupervisor.js';
+        const diff = `diff --git a/${target} b/${target}\n@@ -10,2 +10,3 @@\n context\n+const t = setInterval(poll, 1000); // my own toggle list\n context\n`;
+        let edited = [];
+        let scriptRises = true;
+        const judgeCalls = [];
+        let judged = [{ rule: 'server-push-not-polling', file: target, quote: 'const t = setInterval(poll, 1000);', why: 'a polling timer', fix: 'push over the socket' }, { rule: 'server-push-not-polling', file: target, quote: 'a line that is not in the diff', why: 'invented', fix: 'none' }];
+        sup._test.setRuleCheckDeps({
+            changedFiles: () => edited,
+            diffs: (files) => new Map(files.map((f) => [f, diff])),
+            runScript: (repo, sc, args) => {
+                if (args[0] === '--list') return { code: 0, stdout: `${target}:11  setInterval(poll, 1000)\n`, stderr: '' };
+                if (sc.name === 'check-perf-rules' && scriptRises) return { code: 1, stdout: '', stderr: `perf rules: counts rose\n\n  ${target}: timer 0 -> 1\n    no timers\n    11: setInterval(poll, 1000)\n` };
+                return { code: 0, stdout: 'ok', stderr: '' };
+            }
+        });
+        sup._test.setFetch(async (url, opts) => {
+            const b = JSON.parse(opts.body);
+            const sys = b.messages[0].content;
+            let out;
+            if (/project rules given/.test(sys)) { judgeCalls.push(b.messages[1].content); out = { violations: judged }; } else out = { verdict: 'ok', summary: 'done', missed: [] };
+            return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: JSON.stringify(out) } }] }) };
+        });
+        sup.markSupervised(SID3);
+        settingsCfg.agentSupervisor.delivery = 'steer';
+        const typed = [];
+        const realSteer = launcher.steer;
+        launcher.steer = async (id, text) => { typed.push(text); return { sent: true }; };
+        try {
+            // nothing edited: no violations, no judgement call
+            fs.writeFileSync(file3, user('Add the toggle list', '2026-11-24T12:00:00Z') + asst([{ type: 'text', text: 'Looked only.' }], '2026-11-24T12:00:10Z'));
+            let rv = await sup.review(SID3, 'turn-end', { gr });
+            assert.deepStrictEqual([rv.violations.length, judgeCalls.length, (rv.ruleCheck || {}).checked], [0, 0, false], JSON.stringify(rv.ruleCheck));
+            // edited: a script rise and one judged violation (the invented quote is dropped)
+            edited = [target];
+            fs.appendFileSync(file3, user('Now build it', '2026-11-24T12:01:00Z') + asst([{ type: 'text', text: 'Built it.' }], '2026-11-24T12:01:10Z'));
+            rv = await sup.review(SID3, 'turn-end', { gr });
+            assert.strictEqual(judgeCalls.length, 1);
+            assert.match(judgeCalls[0], /### server-push-not-polling/);
+            assert.deepStrictEqual(rv.violations.map((v) => `${v.source}:${v.rule}`).sort(), ['judge:server-push-not-polling', 'script:timer'], JSON.stringify(rv.violations));
+            assert.strictEqual(rv.violations.find((v) => v.source === 'script').line, 11);
+            assert.strictEqual(rv.violations.find((v) => v.source === 'judge').line, 11);
+            assert.strictEqual(rv.verdict, 'ok');
+            assert.strictEqual(rv.delivered, 'steer');
+            assert.strictEqual(typed.length, 1);
+            assert.ok(typed[0].startsWith(`${sup.STEER_PREFIX} Rule check: (1) `), typed[0]);
+            assert.match(typed[0], /server-push-not-polling: modules\/agentSupervisor\.js:11: a polling timer - push over the socket/);
+            const first = rv;
+            // the same violation again is not told twice
+            fs.appendFileSync(file3, user('Go on', '2026-11-24T12:02:00Z') + asst([{ type: 'text', text: 'Went on.' }], '2026-11-24T12:02:10Z'));
+            rv = await sup.review(SID3, 'turn-end', { gr });
+            assert.strictEqual(typed.length, 1, 'said once');
+            // fixed: a later clean review resolves the earlier ones
+            scriptRises = false; judged = []; edited = [target];
+            fs.appendFileSync(file3, user('Fix it', '2026-11-24T12:03:00Z') + asst([{ type: 'text', text: 'Fixed.' }], '2026-11-24T12:03:10Z'));
+            rv = await sup.review(SID3, 'turn-end', { gr });
+            assert.strictEqual(rv.violations.length, 0);
+            const old = sup.getReview(first.id);
+            assert.ok(old.violations.every((v) => /^Fixed: review #/.test(v.resolved)), JSON.stringify(old.violations));
+            assert.strictEqual(old.dismissed, true);
+            assert.ok(/Fixed/.test(old.resolved));
+            // off: no check at all
+            settingsCfg.agentSupervisor.ruleCheck = false;
+            scriptRises = true; judged = [{ rule: 'server-push-not-polling', file: target, quote: 'const t = setInterval(poll, 1000);', why: 'w', fix: 'f' }];
+            fs.appendFileSync(file3, user('Again', '2026-11-24T12:04:00Z') + asst([{ type: 'text', text: 'Again done.' }], '2026-11-24T12:04:10Z'));
+            const before = judgeCalls.length;
+            rv = await sup.review(SID3, 'turn-end', { gr });
+            assert.deepStrictEqual([rv.violations.length, judgeCalls.length], [0, before]);
+        } finally { launcher.steer = realSteer; delete settingsCfg.agentSupervisor.ruleCheck; settingsCfg.agentSupervisor.delivery = 'inbox'; sup._test.setRuleCheckDeps({}); }
+    });
+
+    await test('rule check: rise parsers read the three scripts\' output; rules are chosen by path and globs', () => {
+        const R = require('../modules/supervisorRuleCheck');
+        assert.deepStrictEqual(R.parseRises('perf', 'perf rules: counts rose\n\n  a/b.js: timer 1 -> 3\n    no timers\n    9: x\n').map((x) => [x.file, x.id, x.was, x.now, x.why]), [['a/b.js', 'timer', 1, 3, 'no timers']]);
+        assert.deepStrictEqual(R.parseRises('ui', 'UI standard: 1 count(s) rose.\n\n  public/x.js\n    own-toggle: 0 -> 2  (use the tree)\n').map((x) => [x.file, x.id, x.was, x.now, x.why]), [['public/x.js', 'own-toggle', 0, 2, 'use the tree']]);
+        assert.deepStrictEqual(R.parseRises('scope', 'app scope: counts went up (fix them):\n  public/y.js: globals 0 -> 1\n').map((x) => [x.file, x.id, x.now]), [['public/y.js', 'globals', 1]]);
+        const rules = sup.listRules({ withText: true });
+        const ui = R.applicableRules(rules, ['apps/claudedesk/client/claudedesk.js']).map((r) => r.name);
+        ['ui-standard', 'no-native-browser-ui', 'vista-icons-not-fa', 'scroll-lists-keep-position', 'sliders-platform', 'no-base64-images'].forEach((n) => assert.ok(ui.includes(n), n));
+        const srv = R.applicableRules(rules, ['modules/x.js']).map((r) => r.name);
+        assert.ok(srv.includes('server-push-not-polling') && srv.includes('phone-power-server') && !srv.includes('ui-standard'));
+        assert.ok(R.applicableRules(rules, ['public/scripts/comp/a.js']).map((r) => r.name).includes('tray-balloons'), 'a glob match');
+    });
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');
