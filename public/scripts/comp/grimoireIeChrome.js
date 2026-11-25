@@ -243,9 +243,9 @@
                 // Home first, then Page ▾ (the split toggle rides along hidden; Page ▾ drives it), Tools ▾
                 if (host.homeBtn) this.homeSplit.prepend(host.homeBtn);
                 [host.rightToggleBtn, site].filter(Boolean).forEach((el) => this.commands.appendChild(el));
-                // IE7: add-on buttons after Tools, the » last
-                this.extButtons.forEach((b) => this.commands.appendChild(b));
-                this.commands.appendChild(this.extChevron);
+                // the extension buttons and their » before Home, as Edge places them (#1118)
+                this.extButtons.forEach((b) => this.commands.insertBefore(b, this.homeSplit));
+                this.commands.insertBefore(this.extChevron, this.homeSplit);
                 if (site && !site.querySelector('.grimoire-ie-cmd-label')) {
                     site.dataset.grimoireIeHtml = site.innerHTML;
                     site.innerHTML = `<img src="${ART}/tools.png" alt=""><span class="grimoire-ie-cmd-label">Tools</span><span class="grimoire-ie-cmd-drop" aria-hidden="true"></span>`;
@@ -587,7 +587,7 @@
             for (let i = Math.min(history.length - 1, at + 4); i >= Math.max(0, at - 8); i--) {
                 const text = this.entryLabel(history[i], i);
                 items.push(i === at
-                    ? { text, action: `h:${i}`, indicatorStyle: 'dot', checked: true }
+                    ? { text, action: `h:${i}`, showIndicator: true, indicatorMark: 'radio', checked: true }
                     : { text, action: `h:${i}`, icon: shell.getHistoryEntryMenuIcon ? shell.getHistoryEntryMenuIcon(history[i]) : 'fas fa-file' });
             }
             return items.length ? items : [{ text: 'No pages yet', disabled: true }];
@@ -648,8 +648,8 @@
         /** Home ▾: the home page (checked), then Add or Change / Remove like IE7's. */
         homeItems() {
             const custom = this.homePage;
-            const items = [{ text: 'Grimoire', action: 'home-go', homeUrl: '', indicatorStyle: 'dot', checked: !custom }];
-            if (custom) items.push({ text: this.homeLabel(custom), subtext: custom, action: 'home-go', homeUrl: custom, indicatorStyle: 'dot', checked: true });
+            const items = [{ text: 'Grimoire', action: 'home-go', homeUrl: '', showIndicator: true, indicatorMark: 'radio', checked: !custom }];
+            if (custom) items.push({ text: this.homeLabel(custom), subtext: custom, action: 'home-go', homeUrl: custom, showIndicator: true, indicatorMark: 'radio', checked: true });
             items.push({ separator: true });
             items.push({ text: 'Add or Change Home Page...', action: 'home-set', disabled: !this.pageAddress() });
             items.push({ text: 'Remove Home Page', action: 'home-remove', disabled: !custom });
@@ -706,9 +706,9 @@
         searchItems() {
             const current = this.provider().id;
             const web = webSearchUrl || WEB_ENGINES[0].url;
-            return SEARCH_PROVIDERS.map((p) => ({ text: p.label, action: 'search-provider', providerId: p.id, indicatorStyle: 'dot', checked: p.id === current }))
+            return SEARCH_PROVIDERS.map((p) => ({ text: p.label, action: 'search-provider', providerId: p.id, showIndicator: true, indicatorMark: 'radio', checked: p.id === current }))
                 .concat([{ separator: true }, { text: 'Address Bar Search', disabled: true }])
-                .concat(WEB_ENGINES.map((e) => ({ text: e.label, action: 'web-engine', engineUrl: e.url, indicatorStyle: 'dot', checked: e.url === web })));
+                .concat(WEB_ENGINES.map((e) => ({ text: e.label, action: 'web-engine', engineUrl: e.url, showIndicator: true, indicatorMark: 'radio', checked: e.url === web })));
         }
 
         zoomItems() {
@@ -717,7 +717,7 @@
                 { text: 'Zoom In', action: 'zoom-in', disabled: z >= ZOOM_STEPS[ZOOM_STEPS.length - 1] },
                 { text: 'Zoom Out', action: 'zoom-out', disabled: z <= ZOOM_STEPS[0] },
                 { separator: true }
-            ].concat(ZOOM_LEVELS.map((level) => ({ text: `${level}%`, action: 'zoom', zoomLevel: level, indicatorStyle: 'dot', checked: z === level })));
+            ].concat(ZOOM_LEVELS.map((level) => ({ text: `${level}%`, action: 'zoom', zoomLevel: level, showIndicator: true, indicatorMark: 'radio', checked: z === level })));
         }
 
         // ---- settings (userGlobalSettings.alchemy) ----
@@ -1223,7 +1223,7 @@
                     text: (tabs.isActive(tab) ? this.activeTabInfo() : this.backgroundTabInfo(tab)).title,
                     action: 'tab-show',
                     tabId: tab.id,
-                    indicatorStyle: 'dot',
+                    showIndicator: true, indicatorMark: 'radio',
                     checked: tabs.isActive(tab)
                 }));
                 cm.detachClickMenuFromElement(this.tabListBtn);
