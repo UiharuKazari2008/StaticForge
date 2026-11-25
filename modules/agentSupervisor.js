@@ -78,6 +78,21 @@ const sessionsDir = () => path.join(claudeHome(), '.claude', 'sessions');
 function stateDir() { return path.dirname(require('./agentCoord/store').dbPath()); }
 function socketPath() { return process.env.AGENT_SUPERVISOR_SOCKET || path.join(stateDir(), 'supervisor.sock'); }
 const coord = () => require('./agentCoord/store');
+/** Task lists and titles (modules/sessionTasks.js), wired to this Supervisor's engine. */
+let tasksWired = false;
+function sessionTasks() {
+    const T = require('./sessionTasks');
+    if (!tasksWired) {
+        tasksWired = true;
+        T.configure({
+            askJson: (system, user, kind, opts) => askJson(gResources, system, user, kind, opts),
+            findFile: (id) => transcriptFile(id),
+            enabled: () => !!(gResources && settings().enabled),
+            customTitle: (id) => require('./claudeSessions').hasCustomTitle(id)
+        });
+    }
+    return T;
+}
 
 let gResources = null;
 const listeners = new Set();
@@ -153,6 +168,8 @@ function settings(gr) {
         // which sessions it reviews on its own: only supervised ones (work items, sessions started as supervised), or
         // every session (Yukimi, Nov 24 2026: "this is an unsupervised session, why is the Supervisor watching it?")
         reviewScope: cfg.reviewScope === 'all' ? 'all' : 'supervised',
+        // the Manager Session: Yukimi's standing session for fixing Fleet and the Supervisor themselves (pinned in Fleet)
+        managerSessionId: SESSION_ID_RE.test(String(cfg.managerSessionId || '')) ? String(cfg.managerSessionId) : '',
         fallbackEngines: Array.isArray(cfg.fallbackEngines) ? cfg.fallbackEngines.filter((e) => e && e.engine).map((e) => ({ engine: String(e.engine), model: String(e.model || '') })) : [],
         autoPauseOnCollision: cfg.autoPauseOnCollision !== false,
         modelPolicy: cleanPolicy(cfg.modelPolicy),
@@ -174,6 +191,7 @@ async function saveSettings(gr, next) {
         maxConcurrent: next.maxConcurrent === undefined ? cur.maxConcurrent : Math.max(1, Math.min(12, Math.round(Number(next.maxConcurrent)) || cur.maxConcurrent)),
         autoStart: next.autoStart === undefined ? cur.autoStart : next.autoStart === true,
         reviewScope: next.reviewScope === undefined ? cur.reviewScope : (next.reviewScope === 'all' ? 'all' : 'supervised'),
+        managerSessionId: next.managerSessionId === undefined ? cur.managerSessionId : (SESSION_ID_RE.test(String(next.managerSessionId || '')) ? String(next.managerSessionId) : ''),
         fallbackEngines: Array.isArray(next.fallbackEngines) ? next.fallbackEngines.filter((e) => e && e.engine).slice(0, 6).map((e) => ({ engine: String(e.engine).slice(0, 60), model: String(e.model || '').slice(0, 120) })) : cur.fallbackEngines,
         autoPauseOnCollision: next.autoPauseOnCollision === undefined ? cur.autoPauseOnCollision : next.autoPauseOnCollision === true,
         modelPolicy: next.modelPolicy === undefined ? cur.modelPolicy : cleanPolicy(next.modelPolicy),
@@ -273,7 +291,8 @@ const SYSTEM = [
     'When the request is to build, change or fix something, it is only done with evidence it works: the agent ran tests, a build, the program, or looked at the result, and says what it saw. A build / fix turn that ends without any such evidence is a gap ("not shown to be tested").',
     'Work the agent handed to a background agent or subagent that is still running, and said so (what it does, that it reports back), is in progress, not a gap: the turn ending while it runs is expected. Only report it if the agent never started it or never said so.',
     'Answers along the way count as much as the final one: an ask answered or reported done in any of them is addressed. An agent that says an item was already done earlier (naming the commit, the check or what it saw) has addressed it: do not ask for it again.',
-    'Answer ONLY a JSON object: {"verdict":"ok"|"gaps"|"unclear","summary":"one sentence","missed":[{"item":"what was asked and not addressed","evidence":"why you think so, quoting the request"}]}. verdict ok means nothing missed; unclear means the summary is not enough to tell.'
+    'When "The user\'s list" is given, it holds everything the user asked over the whole session, with a tick and the evidence for the items already done: an open item without evidence that this turn was about and did not address is a gap; a ticked item with evidence is addressed. Name the open items this turn did, with what shows it, in "done".',
+    'Answer ONLY a JSON object: {"verdict":"ok"|"gaps"|"unclear","summary":"one sentence","missed":[{"item":"what was asked and not addressed","evidence":"why you think so, quoting the request"}],"done":[{"id":12,"evidence":"short proof from the actions or the answer"}]}. verdict ok means nothing missed; unclear means the summary is not enough to tell. "done" is optional (only ids from the user\'s list).'
 ].join('\n');
 
 function promptFor(t, meta) {
@@ -294,7 +313,7 @@ function promptFor(t, meta) {
         '',
         '## Its final answer',
         t.final || '(no final text)'
-    ].join('\n');
+    ].concat(meta.list ? ['', meta.list] : []).join('\n');
 }
 
 let fetchFn = (...a) => fetch(...a);
@@ -444,7 +463,8 @@ function parseVerdict(text) {
     const missed = (Array.isArray(o.missed) ? o.missed : []).map((x) => (typeof x === 'string' ? { item: x.slice(0, 400), evidence: '' } : { item: String((x && x.item) || '').slice(0, 400), evidence: String((x && x.evidence) || '').slice(0, 600) })).filter((x) => x.item).slice(0, 20);
     let verdict = ['ok', 'gaps', 'unclear'].includes(o.verdict) ? o.verdict : (missed.length ? 'gaps' : 'unclear');
     if (verdict === 'ok' && missed.length) verdict = 'gaps';
-    return { verdict, summary: String(o.summary || '').slice(0, 400), missed };
+    const done = (Array.isArray(o.done) ? o.done : []).map((x) => ({ id: Number(x && typeof x === 'object' ? x.id : x), evidence: String((x && x.evidence) || '').slice(0, 600) })).filter((x) => Number.isInteger(x.id)).slice(0, 40);
+    return Object.assign({ verdict, summary: String(o.summary || '').slice(0, 400), missed }, done.length ? { done } : {});
 }
 
 // ---------------------------------------------------------------- store (agent-coord DB)
@@ -486,6 +506,8 @@ function db() {
         [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
         const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
         if (!cols.has('supervised')) d.exec('ALTER TABLE supervisor_state ADD COLUMN supervised INTEGER NOT NULL DEFAULT 0');
+        const rcols = new Set(d.prepare('PRAGMA table_info(supervisor_reviews)').all().map((x) => x.name));
+        if (!rcols.has('resolved')) d.exec('ALTER TABLE supervisor_reviews ADD COLUMN resolved TEXT');
         db.ready = d;
     }
     return d;
@@ -497,7 +519,8 @@ function rowReview(r) {
     return {
         id: r.id, sessionId: r.session_id, agentId: r.agent_id || '', title: r.title || '', account: r.account || '', at: r.at,
         trigger: r.trigger, verdict: r.verdict, summary: r.summary, request: r.request, steering: j(r.steering, []),
-        missed: j(r.missed, []), model: r.model, delivered: r.delivered || '', dismissed: !!r.dismissed, error: r.error || ''
+        missed: j(r.missed, []), model: r.model, delivered: r.delivered || '', dismissed: !!r.dismissed, error: r.error || '',
+        resolved: r.resolved || ''
     };
 }
 
@@ -603,6 +626,8 @@ async function review(sessionId, trigger, opts = {}) {
         partial = start === 0 && all.length >= 120;
     }
     const meta = metaFor(sessionId);
+    // the user's list is brought up to date first, so the review judges against it (a failure here never stops a review)
+    try { const T = sessionTasks(); await T.sync(sessionId); meta.list = T.promptSection(sessionId); } catch (e) { console.warn(`[supervisor] tasks ${sessionId.slice(0, 8)}: ${e.message}`); }
     const turn = turnOf(messages);
     const base = { session_id: sessionId, agent_id: meta.agentId, title: meta.title, account: meta.account, at: Date.now(), trigger, request: turn.request.slice(0, 4000), steering: JSON.stringify(turn.steering.map((x) => x.slice(0, 1500)).slice(0, 12)) };
     d.prepare(`INSERT INTO supervisor_state (session_id, file, offset, status, updated_at) VALUES (?, ?, ?, 'seen', ?)
@@ -613,15 +638,41 @@ async function review(sessionId, trigger, opts = {}) {
         try { result = await askModel(gr, s, promptFor(capTurn(turn), Object.assign({ partial }, meta))); } catch (e) { result = { verdict: 'error', summary: e.message.slice(0, 300), missed: [], model: '', error: e.message }; }
     }
     if (result.skipped && trigger === 'turn-end') return null; // nothing asked: no row
+    // the items a review names as done are ticked, with its evidence
+    if (result.done && result.done.length) { try { sessionTasks().applyDone(sessionId, result.done); } catch (e) { console.warn(`[supervisor] tick: ${e.message}`); } }
     const ins = d.prepare(`INSERT INTO supervisor_reviews (session_id, agent_id, title, account, at, trigger, verdict, summary, request, steering, missed, model, error)
         VALUES (@session_id, @agent_id, @title, @account, @at, @trigger, @verdict, @summary, @request, @steering, @missed, @model, @error)`)
         .run(Object.assign(base, { verdict: result.verdict, summary: result.summary || '', missed: JSON.stringify(result.missed || []), model: result.model || '', error: result.error || null }));
     let rv = getReview(ins.lastInsertRowid);
+    resolveEarlier(rv);
     if (rv.verdict === 'gaps' && trigger !== 'mcp') rv = await deliver(rv, s, { auto: true, fromSupervisor: turn.fromSupervisor }).catch(() => rv);
     afterTurn(sessionId, s).catch((e) => console.warn(`[supervisor] upkeep ${sessionId.slice(0, 8)}: ${e.message}`));
     try { workAfterReview(rv); } catch (e) { console.warn(`[supervisor] work state: ${e.message}`); }
     emit(rv);
     return rv;
+}
+
+/**
+ * A newer review of the same session settles the open gap reviews before it (Yukimi, Nov 24 2026: "auto dismiss when
+ * it has verified it's fixed"): an ok review resolves them as fixed; a newer gaps review supersedes them (its own list
+ * is what is still open). Each gets the reason, so the Reviews list shows why it closed.
+ */
+function resolveEarlier(rv) {
+    if (!rv || !['ok', 'gaps'].includes(rv.verdict)) return 0;
+    const note = rv.verdict === 'ok' ? `Fixed: review #${rv.id} found nothing missed` : `Superseded by review #${rv.id}`;
+    try {
+        const r = db().prepare("UPDATE supervisor_reviews SET dismissed = 1, resolved = ? WHERE session_id = ? AND id < ? AND verdict = 'gaps' AND dismissed = 0").run(note, rv.sessionId, rv.id);
+        return r.changes;
+    } catch (e) { console.warn(`[supervisor] resolve: ${e.message}`); return 0; }
+}
+
+/** Maintenance: reviews older than keepDays go (dismissed ones after half that), so the list and the db stay small. */
+function pruneReviews(keepDays = 30) {
+    const now = Date.now();
+    const d = db();
+    const a = d.prepare('DELETE FROM supervisor_reviews WHERE at < ?').run(now - keepDays * 86400000).changes;
+    const b = d.prepare('DELETE FROM supervisor_reviews WHERE dismissed = 1 AND at < ?').run(now - (keepDays / 2) * 86400000).changes;
+    return a + b;
 }
 
 function gapText(rv) {
@@ -1730,6 +1781,7 @@ function settleThenReview(sessionId) {
         if (statusBySession.get(sessionId) === 'busy') return;
         const live = liveSessionsById().get(sessionId);
         if (live && live.status === 'busy') return;
+        emit({ turnEnd: sessionId }); // Fleet > Usage judges the finished turn (modules/claudeUsageAudit.js)
         queueReview(sessionId, 'turn-end');
     }, SETTLE_MS));
 }
@@ -1750,6 +1802,8 @@ function scan(first) {
         // a turn ended: reviewed once it stays ended for a while (a session that is idle for a moment between a message
         // and the next, or while a queued message lands, is still in its turn)
         if (!first && prev === 'busy' && now !== 'busy' && settings().enabled) settleThenReview(r.sessionId);
+        // a supervised session's new messages become its asks (cheap: the sync stats the transcript first); the others are read while a Fleet window watches them
+        if (settings().enabled && isSupervised(r.sessionId)) sessionTasks().poke(r.sessionId);
         if (!first && prev === undefined && now === 'busy') markPartial(r.sessionId);
     });
     [...statusBySession.keys()].forEach((id) => { if (!seen.has(id)) statusBySession.delete(id); });
@@ -1825,6 +1879,7 @@ async function askUser(req, onId) {
 
 // Fleet tools for every agent (agent-coord fleet_*): read-only views, plus update / hold / cancel of the items the
 // caller itself queued (source 'agent', sourceRef 'agent:<its id>#<n>'). Starting is Yukimi's: there is no start op.
+const TASK_OPS = ['task_list', 'task_add', 'task_done', 'task_update'];
 const FLEET_OPS = ['fleet_status', 'fleet_work_list', 'fleet_work_get', 'fleet_work_update', 'fleet_work_hold', 'fleet_work_cancel', 'fleet_work_shape', 'fleet_session_read', 'fleet_maintenance_report'];
 function ownsWork(w, by) { return !!by && w.source === 'agent' && String(w.sourceRef || '').startsWith(`agent:${by}#`); }
 async function fleetOp(req) {
@@ -1871,8 +1926,10 @@ function serveSocket() {
             buf = '';
             let out;
             try {
-                if (!req || !['check', 'enqueue', 'pause', 'resume', 'ask_user'].concat(FLEET_OPS).includes(req.op)) throw new Error('op must be check, enqueue, pause, resume, ask_user or a fleet_* op');
-                if (FLEET_OPS.includes(req.op)) {
+                if (!req || !['check', 'enqueue', 'pause', 'resume', 'ask_user'].concat(FLEET_OPS, TASK_OPS).includes(req.op)) throw new Error('op must be check, enqueue, pause, resume, ask_user, a task_* or a fleet_* op');
+                if (TASK_OPS.includes(req.op)) {
+                    out = { ok: true, result: sessionTasks().agentOp(req) };
+                } else if (FLEET_OPS.includes(req.op)) {
                     out = { ok: true, result: await fleetOp(req) };
                 } else if (req.op === 'ask_user') {
                     sock.setTimeout(0); // a person answers: the hook's own timeout bounds the wait
@@ -2126,7 +2183,7 @@ function dismissRuleFinding(findingId) {
 
 module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, askJson, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, pullIssues, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { turnOf, capTurn, parseVerdict, promptFor, scan, statusBySession, setFetch: _setFetch, resetPrices, queueReview, queue, cleanable }
 };

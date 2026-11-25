@@ -590,6 +590,47 @@ async function main() {
         console.log('ok 11 Markdown rendering, SendUserFile rows and the file route');
     }
 
+    // 12. the Tasks panel: both lists and the counts the status bar shows, edits, and the push while a transcript is watched
+    {
+        const T = require('../modules/sessionTasks');
+        const TS = '44444444-4444-4444-8444-444444444444';
+        const out = [];
+        const tctx = { globalResources: gr, sendToClient: (ws, m) => out.push(m), sendError: (ws, msg) => out.push({ error: msg }) };
+        const admin = { userType: 'admin' };
+        const call = async (message) => { const n = out.length; await desk._handlers.handleTasks(tctx, {}, Object.assign({ requestId: 'tk' }, message), admin); return out.slice(n).find((m) => m.type === 'claude_desk_tasks_response'); };
+        let r = await call({ id: TS, action: 'add', text: 'Make the icons 16 px' });
+        assert.deepStrictEqual([r.data.counts.asksTotal, r.data.counts.asksDone, r.data.counts.tasksTotal], [1, 0, 0]);
+        T.add(TS, 'agent', 'Redraw the sprite sheet', { by: 'agent' });
+        r = await call({ id: TS, action: 'list' });
+        assert.deepStrictEqual([r.data.counts.asksTotal, r.data.counts.tasksTotal], [1, 1]);
+        const ask = r.data.asks[0];
+        r = await call({ id: TS, action: 'update', taskId: ask.id, done: true });
+        assert.ok(r.data.asks[0].done && r.data.asks[0].doneBy === 'user' && r.data.counts.asksDone === 1);
+        r = await call({ id: TS, action: 'update', taskId: ask.id, text: 'Make the icons 24 px', done: false });
+        assert.strictEqual(r.data.asks[0].text, 'Make the icons 24 px');
+        r = await call({ id: TS, action: 'rename', title: 'Icons work' });
+        assert.strictEqual(r.data.title, 'Icons work');
+        assert.strictEqual(claudeSessions.titleOf(TS, null, { title: 'Auto', firstPrompt: 'x' }), 'Icons work');
+        const bad = await call({ id: TS, action: 'update', taskId: 999999, done: true });
+        assert.ok(!bad && out.some((m) => /No such task/.test(m.error || '')), 'an id of another session is refused');
+        r = await call({ id: TS, action: 'remove', taskId: ask.id });
+        assert.strictEqual(r.data.asks.length, 0);
+        // watched: a change is pushed to the socket that watches the session
+        const tf = path.join(HOME, '.claude', 'projects', '-home-test', `${TS}.jsonl`);
+        write(tf, JSON.stringify({ type: 'user', uuid: 'u1', timestamp: '2026-11-24T10:00:00Z', message: { role: 'user', content: 'hello' } }) + '\n');
+        const ws = { readyState: 1, once() {} };
+        await desk._handlers.handleWatch(tctx, ws, { requestId: 'w1', id: TS }, admin);
+        const before = out.length;
+        T.add(TS, 'user', 'A new ask', { by: 'user' });
+        const push = out.slice(before).find((m) => m.type === 'claude_desk_tasks');
+        assert.ok(push && push.data.asks.some((a) => a.text === 'A new ask'), 'the change is pushed to the watching socket');
+        await desk._handlers.handleUnwatch(tctx, ws, { requestId: 'w2' }, admin);
+        const after = out.length;
+        T.add(TS, 'user', 'Not pushed', { by: 'user' });
+        assert.ok(!out.slice(after).some((m) => m.type === 'claude_desk_tasks'), 'no push after unwatch');
+        console.log('ok 12 task panel data');
+    }
+
     store.close();
     console.log('all claude desk tests passed');
 }

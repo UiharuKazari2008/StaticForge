@@ -31,10 +31,10 @@ const REPO = path.join(__dirname, '..');
 const DAY = 24 * 3600 * 1000;
 const HOUR = 3600 * 1000;
 const KEEP_DAYS = 30;
-const CHECK_IDS = ['workfolders', 'worktrees', 'branches', 'prs', 'errors', 'disk', 'thermals', 'sessions', 'waiting'];
+const CHECK_IDS = ['workfolders', 'worktrees', 'branches', 'prs', 'errors', 'disk', 'thermals', 'sessions', 'waiting', 'usage', 'cleanup'];
 const CHECK_TITLES = {
     workfolders: 'Work folders and temp files', worktrees: 'Git worktrees', branches: 'Branches', prs: 'Pull requests',
-    errors: 'Server errors', disk: 'Disk usage', thermals: 'Thermals and health', sessions: 'Sessions and agents', waiting: 'Waiting work'
+    errors: 'Server errors', disk: 'Disk usage', thermals: 'Thermals and health', sessions: 'Sessions and agents', waiting: 'Waiting work', usage: 'Usage review', cleanup: 'Fleet cleanup'
 };
 const DEFAULTS = {
     enabled: true, time: '04:30', dryRun: false, catchUp: false,
@@ -883,7 +883,41 @@ async function checkWaiting(ctx) {
 
 // ---------------------------------------------------------------- the run
 
-const RUNNERS = { workfolders: checkWorkfolders, worktrees: checkWorktrees, branches: checkBranches, prs: checkPrs, errors: checkErrors, disk: checkDisk, thermals: checkThermals, sessions: checkSessions, waiting: checkWaiting };
+/**
+ * Fleet's own records (Yukimi, Nov 24 2026: "also do cleanout in maintenance"): Supervisor reviews over 30 days (dismissed
+ * and resolved ones over 15), acknowledged usage flags over 30 days and any over 60, activity rows over 30 days, the
+ * Supervisor's call log over 90 days, task lists of sessions quiet for 30 days. Counts only in a dry run.
+ */
+async function checkCleanup(ctx) {
+    const d = (ctx.db || require('./agentCoord/store').open)();
+    const now = ctx.now || Date.now();
+    const has = (t) => !!d.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+    const cols = (t) => new Set(d.prepare(`PRAGMA table_info(${t})`).all().map((x) => x.name));
+    const jobs = [
+        ['old reviews', 'supervisor_reviews', 'at < ?', [now - 30 * DAY]],
+        ['settled reviews', 'supervisor_reviews', 'dismissed = 1 AND at < ?', [now - 15 * DAY]],
+        ['acknowledged usage flags', 'usage_flags', 'ack_at IS NOT NULL AND last_seen < ?', [now - 30 * DAY]],
+        ['old usage flags', 'usage_flags', 'last_seen < ?', [now - 60 * DAY]],
+        ['activity rows', 'activity', 'ts < ?', [now - 30 * DAY]],
+        ['Supervisor call log rows', 'supervisor_usage', 'at < ?', [now - 90 * DAY]],
+        ['task list items of quiet sessions', 'session_tasks', 'updated_at < ?', [now - 30 * DAY]]
+    ];
+    const actions = [];
+    let total = 0;
+    for (const [label, table, where, args] of jobs) {
+        if (!has(table)) continue;
+        const need = where.match(/[a-z_]+(?= [<=I])/g) || [];
+        if (need.some((c) => !cols(table).has(c))) continue;
+        const n = d.prepare(`SELECT COUNT(*) n FROM ${table} WHERE ${where}`).get(...args).n;
+        if (!n) continue;
+        if (!ctx.dryRun) d.prepare(`DELETE FROM ${table} WHERE ${where}`).run(...args);
+        actions.push(`${ctx.dryRun ? 'Would remove' : 'Removed'} ${n} ${label}`);
+        total += n;
+    }
+    return makeCheck('cleanup', 'ok', total ? `${total} old record(s) ${ctx.dryRun ? 'to remove' : 'removed'}` : 'Nothing old to remove', actions, []);
+}
+
+const RUNNERS = { workfolders: checkWorkfolders, worktrees: checkWorktrees, branches: checkBranches, prs: checkPrs, errors: checkErrors, disk: checkDisk, thermals: checkThermals, sessions: checkSessions, waiting: checkWaiting, usage: (ctx) => require('./claudeUsageAudit').checkUsage(ctx), cleanup: checkCleanup };
 const RANK = { ok: 0, skipped: 0, warn: 1, fail: 2 };
 
 function overall(checks) { return checks.reduce((w, c) => (RANK[c.state] > RANK[w] ? c.state : w), 'ok'); }

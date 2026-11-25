@@ -252,6 +252,31 @@ function liveSessions() {
 const iso = (ms) => (ms ? new Date(ms).toISOString() : null);
 
 /**
+ * The title a session shows (Nov 24 2026: titles follow the conversation): a Fleet-side name, then the session's own given
+ * name or custom title (/rename), then the Supervisor's title (modules/sessionTasks.js, from the recent asks), then Claude
+ * Code's own ai-title or the first prompt.
+ */
+function titleOf(id, live, info) {
+    let t = null;
+    try { t = require('./sessionTasks'); } catch (_) { t = null; }
+    let named = '';
+    let sup = '';
+    try { if (t) { sup = t.titleFor(id); named = t.isNamed(id) ? sup : ''; } } catch (_) { /* no store: the transcript's own */ }
+    const own = (live && live.givenName) || (info && info.titleKind === 'custom' ? info.title : '');
+    return named || own || (sup) || (info && (info.title || info.firstPrompt)) || (live && live.name) || id.slice(0, 8);
+}
+
+/** True when the session has a title of its own (/rename, custom-title entry, a name it was started with): the Supervisor keeps its hands off. */
+function hasCustomTitle(id) {
+    const l = liveSessions().find((s) => s.id === id);
+    if (l && l.givenName) return true;
+    const tr = findTranscript(id);
+    const c = tr && scans.get(tr.file);
+    const info = c ? c.info : (tr ? quickHead(tr.file) : null);
+    return !!(info && info.titleKind === 'custom');
+}
+
+/**
  * The Remote Control sessions running now (for the switch's Bring over): Remote Control's own children
  * and rc-* ones. Newest activity first. Title from the transcript's head / tail only (cheap).
  */
@@ -262,7 +287,7 @@ function listRemoteSessions() {
         let mtime = 0;
         try { mtime = t ? fs.statSync(t.file).mtimeMs : 0; } catch (_) { mtime = 0; }
         const head = t && !c ? quickHead(t.file) : null;
-        const title = s.givenName || (c && (c.info.title || c.info.firstPrompt)) || (head && (head.title || head.firstPrompt)) || s.name || s.id.slice(0, 8);
+        const title = titleOf(s.id, s, c ? c.info : head);
         return {
             id: s.id, pid: s.pid, origin: s.origin, title, name: s.name, cwd: s.cwd, folder: s.cwd ? path.basename(s.cwd) : '',
             status: s.status, link: s.link, tmuxSession: s.tmuxSession,
@@ -302,7 +327,7 @@ async function listAll(opts = {}) {
         const cwd = info.cwd || (l && l.cwd) || '';
         rows.push({
             id: t.id,
-            title: (l && l.givenName) || info.title || info.firstPrompt || t.id.slice(0, 8),
+            title: titleOf(t.id, l, info),
             firstPrompt: info.firstPrompt,
             lastPrompt: info.lastPrompt,
             lastPromptAt: info.lastPromptAt,
@@ -425,6 +450,8 @@ module.exports = {
     SESSION_ID_RE,
     MODES,
     liveSessions,
+    hasCustomTitle,
+    titleOf,
     listRemoteSessions,
     listAll,
     resume,

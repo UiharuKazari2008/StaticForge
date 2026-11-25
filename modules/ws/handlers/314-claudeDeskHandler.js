@@ -41,6 +41,7 @@ const coord = require('../../agentCoord/store');
 
 const ADMIN_DESTRUCTIVE = { destructive: true };
 const APPEND_TYPE = 'claude_desk_transcript_append';
+const TASKS_TYPE = 'claude_desk_tasks';
 
 const isAdmin = (clientInfo) => !!(clientInfo && clientInfo.userType === 'admin');
 let gResources = null;
@@ -135,9 +136,11 @@ function armSessionsWatch(feed) {
     } catch (_) { sessionsWatcher = null; }
 }
 
+function titleFor(id) { try { return require('../../sessionTasks').titleFor(id); } catch (_) { return ''; } }
+
 function liveSummary() {
     return claudeSessions.liveSessions().map((s) => ({
-        id: s.id, pid: s.pid, name: s.name, status: s.status, origin: s.origin, tmuxSession: s.tmuxSession,
+        id: s.id, pid: s.pid, name: s.name, title: titleFor(s.id), status: s.status, origin: s.origin, tmuxSession: s.tmuxSession,
         remoteControl: s.remoteControl, link: s.link, cwd: s.cwd, startedAt: s.startedAt
     })).sort((a, b) => a.id.localeCompare(b.id));
 }
@@ -188,6 +191,12 @@ function defineFeeds() {
             };
         }
     });
+    // a new session title (the Supervisor's or a Fleet-side name) reaches the window through the live list
+    try {
+        const T = require('../../agentSupervisor').sessionTasks();
+        const shown = new Map();
+        T.onChange((sid) => { const t = T.titleFor(sid); if (shown.get(sid) !== t) { shown.set(sid, t); if (deskFeed && deskFeed.size) deskFeed.poke(); } });
+    } catch (_) { /* no store yet */ }
     fluxFeed = statusHub.define({
         name: 'claude_desk_flux',
         pushType: 'claude_desk_flux',
@@ -203,6 +212,7 @@ const poke = () => { if (deskFeed) deskFeed.poke(); };
 
 const supervisor = require('../../agentSupervisor');
 const maintenance = require('../../fleetMaintenance');
+const usageAudit = require('../../claudeUsageAudit');
 
 /** The console refetches the review list only when lastReviewId moves (no polling). */
 function supervisorSummary() {
@@ -228,7 +238,18 @@ async function supervisorStatus(gr) {
     try { rules = supervisor.rulesState(); } catch (e) { console.warn(`[claudeDesk] rules: ${e.message}`); }
     let maint = null;
     try { maint = maintenance.state(gr); } catch (e) { console.warn(`[claudeDesk] maintenance: ${e.message}`); }
-    return { maintenance: maint, rules, spend, settings: set, engines: supEnginesWithModels(gr), reviews: supervisor.listReviews({ limit: 80 }), work: supervisor.listWork({ limit: 100 }), holds: supervisor.listHolds(), gateAsks, topologies: supervisor.TOPOLOGIES, locks, artifacts, stats };
+    return { maintenance: maint, usage: (() => { try { return usageAudit.summary(); } catch (_) { return null; } })(), rules, spend, settings: set, engines: supEnginesWithModels(gr), reviews: supervisor.listReviews({ limit: 80 }), work: supervisor.listWork({ limit: 100 }), holds: supervisor.listHolds(), gateAsks, topologies: supervisor.TOPOLOGIES, locks, artifacts, stats };
+}
+
+/** Fleet > Usage: the tree for 1 or 7 days; a first read of a big window that takes over 9 s answers "scanning" and finishes in the background. */
+async function usageTreeFor(gr, message) {
+    const days = Number(message.days) === 7 ? 7 : 1;
+    const p = usageAudit.tree({ gr, days });
+    let timer = null;
+    const r = await Promise.race([p, new Promise((res) => { timer = setTimeout(() => res(null), 9000); })]);
+    clearTimeout(timer);
+    if (!r) { p.catch(() => {}); return { usage: { rows: [], days, scanning: true } }; }
+    return { usage: r, flags: usageAudit.flagsList({ all: true, days: 30 }), summary: usageAudit.summary() };
 }
 
 const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => {
@@ -239,6 +260,10 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'send') return { review: await supervisor.send(message.reviewId) };
     if (action === 'dismiss') { supervisor.dismiss(message.reviewId); return supervisorStatus(gr); }
     if (action === 'spend') return { spend: await supervisor.spend(gr) };
+    if (action === 'usage_tree') return usageTreeFor(gr, message);
+    if (action === 'usage_detail') return { detail: await usageAudit.detail(String(message.kind || 'session'), String(message.id || ''), { gr, days: Number(message.days) || 7 }) };
+    if (action === 'usage_flags') return { flags: usageAudit.flagsList({ all: message.all === true, days: Number(message.days) || 7 }), summary: usageAudit.summary() };
+    if (action === 'usage_ack') { usageAudit.ack(message.id, message.on); poke(); return { flags: usageAudit.flagsList({ all: true, days: 30 }), summary: usageAudit.summary() }; }
     if (action === 'usage_history') return { history: require('../../claudeUsageHistory').history(message.days) };
     if (action === 'pause') { await supervisor.pauseSession(String(message.sessionId || ''), { mode: message.mode, reason: message.reason, by: 'Fleet' }); return supervisorStatus(gr); }
     if (action === 'resume') { await supervisor.resumeSession(String(message.sessionId || ''), { note: message.note }); return supervisorStatus(gr); }
@@ -249,6 +274,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     // work_start / work_hold take one id or ids (several picked in the list); work_start now:false waits for a slot
     const workIds = () => (Array.isArray(message.ids) ? message.ids : [message.id]).filter((x) => x != null).slice(0, 200);
     if (action === 'work_start') { const errs = []; workIds().forEach((i) => { try { supervisor.startWork(i, { now: message.now !== false }); } catch (e) { errs.push(`#${i}: ${e.message}`); } }); return Object.assign(await supervisorStatus(gr), errs.length ? { errors: errs } : {}); }
+    if (action === 'manager_set') { await supervisor.saveSettings(gr, { managerSessionId: String(message.sessionId || '') }); return supervisorStatus(gr); }
     if (action === 'work_hold') { const errs = []; workIds().forEach((i) => { try { supervisor.holdWork(i); } catch (e) { errs.push(`#${i}: ${e.message}`); } }); return Object.assign(await supervisorStatus(gr), errs.length ? { errors: errs } : {}); }
     if (action === 'work_update') { supervisor.updateWork(message.id, { prompt: message.prompt }, { by: 'Yukimi (Fleet)' }); return supervisorStatus(gr); }
     if (action === 'work_cancel') { supervisor.cancelWork(message.id); return supervisorStatus(gr); }
@@ -283,6 +309,7 @@ function unwatch(ws) {
     if (!w) return;
     clearTimeout(w.timer);
     try { w.watcher.close(); } catch (_) { /* closed */ }
+    if (w.tasksOff) w.tasksOff();
     watches.delete(ws);
 }
 
@@ -309,12 +336,20 @@ async function watchTranscript(handlersCtx, ws, id, from, view) {
                     if (ins && lv && lv.status === 'busy') ins.agentsNow = await agentsNow(id).catch(() => []);
                 } catch (_) { ins = null; }
                 if (r.messages.length || ins) handlersCtx.sendToClient(ws, { type: APPEND_TYPE, data: { id, messages: r.messages, end: r.end, insight: ins }, timestamp: new Date().toISOString() });
+                // new messages may hold new asks of the user's (read shortly, one model call per batch); the list arrives as claude_desk_tasks
+                if (r.messages.length) { try { supervisor.sessionTasks().poke(id); } catch (_) { /* later */ } }
             }
         } catch (_) { /* next change */ } finally { w.reading = false; }
     };
     w.watcher = fs.watch(file, { persistent: false }, () => { clearTimeout(w.timer); w.timer = setTimeout(flush, 400); });
     w.watcher.on('error', () => unwatch(ws));
     w.view = view || null;
+    // the session's task lists and title are pushed to this socket whenever they change (no polling)
+    try {
+        const T = supervisor.sessionTasks();
+        w.tasksOff = T.onChange((sid) => { if (sid === id && ws.readyState === 1) handlersCtx.sendToClient(ws, { type: TASKS_TYPE, data: T.list(id), timestamp: new Date().toISOString() }); });
+        T.poke(id, 300);
+    } catch (_) { w.tasksOff = null; }
     watches.set(ws, w);
     if (typeof ws.once === 'function') ws.once('close', () => unwatch(ws));
     void flush();
@@ -338,6 +373,22 @@ const handleTranscript = guard('claude_desk_transcript', async (gr, message) => 
 
 const handleWatch = guard('claude_desk_watch', async (gr, message, ws, clientInfo, handlersCtx) => watchTranscript(handlersCtx, ws, String(message.id || ''), message.from, message.show ? transcript.viewFrom(message.show) : null));
 const handleUnwatch = guard('claude_desk_unwatch', async (gr, message, ws) => { unwatch(ws); return { watching: false }; });
+
+// claude_desk_tasks { action: list | add | update | remove | rename, id (session), taskId?, text?, done? }: the two lists of a
+// session (modules/sessionTasks.js); the changes come back as the push claude_desk_tasks to the window watching the session
+const handleTasks = guard('claude_desk_tasks', async (gr, message) => {
+    const T = supervisor.sessionTasks();
+    const action = String(message.action || 'list');
+    const sid = String(message.id || '');
+    const mine = () => { const r = T.list(sid).asks.concat(T.list(sid).tasks).find((x) => x.id === Number(message.taskId)); if (!r) throw new Error('No such task in this session'); return r; };
+    if (action === 'add') T.add(sid, message.owner === 'agent' ? 'agent' : 'user', message.text, { by: 'user' });
+    else if (action === 'update') { const r = mine(); T.update(r.id, { text: message.text, done: message.done === undefined ? undefined : message.done === true }, 'user'); }
+    else if (action === 'remove') T.remove(mine().id);
+    else if (action === 'rename') T.setName(sid, message.title);
+    else if (action !== 'list') throw new Error('action must be list, add, update, remove or rename');
+    if (action === 'list') T.poke(sid, 200);
+    return T.list(sid);
+});
 
 const handleSession = guard('claude_desk_session', async (gr, message) => {
     const action = String(message.action || '');
@@ -1036,7 +1087,7 @@ function registerPackets(handlersCtx) {
         if (process.env.DREAMSCAPE_CLAUDE_RC_READONLY !== '1') launcher.ensureServer().catch((e) => console.warn(`[claudeDesk] carry tmux server: ${e.message}`));
         // the Supervisor watches every session's turns end (fs.watch on ~/.claude/sessions) and serves agent-coord's check
         if (process.env.DREAMSCAPE_CLAUDE_RC_READONLY !== '1') {
-            try { supervisor.start(gResources); supervisor.onReview(() => poke()); maintenance.start(gResources); maintenance.onChange(() => { supervisor.emitChange(); poke(); }); } catch (e) { console.warn(`[claudeDesk] supervisor: ${e.message}`); }
+            try { supervisor.start(gResources); supervisor.onReview(() => poke()); usageAudit.start(gResources, supervisor); maintenance.start(gResources); maintenance.onChange(() => { supervisor.emitChange(); poke(); }); } catch (e) { console.warn(`[claudeDesk] supervisor: ${e.message}`); }
         }
     }, 5000).unref();
     const reg = (type, handlerFn, meta = {}) => {
@@ -1050,6 +1101,7 @@ function registerPackets(handlersCtx) {
     reg('claude_desk_unwatch', handleUnwatch);
     reg('claude_desk_agent_watch', handleAgentWatch);
     reg('claude_desk_agent_unwatch', handleAgentUnwatch);
+    reg('claude_desk_tasks', handleTasks, ADMIN_DESTRUCTIVE);
     reg('claude_desk_session', handleSession, ADMIN_DESTRUCTIVE);
     reg('claude_desk_coord', handleCoord, ADMIN_DESTRUCTIVE);
     reg('claude_desk_supervisor', handleSupervisor, ADMIN_DESTRUCTIVE);
@@ -1057,4 +1109,4 @@ function registerPackets(handlersCtx) {
     reg('claude_fleet_engines', handleEngines);
 }
 
-module.exports = { registerPackets, _handlers: { handleSessions, handleTranscript, handleWatch, handleUnwatch, handleSession, handleCoord, handleSupervisor }, _sessionsPage: sessionsPage, _ownerOf: ownerOf, _buildAgentsList: buildAgentsList, _workMap: buildWorkMap };
+module.exports = { registerPackets, _handlers: { handleSessions, handleTranscript, handleWatch, handleUnwatch, handleSession, handleCoord, handleSupervisor, handleTasks }, _sessionsPage: sessionsPage, _ownerOf: ownerOf, _buildAgentsList: buildAgentsList, _workMap: buildWorkMap };

@@ -47,6 +47,7 @@
     flex: 1;
     min-height: 0;
     background: var(--cd-c-fff);
+    container-type: inline-size;
 }
 
 #mmcConsole_claudedesk .cd-chat > .mmc-page-title {
@@ -68,6 +69,152 @@
     overflow-y: auto;
     padding: 6px 10px 10px;
     overflow-wrap: anywhere;
+}
+
+/* the log and the Tasks panel side by side (the panel goes above the log when the window is narrow) */
+#mmcConsole_claudedesk .cd-chat-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+#mmcConsole_claudedesk .cd-chat-body > .cd-chat-log {
+    min-width: 0;
+}
+
+#mmcConsole_claudedesk .cd-tasks {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: 280px;
+    min-height: 0;
+    border-left: 1px solid var(--cd-c-e3e3e3);
+    background: var(--cd-c-fff);
+}
+
+#mmcConsole_claudedesk .cd-tasks[hidden] {
+    display: none;
+}
+
+#mmcConsole_claudedesk .cd-tasks-body {
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 4px 8px 8px;
+}
+
+#mmcConsole_claudedesk .cd-tasks-sec h4 {
+    margin: 8px 0 3px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid var(--cd-c-e3e3e3);
+    font-size: 12px;
+}
+
+#mmcConsole_claudedesk .cd-tasks-sec h4 span {
+    color: var(--cd-c-6d6d6d);
+    font-weight: normal;
+}
+
+#mmcConsole_claudedesk .cd-task-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+#mmcConsole_claudedesk .cd-task {
+    display: flex;
+    gap: 5px;
+    align-items: flex-start;
+    padding: 2px 3px;
+    border-radius: 2px;
+}
+
+#mmcConsole_claudedesk .cd-task:hover {
+    background: var(--cd-c-eaf6fd);
+}
+
+#mmcConsole_claudedesk .cd-task > input[type="checkbox"] {
+    flex: none;
+    margin-top: 1px;
+}
+
+#mmcConsole_claudedesk .cd-task-text {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+#mmcConsole_claudedesk .cd-task.is-done .cd-task-text {
+    color: var(--cd-c-6d6d6d);
+    text-decoration: line-through;
+}
+
+#mmcConsole_claudedesk .cd-task-ev {
+    flex: none;
+    color: var(--cd-c-6d6d6d);
+    font-size: 11px;
+}
+
+#mmcConsole_claudedesk .cd-task-btns {
+    display: none;
+    flex: none;
+    gap: 6px;
+    font-size: 11px;
+}
+
+#mmcConsole_claudedesk .cd-task:hover .cd-task-btns {
+    display: inline-flex;
+}
+
+#mmcConsole_claudedesk .cd-task.is-editing {
+    display: block;
+}
+
+#mmcConsole_claudedesk .cd-task.is-editing input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+#mmcConsole_claudedesk .cd-task.is-new {
+    animation: cd-task-new 4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #mmcConsole_claudedesk .cd-task.is-new {
+        animation: none;
+        background: var(--cd-c-a8d8eb);
+    }
+}
+
+@keyframes cd-task-new {
+    0%, 60% { background: var(--cd-c-a8d8eb); }
+    100% { background: transparent; }
+}
+
+#mmcConsole_claudedesk .cd-task-add {
+    display: flex;
+    gap: 4px;
+    margin: 4px 0 0;
+}
+
+#mmcConsole_claudedesk .cd-task-add input {
+    flex: 1;
+    min-width: 0;
+}
+
+@container (max-width: 640px) {
+    #mmcConsole_claudedesk .cd-chat-body {
+        flex-direction: column;
+    }
+
+    #mmcConsole_claudedesk .cd-tasks {
+        order: -1;
+        width: auto;
+        max-height: 38%;
+        border-left: 0;
+        border-bottom: 1px solid var(--cd-c-e3e3e3);
+    }
 }
 
 #mmcConsole_claudedesk .cd-earlier {
@@ -1726,4 +1873,29 @@
 
 #mmcConsole_claudedesk .cd-wm-node.is-failed {
     border-left-color: var(--cd-c-c42b1c);
+}
+
+/* ---- Usage: the tree-like list (work items > sessions > turns > agents) ---- */
+
+#mmcConsole_claudedesk .cd-ux-n {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#mmcConsole_claudedesk .cd-ux-d1 { padding-left: 14px; }
+#mmcConsole_claudedesk .cd-ux-d2 { padding-left: 28px; }
+#mmcConsole_claudedesk .cd-ux-d3 { padding-left: 42px; }
+
+#mmcConsole_claudedesk .cd-ux-tw {
+    display: inline-block;
+    width: 14px;
+    cursor: pointer;
+    text-align: center;
+}
+
+#mmcConsole_claudedesk .cd-ux-note {
+    flex: none;
+    margin: 2px 6px;
 }

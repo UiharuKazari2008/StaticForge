@@ -267,9 +267,9 @@ const S = (over) => m.settings(null, Object.assign({ worktreeMinAgeDays: 0, bran
     ok('a zone above the limit warns');
 
     // ---- a whole run on the fixtures stores its report; the history keeps it; a disabled check is skipped
-    const rep = await m.execute({ trigger: 'manual', dryRun: true, settings: S({ checks: { prs: false, thermals: false, disk: false, sessions: false, errors: false, workfolders: false } }), ctx: { repos: [repo], liveCwds: [], yozoraRepos: [], yz: null, sup: { artifactStatus: () => [], listWork: () => [] }, liveSessions: [] } });
+    const rep = await m.execute({ trigger: 'manual', dryRun: true, settings: S({ checks: { prs: false, thermals: false, disk: false, sessions: false, errors: false, workfolders: false, cleanup: false } }), ctx: { repos: [repo], liveCwds: [], yozoraRepos: [], yz: null, sup: { artifactStatus: () => [], listWork: () => [] }, liveSessions: [] } });
     assert.ok(rep.id > 0);
-    assert.strictEqual(rep.checks.length, 9);
+    assert.strictEqual(rep.checks.length, 11);
     assert.strictEqual(rep.checks.find((c) => c.id === 'prs').state, 'skipped');
     assert.strictEqual(m.lastRun().id, rep.id);
     assert.strictEqual(m.history()[0].id, rep.id);

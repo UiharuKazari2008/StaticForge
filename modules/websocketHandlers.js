@@ -504,6 +504,7 @@ class WebSocketMessageHandlers {
             // Claude Accounts on the desktop (314-claudeDeskHandler): start / resume / steer sessions, coordination posts
             'claude_desk_session',
             'claude_desk_coord',
+            'claude_desk_tasks',
             'unlock_api_service', // JULES: Fix privilege leak for read-only clients on tripwire unlock
             'create_application_key',
             'revoke_application_key',

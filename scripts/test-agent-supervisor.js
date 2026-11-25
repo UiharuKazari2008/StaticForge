@@ -139,8 +139,9 @@ sup._test.setFetch(async (url, opts) => {
         sup._test.scan(false);
         for (let i = 0; i < 50 && sup.summary().reviewed === before; i += 1) await new Promise((r) => setTimeout(r, 20));
         assert.strictEqual(sup.summary().reviewed, before + 1);
-        assert.match(calls[0].body.messages[1].content, /## Request\nNow add a test/); // only the new turn (offset kept)
-        assert.doesNotMatch(calls[0].body.messages[1].content, /README/);
+        const rcall = calls.find((c) => /## Request/.test(c.body.messages[1].content)); // (the user's list is read first: its own call)
+        assert.match(rcall.body.messages[1].content, /## Request\nNow add a test/); // only the new turn (offset kept)
+        assert.doesNotMatch(rcall.body.messages[1].content.split("## The user's list")[0], /README/); // (the list holds the earlier ask)
         sup._test.scan(false); // still idle: nothing new
         await new Promise((r) => setTimeout(r, 50));
         assert.strictEqual(sup.summary().reviewed, before + 1);
@@ -683,6 +684,158 @@ sup._test.setFetch(async (url, opts) => {
             const st = await ask({ op: 'fleet_status' }); // the sandbox's fake resources lack the account host: the op must still be routed
             assert.ok(st.ok || !/op must be/.test(st.error), JSON.stringify(st).slice(0, 300));
         } finally { sup.stop(); }
+    });
+
+    // ---- task lists and titles (modules/sessionTasks.js) ----
+    const SID2 = 'bbbbbbbb-1111-2222-3333-444444444444';
+    const file2 = path.join(tmp, '.claude', 'projects', '-repo', `${SID2}.jsonl`);
+    const steerLine = (text, ts) => line({ type: 'attachment', uuid: `q${ts}`, timestamp: ts, attachment: { type: 'queued_command', commandMode: 'prompt', origin: { kind: 'human' }, prompt: text } });
+    const toolResult = (ts) => line({ type: 'user', uuid: `r${ts}`, timestamp: ts, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'Fix the footer please (a file said so)' }] } });
+    const engineCalls = [];
+    let titleN = 0;
+    const route = async (url, opts) => {
+        const b = JSON.parse(opts.body);
+        const sys = b.messages[0].content;
+        const usr = b.messages[1].content;
+        engineCalls.push({ sys, usr, max: b.max_tokens });
+        let out;
+        if (/checklist/.test(sys)) {
+            const msgs = (usr.split('## New message(s)')[1] || '').replace(/^[^\n]*\n/, '').split(/\n\n(?=\d+\. )/).map((x) => x.replace(/^\s*\d+\.\s*/, '').trim()).filter(Boolean);
+            out = { items: msgs.flatMap((m, i) => m.split(' and ').map((t) => ({ text: t.trim(), msg: i + 1 }))), drop: /Forget the header/.test(usr) ? [Number((/#(\d+) \[ \] Fix the header/.exec(usr) || [])[1])] : [] };
+        } else if (/name a coding session/.test(sys)) out = { title: `Title number ${++titleN} for the session that is far too long to fit in the sixty characters allowed` };
+        else if (/Supervisor for coding agents/.test(sys)) out = answer;
+        else out = {};
+        return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: JSON.stringify(out) } }] }) };
+    };
+    const T = sup.sessionTasks();
+    await test('task list: new human and steering messages become asks (not Supervisor notes or tool results), one engine call per batch, incremental', async () => {
+        sup._test.setFetch(route);
+        settingsCfg.agentSupervisor.enabled = true;
+        sup.bind(gr);
+        fs.writeFileSync(file2, user('Fix the header and add a footer', '2026-11-24T11:00:00Z') + toolResult('2026-11-24T11:00:05Z') + asst([{ type: 'text', text: 'On it.' }], '2026-11-24T11:00:10Z')
+            + user('[Supervisor] Your last turn may have left these unaddressed: (1) x', '2026-11-24T11:00:20Z') + steerLine('also make the logo blue', '2026-11-24T11:00:30Z'));
+        const l = await T.sync(SID2);
+        assert.deepStrictEqual(l.asks.map((a) => a.text), ['Fix the header', 'add a footer', 'also make the logo blue'], JSON.stringify(l.asks));
+        assert.strictEqual(engineCalls.filter((c) => /checklist/.test(c.sys)).length, 1, 'one call for the whole first batch');
+        assert.ok(engineCalls.find((c) => /checklist/.test(c.sys)).max <= 1000, 'small budget');
+        assert.ok(!engineCalls.some((c) => /Supervisor\] Your last turn|a file said so/.test(c.usr)), 'notes and tool results are not asks');
+        assert.strictEqual(l.counts.asksTotal, 3);
+        const n = engineCalls.length;
+        assert.strictEqual(await T.sync(SID2), null, 'nothing new: nothing read, no call');
+        assert.strictEqual(engineCalls.length, n);
+        fs.appendFileSync(file2, steerLine('Forget the header, do the sidebar', '2026-11-24T11:01:00Z'));
+        const l2 = await T.sync(SID2);
+        assert.ok(l2.asks.some((a) => a.text === 'do the sidebar') || l2.asks.some((a) => /sidebar/.test(a.text)), JSON.stringify(l2.asks));
+        assert.ok(!l2.asks.some((a) => a.text === 'Fix the header'), 'a replaced ask is dropped');
+        assert.ok(l2.asks.every((a) => a.sourceAt != null));
+    });
+
+    await test('task list: the agent ticks an ask with evidence, the user unticks, edits, removes; push on every change', async () => {
+        const seen = [];
+        const off = T.onChange((sid) => seen.push(sid));
+        const l = T.list(SID2);
+        const a = l.asks.find((x) => x.text === 'add a footer');
+        const u = T.update(a.id, { done: true, evidence: 'ran the page, footer shows' }, 'agent');
+        assert.ok(u.done && u.doneBy === 'agent' && u.evidence === 'ran the page, footer shows');
+        const un = T.update(a.id, { done: false }, 'user');
+        assert.ok(!un.done && un.evidence === '');
+        assert.strictEqual(T.update(a.id, { text: 'add a green footer' }, 'user').text, 'add a green footer');
+        T.remove(a.id);
+        assert.ok(!T.list(SID2).asks.some((x) => x.id === a.id));
+        assert.ok(seen.length >= 4 && seen.every((x) => x === SID2));
+        off();
+    });
+
+    await test('titles: a Supervisor title on the first human message and then after every 5 more; none when the session has its own custom title; a Fleet name beats all', async () => {
+        const SID3 = 'cccccccc-1111-2222-3333-444444444444';
+        const file3 = path.join(tmp, '.claude', 'projects', '-repo', `${SID3}.jsonl`);
+        fs.writeFileSync(file3, user('Make the login faster', '2026-11-24T12:00:00Z'));
+        titleN = 0;
+        await T.sync(SID3);
+        assert.strictEqual(titleN, 1);
+        const t1 = T.titleFor(SID3);
+        assert.ok(t1 && t1.length <= 60, t1);
+        assert.strictEqual(require('../modules/claudeSessions').titleOf(SID3, null, { title: 'Claude\'s own very long title', firstPrompt: 'Make the login faster' }), t1);
+        for (let i = 2; i <= 5; i += 1) { fs.appendFileSync(file3, user(`message ${i}`, `2026-11-24T12:0${i}:00Z`)); await T.sync(SID3); }
+        assert.strictEqual(titleN, 1, 'four more messages: no new title yet');
+        fs.appendFileSync(file3, user('message 6', '2026-11-24T12:09:00Z'));
+        await T.sync(SID3);
+        assert.strictEqual(titleN, 2, 'the 5th more message writes the next title');
+        assert.notStrictEqual(T.titleFor(SID3), t1);
+        assert.strictEqual(T.setName(SID3, 'My own name'), 'My own name');
+        for (let i = 7; i <= 12; i += 1) fs.appendFileSync(file3, user(`message ${i}`, `2026-11-24T13:0${i % 10}:00Z`));
+        await T.sync(SID3);
+        assert.strictEqual(titleN, 2, 'a Fleet-side name is kept');
+        assert.strictEqual(require('../modules/claudeSessions').titleOf(SID3, { givenName: 'x' }, null), 'My own name');
+        assert.strictEqual(T.setName(SID3, ''), '');
+        // a session with its own custom-title entry: the Supervisor writes none
+        const SID4 = 'dddddddd-1111-2222-3333-444444444444';
+        fs.writeFileSync(path.join(tmp, '.claude', 'projects', '-repo', `${SID4}.jsonl`), line({ type: 'custom-title', customTitle: 'Mine', sessionId: SID4 }) + user('Do a thing', '2026-11-24T14:00:00Z'));
+        titleN = 0;
+        await T.sync(SID4);
+        assert.strictEqual(titleN, 0);
+        assert.strictEqual(T.titleFor(SID4), '');
+        assert.strictEqual(require('../modules/claudeSessions').titleOf(SID4, null, { title: 'Mine', titleKind: 'custom', firstPrompt: 'Do a thing' }), 'Mine');
+    });
+
+    await test('agent list: TodoWrite / TaskCreate / TaskUpdate calls in the transcript are mirrored', async () => {
+        const SID5 = 'eeeeeeee-1111-2222-3333-444444444444';
+        const file5 = path.join(tmp, '.claude', 'projects', '-repo', `${SID5}.jsonl`);
+        const tu = (name, input, ts) => asst([{ type: 'tool_use', id: `t${ts}`, name, input }], ts);
+        fs.writeFileSync(file5, user('Do it', '2026-11-24T15:00:00Z')
+            + tu('TodoWrite', { todos: [{ content: 'Read the code', status: 'completed', activeForm: 'Reading' }, { content: 'Write the fix', status: 'in_progress', activeForm: 'Writing' }] }, '2026-11-24T15:00:05Z')
+            + tu('TaskCreate', { subject: 'Check the phone' }, '2026-11-24T15:00:06Z'));
+        let l = await T.sync(SID5);
+        assert.deepStrictEqual(l.tasks.map((t) => [t.text, t.done]), [['Read the code', true], ['Write the fix', false], ['Check the phone', false]]);
+        fs.appendFileSync(file5, tu('TodoWrite', { todos: [{ content: 'Read the code', status: 'completed' }, { content: 'Write the fix', status: 'completed' }] }, '2026-11-24T15:01:00Z') + tu('TaskUpdate', { taskId: '1', status: 'completed' }, '2026-11-24T15:01:01Z'));
+        l = await T.sync(SID5);
+        assert.deepStrictEqual(l.tasks.map((t) => [t.text, t.done]), [['Read the code', true], ['Write the fix', true], ['Check the phone', true]]);
+        assert.deepStrictEqual([l.counts.tasksDone, l.counts.tasksTotal], [3, 3]);
+    });
+
+    await test('agent tools over the socket: task_list / task_add / task_done (user asks too) / task_update; only the caller\'s own session', async () => {
+        const net = require('net');
+        const ask = (req) => new Promise((resolve, reject) => {
+            let buf = '';
+            const sk = net.createConnection(process.env.AGENT_SUPERVISOR_SOCKET, () => sk.write(`${JSON.stringify(req)}\n`));
+            sk.on('data', (c) => { buf += c; }); sk.on('end', () => resolve(JSON.parse(buf))); sk.on('error', reject);
+        });
+        sup.start(gr);
+        await new Promise((r) => setTimeout(r, 100));
+        try {
+            const add = await ask({ op: 'task_add', sessionId: SID2, text: 'Check the sidebar on the phone' });
+            assert.ok(add.ok && add.result.id && add.result.done === false, JSON.stringify(add));
+            const list = await ask({ op: 'task_list', sessionId: SID2 });
+            assert.ok(list.ok && list.result.tasks.some((t) => t.text === 'Check the sidebar on the phone') && list.result.asks.length >= 2, JSON.stringify(list));
+            const askId = list.result.asks[0].id;
+            const done = await ask({ op: 'task_done', sessionId: SID2, id: askId, evidence: 'looked at it in the browser' });
+            assert.ok(done.ok && done.result.done && done.result.evidence === 'looked at it in the browser', JSON.stringify(done));
+            assert.strictEqual(T.list(SID2).asks.find((a) => a.id === askId).doneBy, 'agent');
+            const upd = await ask({ op: 'task_update', sessionId: SID2, id: add.result.id, text: 'Check the sidebar', done: true });
+            assert.ok(upd.ok && upd.result.text === 'Check the sidebar' && upd.result.done, JSON.stringify(upd));
+            assert.ok(!(await ask({ op: 'task_update', sessionId: SID2, id: askId, text: 'rewrite' })).ok, 'the user\'s text is theirs');
+            assert.ok(!(await ask({ op: 'task_done', sessionId: SID, id: askId })).ok, 'another session\'s item');
+            assert.ok(!(await ask({ op: 'task_list', sessionId: 'nope' })).ok);
+        } finally { sup.stop(); }
+    });
+
+    await test('review: the prompt carries the user list with ticks and evidence; the review names items done and they are ticked', async () => {
+        const l = T.list(SID2);
+        const open = l.asks.find((a) => !a.done);
+        assert.ok(open, 'an open ask');
+        answer = { verdict: 'ok', summary: 'done', missed: [], done: [{ id: open.id, evidence: 'the diff shows it' }, { id: 999999, evidence: 'not mine' }] };
+        engineCalls.length = 0;
+        fs.appendFileSync(file2, user('Now check it all', '2026-11-24T11:05:00Z') + asst([{ type: 'text', text: 'Checked.' }], '2026-11-24T11:05:10Z'));
+        const rv = await sup.review(SID2, 'recheck', { gr });
+        assert.strictEqual(rv.verdict, 'ok');
+        const rc = engineCalls.find((c) => /Supervisor for coding agents/.test(c.sys));
+        assert.match(rc.usr, /## The user's list/);
+        assert.match(rc.usr, new RegExp(`#${open.id} \\[ \\] ${open.text}`));
+        assert.match(rc.usr, /\[x\] .* -- looked at it in the browser/);
+        assert.match(rc.sys, /"done"/);
+        const after = T.list(SID2).asks.find((a) => a.id === open.id);
+        assert.ok(after.done && after.doneBy === 'supervisor' && after.evidence === 'the diff shows it', JSON.stringify(after));
+        assert.ok(T.list(SID2).asks.length >= 2);
     });
 
     require('../modules/agentCoord/store').close();

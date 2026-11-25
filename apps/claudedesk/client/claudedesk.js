@@ -149,7 +149,9 @@
     let S = blank();
 
     /** The session a tree node shows: its own node under Sessions (t:), in Active Work (aw:s:) or among the unsupervised (us:). */
-    const nodeSid = (id) => { const m = /^(?:t:|aw:s:|us:)(.+)$/.exec(id || ''); return m ? m[1] : ''; };
+    const nodeSid = (id) => { const m = /^(?:t:|aw:s:|us:|mg:)(.+)$/.exec(id || ''); return m ? m[1] : ''; };
+    /** The Manager Session (Supervisor settings managerSessionId): the standing session that fixes Fleet and the Supervisor. */
+    const managerSid = () => String((S.sup.data && S.sup.data.settings && S.sup.data.settings.managerSessionId) || '');
     const liveOf = (id) => S.live.find((s) => s.id === id) || null;
     const rowOf = (id) => S.sessions.find((s) => s.id === id) || (S.chats.get(id) && S.chats.get(id).row) || null;
     const accountName = (idx) => { const a = S.accounts.find((x) => x.index === idx); return a ? a.name : ''; };
@@ -183,7 +185,7 @@
         if ('accounts' in changed) S.accounts = changed.accounts || [];
         if ('live' in changed) {
             S.live = changed.live || [];
-            const key = S.live.map((s) => s.id).join(',');
+            const key = S.live.map((s) => `${s.id}${s.title ? `=${s.title}` : ''}`).join(',');
             liveChanged = key !== S.liveKey;
             S.liveKey = key;
         }
@@ -303,6 +305,10 @@
             if (!a) return;
             S.asks.delete(String(d.id));
             askDraw(a.claude.sessionId);
+        }, opts);
+        c.on('claude_desk_tasks', (msg) => {
+            const d = (msg && msg.data) || msg || {};
+            if (d.sessionId) tasksApply(d.sessionId, d, true);
         }, opts);
         c.on('claude_desk_transcript_append', (msg) => {
             const d = (msg && msg.data) || msg || {};
@@ -1103,6 +1109,7 @@
                 chat.stick = true;
                 pendingReconcile(chat, chat.messages);
                 void insLoad(id);
+                void tasksLoad(id);
             }
             sortRows(chat);
             coalesce(chat);
@@ -1971,6 +1978,16 @@
         if (box) { const top = box.scrollTop; box.innerHTML = workDetailHtml(c, id); box.scrollTop = id ? 0 : top; }
     }
 
+    /** No Manager Session yet: pick a running session for it, or start one. */
+    function managerPage(c) {
+        const live = S.live.map((l) => ({ id: l.id, title: titleOf(rowOf(l.id) || { id: l.id, title: l.name }) }));
+        const opts = live.map((x) => `<option value="${esc(x.id)}">${esc(x.title)} (${esc(shortId(x.id))})</option>`).join('');
+        return c.page('Manager Session', '', [{ id: 'cd-mg', title: 'Manager Session', body: `<p>The Manager Session is the session you keep for fixing Fleet and the Supervisor themselves: bugs you find in Fleet, Supervisor reviews that went wrong, maintenance findings. It stays pinned here under Supervisor.</p>
+            <p><label>Use a running session: <select class="vdt-select" data-cd-mg>${opts || '<option value="">No session is running</option>'}</select></label> <button type="button" class="btn-standard" data-act="mg-use"${opts ? '' : ' disabled'}>Use This Session</button></p>
+            <p><button type="button" class="btn-standard primary" data-act="mg-start">Start a New Manager Session...</button> <span class="mmc-hint">Opus, high effort, in the Dreamscape folder, with a brief for this job.</span></p>` }]);
+    }
+    const MANAGER_BRIEF = 'You are the Manager Session for Fleet (apps/claudedesk, the Supervisor in modules/agentSupervisor.js, agent-coord, the maintenance in modules/fleetMaintenance.js) in /home/kanmi/staticforge. Yukimi uses you to fix issues and bugs in the Fleet / Supervisor system itself as she finds them. Read CLAUDE.md first. Delegate defined parts to Sonnet background agents, check every change on screen or with tests, commit and push each turn, restart only through scripts/restart-dreamscape.sh. Wait for her first request.';
+
     function workPage(c, scope = 'all') {
         const T = { all: 'Work Queue', held: 'Waiting', active: 'Active', pending: 'Pending' }[scope];
         if (S.wscope !== scope) { S.wscope = scope; S.wsel = new Set(); }
@@ -2700,7 +2717,7 @@
     function sessionNode(idPrefix, sid, A) {
         const row = rowOf(sid) || { id: sid, title: (liveOf(sid) || {}).name };
         const h = holdOf(sid);
-        const node = { id: `${idPrefix}${sid}`, name: `${titleOf(row)}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? `${VI}/warning-16.png` : SESSION16, desc: h ? holdLine(h) : 'The session\'s conversation' };
+        const node = { id: `${idPrefix}${sid}`, name: `${titleOf(row)}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h || usgFlagged(sid) ? `${VI}/warning-16.png` : SESSION16, desc: h ? holdLine(h) : (usgFlagged(sid) ? 'Heavy usage: see Usage > Flags' : 'The session\'s conversation') };
         if (idPrefix === 'aw:s:') {
             const e = S.awAgents.get(sid);
             if (e && e.agents) node.children = e.agents.map((x) => ({ id: `aw:a:${sid}:${x.agentId}`, name: x.description || x.agentId, icon: x.finished ? `${VI}/check-16.png` : SESSION16, desc: 'A background agent of this session' }));
@@ -2751,6 +2768,7 @@
                         { id: 'aw-uns', name: `Unsupervised (${uns.length})`, icon: `${VI}/run-16.png`, desc: 'Running sessions no work item owns', children: uns },
                         { id: 'sessions', name: 'All Sessions', icon: SESSION16, desc: 'Every Claude session on the host, running or ended', children: open }
                     ] },
+                { id: 'usage', name: 'Usage', icon: '/static_images/vista-cmdbar/pie-chart.png', desc: 'What each work item, session, turn and agent spent, and the heavy ones flagged', children: [{ id: 'usage-flags', name: `Flags (${usgOpenFlags()})`, icon: `${VI}/warning-16.png`, desc: 'Sessions, turns and agents that burned a lot of usage' }] },
                 { id: 'activity', name: 'Activity', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Every shell command, tool call and file edit of every session', children: bgNodes() },
                 { id: 'memory', name: 'Memory', icon: `${ITEMS}/personalization-16.png`, desc: 'The shared memory every Fleet agent reads and writes',
                     children: [
@@ -2773,6 +2791,9 @@
                 },
                 { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Settings, reviews, restart waits, pauses, locks and temp files',
                     children: [
+                        managerSid()
+                            ? { id: `mg:${managerSid()}`, name: 'Manager Session', icon: '/static_images/vista-cmdbar/tools.png', desc: 'The standing session that fixes Fleet and the Supervisor' }
+                            : { id: 'sup-manager', name: 'Manager Session', icon: '/static_images/vista-cmdbar/tools.png', desc: 'Pick or start the session that fixes Fleet and the Supervisor' },
                         { id: 'sup-settings', name: 'Settings', icon: '/static_images/vista-cmdbar/properties.png', desc: 'Engine, model, delivery, limits and the models and effort per job' },
                         { id: 'sup-reviews', name: `Reviews (${reviewN})`, icon: '/static_images/vista-cmdbar/paste.png', desc: 'What the Supervisor made of each finished agent turn' },
                         { id: 'sup-asks', name: `Restart Waits (${supAsks().length})`, icon: '/static_images/vista-cmdbar/clock.png', desc: 'Agents waiting to restart Dreamscape' },
@@ -2964,7 +2985,8 @@
             tile('bg-agents', `${ITEMS}/programs-and-features-16.png`, bgRunning().length, 'Background agents'),
             tile('sup-reviews', '/static_images/vista-cmdbar/paste.png', gaps, 'Reviews with gaps', true),
             tile('sup-asks', '/static_images/vista-cmdbar/clock.png', supAsks().length, 'Restart waits', true),
-            tile('sup-holds', '/static_images/vista-cmdbar/pause.png', supHolds().length, 'Paused', true)
+            tile('sup-holds', '/static_images/vista-cmdbar/pause.png', supHolds().length, 'Paused', true),
+            tile('usage-flags', `${VI}/warning-16.png`, usgOpenFlags(), 'Heavy usage', true)
         ].join('')}</div>`;
         const live = run.concat(sentBack);
         const row = (w) => `<tr class="cd-dash-row" data-act="${w.state === 'held' ? 'nav:co-held' : `nav:aw:w:${esc(w.id)}`}"><td class="cd-cut" title="${esc(w.title || String(w.id))}"><img class="mmc-row-icon" src="${esc(workIcon(w.state))}" alt="">${esc(w.title || String(w.id))}</td><td class="cd-cut" title="${esc(workState(w))}">${esc(workState(w))}</td><td class="cd-cut" title="${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}">${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}</td><td class="cd-cut" title="${esc([w.model, w.effort].filter(Boolean).join(' / '))}">${esc([w.model, w.effort].filter(Boolean).join(' / '))}</td><td class="cd-cut" title="${esc(w.startedAt ? when(w.startedAt) : '')}">${esc(w.startedAt ? when(w.startedAt) : '')}</td><td class="cd-cut" title="${esc(w.message || '')}">${esc(w.message || '')}</td></tr>`;
@@ -3126,7 +3148,7 @@
             const l = liveOf(r.id);
             return {
                 key: `s:${r.id}`,
-                icon: SESSION16,
+                icon: usgFlagged(r.id) ? `${VI}/warning-16.png` : SESSION16,
                 cls: l ? (l.status === 'busy' ? 'cd-busy' : 'cd-live') : '',
                 data: {
                     title: titleOf(r), state: stateText(r), account: r.account ? r.account.name : (l ? '' : ''),
@@ -3928,7 +3950,7 @@
         const side = [stateText(row), acct, row.folder].filter(Boolean).join(' - ');
         const hold = holdOf(id);
         const holdBar = hold ? `<div class="cd-infobar is-warning" role="alert"><img src="${VI}/warning-16.png" alt=""><span><b>${esc(holdWord(hold))}</b>${hold.reason ? `: ${esc(hold.reason)}` : ''}${hold.by ? ` <i>(${esc(HOLD_KIND[hold.kind] || hold.kind || '')} by ${esc(hold.by)})</i>` : ''} <span class="mmc-link" data-act="resume-hold" data-arg="${esc(id)}">Resume</span></span></div>` : '';
-        const linkBits = `<span class="mmc-link" data-act="detail-toggle">Details</span>${l && !hold ? ` <span class="mmc-link" data-act="pause" data-arg="${esc(id)}">Pause...</span>` : ''}${l && serverOrigin(id) ? ' <span class="mmc-link" data-act="takeover">Take Over in Fleet</span>' : ''}${l && l.link ? ` <span class="mmc-link" data-act="open-link" data-arg="${esc(l.link)}">Open in claude.ai</span> <span class="mmc-link" data-act="copy-link" data-arg="${esc(l.link)}">Copy link</span>` : ''}`;
+        const linkBits = `<span class="mmc-link" data-act="detail-toggle">Details</span> <span class="mmc-link" data-act="tasks-toggle" aria-expanded="${TK.open ? 'true' : 'false'}" data-cd-tasks-link>${esc(tasksLinkText(id))}</span>${l && !hold ? ` <span class="mmc-link" data-act="pause" data-arg="${esc(id)}">Pause...</span>` : ''}${l && serverOrigin(id) ? ' <span class="mmc-link" data-act="takeover">Take Over in Fleet</span>' : ''}${l && l.link ? ` <span class="mmc-link" data-act="open-link" data-arg="${esc(l.link)}">Open in claude.ai</span> <span class="mmc-link" data-act="copy-link" data-arg="${esc(l.link)}">Copy link</span>` : ''}`;
         let composer;
         if (l && serverOrigin(id)) {
             composer = `<div class="cd-compose cd-ended"><span>This session runs inside Remote Control's server, so Fleet has no terminal to type into.</span><button type="button" class="btn-standard primary" data-act="takeover" data-arg="${esc(id)}">Take Over in Fleet...</button></div>`;
@@ -3955,7 +3977,10 @@
                 ${holdBar}
                 ${wmChatHtml(id)}
                 ${showBar()}
-                <div class="cd-chat-log" data-mmc-scroll>${logInner(chat, id)}</div>
+                <div class="cd-chat-body">
+                    <div class="cd-chat-log" data-mmc-scroll>${logInner(chat, id)}</div>
+                    ${tasksPanelHtml(id)}
+                </div>
                 ${composer}
             </div>`,
             split: true,
@@ -3979,6 +4004,7 @@
                     if (b) { b.parentElement.classList.remove('is-folded'); b.remove(); }
                 });
                 wireFolds(log, id, '');
+                tasksWire(pane, id);
                 insTick(id);
                 pane.querySelectorAll('[data-cd-show]').forEach((cb) => cb.addEventListener('change', () => void setShow(cb.dataset.cdShow, cb.checked)));
                 requestAnimationFrame(() => pageMore(id, log));
@@ -3994,6 +4020,174 @@
                 }
             }
         };
+    }
+
+    // ---- the Tasks panel (modules/sessionTasks.js): "Your asks" (the user's list) and "Claude's tasks" ----------------
+    // One list per session, read once when the chat opens (claude_desk_tasks list) and pushed to the watching window on every
+    // change (a new message's asks, the agent ticking one, an edit): nothing polls. Items that arrived in the last push shine
+    // for a few seconds. The text of an ask can be edited and removed here; the agent's tasks are read only.
+
+    const TASKS_KEY = 'claudedesk.tasksOpen';
+    const TK = { open: true };
+    try { TK.open = localStorage.getItem(TASKS_KEY) !== '0'; } catch (_) { TK.open = true; }
+    const TASK_NEW_MS = 4000;
+    const taskCounts = (t) => (t && t.counts) || { asksDone: 0, asksTotal: 0, tasksDone: 0, tasksTotal: 0 };
+    function tasksLinkText(id) {
+        const ch = S.chats.get(id);
+        const k = taskCounts(ch && ch.tasks);
+        return `Tasks${k.asksTotal || k.tasksTotal ? ` ${k.asksDone}/${k.asksTotal}` : ''}`;
+    }
+    function tasksStatus(ch) {
+        const k = taskCounts(ch && ch.tasks);
+        return k.asksTotal || k.tasksTotal ? `asks ${k.asksDone}/${k.asksTotal} · tasks ${k.tasksDone}/${k.tasksTotal}` : '';
+    }
+    function taskTip(x) {
+        const who = { user: 'you', agent: 'Claude', supervisor: 'the Supervisor' }[x.doneBy] || x.doneBy || '';
+        return x.done ? `Done${who ? ` (ticked by ${who})` : ''}${x.evidence ? `: ${x.evidence}` : ''}` : (x.owner === 'user' ? 'Not done yet' : '');
+    }
+    function taskRowHtml(x, id, chat) {
+        const fresh = chat.tasksNew && chat.tasksNew.get(x.id) > Date.now();
+        const mine = x.owner === 'user';
+        if (mine && chat.tasksEdit === x.id) {
+            return `<li class="cd-task is-editing" data-task="${x.id}"><input type="text" class="cd-task-edit" data-cd-task-edit="${x.id}" value="${esc(x.text)}" maxlength="300" spellcheck="true" aria-label="Edit this ask"></li>`;
+        }
+        return `<li class="cd-task${x.done ? ' is-done' : ''}${fresh ? ' is-new' : ''}" data-task="${x.id}" title="${esc(taskTip(x))}">
+            <input type="checkbox" data-cd-task-tick="${x.id}"${x.done ? ' checked' : ''}${mine ? '' : ' disabled'} aria-label="${esc(x.text)}">
+            <span class="cd-task-text">${esc(x.text)}</span>${x.done && x.evidence ? '<span class="cd-task-ev" aria-hidden="true">✓</span>' : ''}
+            ${mine ? `<span class="cd-task-btns"><span class="mmc-link" data-cd-task-do="edit" data-task="${x.id}">Edit</span><span class="mmc-link" data-cd-task-do="del" data-task="${x.id}">Remove</span></span>` : ''}
+        </li>`;
+    }
+    function tasksBodyHtml(id) {
+        const chat = S.chats.get(id) || {};
+        const t = chat.tasks;
+        if (!t) return '<p class="mmc-hint">Reading the lists...</p>';
+        const k = taskCounts(t);
+        const sect = (title, done, total, items, empty) => `<section class="cd-tasks-sec"><h4>${esc(title)} <span>(${done}/${total})</span></h4>${items.length ? `<ul class="cd-task-list">${items.map((x) => taskRowHtml(x, id, chat)).join('')}</ul>` : `<p class="mmc-hint">${esc(empty)}</p>`}</section>`;
+        return `${sect('Your asks', k.asksDone, k.asksTotal, t.asks || [], 'What you ask in this session is listed here as you type it.')}
+            <div class="cd-task-add"><input type="text" data-cd-task-new maxlength="300" placeholder="Add an ask..." spellcheck="true" aria-label="Add an ask"><button type="button" class="btn-standard" data-cd-task-do="add">Add</button></div>
+            ${sect('Claude\'s tasks', k.tasksDone, k.tasksTotal, t.tasks || [], 'Claude\'s own working list shows here.')}`;
+    }
+    function tasksPanelHtml(id) {
+        return `<aside class="cd-tasks"${TK.open ? '' : ' hidden'} aria-label="Tasks"><div class="cd-tasks-body">${tasksBodyHtml(id)}</div></aside>`;
+    }
+    function tasksToggle() {
+        TK.open = !TK.open;
+        try { localStorage.setItem(TASKS_KEY, TK.open ? '1' : '0'); } catch (_) { /* no storage */ }
+        const m = S.c && S.c.modal;
+        if (!m) return;
+        const a = m.querySelector('.cd-tasks');
+        if (a) a.hidden = !TK.open;
+        const l = m.querySelector('[data-cd-tasks-link]');
+        if (l) l.setAttribute('aria-expanded', TK.open ? 'true' : 'false');
+        const id = nodeSid(S.c.node);
+        if (TK.open && id && !(S.chats.get(id) || {}).tasks) void tasksLoad(id);
+    }
+    async function tasksLoad(id) {
+        try { const r = await send('claude_desk_tasks', { id, action: 'list' }); tasksApply(id, unwrap(r, 'asks'), false); } catch (_) { /* the panel keeps its hint; a push or the next open reads it */ }
+    }
+    /** A list arrived (read, pushed or the answer of an edit): the panel, the link, the status bar and the title are drawn again. */
+    function tasksApply(id, d, pushed) {
+        const chat = S.chats.get(id);
+        if (!chat || !d || !Array.isArray(d.asks)) return;
+        const before = new Set(((chat.tasks && chat.tasks.asks) || []).concat((chat.tasks && chat.tasks.tasks) || []).map((x) => x.id));
+        if (chat.tasks && pushed) {
+            chat.tasksNew = chat.tasksNew || new Map();
+            d.asks.concat(d.tasks || []).forEach((x) => { if (!before.has(x.id)) chat.tasksNew.set(x.id, Date.now() + TASK_NEW_MS); });
+        }
+        chat.tasks = d;
+        tasksDraw(id);
+        if (d.title) titleApply(id, d.title);
+    }
+    function tasksDraw(id) {
+        const m = S.c && nodeSid(S.c.node) === id ? S.c.modal : null;
+        const chat = S.chats.get(id);
+        if (!m || !chat) return;
+        const l = m.querySelector('[data-cd-tasks-link]');
+        if (l) l.textContent = tasksLinkText(id);
+        S.c.renderStatus();
+        const box = m.querySelector('.cd-tasks-body');
+        if (!box) return;
+        // what is being typed in the panel is never drawn over; the draw follows when the box is left
+        const f = document.activeElement;
+        if (f && box.contains(f) && f.matches('input[type=text]') && f.value !== (f.defaultValue || '')) { chat.tasksLate = true; return; }
+        chat.tasksLate = false;
+        box.innerHTML = tasksBodyHtml(id);
+        const ed = box.querySelector('[data-cd-task-edit]');
+        if (ed && !ed.dataset.focused) { ed.dataset.focused = '1'; ed.focus(); ed.select(); }
+    }
+    /** A new title (the Supervisor's or a Fleet-side name): the open page's title and the session row follow. */
+    function titleApply(id, title) {
+        const row = rowOf(id);
+        if (row && row.title !== title) row.title = title;
+        const chat = S.chats.get(id);
+        if (chat && chat.row && chat.row.title !== title) chat.row = Object.assign({}, chat.row, { title });
+        const b = S.c && nodeSid(S.c.node) === id ? S.c.modal.querySelector('.cd-chat > .mmc-page-title b') : null;
+        if (b && b.textContent !== title) b.textContent = title;
+    }
+    async function tasksSend(id, payload) {
+        try {
+            const r = await send('claude_desk_tasks', Object.assign({ id }, payload));
+            tasksApply(id, unwrap(r, 'asks'), false);
+        } catch (e) { if (S.c) S.c.note(e.message || 'The change was refused'); }
+    }
+    function tasksWire(pane, id) {
+        const box = pane.querySelector('.cd-tasks');
+        if (!box) return;
+        const chat = () => S.chats.get(id);
+        const idOf = (n) => Number(n.closest('[data-task]') && n.closest('[data-task]').dataset.task);
+        const addNow = () => {
+            const inp = box.querySelector('[data-cd-task-new]');
+            const text = inp ? inp.value.trim() : '';
+            if (!text) return;
+            inp.value = '';
+            void tasksSend(id, { action: 'add', text });
+        };
+        box.addEventListener('change', (ev) => {
+            const cb = ev.target.closest('[data-cd-task-tick]');
+            if (cb) void tasksSend(id, { action: 'update', taskId: Number(cb.dataset.cdTaskTick), done: cb.checked });
+        });
+        box.addEventListener('click', (ev) => {
+            const b = ev.target.closest('[data-cd-task-do]');
+            if (!b) return;
+            const what = b.dataset.cdTaskDo;
+            if (what === 'add') addNow();
+            else if (what === 'edit' && chat()) { chat().tasksEdit = idOf(b); chat().tasksLate = false; box.querySelector('.cd-tasks-body').innerHTML = tasksBodyHtml(id); const ed = box.querySelector('[data-cd-task-edit]'); if (ed) { ed.dataset.focused = '1'; ed.focus(); ed.select(); } }
+            else if (what === 'del') void tasksSend(id, { action: 'remove', taskId: idOf(b) });
+        });
+        const endEdit = (ed, save) => {
+            const c = chat();
+            if (!c || c.tasksEdit == null) return;
+            const taskId = c.tasksEdit;
+            c.tasksEdit = null;
+            const text = ed.value.trim();
+            if (save && text && text !== ed.defaultValue) void tasksSend(id, { action: 'update', taskId, text });
+            else tasksDraw(id);
+        };
+        box.addEventListener('keydown', (ev) => {
+            if (ev.target.matches('[data-cd-task-new]') && ev.key === 'Enter') { ev.preventDefault(); addNow(); }
+            else if (ev.target.matches('[data-cd-task-edit]')) {
+                if (ev.key === 'Enter') { ev.preventDefault(); endEdit(ev.target, true); }
+                else if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); endEdit(ev.target, false); }
+            }
+        });
+        box.addEventListener('focusout', (ev) => {
+            if (ev.target.matches('[data-cd-task-edit]') && chat() && chat().tasksEdit != null) endEdit(ev.target, true);
+            else if (chat() && chat().tasksLate && !box.contains(ev.relatedTarget)) tasksDraw(id);
+        });
+    }
+    async function renameBox(c, id) {
+        const row = rowOf(id) || { id };
+        const { value, fields } = await form(c, `
+            <p>A name for <b>${esc(titleOf(row))}</b> that Fleet keeps. Leave it empty to let the Supervisor title the session from what you ask.</p>
+            <label><span>Name:</span><input type="text" data-cd="name" data-cd-focus value="${esc(titleOf(row))}" maxlength="100" spellcheck="true" autocomplete="off"></label>`,
+        [{ text: 'Rename', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Rename Session' });
+        if (value !== true) return;
+        try {
+            const r = await send('claude_desk_tasks', { id, action: 'rename', title: String(fields.name || '').trim() });
+            const d = unwrap(r, 'asks');
+            if (d.title) titleApply(id, d.title); else await loadSessions(false);
+            if (S.c) S.c.render();
+        } catch (e) { await failBox(c, e); }
     }
 
     /**
@@ -4199,8 +4393,158 @@
         return { html, mount: (pane) => paintBars(pane) };
     }
 
+    // ---- Usage: work items -> sessions -> turns -> agents, what each spent and the flags (modules/claudeUsageAudit.js) -----
+
+    const usgUi = () => (S.usg || (S.usg = { days: 1, data: null, flags: null, loading: false, error: '', open: new Set(), opened: false, sel: '', det: new Map(), detKey: '', retry: null }));
+    const usgTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n || 0)));
+    const usgDur = (ms) => { if (ms == null) return ''; const m = Math.round(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : (m >= 1 ? `${m} min` : `${Math.max(1, Math.round(ms / 1000))} s`); };
+    const usgPct = (v) => (v == null ? '' : `${Math.round(v * 100)}%`);
+    const usgModel = (m) => String(m || '').replace(/^claude-/, '').replace(/^deepseek-ai\//, '');
+    const usgOpenFlags = () => { const u = S.sup.data && S.sup.data.usage; return u ? u.open || 0 : (usgUi().flags || []).filter((f) => !f.ackAt).length; };
+    const usgFlagged = (sid) => !!(S.sup.data && S.sup.data.usage && S.sup.data.usage.sessions && S.sup.data.usage.sessions[sid]);
+
+    async function usgLoad() {
+        const u = usgUi();
+        if (u.loading) return;
+        u.loading = true;
+        u.error = '';
+        try {
+            const r = unwrap(await send('claude_desk_supervisor', { action: 'usage_tree', days: u.days }), 'usage');
+            u.data = r.usage || { rows: [] };
+            if (r.flags) u.flags = r.flags;
+            if (!u.opened && u.data.rows) { u.opened = true; u.data.rows.forEach((x) => { if (x.kind === 'work') u.open.add(x.key); }); }
+            // a first read of a big window answers "scanning" and finishes in the background: asked again once
+            clearTimeout(u.retry);
+            if (u.data.scanning) u.retry = setTimeout(() => { u.loading = false; void usgLoad(); }, 6000);
+        } catch (e) { u.error = SUP_GONE.test(errText(e)) ? NOT_YET : errText(e); u.data = u.data || { rows: [] }; }
+        u.loading = false;
+        repaint();
+    }
+    async function usgLoadFlags() {
+        try { const r = unwrap(await send('claude_desk_supervisor', { action: 'usage_flags', all: true, days: 30 }), 'flags'); usgUi().flags = r.flags || []; } catch (_) { /* later */ }
+        repaint();
+    }
+
+    /** The rows that show: a row is hidden when any ancestor is closed. */
+    function usgVisible() {
+        const u = usgUi();
+        const rows = (u.data && u.data.rows) || [];
+        const byKey = new Map(rows.map((r) => [r.key, r]));
+        const hasKids = new Set(rows.map((r) => r.parent).filter(Boolean));
+        const vis = rows.filter((r) => { let p = r.parent; while (p) { if (!u.open.has(p)) return false; p = (byKey.get(p) || {}).parent; } return true; });
+        return { vis, hasKids };
+    }
+
+    function usgCols(c) {
+        const u = usgUi();
+        const hasKids = usgVisible().hasKids;
+        return [
+            { t: 'Name', w: 300, key: 'name', html: (r) => `<i class="cd-ux-n cd-ux-d${Math.min(3, r.depth)}">${hasKids.has(r.key) ? `<span class="cd-ux-tw" data-act="usage-toggle" data-arg="${esc(r.key)}" role="button" aria-label="${u.open.has(r.key) ? 'Collapse' : 'Expand'}">${u.open.has(r.key) ? '-' : '+'}</span>` : '<span class="cd-ux-tw"></span>'}${esc(r.name)}${r.sub ? ` <small>${esc(r.sub)}</small>` : ''}</i>`, text: (r) => r.name },
+            { t: 'Model', w: 120, key: 'model', text: (r) => r.fig.models.map(usgModel).join(', ') },
+            { t: 'Effort', w: 56, key: 'effort', text: (r) => r.fig.efforts.join(', ') },
+            { t: 'Tokens', w: 70, key: 'fresh', num: true, text: (r) => usgTok(r.fig.tokens.fresh), value: (r) => r.fig.tokens.fresh },
+            { t: 'In / Out', w: 90, key: 'io', num: true, text: (r) => `${usgTok(r.fig.tokens.input)} / ${usgTok(r.fig.tokens.output)}` },
+            { t: 'Cache W / R', w: 100, key: 'cache', num: true, text: (r) => `${usgTok(r.fig.tokens.cacheWrite)} / ${usgTok(r.fig.tokens.cacheRead)}` },
+            { t: 'Time', w: 70, key: 'dur', num: true, text: (r) => usgDur(r.fig.durationMs) },
+            { t: 'Calls', w: 50, key: 'tools', num: true, text: (r) => String(r.fig.tools) },
+            { t: 'Files', w: 44, key: 'files', num: true, text: (r) => String(r.fig.files) },
+            { t: 'Cached', w: 56, key: 'ratio', num: true, text: (r) => usgPct(r.fig.eff.cacheRatio) },
+            { t: 'Out / call', w: 66, key: 'opt', num: true, text: (r) => (r.fig.eff.outPerTool == null ? '' : usgTok(r.fig.eff.outPerTool)) },
+            { t: 'Tok / file', w: 66, key: 'tpf', num: true, text: (r) => (r.fig.eff.tokPerFile == null ? '' : usgTok(r.fig.eff.tokPerFile)) },
+            { t: 'Ctx / call', w: 66, key: 'ctx', num: true, text: (r) => (r.fig.eff.heavyCtx == null ? '' : usgTok(r.fig.eff.heavyCtx)) },
+            { t: 'Share', w: 52, key: 'share', num: true, text: (r) => usgPct(r.fig.share) },
+            { t: 'Flag', w: 110, key: 'flag', text: (r) => (r.flags.length ? r.flags.map((f) => f.reason).join(', ') : (r.below ? `${r.below} below` : '')) }
+        ];
+    }
+
+    function usgDetailHtml(c) {
+        const u = usgUi();
+        const row = ((u.data && u.data.rows) || []).find((r) => r.key === u.sel);
+        if (!row) return '<p class="mmc-hint">Select a row to see its breakdown: the models it ran on, what it did, and why it was flagged.</p>';
+        const f = row.fig;
+        const det = u.det.get(u.sel);
+        const flags = row.flags.length ? `<p><b>Flags</b></p><ul>${row.flags.map((x) => `<li>${esc(x.text)} <span class="mmc-link" data-act="usage-ack" data-arg="${esc(x.id)}">Acknowledge</span></li>`).join('')}</ul>` : '';
+        const props = c.props([
+            ['Tokens', `${usgTok(f.tokens.fresh)} new (in ${usgTok(f.tokens.input)}, out ${usgTok(f.tokens.output)}, cache write ${usgTok(f.tokens.cacheWrite)}), ${usgTok(f.tokens.cacheRead)} re-read from the cache`],
+            ['Cost', f.costUsd == null ? 'Not shown: no price is set for these models (agentSupervisor.usageFlags.prices, USD per million tokens)' : `$${f.costUsd.toFixed(2)}`],
+            ['Models', esc(f.models.map(usgModel).join(', ') || 'None')],
+            ['Effort', esc(f.efforts.join(', ') || 'Unknown')],
+            ['Duration', esc(usgDur(f.durationMs) || '')],
+            ['Model calls / tool calls / files edited', `${f.calls} / ${f.tools} / ${f.files}`],
+            ['Cache reuse', esc(usgPct(f.eff.cacheRatio) || 'n/a')],
+            ['Output per tool call', f.eff.outPerTool == null ? 'n/a' : usgTok(f.eff.outPerTool)],
+            ['Tokens per file edited', f.eff.tokPerFile == null ? 'n/a' : usgTok(f.eff.tokPerFile)],
+            ['Context per call', f.eff.heavyCtx == null ? 'n/a' : usgTok(f.eff.heavyCtx)],
+            ['Share of its session', f.share == null ? 'n/a' : usgPct(f.share)]
+        ]);
+        let more = '';
+        if (det && det.fig) {
+            const models = det.models.length ? `<p><b>By model</b></p><table class="cd-table"><thead><tr><th>Model</th><th class="cd-w50">Calls</th><th>In</th><th>Out</th><th>Cache write</th><th>Cache read</th></tr></thead><tbody>${det.models.map((m) => `<tr><td>${esc(usgModel(m.model))}</td><td>${m.calls}</td><td>${usgTok(m.input)}</td><td>${usgTok(m.output)}</td><td>${usgTok(m.cacheWrite)}</td><td>${usgTok(m.cacheRead)}</td></tr>`).join('')}</tbody></table>` : '';
+            const tools = det.tools.length ? `<p><b>Tools</b></p><p class="cd-read">${esc(det.tools.map((t) => `${t.name} ${t.n}`).join(', '))}</p>` : '';
+            const notes = det.notes.length ? `<p><b>Worth a look</b></p><ul>${det.notes.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '';
+            more = models + tools + notes;
+        } else if (row.kind !== 'work') more = `<p class="mmc-hint">${det === false ? 'The breakdown could not be read.' : 'Reading the breakdown...'}</p>`;
+        return `<p><b>${esc(row.name)}</b></p>${flags}${props}${more}`;
+    }
+    function usgSelect(key) {
+        const u = usgUi();
+        u.sel = key;
+        const paint = () => { const box = S.c && S.c.modal.querySelector('.cd-ux-detail'); if (box) box.innerHTML = usgDetailHtml(S.c); };
+        paint();
+        const row = ((u.data && u.data.rows) || []).find((r) => r.key === key);
+        if (!row || row.kind === 'work' || u.det.has(key)) return;
+        void send('claude_desk_supervisor', { action: 'usage_detail', kind: row.kind, id: row.id, days: u.days })
+            .then((r) => { u.det.set(key, unwrap(r, 'detail').detail || false); }).catch(() => { u.det.set(key, false); }).then(() => { if (u.sel === key) paint(); });
+    }
+
+    function usagePage(c) {
+        const u = usgUi();
+        if (!u.data && !u.loading) void usgLoad();
+        if (!S.sup.loaded && !S.sup.loading) void loadSupervisor();
+        const { vis } = usgVisible();
+        const icon = (r) => (r.flags.length || r.below ? `${VI}/warning-16.png` : r.kind === 'work' ? `${ITEMS}/administrative-tools-16.png` : r.kind === 'agent' ? `${ITEMS}/programs-and-features-16.png` : r.kind === 'turn' ? `${VI}/info-16.png` : SESSION16);
+        const rows = vis.map((r) => ({ key: `ux:${r.key}`, icon: icon(r), data: r }));
+        const empty = u.error ? `The usage could not be read. ${u.error}` : (u.data && u.data.scanning ? 'Reading the transcripts for the first time (this can take a minute)...' : (u.data ? `No Claude session was active in the last ${u.days === 1 ? '24 hours' : '7 days'}.` : 'Reading the transcripts...'));
+        const lv = c.listView(usgCols(c), rows, { wrap: true, fit: true, sortId: 'cd-usage', empty });
+        const note = u.data && u.data.rows && u.data.rows.length ? `<p class="mmc-hint cd-ux-note">${u.days === 1 ? 'Last 24 hours' : 'Last 7 days'}, biggest first. Tokens are new input, output and cache writes; cache reads are shown apart.${u.data.pricesSet ? '' : ' No prices are set, so no cost is shown.'}</p>` : '';
+        return {
+            html: `<div class="cd-rv"><div class="cd-rv-top">${lv}${note}</div><div class="cd-rv-split" role="separator" aria-orientation="horizontal" title="Drag to resize"></div><div class="cd-rv-bot cd-ux-detail">${usgDetailHtml(c)}</div></div>`,
+            list: true,
+            split: true,
+            mount: (pane) => splitDrag(pane)
+        };
+    }
+
+    function usageFlagsPage(c) {
+        const u = usgUi();
+        if (!u.flags && !u.flagsLoading) { u.flagsLoading = true; void usgLoadFlags().then(() => { u.flagsLoading = false; }); }
+        const rows = (u.flags || []).map((f) => ({ key: `ux:f:${f.id}`, icon: f.ackAt ? `${VI}/check-16.png` : `${VI}/warning-16.png`, data: f }));
+        const lv = c.listView([
+            { t: 'Session', w: 200, key: 'title', text: (f) => f.title },
+            { t: 'Why', w: 130, key: 'reason', text: (f) => f.reasonText },
+            { t: 'Detail', w: 420, key: 'text', text: (f) => f.text },
+            { t: 'First seen', w: 120, key: 'first', text: (f) => when(f.firstSeen), value: (f) => f.firstSeen },
+            { t: 'Last seen', w: 120, key: 'last', text: (f) => when(f.lastSeen), value: (f) => f.lastSeen },
+            { t: 'State', w: 100, key: 'state', text: (f) => (f.ackAt ? 'Acknowledged' : 'Open') }
+        ], rows, { wrap: true, fit: true, sortId: 'cd-usage-flags', sort: { key: 'last', dir: -1 }, empty: u.flags ? 'Nothing was flagged in the last 30 days.' : 'Reading the flags...' });
+        return { html: lv, list: true };
+    }
+    async function usgAck(c, id) {
+        const fid = id || selId(c, 'ux:f:');
+        if (!fid) { c.note('Select a flag first.'); return; }
+        try {
+            const r = unwrap(await send('claude_desk_supervisor', { action: 'usage_ack', id: Number(fid) }), 'flags');
+            usgUi().flags = r.flags || usgUi().flags;
+            if (r.summary && S.sup.data) S.sup.data = Object.assign({}, S.sup.data, { usage: r.summary });
+            void usgLoad();
+        } catch (e) { await failBox(c, e); }
+        repaint();
+    }
+
     function page(n, c) {
         switch (n.id) {
+            case 'usage': return usagePage(c);
+            case 'usage-flags': return usageFlagsPage(c);
             case 'root': return withBars(rootPage(c));
             case 'co-held': return workPage(c, 'held');
             case 'aw-sup': return workPage(c, 'active');
@@ -4219,6 +4563,7 @@
             case 'rc-host': return hostRcPage(c);
             case 'co-builds': return buildsPage(c);
             case 'co-locks': return locksPage(c);
+            case 'sup-manager': return managerPage(c);
             case 'co-supervisor': case 'sup-settings': case 'sup-reviews': case 'sup-asks': case 'sup-holds': case 'sup-locks': case 'sup-arts': return supervisorPage(c, n.id);
             case 'sup-maint': return maintenancePage(c);
             case 'co-work': return workPage(c, 'all');
@@ -4309,6 +4654,8 @@
             case 'sup-holds': return [{ text: 'Resume', action: 'sup-resume' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-locks': return [{ text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-maint': return [{ text: 'Run Now', action: 'maint-run', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Dry Run', action: 'maint-dry', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Save Settings', action: 'maint-save', disabled: !maintUi().draft }, { text: 'Read Again', action: 'sup-refresh' }];
+            case 'usage': return [{ text: 'Last 24 Hours', action: 'usage-d1', disabled: usgUi().days === 1 }, { text: 'Last 7 Days', action: 'usage-d7', disabled: usgUi().days === 7 }, { text: 'Read Again', action: 'usage-refresh' }];
+            case 'usage-flags': return [{ text: 'Acknowledge', action: 'usage-ack', disabled: !selId(c, 'ux:f:') }, { text: 'Read Again', action: 'usage-refresh' }];
             case 'sup-arts': return [{ text: 'Clean...', action: 'sup-art-clean' }, { text: 'Restore', action: 'sup-art-restore' }, { text: 'Forget', action: 'sup-art-forget' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'rc-host': return [
                 { text: 'Reconnect', action: 'rc-reconnect' },
@@ -4351,13 +4698,14 @@
         return [{ text: 'Open', action: 'open-session' }].concat(typed, [
             { separator: true },
             { text: chatOf(id) && chatOf(id).view === 'detail' ? 'Conversation' : 'Details', action: 'detail-toggle' },
+            { text: 'Rename...', action: 'rename-session' },
             { separator: true },
             { text: 'Resume in Remote Control...', action: 'resume', disabled: !!l },
             { text: 'Open in claude.ai', action: 'open-link', disabled: !(l && l.link) },
             { text: 'Copy Link', action: 'copy-link', disabled: !(l && l.link) },
             { separator: true },
             { text: 'End Session', action: 'end', disabled: !(l && l.origin === 'rc') }
-        ]);
+        ], id === managerSid() ? [{ separator: true }, { text: 'Change Manager Session...', action: 'mg-clear' }] : []);
     }
 
     function selCommandList(n, key) {
@@ -4492,6 +4840,10 @@
             case 'fleet-refresh': await loadFleet(); return true;
             case 'fold-open': if (S.foldCtx) await openFold(S.foldCtx.id, S.foldCtx.agent, S.foldCtx.el); return true;
             case 'sup-refresh': await loadSupervisor(); return true;
+            case 'usage-toggle': { const u = usgUi(); if (arg) { if (u.open.has(arg)) u.open.delete(arg); else u.open.add(arg); } repaint(); return true; }
+            case 'usage-d1': case 'usage-d7': { const u = usgUi(); u.days = a === 'usage-d7' ? 7 : 1; u.data = null; u.sel = ''; u.det.clear(); void usgLoad(); repaint(); return true; }
+            case 'usage-refresh': { const u = usgUi(); u.det.clear(); u.flags = null; void usgLoad(); void loadSupervisor(); repaint(); return true; }
+            case 'usage-ack': await usgAck(c, arg); return true;
             case 'maint-run': await maintAct(c, { action: 'maintenance_run' }, 'Starting the maintenance run...'); return true;
             case 'maint-dry': await maintAct(c, { action: 'maintenance_run', dryRun: true }, 'Starting a dry run...'); return true;
             case 'maint-save': { const dr = maintUi().draft; if (dr) await maintAct(c, { action: 'maintenance_save', settings: { enabled: !!dr.enabled, time: String(dr.time || '').trim(), dryRun: !!dr.dryRun, deleteRemoteBranches: !!dr.deleteRemoteBranches, checks: dr.checks } }, 'Saving...'); return true; }
@@ -4581,6 +4933,31 @@
                 let ok = false;
                 try { ok = !!(d && typeof d.askXi === 'function' && await d.askXi(lines.join('\n'))); } catch (_) { ok = false; }
                 if (!ok) await c.box('<p>Yozora is not available here: the Director is not loaded or Yozora is off in its settings.</p>', null, { icon: 'warning', title: 'Ask Yozora' });
+                return true;
+            }
+            case 'mg-use': {
+                const sel = c.modal.querySelector('[data-cd-mg]');
+                const sid = sel ? sel.value : '';
+                if (!sid) return true;
+                await supAct(c, { action: 'manager_set', sessionId: sid }, 'Saving...');
+                c.select(`mg:${sid}`, true);
+                return true;
+            }
+            case 'mg-start': {
+                c.note('Starting the Manager Session...');
+                try {
+                    const r = await send('claude_desk_session', { action: 'start', prompt: MANAGER_BRIEF, account: 'auto', model: 'opus', effort: 'high', supervised: false, engine: 'claude', title: 'Manager Session' });
+                    const res = r.result || {};
+                    if (!res.id) throw new Error(res.message || 'The session did not start');
+                    await supAct(c, { action: 'manager_set', sessionId: res.id }, 'Saving...');
+                    await loadSessions(false);
+                    c.select(`mg:${res.id}`, true);
+                } catch (e) { c.note(''); await failBox(c, e); }
+                return true;
+            }
+            case 'mg-clear': {
+                await supAct(c, { action: 'manager_set', sessionId: '' }, 'Saving...');
+                c.select('sup-manager', true);
                 return true;
             }
             case 'rules-goto': c.open.add('memory'); c.open.add('rules'); c.select('rules-review', true); return true;
@@ -4892,6 +5269,8 @@
                 c.render();
                 return true;
             }
+            case 'tasks-toggle': tasksToggle(); return true;
+            case 'rename-session': await renameBox(c, sid); return true;
             case 'detail-refresh': await loadDetail(sid); return true;
             case 'agent-earlier': await loadAgentPage(nodeSid(c.node) || sid, arg, true); return true;
             case 'compact': await sessionCommand(c, sid, 'compact', undefined, 'Compacting the conversation...'); return true;
@@ -5869,12 +6248,14 @@
                 if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
                 if (n.id === 'co-work') return S.sup.busy || (S.sup.counts ? `${S.sup.counts.active} running, ${S.sup.counts.queued} queued` : plural(supWork().filter((w) => WORK_OPEN.has(w.state)).length, 'open request'));
                 if (n.id === 'sup-reviews') return plural(supReviews().filter((r) => !r.dismissed).length, 'review');
+                if (n.id === 'usage') { const u = usgUi(); return u.data && u.data.rows ? `${plural(u.data.rows.filter((r) => r.kind === 'session').length, 'session')}, ${u.days === 1 ? 'last 24 h' : 'last 7 days'}` : ''; }
+                if (n.id === 'usage-flags') return plural(usgOpenFlags(), 'open flag');
                 if (n.id === 'sup-asks') return plural(supAsks().length, 'restart wait');
                 if (n.id === 'co-supervisor') return S.sup.busy || (S.sup.data && S.sup.data.stats ? `${plural(S.sup.data.stats.reviewed || 0, 'review')}, ${S.sup.data.stats.gaps || 0} with gaps` : '');
-                if (nodeSid(n.id)) { const sid = nodeSid(n.id); const ch = S.chats.get(sid); const l = liveOf(sid); const il = ch && ch.ins ? insLine(ch.ins, !!(l && l.status === 'busy')) : ''; return ch ? (il || plural(ch.messages.length, 'message')) : ''; }
+                if (nodeSid(n.id)) { const sid = nodeSid(n.id); const ch = S.chats.get(sid); const l = liveOf(sid); const il = ch && ch.ins ? insLine(ch.ins, !!(l && l.status === 'busy')) : ''; return ch ? [il || plural(ch.messages.length, 'message'), tasksStatus(ch)].filter(Boolean).join(' \u00b7 ') : ''; }
                 return `Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`;
             },
-            onSelectRow: (key, n) => { if (key && key.startsWith('w:')) workDetailPaint(S.c, key.slice(2)); else if (key && (key.startsWith('mc:') || key.startsWith('mh:'))) maintSelect(key); else if (n && SUP_PART[n.id]) supSelect(key); else if (n && nodeSid(n.id)) detailSelect(key, nodeSid(n.id)); },
+            onSelectRow: (key, n) => { if (key && key.startsWith('w:')) workDetailPaint(S.c, key.slice(2)); else if (key && (key.startsWith('mc:') || key.startsWith('mh:'))) maintSelect(key); else if (key && key.startsWith('ux:')) usgSelect(key.slice(3)); else if (n && SUP_PART[n.id]) supSelect(key); else if (n && nodeSid(n.id)) detailSelect(key, nodeSid(n.id)); },
             onSelect: undefined,
             onOpen: () => {},
             onClose: () => {
