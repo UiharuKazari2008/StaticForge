@@ -795,10 +795,17 @@
             return this.calendars.find((c) => !c.readonly) || this.calendars[0] || null;
         }
 
+        /** Where a new item goes: the calendar of the selection (Vista), else the registry's Default (by name), else the first that can be written. */
         writableCal() {
             const c = this.sel && this.sel.cal;
             if (c && !c.readonly) return c;
-            return this.calendars.find((x) => !x.readonly && x.visible) || this.calendars.find((x) => !x.readonly) || null;
+            const name = String(reg('Default', '') || '');
+            return (name && this.calendars.find((x) => !x.readonly && x.name === name)) || this.calendars.find((x) => !x.readonly) || null;
+        }
+
+        /** The calendar picked in the Calendars list becomes Default: new items of every Calendar and Tasks go there. */
+        setDefaultCal(cal) {
+            if (cal && !cal.readonly && reg('Default', '') !== cal.name) setReg({ Default: cal.name });
         }
 
         // ---- the range shown -------------------------------------------------------------
@@ -893,6 +900,7 @@
                     return;
                 }
                 this.select({ kind: 'calendar', cal });
+                this.setDefaultCal(cal);
             };
         }
 

@@ -59,6 +59,8 @@ function registerPackets(handlersCtx) {
     try { require('../../notificationInboxSources').bindDovecote(); } catch (e) { console.warn(`[294-notificationInboxHandler] dovecote: ${e.message}`); }
     // calendar appointment and task reminders fire from the server (#876)
     try { reminders.start(handlersCtx.globalResources); } catch (e) { console.warn(`[294-notificationInboxHandler] reminders: ${e.message}`); }
+    // the other workspaces' Calendars move into Default's once (#1157), recorded in calendar-migrated.json
+    try { require('../../calendarMigrate').start(handlersCtx.globalResources); } catch (e) { console.warn(`[294-notificationInboxHandler] calendar migrate: ${e.message}`); }
     try { require('../../shrineJobs').start(handlersCtx.globalResources); } catch (e) { console.warn(`[294-notificationInboxHandler] shrine job: ${e.message}`); }
     try { require('../../weatherDaily').start(handlersCtx.globalResources); } catch (e) { console.warn(`[294-notificationInboxHandler] weather daily: ${e.message}`); }
     const reg = (type, fn, meta = {}) => {

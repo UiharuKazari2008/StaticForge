@@ -190,8 +190,10 @@
         let hidden = [];
         try { hidden = JSON.parse(reg('Hidden', '[]')) || []; } catch (_) { hidden = []; }
         next.forEach((c) => { c.visible = !hidden.includes(c.name); });
+        hiddenSeen = reg('Hidden', '[]');
         cals = next;
         loadedAt = Date.now();
+        announce();
         // the selection points at the old objects: find it again by uid
         if (sel) {
             const s = sel;
@@ -201,6 +203,12 @@
                 if (ev) { sel = { ev, cal: c, start: s.start, end: s.end }; break; }
             }
         }
+    }
+
+    let hiddenSeen = '[]'; // the registry's Hidden as last applied to cals
+    /** What Today (and any other reader) listens to: the calendar data or its hidden set changed (#1157). */
+    function announce() {
+        try { document.dispatchEvent(new CustomEvent('wmcalendarchanged')); } catch (_) { /* no events */ }
     }
 
     function reload(force) {
@@ -249,9 +257,15 @@
         return n || 'My';
     }
 
-    /** The calendar a new appointment goes to: the first one that can be written (made when none). */
+    /** The calendar new items go to: the registry's Default (by name) when it can be written, else the first that can (null when none). */
     function writableCal() {
-        return cals.find((c) => !c.readonly && c.visible) || cals.find((c) => !c.readonly) || null;
+        const name = String(reg('Default', '') || '');
+        return (name && cals.find((c) => !c.readonly && c.name === name)) || cals.find((c) => !c.readonly) || null;
+    }
+    /** A calendar picked for a new item becomes Default (shared with desktop Calendar and Tasks). */
+    function setDefaultCal(cal) {
+        if (!cal || cal.readonly || !window.melatonRegistry || reg('Default', '') === cal.name) return;
+        void window.melatonRegistry.set(REG_KEY, { Default: cal.name });
     }
 
     async function ensureFolder() {
@@ -282,6 +296,7 @@
             cal.fileName = name;
         }
         loadedAt = Date.now();
+        announce();
     }
 
     async function saveUnderCursor(cal) {
@@ -511,6 +526,7 @@
 
     // a change made elsewhere arrives as vfs_updated through the document 'wsMessage' bridge (as wmTasks)
     let vfsTimer = null;
+    const pageSeen = () => !!(ws && (typeof ws.onScreen === 'function' ? ws.onScreen() : !document.hidden));
     document.addEventListener('wsMessage', (e) => {
         const d = (e && e.detail) || {};
         if (d.type !== 'vfs_updated') return;
@@ -518,16 +534,34 @@
         if (path && !/\/Calendars(\/|$)/i.test(path)) return;
         if (!loadedAt) return; // nothing read yet: the first reader reads them as they are
         calDirty = true;
-        if (!calSeen()) return;
+        // Calendar on screen, or the page on screen for Today's row: read once (debounced) and announce it; the
+        // screen off waits for wmawake, as before. No timer runs while nothing changes.
+        if (!calSeen() && !pageSeen()) return;
         clearTimeout(vfsTimer);
-        vfsTimer = setTimeout(() => { if (calDirty && calSeen()) void reload(true); }, 400);
+        vfsTimer = setTimeout(() => { if (calDirty && (calSeen() || pageSeen())) void reload(true); }, 400);
     }, { signal: appScopeSignal });
     if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', () => { if (loadedAt) calDirty = true; }, { signal: appScopeSignal });
     document.addEventListener('wmawake', (e) => {
-        if (!(e.detail && e.detail.awake) || !calSeen()) return;
-        if (calDirty) void reload(true);
-        else if (viewStale) { viewStale = false; render(); }
+        if (!(e.detail && e.detail.awake)) return;
+        if (calDirty && loadedAt && (calSeen() || pageSeen())) void reload(true);
+        else if (viewStale && calSeen()) { viewStale = false; render(); }
     }, { signal: appScopeSignal });
+    // the Hidden calendars changed (desktop Calendar's tick boxes, another device: registry_changed): apply it to the
+    // loaded calendars without reading files, redraw, and announce it (Today's row)
+    if (window.melatonRegistry && typeof window.melatonRegistry.onChange === 'function') {
+        const offReg = window.melatonRegistry.onChange(() => {
+            if (!loadedAt) return;
+            const h = reg('Hidden', '[]');
+            if (h === hiddenSeen) return;
+            hiddenSeen = h;
+            let list = [];
+            try { list = JSON.parse(h) || []; } catch (_) { list = []; }
+            cals.forEach((c) => { c.visible = !list.includes(c.name); });
+            renderSeen();
+            announce();
+        });
+        if (appScopeSignal) appScopeSignal.addEventListener('abort', offReg, { once: true });
+    }
 
     function render() {
         if (!page) return;
@@ -604,7 +638,7 @@
             return d;
         })();
         const rem = remParts(15);
-        return { ev: null, cal: null, summary: '', location: '', description: '', start: s, end: new Date(+s + 3600000), allDay: false, freq: '', remind: true, remN: rem.n, remUnit: rem.unit, attendees: [] };
+        return { ev: null, cal: writableCal(), summary: '', location: '', description: '', start: s, end: new Date(+s + 3600000), allDay: false, freq: '', remind: true, remN: rem.n, remUnit: rem.unit, attendees: [] };
     }
 
     /** The kit's month calendar is open over the form (it counts as a layer for the back key). */
@@ -635,6 +669,8 @@
             fieldRow('location', 'Location', `<input type="text" class="wcl-finput" data-f="location" value="${esc(f.location)}" autocomplete="off" aria-label="Location">`, { drop: true }),
             fieldRow('starts', 'Starts', when('start', f.start)),
             fieldRow('ends', 'Ends', when('end', f.end)),
+            // a new appointment names the calendar it goes to when there is a choice (Default is preselected)
+            !f.ev && cals.filter((c) => !c.readonly).length > 1 && f.cal ? fieldRow('calendar', 'Calendar', st('calendar', f.cal.name)) : '',
             fieldRow('allday', 'All Day', st('allday', f.allDay ? 'Yes' : 'No')),
             fieldRow('occurs', 'Occurs', st('occurs', f.freq ? occursText(f.rrule && f.rrule.freq === f.freq ? f.rrule : { freq: f.freq }, f.start) : 'Once')),
             fieldRow('reminder', 'Reminder', st('reminder', f.remind ? 'Remind me' : 'None')),
@@ -718,6 +754,7 @@
         if (k === 'allday') items = [['No', false], ['Yes', true]].map(([l, v]) => ({ label: l, radio: form.allDay === v, action: () => { form.allDay = v; if (v) { form.start = startOfDay(form.start); form.end = startOfDay(form.end < form.start ? form.start : form.end); } redo(); } }));
         else if (k === 'occurs') items = OCCURS(form.start).map(([v, l]) => ({ label: l, radio: form.freq === v, action: () => { form.freq = v; redo(); } }));
         else if (k === 'reminder') items = [['None', false], ['Remind me', true]].map(([l, v]) => ({ label: l, radio: form.remind === v, action: () => { form.remind = v; redo(); } }));
+        else if (k === 'calendar') items = cals.filter((c) => !c.readonly).map((c) => ({ label: c.name, radio: form.cal === c, action: () => { form.cal = c; setDefaultCal(c); redo(); } }));
         else if (k === 'remunit') items = UNITS.map(([u, l]) => ({ label: l, radio: form.remUnit === u, action: () => { form.remUnit = u; redo(); } }));
         if (items.length) ws.dropdown(btn, items, 'left');
     }

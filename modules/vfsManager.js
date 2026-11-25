@@ -3013,6 +3013,10 @@ class VfsManager {
                 matches.sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0) || String(b.id).localeCompare(String(a.id)));
                 const keep = matches[0];
                 const oldHash = keep.content_hash;
+                // every overwrite of a calendar (the agents' calendar tool, the phone mirror's upload, a subscription) keeps the replaced text by hash (#1157)
+                if (oldHash && oldHash !== hash && /\.ics$/i.test(name)) {
+                    await require('./calendarBases').saveFromBlob(oldHash, this.getFileBlobPath(oldHash), this.globalResources);
+                }
                 const updated = await vfsDatabase.updateUserFile(keep.id, {
                     original_name: name,
                     content_hash: hash,

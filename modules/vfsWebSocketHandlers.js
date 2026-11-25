@@ -373,13 +373,19 @@ class VfsWebSocketHandlers {
         }
 
         let calendarMerged = false;
+        let calendarCurrent = '';
         if (/\.ics$/i.test(existing.original_name || '') && existing.content_hash && Number(existing.size) <= 2 * 1024 * 1024) {
             try {
                 const cm = require('./calendarMcp');
+                const bases = require('./calendarBases');
+                const gr = this.globalResources;
                 const blob = async (h) => (h && /^[0-9a-f]{16,64}$/i.test(String(h)) ? fs.promises.readFile(this.getVfs().getFileBlobPath(String(h))).then((b) => b.toString('utf8'), () => '') : '');
+                // the version the client loaded: its blob while a file still holds it, else the kept copy (the blob goes with its last file)
+                const baseOf = async (h) => (await blob(h)) || bases.read(h, gr);
                 const currentText = await blob(existing.content_hash);
+                calendarCurrent = currentText;
                 const r = require('./calendarMerge').mergeSave({
-                    baseText: baseHash === existing.content_hash ? currentText : await blob(baseHash),
+                    baseText: baseHash === existing.content_hash ? currentText : await baseOf(baseHash),
                     currentText, incomingText: buffer.toString('utf8')
                 }, cm.joinCalendar);
                 if (r.text !== buffer.toString('utf8')) buffer = Buffer.from(r.text, 'utf8');
@@ -398,6 +404,12 @@ class VfsWebSocketHandlers {
         const oldHash = existing.content_hash;
         const blobPath = this.getVfs().getFileBlobPath(hash);
         await writeFileIfMissing(blobPath, buffer);
+        // the replaced calendar text is kept by hash, so a stale window's base is still found after the blob is gone (#1157)
+        if (oldHash && oldHash !== hash && /\.ics$/i.test(existing.original_name || '')) {
+            const bases = require('./calendarBases');
+            if (calendarCurrent) await bases.save(oldHash, calendarCurrent, this.globalResources);
+            else await bases.saveFromBlob(oldHash, this.getVfs().getFileBlobPath(oldHash), this.globalResources);
+        }
 
         const updated = await vfsDb.updateUserFile(fileId, {
             content_hash: hash,

@@ -297,6 +297,7 @@
         let hidden = [];
         try { hidden = JSON.parse(window.melatonRegistry ? window.melatonRegistry.get(REG_KEY, 'Hidden', '[]') : '[]') || []; } catch (_) { hidden = []; }
         next.forEach((c) => { c.hidden = hidden.includes(c.name); });
+        hiddenSeen = window.melatonRegistry ? window.melatonRegistry.get(REG_KEY, 'Hidden', '[]') : '[]';
         cals = next;
         loadedAt = Date.now();
         loadedFor = forWs;
@@ -307,6 +308,7 @@
     }
 
     let icsText = new Map(); // `${file id}|${ver}` -> the file's text as last read
+    let hiddenSeen = '[]'; // the registry's Hidden as last applied to cals
     // a new link may have missed a vfs_updated: the next reader reads again (not every 5 minutes by time, #890)
     let tasksDirty = false;
     if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', () => { if (loadedAt) tasksDirty = true; }, { signal: appScopeSignal });
@@ -331,6 +333,18 @@
         return p;
     }
 
+    /** The calendar a new task goes to: the registry's Default (by name) when it can be written, else the first that can. */
+    function defaultCal() {
+        const name = String((window.melatonRegistry && window.melatonRegistry.get(REG_KEY, 'Default', '')) || '');
+        return (name && cals.find((c) => !c.readonly && c.name === name)) || cals.find((c) => !c.readonly) || null;
+    }
+    /** A calendar picked for a new task becomes Default (shared with desktop Calendar and phone Calendar). */
+    function setDefaultCal(cal) {
+        const r = window.melatonRegistry;
+        if (!cal || cal.readonly || !r || r.get(REG_KEY, 'Default', '') === cal.name) return;
+        void r.set(REG_KEY, { Default: cal.name });
+    }
+
     const allTasks = () => cals.filter((c) => !c.hidden).reduce((a, c) => a.concat(c.tasks), []);
     const taskOf = (uid) => allTasks().find((t) => t.uid === uid) || null;
 
@@ -339,7 +353,7 @@
         const work = async () => {
             let cal = t.cal;
             if (!cal) {
-                cal = cals.find((c) => !c.readonly && !c.hidden) || cals.find((c) => !c.readonly) || null;
+                cal = defaultCal();
                 if (!cal) {
                     const name = `${userName()}'s Calendar`;
                     const file = await api._io.create(`${name.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80)}.ics`, editText(newCalText(name), t.uid, t));
@@ -566,7 +580,7 @@
         fromSummary = view === 'summary';
         form = t
             ? { task: t, summary: t.summary, priority: t.priority, completed: t.completed, start: t.start, due: t.due, remind: !!t.reminderAt, reminderAt: t.reminderAt, description: t.description }
-            : { task: null, summary: '', priority: 0, completed: false, start: null, due: null, remind: false, reminderAt: null, description: '' };
+            : { task: null, cal: defaultCal(), summary: '', priority: 0, completed: false, start: null, due: null, remind: false, reminderAt: null, description: '' };
         view = 'form';
         setTab('task');
         render();
@@ -592,6 +606,8 @@
         const pri = f.priority >= 1 && f.priority <= 4 ? 'High' : f.priority >= 6 ? 'Low' : 'Normal';
         page.querySelector('.wtk-fbody').innerHTML = [
             fieldRow('subject', 'Subject', `<input type="text" class="wtk-finput" value="${esc(f.summary)}" autocomplete="off" autocapitalize="sentences" aria-label="Subject"><span class="wtk-fdrop" aria-hidden="true"></span>`, 'is-boxed'),
+            // a new task names the calendar it goes to when there is a choice (Default is preselected)
+            !f.task && f.cal && cals.filter((c) => !c.readonly).length > 1 ? fieldRow('calendar', 'Calendar', val('calendar', f.cal.name)) : '',
             fieldRow('priority', 'Priority', val('priority', pri)),
             fieldRow('status', 'Status', val('status', f.completed ? 'Completed' : 'Not Completed')),
             fieldRow('starts', 'Starts', val('start', f.start ? formDate(f.start) : 'None')),
@@ -659,6 +675,7 @@
         }
         let items = [];
         if (k === 'priority') items = [['High', 1], ['Normal', 0], ['Low', 9]].map(([l, v]) => ({ label: l, radio: (v === 1 && f.priority >= 1 && f.priority <= 4) || (v === 9 && f.priority >= 6) || (v === 0 && (f.priority === 0 || f.priority === 5)), action: () => { f.priority = v; redo(); } }));
+        else if (k === 'calendar') items = cals.filter((c) => !c.readonly).map((c) => ({ label: c.name, radio: f.cal === c, action: () => { f.cal = c; setDefaultCal(c); redo(); } }));
         else if (k === 'status') items = [['Not Completed', false], ['Completed', true]].map(([l, v]) => ({ label: l, radio: f.completed === v, action: () => { f.completed = v; redo(); } }));
         else if (k === 'reminder') {
             items = [['None', false], ['Remind me', true]].map(([l, v]) => ({ label: l, radio: f.remind === v, action: () => {
@@ -676,7 +693,7 @@
         const subject = f.summary.trim();
         // an untouched new task is not kept
         if (!f.task && !subject && !f.due && !f.start && !f.description.trim() && !f.priority && !f.completed) { cancelForm(true); return; }
-        const t = f.task || { uid: newUid(), url: '', extra: [], cal: null, completedAt: null };
+        const t = f.task || { uid: newUid(), url: '', extra: [], cal: f.cal && cals.includes(f.cal) ? f.cal : null, completedAt: null };
         const was = Object.assign({}, t);
         t.summary = subject;
         t.priority = f.priority;
@@ -949,7 +966,14 @@
         // the screen off: read once it is on again (nothing shows the tasks meanwhile)
         if (ws && ws.onScreen && !ws.onScreen()) { vfsPending = true; return; }
         clearTimeout(liveTimer);
-        liveTimer = setTimeout(() => { if (Date.now() - loadedAt > 1500) reload(true); }, 400);
+        // a read that finished a moment ago may be this page's own save coming back: wait out the rest of that
+        // moment once, so a change made elsewhere right after a read is not lost
+        const go = (again) => {
+            const age = Date.now() - loadedAt;
+            if (age > 1500) reload(true);
+            else if (again) liveTimer = setTimeout(() => go(false), 1550 - age);
+        };
+        liveTimer = setTimeout(() => go(true), 400);
     }
 
     function show() {
@@ -1073,6 +1097,22 @@
         });
         document.addEventListener('workspaceSwitchComplete', () => { loadedAt = 0; cals = []; sel = null; if (page && ws.current === APP_ID) { view = 'list'; reload(true); } else changed(); }, { signal: appScopeSignal });
         document.addEventListener('wsMessage', onVfsMessage, { signal: appScopeSignal });
+        // the Hidden calendars changed (desktop Calendar's tick boxes, another device): applied to the loaded
+        // calendars without reading files; Today's row draws again (wmTasksChange)
+        if (window.melatonRegistry && typeof window.melatonRegistry.onChange === 'function') {
+            const offReg = window.melatonRegistry.onChange(() => {
+                if (!loadedAt) return;
+                const h = window.melatonRegistry.get(REG_KEY, 'Hidden', '[]');
+                if (h === hiddenSeen) return;
+                hiddenSeen = h;
+                let list = [];
+                try { list = JSON.parse(h) || []; } catch (_) { list = []; }
+                cals.forEach((c) => { c.hidden = !list.includes(c.name); });
+                changed();
+                if (page && view !== 'form') { if (listSeen()) render(); else pageStale = true; }
+            });
+            if (appScopeSignal) appScopeSignal.addEventListener('abort', offReg, { once: true });
+        }
         window.addEventListener('melatonscreen', printWake, { signal: appScopeSignal });
         document.addEventListener('visibilitychange', printWake, { signal: appScopeSignal });
         document.addEventListener('wmBehind', printWake, { signal: appScopeSignal });

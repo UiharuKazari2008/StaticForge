@@ -2583,6 +2583,9 @@
         // switched on in Settings > Today > Items (when the shell honours it)
         // (the next appointment moves on with the clock)
         registerItem({ id: 'calendar', label: 'Calendar', icon: 'today-calendar', after: 'tasks', wantsMinute: true, text: calendarText, onTap: () => open('calendar'), titanium: calendarTitanium });
+        // the calendars changed (a file changed on the server or another device, a calendar shown or hidden): the
+        // row's cached list is dropped and the row draws again; the Tasks row listens to wmTasksChange (wmShell)
+        document.addEventListener('wmcalendarchanged', () => { calCache.list = null; calCache.at = 0; repaintItems(['calendar']); }, { signal: appScopeSignal });
         // 6.5's Phone panel, right above Text (after the clock: a saved item order places it there too)
         if (sh.version === '6.5') {
             registerItem({ id: 'phone', label: 'Phone', icon: 'today-phone', after: 'date', wantsMinute: false, text: phoneText, onTap: openPhone, titanium: phoneTitanium });

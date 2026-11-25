@@ -294,25 +294,25 @@ function hiddenCalendars() {
     }
 }
 
-/** Every workspace's Calendars/*.ics: [{ fileId, name, workspace, hash, text }]. */
+/** The host's one calendar set (#1157): the Default workspace's Calendars/*.ics: [{ fileId, name, workspace, hash, text }].
+ *  Copies in other workspaces (stale; modules/calendarMigrate.js moves them once) never fire a reminder. */
 async function readCalendarFiles() {
     const vdb = require('./vfsDatabase');
     const wsm = gr && gr.getWorkspaceManager ? gr.getWorkspaceManager() : null;
-    const workspaces = Object.keys((wsm && wsm.getWorkspaces && wsm.getWorkspaces()) || {});
+    const workspace = Object.keys((wsm && wsm.getWorkspaces && wsm.getWorkspaces()) || {}).find((id) => String(id).toLowerCase() === 'default');
+    if (!workspace) return [];
     const dir = gr.getPath('userFiles');
     const out = [];
-    for (const workspace of workspaces) {
-        const folders = (await vdb.getFoldersByParent('workspace', workspace, null)) || [];
-        for (const folder of folders.filter((f) => String(f.name || '').toLowerCase() === 'calendars')) {
-            const files = (await vdb.getUserFilesByLocation('workspace', workspace, folder.id)) || [];
-            for (const f of files) {
-                if (!/\.ics$/i.test(f.original_name || '') || f.trashed_at) continue;
-                let text = null;
-                if (!textCache.has(f.content_hash)) {
-                    try { text = await fs.promises.readFile(path.join(dir, f.content_hash), 'utf8'); } catch (_e) { continue; }
-                }
-                out.push({ fileId: f.id, name: f.original_name, workspace, hash: f.content_hash, text });
+    const folders = (await vdb.getFoldersByParent('workspace', workspace, null)) || [];
+    for (const folder of folders.filter((f) => String(f.name || '').toLowerCase() === 'calendars')) {
+        const files = (await vdb.getUserFilesByLocation('workspace', workspace, folder.id)) || [];
+        for (const f of files) {
+            if (!/\.ics$/i.test(f.original_name || '') || f.trashed_at) continue;
+            let text = null;
+            if (!textCache.has(f.content_hash)) {
+                try { text = await fs.promises.readFile(path.join(dir, f.content_hash), 'utf8'); } catch (_e) { continue; }
             }
+            out.push({ fileId: f.id, name: f.original_name, workspace, hash: f.content_hash, text });
         }
     }
     return out;
