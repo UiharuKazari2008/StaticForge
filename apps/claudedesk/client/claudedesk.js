@@ -231,7 +231,8 @@
             const r = await send('status_subscribe', { feed: 'claude_desk' });
             applyDesk(r.items || {});
             S.error = '';
-            if (!S.sup.loaded && !S.sup.loading) void loadSupervisor();
+            // read fresh whenever the window (re)subscribes: the module outlives a closed window and its copy goes stale
+            void loadSupervisor();
         } catch (e) {
             S.subscribed = false;
             S.error = errText(e);
