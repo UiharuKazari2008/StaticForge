@@ -19,7 +19,8 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 assert(/mmcLizumi\.js/.test(read('public/scripts/comp/featureLoader.js')), 'mmc_snapins loads mmcLizumi.js');
 assert(/launchId: 'mmc-lizumi'.*loadFeature\('mmc_snapins'\).*window\.openLizumi\(\)/.test(read('public/scripts/comp/modalUtils.js')), 'Start menu entry');
 const src = read('public/scripts/comp/mmcLizumi.js');
-assert(!/setInterval|alert\(|confirm\(|prompt\(|<select|type="range"/.test(src), 'no polling, no native UI');
+assert(!/setInterval|alert\(|confirm\(|prompt\(|<select/.test(src), 'no polling, no native UI');
+assert(!/setTimeout\([^)]*\b0\b\)/.test(src), 'no zero-delay loops');
 
 // ---- the packet: admin only, read only
 const handlerSrc = read('modules/ws/handlers/318-xmRadioHandler.js');
@@ -36,8 +37,8 @@ const wsClient = {
         if (type === 'xmradio_mmc_view') {
             return { success: true, data: {
                 account: { signedIn: true, handle: 'ab***', since: 1 },
-                deck: { tape: 'T', workspaceId: 'w', recordings: [{ rid: 'r1', channelId: 'c1', kind: 'song', since: Date.now() - 60000, back: 30, cut: { a: 'Artist', t: 'Title' } }],
-                    queue: [{ id: 'q1', channelId: 'c1', a: 'A', t: 'T', expiresAt: 5, addedAt: 4 }], timers: [{ id: 't1', channelId: 'c1', start: '08:00', minutes: 30, days: [1, 2] }], alerts: [], terms: [{ id: 's1', text: 'abba' }] },
+                deck: { tape: 'T', workspaceId: 'w', recordings: [{ rid: 'r1', url: '/api/xmradio/rec/r1/index.m3u8', channelId: 'c1', kind: 'song', since: Date.now() - 60000, back: 30, cut: { a: 'Artist', t: 'Title' } }],
+                    queue: [{ id: 'q1', channelId: 'c1', a: 'A', t: 'T', expiresAt: 5, addedAt: 4, slot: 2, state: 'running' }], timers: [{ id: 't1', channelId: 'c1', start: '08:00', minutes: 30, days: [1, 2] }], alerts: [], terms: [{ id: 's1', text: 'abba' }] },
                 slots: { max: 4 } } };
         }
         if (type === 'xmradio_lineup') return { success: true, data: { channels: [{ id: 'c1', number: 5, name: 'Hits' }] } };
@@ -47,13 +48,27 @@ const wsClient = {
 };
 let def = null;
 const rowsSeen = {};
+let timers = 0;
+const audios = [];
+class FakeAudio {
+    constructor() { this.src = ''; this.paused = true; this.listeners = {}; audios.push(this); }
+    addEventListener(t, f) { this.listeners[t] = f; }
+    pause() { this.paused = true; }
+    removeAttribute() { this.src = ''; }
+    load() {}
+    canPlayType() { return 'maybe'; }
+    async play() { this.paused = false; if (this.listeners.playing) this.listeners.playing(); }
+}
 const con = {
-    modal: { isConnected: true },
-    node: 'radios', refresh() {}, select() {},
-    listView: (cols, rows, o) => { rowsSeen.last = { cols, rows, o }; return `<lv ${rows.length}>`; }
+    modal: { isConnected: true, querySelector: () => null },
+    node: 'radios', refresh() {}, select() {}, sel: null,
+    listView: (cols, rows, o) => { rowsSeen.last = { cols, rows, o }; return `<lv ${rows.length}>`; },
+    page: (t, s, secs) => { rowsSeen.sections = secs; return `<page ${secs.length}>`; },
+    props: (rows) => rows.map((r) => r.join(":")).join("|")
 };
 const sandbox = {
-    console, Date, Math, Promise, setTimeout, clearTimeout, wsClient,
+    console, Date, Math, Promise, setTimeout: (f, ms) => { timers++; return setTimeout(f, ms); }, clearTimeout, wsClient, Audio: FakeAudio, AbortController,
+    document: { hidden: false, addEventListener() {}, createElement: () => ({ set src(v) { setTimeout(() => this.onerror(), 1); } }), head: { appendChild() {} } },
     featureLoader: { loadFeature: async () => {} },
     mmcConsole: { open: (d) => { def = d; d.onOpen(con); return con; } }
 };
@@ -71,11 +86,33 @@ vm.runInNewContext(src, sandbox);
     assert.strictEqual(rowsSeen.last.rows[0].data.state, 'Recording');
     assert.strictEqual(rowsSeen.last.rows[1].data.state, 'Standby');
     page('queue'); assert.strictEqual(rowsSeen.last.rows.length, 1);
+    assert.strictEqual(rowsSeen.last.rows[0].data.radio, 'Lizumi-Recorder-2', 'queue shows the virtual radio');
+    assert.strictEqual(rowsSeen.last.rows[0].data.qstate, 'Running', 'queue shows the state');
     page('schedules'); assert.strictEqual(rowsSeen.last.rows.length, 2, 'timer and term');
     page('accounts'); assert.strictEqual(rowsSeen.last.rows[0].data.state, 'Signed in');
     page('recordings'); await new Promise((r) => setTimeout(r, 20));
     assert(sent.includes('xmradio_tape_tracks'), 'tape read');
-    page('live'); assert.strictEqual(rowsSeen.last.rows.length, 0); assert(/later update/.test(rowsSeen.last.o.empty));
+    // Live: the recording list, then the player is torn down on a page change
+    con.node = 'live';
+    const live = page('live');
+    assert.strictEqual(rowsSeen.last.rows.length, 1, 'Live lists the recording slots');
+    assert.strictEqual(rowsSeen.last.rows[0].key, 'lv:r1');
+    assert(/data-lz="play"/.test(rowsSeen.sections[1].body) && /data-lz="vol"/.test(rowsSeen.sections[1].body), 'player controls');
+    assert(/data-lz="running"/.test(rowsSeen.sections[1].body), 'running time label');
+    assert.strictEqual(sandbox.mmcLizumi._state.player, null, 'no player before Play');
+    const btn = { addEventListener(t, f) { this.f = f; } };
+    const pane = { querySelector: (q) => (/play/.test(q) ? btn : null) };
+    live.mount(pane);
+    btn.f();
+    await new Promise((r) => setTimeout(r, 20));
+    const pl = sandbox.mmcLizumi._state.player;
+    assert(pl && pl.rid === 'r1' && audios.length === 1, 'Play creates the player');
+    assert.strictEqual(pl.state, 'playing');
+    page('queue');
+    assert.strictEqual(sandbox.mmcLizumi._state.player, null, 'page change destroys the player');
+    assert.strictEqual(audios[0].src, '', 'audio src removed');
+    assert(audios[0].paused, 'audio stopped');
+    con.node = 'queue';
     // a push updates the deck without a request
     listeners.xmradio_mmc_status({ changed: { deck: { tape: 'T', recordings: [], queue: [], timers: [], alerts: [], terms: [] } } });
     page('radios');

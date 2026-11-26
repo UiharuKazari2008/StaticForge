@@ -9,7 +9,9 @@
  *     Schedules         timers, search terms and alerts as one list
  *     Recordings        the current tape's tracks
  *     Accounts          the SiriusXM login
- *     Live, Diagnostics later updates (empty states)
+ *     Live              a monitor player for one recording slot (its growing HLS playlist), Mute and volume, and the
+ *                       tape's own progress; the player exists only while this page is shown
+ *     Diagnostics       later update (empty state)
  *
  * Data: the admin packet xmradio_mmc_view ({ account, deck, slots }) once, then the statusHub feed `xmradio_mmc`
  * (pushType xmradio_mmc_status, items.deck / items.account) while the window is open; nothing is polled. Channel names
@@ -40,8 +42,10 @@
         console: null, account: null, deck: null, slots: { max: 4 }, loaded: false, error: '',
         channels: new Map(), lineupAsked: false,
         tracks: null, tracksFor: '', tracksLoading: false,
-        feedOn: false
+        feedOn: false,
+        liveRid: '', vol: 80, muted: false, player: null
     };
+    const HLS_SRC = '/dist/hlsjs/hls.light.min.js';
     const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined;
     let wired = false;
 
@@ -64,7 +68,9 @@
 
     // ---- formatting -------------------------------------------------------------------------------------
 
-    const chName = (id) => state.channels.get(id) || (id ? 'Channel' : '');
+    const esc = (x) => String(x == null ? '' : x).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    // until the lineup has come in a channel shows no name rather than the word "Channel"
+    const chName = (id) => state.channels.get(id) || '';
     const cutText = (cut) => (cut ? [cut.a, cut.t || cut.s].filter(Boolean).join(' - ') : '');
     const clock = (ms) => (ms ? new Date(ms).toLocaleString([], { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
 
@@ -200,12 +206,14 @@
         };
     }
 
+    const QSTATE = { queued: 'Queued', running: 'Running', missed: 'Missed' };
+
     function queuePage(c) {
         const q = state.deck && Array.isArray(state.deck.queue) ? state.deck.queue : [];
         const rows = q.map((e, i) => ({
             key: `q:${e.id}`,
             icon: `${VI}/service-worker-16.png`,
-            data: { n: i + 1, cut: cutText(e), channel: chName(e.channelId), expires: clock(e.expiresAt), expiresAt: e.expiresAt || 0, added: clock(e.addedAt), addedAt: e.addedAt || 0 }
+            data: { n: i + 1, cut: cutText(e), channel: chName(e.channelId), radio: e.slot ? `Lizumi-Recorder-${e.slot}` : '-', qstate: QSTATE[e.state] || '-', expires: clock(e.expiresAt), expiresAt: e.expiresAt || 0, added: clock(e.addedAt), addedAt: e.addedAt || 0 }
         }));
         return {
             html: c.listView([
@@ -214,7 +222,8 @@
                 { t: 'Channel', w: 140, key: 'channel', text: (x) => x.channel },
                 { t: 'Expires', w: 120, key: 'expires', text: (x) => x.expires, value: (x) => x.expiresAt },
                 { t: 'Added', w: 120, key: 'added', text: (x) => x.added, value: (x) => x.addedAt },
-                { t: 'Virtual Radio', w: 100, key: 'radio', text: () => '-' }
+                { t: 'Virtual Radio', w: 130, key: 'radio', text: (x) => x.radio },
+                { t: 'State', w: 70, key: 'qstate', text: (x) => x.qstate }
             ], rows, { sortId: 'lz-queue', empty: 'The queue is empty.' }),
             list: true
         };
@@ -307,7 +316,159 @@
         };
     }
 
+
+    // ---- Live: the monitor player ------------------------------------------------------------------------
+
+    let hlsLoading = null;
+    /** hls.js, the same light build the radio app loads (loaded once, when a monitor first plays). */
+    function loadHls() {
+        if (root.Hls) return Promise.resolve(root.Hls);
+        if (!hlsLoading) {
+            hlsLoading = new Promise((resolve, reject) => {
+                const s = root.document.createElement('script');
+                s.src = HLS_SRC;
+                s.onload = () => (root.Hls ? resolve(root.Hls) : reject(new Error('The player did not load')));
+                s.onerror = () => { hlsLoading = null; reject(new Error('The player did not load')); };
+                root.document.head.appendChild(s);
+            });
+        }
+        return hlsLoading;
+    }
+
+    const recs = () => (state.deck && Array.isArray(state.deck.recordings) ? state.deck.recordings : []);
+    const recOf = (rid) => recs().find((r) => r.rid === rid) || null;
+    const slotName = (i) => `Lizumi-Recorder-${i + 1}`;
+
+    /** The recording the Live page shows: the one picked while it still records, else the first. */
+    function liveRec() {
+        return recOf(state.liveRid) || recs()[0] || null;
+    }
+
+    /** Stop and destroy the player: hls.destroy(), the audio's source removed, the tick and listeners gone. */
+    function stopPlayer() {
+        const p = state.player;
+        if (!p) return;
+        state.player = null;
+        p.ctl.abort();
+        if (p.timer) root.clearTimeout(p.timer);
+        if (p.hls) { try { p.hls.destroy(); } catch (_) { /* gone */ } }
+        try { p.audio.pause(); p.audio.removeAttribute('src'); p.audio.load(); } catch (_) { /* nothing loaded */ }
+    }
+
+    function runningText(r) {
+        return span((Date.now() - (r.since || Date.now())) / 1000);
+    }
+
+    /** One tick a second, only while the monitor plays and the page is visible; it writes the running time in place. */
+    function tick(p) {
+        if (p.timer) root.clearTimeout(p.timer);
+        p.timer = 0;
+        if (state.player !== p || p.state !== 'playing' || (root.document && root.document.hidden)) return;
+        const c = state.console;
+        const r = recOf(p.rid);
+        if (!r || !active(c) || c.node !== 'live') { stopPlayer(); return; }
+        const el = c.modal.querySelector('[data-lz="running"]');
+        if (el) el.textContent = runningText(r);
+        p.timer = root.setTimeout(() => tick(p), 1000);
+    }
+
+    async function startPlayer(r) {
+        stopPlayer();
+        if (state.console && typeof state.console.note === 'function') state.console.note(''); // a held-back note from the last try goes
+        const audio = new root.Audio();
+        audio.volume = state.vol / 100;
+        audio.muted = state.muted;
+        const p = { rid: r.rid, audio, hls: null, state: 'loading', timer: 0, retries: 0, ctl: new root.AbortController() };
+        state.player = p;
+        const set = (st) => { if (state.player !== p) return; p.state = st; repaint(); tick(p); };
+        audio.addEventListener('playing', () => set('playing'), { signal: p.ctl.signal });
+        audio.addEventListener('waiting', () => set('loading'), { signal: p.ctl.signal });
+        root.document.addEventListener('visibilitychange', () => tick(p), { signal: p.ctl.signal });
+        repaint();
+        const url = r.url || `/api/xmradio/rec/${encodeURIComponent(r.rid)}/index.m3u8`;
+        let Hls = null;
+        try { Hls = await loadHls(); } catch (_) { Hls = null; }
+        if (state.player !== p) return;
+        if (Hls && Hls.isSupported()) {
+            const h = new Hls({ liveSyncDurationCount: 3, maxBufferLength: 30, backBufferLength: 600, enableWorker: true });
+            p.hls = h;
+            h.on(Hls.Events.ERROR, (ev, d) => {
+                if (!d || !d.fatal || state.player !== p) return;
+                if (d.type === Hls.ErrorTypes.NETWORK_ERROR && (p.retries += 1) <= 3) { h.startLoad(); return; }
+                set('error');
+            });
+            h.loadSource(url);
+            h.attachMedia(audio);
+        } else if (audio.canPlayType('application/vnd.apple.mpegurl')) {
+            audio.src = url;
+        } else { set('error'); return; }
+        try { await audio.play(); } catch (err) {
+            // the browser refused to start sound (no click of the person's own behind it): say so and let Play be pressed
+            // again, instead of sitting on "Buffering..." for good (seen Nov 26 2026 with a scripted click)
+            if (state.player && state.player.audio === audio) { stopPlayer(); if (state.console && typeof state.console.note === 'function') state.console.note(err && err.name === 'NotAllowedError' ? 'The browser held the sound back. Press Play to listen.' : 'The recording could not be played.'); repaint(); }
+        }
+    }
+
+    const PSTATE = { loading: 'Buffering...', playing: 'Playing', error: 'The stream is not available' };
+
+    function livePage(c) {
+        const list = recs();
+        const r = liveRec();
+        if (state.player && (!r || state.player.rid !== r.rid)) stopPlayer(); // the recording ended, or another is shown
+        const p = state.player;
+        const rows = list.map((x, i) => ({ key: `lv:${x.rid}`, icon: `${VI}/volume-high-16.png`, data: { name: slotName(i), channel: chName(x.channelId), cut: cutText(x.cut) } }));
+        if (r && String(c.sel) !== `lv:${r.rid}`) c.sel = `lv:${r.rid}`;
+        const listHtml = c.listView([
+            { t: 'Virtual Radio', w: 130, key: 'name', text: (x) => x.name },
+            { t: 'Channel', w: 160, key: 'channel', text: (x) => x.channel },
+            { t: 'On air', w: 300, key: 'cut', text: (x) => x.cut }
+        ], rows, { sortId: 'lz-live', empty: 'No virtual radio is recording.' });
+        let monitor = '<p>Pick a recording virtual radio to monitor it.</p>';
+        if (r) {
+            const i = list.indexOf(r);
+            monitor = `<div class="mmc-buttons">
+                <button type="button" class="btn-standard" data-lz="play">${p ? 'Stop' : 'Play'}</button>
+                <button type="button" class="btn-standard" data-lz="mute">${state.muted ? 'Unmute' : 'Mute'}</button>
+                <label>Volume <input type="range" min="0" max="100" step="1" value="${state.vol}" data-lz="vol" aria-label="Volume"></label>
+            </div>
+            ${c.props([
+                ['Monitor', esc(`${slotName(i)} - ${p ? PSTATE[p.state] : 'stopped'}`)],
+                ['Channel', esc(chName(r.channelId))],
+                ['On air', esc(cutText(r.cut))],
+                ['Tape running', `<span data-lz="running">${esc(runningText(r))}</span>`],
+                ['Reached back', esc(r.back ? span(r.back) : '0:00')]
+            ])}`;
+        }
+        return {
+            html: c.page('Live', '', [
+                { id: 'lz-live-radios', title: 'Recording virtual radios', body: listHtml },
+                { id: 'lz-live-monitor', title: 'Monitor', body: monitor }
+            ]),
+            mount: (pane) => {
+                const q = (k) => pane.querySelector(`[data-lz="${k}"]`);
+                const play = q('play');
+                if (play) play.addEventListener('click', () => {
+                    if (state.player) { stopPlayer(); repaint(); return; }
+                    const cur = liveRec();
+                    if (cur) void startPlayer(cur);
+                });
+                const mute = q('mute');
+                if (mute) mute.addEventListener('click', () => {
+                    state.muted = !state.muted;
+                    if (state.player) state.player.audio.muted = state.muted;
+                    repaint();
+                });
+                const vol = q('vol');
+                if (vol) vol.addEventListener('input', () => {
+                    state.vol = Math.max(0, Math.min(100, Number(vol.value) || 0));
+                    if (state.player) state.player.audio.volume = state.vol / 100;
+                });
+            }
+        };
+    }
+
     function page(n, c) {
+        if (n.id !== 'live') stopPlayer(); // the monitor exists only while its page is shown
         if (n.id === 'root') {
             return {
                 html: c.listView([{ t: 'Name', w: 260, key: 'name', text: (x) => x.name }],
@@ -323,7 +484,7 @@
             case 'schedules': void loadLineup(); return schedulesPage(c);
             case 'recordings': return recordingsPage(c);
             case 'accounts': return accountsPage(c);
-            case 'live': return later(c, 'Live monitoring');
+            case 'live': void loadLineup(); return livePage(c);
             case 'diagnostics': return later(c, 'Diagnostics');
             default: return '';
         }
@@ -365,7 +526,14 @@
                 void loadView();
                 void want(true);
             },
+            onSelectRow: (key, n, c) => {
+                if (!n || n.id !== 'live' || !key || !key.startsWith('lv:')) return;
+                const rid = key.slice(3);
+                if (rid !== state.liveRid) { state.liveRid = rid; stopPlayer(); }
+                c.refresh();
+            },
             onClose: () => {
+                stopPlayer();
                 state.console = null;
                 void want(false);
             }
