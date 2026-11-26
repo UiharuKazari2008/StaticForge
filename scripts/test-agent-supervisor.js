@@ -717,6 +717,18 @@ sup._test.setFetch(async (url, opts) => {
         assert.throws(() => sup._test.parseLooseJson('no json at all'), /not JSON/);
     });
 
+    await test('JSON mode: a prompt that never says JSON gets "Answer in JSON." (DeepSeek 400s otherwise)', async () => {
+        const seen = [];
+        sup._test.setFetch(async (url, opts) => { seen.push(JSON.parse(opts.body)); return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{"title":"x"}' } }] }) }; });
+        const g4 = Object.assign({}, gr, { getConfig: () => ({ agentSupervisor: { enabled: true, engine: 'tokenrouter' } }) });
+        const o = await sup.askJson(g4, 'Title these requests in 8 words.', 'fix the bar', 'json');
+        assert.strictEqual(o.title, 'x');
+        const last = seen[seen.length - 1];
+        assert.ok(last.messages.some((m) => /json/i.test(m.content)), JSON.stringify(last.messages));
+        await sup.askJson(g4, 'Answer ONLY a JSON object.', 'y', 'json');
+        assert.ok(!/Answer in JSON\./.test(seen[seen.length - 1].messages[0].content), 'a prompt that already says JSON is left alone');
+    });
+
     await test('rules review: memory findings; explain -> proposal; accept queues a held item or steers the Manager Session; reject keeps the reason', async () => {
         const rd = path.join(tmp, 'repo2');
         fs.mkdirSync(path.join(rd, '.cursor', 'rules'), { recursive: true });

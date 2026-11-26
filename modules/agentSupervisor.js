@@ -456,6 +456,13 @@ async function callEngine(gr, messages, opts = {}) {
             // a model that refuses reasoning_effort (DeepSeek through TokenRouter answers 400 InvalidParameter) is asked
             // again without it, and remembered, so the setting never breaks every call (Nov 24 2026)
             const noEffort = NO_EFFORT.has(`${link.engine}|${ep.model}`);
+            // JSON mode needs the word "json" somewhere in the prompt (DeepSeek through TokenRouter answers 400 InvalidParameter
+            // otherwise: Nov 26 2026, 9 of 10 title / size / tasks / topology calls and every Rules Review part whose rules
+            // never mention JSON failed that way)
+            if (!messages.some((m) => /json/i.test(String(m && m.content || '')))) {
+                const sys = messages.find((m) => m && m.role === 'system');
+                messages = sys ? messages.map((m) => (m === sys ? Object.assign({}, m, { content: `${m.content}\nAnswer in JSON.` }) : m)) : [{ role: 'system', content: 'Answer in JSON.' }].concat(messages);
+            }
             const post = (withEffort) => fetchFn(ep.url, { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ep.key}` }, body: JSON.stringify(Object.assign({ model: ep.model, temperature: 0, max_tokens: opts.maxTokens || 6000, response_format: { type: 'json_object' }, messages }, withEffort ? { reasoning_effort: ep.effort } : {})) });
             let res = await post(!!ep.effort && !noEffort);
             let body = await res.text();
