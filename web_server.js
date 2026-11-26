@@ -958,6 +958,10 @@ async function initializeCacheData(force = false) {
         );
         const cacheData = globalResources.getGlobalCacheData();
         globalResources.logger.bootSubStep(`Cached ${cacheData.length} assets`);
+        if (lastCacheBuildStats) {
+            const b = lastCacheBuildStats;
+            globalResources.logger.bootSubStep(`${b.files} files in ${b.totalMs}ms (walk ${b.scanMs}ms): ${b.fromMemory} from memory, ${b.compiledNow} compiled now, ${b.reused} unchanged, ${b.hashed} hashed`);
+        }
         if (Array.isArray(cacheData) && cacheData.length > 0) {
             // kept for the next start, so it only reads what changed (#1230)
             assetManifestStore.save(__dirname, cacheData).catch(() => {});
@@ -1246,8 +1250,11 @@ async function refreshAndBroadcastServiceWorkerCache(options = {}) {
 }
 
 // Generate cache data for public directory
+let lastCacheBuildStats = null;
 async function generateCacheData(directory) {
     const assets = [];
+    const buildStats = { files: 0, fromMemory: 0, compiledNow: 0, reused: 0, hashed: 0, scanMs: 0, totalMs: 0 };
+    const buildStart = Date.now();
     const previousAssets = globalResources.getGlobalCacheData();
     // After a restart the in-memory list is empty: compare against the manifest kept on disk, so only a
     // file whose size or mtime moved is read again (#1230)
@@ -1262,6 +1269,8 @@ async function generateCacheData(directory) {
     
     try {
         const files = await scanDirectory(directory);
+        buildStats.files = files.length;
+        buildStats.scanMs = Date.now() - buildStart;
         
         const processFile = async (file) => {
             try {
@@ -1292,6 +1301,7 @@ async function generateCacheData(directory) {
                 // Prefer the precompiled memory cache so this pass does not re-read asset bytes.
                 const cachedAsset = runtimeAssetService.lookupRuntimeAsset(webPath);
                 if (cachedAsset && cachedAsset.hash && cachedAsset.body) {
+                    buildStats.fromMemory++;
                     assets.push({
                         path: webPath,
                         hash: cachedAsset.hash,
@@ -1313,6 +1323,7 @@ async function generateCacheData(directory) {
                     let built = null;
                     try { built = await runtimeAssetService.resolveRuntimeAsset(__dirname, webPath); } catch (_) { built = null; }
                     if (built && built.hash && built.body) {
+                        buildStats.compiledNow++;
                         assets.push({ path: webPath, hash: built.hash, size: built.body.length, modified: built.modified || Date.now() });
                         return;
                     }
@@ -1330,6 +1341,9 @@ async function generateCacheData(directory) {
                 }
                 const hashStats = await statOrNull(hashPath);
                 if (!hashStats) return;
+                const prevEntry = previousByPath.get(webPath);
+                if (prevEntry && prevEntry.hash && prevEntry.size === hashStats.size && prevEntry.modified === hashStats.mtime.getTime()) buildStats.reused++;
+                else buildStats.hashed++;
                 const hash = await runtimeAssetService.hashServedFileIfChangedAsync(
                     hashPath,
                     hashStats,
@@ -1384,6 +1398,8 @@ async function generateCacheData(directory) {
             assets.sort((a, b) => a.path.localeCompare(b.path));
         }
 
+        buildStats.totalMs = Date.now() - buildStart;
+        lastCacheBuildStats = buildStats;
         return assets;
     } catch (error) {
         console.error('❌ Error scanning directory:', error.message);
