@@ -1655,7 +1655,8 @@
     /** The rule violations a review still has open (its rule check at turn end: check scripts + the Supervisor's judgement). */
     const supViolations = (r) => (Array.isArray(r && r.violations) ? r.violations : []).filter((v) => !v.resolved);
     /** Reviews that still need attention: a dismissed review and a settled one (verdict Complete, no open rule violation) leave the list and every count. */
-    const supOpenReviews = () => supReviews().filter((r) => !r.dismissed && !(r.verdict === 'ok' && !supViolations(r).length));
+    // a complete review leaves the list and its counts (Yukimi: "if a review is complete it's removed from the list of review items, they should not be held")
+    const supOpenReviews = () => supReviews().filter((r) => !r.dismissed && r.verdict !== 'ok');
     const supEngine = (id) => supEngines().find((e) => e.id === id) || null;
     /** The models an engine offers (its list, else its own default); a stored value outside it stays selectable. */
     const supModelList = (engineId) => { const e = supEngine(engineId); return e ? (Array.isArray(e.models) ? e.models.slice() : []).concat(e.defaultModel && !(e.models || []).includes(e.defaultModel) ? [e.defaultModel] : []) : []; };
