@@ -150,12 +150,17 @@ function setCurrentMaskData(value, mime) {
     return _maskDataObjectUrl;
 }
 
+// The compressed mask the server gets (base64, no data: prefix): the one writer of window.currentMaskCompressed,
+// also for studioModelRefs.js (the phone's mask editor saves and deletes through it).
+window.setCurrentMaskCompressed = function (value) {
+    window.currentMaskCompressed = value;
+};
 
 function resetInpaint() {
     inpaintBtn.setAttribute('data-state', 'off');
     inpaintBtn.classList.remove('active');
     setCurrentMaskData(null);
-    window.currentMaskCompressed = null;
+    window.setCurrentMaskCompressed(null);
     isDrawing = false;
     currentTool = 'brush';
     brushSize = 5;
@@ -1086,7 +1091,7 @@ function saveMask() {
         // Also store the compressed version for server processing
         const compressedMask = saveMaskCompressed();
         if (compressedMask) {
-            window.currentMaskCompressed = compressedMask;
+            window.setCurrentMaskCompressed(compressedMask);
         }
 
         // Set inpaint button to on
@@ -1429,7 +1434,7 @@ async function deleteMask() {
         maskEditorCtx.clearRect(0, 0, maskEditorCanvas.width, maskEditorCanvas.height);
     }
 
-    window.currentMaskCompressed = null;
+    window.setCurrentMaskCompressed(null);
 
     // Update vibe transfer UI state
     updateInpaintButtonState();

@@ -432,7 +432,7 @@
             if (dc) dc.setAttribute('data-use-cache', 'true');
             call('clearDynamicGenerationLockState');
             call('updateDynamicGenerationToggleBtn');
-            if (window.lockedDynamicReplacements) window.lockedDynamicReplacements = [];
+            call('clearLockedDynamicReplacements');
             call('updateMainLockButtonState');
             compileToPromptsQueue = [];
         } else {
@@ -485,7 +485,7 @@
     async function rentanNovelNew() {
         watchNovel();
         if (!fn('novelEnsureNote')) return false;
-        window.novelSession = null;
+        call('novelClearSession', { sessionOnly: true });
         const note = await novelEnsureNote(workspace());
         changed();
         return !!note;

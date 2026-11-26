@@ -320,6 +320,13 @@ let manualPriceDisplayTimeout = null;
 let generationAnimationActive = false;
 window.currentManualPreviewImage = null;
 window.currentManualPreviewIndex = null;
+// The picture and metadata pair the manual form edits from (loadManualImage and the close clear it): the one
+// writer of window.currentEditImage / window.currentEditMetadata, also for studioModelRefs.js (it swaps
+// the pair for one transformation and puts the session's own back).
+window.setManualEditContext = function (image, metadata) {
+    window.currentEditImage = image;
+    window.currentEditMetadata = metadata;
+};
 let lastLoadedSeed = null;
 let manualSeedHistory = []; // Array to store seeds from generations and loaded images (never cleared)
 const MANUAL_SEED_HISTORY_MAX = 64;
@@ -3594,13 +3601,11 @@ async function openManualModalWithContent(content = null, event = null) {
                 const filename = loadImage?.filename || loadImage?.upscaled || loadImage?.original;
                 showGlassToast('error', 'Metadata Error', `Failed to load metadata for image: ${filename || 'unknown'}`, false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
             }
-            window.currentEditMetadata = loadMetadata;
-            window.currentEditImage = loadImage;
+            window.setManualEditContext(loadImage, loadMetadata);
             // Recent Items (public/scripts/comp/recentItems.js): an image loaded into Studio
             if (loadImage && window.recentItems) window.recentItems.noteStudioImage(loadImage);
         } else {
-            window.currentEditMetadata = null;
-            window.currentEditImage = null;
+            window.setManualEditContext(null, null);
         }
 
         // Load content into form
@@ -3898,8 +3903,7 @@ async function hideManualModal(e) {
     directorInstance.hideDirector();
 
     // Clear edit context
-    window.currentEditMetadata = null;
-    window.currentEditImage = null;
+    window.setManualEditContext(null, null);
     window.currentRequestType = null;
     window.initialEdit = null;
     window.swapGeneratedPreviewState = null;

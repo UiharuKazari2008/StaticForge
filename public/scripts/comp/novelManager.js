@@ -279,8 +279,10 @@ function novelGetActiveCompiledPrompts() {
     return novelBuildCompiledPromptsPayload(novelGetActiveImageMetadata() || {});
 }
 
-function novelClearSession() {
+/** @param {{ sessionOnly?: boolean }} [options] sessionOnly: forget the session and leave the button and enable state as they are (studioModelRentan starts a new note) */
+function novelClearSession(options) {
     window.novelSession = null;
+    if (options && options.sessionOnly === true) return;
     const btn = novelGetBtn();
     if (btn) {
         btn.dataset.state = 'off';

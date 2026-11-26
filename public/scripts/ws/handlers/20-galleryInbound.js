@@ -333,7 +333,8 @@ async function handleGalleryUpdatedData(data) {
             const shift = changes.type === 'append_top' ? (changes.newItems || []).length : (changes.shiftAmount || 0);
             const kept = window.filteredImageIndices.map((i) => i + shift);
             setActiveGalleryList(newImages, { preserveSearchContext: true });
-            window.filteredImageIndices = kept;
+            // setFilteredGalleryIndices: public/scripts/comp/galleryView.js
+            window.setFilteredGalleryIndices(kept);
             syncServiceWorkerImageCacheRules();
             syncFilteredGalleryFileIndexes();
             return;

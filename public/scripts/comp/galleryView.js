@@ -1303,7 +1303,7 @@ function prependToActiveGalleryList(item) {
         window.originalAllImages.unshift(slimIncoming);
     }
     if (window.filteredImageIndices && Array.isArray(window.filteredImageIndices)) {
-        window.filteredImageIndices = window.filteredImageIndices.map((i) => i + 1);
+        window.setFilteredGalleryIndices(window.filteredImageIndices.map((i) => i + 1));
     }
     return true;
 }
@@ -1311,6 +1311,11 @@ function prependToActiveGalleryList(item) {
 window.setActiveGalleryList = setActiveGalleryList;
 window.clearStaleGalleryListCopies = clearStaleGalleryListCopies;
 window.prependToActiveGalleryList = prependToActiveGalleryList;
+// The search's results as indexes into allImages: the one writer of window.filteredImageIndices for code outside
+// this file (ws/handlers/20-galleryInbound.js moves them with the list when new rows arrive at the head).
+window.setFilteredGalleryIndices = function (indices) {
+    window.filteredImageIndices = indices;
+};
 
 // getGalleryImageTimestampMs, getVisibleGalleryIndexRange, getGalleryJumpSearchStartIndex,
 // findNextTimeJumpFilteredIndex, formatGalleryTimeJumpDetails, isGalleryReadyForTimeJump,

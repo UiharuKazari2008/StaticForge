@@ -1,24 +1,24 @@
 {
  "apps/alarm/client/alarm.js": {
-  "page-global": 51
+  "page-global": 49
  },
  "apps/calculator/client/calculator.js": {
-  "page-global": 138
+  "page-global": 136
  },
  "apps/snipping/client/snipping.js": {
   "page-global": 1
  },
  "apps/wordpad/client/wordpad.js": {
   "owner-less-listener": 1,
-  "page-global": 4
+  "page-global": 1
  },
  "public/scripts/app.js": {
   "owner-less-listener": 1,
-  "page-global": 2
+  "page-global": 1
  },
  "public/scripts/appInitSteps.js": {
   "owner-less-listener": 4,
-  "page-global": 8
+  "page-global": 4
  },
  "public/scripts/appWebSocketHandlers.js": {
   "owner-less-listener": 1,
@@ -36,8 +36,7 @@
   "page-global": 20
  },
  "public/scripts/comp/activeSyncAgent.js": {
-  "owner-less-listener": 5,
-  "lost-interval": 1
+  "owner-less-listener": 5
  },
  "public/scripts/comp/activeSyncClipboard.js": {
   "owner-less-listener": 3
@@ -51,10 +50,10 @@
  "public/scripts/comp/agentClientBridge.js": {
   "owner-less-listener": 2,
   "owner-less-ws": 2,
-  "page-global": 6
+  "page-global": 4
  },
  "public/scripts/comp/agentClientUpdateDialog.js": {
-  "page-global": 2
+  "page-global": 1
  },
  "public/scripts/comp/androidNotificationBridge.js": {
   "page-global": 9
@@ -77,7 +76,7 @@
  },
  "public/scripts/comp/autocompleteUtils.js": {
   "owner-less-listener": 4,
-  "page-global": 557
+  "page-global": 542
  },
  "public/scripts/comp/autofill/spellCheck.js": {
   "page-global": 37
@@ -87,10 +86,10 @@
  },
  "public/scripts/comp/autofillRankingConfig.js": {
   "owner-less-ws": 1,
-  "page-global": 11
+  "page-global": 9
  },
  "public/scripts/comp/autofillSettings.js": {
-  "page-global": 38
+  "page-global": 32
  },
  "public/scripts/comp/balanceDisplay.js": {
   "page-global": 5
@@ -100,11 +99,11 @@
  },
  "public/scripts/comp/bootUiDebug.js": {
   "owner-less-listener": 1,
-  "page-global": 31
+  "page-global": 30
  },
  "public/scripts/comp/bracketGenerationApplet.js": {
   "owner-less-listener": 1,
-  "page-global": 55
+  "page-global": 45
  },
  "public/scripts/comp/bulkOperationsManager.js": {
   "page-global": 21
@@ -128,10 +127,10 @@
   "page-global": 50
  },
  "public/scripts/comp/characterSearchModal.js": {
-  "page-global": 3
+  "page-global": 2
  },
  "public/scripts/comp/chatSystem.js": {
-  "page-global": 12
+  "page-global": 11
  },
  "public/scripts/comp/clientPerfSampler.js": {
   "page-global": 27
@@ -141,7 +140,7 @@
   "page-global": 121
  },
  "public/scripts/comp/compileToPromptsApplet.js": {
-  "page-global": 31
+  "page-global": 30
  },
  "public/scripts/comp/compiledPromptInspector.js": {
   "owner-less-listener": 1,
@@ -149,7 +148,7 @@
  },
  "public/scripts/comp/configEditorApplet.js": {
   "owner-less-listener": 1,
-  "page-global": 19
+  "page-global": 18
  },
  "public/scripts/comp/confirmationDialog.js": {
   "page-global": 28
@@ -159,7 +158,7 @@
  },
  "public/scripts/comp/contextMenu.js": {
   "owner-less-listener": 14,
-  "page-global": 9
+  "page-global": 7
  },
  "public/scripts/comp/copyLookback.js": {
   "page-global": 11
@@ -210,7 +209,7 @@
  },
  "public/scripts/comp/datasetTagToolbar.js": {
   "owner-less-ws": 1,
-  "page-global": 70
+  "page-global": 68
  },
  "public/scripts/comp/desktop-apps/charmap/charmapApp.js": {
   "owner-less-listener": 1
@@ -224,11 +223,10 @@
   "page-global": 114
  },
  "public/scripts/comp/desktop-apps/emotion.js": {
-  "page-global": 45
+  "page-global": 44
  },
  "public/scripts/comp/desktop-apps/guacFrameMirror.js": {
-  "lost-interval": 1,
-  "page-global": 1
+  "lost-interval": 1
  },
  "public/scripts/comp/desktop-apps/guacRemote.js": {
   "owner-less-listener": 1,
@@ -238,7 +236,7 @@
   "page-global": 79
  },
  "public/scripts/comp/desktop-apps/paint/paintApp.js": {
-  "page-global": 3
+  "page-global": 1
  },
  "public/scripts/comp/desktop-apps/vista-games/blockdrop.js": {
   "owner-less-listener": 1
@@ -254,7 +252,7 @@
  },
  "public/scripts/comp/desktopShortcuts.js": {
   "owner-less-listener": 3,
-  "page-global": 8
+  "page-global": 3
  },
  "public/scripts/comp/desktopSounds.js": {
   "owner-less-listener": 8
@@ -271,13 +269,7 @@
   "page-global": 8
  },
  "public/scripts/comp/directorMascot.js": {
-  "page-global": 25
- },
- "public/scripts/comp/directorMascotLab.js": {
-  "page-global": 1
- },
- "public/scripts/comp/directorToolInspector.js": {
-  "page-global": 1
+  "page-global": 24
  },
  "public/scripts/comp/dropPasteFallback.js": {
   "owner-less-listener": 7
@@ -286,7 +278,7 @@
   "page-global": 20
  },
  "public/scripts/comp/dsapManifests.js": {
-  "page-global": 39
+  "page-global": 37
  },
  "public/scripts/comp/dsapRegistry.js": {
   "page-global": 57
@@ -306,7 +298,7 @@
   "page-global": 52
  },
  "public/scripts/comp/dynamicGenerationOverrides.js": {
-  "page-global": 30
+  "page-global": 29
  },
  "public/scripts/comp/emphasisEditing.js": {
   "page-global": 27
@@ -347,11 +339,11 @@
  },
  "public/scripts/comp/exitConfirmation.js": {
   "owner-less-listener": 3,
-  "page-global": 8
+  "page-global": 4
  },
  "public/scripts/comp/exploreDsapApplet.js": {
   "owner-less-listener": 2,
-  "page-global": 87
+  "page-global": 86
  },
  "public/scripts/comp/explorerApplet.js": {
   "owner-less-listener": 1,
@@ -359,7 +351,7 @@
  },
  "public/scripts/comp/fatalErrorBootstrap.js": {
   "owner-less-listener": 6,
-  "page-global": 9
+  "page-global": 6
  },
  "public/scripts/comp/featureLoader.js": {
   "owner-less-listener": 2,
@@ -371,28 +363,28 @@
  },
  "public/scripts/comp/focusOverlayManager.js": {
   "owner-less-listener": 4,
-  "page-global": 6
+  "page-global": 5
  },
  "public/scripts/comp/galleryActions.js": {
   "page-global": 17
  },
  "public/scripts/comp/galleryImagesLoad.js": {
-  "page-global": 65
+  "page-global": 63
  },
  "public/scripts/comp/galleryJumpIndex.js": {
   "owner-less-listener": 1,
-  "page-global": 60
+  "page-global": 59
  },
  "public/scripts/comp/galleryMetadataCache.js": {
   "page-global": 6
  },
  "public/scripts/comp/galleryToolbar.js": {
   "owner-less-listener": 1,
-  "page-global": 26
+  "page-global": 25
  },
  "public/scripts/comp/galleryView.js": {
   "owner-less-listener": 5,
-  "page-global": 396
+  "page-global": 386
  },
  "public/scripts/comp/generationOrchestrator.js": {
   "page-global": 8
@@ -416,10 +408,10 @@
   "page-global": 98
  },
  "public/scripts/comp/groupGallery.js": {
-  "page-global": 5
+  "page-global": 4
  },
  "public/scripts/comp/imageBias.js": {
-  "page-global": 108
+  "page-global": 104
  },
  "public/scripts/comp/imageExpansion.js": {
   "owner-less-listener": 1,
@@ -436,15 +428,12 @@
   "owner-less-listener": 2,
   "page-global": 4
  },
- "public/scripts/comp/imageSearchApp.js": {
-  "owner-less-listener": 2
- },
  "public/scripts/comp/imageViewer.js": {
   "owner-less-listener": 1,
-  "page-global": 16
+  "page-global": 10
  },
  "public/scripts/comp/inpaint.js": {
-  "page-global": 77
+  "page-global": 74
  },
  "public/scripts/comp/ipManagement.js": {
   "page-global": 1
@@ -453,7 +442,7 @@
   "page-global": 11
  },
  "public/scripts/comp/keyboardShortcuts.js": {
-  "page-global": 96
+  "page-global": 94
  },
  "public/scripts/comp/ledgeDesk.js": {
   "owner-less-ws": 1,
@@ -471,7 +460,7 @@
   "page-global": 8
  },
  "public/scripts/comp/manualDropdownManager.js": {
-  "page-global": 209
+  "page-global": 205
  },
  "public/scripts/comp/manualFormHelpers.js": {
   "page-global": 4
@@ -481,7 +470,7 @@
  },
  "public/scripts/comp/manualModalManager.js": {
   "owner-less-listener": 1,
-  "page-global": 347
+  "page-global": 327
  },
  "public/scripts/comp/manualPreviewManager.js": {
   "page-global": 83
@@ -491,30 +480,29 @@
   "page-global": 9
  },
  "public/scripts/comp/manualUploadHandlers.js": {
-  "page-global": 7
+  "page-global": 4
  },
  "public/scripts/comp/masterWsBridge.js": {
   "page-global": 45
  },
  "public/scripts/comp/mcpActivityClient.js": {
   "owner-less-listener": 1,
-  "page-global": 47
+  "page-global": 41
  },
  "public/scripts/comp/melatonApps.js": {
   "owner-less-ws": 3
  },
  "public/scripts/comp/melatonBars.js": {
-  "owner-less-listener": 2,
-  "page-global": 1
+  "owner-less-listener": 2
  },
  "public/scripts/comp/melatonContinuity.js": {
-  "owner-less-listener": 7
+  "owner-less-listener": 4
  },
  "public/scripts/comp/melatonControlPanel.js": {
   "owner-less-listener": 2
  },
  "public/scripts/comp/menmaDsapApplet.js": {
-  "page-global": 33
+  "page-global": 31
  },
  "public/scripts/comp/messengerNotify.js": {
   "owner-less-listener": 1
@@ -534,23 +522,23 @@
  },
  "public/scripts/comp/modalUtils.js": {
   "owner-less-listener": 7,
-  "page-global": 542
+  "page-global": 533
  },
  "public/scripts/comp/naxVibesApplet.js": {
   "page-global": 14
  },
  "public/scripts/comp/naxtApplet.js": {
-  "page-global": 27
+  "page-global": 26
  },
  "public/scripts/comp/notepadManager.js": {
   "owner-less-listener": 1,
-  "page-global": 6
+  "page-global": 5
  },
  "public/scripts/comp/notepadVista.js": {
-  "page-global": 2
+  "page-global": 1
  },
  "public/scripts/comp/novelAiAccountStatus.js": {
-  "page-global": 31
+  "page-global": 19
  },
  "public/scripts/comp/novelContextMenu.js": {
   "page-global": 3
@@ -566,7 +554,7 @@
   "page-global": 62
  },
  "public/scripts/comp/pinModal.js": {
-  "page-global": 4
+  "page-global": 3
  },
  "public/scripts/comp/pipelineStageControls.js": {
   "page-global": 13
@@ -576,7 +564,7 @@
  },
  "public/scripts/comp/planetSwitcher.js": {
   "owner-less-listener": 6,
-  "page-global": 23
+  "page-global": 22
  },
  "public/scripts/comp/popoverManager.js": {
   "page-global": 14
@@ -591,7 +579,7 @@
   "page-global": 27
  },
  "public/scripts/comp/printQueue.js": {
-  "owner-less-listener": 2
+  "owner-less-listener": 1
  },
  "public/scripts/comp/programFaults.js": {
   "owner-less-listener": 1
@@ -603,15 +591,14 @@
   "page-global": 3
  },
  "public/scripts/comp/promptTextareaContextMenu.js": {
-  "page-global": 102
+  "page-global": 98
  },
  "public/scripts/comp/promptTextareaToolbar.js": {
   "owner-less-listener": 6,
-  "page-global": 18
+  "page-global": 9
  },
  "public/scripts/comp/promptToolWindows.js": {
-  "owner-less-listener": 5,
-  "page-global": 1
+  "owner-less-listener": 5
  },
  "public/scripts/comp/randomPromptManager.js": {
   "page-global": 6
@@ -626,7 +613,7 @@
   "page-global": 24
  },
  "public/scripts/comp/referenceManager.js": {
-  "page-global": 293
+  "page-global": 281
  },
  "public/scripts/comp/replicationDsapCargo.js": {
   "page-global": 25
@@ -652,14 +639,14 @@
  },
  "public/scripts/comp/runApplet.js": {
   "owner-less-listener": 1,
-  "page-global": 6
+  "page-global": 5
  },
  "public/scripts/comp/runCommandIndex.js": {
   "owner-less-listener": 1,
-  "page-global": 107
+  "page-global": 91
  },
  "public/scripts/comp/runpodTray.js": {
-  "page-global": 19
+  "page-global": 16
  },
  "public/scripts/comp/screenSaver.js": {
   "owner-less-listener": 2
@@ -669,7 +656,7 @@
   "page-global": 21
  },
  "public/scripts/comp/seedSproutManager.js": {
-  "page-global": 17
+  "page-global": 14
  },
  "public/scripts/comp/serverManagement.js": {
   "owner-less-ws": 3,
@@ -681,10 +668,10 @@
  },
  "public/scripts/comp/sidebar-gadgets/gadgetShim.js": {
   "owner-less-listener": 6,
-  "page-global": 5
+  "page-global": 1
  },
  "public/scripts/comp/similarImageDsapApplet.js": {
-  "page-global": 24
+  "page-global": 23
  },
  "public/scripts/comp/spellbookModal.js": {
   "owner-less-listener": 2,
@@ -701,34 +688,31 @@
  },
  "public/scripts/comp/studioChangeJson.js": {
   "owner-less-listener": 1,
-  "page-global": 125
+  "page-global": 116
  },
  "public/scripts/comp/studioModel.js": {
   "page-global": 3
  },
  "public/scripts/comp/studioSession.js": {
-  "page-global": 64
+  "page-global": 32
  },
  "public/scripts/comp/studioSoftTips.js": {
   "page-global": 25
  },
  "public/scripts/comp/studioVSlider.js": {
   "owner-less-listener": 1,
-  "page-global": 108
+  "page-global": 103
  },
  "public/scripts/comp/systemTrayManager.js": {
   "owner-less-listener": 1,
-  "page-global": 24
- },
- "public/scripts/comp/tabVolume.js": {
-  "page-global": 1
+  "page-global": 17
  },
  "public/scripts/comp/tagSets.js": {
   "page-global": 136
  },
  "public/scripts/comp/tagWikiSearchModal.js": {
   "owner-less-listener": 1,
-  "page-global": 37
+  "page-global": 31
  },
  "public/scripts/comp/taskbarClock.js": {
   "owner-less-listener": 2
@@ -739,14 +723,11 @@
  "public/scripts/comp/textDisplayStyles.js": {
   "page-global": 19
  },
- "public/scripts/comp/textMessagingClient.js": {
-  "owner-less-listener": 1
- },
  "public/scripts/comp/textOverlayManager.js": {
   "page-global": 32
  },
  "public/scripts/comp/textReplacementManager.js": {
-  "page-global": 127
+  "page-global": 126
  },
  "public/scripts/comp/textareaUtils.js": {
   "owner-less-listener": 1,
@@ -756,7 +737,7 @@
   "page-global": 6
  },
  "public/scripts/comp/toastManager.js": {
-  "page-global": 95
+  "page-global": 93
  },
  "public/scripts/comp/trayIndicators.js": {
   "owner-less-listener": 1,
@@ -770,9 +751,6 @@
   "owner-less-listener": 2,
   "page-global": 3
  },
- "public/scripts/comp/uiTheme.js": {
-  "page-global": 1
- },
  "public/scripts/comp/uploadHandlers.js": {
   "owner-less-listener": 1,
   "page-global": 4
@@ -781,7 +759,7 @@
   "page-global": 2
  },
  "public/scripts/comp/utilities.js": {
-  "page-global": 124
+  "page-global": 123
  },
  "public/scripts/comp/vfsClient.js": {
   "page-global": 2
@@ -807,7 +785,7 @@
  },
  "public/scripts/comp/vistaGadgetHost.js": {
   "owner-less-listener": 6,
-  "page-global": 69
+  "page-global": 68
  },
  "public/scripts/comp/vistaImportWizard.js": {
   "owner-less-listener": 1
@@ -815,7 +793,7 @@
  "public/scripts/comp/vistaSidebar.js": {
   "owner-less-listener": 15,
   "owner-less-ws": 3,
-  "page-global": 249
+  "page-global": 248
  },
  "public/scripts/comp/walletTray.js": {
   "owner-less-listener": 2
@@ -828,7 +806,7 @@
  },
  "public/scripts/comp/windowControlsOverlay.js": {
   "owner-less-listener": 7,
-  "page-global": 4
+  "page-global": 3
  },
  "public/scripts/comp/windowGeometry.js": {
   "page-global": 1
@@ -840,81 +818,51 @@
   "owner-less-listener": 1
  },
  "public/scripts/comp/winlogonPower.js": {
-  "page-global": 39
- },
- "public/scripts/comp/wmAccounts.js": {
-  "lost-interval": 1,
-  "page-global": 1
- },
- "public/scripts/comp/wmActiveSync.js": {
-  "page-global": 1
+  "page-global": 37
  },
  "public/scripts/comp/wmAndroidApps.js": {
-  "owner-less-listener": 4,
-  "lost-interval": 1,
-  "page-global": 9
- },
- "public/scripts/comp/wmAndroidWidgets.js": {
-  "owner-less-listener": 2
+  "page-global": 6
  },
  "public/scripts/comp/wmAtelier.js": {
   "page-global": 1
  },
- "public/scripts/comp/wmBinToss.js": {
-  "owner-less-listener": 1,
-  "page-global": 1
- },
  "public/scripts/comp/wmBlockDrop.js": {
-  "owner-less-listener": 3,
-  "page-global": 1
+  "owner-less-listener": 2
  },
  "public/scripts/comp/wmBrickBreaker.js": {
-  "owner-less-listener": 3,
-  "page-global": 1
+  "owner-less-listener": 2
  },
  "public/scripts/comp/wmBrowser.js": {
   "owner-less-listener": 3,
-  "page-global": 4
+  "page-global": 3
  },
  "public/scripts/comp/wmCalculator.js": {
-  "owner-less-listener": 1,
-  "page-global": 1
+  "owner-less-listener": 1
  },
  "public/scripts/comp/wmCalendar.js": {
-  "owner-less-listener": 2,
-  "page-global": 1
+  "owner-less-listener": 2
  },
  "public/scripts/comp/wmCamera.js": {
-  "owner-less-listener": 1,
-  "page-global": 1
- },
- "public/scripts/comp/wmCarKey.js": {
-  "owner-less-listener": 2,
-  "page-global": 1
+  "owner-less-listener": 1
  },
  "public/scripts/comp/wmCharacters.js": {
   "owner-less-ws": 1
  },
  "public/scripts/comp/wmChat.js": {
-  "owner-less-listener": 3,
-  "owner-less-ws": 1,
-  "page-global": 2
+  "owner-less-listener": 1
  },
  "public/scripts/comp/wmDialogs.js": {
-  "page-global": 4
+  "page-global": 3
  },
  "public/scripts/comp/wmDirector.js": {
   "owner-less-listener": 15,
-  "owner-less-ws": 3,
-  "page-global": 3
+  "owner-less-ws": 2
  },
  "public/scripts/comp/wmDoubles.js": {
-  "owner-less-listener": 2,
-  "page-global": 1
+  "owner-less-listener": 1
  },
  "public/scripts/comp/wmDreamStudio.js": {
-  "owner-less-listener": 1,
-  "page-global": 2
+  "page-global": 1
  },
  "public/scripts/comp/wmEmotion.js": {
   "page-global": 4
@@ -924,84 +872,48 @@
   "page-global": 1
  },
  "public/scripts/comp/wmFileDialogs.js": {
-  "page-global": 3
+  "page-global": 1
  },
  "public/scripts/comp/wmFileExplorer.js": {
-  "owner-less-listener": 2,
-  "page-global": 2
- },
- "public/scripts/comp/wmGameSplash.js": {
-  "page-global": 1
+  "owner-less-listener": 2
  },
  "public/scripts/comp/wmGems.js": {
-  "owner-less-listener": 2,
-  "page-global": 1
+  "owner-less-listener": 1
  },
  "public/scripts/comp/wmHost.js": {
-  "owner-less-listener": 4,
-  "page-global": 1
+  "owner-less-listener": 4
  },
  "public/scripts/comp/wmInkBall.js": {
-  "owner-less-listener": 2,
-  "page-global": 1
- },
- "public/scripts/comp/wmInternetSearch.js": {
-  "page-global": 1
- },
- "public/scripts/comp/wmLapis.js": {
-  "owner-less-listener": 2,
-  "page-global": 1
+  "owner-less-listener": 1
  },
  "public/scripts/comp/wmLock65.js": {
-  "owner-less-listener": 7,
-  "page-global": 2
- },
- "public/scripts/comp/wmMedia.js": {
-  "page-global": 1
+  "owner-less-listener": 5
  },
  "public/scripts/comp/wmMessaging.js": {
-  "owner-less-listener": 4,
-  "owner-less-ws": 1,
-  "page-global": 2
+  "owner-less-listener": 3,
+  "page-global": 1
  },
  "public/scripts/comp/wmMinesweeper.js": {
-  "owner-less-listener": 2,
-  "page-global": 1
+  "owner-less-listener": 1
  },
  "public/scripts/comp/wmNotes.js": {
-  "owner-less-listener": 2,
-  "page-global": 2
- },
- "public/scripts/comp/wmNotificationInbox.js": {
-  "owner-less-listener": 1,
-  "page-global": 1
- },
- "public/scripts/comp/wmPayPass.js": {
-  "page-global": 1
+  "owner-less-listener": 1
  },
  "public/scripts/comp/wmPhasewalker.js": {
   "page-global": 1
  },
  "public/scripts/comp/wmPhoneGallery.js": {
-  "owner-less-listener": 1,
-  "page-global": 1
+  "owner-less-listener": 1
  },
  "public/scripts/comp/wmPrograms.js": {
-  "owner-less-listener": 7,
-  "page-global": 1
+  "owner-less-listener": 7
  },
  "public/scripts/comp/wmReference.js": {
   "page-global": 1
  },
  "public/scripts/comp/wmRemoteDesktop.js": {
   "owner-less-listener": 2,
-  "page-global": 6
- },
- "public/scripts/comp/wmSearch.js": {
-  "page-global": 1
- },
- "public/scripts/comp/wmSearchPictures.js": {
-  "page-global": 1
+  "page-global": 5
  },
  "public/scripts/comp/wmSettingsApplets.js": {
   "owner-less-listener": 2
@@ -1011,82 +923,40 @@
  },
  "public/scripts/comp/wmSettingsSystem.js": {
   "owner-less-listener": 1,
-  "page-global": 5
+  "page-global": 1
  },
  "public/scripts/comp/wmShell.js": {
   "owner-less-listener": 50,
-  "lost-interval": 1,
-  "page-global": 6
+  "page-global": 4
  },
  "public/scripts/comp/wmShortcuts.js": {
-  "owner-less-listener": 2,
-  "page-global": 1
+  "owner-less-listener": 2
  },
  "public/scripts/comp/wmSolitaire.js": {
-  "owner-less-listener": 2
+  "owner-less-listener": 1
  },
  "public/scripts/comp/wmSpellbook.js": {
   "page-global": 1
  },
  "public/scripts/comp/wmSpellcaster.js": {
   "owner-less-listener": 1,
-  "page-global": 2
- },
- "public/scripts/comp/wmStart65.js": {
-  "owner-less-listener": 4,
   "page-global": 1
  },
  "public/scripts/comp/wmStudio.js": {
-  "owner-less-listener": 2,
-  "page-global": 6
- },
- "public/scripts/comp/wmSuiteKit.js": {
-  "page-global": 1
- },
- "public/scripts/comp/wmTaskManager.js": {
-  "page-global": 1
+  "page-global": 5
  },
  "public/scripts/comp/wmTasks.js": {
-  "owner-less-listener": 2,
   "page-global": 1
  },
  "public/scripts/comp/wmTeleport.js": {
   "owner-less-listener": 1,
   "page-global": 1
  },
- "public/scripts/comp/wmTextMessaging.js": {
-  "owner-less-listener": 1,
-  "lost-interval": 1,
-  "page-global": 1
- },
  "public/scripts/comp/wmTitanium.js": {
-  "owner-less-listener": 14,
-  "page-global": 1
+  "owner-less-listener": 12
  },
  "public/scripts/comp/wmTodayWidgets.js": {
-  "owner-less-listener": 7,
-  "page-global": 2
- },
- "public/scripts/comp/wmTraffic.js": {
-  "owner-less-listener": 1,
-  "lost-interval": 1,
-  "page-global": 1
- },
- "public/scripts/comp/wmWallet.js": {
-  "owner-less-listener": 1,
-  "page-global": 1
- },
- "public/scripts/comp/wmWeather.js": {
-  "owner-less-listener": 2,
-  "page-global": 2
- },
- "public/scripts/comp/wmXLink.js": {
-  "owner-less-listener": 3,
-  "page-global": 1
- },
- "public/scripts/comp/wmYouTube.js": {
-  "owner-less-listener": 4,
-  "page-global": 1
+  "owner-less-listener": 4
  },
  "public/scripts/comp/workspaceUtils.js": {
   "owner-less-listener": 5,
@@ -1117,12 +987,10 @@
   "owner-less-listener": 1
  },
  "public/scripts/utils/androidOrphanGuard.js": {
-  "owner-less-listener": 1,
-  "lost-interval": 1,
-  "page-global": 1
+  "owner-less-listener": 1
  },
  "public/scripts/utils/deviceUtils.js": {
-  "page-global": 11
+  "page-global": 10
  },
  "public/scripts/utils/domWrite.js": {
   "page-global": 5
@@ -1153,7 +1021,7 @@
   "page-global": 7
  },
  "public/scripts/ws/handlers/30-workspaceInbound.js": {
-  "page-global": 10
+  "page-global": 9
  },
  "public/scripts/ws/handlers/40-appCoreInbound.js": {
   "page-global": 4
@@ -1181,8 +1049,5 @@
  },
  "public/scripts/ws/wsInboundRegistry.js": {
   "page-global": 10
- },
- "public/scripts/comp/melatonWeatherDesktop.js": {
-  "page-global": 1
  }
 }

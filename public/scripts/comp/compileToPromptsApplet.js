@@ -378,7 +378,8 @@ async function handleCompileToPromptsApply(closeRentan) {
         if (dynamicCarouselElement) dynamicCarouselElement.setAttribute('data-use-cache', 'true');
         clearDynamicGenerationLockState();
         if (typeof updateDynamicGenerationToggleBtn === 'function') updateDynamicGenerationToggleBtn();
-        if (window.lockedDynamicReplacements) window.lockedDynamicReplacements = [];
+        // clearLockedDynamicReplacements: public/scripts/comp/textReplacementManager.js
+        window.clearLockedDynamicReplacements();
         if (typeof updateMainLockButtonState === 'function') updateMainLockButtonState();
         hideCompileToPromptsModal();
     } else {

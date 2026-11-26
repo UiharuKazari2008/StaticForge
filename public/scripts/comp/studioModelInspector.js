@@ -67,6 +67,10 @@
         return `!${seed.key}${t === 'combine_incrementing' ? '~+#' : t === 'pick_incrementing' ? '~#' : t === 'combine' ? '~+' : '~'}`;
     }
 
+    // the locked list belongs to textReplacementManager.js (setLockedDynamicReplacements)
+    function setLocked() {
+        if (typeof window.setLockedDynamicReplacements === 'function') window.setLockedDynamicReplacements(tendaiList().map((x) => x.rep).filter((r) => r.locked === true));
+    }
     function rentanOf() { return (window.dynamicGenerationData && window.dynamicGenerationData.compiled_prompt) || null; }
 
     /** Every Tendai modification in the desktop's order (findDynamicReplacementByIndex counts the same way). */
@@ -317,7 +321,7 @@
         const f = tendaiFind(i);
         if (!f) return false;
         f.replacement.locked = !!on;
-        window.lockedDynamicReplacements = tendaiList().map((x) => x.rep).filter((r) => r.locked === true);
+        setLocked();
         tendaiAfter();
         return true;
     }
@@ -332,7 +336,7 @@
         const f = tendaiFind(i);
         if (!f) return false;
         f.arrayRef.splice(f.arrayIndex, 1);
-        window.lockedDynamicReplacements = tendaiList().map((x) => x.rep).filter((r) => r.locked === true);
+        setLocked();
         tendaiAfter();
         return true;
     }

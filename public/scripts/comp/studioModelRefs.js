@@ -52,6 +52,9 @@
 
     // the desktop's functions are top-level declarations of classic scripts: properties of window
     const fn = (name) => typeof window[name] === 'function';
+    // the state below belongs to the desktop files that export a setter for it (manualDropdownManager.js,
+    // manualModalManager.js, inpaint.js); nothing here writes it on the page itself
+    const owner = (name, ...args) => (typeof window[name] === 'function' ? window[name](...args) : undefined);
     const box = () => document.getElementById('vibeReferencesContainer');
     const changed = (id) => { try { if (typeof updateManualPriceDisplay === 'function') updateManualPriceDisplay(); } catch (_) { /* the badge only */ } M._emit('change', { id }); };
     const num = (v, d) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
@@ -343,7 +346,7 @@
     // is not defined on the desktop today and throws before the work starts, so the work is called itself
     function runTransformation(kind) {
         if (fn('handleTransformationTypeChange')) {
-            window.currentRequestType = kind;
+            owner('setCurrentRequestType', kind);
             return Promise.resolve(handleTransformationTypeChange(kind)).catch((err) => console.warn('[studioModelRefs] base image', err));
         }
         return selectTransformation(kind);
@@ -390,11 +393,9 @@
         const name = g.original || filename;
         const prevImage = window.currentEditImage;
         const prevMeta = window.currentEditMetadata;
-        window.currentEditImage = Object.assign({}, g, { filename: name, original: name });
-        window.currentEditMetadata = meta;
+        owner('setManualEditContext', Object.assign({}, g, { filename: name, original: name }), meta);
         try { runTransformation(kind); } finally {
-            window.currentEditImage = prevImage;
-            window.currentEditMetadata = prevMeta;
+            owner('setManualEditContext', prevImage, prevMeta);
         }
         setTimeout(() => changed('baseImage'), 400);
         return true;
@@ -476,7 +477,7 @@
         // no-base64-images: shown once (turned into the object URL setCurrentMaskData keeps, at once)
         setCurrentMaskData(scaled(grid, t.width, t.height).toDataURL('image/png'));
         // no-base64-images: transport (the compressed mask is sent to the server as base64)
-        window.currentMaskCompressed = scaled(grid, grid.width, grid.height).toDataURL('image/png').replace('data:image/png;base64,', '');
+        owner('setCurrentMaskCompressed', scaled(grid, grid.width, grid.height).toDataURL('image/png').replace('data:image/png;base64,', ''));
         maskButton(true);
         afterMask();
         return true;
@@ -484,7 +485,7 @@
 
     function deleteMask() {
         setCurrentMaskData(null);
-        window.currentMaskCompressed = null;
+        owner('setCurrentMaskCompressed', null);
         maskButton(false);
         afterMask();
         return true;

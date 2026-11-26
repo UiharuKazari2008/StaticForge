@@ -2526,9 +2526,7 @@ async function compileAllTendaiReplacements() {
         window.updateDynamicGenerationToggleBtn();
     }
 
-    if (window.lockedDynamicReplacements) {
-        window.lockedDynamicReplacements = [];
-    }
+    window.clearLockedDynamicReplacements();
 
     if (window.renderTextReplacementLockList) {
         window.renderTextReplacementLockList();
@@ -2683,7 +2681,7 @@ function toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item) {
             }
         });
         
-        window.lockedDynamicReplacements = lockedReplacements;
+        window.setLockedDynamicReplacements(lockedReplacements);
     }
 
     // Update the main lock button state
@@ -2695,6 +2693,17 @@ function toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item) {
     const statusText = isLocked ? 'locked for SI maintenance' : 'unlocked';
     showGlassToast('success', null, `Replacement ${statusText}`, false, 2000, '<i class="fas fa-lock"></i>');
 }
+
+// The locked dynamic replacements (the list the main lock button and the apply paths read): the one writer of
+// window.lockedDynamicReplacements, also for the DreamStudio parts (studioModelInspector / studioModelRentan)
+// and the compile-to-prompts apply (compileToPromptsApplet.js).
+window.setLockedDynamicReplacements = function (list) {
+    window.lockedDynamicReplacements = list;
+};
+// Emptied only when a list exists (an unset list stays unset)
+window.clearLockedDynamicReplacements = function () {
+    if (window.lockedDynamicReplacements) window.setLockedDynamicReplacements([]);
+};
 
 // Set emphasis value for a dynamic replacement
 async function setDynamicReplacementEmphasis(globalIndex, itemElement) {

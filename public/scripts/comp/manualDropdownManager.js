@@ -891,6 +891,12 @@ function selectTransformation(value) {
     }
 }
 
+// The request type the manual form is in ('reroll' / 'variation' / ...): the one writer of
+// window.currentRequestType here, also for studioModelRefs.js (the phone's Add menu runs the transformation).
+window.setCurrentRequestType = function (requestType) {
+    window.currentRequestType = requestType;
+};
+
 /**
  * Handle transformation type change and set up image data
  * @param {string} requestType - Type of transformation ('reroll' or 'variation')
@@ -912,7 +918,7 @@ async function handleTransformationTypeChange(requestType) {
     hideImageBiasDropdown();
 
     // Set new state
-    window.currentRequestType = requestType;
+    window.setCurrentRequestType(requestType);
 
     const metadata = window.currentEditMetadata;
     const image = window.currentEditImage;
