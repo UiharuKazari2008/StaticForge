@@ -303,6 +303,12 @@
                 if (host.refreshBtn) host.refreshBtn.click();
             });
             this.stop.addEventListener('click', () => this.stopLoading());
+            // Esc in the address box stops a load as the Stop button does (and still restores the address)
+            if (host.searchInput) {
+                host.searchInput.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Escape' && this.isLoading()) this.stopLoading();
+                });
+            }
             this.addFavBtn.addEventListener('click', () => this.toggleFavorite());
             this.wireTabs();
             const runSearch = () => {
@@ -1071,9 +1077,12 @@
             return !!bar && (bar.classList.contains('nav-loading') || bar.hasAttribute('data-alchemy-loading'));
         }
 
-        /** Alchemy has no stop command yet: Stop ends the wait (spinner and load fill). */
+        /** Stop: an Alchemy page stops loading in the service (CDP Page.stopLoading, #452) and keeps what it drew;
+         *  anything else just ends the wait (spinner and load fill). */
         stopLoading() {
             if (!this.isLoading()) return;
+            const reload = root.grimoireRemoteBrowserReload;
+            if (reload && typeof reload.stop === 'function') reload.stop(this.shell());
             if (typeof root.grimoireStopNavigationSpinner === 'function') root.grimoireStopNavigationSpinner(this.host);
             const bar = this.host.addressBar;
             if (bar) bar.removeAttribute('data-alchemy-loading');
