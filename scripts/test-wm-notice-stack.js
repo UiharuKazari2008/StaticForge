@@ -229,5 +229,26 @@ const bodyOf = () => ({ closest: (sel) => (sel === '[data-wm-tap]' ? {} : null) 
     const order2 = ctx.orderNotes([mk('e'), mk('a'), mk('d'), mk('c'), mk('b'), mk('f')]).map((n) => n.ids[0]);
     assert.strictEqual(order2[0], 'a', 'the stack a mail just joined is on top');
 
+    // wmShell.holderEntries: the "..." holder lists the notices in the pager's order, the mail stack with them (on the
+    // A53 the newer stack stood fourth, behind an older reminder and two status icons: message notices went out with
+    // their role icons)
+    const hsrc = SHELL.slice(SHELL.indexOf('function holderEntries()'), SHELL.indexOf('/** The server\'s waiting notices for the holder'));
+    assert.ok(hsrc.startsWith('function holderEntries'), 'holderEntries found');
+    const ordered = [{ id: 'stack:mail', ev: 'mail', ids: ['stack:mail'] }, { id: 'rem', ev: 'reminder', ids: ['rem'] }];
+    const icons = { weather: { hidden: false }, mail: { hidden: false }, chat: { hidden: false } };
+    const hctx = {
+        notes: ordered, WM65: true, holderServer: [], STATUS_APP_ROLES: ['weather', 'chat', 'mail'], STATUS_APP_LABEL: {}, MESSAGE_CLASS: { mail: 'mail', sms: 'sms', chat: 'chat' },
+        appNotes: new Map([['stack:mail', { badge: 2 }]]), window: {},
+        statusTable: () => ({ display: ['weather', 'chat', 'mail'] }), isUpdateNote: () => false,
+        messageClassOf: (n) => (n.ev === 'mail' ? 'mail' : null), messageNotes: (r) => ordered.filter((n) => n.ev === r),
+        noteHolderArt: () => '', noteIcon: () => '', noteTitle: (n) => n.id, holderArt: () => '', artImageSet: () => '', statusGlyph: () => 'g',
+        shell: { querySelector: (q) => { const m = /data-role="(\w+)"/.exec(q); return m ? icons[m[1]] || null : null; } }
+    };
+    vm.createContext(hctx);
+    vm.runInContext(`${hsrc}; this.holderEntries = holderEntries;`, hctx);
+    const hkeys = JSON.parse(JSON.stringify(hctx.holderEntries().map((e) => e.key)));
+    assert.deepStrictEqual(hkeys, ['n:stack:mail', 'n:rem', 'r:weather', 'r:chat'], 'notices first in time order (the stack on top), then the status icons, mail not twice');
+    assert.strictEqual(hctx.holderEntries()[0].badge, 2, 'the stack keeps its badge in the holder');
+
     console.log('wm notice stack: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -7651,7 +7651,13 @@
         const out = [];
         const tbl = statusTable();
         const noteEntry = (n) => ({ key: `n:${n.id}`, art: WM65 ? noteHolderArt(n) : noteIcon(n), label: noteTitle(n), badge: (appNotes.get(n.id) || {}).badge || 0, tap: () => showNote(n.id) });
-        notesForBubbleIcon().forEach((n) => out.push(Object.assign(noteEntry(n), { from: 'notify' })));
+        // every notice in the pager's order (orderNotes: newest first, priority only among older ones), the mail, text
+        // and Messenger notices with the rest; on the A53 the mail stack, newer, stood fourth behind an older reminder
+        // and two status icons because the message notices went out with their role icons (#1098)
+        for (const n of notes) {
+            if (isUpdateNote(n)) continue;
+            out.push(messageClassOf(n) ? noteEntry(n) : Object.assign(noteEntry(n), { from: 'notify' }));
+        }
         const inbox = window.wmNotificationInbox;
         const held = new Set(inbox && typeof inbox.shown === 'function' ? inbox.shown() : []);
         for (const n of holderServer) {
@@ -7665,7 +7671,7 @@
         for (const r of order) {
             const icon = shell.querySelector(`.wm-status-icon[data-role="${r}"]`);
             if (!icon || icon.hidden || !statusGlyph(r)) continue;
-            if (MESSAGE_CLASS[r] && messageNotes(r).length) { messageNotes(r).forEach((n) => out.push(noteEntry(n))); continue; }
+            if (MESSAGE_CLASS[r] && messageNotes(r).length) continue; // its notices are listed above, in time order
             if (r === 'update') { const up = notes.filter(isUpdateNote); if (up.length) { up.forEach((n) => out.push(Object.assign(noteEntry(n), { tap: () => { noteTrayOpen = false; renderNotes(); showUpdateNote(); } }))); continue; } }
             out.push({
                 key: `r:${r}`,
