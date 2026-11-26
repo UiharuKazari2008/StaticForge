@@ -130,9 +130,14 @@ const PAGE_ASSET_FILES = {
 
 function hashForPageAsset(targetRoot, webPath) {
     if (webPath === runtimeAssetCompiler.WORKSPACE_CSS_WEB_PATH) {
-        const headerHash = runtimeAssetMemory.headerSourceHash(webPath);
-        if (headerHash) {
-            return headerHash;
+        // The bytes served, the same hash the manifest entry and X-File-Hash carry (#1243). The source hash in
+        // the compiled file's header is a different value, and a page built with it in the ?sha= link left a
+        // client that ran the newest copy still owing a restart for it - "Updates ready" and its restart prompt
+        // came back at every start (#1248). resolveClientCssHash falls back to the source hash with nothing compiled.
+        const workspaceCssService = require('./workspaceCssService');
+        const clientHash = workspaceCssService.resolveClientCssHash(targetRoot);
+        if (clientHash) {
+            return clientHash;
         }
     } else {
         const served = runtimeAssetMemory.servedHash(webPath);
@@ -147,10 +152,6 @@ function hashForPageAsset(targetRoot, webPath) {
             return null;
         }
         return hashServedFile(abs);
-    }
-    if (webPath === runtimeAssetCompiler.WORKSPACE_CSS_WEB_PATH) {
-        const workspaceCssService = require('./workspaceCssService');
-        return workspaceCssService.resolveSourceHash(targetRoot);
     }
     const servedPath = resolveServedAssetPath(targetRoot, webPath);
     if (!servedPath || !fs.existsSync(servedPath)) {
@@ -741,6 +742,7 @@ module.exports = {
     init,
     SERVED_HASH_ALGO,
     HTML_SHA_LINK_FILES,
+    hashForPageAsset,
     hashServedFile,
     hashServedFileIfChanged,
     hashServedFileIfChangedAsync,

@@ -110,12 +110,28 @@ async function healWorkspaceCssMemory(compiledPath, sourceHash, options) {
     }, options);
 }
 
-function getClientCssHash(root) {
+/**
+ * The hash a client sees for /css/workspaces.css: the bytes served, the same one the manifest entry and
+ * X-File-Hash carry. It is the ?sha= link the pages are built with and the workspaceCssHash a client gets
+ * over the socket, so its bookkeeping compares one value everywhere. The source hash in the compiled file's
+ * header is not that value (#1243), and naming it in the link left every client that ran the newest copy
+ * still owing a restart for it - "Updates ready" and its restart prompt came back at every start (#1248).
+ * The source hash answers only when there is no compiled file to hash.
+ */
+function resolveClientCssHash(root) {
     try {
+        const entry = getManifestEntry(root);
+        if (entry && entry.hash) {
+            return entry.hash;
+        }
         return resolveSourceHash(root) || null;
     } catch (_) {
         return null;
     }
+}
+
+function getClientCssHash(root) {
+    return resolveClientCssHash(root);
 }
 
 // workspace_list and every client update asked for this hash with an open+read of the
@@ -349,6 +365,7 @@ module.exports = {
     getManifestEntry,
     resolveSourceHash,
     getClientCssHash,
+    resolveClientCssHash,
     getCompiledPath,
     getSourceCachePath
 };
