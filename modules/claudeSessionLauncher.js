@@ -568,7 +568,55 @@ async function steer(id, text) {
     }
     await new Promise((res) => setTimeout(res, 120));
     await runner('tmux', [...sock, 'send-keys', '-t', pane, 'Enter']);
+    // The text must have left the input box: a side panel (Claude Code's /diff view) takes Enter while it is open, so the
+    // message sat typed and unsent (Nov 26 2026: the Supervisor's notes and a Fleet Send stuck that way). Close the panel
+    // with its own command and send again; a message that still will not go is an error, never "sent".
+    if (await stillTyped(sock, pane, body)) {
+        const tail = await paneTail(sock, pane);
+        if (tail.some((l) => DIFF_PANEL_RE.test(l))) {
+            await runner('tmux', [...sock, 'send-keys', '-t', pane, 'C-u']);
+            await runner('tmux', [...sock, 'send-keys', '-t', pane, '-l', '/diff']);
+            await new Promise((res) => setTimeout(res, 150));
+            await runner('tmux', [...sock, 'send-keys', '-t', pane, 'Enter']);
+            await new Promise((res) => setTimeout(res, 400));
+            await typeIn(sock, pane, body);
+            await new Promise((res) => setTimeout(res, 120));
+            await runner('tmux', [...sock, 'send-keys', '-t', pane, 'Enter']);
+            console.log(`[claudeDesk] closed a /diff panel that held a message for ${String(id).slice(0, 8)}`);
+        } else {
+            await runner('tmux', [...sock, 'send-keys', '-t', pane, 'Enter']);
+        }
+        if (await stillTyped(sock, pane, body)) throw Object.assign(new Error('Not sent: the message was typed into the session but it did not take it (it is still in its input box). Look at it with Show Screen.'), { code: 'NOT_SUBMITTED' });
+    }
     return { id, sent: true, busy: live.status === 'busy', pane };
+}
+
+/** Claude Code's /diff side view: while it is open, Enter goes to it, not to the input box. */
+const DIFF_PANEL_RE = /\/diff to close\b/;
+
+async function typeIn(sock, pane, body) {
+    if (body.includes('\n')) {
+        const buf = `claude-desk-${process.pid}-${Date.now()}`;
+        await runner('tmux', [...sock, 'set-buffer', '-b', buf, '--', body]);
+        await runner('tmux', [...sock, 'paste-buffer', '-p', '-d', '-b', buf, '-t', pane]);
+    } else {
+        await runner('tmux', [...sock, 'send-keys', '-t', pane, '-l', body]);
+    }
+}
+
+/** True while the input box (the last "❯" line near the bottom) still begins with the message. */
+async function stillTyped(sock, pane, body) {
+    const want = body.split('\n')[0].replace(/\s+/g, ' ').trim().slice(0, 40);
+    if (!want) return false;
+    for (let i = 0; i < 3; i += 1) {
+        await new Promise((res) => setTimeout(res, 250));
+        const tail = (await paneTail(sock, pane)).slice(-8);
+        const box = tail.filter((l) => /^\s*❯/.test(l)).pop();
+        if (!box) return false; // no input box on screen (busy view, a menu): nothing to say it is stuck
+        const typed = box.replace(/^\s*❯\s?/, '').split('│')[0].replace(/\s+/g, ' ').trim();
+        if (!typed || !want.startsWith(typed.slice(0, Math.min(typed.length, want.length))) || typed.length < Math.min(8, want.length)) return false;
+    }
+    return true;
 }
 
 /** Esc: stops the session's current turn (what pressing Esc in its terminal does). */

@@ -307,6 +307,35 @@ async function main() {
     paneCmd = 'sleep';
     await assert.rejects(() => launcher.steer(SID, 'nobody home'), (e) => e.code === 'NOT_RUNNING');
     paneCmd = 'bash';
+    // a /diff side panel takes Enter: the message stays in the input box - the panel is closed with /diff and it is sent again
+    {
+        const before = paneText;
+        const screen = (typed, panel) => ['● done', `${'x'.repeat(30)}${panel ? '│2 files changed +53 -39   /diff to close  source: Current' : ''}`, '─'.repeat(40), `❯ ${typed}`, '─'.repeat(40), '  ⏵⏵ bypass permissions on · 1 shell · ↓ to manage'].join('\n');
+        let typed = '';
+        let panel = true;
+        paneText = screen('', true);
+        onKeys = (a) => {
+            const k = a[a.length - 1];
+            const lit = a.includes('-l');
+            if (lit) { typed += k; paneText = screen(typed, panel); return; }
+            if (k === 'C-u') { typed = ''; paneText = screen(typed, panel); return; }
+            if (k === 'Enter') {
+                if (typed === '/diff') { panel = false; typed = ''; } else if (!panel) typed = '';
+                paneText = screen(typed, panel);
+            }
+        };
+        calls.length = 0;
+        assert.strictEqual((await launcher.steer(SID, 'check the client update gate')).sent, true);
+        assert.ok(calls.some((c) => c.includes('-l') && c.includes('/diff')), 'the panel is closed with its own command');
+        assert.ok(!panel && typed === '', 'and the message went in');
+        // a message that will not go is an error, never "sent"
+        typed = ''; panel = false;
+        paneText = screen('', false);
+        onKeys = (a) => { const k = a[a.length - 1]; if (a.includes('-l')) { typed += k; paneText = screen(typed, false); } };
+        await assert.rejects(() => launcher.steer(SID, 'nothing takes this'), (e) => e.code === 'NOT_SUBMITTED');
+        onKeys = null;
+        paneText = before;
+    }
     await assert.rejects(() => launcher.steer(SID, '   '), /Nothing to send/);
     await assert.rejects(() => launcher.steer('33333333-2222-4333-8444-555555555555', 'hi'), /not running/);
     const live = await launcher.resume(gr, SID, {});
