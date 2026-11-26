@@ -32,7 +32,7 @@ US alerts come from the National Weather Service when Apple's alerts are not in 
 | `weather_alerts_active` | `weather_alerts_active_response` | signed in | `{}` -> `{ places: { home?, work?: { place, alerts, source } }, alerts (all, each with its place), place, source, checkedAt }`. |
 | `weather_places_get` | `weather_places_get_response` | signed in | `{}` -> `{ places: { home, work }, rain, alerts }`. A place: `{ name, region, country, lat, lon, radiusKm, alerts, rainAlarm, rainLeadMin, fallback? }`; Home falls back to secure config `location` (`fallback: true`) until one is saved (#792). |
 | `weather_places_save` | `weather_places_save_response` | admin/destructive | `{ places: { home?: place \| null, work?: place \| null } }` merges into config `weather.places` (null clears) -> `{ places }`; broadcasts `weather_places_changed` and polls at once. |
-| `weather_rain_status` | `weather_rain_status_response` | signed in | `{}` -> `{ places: { home?, work?: { place, rainAlarm, wet, startsInMin, endsInMin, peakMmh, kind, summary, step } }, checkedAt }`. |
+| `weather_rain_status` | `weather_rain_status_response` | signed in | `{}` -> `{ places: { home?, work?, here?: { place, rainAlarm, wet, startsInMin, endsInMin, peakMmh, kind, summary, step, current?, series?, seriesStep? } }, checkedAt }`; `current`, `series`, `seriesStep` ([Rain detail](#rain-detail-1267)) only for a place with its rain alarm on and rain due or falling. `{ place: "home" \| "work" \| "here" }` -> that place read now (cached forecast): `{ id, place, kind, wet, startsInMin, endsInMin, summary, current, series, seriesStep }`, the series whether or not rain is due; `{}` for an unknown place. The reply leaves null fields out. |
 
 Errors carry the service's code: `BAD_COORDINATES`, `RATE_LIMITED`, `BUDGET_EXCEEDED`, `UNREACHABLE`, `AUTH_FAILED`, `HTTP_ERROR`, `NO_ACCOUNT`.
 
@@ -42,8 +42,8 @@ Errors carry the service's code: `BAD_COORDINATES`, `RATE_LIMITED`, `BUDGET_EXCE
 |---|---|---|
 | `weather_alert_issued` | A new alert at Home or Work (polled every 5 min), once per alert and place across restarts (`.cache/weather-alerts-seen.json`), to every signed-in client | `{ alert, place: { id, label, name, region, country, lat, lon }, source }` |
 | `weather_alerts_changed` | Home's or Work's active list changed | same as `weather_alerts_active` |
-| `weather_rain_alarm` | Rain due at Home / Work within its `rainLeadMin` while dry, rain alarm on; once per spell (a spell ends after 20 min dry) | `{ place, startsInMin, endsInMin, peakMmh, kind, summary }` |
-| `weather_rain_status` | Rain began, ended or its start moved at Home / Work | same as `weather_rain_status` |
+| `weather_rain_alarm` | Rain due at Home / Work within its `rainLeadMin` while dry, rain alarm on; once per spell (a spell ends after 20 min dry) | `{ place, startsInMin, endsInMin, peakMmh, kind, summary, current, series, seriesStep }` |
+| `weather_rain_status` | Rain began, ended or its start moved at Home / Work; while rain is due or falling with the alarm on, also when the graph is renewed (about every 15 min) | same as `weather_rain_status` with `{}` |
 | `weather_places_changed` | Home / Work saved | `{ places }` |
 | `weather_delta` | To a `weather_watch` socket only: at watch time when its `have` is behind, then when a watched place's forecast part changes | `{ key, available: true, ...the weather_forecast reply against the socket's have }` |
 
@@ -53,6 +53,17 @@ window runs `wmWeather.js` too). A sleeping phone page or DeX window gets `weath
 it wakes; `weather_alert_issued` and `weather_rain_alarm` are notifications and always go at once.
 
 Apple replies are cached until their own `metadata.expireTime` (2 to 15 minutes); hourly covers 240 h (10 days).
+
+## Rain detail (#1267)
+
+`place` is `{ id, label, name, region, country, lat, lon, tz }`. `current`: `{ tempC, text, isDay, icon }` or
+null; `icon` is the condition icon id of `wmWeather.js` (`clear-day`, `clear-night`, `partly-day`,
+`partly-night`, `cloudy`, `fog`, `drizzle`, `rain`, `sleet`, `snow`, `storm`; art
+`/static_images/wm61/weather/wx-<icon>.png`). `series`: at most 16 `{ t, mmh, rain }` (`t` the place's wall
+clock, `mmh` intensity, `rain` chance % or null), `seriesStep` minutes apart. Apple's minutes are the next
+hour in 4-minute buckets (highest intensity and chance); Open-Meteo's are its 15-minute points (about two
+hours). The phone status snapshot's `weather.rainDetail` and the `rain` property of the portable rain popup
+(`public/scripts/tasks/status-popups.js`) carry the same data.
 
 ## Deltas (#890 round 5, W1)
 

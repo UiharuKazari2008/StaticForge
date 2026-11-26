@@ -911,8 +911,7 @@ function normaliseOpenMeteo(b) {
     }
     if (m15.time && m15.time.length) {
         const minutes = m15.time.map((time, i) => ({ time, rain: at(m15.precipitation_probability, i), mmh: at(m15.precipitation, i) == null ? null : at(m15.precipitation, i) * 4 }));
-        const nowIso = localIso(now, tz);
-        const ahead = minutes.filter((m) => m.time >= (nowIso || '').slice(0, 15)).slice(0, 8);
+        const ahead = stillRunning(minutes, 15, now, tz).slice(0, 8);
         if (ahead.length) {
             const wet = ahead.findIndex((m) => (m.mmh || 0) >= 0.1);
             const dry = wet >= 0 ? ahead.slice(wet).findIndex((m) => (m.mmh || 0) < 0.1) : -1;
@@ -1482,17 +1481,26 @@ function alertWhereText(alert, place) {
 }
 
 /**
- * Rain in the next hour for a forecast: { wet (raining now), startsInMin, endsInMin, peakMmh, summary },
- * from the minute-by-minute forecast (Apple) or the 15-minute one (Open-Meteo).
+ * The minutely points whose interval has not ended at now (place wall clock): the running one and
+ * those after it. A cached forecast's past points never count as rain now or soon.
  */
-function rainOutlook(forecast) {
+function stillRunning(points, step, now, tz) {
+    const from = shiftIso(localIso(now, tz), -step);
+    return points.filter((x) => (x.time || '') > from);
+}
+
+/**
+ * Rain in the next hour for a forecast: { wet (raining now), startsInMin, endsInMin, peakMmh, summary },
+ * from the minute-by-minute forecast (Apple) or the 15-minute one (Open-Meteo). null without a
+ * minutely forecast that reaches now.
+ */
+function rainOutlook(forecast, now = Date.now()) {
     const m = forecast && forecast.minutely;
     const mins = m && Array.isArray(m.minutes) ? m.minutes : [];
     if (!mins.length) return null;
     const step = m.stepMinutes || 1;
-    const nowIso = localIso(Date.now(), forecast.tz || 'UTC') || '';
-    const ahead = mins.filter((x) => (x.time || '') >= nowIso.slice(0, 16) || step > 1);
-    const list = ahead.length ? ahead : mins;
+    const list = stillRunning(mins, step, now, forecast.tz || 'UTC');
+    if (!list.length) return null;
     const wetAt = list.findIndex((x) => (Number(x.mmh) || 0) >= RAIN_MMH);
     const peak = list.reduce((mx, x) => Math.max(mx, Number(x.mmh) || 0), 0);
     let endsInMin = null;
@@ -1506,6 +1514,79 @@ function rainOutlook(forecast) {
 function rainWord(mmh) {
     return mmh >= 4 ? 'Heavy rain' : mmh >= 1 ? 'Rain' : 'Light rain';
 }
+
+const SERIES_MAX = 16;
+const SERIES_FINE_MIN = 4; // Apple's minutes are drawn in buckets this wide
+
+/** The condition icon id, as condition(code, isDay).icon in public/scripts/comp/wmWeather.js (art: wm61/weather/wx-<id>.png). */
+function conditionIcon(code, isDay = true) {
+    const c = Number(code);
+    const dn = (k) => `${k}-${isDay ? 'day' : 'night'}`;
+    if (c === 0 || c === 1) return dn('clear');
+    if (c === 2) return dn('partly');
+    if (c === 45 || c === 48) return 'fog';
+    if (c >= 51 && c <= 55) return 'drizzle';
+    if (c === 56 || c === 57 || c === 66 || c === 67) return 'sleet';
+    if (c === 61 || c === 63 || c === 65 || (c >= 80 && c <= 82)) return 'rain';
+    if (c === 71 || c === 73 || c === 75 || c === 77 || c === 85 || c === 86) return 'snow';
+    if (c === 95 || c === 96 || c === 99) return 'storm';
+    return 'cloudy';
+}
+
+const roundTo = (v, f) => (v == null || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * f) / f);
+const maxOf = (list, key) => list.reduce((mx, x) => (x[key] == null ? mx : Math.max(mx == null ? 0 : mx, Number(x[key]) || 0)), null);
+
+/**
+ * What a rain popup draws: { current: { tempC, text, isDay, icon } | null, series: [{ t (place wall
+ * clock), mmh, rain (chance % or null) }] (at most 16), seriesStep (minutes) }. Apple's 1-minute data
+ * is the next 60 minutes in 4-minute buckets (the highest intensity and chance of each); 15-minute
+ * data keeps its step (about two hours).
+ */
+function rainDetail(forecast, now = Date.now()) {
+    const c = forecast && forecast.current;
+    const current = c ? { tempC: roundTo(c.tempC, 10), text: c.text || '', isDay: c.isDay !== false, icon: conditionIcon(c.code, c.isDay !== false) } : null;
+    const m = forecast && forecast.minutely;
+    const mins = m && Array.isArray(m.minutes) ? m.minutes : [];
+    const step = (m && m.stepMinutes) || 1;
+    let list = [];
+    let size = 1;
+    if (mins.length) {
+        const tz = forecast.tz || 'UTC';
+        list = stillRunning(mins, step, now, tz);
+        if (step < SERIES_FINE_MIN) {
+            const end = shiftIso(localIso(now, tz), 60);
+            list = list.filter((x) => x.time < end);
+            size = Math.ceil(SERIES_FINE_MIN / step);
+        }
+    }
+    const series = [];
+    for (let i = 0; i < list.length && series.length < SERIES_MAX; i += size) {
+        const bucket = list.slice(i, i + size);
+        series.push({ t: bucket[0].time, mmh: roundTo(maxOf(bucket, 'mmh') || 0, 100), rain: roundTo(maxOf(bucket, 'rain'), 1) });
+    }
+    return { current, series, seriesStep: step * size };
+}
+
+const rainDue = (r) => !!(r && (r.wet || r.startsInMin != null));
+
+/** A monitored place now (home / work / here; the forecast is cached), the series whether or not rain is due; null when unknown. */
+async function readRainDetail(placeId) {
+    const id = String(placeId || '');
+    if (id !== 'here' && !PLACE_IDS.includes(id)) return null;
+    const p = id === 'here' ? herePlace() : getPlaces()[id];
+    if (!p) return null;
+    const forecast = await getForecast(p.lat, p.lon);
+    const now = Date.now();
+    const r = rainOutlook(forecast, now) || { wet: false, startsInMin: null, endsInMin: null, peakMmh: 0, summary: '' };
+    return Object.assign({
+        id, place: placeTag(id, p, forecast.tz), kind: rainWord(r.peakMmh),
+        wet: r.wet, startsInMin: r.startsInMin, endsInMin: r.endsInMin, summary: r.summary
+    }, rainDetail(forecast, now));
+}
+
+// the graph the monitor hands out is renewed when the outlook changes, and this often while rain is due
+// or falling with the alarm on (not on every 5-minute poll: each renewal is a push to the phones)
+const DETAIL_REFRESH_MS = 14 * MIN;
 
 /** The place's rain alarm notice is still in the inbox, not expired (any state: dismissed is still said). */
 function rainAlarmLive(id) {
@@ -1541,7 +1622,8 @@ async function pollPlace(id, p, changes) {
     }
     if (alerts.map((a) => a.id).join('|') !== before) changes.alerts = true;
     // rain alarm: once per spell, when rain is due within the lead time and it is dry now
-    const r = rainOutlook(forecast);
+    const now = Date.now();
+    const r = rainOutlook(forecast, now);
     // after a restart: a rain alarm this spell already raised (its inbox notice lives until the rain is over) is not raised again (#1061)
     const st = monitor.rain[id] || { alarmed: rainAlarmLive(id), dryFor: 0, outlook: null };
     if (r) {
@@ -1550,14 +1632,21 @@ async function pollPlace(id, p, changes) {
         if (st.dryFor >= RAIN_DRY_RESET_MIN) st.alarmed = false;
         if (p.rainAlarm && !st.alarmed && !r.wet && r.startsInMin != null && r.startsInMin <= p.rainLeadMin) {
             st.alarmed = true;
-            const data = { place: tag, startsInMin: r.startsInMin, endsInMin: r.endsInMin, peakMmh: r.peakMmh, kind: rainWord(r.peakMmh), summary: r.summary };
+            const data = Object.assign({ place: tag, startsInMin: r.startsInMin, endsInMin: r.endsInMin, peakMmh: r.peakMmh, kind: rainWord(r.peakMmh), summary: r.summary }, rainDetail(forecast, now));
             broadcast({ type: 'weather_rain_alarm', data });
             try { require('./notificationInboxSources').onRainAlarm(data); } catch (_e) { /* best effort (#876) */ }
             console.log(`[weather] rain alarm for ${tag.label}: ${data.kind} in ${r.startsInMin} min`);
         }
-        const was = st.outlook ? `${st.outlook.wet}|${st.outlook.startsInMin}` : '';
-        if (`${r.wet}|${r.startsInMin}` !== was) changes.rain = true;
     }
+    const key = r ? `${!!p.rainAlarm}|${r.wet}|${r.startsInMin}` : '';
+    const moved = key !== (st.key || '');
+    if (moved || (p.rainAlarm && rainDue(r) && now - (st.detailAt || 0) >= DETAIL_REFRESH_MS)) {
+        const detail = rainDetail(forecast, now);
+        if (moved || JSON.stringify(detail) !== JSON.stringify(st.detail)) changes.rain = true;
+        st.detail = detail;
+        st.detailAt = now;
+    }
+    st.key = key;
     st.outlook = r;
     monitor.rain[id] = st;
 }
@@ -1632,19 +1721,24 @@ function getActiveAlerts() {
     return { places: monitor.byPlace, alerts: all, place: home ? home.place : null, source: home ? home.source : null, checkedAt: monitor.checkedAt };
 }
 
-/** Rain now / soon at the monitored places: { places: { home: { place, rainAlarm, wet, startsInMin, ... } } }. */
+/**
+ * Rain now / soon at the monitored places: { places: { home: { place, rainAlarm, wet, startsInMin, ... } } }.
+ * A place with its alarm on and rain due or falling also carries current, series and seriesStep (rainDetail).
+ */
 function getRainStatus() {
+    const entry = (tag, rainAlarm, st) => Object.assign({ place: tag, rainAlarm }, st.outlook, { kind: rainWord(st.outlook.peakMmh) },
+        rainAlarm && rainDue(st.outlook) ? st.detail : null);
     const places = getPlaces();
     const out = {};
     PLACE_IDS.forEach((id) => {
         const p = places[id];
         const st = monitor.rain[id];
         if (!p || !st || !st.outlook) return;
-        out[id] = Object.assign({ place: placeTag(id, p), rainAlarm: p.rainAlarm }, st.outlook, { kind: rainWord(st.outlook.peakMmh) });
+        out[id] = entry(placeTag(id, p), p.rainAlarm, st);
     });
     const st = monitor.rain.here;
     const hp = monitor.byPlace.here;
-    if (hp && st && st.outlook) out.here = Object.assign({ place: hp.place, rainAlarm: !!(herePlace() || {}).rainAlarm }, st.outlook, { kind: rainWord(st.outlook.peakMmh) });
+    if (hp && st && st.outlook) out.here = entry(hp.place, !!(herePlace() || {}).rainAlarm, st);
     return { places: out, checkedAt: monitor.checkedAt };
 }
 
@@ -1883,6 +1977,8 @@ module.exports = {
     pollPlaces,
     getActiveAlerts,
     getRainStatus,
+    rainDetail,
+    readRainDetail,
     getPlaces,
     savePlaces,
     placeFor,
@@ -1893,5 +1989,5 @@ module.exports = {
     WeatherError,
     alertWindowText,
     alertWhereText,
-    _test: { instantMs, placeTag,  overlayApple, rainOutlook, distanceKm, monitor, normaliseApple, normaliseOpenMeteo, signAppleToken, normalisePrivateKey, memo, Limiter, Lru, localIso, offsetAt, appleCondition, nextHourSummary, jsonCache, limiters }
+    _test: { instantMs, placeTag,  overlayApple, rainOutlook, rainDetail, conditionIcon, distanceKm, monitor, normaliseApple, normaliseOpenMeteo, signAppleToken, normalisePrivateKey, memo, Limiter, Lru, localIso, offsetAt, appleCondition, nextHourSummary, jsonCache, limiters }
 };

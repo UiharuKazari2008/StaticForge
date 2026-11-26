@@ -2,8 +2,9 @@
 
 // Daily weather pictures per workspace (#1126). Config weatherDaily:
 //   { enabled: true, time: "07:30", places: [{ workspace: "<id|name>", name, lat, lon }] }
-// Once a day, for each place: the forecast is read (weatherService), a context brief (place, weekday and date,
-// season, conditions, temperatures) is built and a Yozora chat is started to draw one picture with generate_image
+// Once a day, for each place: the forecast is read (weatherService), a context brief (place, weekday, season and
+// conditions in words; no readings, so none end up in the picture prompt: dynamic generation resolves them for the
+// place's coordinates) is built and a Yozora chat is started to draw one picture with generate_image
 // into that workspace (same route as the shrine job, #1149). Source weather-daily:<workspace>:<date> dedupes a rerun.
 // Press-driven pictures come from the Weather app itself (Menu > Create Picture).
 
@@ -46,38 +47,53 @@ function placeClock(fc, date) {
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+
+// readings as words: the drawing session is given no number it could paste into the picture prompt
+const below = (v, steps, last) => (steps.find(([limit]) => v < limit) || [0, last])[1];
+const tempWord = (c) => below(c, [[0, 'freezing'], [8, 'cold'], [15, 'cool'], [21, 'mild'], [27, 'warm']], 'hot');
+const cloudWord = (pct) => below(pct, [[25, 'clear sky'], [55, 'some cloud'], [85, 'mostly cloudy']], 'overcast');
+const windWord = (kmh) => below(kmh, [[6, 'still air'], [20, 'light wind'], [39, 'breezy'], [62, 'strong wind']], 'gale');
+
+/** The conditions in words, for the session's own understanding. */
+function conditionWords(cur, today) {
+    const words = [];
+    if (cur.text) words.push(String(cur.text).toLowerCase());
+    if (num(cur.tempC) != null) words.push(tempWord(Number(cur.tempC)));
+    if (num(cur.cloud) != null) words.push(cloudWord(Number(cur.cloud)));
+    if (num(cur.windKmh) != null) words.push(windWord(Number(cur.windKmh)));
+    if (num(cur.humidity) != null && cur.humidity >= 80) words.push('humid');
+    if (num(cur.visibilityM) != null && cur.visibilityM < 5000) words.push('poor visibility');
+    if (cur.isDay != null) words.push(cur.isDay === false ? 'night' : 'daylight');
+    if (today.text) words.push(`${String(today.text).toLowerCase()} over the day`);
+    if (num(today.rain) != null && today.rain >= 25) words.push(today.rain >= 60 ? 'rain likely later' : 'a chance of rain later');
+    return [...new Set(words)];
+}
 
 function briefFor(place, fc, date) {
     const cur = (fc && fc.current) || {};
     const today = (fc && Array.isArray(fc.daily) && fc.daily[0]) || {};
     const clock = placeClock(fc, date);
     const season = seasonOf(clock.m, Number(place.lat));
-    const day = `${WEEKDAYS[clock.wd]}, ${MONTHS[clock.m]} ${clock.d}, ${clock.y}`;
-    const parts = [];
-    if (cur.text) parts.push(cur.text);
-    if (num(cur.tempC) != null) parts.push(`${cur.tempC} C${num(cur.feelsC) != null ? ` (feels ${cur.feelsC} C)` : ''}`);
-    if (num(cur.cloud) != null) parts.push(`cloud cover ${cur.cloud}%`);
-    if (num(cur.windKmh) != null) parts.push(`wind ${cur.windKmh} km/h`);
-    if (num(cur.humidity) != null) parts.push(`humidity ${cur.humidity}%`);
-    if (num(cur.visibilityM) != null && cur.visibilityM < 5000) parts.push(`visibility ${Math.round(cur.visibilityM)} m`);
-    if (cur.isDay != null) parts.push(cur.isDay === false ? 'night' : 'daytime');
-    const dayLine = [];
-    if (today.text) dayLine.push(today.text);
-    if (num(today.maxC) != null) dayLine.push(`high ${today.maxC} C, low ${num(today.minC) != null ? today.minC : '?'} C`);
-    if (num(today.rain) != null) dayLine.push(`rain chance ${today.rain}%`);
-    if (today.sunrise && today.sunset) dayLine.push(`sunrise ${String(today.sunrise).slice(11, 16)}, sunset ${String(today.sunset).slice(11, 16)}`);
+    const words = conditionWords(cur, today);
+    const name = String(place.name || '').trim();
+    // longitude first: compileContext reads location as LONG_LAT
+    const location = `${Number(place.lon)}_${Number(place.lat)}`;
     return [
-        `Daily weather picture (#1126) for the workspace "${place.workspace}".`,
-        `Place: ${place.name || `${place.lat}, ${place.lon}`}. Day: ${day} (${season}), local time ${pad2(Math.floor(clock.minutes / 60))}:${pad2(clock.minutes % 60)}.`,
-        `Conditions now: ${parts.length ? parts.join(', ') : 'unknown'}.`,
-        dayLine.length ? `Today: ${dayLine.join('; ')}.` : '',
-        'Draw ONE picture of this place on this day in this weather: the light, sky, season and atmosphere must match.',
-        `Use generate_image with workspace "${place.workspace}", normal resolution, n=1, a full present-tense scene description (NovelAI keeps no memory).`,
+        `Daily weather picture for the workspace "${place.workspace}".`,
+        name ? `Place: ${name}.` : 'Place: unnamed. Its coordinates are only for the generate call: do not write them in the prompt.',
+        `For your understanding only, never to be pasted into the prompt: season ${season}; day ${WEEKDAYS[clock.wd]}; conditions: ${words.length ? words.join(', ') : 'unknown'}.`,
+        'Draw ONE picture of this place as it is now.',
+        'Write the prompt as a present-tense scene of the place with no numbers, no units, no weekday and no forecast readout. The light, the season and the weather come from the dynamic generation expanders, so the prompt carries !dg_time, !dg_season, !dg_weather.',
+        `Prompt shape (you may enrich the scenery of the place itself): landscape${name ? ` of ${name}` : ''}, !dg_time, !dg_season, !dg_weather, atmospheric, detailed scenery`,
+        `Call generate_image with workspace "${place.workspace}", normal resolution, a single print (leave n out), and this dynamicGeneration so the server resolves the real conditions for this place:`,
+        `dynamicGeneration: { enabled: true, tod: true, weather: true, season: true, location: "${location}" }`,
         'Do not mail or comment; the picture landing in the workspace is the result.'
-    ].filter(Boolean).join('\n');
+    ].join('\n');
 }
+
+// appended when the forecast could not be read for the brief
+const NO_FORECAST_NOTE = 'The forecast could not be read: say so in one line. Keep the same prompt shape and generate call (the server resolves the conditions itself) and paste no readout into the prompt.';
 
 async function runPlace(place, now) {
     const weatherService = require('./weatherService');
@@ -85,7 +101,7 @@ async function runPlace(place, now) {
     const iso = now.toISOString().slice(0, 10);
     let fc = null;
     try { fc = await weatherService.getForecast(Number(place.lat), Number(place.lon)); } catch (e) { fc = null; }
-    const prompt = briefFor(place, fc, now) + (fc ? '' : '\n(The forecast could not be read: say so in one line and draw the season and place only.)');
+    const prompt = briefFor(place, fc, now) + (fc ? '' : `\n(${NO_FORECAST_NOTE})`);
     const session = await startDirectorSession(gr, {
         persona: 'yozora', thread: 'weather-daily', title: `Weather picture ${place.name || place.workspace} ${iso}`,
         source: `weather-daily:${place.workspace}:${iso}`, prompt
@@ -174,4 +190,4 @@ function rearm() { arm(); return status(); }
 function stop() { if (timer) clearTimeout(timer); timer = null; }
 function status() { return { armed: !!timer, nextAt: settings().enabled ? nextRunAt() : null, lastRun }; }
 
-module.exports = { start, stop, rearm, status, runNow, nextRunAt, briefFor, getSettings, setPlace };
+module.exports = { start, stop, rearm, status, runNow, nextRunAt, briefFor, getSettings, setPlace, NO_FORECAST_NOTE };

@@ -280,11 +280,13 @@
         });
         let rain = null;
         const rp = (rainStatus && rainStatus.places) || {};
-        MONITORED.forEach((id) => {
+        // 'here' is the phone's current location (#1127), watched beside Home and Work
+        [...MONITORED, 'here'].forEach((id) => {
             const r = rp[id];
             if (rain || !r || !r.rainAlarm) return;
-            if (r.wet) rain = { id, text: `${r.kind || 'Rain'} at ${PLACE_LABEL[id]} now${r.endsInMin ? `, stopping in about ${r.endsInMin} min` : ''}.` };
-            else if (r.startsInMin != null) rain = { id, text: `${r.kind || 'Rain'} at ${PLACE_LABEL[id]} in about ${r.startsInMin} min.` };
+            const at = PLACE_LABEL[id] || (r.place && r.place.name) || 'your location';
+            if (r.wet) rain = { id, text: `${r.kind || 'Rain'} at ${at} now${r.endsInMin ? `, stopping in about ${r.endsInMin} min` : ''}.` };
+            else if (r.startsInMin != null) rain = { id, text: `${r.kind || 'Rain'} at ${at} in about ${r.startsInMin} min.` };
         });
         return { alerts, rain };
     }
@@ -2903,27 +2905,46 @@
      * call DreamStudio's own Print button makes (wmDreamStudio.js:1335). Menu > Daily Picture is the server's
      * daily per-workspace picture (modules/weatherDaily.js, weather_daily_get / weather_daily_set).
      */
-    function pictureBrief(p, data) {
-        const cur = data.current;
-        const cond = condOf(cur, cur.isDay !== false);
-        const now = new Date(placeNow(data));
-        const month = now.getUTCMonth();
-        const north = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'][month];
-        const south = { winter: 'summer', summer: 'winter', spring: 'autumn', autumn: 'spring' }[north];
-        const season = Number.isFinite(p.lat) && p.lat < 0 ? south : north;
-        const hour = now.getUTCHours();
-        const part = cur.isDay === false ? (hour < 5 || hour >= 22 ? 'deep night' : 'night') : hour < 9 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-        const where = placeWords(p);
-        const t = mainC(cur);
-        const temp = Number.isFinite(t) ? `${Math.round(t)} degrees Celsius` : '';
-        return `landscape of ${where}, ${DAYS[now.getUTCDay()]} ${part}, ${season}, ${String(cond.text || '').toLowerCase()}${temp ? `, ${temp}` : ''}, ${cur.isDay === false ? 'night lighting' : 'daylight'} matching the weather, atmospheric, detailed scenery`;
+    function pictureBrief(p) {
+        return `landscape of ${placeWords(p)}, !dg_time, !dg_season, !dg_weather, atmospheric, detailed scenery`;
     }
 
-    /** The place in words for a picture: its own name, and its region and country; Home / Work / Current location are left out. */
+    /**
+     * The place in words for a picture: its own name, and its region and country; Home / Work / Current location are
+     * left out (they would be drawn as a house), and coordinates are never words.
+     */
     function placeWords(p) {
         const generic = p.monitored || p.name === 'Current location' || Object.values(PLACE_LABEL).includes(p.name);
         const parts = [generic ? '' : p.name, p.region, p.country].filter(Boolean);
-        return parts.length ? parts.join(', ') : (p.name || `${p.lat}, ${p.lon}`);
+        return parts.length ? parts.join(', ') : 'the local countryside';
+    }
+
+    /**
+     * Rentan for the picture's own place: time of day, weather and season on (live, no override) at its coordinates
+     * ("LONG_LAT", compileContext in modules/dynamicGenerationHandlers.js), unfrozen and with no earlier scene, so the
+     * server resolves !dg_time / !dg_season / !dg_weather for that place. False when Studio's controls are not here.
+     * setDynamicGenerationEnabled / setDynamicGenerationLockState: public/scripts/comp/dynamicGenerationLockState.js
+     */
+    function dynagenForPlace(p) {
+        const [todBtn, weatherBtn, seasonBtn] = ['todBtn', 'weatherBtn', 'seasonBtn'].map((id) => document.getElementById(id));
+        const lat = Number(p.lat);
+        const lon = Number(p.lon);
+        if (!todBtn || !weatherBtn || !seasonBtn || !Number.isFinite(lat) || !Number.isFinite(lon)
+            || typeof window.setDynamicGenerationEnabled !== 'function') return false;
+        delete window.dynamicGenerationData;
+        [todBtn, weatherBtn, seasonBtn].forEach((btn) => {
+            btn.removeAttribute('data-override');
+            btn.dataset.state = 'on';
+            btn.classList.add('active');
+        });
+        weatherBtn.setAttribute('data-location', `${lon}_${lat}`);
+        weatherBtn.dataset.locationDisplay = placeWords(p);
+        if (typeof window.setDynamicGenerationLockState === 'function') window.setDynamicGenerationLockState({ cacheLocked: false, contextLocked: false });
+        const on = window.setDynamicGenerationEnabled(true);
+        // dynamicGenerationOverrides.js: the TOD button's icon and the prompt's status icons
+        if (typeof window.updateTodButtonIcon === 'function') window.updateTodButtonIcon();
+        if (typeof window.updatePromptStatusIcons === 'function') window.updatePromptStatusIcons();
+        return on;
     }
 
     async function createPicture() {
@@ -2935,7 +2956,9 @@
             ws.messageBox({ title: 'Weather', icon: 'info', text: 'Studio is not available here.' });
             return;
         }
-        await open({ type: 'metadata', data: { prompt: pictureBrief(p, data) }, title: `Weather - ${p.name}` });
+        await open({ type: 'metadata', data: { prompt: pictureBrief(p) }, title: `Weather - ${p.name}` });
+        // the prompt's light, season and weather are expanders: without Rentan for this place it is not printed
+        const noRentan = () => ws.messageBox({ title: 'Weather', icon: 'info', text: 'Dynamic generation is not available here. The prompt is in Studio.' });
         const M = window.studioModel;
         if (MOBILE && M && typeof M.generate === 'function') {
             // DreamStudio brings its Studio session up after the open returns: print once it says it is ready
@@ -2948,10 +2971,12 @@
                     M.on('change', check);
                 });
             }
-            if (M.ready()) M.generate();
+            // armed after Studio is up: its own load may reset the scene controls
+            if (M.ready()) { if (dynagenForPlace(p)) M.generate(); else noRentan(); }
             else ws.messageBox({ title: 'Weather', icon: 'info', text: 'Studio is not ready yet. The prompt is in DreamStudio; press Print there.' });
             return;
         }
+        if (!dynagenForPlace(p)) { noRentan(); return; }
         const btn = document.getElementById('manualGenerateBtn');
         if (btn && !btn.disabled) btn.click();
     }

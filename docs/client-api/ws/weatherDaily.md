@@ -5,7 +5,7 @@ Client: the Weather app's workspace picture setting.
 
 See [WebSocket protocol](../websocket.md) for envelope format, auth, and error handling. `admin` or `dev_admin`.
 
-Once a day at `time` (server local clock, default `07:30`) the server reads the forecast of each configured place (`weatherService.getForecast`), builds a brief (place, the place's own weekday and date, season, current conditions, today's high / low, rain chance, sunrise / sunset) and starts a Yozora director session that draws one picture with `generate_image` into that workspace. Source `weather-daily:<workspace>:<date>` dedupes a rerun. Config `weatherDaily` in `config`: `{ enabled, time, places: [{ workspace, name, lat, lon }] }`, one place per workspace. The timer is armed at boot (when enabled) and re-armed on every change; `WEATHER_DAILY_OFF=1` disables it.
+Once a day at `time` (server local clock, default `07:30`) the server reads the forecast of each configured place (`weatherService.getForecast`), builds a brief (place, the place's own weekday, season and conditions in words, no readings; the picture prompt carries `!dg_time, !dg_season, !dg_weather` and `generate_image` gets `dynamicGeneration { enabled, tod, weather, season, location: "<lon>_<lat>" }`) and starts a Yozora director session that draws one picture with `generate_image` into that workspace. Source `weather-daily:<workspace>:<date>` dedupes a rerun. Config `weatherDaily` in `config`: `{ enabled, time, places: [{ workspace, name, lat, lon }] }`, one place per workspace. The timer is armed at boot (when enabled) and re-armed on every change; `WEATHER_DAILY_OFF=1` disables it.
 
 ## Packet index
 

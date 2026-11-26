@@ -1152,6 +1152,11 @@
     const POPUP_SEL = '.wm-notify-scrim, .wm-bubble, .wm-volume, .wm-notify-tray, .wm651-drawer, .wm-notify, .wm-popup, .wm-msgbox-layer';
     /** Opens what a tap on the bar's `role` opens here (an icon's bubble, the notification group's tray). */
     function barsPopupOpen(role) {
+        // opened to be copied for the app: a bubble that would ask the server shows what is held (rain, #1267)
+        barsOpening = true;
+        try { return barsPopupOpenNow(role); } finally { barsOpening = false; }
+    }
+    function barsPopupOpenNow(role) {
         if (!shell) return false;
         // Quick Access (#1017): its grip tab and panel pages, laid out by wmQuickAccess.js to be written down
         if (/^(qatab|quickaccess)/.test(role)) return !!(window.wmQuickAccess && window.wmQuickAccess.open(role));
@@ -6550,7 +6555,11 @@
         el.hidden = false;
         refreshTitleAction();
         syncScrim();
-        // the tail points at the status icon
+        placeBubbleTail(el, anchor);
+    }
+
+    /** The tail points at the status icon. */
+    function placeBubbleTail(el, anchor) {
         if (anchor) {
             // from the bubble's own left edge: with its max-width it may sit right-aligned on a wide screen
             const br = el.getBoundingClientRect();
@@ -6562,9 +6571,40 @@
         }
     }
 
+    /*
+     * The rain bubble's card (#1267; weatherAlerts.js draws it): the place's weather and next hour read once, as the
+     * bubble opens. The bar's repaints of the open bubble keep the same node; closing drops it. No timers.
+     */
+    let rainPop = null; // { id, node, anchor } of the open bubble; { quiet: true } for one opened to be copied
+    let barsOpening = false; // inside barsPopupOpen: nothing is asked
+
+    function rainCardNode(id, anchor) {
+        if (rainPop && rainPop.id === id) { rainPop.anchor = anchor; return rainPop.node; }
+        const wa = window.weatherAlerts;
+        const node = document.createElement('div');
+        node.className = 'wm-bubble-rain';
+        node.textContent = 'Reading the next hour...';
+        const mine = { id, node, anchor };
+        rainPop = mine;
+        void wa.readRain(id).then((d) => {
+            const el = shell && shell.querySelector('.wm-bubble');
+            if (rainPop !== mine || !el || el.hidden || el.dataset.role !== 'rain') return;
+            node.innerHTML = d ? wa.rainCardHtml(d) : '';
+            if (!d || !Array.isArray(d.series) || !d.series.length) {
+                const failed = document.createElement('div');
+                failed.textContent = 'The next hour could not be read.';
+                node.appendChild(failed);
+            }
+            placeBubbleTail(el, mine.anchor);
+            syncScrim();
+        });
+        return node;
+    }
+
     function closeBubble() {
         const el = shell && shell.querySelector('.wm-bubble');
         if (el) { el.hidden = true; el.dataset.role = ''; el.dataset.modal = ''; }
+        rainPop = null;
         refreshTitleAction();
         syncScrim();
     }
@@ -8952,6 +8992,20 @@
                 if (!sections.length) sections.push('No weather alerts.');
             } else {
                 sections.push(st && st.rain ? st.rain.text : 'No rain expected in the next hour.');
+                // the place's weather now and its next hour as they are when the bubble opens (#1267); the copies
+                // made for the app are text only and ask nothing
+                const wa = window.weatherAlerts;
+                if (st && st.rain && wa && typeof wa.rainCardHtml === 'function') {
+                    const open = !el.hidden && el.dataset.role === 'rain';
+                    if (capture || barsOpening || (update && open && rainPop && rainPop.quiet)) {
+                        if (!capture) rainPop = { quiet: true };
+                        const now = wa.rainNowText(st.rain.id);
+                        if (now) sections.push(now);
+                    } else {
+                        if (!update || !open) rainPop = null;
+                        sections.push({ node: rainCardNode(st.rain.id, anchor) });
+                    }
+                }
             }
             const links = w ? [{ label: role === 'wxalert' ? 'View Alerts' : 'Open Weather', action: () => { closeBubble(); if (role === 'wxalert' && typeof w.showAlerts === 'function') w.showAlerts(); else w.open(); } }] : [];
             bubble({ title: STATUS_APP_LABEL[role], role, anchor, sections: links.length ? [...sections, { links }] : sections, buttons: [{ text: 'Hide' }] });

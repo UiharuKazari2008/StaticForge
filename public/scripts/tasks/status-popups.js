@@ -10,6 +10,9 @@
  * bars } | { t: 'links', s, links: [label], right } | { t: 'rule' } ], foot: [label], buttons: [{ text }] }. A link or foot
  * label is done where the page's popup does it (the app opens Melaton on the screen tapped, with role and label).
  *
+ * The rain popup also carries rain: [{ name, icon, tempC, text, isDay, series: [{ t, mmh, rain }], seriesStep }] at
+ * the top level for an app that draws the graph and current weather; one that does not shows the text lines alone.
+ *
  * Inputs: f = the status snapshot's fields, n = the phone's own state (status-bar task native + sys: battery,
  * bluetooth, cell, wifi, airplane, ringer, sent by the app when a popup of the phone's own icons opens), now = Date.
  */
@@ -64,6 +67,34 @@
         if (on) return 'Cannot connect to the Nightshade server.';
         return 'Not connected.';
     };
+
+    // a series stamp (place wall clock 'YYYY-MM-DDTHH:MM') as a 12 hour time; read from the string, not the phone's zone
+    const wallTime = (t) => {
+        const h = Number(String(t).slice(11, 13));
+        return `${h % 12 || 12}:${String(t).slice(14, 16)} ${h < 12 ? 'AM' : 'PM'}`;
+    };
+    /** What the rain line does not say: when it turns dry again, or that it stays wet to the end of the series. */
+    function rainAhead(d) {
+        const series = Array.isArray(d.series) ? d.series : [];
+        const wet = (p) => Number(p.mmh) >= 0.1;
+        const from = series.findIndex(wet);
+        if (from < 0) return '';
+        const dry = series.slice(from).find((p) => !wet(p));
+        if (dry) return `Dry again from about ${wallTime(dry.t)}.`;
+        return `Wet through the next ${series.length * (Number(d.seriesStep) || 0) > 75 ? 'two hours' : 'hour'}.`;
+    }
+    /** The current weather and what is ahead, one place at a time; the place is named when there are two. */
+    function rainTextLines(list) {
+        const out = [];
+        list.forEach((d) => {
+            // the app has no copy of the unit picked in Melaton Weather: both, so neither reads wrong
+            const parts = [d.tempC != null ? `${Math.round(d.tempC)} C / ${Math.round((d.tempC * 9) / 5 + 32)} F` : '', d.text || ''].filter(Boolean);
+            if (parts.length) out.push(text(`${list.length > 1 ? `${d.name} now` : 'Now'} ${parts.join(', ')}`));
+            const ahead = rainAhead(d);
+            if (ahead) out.push(text(list.length > 1 ? `${d.name}: ${ahead}` : ahead));
+        });
+        return out;
+    }
 
     const builders = {
         // the "..." group: the app's own tray of waiting notices and folded icons (MelatonBars.showNoticeTray); this is
@@ -120,7 +151,12 @@
             const w = f.weather || {};
             const lines = (w.rainLines || []).map((l) => text(l));
             if (!lines.length) lines.push(text(w.rain ? 'Rain is due.' : 'No rain due.'));
-            return pop('rain', 'Rain Alarm', lines.concat([links(['Open Weather'])]));
+            const detail = Array.isArray(w.rainDetail) ? w.rainDetail : [];
+            const p = pop('rain', 'Rain Alarm', lines.concat(rainTextLines(detail), [links(['Open Weather'])]));
+            if (detail.length) {
+                p.rain = detail.map((d) => ({ name: d.name, icon: d.icon, tempC: d.tempC, text: d.text, isDay: d.isDay, series: d.series, seriesStep: d.seriesStep }));
+            }
+            return p;
         },
         carkey(f, n, now) {
             const lines = [];

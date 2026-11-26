@@ -20,14 +20,19 @@ const sidebarGadgets = require('../../sidebarGadgets');
 //   weather_alerts_active {}                                  active alerts of Home and Work
 //   weather_places_get    {}                                  { places: { home, work }, rain, alerts }
 //   weather_places_save   { places: { home?, work? } }        admins; null clears one (#792)
-//   weather_rain_status   {}                                  rain now / soon at Home and Work
+//   weather_rain_status   {}                                  rain now / soon at Home, Work and Current location; a
+//                                                             place with its alarm on and rain due or falling also
+//                                                             has current, series, seriesStep
+//                         { place: 'home'|'work'|'here' }     that place read now (weatherService.readRainDetail),
+//                                                             series always; {} when the place is unknown
 //   weather_place         { lat, lon }                         { name, region, country }: the town for the phone's
 //                                                             own position (Current location in the app)
 //
 // Broadcasts (weatherService alert monitor, every 5 min on the configured home location):
 //   weather_alert_issued    { alert, place: { id, label, name, ... }, source }   a new alert, once
 //   weather_alerts_changed  weather_alerts_active's shape                         the active lists changed
-//   weather_rain_alarm      { place, startsInMin, endsInMin, peakMmh, kind, summary }   once per rain spell
+//   weather_rain_alarm      { place, startsInMin, endsInMin, peakMmh, kind, summary,
+//                             current, series, seriesStep }                       once per rain spell
 //   weather_rain_status     weather_rain_status's shape                          rain began / ended / moved
 //   weather_places_changed  { places }                                           Home / Work saved
 // To watchers only (weather_watch): weather_delta { key, available, ...weather_forecast's reply against the
@@ -191,7 +196,10 @@ async function handleUnwatch(handlersCtx, ws, message) {
 async function handleRainStatus(handlersCtx, ws, message) {
     try {
         weatherService.bind(handlersCtx.globalResources);
-        reply(handlersCtx, ws, message, weatherService.getRainStatus());
+        const data = typeof message.place === 'string'
+            ? (await weatherService.readRainDetail(message.place)) || {}
+            : weatherService.getRainStatus();
+        reply(handlersCtx, ws, message, data);
     } catch (error) {
         fail(handlersCtx, ws, message, error, 'Rain status could not be loaded');
     }

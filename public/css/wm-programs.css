@@ -2073,3 +2073,15 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
 /* a disabled combo looks disabled all over: its frame and drop arrow fade with its text (6.1 / 6.5) */
 .wm-combo:disabled { border-color: #a5a6a5; }
 .wm-combo:disabled::after { opacity: 0.45; }
+
+/* ---- the rain card (#1267; weatherAlerts.js rainCardHtml) in the rain bubble and the rain notification: the weather
+ * now and the next hour's bars, in the bubble's own text colour ---- */
+html.ui-mobile .wx-rain-card { margin-top: calc(3 * var(--wm-px)); }
+html.ui-mobile .wx-rain-now { display: flex; align-items: center; gap: calc(5 * var(--wm-px)); }
+html.ui-mobile .wx-rain-now > b { flex: 0 0 auto; white-space: nowrap; }
+html.ui-mobile .wx-rain-now > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.ui-mobile .wx-rain-now > .wx-rain-glyph { flex: 0 0 auto; width: calc(28 * var(--wm-px)); height: calc(28 * var(--wm-px)); }
+html.ui-mobile .wx-rain-chart { display: block; width: 100%; height: calc(40 * var(--wm-px)); margin-top: calc(2 * var(--wm-px)); }
+html.ui-mobile .wx-rain-chart .wx-rain-bar { fill: var(--wm-highlight); }
+html.ui-mobile .wx-rain-axis { width: 100%; border-collapse: collapse; }
+html.ui-mobile .wx-rain-axis td { padding: 0; }

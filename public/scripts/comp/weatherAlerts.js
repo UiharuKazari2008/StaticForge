@@ -16,12 +16,17 @@
  * Rain alarm (#792): weather_rain_alarm for Home / Work, once per spell: a WM notification in the
  * Weather: Rain alarm class on phones, a notification on the desktop.
  *
+ * Rain card (#1267): the one drawing of a place's current weather and next-hour rain graph, for the notices here and
+ * the phone's rain bubble (wmShell.js). Inline SVG in currentColor, so it needs no stylesheet and holds no colours.
+ *
  * Texts (desktop balloon, phone note): where(alert, place) "Home (Setagaya) - Tokyo 23 wards" and windowText(alert,
  * place, now) "From today 6:00 PM until tomorrow 9:00 AM". The server gives startsAt / endsAt (epoch ms) and the
  * place's tz; without them the alert's wall-clock strings (the place's own clock) are used.
  *
  * window.weatherAlerts: last() -> the last alert received, details(alert) opens its text, active() -> the active
- * alerts, _where / _windowText for tests.
+ * alerts, rainCardHtml(detail) -> the card's markup, rainNowText(detailOrPlaceId) -> one plain line of the current
+ * weather, readRain(placeId) -> Promise of the place's rain read now (null when it cannot be read), _where /
+ * _windowText for tests.
  */
 (function (root) {
     'use strict';
@@ -346,6 +351,138 @@
         }
     }
 
+    // ---- the rain card (#1267): the place's weather now and its next hour ----
+
+    // the next-hour chart of Melaton Weather (wmWeather.js renderNextHour): same threshold, grid lines and scale
+    const WET = 0.05; // mm/h; below it a point draws no bar and counts as dry
+    const NEXT_LIGHT = 1;
+    const NEXT_HEAVY = 4;
+    const NEXT_SCALE_MIN = 6; // mm/h at the top of the chart
+    const CHART_W = 240;
+    const CHART_H = 56;
+    const DEG = '\u00b0';
+
+    const finite = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+
+    /** 'C' or 'F': Melaton Weather's own answer, else (its desktop stub has none) the same choice made here. */
+    function tempUnit() {
+        const w = root.wmWeather;
+        if (w && typeof w.unit === 'function') return w.unit() === 'F' ? 'F' : 'C';
+        try {
+            const picked = JSON.parse(root.localStorage.getItem('wmWeatherUnit'));
+            if (picked === 'C' || picked === 'F') return picked;
+        } catch (_e) { /* none picked */ }
+        try { return /-(US|LR|MM|BS|BZ|KY|PW)\b/i.test((root.navigator && root.navigator.language) || '') ? 'F' : 'C'; } catch (_e) { return 'C'; }
+    }
+
+    function tempText(celsius) {
+        const c = finite(celsius);
+        if (c === null) return '';
+        const u = tempUnit();
+        return `${Math.round(u === 'F' ? (c * 9) / 5 + 32 : c)}${DEG}${u}`;
+    }
+
+    // the last rain read or pushed for each place (home / work / here): for rainNowText where nothing may be asked
+    const rainSeen = new Map();
+
+    function keepRain(id, d) {
+        if (id && d && d.current) rainSeen.set(id, d);
+    }
+
+    /** weather_rain_status's places replace what is held (a place no longer listed or without weather is dropped). */
+    function onRainStatus(packet) {
+        const d = packet && (packet.data || packet);
+        const places = d && d.places;
+        if (!places) return;
+        rainSeen.clear();
+        Object.keys(places).forEach((id) => keepRain(id, places[id]));
+    }
+
+    /** "Now: 18 C, Light rain" for a detail, or for the last one held of a place id. '' when not known. */
+    function rainNowText(detailOrId) {
+        const d = typeof detailOrId === 'string' ? rainSeen.get(detailOrId) : detailOrId;
+        const cur = d && d.current;
+        if (!cur) return '';
+        const parts = [tempText(cur.tempC), String(cur.text || '').trim()].filter(Boolean);
+        return parts.length ? `Now: ${parts.join(', ')}` : '';
+    }
+
+    /** The condition glyph, its file named by Melaton Weather's own art helper (wmWeather.iconUrl); '' without it. */
+    function glyphHtml(icon) {
+        const w = root.wmWeather;
+        // the icon is a file name part: only the art's own kind of name
+        if (!w || typeof w.iconUrl !== 'function' || !/^[a-z]+(-[a-z]+)*$/.test(String(icon || ''))) return '';
+        const src = esc(w.iconUrl(icon));
+        return `<img class="wx-rain-glyph" src="${src}" srcset="${src} 2x, ${esc(w.iconUrl(icon, true))} 4x" alt="" width="32" height="32" align="middle" draggable="false"> `;
+    }
+
+    function nowHtml(cur) {
+        if (!cur) return '';
+        const temp = tempText(cur.tempC);
+        const text = String(cur.text || '').trim();
+        const art = glyphHtml(cur.icon);
+        if (!temp && !text && !art) return '';
+        return `<div class="wx-rain-now">${art}${temp ? `<b>${esc(temp)}</b> ` : ''}<span>${esc(text)}</span></div>`;
+    }
+
+    function chartHtml(series, step) {
+        const total = series.length * step;
+        const values = series.map((x) => finite(x && x.mmh) || 0);
+        if (!values.some((v) => v >= WET)) {
+            const span = total <= 75 ? 'the next hour' : total <= 135 ? 'the next two hours' : `the next ${Math.round(total / 60)} hours`;
+            return `<div class="wx-rain-dry">No precipitation for ${span}</div>`;
+        }
+        const maxI = Math.max(NEXT_SCALE_MIN, ...values);
+        const yOf = (v) => Math.max(2, Math.min(1, Math.sqrt(v / maxI)) * (CHART_H - 6));
+        const bw = CHART_W / series.length;
+        const bars = values.map((v, i) => {
+            if (v < WET) return '';
+            const chance = finite(series[i] && series[i].rain);
+            const opacity = chance === null ? 1 : 0.45 + (Math.max(0, Math.min(100, chance)) / 100) * 0.55;
+            const h = yOf(v);
+            return `<rect class="wx-rain-bar" x="${(i * bw + bw * 0.12).toFixed(2)}" y="${(CHART_H - h).toFixed(2)}" width="${Math.max(0.8, bw * 0.76).toFixed(2)}" height="${h.toFixed(2)}" fill="currentColor" fill-opacity="${opacity.toFixed(2)}"/>`;
+        }).join('');
+        const line = (y, opacity, dash) => `<line x1="0" y1="${y}" x2="${CHART_W}" y2="${y}" stroke="currentColor" stroke-opacity="${opacity}" stroke-width="1"${dash ? ' stroke-dasharray="3 3"' : ''} vector-effect="non-scaling-stroke"/>`;
+        const end = total % 60 === 0 ? `${total / 60} h` : `${total} min`;
+        // the labels are page text, not SVG text: stretching the drawing never distorts them, and the app's copy of the
+        // drawing (melatonBars.js svgPicture) has no page font
+        return `<svg class="wx-rain-chart" viewBox="0 0 ${CHART_W} ${CHART_H}" width="100%" height="${CHART_H}" preserveAspectRatio="none" role="img" aria-label="Rain for the next ${esc(end)}">`
+            + line((CHART_H - yOf(NEXT_LIGHT)).toFixed(1), 0.35, true)
+            + line((CHART_H - yOf(NEXT_HEAVY)).toFixed(1), 0.35, true)
+            + bars
+            + line(CHART_H - 0.5, 0.7, false)
+            + '</svg>'
+            + `<table class="wx-rain-axis" width="100%" cellpadding="0" cellspacing="0"><tr><td align="left" nowrap>Now</td><td align="center" nowrap>Rain intensity</td><td align="right" nowrap>${esc(end)}</td></tr></table>`;
+    }
+
+    /**
+     * The card for a rain detail ({ current: { tempC, text, icon }, series: [{ mmh, rain }], seriesStep }): the weather
+     * now and the next hour's bars (a sentence when it stays dry). '' when the detail has neither.
+     */
+    function rainCardHtml(detail) {
+        const d = detail || {};
+        const series = Array.isArray(d.series) ? d.series : [];
+        const body = nowHtml(d.current) + (series.length ? chartHtml(series, finite(d.seriesStep) > 0 ? finite(d.seriesStep) : 1) : '');
+        return body ? `<div class="wx-rain-card">${body}</div>` : '';
+    }
+
+    /** The place's rain as the server reads it now (weather_rain_status with { place }); null when there is none. */
+    async function readRain(placeId) {
+        const c = root.wsClient;
+        if (!placeId || !c || typeof c.sendMessage !== 'function') return null;
+        try {
+            const r = await c.sendMessage('weather_rain_status', { place: placeId }, false);
+            const d = r && (r.data || r);
+            if (!d || (!d.current && !(Array.isArray(d.series) && d.series.length))) return null;
+            keepRain(placeId, d);
+            return d;
+        } catch (_e) {
+            return null;
+        }
+    }
+
+    const minutes = (n) => `${n} ${n === 1 ? 'minute' : 'minutes'}`;
+
     /**
      * The rain alarm for Home / Work (weather_rain_alarm, once per rain spell): a WM notification in
      * the Weather: Rain alarm sound class on phones, a notification on the desktop (#792).
@@ -357,13 +494,22 @@
         if (shown.has(key)) return;
         shown.add(key);
         const where = d.place.label || d.place.name || 'your place';
-        const title = `${d.kind || 'Rain'} at ${where} in ${d.startsInMin} min`;
-        const text = d.endsInMin ? `${d.kind || 'Rain'} from about ${d.startsInMin} minutes from now, stopping after about ${Math.max(5, d.endsInMin - d.startsInMin)} minutes.` : (d.summary || `${d.kind || 'Rain'} expected in about ${d.startsInMin} minutes.`);
+        const kind = d.kind || 'Rain';
+        const lead = Number(d.startsInMin) > 0 ? Number(d.startsInMin) : 0;
+        const title = lead ? `${kind} at ${where} in ${lead} min` : `${kind} at ${where} now`;
+        const lasts = d.endsInMin ? `stopping after about ${minutes(Math.max(5, d.endsInMin - lead))}` : '';
+        let text;
+        if (lasts) text = lead ? `${kind} from about ${minutes(lead)} from now, ${lasts}.` : `${kind} now, ${lasts}.`;
+        else text = d.summary || (lead ? `${kind} expected in about ${minutes(lead)}.` : `${kind} is starting now.`);
+        keepRain(d.place.id, d);
+        // the card as the alarm found it; a push without the next hour stays text only
+        const hasHour = Array.isArray(d.series) && d.series.length > 0;
+        const body = () => `${esc(text)}${hasHour ? rainCardHtml(d) : ''}`;
         document.dispatchEvent(new CustomEvent('weatherRainAlarm', { detail: d }));
         if (isPhone() && root.wmShell && typeof root.wmShell.appNote === 'function') {
             const note = root.wmShell.appNote({
                 title,
-                html: esc(text),
+                html: body(),
                 icon: 'status-rain-alarm',
                 event: 'rain-alarm',
                 softKeys: () => ({
@@ -373,10 +519,21 @@
             });
             if (note) return;
         }
-        if (typeof root.showGlassToast === 'function') {
-            root.showGlassToast('info', esc(title), esc(text), false, 15000, null,
+        const toast = () => {
+            if (typeof root.showGlassToast !== 'function') return;
+            // the desktop makes this a message box that stays (toastManager.js: a notice with a button); the
+            // timeout is for a page that shows it as a plain notification, long enough to read the graph
+            root.showGlassToast('info', esc(title), body(), false, 30000, null,
                 root.wmWeather ? [{ text: 'Open Weather', type: 'primary', closeOnClick: true, onClick: () => root.wmWeather.open() }] : null);
+        };
+        // the desktop holds only Melaton Weather's stub until the program is first opened: the card's glyph and unit are
+        // the program's, so it loads for the card (once per rain spell); the notice shows without the glyph if it cannot
+        const loader = root.featureLoader;
+        if (hasHour && !isPhone() && loader && !(root.wmWeather && typeof root.wmWeather.iconUrl === 'function')) {
+            void loader.loadFeature('melaton_weather').catch(() => {}).then(toast);
+            return;
         }
+        toast();
     }
 
     /**
@@ -414,6 +571,7 @@
         wired = true;
         c.on('weather_alert_issued', onIssued);
         c.on('weather_rain_alarm', onRain);
+        c.on('weather_rain_status', onRainStatus);
         wireDesktop(c, (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined);
         wireHere();
         return true;
@@ -434,6 +592,10 @@
         last: () => lastAlert,
         details,
         active: () => Array.from(active.values()),
+        rainCardHtml,
+        rainNowText,
+        readRain,
+        _onRainStatus: onRainStatus,
         _onIssued: onIssued,
         _onRain: onRain,
         _where: where,

@@ -19,7 +19,10 @@
  *   chat      { fresh }           Messenger replies waiting
  *   director  { running, unseen } a turn running; a finished turn's notice waiting
  *   prints    { phone }           prints a phone asked for, queued or running
- *   weather   { alerts, rain }    alerts at Home / Work; rain due or falling with the rain alarm on
+ *   weather   { alerts, rain, alertLines, rainLines, rainDetail? }  alerts at Home / Work; rain due or falling with the
+ *                                 rain alarm on; rainDetail (only then, two places at most): [{ id, name, tempC, text,
+ *                                 isDay, icon, series: [{ t, mmh, rain }], seriesStep }] for the rain popup's graph,
+ *                                 renewed by the weather monitor with the outlook or about every quarter hour
  *   lapis     { until }           a remote start's end (epoch ms), 0 = none running
  *   traffic   { days, leaveHome, leaveWork, leadMin, timeZone, delayWork, delayHome, reportAt }  (the task works the
  *             leave windows out on the phone's clock; the server has no timer for them)
@@ -191,11 +194,17 @@ function weather() {
     const rain = Object.values(rainPlaces).some((p) => p && p.rainAlarm && (p.wet || p.startsInMin != null));
     // the lines the status popups show (the app draws them with the page asleep, status-popups.js): each alert's
     // title at its place, the rain now / due at each place with the alarm on
-    const name = (id) => (id === 'work' ? 'Work' : 'Home');
+    const name = (id) => (id === 'work' ? 'Work' : id === 'here' ? (rainPlaces.here && rainPlaces.here.place && rainPlaces.here.place.name) || 'Current location' : 'Home');
     const alertLines = ['home', 'work'].flatMap((id) => ((places[id] && places[id].alerts) || []).map((a) => `${a.title || 'Weather alert'} (${name(id)})`)).slice(0, 4);
-    const rainLines = Object.entries(rainPlaces).filter(([, p]) => p && p.rainAlarm && (p.wet || p.startsInMin != null))
+    const due = Object.entries(rainPlaces).filter(([, p]) => p && p.rainAlarm && (p.wet || p.startsInMin != null));
+    const rainLines = due
         .map(([id, p]) => (p.wet ? `${p.kind || 'Rain'} now at ${name(id)}.` : `${p.kind || 'Rain'} at ${name(id)} in about ${Math.max(1, Math.round(p.startsInMin))} min.`));
-    return { alerts, rain, alertLines, rainLines };
+    // the monitor's own copy of the graph (not worked out here): an unrelated touch finds the same JSON and sends nothing
+    const rainDetail = due.filter(([, p]) => p.current || (p.series && p.series.length)).slice(0, 2).map(([id, p]) => {
+        const c = p.current || {};
+        return { id, name: name(id), tempC: c.tempC == null ? null : c.tempC, text: c.text || '', isDay: c.isDay !== false, icon: c.icon || '', series: p.series || [], seriesStep: p.seriesStep || 0 };
+    });
+    return Object.assign({ alerts, rain, alertLines, rainLines }, rainDetail.length ? { rainDetail } : null);
 }
 
 function lapis() {
