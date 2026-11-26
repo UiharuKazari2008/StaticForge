@@ -1,11 +1,14 @@
 'use strict';
 /**
  * Host memory guard for Fleet (#1240, Yukimi Nov 25 2026: swap at 16.1 of 16.2 GB froze every WebSocket through
- * Dreamscape's 1-4 s stalls). Two jobs, both event-driven (no timer):
+ * Dreamscape's 1-4 s stalls). Three jobs, all event-driven (no timer):
  *   admission()      a new supervised session starts only while MemAvailable and free swap are above a floor; the answer
  *                    carries the text the queue shows ("Waiting for memory: ...").
  *   sweepScratch()   removes the /tmp scratch folders of sessions that ended (tmpfs is RAM/swap backed). Runs when a
  *                    session ends and before a start; never touches a folder a live process still names.
+ *   finishedSessions() (#1255) the decision of which rc-* tmux sessions to close: ~46 finished sessions (200-380 MB each) sat in
+ *                    their tmux sessions after their work item was done and filled the host. Pure: the Supervisor feeds it the
+ *                    rc-* sessions (rcCandidates), the work rows naming each and the in-flight check, then disconnects what it says.
  * Floors come from measurements on the host (13.9 GB RAM, 16 GB swap, one claude session 200-380 MB): MemAvailable 1.5 GB
  * keeps room for a session plus Dreamscape's major GC; free swap 2 GB keeps it from paging through a full swap. Override
  * with FLEET_MIN_MEM_MB / FLEET_MIN_SWAP_FREE_MB.
@@ -53,6 +56,67 @@ function liveSessionIds() {
     return ids;
 }
 
+const TERMINAL = ['done', 'failed', 'cancelled'];
+/**
+ * The rc-* sessions to look at (#1255). CLI 2.1.332 no longer writes `tmux` into ~/.claude/sessions/<pid>.json, so a live
+ * session's origin says nothing: the candidates are the rc-<id8> tmux sessions on Fleet's own socket (names), plus live
+ * sessions whose origin is still 'rc' (older CLIs). Each rc-<id8> is tied to a full session id: a live session whose id starts
+ * with id8, else the session_id of work rows that start with it. Several full ids under one id8 -> ambiguous (kept).
+ *   names: tmux session names; live: liveSessions() rows; rows: work rows { id, state, session_id } (any whose id starts like a name).
+ * Returns { candidates: [{ id|null, tmuxSession, status, ambiguous? }], itemsBySession: Map full id -> rows }.
+ */
+function rcCandidates({ names, live, rows }) {
+    const candidates = [];
+    const itemsBySession = new Map();
+    for (const r of rows || []) {
+        if (!r.session_id) continue;
+        if (!itemsBySession.has(r.session_id)) itemsBySession.set(r.session_id, []);
+        itemsBySession.get(r.session_id).push(r);
+    }
+    const lv = live || [];
+    const named = new Set();
+    for (const name of names || []) {
+        if (!/^rc-[A-Za-z0-9_-]+$/.test(name)) continue;
+        named.add(name);
+        const id8 = name.slice(3);
+        const liveIds = [...new Set(lv.filter((x) => x.id.startsWith(id8)).map((x) => x.id))];
+        const ids = liveIds.length ? liveIds : [...itemsBySession.keys()].filter((k) => k.startsWith(id8));
+        const c = { id: ids.length === 1 ? ids[0] : null, tmuxSession: name, status: '' };
+        if (ids.length > 1) c.ambiguous = true;
+        const l = lv.find((x) => x.id === c.id);
+        if (l) c.status = l.status;
+        candidates.push(c);
+    }
+    for (const l of lv) if (l.origin === 'rc' && /^rc-/.test(l.tmuxSession || '') && !named.has(l.tmuxSession)) candidates.push({ id: l.id, tmuxSession: l.tmuxSession, status: l.status });
+    return { candidates, itemsBySession };
+}
+
+/**
+ * Which rc-* sessions to close (#1255). A session closes only when work items name it, EVERY one of them is done / failed /
+ * cancelled, and nothing is in flight for it (status busy, background agents / shells, a review: inFlight(sid)). A tmux session
+ * whose claude process exited (the pane holds on `sleep`) closes the same way. Closing loses nothing: a done or failed item that
+ * runs again resumes its session (steerResumed).
+ * A session no work item names goes in `unowned` and is NEVER closed, only reported: it may be Yukimi's own hand-started Remote
+ * Control session, or one whose item moved to another session (a login move), and nothing here can tell which.
+ *   candidates: from rcCandidates; itemsBySession: Map full session id -> [{ id, state }]; inFlight(sid): true while anything runs.
+ * Returns { close: [{ id, tmuxSession, itemId, state }], keep: [{ id, tmuxSession, why }], unowned: [{ id, tmuxSession }] }.
+ */
+function finishedSessions({ candidates, itemsBySession, inFlight }) {
+    const out = { close: [], keep: [], unowned: [] };
+    for (const s of candidates || []) {
+        if (!s || !/^rc-/.test(s.tmuxSession || '')) continue;
+        if (s.ambiguous) { out.keep.push({ id: s.id, tmuxSession: s.tmuxSession, why: `several sessions under ${s.tmuxSession}` }); continue; }
+        const items = (s.id && itemsBySession && itemsBySession.get(s.id)) || [];
+        if (!items.length) { out.unowned.push({ id: s.id, tmuxSession: s.tmuxSession }); continue; }
+        const open = items.find((i) => !TERMINAL.includes(i.state));
+        if (open) { out.keep.push({ id: s.id, tmuxSession: s.tmuxSession, why: `item ${open.id} is ${open.state}` }); continue; }
+        if (s.status === 'busy' || (inFlight && inFlight(s.id))) { out.keep.push({ id: s.id, tmuxSession: s.tmuxSession, why: 'work in flight' }); continue; }
+        const last = items.reduce((a, b) => (Number(b.id) > Number(a.id) ? b : a));
+        out.close.push({ id: s.id, tmuxSession: s.tmuxSession, itemId: last.id, state: last.state });
+    }
+    return out;
+}
+
 const scratchRoot = () => path.join(os.tmpdir(), `claude-${process.getuid ? process.getuid() : 1000}`);
 
 /** Removes per-session scratch folders under /tmp/claude-<uid>/<project>/ whose session has no live process and which
@@ -93,4 +157,4 @@ function dirKb(dir) {
     return n;
 }
 
-module.exports = { readMem, admission, sweepScratch, liveSessionIds, MIN_MEM_MB, MIN_SWAP_FREE_MB };
+module.exports = { readMem, admission, sweepScratch, finishedSessions, rcCandidates, TERMINAL, liveSessionIds, MIN_MEM_MB, MIN_SWAP_FREE_MB };

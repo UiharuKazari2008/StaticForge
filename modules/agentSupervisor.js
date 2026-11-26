@@ -1021,6 +1021,7 @@ function isSupervised(sessionId) {
 const WORK_STATES = ['held', 'queued', 'starting', 'running', 'waiting', 'input', 'done', 'failed', 'cancelled'];
 // input: stopped on a question only Yukimi can answer (Input Required); the session may sit idle, its next turn is still reviewed
 const ACTIVE = ['starting', 'running', 'waiting', 'input'];
+const TERMINAL = ['done', 'failed', 'cancelled'];
 
 // ---- several issues in one run (#1191): issue_repo / issue_number / issue_id stay the PRIMARY (the first picked), issue_refs
 // is a JSON list of the others [{ repo, number, id, title }] (the primary is not repeated)
@@ -1139,6 +1140,8 @@ function setWork(id, fields) {
         syncIssue(Number(id), before.state).catch((e) => noteIssue(Number(id), e.message));
         // the one Fleet notice path (modules/fleetNotices.js): done / needs her reach the phone, the rest never
         try { require('./fleetNotices').workChanged(db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id)), before.state); } catch (e) { console.warn(`[supervisor] notice: ${e.message}`); }
+        // an item that ended frees its session's memory (#1255): the re-check inside skips a session still working, the close is tried again at its turn end
+        if (TERMINAL.includes(fields.state)) closeSoon(sessionOfItem(id), `item ${id} ${fields.state}`);
     }
 }
 
@@ -1329,6 +1332,7 @@ async function pullIssues(gr, opts = {}) {
         // done because its issue closed elsewhere is no news (no "done" notice); a "needs you" it had comes down
         try { require('./fleetNotices').workEndedQuietly(r.id); } catch (_) { /* best effort */ }
         if (r.parent_id) settleParent(r.parent_id);
+        closeSoon(r.session_id, `item ${r.id} ended with its issue`);
     }
     if (added || ended) emit({ work: true });
     return { added, ended, repos: [...repos] };
@@ -1726,6 +1730,7 @@ function pumpWork(gr) {
         const set = settings(g);
         let started = 0;
         let regroup = false;
+        let swept = false; // a refused start frees finished sessions once per pass (#1255)
         const queued = db().prepare("SELECT * FROM supervisor_work WHERE state = 'queued' ORDER BY start_now DESC, id").all();
         for (const w of queued) {
             // a run split into planners has none of its own session: its planners run (a requeued one with no planners runs as one planner)
@@ -1745,7 +1750,13 @@ function pumpWork(gr) {
                 }
             } catch (e) {
                 if (loginTried.has(w.id)) { loginTried.delete(w.id); setWork(w.id, { state: 'failed', ended_at: Date.now(), message: `No account with a working login (${e.message.slice(0, 160)})` }); settleParent(w.parent_id); emit({ work: getWork(w.id) }); continue; }
-                setWork(w.id, { message: `Waiting for an account with room: ${e.message.slice(0, 160)}` }); continue;
+                setWork(w.id, { message: `Waiting for an account with room: ${e.message.slice(0, 160)}` });
+                if (/^Waiting for memory/.test(e.message) && !swept) {
+                    swept = true;
+                    const sw = await sweepFinishedSessions('start refused for memory');
+                    if (sw.closed.length) regroup = true; // the memory is back after a moment: one more pass
+                }
+                continue;
             }
             // one try per account per item: an account that already failed this item's start on its login is not tried again
             if ((loginTried.get(w.id) || new Set()).has(pick.index)) { loginTried.delete(w.id); setWork(w.id, { state: 'failed', ended_at: Date.now(), message: 'No account with a working login' }); settleParent(w.parent_id); emit({ work: getWork(w.id) }); continue; }
@@ -2014,7 +2025,7 @@ async function workAfterReview(rv, opts = {}) {
     if (!w) {
         // a done / failed item whose session worked again: a review that finds more to do reopens it; an ok one leaves it done
         const ended = rv.verdict === 'ok' ? null : endedItemOf(rv.sessionId);
-        if (!ended) { pumpWork().catch(() => {}); return; }
+        if (!ended) { closeSoon(rv.sessionId, 'turn ended, its items are over'); pumpWork().catch(() => {}); return; }
         setWork(ended.id, { state: 'running', ended_at: null, message: 'Working again' });
         w = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(ended.id);
     }
@@ -3103,6 +3114,88 @@ function sweepDead() {
     return n;
 }
 
+// ---------------------------------------------------------------- closing finished sessions (#1255)
+//
+// Nothing ended a supervised session when its item reached done / failed / cancelled: ~46 finished claude sessions (200-380 MB
+// each) sat in their rc-<id8> tmux sessions until fleetMemory.admission() refused every start. The decision is
+// fleetMemory.finishedSessions (pure); this is its input and the disconnect. Event-driven: an item ending (setWork, its issue
+// closing), a turn end, a start refused for memory, and once at boot. A session no item names is reported, never closed.
+// A closed session loses nothing: an item that runs again resumes it (steerResumed).
+
+const closing = new Set(); // session ids being closed now
+let sweeping = null;
+const supervisorOff = () => process.env.AGENT_SUPERVISOR_DISABLED === '1';
+
+/** The rc-* tmux sessions on Fleet's own socket (the CLI no longer records its tmux session, so the socket is the source); [] when none / no server. */
+async function rcTmuxNames() {
+    try {
+        const out = await spawnHelper.execFileText('tmux', ['-L', process.env.DREAMSCAPE_CLAUDE_CARRY_SOCKET || 'dreamscape-claude-carry', 'ls', '-F', '#{session_name}'], { timeout: 3000 });
+        return out.split('\n').map((x) => x.trim()).filter((x) => /^rc-[A-Za-z0-9_-]+$/.test(x));
+    } catch (_) { return []; }
+}
+/** The candidates (fleetMemory.rcCandidates) for the live rc sessions, optionally only the one named by only8; one work query. */
+async function rcSessions(only8) {
+    let names = await rcTmuxNames();
+    const live = [...liveSessionsById().values()];
+    if (only8) names = names.filter((n) => n === `rc-${only8}`);
+    const lrc = live.filter((x) => x.origin === 'rc' && (!only8 || x.id.startsWith(only8)));
+    const id8s = [...new Set([...names.map((n) => n.slice(3)), ...lrc.map((x) => x.id.slice(0, 8))])];
+    const rows = id8s.length ? db().prepare(`SELECT id, state, session_id FROM supervisor_work WHERE session_id IS NOT NULL AND substr(session_id, 1, 8) IN (${id8s.map(() => '?').join(',')})`).all(...id8s) : [];
+    return fm().rcCandidates({ names, live: only8 ? live.filter((x) => x.id.startsWith(only8)) : live, rows });
+}
+const sessionOfItem = (id) => { try { const r = db().prepare('SELECT session_id FROM supervisor_work WHERE id = ?').get(Number(id)); return r && r.session_id ? r.session_id : null; } catch (_) { return null; } };
+const inFlightFresh = (sid) => inFlightAny(sessionInFlight(sid, { fresh: true }));
+
+/** Closes the session when its rc-<id8> tmux session exists, every item naming it is over and nothing is in flight for it. Never throws; true when it closed. */
+async function closeFinishedSession(sid, why) {
+    sid = String(sid || '');
+    if (!sid || closing.has(sid) || supervisorOff()) return false;
+    closing.add(sid);
+    try {
+        const { candidates, itemsBySession } = await rcSessions(sid.slice(0, 8));
+        const d = fm().finishedSessions({ candidates: candidates.filter((c) => c.id === sid), itemsBySession, inFlight: inFlightFresh });
+        if (!d.close.length) return false;
+        await require('./claudeSessions').disconnect(sid);
+        console.log(`[supervisor] closed finished session ${sid.slice(0, 8)} (item ${d.close[0].itemId}, ${d.close[0].state}${why ? `; ${why}` : ''})`);
+        return true;
+    } catch (e) {
+        console.warn(`[supervisor] close ${sid.slice(0, 8)}: ${e.message}`);
+        return false;
+    } finally { closing.delete(sid); }
+}
+/** The same, after the current step (setWork stays synchronous). */
+function closeSoon(sid, why) {
+    if (!sid || supervisorOff()) return;
+    setImmediate(() => closeFinishedSession(sid, why).catch(() => {}));
+}
+const fm = () => require('./fleetMemory');
+
+/**
+ * Closes every rc-* tmux session whose items are all over (see fleetMemory.finishedSessions). One at a time; concurrent calls share
+ * one run. opts.dryRun returns the decision without disconnecting. Returns { closed: [id], kept, unowned, reason }.
+ */
+function sweepFinishedSessions(reason, opts = {}) {
+    if (opts.dryRun) return Promise.resolve(runSweep(reason, true));
+    if (sweeping) return sweeping;
+    sweeping = runSweep(reason, false).finally(() => { sweeping = null; });
+    return sweeping;
+}
+async function runSweep(reason, dryRun) {
+    const out = { closed: [], kept: [], unowned: [], reason: reason || '' };
+    if (supervisorOff()) return out;
+    try {
+        const { candidates, itemsBySession } = await rcSessions();
+        const d = fm().finishedSessions({ candidates, itemsBySession, inFlight: inFlightFresh });
+        out.kept = d.keep;
+        out.unowned = d.unowned;
+        if (dryRun) { out.closed = d.close; return out; }
+        for (const c of d.close) if (await closeFinishedSession(c.id, reason)) out.closed.push(c.id);
+        // named once per sweep: these may be Yukimi's own Remote Control sessions, or ones whose item moved on; never closed here
+        if (d.unowned.length) console.log(`[supervisor] ${d.unowned.length} rc session${d.unowned.length === 1 ? '' : 's'} without a work item kept: ${d.unowned.map((u) => u.tmuxSession).join(', ')}`);
+    } catch (e) { console.warn(`[supervisor] sweep finished sessions: ${e.message}`); }
+    return out;
+}
+
 // ---------------------------------------------------------------- busy locks
 
 const IDLE_UNLOCK_MS = 30 * 60 * 1000;
@@ -3541,6 +3634,7 @@ function pump() {
             .catch((e) => console.warn(`[supervisor] ${job.sessionId.slice(0, 8)}: ${e.message}`))
             .finally(() => {
                 running -= 1; reviewingNow.delete(job.sessionId);
+                closeSoon(job.sessionId, 'review ended'); // an item ended during this review could not close it while it was in flight
                 // a review that ended without moving its item (it failed): the "checking" note does not stay
                 try { const w = db().prepare("SELECT id FROM supervisor_work WHERE session_id = ? AND state = 'running' AND message = ?").get(job.sessionId, CHECKING_MSG); if (w) { setWork(w.id, { message: 'Turn ended' }); emit({ work: getWork(w.id) }); } } catch (_) { /* no item */ }
                 pump();
@@ -3820,7 +3914,7 @@ function start(gr) {
     serveSocket();
     pumpWork().catch(() => {});
     // work whose session ended while the server was down comes back; holds and waits left open are watched again (only when there are any)
-    const boot = setTimeout(() => { try { sweepDead(); armWatch(); recheckAll().catch(() => {}); } catch (_) { /* later */ } }, 20000);
+    const boot = setTimeout(() => { try { sweepDead(); armWatch(); recheckAll().catch(() => {}); sweepFinishedSessions('boot').catch(() => {}); } catch (_) { /* later */ } }, 20000);
     if (boot.unref) boot.unref();
     // fleet issues filed on Yozora come in, closed ones end their item (server side, every 10 min; Fleet's own reads pull too)
     pullIssues(gr, { force: true }).catch(() => {});
@@ -4232,7 +4326,7 @@ async function acceptRuleFinding(gr, findingId, edit = {}, opts = {}) {
 module.exports = {
     explainRuleIssue, acceptRuleProposal, rejectRuleProposal, acceptRuleFinding, listRuleProposals, getRuleProposal, proposalBrief,
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };
