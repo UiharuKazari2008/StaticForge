@@ -219,6 +219,8 @@ async function walkFiles(dir, out) {
     }
 }
 
+const LOAD_TREE_CONCURRENCY = 24;
+
 async function loadTree(outputRoot) {
     if (!outputRoot) {
         return 0;
@@ -226,21 +228,28 @@ async function loadTree(outputRoot) {
     const files = [];
     await walkFiles(outputRoot, files);
     let loaded = 0;
-    for (const abs of files) {
-        const rel = path.relative(outputRoot, abs).replace(/\\/g, '/');
-        if (shouldSkipRel(rel)) {
-            continue;
+    // Bounded parallel (it was one file at a time, twice a start: ~14 s for ~4000 files, #1230), and a file
+    // already in memory at the same mtime is not read again (the second pass after the compile).
+    let next = 0;
+    const worker = async () => {
+        while (next < files.length) {
+            const abs = files[next++];
+            const rel = path.relative(outputRoot, abs).replace(/\\/g, '/');
+            if (shouldSkipRel(rel)) {
+                continue;
+            }
+            const stat = await fs.promises.stat(abs);
+            const have = assets.get(normalizeWebPath(`/${rel}`));
+            if (have && have.modified === stat.mtimeMs && have.optimized) {
+                loaded++;
+                continue;
+            }
+            const body = await fs.promises.readFile(abs);
+            remember(`/${rel}`, body, { optimized: true, modified: stat.mtimeMs });
+            loaded++;
         }
-        const [body, stat] = await Promise.all([
-            fs.promises.readFile(abs),
-            fs.promises.stat(abs)
-        ]);
-        remember(`/${rel}`, body, { optimized: true, modified: stat.mtimeMs });
-        loaded++;
-        if (loaded % 8 === 0) {
-            await new Promise((resolve) => setImmediate(resolve));
-        }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(LOAD_TREE_CONCURRENCY, Math.max(1, files.length)) }, worker));
     return loaded;
 }
 

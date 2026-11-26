@@ -57,6 +57,19 @@ const svc = require('../modules/runtimeAssetService');
         await build(loaded);
         assert.strictEqual(reads, 1, 'only the changed file is read again');
         fs.promises.readFile = realRead;
+
+        // 3. loadTree (run twice at boot) reads a file once: the second pass sees the same mtime
+        const mem = require('../modules/runtimeAssetMemory');
+        const out = path.join(tmp, 'out');
+        fs.mkdirSync(out);
+        for (let i = 0; i < 5; i++) fs.writeFileSync(path.join(out, `f${i}.js`), `var a${i}=1;`);
+        let treeReads = 0;
+        fs.promises.readFile = function (p, ...rest) { if (String(p).startsWith(out)) treeReads++; return realRead.call(this, p, ...rest); };
+        await mem.loadTree(out);
+        assert.strictEqual(treeReads, 5, 'first loadTree reads each file');
+        await mem.loadTree(out);
+        assert.strictEqual(treeReads, 5, 'second loadTree re-read an unchanged file');
+        fs.promises.readFile = realRead;
         console.log('ok test-boot-cache-deferred');
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
