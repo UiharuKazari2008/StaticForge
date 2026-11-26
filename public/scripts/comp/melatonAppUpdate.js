@@ -62,7 +62,9 @@
         const st = r && r.state ? r.state : 'unknown';
         lastAnswer = st;
         if (st === 'needs_permission') {
-            say('Update waiting', `${label(s)} needs permission to install. Allow installs from Dreamscape in Android settings.`);
+            // no install began (the app took its own mark back and opened Android's page): Restart Now may ask again
+            attempted = null;
+            say('Update waiting', `${label(s)} needs permission to install. Allow installs from Dreamscape in Android settings, then choose Restart Now again.`);
         } else if (st === 'already_attempted') {
             say('Update waiting', `${label(s)} was already handed to Android to install.`);
         } else if (st === 'nothing_staged') {
