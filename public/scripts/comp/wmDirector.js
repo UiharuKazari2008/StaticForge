@@ -578,10 +578,13 @@
     function attachItems(list) {
         const items = (list || []).filter(Boolean);
         if (!items.length) return Promise.resolve();
+        // an attachment that never reaches the composer (no Director, or a duplicate) gives back its blob preview here;
+        // the ones that do are revoked by director.js renderAttachChips when they leave it (#1012)
+        const drop = (it) => { if (it && typeof it.preview === 'string' && it.preview.startsWith('blob:')) URL.revokeObjectURL(it.preview); };
         return handOff(async (d) => {
-            if (!d) return;
+            if (!d) { items.forEach(drop); return; }
             if (!d.directorWindowIsOpen()) await d.openDirectorWindow();
-            items.forEach((it) => { if (!d.pendingAttachments.some((p) => sameAttachment(p, it))) d.pendingAttachments.push(it); });
+            items.forEach((it) => { if (!d.pendingAttachments.some((p) => sameAttachment(p, it))) d.pendingAttachments.push(it); else if (!d.pendingAttachments.some((p) => p.preview === it.preview)) drop(it); });
             d.renderAttachChips();
             if (shown && isCurrent()) openComposer();
         });
