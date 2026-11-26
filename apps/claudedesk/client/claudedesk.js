@@ -5290,6 +5290,7 @@
         put('mail', 'post post-to read-message mem-review-now');
         put('reply', 'reply');
         put('undo', 'work-reopen');
+        put('checklist', 'work-close');
         put('send', 'message sup-send');
         put('discuss', 'steer steer-agent con-steer');
         put('stop', 'interrupt con-interrupt con-stop rc-stop fleet-stop');
@@ -5487,7 +5488,7 @@
             const w = workOf(key.slice(2));
             if (!w) return null;
             if (wsel().length > 1) return null; // the node's own Actions already act on the picked set
-            return { title: w.title || 'Request', items: [{ text: 'Start Now', action: 'work-start', disabled: !WORK_STARTABLE.has(w.state) || !!S.sup.busy }, { text: 'Move to Waiting', action: 'work-hold-sel', disabled: !WORK_HOLDABLE.has(w.state) || !!S.sup.busy }, { text: 'Cancel', action: 'work-cancel', disabled: !WORK_OPEN.has(w.state) || !!S.sup.busy }, { text: w.sessionId && holdOf(w.sessionId) ? 'Resume' : 'Pause...', action: w.sessionId && holdOf(w.sessionId) ? 'resume-hold' : 'pause', disabled: !w.sessionId || !liveOf(w.sessionId) }, { separator: true }, { text: 'Open Session', action: 'work-open', disabled: !w.sessionId }, { text: 'Send Back to Work...', action: 'work-reopen', disabled: !(['done', 'failed'].includes(w.state) && w.sessionId) || !!S.sup.busy }, { text: 'Open Issue', action: 'work-issue', disabled: !(w.issue && w.issue.url) }] };
+            return { title: w.title || 'Request', items: [{ text: 'Start Now', action: 'work-start', disabled: !WORK_STARTABLE.has(w.state) || !!S.sup.busy }, { text: 'Move to Waiting', action: 'work-hold-sel', disabled: !WORK_HOLDABLE.has(w.state) || !!S.sup.busy }, { text: 'Cancel', action: 'work-cancel', disabled: !WORK_OPEN.has(w.state) || !!S.sup.busy }, { text: w.sessionId && holdOf(w.sessionId) ? 'Resume' : 'Pause...', action: w.sessionId && holdOf(w.sessionId) ? 'resume-hold' : 'pause', disabled: !w.sessionId || !liveOf(w.sessionId) }, { separator: true }, { text: 'Open Session', action: 'work-open', disabled: !w.sessionId }, { text: 'Send Back to Work...', action: 'work-reopen', disabled: !(['done', 'failed'].includes(w.state) && w.sessionId) || !!S.sup.busy }, { text: 'Open Issue', action: 'work-issue', disabled: !(w.issue && w.issue.url) }, { text: 'Close as Done...', action: 'work-close', disabled: ['done', 'cancelled'].includes(w.state) || ['starting', 'running', 'waiting', 'input'].includes(w.state) || !!S.sup.busy }] };
         }
         if (key.startsWith('lk:')) { const l = supLocks().find((x) => `${x.root || ''}|${x.file}` === key.slice(3)); return { title: 'Busy Lock', items: [{ text: 'Remove...', action: 'sup-lock-remove', disabled: !l || l.state !== 'orphan' || !!S.sup.busy }] }; }
         if (key.startsWith('ar:')) { const a = supArtifacts().find((x) => String(x.id) === key.slice(3)); return { title: 'Work Folder', items: [{ text: 'Clean...', action: 'sup-art-clean', disabled: !a || !a.cleanable || !!S.sup.busy }, { text: 'Restore', action: 'sup-art-restore', disabled: !a || !a.canRestore || !!S.sup.busy }, { text: 'Forget', action: 'sup-art-forget', disabled: !a || !!S.sup.busy }] }; }
@@ -5829,6 +5830,17 @@
                 const ok = await c.box(`<p>Cancel <b>${esc(w.title || w.id)}</b>? It is taken off the queue.</p>`,
                     [{ text: 'Cancel Request', value: true, className: 'btn-standard primary' }, { text: 'Keep', value: false, className: 'btn-standard' }], { icon: 'warning' });
                 if (ok === true) await supAct(c, { action: 'work_cancel', id: w.id }, 'Cancelling...');
+                return true;
+            }
+            case 'work-close': {
+                // done is done: the item ends and its issue closes, with a note on the issue (a running item is stopped first)
+                const w = workOf(workSel(c, arg));
+                if (!w) return true;
+                const { value, fields } = await form(c, `<p>Close <b>${esc(w.title || `#${w.id}`)}</b>${w.issue ? ` and its issue ${esc(`${w.issue.repo}#${w.issue.number}`)}` : ''} as done?</p>
+                    <label><span>Note:</span><input type="text" data-cd="note" data-cd-focus value="" placeholder="Why it is done (optional)" spellcheck="true" autocomplete="off"></label>`,
+                [{ text: 'Close as Done', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Close as Done' });
+                if (value !== true) return true;
+                try { const r = await send('claude_desk_supervisor', { action: 'work_close', id: w.id, note: String(fields.note || '').trim() }); supTake(r); c.note('Closed.'); } catch (e) { await failBox(c, e); }
                 return true;
             }
             case 'work-issue': {

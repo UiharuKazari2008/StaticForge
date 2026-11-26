@@ -2026,6 +2026,19 @@ sup._test.setFetch(async (url, opts) => {
         } finally { sup.setKillDeps(null); }
     });
 
+    await test('closeWorkAsDone: a waiting item ends done and its issue is commented and closed; a running one is refused', async () => {
+        const id = RAW().prepare("INSERT INTO supervisor_work (title, prompt, source, state, created_at, message, engine, issue_repo, issue_number) VALUES ('DoneAlready', 'p', 'yozora', 'held', ?, '', 'claude', 'DreamScape/StaticForge', 7300)").run(Date.now()).lastInsertRowid;
+        const before = yzCalls.length;
+        const r = await sup.closeWorkAsDone(id, { evidence: 'commit abc did it', by: 'maintenance check' });
+        assert.strictEqual(r.item.state, 'done');
+        const mine = yzCalls.slice(before);
+        assert.ok(mine.some((c) => c.method === 'POST' && /\/issues\/7300\/comments$/.test(c.url) && /commit abc did it/.test(c.body.body)), JSON.stringify(mine));
+        assert.ok(mine.some((c) => c.method === 'PATCH' && /\/issues\/7300$/.test(c.url) && c.body.state === 'closed'));
+        const run = RAW().prepare("INSERT INTO supervisor_work (title, prompt, source, state, created_at, message, engine) VALUES ('Busy', 'p', 'fleet', 'running', ?, '', 'claude')").run(Date.now()).lastInsertRowid;
+        await assert.rejects(() => sup.closeWorkAsDone(run, {}), /stop it first/);
+        RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(run);
+    });
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');

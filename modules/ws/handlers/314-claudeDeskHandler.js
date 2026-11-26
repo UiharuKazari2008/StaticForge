@@ -328,6 +328,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     // the issue picker: open issues of a watched repo (one request, newest first) with the item that carries each
     if (action === 'issues_open') return supervisor.issuesOpen(gr, { repo: message.repo, q: message.q });
     if (action === 'work_cancel') { supervisor.cancelWork(message.id); return supervisorStatus(gr); }
+    if (action === 'work_close') { await supervisor.closeWorkAsDone(message.id, { note: message.note, by: 'Yukimi in Fleet' }); poke(); return supervisorStatus(gr); }
     // Stop (Yukimi, Nov 26 2026): a running / starting / sent back / input item is killed with everything it was doing (its session, background
     // agents, commands); then 'hold' puts it back to Waiting with its brief, 'delete' cancels it for good. The damage check follows on its own.
     if (action === 'work_stop') { await supervisor.stopWork(message.id, { then: message.then === 'hold' ? 'hold' : 'delete', by: 'Fleet', gr }); poke(); return supervisorStatus(gr); }
@@ -375,7 +376,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'maintenance_status') return { maintenance: maintenance.state(gr), report: message.runId ? maintenance.getRun(message.runId) : undefined };
     if (action === 'maintenance_run') { const r = maintenance.runNow({ trigger: 'manual', gr, dryRun: message.dryRun === true ? true : undefined }); return { maintenance: maintenance.state(gr), started: r.started }; }
     if (action === 'maintenance_save') { await maintenance.saveSettings(gr, message.settings || {}); return { maintenance: maintenance.state(gr) }; }
-    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, rules_explain, rules_proposal_accept, rules_proposal_reject, rules_finding_accept, pause, resume, enqueue, work_start, work_hold, work_update, work_cancel, work_stop, work_merge, work_map, work_graph, work_priority, work_dep_add, work_dep_remove, issues_open, lock_remove, artifact_clean, artifact_restore or artifact_forget');
+    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, rules_explain, rules_proposal_accept, rules_proposal_reject, rules_finding_accept, pause, resume, enqueue, work_start, work_close, work_hold, work_update, work_cancel, work_stop, work_merge, work_map, work_graph, work_priority, work_dep_add, work_dep_remove, issues_open, lock_remove, artifact_clean, artifact_restore or artifact_forget');
 });
 
 // ---------------------------------------------------------------- transcript watches (one per socket)

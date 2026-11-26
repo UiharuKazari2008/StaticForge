@@ -873,6 +873,12 @@ async function checkWaiting(ctx) {
             counts[verdict] = (counts[verdict] || 0) + 1;
             if (!ctx.dryRun) { try { sp.setWork(p.w.id, { check_json: JSON.stringify(check), message: `Check: ${verdict}${check.evidence ? ` - ${check.evidence.slice(0, 120)}` : ''}` }); } catch (e) { findings.push(F(`#${p.w.id}: the verdict could not be stored (${e.message})`, 'warn')); } }
             if (verdict !== 'valid') findings.push(F(`#${p.w.id} "${p.w.title}": ${verdict}${check.duplicateOf ? ` of ${check.duplicateOf}` : ''} - ${check.evidence}`));
+            // done is done (Yukimi, Nov 26 2026): a waiting item the evidence shows finished closes with its issue, a duplicate
+            // closes pointing at the item that covers it; outdated and unclear stay for the queue
+            if (!ctx.dryRun && (verdict === 'done' || verdict === 'duplicate') && typeof sp.closeWorkAsDone === 'function') {
+                const why = verdict === 'done' ? `already done - ${check.evidence}` : `duplicate of ${check.duplicateOf} - ${check.evidence}`;
+                try { await sp.closeWorkAsDone(p.w.id, { evidence: why, by: 'maintenance check' }); counts.closed = (counts.closed || 0) + 1; } catch (e) { findings.push(F(`#${p.w.id}: could not close (${e.message})`, 'warn')); }
+            }
         }
     }
     if (!ctx.dryRun && picked.length && !failedBatches) { try { sp.emitChange(); } catch (_) { /* no listeners */ } }

@@ -1243,6 +1243,28 @@ function sweepStalled(now = Date.now()) {
     return kicked;
 }
 
+/**
+ * Close a work item and its Yozora issue as done (Yukimi, Nov 26 2026: "if it's done it's done"): a maintenance check that
+ * found the work already done, or Close Issue in Fleet. Comments the evidence, closes the issue (not when another open
+ * item still carries it), and ends the item as done. Never for a running item: Stop it first.
+ */
+async function closeWorkAsDone(id, opts = {}) {
+    const r = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id));
+    if (!r) throw new Error('No such work item');
+    if (['starting', 'running', 'waiting', 'input'].includes(r.state)) throw new Error(`It is ${r.state}: stop it first`);
+    const why = String(opts.evidence || opts.note || 'closed in Fleet').replace(/\s+/g, ' ').trim().slice(0, 600);
+    const by = String(opts.by || 'Fleet').slice(0, 60);
+    let closed = false;
+    if (r.issue_repo && r.issue_number && !issueCarriedByOthers(r)) {
+        const Y = yz();
+        await Y.comment(r.issue_repo, r.issue_number, `**Fleet / Supervisor:** closed as done (${by}): ${why}`).catch(() => {});
+        await Y.close(r.issue_repo, r.issue_number).then(() => { closed = true; }).catch(() => {});
+    }
+    setWork(r.id, { state: 'done', ended_at: Date.now(), message: `Closed as done (${by}): ${why}`.slice(0, 480) });
+    emit({ work: getWork(r.id) });
+    return { item: getWork(r.id), issueClosed: closed };
+}
+
 /** Remaining gaps of a work item whose session did not close them after the steer cap: a started follow-up item. True when handed off. */
 function handOffGaps(rv) {
     const w = db().prepare(`SELECT * FROM supervisor_work WHERE session_id = ? AND state IN (${ACTIVE.map(() => '?').join(',')})`).get(rv.sessionId, ...ACTIVE);
@@ -4763,7 +4785,7 @@ async function acceptRuleFinding(gr, findingId, edit = {}, opts = {}) {
 module.exports = {
     explainRuleIssue, acceptRuleProposal, rejectRuleProposal, acceptRuleFinding, listRuleProposals, getRuleProposal, proposalBrief,
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, stopWork, killDeps, setKillDeps, intakePlaud, workAfterReview, sessionInFlight, steerResumed, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, stopWork, killDeps, setKillDeps, intakePlaud, workAfterReview, sessionInFlight, steerResumed, settleWork, settleSoon, agentRunState, answerWork, reopenWork, closeWorkAsDone, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { callClaudeReviewer, cleanReviewer, askModel, issueCarriedByOthers, closeParkedSessions, closeDeps, ageText, rowWork, deliver,handOffGaps, sweepStalled, stallKicks, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };
