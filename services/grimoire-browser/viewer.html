@@ -2428,6 +2428,7 @@
   var switchCount = 0;
   var lastSwitchMs = null;    // switch asked -> first picture of the new session drawn
   var switchSentAt = 0;
+  var switchMeasuring = false; // the switch's first picture is not drawn yet (outlives the 500 ms hold, for lastSwitchMs)
   var awaitingPicture = false; // 'switched' came and the new session has not drawn yet: the old picture stays
   var holdTimer = 0;
   var watchList = null;       // [{ sessionId, t }] from the parent, null until it sends one
@@ -2573,11 +2574,14 @@
 
   // the first picture (frame or still) of the new session is drawn
   function notePicture() {
+    if (switchMeasuring) {
+      switchMeasuring = false;
+      lastSwitchMs = Math.round(performance.now() - switchSentAt);
+    }
     if (!awaitingPicture) return;
     awaitingPicture = false;
     clearTimeout(holdTimer);
     holdTimer = 0;
-    lastSwitchMs = Math.round(performance.now() - switchSentAt);
     // the old session's sheets must not stay over the new picture
     drawSheets();
   }
@@ -2603,6 +2607,7 @@
     clearTimeout(holdTimer);
     holdTimer = 0;
     awaitingPicture = false;
+    switchMeasuring = false;
     if (!sessionId) {
       clearPicture();
       return;
@@ -2612,6 +2617,7 @@
     if (debug.content) send({ type: 'want-content', on: true });
     sendViewport();
     awaitingPicture = true;
+    switchMeasuring = true;
     holdTimer = setTimeout(function () {
       holdTimer = 0;
       if (!awaitingPicture) return;
