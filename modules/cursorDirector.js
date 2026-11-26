@@ -1274,7 +1274,7 @@ async function tokenRouterJail(jail, run) {
     const clearAt = args.indexOf('--clearenv');
     if (clearAt >= 0) args.splice(clearAt + 1, 0, ...envArgs);
     else args.push(...envArgs);
-    return { ...jail, args, claude: target.inJail, oauth: false };
+    return withClaudeConfig({ ...jail, args, claude: target.inJail, oauth: false });
 }
 
 function usdText(amount) {
@@ -3479,7 +3479,21 @@ function claudeJail(jail) {
     args.splice(at < 0 ? args.length : at, 0,
         '--ro-bind', target.hostRoot, JAIL_CLAUDE_ROOT,
         '--ro-bind', tokenFile, JAIL_CLAUDE_TOKEN);
-    return { ...jail, args, claude: target.inJail };
+    return withClaudeConfig({ ...jail, args, claude: target.inJail });
+}
+
+// Wren's Claude CLI runs on an account's own config folder (or the Director's), never an unset CLAUDE_CONFIG_DIR.
+// The folder is bound at its host path; --setenv follows --clearenv (bwrap drops any set before it).
+function withClaudeConfig(cjail) {
+    const cfg = require('./directorClaudeConfig').resolve();
+    const args = cjail.args.slice();
+    const at = args.indexOf('--chdir');
+    args.splice(at < 0 ? args.length : at, 0, ...require('./directorClaudeConfig').jailBindArgs(cfg.dir));
+    const env = ['--setenv', 'CLAUDE_CONFIG_DIR', cfg.dir];
+    const clearAt = args.indexOf('--clearenv');
+    if (clearAt >= 0) args.splice(clearAt + 1, 0, ...env);
+    else args.push(...env);
+    return { ...cjail, args, configDir: cfg.dir };
 }
 
 // A TokenRouter jail (oauth: false) has no token file; its bridge secret is already in the env.
@@ -3497,12 +3511,13 @@ function spawnClaude(cjail, args) {
     });
 }
 
-// Claude keeps sessions under ~/.claude/projects/<cwd slug>/<id>.jsonl. A turn
+// Claude keeps sessions under $CLAUDE_CONFIG_DIR/projects/<cwd slug>/<id>.jsonl. A turn
 // that died before the CLI wrote one must start with --session-id, not --resume.
 function claudeSessionExists(paths, sessionId) {
     if (!sessionId) return false;
-    const slug = JAIL_WORKSPACE.replace(/[^a-zA-Z0-9]/g, '-');
-    return fs.existsSync(path.join(paths.home, '.claude', 'projects', slug, `${sessionId}.jsonl`));
+    const cfg = require('./directorClaudeConfig');
+    // a chat from before the account folder keeps its transcript in Wren's jail home: copied across once
+    return cfg.adoptLegacySession(cfg.resolve().dir, JAIL_WORKSPACE, sessionId, [path.join(paths.home, '.claude')]);
 }
 
 // detached: true makes the sandbox its own process group. Kill the group, then

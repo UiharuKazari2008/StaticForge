@@ -13,6 +13,7 @@ const token = path.join(root, 'token');
 fs.mkdirSync(project);
 fs.writeFileSync(token, 'sk-ant-oat-test-secret-value\n');
 process.env.CURSOR_API_KEY = 'inherited-cursor-key';
+process.env.DREAMSCAPE_CLAUDE_ACCOUNTS_DIR = path.join(root, 'accounts');
 try {
     const plan = xiLaunch.buildLaunch({
         sandbox: false, runtime: 'claude', projectDir: project, homeAccessDir: path.join(root, 'access'),
@@ -26,7 +27,8 @@ try {
     assert.strictEqual(plan.env.HOME, os.homedir());
     assert.strictEqual(plan.env.PM2_HOME, path.join(os.homedir(), '.pm2'));
     assert.strictEqual(plan.env.DREAMSCAPE_MCP_URL, 'http://127.0.0.1:1/mcp');
-    assert.ok(!('CURSOR_API_KEY' in plan.env) && !('CURSOR_X' in plan.env) && !('CLAUDE_CONFIG_DIR' in plan.env));
+    assert.ok(!('CURSOR_API_KEY' in plan.env) && !('CURSOR_X' in plan.env) && plan.env.CLAUDE_CONFIG_DIR === path.join(root, 'accounts', 'director', 'config'));
+    assert.notStrictEqual(plan.env.CLAUDE_CONFIG_DIR, path.join(os.homedir(), '.claude'), 'never the host login folder');
     assert.strictEqual(plan.hostEnv, plan.env);
     assert.deepStrictEqual(plan.args.slice(-3), ['/bin/true', '-p', 'hi']);
     const probe = xiLaunch.buildLaunch({
@@ -38,7 +40,7 @@ try {
     assert.strictEqual(out.stdout.trim(), 'OK');
     assert.strictEqual(
         xiLaunch.claudeSessionPath({ sandbox: false, projectDir: '/home/kanmi/staticforge', sessionId: 'abc' }),
-        path.join(os.homedir(), '.claude', 'projects', '-home-kanmi-staticforge', 'abc.jsonl'));
+        path.join(root, 'accounts', 'director', 'config', 'projects', '-home-kanmi-staticforge', 'abc.jsonl'));
     // Yozora signs in to the Yozora host as director.yozora, from a token file read at use (never in the env)
     const gitHome = path.join(root, 'githome');
     fs.mkdirSync(path.join(gitHome, '.secrets'), { recursive: true });

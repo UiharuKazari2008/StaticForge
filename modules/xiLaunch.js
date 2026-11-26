@@ -37,6 +37,10 @@ function director() {
     return require('./cursorDirector');
 }
 
+function directorConfig() {
+    return require('./directorClaudeConfig');
+}
+
 const JAIL_KEY_DIR = '/tmp/.xi-secret';
 const JAIL_KEY_FILE = `${JAIL_KEY_DIR}/api-key`;
 const JAIL_CLAUDE_TOKEN_FILE = `${JAIL_KEY_DIR}/claude-token`;
@@ -388,6 +392,12 @@ function buildHostLaunch(opts, runtime) {
         authFile = seedConfig(cursorConfig, credential);
     }
     const env = hostEnvFor({ homeDir, projectDir, lang: opts.lang, cursorConfig, extraEnv: opts.extraEnv });
+    // never the host's ~/.claude: an account's own folder, or the Director's (directorClaudeConfig)
+    let configDir = null;
+    if (usesClaudeCli(runtime)) {
+        configDir = directorConfig().resolve(opts);
+        env.CLAUDE_CONFIG_DIR = configDir.dir;
+    }
     assertNoInheritedCursor(env);
     let command = custom
         ? opts.command.map((part) => String(part))
@@ -416,19 +426,22 @@ function buildHostLaunch(opts, runtime) {
         tokenMount: tokenFile,
         jailHome: homeDir,
         jailConfig: cursorConfig,
+        configDir: configDir ? configDir.dir : null,
+        configAccountId: configDir ? configDir.accountId : null,
         projectDir,
         homeAccessDir
     };
 }
 
-// Where a Claude CLI session file lives for this launch mode.
+// Where a Claude CLI session file lives: in the config folder the launch uses (an account's or the Director's),
+// never the host's ~/.claude. A chat older than that is copied in so --resume finds it.
 function claudeSessionPath(opts) {
     const o = opts || {};
     const projectDir = o.projectDir || defaultProjectDir();
-    if (o.sandbox === false) {
-        return path.join(o.homeDir || os.homedir(), '.claude', 'projects', claudeProjectSlug(projectDir), `${o.sessionId}.jsonl`);
-    }
-    return claudeSessionFile(o.homeAccessDir, projectDir, o.sessionId);
+    const cfg = directorConfig().resolve(o);
+    const legacy = o.homeAccessDir ? [claudeConfigDir(o.homeAccessDir)] : [];
+    directorConfig().adoptLegacySession(cfg.dir, projectDir, o.sessionId, legacy);
+    return directorConfig().sessionFile(cfg.dir, projectDir, o.sessionId);
 }
 
 function buildLaunch(options) {
@@ -507,18 +520,18 @@ function buildLaunch(options) {
         jailConfig = `${JAIL_HOME}/.config/cursor`;
     }
 
+    let configDir = null;
     const keptEnv = {};
     if (usesClaudeCli(runtime)) {
-        const configDir = claudeConfigDir(homeAccessDir);
-        fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
-        keptEnv.CLAUDE_CONFIG_DIR = configDir;
+        configDir = directorConfig().resolve(opts);
+        keptEnv.CLAUDE_CONFIG_DIR = configDir.dir;
     }
     const env = jailEnv({
         jailHome: JAIL_HOME,
         jailConfig,
         projectDir,
         lang: opts.lang,
-        extraEnv: Object.assign(keptEnv, opts.extraEnv || {})
+        extraEnv: Object.assign({}, opts.extraEnv || {}, keptEnv)
     });
     if (jailConfig && process.env.CURSOR_CONFIG_DIR && env.CURSOR_CONFIG_DIR === process.env.CURSOR_CONFIG_DIR) {
         throw new Error('Xi launch reused the inherited CURSOR_CONFIG_DIR');
@@ -552,6 +565,7 @@ function buildLaunch(options) {
         mounts.push({ src: homeAccessDir, dest: homeAccessDir });
     }
     const planned = mountPlan(mounts);
+    const configBinds = configDir ? directorConfig().jailBindArgs(configDir.dir) : [];
     const skipDirs = new Set(['/tmp', '/dev', '/proc', '/dev/shm']);
     if (agent) {
         skipDirs.add('/opt');
@@ -565,6 +579,7 @@ function buildLaunch(options) {
         if (!skipDirs.has(dir)) args.push('--dir', dir);
     });
     planned.binds.forEach((entry) => args.push('--bind', entry.src, entry.dest));
+    configBinds.forEach((part) => args.push(part));
     args.push('--chdir', projectDir);
     args.push('--clearenv');
     Object.keys(env).forEach((key) => args.push('--setenv', key, String(env[key] == null ? '' : env[key])));
@@ -609,6 +624,8 @@ function buildLaunch(options) {
         tokenMount: tokenFile ? JAIL_CLAUDE_TOKEN_FILE : null,
         jailHome: JAIL_HOME,
         jailConfig,
+        configDir: configDir ? configDir.dir : null,
+        configAccountId: configDir ? configDir.accountId : null,
         projectDir,
         homeAccessDir
     };

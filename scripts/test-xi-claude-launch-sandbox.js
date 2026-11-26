@@ -35,6 +35,7 @@ function main() {
     fs.mkdirSync(projectDir);
     fs.writeFileSync(projectDir + '/marker.txt', 'project-ok\n');
     fs.writeFileSync(tokenFile, TOKEN + '\n');
+    process.env.DREAMSCAPE_CLAUDE_ACCOUNTS_DIR = path.join(root, 'accounts');
 
     const homes = [];
     try {

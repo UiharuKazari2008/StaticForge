@@ -1431,7 +1431,7 @@ function spawnDetached(args, logPath, workspace, options) {
         removeRunHome(plan.runHome);
         throw new Error('Yozora agent did not start');
     }
-    return { pid, runHome: plan.runHome };
+    return { pid, runHome: plan.runHome, configDir: plan.configDir || null };
 }
 
 function getActiveXiAccountId(gr) {
@@ -1835,6 +1835,8 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
         const meta = {
             pid: started.pid,
             runHome: started.runHome,
+            // the Claude config folder this turn runs in: a turn still running over a server restart is found there
+            configDir: started.configDir || null,
             sessionId,
             log,
             draftId,
