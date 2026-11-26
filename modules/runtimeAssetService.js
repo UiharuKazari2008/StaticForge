@@ -516,16 +516,29 @@ function getPublicStatus() {
     return result;
 }
 
+let primeTimings = null;
+function getPrimeTimings() {
+    return primeTimings;
+}
+
 async function precompileRuntimeAssets(targetRoot, options) {
     if (!targetRoot) {
         throw new Error('runtimeAssetService: projectRoot is required');
     }
+    // phase times, logged by the boot step so a slow start says where it went (#1230)
+    const timings = { startedAt: Date.now() };
+    let mark = Date.now();
+    const lap = (name) => { const now = Date.now(); timings[name] = now - mark; mark = now; };
     const outputRoot = runtimeAssetCompiler.getOutputRoot(targetRoot);
     await runtimeAssetMemory.loadTree(outputRoot);
+    lap('loadTree');
     const result = await runCompile(targetRoot, options);
+    lap('compile');
     await runtimeAssetMemory.loadTree(outputRoot);
+    lap('loadTree2');
     await prehashTrackedHtml(targetRoot);
     updateHtmlStylesheetShaLinks(targetRoot);
+    lap('htmlHashes');
     for (const name of HTML_SHA_LINK_FILES) {
         try {
             await runtimeAssetMemory.rememberAbs(path.join(outputRoot, name), `/${name}`);
@@ -535,6 +548,9 @@ async function precompileRuntimeAssets(targetRoot, options) {
             }
         }
     }
+    lap('htmlRemember');
+    timings.doneAt = Date.now();
+    primeTimings = timings;
     return result;
 }
 
@@ -742,6 +758,7 @@ module.exports = {
     resolveServedPath,
     resolveServedAssetPath,
     startRuntimeAssetPrime,
+    getPrimeTimings,
     resolveRuntimeAsset,
     lookupRuntimeAsset,
     clearRuntimeAssetMemory
