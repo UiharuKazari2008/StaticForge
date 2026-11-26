@@ -1087,6 +1087,8 @@
         dispose: () => life.abort(),
         /** True while the app draws the Start menu. */
         active: () => !!cur,
+        /** True while this file replays the app's handed-over keys (the drawn copy, or the page's own open menu): androidTaskbar.js must not replay them too (#1273). */
+        handlesKeys: () => !!cur || ownKeysOn,
         /** The frame now, as it would be sent (for checks). */
         debugFrame: () => { if (!cur) return null; cur.parts.clear(); cur.bounds = ''; cur.dirty.add('*'); frame(); return true; }
     };
