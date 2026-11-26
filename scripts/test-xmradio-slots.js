@@ -191,13 +191,17 @@ const tokensOnWire = () => calls.filter((c) => c.path === '/playback/play/v1/tun
     // an empty slot cannot start
     await assert.rejects(recorder.start({ channelId: 'cccccccccccccccccccccccc', kind: 'manual', mode: 'long', slot: 3 }), (e) => e.code === 'XMRADIO_SIGNED_OUT');
     await assert.rejects(recorder.start({ channelId: A, kind: 'manual', slot: 9 }), (e) => e.code === 'XMRADIO_SLOT');
-    // slot 1 keeps today's behaviour: several recordings on the one account
+    // one stream per account, slot 1 included (#1252 S3): with slot 2 streaming and slots 3, 4 empty, slot 1 takes one
+    // recording and the next has no free virtual radio until streamsPerAccount is raised
     const s1a = await recorder.start({ channelId: B, kind: 'manual', mode: 'long' });
-    const s1b = await recorder.start({ channelId: 'cccccccccccccccccccccccc', kind: 'manual', mode: 'long' });
     assert.strictEqual(s1a.slot, 1);
-    assert.strictEqual(s1b.slot, 1);
+    await assert.rejects(recorder.start({ channelId: 'cccccccccccccccccccccccc', kind: 'manual', mode: 'long' }), (e) => e.code === 'XMRADIO_REC_BUSY');
+    recorder.setSettings({ streamsPerAccount: 2 });
+    const s1b = await recorder.start({ channelId: 'cccccccccccccccccccccccc', kind: 'manual', mode: 'long' });
+    assert.strictEqual(s1b.slot, 1, 'a second stream on the radio account once the deck allows two');
     await pumps[1].opts.tune(B);
     assert.strictEqual(tokensOnWire().slice(-1)[0], 'tok-idg-slot1');
+    recorder.setSettings({ streamsPerAccount: 1 });
     for (const r of [r2, s1a, s1b]) await recorder.stop(r.rid);
 
     // sign-out: the slot's sign-in goes, its device stays, the token is gone

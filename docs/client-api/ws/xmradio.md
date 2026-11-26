@@ -56,6 +56,8 @@ server starts again. The deck's SPLIT switch picks the file layout:
 | `xmradio_rec_range` | admin | `{ channelId, from, to, a, t, s, ik }` | `{ rid, queued, position, queue[] }`: queues one song from Recently Played (five-hour buffer) |
 | `xmradio_queue_remove` | admin | `{ id }` | `{ queue[] }`: cancel one queued song |
 | `xmradio_queue_clear` | admin | `{}` | `{ queue[] }`: cancel every queued song |
+| `xmradio_queue_cancel` | admin | `{ id }` | `{ id, state, queue[] }`: cancel one waiting entry of any producer (song, cut, channel, timer, alert, term) |
+| `xmradio_rec_settings` | admin | `{ streamsPerAccount? }` | `{ settings { streamsPerAccount }, deck }`: streams per SiriusXM account, 1 to 4 (default 1) |
 | `xmradio_rec_stop` | admin | `{ rid }` | `{ rid, filed }` |
 | `xmradio_timers_set` | admin | `{ timers[{ id?, channelId, start 'HH:MM', minutes, days[0-6], date?, mode?, off? }] }` | `{ timers }` |
 | `xmradio_alert_add` | admin | `{ kind: 'artist' \| 'song', artist, title?, channelId? }` | `{ alerts }` |

@@ -37,7 +37,6 @@ const { spawn } = require('child_process');
 const cutStore = require('./xmRadioMeta');
 
 const MAX_MS = 8 * 3600 * 1000;
-const MAX_AUTO = 4; // recordings at once (the deck's own and the automatic ones)
 const RECORDINGS = 'Recordings';
 const SR = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
 
@@ -72,7 +71,19 @@ function load() {
     st.alerts = Array.isArray(st.alerts) ? st.alerts : [];
     st.terms = Array.isArray(st.terms) ? st.terms : [];
     st.active = Array.isArray(st.active) ? st.active : [];
+    // the common recording queue (see "the common recording queue and the slot dispatcher"): waiting entries, started ones
+    // (linked to their recording by rid), and the last 100 that missed, finished or were cancelled
     st.queue = Array.isArray(st.queue) ? st.queue : [];
+    for (const q of st.queue) {
+        // an entry from before the common queue: a Recently Played song
+        if (!q.state) q.state = 'queued';
+        if (!q.kind) q.kind = 'song';
+    }
+    st.running = Array.isArray(st.running) ? st.running : [];
+    st.history = Array.isArray(st.history) ? st.history.slice(0, 100) : [];
+    st.settings = Object.assign({ streamsPerAccount: 1 }, st.settings || {});
+    const per = Number(st.settings.streamsPerAccount);
+    st.settings.streamsPerAccount = Number.isInteger(per) && per >= 1 && per <= 4 ? per : 1;
     return st;
 }
 
@@ -692,10 +703,311 @@ function makePump(rec, back) {
     return pump;
 }
 
+// ------------------------------------------------------------------ the common recording queue and the slot dispatcher
+// (Yozora #1252 S3; Yukimi, Nov 26 2026: "the recorder slots are a pool of consumers on one common queue")
+//
+// Every producer - Recently Played's Record, one-touch Record, the deck's REC, a timer that fires, an alert or term that
+// matches - makes an ENTRY and puts it in one queue. One dispatcher hands the next due entry to a free virtual radio
+// (a slot): signed in, entitled to the channel, and not already streaming. Nothing is pinned to a slot.
+//
+//   entry { id, kind (song | cut | channel | timer | alert | term), channelId, from (ms: the first moment wanted; now for
+//           "from now"), to (the end of the window, 0 = open), until (wall-clock end of an open one), mode, fromCut, fromNow,
+//           a, t, s, ik, rangeCut, ref, addedAt, expiresAt, state (queued | running | missed | done | cancelled), slot,
+//           rid, startedAt, endedAt, reason }
+//
+// Waiting costs nothing: a recording reaches back to `from` (the stream keeps five hours), so a started-late entry still
+// has its first moment. What cannot be undone is the buffer running out: expiresAt = from + 5 h - 60 s is the last moment
+// the start can still be fetched, and an entry that passes it is MISSED, with its reason, never silently dropped.
+//
+// Where entries live (st = the state file): st.queue (waiting, state queued), st.running (started, linked to their
+// recording by rid; they survive a restart as the recordings resume), st.history (missed, done and cancelled: the last 100,
+// newest first).
+//
+// One stream per SiriusXM account, slot 1 included (Yukimi: "a job goes only to a slot whose account is entitled to that
+// channel and is not already streaming"). Deck setting streamsPerAccount (1 to 4, default 1) raises that if SiriusXM
+// tolerates it. The radio app's own live listening is NOT counted: it is the page's own tune, not a recording.
+const BUFFER_MS = 5 * 3600 * 1000; // the stream keeps five hours
+const EXPIRY_MARGIN_MS = 60000; // the last start that can still be fetched
+const QUEUE_TTL = BUFFER_MS; // (alerts and terms: how old a cut can be)
+const MAX_QUEUE = 50;
+const HISTORY_MAX = 100;
+const MAX_SLOTS = 8;
+const MAX_STREAMS = 4;
+const REC_KIND = { song: 'song', cut: 'song', channel: 'manual', timer: 'timer', alert: 'alert', term: 'term' };
+const ENTRY_KIND = { manual: 'channel', song: 'cut', timer: 'timer', alert: 'alert', term: 'term' };
+const MISSED_BUFFER = 'No virtual radio came free before it left the five-hour buffer';
+const MISSED_ENTITLED = 'No signed-in account is entitled to this channel';
+const reserved = new Map(); // slot -> starts that have passed the slot check and are still making their folder
+let expiryHandle = null;
+
+function slotTotal() {
+    try { const n = typeof xm.slotCount === 'function' ? Number(xm.slotCount()) : 1; return n >= 1 && n <= MAX_SLOTS ? Math.floor(n) : 1; } catch (_) { return 1; }
+}
+function slotIsReady(n) {
+    try { return typeof xm.slotReady === 'function' ? !!xm.slotReady(n) : true; } catch (_) { return false; }
+}
+function slotEntitled(n, channelId) {
+    try { return typeof xm.slotCanPlay === 'function' ? !!xm.slotCanPlay(n, channelId) : true; } catch (_) { return false; }
+}
+function streamsCap() { return load().settings.streamsPerAccount; }
+/** Recordings streaming on a slot's account now (a stopping one has already stopped its pump). */
+function streamsOn(n) {
+    let c = reserved.get(n) || 0;
+    for (const r of recs.values()) if ((r.meta.slot || 1) === n && !r.stopping) c += 1;
+    return c;
+}
+function anyEntitled(channelId) {
+    for (let n = 1; n <= slotTotal(); n++) if (slotEntitled(n, channelId)) return true;
+    return false;
+}
+/** The slots that can take a recording of this channel now, in slot order: signed in, entitled, under the stream limit,
+ *  and not already recording this channel (the same channel twice only on different slots). */
+function freeSlots(channelId) {
+    const out = [];
+    const cap = streamsCap();
+    for (let n = 1; n <= slotTotal(); n++) {
+        if (streamsOn(n) >= cap || !slotEntitled(n, channelId)) continue;
+        let same = false;
+        for (const r of recs.values()) if (!r.stopping && (r.meta.slot || 1) === n && r.meta.channelId === channelId) same = true;
+        if (!same) out.push(n);
+    }
+    return out;
+}
+
+/** When an entry's start can no longer be fetched (an entry written without one: five hours from its first moment). */
+const expOf = (e) => e.expiresAt || ((e.from || e.addedAt || Date.now()) + BUFFER_MS - EXPIRY_MARGIN_MS);
+
+function makeEntry(kind, channelId, o = {}) {
+    const now = Date.now();
+    const from = Number(o.from) || now;
+    return {
+        id: id8(), kind, channelId: String(channelId || ''), from, to: Number(o.to) || 0, until: Number(o.until) || 0,
+        mode: o.mode || null, fromCut: Number(o.fromCut) || 0, fromNow: !!o.fromNow,
+        a: String(o.a || '').slice(0, 200), t: String(o.t || '').slice(0, 200), s: String(o.s || '').slice(0, 200), ik: String(o.ik || '').slice(0, 200),
+        rangeCut: o.rangeCut || null, ref: o.ref || null, addedAt: now, expiresAt: from + BUFFER_MS - EXPIRY_MARGIN_MS,
+        state: 'queued', slot: null, rid: null, startedAt: 0, endedAt: 0, reason: ''
+    };
+}
+
+/** The opts startRec takes for an entry, worked out at the moment it starts (so a late start reaches back to `from`). */
+function startOpts(e, now, slot) {
+    const kind = e.kind || 'song';
+    const o = { channelId: e.channelId, slot, kind: REC_KIND[kind] || 'manual', ref: e.ref || null, mode: e.mode || undefined };
+    // a start that is not "from now" (and any late one) reaches back to the first moment wanted
+    o.back = e.fromNow && now - e.from < 2000 ? 0 : Math.max(0, Math.ceil((now - e.from) / 1000) + 8);
+    if (kind === 'song') {
+        o.mode = 'range';
+        o.fromCut = e.from;
+        o.endPdt = e.to;
+        o.until = now + 10 * 60000;
+        o.rangeCut = e.rangeCut || { at: e.from, a: e.a || '', t: e.t || '', s: e.s || '', ik: e.ik || '', ad: false };
+        return o;
+    }
+    if (e.fromCut) o.fromCut = e.fromCut;
+    if (e.to) { o.endPdt = e.to; o.until = Math.max(now, e.to) + 10 * 60000; }
+    else if (e.until) o.until = Math.max(e.until, now + 10 * 60000);
+    return o;
+}
+
+/** The entry for a direct start() (the socket op, a test): the recording it is about to make. */
+function entryFromStart(opts) {
+    const now = Date.now();
+    const back = Math.max(0, Math.min(5 * 3600, Number(opts.back) || 0));
+    const kind = opts.mode === 'range' ? 'song' : (ENTRY_KIND[opts.kind || 'manual'] || 'channel');
+    const rc = opts.rangeCut || {};
+    return makeEntry(kind, opts.channelId, {
+        from: now - back * 1000, to: opts.endPdt, until: opts.until, mode: opts.mode, fromCut: opts.fromCut, fromNow: !back,
+        ref: opts.ref, rangeCut: opts.rangeCut, a: rc.a, t: rc.t, s: rc.s
+    });
+}
+
+/** The entry has left the lists for good: missed, done or cancelled. History keeps the last 100. */
+function retire(e, state, reason) {
+    const s = load();
+    s.queue = s.queue.filter((x) => x !== e && x.id !== e.id);
+    s.running = s.running.filter((x) => x !== e && x.id !== e.id);
+    e.state = state;
+    e.endedAt = Date.now();
+    if (reason) e.reason = String(reason);
+    s.history.unshift(e);
+    if (s.history.length > HISTORY_MAX) s.history.length = HISTORY_MAX;
+}
+
+/** The soonest-expiring waiting entry first, then the order they were added. */
+function queueSorted() {
+    return (load().queue || []).slice().sort((a, b) => (expOf(a) - expOf(b)) || ((a.addedAt || 0) - (b.addedAt || 0)));
+}
+const entryPublic = (q, position) => ({
+    id: q.id, kind: q.kind || 'song', state: q.state || 'queued', channelId: q.channelId, from: q.from, to: q.to || 0,
+    a: q.a || '', t: q.t || '', s: q.s || '', ik: q.ik || '', mode: q.mode || null, ref: q.ref || null,
+    slot: q.slot || null, rid: q.rid || null, position: position || 0,
+    expiresAt: q.expiresAt, addedAt: q.addedAt, startedAt: q.startedAt || 0, endedAt: q.endedAt || 0, reason: q.reason || ''
+});
+/** The waiting entries in due order (the radio app and the phone read id, channelId, from, to, a, t, expiresAt, addedAt). */
+function queuePublic() {
+    return queueSorted().map((q, i) => entryPublic(q, i + 1));
+}
+function jobsPublic() {
+    return (load().running || []).map((q) => entryPublic(q, 0));
+}
+function queueRemove(id) {
+    const s = load();
+    const e = s.queue.find((q) => q.id === String(id || ''));
+    if (e) { retire(e, 'cancelled', 'Cancelled'); armExpiry(); changed(); }
+    return queuePublic();
+}
+function queueClear() {
+    const s = load();
+    if (s.queue.length) { for (const e of s.queue.slice()) retire(e, 'cancelled', 'Cancelled'); armExpiry(); changed(); }
+    return queuePublic();
+}
+/** Cancel one waiting entry (any producer's); { id, state, queue }. A started one is stopped with stop(rid). */
+function cancel(id) {
+    const s = load();
+    const e = s.queue.find((q) => q.id === String(id || ''));
+    if (!e) {
+        const run = s.running.find((q) => q.id === String(id || ''));
+        throw Object.assign(new Error(run ? 'That recording has started: stop it from the deck.' : 'That entry is not waiting.'), { code: 'XMRADIO_QUEUE_NOT_WAITING' });
+    }
+    retire(e, 'cancelled', 'Cancelled');
+    armExpiry();
+    changed();
+    return { id: e.id, state: e.state, queue: queuePublic() };
+}
+
+/** A recording already running that covers this entry (same channel, its window inside the recording's): the entry joins
+ *  it instead of starting a second stream. A range recording covers only its own song; a recording that stops after one cut
+ *  (an alert, a term, a song) covers only that cut. */
+function coveringRec(e) {
+    for (const rec of recs.values()) {
+        const m = rec.meta;
+        if (rec.stopping || m.channelId !== e.channelId) continue;
+        const kind = e.kind || 'song';
+        const oneCut = kind === 'song' || kind === 'cut' || kind === 'alert' || kind === 'term';
+        if (m.mode === 'range') {
+            if (kind === 'song' && m.rangeCut && m.rangeCut.at === e.from && (m.endPdt || 0) === (e.to || 0)) return rec;
+            continue;
+        }
+        if (m.kind === 'song' || m.kind === 'alert' || m.kind === 'term') {
+            if (oneCut && ((e.fromCut && e.fromCut === m.fromCut) || (kind === 'cut' && e.fromNow))) return rec;
+            continue;
+        }
+        const runStart = m.startPdt || m.since || 0;
+        const runEnd = m.endPdt || m.until || 0;
+        const eEnd = e.to || e.until || e.from + MAX_MS;
+        if (e.from >= runStart - 5000 && eEnd <= runEnd + 60000) return rec;
+    }
+    return null;
+}
+
+function attach(e, rec) {
+    const s = load();
+    s.queue = s.queue.filter((x) => x !== e && x.id !== e.id);
+    e.state = 'running';
+    e.rid = rec.meta.rid;
+    e.slot = rec.meta.slot || 1;
+    e.startedAt = Date.now();
+    e.attached = true;
+    s.running.push(e);
+}
+
+/** Entries whose five hours ran out while they waited: missed, with the reason. */
+function expireDue() {
+    const now = Date.now();
+    for (const e of load().queue.slice()) {
+        if (now < expOf(e)) continue;
+        const why = anyEntitled(e.channelId) ? MISSED_BUFFER : MISSED_ENTITLED;
+        console.warn(`[xmRadio rec] queued ${e.id} (${e.kind || 'song'}): missed - ${why}`);
+        retire(e, 'missed', why);
+        changed();
+    }
+}
+
+/** One timer (no interval), to the soonest expiry among the waiting entries. */
+function armExpiry() {
+    clearTimeout(expiryHandle);
+    expiryHandle = null;
+    if (shuttingDown || role === 'library' || !st) return;
+    let soonest = 0;
+    for (const e of st.queue) if (!soonest || expOf(e) < soonest) soonest = expOf(e);
+    if (!soonest) return;
+    expiryHandle = setTimeout(() => { expiryHandle = null; void dispatch(); }, Math.min(Math.max(0, soonest - Date.now()) + 5, 2 ** 31 - 1));
+    if (expiryHandle.unref) expiryHandle.unref();
+}
+
+let dispatching = null;
+let dispatchAgain = false;
 /**
- * Start recording a channel: kind manual (the deck's REC), timer, alert or term. `back` seconds behind live (an alert
- * reaches back to the start of the matched cut); `until` the wall-clock end (at most 8 hours).
+ * The dispatcher: runs when an entry is added, a recording stops (a slot came free), a slot's token arrives or clears,
+ * the expiry timer fires, the deck setting changes, and after resume(). Re-entrancy guarded: a call while it runs makes it
+ * go round once more and returns the run in progress.
  */
+function dispatch() {
+    if (role === 'library') return Promise.resolve();
+    if (dispatching) { dispatchAgain = true; return dispatching; }
+    dispatching = (async () => {
+        await null;
+        try {
+            do { dispatchAgain = false; await dispatchPass(); } while (dispatchAgain);
+        } catch (err) { console.warn(`[xmRadio rec] dispatcher: ${err.message}`); }
+        finally { dispatching = null; armExpiry(); }
+    })();
+    return dispatching;
+}
+
+async function dispatchPass() {
+    if (shuttingDown || !xm) return;
+    expireDue();
+    const skip = new Set(); // entries whose start failed this pass: they wait for the next trigger
+    for (;;) {
+        let pick = null;
+        for (const e of queueSorted()) {
+            if (skip.has(e.id)) continue;
+            const cover = coveringRec(e);
+            if (cover) { pick = { e, cover }; break; }
+            const slot = freeSlots(e.channelId)[0];
+            if (slot) { pick = { e, slot }; break; }
+        }
+        if (!pick) break;
+        const { e } = pick;
+        if (pick.cover) { attach(e, pick.cover); changed(); continue; }
+        const s = load();
+        s.queue = s.queue.filter((x) => x !== e);
+        try {
+            const rec = await startRec(startOpts(e, Date.now(), pick.slot), e);
+            if (e.state !== 'running') { attach(e, rec); changed(); } // the slot already recorded this channel
+        } catch (err) {
+            if (err && err.code === 'XMRADIO_CHANNEL') { retire(e, 'missed', err.message); changed(); continue; }
+            console.warn(`[xmRadio rec] queued ${e.id}: ${err.message}`);
+            s.queue.push(e);
+            skip.add(e.id);
+            if (err && err.code === 'XMRADIO_REC_SHUTDOWN') break;
+        }
+    }
+}
+
+/** Enqueue an entry and dispatch. `fast`: an answer the person is waiting for - with no signed-in account that can play the
+ *  channel it fails now rather than wait for one (timers, alerts and terms wait: an account may sign in). */
+async function submit(entry, { fast } = {}) {
+    if (shuttingDown) throw Object.assign(new Error('The recorder is handing over to a new process.'), { code: 'XMRADIO_REC_SHUTDOWN' });
+    const s = load();
+    if (!xm.channelById(entry.channelId)) throw Object.assign(new Error('No such channel.'), { code: 'XMRADIO_CHANNEL' });
+    const dup = s.queue.find((q) => q.channelId === entry.channelId && (q.kind || 'song') === entry.kind && q.from === entry.from && (q.to || 0) === entry.to);
+    if (dup) return { entry: dup, rec: null };
+    if (fast && !anyEntitled(entry.channelId)) throw Object.assign(new Error('No signed-in SiriusXM account can play this channel.'), { code: 'XMRADIO_SIGNED_OUT' });
+    if (s.queue.length >= MAX_QUEUE) throw Object.assign(new Error('The recording queue is full.'), { code: 'XMRADIO_REC_QUEUE_FULL' });
+    s.queue.push(entry);
+    changed();
+    await dispatch();
+    return { entry, rec: entry.state === 'running' ? recs.get(entry.rid) || null : null };
+}
+
+/** What a "now" producer (the deck's REC, one-touch Record) answers: the recording when it started or joined one, else its place in line. */
+function nowAnswer({ entry, rec }) {
+    if (rec) return describe(rec);
+    return { rid: null, queued: true, id: entry.id, position: queueSorted().findIndex((q) => q.id === entry.id) + 1, queue: queuePublic() };
+}
+
 /**
  * One-touch Record (the phone's Today item, Yukimi Nov 20 2026): the cut on air now, from its first frame when asked
  * ("Record from the start?" Yes), else from now; it stops when the cut ends.
@@ -703,13 +1015,10 @@ function makePump(rec, back) {
 async function recordCut(channelId, { fromStart } = {}) {
     const cut = xm.nowPlayingCuts(String(channelId || '')).slice(-1)[0];
     const now = Date.now();
-    if (fromStart && cut && now - cut.at < 4 * 3600 * 1000) {
-        return start({ channelId, kind: 'song', back: Math.ceil((now - cut.at) / 1000) + 8, fromCut: cut.at, until: now + 2 * 3600 * 1000 });
-    }
-    return start({ channelId, kind: 'song', back: 0, fromCut: now, until: now + 2 * 3600 * 1000 });
+    const reach = fromStart && cut && now - cut.at < 4 * 3600 * 1000;
+    const at = reach ? cut.at : now;
+    return nowAnswer(await submit(makeEntry('cut', channelId, { from: at, fromCut: at, fromNow: !reach, until: now + 2 * 3600 * 1000 }), { fast: true }));
 }
-
-// ------------------------------------------------------------------ the recording queue (Recently Played)
 
 /**
  * A tap on Record stacks the song rather than starting it at once (Yukimi, Nov 22 2026). The order is the order the
@@ -717,89 +1026,20 @@ async function recordCut(channelId, { fromStart } = {}) {
  * that expire at the same moment keep the order they were added. The queue lives in the state file, so it survives a
  * Dreamscape or recorder restart, and nothing has to keep a page open.
  */
-const QUEUE_TTL = 5 * 3600 * 1000; // the stream keeps five hours
-const MAX_QUEUE = 50;
-let queuePumping = false;
-
-/** The queue in the order it will record: soonest expiry first, then the order it was added. */
-function queueSorted() {
-    return (load().queue || []).slice().sort((a, b) => (a.expiresAt - b.expiresAt) || (a.addedAt - b.addedAt));
-}
-function queuePublic() {
-    return queueSorted().map((q) => ({ id: q.id, channelId: q.channelId, from: q.from, to: q.to,
-        a: q.a || '', t: q.t || '', s: q.s || '', expiresAt: q.expiresAt, addedAt: q.addedAt }));
-}
-function queueRemove(id) {
-    const s = load();
-    const left = s.queue.filter((q) => q.id !== String(id || ''));
-    if (left.length !== s.queue.length) { s.queue = left; changed(); }
-    return queuePublic();
-}
-function queueClear() {
-    const s = load();
-    if (s.queue.length) { s.queue = []; changed(); }
-    return queuePublic();
-}
-
-/** Start one queued song: the same range recording, named from the packet rather than lookAround's short history. */
-async function startRange(item) {
-    const now = Date.now();
-    return start({ channelId: item.channelId, kind: 'song', mode: 'range',
-        back: Math.ceil((now - item.from) / 1000) + 8, fromCut: item.from, endPdt: item.to,
-        until: now + 10 * 60000,
-        rangeCut: { at: item.from, a: item.a || '', t: item.t || '', s: item.s || '', ik: item.ik || '', ad: false } });
-}
-
-/** Fill the free recorder slots from the queue, most urgent first; a channel already recording waits. */
-async function pumpQueue() {
-    if (shuttingDown || queuePumping) return [];
-    queuePumping = true;
-    const started = [];
-    try {
-        for (;;) {
-            const s = load();
-            if (!s.queue.length || recs.size >= MAX_AUTO) break;
-            const busy = new Set([...recs.values()].map((r) => r.meta.channelId));
-            const next = queueSorted().find((q) => !busy.has(q.channelId));
-            if (!next) break;
-            s.queue = s.queue.filter((q) => q.id !== next.id);
-            if (Date.now() >= next.expiresAt - 30000) { console.warn(`[xmRadio rec] queued ${next.id}: its five hours ran out`); changed(); continue; }
-            try {
-                const rec = await startRange(next);
-                started.push({ id: next.id, rid: rec.rid });
-            } catch (err) { console.warn(`[xmRadio rec] queued ${next.id}: ${err.message}`); }
-            changed();
-        }
-    } finally { queuePumping = false; }
-    return started;
-}
-
-/**
- * Record one song from the phone's Recently Played (Yukimi, Nov 22 2026): its context menu's Record is one tap, no
- * "from the start?" question. It is queued, not started on the spot, so several can be stacked; the name, show and
- * cover come with the packet because lookAround only holds the cuts on air now.
- */
 async function recordRange(channelId, opts = {}) {
     const from = Number(opts.from) || 0;
     const to = Number(opts.to) || 0;
     const now = Date.now();
-    if (!from || !to || to <= from || to - from > MAX_MS || from > now + 60000 || from < now - QUEUE_TTL)
+    if (!from || !to || to <= from || to - from > MAX_MS || from > now + 60000 || from < now - QUEUE_TTL + EXPIRY_MARGIN_MS)
         throw Object.assign(new Error('That song is no longer in the five-hour buffer.'), { code: 'XMRADIO_REC_OLD' });
     if (!xm.channelById(String(channelId || ''))) throw Object.assign(new Error('No such channel.'), { code: 'XMRADIO_CHANNEL' });
-    const s = load();
-    if (s.queue.length >= MAX_QUEUE) throw Object.assign(new Error('The recording queue is full.'), { code: 'XMRADIO_REC_QUEUE_FULL' });
-    const item = {
-        id: id8(), channelId: String(channelId), from, to, expiresAt: from + QUEUE_TTL, addedAt: now,
-        a: String(opts.a || '').slice(0, 200), t: String(opts.t || '').slice(0, 200),
-        s: String(opts.s || '').slice(0, 200), ik: String(opts.ik || '').slice(0, 200)
-    };
-    s.queue.push(item);
-    changed();
-    const started = await pumpQueue();
-    const mine = started.find((x) => x.id === item.id);
+    const entry = makeEntry('song', channelId, { from, to, mode: 'range', fromCut: from, a: opts.a, t: opts.t, s: opts.s, ik: opts.ik });
+    entry.rangeCut = { at: from, a: entry.a, t: entry.t, s: entry.s, ik: entry.ik, ad: false };
+    const r = await submit(entry, { fast: true });
+    const running = r.entry.state === 'running';
     return {
-        rid: mine ? mine.rid : null, queued: !mine,
-        position: mine ? 0 : queueSorted().findIndex((q) => q.id === item.id) + 1,
+        rid: running ? r.entry.rid : null, queued: !running,
+        position: running ? 0 : queueSorted().findIndex((q) => q.id === r.entry.id) + 1,
         queue: queuePublic()
     };
 }
@@ -811,56 +1051,106 @@ async function recordRange(channelId, opts = {}) {
 async function recordChannel(channelId, { fromStart } = {}) {
     const cut = xm.nowPlayingCuts(String(channelId || '')).slice(-1)[0];
     const now = Date.now();
-    if (fromStart && cut && now - cut.at < 4 * 3600 * 1000) {
-        return start({ channelId, kind: 'manual', back: Math.ceil((now - cut.at) / 1000) + 8, fromCut: cut.at });
-    }
-    return start({ channelId, kind: 'manual' });
+    const reach = fromStart && cut && now - cut.at < 4 * 3600 * 1000;
+    return nowAnswer(await submit(makeEntry('channel', channelId, { from: reach ? cut.at : now, fromCut: reach ? cut.at : 0, fromNow: !reach }), { fast: true }));
 }
 
+/**
+ * Start a recording now on the slot the caller names, or the first free one (the socket op `start`; the dispatcher goes
+ * through startRec with the slot it chose). The queue is bypassed, the one-stream-per-account rule is not.
+ */
 async function start(opts) {
+    if (shuttingDown) throw Object.assign(new Error('The recorder is handing over to a new process.'), { code: 'XMRADIO_REC_SHUTDOWN' });
+    const channelId = String(opts.channelId || '');
+    if (!xm.channelById(channelId)) throw Object.assign(new Error('No such channel.'), { code: 'XMRADIO_CHANNEL' });
+    const entry = entryFromStart(opts);
+    if (opts.slot == null) {
+        const cover = coveringRec(entry);
+        if (cover) return describe(cover);
+    }
+    return describe(await startRec(opts, entry));
+}
+
+async function startRec(opts, entry) {
     if (shuttingDown) throw Object.assign(new Error('The recorder is handing over to a new process.'), { code: 'XMRADIO_REC_SHUTDOWN' });
     const s = load();
     const channelId = String(opts.channelId || '');
     if (!xm.channelById(channelId)) throw Object.assign(new Error('No such channel.'), { code: 'XMRADIO_CHANNEL' });
-    // the slot is the SiriusXM account that streams (S2 of #1252; the dispatcher that picks it is S3): default slot 1
-    const slot = opts.slot == null ? 1 : Number(opts.slot);
-    if (!Number.isInteger(slot) || slot < 1 || slot > 8) throw Object.assign(new Error(`There is no recorder slot ${opts.slot}.`), { code: 'XMRADIO_SLOT' });
-    for (const r of recs.values()) if (r.meta.channelId === channelId && (r.meta.slot || 1) === slot) return describe(r);
-    // SiriusXM allows one stream per account. Slot 1 is exempt until S3's dispatcher replaces today's behaviour (several
-    // recordings on the radio's one account); every other slot is one recording at a time and must be signed in.
-    if (slot > 1) {
-        if ([...recs.values()].some((r) => (r.meta.slot || 1) === slot)) throw Object.assign(new Error(`Slot ${slot} is already streaming.`), { code: 'XMRADIO_SLOT_BUSY' });
-        if (typeof xm.slotReady === 'function' && !xm.slotReady(slot)) throw Object.assign(new Error(`Slot ${slot} is not signed in to SiriusXM.`), { code: 'XMRADIO_SIGNED_OUT' });
+    // the slot is the SiriusXM account that streams (S2 of #1252): the dispatcher's choice, or the first free one
+    let slot;
+    if (opts.slot == null) {
+        slot = freeSlots(channelId)[0];
+        if (!slot) {
+            if (!anyEntitled(channelId)) throw Object.assign(new Error('No signed-in SiriusXM account can play this channel.'), { code: 'XMRADIO_SIGNED_OUT' });
+            throw Object.assign(new Error('Every virtual radio is already streaming.'), { code: 'XMRADIO_REC_BUSY' });
+        }
+    } else {
+        slot = Number(opts.slot);
+        if (!Number.isInteger(slot) || slot < 1 || slot > MAX_SLOTS) throw Object.assign(new Error(`There is no recorder slot ${opts.slot}.`), { code: 'XMRADIO_SLOT' });
+        for (const r of recs.values()) if (r.meta.channelId === channelId && (r.meta.slot || 1) === slot) return r;
+        // SiriusXM allows one stream per account (the deck's streamsPerAccount, default 1): every slot, slot 1 included
+        if (streamsOn(slot) >= streamsCap()) throw Object.assign(new Error(`Slot ${slot} is already streaming.`), { code: 'XMRADIO_SLOT_BUSY' });
+        if (!slotIsReady(slot)) throw Object.assign(new Error(`Slot ${slot} is not signed in to SiriusXM.`), { code: 'XMRADIO_SIGNED_OUT' });
     }
-    if (recs.size >= MAX_AUTO) throw Object.assign(new Error('The deck is already making four recordings.'), { code: 'XMRADIO_REC_BUSY' });
-    const rid = id8() + id8();
-    const dir = path.join(recRoot(), rid);
-    await fs.promises.mkdir(dir, { recursive: true });
-    const now = Date.now();
-    const back = Math.max(0, Math.min(5 * 3600, Number(opts.back) || 0));
-    const meta = {
-        rid, channelId, slot, kind: opts.kind || 'manual', ref: opts.ref || null,
-        workspaceId: opts.workspaceId || s.deck.workspaceId, tape: opts.tape || s.deck.tape,
-        mode: opts.mode || (opts.kind === 'alert' || opts.kind === 'term' || opts.kind === 'song' ? 'song' : s.deck.mode),
-        since: now, until: Math.min(now + MAX_MS, Number(opts.until) || now + MAX_MS), startPdt: now - back * 1000, cursor: 0, filed: 0,
-        endPdt: Number(opts.endPdt) || 0, rangeCut: opts.rangeCut || null
-    };
-    const rec = { meta, dir, segs: [], cuts: [], lastEnd: 0, write: Promise.resolve(), pump: null, filing: false };
-    const np = xm.nowPlayingCuts(channelId);
-    if (np.length) {
-        rec.cuts.push(...np);
-        fs.promises.appendFile(path.join(dir, 'cuts.ndjson'), np.map((c) => `${JSON.stringify(c)}\n`).join('')).catch(() => {});
+    // held from here to recs.set, so a second start cannot take the same stream while this one makes its folder
+    reserved.set(slot, (reserved.get(slot) || 0) + 1);
+    try {
+        const rid = id8() + id8();
+        const dir = path.join(recRoot(), rid);
+        await fs.promises.mkdir(dir, { recursive: true });
+        const now = Date.now();
+        const back = Math.max(0, Math.min(5 * 3600, Number(opts.back) || 0));
+        const meta = {
+            rid, channelId, slot, kind: opts.kind || 'manual', ref: opts.ref || null,
+            workspaceId: opts.workspaceId || s.deck.workspaceId, tape: opts.tape || s.deck.tape,
+            mode: opts.mode || (opts.kind === 'alert' || opts.kind === 'term' || opts.kind === 'song' ? 'song' : s.deck.mode),
+            since: now, until: Math.min(now + MAX_MS, Number(opts.until) || now + MAX_MS), startPdt: now - back * 1000, cursor: 0, filed: 0,
+            endPdt: Number(opts.endPdt) || 0, rangeCut: opts.rangeCut || null, fromCut: Number(opts.fromCut) || 0
+        };
+        const rec = { meta, dir, segs: [], cuts: [], lastEnd: 0, write: Promise.resolve(), pump: null, filing: false };
+        const np = xm.nowPlayingCuts(channelId);
+        if (np.length) {
+            rec.cuts.push(...np);
+            fs.promises.appendFile(path.join(dir, 'cuts.ndjson'), np.map((c) => `${JSON.stringify(c)}\n`).join('')).catch(() => {});
+        }
+        recs.set(rid, rec);
+        // the entry is now a running job, linked to its recording by rid
+        const job = entry || entryFromStart(opts);
+        job.state = 'running';
+        job.rid = rid;
+        job.slot = slot;
+        job.startedAt = now;
+        meta.entryId = job.id;
+        if (!s.running.includes(job)) s.running.push(job);
+        metaRead.set(channelId, now);
+        if (back > 0) metaBackfill(rec, meta.startPdt);
+        armMetaTimer();
+        rec.pump = makePump(rec, back);
+        // song mode starts at the cut in force (an alert's cut from its first frame)
+        if (meta.mode === 'song' && opts.fromCut) meta.cursor = opts.fromCut;
+        xm.watch('rec', true);
+        changed();
+        return rec;
+    } finally {
+        const n = (reserved.get(slot) || 1) - 1;
+        if (n > 0) reserved.set(slot, n); else reserved.delete(slot);
     }
-    recs.set(rid, rec);
-    metaRead.set(channelId, now);
-    if (back > 0) metaBackfill(rec, meta.startPdt);
-    armMetaTimer();
-    rec.pump = makePump(rec, back);
-    // song mode starts at the cut in force (an alert's cut from its first frame)
-    if (meta.mode === 'song' && opts.fromCut) meta.cursor = opts.fromCut;
-    xm.watch('rec', true);
-    changed();
-    return describe(rec);
+}
+
+/** A recording has ended: its entries are done (or, when SiriusXM refused the channel for that account and nothing was
+ *  recorded, back in the queue for another slot - each slot refuses a channel once, so this ends). */
+function finishEntries(rid, rec) {
+    const s = load();
+    for (const e of s.running.filter((x) => x.rid === rid)) {
+        const slot = rec.meta.slot || 1;
+        if (rec.meta.error && !rec.segs.length && !e.attached && (e.tries || 0) < MAX_SLOTS && Date.now() < expOf(e) && !slotEntitled(slot, e.channelId)) {
+            s.running = s.running.filter((x) => x !== e);
+            e.state = 'queued'; e.slot = null; e.rid = null; e.startedAt = 0; e.tries = (e.tries || 0) + 1;
+            s.queue.push(e);
+            continue;
+        }
+        retire(e, 'done', rec.meta.error || '');
+    }
 }
 
 async function stop(rid, { filed } = {}) {
@@ -879,14 +1169,15 @@ async function stop(rid, { filed } = {}) {
         }
     } catch (err) { console.warn(`[xmRadio rec] ${rid}: ${err.message}`); }
     recs.delete(rid);
+    finishEntries(rid, rec);
     // the playlist answers a little longer (a radio playing it reaches its end), then the segments go
     rec.ended = Date.now();
     ended.set(rid, rec);
     setTimeout(() => { ended.delete(rid); fs.promises.rm(rec.dir, { recursive: true, force: true }).catch(() => {}); }, 10 * 60 * 1000).unref?.();
     if (!recs.size) { xm.watch('rec', false); stopMetaTimer(); }
     changed();
-    // a slot just came free: the next song in the queue can start
-    void pumpQueue();
+    // a slot just came free: the next entry in the queue can start
+    void dispatch();
     return { rid, filed: rec.meta.filed || 0 };
 }
 const ended = new Map();
@@ -895,13 +1186,40 @@ function describe(rec) {
     const m = rec.meta;
     const { cur } = cutAt(rec, rec.lastEnd || Date.now());
     return {
-        rid: m.rid, channelId: m.channelId, slot: m.slot || 1, kind: m.kind, mode: m.mode, workspaceId: m.workspaceId, tape: m.tape, since: m.since, until: m.until,
+        rid: m.rid, channelId: m.channelId, slot: m.slot || 1, job: m.entryId || null, kind: m.kind, mode: m.mode, workspaceId: m.workspaceId, tape: m.tape, since: m.since, until: m.until,
         // how far it reached back behind live when it started (s: "from the start" of the song on air)
         back: Math.max(0, Math.round((m.since - (m.startPdt || m.since)) / 1000)),
         filed: m.filed || 0, url: `/api/xmradio/rec/${m.rid}/index.m3u8`,
         cut: cur ? { a: cur.a, t: cur.t, s: cur.s, ad: !!cur.ad } : null
     };
 }
+
+/** The virtual radios as the dispatcher sees them: slot 1..count, signed in or not, and what streams on each. */
+function poolView() {
+    const out = [];
+    for (let n = 1; n <= slotTotal(); n++) {
+        const rids = [];
+        for (const r of recs.values()) if ((r.meta.slot || 1) === n && !r.stopping) rids.push(r.meta.rid);
+        out.push({ slot: n, name: `Lizumi-Recorder-${n}`, ready: slotIsReady(n), streaming: rids.length, rids });
+    }
+    return out;
+}
+
+/** The deck's recording settings (streamsPerAccount: 1 to 4). */
+function setSettings({ streamsPerAccount } = {}) {
+    const s = load();
+    if (streamsPerAccount != null) {
+        const n = Number(streamsPerAccount);
+        if (!Number.isInteger(n) || n < 1 || n > MAX_STREAMS) throw Object.assign(new Error(`Streams per account is 1 to ${MAX_STREAMS}.`), { code: 'XMRADIO_SETTING' });
+        s.settings.streamsPerAccount = n;
+    }
+    changed();
+    void dispatch();
+    return deck();
+}
+
+/** A slot's token arrived or was cleared (the auth op), or the slot list changed: a waiting entry may fit now. */
+function slotsChanged() { return dispatch(); }
 
 /** The recording as a growing HLS playlist (EVENT): everything recorded so far stays playable. */
 function playlist(rid) {
@@ -953,6 +1271,20 @@ function nextStart(t, now = Date.now()) {
     return null;
 }
 
+/** The timers whose time has come make entries in the common queue (the dispatcher starts them when a slot is free). */
+function fireTimers(now) {
+    for (const t of load().timers) {
+        if (t.off) continue;
+        const at = nextStart(t, now - 60000);
+        if (at == null || at > now + 1000 || t.lastRun === at) continue;
+        t.lastRun = at;
+        if (t.date) t.off = true;
+        const to = at + Math.max(1, Math.min(480, Number(t.minutes) || 60)) * 60000;
+        const entry = makeEntry('timer', t.channelId, { from: Math.min(at, now), to, ref: t.id, mode: t.mode, fromNow: true });
+        submit(entry).catch((err) => console.warn(`[xmRadio rec] timer ${t.id}: ${err.message}`));
+    }
+}
+
 function armTimers() {
     clearTimeout(timerHandle);
     timerHandle = null;
@@ -968,16 +1300,7 @@ function armTimers() {
     const wait = Math.max(0, Math.min(soonest.at - Date.now(), 24 * 3600 * 1000));
     timerHandle = setTimeout(() => {
         timerHandle = null;
-        const now = Date.now();
-        for (const t of load().timers) {
-            if (t.off) continue;
-            const at = nextStart(t, now - 60000);
-            if (at == null || at > now + 1000 || t.lastRun === at) continue;
-            t.lastRun = at;
-            if (t.date) t.off = true;
-            const until = at + Math.max(1, Math.min(480, Number(t.minutes) || 60)) * 60000;
-            start({ channelId: t.channelId, kind: 'timer', ref: t.id, until, mode: t.mode }).catch((err) => console.warn(`[xmRadio rec] timer ${t.id}: ${err.message}`));
-        }
+        fireTimers(Date.now());
         changed();
         armTimers();
     }, wait);
@@ -1041,7 +1364,8 @@ function onLook(channelCuts) {
         if (!hit) continue;
         fired.add(key);
         if (fired.size > 2000) fired.delete(fired.values().next().value);
-        start({ channelId: id, kind: hit.kind, ref: hit.ref, back: Math.ceil((now - cur.at) / 1000) + 8, fromCut: cur.at, until: now + 2 * 3600 * 1000 })
+        // an alert or term records the matching cut from its first frame: it queues, and reaches back when a slot takes it
+        submit(makeEntry(hit.kind, id, { from: cur.at, fromCut: cur.at, until: now + 2 * 3600 * 1000, ref: hit.ref, a: cur.a, t: cur.t, s: cur.s, ik: cur.ik }))
             .catch((err) => console.warn(`[xmRadio rec] ${hit.kind} ${hit.ref}: ${err.message}`));
     }
 }
@@ -1053,7 +1377,10 @@ function deck() {
     return {
         tape: s.deck.tape, workspaceId: s.deck.workspaceId, mode: s.deck.mode,
         recordings: [...recs.values()].map(describe),
-        timers: s.timers, alerts: s.alerts, terms: s.terms, queue: queuePublic()
+        timers: s.timers, alerts: s.alerts, terms: s.terms,
+        // the common queue (#1252 S3): waiting entries in due order, started ones, the last 100 that ended, the virtual radios
+        queue: queuePublic(), jobs: jobsPublic(), history: s.history.map((e) => entryPublic(e, 0)),
+        settings: { streamsPerAccount: s.settings.streamsPerAccount }, pool: poolView()
     };
 }
 
@@ -1139,10 +1466,27 @@ async function shutdown() {
         rec.meta.resumeSeq = last ? last.seq + 1 : null;
     }
     stopMetaTimer();
+    clearTimeout(expiryHandle);
+    expiryHandle = null;
     // the cut store is on disk with the state file
     if (cutStore.isOpen()) await Promise.race([cutStore.flush().catch(() => {}), delay(3000)]);
     saveNow();
-    return { recordings: live.length, queue: (load().queue || []).length };
+    return { recordings: live.length, queue: (load().queue || []).length, running: (load().running || []).length };
+}
+
+/** A resumed recording's entry (one from before the common queue has none): linked by rid, running. */
+function adoptEntry(meta) {
+    const s = load();
+    let e = s.running.find((x) => x.id === meta.entryId || x.rid === meta.rid);
+    if (!e) {
+        e = entryFromStart({ channelId: meta.channelId, kind: meta.kind, mode: meta.mode, back: Math.round(((meta.since || Date.now()) - (meta.startPdt || meta.since || Date.now())) / 1000), endPdt: meta.endPdt, until: meta.until, fromCut: meta.fromCut, ref: meta.ref, rangeCut: meta.rangeCut });
+        s.running.push(e);
+    }
+    e.state = 'running';
+    e.rid = meta.rid;
+    e.slot = meta.slot || 1;
+    e.startedAt = e.startedAt || meta.since || Date.now();
+    meta.entryId = e.id;
 }
 
 /** Recordings left by a stopped server: file what they hold, and carry on those whose time is not up. */
@@ -1161,6 +1505,7 @@ async function resume() {
         } catch (_) { /* nothing recorded */ }
         try { rec.cuts = (await fs.promises.readFile(path.join(dir, 'cuts.ndjson'), 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l)).sort((a, b) => a.at - b.at); } catch (_) { /* none */ }
         recs.set(meta.rid, rec);
+        adoptEntry(meta);
         // it carries on as the same recording (Yukimi, Nov 21 2026: a recording must never stop because a server did):
         // a graceful handoff stored the exact next segment, a hard stop falls back to the last one on disk. The pump
         // reads from there, the stream keeps five hours, so the time the process was down is recorded too.
@@ -1175,9 +1520,12 @@ async function resume() {
         console.log(`[xmRadio rec] ${meta.rid}: resumed (${meta.kind}, ${gap} s to catch up${stored ? ', at the stored segment' : ''})`);
     }
     if (recs.size) { xm.watch('rec', true); armMetaTimer(); }
+    // a started entry whose recording is not back has ended with the process
+    for (const e of s.running.slice()) if (!recs.has(e.rid)) retire(e, 'done', 'Ended while the recorder was down');
     changed();
-    // the queue lives in the state file: pick it up again after a recorder restart
-    void pumpQueue().catch((err) => console.warn(`[xmRadio rec] queue: ${err.message}`));
+    // the queue lives in the state file: pick it up again after a recorder restart (the resumed recordings hold their
+    // slots; what waits starts as they free, and entries that ran out of buffer meanwhile are missed)
+    void dispatch();
     // folders no recording owns (a crash before its state was written)
     try {
         for (const d of await fs.promises.readdir(recRoot())) {
@@ -1199,6 +1547,9 @@ function init(xmRadio, globalResources, opts = {}) {
     armTimers();
     xm.watch('match', wantsWatch());
     xm.onLook(onLook);
+    // a slot signing in or out (or the slot count changing) may let a waiting entry start
+    if (typeof xm.onSlots === 'function') xm.onSlots(() => { void dispatch(); });
+    armExpiry();
     setTimeout(() => { resume().catch((err) => console.warn(`[xmRadio rec] resume: ${err.message}`)); }, role === 'capture' && opts.resumeMs != null ? opts.resumeMs : 15000).unref?.();
     return module.exports;
 }
@@ -1221,6 +1572,6 @@ function tapeRenamed(workspaceId, from, to) {
 }
 
 module.exports = {
-    init, library, tapeRenamed, saveNow, shutdown, importSpool, spoolList, spoolDir: () => spoolDir(), recRoot: () => recRoot(), start, stop, recordCut, recordChannel, recordRange, queueList: queuePublic, queueRemove, queueClear, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
-    _test: { adtsFrames, nextStart, cutAt, norm, onLook, onAirCut, matchOnAir, sliceAac, recs, resume, load: () => load(), reset: () => { st = null; stopMetaTimer(); cutStore._test.reset(''); recs.clear(); ended.clear(); fired.clear(); shuttingDown = false; } }
+    init, library, tapeRenamed, saveNow, shutdown, importSpool, spoolList, spoolDir: () => spoolDir(), recRoot: () => recRoot(), start, stop, recordCut, recordChannel, recordRange, queueList: queuePublic, queueRemove, queueClear, cancel, setSettings, slotsChanged, dispatch, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
+    _test: { adtsFrames, nextStart, cutAt, norm, onLook, onAirCut, matchOnAir, sliceAac, recs, resume, fireTimers, makeEntry, freeSlots, load: () => load(), reset: () => { st = null; clearTimeout(expiryHandle); expiryHandle = null; reserved.clear(); stopMetaTimer(); cutStore._test.reset(''); recs.clear(); ended.clear(); fired.clear(); shuttingDown = false; } }
 };

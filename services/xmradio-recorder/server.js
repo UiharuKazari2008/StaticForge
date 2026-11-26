@@ -19,7 +19,8 @@
  * object a line.
  *   Dreamscape -> { id, op, args }      ops: auth { slot?, token, exp, entitlementHash } (one per slot, no slot = slot 1; { slot, clear: true } drops it), deck, start, stop, recordCut, recordChannel,
  *                                       recordRange { channelId, from, to, a, t, s, ik }, queueRemove { id },
- *                                       queueClear, setDeck, setTimers, addAlert, removeAlert, setTerms,
+ *                                       queueClear, cancel { id } (any waiting entry -> { id, state, queue }),
+ *                                       setSettings { streamsPerAccount } (1 to 4 streams per SiriusXM account -> deck), setDeck, setTimers, addAlert, removeAlert, setTerms,
  *                                       tapeRenamed, playlist, ping,
  *                                       meta { channelId, from, to } (the cut store's records overlapping that time,
  *                                       lengths filled in; modules/xmRadioMeta.js), metaStats (its channels, cuts,
@@ -82,6 +83,8 @@ const OPS = {
         const slot = a && a.slot != null ? Number(a.slot) : 1;
         const ok = xmRadio.setAuth(a);
         if (ok || (a && a.clear)) keepAuth();
+        // a slot's token arriving or clearing may free a waiting entry (or leave a running one without its account)
+        void recorder.slotsChanged();
         console.log(`[xmradio-recorder] SiriusXM access slot ${slot} ${a && a.clear ? 'dropped' : ok ? `received (valid ${Math.round(((Number(a && a.exp) || 0) - Date.now()) / 60000)} min)` : 'missing'}`);
         return ok;
     },
@@ -95,6 +98,8 @@ const OPS = {
     recordRange: (a) => recorder.recordRange(a.channelId, a || {}),
     queueRemove: (a) => recorder.queueRemove(String((a && a.id) || '')),
     queueClear: () => recorder.queueClear(),
+    cancel: (a) => recorder.cancel(String((a && a.id) || '')),
+    setSettings: (a) => recorder.setSettings(a || {}),
     setDeck: (a) => recorder.setDeck(a || {}),
     setTimers: (a) => recorder.setTimers(a && a.timers),
     addAlert: (a) => recorder.addAlert(a || {}),

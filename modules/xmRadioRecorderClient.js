@@ -5,7 +5,7 @@
  * the recording runs there, so a Dreamscape restart never stops it (Yukimi, Nov 21 2026). This module has the API the
  * WebSocket handler, the status feeds and the routes used from modules/xmRadioRecorder.js:
  *   deck()                      the service's last pushed deck (sync; { offline: true } with the service away)
- *   start / stop / recordCut / recordChannel / recordRange / queueRemove / queueClear / setDeck / setTimers /
+ *   start / stop / recordCut / recordChannel / recordRange / queueRemove / queueClear / cancel / setSettings / setDeck / setTimers /
  *   addAlert / removeAlert / setTerms                                                            over the socket
  *   playlist(rid) (async), segPath(rid, f)   a recording in progress, for /api/xmradio/rec/<rid>/<file>
  *   tapes / tapesInfo / tracks / trackPath / trackRename / trackDelete / trackMove / tapeNew / tapeRename / tapeDelete
@@ -169,7 +169,12 @@ function deck() {
     let s = {};
     try { s = JSON.parse(fs.readFileSync(path.join(path.dirname(xm.accountFilePath()), 'xmradio-recorder.json'), 'utf8')) || {}; } catch (_) { s = {}; }
     const d = Object.assign({ workspaceId: 'default', tape: 'Tape 1', mode: 'song' }, s.deck || {});
-    return { tape: d.tape, workspaceId: d.workspaceId, mode: d.mode, recordings: [], timers: s.timers || [], alerts: s.alerts || [], terms: s.terms || [], queue: s.queue || [], offline: true };
+    const waiting = (s.queue || []).map((q, i) => Object.assign({ kind: 'song', state: 'queued', slot: null, rid: null, position: i + 1 }, q));
+    return {
+        tape: d.tape, workspaceId: d.workspaceId, mode: d.mode, recordings: [], timers: s.timers || [], alerts: s.alerts || [], terms: s.terms || [],
+        queue: waiting, jobs: [], history: Array.isArray(s.history) ? s.history : [],
+        settings: { streamsPerAccount: Number((s.settings || {}).streamsPerAccount) || 1 }, pool: [], offline: true
+    };
 }
 
 function segPath(rid, f) {
@@ -200,6 +205,14 @@ module.exports = {
         a: String(o.a || ''), t: String(o.t || ''), s: String(o.s || ''), ik: String(o.ik || '')
     }),
     queueRemove: deckRpc('queue', 'queueRemove', (id) => ({ id })),
+    // cancel one waiting entry of any producer: { id, state, queue[] }
+    async cancel(id) {
+        const r = await rpc('cancel', { id });
+        applyDeck('queue', r && r.queue);
+        return r;
+    },
+    // the deck's recording settings { streamsPerAccount } -> the deck
+    setSettings: deckRpc('deck', 'setSettings'),
     queueClear: deckRpc('queue', 'queueClear'),
     setDeck: deckRpc('deck', 'setDeck'),
     setTimers: deckRpc('timers', 'setTimers', (timers) => ({ timers })),

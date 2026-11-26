@@ -54,6 +54,13 @@ const recorder = require('../../xmRadioRecorderClient');
 //   xmradio_slot_count_set  { n }                 admins -> { count, slots[] } (1 to 8, default 4; slots above n are hidden and
 //                                                 keep their account)
 //   xmradio_queue_remove    { id }                 admins -> { queue[] }: cancel one queued song
+//   xmradio_queue_cancel    { id }                 admins -> { id, state, queue[] }: cancel one waiting entry of any producer (#1252 S3)
+//   xmradio_rec_settings    { streamsPerAccount? } admins -> { settings { streamsPerAccount }, deck }: streams per SiriusXM account,
+//                                                 1 to 4 (default 1); the dispatcher starts waiting entries when it is raised
+//   The common queue (#1252 S3): every producer (Recently Played's Record, one-touch Record, the deck's REC, a timer, an alert,
+//   a term) queues an entry and a dispatcher gives it to a free, signed-in, entitled slot; the deck carries queue[] (waiting,
+//   in due order: id, kind, state, channelId, from, to, expiresAt, position), jobs[] (started: slot, rid), history[] (the last
+//   100 missed, done and cancelled, with reason), settings, and pool[{ slot, name, ready, streaming, rids[] }].
 //   xmradio_queue_clear     {}                     admins -> { queue[] }: cancel them all
 //   xmradio_tune's back:    seconds behind live to start at (replay; the stream keeps five hours)
 //   xmradio_search          { q }                 { results[{ channelId, a, t, s }] }: what is on now, every word matched
@@ -186,6 +193,11 @@ function registerPackets(handlersCtx) {
         : recorder.recordChannel(m.channelId, { fromStart: !!m.fromStart }))));
     reg('xmradio_rec_range', packet(true, 'The recording could not be started', async (m) => recorder.recordRange(m.channelId, m)));
     reg('xmradio_queue_remove', packet(true, 'The recording could not be removed', async (m) => ({ queue: await recorder.queueRemove(String(m.id || '')) })));
+    reg('xmradio_queue_cancel', packet(true, 'The entry could not be cancelled', async (m) => recorder.cancel(String(m.id || ''))));
+    reg('xmradio_rec_settings', packet(true, 'The recording settings could not be saved', async (m) => {
+        const deck = await recorder.setSettings({ streamsPerAccount: m.streamsPerAccount });
+        return { settings: deck.settings, deck };
+    }));
     reg('xmradio_queue_clear', packet(true, 'The queue could not be cleared', async () => ({ queue: await recorder.queueClear() })));
     // a phone's channels for its feed (xmradio_phone): the one it plays and the pages Today shows; fire and forget
     wsPacketRegistry.registerWsPacket('xmradio_phone_watch', async (ctx) => {

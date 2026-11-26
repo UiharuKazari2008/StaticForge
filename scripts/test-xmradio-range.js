@@ -70,7 +70,7 @@ recorder.init({
     const length = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file]).toString().trim());
     assert.ok(Math.abs(length - 12) < 0.4, `range lasts ${length}s`);
 
-    // when all four recorders are busy a Record stacks instead of starting, and reports its place
+    // when no virtual radio is free (one stream per account: the fake recordings hold slot 1) a Record stacks instead of starting
     for (let i = 0; i < 4; i++) {
         const rid = `busy${i}${'0'.repeat(18)}`.slice(0, 24);
         recorder._test.recs.set(rid, { meta: { rid, channelId: 'other', kind: 'manual', mode: 'long' }, segs: [], lastEnd: 0 });

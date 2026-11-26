@@ -176,18 +176,23 @@
     function radiosPage(c) {
         const d = state.deck || {};
         const recs = Array.isArray(d.recordings) ? d.recordings : [];
-        const max = (state.slots && state.slots.max) || 4;
+        const pool = Array.isArray(d.pool) && d.pool.length ? d.pool : null;
+        const max = pool ? pool.length : ((state.slots && state.slots.max) || 4);
         const now = Date.now();
         const rows = [];
+        // each recording on its own virtual radio (its slot, #1252 S3); before the server sent slots, in list order
+        const bySlot = new Map();
+        recs.forEach((x, i) => { const n = x.slot || (pool ? 1 : i + 1); if (!bySlot.has(n)) bySlot.set(n, x); });
         for (let i = 0; i < max; i++) {
-            const r = recs[i] || null;
+            const r = bySlot.get(i + 1) || null;
+            const ready = pool ? pool[i].ready : true;
             rows.push({
                 key: `slot:${i + 1}`,
                 // standby is idle, not a fault: the quiet speaker, never the muted one's red cross
                 icon: `${VI}/volume-${r ? 'high' : 'low'}-16.png`,
                 data: r
                     ? { name: `Lizumi-Recorder-${i + 1}`, state: 'Recording', channel: chName(r.channelId), cut: cutText(r.cut), kind: r.kind === 'song' ? 'Song' : 'Channel', running: span((now - (r.since || now)) / 1000), runningS: now - (r.since || now), back: r.back ? span(r.back) : '0:00', buffer: '-', segments: '-' }
-                    : { name: `Lizumi-Recorder-${i + 1}`, state: 'Standby', channel: '', cut: '', kind: '', running: '', runningS: 0, back: '', buffer: '-', segments: '-' }
+                    : { name: `Lizumi-Recorder-${i + 1}`, state: ready ? 'Standby' : 'No account', channel: '', cut: '', kind: '', running: '', runningS: 0, back: '', buffer: '-', segments: '-' }
             });
         }
         return {
@@ -206,24 +211,29 @@
         };
     }
 
-    const QSTATE = { queued: 'Queued', running: 'Running', missed: 'Missed' };
+    const QSTATE = { queued: 'Queued', running: 'Running', missed: 'Missed', done: 'Done', cancelled: 'Cancelled' };
+    const QKIND = { song: 'Song', cut: 'Song on air', channel: 'Channel', timer: 'Timer', alert: 'Alert', term: 'Search term' };
 
     function queuePage(c) {
-        const q = state.deck && Array.isArray(state.deck.queue) ? state.deck.queue : [];
-        const rows = q.map((e, i) => ({
+        const d = state.deck || {};
+        // waiting in due order, then what runs, then the last ones that ended (missed ones say why)
+        const list = [].concat(Array.isArray(d.queue) ? d.queue : [], Array.isArray(d.jobs) ? d.jobs : [], (Array.isArray(d.history) ? d.history : []).slice(0, 50));
+        const rows = list.map((e, i) => ({
             key: `q:${e.id}`,
-            icon: `${VI}/service-worker-16.png`,
-            data: { n: i + 1, cut: cutText(e), channel: chName(e.channelId), radio: e.slot ? `Lizumi-Recorder-${e.slot}` : '-', qstate: QSTATE[e.state] || '-', expires: clock(e.expiresAt), expiresAt: e.expiresAt || 0, added: clock(e.addedAt), addedAt: e.addedAt || 0 }
+            icon: e.state === 'missed' ? `${VI}/warning-16.png` : `${VI}/service-worker-16.png`,
+            data: { n: i + 1, cut: cutText(e) || chName(e.channelId), kind: QKIND[e.kind] || '', channel: chName(e.channelId), radio: e.slot ? `Lizumi-Recorder-${e.slot}` : '-', qstate: QSTATE[e.state] || 'Queued', reason: e.reason || '', expires: clock(e.expiresAt), expiresAt: e.expiresAt || 0, added: clock(e.addedAt), addedAt: e.addedAt || 0 }
         }));
         return {
             html: c.listView([
                 { t: 'Order', w: 50, key: 'n', text: (x) => String(x.n), value: (x) => x.n },
-                { t: 'Song', w: 240, key: 'cut', text: (x) => x.cut },
+                { t: 'Song', w: 220, key: 'cut', text: (x) => x.cut },
+                { t: 'Kind', w: 80, key: 'kind', text: (x) => x.kind },
                 { t: 'Channel', w: 140, key: 'channel', text: (x) => x.channel },
                 { t: 'Expires', w: 120, key: 'expires', text: (x) => x.expires, value: (x) => x.expiresAt },
                 { t: 'Added', w: 120, key: 'added', text: (x) => x.added, value: (x) => x.addedAt },
                 { t: 'Virtual Radio', w: 130, key: 'radio', text: (x) => x.radio },
-                { t: 'State', w: 70, key: 'qstate', text: (x) => x.qstate }
+                { t: 'State', w: 70, key: 'qstate', text: (x) => x.qstate },
+                { t: 'Why', w: 260, key: 'reason', text: (x) => x.reason }
             ], rows, { sortId: 'lz-queue', empty: 'The queue is empty.' }),
             list: true
         };
@@ -493,11 +503,13 @@
     function status(n) {
         const d = state.deck;
         if (!d || n.id === 'root') return '';
-        const r = (d.recordings || []).length;
-        const max = (state.slots && state.slots.max) || 4;
+        const pool = Array.isArray(d.pool) && d.pool.length ? d.pool : null;
+        const r = pool ? pool.filter((x) => x.streaming > 0).length : (d.recordings || []).length;
+        const max = pool ? pool.length : ((state.slots && state.slots.max) || 4);
+        const ready = pool ? pool.filter((x) => x.ready).length : max;
         const q = (d.queue || []).length;
         if (n.id === 'recordings') return `Tape: ${d.tape}`;
-        return `${r} of ${max} virtual radios recording, ${q} ${q === 1 ? 'entry' : 'entries'} queued`;
+        return `${r} of ${max} virtual radios recording (${ready} signed in), ${q} ${q === 1 ? 'entry' : 'entries'} waiting`;
     }
 
     function def() {
