@@ -90,7 +90,7 @@
     const LG_ACTIVE = new Set(['starting', 'waiting_code', 'verifying']);
     // Queue tab (#1198): the claude_fleet_phone feed's snapshot and where the tab is (list | detail | dashboard)
     const Q_FEED = 'claude_fleet_phone';
-    const qEmpty = () => ({ work: [], unsupervised: [], counts: {}, calls: {}, flags: [] });
+    const qEmpty = () => ({ work: [], unsupervised: [], counts: {}, calls: {}, flags: [], notify: {} });
     let qsnap = qEmpty();
     let qOn = false; // subscribed to the feed
     let qLoaded = false;
@@ -1277,6 +1277,34 @@
 
     // ---- dashboard
 
+    /** What may reach the phone (the Supervisor's settings.notify); a kind the server adds that is not listed shows under its own name. */
+    const NOTIFY_KINDS = [
+        ['workDone', 'A work item I started is done'],
+        ['workAttention', 'A work item needs me (a question for me, or it stopped)'],
+        ['maintenance', 'Fleet maintenance reports (daily checks and cleanup)'],
+        ['usage', 'Usage and cost flags']
+    ];
+    function notifyHtml() {
+        const n = qsnap.notify && typeof qsnap.notify === 'object' ? qsnap.notify : {};
+        const kinds = NOTIFY_KINDS.concat(Object.keys(n).filter((k) => !NOTIFY_KINDS.some((x) => x[0] === k)).map((k) => [k, k]));
+        return '<div class="wm-form-hdr wca-sub-hdr">Notifications</div><div class="wca-nts">'
+            + kinds.map(([k, t]) => `<label class="wm-check wca-nt"><input type="checkbox" class="wca-ntc" data-notify="${esc(k)}"${n[k] === true ? ' checked' : ''}><span>${esc(t)}</span></label>`).join('')
+            + '</div><div class="wca-muted wca-nt-hint">Off by default for anything new; routine alerts always go to the Supervisor.</div>';
+    }
+
+    /** A tap on a Notifications switch saves that one kind at once (a partial save); the page repaints in place, scroll kept. */
+    async function notifySave(key, on) {
+        const prev = qsnap.notify && qsnap.notify[key] === true;
+        qsnap.notify = Object.assign({}, qsnap.notify, { [key]: on });
+        try {
+            await send('claude_desk_supervisor', { action: 'save', settings: { notify: { [key]: on } } });
+        } catch (e) {
+            qsnap.notify = Object.assign({}, qsnap.notify, { [key]: prev });
+            await failBox(errText(e));
+        }
+        render();
+    }
+
     function dashHtml() {
         if (qGone) return '<div class="wac-note">This server has no phone queue yet.</div>';
         if (!qLoaded) return qErr ? `<div class="wac-note">${esc(qErr)}</div>` : '<div class="wac-empty">Reading the queue...</div>';
@@ -1312,7 +1340,7 @@
             return `<div class="wca-kv wca-kv-use" title="${esc(tip)}"><span class="wca-k">${esc((fa && fa.name) || a.name)}</span><span class="wca-v wca-cut${tone ? ` wac-lv-${tone}` : ''}">${esc(text)}</span></div>`;
         }).join('');
         const flags = Array.isArray(qsnap.flags) ? qsnap.flags : [];
-        return `<div class="wca-dash"><div class="wm-form-hdr wca-sub-hdr">Counts</div><div class="wca-kvs">`
+        return `<div class="wca-dash">${notifyHtml()}<div class="wm-form-hdr wca-sub-hdr">Counts</div><div class="wca-kvs">`
             + `${row('Running work', c.running)}${row('Input required', c.input, c.input > 0 ? 'warn' : '')}${row('Waiting for you', c.held)}${row('Queued', c.pending)}${row('Sent back', c.sentBack)}`
             + `${row('Sessions running', c.live)}${row('Sessions working', c.busy)}${row('Unsupervised', loose.length)}${row('Reviews with gaps', c.gaps, c.gaps > 0 ? 'warn' : '')}${row('Paused', c.holds)}${row('Restart waits', c.restartWaits)}${row('Heavy usage flags', c.flags, c.flags > 0 ? 'warn' : '')}`
             + `</div><div class="wm-form-hdr wca-sub-hdr">Supervisor calls</div><div class="wca-kvs">${callRows || '<div class="wca-muted">No call figures yet.</div>'}</div>`
@@ -1705,6 +1733,8 @@
             if (t) qdraft[t.dataset.draft] = t.value;
         });
         p.addEventListener('change', (e) => {
+            const nt = e.target.closest ? e.target.closest('.wca-ntc') : null;
+            if (nt) { void notifySave(nt.dataset.notify, nt.checked); return; }
             const c = e.target.closest('.wca-check');
             if (!c || !picking) return;
             if (c.checked) picking.picks.add(c.dataset.pick); else picking.picks.delete(c.dataset.pick);

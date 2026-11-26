@@ -1464,6 +1464,14 @@
     const TRIGGER = { 'turn-end': 'Turn ended', mcp: 'Asked by the agent', recheck: 'Re-checked' };
     const supEngines = () => (S.sup.data && S.sup.data.engines && S.sup.data.engines.length ? S.sup.data.engines : SUP_FALLBACK_ENGINES);
     const supSettings = () => S.sup.draft || Object.assign({}, SUP_DEFAULT, (S.sup.data && S.sup.data.settings) || {});
+    /** The kinds of notice that may reach the phone (settings.notify); a key the server adds that is not listed shows under its own name. */
+    const NOTIFY_KINDS = [
+        ['workDone', 'A work item I started is done'],
+        ['workAttention', 'A work item needs me (a question for me, or it stopped)'],
+        ['maintenance', 'Fleet maintenance reports (daily checks and cleanup)'],
+        ['usage', 'Usage and cost flags']
+    ];
+    const notifyRows = (n) => NOTIFY_KINDS.concat(Object.keys(n || {}).filter((k) => !NOTIFY_KINDS.some((x) => x[0] === k)).map((k) => [k, k])).map(([k, t]) => `<label class="cd-opt"><input type="checkbox" data-sup="notify.${esc(k)}"${n && n[k] === true ? ' checked' : ''}><span>${esc(t)}</span></label>`).join('');
     const supReviews = () => (S.sup.data && Array.isArray(S.sup.data.reviews) ? S.sup.data.reviews : []);
     const supReview = (id) => supReviews().find((r) => String(r.id) === String(id)) || null;
     /** The rule violations a review still has open (its rule check at turn end: check scripts + the Supervisor's judgement). */
@@ -1687,6 +1695,9 @@
             <label><span>Verify a restart wait after (minutes):</span><input type="text" data-sup="maxAskMinutes" value="${esc(st.maxAskMinutes == null ? '' : st.maxAskMinutes)}" inputmode="numeric" autocomplete="off" placeholder="Ask the Supervisor to verify a restart wait after N minutes"></label>
             <label class="cd-top"><span>Yozora repositories to watch:</span><textarea data-sup="yozoraRepos" rows="3" spellcheck="false" placeholder="owner/repo, one per line">${esc(Array.isArray(st.yozoraRepos) ? st.yozoraRepos.join('\n') : String(st.yozoraRepos || ''))}</textarea></label>
             <p class="mmc-hint">An open issue labelled fleet in these repositories joins the Work Queue by itself.</p>
+            <h4 class="cd-sup-sub">Notifications to the phone</h4>
+            ${notifyRows(st.notify)}
+            <p class="mmc-hint">Off by default for anything new; routine alerts always go to the Supervisor.</p>
             <h4 class="cd-sup-sub">Models and effort</h4>
             <table class="cd-table cd-policy"><thead><tr><th>Job</th><th>Default</th><th>Maximum</th></tr></thead><tbody>${POLICY_JOBS.map(([job, label]) => {
                 const r = (st.modelPolicy && st.modelPolicy[job]) || POLICY_FALLBACK[job];
@@ -1806,7 +1817,8 @@
                         if (row) { row.hidden = false; const t = row.querySelector('input'); if (t) t.focus(); }
                         return;
                     }
-                    d[key === 'modelOther' ? 'model' : key] = el.type === 'checkbox' ? el.checked : el.value;
+                    if (key.startsWith('notify.')) d.notify = Object.assign({}, d.notify, { [key.slice(7)]: el.checked });
+                    else d[key === 'modelOther' ? 'model' : key] = el.type === 'checkbox' ? el.checked : el.value;
                     S.sup.draft = d;
                     if (key === 'engine') {
                         // the model list follows the engine
@@ -5448,7 +5460,7 @@
                 if (d.ruleCheck !== undefined) extra.ruleCheck = !!d.ruleCheck;
                 if (d.reviewScope) extra.reviewScope = d.reviewScope === 'all' ? 'all' : 'supervised';
                 if (String(d.maxAskMinutes == null ? '' : d.maxAskMinutes).trim() !== '') extra.maxAskMinutes = Math.max(1, Math.min(1440, Math.round(Number(d.maxAskMinutes)) || 15));
-                await supAct(c, { action: 'save', settings: Object.assign(extra, { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), effort: d.effort || '', delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, modelPolicy: d.modelPolicy || undefined, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) }) }, 'Saving...');
+                await supAct(c, { action: 'save', settings: Object.assign(extra, { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), effort: d.effort || '', delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, modelPolicy: d.modelPolicy || undefined, notify: d.notify && typeof d.notify === 'object' ? Object.keys(d.notify).reduce((o, k) => { o[k] = d.notify[k] === true; return o; }, {}) : undefined, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) }) }, 'Saving...');
                 return true;
             }
             case 'sup-send': {

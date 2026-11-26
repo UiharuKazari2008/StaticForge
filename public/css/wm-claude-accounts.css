@@ -280,3 +280,7 @@
 .wm-claude-accounts .wca-dash .wca-k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wm-claude-accounts .wca-cut { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wm-claude-accounts .wca-dash .wca-kv-use { grid-template-columns: calc(70 * var(--wm-px)) minmax(0, 1fr); }
+
+/* Dashboard > Notifications: the shell's .wm-check box per kind of notice; a tap saves at once */
+.wm-claude-accounts .wca-nts { padding: calc(2 * var(--wm-px)) calc(5 * var(--wm-px)); }
+.wm-claude-accounts .wca-nt-hint { padding: 0 calc(5 * var(--wm-px)) calc(4 * var(--wm-px)); }

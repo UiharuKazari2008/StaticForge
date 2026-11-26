@@ -134,7 +134,10 @@ function snapshot(gr, deps) {
         live: live.length, busy: live.filter((s) => s.status === 'busy').length, gaps, flags: flagSum.open || 0, holds: holdList.length, restartWaits
     };
     const flags = (flagSum.items || []).slice(0, 8).map((f) => ({ id: f.id, title: cut(f.title, 120), reason: cut(f.reason, 200), text: cut(f.text, 240), sessionId: f.sessionId || '', at: f.at || null }));
-    return { work, unsupervised, counts, calls: coord ? callWindows(coord) : { today: { calls: 0, cost: 0 }, week: { calls: 0, cost: 0 }, month: { calls: 0, cost: 0 } }, flags };
+    // which kinds of notice reach the phone (the Supervisor's settings().notify, a map of kind -> bool)
+    let notify = {};
+    try { const nn = sup.settings(gr).notify; if (nn && typeof nn === 'object') Object.keys(nn).forEach((k) => { notify[k] = nn[k] === true; }); } catch (_) { notify = {}; }
+    return { work, unsupervised, counts, notify, calls: coord ? callWindows(coord) : { today: { calls: 0, cost: 0 }, week: { calls: 0, cost: 0 }, month: { calls: 0, cost: 0 } }, flags };
 }
 
 module.exports = { snapshot };

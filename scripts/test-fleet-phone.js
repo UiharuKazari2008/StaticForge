@@ -23,6 +23,7 @@ const stub = {
         W({ id: 3, title: 'Old', state: 'failed', endedAt: now - 3 * 86400000, createdAt: now - 3 * 86400000 })
     ],
     listHolds: () => [{ id: 1, sessionId: 'sess-a', mode: 'hold', reason: 'because' }],
+    settings: () => ({ notify: { workDone: true, workAttention: true, maintenance: false, usage: false, extra: 1 } }),
     summary: () => ({ open: 2 }),
     sessionTasks: () => ({ list: () => ({ tasks: [{ text: 'done one', done: true }, { text: 'doing this', done: false }], counts: { tasksDone: 1, tasksTotal: 2 } }) })
 };
@@ -44,7 +45,7 @@ const live = [
     { id: 'sess-c', status: 'idle', cwd: '/x/old', startedAt: now - 9 * 3600000, title: 'C' }
 ];
 const s = f.snapshot(null, { live });
-assert.deepStrictEqual(Object.keys(s).sort(), ['calls', 'counts', 'flags', 'unsupervised', 'work'].sort());
+assert.deepStrictEqual(Object.keys(s).sort(), ['calls', 'counts', 'flags', 'notify', 'unsupervised', 'work'].sort());
 assert.deepStrictEqual(s.work.map((w) => w.id), [5, 4, 6], 'open first, old ended dropped');
 const p = s.work[0];
 assert.strictEqual(p.issue, 'StaticForge#1198 +1');
@@ -65,9 +66,12 @@ assert.deepStrictEqual(s.calls.today.calls, 1);
 assert.deepStrictEqual(s.calls.week, { calls: 2, cost: 0.75 });
 assert.strictEqual(s.calls.month.calls, 3);
 assert.strictEqual(s.flags[0].id, 'f1');
+assert.deepStrictEqual(s.notify, { workDone: true, workAttention: true, maintenance: false, usage: false, extra: false }, 'notify map is booleans, only true counts');
 
 // a failing source does not break the snapshot
 stub.listWork = () => { throw new Error('boom'); };
 const s2 = f.snapshot(null, { live: [] });
 assert.deepStrictEqual(s2.work, []);
+stub.settings = () => { throw new Error('boom'); };
+assert.deepStrictEqual(f.snapshot(null, { live: [] }).notify, {});
 console.log('fleet phone feed: ok');
