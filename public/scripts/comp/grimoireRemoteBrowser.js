@@ -581,7 +581,8 @@ const grimoireSlot = (function () {
         control: grimoireSlotControl,
         destroy: grimoireSlotsDestroy,
         isSlotFrame: (frame) => !!grimoireSlotByFrame(frame),
-        settled: grimoireFrameSettled
+        settled: grimoireFrameSettled,
+        makeFrame: grimoireSlotMakeFrame
     };
 })();
 // grimoireTabs.js and grimoireIeChrome.js call it
@@ -3065,7 +3066,7 @@ grimoireRemoteOpen.land = function (at, host, webUrl, payload, opts) {
     if (shared) grimoireSlot.sync(host);
     // its own iframe: no moveBefore, the local Alchemy, a standalone window, a window that gave the frame up
     if (!shared || (at.front && !grimoireRemoteFrame(target))) {
-        const frame = grimoireSlotMakeFrame(payload.viewUrl);
+        const frame = grimoireSlot.makeFrame(payload.viewUrl);
         target.displayArea.appendChild(frame);
         if (!at.front) {
             // a viewer that connects behind another tab is not captured (#756); its 'ready' says so too (grimoireBackgroundRemoteMessage)
