@@ -83,9 +83,18 @@ function recordAttempt(deviceId, code, state, attempts, info, gaveUp) {
     record(deviceId, code, state, JSON.stringify(d));
 }
 
+/**
+ * The phone's app version: the device row's app string when it carries +<code>, else what its background service
+ * reported at its last hello. The row holds whichever socket said hello last, and the page's hello says only
+ * "Dreamscape", so a release built while the page was the last to speak would otherwise find version 0 and skip it.
+ */
 function versionOf(deviceId) {
     const row = ctx.as.deviceRow(ctx.globalResources, deviceId);
-    return parseApp(row && row.app);
+    const have = parseApp(row && row.app);
+    if (have.versionCode > 0) return have;
+    let kept = null;
+    try { kept = typeof ctx.builds.deviceVersionOf === 'function' ? ctx.builds.deviceVersionOf(deviceId) : null; } catch (_) { kept = null; }
+    return kept || have;
 }
 
 // ---------------------------------------------------------------- the APK to the phone's temporary folder

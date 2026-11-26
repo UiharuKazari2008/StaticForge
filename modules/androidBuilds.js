@@ -149,6 +149,12 @@ function recordDeviceVersion(deviceId, info) {
     saveSoon();
 }
 
+/** The version a phone's background service reported at its last hello ({ versionCode, versionName } | null). */
+function deviceVersionOf(deviceId) {
+    const d = index.devices[String(deviceId || '')];
+    return d && d.versionCode > 0 ? { versionCode: d.versionCode, versionName: d.versionName || '' } : null;
+}
+
 function maxReportedVersionCode() {
     let max = 0;
     for (const d of Object.values(index.devices)) if (d && d.versionCode > max) max = d.versionCode;
@@ -668,7 +674,7 @@ function closeSocket() {
 loadIndex();
 
 module.exports = {
-    mount, events, latestRelease, releaseApkPath, recordDeviceVersion, recordDelivery, deliveryOf, maxReportedVersionCode,
+    mount, events, latestRelease, releaseApkPath, recordDeviceVersion, recordDelivery, deliveryOf, deviceVersionOf, maxReportedVersionCode,
     _test: {
         setRoot(dir) { T.root = dir; loadIndex(); },
         setExec(fn) { T.exec = fn; },

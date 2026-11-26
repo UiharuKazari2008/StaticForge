@@ -28,7 +28,8 @@ function world() {
         recordDeviceVersion: (id, v) => reported.push({ id, ...v }),
         recordDelivery: (id, versionCode, st, detail) => { deliveries.set(id, { versionCode, state: st, at: Date.now(), detail }); log.push(`${id}:${versionCode}:${st}`); },
         deliveryOf: (id) => deliveries.get(id) || null,
-        maxReportedVersionCode: () => 0
+        maxReportedVersionCode: () => 0,
+        deviceVersionOf: (id) => { const r = reported.filter((x) => x.id === id).pop(); return r ? { versionCode: r.versionCode, versionName: r.versionName } : null; }
     };
     const as = {
         onDeviceHello: (fn) => taps.push(fn),
@@ -251,6 +252,26 @@ const hello = (w, extra = {}) => w.taps[0]({ id: dev, speaker: 'service', sessio
         assert.strictEqual(JSON.parse(w2.deliveries.get(dev).detail).gaveUp, true);
         console.log('ok  cap: 3 attempts per versionCode (restart-cut counts), gaveUp, never again; a new release starts again');
         h.stop();
+    }
+    // the page's hello overwrites the row's app string with plain "Dreamscape": a release built after it still
+    // finds the version the background service reported
+    {
+        push._test.resetForTests();
+        const w = world();
+        let latest = null;
+        w.androidBuilds.latestRelease = () => latest;
+        push.start({}, { activeSync: w.as, androidBuilds: w.androidBuilds, sendFile: w.sendFile });
+        w.rows.set(dev, { app: 'Dreamscape/1.0.100+100' });
+        w.online.set(dev, 'partner');
+        hello(w); await settle();
+        w.rows.set(dev, { app: 'Dreamscape' });
+        hello(w, { speaker: 'page', ops: [] }); await settle();
+        assert.strictEqual(w.sends.length, 0, 'nothing before a release');
+        latest = w.release;
+        w.androidBuilds.events.emit('release', w.release); await settle();
+        assert.strictEqual(w.sends.length, 1, 'the release reaches the phone whose page spoke last');
+        assert.strictEqual(w.deliveries.get(dev).state, 'staged');
+        console.log('ok  page hello last: the release still goes by the service-reported version');
     }
     console.log('all passed');
 })().catch((error) => { console.error(error); process.exit(1); });
