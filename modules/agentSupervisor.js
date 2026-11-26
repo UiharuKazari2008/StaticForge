@@ -1126,8 +1126,22 @@ async function deliver(rv, s, opts = {}) {
  * reviewed again. After three kicks without progress the rest goes to a fresh started item. Rides the 10-minute issue
  * pull timer that runs anyway: no timer of its own.
  */
-const STALL_MS = 20 * 60000;
-const STALL_KICK_MS = 30 * 60000;
+// An item is stalled the moment its state is plain (Yukimi, Nov 26 2026: "20 minutes is extremely too long, there is a clear
+// indicator"): session alive but idle (no turn), no background agents or shells, no open wait, hold or queued review - two
+// minutes after its last review it is acted on. The check runs for that one session two minutes after each turn ends or its
+// review lands (a one-shot timer per idle session, cleared when it works again), and the 10-minute sweep stays as the backstop.
+const STALL_MS = envMs0('AGENT_SUPERVISOR_STALL_MS', 2 * 60000);
+const STALL_KICK_MS = envMs0('AGENT_SUPERVISOR_STALL_KICK_MS', 5 * 60000);
+function envMs0(k, d) { const v = Number(process.env[k]); return v > 0 ? v : d; }
+const stallTimers = new Map(); // session id -> timer
+function scheduleStallCheck(sessionId, ms = STALL_MS + 5000) {
+    if (!sessionId) return;
+    clearTimeout(stallTimers.get(sessionId));
+    const t = setTimeout(() => { stallTimers.delete(sessionId); try { sweepStalled(Date.now(), sessionId); } catch (e) { console.warn(`[supervisor] stall check: ${e.message}`); } }, ms);
+    if (t.unref) t.unref();
+    stallTimers.set(sessionId, t);
+}
+function cancelStallCheck(sessionId) { clearTimeout(stallTimers.get(sessionId)); stallTimers.delete(sessionId); }
 const stallKicks = new Map(); // work id -> { at, n, reviewId }
 
 // ---- the Sent Back lifecycle (#1256): item 127 sat Sent Back for 15 hours with its session gone and nothing noticed.
@@ -1136,8 +1150,8 @@ const stallKicks = new Map(); // work id -> { at, n, reviewId }
 // did not take it) is parked: Input Required with its open gaps as questions, a comment on its issue and the phone notice every
 // Input Required item gets. A parked item whose session sits idle for PARK_CLOSE_MS has the session closed (it resumes when the item goes on).
 const envMs = (k, d) => { const v = Number(process.env[k]); return v > 0 ? v : d; };
-const sentBackReviewMs = () => envMs('AGENT_SUPERVISOR_SENT_BACK_REVIEW_MS', 60 * 60000);
-const sentBackParkMs = () => envMs('AGENT_SUPERVISOR_SENT_BACK_PARK_MS', 120 * 60000);
+const sentBackReviewMs = () => envMs('AGENT_SUPERVISOR_SENT_BACK_REVIEW_MS', 10 * 60000);
+const sentBackParkMs = () => envMs('AGENT_SUPERVISOR_SENT_BACK_PARK_MS', 45 * 60000);
 const parkCloseMs = () => envMs('AGENT_SUPERVISOR_PARK_CLOSE_MS', 60 * 60000);
 /** "45 min", "2 h", "2 h 10 min". */
 function ageText(ms) {
@@ -1192,11 +1206,11 @@ function sweepGone(w, now, live, waits) {
     }
     return sessionEnded(sid, { gone: true }) ? 1 : 0;
 }
-function sweepStalled(now = Date.now()) {
+function sweepStalled(now = Date.now(), onlySession = null) {
     let kicked = 0;
     let rows = [];
-    try { rows = db().prepare("SELECT * FROM supervisor_work WHERE state IN ('running','waiting') AND session_id IS NOT NULL").all(); } catch (_) { return 0; }
-    closeParkedSoon(now);
+    try { rows = onlySession ? db().prepare("SELECT * FROM supervisor_work WHERE state IN ('running','waiting') AND session_id = ?").all(onlySession) : db().prepare("SELECT * FROM supervisor_work WHERE state IN ('running','waiting') AND session_id IS NOT NULL").all(); } catch (_) { return 0; }
+    if (!onlySession) closeParkedSoon(now);
     if (!rows.length) return 0;
     const live = liveSessionsById();
     const waiting = new Set(openWaits().map((x) => x.work_id));
@@ -2365,6 +2379,8 @@ function commentIssue(w, text) {
  */
 async function workAfterReview(rv, opts = {}) {
     if (!rv || !rv.sessionId) return;
+    // whatever this review decides, the item is checked again two minutes on: still idle with nothing in flight = stalled
+    if (!sessionBusy(rv.sessionId)) scheduleStallCheck(rv.sessionId);
     let w = db().prepare(`SELECT * FROM supervisor_work WHERE session_id = ? AND state IN (${ACTIVE.map(() => '?').join(',')})`).get(rv.sessionId, ...ACTIVE);
     if (!w) {
         // a done / failed item whose session worked again: a review that finds more to do reopens it; an ok one leaves it done
@@ -4162,7 +4178,8 @@ function scan(first) {
         // a turn ended: reviewed once it stays ended for a while (a session that is idle for a moment between a message
         // and the next, or while a queued message lands, is still in its turn)
         // (the login check of a finished turn runs with the Supervisor off too: Yukimi's own sessions move off an expired account)
-        if (!first && prev === 'busy' && now !== 'busy') settleThenReview(r.sessionId);
+        if (!first && prev === 'busy' && now !== 'busy') { settleThenReview(r.sessionId); scheduleStallCheck(r.sessionId); }
+        if (!first && prev !== 'busy' && now === 'busy') cancelStallCheck(r.sessionId);
         // idle at server start and stuck on "Login expired": moved now
         if (first && now !== 'busy') loginTurn(r.sessionId).catch(() => {});
         // a turn that ended while the server was down (a restart): an idle reviewable session whose transcript moved
