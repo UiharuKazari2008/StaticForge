@@ -373,5 +373,34 @@ const nameC = `${ymd(T + 45000)} ${hm(T + 45000)} Artist C - Song C`;
     await recorder._test.resume();
     await until(() => spoolNames().length === 3 && recorder.held().find((h) => h.rid === r8.rid && h.state === 'assembled'), 'assembled by the resume');
     console.log('ok 8 - resume assembles a recording that cannot carry on');
+
+    // 9. the stop guard: a recording whose time is up ends and assembles even when no further segment arrives (Yukimi, Nov 26
+    //    2026: the stop tests lived only inside appendSeg, so a stalled pump let a recording run for hours past its end time),
+    //    and the deck carries the splits a running recording will be cut into, with the metadata of each cut
+    wipe();
+    const r9 = await startRec({ mode: 'song', kind: 'timer', until: Date.now() + 1500 });
+    for (let i = 0; i < 4; i++) emitSeg(pumps[0], i);
+    await recorder._test.recs.get(r9.rid).write;
+    const d9 = recorder.deck().recordings.find((x) => x.rid === r9.rid);
+    assert.deepStrictEqual(d9.cuts.map((c) => [c.a, c.t, c.done]), [['Artist A', 'Song A', true], ['Artist B', 'Song B', true], ['Artist C', 'Song C', false]], 'the split points and which of them the recording has passed');
+    assert.strictEqual(typeof d9.stalled, 'number', 'the deck says how long since a segment was written');
+    assert.strictEqual(d9.stuckSeq, null, 'nothing is holding it');
+    assert.strictEqual(d9.holes, 0);
+    await new Promise((r) => setTimeout(r, 1700)); // its time is up now, and no segment arrives (the stalled pump)
+    assert.ok(recorder._test.recs.has(r9.rid), 'nothing else ended it: that is the guard\'s job');
+    assert.ok(recorder._test.stopCheckArmed(), 'the guard runs while recordings do');
+    await recorder._test.stopCheck();
+    await until(() => recorder.held().find((h) => h.rid === r9.rid && h.state === 'assembled'), 'stopped and assembled by the guard');
+    assert.strictEqual(recorder._test.recs.has(r9.rid), false, 'a recording past its time does not keep running');
+    assert.deepStrictEqual(spoolNames().map((j) => j.name), [nameA], 'what it held is assembled and filed');
+    // a recording whose time is not up is left alone by the guard
+    const r9b = await startRec({ mode: 'song', kind: 'timer', until: Date.now() + 3600000 });
+    for (let i = 0; i < 4; i++) emitSeg(pumps[pumps.length - 1], i);
+    await recorder._test.recs.get(r9b.rid).write;
+    await recorder._test.stopCheck();
+    await new Promise((r) => setTimeout(r, 60));
+    assert.ok(recorder._test.recs.has(r9b.rid), 'a recording with time left carries on');
+    await recorder.stop(r9b.rid);
+    console.log('ok 9 - the stop guard ends a recording whose time is up with no segment arriving; the deck carries its splits');
     console.log('test-xmradio-assembly: ok');
 })().catch((err) => { console.error(err); process.exitCode = 1; }).finally(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* gone */ } setTimeout(() => process.exit(process.exitCode || 0), 50); });

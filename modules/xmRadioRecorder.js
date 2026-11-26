@@ -335,7 +335,35 @@ function durationOf(hash) {
     return p;
 }
 
-/** A tape's recordings in order: [{ id, name, size, at, dur (s) }]. */
+/**
+ * A file's own tags (the ones fileCut / fileLong wrote: title, artist, and the show out of the comment's "; show: "), read
+ * once per file content and kept in this process. A file whose tags cannot be read answers empty text, never throws: the
+ * console shows the name it has.
+ */
+const fileTags = new Map();
+function tagsOf(hash) {
+    if (fileTags.has(hash)) return fileTags.get(hash);
+    const p = new Promise((resolve) => {
+        let file;
+        try { file = gr.getVfsManager().getFileBlobPath(hash); } catch (_) { resolve({ title: '', artist: '', show: '' }); return; }
+        const pr = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format_tags=title,artist,comment', '-of', 'json', file], { stdio: ['ignore', 'pipe', 'ignore'] });
+        let out = '';
+        pr.stdout.on('data', (d) => { out += d; });
+        pr.on('error', () => resolve({ title: '', artist: '', show: '' }));
+        pr.on('exit', () => {
+            let t = {};
+            try { const j = JSON.parse(out); t = (j && j.format && j.format.tags) || {}; } catch (_) { t = {}; }
+            const comment = String(t.comment || '');
+            const show = /;\s*show:\s*([^;]*)/.exec(comment);
+            resolve({ title: String(t.title || ''), artist: String(t.artist || ''), show: show ? show[1].trim() : '' });
+        });
+    });
+    fileTags.set(hash, p);
+    if (fileTags.size > 4000) fileTags.delete(fileTags.keys().next().value);
+    return p;
+}
+
+/** A tape's recordings in order: [{ id, name, size, at, dur (s), title, artist, show }]. */
 async function tracks(workspaceId, name) {
     const f = await tapeFolder(workspaceId, name, false);
     if (!f) return [];
@@ -344,7 +372,10 @@ async function tracks(workspaceId, name) {
     const list = (files || []).filter((x) => !x.trashed_at && /\.(m4a|aac|mp3)$/i.test(x.original_name || ''))
         .sort((a, b) => String(a.original_name).localeCompare(String(b.original_name), undefined, { numeric: true }));
     const out = [];
-    for (const x of list) out.push({ id: x.id, name: x.original_name, size: x.size, at: x.created_at, dur: await durationOf(x.content_hash) });
+    for (const x of list) {
+        const tags = await tagsOf(x.content_hash);
+        out.push(Object.assign({ id: x.id, name: x.original_name, size: x.size, at: x.created_at, dur: await durationOf(x.content_hash) }, tags));
+    }
     return out;
 }
 
@@ -701,6 +732,43 @@ function stopMetaTimer() {
     metaRead.clear();
 }
 
+/*
+ * The stop guard (Yukimi, Nov 26 2026). The stop tests (`until`, `endPdt`, MAX_MS) used to live only inside `appendSeg`, so
+ * they ran only when a segment arrived: a pump that could not fetch a segment held the recording for hours past its own end
+ * time, and nothing ended it. One timer runs while any recording does (no interval; re-armed, unref'd, cleared with the last
+ * recording) and ends the ones whose time is up, exactly as appendSeg would. It also tells the deck when a recording crosses
+ * into "writing nothing" and back, so the console shows a stalled recording instead of numbers that stopped moving.
+ */
+const STOP_CHECK_MS = 30000;
+const STALL_PUSH_S = 60;
+let stopCheckHandle = null;
+function armStopCheck() {
+    clearTimeout(stopCheckHandle);
+    stopCheckHandle = null;
+    if (role === 'library' || shuttingDown || !recs.size) return;
+    stopCheckHandle = setTimeout(() => { stopCheckHandle = null; void stopCheck(); }, STOP_CHECK_MS);
+    if (stopCheckHandle.unref) stopCheckHandle.unref();
+}
+async function stopCheck() {
+    if (shuttingDown) return;
+    const now = Date.now();
+    let push = false;
+    for (const rec of [...recs.values()]) {
+        const m = rec.meta;
+        const due = (m.until && now >= m.until) || (m.endPdt && rec.lastEnd >= m.endPdt) || (rec.lastEnd && rec.lastEnd - m.startPdt >= MAX_MS);
+        if (due) {
+            console.log(`[xmRadio rec] ${m.rid}: its time is up; stopping it and assembling what it holds`);
+            void stop(m.rid);
+            continue;
+        }
+        const stalled = rec.lastSegAt ? Math.round((now - rec.lastSegAt) / 1000) : 0;
+        const is = stalled >= STALL_PUSH_S;
+        if (is !== !!rec.stalledPushed) { rec.stalledPushed = is; push = true; }
+    }
+    if (push) changed();
+    armStopCheck();
+}
+
 /**
  * The cuts of a recording's channel as the store has them (names that outlive lookAround's short window), over what
  * lookAround gave the recording itself; rec.cuts stays as the fallback and keeps a name the store has not got yet.
@@ -790,6 +858,7 @@ function appendSeg(rec, sg) {
     const row = { seq: sg.seq, pdt: sg.pdt, dur: sg.dur, f, ok: false };
     rec.segs.push(row);
     rec.lastEnd = sg.pdt + sg.dur * 1000;
+    rec.lastSegAt = Date.now(); // the console's stalled marker counts from here
     rec.meta.written = (rec.meta.written || 0) + 1;
     rec.write = rec.write.then(async () => {
         await fs.promises.writeFile(path.join(rec.dir, f), sg.plain);
@@ -865,7 +934,12 @@ function healthOf(rec) {
     return {
         state, segsWritten: m.written || held, segsExpected: mean ? Math.max(held, Math.round((rec.lastEnd - base) / 1000 / mean)) : 0, held,
         gaps, gapSeconds: Math.round(gaps.reduce((t, g) => t + (g.to - g.from), 0) / 1000),
-        refetches: m.refetches || 0, pauses: m.pauses || 0, behindS: ps ? ps.behindS : 0, bufferSegs: ps ? ps.bufferSegs : 0
+        refetches: m.refetches || 0, pauses: m.pauses || 0, behindS: ps ? ps.behindS : 0, bufferSegs: ps ? ps.bufferSegs : 0,
+        // how long since a segment was last written (the console's stalled marker: a recording that is not writing audio is
+        // not quietly fine), and the segment that is holding it, with what the pump says about it
+        stalled: rec.lastSegAt ? Math.max(0, Math.round((Date.now() - rec.lastSegAt) / 1000)) : 0,
+        holes: ps ? Number(ps.holes) || 0 : 0,
+        stuckSeq: ps && ps.stuckSeq != null ? ps.stuckSeq : null
     };
 }
 
@@ -1276,7 +1350,7 @@ async function startRec(opts, entry) {
             since: now, until: Math.min(now + MAX_MS, Number(opts.until) || now + MAX_MS), startPdt: now - back * 1000, cursor: 0, filed: 0,
             endPdt: Number(opts.endPdt) || 0, rangeCut: opts.rangeCut || null, fromCut: Number(opts.fromCut) || 0
         };
-        const rec = { meta, dir, segs: [], gaps: [], cuts: [], lastEnd: 0, write: Promise.resolve(), pump: null };
+        const rec = { meta, dir, segs: [], gaps: [], cuts: [], lastEnd: 0, write: Promise.resolve(), pump: null, lastSegAt: now };
         // what an assembly needs to know about the recording if the state file no longer does (a restart, a re-assembly days on)
         writeJson(path.join(dir, 'meta.json'), meta).catch(() => {});
         const np = xm.nowPlayingCuts(channelId);
@@ -1300,6 +1374,7 @@ async function startRec(opts, entry) {
         // song mode starts at the cut in force (an alert's cut from its first frame)
         if (meta.mode === 'song' && opts.fromCut) meta.cursor = opts.fromCut;
         xm.watch('rec', true);
+        armStopCheck();
         changed();
         return rec;
     } finally {
@@ -1528,8 +1603,20 @@ function describe(rec) {
         // how far it reached back behind live when it started (s: "from the start" of the song on air)
         back: Math.max(0, Math.round((m.since - (m.startPdt || m.since)) / 1000)),
         filed: m.filed || 0, url: `/api/xmradio/rec/${m.rid}/index.m3u8`,
-        cut: cur ? { a: cur.a, t: cur.t, s: cur.s, ad: !!cur.ad } : null
+        cut: cur ? { a: cur.a, t: cur.t, s: cur.s, ad: !!cur.ad } : null,
+        // the cuts this recording is split into, from the durable store: what its tape will hold, and how far it has got
+        // (a recording's split is the whole point of the metadata store, and it is readable while it still records)
+        cuts: splitCuts(rec)
     }, healthOf(rec));
+}
+
+/** The cuts a recording covers as its split points: [{ at, a, t, s, ad, done }], oldest first, capped. */
+function splitCuts(rec) {
+    const first = (rec.meta && rec.meta.startPdt) || (rec.segs && rec.segs[0] && rec.segs[0].pdt) || 0;
+    let list;
+    try { list = cutsFor(rec); } catch (_) { return []; }
+    return list.filter((c) => !first || c.at >= first - 5000).slice(0, 200)
+        .map((c) => ({ at: c.at, a: c.a || '', t: c.t || '', s: c.s || '', ad: !!c.ad, done: !!rec.lastEnd && rec.lastEnd >= c.at }));
 }
 
 /** The virtual radios as the dispatcher sees them: slot 1..count, signed in or not, and what streams on each. */
@@ -1910,6 +1997,8 @@ async function shutdown() {
         rec.meta.resumeSeq = last ? last.seq + 1 : null;
     }
     stopMetaTimer();
+    clearTimeout(stopCheckHandle);
+    stopCheckHandle = null;
     clearTimeout(expiryHandle);
     expiryHandle = null;
     clearTimeout(keepHandle);
@@ -1992,7 +2081,7 @@ async function resume() {
         const dir = path.join(recRoot(), meta.rid);
         const disk = await readRecDisk(dir);
         const last = disk.segs[disk.segs.length - 1];
-        const rec = { meta, dir, segs: disk.segs, gaps: disk.gaps, cuts: disk.cuts, lastEnd: last ? last.pdt + last.dur * 1000 : 0, write: Promise.resolve(), pump: null };
+        const rec = { meta, dir, segs: disk.segs, gaps: disk.gaps, cuts: disk.cuts, lastEnd: last ? last.pdt + last.dur * 1000 : 0, write: Promise.resolve(), pump: null, lastSegAt: Date.now() };
         if (meta.written == null) meta.written = rec.segs.length;
         recs.set(meta.rid, rec);
         adoptEntry(meta);
@@ -2011,7 +2100,7 @@ async function resume() {
         delete meta.resumeAt; delete meta.resumeSeq;
         console.log(`[xmRadio rec] ${meta.rid}: resumed (${meta.kind}, ${gap} s to catch up${stored ? ', at the stored segment' : ''})`);
     }
-    if (recs.size) { xm.watch('rec', true); armMetaTimer(); }
+    if (recs.size) { xm.watch('rec', true); armMetaTimer(); armStopCheck(); }
     // a started entry whose recording is not back has ended with the process
     for (const e of s.running.slice()) if (!recs.has(e.rid)) retire(e, 'done', 'Ended while the recorder was down');
     changed();
@@ -2060,5 +2149,5 @@ function tapeRenamed(workspaceId, from, to) {
 
 module.exports = {
     init, library, tapeRenamed, saveNow, shutdown, importSpool, spoolList, spoolDir: () => spoolDir(), recRoot: () => recRoot(), start, stop, recordCut, recordChannel, recordRange, queueList: queuePublic, queueRemove, queueClear, cancel, setSettings, slotsChanged, dispatch, assemble, held, heldDelete: removeHeld, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
-    _test: { adtsFrames, nextStart, cutAt, norm, onLook, onAirCut, matchOnAir, sliceAac, silenceFrame, recs, ended, assembling, resume, sweepExpired, armKeep, keepArmed: () => !!keepHandle, readRecDisk, fireTimers, makeEntry, freeSlots, load: () => load(), reset: () => { st = null; clearTimeout(expiryHandle); expiryHandle = null; reserved.clear(); stopMetaTimer(); cutStore._test.reset(''); recs.clear(); ended.clear(); assembling.clear(); clearTimeout(keepHandle); keepHandle = null; fired.clear(); shuttingDown = false; } }
+    _test: { adtsFrames, nextStart, cutAt, norm, onLook, onAirCut, matchOnAir, sliceAac, silenceFrame, recs, ended, assembling, resume, sweepExpired, armKeep, keepArmed: () => !!keepHandle, stopCheck, stopCheckArmed: () => !!stopCheckHandle, readRecDisk, fireTimers, makeEntry, freeSlots, load: () => load(), reset: () => { st = null; clearTimeout(expiryHandle); expiryHandle = null; reserved.clear(); stopMetaTimer(); cutStore._test.reset(''); recs.clear(); ended.clear(); assembling.clear(); clearTimeout(keepHandle); keepHandle = null; fired.clear(); shuttingDown = false; } }
 };

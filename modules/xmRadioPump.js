@@ -9,7 +9,7 @@
  *   pump.on('error', (err) => ...)        a fatal stop (signed out, the channel left the plan; persistent: the plan only)
  *   pump.on('gap', ({ from, to }) => ...) audio that left SiriusXM's window before it was fetched (ms): a hole, never spliced
  *   pump.on('pause' | 'refetch' | 'state') a pause began (the buffer ran thin), a segment was fetched again, the state changed
- *   pump.stats()                          { state, bufferSegs, behindS, paused, pauses, refetches, caughtUp }
+ *   pump.stats()                          { state, bufferSegs, behindS, paused, pauses, refetches, holes, stuckSeq, stuckS, caughtUp }
  *   pump.start({ back: 0, from? })        back: start this many seconds behind live; from (ms): carry on exactly there (a
  *                                         recording that resumes: audio missing since then is a gap, not a silent skip)
  *   pump.stop()                           stops pulling new segments; awaits one already being fetched, so a recorder
@@ -19,6 +19,13 @@
  * whole segments (the newest ones wait until that many newer ones exist), so a stall at the live edge cannot cost audio. A
  * segment is verified before it is handed on (Content-Length, AES, ADTS frames to the last byte) and fetched again by the same
  * address when it fails (the same URL is the same bytes). Audio that left the window before it was fetched is a `gap`.
+ *
+ * A segment that cannot be read at all is a hole, never a hold (Yukimi, Nov 26 2026: one segment that never parses held a
+ * recording for two and a half hours - `segment 389999 failed its checks after 3 refetches` every minute, behind by hours,
+ * past its end time, nothing filed). Re-fetch attempts are bounded, and a segment that has been the next one wanted for
+ * longer than `behindSeconds` is declared a hole: the `gap` for exactly its span is emitted (marked in the assembled file,
+ * filled with silence of its length, never spliced over), `lastEnd` moves past it and the pump carries on. `holes` in
+ * `stats()` counts them. Nothing is ever skipped silently - a hole always leaves a gap and a log line.
  *
  * Read by program date-time, not sequence numbers: when SiriusXM's signed stream address expires mid-recording the
  * pump tunes again and carries on from the last instant it had, with no gap and no repeat.
@@ -154,6 +161,10 @@ function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {},
     let refetches = 0;
     let bufferSegs = 0;
     let behindS = 0;
+    let holes = 0;
+    let stuckSeq = null; // the next segment wanted, while it cannot be read (see "a segment that cannot be read at all")
+    let stuckSince = 0; // when it first failed
+    let stuckWhy = '';
     let reaching = false; // a deliberate reach-back (the start's `back`, a resume) is still being caught up: not "behind"
     let stateNow = 'buffering';
     let liveEndMs = 0; // the live edge as the last playlist read had it, and its segment length
@@ -286,7 +297,30 @@ function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {},
                     log('warn', `[xmRadioPump] ${channelId}: ${Math.round((s.pdt - lastEnd) / 1000)} s left the stream window`);
                     lastEnd = s.pdt;
                 }
-                const ok = await fetchChecked(s, c.refetchRetries);
+                if (s.seq !== stuckSeq) { stuckSeq = s.seq; stuckSince = 0; stuckWhy = ''; }
+                // the segment has held the recording for the whole "behind" budget: it cannot be read at all, so it is a
+                // hole - the gap is reported for exactly its span, lastEnd moves past it and the pump carries on
+                if (stuckSince && now() - stuckSince >= c.behindSeconds * 1000) {
+                    const to = s.pdt + (s.dur || 0) * 1000;
+                    holes += 1;
+                    ev.emit('gap', { from: s.pdt, to });
+                    ev.emit('hole', { seq: s.seq, from: s.pdt, to, why: stuckWhy });
+                    log('warn', `[xmRadioPump] ${channelId}: segment ${s.seq} could not be read (${stuckWhy || 'failed its checks'}); its ${Math.round((to - s.pdt) / 1000)} s are missing (hole ${holes})`);
+                    lastEnd = to;
+                    anchored = true;
+                    stuckSeq = null; stuckSince = 0; stuckWhy = '';
+                    continue;
+                }
+                let ok;
+                try {
+                    ok = await fetchChecked(s, c.refetchRetries);
+                } catch (err) {
+                    // the attempts are spent: the budget for giving up on it starts here (a segment that failed before keeps it)
+                    if (!stuckSince) stuckSince = now();
+                    stuckWhy = err.message;
+                    throw err;
+                }
+                stuckSeq = null; stuckSince = 0; stuckWhy = '';
                 lastEnd = s.pdt + s.dur * 1000;
                 anchored = true;
                 emitted += 1;
@@ -333,7 +367,7 @@ function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {},
     ev.channelId = channelId;
     ev.quality = quality;
     /** The buffer's health: state (buffering | recording | paused-refilling | behind), what the last read held beyond the position. */
-    ev.stats = () => ({ state: stateNow, bufferSegs, behindS, paused, pauses, refetches, caughtUp: !reaching });
+    ev.stats = () => ({ state: stateNow, bufferSegs, behindS, paused, pauses, refetches, holes, stuckSeq, stuckS: stuckSince ? Math.max(0, Math.round((now() - stuckSince) / 1000)) : 0, caughtUp: !reaching });
     return ev;
 }
 

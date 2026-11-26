@@ -245,5 +245,48 @@ const reset = (lo, hi) => { rig.lo = lo; rig.hi = hi; rig.shift = 0; rig.segFail
     await p7.stop();
     assert.strictEqual(seen7[seen7.length - 1].seq, 708);
     console.log('ok 7 - healthyBuffer is read live');
+
+    // 8. a segment that can never be read is a hole, not a hold (Yukimi, Nov 26 2026: one segment that never parsed held a
+    //    recording for two and a half hours, `failed its checks after 3 refetches` once a minute, behind by hours, nothing
+    //    filed). It is tried for the whole "behind" budget, then its span is reported as a gap and the pump carries on.
+    reset(800, 815);
+    const c8 = make({ behindSeconds: 60 });
+    const gaps8 = [];
+    const holes8 = [];
+    c8.p.on('gap', (g) => gaps8.push(g));
+    c8.p.on('hole', (h) => holes8.push(h));
+    rig.segFail.set(807, { n: 9999, keep: (len) => len - 40, declare: true }); // 807 never parses, however often it is fetched
+    c8.p.start({ back: 3600 });
+    await until(() => c8.seen.some((s) => s.seq === 806), 'the segments before it');
+    await settle();
+    assert.strictEqual(c8.p.stats().holes, 0, 'no hole while the budget for that segment still runs');
+    assert.strictEqual(c8.p.stats().stuckSeq, 807, 'the segment holding the recording is named');
+    assert.ok(rig.calls.filter((q) => q === 807).length > 1, 'it is fetched again, never silently skipped');
+    assert.ok(!c8.seen.some((s) => s.seq === 807), 'its bytes are never handed on');
+    clock += 61 * 1000; // the budget for one segment (behindSeconds) is up
+    await until(() => c8.seen.some((s) => s.seq === 808), 'the recording carries on past the segment it cannot read');
+    assert.deepStrictEqual(gaps8[gaps8.length - 1], { from: pdt(807), to: pdt(807) + SEG * 1000 }, 'the gap is exactly that segment, to the millisecond');
+    assert.deepStrictEqual([holes8[holes8.length - 1].seq, holes8[holes8.length - 1].from], [807, pdt(807)]);
+    assert.strictEqual(c8.p.stats().holes, 1);
+    assert.strictEqual(c8.p.stats().stuckSeq, null, 'nothing is holding it now');
+    await until(() => c8.seen.filter((s) => s.seq > 808).length >= 2, 'and it keeps going');
+    assert.strictEqual(c8.p.stats().holes, 1, 'the hole is counted once, not once a tick');
+    await c8.p.stop();
+
+    // 9. a segment that fails once and then reads is repaired, never a hole
+    reset(900, 915);
+    const c9 = make({ behindSeconds: 60 });
+    const gaps9 = [];
+    c9.p.on('gap', (g) => gaps9.push(g));
+    rig.segFail.set(902, { n: 1, keep: (len) => len - 40, declare: true });
+    c9.p.start({ back: 3600 });
+    await until(() => c9.seen.length === 13, 'every segment of the window');
+    await settle();
+    assert.deepStrictEqual(c9.seen.map((s) => s.seq), [900, 901, 902, 903, 904, 905, 906, 907, 908, 909, 910, 911, 912], 'nothing skipped');
+    assert.strictEqual(c9.p.stats().holes, 0, 'a repaired segment is not a hole');
+    assert.deepStrictEqual(gaps9, [], 'no gap for audio that was fetched');
+    await c9.p.stop();
+    console.log('ok 8 - a segment that cannot be read at all is a marked hole after the budget, never a stall');
+
     console.log('test-xmradio-behind: ok');
 })().catch((err) => { console.error(err); process.exitCode = 1; }).finally(() => { global.fetch = realFetch; });
