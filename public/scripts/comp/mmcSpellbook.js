@@ -185,16 +185,19 @@
             if (host && typeof host.renderToolbar === 'function') host.renderToolbar();
         }
 
-        /** Repaint only the list (typing in the find box keeps its caret); a full render next time. */
-        function repaintList(c, html) {
+        /**
+         * Repaint the list after a new search or filter (typing in the find box keeps its caret). The page is drawn
+         * again through the console's own patcher, so the list stays a node the patcher made and later data pushes
+         * still update it (a node put in by hand was left alone by every refresh: a deleted row stayed, #1266).
+         * A new search starts at the top of the list; refreshes keep their scroll position (render does that).
+         * `html` is no longer used: the page reads the same search/filter state when it is drawn.
+         */
+        function repaintList(c) {
             const pane = c.el('.mmc-result');
-            const old = pane && pane.querySelector('.mbk-page > .mmc-list');
-            if (!old) return;
-            const tmp = document.createElement('div');
-            tmp.innerHTML = html;
-            const fresh = tmp.firstElementChild;
-            if (fresh) old.replaceWith(fresh);
-            delete pane.dataset.html;
+            if (!pane || !pane.querySelector('.mbk-page > .mmc-list')) return;
+            c.render();
+            const list = pane.querySelector('.mbk-page > .mmc-list');
+            if (list && list.scrollTop) list.scrollTop = 0;
         }
 
         function dlgError(ctx, id, text) {
