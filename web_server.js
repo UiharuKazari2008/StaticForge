@@ -3518,6 +3518,10 @@ async function sendRuntimeManagedAsset(req, res, webPath, debugMode) {
         return false;
     }
     agentAssetBundle.applyServedAssetCacheHeaders(req, res);
+    // X-File-Hash names the bytes sent, not the manifest's entry: a dev-mode (staticforge_dev_mode) answer
+    // is the unminified source and claimed the compiled copy's hash, so public/sw.js refused to store it and
+    // every load went to the network (#1243). A recompile that lands before the manifest is rebuilt is the same.
+    res.setHeader('X-File-Hash', asset.hash);
     res.setHeader('X-StaticForge-Runtime-Asset', asset.optimized ? 'optimized' : 'source');
     res.setHeader('Content-Type', asset.contentType);
     const etag = `"${asset.hash}"`;
