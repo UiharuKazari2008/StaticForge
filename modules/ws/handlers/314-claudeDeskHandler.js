@@ -596,7 +596,8 @@ async function sessionDetail(gr, id) {
     }
     const cwd = (live && live.cwd) || (agentRow && agentRow.cwd) || '';
     let branch = (agentRow && agentRow.branch) || '';
-    if (!branch && cwd) { try { branch = require('child_process').execFileSync('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch (_) { branch = ''; } }
+    // through the spawn helper: a sync git here (and the fork of the whole server for it) blocked the loop (#1236)
+    if (!branch && cwd) { try { branch = (await require('../../spawnHelper').execFileText('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { timeout: 3000 })).trim(); } catch (_) { branch = ''; } }
     const agents = [];
     let metas = [];
     try { metas = (await fs.promises.readdir(path.join(d.own, 'subagents'))).filter((n) => /^agent-a[0-9a-f]+\.meta\.json$/.test(n)); } catch (_) { metas = []; }
