@@ -582,8 +582,41 @@
         }
     }
 
+    /**
+     * The phone shell (Melaton Mobile) has no Vista windows: its fault is the WM message box, the
+     * heading and the page's text with the same buttons (core: Restart now / Restart later; others:
+     * Close program / Continue). A fault before the shell is up (a load-time error) waits for
+     * wmShellReady, an event, not a poll. The report was already sent by presentProgram.
+     */
+    function openPhoneBox(state) {
+        const p = state.program;
+        const sh = root.wmShell;
+        if (!sh || typeof sh.messageBox !== 'function' || (root.document.documentElement.dataset.wmBoot && root.document.documentElement.dataset.wmBoot !== 'done')) {
+            doc.addEventListener('wmShellReady', () => {
+                if (dialogs.get(p.key) === state && !state.finished) openPhoneBox(state);
+            }, { once: true });
+            return;
+        }
+        const core = !!p.core;
+        sh.messageBox({
+            title: TEXT.caption,
+            icon: 'error',
+            text: `${TEXT.heading(p.name)}\n\n${core ? TEXT.core : TEXT.close}`,
+            modal: true,
+            cancelValue: core ? 'dismiss' : 'continue',
+            buttons: core
+                ? [{ text: TEXT.restartNow, value: 'restart-os', default: true }, { text: TEXT.restartLater, value: 'dismiss' }]
+                : [{ text: TEXT.closeButton, value: 'close', default: true }, { text: TEXT.continueButton, value: 'continue' }]
+        }).then((v) => finish(state, v || (core ? 'dismiss' : 'continue')));
+    }
+
     function openState(state) {
         dialogs.set(state.program.key, state);
+        if (isPhoneShell()) {
+            state.page = 'final';
+            openPhoneBox(state);
+            return;
+        }
         buildDialog(state);
         showPage(state, 'checking');
         try {
