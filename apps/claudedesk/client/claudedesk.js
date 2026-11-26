@@ -161,7 +161,12 @@
     const nodeSid = (id) => { const m = /^(?:t:|aw:s:|us:|mg:)(.+)$/.exec(id || ''); return m ? m[1] : ''; };
     /** The Manager Session (Supervisor settings managerSessionId): the standing session that fixes Fleet and the Supervisor. */
     const managerSid = () => String((S.sup.data && S.sup.data.settings && S.sup.data.settings.managerSessionId) || '');
-    const liveOf = (id) => S.live.find((s) => s.id === id) || null;
+    // a session whose conversation was handed on to another id (a fork, sent to the background) shows that one's live state
+    const liveOf = (id) => {
+        let l = S.live.find((s) => s.id === id) || null;
+        for (let hop = 0; l && l.continuedIn && hop < 5; hop += 1) { const n = S.live.find((s) => s.id === l.continuedIn); if (!n) break; l = n; }
+        return l;
+    };
     const rowOf = (id) => S.sessions.find((s) => s.id === id) || (S.chats.get(id) && S.chats.get(id).row) || null;
     const accountName = (idx) => { const a = S.accounts.find((x) => x.index === idx); return a ? a.name : ''; };
     const activeAccount = () => S.accounts.find((a) => a.active) || null;

@@ -255,6 +255,23 @@ function findTranscript(id) {
     return at === String(id) ? { id, file: cur.file, project: cur.project } : { id, file: cur.file, project: cur.project, continuedIn: at };
 }
 
+/**
+ * The session id a live session's conversation was handed on to (a fork / sent to the background), or null. The transcript
+ * path is found once per id and kept (it never moves); the tail read is cached per file size, so a status read for every
+ * live session stays cheap (Nov 26 2026: the Manager Session node showed Idle while its conversation worked on as a fork).
+ */
+const transcriptPaths = new Map(); // id -> file | ''
+function continuedInOfSession(id) {
+    let file = transcriptPaths.get(id);
+    if (file === undefined) {
+        const t = findTranscriptFile(id);
+        file = t ? t.file : '';
+        if (transcriptPaths.size > 1000) transcriptPaths.clear();
+        transcriptPaths.set(id, file);
+    }
+    return file ? continuedInOf(file) : null;
+}
+
 // ---------------------------------------------------------------- live sessions
 
 const originOf = (tmux) => {
@@ -533,5 +550,6 @@ module.exports = {
     _setPidAlive,
     _text: { cleanTitle, paneLink, linkFor, promptOf, RC_ACTIVE_RE, RC_NUDGE_RE, tmuxName },
     _scans: scans,
-    _findTranscript: (id) => findTranscript(id)
+    _findTranscript: (id) => findTranscript(id),
+    continuedInOfSession
 };

@@ -144,7 +144,9 @@ function titleFor(id) { try { return require('../../sessionTasks').titleFor(id);
 function liveSummary() {
     return claudeSessions.liveSessions().map((s) => ({
         id: s.id, pid: s.pid, name: s.name, title: titleFor(s.id), status: s.status, origin: s.origin, tmuxSession: s.tmuxSession,
-        remoteControl: s.remoteControl, link: s.link, cwd: s.cwd, startedAt: s.startedAt
+        remoteControl: s.remoteControl, link: s.link, cwd: s.cwd, startedAt: s.startedAt,
+        // its conversation goes on under another session id: the window shows that one's state (working / idle) for it
+        continuedIn: (() => { try { return claudeSessions.continuedInOfSession(s.id) || undefined; } catch (_) { return undefined; } })()
     })).sort((a, b) => a.id.localeCompare(b.id));
 }
 
