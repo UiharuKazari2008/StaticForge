@@ -1426,7 +1426,7 @@ async function pullIssues(gr, opts = {}) {
     return { added, ended, repos: [...repos] };
 }
 
-const SUPERVISED_NOTE = 'On Yozora you are Yozora (director.yozora), not claude: every Yozora API call uses the token in the file named by $YOZORA_TOKEN_FILE, and git pushes to Yozora with a plain `git push` (this session\'s git already signs in as director.yozora); never use ~/.secrets/yozora-claude.token or the claude credential helper from CLAUDE.md. You are a supervised Fleet session: claim files with agent-coord before editing (coord_claim), commit your own work at the end of every turn, open a build gate before any build / restart, and before you say a multi-part request is done call coord_supervisor_check and address what it finds. Work you find that should be done by another session: coord_request_work (startNow when it should start now).';
+const SUPERVISED_NOTE = 'On Yozora you are Yozora (director.yozora), not claude: every Yozora API call uses the token in the file named by $YOZORA_TOKEN_FILE, and git pushes to Yozora with a plain `git push` (this session\'s git already signs in as director.yozora); never use ~/.secrets/yozora-claude.token or the claude credential helper from CLAUDE.md. You are a supervised Fleet session: claim files with agent-coord before editing (coord_claim), commit your own work at the end of every turn, open a build gate before any build / restart, and before you say a multi-part request is done call coord_supervisor_check and address what it finds. Work you find that should be done by another session: coord_request_work (startNow when it should start now). Before testing on a shared device (A53, Fold, Ruiko\'s Chrome, the headless test browser) take it with coord_device_request and release it with coord_device_release when done.';
 
 /** Adds a work item and moves the queue. item: { title, prompt, cwd?, account?, model?, effort?, startNow?, source?, sourceRef?, remoteControl? (default false: a new session starts without Remote Control), issue? / issues? (one or several: the first is the primary) } */
 function enqueue(item, opts = {}) {
@@ -1489,6 +1489,7 @@ function activeCount() {
         else if (w.session_id && w.state !== 'waiting') {
             // its session ended: never "done" without the Supervisor's own check of what it did (Yukimi, Nov 24 2026)
             setWork(w.id, { state: 'waiting', message: 'Its session ended: the Supervisor is checking its last turn' });
+            try { require('./agentCoord/deviceQueue').releaseAgent(`claude-${String(w.session_id).slice(0, 8)}`); } catch (_) { /* its leases lapse on their own */ }
             queueReview(w.session_id, 'turn-end');
         }
     });

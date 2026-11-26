@@ -15,7 +15,7 @@
  *                                                      claude_desk_agent_append { id, agentId, messages, end }; the list of every running
  *                                                      session's agents is the statusHub feed claude_desk_agents (see below)
  *   claude_desk_session   { action: start | resume | steer | attach | phone_shot | interrupt | screen | disconnect, ... }
- *   claude_desk_coord     { action: list | post | release, ... }
+ *   claude_desk_coord     { action: list | post | release | device_release, ... }
  *
  * Status (rule server-push-not-polling): two statusHub feeds the window subscribes to while it is open:
  *   claude_desk        (30 s, and at once when ~/.claude/sessions changes or an action ran) host status,
@@ -38,6 +38,7 @@ const transcript = require('../../claudeTranscript');
 const insight = require('../../claudeInsight');
 const runtime = require('../../claudeAccountRuntime');
 const coord = require('../../agentCoord/store');
+const deviceQueue = require('../../agentCoord/deviceQueue');
 const fleetPhoneFeed = require('../../fleetPhoneFeed');
 
 const ADMIN_DESTRUCTIVE = { destructive: true };
@@ -158,15 +159,27 @@ function briefBuild(g) {
     };
 }
 
+// a waiter granted a device from the server side (Release in the window, a session that ended) is told in its terminal
+deviceQueue.setNotifier((agent, body) => {
+    if (!agent || !agent.sessionId) return '';
+    launcher.steer(agent.sessionId, `[steering from agent-coord] ${body}`).catch(() => { /* its inbox holds the message */ });
+    return 'tmux';
+});
+
+/** The shared test devices (holders, queues; expiry is settled when this is read, on the window's own feed tick). */
+function devicesSummary() {
+    try { return deviceQueue.status(); } catch (e) { return { devices: [], waiting: 0, holding: 0, error: e.message }; }
+}
+
 function coordSummary() {
     try {
         const agents = coord.listAgents().map((a) => ({ id: a.id, kind: a.kind, name: a.name, account: a.account, task: a.task, status: a.status, repo: a.repo, branch: a.branch, sessionId: a.sessionId, claims: a.claims, model: a.model, effort: a.effort, dispatchedBy: a.dispatchedBy, live: a.status !== 'gone' ? ((coord.liveRecord(a) || {}).status || '') : '' }));
         const claims = coord.liveClaims().map((c) => ({ id: c.id, agentId: c.agentId, repo: c.repo, path: c.path, mode: c.mode, note: c.note, expiresAt: c.expiresAt }));
         const last = coord.recentMessages({ limit: 1 })[0];
         const builds = coord.builds({ recent: true }).map(briefBuild);
-        return { agents, claims, builds, lastMessageId: last ? last.id : 0 };
+        return { agents, claims, builds, devices: devicesSummary(), lastMessageId: last ? last.id : 0 };
     } catch (e) {
-        return { agents: [], claims: [], builds: [], lastMessageId: 0, error: e.message };
+        return { agents: [], claims: [], builds: [], devices: { devices: [], waiting: 0, holding: 0 }, lastMessageId: 0, error: e.message };
     }
 }
 
@@ -804,6 +817,13 @@ const handleCoord = guard('claude_desk_coord', async (gr, message, ws, clientInf
         const root = path.join(__dirname, '..', '..', '..');
         return { root, locks: coord.lockFiles(root) };
     }
+    if (action === 'device_release') {
+        // an admin frees a device a stuck agent holds; the next in line is granted and told
+        const me = deskAgent(clientInfo);
+        const freed = deviceQueue.forceRelease(String(message.device || ''), me.name || me.id);
+        poke();
+        return Object.assign(coordSummary(), { freed });
+    }
     if (action === 'build_end') {
         // an admin cancels / ends a gate someone left open (everyone is told)
         const me = deskAgent(clientInfo);
@@ -811,7 +831,7 @@ const handleCoord = guard('claude_desk_coord', async (gr, message, ws, clientInf
         poke();
         return Object.assign(coordSummary(), { ended });
     }
-    throw new Error('action must be list, post, release, inspect, locks or build_end');
+    throw new Error('action must be list, post, release, inspect, locks, device_release or build_end');
 });
 
 // ---------------------------------------------------------------- background agents of the running sessions (live list, one agent's watch)

@@ -23,7 +23,7 @@
  *                               written; a box to send it a message (steering while it works)
  *     Coordination              the agent-coord MCP server's store
  *       Agents / Claims / Messages   who works on what, the files they claimed, notes and steering
- *       Build Gates / Busy Locks      builds waiting on every agent's ready, the repo's .agent-* locks
+ *       Build Gates / Device Queue / Busy Locks      builds waiting on every agent's ready, the repo's .agent-* locks
  *       Supervisor              reviews of finished agent turns against what was asked (claude_desk_supervisor):
  *                               settings, the reviews, Send to Session / Re-check / Dismiss
  *       Inspect: <agent>        what one agent is doing: files it edited, commands, last words, claims
@@ -110,7 +110,7 @@
             host: null,
             accounts: [],
             live: [],
-            coord: { agents: [], claims: [], builds: [], lastMessageId: 0 },
+            coord: { agents: [], claims: [], builds: [], devices: { devices: [], waiting: 0, holding: 0 }, lastMessageId: 0 },
             fleet: null,
             fleetError: '',
             locks: null,
@@ -438,7 +438,7 @@
         try {
             const r = await send('claude_desk_coord', { action: 'list', limit: 150 });
             S.messages = r.messages || [];
-            if (r.agents) S.coord = { agents: r.agents, claims: r.claims || [], builds: r.builds || S.coord.builds || [], lastMessageId: r.lastMessageId || 0 };
+            if (r.agents) S.coord = { agents: r.agents, claims: r.claims || [], builds: r.builds || S.coord.builds || [], devices: r.devices || S.coord.devices, lastMessageId: r.lastMessageId || 0 };
         } catch (e) { S.coordError = errText(e); }
         repaint();
     }
@@ -3035,6 +3035,7 @@
                             { id: 'co-claims', name: 'Claims', icon: FOLDER16 },
                             { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
                             { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
+                            { id: 'co-devices', name: `Device Queue (${devWaiting()})`, icon: '/static_images/vista-cmdbar/clock.png', desc: 'Who holds each shared test device (A53, Fold, test browsers) and who waits' },
                             { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
                         ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: SESSION16, desc: 'What this agent is doing' }] : [])
                     }
@@ -3242,6 +3243,7 @@
             tile('bg-agents', `${ITEMS}/programs-and-features-16.png`, bgRunning().length, 'Background agents'),
             tile('sup-reviews', '/static_images/vista-cmdbar/paste.png', gaps, 'Reviews with gaps', true),
             tile('sup-asks', '/static_images/vista-cmdbar/clock.png', supAsks().length, 'Restart waits', true),
+            tile('co-devices', '/static_images/vista-cmdbar/clock.png', devWaiting(), 'Device waits', true),
             tile('sup-holds', '/static_images/vista-cmdbar/pause.png', supHolds().length, 'Paused', true),
             tile('usage-flags', `${VI}/warning-16.png`, usgOpenFlags(), 'Heavy usage', true)
         ].join('')}</div>`;
@@ -3526,6 +3528,56 @@
             ], rows, { sortId: 'cd-builds', sort: { key: 'id', dir: -1 }, empty: 'No build is waiting or running. Agents open a gate with coord_build_request before they build.', fit: true }),
             list: true
         };
+    }
+
+    // ---- Device Queue: the shared test devices, their holder and the agents waiting in order ----------------
+
+    const devData = () => (S.coord.devices && Array.isArray(S.coord.devices.devices) ? S.coord.devices.devices : []);
+    const devWaiting = () => (S.coord.devices && S.coord.devices.waiting) || 0;
+    const clock = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+
+    function devicesPage(c) {
+        const rows = devData().map((d) => ({
+            key: `d:${d.device}`,
+            icon: '/static_images/vista-cmdbar/clock.png',
+            cls: d.holder ? 'cd-live' : '',
+            data: {
+                device: d.label === d.device ? d.device : `${d.label} (${d.device})`,
+                holder: d.holder ? d.holder.name : 'Free',
+                why: d.holder ? d.holder.why : '',
+                left: d.holder ? d.holder.minutesLeft : 0,
+                until: d.holder ? clock(d.holder.endsAt) : '',
+                waiting: d.queue.map((q, i) => `${i + 1}. ${q.name}`).join(', ')
+            }
+        }));
+        return {
+            html: c.listView([
+                { t: 'Device', w: 200, key: 'device', text: (d) => d.device },
+                { t: 'Held By', w: 150, key: 'holder', text: (d) => d.holder },
+                { t: 'Testing', w: 220, key: 'why', text: (d) => d.why },
+                { t: 'Time Left', w: 80, key: 'left', num: true, text: (d) => (d.until ? `${d.left} min` : ''), value: (d) => d.left },
+                { t: 'Until', w: 60, key: 'until', text: (d) => d.until },
+                { t: 'Waiting (In Order)', w: 260, key: 'waiting', text: (d) => d.waiting }
+            ], rows, { sortId: 'cd-devices', sort: { key: 'device', dir: 1 }, empty: 'No device is known yet. Agents take one with coord_device_request before they test on it.', fit: true }),
+            list: true
+        };
+    }
+
+    async function devRelease(c) {
+        const key = selId(c, 'd:');
+        const d = devData().find((x) => x.device === key);
+        if (!d || !d.holder) {
+            await c.box(`<p>${d ? `${esc(d.label)} is free.` : 'Select a device that is in use first.'}</p>`, null, { icon: 'info', title: 'Release Device', width: 360 });
+            return;
+        }
+        const ok = await c.box(`<p>Take <b>${esc(d.label)}</b> away from ${esc(d.holder.name)}${d.holder.why ? ` (${esc(d.holder.why)})` : ''}? ${d.queue.length ? `${esc(d.queue[0].name)} is next in line and is told.` : 'Nobody is waiting.'} The holder is told too.</p>`,
+            [{ text: 'Release', value: true, className: 'btn-standard primary' }, { text: 'Close', value: false, className: 'btn-standard' }], { icon: 'warning', title: 'Release Device', width: 420 });
+        if (ok !== true) return;
+        try {
+            const r = await send('claude_desk_coord', { action: 'device_release', device: d.device });
+            if (r.agents) S.coord = { agents: r.agents, claims: r.claims || [], builds: r.builds || [], devices: r.devices || S.coord.devices, lastMessageId: r.lastMessageId || S.coord.lastMessageId };
+            c.refresh();
+        } catch (e) { await failBox(c, e); }
     }
 
     function locksPage(c) {
@@ -4861,6 +4913,7 @@
             case 'rc': return rcPage(c);
             case 'rc-host': return hostRcPage(c);
             case 'co-builds': return buildsPage(c);
+            case 'co-devices': return devicesPage(c);
             case 'co-locks': return locksPage(c);
             case 'sup-manager': return managerPage(c);
             case 'co-supervisor': case 'sup-settings': case 'sup-reviews': case 'sup-asks': case 'sup-holds': case 'sup-locks': case 'sup-arts': return supervisorPage(c, n.id);
@@ -4935,6 +4988,7 @@
             case 'accounts': return [{ text: 'Add Account...', action: 'add-account' }];
             case 'rc': return [{ text: 'Refresh Status', action: 'fleet-refresh' }];
             case 'co-builds': return [{ text: 'Post Message...', action: 'post' }];
+            case 'co-devices': return [{ text: 'Release...', action: 'dev-release' }, { text: 'Read Again', action: 'dev-refresh' }];
             case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
             case 'co-work': return [{ text: 'New Request...', action: 'new-session' }, { text: 'Issues...', action: 'work-issues', disabled: !!S.sup.busy }, { text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
             case 'co-held':
@@ -5063,6 +5117,11 @@
                     { text: 'Properties', action: 'fleet-props' }
                 ]
             };
+        }
+        if (key.startsWith('d:')) {
+            const d = devData().find((x) => x.device === key.slice(2));
+            if (!d) return null;
+            return { title: d.label, items: [{ text: 'Release', action: 'dev-release', disabled: !d.holder }, { text: 'Read Again', action: 'dev-refresh' }] };
         }
         if (key.startsWith('b:')) {
             const b = (S.coord.builds || []).find((x) => x.id === Number(key.slice(2)));
@@ -5542,6 +5601,8 @@
             }
             case 'close-inspect': S.inspect = null; c.select('co-agents', true); return true;
             case 'locks-refresh': await loadLocks(); return true;
+            case 'dev-refresh': await loadMessages(); return true;
+            case 'dev-release': await devRelease(c); return true;
             case 'build-props': {
                 const b = (S.coord.builds || []).find((x) => x.id === Number(selId(c, 'b:')));
                 if (!b) return true;
@@ -5564,7 +5625,7 @@
                 if (value !== true) return true;
                 try {
                     const r = await send('claude_desk_coord', { action: 'build_end', buildId: b.id, reason: String(fields.reason || '').trim() || undefined });
-                    if (r.agents) S.coord = { agents: r.agents, claims: r.claims || [], builds: r.builds || [], lastMessageId: r.lastMessageId || S.coord.lastMessageId };
+                    if (r.agents) S.coord = { agents: r.agents, claims: r.claims || [], builds: r.builds || [], devices: r.devices || S.coord.devices, lastMessageId: r.lastMessageId || S.coord.lastMessageId };
                     c.refresh();
                 } catch (e) { await failBox(c, e); }
                 return true;
@@ -6710,6 +6771,7 @@
                 if (n.id === 'sup-maint') { const m = maintData(); return m && m.running ? 'Running' : (m && m.last ? (MAINT_STATE[m.last.state] || [''])[0] : ''); }
                 if (n.id === 'aw-uns') return plural(unsupervised().length, 'session');
                 if (n.id === 'co-builds') return plural((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length, 'gate') + ' open';
+                if (n.id === 'co-devices') return `${plural((S.coord.devices && S.coord.devices.holding) || 0, 'device')} in use, ${devWaiting()} waiting`;
                 if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
                 if (n.id === 'co-work') return S.sup.busy || (S.sup.counts ? `${S.sup.counts.active} running, ${S.sup.counts.queued} queued` : plural(supWork().filter((w) => WORK_OPEN.has(w.state)).length, 'open request'));
                 if (n.id === 'sup-reviews') return plural(supReviews().filter((r) => !r.dismissed).length, 'review');

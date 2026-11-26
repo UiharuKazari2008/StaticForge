@@ -33,6 +33,7 @@
  *   builds     build gates: a build of a target in a repo is requested, every live agent in the repo answers
  *              ready or not (an agent that is not busy and holds no claim there counts as ready by itself),
  *              and it begins only when nobody is pending or not ready and no other build of the target runs
+ *   device_queue  who holds a shared test device (A53, Fold, a test browser) and who waits for it (modules/agentCoord/deviceQueue.js)
  */
 
 const fs = require('fs');
@@ -114,6 +115,12 @@ function open() {
             build_id INTEGER NOT NULL, agent_id TEXT NOT NULL, ready INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '',
             at INTEGER NOT NULL, PRIMARY KEY (build_id, agent_id)
         );
+        CREATE TABLE IF NOT EXISTS device_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, device TEXT NOT NULL, agent_id TEXT NOT NULL, session_id TEXT NOT NULL DEFAULT '',
+            why TEXT NOT NULL DEFAULT '', minutes INTEGER NOT NULL DEFAULT 15, state TEXT NOT NULL DEFAULT 'waiting',
+            requested_at INTEGER NOT NULL, started_at INTEGER, ends_at INTEGER, ended_at INTEGER, end_reason TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS device_queue_open ON device_queue (state, device, id);
     `);
     const cols = new Set(db.prepare('PRAGMA table_info(agents)').all().map((c) => c.name));
     [['model', 'TEXT'], ['effort', 'TEXT'], ['dispatched_by', 'TEXT'], ['config_dir', 'TEXT']].forEach(([c, t]) => {
@@ -475,6 +482,7 @@ function prune() {
     d.prepare('DELETE FROM agents WHERE seen_at < ?').run(t - 7 * 86400000);
     d.prepare("DELETE FROM build_votes WHERE build_id IN (SELECT id FROM builds WHERE state NOT IN ('open', 'running') AND COALESCE(ended_at, expires_at) < ?)").run(t - 14 * 86400000);
     d.prepare("DELETE FROM builds WHERE state NOT IN ('open', 'running') AND COALESCE(ended_at, expires_at) < ?").run(t - 14 * 86400000);
+    d.prepare("DELETE FROM device_queue WHERE state NOT IN ('held', 'waiting') AND COALESCE(ended_at, requested_at) < ?").run(t - 7 * 86400000);
     d.prepare('DELETE FROM edits WHERE session_id NOT IN (SELECT session_id FROM agents WHERE session_id IS NOT NULL) AND last_at < ?').run(t - 14 * 86400000);
     d.prepare('DELETE FROM scans WHERE session_id NOT IN (SELECT session_id FROM agents WHERE session_id IS NOT NULL) AND COALESCE(last_at, 0) < ?').run(t - 14 * 86400000);
 }
@@ -483,7 +491,7 @@ Object.assign(module.exports, require('./storeV2')({
     open, now, text, getAgent, resolveAgent, listAgents, liveClaims, post, repoOf, pidAlive: (pid) => pidAlive(pid)
 }));
 module.exports = Object.assign(module.exports, {
-    dbPath, open, close, repoOf, normPath, overlaps,
+    dbPath, open, close, repoOf, normPath, overlaps, now, pidAlive: (pid) => pidAlive(pid),
     upsertAgent, getAgent, resolveAgent, listAgents, setStatus,
     liveClaims, claim, release, releaseAll, check,
     post, markDelivered, inbox, unreadCount, recentMessages, prune,

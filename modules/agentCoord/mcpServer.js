@@ -37,6 +37,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const store = require('./store');
 const memory = require('./memoryStore');
+const devices = require('./deviceQueue');
 
 const SERVER_INFO = { name: 'agent-coord', version: '2.1.0' };
 const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -47,6 +48,7 @@ const INSTRUCTIONS = [
     'Before editing files, coord_claim them (paths relative to the repo, folders and globs allowed); the claim also plants your .agent-<id> busy lock. If a claim conflicts, do not edit those files: coord_inspect or coord_post the holder, or pick other work.',
     'Before touching a file you did not claim, coord_check it (claims) and coord_editors it (who changed it lately).',
     'Before ANY build, install, deploy, service-worker notify or server restart: coord_build_request a gate for it, wait until coord_build_status says canBegin (everyone ready), then coord_build_begin, and coord_build_end when it is over. Never build past a pending or not-ready agent without force and a reason.',
+    'Shared test devices (A53 phone, Fold, Ruiko\'s headful Chrome, the headless test browser, any other shared hardware): request one with coord_device_request BEFORE any test, install, reboot, screenshot run or tap-through on it; wait for the grant (a steer message tells you it is yours) instead of using it; release it with coord_device_release as soon as the test ends; never take a device someone else holds. coord_devices shows holders and queues.',
     'When a build gate asks you (a question naming coord_build_ready), answer it as soon as your files are in a state that builds, or say why not.',
     'Keep coord_set_task current. Release claims (coord_release) when you are done; they also lapse with their lease and when your process ends.',
     'When an answer says you have unread messages, call coord_inbox. Steering from Yozora, Menma or Yukimi arrives as kind steer.',
@@ -180,6 +182,9 @@ function typeInto(agent, from, body) {
     } catch (_) { return ''; }
 }
 
+// a granted waiter's steer message is typed into its pane from whichever process hands the device on
+devices.setNotifier((agent, body) => typeInto(agent, 'agent-coord', body));
+
 // ---------------------------------------------------------------- tools
 
 const S = (props, required) => ({ type: 'object', properties: props, required: required || [], additionalProperties: false });
@@ -199,6 +204,10 @@ const TOOLS = [
     { name: 'coord_inspect', description: 'What another agent is doing: busy / idle, task, model, account, claims, the files it edited (by edit tool, or by shell while still uncommitted), its recent shell commands, its last message, and the uncommitted files in its folder.', inputSchema: S({ agent: str('Agent id, name or session id (coord_agents)'), limit: { type: 'number', description: 'Files to list (default 100)' }, git: { type: 'boolean', description: 'Include git status of its folder (default true)' } }, ['agent']) },
     { name: 'coord_editors', description: 'Which agents edited these paths (repo-relative), from their transcripts. Use before changing a file you did not claim.', inputSchema: S({ paths: strs('Paths'), all: { type: 'boolean', description: 'Also agents that are gone' } }, ['paths']) },
     { name: 'coord_locks', description: 'Every .agent-* busy lock in the repo root: made by agent-coord (with the agent\'s state) or by an agent outside it (with its age; stale = older than 3 h: report it, never delete someone else\'s).', inputSchema: S({ repo_root: str('Absolute repo root (default: yours)') }) },
+    { name: 'coord_device_request', description: 'Request exclusive use of a shared test device (a53, fold, ruiko-chrome, headless-chrome, or any name you choose) BEFORE any test, install, reboot, screenshot run or tap-through on it. Answers granted (lease with its end time) or your place in the queue and who holds it. When queued, do NOT use the device: you get a steer message when it is yours. Never take a device someone else holds. Release it with coord_device_release as soon as the test ends.', inputSchema: S({ device: str('a53 | fold | ruiko-chrome | headless-chrome | another shared device name'), why: str('What you test, one line'), minutes: { type: 'number', description: 'How long you need it (default 15, max 60)' } }, ['device']) },
+    { name: 'coord_device_release', description: 'Release a shared test device (or leave its queue) as soon as your test ends; the next agent in line is granted it at once.', inputSchema: S({ device: str('The device you hold or wait for') }, ['device']) },
+    { name: 'coord_device_renew', description: 'Extend your lease on a shared test device (from now, default 15, max 60 minutes) when the test runs longer than planned. Leases also end when you are idle for 10 minutes or your session ends.', inputSchema: S({ device: str('The device you hold'), minutes: { type: 'number', description: 'Minutes from now (max 60)' } }, ['device']) },
+    { name: 'coord_devices', description: 'Shared test devices: who holds each, when the lease ends, and who waits in line. Look before you plan a test; request a device with coord_device_request before using it, never use one someone else holds.', inputSchema: S({ device: str('One device (omit for all)') }) },
     { name: 'coord_build_request', description: 'Open a build gate before any build, install, deploy, SW notify or restart: every live agent in the repo is asked whether its work is ready to build (agents that are idle and hold no claim there count as ready). Joins an open gate for the same target. Answers the gate and who it waits on.', inputSchema: S({ target: str('What gets built, e.g. dsapp-apk, sw-notify, dreamscape-restart'), note: str('Why / what it ships'), repo: str('Repo name (default: yours)'), wait_minutes: { type: 'number', description: 'How long the gate stays open (default 120)' }, deliver: { type: 'boolean', description: 'Also type the question into busy agents\' terminals (default true)' } }, ['target']) },
     { name: 'coord_build_ready', description: 'Answer a build gate: ready true when your files there are in a state that builds (nothing half-edited), false with why.', inputSchema: S({ build: { type: 'number', description: 'Gate id' }, ready: { type: 'boolean' }, note: str('Why not / what to wait for') }, ['build', 'ready']) },
     { name: 'coord_build_status', description: 'A build gate: participants (ready, not-ready, auto, pending), who it waits on, whether another build of the target runs, canBegin.', inputSchema: S({ build: { type: 'number' } }, ['build']) },
@@ -290,6 +299,13 @@ function run(name, args) {
         return { paths: store.editorsOf(a.paths, { all: a.all === true }).map((p) => Object.assign({}, p, { editedBy: p.editedBy.map((e) => Object.assign({}, e, { lastAt: fmtTime(e.lastAt) })) })) };
     case 'coord_locks':
         return { root: a.repo_root || ego.root, locks: store.lockFiles(a.repo_root || ego.root) };
+    case 'coord_device_request': {
+        const ag = store.getAgent(ego.id) || {};
+        return devices.request(ego.id, a.device, { why: a.why, minutes: a.minutes, sessionId: ag.sessionId });
+    }
+    case 'coord_device_release': return devices.release(ego.id, a.device);
+    case 'coord_device_renew': return devices.renew(ego.id, a.device, a.minutes);
+    case 'coord_devices': { const st = devices.status(a.device); return Object.assign({}, st, { devices: st.devices.map((x) => Object.assign({}, x, { holder: x.holder ? Object.assign({}, x.holder, { endsAt: fmtTime(x.holder.endsAt) }) : null, queue: x.queue.map((q) => Object.assign({}, q, { eta: fmtTime(q.eta), since: fmtTime(q.since) })) })) }); }
     case 'coord_build_request': {
         const from = (store.getAgent(ego.id) || {}).name || ego.id;
         const notify = a.deliver === false ? null : (agent, msg) => {
