@@ -39,6 +39,8 @@ const recorder = require('../../xmRadioRecorderClient');
 //                                                 Recently Played's one-tap Record stacks a song from the five-hour
 //                                                 buffer, tagged from the packet (the cut is too old for lookAround).
 //                                                 The queue runs in expiry order (soonest expiry first, then added).
+//   xmradio_mmc_view        {}                    admins -> { account, deck, slots { max } }: Lizumi's read-only view (#1252);
+//                                                 status feed xmradio_mmc (push xmradio_mmc_status) carries the same items
 //   xmradio_queue_remove    { id }                 admins -> { queue[] }: cancel one queued song
 //   xmradio_queue_clear     {}                     admins -> { queue[] }: cancel them all
 //   xmradio_tune's back:    seconds behind live to start at (replay; the stream keeps five hours)
@@ -97,7 +99,15 @@ function registerPackets(handlersCtx) {
     if (!handlersCtx) return;
     xmRadio.bind(handlersCtx.globalResources);
     xmRadio.defineFeed(statusHub);
-    recorder.init(xmRadio, handlersCtx.globalResources, { changed: () => xmRadio.touch() });
+    // Lizumi's own feed (#1252): the deck and the account only, never a lookAround read; poked by every deck change.
+    // Its own name so the console and the radio app each hold their own per-socket subscription (closing one must not
+    // stop the other's pushes).
+    const mmcFeed = statusHub.define({
+        name: 'xmradio_mmc', pushType: 'xmradio_mmc_status', intervalMs: 300000,
+        allow: (info) => !!(info && /^(admin|dev_admin)$/.test(String(info.userType || ''))),
+        sample: async () => ({ account: xmRadio.account(), deck: recorder.deck(), slots: { max: 4 } })
+    });
+    recorder.init(xmRadio, handlersCtx.globalResources, { changed: () => { xmRadio.touch(); mmcFeed.poke(); } });
     xmRadio.definePhoneFeed(statusHub);
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
@@ -126,6 +136,7 @@ function registerPackets(handlersCtx) {
         const ws = String(m.workspaceId || deck.workspaceId);
         return { deck, tapes: await recorder.tapes(ws), tapeInfo: m.info ? await recorder.tapesInfo(ws) : undefined };
     }));
+    reg('xmradio_mmc_view', packet(true, 'Lizumi could not read XM Radio', async () => ({ account: xmRadio.account(), deck: recorder.deck(), slots: { max: 4 } })));
     reg('xmradio_deck_set', packet(true, 'The cassette deck could not be set', async (m) => ({ deck: await recorder.setDeck({ tape: m.tape, workspaceId: m.workspaceId, mode: m.mode }) })));
     reg('xmradio_tape_tracks', packet(false, 'The tape could not be read', async (m) => ({ tracks: await recorder.tracks(String(m.workspaceId || recorder.deck().workspaceId), String(m.tape || recorder.deck().tape)) })));
     reg('xmradio_rec_start', packet(true, 'The recording could not be started', async (m) => (m.song

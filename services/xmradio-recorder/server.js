@@ -20,7 +20,10 @@
  *   Dreamscape -> { id, op, args }      ops: auth { token, exp }, deck, start, stop, recordCut, recordChannel,
  *                                       recordRange { channelId, from, to, a, t, s, ik }, queueRemove { id },
  *                                       queueClear, setDeck, setTimers, addAlert, removeAlert, setTerms,
- *                                       tapeRenamed, playlist, ping
+ *                                       tapeRenamed, playlist, ping,
+ *                                       meta { channelId, from, to } (the cut store's records overlapping that time,
+ *                                       lengths filled in; modules/xmRadioMeta.js), metaStats (its channels, cuts,
+ *                                       oldest, newest, file). This process is the store's only writer.
  *   <- { id, ok: true, result } | { id, ok: false, error: { message, code } }
  *   <- { ev: 'deck', deck }             after every change (pushed; Dreamscape keeps the last one)
  *   <- { ev: 'spool', id }              a finished file is waiting in the spool
@@ -33,6 +36,7 @@ const path = require('path');
 
 const xmRadio = require('../../modules/xmRadio');
 const recorder = require('../../modules/xmRadioRecorder');
+const cutStore = require('../../modules/xmRadioMeta');
 
 xmRadio.useExternalAuth();
 
@@ -85,7 +89,15 @@ const OPS = {
     removeAlert: (a) => recorder.removeAlert(String((a && a.id) || '')),
     setTerms: (a) => recorder.setTerms(a && a.terms),
     tapeRenamed: (a) => recorder.tapeRenamed(String(a.workspaceId || ''), String(a.from || ''), String(a.to || '')),
-    playlist: (a) => recorder.playlist(String((a && a.rid) || ''))
+    playlist: (a) => recorder.playlist(String((a && a.rid) || '')),
+    meta: (a) => {
+        cutStore.open(path.join(path.dirname(xmRadio.accountFilePath()), 'xmradio-meta.json'));
+        return cutStore.cutsBetween(String((a && a.channelId) || ''), Number(a && a.from) || 0, Number(a && a.to) || 0);
+    },
+    metaStats: () => {
+        cutStore.open(path.join(path.dirname(xmRadio.accountFilePath()), 'xmradio-meta.json'));
+        return cutStore.stats();
+    }
 };
 
 async function handle(sock, line) {

@@ -7148,6 +7148,8 @@ function buildToolsSubmenuItems(opts) {
         { launchId: 'mmc-server-manager', icon: 'fas fa-server', imageIcon: 'vista-server-manager.png', text: 'Server Manager', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openServerManagerConsole(); } },
         // 'control-panel' is Control Panel for agents' open_application (Server Manager had the id until #831); not listed
         { launchId: 'control-panel', icon: 'fas fa-sliders', imageIcon: 'vista-control-panel.png', text: 'Control Panel', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: async () => { await featureLoader.loadFeature('control_panel'); if (window.melatonControlPanel) window.melatonControlPanel.open('home'); } },
+        // Lizumi (#1252): the XM Radio recording console (window.openLizumi: mmcLizumi.js, in the mmc_snapins feature)
+        { launchId: 'mmc-lizumi', icon: 'fas fa-radio', imageIcon: 'xmradio.png', text: 'Lizumi', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: async () => { await featureLoader.loadFeature('mmc_snapins'); if (typeof window.openLizumi === 'function') window.openLizumi(); } },
         { launchId: 'mmc-print-management', icon: 'fas fa-print', imageIcon: 'vista-print-management.png', text: 'Print Management', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openPrintManagementSnapin(); } },
         { launchId: 'enshutsuka-rules', icon: 'fas fa-box-open-full', imageIcon: 'vista-enshutsuka-2.png', text: 'Director Rules', fullName: 'Enshutsuka - Director Rules', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal('director'); } },
         { launchId: 'linkxi-persona', icon: 'fas fa-box-open-full', imageIcon: 'vista-enshutsuka-2.png', text: 'Profile', fullName: 'Enshutsuka - Profile', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openLinkXiPersonaDsap(); } },
@@ -8462,6 +8464,7 @@ const START_MENU_SYSTEM_PLACES = {
     'mmc-key-manager': { at: 'administrative-tools' },
     'mmc-wiki-caches': { at: 'administrative-tools' },
     'mmc-print-management': { at: 'administrative-tools' },
+    'mmc-lizumi': { at: 'administrative-tools' },
     'mmc-server-manager': { at: 'administrative-tools' },  // Server Manager, as on Windows Server 2008
     'config-editor': { at: 'administrative-tools' },     // "Registry Editor" (Runes)
     'event-viewer': { at: 'administrative-tools' },      // "Event Viewer" (Periscope), as on Vista

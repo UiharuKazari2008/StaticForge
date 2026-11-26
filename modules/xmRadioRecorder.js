@@ -34,6 +34,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const cutStore = require('./xmRadioMeta');
 
 const MAX_MS = 8 * 3600 * 1000;
 const MAX_AUTO = 4; // recordings at once (the deck's own and the automatic ones)
@@ -467,7 +468,7 @@ async function fileLong(rec) {
     if ((await sliceAac(rec, from, to, tmp)) < 4096) return;
     const when = new Date(from);
     const lines = [';FFMETADATA1', `title=${ffMetaEsc(`${ch.name}, ${when.toLocaleString('en-US')}`)}`, `artist=${ffMetaEsc(ch.name)}`, `album=${ffMetaEsc(ch.name)}`, `date=${localDate(when)}`];
-    const cuts = rec.cuts.filter((c) => c.at < to);
+    const cuts = cutsFor(rec).filter((c) => c.at < to);
     cuts.forEach((c, i) => {
         const s = Math.max(0, c.at - from);
         const e = Math.min(to, (cuts[i + 1] ? cuts[i + 1].at : to)) - from;
@@ -485,11 +486,124 @@ async function fileLong(rec) {
     }
 }
 
+// ------------------------------------------------------------------ the cut store (modules/xmRadioMeta.js)
+// Only the capture role reads and writes it: it is the one writer of the file (Dreamscape asks through the socket).
+
+function metaStore() {
+    if (role !== 'capture' || !xm || typeof xm.accountFilePath !== 'function') return null;
+    return cutStore.open(path.join(path.dirname(xm.accountFilePath()), 'xmradio-meta.json'));
+}
+
+/** The channels worth keeping cuts for: recording now, queued, on a timer, or on a preset bank (not the whole lineup). */
+function metaInterest() {
+    const set = new Set();
+    for (const r of recs.values()) set.add(r.meta.channelId);
+    const s = load();
+    for (const q of s.queue) set.add(q.channelId);
+    for (const t of s.timers) set.add(t.channelId);
+    try {
+        const p = typeof xm.presets === 'function' ? xm.presets() : null;
+        if (p) for (const b of ['A', 'B', 'C']) for (const id of p[b] || []) if (id) set.add(id);
+    } catch (_) { /* presets unreadable: the rest still counts */ }
+    set.delete('');
+    set.delete(undefined);
+    return set;
+}
+
+/** lookAround's cuts for the channels of interest, on every read. */
+function metaLook(channelCuts) {
+    const store = metaStore();
+    if (!store) return;
+    try {
+        for (const id of metaInterest()) {
+            const cuts = channelCuts.get(id);
+            if (cuts && cuts.length) store.merge(id, cuts.map((c) => ({ at: c.at, a: c.a, t: c.t, s: c.s, ad: c.ad, ik: c.ik })), { source: 'lookAround', channelName: channelOf(id).name });
+        }
+    } catch (err) { console.warn(`[xmRadio rec] cut store: ${err.message}`); }
+}
+
+/** liveUpdate for a channel over [from, to] into the store; the recordings on it are told (a name may have arrived). */
+async function metaRange(channelId, from, to) {
+    const store = metaStore();
+    if (!store || typeof xm.liveUpdateRange !== 'function') return null;
+    const range = await xm.liveUpdateRange(channelId, from, to);
+    const res = store.mergeRange(channelId, range, { source: 'liveUpdate', channelName: channelOf(channelId).name });
+    for (const r of recs.values()) if (r.meta.channelId === channelId) void fileFinishedCuts(r);
+    return res;
+}
+
+/** One read for a recording that starts or resumes reaching back; its cuts are not filed until it has landed. */
+function metaBackfill(rec, from) {
+    if (!metaStore() || typeof xm.liveUpdateRange !== 'function') return;
+    const channelId = rec.meta.channelId;
+    metaRead.set(channelId, Date.now());
+    rec.metaPending = metaRange(channelId, from - 60000, Date.now())
+        .catch((err) => console.warn(`[xmRadio rec] ${rec.meta.rid}: cut names not read (${err.message}); lookAround's stand in`))
+        .finally(() => { rec.metaPending = null; });
+}
+
+// One timer, only while a recording runs: each recording's channel is read again over the window since the last read
+// (ten minutes of overlap), every two minutes, backing off on a failure.
+const META_EVERY_MS = 120000;
+const META_MAX_MS = 15 * 60000;
+const metaRead = new Map(); // channelId -> when it was last read (ms)
+let metaTimer = null;
+let metaFails = 0;
+function armMetaTimer(ms) {
+    if (metaTimer || !recs.size || !metaStore() || typeof xm.liveUpdateRange !== 'function') return;
+    metaTimer = setTimeout(() => { void metaTick(); }, ms == null ? META_EVERY_MS : ms);
+    if (metaTimer.unref) metaTimer.unref();
+}
+async function metaTick() {
+    metaTimer = null;
+    if (!recs.size || shuttingDown) return;
+    let failed = false;
+    for (const channelId of new Set([...recs.values()].map((r) => r.meta.channelId))) {
+        const now = Date.now();
+        try {
+            await metaRange(channelId, (metaRead.get(channelId) || now) - 10 * 60000, now);
+            metaRead.set(channelId, now);
+        } catch (err) {
+            failed = true;
+            console.warn(`[xmRadio rec] cut names for ${channelId}: ${err.message} (next try in ${Math.round(Math.min(META_MAX_MS, META_EVERY_MS * 2 ** (metaFails + 1)) / 1000)} s)`);
+        }
+    }
+    metaFails = failed ? metaFails + 1 : 0;
+    armMetaTimer(Math.min(META_MAX_MS, META_EVERY_MS * 2 ** metaFails));
+}
+function stopMetaTimer() {
+    clearTimeout(metaTimer);
+    metaTimer = null;
+    metaFails = 0;
+    metaRead.clear();
+}
+
+/**
+ * The cuts of a recording's channel as the store has them (names that outlive lookAround's short window), over what
+ * lookAround gave the recording itself; rec.cuts stays as the fallback and keeps a name the store has not got yet.
+ */
+function cutsFor(rec) {
+    const m = rec.meta;
+    const store = m && m.channelId ? metaStore() : null;
+    if (!store) return rec.cuts;
+    let rows;
+    try { rows = store.cutsBetween(m.channelId, (rec.segs && rec.segs[0] && rec.segs[0].pdt) || m.startPdt || 0, 0, { episodes: false }); } catch (_) { return rec.cuts; }
+    if (!rows.length) return rec.cuts;
+    const by = new Map(rec.cuts.map((c) => [c.at, c]));
+    for (const r of rows) {
+        const own = by.get(r.at);
+        // a store row with nothing to say (an ad, no name yet) does not hide a real name the recording has seen
+        if (own && !own.ad && own.t && (r.ad || !r.title)) continue;
+        by.set(r.at, { at: r.at, a: r.artist, t: r.title, ad: r.ad, s: r.album, ik: r.ik || (own && own.ik) || '' });
+    }
+    return [...by.values()].sort((a, b) => a.at - b.at);
+}
+
 /** The cut in force at a moment, and when it ends (the next cut's start, or null). */
 function cutAt(rec, t) {
     let cur = null;
     let next = null;
-    for (const c of rec.cuts) {
+    for (const c of cutsFor(rec)) {
         if (c.at <= t) cur = c;
         else { next = c; break; }
     }
@@ -501,6 +615,9 @@ async function fileFinishedCuts(rec) {
     if (rec.meta.mode !== 'song' || rec.filing) return;
     rec.filing = true;
     try {
+        // the names the store is being given for a reach-back are in before any cut is sliced
+        // (at most a minute: a slow liveUpdate must not hold the tape back; lookAround's names stand in)
+        if (rec.metaPending) await Promise.race([rec.metaPending, delay(60000)]);
         const recEnd = rec.lastEnd;
         // every segment up to there on disk before a cut is sliced from them
         await rec.write;
@@ -724,6 +841,9 @@ async function start(opts) {
         fs.promises.appendFile(path.join(dir, 'cuts.ndjson'), np.map((c) => `${JSON.stringify(c)}\n`).join('')).catch(() => {});
     }
     recs.set(rid, rec);
+    metaRead.set(channelId, now);
+    if (back > 0) metaBackfill(rec, meta.startPdt);
+    armMetaTimer();
     rec.pump = makePump(rec, back);
     // song mode starts at the cut in force (an alert's cut from its first frame)
     if (meta.mode === 'song' && opts.fromCut) meta.cursor = opts.fromCut;
@@ -752,7 +872,7 @@ async function stop(rid, { filed } = {}) {
     rec.ended = Date.now();
     ended.set(rid, rec);
     setTimeout(() => { ended.delete(rid); fs.promises.rm(rec.dir, { recursive: true, force: true }).catch(() => {}); }, 10 * 60 * 1000).unref?.();
-    if (!recs.size) xm.watch('rec', false);
+    if (!recs.size) { xm.watch('rec', false); stopMetaTimer(); }
     changed();
     // a slot just came free: the next song in the queue can start
     void pumpQueue();
@@ -891,6 +1011,7 @@ function matchOnAir(id, cur, alerts, terms) {
 
 /** Every channel's cuts after a lookAround read: the recordings' splits, alerts and terms. */
 function onLook(channelCuts) {
+    metaLook(channelCuts);
     for (const rec of recs.values()) {
         const cuts = channelCuts.get(rec.meta.channelId);
         if (cuts) noteCuts(rec, cuts);
@@ -1006,6 +1127,9 @@ async function shutdown() {
         const last = rec.segs[rec.segs.length - 1];
         rec.meta.resumeSeq = last ? last.seq + 1 : null;
     }
+    stopMetaTimer();
+    // the cut store is on disk with the state file
+    if (cutStore.isOpen()) await Promise.race([cutStore.flush().catch(() => {}), delay(3000)]);
     saveNow();
     return { recordings: live.length, queue: (load().queue || []).length };
 }
@@ -1035,10 +1159,11 @@ async function resume() {
         const due = (meta.until && Date.now() >= meta.until - 5000) || (rec.lastEnd && rec.lastEnd - meta.startPdt >= MAX_MS);
         if (due || gap > 5 * 3600 - 300 || !xm.channelById(meta.channelId)) { await stop(meta.rid); continue; }
         rec.pump = makePump(rec, Math.max(0, gap));
+        if (gap > 0) metaBackfill(rec, Date.now() - gap * 1000);
         delete meta.resumeAt; delete meta.resumeSeq;
         console.log(`[xmRadio rec] ${meta.rid}: resumed (${meta.kind}, ${gap} s to catch up${stored ? ', at the stored segment' : ''})`);
     }
-    if (recs.size) xm.watch('rec', true);
+    if (recs.size) { xm.watch('rec', true); armMetaTimer(); }
     changed();
     // the queue lives in the state file: pick it up again after a recorder restart
     void pumpQueue().catch((err) => console.warn(`[xmRadio rec] queue: ${err.message}`));
@@ -1086,5 +1211,5 @@ function tapeRenamed(workspaceId, from, to) {
 
 module.exports = {
     init, library, tapeRenamed, saveNow, shutdown, importSpool, spoolList, spoolDir: () => spoolDir(), recRoot: () => recRoot(), start, stop, recordCut, recordChannel, recordRange, queueList: queuePublic, queueRemove, queueClear, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
-    _test: { adtsFrames, nextStart, cutAt, norm, onLook, onAirCut, matchOnAir, sliceAac, recs, resume, load: () => load(), reset: () => { st = null; recs.clear(); ended.clear(); fired.clear(); shuttingDown = false; } }
+    _test: { adtsFrames, nextStart, cutAt, norm, onLook, onAirCut, matchOnAir, sliceAac, recs, resume, load: () => load(), reset: () => { st = null; stopMetaTimer(); cutStore._test.reset(''); recs.clear(); ended.clear(); fired.clear(); shuttingDown = false; } }
 };

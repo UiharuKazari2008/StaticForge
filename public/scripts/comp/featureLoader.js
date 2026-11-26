@@ -571,6 +571,7 @@ const FEATURE_MANIFEST = {
             'scripts/comp/mmcAppKeys.js',
             'scripts/comp/mmcDataManagement.js',
             'scripts/comp/mmcPrintManagement.js',
+            'scripts/comp/mmcLizumi.js',
             // Server Manager hosts the consoles above: after them
             'scripts/comp/mmcServerManager.js'
         ]

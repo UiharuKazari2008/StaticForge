@@ -195,6 +195,9 @@ module.exports = {
     setTerms: deckRpc('terms', 'setTerms', (terms) => ({ terms })),
     pushAuth,
     playlist: (rid) => rpc('playlist', { rid }),
+    // the service's cut store (modules/xmRadioMeta.js): the records over a time, and its totals
+    meta: (channelId, from, to) => rpc('meta', { channelId, from: Number(from) || 0, to: Number(to) || 0 }),
+    metaStats: () => rpc('metaStats', {}),
     segPath,
     // the tapes (the file store is Dreamscape's)
     tapes: (ws) => engine.tapes(ws),

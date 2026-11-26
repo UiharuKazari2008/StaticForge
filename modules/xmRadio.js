@@ -682,6 +682,43 @@ async function schedule(channelId) {
 }
 
 /**
+ * liveUpdate over a time range, for the cut metadata store (modules/xmRadioMeta.js): every cut and show SiriusXM names
+ * between two moments, paged from the range's start the way schedule() does (up to 30 pages, stopped at `toMs`). Read
+ * with the account's token, so it works in the recorder service too (external auth).
+ *   -> { items: [{ at, dur (s), a, t, ad, ik, guid }], episodes: [{ at, dur (s), name, show, ik, guid }] } (oldest first)
+ * Throws XMRADIO_SIGNED_OUT without a token and XMRADIO_OFFLINE when SiriusXM cannot be reached.
+ */
+async function liveUpdateRange(channelId, fromMs, toMs) {
+    const id = String(channelId || '');
+    if (!/^[0-9a-f-]{20,64}$/i.test(id)) throw fail('No such channel.', 'XMRADIO_CHANNEL');
+    const tok = await authToken();
+    if (!tok) throw fail('Sign in to SiriusXM to listen.', 'XMRADIO_SIGNED_OUT');
+    const end = Math.min(Number(toMs) || Date.now(), Date.now() + 8 * 3600000);
+    let from = Math.max(0, Number(fromMs) || end - 3600000);
+    const raw = { items: [], episodes: [] };
+    for (let page = 0; page < 30 && from < end; page++) {
+        const r = await api('POST', '/playback/play/v1/liveUpdate', { bearer: tok, body: { channelId: id, startTimestamp: new Date(from).toISOString(), endTimestamp: new Date(end).toISOString() } });
+        const p = r.json || {};
+        if (Array.isArray(p.items)) raw.items.push(...p.items);
+        if (Array.isArray(p.episodes)) raw.episodes.push(...p.episodes);
+        const next = Date.parse(p.nextLiveUpdateStartTimestamp || '');
+        if (!next || next <= from || next >= end) break;
+        from = next;
+    }
+    const seen = new Set();
+    const items = raw.items.map((x) => ({
+        at: Date.parse(x.timestamp) || 0, dur: Math.round((Number(x.duration) || 0) / 1000), a: String(x.artistName || ''), t: String(x.name || ''),
+        ad: !!x.isInterstitial, ik: pickArtKey(x.images) || pickArtKey(x.artistImages), guid: String(x.guid || x.id || '')
+    })).filter((x) => x.at && x.at <= end && !seen.has(x.at) && seen.add(x.at)).sort((a, b) => a.at - b.at);
+    const seenEp = new Set();
+    const episodes = raw.episodes.map((x) => ({
+        at: Date.parse(x.startTimestamp) || 0, dur: Math.round((Number(x.duration) || 0) / 1000), name: String(x.name || ''), show: String(x.showName || ''),
+        ik: pickArtKey(x.images) || pickArtKey(x.showImages), guid: String(x.guid || x.id || '')
+    })).filter((x) => x.at && x.at <= end && !seenEp.has(x.at) && seenEp.add(x.at)).sort((a, b) => a.at - b.at);
+    return { items, episodes };
+}
+
+/**
  * What is on now that matches the words (the phone's Search, Yukimi Nov 20 2026): artist, song, show or channel name,
  * every word found, on the channels in the plan. -> { results: [{ channelId, a, t, s }] } (up to 40)
  */
@@ -1418,6 +1455,7 @@ module.exports = {
     nowPlaying: (id) => nowPlaying.get(id) || null,
     nowPlayingCuts,
     schedule,
+    liveUpdateRange,
     search,
     guide,
     channelById,
