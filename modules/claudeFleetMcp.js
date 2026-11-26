@@ -218,7 +218,15 @@ function pickAccount(snap, want, allowFull) {
 }
 
 /** For Fleet's New Session "Auto" and an account's defaults: { index, name, settings }. */
-async function pickForStart(gr, want) {
+async function pickForStart(gr, want, opts = {}) {
+    // a NEW session start (opts.admit, the supervisor's pump) waits while the host is short of memory or swap (#1240);
+    // it first removes the scratch of ended sessions, which lives in RAM-backed /tmp, and asks again
+    if (opts.admit) {
+        const fm = require('./fleetMemory');
+        let a = fm.admission();
+        if (!a.ok) { try { fm.sweepScratch(); } catch (_) { /* best effort */ } a = fm.admission(); }
+        if (!a.ok) throw new Error(a.reason);
+    }
     const snap = await snapshot(gr);
     const acc = pickAccount(snap, want, false);
     return { index: acc.index, name: acc.name, settings: acc.settings || {} };
