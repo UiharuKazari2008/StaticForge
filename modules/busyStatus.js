@@ -63,7 +63,8 @@ function endHttp(id) {
 
 function beginLocalJob(kind, jobId) {
     const id = String(jobId || `${kind}-${Date.now()}`);
-    localJobs.set(id, { kind: kind === 'animate' ? 'animate' : 'upscale', jobId: id, at: Date.now() });
+    // claude-sign-in: an account sign-in in progress (claudeAccountLogin.js) lives in this process only - a restart ends it
+    localJobs.set(id, { kind: ['animate', 'claude-sign-in'].includes(kind) ? kind : 'upscale', jobId: id, at: Date.now() });
     scheduleSnapshot();
     return id;
 }

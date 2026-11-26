@@ -559,6 +559,8 @@ async function addAccountBySignIn(handler, src) {
     assert.ok(/^https:\/\/claude\.com\/cai\/oauth\/authorize\?code=true&.*state=state1$/.test(st().url), `login link (${st().url})`);
     assert.strictEqual(st().stepNumber, 1);
     assert.strictEqual((await ask({ action: 'start' })).data.login.id, id, 'a second Add picks the running sign-in back up');
+    const busyJobs = () => require('../modules/busyStatus').collect({ director: [], xi: [], generation: {}, mcp: [], smtp: [], http: [] }).reasons;
+    assert.ok(busyJobs().includes('claude-sign-in:claude-sign-in'), `a sign-in in progress holds a restart (${busyJobs()})`);
     const dirs = pendingDirs();
     assert.strictEqual(dirs.length, 1);
     assert.strictEqual(fs.statSync(path.join(paths.store, dirs[0])).mode & 0o777, 0o700, 'pending dir 0700');
@@ -587,6 +589,7 @@ async function addAccountBySignIn(handler, src) {
     const before = keys.length;
     await ask({ action: 'code', code: TOKEN_CODE });
     await waitFor(() => st().state === 'done', 'account added');
+    assert.ok(!busyJobs().includes('claude-sign-in:claude-sign-in'), 'a finished sign-in no longer holds a restart');
     assert.strictEqual(keys.length, before + 1, 'one CardSpace key added');
     const added = keys[keys.length - 1];
     assert.strictEqual(added.apiKey, NEW_TOKEN, 'the setup token is the engine key');

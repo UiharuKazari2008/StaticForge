@@ -209,6 +209,21 @@ function set(p, fields) {
     if (pending !== p) return; // a cancelled / replaced sign-in says nothing more
     Object.assign(p, fields);
     broadcast();
+    markBusy();
+}
+
+/**
+ * A sign-in in progress lives in this process only (the CLI child, step 1's login in memory): it is a local job in the
+ * busy snapshot, so the restart gate waits for it (Nov 26 2026: a restart cut Yukimi's Sign In Again off at step 2).
+ */
+const BUSY_JOB = 'claude-sign-in';
+function markBusy() {
+    let bs = null;
+    try { bs = require('./busyStatus'); } catch (_) { return; }
+    try {
+        if (pending && ACTIVE.has(pending.state)) bs.beginLocalJob(BUSY_JOB, BUSY_JOB);
+        else bs.endLocalJob(BUSY_JOB);
+    } catch (_) { /* snapshot optional */ }
 }
 
 function endProcess(p) {
@@ -409,6 +424,7 @@ function start(gr, opts = {}) {
         out: ''
     };
     runStep(pending, 'login');
+    markBusy();
     return publicState();
 }
 
@@ -461,6 +477,7 @@ function cancel(gr) {
     p.code = '';
     p.out = '';
     pending = null;
+    markBusy();
     broadcast();
     return { state: 'idle' };
 }

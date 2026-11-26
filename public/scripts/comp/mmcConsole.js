@@ -532,6 +532,7 @@
                 title: 'Customize View',
                 icon: 'fas fa-circle-info',
                 width: 360,
+                owner: this.modal,
                 onDialogReady: () => { boxes = Array.from(doc.querySelectorAll('#confirmationDialog [data-mmc-part]')); }
             });
             if (ok !== true) return;
@@ -549,16 +550,20 @@
             const ab = this.def.about || {};
             const lines = (ab.lines || []).map((l) => `<p>${l}</p>`).join('');
             await call('showConfirmationDialog', `<div class="mmc-about"><img src="${esc(this.def.icon32 || this.def.icon16 || '')}" alt="" width="32" height="32"><div><p><b>${esc(this.def.title)}</b><br>Xyridian Management Console snap-in<br>Version ${esc(ab.version || '1.0.0')}</p><p>Copyright &copy; 2007 Xyridian Corporation. All rights reserved.</p>${lines}</div></div>`,
-                [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: `About ${this.def.title}`, width: 400 });
+                [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: `About ${this.def.title}`, width: 400, owner: this.modal });
         }
 
-        /** A message box over the console (Vista's): icon 'info' | 'warning' | 'error' | 'question'. */
+        /**
+         * A message box over the console (Vista's): icon 'info' | 'warning' | 'error' | 'question'. It is modal to this
+         * console window only (owner), never to the whole desktop: a box that opens by itself (a sign-in step, a push)
+         * has no click to take its owner from and blocked every window (Nov 26 2026).
+         */
         async box(html, buttons, opts = {}) {
             // the confirmation dialog's own icon classes (confirmationDialog.js defaults to fa-question-circle)
             const icons = { info: 'fas fa-circle-info', warning: 'fas fa-triangle-exclamation', error: 'fas fa-circle-xmark', question: 'fas fa-question-circle' };
             const btns = buttons || [{ text: 'OK', value: true, className: 'btn-standard primary' }];
             const icon = icons[opts.icon || 'info'] || opts.icon;
-            return call('showConfirmationDialog', html, btns, null, Object.assign({ title: this.def.title, width: 400 }, opts, { icon }));
+            return call('showConfirmationDialog', html, btns, null, Object.assign({ title: this.def.title, width: 400, owner: this.modal }, opts, { icon }));
         }
 
         // ---- the result pane --------------------------------------------------------------------------
