@@ -273,7 +273,7 @@ const reset = (lo, hi) => { rig.lo = lo; rig.hi = hi; rig.shift = 0; rig.segFail
     assert.strictEqual(c8.p.stats().holes, 1, 'the hole is counted once, not once a tick');
     await c8.p.stop();
 
-    // 9. a segment that fails once and then reads is repaired, never a hole
+    // 8b. a segment that fails once and then reads is repaired, never a hole
     reset(900, 915);
     const c9 = make({ behindSeconds: 60 });
     const gaps9 = [];
@@ -287,6 +287,27 @@ const reset = (lo, hi) => { rig.lo = lo; rig.hi = hi; rig.shift = 0; rig.segFail
     assert.deepStrictEqual(gaps9, [], 'no gap for audio that was fetched');
     await c9.p.stop();
     console.log('ok 8 - a segment that cannot be read at all is a marked hole after the budget, never a stall');
+    // 9. a stretch that is gone costs ONE gap, not one hole per segment (Nov 26 2026: a backlog hour where every body came
+    //    back truncated ground at ~1.5 min a segment, so catching up would have taken hours)
+    reset(1000, 1020);
+    const c10 = make({ behindSeconds: 60 });
+    const gaps10 = [];
+    c10.p.on('gap', (g) => gaps10.push(g));
+    for (let q = 1001; q <= 1005; q++) rig.segFail.set(q, { n: 9999, keep: (len) => len - 40, declare: true });
+    c10.p.start({ back: 3600 });
+    await until(() => c10.seen.some((s) => s.seq === 1000), 'the one good segment at the start');
+    for (let k = 0; k < 4; k++) { clock += 61 * 1000; await settle(); await settle(); }
+    await until(() => c10.seen.some((s) => s.seq >= 1010), 'it stands back at the healthy edge after three in a row');
+    const jump = gaps10.find((g) => g.to - g.from > 3 * SEG * 1000);
+    assert.ok(jump, 'one gap covers the whole stretch');
+    assert.strictEqual(jump.from, pdt(1001), 'the gap starts at the first segment that could not be read');
+    assert.ok(jump.to >= pdt(1009), `the gap reaches the healthy edge (to ${new Date(jump.to).toISOString()})`);
+    assert.ok(c10.seen.every((s) => s.seq === 1000 || s.seq >= 1010), 'nothing inside the stretch was handed on');
+    const after10 = c10.p.stats();
+    assert.ok(after10.behindS <= SEG * 4, `it is at the healthy edge, not behind (behindS ${after10.behindS})`);
+    await c10.p.stop();
+    console.log('ok 9 - a stretch that is gone is one gap and a stand-back, never one hole per segment');
+
 
     console.log('test-xmradio-behind: ok');
 })().catch((err) => { console.error(err); process.exitCode = 1; }).finally(() => { global.fetch = realFetch; });

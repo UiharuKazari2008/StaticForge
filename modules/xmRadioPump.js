@@ -24,8 +24,10 @@
  * recording for two and a half hours - `segment 389999 failed its checks after 3 refetches` every minute, behind by hours,
  * past its end time, nothing filed). Re-fetch attempts are bounded, and a segment that has been the next one wanted for
  * longer than `behindSeconds` is declared a hole: the `gap` for exactly its span is emitted (marked in the assembled file,
- * filled with silence of its length, never spliced over), `lastEnd` moves past it and the pump carries on. `holes` in
- * `stats()` counts them. Nothing is ever skipped silently - a hole always leaves a gap and a log line.
+ * filled with silence of its length, never spliced over), `lastEnd` moves past it and the pump carries on. Several in a row
+ * (`HOLE_RUN_JUMP`) are a stretch that is gone - a backlog the stream no longer serves - so ONE gap covers the whole stretch
+ * and the position stands back at the healthy edge instead of spending hours on it. `holes` in `stats()` counts them.
+ * Nothing is ever skipped silently - a hole always leaves a gap and a log line.
  *
  * Read by program date-time, not sequence numbers: when SiriusXM's signed stream address expires mid-recording the
  * pump tunes again and carries on from the last instant it had, with no gap and no repeat.
@@ -34,6 +36,9 @@
 const { EventEmitter } = require('events');
 const crypto = require('crypto');
 
+// Consecutive segments that cannot be read at all before the pump gives up on the stretch: the audio has gone (a backlog
+// the stream no longer serves) and the position stands back at the healthy edge instead of one hole per segment.
+const HOLE_RUN_JUMP = 3;
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36';
 const TIMEOUT_MS = 20000;
 const BANDWIDTH = { hi: 256000, std: 128000, low: 32000 };
@@ -162,6 +167,8 @@ function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {},
     let bufferSegs = 0;
     let behindS = 0;
     let holes = 0;
+    let holeRun = 0; // segments declared holes in a row (a stretch that is gone)
+    let holeRunFrom = 0; // where that run started (the one gap that covers it)
     let stuckSeq = null; // the next segment wanted, while it cannot be read (see "a segment that cannot be read at all")
     let stuckSince = 0; // when it first failed
     let stuckWhy = '';
@@ -302,6 +309,25 @@ function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {},
                 // hole - the gap is reported for exactly its span, lastEnd moves past it and the pump carries on
                 if (stuckSince && now() - stuckSince >= c.behindSeconds * 1000) {
                     const to = s.pdt + (s.dur || 0) * 1000;
+                    holeRun += 1;
+                    if (!holeRunFrom) holeRunFrom = s.pdt;
+                    // several in a row: a stretch that is gone (a backlog the stream no longer serves), where one segment at
+                    // a time would take hours (Nov 26 2026: ~1.5 min each through a rotten hour). One gap covers the whole
+                    // stretch - still reported, still marked in the file, never spliced over - and the position stands back
+                    // at the healthy edge.
+                    if (holeRun >= HOLE_RUN_JUMP && fetchable > 1) {
+                        const edge = wanted[Math.min(wanted.length - 1, fetchable - 1)];
+                        if (edge && edge.pdt > lastEnd) {
+                            holes += holeRun;
+                            ev.emit('gap', { from: holeRunFrom, to: edge.pdt });
+                            log('warn', `[xmRadioPump] ${channelId}: ${holeRun} segments in a row could not be read (${stuckWhy || 'failed their checks'}); the ${Math.round((edge.pdt - holeRunFrom) / 1000)} s from ${new Date(holeRunFrom).toISOString()} are missing (holes ${holes}) - standing back at the healthy edge`);
+                            lastEnd = edge.pdt;
+                            holeRun = 0; holeRunFrom = 0;
+                            stuckSeq = null; stuckSince = 0; stuckWhy = '';
+                            break;
+                        }
+                    }
+                    // one on its own: a hole of exactly its span, and the pump carries on with the next segment
                     holes += 1;
                     ev.emit('gap', { from: s.pdt, to });
                     ev.emit('hole', { seq: s.seq, from: s.pdt, to, why: stuckWhy });
@@ -321,6 +347,7 @@ function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {},
                     throw err;
                 }
                 stuckSeq = null; stuckSince = 0; stuckWhy = '';
+                holeRun = 0; holeRunFrom = 0;
                 lastEnd = s.pdt + s.dur * 1000;
                 anchored = true;
                 emitted += 1;
