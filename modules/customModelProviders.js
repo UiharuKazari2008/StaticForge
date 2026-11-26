@@ -111,6 +111,7 @@ function writeLogo(id, dataUrl) {
     if (dataUrl == null) return;
     if (dataUrl === '') {
         try { fs.unlinkSync(logoFile(id)); } catch (_) { /* already gone */ }
+        require('./servedPictures').dropServed('provider-logos', id, servedRoot); // its served copy goes with it (#1012)
         return;
     }
     // no-base64-images: transport (the page uploads the logo as base64; it is stored as a file)

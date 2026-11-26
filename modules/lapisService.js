@@ -1169,6 +1169,7 @@ async function savePicture(dataUrl) {
         } catch (_e) {
             /* none saved */
         }
+        require('./servedPictures').dropServed('lapis-picture', 'lapis'); // its served copy goes with it (#1012)
         const c = Object.assign({}, config('lapis', {}) || {});
         delete c.picture;
         await gr.modifyConfig('config').assign(['lapis'], c);

@@ -33,4 +33,14 @@ function servedUrl(sourceFile, group, key, ext = 'png', cacheRoot = CACHE_ROOT) 
     }
 }
 
-module.exports = { servedUrl };
+/** Delete the served copies of key in group (its picture was removed). cacheRoot: override for tests. */
+function dropServed(group, key, cacheRoot = CACHE_ROOT) {
+    try {
+        const dir = path.join(cacheRoot, group);
+        for (const old of fs.readdirSync(dir)) {
+            if (old.startsWith(`${key}-`)) { try { fs.unlinkSync(path.join(dir, old)); } catch (_e) { /* gone */ } }
+        }
+    } catch (_err) { /* no folder */ }
+}
+
+module.exports = { servedUrl, dropServed };
