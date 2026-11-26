@@ -360,6 +360,8 @@
         }).finally(() => {
             loading = null;
             changed();
+            // a task changed elsewhere (the server's reset of a repeating task, another device): the soft key follows it
+            { const c = sel && taskOf(sel); if (c) lastKey = c.completed ? 'Activate' : 'Complete'; }
             // the page draws only while it is seen (a read Today started, the screen off): else on show / wake
             if (page && view !== 'form') { if (listSeen()) render(); else pageStale = true; }
         });
