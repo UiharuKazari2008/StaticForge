@@ -36,14 +36,9 @@ function getConfirmationPrimaryButtonIndex(options) {
     return 0;
 }
 
-function getConfirmationDialogActionButtonCount() {
-    if (!confirmationDialogActive || !confirmationDialog) return 0;
-    const buttons = confirmationDialog.querySelectorAll('#confirmationControls button:not(:disabled)');
-    return buttons ? buttons.length : 0;
-}
-
 function confirmationOverlayDigitsValid() {
-    return getConfirmationDialogActionButtonCount() >= 2;
+    if (!confirmationDialogActive || !confirmationDialog) return false;
+    return confirmationDialog.querySelectorAll('#confirmationControls button:not(:disabled)').length >= 2;
 }
 
 function confirmationOverlayEnterValid() {
@@ -411,6 +406,7 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
 
         // the window it is modal to, read before it takes the activation (#970)
         const modalOwner = hasOptions && window.modalDialogs ? window.modalDialogs.ownerFor(event, config && config.owner, confirmationDialog) : null;
+        setConfirmationDialogOwnerIcon(event, config);
         openModal(confirmationDialog);
 
         if (typeof setActiveWindow === 'function') {
@@ -429,6 +425,29 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
             desktopSounds.play(config.sound === true ? 'dialog' : config.sound);
         }
     });
+}
+
+/**
+ * The box's owner and caption icon, decided here for every open and never by openModal's link to the window in
+ * front (data-owner-decided): the window MessageBox's hWnd names (modalDialogs.ownerFor - the caller's owner, the
+ * event's window, or the window in use for a box the person's own click or key raised), else none. A box from the
+ * server, a timer or a background program wears its own program's icon (config.appIcon, an app_icons reference)
+ * or none, never the icon of whatever program happens to be in front.
+ */
+function setConfirmationDialogOwnerIcon(event, config) {
+    if (!confirmationDialog) return;
+    const cfg = config || {};
+    const owner = window.modalDialogs && typeof window.modalDialogs.ownerFor === 'function'
+        ? window.modalDialogs.ownerFor(event, cfg.owner, confirmationDialog) : null;
+    confirmationDialog.setAttribute('data-owner-decided', '');
+    if (owner && owner.id) confirmationDialog.setAttribute('data-parent-modal-id', owner.id);
+    else confirmationDialog.removeAttribute('data-parent-modal-id');
+    if (cfg.appIcon) confirmationDialog.dataset.appIcon = String(cfg.appIcon);
+    else delete confirmationDialog.dataset.appIcon;
+    // the caption is drawn again from what was just decided (an earlier open's inherited icon goes)
+    const main = confirmationDialog.querySelector(':scope > .modal-window-title > .modal-window-title-main');
+    if (main) main.querySelectorAll(':scope > img[data-inherited-icon]').forEach((n) => n.remove());
+    if (typeof ensureModalApplicationIcon === 'function') ensureModalApplicationIcon(confirmationDialog);
 }
 
 function getConfirmationDialogEventPoint(event) {
@@ -541,7 +560,11 @@ function layoutConfirmationDialogPlacement(event, config, options) {
             const sidePadding = config.leftPadding || 20;
             const bottomPadding = config.bottomPadding || 20;
             const rightEdge = window.innerWidth - safeAreaInsetRight - sidePadding;
-            const bottomEdge = window.innerHeight - safeAreaInsetBottom - bottomPadding;
+            let bottomEdge = window.innerHeight - safeAreaInsetBottom - bottomPadding;
+            // the desktop's corner is above the taskbar (a bottom taskbar shown; never under it)
+            const bar = document.getElementById('desktopTaskbar');
+            const barBox = bar && bar.getClientRects().length ? bar.getBoundingClientRect() : null;
+            if (barBox && barBox.height > 0 && barBox.top > window.innerHeight / 2) bottomEdge = Math.min(bottomEdge, barBox.top - bottomPadding);
             offsetX = rightEdge - dialogWidth / 2 - containerWidth / 2;
             offsetY = bottomEdge - dialogHeight / 2 - window.innerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
         }
@@ -562,11 +585,6 @@ function layoutConfirmationDialogPlacement(event, config, options) {
 // Position the dialog near the mouse cursor or button (dialog may already be open)
 function positionConfirmationDialog(event) {
     layoutConfirmationDialogPlacement(event, {}, { usesManualPlacement: true });
-}
-
-// Position the dialog at bottom right with padding
-function positionConfirmationDialogBottomRight(config = {}) {
-    layoutConfirmationDialogPlacement(null, config || {}, { usesManualPlacement: true });
 }
 
 // Hide confirmation dialog
@@ -801,6 +819,7 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
 
         // the window it is modal to, read before it takes the activation (#970)
         const modalOwner = hasOptions && window.modalDialogs ? window.modalDialogs.ownerFor(event, config && config.owner, confirmationDialog) : null;
+        setConfirmationDialogOwnerIcon(event, config);
         openModal(confirmationDialog);
 
         if (typeof setActiveWindow === 'function') {

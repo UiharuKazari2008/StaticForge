@@ -875,7 +875,7 @@ function _confirmationDialogFree() {
 const policyDroppedToasts = new Set(); // dropped "working..." notes: an update to an error still says it
 
 /** A toast as a Vista message box (its buttons as the box's buttons; the first runs on its own). */
-function _showToastAsDialog(toastId, type, title, message, buttons) {
+function _showToastAsDialog(toastId, type, title, message, buttons, options = null) {
     if (typeof showConfirmationDialog !== 'function') return false;
     const t = _toastPlain(title);
     const m = _toastPlain(message);
@@ -900,7 +900,10 @@ function _showToastAsDialog(toastId, type, title, message, buttons) {
     // If the app asks something while the box is up, its question takes the dialog over: the box
     // then counts as closed once that dialog closes.
     const done = (policyDialogQueue = policyDialogQueue.then(_confirmationDialogFree).then(() => {
-        const answer = showConfirmationDialog(`<p>${body}</p>`, btns, null, { title: caption, width: 400, icon });
+        const extra = options || {};
+        // appIcon: the raising program's own caption icon (never the window in front); position: 'bottom-right'
+        const answer = showConfirmationDialog(`<p>${body}</p>`, btns, null, Object.assign({ title: caption, width: 400, icon },
+            extra.appIcon ? { appIcon: extra.appIcon } : null, extra.position === 'bottom-right' ? { position: 'bottom-right', leftPadding: 12, bottomPadding: 12 } : null));
         const closed = new Promise((r) => requestAnimationFrame(() => _confirmationDialogFree().then(() => setTimeout(() => r(null), 60))));
         return Promise.race([answer, closed]);
     }))
@@ -949,6 +952,8 @@ function _showPolicyBalloon(toastId, route, type, title, message, timeout, custo
  * @param {number|boolean} timeout - Auto-dismiss timeout in milliseconds, or false to disable
  * @param {string|null} customIcon - Custom icon HTML string
  * @param {Array|null} buttons - Array of button configuration objects
+ * @param {Object|null} options - For a desktop message box: { appIcon } the raising program's caption icon (an
+ *   app_icons reference; without one a box nobody's click raised has no caption icon), { position: 'bottom-right' }
  * @returns {string} Unique toast ID
  *
  * @example
@@ -961,7 +966,7 @@ function _showPolicyBalloon(toastId, route, type, title, message, timeout, custo
  *   { text: 'Cancel', onClick: () => cancelUpload() }
  * ]);
  */
-function showGlassToast(type, title, message, showProgress = false, timeout = 5000, customIcon = null, buttons = null) {
+function showGlassToast(type, title, message, showProgress = false, timeout = 5000, customIcon = null, buttons = null, options = null) {
     const toastId = `toast-${++toastCounter}`;
     const resolvedTimeout = timeout === false ? false : (timeout ?? 5000);
     const inAppOnly = _shouldUseInAppToast(type, title, message, buttons)
@@ -1014,11 +1019,11 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
     if (route.kind === 'balloon') {
         if (_showPolicyBalloon(toastId, route, type, title, message, resolvedTimeout, customIcon, buttons)) return toastId;
         // its tray icon is not there: an error still needs saying, anything else goes
-        if (type === 'error' || type === 'warning') { if (_showToastAsDialog(toastId, type, title, message, buttons)) return toastId; }
+        if (type === 'error' || type === 'warning') { if (_showToastAsDialog(toastId, type, title, message, buttons, options)) return toastId; }
         activeToasts.delete(toastId);
         return toastId;
     }
-    if (route.kind === 'dialog' && _showToastAsDialog(toastId, type, title, message, buttons)) {
+    if (route.kind === 'dialog' && _showToastAsDialog(toastId, type, title, message, buttons, options)) {
         return toastId;
     }
 

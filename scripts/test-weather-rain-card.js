@@ -96,20 +96,34 @@ const bars = (html) => (html.match(/<rect /g) || []).length;
     win.wsClient.sendMessage = () => Promise.reject(new Error('offline'));
     assert.strictEqual(await wa.readRain('home'), null);
 
+    // the desktop: the rain alarm is the phone's notice, shown there only with Settings > Show on desktop
+    const off = [];
+    const quiet = load({ showGlassToast: (...a) => off.push(a) });
+    quiet.handlers.weather_rain_alarm({ data: { place: { id: 'home', label: 'Home' }, kind: 'Rain', startsInMin: 5, current, series: series([0, 1]), seriesStep: 5 } });
+    assert.strictEqual(off.length, 0, 'no desktop notice without Show on desktop');
+
     // the alarm's notice: sentence plus card, text only without a series, and no "in 0 min"
     const toasts = [];
     const page = load({ showGlassToast: (...a) => toasts.push(a) });
+    page.store.set('wmWeatherSettings', JSON.stringify({ desktopRain: true }));
     page.handlers.weather_rain_alarm({ data: { place: { id: 'home', label: 'Home' }, kind: 'Rain', startsInMin: 0, endsInMin: 20, current, series: series([1, 1]), seriesStep: 5 } });
     page.handlers.weather_rain_alarm({ data: { place: { id: 'work', label: 'Work' }, kind: 'Rain', startsInMin: 1 } });
     assert.strictEqual(toasts[0][1], 'Rain at Home now');
     assert.ok(toasts[0][2].startsWith('Rain now, stopping after about 20 minutes.<div class="wx-rain-card">'));
     assert.ok(toasts[0][2].includes('<svg'));
     assert.strictEqual(toasts[1][1], 'Rain at Work in 1 min');
-    assert.strictEqual(toasts[1][2], 'Rain expected in about 1 minute.');
+    assert.strictEqual(toasts[1][2], 'Rain from about 1 minute from now, lasting the rest of the hour.');
+    // its own program's caption icon, never the window in front's; the screen's bottom right corner
+    assert.strictEqual(JSON.stringify(toasts[0][7]), JSON.stringify({ appIcon: 'melaton-weather.png', position: 'bottom-right' }));
+    // a provider summary that says it stays dry is never the text over a graph of rain (the Nov 26 notice)
+    page.handlers.weather_rain_alarm({ data: { place: { id: 'here', label: 'Here' }, kind: 'Light rain', startsInMin: 12, endsInMin: null, summary: 'No precipitation for the next hour', current, series: series([0, 0, 0.2, 0.2]), seriesStep: 15 } });
+    assert.ok(toasts[2][2].startsWith('Light rain from about 12 minutes from now, lasting the rest of the hour.'), toasts[2][2]);
+    assert.ok(!toasts[2][2].includes('No precipitation'));
 
     // the desktop with only the stub: the program loads first, so the notice has its glyph
     const late = [];
     const desk = load({ showGlassToast: (...a) => late.push(a) });
+    desk.store.set('wmWeatherSettings', JSON.stringify({ desktopRain: true }));
     desk.win.featureLoader = { loadFeature: async (name) => { assert.strictEqual(name, 'melaton_weather'); desk.win.wmWeather = { iconUrl, open() {} }; } };
     desk.handlers.weather_rain_alarm({ data: { place: { id: 'home', label: 'Home' }, startsInMin: 5, current, series: series([0, 1]), seriesStep: 5 } });
     await new Promise((resolve) => setImmediate(resolve));

@@ -151,7 +151,7 @@
   "page-global": 18
  },
  "public/scripts/comp/confirmationDialog.js": {
-  "page-global": 28
+  "page-global": 27
  },
  "public/scripts/comp/connectionManager.js": {
   "page-global": 13

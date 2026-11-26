@@ -3733,8 +3733,14 @@ function openModal(modal) {
         }
     }
 
-    // If this is an on-top tool window and doesn't already have a parent link, link it to the main active window
-    if (isToolWindow(modal) && modal.classList.contains('on-top') && !modal.hasAttribute('data-parent-modal-id')) {
+    // If this is an on-top tool window and doesn't already have a parent link, link it to the main active window.
+    // Never a window that decides its owner itself (data-owner-decided: the shared message box, whose owner is
+    // modalDialogs.ownerFor's MessageBox hWnd): a box raised by the server, a timer or a background app has no
+    // owner, and linking it to whatever window is in front made it wear that program's caption icon.
+    // Nor a window no click or key of the person opened (the server, a timer, a push): it was not opened from the
+    // window in front, so that window is not its parent.
+    const personOpened = !navigator.userActivation || navigator.userActivation.isActive;
+    if (isToolWindow(modal) && modal.classList.contains('on-top') && !modal.hasAttribute('data-parent-modal-id') && !modal.hasAttribute('data-owner-decided') && personOpened) {
         // Link to main active window if available
         if (mainActiveWindowId) {
             const mainWindow = document.getElementById(mainActiveWindowId);
@@ -5942,6 +5948,8 @@ window.MELATON_DEFAULT_WINDOW_ICON = MELATON_DEFAULT_WINDOW_ICON;
 window.MELATON_GENERIC_PROGRAM_ICON = MELATON_GENERIC_PROGRAM_ICON;
 
 function resolveInheritedAppIcon(modal) {
+    // the program that raised it named its own icon (data-app-icon): never an owner's
+    if (modal.dataset.appIcon) return modal.dataset.appIcon;
     const seen = new Set([modal.id]);
     let ownerId = modalIconOwnerId(modal);
     while (ownerId && !seen.has(ownerId)) {

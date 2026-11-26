@@ -14,7 +14,8 @@
  *            (wmWeather.showAlert). Errors-style notes stay until dismissed.
  *
  * Rain alarm (#792): weather_rain_alarm for Home / Work, once per spell: a WM notification in the
- * Weather: Rain alarm class on phones, a notification on the desktop.
+ * Weather: Rain alarm class on phones; on the desktop only with Weather's Settings > Show on desktop, as a message
+ * box in the bottom right corner with Melaton Weather's caption icon.
  *
  * Rain card (#1267): the one drawing of a place's current weather and next-hour rain graph, for the notices here and
  * the phone's rain bubble (wmShell.js). Inline SVG in currentColor, so it needs no stylesheet and holds no colours.
@@ -482,10 +483,18 @@
     }
 
     const minutes = (n) => `${n} ${n === 1 ? 'minute' : 'minutes'}`;
+    const WEATHER_APP_ICON = 'melaton-weather.png'; // Melaton Weather's app_icons art (the Start menu's entry)
+
+    /** Weather's Settings > Show on desktop (wmWeatherSettings.desktopRain, this client's own choice; off by default). */
+    function desktopRainWanted() {
+        const w = root.wmWeather;
+        if (w && typeof w.desktopRain === 'function') return !!w.desktopRain();
+        try { return !!(JSON.parse(root.localStorage.getItem('wmWeatherSettings')) || {}).desktopRain; } catch (_e) { return false; }
+    }
 
     /**
      * The rain alarm for Home / Work (weather_rain_alarm, once per rain spell): a WM notification in
-     * the Weather: Rain alarm sound class on phones, a notification on the desktop (#792).
+     * the Weather: Rain alarm sound class on phones; on the desktop only with Settings > Show on desktop (#792).
      */
     function onRain(packet) {
         const d = packet && (packet.data || packet);
@@ -497,13 +506,15 @@
         const kind = d.kind || 'Rain';
         const lead = Number(d.startsInMin) > 0 ? Number(d.startsInMin) : 0;
         const title = lead ? `${kind} at ${where} in ${lead} min` : `${kind} at ${where} now`;
-        const lasts = d.endsInMin ? `stopping after about ${minutes(Math.max(5, d.endsInMin - lead))}` : '';
-        let text;
-        if (lasts) text = lead ? `${kind} from about ${minutes(lead)} from now, ${lasts}.` : `${kind} now, ${lasts}.`;
-        else text = d.summary || (lead ? `${kind} expected in about ${minutes(lead)}.` : `${kind} is starting now.`);
-        keepRain(d.place.id, d);
         // the card as the alarm found it; a push without the next hour stays text only
         const hasHour = Array.isArray(d.series) && d.series.length > 0;
+        // the words come from the alarm's own minutes, as the graph does (never d.summary: a provider's summary said
+        // "No precipitation for the next hour" over a graph of rain)
+        const horizon = hasHour ? d.series.length * (finite(d.seriesStep) > 0 ? finite(d.seriesStep) : 1) : 60;
+        const span = horizon <= 75 ? 'the hour' : horizon <= 135 ? 'the next two hours' : `the next ${Math.round(horizon / 60)} hours`;
+        const lasts = d.endsInMin ? `stopping after about ${minutes(Math.max(5, d.endsInMin - lead))}` : `lasting the rest of ${span}`;
+        const text = lead ? `${kind} from about ${minutes(lead)} from now, ${lasts}.` : `${kind} now, ${lasts}.`;
+        keepRain(d.place.id, d);
         const body = () => `${esc(text)}${hasHour ? rainCardHtml(d) : ''}`;
         document.dispatchEvent(new CustomEvent('weatherRainAlarm', { detail: d }));
         if (isPhone() && root.wmShell && typeof root.wmShell.appNote === 'function') {
@@ -519,12 +530,16 @@
             });
             if (note) return;
         }
+        // the rain alarm is the phone's notice: the desktop shows it only with Weather's Settings > Show on desktop
+        if (!isPhone() && !desktopRainWanted()) return;
         const toast = () => {
             if (typeof root.showGlassToast !== 'function') return;
-            // the desktop makes this a message box that stays (toastManager.js: a notice with a button); the
-            // timeout is for a page that shows it as a plain notification, long enough to read the graph
+            // the desktop makes this a message box that stays (toastManager.js: a notice with a button), in the
+            // screen's bottom right corner with Melaton Weather's own caption icon (never the window in front's);
+            // the timeout is for a page that shows it as a plain notification, long enough to read the graph
             root.showGlassToast('info', esc(title), body(), false, 30000, null,
-                root.wmWeather ? [{ text: 'Open Weather', type: 'primary', closeOnClick: true, onClick: () => root.wmWeather.open() }] : null);
+                root.wmWeather ? [{ text: 'Open Weather', type: 'primary', closeOnClick: true, onClick: () => root.wmWeather.open() }] : null,
+                { appIcon: WEATHER_APP_ICON, position: 'bottom-right' });
         };
         // the desktop holds only Melaton Weather's stub until the program is first opened: the card's glyph and unit are
         // the program's, so it loads for the card (once per rain spell); the notice shows without the glyph if it cannot

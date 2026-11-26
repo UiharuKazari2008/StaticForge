@@ -1508,7 +1508,23 @@ function rainOutlook(forecast, now = Date.now()) {
         const dryAt = list.slice(wetAt).findIndex((x) => (Number(x.mmh) || 0) < RAIN_MMH);
         if (dryAt > 0) endsInMin = (wetAt + dryAt) * step;
     }
-    return { wet: wetAt === 0, startsInMin: wetAt < 0 ? null : wetAt * step, endsInMin, peakMmh: peak, summary: m.summary || '', step };
+    const startsInMin = wetAt < 0 ? null : wetAt * step;
+    return { wet: wetAt === 0, startsInMin, endsInMin, peakMmh: peak, summary: outlookText(list.length * step, startsInMin, endsInMin, peak), step };
+}
+
+/**
+ * The outlook in words, from the same minutes as the alarm and the graph (never the provider's own summary: it is
+ * made when the forecast is fetched, by the provider's own threshold, and said "No precipitation for the next hour"
+ * over a graph of rain).
+ */
+function outlookText(horizonMin, startsInMin, endsInMin, peakMmh) {
+    const span = horizonMin <= 75 ? 'the next hour' : horizonMin <= 135 ? 'the next two hours' : `the next ${Math.round(horizonMin / 60)} hours`;
+    if (startsInMin == null) return `No precipitation for ${span}`;
+    const word = rainWord(peakMmh);
+    if (startsInMin === 0) return endsInMin ? `${word} stopping in about ${endsInMin} min` : `${word} for ${span}`;
+    return endsInMin
+        ? `${word} starting in about ${startsInMin} min, stopping after about ${Math.max(5, endsInMin - startsInMin)} min`
+        : `${word} starting in about ${startsInMin} min, lasting the rest of ${span}`;
 }
 
 function rainWord(mmh) {
