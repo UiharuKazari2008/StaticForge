@@ -11318,10 +11318,9 @@
             today.page.style.backgroundSize = bg.size;
             today.page.style.backgroundPosition = bg.position;
             today.page.style.backgroundRepeat = bg.repeat;
-            // Fit and Center leave margins: WM painted a solid colour there, not the workspace
-            // theme behind the shell (black, like the Settings preview)
-            today.page.style.backgroundColor = u ? '#000' : '';
-            // Android's wallpaper shows through (wm-android-wall in wm-shell.css): text keeps its picture shadow
+            // Fit and Center leave margins: WM painted a solid colour there, not the workspace theme behind the shell
+            // (black, like the Settings preview: .wm-today.has-picture in wm-shell.css). Android's wallpaper shows
+            // through (wm-android-wall in wm-shell.css): text keeps its picture shadow
             today.page.classList.toggle('has-picture', !!u);
             // the home swipe's mask follows Today's background (#1013)
             queueHomeMask(u, drawn, fx);
