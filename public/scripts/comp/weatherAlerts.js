@@ -440,19 +440,19 @@
             const chance = finite(series[i] && series[i].rain);
             const opacity = chance === null ? 1 : 0.45 + (Math.max(0, Math.min(100, chance)) / 100) * 0.55;
             const h = yOf(v);
-            return `<rect class="wx-rain-bar" x="${(i * bw + bw * 0.12).toFixed(2)}" y="${(CHART_H - h).toFixed(2)}" width="${Math.max(0.8, bw * 0.76).toFixed(2)}" height="${h.toFixed(2)}" fill="currentColor" fill-opacity="${opacity.toFixed(2)}"/>`;
+            return `<rect class="wx-rain-bar" x="${(i * bw + bw * 0.12).toFixed(2)}" y="${(CHART_H - h).toFixed(2)}" width="${Math.max(0.8, bw * 0.76).toFixed(2)}" height="${h.toFixed(2)}" fill="Highlight" fill-opacity="${opacity.toFixed(2)}"/>`;
         }).join('');
         const line = (y, opacity, dash) => `<line x1="0" y1="${y}" x2="${CHART_W}" y2="${y}" stroke="currentColor" stroke-opacity="${opacity}" stroke-width="1"${dash ? ' stroke-dasharray="3 3"' : ''} vector-effect="non-scaling-stroke"/>`;
         const end = total % 60 === 0 ? `${total / 60} h` : `${total} min`;
-        // the labels are page text, not SVG text: stretching the drawing never distorts them, and the app's copy of the
-        // drawing (melatonBars.js svgPicture) has no page font
+        // the labels are outside the stretched drawing, so stretching it never distorts them
         return `<svg class="wx-rain-chart" viewBox="0 0 ${CHART_W} ${CHART_H}" width="100%" height="${CHART_H}" preserveAspectRatio="none" role="img" aria-label="Rain for the next ${esc(end)}">`
             + line((CHART_H - yOf(NEXT_LIGHT)).toFixed(1), 0.35, true)
             + line((CHART_H - yOf(NEXT_HEAVY)).toFixed(1), 0.35, true)
             + bars
             + line(CHART_H - 0.5, 0.7, false)
             + '</svg>'
-            + `<table class="wx-rain-axis" width="100%" cellpadding="0" cellspacing="0"><tr><td align="left" nowrap>Now</td><td align="center" nowrap>Rain intensity</td><td align="right" nowrap>${esc(end)}</td></tr></table>`;
+            // a second drawing for the labels (no viewBox, so nothing stretches): a table would take the window's own table look
+            + `<svg class="wx-rain-axis" width="100%" height="16" aria-hidden="true"><g fill="currentColor" font-size="11"><text x="0" y="12">Now</text><text x="50%" y="12" text-anchor="middle">Rain intensity</text><text x="100%" y="12" text-anchor="end">${esc(end)}</text></g></svg>`;
     }
 
     /**

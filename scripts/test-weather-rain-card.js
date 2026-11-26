@@ -45,7 +45,7 @@ const bars = (html) => (html.match(/<rect /g) || []).length;
     // a wet hour: one bar for each wet point, none for the dry ones, no sentence
     const wet = wa.rainCardHtml({ current, series: series([0, 0, 0.04, 0.05, 0.5, 1.2, 4.5, 8, 2, 0.3, 0, 0]), seriesStep: 5 });
     assert.strictEqual(bars(wet), 7);
-    assert.ok(wet.includes('<svg ') && wet.includes('Now') && wet.includes('>1 h</td>'));
+    assert.ok(wet.includes('<svg ') && wet.includes('Now') && wet.includes('>1 h</text>'));
     assert.ok(!wet.includes('No precipitation'));
     assert.ok(wet.includes('wx-rain.png') && wet.includes('width="32" height="32"'));
     assert.ok(wet.includes('18\u00b0C') && wet.includes('Light Rain'));

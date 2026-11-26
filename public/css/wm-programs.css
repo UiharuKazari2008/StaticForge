@@ -2083,5 +2083,5 @@ html.ui-mobile .wx-rain-now > span { min-width: 0; white-space: nowrap; overflow
 html.ui-mobile .wx-rain-now > .wx-rain-glyph { flex: 0 0 auto; width: calc(28 * var(--wm-px)); height: calc(28 * var(--wm-px)); }
 html.ui-mobile .wx-rain-chart { display: block; width: 100%; height: calc(40 * var(--wm-px)); margin-top: calc(2 * var(--wm-px)); }
 html.ui-mobile .wx-rain-chart .wx-rain-bar { fill: var(--wm-highlight); }
-html.ui-mobile .wx-rain-axis { width: 100%; border-collapse: collapse; }
-html.ui-mobile .wx-rain-axis td { padding: 0; }
+html.ui-mobile .wx-rain-axis { display: block; width: 100%; height: calc(12 * var(--wm-px)); }
+html.ui-mobile .wx-rain-axis g { font-size: calc(9 * var(--wm-px)); }
