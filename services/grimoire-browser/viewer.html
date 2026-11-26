@@ -2639,11 +2639,13 @@
     letGo();
     if (wheelRaf) cancelAnimationFrame(wheelRaf);
     flushWheel();
-    if (switching) clearTimeout(switching.timer);
-    var sw = { id: id, token: tok, timer: 0, quiet: !!quiet };
+    if (switching) { clearTimeout(switching.timer); clearTimeout(switching.hold); }
+    var sw = { id: id, token: tok, timer: 0, hold: 0, quiet: !!quiet };
     switching = sw;
     switchSentAt = performance.now();
     sw.timer = setTimeout(function () { switchTimedOut(sw); }, SWITCH_WAIT_MS);
+    // a slow answer (a busy relay) must not leave the tab being left on show under the new tab's name
+    sw.hold = setTimeout(function () { if (switching === sw) clearPicture(); }, HOLD_PICTURE_MS);
     sendSocket({ type: 'switch', sessionId: id, t: tok });
   }
 
@@ -2652,6 +2654,7 @@
     if (!sw || (msg.sessionId || '') !== sw.id) return;
     switching = null;
     clearTimeout(sw.timer);
+    clearTimeout(sw.hold);
     if (msg.type === 'switch-failed') {
       // the old binding stays
       postParent({ type: 'grimoire-browser-switch-failed', viewerSession: sw.id, reason: String(msg.reason || '') });
