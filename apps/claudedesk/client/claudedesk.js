@@ -1512,7 +1512,7 @@
             const at = now + (100 - percent) * (elapsed * win) / percent;
             if (percent >= 100 || at < l.resetsAt) { far = true; runOutAt = percent >= 100 ? null : Math.round(at); }
         }
-        return { elapsedPct, percent, ahead: Math.round(percent - elapsedPct), state: far ? 'far' : (percent > elapsedPct ? 'over' : 'ok'), runOutAt };
+        return { elapsedPct, percent, ahead: Math.round(percent - elapsedPct), state: far ? 'far' : (percent > elapsedPct ? 'over' : 'ok'), runOutAt, resetsAt: l.resetsAt, win };
     }
     function renewalAfter(day, now) {
         const d = Math.round(Number(day));
@@ -1609,7 +1609,7 @@
                 const pct = Math.max(0, Math.min(100, Math.round(l.percent)));
                 const stale = l.resetsAt && l.resetsAt <= now;
                 return `<div class="cd-usage-row"><span class="cd-usage-label">${esc(l.label || l.short || l.kind)}</span>`
-                    + `<div class="mmc-progress"><div role="progressbar"${lv ? ` class="${lv}"` : ''} aria-valuemin="0" aria-valuemax="100" aria-valuenow="${stale ? 0 : pct}"><div class="cd-fill" data-w="${stale ? 0 : pct}"></div>${pace ? `<i class="cd-pace" data-pace="${pace.elapsedPct.toFixed(1)}" title="${esc(paceTip(pace))}"></i>` : ''}</div><span>${stale ? '' : `${pct}%`}</span></div>`
+                    + `<div class="mmc-progress"><div role="progressbar"${lv ? ` class="${lv}"` : ''} aria-valuemin="0" aria-valuemax="100" aria-valuenow="${stale ? 0 : pct}"><div class="cd-fill" data-w="${stale ? 0 : pct}"></div>${pace ? `<i class="cd-pace" data-pace="${pace.elapsedPct.toFixed(2)}" data-reset="${pace.resetsAt}" data-win="${pace.win}" title="${esc(paceTip(pace))}"></i>` : ''}</div><span>${stale ? '' : `${pct}%`}</span></div>`
                     + `<span class="cd-usage-reset mmc-hint"${pace ? ` title="${esc(paceTip(pace))}"` : ''}>${esc(resetText(l, now))}</span></div>`;
             }).join('');
         } else {
@@ -4882,7 +4882,27 @@
             el.classList.toggle('is-empty', p <= 0);
             el.classList.toggle('is-short', p > 0 && outer[i] * p / 100 < 18);
         });
-        pane.querySelectorAll('i[data-pace]').forEach((el) => el.style.setProperty('--cd-pace', String(Math.max(0, Math.min(100, Number(el.dataset.pace) || 0)))));
+        placePace(pane);
+    }
+    // The pace tick moves with the clock, not only when usage is read again (Yukimi, Nov 26 2026: "should be progressing
+    // with the time so it's more accurate"): placed from its reset time at every paint, then nudged every 30 s while a
+    // bar is on screen and the window shows - one timer for all bars, gone when none is left.
+    let paceTimer = 0;
+    function placePace(root) {
+        const now = Date.now();
+        const els = (root || document).querySelectorAll('i.cd-pace[data-reset]');
+        els.forEach((el) => {
+            const reset = Number(el.dataset.reset); const win = Number(el.dataset.win);
+            const pct = reset && win ? ((now - (reset - win)) / win) * 100 : Number(el.dataset.pace) || 0;
+            el.style.setProperty('--cd-pace', Math.max(0, Math.min(100, pct)).toFixed(3));
+        });
+        if (els.length && !paceTimer) {
+            paceTimer = setInterval(() => {
+                const live = document.querySelectorAll('#mmcConsole_claudedesk i.cd-pace[data-reset]');
+                if (!live.length) { clearInterval(paceTimer); paceTimer = 0; return; }
+                if (!document.hidden) placePace(document.getElementById('mmcConsole_claudedesk'));
+            }, 30000);
+        }
     }
     function withBars(html) {
         return { html, mount: (pane) => paintBars(pane) };
