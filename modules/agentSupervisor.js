@@ -1520,8 +1520,16 @@ function cleanStages(st) {
 
 /** One JSON answer from the Supervisor's engine (the same engine / model as its reviews). */
 async function askJson(gr, system, user, kind, opts = {}) {
-    const r = await callEngine(gr, [{ role: 'system', content: system }, { role: 'user', content: user }], { kind: kind || 'json', maxTokens: opts.maxTokens });
-    return parseLooseJson(r.content);
+    const msgs = [{ role: 'system', content: system }, { role: 'user', content: user }];
+    const r = await callEngine(gr, msgs, { kind: kind || 'json', maxTokens: opts.maxTokens });
+    try { return parseLooseJson(r.content); } catch (e) {
+        // an empty or cut-off answer (the model's reasoning used the whole budget: finish "length", 0 chars - Nov 26 2026,
+        // most Rules Review parts) is asked once more without reasoning and with twice the room, like a turn review
+        if (opts.noRetry) throw e;
+        const room = Math.min(16000, Math.max(4000, (opts.maxTokens || 6000) * 2));
+        const r2 = await callEngine(gr, msgs, { kind: kind || 'json', maxTokens: room, effort: 'none' });
+        return parseLooseJson(r2.content);
+    }
 }
 
 /**

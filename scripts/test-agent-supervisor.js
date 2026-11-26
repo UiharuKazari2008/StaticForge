@@ -731,6 +731,16 @@ sup._test.setFetch(async (url, opts) => {
         delete process.env.AGENT_SUPERVISOR_429_MS;
     });
 
+    await test('askJson: an empty / cut-off answer is asked once more with more room', async () => {
+        const seen = [];
+        sup._test.setFetch(async (url, opts) => { const b = JSON.parse(opts.body); seen.push(b); const content = seen.length === 1 ? '' : '{"findings":[]}'; return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content }, finish_reason: seen.length === 1 ? 'length' : 'stop' }] }) }; });
+        const g6 = Object.assign({}, gr, { getConfig: () => ({ agentSupervisor: { enabled: true, engine: 'tokenrouter' } }) });
+        const o = await sup.askJson(g6, 'Answer in JSON.', 'x', 'json', { maxTokens: 3000 });
+        assert.deepStrictEqual(o.findings, []);
+        assert.strictEqual(seen.length, 2);
+        assert.strictEqual(seen[1].max_tokens, 6000);
+    });
+
     await test('JSON mode: a prompt that never says JSON gets "Answer in JSON." (DeepSeek 400s otherwise)', async () => {
         const seen = [];
         sup._test.setFetch(async (url, opts) => { seen.push(JSON.parse(opts.body)); return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{"title":"x"}' } }] }) }; });
