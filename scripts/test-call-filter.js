@@ -1,4 +1,7 @@
 'use strict';
+// a scratch inbox: a test must never touch the live one (its rows land on Yukimi's phone as notices, #1196)
+process.env.NOTIFICATION_INBOX_DB = require('path').join(require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'inbox-call-filter-')), 'notifications.db');
+process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
 // node scripts/test-call-filter.js  (#1107)
 const assert = require('assert');
 const cf = require('../modules/callFilter');

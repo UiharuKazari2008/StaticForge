@@ -32,6 +32,9 @@ if (CHILD) {
     process.env.AGENT_COORD_DB = path.join(tmp, 'state', 'coord.db');
     fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
 }
+// a scratch inbox: a test must never touch the live one (its rows land on Yukimi's phone as notices, #1196)
+process.env.NOTIFICATION_INBOX_DB = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'inbox-supervisor-artifacts-async-')), 'notifications.db');
+process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
 process.env.AGENT_SUPERVISOR_SOCKET = path.join(tmp, 'supervisor.sock');
 process.env.AGENT_SUPERVISOR_NO_REVIVE = '1';
 

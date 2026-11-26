@@ -15,6 +15,9 @@ const path = require('path');
 const assert = require('assert');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'supervisor-groups-'));
+// a scratch inbox: a test must never touch the live one (its rows land on Yukimi's phone as notices, #1196)
+process.env.NOTIFICATION_INBOX_DB = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'inbox-agent-supervisor-groups-')), 'notifications.db');
+process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
 process.env.DREAMSCAPE_CLAUDE_HOME = tmp;
 process.env.AGENT_COORD_DB = path.join(tmp, 'state', 'coord.db');
 process.env.AGENT_SUPERVISOR_SOCKET = path.join(tmp, 'state', 'supervisor.sock');

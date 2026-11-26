@@ -16,6 +16,9 @@ const assert = require('assert');
 const { execFileSync } = require('child_process');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-fleet-'));
+// a scratch inbox: a test must never touch the live one (its rows land on Yukimi's phone as notices, #1196)
+process.env.NOTIFICATION_INBOX_DB = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'inbox-claude-fleet-')), 'notifications.db');
+process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
 process.env.DREAMSCAPE_CLAUDE_HOME = tmp;
 process.env.DREAMSCAPE_CLAUDE_ACCOUNTS_DIR = path.join(tmp, 'accounts');
 process.env.DREAMSCAPE_SYSTEMD_USER_DIR = path.join(tmp, 'systemd');

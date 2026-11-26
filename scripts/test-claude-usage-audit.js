@@ -16,6 +16,9 @@ const path = require('path');
 const assert = require('assert');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'usage-'));
+// a scratch inbox: a test must never touch the live one (its rows land on Yukimi's phone as notices, #1196)
+process.env.NOTIFICATION_INBOX_DB = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'inbox-claude-usage-audit-')), 'notifications.db');
+process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
 process.env.AGENT_COORD_DB = path.join(tmp, 'state', 'coord.db');
 const audit = require('../modules/claudeUsageAudit');
 // a new flag is a routine alert (#1196): it goes through fleetNotices.routine, which tells the Supervisor first and
