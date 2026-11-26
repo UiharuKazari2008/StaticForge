@@ -102,6 +102,9 @@ function loadSwMethods() {
     for (const name of [
         'ensureBootComplete',
         '_resolveBootComplete',
+        '_restorePendingUpdates',
+        '_rowsHeldByCache',
+        '_prunePendingRows',
         '_fetchManifest',
         '_fetchManifestResult',
         'waitForServiceWorkerReady',
@@ -325,7 +328,7 @@ function testNoFatalRegisterDiscard(src) {
 function loadStaticHashMethods(src) {
     const proto = {};
     for (const name of ['hashForStaticPath', '_buildStaticHashMap', '_noteStaticHashUpdate', '_dropStaticHashMap',
-        '_fetchManifestResult', 'checkStaticFileUpdates', '_staticFilesUnchanged']) {
+        '_fetchManifestResult', 'checkStaticFileUpdates', '_staticFilesUnchanged', '_pruneAvailableToManifest']) {
         bindMethod(proto, src, name);
     }
     const top = extractClassMethod(src.replace('\nfunction normalizeStaticFilePath(', '\n    normalizeStaticFilePath('), 'normalizeStaticFilePath');

@@ -1512,6 +1512,11 @@ class ServiceWorkerManager {
     /**
      * A page start: the updates the record keeps that this page still runs an older copy of are its pending restart
      * (a reload kept them; the other Continuity window installed them). The rest are what it runs already: dropped.
+     *
+     * A restart installs what this client holds. A recorded row whose file no copy here has (the file moved on
+     * since the record: a newer version landed and is the one the page runs, or the download never arrived) is
+     * nothing a restart can finish, and leaving it in is a loop: the fuse trips at every start, "Updates ready"
+     * and its restart prompt come back after each restart, and the file it names can never appear (#1248).
      */
     async _restorePendingUpdates() {
         if (this.agentSession || this._pendingRestored) return;
@@ -1521,17 +1526,47 @@ class ServiceWorkerManager {
         if (!rows.length) return;
         const stale = this._filesNewerThanLoaded(rows);
         if (!stale.length) { if (!this.pendingUpdateFuse) this._pendingClear(); return; }
+        const owed = await this._rowsHeldByCache(stale);
+        if (owed.length !== stale.length) this._prunePendingRows(stale.filter((f) => !owed.includes(f)).map((f) => f.url));
+        if (!owed.length) { this._pendingClear(); return; }
         if (!this.pendingUpdateUrls) this.pendingUpdateUrls = new Set();
-        stale.forEach((f) => this.pendingUpdateUrls.add(f.url));
+        owed.forEach((f) => this.pendingUpdateUrls.add(f.url));
         // a Continuity DeX window keeps these as its own beside the phone's mirrored state (melatonContinuity.js)
         if (this._isContinuityDexWindow()) {
             if (!(this._localPending instanceof Set)) this._localPending = new Set();
-            stale.forEach((f) => this._localPending.add(f.url));
+            owed.forEach((f) => this._localPending.add(f.url));
         }
         this.pendingUpdateKind = 'restart';
-        this._noteUpdateBatch(stale);
-        this.tripPendingUpdateFuse(stale.length);
+        this._noteUpdateBatch(owed);
+        this.tripPendingUpdateFuse(owed.length);
         this._scheduleUpdateCompleteToast('restart');
+    }
+
+    /** Of a list of rows, the ones this client holds (the cache has the file at the recorded hash). */
+    async _rowsHeldByCache(rows) {
+        const list = (Array.isArray(rows) ? rows : []).filter((f) => f && f.url && f.hash);
+        if (!list.length) return [];
+        let missing = null;
+        try {
+            missing = await this.getFilesNeedingUpdate(list, { full: true });
+        } catch (_) {
+            return list; // the cache could not be read: judge as before, never drop an owed restart on a guess
+        }
+        const gone = new Set((missing || []).map((f) => f && f.url));
+        return list.filter((f) => !gone.has(f.url));
+    }
+
+    /** Take rows out of the saved pending record; an emptied record goes whole. */
+    _prunePendingRows(urls) {
+        const drop = new Set((urls || []).filter(Boolean));
+        if (!drop.size) return;
+        this._pendingChain = (this._pendingChain || Promise.resolve()).then(async () => {
+            const rec = await this._pendingRecord();
+            if (!rec || !rec.rows) return;
+            drop.forEach((url) => { delete rec.rows[url]; });
+            const left = Object.keys(rec.rows).length;
+            await this._pendingWrite(left ? { rows: rec.rows, at: rec.at || Date.now() } : null);
+        }).catch(() => {});
     }
 
     /** Critical files of a list that are not in the cache under their hash (looked up, never taken from the verified record). */
