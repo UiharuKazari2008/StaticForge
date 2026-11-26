@@ -530,6 +530,32 @@
     word-break: break-word;
 }
 
+/* in a dialog the Vista kit's `.win7 table` (fixed layout, cells clipped, a list box frame) out-ranks .cd-props: the 1%
+   label column collapsed to nothing and only the values showed (Account Properties, Nov 26 2026). A property table is
+   a plain label / value list, not a list box. */
+.win7 table.cd-props {
+    table-layout: auto;
+    white-space: normal;
+    background: none;
+    border: 0;
+}
+
+.win7 table.cd-props > tbody > tr > td {
+    height: auto;
+    padding: 2px 10px 2px 0;
+    overflow: visible;
+    text-overflow: clip;
+    border-right: 0;
+}
+
+.win7 table.cd-props > tbody > tr > td:first-child {
+    white-space: nowrap;
+}
+
+.win7 table.cd-props > tbody > tr > td:last-child {
+    white-space: normal;
+}
+
 .cd-read {
     white-space: pre-wrap;
     max-height: 50vh;
