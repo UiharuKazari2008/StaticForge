@@ -62,6 +62,7 @@ const fs = require('fs');
 const os = require('os');
 const net = require('net');
 const path = require('path');
+const spawnHelper = require('./spawnHelper'); // child commands run through the small helper process: a spawn must never fork the 800 MB server (#1236)
 
 const DEFAULT_ENGINE = 'tokenrouter';
 const DEFAULT_MODEL = 'deepseek/deepseek-v4.1-flash';
@@ -1652,7 +1653,7 @@ async function loginMove(w, rv, qs) {
     } catch (_) { /* unknown account: the item is still started again */ }
     try {
         const l = liveSessionsById().get(rv.sessionId);
-        if (l && l.tmuxSession) require('child_process').execFileSync('tmux', ['kill-session', '-t', `=${l.tmuxSession}`], { timeout: 5000, stdio: 'ignore' });
+        if (l && l.tmuxSession) await spawnHelper.run('tmux', ['kill-session', '-t', `=${l.tmuxSession}`], { timeout: 5000 });
     } catch (_) { /* gone already */ }
     if (Number.isFinite(idx)) fs8.markLoginFailed(idx, 'Login expired', w.account);
     const tried = loginTried.get(w.id) || new Set();
@@ -2106,7 +2107,7 @@ async function endProcess(live) {
         if (!killed && Date.now() > until - 5000) { killed = true; try { process.kill(live.pid, 'SIGKILL'); } catch (_) { /* gone */ } }
     }
     if (live.tmuxSession) {
-        try { require('child_process').execFileSync('tmux', ['-L', process.env.DREAMSCAPE_CLAUDE_CARRY_SOCKET || 'dreamscape-claude-carry', 'kill-session', '-t', `=${live.tmuxSession}`], { stdio: 'ignore', timeout: 5000 }); } catch (_) { /* no such session */ }
+        try { await spawnHelper.run('tmux', ['-L', process.env.DREAMSCAPE_CLAUDE_CARRY_SOCKET || 'dreamscape-claude-carry', 'kill-session', '-t', `=${live.tmuxSession}`], { timeout: 5000 }); } catch (_) { /* no such session */ }
     }
 }
 
@@ -2602,17 +2603,20 @@ const WAIT_MAX_NUDGES = 3;
 const WATCH_TICK_MS = Number(process.env.AGENT_SUPERVISOR_WATCH_MS) > 0 ? Number(process.env.AGENT_SUPERVISOR_WATCH_MS) : 60 * 1000;
 const BOOT_AT = Date.now();
 
-const gitOut = (root, args) => require('child_process').execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] });
+// git for the collision logic runs through spawnHelper (#1236: a sync execFileSync forked the 800 MB server and blocked the loop for the
+// whole command; this runs after every turn and on the commit watch / 60 s timer while a hold or wait is open). The functions return
+// promises; a test stub (setCollisionDeps) may still return plain values, every caller awaits.
+const gitOut = (root, args) => spawnHelper.execFileText('git', ['-C', root, ...args], { timeout: 4000 });
 const GIT_DEFAULTS = {
     /** { at (ms), hash } of the file's last commit ({ at: 0 } when none). */
-    lastCommit(root, p) {
-        try { const [t, h] = gitOut(root, ['log', '-1', '--format=%ct %h', '--', p]).trim().split(' '); return { at: (Number(t) || 0) * 1000, hash: h || '' }; } catch (_) { return { at: 0, hash: '' }; }
+    async lastCommit(root, p) {
+        try { const [t, h] = (await gitOut(root, ['log', '-1', '--format=%ct %h', '--', p])).trim().split(' '); return { at: (Number(t) || 0) * 1000, hash: h || '' }; } catch (_) { return { at: 0, hash: '' }; }
     },
     /** Does the file differ from HEAD (modified, staged or untracked)? */
-    differs(root, p) {
-        try { return !!gitOut(root, ['status', '--porcelain=v1', '--untracked-files=all', '--', p]).trim(); } catch (_) { return false; }
+    async differs(root, p) {
+        try { return !!(await gitOut(root, ['status', '--porcelain=v1', '--untracked-files=all', '--', p])).trim(); } catch (_) { return false; }
     },
-    gitLogPath(root) { try { const f = gitOut(root, ['rev-parse', '--git-path', 'logs/HEAD']).trim(); return path.isAbsolute(f) ? f : path.join(root, f); } catch (_) { return ''; } }
+    async gitLogPath(root) { try { const f = (await gitOut(root, ['rev-parse', '--git-path', 'logs/HEAD'])).trim(); return path.isAbsolute(f) ? f : path.join(root, f); } catch (_) { return ''; } }
 };
 let collisionDeps = {};
 /** Test hook: { git: {lastCommit, differs, gitLogPath}, live: () => Map, rootOf, tool: (sessionId) => [{ path, first, last }], shell: (sessionId, root) => Map } */
@@ -2655,25 +2659,44 @@ function shellEdits(sessionId, root) {
     return out;
 }
 
+/** Runs fn over items, at most n at a time (results in item order). */
+async function mapLimit(items, n, fn) {
+    const out = new Array(items.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+        while (next < items.length) { const i = next++; out[i] = await fn(items[i], i); }
+    }));
+    return out;
+}
+
 /** Files the session really wrote that are still uncommitted: Map path -> { first, last }. ctx memoises git answers for one pass. */
-function editedNow(sessionId, root, ctx = {}) {
+async function editedNow(sessionId, root, ctx = {}) {
     const out = new Map();
     if (!root) return out;
     const commits = ctx.commits || (ctx.commits = new Map());
     const diffs = ctx.diffs || (ctx.diffs = new Map());
-    const commitOf = (p) => { if (!commits.has(p)) commits.set(p, gitDep('lastCommit')(root, p)); return commits.get(p); };
-    const differs = (p) => { if (!diffs.has(p)) diffs.set(p, !!gitDep('differs')(root, p)); return diffs.get(p); };
+    const flights = ctx.flights || (ctx.flights = new Map()); // in-flight git answers, so two sessions asking for one file share one spawn
+    const once = (key, store, p, ask) => {
+        if (store.has(p)) return store.get(p);
+        const k = `${key}:${p}`;
+        if (!flights.has(k)) flights.set(k, Promise.resolve(ask()).then((v) => { store.set(p, key === 'd' ? !!v : v); flights.delete(k); return store.get(p); }, (e) => { flights.delete(k); throw e; }));
+        return flights.get(k);
+    };
+    const commitOf = (p) => once('c', commits, p, () => gitDep('lastCommit')(root, p));
+    const differs = (p) => once('d', diffs, p, () => gitDep('differs')(root, p));
     const all = new Map();
     const put = (p, first, last) => { const e = all.get(p); if (e) { e.first = Math.min(e.first || first, first || e.first); e.last = Math.max(e.last, last); } else all.set(p, { first: first || last, last }); };
     try { toolEdits(sessionId, root).forEach((f) => put(f.path, f.first, f.last)); } catch (_) { /* none */ }
     try { shellEdits(sessionId, root).forEach((v, p) => put(p, v.first, v.last)); } catch (_) { /* none */ }
-    all.forEach((e, p) => {
-        const c = commitOf(p);
-        if (e.last <= c.at) return;      // committed since
-        if (!differs(p)) return;         // equal to HEAD again
+    const entries = [...all.entries()];
+    const verdicts = await mapLimit(entries, 8, async ([p, e]) => {
+        const c = await commitOf(p);
+        if (e.last <= c.at) return null;      // committed since
+        if (!(await differs(p))) return null; // equal to HEAD again
         // the edit that is still uncommitted: its first time counts from the last commit on
-        out.set(p, { first: e.first > c.at ? e.first : e.last, last: e.last });
+        return { first: e.first > c.at ? e.first : e.last, last: e.last };
     });
+    entries.forEach(([p], i) => { if (verdicts[i]) out.set(p, verdicts[i]); });
     return out;
 }
 
@@ -2713,11 +2736,11 @@ async function checkCollisions(sessionId, s) {
         const root = rootOf(sessionId, live);
         if (root) {
             const ctx = {};
-            const mine = editedNow(sessionId, root, ctx);
+            const mine = await editedNow(sessionId, root, ctx);
             if (mine.size) {
                 for (const [id] of live) {
                     if (id === sessionId || rootOf(id, live) !== root) continue;
-                    const theirs = editedNow(id, root, ctx);
+                    const theirs = await editedNow(id, root, ctx);
                     const both = [...mine.keys()].filter((p) => theirs.has(p));
                     if (!both.length) continue;
                     const firstMine = Math.min(...both.map((p) => mine.get(p).first));
@@ -2746,7 +2769,7 @@ async function checkCollisions(sessionId, s) {
 }
 
 /** Why an open collision hold can end now ('' when it cannot): { note, quiet } or null. */
-function holdCleared(h, live, ctx) {
+async function holdCleared(h, live, ctx) {
     if (!live.has(h.sessionId)) return { note: 'the held session ended', quiet: true };
     if (Date.now() - h.at >= HOLD_MAX_MS) return { note: `held for ${Math.round((Date.now() - h.at) / 60000)} minutes: commit the file including the other session's hunks, then continue` };
     const root = rootOf(h.sessionId, live);
@@ -2754,16 +2777,16 @@ function holdCleared(h, live, ctx) {
     if (h.other) {
         const oName = nameOfSession(h.other, live);
         if (!live.has(h.other)) return { note: `${oName} ended: continue` };
-        const theirs = editedNow(h.other, root, ctx);
+        const theirs = await editedNow(h.other, root, ctx);
         if (!h.paths.some((p) => theirs.has(p))) {
             const p = h.paths[0];
-            const c = (ctx.commits && ctx.commits.get(p)) || gitDep('lastCommit')(root, p);
+            const c = (ctx.commits && ctx.commits.get(p)) || await gitDep('lastCommit')(root, p);
             if (c.at > h.at && c.hash) return { note: `${oName} committed ${base(p)} in ${c.hash}: continue` };
-            if (!(ctx.diffs && ctx.diffs.get(p)) && !gitDep('differs')(root, p)) return { note: `${base(p)} no longer differs from HEAD: continue` };
+            if (!(ctx.diffs && ctx.diffs.get(p)) && !(await gitDep('differs')(root, p))) return { note: `${base(p)} no longer differs from HEAD: continue` };
             return { note: `${oName} released ${h.paths.map(base).slice(0, 3).join(', ')}: continue` };
         }
     }
-    const mine = editedNow(h.sessionId, root, ctx);
+    const mine = await editedNow(h.sessionId, root, ctx);
     if (!h.paths.some((p) => mine.has(p))) return { note: `${h.paths.map(base).slice(0, 3).join(', ')} is no longer changed by this session: continue` };
     return null;
 }
@@ -2774,7 +2797,7 @@ async function recheckHolds() {
     const ctx = {};
     let ended = 0;
     for (const h of listHolds().filter((x) => x.kind === 'collision')) {
-        const r = holdCleared(h, live, ctx);
+        const r = await holdCleared(h, live, ctx);
         if (!r) continue;
         if (r.quiet) { db().prepare('UPDATE supervisor_holds SET ended_at = ? WHERE id = ?').run(Date.now(), h.id); emit({ hold: h.sessionId }); ended += 1; continue; }
         await resumeSession(h.sessionId, { note: r.note }).then(() => { ended += 1; commentForSession(h.sessionId, `resumed ${nameOfSession(h.sessionId, live)}: ${r.note}.`); }).catch(() => {});
@@ -2796,6 +2819,17 @@ function watchedRoots() {
     openWaits().forEach((w) => { const r = rootOf(w.session_id, live); if (r) roots.add(r); });
     return roots;
 }
+const watching = new Set(); // roots whose logs/HEAD path is being looked up (git rev-parse runs through the helper, off the loop)
+/** Starts the commit watch of one repo root: asks git where logs/HEAD is (async), then fs.watch es it; the 60 s timer covers the gap. */
+function watchRoot(r) {
+    if (watching.has(r)) return;
+    watching.add(r);
+    Promise.resolve(gitDep('gitLogPath')(r)).catch(() => '').then((f) => {
+        watching.delete(r);
+        if (!f || watchers.has(r) || !watchedRoots().has(r)) return;
+        try { const w = fs.watch(f, { persistent: false }, onRepoCommit); w.on('error', () => { try { w.close(); } catch (_) { /* closed */ } watchers.delete(r); }); watchers.set(r, w); } catch (_) { /* the timer covers it */ }
+    });
+}
 function onRepoCommit() {
     clearTimeout(watchDebounce);
     watchDebounce = setTimeout(() => { recheckAll().catch((e) => console.warn(`[supervisor] watch: ${e.message}`)); }, 1500);
@@ -2807,12 +2841,7 @@ function armWatch() {
     if (!need) { disarmWatch(); return false; }
     const roots = watchedRoots();
     for (const [r, w] of watchers) if (!roots.has(r)) { try { w.close(); } catch (_) { /* closed */ } watchers.delete(r); }
-    roots.forEach((r) => {
-        if (watchers.has(r)) return;
-        const f = gitDep('gitLogPath')(r);
-        if (!f) return;
-        try { const w = fs.watch(f, { persistent: false }, onRepoCommit); w.on('error', () => { try { w.close(); } catch (_) { /* closed */ } watchers.delete(r); }); watchers.set(r, w); } catch (_) { /* the timer covers it */ }
-    });
+    roots.forEach((r) => { if (!watchers.has(r)) watchRoot(r); });
     if (!watchTimer) { watchTimer = setInterval(() => { recheckAll().catch(() => {}); }, WATCH_TICK_MS); if (watchTimer.unref) watchTimer.unref(); }
     return true;
 }
@@ -2846,7 +2875,7 @@ function recordWait(w, waitsOn) {
 function endWait(id, why) { db().prepare('UPDATE supervisor_waits SET ended_at = ?, ended_why = ? WHERE id = ?').run(Date.now(), why, id); }
 
 /** Evidence that the wait is over ('' when it is not, or cannot be told). */
-function waitCleared(wt, live, ctx) {
+async function waitCleared(wt, live, ctx) {
     const root = rootOf(wt.sessionId, live);
     const store = coord();
     const agentOf = () => { try { return wt.who ? store.resolveAgent(wt.who) : null; } catch (_) { return null; } };
@@ -2854,14 +2883,14 @@ function waitCleared(wt, live, ctx) {
         if (wt.paths.length && root) {
             const bits = [];
             for (const p of wt.paths) {
-                const c = gitDep('lastCommit')(root, p);
-                if (gitDep('differs')(root, p)) return '';
+                const c = await gitDep('lastCommit')(root, p);
+                if (await gitDep('differs')(root, p)) return '';
                 bits.push(c.at > wt.at && c.hash ? `${path.basename(p)} committed in ${c.hash}` : `${path.basename(p)} has no uncommitted changes`);
             }
             return bits.slice(0, 3).join(', ');
         }
         const a = agentOf();
-        if (a && a.sessionId && root) return editedNow(a.sessionId, root, ctx).size ? '' : `${wt.who} has nothing uncommitted`;
+        if (a && a.sessionId && root) return (await editedNow(a.sessionId, root, ctx)).size ? '' : `${wt.who} has nothing uncommitted`;
         return '';
     }
     if (wt.kind === 'claims') {
@@ -2898,7 +2927,7 @@ async function recheckWaits() {
         if (!w || !['running', 'waiting'].includes(w.state) || w.session_id !== wt.sessionId) { endWait(wt.id, 'the item moved on'); continue; }
         if (!live.has(wt.sessionId)) { endWait(wt.id, 'its session ended'); continue; }
         if (live.get(wt.sessionId).status === 'busy') { endWait(wt.id, 'it is working again'); continue; }
-        const ev = waitCleared(wt, live, ctx);
+        const ev = await waitCleared(wt, live, ctx);
         if (ev) {
             endWait(wt.id, `cleared: ${ev}`);
             const sent = await tellSession(wt.sessionId, `${STEER_PREFIX} ${wt.what} is done (${ev}): continue the work now.`, { always: true });
@@ -3073,6 +3102,17 @@ function removeLockFile(root, file) {
 }
 
 /**
+ * Is git's answer about an inspected agent's folder known? store.inspect reports uncommitted: null while the Dreamscape server has no
+ * cached `git status` of the folder yet (#1236: it never runs it on its loop). Unknown is never read as "nothing uncommitted".
+ * An agent with no folder cannot be asked, so there nothing is unknown (the old behaviour).
+ */
+const gitKnown = (r) => !!r && (r.uncommitted !== null || !(r.agent && r.agent.cwd));
+/** Own files git shows as changed (false when none or unknown). */
+const hasUncommitted = (r) => !!r && gitKnown(r) && r.edited.files.some((f) => f.uncommitted);
+/** An idle session's lock goes only with git's known answer: no claims and none of its own files uncommitted. Unknown keeps the lock. */
+const lockRemovable = (r) => !!r && gitKnown(r) && !r.claims.length && !r.edited.files.some((f) => f.uncommitted);
+
+/**
  * After a session's turn: plant its lock where it edited without one; remove locks of sessions that are
  * gone, or idle 30 min with their edits committed and no claims.
  */
@@ -3090,7 +3130,7 @@ async function sweepLocks(sessionId) {
                 store.upsertAgent({ id: lockAgentId(sessionId), kind: 'claude', name: sess.givenName || sess.name || sessionId.slice(0, 8), sessionId, cwd: sess.cwd, pid: sess.pid, repo: store.repoOf(sess.cwd).repo });
                 try { r = store.inspect(lockAgentId(sessionId), { limit: 300 }); } catch (_) { r = null; }
             }
-            const working = r && r.edited.files.some((f) => f.uncommitted);
+            const working = hasUncommitted(r); // git unknown (not cached yet): plant nothing this round, the next turn asks again
             const mine = lockStatus().filter((l) => l.root === root && (l.sessionId === sessionId || l.agentId === lockAgentId(sessionId)));
             if (working && !mine.length) {
                 const file = store.plantLock(lockAgentId(sessionId), root, (r.agent && r.agent.task) || 'editing (lock planted by the Supervisor: it had none)');
@@ -3107,7 +3147,7 @@ async function sweepLocks(sessionId) {
         if (s && s.status !== 'busy' && Date.now() - (Number(s.updatedAt) || 0) > IDLE_UNLOCK_MS) {
             let r = null;
             try { r = store.inspect(lockAgentId(l.sessionId), { limit: 300 }); } catch (_) { r = null; }
-            remove = !!r && !r.claims.length && !r.edited.files.some((f) => f.uncommitted);
+            remove = lockRemovable(r);
         }
         if (remove) { removeLockFile(l.root, l.file); changed.push({ removed: l.file, root: l.root }); }
     }
@@ -3126,6 +3166,9 @@ const expand = (p, cwd) => {
 const CLEAN_ROOTS = () => [os.tmpdir(), '/tmp', '/var/tmp', path.join(HOME, '.cache')].map((x) => path.normalize(x) + path.sep);
 const NEVER = () => [HOME, path.join(HOME, '.claude'), path.join(HOME, '.secrets'), path.join(HOME, '.config'), path.join(__dirname, '..'), '/', '/tmp', '/var/tmp', path.join(HOME, '.cache')].map((x) => path.normalize(x));
 
+/** The normalised cwd of every live session (throws when the session list cannot be read: cleanable then says no). */
+const liveCwdList = () => require('./claudeSessions').liveSessions().map((x) => x.cwd).filter(Boolean).map((c) => path.normalize(c));
+
 /**
  * Hard safety for Clean (Nov 24 2026: the tracker had read "/", the repo itself and the word "and" as work folders).
  * Never: a protected folder or any folder above one (/, /home, ~, the repo), a path less than two levels deep (three for a worktree),
@@ -3133,7 +3176,7 @@ const NEVER = () => [HOME, path.join(HOME, '.claude'), path.join(HOME, '.secrets
  * is not a linked worktree (its .git must be a file pointing at another repository). Everything else must be under
  * /tmp, /var/tmp or ~/.cache.
  */
-function cleanable(fullIn, kind) {
+function cleanable(fullIn, kind, liveCwds) {
     if (!fullIn || !path.isAbsolute(fullIn)) return false;
     const full = path.normalize(fullIn).replace(/\/+$/, '') || '/';
     const never = NEVER();
@@ -3143,7 +3186,8 @@ function cleanable(fullIn, kind) {
     if (depth < 2 || (kind === 'worktree' && depth < 3)) return false;
     if (full.includes(`${path.sep}.claude${path.sep}`) || full.includes(`${path.sep}.secrets`)) return false;
     try {
-        const live = require('./claudeSessions').liveSessions().map((x) => x.cwd).filter(Boolean).map((c) => path.normalize(c));
+        // liveCwds (optional): the normalised cwds of the live sessions, computed once by a caller that asks about many folders
+        const live = liveCwds || liveCwdList();
         if (live.some((c) => c === full || c.startsWith(`${full}${path.sep}`))) return false;
     } catch (_) { return false; }
     let gitStat = null;
@@ -3153,32 +3197,69 @@ function cleanable(fullIn, kind) {
     return CLEAN_ROOTS().some((r) => full.startsWith(r) && full.length > r.length + 1);
 }
 
-function duBytes(full) {
+/** Bytes of a folder (du -sb through the helper, 2 s cap); null when du fails or times out. */
+async function duBytes(full) {
     try {
-        const out = require('child_process').execFileSync('du', ['-sb', full], { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] });
+        const out = await spawnHelper.execFileText('du', ['-sb', full], { timeout: 2000 });
         return Number(out.split(/\s/)[0]) || 0;
     } catch (_) { return null; }
 }
 
-/** Stats a session's artifacts (or the stalest ones), within a time budget. */
+const refreshFlights = new Map(); // 'all' or a session id -> the running refresh
+let refreshWarned = false;
+/**
+ * Stats a session's artifacts (or the stalest ones), within a time budget. Async (#1236: the sync stat + `du` per folder froze the
+ * loop up to the whole budget per Fleet status read): fs.promises.stat, du through the helper, four folders at a time. Single-flight per
+ * scope (a call while one runs for the same session / for "the stalest" joins it). Rows that changed (exists / size) emit
+ * { artifacts: true } so the Fleet window refetches by itself. Never rejects; resolves { checked, changed }.
+ */
 function refreshArtifacts(opts = {}) {
+    const key = opts.sessionId || 'all';
+    if (refreshFlights.has(key)) return refreshFlights.get(key);
+    const p = refreshArtifactsRun(opts).catch((e) => {
+        if (!refreshWarned) { refreshWarned = true; console.warn(`[supervisor] artifact refresh: ${e.message}`); }
+        return { checked: 0, changed: 0 };
+    }).finally(() => refreshFlights.delete(key));
+    refreshFlights.set(key, p);
+    return p;
+}
+
+async function refreshArtifactsRun(opts) {
     const d = coord().open();
     const rows = opts.sessionId
         ? d.prepare('SELECT * FROM artifacts WHERE session_id = ? AND forgotten = 0').all(opts.sessionId)
         : d.prepare('SELECT * FROM artifacts WHERE forgotten = 0 AND (checked_at IS NULL OR checked_at < ?) ORDER BY COALESCE(checked_at, 0) LIMIT 100').all(Date.now() - 10 * 60 * 1000);
     const until = Date.now() + (opts.budgetMs || 6000);
-    const up = d.prepare('UPDATE artifacts SET exists_now = ?, size_bytes = ?, checked_at = ? WHERE id = ?');
-    for (const r of rows) {
-        if (Date.now() > until) break;
-        const full = expand(r.path, r.cwd);
-        let st = null;
-        try { st = full ? fs.statSync(full) : null; } catch (_) { st = null; }
-        up.run(st ? 1 : 0, st ? (st.isDirectory() ? duBytes(full) : st.size) : null, Date.now(), r.id);
-    }
+    // the row's decision must still be the one read: a Clean that finished while we measured has written its own exists / size
+    const up = d.prepare("UPDATE artifacts SET exists_now = ?, size_bytes = ?, checked_at = ? WHERE id = ? AND forgotten = 0 AND COALESCE(decision, '') = ?");
+    let checked = 0;
+    let changed = 0;
+    let next = 0;
+    const worker = async () => {
+        while (next < rows.length) {
+            if (Date.now() > until) return;
+            const r = rows[next++];
+            const full = expand(r.path, r.cwd);
+            let st = null;
+            try { st = full ? await fs.promises.stat(full) : null; } catch (_) { st = null; }
+            const size = st ? (st.isDirectory() ? await duBytes(full) : st.size) : null;
+            const exists = st ? 1 : 0;
+            let res = null;
+            try { res = up.run(exists, size, Date.now(), r.id, r.decision || ''); } catch (_) { return; } // the store was closed under us
+            checked += 1;
+            if (res && res.changes && (r.exists_now !== exists || r.size_bytes !== size)) changed += 1;
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, rows.length) }, worker));
+    if (changed) emit({ artifacts: true });
+    return { checked, changed };
 }
 
 function artifactStatus() {
     const live = liveSessionsById();
+    // the live sessions' folders once for all rows (cleanable used to list the sessions per row: 300 readdir + stat passes per call)
+    let liveCwds;
+    try { liveCwds = liveCwdList(); } catch (_) { liveCwds = undefined; } // unreadable: every row asks itself and answers no
     const d = coord().open();
     const rows = d.prepare('SELECT * FROM artifacts WHERE forgotten = 0 ORDER BY created_at DESC LIMIT 300').all();
     const names = new Map();
@@ -3191,7 +3272,7 @@ function artifactStatus() {
         return {
             id: r.id, path: full || r.path, kind: r.kind, sessionId: r.session_id, agentName: names.get(r.session_id), createdAt: r.created_at, cmd: r.cmd,
             exists, sizeBytes: r.size_bytes, checkedAt: r.checked_at, ageHours: Math.round((Date.now() - r.created_at) / 3600000), state,
-            cleanable: exists !== false && state !== 'live' && cleanable(full, r.kind),
+            cleanable: exists !== false && state !== 'live' && cleanable(full, r.kind, liveCwds),
             decision: r.decision || '', decisionReason: r.decision_reason || '', decidedAt: r.decided_at || null, trashPath: r.trash_path || '', canRestore: trashed
         };
     });
@@ -3201,12 +3282,17 @@ function cleanArtifactGuardMessage(a) {
     return a && a.state === 'live' ? 'Its session is still running: let it clean up, or stop it first' : 'Only work folders and temp files under /tmp, /var/tmp, ~/.cache or a git worktree are cleaned from here';
 }
 
-/** Cheap walk with a budget: size, file count (capped), newest mtime, .agent-* locks, symlinks. Never follows links. */
-function walkEvidence(root, budgetMs = 1500, fileCap = 20000) {
+/**
+ * Cheap walk with a budget: size, file count (capped), newest mtime, .agent-* locks, symlinks. Never follows links.
+ * Async: it yields to the loop (setImmediate) every 500 entries instead of one sync burst of up to the whole budget.
+ */
+async function walkEvidence(root, budgetMs = 1500, fileCap = 20000) {
     const until = Date.now() + budgetMs;
     const ev = { files: 0, truncated: false, newestMtimeMs: 0, locks: [], symlinks: 0 };
     const stack = [root];
+    let seen = 0;
     while (stack.length) {
+        if (++seen % 500 === 0) await new Promise((r) => setImmediate(r));
         if (Date.now() > until || ev.files >= fileCap) { ev.truncated = true; break; }
         const dir = stack.pop();
         let st = null;
@@ -3221,21 +3307,19 @@ function walkEvidence(root, budgetMs = 1500, fileCap = 20000) {
     return ev;
 }
 
-function gitEvidence(full) {
-    const cp = require('child_process');
-    const run = (args) => { try { return { ok: true, out: cp.execFileSync('git', ['-C', full, ...args], { encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'ignore'] }) }; } catch (_) { return { ok: false, out: '' }; } };
+async function gitEvidence(full) {
+    const run = async (args) => { try { return { ok: true, out: await spawnHelper.execFileText('git', ['-C', full, ...args], { timeout: 8000 }) }; } catch (_) { return { ok: false, out: '' }; } };
     if (!fs.existsSync(path.join(full, '.git'))) return null;
-    const st = run(['status', '--porcelain']);
-    const un = run(['log', 'HEAD', '--not', '--remotes', '--oneline', '-n', '20']);
+    const [st, un] = await Promise.all([run(['status', '--porcelain']), run(['log', 'HEAD', '--not', '--remotes', '--oneline', '-n', '20'])]);
     return { statusOk: st.ok, dirty: st.out.split('\n').filter(Boolean).slice(0, 20), unpushedOk: un.ok, unpushed: un.out.split('\n').filter(Boolean) };
 }
 
-function openUsers(full) {
+async function openUsers(full) {
     try {
-        const out = require('child_process').execFileSync('lsof', ['-t', '+D', full], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+        const out = await spawnHelper.execFileText('lsof', ['-t', '+D', full], { timeout: 5000 });
         return out.split('\n').map((x) => Number(x)).filter((n) => n > 1 && n !== process.pid);
     } catch (e) {
-        if (e && e.status === 1) return []; // lsof: nothing open
+        if (e && e.code === 1) return []; // lsof: nothing open (exit status 1; a timeout kill has code null, a missing lsof ENOENT: unknown)
         return null; // not installed / timed out: unknown
     }
 }
@@ -3251,20 +3335,20 @@ function recordDecision(id, decision, reason, extra = {}) {
 }
 
 /** Everything the review looks at (pure reading; nothing is changed). */
-function artifactEvidence(r, a) {
+async function artifactEvidence(r, a) {
     const ev = { path: a.path, kind: r.kind, command: r.cmd || '', session: a.agentName || r.session_id.slice(0, 8), sessionState: a.state, createdHoursAgo: a.ageHours };
     let real = a.path;
     try { real = fs.realpathSync(a.path); } catch (_) { real = a.path; }
     ev.realPath = real;
     ev.symlinkRedirect = real !== a.path && real !== path.normalize(a.path);
-    ev.sizeBytes = a.sizeBytes != null ? a.sizeBytes : duBytes(a.path);
-    const w = walkEvidence(a.path);
+    ev.sizeBytes = a.sizeBytes != null ? a.sizeBytes : await duBytes(a.path);
+    const w = await walkEvidence(a.path);
     ev.fileCount = w.files; ev.truncatedWalk = w.truncated; ev.symlinksInside = w.symlinks;
     ev.newestMtime = w.newestMtimeMs ? new Date(w.newestMtimeMs).toISOString() : null;
     ev.newestMtimeMs = w.newestMtimeMs;
     ev.busyLocks = w.locks.map((l) => path.relative(a.path, l));
-    ev.git = gitEvidence(a.path);
-    ev.openByPids = openUsers(a.path);
+    ev.git = await gitEvidence(a.path);
+    ev.openByPids = await openUsers(a.path);
     return ev;
 }
 
@@ -3299,7 +3383,7 @@ async function cleanArtifact(id, opts = {}) {
         const refuse = (reason, decision = 'refused') => { recordDecision(r.id, decision, reason); return { id: r.id, decision, reason }; };
         const a = artifactStatus().find((x) => x.id === r.id);
         if (!a || !a.cleanable) return refuse(cleanArtifactGuardMessage(a));
-        const ev = artifactEvidence(r, a);
+        const ev = await artifactEvidence(r, a);
         const auto = autoRefusal(ev);
         if (auto) return refuse(auto);
         // the engine decides last; with no way to ask, nothing is deleted
@@ -3313,11 +3397,11 @@ async function cleanArtifact(id, opts = {}) {
         // re-check right before acting: the world may have moved while the engine thought
         const a2 = artifactStatus().find((x) => x.id === r.id);
         if (!a2 || !a2.cleanable) return refuse(cleanArtifactGuardMessage(a2));
-        const auto2 = autoRefusal(artifactEvidence(r, a2));
+        const auto2 = autoRefusal(await artifactEvidence(r, a2));
         if (auto2) return refuse(auto2);
         const why = String(v.reason || 'safe').slice(0, 200);
         if (r.kind === 'worktree') {
-            try { require('child_process').execFileSync('git', ['-C', a.path, 'worktree', 'remove', a.path], { timeout: 20000, stdio: 'ignore' }); } catch (e) { return refuse(`git worktree remove refused it (no --force): ${String(e.message).slice(0, 120)}`); }
+            try { await spawnHelper.execFileText('git', ['-C', a.path, 'worktree', 'remove', a.path], { timeout: 20000 }); } catch (e) { return refuse(`git worktree remove refused it (no --force): ${String(e.message).slice(0, 120)}`); }
             recordDecision(r.id, 'removed', `Clean worktree removed (no uncommitted or unpushed work). ${why}`, { exists: 0 });
             return { id: r.id, decision: 'removed', reason: why, cleaned: a.path, freedBytes: ev.sizeBytes || 0 };
         }
@@ -3369,7 +3453,7 @@ async function afterTurn(sessionId, s) {
     const set = s || settings();
     let changed = [];
     if (set.manageLocks) changed = await sweepLocks(sessionId);
-    if (set.trackArtifacts) refreshArtifacts({ sessionId, budgetMs: 4000 });
+    if (set.trackArtifacts) refreshArtifacts({ sessionId, budgetMs: 4000 }); // fire and forget: async, never rejects, emits when rows changed
     await checkCollisions(sessionId, set).catch((e) => console.warn(`[supervisor] collisions: ${e.message}`));
     if (changed.length) emit({ locks: changed });
     return changed;
@@ -4082,5 +4166,5 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
+    _test: { resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };

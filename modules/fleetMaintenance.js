@@ -367,7 +367,7 @@ async function checkWorkfolders(ctx) {
     const sp = ctx.sup || sup();
     const actions = [];
     const findings = [];
-    try { if (sp.refreshArtifacts) sp.refreshArtifacts({ budgetMs: 4000 }); } catch (_) { /* stale sizes */ }
+    try { if (sp.refreshArtifacts) await sp.refreshArtifacts({ budgetMs: 4000 }); } catch (_) { /* stale sizes */ }
     const list = sp.artifactStatus();
     let freed = 0; let cleaned = 0; let keptYoung = 0; let wtN = 0; let deferred = 0;
     const budget = { calls: 0, max: 10 };

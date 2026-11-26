@@ -243,7 +243,7 @@ sup._test.setFetch(async (url, opts) => {
         const store = require('../modules/agentCoord/store');
         store.upsertAgent({ id: 'claude-cccccccc', kind: 'claude', name: 'Builder', sessionId: SID3, cwd: path.join(tmp, 'repo') });
         store.scanSession(SID3);
-        sup.refreshArtifacts({ sessionId: SID3 });
+        await sup.refreshArtifacts({ sessionId: SID3 });
         const arts = sup.artifactStatus().filter((a) => a.sessionId === SID3);
         const dir = arts.find((a) => a.path === scratch);
         assert.ok(dir && dir.exists && dir.sizeBytes >= 4096 && dir.state === 'orphan' && dir.cleanable, JSON.stringify(arts));

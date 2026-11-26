@@ -242,6 +242,8 @@ async function supervisorStatus(gr) {
     let artifacts = [];
     try { locks = supervisor.lockStatus(); } catch (e) { console.warn(`[claudeDesk] locks: ${e.message}`); }
     if (set.trackArtifacts) {
+        // #1236: the refresh (stat + du per folder) runs in the background, single-flight, and is not awaited: the status answers at once with
+        // the stored values; when the refresh changed rows it emits { artifacts: true } (onReview -> poke) and the window refetches by itself
         try { supervisor.refreshArtifacts({ budgetMs: 2500 }); artifacts = supervisor.artifactStatus(); } catch (e) { console.warn(`[claudeDesk] artifacts: ${e.message}`); }
     }
     const stats = Object.assign(supervisor.summary(), { artifactBytes: artifacts.filter((a) => a.exists !== false).reduce((n, a) => n + (a.sizeBytes || 0), 0) });
