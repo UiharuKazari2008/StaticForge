@@ -159,8 +159,17 @@ function scheduleIndexFlush(store) {
         store.timer = null;
         // A flush in progress reschedules when it finishes.
         if (!store.flushing) flushIndexStore(store);
-    }, INDEX_FLUSH_MS);
+    }, indexFlushDelay(store));
     if (typeof store.timer.unref === 'function') store.timer.unref();
+}
+
+// A big index waits longer between writes (#1236: the 2.4 MB index.json was stringified and rewritten every 500 ms
+// while a chat streamed, ~1.6 MB/s of strings straight into old space and a GC pause every ~1.7 s). 500 ms up to
+// 512 KB, then +1.5 s per MB, at most 5 s; the exit path still writes everything (flushIndexStoreSync).
+function indexFlushDelay(store) {
+    const bytes = store.lastBytes || 0;
+    if (bytes <= 512 * 1024) return INDEX_FLUSH_MS;
+    return Math.min(5000, INDEX_FLUSH_MS + Math.round(bytes / (1024 * 1024) * 1500));
 }
 
 function flushIndexStore(store) {
@@ -168,6 +177,7 @@ function flushIndexStore(store) {
     store.dirty = false;
     const generation = store.generation;
     const text = JSON.stringify(store.index);
+    store.lastBytes = text.length;
     const tmp = `${store.file}.${process.pid}.tmp`;
     store.flushing = (async () => {
         await fs.promises.mkdir(path.dirname(store.file), { recursive: true });

@@ -76,10 +76,13 @@ async function inspectorSession() {
     ws.on('message', (m) => { const d = JSON.parse(m); if (d.id && pending.has(d.id)) { pending.get(d.id)(d); pending.delete(d.id); } });
     await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject); });
     const send = (method, params = {}) => new Promise((r) => { id += 1; pending.set(id, r); ws.send(JSON.stringify({ id, method, params })); });
-    const close = async () => {
-        try { await send('Runtime.evaluate', { expression: "process.mainModule.require('inspector').close()" }); } catch (_) { /* gone */ }
-        try { ws.close(); } catch (_) { /* gone */ }
-    };
+    // inspector.close() drops this socket before it can answer: send it, then wait for the close (never for a reply)
+    const close = () => new Promise((resolve) => {
+        if (ws.readyState !== 1) { resolve(); return; }
+        const done = setTimeout(() => { try { ws.terminate(); } catch (_) { /* gone */ } resolve(); }, 3000);
+        ws.once('close', () => { clearTimeout(done); resolve(); });
+        try { ws.send(JSON.stringify({ id: 0, method: 'Runtime.evaluate', params: { expression: "process.mainModule.require('inspector').close()" } })); } catch (_) { clearTimeout(done); resolve(); }
+    });
     return { send, close };
 }
 
@@ -139,11 +142,14 @@ async function profile(seconds, out) {
         await s.send('Profiler.start');
         console.log(`profiling pid ${pid} for ${seconds} s (inspector open until it ends)`);
         polled = await poll(seconds, DEFAULT_URL, true);
-        prof = (await s.send('Profiler.stop')).result.profile;
+        const stopped = await s.send('Profiler.stop');
+        prof = stopped.result && stopped.result.profile;
+        if (!prof) throw new Error(`Profiler.stop: ${JSON.stringify(stopped.error || stopped).slice(0, 200)}`);
+        fs.writeFileSync(out, JSON.stringify(prof));
     } finally {
         await s.close();
     }
-    fs.writeFileSync(out, JSON.stringify(prof));
+    if (!fs.existsSync(out)) throw new Error('no profile saved');
     console.log(`saved ${out}; poll during the profile: ${JSON.stringify({ n: polled.n, max: polled.max, over150: polled.over150, over300: polled.over300 })}`);
     analyze(prof);
 }

@@ -289,7 +289,10 @@ module.exports = function storeV2(core) {
      *   - every other process (the agent-coord MCP server of each session, restart-gate) keeps the sync call: its
      *     answer decides a build gate or a restart and must be fresh, and a spawn there forks a small process.
      */
-    const asyncGit = () => process.env.DREAMSCAPE_COORD_ASYNC_GIT === '1' || (process.env.DREAMSCAPE_COORD_ASYNC_GIT !== '0' && /(^|\/)web_server\.js$/.test(String(process.argv[1] || '')));
+    // under pm2 argv[1] is pm2's ProcessContainerFork.js and the server is the main module (seen live: the sync path ran)
+    const SERVER_RE = /(^|\/)web_server\.js$/;
+    const isServer = () => SERVER_RE.test(String(process.argv[1] || '')) || !!(require.main && SERVER_RE.test(String(require.main.filename || '')));
+    const asyncGit = () => process.env.DREAMSCAPE_COORD_ASYNC_GIT === '1' || (process.env.DREAMSCAPE_COORD_ASYNC_GIT !== '0' && isServer());
     const GIT_ARGS = ['status', '--porcelain=v1', '--untracked-files=all']; // -uall: a new folder's files one by one (normal collapses them to "dir/", which no edit matches)
     const GIT_STALE_MAX_MS = 2 * 60 * 1000;   // an older cached answer counts as unknown
     const gitRaw = new Map();                 // cwd -> { at, out: string | null }
