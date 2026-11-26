@@ -4954,6 +4954,8 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
     // Compile/load runtime assets alongside listen. Requests serve memory or a single-flight miss.
     const assetPrime = runtimeAssetService.startRuntimeAssetPrime(__dirname, { showConsoleProgress: true });
+    // awaited after `ready`; a failure before that must not be an unhandled rejection
+    assetPrime.catch(() => {});
 
     // Listen immediately so /status is reachable during global resource init
     await globalResources.logger.bootStep('HTTP Server', async () => {
@@ -4987,33 +4989,9 @@ async function handleAdminUnixSocketMessage(message, socket) {
     // 6-83s (mostly waiting on metadata.db) and held runtime compile, the WebSocket
     // server, and so every client's logon behind it. Nothing in boot needs it.
 
-    // Account & Cache Initialization
-    await globalResources.logger.bootStep('Runtime Asset Compilation', async () => {
-        updateServerStage('runtime_compile');
-        const result = await assetPrime;
-        const pt = runtimeAssetService.getPrimeTimings && runtimeAssetService.getPrimeTimings();
-        if (pt) {
-            globalResources.logger.bootSubStep(`compile phases: loadTree ${pt.loadTree}ms, compile ${pt.compile}ms, loadTree again ${pt.loadTree2}ms, html hashes ${pt.htmlHashes}ms, html remember ${pt.htmlRemember}ms, started +${pt.startedAt - bootBeginAt}ms, done +${pt.doneAt - bootBeginAt}ms`);
-        }
-        // The manifest (cache hash list) is built after `ready` (see the end of this function): nothing
-        // in boot reads it, and it was ~88% of the start (#1230). Clients get 503 + Retry-After until then.
-        await runtimeAssetService.refreshHashCacheAndBroadcast({
-            projectRoot: __dirname,
-            compileWorkspaceCss: true,
-            refreshCache: false,
-            broadcastManifest: false,
-            broadcastComplete: false
-        });
-        if (result.errors.length > 0) {
-            globalResources.logger.error(`Runtime compile: ${result.errors.length} file(s) failed (keeping previous optimised copies)`);
-            for (const entry of result.errors) {
-                globalResources.logger.error(`  ${entry.file}: ${entry.error}`);
-            }
-            broadcastRuntimeCompileErrors(result);
-        } else {
-            globalResources.logger.bootSubStep(`${result.compiled} compiled, ${result.skipped} up-to-date`);
-        }
-    });
+    // Runtime Asset Compilation and the Asset Manifest run after `ready` (end of this function): the compile
+    // prime keeps running from the start of the boot and nothing in boot needs its result. Requests serve memory
+    // or a single-flight miss; OPTIONS / and the update pack answer 503 + Retry-After until it is done (#1230).
 
     await globalResources.logger.bootStep('Account & Cache', async () => {
         updateServerStage('account_init');
@@ -5291,9 +5269,38 @@ async function handleAdminUnixSocketMessage(message, socket) {
     updateServerStage('ready', true);
     globalResources.logger.endBoot();
 
-    // Its own boot tree, so the preview sync and Director CLI sub-steps still reach
-    // the log. Both ran before ready and held every client's logon.
+    // Its own boot tree, so these sub-steps still reach the log. All of them ran before ready and held every
+    // client's logon: the runtime compile + hash cache (~88% of the start), the asset manifest, the preview sync,
+    // the Director CLI updates.
     globalResources.logger.startBoot();
+    try {
+        await globalResources.logger.bootStep('Runtime Asset Compilation', async () => {
+            const result = await assetPrime;
+            const pt = runtimeAssetService.getPrimeTimings && runtimeAssetService.getPrimeTimings();
+            if (pt) {
+                globalResources.logger.bootSubStep(`compile phases: loadTree ${pt.loadTree}ms, compile ${pt.compile}ms, loadTree again ${pt.loadTree2}ms, html hashes ${pt.htmlHashes}ms, html remember ${pt.htmlRemember}ms, started +${pt.startedAt - bootBeginAt}ms, done +${pt.doneAt - bootBeginAt}ms`);
+            }
+            // the manifest (cache hash list) is the next step, not this one (#1230)
+            await runtimeAssetService.refreshHashCacheAndBroadcast({
+                projectRoot: __dirname,
+                compileWorkspaceCss: true,
+                refreshCache: false,
+                broadcastManifest: false,
+                broadcastComplete: false
+            });
+            if (result.errors.length > 0) {
+                globalResources.logger.error(`Runtime compile: ${result.errors.length} file(s) failed (keeping previous optimised copies)`);
+                for (const entry of result.errors) {
+                    globalResources.logger.error(`  ${entry.file}: ${entry.error}`);
+                }
+                broadcastRuntimeCompileErrors(result);
+            } else {
+                globalResources.logger.bootSubStep(`${result.compiled} compiled, ${result.skipped} up-to-date`);
+            }
+        });
+    } catch (err) {
+        globalResources.logger.warn(`Runtime asset compilation failed: ${err.message}`);
+    }
     try {
         // First: the logon (runtimeCompileComplete), the SW manifest and the install pack wait on it.
         // Incremental against .cache/asset-manifest.json, so it only reads what changed.

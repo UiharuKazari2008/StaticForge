@@ -10,18 +10,25 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const src = fs.readFileSync(path.join(root, 'web_server.js'), 'utf8');
 
-// 1. ordering: no initializeCacheData(true) before the `ready` stage; one after endBoot()
+// 1. ordering: nothing awaits the compile prime or builds the manifest before `ready`; both run after endBoot()
 const readyAt = src.indexOf("updateServerStage('ready', true)");
 assert(readyAt > 0, 'ready stage marker not found');
-const bootStart = src.indexOf("globalResources.logger.bootStep('Runtime Asset Compilation'");
-assert(bootStart > 0 && bootStart < readyAt, 'Runtime Asset Compilation step not found before ready');
+const bootStart = src.indexOf('globalResources.logger.startBoot();');
+assert(bootStart > 0 && bootStart < readyAt, 'startBoot not found before ready');
 const before = src.slice(bootStart, readyAt);
+assert(!/await assetPrime/.test(before), 'the boot awaits the compile prime before ready');
+assert(!/bootStep\('Runtime Asset Compilation'/.test(before), 'Runtime Asset Compilation is a boot step before ready');
 assert(!/initializeCacheData\(true\)/.test(before), 'initializeCacheData runs before ready (boot path)');
-assert(/refreshCache:\s*false/.test(before), 'boot refreshHashCacheAndBroadcast must pass refreshCache:false');
+assert(!/runtimeCompileComplete = true/.test(before), 'runtimeCompileComplete flips before ready');
 const after = src.slice(readyAt);
+const iCompile = after.indexOf("bootStep('Runtime Asset Compilation'");
+const iManifest = after.indexOf("bootStep('Asset Manifest'");
+const iPreview = after.indexOf("bootStep('Preview Synchronization'");
+assert(iCompile > 0 && iCompile < iManifest && iManifest < iPreview, 'after ready: compile, then Asset Manifest, then Preview Synchronization');
+assert(/refreshCache:\s*false/.test(after), 'the compile step must pass refreshCache:false (the manifest is its own step)');
 assert(/bootStep\('Asset Manifest'[\s\S]*?initializeCacheData\(true\)/.test(after), 'Asset Manifest step missing after ready');
-assert(after.indexOf("bootStep('Asset Manifest'") < after.indexOf("bootStep('Preview Synchronization'"), 'Asset Manifest must run before Preview Synchronization');
-assert(/runtimeCompileComplete = true/.test(after) && !/runtimeCompileComplete = true/.test(before), 'runtimeCompileComplete must flip after the manifest');
+assert(/assetPrime\.catch\(/.test(src), 'assetPrime needs an early catch (awaited late)');
+assert(/runtimeCompileComplete = true/.test(after), 'runtimeCompileComplete must flip after the manifest');
 
 // 2. an unchanged file is not read twice: persisted manifest -> hashServedFileIfChangedAsync
 const store = require('../modules/assetManifestStore');
