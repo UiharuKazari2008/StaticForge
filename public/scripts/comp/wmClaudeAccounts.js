@@ -1052,7 +1052,8 @@
         const p = progOf(w);
         const open = w.state === 'starting' || w.state === 'running' || w.state === 'waiting';
         const base = w.held ? askedHold(w.held) : qWorkLabel(w, Date.now());
-        return `${base}${p && open ? ` ${p.done}/${p.total}` : ''}${w.sessionGone && !w.held ? ' - session gone' : ''}`;
+        // "Session gone" comes first: the row is narrow and cuts its end off (seen on the A53: "Sent Back 2 h 10 ..." hid it)
+        return `${w.sessionGone && !w.held ? 'Session gone - ' : ''}${base}${p && open ? ` ${p.done}/${p.total}` : ''}`;
     }
     // qage:begin (pure; scripts/test-fleet-work-rows.js runs this block) - the age is worked out when a row is drawn, never ticked
     /** "45 min", "2 h 10 min", "3 h", "2 d 4 h" for a span in ms; '' when there is no usable start. */
