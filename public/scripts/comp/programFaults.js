@@ -592,9 +592,12 @@
         const p = state.program;
         const sh = root.wmShell;
         if (!sh || typeof sh.messageBox !== 'function' || (root.document.documentElement.dataset.wmBoot && root.document.documentElement.dataset.wmBoot !== 'done')) {
-            doc.addEventListener('wmShellReady', () => {
+            // page-lifetime code has no owner signal (callerSignal() is null): the listener removes itself
+            const onReady = () => {
+                doc.removeEventListener('wmShellReady', onReady);
                 if (dialogs.get(p.key) === state && !state.finished) openPhoneBox(state);
-            }, { once: true });
+            };
+            doc.addEventListener('wmShellReady', onReady);
             return;
         }
         const core = !!p.core;
