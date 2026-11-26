@@ -1,8 +1,9 @@
 /**
  * Melaton app update in the page (#821): the Dreamscape Android app stages a new APK by itself (apps.update) and
  * tells the page through window.MelatonAppUpdate (state(), restartNow()) and the 'melatonappupdate' event.
- * The page only shows it through the normal update path: a toast titled "Update Available" (wmShell UPDATE_TOAST files
- * it under the phone's existing update icon, no new status icon) with Restart Now / Later, and Restart Now
+ * The page only shows it through the normal update path: the phone shell's notification "Updates" (wmShell.appNote with
+ * update: true, filed under the existing update icon, no new status icon) with Restart Now / Later soft keys; refusals
+ * answer in a message box. Restart Now
  * (serviceWorkerManager.restartPhoneNow, also the client update's) installs the app first - the app restarts the page,
  * so it covers a pending client asset update too.
  *
@@ -16,7 +17,7 @@
 
     const bridge = () => root.MelatonAppUpdate || null;
     let state = null;       // the last state object read
-    let toastId = null;
+    let note = null;        // the update notification (wmShell.appNote)
     let attempted = 0;      // versionCode restartNow was called for from this page
     let lastAnswer = null;
 
@@ -31,20 +32,24 @@
 
     function staged() { return state && state.staged ? state.staged : null; }
     function label(s) { return `Melaton ${s.versionName || s.versionCode}`; }
-    const ICON = '<i class="fas fa-arrows-rotate"></i>';
+
+    // the phone shell's own notification (wmShell.appNote, filed under the update icon like the client's Updates note)
+    // and message box (an answer to the tap on Restart Now) - never a page toast (ui-standard)
+    function shell() { return root.wmShell || null; }
 
     function offer() {
         const s = staged();
-        if (!s || typeof root.showGlassToast !== 'function') return;
-        if (toastId && typeof root.removeGlassToast === 'function') root.removeGlassToast(toastId);
-        toastId = root.showGlassToast('warning', 'Update Available', `${label(s)} is ready to install`, false, false, ICON, [
-            { text: 'Restart Now', type: 'primary', onClick: () => { restart(); }, closeOnClick: true },
-            { text: 'Later', type: 'secondary', closeOnClick: true }
-        ]);
+        const sh = shell();
+        if (!s || !sh || typeof sh.appNote !== 'function') return;
+        const html = `${label(s)} is ready to install. Melaton restarts to install it.`;
+        const softKeys = { left: { label: 'Restart Now', action: () => { if (note) note.hide(); restart(); } }, right: { label: 'Later', action: () => { if (note) note.hide(); } } };
+        if (note) { note.update({ title: 'Updates', html, softKeys }); return; }
+        note = sh.appNote({ title: 'Updates', html, icon: 'status-update', event: 'update', silent: true, update: true, softKeys });
     }
 
-    function say(title, message) {
-        if (typeof root.showGlassToast === 'function') root.showGlassToast('warning', title, message, false, 8000, ICON);
+    function say(title, text) {
+        const sh = shell();
+        if (sh && typeof sh.messageBox === 'function') void sh.messageBox({ title, text, icon: 'warning' });
     }
 
     /**
