@@ -223,8 +223,9 @@ async function pickForStart(gr, want, opts = {}) {
     // it first removes the scratch of ended sessions, which lives in RAM-backed /tmp, and asks again
     if (opts.admit) {
         const fm = require('./fleetMemory');
-        let a = fm.admission();
-        if (!a.ok) { try { fm.sweepScratch(); } catch (_) { /* best effort */ } a = fm.admission(); }
+        // ended sessions' scratch goes at every start attempt (at most once in 5 min), not only when memory is short
+        if (Date.now() - (pickForStart.sweptAt || 0) > 5 * 60000) { pickForStart.sweptAt = Date.now(); try { fm.sweepScratch(); } catch (_) { /* best effort */ } }
+        const a = fm.admission();
         if (!a.ok) throw new Error(a.reason);
     }
     const snap = await snapshot(gr);
