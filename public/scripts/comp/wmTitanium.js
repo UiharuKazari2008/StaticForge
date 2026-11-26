@@ -623,6 +623,7 @@
         card.style.height = `${h0}px`;
         frost.style.transform = `translateY(${-y0}px) ${T}`;
         host.classList.add('is-super');
+        syncWx(); // the band's weather rests under the card (the bar has its own)
         enterLockUntil = performance.now() + SUPER_MS + 40;
         const opt = { duration: SUPER_MS, easing: SUPER_EASE, fill: 'forwards' };
         superAnim = [
@@ -660,6 +661,7 @@
             if (superOpen) return;
             // the card lies on the band again: the band and panel come back under it, then it goes
             host.classList.remove('is-super');
+            syncWx(); // the band's weather plays again at once (a minute tick may have left it paused while the bar was up, #1274)
             superEl.hidden = true;
             if (superArtUrl) { URL.revokeObjectURL(superArtUrl); superArtUrl = ''; superArtKey = ''; }
             if (superAnim) superAnim.forEach((a) => a.cancel());

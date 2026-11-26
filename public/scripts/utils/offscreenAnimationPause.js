@@ -494,7 +494,11 @@
         const rect = el.getBoundingClientRect();
         const pseudo = animation.effect && animation.effect.pseudoElement;
         if (!pseudo && rect.width === 0 && rect.height === 0 && el.scrollWidth === 0 && el.scrollHeight === 0) return { reason: 'zero size', cause: el.parentElement };
-        if (rect.right < -EDGE || rect.bottom < -EDGE || rect.left > window.innerWidth + EDGE || rect.top > window.innerHeight + EDGE) {
+        // a looping animation that travels is at an off-screen position for part of every cycle (rain, streaks and leaves
+        // cross a clipped box's edge): its own rect depends on the animation's time, and pausing it there would
+        // hold it for good (#1274). Judge such a loop by its parent's box, which does not move with it.
+        const box = keyframeProps.moves && el.parentElement ? el.parentElement.getBoundingClientRect() : rect;
+        if (box.right < -EDGE || box.bottom < -EDGE || box.left > window.innerWidth + EDGE || box.top > window.innerHeight + EDGE) {
             return { reason: 'off screen', cause: el.parentElement };
         }
         if (rect.width > 0 && rect.height > 0 && !keyframeProps.moves) {
