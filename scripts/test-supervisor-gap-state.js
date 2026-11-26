@@ -308,6 +308,16 @@ sup._test.setFetch(async (url, opts) => {
         assert.match(sys, /Current state of what is named" is given, it is the truth/);
     });
 
+    await test('a gaps answer whose only item is "none" is not sent back (the "(1) none" note)', async () => {
+        const pv = sup.parseVerdict || sup._test.parseVerdict;
+        assert.strictEqual(pv(JSON.stringify({ verdict: 'gaps', missed: [{ item: 'none' }] })).verdict, 'ok');
+        assert.strictEqual(pv(JSON.stringify({ verdict: 'gaps', missed: ['None.'], questions: [{ question: 'Which one?' }] })).verdict, 'input');
+        assert.strictEqual(pv(JSON.stringify({ verdict: 'gaps', missed: [] })).verdict, 'unclear');
+        const real = pv(JSON.stringify({ verdict: 'gaps', missed: [{ item: 'Run the test' }] }));
+        assert.strictEqual(real.verdict, 'gaps');
+        assert.strictEqual(real.missed.length, 1);
+    });
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');

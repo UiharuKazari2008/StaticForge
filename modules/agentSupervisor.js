@@ -597,10 +597,13 @@ function parseVerdict(text) {
     }
     if (!o || typeof o !== 'object') return { verdict: 'unclear', summary: 'The Supervisor\'s answer was not JSON', missed: [], unparsed: true };
     // items as { item, evidence } or plain strings (models do both)
-    const missed = (Array.isArray(o.missed) ? o.missed : []).map((x) => (typeof x === 'string' ? { item: x.slice(0, 400), evidence: '' } : { item: String((x && x.item) || '').slice(0, 400), evidence: String((x && x.evidence) || '').slice(0, 600) })).filter((x) => x.item).slice(0, 20);
+    const missed = (Array.isArray(o.missed) ? o.missed : []).map((x) => (typeof x === 'string' ? { item: x.slice(0, 400), evidence: '' } : { item: String((x && x.item) || '').slice(0, 400), evidence: String((x && x.evidence) || '').slice(0, 600) })).filter((x) => x.item && !/^\W*(none|nothing|n\/?a|no gaps?|nothing (was )?missed)\W*$/i.test(x.item)).slice(0, 20); // a model that writes "none" as an item means no item
     const questions = cleanQuestions(o.questions);
     let verdict = ['ok', 'gaps', 'input', 'unclear'].includes(o.verdict) ? o.verdict : (missed.length ? 'gaps' : (questions.length ? 'input' : 'unclear'));
     if (['ok', 'input'].includes(verdict) && missed.length) verdict = 'gaps';
+    // gaps with nothing listed cannot be sent back (the item would sit Sent Back with an empty note, #1256): a list that only said
+    // "none" means nothing was missed, an empty one cannot be judged
+    if (verdict === 'gaps' && !missed.length) verdict = (Array.isArray(o.missed) && o.missed.length) ? 'ok' : 'unclear';
     if (verdict === 'ok' && questions.length) verdict = 'input';
     // "input" with no question listed: the summary is the one open question, for Yukimi
     if (verdict === 'input' && !questions.length) questions.push({ question: String(o.summary || 'The agent is waiting on you').replace(/\s+/g, ' ').trim().slice(0, 400), answer: '', why: '' });
