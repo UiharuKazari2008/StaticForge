@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Lizumi console (Yozora #1252 S4): the read-only xmradio_mmc_view packet is admin only and registered, the console
- * script runs in a VM against a fake mmcConsole and wsClient and draws its pages from the view, the feed is
+ * script runs in a VM against a fake mmcConsole and wsClient and draws its pages from the view in Vista's own console
+ * vocabulary (overview page, property lists, list views with a state cell and the kit progress bar), the feed is
  * subscribed on open and dropped on close, and nothing polls.
  *   node scripts/test-mmc-lizumi.js
  */
@@ -21,6 +22,8 @@ assert(/launchId: 'mmc-lizumi'.*loadFeature\('mmc_snapins'\).*window\.openLizumi
 const src = read('public/scripts/comp/mmcLizumi.js');
 assert(!/setInterval|alert\(|confirm\(|prompt\(|<select/.test(src), 'no polling, no native UI');
 assert(!/setTimeout\([^)]*\b0\b\)/.test(src), 'no zero-delay loops');
+// Vista's own vocabulary only: no tile / chip / card / banner class survived the redesign
+assert(!/lz-(tile|chip|card|tiles|cards|sum|warn|health|verdict|kv|bar|split|splits|sh|gap|dot|tick|row-bad|note|empty-line)\b/.test(src), 'no invented chrome left in the console');
 
 // ---- the packet: admin only, read only
 const handlerSrc = read('modules/ws/handlers/318-xmRadioHandler.js');
@@ -37,8 +40,8 @@ const heldList = [
     { rid: 'h1', channelId: 'c1', kind: 'song', slot: 1, state: 'stopped', since: 1, endedAt: 2, segs: 10, gaps: [], gapSeconds: 0, files: [], error: '', keepUntil: 0 },
     { rid: 'h2', channelId: 'c1', kind: 'channel', slot: 2, state: 'assembled', since: 1, endedAt: 2, segs: 10, gaps: [{ from: 1, to: 5000 }], gapSeconds: 5, files: ['a.m4a'], error: '', keepUntil: 9 },
     { rid: 'h3', channelId: 'c1', kind: 'song', slot: 1, state: 'failed', since: 1, endedAt: 2, segs: 4, gaps: [], gapSeconds: 0, files: [], error: 'x', keepUntil: 0 },
-    { rid: 'h4', channelId: 'c1', kind: 'song', slot: 1, state: 'assembling', since: 1, endedAt: 2, segs: 4, gaps: [], gapSeconds: 0, files: [], error: '', keepUntil: 0 },
-    { rid: 'h5', channelId: 'c1', kind: 'song', slot: 1, state: 'recording', since: 1, endedAt: 0, segs: 4, gaps: [], gapSeconds: 0, files: [], error: '', keepUntil: 0 }
+    { rid: 'h4', channelId: 'c1', kind: 'song', slot: 1, state: 'assembling', since: 1, endedAt: 2, segs: 4, gaps: [], gapSeconds: 0, files: [], keepUntil: 0 },
+    { rid: 'h5', channelId: 'c1', kind: 'song', slot: 1, state: 'recording', since: 1, endedAt: 0, segs: 4, gaps: [], gapSeconds: 0, files: [], keepUntil: 0 }
 ];
 const payloads = [];
 const listeners = {};
@@ -90,6 +93,7 @@ const con = {
     modal: { isConnected: true, querySelector: () => null },
     node: 'radios', refresh() {}, select() {}, sel: null,
     listView: (cols, rows, o) => { rowsSeen.last = { cols, rows, o }; rowsSeen[o && o.sortId] = rowsSeen.last; return `<lv ${rows.length}>`; },
+    overview: (img, paras) => { rowsSeen.overview = { img, paras }; return `<overview ${paras.length}>`; },
     boxAnswer: true,
     box(html, buttons) { rowsSeen.box = { html, buttons }; return Promise.resolve(this.boxAnswer); },
     note(t) { rowsSeen.note = t; },
@@ -114,45 +118,69 @@ vm.runInNewContext(src, sandbox);
     assert(sent.includes('xmradio_mmc_view') && sent.includes('status_subscribe'), 'view read and feed subscribed');
     assert.strictEqual(def.nodes()[0].children.length, 8, 'seven pages and Settings');
     const page = (id) => def.page({ id }, con);
-    // ---- Virtual Radios: a summary strip of count tiles, then a card per virtual radio
     const secBody = (id) => (rowsSeen.sections.find((s) => s.id === id) || {}).body || '';
+    const colsKey = (list, key) => rowsSeen[list].cols.find((c) => c.key === key);
+    // ---- Virtual Radios: the overview page, the counts, the list and the selected radio's detail
     page('radios');
-    assert.strictEqual(rowsSeen.sections.length, 2, 'a summary section and the cards');
-    assert(/lz-tile/.test(secBody('lz-rad-sum')) && /data-act="nav:queue"/.test(secBody('lz-rad-sum')), 'count tiles that jump to their page');
-    let body = secBody('lz-rad-cards');
-    assert(/Lizumi-Recorder-1/.test(body) && /Lizumi-Recorder-4/.test(body), 'a card per virtual radio');
-    assert(/lz-chip is-ok">Recording</.test(body), 'slot 1 records');
-    assert(/lz-chip is-idle">Standby</.test(body), 'a free slot is on standby, not a fault');
-    // ---- the counters on a recording's card
+    assert.deepStrictEqual([...rowsSeen.sections.map((x) => x.id)], ['lz-rad-ovw', 'lz-rad-sum', 'lz-rad-list', 'lz-rad-sel'], 'overview, summary, list and detail');
+    assert(/1 of 4 virtual radios is recording/.test(rowsSeen.overview.paras[0]), 'the plain-words verdict on MMC\'s overview page');
+    assert.strictEqual(rowsSeen.overview.img, '/static_images/app_icons/xmradio.png', 'the console art on the overview page');
+    assert(/Virtual radios:4/.test(secBody('lz-rad-sum')), 'the counts as a property list');
+    assert(/data-act="nav:queue"/.test(secBody('lz-rad-sum')) && /data-act="nav:accounts"/.test(secBody('lz-rad-sum')), 'each figure links to the page it counts');
+    const rad = rowsSeen['lz-radios'];
+    assert.strictEqual(rad.rows.length, 4, 'a row per virtual radio');
+    assert.strictEqual(rad.rows[0].data.state, 'Recording');
+    assert.strictEqual(rad.rows[0].data.tone, 'ok');
+    assert.strictEqual(rad.rows[1].data.state, 'Standby', 'a free slot is on standby, not a fault');
+    assert.strictEqual(rad.rows[1].data.tone, 'idle');
+    assert.strictEqual(colsKey('lz-radios', 'state').html(rad.rows[1].data), 'Standby', 'the state cell is plain when it is not a fault');
+    // ---- a recording's figures: the state cell, buffer, the kit progress bar with its percentage, the gaps
     const st = sandbox.mmcLizumi._state;
     const rec0 = st.deck.recordings[0];
     Object.assign(rec0, { state: 'paused-refilling', segsWritten: 40, segsExpected: 50, held: 40, gaps: [{ from: 1, to: 2 }], gapSeconds: 6, bufferSegs: 3, behindS: 0 });
-    page('radios'); body = secBody('lz-rad-cards');
-    assert(/Paused - refilling/.test(body), 'the state chip');
-    assert(/3 segments/.test(body), 'the buffer depth');
-    assert(/40 \/ 50 segments \(80%\)/.test(body), 'segments written vs expected with the percentage');
-    assert(/1 \(6 s\)/.test(body), 'the gaps');
-    assert(/lz-warn/.test(body) && /1 gap \(6 s of audio missing\)/.test(body), 'a gap is a warning');
+    page('radios');
+    const d0 = rowsSeen['lz-radios'].rows[0].data;
+    assert.strictEqual(d0.state, 'Paused - refilling', 'the state cell');
+    assert.strictEqual(d0.buffer, '3', 'the buffer depth');
+    assert.strictEqual(d0.segs, '40 / 50 (80%), 40 held', 'segments written vs expected with the percentage');
+    const segHtml = colsKey('lz-radios', 'segs').html(d0);
+    assert(/role="progressbar"/.test(segHtml) && /aria-valuenow="80"/.test(segHtml) && /--lz-pct:80/.test(segHtml), 'the kit progress bar in the cell');
+    assert.strictEqual(segHtml.includes('width:'), false, 'no width in the script (the cell\'s --lz-pct drives it)');
+    assert.strictEqual(colsKey('lz-radios', 'gaps').html(d0), '[warn:1 (6 s)]', 'a gap is a warning state');
+    assert(/1 gap \(6 s of audio missing\)/.test(secBody('lz-rad-sel')), 'the detail says the gap in words');
     rec0.state = 'behind'; rec0.behindS = 300; rec0.gaps = []; rec0.gapSeconds = 0;
-    page('radios'); body = secBody('lz-rad-cards');
-    assert(/lz-chip is-warn">Behind</.test(body), 'behind is a warning chip');
-    assert(/behind live by 5 min/.test(body), 'the verdict line says how far behind');
+    page('radios');
+    const d1 = rowsSeen['lz-radios'].rows[0].data;
+    assert.strictEqual(d1.state, 'Behind', 'behind is a warning state'); assert.strictEqual(d1.tone, 'warn');
+    assert(/behind live by 5 min/.test(secBody('lz-rad-sel')), 'the detail says how far behind');
     rec0.state = 'buffering'; rec0.behindS = 0;
-    page('radios'); assert(/lz-chip is-info">Buffering</.test(secBody('lz-rad-cards')), 'buffering');
-    // a recording that stopped writing audio is unmissable
+    page('radios'); assert.strictEqual(rowsSeen['lz-radios'].rows[0].data.state, 'Buffering', 'buffering');
+    // a recording that stopped writing audio is unmissable: a bad row, the warning state and the holding segment
     Object.assign(rec0, { state: 'recording', behindS: 0, stalled: 3000, stuckSeq: 389999, refetches: 12 });
-    page('radios'); body = secBody('lz-rad-cards');
-    assert(/is-trouble/.test(body) && /no audio for 50 min - recording is stuck/.test(body), 'a stalled recording is unmissable');
-    assert(/segment 389999 is holding it, 12 re-tries/.test(body), 'the holding segment and its re-tries');
-    // the splits a recording will be cut into
+    page('radios');
+    const d2 = rowsSeen['lz-radios'].rows[0].data;
+    assert.strictEqual(d2.health, 'bad', 'a stalled recording is a bad row');
+    assert.strictEqual(rowsSeen['lz-radios'].rows[0].icon, '/static_images/vista-icons/volume-mute-16.png', 'the mute icon marks it');
+    assert(/no audio for 50 min - recording is stuck/.test(secBody('lz-rad-sel')), 'the detail says it is stuck');
+    assert(/segment 389999 is holding it, 12 re-tries/.test(secBody('lz-rad-sel')), 'the holding segment and its re-tries');
+    // the splits a recording will be cut into: a list, a check icon on the ones written
     rec0.cuts = [{ at: 1, a: 'Artist', t: 'One', done: true }, { at: 2, a: 'Artist', t: 'Two' }];
-    page('radios'); body = secBody('lz-rad-cards');
-    assert(/Will be split into \(2\)/.test(body) && /Artist - One/.test(body) && /Artist - Two/.test(body), 'the splits it will produce');
-    assert(/lz-split is-done/.test(body), 'a passed split is ticked');
+    page('radios');
+    const splits = rowsSeen.last; // the detail's splits list (built after the radios list)
+    assert.strictEqual(splits.rows.length, 2, 'the splits list');
+    assert.strictEqual(splits.rows[0].data.text, 'Artist - One');
+    assert.strictEqual(splits.rows[0].icon, '/static_images/vista-icons/check-16.png', 'a written split carries Vista\'s check icon');
+    assert.strictEqual(splits.rows[1].data.text, 'Artist - Two');
+    assert.strictEqual(splits.rows[1].icon, null, 'a split still to be written has no icon');
+    assert(/will make 2 files/.test(secBody('lz-rad-sel')), 'the splits shows under the list');
     ['state', 'segsWritten', 'segsExpected', 'held', 'gaps', 'gapSeconds', 'bufferSegs', 'behindS', 'stalled', 'stuckSeq', 'refetches', 'cuts'].forEach((k) => delete rec0[k]);
-    page('queue'); assert.strictEqual(rowsSeen.last.rows.length, 1);
+    // ---- Queue: the counts as a property list, the state cell in the list
+    page('queue');
+    assert(/Waiting:1/.test(secBody('lz-q-sum')) && /Running:0/.test(secBody('lz-q-sum')) && /Missed:0/.test(secBody('lz-q-sum')), 'the queue counts as a property list');
+    assert.strictEqual(rowsSeen.last.rows.length, 1);
     assert.strictEqual(rowsSeen.last.rows[0].data.radio, 'Lizumi-Recorder-2', 'queue shows the virtual radio');
     assert.strictEqual(rowsSeen.last.rows[0].data.qstate, 'Running', 'queue shows the state');
+    assert.strictEqual(colsKey('lz-queue', 'qstate').html(rowsSeen.last.rows[0].data), 'Running', 'a running entry is plain');
     page('schedules'); assert.strictEqual(rowsSeen.last.rows.length, 2, 'timer and term');
     // ---- Schedules: the Action pane, the dialogs and the saves (the whole list, as the radio app saves it)
     const sch = def.nodes()[0].children.find((x) => x.id === 'schedules');
@@ -163,6 +191,7 @@ vm.runInNewContext(src, sandbox);
     assert.strictEqual(def.selCommands(sch, 'q:q1', con), null, 'nothing for a row that is not a schedule');
     page('schedules');
     assert(rowsSeen.last.cols.some((x) => x.key === 'tape') && rowsSeen.last.cols.some((x) => x.key === 'rules'), 'Tape and Rules columns');
+    assert.strictEqual(colsKey('lz-schedules', 'state').html({ tone: 'idle', state: 'Off' }), 'Off', 'the schedule state cell is plain when off');
     // New Search Term: every rule is read back from the dialog into the saved list, with the existing term kept
     con.sel = null;
     assert.strictEqual(await def.action('sch-new-term', con), true);
@@ -225,6 +254,7 @@ vm.runInNewContext(src, sandbox);
     // restore the view's own timers and terms for the pages after this
     sandbox.mmcLizumi._state.deck.timers = [{ id: 't1', channelId: 'c1', start: '08:00', minutes: 30, days: [1, 2] }];
     page('accounts'); assert.strictEqual(rowsSeen.last.rows[0].data.state, 'Signed in');
+    assert.strictEqual(colsKey('lz-accounts', 'state').html(rowsSeen.last.rows[0].data), 'Signed in', 'the account state cell is plain when signed in');
     page('recordings'); await new Promise((r) => setTimeout(r, 20));
     assert(sent.includes('xmradio_tape_tracks'), 'tape read');
     assert(sent.includes('xmradio_rec_held'), 'held read');
@@ -242,6 +272,7 @@ vm.runInNewContext(src, sandbox);
     assert.strictEqual(def.selCommands(rec, 'r:f1', con), null, 'a tape row has no held actions');
     page('recordings');
     assert(sandbox.mmcLizumi._state.held.length === 5);
+    assert.strictEqual(colsKey('lz-held', 'state').html({ tone: 'bad', state: 'Failed', error: 'x' }), '[err:Failed: x]', 'a failed held recording carries Vista\'s error icon');
     // never re-read on a repaint, re-read when the deck's held summary moves
     const before = heldReads();
     page('recordings'); page('recordings');
@@ -272,22 +303,28 @@ vm.runInNewContext(src, sandbox);
     // the held list row renders gaps with the warning state
     page('recordings');
     assert(pg && true);
-    // ---- Diagnostics
+    // ---- Diagnostics: the overview, the recordings with trouble, the link, the accounts and the health numbers
     st.deck.history = [{ id: 'm1', channelId: 'c1', a: 'Gone', t: 'Song', state: 'missed', reason: 'The song left the stream window', endedAt: 5 }, { id: 'd1', channelId: 'c1', state: 'done' }];
     st.deck.offline = true;
     st.slots = { max: 4, list: [{ slot: 1, name: 'Lizumi-Recorder-1', signedIn: false, handle: 'ab', lastError: 'Bad password', lastErrorAt: 1 }] };
     // the complaint behind the redesign: a stuck recording must read as a problem, not a neutral metric
     Object.assign(st.deck.recordings[0], { state: 'recording', behindS: 8338, refetches: 423, until: Date.now() - 3600000 });
     page('diagnostics');
-    assert.deepStrictEqual([...rowsSeen.sections.map((x) => x.title)], ['Summary', 'Link', 'Accounts', 'Recording health', 'Missed queue entries']);
-    assert(/\[err:Offline/.test(rowsSeen.sections[1].body), 'link state offline');
-    const sum = secBody('lz-diag-sum');
-    assert(/1 of 4 virtual radios is recording/.test(sum) && /is past its end time/.test(sum), 'a one-line summary at the top');
-    const hb = secBody('lz-diag-rec');
-    assert(/lz-verdict is-bad/.test(hb) && /past its end time/.test(hb), 'a stalled recording has a bad verdict');
-    assert(/behind 2 h 18 min/.test(hb) && /423 re-fetches/.test(hb), 'the numbers are under the verdict');
-    assert.strictEqual(rowsSeen.last.rows.length, 1, 'only the missed entry');
-    assert.strictEqual(rowsSeen.last.rows[0].data.reason, 'The song left the stream window');
+    assert.deepStrictEqual([...rowsSeen.sections.map((x) => x.id)], ['lz-diag-ovw', 'lz-diag-rec', 'lz-diag-link', 'lz-diag-acc', 'lz-diag-health', 'lz-diag-miss']);
+    assert.deepStrictEqual([...rowsSeen.sections.map((x) => x.title)], ['Overview', 'Recordings in trouble (1)', 'Link', 'Accounts', 'Recording health', 'Missed queue entries']);
+    assert(/1 of 4 virtual radios is recording/.test(rowsSeen.overview.paras[0]) && /is past its end time/.test(rowsSeen.overview.paras[0]), 'the plain-words verdict names the trouble');
+    assert(rowsSeen.overview.paras.some((p) => /\[err:The recorder service is not answering\.\]/.test(p)), 'the overview carries the offline state line');
+    assert(/\[err:Offline/.test(secBody('lz-diag-link')), 'link state offline');
+    const tr = rowsSeen['lz-diag-trouble'];
+    assert.strictEqual(tr.rows.length, 1, 'only the recording in trouble is listed');
+    assert.strictEqual(tr.rows[0].icon, '/static_images/vista-icons/warning-16.png', 'Vista\'s warning icon on the row');
+    assert(/past its end time/.test(tr.rows[0].data.problem), 'the plain-words reason on the row');
+    const hb = secBody('lz-diag-health');
+    assert(/Behind live:\[warn:2 h 18 min\]/.test(hb), 'behind seconds as a property, carrying the warning icon');
+    assert(/Re-fetches:\[warn:423\]/.test(hb), 'a re-fetch count that means a defect is never a neutral figure');
+    assert(/Lizumi-Recorder-1 - /.test(hb), 'each recording\'s numbers are named');
+    assert.strictEqual(rowsSeen['lz-diag-miss'].rows.length, 1, 'only the missed entry');
+    assert.strictEqual(rowsSeen['lz-diag-miss'].rows[0].data.reason, 'The song left the stream window');
     assert(/Bad password/.test(rowsSeen['lz-diag-acc'].rows[0].data.error), 'sign-in failure listed');
     st.deck.offline = false; st.deck.history = []; delete st.deck.held;
     ['behindS', 'refetches', 'until'].forEach((k) => delete st.deck.recordings[0][k]);
@@ -334,7 +371,7 @@ vm.runInNewContext(src, sandbox);
     // a push updates the deck without a request
     listeners.xmradio_mmc_status({ changed: { deck: { tape: 'T', recordings: [], queue: [], timers: [], alerts: [], terms: [] } } });
     page('radios');
-    assert(/lz-chip is-idle">Standby</.test(secBody('lz-rad-cards')), 'feed push applied');
+    assert(rowsSeen['lz-radios'].rows.every((x) => x.data.state === 'Standby'), 'feed push applied (every slot on standby)');
     def.onClose(con);
     await new Promise((r) => setTimeout(r, 5));
     assert(sent.includes('status_unsubscribe'), 'feed dropped on close');
