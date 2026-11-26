@@ -892,15 +892,21 @@ class BlueBubblesProvider {
     }
 
     resendAsSms(raw) {
+        if (!raw.isFromMe || !raw.error) return;
         const chatGuid = Array.isArray(raw.chats) && raw.chats[0] ? raw.chats[0].guid : '';
-        const want = this.smsPending && this.smsPending.get(chatGuid);
-        if (!want) return;
-        if (want.until < Date.now()) { this.smsPending.delete(chatGuid); return; }
-        if (!raw.isFromMe || !raw.error || raw.text !== want.text) return;
-        this.smsPending.delete(chatGuid);
-        this.call('POST', 'chat/new', { body: { addresses: want.addresses, message: want.text, service: 'SMS', method: 'apple-script', tempGuid: `temp-${randomUUID()}` }, timeoutMs: SEND_TIMEOUT_MS })
-            .then(() => this.log(`${chatGuid}: not on iMessage (error ${raw.error}), sent as SMS`))
-            .catch((err) => this.log(`${chatGuid}: SMS resend failed: ${err.message}`));
+        const handle = raw.handle && raw.handle.address ? raw.handle.address : '';
+        this.log(`failed send pushed: chat ${chatGuid || '-'}, handle ${handle || '-'}, error ${raw.error}, ${this.smsPending.size} waiting`);
+        // the push may come without its chat (a failed new send): the one waiting for this text is the one
+        for (const [key, want] of this.smsPending) {
+            if (want.until < Date.now()) { this.smsPending.delete(key); continue; }
+            // one send waits per chat and the push carries the chat: its text is not compared (the Mac's copy can differ in spacing)
+            if (chatGuid ? chatGuid !== key : String(raw.text || '').trim() !== want.text.trim()) continue;
+            this.smsPending.delete(key);
+            this.call('POST', 'chat/new', { body: { addresses: want.addresses, message: want.text, service: 'SMS', method: 'apple-script', tempGuid: `temp-${randomUUID()}` }, timeoutMs: SEND_TIMEOUT_MS })
+                .then(() => this.log(`${key}: not on iMessage (error ${raw.error}), sent as SMS`))
+                .catch((err) => this.log(`${key}: SMS resend failed: ${err.message}`));
+            return;
+        }
     }
 
     async sendText({ chatGuid, addresses, text, replyTo, subject, effect, tempGuid }) {
@@ -908,9 +914,10 @@ class BlueBubblesProvider {
         if (!chatGuid) {
             const list = (addresses || []).map((a) => String(a).trim()).filter(Boolean);
             if (!list.length) throw Object.assign(new Error('Who is the message for?'), { code: 'NO_RECIPIENT' });
+            // remembered before the send: the Mac pushes the failure while chat/new is still answering
+            if (list.length === 1) this.expectSms(`iMessage;-;${list[0]}`, list, String(text || ''));
             const chat = await this.call('POST', 'chat/new', { body: { addresses: list, message: text, method: this.method(), tempGuid: temp }, timeoutMs: SEND_TIMEOUT_MS });
             const guid = chat && chat.guid;
-            this.expectSms(guid, list, String(text || ''));
             return { tempGuid: temp, chatGuid: guid || '', message: chat && chat.lastMessage ? this.normalizeMessage(chat.lastMessage, guid) : null };
         }
         const body = { chatGuid, tempGuid: temp, message: String(text || ''), method: this.method() };
