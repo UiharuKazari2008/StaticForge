@@ -365,6 +365,7 @@
 
     // a row comes (or a running one finishes): the desktop renders only while its window is open; the
     // phone page hears of it here (the two noters are called by name, through the window's properties)
+    let vsHookOff = null; // removes the vSlider install listener
     function wireActivity() {
         ['noteStudioActivityChange', 'noteStudioActivityMcp'].forEach((name) => {
             const orig = window[name];
@@ -374,11 +375,8 @@
             window[name] = wrapped;
         });
         // a vSlider list sent in (Change JSON, MCP, a print opened): the page reads the widgets again
-        const install = window.installStudioVSliderWidgets;
-        if (typeof install === 'function' && !install._wmSession) {
-            const wrapped = function () { const r = install.apply(this, arguments); try { changed('vslider'); } catch (_) { /* listeners */ } return r; };
-            wrapped._wmSession = true;
-            window.installStudioVSliderWidgets = wrapped;
+        if (typeof window.studioVSliderOnInstall === 'function' && !vsHookOff) {
+            vsHookOff = window.studioVSliderOnInstall(() => { try { changed('vslider'); } catch (_) { /* listeners */ } });
         }
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wireActivity, { once: true });

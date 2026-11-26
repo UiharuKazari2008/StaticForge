@@ -206,7 +206,7 @@ function escapeHtmlAttribute(text) {
 let qwenTokenizer = null;
 // the tokenizer loads under way (ensurePromptTokenizerForModel): Qwen (V5), T5 (the models before it);
 // failedAt: when a load last failed (no new fetch for retryMs after it, #890)
-const promptTokenizerLoads = { qwen: null, t5: null, failedAt: { qwen: 0, t5: 0 }, retryMs: 60000 };
+ensurePromptTokenizerForModel.loads = { qwen: null, t5: null, failedAt: { qwen: 0, t5: 0 }, retryMs: 60000 };
 
 /**
  * Current user balance storage
@@ -773,6 +773,7 @@ function getPromptTokenLimit(modelValue) {
  * T5: published as t5Tokenizer only once loaded (its readers take a missing one), null when it cannot load.
  */
 async function ensurePromptTokenizerForModel(modelValue, kind) {
+    const promptTokenizerLoads = ensurePromptTokenizerForModel.loads;
     const type = kind === 'qwen' || kind === 't5' ? kind : (getForgeModelFeatures(modelValue)?.tokenizer === 'qwen' ? 'qwen' : 't5');
     // a load that just failed (offline, a lapsed session, a server error page) is not fetched again on
     // every token recount: the callers recount on each edit, and each try is several MB (#890)
@@ -3043,6 +3044,7 @@ function updatePromptStatusIcons() {
 // and measures, autoResizeTextarea measures), and the Generate that followed formatted and laid out
 // every field again: 7-11 forced layouts in the ~225 ms of each print on Modernia (Nov 19 2026).
 // The values are written at once (generation reads them); only what is drawn waits for the frame.
+(() => {
 const textareaVisualRefreshQueue = new Set();
 let textareaVisualRefreshFrame = 0;
 function scheduleTextareaVisualRefresh(textarea) {
@@ -3060,6 +3062,7 @@ function flushTextareaVisualRefresh() {
     list.forEach((textarea) => autoResizeTextarea(textarea));
 }
 window.scheduleTextareaVisualRefresh = scheduleTextareaVisualRefresh;
+})();
 
 function applyPromptFormattingBeforeGeneration() {
     const textareas = [];

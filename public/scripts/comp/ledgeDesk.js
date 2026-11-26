@@ -4,9 +4,6 @@
 // desk to window.wmLedge instead.
 
 const ledgeWindows = new Map();
-// the desks this client holds, kept from ledge_state (full desks and deltas on top of them)
-const ledgeDesks = new Map();
-let ledgeQueue = Promise.resolve();
 // Vista art for the balloons (.cursor/rules/vista-icons-not-fa.mdc)
 const LEDGE_TOAST_ICONS = {
     saved: '<img src="/static_images/vista-icons/info-32.png" width="32" height="32" alt="">',
@@ -348,6 +345,12 @@ function ledgeIsPhone() {
     return window.uiShell === 'mobile' || document.documentElement.classList.contains('ui-mobile');
 }
 
+(() => {
+// the desks this client holds, kept from ledge_state (full desks and deltas on top of them)
+const ledgeDesks = new Map();
+let ledgeQueue = Promise.resolve();
+
+
 /** The server addresses the owner client only; a packet naming another client is not for this one. */
 function ledgeIsOwner(data) {
     let mine = null;
@@ -444,6 +447,8 @@ function presentLedge(data) {
         .then((desk) => ledgeShow(desk, data))
         .catch((err) => console.warn('[ledge]', (err && err.message) || err));
 }
+window.presentLedge = presentLedge;
+})();
 
 if (window.wsClient && window.wsClient.on) {
     window.wsClient.on('ledge_state', (packet) => {

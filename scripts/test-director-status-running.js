@@ -9,14 +9,11 @@ const path = require('path');
 const vm = require('vm');
 
 const src = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/director.js'), 'utf8');
-const hs = src.indexOf('const STATUS_ARM_GRACE_MS');
-const he = src.indexOf('function directorPersonaName(persona) {');
-assert.ok(hs >= 0 && he > hs, 'helper present');
 const cs = src.indexOf('class Director {');
 const ce = src.indexOf('\n}\n', cs);
 const ctx = { console };
 vm.createContext(ctx);
-vm.runInContext(`${src.slice(hs, he)}\n${src.slice(cs, ce + 2)}\nthis.Director = Director; this.serves = directorServerRunsSession; this.GRACE = STATUS_ARM_GRACE_MS;`, ctx);
+vm.runInContext(`${src.slice(cs, ce + 2)}\nthis.Director = Director; this.serves = Director.serverRunsSession; this.GRACE = Director.STATUS_ARM_GRACE_MS;`, ctx);
 
 // helper truth table
 const xiRun = (ids) => ({ running: false, xi: { enabled: true, running: ids.length > 0, runningSessions: ids, sessionId: ids.length === 1 ? ids[0] : null } });

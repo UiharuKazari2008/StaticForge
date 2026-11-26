@@ -1068,49 +1068,52 @@ function grimoireShellBookmarkTitle(shell, url) {
 // The tab's icon: the page's own, as Chrome picks it (Yukimi, Nov 21: "i want the icon in the tab to be the sites icon
 // it would show in chrome"; server.js readPageInfo favicons, kept by the bridge in /cache/site-icons). Asked once a page
 // has loaded (its links are in by then), once per address; the web entry keeps it (grimoireIeChrome.js pageFavicon).
-const grimoireFaviconCache = new Map();
-function grimoireTabFavicon(shell, url, changed) {
-    const put = (icon) => {
-        const top = shell.history && shell.history[shell.historyIndex];
-        if (!icon || !top || top.type !== 'web' || top.url !== url || top.favicon === icon) return;
-        top.favicon = icon;
-        // a popup / standalone window's caption and taskbar icon (#1118)
-        const modal = shell.displayArea && shell.displayArea.closest('.modal');
-        if (modal && modal.dataset.alchemyStandalone === '1' && modal.dataset.alchemy === '1') grimoireSyncAlchemyIdentity(modal, true, undefined, icon);
-        changed();
-    };
-    if (grimoireFaviconCache.has(url)) {
-        put(grimoireFaviconCache.get(url));
-        return;
-    }
-    grimoireFaviconCache.set(url, '');
-    if (grimoireFaviconCache.size > 300) grimoireFaviconCache.delete(grimoireFaviconCache.keys().next().value);
-    let tries = 0;
-    const ask = async () => {
-        const id = shell._grimoireRemoteSessionId;
-        // the tab's viewer address can come after its first location: asked again a little later (up to 5 times)
-        if (!id || !shell._grimoireRemoteViewQuery) {
-            if (++tries < 5) setTimeout(ask, 1500);
-            else grimoireFaviconCache.delete(url);
+(function () {
+    const grimoireFaviconCache = new Map();
+    function grimoireTabFavicon(shell, url, changed) {
+        const put = (icon) => {
+            const top = shell.history && shell.history[shell.historyIndex];
+            if (!icon || !top || top.type !== 'web' || top.url !== url || top.favicon === icon) return;
+            top.favicon = icon;
+            // a popup / standalone window's caption and taskbar icon (#1118)
+            const modal = shell.displayArea && shell.displayArea.closest('.modal');
+            if (modal && modal.dataset.alchemyStandalone === '1' && modal.dataset.alchemy === '1') grimoireSyncAlchemyIdentity(modal, true, undefined, icon);
+            changed();
+        };
+        if (grimoireFaviconCache.has(url)) {
+            put(grimoireFaviconCache.get(url));
             return;
         }
-        try {
-            const res = await fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id) + '/page-icon?' + shell._grimoireRemoteViewQuery + '&kind=tab', { credentials: 'same-origin' });
-            // a failed answer (the server restarting, Alchemy busy) is not "this page has no icon": the next load asks again
-            if (!res.ok) {
-                grimoireFaviconCache.delete(url);
+        grimoireFaviconCache.set(url, '');
+        if (grimoireFaviconCache.size > 300) grimoireFaviconCache.delete(grimoireFaviconCache.keys().next().value);
+        let tries = 0;
+        const ask = async () => {
+            const id = shell._grimoireRemoteSessionId;
+            // the tab's viewer address can come after its first location: asked again a little later (up to 5 times)
+            if (!id || !shell._grimoireRemoteViewQuery) {
+                if (++tries < 5) setTimeout(ask, 1500);
+                else grimoireFaviconCache.delete(url);
                 return;
             }
-            const info = await res.json();
-            const icon = typeof info.icon === 'string' ? info.icon : '';
-            grimoireFaviconCache.set(url, icon);
-            put(icon);
-        } catch (_) {
-            grimoireFaviconCache.delete(url);
-        }
-    };
-    setTimeout(ask, 1200);
-}
+            try {
+                const res = await fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id) + '/page-icon?' + shell._grimoireRemoteViewQuery + '&kind=tab', { credentials: 'same-origin' });
+                // a failed answer (the server restarting, Alchemy busy) is not "this page has no icon": the next load asks again
+                if (!res.ok) {
+                    grimoireFaviconCache.delete(url);
+                    return;
+                }
+                const info = await res.json();
+                const icon = typeof info.icon === 'string' ? info.icon : '';
+                grimoireFaviconCache.set(url, icon);
+                put(icon);
+            } catch (_) {
+                grimoireFaviconCache.delete(url);
+            }
+        };
+        setTimeout(ask, 1200);
+    }
+    window.grimoireTabFavicon = grimoireTabFavicon;
+})();
 
 async function grimoireAddRemotePageToDesktop(shell) {
     const id = shell._grimoireRemoteSessionId;

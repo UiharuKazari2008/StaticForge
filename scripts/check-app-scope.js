@@ -24,8 +24,22 @@
 //                        loaded later bypasses whatever owns it (modalKeyboardRegistry's
 //                        document.addEventListener hid document listeners from their owners)
 //   lost-interval        setInterval(...) whose id is not kept: it can never be cleared
-//   page-global          a top-level var / let / const / function / class or window.x = in page code:
-//                        state attached to the page instead of to its app
+//   page-global          state attached to the page instead of to its app: a top-level var / let / const /
+//                        function / class of a classic script, and window.x = value writes. Not counted
+//                        (rule 5: "a name other files must call is exported on purpose"):
+//                          - window.x = x (re-export of a top-level name, counted once as the declaration)
+//                          - window.x = { ... } (not an empty { }) / function / arrow / class as the ONLY
+//                            assignment to window.x in the file, with no top-level declaration of x there:
+//                            a deliberate export (window.melatonX = ...), which the segment deletes on unload
+//                          - window.x = value where ANOTHER scanned file owns x (a top-level declaration of x,
+//                            or an export in the sense above, or Object.defineProperty(window, 'x', ...)):
+//                            that is the owner's page state and counts there, not at the writer (a file
+//                            that declares x itself keeps counting its own writes). A write that
+//                            REPLACES a function the owner holds (the value is a function, or a name bound to
+//                            one, and the owner's x is a function) still counts: that is a shared-function
+//                            override (rule 3), not state
+//                        Value or state writes (null, arrays, call results, member reads, a name assigned more
+//                        than once) of a name no other file owns keep counting.
 //
 // `// app-scope: allow <reason>` on the line (or the line before) exempts that line, with the
 // reason in the code. Use it for the runtime itself (melatonSegments.js), not to quiet a finding.
@@ -111,13 +125,111 @@ function isPageTarget(obj) {
     return false;
 }
 
+const isFnNode = (n) => !!n && /^(FunctionExpression|ArrowFunctionExpression|ClassExpression|FunctionDeclaration|ClassDeclaration)$/.test(n.type);
+const EXPORT_LITERAL = /^(ObjectExpression|FunctionExpression|ArrowFunctionExpression|ClassExpression)$/;
+const GLOBAL_WRITE = /^(window|globalThis|self)\.([A-Za-z_$][\w$]*)$/;
+
+/**
+ * What a classic script puts on the page: its top-level declarations, its window.x = writes, and the
+ * names it owns (a top-level declaration, or an export: window.x = { } / function / arrow / class,
+ * window.x = x, Object.defineProperty(window, 'x', ...)) with whether each is function-valued.
+ */
+function analyzeScript(ast) {
+    const decls = []; // { node, name }
+    const declFn = new Map(); // top-level name -> function-valued
+    for (const st of ast.body) {
+        if (st.type === 'VariableDeclaration') {
+            st.declarations.forEach((d) => {
+                decls.push({ node: d, name: d.id && d.id.name });
+                if (d.id && d.id.name) declFn.set(d.id.name, isFnNode(d.init));
+            });
+        } else if ((st.type === 'FunctionDeclaration' || st.type === 'ClassDeclaration') && st.id) {
+            decls.push({ node: st, name: st.id.name });
+            declFn.set(st.id.name, true);
+        } else if (st.type === 'FunctionDeclaration' || st.type === 'ClassDeclaration') decls.push({ node: st, name: null });
+    }
+    const writes = []; // { node, name, right, op }
+    const defined = []; // [name, descriptor node]
+    const fnBound = new Set(); // names bound to a function anywhere in the file (for window.x = name)
+    walk.simple(ast, {
+        FunctionDeclaration(n) { if (n.id) fnBound.add(n.id.name); },
+        VariableDeclarator(n) { if (n.id.type === 'Identifier' && isFnNode(n.init)) fnBound.add(n.id.name); },
+        AssignmentExpression(n) {
+            if (n.left.type !== 'MemberExpression' || n.left.computed) return;
+            const m = GLOBAL_WRITE.exec(dotted(n.left) || '');
+            if (m) writes.push({ node: n, name: m[2], dotted: m[0], right: n.right, op: n.operator });
+        },
+        CallExpression(n) {
+            const c = n.callee; // (every call in the tree passes here: look at the cheap part first)
+            if (c.type !== 'MemberExpression' || c.computed || c.property.name !== 'defineProperty' || dotted(c) !== 'Object.defineProperty') return;
+            const key = literalOf(n.arguments[1]);
+            if (key && /^(window|globalThis|self)$/.test(dotted(n.arguments[0]) || '')) defined.push([key, n.arguments[2]]);
+        }
+    });
+    // a deliberate export: the only assignment to window.x in the file is a literal / function / class,
+    // and the file does not declare x at top level (a name assigned again and again is state, not an export)
+    const counts = new Map();
+    writes.forEach((w) => counts.set(w.name, (counts.get(w.name) || 0) + 1));
+    // (an empty { } is state being started, not an API object)
+    const isExportValue = (n) => EXPORT_LITERAL.test(n.type) && !(n.type === 'ObjectExpression' && !n.properties.length);
+    for (const w of writes) w.deliberate = w.op === '=' && isExportValue(w.right) && counts.get(w.name) === 1 && !declFn.has(w.name);
+    const owns = new Map(); // name -> { fn }
+    // (names are cut out of the source text; the copy lets the source go once the file is scanned)
+    const own = (name, fn) => { const o = owns.get(name); if (o) o.fn = o.fn || fn; else owns.set(` ${name}`.slice(1), { fn }); };
+    declFn.forEach((fn, name) => own(name, fn));
+    for (const w of writes) {
+        if (w.op !== '=') continue;
+        if (w.deliberate) own(w.name, isFnNode(w.right));
+        else if (w.right.type === 'Identifier' && w.right.name === w.name) own(w.name, declFn.get(w.name) === true);
+    }
+    for (const [name, desc] of defined) {
+        const v = desc && desc.type === 'ObjectExpression' ? desc.properties.find((p) => p.type === 'Property' && !p.computed && p.key.name === 'value') : null;
+        own(name, !!v && (isFnNode(v.value) || (v.value.type === 'Identifier' && declFn.get(v.value.name) === true)));
+    }
+    return { decls, declFn, fnBound, writes, owns };
+}
+
+// Who owns a page name (cross-file), built lazily and only when a file has window.x writes. A full run
+// scans every file anyway and keeps each file's owner map; a run of a few files parses another file
+// only when its text can name the global.
+const ownsMemo = new Map(); // rel -> Map(name -> { fn })
+const textMemo = new Map();
+let listMemo = null;
+const allFiles = () => listMemo || (listMemo = listFiles());
+function ownsOfFile(rel) {
+    let owns = ownsMemo.get(rel);
+    if (owns) return owns;
+    owns = new Map();
+    try {
+        const ast = parse(fs.readFileSync(path.join(root, rel), 'utf8'));
+        if (ast.sourceType === 'script') owns = analyzeScript(ast).owns;
+    } catch (_) { /* a file that does not parse owns nothing */ }
+    ownsMemo.set(rel, owns);
+    return owns;
+}
+function ownersOf(name, selfRel) {
+    const out = [];
+    for (const rel of allFiles()) {
+        if (rel === selfRel) continue;
+        if (!ownsMemo.has(rel)) {
+            let text = textMemo.get(rel);
+            if (text === undefined) { text = fs.readFileSync(path.join(root, rel), 'utf8'); textMemo.set(rel, text); }
+            if (!text.includes(name)) continue;
+        }
+        const o = ownsOfFile(rel).get(name);
+        if (o) out.push(o);
+    }
+    return out;
+}
+
 /** Find violations in one file: [{ rule, line, text }] */
-function scanFile(rel) {
+function scanRaw(rel) {
     const src = fs.readFileSync(path.join(root, rel), 'utf8');
     const lines = src.split('\n');
     const allowed = (line) => /app-scope:\s*allow/.test(lines[line - 1] || '') || /app-scope:\s*allow/.test(lines[line - 2] || '');
     let ast;
-    try { ast = parse(src); } catch (err) { return { error: err.message, hits: [] }; }
+    try { ast = parse(src); } catch (err) { ownsMemo.set(rel, new Map()); return { error: err.message, hits: [] }; }
+    ownsMemo.set(rel, new Map()); // a module (or a file that does not parse) puts nothing on the page
     const hits = [];
     const add = (rule, node, note) => {
         const line = node.loc.start.line;
@@ -181,24 +293,43 @@ function scanFile(rel) {
         }
     });
 
-    // page-global: top-level declarations of a classic script, and window.x = anywhere at top level
+    // page-global: top-level declarations of a classic script, and window.x = writes (see the header for
+    // what is not counted). A write another file may own waits in `pending` until every file is scanned.
+    const pending = [];
     if (ast.sourceType === 'script') {
-        for (const st of ast.body) {
-            if (st.type === 'VariableDeclaration') st.declarations.forEach((d) => add('page-global', d, d.id && d.id.name));
-            else if (st.type === 'FunctionDeclaration' || st.type === 'ClassDeclaration') add('page-global', st, st.id && st.id.name);
+        const info = analyzeScript(ast);
+        ownsMemo.set(rel, info.owns);
+        for (const d of info.decls) add('page-global', d.node, d.name);
+        for (const w of info.writes) {
+            // window.x = x re-exports a top-level name on purpose (counted once, as the declaration)
+            if (w.right.type === 'Identifier' && w.right.name === w.name) continue;
+            const line = w.node.loc.start.line;
+            if (allowed(line)) continue;
+            const replacesFn = w.op === '=' && (isFnNode(w.right) || (w.right.type === 'Identifier' && info.fnBound.has(w.right.name)));
+            // a deliberate export (see analyzeScript): not state, unless it replaces a function another file owns
+            if (w.deliberate && !replacesFn) continue;
+            pending.push({ line, text: `${w.dotted}: ${(lines[line - 1] || '').trim().slice(0, 140)}`, name: ` ${w.name}`.slice(1), replacesFn, deliberate: w.deliberate, declaredHere: info.declFn.has(w.name) });
         }
-        walk.simple(ast, {
-            AssignmentExpression(n) {
-                const d = dotted(n.left);
-                if (!d || !/^(window|globalThis|self)\.[A-Za-z_$][\w$]*$/.test(d)) return;
-                // window.x = x re-exports a top-level name on purpose (counted once, as the declaration)
-                if (n.right.type === 'Identifier' && n.right.name === d.split('.')[1]) return;
-                add('page-global', n, d);
-            }
-        });
+    }
+    return { hits, pending };
+}
+
+/** Settle the writes that may belong to another file's global; returns { hits } */
+function settle(raw, rel) {
+    if (raw.error) return raw;
+    const hits = raw.hits.slice();
+    for (const p of raw.pending) {
+        const owners = ownersOf(p.name, rel);
+        // this replaces a function another file owns: a shared-function override, always counted
+        const overrides = p.replacesFn && owners.some((o) => o.fn);
+        // otherwise a deliberate export is fine, and a write to a global another file owns is that file's state
+        if (!overrides && (p.deliberate || (owners.length && !p.declaredHere))) continue;
+        hits.push({ rule: 'page-global', line: p.line, text: p.text });
     }
     return { hits };
 }
+
+function scanFile(rel) { return settle(scanRaw(rel), rel); }
 
 function countsOf(hits) {
     const c = {};
@@ -345,11 +476,14 @@ function main() {
     const files = explicit.length ? explicit.map((f) => path.relative(root, path.resolve(f))) : listFiles();
     const results = {};
     const errors = [];
-    for (const rel of files) {
-        const r = scanFile(rel);
+    // every file first (each keeps the names it owns), then the writes that may belong to another file
+    const raws = files.map((rel) => scanRaw(rel));
+    files.forEach((rel, i) => {
+        const r = settle(raws[i], rel);
+        raws[i] = null;
         if (r.error) errors.push(`${rel}: ${r.error}`);
         results[rel] = r.hits;
-    }
+    });
 
     if (listAt >= 0) {
         const rule = argv[listAt + 1];

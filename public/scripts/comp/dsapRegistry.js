@@ -206,13 +206,17 @@ function grimoireGetUnsupportedProtocol(url) {
 // bar, History, Favorites, tabs, Restore Session); Chromium keeps chrome:// underneath (its pages, links, extensions
 // and security checks depend on it), so what is typed or opened as alch:// goes to chrome://, and a chrome:// address
 // shows as alch:// once it is open. chrome-extension:// stays as it is.
-function grimoireAlchToChrome(url) {
-    return String(url == null ? '' : url).replace(/^(\s*)alch:\/\//i, '$1chrome://');
-}
+(function () {
+    function grimoireAlchToChrome(url) {
+        return String(url == null ? '' : url).replace(/^(\s*)alch:\/\//i, '$1chrome://');
+    }
 
-function grimoireDisplayUrl(url) {
-    return String(url == null ? '' : url).replace(/^chrome:\/\//i, 'alch://');
-}
+    function grimoireDisplayUrl(url) {
+        return String(url == null ? '' : url).replace(/^chrome:\/\//i, 'alch://');
+    }
+    window.grimoireAlchToChrome = grimoireAlchToChrome;
+    window.grimoireDisplayUrl = grimoireDisplayUrl;
+})();
 
 function isGrimoirePseudoBrowserAddress(url) {
     const val = String(url || '').trim();

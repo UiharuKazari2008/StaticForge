@@ -30,7 +30,7 @@ async function galleryTransfer(op, filenames, from, to, worker) {
 }
 // ---- The download window (#1134): which format the pictures download as -----------------------------------------
 /** galleryDownloadWindow.choose(images, owner) / .one(image, owner) / .many(images, from, owner) */
-const galleryDownloadWindow = (() => {
+(() => {
     // A Vista dialog in MS Shell Dlg 8: the formats as radio buttons in a group, each with what it keeps and, for one
     // picture, its size; Download / Cancel. The last choice is kept (localStorage melatonDownloadFormat).
     const DOWNLOAD_FORMAT_KEY = 'melatonDownloadFormat';
@@ -139,7 +139,8 @@ const galleryDownloadWindow = (() => {
         await galleryDownloadImages(list, from || { name: 'DreamScape', path: '/Workspaces' }, format);
     }
 
-    return { choose, one, many };
+    const galleryDownloadWindow = { choose, one, many };
+    window.galleryDownloadWindow = galleryDownloadWindow;
 })();
 
 /**

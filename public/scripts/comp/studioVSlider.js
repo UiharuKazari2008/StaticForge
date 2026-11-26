@@ -1142,12 +1142,13 @@ function installStudioVSliderWidgets(list, options) {
             // closeModal: public/scripts/comp/modalUtils.js
             closeModal(el);
         }
-        return studioVSliderWidgets;
-    }
-    if (opts.open !== false) studioVSliderOpenWindow();
+    } else if (opts.open !== false) studioVSliderOpenWindow();
     else studioVSliderRenderCards();
+    // listeners added through studioVSliderOnInstall (DreamStudio's session part, #860): told after every install
+    installStudioVSliderWidgets.hooks.forEach((fn) => { try { fn(studioVSliderWidgets); } catch (_) { /* a listener must not break the install */ } });
     return studioVSliderWidgets;
 }
+installStudioVSliderWidgets.hooks = new Set();
 
 function studioVSliderReadFromImage(image) {
     if (!image) return null;
@@ -1745,6 +1746,11 @@ if (document.readyState !== 'loading') studioVSliderInit();
 if (typeof window !== 'undefined') {
     window.openStudioVSliderTool = openStudioVSliderTool;
     window.installStudioVSliderWidgets = installStudioVSliderWidgets;
+    // fn(widgets) runs after every installStudioVSliderWidgets; returns the function that removes it
+    window.studioVSliderOnInstall = function (fn) {
+        installStudioVSliderWidgets.hooks.add(fn);
+        return () => installStudioVSliderWidgets.hooks.delete(fn);
+    };
     window.getStudioVSliderSnapshot = getStudioVSliderSnapshot;
     window.normalizeStudioVSliderList = normalizeStudioVSliderList;
     window.studioVSliderBlendAxis = studioVSliderBlendAxis;

@@ -288,13 +288,10 @@ function buildGalleryJumpIndexEntries(minTimeMs, maxGroupImages) {
 // call (through app.html's locale shim), two or three per group on every regeneration - about
 // 40-90 ms of each print's arrival on a desktop with the jump index open (Modernia, Nov 18 2026).
 // Intl.DateTimeFormat is the same shimmed constructor, so the text is the same.
-const galleryJumpIndexFormatters = {};
-function galleryJumpIndexFormatter(key, opts) {
-    return galleryJumpIndexFormatters[key] || (galleryJumpIndexFormatters[key] = new Intl.DateTimeFormat([], opts));
-}
-
 function formatGalleryJumpIndexTime(ms, { timeOnly = false } = {}) {
     if (!Number.isFinite(ms)) return '';
+    const formatters = formatGalleryJumpIndexTime.formatters || (formatGalleryJumpIndexTime.formatters = {});
+    const galleryJumpIndexFormatter = (key, opts) => formatters[key] || (formatters[key] = new Intl.DateTimeFormat([], opts));
     const date = new Date(ms);
     if (timeOnly) return galleryJumpIndexFormatter('time', { hour: 'numeric', minute: '2-digit' }).format(date);
     if (date.getFullYear() !== new Date().getFullYear()) {
