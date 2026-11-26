@@ -19,6 +19,23 @@ const block = ui.slice(ui.indexOf('// qage:begin'), ui.indexOf('// qage:end'));
 assert.ok(block.includes('function qAgeText') && block.includes('function qWorkLabel'), 'qage block found');
 const QSTATE = { held: 'Waiting', queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Sent Back', input: 'Input', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
 const { qAgeText, qWorkLabel } = new Function('QSTATE', `${block}\nreturn { qAgeText, qWorkLabel };`)(QSTATE);
+// desktop Fleet (apps/claudedesk/client/claudedesk.js): same block, same texts
+const desk = fs.readFileSync(path.join(ROOT, 'apps/claudedesk/client/claudedesk.js'), 'utf8');
+const dblock = desk.slice(desk.indexOf('// qage:begin'), desk.indexOf('// qage:end'));
+assert.ok(dblock.includes('function qAgeText') && dblock.includes('function qWorkLabel'), 'desktop qage block found');
+const DSTATE = { held: 'Waiting', queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Sent Back', input: 'Input Required', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+const dk = new Function('WORK_STATE', `${dblock}\nreturn { qAgeText, qWorkLabel };`)(DSTATE);
+assert.ok(/const workLabel = \(w\) => `\$\{qWorkLabel\(w, Date.now\(\)\)\}\$\{w.sessionGone \? ' - session gone' : ''\}`/.test(desk), 'desktop workLabel adds session gone');
+assert.ok(desk.includes("Its session is gone: nothing is working on this item."), 'desktop detail note');
+{
+    const NOW0 = 1_800_000_000_000;
+    for (const m of [0, 1, 45, 59, 60, 130, 180, 1500, 3000]) assert.strictEqual(dk.qAgeText(NOW0 - m * 60000, NOW0), qAgeText(NOW0 - m * 60000, NOW0), `age ${m}`);
+    for (const w of [{ state: 'waiting', sentBackAt: NOW0 - 130 * 60000 }, { state: 'waiting' }, { state: 'input', parked: true, parkedAt: NOW0 - 180 * 60000 }, { state: 'input', parked: true }, { state: 'input' }, { state: 'running' }]) {
+        const a = dk.qWorkLabel(w, NOW0); const b = qWorkLabel(w, NOW0);
+        assert.strictEqual(a.replace('Input Required', 'Input'), b, 'desktop and phone agree');
+    }
+    assert.strictEqual(dk.qWorkLabel({ state: 'input' }, NOW0), 'Input Required', 'desktop plain label unchanged');
+}
 const { workRow, ageText } = require('../modules/claudeFleetMcp')._test;
 
 const NOW = 1_800_000_000_000;

@@ -1041,7 +1041,7 @@
         const tip = `${n.title || n.id} - ${second}${n.model ? ` - ${modelName(n.model)}` : ''} - ${third}`;
         return `<button type="button" class="cd-wf-card is-${esc(run ? 'running' : n.state)}${String(n.id) === WF.sel ? ' is-selected' : ''}" data-x="${p.x}" data-y="${p.y}" data-act="wf-pick" data-arg="${esc(n.id)}" title="${esc(tip)}">`
             + `<b title="${esc(n.title || String(n.id))}">${esc(n.title || String(n.id))}</b>`
-            + `<i><img class="mmc-row-icon" src="${esc(workIcon(n.state))}" alt="">${esc(second)}</i>`
+            + `<i><img class="mmc-row-icon" src="${esc(rowIcon(workOf(n.id) || n))}" alt="">${esc(second)}</i>`
             + `<em>${esc(third)}</em>${run ? '<span class="cd-working" aria-hidden="true"></span>' : ''}</button>`;
     }
 
@@ -1087,7 +1087,7 @@
             const waits = wfWaitsFor(m, n.id).map((x) => `#${x.n.id} ${x.n.title || ''}`.trim());
             const st = workState(workOf(n.id) || n);
             const t = n.startedAt ? when(n.startedAt) : '';
-            return `<tr class="cd-dash-row${String(n.id) === WF.sel ? ' is-selected' : ''}" data-act="wf-pick" data-arg="${esc(n.id)}"><td class="cd-w80">${m.isRun(n) ? 'running' : (n.order != null ? `#${esc(n.order)}` : '-')}</td><td class="cd-cut" title="${esc(n.title || String(n.id))}"><img class="mmc-row-icon" src="${esc(workIcon(n.state))}" alt="">${esc(n.title || String(n.id))}</td><td class="cd-cut" title="${esc(st)}">${esc(st)}</td><td class="cd-cut">${esc(wfPrio(n.priority))}</td><td class="cd-cut" title="${esc(waits.join(', '))}">${esc(waits.join(', '))}</td><td class="cd-cut" title="${esc(wfAcct(n))}">${esc(wfAcct(n))}</td><td class="cd-cut" title="${esc(t)}">${esc(t)}</td></tr>`;
+            return `<tr class="cd-dash-row${String(n.id) === WF.sel ? ' is-selected' : ''}" data-act="wf-pick" data-arg="${esc(n.id)}"><td class="cd-w80">${m.isRun(n) ? 'running' : (n.order != null ? `#${esc(n.order)}` : '-')}</td><td class="cd-cut" title="${esc(n.title || String(n.id))}"><img class="mmc-row-icon" src="${esc(rowIcon(workOf(n.id) || n))}" alt="">${esc(n.title || String(n.id))}</td><td class="cd-cut" title="${esc(st)}">${esc(st)}</td><td class="cd-cut">${esc(wfPrio(n.priority))}</td><td class="cd-cut" title="${esc(waits.join(', '))}">${esc(waits.join(', '))}</td><td class="cd-cut" title="${esc(wfAcct(n))}">${esc(wfAcct(n))}</td><td class="cd-cut" title="${esc(t)}">${esc(t)}</td></tr>`;
         };
         return `<table class="cd-table cd-dash"><thead><tr><th class="cd-w80">#</th><th>Request</th><th class="cd-w80">State</th><th class="cd-w80">Priority</th><th>Waits for</th><th class="cd-w80">Account</th><th>Started</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>`;
     }
@@ -1676,6 +1676,29 @@
     const supWork = () => (S.sup.data && Array.isArray(S.sup.data.work) ? S.sup.data.work : []);
     const workOf = (id) => supWork().find((w) => String(w.id) === String(id)) || null;
     const WORK_STATE = { held: 'Waiting', queued: 'Queued', starting: 'Starting', running: 'Running', waiting: 'Sent Back', input: 'Input Required', done: 'Done', failed: 'Failed', cancelled: 'Cancelled' };
+    // qage:begin (pure; scripts/test-fleet-work-rows.js runs this block; same wording as the phone Fleet) - the age is worked out when a row is drawn, never ticked
+    /** "45 min", "2 h 10 min", "3 h", "2 d 4 h" for a span in ms; '' when there is no usable start. */
+    function qAgeText(sinceMs, nowMs) {
+        const t = Number(sinceMs);
+        if (!Number.isFinite(t) || t <= 0) return '';
+        const m = Math.max(0, Math.floor((nowMs - t) / 60000));
+        if (m < 1) return 'under 1 min';
+        if (m < 60) return `${m} min`;
+        const h = Math.floor(m / 60);
+        if (h < 24) return `${h} h${m % 60 ? ` ${m % 60} min` : ''}`;
+        return `${Math.floor(h / 24)} d${h % 24 ? ` ${h % 24} h` : ''}`;
+    }
+    /** The state text of a work row: "Sent Back 2 h 10 min", "Needs a person 3 h", else the plain label. Absent fields change nothing. */
+    function qWorkLabel(w, nowMs) {
+        if (w.state === 'waiting' && w.sentBackAt) { const a = qAgeText(w.sentBackAt, nowMs); return a ? `Sent Back ${a}` : 'Sent Back'; }
+        if (w.state === 'input' && w.parked) { const a = qAgeText(w.parkedAt, nowMs); return a ? `Needs a person ${a}` : 'Needs a person'; }
+        return WORK_STATE[w.state] || w.state || '';
+    }
+    // qage:end
+    /** State text of a work row without a hold: the label with its age, plus " - session gone" when nothing is working on it. */
+    const workLabel = (w) => `${qWorkLabel(w, Date.now())}${w.sessionGone ? ' - session gone' : ''}`;
+    const rowIcon = (w) => (w.sessionGone ? `${VI}/warning-16.png` : workIcon(w.state)); // a row whose session is gone: the warning icon, as a signed-out account has
+    const GONE_NOTE = 'Its session is gone: nothing is working on this item.';
     const WORK_SOURCE = { fleet: 'Fleet', plaud: 'Plaud', director: 'Director', agent: 'Agent', yozora: 'Yozora' };
     const issueShort = (i) => `${String(i.repo || '').split('/').pop()}#${i.number}`;
     /** Every issue a request carries (primary first); a server that sends only `issue` gives one. */
@@ -1718,7 +1741,7 @@
     const groupParentOf = (w) => { if (!w || w.parentId == null || w.parentId === '') return null; const p = workOf(w.parentId); return isGroups(p) ? p : null; };
     const plannerLabel = (w, p) => { const sib = supWork().filter((x) => String(x.parentId) === String(p.id)); const i = sib.findIndex((x) => String(x.id) === String(w.id)); return i >= 0 ? `Planner ${i + 1} of ${sib.length}` : 'Planner'; };
     const STAGES = { planner: { label: 'Planner', engine: 'claude', model: 'opus', effort: 'high', uses: ['planner', 'auto'] }, workers: { label: 'Workers', engine: 'claude', model: 'sonnet', effort: 'medium', uses: ['direct', 'surfaces', 'planner', 'auto'] } };
-    const workState = (w) => { const h = w.sessionId ? holdOf(w.sessionId) : null; return h ? holdWord(h) : (w.topology === 'auto' && (w.state === 'running' || w.state === 'starting') ? 'Planning' : (WORK_STATE[w.state] || w.state || '')); };
+    const workState = (w) => { const h = w.sessionId ? holdOf(w.sessionId) : null; return h ? holdWord(h) : (w.topology === 'auto' && (w.state === 'running' || w.state === 'starting') ? 'Planning' : workLabel(w)); };
     const shapeText = (w) => {
         if (w.parentId != null && w.parentId !== '') { const p = workOf(w.parentId); return isGroups(p) ? `${plannerLabel(w, p)} of ${p.title || p.id}` : `Part of ${p ? (p.title || p.id) : w.parentId}`; }
         const parts = supWork().filter((x) => String(x.parentId) === String(w.id));
@@ -2218,6 +2241,7 @@
         }
         return `<div class="cd-wd"><h3>${esc(w.title || String(w.id))}</h3>${(c || S.c).props([
             ['State', esc(workState(w))],
+            ...(w.sessionGone ? [['Session', `<img class="mmc-row-icon" src="${VI}/warning-16.png" alt=""> ${esc(GONE_NOTE)}`]] : []),
             ['Shape', esc(isGroups(w) ? 'Supervisor -> a Claude planner per group of related issues' : ((TOPO.find((x) => x[0] === w.topology) || [])[1] || ''))],
             ['Planner stage', esc(stageText(st.planner))],
             ['Workers stage', esc(stageText(st.workers) || [w.model, w.effort].filter(Boolean).join(' / '))],
@@ -2292,8 +2316,8 @@
         if (S.sup.unavailable) return c.page(T, '', [{ id: 'cd-wq-gone', title: T, body: `<p>${NOT_YET}</p>` }]);
         const rows = WORK_SCOPE[scope]().map((w) => ({
             key: `w:${w.id}`,
-            icon: w.sessionId && holdOf(w.sessionId) ? PAUSE16 : workIcon(w.state),
-            cls: w.state === 'running' || w.state === 'starting' ? 'cd-live' : (w.state === 'failed' ? 'cd-stale' : ''),
+            icon: w.sessionId && holdOf(w.sessionId) ? PAUSE16 : rowIcon(w),
+            cls: w.state === 'running' || w.state === 'starting' ? 'cd-live' : (w.state === 'failed' || w.sessionGone ? 'cd-stale' : ''),
             data: { id: w.id, title: w.title || String(w.id), state: workState(w), shape: shapeText(w), source: WORK_SOURCE[w.source] || w.source || '', account: w.account && w.account.name ? w.account.name : (w.account == null ? '' : String(w.account)), model: [w.engine && w.engine !== 'claude' ? engineName(w.engine) : '', w.model, w.effort].filter(Boolean).join(' / '), session: w.sessionId ? shortId(w.sessionId) : '', issue: issueText(w), check: w.check && w.check.verdict ? CHECK_TEXT[w.check.verdict] || w.check.verdict : '', at: w.createdAt || 0, message: [w.message, w.issueNote].filter(Boolean).join(' - ') }
         }));
         const lv = c.listView([
@@ -2393,6 +2417,7 @@
             h ? { id: 'cd-wi-hold', title: holdWord(h), body: `<p>${esc(holdLine(h))}</p><p class="mmc-hint">${esc([HOLD_KIND[h.kind] || h.kind, h.by ? `by ${h.by}` : '', when(h.at)].filter(Boolean).join(' - '))}</p><p><span class="mmc-link" data-act="resume-hold" data-arg="${esc(w.sessionId)}">Resume</span></p>` } : null,
             { id: 'cd-wi-info', title: 'Request', body: c.props([
                 ['State', esc(workState(w))],
+                ...(w.sessionGone ? [['Session', `<img class="mmc-row-icon" src="${VI}/warning-16.png" alt=""> ${esc(GONE_NOTE)}`]] : []),
                 ['Shape', esc(isGroups(w) ? 'Supervisor -> a Claude planner per group of related issues' : ((TOPO.find((x) => x[0] === w.topology) || [])[1] || ''))],
                 ['Planner stage', esc(stageText(st.planner))],
                 ['Workers stage', esc(stageText(st.workers) || [w.model, w.effort].filter(Boolean).join(' / '))],
@@ -3152,7 +3177,7 @@
         if (w.sessionId) kids.push(sessionNode('aw:s:', w.sessionId, A));
         const h = w.sessionId ? holdOf(w.sessionId) : null;
         const topo = topoShort(w.topology);
-        return { id: `aw:w:${w.id}`, name: `${w.title || w.id}${topo && w.parentId == null ? ` - ${topo}` : ''}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? PAUSE16 : workIcon(w.state), desc: `${WORK_STATE[w.state] || w.state || ''}${WORK_RUN.has(w.state) && w.message ? ` - ${w.message}` : ''}`, children: kids }; // the in-flight reason (background agents, a review) shows in the row note
+        return { id: `aw:w:${w.id}`, name: `${w.title || w.id}${topo && w.parentId == null ? ` - ${topo}` : ''}${h ? ` (${holdWord(h).toLowerCase()})` : ''}`, icon: h ? PAUSE16 : rowIcon(w), desc: `${workLabel(w)}${WORK_RUN.has(w.state) && w.message ? ` - ${w.message}` : ''}`, children: kids }; // the in-flight reason (background agents, a review) shows in the row note
     }
 
     /** The page of an issue leaf: what the issue is and a link that opens it (like the issue links of the request page). */
@@ -3430,7 +3455,7 @@
             tile('accounts', `${VI}/warning-16.png`, loginRows().length, 'Need sign-in', true, loginRows().length ? loginRows().map((f) => f.name).join(', ') : '')
         ].join('')}</div>`;
         const live = run; // Sent Back items are in it (WORK_RUN)
-        const row = (w) => `<tr class="cd-dash-row" data-act="${w.state === 'held' ? 'nav:co-held' : (w.state === 'input' ? 'nav:co-input' : `nav:aw:w:${esc(w.id)}`)}"><td class="cd-cut" title="${esc(w.title || String(w.id))}"><img class="mmc-row-icon" src="${esc(workIcon(w.state))}" alt="">${esc(w.title || String(w.id))}</td><td class="cd-cut" title="${esc(workState(w))}">${esc(workState(w))}</td><td class="cd-cut" title="${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}">${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}</td><td class="cd-cut" title="${esc([w.model, w.effort].filter(Boolean).join(' / '))}">${esc([w.model, w.effort].filter(Boolean).join(' / '))}</td><td class="cd-cut" title="${esc(w.startedAt ? when(w.startedAt) : '')}">${esc(w.startedAt ? when(w.startedAt) : '')}</td><td class="cd-cut" title="${esc(w.message || '')}">${esc(w.message || '')}</td></tr>`;
+        const row = (w) => `<tr class="cd-dash-row" data-act="${w.state === 'held' ? 'nav:co-held' : (w.state === 'input' ? 'nav:co-input' : `nav:aw:w:${esc(w.id)}`)}"><td class="cd-cut" title="${esc(w.title || String(w.id))}"><img class="mmc-row-icon" src="${esc(rowIcon(w))}" alt="">${esc(w.title || String(w.id))}</td><td class="cd-cut" title="${esc(workState(w))}">${esc(workState(w))}</td><td class="cd-cut" title="${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}">${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}</td><td class="cd-cut" title="${esc([w.model, w.effort].filter(Boolean).join(' / '))}">${esc([w.model, w.effort].filter(Boolean).join(' / '))}</td><td class="cd-cut" title="${esc(w.startedAt ? when(w.startedAt) : '')}">${esc(w.startedAt ? when(w.startedAt) : '')}</td><td class="cd-cut" title="${esc(w.message || '')}">${esc(w.message || '')}</td></tr>`;
         const table = (list, empty) => (list.length
             ? `<table class="cd-table cd-dash"><thead><tr><th>Request</th><th class="cd-w80">State</th><th class="cd-w80">Account</th><th>Model</th><th>Started</th><th>Note</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>`
             : `<p class="mmc-hint">${esc(empty)}</p>`);
@@ -6456,7 +6481,7 @@
 
     /** Work items as a small table: request, state, session. */
     function workTable(items, whoOf) {
-        return `<table class="cd-table"><thead><tr><th>Request</th>${whoOf ? '<th>Recording</th>' : ''}<th class="cd-w80">State</th><th class="cd-w80">Session</th></tr></thead><tbody>${items.map((x) => `<tr><td>${esc(x.title || x.id)}</td>${whoOf ? `<td>${esc(whoOf(x) || x.recordingId || '')}</td>` : ''}<td>${esc(WORK_STATE[x.state] || x.state || '')}</td><td>${esc(x.sessionId ? shortId(x.sessionId) : '')}</td></tr>`).join('')}</tbody></table>`;
+        return `<table class="cd-table"><thead><tr><th>Request</th>${whoOf ? '<th>Recording</th>' : ''}<th class="cd-w80">State</th><th class="cd-w80">Session</th></tr></thead><tbody>${items.map((x) => `<tr><td>${esc(x.title || x.id)}</td>${whoOf ? `<td>${esc(whoOf(x) || x.recordingId || '')}</td>` : ''}<td>${esc(workLabel(x))}</td><td>${esc(x.sessionId ? shortId(x.sessionId) : '')}</td></tr>`).join('')}</tbody></table>`;
     }
 
     async function newSessionBox(c, accountIndex) {
