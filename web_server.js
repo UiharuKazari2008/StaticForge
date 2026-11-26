@@ -4949,6 +4949,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
 // Start server with early readiness tracking
 (async () => {
     // Initialize boot tree logging
+    const bootBeginAt = Date.now();
     globalResources.logger.startBoot();
 
     // Compile/load runtime assets alongside listen. Requests serve memory or a single-flight miss.
@@ -4990,6 +4991,10 @@ async function handleAdminUnixSocketMessage(message, socket) {
     await globalResources.logger.bootStep('Runtime Asset Compilation', async () => {
         updateServerStage('runtime_compile');
         const result = await assetPrime;
+        const pt = runtimeAssetService.getPrimeTimings && runtimeAssetService.getPrimeTimings();
+        if (pt) {
+            globalResources.logger.bootSubStep(`compile phases: loadTree ${pt.loadTree}ms, compile ${pt.compile}ms, loadTree again ${pt.loadTree2}ms, html hashes ${pt.htmlHashes}ms, html remember ${pt.htmlRemember}ms, started +${pt.startedAt - bootBeginAt}ms, done +${pt.doneAt - bootBeginAt}ms`);
+        }
         // The manifest (cache hash list) is built after `ready` (see the end of this function): nothing
         // in boot reads it, and it was ~88% of the start (#1230). Clients get 503 + Retry-After until then.
         await runtimeAssetService.refreshHashCacheAndBroadcast({
