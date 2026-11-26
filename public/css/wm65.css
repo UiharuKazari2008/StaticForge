@@ -692,7 +692,7 @@ html.ui-mobile[data-wm-version="6.5"] #wmShell:has(:is(.wm-combo, .wm-combo-edit
 /* ---- list selection: the theme's list view selector (474 x 72 at 2x: 8 clear rows, 56 of blue,
  * 8 of shadow) as a 9-slice over the row and 1 px past it above and below, as the device draws it
  * (a 58 px selector on a 54 px row at 192 dpi) ---- */
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-row, .wsk .wsk-row, .wm-task-manager .wtm-row, .wm-xlink .wxl-row, .wm-spellbook .wsb-row, .wm-paypass .wpp-row, .wm-notes .nt-row, .wm-contacts .ct-row, .wm-contacts .ct-crow, .wm-msg .msg-row, .wm-msg .msg-pick-row, .wm-chat .wch-row, .wm-characters .wch-trow, .wm-browser .wmb-sub-row, .wm-accounts .wac-row, .wm-fd .wfd-item, .wm-listbox-row:has(.wm-check)).is-selected {
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-fe .fe-row, .wsk .wsk-row, .wm-task-manager .wtsk-row, .wm-xlink .wxl-row, .wm-spellbook .wsb-row, .wm-paypass .wpp-row, .wm-notes .nt-row, .wm-contacts .ct-row, .wm-contacts .ct-crow, .wm-msg .msg-row, .wm-msg .msg-pick-row, .wm-chat .wch-row, .wm-characters .wcr-trow, .wm-browser .wmb-sub-row, .wm-accounts .wac-row, .wm-fd .wfd-item, .wm-listbox-row:has(.wm-check)).is-selected {
     border-style: solid;
     border-width: 0;
     border-color: transparent;
@@ -2561,7 +2561,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-fe .fe-list:not(.fe-grid) .fe-row {
     contain-intrinsic-size: auto calc(35 * var(--wm-px));
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-task-manager .wtm-row {
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-task-manager .wtsk-row {
     height: calc(35 * var(--wm-px));
 }
 
@@ -2570,7 +2570,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-fe .fe-bar {
     height: calc(33 * var(--wm-px));
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] :is(.wm-fe .fe-row, .wm-task-manager .wtm-row, .wm-browser .wmb-sub-row).is-selected {
+html.ui-mobile[data-wm-rev="6.5.1"] :is(.wm-fe .fe-row, .wm-task-manager .wtsk-row, .wm-browser .wmb-sub-row).is-selected {
     border-image-outset: calc(0.5 * var(--wm-px)) 0;
 }
 
@@ -2595,7 +2595,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-msg .msg-pick-row.is-two.is-selected::be
     height: calc(44 * var(--wm-px));
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-task-manager .wtm-head {
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-task-manager .wtsk-head {
     height: calc(32 * var(--wm-px));
 }
 
