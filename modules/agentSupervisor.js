@@ -1416,8 +1416,38 @@ function cleanStages(st) {
 /** One JSON answer from the Supervisor's engine (the same engine / model as its reviews). */
 async function askJson(gr, system, user, kind, opts = {}) {
     const r = await callEngine(gr, [{ role: 'system', content: system }, { role: 'user', content: user }], { kind: kind || 'json', maxTokens: opts.maxTokens });
-    const raw = String(r.content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
-    try { return JSON.parse(raw); } catch (_) { const m = /\{[\s\S]*\}/.exec(raw); return m ? JSON.parse(m[0]) : null; }
+    return parseLooseJson(r.content);
+}
+
+/**
+ * A model's JSON answer, forgiving (Nov 25 2026: one unescaped quote in a rules finding - "Expected ',' or ']' after array
+ * element" - threw the whole Rules Review away): the plain parse, then the outer object, then every complete {...} element
+ * of its first array (findings / missed / questions) salvaged one by one. Throws only when nothing is usable.
+ */
+function parseLooseJson(text) {
+    const raw = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    try { return JSON.parse(raw); } catch (_) { /* below */ }
+    const m = /\{[\s\S]*\}/.exec(raw);
+    if (m) { try { return JSON.parse(m[0]); } catch (_) { /* below */ } }
+    const key = /"(findings|missed|questions|items)"\s*:\s*\[/.exec(raw);
+    if (!key) throw new Error('The answer was not JSON');
+    const items = [];
+    let i = key.index + key[0].length;
+    while (i < raw.length) {
+        while (i < raw.length && /[\s,]/.test(raw[i])) i += 1;
+        if (raw[i] !== '{') break;
+        let depth = 0; let inStr = false; let esc = false; let j = i;
+        for (; j < raw.length; j += 1) {
+            const c = raw[j];
+            if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+            if (c === '"') inStr = true; else if (c === '{') depth += 1; else if (c === '}') { depth -= 1; if (depth === 0) break; }
+        }
+        if (depth !== 0) break;
+        try { items.push(JSON.parse(raw.slice(i, j + 1))); } catch (_) { /* this element is broken: skip it */ }
+        i = j + 1;
+    }
+    if (!items.length) throw new Error('The answer was not usable JSON');
+    return { [key[1]]: items, salvaged: true };
 }
 
 async function decideTopology(gr, w) {
@@ -3778,8 +3808,8 @@ function stop() {
 // through the status push (emit), never by polling.
 
 const RULES_REPO = path.join(__dirname, '..');
-const RULES_CHUNK_CHARS = 36000;   // one engine call's rule text (a DeepSeek Flash context holds far more)
-const RULES_MAX_CALLS = 4;         // the short budget
+const RULES_CHUNK_CHARS = 18000;   // one engine call's rule text (a DeepSeek Flash context holds far more)
+const RULES_MAX_CALLS = 12;        // the short budget
 const RULES_EXCERPT = 900;         // chars of each rule shown to the cross-rule pass
 let rulesRun = null;               // { startedAt, done, total, step }
 
@@ -3991,30 +4021,33 @@ async function reviewRules(gr, opts = {}) {
     rulesRun = { startedAt: Date.now(), done: 0, total: calls.length + memCalls.length, step: 'Checking the files' };
     emit({ rules: true });
     let engine = ''; let model = ''; let error = '';
+    const partErrors = [];
     try {
         for (let i = 0; i < calls.length; i += 1) {
             rulesRun.step = `Reading rules, part ${i + 1} of ${calls.length}`;
             emit({ rules: true });
-            const user = `All rules (name: description):\n${index}\n\nFile checks already found:\n${hints || '(none)'}\n\nRules to audit in this part:\n\n${calls[i].join('\n\n')}`;
-            try {
-                const o = await askJson(g, RULES_SYSTEM, user, 'rules');
-                const arr = o && Array.isArray(o.findings) ? o.findings : [];
-                arr.forEach((f) => { const c = cleanFinding(f, names, 0); if (c && !['not-english', 'missing-import', 'missing-file', 'outdated-reference'].includes(c.kind)) findings.push(c); });
-            } catch (e) { error = e.message.slice(0, 300); break; }
+            const take = (o) => (o && Array.isArray(o.findings) ? o.findings : []).forEach((f) => { const c = cleanFinding(f, names, 0); if (c && !['not-english', 'missing-import', 'missing-file', 'outdated-reference'].includes(c.kind)) findings.push(c); });
+            const ask = (part) => askJson(g, RULES_SYSTEM, `All rules (name: description):\n${index}\n\nFile checks already found:\n${hints || '(none)'}\n\nRules to audit in this part:\n\n${part.join('\n\n')}`, 'rules', { maxTokens: 8000 });
+            try { take(await ask(calls[i])); } catch (e) {
+                // a slow or broken answer: the part is split in two and each half asked once more; the review goes on either way
+                const halves = calls[i].length > 1 ? [calls[i].slice(0, Math.ceil(calls[i].length / 2)), calls[i].slice(Math.ceil(calls[i].length / 2))] : [calls[i]];
+                for (const h of halves) { try { take(await ask(h)); } catch (e2) { partErrors.push(`rules part ${i + 1}: ${e2.message.slice(0, 120)}`); } }
+            }
             rulesRun.done = i + 1;
         }
-        if (!error) {
+        {
             const rindex = rules.map((r) => `- ${r.name}: ${r.description.slice(0, 200)}\n  ${String((r.body || '').replace(/\s+/g, ' ').trim()).slice(0, MEM_RULE_EXCERPT)}`).join('\n');
             for (let j = 0; j < memCalls.length; j += 1) {
                 rulesRun.step = `Reading memories, part ${j + 1} of ${memCalls.length}`;
                 emit({ rules: true });
-                try {
-                    const o = await askJson(g, MEMORY_SYSTEM, `Rules (name: description, then the start of its text):\n${rindex}\n\nMemories to review in this part:\n\n${memCalls[j].join('\n\n')}`, 'rules');
-                    (o && Array.isArray(o.findings) ? o.findings : []).forEach((f) => { const c = cleanMemoryFinding(f, names, memById); if (c) findings.push(c); });
-                } catch (e) { error = e.message.slice(0, 300); break; }
+                const askM = () => askJson(g, MEMORY_SYSTEM, `Rules (name: description, then the start of its text):\n${rindex}\n\nMemories to review in this part:\n\n${memCalls[j].join('\n\n')}`, 'rules', { maxTokens: 8000 });
+                let o = null;
+                try { o = await askM(); } catch (_) { try { o = await askM(); } catch (e2) { partErrors.push(`memories part ${j + 1}: ${e2.message.slice(0, 120)}`); } }
+                (o && Array.isArray(o.findings) ? o.findings : []).forEach((f) => { const c = cleanMemoryFinding(f, names, memById); if (c) findings.push(c); });
                 rulesRun.done = calls.length + j + 1;
             }
         }
+        if (partErrors.length) error = `${partErrors.length} part${partErrors.length === 1 ? '' : 's'} could not be read (the rest is in): ${partErrors.join('; ')}`.slice(0, 600);
         try { const s = settings(g); engine = s.engine || ''; model = s.model || DEFAULT_MODEL || ''; } catch (_) { /* unknown */ }
         // later calls may have failed over: the usage table knows the last model that answered
         try { const u = db().prepare("SELECT engine, model FROM supervisor_usage WHERE kind = 'rules' AND ok = 1 ORDER BY id DESC LIMIT 1").get(); if (u) { engine = u.engine; model = u.model || model; } } catch (_) { /* none */ }
@@ -4166,5 +4199,5 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
+    _test: { parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };

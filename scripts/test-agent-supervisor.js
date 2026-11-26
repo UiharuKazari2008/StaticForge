@@ -708,6 +708,13 @@ sup._test.setFetch(async (url, opts) => {
         sup._test.setFetch(async () => ({ ok: false, status: 500, text: async () => 'boom' }));
         const bad = await sup.reviewRules(g3, opts);
         assert.ok(bad.error && bad.findings.some((f) => f.kind === 'missing-file'));
+        // a broken JSON answer (one bad element) keeps the good findings around it (Nov 25 2026: "Expected ',' or ']'")
+        const broken = '{"findings":[{"rules":["alpha","beta"],"kind":"contradiction","severity":"high","text":"good one","suggestion":"x"},{"rules":["alpha"],"kind":"vague","severity":"low","text":"bad "quote" here","suggestion":"y"},{"rules":["beta"],"kind":"vague","severity":"low","text":"good two","suggestion":"z"}]}';
+        sup._test.setFetch(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: broken } }] }) }));
+        const salv = await sup.reviewRules(g3, opts);
+        assert.ok(salv.findings.some((f) => f.text === 'good one') && salv.findings.some((f) => f.text === 'good two'), JSON.stringify(salv.findings.map((f) => f.text)));
+        assert.ok(!salv.error, salv.error);
+        assert.throws(() => sup._test.parseLooseJson('no json at all'), /not JSON/);
     });
 
     await test('rules review: memory findings; explain -> proposal; accept queues a held item or steers the Manager Session; reject keeps the reason', async () => {
