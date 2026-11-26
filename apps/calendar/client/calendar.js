@@ -6,7 +6,10 @@
  *                   (Day, Work Week, Week, Month), the Details pane of what is selected
  *   the data        each calendar is a real iCalendar file in the workspace's Calendars folder
  *                   (Workspaces/<ws>/Calendars/<name>.ics): VEVENTs (all-day, recurring RRULE with
- *                   EXDATEs, VALARM reminders) and VTODOs; its colour and subscription ride along as
+ *                   EXDATEs, VALARM reminders) and VTODOs (title, start, due, priority, done, notes, URL,
+ *                   reminder, and the repeat rule RRULE: FREQ=DAILY or FREQ=WEEKLY;BYDAY=xx counted from the
+ *                   due date, which the server resets on its dates; a rule from another writer is kept as
+ *                   read); its colour and subscription ride along as
  *                   X-WR-CALNAME / X-MELATON-COLOR / X-MELATON-SOURCE
  *   Subscribe       a webcal / https .ics read through the server (/calendar-feed), kept read-only,
  *                   refreshed on its interval
@@ -191,7 +194,7 @@
                 case 'DTEND': { const p = parseIcsDate(value, params); if (p) cur.end = p.date; break; }
                 case 'DURATION': cur.duration = durationMinutes(value) * -60000; break;
                 case 'DUE': { const p = parseIcsDate(value, params); if (p) cur.due = p.date; break; }
-                case 'RRULE': cur.rrule = parseRrule(value); break;
+                case 'RRULE': cur.rrule = parseRrule(value); cur.rruleRaw = value; break;
                 case 'EXDATE': value.split(',').forEach((x) => { const p = parseIcsDate(x, params); if (p) cur.exdates.push(p.date.getTime()); }); break;
                 case 'PRIORITY': cur.priority = parseInt(value, 10) || 0; break;
                 case 'STATUS': if (cur.kind === 'task') cur.completed = value.toUpperCase() === 'COMPLETED'; break;
@@ -244,6 +247,8 @@
             L.push('BEGIN:VTODO', `UID:${t.uid}`, `DTSTAMP:${stamp}`, `SUMMARY:${icsEscape(t.summary)}`);
             if (t.start) L.push(`DTSTART;VALUE=DATE:${icsDate(t.start)}`);
             if (t.due) L.push(`DUE;VALUE=DATE:${icsDate(t.due)}`);
+            // a repeating task: the server unchecks it and moves its due date on the rule's next date; a rule read from the file is written back as read
+            if (t.rrule) L.push(`RRULE:${t.rruleRaw || rruleText(t.rrule)}`);
             if (t.priority) L.push(`PRIORITY:${t.priority}`);
             if (t.completed) L.push('STATUS:COMPLETED', 'PERCENT-COMPLETE:100');
             if (t.completed && t.completedAt) L.push(`COMPLETED:${icsUtc(new Date(t.completedAt))}`);
@@ -254,6 +259,11 @@
         });
         L.push('END:VCALENDAR');
         return `${L.map(fold).join('\r\n')}\r\n`;
+    }
+
+    /** A parsed VTODO as the Calendar keeps it; rrule is the task's repeat rule (rruleRaw: its text as read, written back unless changed here). */
+    function adoptTask(t) {
+        return { uid: t.uid || uid(), summary: t.summary || '', due: t.due || null, start: t.start || null, priority: t.priority || 0, completed: !!t.completed, completedAt: t.completedAt || null, reminderAt: t.reminderAt || null, description: t.description || '', url: t.url || '', rrule: t.rrule || null, rruleRaw: t.rrule ? t.rruleRaw || null : null };
     }
 
     const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}@melaton`;
@@ -521,7 +531,7 @@
             cal.owner = parsed.owner || '';
             cal.readonly = !!cal.source; // an agents' calendar (owner) is editable: the server merges every save (#1157)
             parsed.events.forEach((e) => cal.events.push({ uid: e.uid || uid(), summary: e.summary || '', location: e.location || '', description: e.description || '', url: e.url || '', start: e.start, end: e.end, allDay: !!e.allDay, rrule: e.rrule || null, exdates: e.exdates || [], reminder: e.reminder === undefined ? null : e.reminder, reminderAt: e.reminderAt || null, attendees: e.attendees || [] }));
-            parsed.tasks.forEach((t) => cal.tasks.push({ uid: t.uid || uid(), summary: t.summary || '', due: t.due || null, start: t.start || null, priority: t.priority || 0, completed: !!t.completed, completedAt: t.completedAt || null, reminderAt: t.reminderAt || null, description: t.description || '', url: t.url || '' }));
+            parsed.tasks.forEach((t) => cal.tasks.push(adoptTask(t)));
             this.calendars.push(cal);
             return cal;
         }
@@ -1211,11 +1221,12 @@
                     ${lbl('Priority:', 293)}${select('wcal-d-pri', 286, 104, 23, [['L', 'Low'], ['M', 'Medium'], ['H', 'High'], ['', 'None']], pri)}
                     ${lbl('Start:', 321)}<span data-dtp="tstart" style="${at(82, 314, 120, 24)}"></span>
                     ${lbl('Due date:', 349)}<span data-dtp="due" style="${at(82, 342, 120, 24)}"></span>
-                    ${grp('Reminder', 377)}
-                    ${lbl('Reminder:', 405)}${select('wcal-d-trem', 398, 104, 23, [['', 'None'], ['on', 'On date']], t.reminderAt ? 'on' : '')}
-                    ${t.reminderAt ? `<span data-dtp="remat" style="${at(82, 426, 216, 24)}"></span>` : ''}
-                    ${grp('Notes', 461)}
-                    <textarea class="wcal-d-notes" style="${at(6, 484, 292, 118)}"${dis} spellcheck="false">${esc(t.description)}</textarea>
+                    ${lbl('Recurrence:', 377)}${select('wcal-d-trec', 370, 104, 23, taskRecurItems(t), taskRecurPreset(t))}
+                    ${grp('Reminder', 405)}
+                    ${lbl('Reminder:', 433)}${select('wcal-d-trem', 426, 104, 23, [['', 'None'], ['on', 'On date']], t.reminderAt ? 'on' : '')}
+                    ${t.reminderAt ? `<span data-dtp="remat" style="${at(82, 454, 216, 24)}"></span>` : ''}
+                    ${grp('Notes', 489)}
+                    <textarea class="wcal-d-notes" style="${at(6, 512, 292, 118)}"${dis} spellcheck="false">${esc(t.description)}</textarea>
                 </div>`;
                 const save = () => { this.touched(s.cal); this.renderTasks(); };
                 const bind = (sel, ev, fn) => { const el = host.querySelector(sel); if (el) el.addEventListener(ev, () => { fn(el); save(); }); };
@@ -1228,7 +1239,24 @@
                 const ts = picker('tstart', { value: t.start || null, showNone: true });
                 const td = picker('due', { value: t.due || null, showNone: true });
                 if (ts) ts.addEventListener('change', () => { const v = ts.getValue(); t.start = v ? startOfDay(v) : null; save(); });
-                if (td) td.addEventListener('change', () => { const v = td.getValue(); t.due = v ? startOfDay(v) : null; save(); });
+                if (td) {
+                    td.addEventListener('change', () => {
+                        const v = td.getValue();
+                        const was = taskRecurPreset(t);
+                        t.due = v ? startOfDay(v) : null;
+                        // the rule counts from the due date: no date, no rule; Weekly follows the date's weekday
+                        if (!t.due) setTaskRecur(t, '', null);
+                        else if (was === 'WEEKLY') setTaskRecur(t, 'WEEKLY', t.due);
+                        save();
+                        if (!t.due && was) this.renderDetails();
+                    });
+                }
+                bind('.wcal-d-trec', 'change', (el) => {
+                    if (el.value === 'CUSTOM') return;
+                    if (el.value && !t.due) t.due = startOfDay(t.start || new Date());
+                    setTaskRecur(t, el.value, t.due);
+                    this.renderDetails();
+                });
                 const ra = picker('remat', { value: t.reminderAt, format: 'datetime' });
                 if (ra) ra.addEventListener('change', () => { t.reminderAt = ra.getValue(); this.fired.delete(`task|${t.uid}`); save(); });
                 bind('.wcal-d-trem', 'change', (el) => {
@@ -1493,7 +1521,8 @@
             const it = JSON.parse(JSON.stringify(c.item));
             it.uid = uid();
             if (c.kind === 'task') {
-                if (it.due) it.due = new Date(it.due);
+                ['due', 'start', 'reminderAt'].forEach((k) => { if (it[k]) it[k] = new Date(it[k]); });
+                if (it.rrule && it.rrule.until) it.rrule.until = new Date(it.rrule.until);
                 cal.tasks.push(it);
                 this.touched(cal);
                 this.select({ kind: 'task', item: it, cal });
@@ -1589,7 +1618,7 @@
         newTask() {
             const cal = this.writableCal();
             if (!cal) return;
-            const t = { uid: uid(), summary: '', due: null, start: null, priority: 0, completed: false, description: '', url: '' };
+            const t = { uid: uid(), summary: '', due: null, start: null, priority: 0, completed: false, description: '', url: '', rrule: null, rruleRaw: null };
             cal.tasks.push(t);
             this.touched(cal);
             this.select({ kind: 'task', item: t, cal });
@@ -2178,6 +2207,29 @@
         return r.freq;
     }
 
+    /** A rule's parts without the ones that mean nothing (INTERVAL=1, WKST), sorted: two spellings of one rule compare equal. */
+    function ruleParts(text) {
+        return String(text || '').toUpperCase().split(';').filter((x) => x && x !== 'INTERVAL=1' && !x.startsWith('WKST=')).sort().join(';');
+    }
+
+    /** The task's Recurrence choice: '' none, DAILY, WEEKLY (on the due date's weekday), CUSTOM (any other rule, kept as it is). */
+    function taskRecurPreset(t) {
+        if (!t.rrule) return '';
+        const text = ruleParts(t.rruleRaw || rruleText(t.rrule));
+        if (text === 'FREQ=DAILY') return 'DAILY';
+        const day = t.due ? DAY_CODES[t.due.getDay()] : '';
+        if (text === 'FREQ=WEEKLY' || (day && text === ruleParts(`FREQ=WEEKLY;BYDAY=${day}`))) return 'WEEKLY';
+        return 'CUSTOM';
+    }
+
+    const taskRecurItems = (t) => RECUR.slice(0, 3).concat(taskRecurPreset(t) === 'CUSTOM' ? [['CUSTOM', 'Custom']] : []);
+
+    /** Sets the task's rule from a Recurrence choice ('', DAILY, WEEKLY); base is the due date Weekly takes its weekday from. */
+    function setTaskRecur(t, value, base) {
+        t.rruleRaw = null;
+        t.rrule = value && base ? { freq: value, interval: 1, byday: value === 'WEEKLY' ? [DAY_CODES[base.getDay()]] : null } : null;
+    }
+
     function recurText(e) {
         const r = e.rrule;
         if (!r) return '';
@@ -2211,6 +2263,6 @@
         app.onExit(() => { running = null; cal.destroy(); });
     }
 
-    root.melatonCalendar = { start, parseIcs, toIcs, occurrences, parseRrule, _running: () => running };
+    root.melatonCalendar = { start, parseIcs, toIcs, occurrences, parseRrule, adoptTask, taskRecurPreset, setTaskRecur, _running: () => running };
     if (typeof melatonApps !== 'undefined') melatonApps.define('calendar', start); // eslint-disable-line no-undef
 })(typeof window !== 'undefined' ? window : globalThis);

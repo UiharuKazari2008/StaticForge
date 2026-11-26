@@ -29,8 +29,10 @@
  * VTODOs of /Workspaces/<workspace>/Calendars/*.ics (subject, start, due, priority, completed,
  * reminder, notes). A change rewrites only that task's VTODO in a fresh copy of the file, so the
  * appointments beside it are never touched. A subscribed calendar's tasks cannot be changed.
- * Occurs, Categories and Sensitivity have no place in that store: the form shows the device's
- * rows with their fixed values. Prints in progress (the generation requests wsClient still waits
+ * Occurs is the task's RRULE (Once, Every day, Every <weekday>; any other rule written by another program
+ * is kept as it is and shown as its own radio item); the server unchecks the task and moves its due date
+ * on the rule's next date, this app only writes the rule. Categories and Sensitivity have no place in that
+ * store: the form shows the device's rows with their fixed values. Prints in progress (the generation requests wsClient still waits
  * for) are listed as the read-only category "Printing".
  * Only on phones. Styles: public/css/wm-tasks.css.
  */
@@ -112,12 +114,44 @@
         return out.join('\r\n');
     }
 
+    // Occurs: the rule's value as stored ('' = Once). Only these two shapes are offered; others are kept as they are.
+    const DAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const ruleParts = (raw) => {
+        const o = {};
+        String(raw || '').split(';').forEach((p) => { const i = p.indexOf('='); if (i > 0) o[p.slice(0, i).trim().toUpperCase()] = p.slice(i + 1).trim().toUpperCase(); });
+        return o;
+    };
+    /** { kind: 'once' | 'daily' | 'weekly' | 'other', day } of a stored rule value. */
+    function ruleKind(raw) {
+        if (!raw) return { kind: 'once' };
+        const o = ruleParts(raw);
+        const keys = Object.keys(o).sort().join(',');
+        if (keys === 'FREQ' && o.FREQ === 'DAILY') return { kind: 'daily' };
+        if (keys === 'BYDAY,FREQ' && o.FREQ === 'WEEKLY' && DAY_CODES.includes(o.BYDAY)) return { kind: 'weekly', day: DAY_CODES.indexOf(o.BYDAY) };
+        return { kind: 'other' };
+    }
+    const ruleDaily = () => 'FREQ=DAILY';
+    const ruleWeekly = (day) => `FREQ=WEEKLY;BYDAY=${DAY_CODES[day]}`;
+    /** The Occurs text of a stored rule. */
+    function ruleText(raw) {
+        const k = ruleKind(raw);
+        if (k.kind === 'once') return 'Once';
+        if (k.kind === 'daily') return 'Every day';
+        if (k.kind === 'weekly') return `Every ${DAY_NAMES[k.day]}`;
+        const o = ruleParts(raw);
+        const n = parseInt(o.INTERVAL, 10) > 1 ? parseInt(o.INTERVAL, 10) : 1;
+        const unit = { DAILY: ['day', 'Daily'], WEEKLY: ['week', 'Weekly'], MONTHLY: ['month', 'Monthly'], YEARLY: ['year', 'Yearly'] }[o.FREQ];
+        if (!unit) return 'Repeats';
+        return n > 1 ? `Every ${n} ${unit[0]}s` : unit[1];
+    }
+
     const BLOCK = /BEGIN:VTODO[ \t]*\r?\n[\s\S]*?END:VTODO[ \t]*(?:\r?\n|$)/gi;
 
     /** One VTODO block to a task; what this program does not know is kept as it stands (extra). */
     function parseTodo(block) {
         const lines = block.replace(/\r\n|\r/g, '\n').replace(/\n[ \t]/g, '').split('\n');
-        const t = { uid: '', summary: '', start: null, due: null, priority: 0, completed: false, completedAt: null, reminderAt: null, description: '', url: '', extra: [] };
+        const t = { uid: '', summary: '', start: null, due: null, priority: 0, completed: false, completedAt: null, reminderAt: null, description: '', url: '', rrule: '', extra: [] };
         let alarm = null;
         for (const line of lines) {
             if (!line) continue;
@@ -151,6 +185,7 @@
                 case 'URL': t.url = value; break;
                 case 'DTSTART': t.start = parseIcsDate(value); break;
                 case 'DUE': t.due = parseIcsDate(value); break;
+                case 'RRULE': t.rrule = value.trim(); break;
                 case 'PRIORITY': t.priority = parseInt(value, 10) || 0; break;
                 case 'STATUS': if (value.trim().toUpperCase() === 'COMPLETED') t.completed = true; else t.extra.push(line); break;
                 case 'COMPLETED': { t.completed = true; const d = parseIcsDate(value); if (d) t.completedAt = d.getTime(); break; }
@@ -166,6 +201,7 @@
         const L = ['BEGIN:VTODO', `UID:${t.uid}`, `DTSTAMP:${icsUtc(new Date())}`, `SUMMARY:${icsEscape(t.summary)}`];
         if (t.start) L.push(`DTSTART;VALUE=DATE:${icsDate(t.start)}`);
         if (t.due) L.push(`DUE;VALUE=DATE:${icsDate(t.due)}`);
+        if (t.rrule) L.push(`RRULE:${t.rrule}`);
         if (t.priority) L.push(`PRIORITY:${t.priority}`);
         if (t.completed) L.push('STATUS:COMPLETED', 'PERCENT-COMPLETE:100');
         if (t.completed && t.completedAt) L.push(`COMPLETED:${icsUtc(new Date(t.completedAt))}`);
@@ -480,7 +516,7 @@
         const input = page.querySelector('.wtk-entry');
         const text = input.value.trim();
         if (!text) { input.blur(); return; }
-        const t = { uid: newUid(), summary: text, start: null, due: null, priority: barPri, completed: false, completedAt: null, reminderAt: null, description: '', url: '', extra: [], cal: null };
+        const t = { uid: newUid(), summary: text, start: null, due: null, priority: barPri, completed: false, completedAt: null, reminderAt: null, description: '', url: '', rrule: '', extra: [], cal: null };
         input.value = '';
         input.blur();
         barPri = 0;
@@ -513,7 +549,7 @@
 
     async function createCopy(t) {
         if (!t || t.print) return;
-        const c = Object.assign({}, t, { uid: newUid(), cal: t.cal && !t.cal.readonly ? t.cal : null, extra: (t.extra || []).slice() });
+        const c = Object.assign({}, t, { uid: newUid(), cal: t.cal && !t.cal.readonly ? t.cal : null, extra: (t.extra || []).slice() }); // rrule is copied with the rest
         if (!(await store(c))) return;
         sel = c.uid;
         render();
@@ -564,6 +600,7 @@
             } else {
                 if (t.start) rows.push(['Starts', formDate(t.start)]);
                 if (t.due) rows.push(['Due', formDate(t.due)]);
+                if (t.rrule && t.due) rows.push(['Occurs', ruleText(t.rrule)]);
             }
         }
         // scroll-lists-keep-position: the same task drawn again (a push, the chevron) keeps its notes' place
@@ -585,8 +622,8 @@
         if (t && t.cal && t.cal.readonly) { readOnlyNotice(t); return; }
         fromSummary = view === 'summary';
         form = t
-            ? { task: t, summary: t.summary, priority: t.priority, completed: t.completed, start: t.start, due: t.due, remind: !!t.reminderAt, reminderAt: t.reminderAt, description: t.description }
-            : { task: null, cal: defaultCal(), summary: '', priority: 0, completed: false, start: null, due: null, remind: false, reminderAt: null, description: '' };
+            ? { task: t, summary: t.summary, priority: t.priority, completed: t.completed, start: t.start, due: t.due, rrule: t.rrule || '', remind: !!t.reminderAt, reminderAt: t.reminderAt, description: t.description }
+            : { task: null, cal: defaultCal(), summary: '', priority: 0, completed: false, start: null, due: null, rrule: '', remind: false, reminderAt: null, description: '' };
         view = 'form';
         setTab('task');
         render();
@@ -618,7 +655,7 @@
             fieldRow('status', 'Status', val('status', f.completed ? 'Completed' : 'Not Completed')),
             fieldRow('starts', 'Starts', val('start', f.start ? formDate(f.start) : 'None')),
             fieldRow('due', 'Due', val('due', f.due ? formDate(f.due) : 'None')),
-            fieldRow('occurs', 'Occurs', fixed('Once')),
+            fieldRow('occurs', 'Occurs', val('occurs', ruleText(f.rrule))),
             fieldRow('reminder', 'Reminder', val('reminder', f.remind ? 'Remind me' : 'None')),
             fieldRow('remwhen', '', f.remind && f.reminderAt
                 ? `<span class="wtk-fdt">${val('rem-date', formDate(f.reminderAt))}${val('rem-time', formTime(f.reminderAt))}</span>`
@@ -650,6 +687,11 @@
         if (k === 'start' || k === 'due') {
             pickDate(btn, f[k], true, (d) => {
                 f[k] = d;
+                if (k === 'due') {
+                    // the rule is counted from the due date: none = Once; a weekly rule follows the due date's weekday
+                    if (!d) f.rrule = '';
+                    else if (ruleKind(f.rrule).kind === 'weekly') f.rrule = ruleWeekly(d.getDay());
+                }
                 // "Set reminders for new items": a new task's first due date brings its reminder (8:00 AM that day)
                 if (k === 'due' && d && !f.task && !f.remind && options().reminders) { f.remind = true; f.reminderAt = defaultReminder(d); }
                 redo();
@@ -683,7 +725,19 @@
         if (k === 'priority') items = [['High', 1], ['Normal', 0], ['Low', 9]].map(([l, v]) => ({ label: l, radio: (v === 1 && f.priority >= 1 && f.priority <= 4) || (v === 9 && f.priority >= 6) || (v === 0 && (f.priority === 0 || f.priority === 5)), action: () => { f.priority = v; redo(); } }));
         else if (k === 'calendar') items = cals.filter((c) => !c.readonly).map((c) => ({ label: c.name, radio: f.cal === c, action: () => { f.cal = c; setDefaultCal(c); redo(); } }));
         else if (k === 'status') items = [['Not Completed', false], ['Completed', true]].map(([l, v]) => ({ label: l, radio: f.completed === v, action: () => { f.completed = v; redo(); } }));
-        else if (k === 'reminder') {
+        else if (k === 'occurs') {
+            const cur = ruleKind(f.rrule);
+            const day = (f.due || f.start || new Date()).getDay();
+            const choose = (raw) => () => {
+                f.rrule = raw;
+                if (raw && !f.due) f.due = startOfDay(f.start || new Date()); // a rule needs a due date
+                redo();
+            };
+            if (cur.kind === 'other') items.push({ label: ruleText(f.rrule), radio: true, action: () => {} });
+            items.push({ label: 'Once', radio: cur.kind === 'once', action: choose('') },
+                { label: 'Every day', radio: cur.kind === 'daily', action: choose(ruleDaily()) },
+                { label: `Every ${DAY_NAMES[day]}`, radio: cur.kind === 'weekly', action: choose(ruleWeekly(day)) });
+        } else if (k === 'reminder') {
             items = [['None', false], ['Remind me', true]].map(([l, v]) => ({ label: l, radio: f.remind === v, action: () => {
                 f.remind = v;
                 if (v && !f.reminderAt) f.reminderAt = defaultReminder(f.due || f.start || new Date());
@@ -699,7 +753,7 @@
         const subject = f.summary.trim();
         // an untouched new task is not kept
         if (!f.task && !subject && !f.due && !f.start && !f.description.trim() && !f.priority && !f.completed) { cancelForm(true); return; }
-        const t = f.task || { uid: newUid(), url: '', extra: [], cal: f.cal && cals.includes(f.cal) ? f.cal : null, completedAt: null };
+        const t = f.task || { uid: newUid(), url: '', rrule: '', extra: [], cal: f.cal && cals.includes(f.cal) ? f.cal : null, completedAt: null };
         const was = Object.assign({}, t);
         t.summary = subject;
         t.priority = f.priority;
@@ -707,6 +761,7 @@
         t.completed = f.completed;
         t.start = f.start;
         t.due = f.due;
+        t.rrule = f.due || ruleKind(f.rrule).kind === 'other' ? f.rrule : ''; // another program's rule may hang on the start date alone
         t.reminderAt = f.remind ? f.reminderAt : null;
         t.description = f.description;
         if (!(await store(t))) { if (f.task) Object.assign(t, was); return; }
@@ -1064,7 +1119,8 @@
             .map((t) => ({ uid: t.uid, title: t.summary || '(no subject)', due: t.due, completed: t.completed, open: () => openApp(t.uid) }));
     }
 
-    const api = { summary, open: openApp, search, reload: () => reload(true), _io: io, _state: () => ({ view, sel, cals, form }) };
+    const api = { summary, open: openApp, search, reload: () => reload(true), _io: io, _state: () => ({ view, sel, cals, form }),
+        _test: { parseTodo, todoBlock, editText, ruleKind, ruleText, ruleWeekly } }; // pure helpers for scripts/test-tasks-occurs.js
     window.wmTasks = api;
 
     function register() {

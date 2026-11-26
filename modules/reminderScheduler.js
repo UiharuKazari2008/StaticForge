@@ -126,7 +126,7 @@ function parseIcs(text) {
         if (name === 'BEGIN') {
             const what = value.toUpperCase();
             if (what === 'VEVENT') cur = { kind: 'event', exdates: [] };
-            else if (what === 'VTODO') cur = { kind: 'task' };
+            else if (what === 'VTODO') cur = { kind: 'task', exdates: [] }; // a task may carry EXDATE too
             else if (what === 'VALARM' && cur) alarm = {};
             continue;
         }
@@ -296,7 +296,7 @@ function hiddenCalendars() {
 
 /** The host's one calendar set (#1157): the Default workspace's Calendars/*.ics: [{ fileId, name, workspace, hash, text }].
  *  Copies in other workspaces (stale; modules/calendarMigrate.js moves them once) never fire a reminder. */
-async function readCalendarFiles() {
+async function readCalendarFiles({ always = false } = {}) {
     const vdb = require('./vfsDatabase');
     const wsm = gr && gr.getWorkspaceManager ? gr.getWorkspaceManager() : null;
     const workspace = Object.keys((wsm && wsm.getWorkspaces && wsm.getWorkspaces()) || {}).find((id) => String(id).toLowerCase() === 'default');
@@ -309,10 +309,10 @@ async function readCalendarFiles() {
         for (const f of files) {
             if (!/\.ics$/i.test(f.original_name || '') || f.trashed_at) continue;
             let text = null;
-            if (!textCache.has(f.content_hash)) {
+            if (always || !textCache.has(f.content_hash)) { // always: the caller needs the text (modules/taskRecurrence.js)
                 try { text = await fs.promises.readFile(path.join(dir, f.content_hash), 'utf8'); } catch (_e) { continue; }
             }
-            out.push({ fileId: f.id, name: f.original_name, workspace, hash: f.content_hash, text });
+            out.push({ fileId: f.id, name: f.original_name, workspace, hash: f.content_hash, text, folderId: folder.id, mime: f.mime_type });
         }
     }
     return out;
@@ -577,7 +577,9 @@ module.exports = {
     dismiss,
     status,
     parseIcs,
+    parseIcsDate,
     occurrences,
+    readCalendarFiles,
     computeReminders,
     _test: {
         setNow: (fn) => { nowFn = fn || (() => Date.now()); },
