@@ -1981,6 +1981,16 @@ sup._test.setFetch(async (url, opts) => {
         } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.steer = realSteer; }
     });
 
+    await test('cancel: an issue another item still carries is not closed', async () => {
+        const ins = (title, state) => RAW().prepare("INSERT INTO supervisor_work (title, prompt, source, state, created_at, message, engine, issue_repo, issue_number) VALUES (?, 'p', 'director', ?, ?, '', 'claude', 'DreamScape/StaticForge', 7230)").run(title, state, Date.now()).lastInsertRowid;
+        const a = ins('PartA', 'running');
+        const b = ins('PartB', 'cancelled');
+        const rowB = RAW().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(b);
+        assert.strictEqual(sup._test.issueCarriedByOthers(rowB), true, 'PartA still carries #7230');
+        RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(a);
+        assert.strictEqual(sup._test.issueCarriedByOthers(rowB), false, 'nobody else carries it');
+    });
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');

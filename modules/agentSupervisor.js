@@ -1356,9 +1356,19 @@ async function syncIssue(id, prevState) {
     const closeOk = r.state === 'done' && CLOSE_OK_RE.test(text + (r.message || ''));
     if (closeOk && primaryDone) await Y.close(r.issue_repo, r.issue_number).catch(() => {});
     // cancelling closes only the issue Fleet made for a single request; the issues a run was picked for stay open
-    if (r.state === 'cancelled' && String(r.source) !== 'yozora' && !multi && !groupKid) await Y.close(r.issue_repo, r.issue_number).catch(() => {});
+    // ...and never one another item still carries (Nov 26 2026: cancelling two duplicate part items of #1230 closed #1230 under
+    // the item still working on it, and the closed-issue sweep then ended that item too)
+    if (r.state === 'cancelled' && String(r.source) !== 'yozora' && !multi && !groupKid && !issueCarriedByOthers(r)) await Y.close(r.issue_repo, r.issue_number).catch(() => {});
     if (multi) await syncExtras(r, prevState, res, rv, closeOk);
     noteIssue(id, `Synced ${new Date().toISOString().slice(11, 16)} (${where})`);
+}
+
+/** Whether any other work item that is not cancelled carries this item's issue (as its own or in a several-issue run). */
+function issueCarriedByOthers(r) {
+    if (!r.issue_repo || !r.issue_number) return false;
+    const key = issueKey({ repo: r.issue_repo, number: r.issue_number });
+    return db().prepare("SELECT * FROM supervisor_work WHERE id != ? AND state != 'cancelled' AND (issue_number IS NOT NULL OR issue_refs IS NOT NULL)").all(r.id)
+        .some((x) => (x.issue_repo && x.issue_number && issueKey({ repo: x.issue_repo, number: x.issue_number }) === key) || refsOf(x).some((i) => issueKey(i) === key));
 }
 
 /** The repos Fleet watches for issues: the default, config agentSupervisor.yozoraRepos, and every repo an item uses (primary or carried). */
@@ -4414,5 +4424,5 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { deliver, handOffGaps, sweepStalled, stallKicks, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
+    _test: { issueCarriedByOthers, deliver, handOffGaps, sweepStalled, stallKicks, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };
