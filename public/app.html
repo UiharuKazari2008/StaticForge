@@ -444,6 +444,21 @@
         body.vista-logon #launchHandoff.launch-handoff--teal {
             background: #000;
         }
+
+        /* Desktop boot cover (Yozora #1230): black over EVERYTHING from the first paint until the logon
+           screen has painted (websocket.js _logonPainted) or the staged boot begins (desktopBoot.begin),
+           so no wallpaper, icon, taskbar or window can show before winlogon, whatever layer it is. Below
+           the logon layer (2147482000), above every desktop layer. Keyed to boot-staged, so it can never
+           outlive the boot. boot-cover-off: released. */
+        #desktopBootCover { display: none; }
+        body.desktop-mode.boot-staged:not(.boot-cover-off) #desktopBootCover {
+            display: block;
+            position: fixed;
+            inset: 0;
+            z-index: 2147481999;
+            background: #000;
+            pointer-events: none;
+        }
     </style>
 
     <!-- PWA Icons -->
@@ -906,6 +921,19 @@
             else window.uiTheme.setBootTheme('classic');
             // Solid colour behind the logon dialog; desktopBoot.js reveals the layers in stages
             document.body.classList.add('boot-staged');
+            // The black cover (#desktopBootCover css above) is first in the body; released by
+            // websocket.js _logonPainted, desktopBoot.begin, or the 10 s cap (one timer; never a wait on the server)
+            if (!document.getElementById('desktopBootCover')) {
+                var cover = document.createElement('div');
+                cover.id = 'desktopBootCover';
+                cover.setAttribute('aria-hidden', 'true');
+                document.body.insertBefore(cover, document.body.firstChild);
+                var teal = false;
+                try { teal = sessionStorage.getItem('dreamscapeLaunchHandoff') === 'teal'; } catch (e) { /* black */ }
+                // The Melaton boot's own teal cut is the boot's design (#416): the layers stay hidden, the fill shows
+                if (teal) document.body.classList.add('boot-cover-off');
+                else setTimeout(function () { document.body.classList.add('boot-cover-off'); }, 10000);
+            }
         };
         if (window.isDesktop) {
             window.applyDesktopStartupClasses();

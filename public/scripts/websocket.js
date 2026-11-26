@@ -2981,6 +2981,8 @@ class WebSocketClient {
         if (!modal || !modal.dataset.prestartupOpened) return;
         if (this.vistaLogon && !modal.classList.contains('vista-logon-art-ready')) return;
         this._logonPaintedOnce = true;
+        // The black desktop cover (app.html #desktopBootCover) lifts only now: the logon screen is on screen
+        document.body.classList.add('boot-cover-off');
         if (window.dreamscapeShowBootPointer) window.dreamscapeShowBootPointer();
         if (window.melatonPointerScheme) window.melatonPointerScheme.shown();
         if (window.DreamOSBoot && window.DreamOSBoot.native) {

@@ -318,7 +318,7 @@
         state.connectionPaused = false;
         const b = body();
         if (b) {
-            b.classList.add('boot-staged');
+            b.classList.add('boot-staged', 'boot-cover-off'); // the logon has handed off: the black cover (app.html) is done
             b.classList.remove('boot-from-launch'); // solid colour from here, not the launch black
             b.classList.toggle(WELCOME_CLASS, state.welcome);
         }
@@ -336,6 +336,7 @@
         const b = body();
         if (b) {
             BOOT_CLASSES.forEach((cls) => b.classList.remove(cls));
+            b.classList.remove('boot-cover-off');
             delete b.dataset.bootStage;
         }
         dispatch('desktopBootDone', {});

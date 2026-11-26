@@ -1155,6 +1155,9 @@
         if (call('isSuspended') || call('isWorkstationLocked') || (ws && ws.sessionSuspended)) return 'locked';
         if (window.isDesktop) {
             if (ws && !ws.preStartupHandoffCompleted) return 'logon';
+            // boot-staged is on until the staged reveal has finished: never "desktop" while the boot's layers are held
+            const b = document.body;
+            if (b && b.classList.contains('boot-staged')) return 'booting';
             if (call('isBooting') || !(ws && ws.initStartupUiDismissed)) return 'booting';
             return 'desktop';
         }
