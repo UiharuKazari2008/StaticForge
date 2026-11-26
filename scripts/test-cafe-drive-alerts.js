@@ -124,7 +124,7 @@ assert.strictEqual(lib.tonePlan(0.5, 30, 20).limitHz, 587.33);
 const ap = lib.approachOf({ id: 'c', label: 'Red light camera', street: 'A38', maxspeed: '50' }, 800, 1600, { speed: 25 });
 assert.strictEqual(ap.limitText, '31');
 assert.strictEqual(ap.progress, 0.5);
-assert.strictEqual(ap.title, 'Red light camera ahead');
+assert.strictEqual(ap.title, 'Red light camera');
 assert.strictEqual(ap.speedText, '56 mph');
 assert.strictEqual(ap.over, true);
 assert.strictEqual(ap.distText, '0.5 mi');

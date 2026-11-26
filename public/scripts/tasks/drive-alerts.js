@@ -149,7 +149,8 @@
             const limitMps = lib.parseLimit(item.maxspeed);
             return {
                 id: lib.keyOf(item),
-                title: lib.alertText(item, aheadM).title,
+                // the strip's title is the short name ("Speed camera"): "... ahead" does not fit beside the street
+                title: item.label || 'Speed camera',
                 street: item.street || '',
                 label: item.label || 'Speed camera',
                 aheadM: Math.round(aheadM),
