@@ -2200,9 +2200,12 @@ const CACHE_SERVED_FOLDERS = new Set([
     'site-icons', 'wiki', 'wiki_files', 'packages', 'account-pictures', 'provider-logos', 'lapis-picture'
 ]);
 app.use('/cache', authMiddleware, (req, res, next) => {
-    let first = '';
-    try { first = decodeURIComponent(req.path.split('/')[1] || ''); } catch (_e) { first = ''; }
-    if (!CACHE_SERVED_FOLDERS.has(first) || !req.path.slice(first.length + 1).startsWith('/')) {
+    // Checked on the decoded path, as express.static resolves it: /wallpapers/..%2Fx.db must not
+    // climb out of an allowed folder.
+    let parts = null;
+    try { parts = decodeURIComponent(req.path).split('/'); } catch (_e) { parts = null; }
+    if (!parts || parts.length < 3 || !CACHE_SERVED_FOLDERS.has(parts[1])
+        || parts.some((p) => p === '..' || p.includes('\\') || p.includes('\0'))) {
         return res.status(404).end();
     }
     // Wallpapers reuse a stable per-workspace path (/cache/wallpapers/<id>.png) but the
