@@ -3753,7 +3753,8 @@ class ExplorerApplet {
         try {
             const result = await this._listPath(pathForRequest, {
                 offset: 0,
-                limit: this.pageLimit,
+                // every page already shown, not the first only: a shorter list throws the view back (#1220)
+                limit: Math.max(this.pageLimit, this._serverItemCount()),
                 sortField: this.sortField,
                 sortDirection: this.sortDirection,
                 search: this.searchQuery.length >= 2 ? this.searchQuery : ''

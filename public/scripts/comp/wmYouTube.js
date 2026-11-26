@@ -1077,7 +1077,9 @@
         const html = layer.error ? errorHtml(layer.error, 'retry-channel')
             : !layer.videos ? emptyHtml(c.title, 'Reading the newest videos...')
                 : layer.videos.length ? videosHtml(layer.videos) : emptyHtml('No videos', 'This channel has no videos to show.');
-        if (els.layerList.dataset.html !== html) { els.layerList.dataset.html = html; els.layerList.innerHTML = html; els.layerList.scrollTop = 0; }
+        if (els.layerList.dataset.html !== html) { els.layerList.dataset.html = html; els.layerList.innerHTML = html; }
+        // a channel just opened starts at its top; its redraws (a video watched, a push) keep the place
+        if (!layer.atTop) { layer.atTop = true; els.layerList.scrollTop = 0; }
     }
 
     function syncLayer() {

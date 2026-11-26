@@ -3765,6 +3765,9 @@
             if (keep) {
                 const now = [...page.querySelectorAll('.wm-set-scroll, .wm-listbox')];
                 if (now.length === keep.length) now.forEach((x, i) => { x.scrollTop = keep[i]; });
+                // a list came or went (Bluetooth's first found device): the lists cannot be matched, but
+                // the page (the first of them, made anew above) still keeps its place (scroll-lists-keep-position)
+                else if (keep[0]) now[0].scrollTop = keep[0];
             }
             requestAnimationFrame(fitLists);
             page.querySelectorAll('.wm-tab').forEach((t) => t.addEventListener('click', () => { open.tab = t.dataset.tab; renderPage(); }));

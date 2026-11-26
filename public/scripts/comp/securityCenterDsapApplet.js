@@ -1486,10 +1486,36 @@ const securityDsapDriver = {
         root.querySelector(`#sec${cap}EmptySearch`)?.classList.add('hidden');
     },
 
+    /** The page, search and filter a list's rows answer (#1220). */
+    _listQuery(meta) {
+        return JSON.stringify([meta.page, meta.perPage, meta.search, meta.eventType || '']);
+    },
+
+    /**
+     * A list read again for what it already shows (Unblock, Remove, Refresh): the rows stay up until the new ones
+     * are here. Hiding the table for the wait shortens the page and the scroller goes to the top (#1220).
+     * A new page, search or filter is not this: it starts over.
+     */
+    _keepsList(root, viewKey, meta) {
+        const cap = viewKey.charAt(0).toUpperCase() + viewKey.slice(1);
+        const wrap = root.querySelector(`#sec${cap}TableWrap`);
+        return !!wrap && !wrap.classList.contains('hidden')
+            && root.querySelector(`#sec${cap}TableBody`)?.dataset.secQuery === this._listQuery(meta);
+    },
+
+    _markList(root, viewKey, meta) {
+        const cap = viewKey.charAt(0).toUpperCase() + viewKey.slice(1);
+        const body = root.querySelector(`#sec${cap}TableBody`);
+        if (body) body.dataset.secQuery = this._listQuery(meta);
+    },
+
     async _loadBlocked(root) {
         const meta = this._state.blocked.meta;
-        this._hideListStates(root, 'blocked');
-        root.querySelector('#secBlockedLoading')?.classList.remove('hidden');
+        const keep = this._keepsList(root, 'blocked', meta);
+        if (!keep) {
+            this._hideListStates(root, 'blocked');
+            root.querySelector('#secBlockedLoading')?.classList.remove('hidden');
+        }
         root.querySelector('#secBlockedDetails')?.classList.add('hidden');
         this._setStatus(root, 'blocked', 'Loading blocked clients…', null);
 
@@ -1537,10 +1563,14 @@ const securityDsapDriver = {
             }
 
             this._state.blocked.items = items;
+            // hidden and drawn again in one task: the scroller keeps its place
+            if (keep) this._hideListStates(root, 'blocked');
             this._renderBlocked(root);
+            this._markList(root, 'blocked', meta);
             this._setStatus(root, 'blocked', meta.total === 0 ? 'No clients are currently blocked' : `${meta.total} blocked client${meta.total === 1 ? '' : 's'} on record`, meta.total === 0 ? 'ok' : null);
         } catch (err) {
             console.error('[security-dsap] blocked load error:', err);
+            if (keep) this._hideListStates(root, 'blocked');
             root.querySelector('#secBlockedLoading')?.classList.add('hidden');
             root.querySelector('#secBlockedError')?.classList.remove('hidden');
             const errText = root.querySelector('#secBlockedErrorText');
@@ -1600,8 +1630,11 @@ const securityDsapDriver = {
 
     async _loadTelemetry(root) {
         const meta = this._state.telemetry.meta;
-        this._hideListStates(root, 'telemetry');
-        root.querySelector('#secTelemetryLoading')?.classList.remove('hidden');
+        const keep = this._keepsList(root, 'telemetry', meta);
+        if (!keep) {
+            this._hideListStates(root, 'telemetry');
+            root.querySelector('#secTelemetryLoading')?.classList.remove('hidden');
+        }
         root.querySelector('#secTelemetryDetails')?.classList.add('hidden');
         this._setStatus(root, 'telemetry', 'Loading telemetry…', null);
 
@@ -1621,7 +1654,10 @@ const securityDsapDriver = {
             meta.page = response.pagination?.currentPage || meta.page;
 
             this._state.telemetry.items = items;
+            // hidden and drawn again in one task: the scroller keeps its place
+            if (keep) this._hideListStates(root, 'telemetry');
             this._renderTelemetry(root);
+            this._markList(root, 'telemetry', meta);
             this._setStatus(
                 root,
                 'telemetry',
@@ -1630,6 +1666,7 @@ const securityDsapDriver = {
             );
         } catch (err) {
             console.error('[security-dsap] telemetry load error:', err);
+            if (keep) this._hideListStates(root, 'telemetry');
             root.querySelector('#secTelemetryLoading')?.classList.add('hidden');
             root.querySelector('#secTelemetryError')?.classList.remove('hidden');
             const errText = root.querySelector('#secTelemetryErrorText');
@@ -1950,10 +1987,15 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
     },
 
     async _loadApprovedIps(root) {
-        root.querySelector('#secApprovedLoading')?.classList.remove('hidden');
+        // a table already up stays up while it is read again, so the view keeps its place (#1220)
+        const wrap = root.querySelector('#secApprovedTableWrap');
+        const keep = !!wrap && !wrap.classList.contains('hidden');
         root.querySelector('#secApprovedError')?.classList.add('hidden');
-        root.querySelector('#secApprovedTableWrap')?.classList.add('hidden');
-        root.querySelector('#secApprovedEmpty')?.classList.add('hidden');
+        if (!keep) {
+            root.querySelector('#secApprovedLoading')?.classList.remove('hidden');
+            wrap?.classList.add('hidden');
+            root.querySelector('#secApprovedEmpty')?.classList.add('hidden');
+        }
         this._setStatus(root, 'approved', 'Loading approved IPs…', null);
 
         if (!(await this._ensureWs())) {
@@ -1977,6 +2019,7 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             this._setStatus(root, 'approved', 'Approved IPs ready', 'ok');
         } catch (err) {
             console.error('[security-dsap] approved IP load error:', err);
+            if (keep) wrap.classList.add('hidden');
             root.querySelector('#secApprovedError')?.classList.remove('hidden');
             const errText = root.querySelector('#secApprovedErrorText');
             if (errText) errText.textContent = err.message || 'Failed to load approved IPs';
@@ -2568,8 +2611,11 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
 
     async _loadHoneypot(root) {
         const meta = this._state.honeypot.meta;
-        this._hideListStates(root, 'honeypot');
-        root.querySelector('#secHoneypotLoading')?.classList.remove('hidden');
+        const keep = this._keepsList(root, 'honeypot', meta);
+        if (!keep) {
+            this._hideListStates(root, 'honeypot');
+            root.querySelector('#secHoneypotLoading')?.classList.remove('hidden');
+        }
         this._setStatus(root, 'honeypot', 'Loading honeypot URLs…', null);
 
         if (!(await this._ensureWs())) {
@@ -2586,10 +2632,14 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
             meta.total = response.pagination?.totalCount || 0;
             meta.totalPages = response.pagination?.totalPages || 1;
             meta.page = response.pagination?.currentPage || meta.page;
+            // hidden and drawn again in one task: the scroller keeps its place
+            if (keep) this._hideListStates(root, 'honeypot');
             this._renderHoneypot(root);
+            this._markList(root, 'honeypot', meta);
             this._setStatus(root, 'honeypot', meta.total === 0 ? 'No honeypot URLs recorded' : `${meta.total} captured URL${meta.total === 1 ? '' : 's'} on record`, meta.total === 0 ? 'ok' : null);
         } catch (err) {
             console.error('[security-dsap] honeypot load error:', err);
+            if (keep) this._hideListStates(root, 'honeypot');
             root.querySelector('#secHoneypotLoading')?.classList.add('hidden');
             root.querySelector('#secHoneypotError')?.classList.remove('hidden');
             const errText = root.querySelector('#secHoneypotErrorText');

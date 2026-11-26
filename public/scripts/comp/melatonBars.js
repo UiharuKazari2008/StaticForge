@@ -515,7 +515,11 @@
         if (!sh || !sh.barsStage || !el) return null;
         const R = (r) => ({ x: Math.round(r.left * dpr), y: Math.round(r.top * dpr), w: Math.round(r.width * dpr), h: Math.round(r.height * dpr) });
         const rootEl = document.documentElement;
-        const keep = { hidden: el.hidden, html: el.innerHTML, note: rootEl.hasAttribute('data-wm-note'), paint: el.dataset.wmPaint };
+        // a notification on screen keeps its own nodes (their taps) and its body's place: they are set aside and put back
+        // (scroll-lists-keep-position)
+        const noteBody = el.hidden ? null : el.querySelector('.wm-notify-body');
+        const noteTop = noteBody ? noteBody.scrollTop : 0;
+        const keep = { hidden: el.hidden, nodes: [...el.childNodes], note: rootEl.hasAttribute('data-wm-note'), paint: el.dataset.wmPaint };
         const back = sh.barsStage(stageFor({ title: 'Melaton', corner: 'close', androidTray: false, softLeft: 'Hide', softRight: 'Dismiss', sip: false }));
         const out = { frames: {}, soft: null, geo: null };
         try {
@@ -562,7 +566,7 @@
             // one icon slot's size and spacing, and each kind of notice's glyph (the server's notices carry their kind)
             const tray = shell.querySelector(':scope > .wm-notify-tray');
             if (tray && typeof sh.statusArt === 'function') {
-                const tk = { hidden: tray.hidden, html: tray.innerHTML };
+                const tk = { hidden: tray.hidden, nodes: [...tray.childNodes] };
                 try {
                     tray.hidden = false;
                     // 6.5: the "..." is 6.5.1's notification holder (#1026): the large colour pictures (status-order.js holder)
@@ -610,7 +614,7 @@
                     extra.holderRoles = ((tblK && tblK.display) || HOLDER_ROLES).filter((r) => HOLDER_ROLES.includes(r))
                         .concat(HOLDER_ROLES.filter((r) => !((tblK && tblK.display) || HOLDER_ROLES).includes(r)));
                     out.tray = { s: Object.assign({ items: layoutOf([tray], dpr).filter((o) => o.k !== 'hit'), box: tbox, slot, gap, glyph, icons }, extra) };
-                } finally { tray.innerHTML = tk.html; tray.hidden = tk.hidden; }
+                } finally { tray.replaceChildren(...tk.nodes); tray.hidden = tk.hidden; }
             }
             // the box's Menu (6.5.1's reminder: Dismiss | Menu, Yukimi Nov 18 "so that you have a reminder option"), laid
             // out over the right soft key with its fixed rows; each row's tap box is 'notemenu:<n>' for the app to act on
@@ -697,11 +701,12 @@
                 } finally { layer.remove(); }
             }
         } finally {
-            el.innerHTML = keep.html;
+            el.replaceChildren(...keep.nodes);
             el.hidden = keep.hidden;
             if (keep.paint) el.dataset.wmPaint = keep.paint;
             if (!keep.note) rootEl.removeAttribute('data-wm-note');
             back();
+            if (noteTop) noteBody.scrollTop = noteTop;
         }
         return out;
     }

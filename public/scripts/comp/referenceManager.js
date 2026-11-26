@@ -655,14 +655,14 @@ function referenceImageRowSignature(image) {
             }
         }
     }
-    let precisionKey = '';
-    if (image.metadata) {
-        precisionKey = `${image.metadata.precision || ''}|${image.metadata.characterReference || ''}`;
-    }
+    // the precise reference badges come from metadata.tags (appendPrecisionReferenceBadges)
+    const precisionKey = isPrecisionReferenceMetadata(image.metadata)
+        ? String(getPrecisionReferenceTypeFromMetadata(image.metadata))
+        : '';
     return [
         image.hash || '',
         image.workspaceId || '',
-        image.hasPreview ? '1' : '0',
+        image.hasPreview || '',
         image.isStandalone ? '1' : '0',
         image.locked ? '1' : '0',
         image.importedFrom || '',
@@ -2715,7 +2715,13 @@ function renderCacheManagerWorkspaceDropdown() {
 
 async function loadCacheManagerImages() {
     if (cacheManagerLoading) cacheManagerLoading.classList.remove('hidden');
-    if (cacheManagerGallery) cacheManagerGallery.innerHTML = '';
+    // The rows on show stay (under the loading cover) while the same workspace reloads: emptied before
+    // the await, the board lost its scroll position (#1220). Another workspace is a reason to start at
+    // the top, and the old one's rows go at once so a failed load never leaves them behind.
+    if (cacheManagerGallery && cacheManagerGallery.dataset.workspace !== cacheManagerCurrentWorkspace) {
+        cacheManagerGallery.innerHTML = '';
+        cacheManagerGallery.dataset.workspace = cacheManagerCurrentWorkspace;
+    }
 
     try {
         const images = await loadReferenceImages(cacheManagerCurrentWorkspace, false);
@@ -2911,7 +2917,8 @@ function createCacheManagerGalleryItem(cacheImage) {
     // Add click handler to open in image viewer
     item.addEventListener('click', (e) => {
         e.preventDefault();
-        window.openReferenceImageInViewer(cacheImage); // Open in image viewer
+        // a reload keeps unchanged rows: open the entry as it is now, not as the row was built
+        window.openReferenceImageInViewer(cacheManagerImages.find(img => img.hash === cacheImage.hash) || cacheImage);
     });
 
     return item;

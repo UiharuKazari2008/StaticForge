@@ -3471,12 +3471,19 @@ const vsbRender = function () {
     vsb.root.toggleAttribute('data-closed', !!state.closed);
     vsb.pane.classList.toggle('is-on-top', !!state.onTop);
 
-    const live = new Set();
+    // the gone gadgets leave first: one still in the dock makes every gadget under it move up past it, and a moved
+    // gadget's lists go back to the top where the browser has no moveBefore (#1220)
+    const live = new Set(state.gadgets.filter((g) => VSB_GADGETS[g.type]).map((g) => g.id));
+    vsb.instances.forEach((inst, id) => {
+        if (!live.has(id)) {
+            vsbDestroyInstance(inst);
+            vsb.instances.delete(id);
+        }
+    });
     let dockCursor = null; // the docked gadget placed last: the next one goes right after it
     state.gadgets.forEach((g) => {
         // a hosted type whose catalog did not load stays in the state, undrawn
         if (!VSB_GADGETS[g.type]) return;
-        live.add(g.id);
         let inst = vsb.instances.get(g.id);
         if (inst && inst.g.type !== g.type) {
             vsbDestroyInstance(inst);
@@ -3503,12 +3510,6 @@ const vsbRender = function () {
             inst.el.style.left = g.x + 'px';
             inst.el.style.top = g.y + 'px';
             if (inst.el.parentNode !== vsb.root) vsbMoveNode(vsb.root, inst.el);
-        }
-    });
-    vsb.instances.forEach((inst, id) => {
-        if (!live.has(id)) {
-            vsbDestroyInstance(inst);
-            vsb.instances.delete(id);
         }
     });
     vsbClampDesktopGadgets();

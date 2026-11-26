@@ -489,11 +489,17 @@
         const r = view === 'agenda' ? agendaHtml() : view === 'day' ? dayHtml() : view === 'week' ? weekHtml() : view === 'month' ? monthHtml() : yearHtml();
         shownList = r.list;
         page.querySelector('.wcl-head').innerHTML = headerHtml();
-        const keepDay = body.querySelector('.wcl-dscroll, .wcl-wscroll');
-        const scroll = keepDay && body.dataset.view === view ? keepDay.scrollTop : null;
+        // scroll-lists-keep-position: the scroller is made anew with the view. The hour grids keep their place from
+        // day to day; the agenda list keeps it on the same day (back from an appointment, a push), a new day starts at its top
+        const place = view === 'agenda' ? `agenda ${date.toDateString()}` : view;
+        const old = body.querySelector('.wcl-dscroll, .wcl-wscroll, .wcl-alist');
+        const scroll = old && body.dataset.place === place ? old.scrollTop : null;
+        body.dataset.place = place;
         body.dataset.view = view;
         body.className = `wcl-body is-${view}`;
         body.innerHTML = r.html;
+        const agenda = scroll ? body.querySelector('.wcl-alist') : null;
+        if (agenda) agenda.scrollTop = scroll;
         const sc = body.querySelector('.wcl-dscroll, .wcl-wscroll');
         // the week's day header keeps clear of the grid's scroll bar (none when the day fits)
         if (sc) body.style.setProperty('--wcl-gutter', `${sc.offsetWidth - sc.clientWidth}px`);
@@ -587,6 +593,11 @@
         const o = sel;
         const when = o.ev.allDay ? longDate(o.start) : `${shortTime(o.start)}-${shortTime(o.end)} ${longDate(o.start)}`;
         const rem = o.ev.reminder !== null && o.ev.reminder !== undefined || !!o.ev.reminderAt;
+        // scroll-lists-keep-position: the same appointment drawn again (a push) keeps its notes' place
+        const place = `${o.ev.uid} ${+o.start}`;
+        const old = box.dataset.place === place ? box.querySelector('.wcl-snotes') : null;
+        const top = old ? old.scrollTop : 0;
+        box.dataset.place = place;
         box.innerHTML = `<div class="wcl-shead">
                 <div class="wcl-ssubj">${esc(o.ev.summary || '(No subject)')}</div>${rem ? `<span class="wcl-sbell">${ws.art.img('cal-bell')}</span>` : ''}
                 <div class="wcl-sline">${esc(when)}</div>
@@ -595,9 +606,12 @@
                 ${o.cal.readonly ? `<div class="wcl-sline">${esc(o.cal.name)} (read-only)</div>` : ''}
             </div>
             <div class="wcl-snotes">${esc(o.ev.description || '')}</div>`;
+        if (top) box.querySelector('.wcl-snotes').scrollTop = top;
     }
 
     function openSummary(o) {
+        // opened by the user: its notes start at the top
+        delete page.querySelector('.wcl-summary').dataset.place;
         sel = o;
         fromSummary = false;
         layer = 'summary';

@@ -534,6 +534,8 @@
     // ---------------------------------------------------------------- the summary
 
     function openSummary(uid) {
+        // opened by the user: its notes start at the top
+        delete page.querySelector('.wtk-summary').dataset.uid;
         sel = uid;
         const t = current();
         if (!t) return;
@@ -564,11 +566,16 @@
                 if (t.due) rows.push(['Due', formDate(t.due)]);
             }
         }
+        // scroll-lists-keep-position: the same task drawn again (a push, the chevron) keeps its notes' place
+        const old = box.dataset.uid === String(t.uid) ? box.querySelector('.wtk-snotes') : null;
+        const top = old ? old.scrollTop : 0;
+        box.dataset.uid = String(t.uid);
         box.innerHTML = `<div class="wtk-shead${expanded ? ' is-open' : ''}"><div class="wtk-ssubj">${esc(t.summary || '(no subject)')}</div>`
             + `<span class="wtk-sicons">${mark ? `<span class="wtk-mark" data-mark="${mark}"></span>` : ''}${t.reminderAt ? '<span class="wtk-bell"></span>' : ''}</span>`
             + rows.map(([l, v]) => `<div class="wtk-srow"><span>${esc(l)}:</span><span>${esc(v)}</span></div>`).join('')
             + '<button type="button" class="wtk-chev" aria-label="Details"></button></div>'
             + `<div class="wtk-snotes wm-pg-scroll">${esc(t.description || '')}</div>`;
+        if (top) box.querySelector('.wtk-snotes').scrollTop = top;
     }
 
     // ---------------------------------------------------------------- the form

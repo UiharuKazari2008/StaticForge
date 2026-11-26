@@ -1652,6 +1652,8 @@
         sub = kind;
         // 6.5 lists open with their first row chosen
         subSel = v65 ? 0 : -1;
+        // opened by the user: from its top
+        if (els.sub) delete els.sub.dataset.place;
         renderSub();
         syncPageShown();
         // the list waits for the favorites under the wait cursor (no "Loading..." row of its own)
@@ -1677,20 +1679,38 @@
         return readList(HISTORY_KEY).map((h) => ({ url: h.url, title: h.title || h.url, sub: h.at ? new Date(h.at).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric', year: '2-digit' }) : '', icon: 'ie-page' }));
     }
 
+    const SUB_SCROLLERS = '.wmb-sub-list, .wmb-props, .wmb-opts, .wmb-wins-grid, .wmb-restore, .wmb65-props, .wmb65-form';
+
+    /** scroll-lists-keep-position: a sub page's scroller is made anew with it. Call before drawing; the call it gives
+     * back, after drawing, puts the same page (and Options tab) where it was. openSub forgets the place. */
+    function keepSubScroll() {
+        const place = sub === 'options' ? `options ${optTab}` : sub;
+        const old = els.sub.dataset.place === place ? els.sub.querySelector(SUB_SCROLLERS) : null;
+        const top = old ? old.scrollTop : 0;
+        els.sub.dataset.place = place;
+        return () => {
+            const next = top ? els.sub.querySelector(SUB_SCROLLERS) : null;
+            if (next) next.scrollTop = top;
+        };
+    }
+
     function renderSub() {
         if (!sub) return;
         if (v65) { renderSub65(); return; }
         page.classList.add('has-sub');
         els.sub.hidden = false;
         els.sub.dataset.kind = sub;
+        const putBack = keepSubScroll();
         if (SESSION_SUBS.has(sub)) {
             els.sub.innerHTML = `<div class="wmb-sub-head">${esc(SESSION_SUB_TITLES[sub])}</div>${sessionSubHtml()}`;
+            putBack();
             if (isCurrent()) { ws.refreshSoftKeys(); ws.refreshTitleAction(); }
             return;
         }
         if (sub === 'props' || sub === 'options' || sub === 'windows') {
             els.sub.innerHTML = sub === 'props' ? propsHtml61() : sub === 'options' ? optionsHtml61() : windowsHtml();
             if (sub === 'windows') fillWindows();
+            putBack();
             if (isCurrent()) { ws.refreshSoftKeys(); ws.refreshTitleAction(); }
             return;
         }
@@ -1704,6 +1724,7 @@
                         ${img(r.icon, 'wmb-sub-ico')}<span class="wmb-sub-title">${esc(r.title)}</span><span class="wmb-sub-meta">${esc(r.sub)}</span>
                     </div>`).join('') : `<div class="wmb-sub-empty">${esc(empty)}</div>`}
             </div>`;
+        putBack();
         if (isCurrent()) ws.refreshSoftKeys();
     }
 
@@ -3891,8 +3912,10 @@
                 <label class="wmb65-lbl">Folder:</label><button type="button" class="wm-combo" data-f="folder"><span>Favorites</span></button>
             </div>`;
         }
+        const putBack = keepSubScroll();
         els.sub.innerHTML = html;
         if (sub === 'windows') fillWindows();
+        putBack();
         chrome65();
         if (isCurrent()) { ws.refreshSoftKeys(); ws.refreshTitleAction(); }
     }

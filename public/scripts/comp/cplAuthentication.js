@@ -2054,13 +2054,22 @@
         const row = csSel && csRow(csSel);
         const pane = csEl('.cs-details');
         if (!row) { csGo('home'); return; }
+        // the open card drawn again (a push or a Save rebuilt its vault row): .cs-details-info is the scroller (#1220)
+        const again = !!csMoved && csMoved.row.dataset.cplVaultKey === row.dataset.cplVaultKey && !!pane.querySelector('.cs-details-fields');
         if (!csMoved || csMoved.row !== row) {
             csPutBack();
             const details = row.querySelector('.cpl-vault-details');
             const actions = details && details.querySelector(':scope > .cpl-vault-actions');
             csMoved = { row, details, actions };
         }
-        pane.innerHTML = `<div class="cs-details-card">${csCard(row, ' is-details')}<div class="cs-details-kind">${esc(csKindLabel(row))}</div></div>
+        const card = `<div class="cs-details-card">${csCard(row, ' is-details')}<div class="cs-details-kind">${esc(csKindLabel(row))}</div></div>`;
+        if (again) {
+            // so the scroller stays and only what it holds is swapped, in one step; another card starts at its top
+            pane.querySelector('.cs-details-card').outerHTML = card;
+            pane.querySelector('.cs-details-fields').replaceChildren(...(csMoved.details ? [csMoved.details] : []));
+            return;
+        }
+        pane.innerHTML = `${card}
             <div class="cs-details-info"><div class="cs-group-label"><span>Information in this card:</span></div><div class="cs-details-fields"></div></div>`;
         if (csMoved.details) pane.querySelector('.cs-details-fields').appendChild(csMoved.details);
     }
