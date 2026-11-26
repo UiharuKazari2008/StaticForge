@@ -984,8 +984,31 @@ async function deliver(rv, s, opts = {}) {
             if (opts.auto) d.prepare('UPDATE supervisor_state SET auto_steers = ? WHERE session_id = ?').run(autoSteers + 1, rv.sessionId);
         } catch (_) { /* not in tmux (Remote Control's own): the inbox note stands */ }
     } else if (opts.auto && !opts.fromSupervisor) d.prepare('UPDATE supervisor_state SET auto_steers = 0 WHERE session_id = ?').run(rv.sessionId);
+    else if (opts.auto && supervisedSession && autoSteers >= MAX_AUTO_STEERS && rv.verdict === 'gaps') {
+        // the session answered the Supervisor's notes twice and gaps remain: the third note is not left in an inbox nobody
+        // reads (Nov 26 2026: #1230's item sat in Sent Back with an idle session for two hours) - a fresh work item gets the
+        // remaining gaps and starts now, and this item ends pointing at it
+        try { if (handOffGaps(rv)) how = how || 'handed-off'; } catch (e) { console.warn(`[supervisor] hand off ${rv.sessionId.slice(0, 8)}: ${e.message}`); }
+    }
     if (how) d.prepare('UPDATE supervisor_reviews SET delivered = ? WHERE id = ?').run(how, rv.id);
     return getReview(rv.id);
+}
+
+/** Remaining gaps of a work item whose session did not close them after the steer cap: a started follow-up item. True when handed off. */
+function handOffGaps(rv) {
+    const w = db().prepare(`SELECT * FROM supervisor_work WHERE session_id = ? AND state IN (${ACTIVE.map(() => '?').join(',')})`).get(rv.sessionId, ...ACTIVE);
+    if (!w || /^supervisor:gaps:/.test(String(w.source_ref || ''))) return false; // a hand-off item is not handed on again
+    const gaps = (rv.missed || []).map((m, i) => `${i + 1}. ${m.item}${m.evidence ? ` (${String(m.evidence).slice(0, 300)})` : ''}`).join('\n');
+    const kid = enqueue({
+        title: `Finish work item ${w.id}: ${String(w.title || '').slice(0, 80)}`,
+        prompt: `Work item ${w.id} ("${String(w.title || '').slice(0, 200)}") is built but the Supervisor still finds these open after two rounds of notes:\n${gaps}\n\nIts brief, for context:\n${String(w.prompt || '').slice(0, 6000)}\n\nClose each gap with evidence (tests run, screenshots read, numbers measured). Decisions are yours or the Supervisor's, never Yukimi's. Commit, land on origin/main, and report on the issue.`,
+        startNow: true, source: 'agent', sourceRef: `supervisor:gaps:${w.id}`, cwd: w.cwd || undefined,
+        issue: w.issue_repo && w.issue_number ? `${w.issue_repo}#${w.issue_number}` : undefined
+    }, {});
+    setWork(w.id, { state: 'done', ended_at: Date.now(), message: `Remaining gaps handed to work item ${kid.id}` });
+    commentIssue(w, `**Fleet / Supervisor:** after two rounds of notes these were still open, so work item ${kid.id} was started for them:\n${(rv.missed || []).map((m) => `- ${m.item}`).join('\n')}`);
+    emit({ work: getWork(w.id) });
+    return true;
 }
 
 async function send(id) {
@@ -4328,5 +4351,5 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
+    _test: { deliver, handOffGaps, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };

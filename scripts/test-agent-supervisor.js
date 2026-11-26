@@ -1912,6 +1912,30 @@ sup._test.setFetch(async (url, opts) => {
         } finally { sup._test.setRevive(false); fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.steer = realSteer; launcher.resume = realResume; sup._test.setCollisionDeps({}); }
     });
 
+    await test('steer cap: gaps that survive two Supervisor rounds go to a started follow-up item, not an inbox', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart; const realStart = launcher.start; const realSteer = launcher.steer;
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        let n = 0;
+        launcher.start = async () => { n += 1; return { id: `abababab-0000-0000-0000-0000000009${String(n).padStart(2, '0')}`, state: 'running', link: '' }; };
+        launcher.steer = async () => ({ sent: true });
+        try {
+            const w = sup.enqueue({ title: 'CapItem', prompt: 'do cap', topology: 'direct', startNow: true }, { gr });
+            await waitFor(() => sup.getWork(w.id).state === 'running', 'cap running');
+            const sid = sup.getWork(w.id).sessionId;
+            sup.markSupervised(sid);
+            RAW().prepare("INSERT INTO supervisor_state (session_id, status, supervised, auto_steers, updated_at) VALUES (?, 'seen', 1, 2, ?) ON CONFLICT(session_id) DO UPDATE SET auto_steers = 2").run(sid, Date.now());
+            const ins = RAW().prepare("INSERT INTO supervisor_reviews (session_id, agent_id, title, account, at, trigger, verdict, summary, request, steering, missed) VALUES (?, 'claude-x', 't', '', ?, 'turn-end', 'gaps', 's', 'r', '[]', ?)").run(sid, Date.now(), JSON.stringify([{ item: 'Watch the reload before logon', evidence: 'not observed' }]));
+            const rv = sup.getReview(ins.lastInsertRowid);
+            await sup._test.deliver(rv, Object.assign({}, sup.settings(gr), { delivery: 'steer' }), { auto: true, fromSupervisor: true });
+            const kid = sup.listWork({ limit: 300 }).find((x) => x.title.startsWith(`Finish work item ${w.id}`));
+            assert.ok(kid && kid.startNow, 'a follow-up item is queued to start');
+            assert.ok(/Watch the reload before logon/.test(kid.prompt));
+            assert.strictEqual(sup.getWork(w.id).state, 'done');
+            assert.match(sup.getWork(w.id).message, /handed to work item/);
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.steer = realSteer; }
+    });
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');
