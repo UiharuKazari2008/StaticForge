@@ -336,7 +336,7 @@ const SYSTEM = [
     'Work the agent handed to a background agent or subagent that is still running, and said so (what it does, that it reports back), is in progress, not a gap: the turn ending while it runs is expected. Only report it if the agent never started it or never said so.',
     'Answers along the way count as much as the final one: an ask answered or reported done in any of them is addressed. An agent that says an item was already done earlier (naming the commit, the check or what it saw) has addressed it: do not ask for it again.',
     'When "The user\'s list" is given, it holds everything the user asked over the whole session, with a tick and the evidence for the items already done: an open item without evidence that this turn was about and did not address is a gap; a ticked item with evidence is addressed. Name the open items this turn did, with what shows it, in "done".',
-    'Standing rule from Yukimi: "I do not and should not have much involvement in the process. The point is for you to take control of getting the task completed and fully tested and reviewed." You own completion. Answer every question you reasonably can yourself: scope, approach, which option to take, whether to test, whether a second login / sign-in flow should be built, waiting on other agents. Send the agent back (gaps) until the work is built, tested with evidence and reviewed. Leave "answer" empty ONLY for what truly needs Yukimi: spending money, a secret / password / login only she has, creating an account only she can make, or an irreversible outward action toward other people (publishing to the public web, sending mail to others, deleting her data). Engineering is never hers: git (push, merge, rebase, diverged branches, commits missing from origin, conflicts, branch protection), builds, restarts, tests, CI, other agents and Fleet itself are answered by you - the logical answer is to merge correctly without losing anyone\'s work. When an answer needs real work or deep reasoning, do not ask: put "followUp":{"title":"...","brief":"the complete brief: goal, files, how to merge or fix without losing work, acceptance"} on that question (answer may stay empty) and the Supervisor starts it as its own work item and tells the agent. When in doubt you decide: take the recommended option (or the safest reasonable one) and say so in the answer ("Decided by the Supervisor: option B, the recommended one") instead of asking. "Which option do you prefer" with a recommended option is answered with that option, never escalated.',
+    'Standing rule from Yukimi: "I do not and should not have much involvement in the process. The point is for you to take control of getting the task completed and fully tested and reviewed." You own completion. Answer every question you reasonably can yourself: scope, approach, which option to take, whether to test, whether a second login / sign-in flow should be built, waiting on other agents. Send the agent back (gaps) until the work is built, tested with evidence and reviewed. Leave "answer" empty ONLY for what truly needs Yukimi: spending money, a secret / password / login only she has, creating an account only she can make, or an irreversible outward action toward other people (publishing to the public web, sending mail to others, deleting her data). Engineering is never hers: git (push, merge, rebase, diverged branches, commits missing from origin, conflicts, branch protection), builds, restarts, tests, CI, other agents and Fleet itself are answered by you - the logical answer is to merge correctly without losing anyone\'s work. When an answer needs real work or deep reasoning, do not ask: put "followUp":{"title":"...","brief":"the complete brief: goal, files, how to merge or fix without losing work, acceptance"} on that question (answer may stay empty) and the Supervisor starts it as its own work item and tells the agent. No work item may stall: when a session stops with the item unfinished, you act (send the open points again, review again, or hand the rest to a new work item); never leave it waiting for Yukimi to notice. When in doubt you decide: take the recommended option (or the safest reasonable one) and say so in the answer ("Decided by the Supervisor: option B, the recommended one") instead of asking. "Which option do you prefer" with a recommended option is answered with that option, never escalated.',
     'A turn that ends waiting on ANOTHER AGENT or EVENT (not on Yukimi) is not "input" and not done: the agent says it waits for someone to commit, to release claims, for a build gate or a restart to finish, for another session to end. Give verdict "ok" (or "gaps" when something else was missed) and record the wait in "waitsOn":{"kind":"commit"|"claims"|"build"|"restart"|"agent","who":"agent name or id when named","paths":["files named"],"what":"one line: what it waits for"}. The Supervisor watches the condition and tells the agent to continue when it clears. Omit "waitsOn" when nothing is waited on.',
     'Answer ONLY a JSON object: {"verdict":"ok"|"gaps"|"input"|"unclear","summary":"one sentence","waitsOn":null,"missed":[{"item":"what was asked and not addressed","evidence":"why you think so, quoting the request"}],"questions":[{"question":"what the agent waits on","answer":"your answer or empty","why":"source of the answer"}],"done":[{"id":12,"evidence":"short proof from the actions or the answer"}]}. verdict ok means nothing missed and nothing waiting on the user; unclear means the summary is not enough to tell. "done" is optional (only ids from the user\'s list).'
 ].join('\n');
@@ -992,6 +992,61 @@ async function deliver(rv, s, opts = {}) {
     }
     if (how) d.prepare('UPDATE supervisor_reviews SET delivered = ? WHERE id = ?').run(how, rv.id);
     return getReview(rv.id);
+}
+
+/**
+ * Stall sweep (Yukimi, Nov 26 2026: "make sure the supervisor knows that it should do that instead of allowing it to
+ * stall"): an active item (Running / Sent Back) whose session is alive but idle, with nothing in flight (no background
+ * agents or shells, no wait, no hold, no queued review) and no review for 20 minutes, is acted on: gaps from the last
+ * review are typed in again (or handed to a fresh item when the steer cap is reached), otherwise the last turn is
+ * reviewed again. After three kicks without progress the rest goes to a fresh started item. Rides the 10-minute issue
+ * pull timer that runs anyway: no timer of its own.
+ */
+const STALL_MS = 20 * 60000;
+const STALL_KICK_MS = 30 * 60000;
+const stallKicks = new Map(); // work id -> { at, n, reviewId }
+function sweepStalled(now = Date.now()) {
+    let kicked = 0;
+    let rows = [];
+    try { rows = db().prepare("SELECT * FROM supervisor_work WHERE state IN ('running','waiting') AND session_id IS NOT NULL").all(); } catch (_) { return 0; }
+    if (!rows.length) return 0;
+    const live = liveSessionsById();
+    const waiting = new Set(openWaits().map((x) => x.work_id));
+    for (const w of rows) {
+        const l = live.get(w.session_id);
+        if (!l || l.status === 'busy') continue; // a dead session is revived elsewhere; a busy one is working
+        if (waiting.has(w.id) || activeHold(w.session_id) || queue.some((j) => j.sessionId === w.session_id)) continue;
+        let f = null;
+        try { f = sessionInFlight(w.session_id, { ignoreReviewing: true }); } catch (_) { f = null; }
+        if (f && (f.bgAgents || f.bgShells)) continue;
+        const last = db().prepare('SELECT id, at, verdict FROM supervisor_reviews WHERE session_id = ? ORDER BY id DESC LIMIT 1').get(w.session_id);
+        const since = Math.max(last ? last.at : 0, w.started_at || 0);
+        if (now - since < STALL_MS) continue;
+        const k = stallKicks.get(w.id) || { at: 0, n: 0, reviewId: 0 };
+        if (now - k.at < STALL_KICK_MS) continue;
+        // a new review since the last kick is progress: the count starts again
+        const n = last && last.id !== k.reviewId ? 1 : k.n + 1;
+        stallKicks.set(w.id, { at: now, n, reviewId: last ? last.id : 0 });
+        kicked += 1;
+        const mins = Math.round((now - since) / 60000);
+        if (n > 3) {
+            const rv = last ? getReview(last.id) : null;
+            const missed = rv && rv.verdict === 'gaps' && rv.missed.length ? rv.missed : [{ item: 'Its session stopped working on the brief: finish it, test it with evidence and land it', evidence: `idle ${mins} minutes after three kicks` }];
+            try { handOffGaps(Object.assign({}, rv || {}, { sessionId: w.session_id, verdict: 'gaps', missed })); } catch (e) { console.warn(`[supervisor] stall hand-off ${w.id}: ${e.message}`); }
+            continue;
+        }
+        if (last && last.verdict === 'gaps') {
+            const rv = getReview(last.id);
+            const st = db().prepare('SELECT auto_steers FROM supervisor_state WHERE session_id = ?').get(w.session_id) || { auto_steers: 0 };
+            if (st.auto_steers >= MAX_AUTO_STEERS) { try { handOffGaps(rv); } catch (e) { console.warn(`[supervisor] stall hand-off ${w.id}: ${e.message}`); } continue; }
+            deliver(rv, settings(), { force: true }).catch(() => {});
+            commentIssue(w, `**Fleet / Supervisor:** the session sat idle ${mins} minutes with these still open, so they were sent to it again:\n${rv.missed.map((m) => `- ${m.item}`).join('\n')}`);
+        } else {
+            queueReview(w.session_id, 'stall');
+            commentIssue(w, `**Fleet / Supervisor:** the session sat idle ${mins} minutes with the item still open: its last turn is reviewed again.`);
+        }
+    }
+    return kicked;
 }
 
 /** Remaining gaps of a work item whose session did not close them after the steer cap: a started follow-up item. True when handed off. */
@@ -3941,7 +3996,7 @@ function start(gr) {
     if (boot.unref) boot.unref();
     // fleet issues filed on Yozora come in, closed ones end their item (server side, every 10 min; Fleet's own reads pull too)
     pullIssues(gr, { force: true }).catch(() => {});
-    if (!pullTimer) { pullTimer = setInterval(() => pullIssues(null, { force: true }).catch(() => {}), 10 * 60 * 1000); if (pullTimer.unref) pullTimer.unref(); }
+    if (!pullTimer) { pullTimer = setInterval(() => { pullIssues(null, { force: true }).catch(() => {}); try { sweepStalled(); } catch (e) { console.warn(`[supervisor] stall sweep: ${e.message}`); } }, 10 * 60 * 1000); if (pullTimer.unref) pullTimer.unref(); }
 }
 let pullTimer = null;
 
@@ -4351,5 +4406,5 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { deliver, handOffGaps, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
+    _test: { deliver, handOffGaps, sweepStalled, stallKicks, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };

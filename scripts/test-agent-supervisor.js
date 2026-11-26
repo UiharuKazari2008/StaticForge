@@ -1933,6 +1933,41 @@ sup._test.setFetch(async (url, opts) => {
             assert.ok(/Watch the reload before logon/.test(kid.prompt));
             assert.strictEqual(sup.getWork(w.id).state, 'done');
             assert.match(sup.getWork(w.id).message, /handed to work item/);
+            // the follow-up starts on the stub launcher before the stubs are put back
+            await waitFor(() => !['queued', 'starting'].includes(sup.getWork(kid.id).state), 'cap follow-up started');
+            RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(kid.id);
+        } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.steer = realSteer; }
+    });
+
+    await test('stall sweep: an idle session with an open item is kicked (gaps again / review), then handed on after three kicks', async () => {
+        const fleetMcp = require('../modules/claudeFleetMcp');
+        const realPick = fleetMcp.pickForStart; const realStart = launcher.start; const realSteer = launcher.steer;
+        const typed = [];
+        fleetMcp.pickForStart = async () => ({ index: 0, name: 'Main', settings: {} });
+        let n = 0;
+        launcher.start = async () => { n += 1; return { id: `cdcdcdcd-0000-0000-0000-0000000008${String(n).padStart(2, '0')}`, state: 'running', link: '' }; };
+        launcher.steer = async (id, t) => { typed.push([id, t]); return { sent: true }; };
+        try {
+            // earlier tests leave started follow-ups behind: clear the slots
+            RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE state IN ('queued','starting','running','waiting','input')").run();
+            const w = sup.enqueue({ title: 'StallItem', prompt: 'do stall', topology: 'direct', startNow: true }, { gr });
+            sup.pumpWork().catch(() => {});
+            await waitFor(() => sup.getWork(w.id).state === 'running', 'stall running');
+            const sid = sup.getWork(w.id).sessionId;
+            fs.writeFileSync(path.join(tmp, '.claude', 'sessions', `${process.pid}77.json`), JSON.stringify({ pid: process.pid, sessionId: sid, status: 'idle', cwd: tmp }));
+            const old = Date.now() - 60 * 60000;
+            RAW().prepare('UPDATE supervisor_work SET started_at = ? WHERE id = ?').run(old, w.id);
+            RAW().prepare("INSERT INTO supervisor_reviews (session_id, agent_id, title, account, at, trigger, verdict, summary, request, steering, missed) VALUES (?, 'claude-x', 't', '', ?, 'turn-end', 'gaps', 's', 'r', '[]', ?)").run(sid, old, JSON.stringify([{ item: 'Prove check 5 on screen', evidence: 'argued only' }]));
+            sup._test.stallKicks.clear();
+            let now = Date.now();
+            assert.strictEqual(sup._test.sweepStalled(now), 1, 'kicked');
+            await settle(50);
+            assert.ok(typed.some(([id, t]) => id === sid && /Prove check 5 on screen/.test(t)), JSON.stringify(typed));
+            assert.strictEqual(sup._test.sweepStalled(now + 60000), 0, 'not again within 30 minutes');
+            sup._test.sweepStalled(now += 31 * 60000); sup._test.sweepStalled(now += 31 * 60000); sup._test.sweepStalled(now += 31 * 60000);
+            const kid = sup.listWork({ limit: 300 }).find((x) => x.title.startsWith(`Finish work item ${w.id}`));
+            assert.ok(kid, 'handed to a fresh item after three kicks');
+            assert.strictEqual(sup.getWork(w.id).state, 'done');
         } finally { fleetMcp.pickForStart = realPick; launcher.start = realStart; launcher.steer = realSteer; }
     });
 
