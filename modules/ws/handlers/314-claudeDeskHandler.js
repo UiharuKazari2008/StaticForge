@@ -502,7 +502,15 @@ const handleSession = guard('claude_desk_session', async (gr, message) => {
     } else if (action === 'resume') {
         result = await launcher.resume(gr, id, { account: message.account, mode: message.mode, title: message.title, model: message.model || undefined, effort: message.effort || undefined });
     } else if (action === 'steer') {
-        result = await launcher.steer(id, message.text);
+        // a session that is not running (its claude ended) is started again (on an account with room) first, then the message
+        // goes in - Fleet and Director never stop at "resume it first" (agentSupervisor.steerResumed)
+        try {
+            result = await launcher.steer(id, message.text);
+        } catch (e) {
+            if (!e || e.code !== 'NOT_RUNNING') throw e;
+            await supervisor.steerResumed({ session_id: id }, message.text);
+            result = { id, sent: true, resumed: true };
+        }
     } else if (action === 'attach') {
         // a file the composer attaches (Attach..., paste, drop, a snip): saved per session, the path goes in the steer text
         const att = require('../../claudeDeskAttachments');

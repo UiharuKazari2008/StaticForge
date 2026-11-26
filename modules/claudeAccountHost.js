@@ -142,9 +142,38 @@ function writeJsonAtomic(file, value, mode) {
     fs.renameSync(tmp, file);
 }
 
+const tokenHash = (token) => crypto.createHash('sha256').update(String(token).trim()).digest('hex').slice(0, 16);
+
+// An account signed in again gets a new token but keeps its id - its folder, its Remote Control unit and the
+// sessions running on its config dir (Sign In Again, claudeAccountLogin.js): id-aliases.json maps the new token's
+// hash to the id the account had. Holds hashes only, never a token.
+const aliasFile = () => path.join(storeRoot(), 'id-aliases.json');
+function idAliases() {
+    const v = readJsonCached(aliasFile());
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+}
+
 function accountId(key) {
     const token = key && key.apiKey ? String(key.apiKey).trim() : '';
-    return token ? crypto.createHash('sha256').update(token).digest('hex').slice(0, 16) : '';
+    if (!token) return '';
+    const h = tokenHash(token);
+    const kept = idAliases()[h];
+    return /^[0-9a-f]{16}$/.test(String(kept || '')) ? kept : h;
+}
+
+/** The id of the account at a CardSpace index ('' when it has no token). */
+function findAccountId(gr, index) {
+    const { keys } = keyList(gr);
+    return keys[Number(index)] ? accountId(keys[Number(index)]) : '';
+}
+
+/** The account that had `id` now signs in with `token`: it keeps `id`. */
+function keepAccountId(token, id) {
+    if (!/^[0-9a-f]{16}$/.test(String(id || ''))) throw new Error('Invalid Claude account id');
+    const h = tokenHash(token);
+    if (h === id) return;
+    const next = Object.assign({}, idAliases(), { [h]: id });
+    writeJsonAtomic(aliasFile(), next, 0o600);
 }
 
 function accountDir(id) {
@@ -695,6 +724,8 @@ function onSelectionChanged(gr, index) {
 
 module.exports = {
     STATUS_TYPE,
+    keepAccountId,
+    findAccountId,
     arm,
     listAccounts,
     linkHostLogin,

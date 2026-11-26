@@ -439,6 +439,21 @@ async function main() {
     assert.ok(!JSON.stringify(sent).includes(ACCESS_B), 'no token in any answer');
     await desk._handlers.handleCoord(ctx, {}, { requestId: 'r3', action: 'post', to: 'Third', body: 'from the desk', kind: 'note' }, { userType: 'admin', username: 'yukimi' });
     assert.strictEqual(sent[1].data.sent.from, 'desk-yukimi');
+    // Send to a session that is not running: it is started again, then the message goes in (no "resume it first")
+    {
+        const sup = require('../modules/agentSupervisor');
+        const orig = sup.steerResumed;
+        const got = [];
+        sup.steerResumed = async (r, text) => { got.push([r.session_id, text]); };
+        try {
+            const GONE = '66666666-1111-4222-8333-666666666666';
+            sent.length = 0; errors.length = 0;
+            await desk._handlers.handleSession(ctx, {}, { requestId: 'r4', action: 'steer', id: GONE, text: 'are you there' }, { userType: 'admin', username: 'yukimi' });
+            assert.deepStrictEqual(errors, [], errors.join(','));
+            assert.deepStrictEqual(got, [[GONE, 'are you there']], 'resumed and sent');
+            assert.ok(sent[0] && sent[0].data && sent[0].data.result && sent[0].data.result.resumed === true, JSON.stringify(sent[0]));
+        } finally { sup.steerResumed = orig; }
+    }
     console.log('ok 7 desktop handler');
 
     // 8. background agents of running sessions: the list builder reads a temp subagents folder

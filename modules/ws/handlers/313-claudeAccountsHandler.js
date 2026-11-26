@@ -153,7 +153,7 @@ const handleFleetAccount = guard('claude_fleet_account', async (gr, message) => 
 const handleLogin = guard('claude_account_login', async (gr, message) => {
     const action = String(message.action || 'status');
     let login;
-    if (action === 'start') login = claudeLogin.start(gr, { name: message.name, restart: message.restart === true });
+    if (action === 'start') login = claudeLogin.start(gr, { name: message.name, account: message.account, restart: message.restart === true });
     else if (action === 'code') login = claudeLogin.submitCode(gr, message.code, { name: message.name });
     else if (action === 'retry') login = claudeLogin.retry(gr);
     else if (action === 'name') login = claudeLogin.setName(gr, message.name);

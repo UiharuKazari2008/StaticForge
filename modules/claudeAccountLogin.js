@@ -189,6 +189,7 @@ function publicState() {
         message: p.message || '',
         signedInAs: p.login ? claudeHost.describeLogin(p.login.creds, p.login.oauthAccount) : null,
         account: p.account || null,
+        target: p.target ? { index: p.target.index, name: p.target.name, email: p.target.email } : null,
         startedAt: p.startedAt,
         expiresAt: p.expiresAt || null
     };
@@ -346,6 +347,22 @@ function saveAccount(p, token) {
     const login = p.login ? claudeHost.describeLogin(p.login.creds, p.login.oauthAccount) : null;
     const m = gResources.getApiKeyManager();
     const keys = m.getServiceKeys(SERVICE) || [];
+    const t = p.target;
+    if (t) {
+        // Sign In Again: the same account, a new token; it keeps its name and its id (folder, Remote Control unit, sessions)
+        if (!keys[t.index]) throw new Error('That Claude account is gone: sign it in with Add Account...');
+        const was = login ? (login.accountUuid && t.accountUuid ? login.accountUuid !== t.accountUuid : !!(login.email && t.email && login.email !== t.email)) : false;
+        if (was) throw new Error(`You signed in as ${login.email || 'another claude.ai user'}, but ${t.name || 'this account'} is ${t.email}. Sign in again with ${t.email}, or use Add Account... for a new account.`);
+        const name = keys[t.index].name || t.name || `Claude ${t.index + 1}`;
+        if (readOnly()) return { index: t.index, name, email: login ? login.email : '', plan: login ? login.plan : '', linked: false, renewed: true };
+        const id = claudeHost.findAccountId ? claudeHost.findAccountId(gResources, t.index) : null;
+        if (id) claudeHost.keepAccountId(token, id);
+        m.updateApiKey(SERVICE, t.index, name, token);
+        let linked = false;
+        if (p.login) { claudeHost.linkLogin(gResources, t.index, p.login.creds, p.login.oauthAccount); linked = true; }
+        console.log(`[claudeAccounts] Claude account "${name}" (#${t.index}) signed in again${linked ? ' with its Remote Control login' : ''}; it keeps its id`);
+        return { index: t.index, name, email: login ? login.email : '', plan: login ? login.plan : '', linked, renewed: true };
+    }
     const same = keys.findIndex((k) => String(k.apiKey || '').trim() === token);
     const name = same >= 0 ? (keys[same].name || `Claude ${same + 1}`) : freeName(keys, p.name || (login && login.email));
     if (readOnly()) return { index: null, name, email: login ? login.email : '', plan: login ? login.plan : '', linked: false };
@@ -357,6 +374,15 @@ function saveAccount(p, token) {
 }
 
 // ---------------------------------------------------------------- actions
+
+/** Sign In Again: the existing account (CardSpace index) this sign-in renews, as { index, name, email }; null for a new account. */
+function targetOf(account) {
+    if (account === undefined || account === null || account === '') return null;
+    const i = Number(account);
+    const row = claudeHost.listAccounts(gResources).find((a) => a.index === i);
+    if (!row) throw new Error('No such Claude account');
+    return { index: i, name: row.name || '', email: (row.remoteLogin && row.remoteLogin.email) || '', accountUuid: (row.remoteLogin && row.remoteLogin.accountUuid) || '' };
+}
 
 function start(gr, opts = {}) {
     if (gr) gResources = gr;
@@ -374,6 +400,7 @@ function start(gr, opts = {}) {
         step: 'login',
         state: 'starting',
         name: typeof opts.name === 'string' ? opts.name.trim().slice(0, 80) : '',
+        target: targetOf(opts.account),
         url: '',
         message: '',
         startedAt: new Date().toISOString(),

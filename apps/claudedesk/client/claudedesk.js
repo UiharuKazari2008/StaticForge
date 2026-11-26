@@ -5213,7 +5213,7 @@
     function commandList(n) {
         switch (n.id) {
             case 'root': return [{ text: 'Add Account...', action: 'add-account' }, { text: 'New Session...', action: 'new-session' }];
-            case 'accounts': return [{ text: loginRows().length ? 'Sign In Again...' : 'Add Account...', action: 'add-account' }].concat(loginRows().length ? [{ text: 'Add Account...', action: 'add-account' }] : []);
+            case 'accounts': return [{ text: loginRows().length ? 'Sign In Again...' : 'Add Account...', action: loginRows().length ? 'sign-in-again' : 'add-account' }].concat(loginRows().length ? [{ text: 'Add Account...', action: 'add-account' }] : []);
             case 'rc': return [{ text: 'Refresh Status', action: 'fleet-refresh' }];
             case 'co-builds': return [{ text: 'Post Message...', action: 'post' }];
             case 'co-devices': return [{ text: 'Release...', action: 'dev-release' }, { text: 'Read Again', action: 'dev-refresh' }];
@@ -5304,7 +5304,7 @@
             if (!a) return null;
             return {
                 title: a.name,
-                items: (needsLogin(a.index) ? [{ text: 'Sign In Again...', action: 'add-account' }, { separator: true }] : []).concat([
+                items: (needsLogin(a.index) ? [{ text: 'Sign In Again...', action: 'sign-in-again' }, { separator: true }] : []).concat([
                     { text: a.active ? 'Reconnect Remote Control' : 'Switch To', action: 'switch' },
                     { text: 'New Session on This Account...', action: 'new-session-on' },
                     { separator: true },
@@ -5947,6 +5947,7 @@
             case 'new-session': await newSessionBox(c, null); return true;
             case 'new-session-on': await newSessionBox(c, Number(selId(c, 'a:'))); return true;
             case 'add-account': await addAccountBox(c); return true;
+            case 'sign-in-again': await signInAgainBox(c); return true;
             case 'switch': await switchAccount(c, Number(selId(c, 'a:'))); return true;
             case 'link': {
                 const idx = Number(selId(c, 'a:'));
@@ -6023,7 +6024,7 @@
 
     function rowOpen(key, n, c) {
         if (key.startsWith('s:')) openChat(c, key.slice(2));
-        else if (key.startsWith('a:')) void action(needsLogin(Number(key.slice(2))) ? 'add-account' : 'account-props', c);
+        else if (key.startsWith('a:')) void action(needsLogin(Number(key.slice(2))) ? 'sign-in-again' : 'account-props', c);
         else if (key.startsWith('g:')) void action('agent-session', c);
         else if (key.startsWith('m:')) void action('read-message', c);
         else if (key.startsWith('r:')) void action('fleet-props', c);
@@ -6876,9 +6877,39 @@
 
     const LG_ACTIVE = new Set(['starting', 'waiting_code', 'verifying']);
 
-    async function addAccountBox(c) {
+    /**
+     * Sign In Again: the account whose login expired signs in once more and keeps its name, its sessions and its
+     * folder (the server renews that account instead of adding one). The selected account, else the only one that
+     * needs it, else a choice.
+     */
+    async function signInAgainBox(c) {
+        const sel = Number(selId(c, 'a:'));
+        const need = loginRows().map((f) => S.accounts.find((a) => a.index === f.index)).filter(Boolean);
+        let acc = Number.isInteger(sel) && needsLogin(sel) ? S.accounts.find((a) => a.index === sel) : (need.length === 1 ? need[0] : null);
+        if (!acc && need.length > 1) {
+            const { value, fields } = await form(c, `
+                <p>Which account do you want to sign in again?</p>
+                <label><span>Account:</span><select class="vdt-select" data-cd="acc">${need.map((a) => `<option value="${a.index}">${esc(a.name)}</option>`).join('')}</select></label>`,
+            [{ text: 'Next', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Sign In Again' });
+            if (value !== true) return;
+            acc = need.find((a) => a.index === Number(fields.acc)) || null;
+        }
+        if (!acc) { await addAccountBox(c); return; }
+        await addAccountBox(c, acc);
+    }
+
+    const lgTitle = () => (S.login && S.login.target ? 'Sign In Again' : 'Add Account');
+
+    async function addAccountBox(c, again) {
         try { const r = await send('claude_account_login', { action: 'status' }); if (r.login) S.login = r.login; } catch (_) { /* below */ }
-        if (!LG_ACTIVE.has(S.login.state)) {
+        if (again && !LG_ACTIVE.has(S.login.state)) {
+            const email = again.remoteLogin && again.remoteLogin.email;
+            const { value } = await form(c, `
+                <p>Sign <b>${esc(again.name)}</b> in again${email ? ` with <b>${esc(email)}</b>` : ''}. You sign in twice in Alchemy: once for Remote Control and the account's sessions, once for the engine's long-lived token. The account keeps its name, its sessions and its settings.</p>`,
+            [{ text: 'Next', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { title: 'Sign In Again' });
+            if (value !== true) return;
+            try { const r = await send('claude_account_login', { action: 'start', account: again.index }); if (r.login) S.login = r.login; } catch (e) { await failBox(c, e); return; }
+        } else if (!LG_ACTIVE.has(S.login.state)) {
             const { value, fields } = await form(c, `
                 <p>Sign a Claude account in on the host. You sign in twice in Alchemy: once for Remote Control and the account's sessions, once for the engine's long-lived token. The account is added when both are done.</p>
                 <label><span>Name:</span><input type="text" data-cd="name" data-cd-focus spellcheck="false" autocomplete="off" placeholder="For example Claude Work"></label>`,
@@ -6890,12 +6921,12 @@
         for (;;) {
             const st = S.login;
             if (st.state === 'done') {
-                await c.box(`<p>${esc(st.message || 'The account was added.')}</p>`, null, { icon: 'info', title: 'Add Account' });
+                await c.box(`<p>${esc(st.message || (st.target ? `${st.target.name || 'The account'} is signed in again.` : 'The account was added.'))}</p>`, null, { icon: 'info', title: lgTitle() });
                 await refreshAccounts();
                 return;
             }
             if (!LG_ACTIVE.has(st.state)) {
-                if (st.state !== 'idle') await c.box(`<p>${esc(st.message || 'The sign-in did not finish.')}</p>`, null, { icon: 'error', title: 'Add Account' });
+                if (st.state !== 'idle') await c.box(`<p>${esc(st.message || 'The sign-in did not finish.')}</p>`, null, { icon: 'error', title: lgTitle() });
                 return;
             }
             const res = await form(c, loginHtml(st), [
@@ -6903,7 +6934,7 @@
                 { text: 'Cancel Sign-in', value: 'cancel', className: 'btn-standard' },
                 { text: 'Close', value: false, className: 'btn-standard' }
             ], {
-                title: `Add Account - Step ${st.stepNumber || 1} of ${st.steps || 2}`,
+                title: `${lgTitle()} - Step ${st.stepNumber || 1} of ${st.steps || 2}`,
                 width: 520,
                 ready: (box, signal) => {
                     // the link, the step and what happened follow the sign-in as the server moves it on
@@ -6915,7 +6946,7 @@
                         const head = box.querySelector('.cd-login-step');
                         if (head) head.textContent = lg.stepTitle || '';
                         const title = document.getElementById('confirmationDialogTitle');
-                        if (title && lg.stepNumber) title.textContent = `Add Account - Step ${lg.stepNumber} of ${lg.steps || 2}`;
+                        if (title && lg.stepNumber) title.textContent = `${lgTitle()} - Step ${lg.stepNumber} of ${lg.steps || 2}`;
                         if (lg.stepNumber !== step) {
                             step = lg.stepNumber;
                             const input = box.querySelector('[data-cd="code"]');

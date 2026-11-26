@@ -61,6 +61,11 @@ const fakeAkm = {
         keys.push({ name, apiKey });
         return { success: true, index: keys.length - 1 };
     },
+    updateApiKey(service, index, name, apiKey) {
+        if (service !== 'claude' || !keys[index]) throw new Error('no such key');
+        keys[index] = Object.assign({}, keys[index], name ? { name } : {}, apiKey ? { apiKey } : {});
+        return { success: true, index, key: keys[index] };
+    },
     getSelectedIndex: () => selectedIndex,
     keyFingerprint: (s, k) => `${k.apiKey.slice(0, 8)}...${k.apiKey.slice(-4)}`,
     async applySelectionUpdates(list) {
@@ -597,6 +602,44 @@ async function addAccountBySignIn(handler, src) {
     clean(sent, 'responses'); clean(broadcasts, 'broadcasts'); clean(st(), 'status');
     assert.ok(broadcasts.some((b) => b.msg.type === signIn.STATUS_TYPE) && broadcasts.filter((b) => b.msg.type === signIn.STATUS_TYPE).every((b) => b.admin && !b.user), 'sign-in status to admins only');
     console.log('✓ add account by sign-in: link, isolated CLI, code, CardSpace key + linked login, no tokens out');
+
+    // Sign In Again: an account whose token expired signs in once more - the same key gets the new token, keeps
+    // its name and its id (folder, Remote Control unit, sessions); no second account is added
+    {
+        const ix = keys.length - 1;
+        keys[ix] = Object.assign({}, keys[ix], { apiKey: 'sk-ant-oat01-EXPIRED-ffffffffffffffffffffffffffffffff' });
+        const oldId = host.listAccounts(gr).find((a) => a.index === ix).id;
+        host.linkLogin(gr, ix, { claudeAiOauth: { accessToken: 'old-access', refreshToken: 'old-r', expiresAt: 1, scopes: [] } }, { emailAddress: 'new@example.com', accountUuid: 'uuid-new' });
+        const n0 = keys.length;
+        const r0 = await ask({ action: 'start', account: ix });
+        assert.strictEqual(r0.data.login.target.index, ix, 'the sign-in names the account it renews');
+        await waitFor(() => st().state === 'waiting_code', 'link (again)');
+        await ask({ action: 'code', code: LOGIN_CODE });
+        await waitFor(() => st().step === 'token' && st().state === 'waiting_code', 'token link (again)');
+        await ask({ action: 'code', code: TOKEN_CODE });
+        await waitFor(() => st().state === 'done', 'signed in again');
+        assert.strictEqual(keys.length, n0, 'no account added');
+        assert.strictEqual(keys[ix].apiKey, NEW_TOKEN, 'the account has the new token');
+        assert.strictEqual(keys[ix].name, 'new@example.com', 'and keeps its name');
+        const again = host.listAccounts(gr).find((a) => a.index === ix);
+        assert.strictEqual(again.id, oldId, 'and keeps its id');
+        assert.strictEqual(JSON.parse(fs.readFileSync(path.join(paths.store, oldId, 'credentials.json'), 'utf8')).claudeAiOauth.accessToken, NEW_ACCESS, 'its folder has the new login');
+        assert.ok(st().account.renewed);
+        clean(st(), 'status (again)');
+        // signed in as somebody else: refused, the account is untouched
+        host.linkLogin(gr, 0, { claudeAiOauth: { accessToken: 'zero-access', refreshToken: 'z', expiresAt: 1, scopes: [] } }, { emailAddress: 'other@example.com', accountUuid: 'uuid-other' });
+        const k0 = keys[0].apiKey;
+        await ask({ action: 'start', account: 0 });
+        await waitFor(() => st().state === 'waiting_code', 'link (wrong user)');
+        await ask({ action: 'code', code: LOGIN_CODE });
+        await waitFor(() => st().step === 'token' && st().state === 'waiting_code', 'token link (wrong user)');
+        await ask({ action: 'code', code: TOKEN_CODE });
+        await waitFor(() => st().state === 'error', 'wrong user refused');
+        assert.ok(/new@example\.com.*other@example\.com/.test(st().message), st().message);
+        assert.strictEqual(keys[0].apiKey, k0, 'the other account keeps its token');
+        assert.strictEqual(keys.length, n0);
+        console.log('✓ sign in again: same account, new token, same name and id; another user refused');
+    }
 
     // a CLI that shows the token and then waits is finished anyway; cancel kills and cleans
     keys.pop();
