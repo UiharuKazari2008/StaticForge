@@ -6061,7 +6061,9 @@
     async function form(c, html, buttons, opts) {
         let fields = {};
         let read = null;
-        const value = await call('showConfirmationDialog', `<div class="cd-form">${html}</div>`, buttons, null, Object.assign({ title: TITLE, width: 460, icon: 'fas fa-circle-info' }, opts || {}, {
+        // modal to the Fleet window only (owner), never the whole desktop: a form that opens by itself (the sign-in's next
+        // step, a push) has no click to take its owner from and blocked every window (Nov 26 2026)
+        const value = await call('showConfirmationDialog', `<div class="cd-form">${html}</div>`, buttons, null, Object.assign({ title: TITLE, width: 460, icon: 'fas fa-circle-info', owner: c && c.modal }, opts || {}, {
             // the confirmation box is shared and kept: its listeners end with this showing (signal)
             onDialogReady: (signal) => {
                 const box = document.getElementById('confirmationDialog');
@@ -6960,6 +6962,8 @@
                         if (holder) holder.innerHTML = LG_ACTIVE.has(lg.state) ? loginStateHtml(lg) : `<p>${esc(lg.state === 'done' ? (lg.message || 'The account was added. Close this box.') : (lg.message || 'The sign-in ended.'))}</p>`;
                         const head = box.querySelector('.cd-login-step');
                         if (head) head.textContent = lg.stepTitle || '';
+                        const codeRow = box.querySelector('.cd-login-code');
+                        if (codeRow) codeRow.hidden = !loginCodeReady(lg);
                         const title = document.getElementById('confirmationDialogTitle');
                         if (title && lg.stepNumber) title.textContent = `${lgTitle()} - Step ${lg.stepNumber} of ${lg.steps || 2}`;
                         if (lg.stepNumber !== step) {
@@ -6995,7 +6999,7 @@
     function loginStateHtml(st) {
         if (st.state === 'starting') return '<p class="mmc-hint">Getting the sign-in link from the host...</p>';
         if (st.state === 'verifying') return '<p class="mmc-hint">Checking the code...</p>';
-        return `<p>1. Open this link and sign in with the account you are adding:</p>
+        return `<p>1. Open this link and sign in with ${st.target ? `${esc(st.target.email || st.target.name || 'the account')}` : 'the account you are adding'}:</p>
             <p class="cd-link-line">${esc(st.url || '')}</p>
             <p><button type="button" class="btn-standard" data-cd-login="open">Open in Alchemy</button> <button type="button" class="btn-standard" data-cd-login="copy">Copy Link</button></p>
             ${st.message ? `<p class="cd-err">${esc(st.message)}</p>` : ''}`;
@@ -7004,7 +7008,12 @@
     function loginHtml(st) {
         return `<p><b class="cd-login-step">${esc(st.stepTitle || 'Sign in')}</b>${st.name ? ` - ${esc(st.name)}` : ''}</p>
             <div class="cd-login-state">${loginStateHtml(st)}</div>
-            <label><span>2. Paste the code claude.ai shows:</span><input type="text" data-cd="code" data-cd-focus spellcheck="false" autocomplete="off"></label>`;
+            <label class="cd-login-code"${loginCodeReady(st) ? '' : ' hidden'}><span>2. Paste the code claude.ai shows:</span><input type="text" data-cd="code" data-cd-focus spellcheck="false" autocomplete="off"></label>`;
+    }
+
+    /** The code field shows once there is a link to get the code from (never a code box with nothing to open). */
+    function loginCodeReady(st) {
+        return !!(st && st.url && (st.state === 'waiting_code' || st.state === 'verifying'));
     }
 
     // ---- the console ----------------------------------------------------------------------------------------
