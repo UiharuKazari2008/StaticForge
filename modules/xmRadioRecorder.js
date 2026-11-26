@@ -889,7 +889,10 @@ function coveringRec(e) {
             continue;
         }
         if (m.kind === 'song' || m.kind === 'alert' || m.kind === 'term') {
-            if (oneCut && ((e.fromCut && e.fromCut === m.fromCut) || (kind === 'cut' && e.fromNow))) return rec;
+            // the cut it records: fromCut, or for a recording started before fromCut was kept, the cut its song-mode cursor
+            // still stands on (a one-cut recording stops at its first filed cut, so the cursor has not moved on)
+            const mCut = m.fromCut || m.cursor || 0;
+            if (oneCut && ((e.fromCut && e.fromCut === mCut) || (kind === 'cut' && e.fromNow))) return rec;
             continue;
         }
         const runStart = m.startPdt || m.since || 0;
@@ -1479,6 +1482,9 @@ async function shutdown() {
 function adoptEntry(meta) {
     const s = load();
     let e = s.running.find((x) => x.id === meta.entryId || x.rid === meta.rid);
+    // a one-cut recording from before S3 kept its cut only as the song-mode cursor (a term matched again after the restart
+    // queued the same cut a second time, Nov 26 2026)
+    if (!meta.fromCut && meta.cursor && (meta.kind === 'song' || meta.kind === 'alert' || meta.kind === 'term')) meta.fromCut = meta.cursor;
     if (!e) {
         e = entryFromStart({ channelId: meta.channelId, kind: meta.kind, mode: meta.mode, back: Math.round(((meta.since || Date.now()) - (meta.startPdt || meta.since || Date.now())) / 1000), endPdt: meta.endPdt, until: meta.until, fromCut: meta.fromCut, ref: meta.ref, rangeCut: meta.rangeCut });
         s.running.push(e);

@@ -259,5 +259,24 @@ const hhmm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinu
     assert.ok(typeof slotListener === 'function', 'the recorder listens to the slots');
     console.log('ok 8 - a slot signing in dispatches the waiting entry');
 
+    // 9. a term recording from before S3 (its cut kept only as the song-mode cursor) and the same cut queued again by the
+    //    term matching after a restart: the queued one joins the resumed recording, no second file of the same song
+    fresh({ count: 1 });
+    const cutStart = now() - 120000;
+    const rid9 = 'f'.repeat(24);
+    fs.mkdirSync(path.join(path.dirname(account), 'xmradio-rec', rid9), { recursive: true });
+    fs.writeFileSync(stateFile, JSON.stringify({
+        active: [{ rid: rid9, channelId: A, kind: 'term', mode: 'song', since: now() - 110000, until: now() + H, startPdt: cutStart - 8000, cursor: cutStart, filed: 0, endPdt: 0 }],
+        queue: [{ id: 'dup000000001', kind: 'term', state: 'queued', channelId: A, from: cutStart, fromCut: cutStart, until: now() + H, addedAt: now(), expiresAt: cutStart + 5 * H - 60000, a: 'Paul van Dyk', t: 'Trancegiving (2024)' }]
+    }));
+    T.reset();
+    await T.resume();
+    await recorder.dispatch();
+    assert.strictEqual(T.recs.size, 1, 'no second stream for the same cut');
+    assert.strictEqual(queued().length, 0, 'the duplicate is not left waiting');
+    assert.ok(jobs().some((j) => j.id === 'dup000000001' && j.rid === rid9), 'it joined the resumed recording');
+    await recorder.stop(rid9);
+    console.log('ok 9 - a cut queued again after a restart joins the pre-S3 recording that already records it');
+
     console.log('test-xmradio-queue: ok');
 })().catch((err) => { console.error(err); process.exitCode = 1; }).finally(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {} });
