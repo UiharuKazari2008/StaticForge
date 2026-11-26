@@ -436,7 +436,14 @@ function effortFor(kind, setting) {
     if (!setting) return want;
     return EFFORT_RANK[want] <= EFFORT_RANK[setting] ? want : setting;
 }
+// TokenRouter answers 429 when calls come too fast (Nov 26 2026: a Rules Review's 11 parts and their retries all got
+// "Too many requests"): every call waits out a shared cool-down, and a 429 is retried after it (Retry-After, else 8 / 20 /
+// 45 s), at most three times
+let engineCoolUntil = 0;
+const sleepMs = (ms) => new Promise((r) => { const t = setTimeout(r, ms); if (t.unref) t.unref(); });
 async function callEngine(gr, messages, opts = {}) {
+    const wait = engineCoolUntil - Date.now();
+    if (wait > 0) await sleepMs(Math.min(wait, 60000));
     if (opts.kind && !['review', 'json'].includes(opts.kind)) {
         const now = Date.now();
         while (bgCalls.length && bgCalls[0] < now - 60000) bgCalls.shift();
@@ -471,6 +478,15 @@ async function callEngine(gr, messages, opts = {}) {
                 console.warn(`[supervisor] ${ep.name} ${ep.model} refuses reasoning_effort; asking without it`);
                 res = await post(false);
                 body = await res.text();
+            }
+            if (!res.ok && res.status === 429 && (opts._tries || 0) < 3) {
+                const ra = Number(res.headers && typeof res.headers.get === 'function' ? res.headers.get('retry-after') : NaN);
+                const backoff = Number(process.env.AGENT_SUPERVISOR_429_MS) || (Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 60000) : [8000, 20000, 45000][opts._tries || 0]);
+                engineCoolUntil = Math.max(engineCoolUntil, Date.now() + backoff);
+                recordUsage({ kind: opts.kind || 'call', engine: link.engine, model: ep.model, ok: 0, error: `${ep.name} 429: rate limited, retrying in ${Math.round(backoff / 1000)} s`, failover_from: from });
+                clearTimeout(timer);
+                await sleepMs(backoff);
+                return callEngine(gr, messages, Object.assign({}, opts, { _tries: (opts._tries || 0) + 1 }));
             }
             if (!res.ok) {
                 const msg = `${ep.name} ${res.status}: ${body.replace(/\s+/g, ' ').slice(0, 200)}`;

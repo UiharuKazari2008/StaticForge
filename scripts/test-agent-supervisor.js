@@ -717,6 +717,20 @@ sup._test.setFetch(async (url, opts) => {
         assert.throws(() => sup._test.parseLooseJson('no json at all'), /not JSON/);
     });
 
+    await test('429: a rate-limited call waits and is retried (at most three times)', async () => {
+        process.env.AGENT_SUPERVISOR_429_MS = '20';
+        let n = 0;
+        sup._test.setFetch(async () => { n += 1; return n <= 2 ? { ok: false, status: 429, headers: { get: () => null }, text: async () => 'Too many requests' } : { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{"ok":true}' } }] }) }; });
+        const g5 = Object.assign({}, gr, { getConfig: () => ({ agentSupervisor: { enabled: true, engine: 'tokenrouter' } }) });
+        const o = await sup.askJson(g5, 'Answer in JSON.', 'x', 'json');
+        assert.strictEqual(o.ok, true);
+        assert.strictEqual(n, 3);
+        n = -10;
+        await assert.rejects(() => sup.askJson(g5, 'Answer in JSON.', 'x', 'json'), /429/);
+        assert.strictEqual(n, -6, 'one try and three retries');
+        delete process.env.AGENT_SUPERVISOR_429_MS;
+    });
+
     await test('JSON mode: a prompt that never says JSON gets "Answer in JSON." (DeepSeek 400s otherwise)', async () => {
         const seen = [];
         sup._test.setFetch(async (url, opts) => { seen.push(JSON.parse(opts.body)); return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: '{"title":"x"}' } }] }) }; });
