@@ -34,17 +34,31 @@ ps.bind(gr);
     await ps._test.run();
     const d = sentEv[1].detail;
     assert.strictEqual(d.full, false);
-    assert.deepStrictEqual(Object.keys(d.fields).sort(), ['director', 'mail'], 'only what changed');
+    // the holder lists every waiting notice, mail included (#1056), so the notices field moves with a new mail too
+    assert.deepStrictEqual(Object.keys(d.fields).sort(), ['director', 'mail', 'notices'], 'only what changed');
     assert.strictEqual(d.fields.mail.fresh, 1);
     assert.strictEqual(d.fields.director.running, true);
 
     inbox.setPref('admin', 'icon.mailAll', '1');
     await ps._test.run();
-    assert.deepStrictEqual(sentEv[2].detail.fields, { prefs: { mailAll: true, smsAll: false } });
+    // only prefs moved; prefs also carries popupApps (the Messaging accounts' Android apps, #885) since this was written
+    assert.deepStrictEqual(Object.keys(sentEv[2].detail.fields), ['prefs']);
+    assert.strictEqual(sentEv[2].detail.fields.prefs.mailAll, true);
+    assert.strictEqual(sentEv[2].detail.fields.prefs.smsAll, false);
 
     inbox.clear('admin', 'dmail:7', 'test');
     await ps._test.run();
     assert.strictEqual(sentEv[3].detail.fields.mail.fresh, 0, 'read: the icon input drops');
+
+    // #1098: a flood of mail is one stack:mail row; the icon input counts the mails in it, the holder carries the count
+    for (let i = 1; i <= 3; i++) inbox.publish({ id: `dmail:s${i}`, stack: 'mail', title: 'New E-mail Message', text: `From: a${i}\nhi`, cls: 'mail', data: { from: `a${i}`, subject: 'hi' } });
+    await ps._test.run();
+    const last = sentEv[sentEv.length - 1].detail.fields;
+    assert.strictEqual(last.mail.fresh, 3, 'a stack of three counts three');
+    const entry = last.notices.list.find((n) => n.id === 'stack:mail');
+    assert.ok(entry, 'the stack is one holder entry');
+    assert.strictEqual(entry.count, 3, 'the holder entry carries the count');
+    assert.strictEqual(last.notices.list.filter((n) => /^dmail:s/.test(n.id)).length, 0, 'no entry per mail');
     console.log('test-phone-status: ok');
     process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

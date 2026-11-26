@@ -96,14 +96,21 @@
         let list = [];
         try { list = window.wmAndroidApps && typeof window.wmAndroidApps.list === 'function' ? window.wmAndroidApps.list() : []; } catch (_) { list = []; }
         const m = new Map();
-        for (const a of list) if (a && a.package && !m.has(a.package)) m.set(a.package, { id: a.id, label: a.label || a.package, icon: a.icon || '' });
+        for (const a of list) if (a && a.package && !m.has(a.package)) m.set(a.package, { id: a.id, label: nameOf(a.package, a.label), icon: a.icon || '' });
         if (m.size) progs = m; // none yet: asked again next time (the programs come after boot)
         return m;
+    }
+    // the app's name, never its package (androidAppName.js)
+    function nameOf(pkg, sent) {
+        const R = window.melatonAppName;
+        if (R && typeof R.resolve === 'function') return R.resolve(pkg, sent);
+        const s = String(sent || '').trim();
+        return s && s !== pkg ? s : 'App';
     }
     function appInfo(pkg) {
         const a = programs().get(pkg);
         const n = a ? null : notes.find((x) => x.package === pkg);
-        return { id: a ? a.id : null, label: (a && a.label) || (n && n.app) || pkg };
+        return { id: a ? a.id : null, label: nameOf(pkg, (a && a.label) || (n && n.app)) };
     }
     /** The program's Windows Mobile icon when it has one (wm-direct-replacement icons), else its own. */
     function iconOf(pkg) {

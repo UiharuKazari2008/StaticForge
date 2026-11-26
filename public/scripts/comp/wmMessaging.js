@@ -642,6 +642,9 @@
         else goTo(`imap:${one ? last.accountId : list[0].accountId}`);
     }
     function showImapNote(o) {
+        // new mail is the inbox's one stack notice (#1098: one box, one sound, a count): this note would be a second box
+        const ni = window.wmNotificationInbox;
+        if (ni && typeof ni.mailStacked === 'function' && ni.mailStacked()) { if (imapNote) { try { imapNote.close(); } catch (_) { /* gone */ } imapNote = null; } return; }
         // each arrival is a new notification: it sounds and comes up again
         if (imapNote) { try { imapNote.close(); } catch (_) { /* gone */ } imapNote = null; }
         if (!imapFresh.length || !ws || typeof ws.appNote !== 'function') return;

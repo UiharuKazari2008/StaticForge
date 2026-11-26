@@ -21,6 +21,13 @@
  * into its app's own grouped notification (wmMessaging / wmChatApp inboxAdopt: the same title, lines,
  * icon and sound class), and the apps clear the id when their note is dismissed or the item is read.
  *
+ * A flood of mail is ONE stacked notice (#1098, modules/notificationInbox.js): the server keeps the row `stack:mail` with
+ * data.items (each { id, title, text, at, data }) and data.count, and sends it with alert true when a new stack starts and
+ * alert false when an item joins a live one. Here that is one box: the title ("10 New E-mail Messages"), a one-line row per
+ * item (each opens THAT message), "+ k more", a badge with the count on the tray icon. A silent update changes the open
+ * box in place (no pop, no sound); the sound is the server's alert flag, nothing else. Messaging stops drawing a note of
+ * its own for new mail while the inbox does (mailStacked), so the two never make two boxes or two sounds.
+ *
  * Calendar and task reminders (#876) have no page app that raises them: the server's reminder
  * scheduler (modules/reminderScheduler.js) publishes a 'reminder' notice when one comes due, and this
  * module shows it, live or on resume, as Windows Mobile's reminder notification - the one wmLock65
@@ -80,6 +87,131 @@
         if (app === 'youtube' && window.wmYouTube) { window.wmYouTube.open(d.open || undefined); return; }
         if (app === 'weather' && window.wmWeather && typeof window.wmWeather.open === 'function') { window.wmWeather.open(); return; }
         if (window.wmShell && app) { try { window.wmShell.open(app); return; } catch (_) { /* no such app */ } }
+    }
+
+    // ---- stacks (#1098) --------------------------------------------------------------------------
+
+    const STACK_ROWS = 5; // rows the box lists; the rest are "+ k more"
+    const isStack = (n) => !!n && /^stack:/.test(String(n.id || ''));
+    const inAndroidApp = () => !!(window.AndroidActiveSync || window.AndroidNotification || window.AndroidDevice);
+    const stackItems = (n) => (n && n.data && Array.isArray(n.data.items) ? n.data.items.filter((x) => x && x.id != null) : []);
+    const stacks = new Map(); // stack id -> the notice the open box was last drawn from (a tap looks its item up here)
+
+    /** One item as a row: "<from> - <subject>" for mail, else the first line of its text. One line, ellipsis (ui-standard 10). */
+    function stackRow(it) {
+        const d = it.data && typeof it.data === 'object' ? it.data : {};
+        const from = String(d.from || '').trim();
+        let text = String(d.subject || '').trim();
+        if (!from && !text) text = String(it.text || it.title || '').split('\n')[0].trim();
+        const full = [from, text].filter(Boolean).join(' - ');
+        return `<button type="button" class="wm-stack-row" data-item="${esc(it.id)}" title="${esc(full)}">${from ? `<b class="wm-stack-from">${esc(from)}</b>${text ? ' - ' : ''}` : ''}${esc(text)}</button>`;
+    }
+
+    /** What the box shows for a stack notice: title, rows, the tray badge (the count when there is more than one). */
+    function stackParts(notice) {
+        const items = stackItems(notice);
+        const d = (notice.data && typeof notice.data === 'object' && notice.data) || {};
+        const count = Math.max(Math.floor(Number(d.count)) || 0, items.length);
+        const rows = items.slice(0, STACK_ROWS);
+        const more = count - rows.length;
+        const html = rows.length
+            ? `<div class="wm-stack" data-wm-tap="list">${rows.map(stackRow).join('')}${more > 0 ? `<div class="wm-stack-more">+ ${more} more</div>` : ''}</div>`
+            : esc(notice.text || '').replace(/\n/g, '<br>');
+        const title = notice.title || (count > 1 ? `${count} New E-mail Messages` : 'New E-mail Message');
+        return { title, html, badge: count > 1 ? count : 0, sig: `${title}\u0001${html}\u0001${count}\u0001${Number(notice.sortAt) || 0}\u0001${Number(notice.prio) || 0}` };
+    }
+
+    /** A row's tap: that message opens (the way a single mail's notice opens it), leaves the stack; the box goes, the rest wait. */
+    function openStackItem(stackId, itemId) {
+        const notice = stacks.get(stackId);
+        const it = notice && stackItems(notice).find((x) => String(x.id) === String(itemId));
+        if (!it) { if (notice) openStackList(notice); return; }
+        const d = (it.data && typeof it.data === 'object' && it.data) || {};
+        const m = window.wmMessaging;
+        ack(String(it.id), 'cleared'); // the server drops it from the stack and sends the stack's update
+        try { if (m && typeof m.inboxDrop === 'function') m.inboxDrop({ data: d }); } catch (_) { /* Messaging gone */ }
+        const held = shownNotes.get(stackId);
+        if (held && held.handle) { try { held.handle.hide(); } catch (_) { /* gone */ } }
+        if (m && d.accountId && d.uid != null && typeof m.openImapMessage === 'function') m.openImapMessage(d.accountId, d.folder || 'INBOX', d.uid);
+        else if (m && d.id != null && typeof m.openMail === 'function') m.openMail(d.id);
+        else openFor(notice);
+    }
+
+    /** The box body / its View: the mail list (that account's, or the account list for several), the stack acted on. */
+    function openStackList(notice) {
+        const items = stackItems(notice);
+        ack(notice.id, 'acted');
+        close(notice.id);
+        const m = window.wmMessaging;
+        const imap = items.filter((x) => x.data && x.data.accountId);
+        const one = imap.length === items.length && items.length && imap.every((x) => x.data.accountId === imap[0].data.accountId);
+        if (m && one && typeof m.openAccount === 'function') { m.openAccount(`imap:${imap[0].data.accountId}`, imap[0].data.folder || undefined); return; }
+        if (m && !imap.length && items.length && typeof m.openAccount === 'function') { m.openAccount('mail'); return; }
+        if (m && typeof m.showAccounts === 'function') { m.showAccounts(); return; }
+        openFor(notice);
+    }
+
+    /**
+     * Show a stack notice as ONE box, or change the box already up in place. opts.loud: the server said alert (or a missed
+     * stack comes up) - the box pops and sounds. Not loud: a box already up is updated (title, rows, badge) with no pop and
+     * no sound; with none up it comes up silently. Nothing is written when nothing changed.
+     */
+    function showStack(notice, opts = {}) {
+        if (!ws || typeof ws.appNote !== 'function') return;
+        const id = notice.id;
+        const parts = stackParts(notice);
+        let held = shownNotes.get(id);
+        // its box was taken away by something else: drawn again
+        if (held && held.handle && !document.getElementById(held.handle.id)) { shownNotes.delete(id); held = null; }
+        // a new loud stack (the server started a new one under the same id): comes up again, sounding
+        if (held && opts.loud) { close(id); held = null; }
+        stacks.set(id, notice);
+        if (held) {
+            if (held.sig !== parts.sig) {
+                held.sig = parts.sig;
+                held.handle.update({ title: parts.title, html: parts.html, badge: parts.badge, sortAt: notice.sortAt, prio: notice.prio });
+            }
+            return;
+        }
+        const handle = ws.appNote({
+            title: parts.title,
+            html: parts.html,
+            icon: iconFor(notice),
+            holder: holderFor(notice),
+            event: notice.cls || 'mail',
+            silent: !opts.loud,
+            sortAt: notice.sortAt,
+            prio: notice.prio,
+            badge: parts.badge,
+            softKeys: () => ({
+                left: { label: 'Dismiss', icon: 'dismiss', action: () => { ack(id, 'cleared'); close(id); } },
+                right: { label: 'Menu', icon: 'menu', menu: () => [
+                    { label: 'View', action: () => { const n = stacks.get(id); if (n) openStackList(n); } },
+                    { label: 'Hide', action: () => { const h = shownNotes.get(id); if (h && h.handle) h.handle.hide(); } }
+                ] }
+            })
+        });
+        if (!handle) return;
+        shownNotes.set(id, { handle, sig: parts.sig, close() { handle.close(); } });
+        const el = document.getElementById(handle.id);
+        if (el) {
+            el.addEventListener('click', (e) => {
+                const row = e.target.closest && e.target.closest('.wm-stack-row');
+                if (row) { openStackItem(id, row.dataset.item); return; }
+                const n = e.target.closest && e.target.closest('[data-wm-tap]') ? stacks.get(id) : null;
+                if (n) openStackList(n);
+            }, { signal: appScopeSignal });
+        }
+        pageShown(id);
+        ack(id, 'seen');
+    }
+
+    /** A stack missed while away, or changed meanwhile: its items join Messaging's count, the box comes up or changes in place. */
+    function catchStack(n) {
+        const m = window.wmMessaging;
+        if (m && typeof m.inboxAdopt === 'function') for (const it of stackItems(n)) { if (it.data && it.data.kind === 'mail') { try { m.inboxAdopt({ data: it.data }, {}); } catch (_) { /* counted later */ } } }
+        if (shownNotes.has(n.id)) { showStack(n); return; }
+        if (n.state === 'new') showStack(n, { loud: !inAndroidApp() });
     }
 
     /** The app that groups this kind of notice in a notification of its own (mail, texts, Messenger). */
@@ -280,6 +412,7 @@
     function close(id) {
         const note = shownNotes.get(id);
         if (note) { try { note.close(); } catch (_) { /* gone */ } shownNotes.delete(id); }
+        stacks.delete(id);
     }
 
     /**
@@ -297,6 +430,8 @@
             const at = Number(n.updatedAt) || Number(n.createdAt) || 0;
             if (at > listedUpTo) listedUpTo = at;
             if (n.state === 'cleared' || n.state === 'acted') { reminders.delete(n.id); close(n.id); continue; }
+            // a stack (#1098): one box, changed in place when more joined it
+            if (isStack(n)) { catchStack(n); continue; }
             // a reminder stays until it is dismissed: shown again whenever it is not up
             if (isReminder(n)) { reminders.set(n.id, n); showReminder(n); continue; }
             // arrived while the app was away: show it. Arrived live (while we were here): seen only when its app was seen
@@ -312,6 +447,16 @@
     function onUpdated(pk) {
         const d = (pk && (pk.data || pk)) || {};
         if (d.reason === 'ack' && (d.state === 'cleared' || d.state === 'acted')) { reminders.delete(d.id); close(d.id); return; }
+        // a stack (#1098): an item joined it (alert false: the open box changes in place, silently) or a new stack began
+        // (alert true: the box pops and sounds). Whatever the reason, the notice carries the rows; the server's alert is
+        // the only thing that sounds. A page in the background shows it on resume (catchUp), as it does every notice
+        if (d.notice && isStack(d.notice)) {
+            const nt = d.notice;
+            if (nt.state === 'cleared' || nt.state === 'acted') { close(nt.id); return; }
+            if (nt.alert) seenAcked.delete(nt.id);
+            if (!document.hidden) showStack(nt, { loud: !!nt.alert });
+            return;
+        }
         if (d.reason === 'new' && d.notice) {
             // a new event under an id already used (the next turn's director:<session>:turn, the next text in a chat): the
             // server set it back to new, so it is acked seen again and its app must be seen to show it again. Kept from the
@@ -361,6 +506,11 @@
         acted: (id) => { if (!id) return; shownNotes.delete(id); ack(String(id), 'acted'); },
         shown: () => [...shownNotes.keys()],
         /**
+         * New mail is the server's one stack notice here (#1098): Messaging draws no note of its own for an arrival, so the
+         * two never make two boxes or two sounds. True while this page can use the inbox and is linked to the server.
+         */
+        mailStacked: () => canUse() && !!client(),
+        /**
          * Snooze from an app's own grouped note (Text Messages, Dreamscape Messenger: 6.5.1's reminder rows on every
          * notification, Nov 18): each notice goes now and the server's reminder scheduler publishes it again, sounding,
          * in `minutes` (reminder_snooze; the page holds no timer, the phone's app posts it when the page is asleep).
@@ -387,7 +537,7 @@
             let r = null;
             try { r = await ask('inbox_list', {}); } catch (_) { return []; }
             const dayAgo = Date.now() - 24 * 3600 * 1000;
-            return ((r && r.notices) || []).filter((n) => (n.state === 'new' || (n.state === 'seen' && (Number(n.updatedAt) || Number(n.createdAt) || 0) >= dayAgo)) && !/^(mail|dmail|sms|chat|director):/.test(n.id));
+            return ((r && r.notices) || []).filter((n) => (n.state === 'new' || (n.state === 'seen' && (Number(n.updatedAt) || Number(n.createdAt) || 0) >= dayAgo)) && !/^(mail|dmail|sms|chat|director|stack):/.test(n.id));
         },
         /** One waiting notice (from waitingList) shown as its notification: the holder's tap on it. */
         showOne: (n) => {
@@ -401,7 +551,7 @@
             try { r = await ask('inbox_list', {}); } catch (_) { return 0; }
             // the same as the phones' "..." count (phoneStatus): not seen yet, or seen within the last day
             const dayAgo = Date.now() - 24 * 3600 * 1000;
-            const waiting = ((r && r.notices) || []).filter((n) => (n.state === 'new' || (n.state === 'seen' && (Number(n.updatedAt) || Number(n.createdAt) || 0) >= dayAgo)) && !/^(mail|dmail|sms|chat|director):/.test(n.id));
+            const waiting = ((r && r.notices) || []).filter((n) => (n.state === 'new' || (n.state === 'seen' && (Number(n.updatedAt) || Number(n.createdAt) || 0) >= dayAgo)) && !/^(mail|dmail|sms|chat|director|stack):/.test(n.id));
             for (const n of waiting) {
                 // asked for: each comes up again, also one shown before and put away (its old handle kept it from showing;
                 // the tap then opened nothing, Nov 18 Fold)

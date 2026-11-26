@@ -1616,13 +1616,15 @@
                         try { N.requestChannelNames(); } catch (_) { /* older app */ }
                     }
                     const chName = (pkg, id) => (names[pkg] && names[pkg][id]) || chLabel(id);
-                    const known = Object.entries(c.known || {}).sort((a, b) => String(a[1].app || a[0]).localeCompare(String(b[1].app || b[0]), undefined, { sensitivity: 'base' }));
+                    // the app's name, never its package (androidAppName.js; a name kept earlier may be the package)
+                    const appLabel = (pkg, k) => (window.melatonAppName && window.melatonAppName.resolve ? window.melatonAppName.resolve(pkg, k && k.app) : ((k && k.app) || 'App'));
+                    const known = Object.entries(c.known || {}).sort((a, b) => appLabel(a[0], a[1]).localeCompare(appLabel(b[0], b[1]), undefined, { sensitivity: 'base' }));
                     // an app that is a Messaging account (#885) shows there, never here: its row says so, unchecked
                     let managed = new Set();
                     try { managed = window.textMessaging && typeof window.textMessaging.androidPackages === 'function' ? window.textMessaging.androidPackages() : new Set(); } catch (_) { managed = new Set(); }
                     const rows = known.map(([pkg, k]) => (managed.has(pkg)
-                        ? `<div class="wm-listbox-row">${check('sb-app', `${k.app || pkg} (in Messaging)`, false, `value="${esc(pkg)}" disabled`)}</div>`
-                        : `<div class="wm-listbox-row">${check('sb-app', k.app || pkg, c.apps[pkg] !== false, `value="${esc(pkg)}"${c.phone === false ? ' disabled' : ''}`)}</div>`
+                        ? `<div class="wm-listbox-row">${check('sb-app', `${appLabel(pkg, k)} (in Messaging)`, false, `value="${esc(pkg)}" disabled`)}</div>`
+                        : `<div class="wm-listbox-row">${check('sb-app', appLabel(pkg, k), c.apps[pkg] !== false, `value="${esc(pkg)}"${c.phone === false ? ' disabled' : ''}`)}</div>`
                         + (k.channels || []).map((ch) => `<div class="wm-listbox-row is-indent">${check('sb-ch', chName(pkg, ch), c.channels[`${pkg}|${ch}`] !== false, `value="${esc(`${pkg}|${ch}`)}"${c.phone === false || c.apps[pkg] === false ? ' disabled' : ''}`)}</div>`).join(''))).join('');
                     el.innerHTML = `${check('sbPhone', "Show the phone's notifications", c.phone !== false)}
                         <div class="wm-form-gap"></div><p>Show notifications from:</p>

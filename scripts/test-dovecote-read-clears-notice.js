@@ -25,13 +25,24 @@ const sources = require('../modules/notificationInboxSources');
 inbox.bind({ getWebSocketServer: () => ({ broadcast: () => {} }) });
 
 const HUMAN = mail.HUMAN_OWNER;
-const state = (id) => { const n = inbox.list('admin', { includeCleared: true }).find((x) => x.id === `dmail:${id}`); return n ? n.state : null; };
+// a dmail: notice is an item of the one mail stack (#1098): 'new' while the item is in the live stack, 'cleared' once it was and is not
+const heldItems = new Set();
+const state = (mailId) => {
+    const ID = `dmail:${mailId}`;
+    const all = inbox.list('admin', { includeCleared: true });
+    const row = all.find((x) => x.id === ID);
+    if (row) return row.state;
+    const st = all.find((x) => x.id === 'stack:mail' && x.state !== 'cleared');
+    if (st && st.data.items.some((i) => i.id === ID)) { heldItems.add(ID); return 'new'; }
+    return heldItems.has(ID) ? 'cleared' : null;
+};
 const send = (subject) => {
     const r = mail.sendMail({ fromOwner: 'rook', to: HUMAN, subject, body: 'body' });
     const m = mail.listMail(HUMAN, { folder: 'inbox', silent: true }).find((x) => x.subject === subject);
     assert.ok(r && m, `delivered: ${subject}`);
     // the delivery event's notice (onDovecoteNewMail is what dovecoteMailboxEvents calls)
     sources.onDovecoteNewMail({ id: m.id, mailbox: HUMAN, from: 'Rook <rook@x>', subject });
+    heldItems.add(`dmail:${m.id}`);
     return m.id;
 };
 

@@ -2259,6 +2259,40 @@ html.ui-mobile[data-wm-soft-h]:not([data-wm-sip])[data-wm-app="gallery"] body > 
     height: auto;
 }
 
+/* a stack of notices (#1098, wmNotificationInbox showStack): one line per item, each a link to that item, "+ k more" under
+   them; the whole body answers a tap with the list. Rows never wrap (ui-standard rule 10): the line ends in an ellipsis,
+   the whole text is the row's tooltip. */
+.wm-notify-body .toast-message .wm-stack-row {
+    display: block;
+    width: 100%;
+    margin: calc(2 * var(--wm-px)) 0 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: left;
+    color: #00f;
+    text-decoration: underline;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wm-notify-body .toast-message .wm-stack-row:first-child {
+    margin-top: 0;
+}
+
+.wm-notify-body .toast-message .wm-stack-from {
+    font-weight: bold;
+}
+
+.wm-notify-body .toast-message .wm-stack-more {
+    margin-top: calc(4 * var(--wm-px));
+    white-space: nowrap;
+}
+
 .wm-notify-body .toast-progress {
     height: calc(8 * var(--wm-px));
     margin-top: calc(5 * var(--wm-px));
@@ -2329,12 +2363,30 @@ html.ui-mobile[data-wm-soft-h]:not([data-wm-sip])[data-wm-app="gallery"] body > 
 }
 
 .wm-notify-tray-icon {
+    position: relative;
     width: calc(16 * var(--wm-px));
     height: calc(22 * var(--wm-px));
     padding: 0;
     border: 0;
     background: center / calc(16 * var(--wm-px)) no-repeat;
     image-rendering: pixelated;
+}
+
+/* the count of a stack of notices (#1098) on its icon: the soft key badge's white shape with the number cut out of it
+   (wmShell countBadge), at the icon's top right, growing to the left with its digits */
+.wm-notify-tray-badge {
+    position: absolute;
+    top: 0;
+    right: calc(-3 * var(--wm-px));
+    height: calc(11 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-notify-tray-badge .wm-count-badge {
+    display: block;
+    height: 100%;
+    width: auto;
+    filter: drop-shadow(0 0 calc(1 * var(--wm-px)) rgba(0, 0, 0, 0.35));
 }
 
 /* ---- takeover: a surface that must own the screen (PIN logon, fatal / connectivity errors,

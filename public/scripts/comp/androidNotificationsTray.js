@@ -96,7 +96,8 @@
         notes.forEach((n) => {
             if (!n.package) return;
             const k = filter.known[n.package] || (filter.known[n.package] = { app: '', channels: [] });
-            if (n.app && k.app !== n.app) { k.app = n.app; changed = true; }
+            const nm = appNameOf(n);
+            if (nm && k.app !== nm) { k.app = nm; changed = true; }
             if (n.channel && !k.channels.includes(n.channel)) { k.channels.push(n.channel); changed = true; }
         });
         if (changed) writeJson(FILTER_KEY, filter);
@@ -208,10 +209,18 @@
         const pic = programPic(n.package, px);
         if (pic.src) return `<img src="${esc(pic.src)}" srcset="${esc(pic.srcset)}" alt="" width="${px}" height="${px}" draggable="false">`;
         // not in the Program Icons store: Android's own icon, as the bridge gives it
-        return n.icon ? `<img src="${esc(n.icon)}" alt="" width="${px}" height="${px}" draggable="false">` : '';
+        const gen = root.melatonAppName && root.melatonAppName.genericIcon ? root.melatonAppName.genericIcon(px) : '';
+        const src = n.icon || gen;
+        return src ? `<img src="${esc(src)}"${gen && n.icon ? ` data-fb-src="${esc(gen)}"` : ''} alt="" width="${px}" height="${px}" draggable="false">` : '';
     }
     const imageTag = (id, cls, px) => (id ? `<img class="${cls}" data-img="${esc(id)}" alt=""${px ? ` width="${px}" height="${px}"` : ''} draggable="false">` : '');
-    const titleOf = (n) => (n.conversation && n.conversation !== n.title ? n.conversation : (n.title || n.app || n.package));
+    /** The app's name, never its package (androidAppName.js: sent label, installed program, known table, humane). */
+    function appNameOf(n) {
+        const R = root.melatonAppName;
+        if (R && typeof R.resolve === 'function') return R.resolve(n.package, n.app);
+        return n.app && n.app !== n.package ? n.app : 'Notification';
+    }
+    const titleOf = (n) => (n.conversation && n.conversation !== n.title ? n.conversation : (n.title || appNameOf(n)));
 
     function isExpandable(n) {
         return !!((n.shortText && n.text && n.shortText !== n.text) || n.picture || (Array.isArray(n.lines) && n.lines.length > 2)
@@ -312,13 +321,13 @@
             const peeks = more.slice(0, PEEKS).map((n) => { const p = peekText(n); return `<span class="android-notify-peek"><b>${esc(p.title)}</b>${p.said ? ` ${esc(p.said)}` : ''}</span>`; }).join('');
             const rest = more.length - PEEKS;
             body = `${noteHtml(head, expanded.get(head.key) === true)}
-                <div class="android-notify-stack vista-treelist-row" data-act="stack" tabindex="0" aria-label="Show all ${notes.length} notifications from ${esc(head.app || pkg)}">
+                <div class="android-notify-stack vista-treelist-row" data-act="stack" tabindex="0" aria-label="Show all ${notes.length} notifications from ${esc(appNameOf(head))}">
                     ${peeks}${rest > 0 ? `<span class="android-notify-peek network-flyout-sub">+${rest} more</span>` : ''}
                     <span class="android-notify-stack-edge"></span><span class="android-notify-stack-edge is-back"></span>
                 </div>`;
         }
-        return `<div class="android-notify-app${stacked ? ' is-stack' : ''}${open ? ' is-open' : ''}" role="list" aria-label="${esc(head.app || pkg)}" data-pkg="${esc(pkg)}">
-            <div class="android-notify-app-head network-flyout-heading" data-act="head">${appPic(head, 16)}<span>${esc(head.app || pkg)}</span>${count > 1 ? `<span class="android-notify-count">(${count})</span>` : ''}
+        return `<div class="android-notify-app${stacked ? ' is-stack' : ''}${open ? ' is-open' : ''}" role="list" aria-label="${esc(appNameOf(head))}" data-pkg="${esc(pkg)}">
+            <div class="android-notify-app-head network-flyout-heading" data-act="head">${appPic(head, 16)}<span>${esc(appNameOf(head))}</span>${count > 1 ? `<span class="android-notify-count">(${count})</span>` : ''}
             ${stacked ? `<button type="button" class="android-notify-expando${open ? ' is-open' : ''}" data-act="stack" title="${open ? 'Stack these notifications' : 'Show all of them'}" aria-label="${open ? 'Stack these notifications' : 'Show all of them'}" aria-expanded="${open ? 'true' : 'false'}"></button>` : ''}
             ${canClear ? '<button type="button" class="tray-balloon-close" data-act="clearapp" title="Clear these notifications" aria-label="Clear these notifications"></button>' : ''}</div>
             ${body}
@@ -598,9 +607,9 @@
         const programs = P && typeof P.items === 'function' ? P.items() : [];
         const labelOf = (pkg) => {
             const k = filter.known[pkg];
-            if (k && k.app) return k.app;
             const it = programs.find((x) => String(x.launchId || '').startsWith(`android:${pkg}/`));
-            return (it && it.text) || pkg;
+            // a name kept before the resolver may be the package itself: appNameOf drops it
+            return appNameOf({ package: pkg, app: (k && k.app) || (it && it.text) || '' });
         };
         const pkgs = new Set(Object.keys(names).concat(Object.keys(filter.known)));
         return Array.from(pkgs).map((pkg) => {
@@ -637,7 +646,7 @@
             return {
                 id: `a\u0001${a.pkg}`,
                 label: a.app,
-                tip: `${a.app} (${a.pkg})`,
+                tip: `${a.app}`,
                 icon: pic || undefined,
                 cells: { show: { checked: appOn(a.pkg), label: `${a.app}: Show in the Bell` } },
                 children: a.channels.map((c) => ({

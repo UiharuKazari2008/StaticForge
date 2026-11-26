@@ -123,9 +123,11 @@ function inboxCounts(user = 'admin') {
     const rows = safe(() => require('./notificationInbox').list(user), []).filter((n) => WAITING.has(n.state)
         && (n.state === 'new' || (Number(n.updatedAt) || Number(n.createdAt) || 0) >= dayAgo));
     const has = (p) => rows.filter((n) => n.id.startsWith(p)).length;
-    const mine = (n) => /^(mail|dmail|sms|chat|director):/.test(n.id);
+    const mine = (n) => /^(mail|dmail|sms|chat|director):/.test(n.id) || n.id === 'stack:mail';
+    // a flood of mail is one stack:mail row (#1098): it counts as the mails it holds
+    const stacked = rows.filter((n) => n.id === 'stack:mail').reduce((a, n) => a + (Number(n.data && n.data.count) || 1), 0);
     return {
-        mailFresh: has('mail:') + has('dmail:'),
+        mailFresh: has('mail:') + has('dmail:') + stacked,
         smsFresh: has('sms:'),
         chatFresh: has('chat:'),
         directorUnseen: rows.some((n) => /^director:.*:turn$/.test(n.id)),
@@ -138,9 +140,12 @@ function inboxCounts(user = 'admin') {
         // (#1056, Yukimi Nov 22: the holder lists EVERY pending notification as its own entry - the mail / text /
         // Messenger / Director ones too, by their kind's picture; the app leaves out their class's icon entry then. Thirty
         // at most: the holder slides sideways)
-        noticeList: rows.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 30)
+        // in the inbox's own order (notificationInbox.orderNotices, #1098: the newest on top, priority among older ones)
+        noticeList: rows.slice(0, 30)
             // kind: its holder picture's (#1056; the app's tray draws icons[kind], else its class's)
-            .map((n) => ({ id: n.id, title: n.title || '', text: String(n.text || '').slice(0, 300), cls: n.cls || '', kind: holderKindOf(n), at: n.createdAt || 0 }))
+            .map((n) => ({ id: n.id, title: n.title || '', text: String(n.text || '').slice(0, 300), cls: n.cls || '', kind: holderKindOf(n), at: n.sortAt || n.createdAt || 0,
+                // a stack (stack:mail, #1098): how many it holds, the holder's badge
+                ...(n.data && n.data.stack ? { count: Number(n.data.count) || 1 } : {}) }))
     };
 }
 

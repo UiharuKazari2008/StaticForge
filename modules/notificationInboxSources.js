@@ -71,6 +71,7 @@ function onMailEvent(p) {
             app: 'messaging',
             id: mailId(p.accountId, m.folder || folder, uid),
             cls: 'mail',
+            stack: 'mail', // one stack for all mail (#1098)
             title: 'New E-mail Message',
             text: `From: ${from}\n${subject}`,
             actions: ['view'],
@@ -114,6 +115,7 @@ function onDovecoteNewMail(event) {
         app: 'messaging',
         id: dmailId(event.id),
         cls: 'mail',
+        stack: 'mail', // one stack for all mail (#1098)
         title: 'New E-mail Message',
         text: `From: ${from}\n${subject}`,
         actions: ['view'],
@@ -142,7 +144,14 @@ function sweepDovecote() {
     let dm = null;
     try { dm = require('./dovecoteMail'); } catch (_e) { return 0; }
     let rows = [];
-    try { rows = inbox.list('admin').filter((n) => n.id.startsWith('dmail:') && (n.state === 'new' || n.state === 'seen')); } catch (_e) { return 0; }
+    // a dmail: notice is a row (before #1098) or an item of the live mail stack
+    try {
+        for (const n of inbox.list('admin')) {
+            if (n.state !== 'new' && n.state !== 'seen') continue;
+            if (n.id.startsWith('dmail:')) rows.push(n);
+            else if (n.id === 'stack:mail' && n.data && Array.isArray(n.data.items)) rows.push(...n.data.items.filter((x) => x && String(x.id).startsWith('dmail:')));
+        }
+    } catch (_e) { return 0; }
     if (!rows.length) return 0;
     let still = null;
     try { still = dm.unreadInboxIds(dm.HUMAN_OWNER || 'yukimi', rows.map((n) => n.id.slice(6))); } catch (_e) { return 0; }

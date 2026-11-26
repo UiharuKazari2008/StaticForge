@@ -11,7 +11,7 @@ A durable store of the notices producers raise, so a phone that was not connecte
 
 | Request | Body -> reply |
 |---|---|
-| `inbox_list` | `{ since?, includeCleared? }` -> `{ notices, total }` (newest first, not expired; cleared ones left out unless asked). `since` (ms, #890 round 5 W2): only the rows created or changed (`createdAt` or `updatedAt` at or after it), cleared ones included so the page closes its copy; send the newest `createdAt` / `updatedAt` the page holds and merge by `id` (each row carries `updatedAt`, when its state last moved; it equals `createdAt` until then). Expired and pruned rows are not listed: the page drops a notice past its `expiresAt` itself. `total`: how many notices a full list holds (not cleared, not expired). Without `since`: unchanged. |
+| `inbox_list` | `{ since?, includeCleared? }` -> `{ notices, total }` (in the order below: new ones first, then by `prio`; not expired; cleared ones left out unless asked). `since` (ms, #890 round 5 W2): only the rows created or changed (`createdAt` or `updatedAt` at or after it), cleared ones included so the page closes its copy; send the newest `createdAt` / `updatedAt` the page holds and merge by `id` (each row carries `updatedAt`, when its state last moved; it equals `createdAt` until then). Expired and pruned rows are not listed: the page drops a notice past its `expiresAt` itself. `total`: how many notices a full list holds (not cleared, not expired). Without `since`: unchanged. |
 | `inbox_ack` | `{ id, state: 'seen'|'acted'|'cleared', device? }` -> `{ ok }`. State never steps back. Destructive. |
 | `inbox_prefs` | `{ quiet: [cls...] }` -> `{ ok, quiet }`. The phone's Settings > Sounds & Notifications classes with Display message off (#876). A notice of a quiet class is stored as `seen` (kept for the title bar's state), never popped on resume and never sent to the phones' background links. Stored per user type; the default is none. |
 | `reminder_snooze` | `{ id, minutes? \| at? }` -> `{ ok, at }`. A `rem:` notice is cleared now and published again with the same id at `at` (or in `minutes`, default 5). Destructive. |
@@ -25,13 +25,24 @@ A durable store of the notices producers raise, so a phone that was not connecte
 
 Every notice sent to a phone's background link (`as_event inbox.notice`) is a delivery row until the app confirms it (`as_event inbox.posted { id, how }`: posted, shown by a page in front that said so through `AndroidInbox.shown`, or already showing). Unconfirmed, it is sent again after 15 s, 45 s, 2 min and 5 min, and on every hello of that phone. The rows outlive a server restart. A notice already seen, acted on or cleared anywhere is not sent again, and a phone's hello does not re-send what that phone confirmed. A new text's notice (`sms:`) carries its conversation (`data.title, sender, address, isGroup, date, account, guid`) and is the text's only path to the app, which renders it as a MessagingStyle conversation. Server-raised kinds: `dmail:` (household mailbox), `question:` (Director questions), `emotion:`, `system:` (warning / error notices), `api-key:`.
 
-A notice: `{ id, app, cls, title, text, actions[], data, createdAt, expiresAt, state, actedBy }`. `cls` is the wmShell notification class (sound and icon); `data.open` names the app layer / direction to open; `state` is `new` -> `seen` -> `acted`, or `cleared`.
+A notice: `{ id, app, cls, title, text, actions[], data, createdAt, updatedAt, expiresAt, state, actedBy, sortAt, prio }`. `cls` is the wmShell notification class (sound and icon); `data.open` names the app layer / direction to open; `state` is `new` -> `seen` -> `acted`, or `cleared`.
 
 ## Broadcast (same user type's phone pages)
 
 - `inbox_updated` `{ reason: 'new', notice }` when a notice is published, or `{ reason: 'ack', id, state, device }` when its state moves to `acted` or `cleared` (so a notice cleared or acted on one device clears on the others). A move to `seen` is not broadcast (no page acts on it; #890 round 5).
 - `msg_new_state` `{ mail, sms }` when either changes (phone pages only; a sleeping page gets the newest).
 - Phone pages only (`modules/websocket.js` PHONE_ONLY_TYPES: the only reader, `wmNotificationInbox.js`, loads in the mobile shell). A sleeping page (client_dormant) gets `reason: 'new'` at once (reminders and missed notices wake it) but no `reason: 'ack'`: it catches up with `inbox_list { since }` when it wakes (W7).
+
+## Stacks and order (Yozora #1098)
+
+A producer may pass `stack: '<key>'` to `publish()`; mail does (`stack: 'mail'`, IMAP and Dovecote, every account). A flood of mail is one notice carrying the same information:
+
+- The notices of a stack are **items** of one row, id `stack:<key>`, never rows of their own. `app` / `cls` / `actions` are the newest item's. `title`: one item -> its own title; n > 1 -> `"<n> New E-mail Messages"` (generic fallback `"<n> <item title>"`). `text`: one item -> its text; n > 1 -> one line per item, newest first (mail: `"<from> - <subject>"`), six at most, then `"+ k more"`.
+- `data: { stack, count, lastAt, items: [ { id, title, text, at, data, actions } ] }`: `items` newest first, 50 at most (`count` stays the true count); `items[i].id` is the item's own id (`mail:<account>:<folder>:<uid>`, `dmail:<id>`) and `items[i].data` its own data (what opens that one message); `lastAt` is the newest item's time (ms).
+- Sound: no live stack row (none, or `acted` / `cleared`) -> a new stack of this one item, `new`, loud (`alert: true`). A live row (`new` / `seen`) -> the item joins on top **silently** (`alert: false`, state kept, `createdAt` kept, `updatedAt` and `data.lastAt` move), `inbox_updated { reason: 'new', notice }` and the phones' `inbox.notice` go as for any update (the app re-posts the same id in place: one Android notification, no new sound). The same item id again replaces that item where it is, still silent. Texts / iMessage are not stacked: each new message keeps sounding (`sms:<account>:<chat>`, `alert: true`).
+- Clearing: `clear` / `clearWhere` / `inbox_ack cleared|acted` of an id that is not a row but an item of a live stack takes the item out (count, title, text, items recomputed; a silent update as above); the last item clears the stack row. `inbox_ack` of `stack:<key>` acts on the whole stack; the next item starts a new loud stack.
+
+**Order** (`list`, `inbox_list`, the phones' catch-up; `notificationInbox.orderNotices(rows, now)`): every notice row carries `sortAt` (`data.lastAt` or `createdAt`) and `prio` (by `cls`: `sms` / `text` / `texts` / `imessage` / `weather-severe` 4; `reminder` / `calendar` / `alarm` 3; `chat` / `messenger` / `mail` / `weather-alert` 2; the rest 1). A notice with `sortAt` within 15 minutes comes first, newest first (a new notice is on top); the older ones go by `prio` descending, then `sortAt` descending. A page sorts by the `sortAt` / `prio` it is sent with the same rule. A real phone's catch-up carries only the top of that order (a stale text is skipped, not sent), the test lane all of them (oldest first).
 
 ## Reminders (Yozora #876)
 
@@ -45,7 +56,7 @@ A due reminder is an inbox notice: `cls: 'reminder'`, `app: 'calendar'|'tasks'`,
 
 | Id | `cls` | Raised by / cleared when |
 | --- | --- | --- |
-| `mail:<account>:<folder>:<uid>` | `mail` | `mailAccounts` new mail with notify on ("New E-mail Message", 7 days); cleared on `\Seen`, removal, or the account deleted (`clearWhere 'mail:<account>:'`) |
+| `stack:mail` (items `mail:<account>:<folder>:<uid>`, `dmail:<id>`) | `mail` | `mailAccounts` new mail with notify on and the household Dovecote mailbox ("New E-mail Message", 7 days) are items of one stack, see Stacks; an item leaves on `\Seen`, removal, or the account deleted (`clearWhere 'mail:<account>:'`) |
 | `sms:<account>:<chatGuid>` | `sms` | `textMessaging` new text with notify on ("New Text Message", the conversation's newest line, 7 days); cleared when the conversation is read or answered |
 | `tm-signin:<account>` | `notification` | `textMessaging` `signin_lost` ("Text messages stopped") |
 | `chat:<chatId>` | `chat` | `chatImpl`: a persona's reply to a request from the phone (7 days) |

@@ -14,14 +14,23 @@ const toPhones = [];
 activeSync.sendInboxNotice = (_g, _w, n) => { toPhones.push(n); return 1; };
 activeSync.sendInboxCleared = () => 1;
 inbox.bind({ getWebSocketServer: () => ({ broadcast: () => {} }) });
-const state = (id) => { const n = inbox.list('admin', { includeCleared: true }).find((x) => x.id === id); return n && n.state; };
+// a dmail: notice is an item of the one mail stack (#1098): 'new' while the item is in the live stack, 'cleared' once it was and is not
+const heldItems = new Set();
+const state = (ID) => {
+    const all = inbox.list('admin', { includeCleared: true });
+    const row = all.find((x) => x.id === ID);
+    if (row) return row.state;
+    const st = all.find((x) => x.id === 'stack:mail' && x.state !== 'cleared');
+    if (st && st.data.items.some((i) => i.id === ID)) { heldItems.add(ID); return 'new'; }
+    return heldItems.has(ID) ? 'cleared' : undefined;
+};
 
 // household mailbox: yukimi's inbox only
 src.onDovecoteNewMail({ mailbox: 'yukimi', id: 42, from: '"Rook" <rook@x>', subject: 'Report' });
 src.onDovecoteNewMail({ mailbox: 'rook', id: 43, from: 'a', subject: 'b' });
 assert.strictEqual(state('dmail:42'), 'new');
 assert.strictEqual(state('dmail:43'), undefined, "a bot's mailbox is not the phone's");
-assert.ok(/From: Rook\nReport/.test(toPhones.find((n) => n.id === 'dmail:42').text));
+assert.ok(/From: Rook\nReport/.test(toPhones.find((n) => n.id === 'stack:mail').text));
 src.onDovecoteDone(42);
 assert.strictEqual(state('dmail:42'), 'cleared');
 

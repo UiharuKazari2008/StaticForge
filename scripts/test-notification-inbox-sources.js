@@ -29,24 +29,34 @@ inbox.bind(gr);
 const byId = (id, user = 'admin') => inbox.list(user, { includeCleared: true }).find((n) => n.id === id);
 
 (async () => {
-    // ---- mail: new (notify on) -> mail:<account>:<folder>:<uid>; \Seen clears; removed clears
+    // ---- mail: new (notify on) -> an item of the one mail stack (#1098: stack:mail, items keep mail:<account>:<folder>:<uid>);
+    // \Seen / removed takes the item out of the stack, the last one clears it (the stack itself is tested in test-notification-inbox-stack.js)
     src.onMailEvent({ event: 'new', accountId: 'gmail', folder: 'INBOX', uids: [41], notify: true, message: { uid: 41, folder: 'INBOX', subject: 'Dinner', from: [{ name: 'Mika', address: 'mika@example.com' }] } });
-    let n = byId('mail:gmail:INBOX:41');
-    assert.ok(n, 'mail notice stored');
-    assert.strictEqual(n.title, 'New E-mail Message');
-    assert.strictEqual(n.text, 'From: Mika\nDinner');
+    let n = byId('stack:mail');
+    assert.ok(n, 'mail stack stored');
+    assert.ok(!byId('mail:gmail:INBOX:41'), 'a mail is an item of the stack, not a row of its own');
+    assert.strictEqual(n.title, 'New E-mail Message', 'one item: its own title');
+    assert.strictEqual(n.text, 'From: Mika\nDinner', 'one item: its own text');
     assert.strictEqual(n.cls, 'mail');
-    assert.deepStrictEqual([n.data.app, n.data.kind, n.data.accountId, n.data.uid], ['messaging', 'mail', 'gmail', 41]);
-    assert.strictEqual(toPhones.pop().id, 'mail:gmail:INBOX:41', 'sent to the phones');
+    assert.strictEqual(n.data.items[0].id, 'mail:gmail:INBOX:41', 'the item keeps the mail id');
+    assert.deepStrictEqual([n.data.items[0].data.app, n.data.items[0].data.kind, n.data.items[0].data.accountId, n.data.items[0].data.uid], ['messaging', 'mail', 'gmail', 41]);
+    assert.strictEqual(toPhones.pop().id, 'stack:mail', 'sent to the phones');
     src.onMailEvent({ event: 'new', accountId: 'gmail', folder: 'INBOX', uids: [42], notify: false, message: { uid: 42, subject: 'x' } });
-    assert.ok(!byId('mail:gmail:INBOX:42'), 'notify off: nothing');
+    assert.strictEqual(byId('stack:mail').data.count, 1, 'notify off: nothing');
     src.onMailEvent({ event: 'new', accountId: 'gmail', folder: 'INBOX', uids: [43], notify: true, message: { uid: 43, subject: '', sender: '"Ann Lee" <ann@example.com>' } });
-    assert.strictEqual(byId('mail:gmail:INBOX:43').text, 'From: Ann Lee\n(no subject)', 'sender header name, (no subject)');
+    n = byId('stack:mail');
+    assert.strictEqual(n.data.count, 2);
+    assert.strictEqual(n.data.items[0].text, 'From: Ann Lee\n(no subject)', 'sender header name, (no subject)');
+    toPhones.length = 0;
     src.onMailEvent({ event: 'flags', accountId: 'gmail', folder: 'INBOX', uids: [41], flags: { 41: ['\\Seen'] } });
-    assert.strictEqual(byId('mail:gmail:INBOX:41').state, 'cleared', 'read clears');
-    assert.deepStrictEqual(clearedOnPhones.pop(), { user: 'admin', id: 'mail:gmail:INBOX:41' }, 'phones told cleared');
+    n = byId('stack:mail');
+    assert.deepStrictEqual(n.data.items.map((x) => x.id), ['mail:gmail:INBOX:43'], 'read takes the item out of the stack');
+    assert.strictEqual(n.state, 'new', 'the stack stays while an item waits');
+    assert.strictEqual(clearedOnPhones.length, 0, 'phones are not told the stack is cleared');
+    assert.deepStrictEqual(toPhones.map((x) => [x.id, x.alert]), [['stack:mail', false]], 'but get the silent update');
     src.onMailEvent({ event: 'removed', accountId: 'gmail', folder: 'INBOX', uids: [43] });
-    assert.strictEqual(byId('mail:gmail:INBOX:43').state, 'cleared', 'removed clears');
+    assert.strictEqual(byId('stack:mail').state, 'cleared', 'removed clears (the last item clears the stack)');
+    assert.deepStrictEqual(clearedOnPhones.pop(), { user: 'admin', id: 'stack:mail' }, 'phones told cleared');
     clearedOnPhones.length = 0;
 
     // ---- text messages: per conversation, the newest line supersedes; read / my reply clears

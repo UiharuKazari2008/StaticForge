@@ -56,6 +56,14 @@
         return v.length < 8000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v) ? v : null;
     }
 
+    // the app's name, never its package (androidAppName.js; the sent label first)
+    function appName(pkg, sent) {
+        const R = root.melatonAppName;
+        if (R && typeof R.resolve === 'function') return R.resolve(pkg, sent);
+        const s = String(sent || '').trim();
+        return s && s !== pkg ? s : 'Notification';
+    }
+
     function take(deviceId, raw) {
         if (!raw || typeof raw.key !== 'string' || !raw.key) return null;
         if (!icons.has(deviceId)) icons.set(deviceId, new Map());
@@ -65,7 +73,7 @@
         return {
             key: raw.key.slice(0, 300),
             package: pkg.slice(0, 200),
-            app: String(raw.app || pkg || 'Notification').slice(0, 80),
+            app: appName(pkg, raw.app).slice(0, 80),
             title: String(raw.title || '').slice(0, 200),
             text: String(raw.text || '').slice(0, 1000),
             time: Number(raw.time) || Date.now(),
@@ -126,7 +134,7 @@
         const anchor = trayIcon();
         if (!anchor || anchor.classList.contains('hidden') || !popupsOn()) return;
         if (!root.PopoverManager || typeof root.PopoverManager.showPopover !== 'function') return;
-        const img = n.icon ? `<img src="${n.icon}" alt="" width="32" height="32">` : '<img src="/static_images/activesync/activesync-32.png" alt="" width="32" height="32">';
+        const img = n.icon ? `<img src="${n.icon}" alt="" width="32" height="32">` : '<img src="/static_images/vista-icons/generic-exe-32.png" alt="" width="32" height="32">';
         showing = { deviceId: device.deviceId, key: n.key };
         const mine = showing;
         // the popup renders title and message as HTML: a notification's words are escaped, always

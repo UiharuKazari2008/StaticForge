@@ -1108,6 +1108,13 @@ html.ui-mobile[data-wm-version="6.5"] .wm-notify-tray-icon {
     -webkit-tap-highlight-color: transparent;
 }
 
+/* a stack's count (#1098) on the holder's icon: at the icon's top right, over the 32 px picture's corner */
+html.ui-mobile[data-wm-version="6.5"] .wm-notify-tray-badge {
+    top: calc(3 * var(--wm-px));
+    right: calc(1 * var(--wm-px));
+    height: calc(14 * var(--wm-px));
+}
+
 /* ---- volume bubble: 6.1's callout in 6.5's colours (6.5's own volume panel is not built) ---- */
 html.ui-mobile[data-wm-version="6.5"] .wm-volume {
     color: var(--wm65-text);
@@ -2929,7 +2936,8 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-body .toast-buttons button {
     padding: 0 calc(6 * var(--wm-px)) !important;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-body a {
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-body a,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-body .toast-message .wm-stack-row {
     color: #08a2f7;
 }
 

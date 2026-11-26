@@ -137,7 +137,39 @@ function rowOut(r) {
         expiresAt: r.expiresAt || null,
         state: r.state,
         actedBy: r.actedBy || null,
+        // the order's two inputs (#1098): when it last became news (a stack: its newest item) and how much it matters
+        sortAt: sortAtOf(r),
+        prio: prioOf(r.cls),
     };
+}
+
+// ---- order (#1098): time first, priority only among the older ones ----
+// A notice that became news within FRESH_MS comes first, newest first: a new notice is always on top, whatever it is.
+// The older ones go by priority (a text over mail over the rest), then by time. The page sorts by the sortAt / prio
+// it is sent with the same rule (it keeps no priority table of its own).
+const FRESH_MS = 15 * 60 * 1000;
+const PRIO = { sms: 4, text: 4, texts: 4, imessage: 4, 'weather-severe': 4, reminder: 3, calendar: 3, alarm: 3, chat: 2, messenger: 2, mail: 2, 'weather-alert': 2 };
+const prioOf = (cls) => PRIO[cls] || 1;
+function sortAtOf(r) {
+    const d = typeof r.data === 'string' ? safeJson(r.data, {}) : (r.data || {});
+    return Number(d.lastAt) || Number(r.createdAt) || 0;
+}
+
+/** Rows (as rowOut gives them, or raw) in the order a list shows them: fresh ones newest first, then by prio, then newest. */
+function orderNotices(rows, now = nowFn()) {
+    const keyed = (Array.isArray(rows) ? rows : []).map((r) => ({
+        r,
+        at: Number.isFinite(Number(r.sortAt)) && Number(r.sortAt) > 0 ? Number(r.sortAt) : sortAtOf(r),
+        prio: Number.isFinite(Number(r.prio)) ? Number(r.prio) : prioOf(r.cls),
+    }));
+    const fresh = (k) => k.at >= now - FRESH_MS;
+    keyed.sort((a, b) => {
+        const fa = fresh(a), fb = fresh(b);
+        if (fa !== fb) return fa ? -1 : 1;
+        if (!fa && a.prio !== b.prio) return b.prio - a.prio;
+        return b.at - a.at || (Number(b.r.updatedAt) || 0) - (Number(a.r.updatedAt) || 0);
+    });
+    return keyed.map((k) => k.r);
 }
 
 function safeJson(s, fallback) {
@@ -167,6 +199,8 @@ function publish(notice = {}) {
     // a class the phone shows without a message (Sounds & Notifications: Display message on screen off):
     // kept for the title bar's state, never popped on resume nor posted on Android
     const quiet = !!cls && quietClasses(user).has(cls);
+    const stackKey = String(notice.stack || '').trim().replace(/[^a-z0-9_-]/gi, '').slice(0, 30);
+    if (stackKey) return publishStacked(user, notice, { id, title, cls, quiet, now, expiresAt, stackKey });
     const row = {
         user,
         id,
@@ -228,6 +262,115 @@ function publish(notice = {}) {
         }
     } catch (_e) { /* a new table: new */ }
     row.fresh = alert ? 1 : 0;
+    if (!storeRow(row)) return null;
+    prune(user);
+    return announce(user, row, alert, quiet, user === 'test' && notice.push === false);
+}
+
+/** A stored row goes out: the pages' inbox_updated, the phones' status icons and background links (a silent update posts in place). */
+function announce(user, row, alert, quiet, pushOff) {
+    const id = row.id;
+    const out = Object.assign(rowOut(row), { alert });
+    broadcast(user, { type: 'inbox_updated', data: { reason: 'new', notice: out } });
+    // the phones' status icons read the waiting notices (phoneStatus, #908)
+    try { require('./phoneStatus').touch('inbox'); } catch (_e) { /* best effort */ }
+    // the phones' background links too (#876 D): a phone whose page is not running posts it natively.
+    // push: false (test lane only, /api/test-devices "get" notices): stored for the phones to fetch - their hello
+    // catch-up and the status snapshot's notices list - but not sent live
+    if (!quiet && !pushOff) {
+        const sentTo = [];
+        try { require('./activeSync').sendInboxNotice(gr, null, Object.assign({ user }, out), { sentTo }); } catch (e) { console.warn(`[notify-inbox] phones: ${e.message}`); }
+        sentTo.forEach((device) => noteSent(device, user, id, alert, true));
+    }
+    return out;
+}
+
+// ---- stacks (#1098): a flood of mail is one notice ----
+// A producer passes stack: '<key>' (mail: IMAP and Dovecote). The notices of a stack are ITEMS of one row, id stack:<key>:
+//   data { stack, count, lastAt, items: [ { id, title, text, at, data, actions } ] } (items newest first, 50 at most; count
+//   stays the true count), title "n New E-mail Messages", text one line per item (6 at most, then "+ k more").
+//   - no live row (none, or acted / cleared): a new stack of this one item, new, LOUD.
+//   - a live row (new / seen): the item joins on top, SILENT (the phones re-post the same id in place, so one Android
+//     notification); createdAt is kept, updatedAt and data.lastAt move. The same item id again replaces it where it is.
+//   - clearing an item (clear / clearWhere of an id that is an item, not a row) takes it out; the last one clears the row.
+//   - ack of stack:<key> is the whole stack; the next item starts a new loud one.
+const STACK_ITEMS_MAX = 50;
+const STACK_LINES_MAX = 6;
+const STACK_TITLES = { mail: (n) => `${n} New E-mail Messages` };
+const firstLine = (s) => String(s || '').split('\n').find((l) => l.trim()) || '';
+const STACK_LINES = {
+    mail: (it) => {
+        const d = it.data || {};
+        return d.from || d.subject ? `${d.from || '?'} - ${d.subject || ''}`.trim() : firstLine(it.text) || it.title;
+    },
+};
+const stackLine = (key, it) => (STACK_LINES[key] ? STACK_LINES[key](it) : firstLine(it.text) || it.title);
+
+function stackView(key, items, count) {
+    const top = items[0];
+    if (count <= 1) return { title: top.title, text: top.text };
+    const title = STACK_TITLES[key] ? STACK_TITLES[key](count) : `${count} ${top.title}`;
+    const lines = items.slice(0, STACK_LINES_MAX).map((it) => stackLine(key, it));
+    if (count > lines.length) lines.push(`+ ${count - lines.length} more`);
+    return { title: title.slice(0, 200), text: lines.join('\n').slice(0, 2000) };
+}
+
+function publishStacked(user, notice, o) {
+    const { id, title, cls, quiet, now, expiresAt, stackKey } = o;
+    const sid = `stack:${stackKey}`;
+    const item = {
+        id,
+        title: title.slice(0, 200),
+        text: String(notice.text || '').slice(0, 1000),
+        at: now,
+        data: notice.data && typeof notice.data === 'object' ? notice.data : {},
+        actions: Array.isArray(notice.actions) ? notice.actions.slice(0, 6) : [],
+    };
+    let cur = null;
+    try { cur = noticeRow(user, sid); } catch (_e) { cur = null; }
+    const live = !!cur && (cur.state === 'new' || cur.state === 'seen') && !(cur.expiresAt && cur.expiresAt <= now);
+    let items = [item];
+    let count = 1;
+    let lastAt = now;
+    if (live) {
+        const d = safeJson(cur.data, {});
+        const held = Array.isArray(d.items) ? d.items : [];
+        const at = held.findIndex((x) => x && x.id === id);
+        count = Number(d.count) || held.length;
+        if (at >= 0) {
+            // the same item again: replaced where it is (it keeps its place and its time), nothing joins
+            items = held.slice();
+            items[at] = Object.assign({}, item, { at: held[at].at || now });
+            lastAt = Number(d.lastAt) || now;
+        } else {
+            items = [item].concat(held).slice(0, STACK_ITEMS_MAX);
+            count += 1;
+        }
+    }
+    const view = stackView(stackKey, items, count);
+    const row = {
+        user,
+        id: sid,
+        app: String(notice.app || '').slice(0, 40),
+        cls,
+        title: view.title,
+        text: view.text,
+        actions: JSON.stringify(items[0].actions),
+        data: JSON.stringify({ stack: stackKey, count, lastAt, items }),
+        createdAt: now,
+        expiresAt: live ? Math.max(Number(cur.expiresAt) || 0, Number(expiresAt) || 0) || null : expiresAt,
+        state: live ? cur.state : (quiet ? 'seen' : 'new'),
+        actedBy: null,
+        updatedAt: now,
+        digest: sha1(`stack|${stackKey}|${count}|${id}`),
+        fresh: live ? 0 : 1,
+    };
+    if (!storeRow(row)) return null;
+    prune(user);
+    return announce(user, row, !live, quiet, user === 'test' && notice.push === false);
+}
+
+function storeRow(row) {
     try {
         database()
             .prepare(
@@ -239,24 +382,43 @@ function publish(notice = {}) {
                      createdAt=CASE WHEN @fresh = 1 THEN excluded.createdAt ELSE createdAt END`
             )
             .run(row);
-        prune(user);
+        return true;
     } catch (e) {
         console.warn(`[notify-inbox] publish failed: ${e.message}`);
-        return null;
+        return false;
     }
-    const out = Object.assign(rowOut(row), { alert });
-    broadcast(user, { type: 'inbox_updated', data: { reason: 'new', notice: out } });
-    // the phones' status icons read the waiting notices (phoneStatus, #908)
-    try { require('./phoneStatus').touch('inbox'); } catch (_e) { /* best effort */ }
-    // the phones' background links too (#876 D): a phone whose page is not running posts it natively.
-    // push: false (test lane only, /api/test-devices "get" notices): stored for the phones to fetch - their hello
-    // catch-up and the status snapshot's notices list - but not sent live
-    if (!quiet && !(user === 'test' && notice.push === false)) {
-        const sentTo = [];
-        try { require('./activeSync').sendInboxNotice(gr, null, Object.assign({ user }, out), { sentTo }); } catch (e) { console.warn(`[notify-inbox] phones: ${e.message}`); }
-        sentTo.forEach((device) => noteSent(device, user, id, alert, true));
+}
+
+/**
+ * Take items out of the live stacks of a user: match(itemId) says which; fragment is a cheap pre-filter of the stored JSON.
+ * Silent (the page and the phones are told the way a silent update is). @returns how many items went
+ */
+function stackRemove(user, match, fragment, device) {
+    let rows = [];
+    try {
+        rows = database().prepare("SELECT * FROM notices WHERE user = ? AND substr(id, 1, 6) = 'stack:' AND state NOT IN ('acted', 'cleared') AND instr(data, ?) > 0").all(user, fragment);
+    } catch (_e) { return 0; }
+    let removed = 0;
+    for (const r of rows) {
+        const d = safeJson(r.data, {});
+        const held = Array.isArray(d.items) ? d.items : [];
+        const keep = held.filter((x) => !(x && match(String(x.id))));
+        const gone = held.length - keep.length;
+        if (!gone) continue;
+        removed += gone;
+        const count = Math.max(0, (Number(d.count) || held.length) - gone);
+        if (!keep.length || !count) { ack(user, r.id, 'cleared', device); continue; }
+        const key = String(d.stack || r.id.slice(6));
+        const view = stackView(key, keep, count);
+        const now = nowFn();
+        try {
+            database().prepare('UPDATE notices SET title = ?, text = ?, actions = ?, data = ?, updatedAt = ? WHERE user = ? AND id = ?')
+                .run(view.title, view.text, JSON.stringify(keep[0].actions || []), JSON.stringify({ stack: key, count, lastAt: d.lastAt, items: keep }), now, user, r.id);
+        } catch (e) { console.warn(`[notify-inbox] stack update failed: ${e.message}`); continue; }
+        const fresh = noticeRow(user, r.id);
+        if (fresh) announce(user, fresh, false, !!fresh.cls && quietClasses(user).has(fresh.cls), false);
     }
-    return out;
+    return removed;
 }
 
 // A class that is worse news than another: moving up it is material even when the text digest is the same (the weather
@@ -281,7 +443,7 @@ function digestChanged(cur, row, custom) {
 }
 
 /**
- * The notices held for a user: not expired, newest first; cleared ones left out unless asked.
+ * The notices held for a user: not expired, in orderNotices' order (fresh ones newest first, then by prio); cleared ones left out unless asked.
  * since (ms, #890 round 5 W2): only the rows created or changed (a state moved on) at or after it - the
  * page sends the newest createdAt / updatedAt it holds and merges the rows by id. Cleared rows are
  * included then (the page closes its copy); expired and pruned rows are not (the page drops a notice
@@ -293,15 +455,15 @@ function list(user, { since = 0, includeCleared = false } = {}) {
     const from = Number(since) || 0;
     try {
         if (from > 0) {
-            return database()
+            return orderNotices(database()
                 .prepare('SELECT * FROM notices WHERE user = ? AND (createdAt >= ? OR updatedAt >= ?) AND (expiresAt IS NULL OR expiresAt > ?) ORDER BY createdAt DESC LIMIT ?')
                 .all(u, from, from, now, MAX_PER_USER)
-                .map(rowOut);
+                .map(rowOut), now);
         }
         const rows = database()
             .prepare('SELECT * FROM notices WHERE user = ? AND (expiresAt IS NULL OR expiresAt > ?) ORDER BY createdAt DESC LIMIT ?')
             .all(u, now, MAX_PER_USER);
-        return rows.filter((r) => includeCleared || r.state !== 'cleared').map(rowOut);
+        return orderNotices(rows.filter((r) => includeCleared || r.state !== 'cleared').map(rowOut), now);
     } catch (e) {
         console.warn(`[notify-inbox] list failed: ${e.message}`);
         return [];
@@ -333,7 +495,16 @@ function ack(user, id, state, device) {
     if (!STATES.has(state) || state === 'new') return false;
     try {
         const cur = database().prepare('SELECT state FROM notices WHERE user = ? AND id = ?').get(u, String(id || ''));
-        if (!cur) return false;
+        if (!cur) {
+            // not a row: maybe an item of a live stack (a mail read elsewhere, #1098); acted / cleared takes it out of the stack
+            const want = String(id || '');
+            if (!want) return false;
+            const frag = `"id":${JSON.stringify(want)}`;
+            if (state === 'seen') {
+                try { return database().prepare("SELECT 1 FROM notices WHERE user = ? AND substr(id, 1, 6) = 'stack:' AND state NOT IN ('acted', 'cleared') AND instr(data, ?) > 0").get(u, frag) !== undefined; } catch (_e) { return false; }
+            }
+            return stackRemove(u, (x) => x === want, frag, device) > 0;
+        }
         // never step back (acted/cleared outrank seen)
         const rank = { new: 0, seen: 1, acted: 2, cleared: 3 };
         const next = rank[state] >= rank[cur.state] ? state : cur.state;
@@ -377,7 +548,8 @@ function clearWhere(user, prefix, device) {
     }
     let n = 0;
     for (const id of ids) if (clear(u, id, device)) n += 1;
-    return n;
+    // and the items of a live stack that start so (an account deleted: its mail leaves the mail stack, #1098)
+    return n + stackRemove(u, (x) => x.startsWith(p), `"id":${JSON.stringify(p).slice(0, -1)}`, device);
 }
 
 /** The notice is done with: every partnered phone cancels its Android notification (#876). */
@@ -463,18 +635,18 @@ const CATCH_UP_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The notices a phone's background link may have missed: still new (not seen, used or cleared anywhere),
- * not expired, not a quiet class, from the last 24 h; oldest first.
+ * not expired, not a quiet class, from the last 24 h; in orderNotices' order (the top one first, #1098).
  */
 function pendingForPhones(user) {
     const u = qu(user);
     const now = nowFn();
     const quiet = quietClasses(u);
     try {
-        return database()
-            .prepare("SELECT * FROM notices WHERE user = ? AND state = 'new' AND createdAt >= ? AND (expiresAt IS NULL OR expiresAt > ?) ORDER BY createdAt ASC LIMIT 50")
+        return orderNotices(database()
+            .prepare("SELECT * FROM notices WHERE user = ? AND state = 'new' AND createdAt >= ? AND (expiresAt IS NULL OR expiresAt > ?) ORDER BY createdAt DESC LIMIT 50")
             .all(u, now - CATCH_UP_MS, now)
             .filter((r) => !(r.cls && quiet.has(r.cls)))
-            .map(rowOut);
+            .map(rowOut), now);
     } catch (e) {
         console.warn(`[notify-inbox] pending failed: ${e.message}`);
         return [];
@@ -504,10 +676,11 @@ function catchUpPhone(deviceId) {
     // (the emulator harness reads what it was sent, modules/testDevices.js), so it still gets every notice.
     for (const user of (isTestDevice(deviceId) ? ['test'] : ['admin', 'dev_admin'])) {
         const testLane = user === 'test';
-        // newest last (pendingForPhones orders by createdAt): the one notice a real phone's catch-up carries
+        // the top of the order first (pendingForPhones, #1098): the one notice a real phone's catch-up carries; the test lane
+        // gets all of them, oldest first so the top one lands on top of its shade
         const missed = pendingForPhones(user).filter((n) => !done.has(`${user}\u0000${n.id}`));
         if (!missed.length) continue;
-        const batch = testLane ? missed : [missed[missed.length - 1]];
+        const batch = testLane ? missed.slice().reverse() : missed;
         for (const n of batch) {
             // a text / call notice from before a long absence is not replayed at all (a flood on return, #1107):
             // the summary counts it
@@ -519,8 +692,9 @@ function catchUpPhone(deviceId) {
             try { sent += as.sendInboxNotice(gr, null, Object.assign({ user }, n, { alert: testLane, catchUp: true }), { deviceId, sentTo }); } catch (_e) { /* the link went again */ }
             // a fresh round of tries for it (the app confirms it, or says it showed it already)
             sentTo.forEach((device) => noteSent(device, user, n.id, testLane, true));
+            if (!testLane) break; // a real phone's catch-up is the one top notice (a stale text above it is skipped, not sent)
         }
-        if (!testLane && missed.length > 1) console.log(`[notify-inbox] ${deviceId}: catch-up carries the newest of ${missed.length} waiting notice(s); the rest stay in the inbox`);
+        if (!testLane && missed.length > 1) console.log(`[notify-inbox] ${deviceId}: catch-up carries the top of ${missed.length} waiting notice(s); the rest stay in the inbox`);
     }
     if (sent) console.log(`[notify-inbox] ${deviceId}: caught up ${sent} notice(s)`);
     return sent;
@@ -684,6 +858,7 @@ module.exports = {
     prune,
     userOf,
     pendingForPhones,
+    orderNotices,
     catchUpPhone,
     deliveries,
     confirmed,

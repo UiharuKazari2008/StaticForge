@@ -1032,6 +1032,12 @@
         try { return t && typeof t.androidPackages === 'function' ? t.androidPackages() : new Set(); } catch (_) { return new Set(); }
     }
 
+    /** The app's name, never its package (androidAppName.js: sent label, installed program, known table, humane). */
+    function noteAppName(n) {
+        const R = window.melatonAppName;
+        if (R && typeof R.resolve === 'function') return R.resolve(n.package, n.app);
+        return n.app && n.app !== n.package ? n.app : 'Notification';
+    }
     function superNotesCfg() {
         let c = null;
         try { c = JSON.parse(localStorage.getItem(SUPER_NOTES_KEY) || 'null'); } catch (_) { c = null; }
@@ -1043,8 +1049,9 @@
         let changed = false;
         for (const n of list) {
             if (!n.package) continue;
-            const k = cfg.known[n.package] || (cfg.known[n.package] = { app: n.app || n.package, channels: [] });
-            if (!cfg.known[n.package].app || k.app !== (n.app || k.app)) { k.app = n.app || k.app; changed = true; }
+            const nm = noteAppName(n);
+            const k = cfg.known[n.package] || (cfg.known[n.package] = { app: nm, channels: [] });
+            if (k.app !== nm) { k.app = nm; changed = true; }
             if (!k.seen) { k.seen = true; changed = true; }
             if (n.channel && !k.channels.includes(n.channel) && k.channels.length < 24) { k.channels.push(n.channel); changed = true; }
         }
@@ -1191,8 +1198,8 @@
             const anyClear = ns.some((n) => n.clearable !== false);
             return [pkg, `<div class="wm-ti-super-grp${open ? ' is-open' : ''}${more && !open ? ' is-stacked' : ''}" data-pkg="${esc(pkg)}">
                 <div class="wm-ti-super-grp-head">
-                    <button type="button" class="wm-ti-super-grp-name" data-super="${more ? 'expand' : 'note'}" data-pkg="${esc(pkg)}" data-key="${esc(h.key)}"${more ? ` aria-expanded="${open}"` : ''}>${h.icon ? `<img src="${esc(h.icon)}" alt="" draggable="false">` : '<span class="wm-ti-super-noicon"></span>'}<span class="wm-ti-super-grp-app">${esc(h.app)}</span><span class="wm-ti-super-grp-when">${esc(when(latest))}</span>${more ? `<span class="wm-ti-super-grp-count">${open ? ns.length : `+${more}`}<i class="wm-ti-super-chev"></i></span>` : ''}</button>
-                    ${anyClear && more ? `<button type="button" class="wm-ti-super-note-x" data-super="clearapp" data-pkg="${esc(pkg)}" aria-label="Clear all from ${esc(h.app)}"></button>` : ''}
+                    <button type="button" class="wm-ti-super-grp-name" data-super="${more ? 'expand' : 'note'}" data-pkg="${esc(pkg)}" data-key="${esc(h.key)}"${more ? ` aria-expanded="${open}"` : ''}><img src="${esc(h.icon || (window.melatonAppName ? window.melatonAppName.genericIcon(16) : ''))}" alt="" draggable="false"><span class="wm-ti-super-grp-app">${esc(noteAppName(h))}</span><span class="wm-ti-super-grp-when">${esc(when(latest))}</span>${more ? `<span class="wm-ti-super-grp-count">${open ? ns.length : `+${more}`}<i class="wm-ti-super-chev"></i></span>` : ''}</button>
+                    ${anyClear && more ? `<button type="button" class="wm-ti-super-note-x" data-super="clearapp" data-pkg="${esc(pkg)}" aria-label="Clear all from ${esc(noteAppName(h))}"></button>` : ''}
                 </div>
                 ${shown.map((n) => noteHtml(n, when, !open)).join('')}
             </div>`];

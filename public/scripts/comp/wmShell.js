@@ -1530,6 +1530,18 @@
         return `<svg class="wm-softkey-badge" viewBox="0 0 20 18" aria-label="${t === '*' ? 'more than 9' : t}" role="img"><defs><mask id="${id}"><rect width="20" height="18" rx="5" fill="white"/>${glyph}</mask></defs><rect width="20" height="18" rx="5" fill="white" mask="url(#${id})"/></svg>`;
     }
 
+    /**
+     * A stack's count on its tray icon (issue 1098): the soft key badge's white shape with the number cut out of it, as wide as
+     * its digits ("99+" over 99, so ten mails read 10, not the soft key's "*"). The height is the tray CSS's; the width
+     * follows the viewBox.
+     */
+    function countBadge(n) {
+        const t = n > 99 ? '99+' : String(n);
+        const w = t.length === 1 ? 20 : 6 + 8 * t.length;
+        const id = `wm-ntb-${t.replace('+', 'p')}`;
+        return `<svg class="wm-count-badge" viewBox="0 0 ${w} 18" role="img" aria-label="${t}"><defs><mask id="${id}"><rect width="${w}" height="18" rx="5" fill="white"/><text x="${w / 2}" y="14" text-anchor="middle" font-family="Tahoma, Segoe UI, sans-serif" font-weight="bold" font-size="14" fill="black">${t}</text></mask></defs><rect width="${w}" height="18" rx="5" fill="white" mask="url(#${id})"/></svg>`;
+    }
+
     function pressSoftKey(side, btn) {
         // a box that came up since the keys were drawn (the poll below has not caught it yet)
         if (modalUp()) { if (!lastModal) renderSoftKeys(); return; }
@@ -6697,6 +6709,32 @@
         return [...byKey.values()];
     }
 
+    /**
+     * The order the pager and the tray list notifications in (Yukimi, Nov 25 2026, issue 1098: "time first, a new notice on
+     * top; priority only among the older ones"): a notice within NOTE_FRESH_MS of now comes first, newest first; the
+     * older ones by priority (higher first), then newest first. The server sends each inbox notice its `sortAt` and
+     * `prio` (modules/notificationInbox.js orderNotices: the same rule, no table of priorities here); a notice with
+     * neither (an older server, or a toast no app raised through the inbox) sorts by when this page first saw it, at
+     * priority 1.
+     */
+    const NOTE_FRESH_MS = 15 * 60 * 1000;
+    const noteBorn = new Map(); // toast id -> when this page first read it (the fallback for sortAt)
+    function orderNotes(list) {
+        const now = Date.now();
+        const live = new Set();
+        const rank = list.map((n, i) => {
+            live.add(n.id);
+            const own = appNotes.get(n.id);
+            if (!noteBorn.has(n.id)) noteBorn.set(n.id, now);
+            const at = Number(own && own.sortAt) || noteBorn.get(n.id);
+            const prio = Number(own && own.prio) || 1;
+            return { n, i, at, prio, fresh: now - at <= NOTE_FRESH_MS };
+        });
+        for (const id of [...noteBorn.keys()]) if (!live.has(id)) noteBorn.delete(id);
+        rank.sort((a, b) => (a.fresh !== b.fresh ? (a.fresh ? -1 : 1) : (!a.fresh && a.prio !== b.prio ? b.prio - a.prio : (b.at - a.at) || (b.i - a.i))));
+        return rank.map((r) => r.n);
+    }
+
     const noteOf = (id) => (id ? notes.find((n) => n.ids.includes(id)) || null : null);
     /** The notifications the speech bubble stands for: all but the update notices (the update icon's). */
     // New e-mail (any account: Dreamscape Mail, IMAP), text messages (any Text Messaging account) and
@@ -7373,7 +7411,7 @@
     function refreshNotes() {
         if (!shell) return;
         toastsToDialogs();
-        notes = readToasts();
+        notes = orderNotes(readToasts());
         paintBezelLed();
         const live = new Set(notes.flatMap((n) => n.ids.map((id) => seenKey(id, n))));
         for (const k of [...noteSeen]) if (!live.has(k)) noteSeen.delete(k);
@@ -7568,20 +7606,25 @@
         tray.hidden = !noteTrayOpen;
         // rebuilt only when its entries change: refreshStatus runs every 2 s, and a rebuild between
         // pointerdown and pointerup would swallow the tap
-        const key = noteTrayOpen ? JSON.stringify(entries.map((e) => [e.key, e.label])) : '';
+        const key = noteTrayOpen ? JSON.stringify(entries.map((e) => [e.key, e.label, e.badge || 0])) : '';
         if (noteTrayOpen && key !== noteTrayKey) {
             tray.textContent = '';
-            const add = (image, label, tap) => {
+            const add = (image, label, tap, badge) => {
                 const b = document.createElement('button');
                 b.type = 'button';
                 b.className = 'wm-notify-tray-icon';
                 b.style.backgroundImage = image;
+                // a stack of notices (issue 1098): the count in it, the soft key badge's white digit-cut shape
+                if (badge > 0) {
+                    b.insertAdjacentHTML('beforeend', `<span class="wm-notify-tray-badge" aria-hidden="true">${countBadge(badge)}</span>`);
+                    label = `${label}, ${badge}`;
+                }
                 b.setAttribute('aria-label', label);
                 b.addEventListener('click', (e) => { e.stopPropagation(); tap(); });
                 tray.appendChild(b);
             };
             // 6.5: the "..." opens 6.5.1's notification holder (#1026, wm65.css): each entry by its large colour picture
-            for (const e of entries) add(e.art, e.label, e.tap);
+            for (const e of entries) add(e.art, e.label, e.tap, e.badge);
         }
         noteTrayKey = key;
         renderNoteBubble();
@@ -7600,7 +7643,7 @@
     function holderEntries() {
         const out = [];
         const tbl = statusTable();
-        const noteEntry = (n) => ({ key: `n:${n.id}`, art: WM65 ? noteHolderArt(n) : noteIcon(n), label: noteTitle(n), tap: () => showNote(n.id) });
+        const noteEntry = (n) => ({ key: `n:${n.id}`, art: WM65 ? noteHolderArt(n) : noteIcon(n), label: noteTitle(n), badge: (appNotes.get(n.id) || {}).badge || 0, tap: () => showNote(n.id) });
         notesForBubbleIcon().forEach((n) => out.push(Object.assign(noteEntry(n), { from: 'notify' })));
         const inbox = window.wmNotificationInbox;
         const held = new Set(inbox && typeof inbox.shown === 'function' ? inbox.shown() : []);
@@ -7707,8 +7750,9 @@
             copy.querySelectorAll('.toast-title').forEach((x) => x.remove());
             copy.querySelectorAll('.toast-buttons').forEach((x) => x.remove());
             copy.querySelectorAll('[id]').forEach((x) => x.removeAttribute('id'));
-            const own = [...content.querySelectorAll('button')].filter((b) => !b.closest('.toast-buttons'));
-            copy.querySelectorAll('button').forEach((b, i) => {
+            // data-wm-tap: a whole area the app's note answers to (a stack's body, issue 1098), forwarded like a button
+            const own = [...content.querySelectorAll('button, [data-wm-tap]')].filter((b) => !b.closest('.toast-buttons'));
+            copy.querySelectorAll('button, [data-wm-tap]').forEach((b, i) => {
                 b.removeAttribute('onclick');
                 b.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -7947,21 +7991,24 @@
      * but one the app keeps and changes while its work runs. It is always a notification (a
      * progress toast raised within moments of a tap would otherwise become the wait cursor), with
      * its own soft keys and its own title bar glyph:
-     *   appNote({ title, html, progress, detail, icon, softKeys, event, silent })
-     *     -> { id, update({ title, html, progress, detail, icon, softKeys }), show(), hide(), shown(), close() } | null
+     *   appNote({ title, html, progress, detail, icon, softKeys, event, silent, sortAt, prio, badge })
+     *     -> { id, update({ title, html, progress, detail, icon, softKeys, sortAt, prio, badge }), show(), hide(), shown(), close() } | null
      * html is the body and detail the lines under the bar (markup: escape names); progress 0-100
      * draws the progress bar between them (null: no bar, and the note cannot get one later); icon
      * is the glyph in the title bar and the tray (an art name, or CSS url() / image-set(); the speech bubble
      * without one); softKeys is { left, right } of { label, action } like an app's, or a function
      * giving them (Hide / Dismiss without). event names its sound class (SND_EVENTS); silent
-     * brings it up without that sound. The note stays until the app closes it: hide() is
+     * brings it up without that sound. sortAt (ms) and prio place it in the pager and the tray (orderNotes); badge is
+     * the count a stack of notices shows on its tray icon (issue 1098). update() never sounds and never pops the bubble. The note stays until the app closes it: hide() is
      * the Hide soft key (the bubble goes, the glyph stays), show() brings the bubble back.
      */
     const appNotes = new Map(); // toast id -> { icon, softKeys }
     function appNote(opts = {}) {
         if (typeof window.showGlassToast !== 'function') return null;
         // holder: the notification's kind for its picture in 6.5's holder / 6.5.1's drawer (#1056, status-order.js holderKinds)
-        const st = { icon: opts.icon || null, holder: opts.holder || null, softKeys: opts.softKeys || null, actions: opts.actions || null, event: opts.event || null, silent: !!opts.silent };
+        const st = { icon: opts.icon || null, holder: opts.holder || null, softKeys: opts.softKeys || null, actions: opts.actions || null, event: opts.event || null, silent: !!opts.silent,
+            // issue 1098: where the notice sorts (the server's sortAt / prio) and the count a stack shows on its tray icon
+            sortAt: Number(opts.sortAt) || 0, prio: Number(opts.prio) || 0, badge: Math.max(0, Math.floor(Number(opts.badge) || 0)) };
         const bar = opts.progress != null && opts.progress !== false;
         let id = null;
         try {
@@ -7991,6 +8038,9 @@
                 if (o.detail != null && detail.innerHTML !== o.detail) detail.innerHTML = o.detail;
                 if (o.progress != null) setBar(o.progress);
                 if (o.icon !== undefined) st.icon = o.icon || null;
+                if (o.sortAt !== undefined) st.sortAt = Number(o.sortAt) || 0;
+                if (o.prio !== undefined) st.prio = Number(o.prio) || 0;
+                if (o.badge !== undefined) st.badge = Math.max(0, Math.floor(Number(o.badge) || 0));
                 if (o.softKeys !== undefined) { st.softKeys = o.softKeys || null; if (mine()) renderSoftKeys(); }
                 if (o.actions !== undefined) { st.actions = o.actions || null; if (mine()) renderSoftKeys(); }
                 queueNotes();
@@ -8019,7 +8069,7 @@
         const shown = noteShownNote();
         if (shown && messageClassOf(shown) === role) { hideNote(); return true; }
         closeBubble();
-        showNote(mine[mine.length - 1].id);
+        showNote(mine[0].id);
         return true;
     }
 
@@ -8056,7 +8106,7 @@
             // only the message notes are waiting (mail, texts, Messenger: their own status icons) - Today's "Notification"
             // key stands for them too, so it opens the newest of them (Yukimi, Nov 21 2026: the key showed, its tap did nothing)
             const msgs = notes.filter((n) => !isUpdateNote(n) && messageClassOf(n));
-            if (msgs.length) { showNote(msgs[msgs.length - 1].id); return; }
+            if (msgs.length) { showNote(msgs[0].id); return; }
             // the icon stands for notices waiting on the server (the app's status task) that this page holds none of:
             // they come up as notifications now (Nov 18: the tap opened nothing and the icon never went)
             if (taskRoles && taskRoles.notify && window.wmNotificationInbox && typeof window.wmNotificationInbox.showWaiting === 'function') {
