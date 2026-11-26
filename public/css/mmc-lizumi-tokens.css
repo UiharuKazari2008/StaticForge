@@ -1,0 +1,59 @@
+/* Lizumi (Lizumi console, public/css/mmc-lizumi.css): the console's own colour, font and metric tokens.
+   The theme owns every literal (ui-standard): mmc-lizumi.css names no colour, font or art path of its own,
+   it uses these --lz-* roles only. Scoped to the console window so nothing leaks to the rest of the desktop.
+   Shape follows Claude Fleet's token file (apps/claudedesk/assets/claudedesk-tokens.css). */
+#mmcConsole_lizumi {
+    /* ---- text and surfaces ---- */
+    --lz-text: #1a1a1a;
+    --lz-heading: #1e4e8c;
+    --lz-muted: #6d6d6d;
+    --lz-muted-2: #555;
+    --lz-faint: #8a8a8a;
+    --lz-figure: #1e4e8c;
+    --lz-face: #fff;
+    --lz-face-alt: #f5f5f5;
+    --lz-face-head: #f0f0f0;
+    --lz-line: #d5d5d5;
+    --lz-line-strong: #b3b3b3;
+    --lz-line-soft: #e8e8e8;
+
+    /* ---- accents ---- */
+    --lz-accent: #1e4e8c;
+    --lz-accent-soft: #e8f0fa;
+    --lz-accent-line: #c5d5ea;
+    --lz-link: #0066cc;
+    --lz-bar-track: #e3e3e3;
+    --lz-bar-fill: #3a8fd9;
+    --lz-bar-fill-warn: #d0872b;
+    --lz-bar-fill-bad: #c0392b;
+
+    /* ---- state: good / attention / trouble, quiet faces ---- */
+    --lz-ok-fg: #0f4d12;
+    --lz-ok-bg: #e6f6e6;
+    --lz-ok-line: #b6dab6;
+    --lz-info-fg: #234d7a;
+    --lz-info-bg: #e9f1fb;
+    --lz-info-line: #c3d9f2;
+    --lz-warn-fg: #7a3e00;
+    --lz-warn-bg: #fdf1dc;
+    --lz-warn-line: #e6bd7a;
+    --lz-warn-edge: #d0872b;
+    --lz-bad-fg: #a00000;
+    --lz-bad-bg: #fde8e8;
+    --lz-bad-line: #e4a9a9;
+    --lz-bad-edge: #c0392b;
+    --lz-idle-fg: #5f5f5f;
+    --lz-idle-bg: #ededed;
+    --lz-idle-line: #d5d5d5;
+
+    /* ---- the tape's "will be split into" ticks ---- */
+    --lz-tick-ink: #2d7a2d;
+    --lz-dot-ink: #b3b3b3;
+
+    /* ---- metrics ---- */
+    --lz-radius: 3px;
+    --lz-gap: 8px;
+    --lz-chip-radius: 9px;
+    --lz-card-min: 320px;
+    --lz-tile-min: 150px;
+}

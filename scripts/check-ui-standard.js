@@ -28,6 +28,7 @@ const SKIP = /(^|\/)(node_modules|vendor|graphify-out|server|\.cache)\//;
 // they ARE the theme. Everything else is app code. (Generated files are theme files too.)
 const THEME_FILES = new Set([
     'apps/claudedesk/assets/claudedesk-tokens.css', // Claude Fleet's own colour and font tokens
+    'public/css/mmc-lizumi-tokens.css', // Lizumi's own colour and font tokens (--lz-*)
     // desktop: Vista
     'public/css/7.scoped.css',
     'public/css/vista-glass-controls.css',

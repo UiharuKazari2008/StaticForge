@@ -3,20 +3,25 @@
  * as its own window. Pages (Schedules is managed here, the rest read-only):
  *
  *   Lizumi
- *     Virtual Radios    the four recorder slots (Lizumi-Recorder-1..4): each holds one recording or is on standby,
- *                       with the queue depth beside it
- *     Queue             the common queue in due order
+ *     Virtual Radios    a summary strip of count tiles, then one card per virtual radio (Lizumi-Recorder-1..4):
+ *                       its state chip, the channel and cut on air, running time, reach-back, buffer depth, a
+ *                       progress bar for segments written vs expected, its gaps, a marker when the recording has
+ *                       stopped writing audio, and the splits the cut store will make of it
+ *     Queue             count tiles (waiting / running / missed), then the common queue in due order
  *     Schedules         timers, search terms and alerts as one list
- *     Recordings        held recordings (segments on disk: Assemble, Re-assemble, Delete), then the current tape's tracks
- *     Accounts          the SiriusXM login
- *     Live              a monitor player for one recording slot (its growing HLS playlist), Mute and volume, and the
- *                       tape's own progress; the player exists only while this page is shown
- *     Diagnostics       link state, accounts, per recording gaps / re-fetches / pauses, missed queue entries (read-only)
+ *     Recordings        held recordings (segments on disk: Assemble, Re-assemble, Delete) with the selected one's
+ *                       splits, then the current tape's tracks with their merged metadata
+ *     Accounts          one SiriusXM login per virtual radio
+ *     Live              a monitor player for one recording slot (its growing HLS playlist), Mute and the platform's
+ *                       trackbar for volume, and the tape's own progress; the player exists only while this page is shown
+ *     Diagnostics       a one-line verdict, tiles, link state, accounts, a plain-words verdict per recording (how far
+ *                       behind, whether it is still writing audio and for how long it has not, the segment holding it,
+ *                       re-fetches, pauses, holes and gaps) and the missed queue entries
  *     Settings          streams per account, healthy buffer, behind seconds, re-fetch retries, keep segments hours
  *
  * Data: the admin packet xmradio_mmc_view ({ account, deck, slots }) once, then the statusHub feed `xmradio_mmc`
  * (pushType xmradio_mmc_status, items.deck / items.account) while the window is open; nothing is polled. Channel names
- * come from xmradio_lineup.
+ * come from xmradio_lineup. The look is public/css/mmc-lizumi.css on public/css/mmc-lizumi-tokens.css.
  *
  *   window.openLizumi(node?)     opens it (node: a page id)
  *   window.mmcLizumi.def()       the snap-in's def
@@ -39,6 +44,13 @@
         { id: 'diagnostics', name: 'Diagnostics', icon: `${VI}/problem-reports-16.png` },
         { id: 'settings', name: 'Settings', icon: `${VI}/application-16.png` }
     ];
+    const IC = {
+        rec: `${VI}/volume-high-16.png`, mute: `${VI}/volume-mute-16.png`, idle: `${VI}/volume-low-16.png`,
+        account: `${VI}/account-manager-16.png`, queue: `${VI}/service-worker-16.png`, tape: `${VI}/search-folder-16.png`,
+        disk: `${VI}/hotplug-disk-16.png`, warn: `${VI}/warning-16.png`, error: `${VI}/error-16.png`, info: `${VI}/info-16.png`
+    };
+    // a recording that has written nothing for this long is stuck, not slow (the stalled marker)
+    const STALL = 120;
 
     const state = {
         console: null, account: null, deck: null, slots: { max: 4 }, loaded: false, error: '',
@@ -46,7 +58,8 @@
         tracks: null, tracksFor: '', tracksLoading: false,
         held: null, heldFor: '', heldLoading: false,
         feedOn: false,
-        liveRid: '', vol: 80, muted: false, player: null
+        liveRid: '', vol: 80, muted: false, player: null,
+        segWatch: new Map() // rid -> { n: segsWritten, at: when it last moved } - the stalled marker when the server sends none
     };
     const HLS_SRC = '/dist/hlsjs/hls.light.min.js';
     const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined;
@@ -83,6 +96,41 @@
         const m = Math.floor((s % 3600) / 60);
         return h ? `${h}:${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}` : `${m}:${String(s % 60).padStart(2, '0')}`;
     }
+
+    /** A length as m:ss (a tape track's length, the Live page). */
+    const mss = (sec) => { const s = Math.max(0, Math.round(Number(sec) || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
+    /** Plain words for a span, for a verdict line: "2 h 29 min", "42 min", "35 s". */
+    function durText(sec) {
+        const s = Math.max(0, Math.round(Number(sec) || 0));
+        if (s < 60) return `${s} s`;
+        const m = Math.floor(s / 60);
+        if (m < 60) return `${m} min`;
+        const h = Math.floor(m / 60);
+        const mm = m % 60;
+        return mm ? `${h} h ${mm} min` : `${h} h`;
+    }
+
+    /** A short span for a cell: "3h 20m", "12m", "35s". */
+    function durShort(sec) {
+        const s = Math.max(0, Math.round(Number(sec) || 0));
+        if (s < 60) return `${s}s`;
+        const m = Math.floor(s / 60);
+        if (m < 60) return `${m}m`;
+        const h = Math.floor(m / 60);
+        const mm = m % 60;
+        return mm ? `${h}h ${mm}m` : `${h}h`;
+    }
+
+    /** "in 3h 20m" / "12m ago" for a future / past moment. */
+    function relText(at) {
+        if (!at) return '';
+        const d = Math.round((at - Date.now()) / 1000);
+        return d >= 0 ? `in ${durShort(d)}` : `${durShort(-d)} ago`;
+    }
+
+    /** Explorer's sizes (bytes / KB / MB / GB), from the shell. */
+    const sizeText = (n) => (root.mmcConsole && root.mmcConsole.size ? root.mmcConsole.size(n) : `${Math.round(Number(n) || 0)} bytes`);
 
     function daysText(days) {
         const d = Array.isArray(days) ? days : [];
@@ -166,94 +214,285 @@
         repaint();
     }
 
-    // ---- pages ------------------------------------------------------------------------------------------
+    // ---- the shape of the deck: slots, health, verdicts -------------------------------------------------
 
     const EMPTY = 'There are no items to show in this view.';
-
     const KIND = { song: 'Song', cut: 'Song on air', manual: 'Channel', channel: 'Channel', timer: 'Timer', alert: 'Alert', term: 'Search term' };
+    const recs = () => (state.deck && Array.isArray(state.deck.recordings) ? state.deck.recordings : []);
+    const recOf = (rid) => recs().find((r) => r.rid === rid) || null;
+    const slotName = (i) => `Lizumi-Recorder-${i + 1}`;
+    const settings = () => (state.deck && state.deck.settings) || {};
+    const poolOf = () => { const d = state.deck || {}; return Array.isArray(d.pool) && d.pool.length ? d.pool : null; };
+    const maxSlots = () => (poolOf() ? poolOf().length : ((state.slots && state.slots.max) || 4));
+    const gapCount = (r) => Number(r.gaps && r.gaps.length != null ? r.gaps.length : r.gaps) || 0;
 
-    /** "2 (14s)" for holes in the audio; "None" when there are none. */
-    const gapText = (n, sec) => (n > 0 ? `${n} (${sec}s)` : 'None');
-    /** Holes show with the kit's warning state; none is plain text. */
-    function gapCell(c, idle, n, sec) {
-        if (idle) return '<i></i>';
-        return n > 0 ? c.state(false, gapText(n, sec), true) : `<i>${gapText(n, sec)}</i>`;
+    /** Signed-in virtual radios: the pool's readiness, else the slot list's sign-ins. */
+    function signedIn() {
+        const pool = poolOf();
+        if (pool) return pool.filter((x) => x.ready).length;
+        const list = state.slots && Array.isArray(state.slots.list) ? state.slots.list : null;
+        return list ? list.filter((x) => x.signedIn).length : maxSlots();
     }
 
-    function radiosPage(c) {
+    /** How long a recording has written no segment: the server's `stalled`, else how long its segment count has stood still. */
+    function stalledOf(r) {
+        const server = Math.round(Number(r.stalled) || 0);
+        if (server) return server;
+        const n = Number(r.segsWritten) || 0;
+        const w = state.segWatch.get(r.rid);
+        if (!w) { state.segWatch.set(r.rid, { n, at: Date.now() }); return 0; }
+        if (w.n !== n) { w.n = n; w.at = Date.now(); return 0; }
+        return Math.max(0, Math.round((Date.now() - w.at) / 1000));
+    }
+
+    /** A recording's numbers and its plain-words verdict (see the server's healthOf). */
+    function health(r) {
+        const bs = Number(settings().behindSeconds) || 120;
+        const behindS = Math.round(Number(r.behindS) || 0);
+        const stalled = stalledOf(r);
+        const refetches = Number(r.refetches) || 0;
+        const pauses = Number(r.pauses) || 0;
+        const holes = Number(r.holes) || 0;
+        const gaps = gapCount(r);
+        const gapS = Math.round(Number(r.gapSeconds) || 0);
+        const segsW = Number(r.segsWritten) || 0;
+        const segsE = Number(r.segsExpected) || 0;
+        const held = Number(r.held) || 0;
+        const pct = segsE ? Math.min(100, Math.round((segsW / segsE) * 100)) : (segsW ? 100 : 0);
+        const until = Number(r.until) || 0;
+        const pastEnd = !!(until && Date.now() > until);
+        const behind = behindS > bs;
+        const tone = stalled > STALL || pastEnd ? 'bad' : (behind || holes > 0 || gaps > 0) ? 'warn' : 'ok';
+        return { behindS, stalled, refetches, pauses, holes, gaps, gapS, segsW, segsE, held, pct, until, pastEnd, behind, tone };
+    }
+
+    /** The one short line that says a recording is in trouble (or null when it is fine). */
+    function marker(r, h) {
+        h = h || health(r);
+        const bits = [];
+        let tone = 'ok';
+        if (h.stalled > STALL) {
+            tone = 'bad';
+            const hold = r.stuckSeq != null ? ` (segment ${r.stuckSeq} is holding it${h.refetches ? `, ${h.refetches} re-tries` : ''})` : (h.refetches ? ` (${h.refetches} re-fetches)` : '');
+            bits.push(`no audio for ${durText(h.stalled)} - recording is stuck${hold}`);
+        }
+        if (h.pastEnd) { tone = 'bad'; bits.push(`past its end time by ${durText((Date.now() - h.until) / 1000)} - it should have stopped`); }
+        if (h.behind) { if (tone === 'ok') tone = 'warn'; bits.push(`behind live by ${durText(h.behindS)}${h.refetches ? ` (${h.refetches} re-fetches)` : ''}`); }
+        if (h.holes > 0) { if (tone === 'ok') tone = 'warn'; bits.push(`${h.holes} unreadable segment${h.holes === 1 ? '' : 's'}${r.stuckSeq != null ? ` (segment ${r.stuckSeq} is holding it)` : ''}`); }
+        else if (h.gaps > 0) { if (tone === 'ok') tone = 'warn'; bits.push(`${h.gaps} gap${h.gaps === 1 ? '' : 's'} (${h.gapS} s of audio missing)`); }
+        return bits.length ? { tone, text: bits.join('; ') } : null;
+    }
+
+    /** The state chip: a warn colour only for real trouble. */
+    function stateOf(r, h) {
+        h = h || health(r);
+        if (h.behind) return { text: 'Behind', tone: 'warn' };
+        if (r.state === 'buffering') return { text: 'Buffering', tone: 'info' };
+        if (r.state === 'paused-refilling') return { text: 'Paused - refilling', tone: 'info' };
+        if (r.state === 'behind') return { text: 'Behind', tone: 'warn' };
+        return { text: 'Recording', tone: 'ok' };
+    }
+
+    /** Everything a card or a verdict needs about one recording. */
+    function assess(r) { const h = health(r); return { h, st: stateOf(r, h), mk: marker(r, h) }; }
+
+    /** The splits a recording will be cut into (the merged cut store), one line each. */
+    function splitLine(c) {
+        const a = c && !c.ad && c.a ? c.a : '';
+        const t = c && c.t ? c.t : (c && c.s) || '';
+        return [a, t].filter(Boolean).join(' - ') || (c && c.ad ? 'Ad break' : 'Untitled');
+    }
+    const splitsOf = (r) => (Array.isArray(r && r.cuts) ? r.cuts : []).map((c) => ({ at: c.at, ad: !!c.ad, done: !!c.done, show: c.s || '', text: splitLine(c) }));
+
+    function splitsHtml(list, heading) {
+        if (!list.length) return '';
+        const rows = list.map((x) => `<div class="lz-split${x.done ? ' is-done' : ''}" title="${esc(x.text)}${x.show ? esc(` - ${x.show}`) : ''}">`
+            + `${x.done ? '<span class="lz-tick" aria-hidden="true"></span>' : '<span class="lz-dot" aria-hidden="true"></span>'}`
+            + `<span class="lz-split-t">${esc(x.text)}</span>`
+            + `<span class="lz-split-ad">${x.ad ? 'Ad' : ''}</span></div>`).join('');
+        return `<div class="lz-splits"><div class="lz-sh">${esc(heading)} (${list.length})</div>${rows}</div>`;
+    }
+
+    // ---- tiles, chips, blocks --------------------------------------------------------------------------
+
+    function tile({ nav, icon, n, label, tone, extra, hint }) {
+        const cls = `lz-tile${tone && n ? ` is-${tone}` : ''}${nav ? '' : ' is-static'}`;
+        const title = hint || (extra ? `${label}: ${extra}` : label);
+        const inner = `<img src="${esc(icon)}" alt=""><b>${esc(String(n))}</b><span>${esc(label)}</span>${extra ? `<small>${esc(extra)}</small>` : ''}`;
+        return nav
+            ? `<button type="button" class="${cls}" data-act="nav:${esc(nav)}" title="${esc(title)}">${inner}</button>`
+            : `<div class="${cls}" title="${esc(title)}">${inner}</div>`;
+    }
+
+    /** The count tiles that jump to the page they count. */
+    function summaryTiles() {
         const d = state.deck || {};
-        const recs = Array.isArray(d.recordings) ? d.recordings : [];
-        const pool = Array.isArray(d.pool) && d.pool.length ? d.pool : null;
-        const max = pool ? pool.length : ((state.slots && state.slots.max) || 4);
-        const now = Date.now();
-        const rows = [];
-        const stateWord = (r) => (r.state === 'buffering' ? 'Buffering' : r.state === 'paused-refilling' ? 'Paused - refilling' : r.state === 'behind' ? `Behind ${Math.round(r.behindS || 0)}s` : 'Recording');
-        const segText = (r) => {
-            const w = Number(r.segsWritten) || 0;
-            const e = Number(r.segsExpected) || 0;
-            if (!e && !w) return '-';
-            return `${w} / ${e} (${e ? Math.min(100, Math.round((w / e) * 100)) : 100}%)${r.held != null ? `, ${r.held} held` : ''}`;
-        };
-        // each recording on its own virtual radio (its slot, #1252 S3); before the server sent slots, in list order
+        const recsL = recs();
+        const troubled = recsL.filter((r) => health(r).tone !== 'ok').length;
+        const q = (d.queue || []).length;
+        const held = d.held || {};
+        const tape = Array.isArray(state.tracks) ? state.tracks.length : 0;
+        return `<div class="lz-tiles">${[
+            tile({ nav: 'radios', icon: IC.rec, n: recsL.length, label: 'Recording now', tone: troubled ? 'warn' : '', extra: troubled ? `${troubled} with trouble` : '' }),
+            tile({ nav: 'accounts', icon: IC.account, n: signedIn(), label: 'Signed in', extra: `${maxSlots()} virtual radios` }),
+            tile({ nav: 'queue', icon: IC.queue, n: q, label: 'Queue waiting' }),
+            tile({ nav: 'recordings', icon: IC.disk, n: held.n || 0, label: 'Held recordings', tone: held.failed ? 'bad' : held.assembling ? 'warn' : '', extra: [held.assembling ? `${held.assembling} assembling` : '', held.failed ? `${held.failed} failed` : ''].filter(Boolean).join(', ') }),
+            tile({ nav: 'recordings', icon: IC.tape, n: tape, label: 'On the tape' })
+        ].join('')}</div>`;
+    }
+
+    /** A recording's trouble as a phrase that follows its name in a sentence. */
+    function troublePhrase(r, h) {
+        const bits = [];
+        if (h.stalled > STALL) bits.push(`has written nothing for ${durText(h.stalled)}`);
+        if (h.behind) bits.push(`is behind live by ${durText(h.behindS)}`);
+        if (h.pastEnd) bits.push(`is past its end time by ${durText((Date.now() - h.until) / 1000)}`);
+        if (h.holes > 0) bits.push(`has ${h.holes} unreadable segment${h.holes === 1 ? '' : 's'}`);
+        else if (h.gaps > 0 && !bits.length) bits.push(`has ${h.gaps} gap${h.gaps === 1 ? '' : 's'}`);
+        if (!bits.length && h.refetches >= 20) bits.push(`has re-fetched ${h.refetches} times`);
+        return bits.join(' and ');
+    }
+
+    /** The one plain-words line at the top: what is running and what is wrong with it. */
+    function verdictSummary() {
+        const recsL = recs();
+        const max = maxSlots();
+        const line = `${recsL.length} of ${max} virtual radios ${recsL.length === 1 ? 'is' : 'are'} recording`;
+        const bad = recsL.map((r) => {
+            const h = health(r);
+            const mk = marker(r, h);
+            return mk ? { r, mk, phrase: troublePhrase(r, h) } : null;
+        }).filter(Boolean);
+        if (!bad.length) return { tone: recsL.length ? 'ok' : '', text: recsL.length ? `${line}; every recording is writing audio.` : `${line}.` };
+        const tone = bad.some((x) => x.mk.tone === 'bad') ? 'bad' : 'warn';
+        const parts = bad.map((x) => `${slotName((x.r.slot || 1) - 1)} ${x.phrase}`);
+        return { tone, text: `${line}; ${parts.join('; ')}.` };
+    }
+
+    function summaryLine() {
+        const v = verdictSummary();
+        const icon = v.tone === 'bad' ? IC.error : (v.tone === 'warn' ? IC.warn : IC.info);
+        return `<div class="lz-sum${v.tone ? ` is-${v.tone}` : ''}"><img src="${esc(icon)}" alt=""><span>${esc(v.text)}</span></div>`;
+    }
+
+    // ---- Virtual Radios: cards per virtual radio --------------------------------------------------------
+
+    function kvRows(rows) {
+        return `<dl class="lz-kv">${rows.filter(Boolean).map(([k, v]) => `<dt>${esc(k)}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('')}</dl>`;
+    }
+
+    function recCard(i, r) {
+        const { h, st, mk } = assess(r);
+        const cls = `lz-card is-rec${h.tone === 'bad' ? ' is-trouble' : h.tone === 'warn' ? ' is-warn' : ''}`;
+        const icon = h.stalled > STALL ? IC.mute : IC.rec;
+        const segLine = (h.segsE || h.segsW) ? `${h.segsW} / ${h.segsE || h.segsW} segments${h.segsE ? ` (${h.pct}%)` : ''}${h.held ? `, ${h.held} held` : ''}` : 'Segments not reported yet';
+        const bar = `<div class="lz-bar"><div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${h.pct}"${h.tone === 'bad' ? ' class="error"' : h.tone === 'warn' ? ' class="paused"' : ''} style="--lz-pct:${h.pct}"><div></div></div><span class="lz-bar-label">${esc(segLine)}</span></div>`;
+        const markerHtml = mk ? `<p class="lz-warn${mk.tone === 'bad' ? ' is-bad' : ''}"><img src="${esc(mk.tone === 'bad' ? IC.error : IC.warn)}" alt=""><span>${esc(mk.text)}</span></p>` : '';
+        return `<article class="${cls}" data-key="s:${i + 1}">
+            <div class="lz-card-h"><img class="lz-card-icon" src="${esc(icon)}" alt="">
+                <b class="lz-card-name">${esc(slotName(i))}</b>
+                <span class="lz-chip is-${esc(st.tone)}">${esc(st.text)}</span>
+            </div>
+            <div class="lz-card-body">
+                ${kvRows([
+                    ['Channel', chName(r.channelId) || '-'],
+                    ['On air', cutText(r.cut) || '-'],
+                    ['Kind', KIND[r.kind] || 'Channel'],
+                    ['Running', span((Date.now() - (r.since || Date.now())) / 1000)],
+                    ['Reached back', r.back ? span(r.back) : '0:00'],
+                    ['Buffer depth', r.bufferSegs != null ? `${r.bufferSegs} segments` : '-'],
+                    ['Gaps', h.gaps > 0 ? `${h.gaps} (${h.gapS} s)` : 'None']
+                ])}
+                ${bar}
+                ${markerHtml}
+                ${splitsHtml(splitsOf(r), 'Will be split into')}
+            </div>
+        </article>`;
+    }
+
+    function idleCard(i, ready) {
+        return `<article class="lz-card is-idle" data-key="s:${i + 1}">
+            <div class="lz-card-h"><img class="lz-card-icon" src="${esc(IC.idle)}" alt="">
+                <b class="lz-card-name">${esc(slotName(i))}</b>
+                <span class="lz-chip is-idle">${esc(ready ? 'Standby' : 'No account')}</span>
+            </div>
+            <div class="lz-card-body"><p class="lz-empty-line">${esc(ready ? 'Standby - ready for the next queue entry.' : 'No account is signed in on this virtual radio. Sign it in on the Accounts page to use it.')}</p></div>
+        </article>`;
+    }
+
+    function radioCards() {
+        const pool = poolOf();
+        const max = maxSlots();
         const bySlot = new Map();
-        recs.forEach((x, i) => { const n = x.slot || (pool ? 1 : i + 1); if (!bySlot.has(n)) bySlot.set(n, x); });
+        recs().forEach((x, i) => { const n = x.slot || (pool ? 1 : i + 1); if (!bySlot.has(n)) bySlot.set(n, x); });
+        const cards = [];
         for (let i = 0; i < max; i++) {
             const r = bySlot.get(i + 1) || null;
             const ready = pool ? pool[i].ready : true;
-            rows.push({
-                key: `slot:${i + 1}`,
-                // standby is idle, not a fault: the quiet speaker, never the muted one's red cross
-                icon: `${VI}/volume-${r ? 'high' : 'low'}-16.png`,
-                data: r
-                    ? { name: `Lizumi-Recorder-${i + 1}`, state: stateWord(r), warn: r.state === 'behind', channel: chName(r.channelId), cut: cutText(r.cut), kind: KIND[r.kind] || 'Channel', running: span((now - (r.since || now)) / 1000), runningS: now - (r.since || now), back: r.back ? span(r.back) : '0:00', buffer: r.bufferSegs != null ? String(r.bufferSegs) : '-', segments: segText(r), gaps: Number(r.gaps && r.gaps.length != null ? r.gaps.length : r.gaps) || 0, gapS: Number(r.gapSeconds) || 0 }
-                    : { name: `Lizumi-Recorder-${i + 1}`, state: ready ? 'Standby' : 'No account', channel: '', cut: '', kind: '', running: '', runningS: 0, back: '', buffer: '-', segments: '-', gaps: 0, gapS: 0, idle: true }
-            });
+            cards.push(r ? recCard(i, r) : idleCard(i, ready));
         }
+        return `<div class="lz-cards">${cards.join('')}</div>`;
+    }
+
+    function radiosPage(c) {
+        void loadLineup();
+        if (state.deck) void loadTracks(c); // the tape tile's count
         return {
-            html: c.listView([
-                { t: 'Virtual Radio', w: 130, key: 'name', text: (x) => x.name },
-                { t: 'State', w: 120, key: 'state', text: (x) => x.state, html: (x) => (x.warn ? c.state(false, x.state, true) : `<i>${esc(x.state)}</i>`) },
-                // the health columns next to the state, so they are seen without scrolling
-                { t: 'Buffer', w: 56, key: 'buffer', text: (x) => x.buffer },
-                { t: 'Segments', w: 150, key: 'segments', text: (x) => x.segments },
-                { t: 'Gaps', w: 80, key: 'gaps', text: (x) => (x.idle ? '' : gapText(x.gaps, x.gapS)), html: (x) => gapCell(c, x.idle, x.gaps, x.gapS), value: (x) => x.gaps },
-                { t: 'Channel', w: 130, key: 'channel', text: (x) => x.channel },
-                { t: 'On air', w: 180, key: 'cut', text: (x) => x.cut },
-                { t: 'Kind', w: 84, key: 'kind', text: (x) => x.kind },
-                { t: 'Running', w: 70, key: 'running', text: (x) => x.running, value: (x) => x.runningS },
-                { t: 'Reached back', w: 90, key: 'back', text: (x) => x.back }
-            ], rows, { sortId: 'lz-radios', empty: EMPTY }),
-            list: true
+            html: c.page('Virtual Radios', '', [
+                { id: 'lz-rad-sum', title: 'At a glance', body: summaryTiles() + `<div class="lz-gap"></div>` + summaryLine() },
+                { id: 'lz-rad-cards', title: `Virtual radios (${maxSlots()})`, body: radioCards() }
+            ])
         };
     }
 
+    // ---- Queue ------------------------------------------------------------------------------------------
+
     const QSTATE = { queued: 'Queued', running: 'Running', missed: 'Missed', done: 'Done', cancelled: 'Cancelled' };
-    const QKIND = { song: 'Song', cut: 'Song on air', channel: 'Channel', timer: 'Timer', alert: 'Alert', term: 'Search term' };
+    const QKIND = { song: 'Song', cut: 'Song on air', manual: 'Channel', channel: 'Channel', timer: 'Timer', alert: 'Alert', term: 'Search term' };
+    const QTONE = { missed: 'bad', running: 'ok', queued: 'info' };
 
     function queuePage(c) {
+        void loadLineup();
         const d = state.deck || {};
+        const waiting = Array.isArray(d.queue) ? d.queue : [];
+        const jobs = Array.isArray(d.jobs) ? d.jobs : [];
+        const hist = Array.isArray(d.history) ? d.history : [];
+        const missed = hist.filter((e) => e.state === 'missed').length;
+        const tiles = `<div class="lz-tiles">${[
+            tile({ icon: IC.queue, n: waiting.length, label: 'Waiting', tone: 'info' }),
+            tile({ icon: IC.rec, n: jobs.length, label: 'Running' }),
+            tile({ icon: IC.warn, n: missed, label: 'Missed', tone: 'bad' })
+        ].join('')}</div>`;
         // waiting in due order, then what runs, then the last ones that ended (missed ones say why)
-        const list = [].concat(Array.isArray(d.queue) ? d.queue : [], Array.isArray(d.jobs) ? d.jobs : [], (Array.isArray(d.history) ? d.history : []).slice(0, 50));
+        const list = [].concat(waiting, jobs, hist.slice(0, 50));
         // a running entry with no song of its own (a channel, a timer) names what its recording has on air
-        const onAir = (e) => { const r = e.rid && (d.recordings || []).find((x) => x.rid === e.rid); return r ? r.cut : null; };
+        const onAir = (e) => { const r = e.rid && recOf(e.rid); return r ? cutText(r.cut) : null; };
         const rows = list.map((e, i) => ({
             key: `q:${e.id}`,
-            icon: e.state === 'missed' ? `${VI}/warning-16.png` : `${VI}/service-worker-16.png`,
-            data: { n: i + 1, cut: cutText(e) || cutText(onAir(e)) || chName(e.channelId), kind: QKIND[e.kind] || '', channel: chName(e.channelId), radio: e.slot ? `Lizumi-Recorder-${e.slot}` : '-', qstate: QSTATE[e.state] || 'Queued', reason: e.reason || '', expires: clock(e.expiresAt), expiresAt: e.expiresAt || 0, added: clock(e.addedAt), addedAt: e.addedAt || 0 }
+            icon: e.state === 'missed' ? IC.warn : IC.queue,
+            cls: e.state === 'missed' ? 'lz-row-bad' : '',
+            data: {
+                n: i + 1, cut: cutText(e) || cutText(onAir(e)) || chName(e.channelId), kind: QKIND[e.kind] || '',
+                channel: chName(e.channelId), radio: e.slot ? slotName(e.slot - 1) : '-', qstate: QSTATE[e.state] || 'Queued', tone: QTONE[e.state] || 'idle',
+                reason: e.reason || '', expires: e.expiresAt ? `${relText(e.expiresAt)} (${clock(e.expiresAt)})` : '', expiresAt: e.expiresAt || 0,
+                added: clock(e.addedAt), addedAt: e.addedAt || 0
+            }
         }));
+        const cols = [
+            { t: 'Order', w: 44, key: 'n', text: (x) => String(x.n), value: (x) => x.n },
+            { t: 'Song', w: 190, key: 'cut', text: (x) => x.cut },
+            { t: 'Kind', w: 66, key: 'kind', text: (x) => x.kind },
+            { t: 'State', w: 78, key: 'qstate', text: (x) => x.qstate, html: (x) => `<span class="lz-chip is-${esc(x.tone)}">${esc(x.qstate)}</span>` },
+            { t: 'Virtual Radio', w: 112, key: 'radio', text: (x) => x.radio },
+            { t: 'Added', w: 96, key: 'added', text: (x) => x.added, value: (x) => x.addedAt },
+            { t: 'Expires', w: 150, key: 'expires', text: (x) => x.expires, value: (x) => x.expiresAt },
+            { t: 'Why', w: 150, key: 'reason', text: (x) => x.reason }
+        ];
         return {
-            html: c.listView([
-                { t: 'Order', w: 50, key: 'n', text: (x) => String(x.n), value: (x) => x.n },
-                { t: 'Song', w: 220, key: 'cut', text: (x) => x.cut },
-                { t: 'Kind', w: 80, key: 'kind', text: (x) => x.kind },
-                { t: 'State', w: 70, key: 'qstate', text: (x) => x.qstate },
-                { t: 'Virtual Radio', w: 120, key: 'radio', text: (x) => x.radio },
-                { t: 'Channel', w: 140, key: 'channel', text: (x) => x.channel },
-                { t: 'Expires', w: 120, key: 'expires', text: (x) => x.expires, value: (x) => x.expiresAt },
-                { t: 'Added', w: 120, key: 'added', text: (x) => x.added, value: (x) => x.addedAt },
-                { t: 'Why', w: 260, key: 'reason', text: (x) => x.reason }
-            ], rows, { sortId: 'lz-queue', empty: 'The queue is empty.' }),
-            list: true
+            html: c.page('Queue', '', [
+                { id: 'lz-q-sum', title: 'At a glance', body: tiles },
+                { id: 'lz-q-list', title: `The queue (${list.length})`, body: c.listView(cols, rows, { sortId: 'lz-queue', fit: true, empty: 'The queue is empty.' }) }
+            ])
         };
     }
 
@@ -292,34 +531,35 @@
     }
 
     function schedulesPage(c) {
+        void loadLineup();
         const d = state.deck || {};
         const rows = [];
         (d.timers || []).forEach((t) => rows.push({
             key: `t:${t.id}`, icon: `${VI}/windows-update-16.png`,
-            data: { kind: 'Timer', channel: chName(t.channelId), start: t.start || '', minutes: t.minutes ? String(t.minutes) : '', days: daysText(t.days), date: t.date || '', mode: t.mode || '', match: '', rules: t.notify ? 'Notify' : '', tape: t.destination || '', state: t.off ? 'Off' : 'On' }
+            data: { kind: 'Timer', channel: chName(t.channelId), start: t.start || '', minutes: t.minutes ? String(t.minutes) : '', days: daysText(t.days), date: t.date || '', mode: t.mode || '', match: '', rules: t.notify ? 'Notify' : '', tape: t.destination || '', state: t.off ? 'Off' : 'On', tone: t.off ? 'idle' : 'ok' }
         }));
         (d.terms || []).forEach((t) => rows.push({
             key: `s:${t.id}`, icon: `${VI}/search-16.png`,
-            data: { kind: 'Search term', channel: t.channelId ? chName(t.channelId) : 'Any channel', start: '', minutes: '', days: daysText(t.days), date: '', mode: '', match: t.text || '', rules: ruleText(t), tape: t.destination || '', state: 'On' }
+            data: { kind: 'Search term', channel: t.channelId ? chName(t.channelId) : 'Any channel', start: '', minutes: '', days: daysText(t.days), date: '', mode: '', match: t.text || '', rules: ruleText(t), tape: t.destination || '', state: 'On', tone: 'ok' }
         }));
         (d.alerts || []).forEach((a) => rows.push({
             key: `a:${a.id}`, icon: `${VI}/search-16.png`,
-            data: { kind: 'Alert', channel: a.channelId ? chName(a.channelId) : 'Any channel', start: '', minutes: '', days: '', date: '', mode: '', match: [a.artist, a.title].filter(Boolean).join(' - '), rules: '', tape: a.destination || '', state: 'On' }
+            data: { kind: 'Alert', channel: a.channelId ? chName(a.channelId) : 'Any channel', start: '', minutes: '', days: '', date: '', mode: '', match: [a.artist, a.title].filter(Boolean).join(' - '), rules: '', tape: a.destination || '', state: 'On', tone: 'ok' }
         }));
         return {
             html: c.listView([
-                { t: 'Type', w: 120, key: 'kind', text: (x) => x.kind },
-                { t: 'Channel', w: 120, key: 'channel', text: (x) => x.channel },
-                { t: 'Start', w: 46, key: 'start', text: (x) => x.start },
+                { t: 'Type', w: 108, key: 'kind', text: (x) => x.kind },
+                { t: 'Channel', w: 108, key: 'channel', text: (x) => x.channel },
+                { t: 'Start', w: 44, key: 'start', text: (x) => x.start },
                 { t: 'Minutes', w: 52, key: 'minutes', text: (x) => x.minutes, value: (x) => Number(x.minutes) || 0 },
-                { t: 'Days', w: 110, key: 'days', text: (x) => x.days },
-                { t: 'Date', w: 74, key: 'date', text: (x) => x.date },
+                { t: 'Days', w: 100, key: 'days', text: (x) => x.days },
+                { t: 'Date', w: 72, key: 'date', text: (x) => x.date },
                 { t: 'Mode', w: 46, key: 'mode', text: (x) => x.mode },
-                { t: 'Matches', w: 150, key: 'match', text: (x) => x.match },
-                { t: 'Rules', w: 190, key: 'rules', text: (x) => x.rules },
-                { t: 'Tape', w: 90, key: 'tape', text: (x) => x.tape },
-                { t: 'State', w: 44, key: 'state', text: (x) => x.state }
-            ], rows, { sortId: 'lz-schedules', empty: 'There are no timers, search terms or alerts. Use New Timer or New Search Term.' }),
+                { t: 'Matches', w: 140, key: 'match', text: (x) => x.match },
+                { t: 'Rules', w: 170, key: 'rules', text: (x) => x.rules },
+                { t: 'Tape', w: 84, key: 'tape', text: (x) => x.tape },
+                { t: 'State', w: 48, key: 'state', text: (x) => x.state, html: (x) => `<span class="lz-chip is-${esc(x.tone)}">${esc(x.state)}</span>` }
+            ], rows, { sortId: 'lz-schedules', fit: true, empty: 'There are no timers, search terms or alerts. Use New Timer or New Search Term.' }),
             list: true
         };
     }
@@ -615,42 +855,80 @@
         else repaint();
     }
 
+    /** The cuts a held recording was (or will be) made of: its own, else its live recording's. */
+    function heldSplits(h) {
+        const live = recOf(h.rid);
+        const cuts = Array.isArray(h.cuts) ? h.cuts : (live && Array.isArray(live.cuts) ? live.cuts : []);
+        const list = cuts.map((c) => ({ at: c.at, ad: !!c.ad, done: !!c.done, show: c.s || '', text: splitLine(c) }));
+        const made = (h.files || []).length;
+        if (!list.length) return { html: '', count: made };
+        const files = made ? `${made} file${made === 1 ? '' : 's'} made` : `will make ${list.length} file${list.length === 1 ? '' : 's'}`;
+        return { html: splitsHtml(list, `Splits - ${files}`), count: made || list.length };
+    }
+
     function recordingsPage(c) {
         const d = state.deck;
         if (d) { void loadTracks(c); void loadHeld(c, false); }
-        const hrows = (state.held || []).map((h) => ({
-            key: `h:${h.rid}`, icon: `${VI}/${h.state === 'failed' ? 'warning' : 'volume-high'}-16.png`,
-            data: {
-                channel: chName(h.channelId), kind: KIND[h.kind] || 'Channel', radio: slotName((h.slot || 1) - 1),
-                state: HSTATE[h.state] || h.state, bad: h.state === 'failed', started: clock(h.since), startedAt: h.since || 0, ended: clock(h.endedAt), endedAt: h.endedAt || 0,
-                segs: Number(h.segs) || 0, gaps: (h.gaps || []).length, gapS: Number(h.gapSeconds) || 0,
-                files: (h.files || []).length ? String(h.files.length) : '', keep: h.keepUntil ? clock(h.keepUntil) : '', keepAt: h.keepUntil || 0, error: h.error || ''
-            }
-        }));
-        const held = c.listView([
-            { t: 'Channel', w: 140, key: 'channel', text: (x) => x.channel },
-            { t: 'Kind', w: 80, key: 'kind', text: (x) => x.kind },
-            { t: 'Virtual Radio', w: 120, key: 'radio', text: (x) => x.radio },
-            { t: 'State', w: 90, key: 'state', text: (x) => (x.error ? `${x.state}: ${x.error}` : x.state), html: (x) => (x.bad ? c.state(false, x.state, true) : `<i>${esc(x.state)}</i>`) },
-            { t: 'Started', w: 110, key: 'started', text: (x) => x.started, value: (x) => x.startedAt },
-            { t: 'Ended', w: 110, key: 'ended', text: (x) => x.ended, value: (x) => x.endedAt },
-            { t: 'Segments', w: 70, key: 'segs', text: (x) => String(x.segs), value: (x) => x.segs },
-            { t: 'Gaps', w: 90, key: 'gaps', text: (x) => gapText(x.gaps, x.gapS), html: (x) => gapCell(c, false, x.gaps, x.gapS), value: (x) => x.gaps },
-            { t: 'Files', w: 44, key: 'files', text: (x) => x.files },
-            { t: 'Keep until', w: 110, key: 'keep', text: (x) => x.keep, value: (x) => x.keepAt }
-        ], hrows, { sortId: 'lz-held', empty: state.held ? 'No recording holds segments.' : 'Reading the held recordings...' });
+        const held = state.held || [];
+        const hrows = held.map((h) => {
+            const sp = heldSplits(h);
+            return {
+                key: `h:${h.rid}`, icon: `${VI}/${h.state === 'failed' ? 'warning' : 'volume-high'}-16.png`,
+                cls: h.state === 'failed' ? 'lz-row-bad' : '',
+                data: {
+                    channel: chName(h.channelId), kind: KIND[h.kind] || 'Channel', radio: slotName((h.slot || 1) - 1),
+                    state: HSTATE[h.state] || h.state, bad: h.state === 'failed', tone: h.state === 'failed' ? 'bad' : h.state === 'assembling' ? 'warn' : h.state === 'assembled' ? 'ok' : 'info',
+                    started: clock(h.since), startedAt: h.since || 0, ended: h.endedAt ? clock(h.endedAt) : '-', endedAt: h.endedAt || 0,
+                    segs: Number(h.segs) || 0, gaps: gapCount(h), gapS: Number(h.gapSeconds) || 0,
+                    files: h.files && h.files.length ? String(h.files.length) : (sp.count ? `~${sp.count}` : ''), filesN: (h.files || []).length || sp.count || 0,
+                    keep: h.keepUntil ? clock(h.keepUntil) : '-', keepAt: h.keepUntil || 0, error: h.error || ''
+                }
+            };
+        });
+        const heldList = c.listView([
+            { t: 'Channel', w: 130, key: 'channel', text: (x) => x.channel },
+            { t: 'Kind', w: 74, key: 'kind', text: (x) => x.kind },
+            { t: 'Virtual Radio', w: 112, key: 'radio', text: (x) => x.radio },
+            { t: 'State', w: 96, key: 'state', text: (x) => (x.error ? `${x.state}: ${x.error}` : x.state), html: (x) => `<span class="lz-chip is-${esc(x.tone)}" title="${esc(x.error || x.state)}">${esc(x.state)}</span>` },
+            { t: 'Started', w: 96, key: 'started', text: (x) => x.started, value: (x) => x.startedAt },
+            { t: 'Ended', w: 96, key: 'ended', text: (x) => x.ended, value: (x) => x.endedAt },
+            { t: 'Segs', w: 64, key: 'segs', text: (x) => String(x.segs), value: (x) => x.segs },
+            { t: 'Gaps', w: 76, key: 'gaps', text: (x) => (x.gaps > 0 ? `${x.gaps} (${x.gapS}s)` : 'None'), value: (x) => x.gaps },
+            { t: 'Files', w: 64, key: 'files', text: (x) => x.files, value: (x) => x.filesN },
+            { t: 'Keep until', w: 104, key: 'keep', text: (x) => x.keep, value: (x) => x.keepAt }
+        ], hrows, { sortId: 'lz-held', fit: true, empty: state.held ? 'No recording holds segments.' : 'Reading the held recordings...' });
+        const sel = heldOf(c.sel);
+        const splits = sel ? heldSplits(sel).html : '';
+        const hint = !sel && held.length ? `<p class="lz-note">Select a held recording to see the splits it will be cut into before it is assembled.</p>` : '';
         // a track's time comes in seconds from the file store (read as ms it showed January 1970)
         const trackMs = (v) => { const n = Number(v) || 0; return n && n < 1e12 ? n * 1000 : n; };
-        const rows = (state.tracks || []).map((t) => ({
-            key: `r:${t.id}`, icon: `${VI}/volume-high-16.png`,
-            data: { name: t.name, size: `${Math.max(1, Math.round((t.size || 0) / 1024)).toLocaleString('en-US')} KB`, sizeB: t.size || 0, at: clock(trackMs(t.at)), atMs: trackMs(t.at) }
-        }));
+        const rows = (state.tracks || []).map((t) => {
+            const m = trackMeta(t);
+            return {
+                key: `r:${t.id}`, icon: `${VI}/volume-high-16.png`,
+                data: { name: t.name, title: m.title, artist: m.artist, show: m.show, dur: mss(t.dur), size: sizeText(t.size || 0), sizeB: t.size || 0, at: clock(trackMs(t.at)), atMs: trackMs(t.at) }
+            };
+        });
         const tape = c.listView([
-            { t: 'Name', w: 330, key: 'name', text: (x) => x.name },
-            { t: 'Size', w: 80, key: 'size', text: (x) => x.size, value: (x) => x.sizeB },
-            { t: 'Recorded', w: 130, key: 'at', text: (x) => x.at, value: (x) => x.atMs }
-        ], rows, { sortId: 'lz-recordings', empty: state.tracks ? 'This tape has no recordings.' : 'Reading the tape...' });
-        return { html: c.page('Recordings', '', [{ id: 'lz-held', title: 'Held recordings', body: held }, { id: 'lz-tape', title: 'On the tape', body: tape }]) };
+            { t: 'Title', w: 250, key: 'title', text: (x) => x.title, html: (x) => `<i title="${esc(x.name)}">${esc(x.title)}</i>` },
+            { t: 'Artist', w: 160, key: 'artist', text: (x) => x.artist },
+            { t: 'Show', w: 120, key: 'show', text: (x) => x.show },
+            { t: 'Length', w: 66, key: 'dur', text: (x) => x.dur },
+            { t: 'Size', w: 84, key: 'size', text: (x) => x.size, value: (x) => x.sizeB },
+            { t: 'Recorded', w: 120, key: 'at', text: (x) => x.at, value: (x) => x.atMs }
+        ], rows, { sortId: 'lz-recordings', fit: true, empty: state.tracks ? 'This tape has no recordings.' : 'Reading the tape...' });
+        return { html: c.page('Recordings', '', [{ id: 'lz-held', title: `Held recordings (${held.length})`, body: heldList + splits + hint }, { id: 'lz-tape', title: `On the tape (${(state.tracks || []).length})`, body: tape }]) };
+    }
+
+    /** A tape track's merged metadata (title / artist / show), else read out of its name. */
+    function trackMeta(t) {
+        if (t.title || t.artist) return { title: t.title || t.name || '', artist: t.artist || '', show: t.show || '' };
+        const name = String(t.name || '');
+        const m = /^\d{4}-\d{2}-\d{2} \d{4} (.+)\.(?:m4a|aac|mp4)$/i.exec(name);
+        const rest = m ? m[1] : name.replace(/\.(m4a|aac|mp4)$/i, '');
+        const i = rest.lastIndexOf(' - ');
+        if (i > 0) return { title: rest.slice(i + 3), artist: rest.slice(0, i), show: '' };
+        return { title: rest, artist: '', show: '' };
     }
 
     function heldSelCommands(n, key) {
@@ -697,7 +975,7 @@
 
     function accountsPage(c) {
         const a = state.account || {};
-        const max = (state.slots && state.slots.max) || 4;
+        const max = maxSlots();
         // one SiriusXM login per virtual radio (xmradio slots, #1252 S2); before the server sent the list, slot 1 only
         const list = (state.slots && Array.isArray(state.slots.list)) ? state.slots.list : null;
         const rows = [];
@@ -706,30 +984,32 @@
             const own = i === 0;
             const data = s
                 ? {
-                    name: s.name || `Lizumi-Recorder-${i + 1}`, handle: s.handle || '',
+                    name: s.name || slotName(i), handle: s.handle || '',
                     state: s.signedIn ? 'Signed in' : s.handle ? 'Signed out' : 'Not set up',
-                    since: s.since ? clock(s.since) : '', token: s.tokenExp ? clock(s.tokenExp) : '-',
+                    tone: s.signedIn ? 'ok' : (s.lastError ? 'bad' : 'idle'),
+                    since: s.since ? clock(s.since) : '-', token: s.tokenExp ? clock(s.tokenExp) : '-',
                     entitlement: s.entitlementHash ? `${s.entitlementHash}${s.refused ? ` (${s.refused} refused)` : ''}` : '-',
                     error: s.lastError ? `${s.lastErrorAt ? `${clock(s.lastErrorAt)} ` : ''}${s.lastError}` : ''
                 }
                 : {
-                    name: `Lizumi-Recorder-${i + 1}`,
+                    name: slotName(i),
                     handle: own ? (a.handle || '') : '',
                     state: own ? (a.signedIn ? 'Signed in' : a.expired ? 'Expired' : 'Signed out') : 'Not set up',
-                    since: own && a.since ? clock(a.since) : '', token: '-', entitlement: '-', error: ''
+                    tone: own && a.signedIn ? 'ok' : (own && a.expired ? 'warn' : 'idle'),
+                    since: own && a.since ? clock(a.since) : '-', token: '-', entitlement: '-', error: ''
                 };
-            rows.push({ key: `acc:${i + 1}`, icon: `${VI}/account-manager-16.png`, data });
+            rows.push({ key: `acc:${i + 1}`, icon: `${VI}/account-manager-16.png`, cls: data.tone === 'bad' ? 'lz-row-bad' : '', data });
         }
         return {
             html: c.listView([
-                { t: 'Virtual Radio', w: 130, key: 'name', text: (x) => x.name },
-                { t: 'Handle', w: 150, key: 'handle', text: (x) => x.handle },
-                { t: 'State', w: 90, key: 'state', text: (x) => x.state },
-                { t: 'Signed in since', w: 120, key: 'since', text: (x) => x.since },
-                { t: 'Token expiry', w: 90, key: 'token', text: (x) => x.token },
-                { t: 'Entitlement', w: 120, key: 'entitlement', text: (x) => x.entitlement },
-                { t: 'Last sign-in failure', w: 220, key: 'error', text: (x) => x.error }
-            ], rows, { sortId: 'lz-accounts', empty: EMPTY }),
+                { t: 'Virtual Radio', w: 172, key: 'name', text: (x) => x.name },
+                { t: 'Handle', w: 120, key: 'handle', text: (x) => x.handle },
+                { t: 'State', w: 96, key: 'state', text: (x) => x.state, html: (x) => `<span class="lz-chip is-${esc(x.tone)}">${esc(x.state)}</span>` },
+                { t: 'Signed in since', w: 112, key: 'since', text: (x) => x.since },
+                { t: 'Token expiry', w: 92, key: 'token', text: (x) => x.token },
+                { t: 'Entitlement', w: 108, key: 'entitlement', text: (x) => x.entitlement },
+                { t: 'Last sign-in failure', w: 180, key: 'error', text: (x) => x.error }
+            ], rows, { sortId: 'lz-accounts', fit: true, empty: EMPTY }),
             list: true
         };
     }
@@ -739,36 +1019,25 @@
 
     function diagnosticsPage(c) {
         const d = state.deck || {};
+        if (d) void loadTracks(c); // the tape tile's count
         const list = (state.slots && Array.isArray(state.slots.list)) ? state.slots.list : [];
-        const pool = Array.isArray(d.pool) ? d.pool : [];
-        const signed = pool.length ? pool.filter((x) => x.ready).length : list.filter((x) => x.signedIn).length;
+        const recsL = recs();
         const link = c.props([
             ['Recorder service', d.offline ? c.state(false, 'Offline: the recorder service is not answering', false) : c.state(true, 'Online')],
-            ['Signed-in virtual radios', esc(`${signed} of ${pool.length || (state.slots && state.slots.max) || 4}`)],
-            ['Recordings running', esc(String(recs().length))],
+            ['Signed-in virtual radios', esc(`${signedIn()} of ${maxSlots()}`)],
+            ['Recordings running', esc(String(recsL.length))],
             ['Held recordings', esc(d.held ? `${d.held.n || 0} (${d.held.assembling || 0} assembling, ${d.held.failed || 0} failed)` : '0')]
         ]);
         const arows = list.map((s2) => ({
             key: `da:${s2.slot}`, icon: `${VI}/account-manager-16.png`,
-            data: { name: s2.name || slotName((s2.slot || 1) - 1), state: s2.signedIn ? 'Signed in' : s2.handle ? 'Signed out' : 'Not set up', error: s2.lastError ? `${s2.lastErrorAt ? `${clock(s2.lastErrorAt)} ` : ''}${s2.lastError}` : 'None' }
+            data: { name: s2.name || slotName((s2.slot || 1) - 1), state: s2.signedIn ? 'Signed in' : s2.handle ? 'Signed out' : 'Not set up', tone: s2.signedIn ? 'ok' : (s2.lastError ? 'bad' : 'idle'), error: s2.lastError ? `${s2.lastErrorAt ? `${clock(s2.lastErrorAt)} ` : ''}${s2.lastError}` : 'None' }
         }));
         const accounts = c.listView([
             { t: 'Virtual Radio', w: 130, key: 'name', text: (x) => x.name },
-            { t: 'State', w: 90, key: 'state', text: (x) => x.state },
+            { t: 'State', w: 96, key: 'state', text: (x) => x.state, html: (x) => `<span class="lz-chip is-${esc(x.tone)}">${esc(x.state)}</span>` },
             { t: 'Last sign-in failure', w: 420, key: 'error', text: (x) => x.error }
-        ], arows, { sortId: 'lz-diag-acc', empty: 'No accounts were reported.' });
-        const rrows = recs().map((r) => ({
-            key: `dr:${r.rid}`, icon: `${VI}/volume-high-16.png`,
-            data: { name: slotName((r.slot || 1) - 1), channel: chName(r.channelId), gaps: Number(r.gaps && r.gaps.length != null ? r.gaps.length : r.gaps) || 0, gapS: Number(r.gapSeconds) || 0, refetches: Number(r.refetches) || 0, pauses: Number(r.pauses) || 0, behind: Number(r.behindS) || 0 }
-        }));
-        const health = c.listView([
-            { t: 'Virtual Radio', w: 130, key: 'name', text: (x) => x.name },
-            { t: 'Channel', w: 150, key: 'channel', text: (x) => x.channel },
-            { t: 'Gaps', w: 90, key: 'gaps', text: (x) => gapText(x.gaps, x.gapS), html: (x) => gapCell(c, false, x.gaps, x.gapS), value: (x) => x.gaps },
-            { t: 'Re-fetches', w: 76, key: 'refetches', text: (x) => String(x.refetches), value: (x) => x.refetches },
-            { t: 'Pauses', w: 60, key: 'pauses', text: (x) => String(x.pauses), value: (x) => x.pauses },
-            { t: 'Behind', w: 70, key: 'behind', text: (x) => `${Math.round(x.behind)}s`, value: (x) => x.behind }
-        ], rrows, { sortId: 'lz-diag-rec', empty: 'No recording is running.' });
+        ], arows, { sortId: 'lz-diag-acc', fit: true, empty: 'No accounts were reported.' });
+        const health = healthBlock();
         const mrows = (Array.isArray(d.history) ? d.history : []).filter((e) => e.state === 'missed').map((e) => ({
             key: `dm:${e.id}`, icon: `${VI}/warning-16.png`,
             data: { cut: cutText(e) || chName(e.channelId), channel: chName(e.channelId), when: clock(e.endedAt || e.expiresAt), whenAt: e.endedAt || e.expiresAt || 0, reason: e.reason || '' }
@@ -778,15 +1047,38 @@
             { t: 'Channel', w: 150, key: 'channel', text: (x) => x.channel },
             { t: 'When', w: 120, key: 'when', text: (x) => x.when, value: (x) => x.whenAt },
             { t: 'Why', w: 320, key: 'reason', text: (x) => x.reason }
-        ], mrows, { sortId: 'lz-diag-miss', empty: 'No queue entry was missed.' });
+        ], mrows, { sortId: 'lz-diag-miss', fit: true, empty: 'No queue entry was missed.' });
         return {
             html: c.page('Diagnostics', '', [
+                { id: 'lz-diag-sum', title: 'Summary', body: summaryTiles() + `<div class="lz-gap"></div>` + summaryLine() },
                 { id: 'lz-diag-link', title: 'Link', body: link },
                 { id: 'lz-diag-acc', title: 'Accounts', body: accounts },
                 { id: 'lz-diag-rec', title: 'Recording health', body: health },
                 { id: 'lz-diag-miss', title: 'Missed queue entries', body: missed }
             ])
         };
+    }
+
+    /** A verdict line per recording, in plain words, with its numbers underneath. */
+    function healthBlock() {
+        const recsL = recs();
+        if (!recsL.length) return `<p class="lz-note">No recording is running.</p>`;
+        return `<div class="lz-health">${recsL.map((r) => {
+            const { h, mk } = assess(r);
+            const icon = mk ? (mk.tone === 'bad' ? IC.error : IC.warn) : IC.info;
+            const verdict = mk ? mk.text : 'writing audio normally';
+            const nums = [
+                `behind ${durText(h.behindS)}`,
+                `${h.segsW} / ${h.segsE || h.segsW} segments`,
+                `${h.refetches} re-fetch${h.refetches === 1 ? '' : 'es'}`,
+                `${h.pauses} pause${h.pauses === 1 ? '' : 's'}`,
+                h.holes ? `${h.holes} unreadable` : 'no holes',
+                h.gaps ? `${h.gaps} gap${h.gaps === 1 ? '' : 's'} (${h.gapS}s)` : 'no gaps'
+            ].join(' - ');
+            return `<div class="lz-verdict${mk ? ` is-${mk.tone}` : ''}"><img src="${esc(icon)}" alt="">
+                <div><b>${esc(slotName((r.slot || 1) - 1))}</b> <span>${esc(chName(r.channelId) || 'a channel')}</span>: <span>${esc(verdict)}</span>
+                <div class="lz-verdict-num">${esc(nums)}</div></div></div>`;
+        }).join('')}</div>`;
     }
 
     // ---- Settings -----------------------------------------------------------------------------------------
@@ -864,10 +1156,6 @@
         return hlsLoading;
     }
 
-    const recs = () => (state.deck && Array.isArray(state.deck.recordings) ? state.deck.recordings : []);
-    const recOf = (rid) => recs().find((r) => r.rid === rid) || null;
-    const slotName = (i) => `Lizumi-Recorder-${i + 1}`;
-
     /** The recording the Live page shows: the one picked while it still records, else the first. */
     function liveRec() {
         return recOf(state.liveRid) || recs()[0] || null;
@@ -941,24 +1229,27 @@
     const PSTATE = { loading: 'Buffering...', playing: 'Playing', error: 'The stream is not available' };
 
     function livePage(c) {
+        void loadLineup();
         const list = recs();
         const r = liveRec();
         if (state.player && (!r || state.player.rid !== r.rid)) stopPlayer(); // the recording ended, or another is shown
         const p = state.player;
-        const rows = list.map((x, i) => ({ key: `lv:${x.rid}`, icon: `${VI}/volume-high-16.png`, data: { name: slotName(i), channel: chName(x.channelId), cut: cutText(x.cut) } }));
+        const rows = list.map((x, i) => ({ key: `lv:${x.rid}`, icon: IC.rec, data: { name: slotName(i), channel: chName(x.channelId), cut: cutText(x.cut) } }));
         if (r && String(c.sel) !== `lv:${r.rid}`) c.sel = `lv:${r.rid}`;
         const listHtml = c.listView([
             { t: 'Virtual Radio', w: 130, key: 'name', text: (x) => x.name },
             { t: 'Channel', w: 160, key: 'channel', text: (x) => x.channel },
             { t: 'On air', w: 300, key: 'cut', text: (x) => x.cut }
-        ], rows, { sortId: 'lz-live', empty: 'No virtual radio is recording.' });
-        let monitor = '<p>Pick a recording virtual radio to monitor it.</p>';
+        ], rows, { sortId: 'lz-live', fit: true, empty: 'No virtual radio is recording.' });
+        let monitor = '<p class="lz-note">Pick a recording virtual radio to monitor it.</p>';
         if (r) {
             const i = list.indexOf(r);
+            const { mk } = assess(r);
+            const warn = mk ? `<p class="lz-warn${mk.tone === 'bad' ? ' is-bad' : ''}"><img src="${esc(mk.tone === 'bad' ? IC.error : IC.warn)}" alt=""><span>${esc(mk.text)}</span></p>` : '';
             monitor = `<div class="mmc-buttons">
                 <button type="button" class="btn-standard" data-lz="play">${p ? 'Stop' : 'Play'}</button>
                 <button type="button" class="btn-standard" data-lz="mute">${state.muted ? 'Unmute' : 'Mute'}</button>
-                <label>Volume <input type="range" min="0" max="100" step="1" value="${state.vol}" data-lz="vol" aria-label="Volume"></label>
+                <label class="lz-vol">Volume <input type="range" min="0" max="100" step="1" value="${state.vol}" data-lz="vol" aria-label="Volume"></label>
             </div>
             ${c.props([
                 ['Monitor', esc(`${slotName(i)} - ${p ? PSTATE[p.state] : 'stopped'}`)],
@@ -966,7 +1257,7 @@
                 ['On air', esc(cutText(r.cut))],
                 ['Tape running', `<span data-lz="running">${esc(runningText(r))}</span>`],
                 ['Reached back', esc(r.back ? span(r.back) : '0:00')]
-            ])}`;
+            ])}${warn}`;
         }
         return {
             html: c.page('Live', '', [
@@ -1008,12 +1299,12 @@
         if (!state.loaded) return { html: c.listView([{ t: 'Name', w: 300, key: 'name', text: (x) => x.name }], [], { empty: 'Reading XM Radio...' }), list: true };
         if (state.error && !state.deck) return { html: c.listView([{ t: 'Name', w: 300, key: 'name', text: (x) => x.name }], [], { empty: state.error }), list: true };
         switch (n.id) {
-            case 'radios': void loadLineup(); return radiosPage(c);
-            case 'queue': void loadLineup(); return queuePage(c);
-            case 'schedules': void loadLineup(); return schedulesPage(c);
+            case 'radios': return radiosPage(c);
+            case 'queue': return queuePage(c);
+            case 'schedules': return schedulesPage(c);
             case 'recordings': return recordingsPage(c);
             case 'accounts': return accountsPage(c);
-            case 'live': void loadLineup(); return livePage(c);
+            case 'live': return livePage(c);
             case 'diagnostics': return diagnosticsPage(c);
             case 'settings': return settingsPage(c);
             default: return '';
@@ -1023,13 +1314,14 @@
     function status(n) {
         const d = state.deck;
         if (!d || n.id === 'root') return '';
-        const pool = Array.isArray(d.pool) && d.pool.length ? d.pool : null;
-        const r = pool ? pool.filter((x) => x.streaming > 0).length : (d.recordings || []).length;
-        const max = pool ? pool.length : ((state.slots && state.slots.max) || 4);
-        const ready = pool ? pool.filter((x) => x.ready).length : max;
+        const pool = poolOf();
+        const r = pool ? pool.filter((x) => x.streaming > 0).length : recs().length;
+        const max = maxSlots();
+        const ready = signedIn();
         const q = (d.queue || []).length;
+        const trouble = recs().filter((x) => health(x).tone !== 'ok').length;
         if (n.id === 'recordings') return `Tape: ${d.tape}`;
-        return `${r} of ${max} virtual radios recording (${ready} signed in), ${q} ${q === 1 ? 'entry' : 'entries'} waiting`;
+        return `${r} of ${max} virtual radios recording (${ready} signed in), ${q} ${q === 1 ? 'entry' : 'entries'} waiting${trouble ? `, ${trouble} with trouble` : ''}`;
     }
 
     function def() {
@@ -1040,7 +1332,7 @@
             icon32: APP,
             taskbarIcon: APP,
             treeWidth: 170,
-            // the pool's columns (radio, state, channel, on air, kind, running, reach-back, buffer, segments) fit without scrolling
+            // the card grid and the one-line tables fit the pane (fit lists) without scrolling sideways
             width: 1120,
             height: 640,
             expanded: ['root'],
@@ -1068,14 +1360,22 @@
                 void want(true);
             },
             onSelectRow: (key, n, c) => {
-                if (!n || n.id !== 'live' || !key || !key.startsWith('lv:')) return;
-                const rid = key.slice(3);
-                if (rid !== state.liveRid) { state.liveRid = rid; stopPlayer(); }
-                c.refresh();
+                if (!n) return;
+                if (n.id === 'live') {
+                    if (key && key.startsWith('lv:')) {
+                        const rid = key.slice(3);
+                        if (rid !== state.liveRid) { state.liveRid = rid; stopPlayer(); }
+                    }
+                    c.refresh();
+                } else if (n.id === 'recordings') {
+                    // the selected held recording's splits show under the list
+                    c.render();
+                }
             },
             onClose: () => {
                 stopPlayer();
                 state.console = null;
+                state.segWatch.clear();
                 void want(false);
             }
         };

@@ -1,0 +1,438 @@
+/* Lizumi (Lizumi console, public/scripts/comp/mmcLizumi.js): the XM Radio recording console's look.
+   The MMC shell (public/css/mmc-console.css) draws the frame, the tree, the result pane and the list views;
+   this file adds the console's own vocabulary - count tiles that jump to their page, a card per virtual
+   radio, state chips, a progress bar, a quiet warning treatment and the tape's split list. Every colour and
+   font comes from mmc-lizumi-tokens.css (--lz-*); nothing here names one. Scoped to #mmcConsole_lizumi.
+   Rows stay one line (ui-standard rule 10): list views ellipsize, cards and running text may wrap. */
+
+/* ---- small-caps section heading, used inside a page body ---- */
+
+#mmcConsole_lizumi .lz-sh {
+    margin: 2px 0 6px;
+    color: var(--lz-muted);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+#mmcConsole_lizumi .lz-note {
+    margin: 4px 0 0;
+    color: var(--lz-muted);
+}
+
+#mmcConsole_lizumi .lz-gap {
+    height: 6px;
+}
+
+/* ---- count tiles: a figure that opens the page it counts ---- */
+
+#mmcConsole_lizumi .lz-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--lz-tile-min), 1fr));
+    gap: var(--lz-gap);
+    margin: 0 0 4px;
+}
+
+#mmcConsole_lizumi .lz-tile {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+    column-gap: 8px;
+    align-items: center;
+    min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--lz-line);
+    border-radius: var(--lz-radius);
+    background: var(--lz-face);
+    font: inherit;
+    text-align: left;
+}
+
+#mmcConsole_lizumi button.lz-tile {
+    cursor: pointer;
+}
+
+#mmcConsole_lizumi button.lz-tile:hover {
+    border-color: var(--lz-link);
+    background: var(--lz-accent-soft);
+}
+
+#mmcConsole_lizumi button.lz-tile:focus-visible {
+    outline: 1px dotted var(--lz-muted-2);
+    outline-offset: -3px;
+}
+
+#mmcConsole_lizumi .lz-tile img {
+    grid-row: 1 / span 3;
+    width: 16px;
+    height: 16px;
+}
+
+#mmcConsole_lizumi .lz-tile b {
+    color: var(--lz-figure);
+    font-size: 18px;
+    font-weight: normal;
+}
+
+#mmcConsole_lizumi .lz-tile span,
+#mmcConsole_lizumi .lz-tile small {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--lz-muted-2);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#mmcConsole_lizumi .lz-tile small {
+    color: var(--lz-muted);
+    font-size: 11px;
+}
+
+#mmcConsole_lizumi .lz-tile.is-warn b {
+    color: var(--lz-warn-fg);
+}
+
+#mmcConsole_lizumi .lz-tile.is-bad b {
+    color: var(--lz-bad-fg);
+}
+
+/* ---- one-line summary line (Diagnostics, Virtual Radios) ---- */
+
+#mmcConsole_lizumi .lz-sum {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 0 0 2px;
+    padding: 5px 8px;
+    border: 1px solid var(--lz-line-soft);
+    border-left: 3px solid var(--lz-accent);
+    border-radius: var(--lz-radius);
+    background: var(--lz-face-alt);
+    line-height: 1.35;
+}
+
+#mmcConsole_lizumi .lz-sum > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+}
+
+#mmcConsole_lizumi .lz-sum.is-warn {
+    border-left-color: var(--lz-warn-edge);
+    background: var(--lz-warn-bg);
+}
+
+#mmcConsole_lizumi .lz-sum.is-bad {
+    border-left-color: var(--lz-bad-edge);
+    background: var(--lz-bad-bg);
+}
+
+/* ---- a card per virtual radio ---- */
+
+#mmcConsole_lizumi .lz-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--lz-card-min), 1fr));
+    gap: var(--lz-gap);
+}
+
+#mmcConsole_lizumi .lz-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--lz-line);
+    border-left: 4px solid var(--lz-line-strong);
+    border-radius: var(--lz-radius);
+    background: var(--lz-face);
+}
+
+#mmcConsole_lizumi .lz-card.is-rec {
+    border-left-color: var(--lz-accent);
+}
+
+#mmcConsole_lizumi .lz-card.is-warn {
+    border-color: var(--lz-warn-line);
+    border-left-color: var(--lz-warn-edge);
+    background: var(--lz-warn-bg);
+}
+
+#mmcConsole_lizumi .lz-card.is-trouble {
+    border-color: var(--lz-bad-line);
+    border-left-color: var(--lz-bad-edge);
+    background: var(--lz-bad-bg);
+}
+
+#mmcConsole_lizumi .lz-card.is-idle {
+    background: var(--lz-face-alt);
+}
+
+#mmcConsole_lizumi .lz-card-h {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--lz-line-soft);
+    background: var(--lz-face-head);
+}
+
+#mmcConsole_lizumi .lz-card-h > img.lz-card-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+#mmcConsole_lizumi .lz-card-name {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--lz-heading);
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#mmcConsole_lizumi .lz-card-h .lz-chip {
+    margin-left: auto;
+}
+
+#mmcConsole_lizumi .lz-card-body {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    padding: 7px 9px 9px;
+}
+
+#mmcConsole_lizumi .lz-empty-line {
+    margin: 0;
+    color: var(--lz-muted);
+}
+
+/* label / value pairs inside a card */
+#mmcConsole_lizumi .lz-kv {
+    display: grid;
+    grid-template-columns: minmax(88px, max-content) minmax(0, 1fr);
+    column-gap: 10px;
+    row-gap: 2px;
+    margin: 0;
+}
+
+#mmcConsole_lizumi .lz-kv > dt {
+    color: var(--lz-muted);
+    white-space: nowrap;
+}
+
+#mmcConsole_lizumi .lz-kv > dd {
+    margin: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---- state chips ---- */
+
+#mmcConsole_lizumi .lz-chip {
+    flex: none;
+    padding: 1px 8px;
+    border: 1px solid var(--lz-idle-line);
+    border-radius: var(--lz-chip-radius);
+    background: var(--lz-idle-bg);
+    color: var(--lz-idle-fg);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+#mmcConsole_lizumi .lz-chip.is-ok {
+    border-color: var(--lz-ok-line);
+    background: var(--lz-ok-bg);
+    color: var(--lz-ok-fg);
+}
+
+#mmcConsole_lizumi .lz-chip.is-info {
+    border-color: var(--lz-info-line);
+    background: var(--lz-info-bg);
+    color: var(--lz-info-fg);
+}
+
+#mmcConsole_lizumi .lz-chip.is-warn {
+    border-color: var(--lz-warn-line);
+    background: var(--lz-warn-bg);
+    color: var(--lz-warn-fg);
+}
+
+#mmcConsole_lizumi .lz-chip.is-bad {
+    border-color: var(--lz-bad-line);
+    background: var(--lz-bad-bg);
+    color: var(--lz-bad-fg);
+}
+
+/* ---- progress bar: the kit's Vista progress, its fill a share of the track ---- */
+
+#mmcConsole_lizumi .lz-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: center;
+    column-gap: 8px;
+    margin: 7px 0 2px;
+}
+
+#mmcConsole_lizumi .lz-bar [role="progressbar"] {
+    height: 15px;
+    min-width: 0;
+}
+
+#mmcConsole_lizumi .lz-bar [role="progressbar"] > div {
+    width: calc((100% + 2px) * var(--lz-pct, 0) / 100);
+    min-width: 0;
+}
+
+#mmcConsole_lizumi .lz-bar-label {
+    color: var(--lz-muted-2);
+    white-space: nowrap;
+}
+
+/* ---- the warning treatment: a line that reads as a problem, not a shout ---- */
+
+#mmcConsole_lizumi .lz-warn {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 7px 0 0;
+    padding: 4px 7px;
+    border: 1px solid var(--lz-warn-line);
+    border-left: 3px solid var(--lz-warn-edge);
+    border-radius: var(--lz-radius);
+    background: var(--lz-warn-bg);
+    color: var(--lz-warn-fg);
+    line-height: 1.3;
+}
+
+#mmcConsole_lizumi .lz-warn.is-bad {
+    border-color: var(--lz-bad-line);
+    border-left-color: var(--lz-bad-edge);
+    background: var(--lz-bad-bg);
+    color: var(--lz-bad-fg);
+}
+
+#mmcConsole_lizumi .lz-warn > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+}
+
+/* ---- the splits a recording will be cut into (from its cut store) ---- */
+
+#mmcConsole_lizumi .lz-splits {
+    margin: 8px 0 0;
+    padding: 6px 8px 7px;
+    border: 1px solid var(--lz-line-soft);
+    border-radius: var(--lz-radius);
+    background: var(--lz-face-alt);
+}
+
+#mmcConsole_lizumi .lz-splits > .lz-sh {
+    margin: 0 0 4px;
+}
+
+#mmcConsole_lizumi .lz-split {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) max-content;
+    align-items: center;
+    column-gap: 6px;
+    padding: 1px 0;
+}
+
+#mmcConsole_lizumi .lz-split-t {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#mmcConsole_lizumi .lz-split.is-done .lz-split-t {
+    color: var(--lz-muted);
+}
+
+#mmcConsole_lizumi .lz-tick {
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-icons/check-16.png") center / 16px 16px no-repeat;
+}
+
+#mmcConsole_lizumi .lz-dot {
+    display: block;
+    width: 6px;
+    height: 6px;
+    margin: 0 auto;
+    border: 1px solid var(--lz-dot-ink);
+    border-radius: 50%;
+}
+
+#mmcConsole_lizumi .lz-split-ad {
+    color: var(--lz-warn-fg);
+    font-size: 11px;
+}
+
+/* ---- the Live page's volume: the kit draws the Vista trackbar inside .win7 (sliders-platform.mdc) ---- */
+
+#mmcConsole_lizumi .lz-vol {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#mmcConsole_lizumi .lz-vol > input[type="range"] {
+    width: 160px;
+    vertical-align: middle;
+}
+
+/* ---- Diagnostics: a verdict line per recording ---- */
+
+#mmcConsole_lizumi .lz-verdict {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--lz-line-soft);
+    line-height: 1.3;
+}
+
+#mmcConsole_lizumi .lz-verdict:last-child {
+    border-bottom: 0;
+}
+
+#mmcConsole_lizumi .lz-verdict > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+}
+
+#mmcConsole_lizumi .lz-verdict.is-warn {
+    background: var(--lz-warn-bg);
+    color: var(--lz-warn-fg);
+}
+
+#mmcConsole_lizumi .lz-verdict.is-bad {
+    background: var(--lz-bad-bg);
+    color: var(--lz-bad-fg);
+}
+
+#mmcConsole_lizumi .lz-verdict b {
+    color: var(--lz-heading);
+}
+
+#mmcConsole_lizumi .lz-verdict.is-warn b {
+    color: var(--lz-warn-fg);
+}
+
+#mmcConsole_lizumi .lz-verdict.is-bad b {
+    color: var(--lz-bad-fg);
+}
+
+#mmcConsole_lizumi .lz-verdict .lz-verdict-num {
+    color: var(--lz-muted-2);
+}
+
+/* a trouble checkbox in a dialog is the kit's; the console adds no control of its own */

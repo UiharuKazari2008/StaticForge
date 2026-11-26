@@ -555,7 +555,7 @@ const FEATURE_MANIFEST = {
     mmc_snapins: {
         hot: true,
         depends: ['vista_dialog_templates', 'workspace_dialogs', 'print_queue'],
-        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css', 'css/mmc-books.css', 'css/mmc-wiki.css', 'css/mmc-chardb.css', 'css/mmc-exchange.css', 'css/mmc-appkeys.css', 'css/mmc-servermgr.css'],
+        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css', 'css/mmc-books.css', 'css/mmc-wiki.css', 'css/mmc-chardb.css', 'css/mmc-exchange.css', 'css/mmc-appkeys.css', 'css/mmc-servermgr.css', 'css/mmc-lizumi-tokens.css', 'css/mmc-lizumi.css'],
         scripts: [
             'scripts/comp/mmcConsole.js',
             'scripts/comp/mmcFrontGate.js',
