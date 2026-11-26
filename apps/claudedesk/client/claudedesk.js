@@ -2407,22 +2407,31 @@
     }
 
     /** What a wait holds, from the gate's own text when the files column is empty (older rows). */
-    const waitFiles = (g) => g.files || (String(g.text || '').match(/\):\s*(?:uncommitted|claims on)\s+([^-]+?)(?:\s+-\s+asked|$)/) || [])[1] || '';
+    const waitFiles = (g) => g.files || (String(g.text || '').match(/\):\s*(?:uncommitted|claims on)\s+(.+?)(?:\s+-\s+asked\b|$)/) || [])[1] || '';
+    /** A coord agent id (claude-<8 hex>) as the session's own title; the agent's name, else the id. */
+    const agentTitle = (id) => {
+        const a = agentOf(id);
+        const sid = (a && a.sessionId) || '';
+        const m = /^claude-([0-9a-f]{8})$/.exec(String(id || ''));
+        const live = sid ? liveOf(sid) : (m ? (S.live || []).find((l) => String(l.id).startsWith(m[1])) : null);
+        const row = sid ? rowOf(sid) : (live ? rowOf(live.id) : null);
+        return (row && titleOf(row)) || (a && a.name) || (live && (live.name || live.id.slice(0, 8))) || id || '';
+    };
     /** A restart / client update wait list: one row per session it waits on (prefix ga / ca), the row's actions in the Actions pane. */
     function waitList(c, list, prefix, sortId, empty) {
         const rows = list.map((g) => {
             const a = agentOf(g.agentId);
             const asker = agentOf(g.askedBy);
-            return { key: `${prefix}:${g.agentId}`, icon: g.stale ? `${VI}/warning-16.png` : '/static_images/vista-cmdbar/clock.png', data: { who: a ? (a.name || a.id) : g.agentId, files: waitFiles(g), why: g.why || '', by: asker ? (asker.name || asker.id) : (g.askedBy || ''), at: g.firstAt || 0, last: g.lastAt || 0, state: g.stale ? 'Looks stuck' : 'Waiting' } };
+            return { key: `${prefix}:${g.agentId}`, icon: g.stale ? `${VI}/warning-16.png` : '/static_images/vista-cmdbar/clock.png', data: { who: agentTitle(g.agentId) || (a && a.id), files: waitFiles(g), why: g.why || '', by: g.askedBy ? agentTitle(g.askedBy) : (asker ? asker.name : ''), at: g.firstAt || 0, last: g.lastAt || 0, state: g.stale ? 'Looks stuck' : 'Waiting' } };
         });
         return c.listView([
-            { t: 'Waiting on', w: 170, key: 'who', text: (d) => d.who },
-            { t: 'Files', w: 240, key: 'files', text: (d) => d.files },
-            { t: 'For', w: 200, key: 'why', text: (d) => d.why },
-            { t: 'Asked by', w: 130, key: 'by', text: (d) => d.by },
-            { t: 'Since', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => Number(d.at) || 0 },
-            { t: 'Last checked', w: 128, key: 'last', text: (d) => when(d.last), value: (d) => Number(d.last) || 0 },
-            { t: 'State', w: 90, key: 'state', text: (d) => d.state }
+            { t: 'Waiting on', w: 160, key: 'who', text: (d) => d.who },
+            { t: 'Files', w: 200, key: 'files', text: (d) => d.files },
+            { t: 'For', w: 150, key: 'why', text: (d) => d.why },
+            { t: 'Asked by', w: 110, key: 'by', text: (d) => d.by },
+            { t: 'Since', w: 110, key: 'at', text: (d) => when(d.at), value: (d) => Number(d.at) || 0 },
+            { t: 'Last checked', w: 110, key: 'last', text: (d) => when(d.last), value: (d) => Number(d.last) || 0 },
+            { t: 'State', w: 80, key: 'state', text: (d) => d.state }
         ], rows, { sortId, sort: { key: 'at', dir: 1 }, empty });
     }
     /** The session a selected wait row waits on. */
