@@ -2379,6 +2379,7 @@ const requestLogTime = new Intl.DateTimeFormat('en-US', {
     hour12: false
 });
 
+const requestLogGate = require('./modules/requestLogGate');
 // Logger // NOTE: Everything above this is not logged!
 app.use((req, res, next) => {
     const skippedPaths = [
@@ -2426,7 +2427,9 @@ app.use((req, res, next) => {
     }
     
     const startTime = Date.now();
-    const timestamp = requestLogTime.format(startTime);
+    // #1230: a line per request only at DETAILED (or DREAMSCAPE_REQUEST_LOG=1), never for preflights, static GETs or the grimoire poll
+    const logThis = requestLogGate.shouldLogRequest(req.method, req.path, require('./modules/logger').getVerbosity());
+    const timestamp = logThis ? requestLogTime.format(startTime) : '';
     
     const realIP = getRealIP(req);
     const queryParams = { ...req.query };
@@ -2436,11 +2439,11 @@ app.use((req, res, next) => {
     // Add response time header
     res.setHeader('X-Response-Time', '0ms');
     
-    console.log(`\n📋 [${timestamp}] ${realIP} => ${req.method} ${req.path}`);
-    if (Object.keys(queryParams).length > 0) {
+    if (logThis) console.log(`📋 [${timestamp}] ${realIP} => ${req.method} ${req.path}`);
+    if (logThis && Object.keys(queryParams).length > 0) {
         console.log(`   Query: ${JSON.stringify(queryParams)}`);
     }
-    if (req.body && Object.keys(req.body).length > 0) {
+    if (logThis && req.body && Object.keys(req.body).length > 0) {
         console.log(`   Body: ${formatLoggedBody(req.body, req.get('content-length'))}`);
     }
     
@@ -2452,12 +2455,12 @@ app.use((req, res, next) => {
                 const duration = Date.now() - startTime;
                 const responseTime = `${duration}ms`;
                 res.setHeader('X-Response-Time', responseTime);
-                console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s`);
+                if (logThis) console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s`);
                 completionLogged = true;
             } catch (error) {
                 // Headers already sent, just log completion
                 const duration = Date.now() - startTime;
-                console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s (headers already sent)`);
+                if (logThis) console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s (headers already sent)`);
                 completionLogged = true;
             }
         }
@@ -2471,12 +2474,12 @@ app.use((req, res, next) => {
                 const duration = Date.now() - startTime;
                 const responseTime = `${duration}ms`;
                 res.setHeader('X-Response-Time', responseTime);
-                console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s`);
+                if (logThis) console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s`);
                 completionLogged = true;
             } catch (error) {
                 // Headers already sent, just log completion
                 const duration = Date.now() - startTime;
-                console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s (headers already sent)`);
+                if (logThis) console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s (headers already sent)`);
                 completionLogged = true;
             }
         }

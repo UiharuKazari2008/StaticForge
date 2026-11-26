@@ -34,6 +34,8 @@ module.exports = {
         pmx: false,
         // Timestamp every log line (SQLITE_IOERR on 2026-10-15 could not be dated).
         time: true,
+        // Log size: pm2 5.x has no per-app max_size / retain (those are pm2-logrotate module settings, global).
+        // pm2-logrotate is installed: `pm2 set pm2-logrotate:max_size 50M` / `retain 3` / `compress true` (#1230).
         // Cap glibc arenas (Oct 4 mem investigation: ~1.46GB across ~103 arenas).
         // Do NOT add max_memory_restart / cron_restart / watch.
         env: {

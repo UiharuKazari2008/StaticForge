@@ -422,7 +422,7 @@ function recordUsage(row) {
 // Background jobs (titles, task lists, sizing, rule checks, usage...) share a budget of 20 engine calls a minute, so a
 // loop can never flood TokenRouter, whose rate limit Yozora shares; turn reviews always go through.
 const bgCalls = [];
-const NO_EFFORT = new Set(); // engine|model pairs that refuse reasoning_effort
+const NO_EFFORT = require('./noEffortStore'); // engine|model pairs that refuse reasoning_effort, kept on disk (#1230)
 const BG_PER_MIN = Number(process.env.AGENT_SUPERVISOR_BG_PER_MIN) || 20;
 /**
  * The Supervisor's Effort setting is the maximum and the default for its judgement calls (reviews, rule checks, rules
@@ -474,8 +474,7 @@ async function callEngine(gr, messages, opts = {}) {
             let res = await post(!!ep.effort && !noEffort);
             let body = await res.text();
             if (!res.ok && res.status === 400 && ep.effort && !noEffort) {
-                NO_EFFORT.add(`${link.engine}|${ep.model}`);
-                console.warn(`[supervisor] ${ep.name} ${ep.model} refuses reasoning_effort; asking without it`);
+                if (NO_EFFORT.add(`${link.engine}|${ep.model}`)) console.warn(`[supervisor] ${ep.name} ${ep.model} refuses reasoning_effort; asking without it`);
                 res = await post(false);
                 body = await res.text();
             }
