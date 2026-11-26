@@ -575,7 +575,13 @@ const TREE_CHARS = {
 };
 
 // Boot process methods
+// The first tree is the start (Server Initialization -> Server ready). Later trees are work that runs after
+// ready (asset manifest, preview sync, CLI updates): they must not print a second "Server ready" - that pair is
+// how boot time is measured, and the late tree's 40-200 s skewed it (#1230).
+let bootRuns = 0;
 logger.startBoot = function() {
+    bootRuns++;
+    bootState.late = bootRuns > 1;
     bootState.isBooting = true;
     bootState.startTime = Date.now();
     bootState.steps = [];
@@ -631,7 +637,7 @@ logger.endBoot = function() {
     
     // Build the tree output
     const lines = [];
-    lines.push('Server Initialization');
+    lines.push(bootState.late ? 'Post-ready tasks' : 'Server Initialization');
     
     bootState.steps.forEach((step, stepIndex) => {
         const isLastStep = stepIndex === bootState.steps.length - 1;
@@ -656,7 +662,7 @@ logger.endBoot = function() {
     
     // Output the tree
     console.log('\n' + lines.join('\n'));
-    console.log(`\nServer ready (${totalSeconds}s)\n`);
+    console.log(bootState.late ? `\nPost-ready tasks done (${totalSeconds}s)\n` : `\nServer ready (${totalSeconds}s)\n`);
     
     bootState.isBooting = false;
 };

@@ -75,3 +75,15 @@ const svc = require('../modules/runtimeAssetService');
         fs.rmSync(tmp, { recursive: true, force: true });
     }
 })().catch((e) => { console.error(e); process.exit(1); });
+// 4. only the first boot tree prints "Server ready" (the measured pair); a later tree is "Post-ready tasks"
+{
+    const { execFileSync } = require('child_process');
+    const out = execFileSync(process.execPath, ['-e', `
+        const l = require('${path.join(root, 'modules', 'logger.js').replace(/\\/g, '/')}');
+        (async () => {
+            l.startBoot(); await l.bootStep('A', async () => {}); l.endBoot();
+            l.startBoot(); await l.bootStep('B', async () => {}); l.endBoot();
+        })();`], { encoding: 'utf8', cwd: root });
+    assert.strictEqual((out.match(/Server ready \(/g) || []).length, 1, 'exactly one "Server ready" for two boot trees');
+    assert(/Post-ready tasks done/.test(out), 'late tree is labelled Post-ready tasks');
+}
