@@ -177,9 +177,23 @@ function settings(gr) {
         ruleCheckCalls: Number.isInteger(cfg.ruleCheckCalls) && cfg.ruleCheckCalls >= 1 && cfg.ruleCheckCalls <= 4 ? cfg.ruleCheckCalls : 1,
         modelPolicy: cleanPolicy(cfg.modelPolicy),
         maxAskMinutes: Number.isFinite(cfg.maxAskMinutes) && cfg.maxAskMinutes >= 1 ? Math.min(240, cfg.maxAskMinutes) : 15,
-        yozoraRepos: Array.isArray(cfg.yozoraRepos) ? cfg.yozoraRepos.filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)) : ['DreamScape/StaticForge']
+        yozoraRepos: Array.isArray(cfg.yozoraRepos) ? cfg.yozoraRepos.filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)) : ['DreamScape/StaticForge'],
+        notify: cleanNotify(cfg.notify)
     };
 }
+
+// What Fleet may put on Yukimi's phone (#1196): a work item she started is done, or one needs her (Input Required / failed).
+// Routine alerts (maintenance, usage flags, ...) go to the Supervisor first and reach the phone only when switched on.
+// Default is no notification: a key not listed here, or a new alert source, never notifies.
+const NOTIFY_DEFAULTS = { workDone: true, workAttention: true, maintenance: false, usage: false };
+function cleanNotify(n, base) {
+    const src = n && typeof n === 'object' ? n : {};
+    const out = {};
+    Object.keys(NOTIFY_DEFAULTS).forEach((k) => { out[k] = typeof src[k] === 'boolean' ? src[k] : (base ? base[k] : NOTIFY_DEFAULTS[k]); });
+    return out;
+}
+/** Whether Fleet's notice of this kind may reach the phone (unknown kinds: never). */
+function notifyOn(kind, gr) { const n = settings(gr).notify; return Object.prototype.hasOwnProperty.call(n, kind) && n[kind] === true; }
 
 async function saveSettings(gr, next) {
     const cur = settings(gr);
@@ -201,13 +215,35 @@ async function saveSettings(gr, next) {
         ruleCheckCalls: next.ruleCheckCalls === undefined ? cur.ruleCheckCalls : Math.max(1, Math.min(4, Math.round(Number(next.ruleCheckCalls)) || cur.ruleCheckCalls)),
         modelPolicy: next.modelPolicy === undefined ? cur.modelPolicy : cleanPolicy(next.modelPolicy),
         maxAskMinutes: next.maxAskMinutes === undefined ? cur.maxAskMinutes : Math.max(1, Math.min(240, Math.round(Number(next.maxAskMinutes)) || cur.maxAskMinutes)),
-        yozoraRepos: Array.isArray(next.yozoraRepos) ? next.yozoraRepos.map(String).filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)).slice(0, 20) : cur.yozoraRepos
+        yozoraRepos: Array.isArray(next.yozoraRepos) ? next.yozoraRepos.map(String).filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)).slice(0, 20) : cur.yozoraRepos,
+        // partial: only the switches sent change (the phone sends one at a time)
+        notify: next.notify === undefined ? cur.notify : cleanNotify(next.notify, cur.notify)
     };
     if (!engines(gr).some((e) => e.id === s.engine)) throw new Error(`Unknown engine ${s.engine}`);
     // the maintenance settings live under the same key (modules/fleetMaintenance.js): assign() replaces the whole object
     try { const m = (gr.getConfig().agentSupervisor || {}).maintenance; if (m) s.maintenance = m; } catch (_) { /* none */ }
     await gr.modifyConfig('config').assign(['agentSupervisor'], s);
+    // a switch turned off takes its live notices off the phone now
+    if (next.notify !== undefined) { try { require('./fleetNotices').sweepRoutine(gr); } catch (_) { /* best effort */ } }
     return settings(gr);
+}
+
+/**
+ * Tells the Manager Session about a routine Fleet alert: a note in its agent-coord inbox (never typed into a terminal).
+ * false when no Manager Session is set or the note could not be posted.
+ */
+function tellManager(text, gr) {
+    const mgr = settings(gr).managerSessionId;
+    if (!mgr || !String(text || '').trim()) return false;
+    try {
+        // the agent row it registered under (its session id), else the row the Supervisor's own notes use (lockAgentId)
+        let agent = null;
+        try { agent = coord().resolveAgent(mgr); } catch (_) { agent = null; }
+        const agentId = agent ? agent.id : `claude-${mgr.slice(0, 8)}`;
+        if (!agent && !coord().getAgent(agentId)) coord().upsertAgent({ id: agentId, kind: 'claude', name: 'Manager Session', sessionId: mgr });
+        coord().post('supervisor', agentId, String(text), { kind: 'note' });
+        return true;
+    } catch (e) { console.warn(`[supervisor] manager note: ${e.message}`); return false; }
 }
 
 function tokenRouterBase() {
@@ -1075,7 +1111,11 @@ function setWork(id, fields) {
     const before = fields.state ? db().prepare('SELECT state FROM supervisor_work WHERE id = ?').get(Number(id)) : null;
     const keys = Object.keys(fields);
     db().prepare(`UPDATE supervisor_work SET ${keys.map((k) => `${k} = @${k}`).join(', ')} WHERE id = @id`).run(Object.assign({ id: Number(id) }, fields));
-    if (before && before.state !== fields.state) syncIssue(Number(id), before.state).catch((e) => noteIssue(Number(id), e.message));
+    if (before && before.state !== fields.state) {
+        syncIssue(Number(id), before.state).catch((e) => noteIssue(Number(id), e.message));
+        // the one Fleet notice path (modules/fleetNotices.js): done / needs her reach the phone, the rest never
+        try { require('./fleetNotices').workChanged(db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id)), before.state); } catch (e) { console.warn(`[supervisor] notice: ${e.message}`); }
+    }
 }
 
 function noteIssue(id, text) {
@@ -1262,6 +1302,8 @@ async function pullIssues(gr, opts = {}) {
         if (st !== 'closed') continue;
         db().prepare('UPDATE supervisor_work SET state = ?, ended_at = ?, message = ? WHERE id = ?').run(r.state === 'queued' || r.state === 'held' ? 'cancelled' : 'done', Date.now(), ISSUE_CLOSED_MSG, r.id);
         ended += 1;
+        // done because its issue closed elsewhere is no news (no "done" notice); a "needs you" it had comes down
+        try { require('./fleetNotices').workEndedQuietly(r.id); } catch (_) { /* best effort */ }
         if (r.parent_id) settleParent(r.parent_id);
     }
     if (added || ended) emit({ work: true });
@@ -3613,6 +3655,8 @@ function bind(gr) {
 
 function start(gr) {
     bind(gr);
+    // phone notices a Fleet Manager switch does not allow (kept from before the switches, #1196) come down once at start
+    try { require('./fleetNotices').sweepRoutine(gr); } catch (_) { /* best effort */ }
     if (watcher || process.env.AGENT_SUPERVISOR_DISABLED === '1') return;
     scan(true);
     try {
@@ -4036,7 +4080,7 @@ async function acceptRuleFinding(gr, findingId, edit = {}, opts = {}) {
 module.exports = {
     explainRuleIssue, acceptRuleProposal, rejectRuleProposal, acceptRuleFinding, listRuleProposals, getRuleProposal, proposalBrief,
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable }
 };

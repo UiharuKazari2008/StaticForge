@@ -55,7 +55,6 @@ const DEFAULTS = {
     cacheRatioMin: 0.8, // cache reads / (cache reads + fresh input) under this on a long session
     cacheRatioMinCalls: 60,
     modelOverPolicy: true,
-    notify: true,
     fileWorkItem: false, // the maintenance check files a held work item for its findings
     prices: {}
 };
@@ -72,7 +71,6 @@ function settings(gr) {
         cacheRatioMin: Math.min(1, num(c.cacheRatioMin, DEFAULTS.cacheRatioMin, 0)),
         cacheRatioMinCalls: num(c.cacheRatioMinCalls, DEFAULTS.cacheRatioMinCalls, 1),
         modelOverPolicy: c.modelOverPolicy !== false,
-        notify: c.notify !== false,
         fileWorkItem: c.fileWorkItem === true,
         prices: c.prices && typeof c.prices === 'object' ? c.prices : {}
     };
@@ -668,7 +666,7 @@ function record(s, found, cfg, title) {
         if (had) upd.run(row); else { ins.run(row); fresh.push(f); }
     });
     if (fresh.length) {
-        if (cfg.notify) fresh.forEach((f) => notifyFlag(s, f, title));
+        fresh.forEach((f) => notifyFlag(s, f, title)); // routine(): the Supervisor hears of it; the phone only on the Fleet Manager switch
         changed();
     }
     return fresh;
@@ -676,8 +674,9 @@ function record(s, found, cfg, title) {
 
 function notifyFlag(s, f, title) {
     try {
-        require('./notificationInbox').publish({
-            user: 'admin', app: 'claudedesk', id: `usage-flag:${f.fkey}`.slice(0, 160), cls: 'maintenance',
+        // routine: the Supervisor first; the phone only when "usage" is switched on in Fleet Manager (#1196)
+        require('./fleetNotices').routine('usage', {
+            id: `usage-flag:${f.fkey}`.slice(0, 160),
             title: `${REASONS[f.reason] || 'Heavy usage'}: ${String(title || s.id.slice(0, 8)).slice(0, 60)}`, text: f.text.slice(0, 300),
             data: { app: 'claudedesk', kind: 'usage-flag', sessionId: s.id, reason: f.reason }, ttlMs: 3 * DAY
         });

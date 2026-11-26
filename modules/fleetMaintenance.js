@@ -960,10 +960,10 @@ async function execute(opts = {}) {
 function notify(report) {
     if (report.state !== 'warn' && report.state !== 'fail') return;
     try {
-        const inbox = require('./notificationInbox');
         const bad = report.checks.filter((c) => c.state === 'warn' || c.state === 'fail');
-        inbox.publish({
-            user: 'admin', app: 'claudedesk', id: `fleet-maintenance:${new Date(report.startedAt).toISOString().slice(0, 10)}`, cls: 'maintenance',
+        // routine: the Supervisor first; the phone only when "maintenance" is switched on in Fleet Manager (#1196)
+        require('./fleetNotices').routine('maintenance', {
+            id: `fleet-maintenance:${new Date(report.startedAt).toISOString().slice(0, 10)}`,
             title: report.state === 'fail' ? 'Fleet maintenance: something failed' : 'Fleet maintenance: needs a look',
             text: bad.map((c) => `${c.title}: ${c.summary}`).join('\n').slice(0, 600),
             data: { app: 'claudedesk', kind: 'maintenance', runId: report.id }, ttlMs: 2 * DAY

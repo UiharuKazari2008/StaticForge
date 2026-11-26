@@ -18,9 +18,10 @@ const assert = require('assert');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'usage-'));
 process.env.AGENT_COORD_DB = path.join(tmp, 'state', 'coord.db');
 const audit = require('../modules/claudeUsageAudit');
-const inbox = require('../modules/notificationInbox');
+// a new flag is a routine alert (#1196): it goes through fleetNotices.routine, which tells the Supervisor first and
+// reaches the phone only on the "usage" switch; here the routine call is what is counted
 const posted = [];
-inbox.publish = (n) => { posted.push(n); return n; };
+require('../modules/fleetNotices').routine = (kind, n) => { assert.strictEqual(kind, 'usage'); posted.push(n); return { told: false, published: false }; };
 
 let n = 0;
 const ok = (msg) => { n += 1; console.log(`ok ${n} - ${msg}`); };
@@ -123,7 +124,7 @@ const work = { bySession: new Map(), items: new Map() };
     assert.strictEqual(again.length, 0);
     assert.strictEqual(posted.length, first.length);
     assert.strictEqual(audit.flagsList({ all: true }).length, first.length);
-    ok('the same flags do not repeat and post one notification each');
+    ok('the same flags do not repeat and raise one routine alert each');
     const turnFlag = audit.flagsList({}).find((f) => f.reason === 'turn_tokens' && f.ref === '1');
     assert.ok(turnFlag && turnFlag.numbers.fresh > 500000);
     assert.ok(!audit.flagsList({}).some((f) => f.reason === 'turn_tokens' && f.ref === '2'));
