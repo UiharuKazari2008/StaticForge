@@ -359,6 +359,16 @@ function localIso(instant, tz) {
     return `${p.year}-${p.month}-${p.day}T${String(+p.hour % 24).padStart(2, '0')}:${p.minute}`;
 }
 
+/** The first of the given instants (ISO strings with a zone, or ms) that parses, as epoch ms; null if none. */
+function instantMs(...instants) {
+    for (const v of instants) {
+        if (v == null || v === '') continue;
+        const ms = typeof v === 'number' ? v : Date.parse(v);
+        if (Number.isFinite(ms)) return ms;
+    }
+    return null;
+}
+
 const pct = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * 100));
 const n = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
 
@@ -674,6 +684,9 @@ function normaliseApple(body, tz, meta = {}) {
             expires: localIso(al.expireTime, tz),
             onset: localIso(al.eventOnsetTime, tz),
             ends: localIso(al.eventEndTime, tz),
+            // the raw instants (they carry a zone), epoch ms, for clients that format in the place's zone (#1200)
+            startsAt: instantMs(al.eventOnsetTime, al.effectiveTime, al.issuedTime),
+            endsAt: instantMs(al.eventEndTime, al.expireTime),
             responses: Array.isArray(al.responses) ? al.responses : [],
             detailsUrl: al.detailsUrl || null,
             country: al.countryCode || meta.country || ''
@@ -1075,6 +1088,8 @@ async function nwsAlerts(lat, lon) {
             expires: localIso(p.expires, tz),
             onset: localIso(p.onset, tz),
             ends: localIso(p.ends, tz),
+            startsAt: instantMs(p.onset, p.effective, p.sent),
+            endsAt: instantMs(p.ends, p.expires),
             responses: [],
             text: unwrap(p.description),
             instruction: unwrap(p.instruction),
@@ -1386,8 +1401,84 @@ function broadcast(message) {
 }
 
 /** A place as the broadcasts carry it. */
-function placeTag(id, p) {
-    return { id, label: PLACE_LABEL[id], name: p.name, region: p.region || '', country: p.country || '', lat: p.lat, lon: p.lon };
+function placeTag(id, p, tz) {
+    return { id, label: PLACE_LABEL[id], name: p.name, region: p.region || '', country: p.country || '', lat: p.lat, lon: p.lon, tz: tz || timezoneOf(p.lat, p.lon) };
+}
+
+const DAY_MS = 24 * HOUR;
+
+/** 'Y-M-D' of an instant on the wall clock of tz, as a day number (days since 1970, wall-clock based). */
+function wallDayNumber(ms, tz) {
+    const w = wallParts(ms, tz);
+    return Date.UTC(+w.year, +w.month - 1, +w.day) / DAY_MS;
+}
+
+function clockText(ms, tz, locale) {
+    try { return new Date(ms).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', timeZone: tz }); } catch (_e) { return new Date(ms).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }); }
+}
+
+/** "today 6:00 PM", "tomorrow 9:00 AM", "Fri 6:00 PM" (within 6 days), "Wed 3 Dec 6:00 PM" - relative to now in tz. */
+function dayTimeText(ms, tz, now, locale) {
+    const diff = wallDayNumber(ms, tz) - wallDayNumber(now, tz);
+    const time = clockText(ms, tz, locale);
+    let fmtTz = tz;
+    try { new Intl.DateTimeFormat(locale, { timeZone: tz }); } catch (_e) { fmtTz = 'UTC'; }
+    let day;
+    if (diff === 0) day = 'today';
+    else if (diff === 1) day = 'tomorrow';
+    else if (diff === -1) day = 'yesterday';
+    else if (diff > 1 && diff <= 6) day = new Date(ms).toLocaleDateString(locale, { weekday: 'short', timeZone: fmtTz });
+    else {
+        const wd = new Date(ms).toLocaleDateString(locale, { weekday: 'short', timeZone: fmtTz });
+        const dd = new Date(ms).toLocaleDateString(locale, { day: 'numeric', timeZone: fmtTz });
+        const mon = new Date(ms).toLocaleDateString(locale, { month: 'short', timeZone: fmtTz });
+        day = `${wd} ${dd} ${mon}`;
+    }
+    return `${day} ${time}`;
+}
+
+/**
+ * The window of an alert as one phrase (#1200): "From today 6:00 PM until tomorrow 9:00 AM" (start ahead),
+ * "Until tomorrow 9:00 AM" (started or no start), "From Wed 6:00 PM" (no end), "Ended <when>" (end passed), "" (neither).
+ * opts: { tz (the place's IANA zone), now (ms), locale }.
+ */
+/** 'YYYY-MM-DDTHH:MM' read as the wall clock in tz -> epoch ms, or null. */
+function wallClockMs(iso, tz) {
+    if (!iso || String(iso).length < 16) return null;
+    const guess = Date.parse(`${String(iso).slice(0, 16)}:00Z`);
+    if (!Number.isFinite(guess)) return null;
+    let p;
+    try { p = wallParts(guess, tz); } catch (_e) { return guess; }
+    const shown = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute);
+    return guess - (shown - guess);
+}
+
+function alertWindowText(alert, opts) {
+    const o = opts || {};
+    const tz = o.tz || 'UTC';
+    const now = Number.isFinite(o.now) ? o.now : Date.now();
+    const locale = o.locale || 'en-US';
+    const a = alert || {};
+    // epoch ms from the server (#1200); an older alert has only the place's wall-clock strings
+    const s = Number.isFinite(a.startsAt) ? a.startsAt : wallClockMs(a.onset || a.effective, tz);
+    const e = Number.isFinite(a.endsAt) ? a.endsAt : wallClockMs(a.ends || a.expires, tz);
+    if (e != null && e <= now) return `Ended ${dayTimeText(e, tz, now, locale)}`;
+    if (e != null) return s != null && s > now ? `From ${dayTimeText(s, tz, now, locale)} until ${dayTimeText(e, tz, now, locale)}` : `Until ${dayTimeText(e, tz, now, locale)}`;
+    return s != null && s > now ? `From ${dayTimeText(s, tz, now, locale)}` : '';
+}
+
+/** "Home (Setagaya)" / "Home" / the area alone, plus " - <area>" when it adds something short (#1200). */
+function alertWhereText(alert, place) {
+    const a = alert || {};
+    const area = String(a.area || '').trim();
+    const label = place && place.label ? String(place.label).trim() : '';
+    const name = place && place.name ? String(place.name).trim() : '';
+    let base = '';
+    if (label && name && name !== label) base = `${label} (${name})`;
+    else base = label || name;
+    if (!base) return area;
+    if (area && area !== name && area !== label && area.length <= 60) base += ` - ${area}`;
+    return base;
 }
 
 /**
@@ -1430,7 +1521,7 @@ function rainAlarmLive(id) {
 async function pollPlace(id, p, changes) {
     let forecast;
     try { forecast = await getForecast(p.lat, p.lon); } catch (_e) { return; }
-    const tag = placeTag(id, p);
+    const tag = placeTag(id, p, forecast.tz);
     // alerts
     const alerts = p.alerts === false ? [] : (Array.isArray(forecast.alerts) ? forecast.alerts : []).slice().sort((x, y) => (ALERT_SEVERITY[y.severity] || 0) - (ALERT_SEVERITY[x.severity] || 0));
     const before = ((monitor.byPlace[id] || {}).alerts || []).map((a) => a.id).join('|');
@@ -1438,7 +1529,7 @@ async function pollPlace(id, p, changes) {
     const seen = loadSeen();
     const fresh = alerts.filter((a) => !seen.has(`${id}:${a.id}`) && !seen.has(a.id));
     fresh.forEach((a) => {
-        const until = Date.parse(`${a.expires || a.ends || ''}Z`) - (forecast.offset || 0) * 1000;
+        const until = Number.isFinite(a.endsAt) ? a.endsAt : Date.parse(`${a.expires || a.ends || ''}Z`) - (forecast.offset || 0) * 1000;
         seen.set(`${id}:${a.id}`, Number.isFinite(until) ? until + HOUR : Date.now() + 2 * 24 * HOUR);
     });
     if (fresh.length) {
@@ -1800,5 +1891,7 @@ module.exports = {
     cached,
     openMeteoRaw,
     WeatherError,
-    _test: { overlayApple, rainOutlook, distanceKm, monitor, normaliseApple, normaliseOpenMeteo, signAppleToken, normalisePrivateKey, memo, Limiter, Lru, localIso, offsetAt, appleCondition, nextHourSummary, jsonCache, limiters }
+    alertWindowText,
+    alertWhereText,
+    _test: { instantMs, placeTag,  overlayApple, rainOutlook, distanceKm, monitor, normaliseApple, normaliseOpenMeteo, signAppleToken, normalisePrivateKey, memo, Limiter, Lru, localIso, offsetAt, appleCondition, nextHourSummary, jsonCache, limiters }
 };
