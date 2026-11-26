@@ -1866,7 +1866,7 @@
             tile('sup-locks', '/static_images/vista-cmdbar/lock.png', locks.length, 'Managed locks'),
             tile('sup-arts', FOLDER16, arts.length, 'Work folders', false, `${arts.length} folders, ${bytesText(total)}`),
             tile('sup-maint', '/static_images/vista-cmdbar/tools.png', ml, 'Last maintenance run')
-        ].join('')}</div><p class="mmc-hint">Runs on ${esc([(eng && eng.name) || st.engine, st.model || 'the engine default'].join(' / '))}${st.enabled ? '' : ' (off)'}. ${arts.length ? `Work folders: ${esc(bytesText(total))}. ` : ''}<span class="mmc-link" data-act="nav:sup-settings">Settings</span> <span class="mmc-link" data-act="nav:sup-maint">Maintenance</span></p>`;
+        ].join('')}</div><p class="mmc-hint">Runs on ${esc([(eng && eng.name) || st.engine, st.model || 'the engine default'].join(' / '))}${st.enabled ? '' : ' (off)'}.${st.reviewer && st.reviewer.engine === 'claude' ? ` Final review: Claude ${esc(String(st.reviewer.model || 'opus').replace(/^./, (ch) => ch.toUpperCase()))}${st.reviewer.effort ? ` / ${esc(st.reviewer.effort)}` : ''}.` : ''} ${arts.length ? `Work folders: ${esc(bytesText(total))}. ` : ''}<span class="mmc-link" data-act="nav:sup-settings">Settings</span> <span class="mmc-link" data-act="nav:sup-maint">Maintenance</span></p>`;
     }
     function supGapTable(reviews) {
         const list = reviews.filter((r) => !r.dismissed && r.verdict === 'gaps').sort((a, b) => (Number(b.at) || 0) - (Number(a.at) || 0)).slice(0, 6);
@@ -1884,6 +1884,7 @@
         const eng = supEngine(st.engine);
         const engineOpts = (eng ? engines : engines.concat([{ id: st.engine, name: st.engine }])).map((e) => `<option value="${esc(e.id)}"${e.id === st.engine ? ' selected' : ''}>${esc(e.name || e.id)}</option>`).join('');
         const stats = (sup.data && sup.data.stats) || {};
+        const rv = Object.assign({ engine: '', model: 'opus', effort: '' }, st.reviewer || {});
         const form = `<div class="cd-sup-form">
             <label class="cd-opt"><input type="checkbox" data-sup="enabled"${st.enabled ? ' checked' : ''}><span>Enabled: review each agent turn against what was asked</span></label>
             <label><span>Engine:</span><select class="vdt-select" data-sup="engine">${engineOpts}</select></label>
@@ -1898,6 +1899,7 @@
             <label class="cd-opt"><input type="checkbox" data-sup="trackArtifacts"${st.trackArtifacts ? ' checked' : ''}><span>Track work folders and temp files</span></label>
             <label class="cd-opt"><input type="checkbox" data-sup="ruleCheck"${st.ruleCheck === false ? '' : ' checked'}><span>Check each finished turn's changed files against the rules (check scripts and a judgement call)</span></label>
             <label class="cd-opt"><input type="checkbox" data-sup="autoPauseOnCollision"${st.autoPauseOnCollision ? ' checked' : ''}><span>Pause the later agent when two collide on the same files</span></label>
+            <label title="Who judges a finished turn: Done or Sent Back. Titles, task lists and the other Supervisor calls keep using the engine above."><span>Final reviewer:</span><select class="vdt-select" data-sup="reviewer.engine">${[['', 'Same as the Supervisor'], ['claude', 'Claude (a Fleet account)']].map(([v, t]) => `<option value="${v}"${v === rv.engine ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select> <select class="vdt-select" data-sup="reviewer.model"${rv.engine ? '' : ' disabled'}>${[['opus', 'Opus'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku'], ['fable', 'Fable']].map(([v, t]) => `<option value="${v}"${v === rv.model ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select> <select class="vdt-select" data-sup="reviewer.effort"${rv.engine ? '' : ' disabled'}>${[['', 'Default'], ['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max']].map(([v, t]) => `<option value="${v}"${v === rv.effort ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
             <label><span>Verify a restart wait after (minutes):</span><input type="text" data-sup="maxAskMinutes" value="${esc(st.maxAskMinutes == null ? '' : st.maxAskMinutes)}" inputmode="numeric" autocomplete="off" placeholder="Ask the Supervisor to verify a restart wait after N minutes"></label>
             <label class="cd-top"><span>Yozora repositories to watch:</span><textarea data-sup="yozoraRepos" rows="3" spellcheck="false" placeholder="owner/repo, one per line">${esc(Array.isArray(st.yozoraRepos) ? st.yozoraRepos.join('\n') : String(st.yozoraRepos || ''))}</textarea></label>
             <p class="mmc-hint">An open issue labelled fleet in these repositories joins the Work Queue by itself.</p>
@@ -2026,7 +2028,10 @@
                         if (row) { row.hidden = false; const t = row.querySelector('input'); if (t) t.focus(); }
                         return;
                     }
-                    if (key.startsWith('notify.')) d.notify = Object.assign({}, d.notify, { [key.slice(7)]: el.checked });
+                    if (key.startsWith('reviewer.')) {
+                        d.reviewer = Object.assign({ engine: '', model: 'opus', effort: '' }, d.reviewer, { [key.slice(9)]: el.value });
+                        if (key === 'reviewer.engine') pane.querySelectorAll('select[data-sup="reviewer.model"], select[data-sup="reviewer.effort"]').forEach((x) => { x.disabled = !el.value; });
+                    } else if (key.startsWith('notify.')) d.notify = Object.assign({}, d.notify, { [key.slice(7)]: el.checked });
                     else d[key === 'modelOther' ? 'model' : key] = el.type === 'checkbox' ? el.checked : el.value;
                     S.sup.draft = d;
                     if (key === 'engine') {
@@ -5763,6 +5768,7 @@
                 const extra = {};
                 if (d.autoPauseOnCollision !== undefined) extra.autoPauseOnCollision = !!d.autoPauseOnCollision;
                 if (d.ruleCheck !== undefined) extra.ruleCheck = !!d.ruleCheck;
+                if (d.reviewer && typeof d.reviewer === 'object') extra.reviewer = { engine: d.reviewer.engine === 'claude' ? 'claude' : '', model: d.reviewer.model || 'opus', effort: d.reviewer.effort || '' };
                 if (d.reviewScope) extra.reviewScope = d.reviewScope === 'all' ? 'all' : 'supervised';
                 if (String(d.maxAskMinutes == null ? '' : d.maxAskMinutes).trim() !== '') extra.maxAskMinutes = Math.max(1, Math.min(1440, Math.round(Number(d.maxAskMinutes)) || 15));
                 await supAct(c, { action: 'save', settings: Object.assign(extra, { enabled: !!d.enabled, engine: d.engine, model: String(d.model || '').trim(), effort: d.effort || '', delivery: d.delivery, manageLocks: !!d.manageLocks, trackArtifacts: !!d.trackArtifacts, maxConcurrent: Math.max(1, Math.min(32, Math.round(Number(d.maxConcurrent)) || 3)), autoStart: d.autoStart !== false, modelPolicy: d.modelPolicy || undefined, notify: d.notify && typeof d.notify === 'object' ? Object.keys(d.notify).reduce((o, k) => { o[k] = d.notify[k] === true; return o; }, {}) : undefined, yozoraRepos: (Array.isArray(d.yozoraRepos) ? d.yozoraRepos : String(d.yozoraRepos || '').split(/[\s,]+/)).map((x) => String(x).trim()).filter(Boolean) }) }, 'Saving...');

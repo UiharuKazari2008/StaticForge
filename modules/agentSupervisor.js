@@ -181,7 +181,23 @@ function settings(gr) {
         modelPolicy: cleanPolicy(cfg.modelPolicy),
         maxAskMinutes: Number.isFinite(cfg.maxAskMinutes) && cfg.maxAskMinutes >= 1 ? Math.min(240, cfg.maxAskMinutes) : 15,
         yozoraRepos: Array.isArray(cfg.yozoraRepos) ? cfg.yozoraRepos.filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)) : ['DreamScape/StaticForge'],
-        notify: cleanNotify(cfg.notify)
+        notify: cleanNotify(cfg.notify),
+        reviewer: cleanReviewer(cfg.reviewer)
+    };
+}
+
+// The Final reviewer: who judges a finished turn (Done or Sent Back). engine '' = the Supervisor's own engine;
+// 'claude' = the Claude Code CLI on a Fleet account (callClaudeReviewer).
+const REVIEWER_MODELS = ['opus', 'sonnet', 'haiku', 'fable'];
+const REVIEWER_EFFORTS = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
+function cleanReviewer(r, base) {
+    const src = r && typeof r === 'object' ? r : {};
+    const b = base || { engine: '', model: 'opus', effort: '' };
+    const engine = src.engine === undefined ? b.engine : (src.engine === 'claude' ? 'claude' : '');
+    return {
+        engine,
+        model: src.model === undefined ? b.model : (REVIEWER_MODELS.includes(src.model) ? src.model : 'opus'),
+        effort: src.effort === undefined ? b.effort : (REVIEWER_EFFORTS.includes(src.effort) ? src.effort : '')
     };
 }
 
@@ -220,7 +236,8 @@ async function saveSettings(gr, next) {
         maxAskMinutes: next.maxAskMinutes === undefined ? cur.maxAskMinutes : Math.max(1, Math.min(240, Math.round(Number(next.maxAskMinutes)) || cur.maxAskMinutes)),
         yozoraRepos: Array.isArray(next.yozoraRepos) ? next.yozoraRepos.map(String).filter((r) => /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r)).slice(0, 20) : cur.yozoraRepos,
         // partial: only the switches sent change (the phone sends one at a time)
-        notify: next.notify === undefined ? cur.notify : cleanNotify(next.notify, cur.notify)
+        notify: next.notify === undefined ? cur.notify : cleanNotify(next.notify, cur.notify),
+        reviewer: next.reviewer === undefined ? cur.reviewer : cleanReviewer(next.reviewer, cur.reviewer)
     };
     if (!engines(gr).some((e) => e.id === s.engine)) throw new Error(`Unknown engine ${s.engine}`);
     // the maintenance settings live under the same key (modules/fleetMaintenance.js): assign() replaces the whole object
@@ -560,9 +577,59 @@ function pickBalance(x) {
     return { balance: x.balance !== undefined ? x.balance : (x.remaining !== undefined ? x.remaining : null), balanceText: x.balanceText || x.text || '', currency: x.currency || '', state: x.state || '', title: x.title || '' };
 }
 
+/**
+ * The review through the Claude Code CLI on a Fleet account (Settings > Final reviewer). The token reaches the CLI only
+ * as CLAUDE_CODE_OAUTH_TOKEN in a minimal environment; the CLI runs in a throwaway directory with no tools, settings or MCP.
+ * Same result shape as callEngine; throws when it cannot answer (the caller falls back).
+ */
+async function callClaudeReviewer(gr, messages, reviewer) {
+    const model = REVIEWER_MODELS.includes(reviewer && reviewer.model) ? reviewer.model : 'opus';
+    const effort = REVIEWER_EFFORTS.includes(reviewer && reviewer.effort) ? reviewer.effort : '';
+    const sys = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+    const user = messages.filter((m) => m.role !== 'system').map((m) => m.content).join('\n\n');
+    const pick = await require('./claudeFleetMcp').pickForStart(gr, 'auto');
+    const keys = gr.getApiKeyManager().getServiceKeys('claude');
+    const token = keys[pick.index] && keys[pick.index].apiKey ? String(keys[pick.index].apiKey).trim() : '';
+    if (!token) throw new Error(`Claude account ${pick.name || pick.index} has no token`);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sup-reviewer-'));
+    try {
+        fs.chmodSync(dir, 0o700);
+        const args = ['-p', '--model', model].concat(effort ? ['--effort', effort] : [], ['--output-format', 'json', '--tools', '', '--strict-mcp-config', '--no-session-persistence', '--setting-sources', '', '--system-prompt', sys]);
+        const env = { PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin', LANG: process.env.LANG || 'C.UTF-8', HOME: dir, CLAUDE_CONFIG_DIR: dir, CLAUDE_CODE_OAUTH_TOKEN: token };
+        const cli = process.env.DREAMSCAPE_CLAUDE_CLI || path.join(os.homedir(), '.local/bin/claude');
+        const out = await new Promise((resolve, reject) => {
+            const cp = require('child_process').spawn(cli, args, { cwd: dir, env, stdio: ['pipe', 'pipe', 'pipe'] });
+            let so = ''; let se = ''; let done = false;
+            const fin = (err, v) => { if (done) return; done = true; clearTimeout(timer); err ? reject(err) : resolve(v); };
+            const timer = setTimeout(() => { try { cp.kill('SIGKILL'); } catch (_) { /* gone */ } fin(new Error(`Claude CLI timed out after ${Math.round(CALL_TIMEOUT_MS / 1000)} s`)); }, CALL_TIMEOUT_MS);
+            cp.stdout.on('data', (d) => { so += d; if (so.length > 4e6) { try { cp.kill('SIGKILL'); } catch (_) { /* gone */ } } });
+            cp.stderr.on('data', (d) => { se = (se + d).slice(-500); });
+            cp.on('error', (e) => fin(e));
+            cp.on('close', (code) => (code === 0 ? fin(null, so) : fin(new Error(`Claude CLI exit ${code}: ${(se || so).replace(token, '').replace(/\s+/g, ' ').slice(0, 200)}`))));
+            cp.stdin.on('error', () => { /* closed early: close handler reports */ });
+            cp.stdin.end(user);
+        });
+        let j = null;
+        try { j = JSON.parse(out); } catch (_) { throw new Error('Claude CLI output was not JSON'); }
+        if (!j || j.is_error || typeof j.result !== 'string' || !j.result.trim()) throw new Error(`Claude CLI gave no result${j && j.result ? `: ${String(j.result).slice(0, 150)}` : ''}`);
+        const content = j.result.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+        const u = j.usage || {};
+        recordUsage({ kind: 'review', engine: 'claude', model, prompt_tokens: u.input_tokens || null, completion_tokens: u.output_tokens || null, cost: Number.isFinite(j.total_cost_usd) ? j.total_cost_usd : null, ok: 1 });
+        return { content, finish: 'stop', engine: `Claude (${pick.name || pick.index})`, model, failedOverFrom: null };
+    } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* best effort */ } }
+}
+
 async function askModel(gr, s, userText, opts = {}) {
     {
-        const r = await callEngine(gr, [{ role: 'system', content: SYSTEM }, { role: 'user', content: userText }], Object.assign({ kind: 'review' }, opts));
+        const msgs = [{ role: 'system', content: SYSTEM }, { role: 'user', content: userText }];
+        let r = null;
+        if (s && s.reviewer && s.reviewer.engine === 'claude') {
+            try { r = await callClaudeReviewer(gr, msgs, s.reviewer); } catch (e) {
+                console.warn(`[supervisor] final reviewer (claude ${s.reviewer.model}) failed, using the Supervisor's engine: ${e.message}`);
+                recordUsage({ kind: 'review', engine: 'claude', model: s.reviewer.model, ok: 0, error: String(e.message).slice(0, 300) });
+            }
+        }
+        if (!r) r = await callEngine(gr, msgs, Object.assign({ kind: 'review' }, opts));
         const ep = { name: r.engine, model: r.model };
         const choice = { finish_reason: r.finish };
         const content = r.content;
@@ -4636,5 +4703,5 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, steerResumed, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { issueCarriedByOthers, closeParkedSessions, closeDeps, ageText, rowWork, deliver,handOffGaps, sweepStalled, stallKicks, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
+    _test: { callClaudeReviewer, cleanReviewer, askModel, issueCarriedByOthers, closeParkedSessions, closeDeps, ageText, rowWork, deliver,handOffGaps, sweepStalled, stallKicks, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };
