@@ -292,6 +292,38 @@ const qs = (list) => JSON.stringify(list);
         assert.strictEqual(live('usage-flag:boot').length, 0);
     });
 
+    await test('a Claude account entering the login state: one notice, once per change; leaving it takes the notice down; the switch turns it off', () => {
+        const fs8 = require('../modules/claudeFleetSettings');
+        const u = { index: 61, id: 'dddddddddddddddd', name: 'Douglas', needsLogin: true, limits: [] };
+        mark();
+        fs8.availability(u, fs8.DEFAULTS);
+        fs8.availability(u, fs8.DEFAULTS);
+        fs8.availability(u, fs8.DEFAULTS);
+        const n = live('fleet-account:dddddddddddddddd:login');
+        assert.strictEqual(n.length, 1, 'three reads, one notice');
+        assert.strictEqual(loud(), 1);
+        assert.strictEqual(n[0].title, 'Claude account Douglas needs signing in');
+        assert.match(n[0].text, /Fleet > Accounts > Douglas > Sign In Again/);
+        assert.strictEqual(n[0].data.kind, 'account-login');
+        // it works again
+        fs8.availability({ index: 61, id: 'dddddddddddddddd', name: 'Douglas', limits: [{ kind: 'session', label: 's', percent: 3, resetsAt: 1 }] }, fs8.DEFAULTS);
+        assert.strictEqual(live('fleet-account:dddddddddddddddd:login').length, 0, 'the notice came down');
+        // entering again sounds again (a new event)
+        mark();
+        fn.accountLogin({ index: 61, id: 'dddddddddddddddd', name: 'Douglas', since: 99 });
+        assert.strictEqual(loud(), 1);
+        // the switch: only an explicit false turns it off; sweepRoutine takes a live one down
+        cfg.agentSupervisor.notify = { accountLogin: false };
+        assert.strictEqual(fn.accountLoginOn(gr), false);
+        assert.strictEqual(fn.sweepRoutine(gr) >= 1, true);
+        assert.strictEqual(live('fleet-account:dddddddddddddddd:login').length, 0);
+        mark();
+        assert.strictEqual(fn.accountLogin({ index: 62, id: 'eeeeeeeeeeeeeeee', name: 'Other', since: 1 }, gr), false);
+        assert.strictEqual(live('fleet-account:eeeeeeeeeeeeeeee').length, 0);
+        delete cfg.agentSupervisor.notify;
+        assert.strictEqual(fn.accountLoginOn(gr), true, 'a missing key means on');
+    });
+
     console.log(failed ? `\n${failed} FAILED` : '\nall passed');
     process.exit(failed ? 1 : 0);
 })();

@@ -13,6 +13,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const assert = require('assert');
+const store = require('../modules/agentCoord/store');
 const { execFileSync } = require('child_process');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-fleet-'));
@@ -397,6 +398,59 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
             for (const [pc, at] of [[0, reset - 168 * H], [55, mid], [43, reset - 12 * H], [30, reset - 166 * H]]) assert.deepStrictEqual(c.paceOf(wk(pc), at), pace.paceOf(wk(pc), at), f);
             for (const [d, at] of [[31, L(2026, 2, 3)], [8, L(2026, 11, 24)], [5, L(2026, 12, 20)]]) assert.strictEqual(c.renewalAfter(d, at), pace.renewalAfter(d, at), f);
         }
+    });
+
+    await test('login marks persist across a module reload; a proven start clears them; a restart keeps "needs signing in"', () => {
+        const mod = '../modules/claudeFleetSettings';
+        let fs8 = require(mod);
+        fs8.markLoginFailed(31, 'Login expired', 'Douglas', { runtime: true, configDir: path.join(tmp, 'nowhere') });
+        delete require.cache[require.resolve(mod)];
+        fs8 = require(mod); // a restart: fresh module, same DB
+        assert.ok(fs8.loginFailedOf(31), 'the mark was loaded back');
+        assert.strictEqual(fs8.loginFailedOf(31).name, 'Douglas');
+        assert.strictEqual(fs8.availability({ index: 31, limits: [] }, fs8.DEFAULTS).state, 'login');
+        fs8.clearLoginFailed(31);
+        delete require.cache[require.resolve(mod)];
+        fs8 = require(mod);
+        assert.strictEqual(fs8.loginFailedOf(31), null, 'a cleared mark stays cleared after a restart');
+    });
+
+    await test('credentials heuristic: past expiry (or none) and no refresh token -> login; a refresh token, a future expiry, a busy session or a proven start keep it ok; no token value is read into the result', () => {
+        const fs8 = require('../modules/claudeFleetSettings');
+        const rt = require('../modules/claudeAccountRuntime');
+        const id = 'cccccccccccccccc';
+        const dir = rt.configDir(id);
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, '.credentials.json');
+        const put = (o, mt) => { fs.writeFileSync(file, JSON.stringify({ claudeAiOauth: o })); if (mt) fs.utimesSync(file, mt / 1000, mt / 1000); };
+        const u = { id, index: 41, limits: [{ kind: 'session', label: 's', percent: 5, resetsAt: 1 }] };
+        const SECRET = 'sk-ant-SECRET-TOKEN-VALUE';
+        put({ accessToken: SECRET, refreshToken: '', expiresAt: Date.now() - 1000 });
+        const a = fs8.availability(u, fs8.DEFAULTS);
+        assert.deepStrictEqual([a.state, a.schedulable], ['login', false]);
+        assert.match(a.message, /Claude Code login expired: sign in again/);
+        assert.ok(!JSON.stringify(a).includes(SECRET), 'no token value in the answer');
+        put({ accessToken: SECRET, expiresAt: 0 });
+        assert.strictEqual(fs8.availability(u, fs8.DEFAULTS).state, 'login', 'no expiry and no refresh token');
+        put({ accessToken: SECRET, refreshToken: 'r', expiresAt: Date.now() - 1000 });
+        assert.strictEqual(fs8.availability(u, fs8.DEFAULTS).state, 'free', 'a refresh token renews it');
+        put({ accessToken: SECRET, expiresAt: Date.now() + 3600e3 });
+        assert.strictEqual(fs8.availability(u, fs8.DEFAULTS).state, 'free', 'still inside its access token');
+        put({ accessToken: SECRET, expiresAt: 0 });
+        // a live busy session on that config dir: it works
+        store.upsertAgent({ id: 'busy-on-c', kind: 'claude', name: 'x', status: 'busy', pid: process.pid, configDir: dir });
+        assert.strictEqual(fs8.availability(u, fs8.DEFAULTS).state, 'free', 'a busy session on the dir proves it works');
+        store.setStatus('busy-on-c', 'gone');
+        assert.strictEqual(fs8.availability(u, fs8.DEFAULTS).state, 'login');
+        // a start that succeeded after the file was written
+        put({ accessToken: SECRET, expiresAt: 0 }, Date.now() - 60000);
+        fs8.clearLoginFailed(41);
+        assert.strictEqual(fs8.availability(u, fs8.DEFAULTS).state, 'free', 'a proven start after the credentials were written');
+        // a file with no oauth block (API-key setups) and a missing file are never judged
+        fs.writeFileSync(file, '{}');
+        assert.strictEqual(fs8.availability(Object.assign({}, u, { index: 42 }), fs8.DEFAULTS).state, 'free');
+        fs.rmSync(file);
+        assert.strictEqual(fs8.availability(Object.assign({}, u, { index: 43 }), fs8.DEFAULTS).state, 'free');
     });
 
     await test('renewalDay is a setting (1 to 31, blank clears it)', async () => {

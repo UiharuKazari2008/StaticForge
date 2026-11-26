@@ -6,6 +6,8 @@
  * Her phone gets exactly two kinds of Fleet notice:
  *   1. a work item she started is DONE                      (switch workDone,      id fleet-work:<id>:done)
  *   2. a work item NEEDS HER: Input Required, or it failed   (switch workAttention, id fleet-work:<id>:attention)
+ * A third, rare one: a Claude account's login expired and needs signing in again (switch accountLogin, on unless the
+ * Supervisor's notify settings say false; id fleet-account:<id>:login, comes down when the account works again).
  * Everything routine (the maintenance report, usage flags, anything a producer adds later) tells the Supervisor first (a
  * note in the Manager Session's agent-coord inbox) and reaches the phone only when she switched that kind on in Fleet
  * Manager. Default is no notification: a kind agentSupervisor.NOTIFY_DEFAULTS does not list never publishes.
@@ -36,7 +38,19 @@ const clip = (s, n) => {
     return t.length > n ? `${t.slice(0, n - 3)}...` : t;
 };
 const doneId = (id) => `fleet-work:${id}:done`;
+const acctId = (a) => `fleet-account:${a.id || `i${a.index}`}:login`;
 const attnId = (id) => `fleet-work:${id}:attention`;
+
+// accountLogin is not in NOTIFY_DEFAULTS (agentSupervisor's list is held elsewhere, and its cleaner drops unknown keys): the raw
+// config's agentSupervisor.notify.accountLogin decides; a missing key means on, only an explicit false turns it off.
+let boundGr = null;
+function accountLoginOn(gr) {
+    try {
+        const g = gr || boundGr;
+        const n = g && g.getConfig && g.getConfig().agentSupervisor && g.getConfig().agentSupervisor.notify;
+        return !(n && n.accountLogin === false);
+    } catch (_) { return true; }
+}
 
 // the data.kind of a routine notice already in the inbox -> the Fleet Manager switch that governs it
 const ROUTINE_KINDS = { maintenance: 'maintenance', 'usage-flag': 'usage' };
@@ -130,6 +144,7 @@ function routine(kind, notice) {
  */
 function sweepRoutine(gr) {
     let n = 0;
+    if (gr) boundGr = gr;
     try {
         inbox.bind(gr);
         inbox.list(USER).forEach((r) => {
@@ -139,10 +154,31 @@ function sweepRoutine(gr) {
             let sw = ROUTINE_KINDS[d.kind];
             if (!sw && d.kind === 'work-done') sw = 'workDone';
             if (!sw && d.kind === 'work-attention') sw = 'workAttention';
+            if (d.kind === 'account-login' && !accountLoginOn(gr)) { if (clearNotice(r.id)) n += 1; return; }
             if (sw && !on(sw, gr) && clearNotice(r.id)) n += 1;
         });
     } catch (e) { console.warn(`[fleet-notices] sweep: ${e.message}`); }
     return n;
 }
 
-module.exports = { workChanged, workEndedQuietly, routine, sweepRoutine, ROUTINE_KINDS };
+/**
+ * A Claude account entered the 'login' state (claudeFleetSettings.trackLogin, once per change): a loud notice that opens
+ * Fleet on its Accounts page. acct = { index, id, name, since }.
+ * @returns {boolean} published
+ */
+function accountLogin(acct, gr) {
+    const a = acct || {};
+    if (!accountLoginOn(gr)) return false;
+    const name = clip(a.name || `Claude ${Number(a.index) + 1}`, 60);
+    return !!inbox.publish({
+        user: USER, app: APP, id: acctId(a), cls: CLS, alert: true,
+        digest: `login:${a.id || a.index}:${a.since || 0}`,
+        title: `Claude account ${name} needs signing in`,
+        text: `Its login expired, so Fleet moves work to the other accounts until you sign in again: Fleet > Accounts > ${name} > Sign In Again.`,
+        data: { app: APP, kind: 'account-login', accountIndex: a.index, page: 'accounts' }, ttlMs: 7 * DAY
+    });
+}
+/** The account works again: its notice comes down. */
+function accountLoginCleared(acct) { return clearNotice(acctId(acct || {})); }
+
+module.exports = { accountLogin, accountLoginCleared, accountLoginOn, workChanged, workEndedQuietly, routine, sweepRoutine, ROUTINE_KINDS };

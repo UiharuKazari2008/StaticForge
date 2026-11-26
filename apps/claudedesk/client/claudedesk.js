@@ -172,6 +172,10 @@
     const activeAccount = () => S.accounts.find((a) => a.active) || null;
     const fleetRows = () => (S.fleet && Array.isArray(S.fleet.accounts) ? S.fleet.accounts : []);
     const fleetOf = (idx) => fleetRows().find((f) => f.index === idx) || null;
+    /** Accounts whose login expired (fleet row availability.state 'login', from the server's snapshot): they need signing in again. */
+    const loginRows = () => fleetRows().filter((f) => f.availability && f.availability.state === 'login');
+    const needsLogin = (idx) => { const f = fleetOf(idx); return !!(f && f.availability && f.availability.state === 'login'); };
+    const loginText = () => { const n = loginRows().length; return n ? `${n} ${n === 1 ? 'account needs' : 'accounts need'} signing in` : ''; };
     const agentOf = (id) => S.coord.agents.find((x) => x.id === id) || null;
     function inspectName() {
         if (!S.inspect) return '';
@@ -3064,7 +3068,7 @@
                         { id: 'sup-arts', name: `Work Folders (${supArtifacts().length})`, icon: FOLDER16, desc: 'Work folders and temp files the agents left' },
                         { id: 'sup-maint', name: 'Maintenance', icon: '/static_images/vista-cmdbar/tools.png', desc: 'The daily clean-up and health run: worktrees, branches, PRs, errors, disk, thermals' }
                     ] },
-                { id: 'accounts', name: 'Accounts', icon: `${A}/account-16.png`, desc: 'The Claude accounts of this host' },
+                { id: 'accounts', name: loginRows().length ? `Accounts (${loginRows().length} needs sign-in)` : 'Accounts', icon: loginRows().length ? `${VI}/warning-16.png` : `${A}/account-16.png`, desc: 'The Claude accounts of this host' },
                 {
                     id: 'rc',
                     name: 'Remote Control',
@@ -3083,7 +3087,8 @@
         const st = S.rc && S.rc.state ? S.rc : ((S.host && S.host.remoteControl && S.host.remoteControl.status) || { state: 'unknown' });
         const text = RC_TEXT[st.state] || 'Unknown';
         const ok = st.state === 'connected';
-        return `${c.state(ok, text, st.state === 'reconnecting')}${st.message && !ok ? ` <span class="mmc-hint">${esc(st.message)}</span>` : ''}`;
+        const lt = loginText();
+        return `${c.state(ok, text, st.state === 'reconnecting')}${st.message && !ok ? ` <span class="mmc-hint">${esc(st.message)}</span>` : ''}${lt ? ` <span class="mmc-link" data-act="nav:accounts">${esc(lt)}</span>` : ''}`;
     }
 
     // ---- the Supervisor's cost and balances (Plan Usage; claude_desk_supervisor spend) ----------------------
@@ -3250,7 +3255,8 @@
             tile('sup-asks', '/static_images/vista-cmdbar/clock.png', supAsks().length, 'Restart waits', true),
             tile('co-devices', '/static_images/vista-cmdbar/clock.png', devWaiting(), 'Device waits', true),
             tile('sup-holds', '/static_images/vista-cmdbar/pause.png', supHolds().length, 'Paused', true),
-            tile('usage-flags', `${VI}/warning-16.png`, usgOpenFlags(), 'Heavy usage', true)
+            tile('usage-flags', `${VI}/warning-16.png`, usgOpenFlags(), 'Heavy usage', true),
+            tile('accounts', `${VI}/warning-16.png`, loginRows().length, 'Need sign-in', true, loginRows().length ? loginRows().map((f) => f.name).join(', ') : '')
         ].join('')}</div>`;
         const live = run; // Sent Back items are in it (WORK_RUN)
         const row = (w) => `<tr class="cd-dash-row" data-act="${w.state === 'held' ? 'nav:co-held' : (w.state === 'input' ? 'nav:co-input' : `nav:aw:w:${esc(w.id)}`)}"><td class="cd-cut" title="${esc(w.title || String(w.id))}"><img class="mmc-row-icon" src="${esc(workIcon(w.state))}" alt="">${esc(w.title || String(w.id))}</td><td class="cd-cut" title="${esc(workState(w))}">${esc(workState(w))}</td><td class="cd-cut" title="${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}">${esc(w.account && w.account.name ? w.account.name : (w.account || ''))}</td><td class="cd-cut" title="${esc([w.model, w.effort].filter(Boolean).join(' / '))}">${esc([w.model, w.effort].filter(Boolean).join(' / '))}</td><td class="cd-cut" title="${esc(w.startedAt ? when(w.startedAt) : '')}">${esc(w.startedAt ? when(w.startedAt) : '')}</td><td class="cd-cut" title="${esc(w.message || '')}">${esc(w.message || '')}</td></tr>`;
@@ -3316,11 +3322,11 @@
         const A = S.app.url('assets').replace(/\/$/, '');
         const rows = S.accounts.map((a) => {
             const loginState = (fleetOf(a.index) || {}).availability;
-            const status = [loginState && loginState.state === 'login' ? 'Login expired' : '', a.active ? 'Engine' : '', a.onHost ? 'On host' : '', isPreferred(a.index) ? 'Preferred' : '', priorityTag(a.index)].filter(Boolean).join(', ') || (a.remoteLogin ? 'Ready' : 'No login linked');
+            const status = [loginState && loginState.state === 'login' ? 'Sign in again' : '', a.active ? 'Engine' : '', a.onHost ? 'On host' : '', isPreferred(a.index) ? 'Preferred' : '', priorityTag(a.index)].filter(Boolean).join(', ') || (a.remoteLogin ? 'Ready' : 'No login linked');
             const running = S.sessions.filter((s) => s.account && s.account.index === a.index && liveOf(s.id)).length;
             return {
                 key: `a:${a.index}`,
-                icon: `${A}/account-16.png`,
+                icon: loginState && loginState.state === 'login' ? `${VI}/warning-16.png` : `${A}/account-16.png`,
                 data: { name: a.name, status, login: a.remoteLogin ? (a.remoteLogin.email || a.remoteLogin.displayName) : 'None', plan: a.remoteLogin ? (a.remoteLogin.plan || '') : '', running }
             };
         });
@@ -4990,7 +4996,7 @@
     function commandList(n) {
         switch (n.id) {
             case 'root': return [{ text: 'Add Account...', action: 'add-account' }, { text: 'New Session...', action: 'new-session' }];
-            case 'accounts': return [{ text: 'Add Account...', action: 'add-account' }];
+            case 'accounts': return [{ text: loginRows().length ? 'Sign In Again...' : 'Add Account...', action: 'add-account' }].concat(loginRows().length ? [{ text: 'Add Account...', action: 'add-account' }] : []);
             case 'rc': return [{ text: 'Refresh Status', action: 'fleet-refresh' }];
             case 'co-builds': return [{ text: 'Post Message...', action: 'post' }];
             case 'co-devices': return [{ text: 'Release...', action: 'dev-release' }, { text: 'Read Again', action: 'dev-refresh' }];
@@ -5080,7 +5086,7 @@
             if (!a) return null;
             return {
                 title: a.name,
-                items: [
+                items: (needsLogin(a.index) ? [{ text: 'Sign In Again...', action: 'add-account' }, { separator: true }] : []).concat([
                     { text: a.active ? 'Reconnect Remote Control' : 'Switch To', action: 'switch' },
                     { text: 'New Session on This Account...', action: 'new-session-on' },
                     { separator: true },
@@ -5088,7 +5094,7 @@
                     { text: 'Unlink Login', action: 'unlink', disabled: !a.remoteLogin },
                     { separator: true },
                     { text: 'Properties', action: 'account-props' }
-                ]
+                ])
             };
         }
         if (key.startsWith('g:')) {
@@ -5791,7 +5797,7 @@
 
     function rowOpen(key, n, c) {
         if (key.startsWith('s:')) openChat(c, key.slice(2));
-        else if (key.startsWith('a:')) void action('account-props', c);
+        else if (key.startsWith('a:')) void action(needsLogin(Number(key.slice(2))) ? 'add-account' : 'account-props', c);
         else if (key.startsWith('g:')) void action('agent-session', c);
         else if (key.startsWith('m:')) void action('read-message', c);
         else if (key.startsWith('r:')) void action('fleet-props', c);
@@ -6756,8 +6762,8 @@
             rowOpen,
             status: (n) => {
                 if (n.id === 'sessions') return S.sessionsLoaded ? `${S.sessions.length} of ${S.sessionsTotal} sessions` : '';
-                if (n.id === 'accounts') return plural(S.accounts.length, 'account');
-                if (n.id === 'rc') { const r = fleetRows(); return r.length ? `${r.filter((f) => f.state === 'connected').length} of ${plural(r.length, 'account')} connected` : ''; }
+                if (n.id === 'accounts') return [plural(S.accounts.length, 'account'), loginText()].filter(Boolean).join(', ');
+                if (n.id === 'rc') { const r = fleetRows(); return r.length ? [`${r.filter((f) => f.state === 'connected').length} of ${plural(r.length, 'account')} connected`, loginText()].filter(Boolean).join(', ') : ''; }
                 if (n.id === 'memory') return S.mem.gone ? NOT_YET : (S.mem.loaded ? `${S.mem.rows.length} shown` : '');
                 if (n.id === 'mem-review') return S.memRv.loaded ? `${S.memRv.rows.length} to review` : '';
                 if (n.id === 'bg-agents') return plural(bgRows().length, 'background agent');
@@ -6785,7 +6791,7 @@
                 if (n.id === 'sup-asks') return plural(supAsks().length, 'restart wait');
                 if (n.id === 'co-supervisor') return S.sup.busy || (S.sup.data && S.sup.data.stats ? `${plural(S.sup.data.stats.reviewed || 0, 'review')}, ${S.sup.data.stats.gaps || 0} with gaps` : '');
                 if (nodeSid(n.id)) { const sid = nodeSid(n.id); const ch = S.chats.get(sid); const l = liveOf(sid); const il = ch && ch.ins ? insLine(ch.ins, !!(l && l.status === 'busy')) : ''; return ch ? [il || plural(ch.messages.length, 'message'), tasksStatus(ch)].filter(Boolean).join(' \u00b7 ') : ''; }
-                return `Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`;
+                return [`Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`, loginText()].filter(Boolean).join(', ');
             },
             onSelectRow: (key, n) => { if (key && key.startsWith('w:')) workDetailPaint(S.c, key.slice(2)); else if (key && (key.startsWith('mc:') || key.startsWith('mh:'))) maintSelect(key); else if (key && key.startsWith('ux:')) usgSelect(key.slice(3)); else if (n && SUP_PART[n.id]) supSelect(key); else if (n && nodeSid(n.id)) detailSelect(key, nodeSid(n.id)); },
             onSelect: undefined,
