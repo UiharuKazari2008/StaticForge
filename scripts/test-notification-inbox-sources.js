@@ -149,7 +149,7 @@ const byId = (id, user = 'admin') => inbox.list(user, { includeCleared: true }).
     src.onWeatherAlert({ alert: { id: 'a1', title: 'Wind Advisory', severity: 'moderate', expires: '2026-11-16T21:00' }, place: { id: 'home', label: 'Home', name: 'Jersey City' } });
     n = byId('wx:a1');
     assert.strictEqual(n.title, 'Wind Advisory');
-    assert.strictEqual(n.text, 'Home: Jersey City, until Mon 9:00 PM');
+    assert.match(n.text, /^Home \(Jersey City\)\. (Until|Ended) .*9:00 PM$/, 'what place and when, #1200');
     assert.strictEqual(n.cls, 'weather-alert');
     src.onRainAlarm({ place: { id: 'work', label: 'Work' }, startsInMin: 20, endsInMin: 50, kind: 'Rain' });
     n = byId('rain:work');

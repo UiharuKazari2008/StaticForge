@@ -619,16 +619,6 @@ function bindPrintQueue(queue) {
 
 // ---------------------------------------------------------------- weather (weatherService)
 
-/** 'YYYY-MM-DDTHH:MM' (the place's wall clock) -> "Fri 11:00 AM" (weatherAlerts when). */
-function when(iso) {
-    if (!iso || String(iso).length < 16) return '';
-    const d = new Date(`${String(iso).slice(0, 16)}:00Z`);
-    if (Number.isNaN(d.getTime())) return '';
-    const day = d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
-    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' });
-    return `${day} ${time}`;
-}
-
 /**
  * weather_alert_issued { alert, place, source }. One weather event is one notice (#1194): weatherService reports an alert once
  * per place it covers; the id is the alert's own, the places an alert was reported for are merged into data.places and the
@@ -641,19 +631,17 @@ function onWeatherAlert({ alert, place } = {}) {
     if (!alert || !alert.id) return null;
     const id = `wx:${alert.id}`;
     const held = inbox.get('admin', id);
-    const places = Array.isArray(held && held.data && held.data.places) ? held.data.places.filter((p) => p && p.id).map((p) => ({ id: p.id, label: p.label || '', name: p.name || '' })) : [];
+    const places = Array.isArray(held && held.data && held.data.places) ? held.data.places.filter((p) => p && p.id).map((p) => ({ id: p.id, label: p.label || '', name: p.name || '', tz: p.tz || '' })) : [];
     const placeId = (place && place.id) || 'place';
-    if (!places.some((p) => p.id === placeId)) places.push({ id: placeId, label: (place && place.label) || '', name: (place && place.name) || '' });
-    // "Home, Work: <area>, until Fri 11:00 AM" - the one place's own name, else the alert's area
-    const names = [...new Set(places.map((p) => p.name).filter(Boolean))];
-    const where = places.length > 1 ? alert.area || names.join(' / ') : names[0] || alert.area || '';
-    const bits = [];
-    if (where) bits.push(where);
-    const until = when(alert.ends || alert.expires);
-    if (until) bits.push(`until ${until}`);
-    const text = bits.join(', ');
-    const labels = [...new Set(places.map((p) => p.label).filter(Boolean))].join(', ');
-    const label = labels ? `${labels}: ` : '';
+    if (!places.some((p) => p.id === placeId)) places.push({ id: placeId, label: (place && place.label) || '', name: (place && place.name) || '', tz: (place && place.tz) || '' });
+    // "Home (Setagaya) - Tokyo. From today 6:00 PM until tomorrow 9:00 AM" (#1200): the place by label and name,
+    // the alert's area, and its start/end window in the place's zone (weatherService's wording, lazy: it requires us)
+    const ws = require('./weatherService');
+    const tz = (place && place.tz) || (places[0] && places[0].tz) || undefined;
+    const where = places.length > 1
+        ? places.map((p) => ws.alertWhereText({ area: '' }, p)).filter(Boolean).join(', ') + (alert.area ? ` - ${alert.area}` : '')
+        : ws.alertWhereText(alert, places[0]);
+    const text = [where, ws.alertWindowText(alert, { tz, now: Date.now() })].filter(Boolean).join('. ');
     const severe = alert.severity === 'extreme' || alert.severity === 'severe';
     const title = alert.title || 'Weather Alert';
     const ends = Date.parse(`${String(alert.expires || alert.ends || '').slice(0, 16)}:00Z`);
@@ -663,10 +651,10 @@ function onWeatherAlert({ alert, place } = {}) {
         id,
         cls: severe ? 'weather-severe' : 'weather-alert',
         title,
-        text: `${label}${text || 'A weather alert was issued.'}`,
+        text: text || 'A weather alert was issued.',
         actions: ['view'],
         // placeId (the first place) stays for older readers
-        data: { app: 'weather', kind: 'weather-alert', alertId: alert.id, placeId: places[0].id, places },
+        data: { app: 'weather', kind: 'weather-alert', alertId: alert.id, placeId: places[0].id, places, startsAt: alert.startsAt || null, endsAt: alert.endsAt || null },
         alert: true, // sounds only when the digest moved (another event or day) or the class rose: the inbox decides
         digest: `${title}|${String(alert.ends || alert.expires || '').slice(0, 10)}`,
         // the alert's own end (its wall clock, give or take the zone) plus a margin; the latest place's end wins

@@ -38,7 +38,7 @@ const wx = (extra) => Object.assign({ id: 'A', title: 'Wind Advisory', severity:
     assert.deepStrictEqual(rows.map((n) => n.id), ['wx:A'], 'one row for the event');
     assert.deepStrictEqual(rows[0].data.places.map((p) => p.id), ['home', 'work']);
     assert.strictEqual(rows[0].data.alertId, 'A');
-    assert.match(rows[0].text, /^Home, Work: /, 'the text names both places');
+    assert.match(rows[0].text, /^Home \(Jersey City\), Work \(Manhattan\) - NYC metro\. /, 'the text names both places and the area (#1200)');
     assert.strictEqual(loudPhones('wx:A'), 1, 'the phones got one loud notice');
     assert.strictEqual(toPhones.filter((n) => n.id === 'wx:A').length, 2, 'the silent update still reaches the phones (in place)');
     src.onWeatherAlert({ alert: wx(), place: work });
