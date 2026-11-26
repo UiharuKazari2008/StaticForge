@@ -58,7 +58,7 @@ var assetPreload = (function () {
         '400 13px Tahoma',
         '700 29px Tahoma'
     ];
-    // Same faces as shellIconFontSpecs in public/scripts/comp/modalUtils.js.
+    // Same faces the shell icon fonts use (the start menu and tray draw them)
     // Loaded here because the logon chrome and desktop icons use them before that step.
     var ICON_FONT_SPECS = [
         '900 16px "Font Awesome 6 Pro"',
@@ -88,9 +88,9 @@ var assetPreload = (function () {
         '/static_images/vista-start/shutdown.png',
         '/static_images/vista-start/lock.png'
     ];
-    // Tray glyphs (vista-glass-controls.css). The sidebar's chrome and gadgets are not walked
-    // from vista-sidebar.css (every gadget theme, ~150 images): step 18.6 decodes what the
-    // gadgets in use actually draw (preloadGadgetsStage).
+    // Tray glyphs (vista-glass-controls.css). The sidebar's other gadget themes are not walked
+    // from vista-sidebar.css (~150 images): step 18.6 decodes what the gadgets in use draw
+    // (preloadGadgetsStage); the five gadgets' first-render art is listed below.
     var DESKTOP_STYLES = ['vista-glass-controls.css'];
     // Start menu art. desktop-shell.css also names the default wallpaper, which is
     // not chrome. Folder icons are chosen in script, not in that sheet
@@ -111,6 +111,32 @@ var assetPreload = (function () {
     ];
     // Taskbar clock: public/css/desktop-shell.css .taskbar-clock. Share Tech Mono is the app-wide
     // --font-mono (app.css), not a workspace font, so the workspace font list never named it.
+    // Vista Sidebar gadget art (clock, weather, CPU, notes, picture puzzle) the gadgets draw on their
+    // first render, from vistaSidebar.js: its default clock face, the weather's blue sky and loading
+    // frames, both CPU dial sets, the yellow note and the puzzle's tile art. Their sheet-drawn
+    // backgrounds (every hidpi tier picked as the browser would) come from vista-sidebar.css below.
+    // Loaded in this step so none of it is reported late after the taskbar stage.
+    var SIDEBAR_ART = '/static_images/vista-sidebar/';
+    var SIDEBAR_GADGET_URLS = [
+        'clock/trad.png', 'clock/trad_h.png', 'clock/trad_m.png', 'clock/trad_s.png', 'clock/trad_dot.png',
+        'clock/trad_highlights.png', 'clock/spacer_highlights.png',
+        'weather/BLUE-base.png', 'weather/BLUE-highlight-01.png', 'weather/BLUE-highlight-02.png',
+        'weather/BLUEDOCKED-base.png', 'weather/BLUEDOCKED-highlight-01.png', 'weather/BLUEDOCKED-highlight-02.png',
+        'weather/info.png', 'weather/docked-loading.png', 'weather/undocked-loading.png',
+        'cpu/back.png', 'cpu/back_lrg.png', 'cpu/dial.png', 'cpu/dial_lrg.png', 'cpu/dial_sml.png',
+        'cpu/dial_lrg_sml.png', 'cpu/dialdot.png', 'cpu/dialdot_lrg.png', 'cpu/glass.png', 'cpu/glass_lrg.png',
+        'notes/sticky_yellow.png', 'notes/sticky_yellow_docked.png',
+        'puzzle/tile_drop_shadow.png', 'puzzle/tile_bezel.png'
+    ].map(function (name) { return SIDEBAR_ART + name; });
+    var SIDEBAR_GADGET_ART_RE = /\/vista-sidebar\/(clock|weather|cpu|notes|puzzle)\//;
+
+    function sidebarGadgetUrls() {
+        var fromSheet = collectStylesheetUrls(['vista-sidebar.css']).filter(function (url) {
+            return SIDEBAR_GADGET_ART_RE.test(String(url));
+        });
+        return SIDEBAR_GADGET_URLS.concat(fromSheet);
+    }
+
     var SHELL_FONT_SPECS = [
         '300 18px "Red Hat Display"',
         '400 16px "Share Tech Mono"'
@@ -800,7 +826,8 @@ var assetPreload = (function () {
         var shellUrls = START_MENU_URLS.concat(
             startBtn && startBtn.classList.contains('luna') ? LUNA_START_URLS : [],
             TASKBAR_URLS,
-            collectStylesheetUrls(DESKTOP_STYLES)
+            collectStylesheetUrls(DESKTOP_STYLES),
+            sidebarGadgetUrls()
         );
         return whenSettled(Promise.all([
             preloadUrls(shellUrls, { concurrency: 6 }),

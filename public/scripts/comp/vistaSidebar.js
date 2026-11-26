@@ -373,7 +373,7 @@ const VSB_GADGETS = {
     hero: { title: 'HTC Hero Clock', icon: 'hero/icon.png', desc: 'Twelve clock faces based on the HTC Hero and Vista Orb clocks.', author: 'Marc22', options: true },
     mobiledevice: { title: 'Mobile Device', icon: 'mobiledevice/icon.png', desc: 'See your phone as Melaton Mobile Device Center does: its battery, signal, Wi-Fi network and storage.', author: 'Xyridian Corporation', options: true },
     mobilenotify: { title: 'Mobile Notifications', icon: 'mobilenotify/icon.png', desc: 'See the notifications on your phone. Click one to open it in Melaton Mobile Device Center.', author: 'Xyridian Corporation', options: true },
-    mail: { title: 'Mail', iconUrl: '/static_images/app_icons/vista-mail.webp', desc: 'See your latest Dovecote Inbox messages and how many are unread. Click a message to read it.', author: 'Dreamscape', options: true },
+    mail: { title: 'Mail', iconUrl: '/static_images/app_icons/64/vista-mail.webp', desc: 'See your latest Dovecote Inbox messages and how many are unread. Click a message to read it.', author: 'Dreamscape', options: true },
     outlook: { title: 'Sidebar Outlook', icon: 'outlook/icon.png', desc: 'Watch your Dovecote Inbox from the desktop. Click a message to read it.', author: 'Edward J. Boelzner', options: true },
     notes: { title: 'Notes', icon: 'notes/icon.png', desc: 'Capture ideas, notes, and reminders in a quick and easy way.', author: 'Xyridian Corporation', options: true },
     puzzle: { title: 'Picture Puzzle', icon: 'puzzle/icon.png', desc: 'Move the pieces of the puzzle and try to put them in order. The picture comes from this workspace.', author: 'Xyridian Corporation', options: true },
