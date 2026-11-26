@@ -318,6 +318,15 @@ sup._test.setFetch(async (url, opts) => {
         assert.strictEqual(real.missed.length, 1);
     });
 
+    await test('the wait backstop: "left open for the Supervisor to close" is not a question for Yukimi', async () => {
+        const wb = sup._test.waitBackstop;
+        const ok = { verdict: 'ok', summary: 's', missed: [] };
+        assert.strictEqual(wb(ok, 'The issue has the Done comment and is left open for the Supervisor to close.').verdict, 'ok');
+        assert.strictEqual(wb(ok, 'The item stays open until the client update goes out.').verdict, 'ok');
+        assert.strictEqual(wb(ok, "#1193 stays open for Yukimi's two answers.").verdict, 'input');
+        assert.strictEqual(wb(ok, 'It is left open for you to decide.').verdict, 'input');
+    });
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');

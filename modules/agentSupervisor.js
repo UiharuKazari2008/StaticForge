@@ -965,7 +965,8 @@ async function review(sessionId, trigger, opts = {}) {
  * final answer said "#1193 stays open for Yukimi's two answers"): an ok verdict whose final answer plainly waits on Yukimi
  * becomes input, with the final answer's questions (or the waiting sentence) as the open questions. Never turns gaps into input.
  */
-const WAIT_RE = /\b(stays? open (for|until)|left open for|(not|never) clos(e|ing) it|waiting (on|for) (yukimi|you|your|her)\b|(need|needs|needed) (your|yukimi'?s|her) (answer|answers|decision|go|ok|approval|input|login|sign-?in)|(your|yukimi'?s|her) (two |three |)(answers?|decisions?|go-ahead) (are|is|still)?\s*(open|needed|pending)|put (the|these) options to (yukimi|you)|which (one )?do you (want|prefer)|let me know (which|whether|if))/i;
+// "open for / until" counts only when it names Yukimi (#1256: "left open for the Supervisor to close" became a question for her)
+const WAIT_RE = /\b(stays? open (for|until) (yukimi|you|your|her)\b|left open for (yukimi|you|your|her)\b|(not|never) clos(e|ing) it|waiting (on|for) (yukimi|you|your|her)\b|(need|needs|needed) (your|yukimi'?s|her) (answer|answers|decision|go|ok|approval|input|login|sign-?in)|(your|yukimi'?s|her) (two |three |)(answers?|decisions?|go-ahead) (are|is|still)?\s*(open|needed|pending)|put (the|these) options to (yukimi|you)|which (one )?do you (want|prefer)|let me know (which|whether|if))/i;
 function waitBackstop(result, final) {
     if (!result || result.verdict !== 'ok') return result;
     const text = String(final || '');
