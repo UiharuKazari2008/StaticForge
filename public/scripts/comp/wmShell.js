@@ -6723,11 +6723,18 @@
         const now = Date.now();
         const live = new Set();
         const rank = list.map((n, i) => {
-            live.add(n.id);
-            const own = appNotes.get(n.id);
-            if (!noteBorn.has(n.id)) noteBorn.set(n.id, now);
-            const at = Number(own && own.sortAt) || noteBorn.get(n.id);
-            const prio = Number(own && own.prio) || 1;
+            // an entry of readToasts holds its toasts' ids (n.ids, no n.id): the newest of them places it, and its
+            // highest priority (on the A53 a stack updated in place stayed under an older notice: n.id was undefined)
+            const ids = Array.isArray(n.ids) && n.ids.length ? n.ids : [n.id];
+            let at = 0;
+            let prio = 0;
+            for (const id of ids) {
+                live.add(id);
+                if (!noteBorn.has(id)) noteBorn.set(id, now);
+                const own = appNotes.get(id);
+                at = Math.max(at, Number(own && own.sortAt) || noteBorn.get(id));
+                prio = Math.max(prio, Number(own && own.prio) || 1);
+            }
             return { n, i, at, prio, fresh: now - at <= NOTE_FRESH_MS };
         });
         for (const id of [...noteBorn.keys()]) if (!live.has(id)) noteBorn.delete(id);

@@ -209,19 +209,25 @@ const bodyOf = () => ({ closest: (sel) => (sel === '[data-wm-tap]' ? {} : null) 
     assert.ok(src.includes('function orderNotes'), 'orderNotes found');
     const NOW = 10 * 3600 * 1000;
     const appNotes = new Map();
-    const ctx = { appNotes, Date: { now: () => NOW }, Number, Map, Set };
+    const ctx = { appNotes, Date: { now: () => NOW }, Number, Map, Set, Array, Math };
     vm.createContext(ctx);
     vm.runInContext(`${src}; this.orderNotes = orderNotes;`, ctx);
     const min = 60000;
-    const mk = (id) => ({ id, ids: [id] });
+    // readToasts' real shape: { ids, type, title } - no id (the A53 showed a stack stuck under older notices when the
+    // order read n.id)
+    const mk = (id) => ({ ids: [id], type: 'info', title: id });
     appNotes.set('a', { sortAt: NOW - 2 * min, prio: 1 });   // fresh, older of the fresh
     appNotes.set('b', { sortAt: NOW - 1 * min, prio: 1 });   // fresh, newest -> top
     appNotes.set('c', { sortAt: NOW - 60 * min, prio: 4 });  // old, high priority
     appNotes.set('d', { sortAt: NOW - 30 * min, prio: 2 });  // old, medium, newer
     appNotes.set('e', { sortAt: NOW - 90 * min, prio: 2 });  // old, medium, older
-    const order = ctx.orderNotes([mk('e'), mk('a'), mk('d'), mk('c'), mk('b'), mk('f')]).map((n) => n.id);
+    const order = ctx.orderNotes([mk('e'), mk('a'), mk('d'), mk('c'), mk('b'), mk('f')]).map((n) => n.ids[0]);
     // f has no sortAt: first seen now -> fresh, and the newest of all
     assert.deepStrictEqual(order, ['f', 'b', 'a', 'c', 'd', 'e'], 'time first (a new notice on top), priority only among the older');
+    // a stack updated in place (its toast stays where it was in the DOM) goes back on top when a mail joins it
+    appNotes.set('a', { sortAt: NOW + 1000, prio: 2 }); // the mail joined after f was first seen
+    const order2 = ctx.orderNotes([mk('e'), mk('a'), mk('d'), mk('c'), mk('b'), mk('f')]).map((n) => n.ids[0]);
+    assert.strictEqual(order2[0], 'a', 'the stack a mail just joined is on top');
 
     console.log('wm notice stack: all checks passed');
 })().catch((e) => { console.error(e); process.exit(1); });
