@@ -122,6 +122,8 @@ function getClientCssHash(root) {
 // compiled header (#620). Keep the hash per file, keyed by a stat signature: compiles
 // here and external precompiles both rewrite the file, and a rewrite changes the stat.
 const sourceHashMemo = new Map();
+// sha256 of the compiled file's bytes for the manifest entry, read again only when its stat changes
+let servedHashMemo = null;
 
 function fileStatSignature(filePath) {
     try {
@@ -306,7 +308,21 @@ function getManifestEntry(root) {
     if (!compiledPath || !fs.existsSync(compiledPath)) {
         return null;
     }
-    const hash = resolveSourceHash(root);
+    // The manifest (and X-File-Hash) names the bytes served: the compiled file's sha256, not the source
+    // hash in its header, or public/sw.js refuses to store /css/workspaces.css on every load (#1243).
+    // (resolveSourceHash stays the ?sha= link / workspaceCssHash key.)
+    const sig = fileStatSignature(compiledPath);
+    if (!sig) {
+        return null;
+    }
+    if (!servedHashMemo || servedHashMemo.path !== compiledPath || servedHashMemo.sig !== sig) {
+        servedHashMemo = {
+            path: compiledPath,
+            sig,
+            hash: crypto.createHash('sha256').update(fs.readFileSync(compiledPath)).digest('hex')
+        };
+    }
+    const hash = servedHashMemo.hash;
     if (!hash) {
         return null;
     }

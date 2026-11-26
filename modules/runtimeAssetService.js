@@ -598,6 +598,9 @@ async function readDebugAsset(targetRoot, webPath) {
         }
     } else if (isHtmlShaLinkWebPath(webPath)) {
         abs = path.join(runtimeAssetCompiler.getPublicRoot(targetRoot), webPath.replace(/^\//, ''));
+    } else if (webPath === runtimeAssetCompiler.WORKSPACE_CSS_WEB_PATH) {
+        // generated, not in public/: its unminified copy is the source cache (a dev-mode load was a 404, #1243)
+        abs = require('./workspaceCssService').getSourceCachePath(targetRoot);
     } else {
         abs = runtimeAssetCompiler.webPathToSourcePath(targetRoot, webPath);
     }
