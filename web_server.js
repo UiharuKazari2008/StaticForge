@@ -4952,10 +4952,9 @@ async function handleAdminUnixSocketMessage(message, socket) {
     const bootBeginAt = Date.now();
     globalResources.logger.startBoot();
 
-    // Compile/load runtime assets alongside listen. Requests serve memory or a single-flight miss.
-    const assetPrime = runtimeAssetService.startRuntimeAssetPrime(__dirname, { showConsoleProgress: true });
-    // awaited after `ready`; a failure before that must not be an unhandled rejection
-    assetPrime.catch(() => {});
+    // The runtime compile prime starts after `ready` (end of this function): started with the boot it competed with
+    // it for the CPU and the fs threadpool and took ~27 s (loadTree 17.6 s, compile 9.5 s; alone 0.7 s + 1.4 s).
+    // Until then requests serve a single-flight miss (#1230).
 
     // Listen immediately so /status is reachable during global resource init
     await globalResources.logger.bootStep('HTTP Server', async () => {
@@ -5274,6 +5273,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
     // the Director CLI updates.
     globalResources.logger.startBoot();
     try {
+        const assetPrime = runtimeAssetService.startRuntimeAssetPrime(__dirname, { showConsoleProgress: true });
         await globalResources.logger.bootStep('Runtime Asset Compilation', async () => {
             const result = await assetPrime;
             const pt = runtimeAssetService.getPrimeTimings && runtimeAssetService.getPrimeTimings();

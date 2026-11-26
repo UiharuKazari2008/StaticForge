@@ -27,7 +27,8 @@ const iPreview = after.indexOf("bootStep('Preview Synchronization'");
 assert(iCompile > 0 && iCompile < iManifest && iManifest < iPreview, 'after ready: compile, then Asset Manifest, then Preview Synchronization');
 assert(/refreshCache:\s*false/.test(after), 'the compile step must pass refreshCache:false (the manifest is its own step)');
 assert(/bootStep\('Asset Manifest'[\s\S]*?initializeCacheData\(true\)/.test(after), 'Asset Manifest step missing after ready');
-assert(/assetPrime\.catch\(/.test(src), 'assetPrime needs an early catch (awaited late)');
+assert(!/startRuntimeAssetPrime\(/.test(before), 'the compile prime must start after ready (it competed with the boot for 27 s)');
+assert(/startRuntimeAssetPrime\(/.test(after), 'the compile prime must start after ready');
 assert(/runtimeCompileComplete = true/.test(after), 'runtimeCompileComplete must flip after the manifest');
 
 // 2. an unchanged file is not read twice: persisted manifest -> hashServedFileIfChangedAsync
