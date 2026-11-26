@@ -1609,6 +1609,7 @@ function enqueue(item, opts = {}) {
     } else if (src !== 'yozora') {
         ensureIssue(w.id).then(() => emit({ work: getWork(w.id) })).catch(() => {});
     }
+    try { require('./fleetDeps').detect(listWork({ limit: 300 }).filter((x) => ['held', 'queued', 'starting', 'running', 'waiting', 'input'].includes(x.state))); } catch (e) { console.warn(`[supervisor] deps: ${e.message}`); }
     emit({ work: w });
     pumpWork(opts.gr).catch((e) => console.warn(`[supervisor] queue: ${e.message}`));
     return w;
@@ -1973,8 +1974,15 @@ function pumpWork(gr) {
         let started = 0;
         let regroup = false;
         let swept = false; // a refused start frees finished sessions once per pass (#1255)
-        const queued = db().prepare("SELECT * FROM supervisor_work WHERE state = 'queued' ORDER BY start_now DESC, id").all();
+        // dependency order first (fleetDeps: prerequisites, then priority, then start-now, then age); a job whose
+        // prerequisite is not done waits, saying which (Yukimi, Nov 26 2026: jobs with dependencies launch in order)
+        let queued = db().prepare("SELECT * FROM supervisor_work WHERE state = 'queued'").all();
+        try { queued = require('./fleetDeps').orderQueued(queued); } catch (e) { console.warn(`[supervisor] deps: ${e.message}`); queued.sort((a, b) => (b.start_now - a.start_now) || (a.id - b.id)); }
         for (const w of queued) {
+            if (w.blocked && w.blocked.length) {
+                if (w.message !== w.blockedReason) setWork(w.id, { message: w.blockedReason });
+                continue;
+            }
             // a run split into planners has none of its own session: its planners run (a requeued one with no planners runs as one planner)
             if (w.topology === 'groups') {
                 if (db().prepare('SELECT COUNT(*) AS n FROM supervisor_work WHERE parent_id = ?').get(w.id).n) { setWork(w.id, { state: 'running', message: 'Its planners are running' }); settleParent(w.id); continue; }
@@ -2637,6 +2645,18 @@ function startWork(id, opts = {}) {
         setWork(w.id, { state: 'running', ended_at: null, message: `Restarted ${kids.length} planner${kids.length === 1 ? '' : 's'}` });
         emit({ work: getWork(w.id) });
         return getWork(w.id);
+    }
+    // its prerequisites still waiting for Yukimi start first, oldest chain first (they run before it through orderQueued)
+    if (['held', 'failed', 'cancelled', 'queued'].includes(w.state)) {
+        let pre = [];
+        try { pre = require('./fleetDeps').prerequisites(w.id); } catch (_) { pre = []; }
+        pre.forEach((pid) => {
+            const p = db().prepare('SELECT state FROM supervisor_work WHERE id = ?').get(pid);
+            if (p && p.state === 'held') {
+                setWork(pid, { state: 'queued', start_now: now ? 1 : 0, session_id: null, link: '', started_at: null, ended_at: null, joined_into: null, message: `Started first: item ${w.id} needs it` });
+                emit({ work: getWork(pid) });
+            }
+        });
     }
     if (w.state === 'queued') setWork(w.id, { start_now: now ? 1 : 0 });
     else if (['held', 'failed', 'cancelled'].includes(w.state)) {

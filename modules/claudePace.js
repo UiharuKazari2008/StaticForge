@@ -36,7 +36,7 @@ function paceOf(l, now) {
         const at = now + (100 - percent) * (elapsed * win) / percent;
         if (percent >= 100 || at < l.resetsAt) { far = true; runOutAt = percent >= 100 ? null : Math.round(at); }
     }
-    return { elapsedPct, percent, ahead, state: far ? 'far' : (percent > elapsedPct ? 'over' : 'ok'), runOutAt };
+    return { elapsedPct, percent, ahead, state: far ? 'far' : (percent > elapsedPct ? 'over' : 'ok'), runOutAt, resetsAt: l.resetsAt, win };
 }
 
 function renewalAfter(day, now) {

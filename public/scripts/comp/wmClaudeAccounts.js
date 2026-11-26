@@ -696,7 +696,7 @@
             const at = now + (100 - percent) * (elapsed * win) / percent;
             if (percent >= 100 || at < l.resetsAt) { far = true; runOutAt = percent >= 100 ? null : Math.round(at); }
         }
-        return { elapsedPct, percent, ahead: Math.round(percent - elapsedPct), state: far ? 'far' : (percent > elapsedPct ? 'over' : 'ok'), runOutAt };
+        return { elapsedPct, percent, ahead: Math.round(percent - elapsedPct), state: far ? 'far' : (percent > elapsedPct ? 'over' : 'ok'), runOutAt, resetsAt: l.resetsAt, win };
     }
     function renewalAfter(day, now) {
         const d = Math.round(Number(day));
@@ -753,13 +753,20 @@
             // at fractional device pixels); these two states are classes, not widths
             const edge = w >= 100 ? ' wca-f-full' : w <= 0 ? ' wca-f-zero' : '';
             return `<div class="wca-use"><span class="wca-use-label">${esc(l.label || l.short || l.kind)}</span>`
-                + `<span class="wac-meter wac-lv-${lv}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${w}"><i class="${edge.trim()}" data-w="${w}"></i>${pace ? `<b class="wca-pace" data-pace="${pace.elapsedPct.toFixed(1)}" title="${esc(paceTip(pace))}"></b>` : ''}</span>`
+                + `<span class="wac-meter wac-lv-${lv}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${w}"><i class="${edge.trim()}" data-w="${w}"></i>${pace ? `<b class="wca-pace" data-pace="${pace.elapsedPct.toFixed(2)}" data-reset="${pace.resetsAt}" data-win="${pace.win}" title="${esc(paceTip(pace))}"></b>` : ''}</span>`
                 + `<span class="wca-use-pct">${stale ? '' : `${w}%`}</span><span class="wca-use-reset wca-muted"${pace ? ` title="${esc(paceTip(pace))}"` : ''}>${esc(resets)}</span></div>`;
         }).join('');
     }
     function paintBars(root0) {
         root0.querySelectorAll('i[data-w]').forEach((el) => { el.style.width = `${el.dataset.w}%`; });
-        root0.querySelectorAll('b[data-pace]').forEach((el) => { el.style.left = `${Math.max(0, Math.min(100, Number(el.dataset.pace) || 0))}%`; });
+        // the tick is placed from the clock at every paint (its reset time and window), not frozen at the last usage read;
+        // no timer on the phone (phone-power-client): a paint happens whenever the panel shows or its data changes
+        const nowMs = Date.now();
+        root0.querySelectorAll('b[data-pace]').forEach((el) => {
+            const reset = Number(el.dataset.reset); const win = Number(el.dataset.win);
+            const pct = reset && win ? ((nowMs - (reset - win)) / win) * 100 : Number(el.dataset.pace) || 0;
+            el.style.left = `${Math.max(0, Math.min(100, pct)).toFixed(3)}%`;
+        });
     }
 
     // ---- availability (server: fleet.accounts[].availability): near a limit = warning, capped / exhausted = error ----
