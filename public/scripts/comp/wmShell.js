@@ -7591,6 +7591,10 @@
     }
 
     let noteTrayKey = '';
+    // the holder's pictures held loaded (#1245, preloadHolderArt): url -> Image, the entries' pictures last scheduled, one run pending
+    const holderImages = new Map();
+    let holderArtSig = '';
+    let holderPreloadSet = false;
     let noteKeyCount = -1;
     let messageNotesSig = '';
     function renderNotes() {
@@ -7634,6 +7638,9 @@
             for (const e of entries) add(e.art, e.label, e.tap, e.badge);
         }
         noteTrayKey = key;
+        // its pictures loaded ahead when the entries' pictures change (#1245; refreshStatus draws the notes every 2 s)
+        const artSig = entries.map((e) => e.art).join('|');
+        if (artSig !== holderArtSig) { holderArtSig = artSig; scheduleHolderPreload(); }
         renderNoteBubble();
     }
 
@@ -7699,10 +7706,55 @@
             const next = Array.isArray(list) ? list : [];
             if (JSON.stringify(next.map((n) => n.id)) === JSON.stringify(holderServer.map((n) => n.id))) return;
             holderServer = next;
+            scheduleHolderPreload(); // #1245
             if (noteTrayOpen) renderNotes();
             else paintNotifyIcon();
             if (d651El && !d651El.hidden) d651Fill();
         }, () => {});
+    }
+
+    /*
+     * The holder's pictures are loaded before it opens (#1245): on the A53 a picture the WebView does not hold yet draws
+     * blank for ~0.4 s (fetched through the service worker as the buttons are built). Each URL the image-set would pick on
+     * this screen is held as an Image (a small bounded set, never freed), decoded once, idle, on 6.5 only. No timer.
+     */
+    /** The URL an image-set (or a plain url()) picks on this screen: the smallest density >= the screen's, else the largest; '' when none. */
+    function holderArtUrl(imageSet) {
+        const d = window.devicePixelRatio || 1;
+        let best = null;
+        const re = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)\s*(?:([\d.]+)x)?/g;
+        let m;
+        while ((m = re.exec(String(imageSet || ''))) !== null) {
+            const u = m[1] || m[2] || m[3];
+            if (!u) continue;
+            const n = m[4] ? parseFloat(m[4]) : 1;
+            if (!(n > 0)) continue;
+            const fits = (c) => c.n >= d;
+            const c = { u, n };
+            if (!best || (fits(c) && (!fits(best) || n < best.n)) || (!fits(best) && !fits(c) && n > best.n)) best = c;
+        }
+        if (!best) return '';
+        try { return new URL(best.u, location.href).href; } catch (e) { return ''; }
+    }
+    function preloadHolderArt() {
+        holderPreloadSet = false;
+        if (!WM65 || document.hidden) return; // hidden: the next change schedules it again
+        const urls = new Set();
+        for (const e of holderEntries()) { const u = holderArtUrl(e.art); if (u && !holderImages.has(u)) urls.add(u); }
+        for (const u of urls) {
+            const img = new Image();
+            img.decoding = 'async';
+            img.src = u;
+            holderImages.set(u, img);
+            img.decode().catch(() => {});
+        }
+    }
+    /** Coalesced, event-driven: runs preloadHolderArt once when idle after the holder's contents changed. */
+    function scheduleHolderPreload() {
+        if (!WM65 || holderPreloadSet) return;
+        holderPreloadSet = true;
+        if (typeof requestIdleCallback === 'function') requestIdleCallback(preloadHolderArt, { timeout: 2000 });
+        else setTimeout(preloadHolderArt, 200);
     }
 
     function renderNoteBubble() {
