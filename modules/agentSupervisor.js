@@ -2709,7 +2709,7 @@ function startWork(id, opts = {}) {
     const now = opts.now !== false;
     if (w.topology === 'groups') {
         // a run split into planners has no session of its own: Start runs its planners that did not finish
-        if (!['failed', 'cancelled', 'running'].includes(w.state)) throw new Error(`It is ${w.state}`);
+        if (!['failed', 'cancelled', 'running', 'held'].includes(w.state)) throw new Error(`It is ${w.state}`);
         const kids = db().prepare("SELECT id FROM supervisor_work WHERE parent_id = ? AND state IN ('held','failed','cancelled')").all(w.id);
         if (!kids.length) throw new Error('All its planners are running or done');
         kids.forEach((k) => startWork(k.id, opts));
@@ -2815,6 +2815,63 @@ function cancelWork(id) {
     settleParent(w.parentId);
     emit({ work: getWork(w.id) });
     return getWork(w.id);
+}
+
+// ---- Stop (Yukimi, Nov 26 2026): Cancel on a work item is a nuclear stop (modules/fleetKill.js)
+let killOverride = null;
+/** Test hook: { killWork, damageCheck } stand-ins for modules/fleetKill.js. */
+function setKillDeps(o) { killOverride = o || null; }
+const killer = () => killOverride || require('./fleetKill');
+
+/** What fleetKill needs from the Supervisor's own tables and queues. */
+function killDeps() {
+    return {
+        parts: (id) => db().prepare('SELECT id, session_id, state, topology FROM supervisor_work WHERE parent_id = ?').all(Number(id)),
+        // written straight to the row: no Yozora sync, so a stop never closes an issue
+        mark(id, fields) {
+            const keys = Object.keys(fields);
+            db().prepare(`UPDATE supervisor_work SET ${keys.map((k) => `${k} = @${k}`).join(', ')} WHERE id = @id`).run(Object.assign({ id: Number(id) }, fields));
+            emit({ work: getWork(id) });
+        },
+        endHolds(sessionId, why) { const r = db().prepare('UPDATE supervisor_holds SET ended_at = ? WHERE session_id = ? AND ended_at IS NULL').run(Date.now(), String(sessionId)); if (r.changes) emit({ hold: sessionId }); return r.changes; },
+        endWaits(workId, sessionId, why) { return db().prepare('UPDATE supervisor_waits SET ended_at = ?, ended_why = ? WHERE (work_id = ? OR session_id = ?) AND ended_at IS NULL').run(Date.now(), String(why || 'stopped').slice(0, 200), Number(workId), String(sessionId)).changes; },
+        dropReviews(sessionId) {
+            clearTimeout(settling.get(sessionId)); settling.delete(sessionId);
+            let n = 0;
+            for (let i = queue.length - 1; i >= 0; i -= 1) if (queue[i].sessionId === sessionId) { queue.splice(i, 1); n += 1; }
+            return n;
+        },
+        ownDirs: (sessionId) => [sessionOwnDir(sessionId)].filter(Boolean),
+        enqueue: (item) => enqueue(item),
+        comment: (w, text) => commentIssue(w && w.issue ? Object.assign({}, w, { issue_repo: w.issue.repo, issue_number: w.issue.number }) : w, text)
+    };
+}
+
+/**
+ * Stop a work item for good or back to Waiting. A held, queued or failed item has nothing running: it is held / cancelled as
+ * holdWork / cancelWork do. A starting, running, sent-back or input item is killed with everything it was doing (fleetKill.killWork);
+ * the damage check follows without blocking (answers `damage`, a promise). The item's Yozora issue is never closed: it gets a comment only.
+ * opts: { then: 'hold' (back to Waiting) | 'delete' (cancelled; default), by, gr }.
+ */
+async function stopWork(id, opts = {}) {
+    const w = getWork(id);
+    if (!w) throw new Error('No such work item');
+    const then = opts.then === 'hold' ? 'hold' : 'delete';
+    const by = String(opts.by || 'Fleet').slice(0, 80);
+    if (['held', 'queued', 'failed'].includes(w.state)) {
+        const item = then === 'hold' ? holdWork(id) : cancelWork(id);
+        return { item, killed: [], released: {}, files: [], damage: Promise.resolve(null) };
+    }
+    if (!ACTIVE.includes(w.state)) throw new Error(`It is ${w.state}: nothing is running`);
+    const row = Object.assign({}, w, { startedAt: w.startedAt || 0 });
+    const k = killer();
+    const result = await k.killWork(row, { by, then });
+    settleParent(w.parentId);
+    emit({ work: getWork(w.id) });
+    const damage = Promise.resolve().then(() => k.damageCheck(result, { item: row })).then((r) => { emit({ work: getWork(w.id) }); return r; })
+        .catch((e) => { console.warn(`[supervisor] damage check of item ${w.id}: ${e.message}`); return null; });
+    pumpWork(opts.gr).catch((e) => console.warn(`[supervisor] queue: ${e.message}`));
+    return Object.assign({ item: getWork(w.id), damage }, { killed: result.killed, released: result.released, files: result.files });
 }
 
 /**
@@ -4705,7 +4762,7 @@ async function acceptRuleFinding(gr, findingId, edit = {}, opts = {}) {
 module.exports = {
     explainRuleIssue, acceptRuleProposal, rejectRuleProposal, acceptRuleFinding, listRuleProposals, getRuleProposal, proposalBrief,
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
-    start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, steerResumed, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
+    start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, stopWork, killDeps, setKillDeps, intakePlaud, workAfterReview, sessionInFlight, steerResumed, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _test: { callClaudeReviewer, cleanReviewer, askModel, issueCarriedByOthers, closeParkedSessions, closeDeps, ageText, rowWork, deliver,handOffGaps, sweepStalled, stallKicks, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };

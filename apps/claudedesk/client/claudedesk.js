@@ -2165,6 +2165,8 @@
     }
     const WORK_STARTABLE = new Set(['held', 'queued', 'failed', 'cancelled']);
     const WORK_HOLDABLE = new Set(['queued', 'failed', 'cancelled']);
+    // Cancel on these is a stop: everything the item was doing ends (a held or failed one has nothing running and is only taken off the queue)
+    const WORK_STOPS = new Set(['queued', 'starting', 'running', 'waiting', 'input']);
     /** The requests picked in the list that are still in the queue (ids as strings). */
     const wsel = () => Array.from(S.wsel).filter((id) => workOf(id)).map(String);
     function workMultiItems() {
@@ -5792,26 +5794,39 @@
             case 'work-cancel-sel': {
                 const ids = workPicked(c);
                 if (!ids.length) { c.note('Pick a request first.'); return true; }
-                const ok = await c.box(`<p>Cancel ${ids.length === 1 ? `<b>${esc((workOf(ids[0]) || {}).title || ids[0])}</b>` : `<b>${plural(ids.length, 'request')}</b>`}? A running one has its session stopped; the others are taken off the queue.</p>`,
-                    [{ text: 'Cancel Requests', value: true, className: 'btn-standard primary' }, { text: 'Keep', value: false, className: 'btn-standard' }], { icon: 'warning' });
-                if (ok !== true) return true;
+                // held / failed ones are only taken off the queue (as before); every other one is stopped for real, after one question
+                const stopIds = ids.filter((i) => WORK_STOPS.has((workOf(i) || {}).state));
+                let then = 'delete';
+                if (stopIds.length) {
+                    then = await stopChoice(c, stopIds.map(workOf));
+                    if (!then) return true;
+                } else {
+                    const ok = await c.box(`<p>Cancel ${ids.length === 1 ? `<b>${esc((workOf(ids[0]) || {}).title || ids[0])}</b>` : `<b>${plural(ids.length, 'request')}</b>`}? ${ids.length === 1 ? 'It is' : 'They are'} taken off the queue.</p>`,
+                        [{ text: 'Cancel Requests', value: true, className: 'btn-standard primary' }, { text: 'Keep', value: false, className: 'btn-standard' }], { icon: 'warning' });
+                    if (ok !== true) return true;
+                }
                 const errs = [];
-                S.sup.busy = 'Cancelling...';
+                S.sup.busy = stopIds.length ? 'Stopping...' : 'Cancelling...';
                 c.note(S.sup.busy);
                 for (const id of ids) {
-                    try { await send('claude_desk_supervisor', { action: 'work_cancel', id }); } catch (e) { errs.push(`${(workOf(id) || {}).title || id}: ${errText(e)}`); }
+                    try { await send('claude_desk_supervisor', stopIds.includes(id) ? { action: 'work_stop', id, then } : { action: 'work_cancel', id }); } catch (e) { errs.push(`${(workOf(id) || {}).title || id}: ${errText(e)}`); }
                 }
                 S.sup.busy = '';
                 c.note('');
                 S.wsel = new Set();
                 await loadSupervisor();
-                if (errs.length) await c.box(`<p>Some requests could not be cancelled:</p><ul>${errs.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`, null, { icon: 'warning' });
+                if (errs.length) await c.box(`<p>Some requests could not be stopped:</p><ul>${errs.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`, null, { icon: 'warning' });
                 return true;
             }
             case 'work-cancel': {
                 const w = workOf(workSel(c, arg));
                 if (!w) return true;
-                const ok = await c.box(`<p>Cancel <b>${esc(w.title || w.id)}</b>?${w.sessionId ? ' Its session is stopped.' : ' It is taken off the queue.'}</p>`,
+                if (WORK_STOPS.has(w.state)) {
+                    const then = await stopChoice(c, [w]);
+                    if (then) await supAct(c, { action: 'work_stop', id: w.id, then }, 'Stopping...');
+                    return true;
+                }
+                const ok = await c.box(`<p>Cancel <b>${esc(w.title || w.id)}</b>? It is taken off the queue.</p>`,
                     [{ text: 'Cancel Request', value: true, className: 'btn-standard primary' }, { text: 'Keep', value: false, className: 'btn-standard' }], { icon: 'warning' });
                 if (ok === true) await supAct(c, { action: 'work_cancel', id: w.id }, 'Cancelling...');
                 return true;
@@ -6180,6 +6195,15 @@
             }
         }));
         return { value, fields };
+    }
+
+    /** The Stop question for work items: answers 'hold' (back to Waiting), 'delete' (cancelled for good) or null (nothing happens). No second confirmation. */
+    async function stopChoice(c, ws) {
+        const one = ws.length === 1;
+        const { value } = await form(c, `<p>${one ? 'Everything it is doing stops now: its session, its background agents and commands. Its uncommitted work is saved first.' : 'Everything they are doing stops now: their sessions, background agents and commands. Their uncommitted work is saved first.'}</p>`,
+            [{ text: 'Return to Waiting', value: 'hold', className: 'btn-standard primary' }, { text: 'Delete', value: 'delete', className: 'btn-standard' }, { text: 'Cancel', value: false, className: 'btn-standard' }],
+            { title: one ? `Stop ${String((ws[0] && (ws[0].title || ws[0].id)) || 'request').slice(0, 80)}?` : `Stop ${plural(ws.length, 'request')}?`, icon: 'warning' });
+        return value === 'hold' || value === 'delete' ? value : null;
     }
 
     const accountOptions = (selected) => S.accounts.map((a) => {

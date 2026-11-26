@@ -1995,6 +1995,37 @@ sup._test.setFetch(async (url, opts) => {
         assert.strictEqual(sup._test.issueCarriedByOthers(rowB), false, 'nobody else carries it');
     });
 
+    await test('stopWork: a running item is killed (then hold: Waiting, then delete: cancelled), its issue is never closed, a waiting one is just held / cancelled', async () => {
+        const ins = (title, state, n) => RAW().prepare("INSERT INTO supervisor_work (title, prompt, source, state, created_at, message, engine, issue_repo, issue_number, session_id) VALUES (?, 'p', 'director', ?, ?, '', 'claude', 'DreamScape/StaticForge', ?, ?)").run(title, state, Date.now(), n, 'cccccccc-1111-2222-3333-444444444444').lastInsertRowid;
+        const killed = [];
+        const checked = [];
+        sup.setKillDeps({
+            killWork: async (item, o) => { killed.push([item.id, o.then, o.by]); const kd = sup.killDeps(); kd.mark(item.id, o.then === 'hold' ? { state: 'held', session_id: null, message: 'Stopped' } : { state: 'cancelled', ended_at: Date.now(), message: 'Stopped' }); return { itemId: item.id, then: o.then, killed: [], released: {}, files: [] }; },
+            damageCheck: async (r, o) => { checked.push(o.item.id); return { patch: '', broken: [] }; }
+        });
+        try {
+            yzCalls.length = 0;
+            const a = ins('StopA', 'running', 8801);
+            const r = await sup.stopWork(a, { then: 'hold', by: 'Fleet' });
+            assert.strictEqual(r.item.state, 'held');
+            await r.damage;
+            assert.deepStrictEqual(checked, [a], 'the damage check follows');
+            const b = ins('StopB', 'input', 8802);
+            const rb = await sup.stopWork(b, { then: 'delete' });
+            assert.strictEqual(rb.item.state, 'cancelled');
+            assert.deepStrictEqual(killed.map((k) => k.slice(0, 2)), [[a, 'hold'], [b, 'delete']]);
+            await settle(50);
+            assert.ok(!yzCalls.some((c) => c.method === 'PATCH' && /issues\/880[12]$/.test(c.url) && c.body && c.body.state === 'closed'), 'no issue was closed');
+            // nothing running: the old behaviour, no kill
+            const h = ins('StopC', 'held', 8803);
+            const rc = await sup.stopWork(h, { then: 'delete' });
+            assert.strictEqual(rc.item.state, 'cancelled');
+            assert.strictEqual(killed.length, 2, 'a held item is not killed');
+            await assert.rejects(() => sup.stopWork(a + 1000, {}), /No such work item/);
+            await assert.rejects(() => { const d = ins('StopD', 'done', 8804); return sup.stopWork(d, {}); }, /nothing is running/);
+        } finally { sup.setKillDeps(null); }
+    });
+
     require('../modules/agentCoord/store').close();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(failed ? `\n${failed} failed` : '\nall passed');
