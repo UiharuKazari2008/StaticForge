@@ -17,7 +17,13 @@
  * data.app 'claudedesk', which wmNotificationInbox.openFor opens through wmShell.open('claudedesk') on a tap.
  */
 
-const inbox = require('./notificationInbox');
+const realInbox = require('./notificationInbox');
+// A test run (a temp agent-coord DB) never reaches the household's real inbox unless it set its own inbox DB too: a test
+// once published 13 fixture notices to the phones (#1196). Sandboxed, every inbox call is a no-op.
+const SANDBOXED = !!process.env.AGENT_COORD_DB && !process.env.NOTIFICATION_INBOX_DB;
+const inbox = SANDBOXED
+    ? { publish: () => null, clear: () => false, bind: () => null, list: () => [] }
+    : realInbox;
 
 const USER = 'admin';
 const APP = 'claudedesk';
