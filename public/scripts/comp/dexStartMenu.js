@@ -1051,10 +1051,19 @@
         try {
             ev = new KeyboardEvent(k.type, { key: String(k.key || 'Unidentified'), code: String(k.code || ''), repeat: !!k.repeat, metaKey: !!k.metaKey, altKey: !!k.altKey, ctrlKey: !!k.ctrlKey, shiftKey: !!k.shiftKey, bubbles: true, cancelable: true, composed: true });
         } catch (_) { return; }
+        // Enter: the menu's own handler (modalUtils onStartMenuKeydown) takes it with preventDefault and clicks the hot row,
+        // so `go` is false exactly when it worked; a click seen while the key ran, or the menu closing, is the proof
+        const enter = k.type === 'keydown' && k.key === 'Enter' && !k.altKey && !k.ctrlKey && !k.metaKey;
+        let opened = false;
+        const sawClick = () => { opened = true; };
+        if (enter) menu.addEventListener('click', sawClick, { capture: true });
         const go = target.dispatchEvent(ev);
-        // Enter no handler took: the item lit (a search's first result, the row the arrows reached) opens, as a click on it
-        if (go && k.type === 'keydown' && k.key === 'Enter' && !k.altKey && !k.ctrlKey && !k.metaKey) {
-            const lit = menu.querySelector('.start-menu-row.is-hot') || (doc.activeElement && doc.activeElement !== menu && menu.contains(doc.activeElement) && doc.activeElement.tagName !== 'INPUT' ? doc.activeElement : null);
+        if (enter) menu.removeEventListener('click', sawClick, { capture: true });
+        // Enter that opened nothing (the handler did not run, or found no hot row): the item lit (a search's first result,
+        // the row the arrows reached) opens, as a click on it
+        if (enter && !opened && !menu.classList.contains('hidden') && !menu.classList.contains('start-menu-closing')) {
+            const fa2 = doc.activeElement;
+            const lit = menu.querySelector('.start-menu-row.is-hot') || (fa2 && fa2 !== menu && menu.contains(fa2) && fa2.tagName !== 'INPUT' ? fa2 : null);
             if (lit) { lit.click(); return; }
         }
         if (!go || k.type !== 'keydown') return;
