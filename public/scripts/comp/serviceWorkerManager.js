@@ -299,6 +299,8 @@ class ServiceWorkerManager {
         this.pendingUpdateFuse = false;
         // Large update held for a restart. { label, name, yy, quarter, patchId } or null.
         this.servicePack = null;
+        // The held update's background download into the worker's staging cache: { key, state, completed, total, postedAt, percent } or null.
+        this._staging = null;
         // Files actually downloaded for the current pending apply/restart (not manifest size).
         this.pendingUpdateFilesTotal = 0;
         this.updateProgress = 0;
@@ -644,10 +646,12 @@ class ServiceWorkerManager {
     }
 
     /**
-     * The desktop is up: a large update is not downloaded here. The name is built from the
-     * file set, and the restart (forceRestart) is what installs it on /launch.
+     * The desktop is up: a large update is not applied here. The name is built from the file set, and the restart
+     * (forceRestart) is what installs it on /launch. Unless the person chose to be asked first (#951, _holdsUpdates), the
+     * files download meanwhile into the worker's staging cache (_stageHeldUpdate): nothing in the running page changes, and
+     * /launch's installer takes the staged rows instead of fetching them again.
      */
-    _offerServicePackUpgrade(files) {
+    _offerServicePackUpgrade(files, cacheOptions = null) {
         const fresh = this._filesCountingTowardInstaller(files);
         const pack = servicePackFromFiles(fresh.length ? fresh : files, Date.now());
         this.servicePack = pack;
@@ -678,10 +682,112 @@ class ServiceWorkerManager {
                     { text: 'Later', type: 'secondary', closeOnClick: true }
                 ]);
         }
-        if (this.swRegistration && this.swRegistration.active) {
+        // staged: the worker ends a live download itself when it takes the held set; not staged (the person chose "let me
+        // choose", a package install, no worker): nothing downloads, a running download ends as it always did
+        if (!this._stageHeldUpdate(fresh.length ? fresh : [], cacheOptions) && this.swRegistration && this.swRegistration.active) {
             this.swRegistration.active.postMessage({ type: 'CANCEL_DOWNLOAD' });
         }
         console.log(`[update] ${count} files held: ${pack.label}`);
+    }
+
+    /**
+     * Downloads a held large update into the worker's staging cache (sw.js STAGING_CACHE, cacheStaticFiles options.staging).
+     * Not into the live cache: the running page keeps one consistent old set until the reload (client-update-never-in-place).
+     * Never when the person chose to be asked (_holdsUpdates: "let me choose"); a phone page only on Wi-Fi (the worker
+     * decides, sw.js workerNetwork). The same set is not asked for twice. True when the worker has the set.
+     */
+    _stageHeldUpdate(files, cacheOptions) {
+        const worker = this.swRegistration && this.swRegistration.active;
+        if (!worker || this.agentSession || this._holdsUpdates(cacheOptions)) {
+            this._staging = null;
+            return false;
+        }
+        const list = (Array.isArray(files) ? files : []).filter((file) => file && file.url && file.hash);
+        if (!list.length) return false;
+        const key = servicePackPatchId(list);
+        const prior = this._staging;
+        const age = prior ? Date.now() - prior.postedAt : 0;
+        // asked once: a finished set stays done; a set running, partial or waiting for Wi-Fi is asked again only after 5 minutes
+        // (the worker may have been stopped; it skips what is staged already)
+        if (prior && prior.key === key && (prior.state === 'done' || age < 5 * 60 * 1000)) return true;
+        this._staging = { key, state: 'running', completed: 0, total: list.length, postedAt: Date.now(), percent: 0 };
+        worker.postMessage({
+            type: 'CACHE_STATIC_FILES',
+            files: list,
+            silent: true,
+            staging: true,
+            phone: window.uiShell === 'mobile',
+            requester: this._pageTag
+        });
+        return true;
+    }
+
+    /** The worker's STAGING_CACHE_* messages: the held update's own progress, never a live download's (isUpdating stays false). */
+    _noteStagingMessage(data) {
+        const st = this._staging;
+        if (!st || !data) return;
+        const total = Number(data.total) || st.total;
+        switch (data.type) {
+            case 'STAGING_CACHE_STARTED':
+                st.state = 'running';
+                st.total = total;
+                break;
+            case 'STAGING_CACHE_PROGRESS':
+                st.state = 'running';
+                st.total = total;
+                st.completed = Math.max(st.completed, Math.min(Number(data.completed) || 0, total));
+                break;
+            case 'STAGING_CACHE_COMPLETE':
+                st.total = total;
+                // a file that did not come down after the worker's own tries stays for the installer to fetch
+                st.state = Array.isArray(data.failed) && data.failed.length ? 'partial' : 'done';
+                st.completed = Math.max(0, Math.min(total, Number(data.completed) || 0) - (Array.isArray(data.failed) ? data.failed.length : 0));
+                console.log(`[update] ${st.completed} of ${st.total} held files downloaded in the background (${st.state})`);
+                break;
+            case 'STAGING_CACHE_DEFERRED':
+                st.state = 'deferred';
+                break;
+            case 'STAGING_CACHE_CANCELLED':
+            case 'STAGING_CACHE_ERROR':
+                // ended by a live download or an error: the next update check may ask again at once
+                st.state = 'partial';
+                st.postedAt = 0;
+                this._showStagingProgress();
+                return;
+            default:
+                return;
+        }
+        st.postedAt = st.state === 'done' ? st.postedAt : Date.now();
+        this._showStagingProgress();
+    }
+
+    /** What the offer says about the background download: nothing until a file is staged, then the honest count. */
+    _stagedNote() {
+        const st = this._staging;
+        if (!st || !this.servicePack) return '';
+        if (st.state === 'done') return ' All of its files are downloaded; the restart installs them.';
+        if (st.state === 'deferred') return ' Its files download when this phone is on Wi-Fi.';
+        if (st.completed > 0 || st.state === 'running') return ` ${st.completed.toLocaleString()} of ${st.total.toLocaleString()} files are downloaded in the background.`;
+        return '';
+    }
+
+    /** Redraws the offer where it is showing (the tray balloon, Control Panel's update page) when the staged percent moved. */
+    _showStagingProgress() {
+        const st = this._staging;
+        if (!st || !this.servicePack) return;
+        const percent = st.total > 0 ? Math.floor((st.completed / st.total) * 100) : 0;
+        const changed = percent !== st.percent || st.state === 'done' || st.state === 'deferred';
+        st.percent = percent;
+        this.servicePack.staged = { completed: st.completed, total: st.total, state: st.state };
+        if (!changed) return;
+        if (typeof this.foregroundUpdateView === 'function') {
+            this._showServiceWorkerTrayPopup('upgrade', { message: this.servicePack.label, progress: percent, filesTotal: st.total });
+            return;
+        }
+        const tray = this.trayPopup;
+        if (tray && tray.state === 'upgrade' && !tray.vistaBalloon && tray.el && tray.el.classList.contains('show')) {
+            this._renderServiceWorkerTrayPopup();
+        }
     }
 
     async _runtimeHoldsLargeUpdate(files) {
@@ -1813,7 +1919,7 @@ class ServiceWorkerManager {
         body.className = 'popover-body';
 
         if (state === 'upgrade') {
-            body.textContent = message || 'Restart to install the service pack.';
+            body.textContent = (message || 'Restart to install the service pack.') + this._stagedNote();
         } else if (state === 'available') {
             body.innerHTML = message || 'Resource updates are available.';
         } else if (state === 'downloading') {
@@ -2699,7 +2805,7 @@ class ServiceWorkerManager {
             if (swState && swState.isDownloading) {
                 const already = await this.getFilesNeedingUpdate(files);
                 if (await this._runtimeHoldsLargeUpdate(already)) {
-                    this._offerServicePackUpgrade(already);
+                    this._offerServicePackUpgrade(already, cacheOptions);
                     return;
                 }
                 console.warn('Service worker is already downloading, syncing with current status');
@@ -2789,7 +2895,7 @@ class ServiceWorkerManager {
                 console.log(`Found ${filesToUpdate.length} files that need updating`);
 
                 if (await this._runtimeHoldsLargeUpdate(filesToUpdate)) {
-                    this._offerServicePackUpgrade(filesToUpdate);
+                    this._offerServicePackUpgrade(filesToUpdate, cacheOptions);
                     return;
                 }
                 this.servicePack = null;
@@ -3928,6 +4034,16 @@ class ServiceWorkerManager {
             case 'NETWORK_ACTIVITY':
                 // wsClient.handleServiceWorkerMessage: public/scripts/websocket.js
                 wsClient.handleServiceWorkerMessage(event);
+                break;
+
+            case 'STAGING_CACHE_STARTED':
+            case 'STAGING_CACHE_PROGRESS':
+            case 'STAGING_CACHE_COMPLETE':
+            case 'STAGING_CACHE_DEFERRED':
+            case 'STAGING_CACHE_CANCELLED':
+            case 'STAGING_CACHE_ERROR':
+                // a held large update downloading in the background (sw.js STAGING_CACHE): not a live download, no UI of its own
+                this._noteStagingMessage(event.data);
                 break;
 
             case 'STATIC_CACHE_STARTED':

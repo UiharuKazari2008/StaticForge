@@ -18,6 +18,10 @@
  *   installGroup(env, g)  post-process one group ('features' or 'updates') and confirm the bytes
  *                         written to the cache hash to the manifest
  *   verify(env, files)    which of them are still not in the cache with the right hash
+ *   promoteStaged(env, m) a large update held for the restart downloaded in the background into the worker's staging cache
+ *                         (sw.js STAGING_CACHE, serviceWorkerManager _stageHeldUpdate); here, in the restart, the staged rows
+ *                         whose x-file-hash is the manifest's m move into static-cache-v2 before check() works out what is
+ *                         left to download, and the staging cache is dropped. check() calls it.
  *
  * Install state survives a reload (localStorage melatonInstall: { active, startedAt, total }), so
  * a reload mid-install goes straight back into the installer. Up to SILENT_MAX files download
@@ -33,6 +37,8 @@
     // here: /app's old serviceWorkerManager.js, still served from the cache by path until the
     // update lands, reads v1, and with v1 gone it asked the worker for every file again.
     const STATIC_CACHE = 'static-cache-v2';
+    // sw.js STAGING_CACHE: a held large update's files, downloaded while the page ran and read by nothing until /launch promotes them
+    const STAGING_CACHE = 'update-staging-v1';
     const STATE_KEY = 'melatonInstall';
     const RECORD_KEY = 'melatonInstallRecord';
     const PACK_URL = '/install/meletonfx.zip';
@@ -204,6 +210,68 @@
         const misses = await staleFiles(cache, list, origin, new Map());
         if (!misses.length) return misses;
         return staleFiles(cache, misses, origin, await indexCacheKeys(cache, origin));
+    }
+
+    // ---- the held update's staged files (sw.js STAGING_CACHE) ----
+
+    /** The download that fills the staging cache stops before the rows move (sw.js CANCEL_STAGING). */
+    function stopStaging(env) {
+        try {
+            const worker = workerContainer(env) && workerContainer(env).controller;
+            if (worker) worker.postMessage({ type: 'CANCEL_STAGING' });
+        } catch (_) { /* the worker's own download then ends with it */ }
+    }
+
+    let promoteChain = Promise.resolve();
+
+    /**
+     * Moves the staged rows the manifest names at the same hash into the static cache, then drops the staging cache (whatever is
+     * left in it is another version: a newer deploy replaced it, or it never finished). The running page is gone here (this is
+     * the restart), so nothing reads a half-moved set. Each row is the worker's own write (x-file-hash, type, no Vary); the staged
+     * bytes were checked against the pack's hash when they came down, as every worker download is. A row that cannot be
+     * moved keeps the staging cache for the next start, and its file simply downloads below. Runs one at a time: the POST's
+     * check and the boot's overlap. Resolves { promoted, stale }; never rejects.
+     * @returns {Promise<{promoted:number, stale:number}>}
+     */
+    function promoteStaged(env, manifest) {
+        const run = () => promoteStagedNow(env, manifest).catch(() => ({ promoted: 0, stale: 0 }));
+        promoteChain = promoteChain.then(run, run);
+        return promoteChain;
+    }
+
+    async function promoteStagedNow(env, manifest) {
+        const out = { promoted: 0, stale: 0 };
+        const store = env && env.caches;
+        if (!store || typeof store.has !== 'function' || !(await store.has(STAGING_CACHE))) return out;
+        stopStaging(env);
+        const origin = env.location && env.location.origin;
+        const wanted = new Map();
+        (Array.isArray(manifest) ? manifest : []).forEach((file) => {
+            if (file && file.url && file.hash && !isAuthGatedManifestFile(file)) wanted.set(normalizePath(file.url, origin), file.hash);
+        });
+        const staging = await store.open(STAGING_CACHE);
+        const live = await store.open(STATIC_CACHE);
+        const keys = await staging.keys();
+        let failed = false;
+        await eachLimited(keys, config.cacheConcurrency, async (request) => {
+            try {
+                const row = await staging.match(request, { ignoreVary: true });
+                const hash = row && row.headers.get('x-file-hash');
+                if (!row || !hash || wanted.get(normalizePath(request.url, origin)) !== hash) {
+                    out.stale += 1;
+                    return;
+                }
+                // a row an old strategy stored with Vary would sit beside the new one (sw.js cacheUpdatePack does the same)
+                const prior = await live.match(request, { ignoreVary: true });
+                if (prior && prior.headers.get('vary')) await live.delete(request, { ignoreVary: true });
+                await live.put(request, row);
+                out.promoted += 1;
+            } catch (_) {
+                failed = true;
+            }
+        });
+        if (!failed) await store.delete(STAGING_CACHE);
+        return out;
     }
 
     // The check of an unchanged manifest (a 304): every route entry and this many files spread over
@@ -560,6 +628,7 @@
         if (fetched.unchanged) {
             const snapshot = await readManifestSnapshot(env);
             if (snapshot) {
+                await promoteStaged(env, snapshot);
                 const sample = sampleFiles(snapshot, SAMPLE_FILES, env.random || Math.random);
                 if (sample.length < snapshot.length && !requiredFiles(env, await filesNeedingUpdate(env, sample)).length) {
                     return { files: [], bytes: 0, unchanged: true };
@@ -571,12 +640,15 @@
             const full = await fetchManifestConditional(env, { full: true });
             if (full.compile) return { skipped: 'no-manifest' };
             if (full.failed || !full.manifest) return { failed: true };
+            await promoteStaged(env, full.manifest);
             const files = requiredFiles(env, await filesNeedingUpdate(env, full.manifest));
             if (!files.length) await writeSyncedManifestHash(env, full.hash, full.manifest);
             return { files, bytes: totalBytes(files), manifest: full.manifest };
         }
         const manifest = fetched.manifest;
         if (!manifest || !manifest.length) return { skipped: 'no-manifest' };
+        // a held update's staged files become the cache's before the diff: only the rest is downloaded
+        await promoteStaged(env, manifest);
         const files = requiredFiles(env, await filesNeedingUpdate(env, manifest));
         if (!files.length) await writeSyncedManifestHash(env, fetched.hash, manifest);
         return { files, bytes: totalBytes(files), manifest };
@@ -1063,6 +1135,8 @@
     const api = {
         config,
         STATIC_CACHE,
+        STAGING_CACHE,
+        promoteStaged,
         STATE_KEY,
         RECORD_KEY,
         normalizePath,

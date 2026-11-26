@@ -114,7 +114,24 @@ async function fetchMissingHashedAsset(event, request, url) {
   try {
     const response = await fetch(request, { signal: abort.signal });
     // the front proxy's error page is not the file
-    if (response && response.status < 500) return response;
+    if (response && response.status < 500) {
+      // A file the installer could not keep (melatonInstallRecord.stragglers) lands here on every load: no row, so it went to the
+      // network each time and was never stored. The server names its hash (X-File-Hash), so the first use keeps it like the
+      // strategies' miss path does for every other static file: under the bare path, as the worker's own rows (no Vary), when
+      // the body is the one the server named. Held by the event, so the worker stays up until it is written.
+      const servedHash = response.headers.get('x-file-hash');
+      if (servedHash && response.status === 200 && !isAuthGatedStaticPath(url.pathname)) {
+        const copy = response.clone();
+        const kept = (async () => {
+          const body = await copy.arrayBuffer();
+          if (hasBodyHash(url.pathname) && (await sha256Hex(body)) !== servedHash) return;
+          const cache = await caches.open(STATIC_CACHE);
+          await cache.put(new Request(`${url.origin}${url.pathname}`), staticCacheResponseWithHash(body, copy, servedHash));
+        })().catch((error) => console.warn(`[sw] ${url.pathname}: not kept on first use (${error && error.message})`));
+        if (event && typeof event.waitUntil === 'function') event.waitUntil(kept);
+      }
+      return response;
+    }
   } catch (_err) { /* no answer in time */ } finally {
     clearTimeout(timer);
   }
@@ -240,6 +257,10 @@ const EXPLORER_PREVIEW_CACHE = 'explorer-preview-cache-v1';
 // keep V8's compiled code beside each script row (#817, hashedScriptRow below). Copies of
 // STATIC_CACHE rows; safe to delete.
 const SCRIPT_CODE_CACHE = 'script-code-cache-v1';
+// A large update held for the restart downloads into this cache, never into STATIC_CACHE: the running page keeps reading one
+// consistent old set (.cursor/rules/client-update-never-in-place.mdc). Nothing here is ever served. /launch's installer
+// promotes the rows whose x-file-hash is the manifest's into STATIC_CACHE and drops the rest (updateEngine.js promoteStaged).
+const STAGING_CACHE = 'update-staging-v1';
 const EXPLORER_PREVIEW_POLICY = {
   maxEntries: 5000,
   maxIdleSeconds: 14 * 24 * 60 * 60, // a hit restarts the clock
@@ -555,7 +576,11 @@ function freshDownloadState() {
         failedFiles: [],
         // #951: the pack being fetched (url -> hash), and the highest count posted (it never goes back)
         inflight: null,
-        shown: 0
+        shown: 0,
+        // a held large update filling STAGING_CACHE (cacheStaticFiles options.staging): its own message types, never a page's
+        // live download; phone: only while the phone is on Wi-Fi, like the prefetch (workerNetwork)
+        staging: false,
+        phone: false
     };
 }
 
@@ -843,7 +868,21 @@ const staticStrategy = new strategies.CacheFirst({
   ],
 });
 
-// Dynamic cache strategy - cache first with network fallback and immediate expiry
+// Dynamic cache strategy - cache first with network fallback; a row of a mutable /cache/ path is fresh for a day
+// /cache/ folders whose file names carry their content: /cache/upload/<md5 of the bytes> (referencesWebSocketHandlers.js),
+// /cache/dynGenPreview/<preview hash>.<ext> (imageGeneration.js), and the pictures servedPictures.js copies under
+// <key>-<mtime>-<size>.<ext> (account-pictures, provider-logos, lapis-picture). A changed picture is another URL, so a row of
+// these never goes stale and the server says so (public, max-age=259200, web_server.js /cache). The others are named by what they
+// show, not by what they hold (site-icons/<host>, wiki_files/<type><id>.jpg, wiki, packages, vibe/<id>) and keep the day.
+// (/cache/preview/ has its own strategy; /cache/wallpapers/ is overwritten in place and is the wallpaper cache's;
+// /cache/quickstart/ and /cache/explore_files/ are the image cache's.)
+const CONTENT_ADDRESSED_CACHE_PREFIXES = ['/cache/upload/', '/cache/dynGenPreview/', '/cache/account-pictures/', '/cache/provider-logos/', '/cache/lapis-picture/'];
+const MUTABLE_CACHE_ROW_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function isContentAddressedCachePath(pathname) {
+  return CONTENT_ADDRESSED_CACHE_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
 const dynamicStrategy = new strategies.CacheFirst({
   cacheName: DYNAMIC_CACHE,
   // No ignoreSearch: cacheKeyWillBeUsed below strips the query on read and write
@@ -852,11 +891,21 @@ const dynamicStrategy = new strategies.CacheFirst({
     new cacheableResponse.CacheableResponsePlugin({
       statuses: [0, 200],
     }),
+    // The bound is the row count (a content-addressed row is not dropped by age: ExpirationPlugin's maxAgeSeconds took every
+    // row of the cache at 24 h, a picture that cannot change included). A mutable row older than a day by its Date header is
+    // a miss, so it is fetched again and replaced, as the age limit did.
     new expiration.ExpirationPlugin({
       maxEntries: 500,
-      maxAgeSeconds: 24 * 60 * 60, // 24 hours
     }),
     {
+      cachedResponseWillBeUsed: async ({ cachedResponse, request }) => {
+        if (!cachedResponse) return cachedResponse;
+        let pathname = '';
+        try { pathname = new URL(request.url).pathname; } catch (_) { return cachedResponse; }
+        if (isContentAddressedCachePath(pathname)) return cachedResponse;
+        const stamped = Date.parse(cachedResponse.headers.get('date') || '');
+        return Number.isFinite(stamped) && Date.now() - stamped > MUTABLE_CACHE_ROW_MAX_AGE_MS ? null : cachedResponse;
+      },
       cacheKeyWillBeUsed: async ({ request }) => {
         // Strip query parameters from cache key
         return request.url.split('?')[0];
@@ -1480,14 +1529,20 @@ async function handleImageRequest(event) {
     holdForImageMetadata(event);
   }
 
-  const networkResponse = await fetch(request, {
+  // The miss of a preview / thumbnail the page shows by its own name (/previews/, /naxCache/, /cache/quickstart/, /cache/explore_files/):
+  // its file never changes under that name (this cache never revalidates a row either) and the server sends private,
+  // max-age=259200, so the request's own cache mode lets the browser's HTTP cache answer a row this cache has lost (evicted, a
+  // new profile of the worker); no-store here made every such miss a full download. A request that asks the server to
+  // process or finalize (shouldBypassImageCache: X-Preview-Finalize, clipboard, download, stripContext) and the full
+  // pictures above keep no-store.
+  const networkResponse = await fetch(request, bypassImageCache ? {
     cache: 'no-store',
     headers: {
       'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
       'Pragma': 'no-cache',
       'Expires': '0'
     }
-  });
+  } : undefined);
   notifyClientsOfNetworkActivity('receive', {
     url: request.url,
     method: request.method,
@@ -2383,11 +2438,18 @@ self.addEventListener('message', (event) => {
         event.waitUntil(runCacheMaintenance(event.data.force === true));
     } else if (event.data && event.data.type === 'CACHE_STATIC_FILES') {
         const files = event.data.files || [];
+        // a held large update (staging): stored apart, applied only by /launch's installer after the restart
+        const stagingOptions = event.data.staging === true ? { staging: true, phone: event.data.phone === true } : null;
         // held by the message (up to EVENT_HOLD_MAX_MS): a worker with nothing else to answer was
         // stopped mid-download
-        event.waitUntil(heldAtMost(perfSpan(`cacheStaticFiles ${files.length} files`, () => cacheStaticFiles(files, event.data.silent === true, event.data.requester || ''))));
+        event.waitUntil(heldAtMost(perfSpan(`cacheStaticFiles ${files.length} files`, () => cacheStaticFiles(files, event.data.silent === true, event.data.requester || '', stagingOptions))));
+    } else if (event.data && event.data.type === 'CANCEL_STAGING') {
+        // /launch is about to promote the staged rows (updateEngine.js promoteStaged): the download filling them stops first
+        pendingStaging = null;
+        if (downloadState.isDownloading && downloadState.staging) cancelDownload();
     } else if (event.data && event.data.type === 'PHONE_PREFETCH') {
-        // Melaton Mobile's page: the network it is on (assetPackages.js); Wi-Fi starts the prefetch
+        // Melaton Mobile's page: its network (assetPackages.js); Wi-Fi starts the prefetch
+        event.waitUntil(heldAtMost(resumeStagingOnWifi(event.data.network).catch(() => {})));
         notePhoneNetwork(event.data.network);
         event.waitUntil(heldAtMost(runPhonePrefetch()));
     } else if (event.data && event.data.type === 'NETWORK_ACTIVITY_OPT_OUT') {
@@ -2623,10 +2685,13 @@ function getContentTypeFromPath(filePath) {
 
 // Get current download state (to the page that asked: it carries the whole file list)
 function getDownloadState(requestId, source = null) {
+    // a held update filling the staging cache is background work nothing waits on (the boot gate, the periodic state check, the
+    // "already downloading" branch): it is not "downloading" here, only staging
     replyToSource(source, {
         type: 'DOWNLOAD_STATE',
         requestId: requestId,
-        isDownloading: downloadState.isDownloading,
+        isDownloading: downloadState.isDownloading && downloadState.staging !== true,
+        staging: downloadState.isDownloading && downloadState.staging === true,
         completed: downloadState.completed,
         total: downloadState.total,
         currentFile: downloadState.currentFile,
@@ -2649,10 +2714,11 @@ function cancelDownload() {
         // Notify clients of cancellation (the counts read now: the state is reset before matchAll answers)
         const completedNow = downloadState.completed;
         const totalNow = downloadState.total;
+        const stagingNow = downloadState.staging === true;
         self.clients.matchAll().then(clients => {
             clients.forEach(client => {
                 client.postMessage({
-                    type: 'STATIC_CACHE_CANCELLED',
+                    type: stagingNow ? 'STAGING_CACHE_CANCELLED' : 'STATIC_CACHE_CANCELLED',
                     completed: completedNow,
                     total: totalNow
                 });
@@ -2671,6 +2737,10 @@ function checkStallDetection() {
         const timeSinceLastProgress = Date.now() - downloadState.lastProgressTime;
         const STALL_TIMEOUT = 30000; // 30 seconds
         
+        if (timeSinceLastProgress > STALL_TIMEOUT && downloadState.staging) {
+            // a held update downloading in the background: nothing waits on it, the pack's own timeouts retry it
+            return;
+        }
         if (timeSinceLastProgress > STALL_TIMEOUT) {
             console.warn(`Download appears stalled (${Math.round(timeSinceLastProgress/1000)}s since last progress), notifying clients`);
             self.clients.matchAll().then(clients => {
@@ -2695,10 +2765,11 @@ function checkStallDetection() {
                 const completedNow = Math.max(downloadState.completed, Number(downloadState.shown) || 0);
                 const totalNow = downloadState.total;
                 const currentFileNow = downloadState.currentFile;
+                const stagingNow = downloadState.staging === true;
                 self.clients.matchAll().then(clients => {
                     clients.forEach(client => {
                         client.postMessage({
-                            type: 'STATIC_CACHE_PROGRESS',
+                            type: stagingNow ? 'STAGING_CACHE_PROGRESS' : 'STATIC_CACHE_PROGRESS',
                             completed: completedNow,
                             total: totalNow,
                             currentFile: currentFileNow,
@@ -2972,7 +3043,7 @@ let staticProgressTimer = null;
 let staticProgressPostedAt = 0;
 
 function postStaticCacheProgress(completed, total, currentFile) {
-    staticProgressLatest = { completed, total, currentFile };
+    staticProgressLatest = { completed, total, currentFile, staging: downloadState.staging === true };
     if (staticProgressTimer) return;
     const wait = staticProgressPostedAt + STATIC_PROGRESS_POST_MS - Date.now();
     if (wait <= 0) {
@@ -2991,7 +3062,7 @@ function sendStaticCacheProgress() {
     self.clients.matchAll().then(clients => {
         clients.forEach(client => {
             client.postMessage({
-                type: 'STATIC_CACHE_PROGRESS',
+                type: progress.staging ? 'STAGING_CACHE_PROGRESS' : 'STATIC_CACHE_PROGRESS',
                 completed: progress.completed,
                 total: progress.total,
                 currentFile: progress.currentFile
@@ -3154,11 +3225,27 @@ async function cacheUpdatePack(cache, batch, signal) {
     }
 }
 
-async function cacheStaticFiles(files, silent = false, requester = '') {
+/**
+ * options.staging: a large update held for the restart (serviceWorkerManager _stageHeldUpdate) - the same packs, stored in
+ * STAGING_CACHE and reported as STAGING_CACHE_* (a page's live download and its progress UI never see it). options.phone: only
+ * while the phone is on Wi-Fi (workerNetwork, like the prefetch); otherwise it waits in pendingStaging for the next
+ * PHONE_PREFETCH hint that says unmetered.
+ */
+async function cacheStaticFiles(files, silent = false, requester = '', options = null) {
+    const staging = !!(options && options.staging === true);
+    // the two lanes never mix: a live request ends a staging download (what is staged stays), and a held update ends a
+    // live one (the page held it because the set is large: what the old CANCEL_DOWNLOAD did)
+    if (downloadState.isDownloading && downloadState.staging !== staging) cancelDownload();
+    if (staging && options.phone === true && workerNetwork() !== 'unmetered') {
+        pendingStaging = { files: files.slice(), requester };
+        postStagingDeferred(files.length);
+        return;
+    }
     // Check if already downloading: the new set joins it (#951)
     if (downloadState.isDownloading && mergeIntoRunningDownload(files, requester)) {
         if (silent !== true) downloadState.silent = false;
     }
+    if (downloadState.isDownloading && staging) return;
     if (downloadState.isDownloading) {
         console.warn('Download already in progress, sending current status');
         const completedNow = downloadState.completed;
@@ -3212,6 +3299,9 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
         downloadState.failedFiles = [];
         downloadState.inflight = null;
         downloadState.shown = 0;
+        downloadState.staging = staging;
+        downloadState.phone = staging && options.phone === true;
+        if (staging) pendingStaging = null;
         
         // Start stall detection
         startStallDetection();
@@ -3220,14 +3310,16 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
         self.clients.matchAll().then(clients => {
             clients.forEach(client => {
                 client.postMessage({
-                    type: 'STATIC_CACHE_STARTED',
+                    type: staging ? 'STAGING_CACHE_STARTED' : 'STATIC_CACHE_STARTED',
                     total: files.length
                 });
             });
         });
         
-        const cache = await caches.open(STATIC_CACHE);
+        const cache = await caches.open(staging ? STAGING_CACHE : STATIC_CACHE);
         const signal = downloadAbort.signal;
+        // rows a pass before (or a page that asked twice) already staged at the manifest's hash are not fetched again
+        if (staging) await skipStagedFiles(cache);
         
         // One pack per round (#951): the files due go out as one list, a few packs in a row only past
         // UPDATE_PACK_MAX_BYTES; what did not come down waits in downloadState.retry and goes back as one more pack.
@@ -3241,6 +3333,15 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
             if (!downloadState.queue.length) {
                 await nextStaticRetry(signal);
                 continue;
+            }
+            // a held update on a phone goes on only while the phone is on Wi-Fi; the rest waits for the next hint
+            if (downloadState.phone && workerNetwork() !== 'unmetered') {
+                pendingStaging = { files: downloadState.files.slice(), requester };
+                stopStallDetection();
+                dropStaticCacheProgress();
+                postStagingDeferred(downloadState.files.length);
+                downloadState = freshDownloadState();
+                return;
             }
             // Do not store auth-gated files. A 200 cached here would be served after logout.
             const batch = takeUpdatePackBatch(downloadState.queue, packMaxFiles).filter((file) => {
@@ -3281,12 +3382,13 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
             .map((entry) => entry.url);
         // what did not come down after its last try (#951): pending, never updated
         const failed = (downloadState.failedFiles || []).slice();
+        const stagingDone = downloadState.staging === true;
 
         // Notify client of completion
         self.clients.matchAll().then(clients => {
             clients.forEach(client => {
                 client.postMessage({
-                    type: 'STATIC_CACHE_COMPLETE',
+                    type: stagingDone ? 'STAGING_CACHE_COMPLETE' : 'STATIC_CACHE_COMPLETE',
                     files: allFiles,
                     completed: completedCount,
                     total: totalCount,
@@ -3312,7 +3414,7 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
         // restart goes at once (#1014) and its own commit lost the race against the cold boot: the start ran the old
         // /app against the newer cache, owed a restart for it, and every update took two restarts. Only a complete
         // candidate is kept (promoteShell), so an unfinished set changes nothing. DreamOS commits at its shutdown install.
-        if (/Android/i.test((self.navigator && self.navigator.userAgent) || '')
+        if (!stagingDone && /Android/i.test((self.navigator && self.navigator.userAgent) || '')
             && updatedFiles.some((f) => /\.(?:js|css)$/i.test(String((f && f.url) || f).split('?')[0]))) {
           const kept = await commitShells(true, 8000).catch(() => null);
           console.log('[update] the kept /app follows the download:', kept);
@@ -3331,10 +3433,11 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
         dropStaticCacheProgress();
         
         // Notify clients of error
+        const stagingFailed = downloadState.staging === true;
         self.clients.matchAll().then(clients => {
             clients.forEach(client => {
                 client.postMessage({
-                    type: 'STATIC_CACHE_ERROR',
+                    type: stagingFailed ? 'STAGING_CACHE_ERROR' : 'STATIC_CACHE_ERROR',
                     file: 'unknown',
                     error: error.message
                 });
@@ -3344,6 +3447,45 @@ async function cacheStaticFiles(files, silent = false, requester = '') {
         // Reset download state
         downloadState = freshDownloadState();
     }
+}
+
+// A held update waiting for Wi-Fi on a phone (cacheStaticFiles options.phone): { files, requester } or null. Memory only: the
+// worker stopping forgets it, and the page's next update check asks again.
+let pendingStaging = null;
+
+/** A held update that waited for Wi-Fi goes on when the phone is on it (the PHONE_PREFETCH hint); the prefetch follows it. */
+async function resumeStagingOnWifi(network) {
+    notePhoneNetwork(network);
+    if (!pendingStaging || downloadState.isDownloading || workerNetwork() !== 'unmetered') return;
+    const held = pendingStaging;
+    pendingStaging = null;
+    await cacheStaticFiles(held.files, true, held.requester, { staging: true, phone: true });
+}
+
+function postStagingDeferred(total) {
+    self.clients.matchAll().then((clients) => {
+        clients.forEach((client) => client.postMessage({ type: 'STAGING_CACHE_DEFERRED', total, reason: 'wifi' }));
+    });
+}
+
+/**
+ * The staging pass starts from what STAGING_CACHE already holds: a queued file with a row at the manifest's hash counts as done
+ * (the bar of the held set stays honest across passes), one at another hash is replaced by its download.
+ */
+async function skipStagedFiles(cache) {
+    const rows = await Promise.all(downloadState.queue.map(async (file) => {
+        const row = await cache.match(new Request(file.url), { ignoreVary: true }).catch(() => null);
+        return row && row.headers.get('x-file-hash') === file.hash;
+    }));
+    const left = [];
+    downloadState.queue.forEach((file, i) => {
+        if (!rows[i]) { left.push(file); return; }
+        downloadState.doneHash.set(file.url, file.hash);
+        downloadState.updatedFiles.push({ url: file.url, hash: file.hash });
+        downloadState.completed += 1;
+    });
+    downloadState.queue = left;
+    if (downloadState.completed) postDownloadProgress(0, null);
 }
 
 function getSwConfig(requestId, source = null) {
@@ -4051,6 +4193,7 @@ self.addEventListener('activate', (event) => {
               cacheName !== WALLPAPER_CACHE &&
               cacheName !== EXPLORER_PREVIEW_CACHE &&
               cacheName !== SCRIPT_CODE_CACHE &&
+              cacheName !== STAGING_CACHE &&
               cacheName !== LAUNCH_SHELL_CACHE &&
               cacheName !== PROTECTED_FONT_CACHE &&
               cacheName !== 'videos-cache-v1') { // Melaton Videos' own cache (emote pictures, wmYouTube.js)
