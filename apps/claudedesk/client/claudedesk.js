@@ -1654,6 +1654,8 @@
     const supReview = (id) => supReviews().find((r) => String(r.id) === String(id)) || null;
     /** The rule violations a review still has open (its rule check at turn end: check scripts + the Supervisor's judgement). */
     const supViolations = (r) => (Array.isArray(r && r.violations) ? r.violations : []).filter((v) => !v.resolved);
+    /** Reviews that still need attention: a dismissed review and a settled one (verdict Complete, no open rule violation) leave the list and every count. */
+    const supOpenReviews = () => supReviews().filter((r) => !r.dismissed && !(r.verdict === 'ok' && !supViolations(r).length));
     const supEngine = (id) => supEngines().find((e) => e.id === id) || null;
     /** The models an engine offers (its list, else its own default); a stored value outside it stays selectable. */
     const supModelList = (engineId) => { const e = supEngine(engineId); return e ? (Array.isArray(e.models) ? e.models.slice() : []).concat(e.defaultModel && !(e.models || []).includes(e.defaultModel) ? [e.defaultModel] : []) : []; };
@@ -1832,13 +1834,11 @@
         'co-supervisor': ['cd-sup-tiles', 'cd-sup-recent'],
         'sup-settings': ['cd-sup-set'],
         'sup-reviews': ['cd-sup-list', 'cd-sup-detail'],
-        'sup-asks': ['cd-sup-asks'],
-        'sup-client-asks': ['cd-sup-client-asks'],
         'sup-holds': ['cd-sup-holds'],
         'sup-locks': ['cd-sup-locks'],
         'sup-arts': ['cd-sup-arts']
     };
-    const SUP_TITLE = { 'co-supervisor': 'Supervisor', 'sup-settings': 'Supervisor Settings', 'sup-reviews': 'Reviews', 'sup-asks': 'Restart Waits', 'sup-client-asks': 'Client Update Waits', 'sup-holds': 'Paused Sessions', 'sup-locks': 'Managed Locks', 'sup-arts': 'Work Folders and Temp Files' };
+    const SUP_TITLE = { 'co-supervisor': 'Supervisor', 'sup-settings': 'Supervisor Settings', 'sup-reviews': 'Reviews', 'sup-holds': 'Paused Sessions', 'sup-locks': 'Managed Locks', 'sup-arts': 'Work Folders and Temp Files' };
 
     /** The Supervisor node's dashboard: figures that link to their pages (reviews, cost, pauses, waits, locks, folders, maintenance). */
     function supDashTiles(st, reviews, asks, holds, locks, arts, total) {
@@ -1861,8 +1861,8 @@
             tile('co-supervisor', '/static_images/vista-cmdbar/gears.png', money(w.today), 'Cost today'),
             tile('co-supervisor', '/static_images/vista-cmdbar/gears.png', money(w.week), 'Cost, 7 days'),
             tile('sup-holds', '/static_images/vista-cmdbar/pause.png', holds.length, 'Paused sessions', true),
-            tile('sup-asks', '/static_images/vista-cmdbar/clock.png', asks.length, 'Restart waits', true),
-            tile('sup-client-asks', '/static_images/vista-cmdbar/clock.png', supClientAsks().length, 'Client update waits', true),
+            tile('gt-restart', '/static_images/vista-cmdbar/clock.png', asks.length, 'Restart waits', true),
+            tile('gt-client', '/static_images/vista-cmdbar/clock.png', supClientAsks().length, 'Client update waits', true),
             tile('sup-locks', '/static_images/vista-cmdbar/lock.png', locks.length, 'Managed locks'),
             tile('sup-arts', FOLDER16, arts.length, 'Work folders', false, `${arts.length} folders, ${bytesText(total)}`),
             tile('sup-maint', '/static_images/vista-cmdbar/tools.png', ml, 'Last maintenance run')
@@ -1915,7 +1915,7 @@
             <p class="mmc-hint">The default is what the Supervisor starts a job with; the maximum is the most it may pick (the max row only on an explicit request). A default above its maximum is cut down on save.</p>
             <p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="sup-save"${sup.busy ? ' disabled' : ''}>Save</button>${sup.draft ? ' <span class="mmc-hint">Not saved yet.</span>' : ''}</p>
         </div>`;
-        const reviews = supReviews().filter((r) => !r.dismissed);
+        const reviews = supOpenReviews();
         const rows = reviews.map((r) => {
             const v = VERDICT[r.verdict] || [r.verdict || '', `${VI}/info-16.png`];
             return { key: `v:${r.id}`, icon: v[1], data: { title: r.title || shortId(r.sessionId), account: r.account || '', verdict: v[0], summary: `${r.summary || ''}${supViolations(r).length ? ` [${supViolations(r).length} rule violation${supViolations(r).length === 1 ? '' : 's'}]` : ''}`, at: r.at || 0 } };
@@ -1926,7 +1926,7 @@
             { t: 'Verdict', w: 80, key: 'verdict', text: (d) => d.verdict },
             { t: 'Summary', w: 250, key: 'summary', text: (d) => d.summary },
             { t: 'When', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => d.at }
-        ], rows, { wrap: true, sortId: 'cd-sup', sort: { key: 'at', dir: -1 }, empty: sup.data && sup.data.settings && sup.data.settings.enabled ? 'No review yet. Each agent turn that ends is reviewed.' : 'The supervisor is off. Turn it on in Supervisor Settings to review finished agent turns.' });
+        ], rows, { wrap: true, sortId: 'cd-sup', sort: { key: 'at', dir: -1 }, empty: sup.data && sup.data.settings && sup.data.settings.enabled ? 'No open review.' : 'The supervisor is off.' });
         if (part === 'sup-reviews') {
             // Outlook's reading pane: the list on top, the selected review and its actions below, a divider between
             return {
@@ -1988,12 +1988,7 @@
             { t: 'Files', w: 200, key: 'paths', text: (d) => d.paths }
         ], holdRows, { sortId: 'cd-sup-holds', sort: { key: 'at', dir: -1 }, empty: 'No session is paused.' });
         const asks = supAsks();
-        const casks = supClientAsks();
-        const askBody = waitList(c, asks, 'ga', 'cd-sup-asks-list', 'Nothing is holding a restart.');
-        const caskBody = waitList(c, casks, 'ca', 'cd-sup-client-asks-list', 'Nothing is holding a client update.');
         const html = c.page(SUP_TITLE[part], side, [
-            asks.length || part === 'sup-asks' ? { id: 'cd-sup-asks', title: `Restart waits (${asks.length})`, body: `<div class="cd-sup-list">${askBody}</div>` } : null,
-            casks.length || part === 'sup-client-asks' ? { id: 'cd-sup-client-asks', title: `Client update waits (${casks.length})`, body: `<div class="cd-sup-list">${caskBody}</div>` } : null,
             { id: 'cd-sup-tiles', title: 'Dashboard', body: supDashTiles(st, reviews, asks, holds, locks, arts, total) },
             { id: 'cd-sup-recent', title: 'Latest reviews with gaps', body: supGapTable(reviews) },
             { id: 'cd-sup-set', title: 'Settings', body: form },
@@ -2436,7 +2431,11 @@
     }
     /** The session a selected wait row waits on. */
     function waitSession(c) {
-        const id = selId(c, 'ga:') || selId(c, 'ca:');
+        const b = selId(c, 'b:');
+        const bd = b ? (S.coord.builds || []).find((x) => x.id === Number(b)) : null;
+        const dev = selId(c, 'd:') || (String(c.node || '').startsWith('gt-d:') ? String(c.node).slice(5) : '');
+        const dd = dev ? devData().find((x) => x.device === dev) : null;
+        const id = selId(c, 'ga:') || selId(c, 'ca:') || selId(c, 'dq:') || (bd && bd.requestedBy) || (dd && dd.holder && dd.holder.agentId) || '';
         const a = id ? agentOf(id) : null;
         return a && a.sessionId ? a.sessionId : '';
     }
@@ -3246,7 +3245,7 @@
         const tops = (group) => { const items = group(); return items.filter((w) => w.parentId == null || w.parentId === '' || !items.some((x) => String(x.id) === String(w.parentId))).map((w) => workNode(w, A, seen, group)); };
         const runNodes = tops(runItems);
         const pendNodes = tops(pendItems);
-        const reviewN = supReviews().filter((r) => !r.dismissed).length;
+        const reviewN = supOpenReviews().length;
         const uns = unsupervisedActive().map((l) => sessionNode('us:', l.id, A));
         const cons = S.con.list.map((k) => ({
             id: `ct:${k.id}`,
@@ -3285,27 +3284,24 @@
                             { id: 'co-agents', name: 'Agents', icon: `${ITEMS}/user-accounts-16.png` },
                             { id: 'co-claims', name: 'Claims', icon: FOLDER16 },
                             { id: 'co-messages', name: 'Messages', icon: '/static_images/vista-cmdbar/mail.png' },
-                            { id: 'co-builds', name: 'Build Gates', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Builds waiting until every agent is ready' },
-                            { id: 'co-devices', name: `Device Queue (${devWaiting()})`, icon: '/static_images/vista-cmdbar/clock.png', desc: 'Who holds each shared test device (A53, Fold, test browsers) and who waits' },
                             { id: 'co-locks', name: 'Busy Locks', icon: `${ITEMS}/bitlocker-drive-encryption-16.png`, desc: 'The .agent-* busy locks in the repo' }
                         ].concat(S.inspect ? [{ id: `i:${S.inspect.id}`, name: `Inspect: ${inspectName()}`, icon: SESSION16, desc: 'What this agent is doing' }] : [])
                     }
                     ]) },
+                gatingNode(),
                 { id: 'memory', name: 'Memory', icon: `${ITEMS}/personalization-16.png`, desc: 'The shared memory every Fleet agent reads and writes',
                     children: [
                         { id: 'mem-review', name: 'Needs Review', icon: `${VI}/warning-16.png`, desc: 'Proposed and flagged memories' },
                         { id: 'mem-digest', name: 'Session Digest', icon: `${VI}/info-16.png`, desc: 'The text every session starts with' },
                         { id: 'rules', name: 'Rules', icon: rulesIcon, desc: 'The rules the agents follow', children: [{ id: 'rules-review', name: `Rules Review (${plural(rulesOpenFindings().length, 'finding')})`, icon: `${ITEMS}/security-center-16.png`, desc: 'The Supervisor reads the rules and the memories for problems' }] }
                     ] },
-                { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Settings, reviews, restart waits, pauses, locks and temp files',
+                { id: 'co-supervisor', name: 'Supervisor', icon: `${ITEMS}/parental-controls-16.png`, desc: 'Settings, reviews, pauses, locks and temp files',
                     children: [
                         managerSid()
                             ? { id: `mg:${managerSid()}`, name: 'Manager Session', icon: '/static_images/vista-cmdbar/tools.png', desc: 'The standing session that fixes Fleet and the Supervisor' }
                             : { id: 'sup-manager', name: 'Manager Session', icon: '/static_images/vista-cmdbar/tools.png', desc: 'Pick or start the session that fixes Fleet and the Supervisor' },
                         { id: 'sup-settings', name: 'Settings', icon: '/static_images/vista-cmdbar/properties.png', desc: 'Engine, model, delivery, limits and the models and effort per job' },
                         { id: 'sup-reviews', name: `Reviews (${reviewN})`, icon: '/static_images/vista-cmdbar/paste.png', desc: 'What the Supervisor made of each finished agent turn' },
-                        { id: 'sup-asks', name: `Restart Waits (${supAsks().length})`, icon: '/static_images/vista-cmdbar/clock.png', desc: 'Agents waiting to restart Dreamscape' },
-                        { id: 'sup-client-asks', name: `Client Update Waits (${supClientAsks().length})`, icon: '/static_images/vista-cmdbar/clock.png', desc: 'Agents waiting to send a client update' },
                         { id: 'sup-holds', name: `Paused Sessions (${supHolds().length})`, icon: '/static_images/vista-cmdbar/pause.png', desc: 'Sessions the Supervisor or you paused' },
                         { id: 'sup-locks', name: `Managed Locks (${supLocks().length})`, icon: '/static_images/vista-cmdbar/lock.png', desc: 'Busy locks the Supervisor keeps for agents' },
                         { id: 'sup-arts', name: `Work Folders (${supArtifacts().length})`, icon: FOLDER16, desc: 'Work folders and temp files the agents left' },
@@ -3495,9 +3491,9 @@
             tile('sessions', '/static_images/vista-cmdbar/gears.png', busy, 'Sessions working'),
             tile('bg-agents', `${ITEMS}/programs-and-features-16.png`, bgRunning().length, 'Background agents'),
             tile('sup-reviews', '/static_images/vista-cmdbar/paste.png', gaps, 'Reviews with gaps', true),
-            tile('sup-asks', '/static_images/vista-cmdbar/clock.png', supAsks().length, 'Restart waits', true),
-            tile('sup-client-asks', '/static_images/vista-cmdbar/clock.png', supClientAsks().length, 'Client update waits', true),
-            tile('co-devices', '/static_images/vista-cmdbar/clock.png', devWaiting(), 'Device waits', true),
+            tile('gt-restart', '/static_images/vista-cmdbar/clock.png', supAsks().length, 'Restart waits', true),
+            tile('gt-client', '/static_images/vista-cmdbar/clock.png', supClientAsks().length, 'Client update waits', true),
+            tile('gt-dev', '/static_images/vista-cmdbar/clock.png', devWaiting(), 'Device waits', true),
             tile('sup-holds', '/static_images/vista-cmdbar/pause.png', supHolds().length, 'Paused', true),
             tile('usage-flags', `${VI}/warning-16.png`, usgOpenFlags(), 'Heavy usage', true),
             tile('accounts', `${VI}/warning-16.png`, loginRows().length, 'Need sign-in', true, loginRows().length ? loginRows().map((f) => f.name).join(', ') : '')
@@ -3549,7 +3545,7 @@
                 ['Agents working', String(agents.length)],
                 ['Files claimed', String(S.coord.claims.length)],
                 ['Build gates open', String((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length)]
-            ]) + `<p><span class="mmc-link" data-act="nav:co-agents">Agents</span> &nbsp; <span class="mmc-link" data-act="nav:co-builds">Build gates</span></p>` }
+            ]) + `<p><span class="mmc-link" data-act="nav:co-agents">Agents</span> &nbsp; <span class="mmc-link" data-act="nav:gating">Gating</span></p>` }
         ];
         return c.page(S.host && S.host.hostname ? `${TITLE} (${S.host.hostname})` : TITLE, S.error ? `Error: ${S.error}` : '', dashboardSections(c).concat([{ id: 'cd-sum-usage', title: 'Plan Usage', body: `<div class="cd-usage">${usageHtml()}</div>${supervisorSpendHtml(c)}` }]).concat(sections, [{ id: 'cd-sum-overview', title: 'About Fleet', body: overview }]));
     }
@@ -3757,9 +3753,10 @@
         };
     }
 
-    function buildsPage(c) {
+    /** One gate list: the gates given, one row each (key b:<id>), the actions on the selected row. */
+    function gateList(c, builds, sortId, empty, withTarget) {
         const name = (id) => { const a = agentOf(id); return a ? (a.name || a.id) : id; };
-        const rows = (S.coord.builds || []).map((b) => ({
+        const rows = builds.map((b) => ({
             key: `b:${b.id}`,
             icon: `${ITEMS}/administrative-tools-16.png`,
             cls: b.state === 'open' || b.state === 'running' ? 'cd-live' : '',
@@ -3770,19 +3767,82 @@
                 at: b.startedAt || b.createdAt, result: b.result || b.note || ''
             }
         }));
+        return c.listView([
+            { t: 'Gate', w: 46, key: 'id', num: true, text: (d) => String(d.id), value: (d) => d.id }
+        ].concat(withTarget ? [{ t: 'Target', w: 120, key: 'target', text: (d) => d.target }] : [], [
+            { t: 'Repo', w: 90, key: 'repo', text: (d) => d.repo },
+            { t: 'Requested By', w: 130, key: 'by', text: (d) => d.by },
+            { t: 'State', w: 90, key: 'state', text: (d) => d.state },
+            { t: 'Waiting On', w: 180, key: 'waiting', text: (d) => d.waiting },
+            { t: 'Since', w: 130, key: 'at', text: (d) => when(d.at), value: (d) => d.at || 0 },
+            { t: 'Result / Note', w: 200, key: 'result', text: (d) => d.result }
+        ]), rows, { sortId, sort: { key: 'id', dir: -1 }, empty, fit: true });
+    }
+
+    function buildsPage(c) {
+        return { html: gateList(c, (S.coord.builds || []).filter(gateLive), 'cd-builds', 'No open gate.', true), list: true };
+    }
+
+    // ---- Gating: every gate and wait in one place, one node per kind of gate and per test device ----------------
+
+    /** Which gate a build target belongs to. */
+    const GATE_KINDS = [['restart', 'Server Restart', /restart/i], ['client', 'Client Rebuild', /^sw-|client/i], ['windows', 'Windows Build', /win|\.exe|exe\b|desktop|modernia/i], ['android', 'Android Build', /apk|android|dsapp|a53|fold/i]];
+    const GATE_NODE = { restart: 'Server Restart', client: 'Client Rebuild', android: 'Android Build', windows: 'Windows Build', other: 'Other Gates' };
+    const gateKind = (target) => { const k = GATE_KINDS.find((x) => x[2].test(String(target || ''))); return k ? k[0] : 'other'; };
+    const gateLive = (b) => b.state === 'open' || b.state === 'running';
+    const gateBuilds = (kind) => (S.coord.builds || []).filter((b) => gateLive(b) && gateKind(b.target) === kind);
+    const gateWaits = (kind) => (kind === 'restart' ? supAsks() : kind === 'client' ? supClientAsks() : []);
+    const gatingCount = () => (S.coord.builds || []).filter(gateLive).length + supAsks().length + supClientAsks().length + devWaiting();
+    const devStatus = (id) => { const d = devData().find((x) => x.device === id); return d ? `${d.holder ? `In use by ${d.holder.name}` : 'Free'}, ${d.queue.length} waiting` : ''; };
+
+    function gatingNode() {
+        const clk = '/static_images/vista-cmdbar/clock.png';
+        const kid = (kind) => ({ id: `gt-${kind}`, name: `${GATE_NODE[kind]} (${gateBuilds(kind).length + gateWaits(kind).length})`, icon: kind === 'restart' || kind === 'client' ? clk : `${ITEMS}/administrative-tools-16.png` });
+        const kinds = ['restart', 'client', 'android', 'windows'].concat(gateBuilds('other').length ? ['other'] : []);
+        const dv = devData();
         return {
-            html: c.listView([
-                { t: 'Gate', w: 46, key: 'id', num: true, text: (d) => String(d.id), value: (d) => d.id },
-                { t: 'Target', w: 120, key: 'target', text: (d) => d.target },
-                { t: 'Repo', w: 90, key: 'repo', text: (d) => d.repo },
-                { t: 'Requested By', w: 130, key: 'by', text: (d) => d.by },
-                { t: 'State', w: 90, key: 'state', text: (d) => d.state },
-                { t: 'Waiting On', w: 180, key: 'waiting', text: (d) => d.waiting },
-                { t: 'Since', w: 130, key: 'at', text: (d) => when(d.at), value: (d) => d.at || 0 },
-                { t: 'Result / Note', w: 200, key: 'result', text: (d) => d.result }
-            ], rows, { sortId: 'cd-builds', sort: { key: 'id', dir: -1 }, empty: 'No build is waiting or running. Agents open a gate with coord_build_request before they build.', fit: true }),
-            list: true
+            id: 'gating', name: `Gating (${gatingCount()})`, icon: clk, desc: 'Every gate and queue an agent waits in',
+            children: kinds.map(kid).concat([{
+                id: 'gt-dev', name: `Device Testing (${devWaiting()})`, icon: clk,
+                children: dv.map((d) => ({ id: `gt-d:${d.device}`, name: `${d.label} (${d.queue.length})`, icon: clk }))
+            }])
         };
+    }
+
+    /** One kind of gate: its open gates and the waits behind it. */
+    function gatePage(c, kind) {
+        if (!S.sup.loaded && !S.sup.loading) void loadSupervisor();
+        const b = gateBuilds(kind);
+        const w = gateWaits(kind);
+        const sections = [{ id: 'cd-gt-gates', title: `Gates (${b.length})`, body: `<div class="cd-sup-list">${gateList(c, b, `cd-gt-${kind}`, 'No open gate.', false)}</div>` }];
+        if (kind === 'restart' || kind === 'client') sections.push({ id: 'cd-gt-waits', title: `Waiting (${w.length})`, body: `<div class="cd-sup-list">${waitList(c, w, kind === 'restart' ? 'ga' : 'ca', `cd-gt-w-${kind}`, 'Nothing is waiting.')}</div>` });
+        return { html: c.page(GATE_NODE[kind], '', sections) };
+    }
+
+    /** One test device: who holds it and who waits, in order. */
+    function devicePage(c, id) {
+        const d = devData().find((x) => x.device === id);
+        if (!d) return { html: c.page('Device', '', []) };
+        const hold = d.holder ? [{ key: `d:${d.device}`, icon: '/static_images/vista-cmdbar/clock.png', cls: 'cd-live', data: { who: d.holder.name, why: d.holder.why, left: d.holder.minutesLeft, until: clock(d.holder.endsAt) } }] : [];
+        const holdList = c.listView([
+            { t: 'Held By', w: 170, key: 'who', text: (x) => x.who },
+            { t: 'Testing', w: 260, key: 'why', text: (x) => x.why },
+            { t: 'Time Left', w: 80, key: 'left', num: true, text: (x) => `${x.left} min`, value: (x) => x.left },
+            { t: 'Until', w: 60, key: 'until', text: (x) => x.until }
+        ], hold, { sortId: 'cd-gt-hold', empty: 'Free.', fit: true });
+        const q = d.queue.map((x, i) => ({ key: `dq:${x.agentId}`, icon: '/static_images/vista-cmdbar/clock.png', data: { n: i + 1, who: x.name, why: x.why, min: x.minutes, since: x.since, eta: x.eta } }));
+        const qList = c.listView([
+            { t: '#', w: 30, key: 'n', num: true, text: (x) => String(x.n), value: (x) => x.n },
+            { t: 'Waiting', w: 170, key: 'who', text: (x) => x.who },
+            { t: 'Testing', w: 260, key: 'why', text: (x) => x.why },
+            { t: 'Needs', w: 70, key: 'min', num: true, text: (x) => `${x.min} min`, value: (x) => x.min },
+            { t: 'Since', w: 110, key: 'since', text: (x) => when(x.since), value: (x) => x.since || 0 },
+            { t: 'Expected', w: 70, key: 'eta', text: (x) => clock(x.eta), value: (x) => x.eta || 0 }
+        ], q, { sortId: 'cd-gt-queue', sort: { key: 'n', dir: 1 }, empty: 'Nobody is waiting.', fit: true });
+        return { html: c.page(d.label, '', [
+            { id: 'cd-gt-holder', title: 'In use', body: `<div class="cd-sup-list">${holdList}</div>` },
+            { id: 'cd-gt-queue', title: `Waiting (${d.queue.length})`, body: `<div class="cd-sup-list">${qList}</div>` }
+        ]) };
     }
 
     // ---- Device Queue: the shared test devices, their holder and the agents waiting in order ----------------
@@ -3819,7 +3879,7 @@
     }
 
     async function devRelease(c) {
-        const key = selId(c, 'd:');
+        const key = selId(c, 'd:') || (String(c.node || '').startsWith('gt-d:') ? String(c.node).slice(5) : '');
         const d = devData().find((x) => x.device === key);
         if (!d || !d.holder) {
             await c.box(`<p>${d ? `${esc(d.label)} is free.` : 'Select a device that is in use first.'}</p>`, null, { icon: 'info', title: 'Release Device', width: 360 });
@@ -5165,6 +5225,7 @@
     }
 
     function page(n, c) {
+        if (n.id.startsWith('gt-d:')) return devicePage(c, n.id.slice(5));
         switch (n.id) {
             case 'usage': return usagePage(c);
             case 'usage-flags': return usageFlagsPage(c);
@@ -5188,11 +5249,12 @@
             case 'accounts': return accountsPage(c);
             case 'rc': return rcPage(c);
             case 'rc-host': return hostRcPage(c);
-            case 'co-builds': return buildsPage(c);
-            case 'co-devices': return devicesPage(c);
+            case 'gating': return buildsPage(c);
+            case 'gt-dev': return devicesPage(c);
+            case 'gt-restart': case 'gt-client': case 'gt-android': case 'gt-windows': case 'gt-other': return gatePage(c, n.id.slice(3));
             case 'co-locks': return locksPage(c);
             case 'sup-manager': return managerPage(c);
-            case 'co-supervisor': case 'sup-settings': case 'sup-reviews': case 'sup-asks': case 'sup-client-asks': case 'sup-holds': case 'sup-locks': case 'sup-arts': return supervisorPage(c, n.id);
+            case 'co-supervisor': case 'sup-settings': case 'sup-reviews': case 'sup-holds': case 'sup-locks': case 'sup-arts': return supervisorPage(c, n.id);
             case 'sup-maint': return maintenancePage(c);
             case 'co-work': return workPage(c, 'all');
             case 'sessions': return sessionsPage(c, false);
@@ -5218,7 +5280,7 @@
     const ACT_ICON = (() => {
         const m = {};
         const put = (img, names) => names.split(' ').forEach((a) => { m[a] = `/static_images/vista-cmdbar/${img}.png`; });
-        put('refresh', 'rules-refresh sup-refresh fleet-refresh locks-refresh act-refresh mem-refresh con-refresh inspect-refresh aw-agents-refresh con-reread sup-recheck');
+        put('refresh', 'rules-refresh gate-refresh sup-refresh fleet-refresh locks-refresh act-refresh mem-refresh con-refresh inspect-refresh aw-agents-refresh con-reread sup-recheck');
         put('new', 'new-session new-session-on');
         put('add', 'add-account con-add');
         put('go', 'rules-open rules-goto open-session work-open agent-session sup-hold-open act-session inspect-session mem-open act-open con-open agent-open');
@@ -5259,12 +5321,14 @@
     function selCommands(n, key) { const r = selCommandList(n, key); return r ? Object.assign({}, r, { items: withIcons(r.items) }) : r; }
 
     function commandList(n) {
+        if (n.id.startsWith('gt-d:')) return [{ text: 'Release...', action: 'dev-release' }, { text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }];
         switch (n.id) {
             case 'root': return [{ text: 'Add Account...', action: 'add-account' }, { text: 'New Session...', action: 'new-session' }];
             case 'accounts': return [{ text: loginRows().length ? 'Sign In Again...' : 'Add Account...', action: loginRows().length ? 'sign-in-again' : 'add-account' }].concat(loginRows().length ? [{ text: 'Add Account...', action: 'add-account' }] : []);
             case 'rc': return [{ text: 'Refresh Status', action: 'fleet-refresh' }];
-            case 'co-builds': return [{ text: 'Post Message...', action: 'post' }];
-            case 'co-devices': return [{ text: 'Release...', action: 'dev-release' }, { text: 'Read Again', action: 'dev-refresh' }];
+            case 'gating': return [{ text: 'Read Again', action: 'gate-refresh' }];
+            case 'gt-dev': return [{ text: 'Release...', action: 'dev-release' }, { text: 'Read Again', action: 'gate-refresh' }];
+            case 'gt-restart': case 'gt-client': case 'gt-android': case 'gt-windows': case 'gt-other': return [{ text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }];
             case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
             case 'co-work': return [{ text: 'New Request...', action: 'new-session' }, { text: 'Issues...', action: 'work-issues', disabled: !!S.sup.busy }, { text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
             case 'co-flow': return [{ text: WF.view === 'flow' ? 'Show as List' : 'Show as Flow', action: WF.view === 'flow' ? 'wf-view-list' : 'wf-view-flow' }, { text: 'Read Again', action: 'wf-refresh' }];
@@ -5286,7 +5350,6 @@
             case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-settings': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }];
             case 'sup-reviews': return [{ text: 'Read Again', action: 'sup-refresh' }];
-            case 'sup-asks': case 'sup-client-asks': return [{ text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-holds': return [{ text: 'Resume', action: 'sup-resume' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-locks': return [{ text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-maint': return [{ text: 'Run Now', action: 'maint-run', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Dry Run', action: 'maint-dry', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Save Settings', action: 'maint-save', disabled: !maintUi().draft }, { text: 'Read Again', action: 'sup-refresh' }];
@@ -5397,13 +5460,15 @@
         if (key.startsWith('d:')) {
             const d = devData().find((x) => x.device === key.slice(2));
             if (!d) return null;
-            return { title: d.label, items: [{ text: 'Release', action: 'dev-release', disabled: !d.holder }, { text: 'Read Again', action: 'dev-refresh' }] };
+            return { title: d.label, items: [{ text: 'Release', action: 'dev-release', disabled: !d.holder }, { text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }] };
         }
+        if (key.startsWith('dq:')) return { title: 'Waiting for the device', items: [{ text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }] };
+        if (key.startsWith('ga:') || key.startsWith('ca:')) return { title: 'Waiting', items: [{ text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }] };
         if (key.startsWith('b:')) {
             const b = (S.coord.builds || []).find((x) => x.id === Number(key.slice(2)));
             if (!b) return null;
             const live = b.state === 'open' || b.state === 'running';
-            return { title: `Build Gate ${b.id}`, items: [{ text: b.state === 'running' ? 'End Build...' : 'Cancel Gate...', action: 'build-end', disabled: !live }, { text: 'Properties', action: 'build-props' }] };
+            return { title: `Build Gate ${b.id}`, items: [{ text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: b.state === 'running' ? 'End Build...' : 'Cancel Gate...', action: 'build-end', disabled: !live }, { text: 'Properties', action: 'build-props' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }] };
         }
         if (key.startsWith('l:')) {
             const l = ((S.locks && S.locks.list) || []).find((x) => x.file === key.slice(2));
@@ -5480,6 +5545,7 @@
             case 'fleet-refresh': await loadFleet(); return true;
             case 'fold-open': if (S.foldCtx) await openFold(S.foldCtx.id, S.foldCtx.agent, S.foldCtx.el); return true;
             case 'sup-refresh': await loadSupervisor(); return true;
+            case 'gate-refresh': await Promise.all([loadSupervisor(), loadMessages()]); return true;
             case 'usage-toggle': { if (arg) usgSetOpen(arg, !usgUi().open.has(arg)); return true; }
             case 'usage-d1': case 'usage-d7': { const u = usgUi(); u.days = a === 'usage-d7' ? 7 : 1; u.data = null; u.sel = ''; u.det.clear(); void usgLoad(); repaint(); return true; }
             case 'usage-refresh': { const u = usgUi(); u.det.clear(); u.flags = null; void usgLoad(); void loadSupervisor(); repaint(); return true; }
@@ -6075,6 +6141,7 @@
         else if (key.startsWith('ga:') || key.startsWith('ca:')) void action('wait-open', c);
         else if (key.startsWith('r:')) void action('fleet-props', c);
         else if (key.startsWith('b:')) void action('build-props', c);
+        else if (key.startsWith('dq:')) void action('wait-open', c);
         else if (key.startsWith('l:')) void action('lock-inspect', c);
         else if (key.startsWith('w:')) void action('work-open', c);
         else if (key.startsWith('x:')) void action('act-open', c);
@@ -7094,15 +7161,15 @@
                 if (n.id === 'sup-arts') return plural(supArtifacts().length, 'work folder');
                 if (n.id === 'sup-maint') { const m = maintData(); return m && m.running ? 'Running' : (m && m.last ? (MAINT_STATE[m.last.state] || [''])[0] : ''); }
                 if (n.id === 'aw-uns') return plural(unsupervised().length, 'session');
-                if (n.id === 'co-builds') return plural((S.coord.builds || []).filter((b) => b.state === 'open' || b.state === 'running').length, 'gate') + ' open';
-                if (n.id === 'co-devices') return `${plural((S.coord.devices && S.coord.devices.holding) || 0, 'device')} in use, ${devWaiting()} waiting`;
+                if (n.id === 'gating') return plural(gatingCount(), 'gate or wait');
+                if (GATE_NODE[n.id.slice(3)] && n.id.startsWith('gt-')) return `${plural(gateBuilds(n.id.slice(3)).length, 'gate')}, ${plural(gateWaits(n.id.slice(3)).length, 'wait')}`;
+                if (n.id.startsWith('gt-d:')) return devStatus(n.id.slice(5));
+                if (n.id === 'gt-dev') return `${plural((S.coord.devices && S.coord.devices.holding) || 0, 'device')} in use, ${devWaiting()} waiting`;
                 if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
                 if (n.id === 'co-work') return S.sup.busy || (S.sup.counts ? `${S.sup.counts.active} running, ${S.sup.counts.queued} queued` : plural(supWork().filter((w) => WORK_OPEN.has(w.state)).length, 'open request'));
-                if (n.id === 'sup-reviews') return plural(supReviews().filter((r) => !r.dismissed).length, 'review');
+                if (n.id === 'sup-reviews') return plural(supOpenReviews().length, 'review');
                 if (n.id === 'usage') { const u = usgUi(); return u.data && u.data.rows ? `${plural(u.data.rows.filter((r) => r.kind === 'session').length, 'session')}, ${u.days === 1 ? 'last 24 h' : 'last 7 days'}` : ''; }
                 if (n.id === 'usage-flags') return plural(usgOpenFlags(), 'open flag');
-                if (n.id === 'sup-asks') return plural(supAsks().length, 'restart wait');
-                if (n.id === 'sup-client-asks') return plural(supClientAsks().length, 'client update wait');
                 if (n.id === 'co-supervisor') return S.sup.busy || (S.sup.data && S.sup.data.stats ? `${plural(S.sup.data.stats.reviewed || 0, 'review')}, ${S.sup.data.stats.gaps || 0} with gaps` : '');
                 if (nodeSid(n.id)) { const sid = nodeSid(n.id); const ch = S.chats.get(sid); const l = liveOf(sid); const il = ch && ch.ins ? insLine(ch.ins, !!(l && l.status === 'busy')) : ''; return ch ? [il || plural(ch.messages.length, 'message'), tasksStatus(ch)].filter(Boolean).join(' \u00b7 ') : ''; }
                 return [`Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`, loginText()].filter(Boolean).join(', ');
