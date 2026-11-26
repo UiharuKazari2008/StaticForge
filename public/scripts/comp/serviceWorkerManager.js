@@ -4986,8 +4986,8 @@ class ServiceWorkerManager {
                 const { repairs, updates } = await this._splitRepairs(filesToUpdate);
                 if (updates.length) {
                     held = true;
-                    const held = updates;
-                    const note = () => this._noteAvailableUpdates(held, true);
+                    const heldFiles = updates;
+                    const note = () => this._noteAvailableUpdates(heldFiles, true);
                     if (window.wsClient && window.wsClient.initializationCompleted) note();
                     else document.addEventListener('desktopBootDone', () => setTimeout(note, 0), { once: true });
                 }
