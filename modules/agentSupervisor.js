@@ -1685,9 +1685,9 @@ function pumpWork(gr) {
             if (!forced && activeCount() >= set.maxConcurrent) { setWork(w.id, { message: `Waiting for a slot (${set.maxConcurrent} supervised sessions at once)` }); continue; }
             let pick;
             try {
-                try { pick = await require('./claudeFleetMcp').pickForStart(g, w.account || 'auto'); } catch (e) {
+                try { pick = await require('./claudeFleetMcp').pickForStart(g, w.account || 'auto', { admit: true }); } catch (e) {
                     // a named account whose login expired: the work moves on to the next account until it is fixed
-                    if (w.account && w.account !== 'auto' && /Login expired/.test(e.message)) pick = await require('./claudeFleetMcp').pickForStart(g, 'auto'); else throw e;
+                    if (w.account && w.account !== 'auto' && /Login expired/.test(e.message)) pick = await require('./claudeFleetMcp').pickForStart(g, 'auto', { admit: true }); else throw e;
                 }
             } catch (e) {
                 if (loginTried.has(w.id)) { loginTried.delete(w.id); setWork(w.id, { state: 'failed', ended_at: Date.now(), message: `No account with a working login (${e.message.slice(0, 160)})` }); settleParent(w.parent_id); emit({ work: getWork(w.id) }); continue; }
