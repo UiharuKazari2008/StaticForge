@@ -7595,6 +7595,7 @@
     let noteTrayKey = '';
     // the holder's pictures held loaded (#1245, preloadHolderArt): url -> Image, the entries' pictures last scheduled, one run pending
     const holderImages = new Map();
+    const HOLDER_IMAGES_MAX = 64;
     let holderArtSig = '';
     let holderPreloadSet = false;
     let noteKeyCount = -1;
@@ -7718,7 +7719,7 @@
     /*
      * The holder's pictures are loaded before it opens (#1245): on the A53 a picture the WebView does not hold yet draws
      * blank for ~0.4 s (fetched through the service worker as the buttons are built). Each URL the image-set would pick on
-     * this screen is held as an Image (a small bounded set, never freed), decoded once, idle, on 6.5 only. No timer.
+     * this screen is held as an Image (at most HOLDER_IMAGES_MAX, oldest dropped first), decoded once, idle, on 6.5 only. No timer.
      */
     /** The URL an image-set (or a plain url()) picks on this screen: the smallest density >= the screen's, else the largest; '' when none. */
     function holderArtUrl(imageSet) {
@@ -7750,6 +7751,8 @@
             holderImages.set(u, img);
             img.decode().catch(() => {});
         }
+        // capped (phone-power-client rule 8): the oldest go first; the holder's kinds are ~50 pictures
+        while (holderImages.size > HOLDER_IMAGES_MAX) holderImages.delete(holderImages.keys().next().value);
     }
     /** Coalesced, event-driven: runs preloadHolderArt once when idle after the holder's contents changed. */
     function scheduleHolderPreload() {
