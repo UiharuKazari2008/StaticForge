@@ -166,6 +166,7 @@ function settings(gr) {
         trackArtifacts: cfg.trackArtifacts !== false,
         maxConcurrent: Number.isInteger(cfg.maxConcurrent) && cfg.maxConcurrent >= 1 && cfg.maxConcurrent <= 12 ? cfg.maxConcurrent : 3,
         autoStart: cfg.autoStart !== false,
+        landingCheck: cfg.landingCheck !== false, // Done only when its commits are on origin/main (fleetLanding); false = off
         // which sessions it reviews on its own: only supervised ones (work items, sessions started as supervised), or
         // every session (Yukimi, Nov 24 2026: "this is an unsupervised session, why is the Supervisor watching it?")
         reviewScope: cfg.reviewScope === 'all' ? 'all' : 'supervised',
@@ -1916,10 +1917,22 @@ function settleWork(sessionId) {
     if (!rv || rv.verdict !== 'ok') return false;
     const openKids = db().prepare("SELECT COUNT(*) AS n FROM supervisor_work WHERE parent_id = ? AND state NOT IN ('done','failed','cancelled')").get(w.id).n;
     if (openKids) { setWork(w.id, { message: `Its planner finished a turn; ${openKids} part${openKids === 1 ? ' is' : 's are'} still running` }); emit({ work: getWork(w.id) }); return false; }
+    if (settings().landingCheck !== false) { finishLanded(w, rv.summary).then((d) => { if (d) { emit({ work: getWork(w.id) }); pumpWork().catch(() => {}); } }).catch(() => {}); return false; } // done once the landing check passes
     setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done', input_questions: null });
     settleParent(w.parent_id);
     emit({ work: getWork(w.id) });
     pumpWork().catch(() => {});
+    return true;
+}
+/** The done step behind the landing check (modules/fleetLanding.js): true when the item became done. */
+async function finishLanded(w, summary) {
+    const r = settings().landingCheck === false ? { done: true, note: '' } : await require('./fleetLanding').gate({
+        setWork, emit: (id) => emit({ work: getWork(id) }), comment: commentIssue, enqueue,
+        steer: (sid, t) => require('./claudeSessionLauncher').steer(sid, t), isLive: (sid) => !!liveSessionsById().get(sid)
+    }, w, summary);
+    if (!r.done) return false;
+    setWork(w.id, { state: 'done', ended_at: Date.now(), message: `${summary || 'Done'}${r.note || ''}`.slice(0, 480), input_questions: null });
+    settleParent(w.parent_id);
     return true;
 }
 const settleSoonTimers = new Map();
@@ -2001,7 +2014,7 @@ async function workAfterReview(rv, opts = {}) {
         // an ok review is not Done while the session works, its background agents run or another review of it is queued (Yukimi, Nov 25 2026)
         const f = sessionInFlight(rv.sessionId, { ignoreReviewing: true, fresh: true });
         if (inFlightAny(f)) { setWork(w.id, { state: 'running', message: f.why }); holdForRecheck(rv.sessionId); }
-        else { setWork(w.id, { state: 'done', ended_at: Date.now(), message: rv.summary || 'Done', input_questions: null }); settleParent(w.parent_id); }
+        else await finishLanded(w, rv.summary); // not done when the landing check holds it (Running, steered or handed on)
     }
     else if (rv.verdict === 'input' && qs.length) {
         // a question whose answer is real work becomes its own started work item, never a question for Yukimi (Nov 25 2026:

@@ -69,7 +69,7 @@ const line = (o) => `${JSON.stringify(o)}\n`;
 const user = (text, ts) => line({ type: 'user', uuid: `u${ts}`, timestamp: ts, message: { role: 'user', content: text } });
 const asst = (content, ts) => line({ type: 'assistant', uuid: `a${ts}`, timestamp: ts, message: { role: 'assistant', content } });
 
-const settingsCfg = { agentSupervisor: { enabled: true, engine: 'tokenrouter', delivery: 'inbox', reviewScope: 'all' } };
+const settingsCfg = { agentSupervisor: { enabled: true, engine: 'tokenrouter', delivery: 'inbox', reviewScope: 'all', landingCheck: false } };
 const gr = {
     getConfig: () => settingsCfg,
     modifyConfig: () => ({ assign: async (p, v) => { settingsCfg[p[0]] = v; } }),
