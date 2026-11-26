@@ -26,9 +26,20 @@ assert(!/setTimeout\([^)]*\b0\b\)/.test(src), 'no zero-delay loops');
 const handlerSrc = read('modules/ws/handlers/318-xmRadioHandler.js');
 assert(/reg\('xmradio_mmc_view', packet\(true,/.test(handlerSrc), 'admin-only packet');
 assert(!/xmradio_mmc_view'[^\n]*destructive/.test(handlerSrc), 'not destructive');
+assert(/reg\('xmradio_rec_held_delete', packet\(true,[^\n]*destructive: true/.test(handlerSrc), 'held delete: admin and destructive');
+assert(/heldDelete: \(rid\)/.test(read('modules/xmRadioRecorderClient.js')), 'client method');
+assert(/xmradio_rec_held_delete/.test(read('docs/client-api/ws/xmradio.md')), 'documented');
 
 // ---- the console in a VM
 const sent = [];
+let failNext = false;
+const heldList = [
+    { rid: 'h1', channelId: 'c1', kind: 'song', slot: 1, state: 'stopped', since: 1, endedAt: 2, segs: 10, gaps: [], gapSeconds: 0, files: [], error: '', keepUntil: 0 },
+    { rid: 'h2', channelId: 'c1', kind: 'channel', slot: 2, state: 'assembled', since: 1, endedAt: 2, segs: 10, gaps: [{ from: 1, to: 5000 }], gapSeconds: 5, files: ['a.m4a'], error: '', keepUntil: 9 },
+    { rid: 'h3', channelId: 'c1', kind: 'song', slot: 1, state: 'failed', since: 1, endedAt: 2, segs: 4, gaps: [], gapSeconds: 0, files: [], error: 'x', keepUntil: 0 },
+    { rid: 'h4', channelId: 'c1', kind: 'song', slot: 1, state: 'assembling', since: 1, endedAt: 2, segs: 4, gaps: [], gapSeconds: 0, files: [], error: '', keepUntil: 0 },
+    { rid: 'h5', channelId: 'c1', kind: 'song', slot: 1, state: 'recording', since: 1, endedAt: 0, segs: 4, gaps: [], gapSeconds: 0, files: [], error: '', keepUntil: 0 }
+];
 const payloads = [];
 const listeners = {};
 const wsClient = {
@@ -47,6 +58,9 @@ const wsClient = {
                     queue: [{ id: 'q1', channelId: 'c1', a: 'A', t: 'T', expiresAt: 5, addedAt: 4, slot: 2, state: 'running' }], timers: [{ id: 't1', channelId: 'c1', start: '08:00', minutes: 30, days: [1, 2] }], alerts: [], terms: [{ id: 's1', text: 'abba' }] },
                 slots: { max: 4 } } };
         }
+        if (type === 'xmradio_rec_held') return { success: true, data: { held: heldList } };
+        if (type === 'xmradio_rec_assemble' || type === 'xmradio_rec_held_delete') { if (failNext) { failNext = false; return { success: false, error: 'Assembly broke.' }; } return { success: true, data: {} }; }
+        if (type === 'xmradio_rec_settings') return { success: true, data: { settings: data, deck: Object.assign({}, sandbox.mmcLizumi._state.deck, { settings: data }) } };
         if (type === 'xmradio_lineup') return { success: true, data: { channels: [{ id: 'c1', number: 5, name: 'Hits' }] } };
         if (type === 'xmradio_tape_tracks') return { success: true, data: { tracks: [{ id: 'f1', name: 'x.m4a', size: 2048, at: 1 }] } };
         return { success: true, data: { items: {} } };
@@ -75,11 +89,12 @@ class FakeAudio {
 const con = {
     modal: { isConnected: true, querySelector: () => null },
     node: 'radios', refresh() {}, select() {}, sel: null,
-    listView: (cols, rows, o) => { rowsSeen.last = { cols, rows, o }; return `<lv ${rows.length}>`; },
+    listView: (cols, rows, o) => { rowsSeen.last = { cols, rows, o }; rowsSeen[o && o.sortId] = rowsSeen.last; return `<lv ${rows.length}>`; },
     boxAnswer: true,
     box(html, buttons) { rowsSeen.box = { html, buttons }; return Promise.resolve(this.boxAnswer); },
     note(t) { rowsSeen.note = t; },
     page: (t, s, secs) => { rowsSeen.sections = secs; return `<page ${secs.length}>`; },
+    state: (ok, text, warn) => (ok ? text : `[${warn ? 'warn' : 'err'}:${text}]`),
     props: (rows) => rows.map((r) => r.join(":")).join("|")
 };
 const sandbox = {
@@ -97,12 +112,29 @@ vm.runInNewContext(src, sandbox);
     await sandbox.openLizumi();
     await new Promise((r) => setTimeout(r, 20));
     assert(sent.includes('xmradio_mmc_view') && sent.includes('status_subscribe'), 'view read and feed subscribed');
-    assert.strictEqual(def.nodes()[0].children.length, 7, 'seven pages');
+    assert.strictEqual(def.nodes()[0].children.length, 8, 'seven pages and Settings');
     const page = (id) => def.page({ id }, con);
     page('radios');
     assert.strictEqual(rowsSeen.last.rows.length, 4, 'four slots');
     assert.strictEqual(rowsSeen.last.rows[0].data.state, 'Recording');
     assert.strictEqual(rowsSeen.last.rows[1].data.state, 'Standby');
+    // ---- S6 counters on Virtual Radios
+    const st = sandbox.mmcLizumi._state;
+    const rec0 = st.deck.recordings[0];
+    Object.assign(rec0, { state: 'paused-refilling', segsWritten: 40, segsExpected: 50, held: 40, gaps: [{ from: 1, to: 2 }], gapSeconds: 6, bufferSegs: 3, behindS: 0 });
+    page('radios');
+    let rd = rowsSeen.last.rows[0].data;
+    assert.strictEqual(rd.state, 'Paused - refilling'); assert.strictEqual(rd.buffer, '3');
+    assert.strictEqual(rd.segments, '40 / 50 (80%), 40 held');
+    assert.strictEqual(rd.gaps, 1); assert.strictEqual(rd.gapS, 6);
+    const gapCol = rowsSeen.last.cols.find((x) => x.key === 'gaps');
+    assert.strictEqual(gapCol.text(rd), '1 (6s)'); assert(/warn/.test(gapCol.html(rd)), 'gaps use the warning state');
+    assert(!/warn/.test(gapCol.html(rowsSeen.last.rows[1].data)), 'a standby radio has no warning');
+    rec0.state = 'behind'; rec0.behindS = 95;
+    page('radios'); assert.strictEqual(rowsSeen.last.rows[0].data.state, 'Behind 95s');
+    assert(/warn/.test(rowsSeen.last.cols.find((x) => x.key === 'state').html(rowsSeen.last.rows[0].data)), 'behind is a warning');
+    rec0.state = 'buffering'; page('radios'); assert.strictEqual(rowsSeen.last.rows[0].data.state, 'Buffering');
+    ['state', 'segsWritten', 'segsExpected', 'held', 'gaps', 'gapSeconds', 'bufferSegs', 'behindS'].forEach((k) => delete rec0[k]);
     page('queue'); assert.strictEqual(rowsSeen.last.rows.length, 1);
     assert.strictEqual(rowsSeen.last.rows[0].data.radio, 'Lizumi-Recorder-2', 'queue shows the virtual radio');
     assert.strictEqual(rowsSeen.last.rows[0].data.qstate, 'Running', 'queue shows the state');
@@ -180,6 +212,81 @@ vm.runInNewContext(src, sandbox);
     page('accounts'); assert.strictEqual(rowsSeen.last.rows[0].data.state, 'Signed in');
     page('recordings'); await new Promise((r) => setTimeout(r, 20));
     assert(sent.includes('xmradio_tape_tracks'), 'tape read');
+    assert(sent.includes('xmradio_rec_held'), 'held read');
+    const heldReads = () => sent.filter((x) => x === 'xmradio_rec_held').length;
+    // ---- Recordings: two sections, the actions per state
+    let pg = page('recordings');
+    assert.deepStrictEqual([...rowsSeen.sections.map((x) => x.title)], ['Held recordings', 'On the tape']);
+    const rec = def.nodes()[0].children.find((x) => x.id === 'recordings');
+    const acts = (rid) => { const g = def.selCommands(rec, `h:${rid}`, con); return g ? [...g.items.map((x) => x.text || 'sep')] : null; };
+    assert.deepStrictEqual(acts('h1'), ['Assemble', 'sep', 'Delete'], 'stopped');
+    assert.deepStrictEqual(acts('h2'), ['Re-assemble', 'sep', 'Delete'], 'assembled');
+    assert.deepStrictEqual(acts('h3'), ['Assemble', 'sep', 'Delete'], 'failed');
+    assert.strictEqual(acts('h4'), null, 'assembling: nothing');
+    assert.strictEqual(acts('h5'), null, 'recording: nothing');
+    assert.strictEqual(def.selCommands(rec, 'r:f1', con), null, 'a tape row has no held actions');
+    page('recordings');
+    assert(sandbox.mmcLizumi._state.held.length === 5);
+    // never re-read on a repaint, re-read when the deck's held summary moves
+    const before = heldReads();
+    page('recordings'); page('recordings');
+    assert.strictEqual(heldReads(), before, 'no re-read without a change');
+    st.deck.held = { n: 3, assembling: 1, failed: 1 };
+    page('recordings'); await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(heldReads(), before + 1, 're-read when deck.held changes');
+    // Assemble
+    con.sel = 'h:h1';
+    await def.action('held-assemble', con);
+    assert.strictEqual(payloads.filter((p) => p.type === 'xmradio_rec_assemble').pop().data.rid, 'h1');
+    assert.strictEqual(heldReads(), before + 2, 'the list is read again after an action');
+    // an error is shown through the kit
+    failNext = true;
+    rowsSeen.box = null;
+    await def.action('held-assemble', con);
+    assert(rowsSeen.box && /Assembly broke/.test(rowsSeen.box.html), 'the error shows in the kit box');
+    // Delete confirms first
+    con.boxAnswer = false;
+    const delsBefore = payloads.filter((p) => p.type === 'xmradio_rec_held_delete').length;
+    await def.action('held-delete', con);
+    assert(/delete the segments/.test(rowsSeen.box.html), 'confirmation');
+    assert.strictEqual(payloads.filter((p) => p.type === 'xmradio_rec_held_delete').length, delsBefore, 'Cancel deletes nothing');
+    assert.strictEqual(con.sel, 'h:h1', 'Cancel keeps the selection');
+    con.boxAnswer = true;
+    await def.action('held-delete', con);
+    assert.strictEqual(payloads.filter((p) => p.type === 'xmradio_rec_held_delete').pop().data.rid, 'h1');
+    // the held list row renders gaps with the warning state
+    page('recordings');
+    assert(pg && true);
+    // ---- Diagnostics
+    st.deck.history = [{ id: 'm1', channelId: 'c1', a: 'Gone', t: 'Song', state: 'missed', reason: 'The song left the stream window', endedAt: 5 }, { id: 'd1', channelId: 'c1', state: 'done' }];
+    st.deck.offline = true;
+    st.slots = { max: 4, list: [{ slot: 1, name: 'Lizumi-Recorder-1', signedIn: false, handle: 'ab', lastError: 'Bad password', lastErrorAt: 1 }] };
+    page('diagnostics');
+    assert.deepStrictEqual([...rowsSeen.sections.map((x) => x.title)], ['Link', 'Accounts', 'Recording health', 'Missed queue entries']);
+    assert(/\[err:Offline/.test(rowsSeen.sections[0].body), 'link state offline');
+    assert.strictEqual(rowsSeen.last.rows.length, 1, 'only the missed entry');
+    assert.strictEqual(rowsSeen.last.rows[0].data.reason, 'The song left the stream window');
+    assert(/Bad password/.test(rowsSeen['lz-diag-acc'].rows[0].data.error), 'sign-in failure listed');
+    st.deck.offline = false; st.deck.history = []; delete st.deck.held;
+    // ---- Settings: a list, the dialog, the save payload
+    page('settings');
+    assert.strictEqual(rowsSeen.last.rows.length, 5, 'five settings');
+    const setNode = def.nodes()[0].children.find((x) => x.id === 'settings');
+    assert.deepStrictEqual([...def.commands(setNode, con).map((x) => x.text)], ['Change Settings...']);
+    await def.action('set-edit', con);
+    dlg = dialogsOpened.pop();
+    ctx = fakeCtx(dlg.init);
+    assert.strictEqual(ctx.vals[301], '1'); assert.strictEqual(ctx.vals[303], '120', 'defaults shown');
+    ctx.vals[301] = '2'; ctx.vals[302] = '5'; ctx.vals[303] = '300'; ctx.vals[304] = '4'; ctx.vals[305] = '48';
+    assert.strictEqual(await dlg.ok(ctx), true);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(payloads.filter((p) => p.type === 'xmradio_rec_settings').pop().data)), { streamsPerAccount: 2, healthyBuffer: 5, behindSeconds: 300, refetchRetries: 4, keepSegmentsHours: 48 });
+    page('settings'); assert.strictEqual(rowsSeen.last.rows[2].data.value, '300', 'the page shows the saved value');
+    ctx.vals[301] = '5';
+    assert.strictEqual(await dlg.ok(ctx), false, 'out of range is refused'); assert(/1 to 4/.test(ctx.texts[320]));
+    ctx.vals[301] = '2'; ctx.vals[303] = '10';
+    assert.strictEqual(await dlg.ok(ctx), false); assert(/30 to 3600/.test(ctx.texts[320]));
+    ctx.vals[303] = '1.5';
+    assert.strictEqual(await dlg.ok(ctx), false, 'not a whole number');
     // Live: the recording list, then the player is torn down on a page change
     con.node = 'live';
     const live = page('live');

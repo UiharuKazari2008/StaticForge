@@ -7,11 +7,12 @@
  *                       with the queue depth beside it
  *     Queue             the common queue in due order
  *     Schedules         timers, search terms and alerts as one list
- *     Recordings        the current tape's tracks
+ *     Recordings        held recordings (segments on disk: Assemble, Re-assemble, Delete), then the current tape's tracks
  *     Accounts          the SiriusXM login
  *     Live              a monitor player for one recording slot (its growing HLS playlist), Mute and volume, and the
  *                       tape's own progress; the player exists only while this page is shown
- *     Diagnostics       later update (empty state)
+ *     Diagnostics       link state, accounts, per recording gaps / re-fetches / pauses, missed queue entries (read-only)
+ *     Settings          streams per account, healthy buffer, behind seconds, re-fetch retries, keep segments hours
  *
  * Data: the admin packet xmradio_mmc_view ({ account, deck, slots }) once, then the statusHub feed `xmradio_mmc`
  * (pushType xmradio_mmc_status, items.deck / items.account) while the window is open; nothing is polled. Channel names
@@ -35,13 +36,15 @@
         { id: 'recordings', name: 'Recordings', icon: `${VI}/search-folder-16.png` },
         { id: 'accounts', name: 'Accounts', icon: `${VI}/account-manager-16.png` },
         { id: 'live', name: 'Live', icon: `${VI}/net-internet-16.png` },
-        { id: 'diagnostics', name: 'Diagnostics', icon: `${VI}/problem-reports-16.png` }
+        { id: 'diagnostics', name: 'Diagnostics', icon: `${VI}/problem-reports-16.png` },
+        { id: 'settings', name: 'Settings', icon: `${VI}/application-16.png` }
     ];
 
     const state = {
         console: null, account: null, deck: null, slots: { max: 4 }, loaded: false, error: '',
         channels: new Map(), lineup: [], lineupAsked: false,
         tracks: null, tracksFor: '', tracksLoading: false,
+        held: null, heldFor: '', heldLoading: false,
         feedOn: false,
         liveRid: '', vol: 80, muted: false, player: null
     };
@@ -167,14 +170,15 @@
 
     const EMPTY = 'There are no items to show in this view.';
 
-    function later(c, what) {
-        return {
-            html: c.listView([{ t: 'Name', w: 300, key: 'name', text: (d) => d.name }], [], { empty: `${what} will be available in a later update.` }),
-            list: true
-        };
-    }
-
     const KIND = { song: 'Song', cut: 'Song on air', manual: 'Channel', channel: 'Channel', timer: 'Timer', alert: 'Alert', term: 'Search term' };
+
+    /** "2 (14s)" for holes in the audio; "None" when there are none. */
+    const gapText = (n, sec) => (n > 0 ? `${n} (${sec}s)` : 'None');
+    /** Holes show with the kit's warning state; none is plain text. */
+    function gapCell(c, idle, n, sec) {
+        if (idle) return '<i></i>';
+        return n > 0 ? c.state(false, gapText(n, sec), true) : `<i>${gapText(n, sec)}</i>`;
+    }
 
     function radiosPage(c) {
         const d = state.deck || {};
@@ -183,6 +187,13 @@
         const max = pool ? pool.length : ((state.slots && state.slots.max) || 4);
         const now = Date.now();
         const rows = [];
+        const stateWord = (r) => (r.state === 'buffering' ? 'Buffering' : r.state === 'paused-refilling' ? 'Paused - refilling' : r.state === 'behind' ? `Behind ${Math.round(r.behindS || 0)}s` : 'Recording');
+        const segText = (r) => {
+            const w = Number(r.segsWritten) || 0;
+            const e = Number(r.segsExpected) || 0;
+            if (!e && !w) return '-';
+            return `${w} / ${e} (${e ? Math.min(100, Math.round((w / e) * 100)) : 100}%)${r.held != null ? `, ${r.held} held` : ''}`;
+        };
         // each recording on its own virtual radio (its slot, #1252 S3); before the server sent slots, in list order
         const bySlot = new Map();
         recs.forEach((x, i) => { const n = x.slot || (pool ? 1 : i + 1); if (!bySlot.has(n)) bySlot.set(n, x); });
@@ -194,21 +205,23 @@
                 // standby is idle, not a fault: the quiet speaker, never the muted one's red cross
                 icon: `${VI}/volume-${r ? 'high' : 'low'}-16.png`,
                 data: r
-                    ? { name: `Lizumi-Recorder-${i + 1}`, state: 'Recording', channel: chName(r.channelId), cut: cutText(r.cut), kind: KIND[r.kind] || 'Channel', running: span((now - (r.since || now)) / 1000), runningS: now - (r.since || now), back: r.back ? span(r.back) : '0:00', buffer: '-', segments: '-' }
-                    : { name: `Lizumi-Recorder-${i + 1}`, state: ready ? 'Standby' : 'No account', channel: '', cut: '', kind: '', running: '', runningS: 0, back: '', buffer: '-', segments: '-' }
+                    ? { name: `Lizumi-Recorder-${i + 1}`, state: stateWord(r), warn: r.state === 'behind', channel: chName(r.channelId), cut: cutText(r.cut), kind: KIND[r.kind] || 'Channel', running: span((now - (r.since || now)) / 1000), runningS: now - (r.since || now), back: r.back ? span(r.back) : '0:00', buffer: r.bufferSegs != null ? String(r.bufferSegs) : '-', segments: segText(r), gaps: Number(r.gaps && r.gaps.length != null ? r.gaps.length : r.gaps) || 0, gapS: Number(r.gapSeconds) || 0 }
+                    : { name: `Lizumi-Recorder-${i + 1}`, state: ready ? 'Standby' : 'No account', channel: '', cut: '', kind: '', running: '', runningS: 0, back: '', buffer: '-', segments: '-', gaps: 0, gapS: 0, idle: true }
             });
         }
         return {
             html: c.listView([
                 { t: 'Virtual Radio', w: 130, key: 'name', text: (x) => x.name },
-                { t: 'State', w: 76, key: 'state', text: (x) => x.state },
+                { t: 'State', w: 120, key: 'state', text: (x) => x.state, html: (x) => (x.warn ? c.state(false, x.state, true) : `<i>${esc(x.state)}</i>`) },
+                // the health columns next to the state, so they are seen without scrolling
+                { t: 'Buffer', w: 56, key: 'buffer', text: (x) => x.buffer },
+                { t: 'Segments', w: 150, key: 'segments', text: (x) => x.segments },
+                { t: 'Gaps', w: 80, key: 'gaps', text: (x) => (x.idle ? '' : gapText(x.gaps, x.gapS)), html: (x) => gapCell(c, x.idle, x.gaps, x.gapS), value: (x) => x.gaps },
                 { t: 'Channel', w: 130, key: 'channel', text: (x) => x.channel },
-                { t: 'On air', w: 200, key: 'cut', text: (x) => x.cut },
-                { t: 'Kind', w: 64, key: 'kind', text: (x) => x.kind },
+                { t: 'On air', w: 180, key: 'cut', text: (x) => x.cut },
+                { t: 'Kind', w: 84, key: 'kind', text: (x) => x.kind },
                 { t: 'Running', w: 70, key: 'running', text: (x) => x.running, value: (x) => x.runningS },
-                { t: 'Reached back', w: 90, key: 'back', text: (x) => x.back },
-                { t: 'Buffer', w: 60, key: 'buffer', text: (x) => x.buffer },
-                { t: 'Segments', w: 70, key: 'segments', text: (x) => x.segments }
+                { t: 'Reached back', w: 90, key: 'back', text: (x) => x.back }
             ], rows, { sortId: 'lz-radios', empty: EMPTY }),
             list: true
         };
@@ -572,21 +585,114 @@
         }
     }
 
+    // ---- Recordings: held recordings (segments on disk) and the tape -----------------------------------------
+
+    const HSTATE = { recording: 'Recording', stopped: 'Stopped', assembling: 'Assembling', assembled: 'Assembled', failed: 'Failed' };
+    const heldOf = (key) => { const m = /^h:(.+)$/.exec(String(key || '')); return m ? (state.held || []).find((x) => x.rid === m[1]) || null : null; };
+
+    /** The held list is re-read when the deck's held summary moves or a recording ends (a push), never on a timer. */
+    function heldKey() {
+        const d = state.deck || {};
+        const h = d.held || {};
+        return `${h.n || 0}/${h.assembling || 0}/${h.failed || 0}/${(d.recordings || []).length}`;
+    }
+
+    async function loadHeld(c, force) {
+        if (state.heldLoading || !state.deck) return;
+        const key = heldKey();
+        if (!force && state.heldFor === key) return;
+        state.heldLoading = true;
+        try {
+            const r = await send('xmradio_rec_held', {});
+            state.held = Array.isArray(r.held) ? r.held : [];
+            state.heldFor = key;
+        } catch (_) {
+            if (!state.held) state.held = [];
+            state.heldFor = key;
+        }
+        state.heldLoading = false;
+        if (active(c)) c.refresh();
+        else repaint();
+    }
+
     function recordingsPage(c) {
         const d = state.deck;
-        if (d) void loadTracks(c);
+        if (d) { void loadTracks(c); void loadHeld(c, false); }
+        const hrows = (state.held || []).map((h) => ({
+            key: `h:${h.rid}`, icon: `${VI}/${h.state === 'failed' ? 'warning' : 'volume-high'}-16.png`,
+            data: {
+                channel: chName(h.channelId), kind: KIND[h.kind] || 'Channel', radio: slotName((h.slot || 1) - 1),
+                state: HSTATE[h.state] || h.state, bad: h.state === 'failed', started: clock(h.since), startedAt: h.since || 0, ended: clock(h.endedAt), endedAt: h.endedAt || 0,
+                segs: Number(h.segs) || 0, gaps: (h.gaps || []).length, gapS: Number(h.gapSeconds) || 0,
+                files: (h.files || []).length ? String(h.files.length) : '', keep: h.keepUntil ? clock(h.keepUntil) : '', keepAt: h.keepUntil || 0, error: h.error || ''
+            }
+        }));
+        const held = c.listView([
+            { t: 'Channel', w: 140, key: 'channel', text: (x) => x.channel },
+            { t: 'Kind', w: 80, key: 'kind', text: (x) => x.kind },
+            { t: 'Virtual Radio', w: 120, key: 'radio', text: (x) => x.radio },
+            { t: 'State', w: 90, key: 'state', text: (x) => (x.error ? `${x.state}: ${x.error}` : x.state), html: (x) => (x.bad ? c.state(false, x.state, true) : `<i>${esc(x.state)}</i>`) },
+            { t: 'Started', w: 110, key: 'started', text: (x) => x.started, value: (x) => x.startedAt },
+            { t: 'Ended', w: 110, key: 'ended', text: (x) => x.ended, value: (x) => x.endedAt },
+            { t: 'Segments', w: 70, key: 'segs', text: (x) => String(x.segs), value: (x) => x.segs },
+            { t: 'Gaps', w: 90, key: 'gaps', text: (x) => gapText(x.gaps, x.gapS), html: (x) => gapCell(c, false, x.gaps, x.gapS), value: (x) => x.gaps },
+            { t: 'Files', w: 44, key: 'files', text: (x) => x.files },
+            { t: 'Keep until', w: 110, key: 'keep', text: (x) => x.keep, value: (x) => x.keepAt }
+        ], hrows, { sortId: 'lz-held', empty: state.held ? 'No recording holds segments.' : 'Reading the held recordings...' });
+        // a track's time comes in seconds from the file store (read as ms it showed January 1970)
+        const trackMs = (v) => { const n = Number(v) || 0; return n && n < 1e12 ? n * 1000 : n; };
         const rows = (state.tracks || []).map((t) => ({
             key: `r:${t.id}`, icon: `${VI}/volume-high-16.png`,
-            data: { name: t.name, size: `${Math.max(1, Math.round((t.size || 0) / 1024)).toLocaleString('en-US')} KB`, sizeB: t.size || 0, at: clock(t.at), atMs: t.at || 0 }
+            data: { name: t.name, size: `${Math.max(1, Math.round((t.size || 0) / 1024)).toLocaleString('en-US')} KB`, sizeB: t.size || 0, at: clock(trackMs(t.at)), atMs: trackMs(t.at) }
         }));
-        return {
-            html: c.listView([
-                { t: 'Name', w: 330, key: 'name', text: (x) => x.name },
-                { t: 'Size', w: 80, key: 'size', text: (x) => x.size, value: (x) => x.sizeB },
-                { t: 'Recorded', w: 130, key: 'at', text: (x) => x.at, value: (x) => x.atMs }
-            ], rows, { sortId: 'lz-recordings', empty: state.tracks ? 'This tape has no recordings.' : 'Reading the tape...' }),
-            list: true
-        };
+        const tape = c.listView([
+            { t: 'Name', w: 330, key: 'name', text: (x) => x.name },
+            { t: 'Size', w: 80, key: 'size', text: (x) => x.size, value: (x) => x.sizeB },
+            { t: 'Recorded', w: 130, key: 'at', text: (x) => x.at, value: (x) => x.atMs }
+        ], rows, { sortId: 'lz-recordings', empty: state.tracks ? 'This tape has no recordings.' : 'Reading the tape...' });
+        return { html: c.page('Recordings', '', [{ id: 'lz-held', title: 'Held recordings', body: held }, { id: 'lz-tape', title: 'On the tape', body: tape }]) };
+    }
+
+    function heldSelCommands(n, key) {
+        if (n.id !== 'recordings') return null;
+        const h = heldOf(key);
+        if (!h) return null;
+        const items = [];
+        if (h.state === 'stopped' || h.state === 'failed') items.push({ text: 'Assemble', action: 'held-assemble' });
+        if (h.state === 'assembled') items.push({ text: 'Re-assemble', action: 'held-assemble' });
+        if (h.state === 'stopped' || h.state === 'failed' || h.state === 'assembled') {
+            if (items.length) items.push({ separator: true });
+            items.push({ text: 'Delete', action: 'held-delete' });
+        }
+        return items.length ? { title: 'Held recording', items } : null;
+    }
+
+    async function heldFail(c, err) {
+        await c.box(`<p>${esc((err && err.message) || 'The server did not answer.')}</p>`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], { icon: 'error' });
+    }
+
+    async function heldAction(a, c) {
+        const h = heldOf(c.sel);
+        if (!h) return true;
+        try {
+            if (a === 'held-assemble') {
+                c.note(`Assembling ${chName(h.channelId) || 'the recording'}...`);
+                await send('xmradio_rec_assemble', { rid: h.rid });
+                c.note('Assembled.');
+            } else {
+                const ok = await c.box(`<p>Are you sure you want to delete the segments of this recording? The files it already made on the tape stay.</p>`,
+                    [{ text: 'Delete', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'question' });
+                if (ok !== true) return true;
+                await send('xmradio_rec_held_delete', { rid: h.rid });
+                c.sel = null;
+                c.note('Held recording deleted.');
+            }
+        } catch (err) {
+            c.note('');
+            await heldFail(c, err);
+        }
+        await loadHeld(c, true);
+        return true;
     }
 
     function accountsPage(c) {
@@ -628,6 +734,117 @@
         };
     }
 
+
+    // ---- Diagnostics (read-only) --------------------------------------------------------------------------
+
+    function diagnosticsPage(c) {
+        const d = state.deck || {};
+        const list = (state.slots && Array.isArray(state.slots.list)) ? state.slots.list : [];
+        const pool = Array.isArray(d.pool) ? d.pool : [];
+        const signed = pool.length ? pool.filter((x) => x.ready).length : list.filter((x) => x.signedIn).length;
+        const link = c.props([
+            ['Recorder service', d.offline ? c.state(false, 'Offline: the recorder service is not answering', false) : c.state(true, 'Online')],
+            ['Signed-in virtual radios', esc(`${signed} of ${pool.length || (state.slots && state.slots.max) || 4}`)],
+            ['Recordings running', esc(String(recs().length))],
+            ['Held recordings', esc(d.held ? `${d.held.n || 0} (${d.held.assembling || 0} assembling, ${d.held.failed || 0} failed)` : '0')]
+        ]);
+        const arows = list.map((s2) => ({
+            key: `da:${s2.slot}`, icon: `${VI}/account-manager-16.png`,
+            data: { name: s2.name || slotName((s2.slot || 1) - 1), state: s2.signedIn ? 'Signed in' : s2.handle ? 'Signed out' : 'Not set up', error: s2.lastError ? `${s2.lastErrorAt ? `${clock(s2.lastErrorAt)} ` : ''}${s2.lastError}` : 'None' }
+        }));
+        const accounts = c.listView([
+            { t: 'Virtual Radio', w: 130, key: 'name', text: (x) => x.name },
+            { t: 'State', w: 90, key: 'state', text: (x) => x.state },
+            { t: 'Last sign-in failure', w: 420, key: 'error', text: (x) => x.error }
+        ], arows, { sortId: 'lz-diag-acc', empty: 'No accounts were reported.' });
+        const rrows = recs().map((r) => ({
+            key: `dr:${r.rid}`, icon: `${VI}/volume-high-16.png`,
+            data: { name: slotName((r.slot || 1) - 1), channel: chName(r.channelId), gaps: Number(r.gaps && r.gaps.length != null ? r.gaps.length : r.gaps) || 0, gapS: Number(r.gapSeconds) || 0, refetches: Number(r.refetches) || 0, pauses: Number(r.pauses) || 0, behind: Number(r.behindS) || 0 }
+        }));
+        const health = c.listView([
+            { t: 'Virtual Radio', w: 130, key: 'name', text: (x) => x.name },
+            { t: 'Channel', w: 150, key: 'channel', text: (x) => x.channel },
+            { t: 'Gaps', w: 90, key: 'gaps', text: (x) => gapText(x.gaps, x.gapS), html: (x) => gapCell(c, false, x.gaps, x.gapS), value: (x) => x.gaps },
+            { t: 'Re-fetches', w: 76, key: 'refetches', text: (x) => String(x.refetches), value: (x) => x.refetches },
+            { t: 'Pauses', w: 60, key: 'pauses', text: (x) => String(x.pauses), value: (x) => x.pauses },
+            { t: 'Behind', w: 70, key: 'behind', text: (x) => `${Math.round(x.behind)}s`, value: (x) => x.behind }
+        ], rrows, { sortId: 'lz-diag-rec', empty: 'No recording is running.' });
+        const mrows = (Array.isArray(d.history) ? d.history : []).filter((e) => e.state === 'missed').map((e) => ({
+            key: `dm:${e.id}`, icon: `${VI}/warning-16.png`,
+            data: { cut: cutText(e) || chName(e.channelId), channel: chName(e.channelId), when: clock(e.endedAt || e.expiresAt), whenAt: e.endedAt || e.expiresAt || 0, reason: e.reason || '' }
+        }));
+        const missed = c.listView([
+            { t: 'Song', w: 240, key: 'cut', text: (x) => x.cut },
+            { t: 'Channel', w: 150, key: 'channel', text: (x) => x.channel },
+            { t: 'When', w: 120, key: 'when', text: (x) => x.when, value: (x) => x.whenAt },
+            { t: 'Why', w: 320, key: 'reason', text: (x) => x.reason }
+        ], mrows, { sortId: 'lz-diag-miss', empty: 'No queue entry was missed.' });
+        return {
+            html: c.page('Diagnostics', '', [
+                { id: 'lz-diag-link', title: 'Link', body: link },
+                { id: 'lz-diag-acc', title: 'Accounts', body: accounts },
+                { id: 'lz-diag-rec', title: 'Recording health', body: health },
+                { id: 'lz-diag-miss', title: 'Missed queue entries', body: missed }
+            ])
+        };
+    }
+
+    // ---- Settings -----------------------------------------------------------------------------------------
+
+    const SETTINGS = [
+        { key: 'streamsPerAccount', name: 'Streams per account', min: 1, max: 4, def: 1 },
+        { key: 'healthyBuffer', name: 'Healthy buffer (segments)', min: 1, max: 20, def: 3 },
+        { key: 'behindSeconds', name: 'Behind after (seconds)', min: 30, max: 3600, def: 120 },
+        { key: 'refetchRetries', name: 'Re-fetch retries', min: 0, max: 10, def: 3 },
+        { key: 'keepSegmentsHours', name: 'Keep raw segments (hours)', min: 0, max: 720, def: 24 }
+    ];
+    const settingValue = (x) => { const v = state.deck && state.deck.settings ? Number(state.deck.settings[x.key]) : NaN; return Number.isFinite(v) ? v : x.def; };
+
+    function settingsPage(c) {
+        const rows = SETTINGS.map((x) => ({ key: `set:${x.key}`, icon: `${VI}/application-16.png`, data: { name: x.name, value: String(settingValue(x)), range: `${x.min} to ${x.max}` } }));
+        return {
+            html: c.listView([
+                { t: 'Setting', w: 240, key: 'name', text: (x) => x.name },
+                { t: 'Value', w: 80, key: 'value', text: (x) => x.value, value: (x) => Number(x.value) },
+                { t: 'Allowed', w: 120, key: 'range', text: (x) => x.range }
+            ], rows, { sortId: 'lz-settings', empty: EMPTY }),
+            list: true
+        };
+    }
+
+    function settingsDialog(c) {
+        const V = dialogs();
+        if (!V) return;
+        const ctl = (i) => 301 + i;
+        const controls = [];
+        SETTINGS.forEach((x, i) => {
+            controls.push([-1, 'S', 7, 11 + i * 20, 130, 8, SS, `${x.name}:`, 0]);
+            controls.push([ctl(i), 'E', 140, 9 + i * 20, 44, 12, EDIT, '', 0]);
+            controls.push([-1, 'S', 190, 11 + i * 20, 70, 8, SS, `${x.min} to ${x.max}`, 0]);
+        });
+        controls.push([320, 'S', 7, 112, 253, 10, SS, '', 0], [1, 'B', 154, 128, 50, 14, DEFPUSH, 'OK', 0], [2, 'B', 208, 128, 50, 14, PUSH, 'Cancel', 0]);
+        V.openDialog({
+            id: 'lizumiSettingsDialog', owner: c.modal, title: 'Lizumi Settings',
+            tpl: { t: 'Settings', w: 266, h: 148, f: ['Segoe UI', 9], s: DLG_STYLE, c: controls },
+            init: (ctx) => { SETTINGS.forEach((x, i) => ctx.set(ctl(i), String(settingValue(x)))); },
+            ok: async (ctx) => {
+                const out = {};
+                for (let i = 0; i < SETTINGS.length; i++) {
+                    const x = SETTINGS[i];
+                    const raw = String(ctx.get(ctl(i)) == null ? '' : ctx.get(ctl(i))).trim();
+                    const n = Number(raw);
+                    if (!/^\d+$/.test(raw) || n < x.min || n > x.max) { ctx.text(320, `${x.name} must be a whole number from ${x.min} to ${x.max}.`); return false; }
+                    out[x.key] = n;
+                }
+                try {
+                    const r = await send('xmradio_rec_settings', out);
+                    if (state.deck) { if (r.deck) state.deck = r.deck; else state.deck.settings = Object.assign({}, state.deck.settings, r.settings || out); }
+                    repaint();
+                } catch (err) { ctx.text(320, (err && err.message) || 'The settings were not saved.'); return false; }
+                return true;
+            }
+        });
+    }
 
     // ---- Live: the monitor player ------------------------------------------------------------------------
 
@@ -797,7 +1014,8 @@
             case 'recordings': return recordingsPage(c);
             case 'accounts': return accountsPage(c);
             case 'live': void loadLineup(); return livePage(c);
-            case 'diagnostics': return later(c, 'Diagnostics');
+            case 'diagnostics': return diagnosticsPage(c);
+            case 'settings': return settingsPage(c);
             default: return '';
         }
     }
@@ -829,12 +1047,18 @@
             about: { version: '1.0', lines: ['Manages the XM Radio recorders, queue, schedules and accounts.'] },
             nodes: () => [{ id: 'root', name: TITLE, icon: APP, children: NODES.map((x) => ({ id: x.id, name: x.name, icon: x.icon })) }],
             page: (n, c) => page(n, c),
-            commands: (n) => scheduleCommands(n),
-            selCommands: (n, key) => scheduleSelCommands(n, key),
-            action: (a, c) => (a.startsWith('sch-') ? scheduleAction(a, c) : false),
+            commands: (n) => (n.id === 'settings' ? [{ text: 'Change Settings...', action: 'set-edit' }] : scheduleCommands(n)),
+            selCommands: (n, key) => heldSelCommands(n, key) || scheduleSelCommands(n, key),
+            action: (a, c) => {
+                if (a.startsWith('sch-')) return scheduleAction(a, c);
+                if (a.startsWith('held-')) return heldAction(a, c);
+                if (a === 'set-edit') { settingsDialog(c); return true; }
+                return false;
+            },
             rowOpen: (key, n, c) => {
                 if (key && key.startsWith('n:')) c.select(key.slice(2), true);
                 else if (n && n.id === 'schedules') openProps(c, key);
+                else if (n && n.id === 'settings') settingsDialog(c);
             },
             status: (n) => status(n),
             viewMenu: () => [],

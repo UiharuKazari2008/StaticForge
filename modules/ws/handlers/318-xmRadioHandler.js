@@ -209,6 +209,7 @@ function registerPackets(handlersCtx) {
     // deferred assembly (#1252 S7): the recordings that hold segments, and building (rebuilding) one's files from them
     reg('xmradio_rec_held', packet(true, 'The held recordings could not be read', async () => ({ held: await recorder.held() })));
     reg('xmradio_rec_assemble', packet(true, 'The recording could not be assembled', async (m) => recorder.assemble(String(m.rid || ''))));
+    reg('xmradio_rec_held_delete', packet(true, 'The held recording could not be deleted', async (m) => recorder.heldDelete(String(m.rid || ''))), { destructive: true });
     reg('xmradio_queue_clear', packet(true, 'The queue could not be cleared', async () => ({ queue: await recorder.queueClear() })));
     // a phone's channels for its feed (xmradio_phone): the one it plays and the pages Today shows; fire and forget
     wsPacketRegistry.registerWsPacket('xmradio_phone_watch', async (ctx) => {
