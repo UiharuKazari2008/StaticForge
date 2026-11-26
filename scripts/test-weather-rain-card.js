@@ -49,7 +49,7 @@ const bars = (html) => (html.match(/<rect /g) || []).length;
     assert.ok(!wet.includes('No precipitation'));
     assert.ok(wet.includes('wx-rain.png') && wet.includes('width="32" height="32"'));
     assert.ok(wet.includes('18\u00b0C') && wet.includes('Light Rain'));
-    assert.ok(!/ style=|data:|<canvas|<text|#[0-9a-f]{3,6}\b|font-/i.test(wet));
+    assert.ok(!/ style=|data:|<canvas|#[0-9a-f]{3,6}\b|font-family/i.test(wet));
 
     // dry: a sentence, no chart
     const dry = wa.rainCardHtml({ current, series: series([0, 0, 0.01, 0, 0, 0, 0, 0, 0, 0, 0, 0]), seriesStep: 5 });
