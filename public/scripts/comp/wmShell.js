@@ -4494,7 +4494,9 @@
         hide(shell.querySelector('[data-role="lapis"]'), true);
         const ck = window.wmCarKey ? (window.wmCarKey.quick ? window.wmCarKey.quick() : window.wmCarKey.state()) : null;
         // the Car (#902): a car key in range, a remote start running or a commute running late
-        hide(shell.querySelector('[data-role="carkey"]'), !((ck && ck.inRange) || (lp && lp.running) || (tr && tr.delayed)));
+        // (and the doors unlocked: the server's lock word, the car key's when newer than BlueLink's report, #1205)
+        const lpLock = window.wmLapis && typeof window.wmLapis.state === 'function' ? window.wmLapis.state() : null;
+        hide(shell.querySelector('[data-role="carkey"]'), !((ck && ck.inRange) || (lp && lp.running) || (lpLock && lpLock.lock && lpLock.lock.locked === false) || (tr && tr.delayed)));
         // Continuity (#798): while this phone carries its DeX window
         const mc = window.melatonContinuity;
         // the Continuity PC (#798): from the moment its window opens, half opacity until its desktop is up
@@ -9159,7 +9161,8 @@
             if (car || mineKey) {
                 // the doors: the car key's notification text when it says ("Doors locked"), else the server's report
                 const keyLocked = mineKey ? doorsOf(mineKey.text) : null;
-                const locked = keyLocked != null ? keyLocked : car ? car.locked : null;
+                const srvLock = L && typeof L.state === 'function' && L.state() && L.state().lock ? L.state().lock.locked : null; // #1205
+                const locked = keyLocked != null ? keyLocked : car ? (typeof srvLock === 'boolean' ? srvLock : car.locked) : null;
                 const busy = car && car.busy ? { lock: 'Locking...', unlock: 'Unlocking...', start: 'Starting...', stop: 'Stopping...' }[car.busy] : '';
                 const line1 = [busy || (locked === true ? 'Locked' : locked === false ? 'Unlocked' : ''), mineKey ? 'In range of your key' : ''].filter(Boolean).join(' · ');
                 const line2 = car ? [car.range != null ? `${car.range} mi` : '', car.fuel != null ? `${car.fuel}% fuel` : '', car.gas ? `Gas ${car.gas}` : ''].filter(Boolean).join(' · ') : '';

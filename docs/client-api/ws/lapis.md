@@ -19,6 +19,7 @@ The server reads the car on its own clock and pushes what changed. Clients do no
 | `lapis_vehicles` | `{}` -> `{ vehicles }`. Admin. |
 | `lapis_settings_save` | `{ settings }`, merged into config `lapis` -> `{ settings }`. Admin, destructive. `settings.notify` switches: `unlocked`, `lowFuel`, `refuel`, `service`, `health` (all five health alerts), `battery12`, `tire`, `brake`, `washer`, `key`. |
 | `lapis_service_done` | `{ id }` marks a maintenance item done now -> `{ settings }`. Admin, destructive. |
+| `lapis_presence` | `{ inCar?, lock?, source?, at? }` -> `{ ok, endedRun, lock }`. Readers (`admin` / `dev_admin`; the phone's CaféReady task `car-presence` sends it through its light Miniport sub-client, which shares the app's session, so it arrives as the household admin; same guard as `traffic_get`). `inCar`: she is in the car (its Bluetooth connected, or driving). `lock`: `'unlocked'` or `'locked'`, the Samsung Digital Key's word for the doors. `source`: `car_bt`, `drive`, `carkey` (`bluelink` is the server's own, from MyHyundai's notices). `at`: epoch ms the phone saw it (never later than the server's clock). In the car, or the first `unlocked` from the key, ends a remote start on its timer (`command.ended` `in-car`, `runsUntil` null: no more run-left notices, the open one is cleared on the phones, no more 3 minute reads). A word from before the start does not end it. A lock word is kept as the newest on the doors until BlueLink's report is newer (`state.lock`). |
 | `lapis_picture_get` | `{}` -> `{ picture, url? }` (url: the picture's /cache address) |
 | `lapis_picture_save` | `{ dataUrl }` (PNG, JPEG or WebP, 900 KB at most) or `{ dataUrl: null }` for the built-in picture. Admin, destructive. |
 
@@ -29,14 +30,15 @@ glass and mirrors. `seat`: 0 off, 6-8 heat low to high, 3-5 cool low to high.
 
 ## State
 
-`{ configured, vehicle, status, seenAt, location, parkedSince, climate, usage, maintenance, alerts, command, error, nextReadAt, limits, settings }`
+`{ configured, vehicle, status, seenAt, location, parkedSince, lock, climate, usage, maintenance, alerts, command, error, nextReadAt, limits, settings }`
 
 - `status`: `{ at, locked, engine, climate, defrost, setTemp, fuel, fuelLow, range, odometer, battery12, doors, windows, trunk, hood, tireLow, washerLow, brakeFluidLow, keyBatteryLow }` (miles, °F)
 - `location`: `{ lat, lon, heading, at, readAt, place }` (`place` is `Home`, `Work` or null)
 - `climate`: the remote start pick `{ outdoorF, interiorF, solarGainF, temp, defrost, heating, seat, mode, reason[] }`
 - `usage`: `{ today, refuel: { day, daysLeft, milesLeft, perDay[], beyond }, perPct, weekday, commute, miles7 }`
 - `maintenance[]`: `{ id, label, everyMiles, everyMonths, lastOdo, lastDate, milesLeft, daysLeft, due, soon }`
-- `command`: `{ id, kind, state: 'sent'|'success'|'failed'|'unconfirmed', at, detail?, runsUntil?, startOdo?, ended?, endedAt? }`. A start's `runsUntil` is cleared and `ended` set (`driving`, `off`, `timeout`) when the server sees the car move, the engine go off, or the time run out (a cached read every 3 minutes during the run).
+- `lock`: `{ locked, at, source }` or `null`: the doors now. The car key's word (`source` `carkey`) or MyHyundai's notice (`bluelink`) when newer than BlueLink's last report (`status.at`), else the report's own (`source` `status`). A lock or unlock command drops the key's word. It never feeds the parked-unlocked reminder, except that a key `locked` newer than the report ends that reminder like a locked read does. The phone status snapshot (`lapis.locked`, true / false / null) carries it to the status bar: the Car icon shows while it is `false`.
+- `command`: `{ id, kind, state: 'sent'|'success'|'failed'|'unconfirmed', at, detail?, runsUntil?, startOdo?, ended?, endedAt? }`. A start's `runsUntil` is cleared and `ended` set (`driving`, `off`, `timeout`, `in-car`) when the server sees the car move, the engine go off, or the time run out (a cached read every 3 minutes during the run).
 
 ## Broadcasts (admin clients)
 

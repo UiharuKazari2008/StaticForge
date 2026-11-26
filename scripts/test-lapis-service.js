@@ -415,9 +415,123 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     await assert.rejects(() => svc.savePicture('data:text/html;base64,AAAA'), /PNG, JPEG or WebP/);
     const pic = await svc.savePicture(`data:image/png;base64,${Buffer.from('fake').toString('base64')}`);
     assert.ok(pic.picture.rev);
-    assert.match(svc.getPicture().dataUrl, /^data:image\/png;base64,/);
+    assert.ok(svc.getPicture().picture && svc.getPicture().picture.rev, 'the saved picture is reported (its /cache address, never a data URL)');
+    assert.strictEqual(svc.getPicture().dataUrl, undefined);
     await svc.savePicture(null);
     assert.strictEqual(svc.getPicture().picture, null);
+
+    // ---- she is in the car (#1205): the phone's car-presence task says so
+    {
+        const MINUTE = 60000;
+        const row = (id) => inbox.list('admin', { includeCleared: true }).find((x) => x.id === id);
+        const startRun = async () => {
+            car.engine = false; car.locked = true; car.at = new Date(now - 10 * MINUTE).toISOString();
+            await svc.command('start', { minutes: 10 });
+            await settle();
+            const c = svc._test.live.command;
+            assert.ok(c.runsUntil, 'a start on its timer');
+            svc._test.sched.accountSig = '';
+            return c;
+        };
+        // the inbox keeps its own clock (a run-left notice expires at 'until'): this block runs on the real one
+        const base = Math.floor(Date.now() / 1000) * 1000;
+        const iso = (ms) => new Date(ms).toISOString();
+        now = base;
+        // in the car: the run ends at once, the open run-left notice goes, no more warnings, no more reads
+        let run = await startRun();
+        sent.length = 0;
+        const runEnd = run.runsUntil;
+        now = runEnd - 5 * MINUTE + 1000; await svc._test.tick();
+        assert.deepStrictEqual(notices().filter((n) => n.kind === 'run-left').map((n) => n.minutes), [5]);
+        assert.ok(row('lapis:run-left') && row('lapis:run-left').state !== 'cleared', 'the 5 minute notice is open');
+        let res = svc.presence({ inCar: true, source: 'car_bt', at: now });
+        assert.strictEqual(res.endedRun, true);
+        assert.strictEqual(run.ended, 'in-car');
+        assert.strictEqual(run.runsUntil, null);
+        assert.strictEqual(svc._test.activeRun(), null);
+        assert.strictEqual(row('lapis:run-left').state, 'cleared', 'the open run-left notice is cleared (the phones hear inbox.cleared)');
+        assert.strictEqual(lastState().command.ended, 'in-car', 'pushed to the pages');
+        car.calls.length = 0;
+        now = runEnd - 3 * MINUTE + 1000; await svc._test.tick();
+        now = runEnd - 1 * MINUTE + 1000; await svc._test.tick();
+        now = runEnd + 1000; await svc._test.tick();
+        assert.deepStrictEqual(notices().filter((n) => n.kind === 'run-left').map((n) => n.minutes), [5], 'no more notices after she got in');
+        assert.strictEqual(svc._test.sched.runPollAt, 0, 'no 3 minute run reads are scheduled');
+        assert.strictEqual(svc._test.live.command.ended, 'in-car', 'a tick after the timer is not a timeout');
+        assert.ok(!svc._test.sched.runEndCheckAt, 'no woken timeout check');
+        car.at = new Date(now).toISOString(); car.engine = true;
+        await svc.read({ reason: 'poll' });
+        assert.strictEqual(svc.getState().status.engine, true, 'the car she started stays running in the report (read() only corrects a timeout)');
+        assert.strictEqual(svc._test.live.command.ended, 'in-car');
+        assert.strictEqual(svc.presence({ inCar: true, source: 'car_bt', at: now }).endedRun, false, 'a repeat changes nothing');
+
+        // the first unlock by the key counts as being in the car
+        run = await startRun();
+        res = svc.presence({ lock: 'unlocked', source: 'carkey', at: now });
+        assert.strictEqual(res.endedRun, true);
+        assert.strictEqual(run.ended, 'in-car');
+        assert.deepStrictEqual([svc.getState().lock.locked, svc.getState().lock.source], [false, 'carkey']);
+
+        // MyHyundai's notice only tells the doors (it may follow her own remote unlock); a word from before the start says nothing
+        run = await startRun();
+        assert.strictEqual(svc.presence({ lock: 'unlocked', source: 'bluelink', at: now }).endedRun, false);
+        svc._test.takeNotify('notify.posted', { package: 'com.hyundai.bluelink', title: 'MyHyundai', text: 'Your Sonata doors are locked.' });
+        assert.strictEqual(svc.getState().lock.locked, true, 'MyHyundai says locked');
+        svc._test.takeNotify('notify.posted', { package: 'com.hyundai.bluelink', title: 'MyHyundai', text: 'Remote lock failed' });
+        svc._test.takeNotify('notify.posted', { package: 'com.example.other', title: 'x', text: 'unlocked' });
+        svc._test.takeNotify('notify.removed', { package: 'com.hyundai.bluelink', title: 'x', text: 'unlocked' });
+        assert.strictEqual(svc.getState().lock.locked, true, 'a failure, another app and a removal change nothing');
+        assert.strictEqual(svc.presence({ lock: 'locked', source: 'carkey', at: now }).endedRun, false, 'locked says nothing of being inside');
+        assert.strictEqual(svc.presence({ inCar: true, source: 'drive', at: run.at - 1000 }).endedRun, false, 'a word from before the start');
+        assert.ok(svc._test.activeRun());
+        assert.strictEqual(svc.presence({ inCar: true, source: 'drive', at: now }).endedRun, true);
+        assert.strictEqual(svc.presence({ inCar: false }).endedRun, false);
+
+        // the lock state: the key's word wins while newer than the report, the report once it is newer
+        svc._test.live.keyLock = null;
+        car.locked = true; car.engine = false; car.at = iso(base + 1 * 3600000);
+        now = base + 90 * MINUTE;
+        await svc.read({ reason: 'poll' });
+        const reportAt = svc.getState().status.at;
+        assert.strictEqual(reportAt, base + 3600000);
+        assert.deepStrictEqual([svc.getState().lock.locked, svc.getState().lock.source], [true, 'status']);
+        svc.presence({ lock: 'unlocked', source: 'carkey', at: reportAt - 60000 });
+        assert.strictEqual(svc.getState().lock.locked, true, 'a key word older than the report loses');
+        assert.strictEqual(svc.getState().lock.source, 'status');
+        svc.presence({ lock: 'unlocked', source: 'carkey', at: reportAt + 60000 });
+        assert.deepStrictEqual([svc.getState().lock.locked, svc.getState().lock.source, svc.getState().lock.at], [false, 'carkey', reportAt + 60000], 'a newer key word wins');
+        assert.strictEqual(lastState().lock.locked, false, 'pushed to the pages');
+        const saved = JSON.parse(fs.readFileSync(process.env.LAPIS_LATEST_FILE, 'utf8'));
+        assert.deepStrictEqual([saved.keyLock.locked, saved.keyLock.at], [false, reportAt + 60000], 'kept across a restart');
+        svc.presence({ lock: 'locked', source: 'carkey', at: reportAt + 30000 });
+        assert.strictEqual(svc.getState().lock.locked, false, 'an older key word does not replace a newer one');
+        car.at = iso(base + 100 * MINUTE); now = base + 120 * MINUTE;
+        await svc.read({ reason: 'poll' });
+        assert.deepStrictEqual([svc.getState().lock.locked, svc.getState().lock.source], [true, 'status'], 'a newer report wins over the key');
+
+        // a key 'locked' newer than the report ends the left-unlocked reminder like a locked read does
+        svc._test.live.keyLock = null;
+        car.locked = false; car.engine = false; car.at = iso(base + 180 * MINUTE);
+        now = base + 181 * MINUTE;
+        svc._test.live.parkedSince = 0;
+        await svc.read({ reason: 'poll' });
+        assert.ok(svc._test.sched.lockCheckAt > 0, 'the unlocked follow-up is set');
+        now = svc._test.sched.lockCheckAt + 1000;
+        car.at = new Date(now - 60000).toISOString();
+        svc._test.sched.accountSig = '';
+        await svc._test.tick();
+        assert.ok(row('lapis:unlocked') && row('lapis:unlocked').state !== 'cleared', 'the unlocked reminder is open');
+        assert.ok(svc._test.live.flags.unlockedFor, 'its flag is set');
+        svc.presence({ lock: 'unlocked', source: 'carkey', at: now });
+        assert.ok(row('lapis:unlocked').state !== 'cleared', 'a key unlocked does not feed the reminder logic');
+        assert.ok(svc._test.live.flags.unlockedFor);
+        now += 2 * MINUTE;
+        svc.presence({ lock: 'locked', source: 'carkey', at: now });
+        assert.strictEqual(row('lapis:unlocked').state, 'cleared', 'the key locked clears the reminder on the phones');
+        assert.strictEqual(svc._test.live.flags.unlockedFor, 0);
+        assert.strictEqual(svc.getState().lock.locked, true);
+        svc._test.live.keyLock = null;
+    }
 
     // ---- a failed sign-in is reported, not thrown out of the scheduler
     keys.bluelink = [];

@@ -23,7 +23,8 @@
  *                                 rain alarm on; rainDetail (only then, two places at most): [{ id, name, tempC, text,
  *                                 isDay, icon, series: [{ t, mmh, rain }], seriesStep }] for the rain popup's graph,
  *                                 renewed by the weather monitor with the outlook or about every quarter hour
- *   lapis     { until }           a remote start's end (epoch ms), 0 = none running
+ *   lapis     { until, locked }   a remote start's end (epoch ms), 0 = none running; locked: the doors now (the car key's word
+ *                                 when newer than BlueLink's report; true | false | null unknown), unlocked shows the Car icon
  *   traffic   { days, leaveHome, leaveWork, leadMin, timeZone, delayWork, delayHome, reportAt }  (the task works the
  *             leave windows out on the phone's clock; the server has no timer for them)
  *   notices   { waiting, list }   other notices waiting, new or put away with Hide (seen) (the notification glyph); list:
@@ -208,9 +209,10 @@ function weather() {
 }
 
 function lapis() {
-    const c = safe(() => require('./lapisService').getState().command, null);
+    const st = safe(() => require('./lapisService').getState(), null);
+    const c = st && st.command;
     const until = c && c.kind === 'start' && c.state === 'success' && Number.isFinite(c.runsUntil) && c.runsUntil > Date.now() ? c.runsUntil : 0;
-    return { until };
+    return { until, locked: st && st.lock && typeof st.lock.locked === 'boolean' ? st.lock.locked : null };
 }
 
 function traffic() {
@@ -272,7 +274,7 @@ function buildTest(deviceId) {
         director: { running: false, unseen: ib.directorUnseen },
         prints: { phone: 0 },
         weather: { alerts: 0, rain: false },
-        lapis: { until: 0 },
+        lapis: { until: 0, locked: null },
         traffic: null,
         notices: { waiting: ib.notices, list: ib.noticeList },
         prefs: prefs('test'),

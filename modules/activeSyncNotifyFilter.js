@@ -193,6 +193,9 @@ function handledContext() {
     if (config('lapis')) {
         handled.set('com.stationdm.bluelink', { by: 'Lapis Remote' });
         handled.set('com.hyundai.bluelink', { by: 'Lapis Remote' });
+        // Lapis reads MyHyundai's door notices (lapisService takeNotify: unlocked / locked): they leave the phone
+        keep.add('com.stationdm.bluelink');
+        keep.add('com.hyundai.bluelink');
     }
     // Melaton Videos: Kick channels with the bell on are told by the server itself (Kick's API); the apps it imports
     // from notifications have to keep coming from the phone

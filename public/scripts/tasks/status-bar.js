@@ -21,7 +21,8 @@
  *   prints    prints the phone asked for, queued or running
  *   xmrec     XM Radio recording on the server (the tape, its reels turning; #1020)
  *   wxalert   weather alerts at Home / Work; rain: rain due or falling with the rain alarm on
- *   carkey    the car key sees the car, a remote start runs, or a commute's leave window is open (or driving)
+ *   carkey    the car key sees the car, a remote start runs, the car's doors are unlocked (the server's lapis.locked === false:
+ *             the car key's word when newer than BlueLink's report, #1205), or a commute's leave window is open (or driving)
  *   continuity the DeX window (dim until its desktop is up: dexReady false)
  *   received  ActiveSync items not seen yet
  *   nightshade the link to Dreamscape is down (the bar never shows a frozen copy as current)
@@ -112,7 +113,7 @@
                 xmrec: !!(s.xmrec && Array.isArray(s.xmrec.list) && s.xmrec.list.length),
                 wxalert: !!(s.weather && s.weather.alerts > 0),
                 rain: !!(s.weather && s.weather.rain),
-                carkey: !!(nat.carKey || lapisUntil > now.getTime() || nat.driving || lib.leaveWindow(s.traffic, now)),
+                carkey: !!(nat.carKey || lapisUntil > now.getTime() || (s.lapis && s.lapis.locked === false) || nat.driving || lib.leaveWindow(s.traffic, now)),
                 continuity: !!nat.dex,
                 received: !!(s.received && s.received.unseen > 0),
                 nightshade: nat.link === false,

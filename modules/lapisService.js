@@ -106,6 +106,7 @@ const live = {
     lastError: null,
     command: null,
     parkedSince: 0, // when the car was first seen parked with the engine off
+    keyLock: null, // the lock state the car key or MyHyundai's notices reported: { locked, at, source } (presence())
     flags: { unlockedFor: 0, lowFuel: false, refuelDay: '', refuelSaid: null, service: {}, health: {} },
 };
 const sched = { timer: null, nextPollAt: 0, lockCheckAt: 0, runEndCheckAt: 0, backoff: 0, busy: false, weatherAt: 0 };
@@ -1007,6 +1008,8 @@ async function followCommand(cmd, v) {
         // show the result at once; the fresh read below confirms it
         if (cmd.kind === 'lock') live.status = { ...live.status, locked: true };
         if (cmd.kind === 'unlock') live.status = { ...live.status, locked: false };
+        // the command's word is the newest on the doors (its status keeps the old report time, so a key word would still beat it)
+        if (cmd.kind === 'lock' || cmd.kind === 'unlock') live.keyLock = null;
         if (cmd.kind === 'start') live.status = { ...live.status, engine: true, climate: true };
         if (cmd.kind === 'stop') live.status = { ...live.status, engine: false, climate: false };
         if (cmd.kind === 'start') {
@@ -1085,6 +1088,97 @@ function publicCommand(cmd) {
     return rest;
 }
 
+// ------------------------------------------------------------------------------------------ presence: she is at the car
+
+/**
+ * The doors' state now: { locked, at, source } or null. The car key's word (or MyHyundai's notice) when it is newer than the
+ * report BlueLink last gave (BlueLink answers from its cache, often minutes late), else that report's.
+ */
+function effectiveLock() {
+    const st = live.status;
+    const k = live.keyLock;
+    const stLocked = st && typeof st.locked === 'boolean' ? st.locked : null;
+    const stAt = st ? (Number.isFinite(st.at) ? st.at : live.statusSeenAt || 0) : 0;
+    if (k && (stLocked === null || k.at > stAt)) return { locked: k.locked, at: k.at, source: k.source };
+    if (stLocked !== null) return { locked: stLocked, at: stAt || null, source: 'status' };
+    return null;
+}
+
+const PRESENCE_SOURCES = new Set(['car_bt', 'drive', 'carkey', 'bluelink']);
+
+/**
+ * The phone's CaféReady task "car-presence" says she is at the car (Yukimi, Nov 26 2026, #1205): in it (the car's Bluetooth
+ * connected, or driving) and/or what the car key says of the doors ('unlocked' | 'locked').
+ *   - In the car, or the first unlock by the key: a remote start on its timer is over (endRun 'in-car'): no more "N minutes
+ *     left" notices (the open one is cleared here and on the phones), no more 3 minute reads. A word from before the start
+ *     says nothing of this run. MyHyundai's notice (source 'bluelink') only tells the doors: it may follow her own remote unlock.
+ *   - A lock word is kept as live.keyLock and wins over BlueLink's report while newer (effectiveLock). It is not part of the
+ *     parked-unlocked reminder, except that a key 'locked' newer than the report ends that reminder like a locked read does.
+ */
+function presence({ inCar, lock, source, at } = {}) {
+    const src = PRESENCE_SOURCES.has(source) ? source : 'carkey';
+    const now = nowFn();
+    const t = Number.isFinite(Number(at)) && Number(at) > 0 ? Math.min(Number(at), now) : now;
+    const word = lock === 'unlocked' || lock === 'locked' ? lock : '';
+    const before = effectiveLock();
+    const prevKey = live.keyLock;
+    if (word && (!prevKey || t >= prevKey.at)) live.keyLock = { locked: word === 'locked', at: t, source: src };
+    const keyChanged = !!word && (!prevKey || prevKey.locked !== live.keyLock.locked);
+    const after = effectiveLock();
+    const lockChanged = (before ? before.locked : null) !== (after ? after.locked : null);
+    let endedRun = false;
+    const here = inCar === true || (word === 'unlocked' && src !== 'bluelink');
+    const run = here ? activeRun() : null;
+    if (run && t >= (run.at || 0)) {
+        endRun(run, 'in-car');
+        inboxClear('lapis:run-left');
+        endedRun = true;
+    }
+    // the doors are locked (the key's word is the newest): the "left unlocked" reminder is done with
+    if (word === 'locked' && after && after.locked === true && after.source === src) {
+        live.flags.unlockedFor = 0;
+        inboxClear('lapis:unlocked');
+    }
+    if (endedRun || lockChanged) logEvent('presence', { inCar: inCar === true, lock: word, source: src, endedRun, lockChanged });
+    if (endedRun || keyChanged || lockChanged) {
+        saveLatest();
+        pushState();
+    }
+    return { ok: true, endedRun, lock: after };
+}
+
+const BLUELINK_PACKAGES = new Set(['com.stationdm.bluelink', 'com.hyundai.bluelink']);
+
+/** The door word of a MyHyundai notice ('unlocked' | 'locked' | ''); a failure notice or a question ("Lock it?") says nothing about the doors. */
+function doorWord(text) {
+    const words = String(text || '');
+    if (/\?|\b(fail(ed|ure)?|unable|could not|couldn't|error|unsuccessful|not)\b/i.test(words)) return '';
+    if (/\bunlock(ed)?\b/i.test(words)) return 'unlocked';
+    if (/\block(ed)?\b/i.test(words)) return 'locked';
+    return '';
+}
+
+/** One activeSync device event: MyHyundai's notifications that name the doors (they still leave the phone, see activeSyncNotifyFilter keep). */
+function takeNotify(name, detail) {
+    if (name !== 'notify.posted' || !detail || typeof detail !== 'object' || !BLUELINK_PACKAGES.has(detail.package)) return;
+    const lock = doorWord(`${detail.title || ''} ${detail.text || ''}`);
+    if (lock) presence({ lock, source: 'bluelink' });
+}
+
+let notifyTapped = false;
+
+/** Listen to the phone's notifications once (no timer: activeSync calls us when one is posted). */
+function attachNotifyTap() {
+    if (notifyTapped) return;
+    notifyTapped = true;
+    try {
+        require('./activeSync').onDeviceEvent((name, detail) => takeNotify(name, detail));
+    } catch (e) {
+        notifyTapped = false;
+        console.warn(`[lapis] notification tap: ${e.message}`);
+    }
+}
+
 // ------------------------------------------------------------------------------------------ state for clients
 
 function getState() {
@@ -1100,6 +1194,7 @@ function getState() {
         seenAt: live.statusSeenAt || null,
         location: loc ? { ...loc, place: placeName(loc, s) } : null,
         parkedSince: live.parkedSince || null,
+        lock: effectiveLock(),
         climate: climatePick(s),
         usage: u,
         maintenance: status ? maintenanceState(s) : [],
@@ -1294,7 +1389,7 @@ function accountChanged() {
 function saveLatest() {
     try {
         fs.mkdirSync(path.dirname(LATEST_FILE), { recursive: true });
-        const body = JSON.stringify({ command: activeRun() || timedOutRun(), vehicle: live.vehicle, status: live.status, statusSeenAt: live.statusSeenAt, location: live.location, locationOdo: live.locationOdo, parkedSince: live.parkedSince, flags: live.flags, weather: live.weather });
+        const body = JSON.stringify({ command: activeRun() || timedOutRun(), keyLock: live.keyLock, vehicle: live.vehicle, status: live.status, statusSeenAt: live.statusSeenAt, location: live.location, locationOdo: live.locationOdo, parkedSince: live.parkedSince, flags: live.flags, weather: live.weather });
         fs.writeFileSync(`${LATEST_FILE}.tmp`, body);
         fs.renameSync(`${LATEST_FILE}.tmp`, LATEST_FILE);
     } catch (e) {
@@ -1308,6 +1403,8 @@ function loadLatest() {
         ['vehicle', 'status', 'statusSeenAt', 'location', 'locationOdo', 'parkedSince', 'weather'].forEach((k) => {
             if (o[k] !== undefined && o[k] !== null) live[k] = o[k];
         });
+        const kl = o.keyLock;
+        if (kl && typeof kl.locked === 'boolean' && Number.isFinite(kl.at)) live.keyLock = { locked: kl.locked, at: kl.at, source: String(kl.source || 'carkey') };
         // a run still on its timer carries on (its warnings and the driving check)
         const c = o.command;
         if (c && c.kind === 'start' && c.state === 'success') {
@@ -1463,6 +1560,8 @@ module.exports = {
     getHistory,
     read,
     command,
+    presence,
+    attachNotifyTap,
     listVehicles,
     importSamples,
     savePicture,
@@ -1484,6 +1583,8 @@ module.exports = {
         healthAlerts,
         lowTires,
         activeRun,
+        takeNotify,
+        effectiveLock,
         setNow: (fn) => {
             nowFn = fn || (() => Date.now());
         },

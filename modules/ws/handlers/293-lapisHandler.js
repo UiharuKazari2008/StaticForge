@@ -16,6 +16,9 @@ const lapisService = require('../../lapisService');
 //   lapis_service_done   { id }                   admins; marks a maintenance item done now -> { settings }
 //   lapis_picture_get    {}                       { picture, url? }: the saved car picture, if any (url: its /cache address)
 //   lapis_picture_save   { dataUrl | null }       admins; null goes back to the built-in picture
+//   lapis_presence       { inCar?, lock?, source?, at? }   readers (the phone's CaféReady task car-presence, #1205): she is in the
+//                                                 car / the car key says the doors are 'unlocked' | 'locked'; ends a remote
+//                                                 start's monitoring, keeps the lock word -> { ok, endedRun, lock }
 //
 // Broadcasts to admin clients:
 //   lapis_updated  { state }
@@ -69,8 +72,10 @@ function registerPackets(handlersCtx) {
     reg('lapis_vehicles', packet(true, 'The vehicles could not be listed', async () => ({ vehicles: await lapisService.listVehicles() })));
     reg('lapis_settings_save', packet(true, 'The settings could not be saved', async (m) => ({ settings: await lapisService.saveSettings(m.settings || {}) })), { destructive: true });
     reg('lapis_service_done', packet(true, 'The item could not be marked', async (m) => ({ settings: await lapisService.serviceDone(String(m.id || '')) })), { destructive: true });
+    reg('lapis_presence', packet(false, 'The presence could not be taken', async (m) => lapisService.presence({ inCar: m.inCar === true, lock: String(m.lock || ''), source: String(m.source || ''), at: Number(m.at) })));
     reg('lapis_picture_get', packet(false, 'The picture could not be read', async () => lapisService.getPicture()));
     reg('lapis_picture_save', packet(true, 'The picture could not be saved', async (m) => lapisService.savePicture(m.dataUrl === null ? null : m.dataUrl)), { destructive: true });
+    lapisService.attachNotifyTap(); // MyHyundai's door notices (no timer: activeSync calls it)
     lapisService.startScheduler();
 }
 

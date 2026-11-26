@@ -171,6 +171,10 @@
                 const d = dir === 'work' ? t.delayWork : t.delayHome;
                 lines.push(text(`To ${dir === 'work' ? 'Work' : 'Home'}${d != null ? (d >= 60 ? `: ${Math.round(d / 60)} min late` : ': on time') : ''}.`));
             }
+            // the doors (the server: the car key's word when newer than BlueLink's report, #1205); Locked only beside another reason
+            const locked = f.lapis ? f.lapis.locked : null;
+            if (locked === false) lines.push(text('Unlocked.'));
+            else if (locked === true && lines.length) lines.push(text('Locked.'));
             if (!lines.length) lines.push(text('Nothing running.'));
             return pop('carkey', 'Car', lines.concat([links(['Open'])]));
         },
