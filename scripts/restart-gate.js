@@ -74,6 +74,17 @@ function validate(files) {
 
 // ---------------------------------------------------------------- wait: running work
 
+/** A process outside the server's tree: its parent is not the server and it leads its own session (setsid / detached). */
+function detachedFrom(pid, serverPid) {
+    if (!Number.isInteger(Number(pid)) || !pid) return false;
+    try {
+        const st = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+        const f = st.slice(st.lastIndexOf(')') + 2).split(' ');
+        const ppid = Number(f[1]); const sid = Number(f[3]);
+        return ppid !== Number(serverPid) && sid === Number(pid);
+    } catch (_) { return false; }
+}
+
 function checkIdle() {
     const r = run(process.execPath, ['scripts/director-idle-check.js', '--json'], { timeout: 60000 });
     let o = null;
@@ -82,7 +93,17 @@ function checkIdle() {
     if (r.status === 0) return;
     const ip = o.inProcess || {};
     (ip.director || []).forEach((d) => add('wait', `wait for the Director turn ${d.sessionId || d.id || ''} (${d.persona || 'Director'})`.trim()));
-    (ip.xi || []).concat(o.xi || []).forEach((x) => add('wait', `wait for Yozora's turn ${x.sessionId || x.chatId || x.id || ''}`.trim()));
+    // a Yozora (Xi) turn runs in its own session, outside Dreamscape's process tree (treekill off): a restart does not
+    // cut it and the server reattaches by tailing its log, so it is a note, not a wait (Yukimi, Nov 26 2026: "is Xi
+    // not separated like it should be, the same way you are"). Only a turn still inside the server's tree waits.
+    const xiSeen = new Set();
+    (ip.xi || []).concat(o.xi || []).forEach((x) => {
+        const key = x.sessionId || x.chatId || x.id || x.pid;
+        if (xiSeen.has(key)) return;
+        xiSeen.add(key);
+        if (detachedFrom(x.pid, o.serverPid)) add('note', `Yozora's turn ${x.sessionId || x.chatId || ''} runs detached: the restart does not cut it (it reattaches)`.trim());
+        else add('wait', `wait for Yozora's turn ${x.sessionId || x.chatId || x.id || ''}`.trim());
+    });
     (o.wren || []).forEach(() => add('wait', 'wait for a Wren (Yumiya / Chiyo) turn'));
     if (ip.generation && (ip.generation.processing || ip.generation.pending)) add('wait', `wait for image generation (${ip.generation.pending || 0} queued${ip.generation.running ? ', one running' : ''})`);
     (ip.localJobs || []).forEach((j) => add('wait', `wait for the local job ${j.kind || j.type || ''} ${j.id || ''}`.trim()));
@@ -90,7 +111,9 @@ function checkIdle() {
     (ip.smtp || []).forEach(() => add('wait', 'wait for an open mail (SMTP) session'));
     const http = (ip.http || []).filter((h) => h.path !== '/status/stream'); // clients waiting on a boot: not work
     if (http.length) add('wait', `wait for ${http.length} HTTP request${http.length === 1 ? '' : 's'} in flight (${http.slice(0, 3).map((h) => `${h.method} ${h.path}`).join(', ')})`);
-    if (!findings.some((f) => f.level === 'wait') && (o.reasons || []).length) add('wait', `wait for: ${(o.reasons || []).join(', ')}`);
+    // the idle check's own reasons, less the detached Yozora turns handled above
+    const rest = (o.reasons || []).filter((r) => !/^xi(-pid)?:/.test(String(r)) || ![...(ip.xi || []), ...(o.xi || [])].some((x) => String(r).includes(x.sessionId || x.chatId || String(x.pid)) && detachedFrom(x.pid, o.serverPid)));
+    if (!findings.some((f) => f.level === 'wait') && rest.length) add('wait', `wait for: ${rest.join(', ')}`);
 }
 
 function coordStore() {
