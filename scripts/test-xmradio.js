@@ -128,6 +128,20 @@ assert.ok(code.length === 48);
 
     assert.strictEqual(R.norm('Beyoncé & JAY-Z'), 'beyonce jay z');
 
+    // A cut the stream still holds is recorded from its first frame however long it has been playing: a term added
+    // while the matching show is already on used to be ignored (Nov 26 2026, Trancegiving 39 minutes in)
+    const cut = { at: Date.now() - 39 * 60000, a: 'Armin van Buuren', t: 'Trancegiving (2024)', s: "Diplo's Revolution", ad: false };
+    const now = Date.now();
+    assert.strictEqual(R.onAirCut(cut, now), true, 'a cut 39 minutes in is still the one to record');
+    assert.deepStrictEqual(R.matchOnAir('ch1', cut, [], [{ id: 't1', text: 'Trancegiving' }]), { kind: 'term', ref: 't1' });
+    assert.strictEqual(R.matchOnAir('ch1', cut, [], [{ id: 't1', text: 'Trancegiving tomorrow' }]), null, 'every word must match');
+    assert.deepStrictEqual(R.matchOnAir('ch1', cut, [{ id: 'a1', kind: 'artist', artist: 'Armin van Buuren', title: '' }], []), { kind: 'alert', ref: 'a1' });
+    assert.strictEqual(R.matchOnAir('ch1', cut, [{ id: 'a1', kind: 'song', artist: 'Armin van Buuren', title: 'Another Song' }], []), null);
+    assert.strictEqual(R.matchOnAir('ch2', cut, [], [{ id: 't1', text: 'Trancegiving', channelId: 'ch1' }]), null, 'a term for one channel only');
+    assert.strictEqual(R.onAirCut({ ...cut, at: now - 6 * 3600 * 1000 }, now), false, 'nothing older than the five-hour buffer');
+    assert.strictEqual(R.onAirCut({ ...cut, ad: true }, now), false, 'never an ad');
+    assert.strictEqual(R.onAirCut(null, now), false);
+
     // Recently Played names the show that was on at the song's start, not the one that came after it
     const shows = [
         { at: 100000, name: 'Episode 1', show: 'Morning Show', dur: 1800 },

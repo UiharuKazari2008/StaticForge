@@ -92,6 +92,27 @@ function changedNow() {
     try { require('./phoneStatus').touch('xmrec'); } catch (_) { /* no phone status */ }
 }
 
+/**
+ * The service answers a deck change with the new deck (or the new list), and the answer is put into the deck kept
+ * here at once. Its own `ev: deck` push is debounced 150 ms, so the read a save's own screen makes right after it
+ * used to return the deck from before the save: a search term (or timer, alert, tape setting) that had just been
+ * added read as if it had not saved at all (Yukimi, Nov 26 2026).
+ */
+function applyDeck(key, result) {
+    if (!cached) return result;
+    const patch = key === 'deck'
+        ? Object.assign({}, result || {})
+        : { [key]: Array.isArray(result) ? result : [] };
+    delete patch.offline;
+    if (Object.keys(patch).length) { cached = Object.assign({}, cached, patch); changedNow(); }
+    return result;
+}
+
+/** A deck change: send it, and let its own answer stand in for the deck until the service pushes one. */
+function deckRpc(key, op, shape) {
+    return async (arg) => applyDeck(key, await rpc(op, shape ? shape(arg) : (arg || {})));
+}
+
 function rpc(op, args) {
     if (!sock || !up) return Promise.reject(fail('The recorder service is not running.', 'XMREC_DOWN'));
     const id = ++seq;
@@ -165,13 +186,13 @@ module.exports = {
         channelId, from: Number(o.from) || 0, to: Number(o.to) || 0,
         a: String(o.a || ''), t: String(o.t || ''), s: String(o.s || ''), ik: String(o.ik || '')
     }),
-    queueRemove: (id) => rpc('queueRemove', { id }),
-    queueClear: () => rpc('queueClear', {}),
-    setDeck: (o) => rpc('setDeck', o || {}),
-    setTimers: (timers) => rpc('setTimers', { timers }),
-    addAlert: (o) => rpc('addAlert', o || {}),
-    removeAlert: (id) => rpc('removeAlert', { id }),
-    setTerms: (terms) => rpc('setTerms', { terms }),
+    queueRemove: deckRpc('queue', 'queueRemove', (id) => ({ id })),
+    queueClear: deckRpc('queue', 'queueClear'),
+    setDeck: deckRpc('deck', 'setDeck'),
+    setTimers: deckRpc('timers', 'setTimers', (timers) => ({ timers })),
+    addAlert: deckRpc('alerts', 'addAlert'),
+    removeAlert: deckRpc('alerts', 'removeAlert', (id) => ({ id })),
+    setTerms: deckRpc('terms', 'setTerms', (terms) => ({ terms })),
     pushAuth,
     playlist: (rid) => rpc('playlist', { rid }),
     segPath,

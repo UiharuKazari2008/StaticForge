@@ -858,6 +858,37 @@ function wantsWatch() {
     return s.alerts.length > 0 || s.terms.length > 0;
 }
 
+/**
+ * Is the cut on air the one to look at? An ad is never matched, and the stream has to still hold the cut: the buffer
+ * keeps five hours, so nothing older than that can be reached back to.
+ *
+ * A match does not have to be young. A term or alert added while the thing it names is already playing records that
+ * cut from its first frame, however long it has been on - the buffer keeps the whole cut (Yukimi, Nov 26 2026: a term
+ * for Trancegiving, added 24 minutes into the cut, recorded nothing, because only a cut newer than 15 minutes was
+ * ever accepted).
+ */
+function onAirCut(cur, now) {
+    return !!cur && !cur.ad && now - cur.at <= QUEUE_TTL;
+}
+
+/** Which alert or term the cut matches: an alert for its artist (or artist and title), else a term whose every word
+ *  is in the artist, title or show. `id` is the channel's. */
+function matchOnAir(id, cur, alerts, terms) {
+    for (const a of alerts) {
+        if (a.channelId && a.channelId !== id) continue;
+        if (norm(a.artist) !== norm(cur.a)) continue;
+        if (a.kind === 'song' && norm(a.title) !== norm(cur.t)) continue;
+        return { kind: 'alert', ref: a.id };
+    }
+    const hay = norm(`${cur.a} ${cur.t} ${cur.s}`);
+    for (const t of terms) {
+        if (t.channelId && t.channelId !== id) continue;
+        const words = norm(t.text).split(' ').filter(Boolean);
+        if (words.length && words.every((w) => hay.includes(w))) return { kind: 'term', ref: t.id };
+    }
+    return null;
+}
+
 /** Every channel's cuts after a lookAround read: the recordings' splits, alerts and terms. */
 function onLook(channelCuts) {
     for (const rec of recs.values()) {
@@ -869,27 +900,12 @@ function onLook(channelCuts) {
     const now = Date.now();
     for (const [id, cuts] of channelCuts) {
         const cur = cuts[cuts.length - 1];
-        if (!cur || cur.ad || now - cur.at > 15 * 60000) continue;
+        if (!onAirCut(cur, now)) continue;
         const key = `${id}|${cur.at}`;
         if (fired.has(key)) continue;
         const ch = xm.channelById(id);
         if (!ch || ch.sub === false) continue;
-        let hit = null;
-        for (const a of s.alerts) {
-            if (a.channelId && a.channelId !== id) continue;
-            if (norm(a.artist) !== norm(cur.a)) continue;
-            if (a.kind === 'song' && norm(a.title) !== norm(cur.t)) continue;
-            hit = { kind: 'alert', ref: a.id };
-            break;
-        }
-        if (!hit) {
-            const hay = norm(`${cur.a} ${cur.t} ${cur.s}`);
-            for (const t of s.terms) {
-                if (t.channelId && t.channelId !== id) continue;
-                const words = norm(t.text).split(' ').filter(Boolean);
-                if (words.length && words.every((w) => hay.includes(w))) { hit = { kind: 'term', ref: t.id }; break; }
-            }
-        }
+        const hit = matchOnAir(id, cur, s.alerts, s.terms);
         if (!hit) continue;
         fired.add(key);
         if (fired.size > 2000) fired.delete(fired.values().next().value);
@@ -1070,5 +1086,5 @@ function tapeRenamed(workspaceId, from, to) {
 
 module.exports = {
     init, library, tapeRenamed, saveNow, shutdown, importSpool, spoolList, spoolDir: () => spoolDir(), recRoot: () => recRoot(), start, stop, recordCut, recordChannel, recordRange, queueList: queuePublic, queueRemove, queueClear, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
-    _test: { adtsFrames, nextStart, cutAt, norm, onLook, sliceAac, recs, resume, load: () => load(), reset: () => { st = null; recs.clear(); ended.clear(); fired.clear(); shuttingDown = false; } }
+    _test: { adtsFrames, nextStart, cutAt, norm, onLook, onAirCut, matchOnAir, sliceAac, recs, resume, load: () => load(), reset: () => { st = null; recs.clear(); ended.clear(); fired.clear(); shuttingDown = false; } }
 };
