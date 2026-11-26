@@ -577,6 +577,9 @@ sup._test.setFetch(async (url, opts) => {
             assert.deepStrictEqual([ps.model, ps.effort], ['fable', 'xhigh']);
             assert.match(ps.prompt, /You are the PLANNER/);
             assert.match(ps.prompt, /model "haiku" and effort "low"/);
+            // every planner and agent task ends with "Make no mistakes." and the planner puts it at the end of its agents' briefs
+            assert.ok(ps.prompt.trimEnd().endsWith('Make no mistakes.'), 'the brief ends with "Make no mistakes."');
+            assert.match(ps.prompt, /End every brief you give a background agent or a part with the line "Make no mistakes\."/);
             // auto: plan first. ONE planner session starts (no model call guesses a shape); it reports the shape with fleet_work_shape
             const nReplies = replies.length;
             const a = sup.enqueue({ title: 'Auto', prompt: 'tiny fix', topology: 'auto', startNow: true }, { gr });
@@ -584,6 +587,7 @@ sup._test.setFetch(async (url, opts) => {
             const as = starts.find((o) => o.title === 'Auto');
             assert.match(as.prompt, /You are the PLANNER for Fleet work item/);
             assert.match(as.prompt, /fleet_work_shape/);
+            assert.ok(as.prompt.trimEnd().endsWith('Make no mistakes.') && /End every brief you give a background agent or a part/.test(as.prompt));
             assert.ok(as.prompt.includes(`id: ${a.id}`), 'the item id is in its prompt');
             assert.strictEqual(sup.getWork(a.id).topology, 'auto', 'until the planner reports, the shape is open');
             assert.match(sup.getWork(a.id).message, /^Planning/);
