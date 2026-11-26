@@ -4038,6 +4038,11 @@ function applyForgeEditorInputToMetadata(data) {
 }
 
 async function loadIntoManualForm(type = 'metadata', source, image = null) {
+    // Load token (Yozora StaticForge#1269): a newer load supersedes an older one that is parked on an
+    // await. The older one stops at its next check, so its text and its emphasis weight store never
+    // land on top of the newer preset. The counter lives on the function (no new page global).
+    const loadToken = loadIntoManualForm.loadGeneration = (loadIntoManualForm.loadGeneration || 0) + 1;
+    const isStale = () => loadToken !== loadIntoManualForm.loadGeneration;
     try {
         updateSplashScreenStatus('Loading File...');
 
@@ -4160,6 +4165,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         }
 
         await selectManualResolution(resolutionToSet, resolutionGroup);
+        if (isStale()) return;
 
         // Handle custom dimensions after resolution is set
         if (data.width && data.height && resolutionToSet === 'custom') {
@@ -4467,6 +4473,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 for (const vibeTransfer of data.vibe_transfer) {
                     const textInjectionState = vibeTransfer.inject_text !== false ? 'on' : 'off';
                     await addVibeReferenceToContainer(vibeTransfer.id, vibeTransfer.ie, vibeTransfer.strength, textInjectionState);
+                    if (isStale()) return;
                 }
 
                 if (vibeNormalizeToggle) {
@@ -4536,8 +4543,10 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 await new Promise((resolve, reject) => {
                     const tempImg = new Image();
                     tempImg.onload = () => {
-                        window.uploadedImageData.width = tempImg.width;
-                        window.uploadedImageData.height = tempImg.height;
+                        if (!isStale()) {
+                            window.uploadedImageData.width = tempImg.width;
+                            window.uploadedImageData.height = tempImg.height;
+                        }
                         resolve();
                     };
                     tempImg.onerror = () => {
@@ -4545,6 +4554,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                     };
                     tempImg.src = previewUrl;
                 })
+                if (isStale()) return;
 
                 // Update image bias orientation after setting image dimensions
                 updateImageBiasOrientation();
@@ -4568,12 +4578,14 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 console.warn('Failed to crop image to resolution:', error);
                 // Continue without cropping - the image will still be displayed
             }
+            if (isStale()) return;
             try {
                 await refreshImageBiasState();
             } catch (error) {
                 console.warn('Failed to refresh image bias state:', error);
                 // Continue without bias state update
             }
+            if (isStale()) return;
 
             if (data.mask_compressed !== undefined && data.mask_compressed !== null) {
                 // Store the compressed mask data for later use
@@ -4584,9 +4596,12 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 const targetHeight = data.height || 1024;
 
                 try {
-                    setCurrentMaskData(await processCompressedMask(data.mask_compressed, targetWidth, targetHeight)); // an object URL (utils/referenceUtils.js)
+                    const processedMask = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
+                    if (isStale()) return;
+                    setCurrentMaskData(processedMask); // an object URL (utils/referenceUtils.js)
                     updateInpaintButtonState();
                 } catch (error) {
+                    if (isStale()) return;
                     console.error('❌ Failed to process compressed mask for regular image:', error);
                     // Fallback to regular mask if available
                     if (data.mask !== undefined && data.mask !== null) {
@@ -4597,10 +4612,12 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 setCurrentMaskData(data.mask, String(data.mask).startsWith('UklGR') ? 'image/webp' : 'image/png'); // an object URL (utils/referenceUtils.js)
                 try {
                     const compressedMask = await convertStandardMaskToCompressed(data.mask, data.width || 1024, data.height || 1024);
+                    if (isStale()) return;
                     if (compressedMask) {
                         window.currentMaskCompressed = compressedMask;
                     }
                 } catch (error) {
+                    if (isStale()) return;
                     console.warn('⚠️ Failed to auto-convert standard mask to compressed:', error);
                 }
             }
@@ -4615,6 +4632,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             } else {
                 await renderImageBiasDropdown();
             }
+            if (isStale()) return;
 
             if (manualStrengthValue && data.strength !== undefined && data.strength !== null) {
                 manualStrengthValue.value = data.strength;
@@ -4701,11 +4719,13 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                         // URL upload - use the temp file path
                         const previewUrl = `/temp/${image.tempFilename}`;
                         await loadTempImagePreview(previewUrl, image);
+                        if (isStale()) return;
                     } else if (image.file) {
                         // File upload - create object URL
                         const previewUrl = URL.createObjectURL(image.file);
                         trackManualPreviewBlobUrl(previewUrl); // trackManualPreviewBlobUrl: public/scripts/app.js
                         await loadTempImagePreview(previewUrl, image);
+                        if (isStale()) return;
                     }
                 } else {
                     // Regular saved image - use existing logic
@@ -4717,6 +4737,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                     }
                     if (imageToShow) {
                         await updateManualPreviewDirectly(image, window.currentEditMetadata);
+                        if (isStale()) return;
                     }
                 }
             }
@@ -4731,6 +4752,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         if (data.chara_reference_source) {
             if (typeof loadPreciseReferencesFromMetadata === 'function') {
                 await loadPreciseReferencesFromMetadata(data);
+                if (isStale()) return;
             }
         } else {
             if (typeof clearAllPreciseReferenceItems === 'function') {
@@ -5109,6 +5131,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         updateMainLockButtonState();
         if (!hasCompiledContext) {
             await requestDynamicContextResolution();
+            if (isStale()) return;
         }
         updateSplashScreenStatus('');
 
@@ -5118,6 +5141,8 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         // applyModelLocks: public/scripts/comp/utilities.js — after steps, sampler, rescale, UC, and pipeline stages
         if (typeof applyModelLocks === 'function') applyModelLocks(data);
     } catch (error) {
+        // A superseded load that fails (for example its preview image) must not report over the newer one
+        if (isStale()) return;
         console.error('Error loading into form:', error);
         showError('Failed to load data');
     }

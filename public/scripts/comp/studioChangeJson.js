@@ -314,40 +314,236 @@ function studioChangeChunkName(text, fallback) {
     return studioChangeTruncate(first || t, 40);
 }
 
-function joinPromptChunks(chunks) {
-    return chunks
-        .map((c) => String(c || '').trim())
-        .filter(Boolean)
-        .join(', ');
-}
+/**
+ * Tag-aware prompt chunk editing. One function holds the parser so the page gets one global name for it:
+ * ops are { action: 'append' | 'remove' | 'replace', text, from } applied in order to a prompt string.
+ * Tags are the top-level comma parts; commas inside () [] {} pairs and inside n::text:: weighted groups
+ * do not split. A tag equals a target by trimmed text (exact first, then case-insensitive); a tag that is
+ * exactly one weighted group also equals its inner text. Text is returned unchanged when nothing matches.
+ */
+function applyStudioChunkOps(current, ops) {
+    const COMMA = ',';
+    const NEWLINE = String.fromCharCode(10);
+    const isSpace = (ch) => ch === ' ' || ch === NEWLINE || ch === '\t' || ch === '\r';
+    const weightAt = (text, i) => {
+        // "1.3::" or "-1::" at i; returns the matched length or 0
+        const m = /^-?\d+(?:\.\d+)?\s*::/.exec(text.slice(i, i + 24));
+        return m ? m[0].length : 0;
+    };
 
-function appendPromptChunk(current, chunk) {
-    const add = String(chunk || '').trim();
-    if (!add) return current;
-    const cur = String(current || '');
-    if (!cur.trim()) return add;
-    if (cur.includes(add)) return cur;
-    const trimmed = cur.replace(/\s+$/, '');
-    const sep = /,\s*$/.test(trimmed) ? ' ' : ', ';
-    return trimmed + sep + add;
-}
+    function parse(src) {
+        const text = String(src || '');
+        const n = text.length;
+        // Only bracket characters that have a partner count, so a lone ":(" cannot swallow later tags
+        const pairedAt = new Set();
+        const openers = { '(': ')', '[': ']', '{': '}' };
+        const stack = [];
+        for (let i = 0; i < n; i++) {
+            const ch = text[i];
+            if (ch === '\\') { i++; continue; }
+            if (openers[ch]) stack.push(i);
+            else if (ch === ')' || ch === ']' || ch === '}') {
+                if (stack.length && openers[text[stack[stack.length - 1]]] === ch) {
+                    pairedAt.add(stack.pop());
+                    pairedAt.add(i);
+                }
+            }
+        }
+        const tags = [];
+        let depth = 0;
+        let tagStart = -1;
+        let tagEnd = -1;
+        let inner = null;
+        const push = () => {
+            if (tagStart >= 0 && tagEnd >= tagStart) {
+                tags.push({ start: tagStart, end: tagEnd + 1, text: text.slice(tagStart, tagEnd + 1), inner });
+            }
+            tagStart = -1;
+            tagEnd = -1;
+            inner = null;
+        };
+        let i = 0;
+        while (i < n) {
+            const ch = text[i];
+            if (ch === '\\' && i + 1 < n) {
+                if (tagStart < 0) tagStart = i;
+                inner = null;
+                tagEnd = i + 1;
+                i += 2;
+                continue;
+            }
+            if (depth === 0 && ch === COMMA) { push(); i++; continue; }
+            if (isSpace(ch)) { i++; continue; }
+            const wLen = depth === 0 && (i === 0 || isSpace(text[i - 1]) || text[i - 1] === COMMA) ? weightAt(text, i) : 0;
+            if (wLen && Math.abs(parseFloat(text.slice(i, i + wLen))) <= 100) {
+                // A weighted group: closes at its first "::", or runs until the next "w::" opener
+                if (tagStart < 0) tagStart = i;
+                const contentStart = i + wLen;
+                const tail = text.slice(contentStart);
+                const closeAt = tail.indexOf('::');
+                const nextRe = /(?:,\s*|\s+)(-?\d+(?:\.\d+)?)\s*::/g;
+                let nextAt = -1;
+                let m;
+                while ((m = nextRe.exec(tail))) {
+                    if (Math.abs(parseFloat(m[1])) <= 100) { nextAt = m.index; break; }
+                }
+                let end;
+                let innerText;
+                if (closeAt >= 0 && (nextAt < 0 || closeAt < nextAt)) {
+                    end = contentStart + closeAt + 2;
+                    innerText = tail.slice(0, closeAt);
+                } else if (nextAt >= 0) {
+                    end = contentStart + nextAt;
+                    innerText = tail.slice(0, nextAt);
+                } else {
+                    end = n;
+                    innerText = tail;
+                }
+                let last = end - 1;
+                while (last > i && isSpace(text[last])) last--;
+                inner = tagStart === i ? innerText.trim() : null;
+                tagEnd = last;
+                i = end;
+                // An auto-terminated group followed by a space and the next "w::" opener is its own tag
+                if (end < n && isSpace(text[end])) {
+                    let j = end;
+                    while (j < n && isSpace(text[j])) j++;
+                    if (j < n && text[j] !== COMMA && weightAt(text, j)) push();
+                }
+                continue;
+            }
+            if (tagStart < 0) tagStart = i;
+            inner = null;
+            if (pairedAt.has(i)) depth += openers[ch] ? 1 : -1;
+            tagEnd = i;
+            i++;
+        }
+        push();
+        return { text, tags };
+    }
 
-function removePromptChunk(current, chunk) {
-    const target = String(chunk || '').trim();
-    const cur = String(current || '');
-    if (!target || !cur) return cur;
-    if (!cur.includes(target)) return cur;
-    let next = cur.split(target).join('');
-    next = next.replace(/,\s*,/g, ',').replace(/^\s*,\s*|\s*,\s*$/g, '').replace(/\s{2,}/g, ' ').trim();
+    const same = (a, b, ci) => (ci ? a.toLowerCase() === b.toLowerCase() : a === b);
+    const tagIs = (tag, want, ci) => same(tag.text, want.text, ci) || (tag.inner != null && tag.inner !== '' && same(tag.inner, want.text, ci));
+
+    // Ranges [from, to] of tag indexes that match the target (a multi-tag target matches the tag
+    // sequence, or failing that each of its tags)
+    function find(parsed, target) {
+        const want = parse(target).tags;
+        if (!want.length) return [];
+        for (let pass = 0; pass < 2; pass++) {
+            const ci = pass === 1;
+            const out = [];
+            if (want.length > 1) {
+                for (let p = 0; p + want.length <= parsed.tags.length; p++) {
+                    if (want.every((w, k) => tagIs(parsed.tags[p + k], w, ci))) { out.push([p, p + want.length - 1]); p += want.length - 1; }
+                }
+            }
+            if (!out.length) {
+                parsed.tags.forEach((t, p) => { if (want.some((w) => tagIs(t, w, ci))) out.push([p, p]); });
+            }
+            if (out.length) return out;
+        }
+        return [];
+    }
+
+    // items: { text, idx } (idx = source tag index, -1 for new text); the gaps between kept source tags are reused
+    function build(parsed, items) {
+        let out = '';
+        items.forEach((item, k) => {
+            if (k > 0) {
+                const prev = items[k - 1];
+                if (prev.idx < 0 || item.idx < 0) {
+                    out += ', ';
+                } else {
+                    const gap = parsed.text.slice(parsed.tags[prev.idx].end, parsed.tags[item.idx].start);
+                    if (item.idx === prev.idx + 1 || gap.indexOf(COMMA) < 0) out += gap;
+                    else out += gap.indexOf(NEWLINE) >= 0 ? ',' + NEWLINE : ', ';
+                }
+            }
+            out += item.text;
+        });
+        return out;
+    }
+
+    const tagItems = (parsed, skip, change) => {
+        const items = [];
+        parsed.tags.forEach((t, idx) => {
+            if (skip.has(idx)) return;
+            items.push({ text: change.has(idx) ? change.get(idx) : t.text, idx });
+        });
+        return items;
+    };
+
+    function append(src, chunk) {
+        const add = String(chunk || '').trim();
+        if (!add) return src;
+        const cur = String(src || '');
+        if (!cur.trim()) return add;
+        const have = parse(cur).tags;
+        const wanted = parse(add).tags.map((t) => t.text).filter((t) => !have.some((h) => same(h.text, t, true)));
+        if (!wanted.length) return cur;
+        const trimmed = cur.replace(/\s+$/, '');
+        const sep = /,\s*$/.test(trimmed) ? ' ' : ', ';
+        return trimmed + sep + wanted.join(', ');
+    }
+
+    function remove(src, chunk) {
+        const target = String(chunk || '').trim();
+        const cur = String(src || '');
+        if (!target || !cur) return cur;
+        const parsed = parse(cur);
+        const ranges = find(parsed, target);
+        if (!ranges.length) return cur;
+        const skip = new Set();
+        ranges.forEach(([a, b]) => { for (let k = a; k <= b; k++) skip.add(k); });
+        return build(parsed, tagItems(parsed, skip, new Map()));
+    }
+
+    function replace(src, from, to) {
+        const cur = String(src || '');
+        const find0 = String(from || '').trim();
+        const put = String(to || '').trim();
+        if (!find0) return append(cur, put);
+        const parsed = parse(cur);
+        const ranges = find(parsed, find0);
+        if (!ranges.length) return append(cur, put);
+        // Replacing a chunk with itself only makes sure it is there
+        if (find0 === put) return cur;
+        const skip = new Set();
+        const change = new Map();
+        ranges.forEach(([a, b], r) => {
+            for (let k = a; k <= b; k++) skip.add(k);
+            // The first match is replaced in place; later matches are dropped so the new text is not doubled
+            if (r === 0 && put) { skip.delete(a); change.set(a, put); }
+        });
+        return build(parsed, tagItems(parsed, skip, change));
+    }
+
+    const list = Array.isArray(ops) ? ops : [];
+    // Every op replaces the whole text: the chunks are the new prompt
+    if (list.length && list.every((op) => op.action === 'replace' && !op.from)) {
+        return list.map((op) => String(op.text || '').trim()).filter(Boolean).join(', ');
+    }
+    let next = current;
+    list.forEach((op) => {
+        if (op.action === 'remove') next = remove(next, op.from || op.text);
+        else if (op.action === 'replace' && op.from) next = replace(next, op.from, op.text);
+        else if (op.action === 'replace') next = replace(next, op.text, op.text);
+        else next = append(next, op.text);
+    });
     return next;
 }
 
+function appendPromptChunk(current, chunk) {
+    return applyStudioChunkOps(current, [{ action: 'append', text: chunk }]);
+}
+
+function removePromptChunk(current, chunk) {
+    return applyStudioChunkOps(current, [{ action: 'remove', text: chunk }]);
+}
+
 function replacePromptSpan(current, from, to) {
-    const src = String(current || '');
-    const find = String(from || '').trim();
-    const put = String(to || '');
-    if (find && src.includes(find)) return src.split(find).join(put);
-    return appendPromptChunk(src, put);
+    return applyStudioChunkOps(current, [{ action: 'replace', from, text: to }]);
 }
 
 function resolveStudioChangeResolutionPreset(value) {
@@ -449,9 +645,16 @@ function getStudioFieldLabel(fieldId) {
     return `${name} ${field}`;
 }
 
-function getStudioFieldValue(fieldId) {
+// flat: the weights as the agent sees them (1.3::red dress::) instead of the managed invisible ids
+function getStudioFieldValue(fieldId, flat) {
     const textarea = getStudioFieldTextarea(fieldId);
-    return textarea ? textarea.value : '';
+    if (!textarea) return '';
+    const raw = textarea.value;
+    // hasManagedEmphasisGroupIds / resolveEmphasisBagForTextarea / expandEmphasisGroupIds /
+    // stripUnmanagedEmphasisInvisibles: public/scripts/comp/emphasisGroupIdCodec.js
+    if (!flat || !raw || !hasManagedEmphasisGroupIds(raw)) return raw;
+    const expanded = expandEmphasisGroupIds(raw, resolveEmphasisBagForTextarea(textarea), { alwaysTerminate: true });
+    return stripUnmanagedEmphasisInvisibles(expanded.text);
 }
 
 function writeStudioFieldValue(fieldId, next) {
@@ -463,6 +666,24 @@ function writeStudioFieldValue(fieldId, next) {
     textarea.dispatchEvent(new CustomEvent('input', { bubbles: true, detail: { skipAutofill: true } }));
     // applyFormattedText: public/scripts/comp/utilities.js
     applyFormattedText(textarea, true);
+    // An agent write can drop managed groups: keep the field's weight bag to the ids still in the text.
+    // No work when the field has no bag. getEmphasisNormalizationFieldStore /
+    // syncEmphasisNormalizationPreviewMetadata: public/scripts/comp/emphasisGroupsToolManager.js;
+    // getEmphasisNormalizationDualWriteKeys / pruneEmphasisGroupsByIdToLiveText:
+    // public/scripts/comp/emphasisGroupIdCodec.js
+    if (textarea.id) {
+        const store = getEmphasisNormalizationFieldStore();
+        let pruned = false;
+        getEmphasisNormalizationDualWriteKeys(textarea.id).concat(textarea.id).forEach((key) => {
+            const entry = store[key];
+            if (!entry || typeof entry !== 'object' || !entry.groupsById || typeof entry.groupsById !== 'object') return;
+            const live = pruneEmphasisGroupsByIdToLiveText(entry.groupsById, textarea.value);
+            if (Object.keys(live).length === Object.keys(entry.groupsById).length) return;
+            store[key] = { ...entry, groupsById: live };
+            pruned = true;
+        });
+        if (pruned) syncEmphasisNormalizationPreviewMetadata();
+    }
     // The overlay and height on the next frame, once for every field this change writes
     // (scheduleTextareaVisualRefresh: public/scripts/comp/utilities.js); the token count is the input
     // event's (promptTextareaToolbar.js schedules it for the frame) - counting here too ran the
@@ -2442,17 +2663,12 @@ async function applyStudioChangeOps(ops) {
     byField.forEach((fieldOps, fieldId) => {
         if (writtenCharacterFields.has(fieldId)) return;
         const allReplace = fieldOps.every((op) => op.action === 'replace' && !op.from);
-        let next = getStudioFieldValue(fieldId);
-        if (allReplace) {
-            next = joinPromptChunks(fieldOps.map((op) => op.text));
-        } else {
-            fieldOps.forEach((op) => {
-                if (op.action === 'remove') next = removePromptChunk(next, op.from || op.text);
-                else if (op.action === 'replace' && op.from) next = replacePromptSpan(next, op.from, op.text);
-                else if (op.action === 'replace') next = replacePromptSpan(next, op.text, op.text);
-                else next = appendPromptChunk(next, op.text);
-            });
-        }
+        // The ops run on the flat text (1.3::red dress::), the form the agent sees; writing it back re-imports
+        // the groups into fresh managed ids. When the ops change nothing, a managed field keeps its ids.
+        const raw = getStudioFieldValue(fieldId);
+        const base = allReplace ? raw : getStudioFieldValue(fieldId, true);
+        const next = applyStudioChunkOps(base, fieldOps);
+        if (!allReplace && base !== raw && next === base) return;
         writeStudioFieldValue(fieldId, next);
     });
 
