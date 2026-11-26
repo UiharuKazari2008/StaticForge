@@ -247,20 +247,27 @@ function readLines(file, from, skipFirst) {
     return new Promise((resolve) => {
         fs.open(file, 'r', (e, fd) => {
             if (e) { resolve({ lines: [], end: from }); return; }
-            const buf = Buffer.alloc(READ_MAX);
-            fs.read(fd, buf, 0, READ_MAX, from, (err, n) => {
+            // read only what is there (not a zero-filled READ_MAX buffer for a few appended bytes)
+            let want = READ_MAX;
+            try { want = Math.min(READ_MAX, fs.fstatSync(fd).size - from); } catch (_) { want = READ_MAX; }
+            if (want <= 0) { fs.close(fd, () => {}); resolve({ lines: [], end: from }); return; }
+            const buf = Buffer.allocUnsafe(want);
+            fs.read(fd, buf, 0, want, from, (err, n) => {
                 fs.close(fd, () => {});
                 if (err || !n) { resolve({ lines: [], end: from }); return; }
                 const last = buf.lastIndexOf(0x0a, n - 1);
                 if (last < 0) { resolve({ lines: [], end: from }); return; }
                 const lines = [];
-                let off = from;
-                buf.toString('utf8', 0, last + 1).split('\n').forEach((l, i) => {
-                    const at = off;
-                    off += Buffer.byteLength(l, 'utf8') + 1;
-                    if (i === 0 && skipFirst) return;
-                    if (l) lines.push({ line: l, at });
-                });
+                // line offsets come from the newline byte positions: no whole-buffer string, no per-line byteLength
+                let start = 0;
+                let i = 0;
+                while (start <= last) {
+                    let nl = buf.indexOf(0x0a, start);
+                    if (nl < 0 || nl > last) nl = last;
+                    if (!(i === 0 && skipFirst) && nl > start) lines.push({ line: buf.toString('utf8', start, nl), at: from + start });
+                    start = nl + 1;
+                    i += 1;
+                }
                 resolve({ lines, end: from + last + 1 });
             });
         });
@@ -371,9 +378,22 @@ function poke(sessionId, delay) {
     timers.set(sessionId, t);
 }
 
+// the transcript's path per session, kept 5 s (findFile readdir()s the projects folders on every poke)
+const fileCache = new Map();
+async function findFileCached(sessionId) {
+    const hit = fileCache.get(sessionId);
+    if (hit && Date.now() < hit.until) return hit.file;
+    const file = await deps.findFile(sessionId);
+    if (file) {
+        if (fileCache.size > 500) fileCache.clear();
+        fileCache.set(sessionId, { file, until: Date.now() + 5000 });
+    } else fileCache.delete(sessionId);
+    return file;
+}
+
 async function run(sessionId) {
     if (!deps.findFile) return null;
-    const file = await deps.findFile(sessionId);
+    const file = await findFileCached(sessionId);
     if (!file) return null;
     let size = 0;
     try { size = fs.statSync(file).size; } catch (_) { return null; }
@@ -420,4 +440,4 @@ async function run(sessionId) {
     return list(sessionId);
 }
 
-module.exports = { configure, onChange, list, add, update, remove, agentOp, promptSection, applyDone, titleFor, isNamed, titles, setName, sync, poke, cleanTitleText, humanText, TITLE_EVERY };
+module.exports = { _readLines: readLines, configure, onChange, list, add, update, remove, agentOp, promptSection, applyDone, titleFor, isNamed, titles, setName, sync, poke, cleanTitleText, humanText, TITLE_EVERY };

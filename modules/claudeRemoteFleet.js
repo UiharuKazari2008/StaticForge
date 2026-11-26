@@ -34,7 +34,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFile } = require('child_process');
+const spawnHelper = require('./spawnHelper');
 const claudeHost = require('./claudeAccountHost');
 const runtime = require('./claudeAccountRuntime');
 const claudeSessions = require('./claudeSessions');
@@ -71,16 +71,42 @@ function defaultRunner(cmd, args, opts) {
     if (readOnly() && cmd === 'systemctl' && args.some((a) => ['start', 'stop', 'restart', 'enable', 'disable'].includes(a))) {
         return Promise.resolve({ code: 1, stdout: '', stderr: 'Remote Control is read-only on this instance' });
     }
-    return new Promise((resolve) => {
-        execFile(cmd, args, { env: userEnv(), timeout: (opts && opts.timeout) || 15000, maxBuffer: 256 * 1024 }, (error, stdout, stderr) => {
-            resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout: String(stdout || ''), stderr: String(stderr || '') });
-        });
-    });
+    // through the spawn helper process (modules/spawnHelper.js): forking the server itself blocked its loop
+    return spawnHelper.run(cmd, args, { env: userEnv(), timeout: (opts && opts.timeout) || 15000, maxBuffer: 256 * 1024 });
 }
 let runner = defaultRunner;
-function _setRunner(fn) { runner = typeof fn === 'function' ? fn : defaultRunner; }
-const systemctl = (args, timeout) => runner('systemctl', ['--user', ...args], { timeout: timeout || 30000 });
-const tmux = (id, args) => runner('tmux', ['-L', tmuxOf(id), ...args]);
+function _setRunner(fn) { runner = typeof fn === 'function' ? fn : defaultRunner; probeCache.clear(); probeGen += 1; }
+
+// What a status read (the screens' push, every poke of the desk feed) learns from systemctl show / tmux
+// capture-pane is kept 20 s so a poke does not respawn them; every action of this module that changes a unit
+// or a pane, and every journal line about a unit, drops it at once (waitConnected reads fresh, uncached).
+const PROBE_TTL_MS = 20 * 1000;
+const probeCache = new Map();   // key -> { at, value } | { promise }
+let probeGen = 0;
+function invalidateProbes() { probeCache.clear(); probeGen += 1; }
+function cachedProbe(key, fn) {
+    const hit = probeCache.get(key);
+    if (hit && hit.promise) return hit.promise.then((v) => Object.assign({}, v));
+    if (hit && Date.now() - hit.at < PROBE_TTL_MS) return Promise.resolve(Object.assign({}, hit.value));
+    const gen = probeGen;
+    const promise = fn().then((value) => {
+        if (gen === probeGen) probeCache.set(key, { at: Date.now(), value });
+        return value;
+    }, (error) => {
+        if (gen === probeGen) probeCache.delete(key);
+        throw error;
+    });
+    probeCache.set(key, { promise });
+    return promise.then((v) => Object.assign({}, v));
+}
+const systemctl = (args, timeout) => {
+    if (args[0] !== 'show') invalidateProbes();
+    return runner('systemctl', ['--user', ...args], { timeout: timeout || 30000 });
+};
+const tmux = (id, args) => {
+    if (args[0] !== 'capture-pane') invalidateProbes();
+    return runner('tmux', ['-L', tmuxOf(id), ...args]);
+};
 
 // ---------------------------------------------------------------- unit template + per-account script
 
@@ -175,7 +201,7 @@ function watchUnits() {
         child = require('child_process').spawn('journalctl', ['--user', '-f', '-n0', '-o', 'cat', '-u', TEMPLATE.replace('@.', '@*.'), '-u', LEGACY_UNIT], { stdio: ['ignore', 'pipe', 'ignore'] });
     } catch (_) { return; }
     unitWatch = child;
-    child.stdout.on('data', () => { unitWatchDelay = 2000; broadcast(); });
+    child.stdout.on('data', () => { unitWatchDelay = 2000; invalidateProbes(); broadcast(); });
     const again = () => {
         if (unitWatch !== child) return;
         unitWatch = null;
@@ -305,7 +331,7 @@ async function rowFor(acc, legacy) {
         }
         return row;
     }
-    const [unit, pane] = await Promise.all([unitInfo(unitOf(acc.id)), paneInfo(acc.id)]);
+    const [unit, pane] = await Promise.all([cachedProbe(`unit:${unitOf(acc.id)}`, () => unitInfo(unitOf(acc.id))), cachedProbe(`pane:${acc.id}`, () => paneInfo(acc.id))]);
     row.unit = unit;
     row.statusLine = pane.statusLine;
     row.capacity = pane.capacity;
@@ -329,7 +355,7 @@ async function status(gr) {
     let legacy = null;
     if (accounts.some((a) => a.onHost && !runtime.isMoved(a.id))) {
         const st = claudeHost.publicStatus();
-        const u = await unitInfo(LEGACY_UNIT);
+        const u = await cachedProbe(`unit:${LEGACY_UNIT}`, () => unitInfo(LEGACY_UNIT));
         legacy = { unit: u, state: u.active === 'active' ? (st.state && st.state !== 'unknown' ? st.state : 'connected') : (u.active === 'failed' ? 'error' : 'stopped'), statusLine: st.message || '' };
     }
     const rows = [];

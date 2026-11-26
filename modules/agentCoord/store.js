@@ -273,12 +273,23 @@ function resolveAgent(ref) {
     return null;
 }
 
+// only the columns rowAgent reads (not inbox_cursor and the rest), the statement prepared once per database
+let listStmtDb = null;
+let listStmtVal = null;
+function listStmt(d) {
+    if (listStmtDb !== d) {
+        listStmtVal = d.prepare('SELECT id, kind, name, session_id, account, task, status, cwd, repo, branch, tmux, pid, host, started_at, seen_at, model, effort, dispatched_by, config_dir FROM agents ORDER BY seen_at DESC LIMIT 200');
+        listStmtDb = d;
+    }
+    return listStmtVal;
+}
+
 function listAgents(opts = {}) {
     const d = open();
-    const rows = d.prepare('SELECT * FROM agents ORDER BY seen_at DESC LIMIT 200').all().map(rowAgent);
+    const rows = listStmt(d).all().map(rowAgent);
     const out = opts.all ? rows : rows.filter((a) => a.status !== 'gone');
     const claimCount = new Map();
-    liveClaims().forEach((c) => claimCount.set(c.agentId, (claimCount.get(c.agentId) || 0) + 1));
+    liveClaimRows().forEach((c) => claimCount.set(c.agent_id, (claimCount.get(c.agent_id) || 0) + 1));
     return out.map((a) => Object.assign(a, { claims: claimCount.get(a.id) || 0 }));
 }
 
@@ -298,7 +309,10 @@ function rowClaim(r) {
 }
 
 /** Claims still in force: unreleased, unexpired, and held by an agent that is not gone. */
-function liveClaims(filter = {}) {
+function liveClaims(filter = {}) { return liveClaimRows(filter).map(rowClaim); }
+
+/** The raw rows of liveClaims (a caller that only counts skips building claim objects). */
+function liveClaimRows(filter = {}) {
     const d = open();
     const rows = d.prepare('SELECT c.*, a.pid AS apid, a.status AS astatus, a.seen_at AS aseen FROM claims c LEFT JOIN agents a ON a.id = c.agent_id WHERE c.released_at IS NULL AND c.expires_at > ?').all(now());
     const out = [];
@@ -308,7 +322,7 @@ function liveClaims(filter = {}) {
         if (gone) { lapsed.push(r.id); return; }
         if (filter.repo && r.repo !== filter.repo) return;
         if (filter.agentId && r.agent_id !== filter.agentId) return;
-        out.push(rowClaim(r));
+        out.push(r);
     });
     if (lapsed.length) {
         const st = d.prepare('UPDATE claims SET released_at = ? WHERE id = ?');

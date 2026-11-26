@@ -39,7 +39,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { execFile } = require('child_process');
+const spawnHelper = require('./spawnHelper');
 const claudeSessions = require('./claudeSessions');
 const runtime = require('./claudeAccountRuntime');
 
@@ -76,12 +76,9 @@ function userEnv() {
     STRIP_ENV.forEach((k) => { delete env[k]; });
     return env;
 }
+// through the spawn helper process (modules/spawnHelper.js): forking the server itself blocked its loop
 function defaultRunner(cmd, args, opts) {
-    return new Promise((resolve) => {
-        execFile(cmd, args, { env: userEnv(), timeout: (opts && opts.timeout) || 15000, maxBuffer: 512 * 1024 }, (error, stdout, stderr) => {
-            resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout: String(stdout || ''), stderr: String(stderr || '') });
-        });
-    });
+    return spawnHelper.run(cmd, args, { env: userEnv(), timeout: (opts && opts.timeout) || 15000, maxBuffer: 512 * 1024 });
 }
 let runner = defaultRunner;
 function _setRunner(fn) { runner = typeof fn === 'function' ? fn : defaultRunner; }

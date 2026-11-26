@@ -13,6 +13,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const spawnHelper = require('../spawnHelper');
 
 const SCAN_CAP = 48 * 1024 * 1024;
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
@@ -277,11 +278,55 @@ module.exports = function storeV2(core) {
         });
     }
 
+    /**
+     * git status of a folder, in two modes (#1236 part A: a sync `git status -uall` of the staticforge tree blocked
+     * the Dreamscape loop 1.8 s, and forking the 800 MB server for it cost 100-500 ms more):
+     *   - the Dreamscape server (argv[1] is web_server.js; DREAMSCAPE_COORD_ASYNC_GIT=1/0 overrides) never runs it on
+     *     its loop: the answer comes from a cache that spawnHelper.execFileText refreshes in the background
+     *     (stale-while-revalidate: a call returns what it knows and starts a refresh when that is older than its
+     *     TTL; nothing known yet = the conservative default, see ownDirty / gitDirty). Its callers only display or
+     *     sample; they ask again later.
+     *   - every other process (the agent-coord MCP server of each session, restart-gate) keeps the sync call: its
+     *     answer decides a build gate or a restart and must be fresh, and a spawn there forks a small process.
+     */
+    const asyncGit = () => process.env.DREAMSCAPE_COORD_ASYNC_GIT === '1' || (process.env.DREAMSCAPE_COORD_ASYNC_GIT !== '0' && /(^|\/)web_server\.js$/.test(String(process.argv[1] || '')));
+    const GIT_ARGS = ['status', '--porcelain=v1', '--untracked-files=all']; // -uall: a new folder's files one by one (normal collapses them to "dir/", which no edit matches)
+    const GIT_STALE_MAX_MS = 2 * 60 * 1000;   // an older cached answer counts as unknown
+    const gitRaw = new Map();                 // cwd -> { at, out: string | null }
+    const gitBusy = new Map();                // cwd -> Promise<string | null>
+    function refreshGit(cwd) {
+        if (gitBusy.has(cwd)) return gitBusy.get(cwd);
+        const p = spawnHelper.execFileText('git', ['-C', cwd, ...GIT_ARGS], { timeout: 6000, maxBuffer: 4 * 1024 * 1024 })
+            .then((out) => out, () => null)
+            .then((out) => {
+                const t = now();
+                gitRaw.set(cwd, { at: t, out });
+                gitBusy.delete(cwd);
+                gitRaw.forEach((v, k) => { if (t - v.at > GIT_STALE_MAX_MS) gitRaw.delete(k); });
+                return out;
+            });
+        gitBusy.set(cwd, p);
+        return p;
+    }
+    /** Async mode: the cached status of a folder ({ out } or null when unknown), refreshing it in the background when older than ttl. */
+    function gitCached(cwd, ttl) {
+        const hit = gitRaw.get(cwd);
+        const age = hit ? now() - hit.at : Infinity;
+        if (age >= ttl) refreshGit(cwd);
+        return hit && age < GIT_STALE_MAX_MS ? hit : null;
+    }
+
     function gitDirty(cwd) {
         if (!cwd) return null;
         try {
-            // -uall: a new folder's files one by one (normal collapses them to "dir/", which no edit matches)
-            const out = execFileSync('git', ['-C', cwd, 'status', '--porcelain=v1', '--untracked-files=all'], { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 4 * 1024 * 1024 });
+            let out;
+            if (asyncGit()) {
+                const hit = gitCached(cwd, 5000);
+                if (!hit || hit.out == null) return null;
+                out = hit.out;
+            } else {
+                out = execFileSync('git', ['-C', cwd, ...GIT_ARGS], { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 4 * 1024 * 1024 });
+            }
             const all = out.split('\n').filter(Boolean).map((l) => ({ status: l.slice(0, 2).trim(), path: l.slice(3) }));
             return { count: all.length, files: all.slice(0, 60), paths: new Set(all.map((f) => f.path)) };
         } catch (_) { return null; }
@@ -375,23 +420,50 @@ module.exports = function storeV2(core) {
      * asking idle or finished sessions wastes their usage). Cached 15 s per agent.
      */
     const dirtyCache = new Map();
+    const dirtyBusy = new Set();
+    /** The answer for one agent from git status's output (null = git failed): its own session edited a changed file. */
+    function dirtyFrom(a, out) {
+        if (out == null) return true;
+        try {
+            const changed = out.split('\n').map((l) => l.slice(3).trim().replace(/^"|"$/g, '').split(' -> ').pop()).filter(Boolean);
+            if (!changed.length) return false;
+            try { scanSession(a.sessionId); } catch (_) { /* older rows only */ }
+            const mine = open().prepare('SELECT path FROM edits WHERE session_id = ?').all(a.sessionId).map((r) => String(r.path));
+            return changed.some((c) => mine.some((m) => m === c || m.endsWith(`/${c}`) || c.endsWith(`/${m}`)));
+        } catch (_) { return true; }
+    }
+    /** Async mode: recompute one agent's answer in the background (one at a time per agent) into dirtyCache. */
+    function refreshDirty(a) {
+        if (dirtyBusy.has(a.id)) return;
+        dirtyBusy.add(a.id);
+        refreshGit(a.cwd).then((out) => { dirtyCache.set(a.id, { at: now(), dirty: dirtyFrom(a, out) }); })
+            .catch(() => { /* kept as it was */ })
+            .then(() => { dirtyBusy.delete(a.id); });
+    }
     function ownDirty(a) {
         if (!a || !a.sessionId || !a.cwd) return true; // unknown: ask
         const hit = dirtyCache.get(a.id);
         if (hit && now() - hit.at < 15000) return hit.dirty;
-        let dirty = true;
-        try {
-            const out = require('child_process').execFileSync('git', ['-C', a.cwd, 'status', '--porcelain', '-uall'], { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] });
-            const changed = out.split('\n').map((l) => l.slice(3).trim().replace(/^"|"$/g, '').split(' -> ').pop()).filter(Boolean);
-            if (!changed.length) dirty = false;
-            else {
-                try { scanSession(a.sessionId); } catch (_) { /* older rows only */ }
-                const mine = open().prepare('SELECT path FROM edits WHERE session_id = ?').all(a.sessionId).map((r) => String(r.path));
-                dirty = changed.some((c) => mine.some((m) => m === c || m.endsWith(`/${c}`) || c.endsWith(`/${m}`)));
-            }
-        } catch (_) { dirty = true; }
+        if (asyncGit()) {
+            // stale-while-revalidate: the Dreamscape loop never waits on git; nothing known (or older than 2 min) = ask
+            refreshDirty(a);
+            return hit && now() - hit.at < GIT_STALE_MAX_MS ? hit.dirty : true;
+        }
+        let out = null;
+        try { out = execFileSync('git', ['-C', a.cwd, ...GIT_ARGS], { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] }); } catch (_) { out = null; }
+        const dirty = dirtyFrom(a, out);
         dirtyCache.set(a.id, { at: now(), dirty });
         return dirty;
+    }
+    /** A gate opens (async mode only): learn the other busy agents' answers now so the next gateState is right. */
+    function warmDirty(repo, exceptId) {
+        if (!asyncGit()) return;
+        listAgents().forEach((a) => {
+            if (a.repo === repo && a.id !== exceptId && a.sessionId && a.cwd && isBusy(a) && !dirtyBusy.has(a.id)) {
+                const hit = dirtyCache.get(a.id);
+                if (!hit || now() - hit.at >= 15000) refreshDirty(a);
+            }
+        });
     }
 
     /**
@@ -443,6 +515,7 @@ module.exports = function storeV2(core) {
         if (!me) throw new Error('Unknown agent: call coord_hello first');
         const repo = text(o.repo || me.repo || '', 120);
         if (!repo) throw new Error('Which repo? Pass repo or work from inside one');
+        warmDirty(repo, agentId);
         const target = text(o.target || 'build', 80).trim() || 'build';
         const have = d.prepare("SELECT * FROM builds WHERE repo = ? AND target = ? AND state IN ('open', 'running') ORDER BY id DESC").get(repo, target);
         if (have) return Object.assign({ joined: true, notified: [] }, gateState(have));
@@ -524,7 +597,7 @@ module.exports = function storeV2(core) {
     return {
         shellArtifacts, acceptArtifactPath, lockMentions,
         plantLock, removeLocks, lockFiles, liveRecord, isBusy,
-        scanSession, inspect, editorsOf, gitDirty,
+        scanSession, inspect, editorsOf, gitDirty, warmDirty,
         buildRequest, buildReady, buildBegin, buildEnd, adminEndBuild, builds, gateState
     };
 };

@@ -75,6 +75,18 @@ const realAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e
 let pidAlive = realAlive;
 function _setPidAlive(fn) { pidAlive = typeof fn === 'function' ? fn : realAlive; }
 
+// A session record parsed once per file version (mtime + size): a stat is far cheaper than read + parse, and liveSessions() runs often.
+const jsonCache = new Map();
+function readJsonCached(file) {
+    let st;
+    try { st = fs.statSync(file); } catch (_) { jsonCache.delete(file); return null; }
+    const hit = jsonCache.get(file);
+    if (hit && hit.m === st.mtimeMs && hit.s === st.size) return hit.v;
+    const v = readJson(file);
+    if (jsonCache.size > 400) jsonCache.clear();
+    jsonCache.set(file, { m: st.mtimeMs, s: st.size, v });
+    return v;
+}
 function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return null; } }
 
 // ---------------------------------------------------------------- text
@@ -274,7 +286,7 @@ function liveSessions() {
     try { names = fs.readdirSync(sessionsDir()).filter((n) => /^\d+\.json$/.test(n)); } catch (_) { return []; }
     const out = [];
     names.forEach((n) => {
-        const r = readJson(path.join(sessionsDir(), n));
+        const r = readJsonCached(path.join(sessionsDir(), n));
         if (!r || !SESSION_ID_RE.test(String(r.sessionId || '')) || !Number.isInteger(r.pid) || !pidAlive(r.pid)) return;
         const tmux = String(r.tmux || '');
         out.push({

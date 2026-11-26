@@ -46,7 +46,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const { execFile } = require('child_process');
+const spawnHelper = require('./spawnHelper');
 const sessions = require('./claudeSessions');
 
 const SERVICE = 'claude';
@@ -75,12 +75,9 @@ function userEnv() {
     return env;
 }
 
+// every spawn goes through the spawn helper process (modules/spawnHelper.js): forking the server itself blocked its loop
 function defaultRunner(cmd, args, opts) {
-    return new Promise((resolve) => {
-        execFile(cmd, args, { env: userEnv(), timeout: (opts && opts.timeout) || 15000, maxBuffer: 256 * 1024 }, (error, stdout, stderr) => {
-            resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout: String(stdout || ''), stderr: String(stderr || '') });
-        });
-    });
+    return spawnHelper.run(cmd, args, { env: userEnv(), timeout: (opts && opts.timeout) || 15000, maxBuffer: 256 * 1024 });
 }
 function guardedRunner(cmd, args, opts) {
     // a dev / test instance may look at the host's Remote Control but never stop or start it
@@ -90,12 +87,51 @@ function guardedRunner(cmd, args, opts) {
     return defaultRunner(cmd, args, opts);
 }
 let runner = guardedRunner;
-function _setRunner(fn) { runner = typeof fn === 'function' ? fn : guardedRunner; sessions._setRunner(typeof fn === 'function' ? fn : null); }
+function _setRunner(fn) { runner = typeof fn === 'function' ? fn : guardedRunner; sessions._setRunner(typeof fn === 'function' ? fn : null); invalidateProbes(); }
+
+// hostStatus (every poke / 30 s sample of the desk feed) keeps what systemctl show and tmux capture-pane told it
+// for 20 s instead of spawning both each time. The module's own start / stop / restart (reconnect, stop) drop it
+// at once; waitConnected and reconnect read fresh (unitInfo / paneInfo, uncached).
+const PROBE_TTL_MS = 20 * 1000;
+let probeCache = { unit: null, pane: null };   // { at, value } | { promise }
+let probeGen = 0;
+function invalidateProbes() { probeCache = { unit: null, pane: null }; probeGen += 1; }
+function cachedProbe(kind, fn) {
+    const hit = probeCache[kind];
+    if (hit && hit.promise) return hit.promise.then((v) => Object.assign({}, v));
+    if (hit && Date.now() - hit.at < PROBE_TTL_MS) return Promise.resolve(Object.assign({}, hit.value));
+    const gen = probeGen;
+    const promise = fn().then((value) => {
+        if (gen === probeGen) probeCache[kind] = { at: Date.now(), value };
+        return value;
+    }, (error) => {
+        if (gen === probeGen) probeCache[kind] = null;
+        throw error;
+    });
+    probeCache[kind] = { promise };
+    return promise.then((v) => Object.assign({}, v));
+}
 
 // ---------------------------------------------------------------- files
 
 function readJson(file) {
     try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return null; }
+}
+
+// readJsonCached is for the read-only paths that run on every desk sample (host login, permission summary): the parsed
+// file is kept in memory keyed by its inode, mtime and size (a stat is cheap; the login files are replaced by rename, so
+// they change inode). The caller gets the same object while the file is unchanged and must not modify it. Paths that
+// change what they read (installLogin) use readJson. Nothing is written anywhere: no token is kept anywhere new.
+const jsonCache = new Map();   // file -> { sig, value }
+function readJsonCached(file) {
+    let st;
+    try { st = fs.statSync(file); } catch (_) { jsonCache.delete(file); return null; }
+    const sig = `${st.ino}:${st.mtimeMs}:${st.size}`;
+    const hit = jsonCache.get(file);
+    if (hit && hit.sig === sig) return hit.value;
+    const value = readJson(file);
+    if (value !== null) jsonCache.set(file, { sig, value }); else jsonCache.delete(file);
+    return value;
 }
 
 function writeJsonAtomic(file, value, mode) {
@@ -134,16 +170,16 @@ function describeLogin(creds, oauthAccount) {
 }
 
 function readHostLogin() {
-    const creds = readJson(credentialsFile());
-    const cj = readJson(claudeJsonFile());
+    const creds = readJsonCached(credentialsFile());
+    const cj = readJsonCached(claudeJsonFile());
     return { creds, oauthAccount: (cj && cj.oauthAccount) || null };
 }
 
 function readLinked(id) {
     const dir = accountDir(id);
-    const creds = readJson(path.join(dir, 'credentials.json'));
+    const creds = readJsonCached(path.join(dir, 'credentials.json'));
     if (!creds) return null;
-    const meta = readJson(path.join(dir, 'account.json')) || {};
+    const meta = readJsonCached(path.join(dir, 'account.json')) || {};
     return { creds, oauthAccount: meta.oauthAccount || null, linkedAt: meta.linkedAt || null };
 }
 
@@ -413,7 +449,7 @@ async function cliVersion() {
 /** Everything the phone's Host page shows. */
 async function hostStatus(gr) {
     if (gr) gResources = gr;
-    const [unit, pane, version] = await Promise.all([unitInfo(), paneInfo(), cliVersion()]);
+    const [unit, pane, version] = await Promise.all([cachedProbe('unit', unitInfo), cachedProbe('pane', paneInfo), cliVersion()]);
     const host = readHostLogin();
     const login = describeLogin(host.creds, host.oauthAccount);
     let engineAccount = null;
@@ -455,10 +491,10 @@ function permissionFiles(cwd) {
 function permissionState(cwd) {
     const out = { files: {}, projects: {} };
     permissionFiles(cwd).forEach((f) => {
-        const j = readJson(f);
+        const j = readJsonCached(f);
         if (j) out.files[f] = { permissions: j.permissions || null, skipDangerousModePermissionPrompt: j.skipDangerousModePermissionPrompt === true };
     });
-    const cj = readJson(claudeJsonFile());
+    const cj = readJsonCached(claudeJsonFile());
     const projects = (cj && cj.projects) || {};
     Object.keys(projects).sort().forEach((k) => {
         const p = projects[k] || {};
@@ -473,16 +509,16 @@ function permissionFingerprint(cwd) {
 /** The Host tab's "Permissions (shared by every account)" line. Counts only: no rule text. */
 function permissionSummary(unit) {
     const cwd = (unit && unit.workingDirectory) || '';
-    const user = readJson(settingsFile()) || {};
+    const user = readJsonCached(settingsFile()) || {};
     const perms = user.permissions || {};
     const len = (a) => (Array.isArray(a) ? a.length : 0);
     let projectAllow = 0;
     [path.join(cwd, '.claude', 'settings.json'), path.join(cwd, '.claude', 'settings.local.json')].forEach((f) => {
         if (!cwd) return;
-        const j = readJson(f);
+        const j = readJsonCached(f);
         projectAllow += len(j && j.permissions && j.permissions.allow);
     });
-    const cj = readJson(claudeJsonFile());
+    const cj = readJsonCached(claudeJsonFile());
     const projects = Object.values((cj && cj.projects) || {});
     return {
         shared: true,
@@ -503,7 +539,7 @@ function permissionSummary(unit) {
 /** The mode carried sessions run in: Remote Control's own (--permission-mode on the unit), else settings'. */
 function carryMode(unit) {
     if (unit && MODES.has(unit.permissionMode)) return unit.permissionMode;
-    const m = ((readJson(settingsFile()) || {}).permissions || {}).defaultMode;
+    const m = ((readJsonCached(settingsFile()) || {}).permissions || {}).defaultMode;
     return MODES.has(m) ? m : '';
 }
 
@@ -557,9 +593,11 @@ function reconnect(gr, opts = {}) {
                 blocked = require('./claudeRemoteFleet').blocksLegacySwitch(target);
             } catch (_) { blocked = ''; }
             if (blocked) throw new Error(blocked);
+            invalidateProbes();
             const unit0 = await unitInfo();
             const permsBefore = permissionFingerprint(unit0.workingDirectory);
             const stop = await runner('systemctl', ['--user', 'stop', unitName()], { timeout: 30000 });
+            invalidateProbes();
             if (stop.code !== 0) throw new Error(`Could not stop ${unitName()}: ${(stop.stderr || '').trim().slice(0, 160)}`);
             // carried sessions are Remote Control sessions too, still signed in as before: they end as well
             await sessions.endRemote(running);
@@ -574,6 +612,7 @@ function reconnect(gr, opts = {}) {
             const permissionsKept = permissionFingerprint(unit0.workingDirectory) === permsBefore;
             if (!permissionsKept) console.warn('[claudeAccounts] permission settings changed during the switch (not by it: only the login is replaced)');
             const start = await runner('systemctl', ['--user', 'start', unitName()], { timeout: 30000 });
+            invalidateProbes();
             if (start.code !== 0) throw new Error(`Could not start ${unitName()}: ${(start.stderr || '').trim().slice(0, 160)}`);
             const done = await waitConnected(opts.timeoutMs || CONNECT_TIMEOUT_MS, opts.pollMs);
             if (!done.ok) {
@@ -613,7 +652,9 @@ function reconnect(gr, opts = {}) {
 async function stop(gr) {
     if (gr) gResources = gr;
     if (busy) throw new Error('Remote Control is reconnecting');
+    invalidateProbes();
     const r = await runner('systemctl', ['--user', 'stop', unitName()], { timeout: 30000 });
+    invalidateProbes();
     if (r.code !== 0) throw new Error(`Could not stop ${unitName()}`);
     try { saveLiveLoginBack(gResources); } catch (_) { /* kept as it is */ }
     setState('stopped', 'Remote Control stopped');

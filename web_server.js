@@ -7,6 +7,9 @@ if (!process.env.UV_THREADPOOL_SIZE) process.env.UV_THREADPOOL_SIZE = '16';
 // Bind the HTTP port before ~3 s of module loading so a restarting server answers /status and
 // /status/stream from the start instead of refusing connections (Yozora #431)
 const earlyHttpServer = require('./modules/earlyHttpServer').bindEarly(__dirname);
+// The one fork the spawn helper costs is paid now, while the heap is small: afterwards every child command
+// forks that tiny process, not this ~800 MB one (a fork here blocked the loop 90-480 ms, #1236)
+require('./modules/spawnHelper').warm();
 const express = require('express');
 const fs = require('fs');
 
