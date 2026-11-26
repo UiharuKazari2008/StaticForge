@@ -81,10 +81,13 @@ const OPS = {
     ping: () => ({ pid: process.pid, up: Math.round(process.uptime()) }),
     auth: (a) => {
         const slot = a && a.slot != null ? Number(a.slot) : 1;
+        // a clear for a slot that held nothing (Dreamscape clears 2..8 on every connect) is not worth a log line
+        const had = !!(xmRadio.heldAuth() || {})[slot];
         const ok = xmRadio.setAuth(a);
         if (ok || (a && a.clear)) keepAuth();
         // a slot's token arriving or clearing may free a waiting entry (or leave a running one without its account)
         void recorder.slotsChanged();
+        if (a && a.clear && !had) return ok;
         console.log(`[xmradio-recorder] SiriusXM access slot ${slot} ${a && a.clear ? 'dropped' : ok ? `received (valid ${Math.round(((Number(a && a.exp) || 0) - Date.now()) / 60000)} min)` : 'missing'}`);
         return ok;
     },

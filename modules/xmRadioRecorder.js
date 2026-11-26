@@ -1219,7 +1219,8 @@ function setSettings({ streamsPerAccount } = {}) {
 }
 
 /** A slot's token arrived or was cleared (the auth op), or the slot list changed: a waiting entry may fit now. */
-function slotsChanged() { return dispatch(); }
+/** A slot's token arrived or went: the pool's readiness changed, so the deck is pushed even when nothing new starts. */
+function slotsChanged() { changed(); return dispatch(); }
 
 /** The recording as a growing HLS playlist (EVENT): everything recorded so far stays playable. */
 function playlist(rid) {
