@@ -25,8 +25,10 @@ for (let level = 0; level <= 5; level++) {
 }
 
 const staticRule = aero.match(
-    /html\[data-glass="frosted"\],\s*html\[data-glass="frosted"\]\s*:where\(\s*body,\s*body \*,\s*body::before,\s*body::after,\s*body \*::before,\s*body \*::after\s*\)\s*\{([\s\S]*?)\}/
+    /html\[data-glass="frosted"\],\s*html\[data-glass="frosted"\]\s*:where\(body,\s*body \*\),\s*html\[data-glass="frosted"\] body::before,\s*html\[data-glass="frosted"\] body::after,\s*html\[data-glass="frosted"\] body \*::before,\s*html\[data-glass="frosted"\] body \*::after\s*\{([\s\S]*?)\}/
 );
+// Pseudo-elements are invalid inside :is() / :where(); a forgiving list drops them silently (#406)
+assert.ok(!/:(?:where|is)\([^)]*::(?:before|after)/.test(aero), 'aero-glass.css never puts ::before / ::after inside :where() / :is()');
 assert.ok(staticRule, 'frosted covers the root, body, descendants and generated surfaces');
 assert.match(staticRule[1], /-webkit-backdrop-filter:\s*none\s*!important\s*;/);
 assert.match(staticRule[1], /backdrop-filter:\s*none\s*!important\s*;/);
@@ -47,9 +49,21 @@ assert.match(
 );
 assert.match(
     aero,
-    /html\[data-glass="frosted"\]\s*\.gallery:has\(\.gallery-item\.context-open\)\s*\.gallery-item:not\(\.context-open\)\s*\{[^}]*filter:\s*none\s*;/,
+    /html\[data-glass="frosted"\]\s*\.gallery\.has-context-open-item\s*\.gallery-item:not\(\.context-open\)\s*\{[^}]*filter:\s*none\s*;/,
     'frosted context focus does not blur every gallery tile'
 );
+
+// Basic: generated boxes lose their blur too; html.disable-blur * (gallery-move.css) reaches elements only (#406)
+assert.match(
+    aero,
+    /html\[data-glass="basic"\] body::before,\s*html\[data-glass="basic"\] body::after,\s*html\[data-glass="basic"\] body \*::before,\s*html\[data-glass="basic"\] body \*::after\s*\{[^}]*-webkit-backdrop-filter:\s*none\s*!important\s*;[^}]*backdrop-filter:\s*none\s*!important\s*;/,
+    'basic removes backdrop-filter from every ::before / ::after on the shell'
+);
+// Basic and reduced motion: star fields and tray pulses run no animation (#406)
+const idleSelectors = /:where\(\.star-field \.star,\s*\.focus-star,\s*\.preview-star\)[\s\S]*?\.taskbar-tray-icons \*,\s*(?:html\[data-glass="basic"\]\s*)?\.taskbar-tray-icons \*::before,\s*(?:html\[data-glass="basic"\]\s*)?\.taskbar-tray-icons \*::after\s*\{[^}]*animation:\s*none\s*!important\s*;/;
+assert.match(aero, new RegExp('html\\[data-glass="basic"\\]\\s*' + idleSelectors.source), 'basic stops the star fields and tray pulses');
+const reducedMotion = aero.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?\}\s*)\}/);
+assert.ok(reducedMotion && idleSelectors.test(reducedMotion[1]), 'reduced motion stops the star fields and tray pulses');
 
 const cssLinks = [...app.matchAll(/<link[^>]+href="\/css\/([^"]+\.css)"/g)]
     .map((match) => `public/css/${match[1]}`);

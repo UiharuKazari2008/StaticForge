@@ -84,15 +84,15 @@ html[data-glass="frosted"] {
     --glass-blur-5: none;
 }
 
+/* Pseudo-elements are not valid inside :where(), so they are listed on their own (#406:
+   inside :where() they were dropped and ::before / ::after blurs, like Director's thought
+   bubble, kept their live pass). */
 html[data-glass="frosted"],
-html[data-glass="frosted"] :where(
-    body,
-    body *,
-    body::before,
-    body::after,
-    body *::before,
-    body *::after
-) {
+html[data-glass="frosted"] :where(body, body *),
+html[data-glass="frosted"] body::before,
+html[data-glass="frosted"] body::after,
+html[data-glass="frosted"] body *::before,
+html[data-glass="frosted"] body *::after {
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
 }
@@ -130,6 +130,37 @@ html[data-glass="frosted"] :where(
 html[data-glass="frosted"] .gallery.has-context-open-item .gallery-item:not(.context-open) {
     -webkit-filter: none;
     filter: none;
+}
+
+/* Basic: no blur anywhere on the shell, generated boxes included. gallery-move.css
+   (html.disable-blur *) reaches elements only; menus, toasts and panes that blur from a
+   ::before / ::after kept their pass (#406). */
+html[data-glass="basic"] body::before,
+html[data-glass="basic"] body::after,
+html[data-glass="basic"] body *::before,
+html[data-glass="basic"] body *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+/* Basic and reduced motion: idle motion stops (#406). The star fields (scrolled title bar,
+   focus cover, Studio preview splash) and the tray icons' pulses run no animation; each icon
+   keeps its state's static look (colour, glyph, tooltip), so no indicator is hidden, it only
+   stops moving. Leaving basic or reduced motion starts them again. */
+html[data-glass="basic"] :where(.star-field .star, .focus-star, .preview-star),
+html[data-glass="basic"] .taskbar-tray-icons *,
+html[data-glass="basic"] .taskbar-tray-icons *::before,
+html[data-glass="basic"] .taskbar-tray-icons *::after {
+    animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :where(.star-field .star, .focus-star, .preview-star),
+    .taskbar-tray-icons *,
+    .taskbar-tray-icons *::before,
+    .taskbar-tray-icons *::after {
+        animation: none !important;
+    }
 }
 
 /* Tints are computed on the window itself so the workspace theme's
