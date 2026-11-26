@@ -26,6 +26,13 @@
  *   approved none of the above (uncommitted server files nobody live holds are listed as notes)
  *
  * It never restarts anything itself: scripts/restart-dreamscape.sh runs it and restarts only on approved.
+ *
+ * --client: the same gate for a client update (service-worker notify; Yukimi, Nov 26 2026: "we have a restart wait
+ * queue for server rebuilds, apparently we also need one for client rebuilds as well"). Client files are public/ and
+ * the app packages' client / assets / manifest. The server-only checks (PM2, the Director idle check) are skipped -
+ * a notify restarts nothing, clients reload on their own; validation, build gates (hold target hold-client-update),
+ * the live sessions' uncommitted client edits and the Supervisor's stale-wait check are the same, with their own
+ * wait list (client_gate_asks, Fleet's Client Update Waits). scripts/client-update.sh runs it and notifies only on approved.
  */
 
 const fs = require('fs');
@@ -34,8 +41,15 @@ const { execFileSync, spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const SERVER_PATH_RE = /^(modules\/|routes\/|server\.js$|web_server\.js$|config\/[^/]+\.json$|[^/]+\.config\.json$|config\.json$|package\.json$)/;
+const CLIENT_PATH_RE = /^(public\/|apps\/[^/]+\/(client|assets)\/|apps\/[^/]+\/manifest\.json$)/;
 const args = process.argv.slice(2);
 const has = (f) => args.includes(f);
+const CLIENT = has('--client');
+const PATH_RE = CLIENT ? CLIENT_PATH_RE : SERVER_PATH_RE;
+const ASKS_TABLE = CLIENT ? 'client_gate_asks' : 'gate_asks';
+const HOLD_TARGET = CLIENT ? 'hold-client-update' : 'hold-restart';
+const OWN_TARGET = CLIENT ? 'sw-notify' : 'dreamscape-restart';
+const WHAT = CLIENT ? 'client update' : 'restart';
 const valueOf = (f) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : ''; };
 
 const findings = []; // { level: denied | wait | ask | note, text, agent? }
@@ -56,7 +70,7 @@ function dirtyServerFiles() {
     let out = '';
     try { out = execFileSync('git', ['-C', ROOT, 'status', '--porcelain=v1', '--untracked-files=all'], { encoding: 'utf8', timeout: 10000 }); } catch (_) { return []; }
     return out.split('\n').filter(Boolean).map((l) => ({ status: l.slice(0, 2), path: l.slice(3).replace(/^.* -> /, '') }))
-        .filter((f) => SERVER_PATH_RE.test(f.path) && !f.status.includes('D'));
+        .filter((f) => PATH_RE.test(f.path) && !f.status.includes('D'));
 }
 
 function validate(files) {
@@ -123,7 +137,7 @@ function coordStore() {
 function checkGates(store) {
     if (!store) return;
     let gates = [];
-    try { gates = store.builds({ repo: 'staticforge' }).concat(store.builds({ repo: '' }).filter((g) => g.build.target === 'hold-restart')); } catch (_) { gates = []; }
+    try { gates = store.builds({ repo: 'staticforge' }).concat(store.builds({ repo: '' }).filter((g) => g.build.target === HOLD_TARGET)); } catch (_) { gates = []; }
     const seen = new Set();
     const self = selfSessionId();
     const mine = self ? `claude-${self.slice(0, 8)}` : '';
@@ -132,9 +146,11 @@ function checkGates(store) {
         if (seen.has(b.id)) return;
         seen.add(b.id);
         const who = (store.getAgent(b.requestedBy) || {}).name || b.requestedBy;
-        // the caller's own dreamscape-restart gate (opened and begun before restart-dreamscape.sh, as agent-coord asks) never holds it
-        if (b.state === 'running' && b.target === 'dreamscape-restart' && mine && b.requestedBy === mine) return;
-        if (b.target === 'hold-restart' && (b.state === 'open' || b.state === 'running')) add('wait', `wait for ${who}: hold-restart${b.note ? ` (${b.note})` : ''}`, { agent: b.requestedBy });
+        // the caller's own gate for this (opened and begun before the wrapper script, as agent-coord asks) never holds it
+        if (b.state === 'running' && b.target === OWN_TARGET && mine && b.requestedBy === mine) return;
+        if (b.target === HOLD_TARGET && (b.state === 'open' || b.state === 'running')) add('wait', `wait for ${who}: ${HOLD_TARGET}${b.note ? ` (${b.note})` : ''}`, { agent: b.requestedBy });
+        // the other kind's hold is not this one's business (a hold-restart does not stop a client update, nor the reverse)
+        else if (b.target === 'hold-restart' || b.target === 'hold-client-update') return;
         else if (b.state === 'running') add('wait', `wait for build ${b.id} (${b.target}) by ${who}`, { agent: b.requestedBy });
     });
 }
@@ -190,10 +206,10 @@ function checkAgents(store, dirty) {
         const inThisRepo = root && path.resolve(root) === path.resolve(ROOT);
         // its edit counts only when it came after that file's last commit (an older edit is in a commit already;
         // the file is dirty again from someone else)
-        const serverEdits = inThisRepo ? r.edited.files.filter((f) => SERVER_PATH_RE.test(f.path) && dirtySet.has(f.path) && (f.lastAt || 0) > lastCommitMs(f.path)) : [];
+        const serverEdits = inThisRepo ? r.edited.files.filter((f) => PATH_RE.test(f.path) && dirtySet.has(f.path) && (f.lastAt || 0) > lastCommitMs(f.path)) : [];
         // a claim holds the restart only while an uncommitted server file lies under it: a claim on files already committed
         // loads nothing half done (Nov 25 2026: the Manager Session's committed claims held a restart until it released them)
-        const serverClaims = r.claims.filter((c) => (SERVER_PATH_RE.test(c.path) || c.path === '.' || c.path === 'modules') && dirty.some((f) => claimCovers(c.path, f.path)));
+        const serverClaims = r.claims.filter((c) => (PATH_RE.test(c.path) || c.path === '.' || c.path === (CLIENT ? 'public' : 'modules') || (CLIENT && /^apps(\/[^/]+)?$/.test(c.path))) && dirty.some((f) => claimCovers(c.path, f.path)));
         serverEdits.forEach((f) => owned.add(f.path));
         if (serverEdits.length || serverClaims.length) {
             const name = r.agent.name || agentId;
@@ -203,7 +219,7 @@ function checkAgents(store, dirty) {
             add('ask', `ask ${name} (${agentId}${tail}, ${s.status === 'busy' ? 'working now' : 'idle'}): ${what}`, { agent: agentId, busy: s.status === 'busy' });
         }
     }
-    dirty.filter((f) => !owned.has(f.path)).slice(0, 8).forEach((f) => add('note', `uncommitted ${f.path} (no live session holds it: it loads as it is)`));
+    dirty.filter((f) => !owned.has(f.path)).slice(0, 8).forEach((f) => add('note', `uncommitted ${f.path} (no live session holds it: it ${CLIENT ? 'ships' : 'loads'} as it is)`));
 }
 
 // ---------------------------------------------------------------- ask: how long, and is it still a real wait
@@ -221,17 +237,17 @@ function maxAskMinutes() {
 function verifyAsks(store) {
     if (!store) return;
     const d = store.open();
-    d.exec('CREATE TABLE IF NOT EXISTS gate_asks (agent_id TEXT PRIMARY KEY, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, text TEXT NOT NULL DEFAULT \'\', stale INTEGER NOT NULL DEFAULT 0)');
+    d.exec(`CREATE TABLE IF NOT EXISTS ${ASKS_TABLE} (agent_id TEXT PRIMARY KEY, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, text TEXT NOT NULL DEFAULT '', stale INTEGER NOT NULL DEFAULT 0)`);
     const now = Date.now();
     const asked = findings.filter((f) => f.level === 'ask' && f.agent);
     const keep = new Set(asked.map((f) => f.agent));
-    d.prepare('SELECT agent_id FROM gate_asks').all().forEach((r) => { if (!keep.has(r.agent_id)) d.prepare('DELETE FROM gate_asks WHERE agent_id = ?').run(r.agent_id); });
+    d.prepare(`SELECT agent_id FROM ${ASKS_TABLE}`).all().forEach((r) => { if (!keep.has(r.agent_id)) d.prepare(`DELETE FROM ${ASKS_TABLE} WHERE agent_id = ?`).run(r.agent_id); });
     let live = [];
     try { live = require('../modules/claudeSessions').liveSessions(); } catch (_) { live = []; }
     const limit = maxAskMinutes() * 60000;
     for (const f of asked) {
-        d.prepare('INSERT INTO gate_asks (agent_id, first_at, last_at, text) VALUES (?, ?, ?, ?) ON CONFLICT(agent_id) DO UPDATE SET last_at = excluded.last_at, text = excluded.text').run(f.agent, now, now, f.text);
-        const row = d.prepare('SELECT * FROM gate_asks WHERE agent_id = ?').get(f.agent);
+        d.prepare(`INSERT INTO ${ASKS_TABLE} (agent_id, first_at, last_at, text) VALUES (?, ?, ?, ?) ON CONFLICT(agent_id) DO UPDATE SET last_at = excluded.last_at, text = excluded.text`).run(f.agent, now, now, f.text);
+        const row = d.prepare(`SELECT * FROM ${ASKS_TABLE} WHERE agent_id = ?`).get(f.agent);
         const askedMin = Math.round((now - row.first_at) / 60000);
         if (now - row.first_at < limit) continue;
         const a = store.getAgent(f.agent);
@@ -245,7 +261,7 @@ function verifyAsks(store) {
         if ((!s || s.status !== 'busy') && (idleMin === null || idleMin >= 30)) {
             f.level = 'note';
             f.text = `stale hold: ${f.text.replace(/^ask /, '')} - asked for ${askedMin} min, idle ${idleMin === null ? 'and gone' : `${idleMin} min`}: verified by the Supervisor, no longer blocking`;
-            d.prepare('UPDATE gate_asks SET stale = 1 WHERE agent_id = ?').run(f.agent);
+            d.prepare(`UPDATE ${ASKS_TABLE} SET stale = 1 WHERE agent_id = ?`).run(f.agent);
         } else {
             f.text = `${f.text} - asked for ${askedMin} min; active ${idleMin === null ? 'now' : `${idleMin} min ago`}: a valid wait`;
         }
@@ -266,12 +282,17 @@ function verdict() {
 
 function notifyAsk(store) {
     if (!store || !has('--notify')) return 0;
-    const why = valueOf('--why') || 'a server change';
+    const why = valueOf('--why') || (CLIENT ? 'a client change' : 'a server change');
     let n = 0;
     try {
-        const me = store.upsertAgent({ id: 'restart-gate', kind: 'other', name: 'Restart gate', task: 'Dreamscape restarts', pid: null });
+        const me = CLIENT
+            ? store.upsertAgent({ id: 'client-update-gate', kind: 'other', name: 'Client update gate', task: 'Dreamscape client updates', pid: null })
+            : store.upsertAgent({ id: 'restart-gate', kind: 'other', name: 'Restart gate', task: 'Dreamscape restarts', pid: null });
         findings.filter((f) => f.level === 'ask' && f.agent).forEach((f) => {
-            store.post(me.id, f.agent, `The Dreamscape server is about to restart for ${why}. Your uncommitted server edits / claims would load as they are now. Reply (coord_post to restart-gate, kind reply) "ok" when it is safe, or open a hold with coord_build_request target hold-restart until you are done.`, { kind: 'question' });
+            const text = CLIENT
+                ? `A client update (service-worker notify) is about to go out for ${why}. Your uncommitted client edits / claims (public/, app packages) would ship to every device as they are now. Commit them (or say they are fine) and reply (coord_post to client-update-gate, kind reply) "ok", or open a hold with coord_build_request target hold-client-update until you are done - do not sit on it.`
+                : `The Dreamscape server is about to restart for ${why}. Your uncommitted server edits / claims would load as they are now. Reply (coord_post to restart-gate, kind reply) "ok" when it is safe, or open a hold with coord_build_request target hold-restart until you are done.`;
+            store.post(me.id, f.agent, text, { kind: 'question' });
             n += 1;
         });
     } catch (_) { /* inbox unavailable */ }
@@ -279,10 +300,10 @@ function notifyAsk(store) {
 }
 
 function main() {
-    checkPm2();
+    if (!CLIENT) checkPm2();
     const dirty = dirtyServerFiles();
     validate(dirty);
-    checkIdle();
+    if (!CLIENT) checkIdle();
     const store = coordStore();
     checkGates(store);
     checkAgents(store, dirty);
@@ -302,4 +323,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { SERVER_PATH_RE, _verdict: verdict, _findings: findings };
+module.exports = { SERVER_PATH_RE, CLIENT_PATH_RE, _verdict: verdict, _findings: findings };

@@ -264,13 +264,16 @@ async function supervisorStatus(gr) {
     const stats = Object.assign(supervisor.summary(), { artifactBytes: artifacts.filter((a) => a.exists !== false).reduce((n, a) => n + (a.sizeBytes || 0), 0) });
     let gateAsks = [];
     try { gateAsks = coord.open().prepare('SELECT * FROM gate_asks ORDER BY first_at').all().map((r) => ({ agentId: r.agent_id, firstAt: r.first_at, lastAt: r.last_at, text: r.text, stale: !!r.stale })); } catch (_) { gateAsks = []; }
+    // the client update gate's own wait list (scripts/restart-gate.js --client, scripts/client-update.sh): Client Update Waits
+    let clientGateAsks = [];
+    try { clientGateAsks = coord.open().prepare('SELECT * FROM client_gate_asks ORDER BY first_at').all().map((r) => ({ agentId: r.agent_id, firstAt: r.first_at, lastAt: r.last_at, text: r.text, stale: !!r.stale })); } catch (_) { clientGateAsks = []; }
     let spend = null;
     try { spend = await Promise.race([supervisor.spend(gr), new Promise((r) => setTimeout(() => r(null), 4000))]); } catch (_) { spend = null; }
     let rules = null;
     try { rules = supervisor.rulesState(); } catch (e) { console.warn(`[claudeDesk] rules: ${e.message}`); }
     let maint = null;
     try { maint = maintenance.state(gr); } catch (e) { console.warn(`[claudeDesk] maintenance: ${e.message}`); }
-    return { maintenance: maint, usage: (() => { try { return usageAudit.summary(); } catch (_) { return null; } })(), rules, spend, settings: set, engines: supEnginesWithModels(gr), reviews: supervisor.listReviews({ limit: 80 }), work: supervisor.listWork({ limit: 100 }), holds: supervisor.listHolds(), gateAsks, topologies: supervisor.TOPOLOGIES, locks, artifacts, stats };
+    return { maintenance: maint, usage: (() => { try { return usageAudit.summary(); } catch (_) { return null; } })(), rules, spend, settings: set, engines: supEnginesWithModels(gr), reviews: supervisor.listReviews({ limit: 80 }), work: supervisor.listWork({ limit: 100 }), holds: supervisor.listHolds(), gateAsks, clientGateAsks, topologies: supervisor.TOPOLOGIES, locks, artifacts, stats };
 }
 
 /** Fleet > Usage: the tree for 1 or 7 days; a first read of a big window that takes over 9 s answers "scanning" and finishes in the background. */

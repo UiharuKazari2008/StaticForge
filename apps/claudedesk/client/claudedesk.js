@@ -1724,6 +1724,8 @@
     const supHolds = () => (S.sup.data && Array.isArray(S.sup.data.holds) ? S.sup.data.holds : []);
     const holdOf = (sid) => supHolds().find((h) => h.sessionId === sid) || null;
     const supAsks = () => (S.sup.data && Array.isArray(S.sup.data.gateAsks) ? S.sup.data.gateAsks : []);
+    /** Client update waits (scripts/client-update.sh): agents whose uncommitted client edits hold a service-worker notify. */
+    const supClientAsks = () => (S.sup.data && Array.isArray(S.sup.data.clientGateAsks) ? S.sup.data.clientGateAsks : []);
     const HOLD_KIND = { manual: 'By hand', collision: 'Two agents on the same files', agent: 'By an agent' };
     const holdWord = (h) => (h && h.mode === 'freeze' ? 'Frozen' : 'Paused');
     const holdLine = (h) => `${holdWord(h)}${h.reason ? `: ${h.reason}` : ''}`;
@@ -1831,11 +1833,12 @@
         'sup-settings': ['cd-sup-set'],
         'sup-reviews': ['cd-sup-list', 'cd-sup-detail'],
         'sup-asks': ['cd-sup-asks'],
+        'sup-client-asks': ['cd-sup-client-asks'],
         'sup-holds': ['cd-sup-holds'],
         'sup-locks': ['cd-sup-locks'],
         'sup-arts': ['cd-sup-arts']
     };
-    const SUP_TITLE = { 'co-supervisor': 'Supervisor', 'sup-settings': 'Supervisor Settings', 'sup-reviews': 'Reviews', 'sup-asks': 'Restart Waits', 'sup-holds': 'Paused Sessions', 'sup-locks': 'Managed Locks', 'sup-arts': 'Work Folders and Temp Files' };
+    const SUP_TITLE = { 'co-supervisor': 'Supervisor', 'sup-settings': 'Supervisor Settings', 'sup-reviews': 'Reviews', 'sup-asks': 'Restart Waits', 'sup-client-asks': 'Client Update Waits', 'sup-holds': 'Paused Sessions', 'sup-locks': 'Managed Locks', 'sup-arts': 'Work Folders and Temp Files' };
 
     /** The Supervisor node's dashboard: figures that link to their pages (reviews, cost, pauses, waits, locks, folders, maintenance). */
     function supDashTiles(st, reviews, asks, holds, locks, arts, total) {
@@ -1859,6 +1862,7 @@
             tile('co-supervisor', '/static_images/vista-cmdbar/gears.png', money(w.week), 'Cost, 7 days'),
             tile('sup-holds', '/static_images/vista-cmdbar/pause.png', holds.length, 'Paused sessions', true),
             tile('sup-asks', '/static_images/vista-cmdbar/clock.png', asks.length, 'Restart waits', true),
+            tile('sup-client-asks', '/static_images/vista-cmdbar/clock.png', supClientAsks().length, 'Client update waits', true),
             tile('sup-locks', '/static_images/vista-cmdbar/lock.png', locks.length, 'Managed locks'),
             tile('sup-arts', FOLDER16, arts.length, 'Work folders', false, `${arts.length} folders, ${bytesText(total)}`),
             tile('sup-maint', '/static_images/vista-cmdbar/tools.png', ml, 'Last maintenance run')
@@ -1983,8 +1987,11 @@
         ], holdRows, { sortId: 'cd-sup-holds', sort: { key: 'at', dir: -1 }, empty: 'No session is paused.' });
         const asks = supAsks();
         const askBody = asks.length ? asks.map((g) => `<div class="cd-infobar is-warning" role="alert"><img src="${VI}/warning-16.png" alt=""><span>${esc(askText(g))}</span></div>`).join('') : '';
+        const casks = supClientAsks();
+        const caskBody = casks.length ? casks.map((g) => `<div class="cd-infobar is-warning" role="alert"><img src="${VI}/warning-16.png" alt=""><span>${esc(askText(g, 'Client update'))}</span></div>`).join('') : '';
         const html = c.page(SUP_TITLE[part], side, [
             asks.length || part === 'sup-asks' ? { id: 'cd-sup-asks', title: `Restart waits (${asks.length})`, body: `${askBody || '<p>No agent is waiting to restart Dreamscape.</p>'}<p class="mmc-hint">An agent asked to restart Dreamscape and waits for the others to be idle. The Supervisor checks the wait after the time set below.</p>` } : null,
+            casks.length || part === 'sup-client-asks' ? { id: 'cd-sup-client-asks', title: `Client update waits (${casks.length})`, body: `${caskBody || '<p>No client update is waiting.</p>'}<p class="mmc-hint">An agent asked to send a client update and waits for sessions with uncommitted client edits to commit them or say they are fine. The Supervisor checks the wait after the same time as a restart wait.</p>` } : null,
             { id: 'cd-sup-tiles', title: 'Dashboard', body: supDashTiles(st, reviews, asks, holds, locks, arts, total) },
             { id: 'cd-sup-recent', title: 'Latest reviews with gaps', body: supGapTable(reviews) },
             { id: 'cd-sup-set', title: 'Settings', body: form },
@@ -2394,7 +2401,7 @@
         };
     }
 
-    const askText = (g) => { const a = agentOf(g.agentId); return `Restart waiting on ${a ? (a.name || a.id) : (g.agentId || 'an agent')}${g.text ? `: ${String(g.text).replace(/\s+/g, ' ').slice(0, 160)}` : ''}${g.firstAt ? ` (since ${timeOnly(g.firstAt)})` : ''}${g.stale ? ' - it looks stuck' : ''}`; };
+    const askText = (g, what) => { const a = agentOf(g.agentId); return `${what || 'Restart'} waiting on ${a ? (a.name || a.id) : (g.agentId || 'an agent')}${g.text ? `: ${String(g.text).replace(/\s+/g, ' ').slice(0, 160)}` : ''}${g.firstAt ? ` (since ${timeOnly(g.firstAt)})` : ''}${g.stale ? ' - it looks stuck' : ''}`; };
 
     /** The running sessions no work item owns, as the Sessions list shows them. */
     function unsupervisedPage(c, quiet) {
@@ -3259,6 +3266,7 @@
                         { id: 'sup-settings', name: 'Settings', icon: '/static_images/vista-cmdbar/properties.png', desc: 'Engine, model, delivery, limits and the models and effort per job' },
                         { id: 'sup-reviews', name: `Reviews (${reviewN})`, icon: '/static_images/vista-cmdbar/paste.png', desc: 'What the Supervisor made of each finished agent turn' },
                         { id: 'sup-asks', name: `Restart Waits (${supAsks().length})`, icon: '/static_images/vista-cmdbar/clock.png', desc: 'Agents waiting to restart Dreamscape' },
+                        { id: 'sup-client-asks', name: `Client Update Waits (${supClientAsks().length})`, icon: '/static_images/vista-cmdbar/clock.png', desc: 'Agents waiting to send a client update' },
                         { id: 'sup-holds', name: `Paused Sessions (${supHolds().length})`, icon: '/static_images/vista-cmdbar/pause.png', desc: 'Sessions the Supervisor or you paused' },
                         { id: 'sup-locks', name: `Managed Locks (${supLocks().length})`, icon: '/static_images/vista-cmdbar/lock.png', desc: 'Busy locks the Supervisor keeps for agents' },
                         { id: 'sup-arts', name: `Work Folders (${supArtifacts().length})`, icon: FOLDER16, desc: 'Work folders and temp files the agents left' },
@@ -3449,6 +3457,7 @@
             tile('bg-agents', `${ITEMS}/programs-and-features-16.png`, bgRunning().length, 'Background agents'),
             tile('sup-reviews', '/static_images/vista-cmdbar/paste.png', gaps, 'Reviews with gaps', true),
             tile('sup-asks', '/static_images/vista-cmdbar/clock.png', supAsks().length, 'Restart waits', true),
+            tile('sup-client-asks', '/static_images/vista-cmdbar/clock.png', supClientAsks().length, 'Client update waits', true),
             tile('co-devices', '/static_images/vista-cmdbar/clock.png', devWaiting(), 'Device waits', true),
             tile('sup-holds', '/static_images/vista-cmdbar/pause.png', supHolds().length, 'Paused', true),
             tile('usage-flags', `${VI}/warning-16.png`, usgOpenFlags(), 'Heavy usage', true),
@@ -5144,7 +5153,7 @@
             case 'co-devices': return devicesPage(c);
             case 'co-locks': return locksPage(c);
             case 'sup-manager': return managerPage(c);
-            case 'co-supervisor': case 'sup-settings': case 'sup-reviews': case 'sup-asks': case 'sup-holds': case 'sup-locks': case 'sup-arts': return supervisorPage(c, n.id);
+            case 'co-supervisor': case 'sup-settings': case 'sup-reviews': case 'sup-asks': case 'sup-client-asks': case 'sup-holds': case 'sup-locks': case 'sup-arts': return supervisorPage(c, n.id);
             case 'sup-maint': return maintenancePage(c);
             case 'co-work': return workPage(c, 'all');
             case 'sessions': return sessionsPage(c, false);
@@ -5238,7 +5247,7 @@
             case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-settings': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }];
             case 'sup-reviews': return [{ text: 'Read Again', action: 'sup-refresh' }];
-            case 'sup-asks': return [{ text: 'Read Again', action: 'sup-refresh' }];
+            case 'sup-asks': case 'sup-client-asks': return [{ text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-holds': return [{ text: 'Resume', action: 'sup-resume' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-locks': return [{ text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-maint': return [{ text: 'Run Now', action: 'maint-run', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Dry Run', action: 'maint-dry', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Save Settings', action: 'maint-save', disabled: !maintUi().draft }, { text: 'Read Again', action: 'sup-refresh' }];
@@ -7047,6 +7056,7 @@
                 if (n.id === 'usage') { const u = usgUi(); return u.data && u.data.rows ? `${plural(u.data.rows.filter((r) => r.kind === 'session').length, 'session')}, ${u.days === 1 ? 'last 24 h' : 'last 7 days'}` : ''; }
                 if (n.id === 'usage-flags') return plural(usgOpenFlags(), 'open flag');
                 if (n.id === 'sup-asks') return plural(supAsks().length, 'restart wait');
+                if (n.id === 'sup-client-asks') return plural(supClientAsks().length, 'client update wait');
                 if (n.id === 'co-supervisor') return S.sup.busy || (S.sup.data && S.sup.data.stats ? `${plural(S.sup.data.stats.reviewed || 0, 'review')}, ${S.sup.data.stats.gaps || 0} with gaps` : '');
                 if (nodeSid(n.id)) { const sid = nodeSid(n.id); const ch = S.chats.get(sid); const l = liveOf(sid); const il = ch && ch.ins ? insLine(ch.ins, !!(l && l.status === 'busy')) : ''; return ch ? [il || plural(ch.messages.length, 'message'), tasksStatus(ch)].filter(Boolean).join(' \u00b7 ') : ''; }
                 return [`Remote Control: ${RC_TEXT[(S.rc && S.rc.state) || 'unknown'] || 'Unknown'}`, loginText()].filter(Boolean).join(', ');
