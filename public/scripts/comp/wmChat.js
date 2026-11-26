@@ -1003,8 +1003,9 @@
     function hookStream() {
         if (streamHooked || typeof registerWsInboundHandler !== 'function') return; // eslint-disable-line no-undef
         streamHooked = true;
-        // wsClient.on never sees chat_* messages (websocket.js sends them only to the registry's 'only' phase)
-        const reg = (type, fn) => registerWsInboundHandler({ id: `wmChat.${type}`, type, phase: 'only', priority: -10, handler: (m) => { try { fn(m); } catch (err) { console.warn('[wmChat]', type, err); } } }); // eslint-disable-line no-undef
+        // wsClient.on never sees chat_* messages (websocket.js sends them only to the registry's 'only' phase);
+        // shared: these run after 110-chatInbound.js's owners on purpose (#819)
+        const reg = (type, fn) => registerWsInboundHandler({ id: `wmChat.${type}`, type, phase: 'only', priority: -10, shared: true, handler: (m) => { try { fn(m); } catch (err) { console.warn('[wmChat]', type, err); } } }); // eslint-disable-line no-undef
         reg('chat_streaming_start', onStreamStart);
         reg('chat_streaming_update', onStreamUpdate);
         reg('chat_streaming_complete', onStreamComplete);

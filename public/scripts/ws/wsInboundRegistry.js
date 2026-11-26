@@ -49,7 +49,8 @@ function normalizePhase(phase) {
 }
 
 /**
- * @param {{ id: string, type: string, alias?: string|string[], phase?: 'pre'|'post'|'only', priority?: number, handler: Function }} options
+ * @param {{ id: string, type: string, alias?: string|string[], phase?: 'pre'|'post'|'only', priority?: number, shared?: boolean, handler: Function }} options
+ *   shared: a listener that runs beside the type's owner on purpose (no duplicate type+phase warning)
  * @returns {() => void} unregister
  */
 function registerWsInboundHandler(options) {
@@ -69,7 +70,8 @@ function registerWsInboundHandler(options) {
         console.warn('[wsInboundRegistry] duplicate registration id:', id);
     }
 
-    const duplicateTypePhase = wsInboundHandlers.find((entry) => entry.phase === phase && entry.type === options.type);
+    const duplicateTypePhase = options.shared ? null
+        : wsInboundHandlers.find((entry) => entry.phase === phase && entry.type === options.type && !entry.shared);
     if (duplicateTypePhase && duplicateTypePhase.id !== id) {
         console.warn(
             '[wsInboundRegistry] duplicate type+phase registration:',
@@ -87,6 +89,7 @@ function registerWsInboundHandler(options) {
         alias: options.alias || null,
         phase,
         priority: Number.isFinite(options.priority) ? options.priority : 0,
+        shared: options.shared === true,
         handler: options.handler
     };
 
