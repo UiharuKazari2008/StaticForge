@@ -3101,7 +3101,7 @@
         const count = el.querySelector('.wm-tm-count');
         const empty = el.querySelector('.wm-tm-empty');
         const all = el.querySelector('.wm-tm-all');
-        const kept = { hidden: el.hidden, cards: [...list.childNodes], count: count.textContent, empty: empty.hidden, all: all.disabled, closing: el.classList.contains('is-closing') };
+        const kept = { hidden: el.hidden, cards: [...list.childNodes], count: count.textContent, empty: empty.hidden, all: all.disabled, closing: el.classList.contains('is-closing'), left: list.scrollLeft };
         const box = (n) => { const r = n.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((v) => Math.round(v * k * 100) / 100); };
         const hide = (nodes) => { const was = nodes.map((n) => [n, n.style.visibility]); nodes.forEach((n) => { n.style.visibility = 'hidden'; }); return () => was.forEach(([n, v]) => { n.style.visibility = v; }); };
         const mk = (id, on) => {
@@ -3169,6 +3169,8 @@
             all.disabled = kept.all;
             el.classList.toggle('is-closing', kept.closing);
             el.hidden = kept.hidden;
+            // a sample taken while the switcher is open leaves its cards where they were scrolled (#1220)
+            if (kept.left) list.scrollLeft = kept.left;
         }
         return out;
     }
