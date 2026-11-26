@@ -9,6 +9,8 @@
  *   finishedSessions() (#1255) the decision of which rc-* tmux sessions to close: ~46 finished sessions (200-380 MB each) sat in
  *                    their tmux sessions after their work item was done and filled the host. Pure: the Supervisor feeds it the
  *                    rc-* sessions (rcCandidates), the work rows naming each and the in-flight check, then disconnects what it says.
+ *   parkedSessions() (#1256) the same for the idle session of a parked item (Sent Back too long, now Input Required): closed after
+ *                    it has been parked a while; answering the item or Send Back to Work resumes it.
  * Floors come from measurements on the host (13.9 GB RAM, 16 GB swap, one claude session 200-380 MB): MemAvailable 1.5 GB
  * keeps room for a session plus Dreamscape's major GC; free swap 2 GB keeps it from paging through a full swap. Override
  * with FLEET_MIN_MEM_MB / FLEET_MIN_SWAP_FREE_MB.
@@ -117,6 +119,36 @@ function finishedSessions({ candidates, itemsBySession, inFlight }) {
     return out;
 }
 
+/**
+ * Which rc-* sessions of PARKED items to close (#1256). A parked item is Input Required because it sat Sent Back too long (state
+ * 'input' with parked_at set): nobody is working on it, yet its claude process holds 200-380 MB. A session closes only when work
+ * items name it, every one of them is over (done / failed / cancelled) or parked, at least one is parked, the newest park is
+ * closeAfterMs old or more, and nothing is in flight for it (status busy, background agents / shells, a review: inFlight(sid)).
+ * An item that is Input Required for a real question, running or waiting keeps its session. Closing loses nothing: answering the
+ * item or Send Back to Work resumes the session (steerResumed).
+ *   candidates: from rcCandidates; itemsBySession: Map full session id -> [{ id, state, parked_at }]; now / closeAfterMs in ms.
+ * Returns { close: [{ id, tmuxSession, itemId, parkedAt }], keep: [{ id, tmuxSession, why }] }.
+ */
+function parkedSessions({ candidates, itemsBySession, inFlight, now, closeAfterMs }) {
+    const out = { close: [], keep: [] };
+    const at = Number(now) || Date.now();
+    const after = Number(closeAfterMs) >= 0 ? Number(closeAfterMs) : 60 * 60000;
+    const isParked = (i) => i.state === 'input' && Number(i.parked_at) > 0;
+    for (const s of candidates || []) {
+        if (!s || !/^rc-/.test(s.tmuxSession || '')) continue;
+        const items = (s.id && !s.ambiguous && itemsBySession && itemsBySession.get(s.id)) || [];
+        const parked = items.filter(isParked);
+        if (!parked.length) continue; // nothing parked here: not this decision's business (finishedSessions handles the finished ones)
+        const other = items.find((i) => !isParked(i) && !TERMINAL.includes(i.state));
+        if (other) { out.keep.push({ id: s.id, tmuxSession: s.tmuxSession, why: `item ${other.id} is ${other.state}` }); continue; }
+        const newest = parked.reduce((a, b) => (Number(b.parked_at) > Number(a.parked_at) ? b : a));
+        if (at - Number(newest.parked_at) < after) { out.keep.push({ id: s.id, tmuxSession: s.tmuxSession, why: 'parked less than the limit ago' }); continue; }
+        if (s.status === 'busy' || (inFlight && inFlight(s.id))) { out.keep.push({ id: s.id, tmuxSession: s.tmuxSession, why: 'work in flight' }); continue; }
+        out.close.push({ id: s.id, tmuxSession: s.tmuxSession, itemId: newest.id, parkedAt: Number(newest.parked_at) });
+    }
+    return out;
+}
+
 const scratchRoot = () => path.join(os.tmpdir(), `claude-${process.getuid ? process.getuid() : 1000}`);
 
 /** Removes per-session scratch folders under /tmp/claude-<uid>/<project>/ whose session has no live process and which
@@ -157,4 +189,4 @@ function dirKb(dir) {
     return n;
 }
 
-module.exports = { readMem, admission, sweepScratch, finishedSessions, rcCandidates, TERMINAL, liveSessionIds, MIN_MEM_MB, MIN_SWAP_FREE_MB };
+module.exports = { readMem, admission, sweepScratch, finishedSessions, parkedSessions, rcCandidates, TERMINAL, liveSessionIds, MIN_MEM_MB, MIN_SWAP_FREE_MB };

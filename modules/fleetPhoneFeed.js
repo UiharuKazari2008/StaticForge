@@ -56,7 +56,8 @@ function buildWork(sup, T, liveById, holds, names) {
             model: w.model || '', effort: w.effort || '', sessionId: sid,
             createdAt: w.createdAt || null, startedAt: w.startedAt || null, endedAt: w.endedAt || null,
             message: cut(w.message, 200), parentId: w.parentId || null, topology: w.topology || '',
-            parts: kids.get(w.id) || null
+            parts: kids.get(w.id) || null,
+            sentBackAt: w.sentBackAt || null, sessionGone: !!w.sessionGone, parked: !!w.parked, parkedAt: w.parkedAt || null
         }, w.engine && w.engine !== 'claude' ? { engine: w.engine } : {}, shortIssue(w), {
             questions: w.state === 'input' ? (w.questions || []).slice(0, 12).map((q) => ({ question: cut(q.question, 400), answer: cut(q.answer, 400), why: cut(q.why, 300), ask: cut(q.ask, 400) })) : [],
             held: h ? { mode: h.mode, reason: cut(h.reason, 200) } : null,

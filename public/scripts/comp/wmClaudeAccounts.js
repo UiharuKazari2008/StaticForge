@@ -1044,9 +1044,29 @@
         const w = it.d;
         const p = progOf(w);
         const open = w.state === 'starting' || w.state === 'running' || w.state === 'waiting';
-        return `${w.held ? askedHold(w.held) : (QSTATE[w.state] || w.state || '')}${p && open ? ` ${p.done}/${p.total}` : ''}`;
+        const base = w.held ? askedHold(w.held) : qWorkLabel(w, Date.now());
+        return `${base}${p && open ? ` ${p.done}/${p.total}` : ''}${w.sessionGone && !w.held ? ' - session gone' : ''}`;
     }
-    const qDotOf = (it) => (it.kind === 'live' ? (it.d.held ? 'warn' : it.d.status === 'busy' ? 'ok' : 'off') : (it.d.held ? 'warn' : QDOT[it.d.state] || 'off'));
+    // qage:begin (pure; scripts/test-fleet-work-rows.js runs this block) - the age is worked out when a row is drawn, never ticked
+    /** "45 min", "2 h 10 min", "3 h", "2 d 4 h" for a span in ms; '' when there is no usable start. */
+    function qAgeText(sinceMs, nowMs) {
+        const t = Number(sinceMs);
+        if (!Number.isFinite(t) || t <= 0) return '';
+        const m = Math.max(0, Math.floor((nowMs - t) / 60000));
+        if (m < 1) return 'under 1 min';
+        if (m < 60) return `${m} min`;
+        const h = Math.floor(m / 60);
+        if (h < 24) return `${h} h${m % 60 ? ` ${m % 60} min` : ''}`;
+        return `${Math.floor(h / 24)} d${h % 24 ? ` ${h % 24} h` : ''}`;
+    }
+    /** The state text of a work row: "Sent Back 2 h 10 min", "Needs a person 3 h", else the plain label. Absent fields change nothing. */
+    function qWorkLabel(w, nowMs) {
+        if (w.state === 'waiting' && w.sentBackAt) { const a = qAgeText(w.sentBackAt, nowMs); return a ? `Sent Back ${a}` : 'Sent Back'; }
+        if (w.state === 'input' && w.parked) { const a = qAgeText(w.parkedAt, nowMs); return a ? `Needs a person ${a}` : 'Needs a person'; }
+        return QSTATE[w.state] || w.state || '';
+    }
+    // qage:end
+    const qDotOf = (it) => (it.kind === 'live' ? (it.d.held ? 'warn' : it.d.status === 'busy' ? 'ok' : 'off') : (it.d.held ? 'warn' : it.d.sessionGone ? 'bad' : QDOT[it.d.state] || 'off'));
     const qKey = (it) => `${it.kind === 'live' ? 'u' : 'w'}:${it.d.id}`;
     const qTitle = (it) => it.d.title || (it.kind === 'live' ? String(it.d.id).slice(0, 8) : `Request ${it.d.id}`);
     const qSid = (it) => (it.kind === 'live' ? String(it.d.id) : (it.d.sessionId || ''));
@@ -1120,7 +1140,7 @@
         const parent = it.kind === 'work' && hasId(d.parentId) ? qWork().find((w) => String(w.id) === String(d.parentId)) : null;
         const tip = [title, d.doing ? `Doing: ${d.doing}` : '', st, parent ? `Part of ${parent.title || parent.id}` : '', d.account ? `Account: ${d.account}` : '',
             it.kind === 'work' ? [d.engine, d.model, d.effort].filter(Boolean).join(' / ') : (d.folder || ''), d.message || ''].filter(Boolean).join(' - ');
-        const warn = it.kind === 'work' && d.state === 'input';
+        const warn = it.kind === 'work' && (d.state === 'input' || !!d.sessionGone);
         return `<div class="wca-q-row${child ? ' wca-q-child' : ''}" role="button" data-wca-q="open" data-key="${esc(qKey(it))}" title="${esc(tip)}"><span class="wac-dot wac-dot-${qDotOf(it)}"></span>`
             + `<span class="wca-q-title">${esc(title)}</span><span class="wca-q-state ${warn ? 'wac-lv-warn' : 'wca-muted'}">${esc(st)}</span></div>`;
     }
@@ -1225,11 +1245,12 @@
         const d = it.d;
         const out = [];
         const sid = qSid(it);
-        out.push(`<div class="wm-form-hdr wca-sub-hdr">${esc(it.kind === 'live' ? (d.held ? askedHold(d.held) : d.status === 'busy' ? 'Working' : 'Idle') : (QLONG[d.state] || d.state || 'Request'))}</div>`);
+        out.push(`<div class="wm-form-hdr wca-sub-hdr">${esc(it.kind === 'live' ? (d.held ? askedHold(d.held) : d.status === 'busy' ? 'Working' : 'Idle') : (d.state === 'input' && d.parked ? 'Needs a person' : QLONG[d.state] || d.state || 'Request'))}</div>`);
         out.push(`<div class="wca-d-title">${esc(qTitle(it))}</div>`);
         const rows = [];
         const parent = it.kind === 'work' && hasId(d.parentId) ? qWork().find((w) => String(w.id) === String(d.parentId)) : null;
         rows.push(kvRow('State', esc(qStateText(it))));
+        if (it.kind === 'work' && d.sessionGone) out.push(noticeLine({ level: 'bad', text: 'Its session is gone: nothing is working on this item.' }, ''));
         if (d.held) {
             // a collision reason names both sessions and every file: the gist here, the whole text in the tooltip
             const why = String(d.held.reason || 'Paused');

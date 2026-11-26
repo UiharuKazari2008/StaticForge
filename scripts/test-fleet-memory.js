@@ -62,4 +62,35 @@ d = run({ names: [], live: [lv('o', 'idle', { origin: 'rc', tmuxSession: n8('o')
 assert.deepStrictEqual(d.close.map((x) => x.id), [FULL('o')], 'older CLIs: a live origin rc session counts; other origins are ignored');
 d = run({ names: [n8('o')], live: [lv('o', 'idle', { origin: 'rc', tmuxSession: n8('o') })], rows: [wk(1, 'done', 'o')] });
 assert.strictEqual(d.close.length, 1, 'on the socket and origin rc: one candidate, not two');
+// parkedSessions (#1256): a parked Input Required item's session closes when idle past the limit, never with work in flight
+{
+    const NOW = 10 * 3600e3; const LIM = 60 * 60000;
+    const pk = (id, c, parkedAgo, state = 'input') => ({ id, state, session_id: FULL(c), parked_at: parkedAgo === null ? null : NOW - parkedAgo });
+    const runP = ({ names, live = [], rows, flight = () => false, now = NOW }) => {
+        const { candidates, itemsBySession } = fm.rcCandidates({ names, live, rows });
+        return fm.parkedSessions({ candidates, itemsBySession, inFlight: flight, now, closeAfterMs: LIM });
+    };
+    let p = runP({ names: [n8('a')], live: [lv('a')], rows: [pk(1, 'a', LIM)] });
+    assert.deepStrictEqual(p.close.map((x) => [x.id, x.itemId, x.parkedAt]), [[FULL('a'), 1, NOW - LIM]], 'idle and parked for the limit: closed');
+    p = runP({ names: [n8('a')], live: [lv('a')], rows: [pk(1, 'a', LIM - 1)] });
+    assert.ok(!p.close.length && /less than/.test(p.keep[0].why), 'parked less than the limit ago: kept');
+    p = runP({ names: [n8('a')], live: [lv('a', 'busy')], rows: [pk(1, 'a', 3 * LIM)] });
+    assert.ok(!p.close.length && /in flight/.test(p.keep[0].why), 'a busy session is never closed');
+    p = runP({ names: [n8('a')], live: [lv('a')], rows: [pk(1, 'a', 3 * LIM)], flight: (sid) => sid === FULL('a') });
+    assert.ok(!p.close.length && /in flight/.test(p.keep[0].why), 'background work in flight keeps it');
+    p = runP({ names: [n8('a')], live: [lv('a')], rows: [pk(1, 'a', 3 * LIM), pk(2, 'a', 0, 'running')] });
+    assert.ok(!p.close.length && /item 2 is running/.test(p.keep[0].why), 'another item still working on the session keeps it');
+    p = runP({ names: [n8('a')], live: [lv('a')], rows: [pk(1, 'a', 3 * LIM), pk(2, 'a', null, 'input')] });
+    assert.ok(!p.close.length, 'an Input Required item that is not parked (a real question) keeps it');
+    p = runP({ names: [n8('a')], live: [lv('a')], rows: [pk(1, 'a', 3 * LIM), pk(2, 'a', 5 * LIM, 'done'), pk(3, 'a', 2 * LIM)] });
+    assert.deepStrictEqual(p.close.map((x) => x.itemId), [3], 'done items do not block; the newest park decides the age');
+    p = runP({ names: [n8('a')], live: [lv('a')], rows: [pk(1, 'a', 3 * LIM), pk(2, 'a', LIM - 5)] });
+    assert.ok(!p.close.length, 'the newest park is too recent');
+    p = runP({ names: [n8('a')], live: [lv('a')], rows: [pk(1, 'a', 3 * LIM, 'done')] });
+    assert.ok(!p.close.length && !p.keep.length, 'a finished item is finishedSessions\' business, not this decision\'s');
+    p = runP({ names: ['rc-manual'], live: [], rows: [pk(1, 'a', 3 * LIM)] });
+    assert.ok(!p.close.length, 'a tmux name that is not an id8 never matches');
+    p = runP({ names: [n8('a')], live: [], rows: [pk(1, 'a', 3 * LIM)] });
+    assert.strictEqual(p.close.length, 1, 'a tmux session whose claude process is gone closes the same way');
+}
 console.log('fleetMemory ok');

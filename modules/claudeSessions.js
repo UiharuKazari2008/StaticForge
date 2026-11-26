@@ -280,6 +280,14 @@ function configDirOf(pid, startedAt) {
     return dir;
 }
 
+/** A process's start time (clock ticks since boot, /proc/<pid>/stat field 22) as the session record's procStart writes it; null when unreadable. */
+function procStartOf(pid) {
+    try {
+        const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+        return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19] || null;
+    } catch (_) { return null; }
+}
+
 /** Every running claude with its session id (sessions/<pid>.json whose pid is alive). */
 function liveSessions() {
     let names = [];
@@ -288,6 +296,8 @@ function liveSessions() {
     names.forEach((n) => {
         const r = readJsonCached(path.join(sessionsDir(), n));
         if (!r || !SESSION_ID_RE.test(String(r.sessionId || '')) || !Number.isInteger(r.pid) || !pidAlive(r.pid)) return;
+        // a record a crashed claude left behind, whose pid another process has since taken, is not that session (#1256)
+        if (r.procStart && pidAlive === realAlive) { const now = procStartOf(r.pid); if (now && now !== String(r.procStart)) return; }
         const tmux = String(r.tmux || '');
         out.push({
             id: r.sessionId,
@@ -302,6 +312,7 @@ function liveSessions() {
             link: linkFor(r.bridgeSessionId),
             updatedAt: Number(r.updatedAt) || 0,
             startedAt: Number(r.startedAt) || 0,
+            procStart: r.procStart ? String(r.procStart) : '',
             configDir: configDirOf(r.pid, r.startedAt)
         });
     });

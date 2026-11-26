@@ -78,7 +78,7 @@ const TOOLS = [
         resume: { type: 'boolean', description: 'Start it again first when it is not running' },
         account: str('With resume: the account to run it on (default: auto)')
     }, ['session', 'text']),
-    tool('fleet_work_list', 'Fleet\'s work queue, compact rows: id, title, state (Waiting = held, Queued, Running, Sent Back, Done, Failed, Cancelled), source, account, model / effort, its Yozora issue (ref + url), created, note and the Supervisor\'s maintenance verdict on a Waiting item. Use fleet_work_get for one item in full.', {
+    tool('fleet_work_list', 'Fleet\'s work queue, compact rows: id, title, state (Waiting = held, Queued, Running, Sent Back, Input Required, Done, Failed, Cancelled; Input Required (needs a person) when the Supervisor gave up on a long Sent Back), sentBackFor (age text, on a Sent Back item), sessionGone (true when its session is not running), source, account, model / effort, its Yozora issue (ref + url), created, note and the Supervisor\'s maintenance verdict on a Waiting item. Use fleet_work_get for one item in full.', {
         state: { type: 'string', enum: [...WORK_FILTERS], description: 'held (Waiting), queued, running, sent_back, input (Input Required), done, failed, cancelled, open (everything not ended) or all. Default open' },
         search: str('Words that must appear in the title, brief or issue ref'),
         limit: { type: 'number', description: 'Most rows (default 40, max 200)' }
@@ -251,13 +251,35 @@ function resolveSession(ref) {
 const issueRef = (w) => (w.issue ? `${w.issue.repo}#${w.issue.number}` : null);
 const checkBrief = (c) => (c ? { verdict: c.verdict, at: iso(c.at), note: c.note || '' } : null);
 
+/** "45 min", "2 h 10 min", "2 d 4 h" since a ms timestamp ('' when there is none). */
+function ageText(sinceMs, nowMs) {
+    const t = Number(sinceMs);
+    if (!Number.isFinite(t) || t <= 0) return '';
+    const m = Math.max(0, Math.floor(((nowMs || Date.now()) - t) / 60000));
+    if (m < 1) return 'under 1 min';
+    if (m < 60) return `${m} min`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h} h${m % 60 ? ` ${m % 60} min` : ''}`;
+    return `${Math.floor(h / 24)} d${h % 24 ? ` ${h % 24} h` : ''}`;
+}
+/** The row's state text: parked Input Required reads "(needs a person)". */
+const stateText = (w) => (w.state === 'input' && w.parked ? 'Input Required (needs a person)' : STATE_LABEL[w.state] || w.state);
+/** Only the extra fields of a Sent Back / session-gone / parked item; nothing for an ordinary row. */
+function awaitingFields(w, nowMs) {
+    const out = {};
+    if (w.state === 'waiting' && w.sentBackAt) { const a = ageText(w.sentBackAt, nowMs); if (a) out.sentBackFor = a; }
+    if (w.sessionGone) out.sessionGone = true;
+    if (w.state === 'input' && w.parked && w.parkedAt) { const a = ageText(w.parkedAt, nowMs); if (a) out.parkedFor = a; }
+    return out;
+}
+
 function workRow(w) {
-    return {
-        id: w.id, title: w.title, state: STATE_LABEL[w.state] || w.state, source: w.source, account: w.account || 'auto',
+    return Object.assign({
+        id: w.id, title: w.title, state: stateText(w), source: w.source, account: w.account || 'auto',
         model: [w.engine && w.engine !== 'claude' ? w.engine : '', w.model, w.effort].filter(Boolean).join(' / '),
         issue: issueRef(w), issueUrl: w.issue ? w.issue.url : null, issues: w.issues && w.issues.length > 1 ? w.issues.map((i) => `${i.repo}#${i.number}`) : undefined, remoteControl: !!w.remoteControl, parent: w.parentId || undefined, created: iso(w.createdAt),
         note: String(w.message || '').slice(0, 200), check: checkBrief(w.check)
-    };
+    }, awaitingFields(w));
 }
 
 function workDispatch(sup, name, input) {
@@ -414,16 +436,31 @@ async function dispatch(gr, name, input) {
         return out;
     }
     if (name === 'claude_session_send') {
-        let { id, live } = resolveSession(input.session);
-        if (!live) {
-            if (input.resume !== true) throw new Error('It is not running: pass resume: true to start it again first');
+        const { id, live } = resolveSession(input.session);
+        const text = String(input.text || '');
+        const notRunning = () => Object.assign(new Error('It is not running: pass resume: true to start it again first'), { code: 'NOT_RUNNING' });
+        const resumeIt = async () => {
             const snap = await snapshot(gr);
             const acc = pickAccount(snap, input.account, false);
             const r = await launcher().resume(gr, id, { account: acc.index });
             if (r.state === 'failed') throw new Error(r.message || 'It did not start again');
-            live = true;
+        };
+        if (!live) {
+            if (input.resume !== true) throw notRunning();
+            await resumeIt();
         }
-        return Object.assign({ session: id }, await launcher().steer(id, String(input.text || '')));
+        let resumed = !live;
+        let sent;
+        try { sent = await launcher().steer(id, text); } catch (e) {
+            // a record that says running while its pane holds no claude (#1256): never a quiet "sent"
+            if (!(e && e.code === 'NOT_RUNNING')) throw e;
+            if (resumed) throw Object.assign(new Error('It was started again but is not ready for a message yet: send again in a moment'), { code: 'NOT_RUNNING' });
+            if (input.resume !== true) throw notRunning();
+            await resumeIt();
+            resumed = true;
+            sent = await launcher().steer(id, text);
+        }
+        return Object.assign({ session: id }, sent);
     }
     if (name === 'claude_session_stop') {
         const { id } = resolveSession(input.session);
@@ -453,5 +490,5 @@ async function handleFleetTool(gr, req, name, args) {
 module.exports = {
     SCOPE, ROLE, TOOLS, isFleetTool, isFleetOwner, scopesHaveFleet, handleFleetTool, pickForStart,
     overview, sessionBrief, maintenanceBrief, workDispatch, workRow,
-    _test: { pickAccount, snapshot, dispatch }
+    _test: { pickAccount, snapshot, dispatch, workRow, ageText }
 };

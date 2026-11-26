@@ -79,6 +79,7 @@ const sessionsDir = () => path.join(claudeHome(), '.claude', 'sessions');
 function stateDir() { return path.dirname(require('./agentCoord/store').dbPath()); }
 function socketPath() { return process.env.AGENT_SUPERVISOR_SOCKET || path.join(stateDir(), 'supervisor.sock'); }
 const coord = () => require('./agentCoord/store');
+const gapState = () => require('./supervisorGapState'); // the state of the issues and commits a review names, read at review time (#1256)
 /** Task lists and titles (modules/sessionTasks.js), wired to this Supervisor's engine. */
 let tasksWired = false;
 function sessionTasks() {
@@ -306,7 +307,13 @@ function turnOf(messages) {
     const human = users.filter((u) => !u.startsWith(STEER_PREFIX));
     // a turn that only answers the Supervisor's own note is checked against that note (a supervised work item needs it)
     const asks = human.length ? human : users;
-    return { request: asks[0] || '', steering: asks.slice(1), actions, final, said: said.slice(0, -1), fromSupervisor };
+    // review() judges a turn that only answers a note against the real request (the work item's brief, or the last human text):
+    // the notes are kept apart as the Supervisor's own earlier claims (#1256); Yukimi's "Sent back by" note carries the prefix
+    // but is hers, so it stays steering
+    const relayed = (u) => u.startsWith(`${STEER_PREFIX} Sent back by `);
+    const notes = fromSupervisor ? users.filter((u) => !relayed(u)) : [];
+    const sentBack = fromSupervisor ? users.filter(relayed) : [];
+    return { request: asks[0] || '', steering: asks.slice(1), actions, final, said: said.slice(0, -1), fromSupervisor, notes, sentBack };
 }
 
 function capTurn(t) {
@@ -316,7 +323,8 @@ function capTurn(t) {
     let actions = t.actions.slice(-120);
     const final = cut(t.final, 6000);
     const said = (t.said || []).map((x) => cut(x, 800)).slice(-12);
-    let size = request.length + steering.join('').length + final.length;
+    const notes = (t.notes || []).map((x) => cut(x, 1500)).slice(-4);
+    let size = request.length + steering.join('').length + final.length + notes.join('').length;
     const kept = [];
     for (let i = actions.length - 1; i >= 0; i -= 1) {
         if (size + actions[i].length > MAX_INPUT) break;
@@ -324,7 +332,7 @@ function capTurn(t) {
         kept.unshift(actions[i]);
     }
     actions = kept;
-    return { request, steering, actions, final, said, droppedActions: t.actions.length - actions.length };
+    return { request, steering, actions, final, said, notes, requestIsNote: !!t.requestIsNote, droppedActions: t.actions.length - actions.length };
 }
 
 const SYSTEM = [
@@ -338,6 +346,10 @@ const SYSTEM = [
     'When "The user\'s list" is given, it holds everything the user asked over the whole session, with a tick and the evidence for the items already done: an open item without evidence that this turn was about and did not address is a gap; a ticked item with evidence is addressed. Name the open items this turn did, with what shows it, in "done".',
     'Standing rule from Yukimi: "I do not and should not have much involvement in the process. The point is for you to take control of getting the task completed and fully tested and reviewed." You own completion. Answer every question you reasonably can yourself: scope, approach, which option to take, whether to test, whether a second login / sign-in flow should be built, waiting on other agents. Send the agent back (gaps) until the work is built, tested with evidence and reviewed. Leave "answer" empty ONLY for what truly needs Yukimi: spending money, a secret / password / login only she has, creating an account only she can make, or an irreversible outward action toward other people (publishing to the public web, sending mail to others, deleting her data). Engineering is never hers: git (push, merge, rebase, diverged branches, commits missing from origin, conflicts, branch protection), builds, restarts, tests, CI, other agents and Fleet itself are answered by you - the logical answer is to merge correctly without losing anyone\'s work. When an answer needs real work or deep reasoning, do not ask: put "followUp":{"title":"...","brief":"the complete brief: goal, files, how to merge or fix without losing work, acceptance"} on that question (answer may stay empty) and the Supervisor starts it as its own work item and tells the agent. No work item may stall: when a session stops with the item unfinished, you act (send the open points again, review again, or hand the rest to a new work item); never leave it waiting for Yukimi to notice. When in doubt you decide: take the recommended option (or the safest reasonable one) and say so in the answer ("Decided by the Supervisor: option B, the recommended one") instead of asking. "Which option do you prefer" with a recommended option is answered with that option, never escalated.',
     'A turn that ends waiting on ANOTHER AGENT or EVENT (not on Yukimi) is not "input" and not done: the agent says it waits for someone to commit, to release claims, for a build gate or a restart to finish, for another session to end. Give verdict "ok" (or "gaps" when something else was missed) and record the wait in "waitsOn":{"kind":"commit"|"claims"|"build"|"restart"|"agent","who":"agent name or id when named","paths":["files named"],"what":"one line: what it waits for"}. The Supervisor watches the condition and tells the agent to continue when it clears. Omit "waitsOn" when nothing is waited on.',
+    'An agent that answers a point with evidence that it is already true (the issue is closed, the commit is on origin/main, the file no longer exists) or says why it does not apply has addressed it: do not send it again.',
+    'A reference to another issue ("#852 follow-up", "split off from #N", "see #N", "comment progress on #N") is context or exactly what it says, never an ask to close, finish or "close out" that issue. Agents close no issues: the Supervisor closes the tracked issue itself.',
+    'Every item in "missed" must quote, in "evidence", the words of the request or the steering it comes from. When you cannot quote them it is not a gap. Notes the Supervisor typed into the session earlier are its own claims, not asks: a point in them counts only when the request or the steering asked for it.',
+    'When "Current state of what is named" is given, it is the truth about those issues and commits, read just now: never report as missed something it shows is already so (a closed issue, a commit already on origin/main).',
     'Answer ONLY a JSON object: {"verdict":"ok"|"gaps"|"input"|"unclear","summary":"one sentence","waitsOn":null,"missed":[{"item":"what was asked and not addressed","evidence":"why you think so, quoting the request"}],"questions":[{"question":"what the agent waits on","answer":"your answer or empty","why":"source of the answer"}],"done":[{"id":12,"evidence":"short proof from the actions or the answer"}]}. verdict ok means nothing missed and nothing waiting on the user; unclear means the summary is not enough to tell. "done" is optional (only ids from the user\'s list).'
 ].join('\n');
 
@@ -346,11 +358,18 @@ function promptFor(t, meta) {
         `Session: ${meta.title || meta.sessionId} (account ${meta.account || 'host'})${meta.partial ? ' [the start of this turn was before the Supervisor saw it]' : ''}`,
         '',
         '## Request',
-        t.request || '(no request text in this turn)',
-        '',
+        (t.requestIsNote ? '(No request or brief could be found for this turn: the text below is the Supervisor\'s own earlier note to the agent, not something Yukimi asked, and it may be wrong.)\n' : '') + (t.request || '(no request text in this turn)'),
+        ''
+    ].concat(t.notes && t.notes.length && !t.requestIsNote ? [
+        `## The Supervisor's own earlier notes to the agent (${t.notes.length})`,
+        'The Supervisor typed these into the session itself; Yukimi did not. A point in them is the Supervisor\'s earlier claim and can be wrong. Check each point against the Request and against the current state: a point the Request never asked for is dropped, a point that is already true is addressed. This turn is judged against the Request above, never against these notes.',
+        t.notes.map((s, i) => `${i + 1}. ${s}`).join('\n'),
+        ''
+    ] : []).concat([
         `## Steering sent while it worked (${t.steering.length})`,
         t.steering.length ? t.steering.map((s, i) => `${i + 1}. ${s}`).join('\n') : '(none)',
-        '',
+        ''
+    ]).concat(meta.state ? [String(meta.state), ''] : []).concat([
         `## What it did (${t.actions.length} tool calls${t.droppedActions ? `, ${t.droppedActions} earlier ones left out` : ''})`,
         t.actions.join('\n') || '(no tool calls)',
         '',
@@ -364,7 +383,7 @@ function promptFor(t, meta) {
         `## Issues this run covers (${meta.issuesList.length})`,
         meta.issuesList.map((i, n) => `${n + 1}. ${i.repo}#${i.number}${i.title ? ` - ${i.title}` : ''}`).join('\n'),
         'This run covers these issues together. In your JSON also answer "issues":[{"ref":"owner/repo#N","done":true|false,"left":"what is still open (empty when done)"}] with one entry per issue above: done is true only when that issue\'s own ask was done and shown to work; otherwise false, and say plainly what is left. verdict ok means every issue is done.'
-    ] : []).join('\n');
+    ] : [])).join('\n');
 }
 
 let fetchFn = (...a) => fetch(...a);
@@ -653,7 +672,9 @@ function db() {
         if (!hcols.has('other_session')) d.exec("ALTER TABLE supervisor_holds ADD COLUMN other_session TEXT NOT NULL DEFAULT ''");
         const wcols = new Set(d.prepare('PRAGMA table_info(supervisor_work)').all().map((c) => c.name));
         if (!wcols.has('engine')) d.exec("ALTER TABLE supervisor_work ADD COLUMN engine TEXT NOT NULL DEFAULT 'claude'");
-        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT'], ['remote_control', 'INTEGER NOT NULL DEFAULT 0'], ['issue_refs', 'TEXT'], ['joined_into', 'INTEGER'], ['input_questions', 'TEXT']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
+        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT'], ['remote_control', 'INTEGER NOT NULL DEFAULT 0'], ['issue_refs', 'TEXT'], ['joined_into', 'INTEGER'], ['input_questions', 'TEXT'], ['sent_back_at', 'INTEGER'], ['sent_back_checks', 'INTEGER NOT NULL DEFAULT 0'], ['parked_at', 'INTEGER']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
+        // Sent Back has an age (#1256): items already Sent Back when the column arrives are dated by their session's last review
+        if (!wcols.has('sent_back_at')) d.exec("UPDATE supervisor_work SET sent_back_at = COALESCE((SELECT MAX(r.at) FROM supervisor_reviews r WHERE r.session_id = supervisor_work.session_id), started_at, created_at) WHERE state = 'waiting'");
         const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
         if (!cols.has('supervised')) d.exec('ALTER TABLE supervisor_state ADD COLUMN supervised INTEGER NOT NULL DEFAULT 0');
         const rcols = new Set(d.prepare('PRAGMA table_info(supervisor_reviews)').all().map((x) => x.name));
@@ -795,6 +816,16 @@ async function review(sessionId, trigger, opts = {}) {
     } catch (_) { /* no item */ }
     try { meta.standing = require('./agentCoord/memoryStore').digest({}); } catch (_) { /* no shared memory */ }
     const turn = turnOf(messages);
+    let workItem = null;
+    try { workItem = activeItemOf(sessionId) || null; } catch (_) { /* no item */ }
+    // a turn that only answers the Supervisor's own note is judged against the real request, never against the note (#1256:
+    // review 343 made up "close out #852", the note became the request, and the next reviews asked for it for ever): the
+    // work item's brief, else the last human text of the transcript; the note stays in the prompt as the Supervisor's own claim
+    if (turn.fromSupervisor) {
+        let real = workItem && workItem.prompt ? String(workItem.prompt) : '';
+        if (!real) { try { real = gapState().lastHumanText((await transcript.readPage(file, { limit: 400 })).messages, STEER_PREFIX); } catch (_) { real = ''; } }
+        if (real) { turn.request = real; turn.steering = turn.sentBack.slice(); } else turn.requestIsNote = true;
+    }
     // a work item's session starts from its brief (the opening prompt, not a human message): that brief is the request
     // (Nov 25 2026: items stayed "running" forever after "No request in this turn")
     if (!turn.request) {
@@ -806,6 +837,17 @@ async function review(sessionId, trigger, opts = {}) {
     const base = { session_id: sessionId, agent_id: meta.agentId, title: meta.title, account: meta.account, at: Date.now(), trigger, request: turn.request.slice(0, 4000), steering: JSON.stringify(turn.steering.map((x) => x.slice(0, 1500)).slice(0, 12)) };
     d.prepare(`INSERT INTO supervisor_state (session_id, file, offset, status, updated_at) VALUES (?, ?, ?, 'seen', ?)
         ON CONFLICT(session_id) DO UPDATE SET file = excluded.file, offset = excluded.offset, status = 'seen', updated_at = excluded.updated_at`).run(sessionId, file, end || 0, Date.now());
+    // the issues and commits the turn names, read now: the model is told, and a gap the state already settles is dropped below
+    let gapStates = null;
+    if (turn.request) {
+        try {
+            const G = gapState();
+            const defaultRepo = (workItem && workItem.issue_repo) || require('./fleetYozora').DEFAULT_REPO;
+            const refs = G.refsIn([turn.request].concat(turn.notes || [], turn.steering, [turn.final]), { defaultRepo });
+            gapStates = await G.stateOf(refs, { defaultRepo, cwd: (workItem && workItem.cwd) || (meta.rec && meta.rec.cwd) || '' });
+            meta.state = G.section(gapStates);
+        } catch (e) { gapStates = null; console.warn(`[supervisor] state ${sessionId.slice(0, 8)}: ${e.message}`); }
+    }
     let result;
     if (!turn.request) result = { verdict: 'unclear', summary: 'No request in this turn', missed: [], model: '', skipped: true };
     else {
@@ -817,6 +859,17 @@ async function review(sessionId, trigger, opts = {}) {
             if (result.retry) result = await askModel(gr, s, promptFor(capTurn(turn), Object.assign({ partial }, meta)), { effort: 'none', maxTokens: 12000 });
             delete result.retry;
         } catch (e) { result = { verdict: 'error', summary: e.message.slice(0, 300), missed: [], model: '', error: e.message }; }
+    }
+    // a gap the current state already settles (the issue is closed, the commit is on origin/main) is not a gap (#1256)
+    if (gapStates && result.missed && result.missed.length) {
+        try {
+            const st = gapState().settle(result.missed, gapStates);
+            if (st.satisfied.length) {
+                const why = [...new Set(st.satisfied.map((x) => x.why))].join('; ');
+                const verdict = st.missed.length ? result.verdict : (result.questions && result.questions.length ? 'input' : 'ok');
+                result = Object.assign({}, result, { missed: st.missed, verdict, summary: `${result.summary || ''} [already true: ${why}]`.trim() });
+            }
+        } catch (e) { console.warn(`[supervisor] settle ${sessionId.slice(0, 8)}: ${e.message}`); }
     }
     result = waitBackstop(result, turn.final);
     // the rule check: the turn's changed files against the check scripts and the rules that apply (never on an MCP ask)
@@ -944,7 +997,7 @@ function pruneReviews(keepDays = 30) {
 }
 
 function gapText(rv) {
-    return `${STEER_PREFIX} Your last turn may have left these unaddressed: ${rv.missed.map((m, i) => `(${i + 1}) ${m.item}`).join(' ')} Please do them now, or say why not.`;
+    return `${STEER_PREFIX} Your last turn may have left these unaddressed: ${rv.missed.map((m, i) => `(${i + 1}) ${m.item}${m.evidence ? ` [evidence: ${String(m.evidence).replace(/\s+/g, ' ').slice(0, 160)}]` : ''}`).join(' ')} Please do them now, or say why not (a point that is already true, or that nobody asked for, you answer with the evidence).`;
 }
 
 /** The one note a review sends: its gaps, then its new rule violations ("Rule check: (1) <rule>: <file>: <why> - <fix>"). */
@@ -1005,21 +1058,91 @@ async function deliver(rv, s, opts = {}) {
 const STALL_MS = 20 * 60000;
 const STALL_KICK_MS = 30 * 60000;
 const stallKicks = new Map(); // work id -> { at, n, reviewId }
+
+// ---- the Sent Back lifecycle (#1256): item 127 sat Sent Back for 15 hours with its session gone and nothing noticed.
+// Sent Back has an age (sent_back_at); a gone session is resumed by the sweep; an item still Sent Back after SENT_BACK_REVIEW_MS is
+// reviewed once more (sent_back_checks, in the row so a restart keeps it); one still open after SENT_BACK_PARK_MS (and the hand-off
+// did not take it) is parked: Input Required with its open gaps as questions, a comment on its issue and the phone notice every
+// Input Required item gets. A parked item whose session sits idle for PARK_CLOSE_MS has the session closed (it resumes when the item goes on).
+const envMs = (k, d) => { const v = Number(process.env[k]); return v > 0 ? v : d; };
+const sentBackReviewMs = () => envMs('AGENT_SUPERVISOR_SENT_BACK_REVIEW_MS', 60 * 60000);
+const sentBackParkMs = () => envMs('AGENT_SUPERVISOR_SENT_BACK_PARK_MS', 120 * 60000);
+const parkCloseMs = () => envMs('AGENT_SUPERVISOR_PARK_CLOSE_MS', 60 * 60000);
+/** "45 min", "2 h", "2 h 10 min". */
+function ageText(ms) {
+    const m = Math.max(1, Math.round(Number(ms) / 60000) || 1);
+    if (m < 60) return `${m} min`;
+    return m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.floor(m / 60)} h`;
+}
+/** How long a waiting row has been Sent Back (ms); a row with no date yet (it was Sent Back before the column) starts its clock now. */
+function sentBackAge(w, now) {
+    if (!w.sent_back_at) { try { db().prepare('UPDATE supervisor_work SET sent_back_at = ? WHERE id = ? AND sent_back_at IS NULL').run(now, w.id); } catch (_) { /* gone */ } w.sent_back_at = now; }
+    return now - w.sent_back_at;
+}
+/**
+ * Sent Back too long and the Supervisor could not get it closed: the existing hand-off (a started follow-up item) first, else the item is
+ * parked as Input Required with its open gaps as the questions (the answer form and answersNote use them). 'handed' | 'parked'.
+ */
+function parkSentBack(w, now) {
+    const sid = w.session_id;
+    const last = sid ? db().prepare('SELECT id FROM supervisor_reviews WHERE session_id = ? ORDER BY id DESC LIMIT 1').get(sid) : null;
+    const rv = last ? getReview(last.id) : null;
+    const gaps = rv && rv.verdict === 'gaps' && Array.isArray(rv.missed) ? rv.missed.filter((m) => m && m.item) : [];
+    if (gaps.length) { try { if (handOffGaps(Object.assign({}, rv, { sessionId: sid, verdict: 'gaps', missed: gaps }))) return 'handed'; } catch (e) { console.warn(`[supervisor] park hand-off ${w.id}: ${e.message}`); } }
+    const items = gaps.length ? gaps.map((m) => String(m.item).replace(/\s+/g, ' ').trim()) : [String(w.message || '').replace(/^Gaps sent back:\s*/, '').replace(/\s+/g, ' ').trim() || 'Its last turn is not closed out'];
+    const age = ageText(now - w.sent_back_at);
+    const qs = items.map((g) => ({ question: g.slice(0, 500), answer: '', why: `sent back ${age} ago; the Supervisor could not get it closed` }));
+    stallKicks.delete(w.id);
+    setWork(w.id, { state: 'input', parked_at: now, message: `Needs a person: sent back ${age} ago and still open: ${items.join('; ')}`.slice(0, 240), input_questions: JSON.stringify(qs) });
+    commentIssue(w, `**Fleet / Supervisor:** this item has been Sent Back for ${age} and still cannot finish:\n${items.map((g) => `- ${g}`).join('\n')}\n\nIt is parked as Input Required: it needs a person (answer in Fleet, or Send Back to Work with a note).`);
+    emit({ work: getWork(w.id) });
+    return 'parked';
+}
+/** A Sent Back item whose session is idle: reviewed once after the first limit, parked after the second. '' | 'review' | 'handed' | 'parked'. */
+function sentBackStep(w, now) {
+    const age = sentBackAge(w, now);
+    if (age < sentBackReviewMs()) return '';
+    if (!(w.sent_back_checks > 0)) {
+        setWork(w.id, { sent_back_checks: 1 });
+        queueReview(w.session_id, 'stall');
+        return 'review';
+    }
+    return age >= sentBackParkMs() ? parkSentBack(w, now) : '';
+}
+/** A Sent Back / Running item whose session process is gone: resumed (sessionEnded: reviveOn, holds and the 3-an-hour cap apply), parked when Sent Back never got a session back. 1 when acted on. */
+function sweepGone(w, now, live, waits) {
+    const sid = w.session_id;
+    if (sessionRunning(sid, live)) return 0; // no record, but the process runs: left alone
+    if (w.state === 'waiting' && !waits.has(w.id) && !activeHold(sid)) {
+        const age = sentBackAge(w, now);
+        if (age >= sentBackParkMs() && w.sent_back_checks > 0 && parkSentBack(w, now)) return 1;
+        // the resume that follows is its re-check
+        if (age >= sentBackReviewMs() && !(w.sent_back_checks > 0)) setWork(w.id, { sent_back_checks: 1 });
+    }
+    return sessionEnded(sid, { gone: true }) ? 1 : 0;
+}
 function sweepStalled(now = Date.now()) {
     let kicked = 0;
     let rows = [];
     try { rows = db().prepare("SELECT * FROM supervisor_work WHERE state IN ('running','waiting') AND session_id IS NOT NULL").all(); } catch (_) { return 0; }
+    closeParkedSoon(now);
     if (!rows.length) return 0;
     const live = liveSessionsById();
     const waiting = new Set(openWaits().map((x) => x.work_id));
     for (const w of rows) {
         const l = live.get(w.session_id);
-        if (!l || l.status === 'busy') continue; // a dead session is revived elsewhere; a busy one is working
+        if (!l) { try { kicked += sweepGone(w, now, live, waiting); } catch (e) { console.warn(`[supervisor] gone session ${w.id}: ${e.message}`); } continue; }
+        if (l.status === 'busy') continue; // a busy one is working
         if (waiting.has(w.id) || activeHold(w.session_id) || queue.some((j) => j.sessionId === w.session_id)) continue;
         let f = null;
         try { f = sessionInFlight(w.session_id, { ignoreReviewing: true }); } catch (_) { f = null; }
         if (f && (f.bgAgents || f.bgShells)) continue;
-        const last = db().prepare('SELECT id, at, verdict FROM supervisor_reviews WHERE session_id = ? ORDER BY id DESC LIMIT 1').get(w.session_id);
+        if (w.state === 'waiting') {
+            let a = '';
+            try { a = sentBackStep(w, now); } catch (e) { console.warn(`[supervisor] sent back ${w.id}: ${e.message}`); }
+            if (a) { kicked += 1; continue; }
+        }
+        const last =db().prepare('SELECT id, at, verdict FROM supervisor_reviews WHERE session_id = ? ORDER BY id DESC LIMIT 1').get(w.session_id);
         const since = Math.max(last ? last.at : 0, w.started_at || 0);
         if (now - since < STALL_MS) continue;
         const k = stallKicks.get(w.id) || { at: 0, n: 0, reviewId: 0 };
@@ -1186,7 +1309,7 @@ function setIssues(id, refs, opts = {}) {
     });
 }
 
-function rowWork(r) {
+function rowWork(r, liveFn) {
     if (!r) return null;
     return {
         id: r.id, title: r.title, engine: r.engine || 'claude', source: r.source, sourceRef: r.source_ref || '', state: r.state, account: r.account || '', model: r.model || '', effort: r.effort || '',
@@ -1198,12 +1321,19 @@ function rowWork(r) {
         remoteControl: !!r.remote_control, joinedInto: r.joined_into || null,
         issueNote: r.issue_note || '',
         questions: (() => { try { const q = r.input_questions ? JSON.parse(r.input_questions) : []; return Array.isArray(q) ? q : []; } catch (_) { return []; } })(),
-        check: (() => { try { return r.check_json ? JSON.parse(r.check_json) : null; } catch (_) { return null; } })()
+        check: (() => { try { return r.check_json ? JSON.parse(r.check_json) : null; } catch (_) { return null; } })(),
+        // the Sent Back lifecycle (#1256): when it was sent back, whether its session is gone (a list row: not in the live sessions
+        // map; no /proc scan), and whether it was parked (Input Required because Sent Back never closed) and since when
+        sentBackAt: r.state === 'waiting' && r.sent_back_at ? r.sent_back_at : null,
+        sessionGone: !!(r.session_id && ['starting', 'running', 'waiting', 'input'].includes(r.state) && !(liveFn ? liveFn() : liveSessionsById()).has(r.session_id)),
+        parked: r.state === 'input' && !!r.parked_at,
+        parkedAt: r.state === 'input' && r.parked_at ? r.parked_at : null
     };
 }
 function listWork(opts = {}) {
+    let lv = null; const liveOnce = () => lv || (lv = liveSessionsById()); // one read of the live sessions per list
     const lim = Math.max(1, Math.min(300, Number(opts.limit) || 100));
-    return db().prepare("SELECT * FROM supervisor_work ORDER BY CASE WHEN state IN ('held','queued','starting','running','waiting','input') THEN 0 ELSE 1 END, id DESC LIMIT ?").all(lim).map(rowWork);
+    return db().prepare("SELECT * FROM supervisor_work ORDER BY CASE WHEN state IN ('held','queued','starting','running','waiting','input') THEN 0 ELSE 1 END, id DESC LIMIT ?").all(lim).map((r) => rowWork(r, liveOnce));
 }
 const getWork = (id) => rowWork(db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id)));
 const yz = () => require('./fleetYozora');
@@ -1212,6 +1342,18 @@ function workPrompt(id) { const r = db().prepare('SELECT prompt FROM supervisor_
 
 function setWork(id, fields) {
     const before = fields.state ? db().prepare('SELECT state FROM supervisor_work WHERE id = ?').get(Number(id)) : null;
+    // the Sent Back lifecycle (#1256): Sent Back starts its age (and its re-review count) when the state becomes waiting and ends it
+    // when the state leaves; parked_at (Input Required because Sent Back never closed) ends when it leaves input, or when a review
+    // replaces the questions of an item that stays in input
+    if (before) {
+        const f = Object.assign({}, fields);
+        if (before.state !== f.state) {
+            if (f.state === 'waiting') { if (!('sent_back_at' in f)) f.sent_back_at = Date.now(); if (!('sent_back_checks' in f)) f.sent_back_checks = 0; }
+            else if (before.state === 'waiting' && !('sent_back_at' in f)) f.sent_back_at = null;
+            if (before.state === 'input' && !('parked_at' in f)) f.parked_at = null;
+        } else if (f.state === 'input' && 'input_questions' in f && !('parked_at' in f)) f.parked_at = null;
+        fields = f;
+    }
     const keys = Object.keys(fields);
     db().prepare(`UPDATE supervisor_work SET ${keys.map((k) => `${k} = @${k}`).join(', ')} WHERE id = @id`).run(Object.assign({ id: Number(id) }, fields));
     if (before && before.state !== fields.state) {
@@ -2210,13 +2352,20 @@ async function resumeOnAccount(sid, wants) {
 /** Types a message into an item's session; a session that is not running is resumed first (on the item's account, else the best with room). */
 async function steerResumed(r, text) {
     const sid = r.session_id;
-    if (!liveSessionsById().get(sid)) {
+    const resume = async () => {
         const got = await resumeOnAccount(sid, [r.account || 'auto', 'auto']);
         if (!got.pick) { if (got.loginFailed) throw new Error('No account with a working login'); await require('./claudeFleetMcp').pickForStart(gResources, r.account || 'auto'); throw new Error('No account with room'); }
         const res = got.res;
         if (res && res.state === 'failed') throw new Error(res.message || 'Its session did not start again');
+    };
+    const launcher = require('./claudeSessionLauncher');
+    if (!liveSessionsById().get(sid)) { await resume(); await launcher.steer(sid, text); return; }
+    // a record that still lists the session while its pane holds no claude (#1256): the launcher refuses, so it is started again once
+    try { await launcher.steer(sid, text); } catch (e) {
+        if (!e || e.code !== 'NOT_RUNNING') throw e;
+        await resume();
+        await launcher.steer(sid, text);
     }
-    await require('./claudeSessionLauncher').steer(sid, text);
 }
 
 // ---------------------------------------------------------------- an account's login expired under running sessions
@@ -2400,11 +2549,12 @@ async function reopenClosedIssue(r, any) {
     return true;
 }
 
-/** "Send Back to Work": a done or failed item whose session still exists gets Yukimi's note and runs again. */
+/** "Send Back to Work": a done or failed (or parked Input Required, #1256) item whose session still exists gets Yukimi's note and runs again; a closed session is resumed first. */
 async function reopenWork(id, opts = {}) {
     const r = db().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(Number(id));
     if (!r) throw new Error('No such work item');
-    if (!['done', 'failed'].includes(r.state)) throw new Error(`It is ${r.state}: only a done or failed item is sent back to work`);
+    const parked = r.state === 'input' && !!r.parked_at; // parked Input Required (#1256): Sent Back too long, needs a person's note
+    if (!['done', 'failed'].includes(r.state) && !parked) throw new Error(`It is ${r.state}: only a done or failed item is sent back to work`);
     if (!r.session_id) throw new Error('It has no session to send back to');
     const note = oneLine(opts.note, 2000);
     if (!note) throw new Error('Write what it should do next');
@@ -2412,7 +2562,8 @@ async function reopenWork(id, opts = {}) {
     // her own Send Back reopens its issue whoever closed it, so the issue sweep does not end the item again
     if (r.issue_repo && r.issue_number) await reopenClosedIssue(r, true).catch((e) => console.warn(`[supervisor] reopen issue ${r.issue_number}: ${e.message}`));
     await steerResumed(r, `${STEER_PREFIX} Sent back by Yukimi: ${note}`);
-    setWork(r.id, { state: 'running', ended_at: null, message: `Working again: ${oneLine(note, 120)}` });
+    if (parked) db().prepare('INSERT INTO supervisor_state (session_id, status, auto_steers, updated_at) VALUES (?, \'seen\', 0, ?) ON CONFLICT(session_id) DO UPDATE SET auto_steers = 0').run(r.session_id, Date.now());
+    setWork(r.id, Object.assign({ state: 'running', ended_at: null, message: `Working again: ${oneLine(note, 120)}` }, parked ? { input_questions: null } : {}));
     emit({ work: getWork(r.id) });
     return getWork(r.id);
 }
@@ -3189,11 +3340,12 @@ async function maybeRevive(workId, rv, opts = {}) {
 }
 
 /** A session whose process is gone but whose item is not done: running -> checked (its review then revives it), waiting -> revived now. */
-function sessionEnded(sessionId) {
+function sessionEnded(sessionId, opts = {}) {
     if (!reviveOn) return false;
     const w = activeItemOf(sessionId);
+    // an Input Required item (a parked one too) is never revived here: its session comes back with its answer (steerResumed)
     if (!w || !w.session_id || w.state === 'input' || w.state === 'starting') return false;
-    if (sessionRunning(sessionId, liveSessionsById())) return false;
+    if (!opts.gone && sessionRunning(sessionId, liveSessionsById())) return false; // opts.gone: the sweep has just scanned for it
     if (w.state === 'waiting') {
         const rv = db().prepare('SELECT * FROM supervisor_reviews WHERE session_id = ? ORDER BY id DESC').get(sessionId);
         maybeRevive(w.id, rowReview(rv)).catch((e) => console.warn(`[supervisor] revive: ${e.message}`));
@@ -3237,7 +3389,7 @@ async function rcSessions(only8) {
     if (only8) names = names.filter((n) => n === `rc-${only8}`);
     const lrc = live.filter((x) => x.origin === 'rc' && (!only8 || x.id.startsWith(only8)));
     const id8s = [...new Set([...names.map((n) => n.slice(3)), ...lrc.map((x) => x.id.slice(0, 8))])];
-    const rows = id8s.length ? db().prepare(`SELECT id, state, session_id FROM supervisor_work WHERE session_id IS NOT NULL AND substr(session_id, 1, 8) IN (${id8s.map(() => '?').join(',')})`).all(...id8s) : [];
+    const rows = id8s.length ? db().prepare(`SELECT id, state, session_id, parked_at FROM supervisor_work WHERE session_id IS NOT NULL AND substr(session_id, 1, 8) IN (${id8s.map(() => '?').join(',')})`).all(...id8s) : [];
     return fm().rcCandidates({ names, live: only8 ? live.filter((x) => x.id.startsWith(only8)) : live, rows });
 }
 const sessionOfItem = (id) => { try { const r = db().prepare('SELECT session_id FROM supervisor_work WHERE id = ?').get(Number(id)); return r && r.session_id ? r.session_id : null; } catch (_) { return null; } };
@@ -3266,6 +3418,42 @@ function closeSoon(sid, why) {
     setImmediate(() => closeFinishedSession(sid, why).catch(() => {}));
 }
 const fm = () => require('./fleetMemory');
+
+/**
+ * The sessions of parked items (#1256) closed once the item has been parked parkCloseMs() and the session is idle with nothing in
+ * flight (fleetMemory.parkedSessions decides). The item keeps its state; a line is added to its message once. The tmux listing runs
+ * only while some item is parked. test hook: closeDeps { rc(), disconnect(sid) }. Returns the closed session ids.
+ */
+const closeDeps = {};
+async function closeParkedSessions(now = Date.now()) {
+    if (supervisorOff()) return [];
+    const closed = [];
+    const { candidates, itemsBySession } = await (closeDeps.rc ? closeDeps.rc() : rcSessions());
+    const d = fm().parkedSessions({ candidates, itemsBySession, inFlight: inFlightFresh, now, closeAfterMs: parkCloseMs() });
+    for (const c of d.close) {
+        if (closing.has(c.id)) continue;
+        closing.add(c.id);
+        try {
+            await (closeDeps.disconnect ? closeDeps.disconnect(c.id) : require('./claudeSessions').disconnect(c.id));
+            console.log(`[supervisor] closed parked session ${c.id.slice(0, 8)} (item ${c.itemId}, parked ${ageText(now - c.parkedAt)} ago)`);
+            closed.push(c.id);
+            for (const it of itemsBySession.get(c.id) || []) {
+                if (it.state !== 'input' || !it.parked_at) continue;
+                const r = db().prepare('SELECT message FROM supervisor_work WHERE id = ? AND state = ?').get(it.id, 'input');
+                if (r && !String(r.message || '').includes('its session was closed to free memory')) { setWork(it.id, { message: `${r.message || ''} (its session was closed to free memory; it resumes when the item goes on)` }); emit({ work: getWork(it.id) }); }
+            }
+        } catch (e) { console.warn(`[supervisor] close parked ${c.id.slice(0, 8)}: ${e.message}`); }
+        finally { closing.delete(c.id); }
+    }
+    return closed;
+}
+/** From the sweep: only when some item is parked (no tmux listing otherwise); never throws. */
+function closeParkedSoon(now) {
+    try {
+        if (!db().prepare("SELECT 1 FROM supervisor_work WHERE state = 'input' AND parked_at IS NOT NULL LIMIT 1").get()) return;
+        closeParkedSessions(now).catch((e) => console.warn(`[supervisor] close parked: ${e.message}`));
+    } catch (_) { /* later */ }
+}
 
 /**
  * Closes every rc-* tmux session whose items are all over (see fleetMemory.finishedSessions). One at a time; concurrent calls share
@@ -4425,5 +4613,5 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, intakePlaud, workAfterReview, sessionInFlight, settleWork, settleSoon, agentRunState, answerWork, reopenWork, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { issueCarriedByOthers, deliver, handOffGaps, sweepStalled, stallKicks, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
+    _test: { issueCarriedByOthers, closeParkedSessions, closeDeps, ageText, rowWork, deliver,handOffGaps, sweepStalled, stallKicks, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };

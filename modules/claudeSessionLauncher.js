@@ -407,15 +407,35 @@ async function isRemoteControlServer(pid) {
     try { return /\bremote-control\b/.test((await fs.promises.readFile(`/proc/${pid}/cmdline`, 'utf8')).replace(/\0/g, ' ')) && !/--remote-control\b/.test((await fs.promises.readFile(`/proc/${pid}/cmdline`, 'utf8')).replace(/\0/g, ' ')); } catch (_) { return false; }
 }
 
+const NOT_RUNNING_MSG = 'It is not running: resume it first';
+const notRunning = () => Object.assign(new Error(NOT_RUNNING_MSG), { code: 'NOT_RUNNING' });
+const HOLDERS = new Set(['sleep', 'bash', 'sh', 'dash', 'zsh', 'fish', 'env']);
+
+/**
+ * Right before typing: is the record's pid still that session's claude (#1256)? A claude that exited leaves its tmux
+ * pane on the wrapper's `sleep 3600`, and a record can outlive its process (pid reused). Async /proc reads only.
+ */
+async function claudeRunning(live) {
+    let stat;
+    try { stat = await fs.promises.readFile(`/proc/${live.pid}/stat`, 'utf8'); } catch (_) { return false; }
+    if (live.procStart && stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19] !== String(live.procStart)) return false;
+    try {
+        const argv0 = (await fs.promises.readFile(`/proc/${live.pid}/cmdline`, 'utf8')).split('\0')[0] || '';
+        if (HOLDERS.has(path.basename(argv0))) return false;
+    } catch (_) { return false; }
+    return true;
+}
+
 /** The tmux pane a running session's claude process sits in: { args (socket), pane }. */
 async function paneFor(id) {
     const live = claudeSessions.liveSessions().find((s) => s.id === id);
-    if (!live) throw new Error('It is not running: resume it first');
+    if (!live) throw notRunning();
     // A session Remote Control's own server spawned (from claude.ai / the app) sits under that server's
     // process; the server's tmux pane is the SERVER's terminal (keys there toggle its spawn mode, show a QR
     // code). Never type into it (#1154: steering went to the server): such a session is taken over into
     // Fleet first (claude_desk_session takeover).
     if (live.origin === 'server') throw Object.assign(new Error('It runs inside Remote Control\'s server, which Fleet cannot type into: Take Over in Fleet to steer it from here (it continues the same conversation in a Fleet terminal), or steer it from claude.ai/code'), { code: 'NEEDS_TAKEOVER' });
+    if (!(await claudeRunning(live))) throw notRunning();
     const chain = new Set([live.pid]);
     let p = live.pid;
     let underServer = false;
@@ -430,7 +450,12 @@ async function paneFor(id) {
         const r = await runner('tmux', [...sock, 'list-panes', '-a', '-F', '#{pane_id} #{pane_pid}']);
         if (r.code !== 0) continue;
         const hit = r.stdout.trim().split('\n').map((l) => l.split(' ')).find(([, pid]) => chain.has(Number(pid)));
-        if (hit) return { sock, pane: hit[0], live };
+        if (hit) {
+            // the pane holding on the wrapper's sleep (or a bare shell) has no claude in it: nothing would read the keys
+            const cur = String((await runner('tmux', [...sock, 'display-message', '-p', '-t', hit[0], '#{pane_current_command}'])).stdout || '').trim();
+            if (HOLDERS.has(cur)) throw notRunning();
+            return { sock, pane: hit[0], live };
+        }
     }
     if (underServer) throw Object.assign(new Error('It runs inside Remote Control\'s server: Take Over in Fleet to steer it from here'), { code: 'NEEDS_TAKEOVER' });
     throw new Error('It does not run in tmux: type into its own terminal');
