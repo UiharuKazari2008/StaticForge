@@ -21,6 +21,16 @@ async function statOrNull(filePath) {
         throw err;
     }
 }
+// Sync on purpose for the manifest walk: ~33k async stats took 17 s through the threadpool on the live boot, the
+// same stats sync take ~0.2 s. The walk yields to the loop every 256 files (generateCacheData, #1230).
+function statSyncOrNull(filePath) {
+    try {
+        return fs.statSync(filePath, { throwIfNoEntry: false }) || null;
+    } catch (err) {
+        if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) return null;
+        throw err;
+    }
+}
 const path = require('path');
 const https = require('https');
 const sharp = require('sharp');
@@ -1272,10 +1282,12 @@ async function generateCacheData(directory) {
         buildStats.files = files.length;
         buildStats.scanMs = Date.now() - buildStart;
         
+        let walked = 0;
         const processFile = async (file) => {
             try {
                 const filePath = path.join(directory, file);
-                const stats = await statOrNull(filePath);
+                if ((++walked & 255) === 0) await new Promise((resolve) => setImmediate(resolve));
+                const stats = statSyncOrNull(filePath);
                 if (!stats) return;
                 
                 // Skip directories and non-asset files
@@ -1335,11 +1347,11 @@ async function generateCacheData(directory) {
                     || (runtimeAssetService.isHtmlShaLinkWebPath
                         && runtimeAssetService.isHtmlShaLinkWebPath(webPath))) {
                     const servedPath = runtimeAssetService.resolveServedAssetPath(__dirname, webPath);
-                    if (servedPath && await statOrNull(servedPath)) {
+                    if (servedPath && statSyncOrNull(servedPath)) {
                         hashPath = servedPath;
                     }
                 }
-                const hashStats = await statOrNull(hashPath);
+                const hashStats = hashPath === filePath ? stats : statSyncOrNull(hashPath);
                 if (!hashStats) return;
                 const prevEntry = previousByPath.get(webPath);
                 if (prevEntry && prevEntry.hash && prevEntry.size === hashStats.size && prevEntry.modified === hashStats.mtime.getTime()) buildStats.reused++;
