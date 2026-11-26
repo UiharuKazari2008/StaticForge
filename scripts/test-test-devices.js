@@ -108,7 +108,10 @@ inbox.publish({ user: 'test', id: 'test:3', title: 'Waiting', text: 'icon' });
 inbox.publish({ user: 'test', id: 'sms:t1', title: 'Test text' });
 testDevices.setStatusOverrides(EMU, { mail: { unread: 4 }, weather: { alerts: 1 } });
 const snap = phoneStatus.buildTest(EMU);
-assert.ok(snap.notices.waiting >= 2 && snap.notices.list.every((n) => !n.id.startsWith('sms:')), 'notices from the test lane');
+// the holder list carries every waiting notice of the lane, its texts too (#1056); only the lane's own ids
+assert.ok(snap.notices.waiting >= 2, 'notices from the test lane');
+assert.ok(['test:3', 'sms:t1'].every((id) => snap.notices.list.some((n) => n.id === id)), 'the lane\'s notices and texts are listed');
+assert.ok(snap.notices.list.every((n) => inbox.list('test').some((t) => t.id === n.id)), 'every listed notice is the test lane\'s');
 assert.strictEqual(snap.sms.fresh, 1);
 assert.strictEqual(snap.mail.unread, 4, 'a test sets mail unread');
 assert.strictEqual(snap.mail.fresh, 0, 'merged per field');
