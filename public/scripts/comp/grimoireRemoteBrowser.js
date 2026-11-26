@@ -2544,6 +2544,21 @@ function grimoireRemoteBrowserReload(shell) {
     return true;
 }
 
+// IE7's Stop (#452): the viewer tells the service to drop the load; the spinner and the address fill end here at once.
+// Hung on Reload, its counterpart, rather than a page global of its own (app-scope-ownership).
+grimoireRemoteBrowserReload.stop = function grimoireRemoteBrowserStop(shell) {
+    const frame = grimoireRemoteFrame(shell);
+    if (!frame || !frame.contentWindow || !shell._grimoireRemoteSessionId) return false;
+    frame.contentWindow.postMessage({ type: 'grimoire-browser-stop' }, '*');
+    const host = grimoireHostOf(shell);
+    if (host) {
+        grimoireStopNavigationSpinner(host);
+        const bar = host === shell || host.activePane === shell ? host.addressBar : null;
+        if (bar) bar.removeAttribute('data-alchemy-loading');
+    }
+    return true;
+};
+
 function grimoireShowRemoteTabPage(shell, state, url) {
     const area = shell && shell.displayArea;
     if (!area) return;

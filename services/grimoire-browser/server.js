@@ -2842,6 +2842,24 @@ function requestNavigate(session, url, reload) {
     }
 }
 
+// The IE7 stop button: drops the queued and the in-flight navigation (pumpNav sees the new navGen and lets the
+// aborted Page.navigate go quietly), stops Chromium loading and ends what a finished load ends. The page that was
+// showing stays as it is (pixels and the last still are kept); the address goes back to the live URL.
+function stopNavigating(session) {
+    if (!sessions.get(session.id)) return;
+    session.navGen++;
+    session.pendingNav = null;
+    session.dragFrom = null;
+    session.cdp.send('Page.stopLoading').catch(() => {});
+    clearTimeout(session.navSettle);
+    session.navSettle = null;
+    countLoadBytes(session, false);
+    noteLoadProgress(session, 1);
+    session.navigating = false;
+    session.navTarget = '';
+    publishLocation(session);
+}
+
 async function pumpNav(session) {
     while (session.pendingNav && sessions.get(session.id)) {
         const job = session.pendingNav;
@@ -5277,6 +5295,10 @@ async function onViewerMessage(session, raw, ws) {
         requestNavigate(session, session.url, true);
         return;
     }
+    if (msg.type === 'stop') {
+        stopNavigating(session);
+        return;
+    }
     if (msg.type === 'resize') {
         const width = clampSize(msg.width, session.width, 320, 1920);
         const height = clampSize(msg.height, session.height, 240, 1440);
@@ -5950,7 +5972,7 @@ function attachViewer(ws, session) {
             session.stillGap = STILL_MIN_GAP_MS;
             session.stillInputAt = Date.now();
         }
-        if (preview && (preview.type === 'dialog-reply' || preview.type === 'file-chooser-reply' || preview.type === 'navigate' || preview.type === 'reload' || preview.type === 'key' || preview.type === 'paste' || preview.type === 'ping' || preview.type === 'rtt' || preview.type === 'still-ack' || preview.type === 'inspect' || preview.type === 'copy' || preview.type === 'encoder?')) {
+        if (preview && (preview.type === 'dialog-reply' || preview.type === 'file-chooser-reply' || preview.type === 'navigate' || preview.type === 'reload' || preview.type === 'stop' || preview.type === 'key' || preview.type === 'paste' || preview.type === 'ping' || preview.type === 'rtt' || preview.type === 'still-ack' || preview.type === 'inspect' || preview.type === 'copy' || preview.type === 'encoder?')) {
             onViewerMessage(session, raw, ws).catch((err) => {
                 console.error('[grimoire-browser] input', err && err.message);
             });
