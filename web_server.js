@@ -73,6 +73,10 @@ const melatonNetwork = require('./modules/melatonNetwork');
 const accountPictures = require('./modules/accountPictures');
 const { handleStatusStream } = require('./modules/statusStream');
 const desktopSoundsStatic = require('./modules/desktopSoundsStatic');
+const assetManifestStore = require('./modules/assetManifestStore');
+const { runBounded } = assetManifestStore;
+// Files stat'ed / hashed at once while the manifest is built (one sequential await per file took ~24 s for ~35k files, #1230)
+const CACHE_WALK_CONCURRENCY = 32;
 const vistaGadgetStatic = require('./modules/vistaGadgetStatic');
 const vistaGadgetProxy = require('./modules/vistaGadgetProxy');
 const weatherService = require('./modules/weatherService');
@@ -951,6 +955,10 @@ async function initializeCacheData(force = false) {
         );
         const cacheData = globalResources.getGlobalCacheData();
         globalResources.logger.bootSubStep(`Cached ${cacheData.length} assets`);
+        if (Array.isArray(cacheData) && cacheData.length > 0) {
+            // kept for the next start, so it only reads what changed (#1230)
+            assetManifestStore.save(__dirname, cacheData).catch(() => {});
+        }
         invalidateServiceWorkerManifest();
         agentAssetBundle.invalidate();
         // The agent zip stays lazy. The installer pack is a separate on-disk zip of this
@@ -1238,8 +1246,13 @@ async function refreshAndBroadcastServiceWorkerCache(options = {}) {
 async function generateCacheData(directory) {
     const assets = [];
     const previousAssets = globalResources.getGlobalCacheData();
+    // After a restart the in-memory list is empty: compare against the manifest kept on disk, so only a
+    // file whose size or mtime moved is read again (#1230)
+    const previousList = Array.isArray(previousAssets) && previousAssets.length > 0
+        ? previousAssets
+        : await assetManifestStore.load(__dirname);
     const previousByPath = new Map(
-        (Array.isArray(previousAssets) ? previousAssets : [])
+        previousList
             .filter((entry) => entry && entry.path)
             .map((entry) => [entry.path, entry])
     );
@@ -1247,18 +1260,18 @@ async function generateCacheData(directory) {
     try {
         const files = await scanDirectory(directory);
         
-        for (const file of files) {
+        const processFile = async (file) => {
             try {
                 const filePath = path.join(directory, file);
                 const stats = await statOrNull(filePath);
-                if (!stats) continue;
+                if (!stats) return;
                 
                 // Skip directories and non-asset files
                 if (stats.isDirectory() || 
                     file.startsWith('.') || 
                     file.includes('node_modules') ||
                     file.includes('.git')) {
-                    continue;
+                    return;
                 }
 
                 // Convert to web path (remove /public prefix for clean URLs)
@@ -1270,7 +1283,7 @@ async function generateCacheData(directory) {
                 // Masters stay on disk for compile input only — SW gets optimised sizes from runtime-assets
                 if (runtimeAssetService.isAppIconWebPath
                     && runtimeAssetService.isAppIconWebPath(webPath)) {
-                    continue;
+                    return;
                 }
 
                 // Prefer the precompiled memory cache so this pass does not re-read asset bytes.
@@ -1282,7 +1295,7 @@ async function generateCacheData(directory) {
                         size: cachedAsset.body.length,
                         modified: cachedAsset.modified || Date.now()
                     });
-                    continue;
+                    return;
                 }
 
                 // A managed script or stylesheet the compiler has not built yet (a new file, or one no client has
@@ -1298,7 +1311,7 @@ async function generateCacheData(directory) {
                     try { built = await runtimeAssetService.resolveRuntimeAsset(__dirname, webPath); } catch (_) { built = null; }
                     if (built && built.hash && built.body) {
                         assets.push({ path: webPath, hash: built.hash, size: built.body.length, modified: built.modified || Date.now() });
-                        continue;
+                        return;
                     }
                 }
 
@@ -1313,7 +1326,7 @@ async function generateCacheData(directory) {
                     }
                 }
                 const hashStats = await statOrNull(hashPath);
-                if (!hashStats) continue;
+                if (!hashStats) return;
                 const hash = await runtimeAssetService.hashServedFileIfChangedAsync(
                     hashPath,
                     hashStats,
@@ -1329,7 +1342,8 @@ async function generateCacheData(directory) {
             } catch (error) {
                 console.warn(`⚠️ Error processing file ${file}:`, error.message);
             }
-        }
+        };
+        await runBounded(files, CACHE_WALK_CONCURRENCY, processFile);
 
         // Optimised app icon sizes from .cache/runtime-assets (omit public masters above)
         if (typeof runtimeAssetService.listOptimisedAppIconManifestEntries === 'function') {
@@ -1379,13 +1393,15 @@ async function scanDirectory(dir, relFromPublic = '') {
     const files = [];
     let items;
     try {
-        items = await fs.promises.readdir(dir);
+        items = await fs.promises.readdir(dir, { withFileTypes: true });
     } catch (error) {
         console.error(`❌ Error reading directory ${dir}:`, error.message);
         return files;
     }
 
-    for (const item of items) {
+    const subDirs = [];
+    for (const entry of items) {
+        const item = entry.name;
         const itemPath = path.join(dir, item);
         const itemRel = relFromPublic ? `${relFromPublic}/${item}` : item;
         // App icon masters are compile inputs only — optimised sizes come from runtime-assets
@@ -1406,15 +1422,27 @@ async function scanDirectory(dir, relFromPublic = '') {
         if (itemRel === 'scripts/vendor/fflate.js') {
             continue;
         }
-        const stats = await statOrNull(itemPath);
-        if (!stats) continue;
+        // The dirent already says file or directory (no stat per entry); only a symlink needs a stat to follow it
+        let isDir = entry.isDirectory();
+        if (entry.isSymbolicLink()) {
+            const stats = await statOrNull(itemPath);
+            if (!stats) continue;
+            isDir = stats.isDirectory();
+        }
 
-        if (stats.isDirectory()) {
-            const subFiles = await scanDirectory(itemPath, itemRel);
-            files.push(...subFiles.map(subFile => path.join(item, subFile)));
+        if (isDir) {
+            subDirs.push({ item, itemPath, itemRel });
         } else {
             files.push(item);
         }
+    }
+
+    const nested = await Promise.all(subDirs.map(async ({ item, itemPath, itemRel }) => {
+        const subFiles = await scanDirectory(itemPath, itemRel);
+        return subFiles.map(subFile => path.join(item, subFile));
+    }));
+    for (const list of nested) {
+        for (const f of list) files.push(f);
     }
 
     return files;
@@ -2822,6 +2850,8 @@ const installPackHashes = new WeakMap();
 function refreshInstallPackIfStale() {
     const pack = meletonInstallPack.status();
     if (pack.building || installPackRefresh) return true;
+    // before the manifest is built the list is empty: do not build a pack from it
+    if (!runtimeCompileComplete) return true;
     const manifest = manifestForPackages(null);
     let want = installPackHashes.get(manifest);
     if (!want) {
@@ -2971,6 +3001,10 @@ app.post('/install/meletonfx.zip', async (req, res) => {
 
 // Melaton Update > Applied Updates (#774): the packages, their size, and which this client has
 app.get('/install/packages', (req, res) => {
+    if (!runtimeCompileComplete) {
+        res.set('Retry-After', '5');
+        return res.status(503).json({ success: false, error: 'Runtime assets are compiling', retryAfter: 5 });
+    }
     try {
         const sizes = new Map();
         for (const row of buildServiceWorkerCacheManifest()) {
@@ -4921,13 +4955,15 @@ async function handleAdminUnixSocketMessage(message, socket) {
     await globalResources.logger.bootStep('Runtime Asset Compilation', async () => {
         updateServerStage('runtime_compile');
         const result = await assetPrime;
+        // The manifest (cache hash list) is built after `ready` (see the end of this function): nothing
+        // in boot reads it, and it was ~88% of the start (#1230). Clients get 503 + Retry-After until then.
         await runtimeAssetService.refreshHashCacheAndBroadcast({
             projectRoot: __dirname,
             compileWorkspaceCss: true,
+            refreshCache: false,
             broadcastManifest: false,
-            broadcastComplete: true
+            broadcastComplete: false
         });
-        runtimeCompileComplete = true;
         if (result.errors.length > 0) {
             globalResources.logger.error(`Runtime compile: ${result.errors.length} file(s) failed (keeping previous optimised copies)`);
             for (const entry of result.errors) {
@@ -4944,14 +4980,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
         await initializeAccountData();
         await refreshBalance(true);
 
-        // Runtime Asset Compilation just refreshed cache data and the install pack
-        // (refreshHashCacheAndBroadcast -> initializeCacheData(true)); a second pass
-        // rehashed all ~2800 assets again. Only fill it here if that did not run.
-        updateServerStage('cache_init');
-        const cached = globalResources.getGlobalCacheData();
-        if (!Array.isArray(cached) || cached.length === 0) {
-            await initializeCacheData(true);
-        }
+        // The cache manifest is built after `ready` (Asset Manifest, end of this function)
     });
     
     // Service Initialization
@@ -5225,6 +5254,16 @@ async function handleAdminUnixSocketMessage(message, socket) {
     // Its own boot tree, so the preview sync and Director CLI sub-steps still reach
     // the log. Both ran before ready and held every client's logon.
     globalResources.logger.startBoot();
+    try {
+        // First: the logon (runtimeCompileComplete), the SW manifest and the install pack wait on it.
+        // Incremental against .cache/asset-manifest.json, so it only reads what changed.
+        await globalResources.logger.bootStep('Asset Manifest', async () => {
+            await initializeCacheData(true);
+        });
+    } catch (err) {
+        globalResources.logger.warn(`Asset manifest failed: ${err.message}`);
+    }
+    runtimeCompileComplete = true;
     try {
         await globalResources.logger.bootStep('Preview Synchronization', async () => {
             await globalResources.syncPreviews();

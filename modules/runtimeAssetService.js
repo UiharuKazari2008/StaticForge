@@ -462,8 +462,8 @@ async function refreshHashCacheAndBroadcast(options = {}) {
         { compiled: 0, skipped: 0, errors: [] },
         {
             ...options,
-            refreshCache: true,
-            broadcastManifest: true,
+            refreshCache: options.refreshCache !== false,
+            broadcastManifest: options.broadcastManifest !== false,
             broadcastComplete: false
         }
     );
