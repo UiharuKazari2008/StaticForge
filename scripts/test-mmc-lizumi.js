@@ -29,11 +29,17 @@ assert(!/xmradio_mmc_view'[^\n]*destructive/.test(handlerSrc), 'not destructive'
 
 // ---- the console in a VM
 const sent = [];
+const payloads = [];
 const listeners = {};
 const wsClient = {
     on: (t, f) => { listeners[t] = f; },
     sendMessage: async (type, data) => {
         sent.push(type);
+        payloads.push({ type, data });
+        if (type === 'xmradio_timers_set') return { success: true, data: { timers: data.timers.map((t, i) => Object.assign({ id: t.id || `n${i}` }, t)) } };
+        if (type === 'xmradio_terms_set') return { success: true, data: { terms: data.terms.map((t, i) => Object.assign({ id: t.id || `m${i}` }, t)) } };
+        if (type === 'xmradio_alert_remove') return { success: true, data: { alerts: [] } };
+        if (type === 'xmradio_alert_add') return { success: true, data: { alerts: [{ id: 'al1', kind: data.kind, artist: data.artist, title: data.title, destination: data.destination }] } };
         if (type === 'xmradio_mmc_view') {
             return { success: true, data: {
                 account: { signedIn: true, handle: 'ab***', since: 1 },
@@ -47,6 +53,13 @@ const wsClient = {
     }
 };
 let def = null;
+const dialogsOpened = [];
+const fakeCtx = (init) => {
+    const v = {};
+    const ctx = { vals: v, texts: {}, opts: {}, modal: {}, set: (id, x) => { v[id] = x; }, get: (id) => v[id], text: (id, t) => { ctx.texts[id] = t; }, options: (id, list, val) => { ctx.opts[id] = list; if (val !== undefined) v[id] = val; } };
+    init(ctx);
+    return ctx;
+};
 const rowsSeen = {};
 let timers = 0;
 const audios = [];
@@ -63,6 +76,9 @@ const con = {
     modal: { isConnected: true, querySelector: () => null },
     node: 'radios', refresh() {}, select() {}, sel: null,
     listView: (cols, rows, o) => { rowsSeen.last = { cols, rows, o }; return `<lv ${rows.length}>`; },
+    boxAnswer: true,
+    box(html, buttons) { rowsSeen.box = { html, buttons }; return Promise.resolve(this.boxAnswer); },
+    note(t) { rowsSeen.note = t; },
     page: (t, s, secs) => { rowsSeen.sections = secs; return `<page ${secs.length}>`; },
     props: (rows) => rows.map((r) => r.join(":")).join("|")
 };
@@ -70,6 +86,8 @@ const sandbox = {
     console, Date, Math, Promise, setTimeout: (f, ms) => { timers++; return setTimeout(f, ms); }, clearTimeout, wsClient, Audio: FakeAudio, AbortController,
     document: { hidden: false, addEventListener() {}, createElement: () => ({ set src(v) { setTimeout(() => this.onerror(), 1); } }), head: { appendChild() {} } },
     featureLoader: { loadFeature: async () => {} },
+    // a fake Vista dialog host: the dialog's own init and ok run against a plain value store
+    vistaDialogTemplate: { openDialog: (o) => { dialogsOpened.push(o); } },
     mmcConsole: { open: (d) => { def = d; d.onOpen(con); return con; } }
 };
 sandbox.window = sandbox;
@@ -89,6 +107,76 @@ vm.runInNewContext(src, sandbox);
     assert.strictEqual(rowsSeen.last.rows[0].data.radio, 'Lizumi-Recorder-2', 'queue shows the virtual radio');
     assert.strictEqual(rowsSeen.last.rows[0].data.qstate, 'Running', 'queue shows the state');
     page('schedules'); assert.strictEqual(rowsSeen.last.rows.length, 2, 'timer and term');
+    // ---- Schedules: the Action pane, the dialogs and the saves (the whole list, as the radio app saves it)
+    const sch = def.nodes()[0].children.find((x) => x.id === 'schedules');
+    assert.deepStrictEqual([...def.commands(sch, con).map((x) => x.text)], ['New Timer...', 'New Search Term...'], 'node actions');
+    assert.strictEqual(def.commands({ id: 'queue' }, con).length, 0, 'no actions on other pages');
+    assert.deepStrictEqual([...def.selCommands(sch, 't:t1', con).items.map((x) => x.text || 'sep')], ['Properties...', 'Turn Off', 'sep', 'Delete'], 'a timer\'s actions');
+    assert.deepStrictEqual([...def.selCommands(sch, 's:s1', con).items.map((x) => x.text || 'sep')], ['Properties...', 'sep', 'Delete'], 'a term\'s actions');
+    assert.strictEqual(def.selCommands(sch, 'q:q1', con), null, 'nothing for a row that is not a schedule');
+    page('schedules');
+    assert(rowsSeen.last.cols.some((x) => x.key === 'tape') && rowsSeen.last.cols.some((x) => x.key === 'rules'), 'Tape and Rules columns');
+    // New Search Term: every rule is read back from the dialog into the saved list, with the existing term kept
+    con.sel = null;
+    assert.strictEqual(await def.action('sch-new-term', con), true);
+    let dlg = dialogsOpened.pop();
+    assert(/New Search Term/.test(dlg.title) && Array.isArray(dlg.tpl.c), 'a Vista dialog for the term');
+    let ctx = fakeCtx(dlg.init);
+    ctx.vals[301] = 'c1'; ctx.vals[302] = ' trance '; ctx.vals[303] = 'Armin'; ctx.vals[313] = true; ctx.vals[402] = true; ctx.vals[404] = true;
+    ctx.vals[306] = '22'; ctx.vals[307] = '4'; ctx.vals[308] = '3'; ctx.vals[309] = true; ctx.vals[310] = true; ctx.vals[311] = true; ctx.vals[312] = 'Live';
+    assert.strictEqual(await dlg.ok(ctx), true, 'saved');
+    const ts = payloads.filter((p) => p.type === 'xmradio_terms_set').pop().data.terms;
+    assert.strictEqual(ts.length, 2, 'the whole list');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(ts[1])), { text: 'trance', channelId: 'c1', artist: 'Armin', artistExact: true, title: '', titleExact: false, show: '', showExact: false, days: [1, 3], afterHour: 22, beforeHour: 4, minDuration: 180, allowShows: true, fastTrigger: true, notify: true, destination: 'Live' });
+    page('schedules');
+    assert.strictEqual(rowsSeen.last.rows.length, 3, 'the list re-renders from the saved answer');
+    assert(/Artist is Armin/.test(rowsSeen.last.rows[2].data.rules) && /Hours 22-04/.test(rowsSeen.last.rows[2].data.rules), 'rules summary');
+    // a bad hour keeps the dialog open and says why; a term naming nothing is refused
+    ctx.vals[306] = '99';
+    assert.strictEqual(await dlg.ok(ctx), false);
+    assert(/0 to 23/.test(ctx.texts[320]));
+    ctx = fakeCtx(dlg.init);
+    assert.strictEqual(await dlg.ok(ctx), false);
+    assert(/what to look for/.test(ctx.texts[320]));
+    // Properties of a timer: the radio app's fields plus Tape and Notify; saved with the whole timers list
+    con.sel = 't:t1';
+    await def.action('sch-props', con);
+    dlg = dialogsOpened.pop();
+    ctx = fakeCtx(dlg.init);
+    assert.strictEqual(ctx.vals[302], '08:00'); assert.strictEqual(ctx.vals[402], true, 'Mon pressed');
+    ctx.vals[306] = 'Mornings'; ctx.vals[307] = true;
+    assert.strictEqual(await dlg.ok(ctx), true);
+    const tm = payloads.filter((p) => p.type === 'xmradio_timers_set').pop().data.timers;
+    assert.strictEqual(tm.length, 1);
+    assert.strictEqual(tm[0].id, 't1', 'the same timer');
+    assert.strictEqual(tm[0].destination, 'Mornings'); assert.strictEqual(tm[0].notify, true);
+    ctx.vals[302] = '25:00';
+    assert.strictEqual(await dlg.ok(ctx), false, 'a bad time is refused');
+    // Turn Off, then Delete asks first and Cancel keeps it
+    await def.action('sch-toggle', con);
+    assert.strictEqual(payloads.filter((p) => p.type === 'xmradio_timers_set').pop().data.timers[0].off, true, 'Turn Off saves off');
+    con.boxAnswer = false;
+    await def.action('sch-delete', con);
+    assert(/delete this timer/.test(rowsSeen.box.html), 'the kit\'s confirmation names it');
+    assert.strictEqual(con.sel, 't:t1', 'Cancel keeps the selection');
+    con.boxAnswer = true;
+    await def.action('sch-delete', con);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(payloads.filter((p) => p.type === 'xmradio_timers_set').pop().data.timers)), [], 'Delete saves the list without it');
+    // an alert's Properties moves its destination through the same alert packet; Delete removes it
+    def.page({ id: 'schedules' }, con);
+    sandbox.mmcLizumi._state.deck.alerts = [{ id: 'al1', kind: 'artist', artist: 'ABBA', title: '', channelId: null }];
+    await def.rowOpen('a:al1', { id: 'schedules' }, con);
+    dlg = dialogsOpened.pop();
+    ctx = fakeCtx(dlg.init);
+    ctx.vals[303] = 'Alerts';
+    assert.strictEqual(await dlg.ok(ctx), true);
+    assert.strictEqual(payloads.filter((p) => p.type === 'xmradio_alert_add').pop().data.destination, 'Alerts');
+    con.sel = 'a:al1';
+    await def.action('sch-delete', con);
+    assert.strictEqual(payloads.filter((p) => p.type === 'xmradio_alert_remove').pop().data.id, 'al1');
+    assert.strictEqual(await def.action('sch-nothing', con), false, 'an unknown action is left to the shell');
+    // restore the view's own timers and terms for the pages after this
+    sandbox.mmcLizumi._state.deck.timers = [{ id: 't1', channelId: 'c1', start: '08:00', minutes: 30, days: [1, 2] }];
     page('accounts'); assert.strictEqual(rowsSeen.last.rows[0].data.state, 'Signed in');
     page('recordings'); await new Promise((r) => setTimeout(r, 20));
     assert(sent.includes('xmradio_tape_tracks'), 'tape read');

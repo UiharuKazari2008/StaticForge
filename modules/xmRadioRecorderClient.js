@@ -79,7 +79,7 @@ function connect() {
 function onMessage(line) {
     let m;
     try { m = JSON.parse(line); } catch (_) { return; }
-    if (m.ev === 'deck') { cached = m.deck || null; changedNow(); return; }
+    if (m.ev === 'deck') { cached = m.deck || null; noticeEntries(cached); changedNow(); return; }
     if (m.ev === 'spool') { void importAll(); return; }
     const p = m.id != null && pending.get(m.id);
     if (!p) return;
@@ -87,6 +87,28 @@ function onMessage(line) {
     clearTimeout(p.timer);
     if (m.ok) p.resolve(m.result);
     else p.reject(fail((m.error && m.error.message) || 'The recorder failed.', (m.error && m.error.code) || ''));
+}
+
+/**
+ * A schedule set to Notify (Lizumi S5, #1252): its recording starting, or its entry missed, raises a notice on the desktop and
+ * the phones (notificationInboxSources.publish; id xmrec:<entry>). The first deck after a (re)connect only takes the baseline,
+ * so a Dreamscape restart does not repeat old notices.
+ */
+const noticed = new Map(); // entry id -> 'running' | 'missed'
+let noticeBase = false;
+function noticeEntries(d) {
+    if (!d) return;
+    const list = [].concat(d.jobs || [], d.history || []).filter((e) => e && e.notify && (e.state === 'running' || e.state === 'missed'));
+    if (!noticeBase) { noticeBase = true; for (const e of list) noticed.set(e.id, e.state); return; }
+    for (const e of list) {
+        if (noticed.get(e.id) === e.state) continue;
+        noticed.set(e.id, e.state);
+        let ch = '';
+        try { const c = xm && xm.channelById(e.channelId); ch = c ? c.name : ''; } catch (_) { /* no lineup */ }
+        try { require('./notificationInboxSources').onXmRecording(e, ch);
+        } catch (err) { console.warn(`[xmRadio rec] notice: ${err.message}`); }
+    }
+    if (noticed.size > 500) noticed.delete(noticed.keys().next().value);
 }
 
 function changedNow() {
@@ -193,6 +215,7 @@ function init(xmRadio, globalResources, { changed } = {}) {
 }
 
 module.exports = {
+    _test: { noticeEntries, resetNotices: () => { noticed.clear(); noticeBase = false; } },
     init,
     deck,
     online: () => up,

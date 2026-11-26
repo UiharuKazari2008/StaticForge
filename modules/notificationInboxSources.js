@@ -23,6 +23,7 @@
  *   wx:<alertId>                      a weather alert, one notice for the event whichever places it covers (Home, Work, the
  *                                     current place): data.places lists them, the text names them all (#1194)
  *   rain:<placeId>                    the rain alarm for Home / Work
+ *   xmrec:<entryId>                   XM Radio: a schedule set to Notify started recording, or its entry was missed (#1252)
  *
  * Titles and texts are the page's own (WM wording); data names the app and what to open on a tap.
  */
@@ -685,6 +686,23 @@ function onRainAlarm(d) {
     });
 }
 
+/** XM Radio (Lizumi S5, #1252): a schedule set to Notify started recording, or its queue entry was missed. */
+function onXmRecording(e, channelName) {
+    if (!e || !e.id || (e.state !== 'running' && e.state !== 'missed')) return null;
+    const what = [e.a, e.t].filter(Boolean).join(' - ') || e.s || 'XM Radio';
+    const on = channelName ? ` on ${channelName}` : '';
+    const missed = e.state === 'missed';
+    return publish({
+        app: 'xmradio',
+        id: `xmrec:${e.id}`,
+        cls: 'xmradio',
+        title: missed ? 'XM Radio recording missed' : 'XM Radio is recording',
+        text: clip(missed ? `${what}${on}: ${e.reason || 'it left the five-hour buffer'}` : `${what}${on}`, 200),
+        data: { app: 'xmradio', kind: 'xmrec', entry: e.id, rid: e.rid || null, state: e.state },
+        ttlMs: DAY,
+    });
+}
+
 module.exports = {
     onMailEvent,
     onDovecoteNewMail,
@@ -705,6 +723,7 @@ module.exports = {
     bindPrintQueue,
     onWeatherAlert,
     onRainAlarm,
+    onXmRecording,
     _test: {
         saidOf,
         sweepDovecote,

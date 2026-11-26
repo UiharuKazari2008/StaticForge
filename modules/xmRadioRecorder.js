@@ -782,7 +782,7 @@ function makeEntry(kind, channelId, o = {}) {
     const from = Number(o.from) || now;
     return {
         id: id8(), kind, channelId: String(channelId || ''), from, to: Number(o.to) || 0, until: Number(o.until) || 0,
-        mode: o.mode || null, fromCut: Number(o.fromCut) || 0, fromNow: !!o.fromNow,
+        mode: o.mode || null, fromCut: Number(o.fromCut) || 0, fromNow: !!o.fromNow, tape: o.tape ? String(o.tape).slice(0, 80) : '', notify: !!o.notify,
         a: String(o.a || '').slice(0, 200), t: String(o.t || '').slice(0, 200), s: String(o.s || '').slice(0, 200), ik: String(o.ik || '').slice(0, 200),
         rangeCut: o.rangeCut || null, ref: o.ref || null, addedAt: now, expiresAt: from + BUFFER_MS - EXPIRY_MARGIN_MS,
         state: 'queued', slot: null, rid: null, startedAt: 0, endedAt: 0, reason: ''
@@ -793,6 +793,7 @@ function makeEntry(kind, channelId, o = {}) {
 function startOpts(e, now, slot) {
     const kind = e.kind || 'song';
     const o = { channelId: e.channelId, slot, kind: REC_KIND[kind] || 'manual', ref: e.ref || null, mode: e.mode || undefined };
+    if (e.tape) o.tape = e.tape; // a rule's destination tape; else the deck's own
     // a start that is not "from now" (and any late one) reaches back to the first moment wanted
     o.back = e.fromNow && now - e.from < 2000 ? 0 : Math.max(0, Math.ceil((now - e.from) / 1000) + 8);
     if (kind === 'song') {
@@ -839,7 +840,7 @@ function queueSorted() {
 }
 const entryPublic = (q, position) => ({
     id: q.id, kind: q.kind || 'song', state: q.state || 'queued', channelId: q.channelId, from: q.from, to: q.to || 0,
-    a: q.a || '', t: q.t || '', s: q.s || '', ik: q.ik || '', mode: q.mode || null, ref: q.ref || null,
+    a: q.a || '', t: q.t || '', s: q.s || '', ik: q.ik || '', mode: q.mode || null, ref: q.ref || null, tape: q.tape || '', notify: !!q.notify,
     slot: q.slot || null, rid: q.rid || null, position: position || 0,
     expiresAt: q.expiresAt, addedAt: q.addedAt, startedAt: q.startedAt || 0, endedAt: q.endedAt || 0, reason: q.reason || ''
 });
@@ -1284,7 +1285,7 @@ function fireTimers(now) {
         t.lastRun = at;
         if (t.date) t.off = true;
         const to = at + Math.max(1, Math.min(480, Number(t.minutes) || 60)) * 60000;
-        const entry = makeEntry('timer', t.channelId, { from: Math.min(at, now), to, ref: t.id, mode: t.mode, fromNow: true });
+        const entry = makeEntry('timer', t.channelId, { from: Math.min(at, now), to, ref: t.id, mode: t.mode, tape: t.destination, notify: t.notify, fromNow: true });
         submit(entry).catch((err) => console.warn(`[xmRadio rec] timer ${t.id}: ${err.message}`));
     }
 }
@@ -1329,20 +1330,64 @@ function onAirCut(cur, now) {
     return !!cur && !cur.ad && now - cur.at <= QUEUE_TTL;
 }
 
-/** Which alert or term the cut matches: an alert for its artist (or artist and title), else a term whose every word
- *  is in the artist, title or show. `id` is the channel's. */
-function matchOnAir(id, cur, alerts, terms) {
-    for (const a of alerts) {
-        if (a.channelId && a.channelId !== id) continue;
-        if (norm(a.artist) !== norm(cur.a)) continue;
-        if (a.kind === 'song' && norm(a.title) !== norm(cur.t)) continue;
-        return { kind: 'alert', ref: a.id };
-    }
+/** A text rule: nothing wanted passes; else a substring of the words (or the whole words when `exact`). */
+function fieldOk(value, wanted, exact) {
+    const w = norm(wanted);
+    if (!w) return true;
+    const v = norm(value);
+    return exact ? v === w : v.includes(w);
+}
+
+/** The hour window: after (from this hour on) and before (until this hour); after > before wraps past midnight. */
+function hourOk(h, after, before) {
+    const a = Number.isInteger(after) ? after : null;
+    const b = Number.isInteger(before) ? before : null;
+    if (a == null && b == null) return true;
+    if (a != null && b != null) return a <= b ? (h >= a && h < b) : (h >= a || h < b);
+    return a != null ? h >= a : h < b;
+}
+
+/** A cut's length in seconds as far as it is known (its own, else the durable store's); 0 until then. */
+function cutLength(id, cur) {
+    if (Number(cur.dur) > 0) return Number(cur.dur);
+    if (!cutStore.isOpen()) return 0;
+    try {
+        const r = cutStore.cutAt(id, cur.at);
+        return r && r.at === cur.at && r.dur ? r.dur : 0;
+    } catch (_) { return 0; }
+}
+
+/** Does one term's full rule set hold for the cut on air? A rule that is off (the field absent) always holds. */
+function termOk(id, cur, t, ctx) {
+    if (t.channelId && t.channelId !== id) return false;
+    if (ctx.episode && !t.allowShows) return false;
     const hay = norm(`${cur.a} ${cur.t} ${cur.s}`);
+    const words = norm(t.text).split(' ').filter(Boolean);
+    if (!words.length && !norm(t.artist) && !norm(t.title) && !norm(t.show)) return false;
+    if (words.length && !words.every((w) => hay.includes(w))) return false;
+    if (!fieldOk(cur.a, t.artist, t.artistExact) || !fieldOk(cur.t, t.title, t.titleExact) || !fieldOk(cur.s, t.show, t.showExact)) return false;
+    if (Array.isArray(t.days) && t.days.length && !t.days.includes(new Date(cur.at).getDay())) return false;
+    if (!hourOk(new Date(cur.at).getHours(), t.afterHour, t.beforeHour)) return false;
+    // only a cut caught within a minute of its start (the default records one that began long ago, from its first frame)
+    if (t.fastTrigger && (ctx.now || Date.now()) - cur.at > 60000) return false;
+    // the length is not always known while a cut is on air: not a miss, the next read looks again
+    if (t.minDuration > 0 && cutLength(id, cur) < t.minDuration) return false;
+    return true;
+}
+
+/** Which alert or term the cut matches: an alert for its artist (or artist and title), else a term whose rules all
+ *  hold (#1252 S5). `id` is the channel's. ctx: { now, episode (cur is a show's episode: allowShows terms only) }. */
+function matchOnAir(id, cur, alerts, terms, ctx = {}) {
+    if (!ctx.episode) {
+        for (const a of alerts) {
+            if (a.channelId && a.channelId !== id) continue;
+            if (norm(a.artist) !== norm(cur.a)) continue;
+            if (a.kind === 'song' && norm(a.title) !== norm(cur.t)) continue;
+            return a.destination ? { kind: 'alert', ref: a.id, tape: a.destination } : { kind: 'alert', ref: a.id };
+        }
+    }
     for (const t of terms) {
-        if (t.channelId && t.channelId !== id) continue;
-        const words = norm(t.text).split(' ').filter(Boolean);
-        if (words.length && words.every((w) => hay.includes(w))) return { kind: 'term', ref: t.id };
+        if (termOk(id, cur, t, ctx)) return Object.assign({ kind: 'term', ref: t.id }, t.destination ? { tape: t.destination } : {}, t.notify ? { notify: true } : {});
     }
     return null;
 }
@@ -1364,12 +1409,33 @@ function onLook(channelCuts) {
         if (fired.has(key)) continue;
         const ch = xm.channelById(id);
         if (!ch || ch.sub === false) continue;
-        const hit = matchOnAir(id, cur, s.alerts, s.terms);
+        const hit = matchOnAir(id, cur, s.alerts, s.terms, { now });
         if (!hit) continue;
         fired.add(key);
         if (fired.size > 2000) fired.delete(fired.values().next().value);
         // an alert or term records the matching cut from its first frame: it queues, and reaches back when a slot takes it
-        submit(makeEntry(hit.kind, id, { from: cur.at, fromCut: cur.at, until: now + 2 * 3600 * 1000, ref: hit.ref, a: cur.a, t: cur.t, s: cur.s, ik: cur.ik }))
+        submit(makeEntry(hit.kind, id, { from: cur.at, fromCut: cur.at, until: now + 2 * 3600 * 1000, ref: hit.ref, tape: hit.tape, notify: hit.notify, a: cur.a, t: cur.t, s: cur.s, ik: cur.ik }))
+            .catch((err) => console.warn(`[xmRadio rec] ${hit.kind} ${hit.ref}: ${err.message}`));
+    }
+    matchEpisodes(channelCuts, s, now);
+}
+
+/** A show's episode on air, for the terms that allow shows (the store keeps the episodes lookAround does not carry). */
+function matchEpisodes(channelCuts, s, now) {
+    if (!s.terms.some((t) => t.allowShows) || !cutStore.isOpen()) return;
+    for (const id of channelCuts.keys()) {
+        const ch = xm.channelById(id);
+        if (!ch || ch.sub === false) continue;
+        let eps;
+        try { eps = cutStore.cutsBetween(id, now, 0).filter((r) => r.isEpisode && r.at <= now && (!r.end || r.end > now)); } catch (_) { continue; }
+        const ep = eps[eps.length - 1];
+        if (!ep || !ep.title) continue;
+        const key = `${id}|ep|${ep.at}`;
+        if (fired.has(key)) continue;
+        const hit = matchOnAir(id, { at: ep.at, a: '', t: ep.title, s: ep.title, dur: ep.dur }, [], s.terms, { now, episode: true });
+        if (!hit) continue;
+        fired.add(key);
+        submit(makeEntry(hit.kind, id, { from: ep.at, fromCut: ep.at, until: now + 2 * 3600 * 1000, ref: hit.ref, tape: hit.tape, notify: hit.notify, t: ep.title, s: ep.title }))
             .catch((err) => console.warn(`[xmRadio rec] ${hit.kind} ${hit.ref}: ${err.message}`));
     }
 }
@@ -1397,6 +1463,18 @@ function setDeck({ tape, workspaceId, mode } = {}) {
     return deck();
 }
 
+/** A destination tape's name as a rule stores it: a safe folder name, or null for the deck's own tape. */
+function tapeOf(v) {
+    return safeName(v, 80) || null;
+}
+
+/** An hour 0-23, or null when the rule is off. */
+function hourOf(v) {
+    if (v == null || v === '') return null;
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) && n >= 0 && n <= 23 ? n : null;
+}
+
 function setTimers(list) {
     const s = load();
     s.timers = (Array.isArray(list) ? list : []).slice(0, 50).filter((t) => t && xm.channelById(String(t.channelId || ''))).map((t) => ({
@@ -1407,6 +1485,8 @@ function setTimers(list) {
         days: Array.isArray(t.days) ? [...new Set(t.days.map(Number).filter((d) => d >= 0 && d <= 6))] : [],
         date: /^\d{4}-\d{2}-\d{2}$/.test(t.date || '') ? t.date : null,
         mode: t.mode === 'song' || t.mode === 'long' ? t.mode : null,
+        destination: tapeOf(t.destination),
+        notify: !!t.notify,
         off: !!t.off
     }));
     armTimers();
@@ -1414,11 +1494,16 @@ function setTimers(list) {
     return s.timers;
 }
 
-function addAlert({ kind, artist, title, channelId } = {}) {
+function addAlert({ kind, artist, title, channelId, destination } = {}) {
     const s = load();
-    const a = { id: id8(), kind: kind === 'song' ? 'song' : 'artist', artist: String(artist || '').slice(0, 200), title: kind === 'song' ? String(title || '').slice(0, 200) : '', channelId: channelId ? String(channelId) : null };
+    const a = { id: id8(), kind: kind === 'song' ? 'song' : 'artist', artist: String(artist || '').slice(0, 200), title: kind === 'song' ? String(title || '').slice(0, 200) : '', channelId: channelId ? String(channelId) : null, destination: tapeOf(destination) };
     if (!a.artist) throw new Error('Nothing is playing to set an alert for.');
-    if (s.alerts.some((x) => x.kind === a.kind && norm(x.artist) === norm(a.artist) && norm(x.title) === norm(a.title))) return s.alerts;
+    const had = s.alerts.find((x) => x.kind === a.kind && norm(x.artist) === norm(a.artist) && norm(x.title) === norm(a.title));
+    if (had) {
+        // the same alert again only moves its destination (the console's Properties)
+        if (destination !== undefined && (had.destination || null) !== a.destination) { had.destination = a.destination; changed(); }
+        return s.alerts;
+    }
     s.alerts.push(a);
     if (s.alerts.length > 100) s.alerts.shift();
     xm.watch('match', wantsWatch());
@@ -1436,11 +1521,24 @@ function removeAlert(id) {
 
 function setTerms(list) {
     const s = load();
-    s.terms = (Array.isArray(list) ? list : []).slice(0, 50).map((t) => ({
-        id: t && /^[0-9a-f]{12}$/.test(t.id) ? t.id : id8(),
-        text: String((t && t.text) || '').trim().slice(0, 120),
-        channelId: t && t.channelId ? String(t.channelId) : null
-    })).filter((t) => norm(t.text));
+    // every field past text and channel is optional and off by default (#1252 S5); anything else is dropped
+    const str = (v) => String(v || '').trim().slice(0, 120);
+    s.terms = (Array.isArray(list) ? list : []).slice(0, 50).map((x) => {
+        const t = x || {};
+        return {
+            id: /^[0-9a-f]{12}$/.test(t.id) ? t.id : id8(),
+            text: str(t.text),
+            channelId: t.channelId ? String(t.channelId) : null,
+            artist: str(t.artist), artistExact: !!t.artistExact,
+            title: str(t.title), titleExact: !!t.titleExact,
+            show: str(t.show), showExact: !!t.showExact,
+            days: Array.isArray(t.days) ? [...new Set(t.days.map(Number).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort() : [],
+            afterHour: hourOf(t.afterHour), beforeHour: hourOf(t.beforeHour),
+            minDuration: Math.max(0, Math.min(86400, Math.round(Number(t.minDuration) || 0))),
+            allowShows: !!t.allowShows, fastTrigger: !!t.fastTrigger, notify: !!t.notify,
+            destination: tapeOf(t.destination)
+        };
+    }).filter((t) => norm(t.text) || norm(t.artist) || norm(t.title) || norm(t.show));
     xm.watch('match', wantsWatch());
     changed();
     return s.terms;

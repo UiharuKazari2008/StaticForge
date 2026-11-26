@@ -1,6 +1,6 @@
 /**
  * Lizumi (Yozora #1252, slice S4): the MMC console for XM Radio recording management, opened from the Start menu
- * as its own window. Read-only in this version. Pages:
+ * as its own window. Pages (Schedules is managed here, the rest read-only):
  *
  *   Lizumi
  *     Virtual Radios    the four recorder slots (Lizumi-Recorder-1..4): each holds one recording or is on standby,
@@ -40,7 +40,7 @@
 
     const state = {
         console: null, account: null, deck: null, slots: { max: 4 }, loaded: false, error: '',
-        channels: new Map(), lineupAsked: false,
+        channels: new Map(), lineup: [], lineupAsked: false,
         tracks: null, tracksFor: '', tracksLoading: false,
         feedOn: false,
         liveRid: '', vol: 80, muted: false, player: null
@@ -108,6 +108,7 @@
         state.lineupAsked = true;
         try {
             const r = await send('xmradio_lineup', {});
+            state.lineup = r.channels || [];
             (r.channels || []).forEach((ch) => state.channels.set(ch.id, ch.number ? `${ch.number} ${ch.name}` : ch.name));
             repaint();
         } catch (_) { state.lineupAsked = false; }
@@ -243,35 +244,332 @@
         };
     }
 
+    // ---- Schedules: manage timers, search terms and alerts ----------------------------------------------
+
+    const LENGTHS = [[15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [90, '1.5 hours'], [120, '2 hours'], [180, '3 hours'], [240, '4 hours'], [360, '6 hours'], [480, '8 hours']];
+    // Vista dialog styles (the radio app's TIMER dialog uses the same)
+    const SS = 0x50020000;
+    const EDIT = 0x50810080;
+    const COMBO = 0x50210003;
+    const CHECK = 0x50010003;
+    const DAYBTN = 0x50011003; // a check box drawn as a push button (WinCal's S M T W T F S)
+    const PUSH = 0x50010000;
+    const DEFPUSH = 0x50010001;
+    const DLG_STYLE = 0x80C800C8;
+    const pad2 = (n) => String(n).padStart(2, '0');
+
+    const lineupList = () => (state.lineup || []).filter((x) => x.sub !== false).map((x) => ({ value: x.id, text: x.number ? `${x.number} ${x.name}` : x.name }));
+    const deckList = (k) => (state.deck && Array.isArray(state.deck[k]) ? state.deck[k] : []);
+
+    /** Rules a term carries past its words, as one short line for the list. */
+    function ruleText(t) {
+        const out = [];
+        const f = (label, v, exact) => { if (v) out.push(`${label} ${exact ? 'is' : 'has'} ${v}`); };
+        f('Artist', t.artist, t.artistExact);
+        f('Title', t.title, t.titleExact);
+        f('Show', t.show, t.showExact);
+        const a = Number.isInteger(t.afterHour) ? t.afterHour : null;
+        const b = Number.isInteger(t.beforeHour) ? t.beforeHour : null;
+        if (a != null || b != null) out.push(`Hours ${a != null ? pad2(a) : '00'}-${b != null ? pad2(b) : '24'}`);
+        if (t.minDuration > 0) out.push(`Over ${Math.round(t.minDuration / 6) / 10} min`);
+        if (t.allowShows) out.push('Shows too');
+        if (t.fastTrigger) out.push('At the start only');
+        if (t.notify) out.push('Notify');
+        return out.join('; ');
+    }
+
     function schedulesPage(c) {
         const d = state.deck || {};
         const rows = [];
         (d.timers || []).forEach((t) => rows.push({
             key: `t:${t.id}`, icon: `${VI}/windows-update-16.png`,
-            data: { kind: 'Timer', channel: chName(t.channelId), start: t.start || '', minutes: t.minutes ? String(t.minutes) : '', days: daysText(t.days), date: t.date || '', mode: t.mode || '', match: '', state: t.off ? 'Off' : 'On' }
+            data: { kind: 'Timer', channel: chName(t.channelId), start: t.start || '', minutes: t.minutes ? String(t.minutes) : '', days: daysText(t.days), date: t.date || '', mode: t.mode || '', match: '', rules: t.notify ? 'Notify' : '', tape: t.destination || '', state: t.off ? 'Off' : 'On' }
         }));
         (d.terms || []).forEach((t) => rows.push({
             key: `s:${t.id}`, icon: `${VI}/search-16.png`,
-            data: { kind: 'Search term', channel: t.channelId ? chName(t.channelId) : 'Any channel', start: '', minutes: '', days: '', date: '', mode: '', match: t.text || '', state: 'On' }
+            data: { kind: 'Search term', channel: t.channelId ? chName(t.channelId) : 'Any channel', start: '', minutes: '', days: daysText(t.days), date: '', mode: '', match: t.text || '', rules: ruleText(t), tape: t.destination || '', state: 'On' }
         }));
         (d.alerts || []).forEach((a) => rows.push({
             key: `a:${a.id}`, icon: `${VI}/search-16.png`,
-            data: { kind: 'Alert', channel: a.channelId ? chName(a.channelId) : 'Any channel', start: '', minutes: '', days: '', date: '', mode: '', match: [a.artist, a.title].filter(Boolean).join(' - '), state: 'On' }
+            data: { kind: 'Alert', channel: a.channelId ? chName(a.channelId) : 'Any channel', start: '', minutes: '', days: '', date: '', mode: '', match: [a.artist, a.title].filter(Boolean).join(' - '), rules: '', tape: a.destination || '', state: 'On' }
         }));
         return {
             html: c.listView([
-                { t: 'Type', w: 110, key: 'kind', text: (x) => x.kind },
-                { t: 'Channel', w: 130, key: 'channel', text: (x) => x.channel },
-                { t: 'Start', w: 50, key: 'start', text: (x) => x.start },
-                { t: 'Minutes', w: 56, key: 'minutes', text: (x) => x.minutes, value: (x) => Number(x.minutes) || 0 },
-                { t: 'Days', w: 130, key: 'days', text: (x) => x.days },
-                { t: 'Date', w: 76, key: 'date', text: (x) => x.date },
-                { t: 'Mode', w: 50, key: 'mode', text: (x) => x.mode },
-                { t: 'Matches', w: 180, key: 'match', text: (x) => x.match },
+                { t: 'Type', w: 120, key: 'kind', text: (x) => x.kind },
+                { t: 'Channel', w: 120, key: 'channel', text: (x) => x.channel },
+                { t: 'Start', w: 46, key: 'start', text: (x) => x.start },
+                { t: 'Minutes', w: 52, key: 'minutes', text: (x) => x.minutes, value: (x) => Number(x.minutes) || 0 },
+                { t: 'Days', w: 110, key: 'days', text: (x) => x.days },
+                { t: 'Date', w: 74, key: 'date', text: (x) => x.date },
+                { t: 'Mode', w: 46, key: 'mode', text: (x) => x.mode },
+                { t: 'Matches', w: 150, key: 'match', text: (x) => x.match },
+                { t: 'Rules', w: 190, key: 'rules', text: (x) => x.rules },
+                { t: 'Tape', w: 90, key: 'tape', text: (x) => x.tape },
                 { t: 'State', w: 44, key: 'state', text: (x) => x.state }
-            ], rows, { sortId: 'lz-schedules', empty: EMPTY }),
+            ], rows, { sortId: 'lz-schedules', empty: 'There are no timers, search terms or alerts. Use New Timer or New Search Term.' }),
             list: true
         };
+    }
+
+    const dialogs = () => root.vistaDialogTemplate || null;
+    const keep = (x) => { const o = Object.assign({}, x); delete o.tmp; return o; };
+
+    /** The whole list goes in, as the radio app saves it; the answer is what the server kept. */
+    async function saveTimers(list) {
+        const r = await send('xmradio_timers_set', { timers: list.map(keep) });
+        if (state.deck && Array.isArray(r.timers)) state.deck.timers = r.timers;
+        repaint();
+        return r.timers || [];
+    }
+
+    async function saveTerms(list) {
+        const r = await send('xmradio_terms_set', { terms: list.map(keep) });
+        if (state.deck && Array.isArray(r.terms)) state.deck.terms = r.terms;
+        repaint();
+        return r.terms || [];
+    }
+
+    const dayButtons = (x0, y) => DAYS.map((d, i) => [401 + i, 'B', x0 + i * 25, y, 23, 14, DAYBTN, d.slice(0, 2), 0]);
+
+    function timerDialog(c, t) {
+        const V = dialogs();
+        if (!V) throw new Error('The dialog could not be shown.');
+        const chans = lineupList();
+        if (!chans.length) throw new Error('The channel list has not come in yet. Try again in a moment.');
+        const cur = t || { channelId: chans[0].value, start: '08:00', minutes: 60, days: [1, 2, 3, 4, 5], date: null, mode: null, destination: null, notify: false };
+        V.openDialog({
+            id: 'lizumiTimerDialog', owner: c.modal, title: t ? 'Timer Properties' : 'New Timer',
+            tpl: { t: 'Timer', w: 256, h: 182, f: ['Segoe UI', 9], s: DLG_STYLE, c: [
+                [-1, 'S', 7, 9, 52, 8, SS, '&Channel:', 0],
+                [301, 'C', 62, 7, 187, 120, COMBO, '', 0],
+                [-1, 'S', 7, 27, 52, 8, SS, '&Start at:', 0],
+                [302, 'E', 62, 25, 40, 12, EDIT, '', 0],
+                [-1, 'S', 106, 27, 100, 8, SS, '(24-hour, hh:mm)', 0],
+                [-1, 'S', 7, 45, 52, 8, SS, '&Length:', 0],
+                [303, 'C', 62, 43, 80, 120, COMBO, '', 0],
+                [-1, 'S', 7, 62, 52, 8, SS, 'Repeat on:', 0],
+                ...dayButtons(62, 60),
+                [-1, 'S', 7, 82, 52, 8, SS, 'Or &once on:', 0],
+                [304, 'E', 62, 80, 60, 12, EDIT, '', 0],
+                [-1, 'S', 126, 82, 123, 8, SS, '(yyyy-mm-dd; no days pressed)', 0],
+                [-1, 'S', 7, 100, 52, 8, SS, 'S&plit:', 0],
+                [305, 'C', 62, 98, 120, 120, COMBO, '', 0],
+                [-1, 'S', 7, 118, 52, 8, SS, '&Tape:', 0],
+                [306, 'E', 62, 116, 120, 12, EDIT, '', 0],
+                [-1, 'S', 186, 118, 66, 8, SS, '(blank: the deck\'s)', 0],
+                [307, 'B', 62, 134, 120, 10, CHECK, '&Notify', 0],
+                [320, 'S', 7, 150, 242, 10, SS, '', 0],
+                [1, 'B', 143, 163, 50, 14, DEFPUSH, 'OK', 0],
+                [2, 'B', 199, 163, 50, 14, PUSH, 'Cancel', 0]
+            ] },
+            init: (ctx) => {
+                ctx.options(301, chans, cur.channelId);
+                ctx.set(302, cur.start || '08:00');
+                const lens = LENGTHS.map(([v, x]) => ({ value: String(v), text: x }));
+                if (!LENGTHS.some(([v]) => v === Number(cur.minutes))) lens.push({ value: String(cur.minutes), text: `${cur.minutes} minutes` });
+                ctx.options(303, lens, String(cur.minutes || 60));
+                DAYS.forEach((d, i) => ctx.set(401 + i, !cur.date && (cur.days || []).includes(i)));
+                ctx.set(304, cur.date || '');
+                ctx.options(305, [{ value: '', text: "As the deck's switch" }, { value: 'song', text: 'Each song' }, { value: 'long', text: 'One continuous file' }], cur.mode || '');
+                ctx.set(306, cur.destination || '');
+                ctx.set(307, !!cur.notify);
+            },
+            ok: async (ctx) => {
+                const start = String(ctx.get(302) || '').trim();
+                const m = /^(\d{1,2}):(\d{2})$/.exec(start);
+                if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) { ctx.text(320, 'Start at: type the time as hh:mm (24-hour).'); return false; }
+                const days = DAYS.map((d, i) => (ctx.get(401 + i) ? i : -1)).filter((i) => i >= 0);
+                const date = String(ctx.get(304) || '').trim();
+                if (!days.length && !/^\d{4}-\d{2}-\d{2}$/.test(date)) { ctx.text(320, 'Press at least one day, or type the date as yyyy-mm-dd.'); return false; }
+                const next = Object.assign({}, t || {}, {
+                    channelId: String(ctx.get(301)), start: `${pad2(Number(m[1]))}:${m[2]}`, minutes: Number(ctx.get(303)) || 60,
+                    days, date: days.length ? null : date, mode: String(ctx.get(305) || '') || null,
+                    destination: String(ctx.get(306) || '').trim() || null, notify: !!ctx.get(307), off: t ? !!t.off : false
+                });
+                const list = deckList('timers').map((x) => Object.assign({}, x));
+                const i = t ? list.findIndex((x) => x.id === t.id) : -1;
+                if (i >= 0) list[i] = next; else list.push(next);
+                try { await saveTimers(list); } catch (err) { ctx.text(320, (err && err.message) || 'The timer was not saved.'); return false; }
+                return true;
+            }
+        });
+    }
+
+    function termDialog(c, t) {
+        const V = dialogs();
+        if (!V) throw new Error('The dialog could not be shown.');
+        const cur = t || { text: '', channelId: null, days: [], minDuration: 0 };
+        const row = (y, id, label, ex) => [[-1, 'S', 7, y + 2, 58, 8, SS, label, 0], [id, 'E', 66, y, ex ? 150 : 226, 12, EDIT, '', 0]].concat(ex ? [[ex, 'B', 222, y + 1, 70, 10, CHECK, 'E&xact', 0]] : []);
+        V.openDialog({
+            id: 'lizumiTermDialog', owner: c.modal, title: t ? 'Search Term Properties' : 'New Search Term',
+            tpl: { t: 'Search Term', w: 300, h: 248, f: ['Segoe UI', 9], s: DLG_STYLE, c: [
+                [-1, 'S', 7, 9, 58, 8, SS, '&Channel:', 0],
+                [301, 'C', 66, 7, 226, 120, COMBO, '', 0],
+                ...row(25, 302, '&Words:'),
+                ...row(43, 303, '&Artist:', 313),
+                ...row(61, 304, 'Ti&tle:', 314),
+                ...row(79, 305, '&Show:', 315),
+                [-1, 'S', 7, 99, 58, 8, SS, 'Only on:', 0],
+                ...dayButtons(66, 97),
+                [-1, 'S', 7, 119, 58, 8, SS, 'Between hours:', 0],
+                [306, 'E', 66, 117, 24, 12, EDIT, '', 0],
+                [-1, 'S', 94, 119, 14, 8, SS, 'and', 0],
+                [307, 'E', 112, 117, 24, 12, EDIT, '', 0],
+                [-1, 'S', 140, 119, 152, 8, SS, '(0-23, from the cut\'s start; blank: any time)', 0],
+                [-1, 'S', 7, 137, 58, 8, SS, 'Longer than:', 0],
+                [308, 'E', 66, 135, 30, 12, EDIT, '', 0],
+                [-1, 'S', 100, 137, 190, 8, SS, 'minutes (0: any length)', 0],
+                [309, 'B', 66, 153, 226, 10, CHECK, 'Also match a show\'s &episodes', 0],
+                [310, 'B', 66, 165, 226, 10, CHECK, 'Only when caught at the start of the cut (within a minute)', 0],
+                [311, 'B', 66, 177, 226, 10, CHECK, '&Notify', 0],
+                [-1, 'S', 7, 195, 58, 8, SS, 'Ta&pe:', 0],
+                [312, 'E', 66, 193, 120, 12, EDIT, '', 0],
+                [-1, 'S', 190, 195, 102, 8, SS, '(blank: the deck\'s)', 0],
+                [320, 'S', 7, 212, 285, 10, SS, '', 0],
+                [1, 'B', 186, 228, 50, 14, DEFPUSH, 'OK', 0],
+                [2, 'B', 242, 228, 50, 14, PUSH, 'Cancel', 0]
+            ] },
+            init: (ctx) => {
+                ctx.options(301, [{ value: '', text: 'Any channel' }].concat(lineupList()), cur.channelId || '');
+                ctx.set(302, cur.text || '');
+                ctx.set(303, cur.artist || ''); ctx.set(313, !!cur.artistExact);
+                ctx.set(304, cur.title || ''); ctx.set(314, !!cur.titleExact);
+                ctx.set(305, cur.show || ''); ctx.set(315, !!cur.showExact);
+                DAYS.forEach((d, i) => ctx.set(401 + i, (cur.days || []).includes(i)));
+                ctx.set(306, Number.isInteger(cur.afterHour) ? String(cur.afterHour) : '');
+                ctx.set(307, Number.isInteger(cur.beforeHour) ? String(cur.beforeHour) : '');
+                ctx.set(308, cur.minDuration ? String(Math.round(cur.minDuration / 6) / 10) : '');
+                ctx.set(309, !!cur.allowShows); ctx.set(310, !!cur.fastTrigger); ctx.set(311, !!cur.notify);
+                ctx.set(312, cur.destination || '');
+            },
+            ok: async (ctx) => {
+                const hour = (id) => {
+                    const v = String(ctx.get(id) || '').trim();
+                    if (!v) return { ok: true, v: null };
+                    const n = Number(v);
+                    return Number.isInteger(n) && n >= 0 && n <= 23 ? { ok: true, v: n } : { ok: false };
+                };
+                const after = hour(306);
+                const before = hour(307);
+                if (!after.ok || !before.ok) { ctx.text(320, 'Between hours: type whole hours from 0 to 23, or leave them blank.'); return false; }
+                const mins = String(ctx.get(308) || '').trim();
+                const minutes = mins ? Number(mins) : 0;
+                if (!Number.isFinite(minutes) || minutes < 0 || minutes > 1440) { ctx.text(320, 'Longer than: type the minutes, or 0 for any length.'); return false; }
+                const f = (id) => String(ctx.get(id) || '').trim();
+                if (!f(302) && !f(303) && !f(304) && !f(305)) { ctx.text(320, 'Type what to look for: words, an artist, a title or a show.'); return false; }
+                const next = Object.assign({}, t || {}, {
+                    text: f(302), channelId: String(ctx.get(301) || '') || null,
+                    artist: f(303), artistExact: !!ctx.get(313), title: f(304), titleExact: !!ctx.get(314), show: f(305), showExact: !!ctx.get(315),
+                    days: DAYS.map((d, i) => (ctx.get(401 + i) ? i : -1)).filter((i) => i >= 0),
+                    afterHour: after.v, beforeHour: before.v, minDuration: Math.round(minutes * 60),
+                    allowShows: !!ctx.get(309), fastTrigger: !!ctx.get(310), notify: !!ctx.get(311), destination: f(312) || null
+                });
+                const list = deckList('terms').map((x) => Object.assign({}, x));
+                const i = t ? list.findIndex((x) => x.id === t.id) : -1;
+                if (i >= 0) list[i] = next; else list.push(next);
+                try { await saveTerms(list); } catch (err) { ctx.text(320, (err && err.message) || 'The search term was not saved.'); return false; }
+                return true;
+            }
+        });
+    }
+
+    /** An alert is set from the radio; here it only gets a destination tape (the same alert again moves it). */
+    function alertDialog(c, a) {
+        const V = dialogs();
+        if (!V) throw new Error('The dialog could not be shown.');
+        V.openDialog({
+            id: 'lizumiAlertDialog', owner: c.modal, title: 'Alert Properties',
+            tpl: { t: 'Alert', w: 250, h: 100, f: ['Segoe UI', 9], s: DLG_STYLE, c: [
+                [-1, 'S', 7, 9, 52, 8, SS, 'Alert for:', 0],
+                [301, 'S', 62, 9, 187, 8, SS, '', 0],
+                [-1, 'S', 7, 27, 52, 8, SS, 'Channel:', 0],
+                [302, 'S', 62, 27, 187, 8, SS, '', 0],
+                [-1, 'S', 7, 47, 52, 8, SS, '&Tape:', 0],
+                [303, 'E', 62, 45, 120, 12, EDIT, '', 0],
+                [-1, 'S', 186, 47, 62, 8, SS, '(blank: the deck\'s)', 0],
+                [320, 'S', 7, 63, 242, 10, SS, '', 0],
+                [1, 'B', 139, 79, 50, 14, DEFPUSH, 'OK', 0],
+                [2, 'B', 193, 79, 50, 14, PUSH, 'Cancel', 0]
+            ] },
+            init: (ctx) => {
+                ctx.text(301, [a.artist, a.title].filter(Boolean).join(' - '));
+                ctx.text(302, a.channelId ? chName(a.channelId) : 'Any channel');
+                ctx.set(303, a.destination || '');
+            },
+            ok: async (ctx) => {
+                try {
+                    const r = await send('xmradio_alert_add', { kind: a.kind, artist: a.artist, title: a.title, channelId: a.channelId, destination: String(ctx.get(303) || '').trim() });
+                    if (state.deck && Array.isArray(r.alerts)) state.deck.alerts = r.alerts;
+                    repaint();
+                } catch (err) { ctx.text(320, (err && err.message) || 'The alert was not saved.'); return false; }
+                return true;
+            }
+        });
+    }
+
+    /** What a Schedules row key names: { type: 't' | 's' | 'a', item }. */
+    function itemOf(key) {
+        const m = /^([tsa]):(.+)$/.exec(String(key || ''));
+        if (!m) return null;
+        const item = deckList({ t: 'timers', s: 'terms', a: 'alerts' }[m[1]]).find((x) => x.id === m[2]);
+        return item ? { type: m[1], item } : null;
+    }
+
+    const TYPE_NAME = { t: 'Timer', s: 'Search term', a: 'Alert' };
+
+    function openProps(c, key) {
+        const x = itemOf(key);
+        if (!x) return;
+        if (x.type === 't') timerDialog(c, x.item);
+        else if (x.type === 's') termDialog(c, x.item);
+        else alertDialog(c, x.item);
+    }
+
+    async function deleteItem(c, key) {
+        const x = itemOf(key);
+        if (!x) return;
+        const ok = await c.box(`<p>Are you sure you want to delete this ${TYPE_NAME[x.type].toLowerCase()}?</p>`,
+            [{ text: 'Delete', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'question' });
+        if (ok !== true) return;
+        if (x.type === 't') await saveTimers(deckList('timers').filter((i) => i.id !== x.item.id));
+        else if (x.type === 's') await saveTerms(deckList('terms').filter((i) => i.id !== x.item.id));
+        else {
+            const r = await send('xmradio_alert_remove', { id: x.item.id });
+            if (state.deck && Array.isArray(r.alerts)) state.deck.alerts = r.alerts;
+        }
+        c.sel = null;
+        c.note(`${TYPE_NAME[x.type]} deleted.`);
+        repaint();
+    }
+
+    function scheduleCommands(n) {
+        if (n.id !== 'schedules') return [];
+        return [{ text: 'New Timer...', action: 'sch-new-timer' }, { text: 'New Search Term...', action: 'sch-new-term' }];
+    }
+
+    function scheduleSelCommands(n, key) {
+        if (n.id !== 'schedules') return null;
+        const x = itemOf(key);
+        if (!x) return null;
+        const items = [{ text: 'Properties...', action: 'sch-props' }];
+        if (x.type === 't') items.push({ text: x.item.off ? 'Turn On' : 'Turn Off', action: 'sch-toggle' });
+        items.push({ separator: true }, { text: 'Delete', action: 'sch-delete' });
+        return { title: TYPE_NAME[x.type], items };
+    }
+
+    async function scheduleAction(a, c) {
+        switch (a) {
+            case 'sch-new-timer': await loadLineup(); timerDialog(c, null); return true;
+            case 'sch-new-term': await loadLineup(); termDialog(c, null); return true;
+            case 'sch-props': openProps(c, c.sel); return true;
+            case 'sch-delete': await deleteItem(c, c.sel); return true;
+            case 'sch-toggle': {
+                const x = itemOf(c.sel);
+                if (x && x.type === 't') await saveTimers(deckList('timers').map((t) => (t.id === x.item.id ? Object.assign({}, t, { off: !t.off }) : t)));
+                return true;
+            }
+            default: return false;
+        }
     }
 
     function recordingsPage(c) {
@@ -531,10 +829,13 @@
             about: { version: '1.0', lines: ['Manages the XM Radio recorders, queue, schedules and accounts.'] },
             nodes: () => [{ id: 'root', name: TITLE, icon: APP, children: NODES.map((x) => ({ id: x.id, name: x.name, icon: x.icon })) }],
             page: (n, c) => page(n, c),
-            commands: () => [],
-            selCommands: () => null,
-            action: () => false,
-            rowOpen: (key, n, c) => { if (key && key.startsWith('n:')) c.select(key.slice(2), true); },
+            commands: (n) => scheduleCommands(n),
+            selCommands: (n, key) => scheduleSelCommands(n, key),
+            action: (a, c) => (a.startsWith('sch-') ? scheduleAction(a, c) : false),
+            rowOpen: (key, n, c) => {
+                if (key && key.startsWith('n:')) c.select(key.slice(2), true);
+                else if (n && n.id === 'schedules') openProps(c, key);
+            },
             status: (n) => status(n),
             viewMenu: () => [],
             onOpen: (c) => {

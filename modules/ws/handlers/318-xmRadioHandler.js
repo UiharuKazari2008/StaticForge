@@ -83,10 +83,10 @@ const recorder = require('../../xmRadioRecorderClient');
 // channelId, kind, since }], 'ch:<id>': { a, t, s, ad, i, at } } for the presets and the watched channels only.
 //                                                 (url: the recording's own growing playlist, which the radio plays)
 //   xmradio_rec_stop        { rid }               admins -> { rid, filed }
-//   xmradio_timers_set      { timers[{ id?, channelId, start 'HH:MM', minutes, days[0-6], date?, mode?, off? }] }  admins
-//   xmradio_alert_add       { kind (artist | song), artist, title?, channelId? }  admins -> { alerts }
+//   xmradio_timers_set      { timers[{ id?, channelId, start 'HH:MM', minutes, days[0-6], date?, mode?, destination? (a tape), notify?, off? }] }  admins
+//   xmradio_alert_add       { kind (artist | song), artist, title?, channelId?, destination? (a tape; the same alert again only moves it) }  admins -> { alerts }
 //   xmradio_alert_remove    { id }                admins -> { alerts }
-//   xmradio_terms_set       { terms[{ id?, text, channelId? }] }  admins -> { terms }
+//   xmradio_terms_set       { terms[{ id?, text, channelId?, artist?, title?, show? (each with artistExact, titleExact, showExact), days[0-6], afterHour?, beforeHour? (0-23, may wrap), minDuration? (s), allowShows, fastTrigger (only a cut caught within 60 s of its start), notify (stored; no recording notification path exists yet), destination? (a tape) }] }  admins -> { terms }
 //
 // What is on is pushed, never polled: statusHub feed `xmradio` (status_subscribe { feed: 'xmradio' } while a radio is
 // on) answers { account, lineup { at, n }, deck, 'ch:<channelId>': { a (artist), t (title), s (show), ad, i (art) } } once and then pushes
@@ -216,7 +216,7 @@ function registerPackets(handlersCtx) {
     reg('xmradio_track_delete', packet(true, 'The recording could not be deleted', async (m) => recorder.trackDelete(m.id)), { destructive: true });
     reg('xmradio_track_move', packet(true, 'The recording could not be moved', async (m) => recorder.trackMove(m.id, m.tape)));
     reg('xmradio_timers_set', packet(true, 'The timers could not be saved', async (m) => ({ timers: await recorder.setTimers(m.timers) })));
-    reg('xmradio_alert_add', packet(true, 'The alert could not be set', async (m) => ({ alerts: await recorder.addAlert({ kind: m.kind, artist: m.artist, title: m.title, channelId: m.channelId }) })));
+    reg('xmradio_alert_add', packet(true, 'The alert could not be set', async (m) => ({ alerts: await recorder.addAlert({ kind: m.kind, artist: m.artist, title: m.title, channelId: m.channelId, destination: m.destination }) })));
     reg('xmradio_alert_remove', packet(true, 'The alert could not be removed', async (m) => ({ alerts: await recorder.removeAlert(String(m.id || '')) })));
     reg('xmradio_terms_set', packet(true, 'The search terms could not be saved', async (m) => ({ terms: await recorder.setTerms(m.terms) })));
     reg('xmradio_presets_set', packet(true, 'The presets could not be saved', async (m) => ({ presets: xmRadio.setPresets(m.presets) })));
