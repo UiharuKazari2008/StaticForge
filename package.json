@@ -209,6 +209,8 @@
     "test:xmradio-slots": "node scripts/test-xmradio-slots.js",
     "test:xmradio-queue": "node scripts/test-xmradio-queue.js",
     "test:xmradio-terms": "node scripts/test-xmradio-terms.js",
+    "test:xmradio-behind": "node scripts/test-xmradio-behind.js",
+    "test:xmradio-assembly": "node scripts/test-xmradio-assembly.js",
     "test:runtime-data-paths": "node scripts/test-runtime-data-paths.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
     "flow-map": "node scripts/tools/flow-map.js",

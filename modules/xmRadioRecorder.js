@@ -24,10 +24,15 @@
  * something to match or record (rule phone-power-server 7). Timers are a single setTimeout to the next start.
  *
  * Nothing needs a client: the pump (modules/xmRadioPump.js) and this file run on the server; a recording that was
- * running when the server stopped is finished into its tape when it starts again, and carries on if its time is not up.
+ * running when the server stopped carries on if its time is not up, else it is assembled into its tape when it starts again.
  *
- * Files: <cache>/xmradio-recorder.json (the deck, timers, alerts, terms, recordings in progress);
- *        <cache>/xmradio-rec/<rid>/ (the recording's decrypted segments, segs.ndjson, cuts.ndjson) until it is filed.
+ * Nothing is filed while a recording runs (Yozora #1252 S7): its segments stay on disk and the files are assembled when it
+ * stops, and again on demand (assemble), from the segments and the cut store. A hole (audio that left SiriusXM's window before
+ * it was fetched, S6) is filled with AAC silence of its exact length and marked in the file. See "deferred assembly" below.
+ *
+ * Files: <cache>/xmradio-recorder.json (the deck, timers, alerts, terms, recordings in progress, settings);
+ *        <cache>/xmradio-rec/<rid>/ (the recording's decrypted segments, segs.ndjson with its gap rows, cuts.ndjson, meta.json,
+ *        assembly.json) until its keep time after a successful assembly has passed.
  */
 
 const fs = require('fs');
@@ -38,6 +43,15 @@ const cutStore = require('./xmRadioMeta');
 
 const MAX_MS = 8 * 3600 * 1000;
 const RECORDINGS = 'Recordings';
+// The deck's recording settings (the console's, through setSettings): [min, max] and the defaults.
+//   streamsPerAccount  streams one SiriusXM account may run at once
+//   healthyBuffer      segments the pump keeps between itself and the live edge (S6)
+//   behindSeconds      how far past the healthy position counts as "behind" (not during a deliberate reach-back)
+//   refetchRetries     times a segment that fails its checks is fetched again by the same URL
+//   keepSegmentsHours  how long a recording's raw segments are kept after it is assembled (Re-assemble needs them)
+const SETTING_RANGE = { streamsPerAccount: [1, 4], healthyBuffer: [1, 20], behindSeconds: [30, 3600], refetchRetries: [0, 10], keepSegmentsHours: [0, 720] };
+const SETTING_DEFAULTS = { streamsPerAccount: 1, healthyBuffer: 3, behindSeconds: 120, refetchRetries: 3, keepSegmentsHours: 24 };
+const SETTING_LABEL = { streamsPerAccount: 'Streams per account', healthyBuffer: 'The healthy buffer', behindSeconds: 'Behind seconds', refetchRetries: 'Refetch retries', keepSegmentsHours: 'Hours to keep segments' };
 const SR = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
 
 let xm = null; // modules/xmRadio.js (bound)
@@ -81,9 +95,11 @@ function load() {
     }
     st.running = Array.isArray(st.running) ? st.running : [];
     st.history = Array.isArray(st.history) ? st.history.slice(0, 100) : [];
-    st.settings = Object.assign({ streamsPerAccount: 1 }, st.settings || {});
-    const per = Number(st.settings.streamsPerAccount);
-    st.settings.streamsPerAccount = Number.isInteger(per) && per >= 1 && per <= 4 ? per : 1;
+    st.settings = Object.assign({}, SETTING_DEFAULTS, st.settings || {});
+    for (const [k, r] of Object.entries(SETTING_RANGE)) {
+        const n = Number(st.settings[k]);
+        st.settings[k] = Number.isInteger(n) && n >= r[0] && n <= r[1] ? n : SETTING_DEFAULTS[k];
+    }
     return st;
 }
 
@@ -133,7 +149,7 @@ const id8 = () => crypto.randomBytes(6).toString('hex');
 /** YYYY-MM-DD on this machine's clock (a recording's name and tag; toISOString's UTC date was a day ahead after 7 pm). */
 function localDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
 
-/** The ADTS frames in a buffer: [{ off, len, sr }] (each 1024 samples). */
+/** The ADTS frames in a buffer: [{ off, len, sr, ch (the header's channel configuration) }] (each 1024 samples). */
 function adtsFrames(buf) {
     const out = [];
     let off = 0;
@@ -141,18 +157,82 @@ function adtsFrames(buf) {
         if (buf[off] !== 0xff || (buf[off + 1] & 0xf6) !== 0xf0) { off += 1; continue; }
         const len = ((buf[off + 3] & 0x03) << 11) | (buf[off + 4] << 3) | (buf[off + 5] >> 5);
         if (len < 7 || off + len > buf.length) break;
-        out.push({ off, len, sr: SR[(buf[off + 2] >> 2) & 0x0f] || 44100 });
+        out.push({ off, len, sr: SR[(buf[off + 2] >> 2) & 0x0f] || 44100, ch: ((buf[off + 2] & 1) << 2) | (buf[off + 3] >> 6) });
         off += len;
     }
     return out;
 }
 
-/** The AAC of [from, to) (ms, the stream's own clock) out of a recording's segments, cut at whole frames. */
+const LAYOUT = { 1: 'mono', 2: 'stereo', 3: '3.0', 4: '4.0', 5: '5.0', 6: '5.1', 7: '7.1' };
+const silenceCache = new Map(); // `${sr}/${ch}` -> one silent ADTS AAC frame
+
+/**
+ * One frame of AAC silence at the stream's sample rate and channel count: ffmpeg's anullsrc (the lavfi null audio source,
+ * digital zero) encoded to ADTS AAC-LC, the third frame taken (the first carries the encoder's priming). A gap is N copies of
+ * it, so the length is exact to the frame (1024 samples) and every later time in the file stays true.
+ */
+async function silenceFrame(sr, ch, dir) {
+    const key = `${sr}/${ch}`;
+    if (silenceCache.has(key)) return silenceCache.get(key);
+    const tmp = path.join(dir, `silence-${sr}-${ch}.aac`);
+    try {
+        await ffmpeg(['-f', 'lavfi', '-i', `anullsrc=r=${sr}:cl=${LAYOUT[ch] || 'stereo'}`, '-t', '1', '-c:a', 'aac', '-profile:a', 'aac_low', '-b:a', '64k', '-f', 'adts', tmp]);
+        const buf = await fs.promises.readFile(tmp);
+        const frames = adtsFrames(buf);
+        if (!frames.length) throw new Error('no silence frames');
+        const fr = frames[Math.min(2, frames.length - 1)];
+        const frame = Buffer.from(buf.subarray(fr.off, fr.off + fr.len));
+        silenceCache.set(key, frame);
+        return frame;
+    } finally { fs.promises.rm(tmp, { force: true }).catch(() => {}); }
+}
+
+/** The recording's stream parameters { sr, ch } from its first segment's first frame (kept on the recording). */
+async function streamInfo(rec) {
+    if (rec.stream) return rec.stream;
+    for (const sg of rec.segs) {
+        try {
+            const frames = adtsFrames(require('./xmRadioPump')._test.stripId3(await fs.promises.readFile(path.join(rec.dir, sg.f))));
+            if (frames.length) { rec.stream = { sr: frames[0].sr, ch: frames[0].ch }; return rec.stream; }
+        } catch (_) { /* the next segment */ }
+    }
+    return { sr: 44100, ch: 2 };
+}
+
+/** The gaps of a recording that overlap [from, to), clipped to it: [{ from, to }]. */
+function gapsIn(rec, from, to) {
+    const out = [];
+    for (const g of rec.gaps || []) {
+        const a = Math.max(g.from, from);
+        const b = Math.min(g.to, to);
+        if (b - a >= 1) out.push({ from: a, to: b });
+    }
+    return out;
+}
+
+/**
+ * The AAC of [from, to) (ms, the stream's own clock) out of a recording's segments, cut at whole frames. A hole (a gap row:
+ * audio that left SiriusXM's window before it was fetched) inside the range is filled with AAC silence of its exact length.
+ */
 async function sliceAac(rec, from, to, outFile) {
     const fh = await fs.promises.open(outFile, 'w');
     let bytes = 0;
     try {
-        for (const sg of rec.segs) {
+        const items = rec.segs.map((sg) => ({ t: sg.pdt, sg }));
+        for (const g of gapsIn(rec, from, to)) items.push({ t: g.from, gap: g });
+        items.sort((x, y) => x.t - y.t);
+        for (const it of items) {
+            if (it.gap) {
+                const info = await streamInfo(rec);
+                const n = Math.round((it.gap.to - it.gap.from) * info.sr / 1024000);
+                if (n < 1) continue;
+                const frame = await silenceFrame(info.sr, info.ch, rec.dir);
+                const block = Buffer.concat(new Array(n).fill(frame));
+                await fh.write(block, 0, block.length);
+                bytes += block.length;
+                continue;
+            }
+            const sg = it.sg;
             const end = sg.pdt + sg.dur * 1000;
             if (end <= from || sg.pdt >= to) continue;
             const id3 = await fs.promises.readFile(path.join(rec.dir, sg.f));
@@ -363,32 +443,40 @@ async function tapeDelete(workspaceId, name) {
     return { tape: name };
 }
 
-async function fileInto(rec, tmpPath, name) {
+/**
+ * An assembled file onto the tape. `replace` (a recording assembled again: after a crash, by hand, or after a restart) puts it
+ * over the file of the same name the earlier assembly made, so the tape keeps one copy. The spool entry's id is made from the
+ * recording and the name, so an entry not yet taken onto the tape is overwritten in place as well.
+ */
+async function fileInto(rec, tmpPath, name, { replace } = {}) {
     if (role === 'capture') {
         // the service: into the spool, Dreamscape files it on the tape (now, or when it is back)
-        const id = id8() + id8();
+        const id = crypto.createHash('md5').update(`${rec.meta.rid}|${name}`).digest('hex').slice(0, 24);
         const dir = spoolDir();
         await fs.promises.mkdir(dir, { recursive: true });
         await fs.promises.rename(tmpPath, path.join(dir, `${id}.m4a`)).catch(async () => { await fs.promises.copyFile(tmpPath, path.join(dir, `${id}.m4a`)); });
         // the description last: a spool entry counts once its .json is there
-        await fs.promises.writeFile(path.join(dir, `${id}.json`), JSON.stringify({ workspaceId: rec.meta.workspaceId, tape: rec.meta.tape, name, at: Date.now(), rid: rec.meta.rid }));
+        await writeJson(path.join(dir, `${id}.json`), { workspaceId: rec.meta.workspaceId, tape: rec.meta.tape, name, at: Date.now(), rid: rec.meta.rid, replace: !!replace });
         rec.meta.filed = (rec.meta.filed || 0) + 1;
         try { onSpool(id); } catch (_) { /* told on the next connect */ }
         return `${name}.m4a`;
     }
     rec.meta.filed = (rec.meta.filed || 0) + 1;
-    return saveToTape(rec.meta.workspaceId, rec.meta.tape, tmpPath, name);
+    return saveToTape(rec.meta.workspaceId, rec.meta.tape, tmpPath, name, { replace });
 }
 
-/** A finished recording into its tape's folder (a free name), the folder's viewers told. Dreamscape only. */
-async function saveToTape(workspaceId, tape, tmpPath, name) {
+/** A finished recording into its tape's folder (a free name, or over its own earlier copy), the folder's viewers told. Dreamscape only. */
+async function saveToTape(workspaceId, tape, tmpPath, name, { replace } = {}) {
     const folder = await tapeFolder(workspaceId, tape, true);
     const v = await vfs();
-    const db = require('./vfsDatabase');
-    const used = new Set(((await db.getUserFilesByLocation('workspace', workspaceId, folder.id)) || []).map((x) => String(x.original_name || '').toLowerCase()));
     let n = `${name}.m4a`;
-    for (let i = 2; used.has(n.toLowerCase()); i += 1) n = `${name} (${i}).m4a`;
-    await v.saveUserFileFromPath(tmpPath, { originalName: n, mimeType: 'audio/mp4', scope: 'workspace', workspaceId, folderId: folder.id });
+    if (!replace) {
+        const db = require('./vfsDatabase');
+        const used = new Set(((await db.getUserFilesByLocation('workspace', workspaceId, folder.id)) || []).map((x) => String(x.original_name || '').toLowerCase()));
+        for (let i = 2; used.has(n.toLowerCase()); i += 1) n = `${name} (${i}).m4a`;
+    }
+    // overwrite: the VFS replaces the file of that name in the folder in place (none there: it is made)
+    await v.saveUserFileFromPath(tmpPath, { originalName: n, mimeType: 'audio/mp4', scope: 'workspace', workspaceId, folderId: folder.id, overwrite: !!replace });
     const ws = gr.getWebSocketServer && gr.getWebSocketServer();
     if (ws && ws.broadcast) ws.broadcast({ type: 'vfs_updated', data: { path: `/Workspaces/${workspaceId}/${folder.id}` }, timestamp: new Date().toISOString() });
     return n;
@@ -401,7 +489,7 @@ async function importSpool(id) {
     let meta;
     try { meta = JSON.parse(await fs.promises.readFile(path.join(dir, `${id}.json`), 'utf8')); } catch (_) { return false; }
     const m4a = path.join(dir, `${id}.m4a`);
-    await saveToTape(meta.workspaceId || 'default', meta.tape || 'Tape 1', m4a, String(meta.name || 'Recording'));
+    await saveToTape(meta.workspaceId || 'default', meta.tape || 'Tape 1', m4a, String(meta.name || 'Recording'), { replace: !!meta.replace });
     await fs.promises.rm(m4a, { force: true });
     await fs.promises.rm(path.join(dir, `${id}.json`), { force: true });
     return true;
@@ -419,33 +507,45 @@ function channelOf(id) {
     return ch ? { name: ch.name, number: ch.number } : { name: 'SiriusXM', number: 0 };
 }
 
-/** Write one cut (song mode) to the tape: [from, to). */
-async function fileCut(rec, cut, from, to, partial) {
-    if (to - from < 5000) return; // a cut the recording only grazed
+const pad2 = (n) => String(n).padStart(2, '0');
+/** hh:mm:ss on this machine's clock (the same clock the file names carry). */
+const clockHms = (ms) => { const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`; };
+/** The comment a file with a hole carries: "missing audio 12:01:03-12:01:09" (several: comma separated). */
+const missingNote = (gaps) => `missing audio ${gaps.map((g) => `${clockHms(g.from)}-${clockHms(g.to)}`).join(', ')}`;
+const gapMs = (gaps) => gaps.reduce((t, g) => t + (g.to - g.from), 0);
+
+/**
+ * Write one cut (song mode) to the tape: [from, to). Returns the file's name, or null when there was nothing to file (a cut the
+ * recording only grazed). A cut with a hole in it is marked " (gap)" after its title, in the tag and in the name, and carries
+ * the comment "missing audio hh:mm:ss-hh:mm:ss"; the hole itself is AAC silence of its exact length, so the times stay true.
+ */
+async function fileCut(rec, cut, from, to, partial, { replace } = {}) {
+    if (to - from < 5000) return null; // a cut the recording only grazed
+    const gaps = gapsIn(rec, from, to);
+    if (gaps.length && gapMs(gaps) >= to - from - 1000) return null; // nothing of it was recorded: silence is not a recording
     const ch = channelOf(rec.meta.channelId);
     const tmp = path.join(rec.dir, `cut-${from}.aac`);
     const out = path.join(rec.dir, `cut-${from}.m4a`);
     const bytes = await sliceAac(rec, from, to, tmp);
-    if (bytes < 4096) { fs.promises.rm(tmp, { force: true }).catch(() => {}); return; }
+    if (bytes < 4096) { fs.promises.rm(tmp, { force: true }).catch(() => {}); return null; }
     const title = cut && !cut.ad && cut.t ? cut.t : (cut && cut.s) || ch.name;
     const artist = cut && !cut.ad && cut.a ? cut.a : ch.name;
     const cover = cut && !cut.ad ? await coverFile(rec, cut.ik) : null;
     const when = new Date(from);
+    const gapTag = gaps.length ? ' (gap)' : '';
     const args = ['-f', 'aac', '-i', tmp];
     if (cover) args.push('-i', cover, '-map', '0:a', '-map', '1:v', '-c:v', 'copy', '-disposition:v:0', 'attached_pic');
     args.push('-c:a', 'copy', '-bsf:a', 'aac_adtstoasc',
-        '-metadata', `title=${title}${partial ? ' (partial)' : ''}`, '-metadata', `artist=${artist}`,
+        '-metadata', `title=${title}${gapTag}${partial ? ' (partial)' : ''}`, '-metadata', `artist=${artist}`,
         '-metadata', `album=${ch.number ? `${ch.number} ` : ''}${ch.name}`, '-metadata', `date=${localDate(when)}`,
-        '-metadata', `comment=Recorded from SiriusXM ${ch.name} on ${when.toISOString()}${cut && cut.s ? `; show: ${cut.s}` : ''}`,
+        '-metadata', `comment=Recorded from SiriusXM ${ch.name} on ${when.toISOString()}${cut && cut.s ? `; show: ${cut.s}` : ''}${gaps.length ? `; ${missingNote(gaps)}` : ''}`,
         '-metadata', `track=${(rec.meta.filed || 0) + 1}`,
         '-movflags', '+faststart', out);
     try {
         await ffmpeg(args);
         const stamp = `${pad2(when.getHours())}${pad2(when.getMinutes())}`;
-        const name = safeName(`${localDate(when)} ${stamp} ${artist === ch.name ? title : `${artist} - ${title}`}`);
-        await fileInto(rec, out, name);
-    } catch (err) {
-        console.warn(`[xmRadio rec] ${rec.meta.rid}: a cut was not filed: ${err.message}`);
+        const name = safeName(`${localDate(when)} ${stamp} ${artist === ch.name ? title : `${artist} - ${title}`}${gapTag}`);
+        return await fileInto(rec, out, name, { replace });
     } finally {
         fs.promises.rm(tmp, { force: true }).catch(() => {});
         fs.promises.rm(out, { force: true }).catch(() => {});
@@ -456,19 +556,20 @@ async function fileCut(rec, cut, from, to, partial) {
  * A range from the buffer (Recently Played > Record): one file for that song. It is filed from the packet's data, not
  * from lookAround's short cut history, so the name and cover survive however old the song is.
  */
-async function fileRange(rec) {
-    if (!rec.segs.length || !rec.meta.rangeCut) return;
+async function fileRange(rec, opts) {
+    if (!rec.segs.length || !rec.meta.rangeCut) return null;
     const from = rec.meta.rangeCut.at;
     const to = Math.min(rec.meta.endPdt || rec.lastEnd, rec.lastEnd);
-    if (to <= from) return;
-    await fileCut(rec, rec.meta.rangeCut, from, to, !!rec.meta.endPdt && rec.lastEnd < rec.meta.endPdt - 2000);
+    if (to <= from) return null;
+    return fileCut(rec, rec.meta.rangeCut, from, to, !!rec.meta.endPdt && rec.lastEnd < rec.meta.endPdt - 2000, opts);
 }
 
-const pad2 = (n) => String(n).padStart(2, '0');
-
-/** Write the whole recording (long mode) as one file with a chapter per cut. */
-async function fileLong(rec) {
-    if (!rec.segs.length) return;
+/**
+ * Write the whole recording (long mode) as one file with a chapter per cut. A hole is a chapter of its own, "Missing audio",
+ * over exactly the silence that fills it, and the file carries the comment "missing audio hh:mm:ss-hh:mm:ss".
+ */
+async function fileLong(rec, { replace } = {}) {
+    if (!rec.segs.length) return null;
     const ch = channelOf(rec.meta.channelId);
     const from = rec.segs[0].pdt;
     const last = rec.segs[rec.segs.length - 1];
@@ -476,22 +577,33 @@ async function fileLong(rec) {
     const tmp = path.join(rec.dir, 'long.aac');
     const out = path.join(rec.dir, 'long.m4a');
     const meta = path.join(rec.dir, 'long.txt');
-    if ((await sliceAac(rec, from, to, tmp)) < 4096) return;
+    if ((await sliceAac(rec, from, to, tmp)) < 4096) { fs.promises.rm(tmp, { force: true }).catch(() => {}); return null; }
     const when = new Date(from);
+    const gaps = gapsIn(rec, from, to);
     const lines = [';FFMETADATA1', `title=${ffMetaEsc(`${ch.name}, ${when.toLocaleString('en-US')}`)}`, `artist=${ffMetaEsc(ch.name)}`, `album=${ffMetaEsc(ch.name)}`, `date=${localDate(when)}`];
+    if (gaps.length) lines.push(`comment=${ffMetaEsc(missingNote(gaps))}`);
+    // a chapter per cut, cut where a hole lies; the holes are chapters of their own
+    const pieces = gaps.map((g) => ({ s: g.from, e: g.to, title: 'Missing audio' }));
     const cuts = cutsFor(rec).filter((c) => c.at < to);
     cuts.forEach((c, i) => {
-        const s = Math.max(0, c.at - from);
-        const e = Math.min(to, (cuts[i + 1] ? cuts[i + 1].at : to)) - from;
-        if (e <= s) return;
-        lines.push('[CHAPTER]', 'TIMEBASE=1/1000', `START=${Math.round(s)}`, `END=${Math.round(e)}`, `title=${ffMetaEsc(c.ad ? (c.s || 'Break') : [c.a, c.t].filter(Boolean).join(' - ') || c.s || ch.name)}`);
+        const cs = Math.max(from, c.at);
+        const ce = Math.min(to, cuts[i + 1] ? cuts[i + 1].at : to);
+        if (ce <= cs) return;
+        const title = c.ad ? (c.s || 'Break') : [c.a, c.t].filter(Boolean).join(' - ') || c.s || ch.name;
+        let at = cs;
+        for (const g of gaps) {
+            if (g.to <= at || g.from >= ce) continue;
+            if (g.from > at) pieces.push({ s: at, e: g.from, title });
+            at = Math.max(at, g.to);
+        }
+        if (ce > at) pieces.push({ s: at, e: ce, title });
     });
+    pieces.sort((a, b) => a.s - b.s);
+    for (const p of pieces) lines.push('[CHAPTER]', 'TIMEBASE=1/1000', `START=${Math.round(p.s - from)}`, `END=${Math.round(p.e - from)}`, `title=${ffMetaEsc(p.title)}`);
     await fs.promises.writeFile(meta, `${lines.join('\n')}\n`);
     try {
         await ffmpeg(['-f', 'aac', '-i', tmp, '-i', meta, '-map', '0:a', '-map_metadata', '1', '-map_chapters', '1', '-c:a', 'copy', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', out]);
-        await fileInto(rec, out, safeName(`${localDate(when)} ${pad2(when.getHours())}${pad2(when.getMinutes())} ${ch.name}`));
-    } catch (err) {
-        console.warn(`[xmRadio rec] ${rec.meta.rid}: not filed: ${err.message}`);
+        return await fileInto(rec, out, safeName(`${localDate(when)} ${pad2(when.getHours())}${pad2(when.getMinutes())} ${ch.name}`), { replace });
     } finally {
         for (const p of [tmp, out, meta]) fs.promises.rm(p, { force: true }).catch(() => {});
     }
@@ -539,7 +651,7 @@ async function metaRange(channelId, from, to) {
     if (!store || typeof xm.liveUpdateRange !== 'function') return null;
     const range = await xm.liveUpdateRange(channelId, from, to);
     const res = store.mergeRange(channelId, range, { source: 'liveUpdate', channelName: channelOf(channelId).name });
-    for (const r of recs.values()) if (r.meta.channelId === channelId) void fileFinishedCuts(r);
+    for (const r of recs.values()) if (r.meta.channelId === channelId) void checkCutEnd(r);
     return res;
 }
 
@@ -621,30 +733,45 @@ function cutAt(rec, t) {
     return { cur, next };
 }
 
-/** Song mode: file every cut that the recording has passed the end of. */
-async function fileFinishedCuts(rec) {
-    if (rec.meta.mode !== 'song' || rec.filing) return;
-    rec.filing = true;
+/** A promise or a wait, whichever is first (the timer does not outlive it). */
+function raceWait(promise, ms) {
+    let t;
+    return Promise.race([promise, new Promise((ok) => { t = setTimeout(ok, ms); })]).finally(() => clearTimeout(t));
+}
+
+// Kinds that record one cut and stop when it ends (an alert, a term, the phone's one-touch Record, a queued cut)
+const oneCutKind = (k) => k === 'alert' || k === 'term' || k === 'song';
+
+/**
+ * Nothing is filed while a recording runs (Yozora #1252 S7: the segments stay on disk and the files are assembled when it
+ * ends). A one-cut recording still stops when its cut ends: the next cut starts at or before where the recording has got to.
+ */
+async function checkCutEnd(rec) {
+    if (rec.meta.mode !== 'song' || !oneCutKind(rec.meta.kind) || rec.cutChecking || rec.stopping) return;
+    rec.cutChecking = true;
     try {
-        // the names the store is being given for a reach-back are in before any cut is sliced
-        // (at most a minute: a slow liveUpdate must not hold the tape back; lookAround's names stand in)
-        if (rec.metaPending) await Promise.race([rec.metaPending, delay(60000)]);
-        const recEnd = rec.lastEnd;
-        // every segment up to there on disk before a cut is sliced from them
-        await rec.write;
-        for (;;) {
-            const start = rec.meta.cursor || (rec.segs[0] && rec.segs[0].pdt) || 0;
-            const { cur, next } = cutAt(rec, start + 1);
-            if (!next || next.at > recEnd) break;
-            await fileCut(rec, cur, start, next.at, !cur || cur.at < (rec.segs[0] && rec.segs[0].pdt) - 1000);
-            rec.meta.cursor = next.at;
-            rec.meta.cuts = (rec.meta.cuts || 0) + 1;
-            changed();
-            // an alert or a term records one cut
-            // an alert, a term, or the phone's one-touch Record (kind song) records one cut
-            if (rec.meta.kind === 'alert' || rec.meta.kind === 'term' || rec.meta.kind === 'song') { void stop(rec.meta.rid, { filed: true }); break; }
-        }
-    } finally { rec.filing = false; }
+        // the names the store is being given for a reach-back are in before the cut's end is decided
+        // (at most a minute: a slow liveUpdate must not hold the recording on; lookAround's names stand in)
+        if (rec.metaPending) await raceWait(rec.metaPending, 60000);
+        if (rec.stopping) return;
+        const start = rec.meta.cursor || (rec.segs[0] && rec.segs[0].pdt) || 0;
+        const { next } = cutAt(rec, start + 1);
+        if (next && next.at <= rec.lastEnd) void stop(rec.meta.rid);
+    } finally { rec.cutChecking = false; }
+}
+
+/** How often a recording's progress alone (segments written) is pushed to the deck; a state change or a gap is pushed at once. */
+const PROGRESS_PUSH_MS = 60000;
+
+/** A hole in a recording: audio between from and to (ms) that left SiriusXM's window before it was fetched. */
+function noteGap(rec, from, to) {
+    if (!(to - from >= 1)) return;
+    if (rec.gaps.some((g) => g.from <= from + 1000 && g.to >= to - 1000)) return; // the pump and the recorder both saw it
+    rec.gaps.push({ from, to });
+    rec.write = rec.write.then(() => fs.promises.appendFile(path.join(rec.dir, 'segs.ndjson'), `${JSON.stringify({ gap: true, from, to })}\n`))
+        .catch((err) => console.warn(`[xmRadio rec] ${rec.meta.rid}: ${err.message}`));
+    console.warn(`[xmRadio rec] ${rec.meta.rid}: ${Math.round((to - from) / 1000)} s of audio missing (${new Date(from).toISOString()} to ${new Date(to).toISOString()}); marked as a gap`);
+    changed();
 }
 
 function appendSeg(rec, sg) {
@@ -657,10 +784,13 @@ function appendSeg(rec, sg) {
     }
     // a segment it already has (a resumed pump reads from a little before where the recording left off)
     if (rec.segs.length && (sg.pdt < rec.lastEnd - 500 || rec.segs.some((x) => x.seq === sg.seq && Math.abs(x.pdt - sg.pdt) < 1000))) return;
+    // audio missing before this segment (the pump says so itself; this is the same check for a pump that did not)
+    if (rec.segs.length && sg.pdt > rec.lastEnd + 1000) noteGap(rec, rec.lastEnd, sg.pdt);
     const f = `s${sg.seq}.aac`;
     const row = { seq: sg.seq, pdt: sg.pdt, dur: sg.dur, f, ok: false };
     rec.segs.push(row);
     rec.lastEnd = sg.pdt + sg.dur * 1000;
+    rec.meta.written = (rec.meta.written || 0) + 1;
     rec.write = rec.write.then(async () => {
         await fs.promises.writeFile(path.join(rec.dir, f), sg.plain);
         await fs.promises.appendFile(path.join(rec.dir, 'segs.ndjson'), `${JSON.stringify({ seq: row.seq, pdt: row.pdt, dur: row.dur, f })}\n`);
@@ -669,7 +799,10 @@ function appendSeg(rec, sg) {
         row.ok = true;
     }).catch((err) => console.warn(`[xmRadio rec] ${rec.meta.rid}: ${err.message}`));
     if (rec.lastEnd - rec.meta.startPdt >= MAX_MS || (rec.meta.until && Date.now() >= rec.meta.until) || (rec.meta.endPdt && rec.lastEnd >= rec.meta.endPdt)) { void stop(rec.meta.rid); return; }
-    void fileFinishedCuts(rec);
+    void checkCutEnd(rec);
+    // the deck: at once when the state moves (buffering to recording), else its progress once a minute
+    const state = healthOf(rec).state;
+    if (state !== rec.lastState || Date.now() - (rec.lastPush || 0) >= PROGRESS_PUSH_MS) { rec.lastState = state; rec.lastPush = Date.now(); changed(); }
 }
 
 /** Cuts read from lookAround for this recording's channel (from modules/xmRadio.js's watch). */
@@ -683,24 +816,57 @@ function noteCuts(rec, cuts) {
     }
     if (!added) return;
     rec.cuts.sort((a, b) => a.at - b.at);
-    void fileFinishedCuts(rec);
+    void checkCutEnd(rec);
     changed();
 }
 
-function makePump(rec, back) {
+function makePump(rec, back, from) {
     const pump = require('./xmRadioPump').createPump({
         channelId: rec.meta.channelId, quality: 'hi',
         // the recording's own SiriusXM account (its slot; none = slot 1, the radio's account)
         keyBytes: (uri) => xm.keyBytes(uri, { slot: rec.meta.slot || 1 }),
         tune: async (id) => xm.tuneUpstream(id, { slot: rec.meta.slot || 1 }),
         log: (lvl, t) => console.warn(t),
+        // the console's buffer settings, read on every tick
+        settings: () => load().settings,
         // a recording keeps trying through a missing sign-in (the token comes from Dreamscape)
         persistent: true
     });
     pump.on('segment', (sg) => appendSeg(rec, sg));
+    pump.on('gap', (g) => noteGap(rec, g.from, g.to));
+    pump.on('pause', () => { rec.meta.pauses = (rec.meta.pauses || 0) + 1; changed(); });
+    pump.on('refetch', () => { rec.meta.refetches = (rec.meta.refetches || 0) + 1; changed(); });
+    pump.on('state', () => changed());
     pump.on('error', (err) => { rec.meta.error = err.message; void stop(rec.meta.rid); });
-    pump.start({ back });
+    pump.start({ back, from });
     return pump;
+}
+
+/**
+ * A recording's state and counters (the deck's recordings carry them; Lizumi shows them):
+ *   state        buffering (holds fewer than healthyBuffer segments) | recording | paused-refilling (waiting for the stream's
+ *                buffer to refill) | behind (more than behindSeconds past the healthy position, not a deliberate reach-back)
+ *   segsWritten  segments written for it, segsExpected (position - start) / mean segment length, held (on disk now)
+ *   gaps, gapSeconds, refetches, pauses, behindS, bufferSegs (what the stream held beyond the position at its last read)
+ */
+function healthOf(rec) {
+    const m = rec.meta;
+    const set = load().settings;
+    let ps = null;
+    try { ps = rec.pump && typeof rec.pump.stats === 'function' ? rec.pump.stats() : null; } catch (_) { ps = null; }
+    const segs = rec.segs || [];
+    const held = segs.length;
+    let state = ps ? ps.state : 'recording';
+    if (state === 'buffering' && held >= set.healthyBuffer) state = 'recording';
+    else if (state === 'recording' && held < set.healthyBuffer) state = 'buffering';
+    const mean = held ? segs.reduce((t, x) => t + x.dur, 0) / held : 0;
+    const base = held ? Math.min(m.startPdt || segs[0].pdt, segs[0].pdt) : 0;
+    const gaps = (rec.gaps || []).map((g) => ({ from: g.from, to: g.to }));
+    return {
+        state, segsWritten: m.written || held, segsExpected: mean ? Math.max(held, Math.round((rec.lastEnd - base) / 1000 / mean)) : 0, held,
+        gaps, gapSeconds: Math.round(gaps.reduce((t, g) => t + (g.to - g.from), 0) / 1000),
+        refetches: m.refetches || 0, pauses: m.pauses || 0, behindS: ps ? ps.behindS : 0, bufferSegs: ps ? ps.bufferSegs : 0
+    };
 }
 
 // ------------------------------------------------------------------ the common recording queue and the slot dispatcher
@@ -732,7 +898,6 @@ const QUEUE_TTL = BUFFER_MS; // (alerts and terms: how old a cut can be)
 const MAX_QUEUE = 50;
 const HISTORY_MAX = 100;
 const MAX_SLOTS = 8;
-const MAX_STREAMS = 4;
 const REC_KIND = { song: 'song', cut: 'song', channel: 'manual', timer: 'timer', alert: 'alert', term: 'term' };
 const ENTRY_KIND = { manual: 'channel', song: 'cut', timer: 'timer', alert: 'alert', term: 'term' };
 const MISSED_BUFFER = 'No virtual radio came free before it left the five-hour buffer';
@@ -1111,7 +1276,9 @@ async function startRec(opts, entry) {
             since: now, until: Math.min(now + MAX_MS, Number(opts.until) || now + MAX_MS), startPdt: now - back * 1000, cursor: 0, filed: 0,
             endPdt: Number(opts.endPdt) || 0, rangeCut: opts.rangeCut || null, fromCut: Number(opts.fromCut) || 0
         };
-        const rec = { meta, dir, segs: [], cuts: [], lastEnd: 0, write: Promise.resolve(), pump: null, filing: false };
+        const rec = { meta, dir, segs: [], gaps: [], cuts: [], lastEnd: 0, write: Promise.resolve(), pump: null };
+        // what an assembly needs to know about the recording if the state file no longer does (a restart, a re-assembly days on)
+        writeJson(path.join(dir, 'meta.json'), meta).catch(() => {});
         const np = xm.nowPlayingCuts(channelId);
         if (np.length) {
             rec.cuts.push(...np);
@@ -1157,45 +1324,212 @@ function finishEntries(rid, rec) {
     }
 }
 
-async function stop(rid, { filed } = {}) {
+// ------------------------------------------------------------------ deferred assembly (Yozora #1252 S7)
+//
+// A recording's segments stay on disk for the whole recording and nothing is filed while it runs. The files (a file per cut in
+// song mode, the one chapter file in long mode, the song of a range) are assembled from the segments and the cut store when the
+// recording stops, and again on demand (assemble). The job is re-runnable: <recdir>/assembly.json says where it stands, a
+// crash mid-assembly is run again when the recorder starts, and a re-run files the same deterministic names - over the earlier
+// files on the tape, so it keeps one copy. After a successful assembly the segments are kept for keepSegmentsHours (Re-assemble
+// needs them) and then the folder goes; a failed or never-assembled recording keeps them until it is assembled or deleted.
+//
+//   <recdir>/meta.json      the recording's meta (the state file's `active` entry ends with the recording; this stays)
+//   <recdir>/assembly.json  { state: 'assembling' | 'done' | 'failed', at, files: [names], gaps: [{ from, to }], gapSeconds, error }
+const ended = new Map(); // rid -> a stopped recording that still holds its segments (and its playlist, ENDLIST)
+const assembling = new Map(); // rid -> the assembly in flight
+let keepHandle = null;
+
+async function writeJson(file, obj) {
+    const tmp = `${file}.${process.pid}.tmp`;
+    await fs.promises.writeFile(tmp, JSON.stringify(obj));
+    await fs.promises.rename(tmp, file);
+}
+async function readJson(file) {
+    try { return JSON.parse(await fs.promises.readFile(file, 'utf8')); } catch (_) { return null; }
+}
+
+async function setAssembly(rec, patch) {
+    rec.assembly = Object.assign({ state: 'assembling', at: Date.now(), files: [], gaps: [], gapSeconds: 0, error: null }, rec.assembly || {}, patch);
+    await writeJson(path.join(rec.dir, 'assembly.json'), rec.assembly);
+}
+
+/** Song mode: a file per cut, from where the recording's cut started (an alert's cut from its first frame) to where it ends. */
+async function assembleSong(view, opts, note) {
+    const first = view.segs[0].pdt;
+    const end = view.lastEnd;
+    let start = view.meta.cursor || first;
+    for (;;) {
+        const { cur, next } = cutAt(view, start + 1);
+        if (!next || next.at > end) break;
+        const from = start;
+        await note(() => fileCut(view, cur, from, next.at, !cur || cur.at < first - 1000, opts));
+        start = next.at;
+        // an alert, a term, or the phone's one-touch Record (kind song) records one cut
+        if (oneCutKind(view.meta.kind)) return;
+    }
+    // what is left after the last whole cut: a partial one
+    if (start && end > start) {
+        const { cur } = cutAt(view, start + 1);
+        const from = start;
+        await note(() => fileCut(view, cur, from, end, true, opts));
+    }
+}
+
+/** Run an assembly (one at a time per recording); resolves with the recording's entry in held(). */
+function assemble(rid) {
+    if (role === 'library') return Promise.reject(Object.assign(new Error('Assembly runs in the recorder service.'), { code: 'XMRADIO_REC_ROLE' }));
+    rid = String(rid || '');
+    if (assembling.has(rid)) return assembling.get(rid);
+    const rec = recs.get(rid) || ended.get(rid);
+    if (!rec) return Promise.reject(Object.assign(new Error('No recording with that id holds segments.'), { code: 'XMRADIO_REC_NONE' }));
+    const p = assembleRec(rec).finally(() => { assembling.delete(rid); }).then(() => heldEntry(rec));
+    assembling.set(rid, p);
+    return p;
+}
+
+async function assembleRec(rec) {
+    const m = rec.meta;
+    // a recording still running is assembled from what is on disk now (its stop assembles it again over these)
+    if (!rec.stopping && recs.get(m.rid) === rec) await rec.write;
+    const prev = rec.assembly || await readJson(path.join(rec.dir, 'assembly.json'));
+    const replace = !!prev;
+    const segs = rec.segs.filter((x) => x.ok !== false).slice();
+    const view = Object.assign({}, rec, { segs, gaps: (rec.gaps || []).map((g) => ({ from: g.from, to: g.to })), lastEnd: segs.length ? segs[segs.length - 1].pdt + segs[segs.length - 1].dur * 1000 : 0 });
+    const gapSeconds = Math.round(view.gaps.reduce((t, g) => t + (g.to - g.from), 0) / 1000);
+    await setAssembly(rec, { state: 'assembling', at: Date.now(), files: [], gaps: view.gaps, gapSeconds, error: null });
+    changed();
+    const files = [];
+    const errors = [];
+    m.filed = 0; // the tracks are numbered from 1 again
+    const note = async (fn) => {
+        try { const name = await fn(); if (name) files.push(name); } catch (err) {
+            errors.push(err.message);
+            console.warn(`[xmRadio rec] ${m.rid}: a file was not assembled: ${err.message}`);
+        }
+    };
+    try {
+        // the names the store is being given for a reach-back are in before a cut is sliced (at most a minute)
+        if (rec.metaPending) await raceWait(rec.metaPending, 60000);
+        if (segs.length) {
+            if (m.mode === 'range') await note(() => fileRange(view, { replace }));
+            else if (m.mode === 'long') await note(() => fileLong(view, { replace }));
+            else await assembleSong(view, { replace }, note);
+        }
+    } catch (err) { errors.push(err.message); console.warn(`[xmRadio rec] ${m.rid}: ${err.message}`); }
+    await setAssembly(rec, { state: errors.length ? 'failed' : 'done', at: Date.now(), files, error: errors.length ? errors.join('; ').slice(0, 500) : null })
+        .catch((err) => console.warn(`[xmRadio rec] ${m.rid}: assembly state not written: ${err.message}`));
+    if (!recs.has(m.rid)) writeJson(path.join(rec.dir, 'meta.json'), m).catch(() => {});
+    armKeep();
+    changed();
+}
+
+/** When a recording's segments go: keepSegmentsHours after a successful assembly (ten minutes at least: a radio playing the
+ *  growing playlist reaches its end). A recording that is running, failed or not yet assembled is kept. */
+function keepUntil(rec) {
+    const a = rec.assembly;
+    if (!a || a.state !== 'done' || recs.get(rec.meta.rid) === rec) return 0;
+    const hours = load().settings.keepSegmentsHours;
+    return a.at + (rec.segs.length ? Math.max(hours * 3600000, 600000) : 600000);
+}
+
+/** One timer (no interval), to the soonest keep expiry. */
+function armKeep() {
+    clearTimeout(keepHandle);
+    keepHandle = null;
+    if (role === 'library' || shuttingDown || !st) return;
+    let soonest = 0;
+    for (const rec of ended.values()) { const k = keepUntil(rec); if (k && (!soonest || k < soonest)) soonest = k; }
+    if (!soonest) return;
+    keepHandle = setTimeout(() => { keepHandle = null; void sweepExpired(); }, Math.min(Math.max(0, soonest - Date.now()) + 5, 2 ** 31 - 1));
+    if (keepHandle.unref) keepHandle.unref();
+}
+
+/** Delete the folders whose keep time has passed (at startup, and from the keep timer). */
+async function sweepExpired(now = Date.now()) {
+    for (const [rid, rec] of [...ended]) {
+        const k = keepUntil(rec);
+        if (k && now >= k && !assembling.has(rid)) await removeHeld(rid);
+    }
+    armKeep();
+}
+
+/** The operator deletes a recording's segments (a failed or never-assembled one is kept until then); not while it records. */
+async function removeHeld(rid) {
+    rid = String(rid || '');
+    if (recs.has(rid)) throw Object.assign(new Error('That recording is still running: stop it first.'), { code: 'XMRADIO_REC_RUNNING' });
+    if (assembling.has(rid)) throw Object.assign(new Error('That recording is being assembled.'), { code: 'XMRADIO_REC_ASSEMBLING' });
+    const rec = ended.get(rid);
+    ended.delete(rid);
+    if (rec) await fs.promises.rm(rec.dir, { recursive: true, force: true }).catch(() => {});
+    armKeep();
+    changed();
+    return { rid, removed: !!rec };
+}
+
+/** Recordings that hold segments, newest first: [{ rid, channelId, kind, slot, state, since, endedAt, segs, gaps, gapSeconds, files, error, keepUntil }]. */
+function heldEntry(rec) {
+    const m = rec.meta;
+    const a = rec.assembly;
+    let state;
+    if (recs.get(m.rid) === rec && !rec.stopping) state = 'recording';
+    else if (assembling.has(m.rid)) state = 'assembling';
+    else if (!a) state = 'stopped';
+    else state = a.state === 'done' ? 'assembled' : a.state === 'failed' ? 'failed' : 'assembling';
+    const gaps = (rec.gaps || []).map((g) => ({ from: g.from, to: g.to }));
+    return {
+        rid: m.rid, channelId: m.channelId, kind: m.kind, slot: m.slot || 1, state, since: m.since || 0, endedAt: m.endedAt || 0,
+        segs: rec.segs.length, gaps, gapSeconds: Math.round(gaps.reduce((t, g) => t + (g.to - g.from), 0) / 1000),
+        files: a ? a.files || [] : [], error: (a && a.error) || m.error || '', keepUntil: state === 'assembled' ? keepUntil(rec) : 0
+    };
+}
+function held() {
+    return [...recs.values(), ...ended.values()].filter((r, i, all) => all.indexOf(r) === i).map(heldEntry).sort((a, b) => (b.since - a.since) || String(a.rid).localeCompare(String(b.rid)));
+}
+/** The deck's one-line summary of them: a change here tells the console to read held again. */
+function heldSummary() {
+    let n = 0;
+    let assemblingN = 0;
+    let failed = 0;
+    for (const rec of ended.values()) {
+        n += 1;
+        const st2 = heldEntry(rec).state;
+        if (st2 === 'assembling') assemblingN += 1;
+        else if (st2 === 'failed') failed += 1;
+    }
+    return { n, assembling: assemblingN, failed };
+}
+
+async function stop(rid) {
     const rec = recs.get(rid);
     if (!rec || rec.stopping) return null;
     rec.stopping = true;
     try { rec.pump && rec.pump.stop(); } catch (_) { /* stopped */ }
     await rec.write;
-    try {
-        if (rec.meta.mode === 'range') await fileRange(rec);
-        else if (rec.meta.mode === 'long') await fileLong(rec);
-        else if (!filed) {
-            await fileFinishedCuts(rec);
-            const from = rec.meta.cursor || (rec.segs[0] && rec.segs[0].pdt);
-            if (from && rec.lastEnd > from) { const { cur } = cutAt(rec, from + 1); await fileCut(rec, cur, from, rec.lastEnd, true); }
-        }
-    } catch (err) { console.warn(`[xmRadio rec] ${rid}: ${err.message}`); }
     recs.delete(rid);
     finishEntries(rid, rec);
-    // the playlist answers a little longer (a radio playing it reaches its end), then the segments go
-    rec.ended = Date.now();
+    // it holds its segments from here (the playlist answers, ENDLIST) until it is assembled and its keep time has passed
+    rec.meta.endedAt = Date.now();
+    rec.ended = rec.meta.endedAt;
     ended.set(rid, rec);
-    setTimeout(() => { ended.delete(rid); fs.promises.rm(rec.dir, { recursive: true, force: true }).catch(() => {}); }, 10 * 60 * 1000).unref?.();
+    writeJson(path.join(rec.dir, 'meta.json'), rec.meta).catch(() => {});
     if (!recs.size) { xm.watch('rec', false); stopMetaTimer(); }
     changed();
-    // a slot just came free: the next entry in the queue can start
+    // the stream is done: a slot just came free, the next entry in the queue can start while this one is assembled
     void dispatch();
-    return { rid, filed: rec.meta.filed || 0 };
+    try { await assemble(rid); } catch (err) { console.warn(`[xmRadio rec] ${rid}: ${err.message}`); }
+    return { rid, filed: rec.meta.filed || 0, state: heldEntry(rec).state };
 }
-const ended = new Map();
 
 function describe(rec) {
     const m = rec.meta;
     const { cur } = cutAt(rec, rec.lastEnd || Date.now());
-    return {
+    return Object.assign({
         rid: m.rid, channelId: m.channelId, slot: m.slot || 1, job: m.entryId || null, kind: m.kind, mode: m.mode, workspaceId: m.workspaceId, tape: m.tape, since: m.since, until: m.until,
         // how far it reached back behind live when it started (s: "from the start" of the song on air)
         back: Math.max(0, Math.round((m.since - (m.startPdt || m.since)) / 1000)),
         filed: m.filed || 0, url: `/api/xmradio/rec/${m.rid}/index.m3u8`,
         cut: cur ? { a: cur.a, t: cur.t, s: cur.s, ad: !!cur.ad } : null
-    };
+    }, healthOf(rec));
 }
 
 /** The virtual radios as the dispatcher sees them: slot 1..count, signed in or not, and what streams on each. */
@@ -1209,14 +1543,21 @@ function poolView() {
     return out;
 }
 
-/** The deck's recording settings (streamsPerAccount: 1 to 4). */
-function setSettings({ streamsPerAccount } = {}) {
+/**
+ * The deck's recording settings, each checked against its range (streamsPerAccount, healthyBuffer, behindSeconds,
+ * refetchRetries, keepSegmentsHours); the pumps read them on every tick, the keep timer is set again.
+ */
+function setSettings(patch = {}) {
     const s = load();
-    if (streamsPerAccount != null) {
-        const n = Number(streamsPerAccount);
-        if (!Number.isInteger(n) || n < 1 || n > MAX_STREAMS) throw Object.assign(new Error(`Streams per account is 1 to ${MAX_STREAMS}.`), { code: 'XMRADIO_SETTING' });
-        s.settings.streamsPerAccount = n;
+    const next = {};
+    for (const [k, [lo, hi]] of Object.entries(SETTING_RANGE)) {
+        if (patch[k] == null) continue;
+        const n = Number(patch[k]);
+        if (!Number.isInteger(n) || n < lo || n > hi) throw Object.assign(new Error(`${SETTING_LABEL[k]} is ${lo} to ${hi}.`), { code: 'XMRADIO_SETTING' });
+        next[k] = n;
     }
+    Object.assign(s.settings, next);
+    if (next.keepSegmentsHours != null) armKeep();
     changed();
     void dispatch();
     return deck();
@@ -1236,11 +1577,12 @@ function playlist(rid) {
     // behind so that the server is never falling behind and gives time a healthy buffer"); hls.js and ExoPlayer honour it
     const out = ['#EXTM3U', '#EXT-X-VERSION:6', `#EXT-X-TARGETDURATION:${td}`, `#EXT-X-MEDIA-SEQUENCE:${segs.length ? segs[0].seq : 0}`, '#EXT-X-PLAYLIST-TYPE:EVENT'];
     if (recs.has(rid)) out.push(`#EXT-X-START:TIME-OFFSET=-${3 * td},PRECISE=NO`);
-    let lastSeq = null;
+    let prev = null;
     for (const s of segs) {
-        if (lastSeq != null && s.seq !== lastSeq + 1) out.push('#EXT-X-DISCONTINUITY');
+        // a jump in the sequence, or a hole the recording marked (audio that left the stream's window), is a discontinuity
+        if (prev && (s.seq !== prev.seq + 1 || (rec.gaps || []).some((g) => g.from >= prev.pdt + prev.dur * 1000 - 1000 && g.to <= s.pdt + 1000))) out.push('#EXT-X-DISCONTINUITY');
         out.push(`#EXT-X-PROGRAM-DATE-TIME:${new Date(s.pdt).toISOString()}`, `#EXTINF:${s.dur.toFixed(3)},`, s.f);
-        lastSeq = s.seq;
+        prev = s;
     }
     if (!recs.has(rid)) out.push('#EXT-X-ENDLIST');
     return `${out.join('\n')}\n`;
@@ -1450,7 +1792,7 @@ function deck() {
         timers: s.timers, alerts: s.alerts, terms: s.terms,
         // the common queue (#1252 S3): waiting entries in due order, started ones, the last 100 that ended, the virtual radios
         queue: queuePublic(), jobs: jobsPublic(), history: s.history.map((e) => entryPublic(e, 0)),
-        settings: { streamsPerAccount: s.settings.streamsPerAccount }, pool: poolView()
+        settings: Object.assign({}, s.settings), pool: poolView(), held: heldSummary()
     };
 }
 
@@ -1570,6 +1912,9 @@ async function shutdown() {
     stopMetaTimer();
     clearTimeout(expiryHandle);
     expiryHandle = null;
+    clearTimeout(keepHandle);
+    keepHandle = null;
+    // an assembly still running is run again by the next process (its assembly.json says 'assembling')
     // the cut store is on disk with the state file
     if (cutStore.isOpen()) await Promise.race([cutStore.flush().catch(() => {}), delay(3000)]);
     saveNow();
@@ -1594,7 +1939,50 @@ function adoptEntry(meta) {
     meta.entryId = e.id;
 }
 
-/** Recordings left by a stopped server: file what they hold, and carry on those whose time is not up. */
+/** What a recording folder holds: its segments, the holes between them, and the cuts lookAround gave it. */
+async function readRecDisk(dir) {
+    const out = { segs: [], gaps: [], cuts: [] };
+    try {
+        for (const l of (await fs.promises.readFile(path.join(dir, 'segs.ndjson'), 'utf8')).split('\n')) {
+            if (!l) continue;
+            let row;
+            try { row = JSON.parse(l); } catch (_) { continue; } // a half-written last line
+            if (row.gap) out.gaps.push({ from: row.from, to: row.to });
+            else out.segs.push(Object.assign(row, { ok: true }));
+        }
+    } catch (_) { /* nothing recorded */ }
+    try { out.cuts = (await fs.promises.readFile(path.join(dir, 'cuts.ndjson'), 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l)).sort((a, b) => a.at - b.at); } catch (_) { /* none */ }
+    return out;
+}
+
+/**
+ * At startup: the folders no running recording owns. A folder with meta.json is a stopped recording that holds its segments:
+ * one whose assembly was done or failed is kept (until its keep time, or the operator deletes it); one that never finished
+ * assembling (a crash, a hard stop) is assembled now. Anything else (an older folder, a crash before the recording began) goes.
+ */
+async function sweepHeld() {
+    let dirs = [];
+    try { dirs = await fs.promises.readdir(recRoot()); } catch (_) { return; }
+    for (const d of dirs) {
+        if (recs.has(d) || ended.has(d)) continue;
+        const dir = path.join(recRoot(), d);
+        const meta = await readJson(path.join(dir, 'meta.json'));
+        if (!meta || meta.rid !== d) { fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {}); continue; }
+        const disk = await readRecDisk(dir);
+        const assembly = await readJson(path.join(dir, 'assembly.json'));
+        if (!disk.segs.length && !assembly) { fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {}); continue; }
+        const last = disk.segs[disk.segs.length - 1];
+        const rec = { meta, dir, segs: disk.segs, gaps: disk.gaps, cuts: disk.cuts, lastEnd: last ? last.pdt + last.dur * 1000 : 0, write: Promise.resolve(), pump: null, stopping: true, assembly, ended: meta.endedAt || 0 };
+        ended.set(d, rec);
+        if (!assembly || assembly.state === 'assembling') {
+            console.log(`[xmRadio rec] ${d}: ${assembly ? 'an assembly was cut short' : 'never assembled'}; assembling it now`);
+            void assemble(d).catch((err) => console.warn(`[xmRadio rec] ${d}: ${err.message}`));
+        }
+    }
+    await sweepExpired();
+}
+
+/** Recordings left by a stopped server: assemble what cannot carry on, carry on those whose time is not up. */
 async function resume() {
     const s = load();
     const left = s.active || [];
@@ -1602,13 +1990,10 @@ async function resume() {
     for (const meta of left) {
         if (recs.has(meta.rid)) continue;
         const dir = path.join(recRoot(), meta.rid);
-        const rec = { meta, dir, segs: [], cuts: [], lastEnd: 0, write: Promise.resolve(), pump: null, filing: false };
-        try {
-            const segs = (await fs.promises.readFile(path.join(dir, 'segs.ndjson'), 'utf8')).split('\n').filter(Boolean).map((l) => Object.assign(JSON.parse(l), { ok: true }));
-            rec.segs = segs;
-            rec.lastEnd = segs.length ? segs[segs.length - 1].pdt + segs[segs.length - 1].dur * 1000 : 0;
-        } catch (_) { /* nothing recorded */ }
-        try { rec.cuts = (await fs.promises.readFile(path.join(dir, 'cuts.ndjson'), 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l)).sort((a, b) => a.at - b.at); } catch (_) { /* none */ }
+        const disk = await readRecDisk(dir);
+        const last = disk.segs[disk.segs.length - 1];
+        const rec = { meta, dir, segs: disk.segs, gaps: disk.gaps, cuts: disk.cuts, lastEnd: last ? last.pdt + last.dur * 1000 : 0, write: Promise.resolve(), pump: null };
+        if (meta.written == null) meta.written = rec.segs.length;
         recs.set(meta.rid, rec);
         adoptEntry(meta);
         // it carries on as the same recording (Yukimi, Nov 21 2026: a recording must never stop because a server did):
@@ -1618,8 +2003,10 @@ async function resume() {
         const anchor = meta.resumeAt || rec.lastEnd;
         const gap = anchor ? Math.ceil((Date.now() - anchor) / 1000) + 2 : Math.ceil((Date.now() - meta.startPdt) / 1000);
         const due = (meta.until && Date.now() >= meta.until - 5000) || (rec.lastEnd && rec.lastEnd - meta.startPdt >= MAX_MS);
-        if (due || gap > 5 * 3600 - 300 || !xm.channelById(meta.channelId)) { await stop(meta.rid); continue; }
-        rec.pump = makePump(rec, Math.max(0, gap));
+        // one that cannot carry on is assembled, not just filed (the assembly runs on its own: the others resume meanwhile)
+        if (due || gap > 5 * 3600 - 300 || !xm.channelById(meta.channelId)) { void stop(meta.rid); continue; }
+        // the pump carries on exactly at the end of what is on disk: audio gone from the stream's window since is a gap
+        rec.pump = makePump(rec, Math.max(0, gap), rec.lastEnd || 0);
         if (gap > 0) metaBackfill(rec, Date.now() - gap * 1000);
         delete meta.resumeAt; delete meta.resumeSeq;
         console.log(`[xmRadio rec] ${meta.rid}: resumed (${meta.kind}, ${gap} s to catch up${stored ? ', at the stored segment' : ''})`);
@@ -1631,12 +2018,7 @@ async function resume() {
     // the queue lives in the state file: pick it up again after a recorder restart (the resumed recordings hold their
     // slots; what waits starts as they free, and entries that ran out of buffer meanwhile are missed)
     void dispatch();
-    // folders no recording owns (a crash before its state was written)
-    try {
-        for (const d of await fs.promises.readdir(recRoot())) {
-            if (!recs.has(d) && !ended.has(d)) fs.promises.rm(path.join(recRoot(), d), { recursive: true, force: true }).catch(() => {});
-        }
-    } catch (_) { /* no folder yet */ }
+    await sweepHeld();
 }
 
 let booted = false;
@@ -1677,6 +2059,6 @@ function tapeRenamed(workspaceId, from, to) {
 }
 
 module.exports = {
-    init, library, tapeRenamed, saveNow, shutdown, importSpool, spoolList, spoolDir: () => spoolDir(), recRoot: () => recRoot(), start, stop, recordCut, recordChannel, recordRange, queueList: queuePublic, queueRemove, queueClear, cancel, setSettings, slotsChanged, dispatch, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
-    _test: { adtsFrames, nextStart, cutAt, norm, onLook, onAirCut, matchOnAir, sliceAac, recs, resume, fireTimers, makeEntry, freeSlots, load: () => load(), reset: () => { st = null; clearTimeout(expiryHandle); expiryHandle = null; reserved.clear(); stopMetaTimer(); cutStore._test.reset(''); recs.clear(); ended.clear(); fired.clear(); shuttingDown = false; } }
+    init, library, tapeRenamed, saveNow, shutdown, importSpool, spoolList, spoolDir: () => spoolDir(), recRoot: () => recRoot(), start, stop, recordCut, recordChannel, recordRange, queueList: queuePublic, queueRemove, queueClear, cancel, setSettings, slotsChanged, dispatch, assemble, held, heldDelete: removeHeld, tapesInfo, trackPath, trackRename, trackDelete, trackMove, tapeNew, tapeRename, tapeDelete, deck, setDeck, setTimers, addAlert, removeAlert, setTerms, tapes, tracks, playlist, segPath,
+    _test: { adtsFrames, nextStart, cutAt, norm, onLook, onAirCut, matchOnAir, sliceAac, silenceFrame, recs, ended, assembling, resume, sweepExpired, armKeep, keepArmed: () => !!keepHandle, readRecDisk, fireTimers, makeEntry, freeSlots, load: () => load(), reset: () => { st = null; clearTimeout(expiryHandle); expiryHandle = null; reserved.clear(); stopMetaTimer(); cutStore._test.reset(''); recs.clear(); ended.clear(); assembling.clear(); clearTimeout(keepHandle); keepHandle = null; fired.clear(); shuttingDown = false; } }
 };

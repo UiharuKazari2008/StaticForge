@@ -61,6 +61,14 @@ const recorder = require('../../xmRadioRecorderClient');
 //   a term) queues an entry and a dispatcher gives it to a free, signed-in, entitled slot; the deck carries queue[] (waiting,
 //   in due order: id, kind, state, channelId, from, to, expiresAt, position), jobs[] (started: slot, rid), history[] (the last
 //   100 missed, done and cancelled, with reason), settings, and pool[{ slot, name, ready, streaming, rids[] }].
+//   xmradio_rec_settings also takes healthyBuffer (segments kept between the recorder and the live edge, 1 to 20, default 3),
+//                                                 behindSeconds (30 to 3600, default 120), refetchRetries (0 to 10, default 3) and
+//                                                 keepSegmentsHours (0 to 720, default 24); each is checked against its range
+//   xmradio_rec_held        {}                     admins -> { held[{ rid, channelId, kind, slot, state ('recording' | 'stopped' |
+//                                                 'assembling' | 'assembled' | 'failed'), since, endedAt, segs, gaps[{ from, to }],
+//                                                 gapSeconds, files[], error, keepUntil }] }: the recordings that hold segments (#1252 S7)
+//   xmradio_rec_assemble    { rid }                admins -> the recording's held entry: builds (or rebuilds) its files from the segments
+//                                                 on disk; the same names, over the earlier files on the tape
 //   xmradio_queue_clear     {}                     admins -> { queue[] }: cancel them all
 //   xmradio_tune's back:    seconds behind live to start at (replay; the stream keeps five hours)
 //   xmradio_search          { q }                 { results[{ channelId, a, t, s }] }: what is on now, every word matched
@@ -195,9 +203,12 @@ function registerPackets(handlersCtx) {
     reg('xmradio_queue_remove', packet(true, 'The recording could not be removed', async (m) => ({ queue: await recorder.queueRemove(String(m.id || '')) })));
     reg('xmradio_queue_cancel', packet(true, 'The entry could not be cancelled', async (m) => recorder.cancel(String(m.id || ''))));
     reg('xmradio_rec_settings', packet(true, 'The recording settings could not be saved', async (m) => {
-        const deck = await recorder.setSettings({ streamsPerAccount: m.streamsPerAccount });
+        const deck = await recorder.setSettings({ streamsPerAccount: m.streamsPerAccount, healthyBuffer: m.healthyBuffer, behindSeconds: m.behindSeconds, refetchRetries: m.refetchRetries, keepSegmentsHours: m.keepSegmentsHours });
         return { settings: deck.settings, deck };
     }));
+    // deferred assembly (#1252 S7): the recordings that hold segments, and building (rebuilding) one's files from them
+    reg('xmradio_rec_held', packet(true, 'The held recordings could not be read', async () => ({ held: await recorder.held() })));
+    reg('xmradio_rec_assemble', packet(true, 'The recording could not be assembled', async (m) => recorder.assemble(String(m.rid || ''))));
     reg('xmradio_queue_clear', packet(true, 'The queue could not be cleared', async () => ({ queue: await recorder.queueClear() })));
     // a phone's channels for its feed (xmradio_phone): the one it plays and the pages Today shows; fire and forget
     wsPacketRegistry.registerWsPacket('xmradio_phone_watch', async (ctx) => {

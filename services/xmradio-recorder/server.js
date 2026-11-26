@@ -20,7 +20,12 @@
  *   Dreamscape -> { id, op, args }      ops: auth { slot?, token, exp, entitlementHash } (one per slot, no slot = slot 1; { slot, clear: true } drops it), deck, start, stop, recordCut, recordChannel,
  *                                       recordRange { channelId, from, to, a, t, s, ik }, queueRemove { id },
  *                                       queueClear, cancel { id } (any waiting entry -> { id, state, queue }),
- *                                       setSettings { streamsPerAccount } (1 to 4 streams per SiriusXM account -> deck), setDeck, setTimers, addAlert, removeAlert, setTerms,
+ *                                       assemble { rid } (build or rebuild a recording's files from its segments -> its held entry),
+ *                                       held {} ([{ rid, channelId, kind, slot, state (recording | stopped | assembling | assembled |
+ *                                       failed), since, endedAt, segs, gaps[{ from, to }], gapSeconds, files[], error, keepUntil }]),
+ *                                       heldDelete { rid } (a stopped recording's segments go),
+ *                                       setSettings { streamsPerAccount?, healthyBuffer?, behindSeconds?, refetchRetries?, keepSegmentsHours? } (each checked
+ *                                       against its range -> deck), setDeck, setTimers, addAlert, removeAlert, setTerms,
  *                                       tapeRenamed, playlist, ping,
  *                                       meta { channelId, from, to } (the cut store's records overlapping that time,
  *                                       lengths filled in; modules/xmRadioMeta.js), metaStats (its channels, cuts,
@@ -96,6 +101,11 @@ const OPS = {
     deck: () => recorder.deck(),
     start: (a) => recorder.start(a || {}),
     stop: (a) => recorder.stop(String((a && a.rid) || '')),
+    // deferred assembly (#1252 S7): build (or rebuild) a recording's files from its segments on disk -> its entry in held; the
+    // recordings that hold segments (running ones too) and their state; delete a stopped one's segments
+    assemble: (a) => recorder.assemble(String((a && a.rid) || '')),
+    held: () => recorder.held(),
+    heldDelete: (a) => recorder.heldDelete(String((a && a.rid) || '')),
     recordCut: (a) => recorder.recordCut(a.channelId, { fromStart: !!a.fromStart }),
     recordChannel: (a) => recorder.recordChannel(a.channelId, { fromStart: !!a.fromStart }),
     recordRange: (a) => recorder.recordRange(a.channelId, a || {}),

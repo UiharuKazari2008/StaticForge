@@ -27,7 +27,9 @@ global.fetch = async (url) => {
 };
 
 const seen = [];
-const pump = createPump({ channelId: 'ch', tune: async () => ({ url: 'https://x/master.m3u8' }), keyBytes: async () => Buffer.alloc(16) });
+// healthyBuffer 0: this three-segment playlist has no room for the live-edge buffer (#1252 S6); the body is one real ADTS frame
+// because the pump verifies a segment's frames before it hands it on
+const pump = createPump({ channelId: 'ch', tune: async () => ({ url: 'https://x/master.m3u8' }), keyBytes: async () => Buffer.alloc(16), settings: () => ({ healthyBuffer: 0 }) });
 pump.on('segment', (sg) => seen.push(sg));
 
 (async () => {
@@ -39,7 +41,9 @@ pump.on('segment', (sg) => seen.push(sg));
     const p = pump.stop().then(() => { stopped = true; });
     await new Promise((r) => setTimeout(r, 10));
     assert.strictEqual(stopped, false, 'stop waits for the segment on the wire');
-    release(Buffer.from('audio'));
+    const frame = Buffer.alloc(64, 1);
+    frame[0] = 0xff; frame[1] = 0xf1; frame[2] = 0x50; frame[3] = 0x80; frame[4] = 8; frame[5] = 0x1f; frame[6] = 0xfc; // 64 bytes: (8 << 3) | 0
+    release(frame);
     await p;
     assert.strictEqual(stopped, true);
     assert.strictEqual(seen.length, 1, 'the in-flight segment landed');

@@ -6,7 +6,7 @@
  * WebSocket handler, the status feeds and the routes used from modules/xmRadioRecorder.js:
  *   deck()                      the service's last pushed deck (sync; { offline: true } with the service away)
  *   start / stop / recordCut / recordChannel / recordRange / queueRemove / queueClear / cancel / setSettings / setDeck / setTimers /
- *   addAlert / removeAlert / setTerms                                                            over the socket
+ *   addAlert / removeAlert / setTerms / held / assemble / heldDelete                             over the socket
  *   playlist(rid) (async), segPath(rid, f)   a recording in progress, for /api/xmradio/rec/<rid>/<file>
  *   tapes / tapesInfo / tracks / trackPath / trackRename / trackDelete / trackMove / tapeNew / tapeRename / tapeDelete
  *                               the tapes in the file store (here: Dreamscape owns it)
@@ -20,6 +20,7 @@ const path = require('path');
 const engine = require('./xmRadioRecorder');
 
 const RPC_MS = 60000;
+const ASSEMBLE_MS = 600000;
 
 let xm = null;
 let onChange = () => {};
@@ -137,11 +138,11 @@ function deckRpc(key, op, shape) {
     return async (arg) => applyDeck(key, await rpc(op, shape ? shape(arg) : (arg || {})));
 }
 
-function rpc(op, args) {
+function rpc(op, args, timeoutMs) {
     if (!sock || !up) return Promise.reject(fail('The recorder service is not running.', 'XMREC_DOWN'));
     const id = ++seq;
     return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => { pending.delete(id); reject(fail('The recorder service did not answer.', 'XMREC_TIMEOUT')); }, RPC_MS);
+        const timer = setTimeout(() => { pending.delete(id); reject(fail('The recorder service did not answer.', 'XMREC_TIMEOUT')); }, timeoutMs || RPC_MS);
         pending.set(id, { resolve, reject, timer });
         sock.write(`${JSON.stringify({ id, op, args: args || {} })}\n`);
     });
@@ -195,7 +196,7 @@ function deck() {
     return {
         tape: d.tape, workspaceId: d.workspaceId, mode: d.mode, recordings: [], timers: s.timers || [], alerts: s.alerts || [], terms: s.terms || [],
         queue: waiting, jobs: [], history: Array.isArray(s.history) ? s.history : [],
-        settings: { streamsPerAccount: Number((s.settings || {}).streamsPerAccount) || 1 }, pool: [], offline: true
+        settings: Object.assign({ streamsPerAccount: 1, healthyBuffer: 3, behindSeconds: 120, refetchRetries: 3, keepSegmentsHours: 24 }, s.settings || {}), pool: [], held: { n: 0, assembling: 0, failed: 0 }, offline: true
     };
 }
 
@@ -221,6 +222,11 @@ module.exports = {
     online: () => up,
     start: (opts) => withAuth('start')(opts),
     stop: (rid) => rpc('stop', { rid }),
+    // deferred assembly (#1252 S7): the recordings that hold segments, and building (rebuilding) a recording's files from them
+    // (a long recording takes a while: ten minutes to answer)
+    held: () => rpc('held', {}),
+    assemble: (rid) => rpc('assemble', { rid }, ASSEMBLE_MS),
+    heldDelete: (rid) => rpc('heldDelete', { rid }),
     recordCut: (channelId, o = {}) => withAuth('recordCut')({ channelId, fromStart: !!o.fromStart }),
     recordChannel: (channelId, o = {}) => withAuth('recordChannel')({ channelId, fromStart: !!o.fromStart }),
     recordRange: (channelId, o = {}) => withAuth('recordRange')({

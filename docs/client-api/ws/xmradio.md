@@ -57,12 +57,22 @@ server starts again. The deck's SPLIT switch picks the file layout:
 | `xmradio_queue_remove` | admin | `{ id }` | `{ queue[] }`: cancel one queued song |
 | `xmradio_queue_clear` | admin | `{}` | `{ queue[] }`: cancel every queued song |
 | `xmradio_queue_cancel` | admin | `{ id }` | `{ id, state, queue[] }`: cancel one waiting entry of any producer (song, cut, channel, timer, alert, term) |
-| `xmradio_rec_settings` | admin | `{ streamsPerAccount? }` | `{ settings { streamsPerAccount }, deck }`: streams per SiriusXM account, 1 to 4 (default 1) |
+| `xmradio_rec_settings` | admin | `{ streamsPerAccount?, healthyBuffer?, behindSeconds?, refetchRetries?, keepSegmentsHours? }` | `{ settings { streamsPerAccount, healthyBuffer, behindSeconds, refetchRetries, keepSegmentsHours }, deck }`: streams per SiriusXM account 1 to 4 (default 1); `healthyBuffer` whole segments the recorder keeps between itself and the live edge 1 to 20 (default 3); `behindSeconds` how far past the healthy position counts as behind 30 to 3600 (default 120); `refetchRetries` times a segment that fails its checks is fetched again 0 to 10 (default 3); `keepSegmentsHours` how long the raw segments are kept after a successful assembly 0 to 720 (default 24). Each is checked against its range (error `XMRADIO_SETTING`) |
+| `xmradio_rec_held` | admin | `{}` | `{ held[{ rid, channelId, kind, slot, state, since, endedAt, segs, gaps[{ from, to }], gapSeconds, files[], error, keepUntil }] }`: the recordings that hold segments on disk, newest first. `state` is `recording`, `stopped` (not assembled yet), `assembling`, `assembled` or `failed`; `gaps` are the holes (ms, the stream's clock), `files` the names the last assembly made, `keepUntil` when an assembled recording's segments go (0 otherwise) |
+| `xmradio_rec_assemble` | admin | `{ rid }` | the recording's `held` entry once the assembly has finished: builds (or rebuilds) its files from the segments on disk and the cut store. The same names every time, over the earlier files on the tape (one copy). A hole is filled with AAC silence of its exact length and marked: a song file gets ` (gap)` after its title and the comment `missing audio hh:mm:ss-hh:mm:ss`; the long file gets a chapter `Missing audio` and the same comment. Error `XMRADIO_REC_NONE` for a recording that holds no segments |
 | `xmradio_rec_stop` | admin | `{ rid }` | `{ rid, filed }` |
 | `xmradio_timers_set` | admin | `{ timers[{ id?, channelId, start 'HH:MM', minutes, days[0-6], date?, mode?, off? }] }` | `{ timers }` |
 | `xmradio_alert_add` | admin | `{ kind: 'artist' \| 'song', artist, title?, channelId? }` | `{ alerts }` |
 | `xmradio_alert_remove` | admin | `{ id }` | `{ alerts }` |
 | `xmradio_terms_set` | admin | `{ terms[{ id?, text, channelId? }] }` | `{ terms }` |
+
+A recording in `deck.recordings[]` also carries its buffer health (#1252 S6): `state` (`buffering` until it holds `healthyBuffer`
+segments, `recording`, `paused-refilling` while it waits for SiriusXM's buffer to refill, `behind` when it is more than
+`behindSeconds` past the healthy position and not on a deliberate reach-back), `segsWritten`, `segsExpected`, `held` (segments on
+disk), `gaps[{ from, to }]` and `gapSeconds` (audio that left the stream's window before it was fetched; never spliced over),
+`refetches`, `pauses`, `behindS` and `bufferSegs` (what the stream held beyond the recorder's position at its last read).
+Nothing is filed while a recording runs: its files are assembled when it stops (`deck.held { n, assembling, failed }` moves
+when that changes; read `xmradio_rec_held`).
 
 `deck` is `{ tape, workspaceId, mode, recordings[], timers[], alerts[], terms[], queue[] }` and is also the `deck` item
 of the `xmradio` status feed (pushed when it changes). A queue entry is
