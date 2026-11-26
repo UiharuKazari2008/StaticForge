@@ -12,7 +12,7 @@
  *                                                  the session the harness signed it in with) -> the device
  *   DELETE /api/test-devices/:id                 unmark (it is a household phone again: unpartner it first)
  *   POST   /api/test-devices/notice              { mode: 'push'|'get', id?, title, text?, cls?, app?, actions?, data?,
- *                                                  ttlMs?, alert? } -> { notice }
+ *                                                  ttlMs?, alert?, stack? } -> { notice }  (stack: #1098's stack key, e.g. 'mail')
  *                                                  push: sent live over the background link (as_event inbox.notice);
  *                                                  get: stored only - the phone fetches it (hello catch-up, the status
  *                                                  snapshot's notices list, POST .../catch-up)
@@ -75,6 +75,8 @@ function mount(app, authMiddleware, globalResources) {
         const id = String(b.id || `test:${Date.now().toString(36)}`).slice(0, 120);
         const notice = inbox().publish({
             user: 'test', id, push: mode === 'push', alert: b.alert === true ? true : undefined,
+            // stack: the key a stacked notice joins (#1098: ten test mails with stack 'mail' are one stack:mail row)
+            stack: typeof b.stack === 'string' && /^[a-z0-9-]{1,30}$/.test(b.stack) ? b.stack : undefined,
             title: String(b.title || 'Test notice'), text: String(b.text || ''), cls: String(b.cls || 'test'), app: String(b.app || 'test'),
             // data.kind 'test' = no page producer: a page in front shows it itself (wmNotificationInbox SERVER_ONLY_KINDS);
             // a test may send another kind (data.kind 'mail') to see what a page does with a producer's notice
