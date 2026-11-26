@@ -51,10 +51,19 @@ function getPublicRoot(projectRoot) {
     return path.join(projectRoot, 'public');
 }
 
+// A managed asset is a stylesheet or a script. Both halves matter: the root says where the
+// compiler may write, the extension says it is something it can actually compile. Checking the
+// root alone claimed everything under public/scripts (tasks/manifest.json, graphify-out/cache/*.json,
+// README-BlockContainer.md) and ran it through the JS/CSS compilers on every request for it,
+// logging "[Runtime Compile] <file>: Unexpected token: punc (:)" about 1000 times each. This is
+// the same filter walkManagedFilesAsync (the boot walk) already applies.
 function isManagedWebPath(webPath) {
     const normalized = (webPath || '').replace(/^\//, '');
     const first = normalized.split('/')[0];
-    return MANAGED_ROOTS.includes(first);
+    if (!MANAGED_ROOTS.includes(first)) {
+        return false;
+    }
+    return normalized.endsWith('.css') || normalized.endsWith('.js');
 }
 
 function webPathToSourcePath(projectRoot, webPath) {
