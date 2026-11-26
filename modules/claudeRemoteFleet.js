@@ -465,15 +465,18 @@ function moveToOwnFolder(gr, index, opts = {}) {
     });
 }
 
-/** The host's ~/.claude login becomes a link to the moved account's own login (backed up first). */
+/**
+ * Moving the account that was on the host: the host's ~/.claude login is taken off the host (backed up first; anything
+ * else the file held, such as MCP logins, is merged into the account's own file). It never becomes a link to the
+ * account's login: a Claude run on the host would refresh it, replace the link with a copy, and the two copies of
+ * one login would log each other out (Nov 26 2026: Douglas). Nothing runs on a host login any more.
+ */
 async function linkHostLogin(id) {
     const file = hostCredsFile();
     const target = path.join(runtime.configDir(id), '.credentials.json');
     let st = null;
     try { st = await fs.promises.lstat(file); } catch (_) { st = null; }
-    if (st && st.isSymbolicLink()) {
-        if (path.resolve(path.dirname(file), await fs.promises.readlink(file)) === target) return;
-    }
+    if (st && st.isSymbolicLink()) { await fs.promises.unlink(file); return; }
     if (st && !st.isSymbolicLink()) {
         // keep whatever else the host's file holds (MCP logins): merge it into the account's own file
         const cur = (await runtime.readJson(file)) || {};
@@ -485,7 +488,6 @@ async function linkHostLogin(id) {
         await fs.promises.copyFile(file, path.join(backup, `credentials-before-move-${Date.now()}.json`));
         await fs.promises.unlink(file);
     } else if (st) await fs.promises.unlink(file);
-    await fs.promises.symlink(target, file);
 }
 
 function start(gr, index, opts = {}) {

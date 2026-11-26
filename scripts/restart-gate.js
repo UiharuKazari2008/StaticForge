@@ -216,7 +216,7 @@ function checkAgents(store, dirty) {
             const what = serverEdits.length ? `uncommitted ${serverEdits.slice(0, 4).map((f) => f.path).join(', ')}${serverEdits.length > 4 ? ` (+${serverEdits.length - 4})` : ''}` : `claims on ${serverClaims.map((c) => c.path).slice(0, 4).join(', ')}`;
             // two sessions can carry the same derived name (two "staticforge-8e"): the link's end tells them apart
             const tail = s.link ? `, claude.ai …${s.link.slice(-10)}` : '';
-            add('ask', `ask ${name} (${agentId}${tail}, ${s.status === 'busy' ? 'working now' : 'idle'}): ${what}`, { agent: agentId, busy: s.status === 'busy' });
+            add('ask', `ask ${name} (${agentId}${tail}, ${s.status === 'busy' ? 'working now' : 'idle'}): ${what}`, { agent: agentId, busy: s.status === 'busy', files: serverEdits.length ? serverEdits.map((f) => f.path) : serverClaims.map((c) => c.path) });
         }
     }
     dirty.filter((f) => !owned.has(f.path)).slice(0, 8).forEach((f) => add('note', `uncommitted ${f.path} (no live session holds it: it ${CLIENT ? 'ships' : 'loads'} as it is)`));
@@ -238,6 +238,14 @@ function verifyAsks(store) {
     if (!store) return;
     const d = store.open();
     d.exec(`CREATE TABLE IF NOT EXISTS ${ASKS_TABLE} (agent_id TEXT PRIMARY KEY, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, text TEXT NOT NULL DEFAULT '', stale INTEGER NOT NULL DEFAULT 0)`);
+    // where a wait comes from (Fleet's wait lists show it): the restart / update it holds and the session that asked
+    const cols = new Set(d.prepare(`PRAGMA table_info(${ASKS_TABLE})`).all().map((c) => c.name));
+    if (!cols.has('why')) d.exec(`ALTER TABLE ${ASKS_TABLE} ADD COLUMN why TEXT NOT NULL DEFAULT ''`);
+    if (!cols.has('asked_by')) d.exec(`ALTER TABLE ${ASKS_TABLE} ADD COLUMN asked_by TEXT NOT NULL DEFAULT ''`);
+    if (!cols.has('files')) d.exec(`ALTER TABLE ${ASKS_TABLE} ADD COLUMN files TEXT NOT NULL DEFAULT ''`);
+    const self = selfSessionId();
+    const askedBy = self ? `claude-${self.slice(0, 8)}` : (process.env.USER || '');
+    const why = String(valueOf('--why') || '').slice(0, 300);
     const now = Date.now();
     const asked = findings.filter((f) => f.level === 'ask' && f.agent);
     const keep = new Set(asked.map((f) => f.agent));
@@ -246,7 +254,7 @@ function verifyAsks(store) {
     try { live = require('../modules/claudeSessions').liveSessions(); } catch (_) { live = []; }
     const limit = maxAskMinutes() * 60000;
     for (const f of asked) {
-        d.prepare(`INSERT INTO ${ASKS_TABLE} (agent_id, first_at, last_at, text) VALUES (?, ?, ?, ?) ON CONFLICT(agent_id) DO UPDATE SET last_at = excluded.last_at, text = excluded.text`).run(f.agent, now, now, f.text);
+        d.prepare(`INSERT INTO ${ASKS_TABLE} (agent_id, first_at, last_at, text, why, asked_by, files) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(agent_id) DO UPDATE SET last_at = excluded.last_at, text = excluded.text, why = excluded.why, asked_by = excluded.asked_by, files = excluded.files`).run(f.agent, now, now, f.text, why, askedBy, (f.files || []).join(', ').slice(0, 1000));
         const row = d.prepare(`SELECT * FROM ${ASKS_TABLE} WHERE agent_id = ?`).get(f.agent);
         const askedMin = Math.round((now - row.first_at) / 60000);
         if (now - row.first_at < limit) continue;

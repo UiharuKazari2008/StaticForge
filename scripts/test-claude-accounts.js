@@ -43,6 +43,13 @@ function putHost(l) {
     cj.oauthAccount = l.oauthAccount;
     fs.writeFileSync(paths.claudeJson, JSON.stringify(cj), { mode: 0o600 });
 }
+
+// what Link Host Login did before Fleet stopped using a host login: the login on the (test) host linked to an account
+function linkFromHost(index) {
+    const creds = JSON.parse(fs.readFileSync(paths.credentials, 'utf8'));
+    const cj = hostJson();
+    return host.linkLogin(gr, index, creds, cj.oauthAccount || null);
+}
 const hostCreds = () => JSON.parse(fs.readFileSync(paths.credentials, 'utf8'));
 const hostJson = () => JSON.parse(fs.readFileSync(paths.claudeJson, 'utf8'));
 const noSecrets = (value, what) => {
@@ -111,7 +118,8 @@ async function main() {
     assert.ok(list[0].active && !list[1].active);
     assert.strictEqual(list[0].remoteLogin, null);
     noSecrets(list, 'listAccounts');
-    host.linkHostLogin(gr, 0);
+    assert.throws(() => host.linkHostLogin(gr, 0), /no longer uses a host login/, 'Link Host Login is refused');
+    linkFromHost(0);
     list = host.listAccounts(gr);
     assert.strictEqual(list[0].remoteLogin.email, 'a@example.com');
     assert.strictEqual(list[0].remoteLogin.plan, 'max');
@@ -120,11 +128,11 @@ async function main() {
     const dirA = path.join(paths.store, list[0].id);
     assert.strictEqual(fs.statSync(dirA).mode & 0o777, 0o700, 'store dir 0700');
     assert.strictEqual(fs.statSync(path.join(dirA, 'credentials.json')).mode & 0o777, 0o600, 'linked login 0600');
-    console.log('✓ link host login (0700 dir, 0600 file, no tokens out)');
+    console.log('✓ Link Host Login refused; a linked login (0700 dir, 0600 file, no tokens out)');
 
     // link B: sign the host in as B, link, then back to A as live
     putHost(login(ACCESS_B, 'b@example.com', 'uuid-b', 'pro'));
-    host.linkHostLogin(gr, 1);
+    linkFromHost(1);
     putHost(login(ACCESS_A2, 'a@example.com', 'uuid-a', 'max')); // A's live token rotated since the link
     host.arm(gr);
 
@@ -234,7 +242,7 @@ async function sharedPermissionsAndSessions(handler, ctx, sent) {
     fs.mkdirSync(OTHER, { recursive: true });
     // A linked again (5. unlinked it), B on the host
     putHost(login(ACCESS_A2, 'a@example.com', 'uuid-a', 'max'));
-    host.linkHostLogin(gr, 0);
+    linkFromHost(0);
     putHost(login(ACCESS_B, 'b@example.com', 'uuid-b', 'pro'));
     const settings = { permissions: { allow: ['Bash(ssh ruiko:*)', 'Bash(curl http://127.0.0.1:18791/*)', 'Read(//x/**)'], deny: ['Bash(rm -rf /*)'], defaultMode: 'bypassPermissions' }, skipDangerousModePermissionPrompt: true, theme: 'dark' };
     const settingsText = JSON.stringify(settings, null, 2);

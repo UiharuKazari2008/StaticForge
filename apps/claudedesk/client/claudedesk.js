@@ -1988,12 +1988,12 @@
             { t: 'Files', w: 200, key: 'paths', text: (d) => d.paths }
         ], holdRows, { sortId: 'cd-sup-holds', sort: { key: 'at', dir: -1 }, empty: 'No session is paused.' });
         const asks = supAsks();
-        const askBody = asks.length ? asks.map((g) => `<div class="cd-infobar is-warning" role="alert"><img src="${VI}/warning-16.png" alt=""><span>${esc(askText(g))}</span></div>`).join('') : '';
         const casks = supClientAsks();
-        const caskBody = casks.length ? casks.map((g) => `<div class="cd-infobar is-warning" role="alert"><img src="${VI}/warning-16.png" alt=""><span>${esc(askText(g, 'Client update'))}</span></div>`).join('') : '';
+        const askBody = waitList(c, asks, 'ga', 'cd-sup-asks-list', 'Nothing is holding a restart.');
+        const caskBody = waitList(c, casks, 'ca', 'cd-sup-client-asks-list', 'Nothing is holding a client update.');
         const html = c.page(SUP_TITLE[part], side, [
-            asks.length || part === 'sup-asks' ? { id: 'cd-sup-asks', title: `Restart waits (${asks.length})`, body: `${askBody || '<p>No agent is waiting to restart Dreamscape.</p>'}<p class="mmc-hint">An agent asked to restart Dreamscape and waits for the others to be idle. The Supervisor checks the wait after the time set below.</p>` } : null,
-            casks.length || part === 'sup-client-asks' ? { id: 'cd-sup-client-asks', title: `Client update waits (${casks.length})`, body: `${caskBody || '<p>No client update is waiting.</p>'}<p class="mmc-hint">An agent asked to send a client update and waits for sessions with uncommitted client edits to commit them or say they are fine. The Supervisor checks the wait after the same time as a restart wait.</p>` } : null,
+            asks.length || part === 'sup-asks' ? { id: 'cd-sup-asks', title: `Restart waits (${asks.length})`, body: `<div class="cd-sup-list">${askBody}</div>` } : null,
+            casks.length || part === 'sup-client-asks' ? { id: 'cd-sup-client-asks', title: `Client update waits (${casks.length})`, body: `<div class="cd-sup-list">${caskBody}</div>` } : null,
             { id: 'cd-sup-tiles', title: 'Dashboard', body: supDashTiles(st, reviews, asks, holds, locks, arts, total) },
             { id: 'cd-sup-recent', title: 'Latest reviews with gaps', body: supGapTable(reviews) },
             { id: 'cd-sup-set', title: 'Settings', body: form },
@@ -2406,6 +2406,31 @@
         };
     }
 
+    /** What a wait holds, from the gate's own text when the files column is empty (older rows). */
+    const waitFiles = (g) => g.files || (String(g.text || '').match(/\):\s*(?:uncommitted|claims on)\s+([^-]+?)(?:\s+-\s+asked|$)/) || [])[1] || '';
+    /** A restart / client update wait list: one row per session it waits on (prefix ga / ca), the row's actions in the Actions pane. */
+    function waitList(c, list, prefix, sortId, empty) {
+        const rows = list.map((g) => {
+            const a = agentOf(g.agentId);
+            const asker = agentOf(g.askedBy);
+            return { key: `${prefix}:${g.agentId}`, icon: g.stale ? `${VI}/warning-16.png` : '/static_images/vista-cmdbar/clock.png', data: { who: a ? (a.name || a.id) : g.agentId, files: waitFiles(g), why: g.why || '', by: asker ? (asker.name || asker.id) : (g.askedBy || ''), at: g.firstAt || 0, last: g.lastAt || 0, state: g.stale ? 'Looks stuck' : 'Waiting' } };
+        });
+        return c.listView([
+            { t: 'Waiting on', w: 170, key: 'who', text: (d) => d.who },
+            { t: 'Files', w: 240, key: 'files', text: (d) => d.files },
+            { t: 'For', w: 200, key: 'why', text: (d) => d.why },
+            { t: 'Asked by', w: 130, key: 'by', text: (d) => d.by },
+            { t: 'Since', w: 128, key: 'at', text: (d) => when(d.at), value: (d) => Number(d.at) || 0 },
+            { t: 'Last checked', w: 128, key: 'last', text: (d) => when(d.last), value: (d) => Number(d.last) || 0 },
+            { t: 'State', w: 90, key: 'state', text: (d) => d.state }
+        ], rows, { sortId, sort: { key: 'at', dir: 1 }, empty });
+    }
+    /** The session a selected wait row waits on. */
+    function waitSession(c) {
+        const id = selId(c, 'ga:') || selId(c, 'ca:');
+        const a = id ? agentOf(id) : null;
+        return a && a.sessionId ? a.sessionId : '';
+    }
     const askText = (g, what) => { const a = agentOf(g.agentId); return `${what || 'Restart'} waiting on ${a ? (a.name || a.id) : (g.agentId || 'an agent')}${g.text ? `: ${String(g.text).replace(/\s+/g, ' ').slice(0, 160)}` : ''}${g.firstAt ? ` (since ${timeOnly(g.firstAt)})` : ''}${g.stale ? ' - it looks stuck' : ''}`; };
 
     /** The running sessions no work item owns, as the Sessions list shows them. */
@@ -5252,7 +5277,7 @@
             case 'co-supervisor': return [{ text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-settings': return [{ text: 'Read Again', action: 'sup-refresh' }, { text: 'Save Settings', action: 'sup-save', disabled: !S.sup.draft }];
             case 'sup-reviews': return [{ text: 'Read Again', action: 'sup-refresh' }];
-            case 'sup-asks': case 'sup-client-asks': return [{ text: 'Read Again', action: 'sup-refresh' }];
+            case 'sup-asks': case 'sup-client-asks': return [{ text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-holds': return [{ text: 'Resume', action: 'sup-resume' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-locks': return [{ text: 'Remove Lock...', action: 'sup-lock-remove' }, { text: 'Read Again', action: 'sup-refresh' }];
             case 'sup-maint': return [{ text: 'Run Now', action: 'maint-run', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Dry Run', action: 'maint-dry', disabled: !!((maintData() || {}).running || maintUi().busy) }, { text: 'Save Settings', action: 'maint-save', disabled: !maintUi().draft }, { text: 'Read Again', action: 'sup-refresh' }];
@@ -5322,7 +5347,6 @@
                     { text: a.active ? 'Reconnect Remote Control' : 'Switch To', action: 'switch' },
                     { text: 'New Session on This Account...', action: 'new-session-on' },
                     { separator: true },
-                    { text: 'Link Host Login', action: 'link' },
                     { text: 'Unlink Login', action: 'unlink', disabled: !a.remoteLogin },
                     { separator: true },
                     { text: 'Properties', action: 'account-props' }
@@ -5469,6 +5493,12 @@
             case 'sup-resume': {
                 const h = supHolds().find((x) => String(x.id) === selId(c, 'hd:'));
                 if (h) await resumeHold(c, h.sessionId); else c.note('Select a paused session first.');
+                return true;
+            }
+            case 'wait-open': case 'wait-message': case 'wait-screen': {
+                const wsid = waitSession(c);
+                if (!wsid) { c.note('Select a wait whose session is known first.'); return true; }
+                if (a === 'wait-open') { await loadSessions(false); openChat(c, wsid); } else if (a === 'wait-message') await messageBox(c, wsid); else await screenBox(c, wsid);
                 return true;
             }
             case 'sup-hold-open': {
@@ -5964,15 +5994,6 @@
             case 'add-account': await addAccountBox(c); return true;
             case 'sign-in-again': await signInAgainBox(c); return true;
             case 'switch': await switchAccount(c, Number(selId(c, 'a:'))); return true;
-            case 'link': {
-                const idx = Number(selId(c, 'a:'));
-                const lg = S.host && S.host.login;
-                const ok = await c.box(`<p>Link the claude.ai login signed in on the host${lg ? ` (<b>${esc(lg.email || lg.displayName)}</b>)` : ''} to <b>${esc(accountName(idx))}</b>? Remote Control and this account's sessions sign in with it.</p>`,
-                    [{ text: 'Link', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'question' });
-                if (ok !== true) return true;
-                try { const r = await send('link_claude_account_login', { index: idx }); if (r.accounts) S.accounts = r.accounts; c.refresh(); } catch (e) { await failBox(c, e); }
-                return true;
-            }
             case 'unlink': {
                 const idx = Number(selId(c, 'a:'));
                 const ok = await c.box(`<p>Unlink the Remote Control login of <b>${esc(accountName(idx))}</b>? A switch to it keeps the host's login as it is, and it can no longer run sessions of its own.</p>`,
@@ -6042,6 +6063,7 @@
         else if (key.startsWith('a:')) void action(needsLogin(Number(key.slice(2))) ? 'sign-in-again' : 'account-props', c);
         else if (key.startsWith('g:')) void action('agent-session', c);
         else if (key.startsWith('m:')) void action('read-message', c);
+        else if (key.startsWith('ga:') || key.startsWith('ca:')) void action('wait-open', c);
         else if (key.startsWith('r:')) void action('fleet-props', c);
         else if (key.startsWith('b:')) void action('build-props', c);
         else if (key.startsWith('l:')) void action('lock-inspect', c);

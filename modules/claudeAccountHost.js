@@ -297,7 +297,9 @@ function listAccounts(gr) {
     try { normalizeStore(); } catch (e) { console.warn(`[claudeAccounts] store not normalized: ${e.message}`); }
     const { m, keys, selected } = keyList(gr);
     const host = readHostLogin();
-    const hostLogin = describeLogin(host.creds, host.oauthAccount);
+    // only a host login that really holds a token counts (a name left in ~/.claude.json is not a login): no account is
+    // ever "on the host" by a stale name, and with the host login retired none is
+    const hostLogin = host.creds && host.creds.claudeAiOauth && (host.creds.claudeAiOauth.accessToken || host.creds.claudeAiOauth.refreshToken) ? describeLogin(host.creds, host.oauthAccount) : null;
     return keys.map((key, index) => {
         const id = accountId(key);
         let linked = null;
@@ -340,12 +342,13 @@ function linkLogin(gr, index, creds, oauthAccount) {
     return { index: acc.index, remoteLogin: login };
 }
 
-/** Saves the host's current claude.ai login as this account's Remote Control login. */
-function linkHostLogin(gr, index) {
-    const host = readHostLogin();
-    const login = describeLogin(host.creds, host.oauthAccount);
-    if (!login || !host.creds || !host.creds.claudeAiOauth) throw new Error('The host has no claude.ai login to link (sign in with `claude` on the host first)');
-    return linkLogin(gr, index, host.creds, host.oauthAccount);
+/**
+ * No host login is attached any more (Yukimi, Nov 26 2026: "we don't want to attach a host login anymore. the
+ * accounts are placed in their own folders so we should never step on other accounts or their work"): an account
+ * signs in in its own folder (Sign In Again), never from or onto the host's ~/.claude.
+ */
+function linkHostLogin() {
+    throw new Error('Fleet no longer uses a host login: each account signs in in its own folder (Sign In Again on the account)');
 }
 
 function unlinkLogin(gr, index) {

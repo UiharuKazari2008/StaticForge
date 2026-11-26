@@ -263,10 +263,10 @@ async function supervisorStatus(gr) {
     }
     const stats = Object.assign(supervisor.summary(), { artifactBytes: artifacts.filter((a) => a.exists !== false).reduce((n, a) => n + (a.sizeBytes || 0), 0) });
     let gateAsks = [];
-    try { gateAsks = coord.open().prepare('SELECT * FROM gate_asks ORDER BY first_at').all().map((r) => ({ agentId: r.agent_id, firstAt: r.first_at, lastAt: r.last_at, text: r.text, stale: !!r.stale })); } catch (_) { gateAsks = []; }
+    try { gateAsks = coord.open().prepare('SELECT * FROM gate_asks ORDER BY first_at').all().map((r) => ({ agentId: r.agent_id, firstAt: r.first_at, lastAt: r.last_at, text: r.text, stale: !!r.stale, why: r.why || '', askedBy: r.asked_by || '', files: r.files || '' })); } catch (_) { gateAsks = []; }
     // the client update gate's own wait list (scripts/restart-gate.js --client, scripts/client-update.sh): Client Update Waits
     let clientGateAsks = [];
-    try { clientGateAsks = coord.open().prepare('SELECT * FROM client_gate_asks ORDER BY first_at').all().map((r) => ({ agentId: r.agent_id, firstAt: r.first_at, lastAt: r.last_at, text: r.text, stale: !!r.stale })); } catch (_) { clientGateAsks = []; }
+    try { clientGateAsks = coord.open().prepare('SELECT * FROM client_gate_asks ORDER BY first_at').all().map((r) => ({ agentId: r.agent_id, firstAt: r.first_at, lastAt: r.last_at, text: r.text, stale: !!r.stale, why: r.why || '', askedBy: r.asked_by || '', files: r.files || '' })); } catch (_) { clientGateAsks = []; }
     let spend = null;
     try { spend = await Promise.race([supervisor.spend(gr), new Promise((r) => setTimeout(() => r(null), 4000))]); } catch (_) { spend = null; }
     let rules = null;
