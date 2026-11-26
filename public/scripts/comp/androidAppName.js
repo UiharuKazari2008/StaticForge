@@ -116,10 +116,14 @@
     }
     if (typeof window !== 'undefined' && window.addEventListener) {
         const drop = () => { installed = null; };
-        const seg = window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' ? window.melatonSegments.callerSignal() : undefined;
-        window.addEventListener('androidapps', drop, { signal: seg });
-        document.addEventListener('wmAppsChanged', drop, { signal: seg });
-        document.addEventListener('melaton:android-programs', drop, { signal: seg });
+        // callerSignal() is null for page-lifetime code (this file loads from app.html): { signal: null } throws
+        // ("Failed to convert value to 'AbortSignal'", Melaton Desktop stopped working on the A53, Nov 26), so the
+        // signal goes in only when there is one
+        const seg = window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' ? window.melatonSegments.callerSignal() : null;
+        const opts = typeof AbortSignal !== 'undefined' && seg instanceof AbortSignal ? { signal: seg } : undefined;
+        window.addEventListener('androidapps', drop, opts); // app-scope: allow page-lifetime name cache (app.html)
+        document.addEventListener('wmAppsChanged', drop, opts); // app-scope: allow page-lifetime name cache (app.html)
+        document.addEventListener('melaton:android-programs', drop, opts); // app-scope: allow page-lifetime name cache (app.html)
     }
 
     /** installedMap: tests pass { pkg: label }; the page reads its own lists. */
