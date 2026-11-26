@@ -165,10 +165,10 @@
         if (!page) return;
         const rows = rowsNow();
         if (!rows.some((r) => r.id === sel)) sel = rows.length ? rows[0].id : null;
-        page.querySelector('.wtm-h-name').textContent = view === 'procs' ? 'Process' : 'Application';
+        page.querySelector('.wtsk-h-name').textContent = view === 'procs' ? 'Process' : 'Application';
         const icon = (r) => (view === 'procs' && !EXE[r.id] && r.id !== 'today' && !String(r.icon).startsWith('/') ? 'app-programs' : r.icon);
-        page.querySelector('.wtm-list').innerHTML = rows.map((r) => `<div class="wtm-row${r.id === sel ? ' is-selected' : ''}" role="option" aria-selected="${r.id === sel}" data-id="${ws.escapeHtml(r.id)}">
-            <span class="wtm-ico">${ws.art.img(icon(r))}</span><span class="wtm-name">${ws.escapeHtml(r.title)}</span><span class="wtm-mem">${memText(r.mem)}</span><span class="wtm-cpu">${Math.min(100, r.cpu)} %</span></div>`).join('');
+        page.querySelector('.wtsk-list').innerHTML = rows.map((r) => `<div class="wtsk-row${r.id === sel ? ' is-selected' : ''}" role="option" aria-selected="${r.id === sel}" data-id="${ws.escapeHtml(r.id)}">
+            <span class="wtsk-ico">${ws.art.img(icon(r))}</span><span class="wtsk-name">${ws.escapeHtml(r.title)}</span><span class="wtsk-mem">${memText(r.mem)}</span><span class="wtsk-cpu">${Math.min(100, r.cpu)} %</span></div>`).join('');
         ws.refreshSoftKeys();
     }
 
@@ -270,13 +270,13 @@
         page = p;
         p.classList.add('wm-task-manager');
         p.innerHTML = `
-            <div class="wtm-head" role="row"><span class="wtm-h-name">Application</span><span class="wtm-h-mem">Mem</span><span class="wtm-h-cpu">CPU</span></div>
-            <div class="wtm-list wm-pv-scroll" role="listbox" aria-label="Running programs"></div>`;
-        const list = p.querySelector('.wtm-list');
+            <div class="wtsk-head" role="row"><span class="wtsk-h-name">Application</span><span class="wtsk-h-mem">Mem</span><span class="wtsk-h-cpu">CPU</span></div>
+            <div class="wtsk-list wm-pv-scroll" role="listbox" aria-label="Running programs"></div>`;
+        const list = p.querySelector('.wtsk-list');
         let holdTimer = null;
         let held = false;
         list.addEventListener('pointerdown', (e) => {
-            const row = e.target.closest('.wtm-row');
+            const row = e.target.closest('.wtsk-row');
             if (!row) return;
             held = false;
             const { clientX: x, clientY: y } = e;
@@ -293,12 +293,12 @@
         list.addEventListener('pointercancel', cancel);
         list.addEventListener('contextmenu', (e) => e.preventDefault());
         list.addEventListener('click', (e) => {
-            const row = e.target.closest('.wtm-row');
+            const row = e.target.closest('.wtsk-row');
             if (!row || held) return;
             // a tap on the selected program switches to it (as Switch To)
             if (row.dataset.id === sel && view === 'apps') { switchTo(); return; }
             sel = row.dataset.id;
-            list.querySelectorAll('.wtm-row').forEach((r) => {
+            list.querySelectorAll('.wtsk-row').forEach((r) => {
                 const on = r === row;
                 r.classList.toggle('is-selected', on);
                 r.setAttribute('aria-selected', String(on));

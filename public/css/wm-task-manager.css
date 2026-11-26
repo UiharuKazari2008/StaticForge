@@ -13,8 +13,8 @@
     color: #000;
 }
 
-.wm-task-manager .wtm-head,
-.wm-task-manager .wtm-row {
+.wm-task-manager .wtsk-head,
+.wm-task-manager .wtsk-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) calc(55 * var(--wm-px)) calc(48 * var(--wm-px));
     align-items: center;
@@ -22,7 +22,7 @@
     white-space: nowrap;
 }
 
-.wm-task-manager .wtm-head {
+.wm-task-manager .wtsk-head {
     flex: 0 0 auto;
     box-sizing: border-box;
     /* device: the band is VGA rows 52..86 (17.5 units), the rule rows 87..88 */
@@ -31,48 +31,48 @@
     background: var(--wm-tint);
 }
 
-.wm-task-manager .wtm-head > span {
+.wm-task-manager .wtsk-head > span {
     height: 100%;
     display: flex;
     align-items: center;
     overflow: hidden;
 }
 
-.wm-task-manager .wtm-h-name {
+.wm-task-manager .wtsk-h-name {
     padding-left: calc(6 * var(--wm-px));
     border-right: calc(2 * var(--wm-px)) solid #000;
 }
 
-.wm-task-manager .wtm-h-mem {
+.wm-task-manager .wtsk-h-mem {
     justify-content: flex-end;
     padding-right: calc(5 * var(--wm-px));
     border-right: calc(2 * var(--wm-px)) solid #000;
 }
 
-.wm-task-manager .wtm-h-cpu {
+.wm-task-manager .wtsk-h-cpu {
     justify-content: flex-end;
     padding-right: calc(6 * var(--wm-px));
 }
 
-.wm-task-manager .wtm-list {
+.wm-task-manager .wtsk-list {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
 }
 
-.wm-task-manager .wtm-row {
+.wm-task-manager .wtsk-row {
     grid-template-columns: calc(20 * var(--wm-px)) minmax(0, 1fr) calc(55 * var(--wm-px)) calc(48 * var(--wm-px));
     height: calc(18 * var(--wm-px));
     cursor: default;
     -webkit-touch-callout: none;
 }
 
-.wm-task-manager .wtm-row.is-selected {
+.wm-task-manager .wtsk-row.is-selected {
     background: var(--wm-highlight);
     color: var(--wm-highlight-text);
 }
 
-.wm-task-manager .wtm-ico img {
+.wm-task-manager .wtsk-ico img {
     display: block;
     width: calc(16 * var(--wm-px));
     height: calc(16 * var(--wm-px));
@@ -82,11 +82,11 @@
 }
 
 /* the device draws a selected row's icon through a 50 % checker of the highlight */
-.wm-task-manager .wtm-row.is-selected .wtm-ico {
+.wm-task-manager .wtsk-row.is-selected .wtsk-ico {
     position: relative;
 }
 
-.wm-task-manager .wtm-row.is-selected .wtm-ico::after {
+.wm-task-manager .wtsk-row.is-selected .wtsk-ico::after {
     content: '';
     position: absolute;
     top: 0;
@@ -96,18 +96,18 @@
     background: repeating-conic-gradient(var(--wm-highlight) 0 25%, transparent 0 50%) 0 0 / calc(2 * var(--wm-px)) calc(2 * var(--wm-px));
 }
 
-.wm-task-manager .wtm-name {
+.wm-task-manager .wtsk-name {
     overflow: hidden;
     text-overflow: ellipsis;
     padding-right: calc(4 * var(--wm-px));
 }
 
-.wm-task-manager .wtm-mem {
+.wm-task-manager .wtsk-mem {
     text-align: right;
     padding-right: calc(7 * var(--wm-px));
 }
 
-.wm-task-manager .wtm-cpu {
+.wm-task-manager .wtsk-cpu {
     text-align: right;
     padding-right: calc(6 * var(--wm-px));
 }
@@ -117,26 +117,26 @@
  * header is 16.5 px (15.5 px of tint and a 1 px black rule), the CPU column 47 px (rules at
  * x 136..137 and 191..192); rows are the 27 px finger rows with the theme's selector (wm65.css),
  * the 16 px icon at x 1 and the name from x 18, text #090733; the icon is not dithered. */
-html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtm-head {
+html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtsk-head {
     grid-template-columns: minmax(0, 1fr) calc(55 * var(--wm-px)) calc(47 * var(--wm-px));
     height: calc(16.5 * var(--wm-px));
     color: var(--wm65-text);
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtm-row {
+html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtsk-row {
     grid-template-columns: calc(18 * var(--wm-px)) minmax(0, 1fr) calc(55 * var(--wm-px)) calc(47 * var(--wm-px));
     height: calc(27 * var(--wm-px));
     color: var(--wm65-text);
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtm-row.is-selected {
+html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtsk-row.is-selected {
     color: #fff;
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtm-ico img {
+html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtsk-ico img {
     margin-left: calc(1 * var(--wm-px));
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtm-row.is-selected .wtm-ico::after {
+html.ui-mobile[data-wm-version="6.5"] .wm-task-manager .wtsk-row.is-selected .wtsk-ico::after {
     display: none;
 }

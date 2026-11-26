@@ -165,14 +165,14 @@
 
     function fillList(box, rows, emptyText) {
         if (!rows.some((r) => r.key === selRow)) selRow = rows.length ? rows[0].key : null;
-        box.querySelector('.wch-rows').innerHTML = rows.map((r) => rowHtml(r.key, r)).join('');
+        box.querySelector('.wcr-rows').innerHTML = rows.map((r) => rowHtml(r.key, r)).join('');
         const note = box.querySelector('.wsk-note');
         note.hidden = rows.length > 0 || !loaded;
         note.textContent = emptyText;
     }
 
     function renderList() {
-        const box = page.querySelector('.wch-list');
+        const box = page.querySelector('.wcr-list');
         const rows = listRows();
         const nomatch = box.querySelector('.wsk-nomatch');
         nomatch.hidden = !(search && !rows.length && loaded && (hits !== null || search.length < 2));
@@ -181,32 +181,32 @@
     }
 
     function renderChars() {
-        const box = page.querySelector('.wch-chars');
+        const box = page.querySelector('.wcr-chars');
         box.querySelector('.wsk-head-name').textContent = copyright || '';
         fillList(box, charRows(), 'No characters in this copyright.');
     }
 
     function renderCard() {
-        const box = page.querySelector('.wch-card');
+        const box = page.querySelector('.wcr-card');
         const c = byName(character);
         box.querySelector('.wsk-head-name').textContent = character || '';
-        if (!c) { box.querySelector('.wch-card-body').innerHTML = '<p class="wsk-note">This character is no longer in the database.</p>'; return; }
+        if (!c) { box.querySelector('.wcr-card-body').innerHTML = '<p class="wsk-note">This character is no longer in the database.</p>'; return; }
         const rows = cardRows(c);
         if (!rows.some((r) => r.key === selRow)) selRow = rows[0].key;
-        box.querySelector('.wch-card-body').innerHTML = `<div class="wsk-crow"><span class="wsk-clabel">Copyright:</span><span class="wsk-cvalue">${esc(cpOf(c))}</span></div>`
+        box.querySelector('.wcr-card-body').innerHTML = `<div class="wsk-crow"><span class="wsk-clabel">Copyright:</span><span class="wsk-cvalue">${esc(cpOf(c))}</span></div>`
             + rows.map((r) => {
                 const sel = r.key === selRow;
-                return `<div class="wch-trow${sel ? ' is-selected' : ''}" role="option" aria-selected="${sel}" data-key="${esc(r.key)}"><div class="wch-tlabel">${esc(r.label)}</div><div class="wch-ttext${r.text ? '' : ' is-empty'}">${esc(r.text || '(none)')}</div></div>`;
+                return `<div class="wcr-trow${sel ? ' is-selected' : ''}" role="option" aria-selected="${sel}" data-key="${esc(r.key)}"><div class="wcr-tlabel">${esc(r.label)}</div><div class="wcr-ttext${r.text ? '' : ' is-empty'}">${esc(r.text || '(none)')}</div></div>`;
             }).join('');
     }
 
     function render() {
         if (!page) return;
         const v = view();
-        page.querySelector('.wch-list').hidden = v !== 'list';
-        page.querySelector('.wch-chars').hidden = v !== 'chars';
-        page.querySelector('.wch-card').hidden = v !== 'card';
-        page.querySelector('.wch-edit').hidden = v !== 'edit';
+        page.querySelector('.wcr-list').hidden = v !== 'list';
+        page.querySelector('.wcr-chars').hidden = v !== 'chars';
+        page.querySelector('.wcr-card').hidden = v !== 'card';
+        page.querySelector('.wcr-edit').hidden = v !== 'edit';
         if (v === 'list') renderList();
         else if (v === 'chars') renderChars();
         else if (v === 'card') renderCard();
@@ -219,7 +219,7 @@
 
     function selectKey(key) {
         selRow = key;
-        page.querySelectorAll('.wch-view:not([hidden]) [data-key]').forEach((r) => {
+        page.querySelectorAll('.wcr-view:not([hidden]) [data-key]').forEach((r) => {
             const on = r.dataset.key === key;
             r.classList.toggle('is-selected', on);
             r.setAttribute('aria-selected', String(on));
@@ -233,7 +233,7 @@
         layers.push(layer);
         selRow = null;
         render();
-        page.querySelector('.wch-view:not([hidden]) .wsk-scroll, .wch-view:not([hidden]) .wsk-body')?.scrollTo(0, 0);
+        page.querySelector('.wcr-view:not([hidden]) .wsk-scroll, .wcr-view:not([hidden]) .wsk-body')?.scrollTo(0, 0);
         sh.syncHistory();
     }
 
@@ -294,7 +294,7 @@
 
     function openEdit(c) {
         editing = { oldName: c ? c.name : null };
-        const f = page.querySelector('.wch-edit');
+        const f = page.querySelector('.wcr-edit');
         f.querySelector('.wsk-head-name').textContent = c ? `Edit ${c.name}` : 'New Character';
         f.querySelector('[name="name"]').value = c ? c.name : '';
         f.querySelector('[name="copyright"]').value = c ? (c.copyright || '') : (copyright && copyright !== 'Original' ? copyright : '');
@@ -306,7 +306,7 @@
     }
 
     async function saveEdit() {
-        const f = page.querySelector('.wch-edit');
+        const f = page.querySelector('.wcr-edit');
         const a = applet();
         const name = f.querySelector('[name="name"]').value.trim();
         const cp = f.querySelector('[name="copyright"]').value.trim();
@@ -411,20 +411,20 @@
         page = p;
         p.classList.add('wsk', 'wm-characters');
         p.innerHTML = `
-            <div class="wsk-view is-list wch-view wch-list">
-                <div class="wsk-searchbar"><input class="wsk-search wch-search" type="search" enterkeyhint="search" autocomplete="off" placeholder="Enter a name..." aria-label="Enter a name"></div>
+            <div class="wsk-view is-list wcr-view wcr-list">
+                <div class="wsk-searchbar"><input class="wsk-search wcr-search" type="search" enterkeyhint="search" autocomplete="off" placeholder="Enter a name..." aria-label="Enter a name"></div>
                 <div class="wsk-nomatch" hidden></div>
-                <div class="wsk-scroll"><div class="wch-rows" role="listbox" aria-label="Copyrights"></div><p class="wsk-note" hidden></p></div>
+                <div class="wsk-scroll"><div class="wcr-rows" role="listbox" aria-label="Copyrights"></div><p class="wsk-note" hidden></p></div>
             </div>
-            <div class="wsk-view is-list wch-view wch-chars" hidden>
+            <div class="wsk-view is-list wcr-view wcr-chars" hidden>
                 <div class="wsk-head"><img src="${FOLDER}" alt="" draggable="false"><span class="wsk-head-name"></span></div>
-                <div class="wsk-scroll"><div class="wch-rows" role="listbox" aria-label="Characters"></div><p class="wsk-note" hidden></p></div>
+                <div class="wsk-scroll"><div class="wcr-rows" role="listbox" aria-label="Characters"></div><p class="wsk-note" hidden></p></div>
             </div>
-            <div class="wsk-view wch-view wch-card" hidden>
+            <div class="wsk-view wcr-view wcr-card" hidden>
                 <div class="wsk-head"><img ${K.artAttrs(ICON)} alt="" draggable="false"><span class="wsk-head-name"></span></div>
-                <div class="wsk-body wch-card-body" role="listbox"></div>
+                <div class="wsk-body wcr-card-body" role="listbox"></div>
             </div>
-            <form class="wsk-view wch-view wch-edit" hidden autocomplete="off">
+            <form class="wsk-view wcr-view wcr-edit" hidden autocomplete="off">
                 <div class="wsk-head"><img ${K.artAttrs(ICON)} alt="" draggable="false"><span class="wsk-head-name"></span></div>
                 <div class="wsk-body">
                     <label class="wsk-field"><span class="wsk-flabel">Name:</span><input class="wsk-input" name="name" type="text" autocapitalize="off" spellcheck="false"></label>
@@ -433,8 +433,8 @@
                     <label class="wsk-field is-tall"><span class="wsk-flabel">Overloads:</span><textarea class="wsk-textarea" name="overloads" autocapitalize="off" spellcheck="false" placeholder="One group of extra tags per line"></textarea></label>
                 </div>
             </form>`;
-        p.querySelector('.wch-edit').addEventListener('submit', (e) => { e.preventDefault(); saveEdit(); });
-        const searchEl = p.querySelector('.wch-search');
+        p.querySelector('.wcr-edit').addEventListener('submit', (e) => { e.preventDefault(); saveEdit(); });
+        const searchEl = p.querySelector('.wcr-search');
         searchEl.value = search;
         searchEl.addEventListener('input', () => {
             search = searchEl.value.trim();
@@ -444,7 +444,7 @@
             if (isCurrent()) sh.refreshSoftKeys();
         });
         searchEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); activate(selRow); } });
-        for (const sel of ['.wch-list .wsk-scroll', '.wch-chars .wsk-scroll', '.wch-card-body']) {
+        for (const sel of ['.wcr-list .wsk-scroll', '.wcr-chars .wsk-scroll', '.wcr-card-body']) {
             const el = p.querySelector(sel);
             K.onHold(el, '[data-key]', (row, x, y) => { selectKey(row.dataset.key); sh.menuAt(x, y, menu()); });
             el.addEventListener('click', (e) => {

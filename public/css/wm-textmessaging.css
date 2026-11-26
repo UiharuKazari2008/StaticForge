@@ -6,8 +6,8 @@
  * picture view. Lengths are N * --wm-px like wm-shell.css.
  */
 
-.wm-tm .wtm-newview,
-.wm-tm .wtm-mediaview {
+.wm-tm .wtx-newview,
+.wm-tm .wtx-mediaview {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -17,7 +17,7 @@
 /* ---- conversation additions ---- */
 
 /* a group's members under "Conversation with ..." */
-.wm-tm .wtm-members {
+.wm-tm .wtx-members {
     margin: calc(-12 * var(--wm-px)) 0 calc(15 * var(--wm-px));
     padding: 0 calc(2 * var(--wm-px));
     color: #636563;
@@ -25,7 +25,7 @@
 }
 
 /* the message a reply answers: grey, a rule at the left, one line */
-.wm-tm .wtm-quote {
+.wm-tm .wtx-quote {
     margin: calc(1 * var(--wm-px)) 0;
     padding: 0 0 0 calc(4 * var(--wm-px));
     border-left: calc(2 * var(--wm-px)) solid #c6c3c6;
@@ -36,24 +36,24 @@
     font-weight: normal;
 }
 
-.wm-tm .wtm-subject {
+.wm-tm .wtx-subject {
     font-weight: bold;
 }
 
-.wm-tm .wtm-edited {
+.wm-tm .wtx-edited {
     color: #848284;
     font-weight: normal;
     font-style: italic;
 }
 
-.wm-tm .wtm-unsent {
+.wm-tm .wtx-unsent {
     color: #848284;
     font-style: italic;
     font-weight: normal !important;
 }
 
 /* a picture or video: its thumbnail inline, at most 120 x 120 */
-.wm-tm .wtm-att.is-pic {
+.wm-tm .wtx-att.is-pic {
     position: relative;
     display: inline-block;
     margin: calc(2 * var(--wm-px)) 0;
@@ -63,7 +63,7 @@
     cursor: default;
 }
 
-.wm-tm .wtm-att.is-pic img {
+.wm-tm .wtx-att.is-pic img {
     display: block;
     max-width: calc(120 * var(--wm-px));
     max-height: calc(120 * var(--wm-px));
@@ -73,7 +73,7 @@
 }
 
 /* a video's play mark over its frame */
-.wm-tm .wtm-play {
+.wm-tm .wtx-play {
     position: absolute;
     left: 50%;
     top: 50%;
@@ -87,7 +87,7 @@
 }
 
 /* any other file: Messaging's attachment row (paper clip, name, size); a tap downloads it */
-.wm-tm .wtm-att.is-file {
+.wm-tm .wtx-att.is-file {
     display: flex;
     align-items: center;
     gap: calc(3 * var(--wm-px));
@@ -97,7 +97,7 @@
     cursor: default;
 }
 
-.wm-tm .wtm-att-ico {
+.wm-tm .wtx-att-ico {
     flex: 0 0 auto;
     width: calc(16 * var(--wm-px));
     height: calc(16 * var(--wm-px));
@@ -105,7 +105,7 @@
     background-image: image-set(url('/static_images/wm61/msg-attachment.png') 1x, url('/static_images/wm61/msg-attachment@2x.png') 2x, url('/static_images/wm61/msg-attachment@4x.png') 4x);
 }
 
-.wm-tm .wtm-att-name {
+.wm-tm .wtx-att-name {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -113,13 +113,13 @@
     text-decoration: underline;
 }
 
-.wm-tm .wtm-att-size {
+.wm-tm .wtx-att-size {
     flex: 0 0 auto;
     color: #636563;
 }
 
 /* a file on its way up: WM's progress bar (highlight blocks in a sunken box) */
-.wm-tm .wtm-progress {
+.wm-tm .wtx-progress {
     height: calc(8 * var(--wm-px));
     max-width: calc(120 * var(--wm-px));
     margin: calc(2 * var(--wm-px)) 0;
@@ -128,21 +128,21 @@
     overflow: hidden;
 }
 
-.wm-tm .wtm-progress i {
+.wm-tm .wtx-progress i {
     display: block;
     height: 100%;
     background: repeating-linear-gradient(to right, var(--wm-highlight) 0 calc(6 * var(--wm-px)), transparent calc(6 * var(--wm-px)) calc(8 * var(--wm-px)));
 }
 
 /* tapbacks under the text: the glyph, and how many when more than one */
-.wm-tm .wtm-tapbacks {
+.wm-tm .wtx-tapbacks {
     display: flex;
     flex-wrap: wrap;
     gap: calc(3 * var(--wm-px));
     margin: calc(1 * var(--wm-px)) 0;
 }
 
-.wm-tm .wtm-tb {
+.wm-tm .wtx-tb {
     display: inline-flex;
     align-items: center;
     gap: calc(2 * var(--wm-px));
@@ -156,11 +156,11 @@
     font-weight: bold;
 }
 
-.wm-tm .wtm-tb-n {
+.wm-tm .wtx-tb-n {
     font-weight: normal;
 }
 
-.wm-tm .wtm-receipt {
+.wm-tm .wtx-receipt {
     color: #848284;
     font-size: calc(10 * var(--wm-px));
     line-height: calc(13 * var(--wm-px));
@@ -168,13 +168,13 @@
     font-weight: normal;
 }
 
-.wm-tm .wtm-failed {
+.wm-tm .wtx-failed {
     color: #c00;
     font-weight: normal;
 }
 
 /* group events ("Alice named the conversation"): grey, centred */
-.wm-tm .wtm-event {
+.wm-tm .wtx-event {
     padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
     color: #636563;
     font-style: italic;
@@ -182,14 +182,14 @@
     overflow-wrap: anywhere;
 }
 
-.wm-tm .wtm-typing {
+.wm-tm .wtx-typing {
     padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) calc(2 * var(--wm-px)) calc(20.5 * var(--wm-px));
     color: #848284;
     font-style: italic;
 }
 
 /* replying to: a band over the reply box with the quoted line and Cancel */
-.wm-tm .wtm-replyband {
+.wm-tm .wtx-replyband {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
@@ -201,7 +201,7 @@
     font-size: calc(11 * var(--wm-px));
 }
 
-.wm-tm .wtm-replyband-text {
+.wm-tm .wtx-replyband-text {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
@@ -212,7 +212,7 @@
 
 /* the reply's attachments (Insert > Picture / Video / File), held until Send: Messaging's attachment
    rows over the text box; tap one to take it off */
-.wm-tm .wtm-atts {
+.wm-tm .wtx-atts {
     flex: 0 0 auto;
     max-height: calc(56 * var(--wm-px));
     overflow-y: auto;
@@ -222,9 +222,9 @@
     font-size: calc(11 * var(--wm-px));
 }
 
-.wm-tm .wtm-atts[hidden] { display: none; }
+.wm-tm .wtx-atts[hidden] { display: none; }
 
-.wm-tm .wtm-atts .msg-att {
+.wm-tm .wtx-atts .msg-att {
     display: flex;
     align-items: center;
     gap: calc(4 * var(--wm-px));
@@ -234,25 +234,25 @@
     cursor: default;
 }
 
-.wm-tm .wtm-atts .msg-att > span:first-of-type {
+.wm-tm .wtx-atts .msg-att > span:first-of-type {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.wm-tm .wtm-atts .msg-att img {
+.wm-tm .wtx-atts .msg-att img {
     flex: 0 0 auto;
     width: calc(16 * var(--wm-px));
     height: calc(16 * var(--wm-px));
 }
 
-.wm-tm .wtm-atts .wtm-att-size {
+.wm-tm .wtx-atts .wtx-att-size {
     flex: 0 0 auto;
     margin-left: auto;
     color: #848284;
 }
 
-.wm-tm .wtm-replyband-x {
+.wm-tm .wtx-replyband-x {
     flex: 0 0 auto;
     margin: 0;
     padding: 0;
@@ -266,18 +266,18 @@
 
 /* ---- new message (Messaging's form: From, To, the text) ---- */
 
-.wm-tm .wtm-newview .msg-form {
+.wm-tm .wtx-newview .msg-form {
     flex: 1 1 auto;
 }
 
 /* ---- picture view: the picture fitted on black, its name under it ---- */
 
-.wm-tm .wtm-mediaview {
+.wm-tm .wtx-mediaview {
     background: #000;
     color: #fff;
 }
 
-.wm-tm .wtm-media {
+.wm-tm .wtx-media {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -286,12 +286,12 @@
     overflow: hidden;
 }
 
-.wm-tm .wtm-media:has(> video) {
+.wm-tm .wtx-media:has(> video) {
     flex-direction: column;
 }
 
-.wm-tm .wtm-media img,
-.wm-tm .wtm-media video {
+.wm-tm .wtx-media img,
+.wm-tm .wtx-media video {
     flex: 0 1 auto;
     min-height: 0;
     max-width: 100%;
@@ -300,11 +300,11 @@
 }
 
 /* a video's transport: the kit's (wmSettings.ui.mediaBar) */
-.wm-tm .wtm-media > .wm-mediabar {
+.wm-tm .wtx-media > .wm-mediabar {
     flex: 0 0 auto;
 }
 
-.wm-tm .wtm-media-name {
+.wm-tm .wtx-media-name {
     flex: 0 0 auto;
     padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
     overflow: hidden;
@@ -314,13 +314,13 @@
 }
 
 /* links in messages and the first link's card (#779): Pocket IE link blue, a plain framed box */
-.wm-tm .wtm-link {
+.wm-tm .wtx-link {
     color: #00f;
     text-decoration: underline;
     word-break: break-all;
 }
 
-.wm-tm .wtm-linkcard .tm-card {
+.wm-tm .wtx-linkcard .tm-card {
     display: block;
     margin: calc(2 * var(--wm-px, 1px)) 0 calc(3 * var(--wm-px, 1px));
     max-width: 92%;
@@ -330,52 +330,52 @@
     border: var(--wm-px, 1px) solid #808080;
 }
 
-.wm-tm .wtm-linkcard .tm-card-img {
+.wm-tm .wtx-linkcard .tm-card-img {
     display: block;
     width: 100%;
     max-height: calc(80 * var(--wm-px, 1px));
     object-fit: cover;
 }
 
-.wm-tm .wtm-linkcard .tm-card-body {
+.wm-tm .wtx-linkcard .tm-card-body {
     display: block;
     padding: calc(2 * var(--wm-px, 1px)) calc(3 * var(--wm-px, 1px));
 }
 
-.wm-tm .wtm-linkcard .tm-card-title {
+.wm-tm .wtx-linkcard .tm-card-title {
     display: block;
     font-weight: 700;
 }
 
-.wm-tm .wtm-linkcard .tm-card-desc,
-.wm-tm .wtm-linkcard .tm-card-site {
+.wm-tm .wtx-linkcard .tm-card-desc,
+.wm-tm .wtx-linkcard .tm-card-site {
     display: block;
     color: #555;
 }
 
 /* RCS / Business after a conversation's name (#779): the device puts details like these in the row's
  * own font as plain grey text (no boxes or colours), normal weight even on an unread row */
-.wm-tm .wtm-tag {
+.wm-tm .wtx-tag {
     flex: none;
     font: inherit;
     font-weight: normal !important;
     color: #808080;
 }
 
-.wm-tm .wch-row.is-selected .wtm-tag {
+.wm-tm .wch-row.is-selected .wtx-tag {
     color: inherit;
 }
 
 /* Open the link in: Internet Explorer / Android Browser, one button over the other (the names do not
    fit side by side in the device's message box) */
-html.ui-mobile .wm-msgbox.wtm-openwith .wm-msgbox-buttons {
+html.ui-mobile .wm-msgbox.wtx-openwith .wm-msgbox-buttons {
     flex-direction: column;
     align-items: stretch;
     padding-left: calc(10 * var(--wm-px));
     padding-right: calc(10 * var(--wm-px));
 }
 
-html.ui-mobile .wm-msgbox.wtm-openwith .wm-msgbox-buttons button {
+html.ui-mobile .wm-msgbox.wtx-openwith .wm-msgbox-buttons button {
     width: 100%;
     white-space: nowrap;
 }

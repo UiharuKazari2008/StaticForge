@@ -4,7 +4,7 @@
  * a grey rule; the selected one in the highlight. Lengths N * --wm-px.
  */
 
-.wm-characters .wch-trow {
+.wm-characters .wcr-trow {
     padding: calc(3 * var(--wm-px)) calc(5 * var(--wm-px)) calc(4 * var(--wm-px)) calc(8 * var(--wm-px));
     border-bottom: calc(1 * var(--wm-px)) solid #a5a5a5;
     cursor: default;
@@ -12,34 +12,34 @@
     user-select: none;
 }
 
-.wm-characters .wch-trow.is-selected {
+.wm-characters .wcr-trow.is-selected {
     background: var(--wm-highlight);
     color: var(--wm-highlight-text);
 }
 
-.wm-characters .wch-tlabel {
+.wm-characters .wcr-tlabel {
     font-weight: bold;
     line-height: calc(15 * var(--wm-px));
 }
 
-.wm-characters .wch-ttext {
+.wm-characters .wcr-ttext {
     line-height: calc(15 * var(--wm-px));
     overflow-wrap: anywhere;
 }
 
-.wm-characters .wch-ttext.is-empty {
+.wm-characters .wcr-ttext.is-empty {
     color: #848284;
 }
 
-.wm-characters .wch-trow.is-selected .wch-ttext.is-empty {
+.wm-characters .wcr-trow.is-selected .wcr-ttext.is-empty {
     color: inherit;
 }
 
 /* the form fills the screen; its text boxes grow with their text */
-.wm-characters .wch-edit .wsk-body {
+.wm-characters .wcr-edit .wsk-body {
     padding-bottom: calc(8 * var(--wm-px));
 }
 
-.wm-characters .wch-edit .wsk-field.is-tall {
+.wm-characters .wcr-edit .wsk-field.is-tall {
     padding-bottom: calc(3 * var(--wm-px));
 }

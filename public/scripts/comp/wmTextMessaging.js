@@ -480,11 +480,11 @@
         const unread = !!c.unread;
         const m = c.last;
         const bytes = m ? String(m.text || '').length + (m.attachments || []).reduce((n, a) => n + (Number(a.size) || 0), 0) : 0;
-        return `<div class="wch-row wtm-row${sel ? ' is-selected' : ''}${unread ? ' is-unread' : ''}${c.isGroup ? ' is-group' : ''}" role="option" aria-selected="${sel}" data-guid="${esc(c.guid)}">`
+        return `<div class="wch-row wtx-row${sel ? ' is-selected' : ''}${unread ? ' is-unread' : ''}${c.isGroup ? ' is-group' : ''}" role="option" aria-selected="${sel}" data-guid="${esc(c.guid)}">`
             + `<span class="wch-ico" data-ico="${unread ? 'msg-unread' : 'msg-read'}"></span>`
             // RCS chats and businesses (RBM agents, Apple Business Chat) marked after the name
             // in a server's folder (#978) a channel's conversation goes by the channel ("#staff-chat"), the server is the folder
-            + `<span class="wch-namecell"><span class="wch-name">${esc(folder.startsWith('community:') && c.community && c.community.channel ? c.community.channel : chatTitle(c))}</span>${c.business || c.service === 'RCS' ? `<span class="wtm-tag">${[c.business ? 'Business' : '', c.service === 'RCS' ? 'RCS' : ''].filter(Boolean).join(', ')}</span>` : ''}</span>`
+            + `<span class="wch-namecell"><span class="wch-name">${esc(folder.startsWith('community:') && c.community && c.community.channel ? c.community.channel : chatTitle(c))}</span>${c.business || c.service === 'RCS' ? `<span class="wtx-tag">${[c.business ? 'Business' : '', c.service === 'RCS' ? 'RCS' : ''].filter(Boolean).join(', ')}</span>` : ''}</span>`
             + `<span class="wch-date">${esc(listDate(m && m.date))}</span><span class="wch-size">${sizeText(bytes)}</span>`
             + `<span class="wch-last">${esc(summary(m, c, c.isGroup))}</span></div>`;
     }
@@ -567,7 +567,7 @@
     function patchEntries(idx, toEnd) {
         if (!page || !conv) return false;
         const box = page.querySelector('.wch-history');
-        const slot = box && box.querySelector('.wtm-typing-slot');
+        const slot = box && box.querySelector('.wtx-typing-slot');
         if (!slot) return false;
         const list = conv.messages;
         const drawn = box.querySelectorAll('[data-n]');
@@ -604,7 +604,7 @@
         if (!seen()) { convStale = true; return; }
         const box = page.querySelector('.wch-history');
         const head = box && box.querySelector('.wch-convhead');
-        const members = box && box.querySelector('.wtm-members');
+        const members = box && box.querySelector('.wtx-members');
         const c = conv && conv.chat;
         if (convStale || !head || !!members !== !!(c && c.isGroup)) { renderEntries(); return; }
         const tmp = document.createElement('div');
@@ -616,7 +616,7 @@
 
     function selectRow(g) {
         selectedGuid = g;
-        page.querySelectorAll('.wtm-row').forEach((r) => {
+        page.querySelectorAll('.wtx-row').forEach((r) => {
             const on = r.dataset.guid === g;
             r.classList.toggle('is-selected', on);
             r.setAttribute('aria-selected', String(on));
@@ -657,8 +657,8 @@
         // no conversation open: the right half is empty
         page.querySelector('.wch-convview').classList.toggle('is-none', dual && v !== 'conv');
         if (dual && v === 'conv') renderList();
-        page.querySelector('.wtm-newview').hidden = v !== 'new';
-        page.querySelector('.wtm-mediaview').hidden = v !== 'media';
+        page.querySelector('.wtx-newview').hidden = v !== 'new';
+        page.querySelector('.wtx-mediaview').hidden = v !== 'media';
         page.dataset.view = v;
         if (isCurrent()) {
             // the account's own name: Apple iMessage (BlueBubbles) or Text Messaging (RCS)
@@ -677,7 +677,7 @@
         const v = layers.pop();
         if (v === 'conv') leaveConv();
         if (v === 'new') newDraft = null;
-        if (v === 'media') { media = null; const box = page.querySelector('.wtm-media'); box.innerHTML = ''; }
+        if (v === 'media') { media = null; const box = page.querySelector('.wtx-media'); box.innerHTML = ''; }
         showLayer();
         if (view() === 'list' || isDual()) renderList();
     }
@@ -741,13 +741,13 @@
         const box = page.querySelector('.wch-history');
         let last = null;
         conv.unreadSet.forEach((g) => { last = g; });
-        const el = last ? box.querySelector(`.wtm-entry[data-guid="${CSS.escape(last)}"]`) : null;
+        const el = last ? box.querySelector(`.wtx-entry[data-guid="${CSS.escape(last)}"]`) : null;
         if (el) el.scrollIntoView({ block: 'end' }); else box.scrollTop = box.scrollHeight;
     }
 
     function markEntryEl(guid, read) {
         if (!page) return;
-        const el = page.querySelector(`.wtm-entry[data-guid="${CSS.escape(guid)}"]`);
+        const el = page.querySelector(`.wtx-entry[data-guid="${CSS.escape(guid)}"]`);
         if (!el) return;
         el.classList.toggle('is-unread', !read);
         const ico = el.querySelector('.wch-eico');
@@ -806,7 +806,7 @@
         if (opts.clear && conv.unreadFrom !== Infinity) {
             conv.unreadFrom = Infinity;
         }
-        if (opts.clear && page) page.querySelectorAll('.wtm-entry.is-unread').forEach((el) => {
+        if (opts.clear && page) page.querySelectorAll('.wtx-entry.is-unread').forEach((el) => {
             el.classList.remove('is-unread');
             const ico = el.querySelector('.wch-eico');
             if (ico) ico.dataset.ico = 'msg-read';
@@ -843,17 +843,17 @@
         const o = msgByGuid(guid);
         const text = o ? summary(o, conv && conv.chat, false) : 'Earlier message';
         const who = o ? senderName(o) : '';
-        return `<div class="wtm-quote" data-quote="${esc(guid)}">${who ? `<b>${esc(who)}:</b> ` : ''}${esc(text)}</div>`;
+        return `<div class="wtx-quote" data-quote="${esc(guid)}">${who ? `<b>${esc(who)}:</b> ` : ''}${esc(text)}</div>`;
     }
 
     function attHtml(a, n, m) {
         const label = esc(a.name || attLabel(a));
         if ((isImage(a) || isVideo(a)) && (a.thumbUrl || (isImage(a) && a.url))) {
-            return `<div class="wtm-att is-pic${isVideo(a) ? ' is-video' : ''}" data-msg="${esc(m.guid)}" data-att="${n}" role="button" aria-label="${label}">`
-                + `<img src="${esc(a.thumbUrl || a.url)}" alt="" loading="lazy" draggable="false">${isVideo(a) ? '<i class="wtm-play"></i>' : ''}</div>`;
+            return `<div class="wtx-att is-pic${isVideo(a) ? ' is-video' : ''}" data-msg="${esc(m.guid)}" data-att="${n}" role="button" aria-label="${label}">`
+                + `<img src="${esc(a.thumbUrl || a.url)}" alt="" loading="lazy" draggable="false">${isVideo(a) ? '<i class="wtx-play"></i>' : ''}</div>`;
         }
-        return `<div class="wtm-att is-file" data-msg="${esc(m.guid)}" data-att="${n}" role="button"><span class="wtm-att-ico"></span>`
-            + `<span class="wtm-att-name">${label}</span><span class="wtm-att-size">${a.size ? sizeText(a.size) : ''}</span></div>`;
+        return `<div class="wtx-att is-file" data-msg="${esc(m.guid)}" data-att="${n}" role="button"><span class="wtx-att-ico"></span>`
+            + `<span class="wtx-att-name">${label}</span><span class="wtx-att-size">${a.size ? sizeText(a.size) : ''}</span></div>`;
     }
 
     function tapbacksHtml(m) {
@@ -867,9 +867,9 @@
             if (!by.has(key)) by.set(key, []);
             by.get(key).push(r.fromMe ? 'Me' : senderName({ sender: r.sender }));
         }
-        return `<div class="wtm-tapbacks">${[...by.entries()].map(([type, names]) => {
+        return `<div class="wtx-tapbacks">${[...by.entries()].map(([type, names]) => {
             const def = type.startsWith('emoji:') ? { glyph: type.slice(6) || '?', label: 'Reaction' } : (R.find((x) => x.type === type) || { glyph: type, label: type });
-            return `<span class="wtm-tb" title="${esc(`${def.label}: ${names.join(', ')}`)}"><span class="wtm-tb-glyph">${esc(def.glyph)}</span>${names.length > 1 ? `<span class="wtm-tb-n">${names.length}</span>` : ''}</span>`;
+            return `<span class="wtx-tb" title="${esc(`${def.label}: ${names.join(', ')}`)}"><span class="wtx-tb-glyph">${esc(def.glyph)}</span>${names.length > 1 ? `<span class="wtx-tb-n">${names.length}</span>` : ''}</span>`;
         }).join('')}</div>`;
     }
 
@@ -884,32 +884,32 @@
     }
 
     function entryHtml(m, n, lastMine) {
-        if (m.groupEvent && !m.text) return `<div class="wtm-event" data-n="${n}">${esc(groupEventText(m))}</div>`;
+        if (m.groupEvent && !m.text) return `<div class="wtx-event" data-n="${n}">${esc(groupEventText(m))}</div>`;
         const unread = !m.fromMe && conv && conv.unreadSet.has(m.guid);
         let body = '';
         if (m.replyTo) body += quoteHtml(m.replyTo);
         if (m.retracted) {
-            body += '<div class="wch-says wtm-unsent">This message was unsent.</div>';
+            body += '<div class="wch-says wtx-unsent">This message was unsent.</div>';
         } else {
-            if (m.subject) body += `<div class="wtm-subject">${esc(m.subject)}</div>`;
+            if (m.subject) body += `<div class="wtx-subject">${esc(m.subject)}</div>`;
             const tmc = window.textMessaging;
-            const said = tmc && typeof tmc.linkify === 'function' ? tmc.linkify(m.text, 'wtm-link') : esc(m.text);
-            if (m.text) body += `<div class="wch-says">${said}${m.dateEdited ? ' <span class="wtm-edited">(Edited)</span>' : ''}</div>`;
+            const said = tmc && typeof tmc.linkify === 'function' ? tmc.linkify(m.text, 'wtx-link') : esc(m.text);
+            if (m.text) body += `<div class="wch-says">${said}${m.dateEdited ? ' <span class="wtx-edited">(Edited)</span>' : ''}</div>`;
             // the first link's card (title, picture), filled after the draw
             const firstLink = m.text && tmc && typeof tmc.links === 'function' && !(m.attachments || []).length ? tmc.links(m.text)[0] : null;
             if (firstLink && m.linkPreview && typeof tmc.primeLinkPreview === 'function') tmc.primeLinkPreview(firstLink, m.linkPreview);
-            if (firstLink) body += `<div class="wtm-linkcard" data-tm-link="${esc(firstLink)}" hidden></div>`;
+            if (firstLink) body += `<div class="wtx-linkcard" data-tm-link="${esc(firstLink)}" hidden></div>`;
             (m.attachments || []).forEach((a, i) => { body += attHtml(a, i, m); });
-            if (m._upload) body += `<div class="wtm-progress"><i style="width:${Math.round((m._progress || 0) * 100)}%"></i></div>`;
+            if (m._upload) body += `<div class="wtx-progress"><i style="width:${Math.round((m._progress || 0) * 100)}%"></i></div>`;
         }
         body += tapbacksHtml(m);
-        if (m.error) body += `<div class="wtm-failed">Message not sent.${typeof m.error === 'string' ? ` ${esc(m.error)}` : ''}</div>`;
+        if (m.error) body += `<div class="wtx-failed">Message not sent.${typeof m.error === 'string' ? ` ${esc(m.error)}` : ''}</div>`;
         if (m.fromMe && (m.guid === lastMine || m._upload || m._sending || m.sending)) {
             const r = receiptText(m);
-            if (r) body += `<div class="wtm-receipt">${esc(r)}</div>`;
+            if (r) body += `<div class="wtx-receipt">${esc(r)}</div>`;
         }
         const date = headDate(m.date);
-        return `<div class="wch-entry wtm-entry is-${m.fromMe ? 'me' : 'them'}${unread ? ' is-unread' : ''}${m.guid === selMsg ? ' is-selected' : ''}" data-n="${n}" data-guid="${esc(m.guid)}">`
+        return `<div class="wch-entry wtx-entry is-${m.fromMe ? 'me' : 'them'}${unread ? ' is-unread' : ''}${m.guid === selMsg ? ' is-selected' : ''}" data-n="${n}" data-guid="${esc(m.guid)}">`
             + `<span class="wch-eico" data-ico="${unread ? 'msg-unread' : 'msg-read'}"></span>`
             + `<div class="wch-who"><span class="wch-link">${esc(senderName(m))}${date ? ` (${esc(date)})` : ''}:</span></div>${body}</div>`;
     }
@@ -918,7 +918,7 @@
         if (!conv || !typingIn.has(conv.guid)) return '';
         const c = conv.chat || {};
         const who = c.isGroup ? 'Someone' : chatTitle(c);
-        return `<div class="wtm-typing">${esc(who)} is typing...</div>`;
+        return `<div class="wtx-typing">${esc(who)} is typing...</div>`;
     }
 
     /** The thread's first lines: who the conversation is with, and a group's members. */
@@ -926,7 +926,7 @@
         // an Android app account (#885): the name opens the conversation in the app (its notification's tap)
         const opens = canOpenInApp(c);
         let html = `<p class="wch-convhead"><i>Conversation with <span class="wch-link${opens ? ' is-open' : ''}"${opens ? ` role="link" title="Open in ${esc(c.app || 'the app')}"` : ''}>${esc(chatTitle(c))}</span></i></p>`;
-        if (c && c.isGroup) html += `<p class="wtm-members">${esc((c.participants || []).map((p) => p.name || p.address).join(', '))}</p>`;
+        if (c && c.isGroup) html += `<p class="wtx-members">${esc((c.participants || []).map((p) => p.name || p.address).join(', '))}</p>`;
         return html;
     }
 
@@ -941,7 +941,7 @@
         let html = headHtml(c);
         html += conv && conv.more ? '<p class="wch-olderp"><a class="wch-more" role="link">Older</a></p>' : '';
         html += list.map((m, n) => entryHtml(m, n, lastMine)).join('');
-        html += `<div class="wtm-typing-slot">${typingHtml()}</div>`;
+        html += `<div class="wtx-typing-slot">${typingHtml()}</div>`;
         box.innerHTML = html;
         box.dataset.lastMine = lastMine || '';
         if (toEnd || atEnd) box.scrollTop = box.scrollHeight;
@@ -978,7 +978,7 @@
         if (!page || view() !== 'conv') return;
         if (!seen()) { convStale = true; return; }
         const box = page.querySelector('.wch-history');
-        const slot = box.querySelector('.wtm-typing-slot');
+        const slot = box.querySelector('.wtx-typing-slot');
         if (!slot) return;
         const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
         slot.innerHTML = typingHtml();
@@ -987,13 +987,13 @@
 
     function selectEntry(g) {
         selMsg = g;
-        page.querySelectorAll('.wtm-entry').forEach((el) => el.classList.toggle('is-selected', el.dataset.guid === g));
+        page.querySelectorAll('.wtx-entry').forEach((el) => el.classList.toggle('is-selected', el.dataset.guid === g));
         if (isCurrent()) sh.refreshSoftKeys();
     }
 
     const selected = () => (selMsg ? msgByGuid(selMsg) : null);
 
-    function inputEl() { return page.querySelector('.wtm-convview .wch-input'); }
+    function inputEl() { return page.querySelector('.wtx-convview .wch-input'); }
 
     function fitInput() {
         const t = inputEl();
@@ -1003,7 +1003,7 @@
     }
 
     function insertText(t) {
-        const box = view() === 'new' ? page.querySelector('.wtm-new-text') : inputEl();
+        const box = view() === 'new' ? page.querySelector('.wtx-new-text') : inputEl();
         const a = box.selectionStart == null ? box.value.length : box.selectionStart;
         const b = box.selectionEnd == null ? a : box.selectionEnd;
         box.value = box.value.slice(0, a) + t + box.value.slice(b);
@@ -1102,10 +1102,10 @@
 
     /** The reply's attachments over the text box (Messaging's attachment rows); tap one to take it off. */
     function renderPending() {
-        const box = page && page.querySelector('.wtm-atts');
+        const box = page && page.querySelector('.wtx-atts');
         if (!box) return;
         const icon = sh && sh.art ? sh.art.img('msg-attachment') : '';
-        box.innerHTML = pendingFiles.map((f, n) => `<div class="msg-att" role="button" data-n="${n}" title="Remove">${icon}<span>${sh.escapeHtml(f.name || 'attachment')}</span>${f.size ? `<span class="wtm-att-size">${sizeText(f.size)}</span>` : ''}</div>`).join('');
+        box.innerHTML = pendingFiles.map((f, n) => `<div class="msg-att" role="button" data-n="${n}" title="Remove">${icon}<span>${sh.escapeHtml(f.name || 'attachment')}</span>${f.size ? `<span class="wtx-att-size">${sizeText(f.size)}</span>` : ''}</div>`).join('');
         box.hidden = !pendingFiles.length;
     }
 
@@ -1119,12 +1119,12 @@
         let last = 0;
         const paint = () => {
             if (conv !== c) return;
-            const el = page.querySelector(`.wtm-entry[data-guid="${CSS.escape(local.guid)}"]`);
+            const el = page.querySelector(`.wtx-entry[data-guid="${CSS.escape(local.guid)}"]`);
             if (!el) return;
             const pct = Math.round(local._progress * 100);
-            const bar = el.querySelector('.wtm-progress i');
+            const bar = el.querySelector('.wtx-progress i');
             if (bar) bar.style.width = `${pct}%`;
-            const r = el.querySelector('.wtm-receipt');
+            const r = el.querySelector('.wtx-receipt');
             if (r) r.textContent = `Sending ${pct}%`;
         };
         try {
@@ -1148,10 +1148,10 @@
 
     function renderReply() {
         if (!page) return;
-        const band = page.querySelector('.wtm-replyband');
+        const band = page.querySelector('.wtx-replyband');
         const o = replyTo ? msgByGuid(replyTo) : null;
         band.hidden = !o;
-        if (o) band.querySelector('.wtm-replyband-text').textContent = `${senderName(o)}: ${summary(o, conv && conv.chat, false)}`;
+        if (o) band.querySelector('.wtx-replyband-text').textContent = `${senderName(o)}: ${summary(o, conv && conv.chat, false)}`;
     }
 
     function startReply(m) {
@@ -1252,7 +1252,7 @@
             titleAction: { kind: 'close', value: null },
             buttons: [{ text: 'Internet Explorer', value: 'ie', default: true }, { text: 'Android Browser', value: 'android' }],
             // the two names do not fit side by side in the device's box: one over the other
-            onOpen: () => { const box = document.querySelector('.wm-msgbox-layer .wm-msgbox'); if (box) box.classList.add('wtm-openwith'); }
+            onOpen: () => { const box = document.querySelector('.wm-msgbox-layer .wm-msgbox'); if (box) box.classList.add('wtx-openwith'); }
         });
         if (pick === 'android') {
             try { if (typeof L.openBrowser === 'function' && L.openBrowser(href)) return; } catch (_) { /* IE then */ }
@@ -1274,7 +1274,7 @@
     function openMedia(a) {
         if (!a || !a.url) return;
         media = a;
-        const box = page.querySelector('.wtm-media');
+        const box = page.querySelector('.wtx-media');
         box.innerHTML = isVideo(a)
             ? `<video src="${esc(a.url)}" playsinline preload="metadata"></video>`
             : `<img src="${esc(a.url)}" alt="${esc(a.name || '')}" draggable="false">`;
@@ -1282,7 +1282,7 @@
         const video = box.querySelector('video');
         const kit = window.wmSettings && window.wmSettings.ui;
         if (video && kit && typeof kit.mediaBar === 'function') kit.mediaBar(box, video);
-        page.querySelector('.wtm-media-name').textContent = a.name || attLabel(a);
+        page.querySelector('.wtx-media-name').textContent = a.name || attLabel(a);
         push('media');
     }
 
@@ -1290,13 +1290,13 @@
 
     function openNew(addresses, text, files) {
         newDraft = { to: (addresses || []).join('; '), text: text || '', files: Array.isArray(files) ? files.slice() : [] };
-        const v = page.querySelector('.wtm-newview');
+        const v = page.querySelector('.wtx-newview');
         renderNewFiles();
-        v.querySelector('.wtm-new-from').textContent = acctLine(acct());
+        v.querySelector('.wtx-new-from').textContent = acctLine(acct());
         v.querySelector('input[name="to"]').value = newDraft.to;
-        v.querySelector('.wtm-new-text').value = newDraft.text;
+        v.querySelector('.wtx-new-text').value = newDraft.text;
         if (view() === 'new') showLayer(); else push('new');
-        setTimeout(() => { const f = newDraft && newDraft.to ? v.querySelector('.wtm-new-text') : v.querySelector('input[name="to"]'); if (f) f.focus(); }, 0);
+        setTimeout(() => { const f = newDraft && newDraft.to ? v.querySelector('.wtx-new-text') : v.querySelector('input[name="to"]'); if (f) f.focus(); }, 0);
     }
 
     const acctLine = (a) => {
@@ -1306,19 +1306,19 @@
         return l.subline ? `${l.title} (${l.subline})` : l.title;
     };
 
-    const newTo = () => String(page.querySelector('.wtm-newview input[name="to"]').value || '').split(/[;,]/).map((s) => s.trim()).filter(Boolean);
+    const newTo = () => String(page.querySelector('.wtx-newview input[name="to"]').value || '').split(/[;,]/).map((s) => s.trim()).filter(Boolean);
     const newFiles = () => (newDraft && newDraft.files) || [];
     // pictures alone go to a conversation that already exists; a new one starts with the text
     const canSendNew = () => {
         if (!page || !newTo().length) return false;
-        if (page.querySelector('.wtm-new-text').value.trim()) return true;
+        if (page.querySelector('.wtx-new-text').value.trim()) return true;
         const to = newTo();
         return !!(newFiles().length && to.length === 1 && findChatWith(to[0]));
     };
 
     /** The new message's attachments under the text (Messaging's attachment rows), tap one to take it off. */
     function renderNewFiles() {
-        const box = page && page.querySelector('.wtm-new-atts');
+        const box = page && page.querySelector('.wtx-new-atts');
         if (!box) return;
         const files = newFiles();
         const icon = sh && sh.art ? sh.art.img('msg-attachment') : '';
@@ -1331,7 +1331,7 @@
         const t = tm();
         const id = accountId;
         const addresses = newTo();
-        const text = page.querySelector('.wtm-new-text').value.trim();
+        const text = page.querySelector('.wtx-new-text').value.trim();
         const files = newFiles().slice();
         // a conversation with that one address already: the message goes there
         const have = addresses.length === 1 ? findChatWith(addresses[0]) : null;
@@ -1600,23 +1600,23 @@
                 <div class="wch-scroll"><div class="wch-list" role="listbox" aria-label="Conversations"></div><p class="wch-empty" hidden></p></div>
                 <div class="wch-status"></div>
             </div>
-            <div class="wch-convview wtm-convview" hidden>
+            <div class="wch-convview wtx-convview" hidden>
                 <div class="wch-history" role="log" aria-live="polite"></div>
-                <div class="wtm-replyband" hidden><span class="wtm-replyband-text"></span><button type="button" class="wtm-replyband-x" aria-label="Cancel reply">Cancel</button></div>
-                <div class="wtm-atts" hidden></div>
+                <div class="wtx-replyband" hidden><span class="wtx-replyband-text"></span><button type="button" class="wtx-replyband-x" aria-label="Cancel reply">Cancel</button></div>
+                <div class="wtx-atts" hidden></div>
                 <div class="wch-compose"><textarea class="wch-input" rows="2" enterkeyhint="send" autocomplete="off" aria-label="Message"></textarea></div>
             </div>
-            <div class="wtm-newview wm-msg" hidden>
+            <div class="wtx-newview wm-msg" hidden>
                 <form class="msg-form" autocomplete="off" onsubmit="return false">
-                    <label class="msg-field is-static"><span>From:</span><output class="wtm-new-from"></output></label>
+                    <label class="msg-field is-static"><span>From:</span><output class="wtx-new-from"></output></label>
                     <label class="msg-field"><span>To:</span><input name="to" type="text" inputmode="email" autocapitalize="off" spellcheck="false" aria-label="To"></label>
-                    <div class="msg-atts msg-compose-atts wtm-new-atts" hidden></div>
-                    <textarea class="msg-text wtm-new-text" aria-label="Message"></textarea>
+                    <div class="msg-atts msg-compose-atts wtx-new-atts" hidden></div>
+                    <textarea class="msg-text wtx-new-text" aria-label="Message"></textarea>
                 </form>
             </div>
-            <div class="wtm-mediaview" hidden>
-                <div class="wtm-media"></div>
-                <div class="wtm-media-name"></div>
+            <div class="wtx-mediaview" hidden>
+                <div class="wtx-media"></div>
+                <div class="wtx-media-name"></div>
             </div>`;
 
         p.querySelector('.wch-folder').addEventListener('click', (e) => {
@@ -1630,13 +1630,13 @@
             sh.dropdown(btn, sortItems(), 'right', () => renderList());
         });
         const scroll = p.querySelector('.wch-scroll');
-        onHold(scroll, '.wtm-row', (row, x, y) => {
+        onHold(scroll, '.wtx-row', (row, x, y) => {
             selectRow(row.dataset.guid);
             const c = chatByGuid(row.dataset.guid);
             if (c) sh.menuAt(x, y, rowMenu(c));
         });
         scroll.addEventListener('click', (e) => {
-            const row = e.target.closest('.wtm-row');
+            const row = e.target.closest('.wtx-row');
             if (!row) return;
             selectRow(row.dataset.guid);
             openConversation(chatByGuid(row.dataset.guid));
@@ -1647,46 +1647,46 @@
             if (e.target.closest('.wch-more')) { loadOlder(); return; }
             if (e.target.closest('.wch-convhead .wch-link.is-open')) { void openInApp(conv && conv.chat); return; }
             // a link (or its card): the phone's Internet Explorer, never the WebView's target=_blank (a dead tap)
-            const link = e.target.closest('a.wtm-link, a.tm-card');
+            const link = e.target.closest('a.wtx-link, a.tm-card');
             if (link) {
                 e.preventDefault();
                 openLink(link.getAttribute('href'));
                 return;
             }
-            const att = e.target.closest('.wtm-att');
+            const att = e.target.closest('.wtx-att');
             if (att) {
                 const a = attOf(att);
                 if (!a) return;
                 if (att.classList.contains('is-pic')) openMedia(a); else download(a);
                 return;
             }
-            const q = e.target.closest('.wtm-quote');
+            const q = e.target.closest('.wtx-quote');
             if (q) {
-                const el = hist.querySelector(`.wtm-entry[data-guid="${CSS.escape(q.dataset.quote)}"]`);
+                const el = hist.querySelector(`.wtx-entry[data-guid="${CSS.escape(q.dataset.quote)}"]`);
                 if (el) { el.scrollIntoView({ block: 'center' }); selectEntry(q.dataset.quote); }
                 return;
             }
-            const el = e.target.closest('.wtm-entry');
+            const el = e.target.closest('.wtx-entry');
             if (el) { selectEntry(el.dataset.guid); markOneRead(el.dataset.guid); }
         });
         // looking at the conversation reads it: a touch, a scroll by finger, wheel or keys
         ['pointerdown', 'wheel', 'keydown', 'touchmove'].forEach((type) => hist.addEventListener(type, () => { if (conv) conv.userAt = Date.now(); }, { passive: true }));
         hist.addEventListener('scroll', scrolledToEnd, { passive: true });
-        p.querySelector('.wtm-atts').addEventListener('click', (e) => {
+        p.querySelector('.wtx-atts').addEventListener('click', (e) => {
             const a = e.target.closest('.msg-att');
             if (!a) return;
             pendingFiles.splice(Number(a.dataset.n), 1);
             renderPending();
             if (isCurrent()) sh.refreshSoftKeys();
         });
-        onHold(hist, '.wtm-entry', (el, x, y) => {
+        onHold(hist, '.wtx-entry', (el, x, y) => {
             const m = msgByGuid(el.dataset.guid);
             if (!m) return;
             selectEntry(m.guid);
             sh.menuAt(x, y, messageItems(m));
         });
 
-        const input = p.querySelector('.wtm-convview .wch-input');
+        const input = p.querySelector('.wtx-convview .wch-input');
         input.addEventListener('focus', engaged);
         input.addEventListener('input', () => {
             engaged();
@@ -1697,11 +1697,11 @@
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
         });
-        p.querySelector('.wtm-replyband-x').addEventListener('click', () => { replyTo = null; renderReply(); if (isCurrent()) sh.refreshSoftKeys(); });
+        p.querySelector('.wtx-replyband-x').addEventListener('click', () => { replyTo = null; renderReply(); if (isCurrent()) sh.refreshSoftKeys(); });
 
-        const nv = p.querySelector('.wtm-newview');
+        const nv = p.querySelector('.wtx-newview');
         nv.addEventListener('input', () => { if (isCurrent()) sh.refreshSoftKeys(); });
-        nv.querySelector('.wtm-new-atts').addEventListener('click', (e) => {
+        nv.querySelector('.wtx-new-atts').addEventListener('click', (e) => {
             const a = e.target.closest('.msg-att');
             if (!a || !newDraft) return;
             newDraft.files.splice(Number(a.dataset.n), 1);
@@ -1709,7 +1709,7 @@
             if (isCurrent()) sh.refreshSoftKeys();
         });
         nv.querySelector('input[name="to"]').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); nv.querySelector('.wtm-new-text').focus(); }
+            if (e.key === 'Enter') { e.preventDefault(); nv.querySelector('.wtx-new-text').focus(); }
         });
     }
 
