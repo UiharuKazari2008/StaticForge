@@ -72,9 +72,9 @@ const RATE_WINDOW_MS = 60 * 1000;
 const ID_RE = /^fault_[0-9a-f]{12}$/;
 const SURFACES = new Set(['desktop', 'mobile', 'server', 'os']);
 const OS_KINDS = ['service', 'process', 'kernel', 'oom', 'journal', 'runaway', 'thermal', 'unclean'];
-const KINDS = new Set(['dialog', 'uncaught', 'rejection', 'swallowed', 'resource', 'route', 'logged', 'crash', 'animation', ...OS_KINDS]);
+const KINDS = new Set(['dialog', 'uncaught', 'rejection', 'swallowed', 'resource', 'route', 'logged', 'crash', 'anr', 'animation', ...OS_KINDS]);
 const SPOOL_NAME = '.spool.ndjson';
-const KIND_RANK = ['crash', 'unclean', 'kernel', 'oom', 'uncaught', 'process', 'service', 'rejection', 'route', 'dialog', 'runaway', 'thermal', 'swallowed', 'resource', 'journal', 'logged', 'animation'];
+const KIND_RANK = ['crash', 'unclean', 'kernel', 'oom', 'anr', 'uncaught', 'process', 'service', 'rejection', 'route', 'dialog', 'runaway', 'thermal', 'swallowed', 'resource', 'journal', 'logged', 'animation'];
 
 function clip(value, max = MAX_TEXT) {
     if (value == null) return '';
@@ -92,7 +92,12 @@ function frameKeys(stack) {
     for (const line of String(stack || '').split('\n')) {
         const m = line.match(/at\s+(?:(.*?)\s+\()?(?:https?:\/\/[^/\s)]+)?(\/[^\s):?]+)[^\s)]*:\d+:\d+\)?/)
             || line.match(/^\s*(?:([^@\s]*)@)(?:https?:\/\/[^/\s)]+)?(\/[^\s:?]+)[^\s]*:\d+:\d+/);
-        if (!m) continue;
+        if (!m) {
+            // a Java frame of the Android app (StaticForge #834): pkg.Class.method(File.kt:123), line left out
+            const j = line.match(/^\s*at\s+(jp\.net\.seventhreeseven\.dreamscape\.[\w$.]+)\.([\w$<>-]+)\([^)]*\)/);
+            if (j) { keys.push(`${j[2]}@${j[1]}`); if (keys.length >= 3) break; }
+            continue;
+        }
         const file = m[2].startsWith(REPO_ROOT + '/') ? m[2].slice(REPO_ROOT.length) : m[2];
         if (/\/node_modules\/|^\/?internal\//.test(file)) continue;
         keys.push(`${m[1] || '?'}@${file}`);

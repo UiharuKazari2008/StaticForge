@@ -732,6 +732,31 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !emotion.c
     const pageOcc = await store.upsert({ surface: 'desktop', kind: 'uncaught', program: { key: 'launch:x', name: 'X' }, message: 'x', os: { image: 'forged' } });
     assert.strictEqual((await store.read(pageOcc.id)).latest.os, undefined, 'only surface os carries machine details');
 
+    // Android app faults (StaticForge #834): Java frames of ours sign the fault, count as own for the fixer, kind anr kept
+    const javaStack = (line) => `java.lang.IllegalStateException: boom\n\tat jp.net.seventhreeseven.dreamscape.MainActivity.onCreate(MainActivity.kt:${line})\n\tat android.app.Activity.performCreate(Activity.java:8000)\n\tat jp.net.seventhreeseven.dreamscape.HomeKeeper$1.run(HomeKeeper.kt:${line + 5})`;
+    const droid = { surface: 'mobile', kind: 'crash', source: 'native', errorName: 'java.lang.IllegalStateException', program: { key: 'android:MainActivity', name: 'Dreamscape (Android)' }, message: 'boom' };
+    assert.strictEqual(faultId({ ...droid, stack: javaStack(10) }), faultId({ ...droid, stack: javaStack(99) }), 'Java line numbers do not split a fault');
+    assert.notStrictEqual(faultId({ ...droid, stack: javaStack(10) }), faultId({ ...droid, stack: javaStack(10).replace('onCreate', 'onResume') }), 'another method is another fault');
+    const droidOcc = await store.upsert({ ...droid, stack: javaStack(10) });
+    const droidReport = await store.read(droidOcc.id);
+    assert.strictEqual(droidReport.surface, 'mobile');
+    assert.strictEqual(droidReport.kind, 'crash');
+    const anrOcc = await store.upsert({ ...droid, kind: 'anr', program: { key: 'android:anr', name: 'Dreamscape (Android)' }, errorName: 'ApplicationNotResponding', message: 'Input dispatching timed out', stack: '"main" prio=5 tid=1 Blocked\n  at jp.net.seventhreeseven.dreamscape.MelatonBars.sync(MelatonBars.kt:12)' });
+    assert.strictEqual((await store.read(anrOcc.id)).kind, 'anr', 'anr is a kind of its own');
+    const AF = require(path.join(__dirname, '../modules/faultAutoFix.js'));
+    const afc = AF.cfg(() => ({}), {});
+    assert.strictEqual(AF.ineligible(droidReport, afc, false), null, 'a Java frame of ours is eligible');
+    assert.ok(AF.isAndroidFault(droidReport));
+    const renderer = { ...droidReport, program: { key: 'android:WebView', name: 'Dreamscape (Android)' }, errorName: 'RenderProcessGone', message: 'WebView renderer crashed', latest: { ...droidReport.latest, stack: 'page: https://x/launch\nWebView 131.0' } };
+    assert.strictEqual(AF.ineligible(renderer, afc, false), 'no frame of ours', 'a renderer crash without frames is stored, not fixed');
+    assert.strictEqual(AF.ineligible({ ...droidReport, kind: 'anr' }, afc, false), 'kind anr is off', 'ANRs are off by default');
+    const prompt = AF.buildPrompt(droidReport, afc, { id: 'r1', issue: 1, cwd: '/tmp/wt/x', branch: 'autofix/x', snapshot: null });
+    assert.ok(/DSApp-Kotlin/.test(prompt) && /android-app-builds\.mdc/.test(prompt), 'the prompt points at DSApp-Kotlin and its build rules');
+    const webPrompt = AF.buildPrompt({ ...pageOcc, id: pageOcc.id, program: { key: 'launch:x', name: 'X' }, message: 'x', latest: { stack: '' } }, afc, { id: 'r2', issue: 2, cwd: '/tmp/wt/y', branch: 'b', snapshot: null });
+    assert.ok(!/DSApp-Kotlin/.test(webPrompt), 'a web fault prompt does not');
+    const bridge = { ...pageOcc, program: { key: 'shell:mobile', name: 'Melaton Mobile' }, message: 'Java exception was raised during method invocation', latest: { stack: '' } };
+    assert.ok(AF.isAndroidFault(bridge), 'a bridge method that threw is an Android fault');
+
     console.error = consoleError;
     console.log('test-program-faults: ok');
 })().catch((err) => {

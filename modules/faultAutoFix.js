@@ -119,6 +119,18 @@ function cfg(getConfig, saved) {
     return c;
 }
 
+/** A Java frame of the Android app (DSApp-Kotlin, StaticForge #834). */
+const ANDROID_FRAME = /^\s*at\s+jp\.net\.seventhreeseven\.dreamscape\./m;
+/** Chromium's error in the page when a @JavascriptInterface method threw on the native side. */
+const JAVA_BRIDGE_ERROR = /Java exception was raised during method invocation/i;
+
+/** The fault is in the Android app (native capture, a Java frame of ours, or a bridge method that threw). */
+function isAndroidFault(report) {
+    const key = String((report.program && report.program.key) || report.programKey || '');
+    const latest = report.latest || {};
+    return key.startsWith('android:') || ANDROID_FRAME.test(latest.stack || '') || JAVA_BRIDGE_ERROR.test(report.message || '');
+}
+
 /** Why a report is not for the fixer (null when it is). */
 function ineligible(report, c, manual) {
     if (!report) return 'no report';
@@ -140,7 +152,8 @@ function ineligible(report, c, manual) {
     if (!c.includeHeadless && /HeadlessChrome/.test(ua)) return 'headless test tab';
     const own = (report.surface === 'server')
         ? /\/(modules|services|apps|polymodules|scripts)\/|web_server\.js/.test(latest.stack || '')
-        : /\/(scripts|apps|css)\//.test(latest.stack || '') || (report.kind === 'resource');
+        : /\/(scripts|apps|css)\//.test(latest.stack || '') || (report.kind === 'resource')
+            || (report.surface === 'mobile' && ANDROID_FRAME.test(latest.stack || ''));
     if (!own) return 'no frame of ours';
     return null;
 }
@@ -185,11 +198,20 @@ function buildPrompt(report, c, run) {
             `Mode: worktree. You work only in ${run.cwd} (branch ${run.branch}, made from the live HEAD). node_modules is a link to the live tree's (never commit it). Do not edit, commit or restart anything in ${REPO_ROOT}, and do not push.`,
             `The fixer committed the live tree before you started (${run.snapshot || 'nothing to commit'}); your branch starts there. Commit your fix on the branch. Someone lands it later, so make the commit message and the issue comment say exactly what changed and why.`
         ];
+    const android = isAndroidFault(report) ? [
+        '',
+        'This fault is in the Android app (DSApp-Kotlin, https://yozora.bluesteel.737.jp.net/DreamScape/DSApp-Kotlin, package jp.net.seventhreeseven.dreamscape), not in this repo: Java frames name its Kotlin sources; "Java exception was raised during method invocation" means a @JavascriptInterface method (window.Android* bridge, the call site is the JS frame) threw on the native side.',
+        `Clone DSApp-Kotlin into a folder of your own (${path.join(path.dirname(run.cwd || REPO_ROOT), 'dsapp-' + report.id)}), branch autofix/${report.id} from origin/main, and fix it there. Read .cursor/rules/android-app-builds.mdc first: never build, install or restart anything on a phone from this run. ` + (c.mode === 'live'
+            ? 'In live mode merge the branch into main and push it to Yozora (no PR); the build is queued later by a person or session.'
+            : 'In worktree mode push only the branch autofix/' + report.id + ' (never main) and name it in the result.'),
+        'A fix that needs the phone shell (public/ in this repo) as well follows the mode rules above for this repo.'
+    ] : [];
     return [
         `You are the Dreamscape fault auto-fix agent: a headless Claude Code run that modules/faultAutoFix.js started for fault report ${report.id} (run ${run.id}). No human is watching this run, so never wait for an answer: decide, or stop with status "needs-human".`,
         '',
         'The task: find the root cause of the fault below and fix it in the source, if it is a bug in our code.',
         ...where,
+        ...android,
         '',
         'Steps:',
         `1. Yozora (CLAUDE.md "Yozora access"): this fault's issue is #${run.issue}, opened (or found) by the fixer. Use it; do not open another one for this fault. Start its stopwatch and comment that you started. Other problems you find go on new issues, as the rules say.`,
@@ -673,4 +695,4 @@ function mount(app, authMiddleware, options = {}) {
     return fixer;
 }
 
-module.exports = { mount, createFixer, ineligible, buildPrompt, parseResult, minifiedContext, cfg, cleanSettings, launchClaude, prepareWorktree, snapshotLiveTree, yozoraClient, DEFAULTS, NOISE };
+module.exports = { mount, createFixer, ineligible, isAndroidFault, buildPrompt, parseResult, minifiedContext, cfg, cleanSettings, launchClaude, prepareWorktree, snapshotLiveTree, yozoraClient, DEFAULTS, NOISE };
