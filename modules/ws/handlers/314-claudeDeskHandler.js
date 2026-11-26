@@ -329,6 +329,23 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     // "Send Back to Work": a done or failed item gets Yukimi's note and runs again
     if (action === 'work_reopen') { await supervisor.reopenWork(message.id, { note: message.note }); poke(); return supervisorStatus(gr); }
     if (action === 'work_answer') { await supervisor.answerWork(message.id, { answers: (Array.isArray(message.answers) ? message.answers : []).slice(0, 12).map((x) => String(x || '')), note: message.note }); poke(); return supervisorStatus(gr); }
+    // the global Workflow page (modules/fleetDeps.js): every open job, what runs in parallel, what is in series, what waits on what
+    if (action === 'work_graph' || action === 'work_priority' || action === 'work_dep_add' || action === 'work_dep_remove') {
+        const deps = require('../../fleetDeps');
+        const text = (v) => String(v == null ? '' : v).slice(0, 80);
+        if (action === 'work_priority') {
+            const p = Math.max(-2, Math.min(2, Math.round(Number(message.priority))));
+            if (!Number.isFinite(p)) throw new Error('priority must be a number from -2 to 2');
+            deps.setPriority(text(message.id), p);
+        } else if (action === 'work_dep_add') {
+            if (!message.id || !message.on || String(message.id) === String(message.on)) throw new Error('pick another job to wait for');
+            deps.addDep(text(message.id), text(message.on), 'explicit: set in Fleet');
+        } else if (action === 'work_dep_remove') {
+            deps.removeDep(text(message.id), text(message.on));
+        }
+        if (action !== 'work_graph') poke();
+        return { graph: deps.graph(supervisor.listWork) };
+    }
     if (action === 'work_map') return { map: await workMap(gr, { id: message.id, sessionId: message.sessionId }) };
     if (action === 'lock_remove') { supervisor.removeLockFile(String(message.root || ''), String(message.file || '')); poke(); return supervisorStatus(gr); }
     // Clean is a Supervisor review (evidence, engine verdict, trash): it answers at once and the result arrives through the status push
@@ -352,7 +369,7 @@ const handleSupervisor = guard('claude_desk_supervisor', async (gr, message) => 
     if (action === 'maintenance_status') return { maintenance: maintenance.state(gr), report: message.runId ? maintenance.getRun(message.runId) : undefined };
     if (action === 'maintenance_run') { const r = maintenance.runNow({ trigger: 'manual', gr, dryRun: message.dryRun === true ? true : undefined }); return { maintenance: maintenance.state(gr), started: r.started }; }
     if (action === 'maintenance_save') { await maintenance.saveSettings(gr, message.settings || {}); return { maintenance: maintenance.state(gr) }; }
-    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, rules_explain, rules_proposal_accept, rules_proposal_reject, rules_finding_accept, pause, resume, enqueue, work_start, work_hold, work_update, work_cancel, work_merge, work_map, issues_open, lock_remove, artifact_clean, artifact_restore or artifact_forget');
+    throw new Error('action must be status, save, maintenance_status, maintenance_run, maintenance_save, recheck, send, dismiss, rules_list, rules_text, rules_review, rules_dismiss, rules_explain, rules_proposal_accept, rules_proposal_reject, rules_finding_accept, pause, resume, enqueue, work_start, work_hold, work_update, work_cancel, work_merge, work_map, work_graph, work_priority, work_dep_add, work_dep_remove, issues_open, lock_remove, artifact_clean, artifact_restore or artifact_forget');
 });
 
 // ---------------------------------------------------------------- transcript watches (one per socket)

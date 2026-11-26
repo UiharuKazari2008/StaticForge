@@ -2030,3 +2030,135 @@
 
 /* Input Required: each answer box spans its section */
 #mmcConsole_claudedesk .cd-answer { display: block; width: 100%; box-sizing: border-box; }
+
+/* the Workflow page: lanes as columns, jobs as cards, a line from a job to the one that waits for it */
+#mmcConsole_claudedesk .cd-wf-bar {
+    margin: 0 0 6px;
+}
+
+#mmcConsole_claudedesk .cd-wf-scroll {
+    overflow: auto;
+    max-height: 60vh;
+    padding: 4px 2px 8px;
+}
+
+#mmcConsole_claudedesk .cd-wf-head {
+    position: absolute;
+    display: flex;
+    overflow: hidden;
+    width: 200px;
+    flex-direction: column;
+    border-bottom: 1px solid var(--cd-c-b3b3b3);
+    color: var(--cd-c-333);
+    font: 11px var(--cd-font-ui);
+    white-space: nowrap;
+}
+
+#mmcConsole_claudedesk .cd-wf-head span {
+    color: var(--cd-c-6d6d6d);
+}
+
+#mmcConsole_claudedesk .cd-wf-lines {
+    position: absolute;
+    top: 0;
+    left: 0;
+    fill: none;
+    stroke: var(--cd-c-828790);
+    stroke-width: 1.5;
+    pointer-events: none;
+}
+
+#mmcConsole_claudedesk .cd-wf-lines g {
+    pointer-events: auto;
+}
+
+#mmcConsole_claudedesk .cd-wf-lines .cd-wf-hit {
+    stroke: transparent;
+    stroke-width: 10;
+}
+
+#mmcConsole_claudedesk .cd-wf-lines .cd-wf-tip {
+    fill: var(--cd-c-828790);
+    stroke: none;
+}
+
+#mmcConsole_claudedesk .cd-wf-lines g:not(.k-explicit) path:not(.cd-wf-hit):not(.cd-wf-tip) {
+    stroke-dasharray: 5 3;
+}
+
+#mmcConsole_claudedesk .cd-wf-lines g.is-on path:not(.cd-wf-hit) {
+    stroke: var(--cd-busy-a);
+}
+
+#mmcConsole_claudedesk .cd-wf-lines g.is-on .cd-wf-tip {
+    fill: var(--cd-busy-a);
+}
+
+#mmcConsole_claudedesk .cd-wf-card {
+    position: absolute;
+    display: flex;
+    overflow: hidden;
+    width: 200px;
+    height: 76px;
+    box-sizing: border-box;
+    flex-direction: column;
+    justify-content: center;
+    padding: 2px 6px 2px 8px;
+    border: 1px solid var(--cd-c-b3b3b3);
+    border-left: 4px solid var(--cd-c-828790);
+    background: var(--cd-c-fff);
+    color: var(--cd-c-333);
+    cursor: pointer;
+    font: 11px var(--cd-font-ui);
+    text-align: left;
+}
+
+#mmcConsole_claudedesk .cd-wf-card:hover {
+    background: var(--cd-c-eaf6fd);
+}
+
+#mmcConsole_claudedesk .cd-wf-card.is-selected {
+    border-color: var(--cd-c-a8d8eb);
+    border-left-color: var(--cd-c-828790);
+    background: var(--cd-c-eaf6fd);
+}
+
+#mmcConsole_claudedesk .cd-wf-card b,
+#mmcConsole_claudedesk .cd-wf-card i,
+#mmcConsole_claudedesk .cd-wf-card em {
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-style: normal;
+}
+
+#mmcConsole_claudedesk .cd-wf-card i img {
+    margin-right: 4px;
+    vertical-align: -3px;
+}
+
+#mmcConsole_claudedesk .cd-wf-card em {
+    color: var(--cd-c-6d6d6d);
+}
+
+#mmcConsole_claudedesk .cd-wf-card .cd-working {
+    position: absolute;
+    right: 6px;
+    bottom: 4px;
+    margin: 0;
+}
+
+#mmcConsole_claudedesk .cd-wf-card.is-running {
+    border-left-color: var(--cd-busy-a);
+    background: var(--cd-busy-tint);
+}
+
+#mmcConsole_claudedesk .cd-wf-card.is-failed {
+    border-left-color: var(--cd-c-c42b1c);
+}
+
+#mmcConsole_claudedesk .cd-wf-waits {
+    margin: 2px 0 6px;
+    padding-left: 18px;
+}

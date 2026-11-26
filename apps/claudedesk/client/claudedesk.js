@@ -904,6 +904,11 @@
 
     /** Puts the nodes and the canvas at their computed places (done by property, not by style attributes in the markup). */
     function wmPlace() {
+        document.querySelectorAll('.cd-wf-canvas[data-w]').forEach((cv) => {
+            cv.style.width = `${cv.dataset.w}px`;
+            cv.style.height = `${cv.dataset.h}px`;
+            cv.querySelectorAll('[data-x]').forEach((n) => { n.style.left = `${n.dataset.x}px`; n.style.top = `${n.dataset.y}px`; });
+        });
         document.querySelectorAll('.cd-wm-canvas[data-w]').forEach((cv) => {
             cv.style.width = `${cv.dataset.w}px`;
             cv.style.height = `${cv.dataset.h}px`;
@@ -971,6 +976,170 @@
             p.outerHTML = wmHtml(key);
         });
         if (!WM.collapsed) wmPoke();
+    }
+
+    // ---- the Workflow page (claude_desk_supervisor work_graph, modules/fleetDeps.js): every open job, what runs in parallel, in series and on what ----
+    // Columns are lanes (dependency depth); a job in lane 0 can run now, jobs in one column run side by side, a line
+    // runs from a prerequisite to the job that waits on it. Nothing polls: the graph is asked for again (debounced)
+    // when the supervisor status the window already gets changes, only while the page is open and the window shows.
+
+    const WF = { graph: null, at: 0, loading: false, again: false, debounce: 0, sel: '', view: 'flow', error: '' };
+    const WF_W = 200;
+    const WF_H = 76;
+    const WF_GAP_X = 44;
+    const WF_GAP_Y = 10;
+    const WF_HEAD = 30;
+    const WF_PRIO = ['Lowest', 'Low', 'Normal', 'High', 'Highest'];
+    const WF_KIND = { explicit: 'Set by hand', issue: 'Yozora issue order', files: 'Same files', model: 'Same model slot' };
+    const wfPrio = (n) => WF_PRIO[Math.max(0, Math.min(4, (Number(n) || 0) + 2))];
+
+    async function wfLoad() {
+        if (WF.loading) { WF.again = true; return; }
+        WF.loading = true;
+        try { const r = await send('claude_desk_supervisor', { action: 'work_graph' }); WF.graph = unwrap(r, 'graph').graph || { nodes: [], edges: [] }; WF.error = ''; } catch (e) { WF.error = errText(e); if (!WF.graph) WF.graph = { nodes: [], edges: [] }; }
+        WF.loading = false;
+        WF.at = Date.now();
+        repaint();
+        if (WF.again) { WF.again = false; wfPoke(); }
+    }
+    /** The supervisor status changed: ask again (debounced) when the Workflow page is open and the window shows. */
+    function wfPoke() {
+        if (WF.debounce || !S.c || S.c.node !== 'co-flow') return;
+        WF.debounce = setTimeout(() => { WF.debounce = 0; if (!document.hidden && S.c && S.c.node === 'co-flow') void wfLoad(); }, 800);
+    }
+    async function wfAct(c, payload, busy) {
+        c.note(busy);
+        try { const r = await send('claude_desk_supervisor', payload); WF.graph = unwrap(r, 'graph').graph || WF.graph; WF.at = Date.now(); WF.error = ''; } catch (e) { await failBox(c, e); }
+        c.note('');
+        repaint();
+    }
+
+    /** The open jobs of the graph (done ones leave it), each with its lane, and the edges between them. */
+    function wfModel() {
+        const g = WF.graph || { nodes: [], edges: [] };
+        const done = new Set((g.done || []).map(String));
+        const nodes = (g.nodes || []).filter((n) => !done.has(String(n.id)) && !WORK_DONE.has(n.state));
+        const ids = new Set(nodes.map((n) => String(n.id)));
+        const edges = (g.edges || []).filter((e) => ids.has(String(e.from)) && ids.has(String(e.to)));
+        const running = new Set((g.running || []).map(String));
+        const isRun = (n) => running.has(String(n.id)) || WORK_RUN.has(n.state);
+        const rank = (n) => (isRun(n) ? 0 : (n.order != null ? 1 : 2));
+        const byStart = (a, b) => rank(a) - rank(b) || (a.order == null ? 1e9 : a.order) - (b.order == null ? 1e9 : b.order) || (b.priority || 0) - (a.priority || 0) || String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
+        return { nodes, edges, isRun, byStart, ids };
+    }
+    const wfWaitsFor = (m, id) => m.edges.filter((e) => String(e.to) === String(id)).map((e) => ({ e, n: m.nodes.find((x) => String(x.id) === String(e.from)) })).filter((x) => x.n);
+    const wfAcct = (n) => (n.account && n.account.name ? n.account.name : (n.account == null ? '' : String(n.account)));
+
+    function wfCardHtml(n, m, pos) {
+        const p = pos.get(String(n.id));
+        const run = m.isRun(n);
+        const st = workState(workOf(n.id) || n);
+        const waits = wfWaitsFor(m, n.id);
+        const q = n.order != null && !run ? `#${n.order} in queue` : '';
+        const second = [st, wfAcct(n)].filter(Boolean).join(' - ');
+        const third = [`Priority ${wfPrio(n.priority)}`, q, waits.length ? `waits for ${waits.map((x) => `#${x.n.id}`).join(', ')}` : ''].filter(Boolean).join(' - ');
+        const tip = `${n.title || n.id} - ${second}${n.model ? ` - ${modelName(n.model)}` : ''} - ${third}`;
+        return `<button type="button" class="cd-wf-card is-${esc(run ? 'running' : n.state)}${String(n.id) === WF.sel ? ' is-selected' : ''}" data-x="${p.x}" data-y="${p.y}" data-act="wf-pick" data-arg="${esc(n.id)}" title="${esc(tip)}">`
+            + `<b title="${esc(n.title || String(n.id))}">${esc(n.title || String(n.id))}</b>`
+            + `<i><img class="mmc-row-icon" src="${esc(workIcon(n.state))}" alt="">${esc(second)}</i>`
+            + `<em>${esc(third)}</em>${run ? '<span class="cd-working" aria-hidden="true"></span>' : ''}</button>`;
+    }
+
+    function wfFlowHtml(m) {
+        const lanes = new Map();
+        m.nodes.forEach((n) => { const l = Math.max(0, Number(n.lane) || 0); if (!lanes.has(l)) lanes.set(l, []); lanes.get(l).push(n); });
+        const keys = Array.from(lanes.keys()).sort((a, b) => a - b);
+        const pos = new Map();
+        let rows = 1;
+        keys.forEach((l, ci) => {
+            const list = lanes.get(l).sort(m.byStart);
+            rows = Math.max(rows, list.length);
+            list.forEach((n, ri) => pos.set(String(n.id), { x: ci * (WF_W + WF_GAP_X), y: WF_HEAD + ri * (WF_H + WF_GAP_Y) }));
+        });
+        const width = keys.length * WF_W + (keys.length - 1) * WF_GAP_X;
+        const height = WF_HEAD + rows * WF_H + (rows - 1) * WF_GAP_Y;
+        const heads = keys.map((l, ci) => {
+            const list = lanes.get(l);
+            const run = list.filter((n) => m.isRun(n)).length;
+            const name = l === 0 ? 'Can run now' : (l === 1 ? 'After those' : `Later (step ${l + 1})`);
+            return `<div class="cd-wf-head" data-x="${ci * (WF_W + WF_GAP_X)}" data-y="0" title="${esc(`Lane ${l}: ${name}. ${plural(list.length, 'job')}${run ? `, ${run} running` : ''}`)}"><b>${esc(name)}</b><span>${esc(plural(list.length, 'job'))}${run ? `, ${run} running` : ''}</span></div>`;
+        }).join('');
+        const sel = WF.sel;
+        const lines = m.edges.map((e) => {
+            const a = pos.get(String(e.from));
+            const b = pos.get(String(e.to));
+            if (!a || !b) return '';
+            const x1 = a.x + WF_W;
+            const y1 = a.y + WF_H / 2;
+            const x2 = b.x;
+            const y2 = b.y + WF_H / 2;
+            const dx = Math.max(WF_GAP_X, Math.abs(x2 - x1)) / 2;
+            const on = sel && (String(e.from) === sel || String(e.to) === sel);
+            const tip = `#${e.from} before #${e.to}: ${WF_KIND[e.kind] || e.kind || ''}${e.reason ? ` - ${e.reason}` : ''}`;
+            return `<g class="k-${esc(e.kind || 'explicit')}${on ? ' is-on' : ''}"><title>${esc(tip)}</title><path class="cd-wf-hit" d="M${x1} ${y1}C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}"/><path d="M${x1} ${y1}C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}"/><path class="cd-wf-tip" d="M${x2} ${y2}l-7 -4v8z"/></g>`;
+        }).join('');
+        return `<div class="cd-wf-scroll"><div class="cd-wm-canvas cd-wf-canvas" data-w="${width}" data-h="${height}"><svg class="cd-wf-lines" width="${width}" height="${height}" aria-hidden="true">${lines}</svg>${heads}${m.nodes.map((n) => wfCardHtml(n, m, pos)).join('')}</div></div>`;
+    }
+
+    function wfListHtml(m) {
+        const list = m.nodes.slice().sort(m.byStart);
+        const row = (n) => {
+            const waits = wfWaitsFor(m, n.id).map((x) => `#${x.n.id} ${x.n.title || ''}`.trim());
+            const st = workState(workOf(n.id) || n);
+            const t = n.startedAt ? when(n.startedAt) : '';
+            return `<tr class="cd-dash-row${String(n.id) === WF.sel ? ' is-selected' : ''}" data-act="wf-pick" data-arg="${esc(n.id)}"><td class="cd-w80">${m.isRun(n) ? 'running' : (n.order != null ? `#${esc(n.order)}` : '-')}</td><td class="cd-cut" title="${esc(n.title || String(n.id))}"><img class="mmc-row-icon" src="${esc(workIcon(n.state))}" alt="">${esc(n.title || String(n.id))}</td><td class="cd-cut" title="${esc(st)}">${esc(st)}</td><td class="cd-cut">${esc(wfPrio(n.priority))}</td><td class="cd-cut" title="${esc(waits.join(', '))}">${esc(waits.join(', '))}</td><td class="cd-cut" title="${esc(wfAcct(n))}">${esc(wfAcct(n))}</td><td class="cd-cut" title="${esc(t)}">${esc(t)}</td></tr>`;
+        };
+        return `<table class="cd-table cd-dash"><thead><tr><th class="cd-w80">#</th><th>Request</th><th class="cd-w80">State</th><th class="cd-w80">Priority</th><th>Waits for</th><th class="cd-w80">Account</th><th>Started</th></tr></thead><tbody>${list.map(row).join('')}</tbody></table>`;
+    }
+
+    /** The picked job: its priority (five buttons), what it waits for (with Remove), and its own actions. */
+    function wfDetailHtml(m) {
+        const n = m.nodes.find((x) => String(x.id) === WF.sel);
+        if (!n) return '<p class="mmc-hint">Pick a job to set its priority or make it wait for another job.</p>';
+        const busy = !!S.sup.busy;
+        const waits = wfWaitsFor(m, n.id);
+        const w = workOf(n.id);
+        const prio = [-2, -1, 0, 1, 2].map((p) => `<button type="button" class="btn-standard${(Number(n.priority) || 0) === p ? ' primary' : ''}" data-act="wf-prio" data-arg="${esc(n.id)}|${p}">${esc(wfPrio(p))}</button>`).join(' ');
+        const waitRows = waits.length
+            ? `<ul class="cd-wf-waits">${waits.map((x) => `<li><span class="mmc-link" data-act="wf-pick" data-arg="${esc(x.n.id)}">${esc(x.n.title || String(x.n.id))}</span> <span class="mmc-hint">${esc(`${WF_KIND[x.e.kind] || x.e.kind || ''}${x.e.reason ? ` - ${x.e.reason}` : ''}`)}</span> <span class="mmc-link" data-act="wf-dep-remove" data-arg="${esc(n.id)}|${esc(x.n.id)}">Remove</span></li>`).join('')}</ul>`
+            : '<p class="mmc-hint">It waits for no other job.</p>';
+        const links = [`<button type="button" class="btn-standard" data-act="wf-dep-add" data-arg="${esc(n.id)}"${busy ? ' disabled' : ''}>Make it wait for...</button>`,
+            w && WORK_STARTABLE.has(w.state) ? `<button type="button" class="btn-standard" data-act="work-start" data-arg="${esc(n.id)}"${busy ? ' disabled' : ''}>Start Now</button>` : '',
+            w && w.sessionId ? `<span class="mmc-link" data-act="work-open" data-arg="${esc(n.id)}">Open Session</span>` : '',
+            w && w.issue && w.issue.url ? `<span class="mmc-link" data-act="work-issue" data-arg="${esc(n.id)}">Open Issue</span>` : '',
+            w ? `<span class="mmc-link" data-act="work-goto" data-arg="${esc(n.id)}">Open Request</span>` : ''].filter(Boolean).join(' &nbsp; ');
+        return `<div class="cd-wd"><h3 class="cd-cut" title="${esc(n.title || String(n.id))}">${esc(n.title || String(n.id))}</h3>`
+            + `<p class="mmc-hint">${esc([workState(w || n), wfAcct(n), n.order != null ? `#${n.order} in queue` : ''].filter(Boolean).join(' - '))}</p>`
+            + `<h4>Priority</h4><p>${prio}</p><h4>Waits for</h4>${waitRows}<p>${links}</p></div>`;
+    }
+
+    function workflowPage(c) {
+        const T = 'Workflow';
+        if (!S.sup.loaded) { void loadSupervisor(); return c.page(T, '', [{ id: 'cd-wf-wait', title: T, body: '<p class="mmc-hint">Reading the work queue...</p>' }]); }
+        if (S.sup.unavailable) return c.page(T, '', [{ id: 'cd-wf-gone', title: T, body: `<p>${NOT_YET}</p>` }]);
+        if (!WF.graph || (!WF.loading && Date.now() - WF.at > 60000)) void wfLoad();
+        setTimeout(wmPlace, 0);
+        if (!WF.graph) return c.page(T, '', [{ id: 'cd-wf-wait', title: T, body: '<p class="mmc-hint">Reading the workflow...</p>' }]);
+        const m = wfModel();
+        const run = m.nodes.filter((n) => m.isRun(n)).length;
+        const head = `<p class="cd-wf-bar"><span class="mmc-link" data-act="wf-view" data-arg="flow">${WF.view === 'flow' ? '<b>Flow</b>' : 'Flow'}</span> | <span class="mmc-link" data-act="wf-view" data-arg="list">${WF.view === 'list' ? '<b>List</b>' : 'List'}</span> <span class="mmc-hint">${esc(`${plural(m.nodes.length, 'open job')}, ${run} running. A column runs side by side; a line goes from a job to the one that waits for it.`)}</span>${WF.error ? ` <span class="mmc-hint">${esc(WF.error)}</span>` : ''}</p>`;
+        const body = m.nodes.length ? head + (WF.view === 'list' ? wfListHtml(m) : wfFlowHtml(m)) : '<p class="mmc-hint">No open work.</p>';
+        return c.page(T, '', [{ id: 'cd-wf', title: `Open Work (${m.nodes.length})`, body }, { id: 'cd-wf-sel', title: 'Selected Job', body: wfDetailHtml(m) }]);
+    }
+
+    /** "Make it wait for...": the open jobs it may wait for (not itself, not a job already waiting on it, not one it already waits for). */
+    async function wfAddDep(c, id) {
+        const m = wfModel();
+        const after = new Set([String(id)]);
+        for (let grew = true; grew;) { grew = false; m.edges.forEach((e) => { if (after.has(String(e.from)) && !after.has(String(e.to))) { after.add(String(e.to)); grew = true; } }); }
+        const have = new Set(wfWaitsFor(m, id).map((x) => String(x.n.id)));
+        const cands = m.nodes.filter((n) => !after.has(String(n.id)) && !have.has(String(n.id))).sort(m.byStart);
+        if (!cands.length) { c.note('There is no other open job it could wait for.'); return; }
+        const me = m.nodes.find((x) => String(x.id) === String(id));
+        const { value, fields } = await form(c, `<p>Make <b>${esc((me && me.title) || id)}</b> wait until this job is done:</p><label class="cd-top"><span>Job:</span><select class="vdt-select" data-cd="on" data-cd-focus>${cands.map((n) => `<option value="${esc(n.id)}">${esc(`${n.title || n.id} (${workState(workOf(n.id) || n)})`)}</option>`).join('')}</select></label>`,
+            [{ text: 'Make It Wait', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }]);
+        if (value !== true || !fields.on) return;
+        await wfAct(c, { action: 'work_dep_add', id, on: fields.on }, 'Adding the dependency...');
     }
 
     // ---- a steering message sent from the composer shows at once as a pending row, replaced by the real one ----
@@ -1560,6 +1729,7 @@
 
     function supTake(r) {
         wmPoke();
+        wfPoke();
         if (r && r.settings) { S.sup.data = Object.assign({}, S.sup.data || {}, r); S.sup.draft = null; S.sup.loaded = true; S.sup.unavailable = false; S.sup.error = ''; S.sup.stale = false; }
     }
     function supFail(e) {
@@ -3022,6 +3192,7 @@
             children: [
                 { id: 'co-work', name: 'Work Queue', icon: '/static_images/vista-cmdbar/checklist.png', desc: 'Requests waiting for, starting on and running on an account',
                     children: [
+                        { id: 'co-flow', name: 'Workflow', icon: '/static_images/vista-cmdbar/checklist.png', desc: 'Every open job: what runs in parallel, what runs in series and what waits on what' },
                         { id: 'co-held', name: `Waiting (${heldItems().length})`, icon: `${ITEMS}/date-and-time-16.png`, desc: 'New and imported requests that wait for you to start them' },
                         { id: 'co-input', name: `Input Required (${inputItems().length})`, icon: QUESTION16, desc: 'Work that stopped on a question only you can answer' },
                         { id: 'aw-sup', name: `Active (${runItems().length})`, icon: `${ITEMS}/parental-controls-16.png`, desc: 'Work items running now, their sessions and background agents', children: runNodes },
@@ -3269,7 +3440,7 @@
             { id: 'cd-dash-tiles', title: 'Dashboard', body: tiles },
             { id: 'cd-dash-days', title: 'Last 30 days', body: historyHtml() }
         ].concat(inp.length ? [{ id: 'cd-dash-input', title: `Input Required (${inp.length})`, body: table(inp.slice(0, 8), 'Nothing needs your input.') + '<p><span class="mmc-link" data-act="nav:co-input">Answer them</span></p>' }] : []).concat([
-            { id: 'cd-dash-active', title: `Active Work (${live.length})`, body: table(live, 'No work is running. Pick requests in Waiting and start them.') + (live.length ? '<p><span class="mmc-link" data-act="nav:aw-sup">Open Active</span></p>' : '') },
+            { id: 'cd-dash-active', title: `Active Work (${live.length})`, body: table(live, 'No work is running. Pick requests in Waiting and start them.') + (live.length ? '<p><span class="mmc-link" data-act="nav:aw-sup">Open Active</span> &nbsp; <span class="mmc-link" data-act="nav:co-flow">Open Workflow</span></p>' : '<p><span class="mmc-link" data-act="nav:co-flow">Open Workflow</span></p>') },
             { id: 'cd-dash-held', title: `Waiting for You (${held.length})`, body: table(heldTop, 'Nothing is waiting for you.') + (held.length ? `<p><span class="mmc-link" data-act="nav:co-held">${held.length > heldTop.length ? `See all ${held.length}` : 'Open Waiting'}</span></p>` : '') }
         ]);
     }
@@ -4905,6 +5076,7 @@
             case 'usage': return usagePage(c);
             case 'usage-flags': return usageFlagsPage(c);
             case 'root': return withBars(rootPage(c));
+            case 'co-flow': return workflowPage(c);
             case 'co-held': return workPage(c, 'held');
             case 'co-input': return inputPage(c);
             case 'aw-sup': return workPage(c, 'active');
@@ -5002,6 +5174,7 @@
             case 'co-devices': return [{ text: 'Release...', action: 'dev-release' }, { text: 'Read Again', action: 'dev-refresh' }];
             case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
             case 'co-work': return [{ text: 'New Request...', action: 'new-session' }, { text: 'Issues...', action: 'work-issues', disabled: !!S.sup.busy }, { text: 'Read Again', action: 'sup-refresh' }].concat(workMultiItems());
+            case 'co-flow': return [{ text: WF.view === 'flow' ? 'Show as List' : 'Show as Flow', action: WF.view === 'flow' ? 'wf-view-list' : 'wf-view-flow' }, { text: 'Read Again', action: 'wf-refresh' }];
             case 'co-held':
             case 'co-input':
             case 'aw-sup':
@@ -5483,6 +5656,14 @@
                 if (w && w.issue && /^https?:\/\//.test(w.issue.url || '')) await call('openGrimoireUrl', w.issue.url); else c.note('It has no issue yet.');
                 return true;
             }
+            case 'wf-view-list': case 'wf-view-flow': arg = a.slice(8); // falls into wf-view
+            // eslint-disable-next-line no-fallthrough
+            case 'wf-view': WF.view = arg === 'list' ? 'list' : 'flow'; c.refresh(); wmPlace(); return true;
+            case 'wf-refresh': await wfLoad(); return true;
+            case 'wf-pick': WF.sel = String(arg || ''); if (workOf(WF.sel)) c.selectRow(`w:${WF.sel}`); else c.selectRow(null); c.refresh(); wmPlace(); return true;
+            case 'wf-prio': { const [id, p] = String(arg || '').split('|'); await wfAct(c, { action: 'work_priority', id, priority: Number(p) }, 'Setting the priority...'); return true; }
+            case 'wf-dep-add': await wfAddDep(c, String(arg || WF.sel)); return true;
+            case 'wf-dep-remove': { const [id, on] = String(arg || '').split('|'); await wfAct(c, { action: 'work_dep_remove', id, on }, 'Removing the dependency...'); return true; }
             case 'wm-toggle': wmToggle(); return true;
             case 'wm-open': {
                 const [kind, wsid, waid, wid] = String(arg || '').split('|');
@@ -6770,6 +6951,7 @@
                 if (n.id.startsWith('bga:')) { const m = /^bga:([^:]+):(.+)$/.exec(n.id); const r = m ? bgRow(m[1], m[2]) : null; return r ? `${BG_STATE[r.state] || ''}, read only` : ''; }
                 if (n.id === 'activity') return S.act.loaded ? `${S.act.rows.length} of ${S.act.total} calls` : '';
                 if (n.id === 'contractors') return S.con.gone ? NOT_YET : `${plural(S.con.list.length, 'contractor')}, ${S.con.list.filter((k) => k.online).length} online`;
+                if (n.id === 'co-flow') return WF.graph ? `${plural(wfModel().nodes.length, 'open job')} in ${plural(new Set(wfModel().nodes.map((x) => x.lane || 0)).size, 'column')}` : '';
                 if (n.id === 'co-held') return plural(heldItems().length, 'request') + ' waiting for you to start';
                 if (n.id === 'co-input') return plural(inputItems().length, 'work item') + ' stopped on a question only you can answer';
                 if (n.id === 'aw-sup') return plural(runItems().length, 'running work item');
