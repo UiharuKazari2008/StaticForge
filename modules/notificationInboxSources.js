@@ -668,10 +668,13 @@ function onRainAlarm(d) {
     if (!d || !d.place) return null;
     const where = d.place.label || d.place.name || 'your place';
     const kind = d.kind || 'Rain';
-    const title = `${kind} at ${where} in ${d.startsInMin} min`;
-    const text = d.endsInMin
-        ? `${kind} from about ${d.startsInMin} minutes from now, stopping after about ${Math.max(5, d.endsInMin - d.startsInMin)} minutes.`
-        : (d.summary || `${kind} expected in about ${d.startsInMin} minutes.`);
+    // rain that has already started reads "now", never "in 0 min" (the page's own wording, weatherAlerts.js onRain, #1267)
+    const lead = Number(d.startsInMin) > 0 ? Number(d.startsInMin) : 0;
+    const title = lead ? `${kind} at ${where} in ${lead} min` : `${kind} at ${where} now`;
+    const lasts = d.endsInMin ? `stopping after about ${Math.max(5, d.endsInMin - lead)} minutes` : '';
+    const text = lasts
+        ? (lead ? `${kind} from about ${lead} minutes from now, ${lasts}.` : `${kind} now, ${lasts}.`)
+        : (d.summary || (lead ? `${kind} expected in about ${lead} minutes.` : `${kind} is starting now.`));
     const mins = (Number(d.endsInMin) || (Number(d.startsInMin) || 0) + 60) + 15;
     return publish({
         app: 'weather',
