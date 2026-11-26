@@ -47,6 +47,7 @@ done, whatever else it achieves.
 @.cursor/rules/director-idle-before-restart.mdc
 @.cursor/rules/no-stash-to-pretty-commit.mdc
 @.cursor/rules/android-app-builds.mdc
+@.cursor/rules/apk-installs-via-adb.mdc
 @.cursor/rules/phone-power-client.mdc
 @.cursor/rules/phone-power-server.mdc
 @.cursor/rules/phone-power-native.mdc
