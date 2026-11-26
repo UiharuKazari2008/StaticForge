@@ -47,6 +47,8 @@ function connect() {
         up = true;
         backoff = 2000;
         console.log('[xmRadio rec] connected to the recorder service');
+        // the service may hold a token (its own file) for a slot that was signed out while it was away: the first push drops it
+        for (let n = 2; n <= 8; n++) pushedSlots.add(n);
         void pushAuth();
         void importAll();
     });
@@ -124,17 +126,28 @@ function rpc(op, args) {
 }
 
 /**
- * Dreamscape's SiriusXM access token to the service (it never signs in itself: a second session is refused), at
- * connect, before each recording starts, and again ten minutes before it expires.
+ * Dreamscape's SiriusXM access tokens to the service, one per signed-in slot (it never signs in itself: a second session
+ * is refused), at connect, before each recording starts, and again ten minutes before the soonest one expires: one timer
+ * for all the slots, not one per slot. A slot that was pushed and is no longer signed in (signed out, or beyond the
+ * slot count) is told to drop its token. Slot 1 is the radio's account and is pushed as before.
  */
 let authTimer = null;
+const pushedSlots = new Set();
 async function pushAuth() {
     clearTimeout(authTimer);
     authTimer = null;
-    let a = null;
-    try { a = await xm.accessToken(); } catch (_) { a = null; }
-    if (a && up) { try { await rpc('auth', a); } catch (_) { /* the next connect sends it */ } }
-    const next = a ? Math.max(60000, a.exp - Date.now() - 10 * 60000) : 5 * 60000;
+    let list = [];
+    try { list = await xm.accessTokens(); } catch (_) { list = []; }
+    if (up) {
+        const live = new Set(list.map((a) => a.slot));
+        for (const a of list) { try { await rpc('auth', a); pushedSlots.add(a.slot); } catch (_) { /* the next connect sends it */ } }
+        for (const n of [...pushedSlots]) {
+            if (live.has(n) || n === 1) continue;
+            try { await rpc('auth', { slot: n, clear: true }); pushedSlots.delete(n); } catch (_) { /* the next push tries again */ }
+        }
+    }
+    const soonest = list.length ? Math.min(...list.map((a) => a.exp)) : 0;
+    const next = soonest ? Math.max(60000, soonest - Date.now() - 10 * 60000) : 5 * 60000;
     authTimer = setTimeout(() => { void pushAuth(); }, Math.min(next, 2 ** 31 - 1));
     if (authTimer.unref) authTimer.unref();
 }

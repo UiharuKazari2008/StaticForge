@@ -678,8 +678,10 @@ function noteCuts(rec, cuts) {
 
 function makePump(rec, back) {
     const pump = require('./xmRadioPump').createPump({
-        channelId: rec.meta.channelId, quality: 'hi', keyBytes: xm.keyBytes,
-        tune: async (id) => xm.tuneUpstream(id),
+        channelId: rec.meta.channelId, quality: 'hi',
+        // the recording's own SiriusXM account (its slot; none = slot 1, the radio's account)
+        keyBytes: (uri) => xm.keyBytes(uri, { slot: rec.meta.slot || 1 }),
+        tune: async (id) => xm.tuneUpstream(id, { slot: rec.meta.slot || 1 }),
         log: (lvl, t) => console.warn(t),
         // a recording keeps trying through a missing sign-in (the token comes from Dreamscape)
         persistent: true
@@ -820,7 +822,16 @@ async function start(opts) {
     const s = load();
     const channelId = String(opts.channelId || '');
     if (!xm.channelById(channelId)) throw Object.assign(new Error('No such channel.'), { code: 'XMRADIO_CHANNEL' });
-    for (const r of recs.values()) if (r.meta.channelId === channelId) return describe(r);
+    // the slot is the SiriusXM account that streams (S2 of #1252; the dispatcher that picks it is S3): default slot 1
+    const slot = opts.slot == null ? 1 : Number(opts.slot);
+    if (!Number.isInteger(slot) || slot < 1 || slot > 8) throw Object.assign(new Error(`There is no recorder slot ${opts.slot}.`), { code: 'XMRADIO_SLOT' });
+    for (const r of recs.values()) if (r.meta.channelId === channelId && (r.meta.slot || 1) === slot) return describe(r);
+    // SiriusXM allows one stream per account. Slot 1 is exempt until S3's dispatcher replaces today's behaviour (several
+    // recordings on the radio's one account); every other slot is one recording at a time and must be signed in.
+    if (slot > 1) {
+        if ([...recs.values()].some((r) => (r.meta.slot || 1) === slot)) throw Object.assign(new Error(`Slot ${slot} is already streaming.`), { code: 'XMRADIO_SLOT_BUSY' });
+        if (typeof xm.slotReady === 'function' && !xm.slotReady(slot)) throw Object.assign(new Error(`Slot ${slot} is not signed in to SiriusXM.`), { code: 'XMRADIO_SIGNED_OUT' });
+    }
     if (recs.size >= MAX_AUTO) throw Object.assign(new Error('The deck is already making four recordings.'), { code: 'XMRADIO_REC_BUSY' });
     const rid = id8() + id8();
     const dir = path.join(recRoot(), rid);
@@ -828,7 +839,7 @@ async function start(opts) {
     const now = Date.now();
     const back = Math.max(0, Math.min(5 * 3600, Number(opts.back) || 0));
     const meta = {
-        rid, channelId, kind: opts.kind || 'manual', ref: opts.ref || null,
+        rid, channelId, slot, kind: opts.kind || 'manual', ref: opts.ref || null,
         workspaceId: opts.workspaceId || s.deck.workspaceId, tape: opts.tape || s.deck.tape,
         mode: opts.mode || (opts.kind === 'alert' || opts.kind === 'term' || opts.kind === 'song' ? 'song' : s.deck.mode),
         since: now, until: Math.min(now + MAX_MS, Number(opts.until) || now + MAX_MS), startPdt: now - back * 1000, cursor: 0, filed: 0,
@@ -884,7 +895,7 @@ function describe(rec) {
     const m = rec.meta;
     const { cur } = cutAt(rec, rec.lastEnd || Date.now());
     return {
-        rid: m.rid, channelId: m.channelId, kind: m.kind, mode: m.mode, workspaceId: m.workspaceId, tape: m.tape, since: m.since, until: m.until,
+        rid: m.rid, channelId: m.channelId, slot: m.slot || 1, kind: m.kind, mode: m.mode, workspaceId: m.workspaceId, tape: m.tape, since: m.since, until: m.until,
         // how far it reached back behind live when it started (s: "from the start" of the song on air)
         back: Math.max(0, Math.round((m.since - (m.startPdt || m.since)) / 1000)),
         filed: m.filed || 0, url: `/api/xmradio/rec/${m.rid}/index.m3u8`,

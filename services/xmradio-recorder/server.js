@@ -17,7 +17,7 @@
  *
  * Socket: a Unix socket beside the account file (.cache/xmradio-recorder.sock, mode 0600: this user only), one JSON
  * object a line.
- *   Dreamscape -> { id, op, args }      ops: auth { token, exp }, deck, start, stop, recordCut, recordChannel,
+ *   Dreamscape -> { id, op, args }      ops: auth { slot?, token, exp, entitlementHash } (one per slot, no slot = slot 1; { slot, clear: true } drops it), deck, start, stop, recordCut, recordChannel,
  *                                       recordRange { channelId, from, to, a, t, s, ik }, queueRemove { id },
  *                                       queueClear, setDeck, setTimers, addAlert, removeAlert, setTerms,
  *                                       tapeRenamed, playlist, ping,
@@ -40,13 +40,24 @@ const cutStore = require('../../modules/xmRadioMeta');
 
 xmRadio.useExternalAuth();
 
-// the token Dreamscape last handed over, kept (owner only, beside the account file that holds the grants) so a restart
-// of this service resumes its recordings at once instead of waiting for Dreamscape
+// the tokens Dreamscape last handed over, one per slot (the slots of #1252 S2), kept (owner only, beside the account file
+// that holds the grants) so a restart of this service resumes its recordings at once instead of waiting for Dreamscape:
+// { "1": { token, exp, entitlementHash }, "2": ... }. The file from before the slots was one bare entry: that is slot 1.
 const AUTH_FILE = path.join(path.dirname(xmRadio.accountFilePath()), 'xmradio-recorder-auth.json');
 try {
-    const kept = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf8'));
-    if (kept && kept.exp > Date.now() + 60000 && xmRadio.setAuth(kept)) console.log(`[xmradio-recorder] SiriusXM access kept (valid ${Math.round((kept.exp - Date.now()) / 60000)} min)`);
+    const raw = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf8')) || {};
+    const kept = raw.token ? { 1: raw } : raw;
+    for (const [slot, a] of Object.entries(kept)) {
+        if (a && a.exp > Date.now() + 60000 && xmRadio.setAuth(Object.assign({}, a, { slot: Number(slot) }))) console.log(`[xmradio-recorder] SiriusXM access kept for slot ${slot} (valid ${Math.round((a.exp - Date.now()) / 60000)} min)`);
+    }
 } catch (_) { /* none yet */ }
+function keepAuth() {
+    try {
+        const held = xmRadio.heldAuth();
+        fs.writeFileSync(`${AUTH_FILE}.tmp`, JSON.stringify(held), { mode: 0o600 });
+        fs.renameSync(`${AUTH_FILE}.tmp`, AUTH_FILE);
+    } catch (_) { /* in memory */ }
+}
 
 const SOCK = path.join(path.dirname(xmRadio.accountFilePath()), 'xmradio-recorder.sock');
 const clients = new Set();
@@ -68,13 +79,14 @@ recorder.init(xmRadio, null, { changed: deckChanged, spooled: (id) => broadcast(
 const OPS = {
     ping: () => ({ pid: process.pid, up: Math.round(process.uptime()) }),
     auth: (a) => {
+        const slot = a && a.slot != null ? Number(a.slot) : 1;
         const ok = xmRadio.setAuth(a);
-        if (ok) {
-            try { fs.writeFileSync(`${AUTH_FILE}.tmp`, JSON.stringify({ token: a.token, exp: a.exp, entitlementHash: a.entitlementHash || '' }), { mode: 0o600 }); fs.renameSync(`${AUTH_FILE}.tmp`, AUTH_FILE); } catch (_) { /* in memory */ }
-        }
-        console.log(`[xmradio-recorder] SiriusXM access ${ok ? `received (valid ${Math.round(((Number(a && a.exp) || 0) - Date.now()) / 60000)} min)` : 'missing'}`);
+        if (ok || (a && a.clear)) keepAuth();
+        console.log(`[xmradio-recorder] SiriusXM access slot ${slot} ${a && a.clear ? 'dropped' : ok ? `received (valid ${Math.round(((Number(a && a.exp) || 0) - Date.now()) / 60000)} min)` : 'missing'}`);
         return ok;
     },
+    // which slots hold a token here and until when (never the tokens)
+    slots: () => Object.entries(xmRadio.heldAuth()).map(([slot, a]) => ({ slot: Number(slot), exp: a.exp, entitlementHash: String(a.entitlementHash || '').slice(0, 8) })),
     deck: () => recorder.deck(),
     start: (a) => recorder.start(a || {}),
     stop: (a) => recorder.stop(String((a && a.rid) || '')),

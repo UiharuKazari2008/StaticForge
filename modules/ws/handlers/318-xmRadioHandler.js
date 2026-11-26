@@ -41,6 +41,18 @@ const recorder = require('../../xmRadioRecorderClient');
 //                                                 The queue runs in expiry order (soonest expiry first, then added).
 //   xmradio_mmc_view        {}                    admins -> { account, deck, slots { max } }: Lizumi's read-only view (#1252);
 //                                                 status feed xmradio_mmc (push xmradio_mmc_status) carries the same items
+//   xmradio_slots_get       {}                    admins -> { slots[{ slot, name 'Lizumi-Recorder-<n>', handle (masked), signedIn, since,
+//                                                 tokenExp, entitlementHash (8 chars), refused (channels SiriusXM refused this
+//                                                 account), lastError, lastErrorAt }], count, limit }: the recorder's virtual
+//                                                 radios, one SiriusXM account each (#1252 S2); slot 1 is the radio app's
+//                                                 account. Never a grant or a token.
+//   xmradio_slot_signin     { slot, handle, password }  admins -> { slot (the entry above), slots[] }: password sign-in of one
+//                                                 slot on its own SiriusXM device; the password is used once and never kept
+//                                                 (slot 1 also keeps the CardSpace card, as xmradio_signin does)
+//   xmradio_slot_signin_browser { slot }          admins -> { url }: the one-time sign-in page (xmradio_signin_browser) for that slot
+//   xmradio_slot_signout    { slot }              admins, destructive -> { slot, slots[] }: the slot's sign-in goes, its device stays
+//   xmradio_slot_count_set  { n }                 admins -> { count, slots[] } (1 to 8, default 4; slots above n are hidden and
+//                                                 keep their account)
 //   xmradio_queue_remove    { id }                 admins -> { queue[] }: cancel one queued song
 //   xmradio_queue_clear     {}                     admins -> { queue[] }: cancel them all
 //   xmradio_tune's back:    seconds behind live to start at (replay; the stream keeps five hours)
@@ -95,6 +107,14 @@ function packet(admin, fallback, run) {
     };
 }
 
+/** The recorder slots as the console reads them: `max` is the count (what the console drew as four), `list` the accounts. */
+function slotsView() {
+    return { max: xmRadio.slotCount(), limit: 8, list: xmRadio.slots() };
+}
+
+/** The recorder service gets (or drops) a slot's token at once rather than at its next timer. */
+function slotPushed() { void recorder.pushAuth().catch(() => {}); }
+
 function registerPackets(handlersCtx) {
     if (!handlersCtx) return;
     xmRadio.bind(handlersCtx.globalResources);
@@ -105,8 +125,10 @@ function registerPackets(handlersCtx) {
     const mmcFeed = statusHub.define({
         name: 'xmradio_mmc', pushType: 'xmradio_mmc_status', intervalMs: 300000,
         allow: (info) => !!(info && /^(admin|dev_admin)$/.test(String(info.userType || ''))),
-        sample: async () => ({ account: xmRadio.account(), deck: recorder.deck(), slots: { max: 4 } })
+        sample: async () => ({ account: xmRadio.account(), deck: recorder.deck(), slots: slotsView() })
     });
+    // any slot change (sign-in, sign-out, count, a learned refusal, an error) is one push to the console
+    xmRadio.onSlots(() => mmcFeed.poke());
     recorder.init(xmRadio, handlersCtx.globalResources, { changed: () => { xmRadio.touch(); mmcFeed.poke(); } });
     xmRadio.definePhoneFeed(statusHub);
     const reg = (type, fn, meta = {}) => {
@@ -136,7 +158,27 @@ function registerPackets(handlersCtx) {
         const ws = String(m.workspaceId || deck.workspaceId);
         return { deck, tapes: await recorder.tapes(ws), tapeInfo: m.info ? await recorder.tapesInfo(ws) : undefined };
     }));
-    reg('xmradio_mmc_view', packet(true, 'Lizumi could not read XM Radio', async () => ({ account: xmRadio.account(), deck: recorder.deck(), slots: { max: 4 } })));
+    reg('xmradio_mmc_view', packet(true, 'Lizumi could not read XM Radio', async () => ({ account: xmRadio.account(), deck: recorder.deck(), slots: slotsView() })));
+    reg('xmradio_slots_get', packet(true, 'The recorder slots could not be read', async () => ({ slots: xmRadio.slots(), count: xmRadio.slotCount(), limit: 8 })));
+    reg('xmradio_slot_signin', packet(true, 'SiriusXM could not sign the slot in', async (m) => {
+        const slot = Number(m.slot);
+        const entry = await xmRadio.slotSignIn(slot, m.handle, m.password);
+        // slot 1 is the radio's account: its login is kept in CardSpace too (as xmradio_signin does)
+        if (slot === 1) { try { xmRadio.saveCard(String(m.handle || '').trim(), String(m.password || '')); } catch (_) { /* signed in all the same */ } }
+        slotPushed();
+        return { slot: entry, slots: xmRadio.slots() };
+    }));
+    reg('xmradio_slot_signin_browser', packet(true, 'The browser sign-in could not be started', async (m) => xmRadio.signInPageStart({ slot: Number(m.slot) })));
+    reg('xmradio_slot_signout', packet(true, 'The slot could not be signed out', async (m) => {
+        const entry = xmRadio.slotSignOut(Number(m.slot));
+        slotPushed();
+        return { slot: entry, slots: xmRadio.slots() };
+    }), { destructive: true });
+    reg('xmradio_slot_count_set', packet(true, 'The number of slots could not be set', async (m) => {
+        const count = xmRadio.setSlotCount(m.n);
+        slotPushed();
+        return { count, slots: xmRadio.slots() };
+    }));
     reg('xmradio_deck_set', packet(true, 'The cassette deck could not be set', async (m) => ({ deck: await recorder.setDeck({ tape: m.tape, workspaceId: m.workspaceId, mode: m.mode }) })));
     reg('xmradio_tape_tracks', packet(false, 'The tape could not be read', async (m) => ({ tracks: await recorder.tracks(String(m.workspaceId || recorder.deck().workspaceId), String(m.tape || recorder.deck().tape)) })));
     reg('xmradio_rec_start', packet(true, 'The recording could not be started', async (m) => (m.song

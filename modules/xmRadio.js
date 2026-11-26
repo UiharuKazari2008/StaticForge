@@ -18,6 +18,11 @@
  *              is on; pushed per channel, only what changed (rule server-push-not-polling)
  *
  * Files: <cache>/xmradio-account.json (0600): the device and identity grants, the handle (masked for clients).
+ *
+ * Slots (Yozora #1252 S2, modules/xmRadioSlots.js): the recorder is N virtual radios, each its own SiriusXM account with
+ * its own device and session. Slot 1 IS the account above (these module singletons stay as they were, so the radio app
+ * is unchanged); slots 2..N are instances of the factory in xmRadioSlots.js, kept in <cache>/xmradio-slots.json.
+ * tuneUpstream / keyBytes / setAuth take { slot } (none = slot 1).
  */
 
 const fs = require('fs');
@@ -62,9 +67,19 @@ function accountFile() {
  */
 let external = false;
 function useExternalAuth() { external = true; }
-function setAuth(a) {
-    if (a && a.token) auth = { token: String(a.token), exp: Number(a.exp) || Date.now() + 3600000, entitlementHash: a.entitlementHash || '' };
+/** Slot 1's token (the radio's own account). */
+function setAuthOne(a) {
+    if (a && a.clear) { auth = null; return false; }
+    if (a && a.token) {
+        auth = { token: String(a.token), exp: Number(a.exp) || Date.now() + 3600000, entitlementHash: a.entitlementHash || '' };
+        slotSet().noteHash(1, auth.entitlementHash);
+    }
     return !!(auth && auth.token);
+}
+/** The recorder service: the access token Dreamscape handed over, { slot?, token, exp, entitlementHash } (no slot = slot 1). */
+function setAuth(a) {
+    const slot = a && a.slot != null ? Number(a.slot) : 1;
+    return slot === 1 ? setAuthOne(a) : slotSet().setAuth(slot, a);
 }
 /** Dreamscape: its access token now (signed in), for the recorder service. */
 async function accessToken() {
@@ -72,11 +87,43 @@ async function accessToken() {
     return t && auth ? { token: auth.token, exp: auth.exp, entitlementHash: auth.entitlementHash } : null;
 }
 
+/** Dreamscape: every signed-in slot's access token now ({ slot, token, exp, entitlementHash }), for the recorder service. */
+async function accessTokens() { return slotSet().accessAll(); }
+
 /** The account file again. */
 function reloadAccount() {
     state = null;
     if (!external) auth = null;
+    if (slotsInst) slotsInst.reload();
 }
+
+// ------------------------------------------------------------------ the slots (modules/xmRadioSlots.js)
+
+let slotsInst = null;
+const slotListeners = [];
+function slotSet() {
+    if (slotsInst) return slotsInst;
+    slotsInst = require('./xmRadioSlots').create({
+        api, fail, maskHandle, UA, APP_VERSION,
+        dir: () => path.dirname(accountFile()),
+        external: () => external,
+        changed: () => { for (const fn of slotListeners) fn(); },
+        slot1: {
+            token: () => authToken(),
+            access: () => accessToken(),
+            setAuth: setAuthOne,
+            signIn: (h, p) => signInPassword(h, p),
+            signOut: () => signOut(),
+            authRaw: () => auth,
+            clear: () => { auth = null; },
+            state: () => load(),
+            ready: () => (external ? !!(auth && auth.exp > Date.now() + 30000) : (!!load().identityId && !load().signedOut))
+        }
+    });
+    return slotsInst;
+}
+/** A listener for any change to a slot (sign-in, sign-out, count, a learned refusal, an error). */
+function onSlots(fn) { slotListeners.push(fn); }
 
 function load() {
     if (state) return state;
@@ -188,10 +235,13 @@ async function authToken() {
         if (r.json && r.json.accessToken) {
             auth = { token: r.json.accessToken, exp: Date.parse(r.json.accessTokenExpiresAt) || Date.now() + 3600000, entitlementHash: r.json.entitlementHash || '' };
             if (s.signedOut) { delete s.signedOut; save(); }
+            slotSet().noteHash(1, auth.entitlementHash);
             return auth.token;
         }
     }
     s.signedOut = 'expired';
+    s.lastError = 'The SiriusXM sign-in ended.';
+    s.lastErrorAt = Date.now();
     save();
     touch();
     return null;
@@ -213,7 +263,7 @@ function account() {
         expired: s.signedOut === 'expired',
         handle: s.identityId ? maskHandle(s.handle) : '',
         since: s.signedInAt || null,
-        browserSignIn: signInPageState(),
+        browserSignIn: signInPageState(1),
         card: !!card(),
         cardRefused: !!(s.refusedCard && card() && s.refusedCard === cardPrint(card()))
     };
@@ -242,13 +292,19 @@ async function signInPassword(handle, password) {
     if (!r.json || !r.json.grant) {
         const why = r.json && (r.json.description || r.json.message);
         console.warn(`[xmRadio] password sign-in refused: ${r.status} ${(r.json && r.json.code) || ''}`);
-        throw fail(r.status === 401 || r.status === 400 ? 'The email, username or password is not right.' : `SiriusXM could not sign you in${why ? `: ${why}` : '.'}`, 'XMRADIO_SIGNIN', { status: r.status });
+        const msg = r.status === 401 || r.status === 400 ? 'The email, username or password is not right.' : `SiriusXM could not sign you in${why ? `: ${why}` : '.'}`;
+        s.lastError = msg;
+        s.lastErrorAt = Date.now();
+        save();
+        throw fail(msg, 'XMRADIO_SIGNIN', { status: r.status });
     }
     s.identityId = r.json.identityId;
     s.identityGrant = r.json.grant;
     s.handle = h;
     s.signedInAt = Date.now();
     delete s.signedOut;
+    delete s.lastError;
+    delete s.lastErrorAt;
     auth = null;
     save();
     const tok = await authToken();
@@ -272,17 +328,20 @@ async function signInPassword(handle, password) {
  * signInPassword does (the password goes to SiriusXM once and is never kept), and the account item is pushed.
  */
 const SIGNIN_PAGE_MS = 10 * 60 * 1000;
-let signInPage = null; // { code, until, tries, done }
+let signInPage = null; // { code, until, tries, done, slot }
 
-function signInPageState() {
+/** The page waiting for this slot (the radio app's account is slot 1), or null. */
+function signInPageState(slot = 1) {
     const p = signInPage;
-    return p && !p.done && p.until > Date.now() ? { waiting: true, until: p.until } : null;
+    return p && !p.done && p.until > Date.now() && p.slot === slot ? { waiting: true, until: p.until } : null;
 }
 
-/** A one-time sign-in page address for Alchemy. */
-function signInPageStart() {
+/** A one-time sign-in page address for Alchemy; { slot } signs a recorder slot in instead of the radio's account. */
+function signInPageStart({ slot } = {}) {
+    const n = slot == null ? 1 : Number(slot);
+    if (!Number.isInteger(n) || n < 1 || n > slotSet().MAX_SLOTS) throw fail(`There is no slot ${slot}.`, 'XMRADIO_SLOT');
     const code = crypto.randomBytes(24).toString('hex');
-    signInPage = { code, until: Date.now() + SIGNIN_PAGE_MS, tries: 0, done: false };
+    signInPage = { code, until: Date.now() + SIGNIN_PAGE_MS, tries: 0, done: false, slot: n };
     const port = Number((gr && gr.getConfig && gr.getConfig({ path: 'port' })) || process.env.PORT || 9220);
     touch();
     return { url: `http://127.0.0.1:${port}/xmradio-signin/${code}` };
@@ -332,7 +391,9 @@ function mountSignInPage(app, express) {
         if (!pageOk(String(req.params.code))) { notFound(res); return; }
         res.set('Cache-Control', 'no-store');
         res.set('X-Frame-Options', 'DENY');
-        res.type('html').send(PAGE_HTML);
+        const slot = signInPage.slot;
+        res.type('html').send(slot === 1 ? PAGE_HTML : PAGE_HTML
+            .replace('The login is kept in Dreamscape CardSpace, so XM Radio can sign in again by itself.', `This signs in recorder slot ${slot} (Lizumi-Recorder-${slot}); the password is used once and not kept.`));
     });
     app.post('/xmradio-signin/:code', express.json({ limit: '4kb' }), async (req, res) => {
         if (!pageOk(String(req.params.code))) { notFound(res); return; }
@@ -341,13 +402,18 @@ function mountSignInPage(app, express) {
         if (p.tries > 5) { signInPage = null; touch(); notFound(res); return; }
         const b = req.body || {};
         try {
-            await signInPassword(b.handle, b.password);
-            // kept in CardSpace with the rest (Yukimi, Nov 20 2026), so the radio can sign in again by itself
-            try { saveCard(String(b.handle).trim(), String(b.password)); } catch (err) { console.warn(`[xmRadio] CardSpace card not saved: ${err.message}`); }
-            const st = load();
-            delete st.refusedCard;
-            delete st.manualSignOut;
-            save();
+            if (p.slot === 1) {
+                await signInPassword(b.handle, b.password);
+                // kept in CardSpace with the rest (Yukimi, Nov 20 2026), so the radio can sign in again by itself
+                try { saveCard(String(b.handle).trim(), String(b.password)); } catch (err) { console.warn(`[xmRadio] CardSpace card not saved: ${err.message}`); }
+                const st = load();
+                delete st.refusedCard;
+                delete st.manualSignOut;
+                save();
+            } else {
+                // a recorder slot: its own account, never the CardSpace card (that is the radio's)
+                await slotSet().signInPassword(p.slot, b.handle, b.password);
+            }
             p.done = true;
             touch();
             res.set('Cache-Control', 'no-store').json({ ok: true });
@@ -708,7 +774,9 @@ async function liveUpdateRange(channelId, fromMs, toMs) {
     const seen = new Set();
     const items = raw.items.map((x) => ({
         at: Date.parse(x.timestamp) || 0, dur: Math.round((Number(x.duration) || 0) / 1000), a: String(x.artistName || ''), t: String(x.name || ''),
-        ad: !!x.isInterstitial, ik: pickArtKey(x.images) || pickArtKey(x.artistImages), guid: String(x.guid || x.id || '')
+        // liveUpdate marks an hour-long DJ mix as an interstitial too (seen Nov 26 2026: Trancegiving sets, 3600 s): ten
+        // minutes and longer is programme, not an ad, so it keeps its artist and title
+        ad: !!x.isInterstitial && !(Number(x.duration) >= 600000), ik: pickArtKey(x.images) || pickArtKey(x.artistImages), guid: String(x.guid || x.id || '')
     })).filter((x) => x.at && x.at <= end && !seen.has(x.at) && seen.add(x.at)).sort((a, b) => a.at - b.at);
     const seenEp = new Set();
     const episodes = raw.episodes.map((x) => ({
@@ -953,16 +1021,20 @@ function setPresets(next) {
 const QUALITIES = ['hi', 'std', 'low', 'eco24', 'eco16'];
 
 /** tuneSource with the web player's arguments: { json, url } (the stream's master playlist on SiriusXM's server). */
-async function tuneUpstream(channelId) {
+async function tuneUpstream(channelId, { slot } = {}) {
     const id = String(channelId || '');
+    const n = slot == null ? 1 : Number(slot);
     if (!/^[0-9a-f-]{20,64}$/i.test(id)) throw fail('No such channel.', 'XMRADIO_CHANNEL');
-    const tok = await authToken();
+    // slot 1 is the radio's own account (the singletons); slots 2..N use their own session
+    const tok = n === 1 ? await authToken() : await slotSet().token(n);
     if (!tok) throw fail('Sign in to SiriusXM to listen.', 'XMRADIO_SIGNED_OUT');
     const body = { id, type: 'channel-linear', manifestVariant: 'WEB', trackResumeSupported: false, hlsVersion: 'V3', mtcVersion: 'V2' };
     const r = await api('POST', '/playback/play/v1/tuneSource', { bearer: tok, body });
-    if (r.status === 401) { auth = null; throw fail('The SiriusXM sign-in ended. Sign in again.', 'XMRADIO_SIGNED_OUT'); }
+    if (r.status === 401) { slotSet().dropToken(n); throw fail('The SiriusXM sign-in ended. Sign in again.', 'XMRADIO_SIGNED_OUT'); }
     if (r.status === 403 && r.json && /not-entitled/.test(String(r.json.code || ''))) {
-        noteNotInPlan(id);
+        // the lineup's "not in plan" mark is the radio's account only; every slot also learns its own refusal
+        if (n === 1) noteNotInPlan(id);
+        slotSet().learnRefusal(n, id);
         throw fail('This channel is not in your SiriusXM plan.', 'XMRADIO_NOT_SUBSCRIBED');
     }
     if (!r.json) throw fail('SiriusXM did not tune the channel.', 'XMRADIO_TUNE', { status: r.status, detail: r.text.slice(0, 400) });
@@ -1213,10 +1285,11 @@ async function mirrorFile(sid, rest, query, res) {
 }
 
 /** A key line's 16 bytes (the pump's decryption): SiriusXM's key service with the account's token. */
-async function keyBytes(uri) {
+async function keyBytes(uri, { slot } = {}) {
     const m = /\/playback\/key\/v1\/([0-9a-f-]{8,64})/i.exec(String(uri || ''));
     if (!m) throw fail('Not a SiriusXM key.', 'XMRADIO_KEY');
-    const tok = await authToken();
+    const n = slot == null ? 1 : Number(slot);
+    const tok = n === 1 ? await authToken() : await slotSet().token(n);
     if (!tok) throw fail('Sign in to SiriusXM to listen.', 'XMRADIO_SIGNED_OUT');
     const r = await api('GET', `/playback/key/v1/${m[1]}`, { bearer: tok });
     const v = r.json && (r.json.key || r.json.keyValue);
@@ -1463,6 +1536,17 @@ module.exports = {
     useExternalAuth,
     setAuth,
     accessToken,
+    accessTokens,
+    // the recorder slots (modules/xmRadioSlots.js)
+    slots: () => slotSet().list(),
+    slotSignIn: (slot, handle, password) => slotSet().signInPassword(slot, handle, password),
+    slotSignOut: (slot) => slotSet().signOut(slot),
+    slotCount: () => slotSet().count(),
+    setSlotCount: (n) => slotSet().setCount(n),
+    slotCanPlay: (slot, channelId) => slotSet().slotCanPlay(slot, channelId),
+    slotReady: (slot) => slotSet().ready(Number(slot)),
+    heldAuth: () => slotSet().held(),
+    onSlots,
     watch,
     onLook,
     touch,
@@ -1470,5 +1554,5 @@ module.exports = {
     setPhoneWatch,
     accountFilePath: () => accountFile(),
     imageUrlFor: (key, size) => imageUrl(key, size, 'jpeg', size),
-    _test: { classify, rewritePlaylist, findStreamUrl, jwtExp, maskHandle, upstream, streams, imageUrl, artPath, onlyVariant, showForSong, state: () => load() }
+    _test: { classify, rewritePlaylist, findStreamUrl, jwtExp, maskHandle, upstream, streams, imageUrl, artPath, onlyVariant, showForSong, state: () => load(), slotSet }
 };

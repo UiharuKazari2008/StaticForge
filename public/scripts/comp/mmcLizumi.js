@@ -128,6 +128,7 @@
         if (!items) return;
         if (items.deck) state.deck = items.deck;
         if (items.account) state.account = items.account;
+        if (items.slots && items.slots.max) state.slots = items.slots;
     }
 
     /** Lizumi's own feed (xmradio_mmc, statusHub): only while the console is open; never the radio app's xmradio feed. */
@@ -176,7 +177,8 @@
             const r = recs[i] || null;
             rows.push({
                 key: `slot:${i + 1}`,
-                icon: `${VI}/volume-${r ? 'high' : 'mute'}-16.png`,
+                // standby is idle, not a fault: the quiet speaker, never the muted one's red cross
+                icon: `${VI}/volume-${r ? 'high' : 'low'}-16.png`,
                 data: r
                     ? { name: `Lizumi-Recorder-${i + 1}`, state: 'Recording', channel: chName(r.channelId), cut: cutText(r.cut), kind: r.kind === 'song' ? 'Song' : 'Channel', running: span((now - (r.since || now)) / 1000), runningS: now - (r.since || now), back: r.back ? span(r.back) : '0:00', buffer: '-', segments: '-' }
                     : { name: `Lizumi-Recorder-${i + 1}`, state: 'Standby', channel: '', cut: '', kind: '', running: '', runningS: 0, back: '', buffer: '-', segments: '-' }
@@ -235,7 +237,7 @@
         }));
         return {
             html: c.listView([
-                { t: 'Type', w: 80, key: 'kind', text: (x) => x.kind },
+                { t: 'Type', w: 110, key: 'kind', text: (x) => x.kind },
                 { t: 'Channel', w: 130, key: 'channel', text: (x) => x.channel },
                 { t: 'Start', w: 50, key: 'start', text: (x) => x.start },
                 { t: 'Minutes', w: 56, key: 'minutes', text: (x) => x.minutes, value: (x) => Number(x.minutes) || 0 },
@@ -269,18 +271,27 @@
     function accountsPage(c) {
         const a = state.account || {};
         const max = (state.slots && state.slots.max) || 4;
+        // one SiriusXM login per virtual radio (xmradio slots, #1252 S2); before the server sent the list, slot 1 only
+        const list = (state.slots && Array.isArray(state.slots.list)) ? state.slots.list : null;
         const rows = [];
         for (let i = 0; i < max; i++) {
+            const s = list ? list.find((x) => x.slot === i + 1) : null;
             const own = i === 0;
-            rows.push({
-                key: `acc:${i + 1}`, icon: `${VI}/account-manager-16.png`,
-                data: {
+            const data = s
+                ? {
+                    name: s.name || `Lizumi-Recorder-${i + 1}`, handle: s.handle || '',
+                    state: s.signedIn ? 'Signed in' : s.handle ? 'Signed out' : 'Not set up',
+                    since: s.since ? clock(s.since) : '', token: s.tokenExp ? clock(s.tokenExp) : '-',
+                    entitlement: s.entitlementHash ? `${s.entitlementHash}${s.refused ? ` (${s.refused} refused)` : ''}` : '-',
+                    error: s.lastError ? `${s.lastErrorAt ? `${clock(s.lastErrorAt)} ` : ''}${s.lastError}` : ''
+                }
+                : {
                     name: `Lizumi-Recorder-${i + 1}`,
                     handle: own ? (a.handle || '') : '',
                     state: own ? (a.signedIn ? 'Signed in' : a.expired ? 'Expired' : 'Signed out') : 'Not set up',
-                    since: own && a.since ? clock(a.since) : '', token: '-', entitlement: '-'
-                }
-            });
+                    since: own && a.since ? clock(a.since) : '', token: '-', entitlement: '-', error: ''
+                };
+            rows.push({ key: `acc:${i + 1}`, icon: `${VI}/account-manager-16.png`, data });
         }
         return {
             html: c.listView([
@@ -289,7 +300,8 @@
                 { t: 'State', w: 90, key: 'state', text: (x) => x.state },
                 { t: 'Signed in since', w: 120, key: 'since', text: (x) => x.since },
                 { t: 'Token expiry', w: 90, key: 'token', text: (x) => x.token },
-                { t: 'Entitlement', w: 90, key: 'entitlement', text: (x) => x.entitlement }
+                { t: 'Entitlement', w: 120, key: 'entitlement', text: (x) => x.entitlement },
+                { t: 'Last sign-in failure', w: 220, key: 'error', text: (x) => x.error }
             ], rows, { sortId: 'lz-accounts', empty: EMPTY }),
             list: true
         };
@@ -335,6 +347,9 @@
             icon32: APP,
             taskbarIcon: APP,
             treeWidth: 170,
+            // the pool's columns (radio, state, channel, on air, kind, running, reach-back, buffer, segments) fit without scrolling
+            width: 1120,
+            height: 640,
             expanded: ['root'],
             about: { version: '1.0', lines: ['Manages the XM Radio recorders, queue, schedules and accounts.'] },
             nodes: () => [{ id: 'root', name: TITLE, icon: APP, children: NODES.map((x) => ({ id: x.id, name: x.name, icon: x.icon })) }],

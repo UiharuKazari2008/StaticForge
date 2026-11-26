@@ -205,6 +205,7 @@
     "test:vista-logon-branding": "node scripts/test-vista-logon-branding.js",
     "test:vfs-descendants": "node scripts/test-vfs-descendants.js",
     "test:xmradio-meta": "node scripts/test-xmradio-meta.js",
+    "test:xmradio-slots": "node scripts/test-xmradio-slots.js",
     "test:runtime-data-paths": "node scripts/test-runtime-data-paths.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
     "flow-map": "node scripts/tools/flow-map.js",
