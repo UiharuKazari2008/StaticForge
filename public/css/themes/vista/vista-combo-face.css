@@ -1,0 +1,51 @@
+/* The closed face of a <select> in a hosted Sidebar gadget page (Yozora #1222; public/scripts/comp/vistaGadgetHost.js
+   links this into every gadget frame). Vista's drop-down list (COMBOBOX READONLY, 9-sliced 3 px, the black glyph
+   4 px from the right edge), the same art and rules as the combo-box block of vista-glass-controls.css, minus the
+   desktop-mode scoping that a frame's document does not have. The list itself is never the browser's: dropdown.js
+   vistaDropListsBind takes the press and drops Vista's ComboLBox in the desktop document. The gadget's own width,
+   font and size are kept. Kept small on purpose: every gadget frame loads it. */
+html :is(select:not([multiple]):not([size]), select[size="1"]:not([multiple])) {
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-normal.png") 1.25x, url("/static_images/hidpi/150/vista-controls/combo-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-normal.png") 1.75x, url("/static_images/hidpi/200/vista-controls/combo-normal.png") 2x);
+    --vista-combo-fill: image-set(url("/static_images/vista-controls/combo-normal-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-normal-fill.png") 1x, url("/static_images/hidpi/150/vista-controls/combo-normal-fill.png") 2x, url("/static_images/hidpi/175/vista-controls/combo-normal-fill.png") 2x, url("/static_images/hidpi/200/vista-controls/combo-normal-fill.png") 2x);
+    --vista-combo-glyph: image-set(url("/static_images/vista-controls/combo-glyph-normal.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-normal.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-normal.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-normal.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-normal.png") 2x);
+    --vista-combo-text: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--vista-combo-glyph) right 4px center / 10px 19px no-repeat border-box, var(--vista-combo-text) 3px 3px / calc(100% - 23px) calc(100% - 6px) no-repeat border-box, var(--vista-combo-fill) 3px 3px / calc(100% - 6px) calc(100% - 6px) no-repeat border-box;
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-image: var(--vista-combo-face) 3 / 3px stretch;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    padding-right: 18px;
+    text-shadow: none;
+    transition: none;
+    cursor: default;
+}
+html :is(select:not([multiple]):not([size]), select[size="1"]:not([multiple])):focus:not(:disabled) {
+    --vista-combo-text: linear-gradient(#3399ff, #3399ff);
+    color: #fff;
+    outline: none;
+}
+html :is(select:not([multiple]):not([size]), select[size="1"]:not([multiple])):focus:not(:disabled) option {
+    color: #000;
+}
+html :is(select:not([multiple]):not([size]), select[size="1"]:not([multiple])):hover:not(:disabled) {
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-hot.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-hot.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-hot.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-hot.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-hot.png") 2x);
+    --vista-combo-fill: image-set(url("/static_images/vista-controls/combo-hot-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-hot-fill.png") 1x, url("/static_images/hidpi/150/vista-controls/combo-hot-fill.png") 2x, url("/static_images/hidpi/175/vista-controls/combo-hot-fill.png") 2x, url("/static_images/hidpi/200/vista-controls/combo-hot-fill.png") 2x);
+}
+/* while the list is dropped (dropdown.js sets .is-open on the select) */
+html :is(select:not([multiple]):not([size]), select[size="1"]:not([multiple])).is-open:not(:disabled) {
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-pressed.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-pressed.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-pressed.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-pressed.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-pressed.png") 2x);
+    --vista-combo-fill: image-set(url("/static_images/vista-controls/combo-pressed-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-pressed-fill.png") 1x, url("/static_images/hidpi/150/vista-controls/combo-pressed-fill.png") 2x, url("/static_images/hidpi/175/vista-controls/combo-pressed-fill.png") 2x, url("/static_images/hidpi/200/vista-controls/combo-pressed-fill.png") 2x);
+    --vista-combo-text: none;
+    color: inherit;
+}
+html :is(select:not([multiple]):not([size]), select[size="1"]:not([multiple])):disabled {
+    --vista-combo-face: image-set(url("/static_images/vista-controls/combo-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-disabled.png") 1.2727x, url("/static_images/hidpi/150/vista-controls/combo-disabled.png") 1.5455x, url("/static_images/hidpi/175/vista-controls/combo-disabled.png") 1.7273x, url("/static_images/hidpi/200/vista-controls/combo-disabled.png") 2x);
+    --vista-combo-fill: image-set(url("/static_images/vista-controls/combo-disabled-fill.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-disabled-fill.png") 1x, url("/static_images/hidpi/150/vista-controls/combo-disabled-fill.png") 2x, url("/static_images/hidpi/175/vista-controls/combo-disabled-fill.png") 2x, url("/static_images/hidpi/200/vista-controls/combo-disabled-fill.png") 2x);
+    --vista-combo-glyph: image-set(url("/static_images/vista-controls/combo-glyph-disabled.png") 1x, url("/static_images/hidpi/125/vista-controls/combo-glyph-disabled.png") 1.3x, url("/static_images/hidpi/150/vista-controls/combo-glyph-disabled.png") 1.5x, url("/static_images/hidpi/175/vista-controls/combo-glyph-disabled.png") 1.8x, url("/static_images/hidpi/200/vista-controls/combo-glyph-disabled.png") 2x);
+    color: #6d6d6d;
+    opacity: 1;
+}

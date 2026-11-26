@@ -447,22 +447,50 @@ function updateSelectedOption(menu, selectedIndex) {
  * from it (wmShell.dropdown). The <select> keeps the value and its events. Keys as Win32's CBS_DROPDOWNLIST: F4,
  * Alt+Down / Alt+Up and Space drop the list; Up / Down / Left / Right / Home / End / Page keys step the value
  * without it. A press already taken (a vdt dialog's own wiring, an app's handler) is left alone.
+ * The same lists serve a same-origin document inside the desktop (a hosted Sidebar gadget's iframe, Yozora #1222):
+ * vistaDropListsBind(doc) puts the press and key handlers on that document, the list is drawn in this one under the
+ * select (hostRect maps the select through each frame's position and scale), and the events fire in the frame's realm.
  */
 (function vistaDropLists() {
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     /**
+     * An element's rect in this document's viewport. An element of a same-origin iframe's document is mapped out
+     * through each frame: the frame's rect, its border, and its scale (rect width / layout width, so a CSS zoom or
+     * transform on the frame or an ancestor is followed). An element of this document is its own rect.
+     */
+    function hostRect(el) {
+        let r = el.getBoundingClientRect();
+        let win = el.ownerDocument.defaultView;
+        let frame = null;
+        while (win && win.document !== document && (frame = win.frameElement)) {
+            const fr = frame.getBoundingClientRect();
+            const s = frame.offsetWidth > 0 ? fr.width / frame.offsetWidth : 1;
+            const left = fr.left + frame.clientLeft * s + r.left * s;
+            const top = fr.top + frame.clientTop * s + r.top * s;
+            r = { left, top, right: left + r.width * s, bottom: top + r.height * s, width: r.width * s, height: r.height * s };
+            win = frame.ownerDocument.defaultView;
+        }
+        return r;
+    }
+
+    /**
      * A combo box's dropped list (the ComboLBox): Vista's list box under the control, over everything. opts:
      * { items [{ value, text }], value, room (px the template allows, else comctl32 v6's 30 rows), pick(value),
-     * focus (the element that keeps the focus and hears the keys) }. A second open of the same box closes it.
+     * focus (the element that keeps the focus and hears the keys), rect (optional () => this document's viewport
+     * rect to drop under, default the box's own, mapped out of its iframe when it lives in one) }.
+     * A second open of the same box closes it.
      */
     function vistaDropList(box, opts) {
         const old = document.querySelector('.vdt-combo-pop');
         if (old) { const was = old._box; old._close(); if (was === box) return; }
         const items = opts.items || [];
         const focusEl = opts.focus;
-        const r = box.getBoundingClientRect();
+        const r = opts.rect ? opts.rect() : hostRect(box);
         const pop = document.createElement('div');
+        // an element of an iframe's document: its presses, resizes and unload close the list too
+        const fwin = focusEl.ownerDocument.defaultView;
+        const foreign = focusEl.ownerDocument !== document && fwin;
         const cs = getComputedStyle(focusEl);
         // MS Shell Dlg 8 (Tahoma, 11 px) rows are 13 px, Segoe UI 9 pt rows 15 (the VM's devmgr Property list: 13)
         pop.className = `vdt-combo-pop vdt-listbox${parseFloat(cs.fontSize) <= 11 ? ' is-small' : ''}`;
@@ -486,6 +514,12 @@ function updateSelectedOption(menu, selectedIndex) {
             pop.remove();
             document.removeEventListener('mousedown', outside, true);
             document.removeEventListener('touchstart', outside, true);
+            if (foreign) {
+                fwin.document.removeEventListener('mousedown', outside, true);
+                fwin.document.removeEventListener('touchstart', outside, true);
+                fwin.removeEventListener('resize', close);
+                fwin.removeEventListener('pagehide', close);
+            }
             focusEl.removeEventListener('keydown', keys, true);
             focusEl.removeEventListener('blur', blurred);
             window.removeEventListener('resize', close);
@@ -493,7 +527,7 @@ function updateSelectedOption(menu, selectedIndex) {
         };
         // a press on the box itself is the box's own (it closes the list through its toggle)
         const outside = (ev) => { if (!pop.contains(ev.target) && !box.contains(ev.target)) close(); };
-        const blurred = () => setTimeout(() => { if (pop.isConnected && document.activeElement !== focusEl) close(); }, 0);
+        const blurred = () => setTimeout(() => { if (pop.isConnected && focusEl.ownerDocument.activeElement !== focusEl) close(); }, 0);
         const keys = (ev) => {
             const list = Array.from(pop.querySelectorAll('.vdt-lb-row[data-value]'));
             let i = list.findIndex((x) => x.classList.contains('is-selected'));
@@ -523,22 +557,30 @@ function updateSelectedOption(menu, selectedIndex) {
         focusEl.addEventListener('keydown', keys, true);
         focusEl.addEventListener('blur', blurred);
         window.addEventListener('resize', close);
+        if (foreign) {
+            fwin.document.addEventListener('mousedown', outside, true);
+            fwin.document.addEventListener('touchstart', outside, true);
+            fwin.addEventListener('resize', close);
+            fwin.addEventListener('pagehide', close);
+        }
     }
 
     const choices = (select) => Array.from(select.options).filter((o) => !o.hidden);
     const setValue = (select, v) => {
         if (select.value === v) return;
         select.value = v;
-        select.dispatchEvent(new Event('input', { bubbles: true }));
-        select.dispatchEvent(new Event('change', { bubbles: true }));
+        // the select's own realm: a gadget frame's handlers (and attachEvent wrappers) see their window's Event
+        const E = (select.ownerDocument.defaultView || window).Event;
+        select.dispatchEvent(new E('input', { bubbles: true }));
+        select.dispatchEvent(new E('change', { bubbles: true }));
     };
-    const phoneShell = () => document.documentElement.classList.contains('ui-mobile') && window.wmShell && typeof window.wmShell.dropdown === 'function' && document.getElementById('wmShell');
+    const phoneShell = (select) => select.ownerDocument === document && document.documentElement.classList.contains('ui-mobile') && window.wmShell && typeof window.wmShell.dropdown === 'function' && document.getElementById('wmShell');
 
     /** Drop a <select>'s list: Vista's ComboLBox, or WM's drop-down on the phone shell. pick(v) after the value is set. */
     function vistaSelectDrop(select, pick) {
         if (!select || select.disabled) return;
         const done = (v) => { setValue(select, v); if (typeof pick === 'function') pick(v); };
-        if (phoneShell()) {
+        if (phoneShell(select)) {
             window.wmShell.dropdown(select, choices(select).map((o) => ({ label: o.text, radio: o.value === select.value, disabled: o.disabled, action: () => done(o.value) })));
             return;
         }
@@ -567,27 +609,57 @@ function updateSelectedOption(menu, selectedIndex) {
     window.vistaSelectStep = vistaSelectStep;
 
     const isDropList = (t) => t && t.matches && t.matches('select.vdt-select:not([multiple])');
-    // the press, the tap's touchend and the click are taken, so the browser's picker never opens
-    const takePress = (ev) => {
-        if (ev.defaultPrevented || !isDropList(ev.target)) return;
-        ev.preventDefault();
-        if (ev.type === 'click' || ev.target.disabled || (ev.type === 'mousedown' && ev.button !== 0)) return;
-        ev.target.focus();
-        vistaSelectDrop(ev.target);
+    // an iframe document's drop-down lists: every single-select (a list box, multiple or size > 1, keeps its own)
+    const isFrameDropList = (t) => t && t.matches && t.tagName === 'SELECT' && !t.multiple && !(t.size > 1);
+
+    /** Handlers for one document: the press, the tap's touchend and the click are taken, so the browser's picker never opens. */
+    function bindDocument(doc, isList) {
+        const takePress = (ev) => {
+            if (ev.defaultPrevented || !isList(ev.target)) return;
+            ev.preventDefault();
+            if (ev.type === 'click' || ev.target.disabled || (ev.type === 'mousedown' && ev.button !== 0)) return;
+            ev.target.focus();
+            vistaSelectDrop(ev.target);
+        };
+        const onKey = (ev) => {
+            const sel = ev.target;
+            if (ev.defaultPrevented || !isList(sel) || sel.classList.contains('is-open')) return;
+            // Enter belongs to the window (its default button), never the browser's picker
+            if (ev.key === 'Enter') { ev.preventDefault(); return; }
+            if (ev.key === 'F4' || ev.key === ' ' || (ev.altKey && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'))) { ev.preventDefault(); vistaSelectDrop(sel); return; }
+            if (/^(Arrow(Up|Down|Left|Right)|Page(Up|Down)|Home|End)$/.test(ev.key) && !ev.altKey) { ev.preventDefault(); vistaSelectStep(sel, ev.key); }
+        };
+        doc.addEventListener('mousedown', takePress);
+        doc.addEventListener('touchend', takePress, { passive: false });
+        doc.addEventListener('click', takePress);
+        doc.addEventListener('keydown', onKey);
+        return () => {
+            doc.removeEventListener('mousedown', takePress);
+            doc.removeEventListener('touchend', takePress);
+            doc.removeEventListener('click', takePress);
+            doc.removeEventListener('keydown', onKey);
+        };
+    }
+
+    /**
+     * Drop-down lists for another same-origin document (a hosted gadget's iframe, vistaGadgetHost.js): delegated, so
+     * selects the page adds later work too. Returns the unbind function (also run when that page unloads); it closes
+     * a list dropped from that document.
+     */
+    // app-scope: allow page lifetime (the kit's drop-down lists; dropdown.js is loaded once from app.html, like vistaDropList above)
+    window.vistaDropListsBind = function vistaDropListsBind(doc) {
+        const win = doc.defaultView;
+        const off = bindDocument(doc, isFrameDropList);
+        const unbind = () => {
+            off();
+            if (win) win.removeEventListener('pagehide', unbind);
+            const pop = document.querySelector('.vdt-combo-pop');
+            if (pop && pop._box && pop._box.ownerDocument === doc) pop._close();
+        };
+        if (win) win.addEventListener('pagehide', unbind);
+        return unbind;
     };
+
     // app-scope: allow page lifetime (the shell's drop-down lists: dropdown.js is loaded once from app.html)
-    document.addEventListener('mousedown', takePress);
-    // app-scope: allow page lifetime (as above)
-    document.addEventListener('touchend', takePress, { passive: false });
-    // app-scope: allow page lifetime (as above)
-    document.addEventListener('click', takePress);
-    // app-scope: allow page lifetime (as above)
-    document.addEventListener('keydown', (ev) => {
-        const sel = ev.target;
-        if (ev.defaultPrevented || !isDropList(sel) || sel.classList.contains('is-open')) return;
-        // Enter belongs to the window (its default button), never the browser's picker
-        if (ev.key === 'Enter') { ev.preventDefault(); return; }
-        if (ev.key === 'F4' || ev.key === ' ' || (ev.altKey && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'))) { ev.preventDefault(); vistaSelectDrop(sel); return; }
-        if (/^(Arrow(Up|Down|Left|Right)|Page(Up|Down)|Home|End)$/.test(ev.key) && !ev.altKey) { ev.preventDefault(); vistaSelectStep(sel, ev.key); }
-    });
+    bindDocument(document, isDropList);
 })();

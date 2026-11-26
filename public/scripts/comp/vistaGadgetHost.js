@@ -793,6 +793,17 @@ const vghAttach = function (win) {
     if (!hit) return null;
     const { ctx } = hit;
     vghPatchWindow(ctx, win);
+    // every single <select> of the page is Vista's drop-down list (see window.vistaGadgetHost.dropLists)
+    if (hit.dropOff) hit.dropOff();
+    const doc = win.document;
+    if (!doc.getElementById('vgh-combo-face')) {
+        const link = doc.createElement('link');
+        link.id = 'vgh-combo-face';
+        link.rel = 'stylesheet';
+        link.href = '/css/themes/vista/vista-combo-face.css';
+        (doc.head || doc.documentElement).appendChild(link);
+    }
+    hit.dropOff = typeof window.vistaDropListsBind === 'function' ? window.vistaDropListsBind(doc) : null;
     return vghSystem(ctx);
 };
 
@@ -962,6 +973,7 @@ const vghFlyoutOpen = function (ctx) {
         inst: ctx.inst,
         vgh: ctx,
         onClose: () => {
+            window.vistaGadgetHost.dropLists.off(ctx.flyoutFrame);
             ctx.flyoutFrame = null;
             vghCall(sys.Gadget.Flyout.onHide, sys.Gadget.Flyout);
         }
@@ -1155,6 +1167,9 @@ const vghDestroy = function (inst) {
     clearTimeout(ctx.fitTimer);
     if (ctx.resizeObserver) ctx.resizeObserver.disconnect();
     if (vsb.flyout && vsb.flyout.vgh === ctx) vsbCloseFlyout();
+    window.vistaGadgetHost.dropLists.off(ctx.frame);
+    window.vistaGadgetHost.dropLists.off(ctx.settingsFrame);
+    window.vistaGadgetHost.dropLists.off(ctx.flyoutFrame);
     try {
         ctx.frame.src = 'about:blank';
     } catch (_e) { /* removed with the gadget */ }
@@ -1218,6 +1233,7 @@ const vghForm = {
             vghForm.cancel(dialog, set, inst);
             return null;
         }
+        window.vistaGadgetHost.dropLists.off(ctx.settingsFrame);
         ctx.settingsFrame = null;
         ctx.settingsClosed = 'commit';
         return { store: { ...vghStore(inst) } };
@@ -1227,6 +1243,7 @@ const vghForm = {
         if (!ctx) return;
         const sw = ctx.settingsFrame && ctx.settingsFrame.contentWindow;
         if (sw && sw.System) vghCall(sw.System.Gadget.onSettingsClosing, sw, vghSettingsEvent('cancel'));
+        window.vistaGadgetHost.dropLists.off(ctx.settingsFrame);
         ctx.settingsFrame = null;
         if (ctx.snapshot) {
             inst.g.settings.store = JSON.parse(ctx.snapshot);
@@ -1304,6 +1321,22 @@ window.vistaGadgetHost = { netlib: vghNetLib, newPicture: vghNewPicture, files: 
      * vistaSidebar.js vsbClockSyncAll and once its page has loaded. Eleven imported clocks stop their timers
      * there and start them again when it is true (#998).
      */
+    /**
+     * Every single <select> of a gadget page (main, flyout, Options) is Vista's drop-down list, never the browser's picker
+     * (no-native-browser-ui, Yozora #1222): the closed face from a small kit stylesheet, the press and keys taken by
+     * dropdown.js on this page's document (delegated, so selects the gadget adds later work), the list drawn on the desktop.
+     * The unbind lives on the frame's VGH_FRAMES record; window.vistaGadgetHost.dropLists.off(frame) lets go (destroy, Options
+     * closed, flyout hidden; dropdown.js also lets go when the page unloads).
+     */
+    dropLists: {
+        off(frame) {
+            const hit = frame && VGH_FRAMES.get(frame);
+            if (!hit || !hit.dropOff) return;
+            const off = hit.dropOff;
+            hit.dropOff = null;
+            off();
+        }
+    },
     visibility(inst) {
         const ctx = vghCtx(inst);
         if (!ctx || !ctx.system || !ctx.frame) return;
