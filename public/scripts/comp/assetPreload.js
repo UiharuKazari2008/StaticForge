@@ -120,8 +120,14 @@ var assetPreload = (function () {
     var SIDEBAR_GADGET_URLS = [
         'clock/trad.png', 'clock/trad_h.png', 'clock/trad_m.png', 'clock/trad_s.png', 'clock/trad_dot.png',
         'clock/trad_highlights.png', 'clock/spacer_highlights.png',
+        // every sky (88 KB): the forecast picks BLUE, GRAY or BLACK (night) only after this step (vistaSidebar.js sky);
+        // its condition icons (numbered and undocked_*, 1.2 MB) follow the forecast and are left to it
         'weather/BLUE-base.png', 'weather/BLUE-highlight-01.png', 'weather/BLUE-highlight-02.png',
         'weather/BLUEDOCKED-base.png', 'weather/BLUEDOCKED-highlight-01.png', 'weather/BLUEDOCKED-highlight-02.png',
+        'weather/GRAY-base.png', 'weather/GRAY-highlight-01.png', 'weather/GRAY-highlight-02.png',
+        'weather/GRAYDOCKED-base.png', 'weather/GRAYDOCKED-highlight-01.png', 'weather/GRAYDOCKED-highlight-02.png',
+        'weather/BLACK-base.png', 'weather/BLACK-highlight-01.png', 'weather/BLACK-highlight-02.png',
+        'weather/BLACKDOCKED-base.png', 'weather/BLACKDOCKED-highlight-01.png', 'weather/BLACKDOCKED-highlight-02.png',
         'weather/info.png', 'weather/docked-loading.png', 'weather/undocked-loading.png',
         'cpu/back.png', 'cpu/back_lrg.png', 'cpu/dial.png', 'cpu/dial_lrg.png', 'cpu/dial_sml.png',
         'cpu/dial_lrg_sml.png', 'cpu/dialdot.png', 'cpu/dialdot_lrg.png', 'cpu/glass.png', 'cpu/glass_lrg.png',
