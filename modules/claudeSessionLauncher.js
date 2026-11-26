@@ -451,9 +451,12 @@ async function paneFor(id) {
         if (r.code !== 0) continue;
         const hit = r.stdout.trim().split('\n').map((l) => l.split(' ')).find(([, pid]) => chain.has(Number(pid)));
         if (hit) {
-            // the pane holding on the wrapper's sleep (or a bare shell) has no claude in it: nothing would read the keys
+            // the pane back on the wrapper's `sleep 3600` has no claude in it: nothing would read the keys. A pane that reads
+            // `bash` is not empty - Fleet starts sessions as `bash -c "claude ...; sleep 3600"`, and a non-interactive bash runs
+            // claude in its own process group, so tmux names the pane bash while claude (checked alive above) runs in it
+            // (Nov 26 2026: every Fleet session read as not running and the Supervisor's continue notes never arrived)
             const cur = String((await runner('tmux', [...sock, 'display-message', '-p', '-t', hit[0], '#{pane_current_command}'])).stdout || '').trim();
-            if (HOLDERS.has(cur)) throw notRunning();
+            if (cur === 'sleep') throw notRunning();
             return { sock, pane: hit[0], live };
         }
     }

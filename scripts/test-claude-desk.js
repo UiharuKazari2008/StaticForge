@@ -77,6 +77,7 @@ let panes = []; // [{ pane, pid }]
 let paneText = 'Remote Control is active. Continue at https://claude.ai/code/session_01TESTabcdefgh';
 let sessionsUp = new Set();
 let onKeys = null; // a test's view of keys sent to a pane (a menu that goes away on Enter)
+let paneCmd = 'bash'; // what tmux names the pane's foreground: a bash -c wrapper reads bash while claude runs in it
 launcher._setRunner(async (cmd, args) => {
     calls.push([cmd, ...args]);
     if (cmd === 'systemd-run') return { code: 0, stdout: '', stderr: '' };
@@ -84,7 +85,7 @@ launcher._setRunner(async (cmd, args) => {
     const a = args[0] === '-L' ? args.slice(2) : args;
     if (a[0] === 'show') return { code: calls.some((c) => c[0] === 'systemd-run') ? 0 : 1, stdout: 'exit-empty off', stderr: '' };
     if (a[0] === 'send-keys' && onKeys) onKeys(a);
-    if (a[0] === 'display-message') return { code: 0, stdout: 'rc-11111111\n', stderr: '' };
+    if (a[0] === 'display-message') return { code: 0, stdout: a.includes('#{pane_current_command}') ? `${paneCmd}\n` : 'rc-11111111\n', stderr: '' };
     if (a[0] === 'set' || a[0] === 'start-server' || a[0] === 'send-keys' || a[0] === 'set-buffer' || a[0] === 'paste-buffer' || a[0] === 'list-sessions') return { code: 0, stdout: '', stderr: '' };
     if (a[0] === 'has-session') return { code: sessionsUp.has(a[2].replace(/^=/, '')) ? 0 : 1, stdout: '', stderr: '' };
     if (a[0] === 'new-session') { sessionsUp.add(a[a.indexOf('-s') + 1]); return { code: 0, stdout: '', stderr: '' }; }
@@ -300,6 +301,12 @@ async function main() {
         assert.strictEqual(at.file, 'tmux');
         assert.deepStrictEqual(at.args.slice(-3), ['attach-session', '-t', '=rc-11111111'], at.args.join(' '));
     }
+    // the wrapper pane reads `bash` while claude runs in it: still steerable; back on the wrapper's sleep: not running
+    paneCmd = 'bash';
+    assert.strictEqual((await launcher.steer(SID, 'wrapper pane')).sent, true, 'a bash -c wrapper pane is not an empty shell');
+    paneCmd = 'sleep';
+    await assert.rejects(() => launcher.steer(SID, 'nobody home'), (e) => e.code === 'NOT_RUNNING');
+    paneCmd = 'bash';
     await assert.rejects(() => launcher.steer(SID, '   '), /Nothing to send/);
     await assert.rejects(() => launcher.steer('33333333-2222-4333-8444-555555555555', 'hi'), /not running/);
     const live = await launcher.resume(gr, SID, {});
