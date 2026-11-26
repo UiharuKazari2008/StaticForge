@@ -24,7 +24,7 @@
         'currentAddress', '_currentAddress',
         '_searchPageMode', 'currentSearchResults', '_searchResultIndex', 'lastOnlineSectionCount', 'lastOnlineTagOnlyCount',
         '_dsapState', '_dsapActive',
-        '_grimoireRemoteSessionId', '_grimoireRemoteViewQuery', '_grimoireRemoteTitle', '_grimoireDialogId', '_grimoireLocalAlchemy',
+        '_grimoireRemoteSessionId', '_grimoireRemoteViewQuery', '_grimoireRemoteViewUrl', '_grimoireReloadOnShow', '_grimoireRemoteTitle', '_grimoireDialogId', '_grimoireLocalAlchemy',
         '_alchemyScroll', '_alchemyHistoryDir', '_alchemyHistoryAt',
         '_grimoireIeFeeds', '_grimoireIeZoom', '_grimoireIeZoomSent',
         '_recentItemsKey', '_grimoireNavStartedAt', '_grimoireLastFailedNavUrl',
@@ -140,11 +140,43 @@
             return Number.isFinite(next) ? next - now + 50 : null;
         }
 
-        /** Tell a shell's Alchemy viewer whether its tab shows (services/grimoire-browser viewer.html 'visibility'). */
+        /**
+         * Tell a shell's own Alchemy viewer whether its tab shows (services/grimoire-browser viewer.html 'visibility').
+         * The window's shared viewer frame is not told: it is switched to the page on show (#761, syncViewer).
+         */
         static postVisibility(shell, hidden) {
             if (!shell || !shell._grimoireRemoteSessionId || typeof root.grimoireRemoteFrame !== 'function') return;
             const frame = root.grimoireRemoteFrame(shell);
+            if (root.grimoireSlot && root.grimoireSlot.isSlotFrame(frame)) return;
             if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'grimoire-browser-visibility', hidden: !!hidden }, '*');
+        }
+
+        /**
+         * One Alchemy viewer per window pane (#761, grimoireRemoteBrowser.js): the frame moves into the display area
+         * of the page on show and switches to its session, the other tabs' sessions are watched. Call after anything
+         * that changes which page shows or which Alchemy sessions the window has.
+         */
+        syncViewer() {
+            if (root.grimoireSlot) root.grimoireSlot.sync(this.host);
+        }
+
+        /** The picture of a tab leaving the front (Quick Tabs and a suspended tab show it): a Blob, made without waiting. */
+        keepPicture(tab) {
+            if (typeof root.grimoireRemoteFrame !== 'function' || !tab.state) return;
+            // the pane the tab shows in its strip entry (paneOf, for a state already captured)
+            const state = tab.state;
+            [state._activePane === 'right' && state.rightPane ? state.rightPane : state].forEach((shell) => {
+                if (!shell || !shell._grimoireRemoteSessionId) return;
+                const frame = root.grimoireRemoteFrame(shell);
+                // a page with its own frame keeps its canvas while behind (frameSnapshot reads it)
+                if (!frame || !root.grimoireSlot || !root.grimoireSlot.isSlotFrame(frame)) return;
+                try {
+                    const canvas = frame.contentDocument && frame.contentDocument.querySelector('canvas');
+                    if (canvas && canvas.width && typeof canvas.toBlob === 'function') {
+                        canvas.toBlob((blob) => { if (blob) tab.snapshot = blob; }, 'image/jpeg', 0.8);
+                    }
+                } catch (_err) { /* another origin: no picture */ }
+            });
         }
 
         /**
@@ -334,7 +366,9 @@
 
             old.state = this.capture(old);
             old.lastActive = Date.now();
-            // the tab behind is not captured any more; the one in front is (#756, one capture per window)
+            // the tab behind is not captured any more; the one in front is (#756, one capture per window).
+            // A page with its own frame is told; the window's shared viewer frame switches below (#761)
+            this.keepPicture(old);
             [old.state, old.state.rightPane].forEach((shell) => GrimoireTabs.postVisibility(shell, true));
             show(old.wrap, false);
             show(old.rightWrap, false);
@@ -359,6 +393,8 @@
                 host._activePane = 'left';
             }
 
+            // the window's viewer frame moves into this tab's area and switches to its session (#761)
+            this.syncViewer();
             host.syncAddressAndControlsToActive();
             [host, host.rightPane].forEach((shell) => GrimoireTabs.postVisibility(shell, false));
             const woke = wake ? this.wakeTab(tab, bag, wake) : null;
@@ -534,6 +570,8 @@
             }
             this.dispose(target);
             this.tabs.splice(this.tabs.indexOf(target), 1);
+            // the window's viewer frame reports on the sessions that are left (#761)
+            this.syncViewer();
             this.emit();
         }
 
@@ -542,6 +580,7 @@
             if (tab !== this.active) this.activate(tab);
             this.tabs.filter((t) => t !== tab).forEach((t) => this.dispose(t));
             this.tabs = [tab];
+            this.syncViewer();
             this.emit();
         }
 
@@ -575,6 +614,8 @@
             [host, host.rightPane].filter(Boolean).forEach((shell) => {
                 if (shell._grimoireRemoteSessionId) root.grimoireCloseRemoteBrowser(shell);
             });
+            // the window's viewer frames go with it, and their sockets (#761)
+            if (root.grimoireSlot) root.grimoireSlot.destroy(host);
             this.emit();
         }
 
@@ -627,6 +668,11 @@
          */
         frameSnapshot(shell) {
             const frame = typeof root.grimoireRemoteFrame === 'function' ? root.grimoireRemoteFrame(shell) : null;
+            // a page behind has no frame of its own (#761): the picture kept when its tab left the front
+            if (!frame) {
+                const behind = this.backgroundTabOf(shell);
+                return (behind && behind.snapshot) || null;
+            }
             try {
                 const canvas = frame && frame.contentDocument && frame.contentDocument.querySelector('canvas');
                 // no-base64-images: shown once (the frame is turned into a Blob at once; no string is kept)

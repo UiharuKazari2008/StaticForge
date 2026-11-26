@@ -769,7 +769,10 @@
             if (z === 1) shell.displayArea.style.removeProperty('--grimoire-ie-zoom');
             else shell.displayArea.style.setProperty('--grimoire-ie-zoom', String(z));
             const frame = typeof root.grimoireRemoteFrame === 'function' ? root.grimoireRemoteFrame(shell) : null;
-            if (frame && frame.contentWindow && (z !== 1 || shell._grimoireIeZoomSent)) {
+            // the window's shared viewer frame still on its way to this page would zoom the old one (grimoireRemoteBrowser.js
+            // grimoireSlotControl sends the zoom once the switch is done)
+            const settled = !root.grimoireSlot || root.grimoireSlot.settled(frame);
+            if (frame && frame.contentWindow && settled && (z !== 1 || shell._grimoireIeZoomSent)) {
                 frame.contentWindow.postMessage({ type: 'grimoire-browser-zoom', value: z }, '*');
                 shell._grimoireIeZoomSent = z !== 1;
             }
@@ -790,6 +793,10 @@
             if (!data || typeof data !== 'object' || typeof data.type !== 'string' || !data.type.startsWith('grimoire-browser-')) return;
             const shell = this.shellOfFrame(ev.source);
             if (!shell) return;
+            // the window's one viewer also reports on its tabs behind (background) and, just after a switch, on the
+            // page it left: those are not this shell's (#761)
+            if (data.background === true) return;
+            if (typeof data.viewerSession === 'string' && data.viewerSession !== (shell._grimoireRemoteSessionId || '')) return;
             if (data.type === 'grimoire-browser-ready') {
                 // a new viewer: feeds come again from the service, and it starts at 100%
                 shell._grimoireIeFeeds = [];
@@ -1567,6 +1574,8 @@
                 const pane = tabs.paneOf(tab);
                 const frame = pane && pane._grimoireRemoteSessionId && typeof root.grimoireRemoteFrame === 'function' ? root.grimoireRemoteFrame(pane) : null;
                 if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'grimoire-browser-reload' }, '*');
+                // a live page behind has no frame of its own (one viewer per window, #761): it reloads as its tab shows
+                else if (pane && pane._grimoireRemoteSessionId && list.length > 1) pane._grimoireReloadOnShow = true;
                 else if (list.length === 1) showAndRefresh = tab;
             });
             // a dead tab (asleep, suspended or its page given up) loads its own page when it shows (grimoireTabs.js

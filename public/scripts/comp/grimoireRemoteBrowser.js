@@ -254,7 +254,351 @@ function grimoireRemoteShells() {
     return shells;
 }
 
-function grimoireRemoteFromMessage(event) {
+// ---- one Alchemy viewer per IE window pane (#761) ----
+// A Grimoire window with many Alchemy tabs holds ONE viewer iframe (one WebSocket) per pane slot (left, right in
+// split view). The iframe MOVES into the display area of the tab on show with Element.moveBefore (it keeps its
+// document and socket; appendChild/insertBefore would reload it) and is told which session to show
+// (grimoire-browser-switch). Tabs behind have no iframe: the same socket reports on them (grimoire-browser-watch,
+// answered by messages tagged viewerSession + background). When the pane on show is not an Alchemy page the frame
+// waits, bound to nothing, in a hidden holder inside the window. The frame is a cache: whatever removed it
+// (displayArea.innerHTML = ...) costs one reconnect on the next use. Without moveBefore, for a view URL that is not
+// the service's own (the local Alchemy of DreamOS) and for standalone windows each page keeps its own iframe.
+// app-scope: allow the one name of the window viewer helpers (grimoireRemoteFromMessage and the open / close paths use it)
+const grimoireSlot = (function () {
+    const GRIMOIRE_VIEW_PREFIX = '/api/grimoire-browser/view/';
+    // Grimoire window -> { left, right, holder, fails, off }
+    // slot: { frame, side, srcSid, sid (last asked), want, wantToken, confirmed (last switched), ready, watch, watchSent }
+    // app-scope: allow page-lifetime registry of the windows' viewer frames, keyed by the window object
+    const grimoireViewerSlots = new WeakMap();
+
+    function grimoireSlotCanMove() {
+        return typeof Element !== 'undefined' && typeof Element.prototype.moveBefore === 'function';
+    }
+
+    function grimoireSlotsOf(host, make) {
+        let s = grimoireViewerSlots.get(host);
+        if (!s && make) {
+            s = { left: null, right: null, holder: null, fails: 0, off: false };
+            grimoireViewerSlots.set(host, s);
+        }
+        return s || null;
+    }
+
+    /** { sid, token, url } when the shell's session can show in its window's shared viewer, else null (own iframe). */
+    function grimoireSlotTarget(shell, host) {
+        if (!shell || !host || !host.tabs || !host.modal || !grimoireSlotCanMove()) return null;
+        const sid = shell._grimoireRemoteSessionId;
+        if (!sid || shell._grimoireLocalAlchemy === true) return null;
+        const s = grimoireSlotsOf(host, false);
+        if (s && s.off) return null;
+        if (shell !== host && shell !== host.rightPane && !host.tabs.backgroundTabOf(shell)) return null;
+        const url = String(shell._grimoireRemoteViewUrl || '');
+        if (!url) return null;
+        try {
+            const parsed = new URL(url, location.href);
+            if (parsed.origin !== location.origin || !parsed.pathname.startsWith(GRIMOIRE_VIEW_PREFIX)) return null;
+        } catch (_) {
+            return null;
+        }
+        return { sid, token: new URLSearchParams(shell._grimoireRemoteViewQuery || '').get('t') || '', url };
+    }
+
+    /** The window (with tabs) a shell belongs to: the window, its right pane or a tab behind; null for popups. */
+    function grimoireSlotHostOf(shell) {
+        if (!shell) return null;
+        const windows = grimoireFullWindows();
+        for (let i = 0; i < windows.length; i++) {
+            const win = windows[i];
+            if (!win || !win.tabs) continue;
+            if (win === shell || win.rightPane === shell || win.tabs.backgroundTabOf(shell)) return win;
+        }
+        return null;
+    }
+
+    function grimoireSlotHolder(host, s) {
+        if (s.holder && s.holder.isConnected) return s.holder;
+        const holder = document.createElement('div');
+        holder.className = 'grimoire-viewer-holder';
+        holder.hidden = true;
+        holder.style.display = 'none';
+        host.modal.appendChild(holder);
+        s.holder = holder;
+        return holder;
+    }
+
+    function grimoireSlotAlive(slot) {
+        return !!(slot && slot.frame && slot.frame.isConnected);
+    }
+
+    /** Moves the frame under parent without reloading it (false when the browser refuses). */
+    function grimoireSlotMove(frame, parent) {
+        if (frame.parentNode === parent) return true;
+        try {
+            // first child: where the page's frame always was (scrollbars and error pages come after it)
+            parent.moveBefore(frame, parent.firstChild);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function grimoireSlotMakeFrame(url) {
+        const frame = document.createElement('iframe');
+        frame.src = url;
+        frame.setAttribute('title', 'Web');
+        frame.setAttribute('referrerpolicy', 'no-referrer');
+        frame.setAttribute('allow', 'autoplay; clipboard-read; clipboard-write');
+        return frame;
+    }
+
+    /** What the viewer is told: the session to show and (left frame) the window's other sessions to report on. */
+    function grimoireSlotPush(slot) {
+        if (!slot || !slot.ready || !slot.frame.contentWindow) return;
+        const win = slot.frame.contentWindow;
+        if (slot.want !== slot.sid) {
+            slot.sid = slot.want;
+            win.postMessage({ type: 'grimoire-browser-switch', sessionId: slot.want, token: slot.wantToken || '' }, location.origin);
+        }
+        if (slot.side !== 'left') return;
+        const json = JSON.stringify(slot.watch || []);
+        if (json === slot.watchSent) return;
+        slot.watchSent = json;
+        win.postMessage({ type: 'grimoire-browser-watch', sessions: slot.watch || [] }, location.origin);
+    }
+
+    /** The slot waits in the holder, bound to nothing (control only). */
+    function grimoireSlotPark(host, s, slot) {
+        slot.want = '';
+        slot.wantToken = '';
+        const holder = grimoireSlotHolder(host, s);
+        if (!grimoireSlotMove(slot.frame, holder)) {
+            slot.frame.remove();
+            s[slot.side] = null;
+            return;
+        }
+        grimoireSlotPush(slot);
+    }
+
+    /** Shows the shell's session in the side's frame (made, or moved here), or parks the frame when the shell has none. Returns the frame or null. */
+    function grimoireSlotShow(host, side, shell) {
+        const s = grimoireSlotsOf(host, false);
+        let slot = s ? s[side] : null;
+        if (slot && !grimoireSlotAlive(slot)) {
+            // something removed the frame: the next use makes a new one (a reconnect, never a break)
+            s[side] = slot = null;
+        }
+        const target = grimoireSlotTarget(shell, host);
+        const area = shell && shell.displayArea;
+        if (!target || !area || !area.isConnected) {
+            if (slot) grimoireSlotPark(host, s, slot);
+            return null;
+        }
+        const slots = s || grimoireSlotsOf(host, true);
+        if (slot && !grimoireSlotMove(slot.frame, area)) {
+            slot.frame.remove();
+            slots[side] = slot = null;
+        }
+        if (!slot) {
+            // a new frame opens already on this session
+            const frame = grimoireSlotMakeFrame(target.url);
+            area.insertBefore(frame, area.firstChild);
+            slot = slots[side] = { frame, side, srcSid: target.sid, sid: target.sid, want: target.sid, wantToken: target.token, confirmed: '', ready: false, watch: [], watchSent: '' };
+        }
+        slot.want = target.sid;
+        slot.wantToken = target.token;
+        // a frame that came from a tab whose page had failed is not hidden under this one's
+        const failed = !!area.querySelector(':scope > .grimoire-nav-error');
+        if (slot.frame.hidden !== failed) slot.frame.hidden = failed;
+        grimoireSlotPush(slot);
+        return slot.frame;
+    }
+
+    /** Every other Alchemy session of the window (tabs behind), for the left frame to report on. */
+    function grimoireSlotWatch(host) {
+        if (!host.tabs || !grimoireSlotCanMove()) return;
+        const targets = host.tabs.backgroundShells().map((shell) => grimoireSlotTarget(shell, host)).filter(Boolean);
+        const list = targets.map((t) => ({ sessionId: t.sid, token: t.token }));
+        const s = grimoireSlotsOf(host, false);
+        let slot = s ? s.left : null;
+        if (slot && !grimoireSlotAlive(slot)) {
+            s.left = slot = null;
+        }
+        if (!slot) {
+            if (!targets.length) return;
+            // no pane on show holds an Alchemy page, but tabs behind do: the window's frame waits for them in the holder
+            const slots = s || grimoireSlotsOf(host, true);
+            const frame = grimoireSlotMakeFrame(targets[0].url);
+            grimoireSlotHolder(host, slots).appendChild(frame);
+            slot = slots.left = { frame, side: 'left', srcSid: targets[0].sid, sid: targets[0].sid, want: '', wantToken: '', confirmed: '', ready: false, watch: [], watchSent: '' };
+        }
+        slot.watch = list;
+        grimoireSlotPush(slot);
+    }
+
+    /** The window's frames follow its tabs: call after anything that changes which page shows or which sessions exist. */
+    function grimoireSlotSync(host) {
+        if (!host || !host.tabs || !grimoireSlotCanMove()) return;
+        grimoireSlotShow(host, 'left', host);
+        const s = grimoireSlotsOf(host, false);
+        if (host.rightPane) grimoireSlotShow(host, 'right', host.rightPane);
+        else if (s && s.right && grimoireSlotAlive(s.right)) grimoireSlotPark(host, s, s.right);
+        grimoireSlotWatch(host);
+    }
+
+    function grimoireSlotSyncFor(shell) {
+        const host = grimoireSlotHostOf(shell);
+        if (host) grimoireSlotSync(host);
+    }
+
+    /** A frame sitting in this area is parked before the area is emptied (innerHTML would destroy it). */
+    function grimoireSlotRescue(host, area) {
+        const s = host && grimoireSlotsOf(host, false);
+        if (!s || !area) return;
+        ['left', 'right'].forEach((side) => {
+            const slot = s[side];
+            if (slot && slot.frame.parentNode === area) grimoireSlotPark(host, s, slot);
+        });
+    }
+
+    /** The window closes: its frames go, and their sockets with them. */
+    function grimoireSlotsDestroy(host) {
+        const s = grimoireSlotsOf(host, false);
+        if (!s) return;
+        ['left', 'right'].forEach((side) => {
+            if (s[side]) s[side].frame.remove();
+            s[side] = null;
+        });
+        if (s.holder) s.holder.remove();
+        s.holder = null;
+    }
+
+    function grimoireSlotOfSource(source) {
+        if (!source) return null;
+        const windows = grimoireFullWindows();
+        for (let i = 0; i < windows.length; i++) {
+            const s = grimoireSlotsOf(windows[i], false);
+            if (!s) continue;
+            for (const side of ['left', 'right']) {
+                const slot = s[side];
+                if (slot && slot.frame.contentWindow === source) return { host: windows[i], slot, s };
+            }
+        }
+        return null;
+    }
+
+    function grimoireSlotByFrame(frame) {
+        if (!frame) return null;
+        const windows = grimoireFullWindows();
+        for (let i = 0; i < windows.length; i++) {
+            const s = grimoireSlotsOf(windows[i], false);
+            if (!s) continue;
+            for (const side of ['left', 'right']) {
+                if (s[side] && s[side].frame === frame) return s[side];
+            }
+        }
+        return null;
+    }
+
+    /** False while a window frame has been asked to switch and has not said so yet: what is posted now would land on the old page. */
+    function grimoireFrameSettled(frame) {
+        const slot = grimoireSlotByFrame(frame);
+        return !slot || (slot.ready && slot.confirmed === slot.want);
+    }
+
+    /** The shell of the window that holds this session: the window, its right pane or a tab behind. */
+    function grimoireShellOfSession(host, sid) {
+        if (!sid) return null;
+        const list = [host, host.rightPane].concat(host.tabs ? host.tabs.backgroundShells() : []);
+        return list.find((shell) => shell && shell._grimoireRemoteSessionId === sid) || null;
+    }
+
+    /**
+     * The viewer's own words about its window frame: ready (first connect: it shows the session in its URL), switched
+     * (a switch is done: what the service keeps per session goes again), switch-failed (the page opens again).
+     * Returns true when the message is consumed.
+     */
+    function grimoireSlotControl(hit, data) {
+        const slot = hit.slot;
+        if (data.type === 'grimoire-browser-ready') {
+            if (!slot.ready) {
+                slot.ready = true;
+                slot.confirmed = slot.srcSid;
+            }
+            // a new socket watches nothing
+            slot.watchSent = '';
+            grimoireSlotPush(slot);
+            // the IE chrome's own ready handler may have run before the frame counted as settled: the page's zoom again
+            const shell = grimoireShellOfSession(hit.host, String(data.viewerSession || ''));
+            if (shell && hit.host.ieChrome && typeof hit.host.ieChrome.applyZoom === 'function' && slot.confirmed === slot.want) hit.host.ieChrome.applyZoom(shell);
+            return false;
+        }
+        if (data.type === 'grimoire-browser-switched') {
+            slot.confirmed = String(data.viewerSession || '');
+            hit.s.fails = 0;
+            const shell = slot.confirmed ? grimoireShellOfSession(hit.host, slot.confirmed) : null;
+            // zoom, quality settings and audio are per session in the service and not kept by the viewer
+            if (shell && slot.frame.contentWindow && slot.confirmed === slot.want) {
+                const settings = grimoireAlchemySettings;
+                if (settings) slot.frame.contentWindow.postMessage({ type: 'grimoire-browser-settings', settings: Object.assign({}, settings, { auto: settings.autoQuality !== false }) }, location.origin);
+                shell._grimoireIeZoomSent = false;
+                if (hit.host.ieChrome && typeof hit.host.ieChrome.applyZoom === 'function') hit.host.ieChrome.applyZoom(shell);
+                // Refresh All Tabs reached this page while it was behind (grimoireIeChrome.js refreshTabs)
+                if (shell._grimoireReloadOnShow) {
+                    shell._grimoireReloadOnShow = false;
+                    slot.frame.contentWindow.postMessage({ type: 'grimoire-browser-reload' }, location.origin);
+                }
+            }
+            grimoireSyncAudio();
+            return true;
+        }
+        if (data.type === 'grimoire-browser-switch-failed') {
+            // the viewer kept the old page; this tab's page opens again (as after a browser restart), and when that
+            // fails too the window goes back to a frame for every page
+            const host = hit.host;
+            slot.sid = slot.confirmed;
+            const shell = grimoireShellOfSession(host, String(data.viewerSession || ''));
+            hit.s.fails += 1;
+            if (hit.s.fails >= 2) hit.s.off = true;
+            if (!shell) return true;
+            const again = grimoireNormalizeWebUrl(grimoireShellWebUrl(shell));
+            const behind = !!(host.tabs && host.tabs.backgroundTabOf(shell));
+            grimoireCloseRemoteBrowser(shell);
+            // a tab behind opens its page again when it shows (grimoireTabs.js resume)
+            if (again && !behind) grimoireOpenRemoteBrowser(shell, again, { host, skipHistory: true });
+            return true;
+        }
+        return false;
+    }
+
+    return {
+        target: grimoireSlotTarget,
+        sync: grimoireSlotSync,
+        syncFor: grimoireSlotSyncFor,
+        rescue: grimoireSlotRescue,
+        ofSource: grimoireSlotOfSource,
+        byFrame: grimoireSlotByFrame,
+        shellOfSession: grimoireShellOfSession,
+        control: grimoireSlotControl,
+        destroy: grimoireSlotsDestroy,
+        isSlotFrame: (frame) => !!grimoireSlotByFrame(frame),
+        settled: grimoireFrameSettled
+    };
+})();
+// grimoireTabs.js and grimoireIeChrome.js call it
+window.grimoireSlot = grimoireSlot;
+
+function grimoireRemoteFromMessage(event, data) {
+    // a window's shared viewer frame (#761): the message says which session it is about
+    const hit = grimoireSlot.ofSource(event.source);
+    if (hit && data && typeof data.viewerSession === 'string') {
+        const host = hit.host;
+        // a session no shell holds any more (closed, left, or the parked frame's own words): nothing to tell
+        const shell = grimoireSlot.shellOfSession(host, data.viewerSession);
+        if (!shell) return null;
+        // tab: set when the session is in one of the window's background tabs (grimoireTabs.js)
+        const tab = host.tabs ? host.tabs.backgroundTabOf(shell) : null;
+        return { host, shell, frame: hit.slot.frame, tab };
+    }
     const shells = grimoireRemoteShells();
     for (let i = 0; i < shells.length; i++) {
         const frame = grimoireRemoteFrame(shells[i]);
@@ -1485,7 +1829,9 @@ function grimoireBackgroundRemoteMessage(found, data) {
     }
     if (type === 'grimoire-browser-closed') {
         shell._grimoireRemoteSessionId = '';
+        shell._grimoireRemoteViewUrl = '';
         if (shell === tab.state) tabs.close(tab);
+        else grimoireSlot.sync(found.host);
         return true;
     }
     if (type === 'grimoire-browser-transferred') {
@@ -1720,7 +2066,10 @@ function grimoireBindRemoteBrowserMessages() {
     addEventListener('message', (event) => {
         const data = event.data;
         if (!data || typeof data.type !== 'string') return;
-        const found = grimoireRemoteFromMessage(event);
+        // the window's shared viewer frame: its ready / switched / switch-failed are about the frame itself (#761)
+        const hit = data.type.startsWith('grimoire-browser-') ? grimoireSlot.ofSource(event.source) : null;
+        if (hit && grimoireSlot.control(hit, data)) return;
+        const found = grimoireRemoteFromMessage(event, data);
         if (!found) return;
         if (found.tab && grimoireBackgroundRemoteMessage(found, data)) return;
         // the viewer has focus, so the tab keys reach it instead of the window (services/grimoire-browser/viewer.html)
@@ -2136,15 +2485,18 @@ function grimoireCloseRemoteBrowser(shell) {
     shell._grimoireLocalAlchemy = false;
     shell._grimoireRemoteSessionId = '';
     shell._grimoireRemoteViewQuery = '';
+    shell._grimoireRemoteViewUrl = '';
     if (grimoireAudioShell === shell) grimoireAudioShell = null;
     // the load fill of the window showing this page (#615)
     const owner = grimoireHostOf(shell);
     const bar = owner && (owner === shell || owner.activePane === shell) ? owner.addressBar : null;
     if (bar) bar.removeAttribute('data-alchemy-loading');
     const frame = grimoireRemoteFrame(shell);
-    if (frame) frame.remove();
+    // the window's shared viewer frame is parked by the sync below, never destroyed (#761)
+    if (frame && !grimoireSlot.byFrame(frame)) frame.remove();
     if (shell.displayArea) shell.displayArea.querySelectorAll(':scope > :is(.alchemy-scrollbar, .alchemy-scrollbar-corner)').forEach((el) => el.remove());
     shell._alchemyScroll = null;
+    grimoireSlot.syncFor(shell);
     grimoireSyncAudio();
     if (!id) return Promise.resolve();
     // not the service's session: the laptop's host ends it
@@ -2319,11 +2671,14 @@ function grimoireShowTransferredPage(shell, info, hostArg) {
     // the session is someone else's now: let go of the frame without closing the page
     shell._grimoireRemoteSessionId = '';
     shell._grimoireRemoteViewQuery = '';
+    shell._grimoireRemoteViewUrl = '';
     if (grimoireAudioShell === shell) grimoireAudioShell = null;
     const frame = grimoireRemoteFrame(shell);
-    if (frame) frame.remove();
+    // the window's shared viewer frame is parked by the sync below, never destroyed (#761)
+    if (frame && !grimoireSlot.byFrame(frame)) frame.remove();
     shell.displayArea.querySelectorAll(':scope > :is(.alchemy-scrollbar, .alchemy-scrollbar-corner, .grimoire-nav-error, .grimoire-transferred)').forEach((el) => el.remove());
     shell._alchemyScroll = null;
+    grimoireSlot.syncFor(shell);
     shell._browsingTransferred = { alchemyId, url, to: data.to || '', at: data.at || Date.now() };
     grimoireSyncAudio();
 
@@ -2701,20 +3056,27 @@ grimoireRemoteOpen.land = function (at, host, webUrl, payload, opts) {
     // a session the laptop's own host runs (DreamOS, dreamosPortal.js): same viewer, served by the host
     target._grimoireLocalAlchemy = payload.local === true;
     target._grimoireRemoteViewQuery = String(payload.viewUrl || '').split('?')[1] || '';
+    target._grimoireRemoteViewUrl = String(payload.viewUrl || '');
+    // the window's shared viewer frame (#761): a frame sitting in this area is parked first (innerHTML would destroy it)
+    grimoireSlot.rescue(host, target.displayArea);
     target.displayArea.innerHTML = '';
-    const frame = document.createElement('iframe');
-    frame.src = payload.viewUrl;
-    frame.setAttribute('title', 'Web');
-    frame.setAttribute('referrerpolicy', 'no-referrer');
-    frame.setAttribute('allow', 'autoplay; clipboard-read; clipboard-write');
-    target.displayArea.appendChild(frame);
+    // a page behind has no frame: the window's frame reports on it; the page on show takes the frame (moved, switched)
+    const shared = !!grimoireSlot.target(target, host);
+    if (shared) grimoireSlot.sync(host);
+    // its own iframe: no moveBefore, the local Alchemy, a standalone window, a window that gave the frame up
+    if (!shared || (at.front && !grimoireRemoteFrame(target))) {
+        const frame = grimoireSlotMakeFrame(payload.viewUrl);
+        target.displayArea.appendChild(frame);
+        if (!at.front) {
+            // a viewer that connects behind another tab is not captured (#756); its 'ready' says so too (grimoireBackgroundRemoteMessage)
+            frame.addEventListener('load', () => {
+                if (host.tabs && host.tabs.backgroundTabOf(target) && typeof GrimoireTabs !== 'undefined') GrimoireTabs.postVisibility(target, true);
+            });
+        }
+    }
     if (at.front) {
         grimoireSetAudioShell(target);
     } else {
-        // a viewer that connects behind another tab is not captured (#756); its 'ready' says so too (grimoireBackgroundRemoteMessage)
-        frame.addEventListener('load', () => {
-            if (host.tabs && host.tabs.backgroundTabOf(target) && typeof GrimoireTabs !== 'undefined') GrimoireTabs.postVisibility(target, true);
-        });
         if (webUrl) {
             target.currentAddress = { fullUrl: webUrl, displayPath: webUrl, mode: grimoireWebMode(webUrl) };
             target._currentAddress = { displayUrl: webUrl, fullUrl: webUrl, mode: grimoireWebMode(webUrl) };
