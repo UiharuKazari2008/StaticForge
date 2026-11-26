@@ -309,6 +309,7 @@ class BlueBubblesProvider {
 
     onMessage(raw, updated) {
         if (!raw || !raw.guid) return;
+        if (this.smsPending && this.smsPending.size) this.resendAsSms(raw);
         const chatGuid = this.resolve(Array.isArray(raw.chats) && raw.chats[0] ? raw.chats[0].guid : '');
         const reaction = reactionOf(raw.associatedMessageType);
         if (reaction && raw.associatedMessageGuid) {
@@ -878,6 +879,30 @@ class BlueBubblesProvider {
 
     method() { return this.features().privateApi ? 'private-api' : 'apple-script'; }
 
+    /**
+     * A new one-person iMessage chat whose first text fails (error 22: the number is not on iMessage) is sent again
+     * as SMS through the Mac's Text Message Forwarding (an Android / Google Messages number). The Mac pushes the
+     * failed message (onMessage, updated), so nothing is polled: the send is remembered here and the push settles it.
+     */
+    expectSms(chatGuid, addresses, text) {
+        if (!chatGuid || addresses.length !== 1 || !/^iMessage;-;/i.test(chatGuid)) return;
+        if (!this.smsPending) this.smsPending = new Map();
+        if (this.smsPending.size > 50) this.smsPending.delete(this.smsPending.keys().next().value);
+        this.smsPending.set(chatGuid, { addresses, text, until: Date.now() + 5 * 60 * 1000 });
+    }
+
+    resendAsSms(raw) {
+        const chatGuid = Array.isArray(raw.chats) && raw.chats[0] ? raw.chats[0].guid : '';
+        const want = this.smsPending && this.smsPending.get(chatGuid);
+        if (!want) return;
+        if (want.until < Date.now()) { this.smsPending.delete(chatGuid); return; }
+        if (!raw.isFromMe || !raw.error || raw.text !== want.text) return;
+        this.smsPending.delete(chatGuid);
+        this.call('POST', 'chat/new', { body: { addresses: want.addresses, message: want.text, service: 'SMS', method: 'apple-script', tempGuid: `temp-${randomUUID()}` }, timeoutMs: SEND_TIMEOUT_MS })
+            .then(() => this.log(`${chatGuid}: not on iMessage (error ${raw.error}), sent as SMS`))
+            .catch((err) => this.log(`${chatGuid}: SMS resend failed: ${err.message}`));
+    }
+
     async sendText({ chatGuid, addresses, text, replyTo, subject, effect, tempGuid }) {
         const temp = tempGuid || `temp-${randomUUID()}`;
         if (!chatGuid) {
@@ -885,6 +910,7 @@ class BlueBubblesProvider {
             if (!list.length) throw Object.assign(new Error('Who is the message for?'), { code: 'NO_RECIPIENT' });
             const chat = await this.call('POST', 'chat/new', { body: { addresses: list, message: text, method: this.method(), tempGuid: temp }, timeoutMs: SEND_TIMEOUT_MS });
             const guid = chat && chat.guid;
+            this.expectSms(guid, list, String(text || ''));
             return { tempGuid: temp, chatGuid: guid || '', message: chat && chat.lastMessage ? this.normalizeMessage(chat.lastMessage, guid) : null };
         }
         const body = { chatGuid, tempGuid: temp, message: String(text || ''), method: this.method() };
