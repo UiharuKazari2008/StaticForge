@@ -49,9 +49,16 @@ const DEFAULTS = {
 let gResources = null;
 let timer = null;
 let running = null; // { startedAt, current, done: [ids], total, trigger, dryRun }
+let started = false; // start() ran and stop() did not (a reload re-arms the timers of a started module)
+let catchUpTimer = null; // the one-shot catch-up run armed by start()
+let catchUpDue = 0; // when it is due (kept over a reload, never re-checked)
 const listeners = new Set();
-function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
-function changed() { listeners.forEach((fn) => { try { fn(); } catch (_) { /* a listener */ } }); }
+// reload-safe (#1292): what a holder keeps (the unsubscribe function, an in-flight run's callbacks) calls the current version
+const cur = () => module.exports;
+function onChange(fn) { listeners.add(fn); return () => { const m = cur(); if (typeof m._off === 'function') m._off(fn); else listeners.delete(fn); }; }
+function offChange(fn) { listeners.delete(fn); }
+function notifyListeners() { listeners.forEach((fn) => { try { fn(); } catch (_) { /* a listener */ } }); }
+function changed() { const m = cur(); if (typeof m._changed === 'function') m._changed(); else notifyListeners(); }
 
 const sup = () => require('./agentSupervisor');
 const coord = () => require('./agentCoord/store');
@@ -981,9 +988,12 @@ function notify(report) {
 function runNow(opts = {}) {
     if (running) return { started: false, running: true };
     running = { startedAt: Date.now(), current: '', done: [], total: CHECK_IDS.length, trigger: opts.trigger || 'manual', dryRun: false };
-    const promise = execute(opts).then((report) => { running = null; notify(report); changed(); return report; }).catch((e) => { console.warn(`[maintenance] run: ${e.message}`); running = null; changed(); return null; });
+    const ended = (report) => { const m = cur(); if (typeof m._runEnded === 'function') m._runEnded(report); else runEnded(report); };
+    const promise = execute(opts).then((report) => { ended(report); return report; }).catch((e) => { console.warn(`[maintenance] run: ${e.message}`); ended(null); return null; });
     return { started: true, running: true, promise };
 }
+/** A run ended (called through the current version, so a run that began before a reload clears the new version's state). */
+function runEnded(report) { running = null; if (report) notify(report); changed(); }
 
 // ---------------------------------------------------------------- the daily timer
 
@@ -1005,7 +1015,7 @@ function arm() {
         timer = null;
         const r = runNow({ trigger: 'daily' });
         // the next day is armed when the run ends (no polling)
-        if (r.started) r.promise.finally(arm); else arm();
+        if (r.started) r.promise.finally(() => cur().arm()); else arm();
     }, Math.max(1000, Math.min(nextRunAt() - Date.now(), 2147000000)));
     if (timer.unref) timer.unref();
 }
@@ -1018,11 +1028,24 @@ function start(gr) {
     arm();
     if (settings().catchUp) {
         const last = lastRun();
-        if (!last || Date.now() - last.startedAt > 26 * HOUR) { const t = setTimeout(() => runNow({ trigger: 'catch-up' }), 2 * 60 * 1000); if (t.unref) t.unref(); }
+        if (!last || Date.now() - last.startedAt > 26 * HOUR) armCatchUp(2 * 60 * 1000);
     }
+    started = true;
     return module.exports;
 }
-function stop() { if (timer) clearTimeout(timer); timer = null; }
+function armCatchUp(ms) {
+    if (catchUpTimer) clearTimeout(catchUpTimer);
+    catchUpDue = Date.now() + ms;
+    catchUpTimer = setTimeout(() => { catchUpTimer = null; catchUpDue = 0; runNow({ trigger: 'catch-up' }); }, Math.max(1000, ms));
+    if (catchUpTimer.unref) catchUpTimer.unref();
+}
+function stop() {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    if (catchUpTimer) clearTimeout(catchUpTimer);
+    catchUpTimer = null; catchUpDue = 0;
+    started = false;
+}
 
 /** What the console shows: the last report, the history, the settings, the next run and the progress of a running one. */
 function state(gr) {
@@ -1037,5 +1060,31 @@ function state(gr) {
 
 module.exports = {
     start, stop, bind, arm, settings, saveSettings, state, runNow, execute, getRun, history, lastRun, onChange, nextRunAt, CHECK_IDS, DEFAULTS,
+    _off: offChange, _changed: notifyListeners, _runEnded: runEnded,
     _test: { parseWorktrees, groupErrors, normaliseLine, parseDf, parseDu, parseThermal, parseSensors, parseMeminfo, parseFailedUnits, checkWorktrees, checkBranches, checkErrors, checkPrs, checkWorkfolders, checkDisk, checkThermals, checkSessions, checkWaiting, notify, storeRun, sh }
 };
+
+// Reload without a restart (#1292, docs/server/hot-reload.md): stop every timer, hand over what a fresh load would lose.
+require('./hotReload').mark(module, {
+    dispose() {
+        const state = { started, gr: gResources, listeners: [...listeners], running, initFor, timerArmed: !!timer, catchUpDue: catchUpTimer ? catchUpDue : 0 };
+        if (timer) clearTimeout(timer);
+        timer = null;
+        if (catchUpTimer) clearTimeout(catchUpTimer);
+        catchUpTimer = null;
+        return state;
+    },
+    accept(st) {
+        if (!st) return;
+        gResources = st.gr || gResources;
+        initFor = st.initFor;
+        running = st.running; // an in-flight run keeps pushing into this object and ends through the current version
+        listeners.clear();
+        (st.listeners || []).forEach((fn) => listeners.add(fn));
+        started = !!st.started;
+        // re-arm exactly as start() did, without a check of its own: the daily timer points at the same next run time,
+        // the catch-up keeps its due time (a run in flight re-arms the daily timer when it ends)
+        if (st.timerArmed || (st.started && !st.running)) arm();
+        if (st.catchUpDue) armCatchUp(st.catchUpDue - Date.now());
+    }
+});

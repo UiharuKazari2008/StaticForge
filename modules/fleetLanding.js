@@ -440,3 +440,14 @@ async function gate(hooks, w, summary) {
 }
 
 module.exports = { checkLanding, gate, removedLines, hasConflictMarkers, readTranscript, steerText, _state: state, _fetchedAt: fetchedAt, ORIGIN };
+
+// Reload without a restart (#1292): the fetch cache and the per-item steer state move to the new version's own Maps.
+require('./hotReload').mark(module, {
+    dispose() { return { state: new Map(state), fetchedAt: new Map(fetchedAt) }; },
+    accept(st) {
+        if (!st) return;
+        state.clear(); fetchedAt.clear();
+        if (st.state) st.state.forEach((v, k) => state.set(k, v));
+        if (st.fetchedAt) st.fetchedAt.forEach((v, k) => fetchedAt.set(k, v));
+    }
+});

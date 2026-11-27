@@ -396,3 +396,6 @@ async function damageCheck(result, opts = {}) {
 }
 
 module.exports = { killWork, damageCheck, agentOf, GRACE_MS, _test: { sessionsOfItem, dirtyOf, problemOf, procTable } };
+
+// Stateless (every timer lives inside one call): reloadable as is (#1292).
+require('./hotReload').mark(module);
