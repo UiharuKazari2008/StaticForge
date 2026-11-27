@@ -1,0 +1,30 @@
+t0 (panel closed, Settings in front, page hidden, config strip+off, no quickAccessLayouts call) 17:51:50
++0s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++5s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++9s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++14s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++18s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++22s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++27s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++31s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++36s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++40s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++45s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++49s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++54s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++58s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++63s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++67s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
++71s 2026-11-27 17:51 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json "qatab":  vis=hidden
+page made visible: lane start-app at 17:53:11
++2s after start-app: qatab-count=1 2026-11-27
++6s after start-app: qatab-count=0 2026-11-27
++9s after start-app: qatab-count=0 2026-11-27
++12s after start-app: qatab-count=0 2026-11-27
++15s after start-app: qatab-count=0 2026-11-27
++18s after start-app: qatab-count=0 2026-11-27
++21s after start-app: qatab-count=0 2026-11-27
++25s after start-app: qatab-count=0 2026-11-27
+         1795819992.321 10875 10875 I MelatonBars: show: on=true fits=true status=false bar=true top=true ext=false tray=false give=false
+         1795819992.899 10875 10875 I MelatonBars: show: on=false fits=true status=false bar=true top=true ext=false tray=false give=false
+         1795819993.472 10875 10875 I MelatonBars: show: on=false fits=true status=false bar=false top=true ext=false tray=false give=false

@@ -1,0 +1,5 @@
+commit(ok) 17:46:33.013
+other returned 17:46:36.594
+open called 17:46:38.646
+         1795819598.536 10875 10875 I MelatonBars: panel push: still in time, ask -> got 79 ms
+         1795819598.575 10875 10875 I MelatonBars: bubble output.1 drawn here

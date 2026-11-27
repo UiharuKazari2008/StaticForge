@@ -1,0 +1,6 @@
++5s: {"ok":true,"value":"{\"up\":21,\"melatonBars\":\"undefined\",\"res\":0,\"qa\":false,\"bars\":false}"}
++14s: {"ok":true,"value":"{\"up\":30,\"melatonBars\":\"undefined\",\"res\":0,\"qa\":false,\"bars\":false}"}
++30s: {"ok":true,"value":"{\"up\":46,\"melatonBars\":\"undefined\",\"res\":0,\"qa\":false,\"bars\":false}"}
+CONTROL qa on +5s: {"ok":true,"value":"{\"up\":14,\"melatonBars\":\"object\",\"res\":1,\"qa\":true,\"bars\":false}"}
+CONTROL qa on +14s: {"ok":true,"value":"{\"up\":23,\"melatonBars\":\"object\",\"res\":1,\"qa\":true,\"bars\":false}"}
+CONTROL qa on +30s: {"ok":true,"value":"{\"up\":38,\"melatonBars\":\"object\",\"res\":1,\"qa\":true,\"bars\":false}"}

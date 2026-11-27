@@ -1,0 +1,4 @@
+file: -rw------- 1 u0_a217 u0_a217 184351 2026-11-27 17:42 /data/data/jp.net.seventhreeseven.dreamscape/files/melaton_bars/layouts.json
+roles: battery bluetooth carkey data mail notify output.0 output.1 output.2 output.3 output.4 output.5 output.6 output.7 output.8 qatab quickaccess received signal sms volume
+qatab: {'items': 5, 'minX': 1034.8, 'maxX': 1082.0} quickaccess: {'items': 340, 'minX': 349.6, 'maxX': 1082} output.1: {'items': 16, 'minX': 349.6, 'maxX': 1082} output.2: {'items': 28, 'minX': 349.6, 'maxX': 1082}
+has qatab/quickaccess*: ['qatab', 'quickaccess']  outputs: ['output.0', 'output.1', 'output.2', 'output.3', 'output.4', 'output.5', 'output.6', 'output.7', 'output.8']

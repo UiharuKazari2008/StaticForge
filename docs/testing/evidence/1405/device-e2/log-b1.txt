@@ -1,0 +1,8 @@
+settings front, settled; 17:50:08.799
+{"ok":true,"value":"{\"vis\":\"hidden\",\"e\":false,\"l\":\"strip\",\"c\":1}"}
+setConfig done 17:50:09.104
+{"ok":true,"value":"hidden"}
+quickAccessLayouts() called 17:50:11.083
+open called 17:50:11.476
+         1795819811.053 10875 10875 I MelatonBars: panel push: still in time, ask -> got 26 ms
+         1795819811.134 10875 10875 I MelatonBars: bubble output.1 drawn here

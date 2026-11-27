@@ -1,0 +1,18 @@
+  Window #2 Window{af257cb u0 MelatonBar}:
+    mAttrs={(0,0)(fillx126) gr=BOTTOM START CENTER sim={adjust=pan} layoutInDisplayCutoutMode=always ty=ACCESSIBILITY_OVERLAY fmt=TRANSLUCENT
+  Window #3 Window{4c46faf u0 MelatonBar}:
+    mAttrs={(0,0)(fillx63) gr=TOP START CENTER sim={adjust=pan} layoutInDisplayCutoutMode=always ty=ACCESSIBILITY_OVERLAY fmt=TRANSLUCENT
+  Window #4 Window{e8eb5c6 u0 MelatonBarEdge}:
+    mAttrs={(0,102)(21x2172) gr=TOP END CENTER sim={adjust=pan} layoutInDisplayCutoutMode=always ty=ACCESSIBILITY_OVERLAY fmt=TRANSLUCENT
+  Window #5 Window{54ab6ee u0 MelatonBarEdge}:
+    mAttrs={(0,102)(21x2172) gr=TOP START CENTER sim={adjust=pan} layoutInDisplayCutoutMode=always ty=ACCESSIBILITY_OVERLAY fmt=TRANSLUCENT
+  Window #6 Window{e7aac97 u0 MelatonHomeStrip}:
+    mAttrs={(0,0)(fillx42) gr=BOTTOM START CENTER sim={adjust=pan} layoutInDisplayCutoutMode=always ty=ACCESSIBILITY_OVERLAY fmt=TRANSLUCENT
+  Window #7 Window{3eec87 u0 MelatonQuickAccessTab}:
+    mAttrs={(0,0)(fillxfill) gr=TOP START CENTER sim={adjust=pan} layoutInDisplayCutoutMode=always ty=ACCESSIBILITY_OVERLAY fmt=TRANSLUCENT
+  Window #8 Window{47c0089 u0 MelatonQuickAccessZone}:
+    mAttrs={(0,840)(52x168) gr=TOP END CENTER sim={adjust=pan} layoutInDisplayCutoutMode=always ty=ACCESSIBILITY_OVERLAY fmt=TRANSLUCENT
+  Window #9 Window{85dd2a5 u0 MelatonImeProbe}:
+    mAttrs={(0,0)(1xfill) gr=TOP START CENTER sim={adjust=pan} layoutInDisplayCutoutMode=always ty=APPLICATION_OVERLAY fmt=TRANSLUCENT alpha=0.0
+  Window #10 Window{3e10e9 u0 MelatonBarProbe}:
+    mAttrs={(0,0)(1x1) gr=TOP START CENTER sim={adjust=pan} ty=APPLICATION_OVERLAY fmt=TRANSLUCENT alpha=0.0
