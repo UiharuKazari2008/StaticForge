@@ -57,11 +57,27 @@ it is, with the tap and with plain `adb shell am start` alike (`c-0-adb-shorts.p
 needs an account the same way. Home (`open:android:com.google.android.youtube`) starts the app on its own screen (and is only accepted for
 a Home / Open label). These two rows need the A53 or a phone with a YouTube account.
 
-## The Soft Key Bar manager's Generate dialog
+## The Soft Key Bar manager's Generate dialog (lane `aemu-a53-3`, release 44 = 3632992, real taps)
 
-Built and covered by `scripts/test-softkey-generate-ui.js` (28 checks on the real page file) and `scripts/test-softkey-generate.js`
-(40 checks), but **not yet seen on a phone**: the page assets were held back by another session's `hold-client-update` (#1408), so the
-emulator's page still has the old manager. The steps and the screenshots are the open part.
+Settings > Personal > Buttons > Soft Key Bar > Add YouTube > **Generate with AI...**:
+
+| file | what it shows |
+| --- | --- |
+| `e-0-buttons.png`, `e-1-add-combo.png`, `e-2-youtube-profile.png` | the manager; Add: YouTube; the new **Generate with AI...** button next to Remove Program |
+| `e-3-generate-dialog.png` | the dialog: wish text, "Design it myself first", Engine (TokenRouter) and Model (`deepseek/deepseek-v4.1-flash`, the saved default), "Make this my default", Generate / Close |
+| `e-4-design-mode.png`, `e-5-typing.png`, `e-6-design-filled.png` | design mode: Left / Center / Right names and the right key's menu (one item per line, `-` divider), typed on the phone |
+| `e-7-generating.png` | Generate pressed: progress lines inside the dialog ("Reading the program on the phone...", "Asking TokenRouter deepseek/deepseek-v4.1-flash..."), controls disabled |
+| `e-8-result.png` | the proposal: Left Subscriptions (opens by link), Center Running Programs, Right Menu (6 items), each row's way (by link / starts the app) and the AI's reason; soft keys Use / Close |
+| `e-9-used.png` | **Use**: the manager holds the profile and it is editable: Left = `<Open a Link>` with its link and name, Right = Menu (6 items) |
+| `f-0-hand-edit.png`, `f-1-saved-by-ok.txt` | hand edit (left key renamed "Subscriptions feed"), OK: stored in the app's Bars config (left label, left link, menu rows) |
+| `f-2` / `f-3-youtube-bar-saved.png`, `f-4-left-key-subscriptions.png` | YouTube in front: bar reads **Subscriptions feed | Menu**, the left key opens the Subscriptions tab |
+
+Notes: the lane's page did not have the new manager yet (a client update did not reach this instance: the page's own Melaton Update stayed
+on "Getting the server ready"; the test device has no way to run the server's cache refresh). For this test I loaded the current compiled
+`wmSettingsPersonal.js` (served by the server, source sha 5478efd1, same file the update ships) and `softkeys_generate` into the running
+page once (`lane.sh eval`); everything after that is the shipped page code driven by taps, the real bridge, the real server and a real
+model call. A shipped client update (sw-notify) still has to reach phones for the button to show on them.
+Bars over programs needed the lane's `enabled` + "Extend Status Bar" settings switched on by hand (`AndroidBars.setConfig`, `wmCameraExtendBar`).
 
 ## Unit tests
 
