@@ -326,6 +326,8 @@
             if (S.c && MEM_NODES.has(S.c.node)) repaint();
         }, opts);
         c.on('claude_fleet_contractors_status', (msg) => { conTake(msg); if (S.c) repaint(); }, opts);
+        // a phone an agent asks for (device-ask:*) or holds with consent (device-hold:*): the Device Queue follows the inbox push (#1305)
+        c.on('inbox_updated', (msg) => { dqTake((msg && msg.data) || msg || {}); }, opts);
         c.on('claude_usage_status', (msg) => {
             if (!S.usageOn) return;
             const d = msg && msg.changed ? msg : (msg && msg.data) || {};
@@ -374,6 +376,7 @@
             S.fluxOn = false;
             if (S.usageOn) { S.usageOn = false; void usageWatch(true); }
             void subscribe(true);
+            void dqLoad();
             if (S.memOn) { S.memOn = false; void memWatch(true); }
             const w = S.watching;
             S.watching = null;
@@ -3826,11 +3829,13 @@
     function devicePage(c, id) {
         const d = devData().find((x) => x.device === id);
         if (!d) return { html: c.page('Device', '', []) };
-        const hold = d.holder ? [{ key: `d:${d.device}`, icon: '/static_images/vista-cmdbar/clock.png', cls: 'cd-live', data: { who: d.holder.name, why: d.holder.why, left: d.holder.minutesLeft, until: clock(d.holder.endsAt) } }] : [];
+        const wait = dqConsent(d) === 'pending';
+        const hold = d.holder ? [{ key: `d:${d.device}`, icon: '/static_images/vista-cmdbar/clock.png', cls: 'cd-live', data: { who: d.holder.name, state: devStateText(d), why: d.holder.why, left: d.holder.minutesLeft, until: d.holder.endsAt ? clock(d.holder.endsAt) : '' } }] : [];
         const holdList = c.listView([
             { t: 'Held By', w: 170, key: 'who', text: (x) => x.who },
+            { t: 'State', w: 210, key: 'state', text: (x) => x.state },
             { t: 'Testing', w: 260, key: 'why', text: (x) => x.why },
-            { t: 'Time Left', w: 80, key: 'left', num: true, text: (x) => `${x.left} min`, value: (x) => x.left },
+            { t: 'Time Left', w: 100, key: 'left', num: true, text: (x) => (wait ? `asks ${x.left} min` : `${x.left} min`), value: (x) => x.left },
             { t: 'Until', w: 60, key: 'until', text: (x) => x.until }
         ], hold, { sortId: 'cd-gt-hold', empty: 'Free.', fit: true });
         const q = d.queue.map((x, i) => ({ key: `dq:${x.agentId}`, icon: '/static_images/vista-cmdbar/clock.png', data: { n: i + 1, who: x.name, why: x.why, min: x.minutes, since: x.since, eta: x.eta } }));
@@ -3854,6 +3859,87 @@
     const devWaiting = () => (S.coord.devices && S.coord.devices.waiting) || 0;
     const clock = (ms) => { const d = new Date(ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
+    // ---- Phone consent on the Device Queue (Yozora #1305) ----------------------------------------------------------
+    // A phone an agent asks for waits for Yukimi: the lease is held with consent 'pending' (the device list carries it as
+    // holder.consent, pushed with the rest of the coordination state) and its question is the inbox notice
+    // device-ask:<lease> (data.device names the phone). Allow / Deny answer that notice, End answers device-hold:<device>
+    // (device_consent_answer). The notices are read once (inbox_list) and then follow inbox_updated; nothing is polled.
+
+    const DQ_ASK = 'device-ask:';
+    const DQ_HOLD = 'device-hold:';
+    const dqUi = () => (S.dq || (S.dq = { asks: new Map(), busy: false, loading: false, refreshing: false, again: false }));
+    const dqLive = (n) => !!n && n.state !== 'cleared' && n.state !== 'acted';
+    const dqData = (r) => (r && typeof r.ok === 'undefined' && r.data && typeof r.data === 'object' ? r.data : r) || {};
+    /** 'pending' while the agent waits for the answer, 'allowed' while it holds the phone with consent, else ''. */
+    const dqConsent = (d) => { const h = d && d.holder; return h && h.consent === 'pending' ? 'pending' : (h && h.consent === 'allowed' ? 'allowed' : ''); };
+    const dqAskOf = (device) => Array.from(dqUi().asks.values()).find((n) => n.data && n.data.device === device) || null;
+    const dqPending = () => devData().filter((d) => dqConsent(d) === 'pending').length;
+
+    async function dqLoad() {
+        const u = dqUi();
+        if (u.loading) return;
+        u.loading = true;
+        try {
+            const r = dqData(await send('inbox_list', {}));
+            u.asks = new Map();
+            (r.notices || []).forEach((n) => { if (n && String(n.id || '').startsWith(DQ_ASK) && dqLive(n)) u.asks.set(n.id, n); });
+        } catch (_) { /* the page says "Waiting for you" without the buttons until the next push */ }
+        u.loading = false;
+        repaint();
+    }
+
+    /** The device list read again after a consent change (one request at a time; one more if another change came meanwhile). */
+    async function dqRefresh() {
+        const u = dqUi();
+        if (u.refreshing) { u.again = true; return; }
+        u.refreshing = true;
+        try {
+            const r = await send('claude_desk_coord', { action: 'list', limit: 1 });
+            if (r.agents) S.coord = { agents: r.agents, claims: r.claims || [], builds: r.builds || S.coord.builds || [], devices: r.devices || S.coord.devices, lastMessageId: r.lastMessageId || S.coord.lastMessageId };
+        } catch (_) { /* the next push brings it */ }
+        u.refreshing = false;
+        if (u.again) { u.again = false; void dqRefresh(); }
+        repaint();
+    }
+
+    /** inbox_updated: a phone-consent notice came, changed or went. */
+    function dqTake(d) {
+        const nt = d && d.notice;
+        const id = String((nt && nt.id) || (d && d.id) || '');
+        const ask = id.startsWith(DQ_ASK);
+        if (!ask && !id.startsWith(DQ_HOLD)) return;
+        const u = dqUi();
+        const gone = (d.reason === 'ack' && (d.state === 'cleared' || d.state === 'acted')) || (!!nt && !dqLive(nt));
+        if (ask) { if (gone) u.asks.delete(id); else if (nt) u.asks.set(id, nt); }
+        void dqRefresh();
+        repaint();
+    }
+
+    /** The device the command acts on: the selected row, or the device page's own device. */
+    function devSel(c) {
+        const key = selId(c, 'd:') || (String(c.node || '').startsWith('gt-d:') ? String(c.node).slice(5) : '');
+        return devData().find((x) => x.device === key) || null;
+    }
+
+    /** Allow, Deny and End for a device, enabled by what its lease is waiting for (Release stays for the rest). */
+    function devConsentItems(d) {
+        const st = d ? dqConsent(d) : '';
+        const ask = st === 'pending' ? dqAskOf(d.device) : null;
+        const busy = dqUi().busy;
+        return [
+            { text: 'Allow', action: 'dev-allow', disabled: !ask || busy },
+            { text: 'Deny', action: 'dev-deny', disabled: !ask || busy },
+            { text: 'End...', action: 'dev-end', disabled: st !== 'allowed' || busy },
+            { text: 'Release...', action: 'dev-release', disabled: !d || !d.holder || st === 'allowed' || (st === 'pending' && !!ask) }
+        ];
+    }
+
+    const devStateText = (d) => {
+        const st = dqConsent(d);
+        if (st === 'pending') { const a = dqAskOf(d.device); return a && a.createdAt ? `Waiting for you (since ${timeOnly(a.createdAt)})` : 'Waiting for you'; }
+        return st === 'allowed' ? 'In use (you allowed it)' : (d.holder ? 'In use' : 'Free');
+    };
+
     function devicesPage(c) {
         const rows = devData().map((d) => ({
             key: `d:${d.device}`,
@@ -3861,19 +3947,23 @@
             cls: d.holder ? 'cd-live' : '',
             data: {
                 device: d.label === d.device ? d.device : `${d.label} (${d.device})`,
+                state: devStateText(d),
                 holder: d.holder ? d.holder.name : 'Free',
                 why: d.holder ? d.holder.why : '',
                 left: d.holder ? d.holder.minutesLeft : 0,
-                until: d.holder ? clock(d.holder.endsAt) : '',
+                // a pending ask has no end yet: it asks for its minutes, the clock starts at Allow
+                until: d.holder && d.holder.endsAt ? clock(d.holder.endsAt) : '',
+                needs: d.holder && dqConsent(d) === 'pending' ? d.holder.minutesLeft : 0,
                 waiting: d.queue.map((q, i) => `${i + 1}. ${q.name}`).join(', ')
             }
         }));
         return {
             html: c.listView([
                 { t: 'Device', w: 200, key: 'device', text: (d) => d.device },
+                { t: 'State', w: 210, key: 'state', text: (d) => d.state },
                 { t: 'Held By', w: 150, key: 'holder', text: (d) => d.holder },
                 { t: 'Testing', w: 220, key: 'why', text: (d) => d.why },
-                { t: 'Time Left', w: 80, key: 'left', num: true, text: (d) => (d.until ? `${d.left} min` : ''), value: (d) => d.left },
+                { t: 'Time Left', w: 100, key: 'left', num: true, text: (d) => (d.needs ? `asks ${d.needs} min` : (d.until ? `${d.left} min` : '')), value: (d) => d.left },
                 { t: 'Until', w: 60, key: 'until', text: (d) => d.until },
                 { t: 'Waiting (In Order)', w: 260, key: 'waiting', text: (d) => d.waiting }
             ], rows, { sortId: 'cd-devices', sort: { key: 'device', dir: 1 }, empty: 'No device is known yet. Agents take one with coord_device_request before they test on it.', fit: true }),
@@ -3899,19 +3989,26 @@
         u.loading = false;
         repaint();
     }
+    const dconDraft = (u) => u.draft || { timeoutSec: String(u.data.timeoutSec), onTimeout: u.data.onTimeout, readOnly: u.data.readOnly, devices: (u.data.consentDevices || []).slice() };
+    /** The phones the household can pick: the two it owns, every device the queue knows, and any id already listed. */
+    function dconPhones(st) {
+        const ids = ['a53', 'fold'].concat(devData().map((d) => d.device), st.devices || []);
+        return ids.filter((id, i) => id && ids.indexOf(id) === i).map((id) => { const d = devData().find((x) => x.device === id); return { id, label: d && d.label && d.label !== id ? `${d.label} (${id})` : id }; });
+    }
     function consentPage(c) {
         const u = dconUi();
         const T = 'Phone Consent';
         if (!u.data && !u.loading && !u.error) void dconLoad();
         if (!u.data) return c.page(T, '', [{ id: 'cd-dc-wait', title: T, body: u.error ? `<p>${esc(u.error)}</p><p class="mmc-hint">Use Read Again to try once more.</p>` : '<p class="mmc-hint">Reading the settings...</p>' }]);
-        const st = u.draft || { timeoutSec: String(u.data.timeoutSec), onTimeout: u.data.onTimeout, readOnly: u.data.readOnly, devices: (u.data.consentDevices || []).join(', ') };
+        const st = dconDraft(u);
         const opts = (list, cur) => list.map(([v, t]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${esc(t)}</option>`).join('');
         const form = `<div class="cd-sup-form">
-            <label title="How long the question on the phone stays loud. After that it stays on the phone, quietly, until the answer below applies."><span>Wait (seconds):</span><input type="text" inputmode="numeric" data-dcon="timeoutSec" value="${esc(st.timeoutSec)}" autocomplete="off" spellcheck="false" aria-label="Seconds the question waits loudly, 10 to 600"></label>
+            <label title="How long the question waits for your answer before the No answer action applies."><span>Wait (seconds):</span><input type="text" inputmode="numeric" data-dcon="timeoutSec" value="${esc(st.timeoutSec)}" autocomplete="off" spellcheck="false" aria-label="Seconds the question waits for your answer before the No answer action applies, 10 to 600"></label>
             <label title="What happens when nobody answers in that time."><span>No answer:</span><select class="vdt-select" data-dcon="onTimeout">${opts(DCON_TIMEOUT, st.onTimeout)}</select></label>
             <label title="Commands that only read (dumpsys, getprop, pm list ...)."><span>Read-only checks:</span><select class="vdt-select" data-dcon="readOnly">${opts(DCON_READONLY, st.readOnly)}</select></label>
-            <label title="Device ids, separated by commas or spaces."><span>Phones asked:</span><input type="text" data-dcon="devices" value="${esc(st.devices)}" autocomplete="off" spellcheck="false" aria-label="Device ids that need consent"></label>
-            <p class="mmc-hint">Wait is 10 to 600 seconds. With Keep waiting, nothing is granted until you answer.${st.onTimeout === 'allow' ? ' Allow it without asking gives the agent the phone when you do not answer.' : ''}</p>
+            <p class="mmc-hint">Phones asked: an agent must ask you before it uses a checked phone.</p>
+            ${dconPhones(st).map((p) => `<label class="cd-opt"><input type="checkbox" data-dcon="device" value="${esc(p.id)}"${(st.devices || []).includes(p.id) ? ' checked' : ''}><span>${esc(p.label)}</span></label>`).join('')}
+            <p class="mmc-hint">Wait is how long, from 10 to 600 seconds, the question waits for your answer before No answer applies: Keep waiting keeps asking and grants nothing until you answer, Deny refuses the agent, Allow it without asking gives it the phone.</p>
             <p class="cd-sup-actions"><button type="button" class="btn-standard primary" data-act="dcon-save"${u.busy ? ' disabled' : ''}>Save</button>${u.draft ? ' <span class="mmc-hint">Not saved yet.</span>' : ''}</p>
         </div>`;
         return {
@@ -3920,8 +4017,9 @@
                 const read = (ev) => {
                     const el = ev.target.closest('[data-dcon]');
                     if (!el) return;
-                    const dr = dconUi().draft || { timeoutSec: String(u.data.timeoutSec), onTimeout: u.data.onTimeout, readOnly: u.data.readOnly, devices: (u.data.consentDevices || []).join(', ') };
-                    dr[el.dataset.dcon] = el.value;
+                    const dr = dconDraft(dconUi());
+                    if (el.dataset.dcon === 'device') dr.devices = (dr.devices || []).filter((id) => id !== el.value).concat(el.checked ? [el.value] : []);
+                    else dr[el.dataset.dcon] = el.value;
                     dconUi().draft = dr;
                     const note = pane.querySelector('.cd-sup-form .cd-sup-actions');
                     if (note && !note.querySelector('.mmc-hint')) note.insertAdjacentHTML('beforeend', ' <span class="mmc-hint">Not saved yet.</span>');
@@ -3940,7 +4038,12 @@
             await c.box('<p>The wait must be a whole number of seconds from 10 to 600.</p>', null, { icon: 'warning', title: 'Phone Consent' });
             return;
         }
-        const devices = String(dr.devices || '').split(/[\s,;]+/).filter(Boolean);
+        const devices = (dr.devices || []).slice();
+        if (!devices.length) {
+            const ok = await c.box('<p>No phone is checked. Agents would use every phone without asking you first.</p><p>Save this anyway?</p>',
+                [{ text: 'Save', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'warning', title: 'Phone Consent', width: 420 });
+            if (ok !== true) return;
+        }
         u.busy = true;
         c.note('Saving...');
         repaint();
@@ -3968,6 +4071,51 @@
             if (r.agents) S.coord = { agents: r.agents, claims: r.claims || [], builds: r.builds || [], devices: r.devices || S.coord.devices, lastMessageId: r.lastMessageId || S.coord.lastMessageId };
             c.refresh();
         } catch (e) { await failBox(c, e); }
+    }
+
+    /**
+     * Allow / Deny the phone an agent asks for, or End its use of one it holds with consent: device_consent_answer, from the
+     * user's own click on the command (the server refuses an answer an agent drove by script). A refusal (ok false: already
+     * answered, lapsed) is told in a message box; the server clears the notice itself after any answer.
+     */
+    async function devAnswer(c, answer) {
+        const u = dqUi();
+        if (u.busy) return;
+        const d = devSel(c);
+        const T = answer === 'end' ? 'End Device Use' : 'Phone Consent';
+        if (!d || !d.holder) {
+            await c.box('<p>Select a device that an agent asks for or holds first.</p>', null, { icon: 'info', title: T, width: 360 });
+            return;
+        }
+        let id = '';
+        if (answer === 'end') {
+            if (dqConsent(d) !== 'allowed') { await c.box(`<p>${esc(d.label)} is not in use with your consent.</p>`, null, { icon: 'info', title: T, width: 360 }); return; }
+            const ok = await c.box(`<p>End <b>${esc(d.holder.name)}</b>'s use of <b>${esc(d.label)}</b>${d.holder.why ? ` (${esc(d.holder.why)})` : ''}? The agent loses the phone now and is told.</p>`,
+                [{ text: 'End', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], { icon: 'warning', title: T, width: 420 });
+            if (ok !== true) return;
+            id = `${DQ_HOLD}${d.device}`;
+        } else {
+            const ask = dqAskOf(d.device);
+            if (!ask) {
+                await c.box('<p>The question for this phone is not here yet. It is read again now; try once more.</p>', null, { icon: 'info', title: T, width: 380 });
+                void dqLoad();
+                return;
+            }
+            id = ask.id;
+        }
+        u.busy = true;
+        c.note('Sending...');
+        repaint();
+        try {
+            const r = dqData(await send('device_consent_answer', { id, answer }));
+            if (r.ok === true) u.asks.delete(id);
+            else await c.box(`<p>${esc(r.error || 'The answer was not taken.')}</p>`, null, { icon: 'warning', title: T, width: 380 });
+        } catch (e) { await failBox(c, e); }
+        u.busy = false;
+        c.note('');
+        void dqRefresh();
+        void dqLoad();
+        repaint();
     }
 
     function locksPage(c) {
@@ -5367,7 +5515,9 @@
         put('send', 'message sup-send');
         put('discuss', 'steer steer-agent con-steer');
         put('stop', 'interrupt con-interrupt con-stop rc-stop fleet-stop');
-        put('power', 'end');
+        put('power', 'end dev-end');
+        put('checklist', 'dev-allow');
+        put('ban', 'dev-deny');
         put('play', 'rules-review rc-start fleet-start work-start work-start-sel con-start resume-hold sup-resume');
         put('restart', 'rc-reconnect fleet-reconnect switch resume');
         put('pause', 'pause work-hold-sel');
@@ -5398,13 +5548,13 @@
     function selCommands(n, key) { const r = selCommandList(n, key); return r ? Object.assign({}, r, { items: withIcons(r.items) }) : r; }
 
     function commandList(n) {
-        if (n.id.startsWith('gt-d:')) return [{ text: 'Release...', action: 'dev-release' }, { text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }];
+        if (n.id.startsWith('gt-d:')) return devConsentItems(devData().find((x) => x.device === n.id.slice(5)) || null).concat([{ text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }]);
         switch (n.id) {
             case 'root': return [{ text: 'Add Account...', action: 'add-account' }, { text: 'New Session...', action: 'new-session' }];
             case 'accounts': return [{ text: loginRows().length ? 'Sign In Again...' : 'Add Account...', action: loginRows().length ? 'sign-in-again' : 'add-account' }].concat(loginRows().length ? [{ text: 'Add Account...', action: 'add-account' }] : []);
             case 'rc': return [{ text: 'Refresh Status', action: 'fleet-refresh' }];
             case 'gating': return [{ text: 'Read Again', action: 'gate-refresh' }];
-            case 'gt-dev': return [{ text: 'Release...', action: 'dev-release' }, { text: 'Read Again', action: 'gate-refresh' }];
+            case 'gt-dev': return devConsentItems(S.c ? devSel(S.c) : null).concat([{ text: 'Read Again', action: 'gate-refresh' }]);
             case 'gt-consent': return [{ text: 'Save Settings', action: 'dcon-save', disabled: !dconUi().draft || dconUi().busy }, { text: 'Read Again', action: 'dcon-refresh' }];
             case 'gt-restart': case 'gt-client': case 'gt-android': case 'gt-windows': case 'gt-other': return [{ text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }];
             case 'co-locks': return [{ text: 'Read Again', action: 'locks-refresh' }];
@@ -5538,7 +5688,7 @@
         if (key.startsWith('d:')) {
             const d = devData().find((x) => x.device === key.slice(2));
             if (!d) return null;
-            return { title: d.label, items: [{ text: 'Release', action: 'dev-release', disabled: !d.holder }, { text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }] };
+            return { title: d.label, items: devConsentItems(d).concat([{ text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }]) };
         }
         if (key.startsWith('dq:')) return { title: 'Waiting for the device', items: [{ text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }] };
         if (key.startsWith('ga:') || key.startsWith('ca:')) return { title: 'Waiting', items: [{ text: 'Open Session', action: 'wait-open' }, { text: 'Send Message...', action: 'wait-message' }, { text: 'Show Screen', action: 'wait-screen' }, { separator: true }, { text: 'Read Again', action: 'gate-refresh' }] };
@@ -6064,6 +6214,9 @@
             case 'locks-refresh': await loadLocks(); return true;
             case 'dev-refresh': await loadMessages(); return true;
             case 'dev-release': await devRelease(c); return true;
+            case 'dev-allow': await devAnswer(c, 'allow'); return true;
+            case 'dev-deny': await devAnswer(c, 'deny'); return true;
+            case 'dev-end': await devAnswer(c, 'end'); return true;
             case 'build-props': {
                 const b = (S.coord.builds || []).find((x) => x.id === Number(selId(c, 'b:')));
                 if (!b) return true;
@@ -7278,7 +7431,7 @@
                 if (GATE_NODE[n.id.slice(3)] && n.id.startsWith('gt-')) return `${plural(gateBuilds(n.id.slice(3)).length, 'gate')}, ${plural(gateWaits(n.id.slice(3)).length, 'wait')}`;
                 if (n.id.startsWith('gt-d:')) return devStatus(n.id.slice(5));
                 if (n.id === 'gt-consent') return dconUi().data ? `${dconUi().data.timeoutSec} s, ${(dconUi().data.consentDevices || []).join(', ') || 'no phone'}` : '';
-                if (n.id === 'gt-dev') return `${plural((S.coord.devices && S.coord.devices.holding) || 0, 'device')} in use, ${devWaiting()} waiting`;
+                if (n.id === 'gt-dev') return `${plural((S.coord.devices && S.coord.devices.holding) || 0, 'device')} in use, ${devWaiting()} waiting${dqPending() ? `, ${dqPending()} waiting for you` : ''}`;
                 if (n.id === 'co-locks') return S.locks ? plural(S.locks.list.length, 'lock') : '';
                 if (n.id === 'co-work') return S.sup.busy || (S.sup.counts ? `${S.sup.counts.active} running, ${S.sup.counts.queued} queued` : plural(supWork().filter((w) => WORK_OPEN.has(w.state)).length, 'open request'));
                 if (n.id === 'sup-reviews') return plural(supOpenReviews().length, 'review');
@@ -7309,9 +7462,15 @@
 
     let running = null;
 
+    /** A notice's page (data.page 'devices': a phone waits for an answer, #1305) opens that page of Fleet. */
+    function gotoPage(c, args) {
+        if (args && args.page === 'devices' && c) { c.open.add('gating'); c.select('gt-dev', true); void dqLoad(); void dqRefresh(); }
+    }
+
     async function start(app) {
         if (running && S.c && S.c.modal.isConnected) {
             call('bringModalToFront', S.c.modal);
+            gotoPage(S.c, app.args);
             app.exit();
             return;
         }
@@ -7355,6 +7514,8 @@
             if (S.c && !S.exiting) { S.exiting = true; S.c.close(); }
         });
         await subscribe(true);
+        void dqLoad();
+        gotoPage(c, app.args);
         void bgFeed(true);
         void usageWatch(usageWanted(c.node));
         void memWatch(MEM_NODES.has(c.node));

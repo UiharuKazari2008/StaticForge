@@ -409,18 +409,32 @@
     function answerKeys(notice) {
         const d = (notice && notice.data) || {};
         if (d.answerType !== 'device_consent_answer' || !Array.isArray(d.buttons) || !d.buttons.length) return null;
-        // the box goes when the server has the answer (it clears the notice whatever came of it); a send that never
-        // arrived (no link, timed out) leaves the box up with its keys, to tap again (#1305)
+        // the box goes when the server has the answer (it clears the notice whatever came of it); a refusal (ok false:
+        // "already answered", lapsed) is read in the box for a moment first; a send that never arrived (no link, timed
+        // out) leaves the box up with its keys, to tap again (#1305)
         let sending = false;
         const key = (b) => ({ label: String(b.label || b.id).slice(0, 20), action: () => {
             if (sending) return;
             sending = true;
             ask('device_consent_answer', { id: notice.id, answer: String(b.id) }, 8000)
-                .then(() => close(notice.id), () => { sending = false; });
+                .then((r) => { if (r && r.ok === false) refused(notice, r.error); else close(notice.id); }, () => { sending = false; });
         } });
         // the in-use notice has one button (End): Dismiss beside it
         if (d.buttons.length === 1) return { left: key(d.buttons[0]), right: { label: 'Dismiss', icon: 'dismiss', action: () => { ack(notice.id, 'cleared'); close(notice.id); } } };
         return { left: key(d.buttons[0]), right: key(d.buttons[1]) };
+    }
+
+    // a phone-consent answer the server refused: the box says why for a moment (its clear, which follows at once, does
+    // not take it down meanwhile), then goes; its one key is Dismiss
+    const REFUSED_MS = 3500;
+    const lingering = new Set();
+    function refused(notice, error) {
+        const note = shownNotes.get(notice.id);
+        if (!note || typeof note.update !== 'function') { close(notice.id, true); return; }
+        lingering.add(notice.id);
+        const done = () => { lingering.delete(notice.id); close(notice.id, true); };
+        try { note.update({ html: esc(String(error || 'The answer was not taken.').slice(0, 160)), softKeys: () => ({ left: { label: 'Dismiss', icon: 'dismiss', action: done }, right: null }) }); } catch (_) { /* gone */ }
+        setTimeout(done, REFUSED_MS);
     }
 
     // the page's notification boxes (showGlassToast ids toast-<n>): the newest number, and whether one carries a title
@@ -456,7 +470,8 @@
         }, PRODUCER_MS);
     }
 
-    function close(id) {
+    function close(id, force) {
+        if (!force && lingering.has(id)) return;
         const note = shownNotes.get(id);
         if (note) { try { note.close(); } catch (_) { /* gone */ } shownNotes.delete(id); }
         stacks.delete(id);
