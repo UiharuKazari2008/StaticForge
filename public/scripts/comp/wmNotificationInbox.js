@@ -189,6 +189,7 @@
                 held.sig = parts.sig;
                 held.handle.update({ title: parts.title, html: parts.html, badge: parts.badge, sortAt: notice.sortAt, prio: notice.prio });
             }
+            pageShown(id);
             return;
         }
         // notice: inbox-stack
@@ -308,7 +309,7 @@
 
     /** Windows Mobile's reminder notification for a calendar / task reminder. */
     function showReminder(notice, opts = {}) {
-        if (!ws || typeof ws.appNote !== 'function' || shownNotes.has(notice.id)) return;
+        if (!ws || typeof ws.appNote !== 'function' || alreadyUp(notice, opts)) return;
         const d = notice.data || {};
         const lines = String(notice.text || '').split('\n');
         const subject = d.subject || lines[0] || 'No Subject';
@@ -361,10 +362,23 @@
         try { const A = window.AndroidInbox; if (A && typeof A.shown === 'function') A.shown(String(id)); } catch (_) { /* no app */ }
     }
 
+    /**
+     * Whether the notice's box is already up, so none is drawn. The app is told it is shown either way: unconfirmed, the
+     * Android app draws its own box over this one (#1321). News under an id whose box is still up (the server's alert: the
+     * next turn's notice) is not "already up": the old box goes and the new one comes, sounding - confirmed as it stood,
+     * it would be heard from neither.
+     */
+    function alreadyUp(notice, opts) {
+        if (!shownNotes.has(notice.id)) return false;
+        if (notice.alert === true && !opts.quiet && !lingering.has(notice.id)) { close(notice.id); return false; }
+        pageShown(notice.id);
+        return true;
+    }
+
     /** Show one missed notice as a WM notification; View opens its app, Dismiss clears it. */
     function show(notice, opts = {}) {
         if (isReminder(notice)) { showReminder(notice, opts); return; }
-        if (!ws || typeof ws.appNote !== 'function' || shownNotes.has(notice.id)) return;
+        if (!ws || typeof ws.appNote !== 'function' || alreadyUp(notice, opts)) return;
         // its app's own grouped notification (it clears the id when dismissed or read)
         const app = adopter(notice);
         if (app) {
