@@ -737,7 +737,7 @@
   "page-global": 6
  },
  "public/scripts/comp/toastManager.js": {
-  "page-global": 79
+  "page-global": 71
  },
  "public/scripts/comp/trayIndicators.js": {
   "owner-less-listener": 1,

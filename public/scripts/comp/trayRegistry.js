@@ -43,6 +43,8 @@ const TRAY_POPUP_CATALOG = [
     { id: 'remote-access', label: 'Remote Access' },
     { id: 'nightshade', label: 'Nightshade Network' },
     { id: 'sync-center', label: 'Sync Center' },
+    // a file the Android app saved (toastManager.js 'melaton:download'); listed from the start, so Hide can be undone
+    { id: 'download-saved', label: 'Downloads' },
     { id: 'network-portal', label: 'Network log on' },
     { id: 'battery', label: 'Battery' },
     { id: 'safely-remove', label: 'Safely Remove Hardware' },

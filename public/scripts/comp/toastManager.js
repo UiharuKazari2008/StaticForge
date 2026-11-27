@@ -667,8 +667,7 @@ function _showPolicyBalloon(toastId, route, type, title, message, timeout, custo
  * @param {string|null} customIcon - Custom icon HTML string
  * @param {Array|null} buttons - Array of button configuration objects
  * @param {Object|null} options - For a desktop message box: { appIcon } the raising program's caption icon (an
- *   app_icons reference; without one a box nobody's click raised has no caption icon), { position: 'bottom-right' }.
- *   { inPage: true } draws the toast itself, past the toast policy (a delivery the policy would turn into a box)
+ *   app_icons reference; without one a box nobody's click raised has no caption icon), { position: 'bottom-right' }
  * @returns {string} Unique toast ID
  *
  * @example
@@ -719,7 +718,7 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
     }
 
     // the toast policy: a balloon, a message box or nothing in place of a toast
-    const route = options && options.inPage ? { kind: 'pass' } : _toastPolicyRoute(type, title, message, showProgress, buttons);
+    const route = _toastPolicyRoute(type, title, message, showProgress, buttons);
     if (route.kind === 'drop') {
         activeToasts.delete(toastId);
         if (policyDroppedToasts.size > 200) policyDroppedToasts.clear();
@@ -1761,90 +1760,128 @@ if (typeof window !== 'undefined') {
 // (window.AndroidNotification.openDownload(id) -> boolean).
 // ============================================================================
 
-let savedDownloadNotice = null; // { close() }: one at a time, the newest download in its place (N9)
-let savedDownloadId = null;
-const failedDownloadToasts = new Map(); // download id -> its error toast, while that one is up (N6)
+(function melatonDownloadNotices() {
+    let savedDownloadNotice = null; // { close(), up() }: one at a time, the newest download in its place (N9)
+    let savedDownloadId = null;
+    // the desktop / DeX balloon: its Customize Notifications switch (trayRegistry.js) and the tray icons it can stand on,
+    // the first the notification area has (downloads have no icon of their own; the DeX Bell is where the phone's notices are)
+    const SAVED_DOWNLOAD_POPUP_ID = 'download-saved';
+    const SAVED_DOWNLOAD_TRAY_ICONS = ['androidNotifyTrayIcon', 'activeSyncTrayIcon', 'modemTrayIcon', 'volumeTrayIcon'];
+    const failedDownloadToasts = new Map(); // download id -> its error toast, while that one is up (N6)
 
-// names and messages are data, and a toast's title and message are markup
-function _escapeDownloadText(v) {
-    return String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
-
-function _canOpenDownload() {
-    return !!(window.AndroidNotification && typeof window.AndroidNotification.openDownload === 'function');
-}
-
-function _openSavedDownload(id, name) {
-    let opened = false;
-    try {
-        // one call from her own tap, never from a timer or a render
-        opened = _canOpenDownload() && window.AndroidNotification.openDownload(id) === true;
-    } catch (error) {
-        console.warn('[toast] openDownload failed:', error);
+    // names and messages are data, and a toast's title and message are markup
+    function _escapeDownloadText(v) {
+        return String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
-    if (!opened) {
-        // notice: page-download-open-failed
-        showGlassToast('error', 'Download', _escapeDownloadText(`Cannot open '${name}'.`));
-    }
-}
 
-/** The saved file and its Open button, silent. */
-function _showSavedDownload(id, name) {
-    if (savedDownloadNotice) {
-        if (savedDownloadId === id && savedDownloadNotice.up()) return;
-        savedDownloadNotice.close();
-        savedDownloadNotice = null;
+    function _canOpenDownload() {
+        return !!(window.AndroidNotification && typeof window.AndroidNotification.openDownload === 'function');
     }
-    savedDownloadId = id;
-    const canOpen = _canOpenDownload();
-    const shell = window.uiShell === 'mobile' ? window.wmShell : null;
-    if (shell && typeof shell.appNote === 'function') {
-        // Melaton Mobile: the shell's notification, without the sound a bare toast would get there
-        let note = null;
-        const close = () => { if (note) note.close(); };
+
+    function _openSavedDownload(id, name) {
+        let opened = false;
+        try {
+            // one call from her own tap, never from a timer or a render
+            opened = _canOpenDownload() && window.AndroidNotification.openDownload(id) === true;
+        } catch (error) {
+            console.warn('[toast] openDownload failed:', error);
+        }
+        if (!opened) {
+            // notice: page-download-open-failed
+            showGlassToast('error', 'Download', _escapeDownloadText(`Cannot open '${name}'.`));
+        }
+    }
+
+    /** A tray icon a balloon can stand on: in the notification area, or tucked behind its chevron (shown for the balloon). */
+    function _savedDownloadTrayIcon() {
+        return SAVED_DOWNLOAD_TRAY_ICONS.map((id) => document.getElementById(id))
+            .find((el) => el && !el.classList.contains('hidden')
+                && (el.classList.contains('tray-overflow') || el.getClientRects().length > 0)) || null;
+    }
+
+    /**
+     * The desktop and DeX: a Vista tray balloon, silent. A click opens the file. PopoverManager times it out while the user
+     * is there, waits for the taskbar and for another balloon, and shows nothing while Downloads is set to Hide.
+     */
+    function _showSavedDownloadBalloon(id, name, canOpen) {
+        if (!window.PopoverManager || typeof showPopover !== 'function') return;
+        const anchor = _savedDownloadTrayIcon();
+        if (!anchor) return;
+        const notice = { open: true, up: () => notice.open, close: () => { if (notice.open) window.PopoverManager.hide(anchor); notice.open = false; } };
+        // on the same icon the next balloon takes this one's place; on another icon this one has to go first
+        if (savedDownloadNotice && savedDownloadNotice.anchor !== anchor) savedDownloadNotice.close();
+        notice.anchor = anchor;
+        savedDownloadNotice = notice;
         // notice: page-download-saved
-        note = shell.appNote({
-            title: 'Download Complete',
-            html: _escapeDownloadText(name),
-            silent: true,
-            actions: canOpen ? [{ text: 'Open', action: () => { close(); _openSavedDownload(id, name); } }] : null
+        showPopover(anchor, 'info', 'Download Complete', _escapeDownloadText(name), false, 15000, null, null, {
+            position: 'top',
+            arrowPosition: 'bottom-right',
+            popupId: SAVED_DOWNLOAD_POPUP_ID,
+            onClick: canOpen ? () => _openSavedDownload(id, name) : null,
+            onHide: () => { notice.open = false; }
         });
-        if (note) {
-            savedDownloadNotice = { close, up: () => !!document.getElementById(note.id) };
+    }
+
+    /** The saved file, to open, silent. */
+    function _showSavedDownload(id, name) {
+        if (savedDownloadNotice && savedDownloadId === id && savedDownloadNotice.up()) return;
+        savedDownloadId = id;
+        const canOpen = _canOpenDownload();
+        if (window.uiShell !== 'mobile' && _isDesktopModeForToasts()) {
+            _showSavedDownloadBalloon(id, name, canOpen);
             return;
         }
-    }
-    // the desktop and DeX: a toast in the page. The toast policy would make a success with a button a message box
-    // (a box per saved file, one waiting behind the other), and drop one without a button
-    // notice: page-download-saved
-    const toastId = showGlassToast('success', 'Download Complete', _escapeDownloadText(name), false, 15000, null,
-        canOpen ? [{ text: 'Open', type: 'primary', onClick: () => _openSavedDownload(id, name) }] : null,
-        { inPage: true });
-    savedDownloadNotice = { close: () => removeGlassToast(toastId), up: () => activeToasts.has(toastId) };
-}
-
-function _onMelatonDownload(event) {
-    const detail = event && event.detail;
-    if (!detail) return;
-    const name = String(detail.name || '') || 'the file';
-    if (detail.state === 'saved') {
-        _showSavedDownload(detail.id, name);
-    } else if (detail.state === 'failed') {
-        const known = failedDownloadToasts.get(detail.id);
-        if (known && activeToasts.has(known)) return;
-        for (const [id, toastId] of failedDownloadToasts) {
-            if (!activeToasts.has(toastId)) failedDownloadToasts.delete(id);
+        if (savedDownloadNotice) {
+            savedDownloadNotice.close();
+            savedDownloadNotice = null;
         }
-        const why = String(detail.message || '');
-        const text = !why ? `Cannot save '${name}'.` : (why.includes(name) ? why : `${name}: ${why}`);
-        // notice: page-download-failed
-        failedDownloadToasts.set(detail.id, showGlassToast('error', 'Download Failed', _escapeDownloadText(text)));
+        const shell = window.uiShell === 'mobile' ? window.wmShell : null;
+        if (shell && typeof shell.appNote === 'function') {
+            // Melaton Mobile: the shell's notification, without the sound a bare toast would get there
+            let note = null;
+            const close = () => { if (note) note.close(); };
+            // notice: page-download-saved
+            note = shell.appNote({
+                title: 'Download Complete',
+                html: _escapeDownloadText(name),
+                silent: true,
+                actions: canOpen ? [{ text: 'Open', action: () => { close(); _openSavedDownload(id, name); } }] : null
+            });
+            if (note) {
+                savedDownloadNotice = { close, up: () => !!document.getElementById(note.id) };
+                return;
+            }
+        }
+        // neither a taskbar nor the phone shell: a toast, by the toast policy
+        // notice: page-download-saved
+        const toastId = showGlassToast('success', 'Download Complete', _escapeDownloadText(name), false, 15000, null,
+            canOpen ? [{ text: 'Open', type: 'primary', onClick: () => _openSavedDownload(id, name) }] : null);
+        savedDownloadNotice = { close: () => removeGlassToast(toastId), up: () => activeToasts.has(toastId) };
     }
-    // 'nofolder': nothing here. The app opens Android's folder picker at the same moment (N10)
-}
 
-// once for the page's life (this script runs once): the shell's own listener, whichever program started the download
-if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-    const toastShellLife = new AbortController();
-    window.addEventListener('melaton:download', _onMelatonDownload, { signal: toastShellLife.signal });
-}
+    function _onMelatonDownload(event) {
+        const detail = event && event.detail;
+        if (!detail) return;
+        const name = String(detail.name || '') || 'the file';
+        if (detail.state === 'saved') {
+            _showSavedDownload(detail.id, name);
+        } else if (detail.state === 'failed') {
+            const known = failedDownloadToasts.get(detail.id);
+            if (known && activeToasts.has(known)) return;
+            for (const [id, toastId] of failedDownloadToasts) {
+                if (!activeToasts.has(toastId)) failedDownloadToasts.delete(id);
+            }
+            const why = String(detail.message || '');
+            const text = !why ? `Cannot save '${name}'.` : (why.includes(name) ? why : `${name}: ${why}`);
+            // notice: page-download-failed
+            failedDownloadToasts.set(detail.id, showGlassToast('error', 'Download Failed', _escapeDownloadText(text)));
+        }
+        // 'nofolder': nothing here. The app opens Android's folder picker at the same moment (N10)
+    }
+
+    // once for the page's life (this script runs once): the shell's own listener, whichever program started the download
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        const toastShellLife = new AbortController();
+        window.addEventListener('melaton:download', _onMelatonDownload, { signal: toastShellLife.signal });
+    }
+})();

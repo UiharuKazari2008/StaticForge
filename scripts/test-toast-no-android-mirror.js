@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Dreamscape's notices show only in Dreamscape's own UI (#1321): with an old app in the page (AndroidNotification
 // there and isReady() TRUE) no toast, on the desktop / DeX or the phone, calls anything on it, and every one is drawn
-// by the page; the app's 'melaton:download' events become the page's own notices.
+// by the page; the app's 'melaton:download' events become the page's own notices: on the desktop / DeX a saved file is
+// a tray balloon (the real popoverManager.js and trayRegistry.js), with its own switch and no way past the toast policy.
 // Run: node scripts/test-toast-no-android-mirror.js
 const assert = require('assert');
 const fs = require('fs');
@@ -10,6 +11,8 @@ const vm = require('vm');
 
 const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 const SOURCE = read('public/scripts/comp/toastManager.js');
+const TRAY_SOURCE = read('public/scripts/comp/trayRegistry.js');
+const POPOVER_SOURCE = read('public/scripts/comp/popoverManager.js');
 
 // ---- a small DOM: enough for the toast markup toastManager.js writes -------------------------------------------
 function element(tagName) {
@@ -19,6 +22,17 @@ function element(tagName) {
         getAttribute(k) { return k in el.attrs ? el.attrs[k] : null; },
         hasAttribute(k) { return k in el.attrs; },
         removeAttribute(k) { delete el.attrs[k]; if (k === 'src') el.src = ''; },
+        events: {},
+        addEventListener(type, fn) { (el.events[type] = el.events[type] || []).push(fn); },
+        removeEventListener(type, fn) { el.events[type] = (el.events[type] || []).filter((x) => x !== fn); },
+        // '#id' or '.class', this element or one it is in
+        closest(sel) { for (let n = el; n; n = n.parentNode) if (sel[0] === '#' ? n.id === sel.slice(1) : n.classList.contains(sel.slice(1))) return n; return null; },
+        contains(other) { return other === el || el.all().includes(other); },
+        get isConnected() { for (let n = el; n; n = n.parentNode) if (n.tagName === 'body') return true; return false; },
+        rects: 1,
+        getClientRects() { return el.rects ? [el.getBoundingClientRect()] : []; },
+        getBoundingClientRect() { return { top: 700, left: 900, right: 916, bottom: 716, width: el.rects ? 16 : 0, height: el.rects ? 16 : 0 }; },
+        offsetHeight: 15,
         appendChild(c) { return el.insertBefore(c, null); },
         prepend(c) { return el.insertBefore(c, el.children[0] || null); },
         insertBefore(c, before) {
@@ -37,7 +51,8 @@ function element(tagName) {
         classList: {
             contains: (c) => el.className.split(/\s+/).includes(c),
             add: (c) => { if (!el.classList.contains(c)) el.className = `${el.className} ${c}`.trim(); },
-            remove: (c) => { el.className = el.className.split(/\s+/).filter((x) => x && x !== c).join(' '); }
+            remove: (...cs) => { el.className = el.className.split(/\s+/).filter((x) => x && !cs.includes(x)).join(' '); },
+            toggle: (c, on) => { const want = on === undefined ? !el.classList.contains(c) : !!on; if (want) el.classList.add(c); else el.classList.remove(c); return want; }
         },
         all() { return el.children.flatMap((c) => [c, ...c.all()]); },
         querySelector(sel) { return el.querySelectorAll(sel)[0] || null; },
@@ -66,7 +81,7 @@ function parse(html) {
 }
 
 // ---- one page with an old app in it --------------------------------------------------------------------------------
-function page({ phone = false, desktop = false, openDownload, noApp = false } = {}) {
+function page({ phone = false, desktop = false, openDownload, noApp = false, tray = null } = {}) {
     const bridgeCalls = [];
     // every method an old DSApp NotificationBridge offered; a call to any of them (or onAction wiring) is recorded
     const bridge = { isReady: () => { bridgeCalls.push('isReady'); return true; } };
@@ -84,6 +99,8 @@ function page({ phone = false, desktop = false, openDownload, noApp = false } = 
     const dialogs = [];
     const notes = [];
     const timers = [];
+    const store = {};
+    const clock = { now: 1000000000 };
     const window = {
         AndroidNotification: noApp ? undefined : watched,
         isDesktop: desktop,
@@ -115,7 +132,9 @@ function page({ phone = false, desktop = false, openDownload, noApp = false } = 
         AbortController,
         window,
         document,
-        localStorage: { getItem: () => null, setItem() {} },
+        localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } },
+        Date: class extends Date { static now() { return clock.now; } },
+        HTMLElement: Object.defineProperty(function HTMLElement() {}, Symbol.hasInstance, { value: (v) => !!(v && v.tagName) }),
         // timers run only when the test says so
         setTimeout: (fn, ms) => { timers.push({ fn, ms, live: true }); return timers.length; },
         clearTimeout: (n) => { if (timers[n - 1]) timers[n - 1].live = false; },
@@ -128,12 +147,42 @@ function page({ phone = false, desktop = false, openDownload, noApp = false } = 
     };
     vm.createContext(ctx);
     vm.runInContext(SOURCE, ctx);
+    // the desktop's taskbar: { id: { hidden, tucked } } per tray icon, drawn with the real popover manager
+    let taskbar = null;
+    if (tray) {
+        taskbar = element('div');
+        taskbar.id = 'desktopTaskbar';
+        body.appendChild(taskbar);
+        for (const [id, state] of Object.entries(tray)) {
+            const icon = element('div');
+            icon.id = id;
+            icon.className = `taskbar-tray-icon${state.hidden ? ' hidden' : ''}${state.tucked ? ' tray-overflow' : ''}`;
+            icon.rects = state.hidden || state.tucked ? 0 : 1;
+            taskbar.appendChild(icon);
+        }
+        document.addEventListener = () => {};
+        Object.assign(window, { innerWidth: 1280, innerHeight: 800 });
+        vm.runInContext(TRAY_SOURCE, ctx);
+        vm.runInContext(POPOVER_SOURCE, ctx);
+        ctx.PopoverManager = window.PopoverManager;
+    }
+    // the balloons on screen: [{ icon, text, el }]
+    const balloons = () => (window.PopoverManager ? [...window.PopoverManager.activePopovers] : [])
+        .filter(([, d]) => d.popover.classList.contains('show'))
+        .map(([icon, d]) => ({ icon: icon.id, el: d.popover, text: d.popover.all().map((x) => x._html || '').join(' ') }));
     const toasts = () => {
         const box = document.getElementById('toastContainer');
         return box ? box.children.filter((c) => !c.classList.contains('removing')) : [];
     };
     return {
-        ctx, listeners, dialogs, notes, bridgeCalls, toasts, document,
+        ctx, listeners, dialogs, notes, bridgeCalls, toasts, document, balloons, store, taskbar,
+        // her mouse moves, then this much time passes
+        use(ms) { for (const fn of listeners.pointermove || []) fn(); clock.now += ms; },
+        away(ms) { clock.now += ms; },
+        click(balloon, target) {
+            const e = { target: target || balloon.el, preventDefault() {}, stopPropagation() {} };
+            for (const fn of [...(balloon.el.events.click || [])]) fn(e);
+        },
         run: (code) => vm.runInContext(code, ctx),
         flush: () => { for (const t of timers.splice(0)) if (t.live) t.fn(); },
         download: (detail) => { for (const fn of listeners['melaton:download'] || []) fn({ detail }); }
@@ -215,42 +264,123 @@ const tick = () => new Promise((r) => setImmediate(r));
     }
 
     // ---- 'melaton:download' ----------------------------------------------------------------------------------------
-    // the desktop / DeX
+    // the desktop / DeX: a tray balloon on the Bell
+    assert.ok(!/inPage/.test(SOURCE), 'no way past the desktop toast policy');
     const opened = [];
     let openAnswer = true;
-    const d = page({ desktop: true, openDownload: (n) => { opened.push(n); return openAnswer; } });
-    assert.strictEqual((d.listeners['melaton:download'] || []).length, 1, 'one listener');
+    const DEX = { androidNotifyTrayIcon: {}, activeSyncTrayIcon: {}, modemTrayIcon: {} };
+    const dex = (more) => page(Object.assign({ desktop: true, tray: DEX, openDownload: (n) => { opened.push(n); return openAnswer; } }, more));
+    const d = dex();
+    assert.strictEqual(d.listeners['melaton:download'].length, 1, 'one listener');
+    assert.ok(d.run(`trayPopupCatalog().some((r) => r.id === 'download-saved' && r.label === 'Downloads')`),
+        'Customize Notifications lists Downloads before any download came');
 
     d.download({ state: 'saved', id: 7, name: '<img src=x onerror=1>&.png', message: '' });
-    assert.strictEqual(d.toasts().length, 1, 'saved: one toast in the page');
-    assert.strictEqual(d.dialogs.length, 0, 'saved: no message box');
-    let t = d.toasts()[0];
-    assert.ok(t.innerHTML.includes('&lt;img src=x onerror=1&gt;&amp;.png'), 'the name is escaped');
-    assert.ok(!t.innerHTML.includes('<img src=x'), 'no markup from the name');
-    assert.deepStrictEqual(buttonsOf(t).map((b) => b.textContent), ['Open']);
-    d.download({ state: 'saved', id: 7, name: '<img src=x onerror=1>&.png' });
-    d.flush();
-    assert.deepStrictEqual(opened, [], 'nothing opens by itself');
+    assert.strictEqual(d.toasts().length + d.dialogs.length, 0, 'no toast, no message box');
+    let up = d.balloons();
+    assert.strictEqual(up.length, 1, 'saved: one balloon');
+    assert.strictEqual(up[0].icon, 'androidNotifyTrayIcon');
+    assert.ok(up[0].el.classList.contains('tray-balloon') && up[0].el.classList.contains('is-top') && up[0].el.classList.contains('arrow-bottom-right'));
+    assert.ok(up[0].text.includes('Download Complete'));
+    assert.ok(up[0].text.includes('&lt;img src=x onerror=1&gt;&amp;.png'), 'the name is escaped');
+    assert.ok(!up[0].text.includes('<img src=x'), 'no markup from the name');
 
+    // one at a time, the newest in its place; a repeat adds nothing
     d.download({ state: 'saved', id: 8, name: 'b.png' });
     d.download({ state: 'saved', id: 9, name: 'c.png' });
     d.download({ state: 'saved', id: 9, name: 'c.png' });
-    assert.strictEqual(d.toasts().length, 1, 'a burst is one notice, the newest (a repeat adds nothing)');
-    t = d.toasts()[0];
-    assert.ok(t.innerHTML.includes('c.png'));
-    d.ctx.handleToastButtonClick(buttonsOf(t)[0].attrs['data-button-id']);
-    assert.deepStrictEqual(opened, [9], 'Open calls openDownload(id)');
-    assert.strictEqual(d.toasts().length, 0, 'and the notice goes');
-    assert.strictEqual(d.dialogs.length, 0, 'an opened file says nothing more');
+    d.flush();
+    up = d.balloons();
+    assert.strictEqual(up.length, 1, 'a burst is one balloon');
+    assert.strictEqual(d.document.body.all().filter((e) => e.classList.contains('popover')).length, 1, 'one on the page');
+    assert.ok(up[0].text.includes('c.png') && !up[0].text.includes('b.png'), 'the newest');
+    assert.deepStrictEqual(opened, [], 'nothing opens by itself');
 
-    openAnswer = false;
+    // a click anywhere on it opens the newest file and closes it
+    d.click(up[0]);
+    d.flush();
+    assert.deepStrictEqual(opened, [9], 'the click calls openDownload(id)');
+    assert.strictEqual(d.balloons().length, 0, 'and the balloon goes');
+    assert.strictEqual(d.dialogs.length + d.toasts().length, 0, 'an opened file says nothing more');
+
+    // its X only closes it
     d.download({ state: 'saved', id: 10, name: 'd.png' });
-    d.ctx.handleToastButtonClick(buttonsOf(d.toasts()[0])[0].attrs['data-button-id']);
+    up = d.balloons();
+    const x = up[0].el.querySelector('.tray-balloon-close');
+    assert.ok(x, 'the X');
+    d.click(up[0], x);
+    d.flush();
+    assert.deepStrictEqual(opened, [9], 'the X opens nothing');
+    assert.strictEqual(d.balloons().length, 0);
+    d.download({ state: 'saved', id: 10, name: 'd.png' });
+    assert.strictEqual(d.balloons().length, 1, 'after it closed, the same id shows again');
+
+    // it hides by itself after 15 s, counted only while she is there
+    d.away(3600000);
+    for (let i = 0; i < 3; i++) d.flush();
+    assert.strictEqual(d.balloons().length, 1, 'away: it waits');
+    for (let i = 0; i < 4 && d.balloons().length; i++) { d.use(0); d.use(6000); d.flush(); }
+    assert.strictEqual(d.balloons().length, 0, 'there: it hides by itself');
+    assert.deepStrictEqual(opened, [9], 'hiding opens nothing');
+
+    // openDownload false: the failure is told by the normal policy (a message box)
+    openAnswer = false;
+    d.download({ state: 'saved', id: 11, name: 'e.png' });
+    d.click(d.balloons()[0]);
+    d.flush();
     await tick();
     assert.strictEqual(d.dialogs.length, 1, 'openDownload false: the failure is said');
-    assert.ok(d.dialogs[0].html.includes('Cannot open &#39;d.png&#39;.'));
+    assert.ok(d.dialogs[0].html.includes('Cannot open &#39;e.png&#39;.'));
+    openAnswer = true;
 
-    const f = page({ desktop: true });
+    // Downloads set to Hide in Customize Notifications: nothing at all; Show brings it back
+    const off = dex();
+    off.run(`traySetPopupHidden('download-saved', true)`);
+    off.download({ state: 'saved', id: 12, name: 'f.png' });
+    for (let i = 0; i < 3; i++) { await tick(); off.flush(); }
+    assert.strictEqual(off.balloons().length + off.toasts().length + off.dialogs.length, 0, 'switched off: nothing');
+    off.run(`traySetPopupHidden('download-saved', false)`);
+    off.download({ state: 'saved', id: 12, name: 'f.png' });
+    assert.strictEqual(off.balloons().length, 1, 'switched on again');
+
+    // the icon it stands on: tucked behind the chevron it is shown for the balloon; a hidden one is passed over
+    const tucked = dex({ tray: { androidNotifyTrayIcon: { tucked: true } } });
+    tucked.download({ state: 'saved', id: 13, name: 'g.png' });
+    assert.strictEqual(tucked.balloons()[0].icon, 'androidNotifyTrayIcon', 'a tucked Bell');
+    const next = dex({ tray: { activeSyncTrayIcon: { hidden: true }, modemTrayIcon: {} } });
+    next.download({ state: 'saved', id: 14, name: 'h.png' });
+    assert.strictEqual(next.balloons()[0].icon, 'modemTrayIcon', 'the next icon there is');
+    const bare = dex({ tray: { androidNotifyTrayIcon: { hidden: true } } });
+    bare.download({ state: 'saved', id: 15, name: 'i.png' });
+    assert.strictEqual(bare.balloons().length + bare.toasts().length + bare.dialogs.length, 0, 'no icon: no balloon, and no toast either');
+
+    // the icon changes between two downloads: still one balloon
+    const moved = dex({ tray: { androidNotifyTrayIcon: {}, modemTrayIcon: {} } });
+    moved.download({ state: 'saved', id: 16, name: 'j.png' });
+    moved.document.getElementById('androidNotifyTrayIcon').classList.add('hidden');
+    moved.download({ state: 'saved', id: 17, name: 'k.png' });
+    moved.flush();
+    assert.deepStrictEqual(moved.balloons().map((b) => b.icon), ['modemTrayIcon'], 'the old one went');
+
+    // another icon's balloon is up: ours waits its turn, and only the newest comes
+    const busy = dex();
+    busy.run(`showPopover(document.getElementById('modemTrayIcon'), 'info', 'Other', 'balloon', false, 15000, null, null, { onClick: null })`);
+    busy.download({ state: 'saved', id: 19, name: 'm.png' });
+    busy.download({ state: 'saved', id: 20, name: 'n.png' });
+    assert.deepStrictEqual(busy.balloons().map((b) => b.icon), ['modemTrayIcon'], 'it waits');
+    busy.run(`PopoverManager.hide(document.getElementById('modemTrayIcon'))`);
+    for (let i = 0; i < 3; i++) busy.flush();
+    assert.deepStrictEqual(busy.balloons().map((b) => b.icon), ['androidNotifyTrayIcon']);
+    assert.ok(busy.balloons()[0].text.includes('n.png') && !busy.balloons()[0].text.includes('m.png'), 'only the newest');
+
+    const noOpen = page({ desktop: true, tray: DEX });
+    noOpen.download({ state: 'saved', id: 18, name: 'l.png' });
+    assert.strictEqual(noOpen.balloons().length, 1, 'saved without openDownload is still said');
+    noOpen.click(noOpen.balloons()[0]);
+    noOpen.flush();
+    assert.strictEqual(noOpen.balloons().length + noOpen.dialogs.length, 0, 'a click only closes it');
+
+    const f = dex();
     f.download({ state: 'failed', id: 1, name: 'a<b>.png', message: 'No space left <now>' });
     f.download({ state: 'failed', id: 1, name: 'a<b>.png', message: 'No space left <now>' });
     await tick();
@@ -258,16 +388,14 @@ const tick = () => new Promise((r) => setImmediate(r));
     assert.ok(f.dialogs[0].html.includes('a&lt;b&gt;.png: No space left &lt;now&gt;'), 'escaped');
     assert.ok(!f.dialogs[0].options.sound, 'silent on the desktop');
     assert.strictEqual(f.dialogs[0].options.title, 'Download Failed');
+    assert.strictEqual(f.balloons().length, 0);
 
-    const n = page({ desktop: true });
+    const n = dex();
     n.download({ state: 'nofolder', id: 2, name: 'a.png', message: 'Download folder not set' });
     n.download({ state: 'something else', id: 3, name: 'a.png' });
     n.download(null);
     await tick();
-    assert.strictEqual(n.toasts().length + n.dialogs.length, 0, 'nofolder: the folder picker says it');
-    n.download({ state: 'saved', id: 4, name: 'e.png' });
-    assert.strictEqual(n.toasts().length, 1, 'saved without openDownload is still said');
-    assert.strictEqual(buttonsOf(n.toasts()[0]).length, 0, 'with no Open it cannot do');
+    assert.strictEqual(n.balloons().length + n.toasts().length + n.dialogs.length, 0, 'nofolder: the folder picker says it');
 
     // the phone: the shell's silent notification
     const phoneOpened = [];
@@ -287,7 +415,7 @@ const tick = () => new Promise((r) => setImmediate(r));
     m.download({ state: 'failed', id: 13, name: 'z.png', message: '' });
     assert.strictEqual(m.toasts().length, 1);
     assert.ok(m.toasts()[0].innerHTML.includes('Cannot save &#39;z.png&#39;.'));
-    for (const p of [d, f, n, m]) assert.deepStrictEqual(p.bridgeCalls, [], 'only openDownload is ever asked of the bridge');
+    for (const p of [d, off, tucked, next, bare, moved, busy, f, n, m]) assert.deepStrictEqual(p.bridgeCalls, [], 'only openDownload is ever asked of the bridge');
 
     console.log('test-toast-no-android-mirror: ok');
 })().catch((err) => {

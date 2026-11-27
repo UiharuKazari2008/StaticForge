@@ -1,10 +1,10 @@
 {"note":"Notice source registry (N5). Every emit site carries `// notice: <id>`; the id is registered here with its trigger, its destination (action), whether it sounds, and where the user switches it off. switch \"none\" is called out by the Supervisor.","sources":{
   "page-download-saved": {
-   "area": "page: toastManager.js 'melaton:download' saved (a file the Android app saved for her): WM notification on the phone, in-page toast on the desktop / DeX",
+   "area": "page: toastManager.js 'melaton:download' saved (a file the Android app saved for her): WM notification on the phone, Vista tray balloon on the desktop / DeX",
    "trigger": "user-action",
-   "action": "Open (window.AndroidNotification.openDownload: the only way from here to the saved file)",
+   "action": "phone: Open; desktop / DeX: a click on the balloon (window.AndroidNotification.openDownload: the only way from here to the saved file)",
    "sound": false,
-   "switch": "phone: Settings > Sounds & Notifications > Other notifications > Display message on screen; desktop / DeX: none (it only follows her own Save)",
+   "switch": "phone: Settings > Sounds & Notifications > Other notifications > Display message on screen; desktop / DeX: Taskbar and Start Menu Properties > Notification Area > Customize Notifications > Downloads (trayRegistry popup 'download-saved')",
    "note": "#1321: replaces the app's Android download notification. Silent. One at a time, the newest replaces it (N9)."
   },
   "page-download-failed": {
