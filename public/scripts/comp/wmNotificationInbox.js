@@ -343,7 +343,7 @@
     // test: the test lane's notices (modules/testDevices.js, the emulator harness) have no page producer either
     // director: the turn-finished notice (wmShell no longer posts one of its own: it was a second notification, #997)
     const DEVICE_KINDS = new Set(['device-ask', 'device-hold']); // phone consent (#1284, #1305)
-    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key', 'test', 'director', 'work-done', 'work-attention', 'account-login', 'maintenance', 'usage-flag', 'device-ask', 'device-hold']); // Fleet's notices (modules/fleetNotices.js, #1196, #1291)
+    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key', 'test', 'director', 'work-done', 'work-attention', 'account-login', 'maintenance', 'usage-flag', 'device-ask', 'device-hold', 'app-update-waiting']); // Fleet's notices (modules/fleetNotices.js, #1196, #1291)
 
     let iconPrefsSent = '';
     function sendIconPrefs() {

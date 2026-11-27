@@ -1650,7 +1650,8 @@
         ['workDone', 'A work item I started is done'],
         ['workAttention', 'A work item needs me (a question for me, or it stopped)'],
         ['maintenance', 'Fleet maintenance reports (daily checks and cleanup)'],
-        ['usage', 'Usage and cost flags']
+        ['usage', 'Usage and cost flags'],
+        ['appUpdate', 'An app update waits on a phone (Shizuku or ADB 5555 is down)']
     ];
     const notifyRows = (n) => NOTIFY_KINDS.concat(Object.keys(n || {}).filter((k) => !NOTIFY_KINDS.some((x) => x[0] === k)).map((k) => [k, k])).map(([k, t]) => `<label class="cd-opt"><input type="checkbox" data-sup="notify.${esc(k)}"${n && n[k] === true ? ' checked' : ''}><span>${esc(t)}</span></label>`).join('');
     const supReviews = () => (S.sup.data && Array.isArray(S.sup.data.reviews) ? S.sup.data.reviews : []);
