@@ -68,7 +68,8 @@ const JS_RULES = [
     { cls: 'sound', re: /\bdesktopSounds\.play\s*\(|\bplaySystemSound\s*\(|\bsndPlayFile\s*\(|\bnew\s+Audio\s*\(/g }
 ];
 const KT_RULES = [
-    { cls: 'native', re: /\bNotificationCompat\.Builder\s*\(|\bNotificationChannel\s*\(|\bnotificationManager\??\.notify\s*\(|\bNotificationManagerCompat[\w.()?]*\.notify\s*\(/gi }
+    // the builder and the channel are the emit sites; the notify(...) call that posts a builder is the same notice (the builder carries the id)
+    { cls: 'native', re: /\b(?:NotificationCompat\.Builder|Notification\.Builder|NotificationChannel)\s*\(/g }
 ];
 
 const SKIP = /(^|\/)(node_modules|vendor|graphify-out|\.cache|dist|build|\.gradle|third_party|workers?)\//;
@@ -90,11 +91,30 @@ function listFiles() {
     return out;
 }
 
+// Comments are not code: blanked, line numbers kept. Kotlin is read string-aware ("image/*" is not a comment: #1315);
+// JS keeps the regex-only strip (a regex literal with a quote would confuse a string-aware pass).
 function stripComments(text, file) {
     const blank = (m) => m.replace(/[^\n]/g, ' ');
-    let t = text.replace(/\/\*[\s\S]*?\*\//g, blank);
-    t = t.replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, a) => a + blank(m.slice(a.length)));
-    return t;
+    if (!file.endsWith('.kt')) {
+        let t = text.replace(/\/\*[\s\S]*?\*\//g, blank);
+        return t.replace(/(^|[^:"'`\\])\/\/[^\n]*/g, (m, a) => a + blank(m.slice(a.length)));
+    }
+    let out = '';
+    let i = 0;
+    const n = text.length;
+    while (i < n) {
+        const c = text[i], d = text[i + 1];
+        if (c === '/' && d === '/') { const e = text.indexOf('\n', i); const end = e < 0 ? n : e; out += ' '.repeat(end - i); i = end; continue; }
+        if (c === '/' && d === '*') { const e = text.indexOf('*/', i + 2); const end = e < 0 ? n : e + 2; out += blank(text.slice(i, end)); i = end; continue; }
+        if (c === '"' && text.startsWith('"""', i)) { const e = text.indexOf('"""', i + 3); const end = e < 0 ? n : e + 3; out += text.slice(i, end); i = end; continue; }
+        if (c === '"' || c === "'") {
+            let j = i + 1;
+            while (j < n && text[j] !== c && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1;
+            out += text.slice(i, j + 1); i = j + 1; continue;
+        }
+        out += c; i++;
+    }
+    return out;
 }
 
 const MARK_RE = /notice:\s*([a-z0-9][\w.-]*)/i;

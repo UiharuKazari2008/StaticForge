@@ -1,10 +1,10 @@
 {
  "note": "Emit sites with no registered source id. Counts may only go down. See docs/design/notification-discipline.md and scripts/check-notifications.js.",
  "totals": {
-  "message": 499,
-  "toast": 1024,
-  "balloon": 18,
-  "sound": 50
+  "message": 473,
+  "toast": 1022,
+  "balloon": 14,
+  "sound": 34
  },
  "files": {
   "apps/activesync/client/activesync.js": {
@@ -296,9 +296,6 @@
    "toast": 1,
    "sound": 4
   },
-  "public/scripts/comp/popoverManager.js": {
-   "balloon": 2
-  },
   "public/scripts/comp/presetManager.js": {
    "toast": 43
   },
@@ -374,9 +371,6 @@
   },
   "public/scripts/comp/textReplacementManager.js": {
    "toast": 50
-  },
-  "public/scripts/comp/toastManager.js": {
-   "balloon": 2
   },
   "public/scripts/comp/trayPower.js": {
    "balloon": 1
@@ -566,11 +560,6 @@
   },
   "public/scripts/comp/wmSettingsSystem.js": {
    "message": 29
-  },
-  "public/scripts/comp/wmShell.js": {
-   "toast": 2,
-   "message": 26,
-   "sound": 16
   },
   "public/scripts/comp/wmShortcuts.js": {
    "message": 3
