@@ -48,6 +48,19 @@ three times while Ruiko was at 100 % CPU, so the app never reached its page), re
 `lane.sh list` shows which exist, which run and who holds a lease. An id that was never created is made with
 `lane.sh create <fold|a53> <n>` (after `coord_device_request <id>`).
 
+**What exists.** One probe on Ruiko reads four facts for an id: its `.ini`, the AVD's `config.ini`, the AVD folder and the
+`golden` snapshot. They make one word, `state`: `absent` (none of it), `partial` (some of it: a `create` died midway, for
+example a folder without `config.ini`, or an `.ini` alone), `created` (`.ini` and `config.ini`, no snapshot yet) and `golden`
+(created, and the `golden` snapshot is saved). `list`, `create`, `up` and `reset` all read that same probe, so they cannot
+disagree: `list` shows `created: true` for `created` and `golden`, `golden: true` only for `golden`.
+
+- **Ruiko unreachable is its own answer (exit code 7).** Ruiko's sshd refuses connections past ten unauthenticated ones at a
+  time (`MaxStartups 10:30:100`), and with several agents driving several instances some connections are reset
+  (`kex_exchange_identification: Connection reset by peer`). The lane retries such a call (4 tries, 1, 2 and 4 seconds
+  apart) and then answers "cannot reach Ruiko" with exit code 7 and changes nothing. It never reads a dropped connection as
+  "no AVD", "not created", "no golden" or "no process"; run the command again. Only a call that did not connect is
+  retried, never one that ran. `LANE_RUIKO_HOST` is the ssh name of Ruiko (default `ruiko`).
+
 - **Console ports are even and inside adb's scan range 5554..5584.** adb's server finds and reconnects emulators there
   by itself. Outside it (the first lane used 5600) an emulator is registered once at its start and stays `offline`
   after a guest reboot. 5570 and 5580 are the other sessions' emulators (`fold7-test`, `DSFold7`): never touch them.
@@ -99,9 +112,10 @@ Release the instance when your test ends. Leave it running: the reaper stops it 
 
 | command | what it does |
 | --- | --- |
-| `$L list` | every id: created, running, golden, lease holder |
-| `$L create fold 1` | make the AVD, boot, provision, save `golden` (10-20 minutes the first time) |
-| `$L $I up [--golden]` | cold boot (state kept), or boot from the golden snapshot |
+| `$L list` | every id: `state` (`absent`, `partial`, `created`, `golden`), created, running, golden, lease holder; exit 7 and no rows when Ruiko cannot be reached |
+| `$L create fold 1` | make the AVD, boot, provision, save `golden` (10-20 minutes the first time). Finishes a half-made instance (state `created` or `partial`); refuses one that is `golden` |
+| `$L $I up [--golden]` | cold boot (state kept), or boot from the golden snapshot. A boot already in progress is waited for (up to 4 minutes), never killed |
+| `$L $I delete --yes` | remove the instance on Ruiko (its AVD folder, `.ini`, last-use and log file) and its local leftovers; `create` then starts over. Without `--yes` it refuses |
 | `$L $I down` / `status` / `wait-boot [secs]` | stop / one JSON with everything we know / wait |
 | `$L $I provision` | the setup steps of `create` again (idempotent) |
 | `$L $I golden` | save the snapshot `golden` of the running state |
@@ -125,6 +139,9 @@ Release the instance when your test ends. Leave it running: the reaper stops it 
 | `$L $I tap X Y` / `key KEYCODE` / `text 'str'` / `tap-text '<regex>'` | input on display 0; `tap-text` taps an Android view by its text (uiautomator) |
 | `$L $I sh '<cmd>'` / `su '<script>'` / `adb <args>` | shell / root shell (userdebug `su`) / adb, pinned to the serial |
 | `$L reap` | stop idle lane instances now |
+
+The lane's own hermetic test, with a fake ssh and no Ruiko or emulator (list states, dropped connections, create / up / delete /
+provision refusals): `scripts/aemu-lane/test-state.sh`.
 
 Examples:
 
@@ -265,6 +282,14 @@ sound are told apart by the four log sources above.
 - A53 companion: the real A53 test phone (`~/.config/a53/a53.sh`, coord id `a53`, PIN in
   `~/.secrets/ruiko-windows-pin.token`, memory #300) is the agents' own phone. Use it for real-Samsung
   evidence after the lane, request it with `coord_device_request a53`, and release it.
+- **A create that died midway.** When the first boot of a `create` fails, it leaves an AVD without `golden`: `list` shows
+  state `created` (or `partial` when the files were not all copied), and `up` / `provision` of it may fail. Run
+  `lane.sh create <shape> <n>` again: it finishes the instance (skips making the AVD, boots, provisions, saves `golden`) and
+  answers `"resumed": true`. To start over instead: `lane.sh <id> delete --yes`, then `create`. `provision` and `golden` on
+  an instance that is not running say so ("is not running: lane.sh <id> up first") instead of failing late. A start that
+  launches no emulator process (`start.cmd` ran, nothing appeared within 30 s) is reported at once and `up` tries a second
+  start. `up` on an id whose emulator process is already starting waits for it (up to 4 minutes): after a shell timeout during
+  a slow first boot run `up` again, it does not kill the boot.
 
 ## The A53, our real Samsung
 

@@ -2,11 +2,12 @@
 # lane.sh - the Android emulator lane on Ruiko (StaticForge #1309 / #1312). One command per action, JSON answers.
 # Docs: docs/testing/emulator-lane.md. Pool: aemu-fold-1..4, aemu-a53-1..4.
 #
-#   lane.sh list                                   every pool id: created, running, golden, lease holder (JSON)
-#   lane.sh create <fold|a53> <n>                  make the AVD, boot, provision (app, Shizuku, sign-in, partner), save `golden`
+#   lane.sh list                                   every pool id: state (absent|partial|created|golden), running, lease holder (JSON)
+#   lane.sh create <fold|a53> <n>                  make the AVD (finishes a half-made one), boot, provision (app, Shizuku, sign-in, partner), save `golden`
 #   lane.sh reap                                   stop instances nobody used for 30 min (also run by a Ruiko scheduled task)
 #   lane.sh <id> up [--golden] | down | status | reset | reboot | wait-boot [secs]
 #   lane.sh <id> provision                         the setup steps of `create` again on an existing instance
+#   lane.sh <id> delete --yes                      remove the instance on Ruiko (AVD disk, snapshots, logs): `create` then starts over
 #   lane.sh <id> posture closed|half|open          fold: cover / hinge 90 / inner
 #   lane.sh <id> rotate 0..3|auto
 #   lane.sh <id> display add-external [WxH@dpi] | remove-external     a second display (DeX / NexDock)
@@ -22,11 +23,14 @@
 # (coord_device_request <id> first). LANE_NO_LEASE=1 turns the check off (for the lane's own tests).
 # Every adb call is pinned to the instance serial emulator-<port>; the Fold and the other emulators on Ruiko's shared
 # adb server are never addressed.
+# Exit codes: 2 usage, 3 no coord lease, 4 Ruiko short of memory, 5 Ruiko CPU busy, 6 another create / provision runs,
+# 7 Ruiko unreachable over ssh (4 tries): never read as "no AVD" / "not created" / "no golden" - run the command again.
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 STATE=${AEMU_LANE_STATE:-$HOME/.cache/claude-run/aemu-lane}
 CFG=${AEMU_LANE_CONFIG:-$HOME/.config/aemu-lane}
+RHOST=${LANE_RUIKO_HOST:-ruiko}       # the ssh name of Ruiko (the lane's own test points it at a fake)
 RBASE='C:\Users\ykaza\claude-lane'
 RADB='E:\Users\kazari\android\sdk\platform-tools\adb.exe'
 PKG=jp.net.seventhreeseven.dreamscape
@@ -94,10 +98,36 @@ die() { local code=${2:-1}; J ok=b:false "error=$1" >&2; exit "$code"; }
 now_ms() { echo $(( $(date +%s%N) / 1000000 )); }
 
 # ------------------------------------------------------------------ Ruiko (PowerShell through -EncodedCommand)
+# A call that could not connect (ssh exit 255 and nothing on stdout: Ruiko's sshd drops connections past MaxStartups 10:30:100) is
+# retried, 4 tries in all (1, 2, 4 s apart); anything else is NOT retried (the command may have run) and is returned as it came.
+# All tries failed: nothing on stdout, return 75 (RPS_ERR and $RPS_ERRF hold ssh's last error line).
+RPS_ERR=''; RPS_ERRF=$STATE/rps-err.$$
+trap 'rm -f "$RPS_ERRF"' EXIT
 rps() {
-  local enc; enc=$(printf '%s' "$1" | iconv -f UTF-8 -t UTF-16LE | base64 -w0)
-  ssh -o ConnectTimeout=10 -o BatchMode=yes ruiko "powershell -NoProfile -NonInteractive -EncodedCommand $enc" 2>&1 \
-    | grep -v '^#< CLIXML' | grep -v '^<Objs' | sed 's/\r$//'
+  local enc try out err rc errf; enc=$(printf '%s' "$1" | iconv -f UTF-8 -t UTF-16LE | base64 -w0)
+  errf=$(mktemp "$STATE/rps.XXXXXX" 2>/dev/null) || errf=/dev/null
+  for try in 1 2 3 4; do
+    out=$(ssh -o ConnectTimeout=10 -o BatchMode=yes ${LANE_SSH_OPTS:-} "$RHOST" "powershell -NoProfile -NonInteractive -EncodedCommand $enc" 2>"$errf" </dev/null); rc=$?
+    err=$(cat "$errf" 2>/dev/null)
+    if [ "$rc" = 255 ] && [ -z "$out" ]; then
+      RPS_ERR=$(printf '%s\n' "$err" | tr -d '\r' | grep -v '^#< CLIXML' | grep -v '^<Objs' | grep -v '^[[:space:]]*$' | tail -1)
+      [ "$try" = 4 ] && break
+      if [ -n "${LANE_RPS_RETRY_SLEEP:-}" ]; then sleep "$LANE_RPS_RETRY_SLEEP"; else sleep "$(( 1 << (try - 1) )).$(printf '%03d' $(( RANDOM % 1000 )))"; fi
+      continue
+    fi
+    [ "$errf" = /dev/null ] || rm -f "$errf"
+    { [ -n "$err" ] && printf '%s\n' "$err"; [ -n "$out" ] && printf '%s\n' "$out"; } | grep -v '^#< CLIXML' | grep -v '^<Objs' | sed 's/\r$//'
+    return 0
+  done
+  [ "$errf" = /dev/null ] || rm -f "$errf"
+  printf '%s\n' "${RPS_ERR:-no answer}" > "$RPS_ERRF" 2>/dev/null
+  return 75
+}
+rps_note() { printf '%s\n' "$1" > "$RPS_ERRF" 2>/dev/null; }   # the reason for the next die_unreachable when Ruiko answered with nonsense
+# callers that decide something: x=$(rps ...) || die_unreachable   (the die must run in the caller, never inside $( ))
+die_unreachable() {
+  local e; e=$(cat "$RPS_ERRF" 2>/dev/null | head -1); [ -n "$e" ] || e=$RPS_ERR
+  die "cannot reach Ruiko over ssh after 4 tries (${e:-no answer}): nothing was changed, run the command again" 7
 }
 
 # ------------------------------------------------------------------ argument parsing
@@ -133,7 +163,7 @@ tunnel() {
   # one ssh session per instance: Ruiko's adb server (kept alive by the remote loop), the emulator console, the DevTools port
   open_port "$TPORT" && return 0
   nohup ssh -o ConnectTimeout=8 -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes \
-    -L "$TPORT:127.0.0.1:5037" -L "$PORT:127.0.0.1:$PORT" -L "$CDP:127.0.0.1:$CDP" ruiko \
+    -L "$TPORT:127.0.0.1:5037" -L "$PORT:127.0.0.1:$PORT" -L "$CDP:127.0.0.1:$CDP" "$RHOST" \
     "\$a='$RADB'; & \$a start-server | Out-Null; while (\$true) { Start-Sleep 30; & \$a start-server | Out-Null }" \
     > "$TLOG" 2>&1 &
   local _; for _ in $(seq 1 12); do sleep 1; open_port "$TPORT" && return 0; done
@@ -174,12 +204,14 @@ need_lease() {
 }
 
 # ------------------------------------------------------------------ last use (the reaper reads it on Ruiko)
+TOUCH_PID=''
 touch_last() {
   local f=$STATE/$ID.last t; t=$(date +%s)
   [ -f "$STATE/$ID.keep" ] && [ "$(cat "$STATE/$ID.keep")" -gt "$t" ] && return 0   # `keep` holds the idle clock in the future
   [ -f "$f" ] && [ $(( t - $(stat -c %Y "$f") )) -lt 60 ] && return 0
   : > "$f"
   rps "New-Item -ItemType Directory -Force '$RBASE\\last' | Out-Null; Set-Content -Path '$RBASE\\last\\$ID.txt' -Value $t" >/dev/null 2>&1 &
+  TOUCH_PID=$!
 }
 
 # ------------------------------------------------------------------ meta (per-instance facts kept locally)
@@ -214,12 +246,17 @@ quiet_volumes() {
   S cmd audio set-ringer-mode SILENT >/dev/null 2>&1
 }
 
-noaudio_check() { # true when the qemu process of this instance carries -no-audio (never Ruiko's speakers)
-  local c; c=$(rps "\$id = '$ID'
+noaudio_check() { # 0 = the qemu process of this instance carries -no-audio (never Ruiko's speakers), 1 = it does not; a read Ruiko did not answer is tried once more, then exit 7 (the emulator is NOT stopped)
+  local c try
+  for try in 1 2; do
+    c=$(rps "\$id = '$ID'
 $(cat <<'PS'
 (Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'qemu-system*' -and $_.CommandLine -match ('-avd ' + $id + ' ') }).CommandLine
 PS
-)")
+)") && break
+    c=''
+    if [ "$try" = 2 ]; then [ "$BASHPID" = "$$" ] && die_unreachable; return 2; fi   # inside $( ) (status): not known, reads as false
+  done
   case "$c" in *' -no-audio '*) return 0;; esac
   return 1
 }
@@ -255,17 +292,24 @@ PS
 )"
 }
 
-ruiko_free_gb() { rps '[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,1)' | tail -1; }
-ruiko_cpu() { # Ruiko's CPU load %, the mean of 5 samples over ~10 s (Win32_Processor LoadPercentage)
-  rps '$v = @(); 1..5 | ForEach-Object { $v += (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average; Start-Sleep -Seconds 2 }; [math]::Round(($v | Measure-Object -Average).Average, 0)' | tail -1
+emu_up() { # 0 = an emulator process of $ID is on Ruiko, 1 = none, 2 = Ruiko did not answer (never "none")
+  local e; e=$(ruiko_emus) || return 2
+  grep -q "^$ID " <<<"$e"
 }
-mem_guard() { # refuses when Ruiko cannot take one more instance: exit 4 = memory (under KEEP_FREE_GB free after it), exit 5 = CPU above LANE_MAX_CPU %
-  local free need cpu; free=$(ruiko_free_gb); need=$(instance_gb)
+emu_gone() { emu_up; [ $? = 1 ]; }   # true only when Ruiko answered and there is no process of $ID
+
+ruiko_free_gb() { local o; o=$(rps '[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,1)') || return 1; printf '%s\n' "$o" | tail -1; }
+ruiko_cpu() { # Ruiko's CPU load %, the mean of 5 samples over ~10 s (Win32_Processor LoadPercentage)
+  local o; o=$(rps '$v = @(); 1..5 | ForEach-Object { $v += (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average; Start-Sleep -Seconds 2 }; [math]::Round(($v | Measure-Object -Average).Average, 0)') || return 1
+  printf '%s\n' "$o" | tail -1
+}
+mem_guard() { # refuses when Ruiko cannot take one more instance: exit 4 = memory (under KEEP_FREE_GB free after it), exit 5 = CPU above LANE_MAX_CPU %, exit 7 = Ruiko did not answer
+  local free need cpu; free=$(ruiko_free_gb) || die_unreachable; need=$(instance_gb)
   case "$free" in ''|*[!0-9.]*) ;; *)
     if awk "BEGIN{exit !($free - $need < $KEEP_FREE_GB)}"; then
       die "Ruiko has only $free GB free: one more $SHAPE instance (about $need GB) would leave it under $KEEP_FREE_GB GB. Stop one you do not need (lane.sh <id> down) or wait; instances nobody used for $IDLE_MIN min, or whose lease ended, are stopped by the reaper" 4
     fi;; esac
-  cpu=$(ruiko_cpu)
+  cpu=$(ruiko_cpu) || die_unreachable
   case "$cpu" in ''|*[!0-9]*) ;; *)
     if [ "$cpu" -gt "${LANE_MAX_CPU:-85}" ]; then
       die "Ruiko's CPU is at $cpu % (mean over 10 s), above ${LANE_MAX_CPU:-85} %: starting another instance would slow every running one (page downloads crawl, adb times out). Wait, or stop an instance you do not need (lane.sh <id> down)" 5
@@ -279,10 +323,18 @@ provision_lock() {
   : > "$STATE/provision.lock"; printf '%s pid %s since %s\n' "$ID" "$$" "$(date +%H:%M:%S)" >&9
 }
 
-start_emulator() { # start_emulator <extra emulator args>
-  local extra=$1 out
-  out=$(rps "\$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = 'cmd.exe /c $RBASE\\start.cmd $ID $PORT $extra'; CurrentDirectory = '$RBASE' }; 'start rc=' + \$r.ReturnValue")
+start_emulator() { # start_emulator <extra emulator args> : 0 when a process of $ID is on Ruiko after the start, 1 when start.cmd ran and none appeared (never run twice by a retry: rps retries only a call that did not connect)
+  local extra=$1 out t0; t0=0
+  out=$(rps "\$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = 'cmd.exe /c $RBASE\\start.cmd $ID $PORT $extra'; CurrentDirectory = '$RBASE' }; 'start rc=' + \$r.ReturnValue") || die_unreachable
   echo "$out" | grep -q 'rc=0' || die "start failed: $out"
+  t0=$(date +%s)
+  while :; do
+    emu_up && return 0
+    [ $(( $(date +%s) - t0 )) -ge "${LANE_START_WAIT:-30}" ] && break   # LANE_START_WAIT: for the lane's own test
+    sleep 3
+  done
+  progress "start.cmd ran but no emulator process of $ID appeared on Ruiko (log: $RBASE\\logs\\$ID.txt)"
+  return 1
 }
 
 wait_boot() { # wait_boot <secs>
@@ -294,25 +346,63 @@ wait_boot() { # wait_boot <secs>
   done
 }
 
-avd_present() { [ "$(rps "if (Test-Path '$RBASE\\avd\\$ID.avd\\config.ini') { 'yes' }")" = yes ]; }
-golden_present() { [ "$(rps "if (Test-Path '$RBASE\\avd\\$ID.avd\\snapshots\\golden') { 'yes' }")" = yes ]; }
+need_running() { # need_running <next command> : provision / golden act on a running, booted instance
+  running && booted || die "$ID is not running: lane.sh $ID up first (then lane.sh $ID $1)"
+}
+
+# What exists on Ruiko for an id: ONE probe, four facts (the .ini, the AVD's config.ini, the AVD folder, the golden snapshot), one word:
+#   absent (nothing)  partial (some of it: a create died midway)  created (.ini + config.ini, no golden)  golden (created + golden snapshot)
+# `list`, `create`, `up`, `reset` all read it; an answer that did not come is exit 7, never "absent".
+lane_probe_ps() { # lane_probe_ps '<ids>' <1 = append the id to the line> : prints "lane-state <ini> <cfg> <dir> <golden>[ <id>]" per id
+  printf '%s' "\$b = '$RBASE'; \$ids = '$1'; \$w = '$2'
+$(cat <<'PS'
+foreach ($id in $ids.Split(' ')) {
+  if ($id -notmatch '^aemu-(fold|a53)-[1-4]$') { throw 'not a lane id' }
+  $a = $b + '\avd\' + $id
+  $t = 'lane-state ' + (Test-Path ($a + '.ini')) + ' ' + (Test-Path ($a + '.avd\config.ini')) + ' ' + (Test-Path ($a + '.avd')) + ' ' + (Test-Path ($a + '.avd\snapshots\golden'))
+  if ($w -eq '1') { $t = $t + ' ' + $id }
+  $t
+}
+PS
+)"
+}
+probe_state() { # probe_state <ruiko answer> [id] : the state word of the lane-state line (of that id); non-zero when the line is not there
+  local l tag i c d g v
+  l=$(awk -v id="${2:-}" '$1=="lane-state" && (id=="" || $6==id) {print; exit}' <<<"$1")
+  [ -n "$l" ] || return 1
+  read -r tag i c d g _ <<<"$l"
+  for v in "$i" "$c" "$d" "$g"; do case "$v" in True|False) ;; *) return 1;; esac; done
+  if [ "$i" = True ] && [ "$c" = True ]; then
+    [ "$g" = True ] && echo golden || echo created
+  elif [ "$i" != True ] && [ "$c" != True ] && [ "$d" != True ]; then echo absent
+  else echo partial; fi
+}
+avd_state() { # prints the state word of $ID; non-zero and nothing when Ruiko did not answer (callers: st=$(avd_state) || die_unreachable)
+  local o; o=$(rps "$(lane_probe_ps "$ID" 0)") || return 1
+  probe_state "$o" || { rps_note "no lane-state line in Ruiko's answer: $(printf '%s' "$o" | head -c 120)"; return 1; }
+}
+golden_present() { local s; s=$(avd_state) || die_unreachable; [ "$s" = golden ]; }
 
 # ------------------------------------------------------------------ commands: pool level
 cmd_list() {
-  local emus out first=1 id row lease
-  emus=$(ruiko_emus)
-  local present; present=$(rps "foreach (\$i in '$POOL_IDS'.Split(' ')) { \$d='$RBASE\\avd\\'+\$i+'.avd'; \$c = Test-Path \"\$d\\config.ini\"; \$g = Test-Path \"\$d\\snapshots\\golden\"; \"\$i \$c \$g\" }")
+  local emus out first=1 id row lease present st
+  emus=$(ruiko_emus) || die_unreachable
+  present=$(rps "$(lane_probe_ps "$POOL_IDS" 1)") || die_unreachable
+  for id in $POOL_IDS; do   # every row is known before the first byte is printed: no half list, never created:false for an id Ruiko did not answer for
+    probe_state "$present" "$id" >/dev/null || { rps_note "no lane-state line for $id in Ruiko's answer"; die_unreachable; }
+  done
   printf '['
   for id in $POOL_IDS; do
     row=$(pool_row "$id"); set -- $row
     local created=false golden=false run=false pid=''
-    echo "$present" | grep -q "^$id True" && created=true
-    echo "$present" | grep -q "^$id True True" && golden=true
+    st=$(probe_state "$present" "$id")
+    case "$st" in created|golden) created=true;; esac
+    [ "$st" = golden ] && golden=true
     echo "$emus" | grep -q "^$id " && { run=true; pid=$(echo "$emus" | awk -v i="$id" '$1==i{print $2}'); }
     lease=$(lease_row "$id")
     [ $first = 1 ] || printf ','
     first=0
-    J id="$id" shape="$1" serial="emulator-$3" "console=n:$3" "cdp=n:$5" "created=b:$created" "running=b:$run" "golden=b:$golden" "pid=n:${pid:-0}" \
+    J id="$id" shape="$1" serial="emulator-$3" "console=n:$3" "cdp=n:$5" "created=b:$created" "running=b:$run" "golden=b:$golden" "state=$st" "pid=n:${pid:-0}" \
       "leaseHolder=${lease%%|*}" "leaseEndsAt=n:$(echo "${lease:-|0}" | cut -d'|' -f2)" | tr -d '\n'
   done
   printf ']\n'
@@ -320,9 +410,11 @@ cmd_list() {
 
 cmd_reap() { # stop lane instances nobody used for IDLE_MIN minutes, and those whose coord lease ended and idle for 5 minutes
   local idle stopped='' id row j
-  idle=$(rps "if (Test-Path '$RBASE\\reap.ps1') { & '$RBASE\\reap.ps1' -IdleMinutes $IDLE_MIN }" | tail -1)
+  idle=$(rps "if (Test-Path '$RBASE\\reap.ps1') { & '$RBASE\\reap.ps1' -IdleMinutes $IDLE_MIN }") || die_unreachable
+  idle=$(printf '%s\n' "$idle" | tail -1)
   # lease ended: no held lease on a running instance that has been idle for 5 minutes (a creator / a driver holds its lease)
-  local all names=''; all=$(rps "if (Test-Path '$RBASE\\reap.ps1') { & '$RBASE\\reap.ps1' -IdleMinutes 100000 -DryRun }" | tail -1)
+  local all names=''; all=$(rps "if (Test-Path '$RBASE\\reap.ps1') { & '$RBASE\\reap.ps1' -IdleMinutes 100000 -DryRun }") || die_unreachable
+  all=$(printf '%s\n' "$all" | tail -1)
   names=$(printf '%s' "$all" | python3 -c "
 import json,sys,subprocess
 try: rows=json.load(sys.stdin)
@@ -338,14 +430,14 @@ print(' '.join(out))")
   done
   nolease=${nolease#,}
   if [ -n "$nolease" ]; then
-    rps "& '$RBASE\\reap.ps1' -IdleMinutes 0 -Names $(printf "'%s'" "$nolease" | sed "s/,/','/g")" >/dev/null
+    rps "& '$RBASE\\reap.ps1' -IdleMinutes 0 -Names $(printf "'%s'" "$nolease" | sed "s/,/','/g")" >/dev/null || die_unreachable
   fi
   J ok=b:true "idleReaped=j:${idle:-[]}" "leaseEndedStopped=$nolease" "idleMinutes=n:$IDLE_MIN"
 }
 
 # ------------------------------------------------------------------ dispatch
 case "$cmd" in
-  help|-h|--help) sed -n 2,24p "$0"; exit 0;;
+  help|-h|--help) sed -n '2,/^set -uo/{/^set -uo/!p}' "$0"; exit 0;;
   list) cmd_list; exit 0;;
   reap) cmd_reap; exit 0;;
 esac
@@ -483,7 +575,7 @@ do_shot() { # do_shot <out.png> <selector>
 
 stop_instance() { # stop_instance : console kill, then (after 40 s) by pid; only processes whose command line names THIS aemu-* AVD
   con kill >/dev/null 2>&1
-  local i; for i in $(seq 1 20); do ruiko_emus | grep -q "^$ID " || break; sleep 2; done
+  local i; for i in $(seq 1 20); do emu_gone && break; sleep 2; done   # a failed read is "still there", not "gone"
   rps "\$id = '$ID'
 $(cat <<'PS'
 foreach ($x in (Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'emulator|qemu' -and $_.CommandLine -match ('-avd ' + $id + ' ') })) { Stop-Process -Id $x.ProcessId -Force -ErrorAction SilentlyContinue }
@@ -494,7 +586,7 @@ PS
 }
 
 kill_emulator_wait() { # wait until the emulator is gone from Ruiko (max 60 s)
-  local i; for i in $(seq 1 30); do ruiko_emus | grep -q "^$ID " || return 0; sleep 2; done; return 1
+  local i; for i in $(seq 1 30); do emu_gone && return 0; sleep 2; done; return 1
 }
 wait_page() { # wait_page <max secs> : until the page is past the launch / Software Update screen (data-wm-boot done or a desktop)
   local t0 now r stuck=0; t0=$(date +%s)
@@ -570,10 +662,12 @@ make_avd() { # the AVD of this instance on Ruiko (its own userdata, so its own A
   mkdir -p "$t"
   sed "s/@AVD@/$ID/g" "$HERE/ruiko/$SHAPE.ini" > "$t/config.ini"
   printf 'avd.ini.encoding=UTF-8\r\npath=%s\r\npath.rel=avd\\%s.avd\r\ntarget=%s\r\n' "$d" "$ID" "$target" > "$t/$ID.ini"
-  rps "New-Item -ItemType Directory -Force '$d' | Out-Null; New-Item -ItemType Directory -Force '$RBASE\\logs' | Out-Null" >/dev/null
-  scp -q "$HERE/ruiko/start.cmd" "ruiko:C:/Users/ykaza/claude-lane/start.cmd"; scp -q "$HERE/ruiko/reap.ps1" "ruiko:C:/Users/ykaza/claude-lane/reap.ps1"
-  scp -q "$t/config.ini" "ruiko:C:/Users/ykaza/claude-lane/avd/$ID.avd/config.ini"
-  scp -q "$t/$ID.ini" "ruiko:C:/Users/ykaza/claude-lane/avd/$ID.ini"
+  rps "New-Item -ItemType Directory -Force '$d' | Out-Null; New-Item -ItemType Directory -Force '$RBASE\\logs' | Out-Null" >/dev/null || die_unreachable
+  # a copy that fails leaves the AVD half-made: `create` again finishes it
+  scp -q "$HERE/ruiko/start.cmd" "$RHOST:C:/Users/ykaza/claude-lane/start.cmd" && scp -q "$HERE/ruiko/reap.ps1" "$RHOST:C:/Users/ykaza/claude-lane/reap.ps1" \
+    && scp -q "$t/config.ini" "$RHOST:C:/Users/ykaza/claude-lane/avd/$ID.avd/config.ini" \
+    && scp -q "$t/$ID.ini" "$RHOST:C:/Users/ykaza/claude-lane/avd/$ID.ini" \
+    || die "copying the AVD files to Ruiko failed (the AVD is half-made: lane.sh create $SHAPE $N finishes it, lane.sh $ID delete --yes removes it)" 7
 }
 
 # ------------------------------------------------------------------ commands: one instance
@@ -590,46 +684,99 @@ esac
 case "$cmd" in
   create)
     provision_lock
-    avd_present && die "$ID already exists (lane.sh $ID provision / reset; delete it on Ruiko to start over)"
-    mem=$(rps '[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,1)')
+    st=$(avd_state) || die_unreachable
+    resumed=false
+    case "$st" in
+      golden) die "$ID already exists with its golden snapshot (lane.sh $ID up / reset / provision; lane.sh $ID delete, then create, starts it over)";;
+      created) resumed=true; progress "the AVD exists without a golden snapshot (an earlier create did not finish): finishing it";;
+    esac
+    mem=$(ruiko_free_gb) || die_unreachable
     progress "Ruiko free memory $mem GB"
-    mem_guard
-    progress "AVD"; make_avd
+    # a half-made instance that already runs is in Ruiko's free memory figure: the guard would count it twice
+    [ "$resumed" = true ] && running && booted || mem_guard
+    if [ "$resumed" = false ]; then progress "AVD"; make_avd; fi
     progress "first boot (cold, 2-4 minutes)"
     "$0" ${AGENT:+--agent "$AGENT"} "$ID" up >&2 || die "the first boot failed"
+    need_running provision
     provision >&2 || die "provision failed (lane.sh $ID provision to continue)"
     CON_TIMEOUT=240 con avd snapshot save golden >/dev/null 2>&1 || die "snapshot save failed"
-    J ok=b:true id="$ID" created=b:true golden=b:true;;
+    J ok=b:true id="$ID" created=b:true golden=b:true "resumed=b:$resumed";;
   up)
     if running && booted; then J ok=b:true id="$ID" state=running; exit 0; fi
-    avd_present || die "$ID has no AVD yet: lane.sh create $SHAPE $N"
-    # a process of this AVD that adb does not see (a hung or half-stopped one) is stopped first: it holds the AVD's lock
-    ruiko_emus | grep -q "^$ID " && { progress "a process of $ID is up but adb does not see it: stopping it"; stop_instance; }
-    others=$(ruiko_emus | grep -vc "^$ID " || true)
-    [ "${others:-0}" -ge "$MAX_RUNNING" ] && die "already $MAX_RUNNING lane instances running: lane.sh <id> down one first, or lane.sh reap"
+    st=$(avd_state) || die_unreachable
+    case "$st" in
+      absent) die "$ID has no AVD yet: lane.sh create $SHAPE $N";;
+      partial) die "$ID is half-made on Ruiko (its AVD folder or .ini is incomplete): lane.sh create $SHAPE $N finishes it, lane.sh $ID delete --yes removes it";;
+    esac
     mode=cold; setup=1
     for a in "$@"; do case "$a" in --golden) mode=golden;; --nosetup) setup=0;; esac; done
-    [ "$mode" = golden ] && { golden_present || die "$ID has no golden snapshot"; }
+    [ "$mode" = golden ] && { [ "$st" = golden ] || die "$ID has no golden snapshot"; }
+    up_done() { # up_done <boot secs> : the steps after a boot, the same for a boot that was already in progress
+      noaudio_check || { con kill >/dev/null 2>&1; die "the emulator started without -no-audio: stopped it (never Ruiko's speakers)"; }
+      if [ "$mode" = golden ] || [ "$setup" = 0 ]; then quiet_volumes; else setup_device; fi
+      J ok=b:true id="$ID" state=booted "bootSecs=n:$1" noAudio=b:true
+    }
+    # a process of this AVD that adb does not see yet is a boot in progress (an agent whose shell timed out runs `up` again): wait for it;
+    # only when it does not boot, stop it (it holds the AVD's lock) and start fresh
+    emu_up; ec=$?
+    [ "$ec" = 2 ] && die_unreachable
+    if [ "$ec" = 0 ]; then
+      progress "$ID is already starting: waiting for it"
+      if secs=$(wait_boot "${LANE_STARTING_WAIT:-240}"); then up_done "$secs"; exit 0; fi
+      progress "a process of $ID is up but adb does not see it after ${LANE_STARTING_WAIT:-240} s: stopping it"; stop_instance
+    fi
+    emus=$(ruiko_emus) || die_unreachable
+    others=$(printf '%s' "$emus" | grep -vc "^$ID " || true)
+    [ "${others:-0}" -ge "$MAX_RUNNING" ] && die "already $MAX_RUNNING lane instances running: lane.sh <id> down one first, or lane.sh reap"
     mem_guard
     secs=''
     for attempt in 1 2; do
-      if [ "$mode" = golden ]; then start_emulator "-snapshot golden -force-snapshot-load"; else start_emulator "-no-snapshot-load"; fi
-      secs=$(wait_boot 300) && break
-      # adb's server did not register the emulator (it registers once at the emulator's start): a second start fixes it
-      progress "attempt $attempt: adb does not see $SERIAL after 300 s: restarting it"; stop_instance
+      if [ "$mode" = golden ]; then sargs="-snapshot golden -force-snapshot-load"; else sargs="-no-snapshot-load"; fi
+      if start_emulator "$sargs"; then
+        secs=$(wait_boot 300) && break
+        # adb's server did not register the emulator (it registers once at the emulator's start): a second start fixes it
+        progress "attempt $attempt: adb does not see $SERIAL after 300 s: restarting it"
+      else
+        progress "attempt $attempt: no emulator process started: stopping and starting again"
+      fi
+      stop_instance
     done
     [ -n "$secs" ] || die "not booted (Ruiko $RBASE\\logs\\$ID.txt): adb never saw $SERIAL"
-    noaudio_check || { con kill >/dev/null 2>&1; die "the emulator started without -no-audio: stopped it (never Ruiko's speakers)"; }
-    if [ "$mode" = golden ] || [ "$setup" = 0 ]; then quiet_volumes; else setup_device; fi
-    J ok=b:true id="$ID" state=booted "bootSecs=n:$secs" noAudio=b:true;;
+    up_done "$secs";;
   wait-boot)
     secs=$(wait_boot "${1:-240}") || die "not booted"
     J ok=b:true id="$ID" state=booted "waitedSecs=n:$secs";;
   down) stop_instance; J ok=b:true id="$ID" state=stopped;;
+  delete)
+    [ "${1:-}" = --yes ] || die "this removes the instance's disk and snapshots on Ruiko; say: lane.sh $ID delete --yes" 2
+    provision_lock
+    [ -n "$TOUCH_PID" ] && wait "$TOUCH_PID"   # touch_last's background write of last\<id>.txt must not land after the removal below (never a bare `wait`: the tunnel is a background job too)
+    stop_instance
+    emu_up; ec=$?
+    [ "$ec" = 2 ] && die_unreachable
+    [ "$ec" = 0 ] && die "an emulator process of $ID is still on Ruiko after stopping it: nothing was deleted (lane.sh $ID down, then again)"
+    # only the four paths of this id (a pool id, checked by pool_row and again here), then the same state probe
+    o=$(rps "\$id = '$ID'; \$b = '$RBASE'
+$(cat <<'PS'
+if ($id -notmatch '^aemu-(fold|a53)-[1-4]$') { throw 'not a lane id' }
+$busy = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'emulator|qemu' -and $_.CommandLine -match ('-avd ' + $id + ' ') })
+if ($busy.Count -gt 0) { 'lane-busy'; exit 0 }
+Remove-Item -LiteralPath ($b + '\avd\' + $id + '.avd') -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath ($b + '\avd\' + $id + '.ini') -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath ($b + '\last\' + $id + '.txt') -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath ($b + '\logs\' + $id + '.txt') -Force -ErrorAction SilentlyContinue
+PS
+)
+$(lane_probe_ps "$ID" 0)") || die_unreachable
+    case "$o" in *lane-busy*) die "an emulator or qemu process of $ID is still running on Ruiko: nothing was deleted (lane.sh $ID down, then again)";; esac
+    st=$(probe_state "$o") || { rps_note "no lane-state line in Ruiko's answer after the removal"; die_unreachable; }
+    [ "$st" = absent ] || die "$ID is not fully removed (state $st: something under $RBASE\\avd is locked or in use): lane.sh $ID down, then lane.sh $ID delete --yes again"
+    rm -f "$CFG/$ID.env" "$CFG/$ID.ports" "$STATE/$ID.last" "$STATE/$ID.keep"; rm -rf "$STATE/avd-$ID"
+    J ok=b:true id="$ID" deleted=b:true state=absent;;
   status)
     running || { J ok=b:true id="$ID" running=b:false; exit 0; }
     status_json;;
-  provision) provision_lock; provision;;
+  provision) need_running provision; provision_lock; provision;;
   partner) dev=$(dev_id); partner_device "$dev" && J ok=b:true id="$ID" partnered=b:true || die "partnership not accepted: $(cat "$STATE/partner-$ID.out" 2>/dev/null | tail -2)";;
   reset)
     golden_present || die "$ID has no golden snapshot (lane.sh $ID provision, then lane.sh $ID golden)"
@@ -640,7 +787,7 @@ case "$cmd" in
     quiet_volumes
     J ok=b:true id="$ID" state=golden "bootSecs=n:$secs" noAudio=b:true;;
   golden)
-    running && booted || die "$ID is not running"
+    need_running golden
     CON_TIMEOUT=240 con avd snapshot save golden >/dev/null 2>&1 || die "snapshot save failed"
     J ok=b:true id="$ID" golden=b:true;;
   reboot)
@@ -649,7 +796,7 @@ case "$cmd" in
     # it is not used. What comes back by itself is what the phone would bring back: nothing is set up again (`up --nosetup`).
     t0=$(date +%s)
     S 'svc power shutdown' >/dev/null 2>&1 || S 'reboot -p' >/dev/null 2>&1
-    for i in $(seq 1 45); do ruiko_emus | grep -q "^$ID " || break; sleep 2; done
+    for i in $(seq 1 45); do emu_gone && break; sleep 2; done
     stop_instance
     "$0" ${AGENT:+--agent "$AGENT"} "$ID" up --nosetup >/dev/null || die "not booted after the reboot"
     J ok=b:true id="$ID" state=booted "rebootSecs=n:$(( $(date +%s) - t0 ))" method="clean shutdown + cold boot";;
@@ -759,7 +906,7 @@ case "$cmd" in
     esac;;
   keep)
     m=${1:-60}; t=$(( $(date +%s) + m * 60 )); echo "$t" > "$STATE/$ID.keep"
-    rps "New-Item -ItemType Directory -Force '$RBASE\\last' | Out-Null; Set-Content -Path '$RBASE\\last\\$ID.txt' -Value $t" >/dev/null
+    rps "New-Item -ItemType Directory -Force '$RBASE\\last' | Out-Null; Set-Content -Path '$RBASE\\last\\$ID.txt' -Value $t" >/dev/null || die_unreachable
     J ok=b:true id="$ID" "keepMinutes=n:$m" "keepUntil=n:$t";;
   display)
     case "${1:-}" in
