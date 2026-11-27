@@ -1,0 +1,13 @@
+#1401 - the new test against the old wait (15 s a round, 5 rounds, no total): TaskCatchUp.run's body replaced for this run only by
+  repeat(rounds) { takeIn(); awaitTask(15_000L); if (!waiting()) return true; apply() }; return false
+What   gradlew.bat testDebugUnitTest --tests *TaskCatchUpTest on Ruiko (run vold, by the planner); the file was restored afterwards (git status clean)
+GRADLE EXIT=1
+jp.net.seventhreeseven.dreamscape.TaskCatchUpTest: tests=10 failures=7 errors=0 skipped=0
+   FAIL aStuckTaskThreadHoldsTheWriteBackForThreeSecondsAtMost :: java.lang.AssertionError
+   FAIL theTimeTheAppSpendsApplyingDoesNotUseUpTheBudget :: java.lang.AssertionError
+   FAIL aStuckTaskThreadWithReportsWaitingIsNotWaitedForAgainAfterEachFailedWait :: java.lang.AssertionError: waited 75000 ms
+   FAIL theTimeTheAppSpendsTakingInDoesNotUseUpTheBudget :: java.lang.AssertionError: expected:<[3000, 3000]> but was:<[15000, 15000, 15000, 15000, 15000]>
+   FAIL theTaskThreadIsNeverGivenMoreThanWhatIsLeft :: java.lang.AssertionError
+   FAIL theBudgetIsSharedByTheRounds :: java.lang.AssertionError
+   FAIL theTaskThreadIsNeverWaitedForWithNothingLeftOfTheBudget :: java.lang.AssertionError: one wait, then nothing is awaited expected:<[3000]> but was:<[15000, 15000, 15000, 15000, 15000]>
+TOTAL tests=10 failures+errors=7

@@ -1,0 +1,34 @@
+#1401 - full unit tests of DSApp-Kotlin fix/radio-guard-wait-1401 c9806bef (origin/main bbb92a6 + the fix)
+What   gradlew.bat --no-daemon testDebugUnitTest on Ruiko, fresh folder claude-build\dsapp-ut-1401 from the worktree (run v1, by the planner; build gate #301)
+Date   2026-11-27   Baseline before the change: 553 tests. New: TaskCatchUpTest 10, RadioWordsTest +6, RadioCoreTest +4.
+Checks check-perf-rules --dsapp: perf rules: ok (177 files)
+GRADLE EXIT=0
+jp.net.seventhreeseven.dreamscape.AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ApkInstallPlanTest: tests=16 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ApkInstallRetryTest: tests=28 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.BackgroundValueTest: tests=12 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.BarsHealPolicyTest: tests=62 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NavRoomPolicyTest: tests=31 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NotifySoundRulesTest: tests=21 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.OutFitTest: tests=25 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.PopupRulesTest: tests=32 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.RadioCoreTest: tests=64 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.RadioModeRulesTest: tests=32 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.RadioWordsTest: tests=10 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.SandboxConnectTest: tests=15 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.TaskCatchUpTest: tests=10 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.TaskDeliveryTest: tests=9 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+TOTAL tests=573 failures+errors=0
