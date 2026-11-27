@@ -1,0 +1,164 @@
+StaticForge #1367 - page and server tests, before and after. 2026-11-27 14:40:26 EST. Silent (no sound is played).
+BEFORE = the files as they were before commit e37baa272 (git show e37baa272^:<file>), passed to the same test. AFTER = the tree at 01be901c4.
+
+################ defects 1 and 2 (page side): resume, late claim, asleep page, repeat hush
+---- BEFORE: node scripts/test-wm-note-one-sound.js <old files>
+  1. FAIL resume: a notice the app sounded while the page slept comes up without a second sound or repeat
+  2. ok   resume: a notice the app has not sounded still sounds, once
+  3. FAIL late claim: a live packet the app already sounded stays silent on the page
+  4. FAIL a page that runs but is not on screen (screen off, behind a program) asks with awake false and stays silent
+  5. FAIL page takes it: sounds once and repeats itself as before, asking once, never hushing
+  6. ok   no bridge, an older app without takeSound, or a failing call: the page sounds as before
+  7. ok   a note of the page's own is never asked about; silent and status notes neither
+  8. FAIL a batch: one passed over because the app has it does not swallow the sound of the next note
+  9. FAIL a note without alertAt keeps the time it was made, however late it is asked (the screen off, timers paused)
+  10. FAIL a batch: an error is the first candidate, and one sound only
+  11. FAIL alike toasts merged into one entry: every fresh notice in it is asked about until one is the page's
+  12. FAIL update() changes the notice a note stands for before it is heard
+  13. FAIL hush: once, when a repeating notice's bubble was up and is hidden
+  14. ok   hush: a bubble popped while nothing of the page is seen is not one she saw
+  15. FAIL hush: closed or dismissed while up
+  16. ok   hush: never merely because it has not popped (another bubble up, Display off, a takeover)
+  17. FAIL hush: a waiting one is hushed after it popped and was put away
+  18. ok   hush: not for a class that does not repeat
+  19. FAIL hush: a box drawn again (close replaced) is not put away; hiding the new one hushes once
+  20. FAIL hush: the inbox drawing a box again (news under its id, the holder's tap) does not hush; Dismiss there does
+test-wm-note-one-sound: 14 of 20 FAILED
+exit=1
+---- AFTER: node scripts/test-wm-note-one-sound.js
+  1. ok   resume: a notice the app sounded while the page slept comes up without a second sound or repeat
+  2. ok   resume: a notice the app has not sounded still sounds, once
+  3. ok   late claim: a live packet the app already sounded stays silent on the page
+  4. ok   a page that runs but is not on screen (screen off, behind a program) asks with awake false and stays silent
+  5. ok   page takes it: sounds once and repeats itself as before, asking once, never hushing
+  6. ok   no bridge, an older app without takeSound, or a failing call: the page sounds as before
+  7. ok   a note of the page's own is never asked about; silent and status notes neither
+  8. ok   a batch: one passed over because the app has it does not swallow the sound of the next note
+  9. ok   a note without alertAt keeps the time it was made, however late it is asked (the screen off, timers paused)
+  10. ok   a batch: an error is the first candidate, and one sound only
+  11. ok   alike toasts merged into one entry: every fresh notice in it is asked about until one is the page's
+  12. ok   update() changes the notice a note stands for before it is heard
+  13. ok   hush: once, when a repeating notice's bubble was up and is hidden
+  14. ok   hush: a bubble popped while nothing of the page is seen is not one she saw
+  15. ok   hush: closed or dismissed while up
+  16. ok   hush: never merely because it has not popped (another bubble up, Display off, a takeover)
+  17. ok   hush: a waiting one is hushed after it popped and was put away
+  18. ok   hush: not for a class that does not repeat
+  19. ok   hush: a box drawn again (close replaced) is not put away; hiding the new one hushes once
+  20. ok   hush: the inbox drawing a box again (news under its id, the holder's tap) does not hush; Dismiss there does
+test-wm-note-one-sound: ok
+exit=0
+
+################ defect 4: the app's sound table carries No Sounds / groups / (None) / silent classes
+---- BEFORE: node scripts/test-wm-note-sounds-table.js <old files>
+  1. FAIL every phone sound event is in the table, with its vibrate / repeat / own / label; an event class says display
+  2. FAIL as shipped: silent classes are sent silent, and the table agrees with the page
+  3. FAIL the sound scheme "No Sounds": every entry silent, as the page (a picked sound too)
+  4. FAIL an "Enable sounds for" group off, or one event (None), silences those classes only
+  5. FAIL the Errors class follows Program Error, as the page's error notification does
+  6. FAIL a desktop sound picked for an event in the workspace is the table's file, as in the page, and the phone's own pick wins
+  7. FAIL own: her picks and every event class's sound; a notification class's default is not
+  8. FAIL sent again when the workspace's sound settings change, and only when the table changed
+  9. FAIL two runs that overlap: the older settings' table never goes after the newer one
+test-wm-note-sounds-table: 9 of 9 FAILED
+exit=1
+---- AFTER: node scripts/test-wm-note-sounds-table.js
+  1. ok   every phone sound event is in the table, with its vibrate / repeat / own / label; an event class says display
+  2. ok   as shipped: silent classes are sent silent, and the table agrees with the page
+  3. ok   the sound scheme "No Sounds": every entry silent, as the page (a picked sound too)
+  4. ok   an "Enable sounds for" group off, or one event (None), silences those classes only
+  5. ok   the Errors class follows Program Error, as the page's error notification does
+  6. ok   a desktop sound picked for an event in the workspace is the table's file, as in the page, and the phone's own pick wins
+  7. ok   own: her picks and every event class's sound; a notification class's default is not
+  8. ok   sent again when the workspace's sound settings change, and only when the table changed
+  9. ok   two runs that overlap: the older settings' table never goes after the newer one
+test-wm-note-sounds-table: ok
+exit=0
+
+################ defect 4: 'Notification sound:' disabled under No Sounds (check 16)
+---- BEFORE: node scripts/test-notify-sound-picker.js <old files>
+  1. without window.AndroidSounds the page has no row and no picker
+  2. the row: label, combo button with the choice (Event sounds / None / the sound), the note, no bridge reads beyond get()
+  3. level 1: Event sounds, None, the categories with count + chevron, never a sound; the tick and the highlight on the choice's category; soft keys Select / Back
+  4. a category: 50 sounds + Show more, then 100, then all 120 with no Show more; the list repaints in place
+  5. search: debounced 250 ms, goes through list(cat, query, 0, 50), no match is said, clearing returns the first page, the box is not redrawn
+  6. tap = highlight + preview; Play / Stop follow the app's event; Select chooses and leaves; commit writes set(sound, id, title, category) once
+  7. None and Event sounds map to set(none) / set(default) with empty id, title and category
+  8. Back: level 2 -> 1 -> the page, then the page's own; the preview stops on the way; ok confirms a layer
+  9. previews stop when the page is saved or left and when another program comes forward; no listener stays
+  10. a refusal from the app is told once, in words, and the page stays open
+  11. opening the picker plays nothing; the sound in use is highlighted and ticked; no notice sites in the file
+  12. screen off, page hidden and behind an Android program each stop the preview only (picker, row and list untouched, button back to Play); not-away events do nothing; every listener is gone after the picker closes
+  13. the sound in use further down a category is its first row (ticked, highlighted, plays and selects like any row); once after Show more; not pinned with a search text, in another category, or when already among the rows
+  14. opening the picker stops the Notifications tab's preview (guarded: a failing or missing stop never blocks the picker)
+  15. previews A then B, A's stopped event, then Back: a stop follows the last preview; Back from level 1, Select, shutdown and the away handlers stop once each
+AssertionError [ERR_ASSERTION]: No Sounds: the row is disabled like its neighbours
+exit=1
+---- AFTER: node scripts/test-notify-sound-picker.js
+  1. without window.AndroidSounds the page has no row and no picker
+  2. the row: label, combo button with the choice (Event sounds / None / the sound), the note, no bridge reads beyond get()
+  3. level 1: Event sounds, None, the categories with count + chevron, never a sound; the tick and the highlight on the choice's category; soft keys Select / Back
+  4. a category: 50 sounds + Show more, then 100, then all 120 with no Show more; the list repaints in place
+  5. search: debounced 250 ms, goes through list(cat, query, 0, 50), no match is said, clearing returns the first page, the box is not redrawn
+  6. tap = highlight + preview; Play / Stop follow the app's event; Select chooses and leaves; commit writes set(sound, id, title, category) once
+  7. None and Event sounds map to set(none) / set(default) with empty id, title and category
+  8. Back: level 2 -> 1 -> the page, then the page's own; the preview stops on the way; ok confirms a layer
+  9. previews stop when the page is saved or left and when another program comes forward; no listener stays
+  10. a refusal from the app is told once, in words, and the page stays open
+  11. opening the picker plays nothing; the sound in use is highlighted and ticked; no notice sites in the file
+  12. screen off, page hidden and behind an Android program each stop the preview only (picker, row and list untouched, button back to Play); not-away events do nothing; every listener is gone after the picker closes
+  13. the sound in use further down a category is its first row (ticked, highlighted, plays and selects like any row); once after Show more; not pinned with a search text, in another category, or when already among the rows
+  14. opening the picker stops the Notifications tab's preview (guarded: a failing or missing stop never blocks the picker)
+  15. previews A then B, A's stopped event, then Back: a stop follows the last preview; Back from level 1, Select, shutdown and the away handlers stop once each
+  16. No Sounds: the Notification sound row is disabled and cannot open the picker; back on Melaton Default it works
+ok: 16 checks
+exit=0
+
+################ defect 7: a box sounds only for news
+---- BEFORE: node scripts/test-wm-inbox-news-only.js <old files>
+  1. FAIL resume, arrived while away: a row never published as news comes up silent, a news row sounds, an older server's row sounds
+  2. FAIL resume, arrived since the page started: a row never published as news comes up silent, a news row sounds, an older server's row sounds
+  3. FAIL resume: reminders the same, and shown again later still silent
+  4. FAIL resume, a missed stack: in a browser it sounds only as news; in the Android app it comes up silently (on purpose)
+  5. FAIL a live reminder published silently stays silent; as news it sounds
+  6. FAIL a producer kind no program showed: the fallback box is silent for a silent packet (alertAt kept or 0), sounds for news
+  7. FAIL a program that adopts it is told: live only for news, quiet otherwise
+  8. ok   what was quiet stays quiet: a consent question at resume, the holder's tap, "show what is waiting"
+  9. FAIL every box carries its notice and alertAt (a notice, a reminder, a stack, and a stack's change in place)
+  10. FAIL a box drawn again for news under its id closes the old one as replaced
+test-wm-inbox-news-only: 9 of 10 FAILED
+exit=1
+---- AFTER: node scripts/test-wm-inbox-news-only.js
+  1. ok   resume, arrived while away: a row never published as news comes up silent, a news row sounds, an older server's row sounds
+  2. ok   resume, arrived since the page started: a row never published as news comes up silent, a news row sounds, an older server's row sounds
+  3. ok   resume: reminders the same, and shown again later still silent
+  4. ok   resume, a missed stack: in a browser it sounds only as news; in the Android app it comes up silently (on purpose)
+  5. ok   a live reminder published silently stays silent; as news it sounds
+  6. ok   a producer kind no program showed: the fallback box is silent for a silent packet (alertAt kept or 0), sounds for news
+  7. ok   a program that adopts it is told: live only for news, quiet otherwise
+  8. ok   what was quiet stays quiet: a consent question at resume, the holder's tap, "show what is waiting"
+  9. ok   every box carries its notice and alertAt (a notice, a reminder, a stack, and a stack's change in place)
+  10. ok   a box drawn again for news under its id closes the old one as replaced
+test-wm-inbox-news-only: ok
+exit=0
+
+################ server alertAt (the event's name for defects 1 and 2)
+---- BEFORE: node scripts/test-notification-alert-at.js <old files>
+  throw new AssertionError(obj);
+AssertionError [ERR_ASSERTION]: publish returns it
+exit=1
+---- AFTER: node scripts/test-notification-alert-at.js
+  1. a loud publish sets alertAt to now (publish, inbox_list, inbox_updated, phone packet)
+  2. a silent publish onto a live row (new or seen) keeps its alertAt
+  3. news on a live row sets it to now again
+  4. a silent publish that creates a row sets 0
+  5. a done row: stays (untouched), comes back silent with 0, comes back loud with now
+  6. a resend and a catch-up carry the row's alertAt
+  7. a new stack: now
+  8. a silent join, and the same item again, keep it
+  9. an item with news: now
+  10. a silent rewrite keeps it; the mark of an item dealt with has 0
+  11. a whole stack cleared marks its items with 0; the next stack starts with now
+  12. an older database gets the column once: existing rows alertAt = createdAt
+test-notification-alert-at: ok
+exit=0

@@ -1,0 +1,119 @@
+StaticForge #1367 - Android app JVM unit tests on Ruiko (real Gradle, testDebugUnitTest), before and after. 2026-11-27 14:40:27 EST
+AFTER: DSApp tmp/1367-one-sound 412aa96 merged on origin/main with every unmerged non-tmp branch (what the server build will compile).
+jp.net.seventhreeseven.dreamscape.activesync.AdbKeyFilesTest: tests=20 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.activesync.AnswerLingerTest: tests=12 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.activesync.LocalAdbPolicyTest: tests=9 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.activesync.NoticeDeliveryTest: tests=34 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.AdbTlsTest: tests=13 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ApkInstallPlanTest: tests=16 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ApkInstallRetryTest: tests=28 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.BackgroundValueTest: tests=12 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.BarsHealPolicyTest: tests=62 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.DriveWatchStepTest: tests=13 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.EmuShimsTest: tests=7 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ExampleUnitTest: tests=1 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.NavRoomPolicyTest: tests=53 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.NoteRepeaterTest: tests=12 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.NoteSoundArbiterTest: tests=37 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.NoteSoundChoiceTest: tests=12 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.NotifySoundRulesTest: tests=21 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.OutFitTest: tests=25 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.OutputPanelTest: tests=28 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.PlaybackRulesTest: tests=44 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.PopupRulesTest: tests=32 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.RadioCoreTest: tests=64 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.RadioModeRulesTest: tests=32 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.RadioWordsTest: tests=10 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.SandboxConnectTest: tests=15 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.screensaver.PictureNamesTest: tests=5 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ShizukuQueuePolicyTest: tests=7 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ShizukuStarterTest: tests=6 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.SocialNotificationsTest: tests=5 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.TaskCatchUpTest: tests=10 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.TaskDeliveryTest: tests=9 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.TestLaneTest: tests=10 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ToneSchedulerTest: tests=9 failures=0 errors=0
+TOTAL tests=699 failures=0 errors=0 skipped=0
+
+BEFORE: the same tree with the new classes replaced by stand-ins that behave as the old app did (both sides sound; nothing repeats; no class ships silent without a table).
+Defect 2/1 = NoteSoundArbiterTest, defect 3 = NoteRepeaterTest, defect 5 = NoteSoundChoiceTest.
+jp.net.seventhreeseven.dreamscape.activesync.AdbKeyFilesTest: tests=20 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.activesync.AnswerLingerTest: tests=12 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.activesync.LocalAdbPolicyTest: tests=9 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.activesync.NoticeDeliveryTest: tests=34 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.AdbTlsTest: tests=13 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ApkInstallPlanTest: tests=16 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ApkInstallRetryTest: tests=28 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.BackgroundValueTest: tests=12 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.BarsHealPolicyTest: tests=62 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.DriveWatchStepTest: tests=13 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.EmuShimsTest: tests=7 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ExampleUnitTest: tests=1 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.NavRoomPolicyTest: tests=53 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.NoteRepeaterTest: tests=12 failures=9 errors=0
+   FAIL fourMoreTimesFourSecondsApart: java.lang.AssertionError
+   FAIL thePhoneIsHeldFromTheStartUntilAfterTheLastOne: java.lang.AssertionError
+   FAIL aStepAlreadyOnItsWayAfterAStopDoesNothing: java.util.NoSuchElementException: List is empty.
+   FAIL aNewerRepeatingNoticeTakesItsPlace: java.lang.AssertionError
+   FAIL itsDismissalStopsItAndGivesThePhoneBack: java.lang.AssertionError
+   FAIL itStopsWhenTheTableNoLongerSaysSo: java.lang.AssertionError: expected:<2> but was:<0>
+   FAIL everyStopReasonIsToldAsItIs: java.lang.AssertionError
+   FAIL aNewerNoticeThatDoesNotRepeatLeavesItRunning: java.lang.AssertionError: expected:<rem:1> but was:<null>
+   FAIL aStepThatCannotBeScheduledGivesThePhoneBack: java.lang.AssertionError: expected:<1> but was:<0>
+jp.net.seventhreeseven.dreamscape.NoteSoundArbiterTest: tests=37 failures=31 errors=0
+   FAIL aNewerEventThePageOnlyLeftToTheAppDoesNotSilenceTheOlder: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL oddIdsAndEventsSurviveTheStore: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL anOlderEventUnderANewerYieldIsThePagesOnce: java.lang.AssertionError: expected:<PAGE_HAS_IT> but was:<SOUND>
+   FAIL whatThePageTookAnswersTheSameWayAndNeverSoundsInTheApp: java.lang.AssertionError: expected:<PAGE_HAS_IT> but was:<SOUND>
+   FAIL anAsleepPageLeavesTheBatteryToTheApp: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL aDeferredPageWithNothingNewForTheAppStaysQuietOnBothSides: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL aYieldNobodyAskedAboutDoesNotTakeALaterEventsAsk: java.lang.AssertionError: expected:<PAGE_HAS_IT> but was:<SOUND>
+   FAIL theAppSoundsOneStampedEventOnce: java.lang.AssertionError: expected:<ALREADY> but was:<SOUND>
+   FAIL twoEventsWithoutStampsEachSoundOnceInEveryOrder: java.lang.AssertionError: A1 A2 P1 P2 stamped=false awake=true yields=false expected:<1> but was:<2>
+   FAIL whoDeliversIsNotAskedForWhatTheAppSoundedAlready: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL lowAndVeryLowAreTwoEventsUnderOneId: java.lang.AssertionError: expected:<PAGE_HAS_IT> but was:<SOUND>
+   FAIL anAppAnswerAskedAgainOnScreenBeforeTheAppSoundedIsThePages: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL theAppsBatteryRecordLastsUntilTheNoteIsDropped: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL claimsWithoutAStampPairOnlyWithinTheWindow: java.lang.AssertionError: expected:<PAGE_HAS_IT> but was:<SOUND>
+   FAIL oneSidesStampAloneStillPairsOnce: java.lang.AssertionError: expected:<PAGE_HAS_IT> but was:<SOUND>
+   FAIL aSideThatHasANewerEventHasHandledTheOlderOne: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL anAsleepPageWithNobodyElseToDeliverItSoundsIt: java.lang.AssertionError: expected:<PAGE_HAS_IT> but was:<SOUND>
+   FAIL anAsleepPageAsksAfterTheApp: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL twoStampedEventsEachSoundOnceInEveryOrder: java.lang.AssertionError: A1 A2 P1 P2 stamped=true awake=true yields=false expected:<1> but was:<2>
+   FAIL aPageResumingHoursLaterIsToldAppEveryTime: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL theAppFirstThenALatePageStandsDown: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL aYieldWithNothingNewLeavesNothingBehind: java.lang.AssertionError: expected:<NOTHING> but was:<STAND_DOWN>
+   FAIL whatThePageSoundedOfTheBatteryStaysItsUntilTheCharger: java.lang.AssertionError: expected:<PAGE_HAS_IT> but was:<SOUND>
+   FAIL aNoteAskedForLateIsStillTheOneTheAppGetsAfter: java.lang.AssertionError: expected:<PAGE_HAS_IT> but was:<SOUND>
+   FAIL aPageThatWasToldAppMakesTheAppSoundInsteadOfYielding: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL thePageFirstThenTheAppsTimeoutStandsDown: java.lang.AssertionError: expected:<PAGE_HAS_IT> but was:<SOUND>
+   FAIL aNoteMadeWithTheScreenOffAndAskedForMinutesLaterIsTheAppsEvent: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL anAsleepPageAsksBeforeTheApp: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL aboutAHundredIdsAreKeptAndTheBatterysNeverGoes: java.lang.NullPointerException
+   FAIL aNoteTimeAheadOfTheClockCountsAsNow: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+   FAIL theRecordsOutliveTheAppsProcess: org.junit.ComparisonFailure: expected:<[app]> but was:<[page]>
+jp.net.seventhreeseven.dreamscape.NoteSoundChoiceTest: tests=12 failures=4 errors=0
+   FAIL theShippedSetAndTheStatusClassesAreThePages: java.lang.AssertionError: connect
+   FAIL aClassThatShipsSilentHasNoDefaultSound: org.junit.ComparisonFailure: connect expected:<[]> but was:<[/sounds/wm61/Infbeg.wav]>
+   FAIL aStatusClassHasNoDefaultSound: org.junit.ComparisonFailure: system expected:<[]> but was:<[/sounds/wm61/Infbeg.wav]>
+   FAIL aChosenAndroidSoundGivesASilentClassNoSound: java.lang.AssertionError: connect expected:<jp.net.seventhreeseven.dreamscape.NotifySoundChoice$Decision$Silent@29ef6856> but was:<Chosen(id=asset:chime.mp3)>
+jp.net.seventhreeseven.dreamscape.NotifySoundRulesTest: tests=21 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.OutFitTest: tests=25 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.OutputPanelTest: tests=28 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.PlaybackRulesTest: tests=44 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.PopupRulesTest: tests=32 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.RadioCoreTest: tests=64 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.RadioModeRulesTest: tests=32 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.RadioWordsTest: tests=10 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.SandboxConnectTest: tests=15 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.screensaver.PictureNamesTest: tests=5 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ShizukuQueuePolicyTest: tests=7 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ShizukuStarterTest: tests=6 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.SocialNotificationsTest: tests=5 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.TaskCatchUpTest: tests=10 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.TaskDeliveryTest: tests=9 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.TestLaneTest: tests=10 failures=0 errors=0
+jp.net.seventhreeseven.dreamscape.ToneSchedulerTest: tests=9 failures=0 errors=0
+TOTAL tests=699 failures=44 errors=0 skipped=0
