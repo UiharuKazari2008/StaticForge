@@ -47,7 +47,34 @@ const isOpen = (s) => !GONE.includes(s);
 // A shared file or issue only means "not at the same time": it holds an item back while the other one is on its way (queued,
 // starting, running, Sent Back, Input Required), never while the other sits in Waiting unstarted (Yukimi, Nov 26 2026: queued
 // items sat for hours behind held items that nobody started). Explicit dependencies hold always (the prerequisite is started first).
-const holdsBack = (e, s) => isOpen(s) && !((e.kind === 'files' || e.kind === 'issue') && s === 'held');
+// Once the other one runs, a shared FILE holds back only while that item (or one of its parts) holds a claim on one of the shared
+// files - the claim is what says it is editing them (Yukimi, Nov 26 2026: "why are we waiting on so many jobs" - items sat behind a
+// running item that was itself only waiting for an emulator and touched none of the files).
+const ACTIVE_STATES = ['starting', 'running', 'waiting', 'input'];
+function holdsBack(e, s) {
+    if (!isOpen(s)) return false;
+    if ((e.kind === 'files' || e.kind === 'issue') && s === 'held') return false;
+    if (e.kind === 'files' && ACTIVE_STATES.includes(s)) return claimsShared(e.depends_on, sharedFiles(e.reason));
+    return true;
+}
+/** "both name a.js, b/c.js" -> ['a.js', 'b/c.js']. */
+function sharedFiles(reason) {
+    const m = /both name (.+)$/.exec(String(reason || ''));
+    return m ? m[1].replace(/\s+and \d+ more$/, '').split(/,\s*/).map((x) => x.trim()).filter(Boolean) : [];
+}
+/** Does work item id (or one of its parts) hold a live coord claim over any of these repo files? Unknown -> true (hold). */
+function claimsShared(id, files) {
+    if (!files.length) return true;
+    try {
+        const coord = require('./agentCoord/store');
+        const sids = db().prepare('SELECT session_id FROM supervisor_work WHERE (id = ? OR parent_id = ?) AND session_id IS NOT NULL').all(Number(id), Number(id)).map((r) => String(r.session_id));
+        if (!sids.length) return false;
+        const agents = new Set(sids.map((sid) => `claude-${sid.slice(0, 8)}`));
+        try { coord.listAgents().forEach((a) => { if (a.sessionId && sids.includes(a.sessionId)) agents.add(a.id); }); } catch (_) { /* the ids above */ }
+        const claims = coord.liveClaims({}).filter((c) => agents.has(c.agentId));
+        return claims.some((c) => files.some((f) => coord.overlaps(c.path, f)));
+    } catch (_) { return true; }
+}
 
 function states() {
     const m = new Map();

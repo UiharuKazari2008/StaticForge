@@ -114,11 +114,24 @@ ok('a shared file holds back only while the other item is on its way, never behi
     assert.deepStrictEqual(deps.blockedBy(71), []);
     assert.deepStrictEqual(deps.prerequisites(71), [], 'a held file-sharer is not started first');
     assert.ok(!deps.orderQueued([{ id: 71, state: 'queued' }])[0].blocked);
-    setState(70, 'running');
-    assert.deepStrictEqual(deps.blockedBy(71), [70]);
+    setState(70, 'queued');
+    assert.deepStrictEqual(deps.blockedBy(71), [70], 'both queued: the first goes first');
     setState(72, 'held'); setState(73, 'queued');
     deps.addDep(73, 72, 'needs 72');
     assert.deepStrictEqual(deps.blockedBy(73), [72], 'explicit still holds');
+});
+
+ok('a running item holds a shared file back only while it claims it', () => {
+    const coord = require('../modules/agentCoord/store');
+    for (const col of ['session_id TEXT', 'parent_id INTEGER']) { try { store.open().exec(`ALTER TABLE supervisor_work ADD COLUMN ${col}`); } catch (_) { /* there */ } }
+    store.open().prepare("INSERT INTO supervisor_work (id, state, session_id) VALUES (560, 'running', 'abcd1234-0000-0000-0000-000000000000') ON CONFLICT(id) DO UPDATE SET state = excluded.state, session_id = excluded.session_id").run();
+    setState(561, 'queued');
+    deps.addDep(561, 560, 'both name x/shared.js', 'files');
+    assert.deepStrictEqual(deps.blockedBy(561), [], 'no claim: not held back');
+    coord.upsertAgent({ id: 'claude-abcd1234', kind: 'claude', name: 'runner', sessionId: 'abcd1234-0000-0000-0000-000000000000' });
+    coord.claim('claude-abcd1234', 'repo', ['x/shared.js'], { root: tmp });
+    assert.deepStrictEqual(deps.blockedBy(561), [560], 'claimed: held back');
+    coord.release('claude-abcd1234', 'repo', ['x/shared.js']);
 });
 
 ok('prerequisites: transitive chain in start order', () => {
