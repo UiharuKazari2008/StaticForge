@@ -212,7 +212,7 @@ async function partner() {
     });
     await new Promise((r, j) => { ws.once('open', r); ws.once('error', j); });
     await sleep(1500);
-    const h = await send('as_hello', { kind: 'computer', id: computer, name: 'fold7-test harness', ops: [] });
+    const h = await send('as_hello', { kind: 'computer', id: computer, name: 'fold7-test harness', ops: [], testLane: true });
     if (!h.data || !h.data.success) throw new Error(`hello refused: ${JSON.stringify(h.data || h).slice(0, 200)}`);
     console.log(`proposing the partnership to ${id.slice(0, 8)} - accept it on the emulator (screen shot: fold7-emu.sh shot)`);
     const p = await send('as_partnership', { action: 'propose', deviceId: id, mode: 'partner', name: 'Fold7 test emulator', syncItems: [] }, 200000);
