@@ -131,5 +131,49 @@ function page({ mobile }) {
     assert.strictEqual(d.notes.length, 0, 'the desktop shows nothing for the alarm');
 }
 
-console.log('weather rain notice: ok');
-process.exit(0);
+// ---- the weather monitor's own push, end to end (offline: a seeded forecast, a spy for the broadcast, nothing reaches a phone)
+// pollPlaces raises the alarm for a place that is dry now and wet in 10 minutes: the real weather_rain_alarm broadcast AND the real
+// inbox row; the push drives each page's weatherAlerts handler, the row drives the phone page's inbox
+(async () => {
+    const ws = require('../modules/weatherService');
+    const sent = [];
+    const cfg = { weather: { places: { home: { name: 'Home', lat: 40.71, lon: -74.01, rainAlarm: true, rainLeadMin: 15 } } } };
+    ws.bind({
+        getConfig: ({ path: p }) => p.split('.').reduce((o, k) => (o == null ? o : o[k]), cfg),
+        getSecureConfig: () => null,
+        getApiKeyManager: () => null,
+        getWebSocketServer: () => ({ broadcast: (msg) => sent.push(msg) }),
+    });
+    const TZ = 'America/New_York';
+    const t0 = Date.now();
+    const fc = { provider: 'openmeteo', tz: TZ, offset: -18000, current: { tempC: 12, text: 'Cloudy', code: 3, isDay: false }, hourly: [], daily: [], alerts: [], alertsSource: 'none',
+        minutely: { stepMinutes: 1, summary: 'No precipitation for the next hour', minutes: Array.from({ length: 90 }, (_, i) => ({ time: ws._test.localIso(t0 + (i - 1) * 60000, TZ), rain: i < 11 ? 0 : 80, mmh: i < 11 ? 0 : 1.5 })) } };
+    ws._test.jsonCache.set('om:fc:40.71:-74.01', { ok: true, value: fc, at: Date.now(), expires: Date.now() + 60000 });
+    await ws.pollPlaces();
+    const alarms = sent.filter((m) => m.type === 'weather_rain_alarm');
+    assert.strictEqual(alarms.length, 1, 'the monitor raises the alarm once for the spell');
+    const row = inbox.get('admin', 'rain:home');
+    assert.ok(row && row.state === 'new', 'and the server notice rain:home is in the inbox');
+    assert.strictEqual(rainRows().filter((r) => r.id === 'rain:home').length, 1);
+    assert.ok(row.data.detail.series.length > 0 && row.data.detail.current.text === 'Cloudy', 'the notice carries the monitor\'s detail');
+    assert.ok(!/No precipitation/.test(row.text), 'the words are the alarm\'s, not the provider summary: ' + row.text);
+    // a second poll in the same spell: no second alarm, still one row
+    await ws.pollPlaces();
+    assert.strictEqual(sent.filter((m) => m.type === 'weather_rain_alarm').length, 1, 'no second alarm for the same spell');
+    assert.strictEqual(rainRows().filter((r) => r.id === 'rain:home').length, 1);
+    // the phone: the push adds no note, the inbox row shows ONE note with the card
+    const phone = page({ mobile: true });
+    phone.window.wsClient.on('weather_rain_alarm', () => {});
+    phone.handlers.get('weather_rain_alarm')(alarms[0]);
+    assert.strictEqual(phone.notes.length, 0, 'the page push alone shows nothing on the phone');
+    phone.handlers.get('inbox_updated')({ data: { reason: 'new', notice: row } });
+    assert.strictEqual(phone.notes.length, 1, 'the inbox row is the one note');
+    assert.strictEqual((phone.notes[0].html.match(/wx-rain-card/g) || []).length, 1);
+    // the desktop: the push shows nothing and there is no inbox module to show the row
+    const desk = page({ mobile: false });
+    desk.handlers.get('weather_rain_alarm')(alarms[0]);
+    assert.strictEqual(desk.notes.length, 0, 'the desktop shows nothing');
+    assert.strictEqual(desk.window.wmNotificationInbox, undefined);
+    console.log('weather rain notice: ok');
+    process.exit(0);
+})().catch((err) => { console.error(err); process.exit(1); });
