@@ -280,11 +280,21 @@ function holderOf(r) {
  * target = { deviceId, name, model }, action = { kind: 'screenshot' | 'shell' | 'packages-read' | 'packages-write', command? }
  * -> { ok:true, lease? } or { ok:false, code: DEVICE_NOT_GRANTED | DEVICE_PENDING | DEVICE_DENIED, error, holder, hint }
  */
+/** An emulator (adb serial emulator-NNNN, an AVD / sdk_gphone model, a name with emu): never a physical phone, never asks. */
+function isEmulatorTarget(target) {
+    const t = target || {};
+    return /^emulator-\d+$/i.test(String(t.deviceId || '')) || /sdk_gphone|\bemulator\b|\bavd\b|\baemu\b|google_sdk|generic_x86|ranchu|goldfish/i.test(`${t.model || ''} ${t.name || ''}`);
+}
+
 function check(target, action) {
+    // the emulator lane is where agents test phones (Yukimi, Nov 26 2026): an emulator is open to agents, however it is named
+    if (isEmulatorTarget(target)) return { ok: true, lease: null, device: String((target && (target.name || target.deviceId)) || 'emulator'), emulator: true };
     const dev = deviceFor(target);
     // a phone this table does not know is closed, never open (Yukimi: no agent takes a phone she was not asked about);
     // its name goes in TARGET_MATCHERS / the consentDevices setting to be requested like the Fold
     if (!dev) return { ok: false, code: 'DEVICE_NOT_GRANTED', error: 'This phone is not in the shared-device list (consentDevices): ask Yukimi to add it before an agent uses it', device: null, holder: null, hint: HINT };
+    // HARD (Yukimi, Nov 26 2026): no agent touches a physical phone, read-only or not, lease or not
+    if (dq.isPhysicalPhone(dev)) return { ok: false, code: 'DEVICE_OFF_LIMITS', error: dq.OFF_LIMITS_MSG, device: dev, holder: null, hint: 'Use the emulator lane (coord_device_request an emulator / aemu).' };
     if (!dq.needsConsent(dev)) return { ok: true, lease: null, device: dev };
     const act = action || {};
     const cfg = settings();

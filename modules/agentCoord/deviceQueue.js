@@ -38,8 +38,18 @@ Object.keys(KNOWN).forEach((id) => KNOWN[id].aliases.forEach((a) => ALIAS.set(a,
 
 /** Devices that need Yukimi's consent by default; her settings list (coord_settings 'deviceConsent', modules/deviceConsent.js) replaces it. */
 const DEFAULT_CONSENT_DEVICES = ['a53', 'fold'];
+// HARD RULE (Yukimi, Nov 26 2026: "no more touching my phone"): agents never take a physical phone - the Fold, the A53 or any
+// other real handset. Phone work is tested on the emulator lane (emulators, the test browsers). Only test devices pass.
+const OFF_LIMITS_MSG = 'Yukimi\'s physical phones are off limits to agents (HARD rule, Nov 26 2026). Test on the emulator lane instead (an Android emulator / aemu, or ruiko-chrome / headless-chrome); "it needs the hardware" is not accepted.';
+function isPhysicalPhone(dev) {
+    const d = String(dev || '').toLowerCase();
+    if (!d || NEVER_CONSENT_SET.has(d)) return false;
+    if (process.env.DEVICE_QUEUE_TEST_PHONES === '1') return false; // the consent / queue tests model phones; never set in the server
+    return !/(^|[-_])(emu|aemu|avd|emulator|sim|virtual)([-_]|\d|$)|^emulator-|^aemu/.test(d);
+}
 /** Test browsers never ask: they are not phones, whatever a settings list says. */
 const NEVER_CONSENT = new Set(['ruiko-chrome', 'headless-chrome']);
+const NEVER_CONSENT_SET = NEVER_CONSENT;
 
 let notifier = null;
 let changeHook = null;
@@ -197,6 +207,7 @@ function holderInfo(h) {
 
 function request(agentId, device, opts = {}) {
     const dev = normalise(device);
+    if (isPhysicalPhone(dev)) throw new Error(OFF_LIMITS_MSG);
     if (!store.getAgent(agentId)) throw new Error('Unknown agent: call coord_hello first');
     const minutes = Math.max(1, Math.min(MAX_MIN, Math.round(Number(opts.minutes)) || DEFAULT_MIN));
     sweepRaw(dev);
@@ -396,4 +407,4 @@ function snapshotConsent() {
     };
 }
 
-module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, setConsent, requireConsent, snapshotConsent, KNOWN, DEFAULT_CONSENT_DEVICES, DEFAULT_MIN, MAX_MIN, IDLE_MS };
+module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, setConsent, requireConsent, snapshotConsent, KNOWN, DEFAULT_CONSENT_DEVICES, isPhysicalPhone, OFF_LIMITS_MSG, DEFAULT_MIN, MAX_MIN, IDLE_MS };

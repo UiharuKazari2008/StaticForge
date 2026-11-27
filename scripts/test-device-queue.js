@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 'use strict';
+process.env.DEVICE_QUEUE_TEST_PHONES = '1'; // these tests model the phones; the server refuses physical phones to agents
 
 /**
  * modules/agentCoord/deviceQueue.js: grant, FIFO order, release handing on with a steer message, expiry by
