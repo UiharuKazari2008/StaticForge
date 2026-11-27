@@ -1,0 +1,17 @@
+#1354: the Monitor dropout replayed on the server, 27 Nov 2026. NOT a device run. Sandbox: no network, no recorder service.
+Saved real segments of recording 40449d6a (first 40, from 393321; 393322 and 393323 carry a tag between frames) fed at real
+speed to the pump before 424752f01 (git show 424752f01~1:modules/xmRadioPump.js) and to the pump now, side by side, with the
+recorder's settings (healthyBuffer 3, behindSeconds 120, refetchRetries 3). The listener is a model: it plays one second a
+second of what the pump has listed, as a Monitor opened on a recording that has just begun. On the Fold, 26 Nov, recording
+800dca (begun 23:05:29) held one segment and the sound ran 23:05:41.8 to 23:05:54.7.
+
+  2 s OLD segment 393322 failed its checks after 3 refetches (ADTS frames do not parse to the end)
+  7 s OLD segment 393322 failed its checks after 3 refetches (ADTS frames do not parse to the end)
+ 10 s OLD listener: RAN OUT after 9 s of sound
+ 17 s OLD segment 393322 failed its checks after 3 refetches (ADTS frames do not parse to the end)
+ 34 s OLD segment 393322 failed its checks after 3 refetches (ADTS frames do not parse to the end)
+ 68 s OLD segment 393322 failed its checks after 3 refetches (ADTS frames do not parse to the end)
+128 s OLD segment 393322 could not be read (segment 393322 failed its checks after 3 refetches (ADTS frames do not parse to the end)); its 10 s are missing (hole 1)
+129 s OLD segment 393323 failed its checks after 3 refetches (ADTS frames do not parse to the end)
+OLD: 1 segments listed in 170 s, longest wait for one 170 s, holes 1, listener first ran out after 9 s, still silent after 160 s
+NEW: 19 segments listed in 170 s, longest wait for one 10 s, holes 0, listener first ran out after never
