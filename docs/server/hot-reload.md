@@ -66,7 +66,7 @@ require('./hotReload').mark(module, {
 
 ## Entry points
 
-- `bash scripts/reload-server-module.sh <file…> --why "<reason>"`: `node --check`, the plan (any non-reloadable file ->
+- `bash scripts/reload-server-module.sh <file...> --why "<reason>"`: `node --check`, the plan (any non-reloadable file ->
   exit 50 naming it: use `scripts/restart-dreamscape.sh`), the light gate, the reload, the result. Use it instead of a
   restart whenever every changed server file is reloadable.
 - agent-coord MCP `server_reload_module {paths, why}` runs the same script.
@@ -78,5 +78,5 @@ require('./hotReload').mark(module, {
 A reload is not a restart: it asks only the agents holding uncommitted edits (or claims with uncommitted files under
 them) in the reloaded files and their declared dependents - never the whole tree, never the Director idle check (no
 connection drops). It waits for a running `dreamscape-restart` or another `module-reload` build, and is denied when a file
-fails `node --check`. `node scripts/restart-gate.js --reload <file,…>` decides; the reload is recorded as an agent-coord
+fails `node --check`. `node scripts/restart-gate.js --reload <file,...>` decides; the reload is recorded as an agent-coord
 build with target `module-reload` (who, files, why, result), like builds.
