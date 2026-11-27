@@ -42,6 +42,17 @@ Two things that make such a run prove nothing, both handled by the script:
   seen at once, and this page then does not draw it again on resume. A reminder (`cls: reminder`, id `rem:...`) is drawn
   again on resume until it is dismissed, so the resume scenario uses one.
 
+### Runs
+
+| App | Result | Evidence |
+| --- | --- | --- |
+| test APK 3632853 (DSApp 412aa96 plus the pending branches), Nov 27 2026 | 7 of 7 | `evidence/1367/device/` |
+| server release 42 = 1.0.3632928 (DSApp main 1350e0d), Nov 27 2026 | 7 of 7, and View ends the repeat | `evidence/1367/device-release42/` |
+
+View: this lane instance drew no app box over another program, so step 8 sent the request the box's View key sends
+(`MainActivity` with `melaton_bar_tap=notice:<id>`) during a Reminder's repeat: 2 plays instead of 5,
+`repeat stopped (the page put it away)`. The tap on the box itself has not been made on a device.
+
 ## The 6.5.1 Play key
 
 `docs/testing/evidence/1367/651-play/`: on the 6.5.1 look a lone Play beside a combo box was 3.52 units wide (the combo took

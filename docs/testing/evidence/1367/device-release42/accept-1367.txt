@@ -1,0 +1,99 @@
+  aemu-a53-2: noAudio True, app versionCode 3632928
+StaticForge #1367 device acceptance, 2026-11-27 15:54:32 EST
+  sound picks on the phone: {}; reminder {"sound":"notify.mp3","own":false,"repeat":true,"display":true,"vibrate":false}; sms {"sound":"online.mp3","own":false,"repeat":false,"display":true,"vibrate":false}
+
+1. A notice with the page in front: one sound
+  pushed test:1367:front:155428 (sms): sent 1 route one-device
+    NoteAlerts +  0.4s  sms (page in front): the event's own sound (the page plays it)
+    NoteAlerts +  4.3s  sms: the app stands down, the page in front sounds it (alertAt 1795812915507)
+    app plays (NoteAlerts 'playing'): 0; sound decisions: 0; alarm-like players: 0
+    page calls: [["shown","test:1367:front:155428"],["takeSound","test:1367:front:155428","1795812915507","sms","awake=true","-> page"]]
+    page sounds: ["sms wm61/online.mp3"]
+PASS  front: 1 sound(s) in all (app 0, page 1); the app answered the page 'page'
+
+2. The same with the page asleep (another program in front), then resumed: still one sound
+  reminder here: {"sound":"notify.mp3","own":false,"repeat":false,"display":true,"vibrate":false}
+  pushed rem:test:1367:asleep:155428 (reminder): sent 1 route one-device
+  before resume:
+    NoteAlerts +  0.2s  reminder: ringer 2, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+    NoteAlerts +  0.3s  playing staticforge.737.jp.net_sounds_wm61_notify.mp3_v_7e7e4b1a94d5ce05
+    NoteAlerts +  7.2s  reminder: the page is told the app sounds it (alertAt 1795812955210, page asleep)
+    app plays (NoteAlerts 'playing'): 1; sound decisions: 1; alarm-like players: 0
+  after resume:
+    NoteAlerts +  0.2s  reminder: ringer 2, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+    NoteAlerts +  0.3s  playing staticforge.737.jp.net_sounds_wm61_notify.mp3_v_7e7e4b1a94d5ce05
+    NoteAlerts +  7.2s  reminder: the page is told the app sounds it (alertAt 1795812955210, page asleep)
+    app plays (NoteAlerts 'playing'): 1; sound decisions: 1; alarm-like players: 0
+    page calls: [["shown","rem:test:1367:asleep:155428"],["takeSound","rem:test:1367:asleep:155428","1795812955210","reminder","awake=false","-> app"],["shown","rem:test:1367:asleep:155428"],["shown","rem:test:1367:asleep:155428"]]
+    page sounds: []; the page's box for it after resume: 1
+PASS  asleep then resumed: 1 sound(s) in all (app 1, 1 of them before the resume, page 0); the page drew its box on resume and the app answered 'app'
+  sound options put back: reminder {"sound":"notify.mp3","own":false,"repeat":true,"display":true,"vibrate":false}
+
+3. The same with the screen off, then on
+  pushed test:1367:screenoff:155428 (sms): sent 1 route one-device
+    NoteAlerts +  0.2s  sms: ringer 2, sound online.mp3?v=636da0016222dcfe, vibrate false
+    NoteAlerts +  0.2s  playing staticforge.737.jp.net_sounds_wm61_online.mp3_v_636da0016222dcfe
+    NoteAlerts + 15.6s  sms: the page is told the app sounds it (alertAt 1795813011421, page on screen)
+    app plays (NoteAlerts 'playing'): 1; sound decisions: 1; alarm-like players: 0
+    page calls: [["shown","test:1367:screenoff:155428"],["takeSound","test:1367:screenoff:155428","1795813011421","sms","awake=true","-> app"]]
+    page sounds: []
+PASS  screen off then on: 1 sound(s) in all (app 1, page 0)
+
+4. A late claim: the page in front but stalled 9 s (longer than the app's 4 s wait): one sound
+  pushed test:1367:late:155428 (sms): sent 1 route one-device
+    NoteAlerts +  5.9s  sms: ringer 2, sound online.mp3?v=636da0016222dcfe, vibrate false
+    NoteAlerts +  5.9s  playing staticforge.737.jp.net_sounds_wm61_online.mp3_v_636da0016222dcfe
+    NoteAlerts +  9.6s  sms: the page is told the app sounds it (alertAt 1795813061851, page on screen)
+    app plays (NoteAlerts 'playing'): 1; sound decisions: 1; alarm-like players: 0
+    page calls: [["shown","test:1367:late:155428"],["takeSound","test:1367:late:155428","1795813061851","sms","awake=true","-> app"]]
+    page sounds: []
+PASS  late claim: 1 sound(s) in all (app 1, page 0); the late page was answered 'app'
+
+5. A repeating class (Reminders) with the page killed: 1 + 4 repeats, 4 s apart
+  app killed; back for its services as pid 5378; top activity: com.android.settings/.homepage.SettingsHomepageActivity
+  pushed test:1367:repeat:155428 (reminder): sent 1 route one-device
+    NoteAlerts +  0.2s  reminder: ringer 2, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+    NoteAlerts +  0.2s  playing staticforge.737.jp.net_sounds_wm61_notify.mp3_v_7e7e4b1a94d5ce05
+    NoteAlerts +  4.2s  reminder: repeat 1/4
+    NoteAlerts +  4.2s  reminder: ringer 2, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+    NoteAlerts +  4.2s  playing staticforge.737.jp.net_sounds_wm61_notify.mp3_v_7e7e4b1a94d5ce05
+    NoteAlerts +  8.2s  reminder: repeat 2/4
+    NoteAlerts +  8.2s  reminder: ringer 2, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+    NoteAlerts +  8.2s  playing staticforge.737.jp.net_sounds_wm61_notify.mp3_v_7e7e4b1a94d5ce05
+    NoteAlerts + 12.2s  reminder: repeat 3/4
+    NoteAlerts + 12.2s  reminder: ringer 2, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+    NoteAlerts + 12.2s  playing staticforge.737.jp.net_sounds_wm61_notify.mp3_v_7e7e4b1a94d5ce05
+    NoteAlerts + 16.2s  reminder: repeat 4/4
+    NoteAlerts + 16.2s  reminder: ringer 2, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+    NoteAlerts + 16.2s  playing staticforge.737.jp.net_sounds_wm61_notify.mp3_v_7e7e4b1a94d5ce05
+    NoteAlerts + 18.2s  reminder: repeat done
+    app plays (NoteAlerts 'playing'): 5; sound decisions: 5; alarm-like players: 0
+PASS  repeat with the page killed: 5 plays (expected 5)
+
+6. The same, dismissed (a clear) while it repeats: it stops
+  pushed test:1367:repeatstop:155428 (reminder): sent 1 route one-device
+  cleared about 6 s after the push
+    NoteAlerts +  0.2s  reminder: ringer 2, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+    NoteAlerts +  0.2s  playing staticforge.737.jp.net_sounds_wm61_notify.mp3_v_7e7e4b1a94d5ce05
+    NoteAlerts +  4.2s  reminder: repeat 1/4
+    NoteAlerts +  4.2s  reminder: ringer 2, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+    NoteAlerts +  4.2s  playing staticforge.737.jp.net_sounds_wm61_notify.mp3_v_7e7e4b1a94d5ce05
+    NoteAlerts +  6.4s  repeat stopped (cleared by the server)
+    app plays (NoteAlerts 'playing'): 2; sound decisions: 2; alarm-like players: 0
+PASS  repeat stops at the dismissal: 2 plays
+
+7. The workspace's scheme "No Sounds", then the page killed: none
+  scheme in the page: none
+  the app's stored table: 26 entries, with a sound: 0 []
+  app killed; back for its services as pid 5850; top activity: com.android.settings/.homepage.SettingsHomepageActivity
+  pushed test:1367:nosounds:155428 (reminder): sent 1 route one-device
+  pushed test:1367:nosounds:155428-b (sms): sent 1 route one-device
+    NoteAlerts +  0.2s  reminder: ringer 2, sound (none), vibrate false
+    NoteAlerts +  0.2s  reminder: no sound (Play sound is off, or the notification sound is None)
+    NoteAlerts + 14.4s  sms: ringer 2, sound (none), vibrate false
+    NoteAlerts + 14.4s  sms: no sound (Play sound is off, or the notification sound is None)
+    app plays (NoteAlerts 'playing'): 0; sound decisions: 2; alarm-like players: 0
+PASS  No Sounds with the page killed: 0 plays (expected 0)
+  the page again (stored scheme: default): the table is sent anew
+
+accept-1367: 7 PASS, 0 FAIL

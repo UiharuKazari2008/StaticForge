@@ -1,0 +1,9 @@
+8. View on the app's box ends the repeat (release 42). The lane draws no app box over another program, so the request the View key sends (MainActivity with melaton_bar_tap=notice:<id>, SINGLE_TOP|REORDER_TO_FRONT) was sent about 4 s after a Reminder arrived with the page behind:
+    NoteAlerts +  0.2s  reminder: ringer 2, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+    NoteAlerts +  0.2s  playing staticforge.737.jp.net_sounds_wm61_notify.mp3_v_7e7e4b1a94d5ce05
+    NoteAlerts +  4.2s  reminder: repeat 1/4
+    NoteAlerts +  4.2s  reminder: ringer 2, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+    NoteAlerts +  4.2s  playing staticforge.737.jp.net_sounds_wm61_notify.mp3_v_7e7e4b1a94d5ce05
+    NoteAlerts +  4.7s  repeat stopped (the page put it away)
+    NoteAlerts +  4.9s  reminder: the page is told the app sounds it (alertAt 1795813419732, page on screen)
+    app plays: 2  (5 without the View)
