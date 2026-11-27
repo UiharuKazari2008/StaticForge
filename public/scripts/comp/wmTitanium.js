@@ -1283,6 +1283,7 @@
         host.style.setProperty('--wm-ti-scale', String(todayScale));
         host.innerHTML = `<div class="wm-ti-list"></div>
             <div class="wm-ti-band" aria-hidden="true"></div>
+            <div class="wm-ti-shine" aria-hidden="true"><i></i></div>
             <div class="wm-ti-focus">
                 <button type="button" class="wm-ti-arrow" data-dir="-1" aria-label="Previous" hidden></button>
                 <button type="button" class="wm-ti-arrow" data-dir="1" aria-label="Next" hidden></button>
@@ -1541,6 +1542,15 @@
     }
 
     /** One custom property on the picture layer and on the band's frosted copy of it (only they restyle). */
+    /** The glass light's slide and drift (#1413): only the shine layer restyles. */
+    let shineEl = null;
+    const shineSet = {};
+    function shineVar(name, v) {
+        if (shineSet[name] === v) return;
+        shineSet[name] = v;
+        if (!shineEl || !shineEl.isConnected) shineEl = host && host.querySelector('.wm-ti-shine > i');
+        if (shineEl) shineEl.style.setProperty(name, v);
+    }
     function wallVar(name, v) {
         if (wallVarsSet[name] === v) return;
         wallVarsSet[name] = v;
@@ -1569,6 +1579,7 @@
         tiltNow.y = 0;
         wallVar('--wm-ti-tx', '0%');
         wallVar('--wm-ti-ty', '0%');
+        shineVar('--wm-ti-sx', '0px');
         if (parallaxOn) wallVar('--wm-ti-par', restPar().toFixed(4));
     }
     function wallThaw() {
@@ -1650,6 +1661,8 @@
         cancelAnimationFrame(tiltRaf); tiltRaf = 0;
         wallVar('--wm-ti-tx', '0%');
         wallVar('--wm-ti-ty', '0%');
+        shineVar('--wm-ti-sx', '0px');
+        shineVar('--wm-ti-dr', '0%');
     }
     function tiltIdleCheck() {
         tiltIdleTimer = 0;
@@ -1659,6 +1672,8 @@
         // idle: the sensor off; the frames still running ease to where the last reading put the lean, and stop
         tiltIdle = true;
         tiltListen(false);
+        // the glass light drifts a little further the way it was leaning and settles: one CSS transition, nothing left running
+        shineVar('--wm-ti-dr', `${tiltNow.x > 0 ? -1.2 : 1.2}%`);
     }
     /** A touch or a key on the page: the tilt is in use (again). */
     function tiltTouched() {
@@ -1668,6 +1683,7 @@
             tiltIdle = false;
             clearTimeout(tiltPeekTimer); tiltPeekTimer = 0;
             tiltListen(true);
+            shineVar('--wm-ti-dr', '0%');
         }
         if (!tiltIdleTimer) tiltIdleTimer = setTimeout(tiltIdleCheck, TILT_IDLE_MS + 50);
     }
@@ -1724,6 +1740,9 @@
         const qy = Math.round((-tiltNow.y * k) / tiltPx.y) * tiltPx.y;
         wallVar('--wm-ti-tx', `${(qx || 0).toFixed(4)}%`);
         wallVar('--wm-ti-ty', `${(qy || 0).toFixed(4)}%`);
+        // the glass light follows the same smoothed lean: 9 % of the glass's width at full lean, whole device pixels
+        const sw = Math.max(1, window.innerWidth * (window.devicePixelRatio || 1));
+        shineVar('--wm-ti-sx', `${(Math.round(-tiltNow.x * 0.09 * sw) / (window.devicePixelRatio || 1)).toFixed(2)}px`);
         if (!done) tiltRaf = requestAnimationFrame(tiltFrame);
     }
 

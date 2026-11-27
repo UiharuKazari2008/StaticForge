@@ -438,10 +438,10 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-blur-in {
     transform: translate3d(var(--wm-ti-tx, 0%), calc(var(--wm-ti-par, 0) * var(--wm-ti-shift, 0%) + var(--wm-ti-ty, 0%)), 0) scale(var(--wm-ti-zoom, 1));
 }
 
-/* the light on the glass (glasslight; Yukimi, Nov 23: livelier, a bit of HTC Sense, still the 6.5 look): static
- * layers on the art's glass (9 - 69 of 82 units), nothing animates. A light rim along the glass's top and
- * bottom lines (a hint only), a faint diagonal sheen and one thin specular streak. The art's own middle edge
- * (24 units) is left alone. */
+/* the light on the glass (glasslight; Yukimi, Nov 23: livelier, a bit of HTC Sense, still the 6.5 look): layers on the
+ * art's glass (9 - 69 of 82 units). This one is static: a light rim along the glass's top and
+ * bottom lines (a hint only). The art's own middle edge (24 units) is left alone. The slanted light (the god rays,
+ * #1413) is .wm-ti-shine below. */
 html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="glasslight"] .wm-ti-band::before {
     content: "";
     position: absolute;
@@ -455,12 +455,42 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="glasslight"] .wm-ti-band::
         linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.2) 14%, rgba(255, 255, 255, 0.28) 50%, rgba(255, 255, 255, 0.2) 86%, rgba(255, 255, 255, 0)) 0 0 / 100% calc(0.75 * var(--u)) no-repeat,
         /* the bottom rim, fainter still (the art's bottom edge carries it), with the glass's edge light just above it */
         linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.14) 18%, rgba(255, 255, 255, 0.2) 50%, rgba(255, 255, 255, 0.14) 82%, rgba(255, 255, 255, 0)) 0 100% / 100% calc(0.75 * var(--u)) no-repeat,
-        linear-gradient(to top, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0)) 0 100% / 100% calc(5 * var(--u)) no-repeat,
+        linear-gradient(to top, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0)) 0 100% / 100% calc(5 * var(--u)) no-repeat;
         /* no middle line of its own: the art's middle edge stays as it was (Yukimi, Nov 25: put it back) */
-        /* the specular streak: one thin slanted line of light across the glass */
-        linear-gradient(104deg, rgba(255, 255, 255, 0) 61%, rgba(255, 255, 255, 0.18) 62.4%, rgba(255, 255, 255, 0.18) 63.4%, rgba(255, 255, 255, 0) 64.8%),
-        /* the sheen: two soft slanted bands of light, the left one stronger */
-        linear-gradient(104deg, rgba(255, 255, 255, 0) 12%, rgba(255, 255, 255, 0.11) 26%, rgba(255, 255, 255, 0.035) 40%, rgba(255, 255, 255, 0) 41%, rgba(255, 255, 255, 0) 52%, rgba(255, 255, 255, 0.05) 58%, rgba(255, 255, 255, 0) 70%);
+}
+
+/* the slanted light on the glass (#1413, Yukimi Nov 27): god rays of different widths on one layer a little wider than
+ * the glass. The phone's lean slides it (transform, wmTitanium.js tiltFrame, the same smoothing as the picture's tilt);
+ * `translate` is the idle drift, one slow transition that ends by itself. Nothing else moves; no keyframes. */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-shine { display: none; }
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="glasslight"] .wm-ti-shine {
+    display: block;
+    position: absolute;
+    left: 0;
+    width: 100%;
+    top: calc((var(--wm-ti-top, 99) + 9) * var(--u));
+    height: calc(60 * var(--u));
+    overflow: hidden;
+    pointer-events: none;
+    contain: strict;
+}
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-shine > i {
+    position: absolute;
+    left: -30%;
+    width: 160%;
+    top: 0;
+    bottom: 0;
+    transform: translate3d(var(--wm-ti-sx, 0px), 0, 0);
+    translate: var(--wm-ti-dr, 0%) 0;
+    transition: translate 7s cubic-bezier(0.15, 0.6, 0.2, 1);
+    background:
+        linear-gradient(104deg, rgba(255, 255, 255, 0) 33%, rgba(255, 255, 255, 0.16) 33.5%, rgba(255, 255, 255, 0) 34.2%),
+        linear-gradient(104deg, rgba(255, 255, 255, 0) 42%, rgba(255, 255, 255, 0.22) 42.6%, rgba(255, 255, 255, 0.22) 43%, rgba(255, 255, 255, 0) 43.7%),
+        linear-gradient(104deg, rgba(255, 255, 255, 0) 47%, rgba(255, 255, 255, 0.07) 49.5%, rgba(255, 255, 255, 0.11) 51%, rgba(255, 255, 255, 0.04) 53.5%, rgba(255, 255, 255, 0) 55%),
+        linear-gradient(104deg, rgba(255, 255, 255, 0) 57%, rgba(255, 255, 255, 0.2) 57.5%, rgba(255, 255, 255, 0) 58.2%),
+        linear-gradient(104deg, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, 0.05) 63%, rgba(255, 255, 255, 0.075) 65%, rgba(255, 255, 255, 0) 70%),
+        linear-gradient(104deg, rgba(255, 255, 255, 0) 71.5%, rgba(255, 255, 255, 0.15) 72%, rgba(255, 255, 255, 0) 72.6%),
+        linear-gradient(104deg, rgba(255, 255, 255, 0) 24%, rgba(255, 255, 255, 0.04) 28%, rgba(255, 255, 255, 0.065) 30.5%, rgba(255, 255, 255, 0) 32%);
 }
 
 /* the weather in the glass (wmTitanium.js syncWx, effect "weather"): over the frosted picture, under the art, the rows
