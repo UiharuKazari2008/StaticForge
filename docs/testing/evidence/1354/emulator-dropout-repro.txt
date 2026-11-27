@@ -1,0 +1,317 @@
+#1354: the Monitor dropout reproduced on an Android emulator with the Fold's app build, 27 Nov 2026.
+NOT the Fold and not real hardware. The recorder and the server were not touched: what ONE test page received was faked.
+
+RESULT
+  BROKEN (the playlist stays at the one segment s393321, what the old recorder listed): the sound position advances for about
+  10 s and stops. currentTime freezes (9.43 / 9.48), readyState 2, the element logs "waiting" at 9.8-10.1 s, hls.js logs
+  bufferStalledError. It stays so to the end of the run (130 s and 110 s). Seen in both broken runs. The receiver reads
+  ACQUIRING SIGNAL (read in run 2; run 1 did not open that tab).
+  CONTROL (same segments, the playlist starts with 4 and gains one every 9.75 s): run 2 played the whole run with no
+  "waiting" and no hls.js error: currentTime 10.54 -> 116.40 in 110 s of wall time (105.86 s of media, 0.96 of real time),
+  one buffered range, never less than 15.7 s buffered ahead, receiver "playing" in all 45 samples.
+  CONTROL run 1 was NOT clean and is kept below: currentTime always advanced and the receiver always read "playing", but from
+  about 45 s it advanced at about 0.44 of real time (44.5 s -> 109.5 s: 51.57 -> 80.37), hls.js logged bufferStalledError
+  (non-fatal) at 83.1 and 102.9 s and the element "waiting" -> "playing" for 0.2 s at 102.9 s, with 16.7 s or more buffered
+  ahead throughout, so the playlist had not run out. The harness's answers also slowed then (0.1 s -> up to 1.3 s). Cause NOT
+  proven: Ruiko's CPU was not measured in run 1. Run 2, same method, measured Ruiko at 55-100 % and only had single
+  samples down to 0.73 of real time.
+
+BUILD AND DEVICE
+  lane emulator aemu-a53-2 (a53 shape, Android 16, x86_64, started with -no-audio; guest media volume set to 0 as well)
+  app: release 25, versionCode 3631866 (1.0.3631866), sha256 2cf10365a7039e7de97a40a7caa0c909ae14782bed13bc4b2cee91a1bd9df022,
+  installed once with "lane.sh aemu-a53-2 install-release 25 --force" over release 30 (adb -d, app data kept, still signed in).
+  versionCode read before and after runs broken 1, broken 2, control 1 and control 2: 3631866 each time.
+  So that no staged newer release could replace it during the runs, Shizuku was stopped and the app's local ADB was switched
+  off (allow, autoRestore, shizukuAutoStart, shizukuRecover = false). Release 31 stayed "staged", never installed.
+  WebView Chrome 133.0.6943.137, hls.js 1.7.4 (/dist/hlsjs/hls.light.min.js).
+  The page code is what the server served on 27 Nov, not a copy of what the Fold's page held on 26 Nov. One commit changed
+  public/scripts/comp/wmXmRadio.js after the dropout: 1bd95563c (#1322, the channel list handed to the app).
+
+WHAT WAS REAL
+  The app build; the page, its XM Radio program and window.wmXmRadio.monitor(rid); hls.js; the WebView's audio element.
+  The audio: saved segments s393321.aac onward of recording 40449d6a38bc1d17b4fd11d3 (read only, copied to a scratch
+  folder, byte-identical). EXTINF and PROGRAM-DATE-TIME come from its segs.ndjson (its gap row is left out).
+  Tags between frames in those files: 393322 after 369 of its 420 AAC frames, 393323 after 143 of 420. Both control runs
+  played past both places (media time about 18.3 s and 22.8 s).
+  The receiver's channel and song texts are the live feed for channel 53, not the audio being played.
+
+WHAT WAS FAKED (inside this one page, over Chrome DevTools)
+  1. Every request for /api/xmradio/rec/<rid>/* was answered by the harness (Fetch.enable on that URL pattern, service
+     worker bypassed, cache disabled). The playlist has the lines playlist() in modules/xmRadioRecorder.js writes:
+     EVENT, VERSION 6, TARGETDURATION 10, MEDIA-SEQUENCE 393321, START TIME-OFFSET=-30,PRECISE=NO, PROGRAM-DATE-TIME and
+     EXTINF per segment, no ENDLIST. All answers went with Cache-Control no-store (the server lets segments be cached).
+     A segment not listed would have been answered 404; none was asked for.
+  2. The listing. No recording was in progress (deck: recordings, queue, jobs and timers empty before and after the runs).
+     NO test recording was started: a server recording is pushed to every phone's status (modules/phoneStatus.js, xmrec),
+     so it would have shown the tape icon on the Fold, filed audio on a tape and held the only signed-in recorder slot.
+     Instead this page's own answer to xmradio_deck_get got one extra entry with the made-up rid e11354000000000000000354
+     (channel 53). The same wrapper refused any tune or any XM packet that changes something from this page. In broken
+     run 1 it also refused one read, xmradio_tape_tracks (pattern too wide, narrowed afterwards); nothing else was refused
+     in any run. After each run the wrapper was removed and the made-up entry was gone from the page's list.
+  3. Hooks that only observe: HTMLMediaElement.prototype.play (the audio element is not in the document) and
+     Hls.prototype.attachMedia (to log hls.js errors). hls.js was loaded just before Monitor instead of by Monitor.
+  The broken playlist is a replay of server-dropout-replay.txt (one segment listed for the first 170 s there). The hole at
+  128 s and what a listener gets when the old recorder's playlist grows again were NOT simulated.
+
+WHICH PLAYER
+  In every sample of every run AndroidVideos.state() (the app's native player) was "off", and the page called play() on its
+  own audio element: wmXmRadio does that only when the native handOff() did not answer true. The rejection itself was not
+  seen in a log (no player line from the app).
+  dumpsys audio, 14 s into each run: one AAudio player of the app's process (uid 10217, pid 5755), state started,
+  USAGE_MEDIA, muted by volume. At 48 s it was still there in both control runs and gone in both broken runs.
+  dumpsys media_session showed no playback state for the app; navigator.mediaSession is absent in this WebView.
+  lane.sh sound over each of the four runs: no notification sound (count 0), alarmLikeStarted 0.
+  Nothing was listened to: the proof is the element's position and state, not audio heard.
+
+HOW TO READ THE TABLES
+  t = seconds after monitor(rid) (this server's clock; event times use the page's clock from the same call; broken run 1 did
+  not measure the offset between the two clocks, so its event times are corrected with the 10.87 s measured later). ct = audio.currentTime;
+  rs = readyState (4 enough data, 2 only the current frame); bufEnd = end of the last buffered range; receiver = data-state
+  of the XM receiver on Now Playing; listed = segments in the last playlist; reqs = requests answered so far.
+  The control starts near ct 9 because the playlist asks to start 30 s behind its end.
+
+=== BROKEN run 2 (primary): started 2026-11-27T06:47:16.395Z, 110 s
+     t      ct  paused rs  bufEnd  receiver   listed  reqs
+   2.0    1.61  false   4    9.75  playing        1     2
+   4.5    4.11  false   4    9.75  playing        1     2
+   7.0    6.60  false   4    9.75  playing        1     2
+   9.5    9.10  false   4    9.75  playing        1     2
+  12.0    9.43  false   2    9.75  acquiring      1     3
+  14.5    9.43  false   2    9.75  acquiring      1     3
+  17.0    9.43  false   2    9.75  acquiring      1     4
+  19.5    9.43  false   2    9.75  acquiring      1     4
+  22.0    9.43  false   2    9.75  acquiring      1     5
+  24.5    9.43  false   2    9.75  acquiring      1     5
+  27.0    9.43  false   2    9.75  acquiring      1     6
+  29.5    9.43  false   2    9.75  acquiring      1     6
+  32.0    9.43  false   2    9.75  acquiring      1     7
+  34.5    9.43  false   2    9.75  acquiring      1     7
+  37.0    9.43  false   2    9.75  acquiring      1     8
+  39.5    9.43  false   2    9.75  acquiring      1     8
+  42.0    9.43  false   2    9.75  acquiring      1     9
+  44.5    9.43  false   2    9.75  acquiring      1     9
+  47.0    9.43  false   2    9.75  acquiring      1    10
+  49.5    9.43  false   2    9.75  acquiring      1    10
+  52.0    9.43  false   2    9.75  acquiring      1    11
+  54.5    9.43  false   2    9.75  acquiring      1    11
+  57.0    9.43  false   2    9.75  acquiring      1    12
+  59.5    9.43  false   2    9.75  acquiring      1    12
+  62.0    9.43  false   2    9.75  acquiring      1    13
+  64.5    9.43  false   2    9.75  acquiring      1    13
+  67.0    9.43  false   2    9.75  acquiring      1    14
+  69.5    9.43  false   2    9.75  acquiring      1    14
+  72.0    9.43  false   2    9.75  acquiring      1    15
+  74.5    9.43  false   2    9.75  acquiring      1    15
+  77.0    9.43  false   2    9.75  acquiring      1    16
+  79.5    9.43  false   2    9.75  acquiring      1    16
+  82.0    9.43  false   2    9.75  acquiring      1    17
+  84.5    9.43  false   2    9.75  acquiring      1    17
+  87.0    9.43  false   2    9.75  acquiring      1    18
+  89.5    9.43  false   2    9.75  acquiring      1    18
+  92.0    9.43  false   2    9.75  acquiring      1    19
+  94.5    9.43  false   2    9.75  acquiring      1    19
+  97.0    9.43  false   2    9.75  acquiring      1    20
+  99.5    9.43  false   2    9.75  acquiring      1    20
+ 102.0    9.43  false   2    9.75  acquiring      1    21
+ 104.5    9.43  false   2    9.75  acquiring      1    21
+ 107.0    9.43  false   2    9.75  acquiring      1    22
+ 109.5    9.43  false   2    9.75  acquiring      1    22
+ 112.0    9.43  false   2    9.75  acquiring      1    23
+page events:
+     0.0 audio:waiting ct=0
+     0.4 audio:playing ct=0
+     9.8 audio:waiting ct=9.43
+     9.9 hls:error bufferStalledError fatal=false
+  23 requests answered by the harness, all with status 200
+  playlist reads (s : segments listed): 0:1, 9.8:1, 14.8:1, 19.8:1, 24.8:1, 29.8:1, 34.8:1, 39.8:1, 44.8:1, 49.8:1, 54.8:1, 59.8:1, 64.8:1, 69.8:1, 74.8:1, 79.8:1, 84.8:1, 89.8:1, 94.8:1, 99.8:1, 104.8:1, 109.8:1
+  segment reads (s : file, bytes): 0.2:s393321.aac 312368
+
+=== CONTROL run 2 (primary): started 2026-11-27T06:51:58.360Z, 110 s
+     t      ct  paused rs  bufEnd  receiver   listed  reqs
+   2.0   10.54  false   4   39.01  playing        4     5
+   4.5   13.04  false   4   39.01  playing        4     5
+   7.0   15.63  false   4   39.01  playing        4     5
+   9.5   18.04  false   4   39.01  playing        4     5
+  12.0   20.54  false   4   39.01  playing        4     6
+  14.5   23.04  false   4   39.01  playing        4     6
+  17.0   25.54  false   4   48.76  playing        5     8
+  19.5   28.04  false   4   48.76  playing        5     8
+  22.0   30.55  false   4   48.76  playing        5     8
+  24.5   33.04  false   4   48.76  playing        5     8
+  27.0   35.54  false   4   58.51  playing        6    10
+  29.5   38.05  false   4   58.51  playing        6    10
+  32.0   40.54  false   4   58.51  playing        6    10
+  34.5   43.04  false   4   68.27  playing        7    12
+  37.0   45.54  false   4   68.27  playing        7    12
+  39.5   48.05  false   4   68.27  playing        7    12
+  42.0   50.54  false   4   68.27  playing        7    12
+  44.5   53.04  false   4   78.02  playing        8    14
+  47.0   55.54  false   4   78.02  playing        8    14
+  49.5   58.04  false   4   78.02  playing        8    14
+  52.0   60.54  false   4   78.02  playing        8    14
+  54.5   63.04  false   4   87.77  playing        9    16
+  57.0   65.54  false   4   87.77  playing        9    16
+  59.5   68.04  false   4   87.77  playing        9    16
+  62.0   70.55  false   4   87.77  playing        9    16
+  64.5   73.04  false   4   97.52  playing       10    18
+  67.0   75.54  false   4   97.52  playing       10    18
+  69.5   78.05  false   4   97.52  playing       10    18
+  72.0   80.54  false   4   97.52  playing       10    18
+  74.5   82.96  false   4  107.28  playing       11    20
+  77.0   85.39  false   4  107.28  playing       11    20
+  79.5   87.67  false   4  107.28  playing       11    20
+  82.0   89.98  false   4  107.28  playing       11    20
+  84.5   92.31  false   4  117.03  playing       12    22
+  87.0   94.39  false   4  117.03  playing       12    22
+  89.5   96.41  false   4  117.03  playing       12    22
+  92.0   98.27  false   4  117.03  playing       12    22
+  94.5  100.75  false   4  126.78  playing       13    24
+  97.0  103.17  false   4  126.78  playing       13    24
+  99.5  105.51  false   4  126.78  playing       13    24
+ 102.0  107.72  false   4  126.78  playing       13    24
+ 104.5  109.76  false   4  136.53  playing       14    26
+ 107.0  112.29  false   4  136.53  playing       14    26
+ 109.5  114.55  false   4  136.53  playing       14    26
+ 112.0  116.40  false   4  136.53  playing       14    26
+page events:
+     0.0 audio:waiting ct=0
+     0.4 audio:playing ct=9.01
+  26 requests answered by the harness, all with status 200
+  playlist reads (s : segments listed): 0:4, 9.8:4, 14.8:5, 24.5:6, 34.3:7, 44:8, 53.8:9, 63.6:10, 73.5:11, 83.1:12, 92.8:13, 102.6:14
+  segment reads (s : file, bytes): 0.2:s393321.aac 312368, 0.4:s393322.aac 312569, 0.5:s393323.aac 312564, 0.5:s393324.aac 312364, 14.8:s393325.aac 312363, 24.6:s393326.aac 312363, 34.3:s393327.aac 312363, 44.1:s393328.aac 312363, 53.8:s393329.aac 312364, 63.6:s393330.aac 312363, 73.5:s393331.aac 312363, 83.2:s393332.aac 312363, 92.9:s393333.aac 312363, 102.8:s393334.aac 312363
+
+=== CONTROL run 1 (not clean, see RESULT): started 2026-11-27T06:49:22.866Z, 110 s
+     t      ct  paused rs  bufEnd  receiver   listed  reqs
+   2.0   10.13  false   4   39.01  playing        4     5
+   4.5   12.31  false   4   39.01  playing        4     5
+   7.0   14.63  false   4   39.01  playing        4     5
+   9.5   17.12  false   4   39.01  playing        4     5
+  12.0   19.53  false   4   48.76  playing        5     7
+  14.5   22.03  false   4   48.76  playing        5     7
+  17.0   24.51  false   4   48.76  playing        5     7
+  19.5   26.94  false   4   48.76  playing        5     7
+  22.0   29.45  false   4   48.76  playing        5     8
+  24.5   31.94  false   4   48.76  playing        5     8
+  27.0   34.42  false   4   58.51  playing        6    10
+  29.5   36.91  false   4   58.51  playing        6    10
+  32.0   39.41  false   4   58.51  playing        6    10
+  34.5   41.91  false   4   68.27  playing        7    12
+  37.0   44.41  false   4   68.27  playing        7    12
+  39.5   46.77  false   4   68.27  playing        7    12
+  42.0   49.25  false   4   68.27  playing        7    12
+  44.5   51.57  false   4   68.27  playing        8    14
+  47.0   53.58  false   4   78.02  playing        8    14
+  49.5   55.33  false   4   78.02  playing        8    14
+  52.0   56.27  false   4   78.02  playing        8    14
+  54.5   57.27  false   4   78.02  playing        9    16
+  57.0   58.31  false   4   81.92  playing        9    16
+  59.5   59.33  false   4   87.77  playing        9    16
+  62.0   60.91  false   4   87.77  playing        9    16
+  64.5   62.11  false   4   87.77  playing       10    17
+  67.0   63.35  false   4   97.52  playing       10    18
+  69.5   64.37  false   4   97.52  playing       10    18
+  72.0   66.35  false   4   97.52  playing       10    18
+  74.5   67.24  false   4   97.52  playing       11    19
+  77.0   67.74  false   4   97.52  playing       11    20
+  79.5   68.53  false   4  107.28  playing       11    20
+  82.0   68.72  false   4  107.28  playing       11    20
+  84.5   69.12  false   4  107.28  playing       12    21
+  87.0   69.80  false   4  107.28  playing       12    21
+  89.5   70.73  false   4  107.28  playing       12    21
+  92.0   71.40  false   4  107.28  playing       12    21
+  94.5   72.33  false   4  107.28  playing       13    22
+  97.0   74.08  false   4  107.28  playing       13    22
+  99.5   75.92  false   4  107.28  playing       13    22
+ 102.0   77.64  false   4  107.28  playing       13    23
+ 104.5   78.52  false   4  117.03  playing       14    24
+ 107.0   79.45  false   4  117.03  playing       14    24
+ 109.5   80.37  false   4  117.03  playing       14    24
+page events:
+     0.1 audio:waiting ct=0
+     0.8 audio:playing ct=9.01
+    83.1 hls:error bufferStalledError fatal=false
+   102.9 audio:waiting ct=77.82
+   102.9 hls:error bufferStalledError fatal=false
+   103.1 audio:playing ct=77.87
+  24 requests answered by the harness, all with status 200
+  playlist reads (s : segments listed): 0.1:4, 9.9:5, 19.6:5, 24.6:6, 34.3:7, 44.4:8, 53.8:9, 64.6:10, 73.7:11, 85.4:12, 93.5:13, 103.4:14
+  segment reads (s : file, bytes): 0.3:s393321.aac 312368, 0.8:s393322.aac 312569, 1:s393323.aac 312564, 1.2:s393324.aac 312364, 9.9:s393325.aac 312363, 24.6:s393326.aac 312363, 34.3:s393327.aac 312363, 44.6:s393328.aac 312363, 55.3:s393329.aac 312364, 65.6:s393330.aac 312363, 77.1:s393331.aac 312363, 101.7:s393332.aac 312363
+
+=== BROKEN run 1 (replicate; the Now Playing tab was not opened, so the receiver was not read): started 2026-11-27T06:44:23.756Z, 130 s
+     t      ct  paused rs  bufEnd  receiver   listed  reqs
+   2.0    1.41  false   4    9.75  not read       1     2
+   4.5    3.94  false   4    9.75  not read       1     2
+   7.0    6.40  false   4    9.75  not read       1     2
+   9.5    8.95  false   4    9.75  not read       1     2
+  12.0    9.48  false   2    9.75  not read       1     3
+  14.5    9.48  false   2    9.75  not read       1     3
+  17.0    9.48  false   2    9.75  not read       1     4
+  19.5    9.48  false   2    9.75  not read       1     4
+  22.0    9.48  false   2    9.75  not read       1     5
+  24.5    9.48  false   2    9.75  not read       1     5
+  27.0    9.48  false   2    9.75  not read       1     6
+  29.5    9.48  false   2    9.75  not read       1     6
+  32.0    9.48  false   2    9.75  not read       1     7
+  34.5    9.48  false   2    9.75  not read       1     7
+  37.0    9.48  false   2    9.75  not read       1     8
+  39.5    9.48  false   2    9.75  not read       1     8
+  42.0    9.48  false   2    9.75  not read       1     9
+  44.5    9.48  false   2    9.75  not read       1     9
+  47.0    9.48  false   2    9.75  not read       1    10
+  49.5    9.48  false   2    9.75  not read       1    10
+  52.0    9.48  false   2    9.75  not read       1    11
+  54.5    9.48  false   2    9.75  not read       1    11
+  57.0    9.48  false   2    9.75  not read       1    12
+  59.5    9.48  false   2    9.75  not read       1    12
+  62.0    9.48  false   2    9.75  not read       1    13
+  64.5    9.48  false   2    9.75  not read       1    13
+  67.0    9.48  false   2    9.75  not read       1    14
+  69.5    9.48  false   2    9.75  not read       1    14
+  72.0    9.48  false   2    9.75  not read       1    15
+  74.5    9.48  false   2    9.75  not read       1    15
+  77.0    9.48  false   2    9.75  not read       1    16
+  79.5    9.48  false   2    9.75  not read       1    16
+  82.0    9.48  false   2    9.75  not read       1    17
+  84.5    9.48  false   2    9.75  not read       1    17
+  87.0    9.48  false   2    9.75  not read       1    18
+  89.5    9.48  false   2    9.75  not read       1    18
+  92.0    9.48  false   2    9.75  not read       1    19
+  94.5    9.48  false   2    9.75  not read       1    19
+  97.0    9.48  false   2    9.75  not read       1    20
+  99.5    9.48  false   2    9.75  not read       1    20
+ 102.0    9.48  false   2    9.75  not read       1    21
+ 104.5    9.48  false   2    9.75  not read       1    21
+ 107.0    9.48  false   2    9.75  not read       1    22
+ 109.5    9.48  false   2    9.75  not read       1    22
+ 112.0    9.48  false   2    9.75  not read       1    23
+ 114.5    9.48  false   2    9.75  not read       1    23
+ 117.0    9.48  false   2    9.75  not read       1    24
+ 119.5    9.48  false   2    9.75  not read       1    24
+ 122.0    9.48  false   2    9.75  not read       1    25
+ 124.5    9.48  false   2    9.75  not read       1    25
+ 127.0    9.48  false   2    9.75  not read       1    26
+ 129.5    9.48  false   2    9.75  not read       1    26
+ 132.0    9.48  false   2    9.75  not read       1    27
+page events:
+     0.1 audio:waiting ct=0
+     0.5 audio:playing ct=0
+     2.1 blocked:xmradio_tape_tracks (a read the harness refused)
+    10.1 audio:waiting ct=9.48
+    10.2 hls:error bufferStalledError fatal=false
+  27 requests answered by the harness, all with status 200
+  playlist reads (s : segments listed): 0.1:1, 9.9:1, 14.8:1, 19.9:1, 24.8:1, 29.8:1, 34.8:1, 39.8:1, 44.8:1, 49.8:1, 54.9:1, 59.9:1, 64.8:1, 69.8:1, 74.9:1, 79.8:1, 84.8:1, 89.8:1, 94.8:1, 99.8:1, 104.8:1, 109.8:1, 114.9:1, 119.8:1, 124.8:1, 129.9:1
+  segment reads (s : file, bytes): 0.3:s393321.aac 312368
+
+Ruiko CPU load and guest 1-minute load during CONTROL run 2 (UTC):
+  06:51:54 ruikoCpu=100% guestLoad1=1.78
+  06:52:06 ruikoCpu=91% guestLoad1=1.51
+  06:52:17 ruikoCpu=82% guestLoad1=1.28
+  06:52:28 ruikoCpu=65% guestLoad1=1.07
+  06:52:39 ruikoCpu=55% guestLoad1=0.99
+  06:52:50 ruikoCpu=74% guestLoad1=0.84
+  06:53:02 ruikoCpu=97% guestLoad1=0.71
+  06:53:14 ruikoCpu=97% guestLoad1=0.63
+  06:53:31 ruikoCpu=100% guestLoad1=0.98
+  06:53:47 ruikoCpu=100% guestLoad1=1.05
+  06:54:02 ruikoCpu=100% guestLoad1=1.02
+  06:54:17 ruikoCpu=100% guestLoad1=0.86
