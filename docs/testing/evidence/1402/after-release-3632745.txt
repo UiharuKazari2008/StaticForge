@@ -1,0 +1,312 @@
+# #1402 phase 2, "after": release 39, versionCode 3632745 (build/latest 19c7c07), emulator aemu-fold-1
+# Raw outputs of the commands, UTC. Helper "call" = POST /api/activesync/adb/f59ea601ec17510953a44bf8e09c35a0/shell (see recipe.md);
+# "files" = ls -laZ + sha256sum of the files in files/adb + sha256 of the first token of adbkey.pub. No secrets in this file.
+# Device clock in ls is 5 h behind UTC. Log times in logcat are epoch seconds.
+
+== Step 1: install (17:49 UTC)
+install-release 39 -> {"ok": true, "build": 39, "versionCode": 3632745, "versionCodeBefore": 3632251, "versionCodeAfter": 3632745, "installed": true, "sha256": "12b94ed9...c2797b"}
+dumpsys versionCode=3632745; `su sync` run; pm path: package:/data/app/~~IDNFfCG9mmikpc1WqNByLg==/jp.net.seventhreeseven.dreamscape-a6hPtnHvzXm4gqdVPhSNWw==/base.apk (not empty)
+The install restarted the app (pid 5165); accessibility put back (MelatonBarService, 1); shizuku running pid 3273, appPermission true; 5555 listening; features.commands=true set again.
+
+== Case H (backup keys in place)
+2026-11-27 17:49:59 UTC CASE H
+total 32
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-26 20:27 .
+drwxrwx--x 11 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:49 ..
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  1703 2026-11-26 20:27 adbkey
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   716 2026-11-26 20:27 adbkey.pub
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   4096 2026-11-26 20:27 adb
+55304234ceaa072a789aee564695d35f2adb409c103badbf59a3b06281c10423  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey
+665f73be462aec7b7c40d097b8ae1f263e08864482852fe3be884622ff157b7b  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey.pub
+7b5a0b3d9c2aaae47cccede90e7dcd0c0959a7ce85ecb8588291b59dcca3396f  -
+2026-11-27 17:49:59 UTC shell call: id -un; echo hello-1402
+{"success":true,"output":"shell\nhello-1402\n","error":"","exitCode":0}
+2026-11-27 17:50:00 UTC shell call: echo second
+{"success":true,"output":"second\n","error":"","exitCode":0}
+2026-11-27 17:50:00 UTC logs
+         1795801760.594  5434  5434 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795801762.395  5165  5373 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="settings">{&quot;preferred&quot;:&quot;adb&quot;,&quot;port&quot;:5555,&quot;features&quot;:{&quot;radioRead&quot;:true,&quot;radioModify&quot;:false,&quot;install&quot;:true,&quot;screenshots&quot;:true,&quot;castRead&quot;:false,&quot;castInteract&quot;:false,&quot;commands&quot;:true,&quot;portForward&quot;:false,&quot;filesRead&quot;:false,&quot;filesWrite&quot;:false}}</string>
+    <boolean name="restore" value="false" />
+    <boolean name="authorized_once" value="true" />
+</map>
+local_adb.xml
+
+== Case Z (both files 0 bytes), first process then second call
+2026-11-27 17:50:06 UTC CASE Z
+2026-11-27 17:50:06 UTC stop-app
+{"ok": true}
+
+total 24
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-26 20:27 .
+drwxrwx--x 11 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:49 ..
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768     0 2026-11-27 12:50 adbkey
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768     0 2026-11-27 12:50 adbkey.pub
+2026-11-27 17:50:06 UTC start-app
+{"ok": true, "appPid": 5617, "display": "0"}
+
+jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+1
+2026-11-27 17:50:34 UTC shell call: id -un; echo hello-1402
+{"success":true,"output":"shell\nhello-1402\n","error":"","exitCode":0}
+2026-11-27 17:50:34 UTC dialog check
+  mCurrentFocus=null
+  mFocusedApp=ActivityRecord{20675834 u0 com.google.android.apps.nexuslauncher/com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher t114}
+  mCurrentFocus=Window{fc1a865 u0 jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MainActivity}
+{"ok": true, "file": "/home/kanmi/staticforge/docs/testing/evidence/1402/z-after-first-call.png", "display": "inner"}
+
+         1795801760.594  5434  5434 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795801762.395  5165  5373 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+         1795801807.570  5617  5741 W LocalAdb: the adb key was replaced: adbkey is empty
+         1795801808.149  5806  5806 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795801810.424  5617  5761 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+total 32
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:50 .
+drwxrwx--x 11 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:50 ..
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  1703 2026-11-27 12:50 adbkey
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   716 2026-11-27 12:50 adbkey.pub
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   4096 2026-11-27 12:50 adb
+8ea632132aff4919a1c0de42ff480510c05566d47c6afe6cd01cac9ba847afa5  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey
+cd63cdbcaa4302475afcd592693c70ec1daae1d0491f9f7770f00e32b3dce880  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey.pub
+d48e90c9580dca972adad357d8b6e221753828b1c49293238205d07aaf1ec1e0  -
+    <boolean name="restore" value="false" />
+    <boolean name="authorized_once" value="true" />
+tmp-check-done
+2026-11-27 17:50:36 UTC shell call: echo second-same-process
+{"success":true,"output":"second-same-process\n","error":"","exitCode":0}
+         1795801760.594  5434  5434 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795801762.395  5165  5373 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+         1795801807.570  5617  5741 W LocalAdb: the adb key was replaced: adbkey is empty
+         1795801808.149  5806  5806 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795801810.424  5617  5761 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+
+== Case Z part 2: kill the app process, it comes back
+2026-11-27 17:50:46 UTC CASE Z part 2: kill + restart
+2026-11-27 17:50:46 UTC kill-app
+{"ok": true, "killedPid": 5617, "appPid": 0}
+
+2026-11-27 17:50:51 UTC pid after kill: 6003
+2026-11-27 17:51:11 UTC pid: 6003
+jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+1
+2026-11-27 17:51:11 UTC shell call: echo after-restart
+{"success":true,"output":"after-restart\n","error":"","exitCode":0}
+         1795801810.424  5617  5761 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+         1795801848.717  6121  6121 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795801850.623  6003  6046 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+total 32
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:50 .
+drwxrwx--x 11 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:50 ..
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  1703 2026-11-27 12:50 adbkey
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   716 2026-11-27 12:50 adbkey.pub
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   4096 2026-11-27 12:50 adb
+8ea632132aff4919a1c0de42ff480510c05566d47c6afe6cd01cac9ba847afa5  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey
+cd63cdbcaa4302475afcd592693c70ec1daae1d0491f9f7770f00e32b3dce880  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey.pub
+d48e90c9580dca972adad357d8b6e221753828b1c49293238205d07aaf1ec1e0  -
+
+== Case P (backup pair restored, then only adbkey.pub zeroed)
+2026-11-27 17:51:18 UTC CASE P: restore pair first
+2026-11-27 17:51:18 UTC stop-app
+{"ok": true}
+
+SELinux: Loaded file context from:
+		/system/etc/selinux/plat_file_contexts
+		/system_ext/etc/selinux/system_ext_file_contexts
+		/product/etc/selinux/product_file_contexts
+		/vendor/etc/selinux/vendor_file_contexts
+		/odm/etc/selinux/odm_file_contexts
+total 32
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:50 .
+drwxrwx--x 11 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:50 ..
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  1703 2026-11-26 20:27 adbkey
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   716 2026-11-26 20:27 adbkey.pub
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   4096 2026-11-27 12:50 adb
+55304234ceaa072a789aee564695d35f2adb409c103badbf59a3b06281c10423  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey
+665f73be462aec7b7c40d097b8ae1f263e08864482852fe3be884622ff157b7b  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey.pub
+7b5a0b3d9c2aaae47cccede90e7dcd0c0959a7ce85ecb8588291b59dcca3396f  -
+2026-11-27 17:51:19 UTC zero only adbkey.pub
+total 28
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:50 .
+drwxrwx--x 11 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:50 ..
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  1703 2026-11-26 20:27 adbkey
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768     0 2026-11-27 12:51 adbkey.pub
+backup-token:
+7b5a0b3d9c2aaae47cccede90e7dcd0c0959a7ce85ecb8588291b59dcca3396f  -
+backup-pub-tail:
+unknown@unknown
+2026-11-27 17:51:19 UTC start-app
+{"ok": true, "appPid": 6216, "display": "0"}
+
+jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+1
+2026-11-27 17:51:47 UTC shell call: id -un; echo hello-1402
+{"success":true,"output":"shell\nhello-1402\n","error":"","exitCode":0}
+         1795801848.717  6121  6121 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795801850.623  6003  6046 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+         1795801879.779  6216  6387 W LocalAdb: adbkey.pub was made again from the adb key: adbkey.pub is empty
+         1795801880.232  6421  6421 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795801881.802  6216  6284 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+total 32
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:51 .
+drwxrwx--x 11 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:51 ..
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  1703 2026-11-26 20:27 adbkey
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   716 2026-11-27 12:51 adbkey.pub
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   4096 2026-11-27 12:51 adb
+55304234ceaa072a789aee564695d35f2adb409c103badbf59a3b06281c10423  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey
+665f73be462aec7b7c40d097b8ae1f263e08864482852fe3be884622ff157b7b  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey.pub
+7b5a0b3d9c2aaae47cccede90e7dcd0c0959a7ce85ecb8588291b59dcca3396f  -
+new-pub-tail:
+unknown@unknown
+tmp-check-done
+    <boolean name="authorized_once" value="true" />
+  mCurrentFocus=null
+  mCurrentFocus=Window{be2c0f2 u0 jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MainActivity}
+
+== Case D (files/adb replaced by an empty regular file)
+2026-11-27 17:51:56 UTC CASE D
+2026-11-27 17:51:56 UTC stop-app
+{"ok": true}
+
+SELinux: Loaded file context from:
+		/system/etc/selinux/plat_file_contexts
+		/system_ext/etc/selinux/system_ext_file_contexts
+		/product/etc/selinux/product_file_contexts
+		/vendor/etc/selinux/vendor_file_contexts
+		/odm/etc/selinux/odm_file_contexts
+ls: /data/data/jp.net.seventhreeseven.dreamscape/files/adb/..: Not a directory
+regular empty file 0
+2026-11-27 17:51:57 UTC start-app
+{"ok": true, "appPid": 6590, "display": "0"}
+
+jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+1
+2026-11-27 17:52:25 UTC pid: 6590
+2026-11-27 17:52:25 UTC shell call: id -un; echo hello-1402
+{"success":true,"output":"shell\nhello-1402\n","error":"","exitCode":0,"via":"shizuku"}
+2026-11-27 17:52:25 UTC shell call: echo second
+{"success":true,"output":"second\n","error":"","exitCode":0,"via":"shizuku"}
+2026-11-27 17:52:25 UTC pid after: 6590
+         1795801879.779  6216  6387 W LocalAdb: adbkey.pub was made again from the adb key: adbkey.pub is empty
+         1795801880.232  6421  6421 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795801881.802  6216  6284 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+         1795801918.635  6780  6780 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795801920.781  6590  6733 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+2026-11-27 17:52:25 UTC FATAL grep
+         1795801917.842  6730  6730 I AndroidRuntime: Leaving lock profiling enabled
+         1795801918.033  6730  6730 D AndroidRuntime: Calling main entry moe.shizuku.starter.ServiceStarter
+         1795801918.471  6780  6780 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+         1795801918.476  6780  6780 I AndroidRuntime: Using default boot image
+         1795801918.476  6780  6780 I AndroidRuntime: Leaving lock profiling enabled
+fatal-grep-done
+2026-11-27 17:52:26 UTC app adbStatus (page bridge)
+{"ok":true,"value":"{\"listening\":true,\"authorized\":null,\"wifi\":true,\"adbEnabled\":true,\"shizuku\":true,\"restore\":false,\"wirelessDebugging\":true,\"lastRestore\":null,\"settings\":{\"preferred\":\"adb\",\"port\":5555,\"features\":{\"radioRead\":true,\"radioModify\":false,\"install\":true,\"screenshots\":true,\"castRead\":false,\"castInteract\":false,\"commands\":true,\"portForward\":false,\"filesRead\":false,\"filesWrite\":false}},\"port\":5555,\"error\":\"This phone's ADB key could not be read or made: \\/data\\/user\\/0\\/jp.net.seventhreeseven.dreamscape\\/files\\/adb is not a folder and could not be made\"}"}
+
+2026-11-27 17:52:26 UTC server status
+{"success":true,"adb":{"state":"unreachable","serial":null,"address":null,"tried":["192.168.100.12"],"checkedAt":1795801928855,"error":"Nothing answers on port 5555.","allow":true,"autoRestore":false,"shizukuAutoStart":false,"shizukuRecover":false,"wifiDebugOff":false,"tlsRestore":false,"port":5555,"preferred":"adb","features":{"radioRead":true,"radioModify":false,"install":true,"screenshots":true,"castRead":false,"castInteract":false,"commands":true,"portForward":false,"filesRead":false,"filesWrite":false},"screenshots":true}}
+ls: /data/data/jp.net.seventhreeseven.dreamscape/files/adb/..: Not a directory
+regular empty file 0
+
+== Restore, first attempt (FAILED, kept as found): my chcon --reference is not supported by this toybox, the && chain stopped before the copy;
+== the app then found no adb folder content and made a NEW key (log: the adb key was replaced: adbkey is missing; sha256 differs from the backup). That is case 'adbkey missing' by accident: PASS for the fix, the backup was untouched.
+2026-11-27 17:52:33 UTC D file listing
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768      0 2026-11-27 12:51 adb
+2026-11-27 17:52:33 UTC RESTORE
+2026-11-27 17:52:33 UTC stop-app
+{"ok": true}
+
+chcon: Unknown option 'reference=/data/data/jp.net.seventhreeseven.dreamscape/files' (see "chcon --help")
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0                       4096 2026-11-27 12:52 adb
+total 16
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0                      4096 2026-11-27 12:52 .
+drwxrwx--x 11 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:52 ..
+sha256sum: /data/data/jp.net.seventhreeseven.dreamscape/files/adb/*: No such file or directory
+2026-11-27 17:52:33 UTC start-app
+{"ok": true, "appPid": 6930, "display": "0"}
+
+jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+1
+2026-11-27 17:53:01 UTC pid: 6930
+2026-11-27 17:53:01 UTC shell call: id -un; echo hello-1402
+{"success":true,"output":"shell\nhello-1402\n","error":"","exitCode":0}
+         1795801954.601  6930  7065 W LocalAdb: the adb key was replaced: adbkey is missing
+         1795801955.563  7135  7135 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795801957.635  6930  7085 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+{"ok":true,"value":"{\"listening\":true,\"authorized\":true,\"wifi\":true,\"adbEnabled\":true,\"shizuku\":true,\"restore\":false,\"wirelessDebugging\":true,\"lastRestore\":null,\"settings\":{\"preferred\":\"adb\",\"port\":5555,\"features\":{\"radioRead\":true,\"radioModify\":false,\"install\":true,\"screenshots\":true,\"castRead\":false,\"castInteract\":false,\"commands\":false,\"portForward\":fal
+2026-11-27 17:53:02 UTC shell call: echo x
+{"success":false,"code":"NOT_ALLOWED","error":"Remote Commands is not an allowed feature on this phone (Android Bridge > Advanced Tools)."}
+    <string name="settings">{&quot;preferred&quot;:&quot;adb&quot;,&quot;port&quot;:5555,&quot;features&quot;:{&quot;radioRead&quot;:true,&quot;radioModify&quot;:false,&quot;install&quot;:true,&quot;screenshots&quot;:true,&quot;castRead&quot;:false,&quot;castInteract&quot;:false,&quot;commands&quot;:false,&quot;portForward&quot;:false,&quot;filesRead&quot;:false,&quot;filesWrite&quot;:false}}</string>
+    <boolean name="authorized_once" value="true" />
+jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+1
+total 32
+drwxrwxrwx 2 root    root    4096 2026-11-27 12:41 .
+drwxrwx--x 4 shell   shell   4096 2026-11-27 12:52 ..
+-rw------- 1 u0_a234 u0_a234 1703 2026-11-26 20:27 adbkey
+-rw------- 1 u0_a234 u0_a234  716 2026-11-26 20:27 adbkey.pub
+12d22ef6e50fc64155191c6faf82631186eb1e8c7eed0cfb82265dc9937b5f5b  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey
+8da27a65ce3fd4c39ee7094f357e6b8434151abafd365f6d861159bdcd670f37  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey.pub
+{"ok": true, "running": true, "pid": 3273, "uid": "shell", "installed": true, "appPermission": true}
+
+    versionCode=3632745 minSdk=31 targetSdk=36
+
+== Restore 2 (worked)
+2026-11-27 17:53:11 UTC RESTORE 2 (first attempt's chcon --reference is not in this toybox; app made a new key meanwhile)
+2026-11-27 17:53:11 UTC stop-app
+{"ok": true}
+
+55304234ceaa072a789aee564695d35f2adb409c103badbf59a3b06281c10423  /data/local/tmp/k1402/adbkey
+665f73be462aec7b7c40d097b8ae1f263e08864482852fe3be884622ff157b7b  /data/local/tmp/k1402/adbkey.pub
+rc=0
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   4096 2026-11-27 12:53 adb
+total 32
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:53 .
+drwxrwx--x 11 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:53 ..
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  1703 2026-11-26 20:27 adbkey
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   716 2026-11-26 20:27 adbkey.pub
+55304234ceaa072a789aee564695d35f2adb409c103badbf59a3b06281c10423  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey
+665f73be462aec7b7c40d097b8ae1f263e08864482852fe3be884622ff157b7b  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey.pub
+2026-11-27 17:53:11 UTC start-app
+{"ok": true, "appPid": 7328, "display": "0"}
+
+jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+1
+2026-11-27 17:53:39 UTC pid: 7328
+jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+1
+2026-11-27 17:53:40 UTC shell call: id -un; echo hello-1402
+{"success":true,"output":"shell\nhello-1402\n","error":"","exitCode":0}
+         1795801993.856  7535  7535 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795801995.692  7328  7482 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+{"ok":true,"value":"{\"listening\":true,\"authorized\":true,\"wifi\":true,\"adbEnabled\":true,\"shiz
+2026-11-27 17:53:41 UTC shell call: echo x
+{"success":false,"code":"NOT_ALLOWED","error":"Remote Commands is not an allowed feature on this phone (Android Bridge > Advanced Tools)."}
+55304234ceaa072a789aee564695d35f2adb409c103badbf59a3b06281c10423  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey
+665f73be462aec7b7c40d097b8ae1f263e08864482852fe3be884622ff157b7b  /data/data/jp.net.seventhreeseven.dreamscape/files/adb/adbkey.pub
+total 32
+drwx------  2 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:53 .
+drwxrwx--x 11 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  4096 2026-11-27 12:53 ..
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  1703 2026-11-26 20:27 adbkey
+-rw-------  1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768   716 2026-11-26 20:27 adbkey.pub
+total 32
+drwxrwxrwx 2 root    root    4096 2026-11-27 12:41 .
+drwxrwx--x 4 shell   shell   4096 2026-11-27 12:53 ..
+-rw------- 1 u0_a234 u0_a234 1703 2026-11-26 20:27 adbkey
+-rw------- 1 u0_a234 u0_a234  716 2026-11-26 20:27 adbkey.pub
+    <boolean name="authorized_once" value="true" />
+
+== Verdicts
+H  PASS: shell call ok, no "via" (adb); no "replaced" / "made again" line in logcat; sha256 equal to phase 1 (55304234... / 665f73be...).
+Z  PASS: log `LocalAdb: the adb key was replaced: adbkey is empty`; adbkey 1703 B sha 8ea63213... and adbkey.pub 716 B sha cd63cdbc... (both differ from the backup), owner u0_a234, mode 600, label unchanged, no *.tmp left; shell call succeeded
+   over adb with the new key (no "via"), no "Allow USB debugging?" dialog (window focus = the app's MainActivity; emulator ro.adb.secure=0, so the dialog can never show on the lane, so
+   the "untrusted key -> via shizuku" branch was NOT exercised). local_adb.xml has authorized_once=true afterwards (adbd accepted the new key; whether it was removed in between was not observed).
+   Second call in the same process: ok, no second "replaced" line. After kill-app and the process coming back (pid 6003): no "replaced" line, same sha256 (8ea63213... / cd63cdbc...), call ok.
+   (A screenshot was taken, showed only the Melaton home page, no dialog; deleted, not needed.)
+P  PASS: log `adbkey.pub was made again from the adb key: adbkey.pub is empty`; adbkey sha256 unchanged (55304234...); adbkey.pub 716 B, whole-file sha256 equal to the backup (665f73be...), first token sha equal (7b5a0b3d...), trailer `unknown@unknown` equal;
+   shell call over adb, no "via", no dialog; no *.tmp left.
+D  PASS: shell call `hello-1402`, exit 0, `"via":"shizuku"` (twice); app pid unchanged (6590), no FATAL EXCEPTION (grep shows only AndroidRuntime lines of the Shizuku starter / NavBlankShell child processes);
+   the app's own status (AndroidActiveSync.adbStatus(), page bridge) has error: "This phone's ADB key could not be read or made: /data/user/0/jp.net.seventhreeseven.dreamscape/files/adb is not a folder and could not be made".
+   Server GET /api/activesync/adb/<id> shows only the server's own adb probe ("Nothing answers on port 5555."), not the app's error. The file `adb` stayed a 0-byte regular file (owner u0_a234, mode 600, label app_data_file:s0:c234,c256,c512,c768); nothing made a folder.
+   Note: the D log shows no LocalAdb "ADB_KEY" line (the code is in the answer/status only).
+Restore: PASS after the second try: sha256 equal to phase 1, folder drwx------ u0_a234 label ...:c234,c256,c512,c768, files -rw------- same label, call ok with no "via", no "replaced"/"made again" line, adbsettings back (commands false: NOT_ALLOWED), accessibility = MelatonBarService / 1 as at the start.

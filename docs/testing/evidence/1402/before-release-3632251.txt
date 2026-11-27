@@ -1,0 +1,54 @@
+# #1402 phase 1, "before": release versionCode 3632251 (1.0.3632251), emulator aemu-fold-1, device id f59ea601ec17510953a44bf8e09c35a0
+# Times are UTC (the device clock is 5 h behind in ls output: 12:4x = 17:4x UTC). Condensed from the real command outputs; no secrets.
+
+== Step 1: state (17:40 - 17:42 UTC)
+lane status: running false -> `up` -> {"ok": true, "state": "booted", "bootSecs": 29}
+status: booted, appPid 1572, appVersionCode 3632251, shizukuRunning false (cold boot), adb listening5555 true, appPort 5555, listeningAppPort true, adbEnabled 1, adbWifiEnabled 1
+dumpsys package: versionCode=3632251 minSdk=31 targetSdk=36, versionName=1.0.3632251
+shizuku status (before): {"running": false, "installed": true, "appPermission": true}
+shizuku start: pid 3273, uid shell; status after: {"running": true, "pid": 3273, "uid": "shell", "appPermission": true}
+adbd status: listening5555 true, listeningAppPort true
+accessibility before: enabled_accessibility_services = jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService ; accessibility_enabled = 1
+key files (before):
+  drwx------ u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768 files/adb
+  -rw------- u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768 1703 2026-11-26 20:27 adbkey
+  -rw------- u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  716 2026-11-26 20:27 adbkey.pub
+  55304234ceaa072a789aee564695d35f2adb409c103badbf59a3b06281c10423  adbkey
+  665f73be462aec7b7c40d097b8ae1f263e08864482852fe3be884622ff157b7b  adbkey.pub
+backup: /data/local/tmp/k1402/{adbkey,adbkey.pub} (cp -p; same two sha256 values, label shell_data_file on the copies)
+
+== Step 2: the trigger
+POST /api/activesync/adb/<id>/shell (-> device.adbShell -> LocalAdb.shell). Server-side commands feature already true; server's own adb for this device: "unreachable: Nothing answers on port 5555" (so the server is not answering itself).
+First call: {"success":false,"code":"NOT_ALLOWED","error":"Remote Commands is not an allowed feature on this phone (Android Bridge > Advanced Tools)."}  (phone-side default)
+Setting changed: AndroidActiveSync.setAdbSettings features.commands=true (before: settings {} = defaults, commands false) 17:42:17
+Healthy call 17:42:24, command `id; echo hello-1402`:
+  {"success":true,"output":"uid=2000(shell) gid=2000(shell) groups=2000(shell),1004(input),...,3012(readtracefs) context=u:r:shell:s0\nhello-1402\n","error":"","exitCode":0}
+  no "via" field = through the app's local ADB. adbd log: 'adbd service requested 'shell,v2,raw:id; echo hello-1402'' (dadb: no TERM= part) 17:42:23 device time.
+  LocalAdb log lines: only `LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true ...`
+
+== Step 3: case Z (both files 0 bytes)
+17:42:39 stop-app -> {"ok": true}; pidof: none
+17:42:40 `: > adbkey; : > adbkey.pub`:
+  -rw------- 1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768 0 adbkey
+  -rw------- 1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768 0 adbkey.pub
+17:42:40 start-app -> appPid 4186; accessibility put back (services = ...MelatonBarService, enabled = 1)
+17:43:12 status: shizuku running (pid 3273), appPermission true; adbStatus: listening true, shizuku true, authorized null, settings.features.commands true
+17:43:12 shell call `id; echo hello-1402`:
+  {"success":false,"code":"io","error":"com.android.org.conscrypt.OpenSSLX509CertificateFactory$ParsingException: Error parsing private key"}
+17:43:22 second call in the same process `echo again`: the same error. No "via":"shizuku" fallback although Shizuku runs and is allowed.
+logcat (tag LocalAdb): only `LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-` (pid 4186); the old release logs nothing for the failure. No adbd line for the command (it never connected).
+files after the failed calls: both still 0 bytes, owner/mode/label unchanged:
+  -rw------- 1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768 0 adbkey
+  -rw------- 1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768 0 adbkey.pub
+
+== Step 4: restore
+17:43:22 stop-app; cp -p backup -> files/adb; chown u0_a234:u0_a234; restorecon; chmod 600:
+  -rw------- 1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768 1703 2026-11-26 20:27 adbkey
+  -rw------- 1 u0_a234 u0_a234 u:object_r:app_data_file:s0:c234,c256,c512,c768  716 2026-11-26 20:27 adbkey.pub
+  55304234ceaa072a789aee564695d35f2adb409c103badbf59a3b06281c10423  adbkey      (= step 1)
+  665f73be462aec7b7c40d097b8ae1f263e08864482852fe3be884622ff157b7b  adbkey.pub  (= step 1)
+start-app -> appPid 4552; accessibility put back (...MelatonBarService, 1)
+17:43:50 shell call `id -un; echo hello-1402`: {"success":true,"output":"shell\nhello-1402\n","error":"","exitCode":0}  (via adb, no "via" field)
+sha256 again after the app ran: identical to step 1.
+Then: setAdbSettings '{}' -> settings.features.commands false again (the app now stores the explicit defaults {preferred adb, port 5555, features...} instead of the empty {}); next shell call: NOT_ALLOWED as at the start.
+accessibility at the end: ...MelatonBarService, 1 (same as before).
