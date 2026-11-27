@@ -113,12 +113,12 @@
    "note": "Channel js_notifications is silent but IMPORTANCE_HIGH, so every mirrored toast heads-up, progress included. In DeX the mirror is the only place such a toast shows, so lowering it needs a decision (the page toast policy decides which toasts reach it, other wave). N4 fixed by wave C."
   },
   "media-playback": {
-   "area": "native: MediaLibraryBridge.kt, Melaton Media now playing (media-style notification)",
+   "area": "native: MediaLibraryBridge.kt and videos/VideoPlayback.kt (#1322): the media notification of what Dreamscape plays (Melaton Media, XM Radio, Videos)",
    "trigger": "user-action",
-   "action": "tap opens Melaton Media (the media session's activity); Previous / Pause / Next",
+   "action": "tap opens the program that plays (XM Radio, Videos or Melaton Media); play / pause, and previous / next where there is a list",
    "sound": false,
-   "switch": "stops when playback stops; the notice is the player's controls",
-   "note": "LOW, silent, ongoing while playing: the content the user asked for (N1 exempt)."
+   "switch": "goes away when playback stops; Android's Melaton Media notification channel turns it off; the notice is the player's controls",
+   "note": "LOW, silent, one id updated in place: the controls of playback the user started (N1 exempt). While the app's player has Melaton Media's queue, Melaton Media's own is cleared (N6). After a pause it can stay up to 10 minutes (media3)."
   },
   "apk-install-waiting": {
    "area": "native: activesync/ActiveSyncApkInstaller.kt, a program sent over ActiveSync waiting for Android's installer (or the unknown-apps permission)",
