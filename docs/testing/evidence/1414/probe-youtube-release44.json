@@ -1,0 +1,462 @@
+{
+ "id": "p1",
+ "pkg": "com.google.android.youtube",
+ "ok": true,
+ "label": "YouTube",
+ "versionName": "20.10.41",
+ "routes": [
+  {
+   "route": "manifest",
+   "ok": true
+  },
+  {
+   "route": "package-manager",
+   "ok": true
+  }
+ ],
+ "activities": [
+  {
+   "name": "com.google.android.libraries.accountlinking.activity.AccountLinkingActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell_UrlActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell$UrlActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.youtube.UrlActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell_ResultsActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell$ResultsActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell_MediaSearchActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell$MediaSearchActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell_UploadActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.youtube.UploadIntentHandlingActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell$UploadActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell_MultipleUploadsActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell_LiveCreationActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell$LiveCreationActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell_SettingsActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell$SettingsActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.youtube.ManageNetworkUsageActivity",
+   "exported": true,
+   "label": "Settings"
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.Shell_HomeActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.youtube.HomeActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.youtube.app.application.Shell$HomeActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.youtube.app.honeycomb.Shell$HomeActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.watchwhile.WatchWhileActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.WatchWhileActivity",
+   "exported": true
+  },
+  {
+   "name": "com.google.android.libraries.social.licenses.LicenseMenuActivity",
+   "exported": true,
+   "label": "Third Party Notices"
+  },
+  {
+   "name": "com.google.cardboard.sdk.HeadsetDetectionActivity",
+   "exported": true,
+   "label": "HeadsetDetector"
+  },
+  {
+   "name": "com.google.android.libraries.youtube.player.features.gl.vr.VrWelcomeActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.youtube.edit.gallery.GalleryActivity",
+   "exported": false,
+   "label": "Choose video"
+  },
+  {
+   "name": "com.google.android.libraries.youtube.account.image.CropActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.extensions.posts.creation.image.ImageGalleryActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.youtube.notification.push.optoutdialog.NotificationOptOutDialogActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.play.core.common.PlayCoreDialogWrapperActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.play.core.missingsplits.PlayCoreMissingSplitsActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.youtube.InternalUrlActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.upgrade.NewVersionAvailableActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.extensions.creationmodes.main.CreationModesActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.extensions.posts.creation.PostsCreationActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.extensions.reel.creation.shorts.activity.ShortsCreationActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.extensions.upload.EditVideoActivity",
+   "exported": false,
+   "label": "Edit video"
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.extensions.upload.UploadActivity",
+   "exported": false,
+   "label": "Add details"
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.playlist.customthumbnail.CustomThumbnailCreationActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.playlist.customthumbnail.generatedthumbnail.GeneratedThumbnailActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.search.voice.VoiceSearchActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.search.voice.VoiceSearchActivityV2",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.settings.datasaving.DataSavingSettingsActivity",
+   "exported": false,
+   "label": "Settings"
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.settings.offline.activity.SmartDownloadsStorageControlsActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.settings.SettingsActivity",
+   "exported": false,
+   "label": "Settings"
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.settings.videoquality.VideoQualitySettingsActivity",
+   "exported": false,
+   "label": "Settings"
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.vr.LaunchYouTubeVrActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.watchwhile.MainActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.application.InternalShell_HomeActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.watchwhile.InternalMainActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.apps.youtube.app.webviewfallback.WebViewFallbackActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.gms.gmscompliance.ui.UncertifiedDeviceActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.gms.common.api.GoogleApiActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.families.FamilyActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.notifications.entrypoints.systemtray.SystemTrayActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.onegoogle.accountmanagement.AddAccountActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.parenttools.youtube.ParentToolsActivity",
+   "exported": false
+  },
+  {
+   "name": "com.android.billingclient.api.ProxyBillingActivity",
+   "exported": false
+  },
+  {
+   "name": "com.android.billingclient.api.ProxyBillingActivityV2",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.social.licenses.LicenseActivity",
+   "exported": false,
+   "label": "Third Party Notices"
+  },
+  {
+   "name": "com.google.android.libraries.user.profile.photopicker.edit.EditActivity",
+   "exported": false,
+   "label": "Crop & rotate"
+  },
+  {
+   "name": "com.google.android.libraries.user.profile.photopicker.picker.intentonly.PhotoPickerIntentActivity",
+   "exported": false,
+   "label": "Profile picture"
+  },
+  {
+   "name": "com.google.android.libraries.user.profile.photopicker.picker.intentonly.webview.PhotoPickerWebViewIntentActivity",
+   "exported": false,
+   "label": "Profile picture"
+  },
+  {
+   "name": "com.google.android.libraries.youtube.account.linking.GalFlowActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.youtube.account.verification.ui.PhoneVerificationActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.youtube.livecreation.ui.LiveCreationActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.youtube.mdx.manualpairing.PairWithTvActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.youtube.mdx.smartremote.MdxSmartRemoteActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.youtube.mdx.tvsignin.TvSignInActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.youtube.metadataeditor.productsticker.activity.EditProductStickerActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.android.libraries.youtube.metadataeditor.thumbnail.activity.ShortsEditThumbnailActivity",
+   "exported": false
+  },
+  {
+   "name": "com.google.cardboard.sdk.QrCodeCaptureActivity",
+   "exported": false,
+   "label": "QrCodeCapture"
+  }
+ ],
+ "links": [
+  {
+   "activity": "com.google.android.libraries.accountlinking.activity.AccountLinkingActivity",
+   "actions": [
+    "android.intent.action.VIEW"
+   ],
+   "scheme": "vnd.youtube.gdi"
+  },
+  {
+   "activity": "com.google.android.libraries.accountlinking.activity.AccountLinkingActivity",
+   "actions": [
+    "android.intent.action.VIEW"
+   ],
+   "scheme": "com.google.android.apps.youtube",
+   "host": "oauth2redirect"
+  },
+  {
+   "activity": "com.google.android.youtube.UrlActivity",
+   "actions": [
+    "android.intent.action.VIEW",
+    "android.media.action.MEDIA_PLAY_FROM_SEARCH"
+   ],
+   "scheme": "http",
+   "host": "youtube.com",
+   "pathPattern": ".*"
+  },
+  {
+   "activity": "com.google.android.youtube.UrlActivity",
+   "actions": [
+    "android.intent.action.VIEW",
+    "android.media.action.MEDIA_PLAY_FROM_SEARCH"
+   ],
+   "scheme": "http",
+   "host": "www.youtube.com",
+   "pathPattern": ".*"
+  },
+  {
+   "activity": "com.google.android.youtube.UrlActivity",
+   "actions": [
+    "android.intent.action.VIEW",
+    "android.media.action.MEDIA_PLAY_FROM_SEARCH"
+   ],
+   "scheme": "http",
+   "host": "m.youtube.com",
+   "pathPattern": ".*"
+  },
+  {
+   "activity": "com.google.android.youtube.UrlActivity",
+   "actions": [
+    "android.intent.action.VIEW",
+    "android.media.action.MEDIA_PLAY_FROM_SEARCH"
+   ],
+   "scheme": "http",
+   "host": "youtu.be",
+   "pathPattern": ".*"
+  },
+  {
+   "activity": "com.google.android.youtube.UrlActivity",
+   "actions": [
+    "android.intent.action.VIEW",
+    "android.media.action.MEDIA_PLAY_FROM_SEARCH"
+   ],
+   "scheme": "https",
+   "host": "youtube.com",
+   "pathPattern": ".*"
+  },
+  {
+   "activity": "com.google.android.youtube.UrlActivity",
+   "actions": [
+    "android.intent.action.VIEW",
+    "android.media.action.MEDIA_PLAY_FROM_SEARCH"
+   ],
+   "scheme": "https",
+   "host": "www.youtube.com",
+   "pathPattern": ".*"
+  },
+  {
+   "activity": "com.google.android.youtube.UrlActivity",
+   "actions": [
+    "android.intent.action.VIEW",
+    "android.media.action.MEDIA_PLAY_FROM_SEARCH"
+   ],
+   "scheme": "https",
+   "host": "m.youtube.com",
+   "pathPattern": ".*"
+  },
+  {
+   "activity": "com.google.android.youtube.UrlActivity",
+   "actions": [
+    "android.intent.action.VIEW",
+    "android.media.action.MEDIA_PLAY_FROM_SEARCH"
+   ],
+   "scheme": "https",
+   "host": "youtu.be",
+   "pathPattern": ".*"
+  },
+  {
+   "activity": "com.google.android.youtube.UrlActivity",
+   "actions": [
+    "android.intent.action.VIEW",
+    "android.media.action.MEDIA_PLAY_FROM_SEARCH"
+   ],
+   "scheme": "vnd.youtube"
+  },
+  {
+   "activity": "com.google.android.youtube.UrlActivity",
+   "actions": [
+    "android.intent.action.VIEW",
+    "android.media.action.MEDIA_PLAY_FROM_SEARCH"
+   ],
+   "scheme": "vnd.youtube.launch"
+  }
+ ],
+ "shortcuts": [
+  {
+   "id": "shorts-shortcut",
+   "shortLabel": "Shorts",
+   "intent": "intent:#Intent;action=com.google.android.youtube.action.open.shorts;package=com.google.android.youtube;end"
+  },
+  {
+   "id": "search-shortcut",
+   "shortLabel": "Search",
+   "intent": "intent:#Intent;action=com.google.android.youtube.action.open.search;package=com.google.android.youtube;end"
+  },
+  {
+   "id": "subscriptions-shortcut",
+   "shortLabel": "Subscriptions",
+   "intent": "intent:#Intent;action=com.google.android.youtube.action.open.subscriptions;package=com.google.android.youtube;end"
+  }
+ ],
+ "keyboardShortcuts": [],
+ "notes": [
+  "package visibility: this app holds QUERY_ALL_PACKAGES: true",
+  "manifest of YouTube.apk: 73 activities, 1 shortcut files",
+  "0 activities take an https link",
+  "the phone cannot read another app's keyboard shortcut guide"
+ ]
+}

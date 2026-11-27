@@ -1,0 +1,1 @@
+{"ok":true,"value":"{\"pid\":\"restarted\",\"keys\":[\"com.google.android.youtube\"],\"left\":\"uri:intent:#Intent;action=com.google.android.youtube.action.\",\"rightMenu\":[\"Home\",\"Shorts\",\"Watch Later\",\"Search\",\"-\",\"My Account\",\"History\"]}"}

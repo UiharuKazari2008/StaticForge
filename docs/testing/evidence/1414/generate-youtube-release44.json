@@ -1,0 +1,132 @@
+{
+ "success": true,
+ "profile": {
+  "left": {
+   "action": "uri:intent:#Intent;action=com.google.android.youtube.action.open.subscriptions;package=com.google.android.youtube;end",
+   "label": "Subscriptions"
+  },
+  "center": {
+   "action": "tasks",
+   "label": ""
+  },
+  "right": {
+   "action": "ownmenu",
+   "label": "Menu",
+   "menu": [
+    {
+     "label": "Home",
+     "action": "open:android:com.google.android.youtube"
+    },
+    {
+     "label": "Shorts",
+     "action": "uri:intent:#Intent;action=com.google.android.youtube.action.open.shorts;package=com.google.android.youtube;end"
+    },
+    {
+     "label": "Watch Later",
+     "action": "uri:intent://www.youtube.com/playlist?list=WL#Intent;scheme=https;package=com.google.android.youtube;end"
+    },
+    {
+     "label": "Search",
+     "action": "uri:intent:#Intent;action=com.google.android.youtube.action.open.search;package=com.google.android.youtube;end"
+    },
+    {
+     "label": "-",
+     "action": "sep"
+    },
+    {
+     "label": "My Account",
+     "action": "uri:intent://www.youtube.com/account#Intent;scheme=https;package=com.google.android.youtube;end"
+    },
+    {
+     "label": "History",
+     "action": "uri:intent://www.youtube.com/feed/history#Intent;scheme=https;package=com.google.android.youtube;end"
+    }
+   ]
+  }
+ },
+ "items": [
+  {
+   "side": "left",
+   "menuIndex": null,
+   "label": "Subscriptions",
+   "action": "uri:intent:#Intent;action=com.google.android.youtube.action.open.subscriptions;package=com.google.android.youtube;end",
+   "via": "link",
+   "why": "Opens Subscriptions with YouTube's published shortcut intent; matches the app's own shortcut \"Subscriptions\""
+  },
+  {
+   "side": "center",
+   "menuIndex": null,
+   "label": "Running Programs",
+   "action": "tasks",
+   "via": "builtin",
+   "why": "Shows the running programs"
+  },
+  {
+   "side": "right",
+   "menuIndex": 0,
+   "profileIndex": 0,
+   "label": "Home",
+   "action": "open:android:com.google.android.youtube",
+   "via": "builtin",
+   "why": "Starts YouTube on its Home screen"
+  },
+  {
+   "side": "right",
+   "menuIndex": 1,
+   "profileIndex": 1,
+   "label": "Shorts",
+   "action": "uri:intent:#Intent;action=com.google.android.youtube.action.open.shorts;package=com.google.android.youtube;end",
+   "via": "link",
+   "why": "Opens Shorts with YouTube's published shortcut intent; matches the app's own shortcut \"Shorts\""
+  },
+  {
+   "side": "right",
+   "menuIndex": 2,
+   "profileIndex": 2,
+   "label": "Watch Later",
+   "action": "uri:intent://www.youtube.com/playlist?list=WL#Intent;scheme=https;package=com.google.android.youtube;end",
+   "via": "link",
+   "why": "Opens the Watch Later playlist deep link; the app declares this link (UrlActivity: https://www.youtube.com.*)"
+  },
+  {
+   "side": "right",
+   "menuIndex": 3,
+   "profileIndex": 3,
+   "label": "Search",
+   "action": "uri:intent:#Intent;action=com.google.android.youtube.action.open.search;package=com.google.android.youtube;end",
+   "via": "link",
+   "why": "Opens Search with YouTube's published shortcut intent; matches the app's own shortcut \"Search\""
+  },
+  {
+   "side": "right",
+   "menuIndex": 5,
+   "profileIndex": 5,
+   "label": "My Account",
+   "action": "uri:intent://www.youtube.com/account#Intent;scheme=https;package=com.google.android.youtube;end",
+   "via": "link",
+   "why": "Opens YouTube's account page deep link; the app declares this link (UrlActivity: https://www.youtube.com.*)"
+  },
+  {
+   "side": "right",
+   "menuIndex": 6,
+   "profileIndex": 6,
+   "label": "History",
+   "action": "uri:intent://www.youtube.com/feed/history#Intent;scheme=https;package=com.google.android.youtube;end",
+   "via": "link",
+   "why": "Opens watch history deep link; the app declares this link (UrlActivity: https://www.youtube.com.*)"
+  },
+  {
+   "side": "right",
+   "menuIndex": null,
+   "label": "Menu",
+   "action": "ownmenu",
+   "via": "builtin",
+   "why": "opens this key's own menu"
+  }
+ ],
+ "problems": [],
+ "notes": "Left uses YouTube's Subscriptions shortcut; center is the default task manager.",
+ "engine": "tokenrouter",
+ "model": "deepseek/deepseek-v4.1-flash",
+ "ms": 22355
+}

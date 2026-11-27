@@ -327,6 +327,13 @@ t('open:<own program> is for Home / Open the app only: a label naming another sc
     assert.ok(out.problems.some((p) => p.label === 'History'));
 });
 
+t('an https link is stored as an intent link that names the app, so it opens in the app and not a browser', () => {
+    const v = sk.validateAction('uri:https://www.youtube.com/feed/history?x=1', probe, { pkg: PKG });
+    assert.strictEqual(v.ok, true, v.reason);
+    assert.strictEqual(v.action, `uri:intent://www.youtube.com/feed/history?x=1#Intent;scheme=https;package=${PKG};end`);
+    assert.strictEqual(v.via, 'link');
+});
+
 async function main() {
     await ta('generate: a good answer comes back as profile, items, problems, engine, model, ms; the call is JSON mode with the key only in the header', async () => {
         stub(() => reply(JSON.stringify(youtubeAnswer)));

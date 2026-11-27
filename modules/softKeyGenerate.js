@@ -301,7 +301,15 @@ function validateAction(action, probe, opts = {}) {
         if (!p.ok) return bad(p.reason);
         const chk = checkLinkAgainstProbe(p, probe);
         if (!chk.ok) return bad(chk.reason);
-        return { ok: true, via: 'link', action: `uri:${a.slice(4).trim()}`, note: chk.why };
+        // a plain https link goes to whatever handler Android picks (a browser when the app is not the verified one); written as an
+        // intent link that names the app it opens in the app, and the stored action says so
+        let link = a.slice(4).trim();
+        if (p.kind === 'https' && pkg && !/#/.test(link)) {
+            const rest = link.slice('https://'.length);
+            const asIntent = `intent://${rest}#Intent;scheme=https;package=${pkg};end`;
+            if (asIntent.length <= LIMITS.uri && parseLink(asIntent, pkg).ok) link = asIntent;
+        }
+        return { ok: true, via: 'link', action: `uri:${link}`, note: chk.why };
     }
     return bad(`"${a.slice(0, 40)}" is not an action the soft keys know`);
 }

@@ -1,0 +1,1 @@
+{"ok":true,"value":"{\"check\":[\"ok\",\"ok\",\"ok\",\"ok\",\"ok\",\"ok\",\"ok\",\"BAD sep not an action the soft keys know\",\"ok\",\"ok\"],\"saved\":[\"com.google.android.youtube\"],\"left\":{\"action\":\"uri:intent:#Intent;action=com.google.android.youtube.action.open.subscriptions;package=com.google.android.youtube;end\",\"label\":\"Subscriptions\"}}"}
