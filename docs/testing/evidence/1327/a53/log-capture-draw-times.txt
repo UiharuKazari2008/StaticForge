@@ -1,0 +1,150 @@
+  capture ask 05:40:02.788
+  drawn quickaccess 05:40:02.828 capture->drawn 40 ms
+  drawn output.1 05:40:20.526 no new capture (tile press->drawn 24 ms)
+  capture ask 05:40:56.034
+  drawn quickaccess 05:40:56.068 capture->drawn 34 ms
+  drawn output.1 05:41:00.296 no new capture (tile press->drawn 17 ms)
+-- left edge swipe on Output
+  capture ask 05:41:15.170
+  drawn quickaccess 05:41:15.206 capture->drawn 36 ms
+  drawn output.1 05:41:19.243 no new capture (tile press->drawn 19 ms)
+-- right edge swipe on Output
+  capture ask 05:41:32.871
+  drawn quickaccess 05:41:32.904 capture->drawn 33 ms
+  drawn output.1 05:41:37.160 no new capture (tile press->drawn 26 ms)
+-- input keyevent 4 on Output (record only)
+  capture ask 05:41:55.366
+  drawn quickaccess 05:41:55.407 capture->drawn 41 ms
+-- QA soft
+  capture ask 05:42:07.095
+  drawn quickaccess 05:42:07.131 capture->drawn 36 ms
+-- QA left
+  capture ask 05:42:19.013
+  drawn quickaccess 05:42:19.045 capture->drawn 32 ms
+-- QA right
+  capture ask 05:42:37.305
+  drawn quickaccess 05:42:37.339 capture->drawn 34 ms
+  drawn output.1 05:42:41.572 no new capture (tile press->drawn 18 ms)
+-- outside tap on Output over Settings
+  capture ask 05:42:47.406
+  drawn quickaccess 05:42:47.442 capture->drawn 36 ms
+  drawn output.1 05:42:51.676 no new capture (tile press->drawn 20 ms)
+-- swipe up from soft key bar on Output over Settings
+-- QA strip over home
+  capture ask 05:43:11.671
+  drawn quickaccess 05:43:11.699 capture->drawn 28 ms
+  drawn output.1 05:43:20.834 no new capture (tile press->drawn 13 ms)
+-- home left
+  capture ask 05:43:44.041
+  drawn quickaccess 05:43:44.073 capture->drawn 32 ms
+  drawn output.1 05:43:48.334 no new capture (tile press->drawn 14 ms)
+-- home right
+  capture ask 05:43:57.071
+  drawn quickaccess 05:43:57.103 capture->drawn 32 ms
+  drawn output.1 05:44:01.258 no new capture (tile press->drawn 12 ms)
+-- home outside
+  capture ask 05:44:09.574
+  drawn quickaccess 05:44:09.604 capture->drawn 30 ms
+  drawn output.1 05:44:13.782 no new capture (tile press->drawn 14 ms)
+-- home softleft
+  capture ask 05:44:22.142
+  drawn quickaccess 05:44:22.175 capture->drawn 33 ms
+  drawn output.1 05:44:26.479 no new capture (tile press->drawn 13 ms)
+-- home swipeup
+== later capture log (from the 12-open loop on)
+-- OPEN 1
+  capture ask 05:45:08.432
+  drawn quickaccess 05:45:08.469 capture->drawn 37 ms
+  drawn output.1 05:45:13.172 no new capture (tile press->drawn 21 ms)
+-- OPEN 2
+  capture ask 05:45:18.938
+  drawn quickaccess 05:45:18.976 capture->drawn 38 ms
+  drawn output.1 05:45:23.602 no new capture (tile press->drawn 22 ms)
+-- OPEN 3
+  capture ask 05:45:29.341
+  drawn quickaccess 05:45:29.381 capture->drawn 40 ms
+  drawn output.1 05:45:34.066 no new capture (tile press->drawn 25 ms)
+-- OPEN 4
+  capture ask 05:45:39.853
+  drawn quickaccess 05:45:39.894 capture->drawn 41 ms
+  drawn output.1 05:45:44.607 no new capture (tile press->drawn 20 ms)
+-- OPEN 5
+  capture ask 05:45:50.552
+  drawn quickaccess 05:45:50.595 capture->drawn 43 ms
+  drawn output.1 05:45:55.366 no new capture (tile press->drawn 16 ms)
+-- OPEN 6
+  capture ask 05:46:01.013
+  drawn quickaccess 05:46:01.046 capture->drawn 33 ms
+  drawn output.1 05:46:05.654 no new capture (tile press->drawn 23 ms)
+-- OPEN 7
+  capture ask 05:46:11.442
+  drawn quickaccess 05:46:11.485 capture->drawn 43 ms
+  drawn output.1 05:46:16.200 no new capture (tile press->drawn 20 ms)
+-- OPEN 8
+  capture ask 05:46:22.162
+  drawn quickaccess 05:46:22.195 capture->drawn 33 ms
+  drawn output.1 05:46:26.967 no new capture (tile press->drawn 24 ms)
+-- OPEN 9
+  capture ask 05:46:32.555
+  drawn quickaccess 05:46:32.593 capture->drawn 38 ms
+  drawn output.1 05:46:37.248 no new capture (tile press->drawn 19 ms)
+-- OPEN 10
+  capture ask 05:46:43.013
+  drawn quickaccess 05:46:43.054 capture->drawn 41 ms
+  drawn output.1 05:46:47.641 no new capture (tile press->drawn 19 ms)
+-- OPEN 11
+  capture ask 05:46:53.413
+  drawn quickaccess 05:46:53.453 capture->drawn 40 ms
+  drawn output.1 05:46:58.145 no new capture (tile press->drawn 20 ms)
+-- OPEN 12
+  capture ask 05:47:03.848
+  drawn quickaccess 05:47:03.884 capture->drawn 36 ms
+  drawn output.1 05:47:08.586 no new capture (tile press->drawn 26 ms)
+-- wide QA over home
+  capture ask 05:48:01.538
+  drawn quickaccess 05:48:01.593 capture->drawn 55 ms
+-- wide tile over home
+  drawn output.1 05:48:13.103 no new capture (tile press->drawn 64543 ms)
+-- wide home close by left edge
+-- wide QA over Settings
+  capture ask 05:48:30.181
+  drawn quickaccess 05:48:30.239 capture->drawn 58 ms
+-- wide tile over Settings
+  drawn output.1 05:48:35.533 no new capture (tile press->drawn 86973 ms)
+-- wide Back soft
+  capture ask 05:48:55.640
+  drawn quickaccess 05:48:55.707 capture->drawn 67 ms
+  drawn output.1 05:48:58.149 no new capture (tile press->drawn 109589 ms)
+-- wide Back left
+  capture ask 05:49:04.470
+  drawn quickaccess 05:49:04.541 capture->drawn 71 ms
+  drawn output.1 05:49:06.968 no new capture (tile press->drawn 118408 ms)
+-- wide Back right
+  capture ask 05:49:19.180
+  drawn quickaccess 05:49:19.242 capture->drawn 62 ms
+  drawn output.1 05:49:21.626 no new capture (tile press->drawn 133066 ms)
+-- wide outside tap
+  capture ask 05:49:26.501
+  drawn quickaccess 05:49:26.567 capture->drawn 66 ms
+  drawn output.1 05:49:28.989 no new capture (tile press->drawn 140429 ms)
+-- wide swipe up
+-- media entrance (wide) eval openOutputSwitcher over Settings
+  capture ask 05:49:55.395
+  drawn output.1 05:49:55.467 capture->drawn 72 ms
+-- media close soft back
+-- record QA swipe open (wide) over Settings
+  capture ask 05:50:17.490
+  drawn quickaccess 05:50:17.548 capture->drawn 58 ms
+-- routes dump with the panel open
+  capture ask 05:52:15.839
+  drawn quickaccess 05:52:15.899 capture->drawn 60 ms
+  drawn output.1 05:52:18.465 no new capture (tile press->drawn 309905 ms)
+-- restore Quick Access config
+-- media entrance, Quick Access off, strip, over Settings
+  capture ask 05:52:53.031
+  drawn output.1 05:52:53.095 capture->drawn 64 ms
+-- media entrance QA off: close by right edge
+-- heal check: home 12s, then Settings, media entrance
+  capture ask 05:53:35.523
+  drawn output.1 05:53:35.565 capture->drawn 42 ms
+-- end

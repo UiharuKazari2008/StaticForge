@@ -1,0 +1,447 @@
+11-27 05:38:03.315 I/QuickAccess(23012): named icons found: 11 (dolby_routine_icon qs_auto_rotate_icon_on quick_panel_icon_screen_recording quick_panel_icon_wifi_on quick_panel_icon_qr_scanner ic_quick_panel_icon_power_share routines_ic_modes qs_auto_rotate_icon_off ic_quick_panel_icon_performance_profile ic_quick_panel_icon_battery_mode quick_panel_icon_wifi_off)
+11-27 05:40:02.782 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:40:02.828 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:40:03.507 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:40:08.821 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:40:13.134 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:40:20.502 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:40:20.503 I/OutputPanel(23012): open: router started
+11-27 05:40:20.504 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:40:20.506 I/OutputPanel(23012): rows: Speakers*
+11-27 05:40:20.526 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:40:40.068 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:40:40.068 I/OutputPanel(23012): router stopped
+11-27 05:40:45.123 I/MelatonBars(23012): bar tap: soft-left [start:0-115 notify:432-506 update:506-703 bluetooth:703-901 data:901-985 signal:985-1069 battery:1069-1175 title:115-432 corner:1145-1251]
+11-27 05:40:45.126 I/MelatonBars(23012): soft key left: back
+11-27 05:40:56.027 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:40:56.068 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:40:56.628 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:40:58.021 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:40:59.157 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:41:00.279 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:41:00.279 I/OutputPanel(23012): open: router started
+11-27 05:41:00.280 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:41:00.282 I/OutputPanel(23012): rows: Speakers*
+11-27 05:41:00.296 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:41:02.909 I/QuickAccess(24378): RUN left edge swipe on Output
+11-27 05:41:03.076 I/MelatonBars(23012): edge swipe on the popup: Back
+11-27 05:41:03.079 I/MelatonBars(23012): Back (edge swipe): closes output.1
+11-27 05:41:03.079 I/OutputPanel(23012): router stopped
+11-27 05:41:09.696 I/MelatonBars(23012): edge swipe: Back
+11-27 05:41:15.163 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:41:15.206 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:41:15.716 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:41:17.070 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:41:18.153 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:41:19.224 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:41:19.224 I/OutputPanel(23012): open: router started
+11-27 05:41:19.225 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:41:19.227 I/OutputPanel(23012): rows: Speakers*
+11-27 05:41:19.243 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:41:20.992 I/QuickAccess(24506): RUN right edge swipe on Output
+11-27 05:41:21.134 I/MelatonBars(23012): edge swipe on the popup: Back
+11-27 05:41:21.138 I/MelatonBars(23012): Back (edge swipe): closes output.1
+11-27 05:41:21.138 I/OutputPanel(23012): router stopped
+11-27 05:41:24.305 I/MelatonBars(23012): edge swipe: Back
+11-27 05:41:32.862 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:41:32.904 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:41:33.427 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:41:34.830 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:41:36.013 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:41:37.134 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:41:37.135 I/OutputPanel(23012): open: router started
+11-27 05:41:37.136 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:41:37.139 I/OutputPanel(23012): rows: Speakers*
+11-27 05:41:37.160 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:41:38.966 I/QuickAccess(24640): RUN input keyevent 4 on Output (record only)
+11-27 05:41:49.588 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:41:49.588 I/OutputPanel(23012): router stopped
+11-27 05:41:55.359 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:41:55.407 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:41:55.971 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:41:58.317 I/QuickAccess(24757): RUN QA soft
+11-27 05:41:58.442 I/MelatonBars(23012): popup soft key bar tap: closes quickaccess
+11-27 05:42:01.761 I/MelatonBars(23012): bar tap: soft-left [start:0-115 notify:432-506 update:506-703 bluetooth:703-901 data:901-985 signal:985-1069 battery:1069-1175 title:115-432 corner:1145-1251]
+11-27 05:42:01.763 I/MelatonBars(23012): soft key left: back
+11-27 05:42:07.089 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:42:07.131 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:42:07.576 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:42:10.116 I/QuickAccess(24864): RUN QA left
+11-27 05:42:10.271 I/MelatonBars(23012): edge swipe on the popup: Back
+11-27 05:42:10.274 I/MelatonBars(23012): Back (edge swipe): closes quickaccess
+11-27 05:42:13.612 I/MelatonBars(23012): edge swipe: Back
+11-27 05:42:19.005 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:42:19.045 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:42:19.593 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:42:21.821 I/QuickAccess(24981): RUN QA right
+11-27 05:42:21.985 I/MelatonBars(23012): edge swipe on the popup: Back
+11-27 05:42:21.988 I/MelatonBars(23012): Back (edge swipe): closes quickaccess
+11-27 05:42:25.307 I/MelatonBars(23012): edge swipe: Back
+11-27 05:42:37.300 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:42:37.339 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:42:37.903 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:42:39.187 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:42:40.278 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:42:41.554 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:42:41.554 I/OutputPanel(23012): open: router started
+11-27 05:42:41.555 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:42:41.557 I/OutputPanel(23012): rows: Speakers*
+11-27 05:42:41.572 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:42:44.065 I/QuickAccess(25109): RUN outside tap on Output over Settings
+11-27 05:42:44.174 I/MelatonBars(23012): popup tap 401,2150: outside: closed
+11-27 05:42:44.174 I/OutputPanel(23012): router stopped
+11-27 05:42:47.396 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:42:47.442 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:42:48.009 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:42:49.436 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:42:50.518 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:42:51.656 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:42:51.656 I/OutputPanel(23012): open: router started
+11-27 05:42:51.657 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:42:51.659 I/OutputPanel(23012): rows: Speakers*
+11-27 05:42:51.676 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:42:53.488 I/QuickAccess(25204): RUN swipe up from soft key bar on Output over Settings
+11-27 05:42:53.791 I/MelatonBars(23012): swipe up on output.1: Home
+11-27 05:42:53.794 I/OutputPanel(23012): router stopped
+11-27 05:43:11.346 I/QuickAccess(25279): RUN QA strip over home
+11-27 05:43:11.663 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:43:11.699 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:43:12.264 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:43:15.568 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:43:16.731 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:43:20.821 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:43:20.821 I/OutputPanel(23012): open: router started
+11-27 05:43:20.822 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:43:20.824 I/OutputPanel(23012): rows: Speakers*
+11-27 05:43:20.834 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:43:38.806 I/QuickAccess(25606): RUN home left
+11-27 05:43:38.968 I/MelatonBars(23012): edge swipe on the popup: Back
+11-27 05:43:38.972 I/MelatonBars(23012): Back (edge swipe): closes output.1
+11-27 05:43:38.972 I/OutputPanel(23012): router stopped
+11-27 05:43:44.034 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:43:44.073 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:43:44.625 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:43:46.067 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:43:47.185 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:43:48.320 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:43:48.320 I/OutputPanel(23012): open: router started
+11-27 05:43:48.321 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:43:48.323 I/OutputPanel(23012): rows: Speakers*
+11-27 05:43:48.334 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:43:51.774 I/QuickAccess(25723): RUN home right
+11-27 05:43:51.932 I/MelatonBars(23012): edge swipe on the popup: Back
+11-27 05:43:51.935 I/MelatonBars(23012): Back (edge swipe): closes output.1
+11-27 05:43:51.936 I/OutputPanel(23012): router stopped
+11-27 05:43:57.063 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:43:57.103 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:43:57.720 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:43:58.981 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:44:00.096 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:44:01.246 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:44:01.246 I/OutputPanel(23012): open: router started
+11-27 05:44:01.247 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:44:01.249 I/OutputPanel(23012): rows: Speakers*
+11-27 05:44:01.258 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:44:04.619 I/QuickAccess(25828): RUN home outside
+11-27 05:44:04.730 I/MelatonBars(23012): popup tap 401,1500: outside: closed
+11-27 05:44:04.730 I/OutputPanel(23012): router stopped
+11-27 05:44:09.559 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:44:09.604 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:44:10.180 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:44:11.562 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:44:12.636 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:44:13.768 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:44:13.768 I/OutputPanel(23012): open: router started
+11-27 05:44:13.770 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:44:13.772 I/OutputPanel(23012): rows: Speakers*
+11-27 05:44:13.782 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:44:17.134 I/QuickAccess(25926): RUN home softleft
+11-27 05:44:17.249 I/MelatonBars(23012): popup tap 201,2336: outside: closed
+11-27 05:44:17.249 I/OutputPanel(23012): router stopped
+11-27 05:44:22.134 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:44:22.175 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:44:22.695 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:44:24.112 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:44:25.305 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:44:26.466 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:44:26.466 I/OutputPanel(23012): open: router started
+11-27 05:44:26.467 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:44:26.470 I/OutputPanel(23012): rows: Speakers*
+11-27 05:44:26.479 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:44:29.933 I/QuickAccess(26024): RUN home swipeup
+11-27 05:44:30.253 I/MelatonBars(23012): swipe up on output.1: Home
+11-27 05:44:30.255 I/OutputPanel(23012): router stopped
+11-27 05:45:08.115 I/QuickAccess(26134): RUN OPEN 1
+11-27 05:45:08.424 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:45:08.469 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:45:09.035 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:45:10.891 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:45:12.041 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:45:13.151 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:45:13.152 I/OutputPanel(23012): open: router started
+11-27 05:45:13.153 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:45:13.156 I/OutputPanel(23012): rows: Speakers*
+11-27 05:45:13.172 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:45:15.319 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:45:15.319 I/OutputPanel(23012): router stopped
+11-27 05:45:18.627 I/QuickAccess(26230): RUN OPEN 2
+11-27 05:45:18.930 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:45:18.976 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:45:19.512 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:45:21.383 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:45:22.479 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:45:23.580 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:45:23.580 I/OutputPanel(23012): open: router started
+11-27 05:45:23.582 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:45:23.584 I/OutputPanel(23012): rows: Speakers*
+11-27 05:45:23.602 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:45:25.739 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:45:25.739 I/OutputPanel(23012): router stopped
+11-27 05:45:29.028 I/QuickAccess(26327): RUN OPEN 3
+11-27 05:45:29.336 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:45:29.381 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:45:29.946 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:45:31.784 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:45:32.978 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:45:34.041 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:45:34.042 I/OutputPanel(23012): open: router started
+11-27 05:45:34.043 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:45:34.046 I/OutputPanel(23012): rows: Speakers*
+11-27 05:45:34.066 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:45:36.279 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:45:36.279 I/OutputPanel(23012): router stopped
+11-27 05:45:39.536 I/QuickAccess(26420): RUN OPEN 4
+11-27 05:45:39.849 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:45:39.894 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:45:40.470 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:45:42.384 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:45:43.468 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:45:44.587 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:45:44.587 I/OutputPanel(23012): open: router started
+11-27 05:45:44.588 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:45:44.590 I/OutputPanel(23012): rows: Speakers*
+11-27 05:45:44.607 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:45:46.822 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:45:46.822 I/OutputPanel(23012): router stopped
+11-27 05:45:50.241 I/QuickAccess(26516): RUN OPEN 5
+11-27 05:45:50.546 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:45:50.595 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:45:51.140 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:45:52.994 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:45:54.186 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:45:55.350 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:45:55.351 I/OutputPanel(23012): open: router started
+11-27 05:45:55.352 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:45:55.353 I/OutputPanel(23012): rows: Speakers*
+11-27 05:45:55.366 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:45:57.462 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:45:57.462 I/OutputPanel(23012): router stopped
+11-27 05:46:00.712 I/QuickAccess(26613): RUN OPEN 6
+11-27 05:46:01.008 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:46:01.046 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:46:01.601 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:46:03.375 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:46:04.509 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:46:05.631 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:46:05.631 I/OutputPanel(23012): open: router started
+11-27 05:46:05.633 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:46:05.635 I/OutputPanel(23012): rows: Speakers*
+11-27 05:46:05.654 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:46:07.862 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:46:07.863 I/OutputPanel(23012): router stopped
+11-27 05:46:11.122 I/QuickAccess(26707): RUN OPEN 7
+11-27 05:46:11.437 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:46:11.485 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:46:12.049 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:46:13.877 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:46:14.997 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:46:16.180 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:46:16.180 I/OutputPanel(23012): open: router started
+11-27 05:46:16.181 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:46:16.183 I/OutputPanel(23012): rows: Speakers*
+11-27 05:46:16.200 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:46:18.511 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:46:18.511 I/OutputPanel(23012): router stopped
+11-27 05:46:21.832 I/QuickAccess(26799): RUN OPEN 8
+11-27 05:46:22.155 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:46:22.195 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:46:22.731 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:46:24.740 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:46:25.795 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:46:26.943 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:46:26.943 I/OutputPanel(23012): open: router started
+11-27 05:46:26.945 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:46:26.947 I/OutputPanel(23012): rows: Speakers*
+11-27 05:46:26.967 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:46:29.114 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:46:29.114 I/OutputPanel(23012): router stopped
+11-27 05:46:32.256 I/QuickAccess(26891): RUN OPEN 9
+11-27 05:46:32.550 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:46:32.593 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:46:33.176 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:46:34.975 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:46:36.106 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:46:37.229 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:46:37.229 I/OutputPanel(23012): open: router started
+11-27 05:46:37.230 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:46:37.233 I/OutputPanel(23012): rows: Speakers*
+11-27 05:46:37.248 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:46:39.445 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:46:39.445 I/OutputPanel(23012): router stopped
+11-27 05:46:42.714 I/QuickAccess(26990): RUN OPEN 10
+11-27 05:46:43.006 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:46:43.054 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:46:43.631 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:46:45.436 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:46:46.495 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:46:47.622 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:46:47.622 I/OutputPanel(23012): open: router started
+11-27 05:46:47.624 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:46:47.626 I/OutputPanel(23012): rows: Speakers*
+11-27 05:46:47.641 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:46:49.838 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:46:49.838 I/OutputPanel(23012): router stopped
+11-27 05:46:53.097 I/QuickAccess(27087): RUN OPEN 11
+11-27 05:46:53.408 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:46:53.453 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:46:54.010 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:46:55.857 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:46:57.044 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:46:58.125 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:46:58.125 I/OutputPanel(23012): open: router started
+11-27 05:46:58.126 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:46:58.128 I/OutputPanel(23012): rows: Speakers*
+11-27 05:46:58.145 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:47:00.353 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:47:00.353 I/OutputPanel(23012): router stopped
+11-27 05:47:03.533 I/QuickAccess(27179): RUN OPEN 12
+11-27 05:47:03.842 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:47:03.884 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:47:04.435 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:47:06.339 I/MelatonBars(23012): popup tap 993,2040: box 8
+11-27 05:47:07.483 I/MelatonBars(23012): popup tap 993,2072: box 11
+11-27 05:47:08.560 I/MelatonBars(23012): popup tap 993,366: box 1
+11-27 05:47:08.560 I/OutputPanel(23012): open: router started
+11-27 05:47:08.562 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:47:08.565 I/OutputPanel(23012): rows: Speakers*
+11-27 05:47:08.586 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:47:10.785 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:47:10.785 I/OutputPanel(23012): router stopped
+11-27 05:48:01.214 I/QuickAccess(27387): RUN wide QA over home
+11-27 05:48:01.532 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:48:01.593 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:48:02.066 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:48:11.705 I/QuickAccess(27450): RUN wide tile over home
+11-27 05:48:13.091 I/MelatonBars(23012): popup tap 731,816: box 6
+11-27 05:48:13.091 I/OutputPanel(23012): open: router started
+11-27 05:48:13.092 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:48:13.093 I/OutputPanel(23012): rows: Speakers*
+11-27 05:48:13.103 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:48:24.437 I/QuickAccess(27528): RUN wide home close by left edge
+11-27 05:48:24.533 I/MelatonBars(23012): edge swipe on the popup: Back
+11-27 05:48:24.534 I/MelatonBars(23012): Back (edge swipe): closes output.1
+11-27 05:48:24.534 I/OutputPanel(23012): router stopped
+11-27 05:48:29.856 I/QuickAccess(27585): RUN wide QA over Settings
+11-27 05:48:30.173 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:48:30.239 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:48:30.757 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:48:34.081 I/QuickAccess(27643): RUN wide tile over Settings
+11-27 05:48:35.497 I/MelatonBars(23012): popup tap 731,816: box 6
+11-27 05:48:35.497 I/OutputPanel(23012): open: router started
+11-27 05:48:35.498 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:48:35.501 I/OutputPanel(23012): rows: Speakers*
+11-27 05:48:35.533 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:48:52.347 I/QuickAccess(27745): RUN wide Back soft
+11-27 05:48:52.460 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:48:52.460 I/OutputPanel(23012): router stopped
+11-27 05:48:55.635 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:48:55.707 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:48:56.202 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:48:58.117 I/MelatonBars(23012): popup tap 731,816: box 6
+11-27 05:48:58.117 I/OutputPanel(23012): open: router started
+11-27 05:48:58.117 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:48:58.119 I/OutputPanel(23012): rows: Speakers*
+11-27 05:48:58.149 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:49:00.859 I/QuickAccess(27830): RUN wide Back left
+11-27 05:49:01.010 I/MelatonBars(23012): edge swipe on the popup: Back
+11-27 05:49:01.012 I/MelatonBars(23012): Back (edge swipe): closes output.1
+11-27 05:49:01.012 I/OutputPanel(23012): router stopped
+11-27 05:49:04.464 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:49:04.541 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:49:05.071 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:49:06.930 I/MelatonBars(23012): popup tap 731,816: box 6
+11-27 05:49:06.930 I/OutputPanel(23012): open: router started
+11-27 05:49:06.932 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:49:06.935 I/OutputPanel(23012): rows: Speakers*
+11-27 05:49:06.968 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:49:09.600 I/QuickAccess(27918): RUN wide Back right
+11-27 05:49:09.763 I/MelatonBars(23012): edge swipe on the popup: Back
+11-27 05:49:09.766 I/MelatonBars(23012): Back (edge swipe): closes output.1
+11-27 05:49:09.766 I/OutputPanel(23012): router stopped
+11-27 05:49:13.026 I/MelatonBars(23012): bar tap: soft-left [start:0-115 notify:432-506 update:506-703 bluetooth:703-901 data:901-985 signal:985-1069 battery:1069-1175 title:115-432 corner:1145-1251]
+11-27 05:49:13.030 I/MelatonBars(23012): soft key left: back
+11-27 05:49:19.175 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:49:19.242 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:49:19.762 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:49:21.589 I/MelatonBars(23012): popup tap 731,816: box 6
+11-27 05:49:21.589 I/OutputPanel(23012): open: router started
+11-27 05:49:21.591 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:49:21.593 I/OutputPanel(23012): rows: Speakers*
+11-27 05:49:21.626 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:49:23.288 I/QuickAccess(28036): RUN wide outside tap
+11-27 05:49:23.409 I/MelatonBars(23012): popup tap 151,2150: outside: closed
+11-27 05:49:23.410 I/OutputPanel(23012): router stopped
+11-27 05:49:26.496 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:49:26.567 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:49:27.064 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:49:28.956 I/MelatonBars(23012): popup tap 731,816: box 6
+11-27 05:49:28.956 I/OutputPanel(23012): open: router started
+11-27 05:49:28.957 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:49:28.960 I/OutputPanel(23012): rows: Speakers*
+11-27 05:49:28.989 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:49:30.716 I/QuickAccess(28113): RUN wide swipe up
+11-27 05:49:31.023 I/MelatonBars(23012): swipe up on output.1: Home
+11-27 05:49:31.027 I/OutputPanel(23012): router stopped
+11-27 05:49:53.930 I/QuickAccess(28194): RUN media entrance (wide) eval openOutputSwitcher over Settings
+11-27 05:49:55.352 I/OutputPanel(23012): open: router started
+11-27 05:49:55.354 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:49:55.358 I/OutputPanel(23012): rows: Speakers*
+11-27 05:49:55.467 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:50:03.001 I/QuickAccess(28277): RUN media close soft back
+11-27 05:50:03.118 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:50:03.118 I/OutputPanel(23012): router stopped
+11-27 05:50:15.922 I/QuickAccess(28308): RUN record QA swipe open (wide) over Settings
+11-27 05:50:17.484 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:50:17.548 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:50:18.152 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:50:19.648 I/MelatonBars(23012): popup soft key bar tap: closes quickaccess
+11-27 05:52:15.515 I/QuickAccess(28476): RUN routes dump with the panel open
+11-27 05:52:15.833 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:52:15.899 I/MelatonBars(23012): bubble quickaccess drawn here
+11-27 05:52:16.455 I/QuickAccess(23012): shell read (listen): 17 tiles
+11-27 05:52:18.432 I/MelatonBars(23012): popup tap 731,816: box 6
+11-27 05:52:18.432 I/OutputPanel(23012): open: router started
+11-27 05:52:18.433 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:52:18.436 I/OutputPanel(23012): rows: Speakers*
+11-27 05:52:18.465 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:52:21.581 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:52:21.581 I/OutputPanel(23012): router stopped
+11-27 05:52:29.256 I/QuickAccess(28565): RUN restore Quick Access config
+11-27 05:52:36.960 I/MelatonBars(23012): edge swipe: Back
+11-27 05:52:52.827 I/QuickAccess(28631): RUN media entrance, Quick Access off, strip, over Settings
+11-27 05:52:52.992 I/OutputPanel(23012): open: router started
+11-27 05:52:52.993 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:52:52.995 I/OutputPanel(23012): rows: Speakers*
+11-27 05:52:53.095 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:52:56.655 I/QuickAccess(28642): RUN media entrance QA off: close by right edge
+11-27 05:52:56.806 I/MelatonBars(23012): edge swipe on the popup: Back
+11-27 05:52:56.810 I/MelatonBars(23012): Back (edge swipe): closes output.1
+11-27 05:52:56.811 I/OutputPanel(23012): router stopped
+11-27 05:53:19.733 I/QuickAccess(28670): RUN heal check: home 12s, then Settings, media entrance
+11-27 05:53:35.485 I/OutputPanel(23012): open: router started
+11-27 05:53:35.486 I/MediaOutputRouting(23012): proxy router for jp.net.seventhreeseven.dreamscape
+11-27 05:53:35.488 I/OutputPanel(23012): rows: Speakers*
+11-27 05:53:35.565 I/MelatonBars(23012): bubble output.1 drawn here
+11-27 05:53:38.488 I/MelatonBars(23012): popup soft key bar tap: closes output.1
+11-27 05:53:38.488 I/OutputPanel(23012): router stopped
+11-27 05:53:54.129 I/QuickAccess(28763): RUN end

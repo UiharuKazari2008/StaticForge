@@ -1,0 +1,13 @@
+    versionCode=3632194 minSdk=31 targetSdk=36
+    versionName=1.0.3632194-radio1328c
+    lastUpdateTime=2026-11-27 04:32:42
+install start 10:37:48
+Performing Streamed Install
+Success
+install end 10:37:52
+after:
+    versionCode=3632251 minSdk=31 targetSdk=36
+    versionName=1.0.3632251
+    lastUpdateTime=2026-11-27 05:37:52
+installed base.apk:
+217a601d27d73bb885ad82750462baca19981a30e594028592097dac6c33d375  /data/app/~~iO9CGcevLrvNYzEyDavtkg==/jp.net.seventhreeseven.dreamscape-TiFy2xmvh-VSyHG3NDdyyA==/base.apk

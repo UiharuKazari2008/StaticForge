@@ -1,0 +1,28 @@
+## dumpsys media_router (panel open): system route
+      SystemMediaRoute2Provider2 - package: com.android.server.media, selected route id: ROUTE_ID_BUILTIN_SPEAKER, bluetooth impl: BluetoothRouteController$NoOpBluetoothRouteController
+        com.android.server.media/.SystemMediaRoute2Provider2:ROUTE_ID_BUILTIN_SPEAKER | Phone
+        Active routing sessions:
+          RoutingSessionInfo
+            mOriginalId=SYSTEM_SESSION
+            mName=null
+            mOwnerPackageName=null
+            mClientPackageName=
+            mProviderId=com.android.server.media/.SystemMediaRoute2Provider2
+            mSelectedRoutes=[com.android.server.media/.SystemMediaRoute2Provider2:ROUTE_ID_BUILTIN_SPEAKER]
+            mSelectableRoutes=[]
+
+## dumpsys audio: connected devices (panel open)
+  Connected devices:
+    [DeviceInfo: type:0x2 (speaker) name:speaker addr: identity addr: codec: 0 group:-1 peer addr: peer identity addr: disabled modes: {}]
+
+  APM Connected device (A2DP sink only):
+## dumpsys media.audio_policy: output devices
+Earpiece (AUDIO_DEVICE_OUT_EARPIECE), Speaker (AUDIO_DEVICE_OUT_SPEAKER), Telephony Tx (not a media output)
+## bluetooth: bonded devices
+  Bonded devices:
+                XX:XX:XX:XX:8F:E0 [  LE  ][ 0x001f00 ] RedDot Status (No uuid)
+    (Connected) XX:XX:XX:XX:BD:AB [ DUAL ][ 0x2e4104 ] MODERNIA (AudioSource,AudioSink,Avrcp,PANU,Handsfree,Handsfree_AG,3a622e58-c035-4a26-928c-5601dde7c657)
+
+  mActiveDevice: null
+    StateMachine: name=A2dpStateMachine state=Disconnected
+  mActiveDevice: null

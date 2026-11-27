@@ -1,0 +1,10 @@
+navigation_mode=0 force_fsg=null hide=null fgl=0 policy=null
+[x] com.android.internal.systemui.navbar.threebutton
+Unknown command: overscan
+  Window #10 Window{ad408a8 u0 NavigationBar0}:
+  Window #13 Window{51ab42a u0 StatusBar}:
+        InsetsSource id=323a0001 type=navigationBars frame=[0,2274][1080,2400] visible=false flags= sideHint=BOTTOM boundingRects=null
+        mSource=InsetsSource id=323a0001 type=navigationBars frame=[0,2274][1080,2400] visible=false flags= sideHint=BOTTOM boundingRects=null
+dev.custodian.agent/dev.custodian.agent.InputGuardService:jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService
+label=Custodian input guard
+     Crashed services:{}
