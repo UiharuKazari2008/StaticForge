@@ -1,0 +1,8 @@
+A53 baseline 2026-11-26 23:24:55 EST, installed app before my build:
+    versionName=1.0.3631920-radio1328
+page: monitor(<rid of the running recording>) -> AndroidVideos.isActive/state:
+{"ok":true,"value":"{\"mon\":true,\"nativeActive\":false,\"nativeState\":\"off\"}"}
+dumpsys audio (app uid 10339, pid of the app/WebView):
+  AudioPlaybackConfiguration piid:191 deviceIds:[3] type:AAudio u/pid:10339/23672 state:started attr:AudioAttributes: usage=USAGE_MEDIA content=CONTENT_TYPE_UNKNOWN source=DEFAULT flags=0x0 tags= bundle=null sessionId:-1 mutedState:streamVolume  FormatInfo{isSpatialized=false, channelMask=0x3, sampleRate=44100}
+media sessions of the app:
+0
