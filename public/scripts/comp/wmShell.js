@@ -1160,7 +1160,8 @@
     function barsPopupOpenNow(role) {
         if (!shell) return false;
         // Quick Access (#1017): its grip tab and panel pages, laid out by wmQuickAccess.js to be written down
-        if (/^(qatab|quickaccess)/.test(role)) return !!(window.wmQuickAccess && window.wmQuickAccess.open(role));
+        // (the output panel's roles, output.0 .. output.8, #1327: Quick Access's popup with the outputs, wmOutputPanel.js)
+        if (/^(qatab|quickaccess|output\.\d+$)/.test(role)) return !!(window.wmQuickAccess && window.wmQuickAccess.open(role));
         if (role === 'notify') { noteIconTap(); return true; }
         const icon = shell.querySelector(`.wm-status-icon[data-role="${role}"]`);
         // the volume box opens with its icon aside too (never the notification box in its place)
@@ -4714,7 +4715,7 @@
             roles.forEach((role) => {
                 if (role === 'notify' || role === 'mail' || role === 'sms' || role === 'chat' || role === 'volume') return;
                 // Quick Access: what its layout depends on (the app fills its state itself)
-                if (/^(qatab|quickaccess)/.test(role)) { out.push(`${role}=${window.wmQuickAccess ? window.wmQuickAccess.signature() : ''}`); return; }
+                if (/^(qatab|quickaccess|output\.\d+$)/.test(role)) { out.push(`${role}=${window.wmQuickAccess ? window.wmQuickAccess.signature(role) : ''}`); return; }
                 bubbleCapture = [];
                 try { statusBubble(role, null, true); } catch (_) { /* described as nothing */ }
                 const got = bubbleCapture;

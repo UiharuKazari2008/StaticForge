@@ -12,6 +12,10 @@
  * tile's line under its name (data-live "qa-sub:<id>") and the sliders' thumbs (vol-thumb:qa-brightness / qa-volume)
  * are filled by the app too; every press is done by the app (data-android "qa:<id>:toggle", hits "slider:qa-*").
  *
+ * The Output tile (data-android "qa:output") opens the output panel instead of Android's Media output switcher: its roles
+ * output.0 .. output.8 are laid out by wmOutputPanel.js (open() below delegates), on the same edge, in the same width and
+ * tint, and written down with the rest (roles() / signature() carry them).
+ *
  * Settings: window.AndroidQuickAccess.config() (the app keeps them: Settings > Personal > Buttons > Quick Access).
  * Pictures are Android's: the Material glyphs its quick settings use, and an app's tile its own glyph (appassets ?tile=1,
  * which the app draws itself for its copy).
@@ -155,6 +159,7 @@
         const button = BUTTONS.has(id);
         const label = labelOf(m, id, wide);
         const sub = (m.st[id] && m.st[id].sub) || '';
+        // (Output opens the app's own output panel - wmOutputPanel.js, roles output.N - not Android's Media output switcher)
         const act = id === 'output' ? 'qa:output' : `qa:${id}:toggle`;
         const faces = states.map((s) => {
             const pic = iconOf(m, id, s);
@@ -260,7 +265,7 @@
         el.style.setProperty('--qa-on-edge', `rgba(${edge}, 0.8)`);
     }
 
-    /** Lays out role `qatab` / `quickaccess` / `quickaccess.N` for melatonBars to write down; true when it did. */
+    /** Lays out role `qatab` / `quickaccess` / `quickaccess.N` / `output.N` for melatonBars to write down; true when it did. */
     function open(role) {
         close();
         const shell = document.getElementById('wmShell');
@@ -281,6 +286,15 @@
             // (Yukimi, Nov 22 2026: "just a tab with a handle", B/D: frosted, the workspace colour, three dots)
             layer.innerHTML = `<div class="qa-tab" style="--qa-top:${Math.round(zoneTop * (root.innerHeight) - b.top)}px">`
                 + '<span class="qa-dot"></span><span class="qa-dot"></span><span class="qa-dot"></span></div>';
+            shell.appendChild(layer);
+            return true;
+        }
+        // the output panel (#1327): Quick Access's popup on the same edge with its own contents (wmOutputPanel.js)
+        const outRows = root.wmOutputPanel ? root.wmOutputPanel.parse(role) : null;
+        if (outRows != null) {
+            const wide = m.cfg.layout === 'wide';
+            layer.classList.add(wide ? 'is-wide' : `is-cols-${Number(m.cfg.columns) === 2 ? 2 : 1}`);
+            root.wmOutputPanel.build(layer, outRows, { wide, cols: Number(m.cfg.columns) === 2 ? 2 : 1, room: (b.bottom - b.top) / wmpx });
             shell.appendChild(layer);
             return true;
         }
@@ -317,27 +331,33 @@
         return true;
     }
 
-    /** The strip's roles now (its pages), for melatonBars' push. */
+    /** The strip's roles now (its pages), for melatonBars' push; the output panel's are always there (the media session's output button opens it with Quick Access switched off). */
     function roles() {
         const m = model();
-        if (!m || !m.cfg.enabled) return [];
-        if (m.cfg.layout === 'wide') return ['qatab', 'quickaccess'];
+        if (!m) return [];
+        const out = root.wmOutputPanel ? root.wmOutputPanel.roles() : [];
+        if (!m.cfg.enabled) return out;
+        if (m.cfg.layout === 'wide') return ['qatab', 'quickaccess'].concat(out);
         const shell = document.getElementById('wmShell');
         const wmpx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
         const b = shell ? bars(shell) : { top: 0, bottom: root.innerHeight };
         const n = stripPages(m, Number(m.cfg.columns) === 2 ? 2 : 1, (b.bottom - b.top) / wmpx - 16).length;
-        return ['qatab', 'quickaccess'].concat(Array.from({ length: n - 1 }, (_, i) => `quickaccess.${i + 2}`));
+        return ['qatab', 'quickaccess'].concat(Array.from({ length: n - 1 }, (_, i) => `quickaccess.${i + 2}`), out);
     }
 
-    /** What the layouts depend on (the settings and the catalog's tiles): a change pushes them again. */
-    function signature() {
+    /** What the layouts depend on (the settings and the catalog's tiles): a change pushes them again. An output panel role
+     *  depends only on the look and the place (the app lists the outputs itself). */
+    function signature(role) {
         const m = model();
         if (!m) return '';
+        if (role && root.wmOutputPanel && root.wmOutputPanel.parse(role) != null) {
+            return JSON.stringify([root.wmOutputPanel.signature(), getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.side, m.cfg.layout, m.cfg.columns]);
+        }
         // (every tile's picture: a control drawn with an app tile's glyph changes with the catalog too - its kept layout
         // pointed at a glyph the app no longer draws, and the tile showed empty)
         // (f5: every tile's on / off / dim faces, a centred state line, the inset under the tiles, real bar heights, Nov 23
         // 2026 - a new make sends the app the new layouts)
-        return JSON.stringify(['f10', getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`)]);
+        return JSON.stringify(['f10', getComputedStyle(document.body).getPropertyValue('--primary-color').trim(), m.cfg.enabled, m.cfg.side, m.cfg.zoneTop, m.cfg.layout, m.cfg.columns, m.items, m.items.map((id) => `${iconOf(m, id, 'on')} ${iconOf(m, id, 'off')}`), root.wmOutputPanel ? root.wmOutputPanel.signature() : '']);
     }
 
     // Today and Start show the workspace's wallpaper already (Yukimi, Nov 22 2026): the app brings Quick Access in over them

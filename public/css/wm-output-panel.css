@@ -1,0 +1,118 @@
+/*
+ * The output panel (StaticForge #1327, wmOutputPanel.js): Quick Access's glass with a title and one row per output, laid out
+ * here only to be written down for the Android app, which draws it over programs (cursor rule melaton-bars-native-layouts).
+ * It is Quick Access's popup (class wm-qa: the edge, the tint tokens --qa-*, the glass, the shadow fields and the panel's
+ * width from themes/vista/quickaccess.css) with its own contents, so it holds no colour, font or width of its own. Sizes in
+ * WM units (--wm-px); --op-row is the rows' height in units (wmOutputPanel.js fits it between the bars).
+ */
+#wmShell > .wm-qa.is-output .op-head {
+    position: relative;
+    padding: 0 0 calc(4 * var(--wm-px));
+    font-size: calc(10 * var(--wm-px));
+    line-height: calc(10 * var(--wm-px));
+}
+/* the strip: the title in the middle; in one column it is two lines ("Audio" over "output") */
+#wmShell > .wm-qa.is-output:is(.is-cols-1, .is-cols-2) .op-head { text-align: center; font-size: calc(9 * var(--wm-px)); line-height: calc(11 * var(--wm-px)); }
+
+#wmShell > .wm-qa.is-output .op-rows {
+    /* (over the shadow fields, as the app draws them: in the page's order) */
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: calc(4 * var(--wm-px));
+}
+/* a row: the press (one hit), over its highlight, picture, name and check */
+#wmShell > .wm-qa.is-output .op-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    width: 100%;
+    height: calc(var(--op-row, 40) * var(--wm-px));
+    margin: 0;
+    padding: 0 calc(6 * var(--wm-px));
+    border: 0;
+    background: none;
+    box-sizing: border-box;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    -webkit-tap-highlight-color: transparent;
+}
+/* the current output: the lit tile's look (the workspace's colour), the app draws it for that row only */
+#wmShell > .wm-qa.is-output .op-hl {
+    position: absolute;
+    inset: 0;
+    border-radius: calc(3 * var(--wm-px));
+    background: linear-gradient(var(--qa-on-1), var(--qa-on-2) 48%, var(--qa-on-3) 52%, var(--qa-on-4));
+    box-shadow: var(--qa-on-glow) 0 0 calc(5 * var(--wm-px)), inset 0 0 0 var(--wm-px) var(--qa-on-edge);
+}
+/* the picture: seven stacked ones, the app draws the output's kind */
+#wmShell > .wm-qa.is-output .op-gs {
+    position: relative;
+    flex: none;
+    width: calc(20 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+}
+#wmShell > .wm-qa.is-output .op-g {
+    position: absolute;
+    inset: 0;
+    background: no-repeat center / 100% 100%;
+}
+#wmShell > .wm-qa.is-output .op-g.is-output { background-image: url('/static_images/quickaccess/out-output.png'); }
+#wmShell > .wm-qa.is-output .op-g.is-headphones { background-image: url('/static_images/quickaccess/out-headphones.png'); }
+#wmShell > .wm-qa.is-output .op-g.is-headset { background-image: url('/static_images/quickaccess/out-headset.png'); }
+#wmShell > .wm-qa.is-output .op-g.is-display { background-image: url('/static_images/quickaccess/out-display.png'); }
+#wmShell > .wm-qa.is-output .op-g.is-jack { background-image: url('/static_images/quickaccess/out-jack.png'); }
+#wmShell > .wm-qa.is-output .op-g.is-speaker { background-image: url('/static_images/quickaccess/out-speaker.png'); }
+#wmShell > .wm-qa.is-output .op-g.is-cast { background-image: url('/static_images/quickaccess/out-cast.png'); }
+/* the name: one line, ends in an ellipsis (the app fits its text to this box) */
+#wmShell > .wm-qa.is-output .op-name {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: calc(9 * var(--wm-px));
+    line-height: calc(12 * var(--wm-px));
+}
+/* the check on the current output, at the row's right */
+#wmShell > .wm-qa.is-output .op-mark {
+    position: relative;
+    flex: none;
+    width: calc(12 * var(--wm-px));
+    height: calc(12 * var(--wm-px));
+    background: url('/static_images/quickaccess/out-check.png') no-repeat center / 100% 100%;
+}
+
+/* the strip, one column (44 units, 36 inside) or two (84, 76 inside): the picture over the name, which then has the row's
+   whole width, the check in the row's corner */
+#wmShell > .wm-qa.is-output:is(.is-cols-1, .is-cols-2) .op-row {
+    flex-direction: column;
+    justify-content: center;
+    gap: calc(3 * var(--wm-px));
+    padding: calc(2 * var(--wm-px));
+}
+#wmShell > .wm-qa.is-output:is(.is-cols-1, .is-cols-2) .op-name {
+    flex: none;
+    width: 100%;
+    text-align: center;
+    font-size: calc(7.5 * var(--wm-px));
+    line-height: calc(10 * var(--wm-px));
+}
+#wmShell > .wm-qa.is-output:is(.is-cols-1, .is-cols-2) .op-mark {
+    position: absolute;
+    top: calc(2 * var(--wm-px));
+    right: calc(2 * var(--wm-px));
+    width: calc(9 * var(--wm-px));
+    height: calc(9 * var(--wm-px));
+}
+
+/* nothing else to move media to (output.0) */
+#wmShell > .wm-qa.is-output .op-empty {
+    position: relative;
+    font-size: calc(8.5 * var(--wm-px));
+    line-height: calc(11 * var(--wm-px));
+}
+#wmShell > .wm-qa.is-output:is(.is-cols-1, .is-cols-2) .op-empty { text-align: center; font-size: calc(7.5 * var(--wm-px)); line-height: calc(10 * var(--wm-px)); }

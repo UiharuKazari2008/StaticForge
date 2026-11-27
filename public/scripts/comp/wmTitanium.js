@@ -763,7 +763,7 @@
     }
 
     // ---- now playing in the Super Bar (#1128): title, artist, cover and controls from the phone's media
-    // session (DSApp AndroidMediaSession, 'dreamscape:media'); the output button opens Android's own output picker
+    // session (DSApp AndroidMediaSession, 'dreamscape:media'); the output button opens our own output panel (wmOutputPanel.js, drawn by the app)
     let superMedia = false; // the open card was drawn with a media row
     let superArtKey = '';
     let superArtUrl = ''; // blob URL of the cover (revoked when the cover changes or the bar closes)
@@ -827,6 +827,7 @@
         const out = b && typeof b.openOutputSwitcher === 'function';
         const btn = (k, label, glyph, off) => `<button type="button" class="wm-ti-super-mbtn" data-super="media-${k}" aria-label="${esc(label)}" title="${esc(label)}"${off ? ' disabled' : ''}>${glyph}</button>`;
         // the output button shows where it plays (headphones, a speaker, a cast device) and names it
+        // (its press opens our own output panel - wmOutputPanel.js, drawn by the app: the app lands openOutputSwitcher there)
         const o = superOutput;
         const oGlyph = o && (o.kind === 'headphones' || o.kind === 'bluetooth') ? '\u{1f3a7}' : o && o.kind === 'cast' ? '\u{1f4fa}' : '\u{1f50a}';
         el.innerHTML = `<span class="wm-ti-super-cover">${art ? `<img src="${esc(art)}" alt="" draggable="false">` : ''}</span>`
@@ -846,6 +847,7 @@
             if (kind === 'media-toggle') b.toggle(ms.id);
             else if (kind === 'media-prev') b.previous(ms.id);
             else if (kind === 'media-next') b.next(ms.id);
+            // (the output panel, the one Quick Access's Output tile opens: the app handles the call, #1327)
             else if (kind === 'media-output' && typeof b.openOutputSwitcher === 'function') b.openOutputSwitcher(ms.id);
         } catch (_) { /* bridge gone */ }
     }
