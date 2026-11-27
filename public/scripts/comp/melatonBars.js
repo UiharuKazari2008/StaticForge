@@ -2093,12 +2093,7 @@
         else { root.style.removeProperty('--wm-soft-h'); root.removeAttribute('data-wm-soft-h'); }
     }
     if (window.AndroidBars) {
-        // (#1013) a soft key the app drew over the keyboard (wmShell syncDsSoft) pressed: the page's own key
-        window.addEventListener('melatonsoftkey', (e) => {
-            const side = e.detail && e.detail.side === 'right' ? 'right' : 'left';
-            const btn = document.querySelector(`#wmShell .wm-softkeys > .wm-softkey[data-side="${side}"]`);
-            if (btn && !btn.disabled) btn.click();
-        }, { signal: appScopeSignal });
+        // (#1013) a soft key the app drew over the keyboard is heard by wmShell.js (#1343: this file loads late)
         syncSoftHeight();
         if (!(window.wmShell && typeof window.wmShell.syncSoftHeight === 'function')) window.addEventListener('resize', syncSoftHeight, { signal: appScopeSignal });
         // this page's own bars as they stand (device px: the title bar's bottom, the soft key bar's height), for what the app

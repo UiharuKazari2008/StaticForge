@@ -819,6 +819,14 @@
             // the centre cell: the input panel button while the keyboard is up, the task button otherwise (#1013)
             if (!(stage && stage.mask.keys)) syncCentreKey(current && apps.get(current));
         });
+        // (#1013) a soft key the app drew over the keyboard (syncDsSoft) pressed: the page's own key. Heard here, with the
+        // keys: melatonBars.js loads only when the app first asks for a bar copy, so after a page restart the keys over the
+        // keyboard did nothing until then (#1343, the A53 Nov 27 2026: a notice's Dismiss over the keyboard did not dismiss)
+        window.addEventListener('melatonsoftkey', (e) => {
+            const side = e.detail && e.detail.side === 'right' ? 'right' : 'left';
+            const btn = shell.querySelector(`:scope > .wm-softkeys > .wm-softkey[data-side="${side}"]`);
+            if (btn && !btn.disabled) btn.click();
+        }, { signal: appScopeSignal });
         bindTaskButton();
         const scrim = shell.querySelector('.wm-notify-scrim');
         // the touch surface is on top, so nothing behind it gets the tap; it only keeps its presses from
