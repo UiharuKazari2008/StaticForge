@@ -364,5 +364,277 @@ const hello = (w, extra = {}) => w.taps[0]({ id: dev, speaker: 'service', sessio
         h.stop();
         console.log('ok  waiting: delivery waiting + why, one Fleet notice per phone + versionCode + why (silent, click target), left alone, installed at the hello');
     }
+    // 11-16: apps.updateWaiting 'resend' (#1332): the newer app keeps no APK, so the server sends it again
+    const OWN = 'jp.net.seventhreeseven.dreamscape';
+    const tellApp = (w, versionCode, state, why = '', extra = {}) => w.evTaps[0]('apps.updateWaiting', { package: OWN, versionCode, versionName: `1.0.${versionCode}`, state, why, tries: 0, ...extra }, { id: dev });
+    const resend = (w, versionCode = 200, extra = {}) => tellApp(w, versionCode, 'resend', '', extra);
+    const detail = (w) => JSON.parse(w.deliveries.get(dev).detail);
+    /** A phone at 100 whose delivery of 200 is staged; the store cuts a detail at 300 characters like androidBuilds. */
+    async function behind({ greet = true } = {}) {
+        push._test.resetForTests();
+        raised.length = 0;
+        const w = world();
+        const store = w.androidBuilds.recordDelivery;
+        w.androidBuilds.recordDelivery = (id, code, st, text) => store(id, code, st, String(text).slice(0, 300));
+        const h = push.start({}, { activeSync: w.as, androidBuilds: w.androidBuilds, sendFile: w.sendFile });
+        w.rows.set(dev, { app: 'Dreamscape/1.0.100+100', name: 'A53' });
+        w.online.set(dev, 'partner');
+        if (greet) { hello(w); await settle(); }
+        return { w, h };
+    }
+
+    // 11. accepted from 'waiting' and from 'staged': sent once each, counted in every later record, no Fleet notice
+    {
+        const { w, h } = await behind();
+        tellApp(w, 200, 'waiting', 'Shizuku is not running');
+        assert.strictEqual(raised.length, 1);
+        w.log.length = 0;
+        resend(w); await settle();
+        assert.strictEqual(w.sends.length, 2, 're-sent once');
+        assert.strictEqual(w.calls.length, 2);
+        assert.deepStrictEqual(w.log, [`${dev}:200:failed`, `${dev}:200:sending`, `${dev}:200:staged`]);
+        assert.strictEqual(detail(w).resends, 1);
+        assert.strictEqual(detail(w).attempts, 1, 'attempts start again');
+        assert.strictEqual(raised.length, 1, 'no Fleet notice for a resend');
+        hello(w); w.androidBuilds.events.emit('release', w.release); await settle();
+        assert.strictEqual(w.sends.length, 2, 'staged again: hello and release send nothing');
+        tellApp(w, 200, 'waiting', 'Shizuku is not running'); await settle();
+        assert.strictEqual(detail(w).resends, 1, 'the waiting record keeps the count');
+        assert.strictEqual(detail(w).attempts, 1);
+        resend(w); await settle();
+        assert.strictEqual(w.sends.length, 3);
+        assert.strictEqual(detail(w).resends, 2);
+        // gave up after failed attempts: a resend starts them again, the failed records keep the count
+        w.state.sendFails = true;
+        resend(w); await settle();
+        hello(w); await settle(); hello(w); await settle();
+        assert.strictEqual(detail(w).gaveUp, true);
+        assert.strictEqual(detail(w).resends, 3);
+        w.state.sendFails = false;
+        resend(w); await settle();
+        assert.strictEqual(w.deliveries.get(dev).state, 'staged');
+        assert.strictEqual(detail(w).resends, 4);
+        assert.ok(!detail(w).gaveUp);
+        // the installed record keeps it too, and then a resend is ignored (phone at the version)
+        w.rows.set(dev, { app: 'Dreamscape/1.0.200+200' });
+        hello(w); await settle();
+        assert.strictEqual(w.deliveries.get(dev).state, 'installed');
+        assert.strictEqual(detail(w).resends, 4);
+        const before = w.log.length;
+        resend(w); await settle();
+        assert.strictEqual(w.log.length, before, 'phone already at the version: ignored');
+        // ... and 'installed' alone is enough, whatever version the phone says
+        w.rows.set(dev, { app: 'Dreamscape/1.0.100+100' });
+        w.reported.length = 0;
+        resend(w); await settle();
+        assert.strictEqual(w.log.length, before, 'installed delivery: ignored');
+        h.stop();
+        console.log('ok  resend: accepted and re-sent once, attempts start again, count kept in every record, ignored when installed, no notice');
+    }
+
+    // 12. capped at 6 per phone + versionCode, logged once; another package or a bad code is nothing
+    {
+        const { w, h } = await behind();
+        const warned = [];
+        const warn = console.warn;
+        console.warn = (m) => warned.push(String(m));
+        try {
+            for (const [code, extra] of [[200, { package: 'com.other' }], [0, {}], [-1, {}], [200, { state: 'again' }]]) resend(w, code, extra);
+            await settle();
+            assert.strictEqual(w.sends.length, 1, 'validation');
+            for (let i = 0; i < 6; i += 1) { resend(w); await settle(); }
+            assert.strictEqual(w.sends.length, 7);
+            assert.strictEqual(detail(w).resends, 6);
+            const before = w.log.length;
+            resend(w); await settle(); resend(w); await settle(); resend(w); await settle();
+            assert.strictEqual(w.sends.length, 7, 'the 7th and later: ignored');
+            assert.strictEqual(w.log.length, before, 'nothing recorded');
+            assert.strictEqual(warned.filter((m) => /asked for 200 again/.test(m)).length, 1, 'logged once');
+        } finally { console.warn = warn; }
+        // a new release has its own count
+        Object.assign(w.release, { versionCode: 201, apkFile: '201-bbbbbbb.apk' });
+        w.androidBuilds.events.emit('release', w.release); await settle();
+        resend(w, 201); await settle();
+        assert.strictEqual(detail(w).resends, 1);
+        assert.strictEqual(w.sends.length, 9);
+        assert.strictEqual(raised.length, 0);
+        h.stop();
+        console.log('ok  resend: capped at 6 per phone + versionCode (logged once), validated like waiting, a new release counts anew');
+    }
+
+    // 13. ignored while 'sending'; hold, offline, pending, permissions and the missing op are still gates
+    {
+        const { w, h } = await behind({ greet: false });
+        let answer;
+        w.as.serverCall = (gr, ws, id, op, args) => { w.calls.push({ id, op, args }); return new Promise((r) => { answer = r; }); };
+        hello(w); await settle();
+        assert.strictEqual(w.deliveries.get(dev).state, 'sending');
+        const before = w.log.length;
+        resend(w); await settle();
+        assert.strictEqual(w.log.length, before, 'sending: ignored');
+        answer({ state: 'staged' }); await settle();
+        assert.strictEqual(w.deliveries.get(dev).state, 'staged');
+        assert.strictEqual(w.sends.length, 1, 'and nothing is sent after it');
+        w.as.serverCall = async (gr, ws, id, op, args) => { w.calls.push({ id, op, args }); return { state: 'staged' }; };
+
+        delete process.env.ANDROID_UPDATES_TEST_UNHELD;
+        try { resend(w); await settle(); } finally { process.env.ANDROID_UPDATES_TEST_UNHELD = '1'; }
+        assert.strictEqual(w.sends.length, 1, 'held: nothing sent');
+        assert.strictEqual(w.deliveries.get(dev).state, 'failed');
+        assert.strictEqual(detail(w).attempts, 0);
+        assert.strictEqual(detail(w).resends, 1);
+        assert.ok(/asked again/.test(detail(w).info));
+        hello(w); await settle();                                  // the hold is over: the next hello sends it
+        assert.strictEqual(w.sends.length, 2);
+        assert.strictEqual(detail(w).attempts, 1);
+        assert.strictEqual(detail(w).resends, 1);
+
+        for (const [close, open] of [
+            [() => w.online.set(dev, undefined), () => w.online.set(dev, 'partner')],
+            [() => w.online.set(dev, 'pending'), () => w.online.set(dev, 'partner')],
+            [() => { w.as.devicePermits = () => false; }, () => { w.as.devicePermits = () => true; }]
+        ]) {
+            const n = w.sends.length;
+            close(); resend(w); await settle();
+            assert.strictEqual(w.sends.length, n, 'gated');
+            assert.strictEqual(w.deliveries.get(dev).state, 'failed');
+            open(); hello(w); await settle();
+            assert.strictEqual(w.sends.length, n + 1, 'sent at the next hello');
+        }
+        hello(w, { ops: ['storage.list'] }); await settle();
+        const n = w.sends.length;
+        resend(w); await settle();
+        assert.strictEqual(w.sends.length, n, 'no apps.update in the service ops');
+        assert.strictEqual(raised.length, 0);
+        h.stop();
+        console.log('ok  resend: ignored while sending; hold, offline, pending, permissions and ops still gate it (sent at a later hello)');
+    }
+
+    // 14. another versionCode than the latest, and no prior record (the server lost its data)
+    {
+        // older than the latest, its record still the phone's: the latest is sent
+        let { w, h } = await behind();
+        tellApp(w, 200, 'waiting', 'x');
+        assert.strictEqual(raised.length, 1);
+        Object.assign(w.release, { versionCode: 201, apkFile: '201-bbbbbbb.apk' });
+        w.log.length = 0;
+        resend(w, 200); await settle();
+        assert.strictEqual(raised.length, 1, 'no notice for the resend');
+        assert.deepStrictEqual(w.log, [`${dev}:200:failed`, `${dev}:201:sending`, `${dev}:201:staged`]);
+        assert.strictEqual(w.calls[w.calls.length - 1].args.versionCode, 201);
+        assert.ok(!detail(w).resends);
+        // then the older one again: the newer record stands, nothing happens
+        let sends = w.sends.length;
+        w.log.length = 0;
+        resend(w, 200); await settle();
+        assert.strictEqual(w.sends.length, sends);
+        assert.strictEqual(w.log.length, 0);
+        // the newer one 'failed': tried again within its own attempts, which an old resend never resets
+        w.state.sendFails = true;
+        resend(w, 201); await settle();
+        resend(w, 200); await settle(); resend(w, 200); await settle();
+        assert.strictEqual(detail(w).attempts, 3);
+        assert.strictEqual(detail(w).resends, 1);
+        const records = w.log.length;
+        resend(w, 200); await settle(); resend(w, 150); await settle(); resend(w, 300); await settle();
+        assert.strictEqual(w.log.length, records, 'gave up: another versionCode changes nothing');
+        h.stop();
+        // no record at all
+        for (const code of [200, 150]) {
+            ({ w, h } = await behind());
+            w.deliveries.clear();                                   // the server lost what it had delivered
+            w.sends.length = 0;
+            w.log.length = 0;
+            resend(w, code); await settle();
+            assert.strictEqual(w.sends.length, 1, `no record, resend ${code}: the latest is sent`);
+            assert.strictEqual(w.calls[w.calls.length - 1].args.versionCode, 200);
+            assert.strictEqual(w.log[0], `${dev}:${code}:failed`);
+            assert.strictEqual(w.deliveries.get(dev).state, 'staged');
+            assert.strictEqual(detail(w).resends, code === 200 ? 1 : undefined);
+            h.stop();
+        }
+        // no record and no release known: remembered, nothing sent, nothing thrown
+        ({ w, h } = await behind({ greet: false }));
+        w.androidBuilds.latestRelease = () => null;
+        resend(w, 200); await settle();
+        assert.strictEqual(w.sends.length, 0);
+        assert.strictEqual(w.deliveries.get(dev).state, 'failed');
+        h.stop();
+        console.log('ok  resend: older than the latest sends the latest; a newer or latest record is not rewritten; no prior record handled');
+    }
+
+    // 15. the app reports while apps.update is being answered: 'staged' (or an error) does not overwrite its word
+    {
+        for (const ending of ['staged', 'error']) {
+            const { w, h } = await behind({ greet: false });
+            const plain = w.as.serverCall;
+            w.as.serverCall = async (...a) => {
+                const got = await plain(...a);
+                tellApp(w, 200, 'waiting', 'every silent route failed');
+                if (ending === 'error') throw Object.assign(new Error('gone'), { code: 'TIMEOUT' });
+                return got;
+            };
+            hello(w); await settle();
+            assert.strictEqual(w.deliveries.get(dev).state, 'waiting', ending);
+            assert.strictEqual(detail(w).why, 'every silent route failed');
+            assert.strictEqual(detail(w).attempts, 1);
+            assert.strictEqual(raised.length, 1);
+            // a 'waiting' left from that earlier round does not stop the next round's 'staged'
+            w.as.serverCall = plain;
+            resend(w); await settle();
+            assert.strictEqual(w.deliveries.get(dev).state, 'staged');
+            h.stop();
+        }
+        {
+            const { w, h } = await behind({ greet: false });
+            w.deliveries.set(dev, { versionCode: 199, state: 'waiting', at: 0, detail: JSON.stringify({ attempts: 1, why: 'old' }) });
+            hello(w); await settle();
+            assert.strictEqual(w.deliveries.get(dev).state, 'staged', 'an earlier round\'s waiting');
+            h.stop();
+        }
+        // waiting AND resend before the answer: the resend is not lost, it is sent again when the round ends
+        const { w, h } = await behind({ greet: false });
+        const plain = w.as.serverCall;
+        let first = true;
+        w.as.serverCall = async (...a) => {
+            const got = await plain(...a);
+            if (first) {
+                first = false;
+                tellApp(w, 200, 'waiting', 'route lost');
+                resend(w);
+                assert.strictEqual(w.sends.length, 1, 'one at a time');
+            }
+            return got;
+        };
+        hello(w); await settle(); await settle();
+        assert.strictEqual(w.sends.length, 2, 'sent again after the running delivery');
+        assert.deepStrictEqual(w.log, [`${dev}:200:sending`, `${dev}:200:waiting`, `${dev}:200:failed`, `${dev}:200:sending`, `${dev}:200:staged`]);
+        assert.strictEqual(detail(w).resends, 1);
+        assert.strictEqual(detail(w).attempts, 1);
+        h.stop();
+        console.log('ok  while apps.update is answered: waiting is not overwritten (also on error); an earlier waiting does not count; a resend then is sent after');
+    }
+
+    // 16. the detail always fits the 300 characters androidBuilds keeps, so the counts survive any text
+    {
+        const { w, h } = await behind({ greet: false });
+        const nasty = '"\\\u0001'.repeat(100);
+        w.state.updateAnswer = { state: 'bad_apk', error: nasty };
+        hello(w); await settle();
+        assert.ok(w.deliveries.get(dev).detail.length <= 300);
+        assert.strictEqual(detail(w).attempts, 1);
+        resend(w); await settle();
+        assert.strictEqual(detail(w).resends, 1);
+        tellApp(w, 200, 'waiting', nasty);
+        assert.ok(w.deliveries.get(dev).detail.length <= 300);
+        assert.strictEqual(detail(w).resends, 1);
+        const told = raised.length;
+        const records = w.log.length;
+        tellApp(w, 200, 'waiting', nasty);
+        assert.strictEqual(raised.length, told);
+        assert.strictEqual(w.log.length, records, 'the same shortened why is the same report');
+        h.stop();
+        console.log('ok  detail: at most 300 characters whatever the text, counts kept');
+    }
     console.log('all passed');
 })().catch((error) => { console.error(error); process.exit(1); });

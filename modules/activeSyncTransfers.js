@@ -26,12 +26,12 @@
  *   DELETE /api/activesync/upload/:id                       give up
  *
  * Programs (#795): commit with install: true sends an .apk and then asks the phone to install it
- * (apps.install: Android's installer opens, or a tap-to-install notification when the app is in the
- * background; the user always confirms). A phone that is away gets both queued, in order.
+ * (apps.install: the app installs it silently, #1309). A phone that is away gets both queued, in order.
  * The .apk is not left on the phone (Yukimi, Nov 18): stream.receive carries temp: true and the app
  * keeps the file in its own temporary folder under the transfer id, apps.install { temp: <id> } installs
- * it from there and the app deletes it once the install ended. root / dir stay in both calls for an app
- * build that predates the temporary folder (it saves into /ActiveSync as before).
+ * it from there and the app deletes the file as soon as the install answers, success or failure (Yukimi,
+ * Nov 26 2026, #1332). root / dir stay in both calls for an app build that predates the temporary folder
+ * (it saves into /ActiveSync as before).
  *   POST   /api/activesync/install/:deviceId  { root, path } | { temp, name }   an .apk already on the phone
  *
  * Files in flight to a phone live in <databases>/activesync-transfers/<id> (+ .json); what nobody

@@ -226,7 +226,7 @@
      * half of the progress is the way to the server, the second the phone writing it.
      * opts: { name, conflict, mtime, signal, onProgress(bytes, total), queue, deviceId, install }.
      * queue: an offline partner gets it when it next connects ({ queued: true }).
-     * install: an .apk is then offered to Android's installer (#795); the answer carries install.
+     * install: the phone is then asked to install the .apk (#795); the answer carries install.
      * mkdirs: the phone makes dir first when it is missing (a queued copy cannot make it ahead).
      */
     async function write(rootId, dir, file, opts = {}) {
@@ -360,11 +360,11 @@
     }
 
     // Programs and Services: an Android program (.apk) from this computer to the phone (Yukimi, Nov 13,
-    // #795). The app keeps it in its own temporary folder, Android's installer opens (or a notification
-    // waits for a tap when the app is in the background; the user confirms on the phone) and the app
-    // deletes it once the install ended (Yukimi, Nov 18: never left in Download). An app build without
-    // the temporary folder saves it in the received folder instead. A partner that is away gets it, and
-    // the install, when it next connects.
+    // #795). The app keeps it in its own temporary folder, installs it silently (#1309) and deletes the
+    // file as soon as the install answers, success or failure (Yukimi, Nov 26, #1332: no APK left on the
+    // phone). Older app builds may still ask for a confirmation on the phone (prompted / notified /
+    // needs_permission). An app build without the temporary folder saves it in the received folder
+    // instead. A partner that is away gets it, and the install, when it next connects.
     addTask('programs', {
         id: 'install-apk', text: 'Install a program on your device', icon: 'add-programs-32.png',
         when: (d) => d.partner && d.permissions.includes('files') && d.permissions.includes('control'),
@@ -384,13 +384,21 @@
                     // an app build without the temporary folder saves it in the received folder and cannot make it
                     if (d.online) { try { root.phoneStorage.select(d.deviceId); await call('mkdir', { root: 'internal', path: RECEIVED_DIR }); } catch (_) { /* there, or a newer app */ } }
                     const r = await write('internal', RECEIVED_DIR, file, { deviceId: d.deviceId, conflict: 'replace', install: true, queue: true, mkdirs: true });
-                    const st = r && r.install && (r.install.state || r.install);
-                    const msg = r && r.queued ? `${esc(name)} is not connected. ${esc(file.name)} will be copied and offered for installation when it connects.`
-                        : st === 'prompted' ? `${esc(file.name)} was copied to ${esc(name)}. Confirm the installation on the device.`
-                            : st === 'notified' ? `${esc(file.name)} was copied to ${esc(name)}. Tap the notification on the device to install it.`
-                                : st === 'needs_permission' ? `${esc(file.name)} was copied to ${esc(name)}, but the device does not allow Dreamscape to install programs yet. Allow it on the device, then try again.`
-                                    : st === 'installing' || st === 'installed' ? `${esc(file.name)} is being installed on ${esc(name)}.`
-                                        : `${esc(file.name)} was copied to ${esc(name)}, but it could not be offered for installation${r && r.install && r.install.error ? `: ${esc(r.install.error)}` : '.'}`;
+                    let st = r && r.install && (r.install.state || r.install);
+                    // the server calls a lost or late answer 'failed' too: whether it installed is not known
+                    if (st === 'failed' && (r.install.code === 'TIMEOUT' || r.install.code === 'DISCONNECTED')) st = 'unanswered';
+                    // why: the app's own words; error: the server's, when ADB or the call to the phone failed
+                    const why = r && r.install && (r.install.why || r.install.error);
+                    const reason = why ? `<br>${esc(why)}` : '';
+                    const msg = r && r.queued ? `${esc(name)} is not connected. ${esc(file.name)} will be sent when it connects, and installed if the device can.`
+                        : st === 'installed' ? `${esc(file.name)} was installed on ${esc(name)}.`
+                            : st === 'installing' ? `${esc(file.name)} is being installed on ${esc(name)}.`
+                                : st === 'failed' ? `${esc(file.name)} could not be installed on ${esc(name)}.${reason}`
+                                    : st === 'waiting' ? `${esc(file.name)} will be installed on ${esc(name)} when the device can.${reason}`
+                                        : st === 'prompted' ? `${esc(file.name)} was copied to ${esc(name)}. Confirm the installation on the device.`
+                                            : st === 'notified' ? `${esc(file.name)} was copied to ${esc(name)}. Tap the notification on the device to install it.`
+                                                : st === 'needs_permission' ? `${esc(file.name)} was copied to ${esc(name)}, but the device does not allow Dreamscape to install programs yet. Allow it on the device, then try again.`
+                                                    : `${esc(file.name)} was sent to ${esc(name)}, but the device did not say whether it was installed.${reason}`;
                     await box(msg);
                 } catch (err) {
                     await box(`${esc(file.name)} could not be sent to ${esc(name)}.<br>${esc((err && err.message) || '')}`);
