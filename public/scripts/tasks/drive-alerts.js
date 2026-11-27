@@ -25,8 +25,9 @@
  * passed, the car leaves it, stops at Home / Work or the drive ends. An older host (start data {}) keeps the 1 mi
  * notification. No timers, no extra requests.
  *
- * Where the phone is (#1289): on a change of place (Home / Work / neither) the server is told traffic_place { place },
- * only while the link is on (fixes and the drive's start), so it can skip a "To Home" notice at Home. No link wake.
+ * Where the phone is (#1289): on a change of place (Home / Work / away) the server is told traffic_place { place }
+ * from the fixes and the drive's start, only while the link is on (no link wake, no timer), so it can skip a "To Home"
+ * notice at Home. A report the server did not take is told again by a later fix or when the link is back.
  *
  * The pure parts are CafeTasks.lib.drive: the page's Traffic uses the same functions.
  */
@@ -43,6 +44,7 @@
     const REPEAT_MS = 2 * 3600 * 1000;
     const REPORTS_FRESH_MS = 30 * 60 * 1000;
     const AREA_RETRY_MS = 60 * 1000;
+    const PLACE_RETRY_MS = 60 * 1000;
     const MPH = 0.44704;
     const PASSED_GROW_M = 30;
 
@@ -308,12 +310,17 @@
         return null;
     }
 
-    /** Tell the server where the phone is, once per change (the reply is ignored). */
+    // the tag carries the place so an answer can be matched to it
+    const placeTag = (p) => 'place:' + (p || 'away');
+
+    /** Tell the server where the phone is, once per change; a place it did not take is told again by a later call. */
     function sendPlace(ctx, place) {
         const s = ctx.state;
         if (s.sentPlace === place) return;
+        // a place the server did not take (link down, an older server) is told again by a later fix, not before a minute
+        if (s.placeFail && s.placeFail.place === place && ctx.now - s.placeFail.at < PLACE_RETRY_MS) return;
         s.sentPlace = place;
-        ctx.request('traffic_place', { place }, 'place');
+        ctx.request('traffic_place', { place }, placeTag(place));
     }
 
     function onFix(ctx, fix) {
@@ -323,7 +330,8 @@
         const done = alertedSet(s, ctx.now);
         const appr = canApproach(s);
         const here = placeAt(s, fix);
-        if (here) sendPlace(ctx, here);
+        s.here = here;
+        sendPlace(ctx, here);
         if (here) { endApproach(ctx); s.mode = ''; setFeed(ctx, ''); setLevel(ctx, 'low'); publish(ctx); return; }
         const route = onRoute(s, fix);
         if (route) {
@@ -378,6 +386,7 @@
             s.along = {};
             s.last = {};
             s.appr = null;
+            s.here = '';
             ctx.link(true);
             askReports(ctx, true);
             setLevel(ctx, 'low');
@@ -406,7 +415,7 @@
         name: 'drive-alerts',
         api: 1,
         init(s) {
-            Object.assign(s, { active: false, driveSince: 0, mode: '', direction: '', level: 'off', feed: '', reports: {}, reportsAt: 0, places: null, area: { box: null, items: [] }, along: {}, last: {}, alerted: {}, asking: {}, outSig: '', hostOps: [], appr: null, sentPlace: '' });
+            Object.assign(s, { active: false, driveSince: 0, mode: '', direction: '', level: 'off', feed: '', reports: {}, reportsAt: 0, places: null, area: { box: null, items: [] }, along: {}, last: {}, alerted: {}, asking: {}, outSig: '', hostOps: [], appr: null, sentPlace: '', placeFail: null, here: '' });
         },
         on: {
             start(ctx, d) {
@@ -428,6 +437,8 @@
                     askReports(ctx, false);
                     // the server forgot the feed with the old link
                     const feed = s.feed; s.feed = ''; if (feed) setFeed(ctx, feed);
+                    // a report that failed while the link was down is told now
+                    if (s.here !== '') sendPlace(ctx, s.here);
                 }
             },
             drive: onDrive,
@@ -447,8 +458,13 @@
                     if (!r.ok) return;
                     const d = r.data || {};
                     if (d.box) s.area = { box: d.box, items: (d.cameras || []).concat(d.police || []) };
+                } else if (typeof r.tag === 'string' && r.tag.indexOf('place:') === 0) {
+                    const p = r.tag === 'place:away' ? null : r.tag.slice(6);
+                    if (r.ok) { if (s.placeFail && s.placeFail.place === p) s.placeFail = null; }
+                    // not taken: told again by a later fix (only when nothing newer was sent since)
+                    else if (s.sentPlace === p) { s.sentPlace = ''; s.placeFail = { place: p, at: ctx.now }; }
                 } else if (r.tag === 'place') {
-                    return; // nothing to take: a failed one is simply not retried until the place changes
+                    return; // an answer to the older tag (a task state from before this change): nothing to take
                 } else if (r.tag === 'feed' && r.ok && r.data && r.data.items) {
                     mergePolice(s, { feed: r.data.feed || s.feed, items: r.data.items }, true);
                 }

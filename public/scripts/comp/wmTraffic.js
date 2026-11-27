@@ -311,6 +311,10 @@
 
     // the place last told to the server (#1289); undefined until the first device read
     let lastSentPlace;
+    // the server lets a place stand for 7 days: told on a change, and again every 6 hours while it stays
+    // (it rides the reads that already happen, no timer of its own)
+    let lastSentAt = 0;
+    const PLACE_AGAIN_MS = 6 * 3600 * 1000;
 
     function readPosition(force) {
         if (geoBusy || document.hidden || !configured()) return;
@@ -328,9 +332,12 @@
             if (p === 'work') noteAtWork();
             // tell the server on a change of place only (it skips a "To Home" notice at Home); an IP answer is
             // not where the phone is (#890: client_ip, configured, any lookup), never blocks anything
-            if (here.source === 'device' && p !== lastSentPlace) {
+            if (here.source === 'device' && (p !== lastSentPlace || Date.now() - lastSentAt > PLACE_AGAIN_MS)) {
                 lastSentPlace = p;
-                try { ask('traffic_place', { place: p || null }).catch(() => {}); } catch (_) { /* none */ }
+                lastSentAt = Date.now();
+                // not taken (offline, an older server): the next read tells it again
+                const untold = () => { if (lastSentPlace === p) lastSentPlace = undefined; };
+                try { ask('traffic_place', { place: p || null }).catch(untold); } catch (_) { untold(); }
             }
             const now = commuteNow();
             if (now && (now !== before || (now === 'home' && hereMoved()))) { const r = latest[now]; if (!r || Date.now() - Date.parse(r.at) > STALE_MS || hereMoved()) quietCheck(now); }

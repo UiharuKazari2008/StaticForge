@@ -168,4 +168,98 @@ assert.ok(aaps.filter((x) => x).length >= 3 && aaps.filter((x) => x).every((x) =
 assert.strictEqual(aaps.filter((x) => x === null).length, 1);
 assert.strictEqual(aaps[aaps.length - 1], null);
 
+// ---------------------------------------------------------------- #1289 where the phone is (traffic_place)
+{
+    const places = (acts) => ops(acts, 'request').filter((x) => x.type === 'traffic_place');
+    const fixAt = (lat, extra) => send('fix', Object.assign({ lat, lon: 0, accuracyM: 10, speed: 5, heading: 0 }, extra));
+    const settings = { settings: { home: { lat: 0, lon: 0 }, work: { lat: 0.2, lon: 0 }, radiusKm: 1 }, latest: { work: report('work'), home: report('home') } };
+    // the task's own clock: ctx.now is Date.now() inside its vm context (each fresh() makes a new context, so the real clock is untouched)
+    let clock = 5000000;
+    const hold = () => { g.__clock = () => clock; vm.runInContext('Date.now = () => globalThis.__clock()', g); };
+    const fresh = () => {
+        g = load(); state = null; first = true;
+        hold();
+        send('start');
+    };
+    const driveStart = () => { const r = send('drive', { state: 'driving', since: 1000 }); send('reply', { tag: 'reports', ok: true, data: settings }); return r; };
+    const one = (acts, place, tag, what) => {
+        const p = places(acts);
+        assert.strictEqual(p.length, 1, `${what}: one place request`);
+        assert.deepStrictEqual(p[0].data || p[0].payload || p[0].body, { place }, what);
+        assert.strictEqual(p[0].tag, tag, what);
+    };
+    {
+        fresh();
+        let r = driveStart();
+        // the start request list shows the place too; pick it out of the first drive event
+        // (driveStart returns the drive event's actions)
+        one(r, null, 'place:away', 'a drive start tells away');
+        r = send('drive', { state: 'parked_in_car', since: 2000 });
+        assert.strictEqual(places(r).length, 0, 'a drive end tells nothing');
+        // a second drive in the same state (away told already) tells nothing more
+        r = send('drive', { state: 'driving', since: 3000 });
+        assert.strictEqual(places(r).length, 0, 'away is held: not told again');
+        send('reply', { tag: 'place:away', ok: true });
+
+        r = fixAt(0.0005);
+        one(r, 'home', 'place:home', 'a fix inside Home');
+        assert.strictEqual(places(fixAt(0.0006)).length, 0, 'a second fix at Home tells nothing');
+        send('reply', { tag: 'place:home', ok: true });
+        r = fixAt(0.1);
+        one(r, null, 'place:away', 'a fix outside both places is away');
+        assert.strictEqual(places(fixAt(0.11)).length, 0, 'a second one tells nothing');
+        send('reply', { tag: 'place:away', ok: true });
+        r = fixAt(0.1995);
+        one(r, 'work', 'place:work', 'a fix inside Work');
+        assert.strictEqual(places(fixAt(0.1996)).length, 0, 'a second fix at Work tells nothing');
+
+        // a fix with a poor accuracy is not a position
+        r = fixAt(0.0005, { accuracyM: 600 });
+        assert.strictEqual(places(r).length, 0, 'accuracy over 500 m tells nothing');
+
+        // the answer failed (the link went): told again by a later fix, not before a minute
+        send('reply', { tag: 'place:work', type: 'traffic_place', ok: false, error: 'the link went' });
+        assert.strictEqual(places(fixAt(0.1997)).length, 0, 'a failed place is not told at once');
+        clock += 59 * 1000;
+        assert.strictEqual(places(fixAt(0.1998)).length, 0, 'nor at 59 s');
+        clock += 2 * 1000;
+        one(fixAt(0.1999), 'work', 'place:work', 'after a minute a fix tells it again');
+        send('reply', { tag: 'place:work', type: 'traffic_place', ok: true });
+        assert.strictEqual(state.placeFail, null, 'an ok answer clears the failure');
+        assert.strictEqual(places(fixAt(0.1999)).length, 0, 'and it is held again');
+
+        // a failure for an older place does not disturb a newer one already sent
+        r = fixAt(0.0001);
+        one(r, 'home', 'place:home', 'back at Home');
+        send('reply', { tag: 'place:work', type: 'traffic_place', ok: false, error: 'timed out' });
+        assert.strictEqual(state.sentPlace, 'home', 'the older failure leaves the newer place sent');
+        assert.strictEqual(places(fixAt(0.0002)).length, 0, 'the newer place is not told again');
+
+        // the link comes back while driving and the server does not have the place
+        send('reply', { tag: 'place:home', type: 'traffic_place', ok: false, error: 'the link went' });
+        assert.strictEqual(state.sentPlace, '');
+        clock += 61 * 1000;
+        r = send('link', { connected: true });
+        one(r, 'home', 'place:home', 'the link back re-tells the last fix place');
+        assert.strictEqual(places(send('link', { connected: true })).length, 0, 'and only once');
+        // a link back before the first fix of a drive tells nothing (no place known yet)
+        r = send('drive', { state: 'parked_in_car', since: 9000 });
+        r = send('drive', { state: 'driving', since: 9500 });
+        assert.strictEqual(state.here, '');
+        assert.strictEqual(places(send('link', { connected: true })).length, 0, 'no fix yet: nothing to re-tell');
+
+        // a state saved by the previous version: no placeFail / here keys, sentPlace 'home'
+        fresh();
+        const old = { active: true, driveSince: 1000, mode: '', direction: '', level: 'low', feed: '', reports: {}, reportsAt: 0, places: { home: { lat: 0, lon: 0 }, work: { lat: 0.2, lon: 0 }, radiusM: 1000 }, area: { box: null, items: [] }, along: {}, last: {}, alerted: {}, asking: {}, outSig: '', hostOps: [], appr: null, sentPlace: 'home' };
+        g = load(); hold(); first = true; state = old;
+        send('start');
+        assert.strictEqual(places(fixAt(0.0005)).length, 0, 'an old state at Home: held');
+        assert.strictEqual(state.placeFail, null);
+        assert.strictEqual(state.here, 'home');
+        one(fixAt(0.1), null, 'place:away', 'an old state leaving Home tells away');
+        // the old reply tag is taken without a fault
+        send('reply', { tag: 'place', ok: false });
+    }
+}
+
 console.log('test-cafe-drive-alerts: ok');
