@@ -1,0 +1,49 @@
+Lines read live from the guest's logcat (epoch times), kept here because the guest's log buffer was lost with the instance at
+about 17:40. App pid 30230 / 30826, release 42. Window lists: "dumpsys window windows", the app's windows only.
+
+-- kill-app, Settings in front (17:28)
+1795818489.890 30230 30230 I MelatonBars: first window look applied after 2498 ms (3 windows)
+1795818489.890 30230 30230 I MelatonBars: show: on=true fits=false status=false bar=true top=false ext=true tray=false give=false
+1795818489.971 30230 30230 I MelatonBars: show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+1795818490.342 30230 30240 I MelatonBars: holder token linked (#1331), started over Shizuku
+
+-- Back soft key, from Settings > Network & internet (top: .SubSettings -> .homepage.SettingsHomepageActivity)
+1795818524.929 30230 30230 I MelatonBars: bar tap: soft-left [...]
+1795818524.932 30230 30230 I MelatonBars: soft key left: back
+
+-- popup: tap on the title bar's status icons, then the same place again
+1795818539.910 30230 30230 I MelatonBars: bar tap: volume [...]
+1795818539.942 30230 30230 I MelatonBars: bubble volume drawn here
+   windows: MelatonPopup isVisible=true
+1795818552.075 30230 30230 I MelatonBars: popup bar tap: volume (open: volume)
+   windows: no visible MelatonPopup; top activity still .homepage.SettingsHomepageActivity
+
+-- volume down key through InputReader (sendevent /dev/input/event13 1 114), media volume 2 -> 0 (new process, pid 30826)
+1795818636.525 30826 31014 I MelatonBars: keys answered on binder:30826_6, not the main thread
+1795818636.547   847  3144 I volume_changed: [3,2,0,15,jp.net.seventhreeseven.dreamscape]
+1795818636.597 30826 30826 I MelatonBars: bubble volume drawn here
+1795818637.032   847  1885 D MediaSessionService: dispatchVolumeKeyEvent, pkg=com.android.settings, ... event=KeyEvent { action=ACTION_UP, keyCode=KEYCODE_VOLUME_DOWN, scanCode=114, ...
+1795818637.032   847  1885 D MediaSessionService: Adjusting suggestedStream=-2147483648 by 0. flags=4116, preferSuggestedStream=false, session=null
+   (first press after the process start: the key-up reached Android about 0.5 s after the press; "by 0" changes nothing)
+-- two more presses (volume already 0)
+1795818669.220 30826 30826 I MelatonBars: bubble volume drawn here
+1795818678.082 30826 30826 I MelatonBars: bubble volume drawn here
+   no volume_changed, no dispatchVolumeKeyEvent in either window
+-- lane.sh sound since before the first press: count 0, playedCount 0, alarmLikeStarted 0
+
+-- Home soft key (the lane's default home is com.google.android.apps.nexuslauncher)
+1795818702.187 30826 30826 I MelatonBars: bar tap: soft-right [...]
+1795818702.187 30826 30826 I MelatonBars: soft key right: home
+   top activity: com.google.android.apps.nexuslauncher/.NexusLauncherActivity
+
+-- Melaton Bars off and on, page alive (hidden), AndroidBars.setConfig, cycle 1
+before:   MelatonBar x2 visible, MelatonBarEdge x2 visible, MelatonBarProbe, MelatonImeProbe, MelatonLock (hidden),
+          MelatonHomeStrip (GONE); holder=30977 recs=1
+off:      no Melaton window at all; holder gone, recs=0; getState: running=true locked=false enabled=false
+on again: MelatonBar x2 visible, MelatonBarEdge x2 visible, MelatonBarProbe, MelatonImeProbe, MelatonLock (hidden);
+          holder=31809 recs=1; getState: running=true locked=true enabled=true
+1795818863.929 30826 30835 I MelatonBars: holder token linked (#1331), started over Shizuku
+1795818866.675 30826 30826 I MelatonBars: holder start answered over Shizuku [shizuku: ok]
+-- cycle 2: off as cycle 1 (no Melaton window, holder gone, recs=0). The "on" call did not reach the app: a client update of
+   the live site (coord gate 328, "sw-notify sent: 14 assets recompiled, 16 clients notified", 17:34) had put updater.html in
+   the WebView ("ReferenceError: AndroidBars is not defined").

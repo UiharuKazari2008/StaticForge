@@ -94,3 +94,13 @@ node scripts/check-perf-rules.js --dsapp /home/kanmi/wt/dsapp-1392 -> perf rules
 node scripts/check-app-scope.js -> app scope: ok (597 files)
 
 Not tested here: no APK, no device or emulator run (the planner builds and does the device proof).
+
+== merged with app main eb366dd7 (#1414, #1379 comments): DSApp 3150722f, on the build PC, Nov 27 2026
+> BUILD SUCCESSFUL in 4m 53s
+GRADLE EXIT=0
+BarsLookTest: tests=25 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=53 failures=0 errors=0 skipped=0
+SoftKeyProbeTest: tests=32 failures=0 errors=0 skipped=0
+WindowReadsTest: tests=35 failures=0 errors=0 skipped=0
+TOTAL tests=785 failures=0 errors=0 skipped=0
+check-perf-rules --dsapp: ok (185 files); check-app-scope: ok (604 files)

@@ -1,0 +1,29 @@
+1795817970936 before: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817970958 KEYCODE_SLEEP
+1795817976262 asleep: deviceLocked=1 keyguard=true mWakefulness=Asleep front= apppid=26283 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817976274 KEYCODE_WAKEUP
+1795817979556 awake: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817979569 shot a-cover begin
+1795817981737 shot a-cover end
+1795817981757 slide swipe 984 165 -> 1297 165
+1795817984579 after the slide: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817984599 shot b-keypad begin
+1795817986388 shot b-keypad end
+1795817986453 digit tapped
+1795817986921 digit tapped
+1795817987383 digit tapped
+1795817987899 digit tapped
+1795817988990 shot c-dots begin
+1795817990833 shot c-dots end
+1795817991077 digits in: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817991320 mark before the OK tap
+1795817991593 OK tap command: started 1795817991335 returned 1795817991515
+1795818004106 still locked 12s after the OK tap
+1795818008900 end: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283 windows: #2 MelatonLock(viewVis=0x4,not-touchable,onScreen=false,visible=false); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795818008928 shot d-after begin
+1795818009892 shot d-after end
+1795818009952 uiautomator dump begin
+1795818012873 uiautomator dump done (22 bouncer nodes)
+1795818016350 before the tap on Android's OK: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795818016365 tap on Android's OK 1217,1760
+1795818022673 6 s after the tap on Android's OK: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 

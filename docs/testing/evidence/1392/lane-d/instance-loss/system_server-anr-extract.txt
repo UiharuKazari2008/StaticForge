@@ -1,0 +1,66 @@
+# Extract of the guest's /data/anr/anr_2026-11-27-17-40-05-567 (aemu-fold-2, read after the next boot). Header, then the
+# blocked android.display and android.anim threads and the thread that holds the lock they wait for (system_server only).
+Subject: Blocked in monitor com.android.server.wm.WindowManagerService on monitor thread (watchdog.monitor) for 15s, Blocked in handler on animation thread (android.anim) for 15s
+----- pid 847 at 2026-11-27 17:40:06.856757500-0500 -----
+
+"android.display" prio=7 tid=17 Blocked
+  at com.android.server.wm.BLASTSyncEngine$SyncGroup.lambda$new$0(BLASTSyncEngine.java:156)
+  - waiting to lock <0x00e62ce1> (a com.android.server.wm.WindowManagerGlobalLock) held by thread 250
+  at com.android.server.wm.BLASTSyncEngine$SyncGroup.$r8$lambda$T3b4oMuoLuCo5FThSDbVYPuJEgE(BLASTSyncEngine.java:0)
+  at com.android.server.wm.BLASTSyncEngine$SyncGroup$$ExternalSyntheticLambda2.run(R8$$SyntheticClass:0)
+  at android.os.Handler.handleCallback(Handler.java:1095)
+  at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+  at android.os.Handler.dispatchMessage(Handler.java:125)
+  at android.os.Looper.loopOnce(Looper.java:296)
+  at android.os.Looper.loop(Looper.java:397)
+  at android.os.HandlerThread.run(HandlerThread.java:139)
+  at com.android.server.ServiceThread.run(ServiceThread.java:46)
+
+"android.anim" prio=7 tid=18 Blocked
+  at com.android.server.wm.InputMonitor$UpdateInputWindows.run(InputMonitor.java:120)
+  - waiting to lock <0x00e62ce1> (a com.android.server.wm.WindowManagerGlobalLock) held by thread 250
+  at android.os.Handler.handleCallback(Handler.java:1095)
+  at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+  at android.os.Handler.dispatchMessage(Handler.java:125)
+  at android.os.Looper.loopOnce(Looper.java:296)
+  at android.os.Looper.loop(Looper.java:397)
+  at android.os.HandlerThread.run(HandlerThread.java:139)
+  at com.android.server.ServiceThread.run(ServiceThread.java:46)
+
+"binder:847_1F" prio=5 tid=250 Native
+  native: #00 pc 0005cfc7  /apex/com.android.runtime/lib64/bionic/libc.so (__ioctl+7) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #01 pc 0005c6e7  /apex/com.android.runtime/lib64/bionic/libc.so (ioctl+167) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #02 pc 0005ee90  /system/lib64/libbinder.so (android::IPCThreadState::transact+1808) (BuildId: 414ba3791217d6e3bfd88f6c897b05ea)
+  native: #03 pc 000894df  /system/lib64/libbinder.so (android::BpBinder::transact+351) (BuildId: 414ba3791217d6e3bfd88f6c897b05ea)
+  native: #04 pc 00195043  /system/lib64/libgui.so (android::gui::BpSurfaceComposer::captureLayersSync+339) (BuildId: ce76a3762519bc7e333b218f97d984e2)
+  native: #05 pc 000e6c0b  /system/lib64/libgui.so (android::ScreenshotClient::captureLayers+235) (BuildId: ce76a3762519bc7e333b218f97d984e2)
+  native: #06 pc 0013bd26  /system/lib64/libandroid_runtime.so (android::nativeCaptureLayers +374) (BuildId: e2564b9361f25203d4d8bb218bfef57e)
+  at android.window.ScreenCaptureInternal.nativeCaptureLayers(Native method)
+  at android.window.ScreenCaptureInternal.captureLayers(ScreenCaptureInternal.java:160)
+  at android.window.ScreenCaptureInternal.captureLayersExcluding(ScreenCaptureInternal.java:188)
+  at com.android.server.wm.AbsAppSnapshotController.createSnapshot(AbsAppSnapshotController.java:332)
+  at com.android.server.wm.AbsAppSnapshotController.snapshot(AbsAppSnapshotController.java:249)
+  at com.android.server.wm.AbsAppSnapshotController.snapshot(AbsAppSnapshotController.java:226)
+  at com.android.server.wm.AbsAppSnapshotController.captureSnapshot(AbsAppSnapshotController.java:176)
+  at com.android.server.wm.AbsAppSnapshotController.recordSnapshotInner(AbsAppSnapshotController.java:194)
+  at com.android.server.wm.TaskSnapshotController.getRecordSnapshotSupplier(TaskSnapshotController.java:168)
+  at com.android.server.wm.TaskSnapshotController.recordSnapshot(TaskSnapshotController.java:148)
+  at com.android.server.wm.TaskSnapshotController.recordSnapshot(TaskSnapshotController.java:138)
+  at com.android.server.wm.SnapshotController.onTransactionReady(SnapshotController.java:132)
+  at com.android.server.wm.Transition.onTransactionReady(Transition.java:2294)
+  at com.android.server.wm.BLASTSyncEngine$SyncGroup.finishNow(BLASTSyncEngine.java:291)
+  at com.android.server.wm.BLASTSyncEngine$SyncGroup.tryFinish(BLASTSyncEngine.java:215)
+  at com.android.server.wm.BLASTSyncEngine$SyncGroup.-$$Nest$mtryFinish(BLASTSyncEngine.java:0)
+  at com.android.server.wm.BLASTSyncEngine.onSurfacePlacement(BLASTSyncEngine.java:619)
+  at com.android.server.wm.RootWindowContainer.performSurfacePlacement(RootWindowContainer.java:781)
+  at com.android.server.wm.WindowSurfacePlacer.performSurfacePlacementLoop(WindowSurfacePlacer.java:176)
+  at com.android.server.wm.WindowSurfacePlacer.performSurfacePlacement(WindowSurfacePlacer.java:124)
+  at com.android.server.wm.WindowManagerService.relayoutWindow(WindowManagerService.java:2804)
+  - locked <0x00e62ce1> (a com.android.server.wm.WindowManagerGlobalLock)
+  at com.android.server.wm.Session.relayout(Session.java:294)
+  at com.android.server.wm.Session.relayout2(Session.java:305)
+  at android.view.IWindowSession$Stub.onTransact(IWindowSession.java:694)
+  at com.android.server.wm.Session.onTransact(Session.java:229)
+  at android.os.Binder.execTransactInternal(Binder.java:1364)
+  at android.os.Binder.execTransact(Binder.java:1323)
+

@@ -8,6 +8,7 @@ PKG=jp.net.seventhreeseven.dreamscape
 D=/data/local/tmp/s1392-wake
 O=$D/wake.txt
 OLD=$1; AFTER=${2:-20}; SAMPLES=${3:-"3 8 13 18"}
+[ "$SAMPLES" = none ] && SAMPLES=''   # part D: no window samples before the wake (each dumpsys loads the guest and moves the wake)
 rm -rf $D; mkdir -p $D; : > $O
 S=$(date +%s); P=''
 if [ "$OLD" != - ]; then

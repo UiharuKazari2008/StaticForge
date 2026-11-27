@@ -1,0 +1,3 @@
+         1795821216.246  1670  1670 I MelatonBars: ime probe live: visible=false bottom=0
+         1795821217.966  1670  2828 I MelatonBars: holder token linked (#1331), started over Shizuku
+         1795821218.100  1670  1670 I MelatonBars: holder start answered over Shizuku [shizuku: ok]

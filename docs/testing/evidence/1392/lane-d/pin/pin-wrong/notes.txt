@@ -1,0 +1,24 @@
+1795817291725 before: deviceLocked=0 keyguard=false mWakefulness=Awake front=com.android.settings/.homepage.SettingsHomepageActivity apppid=18716 windows: #3 MelatonLock(viewVis=0x4,not-touchable,onScreen=false,visible=false); #11 NotificationShade(viewVis=0x4,touchable,onScreen=false,visible=false); 
+1795817291739 KEYCODE_SLEEP
+1795817300675 asleep: deviceLocked=1 keyguard=true mWakefulness=Asleep front= apppid=18716 windows: #3 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #11 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817300686 KEYCODE_WAKEUP
+1795817303916 awake: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716 windows: #3 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #11 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817303927 shot a-cover begin
+1795817305397 shot a-cover end
+1795817305409 slide swipe 984 165 -> 1297 165
+1795817308031 after the slide: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716 windows: #3 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #11 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817308042 shot b-keypad begin
+1795817309431 shot b-keypad end
+1795817309475 digit tapped
+1795817309921 digit tapped
+1795817310365 digit tapped
+1795817310810 digit tapped
+1795817311842 shot c-dots begin
+1795817313233 shot c-dots end
+1795817313378 digits in: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716 windows: #3 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #11 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817313554 mark before the OK tap
+1795817313611 OK tap command: started 1795817313565 returned 1795817313599
+1795817326236 still locked 12s after the OK tap
+1795817330770 end: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716 windows: #3 MelatonLock(viewVis=0x4,not-touchable,onScreen=false,visible=false); #11 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817330780 shot d-after begin
+1795817331250 shot d-after end

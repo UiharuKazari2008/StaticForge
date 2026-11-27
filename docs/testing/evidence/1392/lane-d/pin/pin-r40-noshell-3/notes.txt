@@ -1,0 +1,24 @@
+1795818149984 before: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795818150001 KEYCODE_SLEEP
+1795818155291 asleep: deviceLocked=1 keyguard=true mWakefulness=Asleep front= apppid=26283 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795818155303 KEYCODE_WAKEUP
+1795818158541 awake: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795818158554 shot a-cover begin
+1795818160469 shot a-cover end
+1795818160484 slide swipe 984 165 -> 1627 165
+1795818163190 after the slide: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795818163205 shot b-keypad begin
+1795818164829 shot b-keypad end
+1795818164881 digit tapped
+1795818165335 digit tapped
+1795818165783 digit tapped
+1795818166231 digit tapped
+1795818167264 shot c-dots begin
+1795818168870 shot c-dots end
+1795818169071 digits in: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795818169277 mark before the OK tap
+1795818169427 OK tap command: started 1795818169290 returned 1795818169406
+1795818182175 still locked 12s after the OK tap
+1795818186721 end: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283 windows: #2 MelatonLock(viewVis=0x4,not-touchable,onScreen=false,visible=false); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795818186730 shot d-after begin
+1795818187291 shot d-after end

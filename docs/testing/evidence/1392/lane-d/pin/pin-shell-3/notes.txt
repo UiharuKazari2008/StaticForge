@@ -1,0 +1,24 @@
+1795817229390 before: deviceLocked=0 keyguard=false mWakefulness=Awake front=com.android.settings/.homepage.SettingsHomepageActivity apppid=18716 windows: #3 MelatonLock(viewVis=0x4,not-touchable,onScreen=false,visible=false); #11 NotificationShade(viewVis=0x4,touchable,onScreen=false,visible=false); 
+1795817229401 KEYCODE_SLEEP
+1795817237582 asleep: deviceLocked=1 keyguard=true mWakefulness=Asleep front= apppid=18716 windows: #3 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #11 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817237591 KEYCODE_WAKEUP
+1795817240813 awake: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716 windows: #3 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #11 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817240823 shot a-cover begin
+1795817242318 shot a-cover end
+1795817242332 slide swipe 984 165 -> 1297 165
+1795817245024 after the slide: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716 windows: #3 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #11 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817245034 shot b-keypad begin
+1795817246413 shot b-keypad end
+1795817246450 digit tapped
+1795817246891 digit tapped
+1795817247335 digit tapped
+1795817247774 digit tapped
+1795817248800 shot c-dots begin
+1795817250165 shot c-dots end
+1795817250321 digits in: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716 windows: #3 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #11 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817250475 mark before the OK tap
+1795817250542 OK tap command: started 1795817250488 returned 1795817250528
+1795817257326 deviceLocked=0 first seen 1795817257293 (6805 ms after the OK tap command started)
+1795817262214 end: deviceLocked=0 keyguard=false mWakefulness=Awake front=com.android.settings/.homepage.SettingsHomepageActivity apppid=18716 windows: #3 MelatonLock(viewVis=0x4,not-touchable,onScreen=false,visible=false); #11 NotificationShade(viewVis=0x4,touchable,onScreen=false,visible=false); 
+1795817262225 shot d-after begin
+1795817262698 shot d-after end

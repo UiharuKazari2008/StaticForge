@@ -1,6 +1,6 @@
 # StaticForge #1392: READ-ONLY sampler of the lane emulator's qemu process on its Windows host. Prints one line per sample.
 $ErrorActionPreference = 'SilentlyContinue'
-$q = Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'qemu-system*' -and $_.CommandLine -match '-avd aemu-fold-1 ' }
+$q = Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'qemu-system*' -and $_.CommandLine -match ('-avd ' + $(if ($AVD) { $AVD } else { 'aemu-fold-1' }) + ' ') }
 $id = $q.ProcessId
 "qemu pid=$id"
 $prevT = @{}; $pc = $null; $pm = $null

@@ -1,0 +1,2 @@
+trace start = realtime 1795817991.307; app main tid 26283; window threads: 
+# gap used to split looks: 120 ms

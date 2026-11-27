@@ -1,0 +1,15 @@
+trace start = realtime 1795817164.793; app main tid 18716; window threads: window-bars(18802), window-read(19598), window-read(19613), window-read(19623)
+window-read 19613  +  0.038 .. +  0.106  wall     68 ms  cpu     5 ms  binder calls   14 (to pid 847 x14)  [started by main]
+window-read 19623  +  0.259 .. +  0.266  wall      8 ms  cpu     2 ms  binder calls    3 (to pid 847 x3)  [started by main]
+window-read 19598  +  0.419 .. +  0.424  wall      5 ms  cpu     2 ms  binder calls    3 (to pid 847 x3)  [started by main]
+window-read 19613  +  0.576 .. +  0.603  wall     27 ms  cpu     4 ms  binder calls    9 (to pid 847 x9)  [started by main]
+window-read 19623  +  0.755 .. +  0.761  wall      6 ms  cpu     1 ms  binder calls    2 (to pid 847 x2)  [started by main]
+window-read 19598  +  0.914 .. +  0.918  wall      4 ms  cpu     1 ms  binder calls    2 (to pid 847 x2)  [started by main]
+window-read 19613  +  1.071 .. +  1.075  wall      4 ms  cpu     1 ms  binder calls    2 (to pid 847 x2)  [started by main]
+window-read 19623  +  1.228 .. +  1.233  wall      5 ms  cpu     1 ms  binder calls    2 (to pid 847 x2)  [started by main]
+window-read 19598  +  1.386 .. +  1.392  wall      6 ms  cpu     1 ms  binder calls    2 (to pid 847 x2)  [started by main]
+window-read 19613  +  1.544 .. +  1.550  wall      6 ms  cpu     1 ms  binder calls    2 (to pid 847 x2)  [started by main]
+window-read 19623  +  1.704 .. +  1.709  wall      6 ms  cpu     1 ms  binder calls    2 (to pid 847 x2)  [started by main]
+window-read 19623  +  1.840 .. +  2.407  wall    567 ms  cpu     9 ms  binder calls   15 (to pid 847 x15)
+window-read 19623  +  2.538 .. +  2.814  wall    276 ms  cpu     7 ms  binder calls   13 (to pid 847 x13)
+# gap used to split looks: 120 ms

@@ -1,0 +1,8 @@
+         1795821339.078  1670  1670 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+         1795821339.130  1670  1670 I MelatonBars: translucent check (soft keys): strip spread 0.0 (picture above 14), against below 16.0 (runs on under 10)
+         1795821339.131  1670  1670 I MelatonBars: translucent soft key bar for com.android.settings: false
+         1795821343.796  1670  1670 I MelatonBars: bar tap: soft-left [start:0-99 notify:2951-3067 mail:3067-3138 sms:3138-3209 update:3209-3280 bluetooth:3280-3351 data:3351-3422 signal:3422-3493 volume:3493-3564 battery:3564-3654 title:99-448 corner:3630-3720]
+         1795821343.798  1670  1670 I MelatonBars: soft key left: back
+         1795821345.547  1670  1670 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+         1795821345.600  1670  1670 I MelatonBars: translucent check (soft keys): strip spread 1.1 (picture above 14), against below 6.5 (runs on under 10)
+         1795821345.601  1670  1670 I MelatonBars: translucent soft key bar for com.android.settings: true

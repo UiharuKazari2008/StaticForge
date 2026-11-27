@@ -1,0 +1,65 @@
+== pin-shell-1 (app pid 18716)
+   bouncer asked +1.71  shell failed (input) -  credential check started +3.70  StartUnlock +3.84  keyguard gone (wm) +6.35  deviceLocked=0 (0.2 s poll) +6.60
+   "no PIN pad" / "window read took" / scan failed / ANR / crash lines in the whole run window: 0
+   credential checks after the tap: 1  failed attempts reported: 0
+   end state: deviceLocked=0 keyguard=false mWakefulness=Awake front=com.android.settings/.homepage.SettingsHomepageActivity apppid=18716
+== pin-shell-2 (app pid 18716)
+   bouncer asked +1.59  shell failed (input) -  credential check started +3.08  StartUnlock +3.35  keyguard gone (wm) +5.69  deviceLocked=0 (0.2 s poll) +5.89
+   "no PIN pad" / "window read took" / scan failed / ANR / crash lines in the whole run window: 0
+   credential checks after the tap: 1  failed attempts reported: 0
+   end state: deviceLocked=0 keyguard=false mWakefulness=Awake front=com.android.settings/.homepage.SettingsHomepageActivity apppid=18716
+   accessibility actions sent by the app's main thread (binder, from the trace): 0
+== pin-shell-3 (app pid 18716)
+   bouncer asked +1.76  shell failed (input) -  credential check started +3.76  StartUnlock +3.95  keyguard gone (wm) +6.67  deviceLocked=0 (0.2 s poll) +6.80
+   "no PIN pad" / "window read took" / scan failed / ANR / crash lines in the whole run window: 0
+   credential checks after the tap: 1  failed attempts reported: 0
+   end state: deviceLocked=0 keyguard=false mWakefulness=Awake front=com.android.settings/.homepage.SettingsHomepageActivity apppid=18716
+   accessibility actions sent by the app's main thread (binder, from the trace): 0
+== pin-wrong (app pid 18716)
+   bouncer asked +1.59  shell failed (input) -  credential check started +3.03  StartUnlock -  keyguard gone (wm) -  deviceLocked=0 (0.2 s poll) never in the watch
+   "no PIN pad" / "window read took" / scan failed / ANR / crash lines in the whole run window: 0
+   credential checks after the tap: 1  failed attempts reported: 1
+   end state: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716
+   accessibility actions sent by the app's main thread (binder, from the trace): 0
+== pin-after-wrong (app pid 18716)
+   bouncer asked +1.67  shell failed (input) -  credential check started +3.33  StartUnlock +3.61  keyguard gone (wm) +5.58  deviceLocked=0 (0.2 s poll) +5.84
+   "no PIN pad" / "window read took" / scan failed / ANR / crash lines in the whole run window: 0
+   credential checks after the tap: 1  failed attempts reported: 0
+   end state: deviceLocked=0 keyguard=false mWakefulness=Awake front=com.android.settings/.homepage.SettingsHomepageActivity apppid=18716
+   accessibility actions sent by the app's main thread (binder, from the trace): 0
+== pin-noshell-1 (app pid 18716)
+   bouncer asked +1.69  shell failed (input) +2.85  credential check started -  StartUnlock -  keyguard gone (wm) -  deviceLocked=0 (0.2 s poll) never in the watch
+   "no PIN pad" / "window read took" / scan failed / ANR / crash lines in the whole run window: 0
+   credential checks after the tap: 0  failed attempts reported: 0
+   end state: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716
+   accessibility actions sent by the app's main thread (binder, from the trace): 4 at +2.85 +2.91 +3.01 +3.57
+== pin-noshell-2 (app pid 18716)
+   bouncer asked +1.62  shell failed (input) +2.90  credential check started -  StartUnlock -  keyguard gone (wm) -  deviceLocked=0 (0.2 s poll) never in the watch
+   "no PIN pad" / "window read took" / scan failed / ANR / crash lines in the whole run window: 0
+   credential checks after the tap: 0  failed attempts reported: 0
+   end state: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716
+   accessibility actions sent by the app's main thread (binder, from the trace): 4 at +2.90 +2.96 +3.16 +3.31
+== pin-noshell-3 (app pid 18716)
+   bouncer asked +1.71  shell failed (input) +2.94  credential check started -  StartUnlock -  keyguard gone (wm) -  deviceLocked=0 (0.2 s poll) never in the watch
+   "no PIN pad" / "window read took" / scan failed / ANR / crash lines in the whole run window: 0
+   credential checks after the tap: 0  failed attempts reported: 0
+   end state: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716
+   accessibility actions sent by the app's main thread (binder, from the trace): 4 at +2.94 +3.04 +3.19 +3.35
+== pin-r40-noshell-1 (app pid 26283)
+   bouncer asked +1.78  shell failed (input) +3.01  credential check started -  StartUnlock -  keyguard gone (wm) -  deviceLocked=0 (0.2 s poll) never in the watch
+   "no PIN pad" / "window read took" / scan failed / ANR / crash lines in the whole run window: 0
+   credential checks after the tap: 0  failed attempts reported: 0
+   end state: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283
+   accessibility actions sent by the app's main thread (binder, from the trace): 4 at +3.01 +3.31 +3.57 +3.77
+== pin-r40-noshell-2 (app pid 26283)
+   bouncer asked -  shell failed (input) -  credential check started -  StartUnlock -  keyguard gone (wm) -  deviceLocked=0 (0.2 s poll) never in the watch
+   "no PIN pad" / "window read took" / scan failed / ANR / crash lines in the whole run window: 0
+   credential checks after the tap: 0  failed attempts reported: 0
+   end state: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283
+   accessibility actions sent by the app's main thread (binder, from the trace): 0
+== pin-r40-noshell-3 (app pid 26283)
+   bouncer asked +1.63  shell failed (input) +2.67  credential check started -  StartUnlock -  keyguard gone (wm) -  deviceLocked=0 (0.2 s poll) never in the watch
+   "no PIN pad" / "window read took" / scan failed / ANR / crash lines in the whole run window: 0
+   credential checks after the tap: 0  failed attempts reported: 0
+   end state: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=26283
+   accessibility actions sent by the app's main thread (binder, from the trace): 4 at +2.72 +3.11 +3.44 +3.69

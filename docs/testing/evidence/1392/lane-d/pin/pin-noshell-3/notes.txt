@@ -1,0 +1,26 @@
+1795817802105 before: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817802116 KEYCODE_SLEEP
+1795817807374 asleep: deviceLocked=1 keyguard=true mWakefulness=Asleep front= apppid=18716 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817807383 KEYCODE_WAKEUP
+1795817810581 awake: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817810593 shot a-cover begin
+1795817812122 shot a-cover end
+1795817812135 slide swipe 984 165 -> 1297 165
+1795817814844 after the slide: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817814855 shot b-keypad begin
+1795817816265 shot b-keypad end
+1795817816315 digit tapped
+1795817816761 digit tapped
+1795817817201 digit tapped
+1795817817641 digit tapped
+1795817818668 shot c-dots begin
+1795817820033 shot c-dots end
+1795817820297 digits in: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716 windows: #2 MelatonLock(viewVis=0x0,touchable,onScreen=true,visible=true); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817820468 mark before the OK tap
+1795817820553 OK tap command: started 1795817820478 returned 1795817820525
+1795817833114 still locked 12s after the OK tap
+1795817837652 end: deviceLocked=1 keyguard=true mWakefulness=Awake front= apppid=18716 windows: #2 MelatonLock(viewVis=0x4,not-touchable,onScreen=false,visible=false); #6 NotificationShade(viewVis=0x0,touchable,onScreen=true,visible=true); 
+1795817837665 shot d-after begin
+1795817838139 shot d-after end
+1795817838170 uiautomator dump begin
+1795817840646 uiautomator dump done (22 bouncer nodes)
