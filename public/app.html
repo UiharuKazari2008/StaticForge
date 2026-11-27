@@ -575,6 +575,7 @@
     <link rel="stylesheet" href="/css/wm-file-dialogs.css">
     <link rel="stylesheet" href="/css/wm-programs.css">
     <link rel="stylesheet" href="/css/wm-settings-personal.css">
+    <link rel="stylesheet" href="/css/wm-notify-sound.css">
     <link rel="stylesheet" href="/css/wm-settings-system.css">
     <link rel="stylesheet" href="/css/wm-settings-connections.css">
     <link rel="stylesheet" href="/css/wm-settings-dreamscape.css">
@@ -621,6 +622,7 @@
     <template data-shell="desktop"><meta name="melaton-feature-css" content="/css/wm-weather.css"></template><script>writeShellTags()</script>
     <template data-shell="mobile"><link rel="stylesheet" href="/css/wm-traffic.css"></template><script>writeShellTags()</script>
     <template data-shell="mobile"><link rel="stylesheet" href="/css/wm-claude-accounts.css"></template><script>writeShellTags()</script>
+    <template data-shell="mobile"><link rel="stylesheet" href="/css/wm-radio-mode.css"></template><script>writeShellTags()</script>
     <template data-shell="mobile"><link rel="stylesheet" href="/css/wm-lapis.css"></template><script>writeShellTags()</script>
     <template data-shell="mobile"><link rel="stylesheet" href="/css/wm-wallet.css"></template><script>writeShellTags()</script>
     <template data-shell="mobile"><link rel="stylesheet" href="/css/wm-youtube.css"></template><script>writeShellTags()</script>
@@ -7688,10 +7690,12 @@ Examples:
     <script src="scripts/comp/wmTeleport.js"></script>
     <script src="scripts/comp/wmFileDialogs.js"></script>
     <script src="scripts/comp/wmPrograms.js"></script>
+    <script src="scripts/comp/wmNotifySound.js"></script>
     <script src="scripts/comp/wmSettingsPersonal.js"></script>
     <script src="scripts/comp/wmSettingsChime.js"></script>
     <script src="scripts/comp/wmSettingsSystem.js"></script>
     <script src="scripts/comp/wmSettingsConnections.js"></script>
+    <template data-shell="mobile"><script src="scripts/comp/wmRadioMode.js"></script></template><script>writeShellTags()</script>
     <script src="scripts/comp/wmWifi.js"></script>
     <script src="scripts/comp/wmSettingsApplets.js"></script>
     <script src="scripts/comp/wmSettingsDreamscape.js"></script>
@@ -7720,7 +7724,7 @@ Examples:
     <template data-shell="mobile"><script src="scripts/comp/wmWeather.js"></script></template><script>writeShellTags()</script>
     <template data-shell="desktop"><script src="scripts/comp/melatonWeatherOpener.js"></script></template><script>writeShellTags()</script>
     <!-- CaféReady tasks (#908): the runtime and the drive-alerts task, the same files the Android app runs; wmTraffic uses their pure parts -->
-    <template data-shell="mobile"><script src="scripts/tasks/runtime.js"></script><script src="scripts/tasks/drive-alerts.js"></script><script src="scripts/comp/wmCamOverlay.js"></script><script src="scripts/comp/wmTraffic.js"></script></template><script>writeShellTags()</script>
+    <template data-shell="mobile"><script src="scripts/tasks/runtime.js"></script><script src="scripts/tasks/drive-alerts.js"></script><script src="scripts/tasks/radio-mode.js"></script><script src="scripts/comp/wmCamOverlay.js"></script><script src="scripts/comp/wmTraffic.js"></script></template><script>writeShellTags()</script>
     <template data-shell="mobile"><script src="scripts/comp/wmLapis.js"></script></template><script>writeShellTags()</script>
     <template data-shell="mobile"><script src="scripts/comp/wmCarKey.js"></script></template><script>writeShellTags()</script>
     <template data-shell="mobile"><script src="scripts/comp/wmWallet.js"></script></template><script>writeShellTags()</script>
