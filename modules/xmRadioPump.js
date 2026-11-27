@@ -105,29 +105,49 @@ function parseMedia(text, base) {
     return out;
 }
 
+/** The length of the ID3v2 tag at [off] (header, body and footer), or 0 when none starts there. */
+function id3Length(buf, off) {
+    if (off + 10 > buf.length || buf[off] !== 0x49 || buf[off + 1] !== 0x44 || buf[off + 2] !== 0x33) return 0;
+    const size = ((buf[off + 6] & 0x7f) << 21) | ((buf[off + 7] & 0x7f) << 14) | ((buf[off + 8] & 0x7f) << 7) | (buf[off + 9] & 0x7f);
+    return 10 + size + ((buf[off + 5] & 0x10) ? 10 : 0);
+}
+
 /** A segment's audio without its leading ID3 tags (each segment opens with one: a timestamp). */
 function stripId3(buf) {
     let off = 0;
-    while (off + 10 <= buf.length && buf.toString('latin1', off, off + 3) === 'ID3') {
-        const size = ((buf[off + 6] & 0x7f) << 21) | ((buf[off + 7] & 0x7f) << 14) | ((buf[off + 8] & 0x7f) << 7) | (buf[off + 9] & 0x7f);
-        const footer = (buf[off + 5] & 0x10) ? 10 : 0;
-        off += 10 + size + footer;
-    }
+    for (let len = id3Length(buf, off); len; len = id3Length(buf, off)) off += len;
     return off ? buf.subarray(off) : buf;
 }
 
-/** Do the ADTS frames parse cleanly to the last byte? (a truncated or corrupt segment does not; returns the frame count, or 0) */
-function adtsClean(buf) {
+/**
+ * A segment's ADTS audio, every ID3 tag taken out - or null when it is not ADTS frames and ID3 tags to the last byte (a
+ * truncated or corrupt segment). SiriusXM puts a tag between two frames where the song changes inside a segment, not only
+ * at its start (#1354: such a segment was read as corrupt, held the recording for two minutes and was then dropped - the
+ * recording lost ten seconds at the song change and a Monitor listener ran dry).
+ */
+function adtsAudio(buf) {
+    const parts = [];
     let off = 0;
-    let n = 0;
+    let from = 0; // where the audio run now being read began
+    let frames = 0;
     while (off < buf.length) {
-        if (off + 7 > buf.length || buf[off] !== 0xff || (buf[off + 1] & 0xf6) !== 0xf0) return 0;
+        const tag = id3Length(buf, off);
+        if (tag) {
+            if (off + tag > buf.length) return null;
+            if (off > from) parts.push(buf.subarray(from, off));
+            off += tag;
+            from = off;
+            continue;
+        }
+        if (off + 7 > buf.length || buf[off] !== 0xff || (buf[off + 1] & 0xf6) !== 0xf0) return null;
         const len = ((buf[off + 3] & 0x03) << 11) | (buf[off + 4] << 3) | (buf[off + 5] >> 5);
-        if (len < 7 || off + len > buf.length) return 0;
+        if (len < 7 || off + len > buf.length) return null;
         off += len;
-        n += 1;
+        frames += 1;
     }
-    return n;
+    if (!frames) return null;
+    if (off > from) parts.push(buf.subarray(from, off));
+    return parts.length === 1 ? parts[0] : Buffer.concat(parts);
 }
 
 function decrypt(data, key, iv, seq) {
@@ -252,8 +272,8 @@ function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {},
             const k = s.keyUri ? await key(s.keyUri) : null; // a key that cannot be fetched is not the segment's fault
             let plain;
             try { plain = k ? decrypt(got.body, k, s.iv, s.seq) : got.body; } catch (err) { why = `decrypt: ${err.message}`; continue; }
-            const adts = stripId3(plain);
-            if (!adtsClean(adts)) { why = 'ADTS frames do not parse to the end'; continue; }
+            const adts = adtsAudio(plain);
+            if (!adts) { why = 'ADTS frames do not parse to the end'; continue; }
             return { plain, adts };
         }
         throw new Error(`segment ${s.seq} failed its checks after ${retries} refetches (${why})`);
@@ -398,4 +418,4 @@ function createPump({ channelId, quality = 'hi', tune, keyBytes, log = () => {},
     return ev;
 }
 
-module.exports = { createPump, _test: { pickVariant, parseMedia, stripId3, decrypt, adtsClean } };
+module.exports = { createPump, adtsAudio, _test: { pickVariant, parseMedia, stripId3, decrypt, adtsAudio } };

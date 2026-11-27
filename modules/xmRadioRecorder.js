@@ -236,7 +236,8 @@ async function sliceAac(rec, from, to, outFile) {
             const end = sg.pdt + sg.dur * 1000;
             if (end <= from || sg.pdt >= to) continue;
             const id3 = await fs.promises.readFile(path.join(rec.dir, sg.f));
-            const buf = require('./xmRadioPump')._test.stripId3(id3);
+            // every tag out, the ones between frames too (a song change inside the segment): only audio goes on the tape
+            const buf = require('./xmRadioPump').adtsAudio(id3) || require('./xmRadioPump')._test.stripId3(id3);
             const frames = adtsFrames(buf);
             if (!frames.length) continue;
             // the frames' own clock: the segment's start plus 1024 samples a frame
