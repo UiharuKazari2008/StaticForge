@@ -2052,6 +2052,12 @@ html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-viewbar {
     bottom: calc(var(--wm-safe-bottom) + 34 * var(--wm-px));
 }
 
+/* (#1343) keyboard up: the 34-unit dock takes --wm-sip-lift too (wm-shell.css, the notice above the keyboard) */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-sip] .wm-notify {
+    bottom: calc(env(safe-area-inset-bottom) + 34 * var(--wm-px) + var(--wm-sip-lift, 0px));
+    max-height: calc(70% - 34 * var(--wm-px) - var(--wm-sip-lift, 0px));
+}
+
 html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-lock65-scene {
     top: calc(18 * var(--wm-px));
 }

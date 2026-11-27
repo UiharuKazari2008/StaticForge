@@ -2173,6 +2173,20 @@ html.ui-mobile[data-wm-soft-h]:not([data-wm-sip])[data-wm-app="gallery"] body > 
     bottom: var(--wm-soft-h) !important;
 }
 
+/* (#1343, Yukimi Nov 26 2026: "notifications are shown under the keyboard") The keyboard does not shorten #wmShell: the
+ * page stays full height and only --wm-sip-lift (how far the bar went up) knows. So with the keyboard up the notice and
+ * the bubbles above the soft key bar take that lift on top of their own dock, and the notice's height loses it too: a tall
+ * one fits the room left above the keyboard and does not cover the field being typed in. (The :not([data-wm-sip]) rules
+ * above are for the keyboard down and stay as they are. The picture viewbar already stands on --wm-safe-bottom, which
+ * carries the keyboard.) */
+html.ui-mobile[data-wm-sip] .wm-notify,
+html.ui-mobile[data-wm-sip] .wm-popup:not([data-side="dropdown"]) {
+    bottom: calc(env(safe-area-inset-bottom) + 26 * var(--wm-px) + var(--wm-sip-lift, 0px));
+}
+html.ui-mobile[data-wm-sip] .wm-notify {
+    max-height: calc(70% - 26 * var(--wm-px) - var(--wm-sip-lift, 0px));
+}
+
 .wm-notify[hidden] {
     display: none;
 }
