@@ -1295,8 +1295,22 @@
     let notesMO = null;
     // the roles of the last full push (a drawing made since asks for them again: svgPicture)
     let layoutsRoles = null;
+    // Quick Access's own roles, the ones that follow its settings (qatab, quickaccess, quickaccess.N, output.N)
+    const QA_ROLE = /^(qatab|quickaccess|output\.\d+$)/;
+    /**
+     * A role list with Quick Access's roles as its settings are now (StaticForge #1405): the roles the app asks for again
+     * (relayout, the pictures' second pass) came from the last set written down, which still held the roles of the old
+     * settings (qatab, quickaccess with Quick Access switched off since) and none the new ones.
+     */
+    function withCurrentQa(roles) {
+        const qa = window.wmQuickAccess;
+        if (!qa || typeof qa.roles !== 'function') return roles;
+        let now = null;
+        try { now = qa.roles(); } catch (_) { now = null; }
+        return now ? roles.filter((r) => !QA_ROLE.test(r)).concat(now) : roles;
+    }
     function pushLayouts(roles, partial) {
-        if (!partial) layoutsRoles = roles;
+        if (!partial) { roles = withCurrentQa(roles); layoutsRoles = roles; }
         const sh = window.wmShell;
         const ab = window.AndroidBars;
         if (!sh || !sh.barsPopupOpen || !ab || typeof ab.layouts !== 'function' || document.visibilityState === 'visible') return;
@@ -1412,6 +1426,7 @@
     const QA_SIG_KEY = 'melatonBarsLayoutSig';
     let qaTimer = 0;
     let qaSoon = () => {};
+    let qaNow = () => {};
     /** What the kept layouts depend on, for the panel over Melaton Mobile: its settings and look, the kit, the screen. */
     function onScreenSig() {
         const qa = window.wmQuickAccess;
@@ -2049,7 +2064,7 @@
         /** wmShell barsStatusPush: the popups' layouts written down again (the roles on the bar now). */
         pushLayouts: (roles, partial) => pushLayouts(roles || [], !!partial),
         /** Quick Access's settings changed (Settings' commit): its layouts written down again, on screen too. */
-        quickAccessChanged: () => qaSoon(),
+        quickAccessChanged: () => qaNow(),
         kitSignature: () => kitSignature(),
         /** Settings changed what the kit holds (Soft Keys' menus, #1067): the app hears the new signature now and asks for it. */
         kitChanged: () => { try { if (window.AndroidBars && typeof window.AndroidBars.kitSig === 'function') window.AndroidBars.kitSig(kitSignature()); } catch (_) { /* older app */ } },
@@ -2125,9 +2140,19 @@
         // Written down here too, on screen, when what they depend on changed: one synchronous pass (nothing of it is
         // painted), never while one of this page's own popups is up (it would be closed), on the changes only
         qaSoon = () => { if (!qaTimer) qaTimer = setTimeout(pushOnScreen, 400); };
+        // Settings' commit (also a save that switches Quick Access off, or changes "Show as" with it off: the Output panel's
+        // layouts follow the same settings, StaticForge #1405): no wait. On screen the pass runs now; behind a program the
+        // layouts are written down now too (pushLayouts, the hidden path), and the roles that no longer exist (qatab, quickaccess*
+        // with Quick Access off) are not in the set: the app replaces its kept layouts by the set it gets
+        qaNow = () => {
+            clearTimeout(qaTimer);
+            qaTimer = 0;
+            if (document.visibilityState === 'visible') { pushOnScreen(); return; }
+            try { pushLayouts(barRoles(), false); } catch (err) { console.warn('[melatonBars] quick access layouts', err); }
+        };
         window.addEventListener('resize', qaSoon, { signal: appScopeSignal });
         document.addEventListener('visibilitychange', qaSoon, { signal: appScopeSignal });
-        if (appScopeSignal) appScopeSignal.addEventListener('abort', () => { clearTimeout(qaTimer); qaSoon = () => {}; }, { once: true });
+        if (appScopeSignal) appScopeSignal.addEventListener('abort', () => { clearTimeout(qaTimer); qaSoon = () => {}; qaNow = () => {}; }, { once: true });
         // (after boot has settled: zero waits for the start, cursor rule installed-boot-zero-wait)
         qaTimer = setTimeout(pushOnScreen, 4000);
     }
