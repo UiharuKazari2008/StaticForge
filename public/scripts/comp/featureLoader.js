@@ -379,8 +379,9 @@ const FEATURE_MANIFEST = {
         hot: true,
         depends: ['window_capture'],
         // Quick Access's tab and panel (#1017) are written down with the bars' popups
-        styles: ['css/themes/vista/quickaccess.css'],
-        scripts: ['scripts/comp/melatonBars.js', 'scripts/comp/wmQuickAccess.js']
+        // the Output panel (#1327): our own output selector, laid out by wmOutputPanel for the app to draw
+        styles: ['css/themes/vista/quickaccess.css', 'css/wm-output-panel.css'],
+        scripts: ['scripts/comp/melatonBars.js', 'scripts/comp/wmOutputPanel.js', 'scripts/comp/wmQuickAccess.js']
     },
     // Windows Flip 3D, Vista's Win+Tab (keyboardShortcuts.js, taskbarSettings.js Quick Launch)
     flip3d: {
