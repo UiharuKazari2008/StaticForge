@@ -6,7 +6,10 @@
  * isDestructiveOperation() and CRITICAL_MESSAGE_TYPES still own enforcement today.
  */
 
-const registeredPackets = new Map(); // type -> { handler, meta }
+const registeredPackets = new Map(); // type -> { handler, meta, file }
+
+// Which handler file is registering right now (set by withRegistrar), so a hot reload can drop and redo one file's types (#1293).
+let currentRegistrar = '';
 
 function normalizeMeta(meta) {
     const m = meta && typeof meta === 'object' ? meta : {};
@@ -33,7 +36,7 @@ function registerWsPacket(type, handler, meta = {}) {
 
     const normalizedMeta = normalizeMeta(meta);
     const existing = registeredPackets.get(packetType);
-    if (existing) {
+    if (existing && !(currentRegistrar && existing.file === currentRegistrar)) {
         console.warn(
             '[wsPacketRegistry] duplicate registration for type',
             packetType,
@@ -46,8 +49,43 @@ function registerWsPacket(type, handler, meta = {}) {
 
     registeredPackets.set(packetType, {
         handler,
-        meta: normalizedMeta
+        meta: normalizedMeta,
+        file: currentRegistrar
     });
+}
+
+/** Runs fn synchronously; every registerWsPacket during it records `file` as the registrar. */
+function withRegistrar(file, fn) {
+    const prev = currentRegistrar;
+    currentRegistrar = String(file || '');
+    try {
+        return fn();
+    } finally {
+        currentRegistrar = prev;
+    }
+}
+
+/** Removes every type registered by `file`; returns those types. */
+function unregisterByFile(file) {
+    const f = String(file || '');
+    const removed = [];
+    if (!f) return removed;
+    for (const [type, entry] of Array.from(registeredPackets.entries())) {
+        if (entry.file === f) {
+            registeredPackets.delete(type);
+            removed.push(type);
+        }
+    }
+    return removed;
+}
+
+/** The types `file` registered. */
+function typesOfFile(file) {
+    const f = String(file || '');
+    if (!f) return [];
+    const out = [];
+    for (const [type, entry] of registeredPackets) if (entry.file === f) out.push(type);
+    return out;
 }
 
 function getWsPacketHandler(type) {
@@ -70,5 +108,8 @@ module.exports = {
     registerWsPacket,
     getWsPacketHandler,
     getWsPacketEntry,
-    listRegisteredPackets
+    listRegisteredPackets,
+    withRegistrar,
+    unregisterByFile,
+    typesOfFile
 };

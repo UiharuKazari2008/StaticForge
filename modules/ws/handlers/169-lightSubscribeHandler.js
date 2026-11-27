@@ -25,3 +25,5 @@ function registerPackets() {
 }
 
 module.exports = { registerPackets };
+
+require('../../hotReload').mark(module);

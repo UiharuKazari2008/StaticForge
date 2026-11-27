@@ -61,3 +61,5 @@ function registerPackets(handlersCtx) {
 module.exports = {
     registerPackets
 };
+
+require('../../hotReload').mark(module);

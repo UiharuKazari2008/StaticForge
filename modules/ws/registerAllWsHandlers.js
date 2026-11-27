@@ -9,6 +9,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const wsPacketRegistry = require('./wsPacketRegistry');
+const hotReload = require('../hotReload');
 
 const HANDLERS_DIR = path.join(__dirname, 'handlers');
 
@@ -22,11 +24,41 @@ function shouldSkipHandlerFile(filename) {
     return /Impl\.js$/.test(filename);
 }
 
+// The ctx registerAllWsHandlers got: a hot-reloaded handler file registers again with it (#1293).
+let savedCtx = null;
+
+function isReloadableHandlerFile(abs) {
+    const p = path.normalize(String(abs || ''));
+    return path.dirname(p) === HANDLERS_DIR && p.endsWith('.js') && !shouldSkipHandlerFile(path.basename(p));
+}
+
+/** Drops the file's packet types and registers them again from `exports`; throws when that cannot be done. */
+function reregister(abs, exports) {
+    if (!exports || typeof exports.registerPackets !== 'function') {
+        throw new Error(path.basename(abs) + ' has no registerPackets export');
+    }
+    if (!savedCtx) throw new Error('registerAllWsHandlers has not run yet');
+    wsPacketRegistry.unregisterByFile(abs);
+    wsPacketRegistry.withRegistrar(abs, () => exports.registerPackets(savedCtx));
+}
+
+hotReload.addLoader({
+    name: 'ws-handlers',
+    match: isReloadableHandlerFile,
+    afterAccept(abs, exports) {
+        reregister(abs, exports);
+    },
+    rollback(abs, exports) {
+        reregister(abs, exports);
+    }
+});
+
 function registerAllWsHandlers(handlersCtx) {
     if (!handlersCtx) {
         console.warn('[registerAllWsHandlers] missing handlersCtx');
         return;
     }
+    savedCtx = handlersCtx;
 
     let files;
     try {
@@ -58,7 +90,7 @@ function registerAllWsHandlers(handlersCtx) {
         }
 
         if (typeof mod.registerPackets === 'function') {
-            mod.registerPackets(handlersCtx);
+            wsPacketRegistry.withRegistrar(fullPath, () => mod.registerPackets(handlersCtx));
         } else {
             console.warn('[registerAllWsHandlers]', file, 'missing registerPackets export');
         }
