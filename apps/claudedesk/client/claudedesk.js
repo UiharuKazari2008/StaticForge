@@ -3990,11 +3990,14 @@
         u.loading = false;
         repaint();
     }
-    const dconDraft = (u) => u.draft || { timeoutSec: String(u.data.timeoutSec), onTimeout: u.data.onTimeout, readOnly: u.data.readOnly, devices: (u.data.consentDevices || []).slice() };
-    /** The phones the household can pick: the two it owns, every device the queue knows, and any id already listed. */
+    // a phone that can ask: never the A53 test phone, the test browsers or the emulators - none of them ever asks (#1305;
+    // Yukimi, Nov 27 2026: "I should never see any consent prompts for the A53"; the server's needsConsent ignores them too)
+    const dconAsks = (id) => !!id && id !== 'a53' && !/^(ruiko-chrome|headless-chrome)$/.test(id) && !/^(aemu-|aemu$|emulator)/.test(id);
+    const dconDraft = (u) => u.draft || { timeoutSec: String(u.data.timeoutSec), onTimeout: u.data.onTimeout, readOnly: u.data.readOnly, devices: (u.data.consentDevices || []).filter(dconAsks) };
+    /** The phones the household can pick: her own (the Fold), every other real phone the queue knows, and any id already listed. */
     function dconPhones(st) {
-        const ids = ['a53', 'fold'].concat(devData().map((d) => d.device), st.devices || []);
-        return ids.filter((id, i) => id && ids.indexOf(id) === i).map((id) => { const d = devData().find((x) => x.device === id); return { id, label: d && d.label && d.label !== id ? `${d.label} (${id})` : id }; });
+        const ids = ['fold'].concat(devData().map((d) => d.device), st.devices || []);
+        return ids.filter((id, i) => id && ids.indexOf(id) === i && dconAsks(id)).map((id) => { const d = devData().find((x) => x.device === id); return { id, label: d && d.label && d.label !== id ? `${d.label} (${id})` : id }; });
     }
     function consentPage(c) {
         const u = dconUi();
