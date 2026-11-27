@@ -33,7 +33,10 @@ All are synchronous and answer at once. Do not call them from a timer, a render 
 Common fields: `{ "url", "title", "subtitle", "audioOnly" }`.
 
 - **Videos:** a live relay (`/api/videos/live/…`) or a YouTube video through the server (`/api/videos/yt/…`, sent with
-  `vod: true`; its place comes from `at()`).
+  `vod: true`; its place comes from `at()`). These addresses outlive a server restart and the relay's idle end
+  (#1365): the server keeps a record of each session and starts it again when its playlist is asked for (503 with
+  `Retry-After` until it is ready, a YouTube video at the same place), so the player only has to try the same address
+  again. A stream the viewer stopped, or whose quality was changed, answers 404 for good.
 - **XM Radio:** `/api/xmradio/{live,eco,track,channel}/…`, with `radio: { channels: [{ id, title }], index, q, back }`
   so next / previous work from the media notification with the page asleep.
 - **XM Radio Monitor** (a recording in progress): `/api/xmradio/rec/<rid>/index.m3u8`, no `radio` list, so no next /
