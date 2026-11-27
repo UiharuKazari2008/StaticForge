@@ -1,0 +1,19 @@
+boot_completed (epoch ms): 1795811499371   user unlocked (uc_finish_user_unlocked): 1795811500925
+app "Start proc": 1795811502932  (3.56 s after boot_completed)
+"holder token linked": 1795811514807
+  1795811514.807  2933  3698 I MelatonBars: holder token linked (#1331), started over local ADB
+first sample with the row held: 1795811514847; held in every later sample: True (359 samples after it)
+ROW HELD after boot_completed: 15.48 s (sampler), 15.44 s (token linked)
+ROW HELD after user unlocked:  13.92 s (sampler)
+ROW HELD after app Start proc: 11.91 s (sampler), 11.88 s (token linked)
+sampler: 411 samples, first -14.4 s and last +186.1 s from boot_completed, period median 383 ms, longest 2928 ms
+samples with a shizuku_server: 0 of 411
+app pids seen: ['2933']; holder pids seen: ['4265']
+lines with a failed hold / fallback / ADB failure / crash: 0
+timeline (seconds from boot_completed, a line per change):
+    -14.43 s  recs=0 what1=- lockrec=- net=- holder=- app=- shz=- adbd=539
+     -9.06 s  recs=0 what1=- lockrec=- net=0x0 holder=- app=- shz=- adbd=539
+     +5.76 s  recs=0 what1=- lockrec=- net=0x0 holder=- app=2933 shz=- adbd=539
+    +14.00 s  recs=0 what1=- lockrec=0x00930000:0x00000001, net=0x930000 holder=- app=2933 shz=- adbd=539
+    +14.73 s  recs=0 what1=- lockrec=0x00930000:0x00000001, net=0x930000 holder=4265 app=2933 shz=- adbd=539
+    +15.48 s  recs=1 what1=0x03600000, lockrec=0x00930000:0x00000001, net=0x3f30000 holder=4265 app=2933 shz=- adbd=539

@@ -1,0 +1,55 @@
+zero = 1795810338513 ("Start proc" of the new app process, device ms); kill at -1.13 s
+
+## sampler: 430 samples -6.5 .. +126.9 s, period median 295 ms, longest 704 ms
+     -6.50 s 1795810332018  recs=1 what1=0x03600000, lockrec=- net=0x3600000 holder=24293 app=22909 shz=- adbd=6430 l5599=reject
+     -1.14 s 1795810337376  recs=1 what1=0x03600000, lockrec=- net=0x3600000 holder=- app=- shz=- adbd=6430 l5599=reject
+     -0.64 s 1795810337872  recs=0 what1=- lockrec=- net=0x0 holder=- app=- shz=- adbd=6430 l5599=reject
+     +0.44 s 1795810338955  recs=0 what1=- lockrec=- net=0x0 holder=- app=8038 shz=- adbd=6430 l5599=reject
+     +5.27 s 1795810343781  recs=0 what1=- lockrec=- net=0x0 holder=- app=8038 shz=- adbd=6430 l5599=none
+     +5.72 s 1795810344230  recs=0 what1=- lockrec=- net=0x0 holder=- app=8038 shz=- adbd=6430 l5599=forward
+    +12.94 s 1795810351456  recs=0 what1=- lockrec=- net=0x0 holder=9544 app=8038 shz=- adbd=6430 l5599=forward
+    +13.37 s 1795810351885  recs=1 what1=0x03600000, lockrec=- net=0x3600000 holder=9544 app=8038 shz=- adbd=6430 l5599=forward
+samples after the kill with the row NOT held: 34
+  first -0.64 s, last +12.94 s
+  first sample held again after the last open one: +13.37 s; held in every sample from then to the end (378 samples)
+samples with any shizuku_server: 0
+
+## TCP connections to 127.0.0.1:5599: 34 in all; 21 with no bytes from the client (connect probes), 13 where the client sent bytes
+     -2.18 s 1795810336337  clientport 51896  client->port 31 B, port->client 0 B, lasted 0.01 s RST-from-server
+     +0.41 s 1795810338921  clientport 35666  client->port 31 B, port->client 0 B, lasted 0.01 s RST-from-server
+     +1.07 s 1795810339581  clientport 35694  client->port 31 B, port->client 0 B, lasted 0.01 s RST-from-server
+     +1.14 s 1795810339655  clientport 35738  client->port 31 B, port->client 0 B, lasted 0.03 s RST-from-server
+     +1.52 s 1795810340034  clientport 35776  client->port 31 B, port->client 0 B, lasted 0.02 s RST-from-server
+     +3.42 s 1795810341935  clientport 35816  client->port 31 B, port->client 0 B, lasted 0.02 s RST-from-server
+     +3.47 s 1795810341985  clientport 35848  client->port 31 B, port->client 0 B, lasted 0.02 s RST-from-server
+     +5.89 s 1795810344399  clientport 35850  client->port 31 B, port->client 439 B, lasted 1.01 s 
+    +12.74 s 1795810351254  clientport 44882  client->port 795 B, port->client 541 B, lasted 0.73 s RST-from-client
+    +30.51 s 1795810369025  clientport 60508  client->port 31 B, port->client 439 B, lasted 1.01 s 
+    +60.19 s 1795810398700  clientport 48444  client->port 31 B, port->client 439 B, lasted 1.01 s 
+    +90.45 s 1795810428962  clientport 40020  client->port 31 B, port->client 439 B, lasted 0.99 s 
+   +125.28 s 1795810463797  clientport 41686  client->port 31 B, port->client 439 B, lasted 1.01 s 
+  bare probes at (s): +0.40 +1.03 +1.03 +1.05 +1.09 +1.09 +1.13 +1.13 +1.14 +1.19 +1.22 +1.52 +3.41 +3.42 +3.44 +3.44 +3.46 +3.47 +12.70 +12.71 +12.74
+
+## SystemUI disable-flag lines and MelatonBars / LocalAdb lines from the kill on
+     -1.11 s SystemUI disable1=0x0000000 disable2=0  row GIVEN BACK
+     +0.00 s pid 671 I ActivityManager: Start proc 8038:jp.net.seventhreeseven.dreamscape/u0a235 for bound-service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+     +0.34 s pid 671 I ActivityManager: Start proc 8115:com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0/u0i33 for bound-service {jp.net.seventhreeseven.dreamscape/org.chromium.android_webview.js_sandbox.service.JsSandboxService0}
+     +1.03 s pid 8038 I MelatonBars: early hold at process start (#1371)
+     +1.04 s pid 8038 I MelatonBars: show: on=true fits=false status=true bar=true top=false ext=true tray=false give=false
+     +1.12 s pid 8038 W MelatonBars: shell failed: cmd statusbar send-disable-flag statusbar-expansion quick-settings system-icons clock notification-icons
+     +1.24 s pid 8038 W MelatonBars: shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~riC7g4bxbn9PzfpVT7_CvA==/jp.net.seventhreeseven.dreamscape-yrFoxlhdlfmZCglmrJp8oQ==/base.apk' setsid app_process /system/bin --nice-name=melaton_navblank jp.net.seventhreeseven.dreamscape.NavBlankShell ho
+     +1.36 s pid 8038 I MelatonBars: ime probe live: visible=false bottom=0
+     +1.52 s pid 8038 I MelatonBars: show: on=true fits=false status=false bar=true top=false ext=true tray=false give=false
+     +1.56 s pid 8038 W MelatonBars: Android's row could not be emptied (no shell route, or the hold failed), #1 in a row [shizuku: not usable; adb: The phone's ADB connection dropped: Connection reset]
+     +1.58 s pid 8038 I MelatonBars: show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+     +3.46 s pid 8038 I LocalAdb: pass (fresh): listening=true shizukuRunning=false shizukuUsable=false wifi=true wireless=true restore=false last=-
+    +12.73 s pid 8038 I MelatonBars: translucent check for com.google.android.apps.nexuslauncher: no screenshot (3), solid bar
+    +13.18 s SystemUI disable1=0x3600000 disable2=0  row HELD
+    +13.18 s pid 8038 I MelatonBars: holder token linked (#1331), started over local ADB
+    +13.27 s pid 8038 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+    +13.49 s pid 8038 I MelatonBars: translucent check (soft keys): strip spread 65.3 (picture above 14), against below 74.0 (runs on under 10)
+    +13.49 s pid 8038 I MelatonBars: translucent bar for com.google.android.apps.nexuslauncher: true
+    +13.49 s pid 8038 I MelatonBars: translucent soft key bar for com.google.android.apps.nexuslauncher: true
+    +13.93 s pid 8038 I MelatonBars: holder start answered over local ADB [shizuku: not usable; adb: ok]
+    +15.29 s pid 8038 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+    +15.37 s pid 8038 I MelatonBars: translucent check (soft keys): strip spread 65.3 (picture above 14), against below 74.0 (runs on under 10)

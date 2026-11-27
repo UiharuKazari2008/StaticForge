@@ -1,0 +1,10 @@
+         1795811220.036   885   996 I ActivityManager: Start proc 5141:moe.shizuku.privileged.api/u0a234 for broadcast {moe.shizuku.privileged.api/moe.shizuku.manager.receiver.BootCompleteReceiver}
+         1795811221.331   536   536 I adbd    : adbd service requested 'shell:/data/app/~~9Tm4ytqeS1K9x2zONvs2cA==/moe.shizuku.privileged.api-WNKs9f1HiEY3fdx2ownylA==/lib/x86_64/libshizuku.so --apk=/data/app/~~9Tm4ytqeS1K9x2zONvs2cA==/moe.shizuku.privileged.ap
+         1795811221.382  5322  5322 D Shizuku : start_server
+         1795811221.539  5324  5324 I shizuku_server: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+         1795811221.600   536   536 I adbd    : adbd service requested 'shell:/data/app/~~9Tm4ytqeS1K9x2zONvs2cA==/moe.shizuku.privileged.api-WNKs9f1HiEY3fdx2ownylA==/lib/x86_64/libshizuku.so --apk=/data/app/~~9Tm4ytqeS1K9x2zONvs2cA==/moe.shizuku.privileged.ap
+         1795811221.663  5356  5356 D Shizuku : start_server
+         1795811221.830  5361  5361 I shizuku_server: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+         1795811222.352  5361  5361 I Service : send binder to user app moe.shizuku.privileged.api in user 0
+         1795811222.389  5361  5406 I Service : send binder to user app moe.shizuku.privileged.api in user 0
+         1795811222.736   885   996 I ActivityManager: Start proc 5458:com.android.devicediagnostics/u0a122 for broadcast {com.android.devicediagnostics/com.android.devicediagnostics.BootCompleteReceiver}

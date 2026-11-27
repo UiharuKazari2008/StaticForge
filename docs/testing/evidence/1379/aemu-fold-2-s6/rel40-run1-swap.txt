@@ -1,0 +1,13 @@
+1795810336207 before: app=22909 holder=24293 shizuku_server=[] listener=reject pid=7156
+1795810336318 probe port=5599 bytes=0 first4hex= (CNXN=434e584e) banner=[] err=[]  (while the reject listener is up)
+1795810337384 kill -9 app 22909 and holder 24293 (one command)
+1795810338733 new app pid seen: 8038
+1795810338513 Start proc of 8038 (ActivityManager log time)
+1795810343533 swap: failed holds logged so far: 1, 5042 ms after Start proc
+1795810344015 forwarder up pid=8780, 5622 ms after Start proc; failed holds logged now: 1
+1795810344360 probe port=5599 bytes=439 first4hex=434e584e (CNXN=434e584e) banner=[device::ro.product.name=sdk_gphone64_x86_64;ro.p] err=[]  (through the forwarder, right after the swap)
+1795810369010 +30s probe port=5599 bytes=439 first4hex=434e584e (CNXN=434e584e) banner=[device::ro.product.name=sdk_gphone64_x86_64;ro.p] err=[] app=8038 holder=[9544] shizuku_server=[]
+1795810398682 +60s probe port=5599 bytes=439 first4hex=434e584e (CNXN=434e584e) banner=[device::ro.product.name=sdk_gphone64_x86_64;ro.p] err=[] app=8038 holder=[9544] shizuku_server=[]
+1795810428883 +90s probe port=5599 bytes=439 first4hex=434e584e (CNXN=434e584e) banner=[device::ro.product.name=sdk_gphone64_x86_64;ro.p] err=[] app=8038 holder=[9544] shizuku_server=[]
+1795810463781 +125s probe port=5599 bytes=439 first4hex=434e584e (CNXN=434e584e) banner=[device::ro.product.name=sdk_gphone64_x86_64;ro.p] err=[] app=8038 holder=[9544] shizuku_server=[]
+1795810464895 run done

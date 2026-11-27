@@ -1,0 +1,63 @@
+zero = 1795810511000 ("Start proc" of the new app process, device ms); kill at -1.07 s
+
+## sampler: 378 samples -6.4 .. +127.2 s, period median 355 ms, longest 647 ms
+     -6.45 s 1795810504555  recs=1 what1=0x03600000, lockrec=- net=0x3600000 holder=9544 app=8038 shz=- adbd=6430 l5599=reject
+     -1.12 s 1795810509884  recs=1 what1=0x03600000, lockrec=- net=0x3600000 holder=- app=- shz=- adbd=6430 l5599=reject
+     -0.68 s 1795810510320  recs=0 what1=- lockrec=- net=0x0 holder=- app=- shz=- adbd=6430 l5599=reject
+     +0.67 s 1795810511666  recs=0 what1=- lockrec=- net=0x0 holder=- app=24634 shz=- adbd=6430 l5599=reject
+     +5.37 s 1795810516366  recs=0 what1=- lockrec=- net=0x0 holder=- app=24634 shz=- adbd=6430 l5599=forward
+    +10.59 s 1795810521590  recs=1 what1=0x03600000, lockrec=- net=0x3600000 holder=25982 app=24634 shz=- adbd=6430 l5599=forward
+samples after the kill with the row NOT held: 30
+  first -0.68 s, last +10.25 s
+  first sample held again after the last open one: +10.59 s; held in every sample from then to the end (329 samples)
+samples with any shizuku_server: 0
+
+## TCP connections to 127.0.0.1:5599: 50 in all; 34 with no bytes from the client (connect probes), 16 where the client sent bytes
+     -2.13 s 1795810508872  clientport 34484  client->port 31 B, port->client 0 B, lasted 0.01 s RST-from-server
+     +0.61 s 1795810511606  clientport 53148  client->port 31 B, port->client 0 B, lasted 0.01 s RST-from-server
+     +1.92 s 1795810512916  clientport 53168  client->port 31 B, port->client 0 B, lasted 0.01 s RST-from-server
+     +2.05 s 1795810513047  clientport 53232  client->port 31 B, port->client 0 B, lasted 0.02 s RST-from-server
+     +2.52 s 1795810513525  clientport 53264  client->port 31 B, port->client 0 B, lasted 0.03 s RST-from-server
+     +3.50 s 1795810514496  clientport 53292  client->port 31 B, port->client 0 B, lasted 0.03 s RST-from-server
+     +3.62 s 1795810514621  clientport 53332  client->port 31 B, port->client 0 B, lasted 0.02 s RST-from-server
+     +3.66 s 1795810514660  clientport 53388  client->port 31 B, port->client 0 B, lasted 0.02 s RST-from-server
+     +5.11 s 1795810516107  clientport 53430  client->port 31 B, port->client 0 B, lasted 0.01 s RST-from-server
+     +5.14 s 1795810516145  clientport 53498  client->port 31 B, port->client 0 B, lasted 0.01 s RST-from-server
+     +5.62 s 1795810516618  clientport 53506  client->port 31 B, port->client 439 B, lasted 1.00 s 
+    +10.17 s 1795810521170  clientport 55968  client->port 795 B, port->client 541 B, lasted 0.36 s RST-from-client
+    +30.53 s 1795810541529  clientport 50840  client->port 31 B, port->client 439 B, lasted 1.01 s 
+    +60.12 s 1795810571124  clientport 35744  client->port 31 B, port->client 439 B, lasted 1.01 s 
+    +90.47 s 1795810601473  clientport 60382  client->port 31 B, port->client 439 B, lasted 1.00 s 
+   +125.44 s 1795810636439  clientport 38612  client->port 31 B, port->client 439 B, lasted 1.00 s 
+  bare probes at (s): +0.60 +1.89 +1.89 +1.91 +1.94 +1.96 +1.98 +1.98 +2.01 +2.13 +2.14 +2.51 +3.48 +3.48 +3.49 +3.53 +3.53 +3.62 +3.62 +3.65 +3.65 +3.65 +3.66 +5.09 +5.09 +5.10 +5.12 +5.13 +5.14 +5.14 +5.14 +10.16 +10.16 +10.17
+
+## SystemUI disable-flag lines and MelatonBars / LocalAdb lines from the kill on
+     -1.05 s SystemUI disable1=0x0000000 disable2=0  row GIVEN BACK
+     +0.00 s pid 671 I ActivityManager: Start proc 24634:jp.net.seventhreeseven.dreamscape/u0a235 for bound-service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+     +0.53 s pid 671 I ActivityManager: Start proc 24713:com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0/u0i34 for bound-service {jp.net.seventhreeseven.dreamscape/org.chromium.android_webview.js_sandbox.service.JsSandboxService0}
+     +1.89 s pid 24634 I MelatonBars: early hold at process start (#1371)
+     +1.90 s pid 24634 I MelatonBars: show: on=true fits=false status=true bar=true top=false ext=true tray=false give=false
+     +1.96 s pid 24634 W MelatonBars: shell failed: cmd statusbar send-disable-flag statusbar-expansion quick-settings system-icons clock notification-icons
+     +2.15 s pid 24634 W MelatonBars: shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~riC7g4bxbn9PzfpVT7_CvA==/jp.net.seventhreeseven.dreamscape-yrFoxlhdlfmZCglmrJp8oQ==/base.apk' setsid app_process /system/bin --nice-name=melaton_navblank jp.net.seventhreeseven.dreamscape.NavBlankShell ho
+     +2.28 s pid 24634 I MelatonBars: ime probe live: visible=false bottom=0
+     +2.51 s pid 24634 I MelatonBars: show: on=true fits=false status=false bar=true top=false ext=true tray=false give=false
+     +2.51 s pid 24634 W MelatonBars: Android's row could not be emptied (no shell route, or the hold failed), #1 in a row [shizuku: not usable; adb: The phone's ADB connection dropped: Connection reset]
+     +2.51 s pid 24634 I MelatonBars: show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+     +3.54 s pid 24634 W MelatonBars: shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~riC7g4bxbn9PzfpVT7_CvA==/jp.net.seventhreeseven.dreamscape-yrFoxlhdlfmZCglmrJp8oQ==/base.apk' setsid app_process /system/bin --nice-name=melaton_navblank jp.net.seventhreeseven.dreamscape.NavBlankShell ho
+     +3.59 s pid 24634 W MelatonBars: Android's row could not be emptied (no shell route, or the hold failed), #2 in a row [shizuku: not usable; adb: The phone's ADB connection dropped: Connection reset]
+     +3.65 s pid 24634 I LocalAdb: pass (fresh): listening=true shizukuRunning=false shizukuUsable=false wifi=true wireless=true restore=false last=-
+     +3.91 s pid 24634 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+     +4.06 s pid 24634 I MelatonBars: translucent check (soft keys): strip spread 65.3 (picture above 14), against below 74.0 (runs on under 10)
+     +4.06 s pid 24634 I MelatonBars: translucent bar for com.google.android.apps.nexuslauncher: true
+     +4.06 s pid 24634 I MelatonBars: translucent soft key bar for com.google.android.apps.nexuslauncher: true
+     +4.68 s pid 24634 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+     +4.80 s pid 24634 I MelatonBars: translucent check (soft keys): strip spread 65.3 (picture above 14), against below 74.0 (runs on under 10)
+     +5.13 s pid 24634 W MelatonBars: shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~riC7g4bxbn9PzfpVT7_CvA==/jp.net.seventhreeseven.dreamscape-yrFoxlhdlfmZCglmrJp8oQ==/base.apk' setsid app_process /system/bin --nice-name=melaton_navblank jp.net.seventhreeseven.dreamscape.NavBlankShell ho
+     +5.13 s pid 24634 W MelatonBars: Android's row could not be emptied (no shell route, or the hold failed), #3 in a row [shizuku: not usable; adb: The phone's ADB connection dropped: Connection reset]
+     +5.16 s pid 24634 W MelatonBars: shell failed: cmd overlay list
+     +5.16 s pid 24634 W MelatonBars: gesture fallback: no shell route to read the overlay list
+    +10.42 s SystemUI disable1=0x3600000 disable2=0  row HELD
+    +10.43 s pid 24634 I MelatonBars: holder token linked (#1331), started over local ADB
+    +10.53 s pid 24634 I MelatonBars: holder start answered over local ADB [shizuku: not usable; adb: ok]
+    +12.31 s pid 24634 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+    +12.40 s pid 24634 I MelatonBars: translucent check (soft keys): strip spread 65.3 (picture above 14), against below 74.0 (runs on under 10)

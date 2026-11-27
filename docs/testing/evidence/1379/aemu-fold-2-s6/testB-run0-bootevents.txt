@@ -1,0 +1,6 @@
+         1795811180.779   472   472 I boot_progress_start: 10532
+         1795811193.089   885   989 I boot_progress_enable_screen: 22843
+         1795811196.859   885   989 I wm_boot_animation_done: 26613
+         1795811197.267   885   989 I uc_finish_user_boot: 0
+         1795811198.822   885   995 I uc_finish_user_unlocked: 0
+         1795811199.161   885   995 I uc_finish_user_unlocked_completed: 0

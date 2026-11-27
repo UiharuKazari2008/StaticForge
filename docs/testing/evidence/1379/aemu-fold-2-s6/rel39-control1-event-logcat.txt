@@ -1,0 +1,20 @@
+         1795810929.156  9489  9710 W MelatonBars: shell failed: cmd statusbar send-disable-flag statusbar-expansion quick-settings system-icons clock notification-icons
+         1795810929.240  9489  9710 W MelatonBars: shell failed: old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~Kx8ReENzT-gNhl0VbVGzQw==/jp.net.seventhreeseven.dreamscape-GkS6QQTVu9OZUYC2CMgQlA==/base.apk' setsid app_process /system/bin --nice-name=melaton_navblank jp.net.seventhreeseven.dreamscape.NavBlankShell hold jp.net.seventhreeseven.dreamscape >/data/local/tmp/melaton_navblank.out 2>&1 </dev/null &); for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26; do sleep 0.3; grep -q OK /data/local/tmp/melaton_navblank.out 2>/dev/null && { kill $old 2>/dev/null; exit 0; }; grep -q ERR /data/local/tmp/melaton_navblank.out 2>/dev/null && exit 1; done; exit 1
+         1795810929.251  9489  9489 W MelatonBars: Android's row could not be emptied (no shell route, or the hold failed), #13 in a row
+         1795810929.390  9489  9710 W MelatonBars: shell failed: cmd overlay list
+         1795810929.393  9489  9489 W MelatonBars: gesture fallback: no shell route to read the overlay list
+         1795810930.080  9489  9629 I LocalAdb: pass (again): listening=true shizukuRunning=false shizukuUsable=false wifi=true wireless=true restore=false last=-
+         1795810930.198  9489  9631 I ApkInstall: swept leftover install copies in /data/local/tmp via local adb
+         1795810930.887  9489  9489 I MelatonBars: translucent check: strip spread 0.7 (picture above 14), against below 4.3 (runs on under 10)
+         1795810931.007  9489  9489 I MelatonBars: translucent check (soft keys): strip spread 65.4 (picture above 14), against below 71.0 (runs on under 10)
+         1795810931.358 23130 23130 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+         1795810931.367 23130 23130 I AndroidRuntime: Using default boot image
+         1795810931.367 23130 23130 I AndroidRuntime: Leaving lock profiling enabled
+         1795810931.606 23130 23130 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795810931.715  9489  9563 I MelatonBars: holder token linked (#1331)
+         1795810931.716   948  1176 D ShadeStatusBarComponentsInteractor#disableFlagsInteractor: newValue: DisableFlagsModel(disable1=66256896, disable2=1, animate=true)
+         1795810932.492  9489  9489 I MelatonBars: translucent check: strip spread 0.7 (picture above 14), against below 4.3 (runs on under 10)
+         1795810932.704  9489  9489 I MelatonBars: translucent check (soft keys): strip spread 0.0 (picture above 14), against below 46.5 (runs on under 10)
+         1795810932.706  9489  9489 I MelatonBars: translucent soft key bar for com.google.android.apps.nexuslauncher: false
+         1795810934.479  9489  9489 I MelatonBars: translucent check: strip spread 0.7 (picture above 14), against below 4.3 (runs on under 10)
+         1795810934.715  9489  9489 I MelatonBars: translucent check (soft keys): strip spread 0.0 (picture above 14), against below 57.3 (runs on under 10)
