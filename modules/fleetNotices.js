@@ -95,32 +95,32 @@ function workChanged(row, prevState, at) {
     // only what she started: top level, not a Supervisor / agent follow-up; the parts of a planner or a group never notify (their parent's settle does)
     if (row.parent_id || (row.joined_into !== null && row.joined_into !== undefined) || row.source === 'agent') return did;
     const when = Number(at) || Date.now();
-    const title = clip(row.title || `Work item ${id}`, 90);
+    // short on purpose (Yukimi, Nov 26 2026: "EXTREMELY wordy" - a done notice says WHAT is done and nothing else; the item's report stays in Fleet)
+    const title = clip(row.title || `Work item ${id}`, 70);
     if (state === 'done') {
         if (!on('workDone')) return did;
         inbox.publish({
             user: USER, app: APP, id: doneId(id), cls: CLS, alert: true,
             digest: `done:${id}:${row.ended_at || when}`,
-            title: `Fleet: ${title} is done`, text: clip(row.message, 300),
+            title: `${title} is done`, text: '',
             data: { app: APP, kind: 'work-done', workId: id }, stack: STACK_DONE, ttlMs: LIFE.done
         });
         return 'done';
     }
     if (attn) {
         if (!on('workAttention')) return did;
-        let text;
-        if (state === 'failed') text = clip(row.message, 300);
-        else {
+        let text = ''; // stopped: the title says it, the reason is in Fleet
+        if (state !== 'failed') {
             const qs = savedQuestions(row);
             // an AskUserQuestion is already a request form that notifies her (notificationInboxSources.onQuestion): no second notice
             if (qs.some((q) => q.ask)) return did;
             const open = qs.filter((q) => !String(q.answer || '').trim());
-            text = clip((open.length ? open : qs).map((q) => q.question).join('; ') || row.message, 300);
+            text = clip(((open.length ? open : qs)[0] || {}).question || '', 140); // the first question only
         }
         inbox.publish({
             user: USER, app: APP, id: attnId(id), cls: CLS, alert: true,
             digest: `attn:${id}:${state}:${(state === 'failed' && row.ended_at) || when}`,
-            title: state === 'failed' ? `Fleet: ${title} stopped` : `Fleet: ${title} needs you`, text,
+            title: state === 'failed' ? `${title} stopped` : `${title} needs you`, text,
             data: { app: APP, kind: 'work-attention', workId: id, state }, stack: STACK_ATTN, ttlMs: LIFE.attention
         });
         return 'attention';
@@ -206,7 +206,7 @@ function accountLogin(acct, gr) {
         user: USER, app: APP, id: acctId(a), cls: CLS, alert: true,
         digest: `login:${a.id || a.index}:${a.since || 0}`,
         title: `Claude account ${name} needs signing in`,
-        text: `Its login expired, so Fleet moves work to the other accounts until you sign in again: Fleet > Accounts > ${name} > Sign In Again.`,
+        text: 'Sign in again: Fleet > Accounts.',
         data: { app: APP, kind: 'account-login', accountIndex: a.index, page: 'accounts' }, ttlMs: LIFE.login
     });
 }
