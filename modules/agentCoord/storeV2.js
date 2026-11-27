@@ -91,6 +91,14 @@ const lockName = (agentId) => `.agent-${String(agentId).replace(/[^A-Za-z0-9_.-]
 
 module.exports = function storeV2(core) {
     const { open, now, text, getAgent, resolveAgent, listAgents, liveClaims, post, repoOf, pidAlive } = core;
+    // a claim (path, folder or glob) over a repo file: the core's own matcher when it hands one over
+    const overlapsPath = (claim, file) => {
+        if (typeof core.overlaps === 'function') { try { return core.overlaps(claim, file); } catch (_) { /* fall through */ } }
+        const c = String(claim || '').replace(/\/+$/, '');
+        if (c === file) return true;
+        const base = c.replace(/\/?\*.*$/, '');
+        return !!base && file.startsWith(`${base}/`);
+    };
 
     // ------------------------------------------------------------ busy locks (.agent-<id>)
 
@@ -431,11 +439,11 @@ module.exports = function storeV2(core) {
         if (out == null) { dirtyFiles.delete(a.id); return true; }
         try {
             const changed = out.split('\n').map((l) => l.slice(3).trim().replace(/^"|"$/g, '').split(' -> ').pop()).filter(Boolean);
-            if (!changed.length) { dirtyFiles.set(a.id, { at: now(), files: [] }); return false; }
+            if (!changed.length) { dirtyFiles.set(a.id, { at: now(), files: [], changed: [] }); return false; }
             try { scanSession(a.sessionId); } catch (_) { /* older rows only */ }
             const mine = open().prepare('SELECT path FROM edits WHERE session_id = ?').all(a.sessionId).map((r) => String(r.path));
             const own = changed.filter((c) => mine.some((m) => m === c || m.endsWith(`/${c}`) || c.endsWith(`/${m}`)));
-            dirtyFiles.set(a.id, { at: now(), files: own });
+            dirtyFiles.set(a.id, { at: now(), files: own, changed });
             return own.length > 0;
         } catch (_) { dirtyFiles.delete(a.id); return true; }
     }
@@ -503,7 +511,10 @@ module.exports = function storeV2(core) {
                 // whose work was committed): nothing of theirs uncommitted that this build ships or loads = ready
                 ownDirty(a);
                 const df = dirtyFiles.get(a.id);
-                if (df && now() - df.at < 120000 && !df.files.some((f) => relevantTo(b.target, f))) { state = 'auto'; note = df.files.length ? `uncommitted, but not shipped by ${b.target}: ${df.files.slice(0, 3).join(', ')}` : 'nothing uncommitted'; }
+                // its claims count too: a file under its claim that is uncommitted and shipped (edited by one of its parts, whose
+                // session is not its own) keeps it pending - gate 185 read "clear" over four half-done client files (Nov 26 2026)
+                const claimedDirty = df && Array.isArray(df.changed) ? df.changed.filter((f) => relevantTo(b.target, f) && held.some((c) => overlapsPath(c.path, f))) : [];
+                if (df && now() - df.at < 120000 && !claimedDirty.length && !df.files.some((f) => relevantTo(b.target, f))) { state = 'auto'; note = df.files.length ? `uncommitted, but not shipped by ${b.target}: ${df.files.slice(0, 3).join(', ')}` : 'nothing uncommitted'; }
             }
             return { agentId: a.id, name: a.name, kind: a.kind, task: a.task, busy, claims: held.map((c) => c.path), state, note, answeredAt: v ? v.at : null };
         });
