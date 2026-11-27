@@ -29,7 +29,8 @@
  *             leave windows out on the phone's clock; the server has no timer for them)
  *   notices   { waiting, list }   other notices waiting, new or put away with Hide (seen) (the notification glyph); list:
  *                                 every waiting notice, mail / texts / Messenger / Director too, the newest thirty
- *                                 { id, title, text, cls, kind, at } - the app draws the "..." holder from it (#1056)
+ *                                 { id, title, text, cls, kind, at, exp, count?, expFirst? } - the app draws the "..." holder from it
+ *                                 (#1056); exp: epoch ms the notice ends (a stack: its latest item's), 0 none (#1291)
  *   prefs     { mailAll, smsAll, popupApps } Messaging's "icon for any unread" choices (the page's, kept on the server);
  *                                 popupApps: the registered Android apps whose notifications pop up as WM boxes
  *   chime     { mode, hourSound, halfSound, strike }  the hour / half-hour chime's choices (modules/hourChime.js, #1108);
@@ -120,6 +121,13 @@ function statusOrder() {
 }
 const holderKindOf = (n) => safe(() => { const t = statusOrder(); return t && typeof t.holderKind === 'function' ? t.holderKind(n) : ''; }, '') || '';
 
+// a stack's earliest item expiry, when it differs from the row's own (the latest item's): { expFirst } or nothing
+function stackFirstExpiry(n) {
+    const items = n.data && Array.isArray(n.data.items) ? n.data.items : [];
+    const first = items.reduce((m, it) => { const e = Number(it && it.expiresAt) || 0; return e && (!m || e < m) ? e : m; }, 0);
+    return first && first !== (Number(n.expiresAt) || 0) ? { expFirst: first } : {};
+}
+
 function inboxCounts(user = 'admin') {
     // waiting: not seen yet, or seen (put away with Hide) within the last day - an old notice already looked at is
     // nothing to show, and the "..." never stands for nothing (Yukimi, Nov 18: Nov 15's fuel reminders kept it up)
@@ -148,8 +156,13 @@ function inboxCounts(user = 'admin') {
         noticeList: rows.slice(0, 30)
             // kind: its holder picture's (#1056; the app's tray draws icons[kind], else its class's)
             .map((n) => ({ id: n.id, title: n.title || '', text: String(n.text || '').slice(0, 300), cls: n.cls || '', kind: holderKindOf(n), at: n.sortAt || n.createdAt || 0,
-                // a stack (stack:mail, #1098): how many it holds, the holder's badge
-                ...(n.data && n.data.stack ? { count: Number(n.data.count) || 1 } : {}) }))
+                // exp: when the notice ends (its expiresAt; a stack's is its latest item's; 0 none): the app drops it from its own
+                // mirror of this list at that time, with no round trip (#1291). The server rebuilds the list at that moment too
+                // (notificationInbox's expiry timer), so a phone that is online gets the true list at once
+                exp: Number(n.expiresAt) || 0,
+                // a stack (stack:mail, #1098): how many it holds, the holder's badge; expFirst: when its earliest item ends (its
+                // count and lines are stale from then on, until the server's rebuilt list arrives)
+                ...(n.data && n.data.stack ? { count: Number(n.data.count) || 1, ...stackFirstExpiry(n) } : {}) }))
     };
 }
 

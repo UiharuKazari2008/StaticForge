@@ -179,6 +179,58 @@ const mailRows = () => inbox.list('admin').filter((n) => /^(mail|dmail|stack):/.
     eq(inbox.pendingForPhones('admin').map((n) => n.id), ['old-sms', 'stack:mail'], 'pendingForPhones: the same order');
     eq(inbox.orderNotices([{ id: 'a', cls: 'mail', createdAt: now - 3600000 }, { id: 'b', cls: 'sms', createdAt: now - 7200000 }, { id: 'c', cls: 'x', createdAt: now - 60000 }], now).map((n) => n.id), ['c', 'b', 'a'], 'orderNotices on raw rows');
 
+    // 11. items have their own life (#1291): an item past its expiresAt leaves the stack, the row lives with the latest one
+    inbox._test.reset(); inbox._test.setNow(() => now); inbox.bind(gr);
+    const D = 24 * 3600000;
+    now += 1000; src.onMailEvent(mail(41)); // ttl 7 days
+    const m0 = now;
+    now += 5 * D; src.onMailEvent(mail(42));
+    eq(stackRow().expiresAt, now + 7 * D, 'the row ends with the latest item');
+    eq(stackRow().data.items.map((x) => x.expiresAt), [now + 7 * D, m0 + 7 * D], 'each item carries its own expiresAt');
+    now = m0 + 8 * D; // the first mail is a week old
+    eq(stackRow().data.items.map((x) => x.id), ['mail:acc1:INBOX:42'], 'it is no longer shown');
+    eq(stackRow().data.count, 1); eq(stackRow().title, 'New E-mail Message');
+    toPhones.length = 0;
+    inbox.prune('admin');
+    eq(toPhones.map((n) => [n.id, n.alert]), [['stack:mail', false]], 'prune re-announces it silently');
+    now = m0 + 13 * D;
+    clearedOnPhones.length = 0;
+    inbox.prune('admin');
+    ok(!stackRow(), 'the last item ended: the row goes'); ok(clearedOnPhones.includes('stack:mail'));
+
+    // 12. Fleet's stacks: titles, lines (no "Fleet: " prefix), a digest keeps an event dealt with, news about an item sounds once
+    inbox._test.reset(); inbox._test.setNow(() => now); inbox.bind(gr);
+    const fl = (n, extra) => Object.assign({ app: 'claudedesk', cls: 'fleet', stack: 'fleetdone', id: `fleet-work:${n}:done`, title: `Fleet: W${n} is done`, text: 'x', alert: true, digest: `done:${n}:1`, data: { app: 'claudedesk', kind: 'work-done', workId: n }, ttlMs: 4 * 3600000 }, extra);
+    toPhones.length = 0;
+    inbox.publish(fl(1)); inbox.publish(fl(2));
+    let fr = inbox.list('admin').find((n) => n.id === 'stack:fleetdone');
+    eq(fr.title, '2 Fleet items are done'); eq(fr.text, 'W2 is done\nW1 is done');
+    eq(toPhones.map((n) => n.alert), [true, false], 'one sound');
+    inbox.publish(fl(1, { stack: 'fleetattn', id: 'fleet-work:1:attention', title: 'Fleet: W1 needs you' }));
+    eq(inbox.list('admin').find((n) => n.id === 'stack:fleetattn').title, 'Fleet: W1 needs you', 'one item reads as itself');
+    // the same item with a changed digest and alert: on top, sounds once; the same digest again: in place, silent
+    toPhones.length = 0;
+    inbox.publish(fl(1, { digest: 'done:1:2' }));
+    fr = inbox.list('admin').find((n) => n.id === 'stack:fleetdone');
+    eq(fr.data.items.map((x) => x.data.workId), [1, 2], 'news about an item brings it to the top'); eq(fr.data.count, 2);
+    eq(toPhones.map((n) => n.alert), [true]);
+    toPhones.length = 0;
+    inbox.publish(fl(1, { digest: 'done:1:2' }));
+    eq(toPhones.map((n) => n.alert), [false], 'the same event again is silent');
+    // dismissed: the same event does not come back; returning: true or a new event does; an item without a digest always joins
+    ok(inbox.clear('admin', 'fleet-work:2:done', 'page'));
+    toPhones.length = 0;
+    inbox.publish(fl(2));
+    eq(inbox.list('admin').find((n) => n.id === 'stack:fleetdone').data.count, 1, 'a dismissed event stays dismissed'); eq(toPhones.length, 0);
+    inbox.publish(fl(2, { returning: true }));
+    eq(inbox.list('admin').find((n) => n.id === 'stack:fleetdone').data.count, 2, 'returning brings it back');
+    inbox.clear('admin', 'fleet-work:2:done', 'page');
+    inbox.publish(fl(2, { digest: 'done:2:2' }));
+    eq(inbox.list('admin').find((n) => n.id === 'stack:fleetdone').data.count, 2, 'another event of the item joins');
+    inbox.clear('admin', 'fleet-work:2:done', 'page');
+    inbox.publish(fl(2, { digest: undefined }));
+    eq(inbox.list('admin').find((n) => n.id === 'stack:fleetdone').data.count, 2, 'an item without a digest has no mark to honour');
+
     console.log(`test-notification-inbox-stack: ${passed} checks passed`);
     process.exit(0); // phoneStatus.touch leaves a debounce timer open
 })().catch((e) => { console.error(e); process.exit(1); });

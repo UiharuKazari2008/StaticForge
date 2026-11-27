@@ -41,7 +41,7 @@ function bind(globalResources) {
             pruneTimer = setInterval(() => { prune('admin'); prune('dev_admin'); }, 10 * 60 * 1000);
             if (pruneTimer.unref) pruneTimer.unref();
         }
-        if (!process.env.NOTIFICATION_INBOX_NO_TIMER) setImmediate(tapPhoneHellos);
+        if (!process.env.NOTIFICATION_INBOX_NO_TIMER) { setImmediate(tapPhoneHellos); setImmediate(armExpiry); }
     }
     return module.exports;
 }
@@ -123,18 +123,21 @@ function userOf(info) {
 }
 
 function rowOut(r) {
+    // a stack's items each have their own life (Yozora #1291): one past its expiresAt is not shown, whether or not prune has
+    // taken it out of the stored row yet (title, text, count and the row's expiry are those of the items still alive)
+    const v = r.id && r.id.startsWith('stack:') ? expiredItemsView(r, nowFn()) : null;
     return {
         id: r.id,
         app: r.app,
         cls: r.cls,
-        title: r.title,
-        text: r.text,
-        actions: safeJson(r.actions, []),
-        data: safeJson(r.data, {}),
+        title: v ? v.title : r.title,
+        text: v ? v.text : r.text,
+        actions: v ? v.actions : safeJson(r.actions, []),
+        data: v ? v.data : safeJson(r.data, {}),
         createdAt: r.createdAt,
         // when its state last moved (#890 round 5 W2): the page's inbox_list since is the newest it holds
         updatedAt: r.updatedAt || r.createdAt,
-        expiresAt: r.expiresAt || null,
+        expiresAt: (v ? v.expiresAt : r.expiresAt) || null,
         state: r.state,
         actedBy: r.actedBy || null,
         // the order's two inputs (#1098): when it last became news (a stack: its newest item) and how much it matters
@@ -286,23 +289,39 @@ function announce(user, row, alert, quiet, pushOff) {
 }
 
 // ---- stacks (#1098): a flood of mail is one notice ----
-// A producer passes stack: '<key>' (mail: IMAP and Dovecote). The notices of a stack are ITEMS of one row, id stack:<key>:
-//   data { stack, count, lastAt, items: [ { id, title, text, at, data, actions } ] } (items newest first, 50 at most; count
-//   stays the true count), title "n New E-mail Messages", text one line per item (6 at most, then "+ k more").
+// A producer passes stack: '<key>' (mail: IMAP and Dovecote; Fleet: fleetdone and fleetattn, #1291). The notices of a stack are
+// ITEMS of one row, id stack:<key>:
+//   data { stack, count, lastAt, items: [ { id, title, text, at, expiresAt, data, actions, digest? } ] } (items newest first, 50 at
+//   most; count stays the true count), title "n New E-mail Messages", text one line per item (6 at most, then "+ k more").
 //   - no live row (none, or acted / cleared): a new stack of this one item, new, LOUD.
 //   - a live row (new / seen): the item joins on top, SILENT (the phones re-post the same id in place, so one Android
 //     notification); createdAt is kept, updatedAt and data.lastAt move. The same item id again replaces it where it is.
-//   - clearing an item (clear / clearWhere of an id that is an item, not a row) takes it out; the last one clears the row.
-//   - ack of stack:<key> is the whole stack; the next item starts a new loud one.
+//     One exception: an item with the producer's own digest (the identity of its event, #1194) that comes again with alert: true
+//     and ANOTHER digest is news about that item (a "needs you" that turned "stopped"): it moves to the top and sounds once.
+//   - every item has its OWN life (#1291): item.expiresAt is its publish's ttlMs / expiresAt (null: none). prune() takes an item
+//     past it out (silently re-announcing the stack; the last one clears the row), rowOut / list() never show it, and the row's
+//     expiresAt is the LATEST item's (null when one item never expires), so a flood cannot keep the oldest item alive.
+//   - clearing an item (clear / clearWhere of an id that is an item, not a row) takes it out; the last one clears the row. An item
+//     that carried a digest leaves a mark of the same id (a cleared single row) so the same event published again stays dealt
+//     with, as a single notice does (#1194); a changed digest, or returning: true, brings it back.
+//   - ack of stack:<key> is the whole stack (its items are marked the same way); the next item starts a new loud one.
 const STACK_ITEMS_MAX = 50;
 const STACK_LINES_MAX = 6;
-const STACK_TITLES = { mail: (n) => `${n} New E-mail Messages` };
 const firstLine = (s) => String(s || '').split('\n').find((l) => l.trim()) || '';
+// Fleet's own titles read "Fleet: <work item> is done": the stack's title says Fleet, its lines do not repeat it
+const unfleet = (it) => String(it.title || '').replace(/^Fleet:\s*/i, '') || firstLine(it.text);
+const STACK_TITLES = {
+    mail: (n) => `${n} New E-mail Messages`,
+    fleetdone: (n) => `${n} Fleet items are done`,
+    fleetattn: (n) => `${n} Fleet items need you`,
+};
 const STACK_LINES = {
     mail: (it) => {
         const d = it.data || {};
         return d.from || d.subject ? `${d.from || '?'} - ${d.subject || ''}`.trim() : firstLine(it.text) || it.title;
     },
+    fleetdone: unfleet,
+    fleetattn: unfleet,
 };
 const stackLine = (key, it) => (STACK_LINES[key] ? STACK_LINES[key](it) : firstLine(it.text) || it.title);
 
@@ -315,36 +334,92 @@ function stackView(key, items, count) {
     return { title: title.slice(0, 200), text: lines.join('\n').slice(0, 2000) };
 }
 
+// An item's expiry: its own; an item stored before items had a life (no key at all) lives as long as its row did.
+const itemExpiry = (it, rowExp) => ((it && it.expiresAt !== undefined ? it.expiresAt : rowExp) || null);
+const itemDead = (it, rowExp, now) => { const e = itemExpiry(it, rowExp); return !!e && e <= now; };
+/** The row's expiry: the latest item's; null (none) when any item never expires. */
+function rowExpiry(items, rowExp) {
+    let max = 0;
+    for (const it of items) {
+        const e = itemExpiry(it, rowExp);
+        if (!e) return null;
+        if (e > max) max = e;
+    }
+    return max || null;
+}
+
+/** A stack row as it reads at `now` with its expired items left out ({ title, text, actions, expiresAt, data }), or null when none is. */
+function expiredItemsView(r, now) {
+    if (typeof r.data !== 'string' || r.data.indexOf('"expiresAt"') < 0) return null;
+    const d = safeJson(r.data, {});
+    const held = Array.isArray(d.items) ? d.items : [];
+    const keep = held.filter((x) => !(x && itemDead(x, r.expiresAt, now)));
+    if (keep.length === held.length || !keep.length) return null;
+    const count = Math.max(keep.length, (Number(d.count) || held.length) - (held.length - keep.length));
+    const view = stackView(String(d.stack || r.id.slice(6)), keep, count);
+    return { title: view.title, text: view.text, actions: keep[0].actions || [], expiresAt: rowExpiry(keep, r.expiresAt), data: Object.assign({}, d, { count, items: keep }) };
+}
+
 function publishStacked(user, notice, o) {
     const { id, title, cls, quiet, now, expiresAt, stackKey } = o;
     const sid = `stack:${stackKey}`;
+    // the producer's own identity of the event (notice.digest), as the single path hashes it: what makes it a different event (#1194)
+    const digest = typeof notice.digest === 'string' && notice.digest !== '' ? sha1(`c|${notice.digest}`) : '';
     const item = {
         id,
         title: title.slice(0, 200),
         text: String(notice.text || '').slice(0, 1000),
         at: now,
+        expiresAt: expiresAt || null,
         data: notice.data && typeof notice.data === 'object' ? notice.data : {},
         actions: Array.isArray(notice.actions) ? notice.actions.slice(0, 6) : [],
     };
+    if (digest) item.digest = digest;
+    // a row of the item's own id: the mark of an item dealt with, or a single notice from before its producer stacked
+    let own = null;
+    try { own = noticeRow(user, id); } catch (_e) { own = null; }
+    if (own) {
+        const dealt = own.state === 'acted' || own.state === 'cleared';
+        if (dealt && digest && own.digest === digest && notice.returning !== true && !(own.expiresAt && own.expiresAt <= now)) {
+            // she dealt with this very event: it stays dealt with, no sound, no push, no join (#1194)
+            return Object.assign(rowOut(own), { alert: false });
+        }
+        try { database().prepare('DELETE FROM notices WHERE user = ? AND id = ?').run(user, id); } catch (_e) { /* the item joins anyway */ }
+        if (!dealt) {
+            phonesCleared(user, id);
+            broadcast(user, { type: 'inbox_updated', data: { reason: 'ack', id, state: 'cleared', device: null } });
+        }
+    }
     let cur = null;
     try { cur = noticeRow(user, sid); } catch (_e) { cur = null; }
     const live = !!cur && (cur.state === 'new' || cur.state === 'seen') && !(cur.expiresAt && cur.expiresAt <= now);
     let items = [item];
     let count = 1;
     let lastAt = now;
+    let loud = !live;
     if (live) {
         const d = safeJson(cur.data, {});
-        const held = Array.isArray(d.items) ? d.items : [];
-        const at = held.findIndex((x) => x && x.id === id);
-        count = Number(d.count) || held.length;
+        const stored = Array.isArray(d.items) ? d.items : [];
+        // items past their own expiry are not part of the stack any more (the row's expiry is only the latest one's)
+        const held = stored.filter((x) => x && !itemDead(x, cur.expiresAt, now)).map((x) => (x.expiresAt === undefined ? Object.assign({}, x, { expiresAt: cur.expiresAt || null }) : x));
+        const at = held.findIndex((x) => x.id === id);
+        count = Math.max(0, (Number(d.count) || stored.length) - (stored.length - held.length));
         if (at >= 0) {
-            // the same item again: replaced where it is (it keeps its place and its time), nothing joins
-            items = held.slice();
-            items[at] = Object.assign({}, item, { at: held[at].at || now });
-            lastAt = Number(d.lastAt) || now;
+            if (digest && notice.alert === true && held[at].digest !== digest) {
+                // the same item with news (another event): on top, sounds once
+                items = [item].concat(held.filter((_x, i) => i !== at));
+                lastAt = now;
+                loud = true;
+            } else {
+                // the same item again: replaced where it is (it keeps its place and its time), nothing joins
+                items = held.slice();
+                items[at] = Object.assign({}, item, { at: held[at].at || now });
+                lastAt = Number(d.lastAt) || now;
+            }
         } else {
             items = [item].concat(held).slice(0, STACK_ITEMS_MAX);
             count += 1;
+            lastAt = now;
         }
     }
     const view = stackView(stackKey, items, count);
@@ -358,8 +433,8 @@ function publishStacked(user, notice, o) {
         actions: JSON.stringify(items[0].actions),
         data: JSON.stringify({ stack: stackKey, count, lastAt, items }),
         createdAt: now,
-        expiresAt: live ? Math.max(Number(cur.expiresAt) || 0, Number(expiresAt) || 0) || null : expiresAt,
-        state: live ? cur.state : (quiet ? 'seen' : 'new'),
+        expiresAt: rowExpiry(items, live ? cur.expiresAt : null),
+        state: live && !loud ? cur.state : (quiet ? 'seen' : 'new'),
         actedBy: null,
         updatedAt: now,
         digest: sha1(`stack|${stackKey}|${count}|${id}`),
@@ -367,7 +442,7 @@ function publishStacked(user, notice, o) {
     };
     if (!storeRow(row)) return null;
     prune(user);
-    return announce(user, row, !live, quiet, user === 'test' && notice.push === false);
+    return announce(user, row, loud, quiet, user === 'test' && notice.push === false);
 }
 
 function storeRow(row) {
@@ -389,11 +464,44 @@ function storeRow(row) {
     }
 }
 
+/** The mark an item leaves when it is dealt with (acted / cleared): a cleared single row of its id, carrying its digest and expiry. */
+function markItemDealtWith(user, r, it, state, device) {
+    if (!it || !it.digest || !it.id) return;
+    const now = nowFn();
+    storeRow({
+        user, id: String(it.id), app: r.app, cls: r.cls, title: String(it.title || '').slice(0, 200), text: String(it.text || '').slice(0, 1000),
+        actions: JSON.stringify(Array.isArray(it.actions) ? it.actions : []), data: JSON.stringify(it.data && typeof it.data === 'object' ? it.data : {}),
+        createdAt: Number(it.at) || now, expiresAt: itemExpiry(it, r.expiresAt), state, actedBy: device ? String(device).slice(0, 60) : null, updatedAt: now,
+        digest: it.digest, fresh: 1,
+    });
+}
+
+/**
+ * A live stack row r loses some of its items (gone of them, `keep` stays): the last one clears the row, otherwise the row is
+ * rewritten (title, text, count, actions, expiry = the latest remaining item's) and announced SILENTLY (pages and phones are told
+ * the way a silent update is).
+ */
+function stackRewrite(user, r, d, keep, gone, device) {
+    const stored = Array.isArray(d.items) ? d.items : [];
+    const count = Math.max(0, (Number(d.count) || stored.length) - gone);
+    if (!keep.length || !count) { ack(user, r.id, 'cleared', device); return; }
+    const key = String(d.stack || r.id.slice(6));
+    const view = stackView(key, keep, count);
+    const now = nowFn();
+    try {
+        database().prepare('UPDATE notices SET title = ?, text = ?, actions = ?, data = ?, expiresAt = ?, updatedAt = ? WHERE user = ? AND id = ?')
+            .run(view.title, view.text, JSON.stringify(keep[0].actions || []), JSON.stringify({ stack: key, count, lastAt: d.lastAt, items: keep }), rowExpiry(keep, r.expiresAt), now, user, r.id);
+    } catch (e) { console.warn(`[notify-inbox] stack update failed: ${e.message}`); return; }
+    const fresh = noticeRow(user, r.id);
+    if (fresh) announce(user, fresh, false, !!fresh.cls && quietClasses(user).has(fresh.cls), false);
+}
+
 /**
  * Take items out of the live stacks of a user: match(itemId) says which; fragment is a cheap pre-filter of the stored JSON.
+ * state ('cleared', or 'acted'): what became of them; an item with a digest is marked so the same event stays dealt with.
  * Silent (the page and the phones are told the way a silent update is). @returns how many items went
  */
-function stackRemove(user, match, fragment, device) {
+function stackRemove(user, match, fragment, device, state = 'cleared') {
     let rows = [];
     try {
         rows = database().prepare("SELECT * FROM notices WHERE user = ? AND substr(id, 1, 6) = 'stack:' AND state NOT IN ('acted', 'cleared') AND instr(data, ?) > 0").all(user, fragment);
@@ -406,19 +514,29 @@ function stackRemove(user, match, fragment, device) {
         const gone = held.length - keep.length;
         if (!gone) continue;
         removed += gone;
-        const count = Math.max(0, (Number(d.count) || held.length) - gone);
-        if (!keep.length || !count) { ack(user, r.id, 'cleared', device); continue; }
-        const key = String(d.stack || r.id.slice(6));
-        const view = stackView(key, keep, count);
-        const now = nowFn();
-        try {
-            database().prepare('UPDATE notices SET title = ?, text = ?, actions = ?, data = ?, updatedAt = ? WHERE user = ? AND id = ?')
-                .run(view.title, view.text, JSON.stringify(keep[0].actions || []), JSON.stringify({ stack: key, count, lastAt: d.lastAt, items: keep }), now, user, r.id);
-        } catch (e) { console.warn(`[notify-inbox] stack update failed: ${e.message}`); continue; }
-        const fresh = noticeRow(user, r.id);
-        if (fresh) announce(user, fresh, false, !!fresh.cls && quietClasses(user).has(fresh.cls), false);
+        held.filter((x) => x && match(String(x.id))).forEach((x) => markItemDealtWith(user, r, x, state, device));
+        stackRewrite(user, r, d, keep, gone, device);
     }
     return removed;
+}
+
+/** Items of live stacks past their own expiry go (prune's step; silent re-announce, the last one clears the row). @returns how many */
+function stackExpire(user, now) {
+    let rows = [];
+    try {
+        rows = database().prepare("SELECT * FROM notices WHERE user = ? AND substr(id, 1, 6) = 'stack:' AND state NOT IN ('acted', 'cleared') AND (expiresAt IS NULL OR expiresAt > ?) AND instr(data, '\"expiresAt\"') > 0").all(user, now);
+    } catch (_e) { return 0; }
+    let n = 0;
+    for (const r of rows) {
+        const d = safeJson(r.data, {});
+        const held = Array.isArray(d.items) ? d.items : [];
+        const keep = held.filter((x) => !(x && itemDead(x, r.expiresAt, now)));
+        const gone = held.length - keep.length;
+        if (!gone) continue;
+        n += gone;
+        stackRewrite(user, r, d, keep, gone, 'server');
+    }
+    return n;
 }
 
 // A class that is worse news than another: moving up it is material even when the text digest is the same (the weather
@@ -494,7 +612,7 @@ function ack(user, id, state, device) {
     const u = qu(user);
     if (!STATES.has(state) || state === 'new') return false;
     try {
-        const cur = database().prepare('SELECT state FROM notices WHERE user = ? AND id = ?').get(u, String(id || ''));
+        const cur = database().prepare('SELECT * FROM notices WHERE user = ? AND id = ?').get(u, String(id || ''));
         if (!cur) {
             // not a row: maybe an item of a live stack (a mail read elsewhere, #1098); acted / cleared takes it out of the stack
             const want = String(id || '');
@@ -503,7 +621,7 @@ function ack(user, id, state, device) {
             if (state === 'seen') {
                 try { return database().prepare("SELECT 1 FROM notices WHERE user = ? AND substr(id, 1, 6) = 'stack:' AND state NOT IN ('acted', 'cleared') AND instr(data, ?) > 0").get(u, frag) !== undefined; } catch (_e) { return false; }
             }
-            return stackRemove(u, (x) => x === want, frag, device) > 0;
+            return stackRemove(u, (x) => x === want, frag, device, state) > 0;
         }
         // never step back (acted/cleared outrank seen)
         const rank = { new: 0, seen: 1, acted: 2, cleared: 3 };
@@ -516,7 +634,14 @@ function ack(user, id, state, device) {
         if (next !== 'seen') broadcast(u, { type: 'inbox_updated', data: { reason: 'ack', id: String(id || ''), state: next, device: device || null } });
         if (next !== 'seen') { try { require('./phoneStatus').touch('inbox'); } catch (_e) { /* best effort (#908) */ } }
         // done with (dismissed, read or used anywhere): the phones take down their Android copy
-        if (rank[next] >= 2 && rank[cur.state] < 2) phonesCleared(u, String(id || ''));
+        if (rank[next] >= 2 && rank[cur.state] < 2) {
+            phonesCleared(u, String(id || ''));
+            // a whole stack dealt with: its items that carry an event digest stay dealt with (#1194, #1291)
+            if (cur.id.startsWith('stack:')) {
+                const items = safeJson(cur.data, {}).items;
+                (Array.isArray(items) ? items : []).forEach((x) => { if (x && !itemDead(x, cur.expiresAt, nowFn())) markItemDealtWith(u, cur, x, next, device); });
+            }
+        }
         return true;
     } catch (e) {
         console.warn(`[notify-inbox] ack failed: ${e.message}`);
@@ -609,24 +734,86 @@ function setQuiet(user, classes) {
     return list;
 }
 
-/** Drop a user's expired notices, and old or surplus ones (keep the newest MAX_PER_USER). */
+/**
+ * Drop a user's expired notices, and old or surplus ones (keep the newest MAX_PER_USER). An item of a live stack past its own
+ * expiry goes too (the stack is re-announced silently; Yozora #1291). What a page or a phone may still show is told about it
+ * (the phones take their Android copy down, the pages get inbox_updated, the phone status is rebuilt: touch('inbox') - the app's
+ * mirror of the waiting notices drops it), and the timer to the next expiry is set again.
+ */
 function prune(user) {
     const u = qu(user);
     const now = nowFn();
+    let taken = [];
+    try { stackExpire(u, now); } catch (e) { console.warn(`[notify-inbox] stack expiry failed: ${e.message}`); }
     try {
         const d = database();
         // expired ones a phone may still show: it takes them down
-        const gone = d
+        taken = d
             .prepare("SELECT id FROM notices WHERE user = ? AND state NOT IN ('acted', 'cleared') AND ((expiresAt IS NOT NULL AND expiresAt <= ?) OR createdAt < ?)")
             .all(u, now, now - KEEP_MS)
             .map((r) => r.id);
-        gone.forEach((id) => phonesCleared(u, id));
+        taken.forEach((id) => phonesCleared(u, id));
         d.prepare('DELETE FROM notices WHERE user = ? AND ((expiresAt IS NOT NULL AND expiresAt <= ?) OR createdAt < ?)').run(u, now, now - KEEP_MS);
         d.prepare('DELETE FROM notices WHERE user = ? AND id NOT IN (SELECT id FROM notices WHERE user = ? ORDER BY createdAt DESC LIMIT ?)').run(u, u, MAX_PER_USER);
         d.prepare('DELETE FROM deliveries WHERE user = ? AND (sentAt < ? OR id NOT IN (SELECT id FROM notices WHERE user = ?))').run(u, now - 2 * 24 * 60 * 60 * 1000, u);
     } catch (_e) {
         /* best effort */
     }
+    if (taken.length) {
+        // pages close their copy (the shape of a dismissal elsewhere; a sleeping page lists the inbox when it wakes and gets no expired row)
+        taken.forEach((id) => broadcast(u, { type: 'inbox_updated', data: { reason: 'ack', id, state: 'cleared', device: null, expired: true } }));
+        // the phones' status snapshot (and the app's mirror of it) is worked out again: once per prune that removed something
+        try { require('./phoneStatus').touch('inbox'); } catch (_e) { /* best effort */ }
+    }
+    armExpiry();
+}
+
+// ---- the next expiry: one timer, no polling (Yozora #1291) ----
+// Expired notices used to leave only when something else pruned (the 10 minute tick, the next publish), so a "done" past its life
+// stayed on the phone's status snapshot, the app's mirror and the pages until then. One setTimeout sleeps to the soonest expiry
+// of any live notice or stack item, prunes, and sets itself again from what is left; nothing is armed while nothing can expire.
+let expiryTimer = null;
+let expiryDue = 0;
+const EXPIRY_MIN_MS = 250; // never a spin
+const EXPIRY_MAX_MS = 6 * 60 * 60 * 1000; // a far expiry re-arms after a quiet wake (setTimeout's own limit is 24.8 days)
+const EXPIRY_SLACK_MS = 50;
+
+/** The soonest moment (epoch ms, after now) at which a live notice or a live stack's item expires, 0 when none will. */
+function nextExpiry() {
+    const now = nowFn();
+    let next = 0;
+    const take = (t) => { const n = Number(t); if (Number.isFinite(n) && n > now && (!next || n < next)) next = n; };
+    try {
+        const d = database();
+        const plain = d.prepare("SELECT MIN(expiresAt) AS t FROM notices WHERE state NOT IN ('acted', 'cleared') AND substr(id, 1, 6) != 'stack:' AND expiresAt > ?").get(now);
+        take(plain && plain.t);
+        for (const r of d.prepare("SELECT expiresAt, data FROM notices WHERE substr(id, 1, 6) = 'stack:' AND state NOT IN ('acted', 'cleared')").all()) {
+            take(r.expiresAt);
+            if (typeof r.data !== 'string' || r.data.indexOf('"expiresAt"') < 0) continue;
+            const items = safeJson(r.data, {}).items;
+            (Array.isArray(items) ? items : []).forEach((x) => { if (x && x.expiresAt) take(x.expiresAt); });
+        }
+    } catch (_e) { return 0; }
+    return next;
+}
+
+function armExpiry() {
+    if (!gr || process.env.NOTIFICATION_INBOX_NO_TIMER) return;
+    const next = nextExpiry();
+    if (!next) {
+        if (expiryTimer) { clearTimeout(expiryTimer); expiryTimer = null; expiryDue = 0; }
+        return;
+    }
+    if (expiryTimer && expiryDue === next) return;
+    if (expiryTimer) clearTimeout(expiryTimer);
+    expiryDue = next;
+    const wait = Math.min(EXPIRY_MAX_MS, Math.max(EXPIRY_MIN_MS, next - nowFn() + EXPIRY_SLACK_MS));
+    expiryTimer = setTimeout(() => {
+        expiryTimer = null;
+        expiryDue = 0;
+        for (const u of ['admin', 'dev_admin', 'test']) prune(u); // each prune sets the timer again
+    }, wait);
+    if (expiryTimer.unref) expiryTimer.unref();
 }
 
 // ---- phones that were away: their background link catches up on what it missed (#889) ----
@@ -873,7 +1060,12 @@ module.exports = {
         setNow: (fn) => {
             nowFn = fn || (() => Date.now());
         },
+        nextExpiry,
+        expiryDue: () => expiryDue,
         reset: () => {
+            if (expiryTimer) clearTimeout(expiryTimer);
+            expiryTimer = null;
+            expiryDue = 0;
             if (db) db.close();
             db = null;
             quietCache.clear();

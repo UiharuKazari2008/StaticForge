@@ -2,9 +2,11 @@
 'use strict';
 
 /**
- * Fleet notices (Yozora #1196): modules/fleetNotices.js and its hooks in agentSupervisor.setWork.
+ * Fleet notices (Yozora #1196, #1291): modules/fleetNotices.js and its hooks in agentSupervisor.setWork.
  * Exactly two work notices reach the phone (done, needs her); routine alerts tell the Supervisor first and reach the
- * phone only on their Fleet Manager switch.
+ * phone only on their Fleet Manager switch. Every notice is cls 'fleet'; the work notices STACK (stack:fleetdone and
+ * stack:fleetattn, one sound per stack, each item keeping its own id and workId) and have lives: done 4 h, needs you 12 h,
+ * account login 24 h, routine 4 h, each stack item its own.
  *
  *   NOTIFICATION_INBOX_DB=:memory: NOTIFICATION_INBOX_NO_TIMER=1 node scripts/test-fleet-notices.js
  */
@@ -22,6 +24,8 @@ process.env.AGENT_COORD_DB = path.join(tmp, 'state', 'coord.db');
 process.env.AGENT_SUPERVISOR_SOCKET = path.join(tmp, 'state', 'supervisor.sock');
 process.env.AGENT_SUPERVISOR_NO_REVIVE = '1';
 
+const activeSync = require('../modules/activeSync');
+const phoneStatus = require('../modules/phoneStatus');
 const inbox = require('../modules/notificationInbox');
 const sup = require('../modules/agentSupervisor');
 const fn = require('../modules/fleetNotices');
@@ -30,6 +34,13 @@ const store = require('../modules/agentCoord/store');
 require('../modules/fleetYozora')._setFetch(async () => ({ ok: true, status: 200, text: async () => '{}' }));
 
 const sent = [];
+// what the phones' background links get and what the phone status is told (nothing real is touched)
+const toPhones = [];
+const clearedOnPhones = [];
+const touches = [];
+activeSync.sendInboxNotice = (g, ws, notice) => { toPhones.push(notice); return 1; };
+activeSync.sendInboxCleared = (g, ws, n) => { clearedOnPhones.push(n.id); return 1; };
+phoneStatus.touch = (reason) => { touches.push(reason); };
 const cfg = { agentSupervisor: { enabled: true, engine: 'tokenrouter' } };
 const gr = {
     getConfig: () => cfg,
@@ -41,12 +52,17 @@ inbox.bind(gr);
 sup.bind(gr);
 
 const loud = () => sent.filter((m) => m && m.type === 'inbox_updated' && m.data.reason === 'new' && m.data.notice.alert).length;
-const mark = () => { sent.length = 0; };
-const live = (idPart) => inbox.list('admin').filter((n) => !idPart || n.id.includes(idPart));
+const mark = () => { sent.length = 0; toPhones.length = 0; clearedOnPhones.length = 0; touches.length = 0; };
+// the notices held, a stack row as its items (each with its row's app / cls / state): what one tap can open
+const flat = () => inbox.list('admin').flatMap((n) => (n.data && Array.isArray(n.data.items) && n.id.startsWith('stack:')
+    ? n.data.items.map((it) => Object.assign({}, it, { app: n.app, cls: n.cls, state: n.state, stack: n.id }))
+    : [n]));
+const live = (idPart) => flat().filter((n) => !idPart || n.id.includes(idPart));
+const stackRow = (key) => inbox.list('admin').find((n) => n.id === `stack:${key}`);
 
 let failed = 0;
 async function test(name, f) {
-    try { await f(); console.log(`ok   ${name}`); } catch (e) { failed += 1; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 6).join('\n     ')}`); }
+    try { inbox._test.reset(); mark(); await f(); console.log(`ok   ${name}`); } catch (e) { failed += 1; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 6).join('\n     ')}`); }
 }
 
 sup.getWork(0); // creates the tables in the temp coord DB
@@ -80,6 +96,8 @@ const qs = (list) => JSON.stringify(list);
         assert.strictEqual(n[0].text, 'All built and tested');
         assert.strictEqual(n[0].data.app, 'claudedesk');
         assert.strictEqual(n[0].data.workId, id);
+        assert.strictEqual(n[0].cls, 'fleet', 'its own class, not "Other notifications"');
+        assert.strictEqual(n[0].stack, 'stack:fleetdone');
         assert.strictEqual(loud(), 1);
     });
 
@@ -258,7 +276,7 @@ const qs = (list) => JSON.stringify(list);
         assert.strictEqual(managerNotes().length, before + 1);
         const n = live('fleet-maintenance:2026-11-26');
         assert.strictEqual(n.length, 1);
-        assert.strictEqual(n[0].cls, 'notification');
+        assert.strictEqual(n[0].cls, 'fleet');
         assert.strictEqual(n[0].app, 'claudedesk');
         assert.strictEqual(loud(), 1);
         assert.strictEqual(fn.routine('usage', flag('usage-flag:k2')).published, false, 'usage is still off');
@@ -322,6 +340,205 @@ const qs = (list) => JSON.stringify(list);
         assert.strictEqual(live('fleet-account:eeeeeeeeeeeeeeee').length, 0);
         delete cfg.agentSupervisor.notify;
         assert.strictEqual(fn.accountLoginOn(gr), true, 'a missing key means on');
+    });
+
+    // ---- stacking (#1291): the work notices of a kind are one row with a count, one sound ----
+    const H = 60 * 60 * 1000;
+    const finish = (n, at0 = 1000) => Array.from({ length: n }, (_x, i) => { const id = item(); sup.setWork(id, { state: 'done', ended_at: at0 + i, message: `built ${i}` }); return id; });
+    const workIds = (key) => stackRow(key).data.items.map((x) => x.data.workId);
+
+    await test('twenty items finishing in a row: ONE row with a count of 20, one loud publish, every item keeps its own id and workId', () => {
+        const ids = finish(20);
+        assert.deepStrictEqual(inbox.list('admin').map((n) => n.id), ['stack:fleetdone'], 'one row, not twenty');
+        const st = stackRow('fleetdone');
+        assert.strictEqual(st.cls, 'fleet');
+        assert.strictEqual(st.app, 'claudedesk');
+        assert.strictEqual(st.data.count, 20);
+        assert.strictEqual(st.title, '20 Fleet items are done');
+        const lines = st.text.split('\n');
+        assert.strictEqual(lines.length, 7);
+        assert.strictEqual(lines[0], `${row(ids[19]).title} is done`, 'a line is the item title without the Fleet: prefix, the newest first');
+        assert.strictEqual(lines[6], '+ 14 more');
+        assert.deepStrictEqual(workIds('fleetdone'), ids.slice().reverse(), 'newest first, each its own workId');
+        st.data.items.forEach((it) => {
+            assert.strictEqual(it.id, `fleet-work:${it.data.workId}:done`, 'the item keeps its own id');
+            assert.strictEqual(it.data.app, 'claudedesk');
+            assert.strictEqual(it.data.kind, 'work-done');
+            assert.match(it.title, /^Fleet: Item \d+ is done$/, 'and its own title');
+            assert.ok(it.expiresAt - it.at === 4 * H, 'and its own life: four hours');
+        });
+        // ONE sound: the row new was loud, the 19 joining items silent; one notification id on the phones
+        assert.strictEqual(loud(), 1, 'one loud publish');
+        assert.deepStrictEqual(toPhones.map((n) => n.alert), [true].concat(Array(19).fill(false)));
+        assert.deepStrictEqual([...new Set(toPhones.map((n) => n.id))], ['stack:fleetdone'], 'one Android notification, re-posted in place');
+        assert.strictEqual(sent.filter((m) => m.type === 'inbox_updated' && m.data.reason === 'new' && !m.data.notice.alert).length, 19);
+        assert.strictEqual(inbox.count('admin'), 1, 'the title bar counts one notice');
+    });
+
+    await test('an item whose notice comes down leaves the count: a state change, an item ended quietly; the last one clears the row', () => {
+        const [a, b, c, e] = finish(4);
+        assert.strictEqual(stackRow('fleetdone').data.count, 4);
+        mark();
+        sup.setWork(b, { state: 'running', message: 'sent back' });
+        assert.strictEqual(stackRow('fleetdone').data.count, 3, 'leaving done takes its entry out');
+        assert.ok(!workIds('fleetdone').includes(b));
+        assert.strictEqual(loud(), 0, 'silent');
+        assert.deepStrictEqual(toPhones.map((n) => [n.id, n.alert]), [['stack:fleetdone', false]], 'the phones re-post the stack in place');
+        assert.ok(touches.includes('inbox'), 'the phone status is told');
+        fn.workEndedQuietly(c);
+        assert.strictEqual(stackRow('fleetdone').data.count, 2, 'an item ended quietly leaves its done stack too');
+        assert.strictEqual(stackRow('fleetdone').title, '2 Fleet items are done');
+        // a "needs you" item ended quietly leaves the attention stack; its last one clears that row
+        const q = item();
+        sup.setWork(q, { state: 'input', message: 'm', input_questions: qs([{ question: 'Q?', answer: '' }]) });
+        assert.strictEqual(stackRow('fleetattn').data.count, 1);
+        mark();
+        fn.workEndedQuietly(q);
+        assert.strictEqual(stackRow('fleetattn'), undefined, 'the last item clears the row');
+        assert.ok(clearedOnPhones.includes('stack:fleetattn'), 'and the phones take their notification down');
+        sup.setWork(a, { state: 'running', message: 'again' });
+        assert.strictEqual(stackRow('fleetdone').data.count, 1);
+        assert.strictEqual(stackRow('fleetdone').title, `Fleet: ${row(e).title} is done`, 'one item left reads as itself again');
+        sup.setWork(e, { state: 'running', message: 'again' });
+        assert.strictEqual(stackRow('fleetdone'), undefined);
+        assert.ok(clearedOnPhones.includes('stack:fleetdone'));
+        assert.strictEqual(inbox.count('admin'), 0);
+    });
+
+    await test('"needs you" / "stopped" are their own stack: one sound each, the done stack is untouched', () => {
+        const d1 = item();
+        sup.setWork(d1, { state: 'done', ended_at: 1, message: 'ok' });
+        assert.strictEqual(loud(), 1);
+        const i1 = item();
+        const i2 = item();
+        sup.setWork(i1, { state: 'input', message: 'm', input_questions: qs([{ question: 'Which?', answer: '' }]) });
+        assert.strictEqual(loud(), 2, 'the attention stack is a new row: it sounds');
+        sup.setWork(i2, { state: 'failed', ended_at: 2, message: 'gave up' });
+        assert.strictEqual(loud(), 2, 'a second one joins silently');
+        const at = stackRow('fleetattn');
+        assert.strictEqual(at.data.count, 2);
+        assert.strictEqual(at.title, '2 Fleet items need you');
+        assert.deepStrictEqual(at.text.split('\n'), [`${row(i2).title} stopped`, `${row(i1).title} needs you`]);
+        assert.deepStrictEqual(at.data.items.map((x) => [x.data.workId, x.data.state, x.data.kind, x.id]),
+            [[i2, 'failed', 'work-attention', `fleet-work:${i2}:attention`], [i1, 'input', 'work-attention', `fleet-work:${i1}:attention`]]);
+        assert.ok(at.data.items.every((x) => x.expiresAt - x.at === 12 * H), 'twelve hours');
+        assert.strictEqual(stackRow('fleetdone').data.count, 1);
+        assert.strictEqual(stackRow('fleetdone').title, `Fleet: ${row(d1).title} is done`);
+        sup.setWork(item(), { state: 'done', ended_at: 3, message: 'ok' });
+        assert.strictEqual(loud(), 2, 'another done joins its stack silently');
+        assert.strictEqual(stackRow('fleetattn').data.count, 2);
+        assert.deepStrictEqual(inbox.list('admin').map((n) => n.id).sort(), ['stack:fleetattn', 'stack:fleetdone']);
+    });
+
+    await test('sweepRoutine reaches the items inside a stack row: a kind switched off leaves its stack, the other stack stays', () => {
+        finish(3);
+        const i1 = item();
+        sup.setWork(i1, { state: 'input', message: 'm', input_questions: qs([{ question: 'Q?', answer: '' }]) });
+        assert.strictEqual(stackRow('fleetdone').data.count, 3);
+        const keep = cfg.agentSupervisor;
+        cfg.agentSupervisor = Object.assign({}, keep, { notify: { workDone: false } });
+        try {
+            mark();
+            assert.strictEqual(fn.sweepRoutine(gr), 3, 'three items cleared (not the row)');
+            assert.strictEqual(stackRow('fleetdone'), undefined, 'the last item cleared the row');
+            assert.ok(clearedOnPhones.includes('stack:fleetdone'));
+            assert.strictEqual(stackRow('fleetattn').data.count, 1, 'workAttention is on: its stack stays');
+            cfg.agentSupervisor = Object.assign({}, keep, { notify: { workAttention: false } });
+            assert.strictEqual(fn.sweepRoutine(gr), 1);
+            assert.strictEqual(stackRow('fleetattn'), undefined);
+            assert.strictEqual(inbox.list('admin').length, 0);
+        } finally { cfg.agentSupervisor = keep; }
+    });
+
+    await test('a dismissed item stays dismissed, a swiped stack too: the same event published again neither joins nor sounds (#1194)', () => {
+        const [a, b] = finish(2, 5000);
+        inbox.clear('admin', `fleet-work:${a}:done`, 'page');
+        assert.strictEqual(stackRow('fleetdone').data.count, 1);
+        mark();
+        fn.workChanged(row(a), 'running', 1); // the same event again
+        assert.strictEqual(stackRow('fleetdone').data.count, 1, 'it does not rejoin');
+        assert.strictEqual(loud(), 0);
+        assert.strictEqual(toPhones.length, 0, 'and nothing is posted');
+        // the stack swiped away as a whole (the app's dismissal): every item of it is dealt with
+        inbox.ack('admin', 'stack:fleetdone', 'cleared', 'phone');
+        assert.strictEqual(stackRow('fleetdone'), undefined);
+        mark();
+        fn.workChanged(row(b), 'running', 2);
+        assert.strictEqual(stackRow('fleetdone'), undefined, 'a swiped stack does not come back for an event it already held');
+        assert.strictEqual(loud(), 0);
+        // a new event (ended again later) is news: a new stack, loud
+        sup.setWork(b, { state: 'running', message: 'again' });
+        sup.setWork(b, { state: 'done', ended_at: 9000, message: 'again' });
+        assert.strictEqual(stackRow('fleetdone').data.count, 1);
+        assert.strictEqual(loud(), 1);
+    });
+
+    await test('lives: done 4 h, needs you / stopped 12 h, account login 24 h, routine 4 h whatever its producer asked', async () => {
+        sup.setWork(item(), { state: 'done', ended_at: 1, message: 'ok' });
+        sup.setWork(item(), { state: 'failed', ended_at: 2, message: 'x' });
+        const d = stackRow('fleetdone');
+        assert.strictEqual(d.expiresAt - d.data.items[0].at, 4 * H);
+        const a = stackRow('fleetattn');
+        assert.strictEqual(a.expiresAt - a.data.items[0].at, 12 * H);
+        fn.accountLogin({ index: 71, id: 'ffffffffffffffff', name: 'Fiona', since: 1 });
+        const l = inbox.get('admin', 'fleet-account:ffffffffffffffff:login');
+        assert.strictEqual(l.expiresAt - l.createdAt, 24 * H);
+        assert.strictEqual(l.cls, 'fleet');
+        assert.ok(!stackRow('login'), 'the account notice is a single row, not stacked');
+        await sup.saveSettings(gr, { notify: { maintenance: true, usage: true } });
+        fn.routine('maintenance', { id: 'fleet-maintenance:life', title: 'Fleet maintenance: needs a look', text: 't', data: { kind: 'maintenance' }, ttlMs: 2 * 24 * H });
+        fn.routine('usage', { id: 'usage-flag:life', title: 'Heavy usage', text: 't', data: { kind: 'usage-flag' }, ttlMs: 3 * 24 * H });
+        fn.routine('usage', { id: 'usage-flag:short', title: 'Heavy usage 2', text: 't', data: { kind: 'usage-flag' }, ttlMs: 1 * H });
+        fn.routine('maintenance', { id: 'fleet-maintenance:none', title: 'Fleet maintenance 2', text: 't', data: { kind: 'maintenance' } });
+        const life = (id) => { const n = inbox.get('admin', id); return n.expiresAt - n.createdAt; };
+        assert.strictEqual(life('fleet-maintenance:life'), 4 * H, 'a two day ask is four hours');
+        assert.strictEqual(life('usage-flag:life'), 4 * H);
+        assert.strictEqual(life('usage-flag:short'), 1 * H, 'a shorter ask is kept');
+        assert.strictEqual(life('fleet-maintenance:none'), 4 * H, 'no ask: four hours');
+        assert.strictEqual(inbox.get('admin', 'usage-flag:life').cls, 'fleet');
+        await sup.saveSettings(gr, { notify: { maintenance: false, usage: false } });
+    });
+
+    await test('an item leaves its stack at its own expiry while the others stay; prune tells the pages and the phone status', () => {
+        let t = Date.parse('2026-11-26T08:00:00Z');
+        const T0 = t;
+        inbox._test.setNow(() => t);
+        try {
+            const a = item();
+            sup.setWork(a, { state: 'done', ended_at: 1, message: 'a' });
+            t += 3 * H;
+            const b = item();
+            sup.setWork(b, { state: 'done', ended_at: 2, message: 'b' });
+            assert.strictEqual(stackRow('fleetdone').data.count, 2);
+            assert.strictEqual(stackRow('fleetdone').expiresAt, T0 + 7 * H, 'the row ends with the LATEST item');
+            // a's four hours are over; nothing has pruned yet: no reader shows it
+            t = T0 + 4 * H + 60000;
+            let st = stackRow('fleetdone');
+            assert.deepStrictEqual(st.data.items.map((x) => x.data.workId), [b], 'list() leaves the expired item out');
+            assert.strictEqual(st.data.count, 1);
+            assert.strictEqual(st.title, `Fleet: ${row(b).title} is done`);
+            assert.strictEqual(inbox.get('admin', 'stack:fleetdone').data.count, 1, 'get() too');
+            assert.strictEqual(inbox._test.database().prepare("SELECT data FROM notices WHERE id = 'stack:fleetdone'").all().map((r) => JSON.parse(r.data).count)[0], 2, 'the stored row still holds it until prune');
+            mark();
+            inbox.prune('admin');
+            st = stackRow('fleetdone');
+            assert.deepStrictEqual(st.data.items.map((x) => x.data.workId), [b]);
+            assert.strictEqual(st.data.count, 1);
+            assert.strictEqual(inbox._test.database().prepare("SELECT data FROM notices WHERE id = 'stack:fleetdone'").all().map((r) => JSON.parse(r.data).count)[0], 1, 'prune took it out of the stored row');
+            assert.strictEqual(st.expiresAt, T0 + 7 * H);
+            assert.ok(touches.includes('inbox'), 'the phone status is rebuilt');
+            assert.strictEqual(loud(), 0, 'silently');
+            assert.deepStrictEqual(toPhones.map((n) => [n.id, n.alert]), [['stack:fleetdone', false]], 'the phones re-post the stack in place');
+            assert.ok(sent.some((m) => m.type === 'inbox_updated' && m.data.reason === 'new' && m.data.notice.id === 'stack:fleetdone' && m.data.notice.data.count === 1), 'the pages get the stack with one item');
+            // b's end: the last item, so the row goes and everything is told
+            t = T0 + 7 * H + 60000;
+            mark();
+            inbox.prune('admin');
+            assert.strictEqual(stackRow('fleetdone'), undefined);
+            assert.deepStrictEqual(clearedOnPhones, ['stack:fleetdone'], 'the phones take their notification down');
+            assert.ok(touches.includes('inbox'));
+            assert.ok(sent.some((m) => m.type === 'inbox_updated' && m.data.reason === 'ack' && m.data.id === 'stack:fleetdone' && m.data.state === 'cleared'), 'the pages close their copy');
+        } finally { inbox._test.setNow(null); }
     });
 
     console.log(failed ? `\n${failed} FAILED` : '\nall passed');
