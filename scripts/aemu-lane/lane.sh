@@ -1,6 +1,6 @@
 #!/bin/bash
 # lane.sh - the Android emulator lane on Ruiko (StaticForge #1309 / #1312). One command per action, JSON answers.
-# Docs: docs/testing/emulator-lane.md. Pool: aemu-fold-1, aemu-fold-2, aemu-a53-1, aemu-a53-2.
+# Docs: docs/testing/emulator-lane.md. Pool: aemu-fold-1..4, aemu-a53-1..4.
 #
 #   lane.sh list                                   every pool id: created, running, golden, lease holder (JSON)
 #   lane.sh create <fold|a53> <n>                  make the AVD, boot, provision (app, Shizuku, sign-in, partner), save `golden`
@@ -34,20 +34,40 @@ SHZ=moe.shizuku.privileged.api
 SHZ_APK=${LANE_SHIZUKU_APK:-$HOME/.cache/claude-run/aemu-lane/shizuku-13.6.0.apk}
 COORD_DB=${AGENT_COORD_DB:-$HOME/.local/state/dreamscape-agents/coord.db}
 IDLE_MIN=${LANE_IDLE_MIN:-30}
-MAX_RUNNING=4
+MAX_RUNNING=${LANE_MAX_RUNNING:-8}   # hard ceiling; the real limit is Ruiko's free memory (mem_guard)
+INSTANCE_GB=4.6                # what one more running instance takes (observed qemu working set 4.1-4.9 GB)
+KEEP_FREE_GB=3                 # Ruiko keeps at least this free after one more instance starts
+# The emulator's guest adbd ALWAYS listens on *:5555 (even with service.adb.tcp.port empty after a boot): that is the listener the
+# host adb link uses, and moving it (`adb tcpip 5556`) takes the instance offline. So "5555 is back after a reboot" is true on the
+# lane whatever the app does; it proves nothing about a phone. `adbd gate on|off` is a manual shim (see the docs).
+LANE_ADB_PORT=5555
 mkdir -p "$STATE" "$CFG" "$STATE/apk" "$STATE/shots"
 
 # ------------------------------------------------------------------ pool table: id shape n console-port tunnel-port cdp-port
+# Console ports are EVEN and inside adb's scan range 5554..5584 (adb port = console + 1): adb's server finds and RECONNECTS
+# emulators there by itself. Outside it (5600 ...) an emulator is registered once at its start and stays `offline` for ever
+# after a guest reboot (`adb reboot`), which no reboot test can live with. 5570 / 5580 belong to other sessions.
 pool_row() {
+  local r
   case "$1" in
-    aemu-fold-1) echo "fold 1 5600 15101 9381";;
-    aemu-fold-2) echo "fold 2 5602 15102 9382";;
-    aemu-a53-1)  echo "a53 1 5610 15111 9391";;
-    aemu-a53-2)  echo "a53 2 5612 15112 9392";;
+    aemu-fold-1) r="fold 1 5556 15101 9381";;
+    aemu-fold-2) r="fold 2 5558 15102 9382";;
+    aemu-a53-1)  r="a53 1 5560 15111 9391";;
+    aemu-a53-2)  r="a53 2 5562 15112 9392";;
+    aemu-fold-3) r="fold 3 5564 15103 9383";;
+    aemu-a53-3)  r="a53 3 5566 15113 9393";;
+    aemu-a53-4)  r="a53 4 5568 15114 9394";;
+    aemu-fold-4) r="fold 4 5572 15104 9384";;
     *) return 1;;
   esac
+  # an instance still running on its old ports keeps them until it is restarted: $CFG/<id>.ports = "<console> <tunnel> <cdp>"
+  if [ -f "$CFG/$1.ports" ]; then
+    local shape n c t d; read -r shape n _ _ _ <<<"$r"; read -r c t d < "$CFG/$1.ports"
+    [ -n "$c" ] && [ -n "$t" ] && [ -n "$d" ] && r="$shape $n $c $t $d"
+  fi
+  echo "$r"
 }
-POOL_IDS="aemu-fold-1 aemu-fold-2 aemu-a53-1 aemu-a53-2"
+POOL_IDS="aemu-fold-1 aemu-fold-2 aemu-fold-3 aemu-fold-4 aemu-a53-1 aemu-a53-2 aemu-a53-3 aemu-a53-4"
 
 # ------------------------------------------------------------------ output
 # J k=v ...  -> one JSON object (v is a string; n:<num>, b:<bool>, j:<json> are typed)
@@ -85,13 +105,17 @@ AGENT=${COORD_AGENT_ID:-${AGENT_COORD_ID:-}}
 while [ "${1:-}" = --agent ]; do AGENT=${2:?--agent <id>}; shift 2; done
 ID=''; cmd=${1:-help}
 case "$cmd" in
-  list|create|reap|help|-h|--help) shift || true;;
+  create)
+    shift; [ "${1:-}" = fold ] || [ "${1:-}" = a53 ] || die "usage: lane.sh create <fold|a53> <n>" 2
+    case "${2:-}" in [1-4]) ;; *) die "usage: lane.sh create <fold|a53> <1|2|3|4>" 2;; esac
+    exec "$0" ${AGENT:+--agent "$AGENT"} "aemu-$1-$2" create;;
+  list|reap|help|-h|--help) shift || true;;
   aemu-*) ID=$cmd; shift; cmd=${1:-status}; shift || true;;
   *) die "unknown command: $cmd (lane.sh help)" 2;;
 esac
 
 if [ -n "$ID" ]; then
-  row=$(pool_row "$ID") || die "not a lane id: $ID (aemu-fold-1|2, aemu-a53-1|2)" 2
+  row=$(pool_row "$ID") || die "not a lane id: $ID (aemu-fold-1..4, aemu-a53-1..4)" 2
   read -r SHAPE N PORT TPORT CDP <<<"$row"
   SERIAL=emulator-$PORT
   export ADB_SERVER_SOCKET=tcp:127.0.0.1:$TPORT
@@ -151,6 +175,7 @@ need_lease() {
 # ------------------------------------------------------------------ last use (the reaper reads it on Ruiko)
 touch_last() {
   local f=$STATE/$ID.last t; t=$(date +%s)
+  [ -f "$STATE/$ID.keep" ] && [ "$(cat "$STATE/$ID.keep")" -gt "$t" ] && return 0   # `keep` holds the idle clock in the future
   [ -f "$f" ] && [ $(( t - $(stat -c %Y "$f") )) -lt 60 ] && return 0
   : > "$f"
   rps "New-Item -ItemType Directory -Force '$RBASE\\last' | Out-Null; Set-Content -Path '$RBASE\\last\\$ID.txt' -Value $t" >/dev/null 2>&1 &
@@ -227,6 +252,15 @@ foreach ($x in (Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'emul
 }
 PS
 )"
+}
+
+ruiko_free_gb() { rps '[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,1)' | tail -1; }
+mem_guard() { # refuses (exit 4) when one more running instance would leave Ruiko with less than KEEP_FREE_GB free
+  local free; free=$(ruiko_free_gb)
+  case "$free" in ''|*[!0-9.]*) return 0;; esac     # unreadable: do not block
+  if awk "BEGIN{exit !($free - $INSTANCE_GB < $KEEP_FREE_GB)}"; then
+    die "Ruiko has only $free GB free: one more instance (about $INSTANCE_GB GB) would leave it under $KEEP_FREE_GB GB. Stop one you do not need (lane.sh <id> down) or wait; instances nobody used for $IDLE_MIN min are stopped by the reaper" 4
+  fi
 }
 
 start_emulator() { # start_emulator <extra emulator args>
@@ -377,8 +411,9 @@ mark_test_device() { # mark_test_device <deviceId> : the fence (modules/testDevi
   api PUT "/api/test-devices/$1" "$(J "name=Lane $ID")" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('success') else 1)"
 }
 adb_state() { # 5555 / wireless debugging facts as JSON
-  local l; l=$(SR "ss -ltn 2>/dev/null | grep -c ':5555 '")
-  J "listening5555=b:$([ "${l:-0}" -gt 0 ] && echo true || echo false)" "serviceAdbTcpPort=$(SR getprop service.adb.tcp.port)" "persistAdbTcpPort=$(SR getprop persist.adb.tcp.port)" \
+  local l p ap; l=$(SR "ss -ltn 2>/dev/null | grep -c ':5555 '"); ap=$(meta_get adb_port); ap=${ap:-$LANE_ADB_PORT}
+  p=$(SR "ss -ltn 2>/dev/null | grep -c ':$ap '")
+  J "listening5555=b:$([ "${l:-0}" -gt 0 ] && echo true || echo false)" "note5555=always listening on the emulator (not the phone's rule): use appPort" "appPort=n:$ap" "listeningAppPort=b:$([ "${p:-0}" -gt 0 ] && echo true || echo false)" "serviceAdbTcpPort=$(SR getprop service.adb.tcp.port)" "persistAdbTcpPort=$(SR getprop persist.adb.tcp.port)" \
     "adbEnabled=$(SR settings get global adb_enabled)" "adbWifiEnabled=$(SR settings get global adb_wifi_enabled)" "adbdUid=n:$(adbd_uid)"
 }
 status_json() {
@@ -393,7 +428,7 @@ status_json() {
     "autoRotate=$(SR settings get system accelerometer_rotation)" "screen=$(SR dumpsys power | grep -m1 -o 'mWakefulness=[A-Za-z]*' | cut -d= -f2)" \
     "doze=$(SR dumpsys deviceidle | grep -m1 -o 'mState=[A-Z_]*' | cut -d= -f2)" \
     "appPid=n:${PID_APP:-$(apppid)}" "appVersionCode=n:$(app_version)" "top=$(top_activity)" \
-    "noAudio=b:$(noaudio_check && echo true || echo false)" "shizukuRunning=b:$([ -n "$sp" ] && echo true || echo false)" "shizukuPid=n:${sp:-0}" \
+    "externalDisplay=$(meta_get ext_sf)" "noAudio=b:$(noaudio_check && echo true || echo false)" "shizukuRunning=b:$([ -n "$sp" ] && echo true || echo false)" "shizukuPid=n:${sp:-0}" \
     "adb=j:$(adb_state)" "deviceId=$(meta_get device_id)" "displays=j:$(SR dumpsys SurfaceFlinger --display-id | grep -o 'HWC display [0-9]*' | awk '{print $3}' | tr '\n' ' ' | python3 -c "import sys,json; print(json.dumps([int(x) for x in sys.stdin.read().split()]))")"
 }
 
@@ -408,6 +443,18 @@ do_shot() { # do_shot <out.png> <selector>
   esac
   [ -n "$id" ] || die "display not found: $sel"
   S screencap -d "$id" -p /data/local/tmp/lane-shot.png >/dev/null 2>&1 && A pull /data/local/tmp/lane-shot.png "$out" >/dev/null 2>&1 || die "screencap of display $sel failed"
+}
+
+stop_instance() { # stop_instance : console kill, then (after 40 s) by pid; only processes whose command line names THIS aemu-* AVD
+  con kill >/dev/null 2>&1
+  local i; for i in $(seq 1 20); do ruiko_emus | grep -q "^$ID " || break; sleep 2; done
+  rps "\$id = '$ID'
+$(cat <<'PS'
+foreach ($x in (Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'emulator|qemu' -and $_.CommandLine -match ('-avd ' + $id + ' ') })) { Stop-Process -Id $x.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Seconds 2
+Get-ChildItem ('C:\Users\ykaza\claude-lane\avd\' + $id + '.avd') -Filter *.lock -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+PS
+)" >/dev/null
 }
 
 kill_emulator_wait() { # wait until the emulator is gone from Ruiko (max 60 s)
@@ -430,8 +477,9 @@ provision() {
   progress "DSApp (newest release)"; install_release >&2
   # the app starts Shizuku over 5555 from lib/arm64 (a phone's lib dir name); the x86_64 emulator's package has lib/x86_64: alias it
   local d; d=$(shz_dir); [ -n "$d" ] && SU "[ -e $d/lib/arm64 ] || ln -s x86_64 $d/lib/arm64" >/dev/null 2>&1
-  progress "adb tcpip 5555 and wireless debugging"
-  A tcpip 5555 >/dev/null 2>&1; sleep 4; A wait-for-device
+  progress "adb tcpip $LANE_ADB_PORT (the app's local-ADB port on the lane) and wireless debugging"
+  meta_set adb_port "$LANE_ADB_PORT"
+  A tcpip "$LANE_ADB_PORT" >/dev/null 2>&1; sleep 4; A wait-for-device
   S settings put global adb_wifi_enabled 1; sleep 2; wifi_dialog >/dev/null 2>&1 || true
   progress "Shizuku start (shell user)"; shz_start >/dev/null
   progress "app setup (bars service, notification listener, home app)"
@@ -453,8 +501,15 @@ provision() {
   page_forward >/dev/null; NODE_PATH=${NODE_PATH:-/home/kanmi/staticforge/node_modules} node "$HERE/lib/signin.js" "$CDP" --register --device "$dev" >/dev/null 2>&1
   progress "ActiveSync partnership"; partner_device "$dev" || progress "partnership not accepted (lane.sh $ID partner to retry)"
   progress "Shizuku permission for Dreamscape"; shz_grant >/dev/null
+  progress "app local-ADB settings: port $LANE_ADB_PORT, restore on"; adb_settings "{\"allow\":true,\"autoRestore\":true,\"shizukuAutoStart\":true,\"shizukuRecover\":true,\"preferred\":\"adb\",\"port\":$LANE_ADB_PORT}" >/dev/null
   meta_set provisioned "$(date +%s)"
   J ok=b:true id="$ID" "deviceId=$dev" provisioned=b:true
+}
+
+adb_settings() { # the app's Android Bridge > Advanced Tools settings (LocalAdb): allow, autoRestore, shizukuAutoStart, shizukuRecover, port, ...
+  page_forward >/dev/null || die "the app is not running"
+  local js; js=$(python3 -c "import json,sys; json.loads(sys.argv[1]); print('AndroidActiveSync.setAdbSettings(JSON.stringify(' + sys.argv[1] + ')); AndroidActiveSync.adbStatus()')" "$1") || die "the settings are not JSON"
+  cdp_js eval "$js"
 }
 
 partner_device() { # propose the ActiveSync partnership as the lane's harness computer and accept it on the page
@@ -470,27 +525,67 @@ partner_device() { # propose the ActiveSync partnership as the lane's harness co
 # The page's confirm for an incoming partnership: click its accept button (found by the page's own markup).
 PARTNER_ACCEPT_JS='(function(){var b=[].slice.call(document.querySelectorAll("button,.wm-btn,[role=button],a")).filter(function(x){return /^\s*(Yes|Accept|Allow)\s*$/i.test(x.textContent||"")&&x.offsetParent});if(b.length){b[0].click();return "clicked"}return "none"})()'
 
+make_avd() { # the AVD of this instance on Ruiko (its own userdata, so its own ActiveSync device id)
+  local target=android-37.0; [ "$SHAPE" = a53 ] && target=android-36
+  local d="$RBASE\\avd\\$ID.avd" t=$STATE/avd-$ID
+  mkdir -p "$t"
+  sed "s/@AVD@/$ID/g" "$HERE/ruiko/$SHAPE.ini" > "$t/config.ini"
+  printf 'avd.ini.encoding=UTF-8\r\npath=%s\r\npath.rel=avd\\%s.avd\r\ntarget=%s\r\n' "$d" "$ID" "$target" > "$t/$ID.ini"
+  rps "New-Item -ItemType Directory -Force '$d' | Out-Null; New-Item -ItemType Directory -Force '$RBASE\\logs' | Out-Null" >/dev/null
+  scp -q "$HERE/ruiko/start.cmd" "ruiko:C:/Users/ykaza/claude-lane/start.cmd"; scp -q "$HERE/ruiko/reap.ps1" "ruiko:C:/Users/ykaza/claude-lane/reap.ps1"
+  scp -q "$t/config.ini" "ruiko:C:/Users/ykaza/claude-lane/avd/$ID.avd/config.ini"
+  scp -q "$t/$ID.ini" "ruiko:C:/Users/ykaza/claude-lane/avd/$ID.ini"
+}
+
 # ------------------------------------------------------------------ commands: one instance
 [ -n "$ID" ] || die "$cmd needs an instance id" 2
 case "$cmd" in status|wait-boot) ;; *) need_lease;; esac
 tunnel
 touch_last
+# stop idle instances (nobody used for $IDLE_MIN min) from here too, at most every 5 minutes (also a Ruiko scheduled task): no polling loop
+case "$cmd" in status|list|wait-boot) ;; *)
+  rs=$STATE/reap.stamp; nowt=$(date +%s)
+  if [ ! -f "$rs" ] || [ $(( nowt - $(stat -c %Y "$rs") )) -gt 300 ]; then : > "$rs"; ( rps "if (Test-Path '$RBASE\\reap.ps1') { & '$RBASE\\reap.ps1' -IdleMinutes $IDLE_MIN }" >/dev/null 2>&1 & ); fi;;
+esac
 
 case "$cmd" in
+  create)
+    avd_present && die "$ID already exists (lane.sh $ID provision / reset; delete it on Ruiko to start over)"
+    mem=$(rps '[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,1)')
+    progress "Ruiko free memory $mem GB"
+    mem_guard
+    progress "AVD"; make_avd
+    progress "first boot (cold, 2-4 minutes)"
+    "$0" ${AGENT:+--agent "$AGENT"} "$ID" up >&2 || die "the first boot failed"
+    provision >&2 || die "provision failed (lane.sh $ID provision to continue)"
+    CON_TIMEOUT=240 con avd snapshot save golden >/dev/null 2>&1 || die "snapshot save failed"
+    J ok=b:true id="$ID" created=b:true golden=b:true;;
   up)
     if running && booted; then J ok=b:true id="$ID" state=running; exit 0; fi
     avd_present || die "$ID has no AVD yet: lane.sh create $SHAPE $N"
+    # a process of this AVD that adb does not see (a hung or half-stopped one) is stopped first: it holds the AVD's lock
+    ruiko_emus | grep -q "^$ID " && { progress "a process of $ID is up but adb does not see it: stopping it"; stop_instance; }
     others=$(ruiko_emus | grep -vc "^$ID " || true)
     [ "${others:-0}" -ge "$MAX_RUNNING" ] && die "already $MAX_RUNNING lane instances running: lane.sh <id> down one first, or lane.sh reap"
-    if [ "${1:-}" = --golden ]; then golden_present || die "$ID has no golden snapshot"; start_emulator "-snapshot golden -force-snapshot-load"; else start_emulator "-no-snapshot-load"; fi
-    secs=$(wait_boot 300) || die "not booted after 300 s (Ruiko $RBASE\\logs\\$ID.txt)"
+    mode=cold; setup=1
+    for a in "$@"; do case "$a" in --golden) mode=golden;; --nosetup) setup=0;; esac; done
+    [ "$mode" = golden ] && { golden_present || die "$ID has no golden snapshot"; }
+    mem_guard
+    secs=''
+    for attempt in 1 2; do
+      if [ "$mode" = golden ]; then start_emulator "-snapshot golden -force-snapshot-load"; else start_emulator "-no-snapshot-load"; fi
+      secs=$(wait_boot 150) && break
+      # adb's server did not register the emulator (it registers once at the emulator's start): a second start fixes it
+      progress "attempt $attempt: adb does not see $SERIAL after 150 s: restarting it"; stop_instance
+    done
+    [ -n "$secs" ] || die "not booted (Ruiko $RBASE\\logs\\$ID.txt): adb never saw $SERIAL"
     noaudio_check || { con kill >/dev/null 2>&1; die "the emulator started without -no-audio: stopped it (never Ruiko's speakers)"; }
-    [ "${1:-}" = --golden ] && quiet_volumes || setup_device
+    if [ "$mode" = golden ] || [ "$setup" = 0 ]; then quiet_volumes; else setup_device; fi
     J ok=b:true id="$ID" state=booted "bootSecs=n:$secs" noAudio=b:true;;
   wait-boot)
     secs=$(wait_boot "${1:-240}") || die "not booted"
     J ok=b:true id="$ID" state=booted "waitedSecs=n:$secs";;
-  down) con kill >/dev/null 2>&1; kill_emulator_wait && J ok=b:true id="$ID" state=stopped || J ok=b:true id="$ID" state=stopping;;
+  down) stop_instance; J ok=b:true id="$ID" state=stopped;;
   status)
     running || { J ok=b:true id="$ID" running=b:false; exit 0; }
     status_json;;
@@ -498,7 +593,7 @@ case "$cmd" in
   partner) dev=$(dev_id); partner_device "$dev" && J ok=b:true id="$ID" partnered=b:true || die "partnership not accepted: $(cat "$STATE/partner-$ID.out" 2>/dev/null | tail -2)";;
   reset)
     golden_present || die "$ID has no golden snapshot (lane.sh $ID provision, then lane.sh $ID golden)"
-    con kill >/dev/null 2>&1; kill_emulator_wait || die "the emulator did not stop"
+    stop_instance
     start_emulator "-snapshot golden -force-snapshot-load"
     secs=$(wait_boot 300) || die "golden did not boot (Ruiko $RBASE\\logs\\$ID.txt)"
     noaudio_check || { con kill >/dev/null 2>&1; die "the emulator started without -no-audio: stopped it"; }
@@ -509,10 +604,15 @@ case "$cmd" in
     CON_TIMEOUT=240 con avd snapshot save golden >/dev/null 2>&1 || die "snapshot save failed"
     J ok=b:true id="$ID" golden=b:true;;
   reboot)
-    A reboot >/dev/null 2>&1
-    t0=$(date +%s); for i in $(seq 1 30); do running || break; sleep 2; done
-    secs=$(wait_boot 300) || die "not booted after the reboot"
-    J ok=b:true id="$ID" state=booted "rebootSecs=n:$(( $(date +%s) - t0 ))";;
+    # A reboot = a clean guest shutdown and a cold boot of a fresh emulator process (the instance's disk is kept). `adb reboot`
+    # inside the running process leaves adb's transport flapping offline a minute later (seen on aemu-a53-1 / aemu-fold-1), so
+    # it is not used. What comes back by itself is what the phone would bring back: nothing is set up again (`up --nosetup`).
+    t0=$(date +%s)
+    S 'svc power shutdown' >/dev/null 2>&1 || S 'reboot -p' >/dev/null 2>&1
+    for i in $(seq 1 45); do ruiko_emus | grep -q "^$ID " || break; sleep 2; done
+    stop_instance
+    "$0" ${AGENT:+--agent "$AGENT"} "$ID" up --nosetup >/dev/null || die "not booted after the reboot"
+    J ok=b:true id="$ID" state=booted "rebootSecs=n:$(( $(date +%s) - t0 ))" method="clean shutdown + cold boot";;
   adb)
     case "${1:-}" in -s|-d|-e|-t|-H|-P|-L|kill-server|start-server|connect|disconnect|devices|mdns|pair|reconnect|server|wait-for-any-device) die "lane.sh $ID adb: '$1' is refused (every adb call is pinned to $SERIAL)" 2;; esac
     case " $* " in *' --remove-all '*|*emulator-55[78]*|*_adb-tls-connect*|*192.168.*) die "lane.sh $ID adb: refused (another device)" 2;; esac
@@ -577,7 +677,9 @@ case "$cmd" in
     J ok=b:true "killedRendererPids=${pids:-none}";;
   kill-app) p=$(apppid); [ -n "$p" ] && SU "kill -9 $p" >/dev/null; sleep 1; J ok=b:true "killedPid=n:${p:-0}" "appPid=n:$(apppid || echo 0)";;
   stop-app) S am force-stop "$PKG"; J ok=b:true;;
-  start-app) S am start --display 0 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n "$PKG/.MainActivity" >/dev/null 2>&1; sleep 2; J ok=b:true "appPid=n:$(apppid || echo 0)";;
+  start-app)
+    dsp=0; [ "${1:-}" = --display ] && { dsp=${2:-0}; [ "$dsp" = external ] && dsp=$(meta_get ext_logical); [ -n "$dsp" ] || die "no external display"; }
+    S am start --display "$dsp" -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n "$PKG/.MainActivity" >/dev/null 2>&1; sleep 2; J ok=b:true "appPid=n:$(apppid || echo 0)" "display=$dsp";;
   home) S input -d 0 keyevent KEYCODE_HOME; J ok=b:true;;
   other) S am start --display 0 -a android.settings.SETTINGS >/dev/null; J ok=b:true note="Settings in front";;
   tap) S input -d 0 tap "${1:?x}" "${2:?y}"; J ok=b:true;;
@@ -596,13 +698,55 @@ case "$cmd" in
         J ok=b:true "running=b:$([ -n "$p" ] && echo true || echo false)" "pid=n:${p:-0}" "uid=$(SR "ps -A -o USER,NAME | grep -m1 shizuku_server | awk '{print \$1}'")" "installed=b:$([ -n "$(shz_dir)" ] && echo true || echo false)" "appPermission=b:$([ "$g" -gt 0 ] && echo true || echo false)";;
       *) die "shizuku start|stop|grant|status" 2;;
     esac;;
+  adbsettings)
+    if [ -n "${1:-}" ]; then adb_settings "$1"; else page_forward >/dev/null || die "the app is not running"; cdp_js eval "AndroidActiveSync.adbStatus()"; fi;;
   adbd)
     case "${1:-status}" in
       status) adb_state;;
-      tcpip) A tcpip "${2:-5555}" >/dev/null 2>&1; sleep 4; A wait-for-device; adb_state;;
+      tcpip) tp=${2:-$(meta_get adb_port)}; A tcpip "${tp:-$LANE_ADB_PORT}" >/dev/null 2>&1; sleep 4; A wait-for-device; adb_state;;
+      gate)
+        # MANUAL shim: close / open the app's route to 127.0.0.1:5555 only (loopback); the host adb link keeps working. The emulator's
+        # adbd always listens on 5555, so this is the only way to show the app a closed port. Lost at the next boot.
+        case "${2:-}" in
+          on) SU 'for t in iptables ip6tables; do $t -C INPUT -i lo -p tcp --dport 5555 -j REJECT --reject-with tcp-reset 2>/dev/null || $t -I INPUT -i lo -p tcp --dport 5555 -j REJECT --reject-with tcp-reset; done' >/dev/null;;
+          off) SU 'for t in iptables ip6tables; do while $t -D INPUT -i lo -p tcp --dport 5555 -j REJECT --reject-with tcp-reset 2>/dev/null; do :; done; done' >/dev/null;;
+          *) die "adbd gate on|off" 2;;
+        esac
+        J ok=b:true "gate=${2}" "appSees5555Closed=b:$([ "$(SR "ss -ltn >/dev/null; iptables -S INPUT | grep -c 'dport 5555'")" -gt 0 ] && echo true || echo false)";;
       usb) A usb >/dev/null 2>&1; sleep 4; A wait-for-device; adb_state;;
       wireless) case "${2:-}" in on) S settings put global adb_wifi_enabled 1;; off) S settings put global adb_wifi_enabled 0;; *) die "adbd wireless on|off" 2;; esac; sleep 2; wifi_dialog >/dev/null 2>&1; adb_state;;
-      *) die "adbd status|tcpip [port]|usb|wireless on|off" 2;;
+      *) die "adbd status|tcpip [port]|usb|gate on|off|wireless on|off" 2;;
+    esac;;
+  keep)
+    m=${1:-60}; t=$(( $(date +%s) + m * 60 )); echo "$t" > "$STATE/$ID.keep"
+    rps "New-Item -ItemType Directory -Force '$RBASE\\last' | Out-Null; Set-Content -Path '$RBASE\\last\\$ID.txt' -Value $t" >/dev/null
+    J ok=b:true id="$ID" "keepMinutes=n:$m" "keepUntil=n:$t";;
+  display)
+    case "${1:-}" in
+      add-external)
+        spec=${2:-1920x1080@160}
+        case "$spec" in [0-9]*x[0-9]*@[0-9]*) ;; *) die "display add-external [WxH@dpi], e.g. 1920x1080@160" 2;; esac
+        ew=${spec%%x*}; rest=${spec#*x}; eh=${rest%%@*}; edpi=${rest##*@}
+        con multidisplay del 6 >/dev/null 2>&1
+        out=$(con multidisplay add 6 "$ew" "$eh" "$edpi" 0 2>&1) || out="KO: $out"
+        sleep 4
+        # the emulator's own multi-display is a virtual display the SurfaceFlinger lists (screencap -d works on its id)
+        extsf=$(SR dumpsys SurfaceFlinger --display-id | awk '/Virtual display/ && /multidisplay/ {print $2; exit}')
+        extlog=$(SR "dumpsys display | grep -E 'Display Id=' | tail -1 | sed 's/.*Display Id=//'")
+        method=multidisplay
+        if [ -z "$extsf" ]; then
+          # fallback: Android's simulated secondary display (no SurfaceFlinger id: shots of it are not possible)
+          S settings put global overlay_display_devices "${ew}x${eh}/${edpi}"; method=overlay_display_devices; sleep 3
+        fi
+        # DeX / NexDock-like: Android's desktop windowing / freeform on the external display
+        for k in force_desktop_mode_on_external_displays enable_freeform_support freeform_window_management force_resizable_activities; do S settings put global $k 1; done
+        meta_set ext_sf "$extsf"; meta_set ext_logical "$extlog"; meta_set ext_method "$method"
+        J ok=b:true "method=$method" "size=${ew}x${eh}" "dpi=n:$edpi" "surfaceFlingerId=$extsf" "logicalDisplayId=$extlog" "console=$out" "freeform=on";;
+      remove-external)
+        con multidisplay del 6 >/dev/null 2>&1; S settings put global overlay_display_devices "" >/dev/null 2>&1
+        meta_set ext_sf ""; meta_set ext_logical ""; meta_set ext_method ""
+        J ok=b:true removed=b:true;;
+      *) die "display add-external [WxH@dpi] | remove-external" 2;;
     esac;;
   now) J ok=b:true "deviceMs=n:$(SR 'date +%s%3N')" "localMs=n:$(now_ms)" "skewMs=n:$(dev_skew)";;
   notifs)

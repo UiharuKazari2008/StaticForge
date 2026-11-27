@@ -28,7 +28,7 @@ for ln in log:
     tag, msg = m.group(6), m.group(7)
     if tag == 'NoteAlerts':
         e = {'atMs': t, 'line': msg}
-        s = re.search(r'ringer (\S+?),? sound (\S+?)(?:\?v=([0-9a-f]+))?(?:\s|$)', msg)
+        s = re.search(r'ringer ([^\s,]+),? (?:default )?sound ([^\s,?]+)(?:\?v=([0-9a-f]+))?', msg)
         if s:
             e.update({'ringer': s.group(1), 'file': s.group(2), 'sha256Prefix': s.group(3)})
         p = re.search(r'playing (\S+)', msg)
@@ -47,12 +47,16 @@ now_players = []
 for m in re.finditer(r'AudioPlaybackConfiguration piid:(\d+) deviceIds:\S* type:(\S+) u/pid:(\d+)/(\d+) state:(\w+) attr:AudioAttributes:[^\n]*?usage=(USAGE_\w+)', playback):
     now_players.append({'piid': int(m.group(1)), 'uid': int(m.group(3)), 'pid': int(m.group(4)), 'state': m.group(5), 'usage': m.group(6)})
 
-# one sound = one "playing" line of the app (or a started player when the app logged none)
-sounds = [{'atMs': n['atMs'], 'file': n.get('playing') or n.get('file'), 'sha256Prefix': n.get('sha256Prefix'), 'source': 'noteAlerts'} for n in note if n.get('playing')]
-if not sounds:
-    sounds = [{'atMs': s['atMs'], 'usage': s['usage'], 'source': 'playerState'} for s in state if s.get('usage') == 'USAGE_NOTIFICATION']
+# one sound decision = one `ringer N, sound <file>` line of the app (the app chose that file for that event); it was
+# PLAYED only when a `playing <file>` line follows (ringer NORMAL). The lane keeps the ringer SILENT (Yukimi, Nov 26 2026:
+# no alarm-like sound on any phone or emulator; the app's default notice sounds are WM Alarm files): the app then logs what
+# it would have sounded and plays nothing, which is what a test asserts.
+decisions = [{'atMs': n['atMs'], 'file': n.get('file'), 'sha256Prefix': n.get('sha256Prefix'), 'ringer': n.get('ringer'),
+              'silentByRinger': n.get('ringer') in ('0', 'RINGER_MODE_SILENT')} for n in note if n.get('file')]
+played = [{'atMs': n['atMs'], 'file': n.get('playing')} for n in note if n.get('playing')]
+sounds = decisions or [{'atMs': s['atMs'], 'usage': s['usage'], 'source': 'playerState'} for s in state if s.get('usage') == 'USAGE_NOTIFICATION']
 alarm = [s for s in state if s.get('usage') in ('USAGE_ALARM', 'USAGE_NOTIFICATION_RINGTONE')]
-out = {'ok': True, 'sinceMs': since, 'count': len(sounds), 'sounds': sounds,
+out = {'ok': True, 'sinceMs': since, 'count': len(sounds), 'sounds': sounds, 'playedCount': len(played), 'played': played,
        'alarmLikeStarted': len(alarm),      # the lane rule: nothing alarm-like plays; this must stay 0
        'sources': {'noteAlerts': note, 'playerState': state, 'notificationAlert': alert, 'playbackNow': now_players},
        'authoritative': 'noteAlerts (the app named the file and sha256 prefix it played); playerState / notificationAlert confirm Android saw it',
