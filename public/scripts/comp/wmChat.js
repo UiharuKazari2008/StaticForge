@@ -221,6 +221,7 @@
 
     function failBox(text, err) {
         const why = err && (err.message || err.error) ? `\n\n${err.message || err.error}` : '';
+        // notice: wm-chat-failure
         return sh.notify({ title: SMS_TITLE, icon: 'error', text: `${text}${why}` });
     }
 
@@ -241,6 +242,7 @@
         const line = `${to || 'Unknown'}: ${String(said || '').replace(/\s+/g, ' ').trim()}`;
         let text = null;
         try {
+            // notice: wm-chat-quick-reply
             text = await sh.messageBox({
                 title: 'Quick Reply',
                 text: line.length > 120 ? `${line.slice(0, 117)}...` : line,
@@ -777,6 +779,7 @@
             stopWaiting(id);
             const s = sessionById(id);
             if (showingChat(id)) { paintLive(); renderEntries(); if (isCurrent()) sh.refreshSoftKeys(); }
+            // notice: wm-chat-failure
             sh.notify({ title: s ? titleOf(s) : 'Chat', icon: 'warning', text: st.events.length ? 'The reply stopped before it was finished.' : 'The persona did not answer. The chat service may be unavailable; try again later.' });
             finishReply(id);
         }, STALL_MS);
@@ -812,6 +815,7 @@
         if (!viewing && said) arrived(id, said, st && st.events);
         // read as it lands when its conversation is in front, with the event's sound and no bubble, as the
         // device does in an open conversation (no sound for what you send: the device has none)
+        // notice: wm-chat-reply-open
         if (viewing && said && sh.sounds && typeof sh.sounds.play === 'function') sh.sounds.play('chat');
         finishReply(id).then(() => { if (viewing && showingChat(id)) markConvSeen(); });
     }
@@ -825,6 +829,7 @@
         const said = first('speechdirect') || first('speech') || first('reply');
         const viewing = showingChat(d.chatId) && isCurrent() && onScreenNow();
         if (!viewing && said && d.success !== false) arrived(d.chatId, said, null);
+        // notice: wm-chat-reply-open
         if (viewing && said && d.success !== false && sh.sounds && typeof sh.sounds.play === 'function') sh.sounds.play('chat');
         finishReply(d.chatId).then(() => { if (viewing && showingChat(d.chatId)) markConvSeen(); });
     }
@@ -844,6 +849,13 @@
      */
     const fresh = new Map(); // chatId -> { said, at, who? }: replies not read yet, in arrival order
     let smsNote = null;
+    // One sound per burst (N6/N9): a reply that lands while the note of the last one is still up and sounded less than
+    // BURST_MS ago changes that note in place, silently - a persona's several lines, or two texts, are one notification.
+    // Compared with the clock when the next one lands: no timer.
+    const BURST_MS = 8000;
+    let chatSoundedAt = 0;
+    let tmSoundedAt = 0;
+    const noteUp = (h) => !!(h && document.getElementById(h.id));
     const SMS_ICON = 'status-messenger';
 
     // the server keeps its own copy of each notification for when this page is not running (#876):
@@ -876,7 +888,7 @@
         previews.set(id, { stamp: p ? p.stamp : null, text: said, mine: false, unread: ((p && p.unread) || 0) + 1, bytes: (p && p.bytes) || said.length });
         fresh.delete(id);
         fresh.set(id, { said: line, at: Date.now() });
-        showSmsNote();
+        if (noteUp(smsNote) && Date.now() - chatSoundedAt < BURST_MS) showSmsNoteQuiet(); else showSmsNote();
         if (view() === 'list' && page) paintRowPreview(id);
         if (typeof sh.refreshStatus === 'function') sh.refreshStatus();
     }
@@ -887,12 +899,14 @@
     }
 
     function showSmsNote(o) {
-        closeSmsNote(); // a new arrival is a new notification: it sounds and comes up again
+        closeSmsNote(); // a new arrival (past the burst, arrived()) is a new notification: it sounds and comes up again
         if (!fresh.size || typeof sh.appNote !== 'function') return;
+        if (!(o && o.silent)) chatSoundedAt = Date.now();
         const n = fresh.size;
         const html = smsNoteHtml();
         const open = () => { const one = fresh.size === 1 ? [...fresh.keys()][0] : null; closeSmsNote(); if (one != null) openFromNotice(one); else if (window.wmChatApp) window.wmChatApp.showList(); };
         const icon = SMS_ICON;
+        // notice: wm-chat-arrival
         const note = sh.appNote({
             title: SMS_TITLE,
             html,
@@ -1016,6 +1030,7 @@
 
     async function deleteChat(s) {
         if (!s) return;
+        // notice: wm-chat-confirm
         const yes = await sh.messageBox({ title: SMS_TITLE, icon: 'warning', text: `The conversation with ${personaOf(s)} ("${titleOf(s)}") will be deleted with all its messages. This cannot be undone. Continue?`, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }] });
         if (!yes) return;
         try {
@@ -1033,6 +1048,7 @@
 
     async function restartChat(s) {
         if (!s) return;
+        // notice: wm-chat-confirm
         const yes = await sh.messageBox({ title: SMS_TITLE, icon: 'question', text: 'Restart this conversation? This will clear all its messages.', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }] });
         if (!yes) return;
         try {
@@ -1049,6 +1065,7 @@
 
     async function deleteEntry(e) {
         if (!e || !e.ids.length) return;
+        // notice: wm-chat-confirm
         const yes = await sh.messageBox({ title: SMS_TITLE, icon: 'warning', text: 'Delete this message? This cannot be undone.', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }] });
         if (!yes) return;
         try {
@@ -1977,6 +1994,8 @@
         // inside the Android app with the app in the background, the app posts Android's own
         // notification (its background link): the WM notice waits for the return without a sound of
         // its own. Nothing here calls an Android notification bridge (toasts never go there on phones)
+        // one sound per burst: a text while the last one's note is up and sounded under BURST_MS ago changes it in place
+        if (noteUp(tmNote) && Date.now() - tmSoundedAt < BURST_MS) { tmUpdateNote(); return; }
         tmShowNote({ silent: inAndroidApp() && document.hidden });
     }
 
@@ -2123,6 +2142,7 @@
                     if (!api || typeof api.send !== 'function') throw new Error('Text Messaging is not loaded.');
                     await api.send(x.accountId, { chatGuid: x.chatGuid, text });
                 } catch (err) {
+                    // notice: wm-chat-failure
                     sh.notify({ title: 'Text Messages', icon: 'error', text: `The message to ${x.from} was not sent.\n\n${(err && err.message) || ''}`.trim() });
                 }
             },
@@ -2133,7 +2153,9 @@
         // a new arrival is a new notification: it sounds and comes up again
         if (tmNote) { try { tmNote.close(); } catch (_) { /* gone */ } tmNote = null; }
         if (!tmFresh.length || !sh || typeof sh.appNote !== 'function') return;
+        if (!(o && o.silent)) tmSoundedAt = Date.now();
         const parts = tmNoteParts();
+        // notice: wm-sms-arrival
         const note = sh.appNote({
             title: parts.title,
             html: parts.html,

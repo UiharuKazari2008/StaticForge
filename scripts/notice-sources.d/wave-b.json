@@ -1,0 +1,84 @@
+{
+  "sources": {
+    "wx-alert-phone": {
+      "area": "Melaton Mobile weather alerts (weatherAlerts.js onIssued)",
+      "trigger": "server-push",
+      "action": "View opens Melaton Weather on the alert (soft key); Dismiss clears it and the inbox copy",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Weather: Alert / Weather: Severe alert (wmSounds per event: Play sound, Display message, Vibrate, Repeat)",
+      "note": "N1/N4/N5 ok: an alert for a place she configured (Home, Work, here). N6: the server's inbox copy wx:<alertId> has the same id and is only marked seen when this page shows its note (wmNotificationInbox.shownBy); the page's title carries the severity and the inbox's does not, so the title match could not dedupe it"
+    },
+    "wx-alert-balloon": {
+      "area": "Desktop weather alert tray balloon (weatherAlerts.js onIssued, PopoverManager popup id weather-alert)",
+      "trigger": "server-push",
+      "action": "a click opens Melaton Weather on the alert",
+      "sound": false,
+      "switch": "tray icon notification settings (trayRegistry popup 'weather-alert', trayPopupHidden) and the Weather Alert tray icon behaviour",
+      "note": "N1/N4/N5 ok: an alert for a place she configured; one balloon per alert (shown set), one popup id so a second replaces the first (N9); no sound of its own"
+    },
+    "wx-rain-alarm": {
+      "area": "Melaton Mobile rain alarm (weatherAlerts.js onRain)",
+      "trigger": "server-push",
+      "action": "Weather soft key opens Melaton Weather; Dismiss clears it",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Weather: Rain alarm (wmSounds), and Melaton Weather settings for the alarm itself",
+      "note": "N1/N4/N5 ok: an alarm she configured, once per rain spell; N6: same id rain:<place> as the server's copy, marked seen through wmNotificationInbox.shownBy"
+    },
+    "wm-chat-arrival": {
+      "area": "Melaton Mobile Dreamscape Messenger note (wmChat.js arrived / showSmsNote)",
+      "trigger": "server-push",
+      "action": "tap opens the conversation (or the list); Reply opens Quick Reply",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Dreamscape Messenger: New message (wmSounds chat: Play sound, Display message, Vibrate)",
+      "note": "content she asked for (a persona's reply). N3: only when that chat is not on screen (viewing check in onStreamComplete / onMessageResponse). N6/N9: a reply landing within BURST_MS of the last sound while that note is up changes it in place, silently"
+    },
+    "wm-sms-arrival": {
+      "area": "Melaton Mobile text message note (wmChat.js tmOnMessage / tmShowNote)",
+      "trigger": "server-push",
+      "action": "tap opens the conversation; Reply opens Quick Reply",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Text Messaging: New text message (wmSounds sms)",
+      "note": "delivery of the text itself. N3: not when that conversation is on screen. N6/N9: a text within BURST_MS of the last sound while the note is up changes it in place, silently; the app's native text notice posts instead when the page is behind"
+    },
+    "wm-chat-reply-open": {
+      "area": "Melaton Mobile open Dreamscape Messenger conversation (wmChat.js onStreamComplete / onMessageResponse)",
+      "trigger": "server-push",
+      "action": "content: the reply is the line that just landed in the open conversation; no notice is raised",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Dreamscape Messenger: New message (Play sound)",
+      "note": "N7 ok: the reply to her message arriving (the device's in-conversation message sound); sound only, no bubble"
+    },
+    "wm-chat-failure": {
+      "area": "Melaton Mobile Messenger / Text Messaging failures (wmChat.js failBox, stalled reply, message not sent)",
+      "trigger": "user-action",
+      "action": "content: the failure text itself (a message box when it answers her tap)",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Errors / Warnings (wmSounds)",
+      "note": "N10 ok: an error that stopped her message, told once in words; no second toast"
+    },
+    "wm-chat-quick-reply": {
+      "area": "Melaton Mobile Quick Reply dialog (wmChat.js quickReply)",
+      "trigger": "user-action",
+      "action": "she pressed Reply on a text / chat note: Send, View, Cancel",
+      "sound": false,
+      "switch": "none: asked for by her Reply key",
+      "note": "not unsolicited: the dialog is the answer to her tap"
+    },
+    "wm-chat-confirm": {
+      "area": "Melaton Mobile Messenger destructive confirmations (wmChat.js delete / restart conversation, delete message)",
+      "trigger": "user-action",
+      "action": "Yes / No answer her own delete or restart tap",
+      "sound": false,
+      "switch": "none: asked for by her tap",
+      "note": "a confirmation of a destructive action she just chose, not a notice"
+    },
+    "wm-settings-error": {
+      "area": "Melaton Mobile Settings pages (wmSettingsPersonal.js box)",
+      "trigger": "user-action",
+      "action": "content: the failure of the Settings change she just made, in the Settings window",
+      "sound": false,
+      "switch": "none: failure of her own save",
+      "note": "N10 ok: told once where it failed"
+    }
+  }
+}

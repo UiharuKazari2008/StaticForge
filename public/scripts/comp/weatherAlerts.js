@@ -47,6 +47,12 @@
         else if (typeof ni.clear === 'function') ni.clear(id);
     }
 
+    /** This page showed the notice's note itself: the inbox's copy of it is marked seen, never shown as a second note (N6). */
+    function shownByPage(id, note) {
+        const ni = root.wmNotificationInbox;
+        if (ni && typeof ni.shownBy === 'function') ni.shownBy(id, note);
+    }
+
     // ---- texts (shared by the desktop balloon and the phone note) ----
 
     const viewerZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_e) { return ''; } };
@@ -316,6 +322,7 @@
         // the server's copy for when the page is not running has this id (#876): done here, done there
         const inboxId = `wx:${alert.id}`; // one notice per event, whichever places it covers (#1194)
         if (isPhone() && root.wmShell && typeof root.wmShell.appNote === 'function') {
+            // notice: wx-alert-phone
             const note = root.wmShell.appNote({
                 title: alertTitle(alert),
                 html: [where(alert, data.place), windowText(alert, data.place, Date.now())].filter(Boolean).map(esc).join('<br>') || esc('A weather alert was issued.'),
@@ -326,9 +333,12 @@
                     right: { label: 'Dismiss', action: () => { if (note) note.close(); inboxDone(inboxId, 'cleared'); } }
                 })
             });
-            if (note) return;
+            // this note's title carries the severity ("Flood Warning (Severe)"), the server's inbox copy's does not: the inbox
+            // is told the page showed it, or it shows its own second note (N6: one notice per event)
+            if (note) { shownByPage(inboxId, note); return; }
         }
         if (isPhone() && root.wmShell && typeof root.wmShell.notify === 'function') {
+            // notice: wx-alert-phone
             root.wmShell.notify({
                 title: alertTitle(alert),
                 text: text || 'A weather alert was issued for your area.',
@@ -344,6 +354,7 @@
             const end = edgeMs(alert, 'end', data.place);
             if (Number.isFinite(end) && end <= Date.now()) return; // already over: nothing to tell
             active.set(alert.id, Object.assign({ place: data.place || null }, alert));
+            // notice: wx-alert-balloon
             if (showBalloon(alert, data.place)) return;
         }
         if (typeof root.showGlassToast === 'function') {
@@ -518,6 +529,7 @@
         const body = () => `${esc(text)}${hasHour ? rainCardHtml(d) : ''}`;
         document.dispatchEvent(new CustomEvent('weatherRainAlarm', { detail: d }));
         if (isPhone() && root.wmShell && typeof root.wmShell.appNote === 'function') {
+            // notice: wx-rain-alarm
             const note = root.wmShell.appNote({
                 title,
                 html: body(),
@@ -528,7 +540,7 @@
                     right: { label: 'Dismiss', action: () => { if (note) note.close(); inboxDone(`rain:${d.place.id || 'place'}`, 'cleared'); } }
                 })
             });
-            if (note) return;
+            if (note) { shownByPage(`rain:${d.place.id || 'place'}`, note); return; }
         }
         // the rain alarm is the phone's notice: the desktop shows it only with Weather's Settings > Show on desktop
         if (!isPhone() && !desktopRainWanted()) return;

@@ -56,6 +56,7 @@
     const S = () => window.desktopSounds || null;
     const ws = () => window.wsClient || null;
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    // notice: wm-settings-error
     const box = (opts) => ui.messageBox(opts);
 
     /** A check box row with an indent (WM's dependent options sit 19 px in). */
@@ -229,7 +230,6 @@
             else { d.scheme = 'default'; d.sounds = {}; }
             api.rerender();
         });
-        el.querySelector('input[name="startup"]').addEventListener('change', (e) => { d.startupSound = e.target.checked; });
     }
 
     /** A phone event's options in the draft: { on, file (shown in the Sound combo), repeat, display, vibrate, off (the workspace silences it) }. */
@@ -1063,6 +1063,7 @@
         },
         box(title, text) {
             const sh = window.wmShell;
+            // notice: wm-settings-error
             return sh && typeof sh.messageBox === 'function' ? sh.messageBox({ title, text, buttons: [{ text: 'OK', value: true }] }) : Promise.resolve();
         },
         /** Save the password page; false when a box told the user what to fix. */
