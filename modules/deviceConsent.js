@@ -293,8 +293,8 @@ function check(target, action) {
     // a phone this table does not know is closed, never open (Yukimi: no agent takes a phone she was not asked about);
     // its name goes in TARGET_MATCHERS / the consentDevices setting to be requested like the Fold
     if (!dev) return { ok: false, code: 'DEVICE_NOT_GRANTED', error: 'This phone is not in the shared-device list (consentDevices): ask Yukimi to add it before an agent uses it', device: null, holder: null, hint: HINT };
-    // HARD (Yukimi, Nov 26 2026): no agent touches a physical phone, read-only or not, lease or not
-    if (dq.isPhysicalPhone(dev)) return { ok: false, code: 'DEVICE_OFF_LIMITS', error: dq.OFF_LIMITS_MSG, device: dev, holder: null, hint: 'Use the emulator lane (coord_device_request an emulator / aemu).' };
+    // HARD (Yukimi, Nov 26 2026): no agent touches her own phone (the Fold), read-only or not, lease or not; the A53 test phone is open
+    if (dq.isPhysicalPhone(dev)) return { ok: false, code: 'DEVICE_OFF_LIMITS', error: dq.OFF_LIMITS_MSG, device: dev, holder: null, hint: 'Use the A53 test phone (coord_device_request a53) or the emulator lane.' };
     if (!dq.needsConsent(dev)) return { ok: true, lease: null, device: dev };
     const act = action || {};
     const cfg = settings();

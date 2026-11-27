@@ -37,15 +37,18 @@ const ALIAS = new Map();
 Object.keys(KNOWN).forEach((id) => KNOWN[id].aliases.forEach((a) => ALIAS.set(a, id)));
 
 /** Devices that need Yukimi's consent by default; her settings list (coord_settings 'deviceConsent', modules/deviceConsent.js) replaces it. */
-const DEFAULT_CONSENT_DEVICES = ['a53', 'fold'];
-// HARD RULE (Yukimi, Nov 26 2026: "no more touching my phone"): agents never take a physical phone - the Fold, the A53 or any
-// other real handset. Phone work is tested on the emulator lane (emulators, the test browsers). Only test devices pass.
-const OFF_LIMITS_MSG = 'Yukimi\'s physical phones are off limits to agents (HARD rule, Nov 26 2026). Test on the emulator lane instead (an Android emulator / aemu, or ruiko-chrome / headless-chrome); "it needs the hardware" is not accepted.';
+const DEFAULT_CONSENT_DEVICES = ['fold'];
+// HARD RULE (Yukimi, Nov 26 2026: "no more touching my phone ... the A53 is not my phone, it's a phone for testing"): agents never
+// take Yukimi's own phone (the Fold) until she says it is needed. The A53 is the test phone: agents use it without asking her
+// (no consent prompt), as they use the emulators and the test browsers.
+const OFF_LIMITS = new Set(['fold']);
+const TEST_PHONES = new Set(['a53']);
+const OFF_LIMITS_MSG = 'The Fold is Yukimi\'s own phone and off limits to agents (HARD rule, Nov 26 2026) until she says it is needed. Use the A53 test phone (coord_device_request a53) or the emulator lane; "it needs the Fold" is not accepted.';
 function isPhysicalPhone(dev) {
     const d = String(dev || '').toLowerCase();
-    if (!d || NEVER_CONSENT_SET.has(d)) return false;
+    if (!d || NEVER_CONSENT_SET.has(d) || TEST_PHONES.has(d)) return false;
     if (process.env.DEVICE_QUEUE_TEST_PHONES === '1') return false; // the consent / queue tests model phones; never set in the server
-    return !/(^|[-_])(emu|aemu|avd|emulator|sim|virtual)([-_]|\d|$)|^emulator-|^aemu/.test(d);
+    return OFF_LIMITS.has(d);
 }
 /** Test browsers never ask: they are not phones, whatever a settings list says. */
 const NEVER_CONSENT = new Set(['ruiko-chrome', 'headless-chrome']);
@@ -93,6 +96,7 @@ function needsConsent(device) {
     let id;
     try { id = normalise(device); } catch (_) { return false; }
     if (NEVER_CONSENT.has(id)) return false;
+    if (TEST_PHONES.has(id) && process.env.DEVICE_QUEUE_TEST_PHONES !== '1') return false; // the test phone never asks Yukimi
     return consentDevices().includes(id);
 }
 const text = (v, n) => String(v == null ? '' : v).slice(0, n);
