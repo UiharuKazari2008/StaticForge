@@ -570,7 +570,7 @@
     color: var(--cd-c-a00000);
 }
 
-/* small report tables inside a page section or a message box (Inspect, Properties) */
+/* small tables of dialogs and item windows, and the Supervisor's Models and effort form (pages use list views) */
 .cd-table {
     width: 100%;
     max-width: 100%;
@@ -586,22 +586,12 @@
     color: var(--cd-c-444);
     font-weight: normal;
     text-align: left;
-    overflow-wrap: anywhere;
 }
 
 .cd-table td {
     padding: 2px 6px;
     border-bottom: 1px solid var(--cd-c-efefef);
     vertical-align: top;
-    overflow-wrap: anywhere;
-}
-
-.cd-table td.is-num {
-    text-align: right;
-}
-
-.cd-table code {
-    font: 11px var(--cd-font-mono);
 }
 
 /* the host move's "bring these sessions over" list */
@@ -643,56 +633,6 @@
     padding-left: 20px;
     max-height: 140px;
     overflow: auto;
-}
-
-/* ---- Plan Usage on the summary page: a block per account, a Vista progress bar per limit ---- */
-
-#mmcConsole_claudedesk .cd-usage-acct {
-    margin: 0 0 10px;
-}
-
-#mmcConsole_claudedesk .cd-usage-acct:last-child {
-    margin-bottom: 0;
-}
-
-#mmcConsole_claudedesk .cd-usage-head {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 3px;
-}
-
-#mmcConsole_claudedesk .cd-usage-head > img {
-    width: 16px;
-    height: 16px;
-}
-
-#mmcConsole_claudedesk .cd-usage-row {
-    display: grid;
-    grid-template-columns: 170px minmax(120px, 280px) minmax(0, 1fr);
-    align-items: center;
-    gap: 10px;
-    padding: 1px 0 1px 22px;
-}
-
-#mmcConsole_claudedesk .cd-usage-row .mmc-progress {
-    margin: 0;
-}
-
-#mmcConsole_claudedesk .cd-usage-row .mmc-progress > [role="progressbar"] {
-    max-width: none;
-}
-
-#mmcConsole_claudedesk .cd-usage-row .mmc-progress > span {
-    width: 34px;
-    text-align: right;
-    flex: none;
-}
-
-#mmcConsole_claudedesk .cd-usage-reset {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 /* ---- Supervisor: the settings form, the reviews list, the selected review ---- */
@@ -757,30 +697,107 @@
     padding-left: 22px;
 }
 
-/* ---- #1154 Fleet: usage bars edge to edge, information bars, the wizard, session details, locks ---- */
+/* ---- lists in page sections: ones that show every row (the shell's section list stops at 10 rows), the Workflow list,
+   the lists of the reading panes (outside a section, so framed here) ---- */
+
+#mmcConsole_claudedesk .cd-all > .mmc-list {
+    max-height: none;
+}
+
+#mmcConsole_claudedesk .cd-wf-list > .mmc-list {
+    max-height: 50vh;
+}
+
+#mmcConsole_claudedesk .cd-rv-bot .mmc-list {
+    max-height: 482px;
+    margin: 0 0 8px;
+    overflow: auto;
+    border: 1px solid var(--cd-c-828790);
+}
+
+/* running text in a reading pane or details (review items, commands, maintenance, a memory's history): it wraps in full */
+.cd-prose {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    margin: 0 0 8px;
+}
+
+.cd-prose > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.cd-prose > div {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+#mmcConsole_claudedesk .cd-prose p,
+.cd-win .cd-prose p {
+    margin: 0 0 2px;
+}
+
+.cd-prose code {
+    font: 11px var(--cd-font-mono);
+    white-space: pre-wrap;
+}
+
+/* taller than the shell's 10 rows where reading down the list matters: the 30 days show about 16 rows, the lists of
+   a request's parts, a contractor, Inspect, Details and the reading panes about 24 */
+#mmcConsole_claudedesk .mmc-sec[data-sec="cd-dash-days"] .mmc-list {
+    max-height: 330px;
+}
+
+#mmcConsole_claudedesk .mmc-sec:is([data-sec="cd-wi-parts"], [data-sec^="cd-ct-"], [data-sec="cd-in-claims"], [data-sec="cd-in-files"], [data-sec="cd-in-tree"], [data-sec="cd-dt-claims"], [data-sec="cd-dt-files"]) .mmc-list {
+    max-height: 482px;
+}
+
+#mmcConsole_claudedesk .mmc-sec-body .cd-list-note {
+    margin: 4px 0 0;
+}
+
+/* ---- Plan Usage: a limit's Vista progress bar in its list cell ---- */
+
+#mmcConsole_claudedesk .mmc-row .cd-limit {
+    flex: 1;
+    min-width: 0;
+    gap: 6px;
+    margin: 0;
+}
+
+#mmcConsole_claudedesk .cd-limit > [role="progressbar"] {
+    position: relative;
+    min-width: 40px;
+    max-width: none;
+}
+
+#mmcConsole_claudedesk .cd-limit > span {
+    flex: none;
+    width: 34px;
+    text-align: right;
+}
 
 /* The Vista fill (vista-glass-controls.css) has 8 px end caps, so it was never narrower than 16 px (0% was not empty)
    and its -1 px margin with a width of the inner box stopped it 2 px short of the track at 100%. Here its width is a
    share of the track's outer edge (claudedesk.js paintBars sets --cd-w); 0% hides it and a short fill drops its caps. */
-#mmcConsole_claudedesk .cd-usage-row [role="progressbar"] > .cd-fill {
+#mmcConsole_claudedesk .cd-limit [role="progressbar"] > .cd-fill {
     width: calc((100% + 2px) * var(--cd-w, 0) / 100);
     min-width: 0;
 }
 
-#mmcConsole_claudedesk .cd-usage-row [role="progressbar"] > .cd-fill.is-empty {
+#mmcConsole_claudedesk .cd-limit [role="progressbar"] > .cd-fill.is-empty {
     display: none;
 }
 
-#mmcConsole_claudedesk .cd-usage-row [role="progressbar"] > .cd-fill.is-short {
+#mmcConsole_claudedesk .cd-limit [role="progressbar"] > .cd-fill.is-short {
     border-width: 0;
 }
 
-/* The pace chip: a marker at the share of the window that has passed, where an even spend would be (paceOf) */
-#mmcConsole_claudedesk .cd-usage-row [role="progressbar"] {
-    position: relative;
-}
-
-#mmcConsole_claudedesk .cd-usage-row .cd-pace {
+/* The pace tick: a marker at the share of the window that has passed, where an even spend would be (paceOf) */
+#mmcConsole_claudedesk .cd-limit .cd-pace {
     position: absolute;
     top: -2px;
     bottom: -2px;
@@ -792,38 +809,30 @@
     pointer-events: auto;
 }
 
-#mmcConsole_claudedesk .cd-renews {
-    margin-left: auto;
-}
-
-/* Vista's information bar (as Explorer's, vista-explorer.css .explorer-net-infobar): #ffffe1, a #b3b3b3 rule under it */
-#mmcConsole_claudedesk .cd-infobar {
+/* a problem or a pause said in a plain line: a 16 px icon and the sentence, which wraps */
+#mmcConsole_claudedesk .cd-alert {
     display: flex;
     flex: none;
-    align-items: center;
+    align-items: flex-start;
     gap: 6px;
-    box-sizing: border-box;
-    min-height: 26px;
-    margin: 0 0 4px;
-    padding: 3px 8px;
-    border: 0;
-    border-bottom: 1px solid var(--cd-c-b3b3b3);
-    background: var(--cd-c-ffffe1);
-    color: var(--cd-c-000);
+    margin: 0 0 6px;
 }
 
-#mmcConsole_claudedesk .cd-infobar > img {
+#mmcConsole_claudedesk .cd-alert > img {
     flex: none;
     width: 16px;
     height: 16px;
 }
 
-#mmcConsole_claudedesk .cd-usage-acct > .cd-infobar {
-    margin: 2px 0 4px 22px;
+#mmcConsole_claudedesk .cd-alert > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
-#mmcConsole_claudedesk .cd-list-wrap > .cd-infobar {
+#mmcConsole_claudedesk .cd-chat > .cd-alert,
+#mmcConsole_claudedesk .cd-list-wrap > .cd-alert {
     margin: 0;
+    padding: 3px 10px;
 }
 
 /* ---- the New Session wizard (inside the shared confirmation box) ---- */
@@ -942,21 +951,11 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
-.cd-table .cd-w46 { width: 46px; }
-.cd-table .cd-w76 { width: 76px; }
 .cd-table .cd-w80 { width: 80px; }
-.cd-table .cd-w84 { width: 84px; }
-.cd-table .cd-w100 { width: 100px; }
-.cd-table .cd-w130 { width: 130px; }
-.cd-table .cd-w50 { width: 50px; }
-.cd-table .cd-w90 { width: 90px; }
 
 /* the colours and the mono font of the session view's own parts (one token block) */
 #mmcConsole_claudedesk,
 .cd-win {
-    --cd-c1: var(--cd-c-b86b6b);
-    --cd-c2: var(--cd-c-fde4e4);
-    --cd-c3: var(--cd-c-5c0000);
     --cd-c4: var(--cd-c-e3e3e3);
     --cd-c5: var(--cd-c-444);
     --cd-c6: var(--cd-c-a8d8eb);
@@ -970,13 +969,6 @@
     --cd-c14: var(--cd-c-0f4d12);
     --cd-c15: var(--cd-c-000);
     --cd-mono: Consolas, "Lucida Console", monospace;
-}
-
-/* Fleet's cost warning (extra usage on): the error information bar, red */
-#mmcConsole_claudedesk .cd-infobar.is-cost {
-    border-bottom-color: var(--cd-c1);
-    background: var(--cd-c2);
-    color: var(--cd-c3);
 }
 
 /* the session view's options under the title */
@@ -1154,14 +1146,6 @@
 #mmcConsole_claudedesk .cd-actbar input[type="text"] {
     flex: 1;
     min-width: 0;
-}
-
-#mmcConsole_claudedesk .cd-infobar.is-warning {
-    margin: 0;
-}
-
-#mmcConsole_claudedesk .cd-chat > .cd-infobar {
-    margin: 0;
 }
 
 /* the Activity detail window (an item window: its own scroll bars) */
@@ -1379,13 +1363,13 @@
     margin: 2px 0 6px;
     font-size: 14px;
     font-weight: normal;
-    color: var(--cd-c-1e4e8c);
+    color: var(--cd-c-000);
 }
 
 #mmcConsole_claudedesk .cd-wd h4 {
     margin: 10px 0 4px;
     font-size: 12px;
-    color: var(--cd-c-1e4e8c);
+    color: var(--cd-c-000);
 }
 
 #mmcConsole_claudedesk .cd-wd .cd-read {
@@ -1483,171 +1467,6 @@
 @media (prefers-reduced-motion: reduce) {
     #mmcConsole_claudedesk .cd-working::before { animation: none; width: 100%; opacity: 0.5; }
 }
-
-/* Fleet's dashboard (the main page): count tiles that open their list, then the active work */
-#mmcConsole_claudedesk .cd-tiles {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 6px;
-}
-
-#mmcConsole_claudedesk .cd-tile {
-    display: grid;
-    grid-template-columns: 16px minmax(0, 1fr);
-    column-gap: 8px;
-    align-items: center;
-    min-width: 0;
-    padding: 6px 10px;
-    border: 1px solid var(--cd-c-d5d5d5);
-    border-radius: 3px;
-    background: var(--cd-c-fff);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-}
-
-#mmcConsole_claudedesk .cd-tile:hover {
-    border-color: var(--cd-c-0066cc);
-}
-
-#mmcConsole_claudedesk .cd-tile img {
-    grid-row: 1 / span 3;
-}
-
-#mmcConsole_claudedesk .cd-tile b {
-    font-size: 18px;
-    font-weight: normal;
-    color: var(--cd-c-1e4e8c);
-}
-
-#mmcConsole_claudedesk .cd-tile span,
-#mmcConsole_claudedesk .cd-tile small {
-    min-width: 0;
-    overflow: hidden;
-    color: var(--cd-c-555);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#mmcConsole_claudedesk .cd-tile small {
-    font-size: 11px;
-    color: var(--cd-c-6d6d6d);
-}
-
-/* dashboard tables: one line per row, long text cut with an ellipsis (the full text is the tooltip) */
-#mmcConsole_claudedesk .cd-dash {
-    table-layout: fixed;
-}
-
-#mmcConsole_claudedesk .cd-dash td.cd-cut,
-#mmcConsole_claudedesk .cd-dash td {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-#mmcConsole_claudedesk .cd-dash th:first-child {
-    width: 34%;
-}
-
-#mmcConsole_claudedesk .cd-dash th {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-#mmcConsole_claudedesk .cd-tile.is-warn b {
-    color: var(--cd-c-a00000);
-}
-
-#mmcConsole_claudedesk .cd-dash-row {
-    cursor: pointer;
-}
-
-#mmcConsole_claudedesk .cd-dash-row:hover td {
-    background: var(--cd-c-f0f0f0);
-}
-
-/* the Supervisor's cost in Plan Usage: big figures first, then the details */
-#mmcConsole_claudedesk .cd-spend {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 6px;
-    margin: 4px 0 8px;
-}
-
-#mmcConsole_claudedesk .cd-spend-cell {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    padding: 6px 10px;
-    border: 1px solid var(--cd-c-d5d5d5);
-    border-radius: 3px;
-    background: var(--cd-c-fff);
-}
-
-#mmcConsole_claudedesk .cd-spend-label {
-    color: var(--cd-c-555);
-}
-
-#mmcConsole_claudedesk .cd-spend-cost {
-    font-size: 22px;
-    font-weight: normal;
-    color: var(--cd-c-1e4e8c);
-    overflow-wrap: anywhere;
-}
-
-#mmcConsole_claudedesk .cd-spend-sub {
-    font-size: 12px;
-    color: var(--cd-c-444);
-}
-
-#mmcConsole_claudedesk .cd-spend-warn {
-    font-size: 11px;
-    color: var(--cd-c-a00000);
-}
-
-/* Last 30 days: inline SVG, day columns with the newest at the right */
-#mmcConsole_claudedesk .cd-ch-scroll {
-    overflow-x: auto;
-    max-width: 100%;
-}
-
-#mmcConsole_claudedesk .cd-ch {
-    display: block;
-    max-width: none;
-}
-
-#mmcConsole_claudedesk .cd-ch-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 14px;
-    margin-bottom: 4px;
-    color: var(--cd-c-444);
-}
-
-#mmcConsole_claudedesk .cd-ch-sw {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    margin-right: 4px;
-    border: 1px solid var(--cd-c-d5d5d5);
-}
-
-#mmcConsole_claudedesk .cd-ch-sw.is-cost { background: var(--cd-chart-cost); }
-#mmcConsole_claudedesk .cd-ch-sw.is-sess { background: var(--cd-chart-sess); }
-#mmcConsole_claudedesk .cd-ch-sw.is-week { background: var(--cd-chart-week); border-radius: 5px; }
-
-#mmcConsole_claudedesk .cd-ch-cost { fill: var(--cd-chart-cost); }
-#mmcConsole_claudedesk .cd-ch-sess { fill: var(--cd-chart-sess); }
-#mmcConsole_claudedesk .cd-ch-week { fill: none; stroke: var(--cd-chart-week); stroke-width: 1.5; }
-#mmcConsole_claudedesk .cd-ch-dot { fill: var(--cd-chart-week); }
-#mmcConsole_claudedesk .cd-ch-hit { fill: transparent; }
-#mmcConsole_claudedesk .cd-ch-hit:hover { fill: var(--cd-c-eaf6fd); }
-#mmcConsole_claudedesk .cd-ch-grid { stroke: var(--cd-chart-grid); stroke-width: 1; }
-#mmcConsole_claudedesk .cd-ch-grid.is-dash { stroke-dasharray: 2 3; }
-#mmcConsole_claudedesk .cd-ch-lane { fill: var(--cd-c-333); font: 12px var(--cd-font-ui); }
-#mmcConsole_claudedesk .cd-ch-tick { fill: var(--cd-chart-text); font: 10px var(--cd-font-ui); }
 
 /* ---- Nov 24: Markdown in the chat, and the files Claude sent (SendUserFile) ---- */
 
@@ -1997,14 +1816,9 @@
 
 /* HARD RULE (Yukimi, Nov 24 2026): no row in Fleet is ever more than one line - tables, list views, the task panel.
    Text that does not fit ends in an ellipsis; the whole text is in the tooltip and the reading pane. */
-#mmcConsole_claudedesk .cd-table {
-    width: 100%;
-    table-layout: fixed;
-}
-
-#mmcConsole_claudedesk .cd-table th,
-#mmcConsole_claudedesk .cd-table td,
-#mmcConsole_claudedesk .cd-table td *,
+.cd-table th,
+.cd-table td,
+.cd-table td *,
 #mmcConsole_claudedesk .mmc-row > span,
 #mmcConsole_claudedesk .mmc-row > span > i,
 #mmcConsole_claudedesk .cd-task-text {
@@ -2013,7 +1827,7 @@
     text-overflow: ellipsis;
 }
 
-#mmcConsole_claudedesk .cd-table td * {
+.cd-table td * {
     display: inline;
 }
 
@@ -2031,133 +1845,7 @@
 /* Input Required: each answer box spans its section */
 #mmcConsole_claudedesk .cd-answer { display: block; width: 100%; box-sizing: border-box; }
 
-/* the Workflow page: lanes as columns, jobs as cards, a line from a job to the one that waits for it */
-#mmcConsole_claudedesk .cd-wf-bar {
-    margin: 0 0 6px;
-}
-
-#mmcConsole_claudedesk .cd-wf-scroll {
-    overflow: auto;
-    max-height: 60vh;
-    padding: 4px 2px 8px;
-}
-
-#mmcConsole_claudedesk .cd-wf-head {
-    position: absolute;
-    display: flex;
-    overflow: hidden;
-    width: 200px;
-    flex-direction: column;
-    border-bottom: 1px solid var(--cd-c-b3b3b3);
-    color: var(--cd-c-333);
-    font: 11px var(--cd-font-ui);
-    white-space: nowrap;
-}
-
-#mmcConsole_claudedesk .cd-wf-head span {
-    color: var(--cd-c-6d6d6d);
-}
-
-#mmcConsole_claudedesk .cd-wf-lines {
-    position: absolute;
-    top: 0;
-    left: 0;
-    fill: none;
-    stroke: var(--cd-c-828790);
-    stroke-width: 1.5;
-    pointer-events: none;
-}
-
-#mmcConsole_claudedesk .cd-wf-lines g {
-    pointer-events: auto;
-}
-
-#mmcConsole_claudedesk .cd-wf-lines .cd-wf-hit {
-    stroke: transparent;
-    stroke-width: 10;
-}
-
-#mmcConsole_claudedesk .cd-wf-lines .cd-wf-tip {
-    fill: var(--cd-c-828790);
-    stroke: none;
-}
-
-#mmcConsole_claudedesk .cd-wf-lines g:not(.k-explicit) path:not(.cd-wf-hit):not(.cd-wf-tip) {
-    stroke-dasharray: 5 3;
-}
-
-#mmcConsole_claudedesk .cd-wf-lines g.is-on path:not(.cd-wf-hit) {
-    stroke: var(--cd-busy-a);
-}
-
-#mmcConsole_claudedesk .cd-wf-lines g.is-on .cd-wf-tip {
-    fill: var(--cd-busy-a);
-}
-
-#mmcConsole_claudedesk .cd-wf-card {
-    position: absolute;
-    display: flex;
-    overflow: hidden;
-    width: 200px;
-    height: 76px;
-    box-sizing: border-box;
-    flex-direction: column;
-    justify-content: center;
-    padding: 2px 6px 2px 8px;
-    border: 1px solid var(--cd-c-b3b3b3);
-    border-left: 4px solid var(--cd-c-828790);
-    background: var(--cd-c-fff);
-    color: var(--cd-c-333);
-    cursor: pointer;
-    font: 11px var(--cd-font-ui);
-    text-align: left;
-}
-
-#mmcConsole_claudedesk .cd-wf-card:hover {
-    background: var(--cd-c-eaf6fd);
-}
-
-#mmcConsole_claudedesk .cd-wf-card.is-selected {
-    border-color: var(--cd-c-a8d8eb);
-    border-left-color: var(--cd-c-828790);
-    background: var(--cd-c-eaf6fd);
-}
-
-#mmcConsole_claudedesk .cd-wf-card b,
-#mmcConsole_claudedesk .cd-wf-card i,
-#mmcConsole_claudedesk .cd-wf-card em {
-    overflow: hidden;
-    max-width: 100%;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-style: normal;
-}
-
-#mmcConsole_claudedesk .cd-wf-card i img {
-    margin-right: 4px;
-    vertical-align: -3px;
-}
-
-#mmcConsole_claudedesk .cd-wf-card em {
-    color: var(--cd-c-6d6d6d);
-}
-
-#mmcConsole_claudedesk .cd-wf-card .cd-working {
-    position: absolute;
-    right: 6px;
-    bottom: 4px;
-    margin: 0;
-}
-
-#mmcConsole_claudedesk .cd-wf-card.is-running {
-    border-left-color: var(--cd-busy-a);
-    background: var(--cd-busy-tint);
-}
-
-#mmcConsole_claudedesk .cd-wf-card.is-failed {
-    border-left-color: var(--cd-c-c42b1c);
-}
-
+/* Workflow > Selected Job: what it waits for, and why, in full */
 #mmcConsole_claudedesk .cd-wf-waits {
     margin: 2px 0 6px;
     padding-left: 18px;
