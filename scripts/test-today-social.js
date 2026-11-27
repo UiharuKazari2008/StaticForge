@@ -7,7 +7,8 @@
  *   the Options' order, its newest notification (or "No new notifications");
  * - each page's right soft key is named after its app and opens it;
  * - a Messaging account (#885) is never a social app: offered greyed "(in Messaging)", left out of the pages and of
- *   what the app is told to take in;
+ *   what the app is told to take in; except one with a server split (Discord, #1288): checkable as "(servers only)",
+ *   its server-channel notifications page, its direct messages never, unchecking drops it from what the app is told;
  * - the chosen apps go to the app (setApps) at start and when the option changes, not again when nothing changed;
  * - a tap on a page opens the app's bar at that notification (selected, scrolled to), the soft key is the app's;
  *   left / right pages between the social apps; a tap on a notification fires it and puts the bar away;
@@ -256,16 +257,45 @@ const tick = () => new Promise((r) => setImmediate(r));
 
 // ---------------------------------------------------------------- 3. Messaging accounts are not social apps
 {
-    const p = page({ notes: NOTES, options: { apps: `${DISCORD},${INSTA}` }, messaging: [DISCORD] });
+    const p = page({ notes: NOTES, options: { apps: `${SIGNAL},${INSTA}` }, messaging: [SIGNAL] });
     const panel = p.item.titanium();
     ok(panel.pages.every((pg) => pg.pkg === INSTA), "a Messaging account's notifications are not Social's");
     ok(p.calls.setApps[0] === JSON.stringify([INSTA]), 'nor is it sent to the app to take in');
     const choices = p.item.options.find((o) => o.key === 'apps').choices;
-    const d = choices.find((c) => c[0] === DISCORD);
+    const d = choices.find((c) => c[0] === SIGNAL);
     ok(d && d[3] === true && /\(in Messaging\)$/.test(d[1]), 'Options offers it greyed, "(in Messaging)"');
     ok(choices.find((c) => c[0] === INSTA)[3] !== true, 'other programs can be checked');
     const paging = p.item.options.find((o) => o.key === 'paging');
     ok(paging.type === 'combo' && paging.choices.map((c) => c[1]).join('|') === 'Show all notifications by date|Page per App', 'the left / right drop-down');
+}
+
+// ---------------------------------------------------------------- 3a. a Messaging account with a server split (#1288)
+{
+    const srv = (id, ch, ago) => note(id, DISCORD, 'Discord', 'Night Owls #general', 'hi all', ago, { channel: ch, subText: 'Night Owls #general', conversation: 'Night Owls #general' });
+    const SN = [srv('s1', 'messages', 1000), srv('dm1', 'directMessages', 500), srv('s2', 'polls', 2000), note('i1', INSTA, 'Instagram', 'Aya', 'yo', 3000)];
+    const p = page({ notes: SN, options: { apps: `${DISCORD},${INSTA},${SIGNAL}` }, messaging: [DISCORD, SIGNAL] });
+    const choices = p.item.options.find((o) => o.key === 'apps').choices;
+    const d = choices.find((c) => c[0] === DISCORD);
+    ok(d && d[3] !== true && d.length === 3 && /servers only/.test(d[1]), 'Discord is checkable in Options, labelled "(servers only)"');
+    const sg = choices.find((c) => c[0] === SIGNAL);
+    ok(sg[3] === true && /\(in Messaging\)$/.test(sg[1]), 'another Messaging account stays greyed');
+    ok(p.calls.setApps[0] === JSON.stringify([DISCORD, INSTA]), 'Discord is sent to the app, Signal is not');
+    const panel = p.item.titanium();
+    const ids = panel.pages.map((pg) => pg.noteId);
+    ok(ids.includes('s1') && ids.includes('s2') && ids.includes('i1'), 'server notes page as Social pages');
+    ok(!ids.includes('dm1'), 'a direct message is never shown (Messaging keeps it)');
+    ok(!/Night Owls #general/.test(panel.pages.find((pg) => pg.noteId === 's1').line3), 'the server is not repeated when the title has it');
+    // the server / channel beside the app when the title does not carry it
+    const q = page({ notes: [note('s3', DISCORD, 'Discord', 'Mika', 'psst', 10, { channel: 'messages', subText: 'Cafe Club' })], options: { apps: DISCORD }, messaging: [DISCORD] });
+    ok(/Discord, Cafe Club/.test(q.item.titanium().pages[0].line3), 'the page names the server beside the app');
+    // a note with no channel at all is not a server note
+    const r = page({ notes: [note('x1', DISCORD, 'Discord', 'Rin', 'hello', 10)], options: { apps: DISCORD }, messaging: [DISCORD] });
+    ok(r.item.titanium().pages.every((pg) => pg.noteId !== 'x1'), 'a Discord note without a server channel is not shown');
+    // unchecking drops it from the list and from what the app is told
+    p.options.social.apps = INSTA;
+    p.settingsChanged();
+    ok(p.calls.setApps[p.calls.setApps.length - 1] === JSON.stringify([INSTA]), 'unchecking sends the new list, so the app drops what it stored');
+    ok(p.item.titanium().pages.every((pg) => pg.pkg === INSTA), 'and its pages are gone');
 }
 
 // ---------------------------------------------------------------- 3b. icons by address (#1030)

@@ -10,7 +10,9 @@
  *
  *   Settings > Today > Items > Social > Options
  *     Social apps      the phone's programs (wmAndroidApps.list()), checked in the order they page; an app that is a
- *                      Messaging account (#885) is offered greyed, "(in Messaging)", and never taken in
+ *                      Messaging account (#885) is offered greyed, "(in Messaging)", and never taken in - except one
+ *                      with a server split (SERVER_SPLIT, today Discord, #1288): "<app> (servers only)" can be
+ *                      checked and its server notifications (never its direct messages, Messaging's) page here
  *     Left and right   "Show all notifications by date": a page per notification, newest first (up to 30);
  *                      "Page per App": a page per social app, its newest notification
  *   The panel          each page: the sender or conversation, the last line, the app and the time, the sender's face
@@ -48,6 +50,11 @@
     const ICON_DROP = 23;
     const SLIDE_START = 22.5; // a swipe on the glass turns the page after 45 VGA px, as a panel's pages
     const PAGE_MS = 220;
+    // Messaging accounts whose server notifications can be social pages (#1288, Yukimi Nov 26 2026): package -> the
+    // notification channels that are servers. Mirrors modules/textMessagingAndroid.js COMMUNITIES and DSApp
+    // SocialNotifications.SERVER_CHANNELS; the app stores only these for such a package, this is the page's second check.
+    // Direct messages (Discord's directMessages) stay Messaging's, never shown here.
+    const SERVER_SPLIT = new Map([['com.discord', new Set(['messages', 'forumThreadCreated', 'guildEventLive', 'stageLive', 'polls', 'other'])]]);
     const PAGING = [['date', 'Show all notifications by date'], ['app', 'Page per App']];
 
     let sh = null;
@@ -76,7 +83,7 @@
         const out = [];
         for (const p of String(option('apps') || '').split(',')) {
             const k = p.trim();
-            if (k && !managed.has(k) && !out.includes(k)) out.push(k);
+            if (k && (!managed.has(k) || SERVER_SPLIT.has(k)) && !out.includes(k)) out.push(k);
         }
         return out;
     }
@@ -135,7 +142,11 @@
     function appChoices() {
         const managed = messagingPackages();
         return [...programs().entries()]
-            .map(([pkg, a]) => (managed.has(pkg) ? [pkg, `${a.label} (in Messaging)`, iconFile(pkg, false), true] : [pkg, a.label, iconFile(pkg, false)]))
+            .map(([pkg, a]) => {
+                if (!managed.has(pkg)) return [pkg, a.label, iconFile(pkg, false)];
+                if (SERVER_SPLIT.has(pkg)) return [pkg, `${a.label} (servers only)`, iconFile(pkg, false)];
+                return [pkg, `${a.label} (in Messaging)`, iconFile(pkg, false), true];
+            })
             .sort((x, y) => String(x[1]).localeCompare(String(y[1]), undefined, { sensitivity: 'base' }));
     }
 
@@ -193,8 +204,17 @@
         }
         return true;
     }
-    function notesOf(pkg) { return notes.filter((n) => n.package === pkg); }
-    function shownNotes() { const want = new Set(chosen()); return notes.filter((n) => want.has(n.package)); }
+    /** A managed package's note counts only from a server channel (its DMs are Messaging's, whatever the app stored). */
+    function isServerNote(n, managed) {
+        const ch = SERVER_SPLIT.get(n.package);
+        return !managed.has(n.package) || !!(ch && ch.has(String(n.channel || '')));
+    }
+    function notesOf(pkg) { const managed = messagingPackages(); return notes.filter((n) => n.package === pkg && isServerNote(n, managed)); }
+    function shownNotes() {
+        const want = new Set(chosen());
+        const managed = messagingPackages();
+        return notes.filter((n) => want.has(n.package) && isServerNote(n, managed));
+    }
 
     /** The chosen apps to the app (it takes in what they post from now, and what they have in the shade). */
     function syncApps() {
@@ -255,12 +275,19 @@
         return icon ? { icon, iconRaw: true } : {};
     }
 
+    function serverOf(n) {
+        const s = String(n.subText || '').trim();
+        if (!s || !SERVER_SPLIT.has(n.package)) return '';
+        return [n.conversation, n.title].some((t) => t && String(t).includes(s)) ? '' : s;
+    }
+
     function notePage(n, count) {
         const a = appInfo(n.package);
         return {
             title: n.conversation || n.title || a.label,
             line2: lastLine(n),
-            line3: [a.label, count > 1 ? `${count} new` : '', when(n.time)].filter(Boolean).join(', '),
+            // a server note names its server / channel beside the app (#1288), unless the title already does
+            line3: [a.label, serverOf(n), count > 1 ? `${count} new` : '', when(n.time)].filter(Boolean).join(', '),
             // the app's own icon: the panel draws it as a panel icon with its reflection (wmTitanium tiIconFor)
             ...panelIconFields(n.package),
             image: n.large || n.picture || undefined,
