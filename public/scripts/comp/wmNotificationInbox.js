@@ -444,7 +444,10 @@
     function producerShows(notice) {
         const before = toastSeq();
         setTimeout(() => {
-            if (document.hidden || shownNotes.has(notice.id)) return;
+            if (document.hidden) return;
+            // a note for this id is up (the page app's own through shownBy, or one shown here earlier): the notice is seen,
+            // never a second note (N6)
+            if (shownNotes.has(notice.id)) { pageShown(notice.id); ack(notice.id, 'seen'); return; }
             if (toastTitled(notice.title) || toastSeq() > before) { producerShown.add(notice.id); pageShown(notice.id); ack(notice.id, 'seen'); return; }
             show(notice, { live: true });
         }, PRODUCER_MS);
@@ -555,6 +558,20 @@
          * two never make two boxes or two sounds. True while this page can use the inbox and is linked to the server.
          */
         mailStacked: () => canUse() && !!client(),
+        /**
+         * A page app showed this notice's own note (weather alerts: its title carries the severity, the inbox's does not, so the
+         * title match in producerShows cannot tell it is the same notice): the inbox copy is seen, never shown as a second
+         * note (#1299 N6). The note is kept under the id until the app clears or acts on the notice.
+         */
+        shownBy: (id, note) => {
+            const key = String(id || '');
+            if (!key || !note || shownNotes.has(key)) return;
+            shownNotes.set(key, { close() { try { note.close(); } catch (_) { /* gone */ } } });
+            producerShown.add(key);
+            pageShown(key);
+            // no ack here: the server's row may not exist yet, and a 'seen' sent now would stop the one that counts (seenAcked);
+            // producerShows and catchUp ack it once the row is there
+        },
         /**
          * Snooze from an app's own grouped note (Text Messages, Dreamscape Messenger: 6.5.1's reminder rows on every
          * notification, Nov 18): each notice goes now and the server's reminder scheduler publishes it again, sounding,
