@@ -290,42 +290,166 @@ function usage() {
     return usageState;
 }
 
-// Where the phone says it is (traffic_place, #1289): 'home' | 'work' | null (on the road). The server has no phone
-// position of its own, so a scheduled "To Home" is skipped while the phone reports Home (same for Work). Kept in
-// memory and in a small file next to the usage file so a restart keeps it; a report older than 12 h counts for nothing.
+// Where each phone says it is (traffic_place, #1289): 'home' | 'work' | null (away: left a place, on the road). The
+// server has no phone position of its own, so a scheduled "To Home" is skipped while the deciding phone reports Home
+// (same for Work). The place is kept PER PHONE and the PRIMARY phone (modules/activeSync.js primaryOf) decides: a test
+// phone on the desk never overwrites Yukimi's. With no primary set every fresh phone counts and they must agree. A
+// report lives 7 days (a phone that came home yesterday evening and stayed in all day still says Home at 17:50).
+// The TEST LANE (lane 'test', modules/testDevices.js: the Android emulator) is a second store beside the household's:
+// a test device's reports are kept there, never reach the household's decision, and a test-lane run decides from them
+// alone (no primary; every fresh test device counts and all must agree).
+// Kept in memory and in a small file next to the usage file so a restart keeps it:
+//   { v: 2, devices: { <deviceKey>: { name, place, at, via } }, log: [ { at, device, name, place, via } ],
+//     test: { devices, log } }
+// No timer and no request to a client: the file is written on a change (or an hourly refresh of a repeated report).
 const PHONE_FILE = process.env.TRAFFIC_PHONE_FILE || path.join(path.dirname(USAGE_FILE), 'traffic-phone.json');
-const PHONE_PLACE_TTL = 12 * 60 * MIN;
-let phoneState = null; // { place, at }; null until read
+const PHONE_PLACE_TTL = 7 * 24 * 60 * MIN;
+const PHONE_REWRITE_MS = 60 * MIN; // an unchanged repeated report rewrites the file at most this often per phone
+const PHONE_FORGET_MS = 30 * 24 * 60 * MIN; // a phone silent this long is dropped on the next write
+const PHONE_MAX_DEVICES = 16;
+const PHONE_LOG_MAX = 20;
+let phoneState = null; // { v: 2, house: lane, test: lane }; a lane is { devices, log, saved: { <deviceKey>: at as last written } }; null until read
 
-function phone() {
+// the primary phone's ActiveSync device id ('' none); a seam for tests. Without a getPath the stub gr of a test would
+// make activeSync open the live .cache/activesync.db, so such a gr has no primary.
+const defaultPrimaryLookup = () => {
+    try { return gr && typeof gr.getPath === 'function' ? String(require('./activeSync').primaryOf(gr) || '') : ''; } catch (_e) { return ''; }
+};
+let primaryLookup = defaultPrimaryLookup;
+
+const isPlace = (p) => p === 'home' || p === 'work';
+const viaOf = (v) => (v === 'page' || v === 'task' ? v : '');
+const laneName = (opts) => (opts && opts.lane === 'test' ? 'test' : 'house');
+
+function readLane(o) {
+    const lane = { devices: {}, log: [], saved: {} };
+    if (!o || typeof o !== 'object') return lane;
+    if (o.devices && typeof o.devices === 'object') {
+        for (const [key, d] of Object.entries(o.devices)) {
+            if (!d || typeof d !== 'object' || !Number.isFinite(Number(d.at))) continue;
+            lane.devices[key] = { name: String(d.name || ''), place: isPlace(d.place) ? d.place : null, at: Number(d.at), via: viaOf(d.via) };
+            lane.saved[key] = Number(d.at);
+        }
+    }
+    if (Array.isArray(o.log)) {
+        lane.log = o.log.filter((e) => e && typeof e === 'object' && Number.isFinite(Number(e.at)))
+            .map((e) => ({ at: Number(e.at), device: String(e.device || ''), name: String(e.name || ''), place: isPlace(e.place) ? e.place : null, via: viaOf(e.via) }))
+            .slice(-PHONE_LOG_MAX);
+    }
+    return lane;
+}
+
+function phone(which = 'house') {
     if (!phoneState) {
         let o = null;
         try { o = JSON.parse(fs.readFileSync(PHONE_FILE, 'utf8')); } catch (_e) { o = null; }
-        const place = o && (o.place === 'home' || o.place === 'work') ? o.place : null;
-        phoneState = { place, at: place && Number.isFinite(Number(o.at)) ? Number(o.at) : 0 };
+        // the old format { place, at } and anything else unknown reads as empty
+        if (o && typeof o === 'object' && o.v === 2) phoneState = { house: readLane(o), test: readLane(o.test) };
+        else phoneState = { house: readLane(null), test: readLane(null) };
     }
-    return phoneState;
+    return phoneState[which];
 }
 
-/** The phone's report: 'home' | 'work', or null (on the road / left a place) which clears it. Anything else is ignored. */
-function setPhonePlace(place, at = Date.now()) {
-    if (place !== null && place !== 'home' && place !== 'work') return false;
-    const t = Number.isFinite(Number(at)) ? Number(at) : Date.now();
-    const cur = phone();
-    if (cur.place === place && (place === null || cur.at === t)) return true;
-    phoneState = { place, at: place ? t : 0 };
+function savePhone(now) {
+    phone();
+    for (const lane of [phoneState.house, phoneState.test]) {
+        // forget phones silent for 30 days, keep the 16 newest
+        for (const [key, d] of Object.entries(lane.devices)) if (now - d.at > PHONE_FORGET_MS) delete lane.devices[key];
+        const keys = Object.keys(lane.devices).sort((a, b) => lane.devices[b].at - lane.devices[a].at);
+        keys.slice(PHONE_MAX_DEVICES).forEach((key) => { delete lane.devices[key]; });
+        lane.saved = {};
+        for (const [key, d] of Object.entries(lane.devices)) lane.saved[key] = d.at;
+    }
     try {
         fs.mkdirSync(path.dirname(PHONE_FILE), { recursive: true });
-        fs.writeFileSync(`${PHONE_FILE}.tmp`, JSON.stringify(phoneState));
+        const { house, test } = phoneState;
+        fs.writeFileSync(`${PHONE_FILE}.tmp`, JSON.stringify({ v: 2, devices: house.devices, log: house.log, test: { devices: test.devices, log: test.log } }));
         fs.renameSync(`${PHONE_FILE}.tmp`, PHONE_FILE);
     } catch (_e) { /* kept in memory */ }
+}
+
+/**
+ * A phone's report: place 'home' | 'work' | null (away). Anything else is refused (false, nothing changes).
+ * opts { device = 'phone' (its key: the ActiveSync device id), name, via: 'page' | 'task' | '', at = now, lane: 'test' for a test device }.
+ */
+function setPhonePlace(place, opts = {}) {
+    if (place !== null && !isPlace(place)) return false;
+    const o = opts && typeof opts === 'object' ? opts : {};
+    const which = laneName(o);
+    const key = String(o.device || 'phone');
+    const at = Number.isFinite(Number(o.at)) ? Number(o.at) : Date.now();
+    const via = viaOf(o.via);
+    const lane = phone(which);
+    const prev = lane.devices[key];
+    const name = String(o.name || (prev && prev.name) || '');
+    const changed = !prev || prev.place !== place;
+    lane.devices[key] = { name, place, at, via };
+    if (changed) {
+        lane.log.push({ at, device: key, name, place, via });
+        if (lane.log.length > PHONE_LOG_MAX) lane.log.splice(0, lane.log.length - PHONE_LOG_MAX);
+        console.log(`[traffic] ${which === 'test' ? 'test lane ' : ''}phone place: ${name || key} ${prev ? (prev.place || 'away') : 'none'} -> ${place || 'away'} (${via})`);
+    }
+    if (changed || !(lane.saved[key] >= at - PHONE_REWRITE_MS)) savePhone(Date.now());
     return true;
 }
 
-/** 'home' | 'work' | null: the phone's last reported place, null when none or older than 12 h. */
-function phonePlaceNow(now = Date.now()) {
-    const p = phone();
-    return p.place && now - p.at <= PHONE_PLACE_TTL ? p.place : null;
+/** The test lane's places and log are forgotten (a test starts clean). Only the test lane can be cleared. */
+function clearPhoneLane(which = 'test') {
+    if (which !== 'test') return false;
+    phone();
+    phoneState.test = { devices: {}, log: [], saved: {} };
+    savePhone(Date.now());
+    return true;
+}
+
+/**
+ * What the scheduled notice for `direction` does about the phone: { skip, why, device, name, place, at, via }.
+ * The primary phone decides when one is set (the reports of other phones never count); with none every fresh phone
+ * counts and all must say they are at `direction`. opts.lane 'test': the test lane only, never the primary.
+ */
+function phoneDecision(direction, now = Date.now(), opts = {}) {
+    const which = laneName(opts);
+    const st = phone(which);
+    const fresh = (d) => !!d && now - d.at <= PHONE_PLACE_TTL;
+    const words = (key, d) => {
+        const who = d.name || key;
+        if (!d.place) return `${who} is away`;
+        return `${who} is at ${d.place === 'home' ? 'Home' : 'Work'} (told by its ${d.via === 'task' ? 'task' : d.via === 'page' ? 'page' : 'report'}, ${new Date(d.at).toISOString()})`;
+    };
+    const primary = which === 'test' ? '' : primaryLookup();
+    if (primary) {
+        const d = st.devices[primary];
+        if (!fresh(d)) return { skip: false, why: 'the primary phone has not said where it is', device: primary, name: d ? d.name : '', place: null, at: d ? d.at : 0, via: d ? d.via : '' };
+        return { skip: d.place === direction, why: words(primary, d), device: primary, name: d.name, place: d.place, at: d.at, via: d.via };
+    }
+    const live = Object.entries(st.devices).filter(([, d]) => fresh(d));
+    if (!live.length) return { skip: false, why: 'no phone has said where it is', device: '', name: '', place: null, at: 0, via: '' };
+    const skip = live.every(([, d]) => d.place === direction);
+    const [key, d] = live.sort((a, b) => b[1].at - a[1].at)[0];
+    return { skip, why: live.map(([k, x]) => words(k, x)).join('; '), device: key, name: d.name, place: d.place, at: d.at, via: d.via };
+}
+
+/** 'home' | 'work' | null: the deciding phone's fresh place (the primary's; with none, the place every fresh phone shares). */
+function phonePlaceNow(now = Date.now(), opts = {}) {
+    const which = laneName(opts);
+    const st = phone(which);
+    const fresh = (d) => !!d && now - d.at <= PHONE_PLACE_TTL;
+    const primary = which === 'test' ? '' : primaryLookup();
+    if (primary) return fresh(st.devices[primary]) ? st.devices[primary].place : null;
+    const live = Object.values(st.devices).filter(fresh);
+    return live.length && live.every((d) => d.place && d.place === live[0].place) ? live[0].place : null;
+}
+
+/** Every phone that reported, who decides, and the last changes: a copy, for reading back (tests, diagnostics). */
+function phonePlaces(now = Date.now(), opts = {}) {
+    const which = laneName(opts);
+    const st = phone(which);
+    const primary = which === 'test' ? '' : primaryLookup();
+    const devices = Object.entries(st.devices).map(([device, d]) => {
+        const fresh = now - d.at <= PHONE_PLACE_TTL;
+        return { device, name: d.name, place: d.place, at: d.at, via: d.via, fresh, decides: fresh && (primary ? device === primary : true) };
+    }).sort((a, b) => b.at - a.at);
+    return { primary, devices, log: st.log.map((e) => Object.assign({}, e)) };
 }
 
 function spend(provider) {
@@ -1536,12 +1660,19 @@ function dueNow(s, now, fired) {
     return out;
 }
 
-async function runScheduled(direction, kind) {
-    // the phone is already at this destination (traffic_place): nothing to report, no API call, no notice
-    const here = phonePlaceNow();
-    if (here && here === direction) {
-        console.log(`[traffic] ${kind} ${direction} skipped: phone is at ${here}`);
-        return;
+/**
+ * The scheduled (or go) report of one direction. opts.lane 'test' is the same run for the test lane (the Android
+ * emulator, modules/testDevices.js): the decision comes from the test lane's reports, nothing goes to the household's
+ * pages (no broadcast), no leave advisor and no go, and the notice is published into the test lane (inbox user 'test',
+ * pushed live, loud), where only test devices get it. Returns { skipped: true, why } or { skipped: false, why, noticeId, title }.
+ */
+async function runScheduled(direction, kind, opts = {}) {
+    const lane = opts && opts.lane === 'test' ? 'test' : '';
+    // the deciding phone (the primary, #1289) is already at this destination: nothing to report, no API call, no notice
+    const d = phoneDecision(direction, Date.now(), { lane });
+    if (d.skip) {
+        console.log(`[traffic] ${lane ? 'test lane ' : ''}${kind} ${direction} skipped: ${d.why}`);
+        return { skipped: true, why: d.why };
     }
     const s = getSettings();
     let report = null;
@@ -1549,32 +1680,38 @@ async function runScheduled(direction, kind) {
     try {
         report = await check(direction, { force: true });
     } catch (error) {
-        broadcastAdmins({ type: 'traffic_report', data: { kind, direction, error: error.message, label: DIRECTION_LABEL[direction] } });
-        return;
+        if (!lane) broadcastAdmins({ type: 'traffic_report', data: { kind, direction, error: error.message, label: DIRECTION_LABEL[direction] } });
+        return { skipped: false, why: d.why, error: error.message, noticeId: '', title: '' };
     }
-    if (direction === 'home' && kind === 'scheduled' && googleKey()) {
+    if (!lane && direction === 'home' && kind === 'scheduled' && googleKey()) {
         try { advice = await advise(direction); } catch (error) { advice = { error: error.message }; }
         if (advice && advice.wait) {
             const goAt = Date.parse(advice.wait.leaveAt);
             sched.go.set(direction, goAt);
         }
     }
-    broadcastAdmins({ type: 'traffic_report', data: { kind, direction, report: wireReport(report), advice, leave: direction === 'work' ? s.leaveHome : s.leaveWork } });
+    if (!lane) broadcastAdmins({ type: 'traffic_report', data: { kind, direction, report: wireReport(report), advice, leave: direction === 'work' ? s.leaveHome : s.leaveWork } });
     // the durable inbox (#845): the leave-time report, shown on resume and by the native app when the
     // page is not running. One per direction per day; a short life so an old commute is not shown later.
+    const id = `traffic:${kind}:${direction}:${localNow(s).date}`;
+    let title = '';
+    let stored = null;
     try {
         const label = DIRECTION_LABEL[direction];
         const mins = report && report.preferred && report.preferred.durationSec ? Math.max(1, Math.round(report.preferred.durationSec / 60)) : null;
         const late = report && report.delaySec >= 60 ? `, ${Math.round(report.delaySec / 60)} min late` : '';
         const wait = advice && advice.wait ? ` Leave advisor: wait ${advice.wait.offsetMin} min.` : '';
-        require('./notificationInbox').bind(gr).publish({
-            app: 'traffic', id: `traffic:${kind}:${direction}:${localNow(s).date}`, cls: 'notification',
-            title: `${label}${mins ? `: ${mins} min${late}` : ''}`,
+        title = `${label}${mins ? `: ${mins} min${late}` : ''}`;
+        // the test lane is published the way modules/testDevicesRoute.js publishes a pushed test notice: user 'test', push on
+        stored = require('./notificationInbox').bind(gr).publish(Object.assign({
+            app: 'traffic', id, cls: 'notification',
+            title,
             text: report ? `${report.summary || ''}${wait}`.trim() : 'Could not check the traffic.',
             actions: ['view'], data: { app: 'traffic', direction, open: direction },
             ttlMs: 3 * 60 * 60 * 1000,
-        });
+        }, lane ? { user: 'test', push: true, alert: true } : {}));
     } catch (e) { console.warn(`[traffic] inbox publish: ${e.message}`); }
+    return { skipped: false, why: d.why, noticeId: stored ? id : '', title: stored ? title : '' };
 }
 
 function tick() {
@@ -1639,6 +1776,10 @@ module.exports = {
     startScheduler,
     setPhonePlace,
     phonePlaceNow,
+    phoneDecision,
+    phonePlaces,
+    clearPhoneLane,
+    runScheduled,
     TrafficError,
     DIRECTIONS,
     _test: {
@@ -1650,7 +1791,10 @@ module.exports = {
         resetUsage: () => { usageState = null; },
         resetPhone: () => { phoneState = null; },
         runScheduled,
+        tick,
         PHONE_FILE,
+        PHONE_PLACE_TTL,
+        setPrimaryLookup: (fn) => { primaryLookup = typeof fn === 'function' ? fn : defaultPrimaryLookup; },
         resetPlaces: () => { placesStore = {}; }
     }
 };

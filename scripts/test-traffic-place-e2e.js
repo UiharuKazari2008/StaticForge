@@ -26,6 +26,7 @@ process.env.TRAFFIC_LATEST_FILE = path.join(tmp, 'latest.json');
 process.env.TRAFFIC_CAMERA_FILE = path.join(tmp, 'cameras.json');
 process.env.TRAFFIC_PLACES_FILE = path.join(tmp, 'places.json');
 process.env.LOCATION_GEO_FILE = path.join(tmp, 'location-geo.json');
+process.env.TEST_DEVICES_FILE = path.join(tmp, 'test-devices.json'); // never the live list of test devices
 
 const svc = require('../modules/trafficService');
 const T = svc._test;
@@ -150,8 +151,9 @@ const AT_HOME = { lat: 44.001, lon: -103.0 }; // ~110 m from Home
 const AT_WORK = { lat: 44.001, lon: -102.9 };
 
 function fresh() {
+    // a clean slate: no phone has said anything (a phone's place is kept per phone since #1289, so "null" is no longer a clear)
     T.resetPhone();
-    svc.setPhonePlace(null);
+    fs.rmSync(process.env.TRAFFIC_PHONE_FILE, { force: true });
     T.sched.go.clear();
 }
 

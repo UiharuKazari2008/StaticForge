@@ -24,11 +24,18 @@ const trafficService = require('../../trafficService');
 //   traffic_where          {}                          { lat, lon, source, accuracyKm }: the phone's place by
 //                                                      its IP, for a browser without device location (a
 //                                                      home-network or unknown IP answers the configured place)
-//   traffic_place          { place }                   { ok: true }; admins. The phone reports where it is: 'home' |
-//                                                      'work' | null (on the road / left a place). The server has no
-//                                                      phone position, so a scheduled To Home / To Work notice is
-//                                                      skipped while the phone is at that destination (a report
-//                                                      older than 12 h counts for nothing; #1289)
+//   traffic_place          { place }                   { ok: true }; admins. A phone reports where it is: 'home' |
+//                                                      'work' | null (away: on the road / left a place). The server has
+//                                                      no phone position, so a scheduled To Home / To Work notice is
+//                                                      skipped while the deciding phone is at that destination (#1289).
+//                                                      Kept PER PHONE (the device of the socket's `as`, else the device
+//                                                      sharing its session: the app's task host is a light sub-socket
+//                                                      with no `as`); the PRIMARY phone decides, with none set every
+//                                                      fresh phone counts and they must agree. A report lives 7 days.
+//                                                      Reports of test devices (modules/testDevices.js) are kept in the
+//                                                      test lane (GET /api/test-devices/traffic) and never reach the
+//                                                      household's decision. via: 'task' (light socket) or 'page'.
+//                                                      Another place value: BAD_PLACE.
 //
 // Broadcasts to admin clients:
 //   traffic_updated           { direction, report }                 after every check
@@ -156,10 +163,44 @@ async function handleSave(handlersCtx, ws, message, clientInfo) {
     }
 }
 
-async function handlePlace(handlersCtx, ws, message, clientInfo) {
+/**
+ * The phone a traffic_place came from: { device, name }. The socket's own `as` (kind 'device') when it has one; else the
+ * live device socket that shares its session (the app's task host is a light Miniport sub-socket without an `as`, and a
+ * page has none before its hello), found the way modules/activeSync.js liveSockets walks the server's client map; else a
+ * key made from a hash of the session (never the session id itself) and the name 'Phone'.
+ */
+function phoneOf(handlersCtx, wsServer, info) {
+    const as = info && info.as;
+    if (as && as.kind === 'device' && as.id) return { device: String(as.id), name: String(as.name || '') };
+    const sid = info && info.sessionId ? String(info.sessionId) : '';
+    if (sid) {
+        let server = wsServer;
+        if (!server) {
+            try { server = handlersCtx.globalResources.getWebSocketServer(); } catch (_e) { server = null; }
+        }
+        if (server && server.clients) {
+            for (const [sock, i] of server.clients) {
+                if (!i || !i.as || i.as.kind !== 'device' || !i.as.id || i.sessionId !== sid) continue;
+                if (!sock || sock.readyState !== 1) continue;
+                return { device: String(i.as.id), name: String(i.as.name || '') };
+            }
+        }
+    }
+    return { device: `s:${require('crypto').createHash('sha1').update(sid).digest('hex').slice(0, 12)}`, name: 'Phone' };
+}
+
+async function handlePlace(handlersCtx, ws, message, clientInfo, wsServer) {
     if (!guard(handlersCtx, ws, message, clientInfo, true)) return;
     try {
-        trafficService.setPhonePlace(message.place);
+        // a test device's report is kept in the test lane (trafficService, lane 'test'): it never reaches the household's decision
+        let lane = '';
+        try { lane = require('../../testDevices').isTestInfo(clientInfo) ? 'test' : ''; } catch (_e) { lane = ''; }
+        const who = phoneOf(handlersCtx, wsServer, clientInfo);
+        const via = clientInfo && clientInfo.light ? 'task' : 'page';
+        if (!trafficService.setPhonePlace(message.place, { device: who.device, name: who.name, via, lane })) {
+            handlersCtx.sendError(ws, 'place must be home, work or null', 'BAD_PLACE', message.requestId);
+            return;
+        }
         reply(handlersCtx, ws, message, { ok: true });
     } catch (error) {
         fail(handlersCtx, ws, message, error, 'The phone place could not be saved');

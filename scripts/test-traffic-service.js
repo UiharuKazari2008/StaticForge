@@ -22,9 +22,14 @@ process.env.TRAFFIC_LATEST_FILE = path.join(tmp, 'latest.json');
 process.env.TRAFFIC_CAMERA_FILE = path.join(tmp, 'cameras.json');
 process.env.TRAFFIC_PLACES_FILE = path.join(tmp, 'places.json');
 process.env.LOCATION_GEO_FILE = path.join(tmp, 'location-geo.json');
+// the test devices' list (modules/testDevices.js): one emulator, and the session its task socket uses; never the live file
+const TEST_ID = 'ab'.repeat(16);
+process.env.TEST_DEVICES_FILE = path.join(tmp, 'test-devices.json');
+fs.writeFileSync(process.env.TEST_DEVICES_FILE, JSON.stringify({ devices: { [TEST_ID]: { name: 'Emulator', markedAt: 1 } }, sessions: { 'sess-test': TEST_ID } }));
 
 const svc = require('../modules/trafficService');
 const T = svc._test;
+T.setPrimaryLookup(() => ''); // no primary phone unless a test sets one (never the live ActiveSync database)
 
 let pass = 0;
 function ok(name, fn) {
@@ -450,36 +455,127 @@ T.setFetch(baseFetch);
         assert.ok(b && !b.filter(info) && b.filter({ userType: 'admin' }), 'the asking socket is left out of the broadcast');
     });
 
-    await ok('phone place: set, clear, 12 h expiry, restart-proof', async () => {
+    // ---- the phone's place (#1289): per phone, the primary phone decides, 7 days, test devices ignored
+    const HOURS = 3600 * 1000;
+    const DAYS = 24 * HOURS;
+    const quiet = (fn) => { // the module's "[traffic] phone place" log lines, captured
+        const lines = [];
+        const real = console.log;
+        console.log = (...a) => lines.push(a.join(' '));
+        return Promise.resolve().then(fn).then((r) => { console.log = real; return { r, lines }; }, (e) => { console.log = real; throw e; });
+    };
+    const phoneFile = () => JSON.parse(fs.readFileSync(T.PHONE_FILE, 'utf8'));
+    const rep = (device, place, at = Date.now(), via = 'task') => svc.setPhonePlace(place, { device, name: `Phone ${device}`, via, at });
+    const FOLD = 'f'.repeat(32);
+    const A53 = 'a'.repeat(32);
+    const EMU = TEST_ID;
+
+    await ok('phone place: bad place refused, v2 file persisted and read back, nothing reported = nothing known', async () => {
+        T.setPrimaryLookup(() => '');
         T.resetPhone();
         fs.rmSync(T.PHONE_FILE, { force: true });
         assert.strictEqual(svc.phonePlaceNow(), null, 'nothing reported');
+        let d = svc.phoneDecision('home');
+        assert.deepStrictEqual([d.skip, d.why], [false, 'no phone has said where it is']);
+        for (const bad of ['garage', undefined, 'Home', 7, {}]) assert.strictEqual(svc.setPhonePlace(bad, { device: 'x' }), false, `refused: ${String(bad)}`);
+        assert.strictEqual(fs.existsSync(T.PHONE_FILE), false, 'a refused report writes nothing');
+        assert.deepStrictEqual(svc.phonePlaces().devices, []);
         const t0 = Date.now();
-        assert.strictEqual(svc.setPhonePlace('home', t0), true);
+        const { lines } = await quiet(() => svc.setPhonePlace('home', { device: FOLD, name: 'Galaxy Fold', via: 'task', at: t0 }));
+        assert.deepStrictEqual(lines, ['[traffic] phone place: Galaxy Fold none -> home (task)']);
         assert.strictEqual(svc.phonePlaceNow(t0 + 1000), 'home');
-        assert.strictEqual(svc.phonePlaceNow(t0 + 12 * 3600 * 1000), 'home', 'exactly 12 h still counts');
-        assert.strictEqual(svc.phonePlaceNow(t0 + 12 * 3600 * 1000 + 1), null, 'older than 12 h: nothing');
-        assert.strictEqual(svc.setPhonePlace('garage', t0), false, 'only home | work | null');
-        assert.strictEqual(svc.setPhonePlace(undefined, t0), false);
-        assert.strictEqual(svc.phonePlaceNow(t0 + 1000), 'home', 'a bad report changes nothing');
+        const f = phoneFile();
+        assert.strictEqual(f.v, 2);
+        assert.deepStrictEqual(f.devices[FOLD], { name: 'Galaxy Fold', place: 'home', at: t0, via: 'task' });
+        assert.deepStrictEqual(f.log, [{ at: t0, device: FOLD, name: 'Galaxy Fold', place: 'home', via: 'task' }]);
+        assert.ok(!fs.existsSync(`${T.PHONE_FILE}.tmp`), 'written tmp + rename');
         // a restart (the module state gone) reads the file back
         T.resetPhone();
         assert.strictEqual(svc.phonePlaceNow(t0 + 1000), 'home', 'persisted');
-        svc.setPhonePlace('work', t0 + 5);
-        assert.strictEqual(svc.phonePlaceNow(t0 + 1000), 'work');
-        svc.setPhonePlace(null);
-        assert.strictEqual(svc.phonePlaceNow(), null, 'null clears');
+        const got = svc.phonePlaces(t0 + 1000);
+        assert.deepStrictEqual(got.devices.map((x) => [x.device, x.name, x.place, x.at, x.via, x.fresh, x.decides]), [[FOLD, 'Galaxy Fold', 'home', t0, 'task', true, true]]);
+        assert.strictEqual(got.primary, '');
+        d = svc.phoneDecision('home', t0 + 1000);
+        assert.strictEqual(d.skip, true);
+        assert.strictEqual(d.why, `Galaxy Fold is at Home (told by its task, ${new Date(t0).toISOString()})`);
+        assert.strictEqual(svc.phoneDecision('work', t0 + 1000).skip, false);
+        // away is an answer too
+        const r2 = await quiet(() => svc.setPhonePlace(null, { device: FOLD, via: 'task', at: t0 + 5 }));
+        assert.deepStrictEqual(r2.lines, ['[traffic] phone place: Galaxy Fold home -> away (task)'], 'the stored name is kept when a report has none');
+        assert.strictEqual(svc.phoneDecision('home', t0 + 10).why, 'Galaxy Fold is away');
+        assert.strictEqual(svc.phonePlaceNow(t0 + 10), null);
+        // the old format, a corrupt file and a missing file read as empty
+        fs.writeFileSync(T.PHONE_FILE, JSON.stringify({ place: 'home', at: t0 }));
         T.resetPhone();
-        assert.strictEqual(svc.phonePlaceNow(), null, 'the clear persisted');
+        assert.strictEqual(svc.phonePlaceNow(t0 + 1000), null, 'the old { place, at } format is empty');
+        assert.deepStrictEqual(svc.phonePlaces().devices, []);
         fs.writeFileSync(T.PHONE_FILE, '{not json');
         T.resetPhone();
-        assert.strictEqual(svc.phonePlaceNow(), null, 'a corrupt file is null');
+        assert.strictEqual(svc.phonePlaceNow(), null, 'a corrupt file is empty');
         fs.rmSync(T.PHONE_FILE, { force: true });
         T.resetPhone();
-        assert.strictEqual(svc.phonePlaceNow(), null, 'a missing file is null');
+        assert.strictEqual(svc.phonePlaceNow(), null, 'a missing file is empty');
+        assert.deepStrictEqual(svc.phonePlaces().log, []);
     });
 
-    await ok('scheduled notice is skipped when the phone is at the destination', async () => {
+    await ok('phone place: a report lives 7 days (6 d 23 h counts, 7 d + 1 ms does not)', async () => {
+        T.setPrimaryLookup(() => '');
+        T.resetPhone();
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        assert.strictEqual(T.PHONE_PLACE_TTL, 7 * DAYS);
+        const t0 = Date.now();
+        await quiet(() => rep(FOLD, 'home', t0));
+        assert.strictEqual(svc.phonePlaceNow(t0 + 6 * DAYS + 23 * HOURS), 'home', '6 d 23 h still counts');
+        assert.strictEqual(svc.phonePlaceNow(t0 + 7 * DAYS), 'home', 'exactly 7 d still counts');
+        assert.strictEqual(svc.phonePlaceNow(t0 + 7 * DAYS + 1), null, '7 d + 1 ms: nothing');
+        assert.strictEqual(svc.phoneDecision('home', t0 + 7 * DAYS).skip, true);
+        const stale = svc.phoneDecision('home', t0 + 7 * DAYS + 1);
+        assert.deepStrictEqual([stale.skip, stale.why], [false, 'no phone has said where it is']);
+        assert.strictEqual(svc.phonePlaces(t0 + 7 * DAYS + 1).devices[0].fresh, false);
+        assert.strictEqual(svc.phonePlaces(t0 + 7 * DAYS + 1).devices[0].decides, false);
+    });
+
+    await ok('phone place: the log keeps the last 20 changes; a repeat is no change; the file is not rewritten for a repeat inside an hour; old and surplus phones are dropped', async () => {
+        T.setPrimaryLookup(() => '');
+        T.resetPhone();
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        const t0 = Date.now();
+        await quiet(async () => { for (let i = 0; i < 25; i++) rep(FOLD, i % 2 ? 'home' : 'work', t0 + i); });
+        let f = phoneFile();
+        assert.strictEqual(f.log.length, 20);
+        assert.deepStrictEqual(f.log.map((e) => e.at), Array.from({ length: 20 }, (_, i) => t0 + 5 + i), 'the newest 20, newest last');
+        assert.strictEqual(f.log[19].place, 'work');
+        // an unchanged repeat: in memory at once, the file not rewritten inside an hour
+        fs.writeFileSync(T.PHONE_FILE, 'SENTINEL');
+        const r = await quiet(() => rep(FOLD, 'work', t0 + 30 * 1000));
+        assert.deepStrictEqual(r.lines, [], 'an unchanged report is not logged');
+        assert.strictEqual(fs.readFileSync(T.PHONE_FILE, 'utf8'), 'SENTINEL', 'not rewritten inside an hour');
+        assert.strictEqual(svc.phonePlaces(t0 + 31 * 1000).devices[0].at, t0 + 30 * 1000, 'but its time is kept in memory');
+        await quiet(() => rep(FOLD, 'work', t0 + 30 * 1000 + HOURS + 1));
+        f = phoneFile();
+        assert.strictEqual(f.devices[FOLD].at, t0 + 30 * 1000 + HOURS + 1, 'rewritten when the stored copy is older than an hour');
+        assert.strictEqual(f.log.length, 20, 'still no new log entry');
+        // a change always writes
+        fs.writeFileSync(T.PHONE_FILE, 'SENTINEL');
+        await quiet(() => rep(FOLD, null, t0 + 30 * 1000 + HOURS + 2));
+        assert.strictEqual(phoneFile().devices[FOLD].place, null);
+        // a phone silent for 30 days is dropped on the next write
+        const now = Date.now();
+        fs.writeFileSync(T.PHONE_FILE, JSON.stringify({ v: 2, devices: { gone: { name: 'Gone', place: 'home', at: now - 31 * DAYS, via: 'task' }, kept: { name: 'Kept', place: 'home', at: now - 29 * DAYS, via: 'task' } }, log: [] }));
+        T.resetPhone();
+        assert.strictEqual(svc.phonePlaces().devices.length, 2);
+        await quiet(() => rep(A53, 'work', now));
+        assert.deepStrictEqual(Object.keys(phoneFile().devices).sort(), [A53, 'kept'].sort());
+        // at most 16 phones: the oldest go
+        T.resetPhone();
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        await quiet(async () => { for (let i = 0; i < 18; i++) rep(`dev${i}`, 'home', now - 1000 + i); });
+        const keys = Object.keys(phoneFile().devices);
+        assert.strictEqual(keys.length, 16);
+        assert.ok(!keys.includes('dev0') && !keys.includes('dev1') && keys.includes('dev17'), 'the two oldest were dropped');
+    });
+
+    await ok('scheduled notice: the PRIMARY phone decides, no API call / broadcast / publish / go when skipped', async () => {
         const inboxMod = require('../modules/notificationInbox');
         inboxMod.bind(gr);
         T.setFetch(baseFetch); // earlier tests may leave their own fake
@@ -488,67 +584,381 @@ T.setFetch(baseFetch);
         const published = [];
         inboxMod.publish = (n) => { published.push(n.id); return realPublish(n); };
         const noticeId = (kind, direction) => `traffic:${kind}:${direction}:${T.localNow(svc.getSettings()).date}`;
-        // one scheduled check with the phone reporting `place` at `at`
-        const run = async (place, direction, kind = 'scheduled', at = Date.now()) => {
+        // one scheduled check after `setup` has told the service what the phones said
+        const run = async (setup, direction, kind = 'scheduled') => {
             T.resetPhone();
-            svc.setPhonePlace(place, at);
+            fs.rmSync(T.PHONE_FILE, { force: true });
+            await quiet(setup);
             fs.rmSync(process.env.TRAFFIC_USAGE_FILE, { force: true });
             T.resetUsage();
             T.routeCache.clear();
+            T.sched.go.clear();
             calls.length = 0;
             sent.length = 0;
             published.length = 0;
-            await T.runScheduled(direction, kind);
+            const { lines } = await quiet(() => T.runScheduled(direction, kind));
             return {
                 published: published.includes(noticeId(kind, direction)),
                 fetched: calls.filter((c) => /routes\.googleapis|api\.tomtom\.com/.test(c.url)).length,
-                broadcast: sent.some((x) => x.msg.type === 'traffic_report')
+                broadcast: sent.some((x) => x.msg.type === 'traffic_report'),
+                go: T.sched.go.has(direction),
+                skipLine: lines.find((l) => /skipped/.test(l)) || ''
             };
         };
+        const SKIPPED = { published: false, fetched: 0, broadcast: false, go: false };
+        const asSkipped = (r) => ({ published: r.published, fetched: r.fetched, broadcast: r.broadcast, go: r.go });
+        const sent1 = (r) => r.published && r.fetched > 0 && r.broadcast;
         try {
-            T.sched.go.clear();
-            let r = await run('home', 'home');
-            assert.deepStrictEqual(r, { published: false, fetched: 0, broadcast: false }, 'at Home: no To Home, no API call, no broadcast');
-            assert.strictEqual(published.length, 0);
-            r = await run('home', 'home', 'go');
-            assert.deepStrictEqual(r, { published: false, fetched: 0, broadcast: false }, 'the go run follows the same rule');
-            r = await run('work', 'work');
-            assert.deepStrictEqual(r, { published: false, fetched: 0, broadcast: false }, 'at Work: no To Work');
-            r = await run('work', 'work', 'go');
-            assert.deepStrictEqual(r, { published: false, fetched: 0, broadcast: false }, 'at Work: no go either');
-            assert.strictEqual(T.sched.go.has('home'), false, 'a skipped scheduled run schedules no go');
-            for (const place of [null, 'work']) {
-                r = await run(place, 'home');
-                assert.ok(r.published && r.fetched > 0 && r.broadcast, `phone ${place}: To Home still published ${JSON.stringify(r)}`);
+            // a primary phone is set: only its reports decide
+            T.setPrimaryLookup(() => FOLD);
+            const atHomeOtherWork = () => { rep(FOLD, 'home'); rep(A53, 'work'); };
+            let r = await run(atHomeOtherWork, 'home');
+            assert.deepStrictEqual(asSkipped(r), SKIPPED, 'primary at Home, desk phone at Work: To Home skipped');
+            assert.match(r.skipLine, /^\[traffic\] scheduled home skipped: Phone f{32} is at Home \(told by its task, \d{4}-/);
+            r = await run(atHomeOtherWork, 'work');
+            assert.ok(sent1(r), `primary at Home: To Work still published ${JSON.stringify(r)}`);
+            const atWorkOtherHome = () => { rep(FOLD, 'work'); rep(A53, 'home'); };
+            r = await run(atWorkOtherHome, 'home');
+            assert.ok(sent1(r), `primary at Work, desk phone at Home: To Home published ${JSON.stringify(r)}`);
+            r = await run(atWorkOtherHome, 'work');
+            assert.deepStrictEqual(asSkipped(r), SKIPPED, 'primary at Work: To Work skipped');
+            const away = () => { rep(FOLD, null); rep(A53, 'home'); };
+            for (const direction of ['home', 'work']) {
+                r = await run(away, direction);
+                assert.ok(sent1(r), `primary away: To ${direction} published ${JSON.stringify(r)}`);
             }
-            r = await run('home', 'work');
-            assert.ok(r.published && r.fetched > 0, `at Home: To Work still published ${JSON.stringify(r)}`);
-            r = await run('home', 'home', 'scheduled', Date.now() - 13 * 3600 * 1000);
-            assert.ok(r.published && r.fetched > 0, `a report older than 12 h does not skip ${JSON.stringify(r)}`);
+            const onlyOther = () => { rep(A53, 'home'); };
+            r = await run(onlyOther, 'home');
+            assert.ok(sent1(r), `primary set but only another phone reported: published ${JSON.stringify(r)}`);
+            assert.strictEqual(svc.phoneDecision('home').why, 'the primary phone has not said where it is');
+            assert.strictEqual(svc.phonePlaceNow(), null);
+            // the stay-home day: Home told 23 h ago still counts; 7 d + 1 s ago does not
+            r = await run(() => rep(FOLD, 'home', Date.now() - 23 * HOURS), 'home');
+            assert.deepStrictEqual(asSkipped(r), SKIPPED, 'a 23 h old Home report still skips');
+            r = await run(() => rep(FOLD, 'home', Date.now() - 7 * DAYS - 1000), 'home');
+            assert.ok(sent1(r), `older than 7 days does not skip ${JSON.stringify(r)}`);
+            // the go run follows the same rule
+            r = await run(atHomeOtherWork, 'home', 'go');
+            assert.deepStrictEqual(asSkipped(r), SKIPPED, 'go: primary at Home');
+            r = await run(atWorkOtherHome, 'work', 'go');
+            assert.deepStrictEqual(asSkipped(r), SKIPPED, 'go: primary at Work');
+            r = await run(atHomeOtherWork, 'work', 'go');
+            assert.ok(r.published || r.fetched > 0, `go: primary at Home, To Work runs ${JSON.stringify(r)}`);
+            assert.strictEqual(svc.phonePlaces().primary, FOLD);
+            assert.deepStrictEqual(svc.phonePlaces().devices.map((x) => [x.device, x.decides]).sort(), [[A53, false], [FOLD, true]].sort());
+
+            // no primary: every fresh phone counts and they must agree
+            T.setPrimaryLookup(() => '');
+            r = await run(() => rep(FOLD, 'home'), 'home');
+            assert.deepStrictEqual(asSkipped(r), SKIPPED, 'no primary, one phone at Home: skipped');
+            r = await run(() => { rep(FOLD, 'home'); rep(A53, 'home'); }, 'home');
+            assert.deepStrictEqual(asSkipped(r), SKIPPED, 'no primary, two phones at Home: skipped');
+            assert.strictEqual(svc.phonePlaceNow(), 'home');
+            r = await run(() => { rep(FOLD, 'home'); rep(A53, 'work'); }, 'home');
+            assert.ok(sent1(r), `no primary, the phones disagree: published ${JSON.stringify(r)}`);
+            assert.strictEqual(svc.phonePlaceNow(), null);
+            r = await run(() => { rep(FOLD, 'home'); rep(A53, null); }, 'home');
+            assert.ok(sent1(r), `no primary, one phone away: published ${JSON.stringify(r)}`);
+            r = await run(() => { rep(FOLD, 'home'); rep(A53, 'work', Date.now() - 8 * DAYS); }, 'home');
+            assert.deepStrictEqual(asSkipped(r), SKIPPED, 'a stale report of another phone does not count');
+            r = await run(() => rep(FOLD, 'home'), 'work');
+            assert.ok(sent1(r), `no primary, Home: To Work published ${JSON.stringify(r)}`);
+            r = await run(() => rep(FOLD, 'home'), 'home', 'go');
+            assert.deepStrictEqual(asSkipped(r), SKIPPED, 'no primary: the go run follows the same rule');
+            // nothing reported: the notice as before
+            r = await run(() => {}, 'home');
+            assert.ok(sent1(r), `nothing reported: published ${JSON.stringify(r)}`);
         } finally {
             inboxMod.publish = realPublish;
+            T.setPrimaryLookup(() => '');
             T.resetPhone();
-            svc.setPhonePlace(null);
+            fs.rmSync(T.PHONE_FILE, { force: true });
             T.sched.go.clear();
         }
     });
 
-    await ok('traffic_place packet', async () => {
+    await ok('test lane: its reports never change the household decision and the other way round; the lane run publishes into the test lane only', async () => {
+        const inboxMod = require('../modules/notificationInbox');
+        inboxMod.bind(gr);
+        T.setFetch(baseFetch);
+        const realPublish = inboxMod.publish;
+        const publishes = [];
+        inboxMod.publish = (n) => { publishes.push(n); return realPublish(n); };
+        const date = () => T.localNow(svc.getSettings()).date;
+        const lane = { lane: 'test' };
+        const reset = () => {
+            T.resetPhone();
+            fs.rmSync(T.PHONE_FILE, { force: true });
+            fs.rmSync(process.env.TRAFFIC_USAGE_FILE, { force: true });
+            T.resetUsage();
+            T.routeCache.clear();
+            T.sched.go.clear();
+            calls.length = 0;
+            sent.length = 0;
+            publishes.length = 0;
+            inboxMod._test.reset();
+        };
+        const testRep = (device, place, at = Date.now()) => svc.setPhonePlace(place, { device, name: `Test ${device}`, via: 'page', at, lane: 'test' });
+        const fetched = () => calls.filter((c) => /routes\.googleapis|api\.tomtom\.com/.test(c.url)).length;
+        try {
+            T.setPrimaryLookup(() => FOLD);
+            // storage: separate lanes, one file, restart-proof
+            reset();
+            const logs = await quiet(() => { testRep(A53, 'home'); rep(FOLD, 'work'); });
+            assert.deepStrictEqual(logs.lines, ['[traffic] test lane phone place: Test aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa none -> home (page)', '[traffic] phone place: Phone ffffffffffffffffffffffffffffffff none -> work (task)']);
+            assert.deepStrictEqual(svc.phonePlaces().devices.map((x) => x.device), [FOLD], 'the household never sees a test device');
+            assert.deepStrictEqual(svc.phonePlaces(Date.now(), lane).devices.map((x) => x.device), [A53], 'the lane holds it');
+            assert.strictEqual(svc.phonePlaces(Date.now(), lane).primary, '', 'the test lane has no primary');
+            assert.strictEqual(svc.phonePlaces(Date.now(), lane).log.length, 1);
+            assert.strictEqual(svc.phonePlaces().log.length, 1);
+            let f = phoneFile();
+            assert.deepStrictEqual([Object.keys(f.devices), Object.keys(f.test.devices), f.log.length, f.test.log.length], [[FOLD], [A53], 1, 1]);
+            T.resetPhone();
+            assert.strictEqual(svc.phonePlaceNow(Date.now(), lane), 'home', 'the test lane is read back from the file');
+            assert.strictEqual(svc.phonePlaceNow(), 'work');
+            // a test-lane report never changes the household's decision (the primary at Home, a test phone at Work, and the other way round)
+            reset();
+            await quiet(() => { rep(FOLD, 'home'); testRep(A53, 'work'); });
+            assert.strictEqual(svc.phoneDecision('home').skip, true);
+            assert.strictEqual(svc.phoneDecision('work').skip, false);
+            assert.strictEqual(svc.phoneDecision('home', Date.now(), lane).skip, false, 'the test lane decides from its own reports');
+            assert.strictEqual(svc.phoneDecision('work', Date.now(), lane).skip, true);
+            // with no primary the household's decision still does not see a test device
+            T.setPrimaryLookup(() => '');
+            reset();
+            await quiet(() => { testRep(A53, 'home'); });
+            assert.strictEqual(svc.phonePlaceNow(), null);
+            assert.deepStrictEqual([svc.phoneDecision('home').skip, svc.phoneDecision('home').why], [false, 'no phone has said where it is']);
+            // the lane: every fresh test device counts and all must agree, the primary is never used
+            T.setPrimaryLookup(() => FOLD);
+            await quiet(() => { testRep(EMU, 'home'); });
+            assert.strictEqual(svc.phoneDecision('home', Date.now(), lane).skip, true, 'two test phones at Home');
+            await quiet(() => { testRep(EMU, 'work'); });
+            assert.strictEqual(svc.phoneDecision('home', Date.now(), lane).skip, false, 'two test phones that disagree');
+            assert.strictEqual(svc.phonePlaceNow(Date.now(), lane), null);
+
+            // the lane run: skipped (the test phone is at the destination)
+            reset();
+            await quiet(() => { testRep(EMU, 'home'); });
+            let res;
+            const out = await quiet(async () => { res = await T.runScheduled('home', 'scheduled', lane); });
+            assert.strictEqual(res.skipped, true);
+            assert.match(res.why, /^Test (ab)+ is at Home \(told by its page, \d{4}-/);
+            assert.strictEqual(out.lines.length, 1);
+            assert.ok(out.lines[0].startsWith('[traffic] test lane scheduled home skipped: Test '), out.lines[0]);
+            assert.deepStrictEqual([fetched(), sent.length, publishes.length, T.sched.go.size], [0, 0, 0, 0], 'no call, no broadcast, no publish, no go');
+            // the lane run: published into the test lane, and only there
+            reset();
+            await quiet(() => { testRep(EMU, 'work'); rep(FOLD, 'home'); }); // the household's primary is AT Home: its own run would be skipped
+            await quiet(async () => { res = await T.runScheduled('home', 'scheduled', lane); });
+            const id = `traffic:scheduled:home:${date()}`;
+            assert.deepStrictEqual([res.skipped, res.noticeId], [false, id]);
+            assert.match(res.title, /^To Home/);
+            assert.ok(fetched() > 0, 'the route was read');
+            assert.strictEqual(sent.filter((x) => x.msg.type === 'traffic_report').length, 0, 'no traffic_report to any household page');
+            assert.strictEqual(T.sched.go.size, 0, 'no go');
+            const laneReads = calls.filter((c) => /routes\.googleapis/.test(c.url)).length;
+            T.routeCache.clear();
+            calls.length = 0;
+            await svc.check('home', { force: true });
+            assert.strictEqual(laneReads, calls.filter((c) => /routes\.googleapis/.test(c.url)).length, 'the lane run reads what one check reads: no leave advisor');
+            assert.strictEqual(publishes.length, 1);
+            assert.deepStrictEqual([publishes[0].user, publishes[0].push, publishes[0].alert, publishes[0].id, publishes[0].cls, publishes[0].ttlMs], ['test', true, true, id, 'notification', 3 * 3600 * 1000]);
+            assert.deepStrictEqual(publishes[0].actions, ['view']);
+            assert.deepStrictEqual(publishes[0].data, { app: 'traffic', direction: 'home', open: 'home' });
+            assert.ok(inboxMod.get('test', id), 'in the test lane');
+            assert.strictEqual(inboxMod.get('admin', id), null, 'not in the household\'s inbox');
+            assert.strictEqual(res.title, inboxMod.get('test', id).title);
+            // the household's own run is skipped at Home and published when the test device is at Home (it never counts)
+            reset();
+            await quiet(() => { testRep(EMU, 'home'); });
+            await quiet(async () => { res = await T.runScheduled('home', 'scheduled'); });
+            assert.strictEqual(res.skipped, false, 'a test device at Home does not skip the household notice');
+            assert.ok(inboxMod.get('admin', id) && !inboxMod.get('test', id), 'published for the household only');
+            assert.strictEqual(publishes[0].user, undefined, 'the household notice names no lane');
+            assert.ok(sent.some((x) => x.msg.type === 'traffic_report'), 'and its page broadcast is as before');
+            reset();
+            await quiet(() => { rep(FOLD, 'home'); });
+            await quiet(async () => { res = await T.runScheduled('home', 'scheduled'); });
+            assert.deepStrictEqual([res.skipped, /^Phone f+ is at Home/.test(res.why)], [true, true], 'the household run returns the same shape');
+            // go kind in the lane, and the lane run for Work
+            reset();
+            await quiet(async () => { res = await T.runScheduled('work', 'go', lane); });
+            assert.deepStrictEqual([res.skipped, res.noticeId], [false, `traffic:go:work:${date()}`]);
+            assert.strictEqual(res.why, 'no phone has said where it is');
+            assert.ok(inboxMod.get('test', `traffic:go:work:${date()}`));
+        } finally {
+            inboxMod.publish = realPublish;
+            T.setPrimaryLookup(() => '');
+            reset();
+        }
+    });
+
+    await ok('test lane: clearPhoneLane forgets the lane only; /api/test-devices/traffic routes (GET, POST run, DELETE)', async () => {
+        const inboxMod = require('../modules/notificationInbox');
+        const testDevices = require('../modules/testDevices');
+        T.setPrimaryLookup(() => FOLD);
+        T.setFetch(baseFetch);
+        T.resetPhone();
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        inboxMod._test.reset();
+        await quiet(() => { rep(FOLD, 'home'); svc.setPhonePlace('home', { device: EMU, name: 'Emulator', via: 'task', lane: 'test' }); });
+        assert.strictEqual(svc.clearPhoneLane('house'), false, 'only the test lane can be cleared');
+        // the routes, mounted on a tiny app
+        const routes = {};
+        const app = {};
+        ['get', 'post', 'put', 'delete'].forEach((m) => { app[m] = (p, ...h) => { routes[`${m.toUpperCase()} ${p}`] = h; }; });
+        require('../modules/trafficTestLaneRoute').mount(app, null);
+        for (const k of ['GET /api/test-devices/traffic', 'POST /api/test-devices/traffic/run', 'DELETE /api/test-devices/traffic']) assert.ok(routes[k], `${k} is mounted`);
+        const call = async (key, body = {}, userType = 'admin') => {
+            const res = { code: 200, body: null, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
+            // auth, admin, handler: the chain as express runs it
+            const fns = routes[key];
+            const pending = [];
+            let i = 0;
+            const next = () => { const fn = fns[i++]; if (fn) pending.push(Promise.resolve(fn({ body, query: {}, params: {}, userType }, res, next))); };
+            next();
+            await Promise.all(pending);
+            return res;
+        };
+        let r = await call('GET /api/test-devices/traffic');
+        assert.strictEqual(r.body.success, true);
+        assert.deepStrictEqual(r.body.places.devices.map((x) => [x.device, x.place, x.via]), [[EMU, 'home', 'task']], 'the test lane only, no household phone');
+        assert.strictEqual(r.body.decision.home.skip, true);
+        assert.strictEqual(r.body.decision.work.skip, false);
+        // the run: the emulator is at Home -> To Home skipped, To Work published into the test lane
+        r = await call('POST /api/test-devices/traffic/run', { direction: 'home' });
+        assert.deepStrictEqual([r.body.success, r.body.result.skipped], [true, true]);
+        r = await call('POST /api/test-devices/traffic/run', { direction: 'work', kind: 'scheduled' });
+        assert.strictEqual(r.body.success, true);
+        assert.strictEqual(r.body.result.skipped, false);
+        const wid = `traffic:scheduled:work:${T.localNow(svc.getSettings()).date}`;
+        assert.strictEqual(r.body.result.noticeId, wid);
+        assert.ok(inboxMod.get('test', wid) && !inboxMod.get('admin', wid));
+        assert.strictEqual((await call('POST /api/test-devices/traffic/run', { direction: 'sideways' })).code, 400);
+        assert.strictEqual((await call('POST /api/test-devices/traffic/run', { direction: 'home', kind: 'x' })).code, 400);
+        assert.strictEqual((await call('POST /api/test-devices/traffic/run', { direction: 'home' }, 'user')).code, 403, 'admin only');
+        assert.strictEqual((await call('GET /api/test-devices/traffic', {}, 'user')).code, 403);
+        assert.strictEqual((await call('DELETE /api/test-devices/traffic', {}, 'user')).code, 403);
+        // no test device set: refused like the notice route
+        testDevices.unmark(TEST_ID);
+        try {
+            r = await call('POST /api/test-devices/traffic/run', { direction: 'work' });
+            assert.deepStrictEqual([r.code, r.body.code], [409, 'NO_TEST_DEVICE']);
+        } finally {
+            testDevices.mark(TEST_ID, { name: 'Emulator' });
+            testDevices.noteHello({ id: TEST_ID, sessionId: 'sess-test' });
+        }
+        // the clear: the test lane is empty, the household's phone is not
+        r = await call('DELETE /api/test-devices/traffic');
+        assert.deepStrictEqual(r.body, { success: true });
+        assert.deepStrictEqual(svc.phonePlaces(Date.now(), { lane: 'test' }), { primary: '', devices: [], log: [] });
+        assert.deepStrictEqual(svc.phonePlaces().devices.map((x) => x.device), [FOLD], 'the household phone stays');
+        assert.deepStrictEqual(Object.keys(phoneFile().test.devices), [], 'and the file says so');
+        T.setPrimaryLookup(() => '');
+        T.resetPhone();
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        inboxMod._test.reset();
+    });
+
+    await ok('primary lookup: the default asks nothing of a gr without a path to its databases (no live activesync.db is opened)', async () => {
+        T.setPrimaryLookup(null);
+        T.resetPhone();
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        assert.strictEqual(svc.phonePlaces().primary, '', 'the stub gr has no getPath: no primary');
+        T.setPrimaryLookup(() => '');
+    });
+
+    await ok('traffic_place packet: per phone from `as` or the session mate, via page / task, test devices and non-admins stored nowhere', async () => {
         const registry = require('../modules/ws/wsPacketRegistry');
         const out = [];
         const ctx = { globalResources: gr, sendToClient: (ws, m) => out.push(m), sendError: (ws, msg, code) => out.push({ error: msg, code }) };
         require('../modules/ws/handlers/292-trafficHandler').registerPackets(ctx);
         const h = registry.getWsPacketHandler('traffic_place');
         assert.ok(h, 'registered');
+        T.setPrimaryLookup(() => '');
         T.resetPhone();
-        await h({ ws: {}, message: { type: 'traffic_place', requestId: 'p1', place: 'work' }, clientInfo: { userType: 'admin' } });
-        assert.deepStrictEqual(out.pop().data, { ok: true });
-        assert.strictEqual(svc.phonePlaceNow(), 'work');
-        await h({ ws: {}, message: { type: 'traffic_place', requestId: 'p2', place: 'home' }, clientInfo: { userType: 'user' } });
-        assert.strictEqual(out.pop().code, 'INSUFFICIENT_PERMISSIONS');
-        assert.strictEqual(svc.phonePlaceNow(), 'work', 'a non-admin changes nothing');
-        await h({ ws: {}, message: { type: 'traffic_place', requestId: 'p3', place: null }, clientInfo: { userType: 'admin' } });
-        assert.strictEqual(svc.phonePlaceNow(), null);
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        const call = async (place, clientInfo, wsServer, extra = {}) => {
+            await quiet(() => h({ ws: {}, message: Object.assign({ type: 'traffic_place', requestId: 'p', place }, extra), clientInfo, wsServer }));
+            return out.pop();
+        };
+        const devices = () => svc.phonePlaces().devices;
+        const admin = { userType: 'admin', authenticated: true };
+        // a non-admin is refused and changes nothing
+        let m = await call('home', { userType: 'user' });
+        assert.strictEqual(m.code, 'INSUFFICIENT_PERMISSIONS');
+        assert.deepStrictEqual(devices(), [], 'a non-admin changes nothing');
+        // the device of the socket's own `as`, source page
+        m = await call('work', Object.assign({}, admin, { sessionId: 'sess-fold', as: { kind: 'device', id: FOLD, name: 'Galaxy Fold', speaker: 'webview' } }));
+        assert.deepStrictEqual(m.data, { ok: true });
+        assert.deepStrictEqual(devices().map((x) => [x.device, x.name, x.place, x.via]), [[FOLD, 'Galaxy Fold', 'work', 'page']]);
+        // a light task socket (no `as`): the live device socket that shares its session; via task
+        const server = { clients: new Map([
+            [{ readyState: 1 }, { userType: 'admin', sessionId: 'sess-other', as: { kind: 'device', id: A53, name: 'A53 Test', speaker: 'service' } }],
+            [{ readyState: 3 }, { userType: 'admin', sessionId: 'sess-closed', as: { kind: 'device', id: 'c'.repeat(32), name: 'Closed', speaker: 'service' } }],
+            [{ readyState: 1 }, { userType: 'admin', sessionId: 'sess-fold', as: { kind: 'device', id: FOLD, name: 'Galaxy Fold', speaker: 'service' } }],
+            [{ readyState: 1 }, { userType: 'admin', sessionId: 'sess-fold', light: true, lightSubs: new Set() }]
+        ]) };
+        T.resetPhone();
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        m = await call('home', Object.assign({}, admin, { sessionId: 'sess-fold', light: true }), server);
+        assert.deepStrictEqual(m.data, { ok: true });
+        assert.deepStrictEqual(devices().map((x) => [x.device, x.name, x.place, x.via]), [[FOLD, 'Galaxy Fold', 'home', 'task']], 'the session mate of the light socket');
+        // a page before its hello: no `as`, not light: the mate again, via page
+        m = await call('work', Object.assign({}, admin, { sessionId: 'sess-other' }), server);
+        assert.deepStrictEqual(devices().map((x) => [x.device, x.place, x.via]).sort(), [[A53, 'work', 'page'], [FOLD, 'home', 'task']].sort());
+        // no live mate (its socket is closed): a key from a hash of the session, never the session id
+        T.resetPhone();
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        const logs = await quiet(() => h({ ws: {}, message: { type: 'traffic_place', requestId: 'p', place: 'home' }, clientInfo: Object.assign({}, admin, { sessionId: 'sess-closed', light: true }), wsServer: server }));
+        out.pop();
+        const key = `s:${require('crypto').createHash('sha1').update('sess-closed').digest('hex').slice(0, 12)}`;
+        assert.deepStrictEqual(devices().map((x) => [x.device, x.name, x.place, x.via]), [[key, 'Phone', 'home', 'task']]);
+        assert.ok(!JSON.stringify(phoneFile()).includes('sess-closed') && !logs.lines.join('\n').includes('sess-closed'), 'the session id is never stored or logged');
+        // no ws server and no session at all: still one key, no throw
+        T.resetPhone();
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        m = await call('work', admin);
+        assert.deepStrictEqual(m.data, { ok: true });
+        assert.strictEqual(devices().length, 1);
+        assert.match(devices()[0].device, /^s:[0-9a-f]{12}$/);
+        // a bad place: BAD_PLACE, nothing changes
+        const before = JSON.stringify(devices());
+        for (const bad of ['garage', undefined, 3]) {
+            m = await call(bad, Object.assign({}, admin, { as: { kind: 'device', id: FOLD, name: 'Galaxy Fold' } }));
+            assert.strictEqual(m.code, 'BAD_PLACE');
+            assert.strictEqual(m.error, 'place must be home, work or null');
+        }
+        assert.strictEqual(JSON.stringify(devices()), before, 'a bad place changes nothing');
+        // a test device (modules/testDevices.js, TEST_DEVICES_FILE): answered ok, kept in the test lane, the household's store untouched
+        T.resetPhone();
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        const lane = () => svc.phonePlaces(Date.now(), { lane: 'test' }).devices;
+        m = await call('home', Object.assign({}, admin, { as: { kind: 'device', id: TEST_ID, name: 'Emulator', speaker: 'webview' } }));
+        assert.deepStrictEqual(m.data, { ok: true }, 'a test device is answered ok');
+        assert.deepStrictEqual(lane().map((x) => [x.device, x.name, x.place, x.via]), [[TEST_ID, 'Emulator', 'home', 'page']], 'kept in the test lane');
+        assert.deepStrictEqual(devices(), [], 'the household store is untouched');
+        m = await call('work', Object.assign({}, admin, { sessionId: 'sess-test', light: true }));
+        assert.deepStrictEqual(m.data, { ok: true }, 'its light task socket (known by the session) too');
+        assert.strictEqual(lane().length, 2);
+        assert.ok(lane().some((x) => /^s:[0-9a-f]{12}$/.test(x.device) && x.place === 'work' && x.via === 'task'), 'no live mate in the ws server: a hashed key, in the test lane');
+        assert.deepStrictEqual(devices(), [], 'the household store is still untouched');
+        const server2 = { clients: new Map([[{ readyState: 1 }, { userType: 'admin', sessionId: 'sess-test', as: { kind: 'device', id: TEST_ID, name: 'Emulator', speaker: 'service' } }]]) };
+        m = await call('work', Object.assign({}, admin, { sessionId: 'sess-test', light: true }), server2);
+        assert.deepStrictEqual(lane().map((x) => [x.device, x.place, x.via]).filter((x) => x[0] === TEST_ID), [[TEST_ID, 'work', 'task']], 'the light task socket finds its device through the session mate');
+        assert.deepStrictEqual(devices(), [], 'and the household store stays untouched');
+        assert.ok(!fs.readFileSync(T.PHONE_FILE, 'utf8').includes('sess-test'), 'the session id is not in the file');
+        assert.ok(Object.keys(phoneFile().test.devices).includes(TEST_ID));
+        assert.deepStrictEqual(phoneFile().devices, {}, 'nothing in the household part of the file');
+        m = await call('garage', Object.assign({}, admin, { as: { kind: 'device', id: TEST_ID, name: 'Emulator' } }));
+        assert.strictEqual(m.code, 'BAD_PLACE', 'a bad place from a test device is refused too');
+        // a test device's report cannot stand in for the household's phone
+        m = await call('home', Object.assign({}, admin, { as: { kind: 'device', id: FOLD, name: 'Galaxy Fold' } }));
+        assert.deepStrictEqual(devices().map((x) => x.device), [FOLD]);
+        assert.ok(!lane().some((x) => x.device === FOLD), 'and a household phone is not in the test lane');
+        T.resetPhone();
+        fs.rmSync(T.PHONE_FILE, { force: true });
     });
 
     await ok('settings save cleans input', async () => {
