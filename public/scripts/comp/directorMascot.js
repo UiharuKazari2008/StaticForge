@@ -1827,7 +1827,8 @@ class DirectorMascot {
         this._bubble = { think: '', say: '' };
         this.resetReader();
         this.hideResult();
-        this.togglePeek(false);
+        // An open message log stays open on send (Yukimi 26.11.2026, #1295): only her Log command or
+        // Escape closes it (togglePeek), and showLog (her saved choice) is never written by a send.
         this.setWorking(true);
         this.paintDialogue();
         this.paintBubbles();
@@ -2316,7 +2317,7 @@ class DirectorMascot {
         this.layer.style.setProperty('--dm-top', `${top}px`);
     }
 
-    // Log peek: the full log over the dialogue for a moment; Log again, Escape, or the next send closes it.
+    // Log peek: the full log over the dialogue for a moment; Log again or Escape closes it; a send leaves it open.
     togglePeek(on) {
         this.peek = typeof on === 'boolean' ? on : !this.peek;
         if (this.host) this.host.classList.toggle('dm-log-peek', this.peek && this.vnBubbles());

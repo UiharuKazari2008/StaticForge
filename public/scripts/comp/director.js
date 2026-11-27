@@ -9828,7 +9828,10 @@ class Director {
         input.value = String(text == null ? '' : text);
         this.autoExpandTextarea(this.directorUserInput);
         input.focus();
-        showGlassToast('info', null, 'Suggestion added to input. Click send to apply.');
+        // Nothing opens: no toast either (on the desktop a toast is a Vista message box with an OK button,
+        // Yukimi 26.11.2026, #1295). The text in the box and the caret in it are the feedback.
+        const end = input.value.length;
+        try { input.setSelectionRange(end, end); } catch (_) { /* not a text field */ }
     }
 
     useSuggestion(suggestionText) {
