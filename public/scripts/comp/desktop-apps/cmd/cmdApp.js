@@ -1,5 +1,7 @@
 /**
  * Command Prompt (Yozora #1133): Vista's cmd.exe as a window of the page, over Dreamscape's own file systems.
+ * Its settings (cell, window and buffer size, cursor, colours, edit modes), the Properties sheet and the system menu
+ * are cmdProperties.js (#1342); this.cfg holds a window's settings and this.geo what they make.
  *
  *   C:\             the workspace VFS root "/" as Explorer shows it (Local Disk (C:)); a prompt starts in the
  *                   active workspace's folder, C:\Workspaces\<name>, which is where Explorer opens
@@ -7,8 +9,8 @@
  *                   phone's storages (explorerPhoneDrive.js, window.phoneStorage); a storage Explorer gives no
  *                   letter (a phone reached over ActiveSync is a portable device) takes the next free letter from D:
  *
- * The console is a grid of 80 x 25 cells of 8 x 16 px with a 300 line buffer: 300 row elements, a row is
- * written only when its cells change, and the scroll bar is the desktop's Vista one (a native scroller).
+ * The console is a grid of cells (the settings' font: Raster Fonts 8 x 12 at 80 x 25 with a 300 line buffer by default):
+ * one element per buffer row, a row is written only when its cells change, and the scroll bar is the desktop's Vista one (a native scroller).
  * Drives, history and the line editor belong to the window; the listeners on the phone storage and the host
  * drives end with it (app-scope). Nothing here polls: the drive table follows 'dreamosdrives' and the
  * phone storage's 'config' / 'state' events, and the cursor blinks with a CSS animation.
@@ -29,21 +31,13 @@
     const ICON16 = `${ART}/cmd-16.png`;
     const ICON32 = `${ART}/cmd-32.png`;
     const TITLE = 'Command Prompt';
-    const COLS = 80;
-    const ROWS = 25;
-    const BUFFER = 300;
-    const CELL_W = 8;
-    const CELL_H = 16;
-    const SCROLLBAR = 17;
-    const SCREEN_W = COLS * CELL_W + SCROLLBAR;
-    const SCREEN_H = ROWS * CELL_H;
-    const FRAME_W = 20;   // the frame beside the client: 10 px each side (8 px glass and the 2 px client edge; VM cmd.exe 677 wide, 640 client + 17 scroll bar)
-    const FRAME_H = 40;   // 30 px above the client (caption and its edge) and 10 below (VM cmd.exe 340 tall, 300 client)
+    const COLS = 80;   // the font fit's probe width (the cell's width is the setting's)
     // cmd.exe's banner, 1:1 with Vista with the holder rewritten (copyrights-not-1to1.mdc: Microsoft Windows -> Xyridian Melaton)
     const VERSION_TEXT = 'Xyridian Melaton [Version 6.0.6002]';
     const COPYRIGHT_TEXT = 'Copyright (c) 2006 Xyridian Corporation.  All rights reserved.';
     const FIT_CHARS = COLS * 50;   // the font fit's probe: 50 rows of cells in one line (its layout width is an integer)
     const OPENED_AT = Date.now();
+    const PROPS = () => root.melatonConsoleProperties;   // the console's settings, Properties sheet and system menu (cmdProperties.js, loaded before this file)
     const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     const VFS = () => (typeof vfsClient !== 'undefined' ? vfsClient : root.vfsClient);
@@ -481,7 +475,8 @@
     }
 
     class Screen {
-        constructor(rowsEl, cursorEl, scroller) {
+        constructor(rowsEl, cursorEl, scroller, geo) {
+            this.g = geo;
             this.rowsEl = rowsEl;
             this.cursorEl = cursorEl;
             this.scroller = scroller;
@@ -493,7 +488,7 @@
             this.col = 0;
             this.cursorAt = '';
             const frag = doc.createDocumentFragment();
-            for (let i = 0; i < BUFFER; i += 1) {
+            for (let i = 0; i < this.g.buffer; i += 1) {
                 const el = doc.createElement('div');
                 el.className = 'cmd-row';
                 frag.appendChild(el);
@@ -525,8 +520,8 @@
             const key = `${row},${col}`;
             if (this.cursorAt === key) return;
             this.cursorAt = key;
-            this.cursorEl.style.left = `${col * CELL_W}px`;
-            this.cursorEl.style.top = `${row * CELL_H}px`;
+            this.cursorEl.style.left = `${col * this.g.cw}px`;
+            this.cursorEl.style.top = `${row * this.g.ch}px`;
         }
 
         scrollBuffer(n) {
@@ -548,9 +543,9 @@
         newline() {
             this.col = 0;
             this.row += 1;
-            if (this.row >= BUFFER) {
+            if (this.row >= this.g.buffer) {
                 this.scrollBuffer(1);
-                this.row = BUFFER - 1;
+                this.row = this.g.buffer - 1;
             }
         }
 
@@ -579,18 +574,18 @@
         }
 
         putCell(ch, w) {
-            if (this.col + w > COLS) this.newline();
+            if (this.col + w > this.g.cols) this.newline();
             const line = this.lines[this.row];
             while (line.length < this.col) line.push(' ');
             line[this.col] = ch;
             if (w === 2) line[this.col + 1] = '';
             this.dirty.add(this.row);
             this.col += w;
-            if (this.col >= COLS) this.newline();
+            if (this.col >= this.g.cols) this.newline();
         }
 
         clear() {
-            for (let i = 0; i < BUFFER; i += 1) {
+            for (let i = 0; i < this.g.buffer; i += 1) {
                 if (this.lines[i].length) { this.lines[i] = []; this.dirty.add(i); }
             }
             this.row = 0;
@@ -601,20 +596,50 @@
 
         /** Sets one row's cells (the editor's): kept, cleared or cut at the row's width */
         setRow(i, cells) {
-            const next = cells.slice(0, COLS);
+            const next = cells.slice(0, this.g.cols);
             const cur = this.lines[i];
             if (cur.length === next.length && cur.every((c, k) => c === next[k])) return;
             this.lines[i] = next;
             this.dirty.add(i);
         }
 
+        /** A new geometry (Properties): the buffer gains or loses rows at the top, lines are cut to the new width. */
+        regeometry(g) {
+            this.g = g;
+            const diff = g.buffer - this.rowEls.length;
+            if (diff > 0) {
+                const frag = doc.createDocumentFragment();
+                for (let i = 0; i < diff; i += 1) {
+                    const el = doc.createElement('div');
+                    el.className = 'cmd-row';
+                    frag.appendChild(el);
+                    this.rowEls.push(el);
+                    this.lines.push([]);
+                    this.shown.push('');
+                }
+                this.rowsEl.insertBefore(frag, this.cursorEl);
+            } else if (diff < 0) {
+                for (let i = 0; i < -diff; i += 1) {
+                    this.rowEls.shift().remove();
+                    this.lines.shift();
+                    this.shown.shift();
+                }
+                this.row = Math.max(0, this.row + diff);
+                this.dirty.clear();
+            }
+            this.lines.forEach((l, i) => { if (l.length > g.cols) { l.length = g.cols; this.shown[i] = ''; this.dirty.add(i); } });
+            if (this.col >= g.cols) this.col = g.cols - 1;
+            this.cursorAt = '';
+            this.flush();
+        }
+
         /** Brings the cursor's row into the window: its line the last one shown when it was below */
         reveal(row) {
             const sc = this.scroller;
-            const top = row * CELL_H;
-            const h = sc.clientHeight || ROWS * CELL_H;
+            const top = row * this.g.ch;
+            const h = sc.clientHeight || this.g.rows * this.g.ch;
             if (top < sc.scrollTop) sc.scrollTop = top;
-            else if (top + CELL_H > sc.scrollTop + h) sc.scrollTop = top + CELL_H - h;
+            else if (top + this.g.ch > sc.scrollTop + h) sc.scrollTop = top + this.g.ch - h;
         }
     }
 
@@ -1484,7 +1509,7 @@
                             shown.forEach((e) => { io.out(`${sub ? `${locText(dirLoc)}${dirLoc.segs.length ? '\\' : ''}${e.name}` : e.name}\n`); });
                         } else if (wide) {
                             const w = Math.max(...shown.map((e) => cellsOf(e.dir ? `[${e.name}]` : e.name, 0).length)) + 2;
-                            const per = Math.max(1, Math.floor(COLS / w));
+                            const per = Math.max(1, Math.floor(this.screen.g.cols / w));
                             for (let i = 0; i < shown.length; i += per) {
                                 io.out(`${shown.slice(i, i + per).map((e) => { const t = e.dir ? `[${e.name}]` : e.name; return t + ' '.repeat(Math.max(0, w - cellsOf(t, 0).length)); }).join('').replace(/\s+$/, '')}\n`);
                             }
@@ -1873,9 +1898,11 @@
             this.hist = [];
             this.histAt = 0;
             this.comp = null;
-            this.insert = true;
+            this.cfg = PROPS().windowConfig();
+            this.geo = PROPS().geometry(this.cfg);
+            this.insert = this.cfg.insertMode;
             this.build();
-            this.screen = new Screen(this.rowsEl, this.cursorEl, this.scroller);
+            this.screen = new Screen(this.rowsEl, this.cursorEl, this.scroller, this.geo);
             const self = this;
             this.shell = new Shell({
                 screen: this.screen,
@@ -1888,6 +1915,7 @@
                 history: () => self.hist
             });
             this.wire();
+            this.applyConfig(this.cfg);
         }
 
         build() {
@@ -1902,9 +1930,7 @@
                 minimize: true
             });
             const m = w.modal;
-            // the window's size is its client (657 x 400: 80 columns and the scroll bar, 25 rows) in the glass frame
-            m.dataset.windowDefaultWidth = String(SCREEN_W + FRAME_W);
-            m.dataset.windowDefaultHeight = String(SCREEN_H + FRAME_H);
+            // the window's size is its client (the settings' columns and the scroll bar, rows) in the glass frame (applyConfig sets it)
             // Vista's console has a maximize box; this one stays at 80 columns, so it is drawn disabled
             const min = m.querySelector('.modal-window-controls .minimize-btn');
             if (min) {
@@ -1932,7 +1958,62 @@
         }
 
         setColors(bg, fg) {
+            if (!bg) { this.applyColors(); return; }
             if (bg) { this.scroller.style.setProperty('--cmd-bg', bg); this.scroller.style.setProperty('--cmd-fg', fg); } else { this.scroller.style.removeProperty('--cmd-bg'); this.scroller.style.removeProperty('--cmd-fg'); }
+        }
+
+        /** The settings' colours on the window: Screen Text / Background, and a changed palette for COLOR's digits (Properties). */
+        applyColors() {
+            const P = PROPS();
+            const sc = this.scroller;
+            const cfg = this.cfg;
+            for (let i = 0; i < 16; i += 1) {
+                const name = `--console-cmd-${i.toString(16)}`;
+                if (cfg.palette) this.modal.style.setProperty(name, `rgb(${cfg.palette[i][0]} ${cfg.palette[i][1]} ${cfg.palette[i][2]})`);
+                else this.modal.style.removeProperty(name);
+            }
+            sc.style.setProperty('--cmd-bg', P.colorCss(cfg, 'screenBg'));
+            sc.style.setProperty('--cmd-fg', P.colorCss(cfg, 'screenText'));
+        }
+
+        /** Puts a settings object on the window: cell, window, buffer, cursor, colours, edit modes, position. */
+        applyConfig(cfg) {
+            const P = PROPS();
+            const m = this.modal;
+            const sc = this.scroller;
+            const g = P.geometry(cfg);
+            this.cfg = cfg;
+            this.geo = g;
+            m.dataset.cmdGeo = g.hbar ? 'h' : '1';
+            m.dataset.windowDefaultWidth = String(g.screenW + g.frameW);
+            m.dataset.windowDefaultHeight = String(g.screenH + g.frameH);
+            m.style.setProperty('--cmd-cw', `${g.cw}px`);
+            m.style.setProperty('--cmd-ch', `${g.ch}px`);
+            m.style.setProperty('--cmd-cols', String(g.cols));
+            m.style.setProperty('--cmd-buffer', String(g.buffer));
+            m.style.setProperty('--cmd-win-w', `${g.screenW}px`);
+            m.style.setProperty('--cmd-win-h', `${g.screenH}px`);
+            sc.dataset.cmdCursor = cfg.cursorSize;
+            sc.style.setProperty('--cmd-cursor-pct', `${P.cursorPercent(cfg)}%`);
+            sc.toggleAttribute('data-cmd-bold', cfg.bold);
+            sc.classList.toggle('cmdp-noquick', !cfg.quickEdit);
+            this.insert = cfg.insertMode;
+            if (this.hist.length > cfg.historySize) this.hist.splice(0, this.hist.length - cfg.historySize);
+            this.screen.regeometry(g);
+            this.applyColors();
+            // Raster Fonts are the VM's own pixel fonts: face and size from the cell; Lucida Console is fitted to it (fit())
+            const raster = P.fontStyle(cfg);
+            if (raster) {
+                sc.style.setProperty('--console-font', raster.family);
+                sc.style.setProperty('--cmd-font-size', raster.size);
+                sc.style.setProperty('--cmd-spacing', '0px');
+            } else sc.style.removeProperty('--console-font');
+            this.advance = 0;
+            this.refit = false;
+            if (this.fitted && !raster) this.fit();
+            if (this.placed && !cfg.autoPosition) call('setModalOffsetsFromViewportTopLeft', m, cfg.left, cfg.top);
+            if (this.edit) this.render();
+            this.screen.reveal(this.screen.row);
         }
 
         wire() {
@@ -1949,6 +2030,8 @@
             sc.addEventListener('contextmenu', (ev) => {
                 // no native menu: QuickEdit, as Vista's console: a selection is copied, else the clipboard is pasted
                 ev.preventDefault();
+                // QuickEdit Mode off (Properties): the right button copies and pastes nothing
+                if (!this.cfg.quickEdit) { sc.focus({ preventScroll: true }); return; }
                 const sel = this.selectedText();
                 if (sel) { this.copyText(sel); this.clearSelection(); } else void this.pasteClipboard();
                 sc.focus({ preventScroll: true });
@@ -1974,6 +2057,8 @@
                 if (ps.available && !ps.state() && typeof ps.hello === 'function') ps.hello().catch(() => { /* the drive stays out */ });
             }
             if (appScopeSignal) appScopeSignal.addEventListener('abort', () => this.close(), { once: true, signal });
+            // the caption icon, Alt+Space and the Edit modes: the system menu with Edit, Defaults and Properties (cmdProperties.js)
+            PROPS().bind(this);
         }
 
         // ---- the selection and the clipboard
@@ -2051,9 +2136,9 @@
             if (!e) return;
             const cells = cellsOf(e.text, e.col);
             const total = e.col + cells.length;
-            let endRow = e.row + Math.floor(total / COLS);
-            if (endRow >= BUFFER) {
-                const n = endRow - BUFFER + 1;
+            let endRow = e.row + Math.floor(total / this.geo.cols);
+            if (endRow >= this.geo.buffer) {
+                const n = endRow - this.geo.buffer + 1;
                 s.scrollBuffer(n);
                 e.row -= n;
                 e.prevEnd -= n;
@@ -2065,16 +2150,16 @@
                 const start = r === e.row ? e.col : 0;
                 const row = r === e.row ? s.lines[r].slice(0, e.col) : [];
                 while (row.length < start) row.push(' ');
-                const take = Math.max(0, Math.min(COLS - start, cells.length - k));
+                const take = Math.max(0, Math.min(this.geo.cols - start, cells.length - k));
                 s.setRow(r, row.concat(cells.slice(k, k + take)));
                 k += take;
             }
             e.prevEnd = endRow;
             const idx = e.col + cellsOf(e.text.slice(0, e.pos), e.col).length;
-            const crow = e.row + Math.floor(idx / COLS);
+            const crow = e.row + Math.floor(idx / this.geo.cols);
             s.dirty.forEach((i) => s.paintRow(i));
             s.dirty.clear();
-            s.moveCursor(crow, idx % COLS);
+            s.moveCursor(crow, idx % this.geo.cols);
             s.reveal(crow);
             this.scroller.classList.toggle('cmd-overwrite', !this.insert);
         }
@@ -2096,16 +2181,17 @@
             this.edit = null;
             const cells = cellsOf(e.text, e.col);
             const total = e.col + cells.length;
-            s.row = e.row + Math.floor(total / COLS);
-            s.col = total % COLS;
+            s.row = e.row + Math.floor(total / this.geo.cols);
+            s.col = total % this.geo.cols;
             s.newline();
             s.flush();
             s.reveal(s.row);
             if (e.history && e.text.trim()) {
-                const i = this.hist.indexOf(e.text);
+                // Discard Old Duplicates (Properties): the same command again leaves one entry
+                const i = this.cfg.discardDuplicates ? this.hist.indexOf(e.text) : -1;
                 if (i >= 0) this.hist.splice(i, 1);
                 this.hist.push(e.text);
-                if (this.hist.length > 50) this.hist.shift();
+                if (this.hist.length > this.cfg.historySize) this.hist.shift();
             }
             e.resolve(e.text);
         }
@@ -2117,8 +2203,8 @@
             this.edit = null;
             const cells = cellsOf(e.text, e.col);
             const total = e.col + cells.length;
-            s.row = e.row + Math.floor(total / COLS);
-            s.col = total % COLS;
+            s.row = e.row + Math.floor(total / this.geo.cols);
+            s.col = total % this.geo.cols;
             s.write('^C');
             s.newline();
             s.flush();
@@ -2167,8 +2253,8 @@
                 return;
             }
             if ((ctrl && lc(k) === 'v') || (ev.shiftKey && k === 'Insert')) { eat(); void this.pasteClipboard(); return; }
-            if (ctrl && (k === 'ArrowUp' || k === 'ArrowDown')) { eat(); this.scroller.scrollTop += (k === 'ArrowUp' ? -1 : 1) * CELL_H; return; }
-            if (ev.shiftKey && (k === 'PageUp' || k === 'PageDown')) { eat(); this.scroller.scrollTop += (k === 'PageUp' ? -1 : 1) * (ROWS - 1) * CELL_H; return; }
+            if (ctrl && (k === 'ArrowUp' || k === 'ArrowDown')) { eat(); this.scroller.scrollTop += (k === 'ArrowUp' ? -1 : 1) * this.geo.ch; return; }
+            if (ev.shiftKey && (k === 'PageUp' || k === 'PageDown')) { eat(); this.scroller.scrollTop += (k === 'PageUp' ? -1 : 1) * (this.geo.rows - 1) * this.geo.ch; return; }
             if (ev.metaKey || (ev.altKey && !ev.getModifierState('AltGraph')) || (ctrl && !['ArrowLeft', 'ArrowRight', 'Home', 'End', 'Backspace', 'Delete'].includes(k))) return;
             if (this.keyWaiter) { eat(); const r = this.keyWaiter; this.keyWaiter = null; r(k); return; }
             const e = this.edit;
@@ -2224,7 +2310,7 @@
                     return;
                 case 'Tab':
                     eat();
-                    if (e.history) void this.complete(ev.shiftKey ? -1 : 1);
+                    if (e.history && this.cfg.autoComplete) void this.complete(ev.shiftKey ? -1 : 1);
                     return;
                 default:
                     if ([...k].length === 1) { eat(); this.insertText(k); }
@@ -2322,12 +2408,15 @@
             this.modal.classList.remove('hidden');
             root.requestAnimationFrame(() => {
                 if (this.closed) return;
+                this.fitted = true;
                 this.calibrate();
-                const r = { width: SCREEN_W + FRAME_W, height: SCREEN_H + FRAME_H };
+                const r = { width: this.geo.screenW + this.geo.frameW, height: this.geo.screenH + this.geo.frameH };
                 const taskbar = doc.getElementById('taskbar');
                 const workH = root.innerHeight - (taskbar ? taskbar.getBoundingClientRect().height : 0);
                 const n = (opened++) % 8;
-                call('setModalOffsetsFromViewportTopLeft', this.modal, Math.max(0, Math.round((root.innerWidth - r.width) / 2) + n * 26), Math.max(0, Math.round((workH - r.height) / 2) + n * 26));
+                if (this.cfg.autoPosition) call('setModalOffsetsFromViewportTopLeft', this.modal, Math.max(0, Math.round((root.innerWidth - r.width) / 2) + n * 26), Math.max(0, Math.round((workH - r.height) / 2) + n * 26));
+                else call('setModalOffsetsFromViewportTopLeft', this.modal, this.cfg.left, this.cfg.top);
+                this.placed = true;
                 this.scroller.focus({ preventScroll: true });
             });
         }
@@ -2356,7 +2445,7 @@
             for (const name of names) {
                 if (this.closed) return;
                 try {
-                    const got = await fonts.load(`${CELL_H}px "${name}"`, 'M');
+                    const got = await fonts.load(`${this.geo.ch}px "${name}"`, 'M');
                     if (got && got.length) return;
                 } catch (_) { /* this face did not arrive: the next one of the stack */ }
             }
@@ -2364,7 +2453,7 @@
 
         /** The font's advance is fitted so 80 cells are exactly 640 px: a size from the font, then the leftover as letter spacing */
         fit() {
-            if (this.closed) return;
+            if (this.closed || PROPS().fontStyle(this.cfg)) return;
             const sc = this.scroller;
             let adv = 0;
             try {
@@ -2377,13 +2466,14 @@
             probe.className = 'cmd-row cmd-probe';
             probe.textContent = 'M'.repeat(FIT_CHARS);
             this.rowsEl.appendChild(probe);
-            const size = adv > 0 ? Math.max(8, Math.min(18, (CELL_W * 100) / adv)) : 13;
+            // the cell's width in this face, capped by the cell's height (a 43 x 72 cell is a 72 px face)
+            const size = adv > 0 ? Math.max(4, Math.min(this.geo.ch * 1.15, (this.geo.cw * 100) / adv)) : 13;
             sc.style.setProperty('--cmd-font-size', `${size.toFixed(3)}px`);
             sc.style.setProperty('--cmd-spacing', '0px');
             // the window's open animation is a 3-D transform, so a box's rect is not its size: the probe's layout width is
             // read (an integer, so the probe is FIT_CHARS cells long and the rounding is spread over all of them)
             const w = probe.offsetWidth / (FIT_CHARS / COLS);
-            const spacing = w > 0 ? (COLS * CELL_W - w) / COLS : 0;
+            const spacing = w > 0 ? (COLS * this.geo.cw - w) / COLS : 0;
             if (Math.abs(spacing) > 0.0005) sc.style.setProperty('--cmd-spacing', `${spacing.toFixed(4)}px`);
             probe.remove();
             this.advance = adv;

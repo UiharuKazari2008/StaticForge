@@ -167,9 +167,12 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/desktop-apps/charmap/charmapApp.js']
     },
     // Command Prompt (Yozora #1133): cmd.exe over the workspace's VFS (C:) and the phone / host drives
+    // The Properties sheet (Options, Font, Layout, Colors), Defaults and the system menu are cmdProperties.js (#1342); its sheet is
+    // drawn by vistaDialogTemplate.js from console.dll's own templates
     cmd: {
-        styles: ['css/themes/vista/console.css', 'css/vista-cmd.css'],
-        scripts: ['scripts/comp/desktop-apps/cmd/cmdApp.js']
+        depends: ['vista_dialog_templates'],
+        styles: ['css/themes/vista/console.css', 'css/vista-cmd.css', 'css/cmd-properties.css'],
+        scripts: ['scripts/comp/desktop-apps/cmd/cmdProperties.js', 'scripts/comp/desktop-apps/cmd/cmdApp.js']
     },
     // Administrator Terminal (Yozora #1133): raw bash on the server (xterm.js + node-pty), administrators only
     admin_terminal: {

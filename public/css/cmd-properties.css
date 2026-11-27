@@ -1,0 +1,239 @@
+/* Command Prompt Properties and the console window's settings (public/scripts/comp/desktop-apps/cmd/cmdProperties.js,
+   Yozora #1342). The sheet's own drawn controls - the Window Preview, the font sample, the colour swatches - and the
+   console window's geometry when its settings differ from the defaults. Colours are the console theme's tokens
+   (css/themes/vista/console.css, --console-props-*); lengths are the VM's pixels. */
+
+/* ---- the sheet ---------------------------------------------------------------------------------------------- */
+
+/* Options, Layout and Colors start 1 px lower in the pane than the shell's other sheets (measured against the VM; the Font page's own
+   labels carry the 1 px in cmdProperties.js, its boxes are where the template puts them) */
+.cmdp-sheet .tbp-client .tbp-pane > .tbp-page[data-vdt-page="options"],
+.cmdp-sheet .tbp-client .tbp-pane > .tbp-page[data-vdt-page="layout"],
+.cmdp-sheet .tbp-client .tbp-pane > .tbp-page[data-vdt-page="colors"] {
+    top: 2px;
+}
+
+/* the font and size lists keep a selected row blue even without the focus (owner-drawn on the VM), and the TrueType glyph its own size */
+.cmdp-sheet.cmdp-sheet .vdt-client .vdt-listbox .vdt-lb-row.is-selected {
+    background: var(--console-props-highlight);
+    color: var(--console-props-highlight-text);
+}
+
+.cmdp-sheet.cmdp-sheet .vdt-client .vdt-listbox:focus .vdt-lb-row.is-selected {
+    outline: 1px dotted var(--console-props-focus);
+    outline-offset: -1px;
+}
+
+.cmdp-sheet.cmdp-sheet .vdt-client .vdt-listbox .vdt-lb-row img {
+    width: auto;
+    height: auto;
+    flex: none;
+}
+
+/* the sunken edge of the preview and the colour boxes (WS_EX_CLIENTEDGE): 2 px light-top, 1 px light-bottom as the VM draws it */
+.cmdp-sheet .cmdp-wp,
+.cmdp-sheet .cmdp-framed,
+.cmdp-sheet .cmdp-swatch {
+    box-sizing: border-box;
+    border: 1px solid;
+    border-color: var(--console-props-edge-outer-dark) var(--console-props-edge-outer-light) var(--console-props-edge-outer-light) var(--console-props-edge-outer-dark);
+    box-shadow: inset 1px 1px 0 var(--console-props-edge-inner-dark);
+}
+
+/* Window Preview: the screen in black, the console's window in proportion */
+.cmdp-sheet .cmdp-wp {
+    background: var(--console-props-screen);
+    overflow: hidden;
+}
+
+.cmdp-sheet .cmdp-wp-win {
+    position: absolute;
+    margin: 1px 0 0 1px;
+    box-sizing: border-box;
+    background: var(--console-props-win-dark);
+}
+
+.cmdp-sheet .cmdp-wp-l {
+    position: absolute;
+    inset: 1px;
+    background: var(--console-props-win-light);
+}
+
+.cmdp-sheet .cmdp-wp-d {
+    position: absolute;
+    inset: 1px;
+    box-sizing: border-box;
+    padding: 1px;
+    display: flex;
+    flex-direction: column;
+    background: var(--console-props-win-dark);
+}
+
+.cmdp-sheet .cmdp-wp-title {
+    display: flex;
+    flex: none;
+    height: 2px;
+}
+
+.cmdp-sheet .cmdp-wp-title b {
+    flex: none;
+    width: 1px;
+}
+
+.cmdp-sheet .cmdp-wp-glyph {
+    flex: none;
+    width: 3px;
+    background: var(--console-props-win-glyph);
+}
+
+.cmdp-sheet .cmdp-wp-bar {
+    flex: 1;
+    background: var(--console-props-win-title);
+}
+
+.cmdp-sheet .cmdp-wp-rule {
+    flex: none;
+    height: 1px;
+}
+
+.cmdp-sheet .cmdp-wp-client {
+    position: relative;
+    flex: 1;
+    background: var(--console-props-screen);
+}
+
+.cmdp-sheet .cmdp-wp-scroll {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--console-props-win-scroll);
+}
+
+/* the font sample (the sheet's own font rules for controls are body.desktop-mode ...: this selector outranks them) (Selected Font, Selected Screen Colors, Selected Popup Colors): the cell's real pixels, clipped by the box */
+body.desktop-mode .modal.cmdp-sheet[data-vista-dialog] > .modal-content.vdt-client .tbp-ctl.cmdp-sample {
+    overflow: hidden;
+    box-sizing: border-box;
+    background: var(--cmdp-bg);
+    color: var(--cmdp-fg);
+    font-family: var(--cmdp-font, var(--console-font)) !important;   /* the sheet's own face rule (vista-dialog-template.css) is !important; a Raster Font sets --cmdp-font */
+    font-size: var(--cmdp-size) !important;
+    font-weight: 400;
+    font-variant-ligatures: none;
+    font-kerning: none;
+    letter-spacing: var(--cmdp-spacing);
+    line-height: var(--cmdp-ch) !important;
+    white-space: pre;
+    padding-left: 1px;   /* the sample starts 4 px in: 3 of them are the raster glyph's own side bearing */
+}
+
+body.desktop-mode .modal.cmdp-sheet[data-vista-dialog] > .modal-content.vdt-client .tbp-ctl.cmdp-sample.is-bold { font-weight: 700; }
+
+/* font-family !important on a div inside: the lines inherit it */
+body.desktop-mode .modal.cmdp-sheet[data-vista-dialog] > .modal-content.vdt-client .tbp-ctl.cmdp-sample .cmdp-line {
+    font-family: var(--cmdp-font, var(--console-font)) !important;
+    font-size: inherit !important;
+    letter-spacing: inherit;
+    line-height: inherit !important;
+    height: var(--cmdp-ch);
+    overflow: hidden;
+}
+
+/* the 16 colours: a sunken box holding the colour, ringed in black while it is the selected role's */
+.cmdp-sheet .cmdp-swatch {
+    background: var(--console-props-gap);
+    cursor: default;
+}
+
+.cmdp-sheet .cmdp-swatch::before {
+    content: "";
+    position: absolute;
+    inset: 2px 1px 1px 2px;
+    background: var(--cmdp-swatch);
+}
+
+.cmdp-sheet .cmdp-swatch.is-selected {
+    background: var(--console-props-ring);
+}
+
+.cmdp-sheet .cmdp-swatch.is-selected::before {
+    inset: 3px 2px 2px 3px;
+}
+
+/* ---- the console window with its own settings ------------------------------------------------------------ */
+/* cmdApp.js sets --cmd-cw / --cmd-ch (the cell), --cmd-cols (the line), --cmd-buffer (the rows kept), --cmd-win-w / --cmd-win-h (the client)
+   on the window; these rules draw the window from them (vista-cmd.css holds the defaults they replace). */
+
+.cmd-window.cmd-window[data-cmd-geo] {
+    width: calc(var(--cmd-win-w) + var(--cmd-frame-w, 20px));
+}
+
+.cmd-window[data-cmd-geo] .cmd-client.cmd-client {
+    width: var(--cmd-win-w);
+    height: var(--cmd-win-h);
+}
+
+.cmd-window[data-cmd-geo] .cmd-screen {
+    line-height: var(--cmd-ch);
+}
+
+.cmd-window[data-cmd-geo="h"] .cmd-screen {
+    overflow-x: scroll;
+}
+
+.cmd-window[data-cmd-geo] .cmd-rows {
+    width: calc(var(--cmd-cols) * var(--cmd-cw));
+    height: calc(var(--cmd-buffer) * var(--cmd-ch));
+}
+
+.cmd-window[data-cmd-geo] .cmd-row {
+    width: calc(var(--cmd-cols) * var(--cmd-cw));
+    height: var(--cmd-ch);
+}
+
+.cmd-window[data-cmd-geo] .cmd-row.cmd-probe {
+    width: auto;   /* the font fit's probe measures its own text, not the line's width */
+}
+
+.cmd-window[data-cmd-geo] .cmd-c { width: var(--cmd-cw); }
+.cmd-window[data-cmd-geo] .cmd-w { width: calc(2 * var(--cmd-cw)); }
+
+.cmd-window[data-cmd-geo] .cmd-cursor {
+    width: var(--cmd-cw);
+    height: var(--cmd-ch);
+}
+
+.cmd-window[data-cmd-geo] .cmd-bx {
+    background-position: calc(var(--cmd-cw) / 2) 0, calc(var(--cmd-cw) / 2) calc(var(--cmd-ch) / 2), 0 calc(var(--cmd-ch) / 2), calc(var(--cmd-cw) / 2) calc(var(--cmd-ch) / 2);
+    background-size: 1px calc(var(--cmd-ch) / 2 + 1px), 1px calc(var(--cmd-ch) / 2), calc(var(--cmd-cw) / 2 + 1px) 1px, calc(var(--cmd-cw) / 2) 1px;
+}
+
+/* Cursor Size: Small 25 %, Medium 50 %, Large 100 % of the cell; overwrite doubles it (Vista) */
+.cmd-window .cmd-screen[data-cmd-cursor] .cmd-cursor::after {
+    height: var(--cmd-cursor-pct);
+}
+
+.cmd-window .cmd-screen.cmd-overwrite[data-cmd-cursor] .cmd-cursor::after {
+    height: min(100%, calc(var(--cmd-cursor-pct) * 2));
+}
+
+/* Bold fonts (Lucida Console) */
+.cmd-window .cmd-screen[data-cmd-bold] {
+    font-weight: 700;
+}
+
+/* QuickEdit Mode off: the mouse selects nothing; Mark (system menu > Edit) lifts that while it runs */
+.cmd-window .cmd-screen.cmdp-noquick .cmd-rows,
+.cmd-window .cmd-screen.cmdp-noquick .cmd-row,
+.cmd-window .cmd-screen.cmdp-noquick .cmd-row * {
+    -webkit-user-select: none !important;
+    user-select: none !important;
+}
+
+.cmd-window .cmd-screen.cmdp-noquick.cmdp-moded .cmd-rows,
+.cmd-window .cmd-screen.cmdp-noquick.cmdp-moded .cmd-row,
+.cmd-window .cmd-screen.cmdp-noquick.cmdp-moded .cmd-row * {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+}

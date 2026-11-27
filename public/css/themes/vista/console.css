@@ -28,6 +28,35 @@
     --console-scroll-shadow: #a0a0a0;
     --console-scroll-dark-shadow: #696969;
     --console-scroll-arrow: #000000;
+    /* Command Prompt Properties (css/cmd-properties.css): the sheet's sunken edge (a 160 / 105 pair at the top left, 227 at the
+       bottom right), the white gap and black ring of a colour swatch, the Window Preview's screen and mini window, the list's
+       selected row; all measured on the Vista VM (console.dll's sheet) */
+    --console-props-edge-outer-dark: #a0a0a0;
+    --console-props-edge-inner-dark: #696969;
+    --console-props-edge-outer-light: #e3e3e3;
+    --console-props-gap: #ffffff;
+    --console-props-ring: #000000;
+    --console-props-screen: #000000;
+    --console-props-win-dark: #646464;
+    --console-props-win-light: #b4b4b4;
+    --console-props-win-glyph: #f0f0f0;
+    --console-props-win-title: #99b4d1;
+    --console-props-win-scroll: #c8c8c8;
+    --console-props-highlight: #3399ff;
+    --console-props-highlight-text: #ffffff;
+    --console-props-focus: #cc6600;
+
+    /* the VM's ten console Raster Fonts (css/vista-fonts.css), by cell size: the Properties sheet's Font list and the console window set the face from these */
+    --console-raster-4x6: "Melaton Terminal 4x6";
+    --console-raster-6x8: "Melaton Terminal 6x8";
+    --console-raster-8x8: "Melaton Terminal 8x8";
+    --console-raster-16x8: "Melaton Terminal 16x8";
+    --console-raster-5x12: "Melaton Terminal 5x12";
+    --console-raster-7x12: "Melaton Terminal 7x12";
+    --console-raster-8x12: "Melaton Terminal 8x12";
+    --console-raster-16x12: "Melaton Terminal 16x12";
+    --console-raster-12x16: "Melaton Terminal 12x16";
+    --console-raster-10x18: "Melaton Terminal 10x18";
     --console-term-background: #0c0c0c;
     --console-term-foreground: #cccccc;
     --console-term-selection: rgba(255, 255, 255, 0.3);
