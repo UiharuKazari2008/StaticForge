@@ -18,6 +18,8 @@ done, whatever else it achieves.
    services, status bar handlers, notification drivers and alerts run in the app through CaféReady as portable
    task code shipped with the app, and the app uses their output whenever CaféReady is online -
    `cafeready-background`. Never make a phone duty work only while the page runs or has been opened.
+0. **Never a manual install step** (Yukimi, Nov 27 2026): no install prompt left on a phone, no "please install" to her;
+   a failed silent route is fixed or replaced by the next one in the same turn - `no-manual-install-step`.
 1. **Safety and the shared tree:** `agent-busy-lock`, `no-dreamscape-restart` / `director-idle-before-restart`,
    `no-stash-to-pretty-commit`, `android-app-builds` (never loop installs).
 2. **Performance and power on every change** (Yukimi, Nov 17 2026, #890: "prevent the need to keep doing
@@ -47,6 +49,7 @@ done, whatever else it achieves.
 @.cursor/rules/director-idle-before-restart.mdc
 @.cursor/rules/no-stash-to-pretty-commit.mdc
 @.cursor/rules/android-app-builds.mdc
+@.cursor/rules/no-manual-install-step.mdc
 @.cursor/rules/apk-installs-via-adb.mdc
 @.cursor/rules/phone-power-client.mdc
 @.cursor/rules/phone-power-server.mdc
