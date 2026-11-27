@@ -1,0 +1,249 @@
+#1405 part A - unit tests of fix/1405-drawer-still before it was handed on
+commit     0270983d1d00932aa9c85fdaecab86293b812ed9 (branch fix/1405-drawer-still, on origin/main 763cc1fc)
+What       gradlew.bat --no-daemon -Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx3500m testDebugUnitTest on Ruiko, fresh folder claude-build\dsapp-ut-1405a from git archive of the commit
+Build gate #331 (dsapp-unit-tests), Nov 27 2026; no APK built, nothing installed on any device
+Checks     check-perf-rules --dsapp ok (183 files), check-app-scope ok, check-notifications ok (all run on the worktree before the commit)
+
+GRADLE EXIT=0
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on 
+this, please refer to 
+https://docs.gradle.org/9.3.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle 
+documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig
+C:\Users\ykaza\claude-build\dsapp-ut-1405a\app\src\main\AndroidManifest.xml:69:5-66 Warning:
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:compileDebugKotlin
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidApps.kt:800:88 'val id: Long' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:408:23 'class Im : Any, ContactsContract.CommonDataKinds.CommonColumns, 
+ContactsContract.DataColumnsWithJoins' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:408:26 'static field CONTENT_ITEM_TYPE: String' is deprecated. Deprecated 
+in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:427:112 'class Im : Any, ContactsContract.CommonDataKinds.CommonColumns, 
+ContactsContract.DataColumnsWithJoins' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:427:115 'static field CONTENT_ITEM_TYPE: String' is deprecated. Deprecated 
+in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:468:64 'class Im : Any, ContactsContract.CommonDataKinds.CommonColumns, 
+ContactsContract.DataColumnsWithJoins' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:468:67 'static field CONTENT_ITEM_TYPE: String' is deprecated. Deprecated 
+in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:468:94 'class Im : Any, ContactsContract.CommonDataKinds.CommonColumns, 
+ContactsContract.DataColumnsWithJoins' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:468:111 'class Im : Any, ContactsContract.CommonDataKinds.CommonColumns, 
+ContactsContract.DataColumnsWithJoins' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:468:114 'static field PROTOCOL: String' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:468:149 'class Im : Any, ContactsContract.CommonDataKinds.CommonColumns, 
+ContactsContract.DataColumnsWithJoins' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:468:152 'static field PROTOCOL_CUSTOM: Int' is deprecated. Deprecated in 
+Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:468:172 'class Im : Any, ContactsContract.CommonDataKinds.CommonColumns, 
+ContactsContract.DataColumnsWithJoins' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidPim.kt:468:175 'static field CUSTOM_PROTOCOL: String' is deprecated. Deprecated in 
+Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidWallpaper.kt:156:83 'val id: Long' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/AndroidWallpaper.kt:236:23 Condition is always 'true'.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/CellularBridge.kt:57:26 'static field NETWORK_TYPE_EHRPD: Int' is deprecated. Deprecated 
+in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/CellularBridge.kt:58:26 'static field NETWORK_TYPE_EVDO_0: Int' is deprecated. Deprecated 
+in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/CellularBridge.kt:58:64 'static field NETWORK_TYPE_EVDO_A: Int' is deprecated. Deprecated 
+in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/CellularBridge.kt:58:102 'static field NETWORK_TYPE_EVDO_B: Int' is deprecated. 
+Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/CellularBridge.kt:59:26 'static field NETWORK_TYPE_1xRTT: Int' is deprecated. Deprecated 
+in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/DeviceNotices.kt:236:16 'fun vibrate(p0: VibrationEffect!, p1: AudioAttributes!): Unit' 
+is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/DeviceStatusBridge.kt:990:32 'fun getConfigForSubId(p0: Int): PersistableBundle?' is 
+deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/DeviceStatusBridge.kt:990:65 'val config: PersistableBundle?' is deprecated. Deprecated 
+in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/HardwareInfoBridge.kt:1026:38 'static field PHONE_TYPE_CDMA: Int' is deprecated. 
+Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/HardwareInfoBridge.kt:1288:37 'static field ENCRYPTION_STATUS_ACTIVATING: Int' is 
+deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/HomeWidgets.kt:202:29 'fun updateAppWidgetSize(p0: Bundle!, p1: Int, p2: Int, p3: Int, 
+p4: Int): Unit' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/MainActivity.kt:2850:18 This declaration overrides a deprecated member but is not marked 
+as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/MainActivity.kt:3501:94 'val supportedHdrTypes: IntArray!' is deprecated. Deprecated in 
+Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/MainActivity.kt:3747:20 'var isStatusBarContrastEnforced: Boolean' is deprecated. 
+Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/MainActivity.kt:4801:18 This declaration overrides a deprecated member but is not marked 
+as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/MainActivity.kt:4803:19 'fun onLayout(p0: Boolean, p1: Int, p2: Int, p3: Int, p4: Int): 
+Unit' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/MainActivity.kt:4806:15 'fun onLayout(p0: Boolean, p1: Int, p2: Int, p3: Int, p4: Int): 
+Unit' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/MediaSessionBridge.kt:428:17 Condition is always 'true'.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/MelatonBars.kt:4928:86 'static field MODE_BACKGROUND_ACTIVITY_START_ALLOWED: Int' is 
+deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/MelatonMiniport.kt:346:36 Condition is always 'true'.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/NativeBar.kt:1556:34 Condition is always 'true'.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/QuickAccess.kt:722:44 'val allNetworks: Array<(out) Network!>' is deprecated. Deprecated 
+in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/QuickAccess.kt:1115:34 'val allNetworks: Array<(out) Network!>' is deprecated. Deprecated 
+in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/SocialNotifications.kt:369:115 'static field MODE_BACKGROUND_ACTIVITY_START_ALLOWED: Int' 
+is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/SocialNotifications.kt:400:42 Condition is always 'true'.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/TaskOverlay.kt:581:37 Condition is always 'true'.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/WalletImport.kt:379:14 'fun recycle(): Unit' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/WifiControl.kt:994:39 'val allNetworks: Array<(out) Network!>' is deprecated. Deprecated 
+in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/activesync/ActiveSyncDeviceState.kt:94:25 Condition is always 'false'.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/activesync/ActiveSyncDeviceState.kt:108:66 'static field NETWORK_TYPE_EVDO_0: Int' is 
+deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/activesync/ActiveSyncDeviceState.kt:108:104 'static field NETWORK_TYPE_EVDO_A: Int' is 
+deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/activesync/ActiveSyncDeviceState.kt:109:30 'static field NETWORK_TYPE_EVDO_B: Int' is 
+deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/activesync/ActiveSyncDeviceState.kt:109:68 'static field NETWORK_TYPE_EHRPD: Int' is 
+deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/activesync/ActiveSyncDeviceState.kt:182:28 'static field ACTION_WALLPAPER_CHANGED: 
+String' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/activesync/ActiveSyncNotifications.kt:239:131 'static field 
+MODE_BACKGROUND_ACTIVITY_START_ALLOWED: Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/activesync/ActiveSyncNotifications.kt:399:42 Condition is always 'true'.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/activesync/ActiveSyncNotifications.kt:555:78 'static field 
+MODE_BACKGROUND_ACTIVITY_START_ALLOWED: Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/activesync/ActiveSyncNotifications.kt:655:79 'static field 
+MODE_BACKGROUND_ACTIVITY_START_ALLOWED: Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/activesync/ActiveSyncPackages.kt:42:106 'field versionCode: Int' is deprecated. 
+Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/hotspot/HotspotShell.kt:68:52 'static fun prepareMainLooper(): Unit' is deprecated. 
+Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/screensaver/DreamscapeClient.kt:313:31 This declaration needs opt-in. Its usage should be 
+marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or 
+'@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/screensaver/DreamscapeDream.kt:465:13 This declaration needs opt-in. Its usage should be 
+marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or 
+'@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/widget/FrameWidgets.kt:65:103 'fun showNext(p0: Int): Unit' is deprecated. Deprecated in 
+Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/widget/FrameWidgets.kt:180:12 'fun setRemoteAdapter(p0: Int, p1: Intent!): Unit' is 
+deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/widget/FrameWidgets.kt:218:11 'fun notifyAppWidgetViewDataChanged(p0: Int, p1: Int): 
+Unit' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/widget/WorkspaceListWidget.kt:59:19 'fun notifyAppWidgetViewDataChanged(p0: Int, p1: 
+Int): Unit' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dre
+amscape/widget/WorkspaceListWidget.kt:81:16 'fun setRemoteAdapter(p0: Int, p1: Intent!): Unit' is 
+deprecated. Deprecated in Java.
+gradlew.bat : Note: C:\Users\ykaza\claude-build\dsapp-ut-1405a\app\src\main\java\jp\net\seventhree
+At C:\Users\ykaza\claude-build\run-ut-1405a.ps1:16 char:1
++ & "$d\gradlew.bat" @a *> "$res\build.log"
+> Task :app:compileDebugUnitTestKotlin
+> Task :app:testDebugUnitTest
+[Incubating] Problems report is available at: 
+file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/build/reports/problems/problems-report.html
+BUILD SUCCESSFUL in 2m 42s
+27 actionable tasks: 27 executed
+Consider enabling configuration cache to speed up this build: 
+https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+
+
+--- tests ---
+jp.net.seventhreeseven.dreamscape.activesync.AdbKeyFilesTest: tests=20 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.LocalAdbPolicyTest: tests=9 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.activesync.NoticeDeliveryTest: tests=34 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ApkInstallPlanTest: tests=16 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ApkInstallRetryTest: tests=28 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.BackgroundValueTest: tests=12 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.BarsHealPolicyTest: tests=62 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.DrawerStillTest: tests=24 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NavRoomPolicyTest: tests=53 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NoteRepeaterTest: tests=12 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NoteSoundArbiterTest: tests=37 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NoteSoundChoiceTest: tests=13 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NotifySoundRulesTest: tests=21 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.OutFitTest: tests=25 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.PopupRulesTest: tests=35 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.RadioCoreTest: tests=64 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.RadioModeRulesTest: tests=32 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.RadioWordsTest: tests=10 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.SandboxConnectTest: tests=15 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ShizukuQueuePolicyTest: tests=7 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.TaskCatchUpTest: tests=10 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.TaskDeliveryTest: tests=9 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+TOTAL classes=34 tests=720 failures=0 errors=0 skipped=0
+--- warnings in the files this change edited or added ---
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1405a/app/src/main/java/jp/net/seventhreeseven/dreamscape/MelatonBars.kt:4928:86 'static field MODE_BACKGROUND_ACTIVITY_START_ALLOWED: Int' is deprecated. Deprecated in Java.
