@@ -3466,6 +3466,9 @@
 
     window.wmTitanium = {
         enabled, home, select: (i) => select(i, true),
+        // the panels' art by name ('traffic-light-go', 'x:app-traffic-lg'), for an item's page picture: the
+        // item never names the theme folder (ui-standard theme-art-path, #1412)
+        art: { url: artUrl, set: artSet },
         // Home by the swipe, under the app's mask (#1013)
         maskedHome: () => maskedHome(),
         // Today's picture at rest, for the home swipe's mask (#1013)

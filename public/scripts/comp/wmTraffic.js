@@ -1845,7 +1845,13 @@
      * frame): green clear, amber moderate, red heavy, every lamp dark with no report.
      */
     const placeIcon = (d) => `x:app-traffic-lg-${d === 'work' ? 'office' : 'home'}`;
-    const lightOf = (level) => `/static_images/wm65/traffic-light-${{ clear: 'go', moderate: 'moderate', heavy: 'heavy' }[level] || 'none'}.png`;
+    // the lamp is the 6.5 panel's art, by name through the panel's own art helper (#1412: no theme folder here);
+    // this panel is only asked for by wmTitanium, so the helper is there whenever it is drawn
+    const lightOf = (level) => {
+        const ti = window.wmTitanium;
+        const name = `traffic-light-${{ clear: 'go', moderate: 'moderate', heavy: 'heavy' }[level] || 'none'}`;
+        return ti && ti.art ? ti.art.url(name) : '';
+    };
 
     /** The commute's own 6.5 panel (as before #1041), or null when Traffic shows nothing here. */
     function tripPanel() {
