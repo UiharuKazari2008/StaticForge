@@ -66,6 +66,31 @@
     const screenOn = () => !document.hidden && document.documentElement.dataset.screenOff === undefined;
     const nativePlayer = () => (window.AndroidVideos && typeof window.AndroidVideos.watching === 'function' ? window.AndroidVideos : null);
 
+    // The app has one native player, shared with Melaton Videos and Melaton Media (docs/client-api/android-playback.md).
+    // wmNativeSlot: whose report the app holds now (watching()); wmNativePlayer: whose stream its player was last given.
+    // A program clears and stops only its own.
+    const ME = 'xmradio';
+    const SLOT_KEY = 'wmNativeSlot';
+    const PLAYER_KEY = 'wmNativePlayer';
+    const keyGet = (k) => { try { return localStorage.getItem(k) || ''; } catch (_) { return ''; } };
+    const keySet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (_) { /* this load only */ } };
+    const ownsPlayer = () => keyGet(PLAYER_KEY) === ME;
+    function report(nv, json) { nv.watching(json); keySet(SLOT_KEY, ME); }
+    function unreport(nv) {
+        if (keyGet(SLOT_KEY) !== ME) return;
+        keySet(SLOT_KEY, '');
+        try { nv.watching(''); } catch (_) { /* older app */ }
+    }
+    /** The app's player has XM's stream now: the other programs let go of what they had there. */
+    function takePlayer() {
+        keySet(PLAYER_KEY, ME);
+        window.dispatchEvent(new CustomEvent('wmnativeplayer', { detail: { owner: ME } }));
+    }
+    /** XM starts making sound here (in the app): one sound, so Melaton Media and Videos stop theirs. */
+    function announceSound() {
+        if (nativePlayer()) window.dispatchEvent(new CustomEvent('wmphonesound', { detail: { by: ME } }));
+    }
+
     function readJson(key, fallback) {
         try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v && typeof v === 'object' ? v : fallback; } catch (_) { return fallback; }
     }
@@ -303,6 +328,7 @@
     }
 
     function changed() {
+        syncHold();
         if (shown) render();
         todayHtml = '';
         if (ws && typeof ws.currentApp === 'function' && ws.currentApp() === 'today') {
@@ -383,10 +409,38 @@
     function dropNative() {
         const nv = nativePlayer();
         if (!nv) return;
-        try { nv.watching(''); } catch (_) { /* older app */ }
-        if (radio.native) { try { nv.stop(); } catch (_) { /* gone */ } }
+        unreport(nv);
+        if (radio.native && ownsPlayer()) {
+            try { nv.stop(); } catch (_) { /* gone */ }
+            keySet(PLAYER_KEY, '');
+        }
         radio.native = false;
         forgetNative();
+    }
+
+    /** Another program has the app's player now: XM's stream is gone from it (nothing of theirs is touched). */
+    function nativeLost() {
+        radio.seq++;
+        radio.native = false;
+        radio.state = 'off';
+        sleep.at = 0;
+        forgetNative();
+        changed();
+    }
+
+    // The page's own player (an app without the native one, or one that did not take the stream) is the sound: the
+    // page is held awake while it is meant to play (tuning, buffering and the gap between two recordings too), or
+    // the app pauses its timers with the screen off and the stream starves (#1322). The element is not in the
+    // document, so melatonContinuity cannot see it play. Natively played sound needs no hold: the page may sleep.
+    let pageHeld = false;
+    function syncHold() {
+        const a = radio.audio;
+        const want = !radio.native && (radio.state === 'playing' || radio.state === 'tuning') && !(a && a.muted);
+        if (want === pageHeld) return;
+        const mc = window.melatonContinuity;
+        if (!mc || typeof mc.holdAwake !== 'function') return;
+        pageHeld = want;
+        mc.holdAwake('xmradio-page', want);
     }
 
     /*
@@ -410,6 +464,9 @@
         const saved = readJson(LS_NATIVE, null);
         if (st === 'off' || !active) { if (saved) forgetNative(); return false; }
         if (!saved || !saved.url) return false;
+        // a music queue on the player is Melaton Media's, and a stream another program gave it since is that one's
+        if (musicHeld(nv) || (keyGet(PLAYER_KEY) && !ownsPlayer())) { forgetNative(); return false; }
+        keySet(PLAYER_KEY, ME);
         radio.native = true;
         radio.mode = saved.mode === 'monitor' || saved.mode === 'track' ? saved.mode : 'live';
         radio.channelId = saved.channelId || radio.channelId;
@@ -422,6 +479,11 @@
         radio.state = NATIVE_STATE[st] || 'playing';
         changed();
         return true;
+    }
+
+    /** The app's player holds a music queue (only Melaton Media hands one over). */
+    function musicHeld(nv) {
+        try { return typeof nv.musicState === 'function' && !!nv.musicState(); } catch (_) { return false; }
     }
 
     /** The quality to tune at: the chosen one, or Automatic's by the phone's network now. */
@@ -514,10 +576,12 @@
         }
         if (nv) {
             try {
-                nv.watching(JSON.stringify(Object.assign({ url: radio.url, title, subtitle, audioOnly: true }, native ? { radio: native } : {})));
+                report(nv, JSON.stringify(Object.assign({ url: radio.url, title, subtitle, audioOnly: true }, native ? { radio: native } : {})));
                 radio.native = nv.handOff() === true;
             } catch (_) { radio.native = false; }
             if (radio.native) {
+                takePlayer();
+                announceSound();
                 keepNative();
                 // what the player really does: Acquiring Signal until its sound starts (an older app cannot say)
                 radio.state = reports ? (NATIVE_STATE[nv.state()] || 'tuning') : 'playing';
@@ -527,8 +591,10 @@
                 changed();
                 return;
             }
-            try { nv.watching(''); } catch (_) { /* older app */ }
+            unreport(nv);
         }
+        // the page's own player from here
+        announceSound();
         if (!radio.audio) {
             radio.audio = document.createElement('audio');
             radio.audio.preload = 'none';
@@ -574,11 +640,12 @@
     function syncNative() {
         const nv = nativePlayer();
         if (!radio.native) { adoptNative(); return; }
+        if (!ownsPlayer()) { nativeLost(); return; }
         if (!nativeReports(nv)) return;
         let st = 'off';
         try { st = nv.state(); } catch (_) { st = 'off'; }
         const next = st === 'off' ? 'off' : (NATIVE_STATE[st] || radio.state);
-        if (st === 'off') { radio.native = false; sleep.at = 0; forgetNative(); }
+        if (st === 'off') { radio.native = false; sleep.at = 0; keySet(PLAYER_KEY, ''); forgetNative(); }
         if (next !== radio.state) { radio.state = next; changed(); }
     }
 
@@ -587,7 +654,8 @@
         if (t === 'timeupdate') { if (tab === 'now' && shown) paintProgress(); return; }
         if (t === 'ended' && radio.mode === 'track' && radio.track) { void playTrack(radio.track.list, radio.track.i + 1); return; }
         if (t === 'playing') radio.state = 'playing';
-        else if (t === 'pause' && radio.state === 'playing') radio.state = 'paused';
+        // (a recording's own end pauses first: not a pause, the next one follows, and the hold stays through the gap)
+        else if (t === 'pause' && radio.state === 'playing' && !(radio.mode === 'track' && radio.audio.ended)) radio.state = 'paused';
         else if (t === 'waiting' && radio.state !== 'paused') radio.state = 'tuning';
         else if (t === 'error') radio.state = 'error';
         changed();
@@ -603,7 +671,12 @@
         if (radio.native) { stopRadio(); return; }
         const a = radio.audio;
         if (!a) return;
-        if (a.paused) void a.play().catch(() => {}); else a.pause();
+        if (a.paused) void a.play().catch(() => {});
+        else {
+            a.pause();
+            // (paused while still tuning: its pause event reads only from playing)
+            if (radio.state === 'tuning') { radio.state = 'paused'; changed(); }
+        }
     }
 
     function stopRadio() {
@@ -1915,7 +1988,7 @@
         else if (k === 'rew' || k === 'ff') { if (radio.mode === 'track') step(k === 'ff' ? 1 : -1); }
         else if (k === 'mute') {
             if (radio.native) { void box('The phone\'s player is playing: use the volume keys.', 'info'); return; }
-            if (radio.audio) radio.audio.muted = !radio.audio.muted;
+            if (radio.audio) { radio.audio.muted = !radio.audio.muted; syncHold(); }
         } else if (k === 'timer') { els.auto.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
         renderDeck();
     }
@@ -2235,12 +2308,20 @@
         c.on('connected', () => { hubOn = false; watchSaid = ''; void syncHub(); }, { signal: appScopeSignal });
         document.addEventListener('wmAppChange', () => { void syncHub(); }, { signal: appScopeSignal });
         document.addEventListener('visibilitychange', () => { syncNative(); void syncHub(); if (shown) render(); }, { signal: appScopeSignal });
-        window.addEventListener('melatonscreen', () => { void syncHub(); }, { signal: appScopeSignal });
+        // (the screen coming on is no visibilitychange: the player's state is read again here too, #1322; the screen
+        // going off does nothing to the sound, native or the page's own)
+        window.addEventListener('melatonscreen', (e) => { if (e && e.detail && e.detail.on) syncNative(); void syncHub(); }, { signal: appScopeSignal });
+        // another program has the app's player now, or started a sound of its own
+        window.addEventListener('wmnativeplayer', (e) => { if (radio.native && e.detail && e.detail.owner !== ME) nativeLost(); }, { signal: appScopeSignal });
+        window.addEventListener('wmphonesound', (e) => {
+            if (nativePlayer() && e.detail && e.detail.by !== ME && (radio.state === 'playing' || radio.state === 'tuning')) stopRadio();
+        }, { signal: appScopeSignal });
         // the native player's news (DSApp): stopped from its notification, the stream ended, or a channel changed there
         window.addEventListener('dreamscape:videos', (e) => {
             let d = e.detail;
             if (typeof d === 'string') { try { d = JSON.parse(d); } catch (_) { d = null; } }
-            if (!radio.native || !d) return;
+            // the player's news is about whoever's stream it has: Melaton Media's and Videos' are not the radio's
+            if (!radio.native || !d || !ownsPlayer()) return;
             if (d.state === 'channel' && d.id && chan(d.id)) {
                 if (radio.channelId !== d.id) radio.prevId = radio.channelId;
                 radio.channelId = d.id;
@@ -2254,7 +2335,7 @@
             }
             if (NATIVE_STATE[d.state]) { if (radio.state !== NATIVE_STATE[d.state]) { radio.state = NATIVE_STATE[d.state]; changed(); } return; }
             // lost: the player gave up on the stream (No Signal), not switched off
-            if (d.state === 'stopped' || d.state === 'ended' || d.state === 'lost') { radio.native = false; radio.state = d.state === 'lost' ? 'error' : 'off'; sleep.at = 0; changed(); }
+            if (d.state === 'stopped' || d.state === 'ended' || d.state === 'lost') { radio.native = false; radio.state = d.state === 'lost' ? 'error' : 'off'; sleep.at = 0; keySet(PLAYER_KEY, ''); forgetNative(); changed(); }
         }, { signal: appScopeSignal });
         // wake to the radio (Settings > Clock & Alarms: an alarm whose sound is a channel, wmLock65.js): the page rings
         // it here while it is in front (the app plays it itself while the page sleeps)
@@ -2278,6 +2359,8 @@
             });
         }
         if (!wire()) window.addEventListener('load', () => { wire(); }, { once: true, signal: appScopeSignal });
+        // an app unloaded in place lets go of its hold
+        if (appScopeSignal) appScopeSignal.addEventListener('abort', () => { if (pageHeld && window.melatonContinuity) { pageHeld = false; window.melatonContinuity.holdAwake('xmradio-page', false); } }, { once: true });
         // what the app's player is still playing from before this page opened
         adoptNative();
     }

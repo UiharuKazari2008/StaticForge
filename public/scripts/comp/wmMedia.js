@@ -52,6 +52,10 @@
  * audio (a call, another player) pauses it through Android's audio focus (dreamscape:mediacontrol with
  * focus: 'transient' / 'loss' / 'gain' / 'duck') and a call's end resumes it when Options say so. When Melaton
  * Media itself plays nothing, Now Playing shows and controls what else Android plays (AndroidMediaSession).
+ * Screen off and a killed page (#1322): an app with a music player (AndroidVideos.musicSupported()) is told the
+ * queue while a song plays here; when its window pauses it takes the music over and the page may sleep. Any control,
+ * or the page coming in front, takes it back at the same song and place (docs/client-api/android-playback.md).
+ * Without it the page's own player plays on and holds the page awake.
  * Kept in this browser: options (wmMediaOptions), ratings (wmpRatings, shared with the desktop's Media
  * Player), play counts, playlists, items taken out of a library, the URL history.
  * Only on phones. Styles: public/css/wm-media.css.
@@ -189,19 +193,30 @@
         v.addEventListener('timeupdate', paintTime);
         v.addEventListener('durationchange', () => { paintTime(); tellAndroid(); });
         v.addEventListener('loadedmetadata', autoFull);
-        v.addEventListener('play', () => { setStatus('Playing'); tellAndroid(); });
-        v.addEventListener('pause', () => { if (!v.ended && media.status !== 'Error') setStatus('Paused'); tellAndroid(); });
-        v.addEventListener('waiting', () => { setStatus('Buffering...'); });
+        // (while the app's player has the music this element is paused and says nothing: the app's news does)
+        v.addEventListener('play', () => { if (nat.on) return; announceSound(); setStatus('Playing'); tellAndroid(); });
+        v.addEventListener('pause', () => {
+            if (nat.on) return;
+            // (a pause heard after the player already plays again is old news)
+            if (!v.ended && v.paused && media.status !== 'Error') setStatus('Paused');
+            // said at once: a screen going off right after a pause must find nothing to carry on (a song's own end
+            // pauses too, and the next one follows)
+            if (!v.ended && v.paused) clearReport();
+            tellAndroid();
+        });
+        v.addEventListener('waiting', () => { if (!nat.on) setStatus('Buffering...'); });
         v.addEventListener('playing', () => {
+            if (nat.on) return;
             focusPaused = '';
             if (media.counted !== media.index) { media.counted = media.index; countPlay(current()); }
             setStatus('Playing');
             tellAndroid();
         });
         v.addEventListener('seeked', tellAndroid);
-        v.addEventListener('ended', () => { setStatus('Stopped'); if (full) setFull(false); next(true); });
+        v.addEventListener('ended', () => { if (nat.on) return; setStatus('Stopped'); if (full) setFull(false); next(true); });
         v.addEventListener('error', () => {
-            if (!v.getAttribute('src')) return;
+            if (nat.on || !v.getAttribute('src')) return;
+            clearReport();
             media.error = 'Melaton Media cannot play the file. The file might not be supported, or the codec used to compress it is not available.';
             setStatus('Error');
             ws.notify({ title: TITLE, icon: 'error', text: media.error });
@@ -217,12 +232,20 @@
         media.el.muted = media.muted;
     }
 
+    const vfs = () => (typeof vfsClient !== 'undefined' ? vfsClient : window.vfsClient) || null; // eslint-disable-line no-undef
+    /** A server item's address when it is known without asking the server ('' otherwise). */
+    function vfsKnownUrl(item) {
+        const V = vfs();
+        const base = V && V.getBasePath && V.getBasePath();
+        if (base && item.serverId) return `${base}/media/file/${encodeURIComponent(item.serverId)}`;
+        if (base && item.path) return `${base}/fs/read?path=${encodeURIComponent(item.path)}`;
+        return '';
+    }
     function vfsUrl(item) {
-        const V = (typeof vfsClient !== 'undefined' ? vfsClient : window.vfsClient) || null; // eslint-disable-line no-undef
+        const V = vfs();
         if (!V) return Promise.resolve('');
-        const base = V.getBasePath && V.getBasePath();
-        if (base && item.serverId) return Promise.resolve(`${base}/media/file/${encodeURIComponent(item.serverId)}`);
-        if (base && item.path) return Promise.resolve(`${base}/fs/read?path=${encodeURIComponent(item.path)}`);
+        const known = vfsKnownUrl(item);
+        if (known) return Promise.resolve(known);
         if (item.fileId) return V.downloadFile(item.fileId).then((r) => (r && r.downloadUrl) || '');
         return Promise.resolve('');
     }
@@ -231,6 +254,9 @@
     async function playIndex(i, from) {
         const it = media.queue[i];
         if (!it) return;
+        // another item is asked for: the app's player lets the old one go, and nothing stale stays reported
+        if (nat.on) natRelease();
+        clearReport();
         media.index = i;
         media.error = '';
         media.resume = null;
@@ -243,6 +269,7 @@
             if (media.index !== i) return;
             v.poster = it.poster || '';
             v.src = url;
+            media.loaded = it;
             if (from && from.at > 0) {
                 const at = from.at;
                 v.addEventListener('loadedmetadata', () => { if (v.getAttribute('src') === url) { try { v.currentTime = at; } catch (_) { /* not seekable */ } } }, { once: true });
@@ -262,6 +289,11 @@
 
     function playPause() {
         if (!media.queue.length) return;
+        if (nat.on) {
+            if (inFront()) takeBack(!nat.playing);
+            else if (nat.playing) natHalt(); // (from another window: the app's own controls start it again)
+            return;
+        }
         const v = player();
         if (media.index < 0 || !v.getAttribute('src')) {
             const i = Math.max(0, media.index);
@@ -272,10 +304,20 @@
         if (v.paused) v.play().catch(() => {}); else v.pause();
     }
 
-    function pause() { if (media.el && !media.el.paused) media.el.pause(); }
+    function pause() {
+        if (nat.on) {
+            if (inFront()) takeBack(false); else natHalt();
+            return;
+        }
+        if (media.el && !media.el.paused) media.el.pause();
+    }
 
     function stop() {
-        if (!media.el) return;
+        const was = nat.on;
+        if (was) natHalt();
+        media.resume = null;
+        clearReport();
+        if (!media.el) { if (was) { setStatus('Stopped'); tellAndroid(); } return; }
         media.el.pause();
         try { media.el.currentTime = 0; } catch (_) { /* not seekable */ }
         if (full) setFull(false);
@@ -288,7 +330,371 @@
         media.status = s;
         statusStep = 0;
         statusAt = Date.now();
+        syncHold();
         paintSkin();
+    }
+
+    // ---------------------------------------------------------------- the page awake, and the app's music player (#1322)
+    //
+    // The page's player is the sound: the page is held awake while it is meant to play (opening, buffering, the next
+    // song too), or the app pauses its timers with the screen off. An app that can play the music itself
+    // (AndroidVideos.musicSupported()) is told what plays while it plays; when its window pauses it takes over
+    // ('handed'), the page's element pauses and the page may sleep. Its player is shared with XM Radio and Videos
+    // (wmNativeSlot: whose report it holds; wmNativePlayer: whose stream it plays). Nothing here runs on a poll.
+
+    const ME = 'media';
+    const SLOT_KEY = 'wmNativeSlot';
+    const PLAYER_KEY = 'wmNativePlayer';
+    const NATIVE_KEY = 'wmMediaNative'; // what was reported: a page that opens while the app plays it takes it over
+    const NATIVE_ITEMS = 200; // the app's list: a window of the play order around the playing song
+    const NATIVE_BEHIND = 50;
+    // on: the app's player has the music; sent: the queue items as reported (the app's indexes), null: nothing reported
+    const nat = { on: false, playing: false, sent: null, kept: null, timer: 0 };
+
+    let pageHeld = false;
+    function holdPage(want) {
+        if (want === pageHeld) return;
+        const mc = window.melatonContinuity;
+        if (!mc || typeof mc.holdAwake !== 'function') return;
+        pageHeld = want;
+        mc.holdAwake('media-page', want);
+    }
+    function syncHold() {
+        const v = media.el;
+        holdPage(!nat.on && !media.muted && media.volume > 0 && (media.status === 'Opening...' || !!(v && v.getAttribute('src') && !v.paused && !v.ended)));
+    }
+
+    const keyGet = (k) => { try { return localStorage.getItem(k) || ''; } catch (_) { return ''; } };
+    const keySet = (k, val) => { try { if (val) localStorage.setItem(k, val); else localStorage.removeItem(k); } catch (_) { /* this load only */ } };
+
+    let musicCapable = null; // read once (a synchronous bridge)
+    /** The app's player when it can play a music queue, else null (an older app, a browser: nothing changes there). */
+    function musicPlayer() {
+        const nv = window.AndroidVideos;
+        if (!nv || typeof nv.watching !== 'function') return null;
+        if (musicCapable === null) {
+            try { musicCapable = typeof nv.musicSupported === 'function' && nv.musicSupported() === true; } catch (_) { musicCapable = false; }
+        }
+        return musicCapable ? nv : null;
+    }
+    let phoneBase = null;
+    function mediaBase() {
+        if (phoneBase === null) {
+            const L = window.AndroidMediaLibrary;
+            try { phoneBase = L && typeof L.baseUrl === 'function' ? String(L.baseUrl() || '').replace(/\/+$/, '') : ''; } catch (_) { phoneBase = ''; }
+        }
+        return phoneBase;
+    }
+    const absolute = (u) => { try { return u ? new URL(u, location.href).href : ''; } catch (_) { return ''; } };
+    /** The addresses the app takes: the server's own (this page's origin) and the phone's media library. */
+    function appTakes(url) {
+        if (!/^https?:\/\//i.test(url)) return false;
+        const base = mediaBase();
+        if (base && url.startsWith(`${base}/`)) return true;
+        try { return new URL(url).origin === location.origin; } catch (_) { return false; }
+    }
+    /** A song's address for the app, with no request to find it ('' : the app cannot have this item; never a video). */
+    function nativeUrl(it) {
+        if (!it || it.kind !== 'audio') return '';
+        const url = absolute(it.url || vfsKnownUrl(it));
+        return appTakes(url) ? url : '';
+    }
+
+    const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+    /** The queue in play order: as it is, or with what is still to come shuffled (kept until the queue changes). */
+    function playOrder(queue, index, shuffle, kept, random = Math.random) {
+        if (!shuffle) return { order: queue.slice(), kept: null };
+        if (kept && sameList(kept.queue, queue)) return { order: kept.order, kept };
+        const rest = queue.slice(index + 1);
+        for (let i = rest.length - 1; i > 0; i--) {
+            const j = Math.floor(random() * (i + 1));
+            [rest[i], rest[j]] = [rest[j], rest[i]];
+        }
+        const order = queue.slice(0, index + 1).concat(rest);
+        return { order, kept: { queue: queue.slice(), order } };
+    }
+
+    /**
+     * At most NATIVE_ITEMS songs of the play order around the one playing, those the app can have (the others are left
+     * out): { list: [{ it, url }], index } or null when the playing one is not among them. Only the window's own
+     * items are looked at (a long library costs no more).
+     */
+    function nativeWindow(order, now, urlOf) {
+        const at = order.indexOf(now);
+        const url = at < 0 ? '' : urlOf(now);
+        if (!url) return null;
+        const before = [];
+        const after = [];
+        let back = at - 1;
+        let fwd = at + 1;
+        const take = (to, i) => { const u = urlOf(order[i]); if (u) to.push({ it: order[i], url: u }); };
+        while (back >= 0 && before.length < NATIVE_BEHIND) take(before, back--);
+        while (fwd < order.length && 1 + before.length + after.length < NATIVE_ITEMS) take(after, fwd++);
+        while (back >= 0 && 1 + before.length + after.length < NATIVE_ITEMS) take(before, back--);
+        before.reverse();
+        return { list: before.concat({ it: now, url }, after), index: before.length };
+    }
+
+    /** What watching() is told for the playing song, or null: { json, sent }. */
+    function musicReport() {
+        const v = media.el;
+        const it = current();
+        if (!it || !v) return null;
+        const po = playOrder(media.queue, media.index, media.shuffle, nat.kept);
+        nat.kept = po.kept;
+        const w = nativeWindow(po.order, it, nativeUrl);
+        if (!w) return null;
+        const item = (x) => {
+            const art = absolute(x.it.art || x.it.albumArt || '');
+            return { url: x.url, title: x.it.title || x.it.name || '', artist: x.it.artist || '', album: x.it.album || '', art: /^https?:/i.test(art) ? art : '' };
+        };
+        const positionMs = Math.max(0, Math.round((v.currentTime || 0) * 1000));
+        return {
+            json: JSON.stringify({
+                url: w.list[w.index].url, title: it.title || it.name || '', subtitle: it.artist || it.album || '', audioOnly: true,
+                music: { items: w.list.map(item), index: w.index, positionMs, repeat: !!media.repeat, volume: media.muted ? 0 : media.volume }
+            }),
+            sent: w.list.map((x) => x.it)
+        };
+    }
+
+    /** Nothing here for the app to carry on: said only over Media's own report (the slot is shared). */
+    function clearReport() {
+        clearTimeout(nat.timer);
+        nat.timer = 0;
+        if (!nat.sent) return;
+        nat.sent = null;
+        keySet(NATIVE_KEY, '');
+        const nv = musicPlayer();
+        if (!nv || keyGet(SLOT_KEY) !== ME) return;
+        keySet(SLOT_KEY, '');
+        try { nv.watching(''); } catch (_) { /* bridge gone */ }
+    }
+
+    /** The app is told what plays only while the page's player really plays a song. */
+    function reportNow() {
+        nat.timer = 0;
+        const nv = musicPlayer();
+        const v = media.el;
+        if (!nv || nat.on) return;
+        if (!v || !v.getAttribute('src') || v.paused || v.ended || media.status === 'Error' || media.loaded !== current()) {
+            if (media.status !== 'Opening...') clearReport();
+            return;
+        }
+        const r = musicReport();
+        if (!r) { clearReport(); return; }
+        try { nv.watching(r.json); } catch (_) { return; }
+        nat.sent = r.sent;
+        keySet(SLOT_KEY, ME);
+        // kept for a page that opens after this one was closed or killed
+        const kept = JSON.stringify({ items: r.sent, shuffle: media.shuffle, repeat: media.repeat, volume: media.volume, muted: media.muted });
+        if (keyGet(NATIVE_KEY) !== kept) keySet(NATIVE_KEY, kept); // (a seek or the next song leaves it as it is)
+    }
+    /** Play, a new song, a seek, the queue, Repeat or the volume: told once the burst is over (the app counts the position on). */
+    function reportSoon() {
+        if (nat.on || !musicPlayer()) return;
+        clearTimeout(nat.timer);
+        nat.timer = setTimeout(reportNow, 150);
+    }
+
+    /** The app's player: { index, positionMs, playing } while it has a music queue, else null. */
+    function musicState() {
+        const nv = musicPlayer();
+        if (!nv || typeof nv.musicState !== 'function') return null;
+        try {
+            const s = JSON.parse(nv.musicState() || 'null');
+            return s && Number.isInteger(s.index) ? s : null;
+        } catch (_) { return null; }
+    }
+    function playerActive() {
+        const nv = musicPlayer();
+        try { return !!nv && nv.isActive() === true; } catch (_) { return false; }
+    }
+    /** The app's index as the queue's own (the playing one when its song left the queue). */
+    function queueIndex(n) {
+        const i = nat.sent ? media.queue.indexOf(nat.sent[n]) : -1;
+        return i >= 0 ? i : media.index;
+    }
+
+    const inFront = () => !document.hidden && document.documentElement.dataset.screenOff === undefined && document.documentElement.dataset.wmBehind === undefined;
+
+    /** Media starts a sound (in an app with the music player): one sound, so XM Radio and Videos stop theirs. */
+    function announceSound() {
+        if (musicPlayer()) window.dispatchEvent(new CustomEvent('wmphonesound', { detail: { by: ME } }));
+    }
+
+    function clearAndroidNowPlaying() {
+        clearTimeout(tellTimer);
+        const L = library();
+        if (L && typeof L.setNowPlaying === 'function') { try { L.setNowPlaying(''); } catch (_) { /* bridge gone */ } }
+    }
+
+    /** The app's window is being left and its player took the song: the page's own stops, and the page may sleep. */
+    function handed() {
+        if (nat.on || !nat.sent || keyGet(SLOT_KEY) !== ME) return;
+        nat.on = true;
+        nat.playing = true;
+        clearTimeout(nat.timer);
+        keySet(PLAYER_KEY, ME);
+        window.dispatchEvent(new CustomEvent('wmnativeplayer', { detail: { owner: ME } }));
+        focusPaused = '';
+        // (no watching(''), no stop(): the report and the player are what carry the music now)
+        if (media.el) media.el.pause();
+        clearAndroidNowPlaying(); // one media notification: the app player's
+        setStatus('Playing');
+        tellAndroid();
+    }
+
+    /** The app's player is not Media's any more (stopIt: end it here, only while the stream on it is Media's). */
+    function natRelease(stopIt = true) {
+        if (!nat.on) return;
+        nat.on = false;
+        nat.playing = false;
+        const nv = musicPlayer();
+        if (keyGet(PLAYER_KEY) === ME) {
+            keySet(PLAYER_KEY, '');
+            if (stopIt && nv) { try { nv.stop(); } catch (_) { /* gone */ } }
+        }
+        clearReport();
+    }
+
+    /** Is the page's element loaded with this song (its place can be set, nothing is loaded again)? */
+    const loadedHere = (it) => !!(media.el && media.el.getAttribute('src') && media.loaded === it && !media.el.error);
+
+    /**
+     * The music back from the app's player, at its song and place; play: true / false, else as it was there. Only for a
+     * page in front. The app's player stops first (never two heard), and the song never starts over. Returns
+     * { at (s, null: not known), playing } or null when the app did not have the music.
+     */
+    function takeBack(play) {
+        if (!nat.on || !inFront()) return null;
+        const s = musicState();
+        const i = s ? queueIndex(s.index) : media.index;
+        const at = s ? Math.max(0, Number(s.positionMs) || 0) / 1000 : null;
+        const want = play === undefined ? !!(s && s.playing) : !!play;
+        natRelease(!!s); // (no music queue there: whatever it plays now is not Media's to stop)
+        const it = media.queue[i];
+        if (!it) { setStatus('Stopped'); return { at, playing: false }; }
+        if (loadedHere(it)) {
+            const v = media.el;
+            media.index = i;
+            if (at !== null) { try { v.currentTime = at; } catch (_) { /* not seekable */ } }
+            if (want) v.play().catch(() => setStatus('Paused'));
+            else setStatus('Paused');
+            tellAndroid();
+        } else void playIndex(i, { at: at || 0, paused: !want });
+        return { at, playing: want };
+    }
+
+    /** Stop the app's player from where the page cannot play (another window's control): paused, its place kept. */
+    function natHalt() {
+        if (!nat.on) return;
+        const s = musicState();
+        const i = s ? queueIndex(s.index) : media.index;
+        const at = s ? Math.max(0, Number(s.positionMs) || 0) / 1000 : null;
+        natRelease(!!s);
+        media.index = i;
+        parkAt(i, at);
+        setStatus('Paused');
+        tellAndroid();
+    }
+    /** The element (paused) stands at the song and place the app's player left; Play carries on from there. */
+    function parkAt(i, at) {
+        const v = media.el;
+        if (loadedHere(media.queue[i])) {
+            if (at !== null) { try { v.currentTime = at; } catch (_) { /* not seekable */ } }
+            return;
+        }
+        media.resume = { index: i, at: at || 0 };
+        if (v && v.getAttribute('src')) { v.removeAttribute('src'); v.load(); }
+        media.loaded = null;
+    }
+
+    /** A control that works on the page's player: the music comes back first. */
+    const front = () => { if (nat.on) takeBack(); };
+
+    /** The app player's news while it has Media's music. */
+    function nativeNews(d) {
+        if (!nat.on || keyGet(PLAYER_KEY) !== ME) return;
+        if (d.state === 'track') {
+            const n = Number(d.index);
+            if (!nat.sent || !nat.sent[n]) return;
+            media.index = queueIndex(n);
+            media.counted = media.index;
+            countPlay(current());
+            setStatus(media.status);
+        } else if (d.state === 'playing' || d.state === 'paused') {
+            nat.playing = d.state === 'playing';
+            setStatus(nat.playing ? 'Playing' : 'Paused');
+        } else if (d.state === 'buffering' || d.state === 'retrying') setStatus('Buffering...');
+        else if (d.state === 'stopped' || d.state === 'ended' || d.state === 'lost') {
+            natRelease(false);
+            // (another song than the page's: Play starts that one; the same: from where the page handed it over)
+            if (!loadedHere(current())) parkAt(media.index, null);
+            setStatus(d.state === 'ended' ? 'Ready' : 'Stopped');
+        } else return;
+        tellAndroid();
+    }
+
+    window.addEventListener('dreamscape:videos', (e) => {
+        let d = e && e.detail;
+        if (typeof d === 'string') { try { d = JSON.parse(d); } catch (_) { d = null; } }
+        if (!d || !musicPlayer()) return;
+        if (d.state === 'handed') handed(); else nativeNews(d);
+    }, { signal: appScopeSignal });
+    // another program has the app's player now: Media's music is gone from it
+    window.addEventListener('wmnativeplayer', (e) => {
+        if (!e.detail || e.detail.owner === ME || !nat.on) return;
+        const i = media.index;
+        natRelease(false);
+        parkAt(i, null);
+        setStatus('Stopped');
+        tellAndroid();
+    }, { signal: appScopeSignal });
+    // another program starts a sound
+    window.addEventListener('wmphonesound', (e) => {
+        if (!musicPlayer() || !e.detail || e.detail.by === ME) return;
+        if (nat.on) natHalt(); else if (media.el && !media.el.paused) media.el.pause();
+    }, { signal: appScopeSignal });
+    // a program unloaded in place lets go of its hold
+    if (appScopeSignal) appScopeSignal.addEventListener('abort', () => { clearTimeout(nat.timer); holdPage(false); }, { once: true });
+
+    /**
+     * The page coming in front (and a page that missed the app's news while frozen): where the music is now is read
+     * from the app, and it comes back here.
+     */
+    function comeBack() {
+        if (!inFront()) return;
+        // the 'handed' news was lost (a frozen page): the app plays a music queue while Media's report stands
+        if (!nat.on && nat.sent && playerActive() && musicState()) handed();
+        if (nat.on) takeBack();
+    }
+
+    /** A page that opens while the app's player still has Media's queue (closed, reloaded, killed): it shows it. */
+    function adoptNative() {
+        const nv = musicPlayer();
+        if (!nv || nat.on || media.queue.length) return false;
+        const saved = lsGet(NATIVE_KEY, null);
+        if (!saved || !Array.isArray(saved.items) || !saved.items.length) return false;
+        const s = playerActive() ? musicState() : null;
+        if (!s || !saved.items[s.index]) { keySet(NATIVE_KEY, ''); return false; }
+        media.queue = saved.items.slice();
+        media.index = s.index;
+        media.shuffle = !!saved.shuffle;
+        media.repeat = !!saved.repeat;
+        media.muted = !!saved.muted;
+        if (Number.isFinite(saved.volume)) media.volume = saved.volume;
+        nat.sent = media.queue.slice();
+        // (the list is the play order already: it stays as the app has it)
+        nat.kept = media.shuffle ? { queue: media.queue.slice(), order: media.queue.slice() } : null;
+        nat.on = true;
+        nat.playing = !!s.playing;
+        media.counted = media.index;
+        keySet(SLOT_KEY, ME);
+        keySet(PLAYER_KEY, ME);
+        clearAndroidNowPlaying(); // the closed page's media notification, if it is still up
+        setStatus(nat.playing ? 'Playing' : 'Paused');
+        return true;
     }
 
     // ---------------------------------------------------------------- Android's media session (#801)
@@ -300,6 +706,9 @@
     function tellAndroid() {
         // and the app's other window (the DeX desktop's Media Player): play, pause, stop, a new item (coalesced there)
         if (window.melatonMedia) window.melatonMedia.changed(MEDIA_APP);
+        // the app's player has the music: its own notification is the one
+        if (nat.on) { clearTimeout(tellTimer); return; }
+        reportSoon();
         const L = library();
         if (!L || typeof L.setNowPlaying !== 'function') return;
         clearTimeout(tellTimer);
@@ -329,6 +738,13 @@
     // the notification's / lock screen's / headset's buttons, and Android's audio focus
     window.addEventListener('dreamscape:mediacontrol', (e) => {
         const d = (e && e.detail) || {};
+        // (the app's player has the music: the page's session is gone, audio focus is that player's business)
+        if (nat.on) {
+            if (d.action === 'focus') return;
+            if (d.action === 'play') { if (!nat.playing) playPause(); return; }
+            if (d.action === 'pause') { pause(); return; }
+            if (d.action === 'seek') front();
+        }
         const v = media.el;
         switch (d.action) {
             case 'play': if (v && v.getAttribute('src')) v.play().catch(() => {}); else playPause(); break;
@@ -356,7 +772,7 @@
     window.addEventListener('melatonopenapp', (e) => { if (e && e.detail === APP_ID && ws) { toSkin(); ws.open(APP_ID); render(); } }, { signal: appScopeSignal });
 
     // Options > Playback > Pause playback while using another program: another program in front pauses
-    function otherProgram() { if (opts.pauseOther && media.el && !media.el.paused) media.el.pause(); }
+    function otherProgram() { if (opts.pauseOther && (nat.on ? nat.playing : media.el && !media.el.paused)) pause(); }
     document.addEventListener('wmAppChange', (e) => { const d = (e && e.detail) || {}; if (d.prev === APP_ID && d.id !== APP_ID) otherProgram(); }, { signal: appScopeSignal });
 
     // ---------------------------------------------------------------- what else Android plays (#801)
@@ -391,6 +807,7 @@
 
     /** Now Playing shows Android's session while Melaton Media itself plays nothing (or Android plays). */
     function androidMode() {
+        if (nat.on) return null; // Melaton Media is what plays, in the app's player
         const v = media.el;
         if (v && v.getAttribute('src') && !v.paused && !v.ended) return null;
         const s = androidSession();
@@ -457,8 +874,10 @@
         if (want && !androidTick) androidTick = setInterval(() => { if (wantTick()) { if (androidMode()) paintTime(); paintStatus(); } else syncTick(); }, 1000);
         else if (!want && androidTick) { clearInterval(androidTick); androidTick = 0; }
     }
-    // seen again (screen on, the page shown, back from an Android program): painted as it is now
+    // seen again (screen on, the page shown, back from an Android program): the music comes back from the app's
+    // player, and the skin is painted as it is now
     function wake() {
+        comeBack();
         syncTick();
         if (skinStale && skinSeen()) paintSkin();
     }
@@ -468,6 +887,7 @@
 
     function next(auto) {
         if (!media.queue.length) return;
+        if (nat.on && !takeBack()) return; // (away: the app's own next changes songs)
         let i;
         if (media.shuffle && media.queue.length > 1) {
             do { i = Math.floor(Math.random() * media.queue.length); } while (i === media.index);
@@ -481,6 +901,14 @@
 
     function prev() {
         if (!media.queue.length) return;
+        if (nat.on) {
+            const back = takeBack();
+            if (!back) return;
+            // (the element may still be on its way to that place: asked again from the start, not set under it)
+            if (back.at > 3) { void playIndex(media.index, { at: 0, paused: !back.playing }); return; }
+            playIndex(Math.max(0, media.index - 1));
+            return;
+        }
         // as the device: past the first seconds, back to the start of this one
         if (media.el && media.el.currentTime > 3) { media.el.currentTime = 0; return; }
         playIndex(Math.max(0, media.index - 1));
@@ -489,6 +917,7 @@
     function enqueue(items, playNow) {
         const start = media.queue.length;
         items.forEach((it) => media.queue.push({ ...it }));
+        if (!playNow) { front(); reportSoon(); }
         if (playNow && items.length) {
             playIndex(start);
             toSkin();
@@ -1074,7 +1503,7 @@
         const it = current();
         if (!it) return '';
         const v = media.el;
-        if (media.status !== 'Playing' || !v || v.paused) return media.status;
+        if (media.status !== 'Playing' || (!nat.on && (!v || v.paused))) return media.status;
         const steps = [media.status, it.artist, it.kind === 'audio' ? it.album : '', it.genre, bitRate(it), it.artist].filter((x, i) => i === 0 || x);
         if (steps.length < 2) return media.status;
         const t = Date.now() - statusAt;
@@ -1138,7 +1567,7 @@
         setClass(art, 'is-video', !!(it && it.kind === 'video'));
         setClass(art, 'is-noscale', !opts.scale);
         const empty = !media.queue.length;
-        const playing = !!(v && !v.paused && !v.ended);
+        const playing = nat.on ? nat.playing : !!(v && !v.paused && !v.ended);
         skin.querySelectorAll('.wmp-btn').forEach((b) => {
             const k = b.dataset.b;
             // as the device: next only with an item after this one (or Repeat / Shuffle), full screen for a video
@@ -1736,8 +2165,8 @@
 
     function shuffleRepeat() {
         return [
-            { label: 'Shuffle', checked: media.shuffle, action: () => { media.shuffle = !media.shuffle; paintSkin(); tellAndroid(); } },
-            { label: 'Repeat', checked: media.repeat, action: () => { media.repeat = !media.repeat; paintSkin(); tellAndroid(); } }
+            { label: 'Shuffle', checked: media.shuffle, action: () => { front(); media.shuffle = !media.shuffle; nat.kept = null; paintSkin(); tellAndroid(); } },
+            { label: 'Repeat', checked: media.repeat, action: () => { front(); media.repeat = !media.repeat; paintSkin(); tellAndroid(); } }
         ];
     }
 
@@ -1750,19 +2179,27 @@
 
     function onlineGuide() { ws.open(GUIDE_APP); }
 
+    function volumeChanged() {
+        applyVolume();
+        syncHold();
+        reportSoon();
+        paintSkin();
+    }
+
     function pressButton(k) {
         if ((k === 'play' || k === 'prev' || k === 'next') && androidMode() && androidCommand(k)) return;
         if (k === 'play') playPause();
         else if (k === 'prev') prev();
         else if (k === 'next') next(false);
-        else if (k === 'volup') { media.volume = Math.min(100, media.volume + 10); applyVolume(); paintSkin(); }
-        else if (k === 'voldown') { media.volume = Math.max(0, media.volume - 10); applyVolume(); paintSkin(); }
-        else if (k === 'mute') { media.muted = !media.muted; applyVolume(); paintSkin(); }
+        else if (k === 'volup') { front(); media.volume = Math.min(100, media.volume + 10); volumeChanged(); }
+        else if (k === 'voldown') { front(); media.volume = Math.max(0, media.volume - 10); volumeChanged(); }
+        else if (k === 'mute') { front(); media.muted = !media.muted; volumeChanged(); }
         else if (k === 'full') setFull(!full);
         else if (k === 'online') onlineGuide();
     }
 
     function moveQueue(d) {
+        front();
         const i = queueSel;
         const j = i + d;
         if (j < 0 || j >= media.queue.length) return;
@@ -1770,12 +2207,14 @@
         media.queue.splice(j, 0, it);
         if (media.index === i) media.index = j; else if (media.index === j) media.index = i;
         queueSel = j;
+        reportSoon();
         renderQueue();
         ws.refreshSoftKeys();
     }
 
     function removeQueue() {
         if (!media.queue.length) return;
+        front();
         const i = queueSel;
         media.queue.splice(i, 1);
         if (media.index === i) { stop(); if (media.el) media.el.removeAttribute('src'); media.index = -1; media.status = 'Ready'; } else if (media.index > i) media.index -= 1;
@@ -1808,6 +2247,7 @@
         else if (k === 'rating') rate();
         else if (k === 'screen') setScreen(!screenOff);
         else if ((k === 'ff' || k === 'rew') && v && Number.isFinite(v.duration)) {
+            front();
             try { v.currentTime = Math.max(0, Math.min(v.duration - 0.5, v.currentTime + (k === 'ff' ? 5 : -5))); } catch (_) { /* not seekable */ }
         }
     }
@@ -1898,6 +2338,7 @@
                 }
                 return;
             }
+            if (seek) front();
             if (seek && media.el && Number.isFinite(media.el.duration)) {
                 const r = seek.getBoundingClientRect();
                 media.el.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * media.el.duration;
@@ -1948,7 +2389,7 @@
         return [
             { label: 'Library...', action: openLibrary }, '-',
             { label: 'Play/Pause', action: playPause, disabled: !media.queue.length },
-            { label: 'Stop', action: stop, disabled: !media.el || !media.el.getAttribute('src') || (media.el.paused && !media.el.currentTime) },
+            { label: 'Stop', action: stop, disabled: !nat.on && (!media.el || !media.el.getAttribute('src') || (media.el.paused && !media.el.currentTime)) },
             { label: 'Shuffle/Repeat', submenu: shuffleRepeat() },
             { label: 'Full Screen', action: () => setFull(true), disabled: !(it && it.kind === 'video') }, '-',
             { label: 'Options...', action: () => openOptions() },
@@ -1970,7 +2411,7 @@
             sip: () => !full && layer !== 'skin' && layer !== 'props' && layer !== 'about' && layer !== 'update',
             mount,
             // End Task / the task's X: Melaton Media's own queue stops with the program (#1287)
-            onEnd() { if (media.el) stop(); },
+            onEnd() { if (media.el || nat.on) stop(); },
             show() {
                 // the app's other window (the DeX desktop) plays the Media Player and nothing plays here: it moves here
                 if (pullElsewhere()) { render(); return; }
@@ -2117,7 +2558,8 @@
     function mediaDescribe() {
         const it = current();
         const v = media.el;
-        if (!it || !v || !v.getAttribute('src')) return null;
+        if (!it || (!nat.on && (!v || !v.getAttribute('src')))) return null;
+        const away = nat.on ? musicState() : null;
         let queue = [];
         let index = -1;
         media.queue.forEach((x, i) => {
@@ -2136,8 +2578,8 @@
             subtitle: it.artist || it.album || '',
             kind: it.kind === 'video' ? 'video' : 'audio',
             source: index >= 0 ? { item: queue[index], queue, index } : null,
-            position: Math.round((v.currentTime || 0) * 1000),
-            playing: !v.paused && !v.ended
+            position: Math.round(away ? Math.max(0, Number(away.positionMs) || 0) : ((v && v.currentTime) || 0) * 1000),
+            playing: nat.on ? nat.playing : !v.paused && !v.ended
         };
     }
 
@@ -2173,13 +2615,16 @@
     function mediaRelease() {
         const s = mediaDescribe();
         if (!s) return null;
-        const v = media.el;
-        media.resume = { index: media.index, at: v.currentTime || 0 };
+        natHalt();
+        const v = player();
+        media.resume = { index: media.index, at: s.position / 1000 };
         focusPaused = '';
         if (full) setFull(false);
         v.pause();
         v.removeAttribute('src');
         v.load();
+        media.loaded = null;
+        clearReport();
         setStatus('Stopped');
         tellAndroid();
         return s;
@@ -2211,7 +2656,8 @@
             const it = current();
             if (!it) return null;
             const v = media.el;
-            return { title: it.name, artist: it.artist || (it.kind === 'audio' ? it.folder || '' : ''), art: it.kind === 'audio' ? it.art || '' : '', albumArt: it.kind === 'audio' ? it.albumArt || '' : '', playing: !!(v && !v.paused && !v.ended), status: media.status, index: media.index, count: media.queue.length };
+            // native: the app's player has it (shown as playing; the page needs no holding awake for it)
+            return { title: it.name, artist: it.artist || (it.kind === 'audio' ? it.folder || '' : ''), art: it.kind === 'audio' ? it.art || '' : '', albumArt: it.kind === 'audio' ? it.albumArt || '' : '', playing: nat.on ? nat.playing : !!(v && !v.paused && !v.ended), native: nat.on, status: media.status, index: media.index, count: media.queue.length };
         },
         // Options (#829): open Melaton Media on its Options page (Playback: which programs Now Playing may show)
         options: () => { if (!ws) return false; if (ws.current !== APP_ID) ws.open(APP_ID); toSkin(); openOptions('playback'); return true; },
@@ -2221,6 +2667,11 @@
         playAll
     };
 
-    if (window.wmShell) register();
-    else document.addEventListener('wmShellReady', register, { once: true });
+    function start() {
+        register();
+        // what the app's player is still playing from before this page opened
+        adoptNative();
+    }
+    if (window.wmShell) start();
+    else document.addEventListener('wmShellReady', start, { once: true });
 })();

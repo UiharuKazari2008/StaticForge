@@ -1177,7 +1177,8 @@
         try {
             const M = root.wmMedia;
             const n = M && typeof M.now === 'function' ? M.now() : null;
-            if (n && n.playing) return true;
+            // (native: the app's own player has the music, #1322: the page may sleep)
+            if (n && n.playing && !n.native) return true;
         } catch (_) { /* no player */ }
         if (!root.document || typeof root.document.querySelectorAll !== 'function') return false;
         const els = root.document.querySelectorAll('audio, video');
@@ -1245,6 +1246,23 @@
         if (soundRepeating()) out.add('sound');
         return Array.from(out).join(',');
     };
+    // Melaton Media loads on demand. A page that opens while the app's player still has the music a closed or killed
+    // page handed over loads it, so the program, Today's Music item and Stop show and work (#1322). Local checks only.
+    function loadHandedMedia() {
+        const sh = root.wmShell;
+        const nv = root.AndroidVideos;
+        try {
+            if (!sh || typeof sh.loadLazyApp !== 'function' || !root.localStorage.getItem('wmMediaNative')) return;
+            if (!nv || typeof nv.musicState !== 'function' || !nv.musicState()) return;
+        } catch (_) { return; }
+        void sh.loadLazyApp('windows-media');
+    }
+    if (root.uiShell === 'mobile' && root.document && typeof root.document.addEventListener === 'function') {
+        // after the shell's own registrations (the program is listed after the event)
+        if (root.wmShell) setTimeout(loadHandedMedia, 0);
+        else root.document.addEventListener('wmShellReady', () => setTimeout(loadHandedMedia, 0), { once: true, signal: appScopeSignal });
+    }
+
     // the holds the page can see change: media starting and stopping, a drive on the way home
     if (root.document && typeof root.document.addEventListener === 'function') {
         const mediaCheck = () => stateHold('media', mediaPlaying());

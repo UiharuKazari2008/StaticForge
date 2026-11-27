@@ -1209,8 +1209,8 @@
     // keys (no browser controls); hls.js (public/dist/hlsjs, loaded when the player first opens) does the
     // fetching and rides out a weak connection. When the program or the app is left, the Dreamscape app's native
     // player carries the stream on (a floating window over Today and other apps, or sound alone); without the
-    // app (a plain browser) loading stops until the program is in front again. With the screen off only Audio
-    // First keeps going.
+    // app (a plain browser) loading stops when the program is left, until it is in front again. The screen going
+    // off stops nothing that is heard (#1322): the app's player takes it, or the page plays on, held awake.
 
     const LS_MODE = 'wmVideosLiveMode';
     const HLS_SRC = '/dist/hlsjs/hls.light.min.js';
@@ -1220,6 +1220,27 @@
     // The Dreamscape app's native player (DSApp videos/VideoPlayback.kt): when this program or the app is left,
     // the stream carries on there as a floating window or as sound, so it never depends on this page running.
     const nativePlayer = () => (window.AndroidVideos && typeof window.AndroidVideos.watching === 'function' ? window.AndroidVideos : null);
+
+    // The app has one native player, shared with XM Radio and Melaton Media (docs/client-api/android-playback.md).
+    // wmNativeSlot: whose report the app holds now (watching()); wmNativePlayer: whose stream its player was last
+    // given. A program clears, hands over and stops only its own. The DeX window's desktop Videos is another window
+    // of the app (its own report there), so it keeps its own pair.
+    const ME = 'videos';
+    const slotKey = () => (HOST.desktop ? 'wmNativeSlotDesk' : 'wmNativeSlot');
+    const playerKey = () => (HOST.desktop ? 'wmNativePlayerDesk' : 'wmNativePlayer');
+    const keyGet = (k) => { try { return localStorage.getItem(k) || ''; } catch (_) { return ''; } };
+    const keySet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (_) { /* this load only */ } };
+    const slotMine = () => keyGet(slotKey()) === ME;
+    const playerMine = () => keyGet(playerKey()) === ME;
+    /** The app's player has this program's stream now: the others let go of what they had there. */
+    function takePlayer() {
+        keySet(playerKey(), ME);
+        window.dispatchEvent(new CustomEvent('wmnativeplayer', { detail: { owner: ME } }));
+    }
+    /** Videos starts making sound (in the app): one sound, so XM Radio and Melaton Media stop theirs. */
+    function announceSound() {
+        if (nativePlayer()) window.dispatchEvent(new CustomEvent('wmphonesound', { detail: { by: ME } }));
+    }
     /**
      * Tells the app what the page's player shows (or that it shows nothing): it takes over when the app is left.
      * Only a stream that is on screen and playing counts (Yukimi, Nov 18 2026: "the pip also should only show if we
@@ -1239,10 +1260,14 @@
         const moving = !!(v && !v.paused && !v.ended);
         const on = !!(p && canHand(p) && p.url && (p.handed || p.popped || p.popAsk || (shown && !p.suspended && moving)));
         const said = on ? JSON.stringify({ url: new URL(p.url, location.origin).toString(), title: p.title, subtitle: p.kind === 'ytr' ? p.channel || '' : modeLabel(p.mode), audioOnly: p.mode === 'audio', vod: p.kind === 'ytr' }) : '';
-        if (said === plTold) return;
+        // a muted picture does not take the slot from another program's sound (the app would carry on the wrong one)
+        if (said && v && v.muted && !p.handed && !p.popped && !p.popAsk && keyGet(slotKey()) && !slotMine()) return;
+        // (told again when another program's report took the slot since; "nothing" is said only over a report of its own)
+        if (said === plTold && (!said || slotMine())) return;
         plTold = said;
         try {
-            nv.watching(said);
+            if (said) { nv.watching(said); keySet(slotKey(), ME); }
+            else if (slotMine()) { keySet(slotKey(), ''); nv.watching(''); }
         } catch (_) { /* an older app build */ }
         if (said) plAt();
     }
@@ -1263,20 +1288,25 @@
     function plTakeBack() {
         const p = player;
         const nv = nativePlayer();
-        if (!p || !nv) return;
+        // only a stream Videos itself gave the player: XM Radio's and Melaton Media's play on
+        if (!p || !nv || !playerMine()) return;
         let active = false;
         try { active = nv.isActive() === true; } catch (_) { active = false; }
         if (!(p.handed || p.popped || active)) return;
+        let natPaused = false;
+        try { natPaused = typeof nv.state === 'function' && nv.state() === 'paused'; } catch (_) { natPaused = false; }
         // a video through the server goes on here from where the app's player got to
         let ms = -1;
         if (p.kind === 'ytr' && typeof nv.position === 'function') { try { ms = Number(nv.position()); } catch (_) { ms = -1; } }
         p.handed = false;
         p.popped = false;
         try { nv.stop(); } catch (_) { /* gone */ }
+        keySet(playerKey(), '');
         if (p.kind === 'ytr' && els) {
             const v = els.video;
             if (ms >= 0) { try { v.currentTime = ms / 1000; } catch (_) { /* not ready */ } }
-            if (v.paused) v.play().catch(plNeedsTap);
+            // (paused from the player's notification stays paused)
+            if (v.paused && !natPaused) v.play().catch(plNeedsTap);
         }
     }
 
@@ -1296,9 +1326,10 @@
         p.popAsk = true;
         plTell();
         let ok = false;
-        try { ok = nv.popOut() === true; } catch (_) { ok = false; }
+        try { ok = slotMine() && nv.popOut() === true; } catch (_) { ok = false; }
         p.popAsk = false;
         if (!ok) { plTell(); box('The stream could not be popped out.', 'info'); return; }
+        takePlayer();
         p.handed = true;
         p.popped = true;
         if (p.full) plFull(false);
@@ -1350,9 +1381,8 @@
     /** Keeps the page (and for a picture, the screen) awake while a stream plays; off again when it stops. */
     function plHold(on) {
         if (!player) return;
-        const mc = window.melatonContinuity;
-        const wantPage = on && /audio$/.test(player.mode || '');
-        if (mc && typeof mc.holdAwake === 'function' && !!player.held !== wantPage) { player.held = wantPage; mc.holdAwake('videos-live', wantPage); }
+        player.sounding = !!on;
+        plAwake();
         const wantScreen = on && !/audio$/.test(player.mode || '');
         if (wantScreen && !player.lock && navigator.wakeLock && typeof navigator.wakeLock.request === 'function') {
             navigator.wakeLock.request('screen').then((l) => { if (player && !player.lock) player.lock = l; else l.release().catch(() => {}); }).catch(() => {});
@@ -1360,6 +1390,27 @@
             player.lock.release().catch(() => {});
             player.lock = null;
         }
+    }
+
+    /** The page's own player makes sound that is heard now (or is between two pieces of it: a reconnect, a restart). */
+    function plAudible() {
+        const p = player;
+        if (!p || p.handed || p.popped || p.suspended || !p.sounding) return false;
+        if (p.kind === 'yt') return !p.paused && !p.muted;
+        return !(els && els.video.muted);
+    }
+    /**
+     * The page is held awake exactly while its own player is the sound, whatever the mode and the kind (#1322): with the
+     * screen off the app pauses a page nothing holds, and hls.js, a reconnect and YouTube's frame then starve. Handed to
+     * the app's player, paused, muted or closed: no hold, the page sleeps.
+     */
+    function plAwake() {
+        const p = player;
+        if (!p) return;
+        const want = plAudible();
+        if (!!p.held === want) return;
+        const mc = window.melatonContinuity;
+        if (mc && typeof mc.holdAwake === 'function') { p.held = want; mc.holdAwake('videos-live', want); }
     }
 
     function plDetach() {
@@ -1416,8 +1467,10 @@
         barTell();
     }
 
-    function plNeedsTap() {
+    function plNeedsTap(err) {
         if (!player) return;
+        // the browser wants a touch first: nothing sounds (an interrupted start, AbortError, still means to play)
+        if (err && err.name === 'NotAllowedError') { player.sounding = false; plAwake(); }
         plStatus('', false);
         plHud(true);
     }
@@ -1470,6 +1523,7 @@
         } catch (e) {
             if (player !== p) return;
             p.state = e && e.code === 'KICK_OFFLINE' ? 'ended' : 'error';
+            plHold(false);
             plStatus(p.state === 'ended' ? 'That channel is not live right now.' : failText(e, 'The stream could not be started'), false);
             refreshKeys();
         }
@@ -1510,8 +1564,8 @@
         plTell();
         // only a stream this page handed to the native player: the native player is shared with XM Radio, whose radio
         // this stopped whenever a video was closed on either screen
-        const nv = nativePlayer();
-        if (nv && (p.handed || p.popped)) { try { nv.stop(); } catch (_) { /* gone */ } }
+        const nv = playerMine() ? nativePlayer() : null;
+        if (nv && (p.handed || p.popped)) { try { nv.stop(); } catch (_) { /* gone */ } keySet(playerKey(), ''); }
         if (els) { els.player.hidden = true; els.hud.hidden = true; els.plKey.hidden = true; plChrome(); plStatus('', false); }
         syncPlayer();
         return true;
@@ -1803,7 +1857,7 @@
             p.ytState = info.playerState;
             const was = p.paused;
             p.paused = !(info.playerState === 1 || info.playerState === 3);
-            if (info.playerState === 1) { plStatus('', false); p.started = true; } else if (info.playerState === 3) plStatus('Buffering...', true);
+            if (info.playerState === 1) { plStatus('', false); p.started = true; if (!p.muted) announceSound(); } else if (info.playerState === 3) plStatus('Buffering...', true);
             if (info.playerState === 0) { p.best = 100; stopPlayer(); return; }
             if (was !== p.paused) { plHold(!p.paused); plHud(p.paused ? true : !els.hud.hidden); }
         }
@@ -2198,7 +2252,7 @@
             if (!p) return;
             const act = k.dataset.pl;
             if (act === 'toggle') plToggle();
-            else if (act === 'mute') { if (p.kind === 'yt') { p.muted = !p.muted; ytCmd(p.muted ? 'mute' : 'unMute'); } else els.video.muted = !els.video.muted; plHud(true); }
+            else if (act === 'mute') { if (p.kind === 'yt') { p.muted = !p.muted; ytCmd(p.muted ? 'mute' : 'unMute'); } else els.video.muted = !els.video.muted; plHud(true); plAwake(); if (plAudible()) announceSound(); }
             else if (act === 'back' || act === 'fwd') { if (p.vod) { ytSeek((p.pos || 0) + (act === 'back' ? -10 : 10)); plHud(true); } }
             else if (act === 'stop') stopPlayer();
             else if (act === 'kick') { if (p.vod) { const id = p.vid; stopPlayer(); openVideo(id); } else { const u = p.kickUrl; stopPlayer(); openUrl(u, true, KICK_PACKAGE); } }
@@ -2210,10 +2264,12 @@
         window.addEventListener('resize', plTurned, { signal: appScopeSignal });
         v.addEventListener('playing', () => {
             if (player && player.state === 'live') { player.tries = 0; plStatus('', false); }
+            if (player && player.kind !== 'yt') { player.sounding = true; plAwake(); if (!v.muted) announceSound(); }
             plHud(!els.hud.hidden);
             plTell();
         });
-        v.addEventListener('pause', () => { plHud(true); plTell(); plAt(); });
+        // (letting go of a source for a reconnect fires no pause: the hold stays through that gap)
+        v.addEventListener('pause', () => { if (player && player.kind !== 'yt') { player.sounding = false; plAwake(); } plHud(true); plTell(); plAt(); });
         v.addEventListener('seeked', plAt);
         v.addEventListener('timeupdate', ytrTime);
         v.addEventListener('ended', () => { const p = player; if (p && p.kind === 'ytr') { p.best = 100; stopPlayer(); } });
@@ -2223,37 +2279,74 @@
         // window was tapped (back to this program), or it stopped (closed there, the stream ended or was lost)
         window.addEventListener('dreamscape:videos', (e) => {
             const p = player;
-            const st = e && e.detail && e.detail.state;
+            let d = e && e.detail;
+            if (typeof d === 'string') { try { d = JSON.parse(d); } catch (_) { d = null; } }
+            const st = d && d.state;
             if (!p || !st) return;
-            if (st === 'handed') { p.handed = true; plSuspend(true); }
+            // 'handed' is about the report the app holds, all other news about the stream its player has: another
+            // program's (XM Radio's, Melaton Media's) is not this one's
+            if (st === 'handed') { if (!slotMine()) return; takePlayer(); p.handed = true; plSuspend(true); plAwake(); }
+            else if (!playerMine()) return;
             else if (st === 'open') { if (ws) ws.open(APP_ID); if (shown) plPopBack(); }
             // (only an ending: the native player also tells its play state - buffering, playing, paused, retrying -
             // which once read here as "stopped" and closed a handed-over stream at once, Yukimi Nov 21: "if a video's
             // playing [it] just close[s]")
-            else if (p.handed && st === 'ended' && p.kind === 'ytr') { p.handed = false; p.popped = false; p.best = 100; stopPlayer(); }
-            else if (p.handed && (st === 'stopped' || st === 'ended' || st === 'lost')) { p.handed = false; p.popped = false; if (st === 'ended') { plStatus('The stream has ended.', false); p.state = 'ended'; plTell(); refreshKeys(); } else stopPlayer(); }
+            else if (p.handed && st === 'ended' && p.kind === 'ytr') { keySet(playerKey(), ''); p.handed = false; p.popped = false; p.best = 100; stopPlayer(); }
+            else if (p.handed && (st === 'stopped' || st === 'ended' || st === 'lost')) { keySet(playerKey(), ''); p.handed = false; p.popped = false; if (st === 'ended') { plStatus('The stream has ended.', false); p.state = 'ended'; plTell(); refreshKeys(); } else stopPlayer(); }
         }, { signal: appScopeSignal });
         // back in the app with this program still in front (the app had handed the stream over when it was left)
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden || !shown || !player || player.popped) return;
+            if (!screenOn() || !shown || !player || player.popped) return;
             const nv = nativePlayer();
             let active = false;
-            try { active = !!nv && nv.isActive() === true; } catch (_) { active = false; }
+            try { active = !!nv && playerMine() && nv.isActive() === true; } catch (_) { active = false; }
             if (player.handed || active) { plTakeBack(); plSuspend(false); }
         }, { signal: appScopeSignal });
-        // the screen going off stops a picture mode's fetching; Audio First plays on
-        // (with the Dreamscape app the screen going off stops nothing: the app's player carries the sound on and the page
-        // takes it back when it is in front again)
+        // The screen going off stops nothing that is heard (#1322): the app's player takes a stream it can carry, and
+        // what it cannot (YouTube's own player, an app without the native one) plays on in the page, held awake. Only a
+        // silent picture (paused or muted) stops fetching. Screen on: a handed-over stream comes back (the screen
+        // coming on is not always a visibilitychange), and what the screen stopped carries on.
         window.addEventListener('melatonscreen', () => {
-            const off = document.documentElement.dataset.screenOff !== undefined;
-            if (off && nativePlayer() && player && canHand(player)) return;
-            if (player && player.mode !== 'audio' && !player.handed) plSuspend(off);
+            const p = player;
+            if (!p) return;
+            if (document.documentElement.dataset.screenOff === undefined) {
+                if (p.handed && !p.popped) {
+                    if (shown && !document.hidden) { plTakeBack(); plSuspend(false); }
+                } else if (p.screenStopped) {
+                    p.screenStopped = false;
+                    if (shown) plSuspend(false);
+                }
+                chatSync();
+                return;
+            }
+            if (!p.handed && !p.popped && !plAudible() && !(nativePlayer() && canHand(p)) && p.mode !== 'audio' && !p.suspended) {
+                plSuspend(true);
+                p.screenStopped = !!p.suspended;
+            }
+            chatSync();
         }, { signal: appScopeSignal });
+        // another program has the app's player now: the stream Videos had there is gone from it
+        window.addEventListener('wmnativeplayer', (e) => {
+            if (!player || !(player.handed || player.popped) || !e.detail || e.detail.owner === ME) return;
+            player.handed = false;
+            player.popped = false;
+            stopPlayer();
+        }, { signal: appScopeSignal });
+        // another program starts a sound: a stream of Videos' on the app's player stops, one heard here pauses
+        window.addEventListener('wmphonesound', (e) => {
+            const p = player;
+            if (!p || !nativePlayer() || !e.detail || e.detail.by === ME) return;
+            if (p.handed || p.popped) { stopPlayer(); return; }
+            if (!plAudible()) return;
+            if (p.kind === 'yt') ytCmd('pauseVideo'); else els.video.pause();
+        }, { signal: appScopeSignal });
+        if (appScopeSignal) appScopeSignal.addEventListener('abort', () => { if (player && player.held && window.melatonContinuity) { player.held = false; window.melatonContinuity.holdAwake('videos-live', false); } }, { once: true });
     }
 
     const refreshKeys = () => { if (ws) { ws.refreshSoftKeys(); ws.refreshTitleAction(); } };
     function syncPlayer() {
-        if (ws) { ws.setTitle(player ? player.channel : TITLE); ws.syncHistory(); refreshKeys(); }
+        // (the title bar is the program in front's: a stream ending from another program's doing leaves theirs)
+        if (ws) { if (HOST.desktop || !ws.currentApp || ws.currentApp() === APP_ID) ws.setTitle(player ? player.channel : TITLE); ws.syncHistory(); refreshKeys(); }
     }
 
     /**
@@ -2406,7 +2499,11 @@
             if (els) els.q.blur();
             // the program is left with a stream playing: the app's native player carries it on (a floating window, or sound)
             const nv = nativePlayer();
-            if (player && canHand(player) && !player.suspended && nv) { try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; } }
+            // (only while the report the app holds is this program's: handOff() starts whatever is reported)
+            if (player && !player.handed && canHand(player) && !player.suspended && nv && slotMine()) {
+                try { player.handed = nv.handOff() === true; } catch (_) { player.handed = false; }
+                if (player.handed) takePlayer();
+            }
             if (!(player && player.popped)) plSuspend(true);
             chatSync();
             plTell();
