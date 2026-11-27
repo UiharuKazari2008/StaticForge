@@ -17,7 +17,7 @@ const store = require('../modules/agentCoord/store');
 const { execFileSync } = require('child_process');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-fleet-'));
-// a scratch inbox: a test must never touch the live one (its rows land on Yukimi's phone as notices, #1196)
+// a scratch inbox: a test must never publish into the live one (its notices land on Yukimi's phone, #1196)
 process.env.NOTIFICATION_INBOX_DB = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'inbox-claude-fleet-')), 'notifications.db');
 process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
 process.env.DREAMSCAPE_CLAUDE_HOME = tmp;
@@ -148,6 +148,9 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
         assert.strictEqual(g.participants[0].state, 'auto');
         assert.strictEqual(g.canBegin, true);
         store.claim('claude-11111111', 'repo', ['src/a.js'], { root: repo });
+        // a claim with nothing of its own uncommitted does not hold a gate (decided from git, not from a reply)
+        assert.strictEqual(store.builds({ repo: 'repo' }).find((x) => x.build.id === g.build.id).canBegin, true);
+        store.buildReady('claude-11111111', g.build.id, false, 'mid-edit');
         assert.throws(() => store.buildBegin('claude-99999999', g.build.id, { force: true }), /reason/);
         const f = store.buildBegin('claude-99999999', g.build.id, { force: true, reason: 'hotfix' });
         assert.strictEqual(f.build.forced, 'hotfix');

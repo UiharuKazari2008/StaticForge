@@ -16,7 +16,7 @@ const path = require('path');
 const assert = require('assert');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'supervisor-'));
-// a scratch inbox: a test must never touch the live one (its rows land on Yukimi's phone as notices, #1196)
+// a scratch inbox: a test must never publish into the live one (its notices land on Yukimi's phone, #1196)
 process.env.NOTIFICATION_INBOX_DB = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'inbox-agent-supervisor-')), 'notifications.db');
 process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
 process.env.DREAMSCAPE_CLAUDE_HOME = tmp;
@@ -2037,6 +2037,36 @@ sup._test.setFetch(async (url, opts) => {
         const run = RAW().prepare("INSERT INTO supervisor_work (title, prompt, source, state, created_at, message, engine) VALUES ('Busy', 'p', 'fleet', 'running', ?, '', 'claude')").run(Date.now()).lastInsertRowid;
         await assert.rejects(() => sup.closeWorkAsDone(run, {}), /stop it first/);
         RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(run);
+    });
+
+    await test('sweepClearGates: a clear gate tells its idle requester to begin it; an orphan gate is cancelled', async () => {
+        const coordS = require('../modules/agentCoord/store');
+        const realSteer = launcher.steer;
+        const typed = [];
+        launcher.steer = async (id, t) => { typed.push([id, t]); return { sent: true }; };
+        const child = require('child_process').spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+        const SIDG = 'eeeeeeee-1111-2222-3333-444444444444';
+        const rec = path.join(tmp, '.claude', 'sessions', `${child.pid}.json`);
+        fs.writeFileSync(rec, JSON.stringify({ pid: child.pid, sessionId: SIDG, status: 'idle', cwd: tmp }));
+        try {
+            coordS.upsertAgent({ id: 'gate-req', kind: 'claude', name: 'Gate requester', sessionId: SIDG, cwd: tmp });
+            const g = coordS.buildRequest('gate-req', { target: 'test-target', note: 'x', repo: 'testrepo' });
+            const id = g.build.id;
+            const st = coordS.builds({}).find((x) => x.build.id === id);
+            assert.ok(st.canBegin, JSON.stringify(st.waitingOn));
+            {
+                await sup.sweepClearGates(Date.now());
+                assert.ok(typed.some(([sid, t]) => sid === SIDG && new RegExp(`coord_build_begin ${id}`).test(t)), JSON.stringify(typed));
+                const n = typed.length;
+                await sup.sweepClearGates(Date.now() + 1000);
+                assert.strictEqual(typed.length, n, 'not again within 3 minutes');
+            }
+            coordS.upsertAgent({ id: 'gate-req2', kind: 'claude', name: 'Gone requester', sessionId: 'dddddddd-0000-0000-0000-000000000000', cwd: tmp });
+            const g2 = coordS.buildRequest('gate-req2', { target: 'test-target-2', note: 'y', repo: 'testrepo' });
+            await sup.sweepClearGates(Date.now() + 6 * 60000);
+            assert.ok(!coordS.builds({}).some((x) => x.build.id === g2.build.id), 'orphan gate cancelled');
+            try { coordS.adminEndBuild(id, 'test', 'done'); } catch (_) { /* ended */ }
+        } finally { child.kill('SIGKILL'); fs.rmSync(rec, { force: true }); launcher.steer = realSteer; }
     });
 
     require('../modules/agentCoord/store').close();
