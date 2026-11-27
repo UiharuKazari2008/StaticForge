@@ -88,3 +88,20 @@ Data the user asked for arriving where they asked for it: a chat message in the 
 waiting on, a job they started finishing, a mail in the inbox they opened, a print they started landing in
 the prints list, an error line in the window that failed. These are deliverables; the sound rules (N7) still
 apply to their sounds.
+
+## Decisions taken in the first audit (2026-11-27, #1299)
+
+The audit does not hand its open points to Yukimi; each was decided against N1-N11 and the decision is the default until she changes it.
+
+| Point | Decision | Why |
+| --- | --- | --- |
+| Cost receipts of a print / upscale / vibe (the toast) | stays removed | N2: the cost of the user's own action; deposits (money arriving) keep their balloon |
+| Battery fully charged (phone note, ActiveSync balloon) | stays, silent | her own #829 request, and it is a call to action (unplug); no sound (N7), switch in Sounds & Notifications / the ActiveSync icon menu |
+| Remote Access balloon | stays | her only live sight of an agent in her session; has the tray switch and a click target |
+| Wallet renewal / Anlas-expiring balloons | stay | money, a call to action, switchable |
+| Main Battery Low / Very Low default tone | stays | the phone is about to die: a hardware-style alert, one per stage |
+| Inbox channel HIGH for status classes (#1314) | status classes move to a quiet channel | needs a new channel id in the app; filed on #1314 for the next app change |
+| Instant Hotspot "is using your data" notice | tap opens Dreamscape | filed on #1313 with the in-app switch |
+| "Other notifications" class | ships with sound on; progress and account notes are silent | a note that names no event is not a delivery |
+| Desktop "High Latency Detected" balloon | **removed** (N11) | the ping warning icon and its tooltip carry it; its Notification Area row went with it |
+| Package-restart modal, power nags | filed on #1317 | not an audit-time change |

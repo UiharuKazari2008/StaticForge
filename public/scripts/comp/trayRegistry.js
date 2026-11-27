@@ -41,7 +41,6 @@ const TRAY_POPUP_CATALOG = [
     { id: 'generation-complete', label: 'Generation Complete' },
     { id: 'balance-updated', label: 'Balance Updated' },
     { id: 'remote-access', label: 'Remote Access' },
-    { id: 'high-latency', label: 'High Latency Detected' },
     { id: 'nightshade', label: 'Nightshade Network' },
     { id: 'sync-center', label: 'Sync Center' },
     { id: 'network-portal', label: 'Network log on' },

@@ -458,7 +458,6 @@ function _shouldUseInAppToast(type, title, _message, buttons) {
 const TRAY_POPUP_ID_BY_TITLE = {
     'Balance Updated': 'balance-updated',
     'Generation Complete': 'generation-complete',
-    'High Latency Detected': 'high-latency',
     'Operation Receipt': 'operation-receipt',
     'Generation Receipt': 'generation-receipt',
     'Upscaling Receipt': 'upscale-receipt',
@@ -475,7 +474,6 @@ function _trayPopupIdForTitle(title) {
 const DESKTOP_POPUP_TOAST_TITLES = new Set([
     'Balance Updated',
     'Generation Complete',
-    'High Latency Detected',
     'Operation Receipt',
     'Generation Receipt',
     'Upscaling Receipt',
@@ -494,12 +492,6 @@ function _isDesktopPopupWiredToast(type, title, showProgress = false) {
 }
 
 function _getDesktopPopupAnchorForTitle(title) {
-    if (title === 'High Latency Detected') {
-        // the server's latency belongs to the Nightshade Network icon (#895); the network icon is the
-        // computer's own link
-        const classic = window.uiTheme.is('classic');
-        return (!classic && (document.getElementById('nightshadeTrayIcon') || document.getElementById('modemTrayIcon'))) || document.getElementById('pingWarningIndicator');
-    }
     if (title === 'Generation Complete') {
         return document.getElementById('imageGenerationIndicator');
     }

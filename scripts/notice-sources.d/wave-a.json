@@ -1,156 +1,148 @@
 {
- "sources": {
-  "ws-link-failed": {
-   "area": "websocket.js BannerManager (non-desktop shells: narrow web layout, Melaton Mobile before the app is up)",
-   "trigger": "server-push",
-   "action": "failed phase: a Retry button (manualReconnect); auth phase: the message is the content",
-   "sound": false,
-   "switch": "none",
-   "note": "N10: the one place a lasting failed / auth link is told on a shell with no connection dial; Connecting / Connected toasts removed (N1, N2). Hidden when the link recovers. Lost: none; needs Yukimi's call on a switch (issue filed)."
-  },
-  "nightshade-link-problem": {
-   "area": "websocket.js _nightshadeBalloon (desktop tray balloon)",
-   "trigger": "timer",
-   "action": "click opens the Nightshade Network Client (toastManager _trayBalloonTarget, anchor nightshadeTrayIcon)",
-   "sound": false,
-   "switch": "Taskbar and Start Menu Properties > Notifications > Nightshade Network (trayRegistry popupId nightshade, trayPopupHidden)",
-   "note": "N4, N5, N9: only a problem that lasted NIGHTSHADE_BALLOON_MS after the service was up; the 'Connected to Nightshade Network.' recovery balloon was removed (N2, N11); the problem balloon closes when the link is back."
-  },
-  "high-latency": {
-   "area": "websocket.js _showLatencyTrayPopup (desktop tray balloon)",
-   "trigger": "timer",
-   "action": "click opens the Nightshade Network Client (toastManager _trayBalloonTarget)",
-   "sound": false,
-   "switch": "Taskbar and Start Menu Properties > Notifications > High Latency Detected (popupId high-latency)",
-   "note": "N5, N6, N9: one balloon per spell (10 min cooldown, was one per threshold crossing); the narrow-layout toast was removed (N11: the ping warning icon carries it). Kept as a judgement call: see 'needs a decision'."
-  },
-  "boot-progress": {
-   "area": "websocket.js showProgressNotification / _updateInitProgressToast (non-desktop shells)",
-   "trigger": "boot",
-   "action": "content: the progress of the app starting that the user is waiting on (no click target; gone when init completes)",
-   "sound": false,
-   "switch": "none",
-   "note": "Not a notice but the loading indicator of the app's own start (N1: it is what the user is waiting for). Always one toast, updated in place (N6)."
-  },
-  "ws-user-request-failed": {
-   "area": "websocket.js request wrappers (metadata, index, character search, dictionary, cache refresh)",
-   "trigger": "user-action",
-   "action": "content: the failure of the request the user just made, named in the title",
-   "sound": false,
-   "switch": "n/a - a failure of an action the user just took is never switchable (N10)",
-   "note": "N10: told once where it failed. The success toast of the cache refresh (N2) and the three lookup-while-typing error toasts (dropped by the toast policy anyway) were removed."
-  },
-  "ws-config-refresh-failed": {
-   "area": "websocket.js config_refresh_error handler",
-   "trigger": "server-push",
-   "action": "content: the message names the config that failed to load (a message box on the desktop)",
-   "sound": false,
-   "switch": "none",
-   "note": "A real server failure, broadcast to every client; kept (never remove a real failure). No switch yet: issue filed."
-  },
-  "ws-request-progress": {
-   "area": "websocket.js showProgressToast",
-   "trigger": "server-push",
-   "action": "content: progress of a long request the user started; a progress dialog on the desktop",
-   "sound": false,
-   "switch": "n/a - progress of work the user started; it ends with the request",
-   "note": "N1: data the user asked for; one progress toast updated in place (N6)."
-  },
-  "desktop-recycle-sound": {
-   "area": "websocket.js addScrap / addScrapBulk / deleteImagesBulk / deleteUnupscaledOriginal (desktopSounds recycle)",
-   "trigger": "user-action",
-   "action": "content: the sound of the delete / scrap the user just did (hardware-click-like, desktop only, coalesced to one per batch)",
-   "sound": true,
-   "switch": "Personalize > Sounds: the Recycle event (None), No Sounds scheme, Volume Mixer for Melaton Sounds; desktopSounds off",
-   "note": "N7: user-action sound of the desktop scheme; never plays on Melaton Mobile (desktop only)."
-  },
-  "server-system-message": {
-   "area": "appWebSocketHandlers.js system_message",
-   "trigger": "server-push",
-   "action": "content: the server's message itself (a message box on the desktop, a notification on the phone)",
-   "sound": false,
-   "switch": "none",
-   "note": "N1: only level warning / error reaches the user now (info / success dropped). No server code sends it today (modules/websocket.js broadcastSystemMessage has no caller); the same warnings reach the phone inbox (notificationInboxSources). No switch: issue filed."
-  },
-  "server-user-notification": {
-   "area": "appWebSocketHandlers.js notification",
-   "trigger": "server-push",
-   "action": "content: the message itself",
-   "sound": false,
-   "switch": "none",
-   "note": "N1: only warning / error type reaches the user (info / success dropped). No server code sends it today (broadcastUserNotification has no caller). No switch: issue filed."
-  },
-  "agent-notice-toast": {
-   "area": "appWebSocketHandlers.js agent_notice (toast path)",
-   "trigger": "server-push",
-   "action": "content: an agent's own message, sent on purpose through the developer-authenticated POST /agent/broadcast; restart and dialog variants are dialogs with buttons",
-   "sound": false,
-   "switch": "none",
-   "note": "Raised only by a deliberate agent call (loopback, dev auth), never by the app itself. No switch: issue filed, needs Yukimi's decision."
-  },
-  "deposit-receipt": {
-   "area": "40-appCoreInbound.js receipt_notification (deposit only)",
-   "trigger": "server-push",
-   "action": "click opens Account Manager Status (desktop wallet balloon, toastManager _trayBalloonTarget); the message is the content on the phone",
-   "sound": false,
-   "switch": "Notifications > Deposit Receipt (popupId deposit-receipt, desktop); the Accounts program on the phone",
-   "note": "N1: Anlas arriving is data the user wants. The generation / upscaling / vibe / operation cost receipts were removed (N2: they restate a charge the user just caused; the balance shows it)."
-  },
-  "toast-progress-failed": {
-   "area": "toastManager.js _endProgressDialogEntry (phone message box)",
-   "trigger": "user-action",
-   "action": "content: the failure of the progress operation the user started",
-   "sound": false,
-   "switch": "n/a - failure of work the user started (N10)",
-   "note": "N10: the phone's progress box closes and the failure is its message box; error / warning only."
-  },
-  "toast-policy-balloon": {
-   "area": "toastManager.js showGlassToast route balloon (_showPolicyBalloon)",
-   "trigger": "server-push",
-   "action": "first button, else _trayBalloonTarget of its tray icon (the program the balloon belongs to)",
-   "sound": false,
-   "switch": "Notifications settings per popupId (trayRegistry trayPopupHidden); each caller carries its own source id",
-   "note": "Routing of a toast to its tray icon, not a source of its own: the caller's site carries the id. One balloon at a time per tray-balloons.mdc."
-  },
-  "popover-pointer-shown": {
-   "area": "popoverManager.js attach(): hover / click popovers",
-   "trigger": "user-action",
-   "action": "content: a tooltip-style popover the user asked for by pointing at or clicking the element",
-   "sound": false,
-   "switch": "n/a - shown only on the user's pointer, never unsolicited",
-   "note": "Not a notice (user pointer action)."
-  },
-  "popover-plumbing": {
-   "area": "popoverManager.js showPopover registration / global showPopover wrapper",
-   "trigger": "user-action",
-   "action": "none: delegation only; the calling site carries its own source id",
-   "sound": false,
-   "switch": "trayPopupHidden(popupId) is the switch this file enforces for every caller",
-   "note": "Not an emit site: it enforces trayPopupHidden, records popupIds (trayNotePopup) and forwards the caller's call."
-  },
-  "confirmation-dialog": {
-   "area": "confirmationDialog.js showConfirmationDialog on the phone shell (wmShell messageBox)",
-   "trigger": "user-action",
-   "action": "content: the question or message the raising code asked, with its buttons",
-   "sound": false,
-   "switch": "n/a - a dialog the user raised is not a notice; an unsolicited caller carries its own source id",
-   "note": "The phone's rendering of a confirmation dialog; not a source of its own."
-  },
-  "confirmation-dialog-sound": {
-   "area": "confirmationDialog.js config.sound (desktop)",
-   "trigger": "user-action",
-   "action": "content: the dialog the sound belongs to",
-   "sound": true,
-   "switch": "Personalize > Sounds (the dialog / error / warning event, No Sounds scheme); plays only when the caller passes sound",
-   "note": "N7: only dialogs whose caller asks for a sound (errors, questions raised by a user action); no caller in this file raises one on its own."
-  },
-  "boot-message-box-sound": {
-   "area": "bootMessageBox.js show (desktop logon / boot dialogs)",
-   "trigger": "boot",
-   "action": "content: the box itself - Retry / Restart on a failed boot or logon step, the logon failure the user just caused",
-   "sound": true,
-   "switch": "Personalize > Sounds (error / warning / dialog events, No Sounds scheme); desktop only",
-   "note": "N7: an error that stopped the boot, or the result of the user's own logon; never on Melaton Mobile."
+  "sources": {
+    "ws-link-failed": {
+      "area": "websocket.js BannerManager (non-desktop shells: narrow web layout, Melaton Mobile before the app is up)",
+      "trigger": "server-push",
+      "action": "failed phase: a Retry button (manualReconnect); auth phase: the message is the content",
+      "sound": false,
+      "switch": "none",
+      "note": "N10: the one place a lasting failed / auth link is told on a shell with no connection dial; Connecting / Connected toasts removed (N1, N2). Hidden when the link recovers. Lost: none; needs Yukimi's call on a switch (issue filed)."
+    },
+    "nightshade-link-problem": {
+      "area": "websocket.js _nightshadeBalloon (desktop tray balloon)",
+      "trigger": "timer",
+      "action": "click opens the Nightshade Network Client (toastManager _trayBalloonTarget, anchor nightshadeTrayIcon)",
+      "sound": false,
+      "switch": "Taskbar and Start Menu Properties > Notifications > Nightshade Network (trayRegistry popupId nightshade, trayPopupHidden)",
+      "note": "N4, N5, N9: only a problem that lasted NIGHTSHADE_BALLOON_MS after the service was up; the 'Connected to Nightshade Network.' recovery balloon was removed (N2, N11); the problem balloon closes when the link is back."
+    },
+    "boot-progress": {
+      "area": "websocket.js showProgressNotification / _updateInitProgressToast (non-desktop shells)",
+      "trigger": "boot",
+      "action": "content: the progress of the app starting that the user is waiting on (no click target; gone when init completes)",
+      "sound": false,
+      "switch": "none",
+      "note": "Not a notice but the loading indicator of the app's own start (N1: it is what the user is waiting for). Always one toast, updated in place (N6)."
+    },
+    "ws-user-request-failed": {
+      "area": "websocket.js request wrappers (metadata, index, character search, dictionary, cache refresh)",
+      "trigger": "user-action",
+      "action": "content: the failure of the request the user just made, named in the title",
+      "sound": false,
+      "switch": "n/a - a failure of an action the user just took is never switchable (N10)",
+      "note": "N10: told once where it failed. The success toast of the cache refresh (N2) and the three lookup-while-typing error toasts (dropped by the toast policy anyway) were removed."
+    },
+    "ws-config-refresh-failed": {
+      "area": "websocket.js config_refresh_error handler",
+      "trigger": "server-push",
+      "action": "content: the message names the config that failed to load (a message box on the desktop)",
+      "sound": false,
+      "switch": "none",
+      "note": "A real server failure, broadcast to every client; kept (never remove a real failure). No switch yet: issue filed."
+    },
+    "ws-request-progress": {
+      "area": "websocket.js showProgressToast",
+      "trigger": "server-push",
+      "action": "content: progress of a long request the user started; a progress dialog on the desktop",
+      "sound": false,
+      "switch": "n/a - progress of work the user started; it ends with the request",
+      "note": "N1: data the user asked for; one progress toast updated in place (N6)."
+    },
+    "desktop-recycle-sound": {
+      "area": "websocket.js addScrap / addScrapBulk / deleteImagesBulk / deleteUnupscaledOriginal (desktopSounds recycle)",
+      "trigger": "user-action",
+      "action": "content: the sound of the delete / scrap the user just did (hardware-click-like, desktop only, coalesced to one per batch)",
+      "sound": true,
+      "switch": "Personalize > Sounds: the Recycle event (None), No Sounds scheme, Volume Mixer for Melaton Sounds; desktopSounds off",
+      "note": "N7: user-action sound of the desktop scheme; never plays on Melaton Mobile (desktop only)."
+    },
+    "server-system-message": {
+      "area": "appWebSocketHandlers.js system_message",
+      "trigger": "server-push",
+      "action": "content: the server's message itself (a message box on the desktop, a notification on the phone)",
+      "sound": false,
+      "switch": "none",
+      "note": "N1: only level warning / error reaches the user now (info / success dropped). No server code sends it today (modules/websocket.js broadcastSystemMessage has no caller); the same warnings reach the phone inbox (notificationInboxSources). No switch: issue filed."
+    },
+    "server-user-notification": {
+      "area": "appWebSocketHandlers.js notification",
+      "trigger": "server-push",
+      "action": "content: the message itself",
+      "sound": false,
+      "switch": "none",
+      "note": "N1: only warning / error type reaches the user (info / success dropped). No server code sends it today (broadcastUserNotification has no caller). No switch: issue filed."
+    },
+    "agent-notice-toast": {
+      "area": "appWebSocketHandlers.js agent_notice (toast path)",
+      "trigger": "server-push",
+      "action": "content: an agent's own message, sent on purpose through the developer-authenticated POST /agent/broadcast; restart and dialog variants are dialogs with buttons",
+      "sound": false,
+      "switch": "none",
+      "note": "Raised only by a deliberate agent call (loopback, dev auth), never by the app itself. No switch: issue filed, needs Yukimi's decision."
+    },
+    "deposit-receipt": {
+      "area": "40-appCoreInbound.js receipt_notification (deposit only)",
+      "trigger": "server-push",
+      "action": "click opens Account Manager Status (desktop wallet balloon, toastManager _trayBalloonTarget); the message is the content on the phone",
+      "sound": false,
+      "switch": "Notifications > Deposit Receipt (popupId deposit-receipt, desktop); the Accounts program on the phone",
+      "note": "N1: Anlas arriving is data the user wants. The generation / upscaling / vibe / operation cost receipts were removed (N2: they restate a charge the user just caused; the balance shows it)."
+    },
+    "toast-progress-failed": {
+      "area": "toastManager.js _endProgressDialogEntry (phone message box)",
+      "trigger": "user-action",
+      "action": "content: the failure of the progress operation the user started",
+      "sound": false,
+      "switch": "n/a - failure of work the user started (N10)",
+      "note": "N10: the phone's progress box closes and the failure is its message box; error / warning only."
+    },
+    "toast-policy-balloon": {
+      "area": "toastManager.js showGlassToast route balloon (_showPolicyBalloon)",
+      "trigger": "server-push",
+      "action": "first button, else _trayBalloonTarget of its tray icon (the program the balloon belongs to)",
+      "sound": false,
+      "switch": "Notifications settings per popupId (trayRegistry trayPopupHidden); each caller carries its own source id",
+      "note": "Routing of a toast to its tray icon, not a source of its own: the caller's site carries the id. One balloon at a time per tray-balloons.mdc."
+    },
+    "popover-pointer-shown": {
+      "area": "popoverManager.js attach(): hover / click popovers",
+      "trigger": "user-action",
+      "action": "content: a tooltip-style popover the user asked for by pointing at or clicking the element",
+      "sound": false,
+      "switch": "n/a - shown only on the user's pointer, never unsolicited",
+      "note": "Not a notice (user pointer action)."
+    },
+    "popover-plumbing": {
+      "area": "popoverManager.js showPopover registration / global showPopover wrapper",
+      "trigger": "user-action",
+      "action": "none: delegation only; the calling site carries its own source id",
+      "sound": false,
+      "switch": "trayPopupHidden(popupId) is the switch this file enforces for every caller",
+      "note": "Not an emit site: it enforces trayPopupHidden, records popupIds (trayNotePopup) and forwards the caller's call."
+    },
+    "confirmation-dialog": {
+      "area": "confirmationDialog.js showConfirmationDialog on the phone shell (wmShell messageBox)",
+      "trigger": "user-action",
+      "action": "content: the question or message the raising code asked, with its buttons",
+      "sound": false,
+      "switch": "n/a - a dialog the user raised is not a notice; an unsolicited caller carries its own source id",
+      "note": "The phone's rendering of a confirmation dialog; not a source of its own."
+    },
+    "confirmation-dialog-sound": {
+      "area": "confirmationDialog.js config.sound (desktop)",
+      "trigger": "user-action",
+      "action": "content: the dialog the sound belongs to",
+      "sound": true,
+      "switch": "Personalize > Sounds (the dialog / error / warning event, No Sounds scheme); plays only when the caller passes sound",
+      "note": "N7: only dialogs whose caller asks for a sound (errors, questions raised by a user action); no caller in this file raises one on its own."
+    },
+    "boot-message-box-sound": {
+      "area": "bootMessageBox.js show (desktop logon / boot dialogs)",
+      "trigger": "boot",
+      "action": "content: the box itself - Retry / Restart on a failed boot or logon step, the logon failure the user just caused",
+      "sound": true,
+      "switch": "Personalize > Sounds (error / warning / dialog events, No Sounds scheme); desktop only",
+      "note": "N7: an error that stopped the boot, or the result of the user's own logon; never on Melaton Mobile."
+    }
   }
- }
 }

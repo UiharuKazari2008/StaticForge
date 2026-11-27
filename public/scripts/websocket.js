@@ -908,7 +908,6 @@ class WebSocketClient {
     static NIGHTSHADE_PROBE_URL = 'https://www.gstatic.com/generate_204';
     static NIGHTSHADE_PROBE_EVERY_MS = 60000;
     static NIGHTSHADE_BALLOON_MS = 5000; // a quiet reconnect inside this shows no balloon
-    static LATENCY_BALLOON_COOLDOWN_MS = 10 * 60 * 1000; // one high-latency balloon per spell, not per threshold crossing
     static OFFLINE_LOGON_AFTER_MS = 10000; // no server this long at boot: the offline logon (#899)
     static BOOT_GATE_MAX_MS = 10000; // the logon waits this long at most for serviceWorkerManager's boot gate
     // the installed app: "Please wait..." while the server is tried this long, then the logon from the cached profile
@@ -2617,27 +2616,9 @@ class WebSocketClient {
             this._latencyNotice = { reason: message, at: Date.now() };
             return;
         }
-        // Not the desktop tray: the ping warning icon and its tooltip carry it (N11: an icon never announces its own
-        // change), so the narrow layout's toast went
-        if (typeof showGlassToast !== 'function' || !this._isDesktopTrayMode()) return;
-
-        // One balloon per spell of latency (N6, N9): the rtt hovering around its threshold must not raise it again
-        // within LATENCY_BALLOON_COOLDOWN_MS; its click opens the Nightshade Network Client (toastManager.js
-        // _trayBalloonTarget), its switch is Notifications > High Latency Detected (popupId 'high-latency')
-        const now = Date.now();
-        if (this._latencyBalloonAt && now - this._latencyBalloonAt < WebSocketClient.LATENCY_BALLOON_COOLDOWN_MS) return;
-        const bootPending = typeof window.isDesktopTrayBootPending === 'function' && window.isDesktopTrayBootPending();
-        if (bootPending) return;
-        this._latencyBalloonAt = now;
-        // notice: high-latency
-        showGlassToast(
-            'warning',
-            'High Latency Detected',
-            message,
-            false,
-            8000,
-            '<i class="fas fa-satellite"></i>'
-        );
+        // The desktop has no balloon for this either (N11, #1299 decision): the ping warning icon and its tooltip carry the
+        // latency, an icon never announces its own change. The "High Latency Detected" balloon, its cooldown and its tray row
+        // switch are gone.
     }
 
     _updateMelatonLinkIndicators() {
