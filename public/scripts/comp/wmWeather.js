@@ -2810,14 +2810,9 @@
             ${ui.gap()}
             ${placeHtml('work')}
             ${ui.gap()}
-            ${ui.sub('Rain alarm')}
-            ${ui.check('desktopRain', 'Show on desktop', !!settings.desktopRain)}
-            ${ui.note('The rain alarm is a phone notification. Show on desktop also shows it on this computer\'s desktop, in the bottom right corner.')}
-            ${ui.gap()}
             ${ui.note(admin ? 'Home and Work are watched for weather alerts and rain, also while Weather is closed. Sounds: Settings > Sounds & Notifications (Weather: Alert, Weather: Severe alert, Weather: Rain alarm).' : 'Only the administrator can change Home and Work.')}`;
         box.querySelectorAll('input[name="unit"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) setUnit(r.value); }));
         box.querySelector('input[name="feels"]').addEventListener('change', (e) => { settings.feels = e.target.checked; saveSettings(); render(); changed(); });
-        box.querySelector('input[name="desktopRain"]').addEventListener('change', (e) => { settings.desktopRain = e.target.checked; saveSettings(); });
         box.querySelector('input[name="effects"]').addEventListener('change', (e) => {
             settings.effects = e.target.checked;
             saveSettings();
@@ -3268,8 +3263,6 @@
     let lastAsk = 0;
 
     window.wmWeather = {
-        /** Settings > Show on desktop: the rain alarm on this client's desktop too (weatherAlerts.js; off by default). */
-        desktopRain: () => !!settings.desktopRain,
         /**
          * The selected place now: { place, region, here, tempC, temp, unit, code, condition, icon, iconUrl,
          * isDay, hiC, loC, hi, lo, updatedAt } or null before the first data. A stale or missing value

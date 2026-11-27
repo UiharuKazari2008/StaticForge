@@ -151,11 +151,15 @@ const byId = (id, user = 'admin') => inbox.list(user, { includeCleared: true }).
     assert.strictEqual(n.title, 'Wind Advisory');
     assert.match(n.text, /^Home \(Jersey City\)\. (Until|Ended) .*9:00 PM$/, 'what place and when, #1200');
     assert.strictEqual(n.cls, 'weather-alert');
-    src.onRainAlarm({ place: { id: 'work', label: 'Work' }, startsInMin: 20, endsInMin: 50, kind: 'Rain' });
+    const rainCurrent = { tempC: 18.4, text: 'Light Rain', isDay: true, icon: 'rain' };
+    const rainSeries = [{ t: '2026-11-16T12:00', mmh: 0, rain: null }, { t: '2026-11-16T12:04', mmh: 1.2, rain: 80 }];
+    src.onRainAlarm({ place: { id: 'work', label: 'Work' }, startsInMin: 20, endsInMin: 50, kind: 'Rain', current: rainCurrent, series: rainSeries, seriesStep: 4 });
     n = byId('rain:work');
     assert.strictEqual(n.title, 'Rain at Work in 20 min');
     assert.strictEqual(n.text, 'Rain from about 20 minutes from now, stopping after about 30 minutes.');
     assert.strictEqual(n.cls, 'rain-alarm');
+    // the card's data rides with the notice (#1337): the current weather and the next hour, small (no timestamps)
+    assert.deepStrictEqual(n.data, { app: 'weather', kind: 'rain', placeId: 'work', detail: { current: rainCurrent, series: [{ mmh: 0, rain: null }, { mmh: 1.2, rain: 80 }], seriesStep: 4 } });
     // dismissed, it is still the spell's alarm: inbox.get keeps it (any state) until it expires, so the weather monitor
     // that restarted mid-spell does not raise it again (weatherService rainAlarmLive, #1061)
     src.onRainAlarm({ place: { id: 'home', label: 'Home' }, startsInMin: 10, endsInMin: 40, kind: 'Rain' });

@@ -16,14 +16,6 @@
       "switch": "tray icon notification settings (trayRegistry popup 'weather-alert', trayPopupHidden) and the Weather Alert tray icon behaviour",
       "note": "N1/N4/N5 ok: an alert for a place she configured; one balloon per alert (shown set), one popup id so a second replaces the first (N9); no sound of its own"
     },
-    "wx-rain-alarm": {
-      "area": "Melaton Mobile rain alarm (weatherAlerts.js onRain)",
-      "trigger": "server-push",
-      "action": "Weather soft key opens Melaton Weather; Dismiss clears it",
-      "sound": true,
-      "switch": "Settings > Sounds & Notifications > Notifications > Weather: Rain alarm (wmSounds), and Melaton Weather settings for the alarm itself",
-      "note": "N1/N4/N5 ok: an alarm she configured, once per rain spell; N6: same id rain:<place> as the server's copy, marked seen through wmNotificationInbox.shownBy"
-    },
     "wm-chat-arrival": {
       "area": "Melaton Mobile Dreamscape Messenger note (wmChat.js arrived / showSmsNote)",
       "trigger": "server-push",
@@ -255,6 +247,14 @@
       "sound": true,
       "switch": "Settings > Sounds & Notifications > Notifications > Reminders (wmSounds); the reminder itself is hers (Calendar / Tasks)",
       "note": "N1/N7 ok: a reminder she set, the one thing that must sound; stays until dismissed"
+    },
+    "inbox-rain-alarm": {
+      "area": "Melaton Mobile rain alarm: the ONE display is the server's inbox notice rain:<placeId> (notificationInboxSources.js onRainAlarm, shown by wmNotificationInbox.js show on phones only); weatherAlerts.js onRain raises no note, balloon or message box (#1337)",
+      "trigger": "server-push",
+      "action": "Dismiss clears it everywhere, Menu > View opens Melaton Weather; the note carries the current weather, its glyph and the next hour's graph",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Weather: Rain alarm (sound class rain-alarm: Play sound, Display message, Vibrate), and Melaton Weather's settings for the alarm itself",
+      "note": "N1/N4/N5 ok: an alarm she configured, once per rain spell; N6 by construction: one producer (the inbox row, id rain:<placeId>), no page note to race it; the desktop shows nothing (wmNotificationInbox is mobile-only, no tray balloon, no message box)"
     },
     "inbox-note": {
       "area": "Melaton Mobile server notice the page missed or no page app shows (wmNotificationInbox.js show)",

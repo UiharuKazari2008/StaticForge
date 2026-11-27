@@ -343,8 +343,9 @@
     // notices only the server raises (no page app shows its own live note for them): the inbox shows them itself
     // test: the test lane's notices (modules/testDevices.js, the emulator harness) have no page producer either
     // director: the turn-finished notice (wmShell no longer posts one of its own: it was a second notification, #997)
+    // rain: the rain alarm's ONE display (#1337; weatherAlerts.js raises no note); this module is mobile-only (MOBILE guard above), so a rain notice never appears on a desktop
     const DEVICE_KINDS = new Set(['device-ask', 'device-hold']); // phone consent (#1284, #1305)
-    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key', 'test', 'director', 'work-done', 'work-attention', 'account-login', 'maintenance', 'usage-flag', 'device-ask', 'device-hold', 'app-update-waiting']); // Fleet's notices (modules/fleetNotices.js, #1196, #1291)
+    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key', 'test', 'director', 'work-done', 'work-attention', 'account-login', 'maintenance', 'usage-flag', 'device-ask', 'device-hold', 'app-update-waiting', 'rain']); // Fleet's notices (modules/fleetNotices.js, #1196, #1291)
 
     let iconPrefsSent = '';
     function sendIconPrefs() {
@@ -375,6 +376,15 @@
         return true;
     }
 
+    /** The note's body: the text, and for the rain alarm (#1337) the weather card (current weather, glyph, next hour's graph) when the notice carries it. */
+    function noteBody(notice) {
+        const text = esc(notice.text || '').replace(/\n/g, '<br>');
+        const detail = notice.data && notice.data.kind === 'rain' && notice.data.detail;
+        const wa = window.weatherAlerts;
+        const card = detail && wa && typeof wa.rainCardHtml === 'function' ? wa.rainCardHtml(detail) : '';
+        return `${text}${card}`;
+    }
+
     /** Show one missed notice as a WM notification; View opens its app, Dismiss clears it. */
     function show(notice, opts = {}) {
         if (isReminder(notice)) { showReminder(notice, opts); return; }
@@ -395,7 +405,7 @@
         // notice: inbox-note
         const note = ws.appNote({
             title: notice.title,
-            html: esc(notice.text || '').replace(/\n/g, '<br>'),
+            html: noteBody(notice),
             icon: iconFor(notice),
             // its kind's own picture in the holder (#1056): a sync error, a missed call, a meeting... not its app's icon
             holder: holderFor(notice),

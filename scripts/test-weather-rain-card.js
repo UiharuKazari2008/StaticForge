@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * The rain card (Yozora #1267): weatherAlerts.js rainCardHtml / rainNowText / readRain and the rain alarm's notice,
- * run with a fake window and document. Offline.
+ * The rain card (Yozora #1267): weatherAlerts.js rainCardHtml / rainNowText / readRain, and that the page raises NO
+ * note, toast or message box for the rain alarm (#1337: the server's inbox notice is its one display), run with a fake
+ * window and document. Offline.
  *
  *   node scripts/test-weather-rain-card.js
  */
@@ -15,7 +16,8 @@ const vm = require('vm');
 const SOURCE = fs.readFileSync(path.join(__dirname, '..', 'public', 'scripts', 'comp', 'weatherAlerts.js'), 'utf8');
 
 /** weatherAlerts.js in its own fake page. */
-function load(extra = {}) {
+function load(extra = {}, phone = false) {
+    const events = [];
     const store = new Map();
     const handlers = {};
     const sent = [];
@@ -28,9 +30,10 @@ function load(extra = {}) {
             sendMessage: (type, data) => { sent.push({ type, data }); return Promise.resolve(win.reply); }
         }
     }, extra);
-    const document = { documentElement: { classList: { contains: () => false } }, dispatchEvent() {}, addEventListener() {}, getElementById: () => null };
-    vm.runInNewContext(SOURCE, { window: win, document, CustomEvent: class {}, Intl, Date, console });
-    return { win, store, handlers, sent, wa: win.weatherAlerts };
+    if (phone) win.uiShell = 'mobile';
+    const document = { documentElement: { classList: { contains: () => phone } }, dispatchEvent: (e) => events.push(e), addEventListener() {}, getElementById: () => null };
+    vm.runInNewContext(SOURCE, { window: win, document, CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init && init.detail; } }, Intl, Date, console });
+    return { win, store, handlers, sent, events, wa: win.weatherAlerts };
 }
 
 const series = (mmh) => mmh.map((v, i) => ({ t: `2026-11-26T12:${String(i * 5).padStart(2, '0')}`, mmh: v, rain: i % 2 ? 80 : null }));
@@ -96,38 +99,33 @@ const bars = (html) => (html.match(/<rect /g) || []).length;
     win.wsClient.sendMessage = () => Promise.reject(new Error('offline'));
     assert.strictEqual(await wa.readRain('home'), null);
 
-    // the desktop: the rain alarm is the phone's notice, shown there only with Settings > Show on desktop
-    const off = [];
-    const quiet = load({ showGlassToast: (...a) => off.push(a) });
-    quiet.handlers.weather_rain_alarm({ data: { place: { id: 'home', label: 'Home' }, kind: 'Rain', startsInMin: 5, current, series: series([0, 1]), seriesStep: 5 } });
-    assert.strictEqual(off.length, 0, 'no desktop notice without Show on desktop');
-
-    // the alarm's notice: sentence plus card, text only without a series, and no "in 0 min"
-    const toasts = [];
-    const page = load({ showGlassToast: (...a) => toasts.push(a) });
-    page.store.set('wmWeatherSettings', JSON.stringify({ desktopRain: true }));
-    page.handlers.weather_rain_alarm({ data: { place: { id: 'home', label: 'Home' }, kind: 'Rain', startsInMin: 0, endsInMin: 20, current, series: series([1, 1]), seriesStep: 5 } });
-    page.handlers.weather_rain_alarm({ data: { place: { id: 'work', label: 'Work' }, kind: 'Rain', startsInMin: 1 } });
-    assert.strictEqual(toasts[0][1], 'Rain at Home now');
-    assert.ok(toasts[0][2].startsWith('Rain now, stopping after about 20 minutes.<div class="wx-rain-card">'));
-    assert.ok(toasts[0][2].includes('<svg'));
-    assert.strictEqual(toasts[1][1], 'Rain at Work in 1 min');
-    assert.strictEqual(toasts[1][2], 'Rain from about 1 minute from now, lasting the rest of the hour.');
-    // its own program's caption icon, never the window in front's; the screen's bottom right corner
-    assert.strictEqual(JSON.stringify(toasts[0][7]), JSON.stringify({ appIcon: 'melaton-weather.png', position: 'bottom-right' }));
-    // a provider summary that says it stays dry is never the text over a graph of rain (the Nov 26 notice)
-    page.handlers.weather_rain_alarm({ data: { place: { id: 'here', label: 'Here' }, kind: 'Light rain', startsInMin: 12, endsInMin: null, summary: 'No precipitation for the next hour', current, series: series([0, 0, 0.2, 0.2]), seriesStep: 15 } });
-    assert.ok(toasts[2][2].startsWith('Light rain from about 12 minutes from now, lasting the rest of the hour.'), toasts[2][2]);
-    assert.ok(!toasts[2][2].includes('No precipitation'));
-
-    // the desktop with only the stub: the program loads first, so the notice has its glyph
-    const late = [];
-    const desk = load({ showGlassToast: (...a) => late.push(a) });
-    desk.store.set('wmWeatherSettings', JSON.stringify({ desktopRain: true }));
-    desk.win.featureLoader = { loadFeature: async (name) => { assert.strictEqual(name, 'melaton_weather'); desk.win.wmWeather = { iconUrl, open() {} }; } };
-    desk.handlers.weather_rain_alarm({ data: { place: { id: 'home', label: 'Home' }, startsInMin: 5, current, series: series([0, 1]), seriesStep: 5 } });
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(late[0][2].includes('/art/wx-rain.png') && late[0][2].includes('<svg'));
+    // the rain alarm raises no note of its own, on a desktop client or on a phone (#1337): the server's inbox notice is its
+    // one display. No toast (a toast with a button was a parentless message box), no appNote, no notify, no program load.
+    const alarm = (id, label) => ({ data: { place: { id, label }, kind: 'Rain', startsInMin: 0, endsInMin: 20, current, series: series([0, 1, 2]), seriesStep: 5 } });
+    for (const phone of [false, true]) {
+        const shownNotes = [];
+        const grab = (name) => (...a) => { shownNotes.push([name, a]); return { close() {}, update() {} }; };
+        const page = load({
+            showGlassToast: grab('showGlassToast'),
+            wmShell: { appNote: grab('appNote'), notify: grab('notify') },
+            featureLoader: { loadFeature: grab('loadFeature') },
+            wmNotificationInbox: { shownBy: grab('shownBy'), clear: grab('clear'), acted: grab('acted') }
+        }, phone);
+        // even a leftover Show on desktop choice shows nothing
+        page.store.set('wmWeatherSettings', JSON.stringify({ desktopRain: true }));
+        page.handlers.weather_rain_alarm(alarm('home', 'Home'));
+        page.handlers.weather_rain_alarm(alarm('home', 'Home')); // the same spell again (a re-push): still nothing, one event
+        page.handlers.weather_rain_alarm(alarm('work', 'Work'));
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.strictEqual(shownNotes.length, 0, `no page notice (${phone ? 'phone' : 'desktop'}): ${JSON.stringify(shownNotes.map((x) => x[0]))}`);
+        // what stays: the weatherRainAlarm event once per spell, and the place's last read for the card
+        assert.deepStrictEqual(page.events.map((e) => [e.type, e.detail.place.id]), [['weatherRainAlarm', 'home'], ['weatherRainAlarm', 'work']]);
+        assert.strictEqual(page.wa.rainNowText('home'), 'Now: 18\u00b0C, Light Rain');
+        assert.strictEqual(page.win.wmWeather, undefined, 'the alarm does not load the Weather program');
+    }
+    // nothing of the removed desktop choice is left on the Weather program's accessor
+    assert.ok(!/desktopRain/.test(fs.readFileSync(path.join(__dirname, '..', 'public', 'scripts', 'comp', 'wmWeather.js'), 'utf8')), 'wmWeather.js has no desktopRain');
+    assert.ok(!/showGlassToast|appNote|desktopRainWanted/.test(SOURCE.slice(SOURCE.indexOf('function onRain('), SOURCE.indexOf('let sentHere'))), 'onRain has no display call');
 
     console.log('weather rain card: ok');
 })().catch((err) => { console.error(err); process.exit(1); });

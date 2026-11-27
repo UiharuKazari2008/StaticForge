@@ -664,11 +664,22 @@ function onWeatherAlert({ alert, place } = {}) {
 }
 
 /** weather_rain_alarm { place, startsInMin, endsInMin, kind, summary } (weatherAlerts onRain wording). */
+/** The alarm push's current weather and next-hour series, kept small (the push's own 16 points at most, each only mm/h and chance), for the notice's card. */
+function rainCardData(d) {
+    const c = d.current;
+    const series = Array.isArray(d.series) ? d.series.slice(0, 16).map((x) => ({ mmh: x && x.mmh, rain: x && x.rain })) : [];
+    return {
+        current: c ? { tempC: c.tempC, text: c.text || '', isDay: c.isDay !== false, icon: c.icon || '' } : null,
+        series,
+        seriesStep: Number(d.seriesStep) > 0 ? Number(d.seriesStep) : 1,
+    };
+}
+
 function onRainAlarm(d) {
     if (!d || !d.place) return null;
     const where = d.place.label || d.place.name || 'your place';
     const kind = d.kind || 'Rain';
-    // rain that has already started reads "now", never "in 0 min" (the page's own wording, weatherAlerts.js onRain, #1267)
+    // rain that has already started reads "now", never "in 0 min" (the wording of the page's former note, #1267; the page no longer shows one, #1337)
     const lead = Number(d.startsInMin) > 0 ? Number(d.startsInMin) : 0;
     const title = lead ? `${kind} at ${where} in ${lead} min` : `${kind} at ${where} now`;
     const lasts = d.endsInMin ? `stopping after about ${Math.max(5, d.endsInMin - lead)} minutes` : '';
@@ -684,7 +695,8 @@ function onRainAlarm(d) {
         cls: 'rain-alarm',
         title,
         text,
-        data: { app: 'weather', kind: 'rain', placeId: d.place.id || null },
+        // the card (#1267) rides with the notice: the page shows it in the note (weatherAlerts.rainCardHtml); the page raises no note of its own (#1337)
+        data: { app: 'weather', kind: 'rain', placeId: d.place.id || null, detail: rainCardData(d) },
         ttlMs: mins * 60 * 1000,
     });
 }
