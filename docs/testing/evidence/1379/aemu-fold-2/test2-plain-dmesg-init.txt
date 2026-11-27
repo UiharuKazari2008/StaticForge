@@ -1,0 +1,12 @@
+[   14.139221] init: starting service 'adbd'...
+[   14.139786] init: Created socket '/dev/socket/adbd', mode 660, user 1000, group 1000
+[   14.151424] init: ... started service 'adbd' has pid 549
+[   15.319928] init: service 'adbd' requested start, but it is already running (flags: 132, pid: 549, started 1179ms ago)
+[   15.327192] init: Control message: Processed ctl.start for 'adbd' from pid: 632 (/system/bin/usbd)
+[   33.312122] init: Control message: Processed ctl.start for 'mdnsd' from pid: 549 (/apex/com.android.adbd/bin/adbd --root_seclabel=u:r:su:s0 --tim_seclabel=u:r:adbd_tradeinmode:s0)
+[  798.741345] type=1400 audit(1795808026.828:178): avc:  denied  { read write } for  comm="sh" path="socket:[270762]" dev="sockfs" ino=270762 scontext=u:r:shell:s0 tcontext=u:r:adbd:s0 tclass=tcp_socket permissive=0
+[  989.409775] init: Service 'adbd' (pid 549) exited with status 0
+[  989.410479] init: Sending SIGKILL to service 'adbd' (pid 549) process group...
+[  989.449206] init: starting service 'adbd'...
+[  989.449884] init: Created socket '/dev/socket/adbd', mode 660, user 1000, group 1000
+[  989.474292] init: ... started service 'adbd' has pid 13006

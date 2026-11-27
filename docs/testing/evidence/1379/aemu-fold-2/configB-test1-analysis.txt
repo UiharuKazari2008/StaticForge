@@ -1,0 +1,22 @@
+window 1795808325707..1795808472397 (146.7 s), 449 samples, period median 308 ms, longest 588 ms
+samples with NO shell disable record: 0
+samples with the row NOT held in system_server net flags of display 0 (mDisabled1 & 0x03600000): 0
+samples with two holder pids: 1 (+3.7 .. +3.7 s)
+timeline (a line per change; offset from the first sample, device ms):
+  +    0.0 s 1795808325707  recs=1 what1=0x03600000, net=0x3f30000 holder=19923 app=19773 usersvc=- shz=19839 adbd=13006
+  +    2.7 s 1795808328399  recs=1 what1=0x03600000, net=0x3f30000 holder=19923 app=- usersvc=- shz=19839 adbd=13006
+  +    3.1 s 1795808328828  recs=1 what1=0x03600000, net=0x3f30000 holder=19923 app=20380 usersvc=- shz=19839 adbd=13006
+  +    3.7 s 1795808329416  recs=2 what1=0x03600000,0x03600000, net=0x3f30000 holder=19923,20483 app=20380 usersvc=- shz=19839 adbd=13006
+  +    4.3 s 1795808329993  recs=1 what1=0x03600000, net=0x3f30000 holder=20483 app=20380 usersvc=- shz=19839 adbd=13006
+  +   42.1 s 1795808367840  recs=1 what1=0x03600000, net=0x3600000 holder=20483 app=20380 usersvc=- shz=19839 adbd=13006
+  +   43.4 s 1795808369073  recs=1 what1=0x03600000, net=0x3f30000 holder=20483 app=20380 usersvc=- shz=19839 adbd=13006
+  +   44.6 s 1795808370291  recs=1 what1=0x03600000, net=0x3600000 holder=20483 app=20380 usersvc=- shz=19839 adbd=13006
+  +   45.8 s 1795808371499  recs=1 what1=0x03600000, net=0x3f30000 holder=20483 app=20380 usersvc=- shz=19839 adbd=13006
+  +   46.8 s 1795808372460  recs=1 what1=0x03600000, net=0x3f30000 holder=20483 app=20380 usersvc=24985 shz=19839 adbd=13006
+  +   47.7 s 1795808373414  recs=1 what1=0x03600000, net=0x3f30000 holder=25048 app=20380 usersvc=24985 shz=19839 adbd=13006
+SystemUI disable-flag lines (disableFlagsInteractor) in the logcat excerpt, inside the window:
+  +   41.8 s 1795808367507  disable1=0x3600000 disable2=0  row HELD; status-bar lock bits 0x0000000
+  +   43.0 s 1795808368730  disable1=0x3f30000 disable2=1  row HELD; status-bar lock bits 0x0930000
+  +   44.3 s 1795808370045  disable1=0x3600000 disable2=0  row HELD; status-bar lock bits 0x0000000
+  +   45.6 s 1795808371351  disable1=0x3f30000 disable2=1  row HELD; status-bar lock bits 0x0930000
+SystemUI lines: 4, of them with the row given back: 0

@@ -1,0 +1,16 @@
+adbd pid 6430, parent chain:
+  pid=6430 ppid=1 pgrp=6430 sid=0 uid=2000 comm=[adbd] cmd=[/apex/com.android.adbd/bin/adbd --root_seclabel=u:r:su:s0 --tim_seclabel=u:r:adbd_tradeinmode:s0] cgroup=[0::/system/uid_0/pid_6430] ctx=[u:r:adbd:s0]
+  pid=1 ppid=0 pgrp=0 sid=0 uid=0 comm=[init] cmd=[/system/bin/init second_stage] cgroup=[0::/] ctx=[u:r:init:s0]
+shizuku_server pid 25038, parent chain:
+  pid=25038 ppid=1 pgrp=25038 sid=25038 uid=2000 comm=[main] cmd=[shizuku_server] cgroup=[0::/system/uid_0/pid_6430] ctx=[u:r:shell:s0]
+  pid=1 ppid=0 pgrp=0 sid=0 uid=0 comm=[init] cmd=[/system/bin/init second_stage] cgroup=[0::/] ctx=[u:r:init:s0]
+userservice pid 24194, parent chain:
+  pid=24194 ppid=1 pgrp=25038 sid=25038 uid=2000 comm=[main] cmd=[jp.net.seventhreeseven.dreamscape:shell] cgroup=[0::/system/uid_0/pid_6430] ctx=[u:r:shell:s0]
+  pid=1 ppid=0 pgrp=0 sid=0 uid=0 comm=[init] cmd=[/system/bin/init second_stage] cgroup=[0::/] ctx=[u:r:init:s0]
+holder pid 24293, parent chain:
+  pid=24293 ppid=1 pgrp=24293 sid=24293 uid=2000 comm=[main] cmd=[melaton_navblank] cgroup=[0::/system/uid_0/pid_6430] ctx=[u:r:shell:s0]
+  pid=1 ppid=0 pgrp=0 sid=0 uid=0 comm=[init] cmd=[/system/bin/init second_stage] cgroup=[0::/] ctx=[u:r:init:s0]
+app pid 22909, parent chain:
+  pid=22909 ppid=471 pgrp=471 sid=0 uid=10235 comm=[even.dreamscape] cmd=[jp.net.seventhreeseven.dreamscape] cgroup=[0::/apps/uid_10235/pid_22909] ctx=[u:r:untrusted_app_34:s0:c235,c256,c512,c768]
+  pid=471 ppid=1 pgrp=471 sid=0 uid=0 comm=[main] cmd=[zygote64] cgroup=[0::/system/uid_0/pid_471] ctx=[u:r:zygote:s0]
+  pid=1 ppid=0 pgrp=0 sid=0 uid=0 comm=[init] cmd=[/system/bin/init second_stage] cgroup=[0::/] ctx=[u:r:init:s0]

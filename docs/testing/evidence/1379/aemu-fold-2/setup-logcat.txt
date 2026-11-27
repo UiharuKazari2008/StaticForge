@@ -1,0 +1,40 @@
+         1795807637.879   671   687 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807637.879   671   687 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807637.880   671   702 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807637.881   671   702 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807637.910   671  1685 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807637.911   671   702 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807637.955   671  1685 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807637.955   671  1685 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807637.955   671  1685 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807637.956   671   702 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807637.957   671   702 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807638.015  4110  4110 I MelatonBars: show: on=false fits=true status=true bar=false top=true ext=false tray=false give=false
+         1795807638.047   948  1175 D ShadeStatusBarComponentsInteractor#disableFlagsInteractor: newValue: DisableFlagsModel(disable1=9633792, disable2=1, animate=true)
+         1795807638.058  4110  4110 I MelatonBars: ime probe live: visible=false bottom=0
+         1795807638.133  4110  4110 I MelatonBars: show: on=false fits=true status=false bar=false top=true ext=false tray=false give=false
+         1795807638.494  4110  4110 I MelatonBars: home strip added
+         1795807639.605   671  1141 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807639.606   671  1141 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807639.606   671   702 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807639.607   671   702 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807639.694   671  1807 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807639.695   671  1807 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807639.695   671  1807 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807639.697   671   702 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807639.698   671   702 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807639.740   671  1774 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807639.743   671   702 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807640.460  5403  5403 I melaton_navblank: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+         1795807640.467  5403  5403 I melaton_navblank: Using generational CollectorTypeCMC GC.
+         1795807640.695  5403  5403 D melaton_navblank: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/10/icu") succeeded. 
+         1795807640.695  5403  5403 D melaton_navblank: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt78l.dat
+         1795807640.699  5403  5403 I melaton_navblank: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+         1795807640.699  5403  5403 W melaton_navblank: Unexpected CPU variant for x86: x86_64.
+         1795807640.699  5403  5403 W melaton_navblank: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795807640.737  5403  5403 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795807640.851   948  1153 D ShadeStatusBarComponentsInteractor#disableFlagsInteractor: newValue: DisableFlagsModel(disable1=66256896, disable2=1, animate=true)
+         1795807640.854  4110  5266 I MelatonBars: holder token linked (#1331), started over Shizuku
+         1795807640.941  4110  4110 I MelatonBars: holder start answered over Shizuku [shizuku: ok]
+         1795807647.752   671  1141 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807647.753   671   702 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape

@@ -1,0 +1,15 @@
+window 1795809550873..1795809660463 (109.6 s), 336 samples, period median 309 ms, longest 717 ms
+samples with NO shell disable record: 0
+samples with the row NOT held in system_server net flags of display 0 (mDisabled1 & 0x03600000): 0
+samples with two holder pids: 1 (+9.9 .. +9.9 s)
+timeline (a line per change; offset from the first sample, device ms):
+  +    0.0 s 1795809550873  recs=1 what1=0x03600000, lockrec=0x00930000:0x00000001, net=0x3f30000 holder=23037 app=22909 usersvc=- shz=25038 adbd=6430
+  +    5.1 s 1795809555978  recs=1 what1=0x03600000, lockrec=- net=0x3600000 holder=23037 app=22909 usersvc=- shz=25038 adbd=6430
+  +    7.7 s 1795809558531  recs=1 what1=0x03600000, lockrec=0x00930000:0x00000001, net=0x3f30000 holder=23037 app=22909 usersvc=- shz=25038 adbd=6430
+  +    8.2 s 1795809559118  recs=1 what1=0x03600000, lockrec=0x00930000:0x00000001, net=0x3f30000 holder=23037 app=22909 usersvc=24194 shz=25038 adbd=6430
+  +    9.9 s 1795809560776  recs=1 what1=0x03600000, lockrec=0x00930000:0x00000001, net=0x3f30000 holder=23037,24293 app=22909 usersvc=24194 shz=25038 adbd=6430
+  +   10.3 s 1795809561144  recs=1 what1=0x03600000, lockrec=0x00930000:0x00000001, net=0x3f30000 holder=24293 app=22909 usersvc=24194 shz=25038 adbd=6430
+SystemUI disable-flag lines (disableFlagsInteractor) in the logcat excerpt, inside the window:
+  +    4.6 s 1795809555476  disable1=0x3600000 disable2=0  row HELD; status-bar lock bits 0x0000000
+  +    7.5 s 1795809558343  disable1=0x3f30000 disable2=1  row HELD; status-bar lock bits 0x0930000
+SystemUI lines: 2, of them with the row given back: 0

@@ -1,0 +1,16 @@
+  displayId=0
+    mDisabled1=0x3600000
+    mDisabled2=0x0
+  displayId=2
+    mDisabled1=0x0
+    mDisabled2=0x0
+  mDisableRecords.size=3
+    [0] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@ed12a06
+    [1] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@80e8c7
+    [2] userId=0 what1=0x03600000 what2=0x00000000 pkg=com.android.shell token=android.os.BinderProxy@f581b90
+  mCurrentUserId=0
+  mIcons=
+  mCurrentRequestAddTilePackages=[
+  ]
+  mShowPowerMenuCallbacks=[
+  ]

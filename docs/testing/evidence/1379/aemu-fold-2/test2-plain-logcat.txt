@@ -1,0 +1,13 @@
+         1795808217.524   948  1175 D ShadeStatusBarComponentsInteractor#disableFlagsInteractor: newValue: DisableFlagsModel(disable1=9633792, disable2=1, animate=true)
+         1795808217.525 29020 29020 W MelatonBars: holder died after 123 s (#1 in a row): holding again
+         1795808219.170 13184 13184 I melaton_navblank: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+         1795808219.171 13184 13184 I melaton_navblank: Using generational CollectorTypeCMC GC.
+         1795808219.269 13184 13184 D melaton_navblank: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/10/icu") succeeded. 
+         1795808219.270 13184 13184 D melaton_navblank: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt78l.dat
+         1795808219.273 13184 13184 I melaton_navblank: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+         1795808219.273 13184 13184 W melaton_navblank: Unexpected CPU variant for x86: x86_64.
+         1795808219.273 13184 13184 W melaton_navblank: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795808219.301 13184 13184 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795808219.327   948  1177 D ShadeStatusBarComponentsInteractor#disableFlagsInteractor: newValue: DisableFlagsModel(disable1=66256896, disable2=1, animate=true)
+         1795808219.331 29020 31654 I MelatonBars: holder token linked (#1331), started over local ADB
+         1795808219.398 29020 29020 I MelatonBars: holder start answered over local ADB [shizuku: not usable; adb: ok]

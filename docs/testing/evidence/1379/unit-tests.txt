@@ -1,0 +1,80 @@
+#1379 - fix/1379-navrow-followups (DSApp-Kotlin): compile (release Kotlin) + all Android unit tests on Ruiko, 27 Nov 2026
+script: git archive of the commit, scp to Ruiko, fresh C:\Users\ykaza\claude-build\dsapp-ut-1379, gradlew.bat --no-daemon -Pkotlin.compiler.execution.strategy=in-process -Dorg.gradle.jvmargs=-Xmx3500m compileReleaseKotlin testDebugUnitTest (BelowNormal). No APK, no install. Build gate 306.
+origin/main at the time: 8f20573
+
+--- branch ---
+ref f0fe4c1 = f0fe4c1cfac55aa7501ac08c101dfd56f1d97ff7  label branch
+BUILD SUCCESSFUL in 2m 26s
+GRADLE EXIT=0
+AdbKeyFilesTest: tests=20 failures=0 errors=0 skipped=0
+AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+LocalAdbPolicyTest: tests=9 failures=0 errors=0 skipped=0
+NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+ApkInstallPlanTest: tests=16 failures=0 errors=0 skipped=0
+ApkInstallRetryTest: tests=28 failures=0 errors=0 skipped=0
+BackgroundValueTest: tests=12 failures=0 errors=0 skipped=0
+BarsHealPolicyTest: tests=62 failures=0 errors=0 skipped=0
+DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=53 failures=0 errors=0 skipped=0
+NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+NotifySoundRulesTest: tests=21 failures=0 errors=0 skipped=0
+OutFitTest: tests=25 failures=0 errors=0 skipped=0
+OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
+PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+PopupRulesTest: tests=32 failures=0 errors=0 skipped=0
+RadioCoreTest: tests=64 failures=0 errors=0 skipped=0
+RadioModeRulesTest: tests=32 failures=0 errors=0 skipped=0
+RadioWordsTest: tests=10 failures=0 errors=0 skipped=0
+SandboxConnectTest: tests=15 failures=0 errors=0 skipped=0
+PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+ShizukuQueuePolicyTest: tests=7 failures=0 errors=0 skipped=0
+ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+TaskCatchUpTest: tests=10 failures=0 errors=0 skipped=0
+TaskDeliveryTest: tests=9 failures=0 errors=0 skipped=0
+TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+TOTAL tests=631 failures=0 errors=0 skipped=0
+
+--- merged ---
+ref c00cc0a7182d443217538163f59fd689e74920b6 = c00cc0a7182d443217538163f59fd689e74920b6  label merged
+BUILD SUCCESSFUL in 2m 23s
+GRADLE EXIT=0
+AdbKeyFilesTest: tests=20 failures=0 errors=0 skipped=0
+AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+LocalAdbPolicyTest: tests=9 failures=0 errors=0 skipped=0
+NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+ApkInstallPlanTest: tests=16 failures=0 errors=0 skipped=0
+ApkInstallRetryTest: tests=28 failures=0 errors=0 skipped=0
+BackgroundValueTest: tests=12 failures=0 errors=0 skipped=0
+BarsHealPolicyTest: tests=62 failures=0 errors=0 skipped=0
+DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+EmuShimsTest: tests=7 failures=0 errors=0 skipped=0
+ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=53 failures=0 errors=0 skipped=0
+NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+NotifySoundRulesTest: tests=21 failures=0 errors=0 skipped=0
+OutFitTest: tests=25 failures=0 errors=0 skipped=0
+OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
+PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+PopupRulesTest: tests=32 failures=0 errors=0 skipped=0
+RadioCoreTest: tests=64 failures=0 errors=0 skipped=0
+RadioModeRulesTest: tests=32 failures=0 errors=0 skipped=0
+RadioWordsTest: tests=10 failures=0 errors=0 skipped=0
+SandboxConnectTest: tests=15 failures=0 errors=0 skipped=0
+PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+ShizukuQueuePolicyTest: tests=7 failures=0 errors=0 skipped=0
+ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+TaskCatchUpTest: tests=10 failures=0 errors=0 skipped=0
+TaskDeliveryTest: tests=9 failures=0 errors=0 skipped=0
+TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+TOTAL tests=638 failures=0 errors=0 skipped=0
+
+merged = f0fe4c1 + origin/main + claude/shake-torch-1104 + feat/1309-emu-shims + fix/1343-notice-above-keyboard (merged with no conflict)

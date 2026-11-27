@@ -1,0 +1,31 @@
+         1795809554.497 22909 22909 I MelatonBars: show: on=true fits=true status=false bar=false top=true ext=true tray=false give=false
+         1795809555.200 22909 22909 I MelatonBars: translucent check for moe.shizuku.privileged.api: window starts at 668 (solid bar)
+         1795809555.409 22909 22909 I MelatonBars: Android's bar given back: extend-off
+         1795809555.411 22909 22909 I MelatonBars: show: on=false fits=true status=false bar=false top=true ext=true tray=false give=true
+         1795809555.476   948  1153 D ShadeStatusBarComponentsInteractor#disableFlagsInteractor: newValue: DisableFlagsModel(disable1=56623104, disable2=0, animate=true)
+         1795809558.309 22909 22909 I MelatonBars: Android's bar given back: extend-off
+         1795809558.311 22909 22909 I MelatonBars: show: on=false fits=true status=true bar=false top=true ext=true tray=false give=true
+         1795809558.343   948  1177 D ShadeStatusBarComponentsInteractor#disableFlagsInteractor: newValue: DisableFlagsModel(disable1=66256896, disable2=1, animate=true)
+         1795809558.687 22909 22909 I MelatonBars: ime probe live: visible=false bottom=0
+         1795809558.816 22909 22909 I MelatonBars: show: on=false fits=true status=false bar=false top=true ext=true tray=false give=true
+         1795809559.103 22909 22909 I MelatonBars: the row's holder came through local ADB and Shizuku is usable: moving it to a new holder through Shizuku (#1379)
+         1795809559.140 25038 25106 I UserServiceManager: New service record jp.net.seventhreeseven.dreamscape:jp.net.seventhreeseven.dreamscape.ShellService (6381aa58-f018-4aad-bb8f-789e8b5f25af-1795809559139): version=1, daemon=false, apk=/data/app/~~riC7g4bxbn9PzfpVT7_CvA==/jp.net.seventhreeseven.dreamscape-yrFoxlhdlfmZCglmrJp8oQ==/base.apk
+         1795809559.141 25038 24187 V UserServiceManager: Starting process for service record jp.net.seventhreeseven.dreamscape:jp.net.seventhreeseven.dreamscape.ShellService (6381aa58-f018-4aad-bb8f-789e8b5f25af-1795809559139)...
+         1795809559.589 22909 22909 I MelatonBars: Android's bar locked again
+         1795809559.590 22909 22909 I MelatonBars: show: on=false fits=true status=false bar=false top=true ext=false tray=false give=true
+         1795809559.618 24194 24194 I ShizukuServiceStarter: starting service jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.ShellService...
+         1795809559.745 22909 22909 I MelatonBars: home strip added
+         1795809559.929 24194 24194 I ShizukuServiceStarter: send binder to moe.shizuku.privileged.api in user 0
+         1795809560.542 24293 24293 I melaton_navblank: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+         1795809560.543 24293 24293 I melaton_navblank: Using generational CollectorTypeCMC GC.
+         1795809560.704 24293 24293 D melaton_navblank: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/10/icu") succeeded. 
+         1795809560.704 24293 24293 D melaton_navblank: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt78l.dat
+         1795809560.707 24293 24293 I melaton_navblank: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+         1795809560.707 24293 24293 W melaton_navblank: Unexpected CPU variant for x86: x86_64.
+         1795809560.707 24293 24293 W melaton_navblank: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795809560.740 24293 24293 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795809560.789 22909 23301 I MelatonBars: holder token linked (#1331), started over Shizuku
+         1795809561.079 22909 22909 I MelatonBars: the row's holder moved to Shizuku (#1379) [shizuku: ok]
+         1795809561.109 22909 22963 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=true last=-
+         1795809562.131 22909 22909 I MelatonBars: show: on=false fits=true status=false bar=false top=true ext=false tray=false give=false
+         1795809648.587 22909 22963 I LocalAdb: pass (again): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=true last=-

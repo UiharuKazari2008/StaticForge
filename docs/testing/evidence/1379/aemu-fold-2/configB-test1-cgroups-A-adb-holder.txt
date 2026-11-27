@@ -1,0 +1,14 @@
+adbd pid 13006, parent chain:
+  pid=13006 ppid=1 pgrp=13006 sid=0 uid=2000 comm=[adbd] cmd=[/apex/com.android.adbd/bin/adbd --root_seclabel=u:r:su:s0 --tim_seclabel=u:r:adbd_tradeinmode:s0] cgroup=[0::/system/uid_0/pid_13006] ctx=[u:r:adbd:s0]
+  pid=1 ppid=0 pgrp=0 sid=0 uid=0 comm=[init] cmd=[/system/bin/init second_stage] cgroup=[0::/] ctx=[u:r:init:s0]
+shizuku_server pid 19839, parent chain:
+  pid=19839 ppid=1 pgrp=19839 sid=19839 uid=2000 comm=[main] cmd=[shizuku_server] cgroup=[0::/] ctx=[u:r:shell:s0]
+  pid=1 ppid=0 pgrp=0 sid=0 uid=0 comm=[init] cmd=[/system/bin/init second_stage] cgroup=[0::/] ctx=[u:r:init:s0]
+userservice: none
+holder pid 20483, parent chain:
+  pid=20483 ppid=1 pgrp=20483 sid=20483 uid=2000 comm=[main] cmd=[melaton_navblank] cgroup=[0::/system/uid_0/pid_13006] ctx=[u:r:shell:s0]
+  pid=1 ppid=0 pgrp=0 sid=0 uid=0 comm=[init] cmd=[/system/bin/init second_stage] cgroup=[0::/] ctx=[u:r:init:s0]
+app pid 20380, parent chain:
+  pid=20380 ppid=471 pgrp=471 sid=0 uid=10235 comm=[even.dreamscape] cmd=[jp.net.seventhreeseven.dreamscape] cgroup=[0::/apps/uid_10235/pid_20380] ctx=[u:r:untrusted_app_34:s0:c235,c256,c512,c768]
+  pid=471 ppid=1 pgrp=471 sid=0 uid=0 comm=[main] cmd=[zygote64] cgroup=[0::/system/uid_0/pid_471] ctx=[u:r:zygote:s0]
+  pid=1 ppid=0 pgrp=0 sid=0 uid=0 comm=[init] cmd=[/system/bin/init second_stage] cgroup=[0::/] ctx=[u:r:init:s0]
