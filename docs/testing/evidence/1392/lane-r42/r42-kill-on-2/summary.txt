@@ -1,0 +1,32 @@
+events: new pid 25017 seen at device ms 1795813548108, 1.39 s after kill -9
+t0 (Start proc) epoch 1795813547.782
+first MelatonBars line: +0.32 s   holder token linked: +2.19 s
+log silence of the main thread (tid=pid) between Start proc and token linked: 0.33 s from +0.63, 0.32 s from +1.16
+log silence of the any thread of the app between Start proc and token linked: 0.21 s from +1.20, 0.19 s from +0.70
+hb.txt: 267 beats, median step 122 ms, longest gap 0.20 s wall / 0.19 s uptime, from +0.66 s
+ticks.txt: 48 ticks, longest gap 0.73 s from +0.37 s
+main thread blocked (not in the looper poll, < 30 ms CPU in all): longest 0.00 s from +0.00 s, CPU used 0 ms, (state, wchan) samples None
+main thread outside its looper poll for 2 s or more: +0.4..+3.2 s (2.8 s, {'0': 4, 'futex_wait': 1})
+  stretch +0.4..+3.2 s (2.8 s): main ran 0.30 s on CPU + waited 0.51 s for a CPU; longest part with < 30 ms CPU 0.0 s; main-thread log lines inside 56, longest silence 0.36 s
+  +  1.98 25051 CafeTasks: engine started (9 files, from the server)
+  event +-1.06 kill -9 22339
+  event +0.33 new pid 25017
+  event +6.38 dump +6 s: SIGQUIT system_server 847
+  event +6.56 dump +6 s: a11y state done
+  event +6.58 dump +6 s: threads
+  event +9.28 dump +6 s: SIGQUIT
+  event +9.30 dump +6 s: debuggerd
+  event +9.55 dump +6 s: debuggerd done (0)
+  event +15.59 dump +12 s: SIGQUIT system_server 847
+  event +15.73 dump +12 s: a11y state done
+  event +15.74 dump +12 s: threads
+  event +18.40 dump +12 s: SIGQUIT
+  event +18.41 dump +12 s: debuggerd
+  event +18.67 dump +12 s: debuggerd done (0)
+  event +30.80 watch done
+window and engine lines of the new process (t0 .. +75 s):
+  W +  0.32 tid=25017 (main) MelatonBars: early hold at process start (#1371)
+  W +  1.63 tid=25017 (main) MelatonBars: first window look applied after 494 ms (3 windows)
+  W +  1.98 tid=25051 CafeTasks: engine started (9 files, from the server)
+  W +  2.19 tid=25037 MelatonBars: holder token linked (#1331), started over Shizuku
+traces: trace_45, trace_46, trace_47, trace_48

@@ -1,0 +1,16 @@
+1795814024662 saw new pid 21630
+1795814027685 KEYCODE_WAKEUP
+1795814027735 KEYCODE_WAKEUP returned
+display 0 physical id 4619827259835644672
+1795814028583 shot a begin
+1795814029270 shot a end
+1795814029279 windows a: MelatonBar(onScreen=false,visible=false) MelatonBar(onScreen=true,visible=true) MelatonBarEdge(onScreen=true,visible=true) MelatonBarEdge(onScreen=true,visible=true) MelatonHomeStrip(onScreen=true,visible=true) MelatonImeProbe(onScreen=false,visible=false) MelatonBarProbe(onScreen=false,visible=false) 
+1795814030162 shot b begin
+1795814030626 shot b end
+1795814030639 windows b: MelatonBar(onScreen=true,visible=true) MelatonBar(onScreen=true,visible=true) MelatonBarEdge(onScreen=true,visible=true) MelatonBarEdge(onScreen=true,visible=true) MelatonHomeStrip(onScreen=false,visible=false) MelatonImeProbe(onScreen=false,visible=false) MelatonBarProbe(onScreen=false,visible=false) 
+1795814032492 shot c begin
+1795814032914 shot c end
+1795814032924 windows c: MelatonBar(onScreen=true,visible=true) MelatonBar(onScreen=true,visible=true) MelatonBarEdge(onScreen=true,visible=true) MelatonBarEdge(onScreen=true,visible=true) MelatonHomeStrip(onScreen=false,visible=false) MelatonImeProbe(onScreen=false,visible=false) MelatonBarProbe(onScreen=false,visible=false) 
+1795814039983 shot d begin
+1795814040449 shot d end
+1795814040464 windows d: MelatonBar(onScreen=true,visible=true) MelatonBar(onScreen=true,visible=true) MelatonBarEdge(onScreen=true,visible=true) MelatonBarEdge(onScreen=true,visible=true) MelatonHomeStrip(onScreen=false,visible=false) MelatonImeProbe(onScreen=false,visible=false) MelatonBarProbe(onScreen=false,visible=false) 

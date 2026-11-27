@@ -1,0 +1,91 @@
+# extract of the ANR trace anr_2026-11-27-16-29-50-781: subject, and the app threads main, RenderThread, window-bars
+Subject: Broadcast of Intent { act=android.intent.action.SCREEN_ON flg=0x50200010 cmp=jp.net.seventhreeseven.dreamscape/in }
+Timeout: 10063
+
+----- pid 7144 at 2026-11-27 16:29:54.920683300-0500 -----
+
+"main" prio=5 tid=1 Native
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x729f8f68 self=0x74217fc03010
+  | sysTid=7144 nice=0 cgrp=foreground sched=0/0 handle=0x74225d1d6038
+  | state=S schedstat=( 398998395 824992619 249 ) utm=9 stm=30 core=0 HZ=100
+  | stack=0x7ffc627ee000-0x7ffc627f0000 stackSize=8188KB
+  | held mutexes=
+  native: #00 pc 00059976  /apex/com.android.runtime/lib64/bionic/libc.so (syscall+22) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #01 pc 000681d3  /apex/com.android.runtime/lib64/bionic/libc.so (__futex_wait_ex+115) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #02 pc 00068138  /apex/com.android.runtime/lib64/bionic/libc.so (pthread_cond_wait+56) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #03 pc 000a97da  /system/lib64/libc++.so (std::__1::__assoc_sub_state::copy+90) (BuildId: d4ff8487491f3b6f71a7c7e18b659112c9ee3670)
+  native: #04 pc 000a9b78  /system/lib64/libc++.so (std::__1::future<void>::get+24) (BuildId: d4ff8487491f3b6f71a7c7e18b659112c9ee3670)
+  native: #05 pc 00384501  /system/lib64/libhwui.so (android::uirenderer::renderthread::RenderProxy::setStopped+417) (BuildId: b61ca0d56819e23e75cb164617ac4f0f)
+  at android.graphics.HardwareRenderer.nSetStopped(Native method)
+  at android.graphics.HardwareRenderer.setStopped(HardwareRenderer.java:637)
+  at android.view.ViewRootImpl.draw(ViewRootImpl.java:6288)
+  at android.view.ViewRootImpl.performDraw(ViewRootImpl.java:5970)
+  at android.view.ViewRootImpl.performTraversals(ViewRootImpl.java:4903)
+  at android.view.ViewRootImpl.doTraversal(ViewRootImpl.java:3351)
+  at android.view.ViewRootImpl$TraversalCallback.onVsync(ViewRootImpl.java:11448)
+  at android.view.Choreographer$CallbackRecord.run(Choreographer.java:1664)
+  at android.view.Choreographer.doCallbacks(Choreographer.java:1252)
+  at android.view.Choreographer.doFrame(Choreographer.java:1209)
+  at android.view.Choreographer$FrameDisplayEventReceiver.run(Choreographer.java:1640)
+  at android.os.Handler.handleCallback(Handler.java:1095)
+  at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+  at android.os.Handler.dispatchMessage(Handler.java:125)
+  at android.os.Looper.loopOnce(Looper.java:296)
+  at android.os.Looper.loop(Looper.java:397)
+  at android.app.ActivityThread.main(ActivityThread.java:9523)
+  at java.lang.reflect.Method.invoke(Native method)
+  at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+  at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+DumpLatencyMs: 0.5252
+
+
+"RenderThread" daemon prio=7 tid=39 Native
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x2138e80 self=0x74217fc67d30
+  | sysTid=7328 nice=-4 cgrp=foreground sched=0/0 handle=0x741f001ea0c0
+  | state=R schedstat=( 2952513906 13371278833 855 ) utm=0 stm=295 core=2 HZ=100
+  | stack=0x741f000f3000-0x741f000f5000 stackSize=988KB
+  | held mutexes=
+  native: #00 pc 0005cca7  /apex/com.android.runtime/lib64/bionic/libc.so (read+7) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #01 pc 0004af32  /vendor/lib64/libOpenglSystemCommon.so (qemu_pipe_read+18) (BuildId: 5962c2be312f7d10a767a7f93f96cd86)
+  native: #02 pc 0003d602  /vendor/lib64/libOpenglSystemCommon.so (QemuPipeStream::commitBufferAndReadFully+418) (BuildId: 5962c2be312f7d10a767a7f93f96cd86)
+  native: #03 pc 0000e12a  /vendor/lib64/lib_renderControl_enc.so ((anonymous namespace)::rcCreateWindowSurface_enc+282) (BuildId: d1b92f2f4fa5feda28b5747afde2d189)
+  native: #04 pc 0003e44c  /vendor/lib64/egl/libEGL_emulation.so (egl_window_surface_t::init+620) (BuildId: cc8ec8824e2935c868a473de87e75e06)
+  native: #05 pc 0003e572  /vendor/lib64/egl/libEGL_emulation.so (egl_window_surface_t::create+66) (BuildId: cc8ec8824e2935c868a473de87e75e06)
+  native: #06 pc 0003fe09  /vendor/lib64/egl/libEGL_emulation.so (eglCreateWindowSurface+601) (BuildId: cc8ec8824e2935c868a473de87e75e06)
+  native: #07 pc 00020509  /system/lib64/libEGL.so (void* android::eglCreateWindowSurfaceTmpl<int, void* >+249) (BuildId: bbceab7c5d458d8e900a28b292194bee)
+  native: #08 pc 000203e1  /system/lib64/libEGL.so (android::eglCreateWindowSurfaceImpl+81) (BuildId: bbceab7c5d458d8e900a28b292194bee)
+  native: #09 pc 003efc17  /system/lib64/libhwui.so (android::uirenderer::renderthread::EglManager::createSurface+1063) (BuildId: b61ca0d56819e23e75cb164617ac4f0f)
+  native: #10 pc 003ec227  /system/lib64/libhwui.so (android::uirenderer::skiapipeline::SkiaOpenGLPipeline::setSurface+183) (BuildId: b61ca0d56819e23e75cb164617ac4f0f)
+  native: #11 pc 0037d934  /system/lib64/libhwui.so (android::uirenderer::renderthread::CanvasContext::setupPipelineSurface+68) (BuildId: b61ca0d56819e23e75cb164617ac4f0f)
+  native: #12 pc 0037d472  /system/lib64/libhwui.so (android::uirenderer::renderthread::CanvasContext::setSurface+210) (BuildId: b61ca0d56819e23e75cb164617ac4f0f)
+  native: #13 pc 0038a4cd  /system/lib64/libhwui.so (std::__1::__function::__func<android::uirenderer::renderthread::RenderProxy::setSurface::$_0, void >::operator +29) (BuildId: b61ca0d56819e23e75cb164617ac4f0f)
+  native: #14 pc 0038ec3e  /system/lib64/libhwui.so (android::uirenderer::WorkQueue::process+670) (BuildId: b61ca0d56819e23e75cb164617ac4f0f)
+  native: #15 pc 003f745b  /system/lib64/libhwui.so (android::uirenderer::renderthread::RenderThread::threadLoop+459) (BuildId: b61ca0d56819e23e75cb164617ac4f0f)
+  native: #16 pc 000196d3  /system/lib64/libutils.so (android::Thread::_threadLoop+323) (BuildId: b7a1c04525d0c043cfcd4ee3f13e4762)
+  native: #17 pc 0001bbdf  /system/lib64/libutils.so (libutil_thread_trampoline +15) (BuildId: b7a1c04525d0c043cfcd4ee3f13e4762)
+  native: #18 pc 0008c7af  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start +63) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #19 pc 0008670d  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+45) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  (no managed stack frames)
+DumpLatencyMs: 589.79
+
+
+"window-bars" daemon prio=5 tid=50 Waiting
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x22237b0 self=0x74217fc7af20
+  | sysTid=7356 nice=0 cgrp=foreground sched=0/0 handle=0x741e796c30c0
+  | state=S schedstat=( 3587472 5412875 5 ) utm=0 stm=0 core=2 HZ=100
+  | stack=0x741e795c0000-0x741e795c2000 stackSize=1036KB
+  | held mutexes=
+  at jdk.internal.misc.Unsafe.park(Native method)
+  - waiting on an unknown object
+  at java.util.concurrent.locks.LockSupport.park(LockSupport.java:376)
+  at java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionNode.block(AbstractQueuedSynchronizer.java:520)
+  at java.util.concurrent.ForkJoinPool.unmanagedBlock(ForkJoinPool.java:3797)
+  at java.util.concurrent.ForkJoinPool.managedBlock(ForkJoinPool.java:3738)
+  at java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:1752)
+  at java.util.concurrent.LinkedBlockingQueue.take(LinkedBlockingQueue.java:435)
+  at java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1026)
+  at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1086)
+  at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
+  at java.lang.Thread.run(Thread.java:1572)
+DumpLatencyMs: 690.811
+

@@ -1,0 +1,40 @@
+         1795814990.449   847  7996 I am_anr  : [0,7144,jp.net.seventhreeseven.dreamscape,550092356,Broadcast of Intent { act=android.intent.action.SCREEN_ON flg=0x50200010 cmp=jp.net.seventhreeseven.dreamscape/in }]
+         1795815001.025  1795  1795 I Choreographer: Skipped 1248 frames!  The application may be doing too much work on its main thread.
+         1795815001.883  7144  7368 I HWUI    : Davey! duration=22578ms
+         1795815002.299  1551  1783 I HWUI    : Davey! duration=790ms
+         1795815002.475  7144  7368 I HWUI    : Davey! duration=23617ms
+         1795815002.557  1551  1551 I Choreographer: Skipped 1343 frames!  The application may be doing too much work on its main thread.
+         1795815003.785  1551  2052 I HWUI    : Davey! duration=778ms
+         1795815003.933  1795  1925 I HWUI    : Davey! duration=874ms
+         1795815004.058  1551  3163 I HWUI    : Davey! duration=1095ms
+         1795815004.187  1551  2052 I HWUI    : Davey! duration=1060ms
+         1795815004.519  1551  2052 I HWUI    : Davey! duration=1455ms
+         1795815004.519  1551  2052 I HWUI    : Davey! duration=1234ms
+         1795815004.673  1551  2052 I HWUI    : Davey! duration=1563ms
+         1795815005.171   847   911 I wm_activity_launch_time: [0,183368203,com.google.android.deskclock/com.android.deskclock.ScreensaverActivity,23591]
+         1795815005.236  1551  2052 I HWUI    : Davey! duration=1827ms
+         1795815005.237  1551  2052 I HWUI    : Davey! duration=2038ms
+         1795815006.037  7588  7588 I Choreographer: Skipped 122 frames!  The application may be doing too much work on its main thread.
+         1795815006.516  7588  7599 I HWUI    : Davey! duration=3716ms
+         1795815006.520  1795  1839 I HWUI    : Davey! duration=771ms
+         1795815006.873  1551  2004 I Choreographer: Skipped 100 frames!  The application may be doing too much work on its main thread.
+         1795815007.045  1551  1551 I Choreographer: Skipped 127 frames!  The application may be doing too much work on its main thread.
+         1795815007.203  1551  2052 I HWUI    : Davey! duration=1087ms
+         1795815007.456  1551 19549 I HWUI    : Davey! duration=1374ms
+         1795815007.961  1551  3163 I HWUI    : Davey! duration=2313ms
+         1795815007.961  1551  3163 I HWUI    : Davey! duration=2271ms
+         1795815008.124  1551 19549 I HWUI    : Davey! duration=1012ms
+         1795815008.388  7588  7599 I HWUI    : Davey! duration=1766ms
+         1795815008.472  1551  3163 I HWUI    : Davey! duration=859ms
+         1795815008.633  7588  7599 I HWUI    : Davey! duration=1525ms
+         1795815008.675  1551  3163 I HWUI    : Davey! duration=1513ms
+         1795815010.039  1551  3163 I HWUI    : Davey! duration=2047ms
+         1795815010.322  1551  3163 I HWUI    : Davey! duration=999ms
+         1795815010.510  7588  7602 I HWUI    : Davey! duration=987ms
+         1795815011.615  7144  7229 I HWUI    : Davey! duration=1444ms
+         1795815012.351  7144  7229 I HWUI    : Davey! duration=1866ms
+         1795815012.628  7144  8687 I HWUI    : Davey! duration=2317ms
+         1795815013.773   847   912 I Choreographer: Skipped 100 frames!  The application may be doing too much work on its main thread.
+         1795815014.061   847  3144 I HWUI    : Davey! duration=1719ms
+         1795815014.235   847  3144 I HWUI    : Davey! duration=1880ms
+         1795815015.989  7144  8636 I HWUI    : Davey! duration=749ms

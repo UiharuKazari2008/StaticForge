@@ -1,0 +1,4 @@
+lane aemu-fold-2, real silent self-update 3632839 -> 3632928 with the display off
+old pid 21269
+    versionCode=3632928 minSdk=31 targetSdk=36
+      x86_64: [status=verify] [reason=install] [primary-abi]

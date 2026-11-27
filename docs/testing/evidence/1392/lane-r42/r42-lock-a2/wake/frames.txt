@@ -1,0 +1,1 @@
+6 frames in the recording (it started 0.38 s after KEYCODE_WAKEUP; its first try ran before the display was on), all looked at: every one is Melaton's lock screen

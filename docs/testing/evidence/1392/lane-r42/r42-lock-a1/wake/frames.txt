@@ -1,0 +1,1 @@
+9 frames, 1968x2184, first at the recording start 0.07 s after KEYCODE_WAKEUP, all 9 looked at: every one is Melaton's lock screen

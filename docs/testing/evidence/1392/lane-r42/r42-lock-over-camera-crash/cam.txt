@@ -1,0 +1,10 @@
+1795814592325 running process 25524
+1795814593367 before the camera: MelatonLock visible=true focus=[null] isKeyguardShowing=true
+1795814593432 am start STILL_IMAGE_CAMERA_SECURE
+1795814593510 am start returned
+1795814593590..1795814593880 MelatonLock visible=true focus=[null] isKeyguardShowing=true
+1795814595053 shot a begin
+1795814596340 shot a end
+1795814605364 shot b begin
+1795814607057 shot b end
+1795814613072 end: MelatonLock visible=true focus=[null] isKeyguardShowing=true

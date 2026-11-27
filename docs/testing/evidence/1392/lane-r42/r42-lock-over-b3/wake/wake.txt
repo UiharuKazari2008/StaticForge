@@ -1,0 +1,12 @@
+1795814977454 saw new pid 7144
+1795814979529 before the wake: MelatonLock visible=no-window focus=[null] isKeyguardShowing=true mKeyguardOccluded=false
+1795814979965 KEYCODE_WAKEUP
+1795814980096 before the program: MelatonLock visible=no-window focus=[null] isKeyguardShowing=true mKeyguardOccluded=false
+1795814981311 am start -n com.google.android.deskclock/com.android.deskclock.ScreensaverActivity
+1795814982121 am start returned
+1795814983693 shot a begin
+1795814982180..1795814984108 MelatonLock visible=no-window focus=[null] isKeyguardShowing=true mKeyguardOccluded=false
+1795815003081 shot a end
+1795815002675 end: MelatonLock visible=no-window focus=[null] isKeyguardShowing=true mKeyguardOccluded=false
+1795815012402 shot b begin
+1795815013868 shot b end

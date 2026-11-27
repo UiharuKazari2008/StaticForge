@@ -1,0 +1,12 @@
+lane aemu-fold-2, mode reinstall-off
+pre: app=8725 holder=8926 recs=1 bound=1 shizuku=19508 wake=Awake
+{"ok": true, "deviceMs": 1795813238675, "localMs": 1795813239201, "skewMs": -494}
+apk copy sha256 3981b1fdcbfaac4d
+{"ok": true, "screen": "Asleep"}
+pm install -r -g at device ms 1795813251707
+Success
+pm install returned at device ms 1795813253056
+    versionCode=3632928 minSdk=31 targetSdk=36
+      x86_64: [status=verify] [reason=install] [primary-abi]
+{"ok": true, "screen": "Awake"}
+post: app=12144 holder=12390 recs=1 bound=1 shizuku=19508 wake=Awake

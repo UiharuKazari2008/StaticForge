@@ -1,0 +1,18 @@
+  displayId=0
+    mDisabled1=0x3f30000
+    mDisabled2=0x1
+  displayId=2
+    mDisabled1=0x0
+    mDisabled2=0x0
+  mDisableRecords.size=4
+    [0] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@b696ae5
+    [1] userId=0 what1=0x00000000 what2=0x00000000 pkg=com.android.systemui token=android.os.BinderProxy@a2c31fb
+    [2] userId=0 what1=0x00930000 what2=0x00000001 pkg=android token=com.android.server.statusbar.StatusBarShellCommand$StatusBarShellCommandToken@5ebb406
+    [3] userId=0 what1=0x03600000 what2=0x00000000 pkg=com.android.shell token=android.os.BinderProxy@1f141c6
+  mCurrentUserId=0
+  mIcons=
+  mCurrentRequestAddTilePackages=[
+  ]
+  mShowPowerMenuCallbacks=[
+  ]
+  TileRequestTracker:

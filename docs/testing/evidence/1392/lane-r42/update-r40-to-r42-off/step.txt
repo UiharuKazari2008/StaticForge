@@ -1,0 +1,137 @@
+[15:53:20] === self-update-screen-off 3632839 3632928 on aemu-fold-2 (agent claude-974b3227) evidence /home/kanmi/staticforge/docs/testing/evidence/1392/lane-r42/update-r40-to-r42-off/bars1371 ===
+[15:53:23] status: shape=fold booted=true shizukuRunning=true (pid 19508) appVersionCode=3632839 noAudio=true screen=Awake appPid=21269; skewMs=-477 
+[15:53:24] before: holder=22206 app=21269 recs=1
+[15:53:24] INFO  state before: holder=22206 app=21269 recs=1 out=[OK ] vc=3632839 shizuku=19508 adbd=533 mode=0 overlay=threebutton,
+[15:53:25]       the app's route state (LocalAdb pass line, last 15 min):          1795812662.735 21269 21359 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=true last=-
+[15:53:29] INFO  sampler on (guest, 0.2 s loop): alive 26363 lines=8
+[15:53:29] INFO  update state: installed=3632839 staged=3632928 waiting=no installer=silent delivery=3632928/staged latest=3632928 (waited 0 s)
+[15:53:29]       apk files before: -rw-rw---- 1 u0_a235 ext_data_rw 23661205 2026-11-27 15:52 /sdcard/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-3632928.apk
+[15:53:31] INFO  display off: {"ok": true, "screen": "Asleep"}
+[15:53:36] INFO  lane.sh update restart-now (once) at device ms 1795812816031; old app pid 21269, old holder 22206
+[15:53:37] restart-now answer: {"ok": true, "id": "aemu-fold-2", "answer": {"state": "installing", "via": "shizuku"}}
+[15:53:37] INFO  answer: answer.state=installing answer.via=shizuku 
+[15:53:44] PASS  versionCode 3632928 installed, the app is back (pid 21269 -> 27603) and a NEW holder holds (pid 22206 -> 28048) 8 s after Restart Now: holder=28048 app=27603 recs=1
+[15:53:49] INFO  display switched on again
+[15:53:53] INFO  sampler file: /home/kanmi/staticforge/docs/testing/evidence/1392/lane-r42/update-r40-to-r42-off/bars1371/self-update-screen-off-20261127-155320-sample.txt (78 samples)
+[15:53:53] INFO  sampler analysis:
+      SAMPLES=78
+      WINDOW_SAMPLES=45 BLIND_GAPS_OVER_1500MS=none
+      PERIOD_MEDIAN_MS=327
+      MAXGAP_MS=594
+      TIMELINE (offset from the first window sample; a line per change of the holder / app pids):
+        +0.0s holder=22206 app=21269 recs=1
+        +1.9s holder=22206 app=- recs=1
+        +2.9s holder=22206 app=27603 recs=1
+        +6.0s holder=22206,28048 app=27603 recs=1
+        +6.7s holder=28048 app=27603 recs=1
+        +10.5s holder=28048 app=27603,29000 recs=1
+        +10.8s holder=28048 app=27603 recs=1
+      RECS_SAMPLED=yes
+      ZERO_SAMPLES_IN_WINDOW=0 MINRECS=1
+      ZERO_SPAN_MAX_S=0.0
+      T_DEATH_MS=1795812818142
+      OLD_APP=21269 OLD_HOLDERS=22206 NEW_HOLDERS=28048
+      ZEROS_AFTER_DEATH=0
+      OVERLAP_SAMPLES=2
+      OVERLAP_SPAN_S=0.3
+        two holder pids alive from +4.2 s to +4.5 s (relative to the old app pid disappearing)
+      APP_BACK_S=1.0
+      NEW_PID_S=4.2
+      NEW_REC_S=4.2
+      OLD_GONE_S=4.8
+      RESULT=PASS
+      WHY=recs never 0 after the old app pid disappeared; new holder pid(s) 28048; two holders alive at once
+[15:53:53] PASS  sampler: recs never 0 after the old app pid disappeared; new holder pid(s) 28048; two holders alive at once
+[15:53:54] INFO  logcat of the window: /home/kanmi/staticforge/docs/testing/evidence/1392/lane-r42/update-r40-to-r42-off/bars1371/self-update-screen-off-20261127-155320-logcat.txt (238 lines kept)
+[15:53:54] INFO  net disable flags of display 0 (SystemUI's log: the row is empty while 0x03600000 is set):
+      NETFLAGS start disable1=0x3600000 (from the statusbar dump before), 1 change(s) logged by SystemUI in the window
+           +4.6 s  disable1=0x3f30000  row emptied (held)
+      NET_GAPS=0
+      RESULT=PASS
+      WHY=the net disable flags never dropped the row in the window (1 change(s) logged, none un-held)
+[15:53:54] PASS  net flags: the net disable flags never dropped the row in the window (1 change(s) logged, none un-held)
+[15:53:54] INFO  history window (the dump's own disable history, when this Android build has one):
+      HISTORY rows of pkg=com.android.shell in the dump: 0, in the window (>= 11-27 15:53:36 device time): 0   (* = in the window)
+      NOROWS=1
+      RESULT=FAIL
+      WHY=no history row of pkg=com.android.shell could be read from the dump (format not as assumed: look at the -statusbar-*.txt file)
+[15:53:54] INFO  this Android build's dumpsys statusbar has NO disable history (only mDisableRecords): the sampler and the net-flag log above decide; the record tokens before / after: android.os.BinderProxy@279d60e -> android.os.BinderProxy@552f25a
+[15:53:54] INFO  log events (offset from the old app pid disappearing):
+        LOG INSTALL     -1.7 s  1795812816.404 21269 21329 I ApkInstall: installing jp.net.seventhreeseven.dreamscape 1.0.3632928 (3632928) via shizuku (stream) from /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-363292
+        LOG SHIZUKU     -1.7 s  1795812816.404 21269 21329 I ApkInstall: installing jp.net.seventhreeseven.dreamscape 1.0.3632928 (3632928) via shizuku (stream) from /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-363292
+        LOG KILL        -0.1 s  1795812818.009   847   914 I ActivityManager: Force stopping jp.net.seventhreeseven.dreamscape appid=10235 user=0: killDueToPackageUpdate
+        LOG KILL        -0.1 s  1795812818.030   847   914 I ActivityManager: Killing 21269:jp.net.seventhreeseven.dreamscape/u0a235 (adj 100): stop jp.net.seventhreeseven.dreamscape due to killDueToPackageUpdate
+        LOG KILL        +0.2 s  1795812818.377   847   982 I ActivityManager: Force stopping jp.net.seventhreeseven.dreamscape appid=10235 user=0: pkg removed
+        LOG START       +0.6 s  1795812818.709   847   923 I ActivityManager: Start proc 27603:jp.net.seventhreeseven.dreamscape/u0a235 for bound-service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListen
+        LOG SHIZUKU     +1.8 s  1795812819.911 27603 27603 D ShizukuProvider: Initialize Sui: false
+        LOG BINDERRCV    +1.9 s  1795812820.001 27603 27671 D ShizukuProvider: binder received
+        LOG SHIZUKU     +1.9 s  1795812820.001 27603 27671 D ShizukuProvider: binder received
+        LOG SHIZUKU     +1.9 s  1795812820.005 27603 27671 I ShizukuApplication: attachApplication
+        LOG INSTALL     +1.9 s  1795812820.079 27603 27773 I ApkInstall: installed jp.net.seventhreeseven.dreamscape (3632928) via shizuku (stream) (confirmed at app start)
+        LOG SHIZUKU     +1.9 s  1795812820.079 27603 27773 I ApkInstall: installed jp.net.seventhreeseven.dreamscape (3632928) via shizuku (stream) (confirmed at app start)
+        LOG BINDER      +2.0 s  1795812820.133 27603 27603 I MelatonBars: Shizuku's binder arrived: holding the row (#1331)
+        LOG BARS        +2.0 s  1795812820.133 27603 27603 I MelatonBars: Shizuku's binder arrived: holding the row (#1331)
+        LOG SHIZUKU     +2.0 s  1795812820.133 27603 27603 I MelatonBars: Shizuku's binder arrived: holding the row (#1331)
+        LOG EARLY       +2.0 s  1795812820.134 27603 27603 I MelatonBars: early hold at process start (#1371)
+        LOG BARS        +2.0 s  1795812820.134 27603 27603 I MelatonBars: early hold at process start (#1371)
+        LOG SHIZUKU     +2.3 s  1795812820.399 19508 19754 I UserServiceManager: New service record jp.net.seventhreeseven.dreamscape:jp.net.seventhreeseven.dreamscape.ShellService (b92c12c8-328f-4054-a60b-c81d075d1508-1795812820399): version=1, daemon=false, ap
+        LOG SHIZUKU     +2.3 s  1795812820.400 19508 19648 V UserServiceManager: Starting process for service record jp.net.seventhreeseven.dreamscape:jp.net.seventhreeseven.dreamscape.ShellService (b92c12c8-328f-4054-a60b-c81d075d1508-1795812820399)...
+        LOG SHIZUKU     +2.6 s  1795812820.785 27817 27817 D AndroidRuntime: Calling main entry moe.shizuku.starter.ServiceStarter
+        LOG SHIZUKU     +2.6 s  1795812820.789 27817 27817 I ShizukuServiceStarter: starting service jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.ShellService...
+        LOG SHIZUKU     +2.8 s  1795812820.956   847  1453 D ActivityManager: sync unfroze 19521 moe.shizuku.privileged.api for 7
+        LOG SHIZUKU     +2.8 s  1795812820.968 27817 27817 I ShizukuServiceStarter: send binder to moe.shizuku.privileged.api in user 0
+        LOG BARS        +3.6 s  1795812821.755 27603 27603 I MelatonBars: ime probe live: visible=false bottom=0
+        LOG INSTALL     +3.8 s  1795812821.944 27603 27782 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+        LOG SHIZUKU     +3.8 s  1795812821.944 27603 27782 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+        LOG LINK        +4.3 s  1795812822.447 27603 27964 I MelatonBars: holder token linked (#1331), started over Shizuku
+        LOG BARS        +4.3 s  1795812822.447 27603 27964 I MelatonBars: holder token linked (#1331), started over Shizuku
+        LOG SHIZUKU     +4.3 s  1795812822.447 27603 27964 I MelatonBars: holder token linked (#1331), started over Shizuku
+        LOG BARS        +4.6 s  1795812822.710 27603 27603 I MelatonBars: holder start answered over Shizuku [shizuku: ok]
+        LOG SHIZUKU     +4.6 s  1795812822.710 27603 27603 I MelatonBars: holder start answered over Shizuku [shizuku: ok]
+        LOG INSTALL     +4.6 s  1795812822.746 27603 27782 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+        LOG SHIZUKU     +4.6 s  1795812822.746 27603 27782 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+        LOG HEAL        +5.9 s  1795812824.062 27603 27603 I BarsHeal: check (process start)
+        LOG SHIZUKU     +6.1 s  1795812824.223 27603 27919 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=true last=-
+        LOG BARS        +9.6 s  1795812827.721 27603 27603 I MelatonBars: first window look applied after 6793 ms (0 windows)
+        LOG BARS        +9.6 s  1795812827.722 27603 27603 I MelatonBars: show: on=false fits=true status=false bar=false top=true ext=false tray=false give=false
+        LOG BARS       +10.0 s  1795812828.176 27603 27603 I MelatonBars: home strip added
+        LOG BARS       +10.2 s  1795812828.390 27603 27603 I MelatonBars: show: on=false fits=true status=false bar=true top=true ext=false tray=false give=false
+        LOG BARS       +10.8 s  1795812828.976 27603 27603 I MelatonBars: show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+        LOG BARS       +11.8 s  1795812829.914 27603 27603 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+        LOG BARS       +11.9 s  1795812830.038 27603 27603 I MelatonBars: translucent check (soft keys): strip spread 1.4 (picture above 14), against below 16.8 (runs on under 10)
+        LOG BARS       +11.9 s  1795812830.039 27603 27603 I MelatonBars: translucent bar for com.android.settings: true
+        LOG SHIZUKU    +12.8 s  1795812830.985   847  1162 D ActivityManager: freezing 19521 moe.shizuku.privileged.api
+[15:53:54]       main-thread / GC lines of the new app pid 27603 in the window (Choreographer skipped frames, Slow dispatch / delivery, ANR, GC; offsets from the old app pid disappearing): +0.53 27603 27603 I even.dreamscape: Using generational CollectorTypeCMC GC.
+[15:53:54]       main-thread / GC lines of the new app pid 27603 in the window (Choreographer skipped frames, Slow dispatch / delivery, ANR, GC; offsets from the old app pid disappearing): +1.98 27603 27603 I Choreographer: Skipped 40 frames! The application may be doing too much work on its main th
+[15:53:54]       main-thread / GC lines of the new app pid 27603 in the window (Choreographer skipped frames, Slow dispatch / delivery, ANR, GC; offsets from the old app pid disappearing): +3.26 27603 27603 I Choreographer: Skipped 45 frames! The application may be doing too much work on its main th
+[15:53:54]       main-thread / GC lines of the new app pid 27603 in the window (Choreographer skipped frames, Slow dispatch / delivery, ANR, GC; offsets from the old app pid disappearing): +3.64 27603 27659 I HWUI : Davey! duration=1099ms; Flags=1, FrameTimelineVsyncId=87823, IntendedVsync=108634210
+[15:53:54]       main-thread / GC lines of the new app pid 27603 in the window (Choreographer skipped frames, Slow dispatch / delivery, ANR, GC; offsets from the old app pid disappearing): +3.68 27603 27964 I HWUI : Davey! duration=1180ms; Flags=1, FrameTimelineVsyncId=87823, IntendedVsync=108634210
+[15:53:54]       main-thread / GC lines of the new app pid 27603 in the window (Choreographer skipped frames, Slow dispatch / delivery, ANR, GC; offsets from the old app pid disappearing): +10.25 27603 27603 I Choreographer: Skipped 32 frames! The application may be doing too much work on its main t
+[15:53:54]       main-thread / GC lines of the new app pid 27603 in the window (Choreographer skipped frames, Slow dispatch / delivery, ANR, GC; offsets from the old app pid disappearing): +10.44 27603 27659 I HWUI : Davey! duration=707ms; Flags=1, FrameTimelineVsyncId=88723, IntendedVsync=109354913
+[15:53:54]       main-thread / GC lines of the new app pid 27603 in the window (Choreographer skipped frames, Slow dispatch / delivery, ANR, GC; offsets from the old app pid disappearing): +10.63 27603 27964 I HWUI : Davey! duration=869ms; Flags=1, FrameTimelineVsyncId=88723, IntendedVsync=109354913
+[15:53:54]       main-thread / GC lines of the new app pid 27603 in the window (Choreographer skipped frames, Slow dispatch / delivery, ANR, GC; offsets from the old app pid disappearing): +10.80 27603 27964 I HWUI : Davey! duration=1076ms; Flags=1, FrameTimelineVsyncId=88723, IntendedVsync=10935491
+[15:53:55]       ApkInstall:          1795812740.025   533   533 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:logcat -d -v time | grep -E "ApkInstall|AppUpdate" | tail -20'
+[15:53:55]       ApkInstall:          1795812816.404 21269 21329 I ApkInstall: installing jp.net.seventhreeseven.dreamscape 1.0.3632928 (3632928) via shizuku (stream) from /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-3632928.apk (try 1)
+[15:53:55]       ApkInstall:          1795812820.079 27603 27773 I ApkInstall: installed jp.net.seventhreeseven.dreamscape (3632928) via shizuku (stream) (confirmed at app start)
+[15:53:55]       ApkInstall:          1795812821.944 27603 27782 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+[15:53:55]       ApkInstall:          1795812822.746 27603 27782 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+[15:53:55] PASS  silent route: the ApkInstall log names 'via shizuku'
+[15:53:55] PASS  no installer window or notification now: packageinstaller activities 0, notifications 0
+[15:53:55] PASS  no packageinstaller activity was started during the window (logcat)
+[15:53:56] PASS  no /data/local/tmp/ds-install-* file is left
+[15:53:56]       (apk files after: none)
+[15:53:56]       a11y:      Bound services:{Service[label=Melaton Bars, feedbackType[FEEDBACK_GENERIC], capabilities=169, eventTypes=[TYPE_WINDOW_STATE_CHANGED, TYPE_WINDOWS_CHANGED], notificationTimeout=200, requestA11yBtn=false]}
+[15:53:56]       a11y:      Binding services:{}
+[15:53:56]       a11y:      Crashed services:{}
+[15:53:56] PASS  MelatonBarService is bound and not in Crashed services
+[15:53:56] INFO  melaton_navblank.out now: OK 
+[15:53:56] INFO  NUMBERS (relative to the old app pid 21269 disappearing at device ms 1795812818142; sampler period ~327 ms):
+[15:53:56] INFO    new app process visible in the samples: +1.0 s; log 'Start proc': +0.6 s; log 'Killing / Force stopping': -0.1 s (negative = before the sampler saw the pid go)
+[15:53:56] INFO    new holder's token / row (app log 'holder token linked' (the row is set a few ms before it; this Android build has no disable history)): +4.3 s -> 22 % of the 20 s grace used
+[15:53:56] INFO    the new holder's OK came 15.7 s before the old holder's grace would have ended (old app pid gone + 20 s); negative = after
+[15:53:56] INFO    new holder's process started (/proc/28048, device clock '2026-11-27 15:53:41.988000000 -0500'): +3.8 s after the old app pid disappeared (its shell command began about then; the answer 'holder token linked' came at +4.3 s)
+[15:53:56] INFO    shell command / Shizuku route log lines of the window (begin / connect / answer, as logged): /home/kanmi/staticforge/docs/testing/evidence/1392/lane-r42/update-r40-to-r42-off/bars1371/self-update-screen-off-20261127-155320-logcat.txt (the SHIZUKU / SHELLPROC / EXIT / LINK events a
+[15:53:56] INFO    new holder's token linked (app log): +4.3 s; new holder pid in the samples: +4.2 s; old holder gone from the samples: +4.8 s (killed by the new holder after its OK, or by its own grace at +20 s)
+[15:53:56] INFO    overlap (two holder pids alive): 2 samples, 0.3 s; net flags: the net disable flags never dropped the row in the window (1 change(s) logged, none un-held)
+[15:53:56] INFO  SCREEN-OFF extras: the new process started +0.6 s (log) / +1.0 s (samples) after the old one died; the old holder's grace did not run out
+[15:53:56] RESULT self-update-screen-off: PASS (no failed check)

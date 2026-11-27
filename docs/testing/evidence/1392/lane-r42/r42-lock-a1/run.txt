@@ -1,0 +1,7 @@
+lane aemu-fold-2, mode kill-wake
+pre: app=24614 holder=24744 recs=1 bound=1 shizuku=19508 wake=Asleep
+{"ok": true, "deviceMs": 1795814427063, "localMs": 1795814427600, "skewMs": -508}
+{"ok": true, "screen": "Asleep"}
+    versionCode=3632928 minSdk=31 targetSdk=36
+      x86_64: [status=verify] [reason=install] [primary-abi]
+post: app=25524 holder=25759 recs=1 bound=1 shizuku=19508 wake=Awake

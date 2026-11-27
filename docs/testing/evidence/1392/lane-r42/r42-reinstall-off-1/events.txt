@@ -1,0 +1,15 @@
+1795813249635 waiting for the process 8725 to be replaced
+1795813253507 new pid 12144
+1795813259551 dump +6 s: SIGQUIT system_server 847
+1795813259664 dump +6 s: a11y state done
+1795813259674 dump +6 s: threads
+1795813262061 dump +6 s: SIGQUIT
+1795813262072 dump +6 s: debuggerd
+1795813262286 dump +6 s: debuggerd done (0)
+1795813268319 dump +12 s: SIGQUIT system_server 847
+1795813268445 dump +12 s: a11y state done
+1795813268454 dump +12 s: threads
+1795813270749 dump +12 s: SIGQUIT
+1795813270759 dump +12 s: debuggerd
+1795813270987 dump +12 s: debuggerd done (0)
+1795813293540 watch done

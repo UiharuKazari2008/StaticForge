@@ -1,0 +1,36 @@
+events: new pid 27603 seen at device ms 1795812819067
+t0 (Start proc) epoch 1795812818.709
+first MelatonBars line: +1.42 s   holder token linked: +3.74 s
+log silence of the main thread (tid=pid) between Start proc and token linked: 0.30 s from +2.74, 0.30 s from +0.90
+log silence of the any thread of the app between Start proc and token linked: 0.30 s from +0.04, 0.24 s from +0.42
+hb.txt: 620 beats, median step 124 ms, longest gap 0.34 s wall / 0.33 s uptime, from +0.98 s
+ticks.txt: 91 ticks, longest gap 1.02 s from +8.78 s
+main thread blocked (not in the looper poll, < 30 ms CPU in all): longest 0.00 s from +0.00 s, CPU used 0 ms, (state, wchan) samples None
+main thread outside its looper poll for 2 s or more: +0.4..+3.5 s (3.0 s, {'0': 3, 'binder_ioctl_write_read': 1, 'futex_wait': 1})
+  stretch +0.4..+3.5 s (3.0 s): main ran 0.32 s on CPU + waited 1.40 s for a CPU; longest part with < 30 ms CPU 0.0 s; main-thread log lines inside 43, longest silence 0.31 s
+  +  1.41 27603 Choreographer: Skipped 40 frames!  The application may be doing too much work on its main thread.
+  +  2.69 27603 Choreographer: Skipped 45 frames!  The application may be doing too much work on its main thread.
+  +  3.00 27771 CafeTasks: engine started (9 files, from the server)
+  +  9.68 27603 Choreographer: Skipped 32 frames!  The application may be doing too much work on its main thread.
+  event +-17.98 waiting for the process 21269 to be replaced
+  event +0.36 new pid 27603
+  event +4.42 dump +4 s: SIGQUIT system_server 847
+  event +4.63 dump +4 s: a11y state done
+  event +4.65 dump +4 s: threads
+  event +7.95 dump +4 s: SIGQUIT
+  event +7.97 dump +4 s: debuggerd
+  event +8.28 dump +4 s: debuggerd done (0)
+  event +16.32 dump +12 s: SIGQUIT system_server 847
+  event +16.52 dump +12 s: a11y state done
+  event +16.53 dump +12 s: threads
+  event +19.43 dump +12 s: SIGQUIT
+  event +19.44 dump +12 s: debuggerd
+  event +19.72 dump +12 s: debuggerd done (0)
+  event +60.41 watch done
+window and engine lines of the new process (t0 .. +75 s):
+  W +  1.42 tid=27603 (main) MelatonBars: early hold at process start (#1371)
+  W +  3.00 tid=27771 CafeTasks: engine started (9 files, from the server)
+  W +  3.74 tid=27964 MelatonBars: holder token linked (#1331), started over Shizuku
+  W +  8.98 tid=27899 WindowReads: window read took 6750 ms (on window-bars)
+  W +  9.01 tid=27603 (main) MelatonBars: first window look applied after 6793 ms (0 windows)
+traces: trace_13, trace_14, trace_15, trace_16

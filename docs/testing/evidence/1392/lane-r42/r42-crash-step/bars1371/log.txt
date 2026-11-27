@@ -1,0 +1,81 @@
+[16:07:10] === crash  on aemu-fold-2 (agent claude-974b3227) evidence /home/kanmi/staticforge/docs/testing/evidence/1392/lane-r42/r42-crash-step/bars1371 ===
+[16:07:13] status: shape=fold booted=true shizukuRunning=true (pid 19508) appVersionCode=3632928 noAudio=true screen=Awake appPid=25017; skewMs=-499 
+[16:07:13] before: holder=25221 app=25017 recs=1
+[16:07:14] INFO  baseline before: holder=25221 app=25017 recs=1 out=[OK ] vc=3632928 shizuku=19508 adbd=533 mode=0 overlay=threebutton,
+[16:07:18] INFO  sampler on (guest, 0.2 s loop): alive 28026 lines=9
+[16:07:19] kill-app: {"ok": true, "killedPid": 25017, "appPid": 0}
+[16:07:19] PASS  kill -9 hit the app's MAIN pid 25017 (the pid the lane found with pidof)
+[16:09:51] INFO  sampler file: /home/kanmi/staticforge/docs/testing/evidence/1392/lane-r42/r42-crash-step/bars1371/crash-20261127-160710-sample.txt (603 samples)
+SAMPLES=603
+WINDOW_SAMPLES=594 BLIND_GAPS_OVER_1500MS=none
+PERIOD_MEDIAN_MS=252
+MAXGAP_MS=434
+TIMELINE (offset from the first window sample; a line per change of the holder / app pids):
+  +0.0s holder=25221 app=25017 recs=-1
+  +0.3s holder=25221 app=- recs=-1
+  +1.5s holder=25221 app=28338 recs=-1
+  +3.2s holder=25221,28663 app=28338 recs=-1
+  +3.5s holder=28663 app=28338 recs=-1
+  +16.7s holder=28663 app=28338,31092 recs=-1
+  +17.0s holder=28663 app=28338 recs=-1
+RECS_SAMPLED=no (light sampler: the pids only; the SystemUI net-flag log decides the row)
+ZERO_SAMPLES_IN_WINDOW=0 MINRECS=n/a
+ZERO_SPAN_MAX_S=0.0
+T_DEATH_MS=1795813637965
+OLD_APP=25017 OLD_HOLDERS=25221 NEW_HOLDERS=28663
+ZEROS_AFTER_DEATH=0
+OVERLAP_SAMPLES=1
+OVERLAP_SPAN_S=0.0
+  two holder pids alive from +3.0 s to +3.0 s (relative to the old app pid disappearing)
+APP_BACK_S=1.3
+NEW_PID_S=3.0
+NEW_REC_S=3.0
+OLD_GONE_S=3.3
+RESULT=PASS
+WHY=recs not sampled (light mode); new holder pid(s) 28663; two holders alive at once
+[16:09:51] PASS  the system restarted the app +1.3 s after the kill (new pid in the samples)
+[16:09:51] INFO  observations (guest, about 1 s):
+OBSERVATIONS (a line per change; offset from the old app pid disappearing):
+     +1.2 s holder=25221 app=28338 bound=0 setting_has_service=1 overlay=threebutton, records=1
+     +1.9 s holder=25221 app=28338 bound=1 setting_has_service=1 overlay=threebutton, records=1
+     +3.3 s holder=25221,28663 app=28338 bound=1 setting_has_service=1 overlay=threebutton, records=1
+     +3.9 s holder=28663 app=28338 bound=1 setting_has_service=1 overlay=threebutton, records=1
+    +16.6 s holder=28663 app=28338,31092 bound=1 setting_has_service=1 overlay=threebutton, records=1
+    +17.2 s holder=28663 app=28338 bound=1 setting_has_service=1 overlay=threebutton, records=1
+OBS_ROWS=268
+UNBOUND_S=1.2
+BOUND_AGAIN_MS=1795813639831
+BOUND_AGAIN_S=1.9
+LAST holder=28663 app=28338 bound=1 setting_has_service=1 overlay=threebutton, records=1
+[16:09:52] INFO  logcat of the window: /home/kanmi/staticforge/docs/testing/evidence/1392/lane-r42/r42-crash-step/bars1371/crash-20261127-160710-logcat.txt (130 lines kept)
+[16:09:52] INFO  net disable flags of display 0 (SystemUI's log), the judge:
+NETFLAGS start disable1=0x3f30000 (from the statusbar dump before), 0 change(s) logged by SystemUI in the window
+NET_GAPS=0
+RESULT=PASS
+WHY=the net disable flags never dropped the row in the window (0 change(s) logged, none un-held)
+[16:09:52] PASS  net flags: the net disable flags never dropped the row in the window (0 change(s) logged, none un-held)
+  LOG KILL        -0.1 s  1795813637.836   847  3124 I ActivityManager: Process jp.net.seventhreeseven.dreamscape (pid 25017) has died: vis FGS
+  LOG START       +0.9 s  1795813638.869   847   923 I ActivityManager: Start proc 28338:jp.net.seventhreeseven.dreamscape/u0a235 for bound-service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListen
+  LOG BINDERRCV    +1.2 s  1795813639.176 28338 28367 D ShizukuProvider: binder received
+  LOG BINDER      +1.2 s  1795813639.213 28338 28338 I MelatonBars: Shizuku's binder arrived: holding the row (#1331)
+  LOG BARS        +1.2 s  1795813639.213 28338 28338 I MelatonBars: Shizuku's binder arrived: holding the row (#1331)
+  LOG EARLY       +1.2 s  1795813639.213 28338 28338 I MelatonBars: early hold at process start (#1371)
+  LOG BARS        +1.2 s  1795813639.213 28338 28338 I MelatonBars: early hold at process start (#1371)
+  LOG BARS        +2.2 s  1795813640.144 28338 28338 I MelatonBars: ime probe live: visible=false bottom=0
+  LOG BARS        +2.3 s  1795813640.302 28338 28338 I MelatonBars: first window look applied after 461 ms (3 windows)
+  LOG BARS        +2.3 s  1795813640.303 28338 28338 I MelatonBars: show: on=true fits=false status=false bar=true top=false ext=true tray=false give=false
+  LOG BARS        +2.4 s  1795813640.323 28338 28338 I MelatonBars: show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+  LOG LINK        +3.0 s  1795813640.970 28338 28487 I MelatonBars: holder token linked (#1331), started over Shizuku
+  LOG BARS        +3.0 s  1795813640.970 28338 28487 I MelatonBars: holder token linked (#1331), started over Shizuku
+  LOG BARS        +3.4 s  1795813641.344 28338 28338 I MelatonBars: translucent check: strip spread 0.0 (picture above 14), against below 0.0 (runs on under 10)
+  LOG BARS        +3.5 s  1795813641.446 28338 28338 I MelatonBars: translucent check (soft keys): strip spread 1.4 (picture above 14), against below 16.8 (runs on under 10)
+  LOG BARS        +3.5 s  1795813641.447 28338 28338 I MelatonBars: translucent bar for com.android.settings: true
+  LOG BARS        +3.5 s  1795813641.459 28338 28338 I MelatonBars: holder start answered over Shizuku [shizuku: ok]
+  LOG HEAL        +5.2 s  1795813643.192 28338 28338 I BarsHeal: check (process start)
+[16:09:52]       BarsHeal / BarsServiceWatch / service lines:          1795813643.192 28338 28338 I BarsHeal: check (process start)
+[16:09:52] INFO  TIMES (relative to the old app pid disappearing at device ms 1795813637965): system restarted the process: +0.9 s (log), early hold: +1.2 s, Shizuku binder: +1.2 s, holder token linked: +3.0 s, old holder gone: +3.3 s, its own grace exit line: n/a
+[16:09:52] INFO  old holder: replaced: gone 0.3 s after the new holder linked (before its 10 s grace)
+[16:09:52] INFO  Bars service: unbound +1.2 s, bound again +1.9 s (observation resolution about 1-2 s)
+[16:09:52] PASS  no 'gesture fallback on' line in the window
+[16:09:53] PASS  end state equals the baseline: mode=0 overlay=threebutton, holder=28663 app=28338 bound=1 svc=1 ovl=threebutton, recs=1
+[16:09:53] RESULT crash: PASS (no failed check)

@@ -1,0 +1,15 @@
+1795813546722 kill -9 22339
+1795813548108 new pid 25017
+1795813554165 dump +6 s: SIGQUIT system_server 847
+1795813554345 dump +6 s: a11y state done
+1795813554357 dump +6 s: threads
+1795813557065 dump +6 s: SIGQUIT
+1795813557078 dump +6 s: debuggerd
+1795813557332 dump +6 s: debuggerd done (0)
+1795813563369 dump +12 s: SIGQUIT system_server 847
+1795813563513 dump +12 s: a11y state done
+1795813563527 dump +12 s: threads
+1795813566180 dump +12 s: SIGQUIT
+1795813566194 dump +12 s: debuggerd
+1795813566457 dump +12 s: debuggerd done (0)
+1795813578580 watch done

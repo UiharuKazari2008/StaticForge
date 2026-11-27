@@ -1,0 +1,33 @@
+events: new pid 18971 seen at device ms 1795813402780
+t0 (Start proc) epoch 1795813402.220
+first MelatonBars line: +0.97 s   holder token linked: +2.32 s
+log silence of the main thread (tid=pid) between Start proc and token linked: 0.33 s from +0.09, 0.28 s from +0.46
+log silence of the any thread of the app between Start proc and token linked: 0.33 s from +0.09, 0.28 s from +0.46
+hb.txt: 374 beats, median step 119 ms, longest gap 0.25 s wall / 0.25 s uptime, from +-2.09 s
+ticks.txt: 64 ticks, longest gap 0.71 s from +1.32 s
+main thread blocked (not in the looper poll, < 30 ms CPU in all): longest 0.00 s from +0.00 s, CPU used 0 ms, (state, wchan) samples None
+main thread outside its looper poll for 2 s or more: never
+  stretch +0.6..+2.0 s (1.4 s): main ran 0.26 s on CPU + waited 0.52 s for a CPU; longest part with < 30 ms CPU 0.0 s; main-thread log lines inside 41, longest silence 0.16 s
+  +  1.87 19070 CafeTasks: engine started (9 files, from the server)
+  event +-4.28 waiting for the process 15564 to be replaced
+  event +0.56 new pid 18971
+  event +6.61 dump +6 s: SIGQUIT system_server 847
+  event +6.72 dump +6 s: a11y state done
+  event +6.73 dump +6 s: threads
+  event +9.22 dump +6 s: SIGQUIT
+  event +9.22 dump +6 s: debuggerd
+  event +9.47 dump +6 s: debuggerd done (0)
+  event +15.50 dump +12 s: SIGQUIT system_server 847
+  event +15.63 dump +12 s: a11y state done
+  event +15.64 dump +12 s: threads
+  event +17.90 dump +12 s: SIGQUIT
+  event +17.91 dump +12 s: debuggerd
+  event +18.14 dump +12 s: debuggerd done (0)
+  event +40.05 watch done
+window and engine lines of the new process (t0 .. +75 s):
+  W +  0.97 tid=18971 (main) MelatonBars: early hold at process start (#1371)
+  W +  1.87 tid=19070 CafeTasks: engine started (9 files, from the server)
+  W +  2.32 tid=19001 MelatonBars: holder token linked (#1331), started over Shizuku
+  W + 11.36 tid=19129 WindowReads: window read took 10004 ms (on window-bars)
+  W + 11.36 tid=18971 (main) MelatonBars: first window look applied after 10013 ms (0 windows)
+traces: trace_37, trace_38, trace_39, trace_40

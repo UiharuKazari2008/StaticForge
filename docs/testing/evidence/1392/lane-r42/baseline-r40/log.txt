@@ -1,0 +1,29 @@
+[15:49:31] === baseline  on aemu-fold-2 (agent claude-974b3227) evidence /home/kanmi/staticforge/docs/testing/evidence/1392/lane-r42/baseline-r40 ===
+[15:49:34] status: shape=fold booted=true shizukuRunning=true (pid 19508) appVersionCode=3632839 noAudio=true screen=Awake appPid=19759; skewMs=-477 
+[15:49:35] INFO  bars state before: {"ok":true,"value":"{\"cfg\":{\"enabled\":true,\"softkeys\":true,\"room\":true},\"service\":true,\"running\":true,\"navPx\":126}"}
+[15:49:35] INFO  feature switched on through the page: {"ok":true,"value":"set"}
+[15:49:35] PASS  held after 0.2 s: holder=19890 app=19759 recs=1
+[15:49:36] INFO  state: holder=19890 app=19759 recs=1 out=[OK ] vc=3632839 shizuku=19508 adbd=533 mode=0 overlay=threebutton,
+[15:49:36] PASS  one holder pid (19890)
+[15:49:36]       record:     [3] userId=0 what1=0x03600000 what2=0x00000000 pkg=com.android.shell token=android.os.BinderProxy@1f141c6
+[15:49:36] PASS  one disable record of the shell holder
+[15:49:36] INFO  record flags what1=0x03600000 (expected 0x03600000 while held)
+[15:49:36] PASS  melaton_navblank.out is 'OK' (the token was linked)
+[15:49:36]       chain: pid=19890 ppid=1 pgrp=19890 sid=19890 uid=2000 comm=[main] cmd=[melaton_navblank                                                                                                                                    ] cgroup=[3:cpuset:/ 2:cpu:/ 1:blkio:/ 0::/system/uid_0/pid_533 ] ctx=[u:r:shell:s0]
+[15:49:36]       chain: pid=1 ppid=0 pgrp=0 sid=0 uid=0 comm=[init] cmd=[/system/bin/init second_stage ] cgroup=[3:cpuset:/ 2:cpu:/ 1:blkio:/ 0::/ ] ctx=[u:r:init:s0]
+[15:49:36]       ps -A -o PID,PPID,NAME:   PID  PPID NAME                       
+[15:49:36]       ps -A -o PID,PPID,NAME:     1     0 init
+[15:49:36]       ps -A -o PID,PPID,NAME: 19890     1 melaton_navblank
+[15:49:36] PASS  the holder is no descendant of adbd (its parent chain ends at pid 1: a started-and-detached process; the route is NOT decidable from ancestry alone, the cmd / sid / cgroup above and the adbd step decide)
+[15:49:36] INFO  route by ancestry: ORPHAN
+[15:49:36] INFO  Shizuku server pid 19508; guest: shizuku=19508 adbd=533 holder=19890 app=19759
+[15:49:37]       a11y:      Bound services:{Service[label=Melaton Bars, feedbackType[FEEDBACK_GENERIC], capabilities=169, eventTypes=[TYPE_WINDOW_STATE_CHANGED, TYPE_WINDOWS_CHANGED], notificationTimeout=200, requestA11yBtn=false]}
+[15:49:37]       a11y:      Binding services:{}
+[15:49:37]       a11y:      Crashed services:{}
+[15:49:37] PASS  MelatonBarService is bound and not in Crashed services
+[15:49:37]       (app log (180 s): none)
+[15:49:37] INFO  (the lines 'holder token linked (#1331)' / "Shizuku's binder arrived: holding the row (#1331)" exist only on a fixed build; absent on an older one)
+[15:49:37] INFO  full statusbar dump: /home/kanmi/staticforge/docs/testing/evidence/1392/lane-r42/baseline-r40/baseline-20261127-154931-statusbar.txt
+[15:49:41] INFO  screenshot /home/kanmi/staticforge/docs/testing/evidence/1392/lane-r42/baseline-r40/baseline-20261127-154931-settings-in-front.png (display 0; proves nothing about the row, see the disable record)
+[15:49:45] INFO  screenshot /home/kanmi/staticforge/docs/testing/evidence/1392/lane-r42/baseline-r40/baseline-20261127-154931-home.png (display 0; proves nothing about the row, see the disable record)
+[15:49:45] RESULT baseline: PASS (no failed check)

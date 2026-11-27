@@ -1,0 +1,12 @@
+1795814744996 running process 25524
+1795814746054 before the program: MelatonLock visible=true focus=[null] isKeyguardShowing=true mKeyguardOccluded=false
+1795814746186 am start -n com.google.android.deskclock/com.android.deskclock.ScreensaverActivity
+1795814746277 am start returned
+1795814746337..1795814746599 MelatonLock visible=true focus=[null] isKeyguardShowing=true mKeyguardOccluded=false
+1795814747813 shot a begin
+1795814748052..1795814748627 MelatonLock visible=true focus=[null] isKeyguardShowing=true mKeyguardOccluded=true
+1795814748791..1795814749185 MelatonLock visible=false focus=[null] isKeyguardShowing=true mKeyguardOccluded=true
+1795814750397 shot a end
+1795814759431 shot b begin
+1795814760257 shot b end
+1795814766176 end: MelatonLock visible=false focus=[null] isKeyguardShowing=true mKeyguardOccluded=true

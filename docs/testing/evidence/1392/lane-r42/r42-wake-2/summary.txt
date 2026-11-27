@@ -1,0 +1,32 @@
+events: new pid 18658 seen at device ms 1795813945531, 1.32 s after kill -9
+t0 (Start proc) epoch 1795813945.272
+first MelatonBars line: +0.26 s   holder token linked: +1.28 s
+log silence of the main thread (tid=pid) between Start proc and token linked: 0.26 s from +0.71, 0.18 s from +0.46
+log silence of the any thread of the app between Start proc and token linked: 0.25 s from +1.03, 0.18 s from +0.76
+hb.txt: 267 beats, median step 118 ms, longest gap 0.23 s wall / 0.23 s uptime, from +10.70 s
+ticks.txt: 48 ticks, longest gap 0.96 s from +10.53 s
+main thread blocked (not in the looper poll, < 30 ms CPU in all): longest 0.00 s from +0.00 s, CPU used 0 ms, (state, wchan) samples None
+main thread outside its looper poll for 2 s or more: never
+  +  0.46 18695 CafeTasks: engine started (9 files, from the server)
+  event +-1.06 kill -9 15772
+  event +0.26 new pid 18658
+  event +9.30 dump +9 s: SIGQUIT system_server 847
+  event +9.47 dump +9 s: a11y state done
+  event +9.48 dump +9 s: threads
+  event +12.14 dump +9 s: SIGQUIT
+  event +12.15 dump +9 s: debuggerd
+  event +12.34 dump +9 s: debuggerd done (0)
+  event +17.37 dump +14 s: SIGQUIT system_server 847
+  event +17.52 dump +14 s: a11y state done
+  event +17.53 dump +14 s: threads
+  event +19.70 dump +14 s: SIGQUIT
+  event +19.71 dump +14 s: debuggerd
+  event +19.91 dump +14 s: debuggerd done (0)
+  event +30.13 watch done
+window and engine lines of the new process (t0 .. +75 s):
+  W +  0.26 tid=18658 (main) MelatonBars: early hold at process start (#1371)
+  W +  0.46 tid=18695 CafeTasks: engine started (9 files, from the server)
+  W +  1.28 tid=18678 MelatonBars: holder token linked (#1331), started over Shizuku
+  W +  3.48 tid=18787 WindowReads: window read took 2792 ms (on window-bars)
+  W +  3.49 tid=18658 (main) MelatonBars: first window look applied after 2805 ms (1 windows)
+traces: trace_57, trace_58, trace_59, trace_60

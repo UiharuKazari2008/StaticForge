@@ -1,0 +1,23 @@
+events: new pid 7144 seen at device ms 1795814977406, 1.35 s after kill -9
+t0 (Start proc) epoch 1795814977.137
+first MelatonBars line: +1.04 s   holder token linked: +18.22 s
+log silence of the main thread (tid=pid) between Start proc and token linked: 0.51 s from +0.53, 0.34 s from +1.40
+log silence of the any thread of the app between Start proc and token linked: 9.47 s from +3.65, 4.56 s from +13.21
+hb.txt: 225 beats, median step 164 ms, longest gap 0.72 s wall / 0.70 s uptime, from +28.78 s
+ticks.txt: 41 ticks, longest gap 1.49 s from +24.90 s
+main thread blocked (not in the looper poll, < 30 ms CPU in all): longest 22.86 s from +2.04 s, CPU used 15 ms, (state, wchan) samples {('S', 'futex_wait'): 23, ('S', 'binder_ioctl_write_read'): 1}
+main thread outside its looper poll for 2 s or more: +0.3..+24.9 s (24.6 s, {'0': 1, 'binder_ioctl_write_read': 2, 'futex_wait': 23}); +32.8..+36.7 s (3.9 s, {'binder_ioctl_write_read': 1, 'futex_wait': 3, '0': 1})
+  stretch +0.3..+24.9 s (24.6 s): main ran 0.25 s on CPU + waited 0.98 s for a CPU; longest part with < 30 ms CPU 22.9 s; main-thread log lines inside 32, longest silence 22.17 s
+  stretch +32.8..+36.7 s (3.9 s): main ran 0.21 s on CPU + waited 0.63 s for a CPU; longest part with < 30 ms CPU 1.2 s; main-thread log lines inside 26, longest silence 0.93 s
+  +  1.38 7220 CafeTasks: engine started (9 files, from the server)
+  event +-1.08 kill -9 906
+  event +0.27 new pid 7144
+  event +40.40 watch done
+window and engine lines of the new process (t0 .. +75 s):
+  W +  1.04 tid=7144 (main) MelatonBars: early hold at process start (#1371)
+  W +  1.38 tid=7220 CafeTasks: engine started (9 files, from the server)
+  W + 18.22 tid=7229 MelatonBars: holder token linked (#1331), started over local ADB
+  W + 25.49 tid=7144 (main) MelatonBars: first window look applied after 23648 ms (1 windows)
+  W + 32.34 tid=7144 (main) MelatonLock: over the lock screen: com.google.android.deskclock
+  W + 35.31 tid=7144 (main) MelatonLock: over the lock screen: -
+traces: anr_2026-11-27-16-29-50-781

@@ -1,0 +1,926 @@
+         1795813002.807  1551  1709 I QuickAccessWalletTile: QAW service is unavailable, recreating the wallet client.
+         1795813002.807  1551  1709 I service_manager_stats: [200,517,1268512]
+         1795813003.363  1551  1709 D ControlsListingControllerImpl: Subscribing callback, service count: 0
+         1795813003.365  1551  1709 D ControlsListingControllerImpl: Unsubscribing callback
+         1795813005.419   847  1162 D ActivityManager: freezing 4586 com.google.android.apps.messaging
+         1795813005.420   847  1162 I am_freeze: [4586,com.google.android.apps.messaging]
+         1795813005.455   847  1162 I am_compact: [4586,com.google.android.apps.messaging,ANON,244344,191040,52396,36880,-10600,-2104,-8496,8496,34,FULL,935832,905,19,146856,-2560]
+         1795813007.297   533   533 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:su 0 sh'
+         1795813008.397   847  1206 W InputDispatcher: channel 'ae44f77 MelatonBarEdge' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1795813008.397   847  1206 E InputDispatcher: channel 'ae44f77 MelatonBarEdge' ~ Channel is unrecoverably broken and will be disposed!
+         1795813008.397   847  1206 W InputDispatcher: channel 'c98cbb MelatonBarEdge' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1795813008.397   847  1206 E InputDispatcher: channel 'c98cbb MelatonBarEdge' ~ Channel is unrecoverably broken and will be disposed!
+         1795813008.398   847  1206 W InputDispatcher: channel '38eb500 MelatonBar' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1795813008.398   847  1206 E InputDispatcher: channel '38eb500 MelatonBar' ~ Channel is unrecoverably broken and will be disposed!
+         1795813008.398   847  1206 I WindowManager: WINDOW DIED Window{ae44f77 u0 MelatonBarEdge}
+         1795813008.401  1722  2068 I bt_btif_sock_rfcomm: system/btif/src/btif_sock_rfc.cc:538 cleanup_rfc_slot: disconnected from RFCOMM socket connections for device: 00:00:00:00:00:00, scn: 11, app_uid: 10235, slot_id: 8, socket_id: 0
+         1795813008.401  1722  2068 W BluetoothMetrics: system/metrics/src/android/metrics.cc:105 LogBluetoothEvent: Failed BluetoothEvent Upload - Address is Empty
+         1795813008.401   847  1206 I WindowManager: WINDOW DIED Window{c98cbb u0 MelatonBarEdge}
+         1795813008.401  1722  2068 I bt_bta_dm: system/bta/dm/bta_dm_act.cc:1134 bta_dm_set_eir: Generating extended inquiry response packet EIR
+         1795813008.402  1722  2005 I bt_port_api: system/stack/rfcomm/port_api.cc:319 RFCOMM_RemoveServer: handle=21
+         1795813008.402   847  1206 I WindowManager: WINDOW DIED Window{38eb500 u0 MelatonBar}
+         1795813008.405   847  1206 W InputDispatcher: channel '6d0ad0b MelatonBarProbe' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1795813008.405   847  1206 E InputDispatcher: channel '6d0ad0b MelatonBarProbe' ~ Channel is unrecoverably broken and will be disposed!
+         1795813008.405   847  1206 W InputDispatcher: channel 'e0b9be7 MelatonBar' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1795813008.405   847  1206 E InputDispatcher: channel 'e0b9be7 MelatonBar' ~ Channel is unrecoverably broken and will be disposed!
+         1795813008.405   847  1206 W InputDispatcher: channel '8451c39 MelatonImeProbe' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1795813008.405   847  1206 E InputDispatcher: channel '8451c39 MelatonImeProbe' ~ Channel is unrecoverably broken and will be disposed!
+         1795813008.405   847  1206 I WindowManager: WINDOW DIED Window{6d0ad0b u0 MelatonBarProbe}
+         1795813008.406   847  3125 D NotificationManagerService.NotificationListeners: Removing active service ComponentInfo{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+         1795813008.406   847  3111 W WindowManager: Cannot find window which accessibility connection is added to
+         1795813008.406   847  1206 I WindowManager: WINDOW DIED Window{e0b9be7 u0 MelatonBar}
+         1795813008.407   847  3024 I ActivityManager: Process jp.net.seventhreeseven.dreamscape (pid 27603) has died: vis FGS 
+         1795813008.407   847  3024 I am_proc_died: [0,27603,jp.net.seventhreeseven.dreamscape,100,4]
+         1795813008.407 19508 19753 V UserServiceRecord: Remove service record b92c12c8-328f-4054-a60b-c81d075d1508-1795812820399 since it does not run as a daemon and all connections are gone
+         1795813008.407   847   847 V NotificationManagerService.NotificationListeners: 0 notification listener connection lost: ComponentInfo{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+         1795813008.408   847  1206 I WindowManager: WINDOW DIED Window{8451c39 u0 MelatonImeProbe}
+         1795813008.408   847  3027 D SensorService: Unregistering client listener for PID 27603
+         1795813008.411   847  3024 W ActivityManager: Scheduling restart of crashed service jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService in 1000ms for start-requested
+         1795813008.411   847  3024 I am_schedule_service_restart: [0,jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService,1000]
+         1795813008.412   847  3024 W ActivityManager: Scheduling restart of crashed service jp.net.seventhreeseven.dreamscape/.activesync.ActiveSyncNotificationListener in 10997ms for connection
+         1795813008.412   847  3024 I am_schedule_service_restart: [0,jp.net.seventhreeseven.dreamscape/.activesync.ActiveSyncNotificationListener,10997]
+         1795813008.412   847  1297 D ConnectivityService: releasing NetworkRequest [ REQUEST id=236, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ] (release request)
+         1795813008.412   847  3024 W ActivityManager: Scheduling restart of crashed service jp.net.seventhreeseven.dreamscape/.MelatonBarService in 20997ms for connection
+         1795813008.412   847  3024 I am_schedule_service_restart: [0,jp.net.seventhreeseven.dreamscape/.MelatonBarService,20997]
+         1795813008.412   847  1297 D ConnectivityService: releasing NetworkRequest [ REQUEST id=233, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ] (release request)
+         1795813008.413   847  3024 I ActivityManager: Killing 27806:com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0/u0a235i6 (adj 0): isolated not needed
+         1795813008.414 27817 27875 I jp.net.seventhreeseven.dreamscape:shell: System.exit called, status: 0
+         1795813008.414 27817 27875 I AndroidRuntime: VM exiting with result code 0.
+         1795813008.415   847  1080 I WindowManager: WIN DEATH: Window{7864fd4 u0 MelatonHomeStrip}
+         1795813008.415   847  3024 I am_kill : [0,27806,com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0,0,isolated not needed,140048]
+         1795813008.422   847  1885 W ActivityManager: pid 847 system sent binder code 1 with flags 1 and got error -32
+         1795813008.423   847  1885 V AccessibilityManagerService: onUserStateChangedLocked for userId: 0, forceUpdate: false
+         1795813008.424   847  1885 V AccessibilityUserState: updateShortcutTargets: type:accessibility_shortcut_target_service, current:{}, new:{}
+         1795813008.424   847  1885 V AccessibilityUserState: updateShortcutTargets: type:accessibility_button_targets, current:{}, new:{}
+         1795813008.425   847  1885 V AccessibilityUserState: updateShortcutTargets: type:accessibility_gesture_targets, current:{}, new:{}
+         1795813008.425   847  1885 V AccessibilityUserState: updateShortcutTargets: type:accessibility_qs_targets, current:{}, new:{}
+         1795813008.425   847  1885 V AccessibilityUserState: updateShortcutTargets: type:accessibility_key_gesture_targets, current:{}, new:{}
+         1795813008.425   847  1885 V AccessibilityUserState: updateShortcutTargets: type:accessibility_top_row_key_targets, current:{}, new:{}
+         1795813008.425   847  1885 V AccessibilityUserState: updateShortcutTargets: type:accessibility_quick_access_targets, current:{}, new:{}
+         1795813008.426   847  1885 W MagnificationConnectionManager: requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+         1795813008.426   847  3024 I am_uid_stopped: 10235
+         1795813008.429 19508 19753 V BinderSender: Uid 10235 already starts
+         1795813008.429 19508 19753 V BinderSender: Uid 10235 dead
+         1795813008.430   847  1081 W WindowManager: Cannot find window which accessibility connection is added to
+         1795813008.430   847  1297 D ConnectivityService: releasing NetworkRequest [ REQUEST id=242, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ] (release request)
+         1795813008.433   847  1919 W WindowManager: Cannot find window which accessibility connection is added to
+         1795813008.433   847   914 W ActivityManager: setHasOverlayUi called on unknown pid: 27603
+         1795813008.434   847   914 I sysui_multi_action: [757,856,758,2,806,android,857,com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape,858,1]
+         1795813008.434   847   914 W NotificationHistory: Attempted to remove channel for locked/gone/disabled user 0
+         1795813008.436   847  1297 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+         1795813008.437   847  1297 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+         1795813008.437   847  1297 D InetDiagMessage: Destroyed live tcp sockets for uids={10235} in 5ms
+         1795813008.437   847  1297 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+         1795813008.438   847   914 W ActivityManager: setHasOverlayUi called on unknown pid: 27603
+         1795813008.438   847   914 W ActivityManager: setHasOverlayUi called on unknown pid: 27603
+         1795813008.439   847  3111 W WindowManager: Cannot find window which accessibility connection is added to
+         1795813008.440   847  1760 W WindowManager: Cannot find window which accessibility connection is added to
+         1795813008.440   847  3144 W WindowManager: Cannot find window which accessibility connection is added to
+         1795813008.444   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.444   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.445   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.445   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.447   462  5956 I netd    : tetherGetStats() -> {[]} <0.66ms>
+         1795813008.448   847  1297 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+         1795813008.449   847  1297 D InetDiagMessage: Destroyed live tcp sockets for uids={20235} in 12ms
+         1795813008.453   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.453  2587  3534 I AiAiEcho: Settings changed for uri: content://settings/secure/accessibility_enabled
+         1795813008.454  1645  1645 I Zygote  : Process 27806 exited due to signal 9 (Killed)
+         1795813008.454  2587  2979 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+         1795813008.454  2587  2979 I AiAiEcho: EchoTargets: 
+         1795813008.454  2587  2979 I AiAiEcho: Filtered by AiAi flag check: 
+         1795813008.454  2587  2979 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+         1795813008.455   527   527 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795813008.455  2587  2979 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+         1795813008.455   527   527 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795813008.455   527   527 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795813008.455  2587  2979 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+         1795813008.455  2587  2979 I AiAiEcho: EchoTargets: 
+         1795813008.455  2587  2979 I AiAiEcho: Filtered by AiAi flag check: 
+         1795813008.455  2587  2979 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+         1795813008.455   527   527 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795813008.455   527   527 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795813008.455   527   527 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795813008.455  2587  2979 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+         1795813008.456   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.458   847  2868 I am_proc_died: [0,27806,com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0,0,10]
+         1795813008.458  2587  2979 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+         1795813008.458   847  2868 I am_uid_stopped: 99006
+         1795813008.458  2587  2979 I AiAiEcho: EchoTargets: 
+         1795813008.458  2587  2979 I AiAiEcho: Filtered by AiAi flag check: 
+         1795813008.458  2587  2979 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+         1795813008.458  2587  2979 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+         1795813008.459  2587  2979 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+         1795813008.459   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.459   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.460  2587  2979 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface ambientcue with targets# 0 (types=[])
+         1795813008.460   847  1760 D AccessibilityManagerService: .getAccessibilityShortcutTargets {shortcutType=0, userId=0}
+         1795813008.461  2587  2979 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+         1795813008.463 19508 19753 V BinderSender: Uid 99006 already starts
+         1795813008.463 19508 19753 V BinderSender: Uid 99006 dead
+         1795813008.463   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.463   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.465   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.465   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.465   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.465   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.467   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.467   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813008.467   847   936 D KernelCpuUidUserSysTimeReader: Removing uids 99002-99002
+         1795813008.468   847   936 D KernelCpuUidUserSysTimeReader: Removing uids 99003-99003
+         1795813008.474   847   847 I sysui_multi_action: [757,128,758,5,759,8,793,21686,794,0,795,21686,796,0,797,com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape,806,android,857,com.android.server.wm.Alert-9a87e3f9,858,1,947,0,1500,21245,1688,1,1745,2098068913]
+         1795813008.475   847   924 I libprocessgroup: Removed cgroup /sys/fs/cgroup/apps/uid_10235/pid_27603
+         1795813008.476   464   464 I Zygote  : Process 27603 exited due to signal 9 (Killed)
+         1795813008.477  1551  1709 I AmbientCueRepository: Receiving SmartSpace targets # 0
+         1795813008.477   847   847 I sysui_multi_action: [757,128,758,5,759,8,793,187125,794,0,795,186517,796,1,806,jp.net.seventhreeseven.dreamscape,857,dreamscape_persistent,858,2,947,0,1500,186517,1641,status,1688,1]
+         1795813008.479   847   924 I libprocessgroup: Removed cgroup /sys/fs/cgroup/apps/uid_99006/pid_27806
+         1795813008.480   847   924 I libprocessgroup: Removed cgroup /sys/fs/cgroup/apps/uid_99006
+         1795813008.485   847   931 W ProcessStats: Tracking association SourceState{67721bd com.android.settings/1000 Top #3036} whose proc state 1 is better than process ProcessState{2c4bb4c com.google.android.gms.persistent/10215 pkg=com.google.android.gms} proc state 3 (8 skipped)
+         1795813008.487   847   847 D BatterySaverPolicy: accessibility changed to false, updating policy.
+         1795813008.629   847  1139 I commit_sys_config_file: [settings-2-0,4]
+         1795813008.692   847   913 I commit_sys_config_file: [notification-policy,5]
+         1795813009.412   847   922 I am_uid_running: 10235
+         1795813009.412   847   922 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 10235, packageName = null, attributionTag = null, token = android.os.Binder@4556152, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+         1795813009.419   464   464 D Zygote  : Forked child process 32461
+         1795813009.420   847   923 I am_proc_start: [0,32461,10235,jp.net.seventhreeseven.dreamscape,started-service,{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.DreamScapeForegroundService}]
+         1795813009.420   847   923 I ActivityManager: Start proc 32461:jp.net.seventhreeseven.dreamscape/u0a235 for started-service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.DreamScapeForegroundService}
+         1795813009.422 32461 32461 I libprocessgroup: Created cgroup /sys/fs/cgroup/apps/uid_10235/pid_32461
+         1795813009.437 32461 32461 I Zygote  : Process 32461 created for jp.net.seventhreeseven.dreamscape
+         1795813009.437 32461 32461 I even.dreamscape: Using generational CollectorTypeCMC GC.
+         1795813009.438 32461 32461 W even.dreamscape: Unexpected CPU variant for x86: x86_64.
+         1795813009.438 32461 32461 W even.dreamscape: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795813009.487 32461 32461 I berberis: Initialized Berberis ((null)), version 16.0.0
+         1795813009.594 32461 32461 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+         1795813009.599   847  3144 I am_proc_bound: [0,32461,jp.net.seventhreeseven.dreamscape]
+         1795813009.604 19508 19535 V BinderSender: Uid 10235 starts
+         1795813009.606   847  3144 I am_uid_active: 10235
+         1795813009.608 19508 19535 V Service : Add 0:jp.net.seventhreeseven.dreamscape to power save temp whitelist for 30s
+         1795813009.620 32461 32461 D nativeloader: Configuring clns-9 for other apk /data/app/~~3fqN3HQ5S4VXJtJDy2VRLg==/jp.net.seventhreeseven.dreamscape-jcpIeofco03fFoRUB34zug==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~3fqN3HQ5S4VXJtJDy2VRLg==/jp.net.seventhreeseven.dreamscape-jcpIeofco03fFoRUB34zug==/lib/arm64:/data/app/~~3fqN3HQ5S4VXJtJDy2VRLg==/jp.net.seventhreeseven.dreamscape-jcpIeofco03fFoRUB34zug==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/jp.net.seventhreeseven.dreamscape
+         1795813009.663 32461 32461 V GraphicsEnvironment: Currently set values for:
+         1795813009.663 32461 32461 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+         1795813009.663 32461 32461 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+         1795813009.663 32461 32461 V GraphicsEnvironment: jp.net.seventhreeseven.dreamscape is not listed in per-application setting
+         1795813009.663 32461 32461 V GraphicsEnvironment: No special selections for ANGLE, returning default driver choice
+         1795813009.664 32461 32461 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+         1795813009.669 32461 32461 D WM-WrkMgrInitializer: Initializing WorkManager with default configuration.
+         1795813009.671 32461 32461 D WM-PackageManagerHelper: Skipping component enablement for androidx.work.impl.background.systemjob.SystemJobService
+         1795813009.671 32461 32461 D WM-Schedulers: Created SystemJobScheduler and enabled SystemJobService
+         1795813009.673 32461 32486 D WM-ForceStopRunnable: The default process name was not specified.
+         1795813009.673 32461 32486 D WM-ForceStopRunnable: Performing cleanup operations.
+         1795813009.675 32461 32461 D ShizukuProvider: Initialize Sui: false
+         1795813009.677 32461 32481 D ShizukuProvider: binder received
+         1795813009.679 32461 32481 I ShizukuApplication: attachApplication
+         1795813009.679 19508 19535 I Service : send binder to user app jp.net.seventhreeseven.dreamscape in user 0
+         1795813009.681 19508 19519 V BinderSender: Uid 10235 already starts
+         1795813009.689 19508 19535 V BinderSender: Uid 10235 already starts
+         1795813009.689 32461 32461 I MelatonBars: Shizuku's binder arrived: holding the row (#1331)
+         1795813009.690 32461 32461 I MelatonBars: early hold at process start (#1371)
+         1795813009.696 32461 32461 I DriveState: 15:56:49 start: restored idle (-), cars 0, learned 0, places 2 [idle]
+         1795813009.706   847  3024 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813009.707 32461 32491 I CafeTasks: tasks drive-alerts, radio-mode, car-presence, status-bar, hour-chime (server 46bb3a31), engine supported
+         1795813009.710 32461 32502 D WM-PackageManagerHelper: Skipping component enablement for androidx.work.impl.background.systemalarm.RescheduleReceiver
+         1795813009.712   847  1297 D ConnectivityService: NetReassign [no changes] [c 0] [a 1] [i 1]
+         1795813009.717   847  1297 D ConnectivityService: NetReassign [no changes] [c 0] [a 2] [i 0]
+         1795813009.718   847  1297 D ConnectivityService: NetReassign [no changes] [c 0] [a 0] [i 1]
+         1795813009.725 32461 32461 D BluetoothSocket: bindListen(): mPort=-1, mType=1
+         1795813009.729  1722  2143 I BluetoothSocketManagerBinder: createSocketChannel: type=1, serviceName=Melaton Instant Hotspot, uuid=8f6b5a4e-1c2d-4e0f-9a7b-3c5d6e7f8a91, port=-1, from uid/pid=10235/32461
+         1795813009.730  1722  2143 I bt_btif_sock: system/btif/src/btif_sock.cc:166 btsock_listen: Attempting listen for socket connections for device: 00:00:00:00:00:00, type: 1, channel: -1, app_uid: 10235, data_path: 0, hub_id: 0, endpoint_id: 0, max_rx_packet_size: 0
+         1795813009.730  1722  2143 I bt_btif_sock_rfcomm: system/btif/src/btif_sock_rfc.cc:401 btsock_rfc_listen: Adding listening socket service_name: Melaton Instant Hotspot - channel: -1
+         1795813009.730  1722  2005 I bt_btif_sock_rfcomm: system/btif/src/btif_sock_rfc.cc:1023 jv_dm_cback: handling event:BTA_JV_GET_SCN_EVT, slot_id:9
+         1795813009.731  1722  2005 I bt_btif_sock_rfcomm: system/btif/src/btif_sock_rfc.cc:1023 jv_dm_cback: handling event:BTA_JV_CREATE_RECORD_EVT, slot_id:9
+         1795813009.731  1722  2005 I bt_bta_dm: system/bta/dm/bta_dm_act.cc:1134 bta_dm_set_eir: Generating extended inquiry response packet EIR
+         1795813009.731  1722  2005 W rfcomm_port_utils: system/stack/rfcomm/port_utils.cc:290 port_find_mcb: not found, bd_addr:ff:ff:ff:ff:ff:ff
+         1795813009.731  1722  2005 I bt_port_api: system/stack/rfcomm/port_api.cc:194 RFCOMM_CreateConnectionWithSecurity: bd_addr=ff:ff:ff:ff:ff:ff, scn=12, is_server=true, mtu=990, uuid=0x0, dlci=24, signal_state=0xb, port_handle=22
+         1795813009.731  1722  2005 I bt_btif_sock_rfcomm: system/btif/src/btif_sock_rfc.cc:975 rfcomm_cback: handling BTA_JV_RFCOMM_START_EVT, slot_id:9
+         1795813009.731  1722  2005 I bt_btif_sock_rfcomm: system/btif/src/btif_sock_rfc.cc:649 on_srv_rfc_listen_started: listening for RFCOMM socket connections for device: 00:00:00:00:00:00, scn: 12, app_uid: 10235, id: 9
+         1795813009.734 32461 32461 D BluetoothSocket: bindListen(), SocketState: INIT, mPfd: {ParcelFileDescriptor: java.io.FileDescriptor@6e38038}
+         1795813009.734 32461 32461 D BluetoothSocket: bindListen(), Create LocalSocket
+         1795813009.734 32461 32461 D BluetoothSocket: bindListen(), new LocalSocket.getInputStream()
+         1795813009.734 32461 32461 D BluetoothSocket: bindListen(), readInt mSocketIS: android.net.LocalSocketImpl$SocketInputStream@33ed811
+         1795813009.734 32461 32461 D BluetoothSocket: bindListen(): channel=12, mPort=-1
+         1795813009.734 32461 32510 D BluetoothSocket: accept(), timeout (ms):-1
+         1795813009.740 32461 32461 I CameraManagerGlobal: Connecting to camera service
+         1795813009.757   847  1297 D ConnectivityService: NetReassign [no changes] [c 0] [a 0] [i 1]
+         1795813009.757   847  1760 D BiometricService: canAuthenticate: User=0, Caller=0, Authenticators=255
+         1795813009.760   847  1760 D BiometricService/PreAuthInfo: Package: jp.net.seventhreeseven.dreamscape Sensor ID: 0 Modality: 2 User id: 0 Status: 7
+         1795813009.760   847  1760 D BiometricService/PreAuthInfo: getCanAuthenticateInternal Modality: 2 AuthenticatorStatus: 7
+         1795813009.760   847  1760 D AuthService: canAuthenticate, userId: 0, callingUserId: 0, authenticators: 255, result: 11
+         1795813009.761   847  3144 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813009.773   847  3144 D ConnectivityService: requestNetwork for uid/pid:10235/32461 activeRequest: null callbackRequest: 247 [NetworkRequest [ REQUEST id=248, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false declaredMethods: AVAIL|LOST|NC|LP
+         1795813009.774 32461 32503 I ActiveSyncLink: reconnect now: network available
+         1795813009.774   847  1291 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=248, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813009.774   847  1291 V WifiNetworkFactory: Accepted network request NetworkRequest [ REQUEST id=248, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813009.775   847  1291 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=248, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813009.775   847  1291 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=248, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813009.775   847  1291 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=248, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813009.775   847  1297 D ConnectivityService: NetReassign [248 : null → 102] [c 0] [a 1] [i 1]
+         1795813009.785 32461 32527 I WebViewFactory: Loading com.google.android.webview version 145.0.7632.218 (code 763221809)
+         1795813009.786 32461 32527 V ResourcesManager: The following library key has been added: ResourcesKey{ mHash=eb4f5e38 mResDir=null mSplitDirs=[] mOverlayDirs=[] mLibDirs=[/data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/WebViewGoogle.apk,/system/framework/android.test.base.jar,/system_ext/framework/androidx.window.extensions.jar] mDisplayId=0 mOverrideConfig=v37 mCompatInfo={360dpi always-compat} mLoaders=[]}
+         1795813009.788 19508 19535 I UserServiceManager: New service record jp.net.seventhreeseven.dreamscape:jp.net.seventhreeseven.dreamscape.ShellService (d7608215-4297-447a-86f5-eff260be51b9-1795813009788): version=1, daemon=false, apk=/data/app/~~3fqN3HQ5S4VXJtJDy2VRLg==/jp.net.seventhreeseven.dreamscape-jcpIeofco03fFoRUB34zug==/base.apk
+         1795813009.788 19508 19535 V UserServiceRecord: Set starting timeout for service record d7608215-4297-447a-86f5-eff260be51b9-1795813009788: 30000
+         1795813009.788 19508 19648 V UserServiceManager: Starting process for service record jp.net.seventhreeseven.dreamscape:jp.net.seventhreeseven.dreamscape.ShellService (d7608215-4297-447a-86f5-eff260be51b9-1795813009788)...
+         1795813009.788 19508 19508 I auditd  : type=1400 audit(0.0:184): avc:  denied  { watch } for  comm="binder:19508_3" path="/data/app/~~3fqN3HQ5S4VXJtJDy2VRLg==/jp.net.seventhreeseven.dreamscape-jcpIeofco03fFoRUB34zug==" dev="dm-6" ino=163880 scontext=u:r:shell:s0 tcontext=u:object_r:apk_data_file:s0 tclass=dir permissive=0
+         1795813009.788 19508 19508 W binder:19508_3: type=1400 audit(0.0:184): avc:  denied  { watch } for  path="/data/app/~~3fqN3HQ5S4VXJtJDy2VRLg==/jp.net.seventhreeseven.dreamscape-jcpIeofco03fFoRUB34zug==" dev="dm-6" ino=163880 scontext=u:r:shell:s0 tcontext=u:object_r:apk_data_file:s0 tclass=dir permissive=0
+         1795813009.789 32461 32527 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.test.base.jar
+         1795813009.789 32461 32527 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
+         1795813009.790 32461 32527 D nativeloader: Configuring clns-10 for other apk /data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/WebViewGoogle.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/lib/x86_64:/data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/WebViewGoogle.apk!/lib/x86_64, permitted_path=/data:/mnt/expand
+         1795813009.793   847   847 V NotificationManagerService.NotificationListeners: 0 notification listener service connected: ComponentInfo{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+         1795813009.808 32461 32461 I NativeBar: task roles: [notify]
+         1795813009.810 32461 32527 I cr_WVCFactoryProvider: version=145.0.7632.218 (763221809) minSdkVersion=29 multiprocess=true packageId=2 splits=<none>
+         1795813009.810   847   847 V AccessibilityManagerService: onUserStateChangedLocked for userId: 0, forceUpdate: false
+         1795813009.812   847   847 V AccessibilityUserState: updateShortcutTargets: type:accessibility_shortcut_target_service, current:{}, new:{}
+         1795813009.812   847   847 V AccessibilityUserState: updateShortcutTargets: type:accessibility_button_targets, current:{}, new:{}
+         1795813009.813   847   847 V AccessibilityUserState: updateShortcutTargets: type:accessibility_gesture_targets, current:{}, new:{}
+         1795813009.813   847   847 V AccessibilityUserState: updateShortcutTargets: type:accessibility_qs_targets, current:{}, new:{}
+         1795813009.813   847   847 V AccessibilityUserState: updateShortcutTargets: type:accessibility_key_gesture_targets, current:{}, new:{}
+         1795813009.813   847   847 V AccessibilityUserState: updateShortcutTargets: type:accessibility_top_row_key_targets, current:{}, new:{}
+         1795813009.814   847   847 V AccessibilityUserState: updateShortcutTargets: type:accessibility_quick_access_targets, current:{}, new:{}
+         1795813009.815   847   847 W MagnificationConnectionManager: requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+         1795813009.816   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.817   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.817   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.818   847  2868 D AccessibilityManagerService: .getAccessibilityShortcutTargets {shortcutType=0, userId=0}
+         1795813009.818   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.818   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.819   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.819 32461 32527 D nativeloader: Load /data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/WebViewGoogle.apk!/lib/x86_64/libwebviewchromium.so using class loader ns clns-10 (caller=/data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/WebViewGoogle.apk): ok
+         1795813009.819   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.819   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.820   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.820   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.820   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.820   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.823  2587  3534 I AiAiEcho: Settings changed for uri: content://settings/secure/accessibility_enabled
+         1795813009.824 32461 32527 D nativeloader: Load /system/lib64/libwebviewchromium_plat_support.so using class loader ns clns-10 (caller=/data/app/~~6pY2Cuo9TpXZ2wVn1JDO1w==/com.google.android.webview-fywVDyAOm5LjKNRg-E_Shg==/WebViewGoogle.apk): ok
+         1795813009.824   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.825   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.826   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.826   847   847 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813009.829   847   847 D BatterySaverPolicy: accessibility changed to true, updating policy.
+         1795813009.833 32461 32539 I chromium: [1127/155649.832939:INFO:android_webview/browser/variations/variations_seed_loader.cc:67] Failed to open file for reading.: No such file or directory (2)
+         1795813009.833 32461 32539 I cr_VariationsUtils: Failed reading seed file "/data/user/0/jp.net.seventhreeseven.dreamscape/app_webview/variations_seed_new"
+         1795813009.835  2587  2979 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+         1795813009.835  2587  2979 I AiAiEcho: EchoTargets: 
+         1795813009.835  2587  2979 I AiAiEcho: Filtered by AiAi flag check: 
+         1795813009.835  2587  2979 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+         1795813009.836  2587  2979 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+         1795813009.837  2587  2979 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+         1795813009.837  2587  2979 I AiAiEcho: EchoTargets: 
+         1795813009.837  2587  2979 I AiAiEcho: Filtered by AiAi flag check: 
+         1795813009.837  2587  2979 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+         1795813009.838   847  1760 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813009.838   847  1760 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813009.838   847   922 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813009.840   847   922 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813009.840  2587  2979 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+         1795813009.840  2587  2979 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+         1795813009.840  2587  2979 I AiAiEcho: EchoTargets: 
+         1795813009.840  2587  2979 I AiAiEcho: Filtered by AiAi flag check: 
+         1795813009.840  2587  2979 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+         1795813009.840  2587  2979 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+         1795813009.841  2587  2979 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+         1795813009.842   847   922 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813009.844   847   922 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813009.844 32461 32527 D DesktopExperienceFlags: Toggle override initialized to: false
+         1795813009.846   847  3144 I am_uid_running: 99007
+         1795813009.849  2587  2979 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface ambientcue with targets# 0 (types=[])
+         1795813009.849   847  3144 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 99007, packageName = null, attributionTag = null, token = android.os.Binder@4556152, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+         1795813009.851  2587  2979 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+         1795813009.856  1551  1709 I AmbientCueRepository: Receiving SmartSpace targets # 0
+         1795813009.861 32461 32461 D CompatChangeReporter: Compat change id reported: 377864165; UID 10235; state: ENABLED
+         1795813009.870  1645  1645 D Zygote  : Forked child process 32548
+         1795813009.873   847   923 I libprocessgroup: Created cgroup /sys/fs/cgroup/apps/uid_99007
+         1795813009.875   847   923 I libprocessgroup: Created cgroup /sys/fs/cgroup/apps/uid_99007/pid_32548
+         1795813009.881 32548 32548 I Zygote  : Process 32548 created for com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0
+         1795813009.882 32548 32548 I SandboxService0: Using generational CollectorTypeCMC GC.
+         1795813009.883 32548 32548 W SandboxService0: Unexpected CPU variant for x86: x86_64.
+         1795813009.883 32548 32548 W SandboxService0: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795813009.888   847   923 I am_proc_start: [0,32548,99007,com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0,bound-service,{jp.net.seventhreeseven.dreamscape/org.chromium.android_webview.js_sandbox.service.JsSandboxService0}]
+         1795813009.888   847   923 I ActivityManager: Start proc 32548:com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0/u0i7 for bound-service {jp.net.seventhreeseven.dreamscape/org.chromium.android_webview.js_sandbox.service.JsSandboxService0}
+         1795813009.889 32548 32548 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+         1795813009.891 32461 32527 I cr_LibraryLoader: Successfully loaded native library
+         1795813009.892 32461 32527 I cr_CachingUmaRecorder: Flushed 16 samples from 16 histograms, 0 samples were dropped.
+         1795813009.893 32461 32461 I DisplayManager: Implicitly registering for refresh rate
+         1795813009.894 32461 32461 W HWUI    : Unknown dataspace 0
+         1795813009.899   847   847 I sysui_multi_action: [757,1501,758,1,793,207,794,0,795,207,796,1,806,jp.net.seventhreeseven.dreamscape,857,dreamscape_persistent,858,2,947,0,1500,0,1641,status,1688,1]
+         1795813009.899   847   847 I sysui_multi_action: [757,804,799,note_interruptive,801,0,802,1]
+         1795813009.906   847   847 V NotificationHistory: Attempted to add notif for locked/gone/disabled user 0
+         1795813009.912  2587  4155 W AiAiEcho: LyftNotificationParser Ridesharing ETA not enabled
+         1795813009.912  2587  4155 I AiAiEcho: SmartspaceNotificationPredictor no parser can handle this notification or notification is invalid
+         1795813009.917 32531 32531 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+         1795813009.919   847  1919 I am_proc_bound: [0,32548,com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0]
+         1795813009.919   847  3144 W InputChannel-JNI: Channel already disposed.
+         1795813009.921   847  3111 W AppOps  : Operation not started: uid=10235 pkg=jp.net.seventhreeseven.dreamscape(null) op=ACTIVITY_RECOGNITION
+         1795813009.925   462 32564 I resolv  : GetAddrInfoHandler::run: {102 102 102 983142 10235 0}
+         1795813009.925   847  3024 W AppOps  : Noting op not finished: uid 10235 pkg jp.net.seventhreeseven.dreamscape code 79 startTime of in progress event=1795813009921
+         1795813009.925 32531 32531 I AndroidRuntime: Using default boot image
+         1795813009.925 32531 32531 I AndroidRuntime: Leaving lock profiling enabled
+         1795813009.926   462 32565 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+         1795813009.927   462 32566 I resolv  : res_nmkquery: (QUERY, IN, A)
+         1795813009.929 32531 32531 I jp.net.seventhreeseven.dreamscape:shell: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+         1795813009.930 32531 32531 I jp.net.seventhreeseven.dreamscape:shell: Using generational CollectorTypeCMC GC.
+         1795813010.058   462 32566 I resolv  : res_nsend: used send_dg 56 terrno: 0
+         1795813010.060   462 32566 I resolv  : doQuery: rcode=0, ancount=1, return value=56
+         1795813010.060   462 32565 I resolv  : res_nsend: used send_dg 117 terrno: 0
+         1795813010.061   462 32565 I resolv  : doQuery: rcode=0, ancount=1, return value=117
+         1795813010.064   847  1139 I commit_sys_config_file: [settings-2-0,8]
+         1795813010.064   847  1919 W ActivityManager: Slow operation: 146ms so far, now at attachApplicationLocked: after updateOomAdjLocked
+         1795813010.066 19508 19535 V BinderSender: Uid 99007 starts
+         1795813010.085 32548 32548 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.test.base.jar
+         1795813010.086 32548 32548 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
+         1795813010.093 32548 32548 E ActivityThread: ConnectivityService is null in handleBindApplication!
+         1795813010.100   847   922 I am_wtf  : [0,32548,com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0,-1601585467,ActivityThread,ConnectivityService is null in handleBindApplication!]
+         1795813010.105 32548 32548 I cr_WebViewApkApp: version=145.0.7632.218 (763221809) minSdkVersion=29 processName=com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0 splits=<none>
+         1795813010.109  2587  4155 W AiAiEcho: LyftNotificationParser Ridesharing ETA not enabled
+         1795813010.109  2587  4155 I AiAiEcho: SmartspaceNotificationPredictor no parser can handle this notification or notification is invalid
+         1795813010.110   847  2868 W InputChannel-JNI: Channel already disposed.
+         1795813010.111  2587  4155 W AiAiEcho: LyftNotificationParser Ridesharing ETA not enabled
+         1795813010.111  2587  4155 I AiAiEcho: SmartspaceNotificationPredictor no parser can handle this notification or notification is invalid
+         1795813010.112   847  3024 I am_uid_active: 99007
+         1795813010.113   847  1760 W AppOps  : Noting op not finished: uid 10235 pkg jp.net.seventhreeseven.dreamscape code 24 startTime of in progress event=1795813009915
+         1795813010.114 19508 19535 V BinderSender: Uid 99007 already starts
+         1795813010.114 19508 19535 V BinderSender: Uid 99007 already starts
+         1795813010.114  2587  4155 W AiAiEcho: LyftNotificationParser Ridesharing ETA not enabled
+         1795813010.114  2587  4155 I AiAiEcho: SmartspaceNotificationPredictor no parser can handle this notification or notification is invalid
+         1795813010.120 32461 32559 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+         1795813010.120   847  1760 W InputChannel-JNI: Channel already disposed.
+         1795813010.124   847  2868 D WindowManager: setClientSurface Surface(name=VRI-PrivacyDotTopRight2#423)/@0x86c56e8 for fedf0ce PrivacyDotTopRight2
+         1795813010.126  1551  2004 I Surface : Creating surface for consumer unnamed-1551-77 with slotExpansion=1 for 64 slots
+         1795813010.129  1551  2004 I Surface : Creating surface for consumer VRI[PrivacyDotTopRight2]#75(BLAST Consumer)75 with slotExpansion=1 for 64 slots
+         1795813010.130   847  1760 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813010.130  1551  2004 I viewroot_draw_event: [VRI[PrivacyDotTopRight2]9b07480,applyTransactionOnDraw applyImmediately]
+         1795813010.131 32548 32548 I cr_LibraryLoader: Successfully loaded native library
+         1795813010.131 32548 32548 I cr_CachingUmaRecorder: Flushed 2 samples from 2 histograms, 0 samples were dropped.
+         1795813010.148 32531 32531 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+         1795813010.158 32461 32461 I NativeLayout: layouts for battery, bluetooth, data, mail, notify, output.0, output.1, output.2, output.3, output.4, output.5, output.6, output.7, output.8, signal, sms, volume
+         1795813010.161 32531 32531 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+         1795813010.161 32531 32531 D jp.net.seventhreeseven.dreamscape:shell: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/10/icu") succeeded. 
+         1795813010.161 32531 32531 D jp.net.seventhreeseven.dreamscape:shell: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt78l.dat
+         1795813010.161   847  3024 I WifiService: getVerboseLoggingLevel uid=10235
+         1795813010.162 32531 32531 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+         1795813010.164 32531 32531 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+         1795813010.165 32531 32531 I jp.net.seventhreeseven.dreamscape:shell: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+         1795813010.165 32531 32531 W jp.net.seventhreeseven.dreamscape:shell: Unexpected CPU variant for x86: x86_64.
+         1795813010.165 32531 32531 W jp.net.seventhreeseven.dreamscape:shell: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795813010.180   847  3024 I WifiService: getWifiEnabledState uid=10235 state=3
+         1795813010.182   847  3024 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813010.183   847  3024 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813010.183   847  3024 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813010.185   847  3024 D ConnectivityService: requestNetwork for uid/pid:10235/32461 activeRequest: null callbackRequest: 249 [NetworkRequest [ REQUEST id=250, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false declaredMethods: AVAIL|LOST|NC
+         1795813010.186 32461 32580 I GFXSTREAM: [eglDisplay.cpp(297)] Opening libGLESv1_CM_emulation.so
+         1795813010.186 32461 32580 I GFXSTREAM: [eglDisplay.cpp(297)] Opening libGLESv2_emulation.so
+         1795813010.187 32461 32580 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+         1795813010.189 32531 32531 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+         1795813010.190 32531 32531 D AndroidRuntime: Calling main entry moe.shizuku.starter.ServiceStarter
+         1795813010.191 32531 32531 I ShizukuServiceStarter: starting service jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.ShellService...
+         1795813010.191   847  1297 D ConnectivityService: NetReassign [250 : null → 102] [c 0] [a 4] [i 2]
+         1795813010.193 32461 32580 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+         1795813010.193 32461 32580 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+         1795813010.195   847  1297 D ConnectivityService: NetReassign [no changes] [c 0] [a 2] [i 0]
+         1795813010.196   847  1291 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=250, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813010.196   847  1291 V WifiNetworkFactory: Accepted network request NetworkRequest [ REQUEST id=250, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813010.196   847  1291 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=250, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813010.196   847  1291 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=250, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813010.196   847  1291 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=250, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813010.197 32531 32531 D nativeloader: Load libjavacrypto.so using APEX ns com_android_conscrypt for caller /apex/com.android.conscrypt/javalib/conscrypt.jar: ok
+         1795813010.205 32531 32531 W OverlayConfig: partition_order.xml does not exist.
+         1795813010.220 32531 32531 I auditd  : type=1400 audit(0.0:185): avc:  denied  { execute } for  comm="main" name="idmap2" dev="dm-5" ino=389 scontext=u:r:shell:s0 tcontext=u:object_r:idmap_exec:s0 tclass=file permissive=0
+         1795813010.220 32531 32531 W main    : type=1400 audit(0.0:185): avc:  denied  { execute } for  name="idmap2" dev="dm-5" ino=389 scontext=u:r:shell:s0 tcontext=u:object_r:idmap_exec:s0 tclass=file permissive=0
+         1795813010.224   847  1760 D ConnectivityService: requestNetwork for uid/pid:10235/32461 activeRequest: null callbackRequest: 252 [NetworkRequest [ REQUEST id=253, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false declaredMethods: AVAIL|LOST|NC|LP
+         1795813010.232 32531 32531 W jp.net.seventhreeseven.dreamscape:shell: unable to execute idmap2: Permission denied
+         1795813010.233 32531 32531 W OverlayConfig: 'idmap2 create-multiple' failed: no mutable="false" overlays targeting "android" will be loaded
+         1795813010.238   847  1291 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=253, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813010.238   847  1291 V WifiNetworkFactory: Accepted network request NetworkRequest [ REQUEST id=253, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813010.240   847  1291 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=253, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813010.241   847  1291 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=253, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813010.241   847  1291 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=253, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10235 RequestorUid: 10235 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795813010.241   847  1297 D ConnectivityService: NetReassign [253 : null → 102] [c 0] [a 1] [i 3]
+         1795813010.255   847  3024 D WindowManager: setClientSurface Surface(name=VRI-MelatonBarProbe#424)/@0x6ece72c for a998fb8 MelatonBarProbe
+         1795813010.261 32531 32531 I AconfigPackage: android.media.swcodec.flags is mapped to com.android.media.swcodec
+         1795813010.263 32531 32531 I AconfigPackage: com.android.permission.flags is mapped to com.android.permission
+         1795813010.263 32531 32531 I AconfigPackage: com.android.permissioncontroller.flags is mapped to com.android.permission
+         1795813010.263 32531 32531 I AconfigPackage: com.google.android.widevine.flags is mapped to com.google.android.widevine
+         1795813010.264 32531 32531 I AconfigPackage: com.android.icu is mapped to com.android.i18n
+         1795813010.264 32531 32531 I AconfigPackage: com.android.appsearch.flags is mapped to com.android.appsearch
+         1795813010.265 32531 32531 I AconfigPackage: com.android.uprobestats.flags is mapped to com.android.uprobestats
+         1795813010.265 32531 32531 I AconfigPackage: android.uprobestats.mainline.flags is mapped to com.android.uprobestats
+         1795813010.266 32531 32531 I AconfigPackage: com.android.crashrecovery.flags is mapped to com.android.crashrecovery
+         1795813010.266 32531 32531 I AconfigPackage: android.provider.flags is mapped to com.android.configinfrastructure
+         1795813010.266 32531 32531 I AconfigPackage: com.android.server.deviceconfig is mapped to com.android.configinfrastructure
+         1795813010.267 32531 32531 I AconfigPackage: com.android.compos.flags is mapped to com.android.compos
+         1795813010.267 32531 32531 I AconfigPackage: com.android.art.flags is mapped to com.android.art
+         1795813010.267 32531 32531 I AconfigPackage: com.android.art.rw.flags is mapped to com.android.art
+         1795813010.267 32531 32531 I AconfigPackage: com.android.libcore is mapped to com.android.art
+         1795813010.267 32531 32531 I AconfigPackage: android.telecom.flags is mapped to com.android.telephonycore
+         1795813010.267 32531 32531 I AconfigPackage: com.android.internal.telecom.flags is mapped to com.android.telephonycore
+         1795813010.267 32531 32531 I AconfigPackage: com.android.telephony.flags is mapped to com.android.telephonycore
+         1795813010.267 32531 32531 I AconfigPackage: com.android.media.extractor.flags is mapped to com.android.media
+         1795813010.267 32531 32531 I AconfigPackage: com.android.media.metrics.flags is mapped to com.android.media
+         1795813010.267 32531 32531 I AconfigPackage: com.android.media.mainline.flags is mapped to com.android.media
+         1795813010.267 32531 32531 I AconfigPackage: com.android.wifi.flags is mapped to com.android.wifi
+         1795813010.267 32531 32531 I AconfigPackage: com.android.org.conscrypt.flags is mapped to com.android.conscrypt
+         1795813010.267 32531 32531 I AconfigPackage: com.android.org.conscrypt.net.flags is mapped to com.android.conscrypt
+         1795813010.268 32531 32531 I AconfigPackage: com.android.healthfitness.flags is mapped to com.android.healthfitness
+         1795813010.269 32531 32531 I AconfigPackage: com.android.ipsec.flags is mapped to com.android.ipsec
+         1795813010.269 32531 32531 I AconfigPackage: com.android.nfc.module.flags is mapped to com.android.nfcservices
+         1795813010.269 32531 32531 I AconfigPackage: com.android.nfc.module.nonexported.flags is mapped to com.android.nfcservices
+         1795813010.269 32531 32531 I AconfigPackage: com.android.adservices.ondevicepersonalization.flags is mapped to com.android.ondevicepersonalization
+         1795813010.270 32531 32531 I AconfigPackage: com.android.adbd.flags is mapped to com.android.adbd
+         1795813010.273 32531 32531 I AconfigPackage: com.android.bluetooth.beta.flags is mapped to com.android.bt
+         1795813010.273 32531 32531 I AconfigPackage: com.android.bluetooth.flags is mapped to com.android.bt
+         1795813010.273 32531 32531 I AconfigPackage: com.android.devicelock.flags is mapped to com.android.devicelock
+         1795813010.273 32531 32531 I AconfigPackage: android.os.profiling is mapped to com.android.profiling
+         1795813010.273 32531 32531 I AconfigPackage: android.os.profiling.anomaly.flags is mapped to com.android.profiling
+         1795813010.273 32531 32531 I AconfigPackage: com.android.os.statsd.flags is mapped to com.android.os.statsd
+         1795813010.274 32461 32461 I Surface : Creating surface for consumer unnamed-32461-0 with slotExpansion=1 for 64 slots
+         1795813010.274 32531 32531 I AconfigPackage: com.android.webapp.flags is mapped to com.android.webapp
+         1795813010.274 32531 32531 I AconfigPackage: com.android.rkpd.flags is mapped to com.android.rkpd
+         1795813010.274 32531 32531 I AconfigPackage: com.android.cellbroadcastreceiver.flags is mapped to com.android.cellbroadcast
+         1795813010.275 32531 32531 I AconfigPackage: com.android.adservices.flags is mapped to com.android.adservices
+         1795813010.275 32531 32531 I AconfigPackage: com.android.sdksandbox.flags is mapped to com.android.adservices
+         1795813010.275 32531 32531 I AconfigPackage: android.app.sdksandbox.flags is mapped to com.android.adservices
+         1795813010.275 32531 32531 I AconfigPackage: com.android.uwb.flags is mapped to com.android.uwb
+         1795813010.275 32531 32531 I AconfigPackage: com.android.ranging.flags is mapped to com.android.uwb
+         1795813010.275 32531 32531 I AconfigPackage: com.android.npumanager is mapped to com.android.npumanager
+         1795813010.275 32531 32531 I AconfigPackage: android.graphics.pdf.flags is mapped to com.android.mediaprovider
+         1795813010.275 32531 32531 I AconfigPackage: com.android.providers.media.flags is mapped to com.android.mediaprovider
+         1795813010.275 32531 32531 I AconfigPackage: android.graphics.pdf.flags.readonly is mapped to com.android.mediaprovider
+         1795813010.275 32531 32531 I AconfigPackage: com.android.tethering.mainline.beta is mapped to com.android.tethering
+         1795813010.275 32531 32531 I AconfigPackage: android.net.http is mapped to com.android.tethering
+         1795813010.275 32531 32531 I AconfigPackage: com.android.tethering.readonly.flags is mapped to com.android.tethering
+         1795813010.275 32531 32531 I AconfigPackage: android.net.vcn is mapped to com.android.tethering
+         1795813010.276 32531 32531 I AconfigPackage: com.android.net.flags is mapped to com.android.tethering
+         1795813010.276 32531 32531 I AconfigPackage: com.android.tethering.flags is mapped to com.android.tethering
+         1795813010.276 32531 32531 I AconfigPackage: com.android.tethering.beta.test is mapped to com.android.tethering
+         1795813010.276 32531 32531 I AconfigPackage: com.android.nearby.flags is mapped to com.android.tethering
+         1795813010.276 32531 32531 I AconfigPackage: com.android.net.thread.flags is mapped to com.android.tethering
+         1795813010.276 32531 32531 I AconfigPackage: com.android.net.ct.flags is mapped to com.android.tethering
+         1795813010.276 32531 32531 I AconfigPackage: com.android.system.virtualmachine.flags is mapped to com.android.virt
+         1795813010.276 32531 32531 E FeatureFlagsImplExport: android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+         1795813010.278 32461 32461 I Surface : Creating surface for consumer VRI[MelatonBarProbe]#0(BLAST Consumer)0 with slotExpansion=1 for 64 slots
+         1795813010.278 32461 32461 I viewroot_draw_event: [VRI[MelatonBarProbe]1fba6f7,applyTransactionOnDraw applyImmediately]
+         1795813010.278 32531 32531 I service_manager_slow: [20,display]
+         1795813010.282 32461 32561 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+         1795813010.294 32461 32561 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+         1795813010.295 32461 32561 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+         1795813010.299 32531 32531 D nativeloader: InitApexLibraries:
+         1795813010.299 32531 32531 D nativeloader:   com_android_art: libnativehelper.so
+         1795813010.299 32531 32531 D nativeloader:   com_android_i18n: libicui18n.so:libicuuc.so:libicu.so
+         1795813010.299 32531 32531 D nativeloader:   com_android_neuralnetworks: libneuralnetworks.so
+         1795813010.299 32531 32531 D nativeloader: InitDefaultPublicLibraries for_preload=0: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libclang_rt.hwasan-aarch64-android.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+         1795813010.299 32531 32531 D nativeloader: Configuring clns-1 for other apk /data/app/~~3fqN3HQ5S4VXJtJDy2VRLg==/jp.net.seventhreeseven.dreamscape-jcpIeofco03fFoRUB34zug==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~3fqN3HQ5S4VXJtJDy2VRLg==/jp.net.seventhreeseven.dreamscape-jcpIeofco03fFoRUB34zug==/lib/arm64:/data/app/~~3fqN3HQ5S4VXJtJDy2VRLg==/jp.net.seventhreeseven.dreamscape-jcpIeofco03fFoRUB34zug==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand
+         1795813010.300 32531 32531 D nativeloader: InitExtendedPublicLibraries: 
+         1795813010.300 32531 32531 D nativeloader: InitApexLibraries:
+         1795813010.300 32531 32531 D nativeloader:   
+         1795813010.300 32531 32531 I nativeloader: InitVendorPublicLibraries skipped: Failed to read /vendor/etc/public.libraries.txt: No such file or directory
+         1795813010.301 32531 32531 D nativeloader: InitProductPublicLibraries: 
+         1795813010.318   847  3144 D ActivityManager: sync unfroze 19521 moe.shizuku.privileged.api for 7
+         1795813010.318   847  3144 I am_uid_active: 10234
+         1795813010.322 19508 19535 V BinderSender: Uid 10234 already starts
+         1795813010.322 19508 19535 V BinderSender: Uid 10234 already starts
+         1795813010.323   847  1162 I am_unfreeze: [19521,moe.shizuku.privileged.api,7]
+         1795813010.331  1551  2004 I viewroot_draw_event: [VRI[PrivacyDotTopRight2]9b07480,reportDrawFinished seqId=2]
+         1795813010.334 32461 32577 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+         1795813010.335 19508 19519 V UserServiceManager: Received binder for service record d7608215-4297-447a-86f5-eff260be51b9-1795813009788
+         1795813010.335 19508 19519 V UserServiceRecord: Binder received for service record d7608215-4297-447a-86f5-eff260be51b9-1795813009788
+         1795813010.335 19508 19519 V UserServiceRecord: Broadcast binder received for service record d7608215-4297-447a-86f5-eff260be51b9-1795813009788
+         1795813010.336 32531 32531 I ShizukuServiceStarter: send binder to moe.shizuku.privileged.api in user 0
+         1795813010.338  1551  2004 I viewroot_draw_event: [VRI[PrivacyDotTopRight2]9b07480,Not drawing due to screen off]
+         1795813010.338 32461 32574 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+         1795813010.339   847  3144 D WindowManager: setClientSurface Surface(name=VRI-ScreenDecorOverlay#143)/@0x6c3e9fb for 7c9317f ScreenDecorOverlay
+         1795813010.342  1551  2004 I Surface : Creating surface for consumer unnamed-1551-78 with slotExpansion=1 for 64 slots
+         1795813010.343  1551  2004 I Surface : Creating surface for consumer VRI[ScreenDecorOverlay]#76(BLAST Consumer)76 with slotExpansion=1 for 64 slots
+         1795813010.344  1551  2004 I viewroot_draw_event: [VRI[ScreenDecorOverlay]27734a7,applyTransactionOnDraw applyImmediately]
+         1795813010.347  1551  2004 I viewroot_draw_event: [VRI[ScreenDecorOverlay]27734a7,Start draw after previous draw not visible]
+         1795813010.347  1551  2004 I viewroot_draw_event: [VRI[ScreenDecorOverlay]27734a7,Resumed drawing after screen turned on]
+         1795813010.381   847  1125 W CpuMonitorService: Current CPU frequency (4197375) is greater than maximum CPU frequency (2) for policy ID (0). Skipping CPU frequency policy
+         1795813010.381   847  1125 W CpuMonitorService: Current CPU frequency (4175630) is greater than maximum CPU frequency (2) for policy ID (1). Skipping CPU frequency policy
+         1795813010.383   847  1125 W CpuMonitorService: Current CPU frequency (4176259) is greater than maximum CPU frequency (2) for policy ID (2). Skipping CPU frequency policy
+         1795813010.383   847  1125 W CpuMonitorService: Current CPU frequency (4157472) is greater than maximum CPU frequency (2) for policy ID (3). Skipping CPU frequency policy
+         1795813010.498  1551  2004 I viewroot_draw_event: [VRI[ScreenDecorOverlay]27734a7,reportDrawFinished seqId=1]
+         1795813010.529 32461 32577 I NativeBar: art from https://staticforge.737.jp.net (refresh false): atlas 1024x320, 72 cells, search strip true
+         1795813010.532 32461 32461 I viewroot_draw_event: [VRI[MelatonBarProbe]1fba6f7,reportDrawFinished seqId=1]
+         1795813010.533 32461 32461 I MelatonBars: ime probe live: visible=false bottom=0
+         1795813010.533   847  3024 D WindowManager: setClientSurface Surface(name=VRI-MelatonImeProbe#425)/@0x5d74a18 for bacb185 MelatonImeProbe
+         1795813010.537 32461 32461 I Surface : Creating surface for consumer unnamed-32461-1 with slotExpansion=1 for 64 slots
+         1795813010.538 32461 32461 I Surface : Creating surface for consumer VRI[MelatonImeProbe]#1(BLAST Consumer)1 with slotExpansion=1 for 64 slots
+         1795813010.538 32461 32461 I viewroot_draw_event: [VRI[MelatonImeProbe]91a1394,applyTransactionOnDraw applyImmediately]
+         1795813010.539   847   914 I sysui_multi_action: [757,856,758,1,806,android,857,com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape,858,1]
+         1795813010.564 32461 32461 I viewroot_draw_event: [VRI[MelatonImeProbe]91a1394,reportDrawFinished seqId=1]
+         1795813010.588 32461 32461 I NativeBar: android icons: {data=wifi-connected, battery=battery-charging, signal=signal-1}
+         1795813010.593   533 32631 I adbd    : host-7: connection terminated: read failed
+         1795813010.603   533   533 I adbd    : authentication not required
+         1795813010.605   533   533 I adbd    : adbd service requested 'shell,v2,raw:cmd wifi status'
+         1795813010.620 32461 32491 I CafeTasks: engine started (9 files, from the server)
+         1795813010.621 32461 32494 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+         1795813010.631   847   922 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813010.633   847   922 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813010.633   847   922 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10235, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795813010.634   847  3144 I WifiService: getWifiEnabledState uid=10235 state=3
+         1795813010.642   847  3144 E SystemServiceRegistry: No service published for: wifiaware
+         1795813010.642   847  3144 E SystemServiceRegistry: android.os.ServiceManager$ServiceNotFoundException: No service published for: wifiaware
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.os.ServiceManager.getServiceOrThrow(ServiceManager.java:176)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.app.SystemServiceRegistry$169.createService(SystemServiceRegistry.java:2654)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.app.SystemServiceRegistry$CachedServiceFetcher.getService(SystemServiceRegistry.java:2784)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.app.SystemServiceRegistry.getSystemService(SystemServiceRegistry.java:2297)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.app.ContextImpl.getSystemService(ContextImpl.java:2450)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.content.ContextWrapper.getSystemService(ContextWrapper.java:991)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.content.Context.getSystemService(Context.java:4916)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at com.android.server.wifi.WifiShellCommand.<init>(WifiShellCommand.java:582)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at com.android.server.wifi.WifiInjector.makeWifiShellCommand(WifiInjector.java:898)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at com.android.server.wifi.WifiServiceImpl.handleShellCommand(WifiServiceImpl.java:6258)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.os.Binder.onShellCommand(Binder.java:1141)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.os.Binder.shellCommand(Binder.java:1088)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.os.Binder.onTransact(Binder.java:946)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.net.wifi.IWifiManager$Stub.onTransact(IWifiManager.java:3858)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.os.Binder.execTransactInternal(Binder.java:1369)
+         1795813010.642   847  3144 E SystemServiceRegistry: 	at android.os.Binder.execTransact(Binder.java:1323)
+         1795813010.643   847  3144 I WifiService: getWifiEnabledState uid=2000 state=3
+         1795813010.643   847  3144 I WifiService: isScanAlwaysAvailable uid=2000
+         1795813010.643   847   922 I am_wtf  : [0,32640,system_server,-1,SystemServiceRegistry,No service published for: wifiaware]
+         1795813010.643   847  3144 I WifiService: getConnectionInfo uid=2000
+         1795813010.643   847  3024 I WifiService: getConnectionInfo uid=10235
+         1795813010.644   847  3144 V WifiService: Clearing REDACT_FOR_LOCAL_MAC_ADDRESS for com.android.shell(uid=2000)
+         1795813010.644   847  3144 V WifiService: Clearing REDACT_FOR_NETWORK_SETTINGS for com.android.shell(uid=2000)
+         1795813010.644   847  3144 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for com.android.shell(uid=2000)
+         1795813010.645   847  3024 V WifiPermissionsUtil: checkCallersLocationPermission(jp.net.seventhreeseven.dreamscape): ok because uid 10235 has app-op android:fine_location
+         1795813010.645   847  3024 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for jp.net.seventhreeseven.dreamscape(uid=10235)
+         1795813010.650 32461 32656 I MelatonMiniport: task host wants the link
+         1795813010.650   847   847 W AccessibilityManagerService:  wait for adding window timeout: 131
+         1795813010.651   533 32636 I adbd    : host-25: connection terminated: read failed
+         1795813010.673 32461 32577 I HWUI    : Using FreeType backend (prop=Auto)
+         1795813010.680 32461 32577 I NativeBar: fonts (tahoma): regular true, bold true
+         1795813010.686   847  3024 D BiometricService: canAuthenticate: User=0, Caller=0, Authenticators=255
+         1795813010.687   847  3024 D BiometricService/PreAuthInfo: Package: jp.net.seventhreeseven.dreamscape Sensor ID: 0 Modality: 2 User id: 0 Status: 7
+         1795813010.688   847  3024 D BiometricService/PreAuthInfo: getCanAuthenticateInternal Modality: 2 AuthenticatorStatus: 7
+         1795813010.688   847  3024 D AuthService: canAuthenticate, userId: 0, callingUserId: 0, authenticators: 255, result: 11
+         1795813010.698 32461 32577 I NativeBar: inline picture (826 chars): 54x54
+         1795813010.699 32461 32577 I NativeBar: inline picture (1142 chars): 54x54
+         1795813010.700 32461 32577 I NativeBar: inline picture (618 chars): 47x47
+         1795813010.703 32461 32577 I NativeBar: inline picture (778 chars): 92x104
+         1795813010.705 32461 32577 I NativeBar: inline picture (798 chars): 92x104
+         1795813010.706   847  3111 I WifiService: getWifiEnabledState uid=10235 state=3
+         1795813010.717   847  3024 I WifiService: getConnectionInfo uid=10235
+         1795813010.720   847  3024 V WifiPermissionsUtil: checkCallersLocationPermission(jp.net.seventhreeseven.dreamscape): ok because uid 10235 has app-op android:fine_location
+         1795813010.720   847  3024 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for jp.net.seventhreeseven.dreamscape(uid=10235)
+         1795813010.743 32461 32521 I Wallpaper: slot 1: cropped null, original null, hint null (not used)
+         1795813010.744 32461 32521 I Wallpaper: slot 2: cropped null, original null, hint null (not used)
+         1795813010.749   847   847 I sysui_multi_action: [757,1501,758,1,793,204,794,0,795,204,796,0,797,com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape,806,android,857,com.android.server.wm.Alert-9a87e3f9,858,1,947,0,1500,0,1688,1,1745,2098068913]
+         1795813010.749   847   847 I sysui_multi_action: [757,804,799,note_interruptive,801,0,802,1]
+         1795813010.750 32461 32521 I Wallpaper: slot 1: cropped null, original null, hint null (not used)
+         1795813010.750 32461 32521 I Wallpaper: slot 9: cropped null, original null, hint null (not used)
+         1795813010.750 32461 32521 I Wallpaper: slot 10: cropped null, original null, hint null (not used)
+         1795813010.750 32461 32521 I Wallpaper: slot 9: cropped null, original null, hint null (not used)
+         1795813010.752   847   847 V NotificationHistory: Attempted to add notif for locked/gone/disabled user 0
+         1795813010.757  2587  4155 W AiAiEcho: LyftNotificationParser Ridesharing ETA not enabled
+         1795813010.758  2587  4155 I AiAiEcho: SmartspaceNotificationPredictor no parser can handle this notification or notification is invalid
+         1795813010.787   847   847 W AccessibilityManagerService:  wait for adding window timeout: 130
+         1795813010.794  1551  1551 D LocalImageResolver: Couldn't use ImageDecoder for drawable, falling back to non-resized load.
+         1795813010.795 32668 32668 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+         1795813010.798   847   913 I commit_sys_config_file: [notification-policy,6]
+         1795813010.801 32668 32668 I AndroidRuntime: Using default boot image
+         1795813010.801 32668 32668 I AndroidRuntime: Leaving lock profiling enabled
+         1795813010.803 32668 32668 I melaton_navblank: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+         1795813010.804 32668 32668 I melaton_navblank: Using generational CollectorTypeCMC GC.
+         1795813010.810  1551  1551 D LocalImageResolver: Couldn't use ImageDecoder for drawable, falling back to non-resized load.
+         1795813010.858   847   847 W AccessibilityManagerService:  wait for adding window timeout: 119
+         1795813010.878 32668 32668 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+         1795813010.889 32668 32668 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+         1795813010.889 32668 32668 D melaton_navblank: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/10/icu") succeeded. 
+         1795813010.889 32668 32668 D melaton_navblank: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt78l.dat
+         1795813010.890 32668 32668 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+         1795813010.891 32668 32668 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+         1795813010.892 32668 32668 I melaton_navblank: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+         1795813010.893 32668 32668 W melaton_navblank: Unexpected CPU variant for x86: x86_64.
+         1795813010.893 32668 32668 W melaton_navblank: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795813010.901  2587  4155 W AiAiEcho: LyftNotificationParser Ridesharing ETA not enabled
+         1795813010.901  2587  4155 I AiAiEcho: SmartspaceNotificationPredictor no parser can handle this notification or notification is invalid
+         1795813010.915 32668 32668 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+         1795813010.916 32668 32668 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795813010.919  2587  4155 W AiAiEcho: LyftNotificationParser Ridesharing ETA not enabled
+         1795813010.919  2587  4155 I AiAiEcho: SmartspaceNotificationPredictor no parser can handle this notification or notification is invalid
+         1795813010.924 32668 32668 I AconfigPackage: android.media.swcodec.flags is mapped to com.android.media.swcodec
+         1795813010.924 32668 32668 I AconfigPackage: com.android.permission.flags is mapped to com.android.permission
+         1795813010.924 32668 32668 I AconfigPackage: com.android.permissioncontroller.flags is mapped to com.android.permission
+         1795813010.924 32668 32668 I AconfigPackage: com.google.android.widevine.flags is mapped to com.google.android.widevine
+         1795813010.925 32668 32668 I AconfigPackage: com.android.icu is mapped to com.android.i18n
+         1795813010.926 32668 32668 I AconfigPackage: com.android.appsearch.flags is mapped to com.android.appsearch
+         1795813010.926 32668 32668 I AconfigPackage: com.android.uprobestats.flags is mapped to com.android.uprobestats
+         1795813010.926 32668 32668 I AconfigPackage: android.uprobestats.mainline.flags is mapped to com.android.uprobestats
+         1795813010.927 32668 32668 I AconfigPackage: com.android.crashrecovery.flags is mapped to com.android.crashrecovery
+         1795813010.927 32668 32668 I AconfigPackage: android.provider.flags is mapped to com.android.configinfrastructure
+         1795813010.927 32668 32668 I AconfigPackage: com.android.server.deviceconfig is mapped to com.android.configinfrastructure
+         1795813010.927 32668 32668 I AconfigPackage: com.android.compos.flags is mapped to com.android.compos
+         1795813010.928 32668 32668 I AconfigPackage: com.android.art.flags is mapped to com.android.art
+         1795813010.928 32668 32668 I AconfigPackage: com.android.art.rw.flags is mapped to com.android.art
+         1795813010.928 32668 32668 I AconfigPackage: com.android.libcore is mapped to com.android.art
+         1795813010.928 32668 32668 I AconfigPackage: android.telecom.flags is mapped to com.android.telephonycore
+         1795813010.928 32668 32668 I AconfigPackage: com.android.internal.telecom.flags is mapped to com.android.telephonycore
+         1795813010.928 32668 32668 I AconfigPackage: com.android.telephony.flags is mapped to com.android.telephonycore
+         1795813010.928 32668 32668 I AconfigPackage: com.android.media.extractor.flags is mapped to com.android.media
+         1795813010.928 32668 32668 I AconfigPackage: com.android.media.metrics.flags is mapped to com.android.media
+         1795813010.928 32668 32668 I AconfigPackage: com.android.media.mainline.flags is mapped to com.android.media
+         1795813010.928 32668 32668 I AconfigPackage: com.android.wifi.flags is mapped to com.android.wifi
+         1795813010.928 32668 32668 I AconfigPackage: com.android.org.conscrypt.flags is mapped to com.android.conscrypt
+         1795813010.928 32668 32668 I AconfigPackage: com.android.org.conscrypt.net.flags is mapped to com.android.conscrypt
+         1795813010.929 32668 32668 I AconfigPackage: com.android.healthfitness.flags is mapped to com.android.healthfitness
+         1795813010.929 32668 32668 I AconfigPackage: com.android.ipsec.flags is mapped to com.android.ipsec
+         1795813010.929 32668 32668 I AconfigPackage: com.android.nfc.module.flags is mapped to com.android.nfcservices
+         1795813010.929 32668 32668 I AconfigPackage: com.android.nfc.module.nonexported.flags is mapped to com.android.nfcservices
+         1795813010.929 32668 32668 I AconfigPackage: com.android.adservices.ondevicepersonalization.flags is mapped to com.android.ondevicepersonalization
+         1795813010.929 32668 32668 I AconfigPackage: com.android.adbd.flags is mapped to com.android.adbd
+         1795813010.929 32668 32668 I AconfigPackage: com.android.bluetooth.beta.flags is mapped to com.android.bt
+         1795813010.929 32668 32668 I AconfigPackage: com.android.bluetooth.flags is mapped to com.android.bt
+         1795813010.929 32668 32668 I AconfigPackage: com.android.devicelock.flags is mapped to com.android.devicelock
+         1795813010.930 32668 32668 I AconfigPackage: android.os.profiling is mapped to com.android.profiling
+         1795813010.930 32668 32668 I AconfigPackage: android.os.profiling.anomaly.flags is mapped to com.android.profiling
+         1795813010.930 32668 32668 I AconfigPackage: com.android.os.statsd.flags is mapped to com.android.os.statsd
+         1795813010.930 32668 32668 I AconfigPackage: com.android.webapp.flags is mapped to com.android.webapp
+         1795813010.930 32668 32668 I AconfigPackage: com.android.rkpd.flags is mapped to com.android.rkpd
+         1795813010.930 32668 32668 I AconfigPackage: com.android.cellbroadcastreceiver.flags is mapped to com.android.cellbroadcast
+         1795813010.930 32668 32668 I AconfigPackage: com.android.adservices.flags is mapped to com.android.adservices
+         1795813010.930 32668 32668 I AconfigPackage: com.android.sdksandbox.flags is mapped to com.android.adservices
+         1795813010.930 32668 32668 I AconfigPackage: android.app.sdksandbox.flags is mapped to com.android.adservices
+         1795813010.930 32668 32668 I AconfigPackage: com.android.uwb.flags is mapped to com.android.uwb
+         1795813010.930 32668 32668 I AconfigPackage: com.android.ranging.flags is mapped to com.android.uwb
+         1795813010.930 32668 32668 I AconfigPackage: com.android.npumanager is mapped to com.android.npumanager
+         1795813010.930 32668 32668 I AconfigPackage: android.graphics.pdf.flags is mapped to com.android.mediaprovider
+         1795813010.930 32668 32668 I AconfigPackage: com.android.providers.media.flags is mapped to com.android.mediaprovider
+         1795813010.930 32668 32668 I AconfigPackage: android.graphics.pdf.flags.readonly is mapped to com.android.mediaprovider
+         1795813010.930 32668 32668 I AconfigPackage: com.android.tethering.mainline.beta is mapped to com.android.tethering
+         1795813010.930 32668 32668 I AconfigPackage: android.net.http is mapped to com.android.tethering
+         1795813010.930 32668 32668 I AconfigPackage: com.android.tethering.readonly.flags is mapped to com.android.tethering
+         1795813010.930 32668 32668 I AconfigPackage: android.net.vcn is mapped to com.android.tethering
+         1795813010.930 32668 32668 I AconfigPackage: com.android.net.flags is mapped to com.android.tethering
+         1795813010.930 32668 32668 I AconfigPackage: com.android.tethering.flags is mapped to com.android.tethering
+         1795813010.930 32668 32668 I AconfigPackage: com.android.tethering.beta.test is mapped to com.android.tethering
+         1795813010.930 32668 32668 I AconfigPackage: com.android.nearby.flags is mapped to com.android.tethering
+         1795813010.930 32668 32668 I AconfigPackage: com.android.net.thread.flags is mapped to com.android.tethering
+         1795813010.930 32668 32668 I AconfigPackage: com.android.net.ct.flags is mapped to com.android.tethering
+         1795813010.931 32668 32668 I AconfigPackage: com.android.system.virtualmachine.flags is mapped to com.android.virt
+         1795813010.931 32668 32668 E FeatureFlagsImplExport: android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+         1795813010.932 32668 32668 I service_manager_slow: [10,activity]
+         1795813010.952 32461 32479 I MelatonBars: holder token linked (#1331), started over Shizuku
+         1795813011.005 32461 32461 I MelatonBars: holder start answered over Shizuku [shizuku: ok]
+         1795813011.014   533 32693 I adbd    : host-7: connection terminated: read failed
+         1795813011.015   847  3111 I StatusBarManagerService: binder died for pkg=com.android.shell
+         1795813011.017   533 32695 I adbd    : host-25: connection terminated: read failed
+         1795813011.023   533 32698 I adbd    : host-7: connection terminated: read failed
+         1795813011.025   533   533 I adbd    : authentication not required
+         1795813011.026   533   533 I adbd    : adbd service requested 'shell,v2,raw:cmd statusbar send-disable-flag statusbar-expansion quick-settings system-icons clock notification-icons'
+         1795813011.031 32461 32494 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+         1795813011.045   533 32700 I adbd    : host-25: connection terminated: read failed
+         1795813011.050   847   847 W AccessibilityManagerService:  wait for adding window timeout: 132
+         1795813011.350  1789  2017 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795813011.351  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795813011.351  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813011.351  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813011.351  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813011.351  1789  2017 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795813011.351  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795813011.351  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813011.351  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813011.351  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795813011.351   847  1081 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813011.352  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795813011.352  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813011.352  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813011.352  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813011.354  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795813011.354  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813011.354  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813011.354  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813011.355  1789  2017 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795813011.355  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795813011.355  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813011.355  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813011.355  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795813011.358  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795813011.358  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813011.358  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813011.358  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813011.358 32461 32461 I NativeBar: android icons: {data=wifi-connected, battery=battery-charging, signal=signal-3}
+         1795813012.786   533   373 I adbd    : host-7: connection terminated: read failed
+         1795813012.789   533   375 I adbd    : host-25: connection terminated: read failed
+         1795813012.791   533   377 I adbd    : host-7: connection terminated: read failed
+         1795813012.793 32461 32524 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=true last=-
+         1795813013.686 32461 32461 I BarsHeal: check (process start)
+         1795813015.345   847  1297 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+         1795813015.346   847  1297 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+         1795813015.346   847  1297 D InetDiagMessage: Destroyed live tcp sockets for uids={10234} in 1ms
+         1795813015.346   847  1297 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+         1795813015.347   847  1297 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+         1795813015.347   847  1297 D InetDiagMessage: Destroyed live tcp sockets for uids={20234} in 2ms
+         1795813015.396 32461   682 D ProfileInstaller: Installing profile for jp.net.seventhreeseven.dreamscape
+         1795813015.774   847   875 I system_server: Thread[2,tid=875,WaitingInMainSignalCatcherLoop,Thread*=0x74217fc0bb20,peer=0x2007c08,"Signal Catcher"]: reacting to signal 3
+         1795813015.774   847   875 I system_server: 
+         1795813015.960   847  1356 E system_server: poll() failed: Interrupted system call, sleeping 100ms
+         1795813016.330   369   369 I tombstoned: received crash request for pid 847
+         1795813016.334   847   875 I system_server: Wrote stack traces to tombstoned
+         1795813016.335   369   369 E tombstoned: Traces for pid 847 written to: trace_17
+         1795813018.452   847   921 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813018.458 32461 32472 I even.dreamscape: Thread[2,tid=32472,WaitingInMainSignalCatcherLoop,Thread*=0x74217fc0bb20,peer=0x20a8020,"Signal Catcher"]: reacting to signal 3
+         1795813018.458 32461 32472 I even.dreamscape: 
+         1795813018.483  1440  1440 W libprocessgroup: A JoinCgroup action in the SystemMemoryProcess profile is used for controller memory in the cgroup v2 hierarchy and will be ignored
+         1795813018.483  1440  1440 I debuggerd: libdebuggerd_client: started dumping process 32461
+         1795813018.484   369   369 I tombstoned: registered intercept for pid 32461 and type kDebuggerdNativeBacktrace
+         1795813018.484 32461 32479 I libc    : Requested dump for pid 32461 (even.dreamscape)
+         1795813018.588  1445  1445 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1795813018.588   369   369 I tombstoned: received crash request for pid 32461
+         1795813018.588   369   369 I tombstoned: found intercept fd 512 for pid 32461 and type kDebuggerdNativeBacktrace
+         1795813018.589  1445  1445 I crash_dump64: performing dump of process 32461 (target tid = 32461)
+         1795813018.623   369   369 I tombstoned: received crash request for pid 32461
+         1795813018.630   369   369 E tombstoned: Traces for pid 32461 written to: trace_18
+         1795813018.630 32461 32472 I even.dreamscape: Wrote stack traces to tombstoned
+         1795813018.678  1440  1440 I debuggerd: libdebuggerd_client: done dumping process 32461
+         1795813018.678   369   369 W tombstoned: skipping tombstone file creation due to intercept
+         1795813019.832   847   921 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813020.237   847  1760 W libbinder.Binder: Binder transaction to android.accessibilityservice.IAccessibilityServiceConnection, function: UNKNOWN_FUNCTION_NAME, code: 10, took 10003ms. Data bytes: 140 Reply bytes: 12 Flags: 18
+         1795813020.238 32461 32594 W WindowReads: window read took 10004 ms (on window-bars)
+         1795813020.239 32461 32461 I MelatonBars: first window look applied after 10011 ms (0 windows)
+         1795813020.239 32461 32461 I MelatonBars: show: on=false fits=true status=false bar=false top=true ext=false tray=false give=false
+         1795813020.250   847  3144 W InputChannel-JNI: Channel already disposed.
+         1795813020.254 32461 32461 I MelatonBars: home strip added
+         1795813020.255 32461 32461 E even.dreamscape: hiddenapi: Accessing hidden field Landroid/view/ViewTreeObserver$InternalInsetsInfo;->touchableRegion:Landroid/graphics/Region; (runtime_flags=0, domain=platform, api=max-target-r) from Lwt2; (domain=app, TargetSdkVersion=36) using reflection: denied
+         1795813020.255 32461 32461 W TouchHole: no touchable region for View: No field touchableRegion in class Landroid/view/ViewTreeObserver$InternalInsetsInfo; (declaration of 'android.view.ViewTreeObserver$InternalInsetsInfo' appears in /system/framework/framework.jar!classes4.dex)
+         1795813020.261   847  3144 W InputChannel-JNI: Channel already disposed.
+         1795813020.265 32461 32461 E even.dreamscape: hiddenapi: Accessing hidden field Landroid/view/ViewTreeObserver$InternalInsetsInfo;->touchableRegion:Landroid/graphics/Region; (runtime_flags=0, domain=platform, api=max-target-r) from Lwt2; (domain=app, TargetSdkVersion=36) using reflection: denied
+         1795813020.265 32461 32461 W TouchHole: no touchable region for View: No field touchableRegion in class Landroid/view/ViewTreeObserver$InternalInsetsInfo; (declaration of 'android.view.ViewTreeObserver$InternalInsetsInfo' appears in /system/framework/framework.jar!classes4.dex)
+         1795813020.271   847  3144 W InputChannel-JNI: Channel already disposed.
+         1795813020.277   847  3289 D WindowManager: setClientSurface Surface(name=VRI-MelatonHomeStrip#429)/@0xf3edd16 for a00b543 MelatonHomeStrip
+         1795813020.280 32461 32461 I Surface : Creating surface for consumer unnamed-32461-2 with slotExpansion=1 for 64 slots
+         1795813020.281 32461 32461 I Surface : Creating surface for consumer VRI[MelatonHomeStrip]#2(BLAST Consumer)2 with slotExpansion=1 for 64 slots
+         1795813020.282 32461 32461 I viewroot_draw_event: [VRI[MelatonHomeStrip]f7a5d84,applyTransactionOnDraw applyImmediately]
+         1795813020.308 32461 32461 I viewroot_draw_event: [VRI[MelatonHomeStrip]f7a5d84,reportDrawFinished seqId=1]
+         1795813020.311   847  3289 D WindowManager: setClientSurface Surface(name=VRI-MelatonBarEdge#430)/@0xa250697 for 3ef629f MelatonBarEdge
+         1795813020.313 32461 32461 I Surface : Creating surface for consumer unnamed-32461-3 with slotExpansion=1 for 64 slots
+         1795813020.313 32461 32461 I Surface : Creating surface for consumer VRI[MelatonBarEdge]#3(BLAST Consumer)3 with slotExpansion=1 for 64 slots
+         1795813020.314 32461 32461 I viewroot_draw_event: [VRI[MelatonBarEdge]f5bedee,applyTransactionOnDraw applyImmediately]
+         1795813020.336 32461 32461 I viewroot_draw_event: [VRI[MelatonBarEdge]f5bedee,reportDrawFinished seqId=1]
+         1795813020.341   847  3289 D WindowManager: setClientSurface Surface(name=VRI-MelatonBarEdge#431)/@0x9900084 for cf189bb MelatonBarEdge
+         1795813020.347   847  1162 D ActivityManager: freezing 19521 moe.shizuku.privileged.api
+         1795813020.348 32461 32461 I Surface : Creating surface for consumer unnamed-32461-4 with slotExpansion=1 for 64 slots
+         1795813020.348   847  1162 I am_freeze: [19521,moe.shizuku.privileged.api]
+         1795813020.348 32461 32461 I Surface : Creating surface for consumer VRI[MelatonBarEdge]#4(BLAST Consumer)4 with slotExpansion=1 for 64 slots
+         1795813020.348 32461 32461 I viewroot_draw_event: [VRI[MelatonBarEdge]2ed6b08,applyTransactionOnDraw applyImmediately]
+         1795813020.349   847  1297 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+         1795813020.350   847  1297 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+         1795813020.350   847  1297 D InetDiagMessage: Destroyed live tcp sockets for uids={10234} in 1ms
+         1795813020.368 32461 32461 I viewroot_draw_event: [VRI[MelatonBarEdge]2ed6b08,reportDrawFinished seqId=1]
+         1795813020.787   847   847 W AccessibilityManagerService:  wait for adding window timeout: 133
+         1795813020.817   847   847 W AccessibilityManagerService:  wait for adding window timeout: 134
+         1795813020.853   847   847 W AccessibilityManagerService:  wait for adding window timeout: 135
+         1795813020.892  1551  2004 I viewroot_draw_event: [VRI[ScreenDecorOverlay]27734a7,Not drawing due to screen off]
+         1795813020.922   847   931 W ProcessStats: Tracking association SourceState{67721bd com.android.settings/1000 Top #3065} whose proc state 1 is better than process ProcessState{2c4bb4c com.google.android.gms.persistent/10215 pkg=com.google.android.gms} proc state 3 (50 skipped)
+         1795813020.923   847   921 I am_pss  : [1795,10198,com.google.android.apps.nexuslauncher,0,0,0,248123392,0,5,1]
+         1795813020.925   847   921 I am_pss  : [2404,10179,com.google.android.inputmethod.latin,0,0,0,246771712,0,7,0]
+         1795813021.111  1551  2004 I viewroot_draw_event: [VRI[ScreenDecorOverlay]27734a7,Not drawing due to not visible. Reason=View.INVISIBLE]
+         1795813021.352  1789  2017 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795813021.352  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795813021.352  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813021.352  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813021.352  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813021.352  1789  2017 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795813021.352  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795813021.353  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813021.353   847  3142 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813021.353  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813021.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795813021.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795813021.353  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813021.353  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813021.353  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813021.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795813021.353  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813021.353  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813021.353  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813021.353  1789  2017 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795813021.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795813021.353  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813021.353  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813021.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795813021.354  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795813021.354  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813021.354  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813021.354  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813021.449  1551  1551 I viewroot_draw_event: [VRI[StatusBar]7a953ba,Not drawing due to screen off]
+         1795813021.963   847  3142 W AppOps  : Noting op not finished: uid 10215 pkg com.google.android.gms code 113 startTime of in progress event=1795813009713
+         1795813021.979   847  3142 W AppOps  : Noting op not finished: uid 10215 pkg com.google.android.gms code 113 startTime of in progress event=1795813009712
+         1795813021.985  2119  4158 I ActivityScheduler: nextTriggerTime: 1467689, in 180000ms, detectorType: 39, FULL_TYPE alarmWindowMillis: 20000
+         1795813021.985  2119  4158 W AlarmManager: alarm window unlikely to be respected [CONTEXT service_id=231 ]
+         1795813021.985  2119  4158 W AlarmManager: java.lang.IllegalArgumentException: alarm "NetworkLocationActivityDetection" has short window length
+         1795813021.985  2119  4158 W AlarmManager: 	at cvbd.c(:com.google.android.gms@261136038@26.11.36 (260800-892401869):38)
+         1795813021.985  2119  4158 W AlarmManager: 	at cvbc.c(:com.google.android.gms@261136038@26.11.36 (260800-892401869):18)
+         1795813021.985  2119  4158 W AlarmManager: 	at gpfv.b(:com.google.android.gms@261136038@26.11.36 (260800-892401869):132)
+         1795813021.985  2119  4158 W AlarmManager: 	at gney.v(:com.google.android.gms@261136038@26.11.36 (260800-892401869):61)
+         1795813021.985  2119  4158 W AlarmManager: 	at gngq.q(:com.google.android.gms@261136038@26.11.36 (260800-892401869):136)
+         1795813021.985  2119  4158 W AlarmManager: 	at gngq.u(:com.google.android.gms@261136038@26.11.36 (260800-892401869):107)
+         1795813021.985  2119  4158 W AlarmManager: 	at gngw.L(:com.google.android.gms@261136038@26.11.36 (260800-892401869):74)
+         1795813021.985  2119  4158 W AlarmManager: 	at gngb.q(:com.google.android.gms@261136038@26.11.36 (260800-892401869):17)
+         1795813021.985  2119  4158 W AlarmManager: 	at gnfr.b(:com.google.android.gms@261136038@26.11.36 (260800-892401869):28)
+         1795813021.985  2119  4158 W AlarmManager: 	at gneu.m(:com.google.android.gms@261136038@26.11.36 (260800-892401869):191)
+         1795813021.985  2119  4158 W AlarmManager: 	at gnes.k(:com.google.android.gms@261136038@26.11.36 (260800-892401869):56)
+         1795813021.985  2119  4158 W AlarmManager: 	at gnwi.run(:com.google.android.gms@261136038@26.11.36 (260800-892401869):7)
+         1795813021.985  2119  4158 W AlarmManager: 	at android.os.Handler.handleCallback(Handler.java:1095)
+         1795813021.985  2119  4158 W AlarmManager: 	at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+         1795813021.985  2119  4158 W AlarmManager: 	at android.os.Handler.dispatchMessage(Handler.java:125)
+         1795813021.985  2119  4158 W AlarmManager: 	at cwwb.mr(:com.google.android.gms@261136038@26.11.36 (260800-892401869):1)
+         1795813021.985  2119  4158 W AlarmManager: 	at cwwb.dispatchMessage(:com.google.android.gms@261136038@26.11.36 (260800-892401869):140)
+         1795813021.985  2119  4158 W AlarmManager: 	at android.os.Looper.loopOnce(Looper.java:296)
+         1795813021.985  2119  4158 W AlarmManager: 	at android.os.Looper.loop(Looper.java:397)
+         1795813021.985  2119  4158 W AlarmManager: 	at android.os.HandlerThread.run(HandlerThread.java:139)
+         1795813022.965   847  3143 W AppOps  : Noting op not finished: uid 10215 pkg com.google.android.gms code 113 startTime of in progress event=1795813009713
+         1795813023.921  1693  1956 D IpClient/wlan0: addressUpdated: fec0::78ed:7ca9:47ca:17fb/64 on ifindex 15 flags 0x00000900 scope 200
+         1795813023.921  1693  1956 D IpClient/wlan0: addressUpdated: fec0::5269:d941:a7c2:9e77/64 on ifindex 15 flags 0x00000001 scope 200
+         1795813023.921  1693  1956 W AlarmManager: Unrecognized alarm listener com.android.networkstack.android.net.ip.IpClientLinkObserver$Dhcp6PdPreferredPrefixAlarmListener@6e18d66
+         1795813023.922  1693  1956 D ApfFilter: (wlan0): Ignoring RA RA fe80::2 -> ff02::1 1800s fec0::/64 86400s/14400s  which matches RA fe80::2 -> ff02::1 1800s fec0::/64 86400s/14400s 
+         1795813023.922   847  1297 W AppOps  : Noting op not finished: uid 1000 pkg com.android.localtransport code 169 startTime of in progress event=1795811799864
+         1795813024.723   847   875 I system_server: Thread[2,tid=875,WaitingInMainSignalCatcherLoop,Thread*=0x74217fc0bb20,peer=0x2007c08,"Signal Catcher"]: reacting to signal 3
+         1795813024.723   847   875 I system_server: 
+         1795813024.902   847  1356 E system_server: poll() failed: Interrupted system call, sleeping 100ms
+         1795813025.102   462  5956 I netd    : tetherGetStats() -> {[]} <0.72ms>
+         1795813025.326   369   369 I tombstoned: received crash request for pid 847
+         1795813025.331   847   875 I system_server: Wrote stack traces to tombstoned
+         1795813025.331   369   369 E tombstoned: Traces for pid 847 written to: trace_19
+         1795813027.607 32461 32472 I even.dreamscape: Thread[2,tid=32472,WaitingInMainSignalCatcherLoop,Thread*=0x74217fc0bb20,peer=0x2000b08,"Signal Catcher"]: reacting to signal 3
+         1795813027.607 32461 32472 I even.dreamscape: 
+         1795813027.636  2838  2838 W libprocessgroup: A JoinCgroup action in the SystemMemoryProcess profile is used for controller memory in the cgroup v2 hierarchy and will be ignored
+         1795813027.637  2838  2838 I debuggerd: libdebuggerd_client: started dumping process 32461
+         1795813027.637   369   369 I tombstoned: registered intercept for pid 32461 and type kDebuggerdNativeBacktrace
+         1795813027.638 32461 32461 I libc    : Requested dump for pid 32461 (even.dreamscape)
+         1795813027.753  2844  2844 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1795813027.757   369   369 I tombstoned: received crash request for pid 32461
+         1795813027.757   369   369 I tombstoned: found intercept fd 512 for pid 32461 and type kDebuggerdNativeBacktrace
+         1795813027.761  2844  2844 I crash_dump64: performing dump of process 32461 (target tid = 32461)
+         1795813027.792   369   369 I tombstoned: received crash request for pid 32461
+         1795813027.796   369   369 E tombstoned: Traces for pid 32461 written to: trace_20
+         1795813027.796 32461 32472 I even.dreamscape: Wrote stack traces to tombstoned
+         1795813027.870   369   369 W tombstoned: skipping tombstone file creation due to intercept
+         1795813027.870  2838  2838 I debuggerd: libdebuggerd_client: done dumping process 32461
+         1795813030.244   847  1760 W libbinder.Binder: Binder transaction to android.accessibilityservice.IAccessibilityServiceConnection, function: UNKNOWN_FUNCTION_NAME, code: 10, took 10004ms. Data bytes: 140 Reply bytes: 12 Flags: 18
+         1795813031.351  1789  2017 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795813031.351  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795813031.352  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813031.352  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813031.352  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813031.352   847  1760 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813031.352  1789  2017 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795813031.352  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795813031.352  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813031.352  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813031.352  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795813031.352  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795813031.352  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813031.352  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813031.352  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813031.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795813031.353  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813031.353  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813031.353  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813031.353  1789  2017 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795813031.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795813031.353  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813031.353  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813031.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795813031.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795813031.354  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813031.354  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813031.354  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813039.617   847   921 I am_pss  : [32461,10235,jp.net.seventhreeseven.dreamscape,0,0,0,234987520,0,4,0]
+         1795813039.617   847   921 I am_pss  : [32548,99007,com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0,0,0,0,140419072,0,4,0]
+         1795813040.248   847  3289 W libbinder.Binder: Binder transaction to android.accessibilityservice.IAccessibilityServiceConnection, function: UNKNOWN_FUNCTION_NAME, code: 10, took 10002ms. Data bytes: 140 Reply bytes: 12 Flags: 18
+         1795813041.351  1789  2017 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795813041.351  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795813041.351  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813041.351  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813041.352  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813041.352   847  3289 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795813041.352  1789  2017 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795813041.352  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795813041.352  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813041.352  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813041.352  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795813041.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795813041.353  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813041.353  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813041.353  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813041.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795813041.353  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813041.353  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813041.353  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813041.353  1789  2017 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795813041.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795813041.353  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813041.353  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813041.353  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795813041.354  1789  2017 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795813041.354  1789  2017 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795813041.354  1789  2017 V SatelliteController: satelliteConfigParser is not ready
+         1795813041.354  1789  2017 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795813046.812   847   922 I am_uid_idle: 10155
+         1795813046.816 19508 19519 V BinderSender: Uid 10155 already starts
+         1795813046.830   847   922 I am_uid_idle: 10160
+         1795813046.831 19508 19519 V BinderSender: Uid 10160 already starts
+         1795813046.832   847   936 I WifiService: isFeatureSupported uid=1000 returns [WIFI_FEATURE_INFRA, WIFI_FEATURE_P2P, WIFI_FEATURE_MOBILE_HOTSPOT, WIFI_FEATURE_WPA3_SAE, WIFI_FEATURE_WPA3_SUITE_B, WIFI_FEATURE_OWE, WIFI_FEATURE_DPP, WIFI_FEATURE_AP_RAND_MAC, WIFI_FEATURE_MBO, WIFI_FEATURE_FILS_SHA256, WIFI_FEATURE_FILS_SHA384, WIFI_FEATURE_SAE_PK, WIFI_FEATURE_DPP_ENROLLEE_RESPONDER, WIFI_FEATURE_PASSPOINT_TERMS_AND_CONDITIONS, WIFI_FEATURE_WFD_R2, WIFI_FEATURE_DECORATED_IDENTITY, WIFI_FEATURE_TRUST_ON_FIRST_USE, WIFI_FEATURE_SET_TLS_MINIMUM_VERSION, WIFI_FEATURE_TLS_V1_3, WIFI_FEATURE
+         1795813046.834   847  3289 I BluetoothPowerStatsCollector: BluetoothActivityEnergyInfo not supported.
+# window t0-8 s .. t0+75 s of logcat -b main,system,crash,events; 13 lines removed (could carry notification text / names)

@@ -1,0 +1,1 @@
+0.000000 0.309756 0.609433 3.553122 3.728067 4.107289 4.207500  <- the 7 recorded frames' times (s) from the first. 1-2 black, 3-6 Android's lock screen, 7 Melaton's cover

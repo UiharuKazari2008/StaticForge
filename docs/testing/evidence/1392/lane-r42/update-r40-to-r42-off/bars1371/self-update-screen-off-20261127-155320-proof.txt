@@ -1,0 +1,10 @@
+{"ok": true, "id": "aemu-fold-2", "installedVersionCode": 3632928, "packageinstallerActivities": 0, "packageinstallerNotifications": 0, "lastUpdateTime": "2026-11-27 15:53:38", "logFile": "/home/kanmi/.cache/claude-run/aemu-lane/update-aemu-fold-2.log"}
+         1795812740.025   533   533 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:logcat -d -v time | grep -E "ApkInstall|AppUpdate" | tail -20'
+         1795812816.404 21269 21329 I ApkInstall: installing jp.net.seventhreeseven.dreamscape 1.0.3632928 (3632928) via shizuku (stream) from /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-3632928.apk (try 1)
+         1795812816.771   847  3027 E SystemServiceRegistry: 	at com.android.server.pm.PackageInstallerSession.markAsSealed(PackageInstallerSession.java:2651)
+         1795812816.771   847  3027 E SystemServiceRegistry: 	at com.android.server.pm.PackageInstallerSession.commit(PackageInstallerSession.java:2401)
+         1795812816.771   847  3027 E SystemServiceRegistry: 	at android.content.pm.PackageInstaller$Session.commit(PackageInstaller.java:2345)
+         1795812818.576   847   982 D PackageInstallerSession: Marking session 642816269 as applied
+         1795812820.079 27603 27773 I ApkInstall: installed jp.net.seventhreeseven.dreamscape (3632928) via shizuku (stream) (confirmed at app start)
+         1795812821.944 27603 27782 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+         1795812822.746 27603 27782 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku

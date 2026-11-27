@@ -1,0 +1,33 @@
+events: new pid 21630 seen at device ms 1795814024628, 1.32 s after kill -9
+t0 (Start proc) epoch 1795814024.354
+first MelatonBars line: +0.28 s   holder token linked: +1.35 s
+log silence of the main thread (tid=pid) between Start proc and token linked: 0.21 s from +0.46, 0.18 s from +0.79
+log silence of the any thread of the app between Start proc and token linked: 0.14 s from +1.21, 0.14 s from +0.82
+hb.txt: 266 beats, median step 118 ms, longest gap 0.17 s wall / 0.15 s uptime, from +4.08 s
+ticks.txt: 48 ticks, longest gap 0.86 s from +4.14 s
+main thread blocked (not in the looper poll, < 30 ms CPU in all): longest 0.00 s from +0.00 s, CPU used 0 ms, (state, wchan) samples None
+main thread outside its looper poll for 2 s or more: never
+  stretch +4.1..+5.6 s (1.5 s): main ran 0.16 s on CPU + waited 0.17 s for a CPU; longest part with < 30 ms CPU 0.0 s; main-thread log lines inside 21, longest silence 0.38 s
+  +  1.09 21671 CafeTasks: engine started (9 files, from the server)
+  event +-1.05 kill -9 18658
+  event +0.27 new pid 21630
+  event +9.32 dump +9 s: SIGQUIT system_server 847
+  event +9.47 dump +9 s: a11y state done
+  event +9.48 dump +9 s: threads
+  event +11.92 dump +9 s: SIGQUIT
+  event +11.93 dump +9 s: debuggerd
+  event +12.14 dump +9 s: debuggerd done (0)
+  event +17.18 dump +14 s: SIGQUIT system_server 847
+  event +17.35 dump +14 s: a11y state done
+  event +17.36 dump +14 s: threads
+  event +19.59 dump +14 s: SIGQUIT
+  event +19.60 dump +14 s: debuggerd
+  event +19.82 dump +14 s: debuggerd done (0)
+  event +29.99 watch done
+window and engine lines of the new process (t0 .. +75 s):
+  W +  0.28 tid=21630 (main) MelatonBars: early hold at process start (#1371)
+  W +  1.09 tid=21671 CafeTasks: engine started (9 files, from the server)
+  W +  1.35 tid=21653 MelatonBars: holder token linked (#1331), started over Shizuku
+  W +  3.68 tid=21768 WindowReads: window read took 2899 ms (on window-bars)
+  W +  3.69 tid=21630 (main) MelatonBars: first window look applied after 2910 ms (2 windows)
+traces: trace_00, trace_61, trace_62, trace_63
