@@ -99,8 +99,15 @@ function stripComments(text, file) {
 
 const MARK_RE = /notice:\s*([a-z0-9][\w.-]*)/i;
 
+// scripts/notice-sources.json plus every scripts/notice-sources.d/*.json (one fragment per audit wave / feature, so
+// parallel work never edits one file). Fragment shape: { "sources": { "<id>": { area, trigger, action, sound, switch, note } } }
 function loadRegistry() {
-    try { return JSON.parse(fs.readFileSync(REGISTRY, 'utf8')).sources || {}; } catch (e) { return {}; }
+    const out = {};
+    const take = (file) => { try { Object.assign(out, JSON.parse(fs.readFileSync(file, 'utf8')).sources || {}); } catch (e) { /* missing or invalid: no sources */ } };
+    take(REGISTRY);
+    const dir = path.join(SF_ROOT, 'scripts', 'notice-sources.d');
+    try { fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort().forEach((f) => take(path.join(dir, f))); } catch (e) { /* none */ }
+    return out;
 }
 
 // All emit sites of a file: [{cls, line, id|null, text}]
