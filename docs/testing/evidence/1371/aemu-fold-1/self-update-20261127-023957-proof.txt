@@ -1,0 +1,9 @@
+{"ok": true, "id": "aemu-fold-1", "installedVersionCode": 3632136, "packageinstallerActivities": 0, "packageinstallerNotifications": 0, "lastUpdateTime": "2026-11-27 02:40:21", "logFile": "/home/kanmi/.cache/claude-run/aemu-lane/update-aemu-fold-1.log"}
+         1795765220.188 30308 30405 I ApkInstall: installing jp.net.seventhreeseven.dreamscape 1.0.3632136 (3632136) via shizuku (stream) from /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-3632136.apk (try 1)
+         1795765220.345   714  2041 E SystemServiceRegistry: 	at com.android.server.pm.PackageInstallerSession.markAsSealed(PackageInstallerSession.java:2651)
+         1795765220.345   714  2041 E SystemServiceRegistry: 	at com.android.server.pm.PackageInstallerSession.commit(PackageInstallerSession.java:2401)
+         1795765220.345   714  2041 E SystemServiceRegistry: 	at android.content.pm.PackageInstaller$Session.commit(PackageInstaller.java:2345)
+         1795765221.903   714   788 D PackageInstallerSession: Marking session 632510822 as applied
+         1795765223.610  1024  1408 I ApkInstall: installed jp.net.seventhreeseven.dreamscape (3632136) via shizuku (stream) (confirmed at app start)
+         1795765226.498  1024  1430 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+         1795765227.195  1024  1430 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku

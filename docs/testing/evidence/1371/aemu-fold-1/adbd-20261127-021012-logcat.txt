@@ -1,0 +1,16 @@
+         1795763418.294  1039  1247 D ShadeStatusBarComponentsInteractor#disableFlagsInteractor: newValue: DisableFlagsModel(disable1=9633792, disable2=1, animate=true)
+         1795763418.295 25850 25850 W MelatonBars: holder died after 41 s (#1 in a row): holding again
+         1795763419.809 27507 27507 I adbd    : adbd service requested 'shell,v2,raw:old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~26zit5vYXzqjGJYbH6ms_g==/jp.net.seventhreeseven.dreamscape-TALxHqIzaoc6_BAxeVflvw==/base.apk' setsid app_process /sy
+         1795763419.913 27531 27531 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+         1795763419.917 27531 27531 I AndroidRuntime: Using default boot image
+         1795763419.918 27531 27531 I AndroidRuntime: Leaving lock profiling enabled
+         1795763419.919 27531 27531 I melaton_navblank: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+         1795763419.920 27531 27531 I melaton_navblank: Using generational CollectorTypeCMC GC.
+         1795763419.999 27531 27531 D melaton_navblank: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/10/icu") succeeded. 
+         1795763419.999 27531 27531 D melaton_navblank: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt78l.dat
+         1795763420.001 27531 27531 I melaton_navblank: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+         1795763420.001 27531 27531 W melaton_navblank: Unexpected CPU variant for x86: x86_64.
+         1795763420.001 27531 27531 W melaton_navblank: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795763420.023 27531 27531 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795763420.045  1039  1246 D ShadeStatusBarComponentsInteractor#disableFlagsInteractor: newValue: DisableFlagsModel(disable1=66256896, disable2=1, animate=true)
+         1795763420.050 25850 25870 I MelatonBars: holder token linked (#1331)

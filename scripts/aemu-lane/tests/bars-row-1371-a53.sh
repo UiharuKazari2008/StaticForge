@@ -182,7 +182,7 @@ a11y() { S "$(tpl "$A11Y_TPL")"; }
 # log lines of the app (and, with tags, of the system) since a phone time; the phone's own logcat buffer, so an adbd restart loses nothing
 LOGTAGS="MelatonBars:V NavBlankProvider:V"
 logms() { # logms <since_ms> <ere without backslashes> [first|last]: phone epoch ms of the first / last matching line
-  S "logcat -d -v time,epoch -s $LOGTAGS" | awk -v t="${1:-0}" -v pat="$2" -v w="${3:-first}" '
+  S "logcat -d -v time,epoch -s ${4:-$LOGTAGS}" | awk -v t="${1:-0}" -v pat="$2" -v w="${3:-first}" '
     $1 + 0 > 1000000000 && $1 * 1000 >= t && $0 ~ pat { v = int($1 * 1000 + 0.5); if (w == "first") { print v; exit } else last = v }
     END { if (w != "first" && last != "") print last }'
 }
@@ -526,6 +526,40 @@ shot() { # shot <name> home|settings: a screenshot with Dreamscape's home or And
 }
 shot_pair() { shot "$1-settings" settings; shot "$1-home" home; }
 
+# the new app process after an update / crash: early hold, link, ADB lines, and the 36 s check (the service-not-bound fallback arms at 30 s)
+C35_FB=""; C35_NB=""; C35_BOUND=""; EARLY_NOTE=""; EARLY_FAIL=""
+check35() { # check35 <new app pid> <t0 ms>: waits until 36 s after that process started, then looks for a fallback / not-bound line
+  local st0 now rem
+  st0=$(logms "$2" "Start proc $1:$PKG" first "ActivityManager:I")
+  if [ -z "$st0" ]; then say "  36 s check: no 'Start proc $1' line found; counting from now"; st0=$(pnow); fi
+  now=$(pnow); rem=$(( (st0 + 36000 - now) / 1000 + 1 ))
+  if [ "$rem" -gt 0 ]; then say "  waiting $rem s for 36 s after the new process ($1) started"; sleep "$rem"; fi
+  C35_FB=$(logq "$st0" 'gesture fallback on' | head -3 | tr '\n' ' ')
+  C35_NB=$(logq "$st0" 'not bound|unbound|service not|no longer bound' | head -3 | tr '\n' ' ')
+  C35_BOUND=$(a11y)
+  say "  36 s after the process start (Start proc at phone clock $st0): accessibility [$C35_BOUND]; 'gesture fallback on' lines: ${C35_FB:-none}; 'not bound' lines: ${C35_NB:-none}"
+}
+procevidence() { # procevidence <name> <pid> <since_ms>: the new process's own log, filtered to early hold / link / ADB / Bars service / heal / fallback lines
+  local f=$OUT/$1-newproc-logcat.txt
+  S "logcat -d -v time,epoch --pid=$2" > "$f"
+  say "  new process $2: full log in $f ($(wc -l < "$f") lines); lines about early hold, link, ADB, the Bars service, heal, fallback (time relative to the step start):"
+  awk -v t="$3" '$1 + 0 > 1000000000 && $1 * 1000 >= t { r = $1 - t / 1000; $1 = ""; printf "  %+.2fs%s\n", r, $0 }' "$f" | grep -i -E 'early hold|holder|LocalAdb|AdbWifi|adb|unauthor|not bound|unbound|heal|fallback|MelatonBarService|accessibility|1340|1371|1331' | cut -c1-250 | head -70 | block
+}
+early_report() { # early_report <name> <t0 ms>: sets EARLY_NOTE / EARLY_FAIL
+  local newapp eh link kill nu
+  EARLY_NOTE=""; EARLY_FAIL=""
+  ST=$(st); newapp=$(stf app); newapp=${newapp%%,*}
+  if [ -z "$newapp" ]; then EARLY_NOTE="no new app pid to look at"; return; fi
+  check35 "$newapp" "$2"
+  procevidence "$1" "$newapp" "$2"
+  kill=$(logms "$2" "Killing [0-9]+:$PKG|Force stopping $PKG" first "ActivityManager:I")
+  eh=$(logms "$2" 'early hold at process start' first)
+  link=$(logms "$2" 'holder token linked' first)
+  nu=$(grep -ci 'unauthor' "$OUT/$1-newproc-logcat.txt" 2>/dev/null)
+  EARLY_NOTE="old process killed at +$(relsec "${kill:-0}" "$2") s; 'early hold at process start' $([ -n "$eh" ] && echo "at +$(relsec "$eh" "$2") s ($(relsec "$eh" "${kill:-0}") s after the kill)" || echo 'NOT seen'); 'holder token linked' $([ -n "$link" ] && echo "at +$(relsec "$link" "$2") s ($(relsec "$link" "${kill:-0}") s after the kill)" || echo 'NOT seen'); lines mentioning 'unauthorized' in the new process: ${nu:-0}; 36 s check: accessibility [$C35_BOUND], fallback lines: ${C35_FB:-none}, not-bound lines: ${C35_NB:-none}"
+  case "$C35_BOUND" in *bound=1*) [ -z "$C35_FB" ] || EARLY_FAIL="'gesture fallback on' within 36 s of the new process although the service is bound: $C35_FB" ;; esac
+}
+
 # ------------------------------------------------------------------------------------------------ the way back (S7, S8, END)
 WB_T0=0; WB_OFF_MS=""; WB_TRIGGERS=""; NIGHT_ORIG=""; NIGHT_CHANGED=0
 do_trigger() { # do_trigger <name>: one screen event that does not lock the phone
@@ -691,10 +725,12 @@ step_S1() {
   local hgaps=$(pyv gaps) hc=$(pyv clear_rows)
   applog "$T0" 24
   linked=$(logms "$T0" 'holder token linked' first)
+  early_report S1 "$T0"
   [ "$nvc" = "$VC" ] || fails+=("versionCode on the phone is $nvc, expected $VC")
   [ $hrc = 0 ] || fails+=("not held by a new holder within 60 s")
   [ "$out" = OK ] || fails+=("answer file is [$out], expected exactly OK (OK nolink means the death link failed)")
   [ -n "$linked" ] || fails+=("no 'holder token linked' log line since the install")
+  notes+=("$EARLY_NOTE"); [ -z "$EARLY_FAIL" ] || fails+=("$EARLY_FAIL")
   notes+=("expected gap on the old side: sampler recs=0 runs [${zr:--}] s (min-max), history CLEAR rows $hc gaps [${hgaps:--}] s")
   if [ ${#fails[@]} -eq 0 ]; then verdict S1 PASS "vc $nvc, held by a new holder after ${HELD_AT_S:-?} s, answer file OK, token linked at +$(relsec "$linked" "$T0") s; $(jn "${notes[@]}")"
   else verdict S1 FAIL "$(jn "${fails[@]}"); $(jn "${notes[@]}")"; fi
@@ -729,7 +765,9 @@ step_S2() {
   applog "$T0" 30
   say "  ActivityManager lines about the app process (raw):"
   logq "$T0" "Killing [0-9]+:$PKG|Force stopping $PKG|Start proc [0-9]+:$PKG|Process $PKG" "ActivityManager:I" | head -12 | block
+  early_report S2 "$T0"
   local fails=() notes=() napp nbound ncr
+  notes+=("$EARLY_NOTE"); [ -z "$EARLY_FAIL" ] || fails+=("$EARLY_FAIL")
   napp=$(stf app); nbound=$(printf '%s' "$ab" | sed -n 's/.*bound=\([0-9]*\).*/\1/p'); ncr=$(printf '%s' "$ab" | sed -n 's/.*crashed=\([0-9]*\).*/\1/p')
   # (a) the row never empty
   if ! fnum "$ns" || [ "$ns" -lt 10 ]; then fails+=("the sampler gave only ${ns:-0} lines: cannot prove 'recs never 0'")
@@ -862,7 +900,9 @@ step_S5() {
   applog "$T0" 24
   say "  ActivityManager lines about the app process (raw):"
   logq "$T0" "Killing [0-9]+:$PKG|Force stopping $PKG|crash|Start proc [0-9]+:$PKG" "ActivityManager:I" | head -12 | block
+  early_report S5 "$T0"
   local fails=() notes=() napp nbound ncr
+  notes+=("$EARLY_NOTE"); [ -n "$EARLY_FAIL" ] && notes+=("NOTE: $EARLY_FAIL")
   napp=$(stf app); nbound=$(printf '%s' "$ab" | sed -n 's/.*bound=\([0-9]*\).*/\1/p'); ncr=$(printf '%s' "$ab" | sed -n 's/.*crashed=\([0-9]*\).*/\1/p')
   if [ -n "$napp" ] && [ "$napp" = "$OLDA" ]; then
     verdict S5 INCONCLUSIVE "the app's main process (pid $OLDA) survived 'am crash $mainpid': nothing was tested (sampler: app pid never changed; the crash hit [$(logq "$T0" 'Showing crash dialog|FATAL|Killing' 'ActivityManager:I' | head -3 | tr '\n' ' ')])"

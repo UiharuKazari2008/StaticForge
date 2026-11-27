@@ -1,0 +1,10 @@
+NETFLAGS start disable1=0x3f30000 (from the statusbar dump before), 2 change(s) logged by SystemUI in the window
+     +0.1 s  disable1=0x930000  ROW GIVEN BACK (Android buttons visible)
+     +8.2 s  disable1=0x3f30000  row emptied (held)
+  GAP from +0.1 s to +8.2 s (8.1 s with the buttons visible)
+NET_GAPS=1
+NET_GAP_FIRST_S=0.1
+NET_GAP_TOTAL_S=8.1
+NET_REHELD_S=8.2
+RESULT=FAIL
+WHY=Android's buttons were visible 1 time(s): first at +0.1 s for 8.1 s (relative to the old app pid disappearing)

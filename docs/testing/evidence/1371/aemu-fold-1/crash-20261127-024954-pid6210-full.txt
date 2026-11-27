@@ -1,0 +1,306 @@
++0.94 6210 6210 I libprocessgroup: Created cgroup /sys/fs/cgroup/apps/uid_10234/pid_6210
++0.96 6210 6210 I Zygote : Process 6210 created for jp.net.seventhreeseven.dreamscape
++0.96 6210 6210 I even.dreamscape: Using generational CollectorTypeCMC GC.
++0.96 6210 6210 W even.dreamscape: Unexpected CPU variant for x86: x86_64.
++0.96 6210 6210 W even.dreamscape: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
++1.04 6210 6210 I berberis: Initialized Berberis ((null)), version 16.0.0
++1.18 6210 6210 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
++1.26 6210 6210 D nativeloader: Configuring clns-9 for other apk /data/app/~~vaGLyDcGA0ZMFJns13IjFg==/jp.net.seventhreeseven.dreamscape-6jF19PEIHtTYPoWKgiIw9Q==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~vaGLyDcGA0ZMFJns13IjFg==/jp.net.seventhreeseven.dreamscape-6jF19PEIHtTYPoWKgiIw9Q==/lib/arm64:/data/app/~~vaGLyDcGA0ZMFJns13IjFg==/jp.net.seventhreeseven.dreamscape-6jF19PEIHtTYPoWKgiIw9Q==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/jp.net.seventhreeseven.dreamscape
++1.32 6210 6210 V GraphicsEnvironment: Currently set values for:
++1.32 6210 6210 V GraphicsEnvironment: angle_gl_driver_selection_pkgs=[]
++1.32 6210 6210 V GraphicsEnvironment: angle_gl_driver_selection_values=[]
++1.32 6210 6210 V GraphicsEnvironment: jp.net.seventhreeseven.dreamscape is not listed in per-application setting
++1.32 6210 6210 V GraphicsEnvironment: No special selections for ANGLE, returning default driver choice
++1.32 6210 6210 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
++1.33 6210 6210 D WM-WrkMgrInitializer: Initializing WorkManager with default configuration.
++1.33 6210 6210 D WM-PackageManagerHelper: Skipping component enablement for androidx.work.impl.background.systemjob.SystemJobService
++1.33 6210 6210 D WM-Schedulers: Created SystemJobScheduler and enabled SystemJobService
++1.33 6210 6246 D WM-ForceStopRunnable: The default process name was not specified.
++1.33 6210 6210 D ShizukuProvider: Initialize Sui: false
++1.33 6210 6246 D WM-ForceStopRunnable: Performing cleanup operations.
++1.33 6210 6235 D ShizukuProvider: binder received
++1.34 6210 6235 I ShizukuApplication: attachApplication
++1.35 6210 6250 I CafeTasks: tasks drive-alerts, radio-mode, car-presence, status-bar, hour-chime (server 46bb3a31), engine supported
++1.36 6210 6210 I NativeBar: task roles: [notify]
++1.38 6210 6210 I DriveState: 02:50:01 start: restored idle (-), cars 0, learned 0, places 2 [idle]
++1.41 6210 6254 D WM-PackageManagerHelper: Skipping component enablement for androidx.work.impl.background.systemalarm.RescheduleReceiver
++1.52 6210 6210 I MelatonBars: Shizuku's binder arrived: holding the row (#1331)
++1.53 6210 6210 I MelatonBars: early hold at process start (#1371)
++1.64 6210 6210 D BluetoothSocket: bindListen(): mPort=-1, mType=1
++1.66 6210 6210 D BluetoothSocket: bindListen(), SocketState: INIT, mPfd: {ParcelFileDescriptor: java.io.FileDescriptor@9439354}
++1.66 6210 6210 D BluetoothSocket: bindListen(), Create LocalSocket
++1.66 6210 6210 D BluetoothSocket: bindListen(), new LocalSocket.getInputStream()
++1.66 6210 6210 D BluetoothSocket: bindListen(), readInt mSocketIS: android.net.LocalSocketImpl$SocketInputStream@fa182fd
++1.66 6210 6210 D BluetoothSocket: bindListen(): channel=22, mPort=-1
++1.66 6210 6293 D BluetoothSocket: accept(), timeout (ms):-1
++1.67 6210 6210 I CameraManagerGlobal: Connecting to camera service
++1.76 6210 6282 I ActiveSyncLink: reconnect now: network available
++1.82 6210 6308 I WebViewFactory: Loading com.google.android.webview version 145.0.7632.218 (code 763221809)
++1.82 6210 6308 V ResourcesManager: The following library key has been added: ResourcesKey{ mHash=d7a9674a mResDir=null mSplitDirs=[] mOverlayDirs=[] mLibDirs=[/data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/WebViewGoogle.apk,/system/framework/android.test.base.jar,/system_ext/framework/androidx.window.extensions.jar] mDisplayId=0 mOverrideConfig=v37 mCompatInfo={360dpi always-compat} mLoaders=[]}
++1.84 6210 6308 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.test.base.jar
++1.84 6210 6308 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
++1.86 6210 6308 D nativeloader: Configuring clns-10 for other apk /data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/WebViewGoogle.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/lib/x86_64:/data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/WebViewGoogle.apk!/lib/x86_64, permitted_path=/data:/mnt/expand
++1.92 6210 6308 I cr_WVCFactoryProvider: version=145.0.7632.218 (763221809) minSdkVersion=29 multiprocess=true packageId=2 splits=<none>
++1.95 6210 6308 D nativeloader: Load /data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/WebViewGoogle.apk!/lib/x86_64/libwebviewchromium.so using class loader ns clns-10 (caller=/data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/WebViewGoogle.apk): ok
++1.95 6210 6210 D CompatChangeReporter: Compat change id reported: 377864165; UID 10234; state: ENABLED
++1.95 6210 6308 D nativeloader: Load /system/lib64/libwebviewchromium_plat_support.so using class loader ns clns-10 (caller=/data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/WebViewGoogle.apk): ok
++1.97 6210 6210 I DisplayManager: Implicitly registering for refresh rate
++1.97 6210 6210 W HWUI : Unknown dataspace 0
++1.97 6210 6338 I chromium: [1127/025002.097018:INFO:android_webview/browser/variations/variations_seed_loader.cc:67] Failed to open file for reading.: No such file or directory (2)
++1.97 6210 6308 D DesktopExperienceFlags: Toggle override initialized to: false
++1.97 6210 6338 I cr_VariationsUtils: Failed reading seed file "/data/user/0/jp.net.seventhreeseven.dreamscape/app_webview/variations_seed_new"
++2.00 6210 6308 I cr_LibraryLoader: Successfully loaded native library
++2.00 6210 6308 I cr_CachingUmaRecorder: Flushed 16 samples from 16 histograms, 0 samples were dropped.
++28.62 6210 6250 W CafeTasks: engine did not start
++28.62 6210 6250 W CafeTasks: java.util.concurrent.TimeoutException: Waited 10 seconds (plus 17 seconds, 76407200 nanoseconds delay) for mn@e4b959d[status=PENDING, info=[tag=[JavaScriptSandbox Future]]]
++28.62 6210 6250 W CafeTasks: at e1.get(SourceFile:319)
++28.62 6210 6250 W CafeTasks: at cn.h(SourceFile:33)
++28.62 6210 6250 W CafeTasks: at cn.g(SourceFile:11)
++28.62 6210 6250 W CafeTasks: at h4.run(SourceFile:2033)
++28.62 6210 6250 W CafeTasks: at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
++28.62 6210 6250 W CafeTasks: at java.util.concurrent.FutureTask.run(FutureTask.java:328)
++28.62 6210 6250 W CafeTasks: at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:323)
++28.62 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
++28.62 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
++28.62 6210 6250 W CafeTasks: at java.lang.Thread.run(Thread.java:1572)
++28.62 6210 6250 W CafeTasks: task code from the server does not start: back to the bundled copy
++28.64 6210 6250 I CafeTasks: tasks drive-alerts, car-presence, status-bar, hour-chime (StaticForge 4291c9f0b (bundled)), engine supported
++28.64 6210 6250 W CafeTasks: engine did not start
++28.64 6210 6250 W CafeTasks: java.util.concurrent.ExecutionException: java.lang.IllegalStateException: Binding to already bound service
++28.64 6210 6250 W CafeTasks: at e1.e(SourceFile:20)
++28.64 6210 6250 W CafeTasks: at e1.get(SourceFile:22)
++28.64 6210 6250 W CafeTasks: at cn.h(SourceFile:33)
++28.64 6210 6250 W CafeTasks: at cn.g(SourceFile:11)
++28.64 6210 6250 W CafeTasks: at h4.run(SourceFile:2033)
++28.64 6210 6250 W CafeTasks: at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
++28.64 6210 6250 W CafeTasks: at java.util.concurrent.FutureTask.run(FutureTask.java:328)
++28.64 6210 6250 W CafeTasks: at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:323)
++28.64 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
++28.64 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
++28.64 6210 6250 W CafeTasks: at java.lang.Thread.run(Thread.java:1572)
++28.64 6210 6250 W CafeTasks: Caused by: java.lang.IllegalStateException: Binding to already bound service
++28.64 6210 6250 W CafeTasks: at sz.f(SourceFile:145)
++28.64 6210 6250 W CafeTasks: at gw0.x(SourceFile:25)
++28.64 6210 6250 W CafeTasks: at sx0.a(SourceFile:46)
++28.64 6210 6250 W CafeTasks: at cn.h(SourceFile:27)
++28.64 6210 6250 W CafeTasks: ... 8 more
++28.67 6210 6339 W libc : Access denied finding property "vendor.mesa.virtgpu.kumquat"
++28.87 6210 6210 I NativeLayout: layouts for battery, bluetooth, data, mail, notify, rain, received, signal, volume
++28.95 6210 6403 I GFXSTREAM: [eglDisplay.cpp(297)] Opening libGLESv1_CM_emulation.so
++28.95 6210 6403 I GFXSTREAM: [eglDisplay.cpp(297)] Opening libGLESv2_emulation.so
++28.96 6210 6403 W libc : Access denied finding property "vendor.mesa.virtgpu.kumquat"
++28.96 6210 6403 W HWUI : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
++28.97 6210 6403 W HWUI : Failed to initialize 101010-2 format, error = EGL_SUCCESS
++29.07 6210 6305 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
++29.34 6210 6392 W libc : Access denied finding property "vendor.mesa.virtgpu.kumquat"
++29.35 6210 6395 W libc : Access denied finding property "vendor.mesa.virtgpu.kumquat"
++29.70 6210 6250 W CafeTasks: engine did not start
++29.70 6210 6250 W CafeTasks: java.util.concurrent.ExecutionException: java.lang.IllegalStateException: Binding to already bound service
++29.70 6210 6250 W CafeTasks: at e1.e(SourceFile:20)
++29.70 6210 6250 W CafeTasks: at e1.get(SourceFile:22)
++29.70 6210 6250 W CafeTasks: at cn.h(SourceFile:33)
++29.70 6210 6250 W CafeTasks: at cn.g(SourceFile:11)
++29.70 6210 6250 W CafeTasks: at h4.run(SourceFile:2033)
++29.70 6210 6250 W CafeTasks: at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
++29.70 6210 6250 W CafeTasks: at java.util.concurrent.FutureTask.run(FutureTask.java:328)
++29.70 6210 6250 W CafeTasks: at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:323)
++29.70 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
++29.70 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
++29.70 6210 6250 W CafeTasks: at java.lang.Thread.run(Thread.java:1572)
++29.70 6210 6250 W CafeTasks: Caused by: java.lang.IllegalStateException: Binding to already bound service
++29.70 6210 6250 W CafeTasks: at sz.f(SourceFile:145)
++29.70 6210 6250 W CafeTasks: at gw0.x(SourceFile:25)
++29.70 6210 6250 W CafeTasks: at sx0.a(SourceFile:46)
++29.70 6210 6250 W CafeTasks: at cn.h(SourceFile:27)
++29.70 6210 6250 W CafeTasks: ... 8 more
++29.82 6210 6395 I NativeBar: art from https://staticforge.737.jp.net (refresh false): atlas 1024x320, 72 cells, search strip true
++29.89 6210 6299 V PhoneNumberUtils: formatNumber: defaultCountryIso: US
++30.15 6210 6299 I Wallpaper: slot 1: cropped null, original null, hint null (not used)
++30.17 6210 6299 I Wallpaper: slot 2: cropped null, original null, hint null (not used)
++30.18 6210 6299 I Wallpaper: slot 1: cropped null, original null, hint null (not used)
++30.18 6210 6299 I Wallpaper: slot 9: cropped null, original null, hint null (not used)
++30.18 6210 6299 I Wallpaper: slot 10: cropped null, original null, hint null (not used)
++30.18 6210 6299 I Wallpaper: slot 9: cropped null, original null, hint null (not used)
++30.18 6210 6375 I CafeTasks: task code from the server: server 46bb3a31 (9 files)
++30.19 6210 6250 I CafeTasks: tasks drive-alerts, radio-mode, car-presence, status-bar, hour-chime (server 46bb3a31), engine supported
++30.19 6210 6250 W CafeTasks: engine did not start
++30.19 6210 6250 W CafeTasks: java.util.concurrent.ExecutionException: java.lang.IllegalStateException: Binding to already bound service
++30.19 6210 6250 W CafeTasks: at e1.e(SourceFile:20)
++30.19 6210 6250 W CafeTasks: at e1.get(SourceFile:22)
++30.19 6210 6250 W CafeTasks: at cn.h(SourceFile:33)
++30.19 6210 6250 W CafeTasks: at k9.run(SourceFile:24)
++30.19 6210 6250 W CafeTasks: at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
++30.19 6210 6250 W CafeTasks: at java.util.concurrent.FutureTask.run(FutureTask.java:328)
++30.19 6210 6250 W CafeTasks: at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:323)
++30.19 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
++30.19 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
++30.19 6210 6250 W CafeTasks: at java.lang.Thread.run(Thread.java:1572)
++30.19 6210 6250 W CafeTasks: Caused by: java.lang.IllegalStateException: Binding to already bound service
++30.19 6210 6250 W CafeTasks: at sz.f(SourceFile:145)
++30.19 6210 6250 W CafeTasks: at gw0.x(SourceFile:25)
++30.19 6210 6250 W CafeTasks: at sx0.a(SourceFile:46)
++30.19 6210 6250 W CafeTasks: at cn.h(SourceFile:27)
++30.19 6210 6250 W CafeTasks: ... 7 more
++30.19 6210 6250 W CafeTasks: task code from the server does not start: back to the bundled copy
++30.21 6210 6250 I CafeTasks: tasks drive-alerts, car-presence, status-bar, hour-chime (StaticForge 4291c9f0b (bundled)), engine supported
++30.44 6210 6210 I MelatonBars: show: on=true fits=false status=true bar=false top=false ext=true tray=false give=false
++30.57 6210 6210 I Choreographer: Skipped 123 frames! The application may be doing too much work on its main thread.
++30.57 6210 6542 D ProfileInstaller: Installing profile for jp.net.seventhreeseven.dreamscape
++30.58 6210 6210 I Surface : Creating surface for consumer unnamed-6210-0 with slotExpansion=1 for 64 slots
++30.61 6210 6210 I Surface : Creating surface for consumer VRI[MelatonBarProbe]#0(BLAST Consumer)0 with slotExpansion=1 for 64 slots
++30.61 6210 6210 I viewroot_draw_event: [VRI[MelatonBarProbe]1e8c802,applyTransactionOnDraw applyImmediately]
++30.62 6210 6341 W libc : Access denied finding property "vendor.mesa.virtgpu.kumquat"
++30.62 6210 6341 W HWUI : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
++30.63 6210 6341 W HWUI : Failed to initialize 101010-2 format, error = EGL_SUCCESS
++30.97 6210 6210 I viewroot_draw_event: [VRI[MelatonBarProbe]1e8c802,reportDrawFinished seqId=1]
++30.97 6210 6210 I MelatonBars: ime probe live: visible=false bottom=0
++30.98 6210 6210 I Surface : Creating surface for consumer unnamed-6210-1 with slotExpansion=1 for 64 slots
++30.98 6210 6210 I Surface : Creating surface for consumer VRI[MelatonImeProbe]#1(BLAST Consumer)1 with slotExpansion=1 for 64 slots
++30.98 6210 6210 I viewroot_draw_event: [VRI[MelatonImeProbe]13a547c,applyTransactionOnDraw applyImmediately]
++31.08 6210 6210 I viewroot_draw_event: [VRI[MelatonImeProbe]13a547c,reportDrawFinished seqId=1]
++31.08 6210 6210 I BarsHeal: check (process start)
++31.14 6210 6210 V PhoneNumberUtils: formatNumber: defaultCountryIso: US
++31.15 6210 6210 I NativeBar: android icons: {data=wifi-connected, battery=battery-charging, signal=signal-2}
++31.15 6210 6210 I MelatonBars: show: on=true fits=true status=false bar=false top=true ext=true tray=false give=false
++31.16 6210 6210 I MelatonBars: show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
++31.17 6210 6229 I HWUI : Davey! duration=2538ms; Flags=1, FrameTimelineVsyncId=243639, IntendedVsync=6063606732300, Vsync=6065656732218, InputEventId=0, HandleInputStart=6065668865500, AnimationStart=6065668896800, PerformTraversalsStart=6065668935000, DrawStart=6065982271400, FrameDeadline=6064606732300, FrameStartTime=6065663629500, FrameInterval=16666666, WorkloadTarget=1000000000, AnimationTime=6065656732218, SyncQueued=6065982448900, SyncStart=6065983733400, IssueDrawCommandsStart=6065983878200, SwapBuffers=6066004512600, FrameCompleted=6066146119000, DequeueBufferDuration=32400, QueueBufferDuration=522600, GpuCompleted=6066146119000, SwapBuffersCompleted=6066043424700, DisplayPresentTime=0, CommandSubmissionCompleted=6066004512600,
++31.20 6210 6210 E even.dreamscape: hiddenapi: Accessing hidden field Landroid/view/ViewTreeObserver$InternalInsetsInfo;->touchableRegion:Landroid/graphics/Region; (runtime_flags=0, domain=platform, api=max-target-r) from Lb61; (domain=app, TargetSdkVersion=36) using reflection: denied
++31.20 6210 6210 W TouchHole: no touchable region for View: No field touchableRegion in class Landroid/view/ViewTreeObserver$InternalInsetsInfo; (declaration of 'android.view.ViewTreeObserver$InternalInsetsInfo' appears in /system/framework/framework.jar!classes4.dex)
++31.23 6210 6210 E even.dreamscape: hiddenapi: Accessing hidden field Landroid/view/ViewTreeObserver$InternalInsetsInfo;->touchableRegion:Landroid/graphics/Region; (runtime_flags=0, domain=platform, api=max-target-r) from Lb61; (domain=app, TargetSdkVersion=36) using reflection: denied
++31.23 6210 6210 W TouchHole: no touchable region for View: No field touchableRegion in class Landroid/view/ViewTreeObserver$InternalInsetsInfo; (declaration of 'android.view.ViewTreeObserver$InternalInsetsInfo' appears in /system/framework/framework.jar!classes4.dex)
++31.26 6210 6332 I HWUI : Davey! duration=2654ms; Flags=1, FrameTimelineVsyncId=243639, IntendedVsync=6063606732300, Vsync=6065656732218, InputEventId=0, HandleInputStart=6065668865500, AnimationStart=6065668896800, PerformTraversalsStart=6065668935000, DrawStart=6066144488000, FrameDeadline=6064606732300, FrameStartTime=6065663629500, FrameInterval=16666666, WorkloadTarget=1000000000, AnimationTime=6065656732218, SyncQueued=6066144537200, SyncStart=6066145864600, IssueDrawCommandsStart=6066151779800, SwapBuffers=6066152524000, FrameCompleted=6066262359900, DequeueBufferDuration=955000, QueueBufferDuration=341500, GpuCompleted=6066262359900, SwapBuffersCompleted=6066171305600, DisplayPresentTime=0, CommandSubmissionCompleted=6066152524000,
++31.29 6210 6278 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
++31.29 6210 6210 I Surface : Creating surface for consumer unnamed-6210-2 with slotExpansion=1 for 64 slots
++31.29 6210 6210 I Surface : Creating surface for consumer VRI[MelatonBar]#2(BLAST Consumer)2 with slotExpansion=1 for 64 slots
++31.30 6210 6210 I viewroot_draw_event: [VRI[MelatonBar]b7f136b,applyTransactionOnDraw applyImmediately]
++31.47 6210 6210 I viewroot_draw_event: [VRI[MelatonBar]b7f136b,reportDrawFinished seqId=1]
++31.48 6210 6210 I Surface : Creating surface for consumer unnamed-6210-3 with slotExpansion=1 for 64 slots
++31.48 6210 6210 I Surface : Creating surface for consumer VRI[MelatonBar]#3(BLAST Consumer)3 with slotExpansion=1 for 64 slots
++31.48 6210 6210 I viewroot_draw_event: [VRI[MelatonBar]1465c9d,applyTransactionOnDraw applyImmediately]
++31.66 6210 6210 I viewroot_draw_event: [VRI[MelatonBar]1465c9d,reportDrawFinished seqId=1]
++31.68 6210 6210 I Surface : Creating surface for consumer unnamed-6210-4 with slotExpansion=1 for 64 slots
++31.68 6210 6210 I Surface : Creating surface for consumer VRI[MelatonBarEdge]#4(BLAST Consumer)4 with slotExpansion=1 for 64 slots
++31.68 6210 6210 I viewroot_draw_event: [VRI[MelatonBarEdge]6f48c3f,applyTransactionOnDraw applyImmediately]
++31.74 6210 6229 I MelatonBars: holder token linked (#1331)
++31.90 6210 6210 I viewroot_draw_event: [VRI[MelatonBarEdge]6f48c3f,reportDrawFinished seqId=1]
++31.95 6210 6210 I Surface : Creating surface for consumer unnamed-6210-5 with slotExpansion=1 for 64 slots
++31.95 6210 6210 I Surface : Creating surface for consumer VRI[MelatonBarEdge]#5(BLAST Consumer)5 with slotExpansion=1 for 64 slots
++31.95 6210 6210 I viewroot_draw_event: [VRI[MelatonBarEdge]4c8eed1,applyTransactionOnDraw applyImmediately]
++32.13 6210 6210 I viewroot_draw_event: [VRI[MelatonBarEdge]4c8eed1,reportDrawFinished seqId=1]
++32.14 6210 6210 I NativeBar: kit for 1968: no page to ask
++32.23 6210 6231 I HWUI : Davey! duration=909ms; Flags=1, FrameTimelineVsyncId=244489, IntendedVsync=6066275020058, Vsync=6066375020054, InputEventId=0, HandleInputStart=6066383804400, AnimationStart=6066383837400, PerformTraversalsStart=6066383900900, DrawStart=6067114581600, FrameDeadline=6066291686724, FrameStartTime=6066383388500, FrameInterval=16666666, WorkloadTarget=16666666, AnimationTime=6066375020054, SyncQueued=6067132724700, SyncStart=6067169677500, IssueDrawCommandsStart=6067169776100, SwapBuffers=6067177694400, FrameCompleted=6067221616300, DequeueBufferDuration=167500, QueueBufferDuration=698700, GpuCompleted=6067205566300, SwapBuffersCompleted=6067221616300, DisplayPresentTime=0, CommandSubmissionCompleted=6067177694400,
++32.34 6210 6395 I HWUI : Using FreeType backend (prop=Auto)
++32.35 6210 6395 I NativeBar: fonts (tahoma): regular true, bold true
++32.39 6210 6395 I NativeBar: inline picture (618 chars): 47x47
++32.39 6210 6395 I NativeBar: inline picture (826 chars): 54x54
++32.39 6210 6395 I NativeBar: inline picture (1142 chars): 54x54
++32.39 6210 6395 I NativeBar: inline picture (778 chars): 92x104
++32.39 6210 6395 I NativeBar: inline picture (798 chars): 92x104
++32.40 6210 6210 I NativeLayout: picture not in: https://staticforge.737.jp.net/static_images/wm6 (70 chars) 64x64
++32.40 6210 6210 I NativeBar: bar: battery, signal, data
++32.40 6210 6250 W CafeTasks: engine did not start
++32.40 6210 6250 W CafeTasks: java.util.concurrent.ExecutionException: java.lang.IllegalStateException: Binding to already bound service
++32.40 6210 6250 W CafeTasks: at e1.e(SourceFile:20)
++32.40 6210 6250 W CafeTasks: at e1.get(SourceFile:22)
++32.40 6210 6250 W CafeTasks: at cn.h(SourceFile:33)
++32.40 6210 6250 W CafeTasks: at cn.g(SourceFile:11)
++32.40 6210 6250 W CafeTasks: at h4.run(SourceFile:2033)
++32.40 6210 6250 W CafeTasks: at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
++32.40 6210 6250 W CafeTasks: at java.util.concurrent.FutureTask.run(FutureTask.java:328)
++32.40 6210 6250 W CafeTasks: at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:323)
++32.40 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
++32.40 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
++32.40 6210 6250 W CafeTasks: at java.lang.Thread.run(Thread.java:1572)
++32.40 6210 6250 W CafeTasks: Caused by: java.lang.IllegalStateException: Binding to already bound service
++32.40 6210 6250 W CafeTasks: at sz.f(SourceFile:145)
++32.40 6210 6250 W CafeTasks: at gw0.x(SourceFile:25)
++32.40 6210 6250 W CafeTasks: at sx0.a(SourceFile:46)
++32.40 6210 6250 W CafeTasks: at cn.h(SourceFile:27)
++32.40 6210 6250 W CafeTasks: ... 8 more
++32.48 6210 6225 W even.dreamscape: Suspending all threads took: 10.313ms
++32.59 6210 6250 W CafeTasks: engine did not start
++32.59 6210 6250 W CafeTasks: java.util.concurrent.ExecutionException: java.lang.IllegalStateException: Binding to already bound service
++32.59 6210 6250 W CafeTasks: at e1.e(SourceFile:20)
++32.59 6210 6250 W CafeTasks: at e1.get(SourceFile:22)
++32.59 6210 6250 W CafeTasks: at cn.h(SourceFile:33)
++32.59 6210 6250 W CafeTasks: at cn.g(SourceFile:11)
++32.59 6210 6250 W CafeTasks: at h4.run(SourceFile:2033)
++32.59 6210 6250 W CafeTasks: at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
++32.59 6210 6250 W CafeTasks: at java.util.concurrent.FutureTask.run(FutureTask.java:328)
++32.59 6210 6250 W CafeTasks: at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:323)
++32.59 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
++32.59 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
++32.59 6210 6250 W CafeTasks: at java.lang.Thread.run(Thread.java:1572)
++32.59 6210 6250 W CafeTasks: Caused by: java.lang.IllegalStateException: Binding to already bound service
++32.59 6210 6250 W CafeTasks: at sz.f(SourceFile:145)
++32.59 6210 6250 W CafeTasks: at gw0.x(SourceFile:25)
++32.59 6210 6250 W CafeTasks: at sx0.a(SourceFile:46)
++32.59 6210 6250 W CafeTasks: at cn.h(SourceFile:27)
++32.59 6210 6250 W CafeTasks: ... 8 more
++32.62 6210 6332 I MelatonBars: holder token linked (#1331)
++33.12 6210 6278 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
++33.13 6210 6210 I NativeBar: geometry for 2057 made from 1968's
++33.25 6210 6210 I NativeBar: bar: battery, volume, signal, data, bluetooth, notify
++33.25 6210 6250 W CafeTasks: engine did not start
++33.25 6210 6250 W CafeTasks: java.util.concurrent.ExecutionException: java.lang.IllegalStateException: Binding to already bound service
++33.25 6210 6250 W CafeTasks: at e1.e(SourceFile:20)
++33.25 6210 6250 W CafeTasks: at e1.get(SourceFile:22)
++33.25 6210 6250 W CafeTasks: at cn.h(SourceFile:33)
++33.25 6210 6250 W CafeTasks: at cn.g(SourceFile:11)
++33.25 6210 6250 W CafeTasks: at h4.run(SourceFile:2033)
++33.25 6210 6250 W CafeTasks: at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
++33.25 6210 6250 W CafeTasks: at java.util.concurrent.FutureTask.run(FutureTask.java:328)
++33.25 6210 6250 W CafeTasks: at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:323)
++33.25 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
++33.25 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
++33.25 6210 6250 W CafeTasks: at java.lang.Thread.run(Thread.java:1572)
++33.25 6210 6250 W CafeTasks: Caused by: java.lang.IllegalStateException: Binding to already bound service
++33.25 6210 6250 W CafeTasks: at sz.f(SourceFile:145)
++33.25 6210 6250 W CafeTasks: at gw0.x(SourceFile:25)
++33.25 6210 6250 W CafeTasks: at sx0.a(SourceFile:46)
++33.25 6210 6250 W CafeTasks: at cn.h(SourceFile:27)
++33.25 6210 6250 W CafeTasks: ... 8 more
++33.57 6210 6210 W libc : Access denied finding property "vendor.mesa.virtgpu.kumquat"
++33.71 6210 6210 I MelatonBars: translucent check: strip spread 0.7 (picture above 14), against below 4.3 (runs on under 10)
++33.83 6210 6210 I MelatonBars: translucent check (soft keys): strip spread 68.3 (picture above 14), against below 76.9 (runs on under 10)
++33.83 6210 6210 I MelatonBars: translucent bar for com.google.android.apps.nexuslauncher: true
++33.83 6210 6210 I MelatonBars: translucent soft key bar for com.google.android.apps.nexuslauncher: true
++33.84 6210 6250 W CafeTasks: engine did not start
++33.84 6210 6250 W CafeTasks: java.util.concurrent.ExecutionException: java.lang.IllegalStateException: Binding to already bound service
++33.84 6210 6250 W CafeTasks: at e1.e(SourceFile:20)
++33.84 6210 6250 W CafeTasks: at e1.get(SourceFile:22)
++33.84 6210 6250 W CafeTasks: at cn.h(SourceFile:33)
++33.84 6210 6250 W CafeTasks: at cn.g(SourceFile:11)
++33.84 6210 6250 W CafeTasks: at h4.run(SourceFile:2033)
++33.84 6210 6250 W CafeTasks: at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
++33.84 6210 6250 W CafeTasks: at java.util.concurrent.FutureTask.run(FutureTask.java:328)
++33.84 6210 6250 W CafeTasks: at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:323)
++33.84 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
++33.84 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
++33.84 6210 6250 W CafeTasks: at java.lang.Thread.run(Thread.java:1572)
++33.84 6210 6250 W CafeTasks: Caused by: java.lang.IllegalStateException: Binding to already bound service
++33.84 6210 6250 W CafeTasks: at sz.f(SourceFile:145)
++33.84 6210 6250 W CafeTasks: at gw0.x(SourceFile:25)
++33.84 6210 6250 W CafeTasks: at sx0.a(SourceFile:46)
++33.84 6210 6250 W CafeTasks: at cn.h(SourceFile:27)
++33.84 6210 6250 W CafeTasks: ... 8 more
++34.86 6210 6210 I NativeBar: android icons: {data=wifi-connected, battery=battery-charging, signal=signal-1}
++34.87 6210 6250 W CafeTasks: engine did not start
++34.87 6210 6250 W CafeTasks: java.util.concurrent.ExecutionException: java.lang.IllegalStateException: Binding to already bound service
++34.87 6210 6250 W CafeTasks: at e1.e(SourceFile:20)
++34.87 6210 6250 W CafeTasks: at e1.get(SourceFile:22)
++34.87 6210 6250 W CafeTasks: at cn.h(SourceFile:33)
++34.87 6210 6250 W CafeTasks: at cn.g(SourceFile:11)
++34.87 6210 6250 W CafeTasks: at h4.run(SourceFile:2033)
++34.87 6210 6250 W CafeTasks: at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
++34.87 6210 6250 W CafeTasks: at java.util.concurrent.FutureTask.run(FutureTask.java:328)
++34.87 6210 6250 W CafeTasks: at java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:323)
++34.87 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
++34.87 6210 6250 W CafeTasks: at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
++34.87 6210 6250 W CafeTasks: at java.lang.Thread.run(Thread.java:1572)
++34.87 6210 6250 W CafeTasks: Caused by: java.lang.IllegalStateException: Binding to already bound service
++34.87 6210 6250 W CafeTasks: at sz.f(SourceFile:145)
++34.87 6210 6250 W CafeTasks: at gw0.x(SourceFile:25)
++34.87 6210 6250 W CafeTasks: at sx0.a(SourceFile:46)
++34.87 6210 6250 W CafeTasks: at cn.h(SourceFile:27)
++34.87 6210 6250 W CafeTasks: ... 8 more
