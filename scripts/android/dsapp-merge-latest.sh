@@ -12,8 +12,16 @@ cd "$CLONE" || exit 1
 # DSAPP_MERGE_SKIP: optional extended regex of origin branches to leave out (config androidBuilds.skipBranches)
 SKIP="${DSAPP_MERGE_SKIP:-^\$}"
 G() { git -c user.name="Claude Code" -c user.email="claude@yozora.bluesteel.737.jp.net" "$@"; }
+# A branch with no commit of its own (every non-merge commit already in main by patch, `git cherry` shows no "+") is a
+# leftover build merge (claude/build-asfolder, perf890/build3: 8-9 days old, StaticForge #1331), not work: left out, so
+# a build carries only real work and never an old build's tree. Printed as "skipped <branch>: ..." (not counted as merged).
+own() { git cherry origin/main "$1" 2>/dev/null | grep -q '^+'; }
 git fetch -q --prune origin && git checkout -q -f -B build/latest origin/main || exit 1
-for b in $(git branch -r --no-merged origin/main | grep -v -e HEAD -e 'origin/build/' -e 'origin/tmp/' | sed 's/^[ *]*//' | grep -v -E "$SKIP"); do
+WORK=""
+for x in $(git branch -r --no-merged origin/main | grep -v -e HEAD -e 'origin/build/' -e 'origin/tmp/' | sed 's/^[ *]*//' | grep -v -E "$SKIP"); do
+  if own "$x"; then WORK="$WORK $x"; else echo "skipped $x: no commit of its own (a leftover build merge, fully superseded by main)"; fi
+done
+for b in $WORK; do
   G merge -q --no-edit "$b" >/dev/null 2>&1; MRC=$?
   if [ $MRC != 0 ] && ! git ls-files -u | grep -q .; then echo "UNEXPECTED conflict $b: merge failed without conflicting files"; git merge --abort 2>/dev/null; exit 1; fi
   if git ls-files -u | grep -q .; then
@@ -64,7 +72,7 @@ PY
           # file and main has not changed it since, so that build's hand-made resolution is reused as it is
           REUSE=1
           git diff --quiet "$(git merge-base origin/main origin/build/latest)" origin/main -- "$F" || REUSE=0
-          for ob in $(git branch -r --no-merged origin/main | grep -v -e HEAD -e 'origin/build/' -e 'origin/tmp/' | sed 's/^[ *]*//' | grep -v -E "$SKIP"); do
+          for ob in $WORK; do
             if [ -n "$(git diff --name-only origin/main...$ob -- "$F")" ] && ! git merge-base --is-ancestor "$ob" origin/build/latest; then REUSE=0; fi
           done
           if [ $REUSE = 1 ] && git show origin/build/latest:"$F" > "$F"; then echo "reused build/latest's resolution of $F"
