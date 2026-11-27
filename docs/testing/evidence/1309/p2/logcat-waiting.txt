@@ -1,0 +1,1 @@
+         1795764278.828  5937  5967 I ApkInstall: jp.net.seventhreeseven.dreamscape 1.0.3632105 (3632105) waits: Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off

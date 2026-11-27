@@ -1,0 +1,7 @@
+== before 01:59:55
+{"ok": true, "running": true, "pid": 7290, "uid": "shell", "installed": true, "appPermission": true}
+\"shizuku\":true
+{"ok": true, "id": "aemu-fold-2", "installedVersionCode": 3632075, "page": {"installer": "silent", "waiting": null, "installed": {"versionCode": 3632075, "versionName": "1.0.3632075"}, "staged": {"versionCode": 3632092, "versionName": "1.0.3632092", "buildId": 32, "stagedAt": 1795762725507}, "attempted": 0}, "server": {"delivery": {"versionCode": 3632092, "state": "staged", "at": "2026-11-27T06:58:46.621Z", "detail": "{\"attempts\":1,\"info\":\"{\\\"state\\\":\\\"staged\\\",\\\"versionCode\\\":3632092}\"}"}, "reported": {"versionCode": 3632075, "versionName": "1.0.3632075", "name": "Lane aemu-fold-2", "at": "2026-11-27T06:51:32.515Z"}, "latestVersionCode": 3632092}}
+    versionCode=3632075 minSdk=31 targetSdk=36
+0
+0

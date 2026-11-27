@@ -9,19 +9,25 @@ Driver: `scripts/aemu-lane/lane.sh`. One command per action. Answers are JSON.
 **Status (Nov 26 2026, night):** proven on real instances: create / up / down / provision / golden / status / shot (inner, cover,
 external) / the Android shade shot / `notice` (one device) + `notifs` + `sound` / Shizuku as the shell user / the permission dialog
 tap / partner + fence / `display add-external` (a freeform window on a second display) / `reboot` (clean shutdown + cold boot) /
-the memory and CPU guards and the provision lock / `reap`. **Not proven yet:** `reset` from `golden` (the snapshot is saved, a
-restore has not been run), `posture half`, the closed-posture shot (logical display 0 comes out black, see Gotchas), the fold
+the memory and CPU guards and the provision lock / `reap`. **Not proven yet (see the Nov 27 paragraph below for
+`reset`, now run):** `posture half`, the closed-posture shot (logical display 0 comes out black, see Gotchas), the fold
 shade and external display shots, a 2 GB A53 guest (a53-3: the first-start download of the app's ~211 MB pack failed
 three times while Ruiko was at 100 % CPU, so the app never reached its page), real audio capture (not possible with
 `-no-audio`), `aemu-fold-3/4` and `aemu-a53-4` (not created by me; other agents created some of them with this script).
 
-**Written Nov 27 2026 00:15 (part A2, #1309) but not yet run on any instance, because Ruiko's CPU stayed at 94-100 % from 22:49
-to this line (the guard answers exit 5; no guard was raised):** `lane.sh <id> update state|restart-now|proof` (the app's own silent
-update), `lane.sh <id> app-port`, `reset` restoring the app's port to 5555, the adb re-registration of an unlisted emulator
-(see Gotchas), `scripts/aemu-lane/tests/accept-1272.sh` (the example acceptance, see "Example acceptance: #1272"). Still to run:
-`reset` from golden, `posture closed|half` (the black display 0), the fold shade and external-display shots, the two update proofs
-(Shizuku route; waiting, then installing by itself), the #1272 run. The `app-update-waiting` Fleet notice cannot be seen on a lane
-instance: since #1334 a test device raises no notice, by design; its delivery record (`waiting` + why) is the lane evidence.
+**Run Nov 27 2026 01:05-02:27 on `aemu-fold-2` (part F, #1309 / #1312; evidence in `docs/testing/evidence/1309/`):**
+- `lane.sh <id> update state|restart-now|proof`: the app's silent self-update through **Shizuku** (release 3632075 -> 3632092, both
+  delivered by the server: `ApkInstall: installing ... via shizuku (stream)`, `installed ... (confirmed at app start)`, 0 packageinstaller
+  activities / notifications) and **waiting, then installing by itself** (Shizuku stopped and the app's local ADB off: `restart-now` answers
+  `waiting` + why, the server's delivery record says `waiting` + why, nothing on screen; `shizuku start` + an app process restart: `retry
+  (shizuku changed) ... via shizuku (stream)`, installed by itself). See "Update proofs" in Gotchas for what the run showed.
+- `tests/reboot-recovery.sh`: run 1 (the guest rebooted by itself) 5 PASS + the outdated Android-copy check; run 2 6 PASS (the emulator process
+  ended with the guest's reboot; the lane powered it on, then the checks ran with nobody touching).
+- `tests/accept-1272.sh` (the example acceptance): 7 PASS, see "Example acceptance: #1272".
+- `reset` from `golden` (boots in 9 s, `appPort5555Restored: true`; its first try failed while the old emulator was still shutting down, now two tries),
+  `lane.sh <id> app-port`, `install-release` (compares the installed versionCode).
+Still not proven: `posture closed|half` (the black display 0), the fold shade and external-display shots. The `app-update-waiting` Fleet notice cannot
+be seen on a lane instance: since #1334 a test device raises no notice, by design; its delivery record (`waiting` + why) is the lane evidence.
 
 ## Rules of the lane (HARD)
 
@@ -140,7 +146,7 @@ Release the instance when your test ends. Leave it running: the reaper stops it 
 | `$L $I kill-page` / `kill-app` / `stop-app` / `start-app` | WebView renderer killed / app process killed (root kill -9, as the low-memory killer) / force stop / start |
 | `$L $I home` / `other` / `screen on\|off` / `doze on\|off` | Home key / Settings in front / power key / forced Doze |
 | `$L $I net on\|off\|hang\|slow\|flaky` | Wi-Fi + data on / off; HTTPS black-holed; 2 s delay at 64 kbit/s; 40 % loss |
-| `$L $I install-release [buildId] [--force]` | newest server release (`GET /api/android-builds`), sha256 checked, `adb install -r -g` on this emulator only, once per build |
+| `$L $I install-release [buildId] [--force]` | newest server release (`GET /api/android-builds`), sha256 checked, `adb install -r -g` on this emulator only, once per build: "already installed" needs the marker AND the app's real versionCode (`dumpsys package`) to agree, an older release over a newer one goes with `-d`; the answer carries `versionCodeBefore` / `versionCodeAfter` |
 | `$L $I shizuku start\|stop\|grant\|status` | Shizuku as the shell user |
 | `$L $I adbd status\|tcpip [port]\|usb\|gate on\|off\|wireless on\|off` | the guest's adbd: 5555, wireless debugging; `gate` is the manual shim below |
 | `$L $I update state\|restart-now\|proof [secs]` | the app's own silent update (#1309 part 3): `state` = installed versionCode + the page bridge's staged / waiting state + the SERVER's delivery record of this device; `restart-now` = `window.MelatonAppUpdate.restartNow()` in the page (what Restart Now does); `proof` = the `ApkInstall` log lines, installed versionCode, how many packageinstaller activities / notifications exist (must be 0) |
@@ -285,6 +291,29 @@ sound are told apart by the four log sources above.
 - **One agent id can hold a lease several parts asked for.** Parts of one planner session share one coord id, so a queue row asked for
   by part B is granted to "you" in another part. Read the row's `why` (`coord_devices`) before you drive an instance, and never run a
   retry loop of `up` or `create` on an instance whose lease is not clearly yours: `up` stops a process adb does not list.
+- **Update proofs (`update state|restart-now|proof`), what the run of Nov 27 showed.**
+  1. `shizuku status` `appPermission: true` is Android's runtime permission; the app's own check is `lane.sh <id> adbsettings` -> `"shizuku":true`
+     (Shizuku applet "Access: Allowed"). The `golden` snapshot of aemu-fold-2 had Shizuku running but the app NOT allowed: the first Restart Now
+     then went `via adb` (still silent). Allow it with `eval "AndroidApplets.action('shizuku','allow','')"` and `tap-text 'Allow all the time'`;
+     it survives a Shizuku restart.
+  2. Shizuku 13.6 hands its binder to the app only when the app's PROCESS starts: after `shizuku start` the update keeps waiting until
+     `kill-app` (the process comes back for its services, binder received, `retry (shizuku changed)` installs it by itself, no page needed).
+  3. To make the update wait: `shizuku stop` AND the app's local ADB off (`AndroidActiveSync.setAdbSettings(...)` with `allow:false`,
+     `autoRestore:false`, `shizukuAutoStart:false`, `shizukuRecover:false`); with Shizuku recover on, the app starts Shizuku again by itself over
+     its own ADB within seconds (`LocalAdb: start Shizuku: server running`), which is the recovery working, not a leak.
+  4. A server delivery is one record per device: after `reset` (golden) the app has lost the staged file but the server's record still says `staged`
+     for that release, so the server does not send it again. A newer release (any release builds only a new versionCode) is delivered at the next
+     hello / release event. The first delivery of a release may fail once with `NOT_PERMITTED: The device is not connected to a computer` (the
+     hello comes before the partner link) and is retried at the next hello.
+  5. The page's own box "1 update is available for Melaton ... Install Now | Later" is the client-asset (service worker) update, not the app.
+- **A guest reboot can end the emulator process** (`svc power reboot` on aemu-fold-2 at 02:01 Nov 27: the qemu process was gone a minute later,
+  run 1 of the reboot test had survived the same command). Power it on with `lane.sh <id> up --nosetup` and run `reboot-recovery.sh <id> --no-reboot`;
+  the test's own boot wait goes through the redirect to the app's port, which only exists while the emulator runs.
+- **`reset` right after a stop can start nothing** (`start.cmd ran but no emulator process appeared`): the old emulator still holds its log file
+  during its 20 s graceful shutdown. `reset` now makes two tries, as `up` does.
+- **Never edit `lane.sh` (or a test script) while a lane command is running from it**: bash reads a script as it runs, a changed file made the
+  running `up` read the middle of the file after its last command (`syntax error near unexpected token 'fi'`, harmless that time). Replace by
+  `mv file.new file` between commands.
 - **After `reset`, or after a reboot test, the app's local-ADB port may be 5556.** The reboot test (`tests/reboot-recovery.sh`) moves it
   because the emulator's own adbd always listens on 5555. `reset` puts it back to 5555 (`appPort5555Restored` in its answer); by hand
   `lane.sh <id> app-port`.
@@ -333,7 +362,7 @@ sound are told apart by the four log sources above.
 
 ## Example acceptance: #1272 (a text notice sounds with the event's sound while the page is killed)
 
-**Status: written, not yet run (Nov 27 2026 00:15).** This is the shape every later phone acceptance copies: one instance, one lease,
+**Status: run Nov 27 2026 01:14 on `aemu-fold-2`, 7 PASS (`docs/testing/evidence/1309/accept-1272/`).** This is the shape every later phone acceptance copies: one instance, one lease,
 one script, evidence files, PASS / FAIL per check. Replace step 3 (the notice) and the asserts; keep the rest.
 
 ```
@@ -351,12 +380,12 @@ What `accept-1272.sh` runs, by hand (so a failing step can be run alone):
 
 | step | command | what it must show |
 | --- | --- | --- |
-| page killed | `$L $I kill-app`, then `sh 'pidof jp.net.seventhreeseven.dreamscape'` until a pid is back | the app restarted for its services only: a pid, no `sandboxed_process` / `webview_service`, no activity of the app in `dumpsys activity activities` (`topResumedActivity`), `$L $I cdp` finds no page; server: `GET /api/test-devices` says `service: true, pageInFront: false` |
+| page killed | `$L $I kill-app`, then `sh 'pidof jp.net.seventhreeseven.dreamscape'` until a pid is back | the app restarted for its services only: a pid, no `sandboxed_process` / `webview_service` renderer (the WebView's `js_sandboxed_process0` service stays: it is not a page), no activity of the app in `dumpsys activity activities` (`topResumedActivity`), `$L $I cdp` finds no page; server: `GET /api/test-devices` says `service: true, pageInFront: false` |
 | mark | `NOW=$($L $I now \| jq .localMs)` | the server's clock in ms |
 | one text | `$L $I notice push '{"id":"sms:lane-acct:lane-chat-1272","cls":"sms","app":"messaging","alert":true,"title":"New Text Message","text":"From: ...","actions":["reply"],"data":{"app":"messaging","kind":"sms","accountId":"lane-acct","chatGuid":"lane-chat-1272","from":"...","text":"..."}}'` | `POST /api/test-devices/<device id>/notice`: stored in the test lane, then that device's catch-up only (`sent: 1`). The real shape (`cls: sms`, `data.kind: sms`, id `sms:<account>:<chat>`) is what makes the app take the TextMessageNotifier path and what lets the server clear remove its Android notification (memory #316) |
-| shade | `$L $I notifs`, `$L $I shade shade.png` | the app's posted notification (channel `text_messages_wm`); read the PNG: the text is in the shade |
+| confirmation, shade | `GET /api/test-devices/deliveries?device=<id>`, `$L $I notifs`, `$L $I shade shade.png` | since #1321 no notice is an Android notification: the app confirms it to the server (`postedAt`, `how: box` = its own WM box, `how: held` = no box can show, it waits in the "..." holder: the case with the page killed) and `notifs` / the shade hold NO copy of the text (read the PNG: only the app's persistent "DreamScape / Waiting for Application" and Android's own notices) |
 | sound | `$L $I sound --since $NOW` | `count: 1` (exactly one decision), `sounds[0].file` is the sms event's sound as the page chose it (the default `online.mp3`; never `Alarm*`), `alarmLikeStarted: 0`. The lane runs `-no-audio` with the ringer silent, so the app logs what it would play (`NoteAlerts: sms: ringer 0, sound online.mp3?v=<sha256 prefix>`) and plays nothing: the decision line is the proof, as on the A53 (memory #316) |
-| server clear | `$L $I notice clear sms:lane-acct:lane-chat-1272`, then `notifs` and `shade` again | `{"success":true}`, the notification is gone from `notifs` and from the shade |
+| server clear | `$L $I notice clear sms:lane-acct:lane-chat-1272`, then `notifs` and `shade` again | `{"success":true}`, still no Android copy. That the app's own holder let go of it is not asserted (no Android surface shows it while the page is killed) |
 
 ## The A53, our real Samsung
 

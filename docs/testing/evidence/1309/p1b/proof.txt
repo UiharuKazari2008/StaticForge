@@ -1,0 +1,1 @@
+{"ok": true, "id": "aemu-fold-2", "installedVersionCode": 3632092, "packageinstallerActivities": 0, "packageinstallerNotifications": 0, "lastUpdateTime": "2026-11-27 01:59:58", "logFile": "/home/kanmi/.cache/claude-run/aemu-lane/update-aemu-fold-2.log"}

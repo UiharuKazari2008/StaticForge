@@ -1,0 +1,8 @@
+== before 01:51:00
+{"ok": true, "running": true, "pid": 5108, "uid": "shell", "installed": true, "appPermission": true}
+{"ok": true, "id": "aemu-fold-2", "installedVersionCode": 3631954, "page": {"installer": "silent", "waiting": null, "installed": {"versionCode": 3631954, "versionName": "1.0.3631954"}, "staged": {"versionCode": 3632075, "versionName": "1.0.3632075", "buildId": 31, "stagedAt": 1795762184745}, "attempted": 0}, "server": {"delivery": {"versionCode": 3632075, "state": "staged", "at": "2026-11-27T06:49:45.867Z", "detail": "{\"attempts\":2,\"info\":\"{\\\"state\\\":\\\"staged\\\",\\\"versionCode\\\":3632075}\"}"}, "reported": {"versionCode": 3631954, "versionName": "1.0.3631954", "name": "Lane aemu-fold-2", "at": "2026-11-27T06:04:53.759Z"}, "latestVersionCode": 3632075}}
+    versionCode=3631954 minSdk=31 targetSdk=36
+0
+0
+Cannot open netlink socket: Permission denied
+LISTEN      0      0            *:5555                     *:*                  

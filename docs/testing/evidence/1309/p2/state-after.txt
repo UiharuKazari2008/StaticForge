@@ -1,0 +1,1 @@
+{"ok": true, "id": "aemu-fold-2", "installedVersionCode": 3632120, "page": null, "server": {"delivery": {"versionCode": 3632120, "state": "installed", "at": "2026-11-27T07:26:15.315Z", "detail": "reported 3632120"}, "reported": {"versionCode": 3632120, "versionName": "1.0.3632120", "name": "Lane aemu-fold-2", "at": "2026-11-27T07:26:15.315Z"}, "latestVersionCode": 3632120}}

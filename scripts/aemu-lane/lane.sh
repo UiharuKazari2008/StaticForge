@@ -832,9 +832,15 @@ $(lane_probe_ps "$ID" 0)") || die_unreachable
   partner) dev=$(dev_id); partner_device "$dev" && J ok=b:true id="$ID" partnered=b:true || die "partnership not accepted: $(cat "$STATE/partner-$ID.out" 2>/dev/null | tail -2)";;
   reset)
     golden_present || die "$ID has no golden snapshot (lane.sh $ID provision, then lane.sh $ID golden)"
-    stop_instance
-    start_emulator "-snapshot golden -force-snapshot-load"
-    secs=$(wait_boot 300) || die "golden did not boot (Ruiko $RBASE\\logs\\$ID.txt)"
+    # stop_instance can return while the old emulator still holds its log file (its 20 s graceful shutdown): the first start.cmd then
+    # starts no process (seen on aemu-fold-1 and aemu-fold-2, Nov 27 2026). Same two tries as `up`.
+    secs=''
+    for attempt in 1 2; do
+      stop_instance
+      if start_emulator "-snapshot golden -force-snapshot-load"; then secs=$(wait_boot 300) && break; fi
+      progress "attempt $attempt: golden did not come up: stopping and starting again"
+    done
+    [ -n "$secs" ] || die "golden did not boot (Ruiko $RBASE\\logs\\$ID.txt)"
     noaudio_check || { con kill >/dev/null 2>&1; die "the emulator started without -no-audio: stopped it"; }
     quiet_volumes
     restore_app_port 60 && portback=true || portback=false

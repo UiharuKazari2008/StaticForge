@@ -1,0 +1,9 @@
+{"ok": true, "id": "aemu-fold-2", "installedVersionCode": 3632075, "packageinstallerActivities": 0, "packageinstallerNotifications": 0, "lastUpdateTime": "2026-11-27 01:51:21", "logFile": "/home/kanmi/.cache/claude-run/aemu-lane/update-aemu-fold-2.log"}
+         1795762261.583  4986  4986 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:dumpsys package jp.net.seventhreeseven.dreamscape | grep -m1 versionCode; dumpsys activity activities | grep -ci packageinstaller; dumpsys notification --no
+         1795762274.880  5859  5917 I ApkInstall: installing jp.net.seventhreeseven.dreamscape 1.0.3632075 (3632075) via local adb from /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-3632075.apk (try 1)
+         1795762277.342   695   931 E SystemServiceRegistry: 	at com.android.server.pm.PackageInstallerSession.markAsSealed(PackageInstallerSession.java:2651)
+         1795762277.342   695   931 E SystemServiceRegistry: 	at com.android.server.pm.PackageInstallerSession.commit(PackageInstallerSession.java:2401)
+         1795762277.342   695   931 E SystemServiceRegistry: 	at android.content.pm.PackageInstaller$Session.commit(PackageInstaller.java:2345)
+         1795762282.273   695   756 D PackageInstallerSession: Marking session 201007457 as applied
+         1795762285.744  6690  6733 I ApkInstall: installed jp.net.seventhreeseven.dreamscape (3632075) via local adb (confirmed at app start)
+         1795762290.218  6690  6871 I ApkInstall: jp.net.seventhreeseven.dreamscape (3632075) no longer waits: its file is gone

@@ -1,0 +1,2 @@
+[lane aemu-fold-2] start.cmd ran but no emulator process of aemu-fold-2 appeared on Ruiko (log: C:\Users\ykaza\claude-lane\logs\aemu-fold-2.txt)
+{"ok": false, "error": "golden did not boot (Ruiko C:\\Users\\ykaza\\claude-lane\\logs\\aemu-fold-2.txt)"}

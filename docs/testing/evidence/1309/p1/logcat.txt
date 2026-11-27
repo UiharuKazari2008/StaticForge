@@ -1,0 +1,8 @@
+         1795762274.880  5859  5917 I ApkInstall: installing jp.net.seventhreeseven.dreamscape 1.0.3632075 (3632075) via local adb from /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-3632075.apk (try 1)
+         1795762285.697  6690  6690 D ShizukuProvider: Initialize Sui: false
+         1795762285.714  6690  6704 D ShizukuProvider: binder received
+         1795762285.721  6690  6704 I ShizukuApplication: attachApplication
+         1795762285.744  6690  6733 I ApkInstall: installed jp.net.seventhreeseven.dreamscape (3632075) via local adb (confirmed at app start)
+         1795762285.913  6690  6704 D ShizukuProvider: sendBinder is called when already a living binder
+         1795762290.218  6690  6871 I ApkInstall: jp.net.seventhreeseven.dreamscape (3632075) no longer waits: its file is gone
+         1795762292.440  6690  6862 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=false wifi=true wireless=true restore=true last=-

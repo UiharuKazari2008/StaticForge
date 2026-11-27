@@ -1,0 +1,2 @@
+01:51:14
+{"ok": true, "id": "aemu-fold-2", "answer": {"state": "installing", "via": "adb"}}

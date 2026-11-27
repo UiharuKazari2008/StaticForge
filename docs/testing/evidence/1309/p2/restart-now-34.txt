@@ -1,0 +1,5 @@
+== 02:25:17 shizuku:
+{"ok": true, "running": false, "pid": 0, "uid": "", "installed": true, "appPermission": true}
+\"shizuku\":false
+\"allow\":false
+{"ok": true, "id": "aemu-fold-2", "answer": {"state": "waiting", "why": "Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off"}}

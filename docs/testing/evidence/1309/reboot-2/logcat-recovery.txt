@@ -1,0 +1,119 @@
+11-27 02:14:35.730  1625  1625 D ShizukuProvider: Initialize Sui: false
+11-27 02:14:36.953  1625  1625 I ActiveSyncBoot: notification listener connected, the link's service not running: service started for the link (battery optimisation exempt: false)
+11-27 02:14:38.673  1082  1143 D AlphabeticIndexCompat: computeSectionName: cs: Shizuku sectionName: S
+11-27 02:14:43.393  1625  1890 I AdbWireless: service adb-EMULATOR37X2X13X0-cJkm7g port 34661 at 10.0.2.23, fe80::c104:8126:c23b:bf62%wlan0, fec0::f05f:6e9c:ae5d:7d4f: another device
+11-27 02:14:43.414  1625  1890 I AdbWireless: service adb-EMULATOR37X2X13X0-NPR9pm port 39463 at 10.0.2.24, fe80::74e:2278:d658:354d%wlan0, fec0::78ed:7ca9:47ca:17fb: this phone
+11-27 02:14:43.824  1625  2008 I LocalAdb: tcpip:5556 over TLS port 39463: restarting in TCP mode port: 5556 (adbd closed the connection: false)
+11-27 02:14:44.097  1625  2008 I LocalAdb: restore over Wireless debugging: restored
+11-27 02:14:44.410  1625  2008 I LocalAdb: setprop persist.adb.tcp.port 5556 (was ''): exit 1 Failed to set property 'persist.adb.tcp.port' to '5556'.
+11-27 02:14:44.410  1625  2008 I LocalAdb: See dmesg for error reason.
+11-27 02:14:44.461  2368  2368 I adbd    : adbd service requested 'shell,v2,raw:pidof shizuku_server'
+11-27 02:14:45.042  1625  2008 I LocalAdb: start Shizuku: its native starter, lib/x86_64
+11-27 02:14:45.187  2468  2468 D Shizuku : start_server
+11-27 02:14:45.188  2474  2474 D Shizuku : child
+11-27 02:14:45.188  2474  2474 D Shizuku : exec app_process
+11-27 02:14:45.452  2474  2474 I shizuku_server: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+11-27 02:14:45.454  2474  2474 I shizuku_server: Using generational CollectorTypeCMC GC.
+11-27 02:14:46.262  2474  2474 D shizuku_server: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/10/icu") succeeded. 
+11-27 02:14:46.262  2474  2474 D shizuku_server: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt78l.dat
+11-27 02:14:46.266  2474  2474 I shizuku_server: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+11-27 02:14:46.267  2474  2474 W shizuku_server: Unexpected CPU variant for x86: x86_64.
+11-27 02:14:46.267  2474  2474 W shizuku_server: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+11-27 02:14:46.274  2474  2474 W shizuku_server: ClassLoaderContext shared library size mismatch. Expected=2, found=0 (PCL[]{PCL[/system_ext/framework/androidx.window.extensions.jar*1635530414]#PCL[/system_ext/framework/androidx.window.sidecar.jar*3481082032]} | PCL[])
+11-27 02:14:46.323  2474  2474 D AndroidRuntime: Calling main entry rikka.shizuku.server.ShizukuService
+11-27 02:14:46.515  2474  2520 V BinderSender: Uid 10228 starts
+11-27 02:14:46.577  2474  2520 V BinderSender: Uid 10155 starts
+11-27 02:14:46.579  2474  2520 V BinderSender: Uid 10155 already starts
+11-27 02:14:46.701   675   710 I ActivityManager: Start proc 2534:moe.shizuku.privileged.api/u0a234 for content provider {moe.shizuku.privileged.api/moe.shizuku.manager.ShizukuManagerProvider}
+11-27 02:14:46.938  2474  2531 V BinderSender: Uid 10234 starts
+11-27 02:14:47.815  2534  2548 I ShizukuApplication: attachApplication
+11-27 02:14:47.880  2474  2531 V BinderSender: Uid 10110 starts
+11-27 02:14:47.885  2474  2531 V BinderSender: Uid 10182 starts
+11-27 02:14:47.891  2474  2531 V BinderSender: Uid 10234 already starts
+11-27 02:14:49.642  2474  2520 V BinderSender: Uid 10155 already starts
+11-27 02:14:49.814  2474  2520 V BinderSender: Uid 10234 already starts
+11-27 02:14:49.821  2474  2520 V BinderSender: Uid 10110 already starts
+11-27 02:14:49.821  2474  2520 V BinderSender: Uid 10110 already starts
+11-27 02:14:49.872  2474  2520 V BinderSender: Uid 10149 starts
+11-27 02:14:49.934  2474  2520 V BinderSender: Uid 10201 starts
+11-27 02:14:49.939  2474  2520 V BinderSender: Uid 10182 already starts
+11-27 02:14:50.118  2368  2368 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:pidof shizuku_server'
+11-27 02:14:51.074  2474  2520 V BinderSender: Uid 10171 starts
+11-27 02:14:51.083  2474  2520 V BinderSender: Uid 10110 already starts
+11-27 02:14:51.290  2474  2520 V BinderSender: Uid 10171 already starts
+11-27 02:14:51.307  2368  2368 I adbd    : adbd service requested 'shell,v2,raw:pidof shizuku_server'
+11-27 02:14:51.390  1625  2008 I LocalAdb: start Shizuku: server running (pid 2474), no binder with the app yet; starter said: vs2cA==/moe.shizuku.privileged.api-WNKs9f1HiEY3fdx2ownylA==/base.apk
+11-27 02:14:51.390  1625  2008 I LocalAdb: info: starting server...
+11-27 02:14:51.390  1625  2008 I LocalAdb: info: shizuku_server pid is 2474
+11-27 02:14:51.390  1625  2008 I LocalAdb: info: shizuku_starter exit with 0
+11-27 02:14:51.770  2474  2520 V BinderSender: Uid 10156 starts
+11-27 02:14:51.791  1625  2008 I LocalAdb: pass (fresh): listening=true shizukuRunning=false shizukuUsable=false wifi=true wireless=true restore=true last=-
+11-27 02:14:52.525  2474  2520 V BinderSender: Uid 10156 already starts
+11-27 02:14:52.764  2474  2520 V BinderSender: Uid 10181 starts
+11-27 02:14:53.247  2474  2531 V BinderSender: Uid 10156 already starts
+11-27 02:14:53.318  2474  2531 V BinderSender: Uid 10148 starts
+11-27 02:14:53.483  2474  2531 V BinderSender: Uid 10148 already starts
+11-27 02:14:53.566  2474  2531 V BinderSender: Uid 10148 already starts
+11-27 02:14:53.731  2474  2531 V BinderSender: Uid 10148 already starts
+11-27 02:14:53.758  2474  2531 V BinderSender: Uid 10144 starts
+11-27 02:14:53.780  2474  2520 V BinderSender: Uid 10181 already starts
+11-27 02:14:53.819  2474  2520 V BinderSender: Uid 10181 already starts
+11-27 02:14:54.077  2474  2520 V BinderSender: Uid 10112 starts
+11-27 02:14:54.102  1625  1625 I ActiveSyncBoot: boot: service started for the link (battery optimisation exempt: false)
+11-27 02:14:54.115  2474  2520 V BinderSender: Uid 10144 already starts
+11-27 02:14:54.653  2474  2520 V BinderSender: Uid 10143 starts
+11-27 02:14:54.842  2474  2531 V BinderSender: Uid 10182 already starts
+11-27 02:14:54.888  2474  2531 V BinderSender: Uid 10182 already starts
+11-27 02:14:54.926  2474  2531 V BinderSender: Uid 10110 already starts
+11-27 02:14:54.974  2474  2531 V BinderSender: Uid 10143 already starts
+11-27 02:14:54.974  2474  2531 V BinderSender: Uid 10143 already starts
+11-27 02:14:55.343  2474  2520 V BinderSender: Uid 10186 starts
+11-27 02:14:55.569  2474  2531 V BinderSender: Uid 10186 already starts
+11-27 02:14:55.572  2474  2531 V BinderSender: Uid 10186 already starts
+11-27 02:14:55.811  2474  2531 V BinderSender: Uid 10122 starts
+11-27 02:14:56.141  2474  2520 V BinderSender: Uid 10122 already starts
+11-27 02:14:56.141  2474  2520 V BinderSender: Uid 10122 already starts
+11-27 02:14:56.544  2474  2531 V BinderSender: Uid 10104 starts
+11-27 02:14:56.791  2474  2531 V BinderSender: Uid 10104 already starts
+11-27 02:14:56.813  2474  2531 V BinderSender: Uid 10104 already starts
+11-27 02:14:57.058  2474  2531 V BinderSender: Uid 10171 already starts
+11-27 02:14:57.064  2474  2531 V BinderSender: Uid 10110 already starts
+11-27 02:14:57.136  2474  2531 V BinderSender: Uid 10112 already starts
+11-27 02:14:57.180  2474  2531 V BinderSender: Uid 2000 starts
+11-27 02:14:57.410  2474  2531 V BinderSender: Uid 10182 already starts
+11-27 02:14:57.571  2474  2531 V BinderSender: Uid 2000 already starts
+11-27 02:14:57.590  2474  2531 V BinderSender: Uid 2000 already starts
+11-27 02:14:57.754  2474  2531 V BinderSender: Uid 10158 starts
+11-27 02:14:58.030  2474  2531 V BinderSender: Uid 10158 already starts
+11-27 02:14:58.040  2474  2531 V BinderSender: Uid 10158 already starts
+11-27 02:14:58.290  2474  2531 V BinderSender: Uid 10147 starts
+11-27 02:14:58.454  2474  2520 V BinderSender: Uid 10147 already starts
+11-27 02:14:58.459  2474  2520 V BinderSender: Uid 10147 already starts
+11-27 02:14:58.641  2474  2520 V BinderSender: Uid 10205 starts
+11-27 02:14:58.701  2474  2531 V BinderSender: Uid 10205 already starts
+11-27 02:14:58.706  2474  2531 V BinderSender: Uid 10205 already starts
+11-27 02:14:58.836  2474  2531 V BinderSender: Uid 10111 starts
+11-27 02:14:58.896  2474  2531 V BinderSender: Uid 10213 starts
+11-27 02:14:59.109  2474  2520 V BinderSender: Uid 10213 already starts
+11-27 02:14:59.109  2474  2520 V BinderSender: Uid 10213 already starts
+11-27 02:14:59.248  2474  2531 V BinderSender: Uid 10204 starts
+11-27 02:14:59.413  2474  2531 V BinderSender: Uid 10204 already starts
+11-27 02:14:59.416  2474  2531 V BinderSender: Uid 10204 already starts
+11-27 02:14:59.651  2474  2531 V BinderSender: Uid 10120 starts
+11-27 02:14:59.723  2474  2531 V BinderSender: Uid 10120 already starts
+11-27 02:14:59.723  2474  2520 V BinderSender: Uid 10120 already starts
+11-27 02:14:59.825  2474  2531 V BinderSender: Uid 10150 starts
+11-27 02:14:59.914  2474  2531 V BinderSender: Uid 10150 already starts
+11-27 02:14:59.932  2474  2531 V BinderSender: Uid 10150 already starts
+11-27 02:15:00.091  2474  2531 V BinderSender: Uid 10152 starts
+11-27 02:15:00.349  2474  2531 V BinderSender: Uid 10152 already starts
+11-27 02:15:00.352  2474  2531 V BinderSender: Uid 10152 already starts
+11-27 02:15:00.467  2474  2531 V BinderSender: Uid 10150 already starts
+11-27 02:15:00.560  2474  2531 V BinderSender: Uid 10224 starts
+11-27 02:15:00.651  2474  2531 V BinderSender: Uid 10224 already starts
+11-27 02:15:00.655  2474  2531 V BinderSender: Uid 10224 already starts
+11-27 02:15:00.770  2474  2531 V BinderSender: Uid 10206 starts
+11-27 02:15:00.952  2474  2531 V BinderSender: Uid 10224 already starts
+11-27 02:15:01.068  2474  2531 V BinderSender: Uid 10206 already starts
+11-27 02:15:01.239  2474  2531 V BinderSender: Uid 10113 starts
+11-27 02:15:01.396  2474  2531 V BinderSender: Uid 10113 already starts

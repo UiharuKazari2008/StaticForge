@@ -1,0 +1,17 @@
+         1795764278.828  5937  5967 I ApkInstall: jp.net.seventhreeseven.dreamscape 1.0.3632105 (3632105) waits: Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off
+         1795764316.768  5937  5967 I ApkInstall: jp.net.seventhreeseven.dreamscape 1.0.3632120 (3632120) waits: Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off
+         1795764336.054  3184  6705 I ShizukuApplication: attachApplication
+         1795764368.377   695   728 I ActivityManager: Start proc 6745:jp.net.seventhreeseven.dreamscape/u0a235 for content provider {jp.net.seventhreeseven.dreamscape/rikka.shizuku.ShizukuProvider}
+         1795764368.795  6745  6745 D ShizukuProvider: Initialize Sui: false
+         1795764368.798  6745  6756 D ShizukuProvider: binder received
+         1795764368.803  6745  6756 I ShizukuApplication: attachApplication
+         1795764368.859  6745  6756 D ShizukuProvider: sendBinder is called when already a living binder
+         1795764368.983  6745  6782 I ApkInstall: jp.net.seventhreeseven.dreamscape (3632105) no longer waits: its file is gone
+         1795764369.008  6745  6782 I ApkInstall: retry (shizuku changed): jp.net.seventhreeseven.dreamscape (3632120) via shizuku (stream), shizuku (copy to /data/local/tmp)
+         1795764369.014  6745  6782 I ApkInstall: installing jp.net.seventhreeseven.dreamscape 1.0.3632120 (3632120) via shizuku (stream) from /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-3632120.apk (try 1)
+         1795764372.342  6867  6867 D ShizukuProvider: Initialize Sui: false
+         1795764372.438  6867  6879 D ShizukuProvider: binder received
+         1795764372.450  6867  6879 I ShizukuApplication: attachApplication
+         1795764372.560  6867  6914 I ApkInstall: installed jp.net.seventhreeseven.dreamscape (3632120) via shizuku (stream) (confirmed at app start)
+         1795764373.298  6867  6943 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+         1795764374.945  6867  6940 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-

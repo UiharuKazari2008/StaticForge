@@ -1,0 +1,1 @@
+SERVER DELIVERY: {"versionCode": 3632120, "state": "waiting", "at": "2026-11-27T07:25:18.170Z", "detail": "{\"attempts\":1,\"why\":\"Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off\"}"}

@@ -1,0 +1,10 @@
+== shizuku start 02:25:37
+{"ok": true, "shizukuPid": 6692, "starter": "info: apk path is /data/app/~~9Tm4ytqeS1K9x2zONvs2cA==/moe.shizuku.privileg
+== 25 s later (app process NOT restarted):
+3631954 {"versionCode": 3632120, "why": "Shizuku is not running or does not allow Dreamscape; installing through local ADB is switched off", "since": 1795764316762} waiting
+\"shizuku\":false
+         1795764335.785  6687  6687 D Shizuku : start_server
+         1795764335.786  6692  6692 D Shizuku : child
+         1795764335.786  6692  6692 D Shizuku : exec app_process
+         1795764335.979  6692  6692 D AndroidRuntime: Calling main entry rikka.shizuku.server.ShizukuService
+         1795764336.054  3184  6705 I ShizukuApplication: attachApplication

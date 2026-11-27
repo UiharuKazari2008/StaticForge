@@ -1,0 +1,1 @@
+{"success":true,"mode":"get","notice":{"id":"b1312:reboot:1795763691","app":"test","cls":"test","title":"reboot-test 1795763691","text":"sent after the reboot, nobody touched the phone","actions":[],"data":{"kind":"test"},"createdAt":1795763691791,"updatedAt":1795763691791,"expiresAt":1795785291791,"state":"new","actedBy":null,"sortAt":1795763691791,"prio":1,"alert":true}}

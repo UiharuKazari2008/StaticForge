@@ -1,0 +1,3 @@
+== kill-app (process restart, binder at start) 02:26:09
+{"ok": true, "killedPid": 5937, "appPid": 6745}
+02:26:18     versionCode=3632120 minSdk=31 targetSdk=36

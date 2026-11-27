@@ -1,0 +1,3 @@
+         1795762797.380  7317  7369 I ApkInstall: installing jp.net.seventhreeseven.dreamscape 1.0.3632092 (3632092) via shizuku (stream) from /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/files/app-update/dsapp-3632092.apk (try 1)
+         1795762800.330  8148  8205 I ApkInstall: installed jp.net.seventhreeseven.dreamscape (3632092) via shizuku (stream) (confirmed at app start)
+         1795762802.753  8148  8327 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
