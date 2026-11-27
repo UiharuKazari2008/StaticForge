@@ -10058,7 +10058,8 @@
         { id: 'reminder', label: 'Reminders', kind: 'note', sound: 'notify.mp3', repeatable: true, repeat: true, desktop: 'balloon' },
         // #848: the update icon's notification (updates downloaded and ready, applied, available)
         { id: 'update', label: 'Software update', kind: 'note', sound: 'SoftwareUpdate.wav', desktop: 'balloon' },
-        { id: 'startup', label: 'Start up', kind: 'event', sound: 'Alarm2.wav', desktop: 'logon' },
+        // no 'startup' class (gwes' SystemStart): Melaton Mobile boots silent, always, and offers no
+        // Start up row, so there is no switch that plays nothing (Yukimi, Nov 26 2026, #1299 N8)
         // no 'print' (Print finished) class: a finished print is no notification on the phone (#1040)
         { id: 'print-error', label: 'Studio: Print failed', kind: 'note', sound: 'Alarm2.wav', desktop: 'print-error' },
         { id: 'sms', label: 'Text Messaging: New text message', kind: 'note', sound: 'Alarm3.mp3', desktop: 'balloon' },
@@ -10088,7 +10089,8 @@
     // the gwes / PlaySound names callers use, as phone events
     const SND_ALIAS = {
         SystemAsterisk: 'info', SystemQuestion: 'question', SystemExclamation: 'warning', SystemHand: 'error',
-        SystemDefault: 'beep', SystemStart: 'startup', MenuPopup: 'menu', Notification: 'notification',
+        SystemDefault: 'beep', MenuPopup: 'menu', Notification: 'notification',
+        // no SystemStart: the boot is silent on Melaton Mobile (#1299 N8), so the name maps to nothing
         // the chat personas' class before #779
         text: 'chat'
     };
@@ -14315,9 +14317,8 @@
         //   6.5: the soft key bar with its labels (+518), the title bar (+281 after that)
         // in that order at about a third of the emulator's times.
         setBoot('done');
-        // gwes plays SystemStart as the shell comes up (only once audio is unlocked: a tap or key
-        // during startup, e.g. the PIN; a cold load stays silent)
-        playSystemSound('SystemStart');
+        // no startup sound: Melaton Mobile boots silent on 6.1, 6.5 and 6.5.1 (Yukimi, Nov 26 2026,
+        // #1299 N8), where gwes played SystemStart as the shell came up. The desktop keeps its own.
         playBootReveal();
     }
 

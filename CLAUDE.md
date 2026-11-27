@@ -39,8 +39,11 @@ done, whatever else it achieves.
    or a secret holds it (then `wip/<agent-id>`) - `commit-each-turn`. Subagents, workflow agents and
    `claude_dispatch` sessions start on Sonnet unless a named reason says otherwise, with a brief Sonnet can finish -
    `subagents-sonnet`.
-3. **Behaviour and look:** `ui-standard`, `no-native-browser-ui`, `fix-ui-issues-you-find`, notifications
-   and status indicators never silenced to save power.
+3. **Behaviour and look:** `ui-standard`, `no-native-browser-ui`, `fix-ui-issues-you-find`,
+   `notification-discipline` (a notice is a call to action or data the user asked for - no status echoes, no
+   telling the user what they just did, no sound without a user action, every notice registered and
+   switchable, and Melaton Mobile boots silent), notifications and status indicators never silenced to save
+   power.
 
 @.cursor/rules/installed-boot-zero-wait.mdc
 @.cursor/rules/cafeready-background.mdc
@@ -62,6 +65,7 @@ done, whatever else it achieves.
 @.cursor/rules/ui-standard.mdc
 @.cursor/rules/no-native-browser-ui.mdc
 @.cursor/rules/fix-ui-issues-you-find.mdc
+@.cursor/rules/notification-discipline.mdc
 @.cursor/rules/keyboard-characters.mdc
 @.cursor/rules/cafe-ready-name.mdc
 @.cursor/rules/rename-scope.mdc

@@ -206,9 +206,11 @@
                 + ui.row('Click sounds:', ui.comboHtml('clickset', (CLICK_SETS.find(([v]) => v === d.dev.clicks) || CLICK_SETS[0])[1], !d.dev.taps && !d.dev.buttons), { wide: true }) : ''}
             ${ui.gap()}
             ${ui.row('Sound scheme:', ui.comboHtml('scheme', (schemes.find(([v]) => v === cur) || schemes[0])[1]), { wide: true })}
-            ${ui.check('startup', 'Play Melaton Startup sound', d.startupSound, none ? 'disabled' : '')}
             ${ui.gap()}
             ${ui.note('The sound scheme of this workspace, shared with the desktop. Each event\'s sound is on the Notifications tab.')}`;
+        // no "Play Melaton Startup sound" here: Melaton Mobile boots silent and offers no switch that
+        // plays nothing (#1299 N8). The desktop keeps it in Personalization > Sounds; the workspace's
+        // startupSound preference is shared, so the phone leaves it untouched
         el.querySelectorAll('input[data-grp]').forEach((c) => c.addEventListener('change', () => {
             setGroup(d, c.dataset.grp, c.checked);
             api.rerender();
@@ -242,7 +244,7 @@
         const ws = Object.prototype.hasOwnProperty.call(d.sounds, ev.desktop) ? d.sounds[ev.desktop] : null;
         const wsPick = ws && s && s.SCHEME && ws !== s.SCHEME[ev.desktop] && (s.FILES || []).includes(ws) ? ws : null;
         const file = own ? o.sound : (o.last || wsPick || ev.sound);
-        const off = d.scheme === 'none' || eventFile(d, ev.desktop) === '' || (ev.id === 'startup' && !d.startupSound);
+        const off = d.scheme === 'none' || eventFile(d, ev.desktop) === '';
         return {
             on, file, off, display,
             repeat: !!ev.repeatable && (typeof o.repeat === 'boolean' ? o.repeat : !!ev.repeat),
