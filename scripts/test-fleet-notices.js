@@ -541,6 +541,22 @@ const qs = (list) => JSON.stringify(list);
         } finally { inbox._test.setNow(null); }
     });
 
+    await test('sweepRoutine takes down a notice raised under the old two-day life once its kind\'s new life is over (one row per item, never stacked)', () => {
+        const old = (id, kind, hoursAgo) => {
+            inbox._test.setNow(() => Date.now() - hoursAgo * 3600000);
+            try { inbox.publish({ user: 'admin', app: 'claudedesk', id, cls: 'notification', title: `Fleet: ${id}`, text: 't', data: { app: 'claudedesk', kind }, ttlMs: 2 * 86400000 }); } finally { inbox._test.setNow(null); }
+        };
+        old('fleet-work:901:done', 'work-done', 5);
+        old('fleet-work:902:done', 'work-done', 1);
+        old('fleet-work:903:attention', 'work-attention', 13);
+        old('fleet-work:904:attention', 'work-attention', 2);
+        assert.strictEqual(fn.sweepRoutine(gr), 2, 'a done one 5 h old and a needs-you one 13 h old are past their lives');
+        assert.strictEqual(live('fleet-work:901:done').length, 0);
+        assert.strictEqual(live('fleet-work:903:attention').length, 0);
+        assert.strictEqual(live('fleet-work:902:done').length, 1, 'inside its life it stays');
+        assert.strictEqual(live('fleet-work:904:attention').length, 1);
+    });
+
     console.log(failed ? `\n${failed} FAILED` : '\nall passed');
     process.exit(failed ? 1 : 0);
 })();

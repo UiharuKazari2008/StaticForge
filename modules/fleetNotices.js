@@ -182,7 +182,12 @@ function sweepRoutine(gr) {
                 return;
             }
             if (r.app !== APP && d.app !== APP) return;
-            if (off(d) && clearNotice(r.id)) n += 1;
+            if (off(d) && clearNotice(r.id)) { n += 1; return; }
+            // a notice from before the lives were set (Nov 26 2026, #1291: two days for "is done" looked like never; one row per
+            // item, never stacked): it goes once its kind's life is over, counted from when it was raised
+            const life = { 'work-done': LIFE.done, 'work-attention': LIFE.attention, 'account-login': LIFE.login, maintenance: LIFE.routine, 'usage-flag': LIFE.routine }[d.kind];
+            const raised = Number(r.createdAt) || 0;
+            if (life && raised && Date.now() - raised > life && Number(r.expiresAt) > raised + life && clearNotice(r.id)) n += 1;
         });
     } catch (e) { console.warn(`[fleet-notices] sweep: ${e.message}`); }
     return n;
