@@ -9,9 +9,9 @@
 #   a53.sh status            read-only facts (still needs the lease: it dials the phone): link, boot, lock, Wi-Fi, battery, adb ports, Wireless debugging, volumes
 #   a53.sh up                climb the recovery ladder until adb answers, then wake + unlock (prints every rung)
 #   a53.sh unlock            wake and unlock with the PIN (locksettings verify first; never prints the PIN)
-#   a53.sh find              the phone's address when it is not at A53_IP (its MAC in the ARP table after a ping sweep)
-#   a53.sh wd-pair           (once) pair this server's adb with the phone's Wireless debugging (adb input + uiautomator)
-#   a53.sh wd-on             turn Wireless debugging on, tap "Always allow on this network" if asked
+#   a53.sh approve           Custodian over Bluetooth taps "Allow USB debugging?" (this server's key refused)
+#   a53.sh bt <args>         the custodian CLI on MODERNIA, always --device dev (status, unlock, call wifi_enable '{}', ...)
+#   a53.sh find              the phone's address when it is not at A53_IP (its own mDNS name adb-<serial>, then its MAC in the ARP table)
 #   a53.sh deadman <sec>     TEST HARNESS: one sleeping shell on the phone turns Wi-Fi on once after <sec> s (no loop, no wakelock)
 #   a53.sh deadman-cancel    cancel it
 #   a53.sh deadman-selftest  prove the timer survives the link dropping (harmless touch of a file, link disconnected host side)
@@ -29,6 +29,7 @@ ENV_FILE=${A53_ENV:-$HOME/.config/a53/a53.env}
 IP=${A53_IP:-192.168.100.240}
 PORT=5555
 SER="$IP:$PORT"
+SERIALNO=${A53_SERIALNO:-R5CT71TSEMZ}   # ro.serialno of the A53; its mDNS instance is adb-<serial>-xxxxxx
 PIN_FILE=${A53_PIN_FILE:-$HOME/.secrets/ruiko-windows-pin.token}
 TREE=${A53_TREE:-/home/kanmi/staticforge}
 AGENT=${A53_AGENT:-${COORD_AGENT_ID:-claude-${CLAUDE_CODE_SESSION_ID:0:8}}}
@@ -36,6 +37,21 @@ AGENT=${A53_AGENT:-${COORD_AGENT_ID:-claude-${CLAUDE_CODE_SESSION_ID:0:8}}}
 say() { printf '%s\n' "$*"; }
 a() { timeout "${A53_T:-25}" "$ADB" -s "$SER" "$@"; }
 ash() { a shell "$@"; }
+
+# Custodian (Bluetooth path). The daemon runs on MODERNIA (Yukimi's PC); only the custodian CLI is run there, and EVERY call
+# carries --device dev (Marine = the A53). Marian (the Fold) is never named: a call that names another device is refused.
+CUST_HOST=${A53_CUST_HOST:-modernia}
+cust() {
+  case " $* " in *" --device "*|*" main "*|*" fold "*|*" Marian "*) say "cust: refused (the device is always --device dev)"; return 2 ;; esac
+  local ps; ps=$(mktemp)
+  printf '%s\n' "python -m custodian $* --device dev 2>&1 | Out-String -Width 250" > "$ps"
+  local enc; enc=$(iconv -f utf-8 -t utf-16le "$ps" | base64 -w0); rm -f "$ps"
+  timeout "${A53_CUST_T:-60}" ssh -o ConnectTimeout=10 "$CUST_HOST" "powershell -NoProfile -EncodedCommand $enc" 2>&1 | grep -v -E '^#< CLIXML|^<Objs|^</Objs'
+}
+# Wi-Fi state over Bluetooth: prints enabled|disabled|unknown
+cust_wifi() { cust status | python3 -c 'import sys,json
+try: d=json.load(sys.stdin); print("enabled" if d["wifi"]["enabled"] else "disabled")
+except Exception: print("unknown")'; }
 
 lease_ok() {
   [ "${A53_NO_LEASE:-}" = 1 ] && return 0
@@ -50,7 +66,16 @@ adb_state() {
   local s
   s=$(timeout 8 "$ADB" -s "$SER" get-state 2>&1 | tr -d '\r')
   case "$s" in
-    device) echo device ;;
+    *offline*|*"not found"*) # a transport left over from before Wi-Fi went away: drop it and dial again
+      timeout 5 "$ADB" disconnect "$SER" >/dev/null 2>&1; sleep 1
+      timeout 12 "$ADB" connect "$SER" >/dev/null 2>&1
+      s=$(timeout 8 "$ADB" -s "$SER" get-state 2>&1 | tr -d '\r') ;;
+  esac
+  case "$s" in
+    device)
+      # never run anything on a phone that is not the A53 (an address can be reused): its serial must match
+      local sn; sn=$(timeout 8 "$ADB" -s "$SER" shell getprop ro.serialno 2>/dev/null | tr -d '\r\n')
+      if [ "$sn" = "$SERIALNO" ]; then echo device; else echo "mismatch($sn)"; timeout 5 "$ADB" disconnect "$SER" >/dev/null 2>&1; fi ;;
     *unauthorized*) echo unauthorized ;;
     *offline*) echo offline ;;
     *) echo none ;;
@@ -66,9 +91,14 @@ tls_ports() {
 
 subnet() { echo "${IP%.*}"; }
 
-# the phone's MAC from the ARP table after a ping sweep of our own /24 (when it is not at A53_IP any more)
+# The phone's address when it is not at A53_IP (a new DHCP lease, another SSID): first its own mDNS name
+# (adb-<serial>-..., advertised for 5555 and for Wireless debugging; only this serial is picked from the list),
+# then its MAC in the ARP table after a ping sweep (the MAC is random per SSID, so this is the weaker way).
 find_ip() {
-  [ -n "${A53_MAC:-}" ] || { say "find: no A53_MAC known (a53.sh status stores it while the phone is reachable)"; return 1; }
+  local ip
+  ip=$(timeout 10 "$ADB" mdns services 2>/dev/null | awk -v s="adb-$SERIALNO" 'index($1,s)==1 && $2 ~ /^_adb(-tls-connect)?\._tcp/ { split($3,p,":"); print p[1]; exit }')
+  if [ -n "$ip" ]; then echo "$ip"; return 0; fi
+  [ -n "${A53_MAC:-}" ] || return 1
   local m i sn
   m=$(echo "$A53_MAC" | tr 'A-Z' 'a-z'); sn=$(subnet)
   for i in $(seq 1 254); do ping -c1 -W1 "$sn.$i" >/dev/null 2>&1 & done; wait
@@ -90,11 +120,12 @@ cmd_status() {
        echo persistTcp=$(getprop persist.adb.tcp.port) serviceTcp=$(getprop service.adb.tcp.port)
        echo adbWifiEnabled=$(settings get global adb_wifi_enabled) wifiOn=$(settings get global wifi_on) stayOn=$(settings get global stay_on_while_plugged_in)
        echo keyguard=$(dumpsys window | grep -o "isKeyguardShowing=[a-z]*" | head -1) screen=$(dumpsys power | grep -o "mWakefulness=[A-Za-z]*" | head -1)
-       dumpsys battery | grep -E "AC powered|USB powered|level|status" | tr -s " " | tr "\n" ";"; echo
-       echo vol_ring=$(settings get system volume_ring 2>/dev/null) ringer=$(dumpsys audio | grep -o "ringer mode: [A-Z_]*\|mRingerMode=[0-9]*" | head -1)
-       echo ip=$(ip -o -4 addr show wlan0 2>/dev/null | tr -s " " | cut -d" " -f4)
-       echo mac=$(cat /sys/class/net/wlan0/address 2>/dev/null)' 2>&1 | tr -d '\r'
-  local mac; mac=$(ash 'cat /sys/class/net/wlan0/address' 2>/dev/null | tr -d '\r\n')
+       dumpsys battery | grep -E "^  (AC powered|USB powered|level|status):" | tr -s " " | tr "\n" ";"; echo
+       echo vol_ring=$(settings get system volume_ring 2>/dev/null) vol_music=$(settings get system volume_music 2>/dev/null)
+       echo wifiIp=$(ip -o -4 addr show wlan0 2>/dev/null | tr -s " " | cut -d" " -f4)' 2>&1 | tr -d '\r'
+  # the shell user may not read the phone's MAC: the server's own ARP table has it (the phone just answered)
+  local mac; mac=$(ip neigh show "$IP" 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="lladdr") print $(i+1)}' | head -1)
+  say "mac=$mac"
   case "$mac" in ??:??:??:??:??:??) [ "$mac" = "${A53_MAC:-}" ] || save_env A53_MAC "$mac" ;; esac
 }
 
@@ -109,56 +140,84 @@ cmd_unlock() {
   # a wrong guess counts toward the lockout: verify first, type only when the PIN is right
   local v; v=$(ash "locksettings verify --old $pin" 2>&1 | tr -d '\r')
   case "$v" in *"verified successfully"*) ;; *) say "unlock: STOP, the stored PIN did not verify ($(echo "$v" | head -1 | sed "s/$pin/***/g"))"; return 1 ;; esac
-  ash 'input keyevent KEYCODE_WAKEUP' >/dev/null; sleep 1
-  ash 'wm dismiss-keyguard' >/dev/null 2>&1; sleep 1
-  ash 'input swipe 540 1900 540 700 200' >/dev/null; sleep 1
-  ash "input text $pin" >/dev/null; sleep 1
-  ash 'input keyevent KEYCODE_ENTER' >/dev/null; sleep 2
-  [ "$(showing)" = "isKeyguardShowing=false" ] && { say "unlock: unlocked"; return 0; }
-  say "unlock: still locked ($(showing))"; return 1
+  # right after a boot the keyguard is not ready for a while (the first try can type into nothing): up to 4 tries, 10 s apart;
+  # the PIN is right (verified above), so a try never counts as a wrong guess
+  local try
+  for try in 1 2 3 4; do
+    ash 'input keyevent KEYCODE_WAKEUP' >/dev/null; sleep 1
+    ash 'wm dismiss-keyguard' >/dev/null 2>&1; sleep 1
+    ash 'input swipe 540 1900 540 700 200' >/dev/null; sleep 1
+    ash "input text $pin" >/dev/null; sleep 1
+    ash 'input keyevent KEYCODE_ENTER' >/dev/null; sleep 2
+    [ "$(showing)" = "isKeyguardShowing=false" ] && { say "unlock: unlocked (try $try)"; return 0; }
+    say "unlock: try $try, still locked ($(showing))"; sleep 10
+  done
+  return 1
 }
 
 # ---------------------------------------------------------------- the ladder
 cmd_up() {
   lease_ok || return 1
-  local st n
+  local st n nip
   st=$(adb_state); say "rung 1 adb over Wi-Fi at $SER: $st"
-  if [ "$st" = unauthorized ]; then
-    say "rung 1b: this adb key is not allowed: another channel taps Always allow (see 'a53.sh approve')"
-    cmd_approve && st=$(adb_state)
-  fi
-  if [ "$st" != device ]; then
-    if host_up; then
-      say "rung 2 host answers ping, 5555 is closed: ask adbd for tcpip over Wireless debugging"
-      for n in $(tls_ports); do
-        say "  tls $IP:$n"
-        timeout 12 "$ADB" connect "$IP:$n" >/dev/null 2>&1
-        if [ "$(timeout 8 "$ADB" -s "$IP:$n" get-state 2>&1 | tr -d '\r')" = device ]; then
-          timeout 15 "$ADB" -s "$IP:$n" tcpip "$PORT" 2>&1 | tr -d '\r' | sed 's/^/  /'
-          timeout 5 "$ADB" disconnect "$IP:$n" >/dev/null 2>&1
-          sleep 3; st=$(adb_state); say "  5555 now: $st"; break
-        else
-          say "  tls $IP:$n: not usable (not paired with this server?)"
-        fi
-      done
-      [ -n "$(tls_ports)" ] || say "  no Wireless debugging service of this phone on the LAN"
+  if [ "$st" != device ] && ! host_up; then
+    say "rung 3 nothing answers ping at $IP (Wi-Fi off, or a new address): look for the phone's own mDNS name adb-$SERIALNO"
+    nip=$(find_ip)
+    # mDNS keeps an entry of a phone that left without saying goodbye: the address must answer ping to count
+    if [ -n "$nip" ] && [ "$nip" != "$IP" ] && ping -c1 -W2 "$nip" >/dev/null 2>&1; then
+      say "  found at $nip"; IP=$nip; SER="$IP:$PORT"; save_env A53_IP "$IP"; st=$(adb_state); say "  adb at $SER: $st"
     else
-      say "rung 3 host does not answer ping at $IP: Wi-Fi off or a new address"
-      local nip; nip=$(find_ip)
-      if [ -n "$nip" ] && [ "$nip" != "$IP" ]; then
-        say "  found by MAC at $nip"; IP=$nip; SER="$IP:$PORT"; save_env A53_IP "$IP"; st=$(adb_state)
-      else
-        say "  not found on $(subnet).0/24; the on-phone dead-man (a53.sh deadman) re-enables Wi-Fi by itself when one was armed"
-      fi
+      say "  not found on the LAN (a stale mDNS entry does not count): Wi-Fi off or not joined"
+      say "rung 4 Bluetooth path (Custodian daemon on $CUST_HOST, --device dev): Wi-Fi is $(cust_wifi)"
+      cust call wifi_enable "'{}'" | tr -d '\n' | sed 's/^/  wifi_enable: /'; echo
+      local k; nip=""; for k in $(seq 1 12); do sleep 5; nip=$(find_ip); [ -n "$nip" ] && ping -c1 -W2 "$nip" >/dev/null 2>&1 && break; nip=""; done
+      if [ -n "$nip" ]; then IP=$nip; SER="$IP:$PORT"; save_env A53_IP "$IP"; say "  back on the LAN at $IP"; st=$(adb_state); say "  adb at $SER: $st"
+      else say "  still not on the LAN after 60 s"; fi
     fi
   fi
-  [ "$st" = device ] || { say "up: FAILED, adb is $st"; return 1; }
-  cmd_unlock || return 1
+  if [ "$st" = unauthorized ]; then
+    say "rung 1b this adb key is not allowed: another allowed channel taps Always allow (a53.sh approve)"
+    cmd_approve && st=$(adb_state)
+  fi
+  if [ "$st" != device ] && host_up; then
+    say "rung 2 host answers ping, 5555 is closed: ask adbd for tcpip over Wireless debugging"
+    local found=0
+    for n in $(tls_ports); do
+      found=1; say "  tls $IP:$n"
+      timeout 12 "$ADB" connect "$IP:$n" >/dev/null 2>&1
+      if [ "$(timeout 8 "$ADB" -s "$IP:$n" get-state 2>&1 | tr -d '\r')" = device ] && [ "$(timeout 8 "$ADB" -s "$IP:$n" shell getprop ro.serialno 2>/dev/null | tr -d '\r\n')" = "$SERIALNO" ]; then
+        timeout 15 "$ADB" -s "$IP:$n" tcpip "$PORT" 2>&1 | tr -d '\r' | sed 's/^/  /'
+        timeout 5 "$ADB" disconnect "$IP:$n" >/dev/null 2>&1
+        sleep 3; st=$(adb_state); say "  5555 now: $st"; break
+      else
+        timeout 5 "$ADB" disconnect "$IP:$n" >/dev/null 2>&1
+        say "  tls $IP:$n: not usable (not paired with this server, or not the A53)"
+      fi
+    done
+    [ "$found" = 1 ] || say "  no Wireless debugging service of this phone on the LAN"
+  fi
+  if [ "$st" != device ]; then
+    say "rung 5 Custodian ensure-adb (re-arms 5555 over its own door), then the unlock over Bluetooth"
+    cust ensure-adb | tr -d '\n' | cut -c1-200 | sed 's/^/  /'; echo
+    sleep 3; st=$(adb_state); say "  adb at $SER: $st"
+  fi
+  if [ "$st" != device ]; then
+    cust unlock >/dev/null && say "  screen unlocked over Bluetooth"
+    say "up: FAILED, adb is $st"; return 1
+  fi
+  cmd_unlock || { say "unlock over adb failed: trying Custodian"; cust unlock >/dev/null || return 1; }
   say "up: ok ($SER)"
 }
 
-cmd_approve() { # the server key shows "Allow USB debugging?" -> tap Always allow via Ruiko's adb (an already allowed key)
-  say "approve: not wired for this state yet (needs a second allowed channel: Ruiko adb)"; return 1
+cmd_approve() {
+  # This server's adb key is refused (the phone shows "Allow USB debugging?"). No adb is needed: Custodian unlocks and
+  # taps over Bluetooth. The dialog is fixed on the A53 (1080x2400, dpi 420): "Always allow" box (146,2126), Allow (752,2257).
+  say "approve: Custodian over Bluetooth: unlock, tick Always allow, tap Allow"
+  cust unlock >/dev/null || return 1
+  sleep 2
+  cust tap "${A53_ALWAYS_X:-146}" "${A53_ALWAYS_Y:-2126}" >/dev/null || return 1; sleep 1
+  cust tap "${A53_ALLOW_X:-752}" "${A53_ALLOW_Y:-2257}" >/dev/null || return 1; sleep 3
+  [ "$(adb_state)" = device ]
 }
 
 cmd_find() { local n; n=$(find_ip); [ -n "$n" ] && { say "$n"; return 0; }; return 1; }
@@ -175,6 +234,11 @@ cmd_reboot() {
   local i t0=$SECONDS
   for i in $(seq 1 36); do
     sleep 10
+    # a reboot can hand the phone a new address: follow it by its own mDNS name (the address must answer ping)
+    if ! host_up; then
+      local nip; nip=$(find_ip)
+      if [ -n "$nip" ] && [ "$nip" != "$IP" ] && ping -c1 -W2 "$nip" >/dev/null 2>&1; then IP=$nip; SER="$IP:$PORT"; save_env A53_IP "$IP"; say "  phone is now at $IP"; fi
+    fi
     local s; s=$(adb_state)
     say "  +$((SECONDS-t0))s adb=$s boot=$( [ "$s" = device ] && ash 'getprop sys.boot_completed' 2>/dev/null | tr -d '\r' )"
     if [ "$s" = device ] && [ "$(ash 'getprop sys.boot_completed' 2>/dev/null | tr -d '\r')" = 1 ]; then
@@ -250,6 +314,7 @@ case "${1:-}" in
   deadman-selftest) cmd_deadman_selftest ;;
   wifi) shift; cmd_wifi "${1:-}" ;;
   keepawake) shift; cmd_keepawake "${1:-}" ;;
-  wd-pair|wd-on) say "$1: see the next version of this script"; exit 2 ;;
-  *) sed -n 2,26p "$0" ;;
+  approve) cmd_approve ;;
+  bt) shift; cust "$@" ;;
+  *) sed -n 2,28p "$0" ;;
 esac

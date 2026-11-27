@@ -256,52 +256,71 @@ sound are told apart by the four log sources above.
 
 ## The A53, our real Samsung
 
-The A53 (Galaxy A53 5G, SM-A536U1, Android 16, `192.168.100.240`, ActiveSync id `ba8e2f6edacbc667c87f18bae8683798`
-"A53 Test") is the agents' own phone (`fold-off-limits.mdc`, Yukimi Nov 26 2026: "you can break it, that's up to you
-to fix"). No state of it needs Yukimi: not a reboot, Wi-Fi gone, adb lost, a locked screen, a crashed app, a low
-battery. This section says what brings it back in each state, with no person. Status line per row: **proven**
-(run on the phone, output in #1312) or **not proven yet**.
+The A53 (Galaxy A53 5G, SM-A536U1, Android 16, serial `R5CT71TSEMZ`, ActiveSync id `ba8e2f6edacbc667c87f18bae8683798`
+"A53 Test", Custodian name Marine / `dev`) is the agents' own phone (`fold-off-limits.mdc`, Yukimi Nov 26 2026: "you can
+break it, that's up to you to fix"). No state of it needs Yukimi: not a reboot, Wi-Fi gone, a new address, adb lost, a
+locked screen, a crashed app. Every row below was run for real on Nov 27 2026 (StaticForge #1309 part D, output in #1312).
 
-Take it like any device: `coord_device_request a53` (one agent at a time; it never asks Yukimi), release it with
-`coord_device_release`. The driver is `scripts/aemu-lane/a53/a53.sh` (server adb, every call pinned to
-`192.168.100.240:5555`, the perceptible commands refuse unless your agent id holds the lease). The older
-`~/.config/a53/a53.sh` (Ruiko's adb, CDP tunnel, taps) stays for UI work.
+Take it like any device: `coord_device_request a53` (one agent at a time, never asks Yukimi), release it with
+`coord_device_release`. Driver: `scripts/aemu-lane/a53/a53.sh` (server adb; every adb call is `-s` the phone and a
+serial check `ro.serialno` runs before anything else, so a reused address never reaches another phone; every perceptible
+command refuses unless your agent id holds the lease: env `A53_AGENT=claude-<id>`). The older `~/.config/a53/a53.sh`
+(Ruiko's adb, CDP tunnel, taps) stays for UI work.
 
 ```
-A=scripts/aemu-lane/a53/a53.sh      # env A53_AGENT=claude-<id> (or COORD_AGENT_ID)
-$A status      # link, boot, lock, Wi-Fi, battery, adb ports, MAC (stored in ~/.config/a53/a53.env)
+A=scripts/aemu-lane/a53/a53.sh
+$A status      # link, boot, lock, Wi-Fi, battery, adb ports, MAC (needs the lease)
 $A up          # climbs the ladder below until adb answers, then unlocks
-$A unlock      # locksettings verify first, then wake + PIN; the PIN is never printed
-$A reboot      # verifies the PIN, adb reboot, waits with progress, unlocks
+$A unlock      # locksettings verify first, then wake + PIN (4 tries); the PIN is never printed
+$A reboot      # verifies the PIN, adb reboot, follows the phone to a new address, waits, unlocks
+$A tcp-off     # adb usb: adbd restarts without tcp (the state "5555 closed")
+$A bt <args>   # the custodian CLI on MODERNIA, always --device dev (status, unlock, call wifi_enable '{}', tap X Y)
+$A approve     # Custodian taps "Allow USB debugging?" over Bluetooth when this server's key is refused
 ```
 
-### What brings it back (the ladder)
+### Two doors that need no person
 
-| State | What brings it back, no person | Status |
+1. **adb over Wi-Fi.** `5555` (the app re-arms it after a reboot, `LocalAdb.restore`, and the server can ask for it) and the
+   **Wireless-debugging TLS port** (on, and this server's adb is paired with it: `adb connect <ip>:<tls port>` answers
+   `device`). The shell user may NOT set `persist.adb.tcp.port` or `service.adb.tcp.port` on this phone (SELinux: "Failed
+   to set property"), so 5555 cannot be made reboot-proof from adb; after a reboot `persist.adb.tcp.port` is empty and
+   5555 still comes back (49-58 s) because the app / Custodian re-arm it.
+2. **Custodian over Bluetooth** (the non-Wi-Fi path). The Custodian PC daemon (`pythonw -m custodian daemon`) runs on
+   **MODERNIA** (Yukimi's PC, `ssh modernia`, Windows, default shell cmd: wrap in `powershell -EncodedCommand`; `a53.sh bt`
+   does that). The A53 is paired with it (Marine, Bluetooth `A8:79:8D:F7:CC:69`); `dev.custodian.agent` is the phone's
+   **device owner** (admin, accessibility, WRITE_SECURE_SETTINGS, battery optimisation ignored), the control policy is
+   `allow` with no approval and no lease cap. Hard limits: on MODERNIA only the `custodian` CLI is run (no installs, no
+   config, no daemon restart), EVERY call carries `--device dev` (`a53.sh bt` refuses a call that names a device; Marian
+   is the Fold, off limits), control mode is not taken for these recoveries.
+   Phone commands for `custodian call <cmd> '{}'`: `wifi_status`, `wifi_enable` (found by trying names; unknown ones answer
+   `unknown command`). The PowerShell quoting turns `{"a":1}` into garbage: only `'{}'` arguments work through ssh.
+
+### What brings it back, with what was run
+
+| State | What brings it back, no person | Proof (Nov 27 2026) |
 | --- | --- | --- |
-| adb is up, screen locked | `$A unlock`: `locksettings verify --old <PIN>` (a wrong guess counts toward the lockout, so never type before it verifies), wake, swipe, type the PIN, Enter; `isKeyguardShowing=false` | not proven yet |
-| Rebooted | adbd listens on 5555 again by itself (the app's own recovery, `LocalAdb.restore`, over the Wireless-debugging TLS door; and `persist.adb.tcp.port` if the shell may set it); `$A reboot` waits for `sys.boot_completed`, then `$A unlock` (first unlock after boot needs the PIN) | not proven yet |
-| 5555 closed, phone on Wi-Fi | server adb asks adbd for `tcpip:5555` over the phone's Wireless-debugging TLS port (`adb mdns services` filtered to the phone's own IP, never other devices): `$A up` rung 2, and `modules/deviceAdb.js` `tlsRestore` (device-adb settings `autoRestore` + `tlsRestore` on for this device only) | not proven yet |
-| adb key refused ("unauthorized") | the second channel approves it: Ruiko's adb key is also allowed, `$A up` rung 1b taps "Always allow" through it (uiautomator) | not proven yet |
-| Wi-Fi off / phone not at its address | the server cannot reach it; Wi-Fi comes back by itself only when an agent's own test armed the one-shot timer (below) or the app does it; a new address is found by the phone's MAC in the ARP table (`$A find`) | not proven yet |
-| App crashed | `adb shell am start` of the launcher activity; the app's boot receiver brings the services back | not proven yet |
-| Battery low | it sits on a charger (AC, Wi-Fi charging off); `$A status` shows level and charging. Only a fully dead battery needs a power button: the one case no software path covers, so keep it charging and below no test that drains it | note |
+| Screen locked | `$A unlock` (PIN over adb) or `custodian unlock --device dev` (Bluetooth, PIN stored in Custodian) | `input keyevent KEYCODE_SLEEP` -> `isKeyguardShowing=true Dozing`; `$A up` -> `unlock: unlocked`, `false Awake`; locked again, `custodian unlock` -> `"unlocked": true, "pin_entered": true`, `false Awake` |
+| 5555 closed (`adb usb`) | the server rung: `adb mdns services` filtered to THIS phone's address and serial name, `adb connect <ip>:<tls port>`, `adb tcpip 5555` (`$A up` rung 2); `modules/deviceAdb.js` `tlsRestore` does the same (device-adb settings `autoRestore` + `tlsRestore` on for this device only, through `PUT /api/activesync/adb/<id>/settings`); the app alone also does it | `tcp-off` then `up` 3 s later: `rung 2 ... tls 192.168.100.240:43667 ... 5555 now: device` in 4 s; `GET ...?detect=1` after `tcp-off`: `state ready` in 4 s; the app alone (logcat): `NetIfaces: ADB is not listening on port 5555` 21:52:07, `Received WIFI TLS connected key` 21:52:15, 5555 back 21:52:18 (about 28 s) |
+| Rebooted | 5555 re-armed by the app / Custodian (49 s), a new address followed by mDNS name, Custodian or `$A unlock` for the first unlock after boot (keyguard `strongAuth(1)`) | `$A reboot`: `+49s adb=device boot=1`, `phone is now at 192.168.100.240` (it had been .236), `unlock: try 1, still locked`, `unlock: unlocked (try 2)`; the first reboot logged `Custodian: session_opened {"transport":"bluetooth","pc":"MODERNIA"}` 5 s after the boot and a Custodian `unlocked` at +25 s (someone's unlock over Bluetooth; the next two reboots had none for 3 minutes, so do not count on it). The keyguard is not ready for the first seconds: `unlock` retries 4 times (the PIN is verified first, so a try is never a wrong guess) |
+| Wi-Fi off / not joined | the phone is unreachable on the LAN; Custodian over Bluetooth re-enables it: `custodian call wifi_enable '{}' --device dev` (`$A up` rung 4 does it and waits for the phone on the LAN) | `cmd wifi set-wifi-enabled disabled`; ping down, no 5555, `custodian status`: `link bluetooth, wifi.enabled false`; `wifi_enable` -> `"enabled": true`; ping up 5 s later, `$A up` found it (`device`); then Wi-Fi off again and `$A up` alone: `rung 4 ... Wi-Fi is disabled ... back on the LAN at 192.168.100.236 ... up: ok` (the first `up` attempt failed on a stale mDNS entry and an old adb transport; both fixed in the script) |
+| New address / other SSID | the phone is found by its own mDNS name `adb-R5CT71TSEMZ-...` (the address must answer ping: mDNS keeps an entry of a phone that left); its MAC is random per SSID, so the ARP/MAC fallback is the weak one | after a reboot it was on SSID "Radio Noise" at `.236`, not "Radio Noise AX" at `.240`; found by name, serial checked, adb `device`; the next reboot it was back at `.240` and followed again |
+| adb key refused ("unauthorized", the phone asks "Allow USB debugging?") | Custodian over Bluetooth: unlock, tap "Always allow" (146,2126), tap Allow (752,2257) on the 1080x2400 screen (`$A approve`); no adb needed | a throwaway adb server (own key, own port 5099) -> `device unauthorized` and the dialog on screen; `custodian tap 146 2126` -> `checked="true"`, tapped again -> `false` (no junk key kept), `custodian tap 752 2257` -> the throwaway key `get-state: device`, ran a command as `shell`; the throwaway server was killed by pid |
+| App stopped / crashed | the app restarts itself (foreground services, notification listener): `am force-stop` -> pid back with 2 foreground services within 25 s. `am crash` does nothing on this app | `force-stopped: pid='' fgsvc=0` then `+25s pid='10421' fgsvc=2` |
+| Battery low | it sits on AC (`AC powered: true`, 53% -> 90% during the run); Custodian is configured to report `battery_low` (15) and `battery_critical` (5). A fully dead battery needs a power button, which no software reaches: keep it charging, never run a test that drains it | only observed |
 
-### One-shot Wi-Fi timer (test harness, not a feature)
+Not run on purpose: a revoked key on every channel at once (would need the key files on the phone), a router change to a
+third SSID (no third network), the battery at 0%.
 
-A Wi-Fi-off test must come back by itself. `$A deadman <sec>` starts ONE shell on the phone:
-`setsid nohup sh -c 'sleep <sec>; cmd wifi set-wifi-enabled enabled'`. No loop, no polling, no wakelock, no notice,
-nothing left on the phone but a pid file it removes. Keep the screen on during the test
-(`$A keepawake on`, and `off` afterwards: other agents' tests look at screen-off behaviour, so it is never left on).
-`$A deadman-selftest` first proves the timer outlives the adb link going down. A permanent version (Wi-Fi back by
-itself after a change that leaves the phone off the LAN) is app code (`WifiControl`), not a shell script on the phone.
+### One-shot Wi-Fi timer (test harness, kept but no longer needed)
 
-### Custodian / Bluetooth: not available, and what it would take
+Before Custodian was found, `$A deadman <sec>` was the plan for a Wi-Fi-off test: ONE shell on the phone,
+`setsid nohup sh -c 'sleep <sec>; cmd wifi set-wifi-enabled enabled'` (no loop, no polling, no wakelock, no notice;
+one pid file it removes). `$A deadman-selftest` proved it outlives the adb link going down (`selftest: OK, the timer fired
+with the link down`). Custodian replaces it as the way back; a permanent on-phone version would be app code.
 
-The custodian-phone skill assumes a Custodian PC daemon paired over Bluetooth. On Nov 27 2026 it does not exist
-here: there is no `custodian` module, CLI or daemon on the Dreamscape server or on Ruiko (searched both), the server
-has no Bluetooth adapter (`/sys/class/bluetooth` is absent), and Ruiko's USB Bluetooth dongle is paired with the Fold7
-and an Xperia, not with the A53. So Custodian is not a fallback today. What it would take: one USB Bluetooth adapter on
-the server (or the Custodian daemon on Ruiko, whose dongle then pairs with the A53), the Custodian app on the A53
-(`dev.custodian.agent` was seen installed on Nov 14), the daemon, and one pairing on the phone. That is a physical
-step; it is only worth asking for if the Wi-Fi/adb paths above cannot cover a state.
+### Left as found / careful
+
+- Volumes, ringer and `stay_on_while_plugged_in` (15, set by someone else) are not touched; nothing sounds.
+- Custodian control mode is never taken for these recoveries; `custodian status` shows `control.active false`.
+- `$A status` writes `A53_MAC` and `A53_IP` to `~/.config/a53/a53.env`.
+- When this does not hold: the one case no software covers is a battery at 0% (power button). Ask Yukimi only then.
