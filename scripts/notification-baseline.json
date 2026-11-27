@@ -1,10 +1,10 @@
 {
  "note": "Emit sites with no registered source id. Counts may only go down. See docs/design/notification-discipline.md and scripts/check-notifications.js.",
  "totals": {
-  "message": 470,
-  "toast": 1022,
+  "message": 469,
+  "toast": 948,
   "balloon": 14,
-  "sound": 34
+  "sound": 1
  },
  "files": {
   "apps/activesync/client/activesync.js": {
@@ -20,8 +20,7 @@
    "message": 1
   },
   "apps/vzaccess/client/vzaccess.js": {
-   "balloon": 1,
-   "sound": 1
+   "balloon": 1
   },
   "apps/xlink/client/xlink.js": {
    "message": 2
@@ -46,12 +45,6 @@
   },
   "public/scripts/comp/activeSyncStudio.js": {
    "message": 1
-  },
-  "public/scripts/comp/agentClientBridge.js": {
-   "toast": 1
-  },
-  "public/scripts/comp/agentClientUpdateDialog.js": {
-   "sound": 1
   },
   "public/scripts/comp/appBootstrap.js": {
    "toast": 4
@@ -106,8 +99,7 @@
   },
   "public/scripts/comp/desktop-apps/dovecote.js": {
    "toast": 1,
-   "balloon": 1,
-   "sound": 2
+   "balloon": 1
   },
   "public/scripts/comp/desktop-apps/emotion.js": {
    "toast": 9
@@ -115,32 +107,14 @@
   "public/scripts/comp/desktop-apps/guacRemote.js": {
    "toast": 8
   },
-  "public/scripts/comp/desktop-apps/vista-games/blockdrop.js": {
-   "sound": 1
-  },
-  "public/scripts/comp/desktop-apps/vista-games/chess.js": {
-   "sound": 2
-  },
   "public/scripts/comp/desktop-apps/vista-games/inkball.js": {
    "message": 1
   },
   "public/scripts/comp/desktop-apps/vista-games/jezzball.js": {
    "message": 2
   },
-  "public/scripts/comp/desktop-apps/vista-games/vistaGameEngine.js": {
-   "sound": 2
-  },
   "public/scripts/comp/desktopShortcuts.js": {
    "toast": 41
-  },
-  "public/scripts/comp/director.js": {
-   "toast": 69
-  },
-  "public/scripts/comp/directorLearningAdmin.js": {
-   "toast": 3
-  },
-  "public/scripts/comp/directorToolInspector.js": {
-   "toast": 1
   },
   "public/scripts/comp/dreamosPortal.js": {
    "balloon": 2
@@ -173,11 +147,7 @@
    "toast": 12
   },
   "public/scripts/comp/explorerApplet.js": {
-   "toast": 59,
-   "sound": 1
-  },
-  "public/scripts/comp/explorerArchive.js": {
-   "sound": 1
+   "toast": 59
   },
   "public/scripts/comp/featureLoader.js": {
    "balloon": 1
@@ -202,8 +172,7 @@
    "message": 3
   },
   "public/scripts/comp/grimoireRemoteBrowser.js": {
-   "toast": 13,
-   "sound": 1
+   "toast": 13
   },
   "public/scripts/comp/hostDrivesShell.js": {
    "balloon": 1
@@ -223,9 +192,6 @@
   "public/scripts/comp/ipManagement.js": {
    "toast": 2
   },
-  "public/scripts/comp/journal.js": {
-   "sound": 1
-  },
   "public/scripts/comp/ledgeDesk.js": {
    "toast": 2
   },
@@ -234,9 +200,6 @@
   },
   "public/scripts/comp/mainMenuManager.js": {
    "toast": 40
-  },
-  "public/scripts/comp/mainframeExceptionDialog.js": {
-   "sound": 1
   },
   "public/scripts/comp/manualDropdownManager.js": {
    "toast": 20
@@ -263,13 +226,11 @@
    "toast": 1
   },
   "public/scripts/comp/messengerNotify.js": {
-   "balloon": 2,
-   "sound": 1
+   "balloon": 2
   },
   "public/scripts/comp/modalUtils.js": {
    "toast": 12,
-   "balloon": 1,
-   "sound": 2
+   "balloon": 1
   },
   "public/scripts/comp/naxVibesApplet.js": {
    "toast": 2
@@ -293,8 +254,7 @@
    "toast": 2
   },
   "public/scripts/comp/planetSwitcher.js": {
-   "toast": 1,
-   "sound": 4
+   "toast": 1
   },
   "public/scripts/comp/presetManager.js": {
    "toast": 43
@@ -341,9 +301,6 @@
   "public/scripts/comp/serviceWorkerManager.js": {
    "toast": 13
   },
-  "public/scripts/comp/sidebar-gadgets/gadgetShim.js": {
-   "sound": 1
-  },
   "public/scripts/comp/similarImageDsapApplet.js": {
    "toast": 3
   },
@@ -366,8 +323,7 @@
    "toast": 5
   },
   "public/scripts/comp/tagWikiSearchModal.js": {
-   "toast": 33,
-   "sound": 6
+   "toast": 33
   },
   "public/scripts/comp/textReplacementManager.js": {
    "toast": 50
@@ -387,18 +343,12 @@
   "public/scripts/comp/vfsSystemOpenRouter.js": {
    "toast": 7
   },
-  "public/scripts/comp/vistaGadgetHost.js": {
-   "sound": 1
-  },
   "public/scripts/comp/vistaSidebar.js": {
    "toast": 3,
    "sound": 1
   },
   "public/scripts/comp/weatherAlerts.js": {
    "balloon": 1
-  },
-  "public/scripts/comp/winlogonPower.js": {
-   "sound": 1
   },
   "public/scripts/comp/wmAccounts.js": {
    "message": 1
@@ -515,8 +465,7 @@
    "message": 4
   },
   "public/scripts/comp/wmNotes.js": {
-   "message": 15,
-   "sound": 1
+   "message": 15
   },
   "public/scripts/comp/wmPayPass.js": {
    "message": 5
@@ -546,14 +495,13 @@
    "message": 1
   },
   "public/scripts/comp/wmSettingsChime.js": {
-   "message": 1,
-   "sound": 1
+   "message": 1
   },
   "public/scripts/comp/wmSettingsConnections.js": {
    "message": 14
   },
   "public/scripts/comp/wmSettingsDreamscape.js": {
-   "message": 5
+   "message": 4
   },
   "public/scripts/comp/wmSettingsSystem.js": {
    "message": 29
@@ -582,9 +530,6 @@
   },
   "public/scripts/comp/wmTasks.js": {
    "message": 4
-  },
-  "public/scripts/comp/wmTeleport.js": {
-   "sound": 1
   },
   "public/scripts/comp/wmTextMessaging.js": {
    "message": 7
