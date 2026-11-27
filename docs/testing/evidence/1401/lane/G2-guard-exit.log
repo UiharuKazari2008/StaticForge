@@ -1,0 +1,58 @@
+######## G2-guard-exit
+pre: versionCode=3632745 staged-removed=[] 12:56:54
+drive detection set idle (test receiver) at 12:56:57
+app pid: 3031   webview procs:  3654 sandboxed_process0 11186 js_sandboxed_process0 
+mWakefulness=Asleep  top: 
+12:57:01.275 allowed(slot0): NR
+T0 (device) 12:57:01.599  position -> out
++1s 12:57:01.854 NR mWakefulness=Asleep 
++8s 12:57:09.190 NR mWakefulness=Asleep 
++15s 12:57:16.545 NR mWakefulness=Asleep 
++23s 12:57:23.876 NR mWakefulness=Asleep 
++30s 12:57:31.205 GPRS|EDGE|UMTS|HSDPA|HSUPA|HSPA|LTE|HSPA+|GSM|LTE_CA|NR mWakefulness=Asleep 
+REACHED after 30 s
+loop start 12:57:01.526
+12:57:01.565 killed 11186
+12:57:01.840 killed 11675
+12:57:16.904 killed 13788
+12:57:17.947 killed 13938
+12:57:26.891 killed 15193
+11-27 12:57:01.747 I/DriveState( 3031): 12:57:01 geofence transition 2 radio:p-retest [idle]
+11-27 12:57:01.749 I/RadioMode( 3031): left p-retest (in 0)
+11-27 12:57:01.794 W/CafeTasks( 3031): radio-mode geofence failed: the engine is closed
+11-27 12:57:01.818 I/ActivityManager(  676): Start proc 11675:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 12:57:11.803 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 12:57:11.803 W/CafeTasks( 3031): radio-mode geofence not delivered (LOST)
+11-27 12:57:11.804 W/RadioMode( 3031): the task did not get geofence: it is said again
+11-27 12:57:16.833 I/RadioMode( 3031): the task missed events: said again (1 exits)
+11-27 12:57:16.866 I/ActivityManager(  676): Start proc 13788:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 12:57:17.923 I/ActivityManager(  676): Start proc 13938:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 12:57:26.846 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 12:57:26.871 I/ActivityManager(  676): Start proc 15193:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 12:57:29.760 W/RadioMode( 3031): the task thread did not answer in 3 s: the app goes on without it
+11-27 12:57:29.760 W/RadioMode( 3031): no answer after leaving p-retest: the app puts Auto back
+11-27 12:57:29.835 I/RadioMode( 3031): set 10001101001110000111 slot 0: set-allowed-network-types-for-users completed
+11-27 12:57:29.869 I/RadioMode( 3031): write 10001101001110000111 slot 0: read back ok
+since mark: no-sandbox=2 not-loaded=0 Binding-already-bound=0 bundled-fallback=0 not-let-go=0 place-not-freed=0 server-starts=0 not-delivered=1
+crash buffer lines: 0  AndroidRuntime errors: 0  app pid: 3031
+exceptions:       1 java.util.concurrent.ExecutionException: rh1: sandbox dead: sandbox dead;      2 java.util.concurrent.TimeoutException: Waited 10000 milliseconds [status=PENDING, info=[tag=[JavaScriptSandbox Future]]];
+app : "applied":null "owed":false "guardAt":0 "inside":[] "fenceOk":true "untold":{"exits":["p-retest"],"hand":null,"held":[],"after":[]} 
+task: "inside":["p-retest"] "armed":true "want":{"mode":"nr","ruleId":"p-retest","name":"retest"} "status":"done" 
+other tasks: status-bar output f6299068 -> f6299068 -> f6299068 ; drive-alerts output 03e068de -> 03e068de -> 03e068de
+other tasks: not-delivered since: 0  failed: 0  positions lines: 
+######## G2 post-step
+loop start 12:57:01.526
+loop end 12:57:46.007 kills=6
+12:57:01.565 killed 11186
+12:57:01.840 killed 11675
+12:57:16.904 killed 13788
+12:57:17.947 killed 13938
+12:57:26.891 killed 15193
+12:57:36.901 killed 16672
+12:58:05.574
+12:58:05.587 allowed(slot0): GPRS|EDGE|UMTS|HSDPA|HSUPA|HSPA|LTE|HSPA+|GSM|LTE_CA|NR
+app : "applied":null "owed":false "guardAt":0 "inside":[] "fenceOk":true "untold":{"exits":["p-retest"],"hand":null,"held":[],"after":[]} 
+task: "inside":[] "armed":false "want":null "status":"" 
+11-27 12:57:29.760 W/RadioMode( 3031): the task thread did not answer in 3 s: the app goes on without it
+11-27 12:57:29.760 W/RadioMode( 3031): no answer after leaving p-retest: the app puts Auto back
+11-27 12:57:29.869 I/RadioMode( 3031): write 10001101001110000111 slot 0: read back ok

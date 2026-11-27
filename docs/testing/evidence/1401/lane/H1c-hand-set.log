@@ -1,0 +1,115 @@
+######## H1c-hand-set (third try: screen on, the app in front, so the page's timers run and its answer event is seen)
+13:07:15.416 allowed(slot0): NR
+    topResumedActivity=ActivityRecord{19984143 u0 jp.net.seventhreeseven.dreamscape/.MainActivity t32}
+mark 11-27 13:07:15.550
+device time just before the eval: 13:07:18.037
+{"ok":true,"value":{"mask":"00000001000000000000","call":"13:07:18.341","returned":"13:07:18.345","answer":"{\"ok\":true,\"pending\":true}","eventAt":"13:07:18.482","result":{"op":"set","ok":true}}}
+device time after the eval: 13:07:18.608
+######## H1c samples and log
+13:07:15.937 NR
+13:07:16.971 NR
+13:07:18.005 NR
+13:07:19.036 LTE|LTE_CA
+13:07:20.067 LTE|LTE_CA
+13:07:21.099 LTE|LTE_CA
+13:07:22.135 LTE|LTE_CA
+13:07:23.167 LTE|LTE_CA
+13:07:24.202 LTE|LTE_CA
+13:07:25.234 LTE|LTE_CA
+13:07:26.266 LTE|LTE_CA
+13:07:27.299 LTE|LTE_CA
+13:07:28.332 LTE|LTE_CA
+13:07:29.366 LTE|LTE_CA
+13:07:30.396 LTE|LTE_CA
+13:07:31.428 LTE|LTE_CA
+13:07:32.458 LTE|LTE_CA
+13:07:33.491 LTE|LTE_CA
+13:07:34.527 LTE|LTE_CA
+13:07:35.562 LTE|LTE_CA
+13:07:36.600 LTE|LTE_CA
+13:07:37.634 LTE|LTE_CA
+13:07:38.665 LTE|LTE_CA
+13:07:39.698 LTE|LTE_CA
+13:07:40.730 LTE|LTE_CA
+13:07:41.759 LTE|LTE_CA
+13:07:42.790 LTE|LTE_CA
+13:07:43.822 LTE|LTE_CA
+13:07:44.854 LTE|LTE_CA
+13:07:45.885 LTE|LTE_CA
+13:07:46.917 LTE|LTE_CA
+13:07:47.948 LTE|LTE_CA
+13:07:48.982 LTE|LTE_CA
+13:07:50.014 LTE|LTE_CA
+13:07:51.047 LTE|LTE_CA
+13:07:52.077 LTE|LTE_CA
+13:07:53.109 LTE|LTE_CA
+13:07:54.141 LTE|LTE_CA
+13:07:55.176 LTE|LTE_CA
+13:07:56.210 LTE|LTE_CA
+13:07:57.241 LTE|LTE_CA
+13:07:58.274 LTE|LTE_CA
+13:07:59.304 LTE|LTE_CA
+13:08:00.336 LTE|LTE_CA
+13:08:01.367 LTE|LTE_CA
+13:08:02.399 LTE|LTE_CA
+13:08:03.431 LTE|LTE_CA
+13:08:04.463 LTE|LTE_CA
+13:08:05.497 LTE|LTE_CA
+13:08:06.533 LTE|LTE_CA
+13:08:07.566 LTE|LTE_CA
+13:08:08.597 LTE|LTE_CA
+13:08:09.630 LTE|LTE_CA
+13:08:10.661 LTE|LTE_CA
+13:08:11.692 LTE|LTE_CA
+13:08:12.727 LTE|LTE_CA
+13:08:13.759 LTE|LTE_CA
+13:08:14.789 LTE|LTE_CA
+13:08:15.822 LTE|LTE_CA
+13:08:16.854 LTE|LTE_CA
+13:08:17.885 LTE|LTE_CA
+13:08:18.916 LTE|LTE_CA
+13:08:19.948 LTE|LTE_CA
+13:08:20.980 LTE|LTE_CA
+13:08:22.011 LTE|LTE_CA
+13:08:23.044 LTE|LTE_CA
+13:08:24.077 LTE|LTE_CA
+13:08:25.109 LTE|LTE_CA
+13:08:26.141 LTE|LTE_CA
+13:08:27.173 LTE|LTE_CA
+13:08:28.205 LTE|LTE_CA
+13:08:29.238 LTE|LTE_CA
+13:08:30.270 LTE|LTE_CA
+13:08:31.302 LTE|LTE_CA
+13:08:32.333 LTE|LTE_CA
+13:08:33.365 LTE|LTE_CA
+13:08:34.398 LTE|LTE_CA
+13:08:35.428 LTE|LTE_CA
+13:08:36.461 LTE|LTE_CA
+13:08:37.491 LTE|LTE_CA
+13:08:38.523 LTE|LTE_CA
+13:08:39.554 LTE|LTE_CA
+loop start 13:07:15.834
+loop end 13:08:00.030 kills=6
+6
+11-27 13:07:18.430 I/RadioMode( 3031): set 00000001000000000000 slot 0: set-allowed-network-types-for-users completed
+11-27 13:07:18.471 I/RadioMode( 3031): write 00000001000000000000 slot 0: read back ok
+11-27 13:07:18.481 W/CafeTasks( 3031): radio-mode manual failed: the engine is closed
+11-27 13:07:28.489 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 13:07:28.489 W/CafeTasks( 3031): radio-mode manual not delivered (LOST)
+11-27 13:07:28.489 W/RadioMode( 3031): the task did not get manual: it is said again
+11-27 13:07:33.520 I/RadioMode( 3031): the task missed events: said again (0 exits, a hand set)
+11-27 13:07:33.603 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 13:07:33.675 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 13:07:33.675 W/CafeTasks( 3031): radio-mode rules not delivered (NO_ENGINE)
+11-27 13:07:33.678 W/RadioMode( 3031): the task did not get rules: it is said again
+11-27 13:07:43.685 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 13:07:53.691 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 13:07:53.691 W/CafeTasks( 3031): radio-mode manual not delivered (NO_ENGINE)
+11-27 13:07:53.691 W/RadioMode( 3031): the task did not get manual: it is said again
+11-27 13:08:03.708 I/RadioMode( 3031): the task missed events: said again (0 exits, a hand set)
+11-27 13:08:03.794 I/CafeTasks( 3031): engine started (9 files)
+since mark: no-sandbox=5 not-loaded=0 Binding-already-bound=0 bundled-fallback=0 not-let-go=0 place-not-freed=0 server-starts=0 not-delivered=3
+crash buffer lines: 0  AndroidRuntime errors: 0  app pid: 3031
+exceptions:       2 java.util.concurrent.ExecutionException: android.os.DeadObjectException;      1 java.util.concurrent.ExecutionException: rh1: sandbox dead: sandbox dead;      3 java.util.concurrent.TimeoutException: Waited 10000 milliseconds [status=PENDING, info=[tag=[JavaScriptSandbox Future]]];
+app : "applied":{"mode":"lte","ruleId":"","name":"","at":1795802838471,"mask":"00000001000000000000"} "owed":false "guardAt":0 "inside":["p-retest"] "fenceOk":true "untold":null 
+task: "inside":["p-retest"] "armed":true "want":{"mode":"nr","ruleId":"p-retest","name":"retest"} "status":"hand" 

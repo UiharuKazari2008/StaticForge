@@ -1,0 +1,6 @@
+apk: 12b94ed910059b6345011eeeac6280927dac5d1e4b5b03e2d475745671c2797b  versionCode=3632745
+a11y: jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService enabled=1  listener entries: 1
+types: GPRS|EDGE|UMTS|CDMA|CDMA - EvDo rev. 0|CDMA - EvDo rev. A|CDMA - 1xRTT|HSDPA|HSUPA|HSPA|CDMA - EvDo rev. B|LTE|CDMA - eHRPD|HSPA+|GSM|TD_SCDMA|LTE_CA|NR
+shizuku: running  mock appop: MOCK_LOCATION: default  deviceidle: ACTIVE charging=true
+files: adbkey=1703 adbkey.pub=716 radio_mode=absent radio-state=58c5cf6f radio-output=present
+note: taken after emulator boot and after install-release 39 (as-found apk before install was versionCode 3632181)

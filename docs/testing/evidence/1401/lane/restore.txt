@@ -1,0 +1,3 @@
+mock appop: MOCK_LOCATION: default; time=+1m43s927ms ago
+NETWORK TYPES: GPRS|EDGE|UMTS|CDMA|CDMA - EvDo rev. 0|CDMA - EvDo rev. A|CDMA - 1xRTT|HSDPA|HSUPA|HSPA|CDMA - EvDo rev. B|LTE|CDMA - eHRPD|HSPA+|GSM|TD_SCDMA|LTE_CA|NR
+    network provider:

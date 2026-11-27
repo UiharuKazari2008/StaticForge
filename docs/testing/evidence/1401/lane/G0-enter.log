@@ -1,0 +1,14 @@
+######## G0-enter
+pre: versionCode=3632745 staged-removed=[] 12:54:30
+drive detection set idle (test receiver) at 12:54:33
+app pid: 3031   webview procs:  3107 js_sandboxed_process0  3654 sandboxed_process0 
+mWakefulness=Asleep  top: 
+12:54:37.265 allowed(slot0): NR
+T0 (device) 12:54:37.493  position -> in
++1s 12:54:37.772 NR mWakefulness=Asleep 
+REACHED after 1 s
+since mark: no-sandbox=0 not-loaded=0 Binding-already-bound=0 bundled-fallback=0 not-let-go=0 place-not-freed=0 server-starts=0 not-delivered=0
+crash buffer lines: 0  AndroidRuntime errors: 0  app pid: 3031
+exceptions: 
+app : "applied":{"mode":"nr","ruleId":"p-retest","name":"retest","at":1795802066010,"mask":"10000000000000000000"} "owed":false "guardAt":0 "inside":["p-retest"] "fenceOk":true "untold":null 
+task: "inside":["p-retest"] "armed":true "want":{"mode":"nr","ruleId":"p-retest","name":"retest"} "status":"done" 

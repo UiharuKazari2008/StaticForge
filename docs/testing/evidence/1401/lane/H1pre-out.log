@@ -1,0 +1,19 @@
+######## H1pre-out
+pre: versionCode=3632745 staged-removed=[] 13:01:47
+drive detection set idle (test receiver) at 13:01:50
+app pid: 3031   webview procs:  3654 sandboxed_process0 31491 js_sandboxed_process0 
+mWakefulness=Asleep  top: 
+13:01:54.579 allowed(slot0): LTE|LTE_CA
+T0 (device) 13:01:54.849  position -> out
++0s 13:01:55.113 GPRS|EDGE|UMTS|HSDPA|HSUPA|HSPA|LTE|HSPA+|GSM|LTE_CA|NR mWakefulness=Asleep 
+REACHED after 0 s
+11-27 13:01:55.010 I/DriveState( 3031): 13:01:55 geofence transition 2 radio:p-retest [idle]
+11-27 13:01:55.011 I/RadioMode( 3031): left p-retest (in 0)
+11-27 13:01:55.066 I/RadioMode( 3031): task asks auto - (exit)
+11-27 13:01:55.153 I/RadioMode( 3031): set 10001101001110000111 slot 0: 
+11-27 13:01:55.190 I/RadioMode( 3031): write 10001101001110000111 slot 0: read back ok
+since mark: no-sandbox=0 not-loaded=0 Binding-already-bound=0 bundled-fallback=0 not-let-go=0 place-not-freed=0 server-starts=0 not-delivered=0
+crash buffer lines: 0  AndroidRuntime errors: 0  app pid: 3031
+exceptions: 
+app : "applied":null "owed":false "guardAt":0 "inside":[] "fenceOk":true "untold":null 
+task: "inside":[] "armed":false "want":null "status":"" 

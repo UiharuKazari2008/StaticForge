@@ -1,0 +1,51 @@
+######## H1-hand-set
+pre: versionCode=3632745 staged-removed=[] 13:00:13
+13:00:13.704 allowed(slot0): NR
+app pid: 3031   webview procs:  3654 sandboxed_process0 24686 js_sandboxed_process0 
+mWakefulness=Asleep  top: 
+mark 11-27 13:00:13.902
+device time just before the eval: 13:00:16.346
+{"ok":false,"error":"timeout (30 s)"}
+device time after the eval: 13:00:46.689
+13:00:46.833 allowed(slot0): LTE|LTE_CA
+######## H1 reads after the call (call at about 13:00:16.4; the 5 s read was missed because the eval blocked 30 s)
+13:01:28.802 allowed(slot0): LTE|LTE_CA
+13:01:31.957 allowed(slot0): LTE|LTE_CA
+loop start 13:00:14.232
+loop end 13:00:59.032 kills=10
+10
+11-27 13:00:16.740 I/RadioMode( 3031): set 00000001000000000000 slot 0: set-allowed-network-types-for-users completed
+11-27 13:00:16.765 I/RadioMode( 3031): write 00000001000000000000 slot 0: read back ok
+11-27 13:00:16.774 W/CafeTasks( 3031): radio-mode manual failed: the engine is closed
+11-27 13:00:16.801 I/ActivityManager(  676): Start proc 25462:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 13:00:16.856 W/CafeTasks( 3031): engine did not start: the task code did not load
+11-27 13:00:16.856 W/CafeTasks( 3031): radio-mode manual not delivered (LOST)
+11-27 13:00:16.856 W/RadioMode( 3031): the task did not get manual: it is said again
+11-27 13:00:21.890 I/RadioMode( 3031): the task missed events: said again (0 exits, a hand set)
+11-27 13:00:21.917 I/ActivityManager(  676): Start proc 26194:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 13:00:22.975 I/ActivityManager(  676): Start proc 26355:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 13:00:23.022 W/CafeTasks( 3031): engine did not start: the task code did not load
+11-27 13:00:23.051 I/ActivityManager(  676): Start proc 26379:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 13:00:23.107 W/CafeTasks( 3031): engine did not start: the task code did not load
+11-27 13:00:23.107 W/CafeTasks( 3031): task code from the server does not start: back to the bundled copy
+11-27 13:00:23.117 I/CafeTasks( 3031): tasks drive-alerts, radio-mode, car-presence, status-bar, hour-chime (StaticForge c6ed7622e (bundled)), engine supported
+11-27 13:00:23.118 W/CafeTasks( 3031): radio-mode rules not delivered (NO_ENGINE)
+11-27 13:00:23.118 W/RadioMode( 3031): the task did not get rules: it is said again
+11-27 13:00:23.144 I/ActivityManager(  676): Start proc 26403:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 13:00:24.204 I/ActivityManager(  676): Start proc 26561:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 13:00:28.254 I/ActivityManager(  676): Start proc 27139:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 13:00:33.126 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 13:00:33.147 I/ActivityManager(  676): Start proc 27831:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 13:00:43.131 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 13:00:43.131 W/CafeTasks( 3031): radio-mode manual not delivered (NO_ENGINE)
+11-27 13:00:43.132 W/RadioMode( 3031): the task did not get manual: it is said again
+11-27 13:00:53.153 I/RadioMode( 3031): the task missed events: said again (0 exits, a hand set)
+11-27 13:00:53.176 I/ActivityManager(  676): Start proc 30660:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 13:01:03.162 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 13:01:03.186 I/ActivityManager(  676): Start proc 31491:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 13:01:03.236 I/CafeTasks( 3031): engine started (9 files)
+since mark: no-sandbox=3 not-loaded=3 Binding-already-bound=0 bundled-fallback=1 not-let-go=0 place-not-freed=0 server-starts=0 not-delivered=3
+crash buffer lines: 0  AndroidRuntime errors: 0  app pid: 3031
+exceptions:       4 java.util.concurrent.ExecutionException: rh1: sandbox dead: sandbox dead;      3 java.util.concurrent.TimeoutException: Waited 10000 milliseconds [status=PENDING, info=[tag=[JavaScriptSandbox Future]]];
+app : "applied":{"mode":"lte","ruleId":"","name":"","at":1795802416765,"mask":"00000001000000000000"} "owed":false "guardAt":0 "inside":["p-retest"] "fenceOk":true "untold":null 
+task: "inside":["p-retest"] "armed":true "want":{"mode":"nr","ruleId":"p-retest","name":"retest"} "status":"hand" 

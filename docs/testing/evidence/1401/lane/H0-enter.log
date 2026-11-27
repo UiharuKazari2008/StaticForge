@@ -1,0 +1,19 @@
+######## H0-enter
+pre: versionCode=3632745 staged-removed=[] 12:59:59
+drive detection set idle (test receiver) at 13:00:02
+app pid: 3031   webview procs:  3654 sandboxed_process0 24686 js_sandboxed_process0 
+mWakefulness=Asleep  top: 
+13:00:07.181 allowed(slot0): GPRS|EDGE|UMTS|HSDPA|HSUPA|HSPA|LTE|HSPA+|GSM|LTE_CA|NR
+T0 (device) 13:00:07.437  position -> in
++1s 13:00:07.712 NR mWakefulness=Asleep 
+REACHED after 1 s
+11-27 13:00:07.625 I/DriveState( 3031): 13:00:07 geofence transition 1 radio:p-retest [idle]
+11-27 13:00:07.627 I/RadioMode( 3031): entered p-retest (in 1)
+11-27 13:00:07.667 I/RadioMode( 3031): task asks nr p-retest (enter)
+11-27 13:00:07.760 I/RadioMode( 3031): set 10000000000000000000 slot 0: 
+11-27 13:00:07.795 I/RadioMode( 3031): write 10000000000000000000 slot 0: read back ok
+since mark: no-sandbox=0 not-loaded=0 Binding-already-bound=0 bundled-fallback=0 not-let-go=0 place-not-freed=0 server-starts=0 not-delivered=0
+crash buffer lines: 0  AndroidRuntime errors: 0  app pid: 3031
+exceptions: 
+app : "applied":{"mode":"nr","ruleId":"p-retest","name":"retest","at":1795802407796,"mask":"10000000000000000000"} "owed":false "guardAt":0 "inside":["p-retest"] "fenceOk":true "untold":null 
+task: "inside":["p-retest"] "armed":true "want":{"mode":"nr","ruleId":"p-retest","name":"retest"} "status":"done" 

@@ -1,0 +1,115 @@
+######## H1b-hand-set (second try)
+pre: versionCode=3632745 staged-removed=[] 13:02:12
+13:02:12.378 allowed(slot0): NR
+mark 11-27 13:02:12.479
+device time just before the eval: 13:02:14.967
+{"ok":false,"error":"timeout (30 s)"}
+device time after the eval: 13:02:45.325
+######## H1b samples (1 per second, device)
+13:02:12.858 NR
+13:02:13.893 NR
+13:02:14.928 NR
+13:02:15.960 LTE|LTE_CA
+13:02:16.992 LTE|LTE_CA
+13:02:18.026 LTE|LTE_CA
+13:02:19.056 LTE|LTE_CA
+13:02:20.086 LTE|LTE_CA
+13:02:21.119 LTE|LTE_CA
+13:02:22.152 LTE|LTE_CA
+13:02:23.190 LTE|LTE_CA
+13:02:24.220 LTE|LTE_CA
+13:02:25.253 LTE|LTE_CA
+13:02:26.285 LTE|LTE_CA
+13:02:27.316 LTE|LTE_CA
+13:02:28.353 LTE|LTE_CA
+13:02:29.385 LTE|LTE_CA
+13:02:30.414 LTE|LTE_CA
+13:02:31.446 LTE|LTE_CA
+13:02:32.480 LTE|LTE_CA
+13:02:33.510 LTE|LTE_CA
+13:02:34.541 LTE|LTE_CA
+13:02:35.574 LTE|LTE_CA
+13:02:36.606 LTE|LTE_CA
+13:02:37.636 LTE|LTE_CA
+13:02:38.667 LTE|LTE_CA
+13:02:39.699 LTE|LTE_CA
+13:02:40.731 LTE|LTE_CA
+13:02:41.762 LTE|LTE_CA
+13:02:42.795 LTE|LTE_CA
+13:02:43.827 LTE|LTE_CA
+13:02:44.859 LTE|LTE_CA
+13:02:45.894 LTE|LTE_CA
+13:02:46.929 LTE|LTE_CA
+13:02:47.963 LTE|LTE_CA
+13:02:48.994 LTE|LTE_CA
+13:02:50.026 LTE|LTE_CA
+13:02:51.060 LTE|LTE_CA
+13:02:52.093 LTE|LTE_CA
+13:02:53.126 LTE|LTE_CA
+13:02:54.160 LTE|LTE_CA
+13:02:55.192 LTE|LTE_CA
+13:02:56.224 LTE|LTE_CA
+13:02:57.255 LTE|LTE_CA
+13:02:58.286 LTE|LTE_CA
+13:02:59.318 LTE|LTE_CA
+13:03:00.349 LTE|LTE_CA
+13:03:01.381 LTE|LTE_CA
+13:03:02.412 LTE|LTE_CA
+13:03:03.443 LTE|LTE_CA
+13:03:04.474 LTE|LTE_CA
+13:03:05.509 LTE|LTE_CA
+13:03:06.543 LTE|LTE_CA
+13:03:07.574 LTE|LTE_CA
+13:03:08.606 LTE|LTE_CA
+13:03:09.637 LTE|LTE_CA
+13:03:10.667 LTE|LTE_CA
+13:03:11.699 LTE|LTE_CA
+13:03:12.730 LTE|LTE_CA
+13:03:13.761 LTE|LTE_CA
+13:03:14.793 LTE|LTE_CA
+13:03:15.824 LTE|LTE_CA
+13:03:16.856 LTE|LTE_CA
+13:03:17.887 LTE|LTE_CA
+13:03:18.918 LTE|LTE_CA
+13:03:19.950 LTE|LTE_CA
+13:03:20.980 LTE|LTE_CA
+13:03:22.011 LTE|LTE_CA
+13:03:23.042 LTE|LTE_CA
+13:03:24.072 LTE|LTE_CA
+13:03:25.102 LTE|LTE_CA
+13:03:26.132 LTE|LTE_CA
+13:03:27.162 LTE|LTE_CA
+13:03:28.193 LTE|LTE_CA
+13:03:29.226 LTE|LTE_CA
+13:03:30.257 LTE|LTE_CA
+13:03:31.288 LTE|LTE_CA
+13:03:32.321 LTE|LTE_CA
+13:03:33.352 LTE|LTE_CA
+13:03:34.382 LTE|LTE_CA
+13:03:35.413 LTE|LTE_CA
+13:03:36.443 LTE|LTE_CA
+loop start 13:02:12.747
+loop end 13:02:57.008 kills=8
+8
+11-27 13:02:15.275 I/RadioMode( 3031): set 00000001000000000000 slot 0: set-allowed-network-types-for-users completed
+11-27 13:02:15.313 I/RadioMode( 3031): write 00000001000000000000 slot 0: read back ok
+11-27 13:02:15.324 W/CafeTasks( 3031): radio-mode manual failed: the engine is closed
+11-27 13:02:25.333 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 13:02:25.333 W/CafeTasks( 3031): radio-mode manual not delivered (LOST)
+11-27 13:02:25.333 W/RadioMode( 3031): the task did not get manual: it is said again
+11-27 13:02:30.365 I/RadioMode( 3031): the task missed events: said again (0 exits, a hand set)
+11-27 13:02:40.375 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 13:02:50.381 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 13:02:50.381 W/CafeTasks( 3031): radio-mode rules not delivered (NO_ENGINE)
+11-27 13:02:50.381 W/RadioMode( 3031): the task did not get rules: it is said again
+11-27 13:02:50.460 W/CafeTasks( 3031): engine did not start: the task code did not load
+11-27 13:03:00.471 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 13:03:00.471 W/CafeTasks( 3031): radio-mode manual not delivered (NO_ENGINE)
+11-27 13:03:00.471 W/RadioMode( 3031): the task did not get manual: it is said again
+11-27 13:03:20.412 I/RadioMode( 3031): the task missed events: said again (0 exits, a hand set)
+11-27 13:03:20.483 I/CafeTasks( 3031): engine started (9 files)
+since mark: no-sandbox=4 not-loaded=1 Binding-already-bound=0 bundled-fallback=0 not-let-go=0 place-not-freed=0 server-starts=0 not-delivered=3
+crash buffer lines: 0  AndroidRuntime errors: 0  app pid: 3031
+exceptions:       2 java.util.concurrent.ExecutionException: rh1: sandbox dead: sandbox dead;      4 java.util.concurrent.TimeoutException: Waited 10000 milliseconds [status=PENDING, info=[tag=[JavaScriptSandbox Future]]];
+app : "applied":{"mode":"lte","ruleId":"","name":"","at":1795802535313,"mask":"00000001000000000000"} "owed":false "guardAt":0 "inside":["p-retest"] "fenceOk":true "untold":null 
+task: "inside":["p-retest"] "armed":true "want":{"mode":"nr","ruleId":"p-retest","name":"retest"} "status":"hand" 

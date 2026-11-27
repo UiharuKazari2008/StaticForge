@@ -1,0 +1,3 @@
+{"ok":false,"error":"timeout (30 s)"}
+{"ok":false,"error":"timeout (30 s)"}
+{"ok":true,"value":{"supported":"10001101001110000111","answer":"{\"ok\":true,\"pending\":true}","result":{"op":"rules","ok":true},"rules":0,"fence":"off","applied":"lte","current":"01000001000000000000"}}

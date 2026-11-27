@@ -1,0 +1,98 @@
+######## G1-guard-exit
+pre: versionCode=3632745 staged-removed=[] 12:54:42
+drive detection set idle (test receiver) at 12:54:45
+app pid: 3031   webview procs:  3107 js_sandboxed_process0  3654 sandboxed_process0 
+mWakefulness=Asleep  top: 
+12:54:49.220 allowed(slot0): NR
+T0 (device) 12:54:49.544  position -> out
++1s 12:54:49.791 NR mWakefulness=Asleep 
++8s 12:54:57.114 NR mWakefulness=Asleep 
++15s 12:55:04.416 NR mWakefulness=Asleep 
++23s 12:55:11.748 NR mWakefulness=Asleep 
++30s 12:55:19.095 GPRS|EDGE|UMTS|HSDPA|HSUPA|HSPA|LTE|HSPA+|GSM|LTE_CA|NR mWakefulness=Asleep 
+REACHED after 30 s
+loop start 12:54:49.469
+12:54:49.510 killed 3107
+12:54:49.820 killed 4857
+12:54:50.886 killed 5013
+12:54:55.987 killed 5727
+12:55:06.017 killed 7125
+12:55:06.099 killed 7148
+11-27 12:54:49.695 I/DriveState( 3031): 12:54:49 geofence transition 2 radio:p-retest [idle]
+11-27 12:54:49.697 I/RadioMode( 3031): left p-retest (in 0)
+11-27 12:54:49.744 W/CafeTasks( 3031): radio-mode geofence failed: the engine is closed
+11-27 12:54:49.777 I/ActivityManager(  676): Start proc 4857:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/or
+11-27 12:54:50.846 I/ActivityManager(  676): Start proc 5013:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/or
+11-27 12:54:50.893 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 12:54:50.893 W/CafeTasks( 3031): radio-mode geofence not delivered (LOST)
+11-27 12:54:50.894 W/RadioMode( 3031): the task did not get geofence: it is said again
+11-27 12:54:55.934 I/RadioMode( 3031): the task missed events: said again (1 exits)
+11-27 12:54:55.961 I/ActivityManager(  676): Start proc 5727:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/or
+11-27 12:55:05.947 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 12:55:05.973 I/ActivityManager(  676): Start proc 7125:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/or
+11-27 12:55:06.027 W/CafeTasks( 3031): engine did not start: the task code did not load
+11-27 12:55:06.027 W/CafeTasks( 3031): radio-mode geofence not delivered (NO_ENGINE)
+11-27 12:55:06.029 W/RadioMode( 3031): the task did not get geofence: it is said again
+11-27 12:55:06.059 I/ActivityManager(  676): Start proc 7148:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/or
+11-27 12:55:07.118 I/ActivityManager(  676): Start proc 7303:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/or
+11-27 12:55:16.040 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 12:55:16.062 I/ActivityManager(  676): Start proc 8556:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/or
+11-27 12:55:16.114 W/CafeTasks( 3031): engine did not start: the task code did not load
+11-27 12:55:16.114 W/CafeTasks( 3031): radio-mode rules not delivered (NO_ENGINE)
+11-27 12:55:16.115 W/RadioMode( 3031): the task did not get rules: it is said again
+11-27 12:55:16.126 W/RadioMode( 3031): no answer after leaving p-retest: the app puts Auto back
+11-27 12:55:16.211 I/RadioMode( 3031): set 10001101001110000111 slot 0: set-allowed-network-types-for-users completed
+11-27 12:55:16.238 I/RadioMode( 3031): write 10001101001110000111 slot 0: read back ok
+11-27 12:55:16.243 I/RadioMode( 3031): the task missed events: said again (1 exits)
+11-27 12:55:16.270 I/ActivityManager(  676): Start proc 8617:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/or
+11-27 12:55:17.320 I/ActivityManager(  676): Start proc 8768:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/or
+since mark: no-sandbox=3 not-loaded=2 Binding-already-bound=0 bundled-fallback=0 not-let-go=0 place-not-freed=0 server-starts=0 not-delivered=3
+crash buffer lines: 0  AndroidRuntime errors: 0  app pid: 3031
+exceptions:       1 java.util.concurrent.ExecutionException: android.os.DeadObjectException;      2 java.util.concurrent.ExecutionException: rh1: sandbox dead: sandbox dead;      1 java.util.concurrent.ExecutionException: rh1: sandbox dead: sandbox found dead during call to createIsolate;      2 java.util.concurrent.TimeoutException: Waited 10000 milliseconds [status=PENDING, info=[tag=[JavaScriptSandbox Future]]];
+app : "applied":null "owed":false "guardAt":0 "inside":[] "fenceOk":true "untold":{"exits":["p-retest"],"hand":null,"held":[],"after":[]} 
+task: "inside":["p-retest"] "armed":true "want":{"mode":"nr","ruleId":"p-retest","name":"retest"} "status":"done" 
+other tasks: status-bar output 2ab72294 -> 2ab72294 -> 2ab72294 ; drive-alerts output 03e068de -> 03e068de -> 03e068de
+other tasks: not-delivered since: 0  failed: 0  positions lines: 
+######## G1 post-step (collected after the loop ended)
+loop start 12:54:49.469
+loop end 12:55:34.008 kills=12
+12
+12:54:49.510 killed 3107
+12:54:49.820 killed 4857
+12:54:50.886 killed 5013
+12:54:55.987 killed 5727
+12:55:06.017 killed 7125
+12:55:06.099 killed 7148
+12:55:07.123 killed 7303
+12:55:16.106 killed 8556
+12:55:16.293 killed 8617
+12:55:17.348 killed 8768
+12:55:21.415 killed 9417
+12:55:26.295 killed 10103
+12:55:49.831
+12:55:49.845 allowed(slot0): GPRS|EDGE|UMTS|HSDPA|HSUPA|HSPA|LTE|HSPA+|GSM|LTE_CA|NR
+app : "applied":null "owed":false "guardAt":0 "inside":[] "fenceOk":true "untold":{"exits":["p-retest"],"hand":null,"held":[],"after":[]} 
+task: "inside":[] "armed":false "want":null "status":"" 
+11-27 12:55:16.211 I/RadioMode( 3031): set 10001101001110000111 slot 0: set-allowed-network-types-for-users completed
+11-27 12:55:16.238 I/RadioMode( 3031): write 10001101001110000111 slot 0: read back ok
+11-27 12:55:16.243 I/RadioMode( 3031): the task missed events: said again (1 exits)
+11-27 12:55:16.270 I/ActivityManager(  676): Start proc 8617:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/or
+11-27 12:55:17.320 I/ActivityManager(  676): Start proc 8768:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/or
+11-27 12:55:20.127 I/DriveState( 3031): 12:55:20 test drive driving [idle]
+11-27 12:55:20.127 I/DriveState( 3031): 12:55:20 idle -> driving (test) [driving]
+11-27 12:55:21.375 I/ActivityManager(  676): Start proc 9417:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/or
+11-27 12:55:24.186 I/DriveState( 3031): 12:55:24 test drive idle [driving]
+11-27 12:55:24.186 I/DriveState( 3031): 12:55:24 driving -> idle (test) [idle]
+11-27 12:55:26.254 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 12:55:26.277 I/ActivityManager(  676): Start proc 10103:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 12:55:36.259 W/CafeTasks( 3031): engine did not start: no sandbox
+11-27 12:55:36.259 W/CafeTasks( 3031): radio-mode geofence not delivered (NO_ENGINE)
+11-27 12:55:36.260 W/RadioMode( 3031): the task did not get geofence: it is said again
+11-27 12:55:36.282 I/ActivityManager(  676): Start proc 11186:com.google.android.webview:js_sandboxed_process0 for bound-service {jp.net.seventhreeseven.dreamscape/o
+11-27 12:55:36.332 I/CafeTasks( 3031): engine started (9 files, from the server)
+11-27 12:55:36.379 I/RadioMode( 3031): task asks auto - (exit)
+0
+######## G1 settle check
+12:56:25.263
+app : "applied":null "owed":false "guardAt":0 "inside":[] "fenceOk":true "untold":{"exits":["p-retest"],"hand":null,"held":[],"after":[]} 
+task: "inside":[] "armed":false "want":null "status":"" 
