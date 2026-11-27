@@ -16,6 +16,12 @@ if [ -f "$root/scripts/check-status-registry.js" ] && ! node "$root/scripts/chec
     echo "pre-commit: blocked by scripts/check-status-registry.js (an icon without its glyph / popup / tap)." >&2
     exit 1
 fi
+# Notification discipline (Yozora #1299, rule notification-discipline.mdc): every notice emit site (toast, balloon,
+# message box, sound) carries a registered source id; unregistered counts per file may only go down.
+if [ -f "$root/scripts/check-notifications.js" ] && ! node "$root/scripts/check-notifications.js" --staged >&2; then
+    echo "pre-commit: blocked by scripts/check-notifications.js (a notice with no registered source id: .cursor/rules/notification-discipline.mdc)." >&2
+    exit 1
+fi
 # CaféReady tasks (#908, rule cafeready-background): the Android app runs its own bundled copy. A change here reaches
 # phones only after `node scripts/sync-cafe-tasks.js --dsapp <DSApp tree>`, a DSApp commit and an app build.
 if git diff --cached --name-only | grep -q '^public/scripts/tasks/'; then

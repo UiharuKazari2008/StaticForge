@@ -43,7 +43,9 @@ done, whatever else it achieves.
    `notification-discipline` (a notice is a call to action or data the user asked for - no status echoes, no
    telling the user what they just did, no sound without a user action, every notice registered and
    switchable, and Melaton Mobile boots silent), notifications and status indicators never silenced to save
-   power.
+   power. `node scripts/check-notifications.js` passes before every commit (every notice emit site - toast,
+   balloon, message box, sound, Android notification - carries a registered source id; counts only go down;
+   the pre-commit hook enforces it), and the Supervisor reviews every new or changed notice against N1-N11.
 
 @.cursor/rules/installed-boot-zero-wait.mdc
 @.cursor/rules/cafeready-background.mdc
