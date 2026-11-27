@@ -76,7 +76,8 @@ function registerPackets(handlersCtx) {
             return;
         }
         try {
-            reply(ws, 'as_list_response', message, { success: true, ...activeSync.list(gr(), wsServer) });
+            // the household's view; a test device (or its DeX window) is answered with its own (#1334)
+            reply(ws, 'as_list_response', message, { success: true, ...activeSync.listFor(gr(), wsServer, clientInfo) });
         } catch (error) {
             reply(ws, 'as_list_response', message, { ...refused(error), devices: [], computers: [] });
         }

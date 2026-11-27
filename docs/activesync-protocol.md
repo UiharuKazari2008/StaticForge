@@ -247,6 +247,43 @@ permission (no All files access).
 - The device description says `media: true` when a socket of the phone answers `media.list`; a phone whose app
   does not yet (DSApp branch `claude/media-share`) shows "needs an update" in Media Player.
 
+## Test devices (StaticForge #1334)
+
+A test device is never written into the household's ActiveSync store (`as_devices`, `as_log`). It lives in the test
+lane's own registry, `<databases>/test-devices.json` (`modules/testDevices.js`).
+
+**What is a test device.** Anything marked through `PUT /api/test-devices/:id`, and anything its `as_hello` shows to be
+one (`testDevices.classify`, from the model and platform, never the name a user chose):
+
+| kind | recognised by |
+| --- | --- |
+| `emulator` | an emulator model (`sdk_gphone`, `aemu`, `ranchu`, ...) |
+| `test-vm` | a CaféReady host on a virtual machine (VMware, QEMU, VirtualBox, ...) |
+
+A device that already has a partnership under a model that is none of these is never reclassified by a hello, and
+`PUT /api/test-devices/:id` refuses to mark it (or the primary device). The agents' A53 is **not** a test device here:
+Yukimi keeps it in Device Center (Nov 26 2026: "delete every single device that is not the fold or the a53"), so it
+stays a household partnership.
+
+**The connection.** The same packets as any phone. On an administrator sign-in a new test device is the test lane's
+partner at once (no partnership question), so its background link is accepted. Until then (a first hello that is not an
+administrator's, or a row moved over without a partnership) it is undecided and the next administrator hello partners it;
+only a partnership `end` stays ended. Its partnership, permissions and name are
+kept in its registry entry. `as_queue` and `as_received` work for it and go when it is dropped.
+
+**Who sees it.** No household list, `as_peers_updated`, primary device (`TEST_DEVICE` from `as_set_primary`), computer
+list or relayed event. Its own page (and its DeX window) sees its own row and the computers. A computer that says `testLane: true` in its
+hello (a harness) is left out of the household's computer list. Server code that works for agents or the lane asks for
+test devices: `activeSync.list(gr, ws, { includeTest: true })`; `GET /api/test-devices` lists them.
+
+**Notices** run in the inbox's `test` lane. Android app updates are delivered to test devices without the hold, and a
+test device raises no "update waits" notice.
+
+**Cleanup.** A recognised entry that has been offline for 24 hours is dropped (checked when a device says hello, no
+timer), with its queue, received items, icons and wallpapers; the next hello registers it again. A hand-marked device that
+cannot be recognised stays until `DELETE /api/test-devices/:id`. Test rows found in `as_devices` are moved into the
+registry when the server opens the database.
+
 ## DreamOS machines (CaféReady, #910)
 
 Yukimi, Nov 20 2026: "we should design in ActiveSync with the server like the phones have, to push and get data from

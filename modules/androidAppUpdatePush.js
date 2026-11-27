@@ -345,6 +345,8 @@ function onResend(deviceId, code) {
  * Its tap opens the Devices page (data.page 'devices', like the phone consent notices).
  */
 function tellFleet(deviceId, code, why, versionName) {
+    // a test device raises no notice, anywhere (#1334); its delivery record says it waits
+    if (isTest(deviceId)) return;
     let name = deviceId.slice(0, 8);
     try { const r = ctx.as.deviceRow(ctx.globalResources, deviceId); if (r && r.name) name = String(r.name).slice(0, 60); } catch (_) { /* the id */ }
     try {
@@ -389,7 +391,7 @@ async function onRelease(release) {
     try { latest = ctx.builds.latestRelease() || release; } catch (_) { latest = release; }
     if (!latest) return [];
     let devices = [];
-    try { devices = ctx.as.list(ctx.globalResources, null).devices || []; } catch (_) { devices = []; }
+    try { devices = ctx.as.list(ctx.globalResources, null, { includeTest: true }).devices || []; } catch (_) { devices = []; }
     const jobs = [];
     for (const dev of devices) {
         if (!dev.online || dev.platform === 'cafeready') continue;
@@ -402,7 +404,7 @@ async function onRelease(release) {
 function deliveriesSnapshot() {
     if (!ctx) return [];
     let devices = [];
-    try { devices = ctx.as.list(ctx.globalResources, null).devices || []; } catch (_) { devices = []; }
+    try { devices = ctx.as.list(ctx.globalResources, null, { includeTest: true }).devices || []; } catch (_) { devices = []; }
     const out = [];
     for (const dev of devices) {
         let d = null;

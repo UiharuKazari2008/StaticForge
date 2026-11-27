@@ -138,7 +138,7 @@ function isHost(globalResources, deviceId) {
 
 /** What the machine said it allows (its last status): { commands, screenshots, killSwitch }. */
 function allowedOf(globalResources, deviceId) {
-    const d = activeSync().list(globalResources, serverOf(globalResources)).devices.find((x) => x.deviceId === deviceId);
+    const d = activeSync().list(globalResources, serverOf(globalResources), { includeTest: true }).devices.find((x) => x.deviceId === deviceId);
     const a = d && d.status && d.status.host && d.status.host.allow;
     return a || { commands: false, screenshots: false, killSwitch: false };
 }

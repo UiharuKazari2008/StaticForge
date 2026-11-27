@@ -12,6 +12,10 @@
  * overrides). A test device is also unmarked from the test lane (modules/testDevices.js) so the fence does not
  * keep a name for a device that is gone.
  *
+ * Since #1334 test devices (emulators, DreamOS test VMs) get no row at all: the server keeps them in
+ * test-devices.json and moves old rows there by itself (docs/activesync-protocol.md, "Test devices"). What is left for
+ * this script is dead rows of real devices.
+ *
  * Alone it changes nothing: run it with no arguments to see the list.
  *
  *   node scripts/prune-activesync-devices.js                     # what is there, and what --apply would remove

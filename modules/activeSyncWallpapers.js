@@ -21,7 +21,8 @@
  * (unchanged: [...]).
  *
  * Files live in <databases>/activesync-wallpapers/<deviceId>/ with an index.json. A partnership ended
- * or a device removed leaves them; the next push replaces them.
+ * or a device removed leaves them; the next push replaces them. A test device that is dropped takes its
+ * set with it (release, StaticForge #1334, modules/activeSync.js).
  */
 'use strict';
 
@@ -62,6 +63,17 @@ function readIndex(globalResources, deviceId) {
 function stampOf(globalResources, deviceId) {
     if (!stamps.has(deviceId)) readIndex(globalResources, deviceId);
     return stamps.get(deviceId) || 0;
+}
+
+/** Drop a device's stored set: its folder and what is kept of it in memory. Returns whether there was one. */
+function release(globalResources, deviceId) {
+    if (!activeSync.isPeerId(deviceId)) return false;
+    const dir = dirOf(globalResources, deviceId);
+    stamps.delete(deviceId);
+    for (const file of hashCache.keys()) if (path.dirname(file) === dir) hashCache.delete(file);
+    if (!fs.existsSync(dir)) return false;
+    fs.rmSync(dir, { recursive: true, force: true });
+    return true;
 }
 
 /** The stored set as URLs for a page: { inner, cover, external, screen, at }. */
@@ -294,4 +306,4 @@ function mount(app, authMiddleware, globalResources) {
     require('./activeSyncIcons').mount(app, authMiddleware, globalResources);
 }
 
-module.exports = { mount, describe, store, storeDetailed, hashes, stampOf, KINDS };
+module.exports = { mount, describe, store, storeDetailed, hashes, stampOf, release, KINDS };

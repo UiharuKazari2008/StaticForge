@@ -368,6 +368,9 @@ function appIcon(pkg) {
 
 // ---------------------------------------------------------------- the phone's events
 
+/** A test device (modules/testDevices.js): never one of the household's phones. */
+function isTestPhone(id) { try { return require('./testDevices').isTestDevice(id); } catch (_) { return false; } }
+
 function tap() {
     if (tapped) return;
     tapped = true;
@@ -388,7 +391,7 @@ function tap() {
         // accounts listened (a restart race), so what it shows now is read once
         const id = device && device.id;
         // a test device (modules/testDevices.js) is never read into the household's accounts
-        if (id && (() => { try { return require('./testDevices').isTestDevice(id); } catch (_) { return false; } })()) return;
+        if (id && isTestPhone(id)) return;
         if (id && !caughtUp.has(id)) {
             caughtUp.add(id);
             for (const p of providers) void p.syncDevice(id, device.name);
@@ -473,7 +476,7 @@ class AndroidAppProvider {
     /** Send/Receive (#978): every partnered phone's notifications of this app now, waited for. */
     async sendReceive() {
         let links = [];
-        try { links = activeSync().partnerLinks(resources(), null); } catch (_) { links = []; }
+        try { links = activeSync().partnerLinks(resources(), null).filter((l) => !isTestPhone(l.deviceId)); } catch (_) { links = []; }
         if (!links.length) throw Object.assign(new Error('No phone is connected to send this app\'s notifications.'), { code: 'NO_DEVICE' });
         for (const l of links) await this.syncDevice(l.deviceId, l.name);
         return { ok: true };
@@ -484,7 +487,8 @@ class AndroidAppProvider {
      * the phone was away when they came); what is already stored is not announced again.
      */
     async syncDevice(deviceId, deviceName) {
-        if (!providers.has(this)) return;
+        // a test device's notifications (the emulators, the A53) are never read into the household's accounts (#1334)
+        if (!providers.has(this) || isTestPhone(deviceId)) return;
         try {
             const res = await activeSync().serverCall(resources(), null, deviceId, 'notify.list', {}, { timeoutMs: CALL_MS });
             for (const n of (res && res.notifications) || []) if (n && n.package === this.pkg && routeOf(this.pkg, n.channel) === this) this.take(n, deviceId, deviceName);

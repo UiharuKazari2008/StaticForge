@@ -30,8 +30,9 @@ function summaryText(m) {
     return atts.length > 1 ? `${kind} and ${atts.length - 1} more` : kind;
 }
 
+// the household's phones only: a test device (modules/testDevices.js) hears nothing of the household's messages (#1334)
 function links() {
-    try { return activeSync.partnerLinks(gr, null).filter((l) => l.service); } catch (_) { return []; }
+    try { return activeSync.partnerLinks(gr, null).filter((l) => l.service && !require('./testDevices').isTestDevice(l.deviceId)); } catch (_) { return []; }
 }
 
 function onEvent(ev) {

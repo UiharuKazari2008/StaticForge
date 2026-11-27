@@ -43,10 +43,12 @@ inbox.bind(gr);
 const eventsTo = (who, name) => sent.filter((s) => s.to.startsWith(who) && s.msg.type === 'as_event' && s.msg.data.event === name);
 const reset = () => { sent.length = 0; };
 
-// ---- before the emulator is marked: it is a household phone like any other (nothing changes for real phones)
+// ---- before the second link is marked it is a household phone like any other (nothing changes for real phones). These
+// fake links never said hello: an emulator that does is marked by it and never sees this state (#1334,
+// scripts/test-activesync-test-devices.js)
 inbox.publish({ id: 'sms:1', title: 'New Text Message', text: 'hi', app: 'messaging' });
 assert.strictEqual(eventsTo('f409', 'inbox.notice').length, 1, 'the Fold gets household notices');
-assert.strictEqual(eventsTo('0123', 'inbox.notice').length, 1, 'an unmarked emulator does too');
+assert.strictEqual(eventsTo('0123', 'inbox.notice').length, 1, 'so does a device nothing marks as a test device');
 
 // ---- marked a test device
 assert.ok(testDevices.mark(EMU, { name: 'Test Fold (emulator)' }));

@@ -588,7 +588,7 @@ const deviceChoices = (all) => all.map((d) => ({ deviceId: d.deviceId, name: d.n
 
 /** device_shell for agents: { device?, command, root?, timeout? } -> the device's answer (device as in device_screenshot). caller: who makes the call (see gate). */
 async function agentShell(globalResources, input = {}, caller) {
-    const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
+    const all = activeSync().list(globalResources, wsServerOf(globalResources, null), { includeTest: true }).devices;
     const dev = agentDevice(all, input);
     if (!dev) return { success: false, code: 'CHOOSE_DEVICE', devices: deviceChoices(all) };
     if (isComputer(dev)) return require('./cafeReadyHost').agentShell(globalResources, dev, input);
@@ -599,7 +599,7 @@ async function agentShell(globalResources, input = {}, caller) {
 
 /** device_packages for agents (#823): list (system?) or manage { package, action } through the phone. */
 async function agentPackages(globalResources, input = {}, caller) {
-    const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
+    const all = activeSync().list(globalResources, wsServerOf(globalResources, null), { includeTest: true }).devices;
     const dev = agentDevice(all, input);
     if (!dev) return { success: false, code: 'CHOOSE_DEVICE', devices: deviceChoices(all) };
     if (isComputer(dev)) return require('./cafeReadyHost').agentPackages(globalResources, dev, input);
@@ -703,7 +703,7 @@ async function markCamera(sharp, png, cam) {
 }
 
 async function agentScreenshot(globalResources, input = {}, caller) {
-    const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
+    const all = activeSync().list(globalResources, wsServerOf(globalResources, null), { includeTest: true }).devices;
     // the route that works: the phone's own ADB (5555 on the phone, Shizuku) when the phone answers; the server's own dial
     // (only on the home network) beside it - "unreachable" / "unauthorized" for the dial read as the phone not allowing
     // debugging while every command went through the phone (Nov 18)

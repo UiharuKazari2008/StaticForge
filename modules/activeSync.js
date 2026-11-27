@@ -30,6 +30,13 @@
  * "host" (platform "cafeready") on its Melaton Café Miniport's sub "activesync", signed in as an
  * administrator. It is partnered by that sign-in; what the server may ask of it is what the machine
  * itself allows (its "Allow remote commands" setting, reported in its status).
+ *
+ * Test devices (#1334, modules/testDevices.js: emulators, DreamOS test VMs and what the test lane marks) are never
+ * written to as_devices or as_log: their records live in the test lane's registry (rowOf / writeRow below), they are in
+ * no household list or broadcast, their events reach no computer and none can be the primary device. A row of one that
+ * is still in the database is moved there (adoptRow). Their queue and Received Items rows stay in the database while
+ * the registry has them. The household's own devices (a partnership or the primary under a model that is no test shape:
+ * the Fold, the A53) are never made test devices (isHouseholdRow).
  */
 
 const Database = require('better-sqlite3');
@@ -39,6 +46,7 @@ const path = require('path');
 const crypto = require('crypto');
 const WebSocket = require('ws');
 const { socketLink, socketLinkUnanswered, probeSocketLink } = require('./wsSocketHeartbeat');
+const testDevices = require('./testDevices');
 
 const KINDS = new Set(['device', 'computer']);
 // host: CaféReady on a DreamOS machine (modules/cafeReadyHost.js), its own native link like a phone's service
@@ -81,8 +89,12 @@ const MAX_QUEUE_ITEMS = 50;
 const MAX_LOG_ROWS = 500;
 const STATUS_WRITE_MS = 30000;
 const BROADCAST_DEBOUNCE_MS = 250;
+// an as_devices row's columns; a test device's record in the registry has the same names (#1334)
+const ROW_COLUMNS = ['name', 'model', 'os', 'app', 'partner', 'permissions', 'sync_items', 'settings', 'last_status', 'first_seen', 'last_seen', 'last_sync', 'platform'];
 
 let db = null;
+let seenResources = null; // the last caller's globalResources that knows the databases folder
+let serverResources = null; // the running server's, once its database is open (test rows are moved then)
 let dbPath = null;
 let lastWsServer = null;
 let broadcastTimer = null;
@@ -231,7 +243,24 @@ function sanitizeStatus(raw) {
 }
 
 function getDb(globalResources) {
-    if (db) return db;
+    if (globalResources && typeof globalResources.getPath === 'function') seenResources = globalResources;
+    if (!db) openDb(globalResources);
+    // once, when the running server has the database open: rows of test devices move to the test lane's registry
+    // (#1334). Only for resources shaped like the server's (its databases folder and its websocket server): a script's
+    // or a half-made one moves nothing, least of all in the database at the default path.
+    if (!serverResources && globalResources && typeof globalResources.getPath === 'function' && typeof globalResources.getWebSocketServer === 'function') {
+        serverResources = globalResources;
+        adoptAll(globalResources);
+        const early = [...droppedUnopened];
+        droppedUnopened.clear();
+        for (const id of early) {
+            try { releaseDropped(id); } catch (err) { console.warn(`[activeSync] test device ${id.slice(0, 8)} not cleaned up: ${err.message}`); }
+        }
+    }
+    return db;
+}
+
+function openDb(globalResources) {
     const dir = globalResources && typeof globalResources.getPath === 'function'
         ? globalResources.getPath('databases')
         : path.resolve(__dirname, '..', '.cache');
@@ -296,7 +325,6 @@ function getDb(globalResources) {
     if (!db.prepare('PRAGMA table_info(as_devices)').all().some((c) => c.name === 'platform')) {
         db.exec("ALTER TABLE as_devices ADD COLUMN platform TEXT NOT NULL DEFAULT ''");
     }
-    return db;
 }
 
 // ---------------------------------------------------------------- the primary device (#979)
@@ -309,12 +337,15 @@ const PRIMARY_OWNER = 'admin';
 let primaryCache = null; // { owner: deviceId | '' }
 
 function primaryOf(globalResources, owner = PRIMARY_OWNER) {
+    // the database first: the server's first open moves test rows, which drops this cache (#1334)
+    const d = db && serverResources ? db : getDb(globalResources);
     if (!primaryCache) primaryCache = {};
     if (!Object.prototype.hasOwnProperty.call(primaryCache, owner)) {
-        const row = getDb(globalResources).prepare("SELECT value FROM as_prefs WHERE owner = ? AND name = 'primary'").get(owner);
+        const row = d.prepare("SELECT value FROM as_prefs WHERE owner = ? AND name = 'primary'").get(owner);
         primaryCache[owner] = row && isPeerId(row.value) ? row.value : '';
     }
-    return primaryCache[owner];
+    const id = primaryCache[owner];
+    return id && !isTestDevice(id) ? id : '';
 }
 
 /** deviceId '' clears it. Only a partnered device can be the primary. */
@@ -322,6 +353,7 @@ function setPrimary(globalResources, wsServer, deviceId, owner = PRIMARY_OWNER) 
     const id = String(deviceId || '').toLowerCase();
     const d = getDb(globalResources);
     if (id) {
+        if (isTestDevice(id)) throw fail('TEST_DEVICE', 'A test device cannot be the primary device.');
         const row = rowOf(globalResources, id);
         if (!row) throw fail('UNKNOWN_DEVICE', 'No such device.');
         if (!row.partner) throw fail('NOT_PARTNER', 'Only a device with a partnership can be the primary device.');
@@ -337,8 +369,226 @@ function setPrimary(globalResources, wsServer, deviceId, owner = PRIMARY_OWNER) 
     return id;
 }
 
-function rowOf(globalResources, deviceId) {
+// ---------------------------------------------------------------- the two stores of device records (#1334)
+// as_devices is the household's; a test device's record is in the test lane's registry (modules/testDevices.js) and
+// is never written to the database. Every read goes through rowOf, every write through createRow / writeRow.
+
+/** The household store's own row of an id, or null. */
+function storedRow(globalResources, deviceId) {
     return getDb(globalResources).prepare('SELECT * FROM as_devices WHERE device_id = ?').get(deviceId) || null;
+}
+
+/** A device's record: a test device's from the registry, anyone else's from as_devices. */
+function rowOf(globalResources, deviceId) {
+    if (!isTestDevice(deviceId)) return storedRow(globalResources, deviceId);
+    const kept = testDevices.row(deviceId);
+    if (kept) return kept;
+    getDb(globalResources); // the server's first open moves a row that is still there
+    return testDevices.row(deviceId);
+}
+
+/** Change columns of a device's record. how: the registry's { persist: 'now' } for a hello or a closing socket. */
+function writeRow(globalResources, deviceId, fields, how) {
+    const cols = ROW_COLUMNS.filter((c) => Object.prototype.hasOwnProperty.call(fields, c));
+    if (!cols.length) return;
+    if (isTestDevice(deviceId)) {
+        testDevices.setRow(deviceId, fields, how);
+        return;
+    }
+    getDb(globalResources).prepare(`UPDATE as_devices SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE device_id = ?`)
+        .run(...cols.map((c) => fields[c]), deviceId);
+}
+
+/** A device's first record: { name, first_seen, last_seen } at least, any other column with them. */
+function createRow(globalResources, deviceId, fields) {
+    if (isTestDevice(deviceId)) {
+        testDevices.setRow(deviceId, fields, { create: true, persist: 'now' });
+        return;
+    }
+    getDb(globalResources).prepare('INSERT INTO as_devices (device_id, name, first_seen, last_seen) VALUES (?, ?, ?, ?)')
+        .run(deviceId, fields.name, fields.first_seen, fields.last_seen);
+    writeRow(globalResources, deviceId, fields);
+}
+
+// ---------------------------------------------------------------- the test lane (#1334)
+
+const adopting = new Set();
+const droppedUnopened = new Set(); // entries dropped before the database was open: cleaned up when the server opens it
+
+/**
+ * One of the household's own (#1334): an as_devices row with a partnership, or the primary device, under a model that
+ * is no test shape. It is never made a test device: not by testDevices.mark (a PUT would move her phone out of her
+ * store, and a DELETE would then lose its partnership), not by what a hello says.
+ */
+function isHouseholdRow(d, row) {
+    if (!row || testDevices.classifyRow(row)) return false;
+    return !!row.partner || !!d.prepare("SELECT 1 FROM as_prefs WHERE name = 'primary' AND value = ?").get(row.device_id);
+}
+
+/**
+ * testDevices.mark's guard. It may be the first thing to touch ActiveSync after a start (the test lane's PUT route):
+ * with no database open yet it reads the server's own, read-only, so asking creates, writes and moves nothing. With no
+ * server's resources loaded (a test, a script that opened none) there is no store of the household's to ask.
+ */
+function isHouseholdDevice(deviceId) {
+    const ask = (d) => isHouseholdRow(d, d.prepare('SELECT * FROM as_devices WHERE device_id = ?').get(deviceId));
+    if (db) return ask(db);
+    // the server's already loaded resources only: requiring globalResources here would start a second server's
+    const loaded = require.cache[require.resolve('./globalResources')];
+    const gr = loaded && loaded.exports;
+    if (!gr || typeof gr.getPath !== 'function') return false;
+    const file = path.join(gr.getPath('databases'), 'activesync.db');
+    if (!fs.existsSync(file)) return false;
+    const readOnly = new Database(file, { readonly: true, fileMustExist: true });
+    try { return ask(readOnly); } finally { readOnly.close(); }
+}
+
+function hasTable(d, name) {
+    return !!d.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+}
+
+/** The rows a device has in the household store besides its queue and Received Items: gone. */
+function deleteHouseholdRows(d, deviceId) {
+    d.prepare('DELETE FROM as_log WHERE device_id = ?').run(deviceId);
+    for (const t of ['as_notify_apps', 'as_notify_prefs']) if (hasTable(d, t)) d.prepare(`DELETE FROM ${t} WHERE device_id = ?`).run(deviceId);
+    d.prepare("DELETE FROM as_prefs WHERE name = 'primary' AND value = ?").run(deviceId);
+    primaryCache = null;
+}
+
+/** What other modules keep per partnership (the notification filter's tables and cache). */
+function endTapsFor(deviceId) {
+    for (const fn of endTaps) { try { fn(deviceId); } catch (_) { /* the tap's own fault */ } }
+}
+
+/**
+ * An as_devices row that is a test device's (marked, or recognised by its own model / platform) moves to the registry
+ * with its partnership, permissions, settings, name and clocks. One without a partnership moves as undecided (partner
+ * null: nobody ended it, an administrator's next hello sets it up). Any other row, and every one of the household's,
+ * is left alone. The row goes only once the registry is on disk. Returns whether it moved.
+ */
+function adoptRow(globalResources, row) {
+    const id = row.device_id;
+    if (adopting.has(id)) return false;
+    if (isHouseholdRow(getDb(globalResources), row)) {
+        // hers stays hers: a mark left on it goes (a dropped entry leaves alone everything of a device with a row)
+        if (isTestDevice(id)) {
+            console.warn(`[activeSync] ${row.name} (${id.slice(0, 8)}…) is one of the household's devices: its test mark is removed`);
+            testDevices.unmark(id);
+        }
+        return false;
+    }
+    const kind = testDevices.classifyRow(row);
+    if (!kind && !isTestDevice(id)) return false;
+    adopting.add(id);
+    try {
+        // mark() on an id already marked keeps its entry and status overrides; it records the kind
+        if (!testDevices.mark(id, kind ? { kind } : {})) return false;
+        if (!testDevices.row(id)) {
+            const fields = {};
+            for (const c of ROW_COLUMNS) fields[c] = row[c];
+            fields.partner = row.partner ? 1 : null;
+            testDevices.setRow(id, fields, { create: true });
+        }
+        if (!testDevices.flush()) return false;
+        const d = getDb(globalResources);
+        d.transaction(() => {
+            d.prepare('DELETE FROM as_devices WHERE device_id = ?').run(id);
+            deleteHouseholdRows(d, id);
+        })();
+        endTapsFor(id);
+        const kept = testDevices.row(id);
+        console.log(`[activeSync] test device ${kept.name} (${id.slice(0, 8)}…, ${testDevices.kindOf(id)}${kept.partner ? ', partnership kept' : ''}) moved from the ActiveSync store to the test lane`);
+        return true;
+    } finally {
+        adopting.delete(id);
+    }
+}
+
+function adoptById(globalResources, deviceId) {
+    const row = storedRow(globalResources, deviceId);
+    return row ? adoptRow(globalResources, row) : false;
+}
+
+function adoptAll(globalResources) {
+    let rows = [];
+    try { rows = db.prepare('SELECT * FROM as_devices').all(); } catch (err) { console.warn('[activeSync] test rows not read:', err.message); }
+    for (const row of rows) {
+        try { adoptRow(globalResources, row); } catch (err) { console.warn(`[activeSync] test device ${String(row.device_id).slice(0, 8)} not moved: ${err.message}`); }
+    }
+}
+
+/** testDevices.mark (PUT /api/test-devices/:id): a row it already had moves at once. Before the server has the database open, its first open does it. */
+function onTestDeviceMarked(deviceId) {
+    if (!db || !serverResources || adopting.has(deviceId)) return;
+    if (adoptById(serverResources, deviceId)) scheduleUpdated(serverResources, lastWsServer);
+}
+
+/** testDevices dropped an entry (gone for a day, over the cap, unmarked, forgotten): what was kept beside it goes too. */
+function onTestDeviceDropped(deviceId) {
+    statusWrites.delete(deviceId);
+    syncWrites.delete(deviceId);
+    lastOwnKeys.delete(deviceId);
+    lastDexKeys.delete(deviceId);
+    if (db) releaseDropped(deviceId);
+    else droppedUnopened.add(deviceId);
+}
+
+/** A test device's pictures kept as files, its icons and wallpapers: in the folder the open database is in. */
+function releaseStored(deviceId) {
+    const beside = { getPath: () => path.dirname(dbPath) };
+    try { icons().releaseDevice(beside, deviceId); } catch (_) { /* none stored */ }
+    try { require('./activeSyncWallpapers').release(beside, deviceId); } catch (err) { console.warn(`[activeSync] test device wallpapers not removed: ${err.message}`); }
+}
+
+/**
+ * A dropped entry's queue, Received Items, notification settings and pictures. A link still open (unmarked while
+ * connected) has no partnership any more: it waits as pending, as after one ended.
+ */
+function releaseDropped(deviceId) {
+    // marked again, or with a row in the store (never moved, or the household's): not this clean-up's
+    if (isTestDevice(deviceId) || db.prepare('SELECT 1 FROM as_devices WHERE device_id = ?').get(deviceId)) return;
+    releaseQueue(seenResources, deviceId);
+    db.prepare('DELETE FROM as_received WHERE device_id = ?').run(deviceId);
+    deleteHouseholdRows(db, deviceId);
+    endTapsFor(deviceId);
+    releaseStored(deviceId);
+    if (deviceSession(lastWsServer, deviceId)) {
+        setDeviceSession(lastWsServer, deviceId, 'pending', []);
+        for (const s of liveSockets(lastWsServer, 'device', deviceId)) if (s.info.as.speaker === 'service') s.info.as = null;
+    }
+    scheduleUpdated(seenResources, lastWsServer);
+}
+
+testDevices.setMarkGuard(isHouseholdDevice);
+testDevices.onMarked(onTestDeviceMarked);
+testDevices.onDropped(onTestDeviceDropped);
+
+/**
+ * Is this hello a test device's? Marked already, or recognised by what it says (or by the row it has): then it is
+ * marked here, before anything is written. guarded: the hello says so, but the id is one of the household's
+ * partnerships under a model that is none of those: it stays the household's, and what the hello said that would move
+ * it is not kept.
+ */
+function sortHello(globalResources, { id, name, model, platform, vendor }) {
+    const kept = storedRow(globalResources, id);
+    if (isTestDevice(id)) return { test: true, guarded: false };
+    const said = testDevices.classify({ id, model, platform, vendor });
+    const own = testDevices.classifyRow(kept);
+    if (!said && !own) return { test: false, guarded: false };
+    if (isHouseholdRow(getDb(globalResources), kept)) return { test: false, guarded: true };
+    // a row it already has keeps its name (the partnership's)
+    testDevices.mark(id, { name: kept ? kept.name : name, kind: own || said });
+    return { test: isTestDevice(id), guarded: false };
+}
+
+/** The registry's lazy clean-up (a hello is the occasion; no timer of its own). */
+function sweepTestDevices(server, helloId) {
+    if (!server || !server.clients) return;
+    const online = (id) => id === helloId || liveSockets(server, 'device', id).length > 0;
+    try {
+        testDevices.sweep(online);
+        testDevices.cap(online);
+    } catch (err) { console.warn('[activeSync] test lane clean-up failed:', err.message); }
 }
 
 function wsServerOf(globalResources, wsServer) {
@@ -354,9 +604,13 @@ function wsServerOf(globalResources, wsServer) {
 }
 
 function logEvent(globalResources, deviceId, level, text) {
+    // the log is the household store's: nothing about a test device, or about an id with no row there (#1334)
+    if (isTestDevice(deviceId)) return;
     try {
         const d = getDb(globalResources);
-        d.prepare('INSERT INTO as_log (device_id, at, level, text) VALUES (?, ?, ?, ?)').run(deviceId, Date.now(), level, clampString(text, 300));
+        const added = d.prepare('INSERT INTO as_log (device_id, at, level, text) SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM as_devices WHERE device_id = ?)')
+            .run(deviceId, Date.now(), level, clampString(text, 300), deviceId);
+        if (!added.changes) return;
         d.prepare('DELETE FROM as_log WHERE device_id = ? AND id <= (SELECT id FROM as_log WHERE device_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?)').run(deviceId, deviceId, MAX_LOG_ROWS);
     } catch (err) {
         console.warn('[activeSync] log failed:', err.message);
@@ -551,13 +805,12 @@ function mergedStatus(live) {
 /** Continuity used at least once (#827, the Enterprise edition): a flag in the device's settings that stays. */
 function noteContinuity(globalResources, deviceId) {
     try {
-        const d = getDb(globalResources);
-        const row = d.prepare('SELECT settings FROM as_devices WHERE device_id = ?').get(deviceId);
+        const row = rowOf(globalResources, deviceId);
         if (!row) return;
         const set = parseJson(row.settings, {});
         if (set.continuitySeen) return;
         set.continuitySeen = Date.now();
-        d.prepare('UPDATE as_devices SET settings = ? WHERE device_id = ?').run(JSON.stringify(set), deviceId);
+        writeRow(globalResources, deviceId, { settings: JSON.stringify(set) });
     } catch (err) { console.warn('[activeSync] continuity note failed:', err.message); }
 }
 
@@ -587,21 +840,61 @@ function describeComputer(s) {
     return { computerId: s.info.as.id, name: s.info.as.name, since: s.info.as.since, clientId: s.info.clientId || null, link: s.info.as.link || 'network', usbDevice: s.info.as.usbDevice || null };
 }
 
-function list(globalResources, wsServer) {
-    const server = wsServerOf(globalResources, wsServer);
-    const rows = getDb(globalResources).prepare('SELECT * FROM as_devices').all();
-    const devices = rows.map((row) => describeDevice(globalResources, server, row));
-    devices.sort((a, b) => (b.online - a.online) || (b.lastSeen - a.lastSeen) || a.name.localeCompare(b.name));
+/** The test device a socket is a view of (#1334): the device's own, or its DeX window's (a computer on its USB link). */
+function testViewOf(info) {
+    const as = info && info.as;
+    if (!as) return null;
+    const id = as.kind === 'device' ? as.id : as.usbDevice;
+    return id && isTestDevice(id) ? id : null;
+}
+
+/** A socket of the test lane: a test device's, its DeX window's, or a harness computer that says it is one. */
+function isTestLane(info) {
+    return !!testViewOf(info) || testDevices.isTestInfo(info) || !!(info && info.as && info.as.testLane === true);
+}
+
+/** The online computers (one entry each), without the sockets skip(info) names. */
+function computersOf(server, skip) {
     const seen = new Set();
     const computers = [];
     for (const s of liveSockets(server, 'computer')) {
-        if (seen.has(s.info.as.id)) continue;
+        if (seen.has(s.info.as.id) || (skip && skip(s.info))) continue;
         seen.add(s.info.as.id);
         computers.push(describeComputer(s));
     }
+    return computers;
+}
+
+function peerList(globalResources, server, rows, computers) {
+    const devices = rows.map((row) => describeDevice(globalResources, server, row));
+    devices.sort((a, b) => (b.online - a.online) || (b.lastSeen - a.lastSeen) || a.name.localeCompare(b.name));
     // a device with a computer on its USB link (its own DeX window) is connected by USB
     for (const d of devices) d.link = d.online && computers.some((c) => c.usbDevice === d.deviceId) ? 'usb' : (d.online ? 'network' : null);
     return { devices, computers };
+}
+
+/**
+ * The peers. By default the household's view (#1334): no test devices and no computers of the test lane.
+ * opts.includeTest: everything, the test devices from their registry (server code working for agents and the lane).
+ */
+function list(globalResources, wsServer, opts = {}) {
+    const server = wsServerOf(globalResources, wsServer);
+    const rows = getDb(globalResources).prepare('SELECT * FROM as_devices').all().filter((row) => !isTestDevice(row.device_id));
+    if (opts.includeTest) rows.push(...testDevices.rows());
+    return peerList(globalResources, server, rows, computersOf(server, opts.includeTest ? null : isTestLane));
+}
+
+/** A test device's own view: its own record and the computers; none of the household's devices. */
+function ownView(globalResources, server, deviceId) {
+    const row = rowOf(globalResources, deviceId);
+    return peerList(globalResources, server, row ? [row] : [], computersOf(server));
+}
+
+/** The list for the socket that asks (hello, as_list): a test device (or its DeX window) gets that device's own view. */
+function listFor(globalResources, wsServer, clientInfo) {
+    const server = wsServerOf(globalResources, wsServer);
+    const own = testViewOf(clientInfo);
+    return own ? ownView(globalResources, server, own) : list(globalResources, server);
 }
 
 let lastPeersKey = null;
@@ -633,6 +926,7 @@ function peersKey(data) {
 // shows them (Device Center on a desktop does, and gets them all).
 const OWN_ROW_UNREAD = ['status', 'speakers', 'adb', 'wallpapersAt', 'lastSync', 'queued', 'link'];
 const lastOwnKeys = new Map(); // deviceId -> the peer list key its sockets last got (ownPeersKey)
+const lastDexKeys = new Map(); // test device id -> the key of the view its DeX window last got
 
 /** The peer list as a device's own page sees it: its own row without the fields it does not read. */
 function ownPeersKey(data, deviceId) {
@@ -645,6 +939,68 @@ function ownPeersKey(data, deviceId) {
     return peersKey({ devices, computers: data.computers || [] });
 }
 
+/** May this socket be sent a peer list? An administrator's page or computer (the app's native links read none). */
+function readsPeers(info) {
+    return !!(info && info.authenticated && info.userType === 'admin' && info.as && info.as.speaker !== 'service' && info.as.speaker !== 'host');
+}
+
+function peersMessage(data) {
+    return { type: 'as_peers_updated', data, timestamp: new Date().toISOString() };
+}
+
+/** The household's list to its pages and to the computers, when something other than the clocks changed. */
+function sendHouseholdPeers(globalResources, server) {
+    const data = list(globalResources, server);
+    // only when something other than the clocks changed (rule server-push-not-polling): a phone
+    // reports its status every few seconds, and each report re-sent this whole list (8 KB) to
+    // every peer - 17 times in 2 min on the A53 - with only lastSeen / status.at different and the
+    // devices in a new order
+    const key = peersKey(data);
+    if (key === lastPeersKey) return;
+    lastPeersKey = key;
+    // the pages watching Explorer's Network folder (DreamOS computers and their shares, modules/networkShares.js)
+    try { require('./networkShares').peersChanged(globalResources, server, data); } catch (err) { console.warn('[activeSync] network list:', err.message); }
+    // a phone's own report (battery, the program in front, Wi-Fi) no longer comes back to that same
+    // phone as the whole list (#890): its sockets get it only when something it reads changed. The
+    // app's background link reads no peer list at all (ActiveSyncLink); desktops get every change.
+    const ownSend = new Map(); // deviceId -> whether its sockets get this one
+    server.broadcast(peersMessage(data), (info) => {
+        // a test device's page and its DeX window are sent that device's own view instead (sendTestViews)
+        if (!readsPeers(info) || testViewOf(info)) return false;
+        if (info.as.kind !== 'device') return true;
+        const id = info.as.id;
+        if (!ownSend.has(id)) {
+            const own = ownPeersKey(data, id);
+            ownSend.set(id, lastOwnKeys.get(id) !== own);
+            lastOwnKeys.set(id, own);
+        }
+        return ownSend.get(id);
+    });
+}
+
+/** A test device's pages and its DeX window get that device's own view, when something in it they show changed (#1334). */
+function sendTestViews(globalResources, server) {
+    if (!server.clients) return;
+    const open = new Map(); // test device id -> the kinds of socket showing its view
+    for (const info of server.clients.values()) {
+        const id = readsPeers(info) ? testViewOf(info) : null;
+        if (id) open.set(id, (open.get(id) || new Set()).add(info.as.kind));
+    }
+    for (const [id, kinds] of open) {
+        const view = ownView(globalResources, server, id);
+        const due = new Set();
+        for (const kind of kinds) {
+            // its page reads little of its own row (ownPeersKey); its DeX window is a desktop and shows all of it
+            const keys = kind === 'device' ? lastOwnKeys : lastDexKeys;
+            const key = kind === 'device' ? ownPeersKey(view, id) : peersKey(view);
+            if (keys.get(id) === key) continue;
+            keys.set(id, key);
+            due.add(kind);
+        }
+        if (due.size) server.broadcast(peersMessage(view), (info) => readsPeers(info) && testViewOf(info) === id && due.has(info.as.kind));
+    }
+}
+
 /** as_peers_updated to every peer that may list (administrators' computers and the devices), coalesced. */
 function scheduleUpdated(globalResources, wsServer) {
     const server = wsServerOf(globalResources, wsServer);
@@ -652,38 +1008,9 @@ function scheduleUpdated(globalResources, wsServer) {
     if (broadcastTimer) return;
     broadcastTimer = setTimeout(() => {
         broadcastTimer = null;
-        let data;
-        try {
-            data = list(globalResources, server);
-        } catch (err) {
-            console.warn('[activeSync] list for as_peers_updated failed:', err.message);
-            return;
+        for (const send of [sendHouseholdPeers, sendTestViews]) {
+            try { send(globalResources, server); } catch (err) { console.warn('[activeSync] list for as_peers_updated failed:', err.message); }
         }
-        // only when something other than the clocks changed (rule server-push-not-polling): a phone
-        // reports its status every few seconds, and each report re-sent this whole list (8 KB) to
-        // every peer - 17 times in 2 min on the A53 - with only lastSeen / status.at different and the
-        // devices in a new order
-        const key = peersKey(data);
-        if (key === lastPeersKey) return;
-        lastPeersKey = key;
-        // the pages watching Explorer's Network folder (DreamOS computers and their shares, modules/networkShares.js)
-        try { require('./networkShares').peersChanged(globalResources, server, data); } catch (err) { console.warn('[activeSync] network list:', err.message); }
-        // a phone's own report (battery, the program in front, Wi-Fi) no longer comes back to that same
-        // phone as the whole list (#890): its sockets get it only when something it reads changed. The
-        // app's background link reads no peer list at all (ActiveSyncLink); desktops get every change.
-        const ownSend = new Map(); // deviceId -> whether its sockets get this one
-        server.broadcast({ type: 'as_peers_updated', data, timestamp: new Date().toISOString() }, (info) => {
-            if (!(info && info.authenticated && info.userType === 'admin' && info.as)) return false;
-            if (info.as.speaker === 'service' || info.as.speaker === 'host') return false;
-            if (info.as.kind !== 'device') return true;
-            const id = info.as.id;
-            if (!ownSend.has(id)) {
-                const own = ownPeersKey(data, id);
-                ownSend.set(id, lastOwnKeys.get(id) !== own);
-                lastOwnKeys.set(id, own);
-            }
-            return ownSend.get(id);
-        });
     }, BROADCAST_DEBOUNCE_MS);
     if (typeof broadcastTimer.unref === 'function') broadcastTimer.unref();
 }
@@ -721,14 +1048,14 @@ function hello(globalResources, wsServer, clientInfo, data) {
         // USB (a cradle), not over the network
         const usbDevice = String(src.usbDevice || '').toLowerCase();
         if (src.link === 'usb' && isPeerId(usbDevice)) { as.link = 'usb'; as.usbDevice = usbDevice; noteContinuity(globalResources, usbDevice); }
+        // a test harness's computer (the emulator lane's partner step): not one of the household's computers (#1334)
+        if (src.testLane === true) as.testLane = true;
         clientInfo.as = as;
+        sweepTestDevices(server, null);
         scheduleUpdated(globalResources, server);
-        return { success: true, kind, id, name, ...list(globalResources, server) };
+        // a test device's DeX window is answered with that device's own view, every other computer with the household's
+        return { success: true, kind, id, name, ...listFor(globalResources, server, clientInfo) };
     }
-    const d = getDb(globalResources);
-    const prev = rowOf(globalResources, id);
-    // the background link is a partner's: a guest is connected only while its app is open (Yukimi, Nov 12)
-    if (as.speaker === 'service' && !(prev && prev.partner)) throw fail('NOT_PARTNER', 'The background connection needs a partnership.');
     // a DreamOS machine: only its own Miniport's sub, signed in as an administrator, for the device id it connected with
     // (cafeReadyHost.checkHello throws what is wrong); partnered by that sign-in
     const host = as.speaker === 'host';
@@ -736,22 +1063,45 @@ function hello(globalResources, wsServer, clientInfo, data) {
     const model = clampString(src.model, 64);
     const os = clampString(src.os, 64);
     const app = clampString(src.app, 64);
+    const said = sanitizeStatus(src.status);
+    // a test device is told apart here, before anything is written (#1334)
+    const lane = sortHello(globalResources, { id, name, model, platform: host ? 'cafeready' : '', vendor: said && said.host ? said.host.vendor : '' });
+    if (lane.test) adoptById(globalResources, id);
+    const prev = rowOf(globalResources, id);
+    // a test device is the test lane's partner at once, on an administrator's sign-in only (from anyone else that would
+    // be a way up: it waits as pending), while nobody has decided (new, or partner null); one that was ended (0) stays so
+    const lanePartner = lane.test && clientInfo.userType === 'admin' && (!prev || prev.partner == null);
+    // the background link is a partner's: a guest is connected only while its app is open (Yukimi, Nov 12)
+    if (as.speaker === 'service' && !(lanePartner || (prev && prev.partner))) throw fail('NOT_PARTNER', 'The background connection needs a partnership.');
+    const hostPermissions = () => JSON.stringify(require('./cafeReadyHost').PERMISSIONS);
+    const fields = { last_seen: now };
+    if (!lane.guarded && model) fields.model = model;
+    if (os) fields.os = os;
+    if (app) fields.app = app;
+    if (said && !lane.guarded) fields.last_status = JSON.stringify(said);
+    if (host) {
+        fields.platform = 'cafeready';
+        if (!lane.test) fields.partner = 1;
+        if (!lane.test || lanePartner || (prev && prev.partner)) fields.permissions = hostPermissions();
+        as.platform = 'cafeready';
+    }
+    if (lanePartner) {
+        fields.partner = 1;
+        if (!host) fields.permissions = JSON.stringify(PERMISSIONS);
+    }
     if (prev) {
         // a partner keeps the name its partnership gave it; a guest's own name follows the phone, and
-        // so does a partner's once its owner names it in Settings > About > Device ID (#829)
-        d.prepare('UPDATE as_devices SET name = ?, model = ?, os = ?, app = ?, last_seen = ? WHERE device_id = ?')
-            .run(prev.partner && src.nameSet !== true ? prev.name : name, model || prev.model, os || prev.os, app || prev.app, now, id);
+        // so does a partner's once its owner names it in Settings > About > Device ID (#829). A test
+        // device keeps the name the test lane has for it
+        if (!lane.test) fields.name = prev.partner && src.nameSet !== true ? prev.name : name;
+        writeRow(globalResources, id, fields, { persist: 'now' });
     } else {
-        d.prepare('INSERT INTO as_devices (device_id, name, model, os, app, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)')
-            .run(id, name, model, os, app, now, now);
-    }
-    if (host) {
-        d.prepare("UPDATE as_devices SET platform = 'cafeready', partner = 1, permissions = ? WHERE device_id = ?").run(JSON.stringify(require('./cafeReadyHost').PERMISSIONS), id);
-        as.platform = 'cafeready';
+        createRow(globalResources, id, Object.assign(fields, { name, first_seen: now }));
     }
     const row = rowOf(globalResources, id);
     as.name = row.name;
-    as.status = sanitizeStatus(src.status);
+    as.status = said;
+    if (lane.guarded) as.guarded = true;
     // sockets of one device share its state: a second socket joins what the first one settled
     const existing = deviceSession(server, id);
     if (row.partner) {
@@ -766,7 +1116,7 @@ function hello(globalResources, wsServer, clientInfo, data) {
     const wasOnline = !!existing;
     clientInfo.as = as;
     if (wasOnline) probeOlderLinks(server, id, clientInfo);
-    if (as.status) d.prepare('UPDATE as_devices SET last_status = ? WHERE device_id = ?').run(JSON.stringify(as.status), id);
+    sweepTestDevices(server, id);
     if (as.status && as.status.continuity) noteContinuity(globalResources, id);
     if (!wasOnline) logEvent(globalResources, id, 'info', `Connected (${as.speaker})`);
     // ADB on 5555 (#818): look for the phone where this socket comes from (a DreamOS machine has none)
@@ -779,7 +1129,7 @@ function hello(globalResources, wsServer, clientInfo, data) {
     const test = kind === 'device' && isTestDevice(id);
     if (test) { try { require('./testDevices').noteHello({ id, sessionId: clientInfo.sessionId }); } catch (_) { /* no fence module */ } }
     if (kind === 'device') for (const fn of helloTaps) { try { fn({ id, speaker: as.speaker, session: as.session, name: as.name, sessionId: clientInfo.sessionId || null, test, ops: as.ops, nfv: as.nfv }); } catch (_) { /* the tap's own fault */ } }
-    const peers = list(globalResources, server);
+    const peers = test ? ownView(globalResources, server, id) : list(globalResources, server);
     // the page has this list now: the broadcast its hello sets off is not sent back to it unless it
     // differs in what the page reads (scheduleUpdated)
     if (as.speaker !== 'service') lastOwnKeys.set(id, ownPeersKey(peers, id));
@@ -796,13 +1146,14 @@ function status(globalResources, wsServer, clientInfo, data) {
     clientInfo.as.status = st;
     const id = clientInfo.as.id;
     // a DreamOS machine on a phone's hotspot (host.tether, CaféReady wwan.rs): which partner phone it is (#953)
-    if (st.host) { try { require('./phoneTether').hostStatus(globalResources, wsServerOf(globalResources, wsServer), id, clientInfo.as.name, st.host.tether); } catch (err) { console.warn('[activeSync] tether:', err.message); } }
+    // a test machine's report never puts it on one of the household's phones (#1334)
+    if (st.host && !isTestDevice(id)) { try { require('./phoneTether').hostStatus(globalResources, wsServerOf(globalResources, wsServer), id, clientInfo.as.name, st.host.tether); } catch (err) { console.warn('[activeSync] tether:', err.message); } }
     if (st.continuity) noteContinuity(globalResources, id);
     const last = statusWrites.get(id) || 0;
     if (st.at - last >= STATUS_WRITE_MS) {
         statusWrites.set(id, st.at);
         try {
-            getDb(globalResources).prepare('UPDATE as_devices SET last_status = ?, last_seen = ? WHERE device_id = ?').run(JSON.stringify(st), st.at, id);
+            writeRow(globalResources, id, clientInfo.as.guarded ? { last_seen: st.at } : { last_status: JSON.stringify(st), last_seen: st.at });
         } catch (err) {
             console.warn('[activeSync] status write failed:', err.message);
         }
@@ -827,9 +1178,9 @@ function onSocketClosed(globalResources, wsServer, clientInfo) {
         // a DreamOS machine's last socket gone: it is on no phone's hotspot any more as far as we know (#953)
         if (as.speaker === 'host' && !liveSockets(server, 'device', as.id).some((s) => s.info !== clientInfo)) { try { require('./phoneTether').hostGone(globalResources, server, as.id); } catch (_) { /* none */ } }
         try {
-            const d = getDb(globalResources);
-            if (as.status) d.prepare('UPDATE as_devices SET last_status = ?, last_seen = ? WHERE device_id = ?').run(JSON.stringify(as.status), Date.now(), as.id);
-            else d.prepare('UPDATE as_devices SET last_seen = ? WHERE device_id = ?').run(Date.now(), as.id);
+            const fields = { last_seen: Date.now() };
+            if (as.status && !as.guarded) fields.last_status = JSON.stringify(as.status);
+            writeRow(globalResources, as.id, fields, { persist: 'now' });
             statusWrites.delete(as.id);
             // the closing socket is already out of wsServer.clients (or about to be): count the others
             const others = liveSockets(server, 'device', as.id).filter((s) => s.info !== clientInfo);
@@ -1157,6 +1508,8 @@ function onPartnershipEnded(fn) { if (typeof fn === 'function') endTaps.push(fn)
 function tellComputers(globalResources, wsServer, name, detail) {
     const server = wsServerOf(globalResources, wsServer);
     if (!server) return 0;
+    // news about a test device is not the computers' (#1334)
+    if (detail && detail.deviceId && isTestDevice(detail.deviceId)) return 0;
     const msg = { type: 'as_event', data: { from: { kind: 'server', id: '', name: '' }, event: name, detail }, timestamp: new Date().toISOString() };
     let n = 0;
     for (const s of liveSockets(server, 'computer')) {
@@ -1165,8 +1518,8 @@ function tellComputers(globalResources, wsServer, name, detail) {
     }
     return n;
 }
-/** A test device (modules/testDevices.js): partnered for tests, fenced from the household's notices. */
-function isTestDevice(id) { try { return require('./testDevices').isTestDevice(id); } catch (_) { return false; } }
+/** A test device (modules/testDevices.js): fenced from the household's notices, store, lists and news. */
+function isTestDevice(id) { return testDevices.isTestDevice(id); }
 /** fn({ id, speaker, session, name }) after a device's socket said as_hello (before its reply is sent). */
 function onDeviceHello(fn) { if (typeof fn === 'function') helloTaps.push(fn); }
 /** fn(eventName, detail, device) for every event a partnered device sends (after its permission check). */
@@ -1187,12 +1540,14 @@ function event(globalResources, wsServer, clientInfo, data) {
         if (need && !sess.permissions.includes(need)) return 0;
     }
     // a test device's Android notifications are its own (the emulator's test posts): not taken into the household's
-    // Messaging accounts or Melaton Videos, not mirrored on computers; only its delivery confirmations are heard
+    // Messaging accounts or Melaton Videos; only its delivery confirmations are heard. Nothing of it reaches a computer
     const test = me.kind === 'device' && isTestDevice(me.id);
     if (test && name !== 'inbox.posted' && /^notify\./.test(name)) return 0;
     // server modules that take a device's news themselves (Melaton Videos imports notify.posted, #861)
     // the app's report that its staged update waits for a silent install route (modules/androidAppUpdatePush.js, #1309) is heard from a test device too: the lane proves it
     if (me.kind === 'device') for (const tap of deviceEventTaps) { if (test && name !== 'inbox.posted' && name !== 'apps.updateWaiting') continue; try { tap(name, src.detail == null ? null : src.detail, me); } catch (_) { /* the tap's own fault */ } }
+    // a test device's news is the server's alone (#1334): no computer hears of it
+    if (test) return 0;
     // news for the server only: a notice's delivery confirmation (notificationInbox, #908) goes to no computer
     if (me.kind === 'device' && (name === 'inbox.posted' || name === 'apps.updateWaiting')) return 0;
     let detail = src.detail == null ? null : src.detail;
@@ -1250,7 +1605,8 @@ async function partnership(globalResources, wsServer, clientInfo, data) {
         if (!target) throw fail('OFFLINE', 'The device is not connected.');
         const name = clampString(src.name, 64).replace(/[^\p{L}\p{N} _-]/gu, '') || row.name;
         const syncItems = cleanList(src.syncItems, SYNC_ITEMS);
-        if (mode === 'partner') {
+        // the household's names must be unique among themselves; a test device's name is the registry's own (#1334)
+        if (mode === 'partner' && !isTestDevice(deviceId)) {
             const clash = d.prepare('SELECT 1 FROM as_devices WHERE partner = 1 AND device_id <> ? AND lower(name) = lower(?)').get(deviceId, name);
             if (clash) throw fail('NAME_IN_USE', 'This device name is already in use.  Please choose a different name.');
         }
@@ -1264,8 +1620,7 @@ async function partnership(globalResources, wsServer, clientInfo, data) {
         const allowed = mode === 'partner' ? PERMISSIONS : GUEST_PERMISSIONS;
         const permissions = Array.isArray(answer.permissions) ? cleanList(answer.permissions, allowed) : allowed.slice();
         if (mode === 'partner') {
-            d.prepare('UPDATE as_devices SET partner = 1, name = ?, permissions = ?, sync_items = ? WHERE device_id = ?')
-                .run(name, JSON.stringify(permissions), JSON.stringify(syncItems), deviceId);
+            writeRow(globalResources, deviceId, { partner: 1, name, permissions: JSON.stringify(permissions), sync_items: JSON.stringify(syncItems) });
             logEvent(globalResources, deviceId, 'info', `Partnership set up as "${name}"`);
         } else {
             logEvent(globalResources, deviceId, 'info', 'Connected without a partnership');
@@ -1279,27 +1634,26 @@ async function partnership(globalResources, wsServer, clientInfo, data) {
 
     if (action === 'update') {
         if (!row.partner) throw fail('NOT_PARTNER', 'The device has no partnership.');
-        const sets = [];
-        const vals = [];
+        const changes = {};
         if (me.kind === 'computer') {
             if (src.name != null) {
                 const name = clampString(src.name, 64).replace(/[^\p{L}\p{N} _-]/gu, '');
                 if (!name) throw fail('BAD_NAME', 'Please enter a name for your device.');
-                const clash = d.prepare('SELECT 1 FROM as_devices WHERE partner = 1 AND device_id <> ? AND lower(name) = lower(?)').get(deviceId, name);
+                const clash = !isTestDevice(deviceId) && d.prepare('SELECT 1 FROM as_devices WHERE partner = 1 AND device_id <> ? AND lower(name) = lower(?)').get(deviceId, name);
                 if (clash) throw fail('NAME_IN_USE', 'This device name is already in use.  Please choose a different name.');
-                sets.push('name = ?'); vals.push(name);
+                changes.name = name;
             }
-            if (src.syncItems != null) { sets.push('sync_items = ?'); vals.push(JSON.stringify(cleanList(src.syncItems, SYNC_ITEMS))); }
+            if (src.syncItems != null) changes.sync_items = JSON.stringify(cleanList(src.syncItems, SYNC_ITEMS));
             if (isPlainObject(src.settings)) {
                 if (jsonBytes(src.settings) > 32 * 1024) throw fail('TOO_LARGE', 'settings are too large');
-                sets.push('settings = ?'); vals.push(JSON.stringify(Object.assign(parseJson(row.settings, {}), src.settings)));
+                changes.settings = JSON.stringify(Object.assign(parseJson(row.settings, {}), src.settings));
             }
         } else if (src.permissions != null) {
             // the phone narrows or widens what it allows
-            sets.push('permissions = ?'); vals.push(JSON.stringify(cleanList(src.permissions, PERMISSIONS)));
+            changes.permissions = JSON.stringify(cleanList(src.permissions, PERMISSIONS));
         }
-        if (!sets.length) throw fail('NOTHING', 'Nothing to change.');
-        d.prepare(`UPDATE as_devices SET ${sets.join(', ')} WHERE device_id = ?`).run(...vals, deviceId);
+        if (!Object.keys(changes).length) throw fail('NOTHING', 'Nothing to change.');
+        writeRow(globalResources, deviceId, changes);
         const next = rowOf(globalResources, deviceId);
         const permissions = cleanList(parseJson(next.permissions, []), PERMISSIONS);
         if (deviceSession(server, deviceId)) {
@@ -1312,12 +1666,12 @@ async function partnership(globalResources, wsServer, clientInfo, data) {
     }
 
     if (action === 'end') {
-        d.prepare("UPDATE as_devices SET partner = 0, permissions = '[]', sync_items = '[]', settings = '{}', last_sync = NULL WHERE device_id = ?").run(deviceId);
+        writeRow(globalResources, deviceId, { partner: 0, permissions: '[]', sync_items: '[]', settings: '{}', last_sync: null });
         releaseQueue(globalResources, deviceId);
         if (row.partner) logEvent(globalResources, deviceId, 'info', me.kind === 'device' ? 'Partnership ended on the device' : 'Partnership ended');
         // no partnership, no primary device and no notification settings (#979)
         if (primaryOf(globalResources) === deviceId) setPrimary(globalResources, server, '');
-        for (const fn of endTaps) { try { fn(deviceId); } catch (_) { /* the tap's own fault */ } }
+        endTapsFor(deviceId);
         if (deviceSession(server, deviceId)) {
             setDeviceSession(server, deviceId, 'pending', []);
             notifyDevice(server, deviceId, 'partnership.changed', { session: 'pending', permissions: [] }, clientInfo);
@@ -1527,14 +1881,14 @@ function noteSynced(globalResources, wsServer, deviceId, op) {
         const row = rowOf(globalResources, deviceId);
         if (!row || !row.partner) return;
         syncWrites.set(deviceId, now);
-        getDb(globalResources).prepare('UPDATE as_devices SET last_sync = ? WHERE device_id = ?').run(now, deviceId);
+        writeRow(globalResources, deviceId, { last_sync: now });
         scheduleUpdated(globalResources, wsServer);
     } catch (err) { console.warn('[activeSync] last sync write failed:', err.message); }
 }
 
 function markSynced(globalResources, wsServer, deviceId, summary) {
     if (!isPeerId(deviceId) || !rowOf(globalResources, deviceId)) return false;
-    getDb(globalResources).prepare('UPDATE as_devices SET last_sync = ? WHERE device_id = ?').run(Date.now(), deviceId);
+    writeRow(globalResources, deviceId, { last_sync: Date.now() });
     if (summary) logEvent(globalResources, deviceId, 'info', summary);
     scheduleUpdated(globalResources, wsServer);
     return true;
@@ -1546,14 +1900,35 @@ function forget(globalResources, wsServer, deviceId) {
     const server = wsServerOf(globalResources, wsServer);
     if (liveSockets(server, 'device', deviceId).length) throw fail('ONLINE', 'Disconnect the device first.');
     const d = getDb(globalResources);
+    if (isTestDevice(deviceId)) return forgetTestDevice(globalResources, server, deviceId);
     const res = d.prepare('DELETE FROM as_devices WHERE device_id = ?').run(deviceId);
     releaseQueue(globalResources, deviceId);
     try { icons().releaseDevice(globalResources, deviceId); } catch (_) { /* none stored */ }
     d.prepare('DELETE FROM as_log WHERE device_id = ?').run(deviceId);
     if (primaryOf(globalResources) === deviceId) setPrimary(globalResources, server, '');
-    for (const fn of endTaps) { try { fn(deviceId); } catch (_) { /* the tap's own fault */ } }
+    endTapsFor(deviceId);
     scheduleUpdated(globalResources, server);
     return res.changes > 0;
+}
+
+/**
+ * Forget a test device: its record, queue, Received Items and pictures go. One the lane would recognise again leaves the registry;
+ * one only marked by hand keeps its mark (else its next hello would put it in the household's store).
+ */
+function forgetTestDevice(globalResources, server, deviceId) {
+    const record = testDevices.row(deviceId);
+    const d = getDb(globalResources);
+    // a row a script left in the store goes with it
+    const res = d.prepare('DELETE FROM as_devices WHERE device_id = ?').run(deviceId);
+    releaseQueue(globalResources, deviceId);
+    d.prepare('DELETE FROM as_received WHERE device_id = ?').run(deviceId);
+    deleteHouseholdRows(d, deviceId);
+    endTapsFor(deviceId);
+    releaseStored(deviceId);
+    if (record && testDevices.classifyRow(record)) testDevices.unmark(deviceId);
+    else testDevices.clearRow(deviceId);
+    scheduleUpdated(globalResources, server);
+    return !!record || res.changes > 0;
 }
 
 function resetForTests(databasesPath) {
@@ -1562,6 +1937,12 @@ function resetForTests(databasesPath) {
     }
     db = null;
     dbPath = null;
+    seenResources = null;
+    serverResources = null;
+    syncWrites.clear();
+    droppedUnopened.clear();
+    lastDexKeys.clear();
+    lastPeersKey = null;
     primaryCache = null;
     lastWsServer = null;
     if (broadcastTimer) clearTimeout(broadcastTimer);
@@ -1571,7 +1952,11 @@ function resetForTests(databasesPath) {
     statusWrites.clear();
     lastOwnKeys.clear();
     lastCreditsKey = null;
-    if (databasesPath) getDb({ getPath: () => databasesPath });
+    if (databasesPath) {
+        // a test that names no registry file gets one beside its database, never the server's
+        testDevices.useDefaultFile(path.join(databasesPath, 'test-devices.json'));
+        getDb({ getPath: () => databasesPath });
+    }
 }
 
 module.exports = {
@@ -1619,6 +2004,7 @@ module.exports = {
     deliverQueue,
     markSynced,
     list,
+    listFor,
     getLog,
     forget,
     logEvent,
