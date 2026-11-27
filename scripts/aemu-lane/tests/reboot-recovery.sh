@@ -39,12 +39,15 @@ while [ $# -gt 0 ]; do
   esac
 done
 mkdir -p "$OUT"
-# the pool row of lane.sh: console port, tunnel (Ruiko's adb server) port
+# the pool row of lane.sh (pool_row): console port, tunnel (Ruiko's adb server) port. Keep it in step with lane.sh; an instance that still
+# runs on old ports has them in $AEMU_LANE_CONFIG/<id>.ports ("<console> <tunnel> <cdp>"), which wins as it does in lane.sh.
 case "$ID" in
-  aemu-fold-1) CONSOLE=5600; TPORT=15101;; aemu-fold-2) CONSOLE=5602; TPORT=15102;;
-  aemu-a53-1) CONSOLE=5610; TPORT=15111;; aemu-a53-2) CONSOLE=5612; TPORT=15112;;
+  aemu-fold-1) CONSOLE=5556; TPORT=15101;; aemu-fold-2) CONSOLE=5558; TPORT=15102;; aemu-fold-3) CONSOLE=5564; TPORT=15103;; aemu-fold-4) CONSOLE=5572; TPORT=15104;;
+  aemu-a53-1) CONSOLE=5560; TPORT=15111;; aemu-a53-2) CONSOLE=5562; TPORT=15112;; aemu-a53-3) CONSOLE=5566; TPORT=15113;; aemu-a53-4) CONSOLE=5568; TPORT=15114;;
   *) echo "not a lane id: $ID" >&2; exit 2;;
 esac
+PORTS_FILE=${AEMU_LANE_CONFIG:-$HOME/.config/aemu-lane}/$ID.ports
+if [ -f "$PORTS_FILE" ]; then read -r pc pt _ < "$PORTS_FILE"; [ -n "${pc:-}" ] && [ -n "${pt:-}" ] && { CONSOLE=$pc; TPORT=$pt; }; fi
 SERIAL=emulator-$CONSOLE
 CHAN_PORT=$((CONSOLE + 101))
 CHAN=127.0.0.1:$CHAN_PORT                  # the console redirect to the app's port, as seen by Ruiko's adb server
@@ -121,7 +124,9 @@ if [ "$REBOOT" = 1 ]; then
   echo "rebooting the guest (svc power reboot) at $(date +%T) ..."
   G 'svc power reboot' > "$OUT/reboot.txt" 2>&1 || true
   sleep 20
-  for _ in $(seq 1 60); do [ "$(ADB -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ] && break; sleep 4; done
+  # booted? through G: the lane's adb link while it is up, else the redirect to the app's port once the app opened it, else the app's relay.
+  # (Not the lane's link alone: the app moves adbd off 5555, which takes that link offline for good, and the loop would run its whole 240 s.)
+  for _ in $(seq 1 60); do [ "$(G 'getprop sys.boot_completed' 2>/dev/null | tail -1)" = 1 ] && break; sleep 4; done
 fi
 T_CHECK=$(date +%s)
 echo "from here nothing is touched; guest uptime $(uptime_s) s"
@@ -136,7 +141,9 @@ TITLE="reboot-test $TS"
 api POST /api/test-devices/notice "{\"id\":\"$NID\",\"mode\":\"get\",\"title\":\"$TITLE\",\"text\":\"sent after the reboot, nobody touched the phone\"}" > "$OUT/notice.json" 2>&1
 api POST "/api/test-devices/$DEV/catch-up" > "$OUT/catch-up.json" 2>&1
 wait_for notice  "the notice \"$TITLE\" reached this device and the app posted it (server delivery row posted)" delivery_posted "$NID"
-wait_for notice  "the notice is in Android's notifications (dumpsys notification)"        notif_has "$TITLE"
+# Since #1321 no Dreamscape notice is an Android notification (the app's own box, or the "..." holder when no box can show): the server's
+# delivery row (the app's as_event inbox.posted, how box|held) is the proof that the app took it; Android must hold NO copy of it.
+if notif_has "$TITLE"; then result FAIL notice "an Android notification carries \"$TITLE\" (#1321: none may)"; else result PASS notice "Android holds no copy of the notice (#1321: the app's own box / holder)"; fi
 L shade "$OUT/shade.png" > "$OUT/shade.json" 2>&1 && echo "      shade shot: $OUT/shade.png (only when the lane's adb link is up)"
 api POST "/api/test-devices/notice/$NID/clear" > /dev/null 2>&1
 wait_for bars    "Melaton Bars' accessibility service is bound"                           c_bars

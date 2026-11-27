@@ -10,11 +10,13 @@
 #   2  mark              NOW on the server's clock (the sound check reads logs since then)
 #   3  one text notice   the real shape of a text (cls sms, app messaging, data.kind sms + accountId + chatGuid, id sms:<account>:<chat>),
 #                        for THIS device only (POST /api/test-devices/<id>/notice -> that device's catch-up)
-#   4  shade             the notification shade is opened and captured; notifs lists the app's posted notification
+#   4  confirmation      the app confirmed the notice to the server (delivery row posted, how box|held: since #1321 the app's own box or the
+#                        "..." holder, never an Android notification); the shade is captured and notifs must hold no copy of the text
 #   5  sound             `sound --since NOW`: exactly one decision, naming the sms event's sound (never an Alarm-family file),
 #                        nothing alarm-like started. The lane runs -no-audio with the ringer silent, so the app logs what it WOULD
 #                        play ("ringer 0, sound online.mp3") and plays nothing: the decision is the proof
-#   6  server clear      POST /api/test-devices/notice/<id>/clear: the app's Android notification goes (notifs empty, shade shot)
+#   6  server clear      POST /api/test-devices/notice/<id>/clear answers success; Android still holds no copy (notifs, shade shot). That the app's
+#                        own "..." holder let go of it is NOT asserted (no Android surface shows it while the page is killed)
 # Prints PASS / FAIL per check; exit 0 only when all passed. Needs the lease of <lane-id> (coord_device_request) held by $COORD_AGENT_ID.
 set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -31,7 +33,7 @@ ok() { echo "PASS  $*"; }
 no() { echo "FAIL  $*"; FAIL=1; }
 jq_() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)" 2>/dev/null; }
 
-ACCOUNT=lane-acct; CHAT=lane-chat-1272; NID="sms:$ACCOUNT:$CHAT"
+ACCOUNT=lane-acct; CHAT=lane-chat-1272-$(date +%H%M%S); NID="sms:$ACCOUNT:$CHAT"   # a new id every run: a repeated id with the same words is "dup" and draws nothing
 
 # ---- 1 page killed
 say "1. page killed (the app process is killed; the app comes back for its services only)"
@@ -43,7 +45,7 @@ for i in $(seq 1 24); do   # up to 2 minutes
   sleep 5
   pid=$(L sh 'pidof jp.net.seventhreeseven.dreamscape' 2>/dev/null | tr -d '\r' | awk '{print $1}')
   [ -n "$pid" ] || continue
-  rend=$(L sh "ps -A -o NAME | grep -c -E 'sandboxed_process|webview_service'" | tr -d '\r')
+  rend=$(L sh "ps -A -o NAME | grep -E 'sandboxed_process|webview_service' | grep -vc js_sandbox" | tr -d '\r')   # the WebView's JS sandbox service (js_sandboxed_process0) is not a page renderer: the app keeps it for its services
   top=$(L sh "dumpsys activity activities | grep -m1 topResumedActivity" | tr -d '\r')
   case "$top" in *dreamscape*) continue;; esac
   [ "${rend:-0}" = 0 ] && { up=$pid; break; }
@@ -75,16 +77,27 @@ PY
 say "3. one text notice for this device only"
 L notice push "$body" > "$OUT/notice.json"; cat "$OUT/notice.json" | cut -c1-300
 sleep 10
-# ---- 4 shade, notifs
-say "4. shade and the app's posted notifications"
+# ---- 4 shade, notifs, the app's confirmation
+# Since #1321 no Dreamscape notice is an Android notification: the app shows it in its own WM box over the program in front (how: box) or,
+# when no box can show (the page is killed, so Melaton Bars have no bars to draw it on; the lock screen), keeps it in the "..." holder
+# (how: held) and sounds once. Both are the app's confirmation to the server (as_event inbox.posted { id, how }). The Android shade must
+# hold NO copy of the text: only the app's persistent service notification.
+say "4. the app's confirmation, the shade (no Android copy) and the app's posted notifications"
 L notifs > "$OUT/notifs-after.json"
 L shade "$OUT/shade-with-notice.png" > "$OUT/shade.json"
-python3 - "$OUT/notifs-after.json" <<'PY' && ok "notifs: the sms notice is posted ($(python3 -c "import json,sys; print([ (n.get('title'),n.get('channel')) for n in json.load(open(sys.argv[1]))][:3])" "$OUT/notifs-after.json"))" || no "notifs: no posted notification with the text (see $OUT/notifs-after.json)"
+curl -sS -m 20 -H "Authorization: Bearer $key" -H "X-StaticForge-App-Key: $key" -H 'User-Agent: claude-code' "http://127.0.0.1:9220/api/test-devices/deliveries?device=$DEV" > "$OUT/deliveries.json"
+python3 - "$OUT/deliveries.json" "$NID" <<'PY' && ok "the app confirmed the notice to the server ($(python3 -c "import json,sys; print([ (d.get('how'), d.get('postedAt')) for d in json.load(open(sys.argv[1])).get('deliveries',[]) if d.get('id')==sys.argv[2]])" "$OUT/deliveries.json" "$NID"))" || no "the delivery row of $NID has no posted/how box|held (see $OUT/deliveries.json)"
+import json,sys
+rows=[d for d in json.load(open(sys.argv[1])).get('deliveries',[]) if d.get('id')==sys.argv[2]]
+sys.exit(0 if rows and rows[0].get('postedAt') and rows[0].get('how') in ('box','held') else 1)
+PY
+python3 - "$OUT/notifs-after.json" <<'PY' && ok "notifs: no Android notification carries the text (only $(python3 -c "import json,sys; print([ n.get('title') for n in json.load(open(sys.argv[1]))])" "$OUT/notifs-after.json"))" || no "an Android notification carries the sms text (#1321: none may; see $OUT/notifs-after.json)"
 import json,sys
 n=json.load(open(sys.argv[1]))
-sys.exit(0 if any('Text' in (x.get('title') or '') or 'acceptance' in (x.get('text') or '') for x in n) else 1)
+sys.exit(1 if any('Text' in (x.get('title') or '') or 'acceptance' in (x.get('text') or '') for x in n) else 0)
 PY
-say "shade shot: $OUT/shade-with-notice.png"
+say "shade shot (the Android shade, no copy of the text expected): $OUT/shade-with-notice.png"
+L logcat 120 | grep -E 'InboxNotifier|NoteAlerts' | cut -c1-240 > "$OUT/app-log.txt"; say "app log lines: $OUT/app-log.txt"
 
 # ---- 5 sound
 say "5. sound since NOW"
@@ -109,7 +122,7 @@ L notice clear "$NID" > "$OUT/clear.json"; cat "$OUT/clear.json"; echo
 sleep 6
 L notifs > "$OUT/notifs-cleared.json"
 L shade "$OUT/shade-cleared.png" >/dev/null
-python3 - "$OUT/notifs-cleared.json" <<'PY' && ok "after the clear the sms notification is gone" || no "the sms notification is still posted after the server clear"
+python3 - "$OUT/notifs-cleared.json" <<'PY' && ok "server clear answered success and Android holds no copy of the sms notice (the app's own holder is not an Android notification: not asserted here)" || no "the sms notification is posted after the server clear"
 import json,sys
 n=json.load(open(sys.argv[1]))
 sys.exit(1 if any('Text' in (x.get('title') or '') or 'acceptance' in (x.get('text') or '') for x in n) else 0)

@@ -1,0 +1,193 @@
+11-27 01:16:12.810  1694  1694 D ShizukuProvider: Initialize Sui: false
+11-27 01:16:16.148  1694  1694 I ActiveSyncBoot: notification listener connected, the link's service not running: service started for the link (battery optimisation exempt: false)
+11-27 01:16:16.923  1694  1694 I ActiveSyncBoot: Melaton Bars connected, the link's service not running: service started for the link (battery optimisation exempt: false)
+11-27 01:16:18.840  1084  1156 D AlphabeticIndexCompat: computeSectionName: cs: Shizuku sectionName: S
+11-27 01:16:24.388  1694  2086 I AdbWireless: service adb-EMULATOR37X2X13X0-QnH1Tn port 45129 at 10.0.2.18, fe80::9e3e:68d5:3ae0:abf8%wlan0, fec0::3538:e2d:f0e1:56, fec0::fa14:78bb:6882:1197: another device
+11-27 01:16:24.388  1694  2086 I AdbWireless: service adb-EMULATOR37X2X13X0-cJkm7g port 34831 at 10.0.2.23, fe80::c104:8126:c23b:bf62%wlan0, fec0::f05f:6e9c:ae5d:7d4f: another device
+11-27 01:16:24.388  1694  2086 I AdbWireless: service adb-EMULATOR37X2X13X0-iMdWGs port 38775 at 10.0.2.22, fe80::cee7:1307:366d:a5f3%wlan0, fec0::f950:eb5:dbc7:78e3, fec0::33e6:1efc:d098:8068: another device
+11-27 01:16:24.388  1694  2086 I AdbWireless: service adb-EMULATOR37X2X13X0-NPR9pm port 34915 at 10.0.2.24, fec0::78ed:7ca9:47ca:17fb, fe80::74e:2278:d658:354d%wlan0: this phone
+11-27 01:16:25.171  1694  2161 I LocalAdb: tcpip:5556 over TLS port 34915: restarting in TCP mode port: 5556 (adbd closed the connection: false)
+11-27 01:16:26.048  1694  2161 I LocalAdb: restore over Wireless debugging: restored
+11-27 01:16:26.291  1694  2161 I LocalAdb: setprop persist.adb.tcp.port 5556 (was ''): exit 1 Failed to set property 'persist.adb.tcp.port' to '5556'.
+11-27 01:16:26.291  1694  2161 I LocalAdb: See dmesg for error reason.
+11-27 01:16:26.354  2407  2407 I adbd    : adbd service requested 'shell,v2,raw:pidof shizuku_server'
+11-27 01:16:26.631  1694  2161 I LocalAdb: start Shizuku: its native starter, lib/x86_64
+11-27 01:16:26.857  2515  2515 D Shizuku : start_server
+11-27 01:16:26.862  2520  2520 D Shizuku : child
+11-27 01:16:26.862  2520  2520 D Shizuku : exec app_process
+11-27 01:16:27.096  2520  2520 I shizuku_server: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+11-27 01:16:27.098  2520  2520 I shizuku_server: Using generational CollectorTypeCMC GC.
+11-27 01:16:27.576  2520  2520 D shizuku_server: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/10/icu") succeeded. 
+11-27 01:16:27.576  2520  2520 D shizuku_server: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt78l.dat
+11-27 01:16:27.581  2520  2520 I shizuku_server: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+11-27 01:16:27.583  2520  2520 W shizuku_server: Unexpected CPU variant for x86: x86_64.
+11-27 01:16:27.583  2520  2520 W shizuku_server: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+11-27 01:16:27.590  2520  2520 W shizuku_server: ClassLoaderContext shared library size mismatch. Expected=2, found=0 (PCL[]{PCL[/system_ext/framework/androidx.window.extensions.jar*1635530414]#PCL[/system_ext/framework/androidx.window.sidecar.jar*3481082032]} | PCL[])
+11-27 01:16:27.658  2520  2520 D AndroidRuntime: Calling main entry rikka.shizuku.server.ShizukuService
+11-27 01:16:27.810  2520  2548 V BinderSender: Uid 10181 starts
+11-27 01:16:27.819  2520  2548 V BinderSender: Uid 10181 already starts
+11-27 01:16:27.934   673   711 I ActivityManager: Start proc 2564:moe.shizuku.privileged.api/u0a234 for content provider {moe.shizuku.privileged.api/moe.shizuku.manager.ShizukuManagerProvider}
+11-27 01:16:28.178  2520  2547 V BinderSender: Uid 10234 starts
+11-27 01:16:29.959  2564  2582 I ShizukuApplication: attachApplication
+11-27 01:16:29.982  2520  2547 V BinderSender: Uid 10228 starts
+11-27 01:16:29.999  2520  2547 V BinderSender: Uid 10155 starts
+11-27 01:16:30.004  2520  2547 V BinderSender: Uid 10234 already starts
+11-27 01:16:31.297  2520  2636 V BinderSender: Uid 10171 starts
+11-27 01:16:31.304  2520  2636 V BinderSender: Uid 10110 starts
+11-27 01:16:32.134  2520  2547 V BinderSender: Uid 10159 starts
+11-27 01:16:32.166  2520  2547 V BinderSender: Uid 10156 starts
+11-27 01:16:32.880  2520  2636 V BinderSender: Uid 10159 already starts
+11-27 01:16:32.934  2407  2407 I adbd    : adbd service requested 'shell,v2,raw:pidof shizuku_server'
+11-27 01:16:33.054  1694  2161 I LocalAdb: start Shizuku: server running (pid 2520), no binder with the app yet; starter said: vs2cA==/moe.shizuku.privileged.api-WNKs9f1HiEY3fdx2ownylA==/base.apk
+11-27 01:16:33.054  1694  2161 I LocalAdb: info: starting server...
+11-27 01:16:33.054  1694  2161 I LocalAdb: info: shizuku_server pid is 2520
+11-27 01:16:33.054  1694  2161 I LocalAdb: info: shizuku_starter exit with 0
+11-27 01:16:33.525  1694  2161 I LocalAdb: pass (fresh): listening=true shizukuRunning=false shizukuUsable=false wifi=true wireless=true restore=true last=-
+11-27 01:16:34.490  2520  2636 V BinderSender: Uid 10171 already starts
+11-27 01:16:34.741  2520  2636 V BinderSender: Uid 10156 already starts
+11-27 01:16:36.096  2520  2636 V BinderSender: Uid 10156 already starts
+11-27 01:16:36.373  2520  2636 V BinderSender: Uid 10148 starts
+11-27 01:16:36.614  2520  2636 V BinderSender: Uid 10219 starts
+11-27 01:16:36.994  2520  2636 V BinderSender: Uid 10159 already starts
+11-27 01:16:37.443  2520  2636 V BinderSender: Uid 10148 already starts
+11-27 01:16:37.567  2520  2636 V BinderSender: Uid 10148 already starts
+11-27 01:16:37.817  2520  2636 V BinderSender: Uid 10148 already starts
+11-27 01:16:37.976  2520  2636 V BinderSender: Uid 10219 already starts
+11-27 01:16:38.169  2520  2636 V BinderSender: Uid 10144 starts
+11-27 01:16:38.263  2520  2636 V BinderSender: Uid 10234 already starts
+11-27 01:16:38.460  2520  2547 V BinderSender: Uid 10144 already starts
+11-27 01:16:38.919  2520  2636 V BinderSender: Uid 10110 already starts
+11-27 01:16:38.924  2520  2636 V BinderSender: Uid 10143 starts
+11-27 01:16:39.136  2520  2547 V BinderSender: Uid 10111 starts
+11-27 01:16:39.168  2520  2547 V BinderSender: Uid 10143 already starts
+11-27 01:16:39.168  2520  2547 V BinderSender: Uid 10143 already starts
+11-27 01:16:39.450  2520  2636 V BinderSender: Uid 10186 starts
+11-27 01:16:39.466  2520  2547 V BinderSender: Uid 10186 already starts
+11-27 01:16:39.466  2520  2547 V BinderSender: Uid 10186 already starts
+11-27 01:16:39.649  2520  2547 V BinderSender: Uid 10122 starts
+11-27 01:16:39.786  2520  2547 V BinderSender: Uid 10122 already starts
+11-27 01:16:39.792  2520  2547 V BinderSender: Uid 10122 already starts
+11-27 01:16:40.139  2520  2547 V BinderSender: Uid 10112 starts
+11-27 01:16:40.284  2520  2547 V BinderSender: Uid 10171 already starts
+11-27 01:16:40.348  2520  2547 V BinderSender: Uid 10182 starts
+11-27 01:16:40.398  2520  2547 V BinderSender: Uid 10104 starts
+11-27 01:16:40.615  2520  2636 V BinderSender: Uid 10104 already starts
+11-27 01:16:40.615  2520  2636 V BinderSender: Uid 10104 already starts
+11-27 01:16:40.860  2520  2636 V BinderSender: Uid 2000 starts
+11-27 01:16:41.034  2520  2636 V BinderSender: Uid 2000 already starts
+11-27 01:16:41.043  2520  2636 V BinderSender: Uid 2000 already starts
+11-27 01:16:41.201  1694  1694 I ActiveSyncBoot: boot: service started for the link (battery optimisation exempt: false)
+11-27 01:16:41.204  2520  2636 V BinderSender: Uid 10158 starts
+11-27 01:16:41.232  2520  2547 V BinderSender: Uid 10201 starts
+11-27 01:16:41.248  2520  2547 V BinderSender: Uid 10182 already starts
+11-27 01:16:41.538  2520  2547 V BinderSender: Uid 10181 already starts
+11-27 01:16:41.695  2520  2547 V BinderSender: Uid 10158 already starts
+11-27 01:16:41.695  2520  2547 V BinderSender: Uid 10158 already starts
+11-27 01:16:41.844  2520  2636 V BinderSender: Uid 10182 already starts
+11-27 01:16:42.131  2520  2636 V BinderSender: Uid 10147 starts
+11-27 01:16:42.240  2520  2547 V BinderSender: Uid 10147 already starts
+11-27 01:16:42.249  2520  2547 V BinderSender: Uid 10147 already starts
+11-27 01:16:42.494  2520  2547 V BinderSender: Uid 10205 starts
+11-27 01:16:42.733  2520  2547 V BinderSender: Uid 10205 already starts
+11-27 01:16:42.738  2520  2547 V BinderSender: Uid 10205 already starts
+11-27 01:16:43.316  2520  2547 V BinderSender: Uid 10213 starts
+11-27 01:16:43.441  2520  2547 V BinderSender: Uid 10110 already starts
+11-27 01:16:43.645  2520  2547 V BinderSender: Uid 10213 already starts
+11-27 01:16:43.646  2520  2547 V BinderSender: Uid 10213 already starts
+11-27 01:16:43.731  2520  2547 V BinderSender: Uid 10204 starts
+11-27 01:16:44.272  2520  2636 V BinderSender: Uid 10204 already starts
+11-27 01:16:44.283  2520  2636 V BinderSender: Uid 10204 already starts
+11-27 01:16:44.414  2520  2636 V BinderSender: Uid 10120 starts
+11-27 01:16:44.594  2520  2547 V BinderSender: Uid 10156 already starts
+11-27 01:16:44.608  2520  2547 V BinderSender: Uid 10228 already starts
+11-27 01:16:44.752  2520  2547 V BinderSender: Uid 10120 already starts
+11-27 01:16:44.759  2520  2547 V BinderSender: Uid 10120 already starts
+11-27 01:16:44.941  2520  2547 V BinderSender: Uid 10160 starts
+11-27 01:16:45.028  2520  2547 V BinderSender: Uid 10150 starts
+11-27 01:16:45.227  2520  2636 V BinderSender: Uid 10150 already starts
+11-27 01:16:45.235  2520  2636 V BinderSender: Uid 10150 already starts
+11-27 01:16:45.352  2520  2636 V BinderSender: Uid 10152 starts
+11-27 01:16:45.606  2520  2547 V BinderSender: Uid 10152 already starts
+11-27 01:16:45.611  2520  2547 V BinderSender: Uid 10152 already starts
+11-27 01:16:45.680  2520  2547 V BinderSender: Uid 10224 starts
+11-27 01:16:45.813  2520  2547 V BinderSender: Uid 10224 already starts
+11-27 01:16:45.815  2520  2547 V BinderSender: Uid 10224 already starts
+11-27 01:16:46.022  2520  2547 V BinderSender: Uid 10206 starts
+11-27 01:16:46.173  2520  2636 V BinderSender: Uid 10206 already starts
+11-27 01:16:46.202  2520  2636 V BinderSender: Uid 10224 already starts
+11-27 01:16:46.435  2520  2636 V BinderSender: Uid 10113 starts
+11-27 01:16:46.713  2520  2636 V BinderSender: Uid 10113 already starts
+11-27 01:16:47.931  2520  2636 V BinderSender: Uid 10184 starts
+11-27 01:16:48.286  2520  2636 V BinderSender: Uid 10184 already starts
+11-27 01:16:49.855  2520  2636 V BinderSender: Uid 10150 already starts
+11-27 01:16:50.470  2520  2636 V BinderSender: Uid 10150 already starts
+11-27 01:16:50.660  2520  2636 V BinderSender: Uid 10182 already starts
+11-27 01:16:51.374  2520  2636 V BinderSender: Uid 10184 already starts
+11-27 01:16:51.786  2520  2636 V BinderSender: Uid 10155 already starts
+11-27 01:16:53.412  2520  2636 V BinderSender: Uid 10224 already starts
+11-27 01:16:53.979  2520  2636 V BinderSender: Uid 10160 already starts
+11-27 01:16:54.327  2520  2636 V BinderSender: Uid 10224 already starts
+11-27 01:16:56.100  2520  2636 V BinderSender: Uid 10224 already starts
+11-27 01:17:08.942  2520  2636 V BinderSender: Uid 10149 starts
+11-27 01:17:09.900  2520  2636 V BinderSender: Uid 10130 starts
+11-27 01:17:34.207  2520  2636 V BinderSender: Uid 10155 already starts
+11-27 01:17:34.233  2520  2636 V BinderSender: Uid 10182 already starts
+11-27 01:17:38.162  2520  2636 V BinderSender: Uid 10144 already starts
+11-27 01:17:46.017  2520  2636 V BinderSender: Uid 10206 already starts
+11-27 01:17:46.435  2520  2636 V BinderSender: Uid 10113 already starts
+11-27 01:17:47.695  2520  2636 V BinderSender: Uid 10155 already starts
+11-27 01:17:47.924  2520  2636 V BinderSender: Uid 10184 already starts
+11-27 01:17:55.032  2520  2636 V BinderSender: Uid 10111 already starts
+11-27 01:17:55.867  2520  2636 V BinderSender: Uid 10171 already starts
+11-27 01:17:57.324  2520  2636 V BinderSender: Uid 10156 already starts
+11-27 01:17:57.579  2520  2636 V BinderSender: Uid 10148 already starts
+11-27 01:17:58.037  2520  2636 V BinderSender: Uid 10219 already starts
+11-27 01:17:58.304  2520  2636 V BinderSender: Uid 10234 already starts
+11-27 01:17:58.542  2520  2636 V BinderSender: Uid 10110 already starts
+11-27 01:17:58.620  2520  2636 V BinderSender: Uid 10149 already starts
+11-27 01:17:58.941  2520  2636 V BinderSender: Uid 10143 already starts
+11-27 01:17:59.461  2520  2636 V BinderSender: Uid 10186 already starts
+11-27 01:17:59.810  2520  2636 V BinderSender: Uid 10122 already starts
+11-27 01:18:00.263  2520  2636 V BinderSender: Uid 10112 already starts
+11-27 01:18:00.307  2520  2636 V BinderSender: Uid 10160 already starts
+11-27 01:18:00.589  2520  2636 V BinderSender: Uid 10104 already starts
+11-27 01:18:00.786  2520  2636 V BinderSender: Uid 10182 already starts
+11-27 01:18:01.083  2520  2636 V BinderSender: Uid 2000 already starts
+11-27 01:18:01.302  2520  2636 V BinderSender: Uid 10201 already starts
+11-27 01:18:01.641  2520  2636 V BinderSender: Uid 10181 already starts
+11-27 01:18:01.978  2520  2636 V BinderSender: Uid 10158 already starts
+11-27 01:18:02.798  2520  2636 V BinderSender: Uid 10205 already starts
+11-27 01:18:02.800  2520  2636 V BinderSender: Uid 10147 already starts
+11-27 01:18:03.328  2520  2636 V BinderSender: Uid 10159 already starts
+11-27 01:18:03.664  2520  2636 V BinderSender: Uid 10213 already starts
+11-27 01:18:04.304  2520  2636 V BinderSender: Uid 10204 already starts
+11-27 01:18:04.796  2520  2636 V BinderSender: Uid 10120 already starts
+11-27 01:18:05.423  2520  2636 V BinderSender: Uid 10150 already starts
+11-27 01:18:05.626  2520  2636 V BinderSender: Uid 10152 already starts
+11-27 01:18:05.890  2520  2636 V BinderSender: Uid 10224 already starts
+11-27 01:18:06.563  2520  2636 V BinderSender: Uid 10228 already starts
+11-27 01:18:26.450  2520  2636 V BinderSender: Uid 99000 starts
+11-27 01:18:26.451  2520  2636 V BinderSender: Uid 99000 dead
+11-27 01:18:31.696  2520  2636 V BinderSender: Uid 99001 starts
+11-27 01:18:31.739  2520  2547 V BinderSender: Uid 99001 already starts
+11-27 01:18:31.739  2520  2547 V BinderSender: Uid 99001 already starts
+11-27 01:18:44.584  2520  2636 V BinderSender: Uid 10182 already starts
+11-27 01:18:54.692  2520  2636 V BinderSender: Uid 10163 starts
+11-27 01:19:40.124  2520  2636 V BinderSender: Uid 10182 already starts
+11-27 01:19:40.124  2520  2636 V BinderSender: Uid 10182 already starts
+11-27 01:20:37.986  2407  2407 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:pidof shizuku_server'
+11-27 01:20:46.759  2520  2636 V BinderSender: Uid 10182 already starts
+11-27 01:20:46.787  2520  2636 V BinderSender: Uid 10182 already starts
+11-27 01:21:05.212  2520  2636 V BinderSender: Uid 10206 already starts
+11-27 01:21:06.494  2520  2636 V BinderSender: Uid 10206 already starts
+11-27 01:22:39.367  2520  2636 V BinderSender: Uid 99001 already starts
+11-27 01:22:39.367  2520  2547 V BinderSender: Uid 99001 dead
+11-27 01:22:40.864  2520  2636 V BinderSender: Uid 10182 already starts
+11-27 01:22:40.864  2520  2636 V BinderSender: Uid 10182 already starts
+11-27 01:22:43.607  2520  2636 V BinderSender: Uid 99002 starts
+11-27 01:22:43.687  2520  2547 V BinderSender: Uid 99002 already starts
+11-27 01:22:43.687  2520  2547 V BinderSender: Uid 99002 already starts
+11-27 01:22:43.965  2520  2636 V BinderSender: Uid 10224 already starts
+11-27 01:22:43.965  2520  2636 V BinderSender: Uid 10224 already starts
+11-27 01:23:43.992  2520  2547 V BinderSender: Uid 10224 already starts
+11-27 01:23:47.042  2520  2547 V BinderSender: Uid 10182 already starts

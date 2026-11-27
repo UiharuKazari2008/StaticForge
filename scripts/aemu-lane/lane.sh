@@ -549,14 +549,17 @@ for b in json.load(sys.stdin).get('builds',[]):
   else row=$(latest_build); fi
   [ -n "$row" ] || die "no such Android build on the server ($want)"
   read -r bid vc sha <<<"$row"
-  local have; have=$(S "cat /data/local/tmp/lane-apk.sha 2>/dev/null" | tr -d '\r')
-  if [ "$have" = "$sha" ] && [ "$force" = 0 ]; then J ok=b:true "build=n:$bid" "versionCode=n:$vc" installed=b:false note="already installed (marker /data/local/tmp/lane-apk.sha)"; return 0; fi
+  # "already installed" needs BOTH: the marker holds this build's sha AND the app's real versionCode (dumpsys package) is this build's.
+  # The marker alone is wrong after an APK was installed by hand or by the app's own update (the marker is not updated then).
+  local have cur; have=$(S "cat /data/local/tmp/lane-apk.sha 2>/dev/null" | tr -d '\r'); cur=$(app_version)
+  if [ "$have" = "$sha" ] && [ "$cur" = "$vc" ] && [ "$force" = 0 ]; then J ok=b:true "build=n:$bid" "versionCode=n:$vc" "installedVersionCode=n:$cur" installed=b:false note="already installed (marker /data/local/tmp/lane-apk.sha and the app's versionCode agree)"; return 0; fi
   local apk; apk=$(fetch_apk "$bid" "$vc" "$sha") || die "download of build $bid failed or its sha256 differs"
   # once per build (android-app-builds rule): the marker is written before the result is known, so a failed or
   # interrupted install is never retried by this script
   S "echo $sha > /data/local/tmp/lane-apk.sha"
-  local out; out=$(A install -r -g "$apk" 2>&1 | tr -d '\r' | tail -2 | tr '\n' ' ')
-  case "$out" in *Success*) meta_set apk_versionCode "$vc"; J ok=b:true "build=n:$bid" "versionCode=n:$vc" installed=b:true "sha256=$sha";; *) die "install failed: $out";; esac
+  local dflag=''; [ -n "$cur" ] && [ "$cur" -gt "$vc" ] 2>/dev/null && dflag=-d   # an older release over a newer one (the userdebug image allows -d)
+  local out; out=$(A install -r -g $dflag "$apk" 2>&1 | tr -d '\r' | tail -2 | tr '\n' ' ')
+  case "$out" in *Success*) meta_set apk_versionCode "$vc"; J ok=b:true "build=n:$bid" "versionCode=n:$vc" "versionCodeBefore=n:${cur:-0}" "versionCodeAfter=n:$(app_version)" installed=b:true "sha256=$sha";; *) die "install failed: $out";; esac
 }
 install_shizuku() {
   [ -n "$(shz_dir)" ] && [ "${1:-}" != --force ] && return 0
