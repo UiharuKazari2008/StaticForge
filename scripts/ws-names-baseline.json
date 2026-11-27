@@ -1,21 +1,5 @@
 {
  "note": "WebSocket request types with no name and no ticker decision, per registering file. Counts may only go down. See scripts/check-ws-names.js and Yozora #1350.",
- "total": 134,
- "files": {
-  "modules/ws/handlers/12-vfsArchiveHandler.js": 5,
-  "modules/ws/handlers/245-melatonAppsHandler.js": 7,
-  "modules/ws/handlers/255-mailExchangeHandler.js": 25,
-  "modules/ws/handlers/291-weatherHandler.js": 4,
-  "modules/ws/handlers/294-notificationInboxHandler.js": 3,
-  "modules/ws/handlers/296-deviceConsentHandler.js": 3,
-  "modules/ws/handlers/302-browsingSessionsHandler.js": 2,
-  "modules/ws/handlers/303-spellCheckHandler.js": 1,
-  "modules/ws/handlers/308-youtubeHandler.js": 10,
-  "modules/ws/handlers/310-mediaLibraryHandler.js": 1,
-  "modules/ws/handlers/316-glancewellHandler.js": 20,
-  "modules/ws/handlers/318-xmRadioHandler.js": 42,
-  "modules/ws/handlers/319-plaudHandler.js": 6,
-  "modules/ws/handlers/320-plaudTodayHandler.js": 4,
-  "modules/ws/handlers/321-weatherHereHandler.js": 1
- }
+ "total": 0,
+ "files": {}
 }
