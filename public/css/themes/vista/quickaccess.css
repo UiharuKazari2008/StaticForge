@@ -204,6 +204,9 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
     color: #aab4c4;
     white-space: nowrap;
     overflow: hidden;
+    /* (StaticForge #1405: a line longer than its room ends in an ellipsis - the page's sample says so to the app, which fits
+       the live text to the tile's own room the same way, with the page alive or from the kept layouts) */
+    text-overflow: ellipsis;
     text-align: left;
 }
 #wmShell > .wm-qa .qa-head { font-size: calc(10 * var(--wm-px)); padding: 0 0 calc(4 * var(--wm-px)); }
@@ -245,16 +248,21 @@ html.ui-mobile #wmShell > .wm-popup.wm-qa {
     line-height: 1.1;
     color: #fff;
 }
+/* (StaticForge #1405: the line sat at the tile's top left, on the glyph's corner - "Auto" over the "5G". It is centred between
+   the picture and the name now, the picture a little higher: 18 units at 2 (ends at 20), the line 7.7 high over the name's
+   line, which is 2 off the bottom and 7.7 high - it ends at 30.3, the line starts at 22.3) */
 #wmShell > .wm-qa .qa-grid .qa-tile.has-state .qa-sub {
     display: block;
     left: calc(2 * var(--wm-px));
-    right: auto;
-    top: calc(2 * var(--wm-px));
-    bottom: auto;
+    right: calc(2 * var(--wm-px));
+    top: auto;
+    bottom: calc(10 * var(--wm-px));
+    text-align: center;
     font-size: calc(7 * var(--wm-px));
     line-height: 1.1;
     color: #fff;
 }
+#wmShell > .wm-qa .qa-grid .qa-tile.has-state.is-wide .qa-face { background-position: center calc(2 * var(--wm-px)), 0 0; }
 #wmShell > .wm-qa .qa-group > .qa-tile { margin-top: calc(4 * var(--wm-px)); }
 
 /* ---- a slider: Vista's trackbar (thumb from the trackbar's own art) on the glass ---- */
