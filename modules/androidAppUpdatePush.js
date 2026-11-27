@@ -142,8 +142,20 @@ async function sendServerFile(globalResources, deviceId, filePath, opts = {}) {
 /**
  * Offer a release to one phone when the rules say so. Resolves with 'sent' | 'failed' | null (nothing to do).
  */
+/**
+ * The hold (Yukimi, Nov 26 2026: "Shizuku is running, why am I being asked to install the app through the Android installer"):
+ * while the installed app cannot install silently, every release an agent builds reaches the phone and pops the installer.
+ * coord setting 'androidUpdates' { hold: true } stops all deliveries until it is lifted (Fleet / a work item that proved the
+ * silent install on the emulator lane lifts it). Default: held.
+ */
+function held() {
+    if (process.env.ANDROID_UPDATES_TEST_UNHELD === '1') return false; // the delivery tests; never set in the server
+    try { const s = require('./agentCoord/store').getSetting('androidUpdates'); return !(s && s.hold === false); } catch (_) { return true; }
+}
+
 async function consider(deviceId, release) {
     if (!ctx || !release || !deviceId || inflight.has(deviceId)) return null;
+    if (held()) return null;
     const have = versionOf(deviceId);
     const code = Number(release.versionCode) || 0;
     if (!(have.versionCode > 0 && have.versionCode < code)) return null;

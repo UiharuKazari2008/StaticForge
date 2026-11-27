@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // #821 part 2: modules/androidAppUpdatePush.js with stubbed activeSync, androidBuilds and transfer sender.
 'use strict';
+process.env.ANDROID_UPDATES_TEST_UNHELD = '1'; // the deliveries are held by default in the server
 
 const assert = require('assert');
 const { EventEmitter } = require('events');
