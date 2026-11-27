@@ -1432,7 +1432,8 @@ const TOOL_DEFS = [
             properties: {
                 device: { type: 'string', description: 'ActiveSync device id or name' },
                 display: { type: 'string', description: 'inner | cover | external | main | all | display id' },
-                detect: { type: 'boolean', description: 'Look for the phone on 5555 again now (default: cached for a minute)' }
+                detect: { type: 'boolean', description: 'Look for the phone on 5555 again now (default: cached for a minute)' },
+                agent: { type: 'string', description: 'Your agent-coord id (coord_hello shows it). A phone that asks Yukimi for consent (a consent test-lane device, the Fold on her approval) is usable only by the agent that holds its allowed lease: name yourself here.' }
             }
         }
     },
@@ -1449,7 +1450,8 @@ const TOOL_DEFS = [
                 device: { type: 'string', description: 'ActiveSync device id or name' },
                 command: { type: 'string', description: 'The shell command (as after adb shell on a phone; sh -c on a DreamOS computer)' },
                 root: { type: 'boolean', description: 'DreamOS computer only: run as root instead of the desktop user' },
-                timeout: { type: 'number', description: 'DreamOS computer only: seconds before the command is killed (default 60, max 600)' }
+                timeout: { type: 'number', description: 'DreamOS computer only: seconds before the command is killed (default 60, max 600)' },
+                agent: { type: 'string', description: 'Your agent-coord id (coord_hello shows it). A phone that asks Yukimi for consent (a consent test-lane device, the Fold on her approval) is usable only by the agent that holds its allowed lease: name yourself here.' }
             }
         }
     },
@@ -1466,7 +1468,8 @@ const TOOL_DEFS = [
                 system: { type: 'boolean' },
                 filter: { type: 'string' },
                 package: { type: 'string' },
-                action: { type: 'string', enum: ['uninstall', 'disable', 'enable', 'stop', 'clear', 'open'] }
+                action: { type: 'string', enum: ['uninstall', 'disable', 'enable', 'stop', 'clear', 'open'] },
+                agent: { type: 'string', description: 'Your agent-coord id (coord_hello shows it). A phone that asks Yukimi for consent (a consent test-lane device, the Fold on her approval) is usable only by the agent that holds its allowed lease: name yourself here.' }
             }
         }
     },
@@ -7800,6 +7803,16 @@ function syncGenerateWaitMs(globalResources) {
     return DEFAULT_SYNC_GENERATE_WAIT_MS;
 }
 
+/**
+ * Who makes a phone-tool call, for the consent gate (#1305 S3: modules/deviceConsent.js check()): the agent-coord id (or session id) the
+ * agent passes as `agent` / `session` - coord_hello shows it. A phone lease is its holder's alone; a call that names nobody is refused
+ * on a consent device. Never trusts a `human` flag from the tool input (only server code, claudeDeskAttachments, passes that).
+ */
+function deviceCaller(input) {
+    const i = input && typeof input === 'object' ? input : {};
+    return { agentId: String(i.agent || i.agentId || '').trim().slice(0, 80), sessionId: String(i.session || i.sessionId || '').trim().slice(0, 80) };
+}
+
 function generationCaller(req) {
     const name = resolveActorName(req);
     const auth = req && req.applicationAuth;
@@ -9914,7 +9927,7 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'device_packages') {
         try {
-            const r = await require('./deviceAdb').agentPackages(globalResources, input || {});
+            const r = await require('./deviceAdb').agentPackages(globalResources, input || {}, deviceCaller(input));
             return mcpTextResult(r, !r.success);
         } catch (error) {
             return mcpTextResult({ success: false, code: error.code || 'ERROR', error: error.message }, true);
@@ -9923,7 +9936,7 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'device_shell') {
         try {
-            const r = await require('./deviceAdb').agentShell(globalResources, input || {});
+            const r = await require('./deviceAdb').agentShell(globalResources, input || {}, deviceCaller(input));
             return mcpTextResult(r, !r.success);
         } catch (error) {
             return mcpTextResult({ success: false, code: error.code || 'ERROR', error: error.message }, true);
@@ -9932,7 +9945,7 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'device_screenshot') {
         try {
-            const r = await require('./deviceAdb').agentScreenshot(globalResources, input || {});
+            const r = await require('./deviceAdb').agentScreenshot(globalResources, input || {}, deviceCaller(input));
             return r.images.length ? mcpImageResult(r.meta, r.images) : mcpTextResult(r.meta, !r.meta.success);
         } catch (error) {
             return mcpTextResult({ success: false, code: error.code || 'ERROR', error: error.message }, true);

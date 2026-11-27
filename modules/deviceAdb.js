@@ -500,14 +500,18 @@ function gateLog(dev, kind, code) {
     gateLogged.set(key, now);
     console.log(`[device-gate] refused ${dev.name} ${kind} ${code}`);
 }
-/** null when the agent may use the phone, else { success:false, code, error, holder, hint } (never throws). */
-async function gate(dev, action) {
+/**
+ * null when the agent may use the phone, else { success:false, code, error, holder, hint } (never throws).
+ * caller = { agentId?, sessionId?, human? } as the tool's server side knows it (#1305 S3): a phone lease is its holder's alone, so a call
+ * that does not say who makes it, or is not the holder, is refused by deviceConsent.check (fail closed).
+ */
+async function gate(dev, action, caller) {
     const kind = (action && action.kind) || 'shell';
     let r;
     try {
         const consent = consentLoader();
         if (!consent || typeof consent.check !== 'function') throw new Error('no check()');
-        r = await consent.check({ deviceId: dev.deviceId, name: dev.name, model: dev.model }, action);
+        r = await consent.check({ deviceId: dev.deviceId, name: dev.name, model: dev.model }, action, caller);
     } catch (err) {
         gateLog(dev, kind, 'DEVICE_GATE_UNAVAILABLE');
         return { success: false, code: 'DEVICE_GATE_UNAVAILABLE', error: `The phone consent check is unavailable (${err && err.message ? err.message : 'error'}); the phone was not contacted.`, holder: null, hint: 'Try again shortly; if it persists the consent module is broken on the server.' };
@@ -521,25 +525,25 @@ async function gate(dev, action) {
 function _setConsentForTests(loader) { consentLoader = loader || (() => require('./deviceConsent')); gateLogged.clear(); }
 const deviceChoices = (all) => all.map((d) => ({ deviceId: d.deviceId, name: d.name, online: d.online, platform: d.platform }));
 
-/** device_shell for agents: { device?, command, root?, timeout? } -> the device's answer (device as in device_screenshot). */
-async function agentShell(globalResources, input = {}) {
+/** device_shell for agents: { device?, command, root?, timeout? } -> the device's answer (device as in device_screenshot). caller: who makes the call (see gate). */
+async function agentShell(globalResources, input = {}, caller) {
     const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
     const dev = agentDevice(all, input);
     if (!dev) return { success: false, code: 'CHOOSE_DEVICE', devices: deviceChoices(all) };
     if (isComputer(dev)) return require('./cafeReadyHost').agentShell(globalResources, dev, input);
-    const refused = await gate(dev, { kind: 'shell', command: input.command });
+    const refused = await gate(dev, { kind: 'shell', command: input.command }, caller);
     if (refused) return { ...refused, device: dev.name };
     return { success: true, device: dev.name, ...(await shell(globalResources, dev.deviceId, input.command)) };
 }
 
 /** device_packages for agents (#823): list (system?) or manage { package, action } through the phone. */
-async function agentPackages(globalResources, input = {}) {
+async function agentPackages(globalResources, input = {}, caller) {
     const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
     const dev = agentDevice(all, input);
     if (!dev) return { success: false, code: 'CHOOSE_DEVICE', devices: deviceChoices(all) };
     if (isComputer(dev)) return require('./cafeReadyHost').agentPackages(globalResources, dev, input);
     // no action = a read; open / uninstall / disable / enable / stop / clear (and any other action) = a write
-    const refused = await gate(dev, { kind: input.action ? 'packages-write' : 'packages-read' });
+    const refused = await gate(dev, { kind: input.action ? 'packages-write' : 'packages-read' }, caller);
     if (refused) return { ...refused, device: dev.name };
     if (input.action) {
         if (input.action !== 'open' && !allowed(globalResources, dev.deviceId, 'install')) return { success: false, code: 'NOT_ALLOWED', error: 'Install Android Applications is not an allowed feature for this phone.' };
@@ -637,7 +641,7 @@ async function markCamera(sharp, png, cam) {
     return sharp(png).composite([{ input: svg, top: 0, left: 0 }]).png().toBuffer();
 }
 
-async function agentScreenshot(globalResources, input = {}) {
+async function agentScreenshot(globalResources, input = {}, caller) {
     const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
     // the route that works: the phone's own ADB (5555 on the phone, Shizuku) when the phone answers; the server's own dial
     // (only on the home network) beside it - "unreachable" / "unauthorized" for the dial read as the phone not allowing
@@ -653,7 +657,7 @@ async function agentScreenshot(globalResources, input = {}) {
     if (!dev) return { meta: { success: false, code: want ? 'NO_SUCH_DEVICE' : 'CHOOSE_DEVICE', error: want ? `No ActiveSync device called ${input.device}.` : 'Name a device.', devices: all.map((d) => (isComputer(d) ? { deviceId: d.deviceId, name: d.name, model: d.model, platform: d.platform, online: d.online } : brief(d, null))) }, images: [] };
     // a DreamOS machine (#910): its compositor's screen, through CaféReady
     if (isComputer(dev)) return require('./cafeReadyHost').agentScreenshot(globalResources, dev, input);
-    const refused = await gate(dev, { kind: 'screenshot' });
+    const refused = await gate(dev, { kind: 'screenshot' }, caller);
     if (refused) { const { success, ...why } = refused; return { meta: { success: false, ...why, device: { deviceId: dev.deviceId, name: dev.name } }, images: [] }; }
     if (!allowed(globalResources, dev.deviceId, 'screenshots')) return { meta: { success: false, code: 'SCREENSHOTS_OFF', device: brief(dev, null), hint: 'Screenshots are turned off for this phone (Device Center / Android Bridge).' }, images: [] };
     local = dev.online ? await phoneStatus(globalResources, dev.deviceId) : null;

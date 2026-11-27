@@ -45,7 +45,8 @@ function save(sessionId, { name, mimeType, bytes }) {
 }
 
 async function phoneShot(globalResources, sessionId, input = {}) {
-    const r = await require('./deviceAdb').agentScreenshot(globalResources, { device: input.device, display: input.display });
+    // Yukimi's own attach in her window, not an agent: the phone gate lets it through on an allowed lease whoever holds it
+    const r = await require('./deviceAdb').agentScreenshot(globalResources, { device: input.device, display: input.display }, { human: true });
     if (!r.images || !r.images.length) {
         const m = r.meta || {};
         if (m.code === 'CHOOSE_DEVICE') return { devices: (m.devices || []).filter((d) => d.online !== false).map((d) => ({ deviceId: d.deviceId, name: d.name || d.model || d.deviceId })) };
