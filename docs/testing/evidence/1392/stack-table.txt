@@ -1,0 +1,125 @@
+== kill-1
+  +  5.26 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 10.43 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 15.64 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 22.86 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 33.06 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+== kill-2
+  +  5.20 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 10.34 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 15.49 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 22.70 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 33.79 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+== kill-3
+  +  5.22 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 10.28 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 15.46 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 22.61 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 32.68 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+== kill-4
+  +  5.18 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 10.24 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 15.40 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 22.49 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 32.59 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+== kill-5
+  +  5.31 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 10.53 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 15.74 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 22.96 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 33.10 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+== kill-off-1
+  +  3.52 system_server: "binder:677_1F" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  +  6.70 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- MelatonBarService.i(unavailable:1096) <- MelatonBarService.onServiceConnected(unavailable:44)
+  + 10.12 system_server: "binder:677_1F" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  + 12.86 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 16.15 system_server: "binder:677_1F" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  + 19.49 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 23.87 system_server: "binder:677_1F" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  + 27.04 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 32.39 system_server: no thread inside getWindows
+  + 35.70 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 44.05 system_server: no thread inside getWindows
+  + 46.73 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+== kill-off-2
+  +  3.42 system_server: "binder:677_13" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  +  5.86 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- MelatonBarService.i(unavailable:1096) <- MelatonBarService.onServiceConnected(unavailable:44)
+  +  9.18 system_server: "binder:677_13" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  + 11.33 app main: sa2.M0 <- sa2.M0(unavailable:0) <- el1.I(unavailable:45) <- n8.run(unavailable:259)
+  + 14.63 system_server: "binder:677_1F" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  + 16.92 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 21.14 system_server: "binder:677_1F" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  + 23.19 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 28.45 system_server: no thread inside getWindows
+  + 30.80 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 39.09 system_server: no thread inside getWindows
+  + 41.22 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+== reinstall-off-1
+  +  4.31 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- MelatonBarService.i(unavailable:1096) <- MelatonBarService.onServiceConnected(unavailable:44)
+  +  7.70 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- MelatonBarService.i(unavailable:1096) <- MelatonBarService.onServiceConnected(unavailable:44)
+  + 12.26 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 17.31 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 23.41 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 34.52 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+== reinstall-off-2
+  +  3.59 system_server: "binder:677_18" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  +  4.73 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- MelatonBarService.i(unavailable:1096) <- MelatonBarService.onServiceConnected(unavailable:44)
+  +  7.95 system_server: "binder:677_18" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  +  9.31 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- MelatonBarService.i(unavailable:1096) <- MelatonBarService.onServiceConnected(unavailable:44)
+  + 12.51 system_server: "binder:677_19" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  + 14.44 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 18.67 system_server: "binder:677_19" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  + 20.65 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 25.87 system_server: "binder:677_1E" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  + 27.96 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 36.18 system_server: no thread inside getWindows
+  + 38.18 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+== reinstall-off-3
+  +  3.41 system_server: "binder:677_1C" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  +  4.54 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- MelatonBarService.i(unavailable:1096) <- MelatonBarService.onServiceConnected(unavailable:44)
+  +  7.75 system_server: "binder:677_1C" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  +  9.06 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- MelatonBarService.i(unavailable:1096) <- MelatonBarService.onServiceConnected(unavailable:44)
+  + 12.26 system_server: "binder:677_17" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  + 14.22 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 18.47 system_server: "binder:677_17" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  + 20.45 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 25.69 system_server: "binder:677_1C" TimedWaiting | AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  + 27.77 app main: IAccessibilityServiceConnection$Stub$Proxy.getWindows <- MelatonBarService.D0(unavailable:2) <- wd1.run(unavailable:857) <- java.lang.reflect.Method.invoke(Native method)
+  + 36.00 system_server: no thread inside getWindows
+  + 37.92 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+== reinstall-on-1
+  +  3.64 system_server: no thread inside getWindows
+  +  5.89 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  +  9.12 system_server: no thread inside getWindows
+  + 11.28 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 14.50 system_server: no thread inside getWindows
+  + 16.75 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 20.96 system_server: no thread inside getWindows
+  + 23.09 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 28.34 system_server: no thread inside getWindows
+== reinstall-on-2
+== replay-crash-1
+  +  3.81 system_server: no thread inside getWindows
+  + 16.65 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 20.93 system_server: no thread inside getWindows
+  + 27.57 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 31.07 system_server: no thread inside getWindows
+  + 39.18 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 45.83 system_server: no thread inside getWindows
+  + 50.89 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 59.75 system_server: no thread inside getWindows
+  + 67.67 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+== replay-crash-2
+  +  9.35 system_server: no thread inside getWindows
+  + 12.40 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 21.77 system_server: no thread inside getWindows
+  + 25.04 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+== screenoff-running-1
+  +  3.17 system_server: no thread inside getWindows
+  +  6.09 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 12.32 system_server: no thread inside getWindows
+  + 14.28 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 21.50 system_server: no thread inside getWindows
+  + 23.53 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+  + 35.75 system_server: no thread inside getWindows
+  + 38.05 app main: android.os.MessageQueue.nativePollOnce <- java.lang.reflect.Method.invoke(Native method) <- com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575) <- com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)

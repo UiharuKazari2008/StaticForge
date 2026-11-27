@@ -1,0 +1,23 @@
+1795806115051 kill -9 8881
+1795806116390 new pid 13373
+1795806119415 dump +3 s: threads
+1795806121372 dump +3 s: SIGQUIT
+1795806121380 dump +3 s: debuggerd
+1795806121557 dump +3 s: debuggerd done (0)
+1795806124572 dump +6 s: threads
+1795806126427 dump +6 s: SIGQUIT
+1795806126435 dump +6 s: debuggerd
+1795806126612 dump +6 s: debuggerd done (0)
+1795806129630 dump +9 s: threads
+1795806131610 dump +9 s: SIGQUIT
+1795806131620 dump +9 s: debuggerd
+1795806131811 dump +9 s: debuggerd done (0)
+1795806136828 dump +14 s: threads
+1795806138759 dump +14 s: SIGQUIT
+1795806138767 dump +14 s: debuggerd
+1795806138946 dump +14 s: debuggerd done (0)
+1795806146963 dump +22 s: threads
+1795806148829 dump +22 s: SIGQUIT
+1795806148837 dump +22 s: debuggerd
+1795806149026 dump +22 s: debuggerd done (0)
+1795806158170 watch done

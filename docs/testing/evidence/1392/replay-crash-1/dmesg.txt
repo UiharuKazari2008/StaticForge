@@ -1,0 +1,400 @@
+[  935.499004] binder: send failed reply for transaction 328766, target dead
+[  954.313308] binder: release 5879:5884 transaction 333848 out, still active
+[  954.327113] binder: 1950:677 reply target not found
+[  954.327442] binder: 677:1950 transaction reply to 0:0 failed 333851/29189/0, code 0 size 4-0 line 3365
+[  954.328549] binder: send failed reply for transaction 333848, target dead
+[  968.336326] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[  968.406022] servicemanager: Isolated app with UID 99010 requested 'app_function', but the service is not allowed for isolated apps.
+[  968.416560] binder: undelivered TRANSACTION_COMPLETE
+[  968.416954] binder: undelivered transaction 336247, process died.
+[  968.434049] binder_alloc: 31327: binder_alloc_buf, no vma
+[  968.436864] binder: undelivered transaction 336258, process died.
+[  968.439507] binder: cannot allocate buffer: vma cleared, target dead or dying
+[  968.439513] binder: 677:677 transaction async to 31327:0 failed 336284/29189/-3, code 2 size 136-0 line 3612
+[  968.460209] init: Untracked process (pid: 31438 name: (main) ppid: 1 pgrp: 3056 state: Z) exited with status 0
+[  968.461028] init: Untracked process (pid: 31438 name: (main) ppid: 1 pgrp: 3056 state: Z) did not have an associated service entry and will not be reaped
+[  968.502178] logd: start watching /data/system/packages.list ...
+[  968.503040] logd: ReadPackageList, total packages: 243
+[  969.594191] type=1400 audit(1795806649.996:59): avc:  denied  { watch } for  comm="binder:3056_2" path="/data/app/~~-8EHrLEJdkY3mTh3x2OrSA==/jp.net.seventhreeseven.dreamscape-xjf5gJFyqNlnMEtMNVHNTg==" dev="dm-6" ino=163869 scontext=u:r:shell:s0 tcontext=u:object_r:apk_data_file:s0 tclass=dir permissive=0
+[  969.624257] servicemanager: Isolated app with UID 99011 requested 'network_management', but the service is not allowed for isolated apps.
+[  969.629907] servicemanager: Isolated app with UID 99011 requested 'connectivity', but the service is not allowed for isolated apps.
+[  969.641815] servicemanager: Isolated app with UID 99011 requested 'content_capture', but the service is not allowed for isolated apps.
+[  969.661678] servicemanager: Caller(pid=6131,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+[  969.666415] servicemanager: Caller(pid=6131,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+[  969.668802] servicemanager: Caller(pid=6131,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found mapper/ranchu in device VINTF manifest.
+[  969.876897] type=1400 audit(1795806650.280:60): avc:  denied  { execute } for  comm="main" name="idmap2" dev="dm-5" ino=389 scontext=u:r:shell:s0 tcontext=u:object_r:idmap_exec:s0 tclass=file permissive=0
+[  973.475214] init: Untracked process (pid: 6685 name: (crash_dump64) ppid: 1 pgrp: 6684 state: Z) exited with status 0
+[  973.476096] init: Untracked process (pid: 6685 name: (crash_dump64) ppid: 1 pgrp: 6684 state: Z) did not have an associated service entry and will not be reaped
+[  973.483677] init: Untracked process (pid: 6687 name: (even.dreamscape) ppid: 1 pgrp: 6687 state: Z) exited with status 0
+[  973.484362] init: Untracked process (pid: 6687 name: (even.dreamscape) ppid: 1 pgrp: 6687 state: Z) did not have an associated service entry and will not be reaped
+[  977.985697] init: Untracked process (pid: 7186 name: (crash_dump64) ppid: 1 pgrp: 7184 state: Z) exited with status 0
+[  977.986783] init: Untracked process (pid: 7186 name: (crash_dump64) ppid: 1 pgrp: 7184 state: Z) did not have an associated service entry and will not be reaped
+[  977.994656] init: Untracked process (pid: 7188 name: (binder:6131_3) ppid: 1 pgrp: 7188 state: Z) exited with status 0
+[  977.995529] init: Untracked process (pid: 7188 name: (binder:6131_3) ppid: 1 pgrp: 7188 state: Z) did not have an associated service entry and will not be reaped
+[  980.148452] binder: undelivered transaction 343076, process died.
+[  980.503963] binder: undelivered death notification, 000073c699003d20
+[  980.505742] init: Untracked process (pid: 32568 name: (main) ppid: 1 pgrp: 32568 state: Z) received SIGTERM
+[  980.507253] init: Untracked process (pid: 32568 name: (main) ppid: 1 pgrp: 32568 state: Z) did not have an associated service entry and will not be reaped
+[  981.618577] servicemanager: Isolated app with UID 99012 requested 'network_management', but the service is not allowed for isolated apps.
+[  981.624101] servicemanager: Isolated app with UID 99012 requested 'connectivity', but the service is not allowed for isolated apps.
+[  981.631913] servicemanager: Isolated app with UID 99012 requested 'content_capture', but the service is not allowed for isolated apps.
+[  983.192230] init: Untracked process (pid: 7899 name: (crash_dump64) ppid: 1 pgrp: 7896 state: Z) exited with status 0
+[  983.192892] init: Untracked process (pid: 7899 name: (crash_dump64) ppid: 1 pgrp: 7896 state: Z) did not have an associated service entry and will not be reaped
+[  983.199392] init: Untracked process (pid: 7908 name: (even.dreamscape) ppid: 1 pgrp: 7908 state: Z) exited with status 0
+[  983.200062] init: Untracked process (pid: 7908 name: (even.dreamscape) ppid: 1 pgrp: 7908 state: Z) did not have an associated service entry and will not be reaped
+[  989.416206] init: Untracked process (pid: 8605 name: (crash_dump64) ppid: 1 pgrp: 8604 state: Z) exited with status 0
+[  989.416874] init: Untracked process (pid: 8605 name: (crash_dump64) ppid: 1 pgrp: 8604 state: Z) did not have an associated service entry and will not be reaped
+[  989.427050] init: Untracked process (pid: 8607 name: (even.dreamscape) ppid: 1 pgrp: 8607 state: Z) exited with status 0
+[  989.428215] init: Untracked process (pid: 8607 name: (even.dreamscape) ppid: 1 pgrp: 8607 state: Z) did not have an associated service entry and will not be reaped
+[  996.724370] init: Untracked process (pid: 9373 name: (crash_dump64) ppid: 1 pgrp: 9372 state: Z) exited with status 0
+[  996.725054] init: Untracked process (pid: 9373 name: (crash_dump64) ppid: 1 pgrp: 9372 state: Z) did not have an associated service entry and will not be reaped
+[  996.731884] init: Untracked process (pid: 9375 name: (even.dreamscape) ppid: 1 pgrp: 9375 state: Z) exited with status 0
+[  996.732914] init: Untracked process (pid: 9375 name: (even.dreamscape) ppid: 1 pgrp: 9375 state: Z) did not have an associated service entry and will not be reaped
+[ 1006.858017] init: Untracked process (pid: 10271 name: (crash_dump64) ppid: 1 pgrp: 10270 state: Z) exited with status 0
+[ 1006.859151] init: Untracked process (pid: 10271 name: (crash_dump64) ppid: 1 pgrp: 10270 state: Z) did not have an associated service entry and will not be reaped
+[ 1006.865627] init: Untracked process (pid: 10273 name: (even.dreamscape) ppid: 1 pgrp: 10273 state: Z) exited with status 0
+[ 1006.866313] init: Untracked process (pid: 10273 name: (even.dreamscape) ppid: 1 pgrp: 10273 state: Z) did not have an associated service entry and will not be reaped
+[ 1017.437011] logd: logdr: UID=0 GID=0 PID=10895 n tail=0 logMask=1d pid=0 start=0ns deadline=0ns
+[ 1017.584755] init: Untracked process (pid: 5914 name: (sh) ppid: 1 pgrp: 5914 state: Z) exited with status 0
+[ 1017.585456] init: Untracked process (pid: 5914 name: (sh) ppid: 1 pgrp: 5914 state: Z) did not have an associated service entry and will not be reaped
+[ 1028.337067] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[ 1032.204550] binder: release 10963:10968 transaction 350820 out, still active
+[ 1032.219811] binder: 2994:677 reply target not found
+[ 1032.220173] binder: 677:2994 transaction reply to 0:0 failed 350824/29189/0, code 0 size 4-0 line 3365
+[ 1032.220747] binder: send failed reply for transaction 350820, target dead
+[ 1038.264712] binder: release 10985:10990 transaction 352983 out, still active
+[ 1038.280219] binder: 2994:677 reply target not found
+[ 1038.280604] binder: 677:2994 transaction reply to 0:0 failed 352988/29189/0, code 0 size 4-0 line 3365
+[ 1038.281661] binder: send failed reply for transaction 352983, target dead
+[ 1052.493759] servicemanager: Isolated app with UID 99012 requested 'app_function', but the service is not allowed for isolated apps.
+[ 1052.534276] binder: undelivered transaction 356508, process died.
+[ 1052.555164] init: Untracked process (pid: 6246 name: (main) ppid: 1 pgrp: 3056 state: Z) exited with status 0
+[ 1052.556094] init: Untracked process (pid: 6246 name: (main) ppid: 1 pgrp: 3056 state: Z) did not have an associated service entry and will not be reaped
+[ 1052.568268] logd: start watching /data/system/packages.list ...
+[ 1052.571774] logd: ReadPackageList, total packages: 243
+[ 1053.798984] type=1400 audit(1795806734.200:61): avc:  denied  { watch } for  comm="binder:3056_4" path="/data/app/~~DrN2UIFaKc5Diz7kQf9U5w==/jp.net.seventhreeseven.dreamscape-j0M5-TEhF1QTgCjYgNE-Ng==" dev="dm-6" ino=163891 scontext=u:r:shell:s0 tcontext=u:object_r:apk_data_file:s0 tclass=dir permissive=0
+[ 1053.929222] servicemanager: Isolated app with UID 99013 requested 'network_management', but the service is not allowed for isolated apps.
+[ 1053.932356] servicemanager: Isolated app with UID 99013 requested 'connectivity', but the service is not allowed for isolated apps.
+[ 1053.947690] servicemanager: Isolated app with UID 99013 requested 'content_capture', but the service is not allowed for isolated apps.
+[ 1053.999973] servicemanager: Caller(pid=11254,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+[ 1054.003003] servicemanager: Caller(pid=11254,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+[ 1054.005097] servicemanager: Caller(pid=11254,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found mapper/ranchu in device VINTF manifest.
+[ 1054.080645] type=1400 audit(1795806734.484:62): avc:  denied  { execute } for  comm="main" name="idmap2" dev="dm-5" ino=389 scontext=u:r:shell:s0 tcontext=u:object_r:idmap_exec:s0 tclass=file permissive=0
+[ 1055.269564] binder: undelivered death notification, 00007808a3805380
+[ 1055.273389] init: Untracked process (pid: 7362 name: (main) ppid: 1 pgrp: 7362 state: Z) received SIGTERM
+[ 1055.275383] init: Untracked process (pid: 7362 name: (main) ppid: 1 pgrp: 7362 state: Z) did not have an associated service entry and will not be reaped
+[ 1058.971336] init: Untracked process (pid: 12144 name: (crash_dump64) ppid: 1 pgrp: 12143 state: Z) exited with status 0
+[ 1058.972005] init: Untracked process (pid: 12144 name: (crash_dump64) ppid: 1 pgrp: 12143 state: Z) did not have an associated service entry and will not be reaped
+[ 1058.978673] init: Untracked process (pid: 12146 name: (even.dreamscape) ppid: 1 pgrp: 12146 state: Z) exited with status 0
+[ 1058.979360] init: Untracked process (pid: 12146 name: (even.dreamscape) ppid: 1 pgrp: 12146 state: Z) did not have an associated service entry and will not be reaped
+[ 1064.346902] init: Untracked process (pid: 12814 name: (crash_dump64) ppid: 1 pgrp: 12812 state: Z) exited with status 0
+[ 1064.347560] init: Untracked process (pid: 12814 name: (crash_dump64) ppid: 1 pgrp: 12812 state: Z) did not have an associated service entry and will not be reaped
+[ 1064.354718] init: Untracked process (pid: 12816 name: (even.dreamscape) ppid: 1 pgrp: 12816 state: Z) exited with status 0
+[ 1064.355386] init: Untracked process (pid: 12816 name: (even.dreamscape) ppid: 1 pgrp: 12816 state: Z) did not have an associated service entry and will not be reaped
+[ 1069.817994] init: Untracked process (pid: 13504 name: (crash_dump64) ppid: 1 pgrp: 13503 state: Z) exited with status 0
+[ 1069.819144] init: Untracked process (pid: 13504 name: (crash_dump64) ppid: 1 pgrp: 13503 state: Z) did not have an associated service entry and will not be reaped
+[ 1069.826815] init: Untracked process (pid: 13508 name: (even.dreamscape) ppid: 1 pgrp: 13508 state: Z) exited with status 0
+[ 1069.827495] init: Untracked process (pid: 13508 name: (even.dreamscape) ppid: 1 pgrp: 13508 state: Z) did not have an associated service entry and will not be reaped
+[ 1076.189250] init: Untracked process (pid: 14229 name: (crash_dump64) ppid: 1 pgrp: 14227 state: Z) exited with status 0
+[ 1076.189903] init: Untracked process (pid: 14229 name: (crash_dump64) ppid: 1 pgrp: 14227 state: Z) did not have an associated service entry and will not be reaped
+[ 1076.196831] init: Untracked process (pid: 14234 name: (even.dreamscape) ppid: 1 pgrp: 14234 state: Z) exited with status 0
+[ 1076.197739] init: Untracked process (pid: 14234 name: (even.dreamscape) ppid: 1 pgrp: 14234 state: Z) did not have an associated service entry and will not be reaped
+[ 1083.642994] init: Untracked process (pid: 15003 name: (crash_dump64) ppid: 1 pgrp: 15002 state: Z) exited with status 0
+[ 1083.643987] init: Untracked process (pid: 15003 name: (crash_dump64) ppid: 1 pgrp: 15002 state: Z) did not have an associated service entry and will not be reaped
+[ 1083.652563] init: Untracked process (pid: 15008 name: (Profile Saver) ppid: 1 pgrp: 15008 state: Z) exited with status 0
+[ 1083.653244] init: Untracked process (pid: 15008 name: (Profile Saver) ppid: 1 pgrp: 15008 state: Z) did not have an associated service entry and will not be reaped
+[ 1088.336212] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[ 1094.068240] init: Untracked process (pid: 15924 name: (crash_dump64) ppid: 1 pgrp: 15921 state: Z) exited with status 0
+[ 1094.068917] init: Untracked process (pid: 15924 name: (crash_dump64) ppid: 1 pgrp: 15921 state: Z) did not have an associated service entry and will not be reaped
+[ 1094.075653] init: Untracked process (pid: 15932 name: (even.dreamscape) ppid: 1 pgrp: 15932 state: Z) exited with status 0
+[ 1094.076344] init: Untracked process (pid: 15932 name: (even.dreamscape) ppid: 1 pgrp: 15932 state: Z) did not have an associated service entry and will not be reaped
+[ 1098.675475] logd: logdr: UID=0 GID=0 PID=16228 n tail=0 logMask=1d pid=0 start=0ns deadline=0ns
+[ 1098.831910] init: Untracked process (pid: 11026 name: (sh) ppid: 1 pgrp: 11026 state: Z) exited with status 0
+[ 1098.832545] init: Untracked process (pid: 11026 name: (sh) ppid: 1 pgrp: 11026 state: Z) did not have an associated service entry and will not be reaped
+[ 1113.938673] binder: release 16268:16273 transaction 375775 out, still active
+[ 1113.955770] binder: 2251:677 reply target not found
+[ 1113.956242] binder: 677:2251 transaction reply to 0:0 failed 375778/29189/0, code 0 size 4-0 line 3365
+[ 1113.956851] binder: send failed reply for transaction 375775, target dead
+[ 1120.666602] binder: release 16292:16297 transaction 377471 out, still active
+[ 1120.695025] binder: 2387:677 reply target not found
+[ 1120.696053] binder: 677:2387 transaction reply to 0:0 failed 377484/29189/0, code 0 size 4-0 line 3365
+[ 1120.696644] binder: send failed reply for transaction 377471, target dead
+[ 1134.645835] servicemanager: Isolated app with UID 99013 requested 'app_function', but the service is not allowed for isolated apps.
+[ 1134.664360] binder: undelivered transaction 380281, process died.
+[ 1134.685701] binder_alloc: 11254: binder_alloc_buf, no vma
+[ 1134.686114] binder: cannot allocate buffer: vma cleared, target dead or dying
+[ 1134.686114] binder: 677:677 transaction async to 11254:0 failed 380362/29189/-3, code 3 size 132-0 line 3612
+[ 1134.691093] binder: undelivered transaction 380314, process died.
+[ 1134.692015] binder: undelivered transaction 380326, process died.
+[ 1134.708929] init: Untracked process (pid: 11368 name: (main) ppid: 1 pgrp: 3056 state: Z) exited with status 0
+[ 1134.709823] init: Untracked process (pid: 11368 name: (main) ppid: 1 pgrp: 3056 state: Z) did not have an associated service entry and will not be reaped
+[ 1134.784929] logd: start watching /data/system/packages.list ...
+[ 1134.785795] logd: ReadPackageList, total packages: 243
+[ 1136.036190] type=1400 audit(1795806816.440:63): avc:  denied  { watch } for  comm="binder:3056_1" path="/data/app/~~YzzL7delXIlEjcaUKCOpgg==/jp.net.seventhreeseven.dreamscape-Qjl7uQXBgmxvoNhDWxWrFA==" dev="dm-6" ino=163869 scontext=u:r:shell:s0 tcontext=u:object_r:apk_data_file:s0 tclass=dir permissive=0
+[ 1136.073082] servicemanager: Isolated app with UID 99014 requested 'network_management', but the service is not allowed for isolated apps.
+[ 1136.080239] servicemanager: Isolated app with UID 99014 requested 'connectivity', but the service is not allowed for isolated apps.
+[ 1136.092662] servicemanager: Isolated app with UID 99014 requested 'content_capture', but the service is not allowed for isolated apps.
+[ 1136.115840] servicemanager: Caller(pid=16551,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+[ 1136.118253] servicemanager: Caller(pid=16551,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+[ 1136.121560] servicemanager: Caller(pid=16551,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found mapper/ranchu in device VINTF manifest.
+[ 1136.343317] type=1400 audit(1795806816.748:64): avc:  denied  { execute } for  comm="main" name="idmap2" dev="dm-5" ino=389 scontext=u:r:shell:s0 tcontext=u:object_r:idmap_exec:s0 tclass=file permissive=0
+[ 1137.537549] binder: undelivered death notification, 00007d8e22c07420
+[ 1137.537729] init: Untracked process (pid: 11484 name: (main) ppid: 1 pgrp: 11484 state: Z) received SIGTERM
+[ 1137.540731] init: Untracked process (pid: 11484 name: (main) ppid: 1 pgrp: 11484 state: Z) did not have an associated service entry and will not be reaped
+[ 1141.138573] init: Untracked process (pid: 17422 name: (crash_dump64) ppid: 1 pgrp: 17421 state: Z) exited with status 0
+[ 1141.139243] init: Untracked process (pid: 17422 name: (crash_dump64) ppid: 1 pgrp: 17421 state: Z) did not have an associated service entry and will not be reaped
+[ 1141.147169] init: Untracked process (pid: 17424 name: (even.dreamscape) ppid: 1 pgrp: 17424 state: Z) exited with status 0
+[ 1141.147915] init: Untracked process (pid: 17424 name: (even.dreamscape) ppid: 1 pgrp: 17424 state: Z) did not have an associated service entry and will not be reaped
+[ 1146.703159] init: Untracked process (pid: 18092 name: (crash_dump64) ppid: 1 pgrp: 18091 state: Z) exited with status 0
+[ 1146.703824] init: Untracked process (pid: 18092 name: (crash_dump64) ppid: 1 pgrp: 18091 state: Z) did not have an associated service entry and will not be reaped
+[ 1146.708777] init: Untracked process (pid: 18094 name: (even.dreamscape) ppid: 1 pgrp: 18094 state: Z) exited with status 0
+[ 1146.709548] init: Untracked process (pid: 18094 name: (even.dreamscape) ppid: 1 pgrp: 18094 state: Z) did not have an associated service entry and will not be reaped
+[ 1148.336835] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[ 1152.220314] init: Untracked process (pid: 18757 name: (crash_dump64) ppid: 1 pgrp: 18756 state: Z) exited with status 0
+[ 1152.221216] init: Untracked process (pid: 18757 name: (crash_dump64) ppid: 1 pgrp: 18756 state: Z) did not have an associated service entry and will not be reaped
+[ 1152.227225] init: Untracked process (pid: 18759 name: (even.dreamscape) ppid: 1 pgrp: 18759 state: Z) exited with status 0
+[ 1152.228364] init: Untracked process (pid: 18759 name: (even.dreamscape) ppid: 1 pgrp: 18759 state: Z) did not have an associated service entry and will not be reaped
+[ 1158.765609] init: Untracked process (pid: 19479 name: (crash_dump64) ppid: 1 pgrp: 19478 state: Z) exited with status 0
+[ 1158.767076] init: Untracked process (pid: 19479 name: (crash_dump64) ppid: 1 pgrp: 19478 state: Z) did not have an associated service entry and will not be reaped
+[ 1158.773738] init: Untracked process (pid: 19484 name: (even.dreamscape) ppid: 1 pgrp: 19484 state: Z) exited with status 0
+[ 1158.774430] init: Untracked process (pid: 19484 name: (even.dreamscape) ppid: 1 pgrp: 19484 state: Z) did not have an associated service entry and will not be reaped
+[ 1166.179009] init: Untracked process (pid: 20246 name: (crash_dump64) ppid: 1 pgrp: 20245 state: Z) exited with status 0
+[ 1166.179736] init: Untracked process (pid: 20246 name: (crash_dump64) ppid: 1 pgrp: 20245 state: Z) did not have an associated service entry and will not be reaped
+[ 1166.185192] init: Untracked process (pid: 20251 name: (even.dreamscape) ppid: 1 pgrp: 20251 state: Z) exited with status 0
+[ 1166.186860] init: Untracked process (pid: 20251 name: (even.dreamscape) ppid: 1 pgrp: 20251 state: Z) did not have an associated service entry and will not be reaped
+[ 1176.549812] init: Untracked process (pid: 21153 name: (crash_dump64) ppid: 1 pgrp: 21151 state: Z) exited with status 0
+[ 1176.550693] init: Untracked process (pid: 21153 name: (crash_dump64) ppid: 1 pgrp: 21151 state: Z) did not have an associated service entry and will not be reaped
+[ 1176.552603] init: Untracked process (pid: 21167 name: (even.dreamscape) ppid: 1 pgrp: 21167 state: Z) exited with status 0
+[ 1176.553267] init: Untracked process (pid: 21167 name: (even.dreamscape) ppid: 1 pgrp: 21167 state: Z) did not have an associated service entry and will not be reaped
+[ 1180.506994] logd: logdr: UID=0 GID=0 PID=21421 n tail=0 logMask=1d pid=0 start=0ns deadline=0ns
+[ 1180.683482] init: Untracked process (pid: 16331 name: (sh) ppid: 1 pgrp: 16331 state: Z) exited with status 0
+[ 1180.684082] init: Untracked process (pid: 16331 name: (sh) ppid: 1 pgrp: 16331 state: Z) did not have an associated service entry and will not be reaped
+[ 1195.848649] binder: release 21458:21463 transaction 398745 out, still active
+[ 1195.866430] binder: 2387:677 reply target not found
+[ 1195.866849] binder: 677:2387 transaction reply to 0:0 failed 398749/29189/0, code 0 size 4-0 line 3365
+[ 1195.867420] binder: send failed reply for transaction 398745, target dead
+[ 1207.101611] binder: release 21482:21487 transaction 400888 out, still active
+[ 1207.130319] binder: 2387:677 reply target not found
+[ 1207.130770] binder: 677:2387 transaction reply to 0:0 failed 400893/29189/0, code 0 size 4-0 line 3365
+[ 1207.131594] binder: send failed reply for transaction 400888, target dead
+[ 1208.337670] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[ 1230.131257] servicemanager: Isolated app with UID 99014 requested 'app_function', but the service is not allowed for isolated apps.
+[ 1230.200235] init: Untracked process (pid: 16668 name: (main) ppid: 1 pgrp: 3056 state: Z) exited with status 0
+[ 1230.202462] init: Untracked process (pid: 16668 name: (main) ppid: 1 pgrp: 3056 state: Z) did not have an associated service entry and will not be reaped
+[ 1230.211782] binder: undelivered TRANSACTION_COMPLETE
+[ 1230.212593] binder: undelivered transaction 402878, process died.
+[ 1231.607893] type=1400 audit(1795806912.008:65): avc:  denied  { watch } for  comm="binder:3056_1" path="/data/app/~~YzzL7delXIlEjcaUKCOpgg==/jp.net.seventhreeseven.dreamscape-Qjl7uQXBgmxvoNhDWxWrFA==" dev="dm-6" ino=163869 scontext=u:r:shell:s0 tcontext=u:object_r:apk_data_file:s0 tclass=dir permissive=0
+[ 1231.879326] servicemanager: Caller(pid=21599,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+[ 1231.890430] servicemanager: Caller(pid=21599,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+[ 1231.893170] servicemanager: Caller(pid=21599,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found mapper/ranchu in device VINTF manifest.
+[ 1232.256756] type=1400 audit(1795806912.660:66): avc:  denied  { execute } for  comm="main" name="idmap2" dev="dm-5" ino=389 scontext=u:r:shell:s0 tcontext=u:object_r:idmap_exec:s0 tclass=file permissive=0
+[ 1232.457476] servicemanager: Isolated app with UID 99015 requested 'network_management', but the service is not allowed for isolated apps.
+[ 1232.473096] servicemanager: Isolated app with UID 99015 requested 'connectivity', but the service is not allowed for isolated apps.
+[ 1232.505203] servicemanager: Isolated app with UID 99015 requested 'content_capture', but the service is not allowed for isolated apps.
+[ 1238.206802] init: Untracked process (pid: 22365 name: (crash_dump64) ppid: 1 pgrp: 22361 state: Z) exited with status 0
+[ 1238.207788] init: Untracked process (pid: 22365 name: (crash_dump64) ppid: 1 pgrp: 22361 state: Z) did not have an associated service entry and will not be reaped
+[ 1238.221631] init: Untracked process (pid: 22375 name: (even.dreamscape) ppid: 1 pgrp: 22375 state: Z) exited with status 0
+[ 1238.223786] init: Untracked process (pid: 22375 name: (even.dreamscape) ppid: 1 pgrp: 22375 state: Z) did not have an associated service entry and will not be reaped
+[ 1243.192704] binder: undelivered death notification, 0000781abca0f590
+[ 1243.195466] init: Untracked process (pid: 16790 name: (main) ppid: 1 pgrp: 16790 state: Z) received SIGTERM
+[ 1243.196388] init: Untracked process (pid: 16790 name: (main) ppid: 1 pgrp: 16790 state: Z) did not have an associated service entry and will not be reaped
+[ 1244.251355] init: Untracked process (pid: 23059 name: (crash_dump64) ppid: 1 pgrp: 23058 state: Z) exited with status 0
+[ 1244.252033] init: Untracked process (pid: 23059 name: (crash_dump64) ppid: 1 pgrp: 23058 state: Z) did not have an associated service entry and will not be reaped
+[ 1244.261551] init: Untracked process (pid: 23061 name: (Profile Saver) ppid: 1 pgrp: 23061 state: Z) exited with status 0
+[ 1244.262331] init: Untracked process (pid: 23061 name: (Profile Saver) ppid: 1 pgrp: 23061 state: Z) did not have an associated service entry and will not be reaped
+[ 1244.363008] servicemanager: Isolated app with UID 99016 requested 'network_management', but the service is not allowed for isolated apps.
+[ 1244.367734] servicemanager: Isolated app with UID 99016 requested 'connectivity', but the service is not allowed for isolated apps.
+[ 1244.379342] servicemanager: Isolated app with UID 99016 requested 'content_capture', but the service is not allowed for isolated apps.
+[ 1250.956467] init: Untracked process (pid: 23767 name: (crash_dump64) ppid: 1 pgrp: 23763 state: Z) exited with status 0
+[ 1250.957509] init: Untracked process (pid: 23767 name: (crash_dump64) ppid: 1 pgrp: 23763 state: Z) did not have an associated service entry and will not be reaped
+[ 1250.978523] init: Untracked process (pid: 23769 name: (even.dreamscape) ppid: 1 pgrp: 23769 state: Z) exited with status 0
+[ 1250.979603] init: Untracked process (pid: 23769 name: (even.dreamscape) ppid: 1 pgrp: 23769 state: Z) did not have an associated service entry and will not be reaped
+[ 1255.574170] servicemanager: Notifying artd they don't (previously: do) have clients when we now have no record of a client
+[ 1255.581612] servicemanager: Caller(pid=1262,uid=1082,sid=u:r:artd:s0) Unregistering artd
+[ 1255.583556] libbinder.BpBinder: onLastStrongRef automatically unlinking death recipients for binder (0x74d616a2b9c0) with descriptor: '(not cached)'
+[ 1255.596623] init: Service 'artd' (pid 1262) exited with status 0 oneshot service took 1237.529053 seconds in background
+[ 1255.597502] init: Sending SIGKILL to service 'artd' (pid 1262) process group...
+[ 1255.601017] libprocessgroup: Removed cgroup /sys/fs/cgroup/system/uid_1082/pid_1262
+[ 1258.490639] init: Untracked process (pid: 24519 name: (crash_dump64) ppid: 1 pgrp: 24516 state: Z) exited with status 0
+[ 1258.491366] init: Untracked process (pid: 24519 name: (crash_dump64) ppid: 1 pgrp: 24516 state: Z) did not have an associated service entry and will not be reaped
+[ 1258.503891] init: Untracked process (pid: 24522 name: (even.dreamscape) ppid: 1 pgrp: 24522 state: Z) exited with status 0
+[ 1258.504785] init: Untracked process (pid: 24522 name: (even.dreamscape) ppid: 1 pgrp: 24522 state: Z) did not have an associated service entry and will not be reaped
+[ 1267.132108] init: Untracked process (pid: 25293 name: (crash_dump64) ppid: 1 pgrp: 25291 state: Z) exited with status 0
+[ 1267.140881] init: Untracked process (pid: 25293 name: (crash_dump64) ppid: 1 pgrp: 25291 state: Z) did not have an associated service entry and will not be reaped
+[ 1267.146870] init: Untracked process (pid: 25295 name: (even.dreamscape) ppid: 1 pgrp: 25295 state: Z) exited with status 0
+[ 1267.147759] init: Untracked process (pid: 25295 name: (even.dreamscape) ppid: 1 pgrp: 25295 state: Z) did not have an associated service entry and will not be reaped
+[ 1268.337330] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[ 1278.096440] init: Untracked process (pid: 26163 name: (crash_dump64) ppid: 1 pgrp: 26161 state: Z) exited with status 0
+[ 1278.097395] init: Untracked process (pid: 26163 name: (crash_dump64) ppid: 1 pgrp: 26161 state: Z) did not have an associated service entry and will not be reaped
+[ 1278.103786] init: Untracked process (pid: 26165 name: (even.dreamscape) ppid: 1 pgrp: 26165 state: Z) exited with status 0
+[ 1278.104459] init: Untracked process (pid: 26165 name: (even.dreamscape) ppid: 1 pgrp: 26165 state: Z) did not have an associated service entry and will not be reaped
+[ 1278.728271] logd: logdr: UID=0 GID=0 PID=26247 n tail=0 logMask=1d pid=0 start=0ns deadline=0ns
+[ 1278.993017] init: Untracked process (pid: 21514 name: (sh) ppid: 1 pgrp: 21514 state: Z) exited with status 0
+[ 1278.994465] init: Untracked process (pid: 21514 name: (sh) ppid: 1 pgrp: 21514 state: Z) did not have an associated service entry and will not be reaped
+[ 1280.984049] servicemanager: Caller(pid=677,uid=1000,sid=u:r:system_server:s0) Since 'artd' could not be found trying to start it as a lazy AIDL service. (if it's not configured to be a lazy service, it may be stuck starting or still starting).
+[ 1280.989104] init: starting service 'artd'...
+[ 1280.992655] libprocessgroup: Created cgroup /sys/fs/cgroup/system/uid_1082/pid_26265
+[ 1281.011065] init: ... started service 'artd' has pid 26265
+[ 1281.011597] init: Control message: Processed ctl.interface_start for 'aidl/artd' from pid: 316 (/system/bin/servicemanager)
+[ 1281.031385] servicemanager: Notifying artd they do (previously: don't) have clients when service is guaranteed to be in use
+[ 1281.032682] libbinder.BpBinder: onLastStrongRef automatically unlinking death recipients for binder (0x74d616a2cdb0) with descriptor: '(not cached)'
+[ 1286.012897] binder: release 26328:26334 transaction 411112 out, still active
+[ 1286.034249] binder: 1941:677 reply target not found
+[ 1286.034688] binder: 677:1941 transaction reply to 0:0 failed 411119/29189/0, code 0 size 4-0 line 3365
+[ 1286.035362] binder: send failed reply for transaction 411112, target dead
+[ 1300.752039] binder: release 26353:26358 transaction 416102 out, still active
+[ 1300.768684] binder: 1928:677 reply target not found
+[ 1300.769250] binder: 677:1928 transaction reply to 0:0 failed 416105/29189/0, code 0 size 4-0 line 3365
+[ 1300.770957] binder: send failed reply for transaction 416102, target dead
+[ 1305.573306] servicemanager: Notifying artd they don't (previously: do) have clients when we now have no record of a client
+[ 1305.575092] servicemanager: Caller(pid=26265,uid=1082,sid=u:r:artd:s0) Unregistering artd
+[ 1305.576459] libbinder.BpBinder: onLastStrongRef automatically unlinking death recipients for binder (0x74d616a2b9c0) with descriptor: '(not cached)'
+[ 1305.582734] init: Service 'artd' (pid 26265) exited with status 0 oneshot service took 24.590000 seconds in background
+[ 1305.583778] init: Sending SIGKILL to service 'artd' (pid 26265) process group...
+[ 1305.585193] libprocessgroup: Removed cgroup /sys/fs/cgroup/system/uid_1082/pid_26265
+[ 1323.709494] servicemanager: Isolated app with UID 99016 requested 'app_function', but the service is not allowed for isolated apps.
+[ 1323.730976] init: Untracked process (pid: 21657 name: (main) ppid: 1 pgrp: 3056 state: Z) exited with status 0
+[ 1323.732072] init: Untracked process (pid: 21657 name: (main) ppid: 1 pgrp: 3056 state: Z) did not have an associated service entry and will not be reaped
+[ 1323.795961] binder: undelivered TRANSACTION_COMPLETE
+[ 1323.797242] binder: undelivered transaction 418066, process died.
+[ 1325.044095] type=1400 audit(1795807005.448:67): avc:  denied  { watch } for  comm="binder:3056_3" path="/data/app/~~YzzL7delXIlEjcaUKCOpgg==/jp.net.seventhreeseven.dreamscape-Qjl7uQXBgmxvoNhDWxWrFA==" dev="dm-6" ino=163869 scontext=u:r:shell:s0 tcontext=u:object_r:apk_data_file:s0 tclass=dir permissive=0
+[ 1325.096015] servicemanager: Isolated app with UID 99017 requested 'network_management', but the service is not allowed for isolated apps.
+[ 1325.100813] servicemanager: Isolated app with UID 99017 requested 'connectivity', but the service is not allowed for isolated apps.
+[ 1325.132156] servicemanager: Isolated app with UID 99017 requested 'content_capture', but the service is not allowed for isolated apps.
+[ 1325.259000] servicemanager: Caller(pid=26466,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+[ 1325.266450] servicemanager: Caller(pid=26466,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+[ 1325.279769] servicemanager: Caller(pid=26466,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found mapper/ranchu in device VINTF manifest.
+[ 1325.509967] type=1400 audit(1795807005.912:68): avc:  denied  { execute } for  comm="main" name="idmap2" dev="dm-5" ino=389 scontext=u:r:shell:s0 tcontext=u:object_r:idmap_exec:s0 tclass=file permissive=0
+[ 1328.338102] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[ 1330.860540] init: Untracked process (pid: 27241 name: (crash_dump64) ppid: 1 pgrp: 27238 state: Z) exited with status 0
+[ 1330.861790] init: Untracked process (pid: 27241 name: (crash_dump64) ppid: 1 pgrp: 27238 state: Z) did not have an associated service entry and will not be reaped
+[ 1330.877777] init: Untracked process (pid: 27243 name: (even.dreamscape) ppid: 1 pgrp: 27243 state: Z) exited with status 0
+[ 1330.879890] init: Untracked process (pid: 27243 name: (even.dreamscape) ppid: 1 pgrp: 27243 state: Z) did not have an associated service entry and will not be reaped
+[ 1335.845272] binder: undelivered transaction 420182, process died.
+[ 1335.845704] binder: undelivered transaction 420183, process died.
+[ 1335.846603] binder: undelivered transaction 420184, process died.
+[ 1335.946764] servicemanager: Isolated app with UID 99018 requested 'network_management', but the service is not allowed for isolated apps.
+[ 1335.950478] servicemanager: Isolated app with UID 99018 requested 'connectivity', but the service is not allowed for isolated apps.
+[ 1335.967117] servicemanager: Isolated app with UID 99018 requested 'content_capture', but the service is not allowed for isolated apps.
+[ 1336.240612] binder: undelivered death notification, 00007be13f00f0c0
+[ 1336.242660] init: Untracked process (pid: 22831 name: (main) ppid: 1 pgrp: 22831 state: Z) received SIGTERM
+[ 1336.243573] init: Untracked process (pid: 22831 name: (main) ppid: 1 pgrp: 22831 state: Z) did not have an associated service entry and will not be reaped
+[ 1336.316229] init: Untracked process (pid: 27907 name: (crash_dump64) ppid: 1 pgrp: 27906 state: Z) exited with status 0
+[ 1336.317012] init: Untracked process (pid: 27907 name: (crash_dump64) ppid: 1 pgrp: 27906 state: Z) did not have an associated service entry and will not be reaped
+[ 1336.326531] init: Untracked process (pid: 27921 name: (even.dreamscape) ppid: 1 pgrp: 27921 state: Z) exited with status 0
+[ 1336.328442] init: Untracked process (pid: 27921 name: (even.dreamscape) ppid: 1 pgrp: 27921 state: Z) did not have an associated service entry and will not be reaped
+[ 1341.821557] init: Untracked process (pid: 28589 name: (crash_dump64) ppid: 1 pgrp: 28588 state: Z) exited with status 0
+[ 1341.822138] init: Untracked process (pid: 28589 name: (crash_dump64) ppid: 1 pgrp: 28588 state: Z) did not have an associated service entry and will not be reaped
+[ 1341.828616] init: Untracked process (pid: 28591 name: (even.dreamscape) ppid: 1 pgrp: 28591 state: Z) exited with status 0
+[ 1341.829575] init: Untracked process (pid: 28591 name: (even.dreamscape) ppid: 1 pgrp: 28591 state: Z) did not have an associated service entry and will not be reaped
+[ 1348.133054] init: Untracked process (pid: 29287 name: (crash_dump64) ppid: 1 pgrp: 29282 state: Z) exited with status 0
+[ 1348.133736] init: Untracked process (pid: 29287 name: (crash_dump64) ppid: 1 pgrp: 29282 state: Z) did not have an associated service entry and will not be reaped
+[ 1348.140830] init: Untracked process (pid: 29294 name: (even.dreamscape) ppid: 1 pgrp: 29294 state: Z) exited with status 0
+[ 1348.141513] init: Untracked process (pid: 29294 name: (even.dreamscape) ppid: 1 pgrp: 29294 state: Z) did not have an associated service entry and will not be reaped
+[ 1355.770465] init: Untracked process (pid: 30041 name: (crash_dump64) ppid: 1 pgrp: 30040 state: Z) exited with status 0
+[ 1355.771300] init: Untracked process (pid: 30041 name: (crash_dump64) ppid: 1 pgrp: 30040 state: Z) did not have an associated service entry and will not be reaped
+[ 1355.779543] init: Untracked process (pid: 30043 name: (even.dreamscape) ppid: 1 pgrp: 30043 state: Z) exited with status 0
+[ 1355.780250] init: Untracked process (pid: 30043 name: (even.dreamscape) ppid: 1 pgrp: 30043 state: Z) did not have an associated service entry and will not be reaped
+[ 1366.129589] init: Untracked process (pid: 30924 name: (crash_dump64) ppid: 1 pgrp: 30923 state: Z) exited with status 0
+[ 1366.130328] init: Untracked process (pid: 30924 name: (crash_dump64) ppid: 1 pgrp: 30923 state: Z) did not have an associated service entry and will not be reaped
+[ 1366.137060] init: Untracked process (pid: 30926 name: (queued-work-loo) ppid: 1 pgrp: 30926 state: Z) exited with status 0
+[ 1366.137489] init: Untracked process (pid: 30926 name: (queued-work-loo) ppid: 1 pgrp: 30926 state: Z) did not have an associated service entry and will not be reaped
+[ 1370.426278] logd: logdr: UID=0 GID=0 PID=31199 n tail=0 logMask=1d pid=0 start=0ns deadline=0ns
+[ 1370.632631] init: Untracked process (pid: 26381 name: (sh) ppid: 1 pgrp: 26381 state: Z) exited with status 0
+[ 1370.634169] init: Untracked process (pid: 26381 name: (sh) ppid: 1 pgrp: 26381 state: Z) did not have an associated service entry and will not be reaped
+[ 1374.731849] servicemanager: Caller(pid=677,uid=1000,sid=u:r:system_server:s0) Since 'artd' could not be found trying to start it as a lazy AIDL service. (if it's not configured to be a lazy service, it may be stuck starting or still starting).
+[ 1374.736807] init: starting service 'artd'...
+[ 1374.739969] libprocessgroup: Created cgroup /sys/fs/cgroup/system/uid_1082/pid_31218
+[ 1374.762815] init: ... started service 'artd' has pid 31218
+[ 1374.763206] init: Control message: Processed ctl.interface_start for 'aidl/artd' from pid: 316 (/system/bin/servicemanager)
+[ 1374.784712] servicemanager: Notifying artd they do (previously: don't) have clients when service is guaranteed to be in use
+[ 1374.786422] libbinder.BpBinder: onLastStrongRef automatically unlinking death recipients for binder (0x74d616a10d70) with descriptor: '(not cached)'
+[ 1379.842829] binder: release 31269:31275 transaction 425470 out, still active
+[ 1379.860717] binder: 1737:677 reply target not found
+[ 1379.861073] binder: 677:1737 transaction reply to 0:0 failed 425474/29189/0, code 0 size 4-0 line 3365
+[ 1379.863676] binder: send failed reply for transaction 425470, target dead
+[ 1388.336984] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[ 1448.338767] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[ 1460.574219] servicemanager: Notifying artd they don't (previously: do) have clients when we now have no record of a client
+[ 1460.576305] servicemanager: Caller(pid=31218,uid=1082,sid=u:r:artd:s0) Unregistering artd
+[ 1460.577318] libbinder.BpBinder: onLastStrongRef automatically unlinking death recipients for binder (0x74d616a2b9c0) with descriptor: '(not cached)'
+[ 1460.583977] init: Service 'artd' (pid 31218) exited with status 0 oneshot service took 85.844002 seconds in background
+[ 1460.584755] init: Sending SIGKILL to service 'artd' (pid 31218) process group...
+[ 1460.587012] libprocessgroup: Removed cgroup /sys/fs/cgroup/system/uid_1082/pid_31218
+[ 1502.448393] init: Untracked process (pid: 32397 name: (crash_dump64) ppid: 1 pgrp: 32396 state: Z) exited with status 0
+[ 1502.449058] init: Untracked process (pid: 32397 name: (crash_dump64) ppid: 1 pgrp: 32396 state: Z) did not have an associated service entry and will not be reaped
+[ 1502.456387] init: Untracked process (pid: 32399 name: (even.dreamscape) ppid: 1 pgrp: 32399 state: Z) exited with status 0
+[ 1502.457088] init: Untracked process (pid: 32399 name: (even.dreamscape) ppid: 1 pgrp: 32399 state: Z) did not have an associated service entry and will not be reaped
+[ 1508.336918] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[ 1510.626930] init: Untracked process (pid: 1496 name: (crash_dump64) ppid: 1 pgrp: 1490 state: Z) exited with status 0
+[ 1510.627584] init: Untracked process (pid: 1496 name: (crash_dump64) ppid: 1 pgrp: 1490 state: Z) did not have an associated service entry and will not be reaped
+[ 1510.634201] init: Untracked process (pid: 1500 name: (even.dreamscape) ppid: 1 pgrp: 1500 state: Z) exited with status 0
+[ 1510.635188] init: Untracked process (pid: 1500 name: (even.dreamscape) ppid: 1 pgrp: 1500 state: Z) did not have an associated service entry and will not be reaped
+[ 1519.873357] init: Untracked process (pid: 3634 name: (crash_dump64) ppid: 1 pgrp: 3632 state: Z) exited with status 0
+[ 1519.874883] init: Untracked process (pid: 3634 name: (crash_dump64) ppid: 1 pgrp: 3632 state: Z) did not have an associated service entry and will not be reaped
+[ 1519.881394] init: Untracked process (pid: 3637 name: (even.dreamscape) ppid: 1 pgrp: 3637 state: Z) exited with status 0
+[ 1519.882689] init: Untracked process (pid: 3637 name: (even.dreamscape) ppid: 1 pgrp: 3637 state: Z) did not have an associated service entry and will not be reaped
+[ 1534.416174] init: Untracked process (pid: 4810 name: (crash_dump64) ppid: 1 pgrp: 4807 state: Z) exited with status 0
+[ 1534.416932] init: Untracked process (pid: 4810 name: (crash_dump64) ppid: 1 pgrp: 4807 state: Z) did not have an associated service entry and will not be reaped
+[ 1534.426109] init: Untracked process (pid: 4813 name: (even.dreamscape) ppid: 1 pgrp: 4813 state: Z) exited with status 0
+[ 1534.426791] init: Untracked process (pid: 4813 name: (even.dreamscape) ppid: 1 pgrp: 4813 state: Z) did not have an associated service entry and will not be reaped
+[ 1535.815110] logd: logdr: UID=0 GID=0 PID=4897 n tail=0 logMask=1d pid=0 start=0ns deadline=0ns
+[ 1536.036833] init: Untracked process (pid: 31719 name: (sh) ppid: 1 pgrp: 31719 state: Z) exited with status 0
+[ 1536.037455] init: Untracked process (pid: 31719 name: (sh) ppid: 1 pgrp: 31719 state: Z) did not have an associated service entry and will not be reaped
+[ 1568.337336] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[ 1628.337560] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[ 1639.707512] servicemanager: Caller(pid=677,uid=1000,sid=u:r:system_server:s0) Since 'artd' could not be found trying to start it as a lazy AIDL service. (if it's not configured to be a lazy service, it may be stuck starting or still starting).
+[ 1639.713414] init: starting service 'artd'...
+[ 1639.720187] libprocessgroup: Created cgroup /sys/fs/cgroup/system/uid_1082/pid_5088
+[ 1639.756981] init: ... started service 'artd' has pid 5088
+[ 1639.757568] init: Control message: Processed ctl.interface_start for 'aidl/artd' from pid: 316 (/system/bin/servicemanager)
+[ 1639.795869] servicemanager: Notifying artd they do (previously: don't) have clients when service is guaranteed to be in use
+[ 1639.805245] libbinder.BpBinder: onLastStrongRef automatically unlinking death recipients for binder (0x74d616a2cdb0) with descriptor: '(not cached)'
+[ 1645.992148] type=1400 audit(1795807326.396:69): avc:  denied  { create } for  comm="ss" scontext=u:r:shell:s0 tcontext=u:r:shell:s0 tclass=netlink_tcpdiag_socket permissive=0
+[ 1646.280252] type=1400 audit(1795807326.680:70): avc:  denied  { create } for  comm="ss" scontext=u:r:shell:s0 tcontext=u:r:shell:s0 tclass=netlink_tcpdiag_socket permissive=0
+[ 1647.081345] hrtimer: interrupt took 148586200 ns
+[ 1655.562881] servicemanager: Isolated app with UID 99018 requested 'app_function', but the service is not allowed for isolated apps.
+[ 1655.576629] init: Untracked process (pid: 26514 name: (main) ppid: 1 pgrp: 3056 state: Z) exited with status 0
+[ 1655.582978] init: Untracked process (pid: 26514 name: (main) ppid: 1 pgrp: 3056 state: Z) did not have an associated service entry and will not be reaped
+[ 1655.636263] binder: undelivered TRANSACTION_COMPLETE
+[ 1655.636979] binder: undelivered transaction 473343, process died.
+[ 1655.638439] binder: undelivered transaction 473282, process died.
+[ 1658.117201] servicemanager: Isolated app with UID 99019 requested 'network_management', but the service is not allowed for isolated apps.
+[ 1658.183917] servicemanager: Isolated app with UID 99019 requested 'connectivity', but the service is not allowed for isolated apps.
+[ 1658.406980] servicemanager: Isolated app with UID 99019 requested 'content_capture', but the service is not allowed for isolated apps.
+[ 1658.899473] type=1400 audit(1795807339.300:71): avc:  denied  { watch } for  comm="binder:3056_2" path="/data/app/~~YzzL7delXIlEjcaUKCOpgg==/jp.net.seventhreeseven.dreamscape-Qjl7uQXBgmxvoNhDWxWrFA==" dev="dm-6" ino=163869 scontext=u:r:shell:s0 tcontext=u:object_r:apk_data_file:s0 tclass=dir permissive=0
+[ 1659.541786] servicemanager: Caller(pid=5883,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+[ 1659.565660] servicemanager: Caller(pid=5883,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found android.hardware.graphics.allocator.IAllocator/default in device VINTF manifest.
+[ 1659.571719] servicemanager: Caller(pid=5883,uid=10234,sid=u:r:untrusted_app_34:s0:c234,c256,c512,c768) Found mapper/ranchu in device VINTF manifest.
+[ 1659.940265] type=1400 audit(1795807340.344:72): avc:  denied  { execute } for  comm="main" name="idmap2" dev="dm-5" ino=389 scontext=u:r:shell:s0 tcontext=u:object_r:idmap_exec:s0 tclass=file permissive=0
+[ 1660.575599] servicemanager: Notifying artd they don't (previously: do) have clients when we now have no record of a client
+[ 1660.580276] servicemanager: Caller(pid=5088,uid=1082,sid=u:r:artd:s0) Unregistering artd
+[ 1660.581368] libbinder.BpBinder: onLastStrongRef automatically unlinking death recipients for binder (0x74d616a2b9c0) with descriptor: '(not cached)'
+[ 1660.588148] init: Service 'artd' (pid 5088) exited with status 0 oneshot service took 20.868000 seconds in background
+[ 1660.589581] init: Sending SIGKILL to service 'artd' (pid 5088) process group...
+[ 1660.591849] libprocessgroup: Removed cgroup /sys/fs/cgroup/system/uid_1082/pid_5088
+[ 1662.470813] binder: undelivered death notification, 00007d422ae104b0
+[ 1662.472492] init: Untracked process (pid: 27857 name: (main) ppid: 1 pgrp: 27857 state: Z) received SIGTERM
+[ 1662.473224] init: Untracked process (pid: 27857 name: (main) ppid: 1 pgrp: 27857 state: Z) did not have an associated service entry and will not be reaped
+[ 1674.169056] init: Untracked process (pid: 7560 name: (crash_dump64) ppid: 1 pgrp: 7559 state: Z) exited with status 0
+[ 1674.169905] init: Untracked process (pid: 7560 name: (crash_dump64) ppid: 1 pgrp: 7559 state: Z) did not have an associated service entry and will not be reaped
+[ 1674.186078] init: Untracked process (pid: 7595 name: (even.dreamscape) ppid: 1 pgrp: 7595 state: Z) exited with status 0
+[ 1674.186938] init: Untracked process (pid: 7595 name: (even.dreamscape) ppid: 1 pgrp: 7595 state: Z) did not have an associated service entry and will not be reaped
+[ 1684.527659] init: Untracked process (pid: 8899 name: (crash_dump64) ppid: 1 pgrp: 8896 state: Z) exited with status 0
+[ 1684.528876] init: Untracked process (pid: 8899 name: (crash_dump64) ppid: 1 pgrp: 8896 state: Z) did not have an associated service entry and will not be reaped
+[ 1684.539045] init: Untracked process (pid: 8904 name: (even.dreamscape) ppid: 1 pgrp: 8904 state: Z) exited with status 0
+[ 1684.539953] init: Untracked process (pid: 8904 name: (even.dreamscape) ppid: 1 pgrp: 8904 state: Z) did not have an associated service entry and will not be reaped
+[ 1688.371447] healthd: battery l=100 v=5000 t=25.0 h=2 st=2 c=900000 fc=3000000 cc=10 chg=a
+[ 1697.235119] init: Untracked process (pid: 10242 name: (crash_dump64) ppid: 1 pgrp: 10235 state: Z) exited with status 0
+[ 1697.240183] init: Untracked process (pid: 10242 name: (crash_dump64) ppid: 1 pgrp: 10235 state: Z) did not have an associated service entry and will not be reaped
+[ 1697.312230] init: Untracked process (pid: 10279 name: (HeapTaskDaemon) ppid: 1 pgrp: 10279 state: Z) exited with status 0
+[ 1697.313160] init: Untracked process (pid: 10279 name: (HeapTaskDaemon) ppid: 1 pgrp: 10279 state: Z) did not have an associated service entry and will not be reaped
+[ 1708.219359] init: Untracked process (pid: 11669 name: (crash_dump64) ppid: 1 pgrp: 11667 state: Z) exited with status 0
+[ 1708.220247] init: Untracked process (pid: 11669 name: (crash_dump64) ppid: 1 pgrp: 11667 state: Z) did not have an associated service entry and will not be reaped
+[ 1708.234817] init: Untracked process (pid: 11681 name: (binder:5883_4) ppid: 1 pgrp: 11681 state: Z) exited with status 0
+[ 1708.235646] init: Untracked process (pid: 11681 name: (binder:5883_4) ppid: 1 pgrp: 11681 state: Z) did not have an associated service entry and will not be reaped
+[ 1724.547927] init: Untracked process (pid: 13286 name: (crash_dump64) ppid: 1 pgrp: 13283 state: Z) exited with status 0
+[ 1724.548783] init: Untracked process (pid: 13286 name: (crash_dump64) ppid: 1 pgrp: 13283 state: Z) did not have an associated service entry and will not be reaped
+[ 1724.558157] init: Untracked process (pid: 13298 name: (even.dreamscape) ppid: 1 pgrp: 13298 state: Z) exited with status 0
+[ 1724.559308] init: Untracked process (pid: 13298 name: (even.dreamscape) ppid: 1 pgrp: 13298 state: Z) did not have an associated service entry and will not be reaped
+[ 1724.717675] logd: logdr: UID=0 GID=0 PID=13330 n tail=0 logMask=1d pid=0 start=0ns deadline=0ns

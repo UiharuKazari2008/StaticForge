@@ -1,0 +1,124 @@
+  Class descriptor  : 'Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;'
+      name          : 'ensureWindowsAvailableTimedLocked'
+      type          : '(I)V'
+      access        : 0x0011 (PUBLIC FINAL)
+      code          -
+      registers     : 8
+      ins           : 2
+      outs          : 3
+      insns size    : 70 16-bit code units
+26a8e0:                                        |[26a8e0] com.android.server.accessibility.AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked:(I)V
+26a8f0: 12f0                                   |0000: const/4 v0, #int -1 // #ff
+26a8f2: 3307 0300                              |0001: if-ne v7, v0, 0004 // +0003
+26a8f6: 2842                                   |0003: goto 0045 // +0042
+26a8f8: 5460 4432                              |0004: iget-object v0, v6, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.mA11yWindowManager:Lcom/android/server/accessibility/AccessibilityWindowManager; // field@3244
+26a8fc: 6e20 1a59 7000                         |0006: invoke-virtual {v0, v7}, Lcom/android/server/accessibility/AccessibilityWindowManager;.getWindowListLocked:(I)Ljava/util/List; // method@591a
+26a902: 0c00                                   |0009: move-result-object v0
+26a904: 3800 0300                              |000a: if-eqz v0, 000d // +0003
+26a908: 2839                                   |000c: goto 0045 // +0039
+26a90a: 5460 4432                              |000d: iget-object v0, v6, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.mA11yWindowManager:Lcom/android/server/accessibility/AccessibilityWindowManager; // field@3244
+26a90e: 6e20 2159 7000                         |000f: invoke-virtual {v0, v7}, Lcom/android/server/accessibility/AccessibilityWindowManager;.isTrackingWindowsLocked:(I)Z // method@5921
+26a914: 0a00                                   |0012: move-result v0
+26a916: 3900 0800                              |0013: if-nez v0, 001b // +0008
+26a91a: 5460 7032                              |0015: iget-object v0, v6, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.mSystemSupport:Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection$SystemSupport; // field@3270
+26a91e: 1201                                   |0017: const/4 v1, #int 0 // #0
+26a920: 7220 db53 1000                         |0018: invoke-interface {v0, v1}, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection$SystemSupport;.onClientChangeLocked:(Z)V // method@53db
+26a926: 5460 4432                              |001b: iget-object v0, v6, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.mA11yWindowManager:Lcom/android/server/accessibility/AccessibilityWindowManager; // field@3244
+26a92a: 6e20 2159 7000                         |001d: invoke-virtual {v0, v7}, Lcom/android/server/accessibility/AccessibilityWindowManager;.isTrackingWindowsLocked:(I)Z // method@5921
+26a930: 0a00                                   |0020: move-result v0
+26a932: 3900 0300                              |0021: if-nez v0, 0024 // +0003
+26a936: 2822                                   |0023: goto 0045 // +0022
+26a938: 7100 3a34 0000                         |0024: invoke-static {}, Landroid/os/SystemClock;.uptimeMillis:()J // method@343a
+26a93e: 0b00                                   |0027: move-result-wide v0
+26a940: 5462 4432                              |0028: iget-object v2, v6, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.mA11yWindowManager:Lcom/android/server/accessibility/AccessibilityWindowManager; // field@3244
+26a944: 6e20 1a59 7200                         |002a: invoke-virtual {v2, v7}, Lcom/android/server/accessibility/AccessibilityWindowManager;.getWindowListLocked:(I)Ljava/util/List; // method@591a
+26a94a: 0c02                                   |002d: move-result-object v2
+26a94c: 3902 1700                              |002e: if-nez v2, 0045 // +0017
+26a950: 7100 3a34 0000                         |0030: invoke-static {}, Landroid/os/SystemClock;.uptimeMillis:()J // method@343a
+26a956: 0b02                                   |0033: move-result-wide v2
+26a958: bc02                                   |0034: sub-long/2addr v2, v0
+26a95a: 1604 8813                              |0035: const-wide/16 v4, #int 5000 // #1388
+26a95e: bc24                                   |0037: sub-long/2addr v4, v2
+26a960: 1602 0000                              |0038: const-wide/16 v2, #int 0 // #0
+26a964: 3102 0402                              |003a: cmp-long v2, v4, v2
+26a968: 3c02 0300                              |003c: if-gtz v2, 003f // +0003
+26a96c: 2807                                   |003e: goto 0045 // +0007
+26a96e: 5462 5832                              |003f: iget-object v2, v6, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.mLock:Ljava/lang/Object; // field@3258
+26a972: 6e30 fef8 4205                         |0041: invoke-virtual {v2, v4, v5}, Ljava/lang/Object;.wait:(J)V // method@f8fe
+26a978: 28e4                                   |0044: goto 0028 // -001c
+26a97a: 0e00                                   |0045: return-void
+      catches       : 1
+  Class descriptor  : 'Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;'
+      name          : 'getWindows'
+      type          : '()Landroid/view/accessibility/AccessibilityWindowInfo$WindowListSparseArray;'
+      access        : 0x0001 (PUBLIC)
+      code          -
+      registers     : 10
+      ins           : 1
+      outs          : 3
+      insns size    : 112 16-bit code units
+267bb0:                                        |[267bb0] com.android.server.accessibility.AbstractAccessibilityServiceConnection.getWindows:()Landroid/view/accessibility/AccessibilityWindowInfo$WindowListSparseArray;
+267bc0: 6e10 6f54 0900                         |0000: invoke-virtual {v9}, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.svcConnTracingEnabled:()Z // method@546f
+267bc6: 0a00                                   |0003: move-result v0
+267bc8: 3800 0900                              |0004: if-eqz v0, 000d // +0009
+267bcc: 1a00 caf4                              |0006: const-string v0, "getWindows" // string@f4ca
+267bd0: 1a01 0000                              |0008: const-string v1, "" // string@0000
+267bd4: 6e30 3354 0901                         |000a: invoke-virtual {v9, v0, v1}, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.logTraceSvcConn:(Ljava/lang/String;Ljava/lang/String;)V // method@5433
+267bda: 5490 5832                              |000d: iget-object v0, v9, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.mLock:Ljava/lang/Object; // field@3258
+267bde: 1d00                                   |000f: monitor-enter v0
+267be0: 6e10 2554 0900                         |0010: invoke-virtual {v9}, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.hasRightsToCurrentUserLocked:()Z // method@5425
+267be6: 0a01                                   |0013: move-result v1
+267be8: 1202                                   |0014: const/4 v2, #int 0 // #0
+267bea: 3901 0600                              |0015: if-nez v1, 001b // +0006
+267bee: 1e00                                   |0017: monitor-exit v0
+267bf0: 1102                                   |0018: return-object v2
+267bf2: 0d09                                   |0019: move-exception v9
+267bf4: 2854                                   |001a: goto 006e // +0054
+267bf6: 5491 6b32                              |001b: iget-object v1, v9, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.mSecurityPolicy:Lcom/android/server/accessibility/AccessibilitySecurityPolicy; // field@326b
+267bfa: 6e20 ba57 9100                         |001d: invoke-virtual {v1, v9}, Lcom/android/server/accessibility/AccessibilitySecurityPolicy;.canRetrieveWindowsLocked:(Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;)Z // method@57ba
+267c00: 0a01                                   |0020: move-result v1
+267c02: 3901 0400                              |0021: if-nez v1, 0025 // +0004
+267c06: 1e00                                   |0023: monitor-exit v0
+267c08: 1102                                   |0024: return-object v2
+267c0a: 5491 6b32                              |0025: iget-object v1, v9, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.mSecurityPolicy:Lcom/android/server/accessibility/AccessibilitySecurityPolicy; // field@326b
+267c0e: 6e20 bc57 9100                         |0027: invoke-virtual {v1, v9}, Lcom/android/server/accessibility/AccessibilitySecurityPolicy;.checkAccessibilityAccess:(Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;)Z // method@57bc
+267c14: 0a01                                   |002a: move-result v1
+267c16: 3901 0400                              |002b: if-nez v1, 002f // +0004
+267c1a: 1e00                                   |002d: monitor-exit v0
+267c1c: 1102                                   |002e: return-object v2
+267c1e: 7100 c02e 0000                         |002f: invoke-static {}, Landroid/os/Binder;.clearCallingIdentity:()J // method@2ec0
+267c24: 0b01                                   |0032: move-result-wide v1
+267c26: 2203 a10c                              |0033: new-instance v3, Landroid/view/accessibility/AccessibilityWindowInfo$WindowListSparseArray; // type@0ca1
+267c2a: 7010 133c 0300                         |0035: invoke-direct {v3}, Landroid/view/accessibility/AccessibilityWindowInfo$WindowListSparseArray;.<init>:()V // method@3c13
+267c30: 5494 4432                              |0038: iget-object v4, v9, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.mA11yWindowManager:Lcom/android/server/accessibility/AccessibilityWindowManager; // field@3244
+267c34: 5295 4d32                              |003a: iget v5, v9, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.mDisplayTypes:I // field@324d
+267c38: 6e20 0d59 5400                         |003c: invoke-virtual {v4, v5}, Lcom/android/server/accessibility/AccessibilityWindowManager;.getDisplayListLocked:(I)Ljava/util/ArrayList; // method@590d
+267c3e: 0c04                                   |003f: move-result-object v4
+267c40: 6e10 c6fa 0400                         |0040: invoke-virtual {v4}, Ljava/util/ArrayList;.size:()I // method@fac6
+267c46: 0a05                                   |0043: move-result v5
+267c48: 3d05 2100                              |0044: if-lez v5, 0065 // +0021
+267c4c: 1206                                   |0046: const/4 v6, #int 0 // #0
+267c4e: 3556 1e00                              |0047: if-ge v6, v5, 0065 // +001e
+267c52: 6e20 b8fa 6400                         |0049: invoke-virtual {v4, v6}, Ljava/util/ArrayList;.get:(I)Ljava/lang/Object; // method@fab8
+267c58: 0c07                                   |004c: move-result-object v7
+267c5a: 1f07 d328                              |004d: check-cast v7, Ljava/lang/Integer; // type@28d3
+267c5e: 6e10 baf8 0700                         |004f: invoke-virtual {v7}, Ljava/lang/Integer;.intValue:()I // method@f8ba
+267c64: 0a07                                   |0052: move-result v7
+267c66: 6e20 0b54 7900                         |0053: invoke-virtual {v9, v7}, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.ensureWindowsAvailableTimedLocked:(I)V // method@540b
+267c6c: 6e20 2454 7900                         |0056: invoke-virtual {v9, v7}, Lcom/android/server/accessibility/AbstractAccessibilityServiceConnection;.getWindowsByDisplayLocked:(I)Ljava/util/List; // method@5424
+267c72: 0c08                                   |0059: move-result-object v8
+267c74: 3808 0800                              |005a: if-eqz v8, 0062 // +0008
+267c78: 6e30 153c 7308                         |005c: invoke-virtual {v3, v7, v8}, Landroid/view/accessibility/AccessibilityWindowInfo$WindowListSparseArray;.put:(ILjava/lang/Object;)V // method@3c15
+267c7e: 2803                                   |005f: goto 0062 // +0003
+267c80: 0d09                                   |0060: move-exception v9
+267c82: 2809                                   |0061: goto 006a // +0009
+267c84: d806 0601                              |0062: add-int/lit8 v6, v6, #int 1 // #01
+267c88: 28e3                                   |0064: goto 0047 // -001d
+267c8a: 7120 c82e 2100                         |0065: invoke-static {v1, v2}, Landroid/os/Binder;.restoreCallingIdentity:(J)V // method@2ec8
+267c90: 1e00                                   |0068: monitor-exit v0
+267c92: 1103                                   |0069: return-object v3
+267c94: 7120 c82e 2100                         |006a: invoke-static {v1, v2}, Landroid/os/Binder;.restoreCallingIdentity:(J)V // method@2ec8
+267c9a: 2709                                   |006d: throw v9
+267c9c: 1e00                                   |006e: monitor-exit v0
+267c9e: 2709                                   |006f: throw v9
+      catches       : 3

@@ -1,0 +1,98 @@
+# The app's main thread DURING the stall (run kill-off-1), ART SIGQUIT dumps, R8 frames deobfuscated with release 39's mapping
+# pg_map_id 0d509ccdffe69b5d73df30c2bdaeb954e0b45570bb89a11bff3800055123783c (the same id is in the installed APK's classes.dex);
+# installed base.apk sha256 12b94ed910059b6345011eeeac6280927dac5d1e4b5b03e2d475745671c2797b = server release 39 (3632745, build/latest 19c7c07613)
+
+== kill-off-1/traces/trace_16  (----- pid 21599 at 2026-11-27 14:15:18.252785500-0500 -----)
+"main" prio=5 tid=1 Native
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x71a38f68 self=0x7ce295a0cbe0
+  | sysTid=21599 nice=0 cgrp=foreground sched=0/0 handle=0x7ce503640038
+  | state=S schedstat=( 314725185 207162451 258 ) utm=9 stm=22 core=2 HZ=100
+  | stack=0x7ffe4cad4000-0x7ffe4cad6000 stackSize=8188KB
+  | held mutexes=
+  native: #00 pc 0005cfc7  /apex/com.android.runtime/lib64/bionic/libc.so (__ioctl+7) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #01 pc 0005c6e7  /apex/com.android.runtime/lib64/bionic/libc.so (ioctl+167) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #02 pc 0005ee90  /system/lib64/libbinder.so (android::IPCThreadState::transact+1808) (BuildId: 414ba3791217d6e3bfd88f6c897b05ea)
+  native: #03 pc 000894df  /system/lib64/libbinder.so (android::BpBinder::transact+351) (BuildId: 414ba3791217d6e3bfd88f6c897b05ea)
+  native: #04 pc 0020e35b  /system/lib64/libandroid_runtime.so (android_os_BinderProxy_transact +171) (BuildId: e2564b9361f25203d4d8bb218bfef57e)
+  at android.os.BinderProxy.transactNative(Native method)
+  at android.os.BinderProxy.transact(BinderProxy.java:626)
+  at android.accessibilityservice.IAccessibilityServiceConnection$Stub$Proxy.getWindows(IAccessibilityServiceConnection.java:1379)
+  at android.view.accessibility.AccessibilityInteractionClient.getWindowsOnAllDisplays(AccessibilityInteractionClient.java:521)
+  at android.view.accessibility.AccessibilityInteractionClient.getWindowsOnDisplay(AccessibilityInteractionClient.java:480)
+  at android.view.accessibility.AccessibilityInteractionClient.getWindows(AccessibilityInteractionClient.java:469)
+  at android.accessibilityservice.AccessibilityService.getWindows(AccessibilityService.java:1074)
+  at jp.net.seventhreeseven.dreamscape.MelatonBarService.D0(unavailable:2)
+        => jp.net.seventhreeseven.dreamscape.MelatonBarService.scanWindows:2460
+  at jp.net.seventhreeseven.dreamscape.MelatonBarService.i(unavailable:1096)
+        => jp.net.seventhreeseven.dreamscape.MelatonBarService.barsUp:1984
+  at jp.net.seventhreeseven.dreamscape.MelatonBarService.onServiceConnected(unavailable:44)
+  at android.accessibilityservice.AccessibilityService.dispatchServiceConnected(AccessibilityService.java:914)
+  at android.accessibilityservice.AccessibilityService.-$$Nest$mdispatchServiceConnected(unavailable:0)
+  at android.accessibilityservice.AccessibilityService$2.onServiceConnected(AccessibilityService.java:2802)
+  at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.lambda$init$0(AccessibilityService.java:2968)
+  at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper.$r8$lambda$IXKYfPr3TMC6dAUB0YeaTFDCleg(unavailable:0)
+  at android.accessibilityservice.AccessibilityService$IAccessibilityServiceClientWrapper$$ExternalSyntheticLambda12.run(D8$$SyntheticClass:0)
+  at android.os.Handler.handleCallback(Handler.java:1095)
+  at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+  at android.os.Handler.dispatchMessage(Handler.java:125)
+  at android.os.Looper.loopOnce(Looper.java:296)
+  at android.os.Looper.loop(Looper.java:397)
+  at android.app.ActivityThread.main(ActivityThread.java:9523)
+  at java.lang.reflect.Method.invoke(Native method)
+  at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+  at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+DumpLatencyMs: 1.1369
+
+== kill-off-1/traces/trace_18  (----- pid 21599 at 2026-11-27 14:15:24.419390800-0500 -----)
+"main" prio=5 tid=1 Native
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x71a38f68 self=0x7ce295a0cbe0
+  | sysTid=21599 nice=0 cgrp=foreground sched=0/0 handle=0x7ce503640038
+  | state=S schedstat=( 381705920 322348621 441 ) utm=10 stm=27 core=3 HZ=100
+  | stack=0x7ffe4cad4000-0x7ffe4cad6000 stackSize=8188KB
+  | held mutexes=
+  native: #00 pc 0005cfc7  /apex/com.android.runtime/lib64/bionic/libc.so (__ioctl+7) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #01 pc 0005c6e7  /apex/com.android.runtime/lib64/bionic/libc.so (ioctl+167) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #02 pc 0005ee90  /system/lib64/libbinder.so (android::IPCThreadState::transact+1808) (BuildId: 414ba3791217d6e3bfd88f6c897b05ea)
+  native: #03 pc 000894df  /system/lib64/libbinder.so (android::BpBinder::transact+351) (BuildId: 414ba3791217d6e3bfd88f6c897b05ea)
+  native: #04 pc 0020e35b  /system/lib64/libandroid_runtime.so (android_os_BinderProxy_transact +171) (BuildId: e2564b9361f25203d4d8bb218bfef57e)
+  at android.os.BinderProxy.transactNative(Native method)
+  at android.os.BinderProxy.transact(BinderProxy.java:626)
+  at android.accessibilityservice.IAccessibilityServiceConnection$Stub$Proxy.getWindows(IAccessibilityServiceConnection.java:1379)
+  at android.view.accessibility.AccessibilityInteractionClient.getWindowsOnAllDisplays(AccessibilityInteractionClient.java:521)
+  at android.view.accessibility.AccessibilityInteractionClient.getWindowsOnDisplay(AccessibilityInteractionClient.java:480)
+  at android.view.accessibility.AccessibilityInteractionClient.getWindows(AccessibilityInteractionClient.java:469)
+  at android.accessibilityservice.AccessibilityService.getWindows(AccessibilityService.java:1074)
+  at jp.net.seventhreeseven.dreamscape.MelatonBarService.D0(unavailable:2)
+        => jp.net.seventhreeseven.dreamscape.MelatonBarService.scanWindows:2460
+  at wd1.run(unavailable:857)
+        => jp.net.seventhreeseven.dreamscape.MelatonBarService.scanSoon$lambda$69:2287
+        => MelatonBarService$$ExternalSyntheticLambda102.run:0
+  at android.os.Handler.handleCallback(Handler.java:1095)
+  at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+  at android.os.Handler.dispatchMessage(Handler.java:125)
+  at android.os.Looper.loopOnce(Looper.java:296)
+  at android.os.Looper.loop(Looper.java:397)
+  at android.app.ActivityThread.main(ActivityThread.java:9523)
+  at java.lang.reflect.Method.invoke(Native method)
+  at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+  at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:939)
+DumpLatencyMs: 0.3035
+
+== system_server, the other end of the same call, same run
+kill-off-1/traces/trace_21.system_server-extract.txt (----- pid 677 at 2026-11-27 14:15:35.420289000-0500 -----)
+"binder:677_1F" prio=5 tid=251 TimedWaiting
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x3874f00 self=0x7ce295d0ecd0
+  | sysTid=2387 nice=0 cgrp=foreground sched=0/0 handle=0x7ce0df86e0c0
+  | state=S schedstat=( 1235718455 3757170789 4911 ) utm=24 stm=99 core=3 HZ=100
+  | stack=0x7ce0df777000-0x7ce0df779000 stackSize=988KB
+  | held mutexes=
+  at java.lang.Object.wait(Native method)
+  - waiting on <0x0fb81a06> (a java.lang.Object)
+  at java.lang.Object.wait(Object.java:405)
+  at com.android.server.accessibility.AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  at com.android.server.accessibility.AbstractAccessibilityServiceConnection.getWindows(AbstractAccessibilityServiceConnection.java:618)
+  - locked <0x0fb81a06> (a java.lang.Object)
+  at android.accessibilityservice.IAccessibilityServiceConnection$Stub.onTransact(IAccessibilityServiceConnection.java:668)
+  at android.os.Binder.execTransactInternal(Binder.java:1364)
+  at android.os.Binder.execTransact(Binder.java:1323)
+DumpLatencyMs: 325.115

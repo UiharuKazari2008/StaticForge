@@ -1,0 +1,29 @@
+== 1795807198074
+Global Info [ Top focused display Id = 0
+     Active Window Id = 279
+     Top Focused Window Id = 279
+     Accessibility Focused Window Id = -1 ]
+Display[0] : 
+A11yWindow[AccessibilityWindowInfo[displayId=0 type=TYPE_SYSTEM
+A11yWindow[AccessibilityWindowInfo[displayId=0 type=TYPE_ACCESSIBILITY_OVERLAY
+A11yWindow[AccessibilityWindowInfo[displayId=0 type=TYPE_ACCESSIBILITY_OVERLAY
+A11yWindow[AccessibilityWindowInfo[displayId=0 type=TYPE_ACCESSIBILITY_OVERLAY
+A11yWindow[AccessibilityWindowInfo[displayId=0 type=TYPE_ACCESSIBILITY_OVERLAY
+A11yWindow[AccessibilityWindowInfo[displayId=0 type=TYPE_SYSTEM
+A11yWindow[AccessibilityWindowInfo[displayId=0 type=TYPE_APPLICATION
+Display[2] : 
+A11yWindow[AccessibilityWindowInfo[displayId=2 type=TYPE_SYSTEM
+A11yWindow[AccessibilityWindowInfo[displayId=2 type=TYPE_SYSTEM
+A11yWindow[AccessibilityWindowInfo[displayId=2 type=TYPE_SYSTEM
+A11yWindow[AccessibilityWindowInfo[displayId=2 type=TYPE_APPLICATION
+-- displays
+    mState=OFF
+    mCommittedState=OFF
+    mState=OFF
+    mCommittedState=OFF
+  Display 0:
+  Display 2:
+  mScreenState=OFF
+  mScreenState=OFF
+  mWakefulness=Asleep
+mWakefulness=0

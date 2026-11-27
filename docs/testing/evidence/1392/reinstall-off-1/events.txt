@@ -1,0 +1,27 @@
+1795806375514 waiting for the process 22056 to be replaced
+1795806378977 new pid 26642
+1795806382011 dump +3 s: threads
+1795806382993 dump +3 s: SIGQUIT
+1795806383003 dump +3 s: debuggerd
+1795806383226 dump +3 s: debuggerd done (0)
+1795806385243 dump +5 s: threads
+1795806386390 dump +5 s: SIGQUIT
+1795806386399 dump +5 s: debuggerd
+1795806386559 dump +5 s: debuggerd done (0)
+1795806389578 dump +8 s: threads
+1795806390949 dump +8 s: SIGQUIT
+1795806390957 dump +8 s: debuggerd
+1795806391143 dump +8 s: debuggerd done (0)
+1795806394162 dump +11 s: threads
+1795806396002 dump +11 s: SIGQUIT
+1795806396010 dump +11 s: debuggerd
+1795806396189 dump +11 s: debuggerd done (0)
+1795806400206 dump +15 s: threads
+1795806402098 dump +15 s: SIGQUIT
+1795806402107 dump +15 s: debuggerd
+1795806402296 dump +15 s: debuggerd done (0)
+1795806411312 dump +24 s: threads
+1795806413207 dump +24 s: SIGQUIT
+1795806413215 dump +24 s: debuggerd
+1795806413399 dump +24 s: debuggerd done (0)
+1795806423038 watch done

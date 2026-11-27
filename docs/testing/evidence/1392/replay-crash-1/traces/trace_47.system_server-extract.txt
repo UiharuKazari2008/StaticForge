@@ -1,0 +1,52 @@
+
+----- pid 677 at 2026-11-27 14:22:20.752394500-0500 -----
+Cmd line: system_server
+Build fingerprint: 'google/sdk_gphone64_x86_64/emu64xa:17/CE2A.260420.051.A3/16571990:userdebug/dev-keys'
+ABI: 'x86_64'
+Build type: optimized
+suspend all histogram:	Sum: 500.355ms 99% C.I. 0.030ms-82.472ms Avg: 3.427ms Max: 83.859ms
+
+# extract: main thread, every thread with a com.android.server.accessibility frame, and the holders of the locks they wait for
+
+"main" prio=6 tid=1 Blocked
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x71a38f68 self=0x7ce295a0cbe0
+  | sysTid=677 nice=-2 cgrp=foreground sched=0/0 handle=0x7ce503640038
+  | state=S schedstat=( 9998259212 21718447850 35309 ) utm=128 stm=871 core=0 HZ=100
+  | stack=0x7ffe4cad4000-0x7ffe4cad6000 stackSize=8188KB
+  | held mutexes=
+  at com.android.server.accessibility.magnification.FullScreenMagnificationController$DisplayMagnification.updateMagnificationRegion(FullScreenMagnificationController.java:513)
+  - waiting to lock <0x0fb81a06> (a java.lang.Object) held by thread 240
+  at com.android.server.accessibility.magnification.FullScreenMagnificationController$DisplayMagnification$$ExternalSyntheticLambda7.accept(R8$$SyntheticClass:0)
+  at com.android.internal.util.function.pooled.PooledLambdaImpl.doInvoke(PooledLambdaImpl.java:281)
+  at com.android.internal.util.function.pooled.PooledLambdaImpl.invoke(PooledLambdaImpl.java:204)
+  at com.android.internal.util.function.pooled.OmniFunction.run(OmniFunction.java:87)
+  at android.os.Handler.handleCallback(Handler.java:1095)
+  at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+  at android.os.Handler.dispatchMessage(Handler.java:125)
+  at android.os.Looper.loopOnce(Looper.java:296)
+  at android.os.Looper.loop(Looper.java:397)
+  at com.android.server.SystemServer.run(SystemServer.java:1097)
+  at com.android.server.SystemServer.main(SystemServer.java:727)
+  at java.lang.reflect.Method.invoke(Native method)
+  at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+  at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:917)
+DumpLatencyMs: 6.578
+
+"binder:677_14" prio=5 tid=240 Native
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x36fc988 self=0x7ce295cb0ef0
+  | sysTid=1918 nice=0 cgrp=foreground sched=0/0 handle=0x7ce0e19c40c0
+  | state=S schedstat=( 857503537 6503914988 3235 ) utm=10 stm=75 core=3 HZ=100
+  | stack=0x7ce0e18cd000-0x7ce0e18cf000 stackSize=988KB
+  | held mutexes=
+  native: #00 pc 0005cfc7  /apex/com.android.runtime/lib64/bionic/libc.so (__ioctl+7) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #01 pc 0005c6e7  /apex/com.android.runtime/lib64/bionic/libc.so (ioctl+167) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #02 pc 000552cc  /system/lib64/libbinder.so (android::IPCThreadState::talkWithDriver+284) (BuildId: 414ba3791217d6e3bfd88f6c897b05ea)
+  native: #03 pc 0009ab90  /system/lib64/libbinder.so (android::IPCThreadState::joinThreadPool+144) (BuildId: 414ba3791217d6e3bfd88f6c897b05ea)
+  native: #04 pc 0009aaec  /system/lib64/libbinder.so (android::PoolThread::threadLoop+28) (BuildId: 414ba3791217d6e3bfd88f6c897b05ea)
+  native: #05 pc 000196d3  /system/lib64/libutils.so (android::Thread::_threadLoop+323) (BuildId: b7a1c04525d0c043cfcd4ee3f13e4762)
+  native: #06 pc 001b6e72  /system/lib64/libandroid_runtime.so (android::AndroidRuntime::javaThreadShell+98) (BuildId: e2564b9361f25203d4d8bb218bfef57e)
+  native: #07 pc 0001bbdf  /system/lib64/libutils.so (libutil_thread_trampoline +15) (BuildId: b7a1c04525d0c043cfcd4ee3f13e4762)
+  native: #08 pc 0008c7af  /apex/com.android.runtime/lib64/bionic/libc.so (__pthread_start +63) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #09 pc 0008670d  /apex/com.android.runtime/lib64/bionic/libc.so (__start_thread+45) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  (no managed stack frames)
+DumpLatencyMs: 2802.23

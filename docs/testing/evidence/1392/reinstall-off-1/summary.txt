@@ -1,0 +1,41 @@
+events: new pid 26642 seen at device ms 1795806378977
+t0 (Start proc) epoch 1795806378.690
+first MelatonBars line: +0.73 s   holder token linked: +11.71 s
+log silence of the main thread (tid=pid) between Start proc and token linked: 6.77 s from +0.95, 3.28 s from +7.72
+log silence of the any thread of the app between Start proc and token linked: 3.23 s from +4.47, 3.16 s from +1.15
+hb.txt: 415 beats, median step 116 ms, longest gap 0.21 s wall / 0.21 s uptime, from +0.17 s
+ticks.txt: 74 ticks, longest gap 0.67 s from +0.33 s
+main thread blocked (not in the looper poll, < 30 ms CPU in all): longest 19.52 s from +11.82 s, CPU used 9 ms, (state, wchan) samples {('S', 'binder_ioctl_write_read'): 34}
+main thread outside its looper poll for 2 s or more: +0.3..+31.3 s (31.0 s, {'0': 1, 'binder_ioctl_write_read': 51, 'futex_wait': 1})
+  + 11.11 26642 Choreographer: Skipped 610 frames!  The application may be doing too much work on its main thread.
+  + 12.84 26730 CafeTasks: engine did not start: no sandbox
+  + 12.84 26730 CafeTasks: java.util.concurrent.TimeoutException: Waited 10000 milliseconds (plus 661000 nanoseconds delay) for qn@b550ae9[status=PENDING, info=[tag=[JavaScriptSandbox Future]]]
+  + 21.54 26730 CafeTasks: engine started (9 files, from the server)
+  event +-3.18 waiting for the process 22056 to be replaced
+  event +0.29 new pid 26642
+  event +3.32 dump +3 s: threads
+  event +4.30 dump +3 s: SIGQUIT
+  event +4.31 dump +3 s: debuggerd
+  event +4.54 dump +3 s: debuggerd done (0)
+  event +6.55 dump +5 s: threads
+  event +7.70 dump +5 s: SIGQUIT
+  event +7.71 dump +5 s: debuggerd
+  event +7.87 dump +5 s: debuggerd done (0)
+  event +10.89 dump +8 s: threads
+  event +12.26 dump +8 s: SIGQUIT
+  event +12.27 dump +8 s: debuggerd
+  event +12.45 dump +8 s: debuggerd done (0)
+  event +15.47 dump +11 s: threads
+  event +17.31 dump +11 s: SIGQUIT
+  event +17.32 dump +11 s: debuggerd
+  event +17.50 dump +11 s: debuggerd done (0)
+  event +21.52 dump +15 s: threads
+  event +23.41 dump +15 s: SIGQUIT
+  event +23.42 dump +15 s: debuggerd
+  event +23.61 dump +15 s: debuggerd done (0)
+  event +32.62 dump +24 s: threads
+  event +34.52 dump +24 s: SIGQUIT
+  event +34.52 dump +24 s: debuggerd
+  event +34.71 dump +24 s: debuggerd done (0)
+  event +44.35 watch done
+traces: trace_25, trace_26, trace_27, trace_28, trace_29, trace_30

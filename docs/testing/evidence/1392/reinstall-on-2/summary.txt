@@ -1,0 +1,50 @@
+events: new pid 16551 seen at device ms 1795806815982
+t0 (Start proc) epoch 1795806815.532
+first MelatonBars line: +0.78 s   holder token linked: +2.24 s
+log silence of the main thread (tid=pid) between Start proc and token linked: 0.20 s from +0.06, 0.15 s from +1.80
+log silence of the any thread of the app between Start proc and token linked: 0.20 s from +0.06, 0.15 s from +1.80
+hb.txt: 415 beats, median step 117 ms, longest gap 0.21 s wall / 0.21 s uptime, from +0.06 s
+ticks.txt: 73 ticks, longest gap 0.71 s from +4.40 s
+main thread blocked (not in the looper poll, < 30 ms CPU in all): longest 0.00 s from +0.00 s, CPU used 0 ms, (state, wchan) samples None
+main thread outside its looper poll for 2 s or more: never
+  +  1.30 16640 CafeTasks: engine started (9 files, from the server)
+  event +-3.36 waiting for the process 11254 to be replaced
+  event +0.45 new pid 16551
+  event +3.49 dump +3 s: SIGQUIT system_server 677
+  event +3.62 dump +3 s: a11y state done
+  event +3.63 dump +3 s: threads
+  event +5.83 dump +3 s: SIGQUIT
+  event +5.83 dump +3 s: debuggerd
+  event +6.02 dump +3 s: debuggerd done (0)
+  event +9.04 dump +6 s: SIGQUIT system_server 677
+  event +9.17 dump +6 s: a11y state done
+  event +9.18 dump +6 s: threads
+  event +11.39 dump +6 s: SIGQUIT
+  event +11.40 dump +6 s: debuggerd
+  event +11.58 dump +6 s: debuggerd done (0)
+  event +14.61 dump +9 s: SIGQUIT system_server 677
+  event +14.73 dump +9 s: a11y state done
+  event +14.74 dump +9 s: threads
+  event +16.90 dump +9 s: SIGQUIT
+  event +16.91 dump +9 s: debuggerd
+  event +17.10 dump +9 s: debuggerd done (0)
+  event +21.12 dump +13 s: SIGQUIT system_server 677
+  event +21.25 dump +13 s: a11y state done
+  event +21.26 dump +13 s: threads
+  event +23.44 dump +13 s: SIGQUIT
+  event +23.45 dump +13 s: debuggerd
+  event +23.64 dump +13 s: debuggerd done (0)
+  event +28.67 dump +18 s: SIGQUIT system_server 677
+  event +28.81 dump +18 s: a11y state done
+  event +28.82 dump +18 s: threads
+  event +30.86 dump +18 s: SIGQUIT
+  event +30.87 dump +18 s: debuggerd
+  event +31.06 dump +18 s: debuggerd done (0)
+  event +39.09 dump +26 s: SIGQUIT system_server 677
+  event +39.21 dump +26 s: a11y state done
+  event +39.22 dump +26 s: threads
+  event +41.20 dump +26 s: SIGQUIT
+  event +41.21 dump +26 s: debuggerd
+  event +41.42 dump +26 s: debuggerd done (0)
+  event +44.87 watch done
+traces: 

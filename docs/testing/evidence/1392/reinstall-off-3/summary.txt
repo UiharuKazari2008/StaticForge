@@ -1,0 +1,53 @@
+events: new pid 6131 seen at device ms 1795806649523
+t0 (Start proc) epoch 1795806649.167
+first MelatonBars line: +0.78 s   holder token linked: +11.66 s
+log silence of the main thread (tid=pid) between Start proc and token linked: 6.46 s from +4.57, 3.60 s from +0.97
+log silence of the any thread of the app between Start proc and token linked: 4.41 s from +4.65, 3.41 s from +1.13
+hb.txt: 446 beats, median step 117 ms, longest gap 0.21 s wall / 0.20 s uptime, from +0.13 s
+ticks.txt: 80 ticks, longest gap 0.67 s from +0.40 s
+main thread blocked (not in the looper poll, < 30 ms CPU in all): longest 10.18 s from +11.26 s, CPU used 28 ms, (state, wchan) samples {('R', '0'): 1, ('S', 'binder_ioctl_write_read'): 16, ('t', 'ptrace_stop'): 1}
+main thread outside its looper poll for 2 s or more: +0.4..+31.6 s (31.2 s, {'binder_ioctl_write_read': 50, '0': 2, 'ptrace_stop': 1})
+  + 11.15 6131 Choreographer: Skipped 613 frames!  The application may be doing too much work on its main thread.
+  + 12.82 6226 CafeTasks: engine did not start: no sandbox
+  + 12.82 6226 CafeTasks: java.util.concurrent.TimeoutException: Waited 10000 milliseconds (plus 661800 nanoseconds delay) for qn@b550ae9[status=PENDING, info=[tag=[JavaScriptSandbox Future]]]
+  + 21.50 6226 CafeTasks: engine started (9 files, from the server)
+  event +-3.15 waiting for the process 31327 to be replaced
+  event +0.36 new pid 6131
+  event +3.41 dump +3 s: SIGQUIT system_server 677
+  event +3.52 dump +3 s: a11y state done
+  event +3.53 dump +3 s: threads
+  event +4.54 dump +3 s: SIGQUIT
+  event +4.55 dump +3 s: debuggerd
+  event +4.72 dump +3 s: debuggerd done (0)
+  event +7.75 dump +6 s: SIGQUIT system_server 677
+  event +7.85 dump +6 s: a11y state done
+  event +7.86 dump +6 s: threads
+  event +9.06 dump +6 s: SIGQUIT
+  event +9.07 dump +6 s: debuggerd
+  event +9.23 dump +6 s: debuggerd done (0)
+  event +12.26 dump +9 s: SIGQUIT system_server 677
+  event +12.36 dump +9 s: a11y state done
+  event +12.36 dump +9 s: threads
+  event +14.22 dump +9 s: SIGQUIT
+  event +14.23 dump +9 s: debuggerd
+  event +14.43 dump +9 s: debuggerd done (0)
+  event +18.46 dump +13 s: SIGQUIT system_server 677
+  event +18.57 dump +13 s: a11y state done
+  event +18.58 dump +13 s: threads
+  event +20.45 dump +13 s: SIGQUIT
+  event +20.45 dump +13 s: debuggerd
+  event +20.66 dump +13 s: debuggerd done (0)
+  event +25.69 dump +18 s: SIGQUIT system_server 677
+  event +25.80 dump +18 s: a11y state done
+  event +25.81 dump +18 s: threads
+  event +27.77 dump +18 s: SIGQUIT
+  event +27.78 dump +18 s: debuggerd
+  event +27.97 dump +18 s: debuggerd done (0)
+  event +36.00 dump +26 s: SIGQUIT system_server 677
+  event +36.10 dump +26 s: a11y state done
+  event +36.11 dump +26 s: threads
+  event +37.92 dump +26 s: SIGQUIT
+  event +37.93 dump +26 s: debuggerd
+  event +38.10 dump +26 s: debuggerd done (0)
+  event +48.17 watch done
+traces: trace_43, trace_44, trace_45, trace_46, trace_47, trace_48, trace_49, trace_50, trace_51, trace_52, trace_53, trace_54

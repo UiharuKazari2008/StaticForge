@@ -1,0 +1,10 @@
+pre: app=6131 holder=7362 recs=1 bound=1 shizuku=3056 wake=Awake
+{"ok": true, "deviceMs": 1795806718793, "localMs": 1795806719556, "skewMs": -650}
+apk copy sha256 12b94ed910059b63
+{"ok": true, "screen": "Awake"}
+pm install -r -g at device ms 1795806732021
+Success
+pm install returned at device ms 1795806733351
+    versionCode=3632745 minSdk=31 targetSdk=36
+      x86_64: [status=verify] [reason=install] [primary-abi]
+post: app=11254 holder=11484 recs=1 bound=1 shizuku=3056 wake=Awake

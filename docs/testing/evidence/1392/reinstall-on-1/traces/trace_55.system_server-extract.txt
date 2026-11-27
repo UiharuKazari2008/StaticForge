@@ -1,0 +1,34 @@
+
+----- pid 677 at 2026-11-27 14:12:16.931713900-0500 -----
+Cmd line: system_server
+Build fingerprint: 'google/sdk_gphone64_x86_64/emu64xa:17/CE2A.260420.051.A3/16571990:userdebug/dev-keys'
+ABI: 'x86_64'
+Build type: optimized
+suspend all histogram:	Sum: 440.838ms 99% C.I. 0.030ms-82.821ms Avg: 3.936ms Max: 83.859ms
+
+# extract: main thread, every thread with a com.android.server.accessibility frame, and the holders of the locks they wait for
+
+"main" prio=6 tid=1 Native
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x71a38f68 self=0x7ce295a0cbe0
+  | sysTid=677 nice=-2 cgrp=foreground sched=0/0 handle=0x7ce503640038
+  | state=S schedstat=( 7843805509 15823423791 26318 ) utm=113 stm=671 core=2 HZ=100
+  | stack=0x7ffe4cad4000-0x7ffe4cad6000 stackSize=8188KB
+  | held mutexes=
+  native: #00 pc 00059976  /apex/com.android.runtime/lib64/bionic/libc.so (syscall+22) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #01 pc 0048211f  /apex/com.android.art/lib64/libart.so (art::ConditionVariable::WaitHoldingLocks+111) (BuildId: ee39087e94b33f52a6702ae4ffb86dc0)
+  native: #02 pc 006bf853  /apex/com.android.art/lib64/libart.so (art::JNI<false>::CallObjectMethodV+595) (BuildId: ee39087e94b33f52a6702ae4ffb86dc0)
+  native: #03 pc 000fca6b  /system/lib64/libandroid_runtime.so (_JNIEnv::CallObjectMethod+139) (BuildId: e2564b9361f25203d4d8bb218bfef57e)
+  native: #04 pc 0016ac11  /system/lib64/libandroid_runtime.so ((anonymous namespace)::Receiver::handleEvent +113) (BuildId: e2564b9361f25203d4d8bb218bfef57e)
+  native: #05 pc 00017b49  /system/lib64/libutils.so (android::Looper::pollOnce+1321) (BuildId: b7a1c04525d0c043cfcd4ee3f13e4762)
+  native: #06 pc 00207056  /system/lib64/libandroid_runtime.so (android::android_os_MessageQueue_nativePollOnce +38) (BuildId: e2564b9361f25203d4d8bb218bfef57e)
+  at android.os.MessageQueue.nativePollOnce(Native method)
+  at android.os.MessageQueue.nextDeliQueue(MessageQueue.java:791)
+  at android.os.MessageQueue.next(MessageQueue.java:771)
+  at android.os.Looper.loopOnce(Looper.java:232)
+  at android.os.Looper.loop(Looper.java:397)
+  at com.android.server.SystemServer.run(SystemServer.java:1097)
+  at com.android.server.SystemServer.main(SystemServer.java:727)
+  at java.lang.reflect.Method.invoke(Native method)
+  at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+  at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:917)
+DumpLatencyMs: 0.3673

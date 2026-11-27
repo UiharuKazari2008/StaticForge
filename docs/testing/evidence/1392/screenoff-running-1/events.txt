@@ -1,0 +1,27 @@
+1795807176567 KEYCODE_SLEEP, same process 26466
+1795807176619 new pid 26466
+1795807179728 dump +3 s: SIGQUIT system_server 677
+1795807180166 dump +3 s: a11y state done
+1795807180185 dump +3 s: threads
+1795807182650 dump +3 s: SIGQUIT
+1795807182659 dump +3 s: debuggerd
+1795807182858 dump +3 s: debuggerd done (0)
+1795807188886 dump +9 s: SIGQUIT system_server 677
+1795807189018 dump +9 s: a11y state done
+1795807189026 dump +9 s: threads
+1795807190841 dump +9 s: SIGQUIT
+1795807190853 dump +9 s: debuggerd
+1795807191037 dump +9 s: debuggerd done (0)
+1795807198066 dump +16 s: SIGQUIT system_server 677
+1795807198208 dump +16 s: a11y state done
+1795807198218 dump +16 s: threads
+1795807200096 dump +16 s: SIGQUIT
+1795807200104 dump +16 s: debuggerd
+1795807200285 dump +16 s: debuggerd done (0)
+1795807212315 dump +28 s: SIGQUIT system_server 677
+1795807212461 dump +28 s: a11y state done
+1795807212476 dump +28 s: threads
+1795807214616 dump +28 s: SIGQUIT
+1795807214626 dump +28 s: debuggerd
+1795807214825 dump +28 s: debuggerd done (0)
+1795807216123 watch done

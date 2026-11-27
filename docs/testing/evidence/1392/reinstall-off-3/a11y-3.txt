@@ -1,0 +1,16 @@
+== 1795806652583
+Global Info [ Top focused display Id = 0
+     Active Window Id = -1
+     Top Focused Window Id = -1
+     Accessibility Focused Window Id = -1 ]
+-- displays
+    mState=OFF
+    mCommittedState=OFF
+    mState=OFF
+    mCommittedState=OFF
+  Display 0:
+  Display 2:
+  mScreenState=OFF
+  mScreenState=OFF
+  mWakefulness=Asleep
+mWakefulness=0

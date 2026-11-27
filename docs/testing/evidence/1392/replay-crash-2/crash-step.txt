@@ -1,0 +1,82 @@
+[14:25:41] === crash  on aemu-fold-1 (agent claude-974b3227) evidence /home/kanmi/staticforge/docs/testing/evidence/1392/tools/../replay-crash-2/bars1371 ===
+[14:25:44] status: shape=fold booted=true shizukuRunning=true (pid 3056) appVersionCode=3632745 noAudio=true screen=Awake appPid=5883; skewMs=-737 
+[14:25:44] before: holder=6419 app=5883 recs=1
+[14:25:45] INFO  baseline before: holder=6419 app=5883 recs=1 out=[OK ] vc=3632745 shizuku=3056 adbd=547 mode=0 overlay=threebutton,
+[14:25:48] INFO  sampler on (guest, 0.2 s loop): alive 20677 lines=8
+[14:25:50] kill-app: {"ok": true, "killedPid": 5883, "appPid": 0}
+[14:25:50] PASS  kill -9 hit the app's MAIN pid 5883 (the pid the lane found with pidof)
+[14:28:22] INFO  sampler file: /home/kanmi/staticforge/docs/testing/evidence/1392/tools/../replay-crash-2/bars1371/crash-20261127-142541-sample.txt (571 samples)
+      SAMPLES=571
+      WINDOW_SAMPLES=562 BLIND_GAPS_OVER_1500MS=none
+      PERIOD_MEDIAN_MS=266
+      MAXGAP_MS=461
+      TIMELINE (offset from the first window sample; a line per change of the holder / app pids):
+        +0.0s holder=6419 app=- recs=-1
+        +1.4s holder=6419 app=20968 recs=-1
+        +4.5s holder=21459,6419 app=20968 recs=-1
+        +4.9s holder=21459 app=20968 recs=-1
+        +26.2s holder=21459 app=20968,25212 recs=-1
+        +26.5s holder=21459 app=20968 recs=-1
+      RECS_SAMPLED=no (light sampler: the pids only; the SystemUI net-flag log decides the row)
+      ZERO_SAMPLES_IN_WINDOW=0 MINRECS=n/a
+      ZERO_SPAN_MAX_S=0.0
+      T_DEATH_MS=1795807548455
+      OLD_APP=5883 OLD_HOLDERS=6419 NEW_HOLDERS=21459
+      ZEROS_AFTER_DEATH=0
+      OVERLAP_SAMPLES=1
+      OVERLAP_SPAN_S=0.0
+        two holder pids alive from +4.5 s to +4.5 s (relative to the old app pid disappearing)
+      APP_BACK_S=1.4
+      NEW_PID_S=4.5
+      NEW_REC_S=4.5
+      OLD_GONE_S=4.9
+      RESULT=PASS
+      WHY=recs not sampled (light mode); new holder pid(s) 21459; two holders alive at once
+[14:28:22] PASS  the system restarted the app +1.4 s after the kill (new pid in the samples)
+[14:28:22] INFO  observations (guest, about 1 s):
+      OBSERVATIONS (a line per change; offset from the old app pid disappearing):
+           +1.4 s holder=6419 app=- bound=0 setting_has_service=1 overlay=threebutton, records=1
+           +2.4 s holder=6419 app=20968 bound=1 setting_has_service=1 overlay=threebutton, records=1
+           +4.9 s holder=6419,21459 app=20968 bound=1 setting_has_service=1 overlay=threebutton, records=1
+           +5.6 s holder=21459 app=20968 bound=1 setting_has_service=1 overlay=threebutton, records=1
+          +13.8 s holder=21459 app=20968,23127 bound=1 setting_has_service=1 overlay=threebutton, records=1
+          +14.3 s holder=21459 app=20968 bound=1 setting_has_service=1 overlay=threebutton, records=1
+      OBS_ROWS=257
+      UNBOUND_S=1.4
+      BOUND_AGAIN_MS=1795807550846
+      BOUND_AGAIN_S=2.4
+      LAST holder=21459 app=20968 bound=1 setting_has_service=1 overlay=threebutton, records=1
+[14:28:23] INFO  logcat of the window: /home/kanmi/staticforge/docs/testing/evidence/1392/tools/../replay-crash-2/bars1371/crash-20261127-142541-logcat.txt (140 lines kept)
+[14:28:23] INFO  net disable flags of display 0 (SystemUI's log), the judge:
+      NETFLAGS start disable1=0x3f30000 (from the statusbar dump before), 2 change(s) logged by SystemUI in the window
+           +5.0 s  disable1=0x3600000  row emptied (held)
+           +5.4 s  disable1=0x3f30000  row emptied (held)
+      NET_GAPS=0
+      RESULT=PASS
+      WHY=the net disable flags never dropped the row in the window (2 change(s) logged, none un-held)
+[14:28:23] PASS  net flags: the net disable flags never dropped the row in the window (2 change(s) logged, none un-held)
+        LOG KILL        +0.1 s  1795807548.516   677  2387 I ActivityManager: Process jp.net.seventhreeseven.dreamscape (pid 5883) has died: vis FGS
+        LOG START       +1.1 s  1795807549.534   677   710 I ActivityManager: Start proc 20968:jp.net.seventhreeseven.dreamscape/u0a234 for bound-service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}
+        LOG BINDERRCV    +1.4 s  1795807549.898 20968 21011 D ShizukuProvider: binder received
+        LOG EARLY       +2.6 s  1795807551.063 20968 20968 I MelatonBars: early hold at process start (#1371)
+        LOG BARS        +2.6 s  1795807551.063 20968 20968 I MelatonBars: early hold at process start (#1371)
+        LOG BARS        +2.7 s  1795807551.107 20968 20968 I MelatonBars: show: on=true fits=false status=true bar=true top=false ext=true tray=false give=false
+        LOG BARS        +3.1 s  1795807551.542 20968 20968 I MelatonBars: ime probe live: visible=false bottom=0
+        LOG BARS        +3.3 s  1795807551.751 20968 20968 I MelatonBars: show: on=true fits=false status=false bar=true top=false ext=true tray=false give=false
+        LOG BARS        +3.3 s  1795807551.770 20968 20968 I MelatonBars: show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+        LOG BARS        +4.3 s  1795807552.791 20968 20968 I MelatonBars: translucent check: strip spread 0.7 (picture above 14), against below 4.3 (runs on under 10)
+        LOG BARS        +4.4 s  1795807552.903 20968 20968 I MelatonBars: translucent check (soft keys): strip spread 65.3 (picture above 14), against below 74.0 (runs on under 10)
+        LOG BARS        +4.5 s  1795807552.905 20968 20968 I MelatonBars: translucent bar for com.google.android.apps.nexuslauncher: true
+        LOG BARS        +4.5 s  1795807552.905 20968 20968 I MelatonBars: translucent soft key bar for com.google.android.apps.nexuslauncher: true
+        LOG LINK        +4.6 s  1795807553.066 20968 21068 I MelatonBars: holder token linked (#1331)
+        LOG BARS        +4.6 s  1795807553.066 20968 21068 I MelatonBars: holder token linked (#1331)
+        LOG BARS        +4.8 s  1795807553.266 20968 20968 I MelatonBars: translucent check: strip spread 0.7 (picture above 14), against below 4.3 (runs on under 10)
+        LOG BARS        +4.9 s  1795807553.395 20968 20968 I MelatonBars: translucent check (soft keys): strip spread 65.3 (picture above 14), against below 74.0 (runs on under 10)
+        LOG HEAL        +5.4 s  1795807553.901 20968 20968 I BarsHeal: check (process start)
+[14:28:23]       BarsHeal / BarsServiceWatch / service lines:          1795807553.901 20968 20968 I BarsHeal: check (process start)
+[14:28:23] INFO  TIMES (relative to the old app pid disappearing at device ms 1795807548455): system restarted the process: +1.1 s (log), early hold: +2.6 s, Shizuku binder: n/a, holder token linked: +4.6 s, old holder gone: +4.9 s, its own grace exit line: n/a
+[14:28:23] INFO  old holder: replaced: gone 0.3 s after the new holder linked (before its 10 s grace)
+[14:28:23] INFO  Bars service: unbound +1.4 s, bound again +2.4 s (observation resolution about 1-2 s)
+[14:28:23] PASS  no 'gesture fallback on' line in the window
+[14:28:23] PASS  end state equals the baseline: mode=0 overlay=threebutton, holder=21459 app=20968 bound=1 svc=1 ovl=threebutton, recs=1
+[14:28:23] RESULT crash: PASS (no failed check)

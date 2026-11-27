@@ -1,0 +1,180 @@
+         1795807335.674   547   547 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:pidof jp.net.seventhreeseven.dreamscape'
+         1795807335.875   677  1928 I ActivityManager: Process jp.net.seventhreeseven.dreamscape (pid 26466) has died: vis FGS 
+         1795807335.878   677  1737 D NotificationManagerService.NotificationListeners: Removing active service ComponentInfo{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+         1795807335.907 26514 26615 I jp.net.seventhreeseven.dreamscape:shell: System.exit called, status: 0
+         1795807335.907 26514 26615 I AndroidRuntime: VM exiting with result code 0.
+         1795807335.915   677  1928 W ActivityManager: Scheduling restart of crashed service jp.net.seventhreeseven.dreamscape/.MelatonBarService in 1000ms for connection
+         1795807335.915   677  1928 W ActivityManager: Scheduling restart of crashed service jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService in 11000ms for start-requested
+         1795807335.915   677  1928 W ActivityManager: Scheduling restart of crashed service jp.net.seventhreeseven.dreamscape/.activesync.ActiveSyncNotificationListener in 21000ms for connection
+         1795807335.954   677   842 D ConnectivityService: releasing NetworkRequest [ REQUEST id=297, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ] (
+         1795807335.955   677   842 D ConnectivityService: releasing NetworkRequest [ REQUEST id=302, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ] (
+         1795807335.956   677   677 V NotificationManagerService.NotificationListeners: 0 notification listener connection lost: ComponentInfo{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+         1795807336.012   677   842 D ConnectivityService: releasing NetworkRequest [ REQUEST id=299, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ] (
+         1795807336.847   547   547 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:pidof jp.net.seventhreeseven.dreamscape'
+         1795807336.943   677   710 I ActivityManager: Start proc 5883:jp.net.seventhreeseven.dreamscape/u0a234 for bound-service {jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.MelatonBarService}
+         1795807336.980  5883  5883 I Zygote  : Process 5883 created for jp.net.seventhreeseven.dreamscape
+         1795807336.981  5883  5883 I even.dreamscape: Using generational CollectorTypeCMC GC.
+         1795807336.982  5883  5883 W even.dreamscape: Unexpected CPU variant for x86: x86_64.
+         1795807336.982  5883  5883 W even.dreamscape: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795807337.082  1070  1070 I Choreographer: Skipped 56 frames!  The application may be doing too much work on its main thread.
+         1795807337.233  1070  1387 I HWUI    : Davey! duration=1064ms; Flags=0, FrameTimelineVsyncId=112431, IntendedVsync=1655622101890, Vsync=1655622101890, InputEventId=0, HandleInputStart=1655624111500, AnimationStart=1655624141200, PerformTraversalsStart=1655624180000, DrawStart=1655625457600,
+         1795807337.441  3056  3083 V Service : Add 0:jp.net.seventhreeseven.dreamscape to power save temp whitelist for 30s
+         1795807337.467  5883  5883 D nativeloader: Configuring clns-9 for other apk /data/app/~~YzzL7delXIlEjcaUKCOpgg==/jp.net.seventhreeseven.dreamscape-Qjl7uQXBgmxvoNhDWxWrFA==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~YzzL7delXIlEjcaUKCOpgg==/jp.net.seventhreese
+         1795807337.490  1070  1387 I HWUI    : Davey! duration=1100ms; Flags=0, FrameTimelineVsyncId=112452, IntendedVsync=1655738768552, Vsync=1656672101848, InputEventId=0, HandleInputStart=1656687892700, AnimationStart=1656687936300, PerformTraversalsStart=1656689638500, DrawStart=1656689812900,
+         1795807337.569  5883  5883 V GraphicsEnvironment: jp.net.seventhreeseven.dreamscape is not listed in per-application setting
+         1795807337.646  5883  5883 D ShizukuProvider: Initialize Sui: false
+         1795807337.659  5883  5938 D ShizukuProvider: binder received
+         1795807337.663  5883  5938 I ShizukuApplication: attachApplication
+         1795807337.667  3056  3083 I Service : send binder to user app jp.net.seventhreeseven.dreamscape in user 0
+         1795807337.789  5883  5883 I MelatonBars: Shizuku's binder arrived: holding the row (#1331)
+         1795807337.793  5883  5883 I MelatonBars: early hold at process start (#1371)
+         1795807337.955   677  2041 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807338.192   949  1007 W Looper  : Slow dispatch took 193ms wmshell.main app=com.android.systemui main=false group=FOREGROUND h=android.view.ViewRootImpl$ViewRootHandler c=android.view.accessibility.AccessibilityManager$$ExternalSyntheticLambda0@a405b0c m=0
+         1795807338.351   677  1918 I ActivityManager: Start proc 6031:com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0/u0i19 for bound-service {jp.net.seventhreeseven.dreamscape/org.chromium.android_webview.js_sandbox.service.JsSandb
+         1795807338.474   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807338.956   677  2387 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807338.977   677  1144 D BiometricService/PreAuthInfo: Package: jp.net.seventhreeseven.dreamscape Sensor ID: 0 Modality: 2 User id: 0 Status: 7
+         1795807339.017   677   924 D ConnectivityService: requestNetwork for uid/pid:10234/5883 activeRequest: null callbackRequest: 307 [NetworkRequest [ REQUEST id=308, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 Request
+         1795807339.022   677   836 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=308, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795807339.022   677   836 V WifiNetworkFactory: Accepted network request NetworkRequest [ REQUEST id=308, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetwo
+         1795807339.022   677   836 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=308, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks:
+         1795807339.022   677   836 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=308, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: N
+         1795807339.022   677   836 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=308, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetwo
+         1795807339.302  3056  3083 I UserServiceManager: New service record jp.net.seventhreeseven.dreamscape:jp.net.seventhreeseven.dreamscape.ShellService (0441f390-7737-4a34-8bd5-dd0d50c06926-1795807339301): version=1, daemon=false, apk=/data/app/~~YzzL7delXIlEjcaUKCOpgg==/jp.net.seventhreeseven
+         1795807339.303  3056  4400 V UserServiceManager: Starting process for service record jp.net.seventhreeseven.dreamscape:jp.net.seventhreeseven.dreamscape.ShellService (0441f390-7737-4a34-8bd5-dd0d50c06926-1795807339301)...
+         1795807339.306   677   677 V NotificationManagerService.NotificationListeners: 0 notification listener service connected: ComponentInfo{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+         1795807339.300  3056  3056 W binder:3056_2: type=1400 audit(0.0:71): avc:  denied  { watch } for  path="/data/app/~~YzzL7delXIlEjcaUKCOpgg==/jp.net.seventhreeseven.dreamscape-Qjl7uQXBgmxvoNhDWxWrFA==" dev="dm-6" ino=163869 scontext=u:r:shell:s0 tcontext=u:object_r:apk_data_file:s0 tclass=di
+         1795807339.430   949  1333 I Choreographer: Skipped 44 frames!  The application may be doing too much work on its main thread.
+         1795807339.477   949  1532 I HWUI    : Davey! duration=779ms; Flags=1, FrameTimelineVsyncId=112705, IntendedVsync=1658138772992, Vsync=1658272106312, InputEventId=0, HandleInputStart=1658275868700, AnimationStart=1658275899600, PerformTraversalsStart=1658300444600, DrawStart=1658702985300, 
+         1795807339.513  1318  1759 W Geofencer: registration not active, registration not permitted for registration: 10234/jp.net.seventhreeseven.dreamscape/6ebc633c {na} (FINE) GeofenceRequest(<redacted place>, maxAdditionalTriggerDelay=120000ms, eventsFilter=[OUTSIDE], initialEventsFilt
+         1795807339.516  1318  1759 W Geofencer: registration not active, registration not permitted for registration: 10234/jp.net.seventhreeseven.dreamscape/6ebc633c {na} (FINE) GeofenceRequest(<redacted place>, maxAdditionalTriggerDelay=120000ms, eventsFilter=[OUTSIDE], initialEventsFi
+         1795807339.545   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807339.582   677  2041 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807339.582   677  2041 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807339.590   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807339.591   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807339.631   677  1918 W AppOps  : Operation not started: uid=10234 pkg=jp.net.seventhreeseven.dreamscape(null) op=ACTIVITY_RECOGNITION
+         1795807339.694   677  1918 W AppOps  : Noting op not finished: uid 10234 pkg jp.net.seventhreeseven.dreamscape code 79 startTime of in progress event=1795807339686
+         1795807339.708  6148  6148 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+         1795807339.734  6148  6148 I AndroidRuntime: Using default boot image
+         1795807339.734  6148  6148 I AndroidRuntime: Leaving lock profiling enabled
+         1795807339.741  6148  6148 I jp.net.seventhreeseven.dreamscape:shell: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+         1795807339.742  6148  6148 I jp.net.seventhreeseven.dreamscape:shell: Using generational CollectorTypeCMC GC.
+         1795807339.971   949  1532 I HWUI    : Davey! duration=1187ms; Flags=0, FrameTimelineVsyncId=112771, IntendedVsync=1658288777533, Vsync=1659022110793, InputEventId=0, HandleInputStart=1659036219700, AnimationStart=1659036255900, PerformTraversalsStart=1659036785300, DrawStart=1659036928400,
+         1795807340.174   949  1333 I Choreographer: Skipped 44 frames!  The application may be doing too much work on its main thread.
+         1795807340.200   949  1718 I HWUI    : Davey! duration=1464ms; Flags=1, FrameTimelineVsyncId=112771, IntendedVsync=1658288777533, Vsync=1659022110793, InputEventId=0, HandleInputStart=1659036219700, AnimationStart=1659036255900, PerformTraversalsStart=1659036785300, DrawStart=1659606475600,
+         1795807340.209   677  2994 W AppOps  : Noting op not finished: uid 10234 pkg jp.net.seventhreeseven.dreamscape code 24 startTime of in progress event=1795807340025
+         1795807340.228   677  2041 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807340.240  6148  6148 D jp.net.seventhreeseven.dreamscape:shell: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/10/icu") succeeded. 
+         1795807340.240  6148  6148 D jp.net.seventhreeseven.dreamscape:shell: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt78l.dat
+         1795807340.247  6148  6148 I jp.net.seventhreeseven.dreamscape:shell: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+         1795807340.249  6148  6148 W jp.net.seventhreeseven.dreamscape:shell: Unexpected CPU variant for x86: x86_64.
+         1795807340.249  6148  6148 W jp.net.seventhreeseven.dreamscape:shell: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795807340.251  6148  6148 W jp.net.seventhreeseven.dreamscape:shell: ClassLoaderContext shared library size mismatch. Expected=2, found=0 (PCL[]{PCL[/system_ext/framework/androidx.window.extensions.jar*1635530414]#PCL[/system_ext/framework/androidx.window.sidecar.jar*3481082032]} | PCL[])
+         1795807340.295  6148  6148 D AndroidRuntime: Calling main entry moe.shizuku.starter.ServiceStarter
+         1795807340.301  6148  6148 I ShizukuServiceStarter: starting service jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.ShellService...
+         1795807340.335   677  2041 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807340.336   677  2041 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807340.337   677  2041 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807340.339   677  2041 D ConnectivityService: requestNetwork for uid/pid:10234/5883 activeRequest: null callbackRequest: 309 [NetworkRequest [ REQUEST id=310, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 Request
+         1795807340.344   677   836 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=310, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795807340.345   677   836 V WifiNetworkFactory: Accepted network request NetworkRequest [ REQUEST id=310, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetwo
+         1795807340.345   677   836 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=310, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks:
+         1795807340.345   677   836 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=310, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: N
+         1795807340.345   677   836 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=310, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetwo
+         1795807340.346  6148  6148 W jp.net.seventhreeseven.dreamscape:shell: unable to execute idmap2: Permission denied
+         1795807340.398   677  2041 D ConnectivityService: requestNetwork for uid/pid:10234/5883 activeRequest: null callbackRequest: 312 [NetworkRequest [ REQUEST id=313, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 Request
+         1795807340.404   677   836 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=313, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795807340.404   677   836 V WifiNetworkFactory: Accepted network request NetworkRequest [ REQUEST id=313, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetwo
+         1795807340.406   677   836 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=313, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks:
+         1795807340.406   677   836 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=313, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: N
+         1795807340.409   677   836 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=313, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetwo
+         1795807340.429  6148  6148 D nativeloader: Configuring clns-1 for other apk /data/app/~~YzzL7delXIlEjcaUKCOpgg==/jp.net.seventhreeseven.dreamscape-Qjl7uQXBgmxvoNhDWxWrFA==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~YzzL7delXIlEjcaUKCOpgg==/jp.net.seventhreese
+         1795807340.433  5883  5883 I MelatonBars: show: on=true fits=false status=true bar=true top=false ext=true tray=false give=false
+         1795807340.453   677  1918 D ActivityManager: sync unfroze 2962 moe.shizuku.privileged.api for 7
+         1795807340.477  6148  6148 I ShizukuServiceStarter: send binder to moe.shizuku.privileged.api in user 0
+         1795807340.613   677  2994 V WifiPermissionsUtil: checkCallersLocationPermission(jp.net.seventhreeseven.dreamscape): ok because uid 10234 has app-op android:fine_location
+         1795807340.613   677  2994 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for jp.net.seventhreeseven.dreamscape(uid=10234)
+         1795807340.731   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807340.748   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807340.752   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795807340.918   677  2994 V WifiPermissionsUtil: checkCallersLocationPermission(jp.net.seventhreeseven.dreamscape): ok because uid 10234 has app-op android:fine_location
+         1795807340.918   677  2994 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for jp.net.seventhreeseven.dreamscape(uid=10234)
+         1795807340.939  5883  5883 I MelatonBars: ime probe live: visible=false bottom=0
+         1795807341.012  5883  5944 I HWUI    : Davey! duration=900ms; Flags=1, FrameTimelineVsyncId=113004, IntendedVsync=1659622101730, Vsync=1660088768378, InputEventId=0, HandleInputStart=1660106647700, AnimationStart=1660107124800, PerformTraversalsStart=1660107168200, DrawStart=1660505674800, 
+         1795807341.088  5883  5944 I HWUI    : Davey! duration=1028ms; Flags=1, FrameTimelineVsyncId=113004, IntendedVsync=1659622101730, Vsync=1660088768378, InputEventId=0, HandleInputStart=1660106647700, AnimationStart=1660107124800, PerformTraversalsStart=1660107168200, DrawStart=1660609877200,
+         1795807341.174  5883  5883 I MelatonBars: show: on=true fits=false status=false bar=true top=false ext=true tray=false give=false
+         1795807341.203  5883  5883 I MelatonBars: show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+         1795807341.275  5883  5883 E even.dreamscape: hiddenapi: Accessing hidden field Landroid/view/ViewTreeObserver$InternalInsetsInfo;->touchableRegion:Landroid/graphics/Region; (runtime_flags=0, domain=platform, api=max-target-r) from Lls2; (domain=app, TargetSdkVersion=36) using reflection: d
+         1795807341.343  5883  5883 E even.dreamscape: hiddenapi: Accessing hidden field Landroid/view/ViewTreeObserver$InternalInsetsInfo;->touchableRegion:Landroid/graphics/Region; (runtime_flags=0, domain=platform, api=max-target-r) from Lls2; (domain=app, TargetSdkVersion=36) using reflection: d
+         1795807341.583  6419  6419 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+         1795807341.595  5883  6004 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+         1795807341.605  6419  6419 I AndroidRuntime: Using default boot image
+         1795807341.606  6419  6419 I AndroidRuntime: Leaving lock profiling enabled
+         1795807341.609  6419  6419 I melaton_navblank: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+         1795807341.614  6419  6419 I melaton_navblank: Using generational CollectorTypeCMC GC.
+         1795807341.920  6419  6419 D melaton_navblank: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/10/icu") succeeded. 
+         1795807341.920  6419  6419 D melaton_navblank: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt78l.dat
+         1795807341.923  6419  6419 I melaton_navblank: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+         1795807341.924  6419  6419 W melaton_navblank: Unexpected CPU variant for x86: x86_64.
+         1795807341.924  6419  6419 W melaton_navblank: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795807341.974  6419  6419 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795807342.400  5883  6119 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+         1795807342.525  5883  6003 I MelatonBars: holder token linked (#1331)
+         1795807342.548  5883  5944 I HWUI    : Davey! duration=1064ms; Flags=1, FrameTimelineVsyncId=113168, IntendedVsync=1660838768348, Vsync=1661205434978, InputEventId=0, HandleInputStart=1661218351100, AnimationStart=1661218390700, PerformTraversalsStart=1661218429200, DrawStart=1661402673900,
+         1795807342.671   677   701 W Looper  : Slow dispatch took 142ms android.ui app=system_server main=false group=TOP_APP h=com.android.server.am.ActivityManagerService$UiHandler c=com.android.server.am.UidObserverController$$ExternalSyntheticLambda0@9654712 m=0
+         1795807342.861  6148  6245 W libbinder.Binder: Binder transaction to jp.net.seventhreeseven.dreamscape.IShellService, function: UNKNOWN_FUNCTION_NAME, code: 2, took 1651ms. Data bytes: 1468 Reply bytes: 16 Flags: 18
+         1795807343.497   949  1007 W Looper  : Slow delivery took 32ms wmshell.main app=com.android.systemui main=false group=FOREGROUND h=android.os.Handler c=com.android.wm.shell.windowdecor.common.WindowDecorationGestureExclusionTracker$exclusionListener$1$onSystemGestureExclusionChanged$1@486c2
+         1795807343.542  5883  5938 I HWUI    : Davey! duration=2220ms; Flags=1, FrameTimelineVsyncId=113168, IntendedVsync=1660838768348, Vsync=1661205434978, InputEventId=0, HandleInputStart=1661218351100, AnimationStart=1661218390700, PerformTraversalsStart=1661218429200, DrawStart=1662391603000,
+         1795807343.626   677   677 W Looper  : Slow delivery took 332ms main app=system_server main=true group=FOREGROUND h=com.android.server.accessibility.AbstractAccessibilityServiceConnection$1 c=null m=32
+         1795807344.771  1070  1387 I HWUI    : Davey! duration=1238ms; Flags=0, FrameTimelineVsyncId=113404, IntendedVsync=1662705434940, Vsync=1662755434938, InputEventId=0, HandleInputStart=1662756714000, AnimationStart=1662756750200, PerformTraversalsStart=1662756789300, DrawStart=1662756922900,
+         1795807344.841  5883  5938 I HWUI    : Davey! duration=3270ms; Flags=1, FrameTimelineVsyncId=113168, IntendedVsync=1660838768348, Vsync=1661205434978, InputEventId=0, HandleInputStart=1661218351100, AnimationStart=1661218390700, PerformTraversalsStart=1661218429200, DrawStart=1663372891100,
+         1795807344.844  1070  1387 I HWUI    : Davey! duration=769ms; Flags=0, FrameTimelineVsyncId=113448, IntendedVsync=1663605447858, Vsync=1663605447858, InputEventId=0, HandleInputStart=1663606851800, AnimationStart=1663606880600, PerformTraversalsStart=1663606917700, DrawStart=1663607016100, 
+         1795807345.122  5883  5883 I BarsHeal: check (process start)
+         1795807345.138  5883  6734 D ProfileInstaller: Installing profile for jp.net.seventhreeseven.dreamscape
+         1795807345.250  5883  5938 I HWUI    : Davey! duration=3828ms; Flags=1, FrameTimelineVsyncId=113168, IntendedVsync=1660838768348, Vsync=1661205434978, InputEventId=0, HandleInputStart=1661218351100, AnimationStart=1661218390700, PerformTraversalsStart=1661218429200, DrawStart=1664632143300,
+         1795807345.341  5883  6004 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+         1795807346.182   949  1007 W Looper  : Slow delivery took 35ms wmshell.main app=com.android.systemui main=false group=FOREGROUND h=android.os.Handler c=com.android.wm.shell.onehanded.OneHandedTimeoutHandler$$ExternalSyntheticLambda0@b3e9a5f m=0
+         1795807346.209   677   677 W Looper  : Slow dispatch took 179ms main app=system_server main=true group=FOREGROUND h=android.os.Handler c=<recycled PooledLambda@68654b> m=0
+         1795807346.782  5883  5944 I HWUI    : Davey! duration=1151ms; Flags=0, FrameTimelineVsyncId=113524, IntendedVsync=1664938773730, Vsync=1664938773730, InputEventId=0, HandleInputStart=1664947047600, AnimationStart=1664947085900, PerformTraversalsStart=1664947130200, DrawStart=1664947232200,
+         1795807347.458  5883  5938 I HWUI    : Davey! duration=821ms; Flags=0, FrameTimelineVsyncId=113524, IntendedVsync=1664938773730, Vsync=1664938773730, InputEventId=0, HandleInputStart=1664947047600, AnimationStart=1664947085900, PerformTraversalsStart=1664947130200, DrawStart=1664983415500, 
+         1795807348.698  5883  5883 I MelatonBars: translucent check: strip spread 0.7 (picture above 14), against below 4.3 (runs on under 10)
+         1795807349.107  5883  5883 I MelatonBars: translucent check (soft keys): strip spread 65.3 (picture above 14), against below 74.0 (runs on under 10)
+         1795807349.108  5883  5883 I MelatonBars: translucent bar for com.google.android.apps.nexuslauncher: true
+         1795807349.108  5883  5883 I MelatonBars: translucent soft key bar for com.google.android.apps.nexuslauncher: true
+         1795807349.121  5883  5883 I Choreographer: Skipped 157 frames!  The application may be doing too much work on its main thread.
+         1795807350.350  5883  6657 I HWUI    : Davey! duration=3387ms; Flags=0, FrameTimelineVsyncId=113564, IntendedVsync=1666105446917, Vsync=1668722113322, InputEventId=0, HandleInputStart=1668725945400, AnimationStart=1668725981200, PerformTraversalsStart=1668726020800, DrawStart=1668726114900,
+         1795807350.394  5883  6657 I HWUI    : Davey! duration=3249ms; Flags=0, FrameTimelineVsyncId=113564, IntendedVsync=1666105446917, Vsync=1668722113322, InputEventId=0, HandleInputStart=1668725945400, AnimationStart=1668725981200, PerformTraversalsStart=1668726020800, DrawStart=1669071281600,
+         1795807350.566   677   774 D ActivityManager: freezing 2962 moe.shizuku.privileged.api
+         1795807352.152   677   677 W Looper  : Slow dispatch took 167ms main app=system_server main=true group=FOREGROUND h=android.os.Handler c=<recycled PooledLambda@68654b> m=0
+         1795807353.540  5883  5883 I libc    : Requested dump for pid 5883 (even.dreamscape)
+         1795807353.592  5883  5930 I even.dreamscape: Thread[2,tid=5930,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a13b20,peer=0x2000b08,"Signal Catcher"]: reacting to signal 3
+         1795807353.593  5883  5930 I even.dreamscape: 
+         1795807354.687  5883  5930 I even.dreamscape: Wrote stack traces to tombstoned
+         1795807364.514  5883  5930 I even.dreamscape: Thread[2,tid=5930,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a13b20,peer=0x2000b08,"Signal Catcher"]: reacting to signal 3
+         1795807364.515  5883  5930 I even.dreamscape: 
+         1795807364.588  5883  5883 I libc    : Requested dump for pid 5883 (even.dreamscape)
+         1795807364.853  5883  5930 I even.dreamscape: Wrote stack traces to tombstoned
+         1795807376.111  5883  5930 I even.dreamscape: Thread[2,tid=5930,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a13b20,peer=0x2000b08,"Signal Catcher"]: reacting to signal 3
+         1795807376.111  5883  5930 I even.dreamscape: 
+         1795807376.200  5883  5934 I libc    : Requested dump for pid 5883 (even.dreamscape)
+         1795807377.977  5883  5930 I even.dreamscape: Wrote stack traces to tombstoned
+         1795807387.832  5883  5930 I even.dreamscape: Thread[2,tid=5930,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a13b20,peer=0x2000b08,"Signal Catcher"]: reacting to signal 3
+         1795807387.832  5883  5930 I even.dreamscape: 
+         1795807388.109  5883  6002 I libc    : Requested dump for pid 5883 (even.dreamscape)
+         1795807388.582  5883  5930 I even.dreamscape: Wrote stack traces to tombstoned
+         1795807395.813   677   677 W Looper  : Slow dispatch took 102ms main app=system_server main=true group=FOREGROUND h=android.os.Handler c=<recycled PooledLambda@2f60a67> m=0
+         1795807399.219  5883  6657 I HWUI    : Davey! duration=1098ms; Flags=0, FrameTimelineVsyncId=115352, IntendedVsync=1717488779708, Vsync=1717488779708, InputEventId=0, HandleInputStart=1717492953900, AnimationStart=1717492988500, PerformTraversalsStart=1717493030600, DrawStart=1717493139900,
+         1795807399.743  1070  1105 I HWUI    : Davey! duration=1190ms; Flags=0, FrameTimelineVsyncId=115368, IntendedVsync=1717622105463, Vsync=1717622105463, InputEventId=0, HandleInputStart=1717625584200, AnimationStart=1717625622600, PerformTraversalsStart=1717625663500, DrawStart=1717625793100,
+         1795807399.794   949   969 I HWUI    : Davey! duration=832ms; Flags=0, FrameTimelineVsyncId=115360, IntendedVsync=1717538770616, Vsync=1717538770616, InputEventId=0, HandleInputStart=1717549775700, AnimationStart=1717549806400, PerformTraversalsStart=1717549845000, DrawStart=1717549942000, 
+         1795807401.075  1070  1105 I HWUI    : Davey! duration=758ms; Flags=0, FrameTimelineVsyncId=115406, IntendedVsync=1719638765996, Vsync=1719638765996, InputEventId=0, HandleInputStart=1719640321100, AnimationStart=1719640350200, PerformTraversalsStart=1719640385000, DrawStart=1719640500800, 
+         1795807404.608  5883  5930 I even.dreamscape: Thread[2,tid=5930,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a13b20,peer=0x2000b08,"Signal Catcher"]: reacting to signal 3
+         1795807404.609  5883  5930 I even.dreamscape: 
+         1795807404.645  5883  5883 I libc    : Requested dump for pid 5883 (even.dreamscape)
+         1795807404.886  5883  5930 I even.dreamscape: Wrote stack traces to tombstoned
+         1795807454.779  5883  5933 I even.dreamscape: Compiler allocated 9163KB to compile boolean vl1.k(android.graphics.Canvas, org.json.JSONArray, java.util.ArrayList)
+         1795807459.116  5883  5934 W even.dreamscape: Suspending all threads took: 6.890ms
+         1795807459.959   677  2994 V WifiPermissionsUtil: checkCallersLocationPermission(jp.net.seventhreeseven.dreamscape): ok because uid 10234 has app-op android:fine_location
+         1795807459.960   677  2994 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for jp.net.seventhreeseven.dreamscape(uid=10234)
+         1795807460.009  5883  6122 W PackageParsing: Ignoring duplicate uses-permissions/uses-permissions-sdk-m: android.permission.VIBRATE in package: jp.net.seventhreeseven.dreamscape at: Binary XML file line #90
+         1795807460.020  5883  6122 V AndroidForwardingOs: Recovering failed rename /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/cache/activesync-install/de6a4b3bab6de7b2202eb3bd07bc7d87/dsapp-3632839.apk to /storage/emulated/0/Android/data/jp.net.seventhreeseven.dreamscape/fil

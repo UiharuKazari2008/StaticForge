@@ -1,0 +1,27 @@
+events: new pid 20968 seen at device ms 1795807549831
+t0 (Start proc) epoch 1795807549.534
+first MelatonBars line: +1.53 s   holder token linked: +3.53 s
+log silence of the main thread (tid=pid) between Start proc and token linked: 0.44 s from +0.71, 0.38 s from +1.15
+log silence of the any thread of the app between Start proc and token linked: 0.23 s from +1.66, 0.22 s from +1.15
+hb.txt: 445 beats, median step 124 ms, longest gap 0.24 s wall / 0.24 s uptime, from +0.70 s
+ticks.txt: 72 ticks, longest gap 0.90 s from +1.05 s
+main thread blocked (not in the looper poll, < 30 ms CPU in all): longest 0.00 s from +0.00 s, CPU used 0 ms, (state, wchan) samples None
+main thread outside its looper poll for 2 s or more: +0.3..+3.7 s (3.3 s, {'binder_ioctl_write_read': 1, '0': 3, 'futex_wait': 1})
+  +  1.62 20968 Choreographer: Skipped 52 frames!  The application may be doing too much work on its main thread.
+  +  2.27 21064 CafeTasks: engine started (9 files, from the server)
+  event +-8.04 waiting for the process 5883 to be replaced
+  event +0.30 new pid 20968
+  event +9.34 dump +9 s: SIGQUIT system_server 677
+  event +9.51 dump +9 s: a11y state done
+  event +9.54 dump +9 s: threads
+  event +12.39 dump +9 s: SIGQUIT
+  event +12.40 dump +9 s: debuggerd
+  event +12.72 dump +9 s: debuggerd done (0)
+  event +21.76 dump +18 s: SIGQUIT system_server 677
+  event +21.96 dump +18 s: a11y state done
+  event +21.97 dump +18 s: threads
+  event +25.04 dump +18 s: SIGQUIT
+  event +25.05 dump +18 s: debuggerd
+  event +25.35 dump +18 s: debuggerd done (0)
+  event +47.51 watch done
+traces: trace_57, trace_58, trace_59, trace_60

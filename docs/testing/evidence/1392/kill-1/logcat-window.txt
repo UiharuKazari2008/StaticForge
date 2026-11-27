@@ -1,0 +1,1460 @@
+         1795805936.993   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=24 freq=2437 RxLinkSpeed=2
+         1795805936.993   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805936.993   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805936.993   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805936.993   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805936.993   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805936.993   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805936.993   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805936.993   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805936.993   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805936.993   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805936.995   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805936.996   677   836 D WifiScoreCard: txRate: 1 txSpeed: 24
+         1795805936.996   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805936.996   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=24 tx=0.0, 0.0, 0.0 rx=0.0 bcn=0 [on:0 tx:0 rx:0 period:3008] from screen [on:0 period:509607268] score=100
+         1795805937.435  1043  1287 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795805937.435  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795805937.435  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805937.435  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805937.435  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805937.436  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795805937.436  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795805937.436  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805937.436  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805937.436  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795805937.436  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795805937.436  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805937.436  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805937.436  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805937.436  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795805937.437  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805937.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805937.437  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805937.437  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795805937.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795805937.437  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805937.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805937.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795805937.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795805937.437  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805937.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805937.437  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805938.080   547   547 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:su 0 sh'
+         1795805938.189   677   693 W FastPrintWriter: Write failure
+         1795805938.189   677   693 W FastPrintWriter: java.io.IOException: write failed: EPIPE (Broken pipe)
+         1795805938.189   677   693 W FastPrintWriter: 	at libcore.io.IoBridge.write(IoBridge.java:651)
+         1795805938.189   677   693 W FastPrintWriter: 	at java.io.FileOutputStream.write(FileOutputStream.java:436)
+         1795805938.189   677   693 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.flushBytesLocked(FastPrintWriter.java:355)
+         1795805938.189   677   693 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.flushLocked(FastPrintWriter.java:378)
+         1795805938.189   677   693 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.appendLocked(FastPrintWriter.java:343)
+         1795805938.189   677   693 W FastPrintWriter: 	at com.android.internal.util.FastPrintWriter.write(FastPrintWriter.java:601)
+         1795805938.189   677   693 W FastPrintWriter: 	at java.io.PrintWriter.write(PrintWriter.java:507)
+         1795805938.189   677   693 W FastPrintWriter: 	at android.util.IndentingPrintWriter.write(IndentingPrintWriter.java:238)
+         1795805938.189   677   693 W FastPrintWriter: 	at android.util.IndentingPrintWriter.write(IndentingPrintWriter.java:195)
+         1795805938.189   677   693 W FastPrintWriter: 	at java.io.PrintWriter.write(PrintWriter.java:559)
+         1795805938.189   677   693 W FastPrintWriter: 	at java.io.PrintWriter.print(PrintWriter.java:686)
+         1795805938.189   677   693 W FastPrintWriter: 	at java.io.PrintWriter.println(PrintWriter.java:822)
+         1795805938.189   677   693 W FastPrintWriter: 	at com.android.server.power.WakeLockLog$LogEntry.dump(WakeLockLog.java:455)
+         1795805938.189   677   693 W FastPrintWriter: 	at com.android.server.power.WakeLockLog.dump(WakeLockLog.java:228)
+         1795805938.189   677   693 W FastPrintWriter: 	at com.android.server.power.WakeLockLog.dump(WakeLockLog.java:187)
+         1795805938.189   677   693 W FastPrintWriter: 	at com.android.server.power.Notifier.dump(Notifier.java:1103)
+         1795805938.189   677   693 W FastPrintWriter: 	at com.android.server.power.PowerManagerService.dumpInternal(PowerManagerService.java:5403)
+         1795805938.189   677   693 W FastPrintWriter: 	at com.android.server.power.PowerManagerService.-$$Nest$mdumpInternal(PowerManagerService.java:0)
+         1795805938.189   677   693 W FastPrintWriter: 	at com.android.server.power.PowerManagerService$BinderService.dump(PowerManagerService.java:7655)
+         1795805938.189   677   693 W FastPrintWriter: 	at android.os.Binder.doDump(Binder.java:1009)
+         1795805938.189   677   693 W FastPrintWriter: 	at android.os.Binder.dump(Binder.java:999)
+         1795805938.189   677   693 W FastPrintWriter: 	at android.os.Binder.onTransact(Binder.java:925)
+         1795805938.189   677   693 W FastPrintWriter: 	at android.os.IPowerManager$Stub.onTransact(IPowerManager.java:1358)
+         1795805938.189   677   693 W FastPrintWriter: 	at android.os.Binder.execTransactInternal(Binder.java:1369)
+         1795805938.189   677   693 W FastPrintWriter: 	at android.os.Binder.execTransact(Binder.java:1323)
+         1795805938.189   677   693 W FastPrintWriter: Caused by: android.system.ErrnoException: write failed: EPIPE (Broken pipe)
+         1795805938.189   677   693 W FastPrintWriter: 	at libcore.io.Linux.writeBytes(Native Method)
+         1795805938.189   677   693 W FastPrintWriter: 	at libcore.io.Linux.write(Linux.java:342)
+         1795805938.189   677   693 W FastPrintWriter: 	at libcore.io.ForwardingOs.write(ForwardingOs.java:970)
+         1795805938.189   677   693 W FastPrintWriter: 	at libcore.io.BlockGuardOs.write(BlockGuardOs.java:463)
+         1795805938.189   677   693 W FastPrintWriter: 	at libcore.io.IoBridge.write(IoBridge.java:646)
+         1795805938.189   677   693 W FastPrintWriter: 	... 24 more
+         1795805938.287   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,Not drawing due to not visible. Reason=View.INVISIBLE]
+         1795805938.379   547   547 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:date +%s%3N'
+         1795805938.386   677   747 D OomAdjuster: Not killing cached processes
+         1795805938.420   547   547 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:date +%s%3N'
+         1795805938.573   547   547 I adbd    : adbd service requested 'sync:'
+         1795805940.001   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=24 freq=2437 RxLinkSpeed=2
+         1795805940.001   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805940.001   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805940.001   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805940.001   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805940.001   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805940.001   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805940.002   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805940.002   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805940.002   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805940.002   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805940.005   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805940.006   677   836 D WifiScoreCard: txRate: 1 txSpeed: 24
+         1795805940.006   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805940.006   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=24 tx=0.0, 0.0, 0.0 rx=0.0 bcn=0 [on:0 tx:0 rx:0 period:3010] from screen [on:0 period:509610278] score=100
+         1795805940.019  1070  1070 D ShortcutAndWidgetContainer: appWidgetScale - [x,y]: [1.0,1.0]
+         1795805940.020  1070  1070 D NavigableAppWidgetHostView: updateScale - [fitScale,bounceScale]: [1.0,1.0]
+         1795805940.020  1070  1070 D ShortcutAndWidgetContainer: appWidgetScale - [x,y]: [1.0,1.0]
+         1795805940.020  1070  1070 D NavigableAppWidgetHostView: updateScale - [fitScale,bounceScale]: [1.0,1.0]
+         1795805942.663   547   547 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:su 0 sh'
+         1795805943.011   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=1 freq=2437 RxLinkSpeed=2
+         1795805943.011   677   836 D WifiClientModeImpl[15613:wlan0]: reported txKbps 12000 rxKbps 30000
+         1795805943.011   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805943.011   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805943.011   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805943.011   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805943.011   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805943.011   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805943.011   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805943.011   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805943.011   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805943.012   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805943.012   677   866 I AdbWifiNetworkMonitor: Wi-Fi network available
+         1795805943.014   677   693 I WifiService: getWifiEnabledState uid=10189 state=3
+         1795805943.016   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805943.017   677   836 D WifiScoreCard: txRate: 1 txSpeed: 1
+         1795805943.017   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805943.018   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.018   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.018   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.018   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.019   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.019   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.020   677   747 I WifiService: getConnectionInfo uid=10223
+         1795805943.020   677   747 V WifiService: Clearing REDACT_FOR_LOCAL_MAC_ADDRESS for com.google.android.gms(uid=10223)
+         1795805943.020   677   747 V WifiPermissionsUtil: checkCallersLocationPermission(com.google.android.gms): ok because uid 10223 has app-op android:fine_location
+         1795805943.020   677   747 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for com.google.android.gms(uid=10223)
+         1795805943.021  1867  1867 W JobService: onNetworkChanged() not implemented in com.android.providers.downloads.DownloadJobService. Must override in a subclass.
+         1795805943.021   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=1 tx=0.4, 0.0, 0.0 rx=0.4 bcn=0 [on:0 tx:0 rx:0 period:3011] from screen [on:0 period:509613289] score=100
+         1795805943.022  1318  1980 I NullBinder: NullBinder for android.net.action.RECOMMEND_NETWORKS triggering remote TransactionTooLargeException due to Service without Chimera impl, calling uid: 1000, calling pid: 0
+         1795805943.022  1318  1980 W libbinder.Binder: Large reply transaction of 1056768 bytes, interface descriptor , function: UNKNOWN_FUNCTION_NAME, code: 1, flags: 17
+         1795805943.234   677  2030 W InputChannel-JNI: Channel already disposed.
+         1795805943.238   677   693 D WindowManager: setClientSurface Surface(name=VRI-PrivacyDotTopRight2#206)/@0x18bfb08 for 923691c PrivacyDotTopRight2
+         1795805943.240   949  1333 I Surface : Creating surface for consumer unnamed-949-24 with slotExpansion=1 for 64 slots
+         1795805943.241   949  1333 I Surface : Creating surface for consumer VRI[PrivacyDotTopRight2]#22(BLAST Consumer)22 with slotExpansion=1 for 64 slots
+         1795805943.241   949  1333 I viewroot_draw_event: [VRI[PrivacyDotTopRight2]5b15b3d,applyTransactionOnDraw applyImmediately]
+         1795805943.254   949  1333 I viewroot_draw_event: [VRI[PrivacyDotTopRight2]5b15b3d,reportDrawFinished seqId=2]
+         1795805943.261   949  1333 I Surface : Creating surface for consumer unnamed-949-25 with slotExpansion=1 for 64 slots
+         1795805943.261   949  1333 I Surface : Creating surface for consumer VRI[ScreenDecorOverlay]#23(BLAST Consumer)23 with slotExpansion=1 for 64 slots
+         1795805943.262   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,applyTransactionOnDraw applyImmediately]
+         1795805943.263   677  2030 D WindowManager: setClientSurface Surface(name=VRI-ScreenDecorOverlay#146)/@0xf4682a1 for c02eb40 ScreenDecorOverlay
+         1795805943.263   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,Start draw after previous draw not visible]
+         1795805943.273   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,reportDrawFinished seqId=1]
+         1795805943.761   677   785 W InputDispatcher: channel 'd3928dc MelatonBar' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1795805943.761   677   785 E InputDispatcher: channel 'd3928dc MelatonBar' ~ Channel is unrecoverably broken and will be disposed!
+         1795805943.761   677   785 W InputDispatcher: channel 'b43a1b0 MelatonBar' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1795805943.761   677   785 E InputDispatcher: channel 'b43a1b0 MelatonBar' ~ Channel is unrecoverably broken and will be disposed!
+         1795805943.761  1056  1337 I bt_btif_sock_rfcomm: system/btif/src/btif_sock_rfc.cc:538 cleanup_rfc_slot: disconnected from RFCOMM socket connections for device: 00:00:00:00:00:00, scn: 8, app_uid: 10234, slot_id: 5, socket_id: 0
+         1795805943.761  1056  1337 W BluetoothMetrics: system/metrics/src/android/metrics.cc:105 LogBluetoothEvent: Failed BluetoothEvent Upload - Address is Empty
+         1795805943.761   677   785 I WindowManager: WINDOW DIED Window{d3928dc u0 MelatonBar}
+         1795805943.761  1056  1337 I bt_bta_dm: system/bta/dm/bta_dm_act.cc:1134 bta_dm_set_eir: Generating extended inquiry response packet EIR
+         1795805943.762  1056  1291 I bt_port_api: system/stack/rfcomm/port_api.cc:319 RFCOMM_RemoveServer: handle=18
+         1795805943.763   677   785 I WindowManager: WINDOW DIED Window{b43a1b0 u0 MelatonBar}
+         1795805943.764   677  2251 I ActivityManager: Process jp.net.seventhreeseven.dreamscape (pid 1620) has died: vis FGS 
+         1795805943.764   677  2251 I am_proc_died: [0,1620,jp.net.seventhreeseven.dreamscape,100,4]
+         1795805943.764   677   785 W InputDispatcher: channel 'bbace4f MelatonBarEdge' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1795805943.764   677   785 E InputDispatcher: channel 'bbace4f MelatonBarEdge' ~ Channel is unrecoverably broken and will be disposed!
+         1795805943.764   677   785 W InputDispatcher: channel '1572bfe MelatonBarEdge' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1795805943.764   677   785 E InputDispatcher: channel '1572bfe MelatonBarEdge' ~ Channel is unrecoverably broken and will be disposed!
+         1795805943.764   677   785 W InputDispatcher: channel 'facded9 MelatonImeProbe' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1795805943.764   677   785 E InputDispatcher: channel 'facded9 MelatonImeProbe' ~ Channel is unrecoverably broken and will be disposed!
+         1795805943.764   677   785 W InputDispatcher: channel '838b860 MelatonBarProbe' ~ Consumer closed input channel or an error occurred.  events=0x9
+         1795805943.764   677   785 E InputDispatcher: channel '838b860 MelatonBarProbe' ~ Channel is unrecoverably broken and will be disposed!
+         1795805943.764   677   785 I WindowManager: WINDOW DIED Window{bbace4f u0 MelatonBarEdge}
+         1795805943.764   677   677 V NotificationManagerService.NotificationListeners: 0 notification listener connection lost: ComponentInfo{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+         1795805943.765   677  1146 D NotificationManagerService.NotificationListeners: Removing active service ComponentInfo{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+         1795805943.766   677  1917 D SensorService: Unregistering client listener for PID 1620
+         1795805943.766   677   785 I WindowManager: WINDOW DIED Window{1572bfe u0 MelatonBarEdge}
+         1795805943.766   677   842 D ConnectivityService: releasing NetworkRequest [ REQUEST id=88, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ] (release request)
+         1795805943.766   677   785 I WindowManager: WINDOW DIED Window{facded9 u0 MelatonImeProbe}
+         1795805943.767   677   842 D ConnectivityService: releasing NetworkRequest [ REQUEST id=69, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ] (release request)
+         1795805943.768   677   785 I WindowManager: WINDOW DIED Window{838b860 u0 MelatonBarProbe}
+         1795805943.770   539   539 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795805943.771   677   842 D ConnectivityService: releasing NetworkRequest [ REQUEST id=66, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ] (release request)
+         1795805943.772   677  1146 W WindowManager: Cannot find window which accessibility connection is added to
+         1795805943.774   677  1274 I WindowManager: WIN DEATH: Window{a866125 u0 MelatonHomeStrip}
+         1795805943.775   677  2251 W ActivityManager: Scheduling restart of crashed service jp.net.seventhreeseven.dreamscape/.activesync.ActiveSyncNotificationListener in 1000ms for connection
+         1795805943.775   677  2251 I am_schedule_service_restart: [0,jp.net.seventhreeseven.dreamscape/.activesync.ActiveSyncNotificationListener,1000]
+         1795805943.775   677  2251 W ActivityManager: Scheduling restart of crashed service jp.net.seventhreeseven.dreamscape/.MelatonBarService in 11000ms for connection
+         1795805943.775   677  2251 I am_schedule_service_restart: [0,jp.net.seventhreeseven.dreamscape/.MelatonBarService,11000]
+         1795805943.775   677  2251 W ActivityManager: Scheduling restart of crashed service jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService in 21000ms for start-requested
+         1795805943.775   677  2251 I am_schedule_service_restart: [0,jp.net.seventhreeseven.dreamscape/.DreamScapeForegroundService,21000]
+         1795805943.775   677  2251 D OomAdjuster: Not killing cached processes
+         1795805943.775   677  2251 I ActivityManager: Killing 1887:com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0/u0a234i0 (adj 0): isolated not needed
+         1795805943.775   475   475 I Zygote  : Process 1620 exited due to signal 9 (Killed)
+         1795805943.776   677  2251 I am_kill : [0,1887,com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0,0,isolated not needed,133680]
+         1795805943.777   677  2994 W WindowManager: Cannot find window which accessibility connection is added to
+         1795805943.777   677  1916 W WindowManager: Cannot find window which accessibility connection is added to
+         1795805943.778   677   912 W WindowManager: Cannot find window which accessibility connection is added to
+         1795805943.778   677  1918 W WindowManager: Cannot find window which accessibility connection is added to
+         1795805943.778   677  1206 W WindowManager: Cannot find window which accessibility connection is added to
+         1795805943.779   677  2251 I am_uid_stopped: 10234
+         1795805943.783  3056  3083 V BinderSender: Uid 10234 starts
+         1795805943.785   677  1737 W WindowManager: Cannot find window which accessibility connection is added to
+         1795805943.786   677   703 W ActivityManager: setHasOverlayUi called on unknown pid: 1620
+         1795805943.789   677   703 I sysui_multi_action: [757,856,758,2,806,android,857,com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape,858,1]
+         1795805943.789   677   703 W NotificationHistory: Attempted to remove channel for locked/gone/disabled user 0
+         1795805943.790   677   703 W ActivityManager: setHasOverlayUi called on unknown pid: 1620
+         1795805943.790   677   703 W ActivityManager: setHasOverlayUi called on unknown pid: 1620
+         1795805943.790   677   842 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+         1795805943.794  3056  3083 V Service : Add 0:jp.net.seventhreeseven.dreamscape to power save temp whitelist for 30s
+         1795805943.794   677  2030 W ActivityManager: pid 677 system sent binder code 1 with flags 1 and got error -32
+         1795805943.794   677  2030 V AccessibilityManagerService: onUserStateChangedLocked for userId: 0, forceUpdate: false
+         1795805943.795   677   711 I libprocessgroup: Removed cgroup /sys/fs/cgroup/apps/uid_10234/pid_1620
+         1795805943.796   677   842 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+         1795805943.796   677   842 D InetDiagMessage: Destroyed live tcp sockets for uids={10234} in 12ms
+         1795805943.796   677   842 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+         1795805943.797   677   842 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+         1795805943.797   677   842 D InetDiagMessage: Destroyed live tcp sockets for uids={20234} in 1ms
+         1795805943.797   677  2030 V AccessibilityUserState: updateShortcutTargets: type:accessibility_shortcut_target_service, current:{}, new:{}
+         1795805943.797   677  2030 V AccessibilityUserState: updateShortcutTargets: type:accessibility_button_targets, current:{}, new:{}
+         1795805943.797   677  2030 V AccessibilityUserState: updateShortcutTargets: type:accessibility_gesture_targets, current:{}, new:{}
+         1795805943.797   677  2030 V AccessibilityUserState: updateShortcutTargets: type:accessibility_qs_targets, current:{}, new:{}
+         1795805943.797   677  2030 V AccessibilityUserState: updateShortcutTargets: type:accessibility_key_gesture_targets, current:{}, new:{}
+         1795805943.797   677  2030 V AccessibilityUserState: updateShortcutTargets: type:accessibility_top_row_key_targets, current:{}, new:{}
+         1795805943.797   677  2030 V AccessibilityUserState: updateShortcutTargets: type:accessibility_quick_access_targets, current:{}, new:{}
+         1795805943.797   677  2030 W MagnificationConnectionManager: requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+         1795805943.798   677  1161 I am_uid_running: 10234
+         1795805943.798   677  1161 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 10234, packageName = null, attributionTag = null, token = android.os.Binder@bb5fa5b, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+         1795805943.798   677   677 I sysui_multi_action: [757,128,758,5,759,8,793,117527,794,0,795,117527,796,0,797,com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape,806,android,857,com.android.server.wm.Alert-9a87e3f9,858,1,947,0,1500,117321,1688,1,1745,2098068913]
+         1795805943.798   677   677 I notification_canceled: [0|android|0|com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape|1000,8,117527,117527,0,-1,-1,NULL]
+         1795805943.801   677   677 I sysui_multi_action: [757,128,758,5,759,8,793,229462,794,0,795,227492,796,1,806,jp.net.seventhreeseven.dreamscape,857,dreamscape_persistent,858,2,947,0,1500,227492,1641,status,1688,1]
+         1795805943.801   677   677 I notification_canceled: [0|jp.net.seventhreeseven.dreamscape|1|null|10234,8,229462,227492,0,-1,-1,NULL]
+         1795805943.801   473   506 I netd    : tetherGetStats() -> {[]} <0.52ms>
+         1795805943.802   677   677 I notification_cancel_all: [1000,677,android,0,0,0,20,NULL]
+         1795805943.803   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.804   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.804   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.805   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.805   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.813   677  2030 D AccessibilityManagerService: .getAccessibilityShortcutTargets {shortcutType=0, userId=0}
+         1795805943.814   475   475 D Zygote  : Forked child process 4309
+         1795805943.815   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.815   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.815   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.815   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.815   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.816   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.816   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.816   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.816   677   710 I am_proc_start: [0,4309,10234,jp.net.seventhreeseven.dreamscape,content provider,{jp.net.seventhreeseven.dreamscape/rikka.shizuku.ShizukuProvider}]
+         1795805943.817   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.817   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.817   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.817   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.817   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.817   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.817   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805943.819  4309  4309 I libprocessgroup: Created cgroup /sys/fs/cgroup/apps/uid_10234/pid_4309
+         1795805943.824   677   710 I ActivityManager: Start proc 4309:jp.net.seventhreeseven.dreamscape/u0a234 for content provider {jp.net.seventhreeseven.dreamscape/rikka.shizuku.ShizukuProvider}
+         1795805943.830   677   716 W ProcessStats: Tracking association SourceState{b5119f9 system/1000 ImpBg #1836} whose proc state 6 is better than process ProcessState{7081d3e android.process.media/10112 pkg=com.android.providers.downloads (sub)} proc state 14 (5 skipped)
+         1795805943.832  4309  4309 I Zygote  : Process 4309 created for jp.net.seventhreeseven.dreamscape
+         1795805943.832  4309  4309 I even.dreamscape: Using generational CollectorTypeCMC GC.
+         1795805943.833  4309  4309 W even.dreamscape: Unexpected CPU variant for x86: x86_64.
+         1795805943.833  4309  4309 W even.dreamscape: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795805943.835   677   677 D BatterySaverPolicy: accessibility changed to false, updating policy.
+         1795805943.835   677   774 D ActivityManager: freezing 2919 com.google.android.apps.photos
+         1795805943.837   677   774 D ActivityManager: Reschedule freeze for process 2919 com.google.android.apps.photos (outstanding txns), timeout=2856
+         1795805943.850  1642  1671 I AiAiEcho: Settings changed for uri: content://settings/secure/accessibility_enabled
+         1795805943.875  1642  1841 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+         1795805943.875  1642  1841 I AiAiEcho: EchoTargets: 
+         1795805943.875  1642  1841 I AiAiEcho: Filtered by AiAi flag check: 
+         1795805943.875  1642  1841 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+         1795805943.876  1642  1841 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+         1795805943.877  1642  1841 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+         1795805943.877  1642  1841 I AiAiEcho: EchoTargets: 
+         1795805943.877  1642  1841 I AiAiEcho: Filtered by AiAi flag check: 
+         1795805943.877  1642  1841 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+         1795805943.878  1642  1841 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+         1795805943.878  1642  1841 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+         1795805943.878  1642  1841 I AiAiEcho: EchoTargets: 
+         1795805943.878  1642  1841 I AiAiEcho: Filtered by AiAi flag check: 
+         1795805943.878  1642  1841 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+         1795805943.879  1642  1841 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+         1795805943.879  1642  1841 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+         1795805943.880  1642  1841 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface ambientcue with targets# 0 (types=[])
+         1795805943.881  1642  1841 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+         1795805943.882   949  1164 I AmbientCueRepository: Receiving SmartSpace targets # 0
+         1795805943.885   677   711 I libprocessgroup: Removed cgroup /sys/fs/cgroup/apps/uid_99000/pid_1887
+         1795805943.886   677   711 I libprocessgroup: Removed cgroup /sys/fs/cgroup/apps/uid_99000
+         1795805943.887   991   991 I Zygote  : Process 1887 exited due to signal 9 (Killed)
+         1795805943.887   539   539 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795805943.887   539   539 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795805943.888   539   539 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795805943.888   539   539 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795805943.888   539   539 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795805943.888   539   539 E BpTransactionCompletedListener: Failed to transact (-32)
+         1795805943.899   677  2251 I am_proc_died: [0,1887,com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0,0,10]
+         1795805943.903  1070  1070 D ShortcutAndWidgetContainer: appWidgetScale - [x,y]: [1.0,1.0]
+         1795805943.903  1070  1070 D NavigableAppWidgetHostView: updateScale - [fitScale,bounceScale]: [1.0,1.0]
+         1795805943.903  1070  1070 D ShortcutAndWidgetContainer: appWidgetScale - [x,y]: [1.0,1.0]
+         1795805943.903  1070  1070 D NavigableAppWidgetHostView: updateScale - [fitScale,bounceScale]: [1.0,1.0]
+         1795805943.904  1070  1070 D SsBaseTemplateCard: Passed-in item info is null
+         1795805943.904  1070  1070 D SsBaseTemplateCard: Passed-in item info is null
+         1795805943.904  1070  1070 D SsBaseTemplateCard: Passed-in item info is null
+         1795805943.904  1070  1070 D SsBaseTemplateCard: Passed-in item info is null
+         1795805943.904  1070  1070 I SsBaseTemplateCard: Secondary card pane is null
+         1795805943.904   677  2251 I am_uid_stopped: 99000
+         1795805943.911   677   719 W KernelCpuProcStringReader: File not found. It's normal if not implemented: /proc/uid_time_in_state
+         1795805943.911   677   719 W KernelCpuProcStringReader: File not found. It's normal if not implemented: /proc/uid_concurrent_active_time
+         1795805943.911   677   719 W KernelCpuProcStringReader: File not found. It's normal if not implemented: /proc/uid_concurrent_policy_time
+         1795805943.916  4309  4309 I berberis: Initialized Berberis ((null)), version 16.0.0
+         1795805944.000   677   773 I commit_sys_config_file: [settings-2-0,3]
+         1795805944.031  4309  4309 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+         1795805944.041   677  2251 I am_proc_bound: [0,4309,jp.net.seventhreeseven.dreamscape]
+         1795805944.044   677  2251 I am_uid_active: 10234
+         1795805944.049   677   702 I commit_sys_config_file: [notification-policy,8]
+         1795805944.068  4309  4309 D nativeloader: Configuring clns-9 for other apk /data/app/~~IDNFfCG9mmikpc1WqNByLg==/jp.net.seventhreeseven.dreamscape-a6hPtnHvzXm4gqdVPhSNWw==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~IDNFfCG9mmikpc1WqNByLg==/jp.net.seventhreeseven.dreamscape-a6hPtnHvzXm4gqdVPhSNWw==/lib/arm64:/data/app/~~IDNFfCG9mmikpc1WqNByLg==/jp.net.seventhreeseven.dreamscape-a6hPtnHvzXm4gqdVPhSNWw==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/jp.net.seventhreeseven.dreamscape
+         1795805944.115  4309  4309 V GraphicsEnvironment: Currently set values for:
+         1795805944.115  4309  4309 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+         1795805944.115  4309  4309 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+         1795805944.115  4309  4309 V GraphicsEnvironment: jp.net.seventhreeseven.dreamscape is not listed in per-application setting
+         1795805944.116  4309  4309 V GraphicsEnvironment: No special selections for ANGLE, returning default driver choice
+         1795805944.116  4309  4309 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+         1795805944.121  4309  4309 D WM-WrkMgrInitializer: Initializing WorkManager with default configuration.
+         1795805944.122  4309  4309 D WM-PackageManagerHelper: Skipping component enablement for androidx.work.impl.background.systemjob.SystemJobService
+         1795805944.122  4309  4309 D WM-Schedulers: Created SystemJobScheduler and enabled SystemJobService
+         1795805944.124  4309  4344 D WM-ForceStopRunnable: The default process name was not specified.
+         1795805944.124  4309  4344 D WM-ForceStopRunnable: Performing cleanup operations.
+         1795805944.125  4309  4309 D ShizukuProvider: Initialize Sui: false
+         1795805944.130  4309  4324 D ShizukuProvider: binder received
+         1795805944.134  4309  4324 I ShizukuApplication: attachApplication
+         1795805944.134  3056  3083 I Service : send binder to user app jp.net.seventhreeseven.dreamscape in user 0
+         1795805944.135  3056  3083 V BinderSender: Uid 10234 dead
+         1795805944.135  3056  3083 V BinderSender: Uid 99000 starts
+         1795805944.140  3056  3083 V BinderSender: Uid 99000 dead
+         1795805944.141  3056  3083 V BinderSender: Uid 10234 starts
+         1795805944.145  3056  3083 V Service : Add 0:jp.net.seventhreeseven.dreamscape to power save temp whitelist for 30s
+         1795805944.150  4309  4326 D ShizukuProvider: sendBinder is called when already a living binder
+         1795805944.150  3056  3083 I Service : send binder to user app jp.net.seventhreeseven.dreamscape in user 0
+         1795805944.151   677   677 I notification_enqueue: [10234,4309,jp.net.seventhreeseven.dreamscape,1,NULL,0,Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|NO_CLEAR|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC),0,1]
+         1795805944.154  3056  3083 V BinderSender: Uid 10234 already starts
+         1795805944.159  4309  4309 I MelatonBars: Shizuku's binder arrived: holding the row (#1331)
+         1795805944.159  4309  4309 I MelatonBars: early hold at process start (#1371)
+         1795805944.160  4309  4355 D WM-PackageManagerHelper: Skipping component enablement for androidx.work.impl.background.systemalarm.RescheduleReceiver
+         1795805944.164  4309  4349 I CafeTasks: tasks drive-alerts, radio-mode, car-presence, status-bar, hour-chime (server 46bb3a31), engine supported
+         1795805944.166  4309  4309 I DriveState: 13:59:04 start: restored idle (-), cars 0, learned 0, places 2 [idle]
+         1795805944.180   677   677 V NotificationManagerService.NotificationListeners: 0 notification listener service connected: ComponentInfo{jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.activesync.ActiveSyncNotificationListener}
+         1795805944.185   677  1737 I am_uid_running: 99001
+         1795805944.186   677  1737 V GrammaticalInflectionUtils: AttributionSource: AttributionSource { uid = 99001, packageName = null, attributionTag = null, token = android.os.Binder@bb5fa5b, deviceId = 0, next = null } does not have READ_SYSTEM_GRAMMATICAL_GENDER permission.
+         1795805944.198   991   991 D Zygote  : Forked child process 4369
+         1795805944.201   677   677 V AccessibilityManagerService: onUserStateChangedLocked for userId: 0, forceUpdate: false
+         1795805944.204  4369  4369 I Zygote  : Process 4369 created for com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0
+         1795805944.204  4369  4369 I SandboxService0: Using generational CollectorTypeCMC GC.
+         1795805944.204   677   677 V AccessibilityUserState: updateShortcutTargets: type:accessibility_shortcut_target_service, current:{}, new:{}
+         1795805944.205   677   677 V AccessibilityUserState: updateShortcutTargets: type:accessibility_button_targets, current:{}, new:{}
+         1795805944.205   677   677 V AccessibilityUserState: updateShortcutTargets: type:accessibility_gesture_targets, current:{}, new:{}
+         1795805944.205   677   677 V AccessibilityUserState: updateShortcutTargets: type:accessibility_qs_targets, current:{}, new:{}
+         1795805944.205   677   677 V AccessibilityUserState: updateShortcutTargets: type:accessibility_key_gesture_targets, current:{}, new:{}
+         1795805944.205   677   677 V AccessibilityUserState: updateShortcutTargets: type:accessibility_top_row_key_targets, current:{}, new:{}
+         1795805944.205   677   677 V AccessibilityUserState: updateShortcutTargets: type:accessibility_quick_access_targets, current:{}, new:{}
+         1795805944.205   677   677 W MagnificationConnectionManager: requestConnection duplicated request: connect=false, mConnectionState=DISCONNECTED
+         1795805944.205  4369  4369 W SandboxService0: Unexpected CPU variant for x86: x86_64.
+         1795805944.205  4369  4369 W SandboxService0: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795805944.206   677  2030 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805944.208   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.208   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.208   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.209   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.209   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.209   677   710 I libprocessgroup: Created cgroup /sys/fs/cgroup/apps/uid_99001
+         1795805944.212   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.212   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.212   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.213   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.213   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.213   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.214   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.214   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.214   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.214   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.216   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.216   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.216   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.216   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.216   677   677 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805944.217   677   710 I libprocessgroup: Created cgroup /sys/fs/cgroup/apps/uid_99001/pid_4369
+         1795805944.219  4369  4369 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+         1795805944.222   677   677 D BatterySaverPolicy: accessibility changed to true, updating policy.
+         1795805944.224  1642  1666 I AiAiEcho: Settings changed for uri: content://settings/secure/accessibility_enabled
+         1795805944.225  1642  1841 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+         1795805944.225   677  2030 I am_proc_start: [0,4369,99001,com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0,bound-service,{jp.net.seventhreeseven.dreamscape/org.chromium.android_webview.js_sandbox.service.JsSandboxService0}]
+         1795805944.225   677  2030 I ActivityManager: Start proc 4369:com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0/u0i1 for bound-service {jp.net.seventhreeseven.dreamscape/org.chromium.android_webview.js_sandbox.service.JsSandboxService0}
+         1795805944.225  1642  1841 I AiAiEcho: EchoTargets: 
+         1795805944.225  1642  1841 I AiAiEcho: Filtered by AiAi flag check: 
+         1795805944.225  1642  1841 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+         1795805944.226  1642  1841 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+         1795805944.226   677  2030 I am_proc_bound: [0,4369,com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0]
+         1795805944.226  1642  1841 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+         1795805944.226  1642  1841 I AiAiEcho: EchoTargets: 
+         1795805944.226  1642  1841 I AiAiEcho: Filtered by AiAi flag check: 
+         1795805944.226  1642  1841 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+         1795805944.227  1642  1841 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+         1795805944.228  1642  1841 I AiAiEcho: Predicting[0]:  [CONTEXT sampling_count=5 ]
+         1795805944.228  1642  1841 I AiAiEcho: EchoTargets: 
+         1795805944.228  1642  1841 I AiAiEcho: Filtered by AiAi flag check: 
+         1795805944.228  1642  1841 I AiAiEcho: [CONTEXT ratelimit_period="10 SECONDS" ]
+         1795805944.228  1642  1841 I AiAiEcho: #remoteViewsTwiddler: feature disabled.
+         1795805944.229  1642  1841 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface home with targets# 0 (types=[])
+         1795805944.229  1642  1841 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface ambientcue with targets# 0 (types=[])
+         1795805944.232   677  1737 D AccessibilityManagerService: .getAccessibilityShortcutTargets {shortcutType=0, userId=0}
+         1795805944.233  1642  1841 I AiAiEcho: #postPredictionTargets: Sending updates to UISurface lockscreen with targets# 0 (types=[])
+         1795805944.233  3056  4169 V BinderSender: Uid 99001 starts
+         1795805944.234   949  1164 I AmbientCueRepository: Receiving SmartSpace targets # 0
+         1795805944.237  4369  4369 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.test.base.jar
+         1795805944.237  4369  4369 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
+         1795805944.239   677   710 W ActivityManager: Slow operation: 53ms so far, now at startProcess: returned from zygote!
+         1795805944.240  1070  1070 D ShortcutAndWidgetContainer: appWidgetScale - [x,y]: [1.0,1.0]
+         1795805944.240  1070  1070 D NavigableAppWidgetHostView: updateScale - [fitScale,bounceScale]: [1.0,1.0]
+         1795805944.241  1070  1070 D ShortcutAndWidgetContainer: appWidgetScale - [x,y]: [1.0,1.0]
+         1795805944.241  1070  1070 D NavigableAppWidgetHostView: updateScale - [fitScale,bounceScale]: [1.0,1.0]
+         1795805944.241  1070  1070 D SsBaseTemplateCard: Passed-in item info is null
+         1795805944.241  1070  1070 D SsBaseTemplateCard: Passed-in item info is null
+         1795805944.242  1070  1070 D SsBaseTemplateCard: Passed-in item info is null
+         1795805944.242  1070  1070 D SsBaseTemplateCard: Passed-in item info is null
+         1795805944.242  1070  1070 I SsBaseTemplateCard: Secondary card pane is null
+         1795805944.242  4369  4369 E ActivityThread: ConnectivityService is null in handleBindApplication!
+         1795805944.243   677   709 I am_wtf  : [0,4369,com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0,-1601585467,ActivityThread,ConnectivityService is null in handleBindApplication!]
+         1795805944.247  4369  4369 I cr_WebViewApkApp: version=145.0.7632.218 (763221809) minSdkVersion=29 processName=com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0 splits=<none>
+         1795805944.251   677   842 D ConnectivityService: NetReassign [no changes] [c 0] [a 15] [i 2]
+         1795805944.251   677  1916 I am_uid_active: 99001
+         1795805944.257  3056  3082 V BinderSender: Uid 99001 already starts
+         1795805944.257  3056  3082 V BinderSender: Uid 99001 already starts
+         1795805944.262   677   842 D ConnectivityService: NetReassign [no changes] [c 6] [a 1] [i 0]
+         1795805944.263  4369  4369 I cr_LibraryLoader: Successfully loaded native library
+         1795805944.263  4369  4369 I cr_CachingUmaRecorder: Flushed 2 samples from 2 histograms, 0 samples were dropped.
+         1795805944.265  4309  4309 D BluetoothSocket: bindListen(): mPort=-1, mType=1
+         1795805944.265   677   842 D ConnectivityService: NetReassign [no changes] [c 0] [a 0] [i 3]
+         1795805944.268  1056  1109 I BluetoothSocketManagerBinder: createSocketChannel: type=1, serviceName=Melaton Instant Hotspot, uuid=8f6b5a4e-1c2d-4e0f-9a7b-3c5d6e7f8a91, port=-1, from uid/pid=10234/4309
+         1795805944.268  1056  1109 I bt_btif_sock: system/btif/src/btif_sock.cc:166 btsock_listen: Attempting listen for socket connections for device: 00:00:00:00:00:00, type: 1, channel: -1, app_uid: 10234, data_path: 0, hub_id: 0, endpoint_id: 0, max_rx_packet_size: 0
+         1795805944.269  1056  1109 I bt_btif_sock_rfcomm: system/btif/src/btif_sock_rfc.cc:401 btsock_rfc_listen: Adding listening socket service_name: Melaton Instant Hotspot - channel: -1
+         1795805944.269  1056  1291 I bt_btif_sock_rfcomm: system/btif/src/btif_sock_rfc.cc:1023 jv_dm_cback: handling event:BTA_JV_GET_SCN_EVT, slot_id:6
+         1795805944.269  1056  1291 I bt_btif_sock_rfcomm: system/btif/src/btif_sock_rfc.cc:1023 jv_dm_cback: handling event:BTA_JV_CREATE_RECORD_EVT, slot_id:6
+         1795805944.269  1056  1291 I bt_bta_dm: system/bta/dm/bta_dm_act.cc:1134 bta_dm_set_eir: Generating extended inquiry response packet EIR
+         1795805944.269  1056  1291 W rfcomm_port_utils: system/stack/rfcomm/port_utils.cc:290 port_find_mcb: not found, bd_addr:ff:ff:ff:ff:ff:ff
+         1795805944.269  1056  1291 I bt_port_api: system/stack/rfcomm/port_api.cc:194 RFCOMM_CreateConnectionWithSecurity: bd_addr=ff:ff:ff:ff:ff:ff, scn=9, is_server=true, mtu=990, uuid=0x0, dlci=18, signal_state=0xb, port_handle=19
+         1795805944.269  1056  1291 I bt_btif_sock_rfcomm: system/btif/src/btif_sock_rfc.cc:975 rfcomm_cback: handling BTA_JV_RFCOMM_START_EVT, slot_id:6
+         1795805944.269  1056  1291 I bt_btif_sock_rfcomm: system/btif/src/btif_sock_rfc.cc:649 on_srv_rfc_listen_started: listening for RFCOMM socket connections for device: 00:00:00:00:00:00, scn: 9, app_uid: 10234, id: 6
+         1795805944.270  4309  4309 D BluetoothSocket: bindListen(), SocketState: INIT, mPfd: {ParcelFileDescriptor: java.io.FileDescriptor@79b3e9e}
+         1795805944.270  4309  4309 D BluetoothSocket: bindListen(), Create LocalSocket
+         1795805944.270  4309  4309 D BluetoothSocket: bindListen(), new LocalSocket.getInputStream()
+         1795805944.270  4309  4309 D BluetoothSocket: bindListen(), readInt mSocketIS: android.net.LocalSocketImpl$SocketInputStream@661fd7f
+         1795805944.270  4309  4309 D BluetoothSocket: bindListen(): channel=9, mPort=-1
+         1795805944.271  4309  4388 D BluetoothSocket: accept(), timeout (ms):-1
+         1795805944.277  4309  4309 I CameraManagerGlobal: Connecting to camera service
+         1795805944.300   677  1161 D BiometricService: canAuthenticate: User=0, Caller=0, Authenticators=255
+         1795805944.302   677   912 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805944.303   677   677 I notification_enqueue: [10234,4309,jp.net.seventhreeseven.dreamscape,1,NULL,0,Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|FOREGROUND_SERVICE color=0x00000000 vis=PRIVATE),0,1]
+         1795805944.304   677   842 D ConnectivityService: NetReassign [no changes] [c 0] [a 1] [i 1]
+         1795805944.305   677  1161 D BiometricService/PreAuthInfo: Package: jp.net.seventhreeseven.dreamscape Sensor ID: 0 Modality: 2 User id: 0 Status: 7
+         1795805944.305   677  1161 D BiometricService/PreAuthInfo: getCanAuthenticateInternal Modality: 2 AuthenticatorStatus: 7
+         1795805944.306   677  1161 D AuthService: canAuthenticate, userId: 0, callingUserId: 0, authenticators: 255, result: 11
+         1795805944.311   677   677 I notification_enqueue: [10234,4309,jp.net.seventhreeseven.dreamscape,1,NULL,0,Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC),0,1]
+         1795805944.312   677  1161 D ConnectivityService: requestNetwork for uid/pid:10234/4309 activeRequest: null callbackRequest: 171 [NetworkRequest [ REQUEST id=172, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false declaredMethods: AVAIL|LOST|NC|LP
+         1795805944.314   677   842 D ConnectivityService: NetReassign [172 : null → 100] [c 0] [a 1] [i 0]
+         1795805944.315   677   836 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=172, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.315  4309  4380 I ActiveSyncLink: reconnect now: network available
+         1795805944.315   677   836 V WifiNetworkFactory: Accepted network request NetworkRequest [ REQUEST id=172, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.315   677   836 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=172, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.315   677   836 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=172, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.316   677   836 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=172, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.320   677   677 I notification_enqueue: [10234,4309,jp.net.seventhreeseven.dreamscape,1,NULL,0,Notification(channel=dreamscape_persistent shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|ONLY_ALERT_ONCE|FOREGROUND_SERVICE color=0x00000000 category=status actions=1 vis=PUBLIC),0,1]
+         1795805944.323  4309  4398 I WebViewFactory: Loading com.google.android.webview version 145.0.7632.218 (code 763221809)
+         1795805944.325  4309  4398 V ResourcesManager: The following library key has been added: ResourcesKey{ mHash=d7a9674a mResDir=null mSplitDirs=[] mOverlayDirs=[] mLibDirs=[/data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/WebViewGoogle.apk,/system/framework/android.test.base.jar,/system_ext/framework/androidx.window.extensions.jar] mDisplayId=0 mOverrideConfig=v37 mCompatInfo={360dpi always-compat} mLoaders=[]}
+         1795805944.328  3056  3082 D nativeloader: Load libjavacrypto.so using APEX ns com_android_conscrypt for caller /apex/com.android.conscrypt/javalib/conscrypt.jar: ok
+         1795805944.331  4309  4398 D ApplicationLoaders: Returning zygote-cached class loader: /system/framework/android.test.base.jar
+         1795805944.331  4309  4398 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
+         1795805944.332  3056  3056 I auditd  : type=1400 audit(0.0:44): avc:  denied  { watch } for  comm="binder:3056_1" path="/data/app/~~IDNFfCG9mmikpc1WqNByLg==/jp.net.seventhreeseven.dreamscape-a6hPtnHvzXm4gqdVPhSNWw==" dev="dm-6" ino=163871 scontext=u:r:shell:s0 tcontext=u:object_r:apk_data_file:s0 tclass=dir permissive=0
+         1795805944.332  3056  3056 W binder:3056_1: type=1400 audit(0.0:44): avc:  denied  { watch } for  path="/data/app/~~IDNFfCG9mmikpc1WqNByLg==/jp.net.seventhreeseven.dreamscape-a6hPtnHvzXm4gqdVPhSNWw==" dev="dm-6" ino=163871 scontext=u:r:shell:s0 tcontext=u:object_r:apk_data_file:s0 tclass=dir permissive=0
+         1795805944.333  4309  4398 D nativeloader: Configuring clns-10 for other apk /data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/WebViewGoogle.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/lib/x86_64:/data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/WebViewGoogle.apk!/lib/x86_64, permitted_path=/data:/mnt/expand
+         1795805944.337  3056  3082 I UserServiceManager: New service record jp.net.seventhreeseven.dreamscape:jp.net.seventhreeseven.dreamscape.ShellService (7564ca61-5cdf-475d-88f6-c0fa9b2ee1b9-1795805944335): version=1, daemon=false, apk=/data/app/~~IDNFfCG9mmikpc1WqNByLg==/jp.net.seventhreeseven.dreamscape-a6hPtnHvzXm4gqdVPhSNWw==/base.apk
+         1795805944.337  3056  3082 V UserServiceRecord: Set starting timeout for service record 7564ca61-5cdf-475d-88f6-c0fa9b2ee1b9-1795805944335: 30000
+         1795805944.337  3056  4400 V UserServiceManager: Starting process for service record jp.net.seventhreeseven.dreamscape:jp.net.seventhreeseven.dreamscape.ShellService (7564ca61-5cdf-475d-88f6-c0fa9b2ee1b9-1795805944335)...
+         1795805944.338  4309  4309 I NativeBar: task roles: []
+         1795805944.354  4309  4398 I cr_WVCFactoryProvider: version=145.0.7632.218 (763221809) minSdkVersion=29 multiprocess=true packageId=2 splits=<none>
+         1795805944.356   677   912 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805944.356   677   912 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805944.358   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805944.359   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805944.359   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805944.360   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805944.363  4309  4398 D nativeloader: Load /data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/WebViewGoogle.apk!/lib/x86_64/libwebviewchromium.so using class loader ns clns-10 (caller=/data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/WebViewGoogle.apk): ok
+         1795805944.379   677   677 I sysui_multi_action: [757,1501,758,1,793,229,794,0,795,229,796,1,806,jp.net.seventhreeseven.dreamscape,857,dreamscape_persistent,858,2,947,0,1500,0,1641,status,1688,1]
+         1795805944.379   677   677 I sysui_multi_action: [757,804,799,note_interruptive,801,0,802,1]
+         1795805944.380  4309  4398 D nativeloader: Load /system/lib64/libwebviewchromium_plat_support.so using class loader ns clns-10 (caller=/data/app/~~jP3ZMwVrtOgFO3yuq2LYJA==/com.google.android.webview-qm_1ZL3uc_iMIwIyNk0n0g==/WebViewGoogle.apk): ok
+         1795805944.381   677   677 V NotificationHistory: Attempted to add notif for locked/gone/disabled user 0
+         1795805944.417   677  2994 W AppOps  : Operation not started: uid=10234 pkg=jp.net.seventhreeseven.dreamscape(null) op=ACTIVITY_RECOGNITION
+         1795805944.422  1642  2412 W AiAiEcho: LyftNotificationParser Ridesharing ETA not enabled
+         1795805944.422  1642  2412 I AiAiEcho: SmartspaceNotificationPredictor no parser can handle this notification or notification is invalid
+         1795805944.433   677   773 I commit_sys_config_file: [settings-2-0,15]
+         1795805944.438  1318  3142 W Geofencer: registration not active, registration not permitted for registration: 10234/jp.net.seventhreeseven.dreamscape/6ebc633c {na} (FINE) GeofenceRequest(<redacted place>, maxAdditionalTriggerDelay=120000ms, eventsFilter=[OUTSIDE], initialEventsFilter=[] [CONTEXT service_id=6 ]
+         1795805944.441  1318  3142 W Geofencer: registration not active, registration not permitted for registration: 10234/jp.net.seventhreeseven.dreamscape/6ebc633c {na} (FINE) GeofenceRequest(<redacted place>, maxAdditionalTriggerDelay=120000ms, eventsFilter=[OUTSIDE], initialEventsFilter=[] [CONTEXT service_id=6 ]
+         1795805944.449   677  1161 W AppOps  : Noting op not finished: uid 10234 pkg jp.net.seventhreeseven.dreamscape code 79 startTime of in progress event=1795805944445
+         1795805944.474  4309  4412 E chromium: [1127/135904.474223:ERROR:android_webview/browser/variations/variations_seed_loader.cc:39] Seed missing signature.
+         1795805944.474  4309  4412 I cr_VariationsUtils: Failed reading seed file "/data/user/0/jp.net.seventhreeseven.dreamscape/app_webview/variations_seed_new"
+         1795805944.477  4309  4398 D DesktopExperienceFlags: Toggle override initialized to: false
+         1795805944.533  4309  4398 I cr_LibraryLoader: Successfully loaded native library
+         1795805944.533  4309  4398 I cr_CachingUmaRecorder: Flushed 16 samples from 16 histograms, 0 samples were dropped.
+         1795805944.541  4309  4309 D CompatChangeReporter: Compat change id reported: 377864165; UID 10234; state: ENABLED
+         1795805944.557   473  4417 I resolv  : GetAddrInfoHandler::run: {100 100 100 983140 10234 0}
+         1795805944.557  4404  4404 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+         1795805944.558  1642  2412 W AiAiEcho: LyftNotificationParser Ridesharing ETA not enabled
+         1795805944.559  1642  2412 I AiAiEcho: SmartspaceNotificationPredictor no parser can handle this notification or notification is invalid
+         1795805944.559   473  4419 I resolv  : res_nmkquery: (QUERY, IN, A)
+         1795805944.559   473  4418 I resolv  : res_nmkquery: (QUERY, IN, AAAA)
+         1795805944.559   473  4418 I resolv  : resolv_cache_lookup: FOUND IN CACHE entry=0x7c2e0de0db50
+         1795805944.559   473  4418 I resolv  : doQuery: rcode=0, ancount=1, return value=117
+         1795805944.565  4404  4404 I AndroidRuntime: Using default boot image
+         1795805944.565  4404  4404 I AndroidRuntime: Leaving lock profiling enabled
+         1795805944.567   473  4419 I resolv  : res_nsend: used send_dg 56 terrno: 0
+         1795805944.567   473  4419 I resolv  : doQuery: rcode=0, ancount=1, return value=56
+         1795805944.568  4404  4404 I jp.net.seventhreeseven.dreamscape:shell: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+         1795805944.569  4404  4404 I jp.net.seventhreeseven.dreamscape:shell: Using generational CollectorTypeCMC GC.
+         1795805944.574  4309  4309 I DisplayManager: Implicitly registering for refresh rate
+         1795805944.574  4309  4309 W HWUI    : Unknown dataspace 0
+         1795805944.579  1642  2412 W AiAiEcho: LyftNotificationParser Ridesharing ETA not enabled
+         1795805944.580  1642  2412 I AiAiEcho: SmartspaceNotificationPredictor no parser can handle this notification or notification is invalid
+         1795805944.594   677  1737 W InputChannel-JNI: Channel already disposed.
+         1795805944.595  1642  2412 W AiAiEcho: LyftNotificationParser Ridesharing ETA not enabled
+         1795805944.595  1642  2412 I AiAiEcho: SmartspaceNotificationPredictor no parser can handle this notification or notification is invalid
+         1795805944.744  4309  4420 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+         1795805944.769   677  1737 W AppOps  : Noting op not finished: uid 10234 pkg jp.net.seventhreeseven.dreamscape code 24 startTime of in progress event=1795805944593
+         1795805944.778   677  1737 W InputChannel-JNI: Channel already disposed.
+         1795805944.780   677  1737 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805944.788  4404  4404 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+         1795805944.795  4309  4309 I NativeLayout: layouts for battery, bluetooth, data, mail, output.0, output.1, output.2, output.3, output.4, output.5, output.6, output.7, output.8, received, signal, volume
+         1795805944.797   677  1161 I WifiService: getVerboseLoggingLevel uid=10234
+         1795805944.809  4404  4404 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+         1795805944.809  4404  4404 D jp.net.seventhreeseven.dreamscape:shell: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/10/icu") succeeded. 
+         1795805944.809  4404  4404 D jp.net.seventhreeseven.dreamscape:shell: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt78l.dat
+         1795805944.810  4404  4404 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+         1795805944.810  4404  4404 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+         1795805944.811  4404  4404 I jp.net.seventhreeseven.dreamscape:shell: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+         1795805944.811  4404  4404 W jp.net.seventhreeseven.dreamscape:shell: Unexpected CPU variant for x86: x86_64.
+         1795805944.811  4404  4404 W jp.net.seventhreeseven.dreamscape:shell: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795805944.814  4404  4404 W jp.net.seventhreeseven.dreamscape:shell: ClassLoaderContext shared library size mismatch. Expected=2, found=0 (PCL[]{PCL[/system_ext/framework/androidx.window.extensions.jar*1635530414]#PCL[/system_ext/framework/androidx.window.sidecar.jar*3481082032]} | PCL[])
+         1795805944.831   677  1161 I WifiService: getWifiEnabledState uid=10234 state=3
+         1795805944.833   677  2251 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805944.833   677  2251 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805944.833   677  2251 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805944.834   677  1161 D ConnectivityService: requestNetwork for uid/pid:10234/4309 activeRequest: null callbackRequest: 173 [NetworkRequest [ REQUEST id=174, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false declaredMethods: AVAIL|LOST|NC
+         1795805944.841   677   842 D ConnectivityService: NetReassign [174 : null → 100] [c 0] [a 5] [i 1]
+         1795805944.842   677   842 D ConnectivityService: NetReassign [no changes] [c 0] [a 0] [i 1]
+         1795805944.843  4404  4404 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+         1795805944.844  4404  4404 D AndroidRuntime: Calling main entry moe.shizuku.starter.ServiceStarter
+         1795805944.844   677   836 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=174, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.844   677   836 V WifiNetworkFactory: Accepted network request NetworkRequest [ REQUEST id=174, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.844   677   836 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=174, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.844   677   836 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=174, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.844   677   836 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=174, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.845  4404  4404 I ShizukuServiceStarter: starting service jp.net.seventhreeseven.dreamscape/jp.net.seventhreeseven.dreamscape.ShellService...
+         1795805944.848  4309  4446 I GFXSTREAM: [eglDisplay.cpp(297)] Opening libGLESv1_CM_emulation.so
+         1795805944.848  4309  4446 I GFXSTREAM: [eglDisplay.cpp(297)] Opening libGLESv2_emulation.so
+         1795805944.849  4309  4446 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+         1795805944.850  4404  4404 D nativeloader: Load libjavacrypto.so using APEX ns com_android_conscrypt for caller /apex/com.android.conscrypt/javalib/conscrypt.jar: ok
+         1795805944.857  4309  4446 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+         1795805944.857  4309  4446 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+         1795805944.858  4404  4404 W OverlayConfig: partition_order.xml does not exist.
+         1795805944.869   677  1161 D ConnectivityService: requestNetwork for uid/pid:10234/4309 activeRequest: null callbackRequest: 176 [NetworkRequest [ REQUEST id=177, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647 isUidTracked: false declaredMethods: AVAIL|LOST|NC|LP
+         1795805944.871   677   836 D WifiNetworkFactory: got request NetworkRequest [ REQUEST id=177, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.872   677   836 V WifiNetworkFactory: Accepted network request NetworkRequest [ REQUEST id=177, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.872   677   836 D UntrustedWifiNetworkFactory: got request NetworkRequest [ REQUEST id=177, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.872   677   836 D OemPaidWifiNetworkFactory: got request NetworkRequest [ REQUEST id=177, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.873   677   842 D ConnectivityService: NetReassign [177 : null → 100] [c 0] [a 1] [i 2]
+         1795805944.874   677   836 D MultiInternetWifiNetworkFactory: got request NetworkRequest [ REQUEST id=177, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED&NOT_BANDWIDTH_CONSTRAINED Uid: 10234 RequestorUid: 10234 RequestorPkg: jp.net.seventhreeseven.dreamscape UnderlyingNetworks: Null] ]
+         1795805944.880  4404  4404 I auditd  : type=1400 audit(0.0:45): avc:  denied  { execute } for  comm="main" name="idmap2" dev="dm-5" ino=389 scontext=u:r:shell:s0 tcontext=u:object_r:idmap_exec:s0 tclass=file permissive=0
+         1795805944.880  4404  4404 W main    : type=1400 audit(0.0:45): avc:  denied  { execute } for  name="idmap2" dev="dm-5" ino=389 scontext=u:r:shell:s0 tcontext=u:object_r:idmap_exec:s0 tclass=file permissive=0
+         1795805944.882  4404  4404 W jp.net.seventhreeseven.dreamscape:shell: unable to execute idmap2: Permission denied
+         1795805944.882  4404  4404 W OverlayConfig: 'idmap2 create-multiple' failed: no mutable="false" overlays targeting "android" will be loaded
+         1795805944.887  4309  4309 I MelatonBars: show: on=true fits=false status=true bar=true top=false ext=true tray=false give=false
+         1795805944.899  4309  4435 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+         1795805944.899  4309  4431 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+         1795805944.899  4404  4404 I AconfigPackage: android.media.swcodec.flags is mapped to com.android.media.swcodec
+         1795805944.900  4404  4404 I AconfigPackage: com.android.permission.flags is mapped to com.android.permission
+         1795805944.900  4404  4404 I AconfigPackage: com.android.permissioncontroller.flags is mapped to com.android.permission
+         1795805944.900  4404  4404 I AconfigPackage: com.google.android.widevine.flags is mapped to com.google.android.widevine
+         1795805944.900  4404  4404 I AconfigPackage: com.android.icu is mapped to com.android.i18n
+         1795805944.900  4404  4404 I AconfigPackage: com.android.appsearch.flags is mapped to com.android.appsearch
+         1795805944.900  4404  4404 I AconfigPackage: com.android.uprobestats.flags is mapped to com.android.uprobestats
+         1795805944.900  4404  4404 I AconfigPackage: android.uprobestats.mainline.flags is mapped to com.android.uprobestats
+         1795805944.901  4404  4404 I AconfigPackage: com.android.crashrecovery.flags is mapped to com.android.crashrecovery
+         1795805944.902  4404  4404 I AconfigPackage: android.provider.flags is mapped to com.android.configinfrastructure
+         1795805944.902  4404  4404 I AconfigPackage: com.android.server.deviceconfig is mapped to com.android.configinfrastructure
+         1795805944.902  4404  4404 I AconfigPackage: com.android.compos.flags is mapped to com.android.compos
+         1795805944.902  4404  4404 I AconfigPackage: com.android.art.flags is mapped to com.android.art
+         1795805944.902  4404  4404 I AconfigPackage: com.android.art.rw.flags is mapped to com.android.art
+         1795805944.902  4404  4404 I AconfigPackage: com.android.libcore is mapped to com.android.art
+         1795805944.902  4404  4404 I AconfigPackage: android.telecom.flags is mapped to com.android.telephonycore
+         1795805944.902  4404  4404 I AconfigPackage: com.android.internal.telecom.flags is mapped to com.android.telephonycore
+         1795805944.902  4404  4404 I AconfigPackage: com.android.telephony.flags is mapped to com.android.telephonycore
+         1795805944.902  4404  4404 I AconfigPackage: com.android.media.extractor.flags is mapped to com.android.media
+         1795805944.902  4404  4404 I AconfigPackage: com.android.media.metrics.flags is mapped to com.android.media
+         1795805944.902  4404  4404 I AconfigPackage: com.android.media.mainline.flags is mapped to com.android.media
+         1795805944.902  4404  4404 I AconfigPackage: com.android.wifi.flags is mapped to com.android.wifi
+         1795805944.902  4404  4404 I AconfigPackage: com.android.org.conscrypt.flags is mapped to com.android.conscrypt
+         1795805944.903  4404  4404 I AconfigPackage: com.android.org.conscrypt.net.flags is mapped to com.android.conscrypt
+         1795805944.903  4404  4404 I AconfigPackage: com.android.healthfitness.flags is mapped to com.android.healthfitness
+         1795805944.903  4404  4404 I AconfigPackage: com.android.ipsec.flags is mapped to com.android.ipsec
+         1795805944.903  4404  4404 I AconfigPackage: com.android.nfc.module.flags is mapped to com.android.nfcservices
+         1795805944.903  4404  4404 I AconfigPackage: com.android.nfc.module.nonexported.flags is mapped to com.android.nfcservices
+         1795805944.903  4404  4404 I AconfigPackage: com.android.adservices.ondevicepersonalization.flags is mapped to com.android.ondevicepersonalization
+         1795805944.903  4404  4404 I AconfigPackage: com.android.adbd.flags is mapped to com.android.adbd
+         1795805944.903  4404  4404 I AconfigPackage: com.android.bluetooth.beta.flags is mapped to com.android.bt
+         1795805944.903  4404  4404 I AconfigPackage: com.android.bluetooth.flags is mapped to com.android.bt
+         1795805944.903  4404  4404 I AconfigPackage: com.android.devicelock.flags is mapped to com.android.devicelock
+         1795805944.904  4404  4404 I AconfigPackage: android.os.profiling is mapped to com.android.profiling
+         1795805944.904  4404  4404 I AconfigPackage: android.os.profiling.anomaly.flags is mapped to com.android.profiling
+         1795805944.904  4404  4404 I AconfigPackage: com.android.os.statsd.flags is mapped to com.android.os.statsd
+         1795805944.904  4404  4404 I AconfigPackage: com.android.webapp.flags is mapped to com.android.webapp
+         1795805944.905  4404  4404 I AconfigPackage: com.android.rkpd.flags is mapped to com.android.rkpd
+         1795805944.905  4404  4404 I AconfigPackage: com.android.cellbroadcastreceiver.flags is mapped to com.android.cellbroadcast
+         1795805944.905  4404  4404 I AconfigPackage: com.android.adservices.flags is mapped to com.android.adservices
+         1795805944.905  4404  4404 I AconfigPackage: com.android.sdksandbox.flags is mapped to com.android.adservices
+         1795805944.905  4404  4404 I AconfigPackage: android.app.sdksandbox.flags is mapped to com.android.adservices
+         1795805944.905  4404  4404 I AconfigPackage: com.android.uwb.flags is mapped to com.android.uwb
+         1795805944.905  4404  4404 I AconfigPackage: com.android.ranging.flags is mapped to com.android.uwb
+         1795805944.905  4404  4404 I AconfigPackage: com.android.npumanager is mapped to com.android.npumanager
+         1795805944.906  4404  4404 I AconfigPackage: android.graphics.pdf.flags is mapped to com.android.mediaprovider
+         1795805944.906  4404  4404 I AconfigPackage: com.android.providers.media.flags is mapped to com.android.mediaprovider
+         1795805944.906  4404  4404 I AconfigPackage: android.graphics.pdf.flags.readonly is mapped to com.android.mediaprovider
+         1795805944.906  4404  4404 I AconfigPackage: com.android.tethering.mainline.beta is mapped to com.android.tethering
+         1795805944.906  4404  4404 I AconfigPackage: android.net.http is mapped to com.android.tethering
+         1795805944.906  4404  4404 I AconfigPackage: com.android.tethering.readonly.flags is mapped to com.android.tethering
+         1795805944.906  4404  4404 I AconfigPackage: android.net.vcn is mapped to com.android.tethering
+         1795805944.906  4404  4404 I AconfigPackage: com.android.net.flags is mapped to com.android.tethering
+         1795805944.906  4404  4404 I AconfigPackage: com.android.tethering.flags is mapped to com.android.tethering
+         1795805944.906  4404  4404 I AconfigPackage: com.android.tethering.beta.test is mapped to com.android.tethering
+         1795805944.906  4404  4404 I AconfigPackage: com.android.nearby.flags is mapped to com.android.tethering
+         1795805944.906  4404  4404 I AconfigPackage: com.android.net.thread.flags is mapped to com.android.tethering
+         1795805944.906  4404  4404 I AconfigPackage: com.android.net.ct.flags is mapped to com.android.tethering
+         1795805944.906  4404  4404 I AconfigPackage: com.android.system.virtualmachine.flags is mapped to com.android.virt
+         1795805944.906  4404  4404 E FeatureFlagsImplExport: android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+         1795805944.915   677  1161 D WindowManager: setClientSurface Surface(name=VRI-MelatonBarProbe#211)/@0xecdb42a for 75cf5b3 MelatonBarProbe
+         1795805944.918  4309  4309 I Surface : Creating surface for consumer unnamed-4309-0 with slotExpansion=1 for 64 slots
+         1795805944.919  4309  4309 I Surface : Creating surface for consumer VRI[MelatonBarProbe]#0(BLAST Consumer)0 with slotExpansion=1 for 64 slots
+         1795805944.920  4309  4309 I viewroot_draw_event: [VRI[MelatonBarProbe]5e41f64,applyTransactionOnDraw applyImmediately]
+         1795805944.924  4309  4422 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+         1795805944.928  4309  4422 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+         1795805944.928  4309  4422 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+         1795805944.942  4404  4404 I service_manager_slow: [21,activity]
+         1795805944.946  4404  4404 D nativeloader: InitApexLibraries:
+         1795805944.946  4404  4404 D nativeloader:   com_android_art: libnativehelper.so
+         1795805944.946  4404  4404 D nativeloader:   com_android_i18n: libicui18n.so:libicuuc.so:libicu.so
+         1795805944.946  4404  4404 D nativeloader:   com_android_neuralnetworks: libneuralnetworks.so
+         1795805944.946  4404  4404 D nativeloader: InitDefaultPublicLibraries for_preload=0: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libclang_rt.hwasan-aarch64-android.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+         1795805944.946  4404  4404 D nativeloader: Configuring clns-1 for other apk /data/app/~~IDNFfCG9mmikpc1WqNByLg==/jp.net.seventhreeseven.dreamscape-a6hPtnHvzXm4gqdVPhSNWw==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~IDNFfCG9mmikpc1WqNByLg==/jp.net.seventhreeseven.dreamscape-a6hPtnHvzXm4gqdVPhSNWw==/lib/arm64:/data/app/~~IDNFfCG9mmikpc1WqNByLg==/jp.net.seventhreeseven.dreamscape-a6hPtnHvzXm4gqdVPhSNWw==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand
+         1795805944.946  4404  4404 D nativeloader: InitExtendedPublicLibraries: 
+         1795805944.947  4404  4404 D nativeloader: InitApexLibraries:
+         1795805944.947  4404  4404 D nativeloader:   
+         1795805944.947  4404  4404 I nativeloader: InitVendorPublicLibraries skipped: Failed to read /vendor/etc/public.libraries.txt: No such file or directory
+         1795805944.947  4404  4404 D nativeloader: InitProductPublicLibraries: 
+         1795805944.958   677  1737 D ActivityManager: sync unfroze 2962 moe.shizuku.privileged.api for 7
+         1795805944.961   677  1737 I am_uid_active: 10235
+         1795805944.962  3056  3082 V BinderSender: Uid 10235 already starts
+         1795805944.962  3056  4169 V BinderSender: Uid 10235 already starts
+         1795805944.971  3056  3082 V UserServiceManager: Received binder for service record 7564ca61-5cdf-475d-88f6-c0fa9b2ee1b9-1795805944335
+         1795805944.971  3056  3082 V UserServiceRecord: Binder received for service record 7564ca61-5cdf-475d-88f6-c0fa9b2ee1b9-1795805944335
+         1795805944.971  3056  3082 V UserServiceRecord: Broadcast binder received for service record 7564ca61-5cdf-475d-88f6-c0fa9b2ee1b9-1795805944335
+         1795805944.976  4404  4404 I ShizukuServiceStarter: send binder to moe.shizuku.privileged.api in user 0
+         1795805945.005   677   774 I am_unfreeze: [2962,moe.shizuku.privileged.api,7]
+         1795805945.088  4309  4349 I CafeTasks: engine started (9 files, from the server)
+         1795805945.249  4309  4435 I NativeBar: art from https://staticforge.737.jp.net (refresh false): atlas 1024x320, 72 cells, search strip true
+         1795805945.264  4309  4309 I viewroot_draw_event: [VRI[MelatonBarProbe]5e41f64,reportDrawFinished seqId=1]
+         1795805945.269   677  1737 I WifiService: getWifiEnabledState uid=10234 state=3
+         1795805945.271  4309  4309 I MelatonBars: ime probe live: visible=false bottom=0
+         1795805945.273   677  1737 D WindowManager: setClientSurface Surface(name=VRI-MelatonImeProbe#212)/@0xb303fb8 for a7e7a9c MelatonImeProbe
+         1795805945.275   677  1161 I WifiService: getConnectionInfo uid=10234
+         1795805945.275   677  1161 V WifiPermissionsUtil: checkCallersLocationPermission(jp.net.seventhreeseven.dreamscape): ok because uid 10234 has app-op android:fine_location
+         1795805945.276   677  1161 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for jp.net.seventhreeseven.dreamscape(uid=10234)
+         1795805945.278  4309  4309 I Surface : Creating surface for consumer unnamed-4309-1 with slotExpansion=1 for 64 slots
+         1795805945.279  4309  4309 I Surface : Creating surface for consumer VRI[MelatonImeProbe]#1(BLAST Consumer)1 with slotExpansion=1 for 64 slots
+         1795805945.279  4309  4309 I viewroot_draw_event: [VRI[MelatonImeProbe]dd9d0f0,applyTransactionOnDraw applyImmediately]
+         1795805945.282   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805945.284   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805945.284   677   709 W ActivityManager: Skipping manifest association check for null package. SourceUid: -1, SourcePkg: null, TargetUid: 10234, TargetPkg: jp.net.seventhreeseven.dreamscape
+         1795805945.291   677   703 I sysui_multi_action: [757,856,758,1,806,android,857,com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape,858,1]
+         1795805945.298  4309  4309 I viewroot_draw_event: [VRI[MelatonImeProbe]dd9d0f0,reportDrawFinished seqId=1]
+         1795805945.300   677   677 I notification_enqueue: [1000,677,android,0,com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape,0,Notification(channel=com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape shortcut=null contentView=null vibrate=null sound=null defaults=0 flags=ONGOING_EVENT|LOCAL_ONLY|CAN_COLORIZE color=0x00000000 vis=PRIVATE),0,1]
+         1795805945.311  4309  4326 I HWUI    : Davey! duration=708ms; Flags=1, FrameTimelineVsyncId=34705, IntendedVsync=264189589644, Vsync=264506256298, InputEventId=0, HandleInputStart=264517856300, AnimationStart=264517895200, PerformTraversalsStart=264517944000, DrawStart=264890824800, FrameDeadline=264206256310, FrameStartTime=264517269000, FrameInterval=16666666, WorkloadTarget=16666666, AnimationTime=264506256298, SyncQueued=264890873300, SyncStart=264894507300, IssueDrawCommandsStart=264894834700, SwapBuffers=264896238000, FrameCompleted=264901423100, DequeueBufferDuration=28600, Que
+         1795805945.320   677  2251 I WifiService: getWifiEnabledState uid=10234 state=3
+         1795805945.324   677  2251 I WifiService: getConnectionInfo uid=10234
+         1795805945.325  4309  4309 I NativeBar: android icons: {data=wifi-connected, battery=battery-charging, signal=signal-3}
+         1795805945.325  4309  4309 I MelatonBars: show: on=true fits=false status=false bar=true top=false ext=true tray=false give=false
+         1795805945.326   677  2251 V WifiPermissionsUtil: checkCallersLocationPermission(jp.net.seventhreeseven.dreamscape): ok because uid 10234 has app-op android:fine_location
+         1795805945.326   677  2251 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for jp.net.seventhreeseven.dreamscape(uid=10234)
+         1795805945.328   547  4494 I adbd    : host-10: connection terminated: read failed
+         1795805945.334   547   547 I adbd    : authentication not required
+         1795805945.335   547   547 I adbd    : adbd service requested 'shell,v2,raw:cmd wifi status'
+         1795805945.337  4309  4309 I MelatonBars: show: on=true fits=true status=false bar=true top=true ext=true tray=false give=false
+         1795805945.349   677  2251 W InputChannel-JNI: Channel already disposed.
+         1795805945.350  4309  4394 I Wallpaper: slot 1: cropped null, original null, hint null (not used)
+         1795805945.350  4309  4394 I Wallpaper: slot 2: cropped null, original null, hint null (not used)
+         1795805945.352  4309  4394 I Wallpaper: slot 1: cropped null, original null, hint null (not used)
+         1795805945.352  4309  4394 I Wallpaper: slot 9: cropped null, original null, hint null (not used)
+         1795805945.353  4309  4394 I Wallpaper: slot 10: cropped null, original null, hint null (not used)
+         1795805945.353  4309  4394 I Wallpaper: slot 9: cropped null, original null, hint null (not used)
+         1795805945.363   677  1737 W InputChannel-JNI: Channel already disposed.
+         1795805945.363   677  1161 E SystemServiceRegistry: No service published for: wifiaware
+         1795805945.363   677  1161 E SystemServiceRegistry: android.os.ServiceManager$ServiceNotFoundException: No service published for: wifiaware
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.os.ServiceManager.getServiceOrThrow(ServiceManager.java:176)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.app.SystemServiceRegistry$169.createService(SystemServiceRegistry.java:2654)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.app.SystemServiceRegistry$CachedServiceFetcher.getService(SystemServiceRegistry.java:2784)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.app.SystemServiceRegistry.getSystemService(SystemServiceRegistry.java:2297)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.app.ContextImpl.getSystemService(ContextImpl.java:2450)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.content.ContextWrapper.getSystemService(ContextWrapper.java:991)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.content.Context.getSystemService(Context.java:4916)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at com.android.server.wifi.WifiShellCommand.<init>(WifiShellCommand.java:582)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at com.android.server.wifi.WifiInjector.makeWifiShellCommand(WifiInjector.java:898)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at com.android.server.wifi.WifiServiceImpl.handleShellCommand(WifiServiceImpl.java:6258)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.os.Binder.onShellCommand(Binder.java:1141)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.os.Binder.shellCommand(Binder.java:1088)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.os.Binder.onTransact(Binder.java:946)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.net.wifi.IWifiManager$Stub.onTransact(IWifiManager.java:3858)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.os.Binder.execTransactInternal(Binder.java:1369)
+         1795805945.363   677  1161 E SystemServiceRegistry: 	at android.os.Binder.execTransact(Binder.java:1323)
+         1795805945.364   677   709 I am_wtf  : [0,4502,system_server,-1,SystemServiceRegistry,No service published for: wifiaware]
+         1795805945.364   677  1161 I WifiService: getWifiEnabledState uid=2000 state=3
+         1795805945.364   677  1161 I WifiService: isScanAlwaysAvailable uid=2000
+         1795805945.364   677  1161 I WifiService: getConnectionInfo uid=2000
+         1795805945.364   677  1161 V WifiService: Clearing REDACT_FOR_LOCAL_MAC_ADDRESS for com.android.shell(uid=2000)
+         1795805945.364   677  1161 V WifiService: Clearing REDACT_FOR_NETWORK_SETTINGS for com.android.shell(uid=2000)
+         1795805945.364   677  1161 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for com.android.shell(uid=2000)
+         1795805945.368   547  4497 I adbd    : host-24: connection terminated: read failed
+         1795805945.369  4309  4309 E even.dreamscape: hiddenapi: Accessing hidden field Landroid/view/ViewTreeObserver$InternalInsetsInfo;->touchableRegion:Landroid/graphics/Region; (runtime_flags=0, domain=platform, api=max-target-r) from Lls2; (domain=app, TargetSdkVersion=36) using reflection: denied
+         1795805945.369  4309  4309 W TouchHole: no touchable region for View: No field touchableRegion in class Landroid/view/ViewTreeObserver$InternalInsetsInfo; (declaration of 'android.view.ViewTreeObserver$InternalInsetsInfo' appears in /system/framework/framework.jar!classes4.dex)
+         1795805945.373   677   912 W InputChannel-JNI: Channel already disposed.
+         1795805945.376  4309  4309 E even.dreamscape: hiddenapi: Accessing hidden field Landroid/view/ViewTreeObserver$InternalInsetsInfo;->touchableRegion:Landroid/graphics/Region; (runtime_flags=0, domain=platform, api=max-target-r) from Lls2; (domain=app, TargetSdkVersion=36) using reflection: denied
+         1795805945.377  4309  4309 W TouchHole: no touchable region for View: No field touchableRegion in class Landroid/view/ViewTreeObserver$InternalInsetsInfo; (declaration of 'android.view.ViewTreeObserver$InternalInsetsInfo' appears in /system/framework/framework.jar!classes4.dex)
+         1795805945.385   677  1161 W InputChannel-JNI: Channel already disposed.
+         1795805945.392   677  1161 D WindowManager: setClientSurface Surface(name=VRI-MelatonBar#217)/@0xee72b92 for c3f59fb MelatonBar
+         1795805945.394  4309  4309 I Surface : Creating surface for consumer unnamed-4309-2 with slotExpansion=1 for 64 slots
+         1795805945.395  4309  4309 I Surface : Creating surface for consumer VRI[MelatonBar]#2(BLAST Consumer)2 with slotExpansion=1 for 64 slots
+         1795805945.395  4309  4309 I viewroot_draw_event: [VRI[MelatonBar]a3f286a,applyTransactionOnDraw applyImmediately]
+         1795805945.424   677   677 W AccessibilityManagerService:  wait for adding window timeout: 45
+         1795805945.436  4309  4309 I viewroot_draw_event: [VRI[MelatonBar]a3f286a,reportDrawFinished seqId=1]
+         1795805945.439   677  1161 D WindowManager: setClientSurface Surface(name=VRI-MelatonBar#218)/@0xca03963 for a1f9ad7 MelatonBar
+         1795805945.442  4309  4309 I Surface : Creating surface for consumer unnamed-4309-3 with slotExpansion=1 for 64 slots
+         1795805945.444  4309  4309 I Surface : Creating surface for consumer VRI[MelatonBar]#3(BLAST Consumer)3 with slotExpansion=1 for 64 slots
+         1795805945.445  4309  4309 I viewroot_draw_event: [VRI[MelatonBar]fe8b4c3,applyTransactionOnDraw applyImmediately]
+         1795805945.459  4309  4309 I viewroot_draw_event: [VRI[MelatonBar]fe8b4c3,reportDrawFinished seqId=1]
+         1795805945.462   677   912 D WindowManager: setClientSurface Surface(name=VRI-MelatonBarEdge#219)/@0x746c960 for 796b7eb MelatonBarEdge
+         1795805945.465  4309  4309 I Surface : Creating surface for consumer unnamed-4309-4 with slotExpansion=1 for 64 slots
+         1795805945.466  4309  4309 I Surface : Creating surface for consumer VRI[MelatonBarEdge]#4(BLAST Consumer)4 with slotExpansion=1 for 64 slots
+         1795805945.467  4309  4309 I viewroot_draw_event: [VRI[MelatonBarEdge]1793335,applyTransactionOnDraw applyImmediately]
+         1795805945.482  4309  4309 I viewroot_draw_event: [VRI[MelatonBarEdge]1793335,reportDrawFinished seqId=1]
+         1795805945.485   677  1161 D WindowManager: setClientSurface Surface(name=VRI-MelatonBarEdge#220)/@0xabf2e19 for 626e7c7 MelatonBarEdge
+         1795805945.489  4309  4309 I Surface : Creating surface for consumer unnamed-4309-5 with slotExpansion=1 for 64 slots
+         1795805945.489  4309  4309 I Surface : Creating surface for consumer VRI[MelatonBarEdge]#5(BLAST Consumer)5 with slotExpansion=1 for 64 slots
+         1795805945.490  4309  4309 I viewroot_draw_event: [VRI[MelatonBarEdge]1f4ee17,applyTransactionOnDraw applyImmediately]
+         1795805945.491  4512  4512 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+         1795805945.496  4512  4512 I AndroidRuntime: Using default boot image
+         1795805945.497  4512  4512 I AndroidRuntime: Leaving lock profiling enabled
+         1795805945.500  4512  4512 I melaton_navblank: Core platform API enforcement enabled from the hiddenapi_platform_enforcement flag and the device API level
+         1795805945.501  4512  4512 I melaton_navblank: Using generational CollectorTypeCMC GC.
+         1795805945.504   677   677 I sysui_multi_action: [757,1501,758,1,793,205,794,0,795,205,796,0,797,com.android.server.wm.AlertWindowNotification - jp.net.seventhreeseven.dreamscape,806,android,857,com.android.server.wm.Alert-9a87e3f9,858,1,947,0,1500,0,1688,1,1745,2098068913]
+         1795805945.504   677   677 I sysui_multi_action: [757,804,799,note_interruptive,801,0,802,1]
+         1795805945.513  4309  4309 I viewroot_draw_event: [VRI[MelatonBarEdge]1f4ee17,reportDrawFinished seqId=1]
+         1795805945.513  4309  4353 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+         1795805945.514   677   677 V NotificationHistory: Attempted to add notif for locked/gone/disabled user 0
+         1795805945.518  4309  4309 I NativeBar: kit for 1968: no page to ask
+         1795805945.518  1642  2412 W AiAiEcho: LyftNotificationParser Ridesharing ETA not enabled
+         1795805945.518  1642  2412 I AiAiEcho: SmartspaceNotificationPredictor no parser can handle this notification or notification is invalid
+         1795805945.535  4309  4435 I HWUI    : Using FreeType backend (prop=Auto)
+         1795805945.538  4309  4435 I NativeBar: fonts (tahoma): regular true, bold true
+         1795805945.548  4309  4435 I NativeBar: inline picture (826 chars): 54x54
+         1795805945.549  4309  4435 I NativeBar: inline picture (1142 chars): 54x54
+         1795805945.550  4309  4435 I NativeBar: inline picture (618 chars): 47x47
+         1795805945.551  4309  4435 I NativeBar: inline picture (778 chars): 92x104
+         1795805945.551   677   702 I commit_sys_config_file: [notification-policy,9]
+         1795805945.551  4309  4435 I NativeBar: inline picture (798 chars): 92x104
+         1795805945.554  4309  4309 I NativeLayout: picture not in: https://staticforge.737.jp.net/static_images/wm6 (70 chars) 64x64
+         1795805945.554  4309  4309 I NativeBar: bar: battery, signal, data
+         1795805945.578   949   949 D LocalImageResolver: Couldn't use ImageDecoder for drawable, falling back to non-resized load.
+         1795805945.589   949   949 D LocalImageResolver: Couldn't use ImageDecoder for drawable, falling back to non-resized load.
+         1795805945.594  4309  4309 I NativeBar: geometry for 2057 made from 1968's
+         1795805945.601  4512  4512 D nativeloader: InitDefaultPublicLibraries for_preload=1: libandroid.so:libaaudio.so:libamidi.so:libbinder_ndk.so:libc.so:libcamera2ndk.so:libdl.so:libEGL.so:libGLESv1_CM.so:libGLESv2.so:libGLESv3.so:libicu.so:libicui18n.so:libicuuc.so:libjnigraphics.so:liblog.so:libmediandk.so:libm.so:libnativehelper.so:libnativewindow.so:libOpenMAXAL.so:libOpenSLES.so:libRS.so:libstdc++.so:libsync.so:libvulkan.so:libwebviewchromium_plat_support.so:libz.so
+         1795805945.614  4512  4512 D nativeloader: Load libicu_jni.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+         1795805945.614  4512  4512 D melaton_navblank: u_setTimeZoneFilesDirectory("/apex/com.android.tzdata/etc/tz/versioned/10/icu") succeeded. 
+         1795805945.614  4512  4512 D melaton_navblank: I18n APEX ICU file found: /apex/com.android.i18n/etc/icu/icudt78l.dat
+         1795805945.615  4512  4512 D nativeloader: Load libjavacore.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+         1795805945.615  4512  4512 D nativeloader: Load libopenjdk.so using APEX ns com_android_art for caller /apex/com.android.art/javalib/core-oj.jar: ok
+         1795805945.616  4512  4512 I melaton_navblank: Priority-to-niceness mapping: 19, 16, 13, 10, 0, -2, -4, -5, -6, -8
+         1795805945.617  4512  4512 W melaton_navblank: Unexpected CPU variant for x86: x86_64.
+         1795805945.617  4512  4512 W melaton_navblank: Known variants: atom, sandybridge, silvermont, goldmont, goldmont-plus, goldmont-without-sha-xsaves, tremont, kabylake, alderlake, pantherlake, default
+         1795805945.641   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795805945.642  4309  4309 I NativeBar: bar: battery, volume, signal, data, bluetooth
+         1795805945.655  4512  4512 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+         1795805945.663  4512  4512 D AndroidRuntime: Calling main entry jp.net.seventhreeseven.dreamscape.NavBlankShell
+         1795805945.672  4512  4512 I AconfigPackage: android.media.swcodec.flags is mapped to com.android.media.swcodec
+         1795805945.672  4512  4512 I AconfigPackage: com.android.permission.flags is mapped to com.android.permission
+         1795805945.672  4512  4512 I AconfigPackage: com.android.permissioncontroller.flags is mapped to com.android.permission
+         1795805945.672  4512  4512 I AconfigPackage: com.google.android.widevine.flags is mapped to com.google.android.widevine
+         1795805945.672  4512  4512 I AconfigPackage: com.android.icu is mapped to com.android.i18n
+         1795805945.672  4512  4512 I AconfigPackage: com.android.appsearch.flags is mapped to com.android.appsearch
+         1795805945.673  4512  4512 I AconfigPackage: com.android.uprobestats.flags is mapped to com.android.uprobestats
+         1795805945.673  4512  4512 I AconfigPackage: android.uprobestats.mainline.flags is mapped to com.android.uprobestats
+         1795805945.673  4512  4512 I AconfigPackage: com.android.crashrecovery.flags is mapped to com.android.crashrecovery
+         1795805945.674  4512  4512 I AconfigPackage: android.provider.flags is mapped to com.android.configinfrastructure
+         1795805945.674  4512  4512 I AconfigPackage: com.android.server.deviceconfig is mapped to com.android.configinfrastructure
+         1795805945.674  4512  4512 I AconfigPackage: com.android.compos.flags is mapped to com.android.compos
+         1795805945.674  4512  4512 I AconfigPackage: com.android.art.flags is mapped to com.android.art
+         1795805945.674  4512  4512 I AconfigPackage: com.android.art.rw.flags is mapped to com.android.art
+         1795805945.674  4512  4512 I AconfigPackage: com.android.libcore is mapped to com.android.art
+         1795805945.674  4512  4512 I AconfigPackage: android.telecom.flags is mapped to com.android.telephonycore
+         1795805945.674  4512  4512 I AconfigPackage: com.android.internal.telecom.flags is mapped to com.android.telephonycore
+         1795805945.674  4512  4512 I AconfigPackage: com.android.telephony.flags is mapped to com.android.telephonycore
+         1795805945.674  4512  4512 I AconfigPackage: com.android.media.extractor.flags is mapped to com.android.media
+         1795805945.674  4512  4512 I AconfigPackage: com.android.media.metrics.flags is mapped to com.android.media
+         1795805945.674  4512  4512 I AconfigPackage: com.android.media.mainline.flags is mapped to com.android.media
+         1795805945.674  4512  4512 I AconfigPackage: com.android.wifi.flags is mapped to com.android.wifi
+         1795805945.674  4512  4512 I AconfigPackage: com.android.org.conscrypt.flags is mapped to com.android.conscrypt
+         1795805945.674  4512  4512 I AconfigPackage: com.android.org.conscrypt.net.flags is mapped to com.android.conscrypt
+         1795805945.674  4512  4512 I AconfigPackage: com.android.healthfitness.flags is mapped to com.android.healthfitness
+         1795805945.675  4512  4512 I AconfigPackage: com.android.ipsec.flags is mapped to com.android.ipsec
+         1795805945.675  4512  4512 I AconfigPackage: com.android.nfc.module.flags is mapped to com.android.nfcservices
+         1795805945.675  4512  4512 I AconfigPackage: com.android.nfc.module.nonexported.flags is mapped to com.android.nfcservices
+         1795805945.675  4512  4512 I AconfigPackage: com.android.adservices.ondevicepersonalization.flags is mapped to com.android.ondevicepersonalization
+         1795805945.675  4512  4512 I AconfigPackage: com.android.adbd.flags is mapped to com.android.adbd
+         1795805945.675  4512  4512 I AconfigPackage: com.android.bluetooth.beta.flags is mapped to com.android.bt
+         1795805945.675  4512  4512 I AconfigPackage: com.android.bluetooth.flags is mapped to com.android.bt
+         1795805945.675  4512  4512 I AconfigPackage: com.android.devicelock.flags is mapped to com.android.devicelock
+         1795805945.675  4512  4512 I AconfigPackage: android.os.profiling is mapped to com.android.profiling
+         1795805945.675  4512  4512 I AconfigPackage: android.os.profiling.anomaly.flags is mapped to com.android.profiling
+         1795805945.675  4512  4512 I AconfigPackage: com.android.os.statsd.flags is mapped to com.android.os.statsd
+         1795805945.675  4512  4512 I AconfigPackage: com.android.webapp.flags is mapped to com.android.webapp
+         1795805945.675  4512  4512 I AconfigPackage: com.android.rkpd.flags is mapped to com.android.rkpd
+         1795805945.675  4512  4512 I AconfigPackage: com.android.cellbroadcastreceiver.flags is mapped to com.android.cellbroadcast
+         1795805945.676  4512  4512 I AconfigPackage: com.android.adservices.flags is mapped to com.android.adservices
+         1795805945.676  4512  4512 I AconfigPackage: com.android.sdksandbox.flags is mapped to com.android.adservices
+         1795805945.676  4512  4512 I AconfigPackage: android.app.sdksandbox.flags is mapped to com.android.adservices
+         1795805945.676  4512  4512 I AconfigPackage: com.android.uwb.flags is mapped to com.android.uwb
+         1795805945.676  4512  4512 I AconfigPackage: com.android.ranging.flags is mapped to com.android.uwb
+         1795805945.680  4512  4512 I AconfigPackage: com.android.npumanager is mapped to com.android.npumanager
+         1795805945.680  4512  4512 I AconfigPackage: android.graphics.pdf.flags is mapped to com.android.mediaprovider
+         1795805945.680  4512  4512 I AconfigPackage: com.android.providers.media.flags is mapped to com.android.mediaprovider
+         1795805945.680  4512  4512 I AconfigPackage: android.graphics.pdf.flags.readonly is mapped to com.android.mediaprovider
+         1795805945.680  4512  4512 I AconfigPackage: com.android.tethering.mainline.beta is mapped to com.android.tethering
+         1795805945.680  4512  4512 I AconfigPackage: android.net.http is mapped to com.android.tethering
+         1795805945.680  4512  4512 I AconfigPackage: com.android.tethering.readonly.flags is mapped to com.android.tethering
+         1795805945.680  4512  4512 I AconfigPackage: android.net.vcn is mapped to com.android.tethering
+         1795805945.680  4512  4512 I AconfigPackage: com.android.net.flags is mapped to com.android.tethering
+         1795805945.680  4512  4512 I AconfigPackage: com.android.tethering.flags is mapped to com.android.tethering
+         1795805945.680  4512  4512 I AconfigPackage: com.android.tethering.beta.test is mapped to com.android.tethering
+         1795805945.680  4512  4512 I AconfigPackage: com.android.nearby.flags is mapped to com.android.tethering
+         1795805945.680  4512  4512 I AconfigPackage: com.android.net.thread.flags is mapped to com.android.tethering
+         1795805945.680  4512  4512 I AconfigPackage: com.android.net.ct.flags is mapped to com.android.tethering
+         1795805945.681  4512  4512 I AconfigPackage: com.android.system.virtualmachine.flags is mapped to com.android.virt
+         1795805945.681  4512  4512 E FeatureFlagsImplExport: android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package android.xr cannot be found on the device
+         1795805945.683  4512  4512 I service_manager_slow: [16,activity]
+         1795805945.694  4309  4309 W libc    : Access denied finding property "vendor.mesa.virtgpu.kumquat"
+         1795805945.696  4309  4324 I MelatonBars: holder token linked (#1331)
+         1795805945.715   677  1161 I StatusBarManagerService: binder died for pkg=com.android.shell
+         1795805945.745  4309  4309 I MelatonBars: translucent check: strip spread 0.7 (picture above 14), against below 4.3 (runs on under 10)
+         1795805945.785   677   677 W AccessibilityManagerService:  wait for adding window timeout: 46
+         1795805945.791  4309  4309 I MelatonBars: translucent check (soft keys): strip spread 65.3 (picture above 14), against below 74.0 (runs on under 10)
+         1795805945.791  4309  4309 I MelatonBars: translucent bar for com.google.android.apps.nexuslauncher: true
+         1795805945.791  4309  4309 I MelatonBars: translucent soft key bar for com.google.android.apps.nexuslauncher: true
+         1795805945.793  4309  4353 I ApkInstall: swept leftover install copies in /data/local/tmp via shizuku
+         1795805945.795   547  4560 I adbd    : host-10: connection terminated: read failed
+         1795805945.797   547  4562 I adbd    : host-24: connection terminated: read failed
+         1795805945.802   547  4566 I adbd    : host-10: connection terminated: read failed
+         1795805945.804   547   547 I adbd    : authentication not required
+         1795805945.806   547   547 I adbd    : adbd service requested 'shell,v2,raw:cmd statusbar send-disable-flag statusbar-expansion quick-settings system-icons clock notification-icons'
+         1795805945.829   547  4568 I adbd    : host-24: connection terminated: read failed
+         1795805946.019   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=36 freq=2437 RxLinkSpeed=2
+         1795805946.019   677   836 D WifiClientModeImpl[15613:wlan0]: reported txKbps 12000 rxKbps 30000
+         1795805946.019   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805946.019   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805946.020   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805946.020   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805946.020   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805946.020   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805946.020   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805946.020   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805946.020   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805946.021   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805946.022   677   866 I AdbWifiNetworkMonitor: Wi-Fi network available
+         1795805946.025   677   912 I WifiService: getWifiEnabledState uid=10189 state=3
+         1795805946.025  1867  1867 W JobService: onNetworkChanged() not implemented in com.android.providers.downloads.DownloadJobService. Must override in a subclass.
+         1795805946.025   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805946.025   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805946.025   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805946.026   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805946.026   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805946.026   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805946.026   677  1161 I WifiService: getConnectionInfo uid=10223
+         1795805946.026   677  1161 V WifiService: Clearing REDACT_FOR_LOCAL_MAC_ADDRESS for com.google.android.gms(uid=10223)
+         1795805946.027   677  1161 V WifiPermissionsUtil: checkCallersLocationPermission(com.google.android.gms): ok because uid 10223 has app-op android:fine_location
+         1795805946.027   677  1161 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for com.google.android.gms(uid=10223)
+         1795805946.030   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805946.030   677   836 D WifiScoreCard: txRate: 17 txSpeed: 36
+         1795805946.030   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed 36
+         1795805946.030   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=36 tx=16.7, 0.0, 0.0 rx=18.0 bcn=0 [on:0 tx:0 rx:0 period:3009] from screen [on:0 period:509616302] score=100
+         1795805946.032  1318  1603 I NullBinder: NullBinder for android.net.action.RECOMMEND_NETWORKS triggering remote TransactionTooLargeException due to Service without Chimera impl, calling uid: 1000, calling pid: 0
+         1795805946.032  1318  1603 W libbinder.Binder: Large reply transaction of 1056768 bytes, interface descriptor , function: UNKNOWN_FUNCTION_NAME, code: 1, flags: 17
+         1795805946.229   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795805946.294  4309  4309 I MelatonBars: translucent check: strip spread 0.7 (picture above 14), against below 4.3 (runs on under 10)
+         1795805946.370  4309  4309 I MelatonBars: translucent check (soft keys): strip spread 65.3 (picture above 14), against below 74.0 (runs on under 10)
+         1795805946.702   677   774 D ActivityManager: freezing 2919 com.google.android.apps.photos
+         1795805946.703   677   774 I am_freeze: [2919,com.google.android.apps.photos]
+         1795805946.705   677   842 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+         1795805946.705   677   842 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+         1795805946.705   677   842 D InetDiagMessage: Destroyed live tcp sockets for uids={10182} in 2ms
+         1795805946.749   677   774 I am_compact: [2919,com.google.android.apps.photos,ANON,178472,127348,50296,11236,-28828,-22740,-6072,6072,45,FULL,105021,985,19,139644,-80]
+         1795805947.324   547  4687 I adbd    : host-10: connection terminated: read failed
+         1795805947.325   547  4689 I adbd    : host-24: connection terminated: read failed
+         1795805947.328   547  4693 I adbd    : host-25: connection terminated: read failed
+         1795805947.334  4309  4396 I LocalAdb: pass (fresh): listening=true shizukuRunning=true shizukuUsable=true wifi=true wireless=true restore=false last=-
+         1795805947.436  1043  1287 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795805947.436  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795805947.436  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805947.436  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805947.436  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805947.437  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795805947.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795805947.437  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805947.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805947.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795805947.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795805947.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805947.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805947.438  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805947.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795805947.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805947.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805947.438  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805947.438  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795805947.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795805947.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805947.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805947.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795805947.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795805947.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805947.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805947.438  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805948.135  4309  4309 I BarsHeal: check (process start)
+         1795805948.392   677   774 D ActivityManager: freezing 1796 com.google.android.gms
+         1795805948.393   677   774 I am_freeze: [1796,com.google.android.gms]
+         1795805948.480   677   774 I am_compact: [1796,com.google.android.gms,ANON,256868,184824,70500,7400,-28116,-556,-26996,26996,86,FULL,190682,905,19,139724,-2888]
+         1795805949.035   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2437 RxLinkSpeed=2
+         1795805949.035   677   836 D WifiClientModeImpl[15613:wlan0]: reported txKbps 12000 rxKbps 30000
+         1795805949.035   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805949.035   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805949.035   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805949.035   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805949.035   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805949.036   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805949.037   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805949.037   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805949.037   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805949.037   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805949.038   677   866 I AdbWifiNetworkMonitor: Wi-Fi network available
+         1795805949.041   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805949.042   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805949.042   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805949.043   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805949.044   677  1916 I WifiService: getConnectionInfo uid=10223
+         1795805949.044   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805949.044   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805949.045   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805949.045   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805949.045   677  1916 V WifiService: Clearing REDACT_FOR_LOCAL_MAC_ADDRESS for com.google.android.gms(uid=10223)
+         1795805949.045   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805949.045  1867  1867 W JobService: onNetworkChanged() not implemented in com.android.providers.downloads.DownloadJobService. Must override in a subclass.
+         1795805949.046   677  1916 V WifiPermissionsUtil: checkCallersLocationPermission(com.google.android.gms): ok because uid 10223 has app-op android:fine_location
+         1795805949.046   677  1916 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for com.google.android.gms(uid=10223)
+         1795805949.046   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805949.047   677   836 D WifiScoreCard: txRate: 7 txSpeed: 2
+         1795805949.047   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed 2
+         1795805949.047   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=2 tx=6.3, 0.0, 0.0 rx=6.8 bcn=0 [on:0 tx:0 rx:0 period:3016] from screen [on:0 period:509619319] score=100
+         1795805949.048   677  1161 I WifiService: getWifiEnabledState uid=10189 state=3
+         1795805949.050  1318  1980 I NullBinder: NullBinder for android.net.action.RECOMMEND_NETWORKS triggering remote TransactionTooLargeException due to Service without Chimera impl, calling uid: 1000, calling pid: 0
+         1795805949.050  1318  1980 W libbinder.Binder: Large reply transaction of 1056768 bytes, interface descriptor , function: UNKNOWN_FUNCTION_NAME, code: 1, flags: 17
+         1795805949.082  4309  4317 I even.dreamscape: Thread[2,tid=4317,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a172c0,peer=0x2000f38,"Signal Catcher"]: reacting to signal 3
+         1795805949.082  4309  4317 I even.dreamscape: 
+         1795805949.109  5101  5101 W libprocessgroup: A JoinCgroup action in the SystemMemoryProcess profile is used for controller memory in the cgroup v2 hierarchy and will be ignored
+         1795805949.109  5101  5101 I debuggerd: libdebuggerd_client: started dumping process 4309
+         1795805949.109   378   378 I tombstoned: registered intercept for pid 4309 and type kDebuggerdNativeBacktrace
+         1795805949.110  4309  4309 I libc    : Requested dump for pid 4309 (even.dreamscape)
+         1795805949.215  5109  5109 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1795805949.216   378   378 I tombstoned: received crash request for pid 4309
+         1795805949.216   378   378 I tombstoned: found intercept fd 512 for pid 4309 and type kDebuggerdNativeBacktrace
+         1795805949.216  5109  5109 I crash_dump64: performing dump of process 4309 (target tid = 4309)
+         1795805949.281   378   378 I tombstoned: received crash request for pid 4309
+         1795805949.284   378   378 E tombstoned: Traces for pid 4309 written to: trace_00
+         1795805949.284  4309  4317 I even.dreamscape: Wrote stack traces to tombstoned
+         1795805949.302  5101  5101 I debuggerd: libdebuggerd_client: done dumping process 4309
+         1795805949.303   378   378 W tombstoned: skipping tombstone file creation due to intercept
+         1795805949.969  4309  5157 D ProfileInstaller: Installing profile for jp.net.seventhreeseven.dreamscape
+         1795805952.049   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2437 RxLinkSpeed=2
+         1795805952.049   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805952.049   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805952.049   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805952.050   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805952.050   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805952.050   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805952.050   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805952.050   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805952.050   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805952.050   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805952.053   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805952.053   677   836 D WifiScoreCard: txRate: 3 txSpeed: 2
+         1795805952.053   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805952.053   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=2 tx=2.3, 0.0, 0.0 rx=2.4 bcn=0 [on:0 tx:0 rx:0 period:3006] from screen [on:0 period:509622325] score=100
+         1795805953.868   677   708 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805954.224   677   708 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805954.249  4309  4317 I even.dreamscape: Thread[2,tid=4317,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a172c0,peer=0x2000f38,"Signal Catcher"]: reacting to signal 3
+         1795805954.249  4309  4317 I even.dreamscape: 
+         1795805954.270  5733  5733 W libprocessgroup: A JoinCgroup action in the SystemMemoryProcess profile is used for controller memory in the cgroup v2 hierarchy and will be ignored
+         1795805954.271  5733  5733 I debuggerd: libdebuggerd_client: started dumping process 4309
+         1795805954.271   378   378 I tombstoned: registered intercept for pid 4309 and type kDebuggerdNativeBacktrace
+         1795805954.271  4309  4309 I libc    : Requested dump for pid 4309 (even.dreamscape)
+         1795805954.355  5736  5736 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1795805954.355   378   378 I tombstoned: received crash request for pid 4309
+         1795805954.355   378   378 I tombstoned: found intercept fd 512 for pid 4309 and type kDebuggerdNativeBacktrace
+         1795805954.355  5736  5736 I crash_dump64: performing dump of process 4309 (target tid = 4309)
+         1795805954.408   378   378 I tombstoned: received crash request for pid 4309
+         1795805954.411  4309  4317 I even.dreamscape: Wrote stack traces to tombstoned
+         1795805954.411   378   378 E tombstoned: Traces for pid 4309 written to: trace_01
+         1795805954.431  5733  5733 I debuggerd: libdebuggerd_client: done dumping process 4309
+         1795805954.431   378   378 W tombstoned: skipping tombstone file creation due to intercept
+         1795805954.985   677   774 D ActivityManager: freezing 2962 moe.shizuku.privileged.api
+         1795805954.985   677   774 I am_freeze: [2962,moe.shizuku.privileged.api]
+         1795805954.986   677   842 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET, states=14
+         1795805954.986   677   842 D InetDiagMessage: Destroyed 0 sockets, proto=IPPROTO_TCP, family=AF_INET6, states=14
+         1795805954.986   677   842 D InetDiagMessage: Destroyed live tcp sockets for uids={10235} in 1ms
+         1795805955.057   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2437 RxLinkSpeed=2
+         1795805955.058   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805955.058   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805955.058   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805955.058   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805955.058   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805955.058   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805955.058   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805955.058   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805955.058   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805955.058   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805955.061   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805955.062   677   836 D WifiScoreCard: txRate: 1 txSpeed: 2
+         1795805955.062   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805955.062   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=2 tx=0.8, 0.0, 0.0 rx=0.9 bcn=0 [on:0 tx:0 rx:0 period:3009] from screen [on:0 period:509625334] score=100
+         1795805955.519   677   716 D OomAdjuster: Not killing cached processes
+         1795805955.519   677   716 W ProcessStats: Tracking association SourceState{b5119f9 system/1000 ImpBg #1867} whose proc state 6 is better than process ProcessState{7081d3e android.process.media/10112 pkg=com.android.providers.downloads (sub)} proc state 14 (2 skipped)
+         1795805957.436  1043  1287 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795805957.436  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795805957.436  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805957.436  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805957.436  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805957.436  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795805957.436  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795805957.436  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805957.436  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805957.436  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795805957.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795805957.437  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805957.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805957.437  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805957.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795805957.437  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805957.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805957.437  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805957.437  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795805957.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795805957.437  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805957.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805957.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795805957.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795805957.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805957.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805957.438  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805958.066   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2437 RxLinkSpeed=2
+         1795805958.066   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805958.066   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805958.067   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805958.067   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805958.067   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805958.067   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805958.067   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805958.067   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805958.067   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805958.067   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805958.070   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805958.071   677   836 D WifiScoreCard: txRate: 1 txSpeed: 2
+         1795805958.071   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805958.071   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=2 tx=0.3, 0.0, 0.0 rx=0.3 bcn=0 [on:0 tx:0 rx:0 period:3009] from screen [on:0 period:509628343] score=100
+         1795805959.380   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,Not drawing due to not visible. Reason=View.INVISIBLE]
+         1795805959.446   473   506 I netd    : tetherGetStats() -> {[]} <0.44ms>
+         1795805959.463  4309  4317 I even.dreamscape: Thread[2,tid=4317,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a172c0,peer=0x2000f38,"Signal Catcher"]: reacting to signal 3
+         1795805959.463  4309  4317 I even.dreamscape: 
+         1795805959.486  6373  6373 W libprocessgroup: A JoinCgroup action in the SystemMemoryProcess profile is used for controller memory in the cgroup v2 hierarchy and will be ignored
+         1795805959.486  6373  6373 I debuggerd: libdebuggerd_client: started dumping process 4309
+         1795805959.486   378   378 I tombstoned: registered intercept for pid 4309 and type kDebuggerdNativeBacktrace
+         1795805959.487  4309  4309 I libc    : Requested dump for pid 4309 (even.dreamscape)
+         1795805959.568  6377  6377 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1795805959.568   378   378 I tombstoned: received crash request for pid 4309
+         1795805959.568   378   378 I tombstoned: found intercept fd 512 for pid 4309 and type kDebuggerdNativeBacktrace
+         1795805959.569  6377  6377 I crash_dump64: performing dump of process 4309 (target tid = 4309)
+         1795805959.608   378   378 I tombstoned: received crash request for pid 4309
+         1795805959.610   378   378 E tombstoned: Traces for pid 4309 written to: trace_02
+         1795805959.610  4309  4317 I even.dreamscape: Wrote stack traces to tombstoned
+         1795805959.641  6373  6373 I debuggerd: libdebuggerd_client: done dumping process 4309
+         1795805959.641   378   378 W tombstoned: skipping tombstone file creation due to intercept
+         1795805961.073   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2437 RxLinkSpeed=2
+         1795805961.073   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805961.073   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805961.073   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805961.073   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805961.073   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805961.073   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805961.074   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805961.074   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805961.074   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805961.074   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805961.075   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805961.075   677   836 D WifiScoreCard: txRate: 1 txSpeed: 2
+         1795805961.075   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805961.076   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=2 tx=0.1, 0.0, 0.0 rx=0.1 bcn=0 [on:0 tx:0 rx:0 period:3004] from screen [on:0 period:509631347] score=100
+         1795805964.080   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2437 RxLinkSpeed=2
+         1795805964.080   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805964.080   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805964.081   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805964.081   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805964.081   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805964.081   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805964.081   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805964.081   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805964.081   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805964.081   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805964.083   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805964.084   677   836 D WifiScoreCard: txRate: 1 txSpeed: 2
+         1795805964.084   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805964.084   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=2 tx=0.0, 0.0, 0.0 rx=0.0 bcn=0 [on:0 tx:0 rx:0 period:3008] from screen [on:0 period:509634356] score=100
+         1795805966.688  4309  4317 I even.dreamscape: Thread[2,tid=4317,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a172c0,peer=0x2000f38,"Signal Catcher"]: reacting to signal 3
+         1795805966.688  4309  4317 I even.dreamscape: 
+         1795805966.710  7117  7117 W libprocessgroup: A JoinCgroup action in the SystemMemoryProcess profile is used for controller memory in the cgroup v2 hierarchy and will be ignored
+         1795805966.710  7117  7117 I debuggerd: libdebuggerd_client: started dumping process 4309
+         1795805966.710   378   378 I tombstoned: registered intercept for pid 4309 and type kDebuggerdNativeBacktrace
+         1795805966.710  4309  4309 I libc    : Requested dump for pid 4309 (even.dreamscape)
+         1795805966.789  7123  7123 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1795805966.789   378   378 I tombstoned: received crash request for pid 4309
+         1795805966.789   378   378 I tombstoned: found intercept fd 512 for pid 4309 and type kDebuggerdNativeBacktrace
+         1795805966.790  7123  7123 I crash_dump64: performing dump of process 4309 (target tid = 4309)
+         1795805966.842   378   378 I tombstoned: received crash request for pid 4309
+         1795805966.846  4309  4317 I even.dreamscape: Wrote stack traces to tombstoned
+         1795805966.846   378   378 E tombstoned: Traces for pid 4309 written to: trace_03
+         1795805966.862  7117  7117 I debuggerd: libdebuggerd_client: done dumping process 4309
+         1795805966.862   378   378 W tombstoned: skipping tombstone file creation due to intercept
+         1795805967.089   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2437 RxLinkSpeed=2
+         1795805967.089   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805967.089   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805967.089   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805967.089   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805967.089   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805967.089   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805967.089   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805967.090   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805967.090   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805967.090   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805967.092   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805967.092   677   836 D WifiScoreCard: txRate: 1 txSpeed: 2
+         1795805967.092   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805967.092   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=2 tx=0.0, 0.0, 0.0 rx=0.0 bcn=0 [on:0 tx:0 rx:0 period:3008] from screen [on:0 period:509637364] score=100
+         1795805967.436  1043  1287 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795805967.436  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795805967.436  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805967.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805967.437  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805967.437  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795805967.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795805967.437  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805967.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805967.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795805967.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795805967.437  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805967.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805967.437  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805967.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795805967.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805967.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805967.438  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805967.438  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795805967.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795805967.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805967.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805967.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795805967.439  4309  4309 I NativeBar: android icons: {data=wifi-connected, battery=battery-charging, signal=signal-2}
+         1795805967.441  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795805967.441  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805967.441  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805967.441  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805967.664   677   719 I WifiService: isFeatureSupported uid=1000 returns [WIFI_FEATURE_INFRA, WIFI_FEATURE_P2P, WIFI_FEATURE_MOBILE_HOTSPOT, WIFI_FEATURE_WPA3_SAE, WIFI_FEATURE_WPA3_SUITE_B, WIFI_FEATURE_OWE, WIFI_FEATURE_DPP, WIFI_FEATURE_AP_RAND_MAC, WIFI_FEATURE_MBO, WIFI_FEATURE_FILS_SHA256, WIFI_FEATURE_FILS_SHA384, WIFI_FEATURE_SAE_PK, WIFI_FEATURE_DPP_ENROLLEE_RESPONDER, WIFI_FEATURE_PASSPOINT_TERMS_AND_CONDITIONS, WIFI_FEATURE_WFD_R2, WIFI_FEATURE_DECORATED_IDENTITY, WIFI_FEATURE_TRUST_ON_FIRST_USE, WIFI_FEATURE_SET_TLS_MINIMUM_VERSION, WIFI_FEATURE_TLS_V1_3, WIFI_FEATURE
+         1795805970.097   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2437 RxLinkSpeed=2
+         1795805970.097   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805970.097   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805970.098   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805970.098   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805970.098   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805970.098   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805970.098   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805970.098   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805970.098   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805970.099   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805970.101   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805970.102   677   836 D WifiScoreCard: txRate: 1 txSpeed: 2
+         1795805970.102   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805970.102   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=2 tx=0.0, 0.0, 0.0 rx=0.0 bcn=0 [on:0 tx:0 rx:0 period:3010] from screen [on:0 period:509640374] score=100
+         1795805973.107   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2437 RxLinkSpeed=2
+         1795805973.107   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805973.107   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805973.107   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805973.107   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805973.107   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805973.107   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805973.108   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805973.108   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805973.108   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805973.108   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805973.110   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805973.111   677   836 D WifiScoreCard: txRate: 1 txSpeed: 2
+         1795805973.111   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805973.111   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=2 tx=0.0, 0.0, 0.0 rx=0.0 bcn=0 [on:0 tx:0 rx:0 period:3009] from screen [on:0 period:509643383] score=100
+         1795805973.792   677   709 I am_uid_idle: 10182
+         1795805973.793  3056  3082 V BinderSender: Uid 10182 already starts
+         1795805974.147   677   764 D OomAdjuster: Not killing cached processes
+         1795805976.113   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=54 freq=2437 RxLinkSpeed=2
+         1795805976.114   677   836 D WifiClientModeImpl[15613:wlan0]: reported txKbps 12000 rxKbps 30000
+         1795805976.114   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805976.114   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805976.114   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805976.114   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805976.114   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805976.114   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805976.114   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805976.114   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805976.114   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805976.114   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805976.115   677   866 I AdbWifiNetworkMonitor: Wi-Fi network available
+         1795805976.119   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805976.119   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805976.119   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805976.119   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805976.119   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805976.119   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805976.120   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805976.120   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805976.120   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805976.122   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805976.122  1867  1867 W JobService: onNetworkChanged() not implemented in com.android.providers.downloads.DownloadJobService. Must override in a subclass.
+         1795805976.122   677   836 D WifiScoreCard: txRate: 1 txSpeed: 54
+         1795805976.122   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805976.123   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=54 tx=0.6, 0.0, 0.0 rx=0.6 bcn=0 [on:0 tx:0 rx:0 period:3012] from screen [on:0 period:509646395] score=100
+         1795805976.123   677  2251 I WifiService: getConnectionInfo uid=10223
+         1795805976.123   677  2251 V WifiService: Clearing REDACT_FOR_LOCAL_MAC_ADDRESS for com.google.android.gms(uid=10223)
+         1795805976.123   677  2251 V WifiPermissionsUtil: checkCallersLocationPermission(com.google.android.gms): ok because uid 10223 has app-op android:fine_location
+         1795805976.123   677  2251 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for com.google.android.gms(uid=10223)
+         1795805976.127   677  1916 I WifiService: getWifiEnabledState uid=10189 state=3
+         1795805976.129  1318  1603 I NullBinder: NullBinder for android.net.action.RECOMMEND_NETWORKS triggering remote TransactionTooLargeException due to Service without Chimera impl, calling uid: 1000, calling pid: 0
+         1795805976.129  1318  1603 W libbinder.Binder: Large reply transaction of 1056768 bytes, interface descriptor , function: UNKNOWN_FUNCTION_NAME, code: 1, flags: 17
+         1795805976.340   677  2251 W InputChannel-JNI: Channel already disposed.
+         1795805976.359   677  1916 D WindowManager: setClientSurface Surface(name=VRI-PrivacyDotTopRight2#223)/@0x719dba8 for 8867fbc PrivacyDotTopRight2
+         1795805976.363   949  1333 I Surface : Creating surface for consumer unnamed-949-26 with slotExpansion=1 for 64 slots
+         1795805976.363   949  1333 I Surface : Creating surface for consumer VRI[PrivacyDotTopRight2]#24(BLAST Consumer)24 with slotExpansion=1 for 64 slots
+         1795805976.363   949  1333 I viewroot_draw_event: [VRI[PrivacyDotTopRight2]a17e93d,applyTransactionOnDraw applyImmediately]
+         1795805976.397   949  1333 I viewroot_draw_event: [VRI[PrivacyDotTopRight2]a17e93d,reportDrawFinished seqId=2]
+         1795805976.402   677  2251 D WindowManager: setClientSurface Surface(name=VRI-ScreenDecorOverlay#146)/@0x2dfe6c1 for c02eb40 ScreenDecorOverlay
+         1795805976.411   949  1333 I Surface : Creating surface for consumer unnamed-949-27 with slotExpansion=1 for 64 slots
+         1795805976.411   949  1333 I Surface : Creating surface for consumer VRI[ScreenDecorOverlay]#25(BLAST Consumer)25 with slotExpansion=1 for 64 slots
+         1795805976.412   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,applyTransactionOnDraw applyImmediately]
+         1795805976.413   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,Start draw after previous draw not visible]
+         1795805976.433   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,reportDrawFinished seqId=1]
+         1795805976.880  4309  4317 I even.dreamscape: Thread[2,tid=4317,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a172c0,peer=0x2000f38,"Signal Catcher"]: reacting to signal 3
+         1795805976.880  4309  4317 I even.dreamscape: 
+         1795805976.901  8011  8011 W libprocessgroup: A JoinCgroup action in the SystemMemoryProcess profile is used for controller memory in the cgroup v2 hierarchy and will be ignored
+         1795805976.902  8011  8011 I debuggerd: libdebuggerd_client: started dumping process 4309
+         1795805976.902   378   378 I tombstoned: registered intercept for pid 4309 and type kDebuggerdNativeBacktrace
+         1795805976.902  4309  4309 I libc    : Requested dump for pid 4309 (even.dreamscape)
+         1795805976.979  8014  8014 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1795805976.980   378   378 I tombstoned: received crash request for pid 4309
+         1795805976.980   378   378 I tombstoned: found intercept fd 512 for pid 4309 and type kDebuggerdNativeBacktrace
+         1795805976.980  8014  8014 I crash_dump64: performing dump of process 4309 (target tid = 4309)
+         1795805977.032   378   378 I tombstoned: received crash request for pid 4309
+         1795805977.035  4309  4317 I even.dreamscape: Wrote stack traces to tombstoned
+         1795805977.035   378   378 E tombstoned: Traces for pid 4309 written to: trace_04
+         1795805977.067  8011  8011 I debuggerd: libdebuggerd_client: done dumping process 4309
+         1795805977.067   378   378 W tombstoned: skipping tombstone file creation due to intercept
+         1795805977.436  1043  1287 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795805977.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795805977.437  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805977.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805977.437  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805977.437  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795805977.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795805977.437  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805977.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805977.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795805977.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795805977.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805977.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805977.438  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805977.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795805977.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805977.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805977.438  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805977.438  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795805977.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795805977.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805977.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805977.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795805977.439  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795805977.439  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805977.439  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805977.439  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805979.126   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=5 freq=2437 RxLinkSpeed=2
+         1795805979.126   677   836 D WifiClientModeImpl[15613:wlan0]: reported txKbps 12000 rxKbps 30000
+         1795805979.126   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805979.126   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805979.126   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805979.127   677   866 I AdbWifiNetworkMonitor: Wi-Fi network available
+         1795805979.127   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805979.127   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805979.127   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805979.127   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805979.127   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805979.127   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805979.127   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805979.129   677  1737 I WifiService: getWifiEnabledState uid=10189 state=3
+         1795805979.131   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805979.131   677   836 D WifiScoreCard: txRate: 1 txSpeed: 5
+         1795805979.131   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805979.131  1867  1867 W JobService: onNetworkChanged() not implemented in com.android.providers.downloads.DownloadJobService. Must override in a subclass.
+         1795805979.131   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805979.131   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805979.131   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=5 tx=0.6, 0.0, 0.0 rx=0.6 bcn=0 [on:0 tx:0 rx:0 period:3008] from screen [on:0 period:509649403] score=100
+         1795805979.131   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805979.133   677  2251 I WifiService: getConnectionInfo uid=10223
+         1795805979.133  1318  1331 I NullBinder: NullBinder for android.net.action.RECOMMEND_NETWORKS triggering remote TransactionTooLargeException due to Service without Chimera impl, calling uid: 1000, calling pid: 0
+         1795805979.133   677  2251 V WifiService: Clearing REDACT_FOR_LOCAL_MAC_ADDRESS for com.google.android.gms(uid=10223)
+         1795805979.134  1318  1331 W libbinder.Binder: Large reply transaction of 1056768 bytes, interface descriptor , function: UNKNOWN_FUNCTION_NAME, code: 1, flags: 17
+         1795805979.134   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805979.134   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805979.134   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805979.134   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805979.134   677  2251 V WifiPermissionsUtil: checkCallersLocationPermission(com.google.android.gms): ok because uid 10223 has app-op android:fine_location
+         1795805979.134   677  2251 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for com.google.android.gms(uid=10223)
+         1795805979.134   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805979.134   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805982.135   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=1 freq=2437 RxLinkSpeed=2
+         1795805982.136   677   836 D WifiClientModeImpl[15613:wlan0]: reported txKbps 12000 rxKbps 30000
+         1795805982.136   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805982.136   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805982.136   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805982.136   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805982.136   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805982.137   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805982.137   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805982.137   677   866 I AdbWifiNetworkMonitor: Wi-Fi network available
+         1795805982.137   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805982.137   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805982.137   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805982.140   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805982.140   677   836 D WifiScoreCard: txRate: 1 txSpeed: 1
+         1795805982.140   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805982.140   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=1 tx=0.6, 0.0, 0.0 rx=0.6 bcn=0 [on:0 tx:0 rx:0 period:3009] from screen [on:0 period:509652412] score=100
+         1795805982.141  1867  1867 W JobService: onNetworkChanged() not implemented in com.android.providers.downloads.DownloadJobService. Must override in a subclass.
+         1795805982.141   677  1916 I WifiService: getWifiEnabledState uid=10189 state=3
+         1795805982.143   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805982.144   677  1916 I WifiService: getConnectionInfo uid=10223
+         1795805982.144   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805982.144   677  1916 V WifiService: Clearing REDACT_FOR_LOCAL_MAC_ADDRESS for com.google.android.gms(uid=10223)
+         1795805982.145   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805982.145  1318  1603 I NullBinder: NullBinder for android.net.action.RECOMMEND_NETWORKS triggering remote TransactionTooLargeException due to Service without Chimera impl, calling uid: 1000, calling pid: 0
+         1795805982.145  1318  1603 W libbinder.Binder: Large reply transaction of 1056768 bytes, interface descriptor , function: UNKNOWN_FUNCTION_NAME, code: 1, flags: 17
+         1795805982.145   677  1916 V WifiPermissionsUtil: checkCallersLocationPermission(com.google.android.gms): ok because uid 10223 has app-op android:fine_location
+         1795805982.145   677  1916 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for com.google.android.gms(uid=10223)
+         1795805982.146   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805982.146   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805982.146   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805982.146   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805982.146   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805982.146   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805985.144   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=1 freq=2437 RxLinkSpeed=2
+         1795805985.145   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805985.145   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805985.145   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805985.145   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805985.145   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805985.145   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805985.145   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805985.145   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805985.145   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805985.145   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805985.147   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805985.148   677   836 D WifiScoreCard: txRate: 1 txSpeed: 1
+         1795805985.148   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805985.148   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=1 tx=0.2, 0.0, 0.0 rx=0.2 bcn=0 [on:0 tx:0 rx:0 period:3008] from screen [on:0 period:509655420] score=100
+         1795805987.436  1043  1287 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795805987.436  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795805987.436  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805987.436  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805987.436  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805987.437  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795805987.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795805987.437  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805987.437  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805987.437  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795805987.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795805987.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805987.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805987.438  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805987.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795805987.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805987.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805987.438  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805987.438  1043  1287 I service_manager_stats: [100,9,170002]
+         1795805987.438  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795805987.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795805987.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805987.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805987.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795805987.438  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795805987.438  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795805987.438  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795805987.438  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795805988.153   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=6 freq=2437 RxLinkSpeed=2
+         1795805988.154   677   836 D WifiClientModeImpl[15613:wlan0]: reported txKbps 12000 rxKbps 30000
+         1795805988.154   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795805988.154   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795805988.154   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805988.154   677   866 I AdbWifiNetworkMonitor: Wi-Fi network available
+         1795805988.154   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805988.154   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805988.155   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805988.155   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805988.155   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805988.155   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795805988.155   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795805988.158   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805988.158   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805988.159   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805988.159   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805988.159  1867  1867 W JobService: onNetworkChanged() not implemented in com.android.providers.downloads.DownloadJobService. Must override in a subclass.
+         1795805988.159   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805988.160   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805988.160   677  1916 I WifiService: getWifiEnabledState uid=10189 state=3
+         1795805988.160   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805988.160   677  2994 I WifiService: getConnectionInfo uid=10223
+         1795805988.160   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795805988.160   677  2994 V WifiService: Clearing REDACT_FOR_LOCAL_MAC_ADDRESS for com.google.android.gms(uid=10223)
+         1795805988.160   677   836 D WifiScoreCard: txRate: 1 txSpeed: 6
+         1795805988.160   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795805988.161   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805988.161   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795805988.162   677  2994 V WifiPermissionsUtil: checkCallersLocationPermission(com.google.android.gms): ok because uid 10223 has app-op android:fine_location
+         1795805988.162   677  2994 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for com.google.android.gms(uid=10223)
+         1795805988.162   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 1 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=6 tx=0.5, 0.0, 0.0 rx=0.5 bcn=0 [on:0 tx:0 rx:0 period:3013] from screen [on:0 period:509658433] score=100
+         1795805988.164  1318  1980 I NullBinder: NullBinder for android.net.action.RECOMMEND_NETWORKS triggering remote TransactionTooLargeException due to Service without Chimera impl, calling uid: 1000, calling pid: 0
+         1795805988.165  1318  1980 W libbinder.Binder: Large reply transaction of 1056768 bytes, interface descriptor , function: UNKNOWN_FUNCTION_NAME, code: 1, flags: 17
+# window t0-8 s .. t0+75 s of logcat -b main,system,crash,events; 43 lines removed (could carry notification text / names)

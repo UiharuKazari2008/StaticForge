@@ -1,0 +1,39 @@
+1795807004061 kill -9 21599
+1795807005481 new pid 26466
+1795807008538 dump +3 s: SIGQUIT system_server 677
+1795807008663 dump +3 s: a11y state done
+1795807008675 dump +3 s: threads
+1795807010979 dump +3 s: SIGQUIT
+1795807010990 dump +3 s: debuggerd
+1795807011272 dump +3 s: debuggerd done (0)
+1795807014303 dump +6 s: SIGQUIT system_server 677
+1795807014407 dump +6 s: a11y state done
+1795807014417 dump +6 s: threads
+1795807016453 dump +6 s: SIGQUIT
+1795807016466 dump +6 s: debuggerd
+1795807016725 dump +6 s: debuggerd done (0)
+1795807019757 dump +9 s: SIGQUIT system_server 677
+1795807019877 dump +9 s: a11y state done
+1795807019889 dump +9 s: threads
+1795807022044 dump +9 s: SIGQUIT
+1795807022053 dump +9 s: debuggerd
+1795807022231 dump +9 s: debuggerd done (0)
+1795807026262 dump +13 s: SIGQUIT system_server 677
+1795807026363 dump +13 s: a11y state done
+1795807026372 dump +13 s: threads
+1795807028311 dump +13 s: SIGQUIT
+1795807028320 dump +13 s: debuggerd
+1795807028542 dump +13 s: debuggerd done (0)
+1795807033570 dump +18 s: SIGQUIT system_server 677
+1795807033692 dump +18 s: a11y state done
+1795807033705 dump +18 s: threads
+1795807035924 dump +18 s: SIGQUIT
+1795807035936 dump +18 s: debuggerd
+1795807036179 dump +18 s: debuggerd done (0)
+1795807044210 dump +26 s: SIGQUIT system_server 677
+1795807044323 dump +26 s: a11y state done
+1795807044331 dump +26 s: threads
+1795807046344 dump +26 s: SIGQUIT
+1795807046354 dump +26 s: debuggerd
+1795807046539 dump +26 s: debuggerd done (0)
+1795807050203 watch done

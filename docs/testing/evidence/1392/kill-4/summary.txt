@@ -1,0 +1,34 @@
+events: new pid 17689 seen at device ms 1795806204171, 1.35 s after kill -9
+t0 (Start proc) epoch 1795806203.868
+first MelatonBars line: +0.26 s   holder token linked: +1.43 s
+log silence of the main thread (tid=pid) between Start proc and token linked: 0.27 s from +0.63, 0.18 s from +0.45
+log silence of the any thread of the app between Start proc and token linked: 0.17 s from +0.73, 0.10 s from +0.07
+hb.txt: 382 beats, median step 116 ms, longest gap 0.20 s wall / 0.20 s uptime, from +0.47 s
+ticks.txt: 71 ticks, longest gap 0.65 s from +1.00 s
+main thread blocked (not in the looper poll, < 30 ms CPU in all): longest 0.60 s from +1.65 s, CPU used 25 ms, (state, wchan) samples {('R', '0'): 1, ('S', 'futex_wait'): 1}
+main thread outside its looper poll for 2 s or more: never
+  +  1.15 17719 CafeTasks: engine started (9 files, from the server)
+  event +-1.04 kill -9 13373
+  event +0.30 new pid 17689
+  event +3.34 dump +3 s: threads
+  event +5.18 dump +3 s: SIGQUIT
+  event +5.19 dump +3 s: debuggerd
+  event +5.39 dump +3 s: debuggerd done (0)
+  event +8.40 dump +6 s: threads
+  event +10.24 dump +6 s: SIGQUIT
+  event +10.25 dump +6 s: debuggerd
+  event +10.42 dump +6 s: debuggerd done (0)
+  event +13.44 dump +9 s: threads
+  event +15.40 dump +9 s: SIGQUIT
+  event +15.40 dump +9 s: debuggerd
+  event +15.59 dump +9 s: debuggerd done (0)
+  event +20.60 dump +14 s: threads
+  event +22.48 dump +14 s: SIGQUIT
+  event +22.49 dump +14 s: debuggerd
+  event +22.69 dump +14 s: debuggerd done (0)
+  event +30.71 dump +22 s: threads
+  event +32.59 dump +22 s: SIGQUIT
+  event +32.60 dump +22 s: debuggerd
+  event +32.78 dump +22 s: debuggerd done (0)
+  event +42.62 watch done
+traces: trace_15, trace_16, trace_17, trace_18, trace_19

@@ -1,0 +1,713 @@
+         1795807170.283   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2437 RxLinkSpeed=2
+         1795807170.284   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795807170.284   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795807170.285   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807170.285   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807170.285   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807170.285   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807170.285   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807170.286   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807170.286   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807170.286   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807170.290   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795807170.290   677   836 D WifiScoreCard: txRate: 1 txSpeed: 2
+         1795807170.290   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795807170.290   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 11 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=2 tx=0.0, 0.0, 0.0 rx=0.0 bcn=0 [on:0 tx:0 rx:0 period:3012] from screen [on:0 period:114595] score=100
+         1795807173.295   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2437 RxLinkSpeed=2
+         1795807173.295   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795807173.295   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795807173.296   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807173.296   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807173.296   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807173.296   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807173.296   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807173.296   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807173.296   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807173.296   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807173.298   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795807173.298   677   836 D WifiScoreCard: txRate: 1 txSpeed: 2
+         1795807173.298   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795807173.299   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 11 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=2 tx=0.0, 0.0, 0.0 rx=0.0 bcn=0 [on:0 tx:0 rx:0 period:3008] from screen [on:0 period:117604] score=100
+         1795807174.271   547   547 I adbd    : adbd service requested 'sync:'
+         1795807174.459   547   547 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:pidof jp.net.seventhreeseven.dreamscape'
+         1795807174.751   547   547 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:ps -o etime= -p 26466'
+         1795807175.064   547   547 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:date +%s%3N'
+         1795807175.173   547   547 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:date +%s%3N'
+         1795807175.475   547   547 I adbd    : adbd service requested 'shell,v2,TERM=tmux-256color,raw:su 0 sh'
+         1795807176.304   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=2 freq=2437 RxLinkSpeed=2
+         1795807176.304   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795807176.304   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795807176.304   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807176.304   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807176.304   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807176.304   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807176.305   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807176.305   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807176.305   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807176.305   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807176.307   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795807176.307   677   836 D WifiScoreCard: txRate: 1 txSpeed: 2
+         1795807176.307   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795807176.307   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 11 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=2 tx=0.0, 0.0, 0.0 rx=0.0 bcn=0 [on:0 tx:0 rx:0 period:3008] from screen [on:0 period:120612] score=100
+         1795807176.586   677  1205 I WindowManager: sleepRelease() calling goToSleep(GO_TO_SLEEP_REASON_SLEEP_BUTTON)
+         1795807176.586   677  1205 I PowerGroup: Powering off display group due to sleep_button (groupId= 0, uid= 1000, millisSinceLastUserActivity=121153, lastUserActivityEvent=other)...
+         1795807176.587   677  1205 I PowerManagerService: Going to sleep due to sleep_button (uid 1000, screenOffTimeout=2147483647, activityTimeoutWM=-1, maxDimRatio=0.20000005, maxDimDur=7000)...
+         1795807176.587   677  1205 I power_sleep_requested: 0
+         1795807176.589  1535  1535 I GoogleInputMethodService: GoogleInputMethodService.onFinishInput():2259 
+         1795807176.591  1535  1535 I Module  : DeviceLockedStatusModuleProvider$Module.updateDeviceLockedStatus():103 repeatCheckTimes = 0, locked = false
+         1795807176.593   677   708 I am_pss  : [1070,10198,com.google.android.apps.nexuslauncher,0,0,0,245530624,0,2,0]
+         1795807176.594   677   708 I am_pss  : [26466,10234,jp.net.seventhreeseven.dreamscape,0,0,0,253497344,0,4,0]
+         1795807176.597   949   949 D KeyguardViewMediator: KeyguardViewMediator queue processing message: NOTIFY_STARTED_GOING_TO_SLEEP
+         1795807176.597   677   677 W ProcessStats: Tracking association SourceState{b5119f9 system/1000 ImpBg #3351} whose proc state 6 is better than process ProcessState{7081d3e android.process.media/10112 pkg=com.android.providers.downloads (sub)} proc state 14 (3 skipped)
+         1795807176.598   949   949 I KeyguardTransitionRepository: STARTED transition: TransitionStep(from=GONE, to=DOZING, value=0.0, transitionState=STARTED, ownerName=FromGoneTransitionInteractor(Sleep transition triggered))
+         1795807176.602   949  1031 I jank_cuj_events_begin_request: [160,1795807176599062000,1496203343600,1496203358400,DEFAULT]
+         1795807176.603   677   708 I am_pss  : [27856,99018,com.google.android.webview:js_sandboxed_process0:org.chromium.android_webview.js_sandbox.service.JsSandboxService0,0,0,0,139587584,0,4,0]
+         1795807176.615   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795807176.615   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795807176.615   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795807176.616   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795807176.616   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795807176.616   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795807176.616   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795807176.616   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795807176.626   677   731 I Surface : Creating surface for consumer unnamed-677-21 with slotExpansion=1 for 64 slots
+         1795807176.627   677   731 I Surface : Creating surface for consumer ColorFade#10(BLAST Consumer)10 with slotExpansion=1 for 64 slots
+         1795807176.643   677   731 I Surface : Creating surface for consumer unnamed-677-22 with slotExpansion=1 for 64 slots
+         1795807176.643   677   731 E GFXSTREAM: [egl.cpp(2130)] eglQueryContext 32c0  EGL_BAD_ATTRIBUTE
+         1795807176.643   677   731 E GFXSTREAM: [egl.cpp(2131)] tid 731: error 0x3004 (EGL_BAD_ATTRIBUTE)
+         1795807176.643   677   731 I Surface : Creating surface for consumer SurfaceTexture-6-677-10 with slotExpansion=0 for 64 slots
+         1795807176.723   677   731 I DisplayPowerController[0]: BrightnessEvent: brt=0.39763778(83.0%), nits=-1.0, lux=-1.0, reason=manual, strat=FallbackBrightnessStrategy, state=ON, stateReason=DEFAULT_POLICY, policy=OFF, flags=, initBrt=0.39763778, rcmdBrt=NaN, preBrt=NaN, preLux=0.0, wasShortTermModelActive=false, autoBrightness=false (default), unclampedBrt=0.39763778, hbmMax=1.0, hbmMode=off, thrmMax=1.0, rbcStrength=0, powerFactor=1.0, physDisp=Built-in Screen(local:4619827259835644672), logicalId=0, slowChange=false, rampSpeed=0.0, colorTemp=NaN, thermalStatus=none
+         1795807176.723   677   731 I sysui_multi_action: [757,1696,758,6,759,0]
+         1795807176.749   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795807176.749   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795807176.749   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795807176.750   539   595 W skia    : AGTM parsing failed flags.readFromStream(s) at 159
+         1795807176.757   677   731 I Surface : Creating surface for consumer unnamed-677-23 with slotExpansion=1 for 64 slots
+         1795807176.758   677   731 I Surface : Creating surface for consumer ColorFade#11(BLAST Consumer)11 with slotExpansion=1 for 64 slots
+         1795807177.461  1043  1287 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795807177.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795807177.462  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807177.462  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807177.462  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807177.462  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795807177.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795807177.462  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807177.462  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807177.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795807177.463  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795807177.463  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807177.463  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807177.463  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807177.463  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795807177.463  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807177.463  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807177.463  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807177.463  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795807177.463  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795807177.463  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807177.463  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807177.463  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795807177.463  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795807177.463  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807177.463  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807177.463  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807177.553   949   949 I KeyguardTransitionRepository: FINISHED transition: TransitionStep(from=GONE, to=DOZING, value=1.0, transitionState=FINISHED, ownerName=FromGoneTransitionInteractor(Sleep transition triggered))
+         1795807177.556   949  1031 I jank_cuj_events_end_request: [160,1795807177553878000,1497158077700,1497158091700]
+         1795807177.560   949  1230 D StatusBar##isHomeStatusBarAllowed: newValue: false
+         1795807177.560   949  1231 D StatusBar##isHomeStatusBarAllowed: newValue: false
+         1795807177.560   949  1230 D StatusBar##canShowOngoingActivityChips: newValue: false
+         1795807177.561   949  1230 D StatusBar##chips: newValue: Chips[allowed=false numChips=0]
+         1795807177.561   949  1231 D StatusBar##canShowOngoingActivityChips: newValue: false
+         1795807177.562   949  1181 D StatusBar##chips: newValue: Chips[allowed=false numChips=0]
+         1795807179.314   677   836 D WifiClientModeImpl[15613:wlan0]: updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=-50 TxLinkspeed=9 freq=2437 RxLinkSpeed=2
+         1795807179.315   677   836 D WifiClientModeImpl[15613:wlan0]: reported txKbps 12000 rxKbps 30000
+         1795807179.319   677   836 D WifiDataStall: tx tput in kbps: 37000
+         1795807179.319   677   836 D WifiDataStall: rx tput in kbps: 37000
+         1795807179.321   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807179.327   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807179.327   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807179.327   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807179.334   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807179.334   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807179.335   677   836 D WifiThroughputPredictor:  utilization (LLS) 80 isBluetoothConnected: false final utilization: 80
+         1795807179.335   677   836 D WifiThroughputPredictor:  BW: 0 RSSI: -50 Nss: 1 Mode: 1 symDur: 4000 snrDb 30 bitPerTone: 4500 rate: 54 throughput: 37
+         1795807179.350   677   836 I HalDevMgr: bestIfaceCreationProposal is null, requestIface=STA, existingIface=[name=wlan0 type=STA]
+         1795807179.350   677   836 D WifiScoreCard: txRate: 1 txSpeed: 9
+         1795807179.350   677   836 D WifiScoreCard: network update SIGNAL_POLL "AndroidWifi" ID: 2127985210 RSSI -50 txSpeed -1
+         1795807179.362   677  2041 I WifiService: getWifiEnabledState uid=10189 state=3
+         1795807179.362   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=on 11 0 "AndroidWifi" 02:15:b2:00:00:01 rssi=-50 f=2437 sc=100 link=9 tx=0.0, 0.0, 0.0 rx=0.0 bcn=0 [on:0 tx:0 rx:0 period:3055] from screen [on:0 period:123667] score=100
+         1795807179.363   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795807179.363   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795807179.363   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795807179.365   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795807179.365   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795807179.373   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795807179.373   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795807179.374   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795807179.374   677   842 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795807179.376   677  1950 I WifiService: getConnectionInfo uid=10223
+         1795807179.392   677  1950 V WifiService: Clearing REDACT_FOR_LOCAL_MAC_ADDRESS for com.google.android.gms(uid=10223)
+         1795807179.393   677  1950 V WifiPermissionsUtil: checkCallersLocationPermission(com.google.android.gms): ok because uid 10223 has app-op android:fine_location
+         1795807179.393   677  1950 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for com.google.android.gms(uid=10223)
+         1795807179.414  1318  1689 I NullBinder: NullBinder for android.net.action.RECOMMEND_NETWORKS triggering remote TransactionTooLargeException due to Service without Chimera impl, calling uid: 1000, calling pid: 0
+         1795807179.414  1318  1689 W libbinder.Binder: Large reply transaction of 1056768 bytes, interface descriptor , function: UNKNOWN_FUNCTION_NAME, code: 1, flags: 17
+         1795807179.449   677   866 I AdbWifiNetworkMonitor: Wi-Fi network available
+         1795807179.451   677   731 I Surface : Creating surface for consumer unnamed-677-24 with slotExpansion=1 for 64 slots
+         1795807179.452   677   731 E GFXSTREAM: [egl.cpp(2130)] eglQueryContext 32c0  EGL_BAD_ATTRIBUTE
+         1795807179.452   677   731 E GFXSTREAM: [egl.cpp(2131)] tid 731: error 0x3004 (EGL_BAD_ATTRIBUTE)
+         1795807179.453   677   731 I Surface : Creating surface for consumer SurfaceTexture-6-677-11 with slotExpansion=0 for 64 slots
+         1795807179.462   508   530 W libbinder.Binder: Binder transaction to android.hardware.graphics.composer3.IComposerClient, function: executeCommands, code: 5, took 2691ms. Data bytes: 196 Reply bytes: 528 Flags: 16
+         1795807179.462   508  1211 W libbinder.Binder: Binder transaction to android.hardware.graphics.composer3.IComposerClient, function: executeCommands, code: 5, took 2691ms. Data bytes: 196 Reply bytes: 288 Flags: 16
+         1795807179.465  1867  1867 W JobService: onNetworkChanged() not implemented in com.android.providers.downloads.DownloadJobService. Must override in a subclass.
+         1795807179.467  1070  1070 I Choreographer: Skipped 159 frames!  The application may be doing too much work on its main thread.
+         1795807179.491  1070  1105 I HWUI    : Davey! duration=2699ms; Flags=0, FrameTimelineVsyncId=103448, IntendedVsync=1496372108260, Vsync=1496372108260, InputEventId=0, HandleInputStart=1496375691800, AnimationStart=1496375716100, PerformTraversalsStart=1496376068200, DrawStart=1496376152000, FrameDeadline=1496405441592, FrameStartTime=1496375675600, FrameInterval=16666666, WorkloadTarget=16666666, AnimationTime=1496372108260, SyncQueued=1496376167700, SyncStart=1496376206000, IssueDrawCommandsStart=1496376234000, SwapBuffers=1496376978000, FrameCompleted=1499071508200, DequeueBufferDur
+         1795807179.493   949  1533 I HWUI    : Davey! duration=1883ms; Flags=0, FrameTimelineVsyncId=103806, IntendedVsync=1497172108228, Vsync=1497172108228, InputEventId=0, HandleInputStart=1497172999600, AnimationStart=1497173037000, PerformTraversalsStart=1497173942200, DrawStart=1497175049400, FrameDeadline=1497188774894, FrameStartTime=1497172951400, FrameInterval=16666666, WorkloadTarget=16666666, AnimationTime=1497172108228, SyncQueued=1497175245600, SyncStart=1497175315200, IssueDrawCommandsStart=1497175749400, SwapBuffers=1497175882000, FrameCompleted=1499055907300, DequeueBufferDur
+         1795807179.598  1070  1105 I HWUI    : Davey! duration=2707ms; Flags=0, FrameTimelineVsyncId=103477, IntendedVsync=1496405441592, Vsync=1499038774820, InputEventId=0, HandleInputStart=1499072994100, AnimationStart=1499073159100, PerformTraversalsStart=1499074952300, DrawStart=1499075085600, FrameDeadline=1499122108150, FrameStartTime=1499071993400, FrameInterval=16666666, WorkloadTarget=16666666, AnimationTime=1499038774820, SyncQueued=1499075121000, SyncStart=1499098006400, IssueDrawCommandsStart=1499099003300, SwapBuffers=1499099155000, FrameCompleted=1499135977900, DequeueBufferDur
+         1795807179.695   677  2041 W InputChannel-JNI: Channel already disposed.
+         1795807179.710   677  2041 D WindowManager: setClientSurface Surface(name=VRI-PrivacyDotTopRight2#540)/@0x32c36fc for d7771c9 PrivacyDotTopRight2
+         1795807179.713   949  1333 I Surface : Creating surface for consumer unnamed-949-99 with slotExpansion=1 for 64 slots
+         1795807179.714   949  1333 I Surface : Creating surface for consumer VRI[PrivacyDotTopRight2]#96(BLAST Consumer)96 with slotExpansion=1 for 64 slots
+         1795807179.715   949  1333 I viewroot_draw_event: [VRI[PrivacyDotTopRight2]bbb556a,applyTransactionOnDraw applyImmediately]
+         1795807179.727   677   731 I DisplayPowerController[2]: BrightnessEvent: brt=0.5(87.0%), nits=-1.0, lux=-1.0, reason=manual, strat=FallbackBrightnessStrategy, state=ON, stateReason=DEFAULT_POLICY, policy=OFF, flags=, initBrt=0.5, rcmdBrt=NaN, preBrt=NaN, preLux=0.0, wasShortTermModelActive=false, autoBrightness=false (default), unclampedBrt=0.5, hbmMax=1.0, hbmMode=off, thrmMax=1.0, rbcStrength=-1, powerFactor=1.0, physDisp=Built-in Screen(local:4619827551948147201), logicalId=2, slowChange=false, rampSpeed=0.0, colorTemp=NaN, thermalStatus=none
+         1795807179.730   677   731 I sysui_multi_action: [757,1696,758,6,759,0]
+         1795807179.731   677   731 I Choreographer: Skipped 179 frames!  The application may be doing too much work on its main thread.
+         1795807179.733   677   686 I system_server: Thread[2,tid=686,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a10380,peer=0x2007bd8,"Signal Catcher"]: reacting to signal 3
+         1795807179.733   677   686 I system_server: 
+         1795807179.825   949  1333 I viewroot_draw_event: [VRI[PrivacyDotTopRight2]bbb556a,reportDrawFinished seqId=2]
+         1795807179.835   677   694 D WindowManager: setClientSurface Surface(name=VRI-ScreenDecorOverlay#146)/@0x11b5ad7 for c02eb40 ScreenDecorOverlay
+         1795807179.862   949  1333 I Surface : Creating surface for consumer unnamed-949-100 with slotExpansion=1 for 64 slots
+         1795807179.863   949  1333 I Surface : Creating surface for consumer VRI[ScreenDecorOverlay]#97(BLAST Consumer)97 with slotExpansion=1 for 64 slots
+         1795807179.863   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,applyTransactionOnDraw applyImmediately]
+         1795807179.866   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,Start draw after previous draw not visible]
+         1795807179.922   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,reportDrawFinished seqId=1]
+         1795807180.149   677   867 E system_server: poll() failed: Interrupted system call, sleeping 100ms
+         1795807180.202   512   512 I lights_service_example_rust: main::lights: Lights setting state for id=1 to color ff000000
+         1795807180.203   677   731 I DisplayPowerController[0]: Blocking screen off
+         1795807180.203   677   731 D WindowManager: Add SleepToken: tag=Display-off, displayId=0
+         1795807180.204  1070  1070 D BaseActivity: Launcher flags updated: [state_started|state_resumed|state_deferred_resumed|state_window_focused|state_user_active] -[]
+         1795807180.204  1070  1070 I wm_on_top_resumed_lost_called: [86356995,com.google.android.apps.nexuslauncher.NexusLauncherActivity,topStateChangedWhenResumed]
+         1795807180.208   677   731 I wm_pause_activity: [0,86356995,com.google.android.apps.nexuslauncher/.NexusLauncherActivity,userLeaving=false,sleep]
+         1795807180.210  1070  1070 D BaseActivity: Launcher flags updated: [state_started|state_window_focused|state_user_active] -[state_resumed|state_deferred_resumed]
+         1795807180.211  1070  1070 W SplitSelectStateCtor: Missing session instanceIds
+         1795807180.211  1070  1070 D StatsLog: LAUNCHER_SPLIT_SELECTION_EXIT_INTERRUPTED
+         1795807180.211  1070  1070 I wm_on_paused_called: [86356995,com.google.android.apps.nexuslauncher.NexusLauncherActivity,performPause,2]
+         1795807180.213   677   746 I wm_add_to_stopping: [0,86356995,com.google.android.apps.nexuslauncher/.NexusLauncherActivity,completePauseLocked]
+         1795807180.228   677   700 I sysui_multi_action: [757,803,799,window_time_0,802,198]
+         1795807180.231  1070  1070 D VRI[NexusLauncherActivity]: visibilityChanged oldVisibility=true newVisibility=false
+         1795807180.233   677   703 I wm_stop_activity: [0,86356995,com.google.android.apps.nexuslauncher/.NexusLauncherActivity]
+         1795807180.234   677   731 E Surface : [ColorFade#10(BLAST Consumer)10](id:2a500000015) clearBuffersForDisconnectLocked: 1 buffers were freed while being dequeued!
+         1795807180.234   677   704 I input_focus: [Requesting to set focus to null window,reason=UpdateInputWindows]
+         1795807180.236   677   704 I wm_wallpaper_surface: [0,0,null]
+         1795807180.237  1070  1070 D SmartspaceInteractor: notifySmartspaceEvent: SmartspaceTargetEvent{mSmartspaceTarget=null, mSmartspaceActionId='null', mEventType=7}
+         1795807180.240   949  1312 D WallpaperService: onVisibilityChanged(false): com.android.systemui.wallpapers.ImageWallpaper$CanvasEngine@d618a34
+         1795807180.245   677   731 E Surface : [ColorFade#10(BLAST Consumer)10-DISCONNECTED](id:0) Surface::cancelBuffer given a leaked buffer! Deleting extra held reference.
+         1795807180.260   677   731 I DisplayPowerController[2]: Blocking screen off
+         1795807180.263   677   731 E Surface : [ColorFade#11(BLAST Consumer)11](id:2a500000017) clearBuffersForDisconnectLocked: 1 buffers were freed while being dequeued!
+         1795807180.268   677   731 E Surface : [ColorFade#11(BLAST Consumer)11-DISCONNECTED](id:0) Surface::cancelBuffer given a leaked buffer! Deleting extra held reference.
+         1795807180.270  1070  1070 I viewroot_draw_event: [VRI[NexusLauncherActivity]221b908,Not drawing due to not visible. Reason=!mAppVisible && !mForceDecorViewVisibility]
+         1795807180.274  1070  1070 D BaseActivity: Launcher flags updated: [state_window_focused] -[state_started|state_user_active]
+         1795807180.274  1070  1070 D BaseDepthController: setSurface:
+         1795807180.274  1070  1070 D BaseDepthController: 	mWaitingOnSurfaceValidity: false
+         1795807180.274  1070  1070 D BaseDepthController: 	mBaseSurface: null
+         1795807180.284  1070  1070 D BaseDepthController: mSurface is null and mCurrentBlur is: 0
+         1795807180.285  1070  1070 D LauncherStateManager: StateManager.goToState: fromState: Normal, toState: Normal, partial trace:
+         1795807180.285  1070  1070 D LauncherStateManager: 	at com.android.launcher3.statemanager.StateManager.moveToRestState(go/retraceme dc5b05c43537c6aa1d671c685c710819682fcc95b6af33c0ce7f88e1808452b7:26)
+         1795807180.285  1070  1070 D LauncherStateManager: 	at com.android.launcher3.statemanager.StateManager.moveToRestState(go/retraceme dc5b05c43537c6aa1d671c685c710819682fcc95b6af33c0ce7f88e1808452b7:35)
+         1795807180.285  1070  1070 D LauncherStateManager: 	at com.android.launcher3.statemanager.StatefulActivity.onStop(go/retraceme dc5b05c43537c6aa1d671c685c710819682fcc95b6af33c0ce7f88e1808452b7:31)
+         1795807180.285  1070  1070 D LauncherStateManager: StateManager.onRepeatStateSetAborted: state: Normal
+         1795807180.286  1070  1070 D KeyboardStateManager: hideKeyboard
+         1795807180.286  1070  1070 D KeyboardStateManager: isImeShown: false
+         1795807180.286  1070  1070 D StatsLog: LAUNCHER_ONSTOP
+         1795807180.286  1070  1070 I wm_on_stop_called: [86356995,com.google.android.apps.nexuslauncher.NexusLauncherActivity,STOP_ACTIVITY_ITEM,12]
+         1795807180.287  1070  1070 D StatsLog: LAUNCHER_GOOGLE_SEARCH_RESTORE_LIST_SIZE_AFTER_ACTIVITY_RESTART
+         1795807180.296   677   731 I DisplayPowerController[0]: Unblocked screen off after 93 ms
+         1795807180.306   677   785 I input_focus: [Focus leaving 28541b0 com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity,reason=Waiting for window because NO_WINDOW]
+         1795807180.306  1070  1070 I input_focus: ViewRootImpl focus=false for com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity
+         1795807180.309  1070  1070 D BaseActivity: Launcher flags updated: [] -[state_window_focused]
+         1795807180.314   677   731 I DisplayBrightnessStrategySelector: Changing the DisplayBrightnessStrategy from FallbackBrightnessStrategy to ScreenOffBrightnessStrategy for display 0
+         1795807180.315   677   731 V DisplayPowerController[0]: Brightness [0.0] reason changing to: 'screen_off', previous reason: 'manual'.
+         1795807180.316   677   731 I DisplayPowerController[0]: BrightnessEvent: brt=0.0(0.0%), nits=-1.0, lux=-1.0, reason=screen_off, strat=ScreenOffBrightnessStrategy, state=OFF, stateReason=DEFAULT_POLICY, policy=OFF, flags=, initBrt=0.39763778, rcmdBrt=NaN, preBrt=NaN, preLux=0.0, wasShortTermModelActive=false, autoBrightness=false (default), unclampedBrt=-1.0, hbmMax=1.0, hbmMode=off, thrmMax=1.0, rbcStrength=0, powerFactor=1.0, physDisp=Built-in Screen(local:4619827259835644672), logicalId=0, slowChange=false, rampSpeed=0.0, colorTemp=NaN, thermalStatus=none
+         1795807180.317   677   731 I DisplayPowerController[2]: Unblocked screen off after 57 ms
+         1795807180.319   677   731 W BatteryStatsService: noteScreenState called with out of bounds displayId: 2, mDisplayStates.length=1
+         1795807180.320   677   731 I DisplayBrightnessStrategySelector: Changing the DisplayBrightnessStrategy from FallbackBrightnessStrategy to ScreenOffBrightnessStrategy for display 2
+         1795807180.327   949  1007 D WindowManagerShell: setLauncherKeepClearAreaHeight: visible=false, height=405
+         1795807180.331   677   731 V DisplayPowerController[2]: Brightness [0.0] reason changing to: 'screen_off', previous reason: 'manual'.
+         1795807180.333   677   731 I DisplayPowerController[2]: BrightnessEvent: brt=0.0(0.0%), nits=-1.0, lux=-1.0, reason=screen_off, strat=ScreenOffBrightnessStrategy, state=OFF, stateReason=DEFAULT_POLICY, policy=OFF, flags=, initBrt=0.5, rcmdBrt=NaN, preBrt=NaN, preLux=0.0, wasShortTermModelActive=false, autoBrightness=false (default), unclampedBrt=-1.0, hbmMax=1.0, hbmMode=off, thrmMax=1.0, rbcStrength=-1, powerFactor=1.0, physDisp=Built-in Screen(local:4619827551948147201), logicalId=2, slowChange=false, rampSpeed=0.0, colorTemp=NaN, thermalStatus=none
+         1795807180.335   949  1007 V RecentTasksController: Notify recent tasks changed
+         1795807180.335   539   539 D SurfaceFlinger: Setting power mode 0 synchronously for a physical display with token 0x7e9d46c30590
+         1795807180.335   539   539 D SurfaceFlinger: Setting power mode 0 on physical display 4619827259835644672
+         1795807180.335   539   539 D SurfaceFlinger: setPhysicalDisplayPowerModeAsync: Optimizing thread scheduling: optimizeForPerformance
+         1795807180.336  1070  1070 D RecentTasksList: invalidateLoadedTasks - previous requestLoadId: 18
+         1795807180.336  1070  1070 V TaskbarRecentAppsController: reloadRecentTasksIfNeeded: load recents tasks
+         1795807180.336   539   539 D SurfaceFlinger: Finished setting power mode 0 on physical display 4619827259835644672
+         1795807180.336  1070  1070 V TaskbarRecentAppsController: reloadRecentTasksIfNeeded: load recents tasks
+         1795807180.337   677   909 I LocalDisplayAdapter: SF.setDisplayPowerMode took 2ms
+         1795807180.339   677   719 E BatteryStatsImpl: Unexpected note screen brightness for display 2 (only 1 displays exist...)
+         1795807180.341   677   703 I DisplayDeviceRepository: Display device changed state: "Built-in Screen", OFF
+         1795807180.341   677   709 I am_wtf  : [0,677,system_server,-1,BatteryStatsImpl,Unexpected note screen brightness for display 2 (only 1 displays exist...)]
+         1795807180.344   949  1007 V RecentTasksController: generateList(getRecentTasks)
+         1795807180.344   949  1007 V RecentTasksController: initializeDesksMap - allDeskIds: []
+         1795807180.345   677   703 I InputManager-JNI: Viewport [0] to add: local:4619827259835644672, isActive: false
+         1795807180.345   677   703 I InputManager-JNI: Viewport [1] to add: local:4619827551948147201, isActive: true
+         1795807180.346   677   786 I InputReader: Reconfiguring input devices, changes=DISPLAY_INFO
+         1795807180.346   677   786 I InputReader: Touch device 'virtio_input_multi_touch_11' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.346   677   786 I InputReader: Touch device 'virtio_input_multi_touch_10' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.346   677   786 I InputReader: Touch device 'virtio_input_multi_touch_9' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.346   677   786 I InputReader: Touch device 'virtio_input_multi_touch_8' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.346   677   786 I InputReader: Touch device 'virtio_input_multi_touch_6' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.346   677   786 I InputReader: Touch device 'virtio_input_multi_touch_5' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.346   677   786 I InputReader: Touch device 'virtio_input_multi_touch_4' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.346   677   786 I InputReader: Touch device 'virtio_input_multi_touch_3' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.346   677   786 I InputReader: Touch device 'virtio_input_multi_touch_2' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.346   677   786 W InputReaderBase: Found 2 viewports with type INTERNAL, but expected 1 at most
+         1795807180.346   677   786 I InputReader: Disabling virtio_input_multi_touch_1 (device 4) because the associated viewport is not active
+         1795807180.346   677   786 I InputReader: Device reconfigured: id=4, name='virtio_input_multi_touch_1', size 32768x32768, orientation Rotation0, mode DISABLED, display id 0
+         1795807180.352   677   701 D WindowManager: DeferredDisplayUpdater: deferring DisplayInfo(1968 x 2184) update
+         1795807180.353   677   701 D WindowManager: DeferredDisplayUpdater: applying DisplayInfo(1968 x 2184) after deferring
+         1795807180.354   677   701 V WindowManager: Aborting Transition: 69
+         1795807180.355   949  1007 V RecentTasksController: Task 125 is not an active desktop task
+         1795807180.356   949  1007 V RecentTasksController: Added fullscreen task: 125
+         1795807180.356   949  1007 V RecentTasksController: Task 122 is not an active desktop task
+         1795807180.356   949  1007 V RecentTasksController: Added fullscreen task: 122
+         1795807180.356   949  1007 V RecentTasksController: Task 103 is not an active desktop task
+         1795807180.356   949  1007 V RecentTasksController: Added fullscreen task: 103
+         1795807180.356   949  1007 V RecentTasksController: Task 11 is not an active desktop task
+         1795807180.356   949  1007 V RecentTasksController: Added fullscreen task: 11
+         1795807180.356   949  1007 V RecentTasksController: generateList - complete
+         1795807180.356   677   704 W SurfaceControl: Invalid layer stack -1
+         1795807180.356   677   704 I DisplayDevice: [0] Layerstack set to -1 for local:4619827259835644672
+         1795807180.359  1318  1318 I NearbyDiscovery: FastPairDisplayObserver: STATE_ON -> STATE_OFF [CONTEXT service_id=265 ]
+         1795807180.362  1318  1789 I NearbySharing: Screen is locked
+         1795807180.362  1318  1789 I NearbySharing: Stopping scanning because the screen is locked.
+         1795807180.363  1318  1789 I NearbySharing: Stopping Fast Init advertisement because we're not scanning in the foreground.
+         1795807180.363  1318  1789 I NearbySharing: Stopping advertising because the screen is locked.
+         1795807180.363  1318  1789 I NearbySharing: Stopping FastInitiation scanning because the screen is locked.
+         1795807180.365  1318  1789 I NearbySharing: Fast Initiation Scanning has stopped
+         1795807180.365  1318  1789 I NearbySharing: Dismissing HUN as there's no device nearby.
+         1795807180.367  1070  1152 D RecentTasksList: loadTasksInBackground - isDeviceLocked(0): false
+         1795807180.367  1070  1152 D RecentTasksList: getTasks - loadTasksInBackground: 19
+         1795807180.367  1070  1070 D RecentTasksList: getTasks - updating mResultsUi: 19
+         1795807180.368  1070  1070 D RecentTasksList: getTasks - updating mResultsUi: 19
+         1795807180.370  1318  2713 I NearbyDiscovery: ApFastPairScanner: isScreenOn=false, isLocationEnabled=true, disableLocationRequirement=true, isDiscoveryScanningEnabled=true, during24GhzWifiWarmingUpPeriod=false [CONTEXT service_id=265 ]
+         1795807180.370   949  1007 V RecentTasksController: generateList(getRecentTasks)
+         1795807180.370   949  1007 V RecentTasksController: initializeDesksMap - allDeskIds: []
+         1795807180.371   949  1007 V RecentTasksController: Task 125 is not an active desktop task
+         1795807180.371  1318  2713 D BluetoothAdapter: isLeEnabled(): ON
+         1795807180.371   949  1007 V RecentTasksController: Added fullscreen task: 125
+         1795807180.371   949  1007 V RecentTasksController: Task 122 is not an active desktop task
+         1795807180.371   949  1007 V RecentTasksController: Added fullscreen task: 122
+         1795807180.371   949  1007 V RecentTasksController: Task 103 is not an active desktop task
+         1795807180.371   949  1007 V RecentTasksController: Added fullscreen task: 103
+         1795807180.371  1318  2713 I NearbyDiscovery: ApFastPairScanner: eventType=SCREEN_OFF_FROM_DISPLAY_OBSERVER, intReq=false, scanning=true, scanAllowed=false, bleEnabled=true, lockScanRate=false, startScanningByLowPowerMode=false [CONTEXT service_id=265 ]
+         1795807180.371   949  1007 V RecentTasksController: generateList - complete
+         1795807180.371   677   703 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795807180.372  1318  2713 I NearbyDiscovery: ApFastPairScanner: Stopping scan, scan-mode=balanced [CONTEXT service_id=265 ]
+         1795807180.372  1318  2713 D BluetoothAdapter: isLeEnabled(): ON
+         1795807180.374   949  1007 V ShellDesktopMode: DesktopDisplayModeController: canDesktopFirstModeBeEnabledOnDefaultDisplay: isDefaultDisplayDesktopEligible=false
+         1795807180.374   949  1007 V WindowManagerShell: Directly starting a new transition type=CHANGE wct=WindowContainerTransaction { changes= {android.os.BinderProxy@73ac3f0={isTaskMoveAllowed:false,}} hops= [] flags= 0 errorCallbackToken=null taskFragmentOrganizer=null } handler=null
+         1795807180.374   677   731 I PowerGroup: dreamManagerAttemptedDozing status changed to true for group 0
+         1795807180.376   677   731 I PowerGroup: Sleeping power group (groupId=0, uid=1000, reason=timeout)...
+         1795807180.376   677   731 I PowerManagerService: Sleeping (uid 1000)...
+         1795807180.377  1535  1535 I PkDeviceHelper: PkDeviceHelper.refreshDevices():87 refreshing devices
+         1795807180.377   677   677 I screen_toggled: 0
+         1795807180.377   677   677 I sysui_multi_action: [757,804,799,screen_timeout,801,2147483,802,1]
+         1795807180.377  1535  1535 I PkDeviceHelper: PkDeviceHelper.addDevice():125 device qwerty2 added
+         1795807180.377  1535  1535 I PkDeviceHelper: PkDeviceHelper.addDevice():125 device AT Translated Set 2 keyboard added
+         1795807180.381  1070  1152 D PreloadThumbnailUseCase: Preloading thumbnails for task ids: [[id=103 windowingMode=0 user=0 lastActiveTime=23753] null, [id=122 windowingMode=0 user=0 lastActiveTime=23755] null, [id=125 windowingMode=1 user=0 lastActiveTime=145380] null]
+         1795807180.382   539   539 D SurfaceFlinger: Setting power mode 0 synchronously for a physical display with token 0x7e9d46c30c50
+         1795807180.383   539   539 D SurfaceFlinger: Setting power mode 0 on physical display 4619827551948147201
+         1795807180.383   539   539 D SurfaceFlinger: setPhysicalDisplayPowerModeAsync: Optimizing thread scheduling: optimizeForPower
+         1795807180.383   539   539 D SurfaceFlinger: Enabling synthetic vsync
+         1795807180.383   677   731 D BrightnessThermalClamper: Thermal status observer already started
+         1795807180.383   539   539 I SurfaceFlinger: Display 4619827259835644672 is the pacesetter
+         1795807180.383   539   539 D SurfaceFlinger: setDesiredMode 4619827259835644672 {mode={fps=60.00 Hz, modePtr={id=0, vsyncRate=60.00 Hz, peakRefreshRate=60.00 Hz}}, emitEvent=true, force=false}
+         1795807180.385   539   539 D SurfaceFlinger: Finished setting power mode 0 on physical display 4619827551948147201
+         1795807180.386   677  1144 V WindowManager: deferTransitionReady deferReadyDepth=1 stack=com.android.server.wm.WindowOrganizerController.applyTransaction:717 com.android.server.wm.WindowOrganizerController.applyTransaction:651 com.android.server.wm.WindowOrganizerController.lambda$startTransition$3:388 com.android.server.wm.WindowOrganizerController.$r8$lambda$PHnU0rj5Bcvaq0dL-Wi7kOJt8bo:0 com.android.server.wm.WindowOrganizerController$$ExternalSyntheticLambda5.onCollectStarted:0 
+         1795807180.387  1056  1328 I bt_shim_scanner: system/main/shim/le_scanning_manager.cc:150 Scan: in shim layer stopped
+         1795807180.387  1056  1296 I bluetooth: system/gd/hci/le_address_manager.cc:269 unregister_client: Client unregistered
+         1795807180.387  1056  1296 I bluetooth: system/gd/hci/le_address_manager.cc:284 unregister_client: Cancelled address rotation alarm
+         1795807180.388   677   910 I LocalDisplayAdapter: SF.setDisplayPowerMode took 6ms
+         1795807180.391   677  1144 V WindowManager: continueTransitionReady deferReadyDepth=0 stack=com.android.server.wm.WindowOrganizerController.applyTransaction:864 com.android.server.wm.WindowOrganizerController.applyTransaction:651 com.android.server.wm.WindowOrganizerController.lambda$startTransition$3:388 com.android.server.wm.WindowOrganizerController.$r8$lambda$PHnU0rj5Bcvaq0dL-Wi7kOJt8bo:0 com.android.server.wm.WindowOrganizerController$$ExternalSyntheticLambda5.onCollectStarted:0 
+         1795807180.393  1056  1328 I bt_shim_scanner: system/main/shim/le_scanning_manager.cc:182 ScanFilterParamSetup: in shim layer, clientIf=1
+         1795807180.394  1056  1328 I bt_shim_scanner: system/main/shim/le_scanning_manager.cc:182 ScanFilterParamSetup: in shim layer, clientIf=1
+         1795807180.396   677  1206 I dvm_lock_sample: [system_server,0,binder:677_E,5,BLASTSyncEngine.java,243,void com.android.server.wm.BLASTSyncEngine$SyncGroup$1CommitCallback.onCommitted(android.view.SurfaceControl$Transaction),,0,null,1]
+         1795807180.400   677   700 V WindowManager: Sent Transition (#70) createdAt=11-27 14:19:40.385
+         1795807180.400   677   700 V WindowManager:     startWCT=WindowContainerTransaction { changes= {RemoteToken{46e5b19 DefaultTaskDisplayArea@99877231}={isTaskMoveAllowed:false,}} hops= [] flags= 0 errorCallbackToken=null taskFragmentOrganizer=null }
+         1795807180.400   677   700 V WindowManager:     info={id=70 t=CHANGE f=0x0 trk=0 r=[] c=[]}
+         1795807180.410   677   677 I sysui_multi_action: [757,1594,758,4,759,-2147483647,1359,124842]
+         1795807180.410   949   949 D KeyguardViewMediator: KeyguardViewMediator queue processing message: NOTIFY_FINISHED_GOING_TO_SLEEP
+         1795807180.411   677   677 I sysui_multi_action: [757,198,758,2,759,2,1359,3791,1695,6]
+         1795807180.411   677   677 I power_screen_state: [0,2,0,0,3791]
+         1795807180.411   677   677 I power_screen_broadcast_send: 1
+         1795807180.412  1056  1328 I bt_shim_scanner: system/main/shim/le_scanning_manager.cc:144 Unregister: in shim layer, scannerId=1
+         1795807180.414   677   703 I DisplayDeviceRepository: Display device changed: DisplayDeviceInfo{"Built-in Screen": uniqueId="local:4619827551948147201", 1080 x 2520, modeId 2, renderFrameRate 60.000004, hasArrSupport false, frameRateCategoryRate FrameRateCategoryRate {normal=60.0, high=90.0}, supportedRefreshRates [60.000004, 30.000002, 20.0], defaultModeId 2, userPreferredModeId -1, supportedModes [{id=2, parentModeId=-1, sfModeId=0, flags=, width=1080, height=2520, fps=60.000004, vsync=60.000004, alternativeRefreshRates=[], supportedHdrTypes=[]}], colorMode 0, supportedColorModes [0
+         1795807180.414   949  1533 V WindowManagerShell: onTransitionReady(transaction=2907692868048)
+         1795807180.416   949  1007 V WindowManagerShell: onTransitionReady (#70) android.os.BinderProxy@f101910: {id=70 t=CHANGE f=0x0 trk=0 r=[] c=[]}
+         1795807180.418   677   703 I DisplayDeviceRepository: Display device same: DisplayDeviceInfo{"Built-in Screen": uniqueId="local:4619827551948147201", 1080 x 2520, modeId 2, renderFrameRate 60.000004, hasArrSupport false, frameRateCategoryRate FrameRateCategoryRate {normal=60.0, high=90.0}, supportedRefreshRates [60.000004, 30.000002, 20.0], defaultModeId 2, userPreferredModeId -1, supportedModes [{id=2, parentModeId=-1, sfModeId=0, flags=, width=1080, height=2520, fps=60.000004, vsync=60.000004, alternativeRefreshRates=[], supportedHdrTypes=[]}], colorMode 0, supportedColorModes [0], 
+         1795807180.431   677   703 I InputManager-JNI: Viewport [0] to add: local:4619827259835644672, isActive: false
+         1795807180.431   677   703 I InputManager-JNI: Viewport [1] to add: local:4619827551948147201, isActive: false
+         1795807180.432   677   701 D WindowManager: DeferredDisplayUpdater: partially applying DisplayInfo(1080 x 2520) immediately
+         1795807180.432   677   786 I InputReader: Reconfiguring input devices, changes=DISPLAY_INFO
+         1795807180.432   677   786 I InputReader: Touch device 'virtio_input_multi_touch_11' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.432   677   786 I InputReader: Touch device 'virtio_input_multi_touch_10' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.432   677   786 I InputReader: Touch device 'virtio_input_multi_touch_9' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.432   677   786 I InputReader: Touch device 'virtio_input_multi_touch_8' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.432   677   786 I InputReader: Disabling virtio_input_multi_touch_7 (device 10) because the associated viewport is not active
+         1795807180.433   677   786 I InputReader: Device reconfigured: id=10, name='virtio_input_multi_touch_7', size 32768x32768, orientation Rotation0, mode DISABLED, display id 2
+         1795807180.433   677   786 I InputReader: Touch device 'virtio_input_multi_touch_6' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.433   677   786 I InputReader: Touch device 'virtio_input_multi_touch_5' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.433   677   786 I InputReader: Touch device 'virtio_input_multi_touch_4' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.433   677   701 D WindowManager: Remove SleepToken: tag=Display-off, displayId=2
+         1795807180.433   677   786 I InputReader: Touch device 'virtio_input_multi_touch_3' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.433   677   786 I InputReader: Touch device 'virtio_input_multi_touch_2' could not query the properties of its associated display.  The device will be inoperable until the display size becomes available.
+         1795807180.433   677   786 W InputReaderBase: Found 2 viewports with type INTERNAL, but expected 1 at most
+         1795807180.433   677   786 I InputReader: Disabling virtio_input_multi_touch_1 (device 4) because the associated viewport is not active
+         1795807180.433   677   701 D WindowManager: Remove non-existent sleep token: Display-off from com.android.server.wm.DisplayContent.onDisplayInfoUpdated:6543 com.android.server.wm.DeferredDisplayUpdater.applyLatestDisplayInfo:341 com.android.server.wm.DeferredDisplayUpdater.updateDisplayInfo:202 com.android.server.wm.DisplayContent.requestDisplayUpdate:6526 com.android.server.wm.RootWindowContainer.onDisplayChanged:2889 android.hardware.display.DisplayManagerGlobal$DisplayListenerDelegate.handleDisplayEventInner:1845 
+         1795807180.433   677   701 V WindowManager: Content Recording: Display 2 state was (2), is now (2), so update recording?
+         1795807180.433   677   701 D WindowManager: DeferredDisplayUpdater: deferring DisplayInfo(1080 x 2520) update
+         1795807180.433   677   701 D WindowManager: DeferredDisplayUpdater: applying DisplayInfo(1080 x 2520) after deferring
+         1795807180.433   677   701 D WindowManager: Add SleepToken: tag=Display-off, displayId=2
+         1795807180.434   677   701 I wm_pause_activity: [0,65740071,com.google.android.apps.nexuslauncher/com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher,userLeaving=false,sleep]
+         1795807180.434   677   701 D ActivityTaskManager: Top Process State changed to PROCESS_STATE_TOP_SLEEPING
+         1795807180.436   677   701 V WindowManager: Content Recording: Display 2 state was (2), is now (1), so update recording?
+         1795807180.436   677   701 V WindowManager: Aborting Transition: 71
+         1795807180.437   949  1007 V WindowManagerShell: No transition roots in (#70) android.os.BinderProxy@f101910@0 so abort
+         1795807180.438   677   701 W SurfaceControl: Invalid layer stack -1
+         1795807180.438   677   701 I DisplayDevice: [2] Layerstack set to -1 for local:4619827551948147201
+         1795807180.442   677   731 D BrightnessThermalClamper: Thermal status observer already started
+         1795807180.455   949  1164 D StylusManager: Stylus InputDevice changed: 4 virtio_input_multi_touch_1
+         1795807180.463  1535 31985 I DeviceStatusMonitor: DeviceStatusMonitor.handleBroadcast():135 onReceive() : Action = android.intent.action.SCREEN_OFF
+         1795807180.464  1535 31985 I DeviceStatusMonitor: DeviceStatusMonitor.updateCountryInfo():151 updateCountryInfo(), notifyAnyway = false
+         1795807180.467  1070  1070 I viewroot_draw_event: [VRI[Taskbar]d17da1f,Not drawing due to screen off]
+         1795807180.468  1535  1535 I Module  : DeviceLockedStatusModuleProvider$Module.updateDeviceLockedStatus():103 repeatCheckTimes = 0, locked = false
+         1795807180.471  1070  1070 D BaseActivity: Launcher flags updated: [state_started|state_user_active] -[state_resumed]
+         1795807180.474  1070  1070 I wm_on_paused_called: [65740071,com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher,performPause,3]
+         1795807180.475  1535  1535 I InputBundle: InputBundle.consumeEvent():1047 Skip consuming an event as imeStatus is INACTIVE
+         1795807180.477  1535  1535 I InputBundle: InputBundle.switchToKeyboardDirectly():529 switchToKeyboardDirectly(): ocu[keyboardType=prime, payload=null]
+         1795807180.477  1535  1535 I InputBundle: InputBundle.switchToKeyboardDirectly():529 switchToKeyboardDirectly(): ocu[keyboardType=prime, payload=null]
+         1795807180.477  1535  1535 I InputBundle: InputBundle.switchToKeyboardDirectly():529 switchToKeyboardDirectly(): ocu[keyboardType=prime, payload=null]
+         1795807180.477   473   506 I netd    : tetherGetStats() -> {[]} <3.78ms>
+         1795807180.478   949  1007 V WindowManagerShell: Transition animation finished (aborted=true), notifying core (#70) android.os.BinderProxy@f101910@0
+         1795807180.479  1535  1535 I InputBundle: InputBundle.switchToKeyboardDirectly():529 switchToKeyboardDirectly(): ocu[keyboardType=prime, payload=null]
+         1795807180.479  1535  1535 I InputBundle: InputBundle.switchToKeyboardDirectly():529 switchToKeyboardDirectly(): ocu[keyboardType=prime, payload=null]
+         1795807180.479  1535  1535 I InputBundle: InputBundle.switchToKeyboardDirectly():529 switchToKeyboardDirectly(): ocu[keyboardType=prime, payload=null]
+         1795807180.486   949   949 D SystemEventDataSource: onReceive: intentAction
+         1795807180.488   677   677 I PowerManagerService: onFlip(): Face up.
+         1795807180.490   949  1228 E ServiceManager: error in isDeclared
+         1795807180.490   949  1228 E ServiceManager: java.lang.SecurityException: SELinux denied for service.
+         1795807180.490   949  1228 E ServiceManager: 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3392)
+         1795807180.490   949  1228 E ServiceManager: 	at android.os.Parcel.createException(Parcel.java:3376)
+         1795807180.490   949  1228 E ServiceManager: 	at android.os.Parcel.readException(Parcel.java:3359)
+         1795807180.490   949  1228 E ServiceManager: 	at android.os.Parcel.readException(Parcel.java:3301)
+         1795807180.490   949  1228 E ServiceManager: 	at android.os.IServiceManager$Stub$Proxy.isDeclared(IServiceManager.java:688)
+         1795807180.490   949  1228 E ServiceManager: 	at android.os.ServiceManagerProxy.isDeclared(ServiceManagerNative.java:104)
+         1795807180.490   949  1228 E ServiceManager: 	at android.os.ServiceManager.isDeclared(ServiceManager.java:261)
+         1795807180.490   949  1228 E ServiceManager: 	at android.os.ServiceManager.waitForDeclaredService(ServiceManager.java:317)
+         1795807180.490   949  1228 E ServiceManager: 	at com.google.android.systemui.googlebattery.GoogleBatteryManager.initHalInterface(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:14)
+         1795807180.490   949  1228 E ServiceManager: 	at com.google.android.systemui.power.batteryevent.repository.SystemEventDataSource$processIntent$2.invokeSuspend(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:144)
+         1795807180.490   949  1228 E ServiceManager: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:7)
+         1795807180.490   949  1228 E ServiceManager: 	at kotlinx.coroutines.DispatchedTask.run(go/retraceme c3274dba9613c14089c884cae516646c18fdc40b5a0d777658c4d309489fa7a2:111)
+         1795807180.490   949  1228 E ServiceManager: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1100)
+         1795807180.490   949  1228 E ServiceManager: 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:624)
+         1795807180.490   949  1228 E ServiceManager: 	at java.lang.Thread.run(Thread.java:1572)
+         1795807180.498   949  1228 D SystemEventDataSource: updatedEventData: SystemEventData(intentAction=android.intent.action.SCREEN_OFF, plugged=EventData(value=1), batteryScale=EventData(value=100), batteryLevel=EventData(value=100), chargingStatus=EventData(value=0), maxChargingCurrent=EventData(value=5000000), maxChargingVoltage=EventData(value=5000000), batteryStatus=EventData(value=2), halEventData=HalEventData(dockDefendStatus=EventData(value=0), tempDefendEventData=EventData(value=false), dwellDefendEventData=EventData(value=false)), settingsEventData=SettingsEventData(dockDefender
+         1795807180.499   949  1228 D ChargingLimitEventModule: validate()=false, chargingStatus=0
+         1795807180.499   949  1228 D DwellDefendBatteryModule: validate: false -> false
+         1795807180.500   949  1228 D TempDefendBatteryModule: validate: false -> false
+         1795807180.500   949  1228 D BatteryEventService: collect BatteryEvents: BatteryEvents(eventTypes=[FULL_CHARGED, FAST_CHARGING], batteryLevel=100, pluggedType=1)
+         1795807180.501   949  1228 D BatteryEventService: notifyForBatteryEventsUpdate: BatteryEvents(eventTypes=[FULL_CHARGED, FAST_CHARGING], batteryLevel=100, pluggedType=1)
+         1795807180.501   677   700 V WindowManager: Finish Transition (#70): created at 11-27 14:19:40.385 collect-started=0.113ms started=0.169ms ready=7.064ms sent=7.922ms commit=96.779ms finished=113.223ms
+         1795807180.501   949  1228 D BatteryEventService: AIDL callback listeners count: 1
+         1795807180.501   949  1228 D BatteryEventService: notify AIDL callback to null, cost: 0 ms
+         1795807180.503   949  1228 I BatteryEventService: notify all AIDL callbacks, cost: 2 ms
+         1795807180.503   949  1228 D BatteryEventService: BatteryEventsListener (broadcast) count: 0
+         1795807180.503   949  1228 I BatteryEventService: notify all broadcast intent, cost: 0 ms
+         1795807180.503   949  1228 D BatteryEventService: AIDL data callback listeners count: 0
+         1795807180.508  1043  1287 D SatelliteController: handleCmdUpdateNtnSignalStrengthReporting: ignore request, satellite is disabled
+         1795807180.508  1043  1287 D SatelliteController: handleEventScreenStateChanged: false
+         1795807180.516   949  1312 D WallpaperService: onVisibilityChanged(false): com.android.systemui.wallpapers.ImageWallpaper$CanvasEngine@6aa12b3
+         1795807180.523   949  1007 V WindowManagerShell: Track 0 became idle
+         1795807180.523   677  1144 I wm_add_to_stopping: [0,65740071,com.google.android.apps.nexuslauncher/com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher,completePauseLocked]
+         1795807180.524   949  1007 V WindowManagerShell: All active transition animations finished
+         1795807180.525   949  1007 W Looper  : Slow dispatch took 109ms wmshell.main app=com.android.systemui main=false group=FOREGROUND h=android.os.Handler c=com.android.wm.shell.transition.Transitions$TransitionPlayerImpl$$ExternalSyntheticLambda1@e9d0fc5 m=0
+         1795807180.526   949  1007 W Looper  : Slow delivery took 85ms wmshell.main app=com.android.systemui main=false group=FOREGROUND h=android.os.Handler c=android.hardware.display.DisplayManagerGlobal$DisplayListenerDelegate$$ExternalSyntheticLambda0@b0bed1a m=0
+         1795807180.529  1070  1070 D TouchInteractionService: InputResource not available for displayId 0
+         1795807180.530   949  1007 W Looper  : Drained
+         1795807180.530  1070  1070 D LauncherStateManager: StateManager.goToState: fromState: Normal, toState: Normal, partial trace:
+         1795807180.530  1070  1070 D LauncherStateManager: 	at com.android.launcher3.Launcher$$ExternalSyntheticLambda22.onScreenOnChanged(go/retraceme dc5b05c43537c6aa1d671c685c710819682fcc95b6af33c0ce7f88e1808452b7:37)
+         1795807180.530  1070  1070 D LauncherStateManager: 	at com.android.launcher3.util.ScreenOnTracker$$ExternalSyntheticLambda2.accept(go/retraceme dc5b05c43537c6aa1d671c685c710819682fcc95b6af33c0ce7f88e1808452b7:11)
+         1795807180.530  1070  1070 D LauncherStateManager: 	at java.util.concurrent.CopyOnWriteArrayList.forEach(CopyOnWriteArrayList.java:909)
+         1795807180.531  1070  1070 D LauncherStateManager: StateManager.onRepeatStateSetAborted: state: Normal
+         1795807180.531   677   700 I sysui_multi_action: [757,803,799,window_time_0,802,1]
+         1795807180.534  1070  1070 I viewroot_draw_event: [VRI[Taskbar]7d8cbc2,Not drawing due to screen off]
+         1795807180.534  1070  1070 D VRI[SecondaryDisplayLauncher]: visibilityChanged oldVisibility=true newVisibility=false
+         1795807180.546   677  1274 I dvm_lock_sample: [system_server,1,binder:677_10,26,ActivityTaskManagerService.java,4646,int com.android.server.wm.ActivityTaskManagerService.getLastResumedActivityUserId(),,0,null,5]
+         1795807180.550   677   704 I wm_wallpaper_surface: [2,0,null]
+         1795807180.558   677   703 W libbinder.IPCThreadState: Sending oneway calls to frozen process.
+         1795807180.564   949  1007 V ShellDesktopMode: DesktopDisplayModeController: canDesktopFirstModeBeEnabledOnDefaultDisplay: isDefaultDisplayDesktopEligible=false
+         1795807180.564  1070  1070 I viewroot_draw_event: [VRI[SecondaryDisplayLauncher]59890e7,Not drawing due to not visible. Reason=!mAppVisible && !mForceDecorViewVisibility]
+         1795807180.566   677   703 I wm_stop_activity: [0,65740071,com.google.android.apps.nexuslauncher/com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher]
+         1795807180.577   949  1007 V WindowManagerShell: Directly starting a new transition type=CHANGE wct=WindowContainerTransaction { changes= {android.os.BinderProxy@73ac3f0={isTaskMoveAllowed:false,}} hops= [] flags= 0 errorCallbackToken=null taskFragmentOrganizer=null } handler=null
+         1795807180.579  1535  1535 I PkDeviceHelper: PkDeviceHelper.refreshDevices():87 refreshing devices
+         1795807180.579  1535  1535 I PkDeviceHelper: PkDeviceHelper.addDevice():125 device qwerty2 added
+         1795807180.579  1535  1535 I PkDeviceHelper: PkDeviceHelper.addDevice():125 device AT Translated Set 2 keyboard added
+         1795807180.581  1318  2214 I ActivityScheduler: nextTriggerTime: 1517270, in 17085ms, detectorType: 39, FULL_TYPE alarmWindowMillis: 20000
+         1795807180.582  1070  1070 D BaseActivity: Launcher flags updated: [] -[state_started|state_user_active]
+         1795807180.582  1070  1070 I wm_on_stop_called: [65740071,com.android.launcher3.secondarydisplay.SecondaryDisplayLauncher,STOP_ACTIVITY_ITEM,0]
+         1795807180.582   677  1918 V WindowManager: deferTransitionReady deferReadyDepth=1 stack=com.android.server.wm.WindowOrganizerController.applyTransaction:717 com.android.server.wm.WindowOrganizerController.applyTransaction:651 com.android.server.wm.WindowOrganizerController.lambda$startTransition$3:388 com.android.server.wm.WindowOrganizerController.$r8$lambda$PHnU0rj5Bcvaq0dL-Wi7kOJt8bo:0 com.android.server.wm.WindowOrganizerController$$ExternalSyntheticLambda5.onCollectStarted:0 
+         1795807180.589   949  1164 D StylusManager: Stylus InputDevice changed: 10 virtio_input_multi_touch_7
+         1795807180.589   677  1918 V WindowManager: continueTransitionReady deferReadyDepth=0 stack=com.android.server.wm.WindowOrganizerController.applyTransaction:864 com.android.server.wm.WindowOrganizerController.applyTransaction:651 com.android.server.wm.WindowOrganizerController.lambda$startTransition$3:388 com.android.server.wm.WindowOrganizerController.$r8$lambda$PHnU0rj5Bcvaq0dL-Wi7kOJt8bo:0 com.android.server.wm.WindowOrganizerController$$ExternalSyntheticLambda5.onCollectStarted:0 
+         1795807180.592   677  1737 I WifiService: getWifiEnabledState uid=10234 state=3
+         1795807180.592   949  1532 V WindowManagerShell: onTransitionReady(transaction=2907692868112)
+         1795807180.594   677  1948 I WifiService: getConnectionInfo uid=10234
+         1795807180.595   677  1948 V WifiPermissionsUtil: checkCallersLocationPermission(jp.net.seventhreeseven.dreamscape): ok because uid 10234 has app-op android:fine_location
+         1795807180.595   677  1948 V WifiService: Clearing REDACT_FOR_ACCESS_FINE_LOCATION for jp.net.seventhreeseven.dreamscape(uid=10234)
+         1795807180.595   949  1007 W Looper  : Slow dispatch took 31ms wmshell.main app=com.android.systemui main=false group=FOREGROUND h=android.hardware.input.InputManagerGlobal$InputDeviceListenerDelegate c=null m=3
+         1795807180.595   949  1007 V WindowManagerShell: onTransitionReady (#72) android.os.BinderProxy@26e104b: {id=72 t=CHANGE f=0x0 trk=0 r=[] c=[]}
+         1795807180.596   949  1007 V WindowManagerShell: No transition roots in (#72) android.os.BinderProxy@26e104b@0 so abort
+         1795807180.597   949  1007 V WindowManagerShell: Transition animation finished (aborted=true), notifying core (#72) android.os.BinderProxy@26e104b@0
+         1795807180.598   677   700 V WindowManager: Sent Transition (#72) createdAt=11-27 14:19:40.582
+         1795807180.598   677   700 V WindowManager:     startWCT=WindowContainerTransaction { changes= {RemoteToken{46e5b19 DefaultTaskDisplayArea@99877231}={isTaskMoveAllowed:false,}} hops= [] flags= 0 errorCallbackToken=null taskFragmentOrganizer=null }
+         1795807180.598   677   700 V WindowManager:     info={id=72 t=CHANGE f=0x0 trk=0 r=[] c=[]}
+         1795807180.601   677   700 V WindowManager: Finish Transition (#72): created at 11-27 14:19:40.582 collect-started=0.093ms started=0.156ms ready=7.832ms sent=9.044ms finished=17.808ms
+         1795807180.603   949  1007 V WindowManagerShell: Track 0 became idle
+         1795807180.603   949  1007 V WindowManagerShell: All active transition animations finished
+         1795807180.613   677   703 I dvm_lock_sample: [system_server,1,android.display,5,AccessibilityController.java,240,void com.android.server.wm.AccessibilityController.performComputeChangedWindowsNot(int, boolean),ActivityClientController.java,291,void com.android.server.wm.ActivityClientController.activityStopped(android.os.IBinder, android.os.Bundle, android.os.PersistableBundle, android.app.HandoffActivityData, java.lang.CharSequence),1]
+         1795807180.618  1318  2713 I NearbyDiscovery: FastPairHandler: Received action android.intent.action.SCREEN_OFF [CONTEXT service_id=265 ]
+         1795807180.626  1318  2713 I NearbyDiscovery: ApFastPairScanner: isScreenOn=false, isLocationEnabled=true, disableLocationRequirement=true, isDiscoveryScanningEnabled=true, during24GhzWifiWarmingUpPeriod=false [CONTEXT service_id=265 ]
+         1795807180.627  1318  2713 D BluetoothAdapter: isLeEnabled(): ON
+         1795807180.627  1318  2713 I NearbyDiscovery: ApFastPairScanner: eventType=SCREEN_OFF, intReq=false, scanning=false, scanAllowed=false, bleEnabled=true, lockScanRate=false, startScanningByLowPowerMode=false [CONTEXT service_id=265 ]
+         1795807180.628  1318  2713 I NearbyDiscovery: FastPairController: onSystemStateChanged: skip due to flag disabled [CONTEXT service_id=265 ]
+         1795807180.632   949  1007 V RecentTasksController: Notify recent tasks changed
+         1795807180.640   949  1007 V RecentTasksController: generateList(getRecentTasks)
+         1795807180.640   949  1007 V RecentTasksController: initializeDesksMap - allDeskIds: []
+         1795807180.640   949  1007 V RecentTasksController: Task 125 is not an active desktop task
+         1795807180.640   949  1007 V RecentTasksController: Added fullscreen task: 125
+         1795807180.640   949  1007 V RecentTasksController: Task 122 is not an active desktop task
+         1795807180.640   949  1007 V RecentTasksController: Added fullscreen task: 122
+         1795807180.640   949  1007 V RecentTasksController: Task 103 is not an active desktop task
+         1795807180.640   949  1007 V RecentTasksController: Added fullscreen task: 103
+         1795807180.640   949  1007 V RecentTasksController: generateList - complete
+         1795807180.650   677   677 I battery_saving_stats: [0,1,0,125008,0,0,1136137,0,0]
+         1795807180.650  1070  1070 D RecentTasksList: invalidateLoadedTasks - previous requestLoadId: 19
+         1795807180.651  1070  1070 V TaskbarRecentAppsController: reloadRecentTasksIfNeeded: load recents tasks
+         1795807180.651  1070  1070 V TaskbarRecentAppsController: reloadRecentTasksIfNeeded: load recents tasks
+         1795807180.654  1070  1152 D PreloadThumbnailUseCase: Preloading thumbnails for task ids: [[id=103 windowingMode=0 user=0 lastActiveTime=23753] null, [id=122 windowingMode=0 user=0 lastActiveTime=23755] null, [id=125 windowingMode=1 user=0 lastActiveTime=145380] null]
+         1795807180.657  1070  1096 W System  : A resource failed to call release. 
+         1795807180.658  1070  1096 W System  : A resource failed to call release. 
+         1795807180.661   949  1007 V RecentTasksController: generateList(getRecentTasks)
+         1795807180.662   949  1007 V RecentTasksController: initializeDesksMap - allDeskIds: []
+         1795807180.662   949  1007 V RecentTasksController: Task 125 is not an active desktop task
+         1795807180.662   949  1007 V RecentTasksController: Added fullscreen task: 125
+         1795807180.662   949  1007 V RecentTasksController: Task 122 is not an active desktop task
+         1795807180.662   949  1007 V RecentTasksController: Added fullscreen task: 122
+         1795807180.662   949  1007 V RecentTasksController: Task 103 is not an active desktop task
+         1795807180.662   949  1007 V RecentTasksController: Added fullscreen task: 103
+         1795807180.662   949  1007 V RecentTasksController: Task 11 is not an active desktop task
+         1795807180.662   949  1007 V RecentTasksController: Added fullscreen task: 11
+         1795807180.662   949  1007 V RecentTasksController: generateList - complete
+         1795807180.665   677   836 V WifiConnectivityManager: handleScreenStateChanged: screenOn=false
+         1795807180.665   677   836 V WifiConnectivityManager: startConnectivityScan: screenOn=false wifiState=connected scanImmediately=false wifiEnabled=true mAutoJoinEnabled=true mAutoJoinEnabledExternal=true mAutoJoinEnabledExternalSetByDeviceAdmin=false mPnoScanEnabledByFramework=true mEnablePnoScanAfterWifiToggle=true mSpecificNetworkRequestInProgress=false mTrustedConnectionAllowed=true isSufficiencyCheckEnabled=true isAssociatedNetworkSelectionEnabled=true noPotentialNetworkAvailable=false
+         1795807180.665   677   836 V WifiConnectivityManager: cancelPeriodicScanTimer
+         1795807180.665   677   836 D WifiLockManager: handleScreenStateChanged: screenOn = false
+         1795807180.665   677   836 D WifiDialogManager: onScreenStateChanged: screen off
+         1795807180.666   677   836 D WifiClientModeImpl[15613:wlan0]:  handleScreenStateChanged Enter: screenOn=false mSuspendOptimizationsEnabled=true state L3ConnectedState
+         1795807180.666   677   836 D WifiClientModeImpl[15613:wlan0]: handleScreenStateChanged Exit: false
+         1795807180.666   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$ConnectableState screen=off 0 0
+         1795807180.667   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$L2ConnectedState screen=off 0 0
+         1795807180.667   677   836 D WifiClientModeImpl[15613:wlan0]: setSuspendOptimizationsNative: 4 true -want true stack:setSuspendOptimizationsNative - -$$Nest$msetSuspendOptimizationsNative - processMessageImpl - processMessage
+         1795807180.667   677   836 D WifiClientModeImpl[15613:wlan0]: setSuspendOptimizationsNative do it 4 true stack:setSuspendOptimizationsNative - -$$Nest$msetSuspendOptimizationsNative - processMessageImpl - processMessage
+         1795807180.670   677   836 D WifiClientModeImpl[15613:wlan0]:  ClientModeImpl$ConnectableState screen=off 1 1
+         1795807180.673  1070  1152 D RecentTasksList: loadTasksInBackground - isDeviceLocked(0): false
+         1795807180.673  1070  1152 D RecentTasksList: getTasks - loadTasksInBackground: 20
+         1795807180.674  1070  1070 D RecentTasksList: getTasks - updating mResultsUi: 20
+         1795807180.674  1070  1070 D RecentTasksList: getTasks - updating mResultsUi: 20
+         1795807180.725   677   700 I power_screen_broadcast_done: [0,313,1]
+         1795807180.958   378   378 I tombstoned: received crash request for pid 677
+         1795807180.964   677   686 I system_server: Wrote stack traces to tombstoned
+         1795807180.964   378   378 E tombstoned: Traces for pid 677 written to: trace_39
+         1795807181.213   949  1416 V WindowManagerShell: onTransitionReady(transaction=2907692868152)
+         1795807181.214   949  1007 V WindowManagerShell: Transition requested (#73): android.os.BinderProxy@6d5fa28 TransitionRequestInfo { type = SLEEP, triggerTask = null, pipChange = null, remoteTransitionInfo = null, displayChanges = null, requestedLocation = null, userChange = null, windowingLayerChange = null, fullscreenRequestChange = null, flags = 0, debugId = 73 }
+         1795807181.215   677  2041 W Transition: Transition already started id=73 state=2
+         1795807181.215   677   700 V WindowManager: Sent Transition (#73) createdAt=11-27 14:19:41.211 via request=TransitionRequestInfo { type = SLEEP, triggerTask = null, pipChange = null, remoteTransitionInfo = null, displayChanges = null, requestedLocation = null, userChange = null, windowingLayerChange = null, fullscreenRequestChange = null, flags = 0, debugId = 73 }
+         1795807181.215   677   700 V WindowManager:     startWCT=WindowContainerTransaction { changes= {} hops= [] flags= 0 errorCallbackToken=null taskFragmentOrganizer=null }
+         1795807181.215   677   700 V WindowManager:     info={id=73 t=SLEEP f=0x0 trk=0 r=[] c=[]}
+         1795807181.217   949  1007 V WindowManagerShell: onTransitionReady (#73) android.os.BinderProxy@6d5fa28: {id=73 t=SLEEP f=0x0 trk=0 r=[] c=[]}
+         1795807181.217   949  1007 V WindowManagerShell: No transition roots in (#73) android.os.BinderProxy@6d5fa28@0 so abort
+         1795807181.219   949  1007 V WindowManagerShell: Transition animation finished (aborted=true), notifying core (#73) android.os.BinderProxy@6d5fa28@0
+         1795807181.222   677   700 V WindowManager: Finish Transition (#73): created at 11-27 14:19:41.211 collect-started=0.076ms request-sent=0.154ms started=0.424ms ready=0.403ms sent=0.621ms commit=10.222ms finished=10.228ms
+         1795807181.223   949  1007 V WindowManagerShell: Track 0 became idle
+         1795807181.223   949  1007 V WindowManagerShell: All active transition animations finished
+         1795807182.652 26466 26479 I even.dreamscape: Thread[2,tid=26479,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a13b20,peer=0x2000a28,"Signal Catcher"]: reacting to signal 3
+         1795807182.652 26466 26479 I even.dreamscape: 
+         1795807182.677 32394 32394 W libprocessgroup: A JoinCgroup action in the SystemMemoryProcess profile is used for controller memory in the cgroup v2 hierarchy and will be ignored
+         1795807182.677 32394 32394 I debuggerd: libdebuggerd_client: started dumping process 26466
+         1795807182.678   378   378 I tombstoned: registered intercept for pid 26466 and type kDebuggerdNativeBacktrace
+         1795807182.678 26466 26466 I libc    : Requested dump for pid 26466 (even.dreamscape)
+         1795807182.766 32397 32397 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1795807182.766   378   378 I tombstoned: received crash request for pid 26466
+         1795807182.766   378   378 I tombstoned: found intercept fd 512 for pid 26466 and type kDebuggerdNativeBacktrace
+         1795807182.766 32397 32397 I crash_dump64: performing dump of process 26466 (target tid = 26466)
+         1795807182.810   378   378 I tombstoned: received crash request for pid 26466
+         1795807182.813 26466 26479 I even.dreamscape: Wrote stack traces to tombstoned
+         1795807182.814   378   378 E tombstoned: Traces for pid 26466 written to: trace_40
+         1795807182.849 32394 32394 I debuggerd: libdebuggerd_client: done dumping process 26466
+         1795807182.849   378   378 W tombstoned: skipping tombstone file creation due to intercept
+         1795807185.479  1070  1138 I jank_cuj_events_begin_request: [61,1795807185478966000,1505083159900,1505083170000,Stashed in app]
+         1795807186.097  1070  1138 I jank_cuj_events_end_request: [61,1795807186096920000,1505701120600,1505701132900]
+         1795807187.461  1043  1287 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795807187.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795807187.462  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807187.462  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807187.462  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807187.463  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795807187.463  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795807187.463  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807187.463  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807187.463  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795807187.465  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795807187.465  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807187.465  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807187.465  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807187.465  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795807187.465  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807187.465  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807187.465  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807187.467  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795807187.468  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795807187.469  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807187.469  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807187.469  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795807187.469  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795807187.469  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807187.469  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807187.469  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807187.471 26466 26466 I NativeBar: android icons: {data=wifi-connected, battery=battery-charging, signal=signal-1}
+         1795807187.489 26466 26466 I viewroot_draw_event: [VRI[MelatonBar]2b4d3ee,Not drawing due to screen off]
+         1795807188.888   677   686 I system_server: Thread[2,tid=686,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a10380,peer=0x2007bd8,"Signal Catcher"]: reacting to signal 3
+         1795807188.888   677   686 I system_server: 
+         1795807189.019   677   867 E system_server: poll() failed: Interrupted system call, sleeping 100ms
+         1795807189.041   677   689 W system_server: Suspending all threads took: 5.721ms
+         1795807189.091   677   689 I system_server: Background young concurrent mark compact GC freed 22MB AllocSpace bytes, 7(140KB) LOS objects, 38% free, 35MB/58MB, paused 7.840ms,1.942ms total 84.703ms
+         1795807189.365   378   378 I tombstoned: received crash request for pid 677
+         1795807189.370   677   686 I system_server: Wrote stack traces to tombstoned
+         1795807189.370   378   378 E tombstoned: Traces for pid 677 written to: trace_41
+         1795807190.709  1318  3142 I NearbyPresence: dnnz verified [==] new request BroadcastEngineRequest:<priority: 400, identityManager: null, broadcastOobContext: BroadcastOobContext:<peerDevice: {}, localUwbCapabilities: {}, peerUwbConnectionInfoMap: {}, tcpServerPort: null, AdvertisementMaps: {}, dedupHint: [-44, -32, -121, -115, 111, 69, -10, 98], isNetworkConnected: true, isBluetoothEnabled true, workSource=WorkSource{}> equals to the old request [CONTEXT service_id=317 ]
+         1795807190.709  1318  3142 I NearbyPresence: dnov verified [==] new request BroadcastEngineRequest:<priority: 400, identityManager: null, broadcastOobContext: BroadcastOobContext:<peerDevice: {}, localUwbCapabilities: {}, peerUwbConnectionInfoMap: {}, tcpServerPort: null, AdvertisementMaps: {}, dedupHint: [-44, -32, -121, -115, 111, 69, -10, 98], isNetworkConnected: true, isBluetoothEnabled true, workSource=WorkSource{}> equals to the old request [CONTEXT service_id=317 ]
+         1795807190.744   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,Not drawing due to screen off]
+         1795807190.745   949  1333 I viewroot_draw_event: [VRI[PrivacyDotTopRight2]bbb556a,Not drawing due to screen off]
+         1795807190.843 26466 26479 I even.dreamscape: Thread[2,tid=26479,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a13b20,peer=0x2000a28,"Signal Catcher"]: reacting to signal 3
+         1795807190.843 26466 26479 I even.dreamscape: 
+         1795807190.869  1472  1472 W libprocessgroup: A JoinCgroup action in the SystemMemoryProcess profile is used for controller memory in the cgroup v2 hierarchy and will be ignored
+         1795807190.869  1472  1472 I debuggerd: libdebuggerd_client: started dumping process 26466
+         1795807190.869   378   378 I tombstoned: registered intercept for pid 26466 and type kDebuggerdNativeBacktrace
+         1795807190.869 26466 26466 I libc    : Requested dump for pid 26466 (even.dreamscape)
+         1795807190.949  1496  1496 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1795807190.949   378   378 I tombstoned: received crash request for pid 26466
+         1795807190.949   378   378 I tombstoned: found intercept fd 512 for pid 26466 and type kDebuggerdNativeBacktrace
+         1795807190.950  1496  1496 I crash_dump64: performing dump of process 26466 (target tid = 26466)
+         1795807190.967   949  1333 I viewroot_draw_event: [VRI[ScreenDecorOverlay]5a52fde,Not drawing due to not visible. Reason=View.INVISIBLE]
+         1795807190.996   378   378 I tombstoned: received crash request for pid 26466
+         1795807191.002 26466 26479 I even.dreamscape: Wrote stack traces to tombstoned
+         1795807191.003   378   378 E tombstoned: Traces for pid 26466 written to: trace_42
+         1795807191.028  1472  1472 I debuggerd: libdebuggerd_client: done dumping process 26466
+         1795807191.028   378   378 W tombstoned: skipping tombstone file creation due to intercept
+         1795807192.331 26466 26466 I MelatonBars: translucent check for com.google.android.apps.nexuslauncher: no screenshot (1), solid bar
+         1795807195.554   677   770 W CpuMonitorService: Current CPU frequency (4302412) is greater than maximum CPU frequency (2) for policy ID (3). Skipping CPU frequency policy
+         1795807197.461  1043  1287 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795807197.461  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795807197.461  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807197.461  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807197.461  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807197.462  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795807197.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795807197.462  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807197.462  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807197.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795807197.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795807197.462  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807197.462  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807197.462  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807197.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795807197.462  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807197.462  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807197.462  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807197.462  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795807197.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795807197.462  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807197.462  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807197.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795807197.463  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795807197.463  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807197.463  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807197.463  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807198.067   677   686 I system_server: Thread[2,tid=686,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a10380,peer=0x2007bd8,"Signal Catcher"]: reacting to signal 3
+         1795807198.068   677   686 I system_server: 
+         1795807198.242   677   867 E system_server: poll() failed: Interrupted system call, sleeping 100ms
+         1795807198.596   378   378 I tombstoned: received crash request for pid 677
+         1795807198.601   677   686 I system_server: Wrote stack traces to tombstoned
+         1795807198.601   378   378 E tombstoned: Traces for pid 677 written to: trace_43
+         1795807200.098 26466 26479 I even.dreamscape: Thread[2,tid=26479,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a13b20,peer=0x2000a28,"Signal Catcher"]: reacting to signal 3
+         1795807200.098 26466 26479 I even.dreamscape: 
+         1795807200.119  3628  3628 W libprocessgroup: A JoinCgroup action in the SystemMemoryProcess profile is used for controller memory in the cgroup v2 hierarchy and will be ignored
+         1795807200.119  3628  3628 I debuggerd: libdebuggerd_client: started dumping process 26466
+         1795807200.119   378   378 I tombstoned: registered intercept for pid 26466 and type kDebuggerdNativeBacktrace
+         1795807200.119 26466 26466 I libc    : Requested dump for pid 26466 (even.dreamscape)
+         1795807200.199  3634  3634 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1795807200.200   378   378 I tombstoned: received crash request for pid 26466
+         1795807200.200   378   378 I tombstoned: found intercept fd 512 for pid 26466 and type kDebuggerdNativeBacktrace
+         1795807200.200  3634  3634 I crash_dump64: performing dump of process 26466 (target tid = 26466)
+         1795807200.238   378   378 I tombstoned: received crash request for pid 26466
+         1795807200.241 26466 26479 I even.dreamscape: Wrote stack traces to tombstoned
+         1795807200.242   378   378 E tombstoned: Traces for pid 26466 written to: trace_44
+         1795807200.274  3628  3628 I debuggerd: libdebuggerd_client: done dumping process 26466
+         1795807200.274   378   378 W tombstoned: skipping tombstone file creation due to intercept
+         1795807207.462  1043  1287 D SatelliteController: isInCarrierRoamingNbIotNtn: satellite is disabled
+         1795807207.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795807207.462  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807207.462  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807207.462  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807207.462  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795807207.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795807207.462  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807207.462  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807207.462  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795807207.463  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795807207.463  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807207.463  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807207.463  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807207.463  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Checking connect type from PLMN config for subId: 1
+         1795807207.463  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807207.463  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807207.463  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807207.463  1043  1287 D SatelliteController: getSatellitePerPlmnConfiguration: invalid subId or not supported via carrier.
+         1795807207.464  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: config: null
+         1795807207.464  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807207.464  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807207.464  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectTypeViaConfigUpdater: return null (satelliteConfig is null)
+         1795807207.464  1043  1287 D SatelliteController: getCarrierRoamingNtnConnectType: Falling back to global carrier config connect type: 0
+         1795807207.464  1043  1287 D TelephonyConfigUpdateInstallReceiver: getConfigParser: domain=satellite
+         1795807207.464  1043  1287 V SatelliteController: satelliteConfigParser is not ready
+         1795807207.464  1043  1287 D SatelliteController: isSatelliteAttachSupportedViaConfigupdater: return null (satelliteConfig is null)
+         1795807212.318   677   686 I system_server: Thread[2,tid=686,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a10380,peer=0x2007bd8,"Signal Catcher"]: reacting to signal 3
+         1795807212.318   677   686 I system_server: 
+         1795807212.491   677   867 E system_server: poll() failed: Interrupted system call, sleeping 100ms
+         1795807212.801   378   378 I tombstoned: received crash request for pid 677
+         1795807212.806   677   686 I system_server: Wrote stack traces to tombstoned
+         1795807212.806   378   378 E tombstoned: Traces for pid 677 written to: trace_45
+         1795807214.618 26466 26479 I even.dreamscape: Thread[2,tid=26479,WaitingInMainSignalCatcherLoop,Thread*=0x7ce295a13b20,peer=0x2000a28,"Signal Catcher"]: reacting to signal 3
+         1795807214.618 26466 26479 I even.dreamscape: 
+         1795807214.642  4805  4805 W libprocessgroup: A JoinCgroup action in the SystemMemoryProcess profile is used for controller memory in the cgroup v2 hierarchy and will be ignored
+         1795807214.643  4805  4805 I debuggerd: libdebuggerd_client: started dumping process 26466
+         1795807214.643   378   378 I tombstoned: registered intercept for pid 26466 and type kDebuggerdNativeBacktrace
+         1795807214.643 26466 26466 I libc    : Requested dump for pid 26466 (even.dreamscape)
+         1795807214.733  4810  4810 I crash_dump64: obtaining output fd from tombstoned, type: kDebuggerdNativeBacktrace
+         1795807214.734   378   378 I tombstoned: received crash request for pid 26466
+         1795807214.734   378   378 I tombstoned: found intercept fd 512 for pid 26466 and type kDebuggerdNativeBacktrace
+         1795807214.734  4810  4810 I crash_dump64: performing dump of process 26466 (target tid = 26466)
+         1795807214.779   378   378 I tombstoned: received crash request for pid 26466
+         1795807214.786 26466 26479 I even.dreamscape: Wrote stack traces to tombstoned
+         1795807214.787   378   378 E tombstoned: Traces for pid 26466 written to: trace_46
+         1795807214.815  4805  4805 I debuggerd: libdebuggerd_client: done dumping process 26466
+         1795807214.815   378   378 W tombstoned: skipping tombstone file creation due to intercept
+# window t0-8 s .. t0+75 s of logcat -b main,system,crash,events; 9 lines removed (could carry notification text / names)

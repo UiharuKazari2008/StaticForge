@@ -1,0 +1,1092 @@
+== 1795807549862
+main state=S wchan=binder_ioctl_write_read
+[<0>] binder_ioctl_write_read+0x484/0x21e0
+[<0>] binder_ioctl+0x122/0x1160
+[<0>] __se_sys_ioctl+0x7b/0xd0
+[<0>] __x64_sys_ioctl+0x1c/0x40
+[<0>] x64_sys_call+0x1878/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 166329135 33914085 97
+faults(minflt cminflt majflt cmajflt utime stime) 10543 0 0 0 4 11
+guest cpu  24242 2262 92458 581049 713 1 840 0 0 0
+psi cpu some avg10=6.95 avg60=7.53 avg300=10.23 total=151745577
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7903675
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10606
+load 1.39 1.84 1.44 10/2552 21086
+== 1795807550588
+main state=R wchan=0
+[<0>] preempt_schedule_thunk+0x1a/0x40
+[<0>] binder_transaction+0x2b05/0x70b0
+[<0>] binder_ioctl_write_read.cold+0x13f3/0x38d9
+[<0>] binder_ioctl+0x122/0x1160
+[<0>] __se_sys_ioctl+0x7b/0xd0
+[<0>] __x64_sys_ioctl+0x1c/0x40
+[<0>] x64_sys_call+0x1878/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 258570323 413470796 231
+faults(minflt cminflt majflt cmajflt utime stime) 11954 0 0 0 8 16
+guest cpu  24278 2265 92696 581069 713 1 840 0 0 0
+psi cpu some avg10=6.95 avg60=7.53 avg300=10.23 total=152453194
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7904200
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10606
+load 1.39 1.84 1.44 12/2593 21214
+== 1795807551489
+main state=R wchan=0
+[<0>] preempt_schedule_thunk+0x1a/0x40
+[<0>] binder_transaction+0x2cb2/0x70b0
+[<0>] binder_ioctl_write_read.cold+0x13f3/0x38d9
+[<0>] binder_ioctl+0x122/0x1160
+[<0>] __se_sys_ioctl+0x7b/0xd0
+[<0>] __x64_sys_ioctl+0x1c/0x40
+[<0>] x64_sys_call+0x1878/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 289745454 607090167 314
+faults(minflt cminflt majflt cmajflt utime stime) 12097 0 0 0 9 20
+guest cpu  24317 2267 92954 581082 713 1 840 0 0 0
+psi cpu some avg10=10.94 avg60=8.24 avg300=10.36 total=153036435
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7906541
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10606
+load 1.39 1.84 1.44 9/2621 21347
+== 1795807552354
+main state=R wchan=futex_wait
+[<0>] futex_wait+0x19e/0x360
+[<0>] do_futex+0x21b/0x2b0
+[<0>] __se_sys_futex+0x12b/0x170
+[<0>] __x64_sys_futex+0x28/0x60
+[<0>] x64_sys_call+0x227f/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 359083520 882945231 461
+faults(minflt cminflt majflt cmajflt utime stime) 12307 0 0 0 10 25
+guest cpu  24360 2269 93216 581116 713 1 841 0 0 0
+psi cpu some avg10=10.94 avg60=8.24 avg300=10.36 total=153613429
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7908508
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10606
+load 1.92 1.94 1.47 9/2631 21456
+== 1795807553200
+main state=S wchan=0
+[<0>] futex_wait+0x19e/0x360
+[<0>] do_futex+0x21b/0x2b0
+[<0>] __se_sys_futex+0x12b/0x170
+[<0>] __x64_sys_futex+0x28/0x60
+[<0>] x64_sys_call+0x227f/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 524312379 981263286 534
+faults(minflt cminflt majflt cmajflt utime stime) 18079 0 0 0 10 42
+guest cpu  24408 2277 93412 581150 713 1 842 0 0 0
+psi cpu some avg10=19.83 avg60=9.93 avg300=10.70 total=153937447
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7908508
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10606
+load 1.92 1.94 1.47 10/2632 21568
+== 1795807553932
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 562587031 1107365122 620
+faults(minflt cminflt majflt cmajflt utime stime) 19566 0 0 0 11 45
+guest cpu  24460 2285 93591 581198 713 1 844 0 0 0
+psi cpu some avg10=19.83 avg60=9.93 avg300=10.70 total=154299669
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7911190
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10606
+load 1.92 1.94 1.47 6/2626 21682
+== 1795807554680
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 565078421 1137030255 630
+faults(minflt cminflt majflt cmajflt utime stime) 19566 0 0 0 11 45
+guest cpu  24480 2296 93708 581304 713 1 844 0 0 0
+psi cpu some avg10=19.83 avg60=9.93 avg300=10.70 total=154469142
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7911190
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10606
+load 1.92 1.94 1.47 1/2626 21760
+== 1795807555304
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 567880358 1138964883 640
+faults(minflt cminflt majflt cmajflt utime stime) 19566 0 0 0 11 45
+guest cpu  24505 2296 93764 581462 713 1 844 0 0 0
+psi cpu some avg10=21.13 avg60=10.49 avg300=10.81 total=154515680
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7911202
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10620
+load 1.92 1.94 1.47 2/2626 21850
+== 1795807555947
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 570382633 1139689525 646
+faults(minflt cminflt majflt cmajflt utime stime) 19569 0 0 0 11 45
+guest cpu  24522 2296 93813 581631 713 1 844 0 0 0
+psi cpu some avg10=21.13 avg60=10.49 avg300=10.81 total=154545300
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7911216
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10620
+load 1.92 1.94 1.47 4/2625 21933
+== 1795807556583
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 570382633 1139689525 646
+faults(minflt cminflt majflt cmajflt utime stime) 19569 0 0 0 11 45
+guest cpu  24544 2296 93864 581794 713 1 844 0 0 0
+psi cpu some avg10=21.13 avg60=10.49 avg300=10.81 total=154582518
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7911216
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10620
+load 1.92 1.94 1.47 5/2626 22026
+== 1795807557218
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 570382633 1139689525 646
+faults(minflt cminflt majflt cmajflt utime stime) 19569 0 0 0 11 45
+guest cpu  24565 2296 93916 581956 713 1 844 0 0 0
+psi cpu some avg10=21.13 avg60=10.49 avg300=10.81 total=154635446
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7911828
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.92 1.94 1.48 2/2627 22106
+== 1795807557839
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 571813298 1141353842 650
+faults(minflt cminflt majflt cmajflt utime stime) 19576 0 0 0 11 46
+guest cpu  24579 2297 93973 582124 713 1 844 0 0 0
+psi cpu some avg10=20.56 avg60=10.73 avg300=10.86 total=154685879
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7911828
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.92 1.94 1.48 6/2628 22193
+== 1795807558496
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 572850143 1142885178 652
+faults(minflt cminflt majflt cmajflt utime stime) 19576 0 0 0 11 46
+guest cpu  24599 2297 94033 582283 713 1 844 0 0 0
+psi cpu some avg10=20.56 avg60=10.73 avg300=10.86 total=154737704
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7911994
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.92 1.94 1.48 4/2633 22292
+== 1795807559131
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 572850143 1142885178 652
+faults(minflt cminflt majflt cmajflt utime stime) 19576 0 0 0 11 46
+guest cpu  24636 2297 94135 582391 713 1 844 0 0 0
+psi cpu some avg10=17.38 avg60=10.48 avg300=10.80 total=154904724
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7911998
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.92 1.94 1.48 4/2626 22436
+== 1795807559797
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 572850143 1142885178 652
+faults(minflt cminflt majflt cmajflt utime stime) 19576 0 0 0 11 46
+guest cpu  24692 2297 94246 582466 713 1 844 0 0 0
+psi cpu some avg10=17.38 avg60=10.48 avg300=10.80 total=155023008
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7913283
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.92 1.94 1.48 4/2627 22605
+== 1795807560432
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 573325564 1144239924 656
+faults(minflt cminflt majflt cmajflt utime stime) 19576 0 0 0 11 46
+guest cpu  24732 2297 94353 582558 713 1 844 0 0 0
+psi cpu some avg10=17.38 avg60=10.48 avg300=10.80 total=155133966
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7913786
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.92 1.94 1.48 3/2627 22760
+== 1795807561076
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 573510903 1144273952 657
+faults(minflt cminflt majflt cmajflt utime stime) 19576 0 0 0 11 46
+guest cpu  24768 2297 94452 582659 713 1 844 0 0 0
+psi cpu some avg10=17.38 avg60=10.48 avg300=10.80 total=155222842
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7913815
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.92 1.94 1.48 5/2628 22925
+== 1795807561706
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 573565970 1144303990 658
+faults(minflt cminflt majflt cmajflt utime stime) 19576 0 0 0 11 46
+guest cpu  24804 2297 94555 582756 713 1 844 0 0 0
+psi cpu some avg10=17.49 avg60=10.73 avg300=10.85 total=155292109
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7913884
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.92 1.94 1.48 6/2625 23090
+== 1795807562345
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 575559130 1146166129 666
+faults(minflt cminflt majflt cmajflt utime stime) 19587 436 0 0 11 46
+guest cpu  24846 2297 94650 582853 713 1 844 0 0 0
+psi cpu some avg10=17.04 avg60=10.87 avg300=10.88 total=155417772
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7914595
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.93 1.94 1.48 1/2624 23195
+== 1795807562961
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 575559130 1146166129 666
+faults(minflt cminflt majflt cmajflt utime stime) 19587 436 0 0 11 46
+guest cpu  24862 2297 94696 583027 713 1 844 0 0 0
+psi cpu some avg10=17.04 avg60=10.87 avg300=10.88 total=155451575
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7914610
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.93 1.94 1.48 3/2624 23288
+== 1795807563609
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 575559130 1146166129 666
+faults(minflt cminflt majflt cmajflt utime stime) 19587 436 0 0 11 46
+guest cpu  24878 2297 94751 583195 713 1 844 0 0 0
+psi cpu some avg10=17.04 avg60=10.87 avg300=10.88 total=155498582
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7914610
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.93 1.94 1.48 1/2624 23369
+== 1795807564241
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 575559130 1146166129 666
+faults(minflt cminflt majflt cmajflt utime stime) 19587 436 0 0 11 46
+guest cpu  24896 2297 94800 583360 713 1 844 0 0 0
+psi cpu some avg10=17.04 avg60=10.87 avg300=10.88 total=155540424
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7914621
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.93 1.94 1.48 1/2623 23450
+== 1795807564859
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 575559130 1146166129 666
+faults(minflt cminflt majflt cmajflt utime stime) 19587 436 0 0 11 46
+guest cpu  24911 2297 94852 583524 713 1 844 0 0 0
+psi cpu some avg10=17.04 avg60=10.87 avg300=10.88 total=155582220
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7914621
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.93 1.94 1.48 1/2623 23540
+== 1795807565492
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 575559130 1146166129 666
+faults(minflt cminflt majflt cmajflt utime stime) 19587 436 0 0 11 46
+guest cpu  24929 2297 94902 583692 713 1 844 0 0 0
+psi cpu some avg10=17.04 avg60=10.87 avg300=10.88 total=155624594
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7914657
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10621
+load 1.93 1.94 1.48 1/2623 23621
+== 1795807566123
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 575559130 1146166129 666
+faults(minflt cminflt majflt cmajflt utime stime) 19587 436 0 0 11 46
+guest cpu  24950 2300 94959 583846 713 1 844 0 0 0
+psi cpu some avg10=15.04 avg60=10.71 avg300=10.85 total=155665413
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7914658
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10622
+load 1.93 1.94 1.48 4/2623 23711
+== 1795807566791
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 577327393 1147523370 670
+faults(minflt cminflt majflt cmajflt utime stime) 19622 436 0 0 11 46
+guest cpu  24974 2300 95112 583931 713 1 845 0 0 0
+psi cpu some avg10=15.04 avg60=10.71 avg300=10.85 total=155826878
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7914818
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10622
+load 1.93 1.94 1.48 2/2626 23810
+== 1795807567480
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 578957420 1158552635 675
+faults(minflt cminflt majflt cmajflt utime stime) 19682 436 0 0 11 46
+guest cpu  24989 2300 95161 584108 714 1 845 0 0 0
+psi cpu some avg10=15.03 avg60=10.85 avg300=10.88 total=155864397
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7915425
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10622
+load 2.10 1.98 1.49 3/2626 23880
+== 1795807568128
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 580139870 1163827039 681
+faults(minflt cminflt majflt cmajflt utime stime) 19701 436 0 0 11 46
+guest cpu  25010 2300 95235 584261 714 1 845 0 0 0
+psi cpu some avg10=15.03 avg60=10.85 avg300=10.88 total=155955083
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7915453
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10622
+load 2.10 1.98 1.49 5/2623 23990
+== 1795807568813
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 580139870 1163827039 681
+faults(minflt cminflt majflt cmajflt utime stime) 19701 436 0 0 11 46
+guest cpu  25032 2300 95298 584428 714 1 846 0 0 0
+psi cpu some avg10=13.94 avg60=10.79 avg300=10.86 total=156012883
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7915534
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10622
+load 2.10 1.98 1.49 1/2621 24080
+== 1795807569469
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 580139870 1163827039 681
+faults(minflt cminflt majflt cmajflt utime stime) 19701 436 0 0 11 46
+guest cpu  25054 2300 95356 584588 714 1 846 0 0 0
+psi cpu some avg10=13.94 avg60=10.79 avg300=10.86 total=156061543
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7915534
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10622
+load 2.10 1.98 1.49 1/2621 24170
+== 1795807570126
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 580139870 1163827039 681
+faults(minflt cminflt majflt cmajflt utime stime) 19701 436 0 0 11 46
+guest cpu  25072 2300 95411 584761 714 1 846 0 0 0
+psi cpu some avg10=13.94 avg60=10.79 avg300=10.86 total=156117100
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7916446
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10622
+load 2.10 1.98 1.49 1/2622 24252
+== 1795807570776
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 580139870 1163827039 681
+faults(minflt cminflt majflt cmajflt utime stime) 19701 436 0 0 11 46
+guest cpu  25091 2300 95461 584931 714 1 846 0 0 0
+psi cpu some avg10=13.94 avg60=10.79 avg300=10.86 total=156145769
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7916460
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10622
+load 2.10 1.98 1.49 3/2622 24342
+== 1795807571422
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 580139870 1163827039 681
+faults(minflt cminflt majflt cmajflt utime stime) 19701 436 0 0 11 46
+guest cpu  25129 2300 95544 585058 714 1 846 0 0 0
+psi cpu some avg10=12.68 avg60=10.66 avg300=10.84 total=156260320
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7916460
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10622
+load 2.10 1.98 1.49 7/2622 24454
+== 1795807572094
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 580139870 1163827039 681
+faults(minflt cminflt majflt cmajflt utime stime) 19701 436 0 0 11 46
+guest cpu  25192 2300 95678 585114 714 1 847 0 0 0
+psi cpu some avg10=12.68 avg60=10.66 avg300=10.84 total=156454580
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7917932
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10622
+load 2.41 2.04 1.52 2/2622 24595
+== 1795807572726
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 580139870 1163827039 681
+faults(minflt cminflt majflt cmajflt utime stime) 19701 436 0 0 11 46
+guest cpu  25232 2300 95764 585216 714 1 847 0 0 0
+psi cpu some avg10=12.68 avg60=10.66 avg300=10.84 total=156527064
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7918149
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.41 2.04 1.52 6/2624 24762
+== 1795807573347
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 580139870 1163827039 681
+faults(minflt cminflt majflt cmajflt utime stime) 19701 436 0 0 11 46
+guest cpu  25272 2300 95869 585311 714 1 847 0 0 0
+psi cpu some avg10=13.82 avg60=10.93 avg300=10.89 total=156635062
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7918235
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.41 2.04 1.52 3/2623 24922
+== 1795807573998
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 580139870 1163827039 681
+faults(minflt cminflt majflt cmajflt utime stime) 19701 436 0 0 11 46
+guest cpu  25313 2300 95982 585408 714 1 847 0 0 0
+psi cpu some avg10=13.82 avg60=10.93 avg300=10.89 total=156718537
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7918235
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.41 2.04 1.52 2/2622 25075
+== 1795807574665
+main state=t wchan=ptrace_stop
+[<0>] ptrace_stop+0x12c/0x260
+[<0>] ptrace_do_notify+0x88/0xb0
+[<0>] do_jobctl_trap+0x67/0x90
+[<0>] get_signal.cold+0x12d/0x2b8
+[<0>] arch_do_signal_or_restart+0x84/0x260
+[<0>] syscall_exit_to_user_mode+0x58/0xb0
+[<0>] do_syscall_64+0x64/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 581011306 1166717726 688
+faults(minflt cminflt majflt cmajflt utime stime) 19703 436 0 0 11 46
+guest cpu  25353 2300 96095 585503 714 1 847 0 0 0
+psi cpu some avg10=13.85 avg60=11.04 avg300=10.91 total=156818185
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7918456
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.41 2.04 1.52 4/2624 25226
+== 1795807575328
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 581306546 1168743284 690
+faults(minflt cminflt majflt cmajflt utime stime) 19710 870 0 0 11 46
+guest cpu  25381 2300 96161 585651 714 1 847 0 0 0
+psi cpu some avg10=13.85 avg60=11.04 avg300=10.91 total=156880199
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7920151
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.41 2.04 1.52 3/2624 25317
+== 1795807575973
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 581306546 1168743284 690
+faults(minflt cminflt majflt cmajflt utime stime) 19710 870 0 0 11 46
+guest cpu  25402 2300 96213 585821 714 1 847 0 0 0
+psi cpu some avg10=13.85 avg60=11.04 avg300=10.91 total=156931543
+psi io some avg10=0.00 avg60=0.00 avg300=0.01 total=7920151
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.41 2.04 1.52 10/2628 25413
+== 1795807576615
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 581306546 1168743284 690
+faults(minflt cminflt majflt cmajflt utime stime) 19710 870 0 0 11 46
+guest cpu  25418 2300 96270 585989 714 1 847 0 0 0
+psi cpu some avg10=12.79 avg60=10.94 avg300=10.89 total=156985717
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7920183
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.41 2.04 1.52 2/2622 25509
+== 1795807577252
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 581306546 1168743284 690
+faults(minflt cminflt majflt cmajflt utime stime) 19710 870 0 0 11 46
+guest cpu  25438 2300 96324 586151 714 1 847 0 0 0
+psi cpu some avg10=12.79 avg60=10.94 avg300=10.89 total=157028697
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7920183
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.22 2.01 1.51 3/2619 25597
+== 1795807577871
+main state=S wchan=futex_wait
+[<0>] futex_wait+0x19e/0x360
+[<0>] do_futex+0x21b/0x2b0
+[<0>] __se_sys_futex+0x12b/0x170
+[<0>] __x64_sys_futex+0x28/0x60
+[<0>] x64_sys_call+0x227f/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585108792 1175099472 697
+faults(minflt cminflt majflt cmajflt utime stime) 19840 870 0 0 11 47
+guest cpu  25463 2301 96378 586314 714 1 847 0 0 0
+psi cpu some avg10=12.79 avg60=10.94 avg300=10.89 total=157083249
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7921482
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.22 2.01 1.51 1/2620 25687
+== 1795807578532
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585217585 1175102392 698
+faults(minflt cminflt majflt cmajflt utime stime) 19842 870 0 0 11 47
+guest cpu  25476 2301 96420 586490 714 1 847 0 0 0
+psi cpu some avg10=11.56 avg60=10.77 avg300=10.86 total=157114981
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7921482
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.22 2.01 1.51 2/2619 25768
+== 1795807579141
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585566064 1175464150 700
+faults(minflt cminflt majflt cmajflt utime stime) 19842 870 0 0 11 47
+guest cpu  25493 2301 96468 586654 714 1 847 0 0 0
+psi cpu some avg10=11.56 avg60=10.77 avg300=10.86 total=157146194
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7921779
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.22 2.01 1.51 4/2620 25858
+== 1795807579745
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585566064 1175464150 700
+faults(minflt cminflt majflt cmajflt utime stime) 19842 870 0 0 11 47
+guest cpu  25509 2301 96511 586821 714 1 847 0 0 0
+psi cpu some avg10=11.56 avg60=10.77 avg300=10.86 total=157177029
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7921779
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.22 2.01 1.51 2/2627 25958
+== 1795807580366
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585776931 1175464150 701
+faults(minflt cminflt majflt cmajflt utime stime) 19844 870 0 0 11 47
+guest cpu  25531 2301 96580 586973 714 1 847 0 0 0
+psi cpu some avg10=11.56 avg60=10.77 avg300=10.86 total=157238083
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7921811
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.22 2.01 1.51 2/2617 26064
+== 1795807581007
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585776931 1175464150 701
+faults(minflt cminflt majflt cmajflt utime stime) 19844 870 0 0 11 47
+guest cpu  25552 2301 96627 587149 714 1 847 0 0 0
+psi cpu some avg10=10.55 avg60=10.62 avg300=10.83 total=157278986
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7921811
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.22 2.01 1.51 1/2617 26145
+== 1795807581668
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585776931 1175464150 701
+faults(minflt cminflt majflt cmajflt utime stime) 19844 870 0 0 11 47
+guest cpu  25573 2301 96666 587329 714 1 847 0 0 0
+psi cpu some avg10=10.55 avg60=10.62 avg300=10.83 total=157313819
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7921811
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.22 2.01 1.51 2/2617 26237
+== 1795807582311
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585776931 1175464150 701
+faults(minflt cminflt majflt cmajflt utime stime) 19844 870 0 0 11 47
+guest cpu  25594 2301 96710 587498 714 1 847 0 0 0
+psi cpu some avg10=10.55 avg60=10.62 avg300=10.83 total=157354545
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7921929
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.04 1.98 1.50 2/2617 26319
+== 1795807582927
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585776931 1175464150 701
+faults(minflt cminflt majflt cmajflt utime stime) 19844 870 0 0 11 47
+guest cpu  25610 2301 96758 587667 715 1 847 0 0 0
+psi cpu some avg10=10.55 avg60=10.62 avg300=10.83 total=157386340
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7922519
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.04 1.98 1.50 2/2617 26405
+== 1795807583559
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585776931 1175464150 701
+faults(minflt cminflt majflt cmajflt utime stime) 19844 870 0 0 11 47
+guest cpu  25630 2301 96814 587831 715 1 847 0 0 0
+psi cpu some avg10=10.55 avg60=10.62 avg300=10.83 total=157438247
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7922519
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.04 1.98 1.50 1/2617 26493
+== 1795807584198
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585776931 1175464150 701
+faults(minflt cminflt majflt cmajflt utime stime) 19844 870 0 0 11 47
+guest cpu  25652 2301 96865 587998 715 1 847 0 0 0
+psi cpu some avg10=10.63 avg60=10.63 avg300=10.83 total=157473479
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7922519
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.04 1.98 1.50 1/2617 26597
+== 1795807584838
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585776931 1175464150 701
+faults(minflt cminflt majflt cmajflt utime stime) 19844 870 0 0 11 47
+guest cpu  25669 2301 96912 588172 715 1 847 0 0 0
+psi cpu some avg10=8.71 avg60=10.28 avg300=10.75 total=157512641
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7922548
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.04 1.98 1.50 3/2622 26715
+== 1795807585492
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585776931 1175464150 701
+faults(minflt cminflt majflt cmajflt utime stime) 19844 870 0 0 11 47
+guest cpu  25694 2301 96970 588328 715 1 847 0 0 0
+psi cpu some avg10=8.71 avg60=10.28 avg300=10.75 total=157578941
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7922571
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.04 1.98 1.50 4/2621 26814
+== 1795807586132
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585776931 1175464150 701
+faults(minflt cminflt majflt cmajflt utime stime) 19844 870 0 0 11 47
+guest cpu  25713 2301 97028 588492 715 1 847 0 0 0
+psi cpu some avg10=8.71 avg60=10.28 avg300=10.75 total=157628557
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7922571
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.04 1.98 1.50 3/2620 26915
+== 1795807586761
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585776931 1175464150 701
+faults(minflt cminflt majflt cmajflt utime stime) 19844 870 0 0 11 47
+guest cpu  25732 2302 97073 588661 715 1 848 0 0 0
+psi cpu some avg10=8.71 avg60=10.28 avg300=10.75 total=157659577
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7922600
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.04 1.98 1.50 1/2618 26997
+== 1795807587385
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 585776931 1175464150 701
+faults(minflt cminflt majflt cmajflt utime stime) 19844 870 0 0 11 47
+guest cpu  25749 2302 97124 588826 715 1 848 0 0 0
+psi cpu some avg10=8.71 avg60=10.28 avg300=10.75 total=157699037
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7922643
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 1.95 1.96 1.50 1/2618 27078
+== 1795807588004
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 586763132 1178284544 704
+faults(minflt cminflt majflt cmajflt utime stime) 19849 870 0 0 11 47
+guest cpu  25769 2302 97179 588990 715 1 848 0 0 0
+psi cpu some avg10=9.48 avg60=10.37 avg300=10.77 total=157756711
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7923545
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 1.95 1.96 1.50 1/2618 27168
+== 1795807588638
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 586763132 1178284544 704
+faults(minflt cminflt majflt cmajflt utime stime) 19849 870 0 0 11 47
+guest cpu  25792 2302 97220 589155 715 1 848 0 0 0
+psi cpu some avg10=9.48 avg60=10.37 avg300=10.77 total=157785705
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7923564
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 1.95 1.96 1.50 1/2618 27249
+== 1795807589255
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 586763132 1178284544 704
+faults(minflt cminflt majflt cmajflt utime stime) 19849 870 0 0 11 47
+guest cpu  25808 2302 97267 589327 715 1 848 0 0 0
+psi cpu some avg10=9.48 avg60=10.37 avg300=10.77 total=157828367
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7923564
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 1.95 1.96 1.50 3/2620 27335
+== 1795807589902
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 586763132 1178284544 704
+faults(minflt cminflt majflt cmajflt utime stime) 19849 870 0 0 11 47
+guest cpu  25828 2302 97324 589491 715 1 848 0 0 0
+psi cpu some avg10=8.85 avg60=10.23 avg300=10.74 total=157882165
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7923564
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 1.95 1.96 1.50 1/2618 27420
+== 1795807590542
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 586763132 1178284544 704
+faults(minflt cminflt majflt cmajflt utime stime) 19849 870 0 0 11 47
+guest cpu  25850 2302 97375 589656 715 1 848 0 0 0
+psi cpu some avg10=8.85 avg60=10.23 avg300=10.74 total=157926927
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7923580
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 1.95 1.96 1.50 3/2618 27504
+== 1795807591180
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 586763132 1178284544 704
+faults(minflt cminflt majflt cmajflt utime stime) 19849 870 0 0 11 47
+guest cpu  25870 2306 97431 589812 715 1 848 0 0 0
+psi cpu some avg10=7.61 avg60=9.96 avg300=10.68 total=157976602
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7923595
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 1.95 1.96 1.50 5/2625 27601
+== 1795807591830
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 586763132 1178284544 704
+faults(minflt cminflt majflt cmajflt utime stime) 19849 870 0 0 11 47
+guest cpu  25895 2306 97500 589969 715 1 848 0 0 0
+psi cpu some avg10=7.61 avg60=9.96 avg300=10.68 total=158051578
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7923725
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.92 2.16 1.56 6/2626 27707
+== 1795807592541
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 588626421 1183765191 709
+faults(minflt cminflt majflt cmajflt utime stime) 19856 870 0 0 11 47
+guest cpu  25918 2306 97654 590066 715 1 848 0 0 0
+psi cpu some avg10=7.61 avg60=9.96 avg300=10.68 total=158282403
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7923725
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.92 2.16 1.56 8/2623 27789
+== 1795807593213
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 590339298 1183779749 714
+faults(minflt cminflt majflt cmajflt utime stime) 19893 870 0 0 11 47
+guest cpu  25946 2306 97724 590222 715 1 848 0 0 0
+psi cpu some avg10=7.61 avg60=9.96 avg300=10.68 total=158363002
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7924551
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.92 2.16 1.56 1/2618 27881
+== 1795807593872
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 590339298 1183779749 714
+faults(minflt cminflt majflt cmajflt utime stime) 19893 870 0 0 11 47
+guest cpu  25966 2306 97770 590394 715 1 848 0 0 0
+psi cpu some avg10=9.13 avg60=10.16 avg300=10.71 total=158403407
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7924713
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10623
+load 2.92 2.16 1.56 2/2619 27964
+== 1795807594512
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 590339298 1183779749 714
+faults(minflt cminflt majflt cmajflt utime stime) 19893 870 0 0 11 47
+guest cpu  25984 2306 97825 590559 715 1 849 0 0 0
+psi cpu some avg10=8.56 avg60=10.02 avg300=10.68 total=158449010
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7924713
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10624
+load 2.92 2.16 1.56 5/2620 28051
+== 1795807595149
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 590681667 1183812157 715
+faults(minflt cminflt majflt cmajflt utime stime) 19894 870 0 0 11 47
+guest cpu  26006 2306 97880 590718 715 1 849 0 0 0
+psi cpu some avg10=8.56 avg60=10.02 avg300=10.68 total=158491729
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7924713
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10624
+load 2.92 2.16 1.56 1/2618 28136
+== 1795807595779
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 590681667 1183812157 715
+faults(minflt cminflt majflt cmajflt utime stime) 19894 870 0 0 11 47
+guest cpu  26023 2306 97928 590885 715 1 849 0 0 0
+psi cpu some avg10=8.56 avg60=10.02 avg300=10.68 total=158523908
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7924751
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10624
+load 2.92 2.16 1.56 3/2618 28217
+== 1795807596417
+main state=S wchan=do_epoll_wait
+[<0>] do_epoll_wait+0x271/0x810
+[<0>] __se_sys_epoll_pwait+0xdd/0x170
+[<0>] __x64_sys_epoll_pwait+0x28/0x60
+[<0>] x64_sys_call+0x2e3c/0x2ee0
+[<0>] do_syscall_64+0x58/0xf0
+[<0>] entry_SYSCALL_64_after_hwframe+0x76/0x7e
+sched 590681667 1183812157 715
+faults(minflt cminflt majflt cmajflt utime stime) 19894 870 0 0 11 47
+guest cpu  26049 2306 97978 591045 715 1 849 0 0 0
+psi cpu some avg10=8.10 avg60=9.89 avg300=10.65 total=158571465
+psi io some avg10=0.00 avg60=0.00 avg300=0.00 total=7924919
+psi memory some avg10=0.00 avg60=0.00 avg300=0.00 total=10624
+load 2.92 2.16 1.56 1/2618 28307

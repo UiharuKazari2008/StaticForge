@@ -1,0 +1,7 @@
+pre: app=16551 holder=16790 recs=1 bound=1 shizuku=3056 wake=Awake
+{"ok": true, "deviceMs": 1795806887694, "localMs": 1795806888459, "skewMs": -728}
+{"ok": true, "screen": "Asleep"}
+    versionCode=3632745 minSdk=31 targetSdk=36
+      x86_64: [status=verify] [reason=install] [primary-abi]
+{"ok": true, "screen": "Awake"}
+post: app=21599 holder=22831 recs=1 bound=1 shizuku=3056 wake=Awake

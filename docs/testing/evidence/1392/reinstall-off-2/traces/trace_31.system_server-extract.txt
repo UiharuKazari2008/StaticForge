@@ -1,0 +1,47 @@
+
+----- pid 677 at 2026-11-27 14:09:16.016128100-0500 -----
+Cmd line: system_server
+Build fingerprint: 'google/sdk_gphone64_x86_64/emu64xa:17/CE2A.260420.051.A3/16571990:userdebug/dev-keys'
+ABI: 'x86_64'
+Build type: optimized
+suspend all histogram:	Sum: 427.013ms 99% C.I. 0.030ms-83.025ms Avg: 4.641ms Max: 83.859ms
+
+# extract: main thread, every thread with a com.android.server.accessibility frame, and the holders of the locks they wait for
+
+"binder:677_18" prio=5 tid=246 TimedWaiting
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x3716a58 self=0x7ce295cbed70
+  | sysTid=1950 nice=0 cgrp=foreground sched=0/0 handle=0x7ce0e0cf40c0
+  | state=S schedstat=( 352766671 3664675240 1508 ) utm=6 stm=28 core=0 HZ=100
+  | stack=0x7ce0e0bfd000-0x7ce0e0bff000 stackSize=988KB
+  | held mutexes=
+  at java.lang.Object.wait(Native method)
+  - waiting on <0x0fb81a06> (a java.lang.Object)
+  at java.lang.Object.wait(Object.java:405)
+  at com.android.server.accessibility.AbstractAccessibilityServiceConnection.ensureWindowsAvailableTimedLocked(AbstractAccessibilityServiceConnection.java:2284)
+  at com.android.server.accessibility.AbstractAccessibilityServiceConnection.getWindows(AbstractAccessibilityServiceConnection.java:618)
+  - locked <0x0fb81a06> (a java.lang.Object)
+  at android.accessibilityservice.IAccessibilityServiceConnection$Stub.onTransact(IAccessibilityServiceConnection.java:668)
+  at android.os.Binder.execTransactInternal(Binder.java:1369)
+  at android.os.Binder.execTransact(Binder.java:1323)
+DumpLatencyMs: 292.543
+
+"main" prio=6 tid=1 Native
+  | group="main" sCount=1 ucsCount=0 flags=1 obj=0x71a38f68 self=0x7ce295a0cbe0
+  | sysTid=677 nice=-2 cgrp=foreground sched=0/0 handle=0x7ce503640038
+  | state=S schedstat=( 7184899283 13761666305 24011 ) utm=107 stm=611 core=2 HZ=100
+  | stack=0x7ffe4cad4000-0x7ffe4cad6000 stackSize=8188KB
+  | held mutexes=
+  native: #00 pc 0005dfea  /apex/com.android.runtime/lib64/bionic/libc.so (__epoll_pwait+10) (BuildId: aa76614279c09bc4bbbbbec6ba4a811e)
+  native: #01 pc 00017780  /system/lib64/libutils.so (android::Looper::pollOnce+352) (BuildId: b7a1c04525d0c043cfcd4ee3f13e4762)
+  native: #02 pc 00207056  /system/lib64/libandroid_runtime.so (android::android_os_MessageQueue_nativePollOnce +38) (BuildId: e2564b9361f25203d4d8bb218bfef57e)
+  at android.os.MessageQueue.nativePollOnce(Native method)
+  at android.os.MessageQueue.nextDeliQueue(MessageQueue.java:791)
+  at android.os.MessageQueue.next(MessageQueue.java:771)
+  at android.os.Looper.loopOnce(Looper.java:232)
+  at android.os.Looper.loop(Looper.java:397)
+  at com.android.server.SystemServer.run(SystemServer.java:1097)
+  at com.android.server.SystemServer.main(SystemServer.java:727)
+  at java.lang.reflect.Method.invoke(Native method)
+  at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+  at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:917)
+DumpLatencyMs: 0.6634
