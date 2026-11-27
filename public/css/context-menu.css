@@ -176,7 +176,7 @@ input:disabled[data-context-menu],
     border-radius: var(--border-radius-md);
     box-shadow: -6px 6px 35px rgba(0, 0, 0, 1);
     min-width: 165px;
-    max-width: 300px;
+    max-width: var(--context-menu-max-width, 300px);
     transform: translateZ(0);
     line-height: 1.75;
     padding: 0.25em 0;
@@ -534,8 +534,8 @@ span.context-menu-item-state {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 180px;
-    /* Prevent menu from growing too wide */
+    max-width: var(--context-menu-label-max, 180px);
+    /* Prevent menu from growing too wide (a theme that sizes to the longest label raises it) */
 }
 
 /* Sections that opt in (section.className) show the whole label on several lines */

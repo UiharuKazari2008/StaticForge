@@ -67,7 +67,7 @@
                     type: 'list',
                     initfn: (s) => {
                         const devices = a.state().devices.filter((d) => (d.online || d.partner) && d.platform !== 'cafeready');
-                        s.items = [{ text: 'Open Melaton Mobile Device Center', action: 'open', default: true }];
+                        s.items = [{ text: 'Open Melaton Mobile Device Center', action: 'open', className: 'context-menu-item-default' }];
                         if (devices.length) s.items.push({ separator: true }, ...devices.map((d) => ({ text: d.primary && devices.length > 1 ? `${line(d)} (primary)` : line(d), action: `dev:${d.deviceId}` })));
                         // the folder files sent to a phone go to (activeSyncRemoteStorage.js openReceived)
                         const sharing = devices.filter((d) => d.online && d.platform !== 'cafeready' && (d.permissions || []).includes('files'));

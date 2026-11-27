@@ -139,7 +139,7 @@
                     type: 'list',
                     initfn: (sec) => {
                         sec.items = [
-                            { text: 'Open Sync Center', action: 'open', default: true },
+                            { text: 'Open Sync Center', action: 'open', className: 'context-menu-item-default' },
                             { separator: true },
                             { text: 'Sync All', action: 'sync', disabled: !list().some((p) => typeof p.syncNow === 'function') },
                             { text: 'View sync conflicts', action: 'conflicts' },

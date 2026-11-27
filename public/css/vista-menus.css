@@ -81,6 +81,18 @@ body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.con
     min-width: 0;
 }
 
+/* So context-menu.css's 180 px label and 300 px menu caps do not apply: they cut the Device Center tray menu's own rows
+   off (#1359). A label still ends in an ellipsis past 400 px (file names, device names). A menu of custom content, grids
+   or icon rows keeps 300 px, which is what those wrap in, and a subtext keeps wrapping at 220 px. */
+body.desktop-mode.theme-vista .context-menu:not(.context-menu-win32):not(:has(.context-menu-custom-section, .context-menu-grid-section, .context-menu-icons-section)) {
+    --context-menu-max-width: min(500px, calc(100vw - 16px));
+    --context-menu-label-max: 400px;
+}
+
+body.desktop-mode.theme-vista .context-menu:not(.context-menu-win32) .context-menu-item-subtext:not([data-accel]) {
+    max-width: 220px;
+}
+
 body.desktop-mode.theme-vista :is(.context-menu, .context-menu-submenu):not(.context-menu-win32) .context-menu-item > :is(.context-menu-item-text-container, .context-menu-item-text) {
     margin-right: 41px;
 }
