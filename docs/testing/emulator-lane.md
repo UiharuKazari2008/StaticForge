@@ -205,3 +205,55 @@ sound are told apart by the four log sources above.
 - A53 companion: the real A53 test phone (`~/.config/a53/a53.sh`, coord id `a53`, PIN in
   `~/.secrets/ruiko-windows-pin.token`, memory #300) is the agents' own phone. Use it for real-Samsung
   evidence after the lane, request it with `coord_device_request a53`, and release it.
+
+## The A53, our real Samsung
+
+The A53 (Galaxy A53 5G, SM-A536U1, Android 16, `192.168.100.240`, ActiveSync id `ba8e2f6edacbc667c87f18bae8683798`
+"A53 Test") is the agents' own phone (`fold-off-limits.mdc`, Yukimi Nov 26 2026: "you can break it, that's up to you
+to fix"). No state of it needs Yukimi: not a reboot, Wi-Fi gone, adb lost, a locked screen, a crashed app, a low
+battery. This section says what brings it back in each state, with no person. Status line per row: **proven**
+(run on the phone, output in #1312) or **not proven yet**.
+
+Take it like any device: `coord_device_request a53` (one agent at a time; it never asks Yukimi), release it with
+`coord_device_release`. The driver is `scripts/aemu-lane/a53/a53.sh` (server adb, every call pinned to
+`192.168.100.240:5555`, the perceptible commands refuse unless your agent id holds the lease). The older
+`~/.config/a53/a53.sh` (Ruiko's adb, CDP tunnel, taps) stays for UI work.
+
+```
+A=scripts/aemu-lane/a53/a53.sh      # env A53_AGENT=claude-<id> (or COORD_AGENT_ID)
+$A status      # link, boot, lock, Wi-Fi, battery, adb ports, MAC (stored in ~/.config/a53/a53.env)
+$A up          # climbs the ladder below until adb answers, then unlocks
+$A unlock      # locksettings verify first, then wake + PIN; the PIN is never printed
+$A reboot      # verifies the PIN, adb reboot, waits with progress, unlocks
+```
+
+### What brings it back (the ladder)
+
+| State | What brings it back, no person | Status |
+| --- | --- | --- |
+| adb is up, screen locked | `$A unlock`: `locksettings verify --old <PIN>` (a wrong guess counts toward the lockout, so never type before it verifies), wake, swipe, type the PIN, Enter; `isKeyguardShowing=false` | not proven yet |
+| Rebooted | adbd listens on 5555 again by itself (the app's own recovery, `LocalAdb.restore`, over the Wireless-debugging TLS door; and `persist.adb.tcp.port` if the shell may set it); `$A reboot` waits for `sys.boot_completed`, then `$A unlock` (first unlock after boot needs the PIN) | not proven yet |
+| 5555 closed, phone on Wi-Fi | server adb asks adbd for `tcpip:5555` over the phone's Wireless-debugging TLS port (`adb mdns services` filtered to the phone's own IP, never other devices): `$A up` rung 2, and `modules/deviceAdb.js` `tlsRestore` (device-adb settings `autoRestore` + `tlsRestore` on for this device only) | not proven yet |
+| adb key refused ("unauthorized") | the second channel approves it: Ruiko's adb key is also allowed, `$A up` rung 1b taps "Always allow" through it (uiautomator) | not proven yet |
+| Wi-Fi off / phone not at its address | the server cannot reach it; Wi-Fi comes back by itself only when an agent's own test armed the one-shot timer (below) or the app does it; a new address is found by the phone's MAC in the ARP table (`$A find`) | not proven yet |
+| App crashed | `adb shell am start` of the launcher activity; the app's boot receiver brings the services back | not proven yet |
+| Battery low | it sits on a charger (AC, Wi-Fi charging off); `$A status` shows level and charging. Only a fully dead battery needs a power button: the one case no software path covers, so keep it charging and below no test that drains it | note |
+
+### One-shot Wi-Fi timer (test harness, not a feature)
+
+A Wi-Fi-off test must come back by itself. `$A deadman <sec>` starts ONE shell on the phone:
+`setsid nohup sh -c 'sleep <sec>; cmd wifi set-wifi-enabled enabled'`. No loop, no polling, no wakelock, no notice,
+nothing left on the phone but a pid file it removes. Keep the screen on during the test
+(`$A keepawake on`, and `off` afterwards: other agents' tests look at screen-off behaviour, so it is never left on).
+`$A deadman-selftest` first proves the timer outlives the adb link going down. A permanent version (Wi-Fi back by
+itself after a change that leaves the phone off the LAN) is app code (`WifiControl`), not a shell script on the phone.
+
+### Custodian / Bluetooth: not available, and what it would take
+
+The custodian-phone skill assumes a Custodian PC daemon paired over Bluetooth. On Nov 27 2026 it does not exist
+here: there is no `custodian` module, CLI or daemon on the Dreamscape server or on Ruiko (searched both), the server
+has no Bluetooth adapter (`/sys/class/bluetooth` is absent), and Ruiko's USB Bluetooth dongle is paired with the Fold7
+and an Xperia, not with the A53. So Custodian is not a fallback today. What it would take: one USB Bluetooth adapter on
+the server (or the Custodian daemon on Ruiko, whose dongle then pairs with the A53), the Custodian app on the A53
+(`dev.custodian.agent` was seen installed on Nov 14), the daemon, and one pairing on the phone. That is a physical
+step; it is only worth asking for if the Wi-Fi/adb paths above cannot cover a state.
