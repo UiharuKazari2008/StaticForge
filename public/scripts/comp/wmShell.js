@@ -1218,7 +1218,17 @@
     }
 
     /** A tap on the bars over an Android program, once the app has brought the page up: what the same tap does here. */
+    /**
+     * 'notice:<id>': View on the app's own box of a notice. She is looking at it now, so the app's Repeat of it ends
+     * (AndroidInbox.hush, #1367) - the page never asked about that notice, so hushPutAway does not know it.
+     */
+    function barsViewedNotice(role) {
+        if (typeof role !== 'string' || !role.startsWith('notice:') || role.length <= 7) return;
+        try { const bridge = window.AndroidInbox; if (bridge && typeof bridge.hush === 'function') bridge.hush(role.slice(7)); } catch (_) { /* no app */ }
+    }
+
     function barsTap(role) {
+        barsViewedNotice(role);
         if (!shell || !role) return;
         afterPaint().then(() => {
             // the native Start's item (Melaton Bars): 'start-item:' + { key, folders }

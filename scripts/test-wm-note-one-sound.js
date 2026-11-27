@@ -408,6 +408,20 @@ async function main() {
         assert.deepStrictEqual(w.sounds, []);
     });
 
+    await check('View on the app\'s box (the bar tap notice:<id>) ends the app\'s repeat of that notice, and nothing else does', async () => {
+        const hushed = [];
+        const ctx = { window: { AndroidInbox: { hush: (id) => hushed.push(id) } } };
+        vm.createContext(ctx);
+        vm.runInContext(`${cut('    function barsViewedNotice(role) {')}\nthis.f = barsViewedNotice;`, ctx);
+        for (const role of ['notice:rem:1', 'notice:', 'open:mail', 'lock', 'shown', undefined]) ctx.f(role);
+        assert.deepStrictEqual(hushed, ['rem:1']);
+        assert.ok(/function barsTap\(role\) \{\n\s+barsViewedNotice\(role\);/.test(src), 'every bar tap goes through it first');
+        const old = { window: {} };
+        vm.createContext(old);
+        vm.runInContext(`${cut('    function barsViewedNotice(role) {')}\nthis.f = barsViewedNotice;`, old);
+        old.f('notice:rem:2'); // an older app: nothing to call, no throw
+    });
+
     if (failed) { console.log(`test-wm-note-one-sound: ${failed} of ${step} FAILED`); process.exit(1); }
     console.log('test-wm-note-one-sound: ok');
     process.exit(0);
