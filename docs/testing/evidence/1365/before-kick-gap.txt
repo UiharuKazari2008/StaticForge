@@ -1,0 +1,47 @@
+#1365 phase 1 ("before"): the 80 s network-gap run could NOT be made on the old server. 27 Nov 2026, EST (device and server share the clock).
+What WAS recorded: a Kick stream started on the OLD relay code, handed to the app's player, screen off, then the SERVER RESTART
+(the fix's deploy) killed it for good: the player got HTTP 404 and never came back. That is the "server restart" half of the
+problem, seen on the old session; it is not the network-gap case.
+
+Device: lane emulator aemu-a53-1 (a53 shape, Android 16, x86_64, -no-audio), app versionCode 3632021, page signed in (admin).
+Channel / mode: asmongold (the only channel on the program's list), mode 160 (Kick's own 160p).
+
+Before this run (14:23-14:38): a relay session of someone else (cbd9dfe118a5c085b2bcbd23, mode e480 per the session record,
+started 13:27) was being fetched without a break (piece s00838 at 14:23, s01067 at 14:38). I waited 10 min for it to end,
+it did not. The coordinator then told me to start with what I had.
+
+Timeline (EST)
+  14:39:24  page over CDP: localStorage wmVideosLiveMode=160; window.wmYouTube.open('kick:asmongold')  (no taps: page-driven start)
+            the old relay replaced the other session: .cache/videos-live/ held only f1bbe454846fe7b9d1b8ef0e, pieces s00001...
+  14:39:40  before-01-page-playing.png: the page plays it (picture, "asmongold, 7.9K watching, LIVE 1 h 12 min, 160p"); an
+            unrelated box "1 update is available for Melaton ... Install Now / Later" is at the bottom (not touched)
+  14:39:44  Home key. logcat Playback:  hand-off start: live stream, screen on, picture-in-picture
+  14:39:45  Playback: foreground entered (mediaPlayback)
+  14:39:51  dumpsys media_session: package jp.net.seventhreeseven.dreamscape state=PLAYING(3), position=-1 (the app reports no
+            position on this player); relay folder getting new pieces
+  14:39:58  screen off (keyevent 223); mWakefulness=Asleep at 14:40:31
+  14:40:07  Dreamscape pm2 process came up again (pm2 jlist uptime 14:40:07, restart_time 1): the planner's restart, which was
+            announced for "about 9 minutes" and ran about 1.5 minutes later
+  14:40:26  pm2 log: "[videos] kick asmongold: session started again (restart)" (the new code reviving the other viewer's session cbd9...)
+  14:40:26.897  ExoPlayer: Response code: 404          (my player's address f1bbe... is unknown to the restarted server: it was an old-code
+                                                        session, no record on disk)
+  14:40:27.004  Playback: playback failed (ERROR_CODE_IO_BAD_HTTP_STATUS): trying again
+  14:40:27.011  Playback: retry lock acquired (599 s left in the window)
+  14:40:31  media_session state=BUFFERING(6) (read at 14:40:31)
+  14:40:31  net off (lane.sh net off). Because the stream was already dead, the gap proves nothing: I ended it
+  14:40:57  net on (26 s gap, not 80)
+  14:41:07.127, 14:41:19.172  ExoPlayer: Response code: 404 again (retries continue, same address)
+  14:41:07+ media_session state=ERROR(7), error=Source error; AndroidVideos.state()=retrying
+  14:41:22  screen on. 14:41:25.464 AndroidVideos.stop(): Playback: retry lock released (stopped); 14:41:25.507 foreground left.
+            isActive()=false, no PLAYING media session, no wake lock of the app held.
+
+Verdict
+  - Network gap of about 80 s on the old server: NOT TESTED. No claim.
+  - A server restart while the old-code session f1bbe... was held by the app's player with the screen off: the player got 404
+    at 14:40:26.9 and still got 404 at 14:41:07 and 14:41:19 (about 53 s, until I stopped it); it did not come back.
+    The folder of that session was gone from .cache/videos-live/ by 14:40:36 (only cbd9... was there).
+  - Side effect: starting 160 stopped the other viewer's session for about 1 minute (14:39:24 until the restart revived it,
+    pm2 log 14:40:26 and sessions record lastHit 14:40:40). That viewer's address is cbd9dfe118a5c085b2bcbd23.
+  - Not recorded: the folder-gone time of the idle end, the PiP window (the screenshot after Home showed the stock launcher
+    with no floating window, so I did not keep it), the sound.
+Left behind: the other viewer's cbd9... session (running). My player stopped. Emulator aemu-a53-1 still running, network on, screen on.

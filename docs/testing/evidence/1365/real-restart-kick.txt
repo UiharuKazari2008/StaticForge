@@ -1,0 +1,21 @@
+Real restart, Nov 27 2026 (gate 313). A relay session somebody was watching (Kick, mode e480, started 13:27:25) had a record written by hand before the restart (the old server kept none).
+Restart requested 14:40:03, Dreamscape answered 200 3 s after it.
+
+pm2 log:
+2026-11-27T14:40:26: [videos] kick asmongold: session started again (restart)
+
+record after the restart (lastHit moves: the address is being played):
+{"v":1,"sessions":{"cbd9dfe118a5c085b2bcbd23":{"slug":"asmongold","mode":"e480","startedAt":1795804045000,"lastHit":1795808483429}}}
+
+folder .cache/videos-live/cbd9dfe118a5c085b2bcbd23 (same id as before the restart; piece numbers go on past the old run's, which had reached s01067 at 14:38):
+-rw-r-----+ 1 kanmi kanmi 493124 14:41:23 s01117.ts
+-rw-r-----+ 1 kanmi kanmi 404576 14:41:27 s01118.ts
+-rw-r-----+ 1 kanmi kanmi 412284 14:41:32 s01119.ts
+-rw-r-----+ 1 kanmi kanmi 426196 14:41:36 s01120.ts
+-rw-r-----+ 1 kanmi kanmi 434656 14:41:40 s01121.ts
+-rw-r-----+ 1 kanmi kanmi 462104 14:41:44 s01122.ts
+#EXTM3U
+#EXT-X-VERSION:6
+#EXT-X-TARGETDURATION:4
+#EXT-X-MEDIA-SEQUENCE:1108
+#EXT-X-INDEPENDENT-SEGMENTS

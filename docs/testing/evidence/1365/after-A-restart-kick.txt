@@ -1,0 +1,94 @@
+#1365 phase 2, part A: Kick, restart stand-in (relay reload), screen off. 27 Nov 2026, EST. Device: lane emulator aemu-a53-1
+(a53 shape, Android 16, -no-audio), app versionCode 3632021. Server fix live since the 14:40 restart.
+Channel asmongold, mode e480, the SHARED session cbd9dfe118a5c085b2bcbd23 that someone else also watches (HARD constraint kept: no
+replace, no live_stop).
+
+Steps (times EST)
+  14:43:29  localStorage wmVideosLiveMode=e480; window.wmYouTube.open('kick:asmongold') over CDP (no taps). .cache/videos-live/ kept ONLY
+            cbd9dfe118a5c085b2bcbd23 (my start joined it; no new id). after-A-01-page-playing.png: the page plays it ("480p Enhanced, LIVE").
+  14:43:53  Home. Playback: hand-off start: live stream, screen on, picture-in-picture / foreground entered (mediaPlayback);
+            media_session state=PLAYING(3)
+  14:44:00  screen off (keyevent 223). 14:44:30: mWakefulness=Asleep, media_session PLAYING(3); sampler from 14:44:40.
+  14:44:51.22  bash scripts/reload-server-module.sh modules/videosKickRelay.js --why "#1365 device proof: a relay reload stands in for a restart"
+               output: plan: modules/videosKickRelay.js reload / gate: approved / modules/videosKickRelay.js: reloaded in 7 ms /
+               reloaded modules/videosKickRelay.js        exit code 0 at 14:44:52.73
+  14:45:03  pm2 log: [videos] kick asmongold: session started again (restart)     (the first playlist request after the reload; the
+            other viewer's player and mine ask the same address, I cannot tell whose request came first)
+  14:45:11.093  Playback: playback failed (ERROR_CODE_BEHIND_LIVE_WINDOW): trying again
+  14:45:11.097  Playback: retry lock acquired (599 s left in the window)
+  14:45:13.624  Playback: retry lock released (playing again)
+  No ExoPlayer "Response code" line (no 404, no 503) was logged in this run. Same address (the app has no other).
+
+Numbers
+  piece numbers: before the reload s01166 (14:44:40) ... s01168 (14:44:51); folder empty/new at 14:44:54-14:44:57; after: s01170 at 14:45:01, s01171 ...
+  s01218 at 14:48:13. They went on, never s00000.
+  media_session stayed PLAYING(3) the whole time (the player's reserve carried it); the app's own state went "retrying" at 14:45:11 and
+  "playing" at 14:45:15; AndroidVideos.position() (ms, live window): 54-56 s before the reload ... 56669 at 14:45:08, 4000 at 14:45:11
+  (new playlist), 9304 at 14:45:15, then +3.4 s per 3.5 s sample to 54387 at 14:48:13: moving, no stall.
+  From the reload start (14:44:51.2) to "retry lock released (playing again)": 22.4 s; the stop in playing was 2.5 s (14:45:11.09 to 14:45:13.62).
+VERDICT A: came back by itself, YES, nobody touched the device (screen stayed off). Caveat: another viewer shares this session, so
+the revive may have been started by their request; my player recovered with its single behind-live-window failure.
+
+Sampler output (every ~3.5 s: time | media_session state | AndroidVideos isActive/state/position(ms) | relay folder and its newest piece):
+14:44:40 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":41057}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01166.ts 
+14:44:44 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":40486}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01167.ts 
+14:44:47 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":39884}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01168.ts 
+14:44:51 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":39328}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01168.ts 
+14:44:54 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":42720}"} | folders: *:0pcs,last= 
+14:44:57 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":46128}"} | folders: cbd9dfe118a5c085b2bcbd23:0pcs,last= 
+14:45:01 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":49610}"} | folders: cbd9dfe118a5c085b2bcbd23:1pcs,last=s01170.ts 
+14:45:04 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":53100}"} | folders: cbd9dfe118a5c085b2bcbd23:2pcs,last=s01171.ts 
+14:45:08 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":56669}"} | folders: cbd9dfe118a5c085b2bcbd23:3pcs,last=s01172.ts 
+14:45:11 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"retrying\",\"p\":4000}"} | folders: cbd9dfe118a5c085b2bcbd23:4pcs,last=s01173.ts 
+14:45:15 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":9304}"} | folders: cbd9dfe118a5c085b2bcbd23:5pcs,last=s01174.ts 
+14:45:19 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":12909}"} | folders: cbd9dfe118a5c085b2bcbd23:6pcs,last=s01175.ts 
+14:45:23 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":16310}"} | folders: cbd9dfe118a5c085b2bcbd23:6pcs,last=s01175.ts 
+14:45:26 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":19783}"} | folders: cbd9dfe118a5c085b2bcbd23:8pcs,last=s01177.ts 
+14:45:29 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":23260}"} | folders: cbd9dfe118a5c085b2bcbd23:9pcs,last=s01178.ts 
+14:45:33 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":26727}"} | folders: cbd9dfe118a5c085b2bcbd23:9pcs,last=s01178.ts 
+14:45:36 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":30170}"} | folders: cbd9dfe118a5c085b2bcbd23:10pcs,last=s01179.ts 
+14:45:40 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":33688}"} | folders: cbd9dfe118a5c085b2bcbd23:11pcs,last=s01180.ts 
+14:45:43 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":37137}"} | folders: cbd9dfe118a5c085b2bcbd23:12pcs,last=s01181.ts 
+14:45:47 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":40544}"} | folders: cbd9dfe118a5c085b2bcbd23:13pcs,last=s01182.ts 
+14:45:50 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":43973}"} | folders: cbd9dfe118a5c085b2bcbd23:14pcs,last=s01183.ts 
+14:45:54 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":47426}"} | folders: cbd9dfe118a5c085b2bcbd23:14pcs,last=s01183.ts 
+14:45:57 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":50944}"} | folders: cbd9dfe118a5c085b2bcbd23:15pcs,last=s01184.ts 
+14:46:01 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":54478}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01185.ts 
+14:46:04 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":53923}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01186.ts 
+14:46:08 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":53355}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01187.ts 
+14:46:11 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":52847}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01188.ts 
+14:46:14 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":52287}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01188.ts 
+14:46:18 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":51764}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01189.ts 
+14:46:21 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":51246}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01190.ts 
+14:46:25 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":50784}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01191.ts 
+14:46:28 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":54265}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01192.ts 
+14:46:32 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":53732}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01193.ts 
+14:46:35 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":53167}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01194.ts 
+14:46:39 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":52595}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01195.ts 
+14:46:42 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":52071}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01196.ts 
+14:46:46 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":51628}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01197.ts 
+14:46:49 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":51141}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01197.ts 
+14:46:53 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":54567}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01198.ts 
+14:46:56 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":53992}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01199.ts 
+14:47:00 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":53467}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01200.ts 
+14:47:03 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":52928}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01201.ts 
+14:47:07 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":52457}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01202.ts 
+14:47:10 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":51898}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01202.ts 
+14:47:14 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":51389}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01203.ts 
+14:47:17 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":50916}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01204.ts 
+14:47:21 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":54322}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01205.ts 
+14:47:24 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":53719}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01206.ts 
+14:47:27 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":53224}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01207.ts 
+14:47:31 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":52722}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01208.ts 
+14:47:34 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":52143}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01209.ts 
+14:47:38 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":51682}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01210.ts 
+14:47:41 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":51118}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01210.ts 
+14:47:45 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":54567}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01211.ts 
+14:47:48 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":54051}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01212.ts 
+14:47:52 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":53465}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01213.ts 
+14:47:55 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":52931}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01214.ts 
+14:47:59 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":52479}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01215.ts 
+14:48:02 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":51983}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01215.ts 
+14:48:06 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":51441}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01216.ts 
+14:48:09 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":50930}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01217.ts 
+14:48:13 | media=PLAYING(3) err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":54387}"} | folders: cbd9dfe118a5c085b2bcbd23:16pcs,last=s01218.ts 

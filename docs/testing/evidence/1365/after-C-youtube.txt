@@ -1,0 +1,66 @@
+#1365 phase 2, part C: YouTube through the server, restart stand-in (relay reload), screen off. 27 Nov 2026, EST. Same device.
+
+Before: .cache/videos-yt/ did not exist (no other YouTube session). Kick playback of part A/B ended first, WITHOUT a stop request: the page's
+stopPlayer() (wmYouTube.js ~1551-1569) sends youtube_live_stop for the player's id, which for a joined session would stop the other viewer's
+session, so I did: AndroidVideos.stop() (14:52:36.669 Playback: foreground left) and then lane.sh stop-app + start-app (the page's player is gone
+with the process; no ask is sent). cbd9dfe118a5c085b2bcbd23 was still there afterwards (folder, and the sessions record's lastHit kept moving:
+1795809889293 = 15:04:49).
+
+Video: MIT OpenCourseWare "1. What is Computation?", id nykOeWgQcHM, 2586 s (43:06), public, not live (found with one youtube_search ask
+from the page), quality v144 (localStorage wmVideosVideoMode=v144).
+To make the page play through the server I set the page's IN-MEMORY hub.settings.playIn='here' (the saved setting on the server is
+'app' and I did not save anything); window.wmYouTube.open('yt:nykOeWgQcHM').
+
+First try (14:54:50): the page showed YouTube's own embed (youtube-nocookie iframe present, pre-roll controls), paused, never the server
+player; the server session a2e21af740aab10bedfe2151 had been created, but the page fell back to the embed (cause not captured) and no hand-off
+happened (no Playback line): after-C-00-first-try-youtube-embed-paused.png. I ended that by stop-app/start-app and a second try:
+  14:58:50  page restarted, a hook on wsClient.sendMessage: youtube_video_start answered {id a2e21af740aab10bedfe2151, video nykOeWgQcHM,
+            mode v144, state done, error "", url /api/videos/yt/a2e21af740aab10bedfe2151/index.m3u8, at 0, duration 2586, copied true}
+  14:59:21  video playing in the page (currentTime 16.7 s, readyState 4, no iframe); wmNativeSlot=videos
+  14:59:52  after-C-01-page-playing.png: the picture and "0:48 / 43:06" (the title row reads "YouTube" because I started it by id only;
+            the "Lane 1367 asleep r1" box at the bottom is another agent's test notice)
+  14:59:52.875  Home. Playback: hand-off start: video, screen on, picture-in-picture / foreground entered (mediaPlayback)
+  14:59:59  screen off. 15:00:29 mWakefulness=Asleep; media_session PLAYING(3) position=80738 ms, buffered 101568 ms; AndroidVideos position 83321.
+  Session a2e21af740aab10bedfe2151: .cache/videos-yt-sessions.json {"video":"nykOeWgQcHM","mode":"v144","at":0,"maxSeg":21,"done":true,
+  "duration":2586,"height":144,"kbit":155,"copied":true}; its index.m3u8 has #EXT-X-ENDLIST (grep -c = 1), 541 pieces on disk (the video was
+  written whole within seconds).
+  15:00:46  media_session position 98894 ms (the last sample before the reload; PLAYING)
+  15:00:48.68  bash scripts/reload-server-module.sh modules/videosYoutubeRelay.js --why "#1365 device proof: a relay reload stands in for a restart"
+               output: plan: modules/videosYoutubeRelay.js reload / gate: approved / modules/videosYoutubeRelay.js: reloaded in 6 ms /
+               reloaded modules/videosYoutubeRelay.js     exit code 0 at 15:00:50.05; the folder stayed on disk (541 pieces)
+  15:01:21  position 134218 ms, PLAYING (the reserve carried it 33 s)
+  15:01:22.491  ExoPlayer: Response code: 404
+  15:01:22.585  Playback: playback failed (ERROR_CODE_IO_BAD_HTTP_STATUS): trying again
+  15:01:22.588  Playback: retry lock acquired (599 s left in the window)
+  15:01:24.514  Playback: retry lock released (playing again)
+  15:01:25  pm2 log: [videos] youtube nykOeWgQcHM: session taken back from its files
+  15:01:24 media_session ERROR(7) Source error, position 137117; 15:01:27 PLAYING(3) position 137117; 15:01:31 140584; 15:01:44 155619;
+            15:03:48 277942 (the sampler ended 15:03:55): the position continued from where it was, not from 0, not at the end.
+  Position before the reload 98.9 s (15:00:46) / after, at the failure 137.1 s, at 15:03:48 277.9 s. The folder, the address and the session id
+  never changed. From the reload start to PLAYING again: 35.8 s (the stop was 1.9 s, 15:01:22.6 to 15:01:24.5; the 34 s before it were the player's
+  buffer).
+VERDICT C: came back by itself, YES (same place in the video, nobody touched the device, screen off throughout).
+
+End of my playback (the session is mine, the page's own stop is right):
+  15:04:15  lane.sh start-app brought the page in front: the page took the video back from the native player (Playback: foreground left
+            15:04:15.991), position 5:12 at 15:04:23 (after-C screenshot read: the picture plays, "5:12 / 43:06").
+  15:04:38  Back key (the program's own "leave the player" path = stopPlayer -> youtube_video_stop): .cache/videos-yt-sessions.json
+            {"v":1,"sessions":{}}, .cache/videos-yt/ empty, AndroidVideos isActive=false state=off, no PLAYING media session, the
+            Videos Feed in front (Kick live shows "8.4K watching"), screen awake. Nothing of mine keeps retrying.
+
+Sampler output (columns: time | media_session state and position ms | AndroidVideos | relay folder and piece count):
+15:00:36 | media=PLAYING(3) pos=89882 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":90504}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:00:40 | media=PLAYING(3) pos=92894 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":93898}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:00:43 | media=PLAYING(3) pos=95893 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":97364}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:01:00 | media=PLAYING(3) pos=113914 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":114441}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:01:17 | media=PLAYING(3) pos=131220 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":131554}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:01:21 | media=PLAYING(3) pos=134218 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":134973}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:01:24 | media=ERROR(7) pos=137117 err=Source error | app={"ok":true,"value":"{\"a\":true,\"s\":\"retrying\",\"p\":137117}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:01:27 | media=PLAYING(3) pos=137117 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":139469}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:01:31 | media=PLAYING(3) pos=140584 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":142871}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:01:34 | media=PLAYING(3) pos=143598 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":146333}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:01:55 | media=PLAYING(3) pos=164638 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":166898}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:02:22 | media=PLAYING(3) pos=192282 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":194474}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:02:50 | media=PLAYING(3) pos=219888 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":222011}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:03:17 | media=PLAYING(3) pos=246936 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":249509}"} | folders: a2e21af740aab10bedfe2151:541pcs 
+15:03:45 | media=PLAYING(3) pos=274943 err=null | app={"ok":true,"value":"{\"a\":true,\"s\":\"playing\",\"p\":277080}"} | folders: a2e21af740aab10bedfe2151:541pcs 
