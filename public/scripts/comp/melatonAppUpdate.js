@@ -88,19 +88,17 @@
         const w = waiting();
         const g = gate();
         gateWas = g.ok;
-        const asked = attempted === s.versionCode || wanted === s.versionCode || (state && Number(state.attempted) === s.versionCode);
-        // the one Updates note, changed in place (never a second notice): ready, or waiting for a silent route with the reason
+        // every Updates note has something to do (Yukimi, Nov 26 2026: a note she cannot act on is a direct violation of
+        // "no call to action"): a build that waits for its silent route installs by itself and shows nothing; an older build
+        // that cannot install silently offers Install (Android's installer, started by her); otherwise Restart Now
+        if (w || (!g.ok && !g.old)) { if (note) { note.hide(); note = null; } return; }
         let html = `${label(s)} is ready to install. Melaton restarts to install it.`;
-        let keys = true;
-        if (w) { html = `${label(s)} is waiting: ${w.why || 'no silent install route is up'}. It installs by itself once Shizuku or ADB is back.`; keys = false; }
-        else if (!g.ok && g.old) {
-            html = 'This version of Melaton cannot install its own updates. The next update is installed for you; after that they install by themselves.';
-            keys = false;
-        } else if (!g.ok) {
-            html = asked ? `${label(s)} is waiting: ${g.why}. It installs by itself once Shizuku or ADB is up.` : `${label(s)} is ready. ${g.why}; it installs once Shizuku or ADB is up.`;
-            keys = !asked;
+        let left = { label: 'Restart Now', action: () => { if (note) note.hide(); restart(); } };
+        if (!g.ok) {
+            html = `${label(s)} is ready. This version of Melaton installs it with Android's installer: tap Install. Updates after it install by themselves.`;
+            left = { label: 'Install', action: () => { if (note) note.hide(); installManual(); } };
         }
-        const softKeys = { left: keys ? { label: 'Restart Now', action: () => { if (note) note.hide(); restart(); } } : null, right: { label: 'Later', action: () => { if (note) note.hide(); } } };
+        const softKeys = { left, right: { label: 'Later', action: () => { if (note) note.hide(); } } };
         if (note) { note.update({ title: 'Updates', html, softKeys }); return; }
         note = sh.appNote({ title: 'Updates', html, icon: 'status-update', event: 'update', silent: true, update: true, softKeys });
     }
@@ -108,6 +106,19 @@
     function say(title, text) {
         const sh = shell();
         if (sh && typeof sh.messageBox === 'function') void sh.messageBox({ title, text, icon: 'warning' });
+    }
+
+    /** Install, tapped by her on an older build: the app installs the staged APK its own way (Android's installer). */
+    function installManual() {
+        const s = staged();
+        const b = bridge();
+        if (!s || !b || typeof b.restartNow !== 'function') return null;
+        attempted = s.versionCode;
+        wanted = 0;
+        let r = null;
+        try { r = JSON.parse(b.restartNow()); } catch (_) { r = null; }
+        lastAnswer = r && r.state ? r.state : 'unknown';
+        return lastAnswer;
     }
 
     /**
