@@ -228,7 +228,7 @@ function registerPackets(handlersCtx) {
     reg('weather_watch', handleWatch);
     reg('weather_unwatch', handleUnwatch);
     // the primary location's alerts, broadcast to every client as they are issued
-    weatherService.startAlertMonitor();
+    if (!require('../../replicaMode').off('weather')) weatherService.startAlertMonitor(); // replica: no weather polling
 }
 
 module.exports = {

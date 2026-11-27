@@ -71,6 +71,7 @@ function ensureReplicationConfig() {
 }
 
 function getReplicationConfig() {
+    if (require('./replicaMode').off('replication')) return normalizeReplicationConfig(null); // replica: standalone, never replicates into the primary
     if (!globalResourcesRef) return normalizeReplicationConfig(null);
     const secure = globalResourcesRef.getSecureConfig ? globalResourcesRef.getSecureConfig() : null;
     return normalizeReplicationConfig(secure && secure.replication ? secure.replication : null);

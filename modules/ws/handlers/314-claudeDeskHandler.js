@@ -1196,7 +1196,8 @@ function registerPackets(handlersCtx) {
     defineAgentsFeed();
     runtime.bind(gResources);
     // config dirs of accounts with parallel sessions: copy rotated logins back; the carry tmux server in its own scope
-    setTimeout(() => {
+    // replica: no Supervisor / Fleet / agent-coord sockets / Claude accounts
+    if (!require('../../replicaMode').off('supervisor')) setTimeout(() => {
         runtime.armAll(gResources).catch((e) => console.warn(`[claudeDesk] account runtimes: ${e.message}`));
         if (process.env.DREAMSCAPE_CLAUDE_RC_READONLY !== '1') launcher.ensureServer().catch((e) => console.warn(`[claudeDesk] carry tmux server: ${e.message}`));
         // the Supervisor watches every session's turns end (fs.watch on ~/.claude/sessions) and serves agent-coord's check

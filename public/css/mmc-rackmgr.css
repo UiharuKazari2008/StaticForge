@@ -1,0 +1,272 @@
+/* Rack Manager (public/scripts/comp/mmcRackManager*.js): what the MMC kit's classes (mmc-console.css) do not carry.
+   Pages use the kit's sections, list views, props and progress bar; this file adds the iLO console view, the hardware
+   grids, the history graph, the terminal, forms of the Vista dialogs and task dialogs, and a few helpers. No animation:
+   nothing here moves on its own (phone-power-client.mdc). */
+
+.mmc-window .rm-grow { flex: 1 1 auto; min-width: 0; }
+.mmc-window .rm-hint, .rm-form .rm-hint { color: #6d6d6d; }
+
+/* ---- status dots, chips, tables ---- */
+.rm-dot {
+    display: inline-block;
+    flex: none;
+    width: 9px;
+    height: 9px;
+    margin: 0 4px 0 8px;
+    border: 1px solid #7a7a7a;
+    border-radius: 50%;
+    background: #b8b8b8;
+    vertical-align: -1px;
+}
+.rm-dot.is-ok, .rm-dot.on { background: #3bb54a; border-color: #2a8a37; }
+.rm-dot.is-warn, .rm-dot.wait { background: #f0b400; border-color: #b58500; }
+.rm-dot.is-bad, .rm-dot.off { background: #d9372b; border-color: #a52419; }
+.mmc-props .rm-dot, .rm-table .rm-dot { margin-left: 0; }
+
+.mmc-window .rm-table {
+    border-collapse: collapse;
+    width: 100%;
+    background: #fff;
+    border: 1px solid #c8c8c8;
+}
+.mmc-window .rm-table th {
+    padding: 2px 8px;
+    border-bottom: 1px solid #d5d5d5;
+    background: linear-gradient(#fff, #f1f1f1);
+    text-align: left;
+    font-weight: normal;
+    color: #1e395b;
+}
+.mmc-window .rm-table td { padding: 2px 8px; border-bottom: 1px solid #f0f0f0; white-space: nowrap; }
+.mmc-window .rm-table .is-num { text-align: right; }
+.mmc-window .rm-uptable td:first-child, .mmc-window .rm-uptable th:first-child { width: 22px; padding-right: 0; }
+
+.rm-chip {
+    display: inline-block;
+    min-width: 30px;
+    padding: 0 4px;
+    border: 1px solid #b0b0b0;
+    border-radius: 2px;
+    background: #f4f4f4;
+    text-align: center;
+    font-size: 11px;
+}
+.rm-chip.is-ok { background: #e3f4e5; border-color: #8cc790; }
+.rm-chip.is-warn { background: #fdf1cc; border-color: #d9b44a; }
+.rm-chip.is-bad { background: #fbdcd8; border-color: #d98a82; }
+.rm-pill { display: inline-block; margin: 1px 6px 1px 0; white-space: nowrap; font-size: 11px; }
+.rm-pill .rm-dot { margin-left: 0; }
+
+.rm-sev, .mmc-list i.rm-sev { font-style: normal; }
+.rm-sev.is-bad { color: #b3261e; }
+.rm-sev.is-warn { color: #8a6100; }
+.rm-sev.is-ok { color: #1f7a2e; }
+
+/* ---- memory / processor grids and the drive bays ---- */
+.rm-memgrid { display: grid; gap: 3px; align-items: stretch; margin: 2px 0 6px; }
+.rm-memhead { text-align: center; font-weight: bold; color: #1e395b; }
+.rm-memrowlab { align-self: center; padding-right: 4px; color: #6d6d6d; font-size: 11px; }
+.rm-cell { text-align: center; padding: 2px; border: 1px solid #ddd; background: #fafafa; min-height: 18px; }
+.rm-spec { font-size: 11px; line-height: 1.35; }
+.rm-dimm {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 32px; border: 1px solid #aaa; background: #e8e8e8; font-size: 10px; line-height: 1.25;
+}
+.rm-dimm b { font-size: 11px; }
+.rm-dimm.is-ok { background: #d8f0db; border-color: #7fbf86; }
+.rm-dimm.is-absent { background: #f1f1f1; border-color: #d4d4d4; color: #9a9a9a; border-style: dashed; }
+.rm-dimm.is-issue { background: #fdeeb8; border-color: #d3a52c; }
+.rm-dimm.is-fault { background: #f8c9c3; border-color: #c75044; }
+.rm-legend { margin-left: 12px; color: #555; font-size: 11px; }
+.rm-legend i { display: inline-block; width: 9px; height: 9px; margin: 0 3px 0 8px; border: 1px solid #888; background: #d8f0db; }
+.rm-legend i.is-absent { background: #f1f1f1; }
+.rm-legend i.is-issue { background: #fdeeb8; }
+.rm-legend i.is-fault { background: #f8c9c3; }
+.rm-bays { display: grid; gap: 4px; max-width: 560px; }
+.rm-bay {
+    display: flex; flex-direction: column; justify-content: center; min-height: 40px; padding: 2px 6px;
+    border: 1px solid #8e8e8e; border-radius: 2px; background: linear-gradient(#f6f6f6, #dcdcdc); overflow: hidden; font-size: 10px;
+}
+.rm-bay b { font-size: 12px; }
+.rm-bay span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rm-bay.is-ok { background: linear-gradient(#e9f7ea, #c5e6c9); border-color: #6fb07a; }
+.rm-bay.is-absent { background: #f1f1f1; border-style: dashed; border-color: #cfcfcf; color: #9a9a9a; }
+.rm-bay.is-issue { background: linear-gradient(#fff3c8, #f0d77f); border-color: #c9a23a; }
+.rm-bay.is-fault { background: linear-gradient(#fbd9d4, #eba39a); border-color: #c0483c; }
+.rm-bay.is-dvd { background: linear-gradient(#e9eef4, #cfd8e2); color: #46586b; text-align: center; }
+
+.rm-switch { margin: 0 0 6px; }
+.rm-filterbar, .rm-logfilter { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: 0 0 6px; }
+.rm-logfilter label, .rm-filterbar label { display: inline-flex; align-items: center; gap: 4px; }
+.rm-logfilter input[type="text"] { width: 130px; }
+.rm-filter { width: 180px; }
+
+/* ---- the kit's progress bar fills by --rm-pct ---- */
+.mmc-window .rm-bar { margin: 0; gap: 8px; }
+.mmc-window .rm-bar [role="progressbar"] { flex: 1 1 auto; max-width: 260px; min-width: 60px; height: 15px; }
+.mmc-window .rm-bar [role="progressbar"] > div { width: calc((100% + 2px) * var(--rm-pct, 0) / 100); }
+.mmc-window .rm-bar [role="progressbar"].is-marquee > div { width: 35%; }
+.mmc-list .rm-bar { width: 100%; }
+.mmc-list .rm-bar [role="progressbar"] { max-width: none; height: 11px; }
+.mmc-list .rm-bar > span { flex: none; width: 34px; text-align: right; }
+
+.rm-jobstrip { margin: 0 0 6px; padding: 3px 6px; border: 1px solid #c8d7e8; background: #f2f7fc; }
+.rm-jobstrip > div { display: flex; align-items: center; gap: 8px; min-height: 20px; }
+.rm-jobstrip .rm-bar { flex: 0 0 120px; }
+
+.rm-pre {
+    margin: 4px 0 0; padding: 4px 6px; min-height: 40px; max-height: 260px; overflow: auto;
+    border: 1px solid #b8b8b8; background: #fff; font: 12px Consolas, "Lucida Console", monospace; white-space: pre-wrap; word-break: break-all;
+}
+.rm-pre.rm-console, .rm-console { background: #0c0c0c; color: #cccccc; border-color: #555; }
+.rm-preview { padding: 4px; border: 1px solid #b8b8b8; background: #1e1e1e; text-align: center; }
+.rm-preview img { max-width: 100%; max-height: 320px; }
+.rm-arts { margin: 2px 0 6px 18px; padding: 0; }
+
+/* ---- the iLO console view ---- */
+.mmc-window .rm-kvm { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding: 6px; background: #f0f0f0; }
+.rm-kvm-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 4px; }
+.rm-kvm-status { display: flex; align-items: center; min-height: 20px; margin: 0 0 4px; color: #333; }
+.rm-kvm-status .rm-grow { margin-left: 12px; color: #6d6d6d; text-align: right; }
+.rm-kvm-screen { position: relative; flex: 1 1 auto; min-height: 120px; overflow: auto; border: 1px solid #555; background: #000; text-align: center; }
+.rm-kvm-cv { max-width: 100%; max-height: 100%; background: #000; outline: none; image-rendering: auto; cursor: default; }
+.rm-kvm-cv.actual { max-width: none; max-height: none; }
+.rm-kvm-cv.is-capturing:focus { box-shadow: 0 0 0 1px #3d7bad; }
+.rm-kvm-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 8px; color: #c8c8c8; pointer-events: none; }
+.rm-kvm-msg:empty { display: none; }
+.rm-post { position: relative; height: 20px; margin: 0 0 4px; border: 1px solid #8e8f8f; background: #fff; overflow: hidden; }
+.rm-post[hidden] { display: none; }
+.rm-post-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(#a7e8a0, #4fc646); }
+.rm-post > span { position: relative; display: block; padding: 2px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- power ---- */
+.rm-powerstate { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; }
+.rm-powerstate > div { display: flex; flex-direction: column; }
+.rm-bigstate { font: 22px "Segoe UI", sans-serif; }
+.rm-bigstate.is-on { color: #1f7a2e; }
+.rm-bigstate.is-off { color: #6d6d6d; }
+.rm-caprow { margin: 4px 0; }
+.rm-radios { display: flex; flex-direction: column; gap: 3px; margin: 2px 0 4px; }
+.rm-chartwrap { position: relative; max-width: 780px; }
+.rm-chart { display: block; width: 100%; height: 220px; }
+.rm-cbg { fill: #fff; stroke: #9a9a9a; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.rm-cg { stroke: #e2e2e2; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.rm-ct { fill: #555; font: 10px "Segoe UI", sans-serif; }
+.rm-ct.is-cap { fill: #c8372d; }
+.rm-capline { stroke: #c8372d; stroke-dasharray: 6 4; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.rm-ccur { stroke: #888; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.rm-tip {
+    position: absolute; top: 8px; z-index: 3; padding: 3px 6px; border: 1px solid #767676; background: #ffffe1; color: #000; font-size: 11px; pointer-events: none; white-space: nowrap;
+}
+.rm-tip[hidden] { display: none; }
+.rm-tip i, .rm-legend2 i { display: inline-block; width: 9px; height: 9px; margin-right: 4px; }
+.rm-legend2 { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 4px 0 0; font-size: 11px; }
+
+/* ---- terminal ---- */
+.mmc-window .rm-termpage { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding: 6px; background: #f0f0f0; }
+.rm-tmuxbar { flex: none; max-height: 120px; overflow: auto; margin: 0 0 6px; border: 1px solid #c8c8c8; background: #fff; }
+.rm-term-host { flex: 1 1 auto; min-height: 120px; overflow: hidden; padding: 2px; border: 1px solid #555; background: #0c0c0c; }
+
+/* ---- forms in the dialogs and wizards ---- */
+.rm-form { box-sizing: border-box; width: 100%; height: 100%; padding: 6px 8px; overflow: auto; white-space: normal; text-align: left; font: 12px "Segoe UI", Tahoma, sans-serif; color: #000; }
+.rm-form p { margin: 0 0 8px; }
+.rm-form .rm-field { display: grid; grid-template-columns: 170px minmax(0, 1fr); align-items: center; gap: 6px; margin: 0 0 7px; }
+.rm-form .rm-field.is-wide { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+.rm-form .rm-field > span { color: #000; }
+.rm-form input[type="text"], .rm-form input[type="password"], .rm-form select { box-sizing: border-box; width: 100%; min-width: 0; }
+.rm-form .rm-spin { width: 54px; flex: none; }
+.rm-form .rm-textarea { box-sizing: border-box; width: 100%; resize: none; font: 12px Consolas, "Lucida Console", monospace; }
+.rm-form .rm-check { display: flex; align-items: center; gap: 5px; margin: 2px 0; }
+.rm-form .rm-checks { display: flex; flex-direction: column; gap: 2px; }
+.rm-form .rm-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
+.rm-form .rm-row input[type="text"] { width: auto; }
+.rm-form .rm-row .rm-grow { flex: 1 1 120px; }
+.rm-form .rm-pre { max-height: 240px; }
+.rm-form .rm-isolist { max-height: 150px; overflow: auto; border: 1px solid #828790; background: #fff; }
+.rm-form .rm-isolist.rm-tall { max-height: 190px; }
+.rm-form .rm-isorow { display: flex; align-items: center; gap: 8px; padding: 2px 6px; cursor: default; }
+.rm-form .rm-isorow > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rm-form .rm-isorow > i { flex: none; font-style: normal; color: #6d6d6d; }
+.rm-form .rm-isorow.is-selected { background: #cde8ff; outline: 1px solid #7da2ce; }
+.rm-form .rm-err {
+    display: flex; align-items: center; gap: 6px; margin: 6px 0 0; color: #b3261e;
+}
+.rm-form .rm-err[hidden] { display: none; }
+.rm-form .rm-shot { max-height: 420px; overflow: auto; border: 1px solid #555; background: #000; text-align: center; }
+.rm-form .rm-shot img { max-width: 100%; }
+.rm-form .rm-hint { margin: 2px 0 6px; }
+.rm-form .rm-rolelist { max-height: 190px; overflow: auto; border: 1px solid #c8c8c8; background: #fff; padding: 2px; }
+.rm-form .rm-rolecheck { align-items: flex-start; padding: 3px 4px; }
+.rm-form .rm-rolecheck > span { display: flex; flex-direction: column; }
+.rm-form .rm-rolecheck i { font-style: normal; color: #6d6d6d; font-size: 11px; }
+.rm-form .rm-wizlog .rm-bar { margin: 0 0 8px; }
+.rm-form .rm-wizlog .rm-pre { max-height: 190px; }
+.rm-trackbar { display: inline-flex; align-items: center; gap: 8px; }
+.rm-trackbar input[type="range"] { width: 200px; }
+.rm-trackbar b { min-width: 52px; font-weight: normal; }
+.rm-form .rm-trackbar { flex: 1 1 auto; }
+.rm-form .rm-row .rm-trackbar input[type="range"] { flex: 1 1 auto; width: auto; min-width: 140px; }
+
+/* ---- the task dialog (Vista's: icon, blue main instruction, command links) ---- */
+.rm-task { display: flex; gap: 12px; box-sizing: border-box; height: 100%; padding: 14px 16px 6px; background: #fff; white-space: normal; text-align: left; font: 12px "Segoe UI", Tahoma, sans-serif; }
+.rm-task > img { flex: none; width: 32px; height: 32px; }
+.rm-task > div { flex: 1 1 auto; min-width: 0; }
+.rm-task-main { margin: 0 0 8px; color: #003399; font: 15px "Segoe UI", sans-serif; }
+.rm-task-text { margin: 0 0 10px; }
+.rm-task-links { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 0; }
+.rm-cmdlink {
+    display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 4px; align-items: center; width: 100%; padding: 6px 8px;
+    border: 1px solid transparent; background: transparent; color: #003399; text-align: left; font: 14px "Segoe UI", sans-serif; cursor: default;
+}
+.rm-cmdlink b { grid-column: 2; font-weight: normal; }
+.rm-cmdlink i { grid-column: 2; margin-top: 1px; color: #555; font: 11px "Segoe UI", sans-serif; font-style: normal; }
+.rm-cmdlink:hover, .rm-cmdlink:focus-visible { border-color: #c4dcf0; background: linear-gradient(#f5fafe, #e1eefb); outline: none; }
+.rm-cmdlink.is-danger { color: #8a1a12; }
+.rm-cmdarrow { grid-row: 1 / span 2; width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #7bd36b, #2e9a2a); position: relative; }
+.rm-cmdarrow::after { content: ""; position: absolute; left: 6px; top: 5px; border: solid #fff; border-width: 0 2px 2px 0; width: 4px; height: 4px; transform: rotate(-45deg); }
+.rm-cmdlink.is-danger .rm-cmdarrow { background: radial-gradient(circle at 40% 35%, #f08a7e, #c1352a); }
+
+/* ---- Automatic power: a Vista property sheet group box ---- */
+.mmc-window .rm-sheet { margin: 0 0 4px; padding: 6px 10px 8px; border: 1px solid #d5dfe5; border-radius: 3px; background: transparent; }
+.mmc-window .rm-sheet legend { padding: 0 4px; color: #003399; }
+.mmc-window .rm-sheet .rm-check { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+.mmc-window .rm-sheet .rm-caprow { margin: 2px 0 2px 22px; }
+
+/* the copied console code sets the dots' class names itself (dot on / off / wait) */
+.rm-kvm-status .dot { display: inline-block; flex: none; width: 9px; height: 9px; margin: 0 4px 0 12px; border: 1px solid #7a7a7a; border-radius: 50%; background: #b8b8b8; }
+.rm-kvm-status .dot.on, .rm-kvm-status .dot.ok { background: #3bb54a; border-color: #2a8a37; }
+.rm-kvm-status .dot.wait, .rm-kvm-status .dot.warn { background: #f0b400; border-color: #b58500; }
+.rm-kvm-status .dot.off, .rm-kvm-status .dot.bad { background: #d9372b; border-color: #a52419; }
+.rm-kvm-status > span:first-child { margin-left: 0; }
+
+/* the global Vista push button face would draw the command links as buttons: they are flat until hot */
+.rm-task .rm-cmdlink:not(#_) {
+    border: 1px solid transparent;
+    border-image: none;
+    background: transparent;
+    box-shadow: none;
+    text-align: left;
+    min-height: 0;
+    padding: 6px 8px;
+}
+.rm-task .rm-cmdlink:not(#_):hover, .rm-task .rm-cmdlink:not(#_):focus-visible {
+    border: 1px solid #c4dcf0;
+    background: linear-gradient(#f5fafe, #e1eefb);
+}
+.rm-task .rm-cmdlink:not(#_) b, .rm-task .rm-cmdlink:not(#_) i { text-align: left; }
+.rm-task .rm-cmdlink:not(#_) b { color: inherit; }
+
+/* long lists (services, the journal, updates, runs) show more than the kit's 214 px */
+#mmcConsole_rackManager .rm-tall-list .mmc-list, #mmcConsole_rackManager .mmc-sec[data-sec="sv-list"] .mmc-list, #mmcConsole_rackManager .mmc-sec[data-sec="lg-list"] .mmc-list { max-height: 400px; }
+#mmcConsole_rackManager .mmc-sec[data-sec="st-disks"] .mmc-list, #mmcConsole_rackManager .mmc-sec[data-sec="bd-runs"] .mmc-list, #mmcConsole_rackManager .mmc-sec[data-sec="hw-logs"] .mmc-list { max-height: 340px; }
+
+/* a console view in a dialog fills the dialog (Shell, Exec, Logs, Ping, dmesg) */
+.rm-form .rm-pre.rm-console { height: calc(100% - 72px); max-height: none; box-sizing: border-box; }
+
+/* ---- Load History: the stacked strips on one time axis (sized in pixels to the pane, text never scaled) ---- */
+.rm-stack { display: block; max-width: none; }
+.rm-coff { fill: #d3d3d3; }
+.rm-ct.rm-cs { fill: #1e395b; font-weight: bold; }
+.rm-cl { vector-effect: none; stroke-linejoin: round; }
+.rm-tip-h { margin-top: 3px; font-weight: bold; color: #1e395b; }
+.rm-tip-h:first-of-type { margin-top: 0; }

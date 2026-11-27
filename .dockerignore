@@ -1,9 +1,16 @@
-# Runtime data (mount as volumes)
+# Runtime data (mount as volumes; the replicas role clones them from a seed)
 images
 .previews
 .cache
 logs
 tmp
+data
+dsdata
+securePrompts
+backups
+core.*
+.agent-*
+*.log
 
 # Secrets and local config
 config.json
@@ -15,8 +22,13 @@ nax_generation_config.json
 
 # Dependencies and VCS
 node_modules
+**/node_modules
 .git
 .gitignore
+.gitea
+.jules
+.menma
+.tmp
 
 # Large optional import sources
 nax_tags.json
@@ -32,6 +44,8 @@ dreamscape-transfer-*.tar.zst
 .vscode
 .agents
 graphify-out
+docs/testing/evidence
+*.bak-*
 
 # Transfer output on host
 data/wiki_post_thumb_refs.json

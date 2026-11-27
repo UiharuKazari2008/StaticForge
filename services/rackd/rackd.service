@@ -1,0 +1,17 @@
+[Unit]
+Description=rackd - Rack Manager host agent
+After=network-online.target libvirtd.service docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/rackd
+ExecStart=/usr/bin/node /opt/rackd/rackd.js
+Restart=always
+RestartSec=3
+TimeoutStopSec=30
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

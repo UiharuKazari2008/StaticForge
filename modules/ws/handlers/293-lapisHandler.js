@@ -76,7 +76,7 @@ function registerPackets(handlersCtx) {
     reg('lapis_picture_get', packet(false, 'The picture could not be read', async () => lapisService.getPicture()));
     reg('lapis_picture_save', packet(true, 'The picture could not be saved', async (m) => lapisService.savePicture(m.dataUrl === null ? null : m.dataUrl)), { destructive: true });
     lapisService.attachNotifyTap(); // MyHyundai's door notices (no timer: activeSync calls it)
-    lapisService.startScheduler();
+    if (!require('../../replicaMode').off('lapis')) lapisService.startScheduler(); // replica: no car API polling
 }
 
 module.exports = {

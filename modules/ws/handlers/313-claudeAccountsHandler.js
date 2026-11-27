@@ -184,8 +184,10 @@ const handleSessionAction = guard('claude_session_action', async (gr, message) =
 function registerPackets(handlersCtx) {
     if (!handlersCtx) return;
     // CardSpace's "Use this account" reconnects Remote Control from here on (apiKeyManager -> onSelectionChanged)
-    claudeHost.arm(handlersCtx.globalResources);
-    fleet.armAll(handlersCtx.globalResources).catch(() => {});
+    if (!require('../../replicaMode').off('supervisor')) { // replica: no Claude account hosts / remote fleet
+        claudeHost.arm(handlersCtx.globalResources);
+        fleet.armAll(handlersCtx.globalResources).catch(() => {});
+    }
     const reg = (type, handlerFn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             await handlerFn(ctx.handlers, ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer);

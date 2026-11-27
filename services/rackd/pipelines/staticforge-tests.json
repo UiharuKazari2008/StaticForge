@@ -1,0 +1,12 @@
+{
+  "id": "staticforge-tests",
+  "name": "StaticForge tests",
+  "repo": "https://yozora.bluesteel.737.jp.net/DreamScape/StaticForge.git",
+  "ref": "main",
+  "dockerfileFile": "staticforge-tests.Dockerfile",
+  "script": "npm ci --no-audit --no-fund\nnode scripts/check-perf-rules.js\nnode scripts/check-app-scope.js\nnode scripts/check-notifications.js\nfor t in scripts/test-*.js; do echo \"== $t\"; node \"$t\" || echo \"FAILED $t\" >> /out/failures.txt; done\n[ ! -f /out/failures.txt ]\n",
+  "cpus": 8,
+  "memGB": 16,
+  "artifacts": [],
+  "timeoutMin": 90
+}

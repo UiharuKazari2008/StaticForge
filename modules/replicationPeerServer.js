@@ -268,6 +268,7 @@ async function sendTarStream({ host, port, beginFrame, stream, token, rawForHash
 
 function startPeerServer(cargoService) {
     if (server) return server;
+    if (require('./replicaMode').off('replication')) return null; // replica: no peer port, no replication into the primary
 
     const port = getPeerPort();
     server = net.createServer((socket) => {

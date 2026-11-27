@@ -407,6 +407,7 @@
         { id: 'print-management', name: 'Print Management', icon: '/static_images/app_icons/16/vista-print-management.webp' },
         { id: 'reliability', name: 'Reliability and Performance Monitor', icon: '/static_images/app_icons/16/vista-performance.webp' },
         { id: 'security-config', name: 'Security Configuration Management', icon: `${ART}/security-center-16.png` },
+        { id: 'rack-manager', name: 'Rack Manager', icon: '/static_images/melaton/net-server-16.png' },
         { id: 'server-manager', name: 'Server Manager', icon: '/static_images/app_icons/16/vista-server-manager.webp' },
         { id: 'services', name: 'Services', icon: `${ART}/administrative-tools-16.png` },
         { id: 'msconfig', name: 'System Configuration', icon: `${ART}/system-16.png` },

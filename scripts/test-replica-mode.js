@@ -1,0 +1,20 @@
+'use strict';
+// modules/replicaMode.js: unset = live server (everything allowed), DREAMSCAPE_REPLICA=1 = replica (only the allow list).
+const assert = require('assert');
+const fresh = () => { delete require.cache[require.resolve('../modules/replicaMode')]; return require('../modules/replicaMode'); };
+delete process.env.DREAMSCAPE_REPLICA; delete process.env.DREAMSCAPE_REPLICA_ALLOW;
+let m = fresh();
+assert.strictEqual(m.isReplica(), false);
+assert.strictEqual(m.allow('supervisor'), true);
+assert.strictEqual(m.off('mail'), false);
+process.env.DREAMSCAPE_REPLICA = '1';
+assert.strictEqual(m.isReplica(), true);
+assert.strictEqual(m.allow('supervisor'), false);
+assert.strictEqual(m.off('mail'), true);
+process.env.DREAMSCAPE_REPLICA_ALLOW = 'NovelAI, mail';
+assert.strictEqual(m.allow('novelai'), true);
+assert.strictEqual(m.allow('mail'), true);
+assert.strictEqual(m.allow('director'), false);
+process.env.DREAMSCAPE_REPLICA = '0';
+assert.strictEqual(m.isReplica(), false);
+console.log('replicaMode: ok');

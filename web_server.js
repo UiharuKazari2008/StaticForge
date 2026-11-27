@@ -55,6 +55,7 @@ let lastScheduledCompletion = 0; // Timestamp of last scheduled request completi
 
 // Import modules
 const globalResources = require('./modules/globalResources');
+const replicaMode = require('./modules/replicaMode'); // DREAMSCAPE_REPLICA=1: no outside reach (docs/rack-manager/replicas.md)
 const { createApplicationAuthEarlyMiddleware, createAgentAssetAuthMiddleware } = require('./modules/auth');
 globalResources.prepare();
 const authMiddleware = globalResources.getAuthMiddleware();
@@ -2524,13 +2525,18 @@ require('./modules/testDevicesRoute').mount(app, authMiddleware, globalResources
 // modules/activeSyncWallpapers.js — the phones' wallpapers kept for Device Center (Yozora #827)
 require('./modules/activeSyncWallpapers').mount(app, authMiddleware, globalResources);
 // modules/androidAppUpdatePush.js — a new Android app build is staged on the phones behind it (hello + release events, Yozora #821)
-require('./modules/androidAppUpdatePush').start(globalResources);
+if (!replicaMode.isReplica()) require('./modules/androidAppUpdatePush').start(globalResources); // replica: no phone delivery
 // CaféReady task code for the Android app: hashed manifest + files, api-gated by the app (#908)
 require('./modules/cafeTasksRoute').mount(app, authMiddleware);
 // DreamOS laptop updates: signed channel manifests + content-addressed images and components (#910)
 require('./modules/dreamosUpdates').mount(app, authMiddleware);
 // Android app builds from the server: DSApp-Kotlin main + unmerged branches -> versioned APK on a build worker (#821)
-require('./modules/androidBuilds').mount(app, authMiddleware, globalResources);
+if (replicaMode.allow('androidbuilds')) require('./modules/androidBuilds').mount(app, authMiddleware, globalResources); // replica: no Android builds
+// Rack Manager (rack servers: iLO + rackd roles): HTTP routes, the agents' socket, the iLO service child (docs/rack-manager/README.md)
+if (!replicaMode.isReplica()) { // replica: no Rack Manager / iLO
+    require('./modules/rackManager').mount(app, authMiddleware);
+    require('./modules/rackManager').start();
+}
 // modules/offlineFilesRoute.js — Offline Files for CaféReady clients: folder settings, chunked write-back uploads (#910)
 require('./modules/offlineFilesRoute').mount(app, authMiddleware, globalResources);
 // modules/searchSuggest.js — Internet Search's predictions from Google / Bing (Yozora #830)
@@ -4983,6 +4989,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
     // Host ~/.config/cursor follows the Xi active Director account.
     try {
+        if (replicaMode.isReplica()) throw new Error('replica'); // replica: never touches the host's ~/.config/cursor
         const hostSync = require('./modules/cursorAccountAuthStore').syncHostCursorLoginFromXi();
         if (hostSync && hostSync.synced) globalResources.logger.bootSubStep(`Host Cursor login synced from Xi account ${hostSync.accountId}`);
     } catch (_) { /* optional */ }
@@ -5033,6 +5040,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
         attachGuacWebUpgrade(server, sessionMiddleware);
         // Alchemy's viewer socket (#990): binary frames and input on one WebSocket
         attachGrimoireBrowserUpgrade(server, sessionMiddleware);
+        if (!replicaMode.isReplica()) require('./modules/rackManager').attachUpgrade(server, sessionMiddleware);
         serverStartupStatus.setCapability('websocket', true);
 
         // Start ping interval with server data callback
@@ -5226,6 +5234,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
     // Claude usage figures: ping/pong refresh every 6 hours while a client is around.
     try {
+        if (replicaMode.off('claude')) throw new Error('replica'); // replica: no Claude usage probe
         require('./modules/claudeUsageProbe').armClaudeUsageProbe(globalResources);
     } catch (err) {
         globalResources.logger.warn(`Claude usage refresh not armed: ${err.message}`);
@@ -5233,6 +5242,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
     // Director computer warm-up. Hosts without bubblewrap still boot; Director just stays offline.
     try {
+        if (replicaMode.off('director')) throw new Error('replica'); // replica: no Director / Fleet agents
         await globalResources.logger.bootStep('Director Computer', async () => {
             const prepared = await cursorDirector.prepareDirector(globalResources, { deferCliUpdates: true });
             (prepared.cliUpdates || []).forEach((line) => {
@@ -5255,6 +5265,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
     }
 
     try {
+        if (replicaMode.off('director')) throw new Error('replica'); // replica: no Xi host agent
         await globalResources.logger.bootStep('Xi', async () => {
             // modules/xiDirector.js — detached host agent, only when config.xi.enabled
             const xiDirector = require('./modules/xiDirector');
@@ -5324,6 +5335,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
         globalResources.logger.warn(`Preview synchronization failed: ${err.message}`);
     }
     try {
+        if (replicaMode.off('director')) throw new Error('replica'); // replica: no CLI self-updates
         await globalResources.logger.bootStep('Director CLI updates', async () => {
             (await cursorDirector.updateDirectorClis(globalResources)).forEach((line) => {
                 if (/failed/.test(line)) globalResources.logger.warn(`Director: ${line}`);

@@ -166,7 +166,6 @@ APT_BUILD=(
     libjpeg-dev
     libgif-dev
     librsvg2-dev
-    libhunspell-dev
     # #1134: sharp built against the system libvips (reads JPEG XL) and djxl / cjxl for the JXL-stored gallery
     libvips-dev
     libjxl-tools
@@ -176,6 +175,9 @@ APT_RUNTIME=(
     ruby
     zstd
     git
+    ffmpeg
+    tmux
+    sqlite3
 )
 
 apt_updated=0
@@ -221,9 +223,9 @@ install_apt_packages() {
     apt_install "${APT_BASE[@]}"
 
     if [[ "$profile" == full ]]; then
-        log "Installing build apt packages (canvas, sharp, spellchecker, sqlite) ..."
+        log "Installing build apt packages (canvas, sharp, node-pty, sqlite) ..."
         apt_install "${APT_BUILD[@]}"
-        log "Installing runtime apt packages (ruby, zstd, git) ..."
+        log "Installing runtime apt packages (ruby, zstd, git, ffmpeg, tmux, sqlite3) ..."
         apt_install "${APT_RUNTIME[@]}"
         if command -v ruby >/dev/null 2>&1; then
             log "Ruby $(ruby --version | cut -d' ' -f1-2) OK"
@@ -241,23 +243,23 @@ install_node() {
     if ! needs_host_app_install; then
         return
     fi
-    if command -v node >/dev/null 2>&1 && [[ "$(node_major)" -ge 20 ]]; then
+    if command -v node >/dev/null 2>&1 && [[ "$(node_major)" -ge 24 ]]; then
         log "Node $(node -v) OK"
         return
     fi
     if [[ "$NO_NODE_INSTALL" -eq 1 ]]; then
-        die "Node.js 20+ required. Install Node or remove --no-node-install"
+        die "Node.js 24+ required. Install Node or remove --no-node-install"
     fi
     if [[ "$SKIP_APT" -eq 1 ]] || ! command -v apt-get >/dev/null 2>&1; then
-        die "Node.js 20+ not found and apt install skipped/unavailable"
+        die "Node.js 24+ not found and apt install skipped/unavailable"
     fi
-    log "Installing Node.js 20 (NodeSource) ..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    log "Installing Node.js 24 (NodeSource) ..."
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
     apt_update_once
     apt-get install -y nodejs
     hash -r
-    command -v node >/dev/null 2>&1 && [[ "$(node_major)" -ge 20 ]] \
-        || die "Node.js 20 install failed (got: $(node -v 2>/dev/null || echo none))"
+    command -v node >/dev/null 2>&1 && [[ "$(node_major)" -ge 24 ]] \
+        || die "Node.js 24 install failed (got: $(node -v 2>/dev/null || echo none))"
     log "Node $(node -v) installed"
 }
 
@@ -374,7 +376,7 @@ create_directories() {
     log "Creating data directories ..."
     local dirs=(
         images .previews .cache .cache/sessions .cache/upload .cache/preview
-        .cache/vibe .cache/tempDownload .cache/nax_images .cache/userFiles logs securePrompts tmp
+        .cache/vibe .cache/tempDownload .cache/nax_images .cache/userFiles logs securePrompts tmp data dsdata
     )
     for d in "${dirs[@]}"; do
         mkdir -p "$ROOT/$d"

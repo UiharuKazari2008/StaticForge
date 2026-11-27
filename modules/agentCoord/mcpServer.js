@@ -270,6 +270,13 @@ const TOOLS = [
     { name: 'mem_flag', description: 'A memory is wrong or out of date: flag it with why (it stays visible with the flag until reviewed).', inputSchema: S({ id: { type: 'number' }, why: str('What is wrong, one or two lines') }, ['id', 'why']) },
     { name: 'mem_recent', description: 'The most recently changed active memories.', inputSchema: S({ limit: { type: 'number' } }) },
     { name: 'mem_digest', description: 'The short block every session starts with: pinned rules and preferences, pinned items of the repo, this week\'s gotchas and lessons.', inputSchema: S({ repo: str('Repo name (default: yours)') }) },
+    { name: 'rack_status', description: "Rack Manager: the rack servers (Fat Misaka, Chubby Asuka) with iLO power, rackd state (up, down, not-deployed, connecting), each role's summary, running jobs and running build runs. Pass server for one.", inputSchema: S({ server: str('server name, e.g. misaka (omit for all)') }) },
+    { name: 'rack_role', description: "Rack Manager: one role on a rack server. Roles: vms, android, sandboxes, terminal, storage, networking, services, logs, updates, containers, builds, info, jobs, and ilo (hardware and power; params.what is health, power, history, logs, memory, media, settings or users). Without action it returns the role's state; with action it runs it (params as in docs/rack-manager/README.md) and answers a result or a job. Destructive actions (host power, vms destroy or delete, storage lv-delete or ramdisk-delete with sync false, android delete, containers remove or prune, builds pipeline-delete or artifact-remove) need params.confirm true. Every write is audited.", inputSchema: S({ server: str('server name'), role: str('role id'), action: str('action; omit to read the role state'), wake: { type: 'boolean', description: 'power the host on and wait if it is off (otherwise HOST_OFF)' }, params: { type: 'object', description: 'action parameters (for ilo power: op press, hold, reset or cold)' } }, ['server', 'role']) },
+    { name: 'rack_exec', description: "Rack Manager: run a shell command on a rack host through rackd (terminal exec). Answers code, stdout, stderr and ms; output is capped at 1 MB. user is rack (default) or root.", inputSchema: S({ server: str('server name'), cmd: str('shell command'), wake: { type: 'boolean', description: 'power the host on and wait if it is off' }, cwd: str('working directory'), timeout_s: { type: 'number', description: 'timeout in seconds (default 60)' }, user: { type: 'string', enum: ['rack', 'root'], description: 'rack (default) | root' } }, ['server', 'cmd']) },
+    { name: 'rack_job', description: "Rack Manager: rackd jobs (installs, builds, clones, upgrades). Without id it lists the jobs; with id it returns that job with its log tail; with cancel true it cancels it. For a builds run the job id is the run id.", inputSchema: S({ server: str('server name'), wake: { type: 'boolean', description: 'power the host on and wait if it is off' }, id: str('job id (omit to list)'), cancel: { type: 'boolean', description: 'cancel the job' }, tail: { type: 'number', description: 'log lines to return (default 200)' } }, ['server']) },
+    { name: 'rack_power', description: "Rack Manager power on demand: the rack host is normally off. action status shows power state (off, powering-on, booting, up, shutting-down), since, open leases, busy items and the time left before the idle shutdown. action on presses the iLO power button (wait true waits up to 10 minutes for rackd and answers the boot timings). action off shuts the host down gracefully through rackd and needs confirm true; it is refused while leases or busy items are open unless force true. Role calls (rack_role, rack_exec, rack_job) on a host that is off answer refused HOST_OFF unless wake true.", inputSchema: S({ server: str('server name'), action: { type: 'string', enum: ['on', 'off', 'status'], description: 'on | off | status' }, wait: { type: 'boolean', description: 'on: wait until the host is up' }, reason: str('why (audited)'), confirm: { type: 'boolean', description: 'off: must be true' }, force: { type: 'boolean', description: 'off: shut down although leases are open' } }, ['server', 'action']) },
+    { name: 'rack_lease', description: "Rack Manager: keep a rack host awake while you work on it. Taking a lease while the host is off powers it on (wait true waits for it). minutes defaults to 60, at most 1440; pass id to renew. The host shuts down by itself after the idle time with no lease and nothing busy.", inputSchema: S({ server: str('server name'), purpose: str('what the work is'), minutes: { type: 'number', description: 'lease length in minutes (default 60, max 1440)' }, id: str('renew this lease id'), wait: { type: 'boolean', description: 'wait until the host is up' } }, ['server', 'purpose']) },
+    { name: 'rack_lease_release', description: "Rack Manager: release a lease when your work on the rack host is done, so the idle shutdown can run.", inputSchema: S({ id: str('lease id') }, ['id']) },
     { name: 'dsapp_build', description: 'Build the Android app (DSApp-Kotlin) on the Dreamscape server: origin/main plus every unmerged branch is merged into build/latest, built on the build worker (Ruiko) and stored as a versioned APK that is then delivered to the phones. Use this instead of building on Ruiko by hand or running the joint build script. action request starts a build (refused while one runs or while another agent\'s build gate for DSApp-Kotlin is open: open your own gate first with coord_build_request, the server then builds past it); action status shows the running or last build (pass id for one build: state, step, log tail, release).', inputSchema: S({ action: { type: 'string', enum: ['request', 'status'], description: 'request | status' }, id: { type: 'number', description: 'status: a build id (omit for the list and the running build)' }, note: str('request: why / what it ships, one line') }, ['action']) },
     { name: 'coord_builds', description: 'Open and running build gates (recent: also the ones that ended in the last day).', inputSchema: S({ repo: str('Repo name'), recent: { type: 'boolean' } }) }
 ];
@@ -382,6 +389,13 @@ function run(name, args) {
     }
     case 'coord_request_work':
         return supervisorAsk({ op: 'enqueue', sourceRef: `agent:${ego.id}#${Date.now().toString(36)}`, title: a.title, prompt: a.prompt, startNow: a.start_now === true, cwd: a.cwd, model: a.model, effort: a.effort }, 20000).then((out) => ({ work: out.work }));
+    case 'rack_power': return rackAsk({ op: 'power', server: a.server, action: a.action, wait: a.wait === true, reason: a.reason, confirm: a.confirm === true, force: a.force === true, by: ego.id }, a.wait ? 640000 : 60000).then((out) => out.result);
+    case 'rack_lease': return rackAsk({ op: 'lease', server: a.server, purpose: a.purpose, minutes: a.minutes, id: a.id, wait: a.wait === true, by: ego.id }, a.wait ? 640000 : 60000).then((out) => out.result);
+    case 'rack_lease_release': return rackAsk({ op: 'lease_release', id: a.id, by: ego.id }, 30000).then((out) => out.result);
+    case 'rack_status': return rackAsk({ op: 'status', server: a.server }, 60000).then((out) => out.result);
+    case 'rack_role': return rackAsk({ op: 'role', server: a.server, role: a.role, action: a.action, params: a.params, wake: a.wake === true, by: ego.id }, a.wake ? 760000 : 130000).then((out) => out.result);
+    case 'rack_exec': return rackAsk({ op: 'exec', server: a.server, cmd: a.cmd, cwd: a.cwd, timeout_s: a.timeout_s, user: a.user, wake: a.wake === true, by: ego.id }, ((Number(a.timeout_s) || 60) + 30 + (a.wake ? 600 : 0)) * 1000).then((out) => out.result);
+    case 'rack_job': return rackAsk({ op: 'job', server: a.server, id: a.id, cancel: a.cancel === true, tail: a.tail, wake: a.wake === true, by: ego.id }, 60000).then((out) => out.result);
     case 'dsapp_build':
         if (a.action !== 'request' && a.action !== 'status') throw new Error('action must be request or status');
         return androidBuildsAsk(a.action === 'request' ? { op: 'request', note: a.note, agentId: ego.id } : { op: 'status', id: a.id }).then((out) => out.result);
@@ -482,6 +496,26 @@ function androidBuildsAsk(req) {
             return resolve(out);
         });
         sock.on('error', (e) => reject(new Error(e.code === 'ENOENT' || e.code === 'ECONNREFUSED' ? 'The Android build job is not running (it runs inside the Dreamscape server)' : e.message)));
+    });
+}
+
+/** One request to Rack Manager (modules/rackManager) in the Dreamscape server over its unix socket rack.sock. */
+function rackAsk(req, timeoutMs) {
+    const net = require('net');
+    const file = process.env.AGENT_RACK_SOCKET || path.join(path.dirname(store.dbPath()), 'rack.sock');
+    return new Promise((resolve, reject) => {
+        let buf = '';
+        const sock = net.createConnection(file, () => sock.write(`${JSON.stringify(req)}\n`));
+        sock.setEncoding('utf8');
+        sock.setTimeout(timeoutMs || 60000, () => { sock.destroy(); reject(new Error('Rack Manager did not answer in time')); });
+        sock.on('data', (c) => { buf += c; });
+        sock.on('end', () => {
+            let out = null;
+            try { out = JSON.parse(buf.trim()); } catch (e) { return reject(new Error('Rack Manager answered something unreadable')); }
+            if (!out.ok) return reject(new Error(out.error || 'Rack Manager failed'));
+            return resolve(out);
+        });
+        sock.on('error', (e) => reject(new Error(e.code === 'ENOENT' || e.code === 'ECONNREFUSED' ? 'Rack Manager is not running (it runs inside the Dreamscape server)' : e.message)));
     });
 }
 

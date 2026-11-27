@@ -144,7 +144,8 @@ function registerPackets(handlersCtx) {
     });
     // any slot change (sign-in, sign-out, count, a learned refusal, an error) is one push to the console
     xmRadio.onSlots(() => mmcFeed.poke());
-    recorder.init(xmRadio, handlersCtx.globalResources, { changed: () => { xmRadio.touch(); mmcFeed.poke(); } });
+    if (require('../../replicaMode').allow('xmradio')) recorder.init(xmRadio, handlersCtx.globalResources, // replica: no SiriusXM recorder
+        { changed: () => { xmRadio.touch(); mmcFeed.poke(); } });
     xmRadio.definePhoneFeed(statusHub);
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {

@@ -4,6 +4,7 @@
  */
 
 const databases = require('./databases');
+const replicaMode = require('../replicaMode'); // DREAMSCAPE_REPLICA=1: no outside reach (docs/rack-manager/replicas.md)
 const { initializeAccountSubscriptionSnapshot } = require('../accountSubscriptionSnapshot');
 
 /**
@@ -54,7 +55,7 @@ const INIT_STEPS = [
         run: (gr) => {
             gr.initializeApiKeyManager();
             // Security Center key status dots: checks keys never checked (or unreachable last time), 20s after boot.
-            require('../apiKeyHealth').start(gr);
+            if (replicaMode.allow('novelai')) require('../apiKeyHealth').start(gr); // replica: no key checks against NovelAI
         },
     },
     {
@@ -123,7 +124,7 @@ const INIT_STEPS = [
         label: 'Starting mail gateway',
         afterReady: true,
         sync: true,
-        when: (gr) => !!(gr.getConfig() || {}).mailGateway?.enabled,
+        when: (gr) => replicaMode.allow('mail') && !!(gr.getConfig() || {}).mailGateway?.enabled, // replica: no mail
         skipMessage: 'Mail gateway disabled',
         run: (gr) => {
             require('../mailGateway').start(gr);
@@ -291,6 +292,7 @@ const INIT_STEPS = [
         label: 'Starting managed RunPod watcher',
         afterReady: true,
         sync: true,
+        when: () => replicaMode.allow('runpod'), // replica: no RunPod pods
         run: (gr) => {
             gr.getRunpodPodManager().start();
         },
@@ -299,6 +301,7 @@ const INIT_STEPS = [
         id: 'gr_nai_prompt_guide',
         label: 'Refreshing Docubase wiki',
         afterReady: true,
+        when: () => replicaMode.allow('docubase'), // replica: no git sync from outside
         run: (gr) => {
             const naiPromptGuideSync = require('../naiPromptGuideSync');
             const cacheDir = gr.getPath('cache');
@@ -352,6 +355,7 @@ const INIT_STEPS = [
         label: 'Opening the module reload socket',
         afterReady: true,
         sync: true,
+        when: () => replicaMode.allow('agentcoord'), // replica: no agent-coord reload socket
         run: () => {
             require('../hotReload').serve();
         },

@@ -194,6 +194,7 @@
         'security-config': () => CP().doAction('item:security-center'),
         // Server Manager (#831 slice 5) replaced the Management Tools shortcut (the old dashboard page)
         'server-manager': () => callGlobal('openServerManagerConsole'),
+        'rack-manager': () => callGlobal('openRackManagerConsole'),
         services: () => launch('services') || CP().doAction('item:network'),
         msconfig: () => CP().doAction('item:system'),
         'task-scheduler': () => launch('task-scheduler') || msg('Task Scheduler is coming in a later update of Melaton.', 'Task Scheduler'),

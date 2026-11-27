@@ -1217,6 +1217,7 @@ class GlobalResources {
             throw new Error('WebSocket server must be initialized before generation quips auto-update scheduler');
         }
 
+        if (require('./replicaMode').off('novelai')) return; // replica: no scheduled paid NovelAI jobs
         try {
             this.generationQuipsManager.startAutoUpdateScheduler();
             this.initializationProgress.generationQuipsAutoUpdate = true;

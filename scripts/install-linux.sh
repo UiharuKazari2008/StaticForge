@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Dreamscape (StaticForge) — non-interactive, idempotent Linux install.
 #
-# Tested on a fresh ubuntu:24.04 (see scripts/ci/clean-install-test.sh). Debian/Ubuntu (apt) only.
+# Tested on a fresh ubuntu:24.04 (see scripts/ci/clean-install-test.sh); the live server and the Docker image are Debian 13 (trixie).
+# Debian/Ubuntu (apt) only.
 # Safe to re-run: apt/node/pnpm steps are skipped when already satisfied, and existing config
 # files are never overwritten (missing keys such as sessionSecret are added).
 #
@@ -17,13 +18,13 @@
 #   --port N              Port written to a NEW config.json (default 9220)
 #   -h, --help
 #
-# Environment: NEKOAI_JS_SOURCE=registry|local (default registry), NODE_MAJOR (default 20).
+# Environment: NEKOAI_JS_SOURCE=registry|local (default registry), NODE_MAJOR (default 24).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WITH_SERVICE=0; SKIP_APT=0; PORT=9220
 SERVICE_USER="${SUDO_USER:-$(id -un)}"
-NODE_MAJOR="${NODE_MAJOR:-20}"
+NODE_MAJOR="${NODE_MAJOR:-24}"
 
 log()  { echo "[install] $*"; }
 warn() { echo "[install] WARNING: $*" >&2; }
@@ -53,7 +54,7 @@ APT_PKGS=(
   curl ca-certificates gnupg git zstd
   build-essential python3 python-is-python3 pkg-config
   libsqlite3-dev libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
-  libhunspell-dev ruby
+  ruby ffmpeg tmux sqlite3
   libvips-dev libjxl-tools
 )
 if [[ $SKIP_APT -eq 0 ]]; then

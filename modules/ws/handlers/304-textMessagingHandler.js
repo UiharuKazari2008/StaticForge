@@ -42,9 +42,9 @@ function registerPackets(handlersCtx) {
         console.warn('[304-textMessagingHandler] registerPackets: missing handlersCtx');
         return;
     }
-    try { textMessaging.init(handlersCtx.globalResources); } catch (error) { console.warn('[textMessaging] init failed:', error.message); }
+    if (require('../../replicaMode').off('messaging')) { /* replica: no BlueBubbles / RCS / phone messaging */ } else try { textMessaging.init(handlersCtx.globalResources); } catch (error) { console.warn('[textMessaging] init failed:', error.message); }
     // the phone's notifications while the app is in the background (modules/textMessagingPhone.js)
-    try { require('../../textMessagingPhone').init(handlersCtx.globalResources); } catch (error) { console.warn('[textMessaging] phone init failed:', error.message); }
+    if (require('../../replicaMode').off('messaging')) { /* replica */ } else try { require('../../textMessagingPhone').init(handlersCtx.globalResources); } catch (error) { console.warn('[textMessaging] phone init failed:', error.message); }
 
     const body = (message) => (message.data && typeof message.data === 'object' ? message.data : message);
     const reg = (type, fn, meta = {}) => wsPacketRegistry.registerWsPacket(type, async ({ ws, message, clientInfo }) => {

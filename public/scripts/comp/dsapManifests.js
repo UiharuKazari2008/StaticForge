@@ -192,6 +192,14 @@ async function openServerManagerConsole(node) {
     return null;
 }
 
+/** Rack Manager (docs/rack-manager/README.md), loading the MMC snap-ins first; node: 'root' | 's:<server>' | 's:<server>:console' ... */
+window.openRackManagerConsole = async function openRackManagerConsole(node) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // mmcRackManager.open: public/scripts/comp/mmcRackManager.js
+    if (window.mmcRackManager) return window.mmcRackManager.open(node);
+    return null;
+};
+
 /** Print Management (#831): the generation backends as printers; printerId selects one under Printers. */
 async function openPrintManagementSnapin(printerId) {
     await featureLoader.loadFeature('mmc_snapins');

@@ -1,0 +1,13 @@
+{
+  "id": "dsapp",
+  "name": "DSApp-Kotlin debug APK",
+  "repo": "https://yozora.bluesteel.737.jp.net/DreamScape/DSApp-Kotlin.git",
+  "ref": "main",
+  "dockerfileFile": "dsapp.Dockerfile",
+  "script": "chmod +x ./gradlew\n./gradlew --no-daemon --console=plain assembleDebug\n",
+  "env": { "GRADLE_OPTS": "-Dorg.gradle.jvmargs=-Xmx6g" },
+  "cpus": 16,
+  "memGB": 24,
+  "artifacts": ["app/build/outputs/apk/**/*.apk"],
+  "timeoutMin": 120
+}

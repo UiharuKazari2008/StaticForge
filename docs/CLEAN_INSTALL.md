@@ -7,7 +7,7 @@ On Debian/Ubuntu (tested on a fresh **ubuntu:24.04**), from a clone of the repo:
 ```bash
 git clone https://yozora.bluesteel.737.jp.net/DreamScape/StaticForge.git dreamscape
 cd dreamscape
-sudo bash scripts/install-linux.sh                 # deps, Node 20, pnpm, node_modules, config
+sudo bash scripts/install-linux.sh                 # deps, Node 24, pnpm, node_modules, config
 sudo bash scripts/install-linux.sh --with-service  # + pm2 (ecosystem.config.js) and pm2 startup on systemd hosts
 node web_server.js                                  # or let pm2 run it
 ```
@@ -111,11 +111,13 @@ What it installs that the README never mentioned:
 
 | Need | Why |
 |------|-----|
-| Node.js **20+** (NodeSource) | README assumed node exists; the pnpm installer does not provide it |
+| Node.js **24** (NodeSource; the live server runs 24.22) | README assumed node exists; the pnpm installer does not provide it |
 | pnpm **10.33.0** via corepack | pinned by `packageManager`; `get.pnpm.io` now installs pnpm 12 |
-| `build-essential python3 python-is-python3 pkg-config` | node-gyp builds (sqlite3 4.x has no prebuilt for node 20, spellchecker) |
+| `build-essential python3 python-is-python3 pkg-config` | node-gyp builds (`node-pty`, `sharp` and the other native modules in `pnpm.onlyBuiltDependencies`) |
 | `libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev` | `canvas` |
-| `libhunspell-dev` | `spellchecker` (fails to build without it) |
+| `ffmpeg` (ffprobe) | animation and video relays (`modules/imageAnimation.js`, the Videos relays) |
+| `tmux` | agent / terminal sessions (`modules/claudeSessionLauncher.js`) |
+| `sqlite3` | backups and diagnostics (`.backup`; the seed script of Rack Manager replicas) |
 | `libsqlite3-dev` | sqlite native builds |
 | `libvips-dev` | `sharp` builds from source against the system libvips 8.16, which reads JPEG XL (#1134); the prebuilt sharp cannot |
 | `libjxl-tools` | `cjxl` / `djxl`: gallery pictures older than 30 days are stored as lossless JPEG XL (`modules/imageStore.js`, `scripts/image-jxl-idle.js`) |
@@ -123,6 +125,17 @@ What it installs that the README never mentioned:
 | `git zstd` | update engine / replication bundles (`tar` + `zstd`) |
 | `nekoai-js` from npm | `package.json` points at `file:../NekoAI-JS`; `scripts/configure-nekoai.js` switches it |
 | `secure.config.json.sessionSecret` | `web_server.js` throws at boot without it |
+
+## Docker image and replicas
+
+The `Dockerfile` (base `node:24-trixie`, the same Debian 13 / Node 24 as the live server) installs exactly the packages of the table above,
+runs `scripts/setup.sh --skip-apt --skip-config` (pnpm install with the five native builds, nekoai-js from the registry) and warms the runtime assets.
+`docker compose up --build` starts one with bind-mounted data; `scripts/docker-entrypoint.sh` creates missing directories and configs
+(`setup.sh --runtime`) and starts `web_server.js`.
+
+Rack Manager's `replicas` role (docs/rack-manager/replicas.md) builds this image from `origin/main` and runs Dreamscape replicas from it
+(`DREAMSCAPE_REPLICA=1`, see `modules/replicaMode.js`), so a broken Dockerfile, setup script or table row shows up the same day.
+Build log and start log of the last verified image: docs/rack-manager/replicas.md ("Verified build").
 
 Optional, not installed (only needed for the `grimoire-browser` pm2 app): `chromium` and the npm
 package `puppeteer-core`, which is not declared in `package.json`.

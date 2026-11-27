@@ -7156,6 +7156,7 @@ function buildToolsSubmenuItems(opts) {
         // Server Manager (#831 slice 5): every console in one tree (openServerManagerConsole: dsapManifests.js);
         // the suite folder's "Server Manager" is the retired dashboard's entry (server-manager, dsapManifests.js), which opens it too
         { launchId: 'mmc-server-manager', icon: 'fas fa-server', imageIcon: 'vista-server-manager.png', text: 'Server Manager', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openServerManagerConsole(); } },
+        { launchId: 'mmc-rack-manager', icon: 'fas fa-server', imageIcon: 'vista-server-manager.png', text: 'Rack Manager', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openRackManagerConsole(); } },
         // 'control-panel' is Control Panel for agents' open_application (Server Manager had the id until #831); not listed
         { launchId: 'control-panel', icon: 'fas fa-sliders', imageIcon: 'vista-control-panel.png', text: 'Control Panel', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: async () => { await featureLoader.loadFeature('control_panel'); if (window.melatonControlPanel) window.melatonControlPanel.open('home'); } },
         // Lizumi (#1252): the XM Radio recording console (window.openLizumi: mmcLizumi.js, in the mmc_snapins feature)
@@ -8476,6 +8477,7 @@ const START_MENU_SYSTEM_PLACES = {
     'mmc-wiki-caches': { at: 'administrative-tools' },
     'mmc-print-management': { at: 'administrative-tools' },
     'mmc-lizumi': { at: 'administrative-tools' },
+    'mmc-rack-manager': { at: 'administrative-tools' },
     'mmc-server-manager': { at: 'administrative-tools' },  // Server Manager, as on Windows Server 2008
     'config-editor': { at: 'administrative-tools' },     // "Registry Editor" (Runes)
     'event-viewer': { at: 'administrative-tools' },      // "Event Viewer" (Periscope), as on Vista

@@ -1,0 +1,421 @@
+'use strict';
+// replicas: Dreamscape replica servers for development (docs/rack-manager/replicas.md).
+// A replica is a container of the repo's own Dockerfile image (`dreamscape:<sha12>`), DREAMSCAPE_REPLICA=1, its own data dir cloned
+// copy-on-write (xfs reflink) from a seed, its own secure.config.json. Mode `worktree` bind-mounts a git checkout over /app.
+//
+// /srv/rack/replicas                  LV `rackreplicas` (vmdata, xfs reflink=1)
+//   mirror.git                        bare mirror of StaticForge (image builds, worktrees)
+//   seeds/<id>/                       data snapshots of the live Dreamscape (scripts/rack/seed-replica.sh), `.seed.json` = meta,
+//                                     `.secret/novelai.json` only when the seed was taken with keys (copied only for keys:'copy')
+//   <name>/{replica.json,data/,src/}  one replica: record, its data dir, its checkout (worktree mode)
+// HTTPS in front, like production: nginx vhost per replica (roles/replicas/nginx.conf.tmpl) in /etc/nginx/rack-replicas.d, server
+// certificate from the rack CA (/etc/rackd/ca, key mode 600; ca.crt is served as files kind `ca`). TLS port = app port + 100 (9401..9499).
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const http = require('http');
+const { run, ok } = require('../lib/exec');
+const { str, num, bool, RE, bad, readJson, writeJson, exists, sleep, rid } = require('../lib/util');
+const apt = require('../lib/apt');
+const jobs = require('../lib/jobs');
+const events = require('../lib/events');
+const storage = require('./storage');
+
+const packages = ['git', 'rsync', 'xfsprogs', 'nginx', 'openssl'];
+const ROOT = '/srv/rack/replicas';
+const MIRROR = `${ROOT}/mirror.git`;
+const SEEDS = `${ROOT}/seeds`;
+const REPO = 'https://yozora.bluesteel.737.jp.net/DreamScape/StaticForge.git';
+const CREDS = '/etc/rackd/git-credentials';
+const GIT = ['git', '-c', 'safe.directory=*', '-c', `credential.helper=store --file=${CREDS}`];
+const gitEnv = { GIT_TERMINAL_PROMPT: '0' };
+const PORT_MIN = 9301, PORT_MAX = 9399, APP_PORT = 9220;
+const REF = /^[A-Za-z0-9][A-Za-z0-9._\/-]{0,200}$/;
+const SEEDID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
+const FEATURE = /^[a-z0-9_-]{1,32}$/;
+const cname = name => `dsrep-${name}`;
+const dir = name => `${ROOT}/${name}`;
+const recFile = name => `${dir(name)}/replica.json`;
+const docker = (args, o) => run(['docker', ...args], { timeoutMs: 60000, ...o });
+const dok = (args, o) => ok(['docker', ...args], { timeoutMs: 60000, ...o });
+const git = (args, o) => run([...GIT, ...args], { env: gitEnv, timeoutMs: 3600e3, ...o });
+const CA_DIR = '/etc/rackd/ca';
+const VHOSTS = '/etc/nginx/rack-replicas.d';
+const NGINX_BASE = '/etc/nginx/conf.d/00-rack-replicas.conf';
+const TMPL = path.join(__dirname, 'replicas', 'nginx.conf.tmpl');
+const rackDomain = () => { const d = readJson('/etc/rackd/replicas.json', {}).rackDomain || process.env.RACKD_REPLICA_DOMAIN || 'rack.lan'; return /^[a-z0-9.-]{1,100}$/i.test(d) ? d : 'rack.lan'; };
+const RESERVED = new Set(['seeds', 'mirror.git', 'lost+found', '_build', '_rt']);
+
+// ---- the replicas LV ----
+const mounted = () => fs.existsSync(ROOT) && (() => { try { return fs.readFileSync('/proc/self/mountinfo', 'utf8').split('\n').some(l => l.split(' ')[4] === ROOT); } catch { return false; } })();
+async function ensureLv(log = () => {}) {
+  if (mounted()) return;
+  log(`creating LV rackreplicas (500 GB, xfs) in vmdata at ${ROOT}`);
+  await storage.actions['lv-create']({ vg: 'vmdata', name: 'rackreplicas', sizeGB: 500, fs: 'xfs', mount: ROOT });
+}
+async function checkReflink() {
+  const r = await run(['xfs_info', ROOT]);
+  if (!/reflink=1/.test(r.stdout)) throw new Error(`${ROOT} is not an xfs with reflink=1; copy-on-write seeds need it`);
+}
+async function prepare(ctx) {
+  await ensureLv(ctx ? ctx.log : undefined);
+  await checkReflink();
+  fs.mkdirSync(SEEDS, { recursive: true });
+  // seeds are rsynced in by the ssh login user (scripts/rack/seed-replica.sh)
+  await run(['chown', 'hvadmin:hvadmin', SEEDS]); await run(['chmod', '0700', SEEDS]);
+}
+async function prepareAll(ctx) { await prepare(ctx); await ensureNginx(ctx); }
+
+// ---- rack CA, nginx vhosts ----
+async function ensureCa() {
+  fs.mkdirSync(`${CA_DIR}/certs`, { recursive: true, mode: 0o700 });
+  if (exists(`${CA_DIR}/ca.key`) && exists(`${CA_DIR}/ca.crt`)) return;
+  await ok(['openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-keyout', `${CA_DIR}/ca.key`, '-out', `${CA_DIR}/ca.crt`,
+    '-days', '3650', '-subj', '/CN=Rack CA (Fat Misaka)/O=Xyridian Rack', '-addext', 'basicConstraints=critical,CA:TRUE', '-addext', 'keyUsage=critical,keyCertSign,cRLSign']);
+  fs.chmodSync(`${CA_DIR}/ca.key`, 0o600); fs.chmodSync(`${CA_DIR}/ca.crt`, 0o644);
+}
+async function ensureNginx(ctx) {
+  await ensureCa();
+  fs.mkdirSync(VHOSTS, { recursive: true });
+  fs.writeFileSync(NGINX_BASE, `# generated by rackd (role replicas)\nmap $http_upgrade $rack_connection_upgrade { default upgrade; '' close; }\nserver { listen 443 ssl default_server; ssl_reject_handshake on; }\ninclude ${VHOSTS}/*.conf;\n`);
+  fs.rmSync('/etc/nginx/sites-enabled/default', { force: true });   // no port-80 listener: only the replicas' 443 and 94xx
+  const t = await run(['nginx', '-t']);
+  if (t.code !== 0) { fs.rmSync(NGINX_BASE, { force: true }); throw new Error(`nginx -t failed: ${t.stderr.trim().slice(-400)}`); }
+  await ok(['systemctl', 'enable', 'nginx']);
+  await ok(['systemctl', 'reload-or-restart', 'nginx']);   // the package starts it with its default site before our conf exists
+  if (ctx) ctx.log('nginx ready');
+}
+async function reloadNginx() {
+  const t = await run(['nginx', '-t']);
+  if (t.code !== 0) return t.stderr.trim().slice(-400);
+  await ok(['systemctl', 'reload', 'nginx']);
+  return null;
+}
+async function vhostApply(rec) {
+  await ensureNginx(null);
+  const host = hostIp(); const fqdn = `${rec.name}.${rackDomain()}`;
+  const key = `${CA_DIR}/certs/${rec.name}.key`, crt = `${CA_DIR}/certs/${rec.name}.crt`, csr = `${CA_DIR}/certs/${rec.name}.csr`, ext = `${CA_DIR}/certs/${rec.name}.ext`;
+  fs.writeFileSync(ext, `subjectAltName=DNS:${fqdn},IP:${host}\nbasicConstraints=CA:FALSE\nextendedKeyUsage=serverAuth\nkeyUsage=digitalSignature\n`);
+  await ok(['openssl', 'req', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-keyout', key, '-out', csr, '-subj', `/CN=${fqdn}`]);
+  await ok(['openssl', 'x509', '-req', '-in', csr, '-CA', `${CA_DIR}/ca.crt`, '-CAkey', `${CA_DIR}/ca.key`, '-CAcreateserial', '-days', '800', '-out', crt, '-extfile', ext]);
+  fs.rmSync(csr, { force: true }); fs.rmSync(ext, { force: true }); fs.chmodSync(key, 0o600);
+  // Dreamscape's client CA (public .crt only): a client certificate may be offered; none is required and none is passed on (as in production)
+  const clientCa = exists(`${CA_DIR}/client-ca.crt`) ? `    ssl_verify_client optional_no_ca;\n    ssl_client_certificate ${CA_DIR}/client-ca.crt;\n` : '';
+  const conf = fs.readFileSync(TMPL, 'utf8').replace(/\{\{(\w+)\}\}/g, (_, k) => ({ name: rec.name, serverName: fqdn, hostIp: host, tlsPort: rec.tlsPort, port: rec.port, clientCa }[k] ?? ''));
+  const file = `${VHOSTS}/${rec.name}.conf`;
+  fs.writeFileSync(file, conf);
+  const err = await reloadNginx();
+  if (err) { fs.rmSync(file, { force: true }); await reloadNginx(); throw new Error(`nginx config rejected: ${err}`); }
+}
+async function vhostRemove(name) {
+  fs.rmSync(`${VHOSTS}/${name}.conf`, { force: true });
+  for (const x of ['key', 'crt']) fs.rmSync(`${CA_DIR}/certs/${name}.${x}`, { force: true });
+  if (exists(NGINX_BASE)) await reloadNginx();
+}
+const urls = r => ({ url: `https://${r.name}.${rackDomain()}/`, urlDirect: `https://${hostIp()}:${r.tlsPort}/`, tlsPort: r.tlsPort });
+
+// ---- git mirror and images ----
+async function syncMirror(ctx) {
+  if (!exists(`${MIRROR}/HEAD`)) await ctx.exec([...GIT, 'clone', '--mirror', REPO, MIRROR], { env: gitEnv, timeoutMs: 3600e3 });
+  await ctx.exec([...GIT, '--git-dir', MIRROR, 'remote', 'set-url', 'origin', REPO]);
+  // heads and tags only (not `+refs/*`): refs/proof/* (a work-in-progress tree pushed for a test build) survives the prune
+  await ctx.exec([...GIT, '--git-dir', MIRROR, 'config', '--replace-all', 'remote.origin.fetch', '+refs/heads/*:refs/heads/*']);
+  await ctx.exec([...GIT, '--git-dir', MIRROR, 'config', '--add', 'remote.origin.fetch', '+refs/tags/*:refs/tags/*']);
+  await ctx.exec([...GIT, '--git-dir', MIRROR, 'remote', 'update', '--prune'], { env: gitEnv, timeoutMs: 3600e3 });
+}
+async function resolveRef(ref) {
+  for (const cand of [`refs/heads/${ref}`, `refs/tags/${ref}`, ref]) {
+    const r = await run([...GIT, '--git-dir', MIRROR, 'rev-parse', '--verify', '--quiet', `${cand}^{commit}`]);
+    if (r.code === 0 && r.stdout.trim()) return r.stdout.trim();
+  }
+  throw bad(`ref ${ref} not found in the StaticForge mirror`, 'NOT_FOUND');
+}
+const tagOf = sha => `dreamscape:${sha.slice(0, 12)}`;
+async function imageExists(tag) { return (await docker(['image', 'inspect', tag])).code === 0; }
+
+async function buildImage(ctx, ref) {
+  await prepare(ctx);
+  await syncMirror(ctx);
+  const sha = await resolveRef(ref);
+  const tag = tagOf(sha);
+  if (await imageExists(tag)) { ctx.log(`image ${tag} exists`); return { tag, sha, built: false }; }
+  const ctxDir = `${ROOT}/_build/${sha.slice(0, 12)}`;
+  fs.rmSync(ctxDir, { recursive: true, force: true }); fs.mkdirSync(ctxDir, { recursive: true });
+  try {
+    ctx.log(`exporting ${ref} (${sha.slice(0, 12)}) to ${ctxDir}`);
+    await ctx.exec(['sh', '-c', `git --git-dir='${MIRROR}' archive '${sha}' | tar -x -C '${ctxDir}'`]);
+    ctx.log(`docker build ${tag}`);
+    await ctx.exec(['docker', 'build', '--progress=plain', '-t', tag,
+      '--label', `ds.ref=${ref}`, '--label', `ds.commit=${sha}`, '--label', `ds.builtAt=${new Date().toISOString()}`, ctxDir], { env: { DOCKER_BUILDKIT: '1' }, timeoutMs: 7200e3 });
+  } finally { fs.rmSync(ctxDir, { recursive: true, force: true }); }
+  events.emit('replicas', 'added', tag, { tag });
+  return { tag, sha, built: true };
+}
+
+// ---- records, seeds, ports ----
+function names() { try { return fs.readdirSync(ROOT).filter(n => !RESERVED.has(n) && !n.startsWith('_') && exists(recFile(n))); } catch { return []; } }
+const record = name => readJson(recFile(name), null);
+function seedsList() {
+  try {
+    return fs.readdirSync(SEEDS).filter(id => SEEDID.test(id)).map(id => readJson(`${SEEDS}/${id}/.seed.json`, null)).filter(Boolean)
+      .map(s => ({ id: s.id, takenAt: s.takenAt, sizeB: s.sizeB, from: s.from, timeS: s.timeS, keys: !!s.keys })).sort((a, b) => (a.takenAt < b.takenAt ? 1 : -1));
+  } catch { return []; }
+}
+async function usedPorts() {
+  const used = new Set(names().map(n => record(n)?.port).filter(Boolean));
+  const ss = await run(['ss', '-Hltn']);
+  for (const l of ss.stdout.split('\n')) { const m = /:(\d+)\s/.exec(l.split(/\s+/)[3] ? `${l.split(/\s+/)[3]} ` : ''); if (m) used.add(Number(m[1])); }
+  return used;
+}
+async function allocPort(want) {
+  const used = await usedPorts();
+  if (want !== undefined) { const p = num(want, 'port', PORT_MIN, PORT_MAX); if (used.has(p)) throw bad(`port ${p} is in use`, 'EXISTS'); return p; }
+  for (let p = PORT_MIN; p <= PORT_MAX; p++) if (!used.has(p)) return p;
+  throw bad('no free port in 9301..9399');
+}
+const hostIp = () => { try { const nets = require('os').networkInterfaces(); for (const l of Object.values(nets)) for (const a of l) if (a.family === 'IPv4' && !a.internal && a.address.startsWith('192.168.100.')) return a.address; } catch { /* default */ } return '192.168.100.42'; };
+
+// ---- sizes (cached, computed in the background) ----
+const sizeCache = new Map();
+function dataSize(name) {
+  const c = sizeCache.get(name);
+  if (!c || Date.now() - c.t > 120000) {
+    if (!c || !c.busy) {
+      sizeCache.set(name, { t: c ? c.t : 0, v: c ? c.v : null, busy: true });
+      run(['du', '-sb', '--apparent-size', `${dir(name)}/data`], { timeoutMs: 120000 }).then(r => sizeCache.set(name, { t: Date.now(), v: Number(r.stdout.split('\t')[0]) || null, busy: false }));
+    }
+  }
+  return sizeCache.get(name)?.v ?? null;
+}
+
+// ---- health ----
+function probe(port, timeoutMs = 2500) {
+  return new Promise(resolve => {
+    const t0 = Date.now();
+    const req = http.get({ host: '127.0.0.1', port, path: '/', timeout: timeoutMs }, res => { res.resume(); resolve({ ok: res.statusCode < 500, status: res.statusCode, ms: Date.now() - t0 }); });
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'timeout', ms: Date.now() - t0 }); });
+    req.on('error', e => resolve({ ok: false, error: e.code || e.message, ms: Date.now() - t0 }));
+  });
+}
+async function containerState(name) {
+  const r = await docker(['inspect', '--format', '{{.State.Status}}|{{.State.StartedAt}}|{{.State.OOMKilled}}', cname(name)]);
+  if (r.code !== 0) return { state: 'missing', startedAt: null };
+  const [state, startedAt, oom] = r.stdout.trim().split('|');
+  return { state: oom === 'true' ? 'oom' : state, startedAt };
+}
+
+// ---- configs ----
+const rand = n => crypto.randomBytes(n).toString('hex');
+const pin = () => String(crypto.randomInt(100000, 999999));
+const uuid = () => crypto.randomUUID();
+function writeSecureConfig(file, keys) {
+  const sec = { novelai: { keys: keys && keys.length ? keys : [{ name: 'Primary', apiKey: '' }] }, location: { latitude: 0, longitude: 0 },
+    sessionSecret: rand(32), loginKey: rand(16), devLoginKey: rand(16), loginPin: pin(), readOnlyPin: pin(),
+    logViewerPathUuid: uuid(), vfsPathUuid: uuid(), mcpPathUuid: uuid(), apocryphaPathUuid: uuid(), grimoireBrowserToken: rand(16) };
+  fs.writeFileSync(file, `${JSON.stringify(sec, null, 2)}\n`, { mode: 0o600 });
+}
+function writeConfig(file, base, publicHost) {
+  const c = { ...(base || {}) };
+  // sections stay (config checkpoints expect the keys); modules/replicaMode.js gates what reaches outside
+  delete c.replication;
+  c.approvedIps = [];   // the live LAN auto-login ranges: a replica signs in with its own key only
+  for (const k of ['mailGateway', 'xi']) if (c[k] && typeof c[k] === 'object') c[k] = { ...c[k], enabled: false };
+  c.port = APP_PORT; c.public_hostname = publicHost; c.pm2_process_name = 'Dreamscape-replica';
+  fs.writeFileSync(file, `${JSON.stringify(c, null, 2)}\n`, { mode: 0o600 });
+}
+// the host paths of one replica's container mounts
+const DATA_DIRS = ['.cache', 'images', 'logs', '.previews', 'securePrompts', 'data', 'dsdata'];
+const DATA_FILES = ['config.json', 'secure.config.json', 'prompt.config.json', 'director.config.json', 'characters.json', 'nax_generation_config.json'];
+
+function runArgs(rec) {
+  const d = `${dir(rec.name)}/data`;
+  const a = ['run', '-d', '--name', cname(rec.name), '--restart', 'unless-stopped',
+    '--cpus', String(rec.cpus), '--memory', `${Math.round(rec.memGB * 1024)}m`,
+    '-p', `${rec.port}:${APP_PORT}`,
+    '-e', 'DREAMSCAPE_REPLICA=1', '-e', 'GIT_CONFIG_COUNT=1', '-e', 'GIT_CONFIG_KEY_0=safe.directory', '-e', 'GIT_CONFIG_VALUE_0=*', '-e', `DREAMSCAPE_REPLICA_ALLOW=${(rec.allow || []).join(',')}`, '-e', 'DREAMSCAPE_DATA_DIR=/app/dsdata',
+    '--label', 'rack.role=replicas', '--label', `rack.replica=${rec.name}`, '--label', `rack.owner=${rec.owner || ''}`];
+  if (rec.mode === 'worktree') a.push('-v', `${dir(rec.name)}/src:/app`, '-v', `dsrep-nm-${rec.name}:/app/node_modules`);
+  for (const x of DATA_DIRS) a.push('-v', `${d}/${x}:/app/${x}`);
+  for (const f of DATA_FILES) a.push('-v', `${d}/${f}:/app/${f}`);
+  a.push(rec.image);
+  return a;
+}
+async function startContainer(rec) {
+  await docker(['rm', '-f', cname(rec.name)]);
+  await dok(runArgs(rec), { timeoutMs: 120000 });
+  rec.startedAt = new Date().toISOString(); writeJson(recFile(rec.name), rec);
+}
+async function warmRuntimeAssets(ctx, built, dest) {
+  const cache = `${ROOT}/_rt/${built.sha.slice(0, 12)}`;
+  if (!exists(cache)) {
+    fs.mkdirSync(`${ROOT}/_rt`, { recursive: true });
+    const tmp = `dsrep-rt-${rid()}`;
+    await ctx.exec(['docker', 'create', '--name', tmp, built.tag]);
+    try { await ctx.exec(['docker', 'cp', `${tmp}:/app/.cache/runtime-assets`, `${cache}.part`]); } finally { await docker(['rm', '-f', tmp]); }
+    fs.renameSync(`${cache}.part`, cache);
+  }
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  await ctx.exec(['cp', '-a', '--reflink=always', `${cache}/.`, `${dest}/`]);
+}
+async function waitHealthy(ctx, rec, maxS = 900) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < maxS * 1000) {
+    const st = await containerState(rec.name);
+    if (st.state === 'exited' || st.state === 'oom' || st.state === 'dead') throw new Error(`container ${st.state}; see logs`);
+    const h = await probe(rec.port, 3000);
+    if (h.ok) { ctx.log(`answers HTTP ${h.status} after ${Math.round((Date.now() - t0) / 1000)} s`); return h; }
+    await sleep(3000);
+  }
+  throw new Error(`no HTTP answer on port ${rec.port} after ${maxS} s (the container keeps running; see logs)`);
+}
+
+const need = name => { name = str(name, 'name', RE.name); if (RESERVED.has(name) || name.startsWith('_') || !exists(recFile(name))) throw bad(`no such replica ${name}`, 'NOT_FOUND', 404); return name; };
+
+module.exports = {
+  id: 'replicas', packages, init() { /* nothing runs between calls */ },
+  async preInstall(ctx) { await apt.install(ctx, ['xfsprogs']); await ensureLv(ctx.log); }, // mkfs.xfs before the LV
+  async install(ctx) { await prepareAll(ctx); },
+  async detect() {
+    const missing = await apt.missing(packages);
+    if (missing.length) return { installed: false, ready: false, summary: `${missing.join(', ')} missing`, missing };
+    if (!fs.existsSync('/var/run/docker.sock')) return { installed: true, ready: false, summary: 'docker is not running (role containers)', missing: [] };
+    if (!mounted()) return { installed: true, ready: false, summary: `${ROOT} is not mounted (install creates the LV rackreplicas)`, missing: [] };
+    const n = names().length;
+    if (!exists(NGINX_BASE) || !exists(`${CA_DIR}/ca.crt`)) return { installed: true, ready: false, summary: 'nginx / the rack CA are not set up (install the role)', missing: [] };
+    return { installed: true, ready: true, summary: `${n} replica${n === 1 ? '' : 's'}, ${seedsList().length} seed${seedsList().length === 1 ? '' : 's'}`, missing: [] };
+  },
+  async get() {
+    const out = { images: [], seeds: [], replicas: [] };
+    if (!mounted()) return out;
+    const imgs = await docker(['image', 'ls', 'dreamscape', '--format', '{{.Repository}}:{{.Tag}}|{{.Size}}']);
+    for (const l of imgs.stdout.split('\n').filter(Boolean)) {
+      const tag = l.split('|')[0]; if (tag.endsWith(':<none>')) continue;
+      const i = await docker(['image', 'inspect', '--format', '{{.Size}}|{{index .Config.Labels "ds.ref"}}|{{index .Config.Labels "ds.commit"}}|{{index .Config.Labels "ds.builtAt"}}', tag]);
+      const [size, ref, commit, builtAt] = i.stdout.trim().split('|');
+      out.images.push({ tag, ref: ref || null, commit: commit || null, builtAt: builtAt || null, sizeB: Number(size) || null });
+    }
+    out.seeds = seedsList();
+    out.replicas = await Promise.all(names().map(async n => {
+      const r = record(n); const st = await containerState(n);
+      const health = st.state === 'running' ? await probe(r.port) : null;
+      return { name: n, owner: r.owner || null, purpose: r.purpose || null, ref: r.ref, commit: r.commit, mode: r.mode, state: st.state, port: r.port,
+        url: urls(r).url, urlDirect: urls(r).urlDirect, tlsPort: r.tlsPort, httpDirect: `http://${hostIp()}:${r.port}`, seed: r.seed, dataB: dataSize(n), createdAt: r.createdAt, startedAt: st.startedAt || r.startedAt, health,
+        allow: r.allow || [], memGB: r.memGB, cpus: r.cpus, image: r.image };
+    }));
+    return out;
+  },
+  actions: {
+    async 'image-build'(p) {
+      const ref = str(p.ref || 'main', 'ref', REF);
+      return { job: jobs.start({ role: 'replicas', title: `image-build ${ref}`, run: async ctx => { const r = await buildImage(ctx, ref); ctx.log(`image ${r.tag} at ${r.sha}`); } }) };
+    },
+    // Dreamscape-side: rackd cannot reach Dreamscape. modules/rackManager runs scripts/rack/seed-replica.sh (rsync over ssh into `dest`).
+    async 'seed-take'(p) {
+      if (p.from !== undefined && p.from !== 'dreamscape') throw bad("from must be 'dreamscape'");
+      await prepare(null);
+      return { needsDreamscape: true, dest: SEEDS, ssh: 'fat-misaka', hint: 'bash scripts/rack/seed-replica.sh [--id <id>] [--keys] [--images N]' };
+    },
+    async create(p) {
+      const name = str(p.name, 'name', RE.name);
+      if (RESERVED.has(name) || name.startsWith('_')) throw bad('that name is reserved');
+      const ref = str(p.ref || 'main', 'ref', REF);
+      const mode = p.mode === undefined ? 'worktree' : p.mode; if (mode !== 'worktree' && mode !== 'image') throw bad("mode must be 'worktree' or 'image'");
+      const owner = p.owner === undefined ? '' : str(String(p.owner), 'owner', null, 80);
+      const purpose = p.purpose === undefined ? '' : str(String(p.purpose), 'purpose', null, 200);
+      const seed = p.seed === undefined ? 'empty' : (p.seed === 'empty' ? 'empty' : str(p.seed, 'seed', SEEDID));
+      const keys = p.keys === 'copy' ? 'copy' : null;
+      const allow = (Array.isArray(p.allow) ? p.allow : []).map(x => str(x, 'allow', FEATURE));
+      const memGB = num(p.memGB, 'memGB', 1, 256, 8), cpus = num(p.cpus, 'cpus', 0.5, 80, 8);
+      if (exists(dir(name))) throw bad(`replica ${name} exists already`, 'EXISTS');
+      return { job: jobs.start({ role: 'replicas', title: `create replica ${name}`, run: async ctx => {
+        await prepareAll(ctx);
+        if (seed !== 'empty' && !exists(`${SEEDS}/${seed}/.seed.json`)) throw new Error(`no such seed ${seed}`);
+        const built = await buildImage(ctx, ref);
+        const port = await allocPort(p.port);
+        const rec = { name, owner, purpose, ref, commit: built.sha, mode, port, tlsPort: port + 100, seed, image: built.tag, allow, memGB, cpus, createdAt: new Date().toISOString(), startedAt: null };
+        const d = `${dir(name)}/data`;
+        fs.mkdirSync(d, { recursive: true });
+        try {
+          // data: reflink clone of the seed (no secrets inside; `.secret` and `.seed.json` stay behind)
+          if (seed !== 'empty') await ctx.exec(['cp', '-a', '--reflink=always', `${SEEDS}/${seed}/.`, `${d}/`]);
+          for (const x of ['.secret', '.seed.json']) fs.rmSync(`${d}/${x}`, { recursive: true, force: true });
+          // the image's warm runtime assets (a bind-mounted .cache hides them; compiling them again takes minutes): kept per image, reflinked
+          await warmRuntimeAssets(ctx, built, `${d}/.cache/runtime-assets`);
+          for (const x of DATA_DIRS) fs.mkdirSync(`${d}/${x}`, { recursive: true });
+          // config.json from the seed's copy (replication / mail / fleet sections dropped), the port and host name of this replica
+          let base = readJson(`${d}/config.json`, {}); fs.rmSync(`${d}/config.json`, { force: true });
+          writeConfig(`${d}/config.json`, base, `${name}.${rackDomain()}`);
+          let nkeys = null;
+          if (keys === 'copy') { nkeys = readJson(`${SEEDS}/${seed}/.secret/novelai.json`, null); if (!nkeys) throw new Error('keys:copy needs a seed taken with --keys'); ctx.log('NovelAI keys copied into the replica'); }
+          writeSecureConfig(`${d}/secure.config.json`, nkeys);
+          // the other config files the single-file bind mounts need: the seed's copy, else the image's own template
+          for (const f of DATA_FILES) if (!exists(`${d}/${f}`)) fs.writeFileSync(`${d}/${f}`, (await ok(['docker', 'run', '--rm', '--entrypoint', 'cat', built.tag, `/app/scripts/templates/bootstrap-${f}`])).stdout, { mode: 0o600 });
+          if (mode === 'worktree') {
+            const src = `${dir(name)}/src`;
+            await ctx.exec([...GIT, 'clone', '--shared', '--no-checkout', MIRROR, src], { env: gitEnv });
+            await ctx.exec([...GIT, '-C', src, 'remote', 'set-url', 'origin', REPO]);
+            await ctx.exec([...GIT, '-C', src, 'checkout', '-q', '-B', `replica/${name}`, built.sha]);
+            await ctx.exec(['chown', '-R', 'rack:rack', src]);
+          }
+          writeJson(recFile(name), rec);
+          await startContainer(rec);
+          await vhostApply(rec);
+          ctx.log(`https: ${urls(rec).url} and ${urls(rec).urlDirect}`);
+          events.emit('replicas', 'added', name, { name });
+          await waitHealthy(ctx, rec);
+        } catch (e) {
+          if (!exists(recFile(name))) fs.rmSync(dir(name), { recursive: true, force: true });
+          throw e;
+        }
+      } }) };
+    },
+    ...Object.fromEntries(['start', 'stop', 'restart'].map(verb => [verb, async p => {
+      const name = need(p.name); const rec = record(name);
+      if (verb === 'start') { if ((await containerState(name)).state === 'missing') await startContainer(rec); else await dok(['start', cname(name)]); }
+      else await dok([verb, cname(name)], { timeoutMs: 120000 });
+      events.emit('replicas', 'state', name, { name, state: verb });
+      return { ok: true };
+    }])),
+    async logs(p) { const name = need(p.name); const r = await docker(['logs', '--tail', String(num(p.lines, 'lines', 1, 100000, 200)), cname(name)], { maxBytes: 4194304 }); return { text: r.stdout + r.stderr }; },
+    async exec(p) {
+      const name = need(p.name);
+      const r = await docker(['exec', cname(name), 'sh', '-c', str(p.cmd, 'cmd', null, 100000)], { timeoutMs: num(p.timeoutS, 'timeoutS', 1, 3600, 60) * 1000 });
+      return { code: r.code, out: r.stdout + (r.stderr ? `\n${r.stderr}` : '') };
+    },
+    // worktree mode: fetch the mirror, check the ref out in the replica's src, restart (a lockfile change needs a new image: create again)
+    async pull(p) {
+      const name = need(p.name); const rec = record(name);
+      if (rec.mode !== 'worktree') throw bad('pull works on worktree replicas; an image replica is created again at the new ref');
+      const ref = p.ref === undefined ? rec.ref : str(p.ref, 'ref', REF);
+      return { job: jobs.start({ role: 'replicas', title: `pull ${name} ${ref}`, run: async ctx => {
+        const src = `${dir(name)}/src`;
+        if ((await git(['-C', src, 'status', '--porcelain'])).stdout.trim()) throw new Error('the checkout has uncommitted changes; commit or stash them first');
+        await syncMirror(ctx);
+        await ctx.exec([...GIT, '-C', src, 'fetch', '--prune', 'origin', '+refs/heads/*:refs/remotes/origin/*'], { env: gitEnv });
+        const cand = (await git(['-C', src, 'rev-parse', '--verify', '--quiet', `origin/${ref}^{commit}`])).code === 0 ? `origin/${ref}` : ref;
+        await ctx.exec([...GIT, '-C', src, 'checkout', '-q', cand]);
+        rec.ref = ref; rec.commit = (await ok([...GIT, '-C', src, 'rev-parse', 'HEAD'])).stdout.trim(); writeJson(recFile(name), rec);
+        const lockChanged = (await git(['--git-dir', MIRROR, 'diff', '--quiet', rec.image.replace('dreamscape:', ''), rec.commit, '--', 'pnpm-lock.yaml', 'package.json'])).code !== 0;
+        if (lockChanged) ctx.log('note: package.json / pnpm-lock.yaml differ from the image the replica was built from; create it again to rebuild node_modules');
+        await dok(['restart', cname(name)], { timeoutMs: 120000 });
+        await waitHealthy(ctx, rec);
+      } }) };
+    },
+    // the replica's own sign-in secrets (never the live ones); read by the agent that created it
+    async login(p) {
+      const name = need(p.name); const s = readJson(`${dir(name)}/data/secure.config.json`, {});
+      return { loginKey: s.loginKey, loginPin: s.loginPin, readOnlyPin: s.readOnlyPin, ...urls(record(name)) };
+    },
+    async delete(p) {
+      if (p.confirm !== true) throw bad('confirm:true is required');
+      const name = need(p.name);
+      await docker(['rm', '-f', cname(name)]);
+      await docker(['volume', 'rm', '-f', `dsrep-nm-${name}`]);
+      await vhostRemove(name);
+      fs.rmSync(dir(name), { recursive: true, force: true });
+      sizeCache.delete(name);
+      events.emit('replicas', 'removed', name, { name });
+      return { ok: true };
+    },
+  },
+};

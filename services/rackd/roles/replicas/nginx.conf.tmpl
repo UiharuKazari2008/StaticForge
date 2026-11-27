@@ -1,0 +1,35 @@
+# Replica {{name}} (rackd role replicas; generated, do not edit): HTTPS in front of the replica the way production is fronted.
+# Production (Kuroko, 192.168.200.121, nginx): TLS ends at the proxy, the app gets plain HTTP, X-Forwarded-For/-Proto/-Host set,
+# WebSocket upgrades passed through, the socket cut after ~60 s with nothing sent (Fleet memory #185), no client-certificate headers
+# trusted (docs/client-certificates.md). Same here: proxy_read/send_timeout 60s.
+server {
+    listen 443 ssl;
+    listen {{hostIp}}:{{tlsPort}} ssl;
+    http2 on;
+    server_name {{serverName}};
+
+    ssl_certificate     /etc/rackd/ca/certs/{{name}}.crt;
+    ssl_certificate_key /etc/rackd/ca/certs/{{name}}.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+{{clientCa}}
+    client_max_body_size 1g;
+
+    location / {
+        proxy_pass http://127.0.0.1:{{port}};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $rack_connection_upgrade;
+        # a certificate seen here is never passed on (the app does not trust such headers)
+        proxy_set_header X-SSL-Client-Verify "";
+        proxy_set_header X-SSL-Client-DN "";
+        proxy_set_header X-SSL-Client-Cert "";
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+}

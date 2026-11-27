@@ -9,6 +9,7 @@ services:
       - "9220:9220"
     environment:
       NEKOAI_JS_SOURCE: registry
+      DREAMSCAPE_DATA_DIR: /app/dsdata
     volumes:
       # Host tree stays visible to rsync/pack; app code is baked into the image.
       - ./images:/app/images
@@ -16,6 +17,8 @@ services:
       - ./.cache:/app/.cache
       - ./logs:/app/logs
       - ./securePrompts:/app/securePrompts
+      - ./data:/app/data
+      - ./dsdata:/app/dsdata
       # Create missing configs on the host first: bash scripts/setup.sh --mode docker --no-run
       # (Docker creates a directory if a bind-mounted file is missing.)
       - ./config.json:/app/config.json

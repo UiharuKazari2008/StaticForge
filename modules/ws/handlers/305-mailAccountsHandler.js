@@ -23,7 +23,7 @@ const mailAccounts = require('../../mailAccounts');
  */
 function registerPackets(handlersCtx) {
     if (!handlersCtx) return;
-    try { mailAccounts.init(handlersCtx.globalResources); } catch (error) { console.warn('[mailAccounts] init failed:', error.message); }
+    if (require('../../replicaMode').off('mail')) { /* replica: no mail sync or send */ } else try { mailAccounts.init(handlersCtx.globalResources); } catch (error) { console.warn('[mailAccounts] init failed:', error.message); }
     const body = (m) => (m.data && typeof m.data === 'object' ? m.data : m);
     const reg = (type, fn, meta = {}) => wsPacketRegistry.registerWsPacket(type, async ({ ws, message, clientInfo }) => {
         const reply = (data) => handlersCtx.sendToClient(ws, { type: `${type}_response`, requestId: message.requestId, data, timestamp: new Date().toISOString() });

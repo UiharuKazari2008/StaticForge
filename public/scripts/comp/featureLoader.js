@@ -179,6 +179,11 @@ const FEATURE_MANIFEST = {
         styles: ['scripts/vendor/xterm/xterm.css', 'css/themes/vista/console.css', 'css/admin-terminal.css'],
         scripts: ['scripts/vendor/xterm/xterm.js', 'scripts/vendor/xterm/addon-fit.js', 'scripts/comp/desktop-apps/adminTerminal/adminTerminalApp.js']
     },
+    // Rack Manager's Terminal page: xterm.js with the console theme (the Administrator Terminal's vendor files)
+    rack_xterm: {
+        styles: ['scripts/vendor/xterm/xterm.css', 'css/themes/vista/console.css'],
+        scripts: ['scripts/vendor/xterm/xterm.js', 'scripts/vendor/xterm/addon-fit.js']
+    },
     // Device Simulator for Melaton SideShow (Yozora #655): VirtualSideShow.exe, a real SideShow device
     sideshow_simulator: {
         hot: true,
@@ -559,7 +564,7 @@ const FEATURE_MANIFEST = {
     mmc_snapins: {
         hot: true,
         depends: ['vista_dialog_templates', 'workspace_dialogs', 'print_queue'],
-        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css', 'css/mmc-books.css', 'css/mmc-wiki.css', 'css/mmc-chardb.css', 'css/mmc-exchange.css', 'css/mmc-appkeys.css', 'css/mmc-servermgr.css', 'css/mmc-lizumi-tokens.css', 'css/mmc-lizumi.css'],
+        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css', 'css/mmc-books.css', 'css/mmc-wiki.css', 'css/mmc-chardb.css', 'css/mmc-exchange.css', 'css/mmc-appkeys.css', 'css/mmc-servermgr.css', 'css/mmc-rackmgr.css', 'css/mmc-lizumi-tokens.css', 'css/mmc-lizumi.css'],
         scripts: [
             'scripts/comp/mmcConsole.js',
             'scripts/comp/mmcFrontGate.js',
@@ -576,6 +581,13 @@ const FEATURE_MANIFEST = {
             'scripts/comp/mmcDataManagement.js',
             'scripts/comp/mmcPrintManagement.js',
             'scripts/comp/mmcLizumi.js',
+            'scripts/comp/mmcRackManager.js',
+            'scripts/comp/mmcRackManagerIlo.js',
+            'scripts/comp/mmcRackManagerHw.js',
+            'scripts/comp/mmcRackManagerPower.js',
+            'scripts/comp/mmcRackManagerLoad.js',
+            'scripts/comp/mmcRackManagerRoles.js',
+            'scripts/comp/mmcRackManagerRoles2.js',
             // Server Manager hosts the consoles above: after them
             'scripts/comp/mmcServerManager.js'
         ]

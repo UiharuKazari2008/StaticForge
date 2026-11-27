@@ -115,7 +115,7 @@ async function handle(handlersCtx, ws, message, clientInfo) {
 
 function registerPackets(handlersCtx) {
     if (!handlersCtx) return;
-    contractors.arm(handlersCtx.globalResources);
+    if (!require('../../replicaMode').off('supervisor')) contractors.arm(handlersCtx.globalResources); // replica: no contractors
     wsPacketRegistry.registerWsPacket(TYPE, async (ctx) => {
         await handle(ctx.handlers, ctx.ws, ctx.message, ctx.clientInfo);
     }, { owner: 'fleetContractors', destructive: true });
