@@ -5,8 +5,14 @@
  * put on the household's phones through the durable inbox (notificationInbox publish / clear, which the activeSync
  * `as_event inbox.notice` push and the phone's own notification carry).
  *
- *   ask   id device-ask:<leaseId>  loud once, buttons Allow / Deny (answerType device_consent_answer), life 12 h
+ *   ask   id device-ask:<leaseId>  sounds once, buttons Allow / Deny (answerType device_consent_answer), life 12 h
  *   hold  id device-hold:<device>  silent, "<label> is in use by <agent>", life until endsAt + 5 min
+ *
+ * Sound (Yozora #1305, Yukimi Nov 26 2026: "the most annoying sound"): class 'notification', the sound she chose for
+ * "Other notifications" - the same as every other Fleet notice (#1291). Never class 'fleet': a phone whose stored sound
+ * table still has the old 'fleet' event (Alarm4.mp3) would keep playing it with the page killed. One sound per ask, and
+ * not even that when the same agent asked for the same phone within ASK_RESOUND_MS, or any ask sounded within
+ * ASK_GAP_MS (a burst of asks is one sound); the ask is still shown and answerable.
  *
  * sync(snapshot, settings, opts) is the whole interface: it publishes what the snapshot holds and clears every
  * device-ask: / device-hold: notice the snapshot no longer holds. Event driven (the caller syncs on a change); no timer here.
@@ -25,12 +31,34 @@ const inbox = SANDBOXED
 
 const USER = 'admin';
 const APP = 'claudedesk';
-const CLS = 'fleet';
+const CLS = 'notification'; // "Other notifications" (#1305): never 'fleet', whose old default was Alarm4.mp3
 const HOUR = 60 * 60 * 1000;
 const ASK_LIFE = 12 * HOUR;
 const HOLD_GRACE = 5 * 60 * 1000;
 const ASK_PREFIX = 'device-ask:';
 const HOLD_PREFIX = 'device-hold:';
+const ASK_RESOUND_MS = 15 * 60 * 1000;
+const ASK_GAP_MS = 60 * 1000;
+/** `${agent}|${device}` -> when its ask last sounded; and when any ask last sounded (this server process) */
+const lastLoud = new Map();
+let lastLoudAny = 0;
+/** leaseIds already published once by this process (a re-publish is never a new sound) */
+const seen = new Set();
+
+/** Whether a NEW ask may sound now (and note it when it does). A lease seen before never sounds again. */
+function askSounds(a, now) {
+    const leaseId = String(a.leaseId);
+    if (seen.has(leaseId)) return false;
+    seen.add(leaseId);
+    if (seen.size > 500) seen.delete(seen.values().next().value);
+    const key = `${a.agentId || a.agentName || ''}|${a.device || ''}`;
+    const last = lastLoud.get(key) || 0;
+    if (now - last < ASK_RESOUND_MS || now - lastLoudAny < ASK_GAP_MS) return false;
+    lastLoud.set(key, now);
+    if (lastLoud.size > 200) lastLoud.delete(lastLoud.keys().next().value);
+    lastLoudAny = now;
+    return true;
+}
 
 const clip = (s, n) => {
     const t = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
@@ -47,16 +75,17 @@ function clearNotice(id) {
     try { return inbox.clear(USER, id, 'server') === true; } catch (_) { return false; }
 }
 
-function publishAsk(a, quiet) {
+function publishAsk(a, quiet, now) {
     const leaseId = String(a.leaseId || '');
     if (!leaseId) return false;
+    const loud = askSounds(a, now) && !quiet;
     const who = clip(a.agentName || a.agentId || 'An agent', 60);
     const label = clip(a.label || a.device || 'device', 60);
     const minutes = Math.max(1, Math.round(Number(a.minutes) || 0));
     try {
         return !!inbox.publish({
             user: USER, app: APP, id: askId(leaseId), cls: CLS,
-            alert: !quiet,
+            alert: loud,
             digest: `ask:${leaseId}`,
             title: clip(`${who} wants the ${label}`, 120),
             text: clip(`Why: ${clip(a.why, 160) || 'not given'}. For up to ${minutes} min. Allow it?`, 300),
@@ -116,7 +145,7 @@ function sync(snapshot, settings, opts) {
         for (const a of Array.isArray(snap.asks) ? snap.asks : []) {
             if (!a || !a.leaseId) continue;
             keep.add(askId(a.leaseId));
-            if (publishAsk(a, quiet.has(a.leaseId))) out.published.push(askId(a.leaseId));
+            if (publishAsk(a, quiet.has(a.leaseId), now)) out.published.push(askId(a.leaseId));
         }
         for (const h of Array.isArray(snap.holds) ? snap.holds : []) {
             if (!h || !h.device) continue;
@@ -139,4 +168,7 @@ function sync(snapshot, settings, opts) {
 /** An ask was answered (or lapsed): its notice comes down now. */
 function clearAsk(leaseId) { return clearNotice(askId(leaseId)); }
 
-module.exports = { sync, clearAsk, askId, holdId, ASK_PREFIX, HOLD_PREFIX, ASK_LIFE, HOLD_GRACE };
+/** Test hook: forget which asks sounded. */
+function _reset() { lastLoud.clear(); seen.clear(); lastLoudAny = 0; }
+
+module.exports = { sync, clearAsk, askId, holdId, ASK_PREFIX, HOLD_PREFIX, ASK_LIFE, HOLD_GRACE, ASK_RESOUND_MS, ASK_GAP_MS, _reset };

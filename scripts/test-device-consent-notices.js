@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 'use strict';
+process.env.DEVICE_QUEUE_TEST_PHONES = '1'; // these tests model the phones; the server refuses physical phones to agents
 
 /**
  * Device consent notices (Yozora #1284, P3): modules/deviceConsentNotices.js and the device_consent_answer handler.
@@ -28,6 +29,11 @@ activeSync.sendInboxNotice = (g, ws, notice) => { toPhones.push(notice); return 
 activeSync.sendInboxCleared = () => 1;
 phoneStatus.touch = () => {};
 inbox.bind({ getConfig: () => ({}), getWebSocketServer: () => ({ broadcast: (m) => sent.push(m) }) });
+// what the module ASKS the inbox for (alert true / false per id), whatever the inbox then does with a new row
+const asked = [];
+const realPublish = inbox.publish;
+inbox.publish = (n) => { asked.push([n.id, n.alert === true]); return realPublish(n); };
+const askedLoud = () => asked.filter((x) => x[1]).length;
 const cn = require('../modules/deviceConsentNotices');
 
 // a stubbed modules/deviceConsent.js (P1 writes the real one): answers recorded, the file need not exist
@@ -45,14 +51,14 @@ Module._resolveFilename = function (req, parent, ...rest) {
 require.cache[stubPath] = { id: stubPath, filename: stubPath, loaded: true, exports: { endHold: (device, by) => { ends.push([device, by]); return nextEnd; }, answer: (id, a, by) => { answers.push([id, a, by]); return nextResult; }, settings: () => ({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }), setSettings: (p) => { patches.push(p); if (p.onTimeout === 'bogus') throw new Error('onTimeout must be wait, deny, allow'); return Object.assign({ timeoutSec: 60, onTimeout: 'wait', readOnly: 'ask', consentDevices: ['a53', 'fold'] }, p); } } };
 
 const loud = () => sent.filter((m) => m && m.type === 'inbox_updated' && m.data.reason === 'new' && m.data.notice.alert).length;
-const mark = () => { sent.length = 0; toPhones.length = 0; };
+const mark = () => { sent.length = 0; toPhones.length = 0; asked.length = 0; };
 const mine = () => inbox.list('admin').filter((n) => /^device-(ask|hold):/.test(n.id));
 const ask = (over = {}) => Object.assign({ leaseId: 'L1', device: 'a53', label: 'A53 phone', agentId: 'ag1', agentName: 'Claude 3', why: 'testing the bar', minutes: 20, requestedAt: Date.now(), consentSince: Date.now() }, over);
 const hold = (over = {}) => Object.assign({ leaseId: 'L2', device: 'fold', label: 'Fold', agentId: 'ag2', agentName: 'Claude 4', why: 'build check', startedAt: Date.now(), endsAt: Date.now() + 30 * 60000 }, over);
 
 let failed = 0;
 async function test(name, f) {
-    try { inbox._test.reset(); for (const x of ['', '-wal', '-shm']) fs.rmSync(process.env.NOTIFICATION_INBOX_DB + x, { force: true }); mark(); answers.length = 0; nextResult = { ok: true }; await f(); console.log(`ok   ${name}`); } catch (e) { failed += 1; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 6).join('\n     ')}`); }
+    try { inbox._test.reset(); cn._reset(); for (const x of ['', '-wal', '-shm']) fs.rmSync(process.env.NOTIFICATION_INBOX_DB + x, { force: true }); mark(); answers.length = 0; nextResult = { ok: true }; await f(); console.log(`ok   ${name}`); } catch (e) { failed += 1; console.log(`FAIL ${name}\n     ${e.stack.split('\n').slice(0, 6).join('\n     ')}`); }
 }
 
 (async () => {
@@ -63,7 +69,7 @@ async function test(name, f) {
         const n = mine()[0];
         assert.strictEqual(n.title, 'Claude 3 wants the A53 phone');
         assert.strictEqual(n.text, 'Why: testing the bar. For up to 20 min. Allow it?');
-        assert.strictEqual(n.cls, 'fleet');
+        assert.strictEqual(n.cls, 'notification'); // #1305: 'Other notifications', never 'fleet' (Alarm4)
         assert.strictEqual(n.app, 'claudedesk');
         assert.strictEqual(n.data.kind, 'device-ask');
         assert.strictEqual(n.data.leaseId, 'L1');
@@ -85,11 +91,35 @@ async function test(name, f) {
         assert.notStrictEqual(mine()[0].state, 'cleared');
     });
 
-    await test('a second lease sounds on its own', () => {
-        cn.sync({ asks: [ask()], holds: [] }, {}, {});
+    await test('another agent asking a minute later sounds on its own', () => {
+        const t0 = Date.now();
+        cn.sync({ asks: [ask()], holds: [] }, {}, { now: t0 });
         mark();
-        cn.sync({ asks: [ask(), ask({ leaseId: 'L9' })], holds: [] }, {}, {});
+        cn.sync({ asks: [ask(), ask({ leaseId: 'L9', agentId: 'ag9', device: 'fold' })], holds: [] }, {}, { now: t0 + 61000 });
         assert.strictEqual(loud(), 1);
+        assert.strictEqual(mine().length, 2);
+    });
+
+    await test('#1305: no repeat - the same agent asking again for the same phone within 15 min is shown, not sounded', () => {
+        const t0 = Date.now();
+        cn.sync({ asks: [ask()], holds: [] }, {}, { now: t0 });
+        assert.strictEqual(loud(), 1);
+        cn.sync({ asks: [], holds: [] }, {}, { now: t0 + 1000 }); // denied, the ask comes down
+        mark();
+        cn.sync({ asks: [ask({ leaseId: 'L5' })], holds: [] }, {}, { now: t0 + 5 * 60000 });
+        assert.deepStrictEqual(asked, [['device-ask:L5', false]], 'published silent');
+        assert.deepStrictEqual(mine().map((n) => n.id), ['device-ask:L5']);
+        assert.strictEqual(toPhones.length, 1, 'the phone still gets it');
+        assert.deepStrictEqual(mine()[0].data.buttons.map((b) => b.id), ['allow', 'deny']);
+        mark();
+        cn.sync({ asks: [ask({ leaseId: 'L6' })], holds: [] }, {}, { now: t0 + 16 * 60000 });
+        assert.deepStrictEqual(asked, [['device-ask:L6', true]], 'after 15 min it may sound again');
+    });
+
+    await test('#1305: a burst of asks (two agents at once) is one sound', () => {
+        const t0 = Date.now();
+        cn.sync({ asks: [ask(), ask({ leaseId: 'L8', agentId: 'ag8', device: 'fold' })], holds: [] }, {}, { now: t0 });
+        assert.strictEqual(askedLoud(), 1);
         assert.strictEqual(mine().length, 2);
     });
 
@@ -109,8 +139,8 @@ async function test(name, f) {
     await test('hold: silent, one per device, lives until endsAt + 5 min', () => {
         const h = hold();
         cn.sync({ asks: [], holds: [h] }, {}, {});
-        // NOTE: notificationInbox.publish sounds a NEW row whatever alert says (it only honours alert: false on a live row);
-        // see the report: until it honours alert: false for a new row, a hold's first publish is loud
+        // #1305: the in-use notice never asks for a sound (the inbox's new-row rule decides the rest)
+        assert.strictEqual(askedLoud(), 0, 'the in-use notice is published silent');
         mark();
         cn.sync({ asks: [], holds: [h] }, {}, {});
         assert.strictEqual(loud(), 0);
