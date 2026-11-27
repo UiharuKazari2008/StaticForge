@@ -53,7 +53,9 @@ JOBS = {
     # the Car (the status bar's car glyph: a car key in range, a remote start, a commute running late). Yukimi, Nov 23
     # 2026: "that one needs to be converted from being the traffic icon to a car icon" - it showed Traffic's road and
     # traffic light. The car's own picture (lapis/car.webp, generate-wm-lapis-art.js), fitted to the square
-    'car': ('fit', 'lapis/car.webp'),
+    # lapis/car.webp is drawn for the Lapis page's dark UI (mean luminance 27) and was black on the black bar (#1338), so
+    # the bar's holder copy is the ROM's key with our white car-key glyph (interim; a GPT Image car awaits credits)
+    'car': ('badge', 'rom:10_2503', 'wm61/status-carkey'),
     # weather (Yukimi, Nov 22 2026: "we need a icon for rain detect and for severe and regular weather alert"): the
     # Titanium weather panel's own rain and storm pictures (ROM, wm65/ti-wx-*), the alerts badged as the message boxes are
     'rain-alarm': ('badge', 'wm65/ti-wx-rain', 'wm61/app-weather-lg'),
