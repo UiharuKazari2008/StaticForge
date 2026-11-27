@@ -11,8 +11,11 @@
  *               (adb forward tcp:<port> localabstract:webview_devtools_remote_<app pid>; a lane: lane.sh <id> cdp)
  *   capture     the device's own full-screen capture, e.g. 'adb -s <serial> exec-out screencap -p > {file}' in a script,
  *               or 'scripts/aemu-lane/lane.sh --agent <id> <instance> shot {file}'
- *   steps       row open category tapcat more search clear preview stop select back ok none default titleok where look;
- *               '=name' names the step's screenshot and its line. A step that fails ends the run.
+ *   steps       row open category tapcat more search clear preview stop select back ok none default titleok where look,
+ *               and for a page without the app's bridge (or to see hundreds of sounds): standin (install a stand-in
+ *               window.AndroidSounds with 377 invented sounds; before the Sounds page is opened), standin-chosen (its
+ *               stored choice becomes row 151 of Notifications), calls (its last calls), standin-off (the page's own
+ *               bridge back). '=name' names the step's screenshot and its line. A step that fails ends the run.
  *
  * Every user action is a real touch (Input.dispatchTouchEvent at the element's centre, refused when another element
  * covers it); typing is Input.insertText into the tapped box. Runtime.evaluate only READS the page. After each step it
@@ -42,6 +45,76 @@ const [port, out, shotCmd] = [Number(process.argv[2]), process.argv[3], process.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const getJson = (url) => new Promise((res, rej) => { http.get(url, { timeout: 8000 }, (r) => { let b = ''; r.on('data', (d) => { b += d; }); r.on('end', () => { try { res(JSON.parse(b)); } catch (e) { rej(e); } }); }).on('error', rej); });
 const results = [];
+
+// ---------------------------------------------------------------- the stand-in bridge (steps standin / standin-chosen / standin-off)
+/**
+ * Stand-in window.AndroidSounds for a page whose app has no bridge yet, or to see the picker with HUNDREDS of sounds:
+ * five categories (377 sounds, ids content://media/internal/audio/media/<n>), invented titles, the real bridge's return
+ * types, every call logged to window.__nsCalls. preview / stop answer true and fire the androidsoundpreview event the app
+ * fires. Nothing is played. The page's own bridge is kept in window.__nsOriginal and put back by `standin-off`.
+ * Install it BEFORE the Sounds & Notifications page is opened (the page reads the bridge when it opens).
+ */
+function installStandIn() {
+    const ADJ = ['Amber', 'Birch', 'Cedar', 'Dune', 'Ember', 'Fjord', 'Glade', 'Harbor', 'Iris', 'Juniper', 'Lagoon', 'Maple', 'Pebble', 'Quartz', 'Reed', 'Sable', 'Tundra', 'Umber', 'Willow', 'Yarrow'];
+    const NOUN = ['chime', 'drop', 'ping', 'pulse', 'tone', 'bell', 'whistle', 'note', 'echo', 'spark', 'ripple', 'knock'];
+    const CATS = [
+        { id: 'notification', label: 'Notifications', count: 212, base: 100, shift: 0 },
+        { id: 'ringtone', label: 'Ringtones', count: 96, base: 1000, shift: 3 },
+        { id: 'alarm', label: 'Alarms', count: 38, base: 2000, shift: 5 },
+        { id: 'melaton', label: 'Melaton', count: 24, base: 3000, shift: 7 },
+        { id: 'added', label: 'Added by you', count: 7, base: 4000, shift: 2 }
+    ];
+    CATS.forEach((c) => {
+        c.items = Array.from({ length: c.count }, (_, i) => ({
+            id: 'content://media/internal/audio/media/' + (c.base + i),
+            title: ADJ[(i * 3 + c.shift) % ADJ.length] + ' ' + NOUN[(i + c.shift) % NOUN.length] + ' ' + (i + 1)
+        }));
+    });
+    const prev = window.AndroidSounds;
+    if (!(prev && prev.__standIn)) { window.__nsOriginal = prev; window.__nsHad = 'AndroidSounds' in window; }
+    window.__nsCalls = [];
+    const log = (...a) => { window.__nsCalls.push(a); };
+    const emit = (id, state) => { setTimeout(() => { window.dispatchEvent(new CustomEvent('androidsoundpreview', { detail: { id, state } })); }, 30); };
+    let current = { mode: 'default', id: '', title: '', category: '' };
+    let playingId = '';
+    const bridge = {
+        __standIn: true,
+        version: () => { log('version'); return '1'; },
+        categories: () => { log('categories'); return JSON.stringify(CATS.map((c) => ({ id: c.id, label: c.label, count: c.count }))); },
+        list: (cat, q, offset, limit) => {
+            log('list', cat, q, offset, limit);
+            const c = CATS.find((x) => x.id === cat);
+            const needle = String(q == null ? '' : q).toLowerCase();
+            const all = c ? c.items.filter((s) => !needle || s.title.toLowerCase().includes(needle)) : [];
+            const o = Math.max(0, Math.floor(Number(offset)) || 0);
+            const lim = Number(limit);
+            const n = Math.min(100, Number.isFinite(lim) && lim > 0 ? Math.floor(lim) : 50);
+            return JSON.stringify({ total: all.length, items: all.slice(o, o + n) });
+        },
+        get: () => { log('get'); return JSON.stringify(current); },
+        set: (mode, id, title, category) => { log('set', mode, id, title, category); current = { mode: String(mode), id: String(id), title: String(title), category: String(category) }; return true; },
+        preview: (id) => { log('preview', id); playingId = String(id); emit(playingId, 'playing'); return true; },
+        stop: () => { log('stop'); const was = playingId; playingId = ''; emit(was, 'stopped'); return true; },
+        playing: () => playingId
+    };
+    window.AndroidSounds = bridge;
+    return { installed: window.AndroidSounds === bridge, hadOriginal: !!window.__nsHad };
+}
+
+/** Puts the page's own bridge back (or removes the stand-in where the page had none). */
+function restoreStandIn() {
+    const cur = window.AndroidSounds;
+    if (!(cur && cur.__standIn)) return { restored: false, why: 'no stand-in installed' };
+    const original = window.__nsOriginal;
+    const had = !!window.__nsHad;
+    const calls = (window.__nsCalls || []).length;
+    if (had) window.AndroidSounds = original; else delete window.AndroidSounds;
+    delete window.__nsOriginal;
+    delete window.__nsHad;
+    delete window.__nsCalls;
+    return { restored: had ? window.AndroidSounds === original : !window.AndroidSounds, had, calls };
+}
+
 (async () => {
     fs.mkdirSync(out, { recursive: true });
     const pages = (await getJson(`http://127.0.0.1:${port}/json/list`)).filter((p) => p.type === 'page');
@@ -95,6 +168,11 @@ const results = [];
         'default': async () => { await tap('.wmns-list [data-key="default"]'); await sleep(250); await tap('#wmShell .wm-softkey[data-side="left"]', '^Select$'); await sleep(500); return 'Event sounds selected'; },
         'tapcat': async () => { await tap('.wmns-list [data-key="cat:notification"]'); await waitFor(`!!document.querySelector('#wmns-q')`, 2500); return 'tapped the Notifications row'; },
         'clear': async () => { await tap('#wmns-q'); await sleep(300); for (let i = 0; i < 6; i++) { await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 }); } await sleep(700); return 'cleared the search box'; },
+        'standin': async () => ev(`(${installStandIn.toString()})()`),
+        // the stand-in's own stored choice: a sound far down the Notifications list (row 151 of 212), to see it pinned first
+        'standin-chosen': async () => ev(`(function(){ const b = window.AndroidSounds; if (!(b && b.__standIn)) return 'no stand-in installed'; const l = JSON.parse(b.list('notification', '', 150, 1)).items[0]; b.set('sound', l.id, l.title, 'notification'); return JSON.parse(b.get()); })()`),
+        'standin-off': async () => ev(`(${restoreStandIn.toString()})()`),
+        'calls': async () => ev(`(window.__nsCalls || []).slice(-12)`),
         'titleok': async () => { await tap('#wmShell .wm-title-action'); await sleep(900); return 'title ok / close'; },
         'where': async () => ev(`(function(){ ${VIS} const $$ = (s) => [...document.querySelectorAll(s)].filter(vis); return { grid: $$('.wm-icongrid-cell').map((e) => e.dataset.key).slice(0, 40), s65: $$('#wmShell .wm-s65-cell').map((e) => e.textContent.trim()).slice(0, 40), tabs: $$('.wm-tab').map((e) => e.dataset.tab), action: $$('#wmShell .wm-title-action').map((e) => e.dataset.kind) }; })()`),
         'look': async () => 'look'
