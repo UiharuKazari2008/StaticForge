@@ -75,3 +75,30 @@ The Settings hooks in `wmPrograms.js` are not covered by it (that file is not lo
 
 `node --check` on the edited files, `scripts/check-ui-standard.js`, `check-app-scope.js`, `check-perf-rules.js`,
 `check-notifications.js` (see the turn's report).
+
+## On a device (done on the A53, Nov 27 2026)
+
+Evidence: `docs/testing/evidence/1298/` - `a53-sound-log.txt` (the app's own `NoteAlerts` lines for a notice with the page
+asleep, with the page in front, and with None; the bridge timings; what went wrong in the test), `a53-walk/*.png` (one
+full-screen capture per step of the picker walk), `unit-tests.txt` (DSApp, 257 tests).
+
+The walk's driver is `scripts/test-notify-sound-picker-device.js` (real touches over the WebView's DevTools port, one named
+step at a time, a capture and the picker's state after each; it asserts nothing by itself, the pictures are read by eye):
+
+```
+adb -s <phone> forward tcp:9397 localabstract:webview_devtools_remote_$(adb -s <phone> shell pidof jp.net.seventhreeseven.dreamscape)
+node scripts/test-notify-sound-picker-device.js 9397 <out dir> '<capture script> {file}' row=01-row open=02-categories \
+    category=03-category more=04-more preview=05-preview stop=06-stopped select=08-chosen open=09b-reopen tapcat=10-tick search=11-search
+```
+
+A notice sound is proven from the app's log, never by ear alone: `adb logcat -s NoteAlerts` shows
+`<event>: ringer 2, sound <file>` + `playing content://media/...` when the app delivers, and
+`<event> (page in front): chosen sound | no sound (...) | the event's own sound (the page plays it)` when the page asks
+(`AndroidSounds.note`). Send test notices to ONE phone (`PUT /api/test-devices/<id>`, `POST /api/test-devices/<id>/notice`,
+clear, `DELETE`), give them `"cls":"reminder"`, keep the notification volume at 0 or 1, and read
+`wmShell.sounds.eventPrefs('notification')` first: a phone whose own settings give a class an Alarm file plays it.
+
+Not done: the same walk on a lane emulator (the lane's CPU guard refused every boot of `aemu-a53-2` that night), the picker
+on 6.5.1 (the A53 runs 6.5; the 6.5.1 Play button rule is checked by reading the two style rules only), the "Added by you"
+category (this phone has none), and a notice with the app's process ended (the page-asleep proof had the app behind Android
+Settings).

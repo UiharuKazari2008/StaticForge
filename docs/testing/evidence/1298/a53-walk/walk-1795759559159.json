@@ -1,0 +1,84 @@
+[
+ {
+  "step": "00a-left-today",
+  "did": "title ok / close",
+  "state": {
+   "app": "start",
+   "title": "Settings",
+   "heading": "",
+   "keys": [
+    "Back",
+    ""
+   ],
+   "rowBtn": null,
+   "depth": 0,
+   "nRows": 0,
+   "rows": [],
+   "last": [],
+   "search": null,
+   "listScroll": null,
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/00a-left-today.png"
+ },
+ {
+  "step": "00b-where",
+  "did": {
+   "grid": [],
+   "s65": [
+    "Bluetooth",
+    "Clock & Alarms",
+    "Lock",
+    "Power",
+    "Sounds & Notifications",
+    "Today",
+    "Connections",
+    "Personal",
+    "System",
+    "Android Settings"
+   ],
+   "tabs": [],
+   "action": [
+    "close"
+   ]
+  },
+  "state": {
+   "app": "start",
+   "title": "Settings",
+   "heading": "",
+   "keys": [
+    "Back",
+    ""
+   ],
+   "rowBtn": null,
+   "depth": 0,
+   "nRows": 0,
+   "rows": [],
+   "last": [],
+   "search": null,
+   "listScroll": null,
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/00b-where.png"
+ }
+]

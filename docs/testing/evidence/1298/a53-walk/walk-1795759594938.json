@@ -1,0 +1,962 @@
+[
+ {
+  "step": "01-row",
+  "did": "on the Sounds tab",
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Sounds & Notifications",
+   "keys": [
+    "",
+    ""
+   ],
+   "rowBtn": "Event sounds",
+   "depth": 0,
+   "nRows": 0,
+   "rows": [],
+   "last": [],
+   "search": null,
+   "listScroll": null,
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/01-row.png"
+ },
+ {
+  "step": "02-categories",
+  "did": {
+   "openMs": 162
+  },
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Notification sound",
+   "keys": [
+    "Select",
+    "Back"
+   ],
+   "rowBtn": null,
+   "depth": 1,
+   "nRows": 6,
+   "rows": [
+    {
+     "key": "default",
+     "label": "Event sounds (default)",
+     "sel": true,
+     "tick": true,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "none",
+     "label": "None",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "cat:notification",
+     "label": "Notifications",
+     "count": "55",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "cat:ringtone",
+     "label": "Ringtones",
+     "count": "63",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "cat:alarm",
+     "label": "Alarms",
+     "count": "63",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "cat:melaton",
+     "label": "Melaton",
+     "count": "57",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "last": [
+    {
+     "key": "cat:melaton",
+     "label": "Melaton",
+     "count": "57",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "search": null,
+   "listScroll": {
+    "sh": 770,
+    "ch": 770,
+    "top": 0,
+    "ovf": "auto"
+   },
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/02-categories.png"
+ },
+ {
+  "step": "03-category",
+  "did": {
+   "categoryMs": 208
+  },
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Notifications",
+   "keys": [
+    "Select",
+    "Back"
+   ],
+   "rowBtn": null,
+   "depth": 2,
+   "nRows": 51,
+   "rows": [
+    {
+     "key": "s:content://media/internal/audio/media/29",
+     "label": "8-bit Bounce",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/55",
+     "label": "80s Toms",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/30",
+     "label": "Alien",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/31",
+     "label": "Alpha",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/32",
+     "label": "Aurora",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/18",
+     "label": "Banjo",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/33",
+     "label": "Beep Once",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/7",
+     "label": "Bells",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "last": [
+    {
+     "key": "more",
+     "label": "Show more",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "search": "",
+   "listScroll": {
+    "sh": 1148,
+    "ch": 738,
+    "top": 0,
+    "ovf": "auto"
+   },
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/03-category.png"
+ },
+ {
+  "step": "04-more",
+  "did": "tapped Show more",
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Notifications",
+   "keys": [
+    "Select",
+    "Back"
+   ],
+   "rowBtn": null,
+   "depth": 2,
+   "nRows": 55,
+   "rows": [
+    {
+     "key": "s:content://media/internal/audio/media/29",
+     "label": "8-bit Bounce",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/55",
+     "label": "80s Toms",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/30",
+     "label": "Alien",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/31",
+     "label": "Alpha",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/32",
+     "label": "Aurora",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/18",
+     "label": "Banjo",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/33",
+     "label": "Beep Once",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/7",
+     "label": "Bells",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "last": [
+    {
+     "key": "s:content://media/internal/audio/media/53",
+     "label": "Voyager",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "search": "",
+   "listScroll": {
+    "sh": 1238,
+    "ch": 738,
+    "top": 409.5238037109375,
+    "ovf": "auto"
+   },
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/04-more.png"
+ },
+ {
+  "step": "05-preview",
+  "did": {
+   "tapped": "s:content://media/internal/audio/media/55",
+   "playing": "content://media/internal/audio/media/55"
+  },
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Notifications",
+   "keys": [
+    "Select",
+    "Back"
+   ],
+   "rowBtn": null,
+   "depth": 2,
+   "nRows": 55,
+   "rows": [
+    {
+     "key": "s:content://media/internal/audio/media/29",
+     "label": "8-bit Bounce",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/55",
+     "label": "80s Toms",
+     "sel": true,
+     "tick": false,
+     "play": true,
+     "playing": true,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/30",
+     "label": "Alien",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/31",
+     "label": "Alpha",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/32",
+     "label": "Aurora",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/18",
+     "label": "Banjo",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/33",
+     "label": "Beep Once",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/7",
+     "label": "Bells",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "last": [
+    {
+     "key": "s:content://media/internal/audio/media/53",
+     "label": "Voyager",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "search": "",
+   "listScroll": {
+    "sh": 1238,
+    "ch": 738,
+    "top": 0,
+    "ovf": "auto"
+   },
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "content://media/internal/audio/media/55",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/05-preview.png"
+ },
+ {
+  "step": "06-stopped",
+  "did": {
+   "playing": ""
+  },
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Notifications",
+   "keys": [
+    "Select",
+    "Back"
+   ],
+   "rowBtn": null,
+   "depth": 2,
+   "nRows": 55,
+   "rows": [
+    {
+     "key": "s:content://media/internal/audio/media/29",
+     "label": "8-bit Bounce",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/55",
+     "label": "80s Toms",
+     "sel": true,
+     "tick": false,
+     "play": true,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/30",
+     "label": "Alien",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/31",
+     "label": "Alpha",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/32",
+     "label": "Aurora",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/18",
+     "label": "Banjo",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/33",
+     "label": "Beep Once",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/7",
+     "label": "Bells",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "last": [
+    {
+     "key": "s:content://media/internal/audio/media/53",
+     "label": "Voyager",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "search": "",
+   "listScroll": {
+    "sh": 1238,
+    "ch": 738,
+    "top": 0,
+    "ovf": "auto"
+   },
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/06-stopped.png"
+ },
+ {
+  "step": "07-preview-again",
+  "did": {
+   "tapped": "s:content://media/internal/audio/media/55",
+   "playing": ""
+  },
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Notifications",
+   "keys": [
+    "Select",
+    "Back"
+   ],
+   "rowBtn": null,
+   "depth": 2,
+   "nRows": 55,
+   "rows": [
+    {
+     "key": "s:content://media/internal/audio/media/29",
+     "label": "8-bit Bounce",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/55",
+     "label": "80s Toms",
+     "sel": true,
+     "tick": false,
+     "play": true,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/30",
+     "label": "Alien",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/31",
+     "label": "Alpha",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/32",
+     "label": "Aurora",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/18",
+     "label": "Banjo",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/33",
+     "label": "Beep Once",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/7",
+     "label": "Bells",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "last": [
+    {
+     "key": "s:content://media/internal/audio/media/53",
+     "label": "Voyager",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "search": "",
+   "listScroll": {
+    "sh": 1238,
+    "ch": 738,
+    "top": 0,
+    "ovf": "auto"
+   },
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/07-preview-again.png"
+ },
+ {
+  "step": "08-chosen",
+  "did": {
+   "playingAfter": ""
+  },
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Sounds & Notifications",
+   "keys": [
+    "",
+    ""
+   ],
+   "rowBtn": "80s Toms",
+   "depth": 0,
+   "nRows": 0,
+   "rows": [],
+   "last": [],
+   "search": null,
+   "listScroll": null,
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/08-chosen.png"
+ },
+ {
+  "step": "09-reopen",
+  "did": {
+   "openMs": 188
+  },
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Notification sound",
+   "keys": [
+    "Select",
+    "Back"
+   ],
+   "rowBtn": null,
+   "depth": 1,
+   "nRows": 6,
+   "rows": [
+    {
+     "key": "default",
+     "label": "Event sounds (default)",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "none",
+     "label": "None",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "cat:notification",
+     "label": "Notifications",
+     "count": "55",
+     "sel": true,
+     "tick": true,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "cat:ringtone",
+     "label": "Ringtones",
+     "count": "63",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "cat:alarm",
+     "label": "Alarms",
+     "count": "63",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "cat:melaton",
+     "label": "Melaton",
+     "count": "57",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "last": [
+    {
+     "key": "cat:melaton",
+     "label": "Melaton",
+     "count": "57",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "search": null,
+   "listScroll": {
+    "sh": 770,
+    "ch": 770,
+    "top": 0,
+    "ovf": "auto"
+   },
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/09-reopen.png"
+ },
+ {
+  "step": "10-tick",
+  "did": {
+   "categoryMs": 6219
+  },
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Sounds & Notifications",
+   "keys": [
+    "",
+    ""
+   ],
+   "rowBtn": "80s Toms",
+   "depth": 0,
+   "nRows": 0,
+   "rows": [],
+   "last": [],
+   "search": null,
+   "listScroll": null,
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/10-tick.png"
+ },
+ {
+  "step": "11-back-to-categories",
+  "error": "nothing visible: #wmShell .wm-softkey[data-side=\"right\"] ^Back$",
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Sounds & Notifications",
+   "keys": [
+    "",
+    ""
+   ],
+   "rowBtn": "80s Toms",
+   "depth": 0,
+   "nRows": 0,
+   "rows": [],
+   "last": [],
+   "search": null,
+   "listScroll": null,
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/11-back-to-categories.png"
+ }
+]

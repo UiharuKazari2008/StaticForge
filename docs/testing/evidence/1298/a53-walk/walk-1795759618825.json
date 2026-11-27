@@ -1,0 +1,401 @@
+[
+ {
+  "step": "09b-reopen",
+  "did": {
+   "openMs": 187
+  },
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Notification sound",
+   "keys": [
+    "Select",
+    "Back"
+   ],
+   "rowBtn": null,
+   "depth": 1,
+   "nRows": 6,
+   "rows": [
+    {
+     "key": "default",
+     "label": "Event sounds (default)",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "none",
+     "label": "None",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "cat:notification",
+     "label": "Notifications",
+     "count": "55",
+     "sel": true,
+     "tick": true,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "cat:ringtone",
+     "label": "Ringtones",
+     "count": "63",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "cat:alarm",
+     "label": "Alarms",
+     "count": "63",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "cat:melaton",
+     "label": "Melaton",
+     "count": "57",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "last": [
+    {
+     "key": "cat:melaton",
+     "label": "Melaton",
+     "count": "57",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "search": null,
+   "listScroll": {
+    "sh": 770,
+    "ch": 770,
+    "top": 0,
+    "ovf": "auto"
+   },
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/09b-reopen.png"
+ },
+ {
+  "step": "10-tick",
+  "did": "tapped the Notifications row",
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Notifications",
+   "keys": [
+    "Select",
+    "Back"
+   ],
+   "rowBtn": null,
+   "depth": 2,
+   "nRows": 51,
+   "rows": [
+    {
+     "key": "s:content://media/internal/audio/media/29",
+     "label": "8-bit Bounce",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/55",
+     "label": "80s Toms",
+     "sel": true,
+     "tick": true,
+     "play": true,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/30",
+     "label": "Alien",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/31",
+     "label": "Alpha",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/32",
+     "label": "Aurora",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/18",
+     "label": "Banjo",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/33",
+     "label": "Beep Once",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/7",
+     "label": "Bells",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "last": [
+    {
+     "key": "more",
+     "label": "Show more",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "search": "",
+   "listScroll": {
+    "sh": 1148,
+    "ch": 738,
+    "top": 0,
+    "ovf": "auto"
+   },
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 914,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/10-tick.png"
+ },
+ {
+  "step": "11-search",
+  "did": {
+   "typed": "al"
+  },
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Notifications",
+   "keys": [
+    "Select",
+    "Back"
+   ],
+   "rowBtn": null,
+   "depth": 2,
+   "nRows": 4,
+   "rows": [
+    {
+     "key": "s:content://media/internal/audio/media/30",
+     "label": "Alien",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/31",
+     "label": "Alpha",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/9",
+     "label": "Crystal",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/48",
+     "label": "Signal",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "last": [
+    {
+     "key": "s:content://media/internal/audio/media/48",
+     "label": "Signal",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "search": "al",
+   "listScroll": {
+    "sh": 410,
+    "ch": 410,
+    "top": 0,
+    "ovf": "auto"
+   },
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 537,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/11-search.png"
+ },
+ {
+  "step": "12-back-to-categories",
+  "error": "nothing visible: #wmShell .wm-softkey[data-side=\"right\"] ^Back$",
+  "state": {
+   "app": "settings",
+   "title": "Settings",
+   "heading": "Notifications",
+   "keys": [
+    "Select",
+    "Back"
+   ],
+   "rowBtn": null,
+   "depth": 2,
+   "nRows": 4,
+   "rows": [
+    {
+     "key": "s:content://media/internal/audio/media/30",
+     "label": "Alien",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/31",
+     "label": "Alpha",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/9",
+     "label": "Crystal",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    },
+    {
+     "key": "s:content://media/internal/audio/media/48",
+     "label": "Signal",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "last": [
+    {
+     "key": "s:content://media/internal/audio/media/48",
+     "label": "Signal",
+     "sel": false,
+     "tick": false,
+     "play": false,
+     "playing": false,
+     "h": 22.5
+    }
+   ],
+   "search": "al",
+   "listScroll": {
+    "sh": 410,
+    "ch": 410,
+    "top": 0,
+    "ovf": "auto"
+   },
+   "pageScrolls": false,
+   "selects": 0,
+   "vv": 537,
+   "notice": null,
+   "playingId": "",
+   "choice": {
+    "mode": "default",
+    "id": "",
+    "title": "",
+    "category": ""
+   }
+  },
+  "shot": "docs/testing/evidence/1298/a53-walk/12-back-to-categories.png"
+ }
+]

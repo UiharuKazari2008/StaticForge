@@ -1,0 +1,66 @@
+StaticForge #1298 - the chosen notification sound on the A53 (SM-A536U1, Android 16), 27 Nov 2026 (EST).
+Ringer NORMAL, notification stream at 1 of 15 for the test (it was VIBRATE / 0 before and is put back after).
+Choice stored through window.AndroidSounds.set: mode sound, "Alpha", content://media/internal/audio/media/31, category notification.
+Test notices: POST /api/test-devices/<A53>/notice (one device, the A53 marked fence-only for the test).
+
+== 1. Page asleep, the app in the background (Android Settings in front) - release 29 (1.0.3631988) ==
+topResumedActivity = com.android.settings/.homepage.SettingsHomepageActivity
+11-27 00:52:42.771 I/NoteAlerts( 6051): reminder: ringer 2, sound notify.mp3?v=7e7e4b1a94d5ce05, vibrate false
+11-27 00:52:42.879 D/AudioPlayerStateMonitor( 1297): Found a new active media playback. AudioPlaybackConfiguration piid:287 type:android.media.MediaPlayer u/pid:10339/6051 state:started attr:AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION
+11-27 00:52:42.884 I/NoteAlerts( 6051): playing content://media/internal/audio/media/31
+-> the app played the chosen sound (not the event's own notify.mp3), with no page.
+   (My push's catch-up also delivered an older reminder-class notice of the shared test lane, "Lane test: task with a
+   reminder"; it is the one in the box of a53-01-notice-over-settings.png and the class the log names. The capture shows
+   the app's own notice drawn over Android Settings.)
+
+== 2. Page IN FRONT (Melaton Mobile on screen) - release 30 (1.0.3632021, installed once 00:53:21), the page restarted
+      through its own Updates > Install Now so it runs the fixed shell (playSystemSound asks AndroidSounds.note) ==
+A reminder-class notice of the test lane, shown by the page (Repeat is on for reminders: 4 more, 4 s apart):
+11-27 00:54:46.928 I/NoteAlerts(10078): reminder (page in front): chosen sound
+11-27 00:54:46.996 D/AudioPlayerStateMonitor( 1297): Found a new active media playback. ... type:android.media.MediaPlayer u/pid:10339/10078 state:started attr:AudioAttributes: usage=USAGE_NOTIFICATION
+11-27 00:54:46.999 I/NoteAlerts(10078): playing content://media/internal/audio/media/31
+11-27 00:54:50.935 I/NoteAlerts(10078): reminder (page in front): chosen sound
+11-27 00:54:50.994 I/NoteAlerts(10078): playing content://media/internal/audio/media/31
+11-27 00:54:54.934 I/NoteAlerts(10078): reminder (page in front): chosen sound
+11-27 00:54:54.984 I/NoteAlerts(10078): playing content://media/internal/audio/media/31
+11-27 00:54:58.935 I/NoteAlerts(10078): reminder (page in front): chosen sound
+11-27 00:54:59.000 I/NoteAlerts(10078): playing content://media/internal/audio/media/31
+11-27 00:55:02.936 I/NoteAlerts(10078): reminder (page in front): chosen sound
+11-27 00:55:03.002 I/NoteAlerts(10078): playing content://media/internal/audio/media/31
+The page's own sound log (wmShell.sounds.log) for the same five: { name: "reminder", file: "android/chosen" } x5 - the page played no WM file.
+-> before the fix this path played the event's WM file through AndroidVolume.play and never asked the choice.
+
+== 3. Choice None, page in front - release 30 ==
+POST .../notice { cls: "reminder" } at 00:58:10:
+11-27 00:58:11.137 I/NoteAlerts(10078): reminder (page in front): no sound (the notification sound is None, Play sound is off, or the ringer is not normal)
+11-27 00:58:15.145 I/NoteAlerts(10078): reminder (page in front): no sound (the notification sound is None, Play sound is off, or the ringer is not normal)
+No "playing" line and no player of the app started (0 matches) in the 16 s after it.
+
+== 4. The bridge, measured in the page (performance.now around the synchronous call) ==
+release 29 (bridge 1, cursor read inline):  categories() first call 133.8 ms, second 1.6 ms; list("notification","",0,50) 3.0 ms
+release 30 (bridge 2, lists from memory):   get() 10.2 ms (first call of the process; starts the background read),
+                                            categories() 400 ms later 8.7 ms, again 4.2 ms; list(...) 6.1 ms
+Categories on this phone: Notifications 55, Ringtones 63, Alarms 63, Melaton 57 (238 sounds; no "Added by you": none found).
+The choice survived the app install (get() after the install: mode sound, "Alpha").
+
+== 5. What went wrong in the test, said plainly ==
+This phone's own settings hold picked sounds for two classes (localStorage wmSounds.ev: notification = Alarm5.wav,
+information = Alarm2.wav). A class with a pick of its own keeps it - that is the rule - so two generic test-lane notices
+(class "notification") shown by the page at 00:56:46 and 00:58:16 played wm61/Alarm5.wav, at notification volume 1 of 15.
+One was my own page-in-front test notice (sent without a cls), the other another agent's lane notice. I then set the
+notification volume to 0 for the rest, sent my last test notice as cls "reminder", and told the other agents.
+The picker previews in the walk therefore ran at volume 0 (the app's player started; nothing was audible).
+
+== 6. The picker walk (real touches over CDP, a full-screen capture per step: a53-walk/*.png) ==
+01-row         Sounds tab: "Notification sound:" shows "Event sounds".
+02-categories  heading "Notification sound", soft keys Select / Back, rows: Event sounds (default) [tick], None,
+               Notifications 55, Ringtones 63, Alarms 63, Melaton 57 - no single sound. Opened in 162 ms (100 ms poll).
+03-category    "Notifications": Search box, 50 sounds + "Show more" (208 ms).   04-more: all 55.
+05-preview     a tap on "80s Toms": row highlighted, Stop on that row only, AndroidSounds.playing() = its id.
+06-stopped     a tap on Stop: playing() = "", the button is Play again.
+08-chosen      Select: back on the Sounds tab, the row reads "80s Toms"; nothing written yet (get() still default).
+09b-reopen     the tick is on Notifications.   10-tick: the tick and Play are on "80s Toms" in its list.
+11-search      "al" typed: Alien, Alpha, Crystal, Signal; the keyboard is up (visual viewport 914 -> 537 units).
+13 / 14        Back: the categories with Notifications highlighted; Back: the page, still "80s Toms".
+15-saved       the title's ok: AndroidSounds.get() = { mode sound, content://media/internal/audio/media/55, "80s Toms", notification }.
+16-left-as-found  choice back to Event sounds (through the bridge), Today, ringer VIBRATE, volumes as found, unmarked.
