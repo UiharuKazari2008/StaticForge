@@ -86,21 +86,40 @@ function sessionTasks() {
     const T = require('./sessionTasks');
     if (!tasksWired) {
         tasksWired = true;
+        // registered once per process (tasksWired is handed over on a reload): every callback goes to the CURRENT version
         T.configure({
-            askJson: (system, user, kind, opts) => askJson(gResources, system, user, kind, opts),
-            findFile: (id) => transcriptFile(id),
-            enabled: () => !!(gResources && settings().enabled),
+            askJson: (system, user, kind, opts) => module.exports._taskDeps.askJson(system, user, kind, opts),
+            findFile: (id) => module.exports._taskDeps.findFile(id),
+            enabled: () => module.exports._taskDeps.enabled(),
             customTitle: (id) => require('./claudeSessions').hasCustomTitle(id)
         });
     }
     return T;
 }
+// what sessionTasks calls back (see sessionTasks above): the CURRENT version's functions, exported as _taskDeps
+const TASK_DEPS = {
+    askJson: (system, user, kind, opts) => askJson(gResources, system, user, kind, opts),
+    findFile: (id) => transcriptFile(id),
+    enabled: () => !!(gResources && settings().enabled)
+};
 
 let gResources = null;
-const listeners = new Set();
+// Reload without a restart (#1292, docs/server/hot-reload.md; the hot block is at the end of this file).
+// started: start() ran and stop() did not. disposed: this version was handed over (a newer one runs): code of it that is still
+// in flight (a review, a pump, a git lookup) must not arm timers or queue work in it, it hands that to the current version.
+// LATE: this version's entry points a stale one hands over to (filled at the end of the file, exported as _late).
+let started = false;
+let disposed = false;
+const LATE = {};
+function stale(name) {
+    if (!disposed) return null;
+    const c = module.exports && module.exports._late; // the old exports object until the new version is copied onto it: then c === LATE, nothing to hand to
+    return c && c !== LATE && typeof c[name] === 'function' ? c[name] : null;
+}
+let listeners = new Set(); // shared by reference with the next version on a reload (the claudeDesk handler added its listener once at boot)
 function onReview(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 let version = 0; // moves on every change the console shows (reviews, work, locks)
-function emit(review) { version += 1; listeners.forEach((fn) => { try { fn(review); } catch (_) { /* a listener */ } }); }
+function emit(review) { const s = stale('emit'); if (s) return s(review); version += 1; listeners.forEach((fn) => { try { fn(review); } catch (_) { /* a listener */ } }); }
 
 // ---------------------------------------------------------------- settings + engines
 
@@ -457,7 +476,7 @@ function recordUsage(row) {
 /** messages -> { content, finish, engine, model }; records usage; fails over on a money refusal. */
 // Background jobs (titles, task lists, sizing, rule checks, usage...) share a budget of 20 engine calls a minute, so a
 // loop can never flood TokenRouter, whose rate limit Yozora shares; turn reviews always go through.
-const bgCalls = [];
+let bgCalls = []; // shared by reference with the next version on a reload (the 60 s window)
 const NO_EFFORT = require('./noEffortStore'); // engine|model pairs that refuse reasoning_effort, kept on disk (#1230)
 const BG_PER_MIN = Number(process.env.AGENT_SUPERVISOR_BG_PER_MIN) || 20;
 /**
@@ -1142,14 +1161,15 @@ const STALL_KICK_MS = envMs0('AGENT_SUPERVISOR_STALL_KICK_MS', 5 * 60000);
 function envMs0(k, d) { const v = Number(process.env[k]); return v > 0 ? v : d; }
 const stallTimers = new Map(); // session id -> timer
 function scheduleStallCheck(sessionId, ms = STALL_MS + 5000) {
+    const st = stale('scheduleStallCheck'); if (st) return st(sessionId, ms);
     if (!sessionId) return;
     clearTimeout(stallTimers.get(sessionId));
     const t = setTimeout(() => { stallTimers.delete(sessionId); try { sweepStalled(Date.now(), sessionId); } catch (e) { console.warn(`[supervisor] stall check: ${e.message}`); } }, ms);
     if (t.unref) t.unref();
     stallTimers.set(sessionId, t);
 }
-function cancelStallCheck(sessionId) { clearTimeout(stallTimers.get(sessionId)); stallTimers.delete(sessionId); }
-const stallKicks = new Map(); // work id -> { at, n, reviewId }
+function cancelStallCheck(sessionId) { const st = stale('cancelStallCheck'); if (st) return st(sessionId); clearTimeout(stallTimers.get(sessionId)); stallTimers.delete(sessionId); }
+let stallKicks = new Map(); // work id -> { at, n, reviewId }
 
 // ---- the Sent Back lifecycle (#1256): item 127 sat Sent Back for 15 hours with its session gone and nothing noticed.
 // Sent Back has an age (sent_back_at); a gone session is resumed by the sweep; an item still Sent Back after SENT_BACK_REVIEW_MS is
@@ -1340,7 +1360,7 @@ const TERMINAL = ['done', 'failed', 'cancelled'];
 
 // ---- several issues in one run (#1191): issue_repo / issue_number / issue_id stay the PRIMARY (the first picked), issue_refs
 // is a JSON list of the others [{ repo, number, id, title }] (the primary is not repeated)
-const issueTitles = new Map(); // "owner/repo#N" -> title, filled as issues are linked / listed / fetched (a row has no title column)
+let issueTitles = new Map(); // "owner/repo#N" -> title, filled as issues are linked / listed / fetched (a row has no title column)
 function rememberTitle(repo, number, title) {
     if (!repo || !number || !title) return;
     if (issueTitles.size > 600) issueTitles.clear();
@@ -2028,7 +2048,7 @@ async function issuesBrief(r) {
 
 let pumping = null;
 /** Starts queued items while there are slots and accounts with room. One pump at a time. */
-const loginTried = new Map(); // work item id -> Set of account indexes whose login failed its start (at most one try per account per item)
+let loginTried = new Map(); // work item id -> Set of account indexes whose login failed its start (at most one try per account per item)
 /**
  * A start / resume failed with a login error (Yukimi Nov 25: "If login expired then move on to next account until it's fixed"):
  * the account is marked login-failed (claudeFleetSettings; availability 'login' skips it) and the item goes back to queued so
@@ -2081,6 +2101,7 @@ async function loginMove(w, rv, qs) {
 }
 
 function pumpWork(gr) {
+    const st = stale('pumpWork'); if (st) return st(gr);
     if (pumping) return pumping;
     pumping = (async () => {
         const g = gr || gResources;
@@ -2194,7 +2215,7 @@ function pumpWork(gr) {
     return pumping;
 }
 
-const retryTries = new Map(); // work item id -> reviews that could not judge its idle session
+let retryTries = new Map(); // work item id -> reviews that could not judge its idle session
 const sessionBusy = (sid) => { const l = liveSessionsById().get(sid); return !!(l && l.status === 'busy'); };
 
 // ---------------------------------------------------------------- what is still in flight for a session
@@ -2209,7 +2230,7 @@ function agentRunState(finished, lastActivity, now, idleMs) {
     if (finished) return 'finished';
     return (now || Date.now()) - (lastActivity || 0) > (idleMs || AGENT_RUN_IDLE_MS) ? 'idle' : 'running';
 }
-const ownDirs = new Map(); // session id -> its own folder beside its transcript
+let ownDirs = new Map(); // session id -> its own folder beside its transcript
 /** <project>/<sessionId>: where its subagents/ live ('' when the transcript is not found; a sync, cached lookup). */
 function sessionOwnDir(sessionId) {
     let own = ownDirs.get(sessionId);
@@ -2227,7 +2248,7 @@ function sessionOwnDir(sessionId) {
     } catch (_) { /* none */ }
     return '';
 }
-const finishedAgents = new Set(); // meta paths that said finished (a finished agent never changes)
+let finishedAgents = new Set(); // meta paths that said finished (a finished agent never changes)
 /** The session's background agents running now, and its background shell tasks that wrote in the last 30 s (best effort: a quiet shell task is not seen). */
 function bgWorkOf(sessionId, now) {
     const own = sessionOwnDir(sessionId);
@@ -2255,8 +2276,8 @@ function bgWorkOf(sessionId, now) {
     } catch (_) { /* no task dir */ }
     return out;
 }
-const reviewingNow = new Set(); // sessions whose review is running (review queue pump)
-const bgCache = new Map(); // session id -> { at, v }
+let reviewingNow = new Set(); // sessions whose review is running (review queue pump)
+let bgCache = new Map(); // session id -> { at, v }
 const BG_CACHE_MS = 3000;
 const CHECKING_MSG = 'The Supervisor is checking its last turn';
 /**
@@ -2290,6 +2311,7 @@ const HELD_RE = /^(Background work still running|Its session is still working)/;
 const holdTimers = new Map(); // session id -> timer: a held item is looked at again (only while it is held)
 const HOLD_RECHECK_MS = Number(process.env.AGENT_SUPERVISOR_HOLD_RECHECK_MS) > 0 ? Number(process.env.AGENT_SUPERVISOR_HOLD_RECHECK_MS) : 60000;
 function holdForRecheck(sessionId) {
+    const st = stale('holdForRecheck'); if (st) return st(sessionId);
     clearTimeout(holdTimers.get(sessionId));
     holdTimers.set(sessionId, setTimeout(() => { holdTimers.delete(sessionId); try { settleWork(sessionId); } catch (_) { /* later */ } }, HOLD_RECHECK_MS));
     holdTimers.get(sessionId).unref();
@@ -2334,8 +2356,17 @@ async function finishLanded(w, summary) {
     return true;
 }
 const settleSoonTimers = new Map();
+// a review that could not judge an idle session is queued again after a pause: tracked so a reload clears it and re-arms it in the new version
+const recheckTimers = new Map(); // timer -> session id
+function armRecheck(sessionId, ms) {
+    const st = stale('armRecheck'); if (st) return st(sessionId, ms);
+    const t = setTimeout(() => { recheckTimers.delete(t); if (!sessionBusy(sessionId)) queueReview(sessionId, 'recheck'); }, ms);
+    t.unref();
+    recheckTimers.set(t, sessionId);
+}
 /** settleWork, debounced (the subagents folder writes in bursts). */
 function settleSoon(sessionId, ms = 4000) {
+    const st = stale('settleSoon'); if (st) return st(sessionId, ms);
     const sid = String(sessionId || '');
     if (!sid || settleSoonTimers.has(sid)) return;
     const t = setTimeout(() => { settleSoonTimers.delete(sid); try { settleWork(sid); } catch (_) { /* later */ } }, ms);
@@ -2443,7 +2474,7 @@ async function workAfterReview(rv, opts = {}) {
         retryTries.set(w.id, tries);
         if (tries <= 1) {
             setWork(w.id, { state: 'running', message: `The Supervisor could not judge the last turn (${rv.summary || rv.verdict}); checking again shortly` });
-            setTimeout(() => { if (!sessionBusy(rv.sessionId)) queueReview(rv.sessionId, 'recheck'); }, 3 * 60000).unref();
+            armRecheck(rv.sessionId, 3 * 60000);
         } else {
             retryTries.delete(w.id);
             setWork(w.id, { state: 'failed', ended_at: Date.now(), message: `Stopped with its session idle; the Supervisor could not judge the last turn (${rv.summary || rv.verdict}). Open the session to check it, or Start Now to run it again.` });
@@ -2503,8 +2534,8 @@ async function steerResumed(r, text) {
 // credentials file clears it) and the stuck sessions move to the best other account, each with a note to carry on.
 const LOGIN_MOVE_GAP_MS = 10 * 60 * 1000;
 const LOGIN_MOVE_MAX = 3; // per session per hour
-const loginMoves = new Map(); // session id -> move timestamps
-const loginNoRoomNoted = new Map(); // account index -> when the "no account has room" note was posted
+let loginMoves = new Map(); // session id -> move timestamps
+let loginNoRoomNoted = new Map(); // account index -> when the "no account has room" note was posted
 const failoverDeps = {}; // test hook: { kill(live) }
 function setFailoverDeps(o) { Object.keys(failoverDeps).forEach((k) => delete failoverDeps[k]); Object.assign(failoverDeps, o || {}); }
 
@@ -3122,7 +3153,7 @@ const HOLD_MAX_MS = Number(process.env.AGENT_SUPERVISOR_HOLD_MAX_MS) > 0 ? Numbe
 const WAIT_NUDGE_MS = Number(process.env.AGENT_SUPERVISOR_WAIT_NUDGE_MS) > 0 ? Number(process.env.AGENT_SUPERVISOR_WAIT_NUDGE_MS) : 15 * 60 * 1000;
 const WAIT_MAX_NUDGES = 3;
 const WATCH_TICK_MS = Number(process.env.AGENT_SUPERVISOR_WATCH_MS) > 0 ? Number(process.env.AGENT_SUPERVISOR_WATCH_MS) : 60 * 1000;
-const BOOT_AT = Date.now();
+let BOOT_AT = Date.now(); // handed over on a reload: a 'restart' wait ends when this moves
 
 // git for the collision logic runs through spawnHelper (#1236: a sync execFileSync forked the 800 MB server and blocked the loop for the
 // whole command; this runs after every turn and on the commit watch / 60 s timer while a hold or wait is open). The functions return
@@ -3343,21 +3374,23 @@ function watchedRoots() {
 const watching = new Set(); // roots whose logs/HEAD path is being looked up (git rev-parse runs through the helper, off the loop)
 /** Starts the commit watch of one repo root: asks git where logs/HEAD is (async), then fs.watch es it; the 60 s timer covers the gap. */
 function watchRoot(r) {
+    if (disposed) return; // handed over: the current version's armWatch looks again
     if (watching.has(r)) return;
     watching.add(r);
     Promise.resolve(gitDep('gitLogPath')(r)).catch(() => '').then((f) => {
         watching.delete(r);
-        if (!f || watchers.has(r) || !watchedRoots().has(r)) return;
+        if (disposed || !f || watchers.has(r) || !watchedRoots().has(r)) return; // disposed: a lookup in flight at a reload arms no watcher in the old version
         try { const w = fs.watch(f, { persistent: false }, onRepoCommit); w.on('error', () => { try { w.close(); } catch (_) { /* closed */ } watchers.delete(r); }); watchers.set(r, w); } catch (_) { /* the timer covers it */ }
     });
 }
 function onRepoCommit() {
     clearTimeout(watchDebounce);
-    watchDebounce = setTimeout(() => { recheckAll().catch((e) => console.warn(`[supervisor] watch: ${e.message}`)); }, 1500);
+    watchDebounce = setTimeout(() => { watchDebounce = null; recheckAll().catch((e) => console.warn(`[supervisor] watch: ${e.message}`)); }, 1500);
     if (watchDebounce.unref) watchDebounce.unref();
 }
 /** Arms the commit watch and the timer while something is open; closes both when nothing is. */
 function armWatch() {
+    const st = stale('armWatch'); if (st) return st();
     const need = listHolds().some((h) => h.kind === 'collision') || openWaits().length > 0;
     if (!need) { disarmWatch(); return false; }
     const roots = watchedRoots();
@@ -3451,7 +3484,7 @@ async function waitCleared(wt, live, ctx) {
  * its requester is told at once to begin it and build; an idle requester is told again every 3 minutes; a gate whose requester's
  * session is gone (or ended) for 5 minutes is cancelled so the next gate of its target is not held behind it. Runs every minute.
  */
-const gateNudges = new Map(); // build id -> { at, n }
+let gateNudges = new Map(); // build id -> { at, n }
 const GATE_NUDGE_MS = 3 * 60000;
 const GATE_ORPHAN_MS = 5 * 60000;
 async function sweepClearGates(now = Date.now()) {
@@ -3614,7 +3647,7 @@ function sweepDead() {
 // closing), a turn end, a start refused for memory, and once at boot. A session no item names is reported, never closed.
 // A closed session loses nothing: an item that runs again resumes it (steerResumed).
 
-const closing = new Set(); // session ids being closed now
+let closing = new Set(); // session ids being closed now
 let sweeping = null;
 const supervisorOff = () => process.env.AGENT_SUPERVISOR_DISABLED === '1';
 
@@ -3891,7 +3924,7 @@ async function duBytes(full) {
     } catch (_) { return null; }
 }
 
-const refreshFlights = new Map(); // 'all' or a session id -> the running refresh
+let refreshFlights = new Map(); // 'all' or a session id -> the running refresh
 let refreshWarned = false;
 /**
  * Stats a session's artifacts (or the stalest ones), within a time budget. Async (#1236: the sync stat + `du` per folder froze the
@@ -4012,7 +4045,7 @@ async function openUsers(full) {
 
 const RECENT_MS = 2 * 3600 * 1000;
 const TRASH_DAYS = 7;
-const cleaning = new Set();
+let cleaning = new Set();
 
 function recordDecision(id, decision, reason, extra = {}) {
     coord().open().prepare('UPDATE artifacts SET decision = ?, decision_reason = ?, decided_at = ?, trash_path = COALESCE(?, trash_path), exists_now = COALESCE(?, exists_now), size_bytes = CASE WHEN ? = 0 THEN NULL ELSE size_bytes END, checked_at = ? WHERE id = ?')
@@ -4147,7 +4180,7 @@ async function afterTurn(sessionId, s) {
 
 // ---------------------------------------------------------------- watching turns end
 
-const statusBySession = new Map(); // session id -> last status
+let statusBySession = new Map(); // session id -> last status
 const queue = [];
 let running = 0;
 let watcher = null;
@@ -4171,6 +4204,7 @@ function pump() {
 }
 
 function queueReview(sessionId, trigger) {
+    const st = stale('queueReview'); if (st) return st(sessionId, trigger);
     if (queue.some((j) => j.sessionId === sessionId)) return;
     if (queue.length > 50) return;
     queue.push({ sessionId, trigger });
@@ -4182,6 +4216,7 @@ function queueReview(sessionId, trigger) {
 const SETTLE_MS = Number(process.env.AGENT_SUPERVISOR_SETTLE_MS) >= 0 && process.env.AGENT_SUPERVISOR_SETTLE_MS !== undefined ? Number(process.env.AGENT_SUPERVISOR_SETTLE_MS) : 20000;
 const settling = new Map();
 function settleThenReview(sessionId) {
+    const st = stale('settleThenReview'); if (st) return st(sessionId);
     clearTimeout(settling.get(sessionId));
     settling.set(sessionId, setTimeout(async () => {
         settling.delete(sessionId);
@@ -4368,56 +4403,58 @@ async function fleetOp(req) {
 }
 
 let sockServer = null;
+/** One connection of the supervisor socket. A reload swaps this listener on the live server (hot block below); connections already open finish on the version that accepted them. */
+function onSockConnection(sock) {
+    let buf = '';
+    sock.setEncoding('utf8');
+    sock.setTimeout(CALL_TIMEOUT_MS + 15000, () => sock.destroy());
+    let asking = null; // ask_user: the request form id while the hook waits
+    sock.on('close', () => { if (asking) { try { require('./requestForm').submitRequestForm({ id: asking, cancelled: true }); } catch (_) { /* gone */ } } });
+    sock.on('data', async (chunk) => {
+        buf += chunk;
+        const i = buf.indexOf('\n');
+        if (i < 0) { if (buf.length > (/^\{"op":"(ask_user|enqueue|fleet_work_update|fleet_work_shape)"/.test(buf) ? 262144 : 4096)) sock.destroy(); return; }
+        let req = null;
+        try { req = JSON.parse(buf.slice(0, i)); } catch (_) { req = null; }
+        buf = '';
+        let out;
+        try {
+            if (!req || !['check', 'enqueue', 'pause', 'resume', 'ask_user', 'device-consent'].concat(FLEET_OPS, TASK_OPS).includes(req.op)) throw new Error('op must be check, enqueue, pause, resume, ask_user, device-consent, a task_* or a fleet_* op');
+            if (req.op === 'device-consent') {
+                // a shared phone's queue changed in an MCP process: notices and ask timeouts follow (modules/deviceConsent.js)
+                require('./deviceConsent').changed(String(req.device || '').slice(0, 40));
+                out = { ok: true };
+            } else if (TASK_OPS.includes(req.op)) {
+                out = { ok: true, result: sessionTasks().agentOp(req) };
+            } else if (FLEET_OPS.includes(req.op)) {
+                out = { ok: true, result: await fleetOp(req) };
+            } else if (req.op === 'ask_user') {
+                sock.setTimeout(0); // a person answers: the hook's own timeout bounds the wait
+                out = await askUser(req, (id) => { asking = id; });
+                asking = null;
+            } else if (req.op === 'pause' || req.op === 'resume') {
+                // an agent asks: hold only (freeze is Fleet's)
+                const r = req.op === 'pause'
+                    ? await pauseSession(String(req.sessionId || ''), { mode: 'hold', reason: String(req.reason || '').slice(0, 300), by: String(req.by || 'an agent').slice(0, 80), kind: 'agent' })
+                    : await resumeSession(String(req.sessionId || ''), { note: `by ${String(req.by || 'an agent').slice(0, 80)}` });
+                out = { ok: true, result: r };
+            } else if (req.op === 'enqueue') {
+                const w = enqueue({ title: req.title, prompt: req.prompt, cwd: req.cwd, model: req.model, effort: req.effort, engine: req.engine, startNow: req.startNow === true, source: 'agent', sourceRef: req.sourceRef || null });
+                out = { ok: true, work: w };
+            } else {
+                if (!settings().enabled) throw new Error('The Supervisor is off (Fleet > Coordination > Supervisor)');
+                out = { ok: true, review: await review(String(req.sessionId || ''), 'mcp') };
+            }
+        } catch (e) { out = { ok: false, error: e.message }; }
+        try { sock.end(`${JSON.stringify(out)}\n`); } catch (_) { /* gone */ }
+    });
+    sock.on('error', () => {});
+}
 function serveSocket() {
     const file = socketPath();
     try { fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 }); } catch (_) { /* there */ }
     try { fs.unlinkSync(file); } catch (_) { /* none */ }
-    sockServer = net.createServer((sock) => {
-        let buf = '';
-        sock.setEncoding('utf8');
-        sock.setTimeout(CALL_TIMEOUT_MS + 15000, () => sock.destroy());
-        let asking = null; // ask_user: the request form id while the hook waits
-        sock.on('close', () => { if (asking) { try { require('./requestForm').submitRequestForm({ id: asking, cancelled: true }); } catch (_) { /* gone */ } } });
-        sock.on('data', async (chunk) => {
-            buf += chunk;
-            const i = buf.indexOf('\n');
-            if (i < 0) { if (buf.length > (/^\{"op":"(ask_user|enqueue|fleet_work_update|fleet_work_shape)"/.test(buf) ? 262144 : 4096)) sock.destroy(); return; }
-            let req = null;
-            try { req = JSON.parse(buf.slice(0, i)); } catch (_) { req = null; }
-            buf = '';
-            let out;
-            try {
-                if (!req || !['check', 'enqueue', 'pause', 'resume', 'ask_user', 'device-consent'].concat(FLEET_OPS, TASK_OPS).includes(req.op)) throw new Error('op must be check, enqueue, pause, resume, ask_user, device-consent, a task_* or a fleet_* op');
-                if (req.op === 'device-consent') {
-                    // a shared phone's queue changed in an MCP process: notices and ask timeouts follow (modules/deviceConsent.js)
-                    require('./deviceConsent').changed(String(req.device || '').slice(0, 40));
-                    out = { ok: true };
-                } else if (TASK_OPS.includes(req.op)) {
-                    out = { ok: true, result: sessionTasks().agentOp(req) };
-                } else if (FLEET_OPS.includes(req.op)) {
-                    out = { ok: true, result: await fleetOp(req) };
-                } else if (req.op === 'ask_user') {
-                    sock.setTimeout(0); // a person answers: the hook's own timeout bounds the wait
-                    out = await askUser(req, (id) => { asking = id; });
-                    asking = null;
-                } else if (req.op === 'pause' || req.op === 'resume') {
-                    // an agent asks: hold only (freeze is Fleet's)
-                    const r = req.op === 'pause'
-                        ? await pauseSession(String(req.sessionId || ''), { mode: 'hold', reason: String(req.reason || '').slice(0, 300), by: String(req.by || 'an agent').slice(0, 80), kind: 'agent' })
-                        : await resumeSession(String(req.sessionId || ''), { note: `by ${String(req.by || 'an agent').slice(0, 80)}` });
-                    out = { ok: true, result: r };
-                } else if (req.op === 'enqueue') {
-                    const w = enqueue({ title: req.title, prompt: req.prompt, cwd: req.cwd, model: req.model, effort: req.effort, engine: req.engine, startNow: req.startNow === true, source: 'agent', sourceRef: req.sourceRef || null });
-                    out = { ok: true, work: w };
-                } else {
-                    if (!settings().enabled) throw new Error('The Supervisor is off (Fleet > Coordination > Supervisor)');
-                    out = { ok: true, review: await review(String(req.sessionId || ''), 'mcp') };
-                }
-            } catch (e) { out = { ok: false, error: e.message }; }
-            try { sock.end(`${JSON.stringify(out)}\n`); } catch (_) { /* gone */ }
-        });
-        sock.on('error', () => {});
-    });
+    sockServer = net.createServer(onSockConnection);
     sockServer.on('error', (e) => console.warn(`[supervisor] socket: ${e.message}`));
     sockServer.listen(file, () => { try { fs.chmodSync(file, 0o600); } catch (_) { /* kept */ } });
 }
@@ -4425,8 +4462,37 @@ function serveSocket() {
 let usageHooked = false;
 function bind(gr) {
     if (gr) gResources = gr;
-    // queued work starts when an account gets room again
-    if (!usageHooked && gResources) { usageHooked = true; try { require('./claudeUsage').onRead(() => { pumpWork().catch(() => {}); sweepDead(); }); } catch (_) { usageHooked = false; } }
+    // queued work starts when an account gets room again (registered once per process: usageHooked is handed over on a reload,
+    // and the callback calls whatever version is current)
+    if (!usageHooked && gResources) { usageHooked = true; try { require('./claudeUsage').onRead(() => { module.exports.pumpWork().catch(() => {}); module.exports.sweepDead(); }); } catch (_) { usageHooked = false; } }
+}
+
+// What start() arms, as small functions: a reload re-arms them in the new version (the hot block at the end of this file).
+function armSessionsWatch() {
+    try {
+        watcher = fs.watch(sessionsDir(), { persistent: false }, () => {
+            clearTimeout(debounce);
+            armScan(500);
+        });
+        watcher.on('error', () => { try { watcher.close(); } catch (_) { /* closed */ } watcher = null; });
+    } catch (e) {
+        console.warn(`[supervisor] cannot watch ${sessionsDir()}: ${e.message}`);
+    }
+}
+function armScan(ms) { debounce = setTimeout(() => { debounce = null; scan(false); }, ms); }
+let bootTimer = null;
+let bootDue = 0;
+function armBoot(ms) {
+    if (bootTimer) clearTimeout(bootTimer);
+    bootDue = Date.now() + ms;
+    bootTimer = setTimeout(() => { bootTimer = null; bootDue = 0; try { sweepDead(); armWatch(); recheckAll().catch(() => {}); sweepFinishedSessions('boot').catch(() => {}); } catch (_) { /* later */ } }, ms);
+    if (bootTimer.unref) bootTimer.unref();
+}
+function armGateTimer() {
+    if (!gateTimer) { gateTimer = setInterval(() => { sweepClearGates().catch((e) => console.warn(`[supervisor] gate sweep: ${e.message}`)); }, 60 * 1000); if (gateTimer.unref) gateTimer.unref(); }
+}
+function armPullTimer() {
+    if (!pullTimer) { pullTimer = setInterval(() => { pullIssues(null, { force: true }).catch(() => {}); try { sweepStalled(); } catch (e) { console.warn(`[supervisor] stall sweep: ${e.message}`); } }, 10 * 60 * 1000); if (pullTimer.unref) pullTimer.unref(); }
 }
 
 function start(gr) {
@@ -4434,34 +4500,28 @@ function start(gr) {
     // phone notices a Fleet Manager switch does not allow (kept from before the switches, #1196) come down once at start
     try { require('./fleetNotices').sweepRoutine(gr); } catch (_) { /* best effort */ }
     if (watcher || process.env.AGENT_SUPERVISOR_DISABLED === '1') return;
+    started = true;
     scan(true);
-    try {
-        watcher = fs.watch(sessionsDir(), { persistent: false }, () => {
-            clearTimeout(debounce);
-            debounce = setTimeout(() => scan(false), 500);
-        });
-        watcher.on('error', () => { try { watcher.close(); } catch (_) { /* closed */ } watcher = null; });
-    } catch (e) {
-        console.warn(`[supervisor] cannot watch ${sessionsDir()}: ${e.message}`);
-    }
+    armSessionsWatch();
     serveSocket();
     // shared phones ask Yukimi before an agent may use them: queue changes reach the notices, and open asks come back from the DB (#1284)
     try { require('./deviceConsent').start(); } catch (e) { console.warn(`[supervisor] device consent: ${e.message}`); }
     pumpWork().catch(() => {});
     // work whose session ended while the server was down comes back; holds and waits left open are watched again (only when there are any)
-    const boot = setTimeout(() => { try { sweepDead(); armWatch(); recheckAll().catch(() => {}); sweepFinishedSessions('boot').catch(() => {}); } catch (_) { /* later */ } }, 20000);
-    if (boot.unref) boot.unref();
+    armBoot(20000);
     // fleet issues filed on Yozora come in, closed ones end their item (server side, every 10 min; Fleet's own reads pull too)
     pullIssues(gr, { force: true }).catch(() => {});
-    if (!gateTimer) { gateTimer = setInterval(() => { sweepClearGates().catch((e) => console.warn(`[supervisor] gate sweep: ${e.message}`)); }, 60 * 1000); if (gateTimer.unref) gateTimer.unref(); }
-    if (!pullTimer) { pullTimer = setInterval(() => { pullIssues(null, { force: true }).catch(() => {}); try { sweepStalled(); } catch (e) { console.warn(`[supervisor] stall sweep: ${e.message}`); } }, 10 * 60 * 1000); if (pullTimer.unref) pullTimer.unref(); }
+    armGateTimer();
+    armPullTimer();
 }
 let pullTimer = null;
 let gateTimer = null;
 
 function stop() {
+    started = false;
     if (watcher) { try { watcher.close(); } catch (_) { /* closed */ } watcher = null; }
-    clearTimeout(debounce);
+    clearTimeout(debounce); debounce = null;
+    if (bootTimer) { clearTimeout(bootTimer); bootTimer = null; bootDue = 0; }
     if (sockServer) { try { sockServer.close(); } catch (_) { /* closed */ } sockServer = null; }
     if (pullTimer) { clearInterval(pullTimer); pullTimer = null; }
     if (gateTimer) { clearInterval(gateTimer); gateTimer = null; }
@@ -4478,7 +4538,8 @@ const RULES_REPO = path.join(__dirname, '..');
 const RULES_CHUNK_CHARS = 18000;   // one engine call's rule text (a DeepSeek Flash context holds far more)
 const RULES_MAX_CALLS = 12;        // the short budget
 const RULES_EXCERPT = 900;         // chars of each rule shown to the cross-rule pass
-let rulesRun = null;               // { startedAt, done, total, step }
+let rulesRun = null;               // { startedAt, done, total, step, ended }
+const rulesActive = () => !!rulesRun && !rulesRun.ended;
 
 function rulesDb() {
     const d = db();
@@ -4656,7 +4717,7 @@ function lastRulesReview() {
 
 /** What the console shows: the rules, the last review and whether one is running. */
 function rulesState(opts = {}) {
-    return { rules: listRules(opts), last: lastRulesReview(), running: rulesRun ? Object.assign({}, rulesRun) : null, proposals: listRuleProposals() };
+    return { rules: listRules(opts), last: lastRulesReview(), running: rulesActive() ? Object.assign({}, rulesRun) : null, proposals: listRuleProposals() };
 }
 
 /**
@@ -4664,7 +4725,7 @@ function rulesState(opts = {}) {
  * and at the end. Answers the stored review.
  */
 async function reviewRules(gr, opts = {}) {
-    if (rulesRun) throw new Error('A rules review is already running');
+    if (rulesActive()) throw new Error('A rules review is already running');
     const rules = listRules(Object.assign({}, opts, { withText: true }));
     if (!rules.length) throw new Error('No rules were found');
     const names = new Set(rules.map((r) => r.name));
@@ -4719,6 +4780,7 @@ async function reviewRules(gr, opts = {}) {
         // later calls may have failed over: the usage table knows the last model that answered
         try { const u = db().prepare("SELECT engine, model FROM supervisor_usage WHERE kind = 'rules' AND ok = 1 ORDER BY id DESC LIMIT 1").get(); if (u) { engine = u.engine; model = u.model || model; } } catch (_) { /* none */ }
     } finally {
+        if (rulesRun) rulesRun.ended = true; // a version that took this object over on a reload sees the end (its own variable is not this one)
         rulesRun = null;
     }
     const final = findings.map((f, i) => Object.assign({}, f, { id: String(i), dismissed: false }));
@@ -4730,7 +4792,7 @@ async function reviewRules(gr, opts = {}) {
 
 /** Start in the background: answers at once; the result arrives through the status push. */
 function startRulesReview(gr, opts = {}) {
-    if (rulesRun) throw new Error('A rules review is already running');
+    if (rulesActive()) throw new Error('A rules review is already running');
     reviewRules(gr, opts).catch((e) => { console.warn(`[supervisor] rules review: ${e.message}`); emit({ rules: true }); });
     return { running: true };
 }
@@ -4866,5 +4928,124 @@ module.exports = {
     listRules, ruleText, rulesState, reviewRules, startRulesReview, dismissRuleFinding, staticRuleFindings,
     start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, sweepClearGates, sweepStalled, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, stopWork, killDeps, setKillDeps, intakePlaud, workAfterReview, sessionInFlight, steerResumed, settleWork, settleSoon, agentRunState, answerWork, reopenWork, closeWorkAsDone, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
-    _test: { callClaudeReviewer, cleanReviewer, askModel, issueCarriedByOthers, closeParkedSessions, closeDeps, ageText, rowWork, deliver,handOffGaps, sweepStalled, stallKicks, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, loginMoves, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, statusBySession, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
+    _late: LATE, _taskDeps: TASK_DEPS, // reload without a restart (#1292): what a handed-over version and sessionTasks call into
+    _test: { callClaudeReviewer, cleanReviewer, askModel, issueCarriedByOthers, closeParkedSessions, closeDeps, ageText, rowWork, deliver,handOffGaps, sweepStalled, get stallKicks() { return stallKicks; }, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, get loginMoves() { return loginMoves; }, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, get statusBySession() { return statusBySession; }, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, get issueTitles() { return issueTitles; }, get reviewingNow() { return reviewingNow; }, onSockConnection, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };
+
+// ---------------------------------------------------------------- reload without a restart (#1292, docs/server/hot-reload.md)
+//
+// dispose() stops every timer, watcher and interval this version armed and hands the next version what start() set up; accept()
+// takes it back and re-arms ONLY what start() armed (never its boot work: no scan(true), no pumpWork kick, no pullIssues, no
+// sweepFinishedSessions('boot'), no sweepRoutine, no deviceConsent.start()). What is handed over:
+//   - the unix socket server itself (an agent's ask_user hook may be waiting on a connection): only its 'connection' listener is swapped;
+//   - the containers old code still in flight writes to (reviewingNow, closing, cleaning, refreshFlights, listeners, caches, ...) BY
+//     REFERENCE: the new version uses the very same Map / Set, so an old review ending after the reload clears its entry there;
+//     accept never mutates them and a rollback hands the same objects back;
+//   - single-flight promises (pumping, sweeping): the new version waits for the old run and clears its own variable when it ends;
+//   - the review queue: its not-yet-started entries MOVE to the new version (and back on a rollback); `running` starts at 0 in the
+//     new version (the old reviews in flight decrement the old counter), so up to MAX_PARALLEL new reviews may overlap with the
+//     old ones in flight for a moment;
+//   - the one-shot timers (stall, hold, settle-soon, settling, recheck, boot) as keys: re-armed as a fresh check with their normal delay
+//     (their checks are idempotent); the boot timer keeps the time it had left.
+// Old code still in flight after a dispose (a review, a pump, a git lookup) hands timer arming and queueing to the current version
+// through stale() / _late, so no timer of the old version is ever armed after dispose.
+const TEST_ACCEPT_THROW = 'AGENT_SUPERVISOR_TEST_ACCEPT_THROW'; // test-only switch (scripts/test-hot-reload-supervisor.js): accept() throws once its re-arming is done, to exercise a rollback
+
+Object.assign(LATE, { emit, scheduleStallCheck, cancelStallCheck, holdForRecheck, settleSoon, armRecheck, queueReview, settleThenReview, pumpWork, armWatch });
+
+/** A single-flight promise of the old version, as this version's own (cleared here when it ends, whatever the old version does). */
+function adoptFlight(p, isMine, clear) {
+    if (!p || typeof p.then !== 'function') return null;
+    const w = p.finally(() => { if (isMine(w)) clear(); });
+    w.catch(() => { /* the callers of pumpWork / sweepFinishedSessions handle it */ });
+    return w;
+}
+/** Re-arms the one-shot checks and what start() armed, from a plan { started, sessionsWatch, debounce, boot, pull, gate, watchArmed, commitPending, stall, hold, settleSoon, settling, recheck }. */
+function rearm(plan) {
+    if (!plan.started) return;
+    started = true;
+    if (plan.sessionsWatch && !watcher) armSessionsWatch();
+    if (plan.debounce) { clearTimeout(debounce); armScan(500); }
+    if (plan.boot >= 0) armBoot(plan.boot);
+    if (plan.gate) armGateTimer();
+    if (plan.pull) armPullTimer();
+    (plan.stall || []).forEach((sid) => scheduleStallCheck(sid));
+    (plan.hold || []).forEach((sid) => holdForRecheck(sid));
+    (plan.settleSoon || []).forEach((sid) => { settleSoonTimers.delete(sid); settleSoon(sid); });
+    (plan.settling || []).forEach((sid) => settleThenReview(sid));
+    (plan.recheck || []).forEach((sid) => armRecheck(sid, 3 * 60000));
+    if (plan.watchArmed) armWatch();
+    if (plan.commitPending) onRepoCommit();
+}
+
+function hotDispose() {
+    const now = Date.now();
+    // 1. read everything first: if reading threw, nothing was stopped yet
+    const state = {
+        started, gr: gResources, version, bootAt: BOOT_AT,
+        tasksWired, usageHooked, priceCache, engineCoolUntil, lastPull, refreshWarned, reviveOn,
+        fetchFn, collisionDeps, killOverride,
+        deps: { rule: Object.assign({}, RULE_CHECK_DEPS), failover: Object.assign({}, failoverDeps), close: Object.assign({}, closeDeps) },
+        shared: { listeners, bgCalls, stallKicks, issueTitles, loginTried, retryTries, ownDirs, finishedAgents, reviewingNow, bgCache, loginMoves, loginNoRoomNoted, gateNudges, closing, refreshFlights, cleaning, statusBySession },
+        pumping, sweeping, rulesRun,
+        queue: queue.slice(),
+        plan: {
+            started, sessionsWatch: !!watcher, debounce: !!debounce, boot: bootTimer ? Math.max(0, bootDue - now) : -1,
+            pull: !!pullTimer, gate: !!gateTimer, watchArmed: !!watchTimer || watchers.size > 0, commitPending: !!watchDebounce,
+            stall: [...stallTimers.keys()], hold: [...holdTimers.keys()], settleSoon: [...settleSoonTimers.keys()], settling: [...settling.keys()], recheck: [...recheckTimers.values()]
+        },
+        sockServer
+    };
+    // 2. stop everything this version armed (the socket server stays up)
+    disposed = true;
+    const clearAll = (m) => { for (const t of m.values()) clearTimeout(t); m.clear(); };
+    clearAll(stallTimers); clearAll(holdTimers); clearAll(settleSoonTimers); clearAll(settling);
+    for (const t of recheckTimers.keys()) clearTimeout(t);
+    recheckTimers.clear();
+    if (watcher) { try { watcher.close(); } catch (_) { /* closed */ } watcher = null; }
+    clearTimeout(debounce); debounce = null;
+    if (bootTimer) { clearTimeout(bootTimer); bootTimer = null; bootDue = 0; }
+    if (pullTimer) { clearInterval(pullTimer); pullTimer = null; }
+    if (gateTimer) { clearInterval(gateTimer); gateTimer = null; }
+    disarmWatch();
+    queue.length = 0; // its in-flight reviews find nothing left to start; the entries run in the next version
+    sockServer = null;
+    return state;
+}
+
+function hotAccept(st, ctx) {
+    disposed = false;
+    if (!st) {
+        // dispose() threw (or there is nothing to take): a started version arms what it lost, from its own tables
+        rearm({
+            started, sessionsWatch: !watcher, debounce: false, boot: -1, pull: !pullTimer, gate: !gateTimer, watchArmed: true, commitPending: false,
+            stall: [...stallTimers.keys()], hold: [...holdTimers.keys()], settleSoon: [...settleSoonTimers.keys()], settling: [...settling.keys()], recheck: [...recheckTimers.values()]
+        });
+        return;
+    }
+    gResources = st.gr || gResources;
+    version = Math.max(version, st.version || 0);
+    BOOT_AT = st.bootAt || BOOT_AT;
+    tasksWired = !!st.tasksWired; usageHooked = !!st.usageHooked; priceCache = st.priceCache || priceCache;
+    engineCoolUntil = st.engineCoolUntil || 0; lastPull = st.lastPull || 0; refreshWarned = !!st.refreshWarned; reviveOn = st.reviveOn;
+    fetchFn = st.fetchFn || fetchFn; collisionDeps = st.collisionDeps || {}; killOverride = st.killOverride || null;
+    [[RULE_CHECK_DEPS, st.deps.rule], [failoverDeps, st.deps.failover], [closeDeps, st.deps.close]].forEach(([own, from]) => { Object.keys(own).forEach((k) => delete own[k]); Object.assign(own, from || {}); });
+    ({ listeners, bgCalls, stallKicks, issueTitles, loginTried, retryTries, ownDirs, finishedAgents, reviewingNow, bgCache, loginMoves, loginNoRoomNoted, gateNudges, closing, refreshFlights, cleaning, statusBySession } = st.shared);
+    pumping = adoptFlight(st.pumping, (w) => pumping === w, () => { pumping = null; });
+    sweeping = adoptFlight(st.sweeping, (w) => sweeping === w, () => { sweeping = null; });
+    rulesRun = st.rulesRun && !st.rulesRun.ended ? st.rulesRun : null;
+    // the socket server stays up: its connection listener becomes this version's (one 'error' listener, added when it was created)
+    if (st.sockServer) {
+        sockServer = st.sockServer;
+        sockServer.removeAllListeners('connection');
+        sockServer.on('connection', onSockConnection);
+    }
+    rearm(st.plan);
+    queue.length = 0;
+    st.queue.forEach((j) => queue.push(j));
+    if (process.env[TEST_ACCEPT_THROW] === '1' && !(ctx && ctx.rollback)) throw new Error('test: accept refused (AGENT_SUPERVISOR_TEST_ACCEPT_THROW)');
+    // last: nothing after this can throw, so a rollback never finds a started review in the version it undoes
+    if (queue.length) { try { pump(); } catch (e) { console.warn(`[supervisor] reload: ${e.message}`); } }
+}
+
+require('./hotReload').mark(module, { dispose: hotDispose, accept: hotAccept, dependents: ['./ws/handlers/314-claudeDeskHandler.js'] });
