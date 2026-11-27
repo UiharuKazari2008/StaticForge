@@ -573,7 +573,7 @@
             let r = null;
             try { r = await ask('inbox_list', {}); } catch (_) { return []; }
             const dayAgo = Date.now() - 24 * 3600 * 1000;
-            return ((r && r.notices) || []).filter((n) => (n.state === 'new' || (n.state === 'seen' && (Number(n.updatedAt) || Number(n.createdAt) || 0) >= dayAgo)) && !/^(mail|dmail|sms|chat|director|stack):/.test(n.id));
+            return ((r && r.notices) || []).filter((n) => (n.state === 'new' || (n.state === 'seen' && (Number(n.updatedAt) || Number(n.createdAt) || 0) >= dayAgo)) && !/^(mail|dmail|sms|chat|director):/.test(n.id) && n.id !== 'stack:mail');
         },
         /** One waiting notice (from waitingList) shown as its notification: the holder's tap on it. */
         showOne: (n) => {
@@ -587,7 +587,7 @@
             try { r = await ask('inbox_list', {}); } catch (_) { return 0; }
             // the same as the phones' "..." count (phoneStatus): not seen yet, or seen within the last day
             const dayAgo = Date.now() - 24 * 3600 * 1000;
-            const waiting = ((r && r.notices) || []).filter((n) => (n.state === 'new' || (n.state === 'seen' && (Number(n.updatedAt) || Number(n.createdAt) || 0) >= dayAgo)) && !/^(mail|dmail|sms|chat|director|stack):/.test(n.id));
+            const waiting = ((r && r.notices) || []).filter((n) => (n.state === 'new' || (n.state === 'seen' && (Number(n.updatedAt) || Number(n.createdAt) || 0) >= dayAgo)) && !/^(mail|dmail|sms|chat|director):/.test(n.id) && n.id !== 'stack:mail');
             for (const n of waiting) {
                 // asked for: each comes up again, also one shown before and put away (its old handle kept it from showing;
                 // the tap then opened nothing, Nov 18 Fold)
