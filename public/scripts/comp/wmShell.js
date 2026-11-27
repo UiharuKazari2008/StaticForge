@@ -501,6 +501,7 @@
                 return;
             }
             m.applyPackageChange(change, {
+                // notice: wm-package-restart-ask
                 confirmLarge: ({ bytes }) => messageBox({
                     title: 'Melaton Update',
                     icon: 'question',
@@ -1375,6 +1376,7 @@
             let question = null;
             try { question = typeof app.closeQuestion === 'function' ? app.closeQuestion() : null; } catch (_) { question = null; }
             if (!question) { close(); return; }
+            // notice: wm-user-question
             messageBox({
                 title: app.title || 'Melaton Mobile',
                 icon: 'question',
@@ -1826,6 +1828,7 @@
         if (opts && opts.sample) { delete pop.dataset.wmPaint; return pop; }
         openPopup = pop;
         // CE's Menu pop-up event (silent unless a sound is picked for it)
+        // notice: wm-ui-click-sound
         playSystemSound('menu');
         if (btn) btn.setAttribute('aria-expanded', 'true');
         syncHistory();
@@ -2179,6 +2182,7 @@
         void busy(loadLazyApp(id)).then((ok) => {
             if (ok) { open(id, opts); return; }
             // the script did not come (no connection and not cached yet): the program stays closed
+            // notice: wm-user-failure
             void messageBox({ title: apps.get(id) ? apps.get(id).title : id, icon: 'error', text: 'The program could not be opened. Try again when the connection is back.' });
         });
     }
@@ -3453,6 +3457,7 @@
             if (d.id !== req) return;
             window.removeEventListener('androidtasksresult', onResult);
             if (d.result && d.result.ok) return;
+            // notice: wm-user-failure
             void messageBox({ title: 'Error', icon: 'error', text: `Cannot open the program. ${(d.result && d.result.error) || ''}`.trim() });
         };
         window.addEventListener('androidtasksresult', onResult, { signal: appScopeSignal });
@@ -3530,6 +3535,7 @@
         taskSwitch.asking = true;
         let yes = false;
         try {
+            // notice: wm-user-question
             yes = await messageBox({ title: 'Confirm End', text: 'Do you really want to end all running applications?', icon: 'warning', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }], cancelValue: false });
         } finally { taskSwitch.asking = false; }
         if (!yes) return;
@@ -3695,8 +3701,21 @@
         const event = very ? 'battery-very-low' : 'battery-low';
         // the very low stage replaces the low one (one battery notification, as WM keeps)
         closeBatteryLowNote();
-        batteryLowNote = appNote({ title, html: escapeHtml(BATTERY_LOW_TEXT), icon: 'status-battery-low', event });
+        // N4 (#1299): a tap goes to Settings > Power > Battery. Not a duplicate of the app's own Android notice
+        // (DeviceNotices.kt CH_BATTERY): that one posts only while the page is NOT in front, this one only while it is
+        // notice: wm-battery-low
+        batteryLowNote = appNote({ title, html: escapeHtml(BATTERY_LOW_TEXT), icon: 'status-battery-low', event, softKeys: () => ({
+            left: { label: 'Power', action: () => { closeBatteryLowNote(); openPowerSettings(); } },
+            right: { label: 'Dismiss', action: () => closeBatteryLowNote() }
+        }) });
+        // notice: wm-battery-low
         if (!batteryLowNote) notify({ title, text: BATTERY_LOW_TEXT, icon: 'warning', asNote: true });
+    }
+
+    /** Settings > System > Power > Battery (the status bar's battery icon opens the same page). */
+    function openPowerSettings() {
+        const st = window.wmSettings;
+        if (!(st && typeof st.open === 'function' && st.open('power', 'battery')) && apps.has('settings')) open('settings');
     }
 
     /*
@@ -3719,10 +3738,15 @@
         if (batteryFullCycle !== 'armed') return;
         if (root.dataset.wmBoot && root.dataset.wmBoot !== 'done') return;
         batteryFullCycle = 'done';
+        // notice: wm-battery-full
         batteryFullNote = appNote({
             title: 'Battery Fully Charged',
             html: escapeHtml('The main battery is fully charged. You can disconnect the charger.'),
-            icon: 'status-battery-full', event: 'battery-full'
+            icon: 'status-battery-full', event: 'battery-full',
+            softKeys: () => ({
+                left: { label: 'Power', action: () => { if (batteryFullNote) { try { batteryFullNote.close(); } catch (_) { /* gone */ } batteryFullNote = null; } openPowerSettings(); } },
+                right: { label: 'Dismiss', action: () => { if (batteryFullNote) { try { batteryFullNote.close(); } catch (_) { /* gone */ } batteryFullNote = null; } } }
+            })
         });
     }
 
@@ -3768,12 +3792,19 @@
         tm.on('signin_lost', (d) => {
             if (!d || !d.accountId || lostTold.has(d.accountId) || typeof window.wmShell?.notify !== 'function') return;
             lostTold.add(d.accountId);
+            // N6 (#1299): the server raises this as the inbox notice tm-signin:<account> (modules/notificationInboxSources.js), the
+            // same fact with View -> Messaging and the Other notifications switch; this page's own copy had no action and no
+            // switch. It stays only where the inbox cannot carry it (not an admin page, or not linked to the server)
+            const ni = window.wmNotificationInbox;
+            if (ni && typeof ni.mailStacked === 'function' && ni.mailStacked()) return;
+            // notice: wm-text-signin-lost
             window.wmShell.notify({
                 title: 'Text messages stopped',
                 text: d.text || 'Text messages are not arriving. Pair again in Dreamscape CardSpace on the computer.',
                 icon: 'warning',
                 asNote: true,
-                timeout: false
+                timeout: false,
+                buttons: [{ text: 'Messaging', type: 'primary', closeOnClick: true, onClick: () => { try { window.wmShell.open('messaging'); } catch (_) { /* no Messaging */ } } }]
             });
         });
     }
@@ -4104,6 +4135,7 @@
         nsSigningIn = (async () => {
             let note = 'Type your account password to sign in to the Nightshade Network.';
             for (;;) {
+                // notice: wm-nightshade-signin
                 const pin = await messageBox({
                     title: 'Nightshade Network',
                     text: note,
@@ -4120,6 +4152,7 @@
                     return true;
                 }
                 if (r && r.ok) {
+                    // notice: wm-nightshade-signin
                     await messageBox({ title: 'Nightshade Network', icon: 'info', text: 'The password is correct, but the Nightshade Network cannot be reached right now. Sign in again when it is available.', modal: true });
                     return false;
                 }
@@ -4267,17 +4300,29 @@
     let dcWasUp = false;
     let dcDownSince = 0;
     let dcNote = null;
+    let dcDismissed = false; // put away with Dismiss: not raised again until the connection has been back (N9)
     function dcNotice() {
-        if (dcNote || !shell) return;
+        if (dcNote || dcDismissed || !shell) return;
         const ws = window.wsClient;
         if (ws && typeof ws.isConnected === 'function' && ws.isConnected()) return;
-        dcNote = appNote({ title: 'Nightshade Network', html: escapeHtml(nightshadeProblemText()), event: 'disconnect', icon: 'status-nightshade' });
+        const drop = () => { if (dcNote) { try { dcNote.close(); } catch (_) { /* gone */ } dcNote = null; } };
+        // N4 (#1299): a tap does what the problem needs - Sign In when it is the sign-in, else Retry the connection. Display
+        // message on screen for the 'Connection disconnected' class (Settings > Sounds & Notifications) keeps it in the title bar
+        const signedOut = (() => { const ns = nightshadeNow(window.wsClient); return !!(ns && ns.service === 'signed-out'); })();
+        // notice: wm-nightshade-down
+        dcNote = appNote({ title: 'Nightshade Network', html: escapeHtml(nightshadeProblemText()), event: 'disconnect', icon: 'status-nightshade', softKeys: () => ({
+            left: signedOut
+                ? { label: 'Sign In', action: () => { drop(); void nightshadeSignIn(); } }
+                : { label: 'Retry', action: () => { drop(); try { if (ws && typeof ws.forceReconnect === 'function') ws.forceReconnect(); } catch (_) { /* no socket */ } } },
+            right: { label: 'Dismiss', action: () => { dcDismissed = true; drop(); } }
+        }) });
     }
 
     function dcNoticeCheck(ws, connected) {
         if (connected) {
             dcWasUp = true;
             dcDownSince = 0;
+            dcDismissed = false;
             if (dcNote) { dcNote.close(); dcNote = null; }
             return;
         }
@@ -4896,13 +4941,20 @@
      * message off the server keeps the notice quiet, and only the sound plays, here.
      */
     let dirWasRunning = null;
+    let dirSession = '';
     function directorTurnWatch(dir) {
         const running = !!(dir && dir.running);
         const was = dirWasRunning;
         dirWasRunning = dir ? running : was;
+        if (dir && running && dir.sessionId) dirSession = String(dir.sessionId);
         if (!dir || was !== true || running) return;
         const p = eventPrefs('director');
-        if (!p || !p.display) playSystemSound('director');
+        if (p && p.display) return;
+        // N3 / #1168: the sound is the turn's reply, so it follows the server's rule for the notice - none while a page of hers
+        // shows that chat (the status carries the chats shown: `watched`, any client's)
+        if (dirSession && Array.isArray(dir.watched) && dir.watched.some((id) => String(id) === dirSession)) return;
+        // notice: wm-director-turn-sound
+        playSystemSound('director');
     }
 
     /** The Director icon: the clapper claps while a turn runs, closed otherwise (timers: no rAF in background tabs). */
@@ -6372,7 +6424,7 @@
     const imapNew = () => { try { const m = window.wmMessaging; return m && typeof m.imapNew === 'function' ? Number(m.imapNew()) || 0 : 0; } catch (_) { return 0; } };
     const GEN_REQUEST_TYPES = new Set(['generate_image', 'generate_preset', 'reroll_image', 'upscale_image', 'expand_image', 'reroll_expanded_image', 'enhance_image', 'max_enhance_image', 'animate_image']);
 
-    /** { running, persona, name } from director_computer_status (null before the first answer). */
+    /** { running, persona, name, sessionId, watched } from director_computer_status (null before the first answer). */
     function directorState() {
         const st = shellDirectorStatus || (window.directorInstance && window.directorInstance._status) || null;
         if (!st) {
@@ -6386,17 +6438,15 @@
             return null;
         }
         const xi = st.xi && st.xi.running ? st.xi : null;
-        if (xi) return { running: true, persona: 'Yozora', name: xi.sessionName || '' };
-        return { running: !!st.running, persona: 'Director', name: st.sessionName || '' };
+        if (xi) return { running: true, persona: 'Yozora', name: xi.sessionName || '', sessionId: xi.sessionId || null, watched: st.watched };
+        return { running: !!st.running, persona: 'Director', name: st.sessionName || '', sessionId: st.sessionId || null, watched: st.watched };
     }
 
     /**
-     * ActiveSync transfers (#822): ActiveSync: Start as data starts moving, ActiveSync: Complete when the
-     * last file is through; the icon's sync sequence and an open Connectivity bubble follow along.
+     * ActiveSync transfers (#822): the icon's sync sequence and an open Connectivity bubble follow along. No sound
+     * (N7, #1299: ActiveSync: Start / Complete are gone); a computer browsing the phone's files: the Connectivity popup
+     * says Connected for a few minutes.
      */
-    // a link or text sent to the phone from a computer (open.url / open.item / clipboard.set): ActiveSync: Complete;
-    // a computer browsing the phone's files: the Connectivity popup says Connected for a few minutes
-    const AS_PUSH_OPS = new Set(['open.url', 'open.item', 'clipboard.set']);
     const AS_RECENT_MS = 3 * 60 * 1000;
     let asPageActivityAt = 0;
     function watchActiveSyncRequests() {
@@ -6404,8 +6454,7 @@
         if (!as || typeof as.on !== 'function' || as.kind !== 'device') return;
         as.on('request', (r) => {
             const op = r && r.op ? String(r.op) : '';
-            if (AS_PUSH_OPS.has(op)) playSystemSound('as-done');
-            else if (/^(storage|stream|media)\./.test(op)) asPageActivityAt = Date.now();
+            if (/^(storage|stream|media)\./.test(op)) asPageActivityAt = Date.now();
         });
         // the app's service: its server link, direct links (P2P) and recent use (AndroidActiveSync.peerState, #1006)
         window.addEventListener('androidasstate', () => {
@@ -6441,14 +6490,11 @@
         const as = window.activeSync;
         if (!as || typeof as.on !== 'function' || as.kind !== 'device') return;
         let moving = false;
-        let pushing = false;
-        // Start / Complete only for what someone sends to the phone (Send To, a program; the server marks it push), never
-        // for Explorer or Media Player moving its files around (Yukimi, Nov 21 2026)
         as.on('progress', (d) => {
             if (!d) return;
             if (d.active && !moving) moving = true;
-            if (moving && d.push && !pushing) { pushing = true; playSystemSound('as-start'); }
-            if (d.done && moving) { moving = false; if (pushing || d.push) playSystemSound('as-done'); pushing = false; }
+            // no Start / Complete sound for a transfer (N7, #1299): the icon's sync sequence and the Connectivity bubble show it
+            if (d.done && moving) moving = false;
             statusDirty();
             const b = shell && shell.querySelector('.wm-bubble');
             if (b && !b.hidden && b.dataset.role === 'data') statusBubble('data', shell.querySelector('[data-role="data"]'), true);
@@ -7090,6 +7136,7 @@
     let dcBoxClose = null;
     function domainUnreachable() {
         // Nightshade Network (#895): the service out of reach, in its own words
+        // notice: wm-nightshade-unreachable
         return messageBox({
             title: 'Nightshade Network',
             text: nightshadeProblemText(),
@@ -7357,6 +7404,7 @@
             if (box) box.close();
             if (err && err.name === 'AbortError') return;
             console.warn('[wmShell] save to phone', err);
+            // notice: wm-user-failure
             messageBox({ title: 'Download', icon: 'error', text: `Cannot download '${name}'. ${(err && err.message) || ''}`.trim(), modal: true });
             return;
         }
@@ -7464,6 +7512,7 @@
             const app = current && current !== 'today' ? apps.get(current) : null;
             const boxTitle = title && title !== 'Dreamscape' ? title : ((app && app.title) || 'Melaton Mobile');
             if (typeof window.removeGlassToast === 'function') window.removeGlassToast(t.id);
+            // notice: wm-toast-bridge
             toastDialogs = toastDialogs.then(() => messageBox({ title: boxTitle, text: text || title, icon, modal: true }));
         }
     }
@@ -7541,6 +7590,8 @@
 
     const noteSounded = new Set();
     let noteRepeat = null;
+    // inbox classes that are status, not delivery (modules/notificationInboxSources.js onSystemNotice / onApiKeyStatus)
+    const STATUS_NOTE_EVENTS = new Set(['system', 'api-key']);
     function soundNewNotes(live) {
         for (const k of [...noteSounded]) if (!live.has(k)) noteSounded.delete(k);
         if (!notesMayPop()) return;
@@ -7552,10 +7603,14 @@
             // an app's notice asked to come up without a sound (Android already alerted for it, #779)
             const own = appNotes.get(n.id);
             if (own && own.silent) continue;
+            // N7: a status / system notice (the server's system messages and API key status) never sounds; deliveries do, by
+            // their class's own Settings switch (mail, texts, Messenger, reminders, prints, weather, Lapis, Traffic ...)
+            if (own && STATUS_NOTE_EVENTS.has(own.event)) continue;
             if (!fresh || n.type === 'error') fresh = n;
         }
         if (!fresh) return;
         const id = noteEvent(fresh);
+        // notice: wm-note-sound
         playSystemSound(id, id === 'error' ? { event: 'error' } : {});
         const p = eventPrefs(id);
         if (p && p.repeat && p.sound) {
@@ -7568,6 +7623,7 @@
                 const n = noteOf(toastId);
                 if (!n || left-- <= 0 || noteShown !== toastId) { clearInterval(noteRepeat); noteRepeat = null; shellHold('note-repeat', false); return; }
                 // a repeat buzzes again where the event vibrates (Reminders: Repeat)
+                // notice: wm-note-sound
                 playSystemSound(id, { again: true });
             }, 4000);
         }
@@ -8095,6 +8151,7 @@
             return null;
         }
         if (!updateNote || !document.getElementById(updateNote.id)) {
+            // notice: wm-update-note
             updateNote = appNote({ title: spec.title, html: spec.html, icon: 'status-update', event: 'update', silent: true, update: true });
         }
         if (!updateNote) return null;
@@ -8133,6 +8190,7 @@
         const bar = opts.progress != null && opts.progress !== false;
         let id = null;
         try {
+            // notice: wm-notice-api
             id = window.showGlassToast('info', escapeHtml(opts.title || 'Melaton Mobile'), opts.html || '&nbsp;', bar, false);
         } catch (err) { console.warn('[wmShell] appNote', err); }
         const el = id ? document.getElementById(id) : null;
@@ -8402,6 +8460,7 @@
         const lv = levelOf(kind);
         if (lv <= 0) return;
         const file = lv <= 3 ? 'Quietest.wav' : lv <= 7 ? 'Default.wav' : 'Loudest.wav';
+        // notice: wm-ui-click-sound
         try { if (snd.ctx && snd.ctx.state === 'running') sndPlayFile(file, kind === 'media' ? lv / VOL_STEPS : 1); } catch (_) { /* no sound */ }
     }
 
@@ -8536,6 +8595,7 @@
             outWatchHold--;
             outputsWatch(false);
         }
+        // notice: wm-user-failure
         if (r && r.error) void messageBox({ title: 'Output', text: r.error, icon: 'warning' });
         if (volumePaint) volumePaint();
         refreshStatus();
@@ -9128,6 +9188,7 @@
             const mineKey = kst.cars.find((c) => c.mine) || null;
             const friends = kst.cars.filter((c) => !c.mine);
             const sections = [];
+            // notice: wm-user-failure
             const failed = (name, what) => messageBox({ title: name, icon: 'error', text: `The car key could not ${what} ${name}. Move closer to the car, then try again.` });
             const keyRow = (keys) => {
                 const row = document.createElement('div');
@@ -9183,6 +9244,7 @@
                 const lock = () => { if (mineKey && mineKey.canLock) { if (!ck.pressCar(mineKey.key, 'lock')) failed(name, 'lock'); } else if (car) L.lock(); };
                 const unlock = async () => {
                     if (mineKey && mineKey.canUnlock) {
+                        // notice: wm-user-question
                         const ok = await messageBox({ title: name, icon: 'question', text: `Unlock ${name}?`, buttons: [{ text: 'Unlock', value: true }, { text: 'Cancel', value: false }] });
                         if (ok && !ck.pressCar(mineKey.key, 'unlock')) failed(name, 'unlock');
                     } else if (car) L.unlock();
@@ -9199,6 +9261,7 @@
                 sections.push({ rule: true });
                 const lockF = () => { if (!ck.pressCar(f.key, 'lock')) failed(f.car, 'lock'); };
                 const unlockF = async () => {
+                    // notice: wm-user-question
                     const ok = await messageBox({ title: f.car, icon: 'question', text: `Unlock ${f.car}?`, buttons: [{ text: 'Unlock', value: true }, { text: 'Cancel', value: false }] });
                     if (ok && !ck.pressCar(f.key, 'unlock')) failed(f.car, 'unlock');
                 };
@@ -10032,13 +10095,13 @@
      * workspace event whose settings it follows.
      */
     const SND_EVENTS = [
-        // #822: data moving over ActiveSync starts and ends (WM's own begin / end sounds)
-        { id: 'as-done', label: 'ActiveSync: Complete', kind: 'event', sound: 'Infend.wav', desktop: 'balloon' },
-        { id: 'as-start', label: 'ActiveSync: Start', kind: 'event', sound: 'Infbeg.wav', desktop: 'balloon' },
+        // no 'as-start' / 'as-done' (ActiveSync: Start / Complete, #822): data moving over ActiveSync is no event she is told
+        // of by a sound (N7, #1299), and Settings offers no row for a sound that never plays
         { id: 'connect', label: 'Connection established', kind: 'note', sound: 'Infbeg.wav', play: false, desktop: 'balloon' },
         { id: 'disconnect', label: 'Connection disconnected', kind: 'note', sound: 'Infend.wav', play: false, desktop: 'balloon' },
         // #829: the main battery low / very low (WM's low battery class) and fully charged
-        { id: 'battery-full', label: 'Battery: Fully charged', kind: 'note', sound: 'BatteryFull.wav', desktop: 'balloon' },
+        // (battery-full and update ship silent: a status, not an item she asked for - N7, #1299; a sound is hers to pick)
+        { id: 'battery-full', label: 'Battery: Fully charged', kind: 'note', sound: 'BatteryFull.wav', play: false, desktop: 'balloon' },
         { id: 'battery-low', label: 'Battery: Main battery low', kind: 'note', sound: 'BatteryLow.wav', desktop: 'balloon' },
         { id: 'battery-very-low', label: 'Battery: Main battery very low', kind: 'note', sound: 'BatteryCritical.wav', desktop: 'warning' },
         { id: 'beep', label: 'Default beep', kind: 'event', sound: 'Default.wav', desktop: 'dialog' },
@@ -10047,16 +10110,17 @@
         // #779: Dreamscape Messenger (the chat personas) and Text Messaging notify in classes of their own
         { id: 'chat', label: 'Dreamscape Messenger: New message', kind: 'note', sound: 'online.mp3', desktop: 'balloon' },
         { id: 'error', label: 'Errors', kind: 'event', sound: 'Alarm2.wav', desktop: 'critical-stop' },
-        { id: 'info', label: 'Information', kind: 'event', sound: 'Alarm2.wav', desktop: 'dialog' },
+        // (info and question message boxes ship silent: a box answering her own tap is no event to beep for - N7, #1299)
+        { id: 'info', label: 'Information', kind: 'event', sound: 'Alarm2.wav', play: false, desktop: 'dialog' },
         { id: 'menu', label: 'Menu pop-up', kind: 'event', sound: 'MenuPop.wav', play: false, desktop: 'dialog' },
         { id: 'mail', label: 'Messaging: New e-mail message', kind: 'note', sound: 'Alarm1.mp3', desktop: 'notify', dovecote: true },
         { id: 'notification', label: 'Other notifications', kind: 'note', sound: 'Alarm2.wav', repeatable: true, desktop: 'balloon' },
         // (Fleet's notices have no sound event of their own: they sound as "Other notifications", the sound she chose for it - #1291,
         // Yukimi Nov 26 2026: a default she never chose played)
-        { id: 'question', label: 'Questions', kind: 'event', sound: 'Alarm2.wav', desktop: 'dialog' },
+        { id: 'question', label: 'Questions', kind: 'event', sound: 'Alarm2.wav', play: false, desktop: 'dialog' },
         { id: 'reminder', label: 'Reminders', kind: 'note', sound: 'notify.mp3', repeatable: true, repeat: true, desktop: 'balloon' },
         // #848: the update icon's notification (updates downloaded and ready, applied, available)
-        { id: 'update', label: 'Software update', kind: 'note', sound: 'SoftwareUpdate.wav', desktop: 'balloon' },
+        { id: 'update', label: 'Software update', kind: 'note', sound: 'SoftwareUpdate.wav', play: false, desktop: 'balloon' },
         // no 'startup' class (gwes' SystemStart): Melaton Mobile boots silent, always, and offers no
         // Start up row, so there is no switch that plays nothing (Yukimi, Nov 26 2026, #1299 N8)
         // no 'print' (Print finished) class: a finished print is no notification on the phone (#1040)
@@ -10563,6 +10627,7 @@
             }
             if (!WM_SOUNDS.includes(file)) file = ev.sound;
             sndNote(id, event, `wm61/${file}`, now);
+            // notice: wm-notice-api
             return !!(await sndPlayFile(file, 1, usage));
         } catch (_) {
             return false;
@@ -10578,6 +10643,7 @@
             if (ds && Array.isArray(ds.FILES) && ds.FILES.includes(file) && typeof ds.playFile === 'function') return !!(await ds.playFile(file));
             if (!WM_SOUNDS.includes(file) || !(SND_NATIVE ? sndContext() : snd.ctx)) return false;
             if (snd.ctx.state !== 'running') await snd.ctx.resume().catch(() => {});
+            // notice: wm-sound-preview
             const src = await sndPlayFile(file);
             snd.preview = src;
             return !!src;
@@ -10597,6 +10663,7 @@
             if (!on || sndSilentNow() || (!AV && (!snd.ctx || snd.ctx.state !== 'running'))) return;
             const click = clickSound(p, kind);
             sndNote(kind === 'buttons' ? 'key-click' : 'tap-click', '', `wm61/${click.file}`, Date.now());
+            // notice: wm-ui-click-sound
             sndPlayFile(click.file, click.gain, 'system');
         } catch (_) { /* no click */ }
     }
@@ -10640,6 +10707,7 @@
             const play = ds.play;
             ds.play = function (eventId, options) {
                 const name = DESKTOP_SOUND[eventId];
+                // notice: wm-desktop-sound-map
                 if (name) playSystemSound(name, { event: eventId === 'dialog' ? 'dialog' : eventId });
                 return play.call(this, eventId, options);
             };
@@ -10652,6 +10720,7 @@
         const ask = window.showConfirmationDialog;
         if (typeof ask === 'function' && !ask.wmWrapped) {
             const wrapped = function (message, options, event, config) {
+                // notice: wm-notice-api
                 const notice = confirmationNotice(message, options, config);
                 if (notice) return notice;
                 const result = ask.apply(this, arguments);
@@ -10691,6 +10760,7 @@
                     const name = /exclamation|warning/.test(icon) ? 'SystemExclamation'
                         : /xmark|times|ban|skull|bug|bomb/.test(icon) ? 'SystemHand'
                             : /info|check/.test(icon) ? 'SystemAsterisk' : 'SystemQuestion';
+                    // notice: wm-msgbox-beep
                     if (dlg) playSystemSound(name);
                 } catch (_) { /* no sound */ }
                 return result;
@@ -10716,6 +10786,7 @@
         if (!asNote && !buttons && answersUser()) {
             // a routine "done" for the user's own action needs nothing: the result is on screen
             if (NOTE_TYPE[icon] === 'success') return Promise.resolve(true);
+            // notice: wm-notice-api
             return messageBox({ title, text, icon: NOTE_TYPE[icon] === 'success' ? 'info' : (icon || 'info'), modal: true });
         }
         return new Promise((resolve) => {
@@ -10725,6 +10796,7 @@
             const html = escapeHtml(String(text || '').trim()).replace(/\n/g, '<br>');
             let id = null;
             try {
+                // notice: wm-notice-api
                 id = window.showGlassToast(type, escapeHtml(title), html, false, stay ? false : (timeout || 8000), null, buttons);
             } catch (err) { console.warn('[wmShell] notify', err); }
             if (!id) { resolve(true); return; }
@@ -10793,10 +10865,16 @@
     function routeAlert() {
         const orig = window.alert;
         if (typeof orig !== 'function' || orig.wmRouted) return;
+        // N4 / N10 (#1299): an alert() is a message the calling window wants read, so it is always a message box titled by the
+        // program in front, one at a time (the toast chain) - never a warning note that stays in the title bar with no
+        // source and no action, which is what it became when it did not answer a tap
         const phoneAlert = function (message) {
-            notify({ title: 'Melaton Mobile', text: String(message == null ? '' : message), icon: 'warning' });
+            const text = String(message == null ? '' : message).trim();
+            if (!text) return;
+            const app = current && current !== 'today' ? apps.get(current) : null;
+            // notice: wm-alert-box
+            toastDialogs = toastDialogs.then(() => messageBox({ title: (app && app.title) || 'Melaton Mobile', icon: 'warning', text, modal: true }));
         };
-        // (notify shows a message box when the alert answers a tap)
         phoneAlert.wmRouted = true;
         // app-scope: allow phone shell: alert() becomes a WM message box for the page's whole life
         window.alert = phoneAlert;
@@ -10945,6 +11023,7 @@
             refreshTitleAction();
             // MessageBeep by the icon (none: MB_OK, the default beep); an edit box with no icon is a
             // form, not a message box
+            // notice: wm-msgbox-beep
             if (icon || !input) playSystemSound(icon ? MSGBOX_SOUND[icon] || 'SystemDefault' : 'SystemDefault');
             const first = field || layer.querySelector('.wm-msgbox-buttons .is-default') || layer.querySelector('button');
             if (first) first.focus();
@@ -12754,6 +12833,7 @@
                     const pic = (item && (item.filename || item.original) === name) ? item : galleryList().find((it) => (it.filename || it.original) === name);
                     const url = pic && todayPictureUrl(pic);
                     if (!url) {
+                        // notice: wm-user-failure
                         messageBox({ title: 'Pictures', icon: 'error', text: 'This picture cannot be set as the Today background.' });
                         return;
                     }
@@ -12762,6 +12842,7 @@
                     localStorage.setItem(WALL_SOURCE_KEY, 'selected');
                 }
             } catch (_) {
+                // notice: wm-user-failure
                 messageBox({ title: 'Pictures', icon: 'error', text: 'The Today background could not be saved on this device.' });
                 return;
             }
@@ -14127,6 +14208,7 @@
         const text = n.kind === 'hang' ? 'Melaton Mobile stopped responding and was restarted.'
             : n.kind === 'killed' ? 'Melaton Mobile was closed by the phone to free memory and was restarted.'
                 : 'Melaton Mobile stopped unexpectedly and was restarted.';
+        // notice: wm-crash-notice
         void messageBox({ title: 'Melaton Mobile', icon: 'warning', text, modal: true });
     }
 
@@ -14862,8 +14944,10 @@
         /** A WM notification: notify({ title, text, icon: 'info' | 'warning' | 'error' | 'success', timeout, buttons }). */
         notify: (opts) => notify(opts || {}),
         /** An app's own notification with a live progress bar, soft keys and title bar glyph (appNote above). */
+        // notice: wm-notice-api
         appNote: (opts) => appNote(opts || {}),
         /** THE notification API (the standard above noteSoftKeys): { title, html, icon, event, silent, actions, softKeys, progress, detail }. */
+        // notice: wm-notice-api
         notification: (opts) => appNote(opts || {}),
         /** The update icon's notification (Install Now / Restart Now | Later); null when no update waits. */
         showUpdateNote: () => showUpdateNote(),
@@ -15037,6 +15121,7 @@
             programs: () => todayKeyPrograms()
         },
         sounds: {
+            // notice: wm-notice-api
             play: (name, opts) => playSystemSound(name, opts || {}),
             log: snd.log,
             /** True while the phone makes no sound (sound mode not on, or the ringer at 0): games check it (#786). */
@@ -15059,6 +15144,7 @@
                     if (!(SND_NATIVE ? sndContext() : snd.ctx)) return null;
                     if (snd.ctx.state !== 'running') await snd.ctx.resume().catch(() => {});
                     sndNote('alarm', '', `wm61/${file}`, Date.now());
+                    // notice: wm-sound-preview
                     return (await sndPlayFile(file)) || null;
                 } catch (_) { return null; }
             }

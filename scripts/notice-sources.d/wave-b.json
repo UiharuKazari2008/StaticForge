@@ -79,6 +79,166 @@
       "sound": false,
       "switch": "none: failure of her own save",
       "note": "N10 ok: told once where it failed"
+    },
+    "wm-director-turn-sound": {
+      "area": "Melaton Mobile Director turn finished (wmShell.js directorTurnWatch)",
+      "trigger": "server-push",
+      "action": "content: the Director's reply to her message; the sound is the whole notice (Display message off for the class)",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Director: Turn finished (wmSounds director: Play sound; Display message on screen decides whether the server's notice shows instead)",
+      "note": "N7 ok: the reply to something she asked the Director. N3 / #1168 fixed: no sound while a page of hers shows that chat (status.watched, any client), as the server's notice rule says; a steered turn still sounds here (the page cannot tell it) - noted in the report"
+    },
+    "wm-note-sound": {
+      "area": "Melaton Mobile notification sound (wmShell.js soundNewNotes)",
+      "trigger": "server-push",
+      "action": "content: the sound belongs to a note that has its own click target",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications, one row per class (wmSounds ev[id]: Play sound, Repeat, Display message, Vibrate)",
+      "note": "N7 ok for deliveries (mail, texts, Messenger, reminders, print failed, weather, Lapis, Traffic, questions); status / system notices (inbox classes system, api-key) are skipped here, and update, battery-full, info and question ship with Play sound off (N7, #1299)"
+    },
+    "wm-battery-low": {
+      "area": "Melaton Mobile Main Battery Low / Very Low note (wmShell.js batteryLowCheck)",
+      "trigger": "timer",
+      "action": "Power soft key opens Settings > System > Power > Battery; Dismiss closes it",
+      "sound": true,
+      "switch": "Settings > System > Power > Battery (the warning level) and Settings > Sounds & Notifications > Battery: Main battery low / very low (wmSounds: Play sound, Display message)",
+      "note": "N4 fixed (was no action). N6 ok: not a duplicate of DSApp DeviceNotices.kt CH_BATTERY, which posts only while the page is not in front (pageInFront), this note only while it is; a real warning of her data at risk, once per stage per discharge"
+    },
+    "wm-battery-full": {
+      "area": "Melaton Mobile Battery Fully Charged note (wmShell.js batteryFullCheck)",
+      "trigger": "timer",
+      "action": "Power soft key opens Settings > System > Power > Battery; Dismiss closes it",
+      "sound": false,
+      "switch": "Settings > Sounds & Notifications > Notifications > Battery: Fully charged (wmSounds: Display message on screen)",
+      "note": "N4 fixed (was no action); N7 fixed: ships with Play sound off (a status). Kept as the call to unplug the charger, once per charge, and only while the page is in front (the app posts the same notice otherwise); whether it should default to Display message off is a decision for Yukimi"
+    },
+    "wm-nightshade-down": {
+      "area": "Melaton Mobile Nightshade Network unreachable at start-up (wmShell.js dcNotice)",
+      "trigger": "boot",
+      "action": "Sign In (when the problem is the sign-in) or Retry the connection; Dismiss",
+      "sound": false,
+      "switch": "Settings > Sounds & Notifications > Notifications > Connection disconnected (wmSounds: Display message on screen); sound off by default",
+      "note": "N4 fixed (was no action), N9 fixed (a dismissed note is not raised again until the connection has been back). Only when the phone comes up and never reaches the server (DC_NOTICE_MS after Today), never on a plain disconnect"
+    },
+    "wm-text-signin-lost": {
+      "area": "Melaton Mobile Text messages stopped, page copy (wmShell.js smsNewWire signin_lost)",
+      "trigger": "server-push",
+      "action": "Messaging button opens Messaging",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Errors / Warnings (wmSounds); the server's inbox copy has the Other notifications switch",
+      "note": "N6 fixed (duplicate): the server's inbox notice tm-signin:<account> says the same with View -> Messaging, so the page copy is raised only where the inbox cannot carry it (not an admin page, or no server link), and then has a destination"
+    },
+    "wm-alert-box": {
+      "area": "Melaton Mobile window.alert routing (wmShell.js routeAlert)",
+      "trigger": "user-action",
+      "action": "content: the alert text itself, a message box in the program in front with OK",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Warnings (wmSounds)",
+      "note": "N4 / N10 fixed: a bare alert() with no source became a warning note that stayed in the title bar without an action when it did not answer a tap; it is now always a message box titled by the calling program, one at a time"
+    },
+    "wm-package-restart-ask": {
+      "area": "Melaton Mobile screen-density pictures need a restart (wmShell.js packagesAdded confirmLarge)",
+      "trigger": "user-action",
+      "action": "Restart / Later",
+      "sound": false,
+      "switch": "none (filed: StaticForge issue)",
+      "note": "a question after a display change, needs a decision: design-decisions says an update is never a dialog by itself, the update icon and notification carry it; changing it needs serviceWorkerManager.applyPackageChange"
+    },
+    "wm-user-question": {
+      "area": "Melaton Mobile confirmations of her own action (close a busy program, End all, Unlock the car)",
+      "trigger": "user-action",
+      "action": "the answer buttons",
+      "sound": false,
+      "switch": "none: asked for by her tap",
+      "note": "a question about the action she just took, not a notice; info / question boxes no longer beep by default"
+    },
+    "wm-user-failure": {
+      "area": "Melaton Mobile failures of her own action (program could not open, download, output route, car key, Today background)",
+      "trigger": "user-action",
+      "action": "content: the failure text, a message box in the place that failed",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Errors (wmSounds)",
+      "note": "N10 ok: an error that stopped her action, told once in words"
+    },
+    "wm-ui-click-sound": {
+      "area": "Melaton Mobile click sounds (menu pop-up, volume step feedback, screen taps, hardware buttons: wmShell.js playSystemSound('menu'), volume beep, playClick)",
+      "trigger": "user-action",
+      "action": "content: the click answers her tap, key or volume step",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Sounds: Screen taps / Hardware buttons (off as shipped), Notifications > Menu pop-up (off as shipped); the volume bubble's Off / Vibrate",
+      "note": "N7 ok: a hardware click; none of them plays unless she turned it on or moved a volume slider"
+    },
+    "wm-nightshade-signin": {
+      "area": "Melaton Mobile Nightshade sign-in dialogs (wmShell.js nightshadeSignIn)",
+      "trigger": "user-action",
+      "action": "Sign In / Cancel",
+      "sound": false,
+      "switch": "none: only asked for (the glyph's bubble, Settings > Connections > Nightshade)",
+      "note": "never a box by itself (the comment says so); the answer to her tap"
+    },
+    "wm-nightshade-unreachable": {
+      "area": "Melaton Mobile server unreachable box (wmShell.js domainUnreachable)",
+      "trigger": "user-action",
+      "action": "Retry / Abort",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Errors (wmSounds)",
+      "note": "N10 ok: raised only when a command or an app she used needs the server while it is out of reach; the connection coming back closes it"
+    },
+    "wm-toast-bridge": {
+      "area": "Melaton Mobile page toasts that answer a tap, shown as a message box (wmShell.js toastsToDialogs)",
+      "trigger": "user-action",
+      "action": "content: the toast text; success toasts are dropped, progress becomes the wait cursor",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Errors / Warnings (wmSounds)",
+      "note": "the shell's bridge for page code that calls showGlassToast; each caller's own toast is the audited site. An info toast answering a tap still becomes a box here - see the report"
+    },
+    "wm-update-note": {
+      "area": "Melaton Mobile update icon's notification (wmShell.js showUpdateNote)",
+      "trigger": "user-action",
+      "action": "Install Now / Restart Now",
+      "sound": false,
+      "switch": "Settings > Sounds & Notifications > Notifications > Software update (Display message on screen; sound off by default)",
+      "note": "N1 ok: never pops by itself (silent, shown only on a tap on the update icon, Today's Notification key or the app's popup)"
+    },
+    "wm-notice-api": {
+      "area": "Melaton Mobile notice plumbing (wmShell.js appNote / notify / confirmationNotice implementations, the exported appNote / notification / sounds.play / sounds.alarm)",
+      "trigger": "user-action",
+      "action": "content: not a notice by itself; every caller carries its own source id",
+      "sound": false,
+      "switch": "none: the callers' own switches",
+      "note": "the emit mechanism, not a source; the callers are audited"
+    },
+    "wm-sound-preview": {
+      "area": "Melaton Mobile Settings Play button and alarm sound (wmShell.js previewSound, sounds.alarm)",
+      "trigger": "user-action",
+      "action": "content: Settings' Play / an alarm she set",
+      "sound": true,
+      "switch": "Play is her tap; an alarm's own sound is Settings > Clock & Alarms",
+      "note": "N7 ok: a user action or an alarm she configured"
+    },
+    "wm-desktop-sound-map": {
+      "area": "Melaton Mobile desktop sound calls mapped to WM sounds (wmShell.js watchSystemSounds)",
+      "trigger": "user-action",
+      "action": "content: the desktop code's own sound for its event",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Errors / Warnings / New e-mail message (wmSounds)",
+      "note": "only the events the phone has a class for (error, critical stop, warning, default beep, new mail)"
+    },
+    "wm-msgbox-beep": {
+      "area": "Melaton Mobile message box beep by icon (wmShell.js messageBox, confirmation dialog)",
+      "trigger": "user-action",
+      "action": "content: the box is the message",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Errors / Warnings / Information / Questions (wmSounds); Information and Questions ship with Play sound off (N7, #1299)",
+      "note": "N7 fixed: only an error or a warning box beeps as shipped; a box answering her own tap does not"
+    },
+    "wm-crash-notice": {
+      "area": "Melaton Mobile restart after a crash (wmShell.js showCrashNotice)",
+      "trigger": "boot",
+      "action": "content: what happened (hang, killed for memory, crash); OK",
+      "sound": true,
+      "switch": "Settings > Sounds & Notifications > Notifications > Warnings (wmSounds)",
+      "note": "N10 ok: an error that interrupted her work, told once (the app hands the notice over once and an old one is dropped). Judged kept; the text has no action, so whether it should be a silent inbox entry instead is a decision for Yukimi"
     }
   }
 }
