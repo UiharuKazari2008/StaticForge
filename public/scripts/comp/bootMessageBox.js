@@ -103,6 +103,7 @@
         return new Promise((resolve) => {
             current = { resolve, buttons };
             // desktopSounds.play: public/scripts/comp/desktopSounds.js
+            // notice: boot-message-box-sound
             desktopSounds.play(desktopSounds.bootIconEvent(options.icon));
             if (typeof root.openModal === 'function') root.openModal(el);
             else el.classList.remove('hidden');

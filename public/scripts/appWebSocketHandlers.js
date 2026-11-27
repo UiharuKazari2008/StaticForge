@@ -19,13 +19,21 @@ if (window.wsClient) {
         }
     });
 
+    // The server's own words to the user (modules/websocket.js broadcastSystemMessage / broadcastUserNotification).
+    // Only a warning or an error reaches the user (N1: an info / success line only says something happened; it stays
+    // in the console), and it is the message itself (N4: the notice is its own content). Warnings and errors also
+    // reach the phone's inbox on the server side (notificationInboxSources.onSystemNotice).
+    const serverNoticeIsNews = (level) => level === 'warning' || level === 'error';
+
     // Handle system messages
     wsClient.on('system_message', (data) => {
         console.log('📢 System message received:', data);
         if (data.data && data.data.message) {
             const message = data.data.message;
-            // Show system message as toast
-            showGlassToast(data.data.level || 'info', null, message);
+            const level = data.data.level || 'info';
+            if (!serverNoticeIsNews(level)) return;
+            // notice: server-system-message
+            showGlassToast(level, null, message);
         }
     });
 
@@ -34,7 +42,10 @@ if (window.wsClient) {
         console.log('🔔 Notification received:', data);
         if (data.data && data.data.message) {
             const message = data.data.message;
-            showGlassToast(data.data.type || 'info', null, message);
+            const level = data.data.type || 'info';
+            if (!serverNoticeIsNews(level)) return;
+            // notice: server-user-notification
+            showGlassToast(level, null, message);
         }
     });
 
@@ -88,16 +99,12 @@ if (window.wsClient) {
         }
 
         // showGlassToast: public/scripts/comp/toastManager.js
+        // notice: agent-notice-toast
         showGlassToast(level, title, message, false, timeout);
     });
 
-    // Handle receipt notifications
-    wsClient.on('receipt', (data) => {
-        if (data.data && data.data.message) {
-            const message = data.data.message;
-            showGlassToast(data.data.type || 'info', null, message, false);
-        }
-    });
+    // (the old 'receipt' handler went: no server code sends a 'receipt' packet, and receipt_notification is the
+    // one cost receipt path, 40-appCoreInbound.js)
 
     // handleGalleryUpdatedData: public/scripts/ws/handlers/20-galleryInbound.js (inbound registry sole path)
 

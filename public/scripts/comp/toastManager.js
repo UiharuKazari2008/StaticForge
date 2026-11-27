@@ -200,6 +200,7 @@ function _endProgressDialogEntry(entry, toastId, { type, title, message, buttons
         if ((type === 'error' || type === 'warning') && sh && typeof sh.messageBox === 'function') {
             const t = _toastPlain(title);
             const m = _toastPlain(message);
+            // notice: toast-progress-failed
             sh.messageBox({ title: (m && t) || op.header || 'Melaton Mobile', text: m || t, icon: type, modal: true });
         }
         return;
@@ -610,6 +611,7 @@ function _showDesktopPopupForToast(toastId, type, title, message, timeout, custo
         anchor.classList.remove('hidden');
     }
 
+    // notice: toast-policy-balloon
     showPopover(
         anchor,
         type,
@@ -789,7 +791,7 @@ function _appendGlassToastDom(toastId, type, title, message, showProgress, timeo
 // ============================================================================
 
 // confirmations that are news, kept (on the desktop they go to their balloon, else nowhere)
-const TOAST_KEEP_SUCCESS = /^(updates? (applied|complete|ready)|queue unblocked|quips updated|cursor login|extended free usage|activesync|connected|reconnected)$|saved to downloads/i;
+const TOAST_KEEP_SUCCESS = /^(updates? (applied|complete|ready)|quips updated|cursor login|extended free usage|activesync|connected|reconnected)$|saved to downloads/i;
 // the confirmation phrases the phone drops (the desktop drops every plain confirmation)
 const TOAST_CONFIRM_SPAM = /\bcop(ied|y)\b|\b(saved|updated|deleted|removed|added|created|renamed|moved|pinned|unpinned|scrap(p)?ed|unscraped|restored|imported|applied|cleared|reset|changed|regenerated|revoked|approved|denied|unblocked|exported|locked|unlocked|finalised|compiled|loaded|transferred|replaced|emptied)\b/i;
 // noise the audit found: lookups while typing, values the field already shows, hints while dragging
@@ -806,7 +808,7 @@ const TOAST_NOT_CONNECTED = /websocket not connected|not connected to (the )?ser
 const TOAST_BALLOONS = [
     [/^(updates? (applied|complete|ready|available|waiting)|update ready|restart required|download stalled|service worker (unavailable|not supported)|version mismatch)$/i, 'serviceWorkerTrayIcon'],
     [/^(novelai subscription status|account fixed anlas expiring|extended free usage|cursor login)$/i, 'walletTrayIcon'],
-    [/^(queue (blocked|unblocked)|new images available)$/i, 'imageGenerationIndicator'],
+    [/^(queue blocked|new images available)$/i, 'imageGenerationIndicator'],
     // the Dreamscape link is the Nightshade Network service (#895), not the computer's network
     [/^(connection error|connection lost|disconnected|nightshade network)$/i, 'nightshadeTrayIcon'],
     [/^activesync$/i, 'activeSyncTrayIcon'],
@@ -926,6 +928,7 @@ function _showPolicyBalloon(toastId, route, type, title, message, timeout, custo
     if (!anchor || !anchor.getClientRects().length || !window.PopoverManager || typeof showPopover !== 'function') return false;
     const first = Array.isArray(buttons) && buttons[0];
     const firstFn = first && (first.onClick || first.callback);
+    // notice: toast-policy-balloon
     showPopover(anchor, type, title, message, false, timeout === false ? 8000 : timeout, _trayBalloonImage(route.anchorId, type, customIcon), null, {
         position: 'top',
         arrowPosition: 'bottom-right',
@@ -1017,6 +1020,7 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
         return toastId;
     }
     if (route.kind === 'balloon') {
+        // notice: toast-policy-balloon
         if (_showPolicyBalloon(toastId, route, type, title, message, resolvedTimeout, customIcon, buttons)) return toastId;
         // its tray icon is not there: an error still needs saying, anything else goes
         if (type === 'error' || type === 'warning') { if (_showToastAsDialog(toastId, type, title, message, buttons, options)) return toastId; }

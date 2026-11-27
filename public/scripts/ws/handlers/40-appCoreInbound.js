@@ -8,8 +8,6 @@ function handleQueueUpdateData(data, wsClient) {
         window.optionsData.queue_status = data.value;
     }
 
-    const wasBlockedOrProcessing = isQueueStopped || isQueueProcessing;
-
     if (data.value === 2) {
         isQueueStopped = true;
         isQueueProcessing = false;
@@ -26,11 +24,8 @@ function handleQueueUpdateData(data, wsClient) {
         updateManualGenerateBtnState();
     }
 
-    if (data.value === 2) {
-        showGlassToast('warning', 'Queue Blocked', 'Generation is currently blocked. Please wait.', false, 5000);
-    } else if (data.value === 0 && wasBlockedOrProcessing) {
-        showGlassToast('success', 'Queue Unblocked', 'Generation is now available.', false, 3000);
-    }
+    // No "Queue Blocked" / "Queue Unblocked" toast (N1, N2): the Generate button state above is the status, and the
+    // printer tray icon (printQueue.js) shows the queue
 }
 
 function handlePresetUpdatedBroadcast(data, wsClient) {
@@ -48,51 +43,15 @@ function handlePresetGroupUpdatedMessage(message, wsClient) {
 function handleReceiptNotificationMessage(message, wsClient) {
     wsClient.triggerEvent('receipt_notification', message);
 
-    if (message.receipt && message.receipt?.cost > 0) {
-        const receipt = message.receipt;
-        let toastMessage = '';
-        let type = 'info';
-        let header = '';
-
-        switch (receipt.type) {
-            case 'generation':
-                header = 'Generation Receipt';
-                toastMessage = `<i class="nai-anla"></i> ${receipt.cost || 0} (using ${receipt.creditType || 'unknown'})`;
-                type = 'success';
-                break;
-            case 'upscaling':
-                header = 'Upscaling Receipt';
-                toastMessage = `<i class="nai-anla"></i> ${receipt.cost || 0} (using ${receipt.creditType || 'unknown'})`;
-                type = 'success';
-                break;
-            case 'vibe_encoding':
-                header = 'Vibe Encoding Receipt';
-                toastMessage = ` <i class="nai-anla"></i> ${receipt.cost || 0} (using ${receipt.creditType || 'unknown'})`;
-                type = 'info';
-                break;
-            case 'deposit':
-                header = 'Deposit Receipt';
-                toastMessage = `<i class="nai-anla"></i> +${receipt.cost || 0} (using ${receipt.creditType || 'unknown'})`;
-                type = 'success';
-                break;
-            default:
-                header = 'Operation Receipt';
-                toastMessage = `<i class="nai-anla"></i> ${receipt.cost || 0} (using ${receipt.creditType || 'unknown'})`;
-                type = 'info';
-        }
-
-        if (toastMessage) {
-            let icon = '<i class="fas fa-file-invoice-dollar"></i>';
-            if (receipt.type === 'generation') {
-                icon = '<i class="fas fa-sparkles"></i>';
-            } else if (receipt.type === 'upscaling') {
-                icon = '<i class="fas fa-expand"></i>';
-            } else if (receipt.type === 'deposit') {
-                icon = '<i class="fas fa-plus-circle"></i>';
-            }
-
-            showGlassToast(type, header, toastMessage, false, window.isDesktop ? false : 10000, icon);
-        }
+    // Only a DEPOSIT is told (Anlas arriving the user did not cause by an action of theirs; a click opens Account
+    // Manager's Status, the tray's wallet balloon, switch Notifications > Deposit Receipt). The cost of a print, an
+    // upscale or a vibe encoding the user just ran is a status echo (N1, N2): the balance in Account Manager's Status
+    // and the Anlas row show what it cost (receipt_notification above stays the data's path for anything listening).
+    const receipt = message.receipt;
+    if (receipt && receipt.cost > 0 && receipt.type === 'deposit') {
+        // notice: deposit-receipt
+        showGlassToast('success', 'Deposit Receipt', `<i class="nai-anla"></i> +${receipt.cost || 0} (using ${receipt.creditType || 'unknown'})`,
+            false, window.isDesktop ? false : 10000, '<i class="fas fa-plus-circle"></i>');
     }
 }
 

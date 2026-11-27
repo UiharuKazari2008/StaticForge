@@ -9,8 +9,14 @@
  * explicit caller), dialog only when a confirmation/input pass config.sound,
  * (dead-key Ding is off), notify
  * (new Dovecote mail, unless Control Panel Mail turns that sound off), recycle (image delete / scrap),
- * critical-stop (exception window / hard WS drop), uac (Client Update).
+ * critical-stop (the exception window; NOT a dropped socket), uac (Client Update).
  * No min/max, no ambient.
+ *
+ * Notification discipline (N7, N8; Yozora #1299): a sound plays for a direct user action (a click, Lock, delete), for
+ * the thing the user asked for (mail, a message, a print) or for an error that stopped their work - never for a
+ * reconnect, a session coming back after a server restart, or any other status change. The desktop's own startup
+ * sound (desktopBootStage 'done') stays: it is the desktop's, and Personalize > Sounds has "Play Windows Startup
+ * sound", a per-event (None) and the No Sounds scheme to turn it off. Melaton Mobile never plays it (desktop only).
  *
  * Each workspace can give an event its own sound or (None), or pick No Sounds, in Personalize >
  * Sounds (desktopPersonalization.js soundFile; the Sound dialog, personalizationDialogs.js).
@@ -502,7 +508,7 @@
         });
         doc.addEventListener('desktopWorkstationLocked', () => play('lock'));
         doc.addEventListener('desktopWorkstationUnlocked', () => play('unlock'));
-        doc.addEventListener('desktopSessionResumed', () => play('logon'));
+        // (no sound when the desktop comes back after a server restart: desktopSessionResumed is a status change, N7)
         doc.addEventListener('desktopSound', onDocumentEvent);
         if (state.enabled) {
             setTimeout(prefetch, 0);

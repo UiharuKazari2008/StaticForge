@@ -254,9 +254,11 @@ const PopoverManager = {
         // the tray standard: one balloon at a time (this icon's own balloon may be replaced in place); none while presenting
         if (trayBalloon && (trayPresenting() || this.trayBusy(element))) {
             const args = [element, type, title, message, showProgress, timeout, customIcon, buttons, options];
+            // notice: popover-plumbing
             this.whenTrayFree(element.id || title || 'balloon', () => this.showPopover(...args));
             return null;
         }
+        // notice: popover-plumbing
         if (options.popupId) trayNotePopup(options.popupId, title);
         timeout = trayClampPopupTimeout(timeout);
         // (after the hidden-taskbar check below: promoted only once it really shows)
@@ -267,6 +269,7 @@ const PopoverManager = {
             && !boot.isTaskbarVisible() && element.closest && element.closest('#desktopTaskbar')) {
             if (trayBalloonPolicy(element) !== 'drop') {
                 const args = [element, type, title, message, showProgress, timeout, customIcon, buttons, options];
+                // notice: popover-plumbing
                 boot.whenTaskbarVisible(`popover:${element.id || title}`, () => this.showPopover(...args));
             } else if (typeof options.onHide === 'function') {
                 // toastManager drops its entry for the balloon that never showed
@@ -922,6 +925,7 @@ const PopoverManager = {
             }
             
             showTimeout = setTimeout(() => {
+                // notice: popover-pointer-shown
                 PopoverManager.show(element);
             }, HOVER_SHOW_DELAY_MS);
         };
@@ -983,6 +987,7 @@ const PopoverManager = {
             if (popoverData.popover.classList.contains('show')) {
                 PopoverManager.hide(element);
             } else {
+                // notice: popover-pointer-shown
                 PopoverManager.show(element);
             }
         };
@@ -1032,6 +1037,7 @@ const PopoverManager = {
  * @returns {HTMLElement} The popover element
  */
 function showPopover(element, type, title, message, showProgress = false, timeout = 5000, customIcon = null, buttons = null, options = {}) {
+    // notice: popover-plumbing
     return PopoverManager.showPopover(element, type, title, message, showProgress, timeout, customIcon, buttons, options);
 }
 

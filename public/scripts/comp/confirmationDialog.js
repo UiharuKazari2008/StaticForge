@@ -190,6 +190,7 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
         const icon = /triangle|warning/.test(ic) ? 'warning' : /circle-xmark|times-circle|exclamation-circle|error|ban/.test(ic) ? 'error' : /question/.test(ic) ? 'question' : /info/.test(ic) ? 'info' : (list.length > 1 ? 'question' : null);
         const buttons = list.map((o) => ({ text: String(o && o.text != null ? o.text : 'OK'), value: o ? o.value : undefined }));
         const cancel = buttons.find((b) => b.value === false || b.value === null || b.value === undefined);
+        // notice: confirmation-dialog
         return wm.messageBox({ title: cfg.title || 'Melaton Mobile', text, icon, buttons, cancelValue: cancel ? cancel.value : buttons[buttons.length - 1].value, modal: buttons.length > 1 });
     }
 
@@ -422,6 +423,7 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
         confirmationDialogActive = true;
         if (config.sound) {
             // desktopSounds.play: public/scripts/comp/desktopSounds.js
+            // notice: confirmation-dialog-sound
             desktopSounds.play(config.sound === true ? 'dialog' : config.sound);
         }
     });
@@ -835,6 +837,7 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         confirmationDialogActive = true;
         if (config.sound) {
             // desktopSounds.play: public/scripts/comp/desktopSounds.js
+            // notice: confirmation-dialog-sound
             desktopSounds.play(config.sound === true ? 'dialog' : config.sound);
         }
     });

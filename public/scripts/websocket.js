@@ -9,7 +9,17 @@ class BannerManager {
         // No initialization needed for glass toasts
     }
 
-    showWebSocketToast(status, message, icon, autoHide = false, hideDelay = WebSocketClient.TIMEOUT_UI_DEFAULT, showProgress = false, progress = 0) {
+    /**
+     * The connection toast says a link FAILED (error / warning) and nothing else. "Connecting" and "Connected" are
+     * status echoes (N1, N2): the connection icon, the ticker and the boot's own progress carry them, so a status
+     * other than error / warning only takes a failure toast that is still up away. buttons: what the toast's user
+     * can do about it (Retry).
+     */
+    showWebSocketToast(status, message, icon, autoHide = false, hideDelay = WebSocketClient.TIMEOUT_UI_DEFAULT, showProgress = false, progress = 0, buttons = null) {
+        if (status !== 'error' && status !== 'warning') {
+            this.hideWebSocketToast();
+            return;
+        }
         // If we already have a toast, update it instead of creating a new one
         if (this.websocketToastId && typeof updateGlassToastComplete === 'function') {
             this.updateWebSocketToast(status, message, icon, showProgress, progress);
@@ -18,17 +28,15 @@ class BannerManager {
 
         // Create new toast only if we don't have one
         if (typeof showGlassToast === 'function') {
+            // notice: ws-link-failed
             this.websocketToastId = showGlassToast(
-                status === 'connected' ? 'success' :
-                    status === 'error' ? 'error' :
-                        status === 'warning' ? 'warning' : 'info',
-                status === 'connected' ? 'Connected' :
-                    status === 'error' ? 'Connection Error' :
-                        status === 'warning' ? 'Connection Warning' : 'Connecting',
+                status === 'error' ? 'error' : 'warning',
+                status === 'error' ? 'Connection Error' : 'Connection Warning',
                 message,
                 showProgress,
                 autoHide ? hideDelay : false, // Only auto-hide if specified
-                icon
+                icon,
+                buttons
             );
             if (showProgress && typeof updateGlassToastProgress === 'function') {
                 updateGlassToastProgress(this.websocketToastId, progress);
@@ -37,18 +45,15 @@ class BannerManager {
     }
 
     updateWebSocketToast(status, message, icon, showProgress = false, progress = 0) {
-        if (!this.websocketToastId || typeof updateGlassToastComplete !== 'function') {
+        // only a failure toast is ever up (showWebSocketToast): a status echo never replaces its text
+        if (!this.websocketToastId || typeof updateGlassToastComplete !== 'function' || (status !== 'error' && status !== 'warning')) {
             return;
         }
 
         // Update the existing toast
         updateGlassToastComplete(this.websocketToastId, {
-            type: status === 'connected' ? 'success' :
-                status === 'error' ? 'error' :
-                    status === 'warning' ? 'warning' : 'info',
-            title: status === 'connected' ? 'Connected' :
-                status === 'error' ? 'Connection Error' :
-                    status === 'warning' ? 'Connection Warning' : 'Connecting',
+            type: status === 'error' ? 'error' : 'warning',
+            title: status === 'error' ? 'Connection Error' : 'Connection Warning',
             message: message,
             customIcon: icon
         });
@@ -903,6 +908,7 @@ class WebSocketClient {
     static NIGHTSHADE_PROBE_URL = 'https://www.gstatic.com/generate_204';
     static NIGHTSHADE_PROBE_EVERY_MS = 60000;
     static NIGHTSHADE_BALLOON_MS = 5000; // a quiet reconnect inside this shows no balloon
+    static LATENCY_BALLOON_COOLDOWN_MS = 10 * 60 * 1000; // one high-latency balloon per spell, not per threshold crossing
     static OFFLINE_LOGON_AFTER_MS = 10000; // no server this long at boot: the offline logon (#899)
     static BOOT_GATE_MAX_MS = 10000; // the logon waits this long at most for serviceWorkerManager's boot gate
     // the installed app: "Please wait..." while the server is tried this long, then the logon from the cached profile
@@ -2533,8 +2539,9 @@ class WebSocketClient {
      * The Nightshade Network tray icon (#895): always shown; tooltip "Nightshade Network: <status>",
      * the session's duration and ping while connected; .is-problem lays the red ! on it (unreachable,
      * restarting, no internet), .is-connecting steps it while dialing. A problem that lasts
-     * NIGHTSHADE_BALLOON_MS after the service was up says so in a balloon, and its end says
-     * "Connected to Nightshade Network." (popupId 'nightshade', toastManager.js TOAST_BALLOONS).
+     * NIGHTSHADE_BALLOON_MS after the service was up says so in a balloon (popupId 'nightshade', toastManager.js
+     * TOAST_BALLOONS; a click opens the Nightshade Network Client). Its end says nothing (N2, N11: the icon loses
+     * its red ! and the balloon, when still up, goes).
      */
     _updateNightshadeTrayIcon() {
         if (window.uiShell === 'mobile') return;
@@ -2564,7 +2571,7 @@ class WebSocketClient {
             if (this._nsBalloonTimer) { clearTimeout(this._nsBalloonTimer); this._nsBalloonTimer = null; }
             if (this._nsProblemShown) {
                 this._nsProblemShown = false;
-                this._nightshadeBalloon('info', 'Connected to Nightshade Network.');
+                this._dismissNightshadeBalloon();
             }
             this._nsWasUp = true;
             return;
@@ -2584,10 +2591,21 @@ class WebSocketClient {
         }, WebSocketClient.NIGHTSHADE_BALLOON_MS);
     }
 
+    /** The link is back: its problem balloon, when still up, closes (it is not replaced by a "Connected" one). */
+    _dismissNightshadeBalloon() {
+        const icon = document.getElementById('nightshadeTrayIcon');
+        const pm = window.PopoverManager;
+        try {
+            const data = icon && pm && pm.activePopovers ? pm.activePopovers.get(icon) : null;
+            if (data && !data.hoverOnly && data.popover && data.popover.classList.contains('show')) pm.hide(icon);
+        } catch (_) { /* it closes on its own timer */ }
+    }
+
     _nightshadeBalloon(type, message) {
         if (typeof showGlassToast !== 'function') return;
         const bootPending = typeof window.isDesktopTrayBootPending === 'function' && window.isDesktopTrayBootPending();
         if (bootPending) return;
+        // notice: nightshade-link-problem
         showGlassToast(type, 'Nightshade Network', message, false, 8000,
             '<img src="/static_images/vista-icons/nightshade-32.png" alt="" width="32" height="32" draggable="false">');
     }
@@ -2599,36 +2617,26 @@ class WebSocketClient {
             this._latencyNotice = { reason: message, at: Date.now() };
             return;
         }
-        if (typeof showGlassToast !== 'function') return;
+        // Not the desktop tray: the ping warning icon and its tooltip carry it (N11: an icon never announces its own
+        // change), so the narrow layout's toast went
+        if (typeof showGlassToast !== 'function' || !this._isDesktopTrayMode()) return;
 
-        if (this._isDesktopTrayMode()) {
-            const bootPending = typeof window.isDesktopTrayBootPending === 'function' && window.isDesktopTrayBootPending();
-            if (!bootPending) {
-                showGlassToast(
-                    'warning',
-                    'High Latency Detected',
-                    message,
-                    false,
-                    8000,
-                    '<i class="fas fa-satellite"></i>'
-                );
-            }
-            return;
-        }
-
+        // One balloon per spell of latency (N6, N9): the rtt hovering around its threshold must not raise it again
+        // within LATENCY_BALLOON_COOLDOWN_MS; its click opens the Nightshade Network Client (toastManager.js
+        // _trayBalloonTarget), its switch is Notifications > High Latency Detected (popupId 'high-latency')
+        const now = Date.now();
+        if (this._latencyBalloonAt && now - this._latencyBalloonAt < WebSocketClient.LATENCY_BALLOON_COOLDOWN_MS) return;
+        const bootPending = typeof window.isDesktopTrayBootPending === 'function' && window.isDesktopTrayBootPending();
+        if (bootPending) return;
+        this._latencyBalloonAt = now;
+        // notice: high-latency
         showGlassToast(
             'warning',
             'High Latency Detected',
             message,
             false,
             8000,
-            '<i class="fas fa-satellite"></i>',
-            [{
-                text: 'View Connection',
-                onClick: () => {
-                    this.openConnectionDialStatus();
-                }
-            }]
+            '<i class="fas fa-satellite"></i>'
         );
     }
 
@@ -3662,9 +3670,6 @@ class WebSocketClient {
     _renderConnectionDialToast() {
         const phase = this.connectionPhase;
         const ui = this.connectionUi;
-        const beat = ui.beat || 'initializing';
-        const beatDef = WebSocketClient.CONNECTION_BEATS[beat] || {};
-        const progress = beatDef.progress != null ? beatDef.progress : 0;
 
         this._hideConnectionDialModal();
 
@@ -3672,11 +3677,7 @@ class WebSocketClient {
             this.bannerManager.hideWebSocketTicker();
             if (this.isConnected()) {
                 this.updateWebSocketStatus('connected');
-                if (!this.initializationCompleted) {
-                    this._adoptConnectionToastForInitProgress();
-                } else {
-                    this.bannerManager.hideWebSocketToast();
-                }
+                this.bannerManager.hideWebSocketToast();
             } else {
                 this.bannerManager.hideWebSocketToast();
                 this.updateWebSocketStatus('disconnected');
@@ -3698,54 +3699,25 @@ class WebSocketClient {
 
         if (phase === 'failed') {
             this.bannerManager.hideWebSocketToast();
+            // the failure's one place on this shell, with what the user can do about it (N4, N10)
             this.bannerManager.showWebSocketToast(
                 'error',
                 ui.message || 'Server Not Responding',
                 '<i class="fas fa-link-slash"></i>',
-                false
+                false,
+                WebSocketClient.TIMEOUT_UI_DEFAULT,
+                false,
+                0,
+                [{ text: 'Retry', onClick: () => this.manualReconnect(), closeOnClick: true }]
             );
             this.updateWebSocketStatus('disconnected');
             return;
         }
 
-        let message = ui.message || beatDef.message || 'Connecting…';
-        if (ui.attempt > 0) {
-            message = `${message} (attempt ${ui.attempt} of ${ui.maxAttempts})`;
-        }
-
-        if (phase === 'connected') {
-            const handoffToInit = !this.initializationCompleted;
-            this.bannerManager.showWebSocketToast(
-                handoffToInit ? 'connecting' : 'connected',
-                message,
-                handoffToInit
-                    ? '<i class="fa-duotone fa-star-christmas"></i>'
-                    : '<i class="fas fa-network-wired"></i>',
-                !handoffToInit,
-                WebSocketClient.TIMEOUT_UI_DEFAULT,
-                true,
-                handoffToInit ? 72 : 100
-            );
-            this.updateWebSocketStatus('connected');
-            if (handoffToInit) {
-                this._adoptConnectionToastForInitProgress();
-            }
-            return;
-        }
-
-        const icon = ui.attempt > 0
-            ? '<i class="fas fa-sync-alt"></i>'
-            : '<i class="fas fa-network-wired"></i>';
-        this.bannerManager.showWebSocketToast(
-            'connecting',
-            message,
-            icon,
-            false,
-            WebSocketClient.TIMEOUT_UI_DEFAULT,
-            true,
-            progress
-        );
-        this.updateWebSocketStatus('connecting');
+        // connecting / connected: no toast (N1, N2) - the connection icon says it (updateWebSocketStatus), the boot's
+        // own progress shows the start, and a failure toast still up from before goes
+        this.bannerManager.hideWebSocketToast();
+        this.updateWebSocketStatus(phase === 'connected' ? 'connected' : 'connecting');
     }
 
     _renderConnectionDial() {
@@ -4812,17 +4784,6 @@ class WebSocketClient {
     }
 
     // Progress notification methods
-    _adoptConnectionToastForInitProgress() {
-        if (window.isDesktop || this.progressToastId) {
-            return false;
-        }
-        if (!this.bannerManager.websocketToastId) {
-            return false;
-        }
-        this.progressToastId = this.bannerManager.websocketToastId;
-        return true;
-    }
-
     async showProgressNotification(message = 'Connecting...', progress = 0) {
         if (typeof dismissLaunchHandoffIfNeeded === 'function') {
             await dismissLaunchHandoffIfNeeded();
@@ -4835,10 +4796,10 @@ class WebSocketClient {
             }
             this.showWindowsStartupModal(message, progress);
         } else {
-            this._adoptConnectionToastForInitProgress();
             if (!this.progressToastId) {
                 // Create a new progress toast
                 if (typeof showGlassToast === 'function') {
+                    // notice: boot-progress
                     this.progressToastId = showGlassToast(
                         'info',
                         'Dreamscape',
@@ -4885,9 +4846,9 @@ class WebSocketClient {
     }
 
     _updateInitProgressToast(message, progress, addInitializingClass = false) {
-        this._adoptConnectionToastForInitProgress();
         if (!this.progressToastId) {
             if (typeof showGlassToast === 'function') {
+                // notice: boot-progress
                 this.progressToastId = showGlassToast(
                     'info',
                     'Dreamscape',
@@ -6011,11 +5972,8 @@ class WebSocketClient {
                         disconnectMessage += `: ${event.reason}`;
                     }
 
-                    if (event.code === 1006 || event.code === 1011) {
-                        // desktopSounds.play: public/scripts/comp/desktopSounds.js
-                        desktopSounds.play('critical-stop');
-                    }
-
+                    // no sound for a dropped socket (N7: a reconnect / status change never sounds; the Nightshade
+                    // icon and, after a lasting problem, its balloon say it)
                     if (!this.circuitBreaker) {
                         const startupMessage = this.lastServerStartupStatus?.stageMessage;
                         const reconnectSuffix = this._shouldShowStartupReconnectMessage()
@@ -6929,17 +6887,13 @@ class WebSocketClient {
                 this.resolveRequest(message.requestId, message.data, message.error);
             }
 
-            // Show success/error message
-            if (message.data?.success) {
-                const successMessage = message.data.message || `Server cache refreshed successfully. ${message.data.assetsCount || 0} assets updated.`;
-
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast('success', 'Cache Refreshed', successMessage, false, 5000, '<i class="fas fa-sync"></i>');
-                }
-            } else {
+            // Only a failure is told: the success of the user's own refresh is no news (N2) - Melaton Update's
+            // page that asked for it shows the result
+            if (!message.data?.success) {
                 const errorMessage = message.data?.error || message.data?.message || message.error || 'Failed to refresh server cache';
 
                 if (typeof showGlassToast === 'function') {
+                    // notice: ws-user-request-failed
                     showGlassToast('error', 'Cache Refresh Failed', errorMessage, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
                 }
                 console.error('❌ Server cache refresh failed:', message.error);
@@ -6969,36 +6923,10 @@ class WebSocketClient {
         if (message.type === 'resource_update_available') {
             const updateMessage = message.data.message || 'Resource updates are available for download';
 
+            // Melaton Update's tray balloon (windows-update: a click installs, Notifications switches it off). The
+            // old fallback toast's Download Now called the same manager it needed, so it never did anything (N4)
             if (window.serviceWorkerManager && typeof window.serviceWorkerManager.showUpdateAvailableTrayPrompt === 'function') {
                 window.serviceWorkerManager.showUpdateAvailableTrayPrompt(updateMessage);
-            } else if (typeof showGlassToast === 'function') {
-                const downloadButton = {
-                    text: 'Download Now',
-                    type: 'primary',
-                    onClick: () => {
-                        if (window.serviceWorkerManager) {
-                            window.serviceWorkerManager.checkStaticFileUpdates();
-                        }
-                    },
-                    closeOnClick: true
-                };
-
-                const laterButton = {
-                    text: 'Later',
-                    type: 'default',
-                    onClick: () => {},
-                    closeOnClick: true
-                };
-
-                showGlassToast(
-                    'warning',
-                    'Updates Available',
-                    updateMessage,
-                    false,
-                    false,
-                    '<i class="fas fa-download"></i>',
-                    [downloadButton, laterButton]
-                );
             }
 
             return;
@@ -7007,6 +6935,7 @@ class WebSocketClient {
         // Handle config refresh errors
         if (message.type === 'config_refresh_error') {
             if (typeof showGlassToast === 'function') {
+                // notice: ws-config-refresh-failed
                 showGlassToast(
                     'error',
                     'Config Refresh Failed',
@@ -7226,6 +7155,7 @@ class WebSocketClient {
         // Update existing progress toast or create new one
         if (!this.progressToastId) {
             if (typeof showGlassToast === 'function') {
+                // notice: ws-request-progress
                 this.progressToastId = showGlassToast(
                     'info',
                     'Processing Request',
@@ -8793,6 +8723,7 @@ class WebSocketClient {
             });
             return result;
         } catch (error) {
+            // notice: ws-user-request-failed
             showGlassToast('error', 'Image metadata request error', error.message, false);
             throw error;
         }
@@ -8817,6 +8748,7 @@ class WebSocketClient {
             });
             return result;
         } catch (error) {
+            // notice: ws-user-request-failed
             showGlassToast('error', 'URL upload metadata request error', error.message, false);
             throw error;
         }
@@ -8832,6 +8764,7 @@ class WebSocketClient {
             });
             return result;
         } catch (error) {
+            // notice: ws-user-request-failed
             showGlassToast('error', 'Image by index request error', error.message, false);
             throw error;
         }
@@ -8847,6 +8780,7 @@ class WebSocketClient {
             });
             return result;
         } catch (error) {
+            // notice: ws-user-request-failed
             showGlassToast('error', 'Find image index error', error.message, false);
             throw error;
         }
@@ -8868,6 +8802,7 @@ class WebSocketClient {
             });
             return { success: true };
         } catch (error) {
+            // notice: ws-user-request-failed
             showGlassToast('error', 'Character search error', error.message, false);
             throw error;
         }
@@ -8978,7 +8913,7 @@ class WebSocketClient {
             const result = await this.sendMessage('search_dataset_tags', { query, path });
             return result;
         } catch (error) {
-            showGlassToast('error', 'Dataset tag search error', error.message, false);
+            // no toast: toastManager's policy dropped this lookup-while-typing error on every shell (N1); the caller gets the error
             throw error;
         }
     }
@@ -8988,7 +8923,7 @@ class WebSocketClient {
             const result = await this.sendMessage('get_dataset_tags_for_path', { path });
             return result;
         } catch (error) {
-            showGlassToast('error', 'Get Tags For Path', error.message, false);
+            // no toast: toastManager's policy dropped this lookup-while-typing error on every shell (N1); the caller gets the error
             throw error;
         }
     }
@@ -8998,7 +8933,7 @@ class WebSocketClient {
             const result = await this.sendMessage('search_tags', { query, single_match: singleMatch });
             return result;
         } catch (error) {
-            showGlassToast('error', 'Search tags error', error.message, false);
+            // no toast: toastManager's policy dropped this lookup-while-typing error on every shell (N1); the caller gets the error
             throw error;
         }
     }
@@ -9008,6 +8943,7 @@ class WebSocketClient {
             const result = await this.sendMessage('spellcheck_add_word', { word });
             return result;
         } catch (error) {
+            // notice: ws-user-request-failed
             showGlassToast('error', 'Add word to dictionary error', error.message, false);
             throw error;
         }
@@ -9163,6 +9099,7 @@ class WebSocketClient {
     async addScrap(id, filename) {
         const result = await this.sendMessage('workspace_add_scrap', { id, filename });
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: desktop-recycle-sound
         desktopSounds.play('recycle');
         return result;
     }
@@ -9257,6 +9194,7 @@ class WebSocketClient {
     async addScrapBulk(id, filenames) {
         const result = await this.sendMessage('workspace_bulk_add_scrap', { id, filenames });
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: desktop-recycle-sound
         desktopSounds.play('recycle');
         return result;
     }
@@ -9277,6 +9215,7 @@ class WebSocketClient {
         const result = await this.sendMessage('delete_images_bulk', { filenames });
         if (result && result.successful > 0) {
             // desktopSounds.play: public/scripts/comp/desktopSounds.js
+            // notice: desktop-recycle-sound
             desktopSounds.play('recycle');
         }
         return result;
@@ -9285,6 +9224,7 @@ class WebSocketClient {
     async deleteUnupscaledOriginal(filename) {
         const result = await this.sendMessage('delete_unupscaled_original', { filename });
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        // notice: desktop-recycle-sound
         desktopSounds.play('recycle');
         return result;
     }
