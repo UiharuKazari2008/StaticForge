@@ -495,10 +495,8 @@
         });
         const decide = (decision) => async () => {
             if (!prop) return;
+            // no "Written to the prompt guide clone" message box (N2): the proposal's row shows its new status
             await dirLearnedAction(st, 'director_learned_decide', { id: prop.id, decision });
-            if (decision === 'approve' && prop.kind === 'guide') {
-                ui.messageBox({ title: 'Director', icon: 'info', text: 'Written to the prompt guide clone. Extract, commit, and push it from Prompt Guide.' });
-            }
         };
         on('prop-approve', decide('approve'));
         on('prop-reject', decide('reject'));

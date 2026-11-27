@@ -495,8 +495,12 @@
     function copy() {
         if (!dlg) return;
         const text = dlg.rawByTab[dlg.tab] || dlg.rawByTab.raw || '';
+        // the Copy button says so in place (N2), no toast
         const done = () => {
-            if (typeof showGlassToast === 'function') showGlassToast('success', 'Copied', dlg.tab === 'raw' ? 'Parameters and result' : (dlg.tab === 'input' ? 'Parameters' : 'Result'), false, 1200);
+            const btn = dlg && dlg.content ? dlg.content.querySelector('[data-action="copy"]') : null;
+            if (!btn) return;
+            btn.textContent = 'Copied';
+            setTimeout(() => { if (btn.isConnected) btn.textContent = 'Copy'; }, 1500);
         };
         try {
             navigator.clipboard.writeText(text).then(done, () => {});

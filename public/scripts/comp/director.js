@@ -468,17 +468,8 @@ function assignTrimmedDirectorSessionMessages(session, messages) {
     if (!session || !Array.isArray(messages)) {
         return messages;
     }
-    const beforeLen = messages.length;
+    // A trim is housekeeping with nothing for the user to do: no notice (N1, bullshit).
     const capped = trimDirectorSessionMessages(messages);
-    if (capped.length < beforeLen) {
-        showGlassToast(
-            'info',
-            'Director',
-            `Older messages were removed to keep this session at ${DIRECTOR_MAX_SESSION_MESSAGES} messages.`,
-            false,
-            6000
-        );
-    }
     session.messages = capped;
     return capped;
 }
@@ -487,6 +478,22 @@ function assignTrimmedDirectorSessionMessages(session, messages) {
 class Director {
     // The first seconds of a turn this page started: the server's status can come before it has registered the run.
     static STATUS_ARM_GRACE_MS = 3000;
+
+    // Every Director action that failed or could not be done now: told once, in words, where it happened (N10). The toast
+    // policy (toastManager.js) makes it a message box, or a balloon on the Director tray icon when titled 'Director'; the
+    // user's own action that worked is never told (N2), the window shows it in place.
+    static failure(text, title = null) {
+        // notice: director-failure
+        showGlassToast('error', title, text);
+    }
+
+    // "Not connected": one source for every Director action that needs the server (N6). The policy folds repeats into one
+    // message box and drops it while the Dreamscape link itself says so (Nightshade tray icon).
+    static offline() {
+        // notice: director-offline
+        showGlassToast('error', null, 'WebSocket not connected');
+    }
+
 
     // Does the server's status say a turn runs for this chat? The typing indicator follows this, not a flag the page
     // keeps by itself (#1150). A Yozora (xi) chat counts only its own side: the cursor Director's run (status.running) is
@@ -1402,7 +1409,7 @@ class Director {
         if (!this.fastAvailable()) this.fast = false;
         this.saveChatPrefs();
         this.rememberSessionModel();
-        showGlassToast('info', 'Director', this.selectedEffortName(), false, 900, '<i class="fas fa-lightbulb"></i>');
+        // the header's effort boxes repaint (saveChatPrefs > paintModelPick): the window shows it in place (N2)
     }
 
     handleComposerHotkey(event) {
@@ -1840,7 +1847,7 @@ class Director {
     async nukeSessionFromContextMenu(session) {
         if (!session || !session.id || typeof showConfirmationDialog !== 'function') return;
         if (this._running && this.currentSession && String(this.currentSession.id) === String(session.id)) {
-            showGlassToast('error', 'Director', 'Director is still working on that chat');
+            Director.failure('Director is still working on that chat', 'Director');
             return;
         }
         try {
@@ -1853,13 +1860,13 @@ class Director {
             );
             if (!result) return;
             const body = await this.directorRequest('director_nuke_session', { sessionId: session.id });
+            // no "Session nuked" notice (N2): the header's context badge shows 0% in place
             if (this.currentSession && String(body.sessionId) === String(this.currentSession.id)) {
-                this.currentSession.contextPercent = 0;
-                this.currentSession.contextTokens = 0;
+                this.markContextCleared(this.currentSession);
+                this.paintContext(null);
             }
-            showGlassToast('info', null, 'Session nuked', false, 2400, '<i class="fas fa-bomb"></i>');
         } catch (err) {
-            showGlassToast('error', 'Director', err.message || 'Could not nuke the session');
+            Director.failure(err.message || 'Could not nuke the session', 'Director');
         }
     }
 
@@ -1883,7 +1890,7 @@ class Director {
         const workspaceId = option && option.value;
         if (!session || !workspaceId) return;
         if (!window.wsClient || !window.wsClient.isConnected()) {
-            showGlassToast('error', 'Director', 'WebSocket not connected');
+            Director.offline();
             return;
         }
         window.wsClient.send({
@@ -1898,7 +1905,7 @@ class Director {
     forkSession(session) {
         if (!session || !session.id) return;
         if (!window.wsClient || !window.wsClient.isConnected()) {
-            showGlassToast('error', 'Director', 'WebSocket not connected');
+            Director.offline();
             return;
         }
         window.wsClient.send({
@@ -1933,7 +1940,7 @@ class Director {
     forkFromMessage(messageKey) {
         if (!this.currentSession || !this.currentSession.id || !messageKey) return;
         if (!window.wsClient || !window.wsClient.isConnected()) {
-            showGlassToast('error', 'Director', 'WebSocket not connected');
+            Director.offline();
             return;
         }
         window.wsClient.send({
@@ -1946,21 +1953,45 @@ class Director {
     }
 
     // Cleanup / Reinstall / Prompt guide — shared by the session tools menu and the tray menu
+    // Cleanup, Reinstall and the prompt guide steps show their state on their own menu row (the in-window place for the
+    // answer to the user's own click, N2): the job's words while it runs, then what it did, until the next run.
     computerMenuItems() {
+        const director = this;
+        const row = (key, item) => Object.assign({
+            valueDisplay: () => director.escapeHtml(director.computerNote(key)),
+            disabled: () => director.computerJobRunning()
+        }, item);
         return [
-            { icon: 'fas fa-broom', text: 'Cleanup', action: 'director-tools-cleanup' },
-            { icon: 'fas fa-arrows-rotate', text: 'Reinstall', action: 'director-tools-reinstall' },
+            row('cleanup', { icon: 'fas fa-broom', text: 'Cleanup', action: 'director-tools-cleanup' }),
+            row('reinstall', { icon: 'fas fa-arrows-rotate', text: 'Reinstall', action: 'director-tools-reinstall' }),
             {
                 icon: 'fas fa-book',
                 text: 'Prompt guide',
                 submenu: [
                     { icon: 'fas fa-code-compare', text: 'Review', action: 'director-tools-guide-review' },
-                    { icon: 'fas fa-code-branch', text: 'Extract', action: 'director-tools-guide-extract' },
-                    { icon: 'fas fa-code-commit', text: 'Commit', action: 'director-tools-guide-commit' },
-                    { icon: 'fas fa-cloud-arrow-up', text: 'Push', action: 'director-tools-guide-push' }
+                    row('extract', { icon: 'fas fa-code-branch', text: 'Extract', action: 'director-tools-guide-extract' }),
+                    row('commit', { icon: 'fas fa-code-commit', text: 'Commit', action: 'director-tools-guide-commit' }),
+                    row('push', { icon: 'fas fa-cloud-arrow-up', text: 'Push', action: 'director-tools-guide-push' })
                 ]
             }
         ];
+    }
+
+    computerNote(key) {
+        return (this._computerNotes && this._computerNotes[key]) || '';
+    }
+
+    computerJobRunning() {
+        return !!(this._computerJob && this._computerJob.key);
+    }
+
+    // text '' clears the row. running: the job's key and the words for the tray icon's tooltip while it runs.
+    setComputerNote(key, text, running) {
+        if (!this._computerNotes) this._computerNotes = {};
+        if (text) this._computerNotes[key] = text;
+        else delete this._computerNotes[key];
+        this._computerJob = running ? { key, label: running } : null;
+        this.updateTrayChrome();
     }
 
     toolsMenuConfig() {
@@ -2165,7 +2196,7 @@ class Director {
         const name = this.selectedModelName() || this.engineName(this.activeEngine());
         this._steer = { sessionId, content: `Continue on ${name}.`, attachments: [], steer: true, switched: true };
         this.renderQueueChip();
-        showGlassToast('info', 'Director', `Carrying on with ${name}.`);
+        // no "Carrying on with ..." notice (N2): the turn restarts and the "Continue on ..." message appears in the chat
         this.abortTurn(true, { steer: true });
     }
 
@@ -2173,7 +2204,7 @@ class Director {
         if (action.startsWith('director-tools-engine-')) {
             const engine = action.slice('director-tools-engine-'.length);
             if (this.setEngine(engine)) {
-                showGlassToast('info', 'Director', `Engine: ${this.engineName(this.activeEngine())}`, false, 1200, '<i class="fas fa-gears"></i>');
+                // the Engine row and the header's pick show the new engine in place (N2)
                 this.steerOnSwitch();
             }
             return;
@@ -2764,7 +2795,7 @@ class Director {
                 return;
             } catch (err) {
                 if (!local.args && !local.result) {
-                    showGlassToast('error', 'Director', err.message || 'Could not open that tool');
+                    Director.failure(err.message || 'Could not open that tool', 'Director');
                     return;
                 }
             }
@@ -2777,7 +2808,7 @@ class Director {
             const result = await this.directorRequest('director_tool_diff', { sessionId, diffId });
             this.showDirectorText(title || 'Change', result.text || '(empty)', result.detail || 'Read-only');
         } catch (err) {
-            showGlassToast('error', 'Director', err.message || 'Could not open that change');
+            Director.failure(err.message || 'Could not open that change', 'Director');
         }
     }
 
@@ -3476,6 +3507,7 @@ class Director {
     }
 
     trayStateLabel() {
+        if (this._computerJob && this._computerJob.label) return this._computerJob.label;
         const state = this.trayState();
         const words = DIRECTOR_TRAY_STATES[state];
         if (state === 'working') {
@@ -3801,6 +3833,7 @@ class Director {
         const text = login.reason === 'expired'
             ? 'Cursor login expired. On this machine run cursor-agent login, then try again.'
             : 'Cursor is not logged in. On this machine run cursor-agent login, then try again.';
+        // notice: director-cursor-login
         showGlassToast('error', 'Director', text, false, 8000);
     }
 
@@ -4282,7 +4315,7 @@ class Director {
             const result = await this.directorRequest('director_recycle_session', { sessionId, filename });
             this.noteSessionRecycled({ sessionId, filename: result.filename });
         } catch (err) {
-            showGlassToast('error', 'Director', err.message || 'Could not recycle the session');
+            Director.failure(err.message || 'Could not recycle the session', 'Director');
         }
     }
 
@@ -4292,7 +4325,9 @@ class Director {
         this.currentSession.contextPercent = 0;
         this.currentSession.contextTokens = 0;
         if (payload.filename) this.currentSession.filename = payload.filename;
-        showGlassToast('info', null, 'Session recycled', false, 2400, '<i class="fas fa-recycle"></i>');
+        // no "Session recycled" notice (N2): the header's context badge shows 0% in place
+        this.markContextCleared(this.currentSession);
+        this.paintContext(null);
     }
 
     openSessionImage(filename) {
@@ -4472,7 +4507,7 @@ class Director {
         try {
             return await this.directorRequest('director_computer_size', {});
         } catch (err) {
-            showGlassToast('error', 'Director', err.message || 'Could not read the Dreamspace size');
+            Director.failure(err.message || 'Could not read the Dreamspace size', 'Director');
             return null;
         }
     }
@@ -4490,13 +4525,15 @@ class Director {
             { title: 'Director', icon: 'fas fa-clapperboard' }
         );
         if (!ok) return;
+        this.setComputerNote('cleanup', 'Running...', 'Cleaning up Dreamspace...');
         try {
             // { freed, size }
             const result = await this.directorRequest('director_cleanup', {});
             const freed = Number(result.freed);
-            showGlassToast('success', 'Director', Number.isFinite(freed) ? `Freed ${formatBytes(freed)}` : 'Cleanup finished');
+            this.setComputerNote('cleanup', Number.isFinite(freed) ? `Freed ${formatBytes(freed)}` : 'Done');
         } catch (err) {
-            showGlassToast('error', 'Director', err.message || 'Cleanup failed');
+            this.setComputerNote('cleanup', '');
+            Director.failure(err.message || 'Cleanup failed', 'Director');
         }
     }
 
@@ -4513,12 +4550,13 @@ class Director {
             { title: 'Director', icon: 'fas fa-clapperboard' }
         );
         if (!ok) return;
-        showGlassToast('info', 'Director', 'Reinstalling Dreamspace…', false, 6000);
+        this.setComputerNote('reinstall', 'Running...', 'Reinstalling Dreamspace...');
         try {
             await this.directorRequest('director_reinstall', {});
-            showGlassToast('success', 'Director', 'Dreamspace reinstalled');
+            this.setComputerNote('reinstall', 'Done');
         } catch (err) {
-            showGlassToast('error', 'Director', err.message || 'Reinstall failed');
+            this.setComputerNote('reinstall', '');
+            Director.failure(err.message || 'Reinstall failed', 'Director');
         }
     }
 
@@ -4549,24 +4587,23 @@ class Director {
                 status.join(' · ')
             );
         } catch (err) {
-            showGlassToast('error', 'Prompt guide', err.message || 'Review failed');
+            Director.failure(err.message || 'Review failed', 'Prompt guide');
         }
     }
 
     async promptGuideExtract() {
+        this.setComputerNote('extract', 'Running...', 'Extracting the prompt guide...');
+        ['commit', 'push'].forEach((key) => { if (this._computerNotes) delete this._computerNotes[key]; });
         try {
             // { tree, parent, branch, files, extractedAt, changed }
             const result = await this.directorRequest('director_prompt_guide_extract', {});
             const count = Array.isArray(result.files) ? result.files.length : 0;
-            showGlassToast(
-                result.changed === false ? 'info' : 'success',
-                'Prompt guide',
-                result.changed === false
-                    ? 'No changes to extract'
-                    : `${count} file${count === 1 ? '' : 's'} staged onto ${result.branch || 'director-draft'}`
-            );
+            this.setComputerNote('extract', result.changed === false
+                ? 'No changes'
+                : `${count} file${count === 1 ? '' : 's'} staged`);
         } catch (err) {
-            showGlassToast('error', 'Prompt guide', err.message || 'Extract failed');
+            this.setComputerNote('extract', '');
+            Director.failure(err.message || 'Extract failed', 'Prompt guide');
         }
     }
 
@@ -4585,16 +4622,19 @@ class Director {
         );
         if (message == null) return;
         if (!message) {
-            showGlassToast('error', 'Prompt guide', 'A commit message is required');
+            Director.failure('A commit message is required', 'Prompt guide');
             return;
         }
+        this.setComputerNote('commit', 'Running...', 'Committing the prompt guide...');
+        if (this._computerNotes) delete this._computerNotes.push;
         try {
             // { commit, branch, files, message }
             const result = await this.directorRequest('director_prompt_guide_commit', { message });
             const sha = result.commit ? ` ${String(result.commit).slice(0, 8)}` : '';
-            showGlassToast('success', 'Prompt guide', `Committed${sha} on ${result.branch || 'director-draft'}`);
+            this.setComputerNote('commit', `Committed${sha}`);
         } catch (err) {
-            showGlassToast('error', 'Prompt guide', err.message || 'Commit failed');
+            this.setComputerNote('commit', '');
+            Director.failure(err.message || 'Commit failed', 'Prompt guide');
         }
     }
 
@@ -4609,12 +4649,14 @@ class Director {
             { title: 'Prompt guide', icon: 'fas fa-book' }
         );
         if (!ok) return;
+        this.setComputerNote('push', 'Running...', 'Pushing the prompt guide...');
         try {
             // { branch, commit, output }
-            const result = await this.directorRequest('director_prompt_guide_push', {});
-            showGlassToast('success', 'Prompt guide', `Pushed ${result.branch || 'director-draft'}`);
+            await this.directorRequest('director_prompt_guide_push', {});
+            this.setComputerNote('push', 'Pushed');
         } catch (err) {
-            showGlassToast('error', 'Prompt guide', err.message || 'Push failed');
+            this.setComputerNote('push', '');
+            Director.failure(err.message || 'Push failed', 'Prompt guide');
         }
     }
 
@@ -4649,7 +4691,7 @@ class Director {
                 preferredChatId: preferredChatId
             });
         } else {
-            showGlassToast('error', null, 'WebSocket not connected');
+            Director.offline();
         }
     }
 
@@ -6377,7 +6419,7 @@ class Director {
 
     beginServerChat() {
         if (!window.wsClient || !window.wsClient.isConnected()) {
-            showGlassToast('error', null, 'WebSocket not connected');
+            Director.offline();
             return false;
         }
         window.wsClient.send({
@@ -6416,7 +6458,7 @@ class Director {
     async askWrenAboutImage(filename, name) {
         const base = String(filename || '').trim().replace(/\\/g, '/').split('/').pop();
         if (!base || base === '.' || base === '..' || base.indexOf('..') !== -1) {
-            showGlassToast('error', null, 'No image to attach');
+            Director.failure('No image to attach');
             return;
         }
         const wrenLive = this.directorSurfaceOpen()
@@ -6462,7 +6504,7 @@ class Director {
     // Expand Canvas Director toggle (imageExpansion.js): new Wren chat, auto-sent brief
     async startExpandCanvasChat(content, attachments) {
         if (this._creatingChat) {
-            showGlassToast('error', null, 'Director is still starting a chat');
+            Director.failure('Director is still starting a chat');
             return;
         }
         if (this.directorWindow) await this.openDirectorWindow();
@@ -6526,7 +6568,7 @@ class Director {
             const image = window.currentManualPreviewImage;
             const filename = image && (image.filename || image.original || image.upscaled);
             if (!filename) {
-                showGlassToast('error', null, 'No studio image is open');
+                Director.failure('No studio image is open');
                 return;
             }
             this.pendingAttachments.push({ source: 'workspace', filename, name: filename });
@@ -6536,7 +6578,7 @@ class Director {
         if (source === 'explorer') {
             const found = this.collectExplorerAttachments();
             if (!found.length) {
-                showGlassToast('error', null, 'Select a file in Explorer first');
+                Director.failure('Select a file in Explorer first');
                 return;
             }
             found.forEach((item) => this.pendingAttachments.push(item));
@@ -6583,7 +6625,7 @@ class Director {
         const files = Array.from(fileList || []);
         files.forEach((file) => {
             if (file.size > 8 * 1024 * 1024) {
-                showGlassToast('error', null, `${file.name} is too large`);
+                Director.failure(`${file.name} is too large`);
                 return;
             }
             const reader = new FileReader();
@@ -7097,7 +7139,7 @@ class Director {
         if (busyHere) {
             this._reportScores = this._reportScores || new Map();
             this._reportScores.set(id, scores);
-            showGlassToast('info', 'Director', 'Director is working. Your scores go with your next message.');
+            // the card's own status line already says "Rescored. Sends with your next message" (N2)
             return;
         }
         this.dispatchOutgoing({ content: '', attachments: [], reportReview: { messageId: id, scores } });
@@ -7415,10 +7457,8 @@ class Director {
 
     async jumpToWorkspace(workspaceId) {
         if (!workspaceId) return;
-        if (activeWorkspace === workspaceId) {
-            showGlassToast('info', 'Director', `Already in ${this.workspaceCardName({ workspaceId })}`);
-            return;
-        }
+        // already there: nothing to do, and the workspace banner says where she is (N2)
+        if (activeWorkspace === workspaceId) return;
         // setActiveWorkspace: public/scripts/comp/workspaceUtils.js
         await setActiveWorkspace(workspaceId);
     }
@@ -7652,7 +7692,7 @@ class Director {
             this.paintSettingsLearned(ctx, body);
             if (done) done(body);
         } catch (err) {
-            showGlassToast('error', 'Director Settings', err.message || 'Could not save that change');
+            Director.failure(err.message || 'Could not save that change', 'Director Settings');
         }
     }
 
@@ -7701,8 +7741,9 @@ class Director {
         const proposal = learned.pending.find((row) => row.id === ctx.get(311));
         if (!proposal) return;
         await this.learnedSettingsAction(ctx, 'director_learned_decide', { id: proposal.id, decision }, () => {
+            // in the dialog's own detail line, not a popup (N2)
             if (decision === 'approve' && proposal.kind === 'guide') {
-                showGlassToast('info', 'Director', 'Written to the prompt guide clone. Extract, commit, and push it from Prompt Guide.');
+                ctx.text(312, 'Written to the prompt guide clone. Extract, commit, and push it from Tools > Prompt guide.');
             }
         });
     }
@@ -7712,7 +7753,7 @@ class Director {
             try { await window.featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* reported below */ }
         }
         if (!window.vistaDialogTemplate) {
-            showGlassToast('error', 'Director', 'Director Settings could not load');
+            Director.failure('Director Settings could not load', 'Director');
             return;
         }
         let learned = { rules: [], proposals: [] };
@@ -7722,7 +7763,7 @@ class Director {
             learned = await this.directorRequest('director_learned_list', {});
         } catch (err) {
             if (!this.directorSettings) {
-                showGlassToast('error', 'Director', err.message || 'Could not read Director Settings');
+                Director.failure(err.message || 'Could not read Director Settings', 'Director');
                 return;
             }
         }
@@ -7853,7 +7894,7 @@ class Director {
                     const body = await director.directorRequest('director_settings_set', { settings: payload });
                     if (body.settings) { director.directorSettings = body.settings; director.settingsArrived(); }
                 } catch (err) {
-                    showGlassToast('error', 'Director Settings', err.message || 'Could not save Director Settings');
+                    Director.failure(err.message || 'Could not save Director Settings', 'Director Settings');
                 }
             }
         });
@@ -7869,11 +7910,14 @@ class Director {
     async repairSession(session) {
         if (!session || !session.id || session.draft || this.persona === 'xi') return;
         if (this.sessionRepairing(session)) {
-            showGlassToast('info', 'Director', 'This session is already being repaired');
+            // the open chat shows the repair's status line already: nothing to tell (N2); another chat's repair is explained
+            if (!(this.currentSession && String(this.currentSession.id) === String(session.id))) {
+                Director.failure('This session is already being repaired', 'Director');
+            }
             return;
         }
         if (this._running && this.currentSession && String(this.currentSession.id) === String(session.id)) {
-            showGlassToast('error', 'Director', 'Director is still working on that chat');
+            Director.failure('Director is still working on that chat', 'Director');
             return;
         }
         // showInputDialog: public/scripts/comp/confirmationDialog.js ('' on OK with no note, null on Cancel)
@@ -7893,7 +7937,7 @@ class Director {
             await this.directorRequest('director_repair_session', { sessionId: session.id, note: String(note).slice(0, 2000) });
             this.noteRepairProgress({ sessionId: session.id, stage: 'start', text: 'Reading the session' });
         } catch (err) {
-            showGlassToast('error', 'Director', err.message || 'Could not start Auto-Repair');
+            Director.failure(err.message || 'Could not start Auto-Repair', 'Director');
         }
     }
 
@@ -7911,6 +7955,13 @@ class Director {
             if (session) session.repairing = !finished;
         });
         if (current) this.paintRepairStatus(finished ? '' : (payload.text || 'Working'));
+        // The repair's outcome is told in the chat she is looking at (N2/N10): the divider card on done, nothing on a stop she
+        // asked for, an error line in the thread on a failure. A failure she cannot see (another chat, the window closed) is
+        // the one that needs words elsewhere.
+        const failure = payload.stage === 'error' && payload.code !== 'REPAIR_CANCELLED'
+            ? `Auto-Repair failed: ${payload.text || 'unknown error'}` : '';
+        const inView = !!(current && this.directorSurfaceOpen());
+        if (failure && inView) this.paintRepairStatus(failure, true);
         if (payload.stage === 'done') {
             [listed, current].forEach((session) => {
                 if (!session) return;
@@ -7918,10 +7969,8 @@ class Director {
                 session.contextTokens = 0;
             });
             if (current) this.paintContext(null);
-            showGlassToast('info', null, 'Session repaired', false, 2400, '<i class="fas fa-screwdriver-wrench"></i>');
-        } else if (payload.stage === 'error') {
-            if (payload.code === 'REPAIR_CANCELLED') showGlassToast('info', 'Director', 'Auto-Repair stopped');
-            else showGlassToast('error', 'Director', `Auto-Repair failed: ${payload.text || 'unknown error'}`);
+        } else if (failure && !inView) {
+            Director.failure(failure, 'Director');
         }
     }
 
@@ -7944,7 +7993,7 @@ class Director {
     }
 
     // One status line under the thread while the hidden repair turn runs.
-    paintRepairStatus(text) {
+    paintRepairStatus(text, failed) {
         const chat = this.directorChatMessages;
         if (!chat) return;
         let row = chat.querySelector('.director-repair-status');
@@ -7963,6 +8012,9 @@ class Director {
             row.append(label, line);
         }
         row.querySelector('.director-repair-status-text').textContent = text;
+        // a failure stays in the thread, in words, until the chat reloads (N10)
+        row.classList.toggle('is-error', failed === true);
+        row.title = failed === true ? text : '';
         const typing = chat.querySelector('.director-typing-indicator');
         if (typing) chat.insertBefore(row, typing);
         else if (row.parentNode !== chat || row !== chat.lastElementChild) chat.appendChild(row);
@@ -8021,12 +8073,14 @@ class Director {
         try {
             const body = await this.directorRequest('director_learned_decide', { id: row.id, decision, text: edited });
             this.paintProposalStatus(rowEl, body.proposal && body.proposal.status);
-            if (decision === 'approve' && row.kind === 'guide') {
-                showGlassToast('info', 'Director', 'Written to the prompt guide clone. Extract, commit, and push it from Prompt Guide.');
+            // in the row's own status label, not a popup (N2)
+            const label = rowEl.querySelector('.director-repair-proposal-status');
+            if (label && decision === 'approve' && row.kind === 'guide') {
+                label.textContent = 'Approved. Written to the prompt guide clone; Extract, commit, and push it from Tools > Prompt guide.';
             }
         } catch (err) {
             rowEl.querySelectorAll('button').forEach((el) => { el.disabled = false; });
-            showGlassToast('error', 'Director', err.message || 'Could not save that decision');
+            Director.failure(err.message || 'Could not save that decision', 'Director');
         }
     }
 
@@ -8163,7 +8217,7 @@ class Director {
             go.textContent = 'Continue with the repaired request';
             go.addEventListener('click', () => {
                 if (this._running) {
-                    showGlassToast('info', 'Director', 'Director is still working');
+                    Director.failure('Director is still working', 'Director');
                     return;
                 }
                 go.disabled = true;
@@ -8219,9 +8273,10 @@ class Director {
         try {
             const applied = await applyStudioChangePayloadSilent(payload, { source: 'director' });
             const ok = applied === true || !!(applied && applied.applied && !(applied.unapplied && applied.unapplied.length));
-            showGlassToast(ok ? 'success' : 'error', null, ok ? 'Studio changes applied' : 'Studio changes were not applied');
+            // applied: Studio shows it in place (N2); only the failure is told
+            if (!ok) Director.failure('Studio changes were not applied');
         } catch (err) {
-            showGlassToast('error', null, err && err.message ? err.message : 'Studio changes were not applied');
+            Director.failure(err && err.message ? err.message : 'Studio changes were not applied');
         }
     }
 
@@ -8643,11 +8698,27 @@ class Director {
             + (priced < turns ? ` (${turns - priced} without a known price)` : '');
     }
 
+    // A nuked or recycled chat starts blank: the badge says 0% until a turn reports a real figure (the in-window feedback
+    // those two actions used to raise a toast for).
+    markContextCleared(session) {
+        if (!session) return;
+        session.contextPercent = 0;
+        session.contextTokens = 0;
+        session.contextCleared = true;
+    }
+
     paintContext(source, approximate) {
         this.paintSessionCost();
         const host = document.getElementById('directorContextDisplay');
         const valueEl = document.getElementById('directorContextPercent');
         if (!host || !valueEl) return;
+        const reported = !!(source && Number(source.percent) > 0);
+        if (reported && this.currentSession) this.currentSession.contextCleared = false;
+        if (!reported && this.currentSession && this.currentSession.contextCleared === true) {
+            setDirectorText(valueEl, '0%');
+            host.title = 'Context cleared. The next message starts blank';
+            return;
+        }
         const windowSize = 256000;
         const pastWindow = (pct, count) => (pct != null && pct > 100) || (count != null && count > windowSize);
         let percent = source && Number.isFinite(Number(source.percent)) ? Math.round(Number(source.percent)) : null;
@@ -8935,7 +9006,7 @@ class Director {
         const content = this.outgoingText(presetContent);
         const busyHere = this._running && this.currentSession && this._runningSessionId === this.currentSession.id;
         if (this._creatingChat) {
-            showGlassToast('error', null, 'Director is still starting this chat');
+            Director.failure('Director is still starting this chat');
             return;
         }
         if (!content && !this.pendingAttachments.length) return;
@@ -8960,14 +9031,14 @@ class Director {
                 this._outgoingQueue = (this._outgoingQueue || []).filter((item) => item.sessionId !== sessionId);
                 this._steer = Object.assign({ sessionId }, job);
                 this.renderQueueChip();
-                showGlassToast('info', 'Director', 'Sent without interrupting.');
+                // no "Sent" notice (N2): the turn stops and the message appears in the chat
                 this.abortTurn(true, { steer: true });
                 return;
             }
             this._outgoingQueue = this._outgoingQueue || [];
             this._outgoingQueue.push(Object.assign({ sessionId }, job));
+            // no "Queued" notice (N2): the queue chip under the composer shows it
             this.renderQueueChip();
-            showGlassToast('info', 'Director', 'Queued. It sends when this turn finishes.');
             return;
         }
         const needsChat = !this.currentSession || this.currentSession.draft || !this.currentSession.id;
@@ -9261,10 +9332,8 @@ class Director {
     // Toggle auto-generate functionality
     toggleAutoGenerate() {
         this.autoGenerateEnabled = !this.autoGenerateEnabled;
+        // the button's own on/off state shows it (N2)
         this.updateIndicator(this.directorAutoGenerateBtn, this.autoGenerateEnabled);
-
-        const status = this.autoGenerateEnabled ? 'enabled' : 'disabled';
-        showGlassToast('info', null, `Auto-generate ${status}`);
     }
 
     // Toggle session preview expansion
@@ -9456,7 +9525,7 @@ class Director {
                 director._focusComposer = false;
                 director._askWrenApplet = false;
                 if (director._pendingOutgoing) director.restorePendingOutgoing();
-                showGlassToast('error', null, (data && data.message) || 'Could not start a new session');
+                Director.failure((data && data.message) || 'Could not start a new session');
                 return;
             }
             const newSession = body.session;
@@ -9694,7 +9763,7 @@ class Director {
                         window.directorInstance.loadSessionMessages(window.currentSession.id);
                     }
                 }
-                showGlassToast('error', null, data.data.error || 'Failed to send message');
+                Director.failure(data.data.error || 'Failed to send message');
             }
         });
 
@@ -9703,7 +9772,7 @@ class Director {
             const director = window.directorInstance;
             const body = data && data.data;
             if (!director || !body || !body.success || !body.session) {
-                showGlassToast('error', 'Director', (body && body.message) || 'Could not fork that chat');
+                Director.failure((body && body.message) || 'Could not fork that chat', 'Director');
                 return;
             }
             if (director.packetFromOtherServer(body)) return;
@@ -9712,15 +9781,13 @@ class Director {
             );
             window.directorSessions = director.directorSessions;
             director.renderDirectorSessions();
-            showGlassToast('success', 'Director', body.fullCopy
-                ? 'Copied the session. The original chat is unchanged.'
-                : 'Forked from that message. The original chat is unchanged.');
+            // the new chat appears in the list and opens (N2): no "Forked" notice
             await director.showSessionChat(body.session, { skipLoad: true });
         });
 
         window.wsClient.on('director_rollback_message_response', async (data) => {
             if (data.data && data.data.success) {
-                showGlassToast('success', null, data.data.message || 'Messages rolled back successfully');
+                // the chat reloads without the removed messages (N2): no "rolled back" notice
                 if (data.data.changeJson && data.data.restore !== false && typeof applyStudioChangePayloadSilent === 'function') {
                     // applyStudioChangePayloadSilent: public/scripts/comp/studioChangeJson.js
                     await applyStudioChangePayloadSilent(data.data.changeJson, { source: 'director' });
@@ -9776,7 +9843,7 @@ class Director {
             const director = window.directorInstance;
             const body = data && data.data;
             if (!director || !body || !body.success || !body.session) {
-                showGlassToast('error', 'Director', (body && (body.message || body.error)) || 'Could not move that session');
+                Director.failure((body && (body.message || body.error)) || 'Could not move that session', 'Director');
                 return;
             }
             if (director.packetFromOtherServer(body)) return;
@@ -9788,8 +9855,7 @@ class Director {
                 director.paintWorkspaceBanner();
             }
             director.renderDirectorSessions();
-            const meta = director.sessionWorkspaceMeta(session);
-            showGlassToast('success', 'Director', meta ? `Session now belongs to ${meta.name}` : 'Session moved');
+            // the list dot and the workspace banner show the new workspace (N2): no "moved" notice
         });
 
         // A print this turn saved — becomes the session thumbnail and joins the session strip
@@ -10115,7 +10181,7 @@ class Director {
 
         const key = String(messageKey || '');
         if (key.startsWith('live:')) {
-            showGlassToast('error', null, 'That row is still streaming');
+            Director.failure('That row is still streaming');
             return;
         }
         const colon = key.indexOf(':');
@@ -10124,7 +10190,7 @@ class Director {
 
         const messageElement = this.directorChatMessages && this.directorChatMessages.querySelector(`[data-message-key="${CSS.escape(key)}"]`);
         if (!messageElement) {
-            showGlassToast('error', null, 'Message not found');
+            Director.failure('Message not found');
             return;
         }
 
@@ -10216,10 +10282,9 @@ class Director {
                 retry: retry,
                 restore: restore
             });
-
-            showGlassToast('info', null, 'Rolling back messages...');
+            // dropFromMessage already removed the rows: the chat is the progress (N2)
         } else {
-            showGlassToast('error', null, 'WebSocket not connected');
+            Director.offline();
         }
     }
 

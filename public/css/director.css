@@ -1126,6 +1126,15 @@ body #directorSessionList #directorPersonaGroup .gallery-toggle-btn:not(.active)
     font-weight: 600;
 }
 
+/* an Auto-Repair that failed stays in the thread in words (notification-discipline N10) */
+.director-repair-status.is-error {
+    color: var(--danger-color, #dc3545);
+}
+
+.director-repair-status.is-error .director-repair-status-text {
+    white-space: normal;
+}
+
 .director-repair-status-text {
     min-width: 0;
     overflow: hidden;

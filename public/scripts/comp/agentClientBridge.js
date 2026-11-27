@@ -1246,10 +1246,17 @@
                 return;
             }
             if (command === 'director_long_job_notice') {
-                // Async void notice: toast only, no dialog, ack as soon as it is queued
+                // Async void notice: toast only, no dialog, ack as soon as it is queued. N3: not while the Director window is
+                // open (she is looking at the job); N4: a click on it opens that window.
                 const text = data && data.text ? String(data.text) : 'This is a long job. Director is still working.';
-                // showGlassToast: public/scripts/comp/toastManager.js
-                showGlassToast('info', 'Director', text, false, 8000, '<i class="fas fa-clapperboard"></i>');
+                const dir = window.directorInstance;
+                if (!(dir && typeof dir.directorWindowIsOpen === 'function' && dir.directorWindowIsOpen())) {
+                    // showGlassToast: public/scripts/comp/toastManager.js
+                    // notice: director-long-job
+                    showGlassToast('info', 'Director', text, false, 8000, '<i class="fas fa-clapperboard"></i>', [
+                        { text: 'Open Director', onClick: () => { if (dir && typeof dir.openDirectorWindow === 'function') void dir.openDirectorWindow(); } }
+                    ]);
+                }
                 replyAgentSessionResult(requestId, { ok: true, queued: true });
                 return;
             }

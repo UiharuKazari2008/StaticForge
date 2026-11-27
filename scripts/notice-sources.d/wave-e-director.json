@@ -1,0 +1,44 @@
+{
+  "sources": {
+    "director-failure": {
+      "area": "Director window and its Tools menu (director.js directorFailure helper; one source for every failed or blocked Director action)",
+      "trigger": "user-action",
+      "action": "content: the words of what failed or why it cannot be done now; titled 'Director' on the desktop it is a balloon on the Director tray icon and a click opens the Director window (toastManager _trayBalloonTarget), otherwise a message box",
+      "sound": false,
+      "switch": "n/a - a failure of an action the user just took is never switchable (N10); the Director balloon form follows Taskbar and Start Menu Properties > Notification Area > Customize (Director popup, trayPopupHidden 'Director'), and a failure falls back to a message box when the icon is hidden",
+      "note": "N10 ok: told once, in words, where it failed. About 45 error toasts across director.js (nuke, recycle, tool and change inspectors, Dreamspace size / cleanup / reinstall, prompt guide, Director Settings, attach, fork, move, rollback, Studio apply, send, new session) are this one helper. The success and 'working' toasts of the same actions were removed (N2): Cleanup, Reinstall and the prompt guide steps show their state on their own menu row and in the tray icon's tooltip, a nuke or recycle shows 0% in the context badge, an Auto-Repair failure is a line in the open chat (director-repair-status.is-error) and only a failure she cannot see (another chat, window closed) uses this source."
+    },
+    "director-offline": {
+      "area": "Director window: every Director action that needs the server (director.js directorOffline helper)",
+      "trigger": "user-action",
+      "action": "content: 'WebSocket not connected'; the toast policy makes it the 'Not Connected' message box and folds repeats into one (policyDialogsOpen key 'not-connected'), and drops it while the Nightshade tray icon already says the link is down",
+      "sound": false,
+      "switch": "n/a - the failure of an action the user just took (N10); the Dreamscape link itself is the Nightshade tray icon (Notification Area > Customize)",
+      "note": "N6/N9 ok: the six 'WebSocket not connected' toasts of director.js (session menu move / fork, message fork, open workspace, begin chat, rollback) were one failure told many ways and are now one helper with one source id and one place."
+    },
+    "director-cursor-login": {
+      "area": "Director: the Cursor login on the host is missing or expired (director.js noteCursorLogin, from the Director status push)",
+      "trigger": "server-push",
+      "action": "content: what to run on the host (cursor-agent login); titled 'Director', so on the desktop a click on the balloon opens the Director window",
+      "sound": false,
+      "switch": "Taskbar and Start Menu Properties > Notification Area > Customize (Director popup, trayPopupHidden 'Director')",
+      "note": "N1/N4/N6 ok: she cannot run Cursor turns until she logs in on the host, so it is a call to action; once per reason (_loginNotice) and it resets when the login is ok. Needs a decision: it still has no in-window line; the Director header could carry it."
+    },
+    "director-feedback-failure": {
+      "area": "Director feedback dialog (directorLearningAdmin.js): the missing description and a failed save",
+      "trigger": "user-action",
+      "action": "content: the words of the failure, in a message box on the desktop",
+      "sound": false,
+      "switch": "n/a - failure of the user's own save (N10)",
+      "note": "N10 ok: told once. The 'Feedback saved' success toast was removed (N2): the dialog closing is the answer."
+    },
+    "director-long-job": {
+      "area": "Director agent's offer_director_window MCP call (agentClientBridge.js director_long_job_notice)",
+      "trigger": "server-push",
+      "action": "a click on the balloon, or its Open Director button, opens the Director window",
+      "sound": false,
+      "switch": "Taskbar and Start Menu Properties > Notification Area > Customize (Director popup, trayPopupHidden 'Director'); Melaton Mobile: Settings > Sounds & Notifications",
+      "note": "N3/N4 fixed: it used to show 'This is a long job. Director is still working.' with no destination, also while the Director window was open in front of her. Now it is skipped while the window is open and carries an Open Director action. Needs a decision: the agent calls it itself, so a long job she started is announced by the agent's own choice; dropping it entirely is the alternative."
+    }
+  }
+}

@@ -36,6 +36,7 @@ async function saveDirectorFeedback() {
 
     // Validate description
     if (!description) {
+        // notice: director-feedback-failure
         showGlassToast('error', null, 'Please describe what went wrong with this replacement.', false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
         return;
     }
@@ -56,13 +57,14 @@ async function saveDirectorFeedback() {
         });
 
         if (result && result.data && result.data.success) {
-            showGlassToast('success', null, 'Feedback saved successfully. The SI will learn from this.', false, undefined, '<i class="fas fa-check"></i>');
+            // the dialog closing is the answer (N2): no "saved" notice
             closeDirectorFeedbackModal();
         } else {
             throw new Error(result?.data?.message || 'Failed to save feedback');
         }
     } catch (error) {
         console.error('Error saving feedback:', error);
+        // notice: director-feedback-failure
         showGlassToast('error', null, `Failed to save feedback: ${error.message}`, false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
     }
 }
