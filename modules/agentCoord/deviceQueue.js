@@ -87,8 +87,13 @@ function needsConsent(device) {
 }
 const text = (v, n) => String(v == null ? '' : v).slice(0, n);
 
+// A pending ask keeps a far-future ends_at in the DB: an agent-coord process still running the code from before consent
+// existed reads a NULL end as 'lease ran out' and would end the ask on its next sweep (seen on the Fold, Nov 26 2026).
+// This code ignores it while consent is pending (row() shows null) and Allow writes the real end.
+const PENDING_PLACEHOLDER_MS = 12 * 60 * 60 * 1000;
+
 function row(r) {
-    return { id: r.id, device: r.device, agentId: r.agent_id, sessionId: r.session_id || '', why: r.why, minutes: r.minutes, state: r.state, requestedAt: r.requested_at, startedAt: r.started_at, endsAt: r.ends_at, endedAt: r.ended_at, endReason: r.end_reason, consent: r.consent || 'none', consentAt: r.consent_at || null };
+    return { id: r.id, device: r.device, agentId: r.agent_id, sessionId: r.session_id || '', why: r.why, minutes: r.minutes, state: r.state, requestedAt: r.requested_at, startedAt: r.started_at, endsAt: r.consent === 'pending' ? null : r.ends_at, endedAt: r.ended_at, endReason: r.end_reason, consent: r.consent || 'none', consentAt: r.consent_at || null };
 }
 
 /** Why an agent no longer deserves a device, or ''. */
@@ -140,7 +145,7 @@ function promote(device, t) {
         if (gone && gone !== 'idle for 10 minutes') { finish(w.id, 'dropped', gone, t); touch(device); continue; }
         touch(device);
         if (needsConsent(device)) {
-            d.prepare("UPDATE device_queue SET state = 'held', consent = 'pending', consent_at = ?, started_at = NULL, ends_at = NULL WHERE id = ?").run(t, w.id);
+            d.prepare("UPDATE device_queue SET state = 'held', consent = 'pending', consent_at = ?, started_at = NULL, ends_at = ? WHERE id = ?").run(t, t + PENDING_PLACEHOLDER_MS, w.id);
             const p = row(d.prepare('SELECT * FROM device_queue WHERE id = ?').get(w.id));
             say(p.agentId, `Device ${device} is next for you (${p.why || 'no reason given'}), but Yukimi has to tap Allow on the phone first. Do NOT touch the device (no adb, device_shell, device_screenshot, taps) until a steer message says it is allowed.`);
             return p;
@@ -220,7 +225,7 @@ function request(agentId, device, opts = {}) {
             if (first && first.id === w.id) {
                 touch(dev);
                 if (needsConsent(dev)) {
-                    d.prepare("UPDATE device_queue SET state = 'held', consent = 'pending', consent_at = ?, started_at = NULL, ends_at = NULL WHERE id = ?").run(t, w.id);
+                    d.prepare("UPDATE device_queue SET state = 'held', consent = 'pending', consent_at = ?, started_at = NULL, ends_at = ? WHERE id = ?").run(t, t + PENDING_PLACEHOLDER_MS, w.id);
                     flush();
                     return pendingAnswer(dev, row(d.prepare('SELECT * FROM device_queue WHERE id = ?').get(w.id)));
                 }
@@ -332,6 +337,22 @@ function status(device) {
 }
 
 /**
+ * A lease granted by an agent-coord process from before consent existed (consent 'none' on a phone that needs it) is asked
+ * about at its first use through the server: it becomes a pending ask (the lease clock stops until Allow). Returns the row.
+ */
+function requireConsent(leaseId) {
+    const d = db();
+    const t = store.now();
+    const r = d.prepare('SELECT * FROM device_queue WHERE id = ?').get(Number(leaseId));
+    if (!r || r.state !== 'held' || (r.consent || 'none') !== 'none' || !needsConsent(r.device)) return r || null;
+    d.prepare("UPDATE device_queue SET consent = 'pending', consent_at = ?, started_at = NULL, ends_at = ? WHERE id = ?").run(t, t + PENDING_PLACEHOLDER_MS, r.id);
+    touch(r.device);
+    flush();
+    say(r.agent_id, `Device ${r.device} needs Yukimi's Allow on the phone first (your lease was granted before that rule existed). Do NOT touch it until a steer message says it is allowed.`);
+    return d.prepare('SELECT * FROM device_queue WHERE id = ?').get(r.id);
+}
+
+/**
  * Yukimi's answer for a pending ask (answered on the phone): 'allowed' starts the lease clock and tells the agent;
  * 'denied' ends the lease, tells the agent and grants the next waiter. { ok, lease } or { ok:false, error }.
  */
@@ -375,4 +396,4 @@ function snapshotConsent() {
     };
 }
 
-module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, setConsent, snapshotConsent, KNOWN, DEFAULT_CONSENT_DEVICES, DEFAULT_MIN, MAX_MIN, IDLE_MS };
+module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, setConsent, requireConsent, snapshotConsent, KNOWN, DEFAULT_CONSENT_DEVICES, DEFAULT_MIN, MAX_MIN, IDLE_MS };

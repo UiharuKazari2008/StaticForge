@@ -262,7 +262,7 @@ function isReadOnlyShell(command) {
 function holderOf(r) {
     if (!r) return null;
     const a = store.getAgent(r.agent_id);
-    return { agentId: r.agent_id, name: a ? (a.name || a.id) : r.agent_id, why: r.why, endsAt: r.ends_at || null, consent: r.consent || 'none' };
+    return { agentId: r.agent_id, name: a ? (a.name || a.id) : r.agent_id, why: r.why, endsAt: r.consent === 'pending' ? null : (r.ends_at || null), consent: r.consent || 'none' };
 }
 
 /**
@@ -291,6 +291,10 @@ function check(target, action) {
         if (!h) denied = d.prepare("SELECT * FROM device_queue WHERE device = ? AND state = 'denied' AND ended_at > ? ORDER BY id DESC LIMIT 1").get(dev, Date.now() - DENIED_NOTE_MS);
     } catch (e) {
         return { ok: false, code: 'DEVICE_NOT_GRANTED', error: `The lease table cannot be read (${e.message}); ${label} stays closed`, device: dev, holder: null, hint: HINT };
+    }
+    // a lease from before consent existed: the first use turns it into an ask (it never runs unasked)
+    if (h && (h.consent || 'none') === 'none') {
+        try { h = dq.requireConsent(h.id) || h; changed(dev); } catch (_) { /* answered below as not granted */ }
     }
     if (h && h.consent === 'allowed' && (!h.ends_at || h.ends_at > Date.now())) {
         return { ok: true, lease: { id: h.id, device: dev, agentId: h.agent_id, why: h.why, startedAt: h.started_at, endsAt: h.ends_at, consent: 'allowed' }, device: dev };

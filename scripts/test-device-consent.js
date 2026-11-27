@@ -100,7 +100,8 @@ t('request: a phone lease is pending, not started, and the agent is told to wait
     assert.strictEqual(rw.state, 'held');
     assert.strictEqual(rw.consent, 'pending');
     assert.strictEqual(rw.started_at, null);
-    assert.strictEqual(rw.ends_at, null);
+    assert.ok(rw.ends_at > Date.now() + 11 * 3600 * 1000, 'a far-future placeholder end (an older agent-coord process reads NULL as run out)');
+    assert.strictEqual(r.lease.endsAt, null, 'the lease shows no end while pending');
     assert.ok(rw.consent_at > 0);
     assert.strictEqual(steersTo('a').length, 0, 'no steer message that sounds granted');
     assert.ok(hookCalls.includes('a53'), 'the change hook fired');
@@ -121,7 +122,7 @@ t('request: a phone lease is pending, not started, and the agent is told to wait
     assert.strictEqual(st.holder.minutesLeft, 20);
     assert.strictEqual(dq.request('a', 'a53', { why: 'tap test 2', minutes: 10 }).consent, 'pending', 'asking again stays pending');
     assert.strictEqual(row(r.lease.id).minutes, 10);
-    assert.strictEqual(row(r.lease.id).ends_at, null);
+    assert.ok(row(r.lease.id).ends_at > Date.now() + 11 * 3600 * 1000);
     const rn = dq.renew('a', 'a53', 25);
     assert.strictEqual(rn.renewed, false);
     assert.strictEqual(rn.consent, 'pending');
@@ -250,6 +251,28 @@ t('devices that need no consent behave as before', () => {
     const unk = dc.check({ deviceId: 'board-9', name: 'a bench board' }, { kind: 'shell', command: 'x' });
     assert.strictEqual(unk.ok, false, 'a phone the table does not know is closed, never open');
     assert.strictEqual(unk.code, 'DEVICE_NOT_GRANTED');
+});
+
+t('a lease an older process granted (consent none) is asked about at its first gated use', () => {
+    clearDevice('a53');
+    const r0 = dq.request('a', 'a53', { why: 'old code grant' });
+    // what code from before consent did: held, consent none, a real end
+    store.open().prepare("UPDATE device_queue SET consent = 'none', started_at = ?, ends_at = ? WHERE id = ?").run(Date.now(), Date.now() + 600000, r0.lease.id);
+    const g = dc.check({ deviceId: 'a53' }, { kind: 'shell', command: 'input tap 1 1' });
+    assert.strictEqual(g.ok, false);
+    assert.strictEqual(g.code, 'DEVICE_PENDING');
+    assert.strictEqual(row(r0.lease.id).consent, 'pending');
+    assert.strictEqual(dq.snapshotConsent().asks.length, 1, 'it is an ask now');
+    assert.ok(/needs Yukimi's Allow/.test(lastSteer('a')), lastSteer('a'));
+});
+
+t('an older process sweeping the table (code from before consent: ends_at <= now means run out) leaves a pending ask alone', () => {
+    clearDevice('a53');
+    const r = dq.request('a', 'a53', { why: 'old sweep' });
+    assert.strictEqual(r.consent, 'pending');
+    const old = row(r.lease.id);
+    assert.ok(old.ends_at > Date.now(), 'the old rule `ends_at <= now` is false for a pending ask');
+    assert.strictEqual(dq.snapshotConsent().asks.length, 1);
 });
 
 t('timeout "wait": the ask stays pending, never granted, the notice goes quiet', async () => {
