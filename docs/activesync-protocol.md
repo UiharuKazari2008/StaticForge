@@ -188,12 +188,13 @@ show a balloon. The filter is cleared when the partnership ends.
 
 ## Programs (Yozora #795)
 
-An Android program (`.apk`) sent from the computer is offered to Android's package installer. Android always asks
-the user to confirm; the app only opens that prompt.
+An Android program (`.apk`) sent from the computer is installed silently (Shizuku, then the phone's own ADB);
+Android's installer is never opened (#1309). No install over ActiveSync leaves a file on the phone (#1332, Yukimi,
+Nov 26 2026: "all apk installs over active sync should not leave files on the phone").
 
 | Operation (to the service) | Arguments | Does |
 | --- | --- | --- |
-| `apps.install` | `{ temp, name, root, path }` (a program in the app's temporary folder, `temp` = the transfer id of its `stream.receive`) or `{ root, path }` (an `.apk` in shared storage) | local ADB or Shizuku when allowed; else a PackageInstaller session whose confirmation opens when the app is on screen, else posts "<app> <version> is ready to install" (tap opens it); without permission to install from Dreamscape, Android's Install unknown apps page first. A temporary file is deleted once the install ended (installed, failed or the prompt dismissed); one left behind (the app updated itself) goes at the next link start, as does any older than a day. Answers `{ state: prompted \| notified \| needs_permission \| installing \| installed, package, version, label, via? }`. Needs `control` (and `files` for a `path` in shared storage); queueable for a partner that is away (after its `stream.receive`). |
+| `apps.install` | `{ temp, name, root, path }` (a program in the app's temporary folder, `temp` = the transfer id of its `stream.receive`) or `{ root, path }` (an `.apk` in shared storage) | A temporary file is removed as soon as the install answers, success or failure, or at once when no route is up (answer `failed`: send it again); what a killed process left in the temporary folder goes at the next link start or hello, and a copy left as `/data/local/tmp/ds-install-*.apk` at the next link start with a shell route. An `.apk` in the user's own storage is never deleted: with no route it waits and installs by itself. The app's own staged update goes the same way; the app asks for it again with `as_event apps.updateWaiting { state: resend }` (see `client-api/ws/activeSync.md`). Answers `{ state: installing \| installed \| failed \| waiting, package, version, label, via?, why? }` (it waits up to 12 s for another program's install; `installing` for Dreamscape itself). Needs `control` (and `files` for a `path` in shared storage); queueable for a partner that is away (after its `stream.receive`). |
 
 From the desktop: Melaton Mobile Device Center > Programs and Services > Install a program on your device. From
 an agent (application key, admin): upload as for any file (`POST /api/activesync/upload/:deviceId/begin`, chunks,
