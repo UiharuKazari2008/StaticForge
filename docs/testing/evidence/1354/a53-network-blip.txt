@@ -1,0 +1,58 @@
+A53, release 29, media volume 0, 27 Nov 2026 EST. No recording was in progress any more: the one monitored earlier ended
+at 00:01:29 by the recorder's own rule for a search-term recording (the next song's cut, 00:00:39, was reached). So this
+ran on a long ENDED recording the server holds (listen only), not on a growing playlist. In the lines below "pos" and
+"buffered" are the media session's (position moved on by the sampler to the time of the sample).
+
+NETWORK BLIP test, release 29: a long ended recording the server holds (listen only; on-demand playlist with #EXT-X-ENDLIST)
+00:30:55 hand-off: {"ok":true,"value":true}
+00:31:15 before-blip screen=Awake appPid=6051 session=melaton-videos state=PLAYING(3) pos=20121 buffered=58512 next=n prev=n | started: piid:271 type:android.media.AudioTrack pid:6051 started | audioflinger: track 70 played=20.4s underruns=0
+00:31:15 screen off
+00:31:19 screen-off-before-blip screen=Dozing appPid=6051 session=melaton-videos state=PLAYING(3) pos=23870 buffered=58512 next=n prev=n | started: piid:271 type:android.media.AudioTrack pid:6051 started | audioflinger: track 70 played=24.2s underruns=0
+deadman: armed, Wi-Fi on in 90s (pid 8466)
+wifi: off at 00:31:20 (dead-man brings it back in 90 s)
+00:33:11 the old address did not answer (the phone had joined the other SSID), so the three samples taken there failed
+00:35:53 the phone is back on the LAN at a new address (192.168.100.236, the other SSID), serial checked
+deadmanPidFiles=0 wifi_on=1
+00:35:53 after-wifi-back screen=Dozing appPid=6051 session=melaton-videos state=PLAYING(3) pos=234481 buffered=253552 next=n prev=n | started: piid:279 type:android.media.AudioTrack pid:6051 started | audioflinger: track 71 played=176.3s underruns=0
+00:36:11 +later screen=Dozing appPid=6051 session=melaton-videos state=PLAYING(3) pos=252282 buffered=253552 next=n prev=n | started: piid:279 type:android.media.AudioTrack pid:6051 started | audioflinger: track 71 played=194.1s underruns=0
+-- logcat on the phone since the hand-off (Playback tag and the state of this player, piid 271):
+11-27 00:30:54.945  6051  6051 I Playback: hand-off start: radio recording monitor, screen on, sound only
+11-27 00:30:55.001  6051  6051 I Playback: foreground entered (mediaPlayback)
+11-27 00:30:55.136  1297  1297 D MediaSessionService: Audio playback is changed, config=AudioPlaybackConfiguration piid:271 deviceIds:[] type:android.media.AudioTrack u/pid:10339/6051 state:started
+11-27 00:31:53.649  1297  1297 D MediaSessionService: Audio playback is changed, config=AudioPlaybackConfiguration piid:271 deviceIds:[3] type:android.media.AudioTrack u/pid:10339/6051 state:paused
+11-27 00:31:53.695  6051  6051 I Playback: playback failed (ERROR_CODE_IO_NETWORK_CONNECTION_FAILED): trying again
+11-27 00:31:53.706  6051  6051 I Playback: retry lock acquired (599 s left in the window)
+11-27 00:32:57.366  6051  6051 I Playback: retry lock released (playing again)
+00:36:45 +1min screen=Dozing appPid=6051 session=melaton-videos state=PLAYING(3) pos=282799 buffered=312064 next=n prev=n | started: piid:279 type:android.media.AudioTrack pid:6051 started | audioflinger: track 71 played=224.6s underruns=23728
+new Playback lines after 00:32:58: 0
+00:36:55 +later2 screen=Dozing appPid=6051 session=melaton-videos state=PLAYING(3) pos=292952 buffered=312064 next=n prev=n | started: piid:279 type:android.media.AudioTrack pid:6051 started | audioflinger: track 71 played=234.7s underruns=23728
+after the test: stop, and clear my test report from the app
+00:39:52 before-stop screen=Awake appPid=6051 session=melaton-videos state=PLAYING(3) pos=470002 buffered=487600 next=n prev=n | started: piid:279 type:android.media.AudioTrack pid:6051 started | audioflinger: track 71 played=411.8s underruns=23728
+{"ok":true,"value":"stopped and cleared"}
+{"ok":true,"value":"{\"nativeActive\":false,\"nativeState\":\"off\",\"pageUp\":true,\"pageMonitoring\":false}"}
+after HOME: {"ok":true,"value":"{\"nativeActive\":false}"}
+ExoPlayer / playback-retry wake locks held: 0
+    versionName=1.0.3631988
+[V] volume is 0 in range [0..15]
+wifi_on=1 deadmanPidFiles=0 tcp=5555
+
+Android's connectivity log for the outage:
+  00:31:20.771 setWifiEnabled false (a53.sh wifi off, 90 s dead-man armed)   00:31:20.877 Wi-Fi disconnected
+  00:32:49.753 setWifiEnabled true (the dead-man)                           00:32:56.065 network connected
+Playback: reserve played out to 00:31:53, retried, playing again 00:32:57.4 (1.3 s after the network), same session,
+screen off throughout. Position afterwards = time since the hand-off less the 63.8 s of silence: nothing skipped, nothing
+restarted. adb came back at a new address (the phone joined the other SSID).
+
+A SECOND, SHORT PAUSE, NOT EXPLAINED. 3.2 s, 00:36:12.5 - 00:36:15.7, with no network change in Android's log and no
+Playback error. How far ahead the app's player had buffered (Samsung's MediaPlayerWrapper log of the media session):
+  00:33:00.668 PLAYING    position    61.7 s buffered to   117.0 s (ahead  55.3)
+  00:33:44.200 PLAYING    position   105.3 s buffered to   156.0 s (ahead  50.8)
+  00:34:28.344 PLAYING    position   149.4 s buffered to   204.8 s (ahead  55.4)
+  00:35:17.246 PLAYING    position   198.3 s buffered to   253.6 s (ahead  55.3)
+  00:36:12.482 BUFFERING  position   253.5 s buffered to   253.5 s (ahead   0.0)
+  00:36:15.740 PLAYING    position   253.5 s buffered to   263.3 s (ahead   9.8)
+  00:36:18.953 PLAYING    position   256.7 s buffered to   312.1 s (ahead  55.4)
+The load that should have begun about 00:35:57 (15 s of reserve left) delivered its first segment only at 00:36:15.
+That would fit one request that hung until the 15 s read timeout and then succeeded, but nothing logged proves it.
+That recording has no sequence jump and no mid-segment ID3 tag there. AudioFlinger's underrun counter rose once
+(23728 frames) at this pause and not again up to the stop at 00:39:52.

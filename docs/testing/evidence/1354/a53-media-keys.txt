@@ -1,0 +1,10 @@
+media key test (screen on)
+23:47:17 before-keys screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=63.8s underruns=0
+23:47:17.394 KEYCODE_MEDIA_NEXT
+23:47:22 after-next screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=68.5s underruns=0
+23:47:22.110 KEYCODE_MEDIA_PREVIOUS
+23:47:26 after-prev screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=73.2s underruns=0
+  Media button session is jp.net.seventhreeseven.dreamscape/androidx.media3.session.id.melaton-videos/4 (userId=0)
+11-26 23:47:17:280 MediaKeyEvt,pkg=jp.net.seventhreeseven.dreamscape pid=29461,uid=10339,asSystem=false,code=KEYCODE_MEDIA_NEXT,act:ACTION_DOWN
+11-26 23:47:17:282 MediaKeyEvt,pkg=jp.net.seventhreeseven.dreamscape pid=29461,uid=10339,asSystem=false,code=KEYCODE_MEDIA_NEXT,act:ACTION_UP
+11-26 23:47:21:954 MediaKeyEvt,pkg=jp.net.seventhreeseven.dreamscape pid=29461,uid=10339,asSystem=false,code=KEYCODE_MEDIA_PREVIOUS,act:ACTION_DOWN

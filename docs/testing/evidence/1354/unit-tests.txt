@@ -1,0 +1,14 @@
+DSApp-Kotlin fix/1354-native-monitor 8d96e72 (on fix/1322-screen-off-playback a70fea5), testDebugUnitTest on Ruiko in a
+fresh unpack (claude-build\dsapp-ut-1354), 26 Nov 2026:
+
+jp.net.seventhreeseven.dreamscape.PlaybackRulesTest: tests=43 failures=0
+  #1354's: theRadiosAddressesAreTheRadios, otherAddressesAreNot, onlyARecordingsPlaylistIsAMonitor,
+  onlyAMonitorsMissingPlaylistCountsTowardsItsEnd, aMonitorEndsOnlyAfterTheWholeGrace
+TOTAL suites=9 tests=124 failures=0 errors=0
+
+Server build: dsapp_build job 28 -> release 28, 1.0.3631954, build/latest 282db20, apk sha256
+a8c03d74648f1deb0824b514660e71ce32f604ef885cbb658cc60414d6ce7fb9, signed with the debug key 5c7b3ecc.
+
+Mid-segment ID3 tags (framing as modules/xmRadioPump.js adtsAudio), recording monitored on the A53: the segments played
+in the 14 minute window (about s393595 - s393684, 90 segments) held 0; the whole recording at 23:45 held 2 in 275
+(s393322, s393323, both before the window). So the A53 run did not exercise a mid-segment tag in the app's player.

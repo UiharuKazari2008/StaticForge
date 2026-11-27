@@ -1,0 +1,28 @@
+Every line of the A53's logcat (23:46 - 00:04) from: the app's "Playback" tag, Android's screen sleep / wake, and Android's
+audio player state for the two players used here (piid 199: the long Monitor; piid 207: the ended recording).
+piid 199 is "started" at 23:46:13 and changes state next at 00:00:36 (the stop): no pause or restart in between.
+In the same window: 0 lines of a WebView (AAudio) player for the app's uid.
+
+11-26 23:46:12.678 29461 29461 I Playback: hand-off start: radio recording monitor, screen on, sound only
+11-26 23:46:12.768 29461 29461 I Playback: foreground entered (mediaPlayback)
+11-26 23:46:13.213  1297  1297 D AudioPlayerStateMonitor: Found a new active media playback. AudioPlaybackConfiguration piid:199 deviceIds:[] type:android.media.AudioTrack u/pid:10339/29461 state:started
+11-26 23:46:13.220  1297  1297 D MediaSessionService: Audio playback is changed, config=AudioPlaybackConfiguration piid:199 deviceIds:[] type:android.media.AudioTrack u/pid:10339/29461 state:started
+11-26 23:51:03.146  1297  1457 I PowerManagerService: Going to sleep due to sleep_button (uid 1000
+11-26 23:59:52.628  1297  3792 I PowerManagerService: Waking up from Dozing (wake key)
+11-27 00:00:36.513  1297  1297 D MediaSessionService: Audio playback is changed, config=AudioPlaybackConfiguration piid:199 deviceIds:[3] type:android.media.AudioTrack u/pid:10339/29461 state:paused
+11-27 00:00:36.520 29461 29461 I Playback: foreground left
+11-27 00:00:52.445 29461 29461 I Playback: hand-off start: radio recording monitor, screen on, sound only
+11-27 00:00:52.491 29461 29461 I Playback: foreground entered (mediaPlayback)
+11-27 00:00:52.609  1297  1297 D AudioPlayerStateMonitor: Found a new active media playback. AudioPlaybackConfiguration piid:207 deviceIds:[] type:android.media.AudioTrack u/pid:10339/29461 state:started
+11-27 00:00:52.610  1297  1297 D MediaSessionService: Audio playback is changed, config=AudioPlaybackConfiguration piid:207 deviceIds:[] type:android.media.AudioTrack u/pid:10339/29461 state:started
+11-27 00:01:31.297  1297  1297 D MediaSessionService: Audio playback is changed, config=AudioPlaybackConfiguration piid:207 deviceIds:[3] type:android.media.AudioTrack u/pid:10339/29461 state:stopped
+11-27 00:01:31.689 29461 29461 I Playback: foreground left
+11-27 00:01:52.441 29461 29461 I Playback: hand-off start: radio recording monitor, screen on, sound only
+11-27 00:01:52.479 29461 29461 I Playback: foreground entered (mediaPlayback)
+11-27 00:01:55.530 29461 29461 I Playback: playback failed (ERROR_CODE_IO_BAD_HTTP_STATUS): trying again
+11-27 00:01:55.539 29461 29461 I Playback: retry lock acquired (599 s left in the window)
+11-27 00:04:07.079 29461 29461 I Playback: the recording is gone from the server: the monitor ends
+11-27 00:04:07.091 29461 29461 I Playback: retry lock released (ended)
+11-27 00:04:07.122 29461 29461 I Playback: foreground left
+11-27 00:04:17.427 29461 29461 I Playback: hand-off start: radio recording monitor, screen on, sound only
+11-27 00:04:17.492 29461 29461 I Playback: foreground entered (mediaPlayback)

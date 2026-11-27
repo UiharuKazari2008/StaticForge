@@ -1,0 +1,24 @@
+RECORDING GONE test: a rec/ address the server has no recording for (404), handed to AndroidVideos
+00:01:52 hand-off
+{"ok":true,"value":true}
+00:02:52
+{"ok":true,"value":"{\"nativeActive\":true,\"nativeState\":\"retrying\"}"}
+wake locks at +60s:
+  PARTIAL_WAKE_LOCK                 'dreamscape:playback-retry' ACQ=-57s166ms (uid=10339 pid=29461 displayId=0 lock=463d376 acqCnt=6)
+11-27 00:01:52.441 29461 29461 I Playback: hand-off start: radio recording monitor, screen on, sound only
+11-27 00:01:52.479 29461 29461 I Playback: foreground entered (mediaPlayback)
+11-27 00:01:55.530 29461 29461 I Playback: playback failed (ERROR_CODE_IO_BAD_HTTP_STATUS): trying again
+11-27 00:01:55.539 29461 29461 I Playback: retry lock acquired (599 s left in the window)
+00:04:11
+{"ok":true,"value":"{\"nativeActive\":false,\"nativeState\":\"off\"}"}
+00:04:12 gone+2m20 screen=Awake appPid=29461 session=NONE state=None pos=None buffered=None | started: none | audioflinger: no active track
+ExoPlayer / playback-retry wake locks held: 0
+11-26 23:46:12.678 29461 29461 I Playback: hand-off start: radio recording monitor, screen on, sound only
+11-26 23:46:12.768 29461 29461 I Playback: foreground entered (mediaPlayback)
+11-27 00:01:52.441 29461 29461 I Playback: hand-off start: radio recording monitor, screen on, sound only
+11-27 00:01:52.479 29461 29461 I Playback: foreground entered (mediaPlayback)
+11-27 00:01:55.530 29461 29461 I Playback: playback failed (ERROR_CODE_IO_BAD_HTTP_STATUS): trying again
+11-27 00:01:55.539 29461 29461 I Playback: retry lock acquired (599 s left in the window)
+11-27 00:04:07.079 29461 29461 I Playback: the recording is gone from the server: the monitor ends
+11-27 00:04:07.091 29461 29461 I Playback: retry lock released (ended)
+11-27 00:04:07.122 29461 29461 I Playback: foreground left

@@ -1,0 +1,50 @@
+#1354 proof on the A53 (Galaxy A53, adb), DSApp server release 28 = 1.0.3631954 (build/latest 282db20, includes
+fix/1354-native-monitor 8d96e72), 26-27 Nov 2026, times EST. Media volume 0. One line about every 30 s, read from adb:
+power state, the app's media session, the Android audio players of the app's uid that are "started", and AudioFlinger's
+row for the app's active track (played = frames the mixer consumed / 44100; underruns = its underrun counter).
+The media session reports no position for a live playlist (media3: position -1, speed 0), so progress is the
+AudioFlinger frame count. Monitor started 23:46:12 (page: wmXmRadio.monitor(rid), the same call the page's own Monitor
+makes) on a running recording, which was only listened to. Screen off (KEYCODE_SLEEP) 23:51:03, woken 23:59:52.
+
+23:46:37 first screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started
+23:46:57 check screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=43.8s underruns=0
+23:47:00 proof screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=46.8s underruns=0
+23:47:30 proof screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=76.7s underruns=0
+23:48:00 proof screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=106.8s underruns=0
+23:48:30 proof screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=136.8s underruns=0
+23:49:00 proof screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=166.8s underruns=0
+23:49:30 proof screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=196.7s underruns=0
+23:50:00 proof screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=226.8s underruns=0
+23:50:30 proof screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=256.7s underruns=0
+23:51:00 proof screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=286.8s underruns=0
+23:51:30 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=316.7s underruns=0
+23:52:00 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=346.8s underruns=0
+23:52:30 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=376.8s underruns=0
+23:53:00 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=406.7s underruns=0
+23:53:30 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=436.8s underruns=0
+23:54:00 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=466.8s underruns=0
+23:54:30 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=496.8s underruns=0
+23:55:00 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=526.8s underruns=0
+23:55:30 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=556.8s underruns=0
+23:56:00 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=586.7s underruns=0
+23:56:30 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=616.8s underruns=0
+23:57:00 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=646.8s underruns=0
+23:57:30 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=676.8s underruns=0
+23:58:00 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=706.8s underruns=0
+23:58:30 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=736.8s underruns=0
+23:59:00 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=766.8s underruns=0
+23:59:30 proof screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=796.8s underruns=0
+00:00:00 proof screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=826.7s underruns=0
+
+23:59:45 final-screen-off screen=Dozing appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=811.7s underruns=0
+  PARTIAL_WAKE_LOCK                 'AudioMix' ACQ=-13m31s943ms LONG (uid=1041 ws=WorkSource{ chains=WorkChain{(10339), (1041)}} displayId=-1 lock=5965062)
+  PARTIAL_WAKE_LOCK                 'ExoPlayer:WakeLockManager' ACQ=-13m32s412ms LONG (uid=10339 pid=29461 displayId=0 lock=b4a45f3)
+
+00:00:00 after-unlock screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) sessionPos=unknown(live) buffered=unknown(live) next=n prev=n | started: piid:199 type:android.media.AudioTrack pid:29461 started | audioflinger: track 61 played=826.6s underruns=0
+{"ok":true,"value":"{\"mon\":true,\"nativeActive\":true,\"nativeState\":\"playing\"}"}
+
+after wmXmRadio.mute() (stops listening only):
+{"ok":true,"value":"mute"}
+00:00:41 after-mute screen=Awake appPid=29461 session=NONE state=None pos=None buffered=None | started: none | audioflinger: no active track
+{"ok":true,"value":"{\"mon\":false,\"nativeActive\":false,\"nativeState\":\"off\"}"}
+ExoPlayer / playback-retry wake locks held: 0

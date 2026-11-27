@@ -1,0 +1,13 @@
+END OF RECORDING test: an ended recording the server still holds (4 segments, one #EXT-X-DISCONTINUITY, #EXT-X-ENDLIST), handed to AndroidVideos
+00:00:52 hand-off
+{"ok":true,"value":true}
+00:01:03 ended-rec+10s screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) pos=10170 buffered=39008 next=n prev=n | started: piid:207 type:android.media.AudioTrack pid:29461 started | audioflinger: track 62 played=10.4s underruns=0
+00:01:23 ended-rec+32s screen=Awake appPid=29461 session=melaton-videos state=PLAYING(3) pos=30727 buffered=39008 next=n prev=n | started: piid:207 type:android.media.AudioTrack pid:29461 started | audioflinger: track 62 played=31.0s underruns=0
+00:01:46 ended-rec+56s screen=Awake appPid=29461 session=NONE state=None pos=None buffered=None | started: none | audioflinger: no active track
+{"ok":true,"value":"{\"nativeActive\":false,\"nativeState\":\"off\"}"}
+ExoPlayer / playback-retry wake locks held: 0
+11-26 23:46:12.768 29461 29461 I Playback: foreground entered (mediaPlayback)
+11-27 00:00:36.520 29461 29461 I Playback: foreground left
+11-27 00:00:52.445 29461 29461 I Playback: hand-off start: radio recording monitor, screen on, sound only
+11-27 00:00:52.491 29461 29461 I Playback: foreground entered (mediaPlayback)
+11-27 00:01:31.689 29461 29461 I Playback: foreground left

@@ -1,0 +1,46 @@
+THE FOLLOW-UP BUG, BEFORE (release 28 = 8d96e72). The page says nothing to the app when the app's player ends a stream,
+so the app kept the finished Monitor as "what the page shows" and handed it over again the next time its window was left.
+Seen on the A53: the "gone recording" test had ended at 00:04:07; the HOME key pressed 10 s later started it again,
+with no page action (the second hand-off line, 00:04:17):
+
+11-27 00:04:07.079 29461 29461 I Playback: the recording is gone from the server: the monitor ends
+11-27 00:04:07.122 29461 29461 I Playback: foreground left
+11-27 00:04:17.427 29461 29461 I Playback: hand-off start: radio recording monitor, screen on, sound only
+11-27 00:04:17.492 29461 29461 I Playback: foreground entered (mediaPlayback)
+
+For a finished recording the server still holds, the same would have replayed it from its first minute.
+
+AFTER (release 29 = 1.0.3631988, with a5cd044):
+
+{"ok":true,"value":"page up"}
+A. report + hand-off of an ended recording (39 s), wait for its end, then leave the window twice
+00:22:10 app player: {"ok":true,"value":"{\"active\":false,\"state\":\"off\"}"}
+00:22:10 hand-off: {"ok":true,"value":true}
+00:22:23 app player: {"ok":true,"value":"{\"active\":true,\"state\":\"playing\"}"}
+00:23:03 app player: {"ok":true,"value":"{\"active\":false,\"state\":\"off\"}"}
+00:23:03 Settings in front
+front: com.android.settings/.homepage.SettingsHomepageActivity
+00:23:09 app player: {"ok":true,"value":"{\"active\":false,\"state\":\"off\"}"}
+00:23:09 HOME
+front: jp.net.seventhreeseven.dreamscape/.HomeAlias
+00:23:16 app player: {"ok":true,"value":"{\"active\":false,\"state\":\"off\"}"}
+-- Playback log since the start of A:
+11-27 00:22:10.599  6051  6051 I Playback: hand-off start: radio recording monitor, screen on, sound only
+11-27 00:22:10.714  6051  6051 I Playback: foreground entered (mediaPlayback)
+11-27 00:22:50.294  6051  6051 I Playback: foreground left
+
+B. control: the same report, NOT handed off and not ended, then leave the window
+00:23:16 report only: {"ok":true,"value":"reported"}
+00:23:19 app player: {"ok":true,"value":"{\"active\":false,\"state\":\"off\"}"}
+00:23:19 Settings in front
+front: com.android.settings/.homepage.SettingsHomepageActivity
+00:23:25 app player: {"ok":true,"value":"{\"active\":true,\"state\":\"playing\"}"}
+00:23:25 stop and clear the report: {"ok":true,"value":"stopped and cleared"}
+00:23:29 app player: {"ok":true,"value":"{\"active\":false,\"state\":\"off\"}"}
+after HOME, front: jp.net.seventhreeseven.dreamscape/.HomeAlias
+00:23:35 app player: {"ok":true,"value":"{\"active\":false,\"state\":\"off\"}"}
+-- Playback log since the start of B:
+11-27 00:23:19.355  6051  6051 I Playback: hand-off start: radio recording monitor, screen on, sound only
+11-27 00:23:19.443  6051  6051 I Playback: foreground entered (mediaPlayback)
+11-27 00:23:25.801  6051  6051 I Playback: foreground left
+ExoPlayer / playback-retry wake locks held: 0
