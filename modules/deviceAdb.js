@@ -403,7 +403,9 @@ function classify(list) {
  */
 const crypto = require('crypto');
 const shotWaits = new Map(); // token -> { deviceId, resolve, reject, timer }
-const PHONE_FALLBACK = new Set(['UNKNOWN_OP', 'NOT_CONNECTED', 'OFFLINE', 'NO_SOCKET', 'NOT_ANSWERED', 'UNSUPPORTED', 'NOT_ONLINE', 'NOT_LISTENING', 'UNAUTHORIZED']);
+// 'ADB' (the phone's own link failed to open or dropped): the app no longer calls a trusted key's first dropped connection
+// UNAUTHORIZED (StaticForge #1379), and both ops behind this set only read, so the server's own dial may take them over
+const PHONE_FALLBACK = new Set(['UNKNOWN_OP', 'NOT_CONNECTED', 'OFFLINE', 'NO_SOCKET', 'NOT_ANSWERED', 'UNSUPPORTED', 'NOT_ONLINE', 'NOT_LISTENING', 'UNAUTHORIZED', 'ADB']);
 
 function phoneCall(globalResources, deviceId, op, args, timeoutMs) {
     const as = activeSync();
