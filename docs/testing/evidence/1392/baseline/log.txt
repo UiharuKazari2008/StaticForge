@@ -1,0 +1,47 @@
+[13:56:57] === baseline  on aemu-fold-1 (agent claude-974b3227) evidence /home/kanmi/staticforge/docs/testing/evidence/1392/baseline ===
+[13:57:00] status: shape=fold booted=true shizukuRunning=true (pid 3056) appVersionCode=3632745 noAudio=true screen=Awake appPid=1620; skewMs=-728 
+[13:57:00] INFO  bars state before: {"ok":false,"error":"socket hang up"}
+[13:57:00] FAIL  the page's setter did not answer (is the page up?): {"ok":false,"error":"socket hang up"}
+[13:57:00] PASS  held after 0.2 s: holder=2152 app=1620 recs=1
+[13:57:01] INFO  state: holder=2152 app=1620 recs=1 out=[OK ] vc=3632745 shizuku=3056 adbd=547 mode=0 overlay=threebutton,
+[13:57:01] PASS  one holder pid (2152)
+[13:57:01]       record:     [3] userId=0 what1=0x03600000 what2=0x00000000 pkg=com.android.shell token=android.os.BinderProxy@a3f722e
+[13:57:01] PASS  one disable record of the shell holder
+[13:57:01] INFO  record flags what1=0x03600000 (expected 0x03600000 while held)
+[13:57:01] PASS  melaton_navblank.out is 'OK' (the token was linked)
+[13:57:01]       chain: pid=2152 ppid=1 pgrp=2152 sid=2152 uid=2000 comm=[main] cmd=[melaton_navblank                                                                                                                            ] cgroup=[3:cpuset:/ 2:cpu:/ 1:blkio:/ 0::/system/uid_0/pid_547 ] ctx=[u:r:shell:s0]
+[13:57:01]       chain: pid=1 ppid=0 pgrp=0 sid=0 uid=0 comm=[init] cmd=[/system/bin/init second_stage ] cgroup=[3:cpuset:/ 2:cpu:/ 1:blkio:/ 0::/ ] ctx=[u:r:init:s0]
+[13:57:01]       ps -A -o PID,PPID,NAME:   PID  PPID NAME                       
+[13:57:01]       ps -A -o PID,PPID,NAME:     1     0 init
+[13:57:01]       ps -A -o PID,PPID,NAME:  2152     1 melaton_navblank
+[13:57:01] PASS  the holder is no descendant of adbd (its parent chain ends at pid 1: a started-and-detached process; the route is NOT decidable from ancestry alone, the cmd / sid / cgroup above and the adbd step decide)
+[13:57:01] INFO  route by ancestry: ORPHAN
+[13:57:01] INFO  Shizuku server pid 3056; guest: shizuku=3056 adbd=547 holder=2152 app=1620
+[13:57:02]       a11y:      Bound services:{Service[label=Melaton Bars, feedbackType[FEEDBACK_GENERIC], capabilities=169, eventTypes=[TYPE_WINDOW_STATE_CHANGED, TYPE_WINDOWS_CHANGED], notificationTimeout=200, requestA11yBtn=false]}
+[13:57:02]       a11y:      Binding services:{}
+[13:57:02]       a11y:      Crashed services:{}
+[13:57:02] PASS  MelatonBarService is bound and not in Crashed services
+[13:57:02]       app log (180 s):          1795805709.217   547   547 I adbd    : adbd service requested 'shell,v2,raw:old=$(pidof melaton_navblank); rm -f /data/local/tmp/melaton_navblank.out; (CLASSPATH='/data/app/~~IDNFfCG9mmikpc1WqNByLg==/jp.net.seventhreeseve
+[13:57:02]       app log (180 s):          1795805710.136  1620  1620 I MelatonBars: ime probe live: visible=false bottom=0
+[13:57:02]       app log (180 s):          1795805710.846  1620  1838 I MelatonBars: holder token linked (#1331)
+[13:57:02]       app log (180 s):          1795805711.431  1620  1620 I MelatonBars: show: on=false fits=true status=false bar=false top=true ext=false tray=false give=false
+[13:57:02]       app log (180 s):          1795805714.686  1620  1620 I MelatonBars: show: on=false fits=true status=false bar=true top=true ext=false tray=false give=false
+[13:57:02]       app log (180 s):          1795805721.789  1070  1155 D AlphabeticIndexCompat: computeSectionName: cs: Shizuku sectionName: S
+[13:57:02]       app log (180 s):          1795805726.027  3041  3041 D Shizuku : start_server
+[13:57:02]       app log (180 s):          1795805726.037  3043  3043 D Shizuku : child
+[13:57:02]       app log (180 s):          1795805726.037  3043  3043 D Shizuku : exec app_process
+[13:57:02]       app log (180 s):          1795805726.508  3055  3055 D Shizuku : start_server
+[13:57:02]       app log (180 s):          1795805726.509  3056  3056 D Shizuku : child
+[13:57:02]       app log (180 s):          1795805726.510  3056  3056 D Shizuku : exec app_process
+[13:57:02]       app log (180 s):          1795805727.169  3056  3056 D AndroidRuntime: Calling main entry rikka.shizuku.server.ShizukuService
+[13:57:02]       app log (180 s):          1795805727.345  2962  2971 I ShizukuApplication: attachApplication
+[13:57:02] INFO  (the lines 'holder token linked (#1331)' / "Shizuku's binder arrived: holding the row (#1331)" exist only on a fixed build; absent on an older one)
+[13:57:02] INFO  full statusbar dump: /home/kanmi/staticforge/docs/testing/evidence/1392/baseline/baseline-20261127-135657-statusbar.txt
+[13:57:06] INFO  screenshot /home/kanmi/staticforge/docs/testing/evidence/1392/baseline/baseline-20261127-135657-settings-in-front.png (display 0; proves nothing about the row, see the disable record)
+[13:57:09] INFO  screenshot /home/kanmi/staticforge/docs/testing/evidence/1392/baseline/baseline-20261127-135657-home.png (display 0; proves nothing about the row, see the disable record)
+[13:57:09] RESULT baseline: FAIL (1 failed check(s))
+[14:28:34] === end  on aemu-fold-1 (agent claude-974b3227) evidence /home/kanmi/staticforge/docs/testing/evidence/1392/baseline ===
+[14:28:39] removed from the guest: the sampler file, its pid file and the guest helper
+[14:28:39] final: holder=21459 app=20968 recs=1 out=[OK ] vc=3632745 shizuku=3056 adbd=547 mode=0 overlay=threebutton,
+[14:28:39] the instance aemu-fold-1 keeps running for its lease holder (release it with coord_device_release)
+[14:28:39] RESULT end: PASS (no failed check)
