@@ -16,6 +16,8 @@
  *                                                  push: sent live over the background link (as_event inbox.notice);
  *                                                  get: stored only - the phone fetches it (hello catch-up, the status
  *                                                  snapshot's notices list, POST .../catch-up)
+ *   POST   /api/test-devices/:id/notice          the same body for ONE test device: stored without the live send to all, then
+ *                                                  that device's catch-up -> { mode, deviceId, notice, sent }
  *   POST   /api/test-devices/notice/:nid/clear   cleared at the server (as_event inbox.cleared to the test devices)
  *   DELETE /api/test-devices/notices             clear the whole test lane
  *   POST   /api/test-devices/:id/catch-up        what a hello would send now (notificationInbox.catchUpPhone)
@@ -68,13 +70,11 @@ function mount(app, authMiddleware, globalResources) {
         res.json({ success: testDevices.unmark(req.params.id) });
     });
 
-    app.post('/api/test-devices/notice', auth, admin, (req, res) => {
-        if (!testDevices.list().length) { refuse(res, 409, 'NO_TEST_DEVICE', 'No test device is set.'); return; }
-        const b = req.body || {};
-        const mode = b.mode === 'get' ? 'get' : 'push';
+    // One test notice into the test lane. push: true = sent live to every test device now; false = stored only
+    const publishTestNotice = (b, push) => {
         const id = String(b.id || `test:${Date.now().toString(36)}`).slice(0, 120);
-        const notice = inbox().publish({
-            user: 'test', id, push: mode === 'push', alert: b.alert === true ? true : undefined,
+        return inbox().publish({
+            user: 'test', id, push, alert: b.alert === true ? true : undefined,
             // stack: the key a stacked notice joins (#1098: ten test mails with stack 'mail' are one stack:mail row)
             stack: typeof b.stack === 'string' && /^[a-z0-9-]{1,30}$/.test(b.stack) ? b.stack : undefined,
             title: String(b.title || 'Test notice'), text: String(b.text || ''), cls: String(b.cls || 'test'), app: String(b.app || 'test'),
@@ -83,8 +83,30 @@ function mount(app, authMiddleware, globalResources) {
             actions: Array.isArray(b.actions) ? b.actions : [], data: Object.assign({ kind: 'test' }, b.data && typeof b.data === 'object' ? b.data : {}),
             ttlMs: Number(b.ttlMs) || 6 * 60 * 60 * 1000
         });
+    };
+
+    app.post('/api/test-devices/notice', auth, admin, (req, res) => {
+        if (!testDevices.list().length) { refuse(res, 409, 'NO_TEST_DEVICE', 'No test device is set.'); return; }
+        const b = req.body || {};
+        const mode = b.mode === 'get' ? 'get' : 'push';
+        const notice = publishTestNotice(b, mode === 'push');
         if (!notice) { refuse(res, 400, 'NOT_STORED', 'The notice was not stored (no title, or already expired).'); return; }
         res.json({ success: true, mode, notice });
+    });
+
+    // One test notice for ONE test device (the emulator lane, lane.sh <id> notice): stored in the test lane without the live
+    // send to every test device, then that device's hello catch-up runs (what a hello would send it: this notice, alert on, and
+    // any older test notice it has not confirmed). mode 'get' stores only. The stored copy is still the test lane's, so another
+    // test device fetches it on its own next hello; the lane never reaches a real phone.
+    app.post('/api/test-devices/:id/notice', auth, admin, (req, res) => {
+        const dev = String(req.params.id || '').toLowerCase();
+        if (!testDevices.isTestDevice(dev)) { refuse(res, 404, 'NOT_TEST_DEVICE', 'Not a test device.'); return; }
+        const b = req.body || {};
+        const mode = b.mode === 'get' ? 'get' : 'push';
+        const notice = publishTestNotice(b, false);
+        if (!notice) { refuse(res, 400, 'NOT_STORED', 'The notice was not stored (no title, or already expired).'); return; }
+        const sent = mode === 'push' ? inbox().catchUpPhone(dev) : 0;
+        res.json({ success: true, mode, deviceId: dev, notice, sent });
     });
 
     app.post('/api/test-devices/notice/:nid/clear', auth, admin, (req, res) => {

@@ -189,7 +189,11 @@ quiet_volumes() {
 }
 
 noaudio_check() { # true when the qemu process of this instance carries -no-audio (never Ruiko's speakers)
-  local c; c=$(rps "(Get-CimInstance Win32_Process -Filter \"Name='qemu-system-x86_64-headless.exe'\" | ? { \$_.CommandLine -match '-avd $ID ' }).CommandLine")
+  local c; c=$(rps "\$id = '$ID'
+$(cat <<'PS'
+(Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'qemu-system*' -and $_.CommandLine -match ('-avd ' + $id + ' ') }).CommandLine
+PS
+)")
   case "$c" in *' -no-audio '*) return 0;; esac
   return 1
 }
@@ -210,13 +214,19 @@ setup_device() { # root, never sleeps or locks, adb on, cutout (fold)
   if [ "$SHAPE" = fold ]; then S wm density 360 >/dev/null; posture_overlay inner; fi
 }
 
+dev_skew() { # device clock minus this server's clock, ms (the emulator takes Ruiko's clock)
+  local d l; l=$(now_ms); d=$(SR 'date +%s%3N'); echo $(( ${d:-$l} - l ))
+}
 disp0() { SR dumpsys SurfaceFlinger --display-id 2>/dev/null | awk '/HWC display 0/ {print $2; exit}'; }
 
 # ------------------------------------------------------------------ Ruiko-side process state
 ruiko_emus() { # prints "<avd> <pid> <port>" per running lane emulator
-  rps '
-$p = Get-CimInstance Win32_Process -Filter "Name=''emulator.exe''" -ErrorAction SilentlyContinue
-foreach ($x in $p) { if ($x.CommandLine -match "-avd (aemu-[a-z0-9-]+).* -port (\d+)") { $matches[1] + " " + $x.ProcessId + " " + $matches[2] } }'
+  rps "$(cat <<'PS'
+foreach ($x in (Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'emulator.exe' })) {
+  if ($x.CommandLine -match '-avd (aemu-[a-z0-9-]+).* -port (\d+)') { $matches[1] + ' ' + $x.ProcessId + ' ' + $matches[2] }
+}
+PS
+)"
 }
 
 start_emulator() { # start_emulator <extra emulator args>
@@ -354,7 +364,7 @@ for b in json.load(sys.stdin).get('builds',[]):
   case "$out" in *Success*) meta_set apk_versionCode "$vc"; J ok=b:true "build=n:$bid" "versionCode=n:$vc" installed=b:true "sha256=$sha";; *) die "install failed: $out";; esac
 }
 install_shizuku() {
-  [ -n "$(shz_dir)" ] && [ "$1" != --force ] && return 0
+  [ -n "$(shz_dir)" ] && [ "${1:-}" != --force ] && return 0
   [ -r "$SHZ_APK" ] || die "no Shizuku APK at $SHZ_APK (see docs/testing/emulator-lane.md)"
   A install -r "$SHZ_APK" 2>&1 | tr -d '\r' | grep -q Success || die "Shizuku install failed"
 }
@@ -383,7 +393,7 @@ status_json() {
     "autoRotate=$(SR settings get system accelerometer_rotation)" "screen=$(SR dumpsys power | grep -m1 -o 'mWakefulness=[A-Za-z]*' | cut -d= -f2)" \
     "doze=$(SR dumpsys deviceidle | grep -m1 -o 'mState=[A-Z_]*' | cut -d= -f2)" \
     "appPid=n:${PID_APP:-$(apppid)}" "appVersionCode=n:$(app_version)" "top=$(top_activity)" \
-    "shizukuRunning=b:$([ -n "$sp" ] && echo true || echo false)" "shizukuPid=n:${sp:-0}" \
+    "noAudio=b:$(noaudio_check && echo true || echo false)" "shizukuRunning=b:$([ -n "$sp" ] && echo true || echo false)" "shizukuPid=n:${sp:-0}" \
     "adb=j:$(adb_state)" "deviceId=$(meta_get device_id)" "displays=j:$(SR dumpsys SurfaceFlinger --display-id | grep -o 'HWC display [0-9]*' | awk '{print $3}' | tr '\n' ' ' | python3 -c "import sys,json; print(json.dumps([int(x) for x in sys.stdin.read().split()]))")"
 }
 
@@ -496,7 +506,7 @@ case "$cmd" in
     J ok=b:true id="$ID" state=golden "bootSecs=n:$secs" noAudio=b:true;;
   golden)
     running && booted || die "$ID is not running"
-    con avd snapshot save golden >/dev/null 2>&1 || die "snapshot save failed"
+    CON_TIMEOUT=240 con avd snapshot save golden >/dev/null 2>&1 || die "snapshot save failed"
     J ok=b:true id="$ID" golden=b:true;;
   reboot)
     A reboot >/dev/null 2>&1
@@ -593,6 +603,44 @@ case "$cmd" in
       usb) A usb >/dev/null 2>&1; sleep 4; A wait-for-device; adb_state;;
       wireless) case "${2:-}" in on) S settings put global adb_wifi_enabled 1;; off) S settings put global adb_wifi_enabled 0;; *) die "adbd wireless on|off" 2;; esac; sleep 2; wifi_dialog >/dev/null 2>&1; adb_state;;
       *) die "adbd status|tcpip [port]|usb|wireless on|off" 2;;
+    esac;;
+  now) J ok=b:true "deviceMs=n:$(SR 'date +%s%3N')" "localMs=n:$(now_ms)" "skewMs=n:$(dev_skew)";;
+  notifs)
+    SR dumpsys notification --noredact | python3 "$HERE/lib/notifs.py" "$PKG";;
+  logcat)
+    secs=60; all=0
+    for a in "$@"; do case "$a" in --all) all=1;; [0-9]*) secs=$a;; esac; done
+    nowd=$(SR date +%s)
+    SR "logcat -d -v epoch -b main -b system -b crash" | awk -v from=$(( nowd - secs )) '{ t=$1+0; if (t >= from) print }' > "$STATE/logcat-$ID.txt"
+    if [ $all = 1 ]; then cat "$STATE/logcat-$ID.txt"
+    else grep -E "$PKG|dreamscape|AndroidRuntime|NoteAlerts|MelatonBars|ApkInstall|LocalAdb|ActiveSync|Shizuku|CafeReady|AppNote|ShellService" "$STATE/logcat-$ID.txt"; fi;;
+  sound)
+    since=''; wav=0
+    while [ $# -gt 0 ]; do case "$1" in --since) since=$2; shift 2;; --wav) wav=1; shift;; *) shift;; esac; done
+    [ -n "$since" ] || since=$(( $(now_ms) - 60000 ))
+    skew=$(dev_skew); sdev=$(( since + skew ))
+    SR "logcat -d -v epoch -b main -b events" > "$STATE/sound-$ID.log"
+    SR dumpsys audio > "$STATE/sound-$ID.playback"
+    wavinfo=-
+    if [ $wav = 1 ]; then wavinfo=$STATE/sound-$ID.wav.json; wav_info > "$wavinfo" 2>/dev/null || wavinfo=-; fi
+    python3 "$HERE/lib/sound.py" "$sdev" "$STATE/sound-$ID.log" "$STATE/sound-$ID.playback" "$wavinfo";;
+  notice)
+    sub=${1:-}; shift || true
+    dev=$(meta_get device_id); [ -n "$dev" ] || dev=$(dev_id); [ -n "$dev" ] || die "no device id for $ID (lane.sh $ID provision)"
+    case "$sub" in
+      push|get)
+        body=${1:-'{}'}; body=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); d['mode']=sys.argv[2]; print(json.dumps(d))" "$body" "$sub") || die "the notice is not JSON"
+        r=$(api POST "/api/test-devices/$dev/notice" "$body")
+        if echo "$r" | grep -q '"success":true'; then echo "$r"; exit 0; fi
+        # the one-device route needs a server restart to go live: the same thing with the routes that are live
+        # (store without the live send to all, then THAT device's hello catch-up)
+        r=$(api POST /api/test-devices/notice "$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); d['mode']='get'; print(json.dumps(d))" "$body")")
+        echo "$r" | grep -q '"success":true' || die "the server refused the notice: $(echo "$r" | head -c 200)"
+        if [ "$sub" = push ]; then c=$(api POST "/api/test-devices/$dev/catch-up"); else c='{"sent":0}'; fi
+        python3 -c "import json,sys; n=json.loads(sys.argv[1]); c=json.loads(sys.argv[2]); print(json.dumps({'ok':True,'mode':sys.argv[3],'deviceId':sys.argv[4],'notice':n.get('notice'),'sent':c.get('sent',0),'route':'store+catch-up'}))" "$r" "$c" "$sub" "$dev";;
+      clear) [ -n "${1:-}" ] || die "notice clear <noticeId>"; api POST "/api/test-devices/notice/$1/clear";;
+      reset) api DELETE /api/test-devices/notices;;
+      *) die "notice push|get '<json>' | clear <id> | reset" 2;;
     esac;;
   *) die "unknown command for an instance: $cmd (lane.sh help)" 2;;
 esac

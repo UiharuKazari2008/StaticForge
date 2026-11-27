@@ -3,7 +3,7 @@
 import os, socket, sys, time
 port = int(sys.argv[1]); cmd = ' '.join(sys.argv[2:])
 tok = open(os.path.expanduser('~/.secrets/aemu-console.token')).read().strip()
-s = socket.create_connection(('127.0.0.1', port), timeout=10)
+s = socket.create_connection(("127.0.0.1", port), timeout=int(os.environ.get("CON_TIMEOUT", "10")))
 def until_ok():
     buf = b''
     while not (buf.endswith(b'OK\r\n') or b'KO:' in buf):
