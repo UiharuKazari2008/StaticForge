@@ -340,6 +340,7 @@
     // notices only the server raises (no page app shows its own live note for them): the inbox shows them itself
     // test: the test lane's notices (modules/testDevices.js, the emulator harness) have no page producer either
     // director: the turn-finished notice (wmShell no longer posts one of its own: it was a second notification, #997)
+    const DEVICE_KINDS = new Set(['device-ask', 'device-hold']); // phone consent (#1284, #1305)
     const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key', 'test', 'director', 'work-done', 'work-attention', 'account-login', 'maintenance', 'usage-flag', 'device-ask', 'device-hold']); // Fleet's notices (modules/fleetNotices.js, #1196, #1291)
 
     let iconPrefsSent = '';
@@ -405,10 +406,14 @@
     function answerKeys(notice) {
         const d = (notice && notice.data) || {};
         if (d.answerType !== 'device_consent_answer' || !Array.isArray(d.buttons) || !d.buttons.length) return null;
+        // the box goes when the server has the answer (it clears the notice whatever came of it); a send that never
+        // arrived (no link, timed out) leaves the box up with its keys, to tap again (#1305)
+        let sending = false;
         const key = (b) => ({ label: String(b.label || b.id).slice(0, 20), action: () => {
-            const c = client();
-            if (c && typeof c.sendMessage === 'function') void Promise.resolve(c.sendMessage('device_consent_answer', { id: notice.id, answer: String(b.id) }, false)).catch(() => { /* the notice stays: tap again */ });
-            close(notice.id);
+            if (sending) return;
+            sending = true;
+            ask('device_consent_answer', { id: notice.id, answer: String(b.id) }, 8000)
+                .then(() => close(notice.id), () => { sending = false; });
         } });
         // the in-use notice has one button (End): Dismiss beside it
         if (d.buttons.length === 1) return { left: key(d.buttons[0]), right: { label: 'Dismiss', icon: 'dismiss', action: () => { ack(notice.id, 'cleared'); close(notice.id); } } };
@@ -473,8 +478,11 @@
             // arrived while the app was away: show it. Arrived live (while we were here): seen only when its app was seen
             // to show it - a page asleep in the background showed nothing, and its notices were marked seen unseen (the
             // Lapis notices never came up, Nov 18)
-            if (n.state === 'new' && n.createdAt < connectedAt) show(n);
-            else if (n.state === 'new') { if (producerShown.has(n.id) || shownNotes.has(n.id)) ack(n.id, 'seen'); else show(n); }
+            // a phone-consent ask / in-use notice (#1305) was sounded where it arrived (the app's own link, a live packet):
+            // shown again here silent, never a second sound
+            const consent = DEVICE_KINDS.has(String((n.data && n.data.kind) || ''));
+            if (n.state === 'new' && n.createdAt < connectedAt) show(n, { quiet: consent });
+            else if (n.state === 'new') { if (producerShown.has(n.id) || shownNotes.has(n.id)) ack(n.id, 'seen'); else show(n, { quiet: consent }); }
         }
         // reminders listed before and still not dismissed (a delta leaves them out): up again when not up
         reminders.forEach((n) => showReminder(n));
@@ -506,7 +514,8 @@
             // a kind no page app raises live (the household mailbox, server notices, #908): shown here
             const kind = d.notice.data && d.notice.data.kind;
             // a class shown without a message (Display message on screen off) is stored seen: nothing to show
-            if (!document.hidden && SERVER_ONLY_KINDS.has(kind)) { if (!d.notice.state || d.notice.state === 'new') show(d.notice); return; }
+            // the server's alert decides the sound (#1305: an in-use notice, a repeat ask): shown either way, silent when false
+            if (!document.hidden && SERVER_ONLY_KINDS.has(kind)) { if (!d.notice.state || d.notice.state === 'new') show(d.notice, { quiet: d.notice.alert === false }); return; }
             if (!document.hidden) producerShows(d.notice);
         }
     }

@@ -223,7 +223,8 @@ function publish(notice = {}) {
     // Yukimi: "If you went off once, you don't get to go off again ... unless the alert has been majorly changed."
     // Every publish carries a digest of what the notice says: the producer's own (notice.digest: the thing that makes
     // it a different event) or sha1 of title | text | data.stamp (not the class: see escalation). The stored row (cur) decides:
-    //   - no row: loud, new.
+    //   - no row: loud, new - unless the producer said alert: false (#1305: an in-use status, a repeat ask within its
+    //     re-sound window, the call summary): new, shown, silent.
     //   - a live row (new / seen), the producer did not say alert: a countdown step, a commute update, a place added to
     //     an alert: updated in place, silent - unless it escalated.
     //   - a live row, alert: true: loud only when the digest changed (or it escalated); the same thing again is silent.
@@ -244,7 +245,7 @@ function publish(notice = {}) {
     const custom = typeof notice.digest === 'string' && notice.digest !== '';
     const dataObj = notice.data && typeof notice.data === 'object' ? notice.data : {};
     row.digest = custom ? sha1(`c|${notice.digest}`) : defaultDigest(row.title, row.text, dataObj.stamp);
-    let alert = true;
+    let alert = notice.alert !== false;
     try {
         const cur = database().prepare('SELECT state, digest, title, text, cls, data, expiresAt FROM notices WHERE user = ? AND id = ?').get(user, id);
         if (cur) {

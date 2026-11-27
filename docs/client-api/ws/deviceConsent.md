@@ -18,11 +18,11 @@ No broadcast: the packets are request / response only (so they need no entry in 
 
 ## Notices
 
-All for user `admin`, app `claudedesk`, class `fleet`, no stack.
+All for user `admin`, app `claudedesk`, class `notification` (the "Other notifications" sound she chose; never `fleet`, #1305), no stack.
 
 | Notice | id | Sound | Life | Content |
 |---|---|---|---|---|
-| Ask | `device-ask:<leaseId>` | loud once (digest `ask:<leaseId>`: a repeat sync is silent) | 12 h | title `<agent> wants the <label>`, text `Why: <why>. For up to <minutes> min. Allow it?`, buttons Allow / Deny. `data { app, kind: 'device-ask', leaseId, device, buttons: [{id, label}], answerType: 'device_consent_answer', page: 'devices' }` |
+| Ask | `device-ask:<leaseId>` | sounds once (digest `ask:<leaseId>`: a repeat sync is silent); silent, still shown, when the same agent asked for the same phone within 15 min or another ask sounded in the last minute | 12 h | title `<agent> wants the <label>`, text `Why: <why>. For up to <minutes> min. Allow it?`, buttons Allow / Deny. `data { app, kind: 'device-ask', leaseId, device, buttons: [{id, label}], answerType: 'device_consent_answer', page: 'devices' }` |
 | Hold | `device-hold:<device>` (one per device) | published `alert: false`: silent on every update (the inbox sounds a brand-new row whatever `alert` says, so its first publish is not yet guaranteed silent) | until the lease's `endsAt` + 5 min | title `<label> is in use by <agent>`, text `<why>. Until HH:MM.`, `data { app, kind: 'device-hold', device, leaseId, page: 'devices' }` |
 
 A button press sends `device_consent_answer { id: <notice id>, answer: <button id> }`. After the answer time (`timeoutSec`) passes the ask is published again silent (still shown); an ask or hold that is no longer true is cleared by the next `deviceConsentNotices.sync(snapshot, settings, { quiet })`.

@@ -108,6 +108,7 @@ async function test(name, f) {
         mark();
         cn.sync({ asks: [ask({ leaseId: 'L5' })], holds: [] }, {}, { now: t0 + 5 * 60000 });
         assert.deepStrictEqual(asked, [['device-ask:L5', false]], 'published silent');
+        assert.strictEqual(loud(), 0, 'the new row stays silent');
         assert.deepStrictEqual(mine().map((n) => n.id), ['device-ask:L5']);
         assert.strictEqual(toPhones.length, 1, 'the phone still gets it');
         assert.deepStrictEqual(mine()[0].data.buttons.map((b) => b.id), ['allow', 'deny']);
@@ -120,6 +121,7 @@ async function test(name, f) {
         const t0 = Date.now();
         cn.sync({ asks: [ask(), ask({ leaseId: 'L8', agentId: 'ag8', device: 'fold' })], holds: [] }, {}, { now: t0 });
         assert.strictEqual(askedLoud(), 1);
+        assert.strictEqual(loud(), 1);
         assert.strictEqual(mine().length, 2);
     });
 
@@ -141,6 +143,7 @@ async function test(name, f) {
         cn.sync({ asks: [], holds: [h] }, {}, {});
         // #1305: the in-use notice never asks for a sound (the inbox's new-row rule decides the rest)
         assert.strictEqual(askedLoud(), 0, 'the in-use notice is published silent');
+        assert.strictEqual(loud(), 0, 'and the inbox keeps a new row silent when alert is false');
         mark();
         cn.sync({ asks: [], holds: [h] }, {}, {});
         assert.strictEqual(loud(), 0);
