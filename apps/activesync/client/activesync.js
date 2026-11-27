@@ -315,6 +315,10 @@
                 // Vista's System applet art: "View basic information about your computer" (#827)
                 if (dev) out.push({ id: 'info', text: 'Device information', icon: '/static_images/vista-cpl/items/system-32.png' });
                 if (dev && dev.partner && !local) out.push({ id: 'end', text: 'End a partnership', icon: 'end-partnership-32.png' });
+                // a device that was never set up was kept anyway and had no way out of the list (Yukimi, Nov 26 2026,
+                // #1299: "how do we delete the massive list of dead devices and fake devices"): the same removal,
+                // said for what it is
+                if (dev && !dev.partner && !local) out.push({ id: 'remove', text: 'Remove this device', icon: 'end-partnership-32.png' });
             }
             if (tile === 'programs' && dev && dev.online && dev.permissions.includes('notify') && root.activeSyncNotifications) {
                 const n = root.activeSyncNotifications.count(dev.deviceId);
@@ -953,11 +957,21 @@
                 return;
             }
             if (cmd === 'end' && dev) {
+                // notice: device-remove
                 const yes = await this.messageBox(`Are you sure you want to end the partnership with ${dev.name}?\n\nEnding a partnership removes any Device Center information associated with that device from this computer.`, [
                     { text: 'End partnership', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }
                 ], 'question');
                 if (yes !== true) return;
                 try { await a.endPartnership(dev.deviceId); } catch (e) { await this.messageBox(e.message || 'Could not save Partnership Settings', null, 'error'); }
+                this.render();
+            }
+            if (cmd === 'remove' && dev) {
+                // notice: device-remove
+                const yes = await this.messageBox(`Remove ${dev.name} from this computer?\n\nIt was never set up here, and anything Device Center kept for it goes with it. It can connect again and be set up another time.`, [
+                    { text: 'Remove', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }
+                ], 'question');
+                if (yes !== true) return;
+                try { await a.forget(dev.deviceId); this.deviceId = ''; } catch (e) { await this.messageBox(e.message || 'Could not remove that device', null, 'error'); }
                 this.render();
             }
         }

@@ -71,6 +71,18 @@ function save() {
 const ID_RE = /^[0-9a-f]{32}$/;
 const normId = (id) => String(id || '').trim().toLowerCase();
 
+/**
+ * An emulator by what it says it is, whether or not it was ever marked as a test device: an emulator-NNNN serial,
+ * an AVD / aemu model (the shapes modules/deviceConsent.js reads too). Never a physical phone, so never hers.
+ * Yukimi, Nov 26 2026, #1299: "how do we delete the massive list of dead devices and fake devices in mobile device
+ * center" - this is what "fake" means: the emulator lane's leftover rows.
+ */
+const EMULATOR_SHAPE = /sdk_gphone|google_sdk|generic_x86|generic_x64|ranchu|goldfish|aemu|\bavd\b|\bemulator\b/i;
+function isEmulatorShape(id, model, name) {
+    if (/^emulator-\d+$/i.test(String(id || ''))) return true;
+    return EMULATOR_SHAPE.test(`${model || ''} ${name || ''}`);
+}
+
 function isTestDevice(id) {
     const d = normId(id);
     return !!d && Object.prototype.hasOwnProperty.call(load().devices, d);
@@ -143,6 +155,7 @@ function list() {
 
 module.exports = {
     isTestDevice,
+    isEmulatorShape,
     isTestInfo,
     noteHello,
     mark,
