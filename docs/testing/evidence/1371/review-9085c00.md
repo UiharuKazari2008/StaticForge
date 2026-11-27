@@ -386,3 +386,131 @@ Other gaps:
 - The crash-loop case needs a crashing build.
 - The Fold's own Samsung StatusBarManagerService behaviour for two shell tokens can be inferred only from a Samsung
   device. The A53 is One UI, so run D4 there too; the lane is AOSP.
+
+---
+
+## Re-review of bd91633 (origin/fix/1331-bars-heal-2 = origin/tmp/1331-bars-heal-3)
+
+Read-only, Nov 27 2026. Verified: 069fc5a and 9085c00 have the same `git patch-id --stable` (a8365192...). Line numbers
+are bd91633's.
+
+**Verdict: safe for the device run. If D0-D14 pass (D4, D6 and D8-D11 especially), safe for the owner's phone. No
+BLOCKER and no SHOULD-FIX in bd91633.** S5 and S6 from the first review are still open and were not in this commit's
+scope.
+
+### 1. S1-S4 against what was meant
+
+- **S1: fixed.** NavRoomPolicy.kt:90-91 adds
+  `inFallback && serviceBound && fallbackAllowed(switchesSoFar) && (...)`, and MelatonBars.kt:1021 passes
+  `fallbackSwitches`. That is the only `tryBackNow` caller (git grep). The tests cover 0-2 switches (allowed) and
+  3, 4 and 10 (refused). A fallback inherited from an earlier process starts at 0 switches, so the next process tries
+  again. That is intended.
+- **S2: fixed.** `backTriedAt = SystemClock.uptimeMillis()` (:1004) is set before `configChanged()` (:1009), so the
+  `navRoom` that follows at once is refused by the 60 s gap. Side effect: after the unbound-service fallback (unboundCheck),
+  a service that binds within 60 s no longer takes the way back at connect. It waits for the next event 60 s or more
+  later (screen on, tray, SystemUI). That is gestures, not visible buttons. NOTE R3.
+- **S3: fixed.**
+  - (a) :1024-1027 now always calls `navBlankKeep(app, false)`. A slow way-back holder whose token arrives after the
+    callback is then caught by (c): the token is linked after (a)'s unlink, `holderTokenBinder === binder`, the hold is
+    not wanted, no start is busy and `backSwitching` is false, so it is given up.
+  - (c) :811-817 covers the same for S5's late queued command, when it arrives outside a start and outside the way
+    back's overlay switch.
+- **S4: fixed as specified (10 s, NavBlankShell.kt:45).** One correction to the reason given: the recorded data is
+  1.2-1.5 s after an install on both the Fold and the A53 (memory #336: "Proven on the real A53: ... 1.2-1.5 s after an
+  install"). So "a slower phone needs several seconds" is not backed by a measurement here. 10 s is still a defensible
+  margin; D4 settles it. See 5 for how it relates to the 7.8 s wait.
+
+### 2. Does guard (c) ever give up a holder that is wanted?
+
+No. The reason is ordering, verified:
+- The holder calls NavBlankProvider before it prints OK (NavBlankShell `handOff`, then `println`). `holderToken`
+  posts the guard runnable A to the main looper at that moment.
+- The start's callback B is posted only after the shell has seen OK and `run()` has returned. On the Shizuku route its
+  result first passes through ShizukuControl's own main post, which is posted later still.
+- One looper runs these in FIFO order, so A always runs before B. While A runs, `holderBusy` is still true.
+
+Walk-through:
+- **Normal start in a fresh process:** wanted, and also busy. The row is marked held.
+- **Re-hold after a death:** `reholdRun` starts only when `navHoldWanted` (:747). The token arrives while busy. Held.
+- **Way back, token before the start's callback:** busy, so held. Then the overlay switch runs with `backSwitching`.
+- **Way back, token between the callback and the overlay's answer:** only a token from a holder other than this
+  start's, such as an S5 late command. `backSwitching` is true, so it is marked held. The overlay's answer then either
+  makes the hold wanted (ok) or kills every holder (:1039, not ok). Correct both ways.
+- **Way back, after the overlay answered ok:** `backSwitching = false`, the pref removal and `fallbackCleared()` run in
+  the same callback (:1031-1034) with no main-thread gap between them. From then the hold is wanted. Held.
+- **Way back, after the overlay answered not ok:** not wanted, so the holder is given up. Right: in the fallback a
+  holder would take the gestures.
+- **Way back answered late (shell exit 1, token after B):** given up, as intended (S3).
+- **First-time room setup (:701):** `apply()` updates the in-memory prefs at once and `fallbackCleared()` sets the
+  cache to 0, so the hold is wanted when `navBlankKeep(force)` runs. The token arrives while busy anyway.
+- **Shizuku-binder listener (:885):** checks `navHoldWanted` before starting. Busy at arrival.
+- **A start made while the user switches the feature off:** the token arrives while busy, so it is marked held. Off's
+  kill runs on the same io thread after the start command. The holder's linked death then clears `navBlank`, and the
+  hold is not wanted, so nothing restarts. If the token arrived after the callback, (c) gives it up. Correct.
+- **The failure path's re-link `holderToken(before)` (inside B, after `holderBusy = false`):** wanted on the normal
+  path, so held. In a way back there is no `before` (the fallback killed it). If there were one, giving it up would be
+  correct.
+
+**The planner's claim is confirmed.** Outside the way back, every start site is reached only when the hold is wanted:
+- :692 takes `on = c.enabled && c.softkeys && c.room` (:1929, :1952) and checks `saved != null && !navFallback`.
+- :701 runs right after `navOrig` is written and the fallback cleared.
+- :751 (`reholdRun`) and :885 (the Shizuku listener) check `navHoldWanted` themselves.
+
+One caveat: "wanted" is read at the call. A config change during the command makes the hold unwanted while busy, and
+the off path in `navRoom`, not the guard, handles it.
+
+### 3. What navBlankKeep(app, false) inside the post resets
+
+- **Reset:** `navBlankAt` (to 0), `holderOwned`, `holdFailures`, `holdRetries`, `retryFromTimer`, `reholdWaiting`,
+  `holderDeaths`. It also removes `reholdRun`, unlinks the token (`holderTokenBinder` and its recipient to null),
+  calls `markNavBlank(false)` and queues `kill $(pidof)` plus `rm` (:966-978).
+- **Not reset:** `holderBusy`. The guard needs it to be false already.
+- **Safe for a start that begins right after:** the kill and any later start run on the single
+  `MelatonBars-shell` thread, and `run()` blocks until each command returns. The kill therefore finishes before the new
+  start's `old=$(pidof)`, so it cannot hit the new holder.
+- **The end state is right:** no token, `navBlank` false, and the given-up holder's death is not heard. The reset
+  counters do not matter while the hold is not wanted.
+- **One exception (NOTE R1):** if the kill goes over Shizuku and the 15 s latch times out, the command can run later
+  (S5). It could then kill a wanted holder started in between. That holder's death is linked, so the app re-holds
+  after 1.5 s. This is S5's root cause and is fixed with S5.
+
+### 4. Can backSwitching stay true?
+
+No, not for good. `exec` goes to `execRoute`, which always posts its result to main (:1101 at 9085c00, unchanged).
+`run()` is bounded:
+- Shizuku latch: 15 s.
+- dadb socket timeout: 65 s.
+- LocalAdb.shell's inner Shizuku latch: 60 s.
+- No uncaught throw: `adbUsable` and `LocalAdb.shell` are wrapped in `runCatching`, and the io executor is never shut
+  down.
+
+The worst case is about 80 s true. While it is true, a late unwanted holder is marked held for at most that long. Then
+the overlay answer either makes it wanted or kills every holder. If it ever stayed true (hypothetical), guard (c) would
+be off and S3 would come back, but (a) still covers the slow way back. Nothing would be worse than at 9085c00.
+
+### 5. GRACE_MS 10 s on the update path
+
+Nothing breaks compared with 20 s.
+- **If P2 answers more than 10 s after P1's death:** H1 exits at 10 s, and the row is visible from then until P2's OK.
+  `kill $old` with an exited pid fails quietly. The late token is still taken by `startOk`.
+- **Consistency with the 7.8 s wait:** a gap-free update needs this:
+  P2's start command begins within `GRACE_MS - answer time` after P1 dies.
+  With the worst allowed answer (7.8 s), that means P2's service must connect and the command start within about
+  2.2 s.
+- **Measured case:** connect to OK is about 1-1.5 s, so there is a large margin. Only a slow first start after an update
+  combined with a slow holder could flash. NOTE R2: measure both times in D4 and keep `GRACE_MS` at least connect time
+  plus answer time, plus margin.
+
+### 6. New defects in bd91633
+
+- **BLOCKER:** none. **SHOULD-FIX:** none.
+- **R1 (NOTE):** the kill from the guard and from (a) can be delayed by S5's Shizuku queue, as in 3. Fixed with S5.
+- **R2 (NOTE):** the grace against the 7.8 s answer, as in 5.
+- **R3 (NOTE):** S2's `backTriedAt` also delays the way back after an unbound-service fallback until an event 60 s or
+  more later. The phone stays on gestures (no visible buttons). Acceptable; mention it in D13.
+- **R4 (NOTE):** `navBlankKeep(false)`'s kill is not retried if no shell route answers. The same is true of every off
+  path (pre-existing). A holder that survives in the fallback is replaced at the next way back.
+- **Tests:** they cover the new `tryBackNow` argument only. Guard (c), `backSwitching` and the always-off branch (a)
+  have no unit test; they live in MelatonBars. D8 and D9 exercise the fallback, but only a debug delay before
+  `println("OK")` can show the late-token give-up and its log line `a holder arrived that is not wanted: given up
+  (#1331)` on a device.

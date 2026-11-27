@@ -1,0 +1,127 @@
+#1371 / #1331 - tmp/1331-bars-heal-3 (DSApp-Kotlin): compile + Android unit tests on Ruiko, 27 Nov 2026
+origin/main                         d0b7d70c64f54000b71ef2db5ad055aa47646999
+tmp/1331-bars-heal-3 rebase commit  069fc5abbe6fbcc3a8e6b1fcc65cece2e755fe2e  (9085c00 cherry-picked onto d0b7d70, no conflict)
+tmp/1331-bars-heal-3 tip            bd9163397e5e2d1eb6ec3ca19510f4261b011977  (069fc5a + second commit: the four review fixes S1-S4)
+Build gate: #249 (dsapp-unit-test-1371, DSApp-Kotlin), begun, ended ok.
+No APK, no install, no device. Pushed: origin tmp/1331-bars-heal-3 (bd91633).
+
+How: git archive (zip) of the commit, scp to Ruiko, Expand-Archive into a FRESH C:\Users\ykaza\claude-build\dsapp-ut-1371 (deleted first
+each run; no other folder touched), JAVA_HOME = C:\Program Files\Android\Android Studio\jbr, ANDROID_HOME = E:\Users\kazari\android\sdk,
+local.properties sdk.dir, the script at BelowNormal priority:
+  gradlew.bat --no-daemon compileReleaseKotlin testDebugUnitTest
+(default heap -Xmx2048m from gradle.properties; no out-of-memory, no rerun needed). Results copied to C:\Users\ykaza\claude-build\ut1371-results\<run>.
+"tests" = sum of the TEST-*.xml of app/build/test-results/testDebugUnitTest.
+
+Runs (all four: GRADLE EXIT=0, BUILD SUCCESSFUL, compileReleaseKotlin ran, 0 failures, 0 errors, 0 skipped, 35 actionable tasks executed):
+  run   tree                                                    BUILD                       tests  NavRoomPolicyTest
+  (i)   rebase commit 069fc5a alone                             BUILD SUCCESSFUL in 3m 34s    231   25
+  (ii)  simulated merge: main + 5 unmerged branches + 069fc5a   BUILD SUCCESSFUL in 3m 21s    341   25
+  (i')  tip bd91633 (rebase commit + review fixes) alone        BUILD SUCCESSFUL in 2m 32s    233   27
+  (ii') simulated merge + bd91633                               BUILD SUCCESSFUL in 2m 12s    343   27
+The review fixes add 2 tests to NavRoomPolicyTest: theWayBackIsAllowedWithZeroOneOrTwoSwitchesSoFar,
+theLastSwitchToGesturesStandsForTheProcess (3, 4 and 10 switches: refused whatever the times are).
+Kotlin compiler warnings in the module: 128 before and after the fixes, the same set (no new warning).
+
+--- (i) 069fc5a alone ---
+GRADLE EXIT=0
+BUILD SUCCESSFUL in 3m 34s
+35 actionable tasks: 35 executed
+AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+ApkInstallPlanTest: tests=12 failures=0 errors=0 skipped=0
+ApkInstallRetryTest: tests=16 failures=0 errors=0 skipped=0
+DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=25 failures=0 errors=0 skipped=0
+NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+TOTAL tests=231 failures=0 errors=0 skipped=0
+
+--- (i') bd91633 alone ---
+GRADLE EXIT=0
+BUILD SUCCESSFUL in 2m 32s
+35 actionable tasks: 35 executed
+AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+ApkInstallPlanTest: tests=12 failures=0 errors=0 skipped=0
+ApkInstallRetryTest: tests=16 failures=0 errors=0 skipped=0
+DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=27 failures=0 errors=0 skipped=0
+NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+TOTAL tests=233 failures=0 errors=0 skipped=0
+
+--- (ii) simulated merge + 069fc5a ---
+GRADLE EXIT=0
+BUILD SUCCESSFUL in 3m 21s
+35 actionable tasks: 35 executed
+AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+ApkInstallPlanTest: tests=12 failures=0 errors=0 skipped=0
+ApkInstallRetryTest: tests=16 failures=0 errors=0 skipped=0
+BackgroundValueTest: tests=12 failures=0 errors=0 skipped=0
+BarsHealPolicyTest: tests=42 failures=0 errors=0 skipped=0
+DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+EmuShimsTest: tests=7 failures=0 errors=0 skipped=0
+ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=25 failures=0 errors=0 skipped=0
+NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+NotifySoundRulesTest: tests=21 failures=0 errors=0 skipped=0
+OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
+PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+TOTAL tests=341 failures=0 errors=0 skipped=0
+
+--- (ii') simulated merge + bd91633 ---
+GRADLE EXIT=0
+BUILD SUCCESSFUL in 2m 12s
+35 actionable tasks: 35 executed
+AdbTlsTest: tests=13 failures=0 errors=0 skipped=0
+ApkInstallPlanTest: tests=12 failures=0 errors=0 skipped=0
+ApkInstallRetryTest: tests=16 failures=0 errors=0 skipped=0
+BackgroundValueTest: tests=12 failures=0 errors=0 skipped=0
+BarsHealPolicyTest: tests=42 failures=0 errors=0 skipped=0
+DriveWatchStepTest: tests=13 failures=0 errors=0 skipped=0
+EmuShimsTest: tests=7 failures=0 errors=0 skipped=0
+ExampleUnitTest: tests=1 failures=0 errors=0 skipped=0
+NavRoomPolicyTest: tests=27 failures=0 errors=0 skipped=0
+NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
+NotifySoundRulesTest: tests=21 failures=0 errors=0 skipped=0
+OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
+PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
+ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
+SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
+TestLaneTest: tests=10 failures=0 errors=0 skipped=0
+ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
+activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
+activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
+activesync.NoticeDeliveryTest: tests=28 failures=0 errors=0 skipped=0
+screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
+TOTAL tests=343 failures=0 errors=0 skipped=0
+
+Notes: a first start of run (i) as a hidden detached PowerShell process on Ruiko died before Gradle finished (no exit file, no java
+process left; cause not found); it was rerun in a held ssh session as above. Two of my own stray ssh-started PowerShell processes
+(started 01:13) were stopped by their PIDs; no other session's process was touched.
+check-perf-rules: node scripts/check-perf-rules.js --dsapp ~/.cache/claude-run/dsapp-1370 -> "perf rules: ok (165 files)", exit 0
+(run on 069fc5a's tree and again on bd91633's tree).

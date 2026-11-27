@@ -1,0 +1,38 @@
+#1371 merge simulation - DSApp-Kotlin, 27 Nov 2026 (scratch clone ~/.cache/claude-run/dsapp-1370-sim, never pushed)
+
+Base: origin/main d0b7d70c64f54000b71ef2db5ad055aa47646999
+Branch under test: tmp/1331-bars-heal-3
+  069fc5a  9085c00 cherry-picked onto d0b7d70 (rebase commit; no conflict, "Auto-merging MelatonBars.kt" only)
+  bd91633  review fixes (second commit, Part A2)
+
+Method: /home/kanmi/staticforge/scripts/android/dsapp-merge-latest.sh run unchanged on the scratch clone (it merges, in
+alphabetical order, every `git branch -r --no-merged origin/main` except origin/build/* and origin/tmp/*, skipping a branch
+with no commit of its own, and runs its resolvers for MainActivity.kt, ActiveSyncNotifications.kt, ActiveSyncLink.kt,
+build.gradle.kts, libs.versions.toml, strings.xml, docs/*.md; any other conflicted file aborts). Then the branch was merged last.
+
+Branches in the set (all five have commits of their own, none skipped):
+  ok    origin/claude/shake-torch-1104        (3a04111, 1 own commit, 2 files)
+  ok    origin/feat/1298-notify-sound         (e20a37a, 6 own commits, 8 files)
+  ok    origin/feat/1309-emu-shims            (e3a231c, 1 own commit, 5 files; touches MelatonBars.kt, 2 lines)
+  ok    origin/feat/1327-output-panel         (5950385, 3 own commits, 9 files; touches MelatonBars.kt, 21+/12-: Output panel)
+  ok    origin/fix/1340-bars-service-heal     (a6b10d5, 2 own commits, 6 files; MelatonBars.kt 3+/9-, BarsServiceHeal.kt new)
+  (script printed "ok <branch>" for each: no conflict, no resolver needed)
+Then:
+  ok    tmp/1331-bars-heal-3 @ 069fc5a  -> merge 5ebd7f8 "Merge branch 'mine' into tmp/1371-sim": clean (ort),
+        "Auto-merging MelatonBars.kt"; 4 files, 256+/48-. No conflict with fix/1340-bars-service-heal or any other branch.
+  ok    tmp/1331-bars-heal-3 @ bd91633  -> merge 849cf1a (second commit on top of the same merge): clean.
+
+Semantic note (not a conflict): fix/1340 replaces MelatonBars.heal()'s 6 s off/on switch of the accessibility service with
+BarsServiceWatch.check(app, "heal"). 069fc5a's unboundCheck (15 s after heal: gesture fallback when the service is still not
+bound) is a separate place and stays as is; the two do not touch the same lines. Both compile together (see unit-tests.txt).
+
+Caller check (git grep at the rebased tree and at every unmerged non-tmp/build branch):
+  NavRoomPolicy.retryAfterFailure: no use left in main's tree or the rebased tree (only in NavRoomPolicyTest.kt of
+    feat/1298-notify-sound, feat/1327-output-panel, fix/1340-bars-service-heal, where that file is the OLD copy from their
+    base; none of the three changed NavRoomPolicyTest.kt / NavRoomPolicy.kt / NavBlankShell.kt since its merge-base, so the
+    merge takes the branch's version of the test file: fine, the merged tree has no retryAfterFailure/alreadyTried).
+  NavRoomPolicy.tryBackNow: only MelatonBars.navBackFromFallback and NavRoomPolicyTest (both updated in the rebased tree).
+  MelatonBars.navRoomActive(ctx): MainActivity.kt (lines 679, 690, 2665, 3745, 3755 at main) and MelatonBars.kt internal
+    callers. Signature unchanged; now false while in the gesture fallback (intended: no nav-bar hiding, no edges/home strip
+    then). Same MainActivity lines in claude/shake-torch-1104, feat/1298, feat/1309, feat/1327, fix/1340: fine.
+  navRoomSaved: new private fun, no external caller.
