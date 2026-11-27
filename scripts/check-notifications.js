@@ -63,7 +63,7 @@ const isDefinition = (text, index) => {
 
 const JS_RULES = [
     { cls: 'toast', re: /(?<![.\w$])showGlassToast\s*\(|\bwindow\.showGlassToast\s*\(/g },
-    { cls: 'balloon', re: /\b(?:PopoverManager\.(?:show|showPopover)|trayNotePopup|showBalloon|_showPolicyBalloon)\s*\(/g },
+    { cls: 'balloon', re: /\bPopoverManager\.show\s*\(|\b(?:[A-Za-z_$][\w$]*\.)?showPopover\s*\(|\b(?:trayNotePopup|showBalloon|_showPolicyBalloon)\s*\(/g },
     { cls: 'message', re: /\b(?:[A-Za-z_$][\w$]*\.)?(?:messageBox|appNote|confirmationNotice)\s*\(|\b(?:wmShell|shell|WmShell)\.notify\s*\(/g },
     { cls: 'sound', re: /\bdesktopSounds\.play\s*\(|\bplaySystemSound\s*\(|\bsndPlayFile\s*\(|\bnew\s+Audio\s*\(/g }
 ];

@@ -1,10 +1,10 @@
 {
  "note": "Emit sites with no registered source id. Counts may only go down. See docs/design/notification-discipline.md and scripts/check-notifications.js.",
  "totals": {
-  "message": 512,
-  "toast": 1053,
-  "sound": 58,
-  "balloon": 13
+  "message": 499,
+  "toast": 1024,
+  "balloon": 18,
+  "sound": 50
  },
  "files": {
   "apps/activesync/client/activesync.js": {
@@ -20,6 +20,7 @@
    "message": 1
   },
   "apps/vzaccess/client/vzaccess.js": {
+   "balloon": 1,
    "sound": 1
   },
   "apps/xlink/client/xlink.js": {
@@ -27,9 +28,6 @@
   },
   "public/scripts/appInitSteps.js": {
    "toast": 3
-  },
-  "public/scripts/appWebSocketHandlers.js": {
-   "toast": 4
   },
   "public/scripts/cacheBuster.js": {
    "toast": 1
@@ -48,9 +46,6 @@
   },
   "public/scripts/comp/activeSyncStudio.js": {
    "message": 1
-  },
-  "public/scripts/comp/activeSyncTray.js": {
-   "balloon": 1
   },
   "public/scripts/comp/agentClientBridge.js": {
    "toast": 1
@@ -72,9 +67,6 @@
   },
   "public/scripts/comp/balanceDisplay.js": {
    "toast": 1
-  },
-  "public/scripts/comp/bootMessageBox.js": {
-   "sound": 1
   },
   "public/scripts/comp/bracketGenerationApplet.js": {
    "toast": 23
@@ -103,10 +95,6 @@
   "public/scripts/comp/compiledPromptInspector.js": {
    "toast": 1
   },
-  "public/scripts/comp/confirmationDialog.js": {
-   "message": 1,
-   "sound": 2
-  },
   "public/scripts/comp/copyLookback.js": {
    "toast": 6
   },
@@ -118,6 +106,7 @@
   },
   "public/scripts/comp/desktop-apps/dovecote.js": {
    "toast": 1,
+   "balloon": 1,
    "sound": 2
   },
   "public/scripts/comp/desktop-apps/emotion.js": {
@@ -154,7 +143,7 @@
    "toast": 1
   },
   "public/scripts/comp/dreamosPortal.js": {
-   "balloon": 1
+   "balloon": 2
   },
   "public/scripts/comp/dropPasteFallback.js": {
    "toast": 5
@@ -190,6 +179,9 @@
   "public/scripts/comp/explorerArchive.js": {
    "sound": 1
   },
+  "public/scripts/comp/featureLoader.js": {
+   "balloon": 1
+  },
   "public/scripts/comp/galleryActions.js": {
    "toast": 2
   },
@@ -212,6 +204,9 @@
   "public/scripts/comp/grimoireRemoteBrowser.js": {
    "toast": 13,
    "sound": 1
+  },
+  "public/scripts/comp/hostDrivesShell.js": {
+   "balloon": 1
   },
   "public/scripts/comp/imageExpansion.js": {
    "toast": 20
@@ -258,6 +253,9 @@
   "public/scripts/comp/manualUploadHandlers.js": {
    "toast": 1
   },
+  "public/scripts/comp/mcpActivityClient.js": {
+   "balloon": 1
+  },
   "public/scripts/comp/melatonAppUpdate.js": {
    "message": 2
   },
@@ -299,10 +297,13 @@
    "sound": 4
   },
   "public/scripts/comp/popoverManager.js": {
-   "balloon": 4
+   "balloon": 2
   },
   "public/scripts/comp/presetManager.js": {
    "toast": 43
+  },
+  "public/scripts/comp/printQueue.js": {
+   "balloon": 1
   },
   "public/scripts/comp/programFaults.js": {
    "message": 1
@@ -367,9 +368,6 @@
   "public/scripts/comp/studioVSlider.js": {
    "toast": 5
   },
-  "public/scripts/comp/syncCenter.js": {
-   "balloon": 1
-  },
   "public/scripts/comp/tagWikiSearchModal.js": {
    "toast": 33,
    "sound": 6
@@ -378,11 +376,10 @@
    "toast": 50
   },
   "public/scripts/comp/toastManager.js": {
-   "balloon": 1,
-   "message": 1
+   "balloon": 2
   },
-  "public/scripts/comp/trayIndicators.js": {
-   "toast": 2
+  "public/scripts/comp/trayPower.js": {
+   "balloon": 1
   },
   "public/scripts/comp/uploadHandlers.js": {
    "toast": 4
@@ -404,8 +401,7 @@
    "sound": 1
   },
   "public/scripts/comp/weatherAlerts.js": {
-   "balloon": 1,
-   "message": 3
+   "balloon": 1
   },
   "public/scripts/comp/winlogonPower.js": {
    "sound": 1
@@ -448,9 +444,6 @@
   },
   "public/scripts/comp/wmCharacters.js": {
    "message": 7
-  },
-  "public/scripts/comp/wmChat.js": {
-   "message": 6
   },
   "public/scripts/comp/wmClaudeAccounts.js": {
    "message": 20
@@ -571,9 +564,6 @@
   "public/scripts/comp/wmSettingsDreamscape.js": {
    "message": 5
   },
-  "public/scripts/comp/wmSettingsPersonal.js": {
-   "message": 2
-  },
   "public/scripts/comp/wmSettingsSystem.js": {
    "message": 29
   },
@@ -645,13 +635,6 @@
   },
   "public/scripts/comp/workspaceUtils.js": {
    "toast": 7
-  },
-  "public/scripts/websocket.js": {
-   "toast": 20,
-   "sound": 5
-  },
-  "public/scripts/ws/handlers/40-appCoreInbound.js": {
-   "toast": 3
   }
  }
 }
