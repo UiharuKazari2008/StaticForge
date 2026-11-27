@@ -87,4 +87,10 @@ const stale = ['data', 'battery', 'qatab', 'quickaccess', 'quickaccess.2', 'outp
 same(w(stale), ['data', 'battery'].concat(outputs), 'stale tab / pages dropped, the outputs and the bar kept');
 set({ enabled: true, layout: 'wide' });
 same(w(['data', 'output.3']), ['data', 'qatab', 'quickaccess'].concat(outputs), 'Quick Access on: its roles come back');
+// wmShell: Settings' commit (no argument) runs with Quick Access off; only the start timer keeps the early return
+const sh = read('public/scripts/comp/wmShell.js');
+assert(/function quickAccessLayouts\(atStart\)/.test(sh), 'quickAccessLayouts takes atStart');
+assert(/if \(atStart\) \{ try \{ if \(!JSON\.parse\(q\.config\(\)\)\.enabled\) return; \}/.test(sh), 'only the start returns early with Quick Access off');
+assert(/setTimeout\(\(\) => quickAccessLayouts\(true\), 8000\)/.test(sh), 'the start timer passes atStart');
+assert(/quickAccessLayouts: \(\) => quickAccessLayouts\(\)/.test(sh), 'the exported call (Settings) passes nothing');
 console.log('test-quickaccess-layout-follow: ok');

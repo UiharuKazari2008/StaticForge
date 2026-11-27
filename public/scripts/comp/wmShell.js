@@ -4233,18 +4233,20 @@
      * Quick Access over Today / Start (#1017) is drawn by the app from the layouts melatonBars wrote down, and that file
      * loads only when the app asks for a bar copy (a program in front): Settings' changes to the panel and a new make of
      * its look never reached the panel over Melaton Mobile (Yukimi, Nov 23 2026). Loaded once the page has settled, and
-     * after Settings' commit; melatonBars writes the layouts down again only when what they depend on changed.
+     * after Settings' commit; melatonBars writes the layouts down again only when what they depend on changed. Settings'
+     * commit runs it with Quick Access off too (StaticForge #1405: a save that switched it off, or changed "Show as" with it
+     * off, left the kept Output panel layouts and the Quick Access tab as they were); only the start with it off loads nothing.
      */
-    function quickAccessLayouts() {
+    function quickAccessLayouts(atStart) {
         const q = window.AndroidQuickAccess;
         const ab = window.AndroidBars;
         const fl = window.featureLoader;
         if (!q || typeof q.config !== 'function' || !ab || typeof ab.layouts !== 'function' || !fl) return;
-        try { if (!JSON.parse(q.config()).enabled) return; } catch (_) { return; }
+        if (atStart) { try { if (!JSON.parse(q.config()).enabled) return; } catch (_) { return; } }
         fl.loadFeature('melaton_bars').then(() => { if (window.melatonBars && window.melatonBars.quickAccessChanged) window.melatonBars.quickAccessChanged(); }).catch(() => { /* offline: next start */ });
     }
     {
-        const t = setTimeout(quickAccessLayouts, 8000);
+        const t = setTimeout(() => quickAccessLayouts(true), 8000);
         if (appScopeSignal) appScopeSignal.addEventListener('abort', () => clearTimeout(t), { once: true });
     }
     /** The tunnel down through its app: WireGuard by its name (the app's remote control), another VPN app opened. */
