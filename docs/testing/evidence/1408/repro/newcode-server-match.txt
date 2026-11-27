@@ -1,0 +1,3 @@
+/scripts/comp/wmShell.js server NOW compiled == my new build apart from date: true
+/css/wm-shell.css server NOW compiled == my new build apart from date: true
+/css/wm-programs.css server NOW compiled == my new build apart from date: true

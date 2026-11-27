@@ -1,0 +1,289 @@
+{
+ "label": "stall6s-preload-r1-1",
+ "rate": 1,
+ "net": "normal",
+ "injectedStallMs": 6000,
+ "preload": true,
+ "showcafe": true,
+ "swStoppedFirst": true,
+ "hostLoad1": [
+  8.71,
+  8.92
+ ],
+ "cpuset": null,
+ "path": "/app",
+ "timeOrigin": 1795814440428.5,
+ "ev": [
+  [
+   223,
+   "preload-injected",
+   "HEAD"
+  ],
+  [
+   270,
+   "preload-load",
+   "boot-melaton.png"
+  ],
+  [
+   328,
+   "preload-load",
+   "cafe-ready-dark.png"
+  ],
+  [
+   1809,
+   "inserted",
+   "boot-melaton.png complete=true natural=256x256 widthAttr=false"
+  ],
+  [
+   1809,
+   "inserted",
+   "cafe-ready-dark.png complete=true natural=704x298 widthAttr=false"
+  ],
+  [
+   1809,
+   "data-wm-boot",
+   "splash"
+  ],
+  [
+   1924,
+   "load",
+   "boot-melaton.png natural=256x256"
+  ],
+  [
+   1924,
+   "load",
+   "cafe-ready-dark.png natural=704x298"
+  ],
+  [
+   2015,
+   "stall-start (injected by the test)",
+   ""
+  ],
+  [
+   8015,
+   "stall-end",
+   ""
+  ],
+  [
+   8038,
+   "data-wm-boot",
+   "done"
+  ],
+  [
+   8043,
+   "data-wm-splash-painted",
+   "8042"
+  ],
+  [
+   8389,
+   "DOMContentLoaded",
+   ""
+  ],
+  [
+   8489,
+   "window.load",
+   ""
+  ]
+ ],
+ "longtasks": [
+  [
+   430,
+   96
+  ],
+  [
+   855,
+   237
+  ],
+  [
+   1609,
+   208
+  ],
+  [
+   1825,
+   66
+  ],
+  [
+   1947,
+   63
+  ],
+  [
+   2015,
+   6000
+  ],
+  [
+   8389,
+   83
+  ],
+  [
+   9535,
+   55
+  ],
+  [
+   9671,
+   56
+  ],
+  [
+   9929,
+   56
+  ]
+ ],
+ "box": {
+  "emblem": [
+   29,
+   67,
+   101,
+   101
+  ],
+  "cafe": [
+   259,
+   822,
+   138,
+   78
+  ],
+  "cafeImg": [
+   268,
+   842,
+   121,
+   51
+  ],
+  "cafeHidden": false
+ },
+ "resources": {
+  "boot-melaton.png": [
+   {
+    "initiatorType": "link",
+    "startTime": 222,
+    "workerStart": 223,
+    "fetchStart": 223,
+    "requestStart": 223,
+    "responseStart": 226,
+    "responseEnd": 227,
+    "transferSize": 0,
+    "encodedBodySize": 58412,
+    "decodedBodySize": 58412,
+    "deliveryType": "cache",
+    "renderBlockingStatus": "non-blocking",
+    "requestsStartedBefore": 373,
+    "requestsInFlightAtStart": 276
+   }
+  ],
+  "cafe-ready-dark.png": [
+   {
+    "initiatorType": "link",
+    "startTime": 223,
+    "workerStart": 223,
+    "fetchStart": 223,
+    "requestStart": 223,
+    "responseStart": 227,
+    "responseEnd": 264,
+    "transferSize": 0,
+    "encodedBodySize": 152752,
+    "decodedBodySize": 152752,
+    "deliveryType": "cache",
+    "renderBlockingStatus": "non-blocking",
+    "requestsStartedBefore": 374,
+    "requestsInFlightAtStart": 277
+   }
+  ]
+ },
+ "cached": {
+  "boot-melaton.png": true,
+  "cafe-ready-dark.png": true
+ },
+ "resourceCount": 630,
+ "paint": [
+  [
+   "first-paint",
+   548
+  ],
+  [
+   "first-contentful-paint",
+   1920
+  ]
+ ],
+ "nav": {
+  "responseEnd": 54,
+  "domInteractive": 8389,
+  "domContentLoaded": 8460,
+  "load": 8490
+ },
+ "served": {
+  "splashArtInHtml": false,
+  "splashImgs": [
+   {
+    "src": "/static_images/wm61/boot-melaton.png",
+    "complete": true,
+    "natural": [
+     256,
+     256
+    ]
+   },
+   {
+    "src": "/static_images/melaton/cafe-ready-dark.png",
+    "complete": true,
+    "natural": [
+     704,
+     298
+    ]
+   }
+  ],
+  "controlled": true
+ },
+ "ackDropped": 0,
+ "pageNetwork": [
+  {
+   "url": "boot-melaton.png",
+   "type": "Image",
+   "priority": "High",
+   "initiator": "script",
+   "status": 200,
+   "fromServiceWorker": true,
+   "fromDiskCache": false,
+   "swSource": "fallback-code",
+   "responseAfterMs": 33,
+   "finishedAfterMs": 5,
+   "atPageMs": 222
+  },
+  {
+   "url": "cafe-ready-dark.png",
+   "type": "Image",
+   "priority": "High",
+   "initiator": "script",
+   "status": 200,
+   "fromServiceWorker": true,
+   "fromDiskCache": false,
+   "swSource": "fallback-code",
+   "responseAfterMs": 33,
+   "finishedAfterMs": 41,
+   "atPageMs": 223
+  }
+ ],
+ "serviceWorkerNetwork": [],
+ "serviceWorkerRequestsFailedByTest": 0,
+ "serviceWorkerTrace": {
+  "artRows": [
+   {
+    "answeredAtPageMs": 225,
+    "row": "fetch /static_images/wm61/boot-melaton.png q=0 h=2 200 w=0 hit=2"
+   },
+   {
+    "answeredAtPageMs": 226,
+    "row": "fetch /static_images/melaton/cafe-ready-dark.png q=0 h=3 200 w=0 hit=2"
+   }
+  ],
+  "workerStarted": [
+   44
+  ],
+  "stalls": [],
+  "fetchRows": 158
+ },
+ "painted": {
+  "splashFrames": 2,
+  "firstSplashFrameAt": 1919,
+  "firstFrameEmblem": true,
+  "firstFrameBadge": true,
+  "firstFullArtFrameAt": 1919,
+  "msOnScreenWithArtMissing": 0,
+  "framesWithArtMissing": []
+ }
+}

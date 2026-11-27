@@ -1,0 +1,11 @@
+core1rev-new-r1-1 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=15/0/0 shown=4326[c=true w=704] done=5977 ins=4326 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1rev-old-r1-1 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=13/0/1 shown=4293[c=false w=0] done=5944 ins=4293 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1rev-new-r1-2 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=12/0/0 shown=4847[c=true w=704] done=6571 ins=4846 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1rev-old-r1-2 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=11/0/1 shown=4292[c=false w=0] done=5924 ins=4291 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1rev-new-r1-3 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=13/0/0 shown=4444[c=true w=704] done=6101 ins=4444 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1rev-old-r1-3 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=13/0/1 shown=4457[c=false w=0] done=6071 ins=4457 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1rev-new-r1-4 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=10/0/0 shown=5340[c=true w=704] done=6973 ins=5335 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1rev-old-r1-4 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=11/0/1 shown=5472[c=false w=0] done=7097 ins=5472 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1rev-new-r1-5 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=8/0/0 shown=6223[c=true w=704] done=8096 ins=6223 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1rev-old-r1-5 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=11/0/1 shown=4559[c=false w=0] done=6251 ins=4559 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+MATRIX core1rev done

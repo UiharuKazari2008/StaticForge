@@ -1,0 +1,26 @@
+core1-plain-r1-1 {"splashFrames":12,"firstSplashFrameAt":4830,"firstFrameEmblem":false,"firstFrameBadge":false,"firstFullArtFrameAt":4913,"msOnScreenWithArtMissing":83,"framesWithArtMissing":[{"t":4830,"emblem":false,"badge":false}]}
+core1-preload-r1-1 node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+[Error: extract_area: bad extract area]
+
+Node.js v24.22.1
+core1-plain-r1-2 {"splashFrames":14,"firstSplashFrameAt":4407,"firstFrameEmblem":false,"firstFrameBadge":false,"firstFullArtFrameAt":4473,"msOnScreenWithArtMissing":66,"framesWithArtMissing":[{"t":4407,"emblem":false,"badge":false}]}
+core1-preload-r1-2 node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+[Error: extract_area: bad extract area]
+
+Node.js v24.22.1
+core1-plain-r1-3 {"splashFrames":13,"firstSplashFrameAt":4377,"firstFrameEmblem":false,"firstFrameBadge":false,"firstFullArtFrameAt":4444,"msOnScreenWithArtMissing":67,"framesWithArtMissing":[{"t":4377,"emblem":false,"badge":false}]}
+core1-preload-r1-3 {"splashFrames":14,"firstSplashFrameAt":4706,"firstFrameEmblem":true,"firstFrameBadge":true,"firstFullArtFrameAt":4706,"msOnScreenWithArtMissing":0,"framesWithArtMissing":[]}
+core1-plain-r4-1 {"splashFrames":3,"firstSplashFrameAt":13426,"firstFrameEmblem":true,"firstFrameBadge":true,"firstFullArtFrameAt":13426,"msOnScreenWithArtMissing":0,"framesWithArtMissing":[]}
+core1-preload-r4-1 {"splashFrames":3,"firstSplashFrameAt":14066,"firstFrameEmblem":true,"firstFrameBadge":true,"firstFullArtFrameAt":14066,"msOnScreenWithArtMissing":0,"framesWithArtMissing":[]}
+core1-plain-r4-2 {"splashFrames":3,"firstSplashFrameAt":13417,"firstFrameEmblem":true,"firstFrameBadge":true,"firstFullArtFrameAt":13417,"msOnScreenWithArtMissing":0,"framesWithArtMissing":[]}
+core1-preload-r4-2 {"splashFrames":3,"firstSplashFrameAt":14733,"firstFrameEmblem":true,"firstFrameBadge":true,"firstFullArtFrameAt":14733,"msOnScreenWithArtMissing":0,"framesWithArtMissing":[]}
+core1-plain-r4-3 {"splashFrames":3,"firstSplashFrameAt":14157,"firstFrameEmblem":true,"firstFrameBadge":false,"firstFullArtFrameAt":14190,"msOnScreenWithArtMissing":33,"framesWithArtMissing":[{"t":14157,"emblem":true,"badge":false}]}
+core1-preload-r4-3 {"splashFrames":4,"firstSplashFrameAt":16482,"firstFrameEmblem":true,"firstFrameBadge":true,"firstFullArtFrameAt":16482,"msOnScreenWithArtMissing":0,"framesWithArtMissing":[]}
+core1-preload-r1-1 (re-read) {"splashFrames":14,"firstSplashFrameAt":5078,"firstFrameEmblem":true,"firstFrameBadge":true,"firstFullArtFrameAt":5078,"msOnScreenWithArtMissing":0,"framesWithArtMissing":[]}
+core1-preload-r1-2 (re-read) {"splashFrames":13,"firstSplashFrameAt":4815,"firstFrameEmblem":true,"firstFrameBadge":true,"firstFullArtFrameAt":4815,"msOnScreenWithArtMissing":0,"framesWithArtMissing":[]}

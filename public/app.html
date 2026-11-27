@@ -281,6 +281,21 @@
             document.documentElement.dataset.wmVersion = wmVersion;
             if (wmRev) document.documentElement.dataset.wmRev = wmRev;
             if (wmBars) document.documentElement.dataset.wmBars = wmBars;
+            // The boot splash's pictures, asked for now (#1408): wmShell.js buildBootLayers makes their <img> only
+            // after the whole script chain, behind the boot's hundreds of requests. The addresses are exactly the
+            // img ones, so each is one request, which the service worker answers from its cache; nothing waits on
+            // it. Only what this boot draws: the version's own emblem, and the CaféReady badge only in the app
+            // with the Café Miniport (window.AndroidMiniport, the badge's own condition).
+            const splashArt = [wmVersion === '6.5' ? '/static_images/melaton/melaton-white-256.png' : '/static_images/wm61/boot-melaton.png'];
+            if (window.AndroidMiniport) splashArt.push('/static_images/melaton/cafe-ready-dark.png');
+            splashArt.forEach(function (url) {
+                const link = document.createElement('link');
+                link.rel = 'preload';
+                link.as = 'image';
+                link.setAttribute('fetchpriority', 'high');
+                link.href = url;
+                document.head.appendChild(link);
+            });
         }
         // html.wm-touch drives the 1.5x finger scale of wm-shell.css; it never changes while the page lives.
         // Phone shell only: a desktop touch tablet carries no Melaton Mobile class. There a touch

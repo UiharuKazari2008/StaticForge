@@ -1,0 +1,2 @@
+runs audited: 70; runs with a problem in version proof / cache rows / wait: 0
+frames between insertion and end not judged as splash frames: 0 (before the first splash frame: 0, after it: 0)

@@ -2940,6 +2940,8 @@ html.ui-mobile[data-wm-boot="splash"] .wm-splash {
 .wm-splash-logo img {
     width: 26%;
     max-width: 120px;
+    /* the img's width and height attributes only reserve its box: the height follows the width */
+    height: auto;
     aspect-ratio: 1;
     /* the device's flag: a tight shadow down and right (about 2 device px, 0.4 dark) */
     filter: drop-shadow(calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) calc(0.5 * var(--wm-px)) rgba(0, 0, 0, 0.45));

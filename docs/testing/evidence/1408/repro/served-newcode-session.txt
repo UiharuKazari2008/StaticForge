@@ -1,0 +1,33 @@
+{
+ "/logon-picture": {
+  "bytes": 43185,
+  "has1408preload": false,
+  "wmShellSha": null,
+  "scripts": 0
+ },
+ "/app": {
+  "bytes": 566274,
+  "has1408preload": false,
+  "wmShellSha": "edd01aaf2393c61b",
+  "scripts": 323
+ },
+ "wmShellRow": {
+  "hash": "edd01aaf2393c61b",
+  "has1408": false,
+  "imgHasWidth": false
+ },
+ "/static_images/wm61/boot-melaton.png": {
+  "status": 200,
+  "bytes": 58412,
+  "type": "image/png",
+  "hash": "cf53b753db7d5c7a"
+ },
+ "/static_images/melaton/cafe-ready-dark.png": {
+  "status": 200,
+  "bytes": 152752,
+  "type": "image/png",
+  "hash": "662513a0ab0b9f52"
+ },
+ "staticRows": 9700
+}
+browser Chrome/156.0.8078.108

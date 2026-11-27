@@ -1,0 +1,6 @@
+delete {"/static_images/wm61/boot-melaton.png":{"cached":false},"/static_images/melaton/cafe-ready-dark.png":{"cached":false}}
+fail-old-r1 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=0/0/11 shown=2149[c=false w=0] done=3754 ins=2149 req/img=1/1 entries=1/1 swRows=1/1 swNet=2 preloadWarn=0
+restore {"/static_images/wm61/boot-melaton.png":{"cached":true,"xFileHash":"cf53b753db7d5c7a","bytes":58412},"/static_images/melaton/cafe-ready-dark.png":{"cached":true,"xFileHash":"662513a0ab0b9f52","bytes":152752}}
+delete {"/static_images/wm61/boot-melaton.png":{"cached":false},"/static_images/melaton/cafe-ready-dark.png":{"cached":false}}
+fail-new-r1 ran=newJS+preload var=ok 1st=NO-emblem,absent badgeFrames c/a/i=0/10/0 shown=never done=4701 ins=3091 req/img=1/1 entries=1/1 swRows=1/1 swNet=2 preloadWarn=0
+restore {"/static_images/wm61/boot-melaton.png":{"cached":true,"xFileHash":"cf53b753db7d5c7a","bytes":58412},"/static_images/melaton/cafe-ready-dark.png":{"cached":true,"xFileHash":"662513a0ab0b9f52","bytes":152752}}

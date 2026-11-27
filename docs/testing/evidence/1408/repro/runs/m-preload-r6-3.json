@@ -1,0 +1,406 @@
+{
+ "label": "m-preload-r6-3",
+ "rate": 6,
+ "net": "normal",
+ "preload": true,
+ "showcafe": true,
+ "swStoppedFirst": true,
+ "hostLoad1": [
+  6.68,
+  5.59
+ ],
+ "cpuset": null,
+ "path": "/app",
+ "timeOrigin": 1795813607280.8,
+ "ev": [
+  [
+   1241,
+   "preload-injected",
+   "HEAD"
+  ],
+  [
+   1573,
+   "preload-load",
+   "boot-melaton.png"
+  ],
+  [
+   1931,
+   "preload-load",
+   "cafe-ready-dark.png"
+  ],
+  [
+   8212,
+   "inserted",
+   "boot-melaton.png complete=true natural=256x256 widthAttr=false"
+  ],
+  [
+   8213,
+   "inserted",
+   "cafe-ready-dark.png complete=true natural=704x298 widthAttr=false"
+  ],
+  [
+   8215,
+   "data-wm-boot",
+   "splash"
+  ],
+  [
+   8845,
+   "load",
+   "boot-melaton.png natural=256x256"
+  ],
+  [
+   8845,
+   "load",
+   "cafe-ready-dark.png natural=704x298"
+  ],
+  [
+   9901,
+   "data-wm-boot",
+   "done"
+  ],
+  [
+   13083,
+   "data-wm-splash-painted",
+   "13083"
+  ],
+  [
+   13294,
+   "DOMContentLoaded",
+   ""
+  ],
+  [
+   14362,
+   "window.load",
+   ""
+  ]
+ ],
+ "longtasks": [
+  [
+   1226,
+   257
+  ],
+  [
+   1574,
+   120
+  ],
+  [
+   2219,
+   469
+  ],
+  [
+   2693,
+   354
+  ],
+  [
+   4018,
+   691
+  ],
+  [
+   5023,
+   50
+  ],
+  [
+   5248,
+   103
+  ],
+  [
+   5728,
+   50
+  ],
+  [
+   6957,
+   117
+  ],
+  [
+   7233,
+   1031
+  ],
+  [
+   8352,
+   437
+  ],
+  [
+   8936,
+   429
+  ],
+  [
+   9423,
+   83
+  ],
+  [
+   9508,
+   112
+  ],
+  [
+   9776,
+   91
+  ],
+  [
+   9903,
+   114
+  ],
+  [
+   10394,
+   101
+  ],
+  [
+   10521,
+   124
+  ],
+  [
+   10645,
+   248
+  ],
+  [
+   11074,
+   64
+  ],
+  [
+   11279,
+   72
+  ],
+  [
+   11555,
+   91
+  ],
+  [
+   11801,
+   76
+  ],
+  [
+   11883,
+   184
+  ],
+  [
+   12147,
+   122
+  ],
+  [
+   12278,
+   68
+  ],
+  [
+   12537,
+   127
+  ],
+  [
+   13293,
+   860
+  ],
+  [
+   14176,
+   51
+  ],
+  [
+   14265,
+   50
+  ],
+  [
+   14565,
+   217
+  ],
+  [
+   14783,
+   251
+  ],
+  [
+   15081,
+   67
+  ],
+  [
+   15348,
+   139
+  ],
+  [
+   15642,
+   105
+  ],
+  [
+   15952,
+   304
+  ],
+  [
+   16256,
+   175
+  ],
+  [
+   16713,
+   65
+  ],
+  [
+   17271,
+   103
+  ],
+  [
+   17636,
+   85
+  ],
+  [
+   17904,
+   57
+  ],
+  [
+   18090,
+   59
+  ]
+ ],
+ "box": {
+  "emblem": [
+   29,
+   67,
+   101,
+   101
+  ],
+  "cafe": [
+   259,
+   822,
+   138,
+   78
+  ],
+  "cafeImg": [
+   268,
+   842,
+   121,
+   51
+  ],
+  "cafeHidden": false
+ },
+ "resources": {
+  "boot-melaton.png": [
+   {
+    "initiatorType": "link",
+    "startTime": 1237,
+    "workerStart": 1238,
+    "fetchStart": 1238,
+    "requestStart": 1238,
+    "responseStart": 1241,
+    "responseEnd": 1242,
+    "transferSize": 0,
+    "encodedBodySize": 58412,
+    "decodedBodySize": 58412,
+    "deliveryType": "cache",
+    "renderBlockingStatus": "non-blocking",
+    "requestsStartedBefore": 373,
+    "requestsInFlightAtStart": 276
+   }
+  ],
+  "cafe-ready-dark.png": [
+   {
+    "initiatorType": "link",
+    "startTime": 1241,
+    "workerStart": 1242,
+    "fetchStart": 1242,
+    "requestStart": 1242,
+    "responseStart": 1245,
+    "responseEnd": 1540,
+    "transferSize": 0,
+    "encodedBodySize": 152752,
+    "decodedBodySize": 152752,
+    "deliveryType": "cache",
+    "renderBlockingStatus": "non-blocking",
+    "requestsStartedBefore": 374,
+    "requestsInFlightAtStart": 277
+   }
+  ]
+ },
+ "cached": {
+  "boot-melaton.png": true,
+  "cafe-ready-dark.png": true
+ },
+ "resourceCount": 630,
+ "paint": [
+  [
+   "first-paint",
+   3064
+  ],
+  [
+   "first-contentful-paint",
+   8832
+  ]
+ ],
+ "nav": {
+  "responseEnd": 81,
+  "domInteractive": 13294,
+  "domContentLoaded": 14066,
+  "load": 14366
+ },
+ "served": {
+  "splashArtInHtml": false,
+  "splashImgs": [
+   {
+    "src": "/static_images/wm61/boot-melaton.png",
+    "complete": true,
+    "natural": [
+     256,
+     256
+    ]
+   },
+   {
+    "src": "/static_images/melaton/cafe-ready-dark.png",
+    "complete": true,
+    "natural": [
+     704,
+     298
+    ]
+   }
+  ],
+  "controlled": true
+ },
+ "ackDropped": 0,
+ "pageNetwork": [
+  {
+   "url": "boot-melaton.png",
+   "type": "Image",
+   "priority": "High",
+   "initiator": "script",
+   "status": 200,
+   "fromServiceWorker": true,
+   "fromDiskCache": false,
+   "swSource": "fallback-code",
+   "responseAfterMs": 250,
+   "finishedAfterMs": 6,
+   "atPageMs": 1237
+  },
+  {
+   "url": "cafe-ready-dark.png",
+   "type": "Image",
+   "priority": "High",
+   "initiator": "script",
+   "status": 200,
+   "fromServiceWorker": true,
+   "fromDiskCache": false,
+   "swSource": "fallback-code",
+   "responseAfterMs": 250,
+   "finishedAfterMs": 300,
+   "atPageMs": 1240
+  }
+ ],
+ "serviceWorkerNetwork": [],
+ "serviceWorkerRequestsFailedByTest": 0,
+ "serviceWorkerTrace": {
+  "artRows": [
+   {
+    "answeredAtPageMs": 1240,
+    "row": "fetch /static_images/wm61/boot-melaton.png q=0 h=2 200 w=0 hit=2"
+   },
+   {
+    "answeredAtPageMs": 1243,
+    "row": "fetch /static_images/melaton/cafe-ready-dark.png q=0 h=2 200 w=0 hit=2"
+   }
+  ],
+  "workerStarted": [
+   63
+  ],
+  "stalls": [],
+  "fetchRows": 158
+ },
+ "painted": {
+  "splashFrames": 5,
+  "firstSplashFrameAt": 8833,
+  "firstFrameEmblem": true,
+  "firstFrameBadge": true,
+  "firstFullArtFrameAt": 8833,
+  "msOnScreenWithArtMissing": 0,
+  "framesWithArtMissing": []
+ }
+}

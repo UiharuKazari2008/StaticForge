@@ -1,0 +1,28 @@
+warm2-old-r1-1 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=16/0/1 shown=2073[c=false w=0] done=3676 ins=2073 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+warm2-new-r1-1 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=15/0/0 shown=2537[c=true w=704] done=4134 ins=2536 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+MATRIX warm2 done
+off-old-r1-1 FAILED:     at async swap (/home/kanmi/staticforge/docs/testing/evidence/1408/repro/swap.js:68:17)     at async /home/kanmi/staticforge/docs/testing/evidence/1408/repro/measure.js:242:25 
+off-new-r1-1 FAILED:     at async swap (/home/kanmi/staticforge/docs/testing/evidence/1408/repro/swap.js:68:17)     at async /home/kanmi/staticforge/docs/testing/evidence/1408/repro/measure.js:242:25 
+off-old-r1-2 FAILED:     at async swap (/home/kanmi/staticforge/docs/testing/evidence/1408/repro/swap.js:68:17)     at async /home/kanmi/staticforge/docs/testing/evidence/1408/repro/measure.js:242:25 
+off-new-r1-2 FAILED:     at async swap (/home/kanmi/staticforge/docs/testing/evidence/1408/repro/swap.js:68:17)     at async /home/kanmi/staticforge/docs/testing/evidence/1408/repro/measure.js:242:25 
+MATRIX off done
+off-old-r12-1 FAILED:     at async swap (/home/kanmi/staticforge/docs/testing/evidence/1408/repro/swap.js:68:17)     at async /home/kanmi/staticforge/docs/testing/evidence/1408/repro/measure.js:242:25 
+off-new-r12-1 FAILED:     at async swap (/home/kanmi/staticforge/docs/testing/evidence/1408/repro/swap.js:68:17)     at async /home/kanmi/staticforge/docs/testing/evidence/1408/repro/measure.js:242:25 
+MATRIX off done
+gate-nopreload-r1-1 ran=newJS var=ok(reapplied) 1st=NO-emblem,absent badgeFrames c/a/i=17/2/0 shown=2177[c=true w=704] done=3614 ins=1994 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+gate-nopreload-r1-2 ran=newJS var=ok 1st=NO-emblem,absent badgeFrames c/a/i=14/3/0 shown=2825[c=true w=704] done=3934 ins=2338 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+gate-nopreload-r6-1 ran=newJS var=ok 1st=emblem,absent badgeFrames c/a/i=1/3/0 shown=9396[c=true w=704] done=9656 ins=8084 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+gate-nopreload-r6-2 ran=newJS var=ok 1st=emblem,absent badgeFrames c/a/i=1/3/0 shown=11315[c=true w=704] done=11640 ins=9889 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+gate-nopreload-r12-1 ran=newJS var=ok 1st=emblem,absent badgeFrames c/a/i=0/2/0 shown=24833[c=true w=704] done=23034 ins=21445 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+gate-nopreload-r12-2 ran=newJS var=ok 1st=emblem,absent badgeFrames c/a/i=0/3/0 shown=23236[c=true w=704] done=23208 ins=19853 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+MATRIX gate done
+late-old-r1-1 ran=oldJS var=ok 1st=NO-emblem,absent badgeFrames c/a/i=11/6/0 shown=2914[c=true w=704] done=3866 ins=2268 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+late-new-r1-1 ran=newJS+preload var=ok(reapplied) 1st=emblem,absent badgeFrames c/a/i=9/8/0 shown=1929[c=true w=704] done=2929 ins=1327 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+late-old-r1-2 ran=oldJS var=ok 1st=NO-emblem,absent badgeFrames c/a/i=8/12/0 shown=3799[c=true w=704] done=4682 ins=3078 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+late-new-r1-2 ran=newJS+preload var=ok 1st=emblem,absent badgeFrames c/a/i=7/12/0 shown=2773[c=true w=704] done=3805 ins=2153 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+MATRIX late done
+late-old-r12-1 ran=oldJS var=ok 1st=emblem,absent badgeFrames c/a/i=0/3/0 shown=25751[c=true w=704] done=23357 ins=20655 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+late-new-r12-1 ran=newJS+preload var=ok 1st=emblem,absent badgeFrames c/a/i=0/3/0 shown=25888[c=true w=704] done=25838 ins=21720 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+late-old-r12-2 ran=oldJS var=ok 1st=emblem,absent badgeFrames c/a/i=0/3/0 shown=23593[c=true w=704] done=21472 ins=19819 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+late-new-r12-2 ran=newJS+preload var=ok 1st=emblem,absent badgeFrames c/a/i=0/3/0 shown=25620[c=true w=704] done=24060 ins=22487 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+MATRIX late done

@@ -14216,14 +14216,14 @@
         if (WM65) {
             splash.classList.add('wm-splash65');
             splash.innerHTML = `<div class="wm-splash65-art">
-                    <img class="wm-splash65-mark" src="/static_images/melaton/melaton-white-256.png" alt="" draggable="false">
+                    <img class="wm-splash65-mark" src="/static_images/melaton/melaton-white-256.png" width="256" height="256" alt="" draggable="false">
                     <span class="wm-splash65-word">Melaton</span>
                     <p class="wm-splash65-copy">&copy; ${new Date().getFullYear()} Xyridian Corporation. All rights reserved.&nbsp; This computer program is protected by U.S. and international copyright laws.</p>
                 </div>`;
         } else splash.innerHTML = `
             <div class="wm-s61"><span class="wm-s61-rings" aria-hidden="true"><i></i><i></i><i></i></span><b class="wm-s61-glint" aria-hidden="true"></b>
                 <div class="wm-splash-logo">
-                    <img src="/static_images/wm61/boot-melaton.png" alt="" draggable="false">
+                    <img src="/static_images/wm61/boot-melaton.png" width="256" height="256" alt="" draggable="false">
                     <div class="wm-splash-words">
                         <span class="wm-splash-brand">Melaton</span>
                         <span class="wm-splash-product">Mobile</span>
@@ -14233,19 +14233,25 @@
             </div>`;
         // a CaféReady phone: the "Powered by CaféReady" badge (its dark background, as in About) in the splash's bottom
         // right corner, shown while the app's Café Miniport link is up - it says Melaton can talk to it (Yukimi, Nov 18 2026)
+        // - and only once its picture is in: never "Powered by" and "TM" around a blank (#1408). app.html preloads
+        // the splash's pictures under these same addresses
         const cafe = document.createElement('div');
         cafe.className = 'wm-cafe-badge wm-splash-cafe';
         cafe.setAttribute('role', 'img');
         cafe.setAttribute('aria-label', 'Powered by CaféReady');
-        cafe.innerHTML = '<span class="wm-cafe-by">Powered by</span><img src="/static_images/melaton/cafe-ready-dark.png" alt="" draggable="false"><span class="wm-cafe-tm">™</span>';
+        cafe.innerHTML = '<span class="wm-cafe-by">Powered by</span><img src="/static_images/melaton/cafe-ready-dark.png" width="704" height="298" alt="" draggable="false"><span class="wm-cafe-tm">™</span>';
         cafe.hidden = true;
         splash.appendChild(cafe);
+        const cafeArt = cafe.querySelector('img');
         const cafeNow = () => {
             let mp = null;
             try { const mc = window.melatonContinuity; mp = mc && typeof mc.miniport === 'function' ? mc.miniport() : null; } catch (_) { mp = null; }
-            cafe.hidden = !(mp && mp.present && mp.enabled !== false && mp.up);
+            const hide = !(mp && mp.present && mp.enabled !== false && mp.up && cafeArt.complete && cafeArt.naturalWidth > 0);
+            if (cafe.hidden !== hide) cafe.hidden = hide;
         };
         cafeNow();
+        // the picture comes in after the link: its load shows the badge (a failed load leaves it hidden)
+        cafeArt.addEventListener('load', cafeNow, { once: true });
         // the link comes up a moment into the boot: its own event shows the badge then (no polling)
         try { const mc = window.melatonContinuity; if (mc && typeof mc.on === 'function') mc.on('miniport', cafeNow); } catch (_) { /* no Continuity */ }
         shell.appendChild(splash);

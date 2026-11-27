@@ -1,0 +1,80 @@
+{
+ "boot-melaton.png preloaded": {
+  "preload": true,
+  "sameTaskDetached": {
+   "complete": true,
+   "w": 256
+  },
+  "sameTaskAppended": {
+   "complete": true,
+   "w": 256
+  },
+  "afterMicrotasks": {
+   "complete": true,
+   "w": 256
+  },
+  "afterLoad": {
+   "complete": true,
+   "w": 256
+  }
+ },
+ "cafe-ready-dark.png not preloaded": {
+  "preload": false,
+  "sameTaskDetached": {
+   "complete": false,
+   "w": 0
+  },
+  "sameTaskAppended": {
+   "complete": false,
+   "w": 0
+  },
+  "afterMicrotasks": {
+   "complete": false,
+   "w": 0
+  },
+  "afterLoad": {
+   "complete": true,
+   "w": 704
+  }
+ }
+}
+{
+ "cafe-ready-dark.png preloaded": {
+  "preload": true,
+  "sameTaskDetached": {
+   "complete": true,
+   "w": 704
+  },
+  "sameTaskAppended": {
+   "complete": true,
+   "w": 704
+  },
+  "afterMicrotasks": {
+   "complete": true,
+   "w": 704
+  },
+  "afterLoad": {
+   "complete": true,
+   "w": 704
+  }
+ },
+ "boot-melaton.png not preloaded": {
+  "preload": false,
+  "sameTaskDetached": {
+   "complete": false,
+   "w": 0
+  },
+  "sameTaskAppended": {
+   "complete": false,
+   "w": 0
+  },
+  "afterMicrotasks": {
+   "complete": false,
+   "w": 0
+  },
+  "afterLoad": {
+   "complete": true,
+   "w": 256
+  }
+ }
+}

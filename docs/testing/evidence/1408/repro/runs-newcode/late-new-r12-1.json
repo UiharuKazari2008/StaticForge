@@ -1,0 +1,780 @@
+{
+ "label": "late-new-r12-1",
+ "rate": 12,
+ "net": "normal",
+ "injectedStallMs": 0,
+ "preload": false,
+ "showcafe": false,
+ "swStoppedFirst": true,
+ "hostLoad1": [
+  9.14,
+  10.52
+ ],
+ "cpuset": null,
+ "wm": "6.1",
+ "variant": "new",
+ "variantBefore": {
+  "ok": true,
+  "reappliedBeforeThisRun": false,
+  "files": {
+   "/scripts/comp/wmShell.js": {
+    "asWanted": true,
+    "bodySha": "72a0aa4b2e26ad4c"
+   },
+   "/css/wm-shell.css": {
+    "asWanted": true,
+    "bodySha": "1cbd8502f11331c8"
+   },
+   "/css/wm-programs.css": {
+    "asWanted": true,
+    "bodySha": "9f4824a1b208a0ac"
+   }
+  },
+  "app": {
+   "asWanted": true,
+   "hasPreloadBlock": true,
+   "names": true
+  },
+  "expected": {
+   "files": {
+    "/scripts/comp/wmShell.js": "72a0aa4b2e26ad4c32c9d04d51eef7543b876d14c4b7d21eb267da7bbcc19574",
+    "/css/wm-shell.css": "1cbd8502f11331c80a325dca49c36a87122564da8be8b4c393fbca141089245c",
+    "/css/wm-programs.css": "9f4824a1b208a0ac0d01dbd67e7563895738fc68cbd9eb7beb79441ffe0a3701"
+   },
+   "preloadBlock": true
+  }
+ },
+ "miniport": "late",
+ "waitedPastLoadMs": 13534,
+ "consolePreload": [],
+ "consoleRowsSeen": 29,
+ "consoleNamingArt": [],
+ "bogusRequests": 0,
+ "path": "/app",
+ "timeOrigin": 1795817746462.2,
+ "version": {
+  "pagePreloads": [
+   "boot-melaton.png fetchpriority=high",
+   "cafe-ready-dark.png fetchpriority=high"
+  ],
+  "imgAttrs": [
+   "boot-melaton.png width=256 height=256",
+   "cafe-ready-dark.png width=704 height=298"
+  ]
+ },
+ "assets": [
+  "/css/wm-shell.css?sha=1cbd8502f11331c80a325dca49c36a87122564da8be8b4c393fbca141089245c",
+  "/css/wm-programs.css?sha=9f4824a1b208a0ac0d01dbd67e7563895738fc68cbd9eb7beb79441ffe0a3701",
+  "/scripts/comp/wmShell.js?sha=72a0aa4b2e26ad4c32c9d04d51eef7543b876d14c4b7d21eb267da7bbcc19574"
+ ],
+ "styles": {
+  "emblemImg": {
+   "width": "101.297px",
+   "height": "101.297px",
+   "aspectRatio": "1 / 1"
+  },
+  "badgeImg": {
+   "width": "100%",
+   "height": "auto",
+   "aspectRatio": "704 / 298"
+  },
+  "emblemBox": [
+   29,
+   67,
+   101,
+   101
+  ],
+  "badgeBox": [
+   0,
+   0,
+   0,
+   0
+  ]
+ },
+ "sheetRules": {
+  "logoImgRule": {
+   "sheet": "wm-shell.css?sha=1cbd8502f11331c80a325dc",
+   "height": "auto"
+  },
+  "badgeImgRule": {
+   "sheet": "wm-programs.css?sha=9f4824a1b208a0ac0d01",
+   "aspectRatio": "704 / 298"
+  }
+ },
+ "ev": [
+  [
+   21720,
+   "link-at-insert",
+   "present=true enabled=true up=false"
+  ],
+  [
+   21720,
+   "inserted",
+   "boot-melaton.png complete=true natural=256x256 widthAttr=true"
+  ],
+  [
+   21721,
+   "badge-at-insert",
+   "hidden=true imgComplete=true naturalWidth=704"
+  ],
+  [
+   21721,
+   "inserted",
+   "cafe-ready-dark.png complete=true natural=704x298 widthAttr=true"
+  ],
+  [
+   21731,
+   "data-wm-boot",
+   "splash"
+  ],
+  [
+   23695,
+   "load",
+   "boot-melaton.png natural=256x256"
+  ],
+  [
+   23695,
+   "load",
+   "cafe-ready-dark.png natural=704x298"
+  ],
+  [
+   25838,
+   "data-wm-boot",
+   "done"
+  ],
+  [
+   25864,
+   "miniport-state-delivered",
+   "handler=function"
+  ],
+  [
+   25888,
+   "badge-shown",
+   "imgComplete=true naturalWidth=704"
+  ],
+  [
+   27648,
+   "data-wm-splash-painted",
+   "27648"
+  ],
+  [
+   35931,
+   "DOMContentLoaded",
+   ""
+  ],
+  [
+   35931,
+   "navigator.onLine",
+   "true"
+  ],
+  [
+   37460,
+   "window.load",
+   ""
+  ]
+ ],
+ "longtasks": [
+  [
+   2196,
+   51
+  ],
+  [
+   2438,
+   496
+  ],
+  [
+   3128,
+   335
+  ],
+  [
+   3464,
+   59
+  ],
+  [
+   3966,
+   50
+  ],
+  [
+   4630,
+   55
+  ],
+  [
+   4790,
+   962
+  ],
+  [
+   5753,
+   574
+  ],
+  [
+   8466,
+   675
+  ],
+  [
+   9349,
+   573
+  ],
+  [
+   10029,
+   265
+  ],
+  [
+   10452,
+   81
+  ],
+  [
+   10598,
+   57
+  ],
+  [
+   10818,
+   97
+  ],
+  [
+   11303,
+   163
+  ],
+  [
+   11526,
+   143
+  ],
+  [
+   12005,
+   58
+  ],
+  [
+   12297,
+   131
+  ],
+  [
+   12442,
+   80
+  ],
+  [
+   12586,
+   123
+  ],
+  [
+   13006,
+   84
+  ],
+  [
+   13224,
+   52
+  ],
+  [
+   13328,
+   59
+  ],
+  [
+   13482,
+   65
+  ],
+  [
+   13646,
+   60
+  ],
+  [
+   13791,
+   65
+  ],
+  [
+   13960,
+   179
+  ],
+  [
+   14569,
+   68
+  ],
+  [
+   14789,
+   133
+  ],
+  [
+   15061,
+   84
+  ],
+  [
+   15554,
+   73
+  ],
+  [
+   17496,
+   234
+  ],
+  [
+   18179,
+   3728
+  ],
+  [
+   22306,
+   1116
+  ],
+  [
+   23476,
+   52
+  ],
+  [
+   23710,
+   64
+  ],
+  [
+   23882,
+   1848
+  ],
+  [
+   25731,
+   57
+  ],
+  [
+   25899,
+   523
+  ],
+  [
+   26471,
+   170
+  ],
+  [
+   26808,
+   55
+  ],
+  [
+   26869,
+   208
+  ],
+  [
+   27117,
+   95
+  ],
+  [
+   27277,
+   153
+  ],
+  [
+   27459,
+   131
+  ],
+  [
+   27651,
+   124
+  ],
+  [
+   27831,
+   307
+  ],
+  [
+   28278,
+   77
+  ],
+  [
+   28359,
+   102
+  ],
+  [
+   28583,
+   51
+  ],
+  [
+   28814,
+   52
+  ],
+  [
+   28915,
+   64
+  ],
+  [
+   29004,
+   67
+  ],
+  [
+   29129,
+   75
+  ],
+  [
+   29231,
+   116
+  ],
+  [
+   29351,
+   103
+  ],
+  [
+   29539,
+   150
+  ],
+  [
+   29690,
+   152
+  ],
+  [
+   29842,
+   519
+  ],
+  [
+   30441,
+   50
+  ],
+  [
+   30653,
+   77
+  ],
+  [
+   30770,
+   64
+  ],
+  [
+   30858,
+   71
+  ],
+  [
+   30989,
+   422
+  ],
+  [
+   31439,
+   183
+  ],
+  [
+   31779,
+   59
+  ],
+  [
+   31950,
+   66
+  ],
+  [
+   32068,
+   114
+  ],
+  [
+   32183,
+   228
+  ],
+  [
+   32434,
+   199
+  ],
+  [
+   32748,
+   97
+  ],
+  [
+   32975,
+   297
+  ],
+  [
+   33282,
+   53
+  ],
+  [
+   33440,
+   177
+  ],
+  [
+   33731,
+   54
+  ],
+  [
+   33868,
+   70
+  ],
+  [
+   33943,
+   53
+  ],
+  [
+   34120,
+   317
+  ],
+  [
+   34500,
+   68
+  ],
+  [
+   34570,
+   344
+  ],
+  [
+   34942,
+   138
+  ],
+  [
+   35927,
+   1278
+  ],
+  [
+   37243,
+   90
+  ],
+  [
+   37559,
+   59
+  ],
+  [
+   37663,
+   120
+  ],
+  [
+   37836,
+   90
+  ],
+  [
+   38088,
+   82
+  ],
+  [
+   38400,
+   59
+  ],
+  [
+   38753,
+   62
+  ],
+  [
+   38829,
+   167
+  ],
+  [
+   39158,
+   167
+  ],
+  [
+   39370,
+   111
+  ],
+  [
+   39585,
+   166
+  ]
+ ],
+ "box": {
+  "emblem": [
+   29,
+   67,
+   101,
+   101
+  ],
+  "cafe": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "cafeImg": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "cafeHidden": true
+ },
+ "resources": {
+  "boot-melaton.png": [
+   {
+    "initiatorType": "link",
+    "startTime": 2652,
+    "workerStart": 2653,
+    "fetchStart": 2653,
+    "requestStart": 2653,
+    "responseStart": 2657,
+    "responseEnd": 2657,
+    "transferSize": 0,
+    "encodedBodySize": 58412,
+    "decodedBodySize": 58412,
+    "deliveryType": "cache",
+    "renderBlockingStatus": "non-blocking",
+    "requestsStartedBefore": 373,
+    "requestsInFlightAtStart": 276
+   }
+  ],
+  "cafe-ready-dark.png": [
+   {
+    "initiatorType": "link",
+    "startTime": 2659,
+    "workerStart": 2661,
+    "fetchStart": 2661,
+    "requestStart": 2661,
+    "responseStart": 2663,
+    "responseEnd": 3091,
+    "transferSize": 0,
+    "encodedBodySize": 152752,
+    "decodedBodySize": 152752,
+    "deliveryType": "cache",
+    "renderBlockingStatus": "non-blocking",
+    "requestsStartedBefore": 374,
+    "requestsInFlightAtStart": 276
+   }
+  ]
+ },
+ "cached": {
+  "boot-melaton.png": true,
+  "cafe-ready-dark.png": true
+ },
+ "resourceCount": 590,
+ "paint": [
+  [
+   "first-paint",
+   6340
+  ],
+  [
+   "first-contentful-paint",
+   23448
+  ]
+ ],
+ "nav": {
+  "responseEnd": 72,
+  "domInteractive": 35927,
+  "domContentLoaded": 37024,
+  "load": 37468
+ },
+ "served": {
+  "splashArtInHtml": true,
+  "splashImgs": [
+   {
+    "src": "/static_images/wm61/boot-melaton.png",
+    "complete": true,
+    "natural": [
+     256,
+     256
+    ]
+   },
+   {
+    "src": "/static_images/melaton/cafe-ready-dark.png",
+    "complete": true,
+    "natural": [
+     704,
+     298
+    ]
+   }
+  ],
+  "controlled": true
+ },
+ "ackDropped": 0,
+ "swRowsPerArt": {
+  "boot-melaton.png": 1,
+  "cafe-ready-dark.png": 1
+ },
+ "pageNetwork": [
+  {
+   "url": "boot-melaton.png",
+   "type": "Image",
+   "priority": "High",
+   "initiator": "script",
+   "status": 200,
+   "fromServiceWorker": true,
+   "fromDiskCache": false,
+   "swSource": "fallback-code",
+   "responseAfterMs": 298,
+   "finishedAfterMs": 14,
+   "atPageMs": 2651
+  },
+  {
+   "url": "cafe-ready-dark.png",
+   "type": "Image",
+   "priority": "High",
+   "initiator": "script",
+   "status": 200,
+   "fromServiceWorker": true,
+   "fromDiskCache": false,
+   "swSource": "fallback-code",
+   "responseAfterMs": 294,
+   "finishedAfterMs": 433,
+   "atPageMs": 2658
+  }
+ ],
+ "serviceWorkerNetwork": [],
+ "serviceWorkerRequestsFailedByTest": 0,
+ "serviceWorkerTrace": {
+  "artRows": [
+   {
+    "answeredAtPageMs": 2656,
+    "row": "fetch /static_images/wm61/boot-melaton.png q=0 h=3 200 w=0 hit=3"
+   },
+   {
+    "answeredAtPageMs": 2662,
+    "row": "fetch /static_images/melaton/cafe-ready-dark.png q=0 h=2 200 w=0 hit=2"
+   }
+  ],
+  "workerStarted": [
+   44
+  ],
+  "stalls": [],
+  "fetchRows": 119
+ },
+ "variantAfter": {
+  "ok": true,
+  "files": {
+   "/scripts/comp/wmShell.js": {
+    "asWanted": true,
+    "bodySha": "72a0aa4b2e26ad4c"
+   },
+   "/css/wm-shell.css": {
+    "asWanted": true,
+    "bodySha": "1cbd8502f11331c8"
+   },
+   "/css/wm-programs.css": {
+    "asWanted": true,
+    "bodySha": "9f4824a1b208a0ac"
+   }
+  },
+  "app": {
+   "asWanted": true,
+   "hasPreloadBlock": true,
+   "names": true
+  }
+ },
+ "painted": {
+  "splashFrames": 3,
+  "firstSplashFrameAt": 23452,
+  "firstFrameEmblem": true,
+  "firstFrameBadge": false,
+  "firstFullArtFrameAt": null,
+  "msOnScreenWithArtMissing": null,
+  "framesWithArtMissing": [
+   {
+    "t": 23452,
+    "emblem": true,
+    "badge": false
+   },
+   {
+    "t": 23585,
+    "emblem": true,
+    "badge": false
+   },
+   {
+    "t": 25802,
+    "emblem": true,
+    "badge": false
+   }
+  ],
+  "firstFrameBadgeState": "absent",
+  "badgeFrames": {
+   "complete": 0,
+   "absent": 3,
+   "incomplete": 0
+  },
+  "frames": [
+   [
+    23452,
+    1,
+    "absent",
+    110.8,
+    0
+   ],
+   [
+    23585,
+    1,
+    "absent",
+    110.8,
+    0
+   ],
+   [
+    25802,
+    1,
+    "absent",
+    110.8,
+    0
+   ]
+  ]
+ }
+}

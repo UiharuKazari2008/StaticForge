@@ -1,0 +1,8 @@
+off-old-r1-1 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=10/0/1 shown=1316[c=false w=0] done=2910 ins=1316 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+off-new-r1-1 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=9/0/0 shown=1720[c=true w=704] done=3323 ins=1720 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+off-old-r1-2 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=9/0/1 shown=1489[c=false w=0] done=3090 ins=1489 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+off-new-r1-2 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=11/0/0 shown=2184[c=true w=704] done=3785 ins=2184 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+MATRIX off done
+off-old-r12-1 ran=oldJS var=ok 1st=emblem,complete badgeFrames c/a/i=2/0/0 shown=20876[c=false w=0] done=24148 ins=20874 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+off-new-r12-1 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=1/0/0 shown=27287[c=true w=704] done=29487 ins=27287 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+MATRIX off done

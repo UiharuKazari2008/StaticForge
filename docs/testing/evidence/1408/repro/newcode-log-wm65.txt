@@ -1,0 +1,60 @@
+/home/kanmi/staticforge/docs/testing/evidence/1408/repro/line.js:10
+    `1st=${p.firstSplashFrameAt ? `${p.firstFrameEmblem ? 'emblem' : 'NO-emblem'},${p.firstFrameBadgeState}` : 'none'}`,
+             ^
+
+TypeError: Cannot read properties of undefined (reading 'firstSplashFrameAt')
+    at Object.<anonymous> (/home/kanmi/staticforge/docs/testing/evidence/1408/repro/line.js:10:14)
+    at Module._compile (node:internal/modules/cjs/loader:1929:14)
+    at Object..js (node:internal/modules/cjs/loader:2060:10)
+    at Module.load (node:internal/modules/cjs/loader:1651:32)
+    at Module._load (node:internal/modules/cjs/loader:1443:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47
+
+Node.js v24.22.1
+/home/kanmi/staticforge/docs/testing/evidence/1408/repro/line.js:10
+    `1st=${p.firstSplashFrameAt ? `${p.firstFrameEmblem ? 'emblem' : 'NO-emblem'},${p.firstFrameBadgeState}` : 'none'}`,
+             ^
+
+TypeError: Cannot read properties of undefined (reading 'firstSplashFrameAt')
+    at Object.<anonymous> (/home/kanmi/staticforge/docs/testing/evidence/1408/repro/line.js:10:14)
+    at Module._compile (node:internal/modules/cjs/loader:1929:14)
+    at Object..js (node:internal/modules/cjs/loader:2060:10)
+    at Module.load (node:internal/modules/cjs/loader:1651:32)
+    at Module._load (node:internal/modules/cjs/loader:1443:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47
+
+Node.js v24.22.1
+/home/kanmi/staticforge/docs/testing/evidence/1408/repro/line.js:10
+    `1st=${p.firstSplashFrameAt ? `${p.firstFrameEmblem ? 'emblem' : 'NO-emblem'},${p.firstFrameBadgeState}` : 'none'}`,
+             ^
+
+TypeError: Cannot read properties of undefined (reading 'firstSplashFrameAt')
+    at Object.<anonymous> (/home/kanmi/staticforge/docs/testing/evidence/1408/repro/line.js:10:14)
+    at Module._compile (node:internal/modules/cjs/loader:1929:14)
+    at Object..js (node:internal/modules/cjs/loader:2060:10)
+    at Module.load (node:internal/modules/cjs/loader:1651:32)
+    at Module._load (node:internal/modules/cjs/loader:1443:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47
+
+Node.js v24.22.1
+/home/kanmi/staticforge/docs/testing/evidence/1408/repro/line.js:10
+    `1st=${p.firstSplashFrameAt ? `${p.firstFrameEmblem ? 'emblem' : 'NO-emblem'},${p.firstFrameBadgeState}` : 'none'}`,
+             ^
+
+TypeError: Cannot read properties of undefined (reading 'firstSplashFrameAt')
+    at Object.<anonymous> (/home/kanmi/staticforge/docs/testing/evidence/1408/repro/line.js:10:14)
+    at Module._compile (node:internal/modules/cjs/loader:1929:14)
+    at Object..js (node:internal/modules/cjs/loader:2060:10)
+    at Module.load (node:internal/modules/cjs/loader:1651:32)
+    at Module._load (node:internal/modules/cjs/loader:1443:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47
+
+Node.js v24.22.1

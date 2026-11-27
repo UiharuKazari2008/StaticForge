@@ -1,0 +1,271 @@
+{
+ "label": "cached-artfail",
+ "rate": 1,
+ "net": "art-fail",
+ "preload": false,
+ "showcafe": true,
+ "swStoppedFirst": true,
+ "hostLoad1": [
+  5.61,
+  4.99
+ ],
+ "cpuset": null,
+ "path": "/app",
+ "timeOrigin": 1795813888781.8,
+ "ev": [
+  [
+   1535,
+   "inserted",
+   "boot-melaton.png complete=false natural=0x0 widthAttr=false"
+  ],
+  [
+   1535,
+   "inserted",
+   "cafe-ready-dark.png complete=false natural=0x0 widthAttr=false"
+  ],
+  [
+   1536,
+   "data-wm-boot",
+   "splash"
+  ],
+  [
+   1725,
+   "load",
+   "boot-melaton.png natural=256x256"
+  ],
+  [
+   1725,
+   "load",
+   "cafe-ready-dark.png natural=704x298"
+  ],
+  [
+   1908,
+   "data-wm-splash-painted",
+   "1908"
+  ],
+  [
+   2129,
+   "DOMContentLoaded",
+   ""
+  ],
+  [
+   2261,
+   "window.load",
+   ""
+  ],
+  [
+   3150,
+   "data-wm-boot",
+   "done"
+  ]
+ ],
+ "longtasks": [
+  [
+   286,
+   69
+  ],
+  [
+   606,
+   74
+  ],
+  [
+   683,
+   117
+  ],
+  [
+   1390,
+   152
+  ],
+  [
+   1644,
+   71
+  ],
+  [
+   2128,
+   78
+  ],
+  [
+   2410,
+   56
+  ],
+  [
+   3045,
+   59
+  ],
+  [
+   3311,
+   59
+  ],
+  [
+   3599,
+   51
+  ]
+ ],
+ "box": {
+  "emblem": [
+   29,
+   67,
+   101,
+   101
+  ],
+  "cafe": [
+   259,
+   822,
+   138,
+   78
+  ],
+  "cafeImg": [
+   268,
+   842,
+   121,
+   51
+  ],
+  "cafeHidden": false
+ },
+ "resources": {
+  "boot-melaton.png": [
+   {
+    "initiatorType": "img",
+    "startTime": 1542,
+    "workerStart": 1543,
+    "fetchStart": 1552,
+    "requestStart": 1552,
+    "responseStart": 1575,
+    "responseEnd": 1583,
+    "transferSize": 0,
+    "encodedBodySize": 58412,
+    "decodedBodySize": 58412,
+    "deliveryType": "cache",
+    "renderBlockingStatus": "non-blocking",
+    "requestsStartedBefore": 530,
+    "requestsInFlightAtStart": 19
+   }
+  ],
+  "cafe-ready-dark.png": [
+   {
+    "initiatorType": "img",
+    "startTime": 1543,
+    "workerStart": 1543,
+    "fetchStart": 1553,
+    "requestStart": 1553,
+    "responseStart": 1576,
+    "responseEnd": 1613,
+    "transferSize": 0,
+    "encodedBodySize": 152752,
+    "decodedBodySize": 152752,
+    "deliveryType": "cache",
+    "renderBlockingStatus": "non-blocking",
+    "requestsStartedBefore": 531,
+    "requestsInFlightAtStart": 20
+   }
+  ]
+ },
+ "cached": {
+  "boot-melaton.png": true,
+  "cafe-ready-dark.png": true
+ },
+ "resourceCount": 631,
+ "paint": [
+  [
+   "first-paint",
+   824
+  ],
+  [
+   "first-contentful-paint",
+   1628
+  ]
+ ],
+ "nav": {
+  "responseEnd": 48,
+  "domInteractive": 2128,
+  "domContentLoaded": 2196,
+  "load": 2262
+ },
+ "served": {
+  "splashArtInHtml": false,
+  "splashImgs": [
+   {
+    "src": "/static_images/wm61/boot-melaton.png",
+    "complete": true,
+    "natural": [
+     256,
+     256
+    ]
+   },
+   {
+    "src": "/static_images/melaton/cafe-ready-dark.png",
+    "complete": true,
+    "natural": [
+     704,
+     298
+    ]
+   }
+  ],
+  "controlled": true
+ },
+ "ackDropped": 0,
+ "pageNetwork": [
+  {
+   "url": "boot-melaton.png",
+   "type": "Image",
+   "priority": "Low",
+   "initiator": "parser",
+   "priorityChangedTo": "High after 51 ms",
+   "status": 200,
+   "fromServiceWorker": true,
+   "fromDiskCache": false,
+   "swSource": "fallback-code",
+   "responseAfterMs": 66,
+   "finishedAfterMs": 41,
+   "atPageMs": 1542
+  },
+  {
+   "url": "cafe-ready-dark.png",
+   "type": "Image",
+   "priority": "Low",
+   "initiator": "parser",
+   "priorityChangedTo": "High after 51 ms",
+   "status": 200,
+   "fromServiceWorker": true,
+   "fromDiskCache": false,
+   "swSource": "fallback-code",
+   "responseAfterMs": 67,
+   "finishedAfterMs": 70,
+   "atPageMs": 1543
+  }
+ ],
+ "serviceWorkerNetwork": [],
+ "serviceWorkerRequestsFailedByTest": 0,
+ "serviceWorkerTrace": {
+  "artRows": [
+   {
+    "answeredAtPageMs": 1574,
+    "row": "fetch /static_images/wm61/boot-melaton.png q=0 h=22 200 w=0 hit=22"
+   },
+   {
+    "answeredAtPageMs": 1575,
+    "row": "fetch /static_images/melaton/cafe-ready-dark.png q=0 h=23 200 w=0 hit=23"
+   }
+  ],
+  "workerStarted": [
+   40
+  ],
+  "stalls": [],
+  "fetchRows": 159
+ },
+ "painted": {
+  "splashFrames": 28,
+  "firstSplashFrameAt": 1638,
+  "firstFrameEmblem": false,
+  "firstFrameBadge": false,
+  "firstFullArtFrameAt": 1754,
+  "msOnScreenWithArtMissing": 116,
+  "framesWithArtMissing": [
+   {
+    "t": 1638,
+    "emblem": false,
+    "badge": false
+   }
+  ]
+ }
+}

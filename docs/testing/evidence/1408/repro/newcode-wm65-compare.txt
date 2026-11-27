@@ -1,0 +1,6 @@
+{"old-r1-1":{"splashFrames":60,"first":2388,"last":3921,"done":3938},"new-r1-1":{"splashFrames":22,"first":1992,"last":3259,"done":3445},"old-r1-2":{"splashFrames":57,"first":2183,"last":3800,"done":3824},"new-r1-2":{"splashFrames":17,"first":2641,"last":4025,"done":4161}}
+pair 1, first splash frame {"oldAtMs":2388,"newAtMs":1992,"emblem":{"mean":0,"max":0,"pctOver8":0},"badge":{"mean":71.23,"max":239,"pctOver8":77.74}}
+pair 1, last splash frame {"oldAtMs":3921,"newAtMs":3259,"emblem":{"mean":0,"max":0,"pctOver8":0},"badge":{"mean":0,"max":0,"pctOver8":0}}
+pair 2, first splash frame {"oldAtMs":2183,"newAtMs":2641,"emblem":{"mean":0,"max":0,"pctOver8":0},"badge":{"mean":71.23,"max":239,"pctOver8":77.74}}
+pair 2, last splash frame {"oldAtMs":3800,"newAtMs":4025,"emblem":{"mean":0,"max":0,"pctOver8":0},"badge":{"mean":0,"max":0,"pctOver8":0}}
+new first vs new last (pair 1) {"emblem":{"mean":0,"max":11,"pctOver8":0.01},"badge":{"mean":0.02,"max":11,"pctOver8":0.01}}

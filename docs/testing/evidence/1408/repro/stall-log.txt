@@ -1,0 +1,6 @@
+stall6s-plain-r1-1 {"splashFrames":2,"firstSplashFrameAt":2424,"firstFrameEmblem":false,"firstFrameBadge":false,"firstFullArtFrameAt":2608,"msOnScreenWithArtMissing":184,"framesWithArtMissing":[{"t":2424,"emblem":false,"badge":false}]}
+stall6s-preload-r1-1 {"splashFrames":2,"firstSplashFrameAt":1919,"firstFrameEmblem":true,"firstFrameBadge":true,"firstFullArtFrameAt":1919,"msOnScreenWithArtMissing":0,"framesWithArtMissing":[]}
+stall6s-plain-r1-2 {"splashFrames":2,"firstSplashFrameAt":2249,"firstFrameEmblem":false,"firstFrameBadge":false,"firstFullArtFrameAt":2399,"msOnScreenWithArtMissing":150,"framesWithArtMissing":[{"t":2249,"emblem":false,"badge":false}]}
+stall6s-preload-r1-2 {"splashFrames":2,"firstSplashFrameAt":1553,"firstFrameEmblem":true,"firstFrameBadge":true,"firstFullArtFrameAt":1553,"msOnScreenWithArtMissing":0,"framesWithArtMissing":[]}
+stall6s-plain-r1-3 {"splashFrames":2,"firstSplashFrameAt":2499,"firstFrameEmblem":false,"firstFrameBadge":false,"firstFullArtFrameAt":2632,"msOnScreenWithArtMissing":133,"framesWithArtMissing":[{"t":2499,"emblem":false,"badge":false}]}
+stall6s-preload-r1-3 {"splashFrames":2,"firstSplashFrameAt":1696,"firstFrameEmblem":true,"firstFrameBadge":true,"firstFullArtFrameAt":1696,"msOnScreenWithArtMissing":0,"framesWithArtMissing":[]}

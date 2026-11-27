@@ -1,0 +1,14 @@
+warm1-old-r1-1 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=13/0/1 shown=4198[c=false w=0] done=5834 ins=4198 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+warm1-new-r1-1 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=13/0/0 shown=4310[c=true w=704] done=5943 ins=4309 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+MATRIX warm1 done
+core1-old-r1-1 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=13/0/1 shown=4327[c=false w=0] done=6040 ins=4320 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1-new-r1-1 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=15/0/0 shown=4605[c=true w=704] done=6551 ins=4605 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1-old-r1-2 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=12/0/1 shown=4416[c=false w=0] done=6251 ins=4416 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1-new-r1-2 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=16/0/0 shown=4628[c=true w=704] done=6460 ins=4628 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1-old-r1-3 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=11/0/1 shown=4408[c=false w=0] done=6069 ins=4408 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1-new-r1-3 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=14/0/0 shown=4792[c=true w=704] done=6456 ins=4792 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1-old-r1-4 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=14/0/1 shown=4640[c=false w=0] done=6360 ins=4640 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1-new-r1-4 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=12/0/0 shown=4905[c=true w=704] done=6529 ins=4905 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1-old-r1-5 ran=oldJS var=ok 1st=NO-emblem,incomplete badgeFrames c/a/i=15/0/1 shown=4648[c=false w=0] done=6301 ins=4648 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+core1-new-r1-5 ran=newJS+preload var=ok 1st=emblem,complete badgeFrames c/a/i=13/0/0 shown=4818[c=true w=704] done=6566 ins=4818 req/img=1/1 entries=1/1 swRows=1/1 swNet=0 preloadWarn=0
+MATRIX core1 done

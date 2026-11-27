@@ -1,0 +1,42 @@
+{
+ "builtAt": "2026-11-27T21:32:08.729Z",
+ "headCommit": "f12ebdcb2",
+ "files": {
+  "/scripts/comp/wmShell.js": {
+   "treeSourceSha": "346146ba6b2ffd72",
+   "headSourceSha": "5c3ddc5816caf41a",
+   "old": "edd01aaf2393c61b44f63cf324291cf4e97cb00d0b21d6d80adc0a39a62b7acd",
+   "new": "72a0aa4b2e26ad4c32c9d04d51eef7543b876d14c4b7d21eb267da7bbcc19574",
+   "oldBuildEqualsServersCompiledFileApartFromTheDate": true,
+   "refsInServedApp": 1,
+   "servedAppNamesOldBuild": true
+  },
+  "/css/wm-shell.css": {
+   "treeSourceSha": "3fa2b8ddc765acab",
+   "headSourceSha": "8fa03e99e80a00ec",
+   "old": "77c82d34daacda487772d5f6592229852ee1b1f86ee751dc49e9e51e2748ea4c",
+   "new": "1cbd8502f11331c80a325dca49c36a87122564da8be8b4c393fbca141089245c",
+   "oldBuildEqualsServersCompiledFileApartFromTheDate": true,
+   "refsInServedApp": 1,
+   "servedAppNamesOldBuild": true
+  },
+  "/css/wm-programs.css": {
+   "treeSourceSha": "137813155bff9206",
+   "headSourceSha": "e3d947e25c152b05",
+   "old": "d85a259a9b30ff4f015d1a1cb588396eb56668782a3a683fef6d8d28730a2564",
+   "new": "9f4824a1b208a0ac0d01dbd67e7563895738fc68cbd9eb7beb79441ffe0a3701",
+   "oldBuildEqualsServersCompiledFileApartFromTheDate": true,
+   "refsInServedApp": 1,
+   "servedAppNamesOldBuild": true
+  }
+ },
+ "appHtml": {
+  "oneBlockIsTheWholeDiff": true,
+  "blockBytes": 1135,
+  "blockSha": "a9d2132c6ef3e127"
+ },
+ "servedApp": {
+  "anchorCount": 1,
+  "alreadyHasBlock": false
+ }
+}
