@@ -607,7 +607,8 @@
     const inAndroidApp = () => !!(window.AndroidActiveSync || window.AndroidNotification || window.AndroidDevice);
     /** A missed arrival from the inbox (wmNotificationInbox catch-up): into this note, as if it came now. */
     let adoptTimer = null;
-    function inboxAdopt(n) {
+    let adoptLive = false; // a live arrival waits for the timer
+    function inboxAdopt(n, o) {
         const d = (n && n.data) || {};
         if (!d.accountId || d.uid == null) return false;
         const f = d.folder || 'INBOX';
@@ -616,10 +617,21 @@
             if (imapFresh.length > 50) imapFresh.shift();
             imapPending.add(pendKey(d.accountId, f, d.uid));
         }
-        // several at once (a catch-up): one notification for them all; Android already sounded
+        // several at once (a catch-up): one notification for them all
+        // live (a snoozed mail back, no page app raised it): it sounds, also when caught-up ones join it before the note
+        // comes up; caught up on resume: the app already sounded it
+        if (o && o.live) adoptLive = true;
         clearTimeout(adoptTimer);
-        adoptTimer = setTimeout(() => { showImapNote({ silent: inAndroidApp() }); shellStatus(); }, 0);
-        return true;
+        adoptTimer = setTimeout(() => {
+            const live = adoptLive;
+            adoptLive = false;
+            showImapNote({ silent: !live && inAndroidApp() });
+            shellStatus();
+        }, 0);
+        // while new mail is the inbox's own notice (#1098) showImapNote draws nothing: a live one is not taken, so the
+        // inbox shows it itself, sounding (taken, it would be marked seen with no box and no sound)
+        const ni = window.wmNotificationInbox;
+        return !(o && o.live && ni && typeof ni.mailStacked === 'function' && ni.mailStacked());
     }
     /** Cleared elsewhere (read on another device): out of this note. */
     function inboxDrop(n) {
