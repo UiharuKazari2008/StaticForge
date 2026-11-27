@@ -761,7 +761,7 @@ function db() {
         if (!hcols.has('other_session')) d.exec("ALTER TABLE supervisor_holds ADD COLUMN other_session TEXT NOT NULL DEFAULT ''");
         const wcols = new Set(d.prepare('PRAGMA table_info(supervisor_work)').all().map((c) => c.name));
         if (!wcols.has('engine')) d.exec("ALTER TABLE supervisor_work ADD COLUMN engine TEXT NOT NULL DEFAULT 'claude'");
-        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT'], ['remote_control', 'INTEGER NOT NULL DEFAULT 0'], ['issue_refs', 'TEXT'], ['joined_into', 'INTEGER'], ['input_questions', 'TEXT'], ['sent_back_at', 'INTEGER'], ['sent_back_checks', 'INTEGER NOT NULL DEFAULT 0'], ['parked_at', 'INTEGER']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
+        [['issue_repo', 'TEXT'], ['issue_number', 'INTEGER'], ['issue_id', 'INTEGER'], ['issue_note', 'TEXT'], ['topology', 'TEXT'], ['stages', 'TEXT'], ['parent_id', 'INTEGER'], ['check_json', 'TEXT'], ['remote_control', 'INTEGER NOT NULL DEFAULT 0'], ['issue_refs', 'TEXT'], ['joined_into', 'INTEGER'], ['input_questions', 'TEXT'], ['sent_back_at', 'INTEGER'], ['sent_back_checks', 'INTEGER NOT NULL DEFAULT 0'], ['parked_at', 'INTEGER'], ['starting_at', 'INTEGER']].forEach(([c, t]) => { if (!wcols.has(c)) d.exec(`ALTER TABLE supervisor_work ADD COLUMN ${c} ${t}`); });
         // Sent Back has an age (#1256): items already Sent Back when the column arrives are dated by their session's last review
         if (!wcols.has('sent_back_at')) d.exec("UPDATE supervisor_work SET sent_back_at = COALESCE((SELECT MAX(r.at) FROM supervisor_reviews r WHERE r.session_id = supervisor_work.session_id), started_at, created_at) WHERE state = 'waiting'");
         const cols = new Set(d.prepare('PRAGMA table_info(supervisor_state)').all().map((c) => c.name));
@@ -1485,6 +1485,9 @@ function setWork(id, fields) {
             if (f.state === 'waiting') { if (!('sent_back_at' in f)) f.sent_back_at = Date.now(); if (!('sent_back_checks' in f)) f.sent_back_checks = 0; }
             else if (before.state === 'waiting' && !('sent_back_at' in f)) f.sent_back_at = null;
             if (before.state === 'input' && !('parked_at' in f)) f.parked_at = null;
+            // starting has an age too: when the item entered it, so a start a restart cut (no session, 5 min or more) is found by activeCount
+            if (f.state === 'starting') { if (!('starting_at' in f)) f.starting_at = Date.now(); }
+            else if (before.state === 'starting' && !('starting_at' in f)) f.starting_at = null;
         } else if (f.state === 'input' && 'input_questions' in f && !('parked_at' in f)) f.parked_at = null;
         fields = f;
     }
@@ -1761,11 +1764,37 @@ function sessionRunning(sessionId, live) {
     } catch (_) { return true; }
 }
 
+const START_LOST_MSG = 'Back in the queue: its start never got a session';
+const START_STALE_MS = 5 * 60 * 1000; // a start that has had no session for this long is not in flight any more (a restart cut it)
+let startsInFlight = new Set(); // work ids whose start runs in this process now (pumpWork): never put back while in flight, however slow (handed over on a reload)
+/** An item whose start never got a session goes back to the queue (its slot is freed); the same state change as any other: notices, issue sync, emit. */
+function requeueLostStart(id, opts = {}) {
+    setWork(id, { state: 'queued', session_id: null, link: '', started_at: null, message: START_LOST_MSG });
+    emit({ work: getWork(id) });
+    if (opts.kick) setImmediate(() => { const was = pumping; pumpWork().then(() => (was ? pumpWork() : null)).catch(() => {}); }); // not a poll: one pass now (one more when a run was in flight)
+}
+/** Boot (start(), not a reload): every item still 'starting' with no session lost its start to the restart; one query, no timer. Returns how many went back. */
+function sweepLostStarts() {
+    let n = 0;
+    try {
+        db().prepare("SELECT id FROM supervisor_work WHERE state = 'starting' AND (session_id IS NULL OR session_id = '')").all().forEach((w) => { requeueLostStart(w.id); n += 1; });
+    } catch (e) { console.warn(`[supervisor] lost starts: ${e.message}`); }
+    return n;
+}
+
 function activeCount() {
     const live = liveSessionsById();
+    const now = Date.now();
     let n = 0;
-    db().prepare(`SELECT id, session_id, state FROM supervisor_work WHERE state IN (${ACTIVE.map(() => '?').join(',')})`).all(...ACTIVE).forEach((w) => {
+    db().prepare(`SELECT id, session_id, state, starting_at FROM supervisor_work WHERE state IN (${ACTIVE.map(() => '?').join(',')})`).all(...ACTIVE).forEach((w) => {
         if (w.state === 'input') return; // stopped on a question for Yukimi: holds no slot, and an idle or ended session is expected
+        if (w.state === 'starting' && !w.session_id) {
+            // starting with no session: in flight under 5 min holds its slot; longer, the start died with a restart: back to the queue, no slot
+            if (w.starting_at && now - w.starting_at >= START_STALE_MS && !startsInFlight.has(w.id)) { requeueLostStart(w.id, { kick: true }); return; }
+            if (!w.starting_at) { try { db().prepare('UPDATE supervisor_work SET starting_at = ? WHERE id = ? AND state = ? AND starting_at IS NULL').run(now, w.id, 'starting'); } catch (_) { /* gone */ } } // dated now: its 5 minutes start here
+            n += 1;
+            return;
+        }
         if (w.state === 'starting' || (w.session_id && sessionRunning(w.session_id, live))) n += 1;
         else if (w.session_id && w.state !== 'waiting') {
             // its session ended: never "done" without the Supervisor's own check of what it did (Yukimi, Nov 24 2026)
@@ -2148,6 +2177,7 @@ function pumpWork(gr) {
             if ((loginTried.get(w.id) || new Set()).has(pick.index)) { loginTried.delete(w.id); setWork(w.id, { state: 'failed', ended_at: Date.now(), message: 'No account with a working login' }); settleParent(w.parent_id); emit({ work: getWork(w.id) }); continue; }
             setWork(w.id, { state: 'starting', message: `Starting on ${pick.name}`, account: pick.name });
             emit({ work: getWork(w.id) });
+            startsInFlight.add(w.id);
             try {
                 // a run that covers several issues (queue as one run, #1197): related ones share a planner, unrelated ones get their own.
                 // Before the issue fetch below: the planners' own sessions do that for their issues
@@ -2205,6 +2235,8 @@ function pumpWork(gr) {
             } catch (e) {
                 if (loginFailover(w, pick, e.message)) regroup = true;
                 else { setWork(w.id, { state: 'failed', ended_at: Date.now(), message: e.message.slice(0, 300) }); settleParent(w.parent_id); }
+            } finally {
+                startsInFlight.delete(w.id);
             }
             emit({ work: getWork(w.id) });
         }
@@ -4506,6 +4538,7 @@ function start(gr) {
     serveSocket();
     // shared phones ask Yukimi before an agent may use them: queue changes reach the notices, and open asks come back from the DB (#1284)
     try { require('./deviceConsent').start(); } catch (e) { console.warn(`[supervisor] device consent: ${e.message}`); }
+    sweepLostStarts(); // items a restart cut between 'starting' and their session go back to the queue before the first pass
     pumpWork().catch(() => {});
     // work whose session ended while the server was down comes back; holds and waits left open are watched again (only when there are any)
     armBoot(20000);
@@ -4929,7 +4962,7 @@ module.exports = {
     start, stop, bind, settings, notifyOn, NOTIFY_DEFAULTS, tellManager, askJson, sessionTasks, callEngine, spend, priceCall, engineChain, TOPOLOGIES, cleanStages, effortFor, cleanPolicy, policyFor, capToPolicy, POLICY_JOBS, POLICY_MODELS, POLICY_EFFORTS, decideTopology, sizePlanner, splitSurfaces, shapeWork, autoPlannerNote, workTree, settleParent, pauseSession, resumeSession, listHolds, activeHold, checkCollisions, recheckHolds, recheckWaits, recheckAll, maybeRevive, sweepDead, sweepFinishedSessions, sweepClearGates, sweepStalled, closeFinishedSession, sessionEnded, pullIssues, watchedRepos, issuesOpen, mergeWork, ensureIssue, syncIssue, enqueue, pumpWork, listWork, getWork, setWork, workPrompt, updateWork, startWork, holdWork, SUP_EFFORTS, cancelWork, stopWork, killDeps, setKillDeps, intakePlaud, workAfterReview, sessionInFlight, steerResumed, settleWork, settleSoon, agentRunState, answerWork, reopenWork, closeWorkAsDone, markSupervised, isSupervised, lockStatus, removeLockFile, sweepLocks, artifactStatus, refreshArtifacts, cleanArtifact, restoreArtifact, purgeTrash, forgetArtifact, afterTurn, saveSettings, engines, review, send, dismiss, listReviews, getReview, resolveEarlier, pruneReviews, summary, onReview, socketPath, repoRoots, emitChange: () => emit({ maintenance: true }),
     DEFAULT_ENGINE, DEFAULT_MODEL, STEER_PREFIX,
     _late: LATE, _taskDeps: TASK_DEPS, // reload without a restart (#1292): what a handed-over version and sessionTasks call into
-    _test: { callClaudeReviewer, cleanReviewer, askModel, issueCarriedByOthers, closeParkedSessions, closeDeps, ageText, rowWork, deliver,handOffGaps, sweepStalled, get stallKicks() { return stallKicks; }, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, get loginMoves() { return loginMoves; }, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, get statusBySession() { return statusBySession; }, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, get issueTitles() { return issueTitles; }, get reviewingNow() { return reviewingNow; }, onSockConnection, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
+    _test: { activeCount, sweepLostStarts, get startsInFlight() { return startsInFlight; }, callClaudeReviewer, cleanReviewer, askModel, issueCarriedByOthers, closeParkedSessions, closeDeps, ageText, rowWork, deliver,handOffGaps, sweepStalled, get stallKicks() { return stallKicks; }, parseLooseJson, resumeOnAccount, loginTurn, setFailoverDeps, get loginMoves() { return loginMoves; }, setRevive: (v) => { reviveOn = !!v; }, setCollisionDeps, editedNow, watchState, openWaits, cleanWaitsOn, parseRefs, canonRef, issueKey, issuesBrief, turnOf, capTurn, parseVerdict, waitBackstop, promptFor, scan, get statusBySession() { return statusBySession; }, setFetch: _setFetch, setRuleCheckDeps: (o) => { Object.keys(RULE_CHECK_DEPS).forEach((k) => delete RULE_CHECK_DEPS[k]); Object.assign(RULE_CHECK_DEPS, o || {}); }, noteText, resetPrices, queueReview, queue, get issueTitles() { return issueTitles; }, get reviewingNow() { return reviewingNow; }, onSockConnection, cleanable, walkEvidence, gitEvidence, openUsers, duBytes, lockRemovable, hasUncommitted }
 };
 
 // ---------------------------------------------------------------- reload without a restart (#1292, docs/server/hot-reload.md)
@@ -4986,7 +5019,7 @@ function hotDispose() {
         tasksWired, usageHooked, priceCache, engineCoolUntil, lastPull, refreshWarned, reviveOn,
         fetchFn, collisionDeps, killOverride,
         deps: { rule: Object.assign({}, RULE_CHECK_DEPS), failover: Object.assign({}, failoverDeps), close: Object.assign({}, closeDeps) },
-        shared: { listeners, bgCalls, stallKicks, issueTitles, loginTried, retryTries, ownDirs, finishedAgents, reviewingNow, bgCache, loginMoves, loginNoRoomNoted, gateNudges, closing, refreshFlights, cleaning, statusBySession },
+        shared: { listeners, bgCalls, stallKicks, issueTitles, loginTried, retryTries, ownDirs, finishedAgents, reviewingNow, bgCache, loginMoves, loginNoRoomNoted, gateNudges, closing, refreshFlights, cleaning, statusBySession, startsInFlight },
         pumping, sweeping, rulesRun,
         queue: queue.slice(),
         plan: {
@@ -5030,7 +5063,8 @@ function hotAccept(st, ctx) {
     engineCoolUntil = st.engineCoolUntil || 0; lastPull = st.lastPull || 0; refreshWarned = !!st.refreshWarned; reviveOn = st.reviveOn;
     fetchFn = st.fetchFn || fetchFn; collisionDeps = st.collisionDeps || {}; killOverride = st.killOverride || null;
     [[RULE_CHECK_DEPS, st.deps.rule], [failoverDeps, st.deps.failover], [closeDeps, st.deps.close]].forEach(([own, from]) => { Object.keys(own).forEach((k) => delete own[k]); Object.assign(own, from || {}); });
-    ({ listeners, bgCalls, stallKicks, issueTitles, loginTried, retryTries, ownDirs, finishedAgents, reviewingNow, bgCache, loginMoves, loginNoRoomNoted, gateNudges, closing, refreshFlights, cleaning, statusBySession } = st.shared);
+    ({ listeners, bgCalls, stallKicks, issueTitles, loginTried, retryTries, ownDirs, finishedAgents, reviewingNow, bgCache, loginMoves, loginNoRoomNoted, gateNudges, closing, refreshFlights, cleaning, statusBySession, startsInFlight } = st.shared);
+    if (!startsInFlight) startsInFlight = new Set(); // a version older than this container handed over none
     pumping = adoptFlight(st.pumping, (w) => pumping === w, () => { pumping = null; });
     sweeping = adoptFlight(st.sweeping, (w) => sweeping === w, () => { sweeping = null; });
     rulesRun = st.rulesRun && !st.rulesRun.ended ? st.rulesRun : null;

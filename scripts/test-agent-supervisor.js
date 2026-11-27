@@ -2041,6 +2041,89 @@ sup._test.setFetch(async (url, opts) => {
         RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(run);
     });
 
+    await test('lost starts: a starting item with no session goes back to queued on start(), one with a session is untouched; starting_at follows setWork', async () => {
+        const MSG = 'Back in the queue: its start never got a session';
+        const ins = (title, state, sid, at) => RAW().prepare("INSERT INTO supervisor_work (title, prompt, source, state, created_at, message, engine, session_id, starting_at) VALUES (?, 'p', 'fleet', ?, ?, 'Starting on Secoundary', 'claude', ?, ?)").run(title, state, Date.now(), sid, at).lastInsertRowid;
+        const row = (id) => RAW().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(id);
+        const keepAuto = settingsCfg.agentSupervisor.autoStart;
+        settingsCfg.agentSupervisor.autoStart = false; // the pass start() kicks leaves queued items alone
+        try {
+            // setWork dates the entry into starting and clears it on leaving
+            const w = sup.enqueue({ title: 'StartAge', prompt: 'p', source: 'fleet' });
+            assert.strictEqual(row(w.id).starting_at, null);
+            const t0 = Date.now();
+            sup.setWork(w.id, { state: 'starting', message: 'Starting on x' });
+            assert.ok(row(w.id).starting_at >= t0, 'entering starting sets starting_at');
+            sup.setWork(w.id, { message: 'Still starting' });
+            assert.ok(row(w.id).starting_at >= t0 && row(w.id).state === 'starting', 'other updates leave it');
+            sup.setWork(w.id, { state: 'running', session_id: 'ffffffff-1111-2222-3333-444444444444' });
+            assert.strictEqual(row(w.id).starting_at, null, 'leaving starting clears it');
+            RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(w.id);
+            // boot: the sweep runs in start(), once
+            const lost = ins('LostStart', 'starting', null, Date.now());
+            const lostEmpty = ins('LostStartEmpty', 'starting', '', null);
+            const live = ins('LiveStart', 'starting', 'ffffffff-5555-2222-3333-444444444444', Date.now() - 60 * 60000);
+            sup.stop();
+            sup.start(gr);
+            try {
+                assert.strictEqual(row(lost).state, 'queued');
+                assert.strictEqual(row(lost).message, MSG);
+                assert.strictEqual(row(lost).starting_at, null);
+                assert.strictEqual(row(lostEmpty).state, 'queued', 'an empty session id is no session');
+                assert.strictEqual(row(live).state, 'starting', 'a starting item with a session is untouched');
+                assert.strictEqual(row(live).message, 'Starting on Secoundary');
+            } finally { sup.stop(); }
+            await settle(50);
+            [lost, lostEmpty, live].forEach((id) => RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(id));
+        } finally { settingsCfg.agentSupervisor.autoStart = keepAuto; }
+    });
+
+    await test('lost starts: activeCount keeps a start under 5 minutes and its slot, puts back one of 5 minutes or more (not counted), leaves one with a session', async () => {
+        const MSG = 'Back in the queue: its start never got a session';
+        const ins = (title, sid, at) => RAW().prepare("INSERT INTO supervisor_work (title, prompt, source, state, created_at, message, engine, session_id, starting_at) VALUES (?, 'p', 'fleet', 'starting', ?, 'Starting on Secoundary', 'claude', ?, ?)").run(title, Date.now(), sid, at).lastInsertRowid;
+        const row = (id) => RAW().prepare('SELECT * FROM supervisor_work WHERE id = ?').get(id);
+        const keepAuto = settingsCfg.agentSupervisor.autoStart;
+        settingsCfg.agentSupervisor.autoStart = false;
+        const made = [];
+        try {
+            const base = sup._test.activeCount();
+            const young = ins('StartYoung', null, Date.now() - 4 * 60000); made.push(young);
+            assert.strictEqual(sup._test.activeCount(), base + 1, 'a start in flight holds its slot');
+            assert.strictEqual(row(young).state, 'starting');
+            assert.strictEqual(row(young).message, 'Starting on Secoundary');
+            const old = ins('StartOld', null, Date.now() - 5 * 60000 - 1000); made.push(old);
+            assert.strictEqual(sup._test.activeCount(), base + 1, 'the old one is not counted');
+            assert.strictEqual(row(old).state, 'queued');
+            assert.strictEqual(row(old).message, MSG);
+            assert.strictEqual(row(old).starting_at, null);
+            assert.strictEqual(row(young).state, 'starting', 'the young one stays');
+            // a start with a session is never put back, however old
+            const withSession = ins('StartSession', 'ffffffff-6666-2222-3333-444444444444', Date.now() - 60 * 60000); made.push(withSession);
+            assert.strictEqual(sup._test.activeCount(), base + 2, 'a starting item with a session still counts');
+            assert.strictEqual(row(withSession).state, 'starting');
+            assert.strictEqual(row(withSession).message, 'Starting on Secoundary');
+            // a row dated before the column existed is dated now (its 5 minutes start here), counted, not put back
+            const undated = ins('StartUndated', null, null); made.push(undated);
+            const t0 = Date.now();
+            assert.strictEqual(sup._test.activeCount(), base + 3);
+            assert.strictEqual(row(undated).state, 'starting');
+            assert.ok(row(undated).starting_at >= t0, 'dated now');
+            // a start still in flight in this process (a slow launch) is never put back, however old
+            const slow = ins('StartSlow', null, Date.now() - 30 * 60000); made.push(slow);
+            sup._test.startsInFlight.add(slow);
+            try {
+                assert.strictEqual(sup._test.activeCount(), base + 4, 'a slow start in flight holds its slot');
+                assert.strictEqual(row(slow).state, 'starting');
+            } finally { sup._test.startsInFlight.delete(slow); }
+            assert.strictEqual(sup._test.activeCount(), base + 3, 'once its launch is gone, the old start goes back');
+            assert.strictEqual(row(slow).state, 'queued');
+        } finally {
+            await settle(50);
+            made.forEach((id) => RAW().prepare("UPDATE supervisor_work SET state = 'cancelled' WHERE id = ?").run(id));
+            settingsCfg.agentSupervisor.autoStart = keepAuto;
+        }
+    });
+
     await test('sweepClearGates: a clear gate tells its idle requester to begin it; an orphan gate is cancelled', async () => {
         const coordS = require('../modules/agentCoord/store');
         const realSteer = launcher.steer;
