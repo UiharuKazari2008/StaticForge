@@ -1,0 +1,39 @@
+Usage: cmd shortcut COMMAND [options ...]
+
+cmd shortcut reset-throttling [--user USER_ID]
+      Package: com.google.android.youtube  UID: 10152
+        Calls: 0
+        Last known FG: 0
+        Last reset: [1795747267464] 2026-11-26 21:41:07
+--
+            packageName=com.google.android.youtube
+            activity=ComponentInfo{com.google.android.youtube/com.google.android.youtube.app.honeycomb.Shell$HomeActivity}
+            shortLabel=Subscriptions, resId=2132020426[subscriptions]
+            longLabel=null, resId=0[null]
+            disabledMessage=null, resId=0[null]
+--
+            intents=[Intent { act=com.google.android.youtube.action.open.subscriptions flg=0x1000c000 }/PersistableBundle[{source=shortcut}]]
+            extras=null
+            iconRes=2131232267[drawable/ic_shortcut_subscriptions], bitmapPath=null, iconUri=null}
+          ShortcutInfo {id=shorts-shortcut, flags=0x1a4 [ImManIc-rStr]
+            packageName=com.google.android.youtube
+            activity=ComponentInfo{com.google.android.youtube/com.google.android.youtube.app.honeycomb.Shell$HomeActivity}
+            shortLabel=Shorts, resId=2132020118[shorts]
+            longLabel=null, resId=0[null]
+            disabledMessage=null, resId=0[null]
+--
+            intents=[Intent { act=com.google.android.youtube.action.open.shorts flg=0x1000c000 }/PersistableBundle[{source=shortcut}]]
+            extras=null
+            iconRes=2131232265[drawable/ic_shortcut_shorts], bitmapPath=null, iconUri=null}
+          ShortcutInfo {id=search-shortcut, flags=0x1a4 [ImManIc-rStr]
+            packageName=com.google.android.youtube
+            activity=ComponentInfo{com.google.android.youtube/com.google.android.youtube.app.honeycomb.Shell$HomeActivity}
+            shortLabel=Search, resId=2132020050[search]
+            longLabel=null, resId=0[null]
+            disabledMessage=null, resId=0[null]
+          ShortcutInfo {id=subscriptions-shortcut, flags=0x1a4 [ImManIc-rStr]
+            shortLabel=Subscriptions, resId=2132020426[subscriptions]
+          ShortcutInfo {id=shorts-shortcut, flags=0x1a4 [ImManIc-rStr]
+            shortLabel=Shorts, resId=2132020118[shorts]
+          ShortcutInfo {id=search-shortcut, flags=0x1a4 [ImManIc-rStr]
+            shortLabel=Search, resId=2132020050[search]

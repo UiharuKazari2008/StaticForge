@@ -772,6 +772,9 @@ class BannerManager {
         'youtube_history_refresh': 'Refresh YouTube History',
         'youtube_video_start': 'Start YouTube Video',
         'youtube_video_stop': 'Stop YouTube Video',
+        'softkeys_default_set': 'Save Soft Key Engine',
+        'softkeys_engines': 'Read Soft Key Engines',
+        'softkeys_generate': 'Generate Soft Keys',
     });
     static TICKER_OFF_TYPES = new Set([
         'admin_terminal_ack',
@@ -1241,6 +1244,8 @@ class WebSocketClient {
         'as_partnership',
         // Text Messaging (#779): a send waits for the Mac / phone to hand the message over
         'tm_send',
+        // Soft key manager (#1414): one AI call builds a program's soft keys (the server stops it at 90 s)
+        'softkeys_generate',
         'tm_account_test',
         'tm_account_save',
         // IMAP accounts (#789): connection tests and sending wait for the mail servers

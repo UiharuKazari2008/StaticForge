@@ -688,7 +688,7 @@
     const SK_ACTIONS = [['back', '<Back>'], ['menu', '<Soft Key Menu>'], ['ownmenu', '<Menu of its own>'], ['home', '<Home>'], ['today', '<Today>'],
         ['start', '<Start>'], ['tasks', '<Running Programs>'], ['recents', '<Recent Programs>'], ['notifications', '<Notifications>'],
         ['quicksettings', '<Quick Settings>'], ['keyboard', '<Show/Hide Keyboard>'], ['program', '<Open a Program>'], ['key', '<Key>'],
-        ['combo', '<Key Combination>'], ['do:taskmanager', '<Task Manager>'], ['do:maximize', '<Maximize>'], ['do:minimize', '<Minimize>'],
+        ['combo', '<Key Combination>'], ['uri', '<Open a Link>'], ['do:taskmanager', '<Task Manager>'], ['do:maximize', '<Maximize>'], ['do:minimize', '<Minimize>'],
         ['do:close', '<Close>'], ['do:split', '<Split View>'], ['do:windowed', '<Pop-up Window>'], ['do:flashlight', '<Flashlight>'],
         ['do:screenshot', '<Screenshot>'], ['none', '<None>']];
     // Android's key codes most asked for (any other: typed as its KEYCODE_ name)
@@ -723,13 +723,26 @@
         return skPrograms().filter((p) => String(p.id).startsWith('android:') && !String(p.id).includes('@u')).map((p) => ({ pkg: String(p.id).slice(8).split('/')[0], label: p.label }))
             .filter((a) => a.pkg && !seen.has(a.pkg) && seen.add(a.pkg));
     };
-    const skKind = (a) => (a.startsWith('open:') ? 'program' : a.startsWith('key:') ? 'key' : a.startsWith('combo:') ? 'combo' : a);
+    // a link action (#1414): uri:<an intent URI or an https link> - a deep link that opens a target inside another app from outside
+    // (DSApp runs it). Valid only when it starts with intent: or https: (and has something after it), 600 characters at most
+    const skUriOk = (link) => { const t = String(link || '').trim(); return t.length <= 600 && /^(intent:|https:)./.test(t); };
+    /** The host and path of a link, shortened for a list: "https://www.example.com/a/b?x=1" is "www.example.com/a/b". */
+    const skLinkText = (link) => {
+        const t = String(link || '').trim();
+        const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#;]*)([^?#;]*)/i.exec(t);
+        const s = (m ? `${m[1]}${m[2]}`.replace(/\/+$/, '') : t.replace(/^(intent|https):/i, '').replace(/^#Intent;/i, '').split(';')[0]);
+        return s.length > 32 ? `${s.slice(0, 31)}...` : s;
+    };
+    /** A half-made link key (no valid link typed) is nothing to the phone: it is saved as None. */
+    const skCleanAction = (a) => (String(a).startsWith('uri:') && !skUriOk(String(a).slice(4)) ? 'none' : a);
+    const skKind = (a) => (a.startsWith('open:') ? 'program' : a.startsWith('key:') ? 'key' : a.startsWith('combo:') ? 'combo' : a.startsWith('uri:') ? 'uri' : a);
     /** What an action is called in the lists. */
     function skActionText(a) {
         if (!a) return '';
         if (a.startsWith('open:')) { const p = skPrograms().find((x) => x.id === a.slice(5)); return p ? p.label : a.slice(5); }
         if (a.startsWith('key:')) return `Key: ${skKeyName(a.slice(4))}`;
         if (a.startsWith('combo:')) return skComboText(a);
+        if (a.startsWith('uri:')) return a.length > 4 ? `Link: ${skLinkText(a.slice(4))}` : '<Open a Link>';
         return (SK_ACTIONS.find(([k]) => k === a) || [a, a])[1];
     }
     /** The name a key shows on the bar when none is typed (DSApp SoftKeys.defaultLabel). */
@@ -760,6 +773,8 @@
             more = ui.row('Program:', ui.comboHtml(`${prefix}-prog`, p ? p.label : ''), { wide: true });
         } else if (kind === 'key') {
             more = `${ui.row('Key:', ui.comboHtml(`${prefix}-keys`, skKeyName(a.slice(4) || 'ESCAPE')), { wide: true })}${ui.row('Key code:', ui.edit('', a.slice(4).replace(/^KEYCODE_/, ''), `data-f="${prefix}-code" maxlength="40"`), { wide: true })}`;
+        } else if (kind === 'uri') {
+            more = ui.row('Link:', ui.edit('', a.slice(4), `data-f="${prefix}-uri" maxlength="600" placeholder="https://... or intent:..."`), { wide: true });
         } else if (kind === 'combo') {
             more = `${ui.row('Keys:', `<div class="wm-combo-edit">${ui.edit('', a.length > 6 ? skComboText(a) : '', `data-f="${prefix}-combo" maxlength="40"`)}<button type="button" class="wm-combo" data-act="${prefix}-combos" aria-label="Presets"></button></div>`, { wide: true })}`;
         }
@@ -772,7 +787,7 @@
         const list = SK_ACTIONS.filter(([k]) => prefix === 'sk' || k !== 'ownmenu');
         ui.bindCombo(el.querySelector(`[data-act="${prefix}-act"]`), list, kind, (v) => {
             const progs = skPrograms();
-            set(v === 'program' ? (progs.length ? `open:${progs[0].id}` : 'none') : v === 'key' ? 'key:KEYCODE_ESCAPE' : v === 'combo' ? 'combo:KEYCODE_CTRL_LEFT+KEYCODE_Z' : v);
+            set(v === 'program' ? (progs.length ? `open:${progs[0].id}` : 'none') : v === 'key' ? 'key:KEYCODE_ESCAPE' : v === 'combo' ? 'combo:KEYCODE_CTRL_LEFT+KEYCODE_Z' : v === 'uri' ? 'uri:' : v);
             rerender();
         });
         if (kind === 'program') {
@@ -782,6 +797,10 @@
             const code = el.querySelector(`[data-f="${prefix}-code"]`);
             // (kept as it is typed: ok may close the page before the box loses focus)
             if (code) { code.addEventListener('input', () => { const c = skCode(code.value); if (c) set(`key:KEYCODE_${c}`); }); code.addEventListener('change', () => rerender()); }
+        } else if (kind === 'uri') {
+            const link = el.querySelector(`[data-f="${prefix}-uri"]`);
+            // (kept as it is typed, once it is a valid link: ok may close the page before the box loses focus)
+            if (link) { link.addEventListener('input', () => { const v = link.value.trim(); if (skUriOk(v)) set(`uri:${v}`); }); link.addEventListener('change', () => rerender()); }
         } else if (kind === 'combo') {
             const edit = el.querySelector(`[data-f="${prefix}-combo"]`);
             if (edit) { edit.addEventListener('input', () => { const v = skCombo(edit.value); if (v) set(v); }); edit.addEventListener('change', () => rerender()); }
@@ -815,7 +834,7 @@
         el.innerHTML = `<p class="wmsp-step">Soft keys over Android programs. Program:</p>
             ${ui.comboHtml('sk-prof', appLabel(sk.prof))}
             <div class="wm-form-row is-wide"><span class="wm-form-label">Add:</span>${ui.comboHtml('sk-add', adds.length ? 'Choose a program...' : '(none)', !adds.length)}</div>
-            ${ui.buttons([['sk-remove', 'Remove Program', sk.prof === 'default']])}
+            ${ui.buttons([['sk-remove', 'Remove Program', sk.prof === 'default'], ...(sk.prof === 'default' ? [] : [['sk-gen', 'Generate with AI...']])])}
             <p class="wmsp-step">1. Select a soft key:</p>
             <div class="wmsp-btn-list" role="listbox" aria-label="Soft keys">
                 <div class="wmsp-btn-head"><span>Soft key</span><span>Assignment</span></div>
@@ -842,6 +861,9 @@
         });
         const rm = el.querySelector('[data-act="sk-remove"]');
         if (rm) rm.addEventListener('click', () => { if (sk.prof !== 'default') { delete sk.profiles[sk.prof]; delete sk.keep[sk.prof]; sk.prof = 'default'; api.rerender(); } });
+        // Generate with AI (#1414): a view of the page over this tab (skgRender)
+        const gen = el.querySelector('[data-act="sk-gen"]');
+        if (gen) gen.addEventListener('click', () => skgOpen(d, api));
         el.querySelectorAll('.wmsp-btn-row').forEach((r) => r.addEventListener('click', () => { sk.sel = r.dataset.side; sk.msel = 0; api.rerender(); }));
         skActionBind(el, 'sk', key.action, sk.sel, (v) => { key.action = v; if (v === 'ownmenu' && !key.menu) key.menu = []; }, api.rerender);
         const name = el.querySelector('[data-f="sk-name"]');
@@ -871,6 +893,422 @@
             skActionBind(el, 'skm', it.action, '', (v) => { it.action = v; }, api.rerender);
         }
     }
+    // ---- Generate with AI (#1414): "Generate with AI..." on a program's Soft Key Bar. A view of the Buttons page (wmPrograms.js subView:
+    // viewDepth / viewTitle / softKeys / back / viewOk), so the title ok, the back key and the soft keys work on it. The phone reads the
+    // program (AndroidSoftKeyProbe.read, answered by the softkeyprobe event), the server asks the AI (softkeys_generate), the phone checks
+    // every action of the answer (AndroidSoftKeyProbe.check) and what it refuses is listed under "Could not make" - never dropped quietly.
+    // "Use this profile" only copies the result into the page's draft (d.sk.profiles); ok saves it like a hand edit. Progress and errors
+    // are drawn inside the view: no toast, no sound, no notice of its own. No timer repeats: awaits and one-shot timeouts that are cleared.
+    const SKG_WISH_MAX = 2000;
+    const SKG_PROBE_MS = 30000; // the phone's answer to the probe
+    const SKG_RUN_MS = 120000; // the whole run: a hard stop with an error line
+    const SKG_VIA_KEYS = 'by key presses (the program is driven with keys)';
+    const skgFail = (message, hint) => Object.assign(new Error(message), { hint: hint || '' });
+    const skgErrText = (err) => {
+        const m = String((err && err.message) || err || 'Something went wrong.').trim();
+        return `${m}${/[.!?]$/.test(m) ? '' : '.'}${err && err.hint ? ` ${err.hint}` : ''}`;
+    };
+    /** How a key reaches its target, for the result lists: '' for the built-in actions. */
+    const skgVia = (action, top) => (String(action).startsWith('uri:') ? (top ? 'opens by link' : 'by link') : /^(key|combo):/.test(action) ? SKG_VIA_KEYS : '');
+    /** The design she typed as the request's design { left?, center?, right?: { label?, menu? } }; undefined when she typed nothing. */
+    function skgDesign(x) {
+        const label = (t) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, 24);
+        const out = {};
+        const l = label(x.left); if (l) out.left = { label: l };
+        const c = label(x.center); if (c) out.center = { label: c };
+        const menu = [];
+        for (const line of String(x.menu || '').split(/\r?\n/)) {
+            const t = line.trim();
+            if (!t) continue;
+            if (/^-+$/.test(t)) { if (menu.length && !menu[menu.length - 1].sep) menu.push({ sep: true }); continue; }
+            if (menu.length < 40) menu.push({ label: t.slice(0, 40) });
+        }
+        while (menu.length && menu[menu.length - 1].sep) menu.pop();
+        const r = label(x.right);
+        if (r || menu.length) { out.right = {}; if (r) out.right.label = r; if (menu.length) out.right.menu = menu; }
+        return Object.keys(out).length ? out : undefined;
+    }
+    /** A menu row from the answer in the page's stored shape { label, action } (a divider is { label: '-', action: 'sep' }); null when it is nothing. */
+    function skgRow(m) {
+        if (!m || typeof m !== 'object') return null;
+        if (m.sep === true || m.action === 'sep' || (!m.action && String(m.label || '').trim() === '-')) return { label: '-', action: 'sep' };
+        if (!m.action) return null;
+        return { label: String(m.label || '').trim().slice(0, 40), action: String(m.action) };
+    }
+    /** A key from the answer in the page's stored shape; a key with a menu is the menu of its own. null when it is nothing. */
+    function skgKey(k) {
+        if (!k || typeof k !== 'object') return null;
+        const menu = Array.isArray(k.menu) ? k.menu.map(skgRow).filter(Boolean) : null;
+        const action = k.action ? String(k.action) : (menu && menu.length ? 'ownmenu' : '');
+        if (!action) return null;
+        const out = { action: menu && menu.length ? 'ownmenu' : action, label: String(k.label || '').trim().slice(0, 24) };
+        if (out.action === 'ownmenu') out.menu = menu || [];
+        return out;
+    }
+    const skgTrimDividers = (rows) => {
+        const out = [];
+        for (const r of rows) { if (r.action === 'sep' && (!out.length || out[out.length - 1].action === 'sep')) continue; out.push(r); }
+        while (out.length && out[out.length - 1].action === 'sep') out.pop();
+        return out;
+    };
+    /** Every action of the answer the phone is asked about (the menu marker and the dividers are not targets). */
+    function skgActions(resp) {
+        const seen = new Set();
+        const prof = (resp && resp.profile) || {};
+        for (const [side] of SK_SIDES) {
+            const k = skgKey(prof[side]);
+            if (!k) continue;
+            if (k.action !== 'ownmenu') seen.add(k.action);
+            (k.menu || []).forEach((r) => { if (r.action !== 'sep') seen.add(r.action); });
+        }
+        return [...seen];
+    }
+    /**
+     * The answer as the page shows and uses it: { keys: { left, center, right } (a key or null), problems: [{ side, menuIndex, label,
+     * action, reason }], items } - the server's own problems first, then every action the phone refused (verdicts: action ->
+     * { ok, why }; null = not asked). A refused key or menu row leaves the profile and goes into the problems, with the phone's reason;
+     * an action the phone gave no verdict for counts as refused.
+     */
+    function skgResult(resp, verdicts) {
+        const prof = (resp && resp.profile) || {};
+        const problems = (Array.isArray(resp && resp.problems) ? resp.problems : []).filter((p) => p && typeof p === 'object')
+            .map((p) => ({ side: String(p.side || ''), menuIndex: Number.isInteger(p.menuIndex) && p.menuIndex >= 0 ? p.menuIndex : null, label: String(p.label || ''), action: String(p.action || ''), reason: String(p.reason || '') }));
+        const verdict = (a) => (!verdicts ? { ok: true } : verdicts[a] || { ok: false, why: 'The phone gave no answer for this action.' });
+        const keys = { left: null, center: null, right: null };
+        for (const [side] of SK_SIDES) {
+            const k = skgKey(prof[side]);
+            if (!k) continue;
+            if (k.action === 'ownmenu') {
+                const rows = [];
+                k.menu.forEach((r, i) => {
+                    if (r.action === 'sep') { rows.push(r); return; }
+                    const v = verdict(r.action);
+                    if (v.ok) rows.push(r);
+                    else problems.push({ side, menuIndex: i, label: r.label, action: r.action, reason: v.why || 'The phone does not accept this action.' });
+                });
+                const menu = skgTrimDividers(rows);
+                if (menu.length) keys[side] = { ...k, menu };
+                else if (!k.menu.length) problems.push({ side, menuIndex: null, label: k.label || 'Menu', action: 'ownmenu', reason: 'The answer had a menu with no items.' });
+                continue;
+            }
+            const v = verdict(k.action);
+            if (v.ok) keys[side] = k;
+            else problems.push({ side, menuIndex: null, label: k.label, action: k.action, reason: v.why || 'The phone does not accept this action.' });
+        }
+        return { keys, problems, items: Array.isArray(resp && resp.items) ? resp.items : [] };
+    }
+    const skgHasKeys = (g) => !!(g.result && SK_SIDES.some(([side]) => g.result.keys[side]));
+    /** The profile after "Use this profile": a side the answer left empty (or the phone refused) keeps what it was. */
+    function skgMerge(current, keys) {
+        const cur = current || {};
+        const next = {};
+        for (const [side] of SK_SIDES) next[side] = keys[side] ? JSON.parse(JSON.stringify(keys[side])) : (cur[side] || { action: SK_DEFAULT[side], label: '' });
+        return next;
+    }
+    /** What the answer said about a row (its why): matched by place, then by name and action. */
+    function skgItem(items, side, menuIndex, row) {
+        const mine = items.filter((i) => i && i.side === side);
+        const hit = (menuIndex === null ? mine.find((i) => (i.menuIndex === null || i.menuIndex === undefined || i.menuIndex < 0) && i.action === row.action) : mine.find((i) => i.menuIndex === menuIndex && i.action === row.action))
+            || mine.find((i) => i.action === row.action && String(i.label || '') === row.label) || mine.find((i) => i.action === row.action);
+        return hit || null;
+    }
+    /** The wait for the phone's answer to the probe: the softkeyprobe event of this request, one listener, gone when it fires or ends. */
+    function skgProbe(pkg, outer) {
+        return new Promise((resolve, reject) => {
+            const bridge = window.AndroidSoftKeyProbe;
+            if (!bridge || typeof bridge.read !== 'function') { reject(skgFail('This version of the Melaton app cannot read programs on the phone yet.', 'Update the app, then try again.')); return; }
+            const ctl = new AbortController();
+            const early = []; // an answer that comes before read() has told its id
+            let id = null;
+            let timer = 0;
+            const end = (fn, v) => { clearTimeout(timer); ctl.abort(); fn(v); };
+            const detailOf = (e) => { let x = e && e.detail; if (typeof x === 'string') { try { x = JSON.parse(x); } catch (_) { x = null; } } return x && typeof x === 'object' ? x : null; };
+            window.addEventListener('softkeyprobe', (e) => {
+                const x = detailOf(e);
+                if (!x) return;
+                if (id === null) early.push(x); else if (String(x.id) === id) end(resolve, x);
+            }, { signal: ctl.signal });
+            timer = setTimeout(() => end(reject, skgFail('The phone did not answer in 30 seconds.', 'Try again.')), SKG_PROBE_MS);
+            outer.addEventListener('abort', () => end(reject, skgFail('Stopped.')), { once: true, signal: ctl.signal });
+            let r;
+            try { r = bridge.read(pkg); } catch (err) { end(reject, skgFail(`The phone could not read the program. ${(err && err.message) || ''}`.trim())); return; }
+            if (r === null || r === undefined || r === '') { end(reject, skgFail('The phone could not start reading the program.', 'Try again.')); return; }
+            id = String(r);
+            const hit = early.find((x) => String(x.id) === id);
+            if (hit) end(resolve, hit);
+        });
+    }
+    /** The phone's own check of the answer's actions (SoftKeys.valid): action -> { ok, why }. */
+    async function skgCheck(actions) {
+        if (!actions.length) return {};
+        const bridge = window.AndroidSoftKeyProbe;
+        if (!bridge || typeof bridge.check !== 'function') throw skgFail('This version of the Melaton app cannot check the answer on the phone yet.', 'Update the app, then try again.');
+        let raw = bridge.check(JSON.stringify(actions));
+        if (raw && typeof raw.then === 'function') raw = await raw;
+        let list = raw;
+        try { if (typeof raw === 'string') list = JSON.parse(raw); } catch (_) { list = null; }
+        if (!Array.isArray(list)) throw skgFail('The phone did not check the answer.', 'Try again.');
+        const out = {};
+        list.forEach((v) => { if (v && typeof v.action === 'string') out[v.action] = { ok: v.ok === true, why: String(v.why || '') }; });
+        return out;
+    }
+    /** One request to the server: its answer's body (an error, or success false, is thrown). `key` is a field the good answer has. */
+    async function skgSend(type, payload, key) {
+        const c = ws();
+        if (!c || typeof c.sendMessage !== 'function' || (typeof c.isConnected === 'function' && !c.isConnected())) throw skgFail('The server cannot be reached.', 'Try again when the connection is back.');
+        const send = () => c.sendMessage(type, payload, false);
+        // what to do: a lost connection is waited out; an answer from the AI side (a key, a quota, a model) is the engine's to change
+        const hint = (code) => (/^(NOT_CONNECTED|CONNECTION_UNHEALTHY|REQUEST_TIMEOUT|LISTENER_NOT_READY)$/.test(String(code || '')) ? 'Try again when the connection is back.'
+            : type === 'softkeys_generate' ? 'Check the engine and model, or pick another engine, then try again.' : 'Try again.');
+        let r;
+        try { r = await (typeof c.handlesErrors === 'function' ? c.handlesErrors(send) : send()); } catch (err) { throw skgFail(String((err && err.message) || `${type} failed`), hint(err && err.code)); }
+        if (r && typeof r === 'object' && r.data && typeof r.data === 'object' && !Array.isArray(r.data) && !(key in r)) r = r.data;
+        if (!r || typeof r !== 'object') throw skgFail('The server gave no answer.', 'Try again.');
+        if (r.success === false || r.error) {
+            const e = r.error;
+            throw skgFail(String((e && e.message) || e || r.message || `${type} failed`), hint(''));
+        }
+        return r;
+    }
+    const skgEngine = (g) => (g.engines || []).find((e) => e.id === g.engine) || null;
+    /** The engines (softkeys_engines): the saved default is what the engine and model start as. */
+    async function skgLoadEngines(d) {
+        const g = d.sk.gen;
+        if (!g) return;
+        g.engState = 'loading';
+        g.engError = '';
+        if (g.paint) g.paint();
+        try {
+            const body = await skgSend('softkeys_engines', {}, 'engines');
+            if (d.sk.gen !== g) return;
+            const list = (Array.isArray(body.engines) ? body.engines : []).filter((e) => e && e.id).map((e) => ({
+                id: String(e.id), name: String(e.name || e.id), defaultModel: String(e.defaultModel || ''), ready: !!e.ready, models: Array.isArray(e.models) ? e.models.map(String) : []
+            }));
+            if (!list.length) throw skgFail('The server offers no AI engines.', 'Add an engine key on the server, then try again.');
+            g.engines = list;
+            g.saved = { engine: String((body.saved && body.saved.engine) || ''), model: String((body.saved && body.saved.model) || '') };
+            if (!list.some((e) => e.id === g.engine)) {
+                const e = list.find((x) => x.id === g.saved.engine) || list.find((x) => x.ready) || list[0];
+                g.engine = e.id;
+                g.model = (e.id === g.saved.engine && g.saved.model) || e.defaultModel || e.models[0] || '';
+            }
+            g.engState = 'ok';
+        } catch (err) {
+            if (d.sk.gen !== g) return;
+            g.engState = 'error';
+            g.engError = skgErrText(err);
+        }
+        if (g.paint) g.paint();
+    }
+    function skgOpen(d, api) {
+        const sk = d.sk;
+        const pkg = sk.prof;
+        if (pkg === 'default') return;
+        const mem = (sk.genMem || (sk.genMem = {}))[pkg] || {};
+        const app = skAndroidApps().find((x) => x.pkg === pkg);
+        sk.gen = {
+            pkg, label: app ? app.label : pkg, phase: 'form', paint: api.rerender, run: null,
+            wish: mem.wish || '', designOn: !!mem.designOn, design: { left: '', center: '', right: '', menu: '', ...(mem.design || {}) },
+            engines: null, saved: { engine: '', model: '' }, engState: 'loading', engError: '', engine: '', model: '', makeDefault: false,
+            progress: [], notes: [], error: '', result: null
+        };
+        api.rerender();
+        skgLoadEngines(d);
+    }
+    /** The view ends: a run in flight is stopped (its answer is ignored), what she typed is kept for the next time. */
+    function skgClose(d) {
+        const sk = d.sk;
+        const g = sk && sk.gen;
+        if (!g) return;
+        if (g.run) g.run.stop(skgFail('Stopped.'));
+        (sk.genMem || (sk.genMem = {}))[g.pkg] = { wish: g.wish, designOn: g.designOn, design: g.design };
+        sk.gen = null;
+        if (g.paint) g.paint();
+    }
+    /** Generate: the probe, the server, the phone's check - the lines of progress are the view's own. */
+    async function skgRun(d) {
+        const sk = d.sk;
+        const g = sk.gen;
+        if (!g || g.phase === 'running') return;
+        const fail = (err) => { g.phase = 'form'; g.error = skgErrText(err); if (g.paint) g.paint(); };
+        if (!g.engines) { await skgLoadEngines(d); if (sk.gen !== g) return; if (!g.engines) return fail(skgFail(g.engError || 'The engines could not be read.')); }
+        const eng = skgEngine(g);
+        const model = String(g.model || '').trim();
+        if (!g.engines.some((e) => e.ready)) return fail(skgFail('No AI engine has a key yet.', 'Add a key for one on the server, then try again.'));
+        if (!eng || !eng.ready) return fail(skgFail(`${eng ? eng.name : 'This engine'} has no key.`, 'Pick another engine, then try again.'));
+        if (!model) return fail(skgFail('Type the name of a model.'));
+        const ctl = new AbortController();
+        let timer = 0;
+        let reason = null;
+        const run = { stop(why) { reason = why; ctl.abort(); } };
+        const stopped = new Promise((_, rej) => ctl.signal.addEventListener('abort', () => rej(reason || skgFail('Stopped.')), { once: true }));
+        stopped.catch(() => {});
+        const race = (p) => Promise.race([p, stopped]);
+        const alive = () => sk.gen === g && g.run === run;
+        g.run = run;
+        g.phase = 'running';
+        g.error = '';
+        g.result = null;
+        g.notes = [];
+        g.progress = [];
+        const say = (t) => { if (alive()) { g.progress.push(t); if (g.paint) g.paint(); } };
+        const wish = String(g.wish || '').trim().slice(0, SKG_WISH_MAX);
+        const design = g.designOn ? skgDesign(g.design) : undefined;
+        timer = setTimeout(() => run.stop(skgFail('It took longer than 2 minutes, so it was stopped.', 'Try again, or pick another engine or model.')), SKG_RUN_MS);
+        if (g.paint) g.paint();
+        try {
+            // her default, when she asked for it and it is a change (a failure here does not stop the run)
+            if (g.makeDefault && (eng.id !== g.saved.engine || model !== g.saved.model)) {
+                try {
+                    const r = await race(skgSend('softkeys_default_set', { engine: eng.id, model }, 'saved'));
+                    g.saved = { engine: String((r.saved && r.saved.engine) || eng.id), model: String((r.saved && r.saved.model) || model) };
+                } catch (err) { if (!alive()) return; g.notes.push(`Your default could not be saved. ${skgErrText(err)}`); }
+            }
+            say('Reading the program on the phone...');
+            const probe = await race(skgProbe(g.pkg, ctl.signal));
+            if (probe.ok === false) {
+                const bad = (Array.isArray(probe.routes) ? probe.routes : []).find((r) => r && r.ok === false && r.error);
+                throw skgFail(`The phone could not read ${g.label}.${bad ? ` ${bad.error}` : ''}`, 'Try again.');
+            }
+            say(`Asking ${eng.name} ${model}...`);
+            const resp = await race(skgSend('softkeys_generate', { pkg: g.pkg, label: g.label, probe, wish, design, engine: eng.id, model }, 'profile'));
+            if (!resp.profile || typeof resp.profile !== 'object') throw skgFail('The answer had no soft keys.', 'Try again, or pick another engine or model.');
+            say('Checking the answer...');
+            const verdicts = await race(skgCheck(skgActions(resp)));
+            if (!alive()) return;
+            g.result = skgResult(resp, verdicts);
+            g.result.engine = String(resp.engine || eng.id);
+            g.result.model = String(resp.model || model);
+            g.phase = 'result';
+        } catch (err) {
+            if (!alive()) return;
+            g.phase = 'form';
+            g.error = skgErrText(err);
+        } finally {
+            clearTimeout(timer);
+            ctl.abort();
+            if (g.run === run) g.run = null;
+        }
+        if (sk.gen === g && g.paint) g.paint();
+    }
+    /** Use this profile: the result into the draft (the page compares it with what was saved when ok is pressed), then the manager again. */
+    function skgUse(d) {
+        const sk = d.sk;
+        const g = sk && sk.gen;
+        if (!g || g.phase !== 'result' || !skgHasKeys(g)) return;
+        sk.profiles[g.pkg] = skgMerge(sk.profiles[g.pkg], g.result.keys);
+        sk.prof = g.pkg;
+        sk.msel = 0;
+        skgClose(d);
+    }
+    function skgSoftKeys(d) {
+        const g = d.sk && d.sk.gen;
+        if (!g) return { left: null, right: null };
+        const right = { label: 'Close', action: () => skgClose(d) };
+        if (g.phase === 'result') return { left: { label: 'Use', action: () => skgUse(d), disabled: !skgHasKeys(g) }, right };
+        return { left: { label: 'Generate', action: () => { skgRun(d); }, disabled: g.phase === 'running' || g.engState === 'loading' }, right };
+    }
+    // the result: the keys proposed (with how each reaches its target), then what could not be made
+    function skgResultHtml(g) {
+        const r = g.result;
+        const sideName = (side) => (SK_SIDES.find(([s]) => s === side) || [side, side])[1];
+        const why = (item) => { const w = item && String(item.why || '').trim(); return w ? `<p class="wm-form-note wmsp-indent">${esc(w.length > 160 ? `${w.slice(0, 159)}...` : w)}</p>` : ''; };
+        let html = ui.sub('Proposed soft keys');
+        for (const [side, label] of SK_SIDES) {
+            const k = r.keys[side];
+            if (!k) continue;
+            if (k.action === 'ownmenu') {
+                const n = k.menu.filter((m) => m.action !== 'sep').length;
+                html += `<p>${esc(`${label}: ${k.label || 'Menu'} (${n} ${n === 1 ? 'item' : 'items'})`)}</p>${why(skgItem(r.items, side, null, k))}`;
+                k.menu.forEach((m, i) => {
+                    if (m.action === 'sep') { html += '<p class="wmsp-indent">- - -</p>'; return; }
+                    const via = skgVia(m.action, false);
+                    html += `<p class="wmsp-indent">${esc(`${m.label || skDefaultName(m.action) || skActionText(m.action)}${via ? ` (${via})` : ''}`)}</p>${why(skgItem(r.items, side, i, m))}`;
+                });
+            } else {
+                const via = skgVia(k.action, true);
+                html += `<p>${esc(`${label}: ${k.label || skDefaultName(k.action) || skActionText(k.action)}${via ? ` (${via})` : ''}`)}</p>${why(skgItem(r.items, side, null, k))}`;
+            }
+        }
+        if (!skgHasKeys(g)) html += ui.text('Nothing could be made into a soft key.');
+        else if (SK_SIDES.some(([side]) => !r.keys[side])) html += ui.note('A key that is not listed stays as it is now.');
+        if (r.problems.length) {
+            html += ui.sub('Could not make');
+            for (const p of r.problems) {
+                const where = p.side ? `${sideName(p.side)}${p.menuIndex !== null ? ' menu' : ''}` : 'Soft key';
+                html += `<p>${esc(`${where}: ${p.label || skActionText(p.action) || 'Item'}${p.reason ? ` - ${p.reason}` : ''}`)}</p>`;
+            }
+        }
+        g.notes.forEach((n) => { html += ui.note(n); });
+        return html;
+    }
+    function skgRender(el, d, api) {
+        const sk = d.sk;
+        const g = sk.gen;
+        g.paint = api.rerender;
+        if (g.phase === 'result') {
+            el.innerHTML = `${skgResultHtml(g)}${ui.buttons([['gen-use', 'Use this profile', !skgHasKeys(g)], ['gen-again', 'Try Again'], ['gen-close', 'Close']])}`;
+            const on = (act, fn) => { const b = el.querySelector(`[data-act="${act}"]`); if (b) b.addEventListener('click', fn); };
+            on('gen-use', () => skgUse(d));
+            on('gen-again', () => { g.phase = 'form'; g.error = ''; api.rerender(); });
+            on('gen-close', () => skgClose(d));
+            return;
+        }
+        const busy = g.phase === 'running';
+        const off = busy ? 'disabled' : '';
+        const eng = skgEngine(g);
+        const engines = g.engines || [];
+        const engLabel = eng ? `${eng.name}${eng.ready ? '' : ' (no key)'}` : (g.engState === 'loading' ? 'Reading the engines...' : '(none)');
+        const designRows = !g.designOn ? '' : `${ui.row('Left soft key name:', ui.edit('', g.design.left, `data-f="gen-left" maxlength="24" ${off}`), { wide: true })}
+            ${ui.row('Center button name:', ui.edit('', g.design.center, `data-f="gen-center" maxlength="24" placeholder="(optional)" ${off}`), { wide: true })}
+            ${ui.row('Right soft key name:', ui.edit('', g.design.right, `data-f="gen-right" maxlength="24" ${off}`), { wide: true })}
+            <p class="wmsp-step">Right key menu (one item per line, - for a divider):</p>
+            <textarea class="wm-edit" name="gen-menu" rows="5" spellcheck="false" aria-label="Right key menu" ${off}></textarea>`;
+        el.innerHTML = `<p class="wmsp-step">Melaton reads this program's activities on the phone and asks an AI to build its soft keys.</p>
+            <p class="wmsp-step">What do you want?</p>
+            <textarea class="wm-edit" name="gen-wish" rows="4" maxlength="${SKG_WISH_MAX}" spellcheck="true" aria-label="What do you want?" placeholder="Leave it empty to let the AI pick the most useful keys" ${off}></textarea>
+            ${ui.check('gen-design', 'Design it myself first', g.designOn, off)}
+            ${designRows}
+            ${ui.sub('AI')}
+            ${ui.row('Engine:', ui.comboHtml('gen-engine', engLabel, busy || !engines.length), { wide: true })}
+            ${ui.row('Model:', `<div class="wm-combo-edit">${ui.edit('', g.model, `data-f="gen-model" maxlength="100" ${off}`)}<button type="button" class="wm-combo" data-act="gen-models" aria-label="Models"${busy || !eng || !eng.models.length ? ' disabled' : ''}></button></div>`, { wide: true })}
+            ${ui.check('gen-default', 'Make this my default', g.makeDefault && !!eng && eng.ready, busy || !eng || !eng.ready ? 'disabled' : '')}
+            ${g.engState === 'error' ? `${ui.sub('The engines could not be read')}${ui.text(g.engError)}` : ''}
+            ${busy || g.progress.length ? `${ui.sub('Working')}${g.progress.map((t) => ui.text(t)).join('')}` : ''}
+            ${g.error ? `${ui.sub('It did not work')}${ui.text(g.error)}` : ''}
+            ${ui.buttons([['gen-go', 'Generate', busy || g.engState === 'loading'], ['gen-close', 'Close']])}`;
+        const wish = el.querySelector('textarea[name="gen-wish"]');
+        wish.value = g.wish;
+        wish.addEventListener('input', () => { g.wish = wish.value.slice(0, SKG_WISH_MAX); });
+        const menu = el.querySelector('textarea[name="gen-menu"]');
+        if (menu) { menu.value = g.design.menu; menu.addEventListener('input', () => { g.design.menu = menu.value; }); }
+        for (const f of ['left', 'center', 'right']) {
+            const box = el.querySelector(`[data-f="gen-${f}"]`);
+            if (box) box.addEventListener('input', () => { g.design[f] = box.value; });
+        }
+        el.querySelector('input[name="gen-design"]').addEventListener('change', (e) => { g.designOn = e.target.checked; api.rerender(); });
+        ui.bindCombo(el.querySelector('[data-act="gen-engine"]'), engines.map((e) => [e.id, `${e.name}${e.ready ? '' : ' (no key)'}`]), g.engine, (v) => {
+            const e = engines.find((x) => x.id === v);
+            if (!e) return;
+            g.engine = v;
+            g.model = (v === g.saved.engine && g.saved.model) || e.defaultModel || e.models[0] || '';
+            if (!e.ready) g.makeDefault = false;
+            api.rerender();
+        });
+        const model = el.querySelector('[data-f="gen-model"]');
+        model.addEventListener('input', () => { g.model = model.value; });
+        const list = el.querySelector('[data-act="gen-models"]');
+        if (list) list.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!eng || list.disabled) return;
+            window.wmShell.dropdown(list.parentElement, eng.models.map((m) => ({ label: m, radio: m === g.model, action: () => { g.model = m; api.rerender(); } })), 'left');
+        });
+        const def = el.querySelector('input[name="gen-default"]');
+        def.addEventListener('change', () => { g.makeDefault = def.checked; });
+        const go = el.querySelector('[data-act="gen-go"]');
+        if (go) go.addEventListener('click', () => { skgRun(d); });
+        el.querySelector('[data-act="gen-close"]').addEventListener('click', () => skgClose(d));
+    }
     const SK_HOLD = [['freeform', 'Open the program as a pop-up window'], ['split', 'Open the program in split screen']];
 
     wmSettings.registerPage({
@@ -894,6 +1332,8 @@
         },
         render(el, tab, d, api) {
             if (tab === 'quickaccess' && d.qa) { qaRender(el, d, api); return; }
+            // Generate with AI is a view of the page, over every tab
+            if (d.sk && d.sk.gen) { skgRender(el, d, api); return; }
             if (tab === 'softkey' && d.sk) { skRender(el, d, api); return; }
             const choices = keyChoices();
             const k = KEYS();
@@ -933,16 +1373,31 @@
                     clean[k] = {};
                     SK_SIDES.forEach(([side]) => {
                         const key = p[side] || { action: SK_DEFAULT[side] };
-                        clean[k][side] = { action: key.action, label: String(key.label || '').trim() };
-                        if (key.action === 'ownmenu') clean[k][side].menu = (key.menu || []).map((r) => ({ label: r.action === 'sep' ? '-' : String(r.label || '').trim() || skDefaultName(r.action) || skActionText(r.action), action: r.action }));
+                        clean[k][side] = { action: skCleanAction(key.action), label: String(key.label || '').trim() };
+                        if (key.action === 'ownmenu') clean[k][side].menu = (key.menu || []).map((r) => ({ label: r.action === 'sep' ? '-' : String(r.label || '').trim() || skDefaultName(r.action) || skActionText(r.action), action: skCleanAction(r.action) }));
                     });
                 });
                 try { window.AndroidBars.setConfig(JSON.stringify({ softProfiles: clean })); } catch (_) { /* older app */ }
                 try { if (window.melatonBars && typeof window.melatonBars.kitChanged === 'function') window.melatonBars.kitChanged(); } catch (_) { /* no bars */ }
             }
             return [];
+        },
+        // Generate with AI (#1414) is a sub-view (wmPrograms.js subView): its heading, soft keys, back key and corner ok. ok closes it
+        // (the answer is only used from its own button); while a run is going ok does nothing
+        viewDepth: (d) => (d.sk && d.sk.gen ? 1 : 0),
+        viewTitle: (d) => (d.sk && d.sk.gen ? `Soft keys for ${d.sk.gen.label}` : ''),
+        softKeys: skgSoftKeys,
+        back: (d) => { if (!(d.sk && d.sk.gen)) return false; skgClose(d); return true; },
+        viewOk: (d) => {
+            const g = d.sk && d.sk.gen;
+            if (!g) return false;
+            if (g.phase === 'result' && skgHasKeys(g)) skgUse(d);
+            else if (g.phase !== 'running') skgClose(d);
+            return true;
         }
     });
+    // the pure pieces of the soft key manager (scripts/test-softkey-generate-ui.js): a deliberate export
+    window.wmSoftKeyGen = { skUriOk, skLinkText, skCleanAction, skActionText, skKind, skgDesign, skgKey, skgActions, skgResult, skgMerge, skgVia, skgErrText, skgOpen, skgRun, skgUse, skgClose, skgProbe, skgDefs: { SK_ACTIONS, SK_SIDES, SK_DEFAULT } };
 
     // ======================================================================== Input
 
