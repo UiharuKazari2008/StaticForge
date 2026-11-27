@@ -1,0 +1,122 @@
+run1 frames 182 full-green splash frames 21 numbers 66..86 pts 49.764..50.871
+   max mean abs diff emblem 0.17  badge 0.06
+   f0066 t=49.764 emblem 0.00 badge 0.00
+   f0067 t=49.770 emblem 0.17 badge 0.05
+   f0068 t=49.838 emblem 0.17 badge 0.06
+   f0069 t=49.858 emblem 0.17 badge 0.06
+   f0070 t=49.875 emblem 0.17 badge 0.06
+   f0071 t=49.888 emblem 0.17 badge 0.06
+   f0072 t=49.905 emblem 0.17 badge 0.06
+   f0073 t=49.925 emblem 0.17 badge 0.06
+   f0074 t=49.936 emblem 0.17 badge 0.06
+   f0075 t=49.956 emblem 0.17 badge 0.06
+   f0076 t=50.160 emblem 0.17 badge 0.06
+   f0077 t=50.196 emblem 0.17 badge 0.06
+   f0078 t=50.221 emblem 0.17 badge 0.06
+   f0079 t=50.355 emblem 0.17 badge 0.06
+   f0080 t=50.371 emblem 0.17 badge 0.06
+   f0081 t=50.438 emblem 0.17 badge 0.06
+   f0082 t=50.469 emblem 0.17 badge 0.06
+   f0083 t=50.521 emblem 0.17 badge 0.06
+   f0084 t=50.637 emblem 0.17 badge 0.06
+   f0085 t=50.653 emblem 0.17 badge 0.06
+   f0086 t=50.871 emblem 0.17 badge 0.06
+run2 frames 112 full-green splash frames 13 numbers 49..61 pts 15.048..15.939
+   max mean abs diff emblem 0.17  badge 0.06
+   f0049 t=15.048 emblem 0.00 badge 0.00
+   f0050 t=15.076 emblem 0.17 badge 0.05
+   f0051 t=15.180 emblem 0.17 badge 0.06
+   f0052 t=15.224 emblem 0.17 badge 0.06
+   f0053 t=15.264 emblem 0.17 badge 0.06
+   f0054 t=15.305 emblem 0.17 badge 0.06
+   f0055 t=15.352 emblem 0.17 badge 0.06
+   f0056 t=15.472 emblem 0.17 badge 0.06
+   f0057 t=15.547 emblem 0.17 badge 0.06
+   f0058 t=15.600 emblem 0.17 badge 0.06
+   f0059 t=15.753 emblem 0.17 badge 0.06
+   f0060 t=15.831 emblem 0.17 badge 0.06
+   f0061 t=15.939 emblem 0.17 badge 0.06
+run3 frames 150 full-green splash frames 14 numbers 56..69 pts 14.350..15.184
+   max mean abs diff emblem 0.17  badge 0.06
+   f0056 t=14.350 emblem 0.00 badge 0.00
+   f0057 t=14.378 emblem 0.17 badge 0.05
+   f0058 t=14.473 emblem 0.17 badge 0.06
+   f0059 t=14.498 emblem 0.17 badge 0.06
+   f0060 t=14.542 emblem 0.17 badge 0.06
+   f0061 t=14.585 emblem 0.17 badge 0.06
+   f0062 t=14.624 emblem 0.17 badge 0.06
+   f0063 t=14.675 emblem 0.17 badge 0.06
+   f0064 t=14.780 emblem 0.17 badge 0.06
+   f0065 t=14.921 emblem 0.17 badge 0.06
+   f0066 t=14.951 emblem 0.17 badge 0.06
+   f0067 t=15.092 emblem 0.17 badge 0.06
+   f0068 t=15.110 emblem 0.17 badge 0.06
+   f0069 t=15.184 emblem 0.17 badge 0.06
+run4 frames 107 full-green splash frames 8 numbers 54..61 pts 15.027..16.569
+   max mean abs diff emblem 0.17  badge 0.06
+   f0054 t=15.027 emblem 0.00 badge 0.00
+   f0055 t=15.059 emblem 0.17 badge 0.05
+   f0056 t=15.190 emblem 0.17 badge 0.06
+   f0057 t=15.242 emblem 0.17 badge 0.06
+   f0058 t=15.298 emblem 0.17 badge 0.06
+   f0059 t=15.345 emblem 0.17 badge 0.06
+   f0060 t=16.103 emblem 0.17 badge 0.06
+   f0061 t=16.569 emblem 0.17 badge 0.06
+run5 frames 139 full-green splash frames 16 numbers 49..64 pts 14.238..15.152
+   max mean abs diff emblem 0.17  badge 0.06
+   f0049 t=14.238 emblem 0.00 badge 0.00
+   f0050 t=14.301 emblem 0.17 badge 0.05
+   f0051 t=14.372 emblem 0.17 badge 0.06
+   f0052 t=14.405 emblem 0.17 badge 0.06
+   f0053 t=14.414 emblem 0.17 badge 0.06
+   f0054 t=14.469 emblem 0.17 badge 0.06
+   f0055 t=14.528 emblem 0.17 badge 0.06
+   f0056 t=14.572 emblem 0.17 badge 0.06
+   f0057 t=14.700 emblem 0.17 badge 0.06
+   f0058 t=14.760 emblem 0.17 badge 0.06
+   f0059 t=14.838 emblem 0.17 badge 0.06
+   f0060 t=14.912 emblem 0.17 badge 0.06
+   f0061 t=14.944 emblem 0.17 badge 0.06
+   f0062 t=15.084 emblem 0.17 badge 0.06
+   f0063 t=15.139 emblem 0.17 badge 0.06
+   f0064 t=15.152 emblem 0.17 badge 0.06
+off1 frames 87 full-green splash frames 16 numbers 56..71 pts 13.483..14.750
+   max mean abs diff emblem 0.17  badge 70.52
+   f0056 t=13.483 emblem 0.00 badge 70.52
+   f0057 t=13.516 emblem 0.17 badge 70.52
+   f0058 t=13.636 emblem 0.17 badge 70.52
+   f0059 t=13.691 emblem 0.17 badge 70.52
+   f0060 t=13.723 emblem 0.17 badge 70.52
+   f0061 t=13.767 emblem 0.17 badge 70.52
+   f0062 t=13.791 emblem 0.17 badge 70.52
+   f0063 t=13.840 emblem 0.17 badge 70.52
+   f0064 t=13.900 emblem 0.17 badge 70.52
+   f0065 t=14.019 emblem 0.17 badge 70.52
+   f0066 t=14.092 emblem 0.17 badge 70.52
+   f0067 t=14.201 emblem 0.17 badge 70.52
+   f0068 t=14.376 emblem 0.17 badge 70.52
+   f0069 t=14.518 emblem 0.17 badge 70.52
+   f0070 t=14.692 emblem 0.17 badge 70.52
+   f0071 t=14.750 emblem 0.17 badge 70.52
+off2 frames 85 full-green splash frames 20 numbers 52..71 pts 13.388..15.053
+   max mean abs diff emblem 0.17  badge 70.52
+   f0052 t=13.388 emblem 0.00 badge 70.52
+   f0053 t=13.421 emblem 0.17 badge 70.52
+   f0054 t=13.452 emblem 0.17 badge 70.52
+   f0055 t=13.484 emblem 0.17 badge 70.52
+   f0056 t=13.521 emblem 0.17 badge 70.52
+   f0057 t=13.551 emblem 0.17 badge 70.52
+   f0058 t=13.583 emblem 0.17 badge 70.52
+   f0059 t=13.621 emblem 0.17 badge 70.52
+   f0060 t=13.767 emblem 0.17 badge 70.52
+   f0061 t=13.818 emblem 0.17 badge 70.52
+   f0062 t=13.852 emblem 0.17 badge 70.52
+   f0063 t=13.996 emblem 0.17 badge 70.52
+   f0064 t=14.046 emblem 0.17 badge 70.52
+   f0065 t=14.332 emblem 0.17 badge 70.52
+   f0066 t=14.519 emblem 0.17 badge 70.52
+   f0067 t=14.723 emblem 0.17 badge 70.52
+   f0068 t=14.765 emblem 0.17 badge 70.52
+   f0069 t=14.898 emblem 0.17 badge 70.52
+   f0070 t=14.925 emblem 0.17 badge 70.52
+   f0071 t=15.053 emblem 0.17 badge 70.52
