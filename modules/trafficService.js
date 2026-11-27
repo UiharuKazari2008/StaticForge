@@ -290,6 +290,44 @@ function usage() {
     return usageState;
 }
 
+// Where the phone says it is (traffic_place, #1289): 'home' | 'work' | null (on the road). The server has no phone
+// position of its own, so a scheduled "To Home" is skipped while the phone reports Home (same for Work). Kept in
+// memory and in a small file next to the usage file so a restart keeps it; a report older than 12 h counts for nothing.
+const PHONE_FILE = process.env.TRAFFIC_PHONE_FILE || path.join(path.dirname(USAGE_FILE), 'traffic-phone.json');
+const PHONE_PLACE_TTL = 12 * 60 * MIN;
+let phoneState = null; // { place, at }; null until read
+
+function phone() {
+    if (!phoneState) {
+        let o = null;
+        try { o = JSON.parse(fs.readFileSync(PHONE_FILE, 'utf8')); } catch (_e) { o = null; }
+        const place = o && (o.place === 'home' || o.place === 'work') ? o.place : null;
+        phoneState = { place, at: place && Number.isFinite(Number(o.at)) ? Number(o.at) : 0 };
+    }
+    return phoneState;
+}
+
+/** The phone's report: 'home' | 'work', or null (on the road / left a place) which clears it. Anything else is ignored. */
+function setPhonePlace(place, at = Date.now()) {
+    if (place !== null && place !== 'home' && place !== 'work') return false;
+    const t = Number.isFinite(Number(at)) ? Number(at) : Date.now();
+    const cur = phone();
+    if (cur.place === place && (place === null || cur.at === t)) return true;
+    phoneState = { place, at: place ? t : 0 };
+    try {
+        fs.mkdirSync(path.dirname(PHONE_FILE), { recursive: true });
+        fs.writeFileSync(`${PHONE_FILE}.tmp`, JSON.stringify(phoneState));
+        fs.renameSync(`${PHONE_FILE}.tmp`, PHONE_FILE);
+    } catch (_e) { /* kept in memory */ }
+    return true;
+}
+
+/** 'home' | 'work' | null: the phone's last reported place, null when none or older than 12 h. */
+function phonePlaceNow(now = Date.now()) {
+    const p = phone();
+    return p.place && now - p.at <= PHONE_PLACE_TTL ? p.place : null;
+}
+
 function spend(provider) {
     const u = usage();
     u[provider] = (u[provider] || 0) + 1;
@@ -1499,6 +1537,12 @@ function dueNow(s, now, fired) {
 }
 
 async function runScheduled(direction, kind) {
+    // the phone is already at this destination (traffic_place): nothing to report, no API call, no notice
+    const here = phonePlaceNow();
+    if (here && here === direction) {
+        console.log(`[traffic] ${kind} ${direction} skipped: phone is at ${here}`);
+        return;
+    }
     const s = getSettings();
     let report = null;
     let advice = null;
@@ -1593,6 +1637,8 @@ module.exports = {
     wireReport,
     latestWire,
     startScheduler,
+    setPhonePlace,
+    phonePlaceNow,
     TrafficError,
     DIRECTIONS,
     _test: {
@@ -1602,6 +1648,9 @@ module.exports = {
         setFetch: (fn) => { fetchImpl = fn; require('./locationService')._test.setFetch(fn); },
         getFetch: () => fetchImpl,
         resetUsage: () => { usageState = null; },
+        resetPhone: () => { phoneState = null; },
+        runScheduled,
+        PHONE_FILE,
         resetPlaces: () => { placesStore = {}; }
     }
 };

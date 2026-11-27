@@ -89,7 +89,7 @@ const fastRoute = {
     legs: [{ steps: [{ distanceMeters: 9500, navigationInstruction: { instructions: 'Turn left onto Omaha St' } }] }]
 };
 const calls = [];
-T.setFetch(async (url, init) => {
+const baseFetch = async (url, init) => {
     calls.push({ url, init });
     const body = init && init.body && /routes\.googleapis/.test(url) ? JSON.parse(init.body) : null;
     const json = (o, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(o) });
@@ -137,7 +137,8 @@ T.setFetch(async (url, init) => {
         ] } });
     }
     throw new Error(`unexpected ${url}`);
-});
+};
+T.setFetch(baseFetch);
 
 (async () => {
     console.log('trafficService');
@@ -447,6 +448,107 @@ T.setFetch(async (url, init) => {
         assert.match(rep.hash, /^[0-9a-f]{40}$/);
         const b = sent.find((x) => x.msg.type === 'traffic_updated');
         assert.ok(b && !b.filter(info) && b.filter({ userType: 'admin' }), 'the asking socket is left out of the broadcast');
+    });
+
+    await ok('phone place: set, clear, 12 h expiry, restart-proof', async () => {
+        T.resetPhone();
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        assert.strictEqual(svc.phonePlaceNow(), null, 'nothing reported');
+        const t0 = Date.now();
+        assert.strictEqual(svc.setPhonePlace('home', t0), true);
+        assert.strictEqual(svc.phonePlaceNow(t0 + 1000), 'home');
+        assert.strictEqual(svc.phonePlaceNow(t0 + 12 * 3600 * 1000), 'home', 'exactly 12 h still counts');
+        assert.strictEqual(svc.phonePlaceNow(t0 + 12 * 3600 * 1000 + 1), null, 'older than 12 h: nothing');
+        assert.strictEqual(svc.setPhonePlace('garage', t0), false, 'only home | work | null');
+        assert.strictEqual(svc.setPhonePlace(undefined, t0), false);
+        assert.strictEqual(svc.phonePlaceNow(t0 + 1000), 'home', 'a bad report changes nothing');
+        // a restart (the module state gone) reads the file back
+        T.resetPhone();
+        assert.strictEqual(svc.phonePlaceNow(t0 + 1000), 'home', 'persisted');
+        svc.setPhonePlace('work', t0 + 5);
+        assert.strictEqual(svc.phonePlaceNow(t0 + 1000), 'work');
+        svc.setPhonePlace(null);
+        assert.strictEqual(svc.phonePlaceNow(), null, 'null clears');
+        T.resetPhone();
+        assert.strictEqual(svc.phonePlaceNow(), null, 'the clear persisted');
+        fs.writeFileSync(T.PHONE_FILE, '{not json');
+        T.resetPhone();
+        assert.strictEqual(svc.phonePlaceNow(), null, 'a corrupt file is null');
+        fs.rmSync(T.PHONE_FILE, { force: true });
+        T.resetPhone();
+        assert.strictEqual(svc.phonePlaceNow(), null, 'a missing file is null');
+    });
+
+    await ok('scheduled notice is skipped when the phone is at the destination', async () => {
+        const inboxMod = require('../modules/notificationInbox');
+        inboxMod.bind(gr);
+        T.setFetch(baseFetch); // earlier tests may leave their own fake
+        // a spy on publish: a cleared notice keeps its state when published again, so the call itself is what counts
+        const realPublish = inboxMod.publish;
+        const published = [];
+        inboxMod.publish = (n) => { published.push(n.id); return realPublish(n); };
+        const noticeId = (kind, direction) => `traffic:${kind}:${direction}:${T.localNow(svc.getSettings()).date}`;
+        // one scheduled check with the phone reporting `place` at `at`
+        const run = async (place, direction, kind = 'scheduled', at = Date.now()) => {
+            T.resetPhone();
+            svc.setPhonePlace(place, at);
+            fs.rmSync(process.env.TRAFFIC_USAGE_FILE, { force: true });
+            T.resetUsage();
+            T.routeCache.clear();
+            calls.length = 0;
+            sent.length = 0;
+            published.length = 0;
+            await T.runScheduled(direction, kind);
+            return {
+                published: published.includes(noticeId(kind, direction)),
+                fetched: calls.filter((c) => /routes\.googleapis|api\.tomtom\.com/.test(c.url)).length,
+                broadcast: sent.some((x) => x.msg.type === 'traffic_report')
+            };
+        };
+        try {
+            T.sched.go.clear();
+            let r = await run('home', 'home');
+            assert.deepStrictEqual(r, { published: false, fetched: 0, broadcast: false }, 'at Home: no To Home, no API call, no broadcast');
+            assert.strictEqual(published.length, 0);
+            r = await run('home', 'home', 'go');
+            assert.deepStrictEqual(r, { published: false, fetched: 0, broadcast: false }, 'the go run follows the same rule');
+            r = await run('work', 'work');
+            assert.deepStrictEqual(r, { published: false, fetched: 0, broadcast: false }, 'at Work: no To Work');
+            r = await run('work', 'work', 'go');
+            assert.deepStrictEqual(r, { published: false, fetched: 0, broadcast: false }, 'at Work: no go either');
+            assert.strictEqual(T.sched.go.has('home'), false, 'a skipped scheduled run schedules no go');
+            for (const place of [null, 'work']) {
+                r = await run(place, 'home');
+                assert.ok(r.published && r.fetched > 0 && r.broadcast, `phone ${place}: To Home still published ${JSON.stringify(r)}`);
+            }
+            r = await run('home', 'work');
+            assert.ok(r.published && r.fetched > 0, `at Home: To Work still published ${JSON.stringify(r)}`);
+            r = await run('home', 'home', 'scheduled', Date.now() - 13 * 3600 * 1000);
+            assert.ok(r.published && r.fetched > 0, `a report older than 12 h does not skip ${JSON.stringify(r)}`);
+        } finally {
+            inboxMod.publish = realPublish;
+            T.resetPhone();
+            svc.setPhonePlace(null);
+            T.sched.go.clear();
+        }
+    });
+
+    await ok('traffic_place packet', async () => {
+        const registry = require('../modules/ws/wsPacketRegistry');
+        const out = [];
+        const ctx = { globalResources: gr, sendToClient: (ws, m) => out.push(m), sendError: (ws, msg, code) => out.push({ error: msg, code }) };
+        require('../modules/ws/handlers/292-trafficHandler').registerPackets(ctx);
+        const h = registry.getWsPacketHandler('traffic_place');
+        assert.ok(h, 'registered');
+        T.resetPhone();
+        await h({ ws: {}, message: { type: 'traffic_place', requestId: 'p1', place: 'work' }, clientInfo: { userType: 'admin' } });
+        assert.deepStrictEqual(out.pop().data, { ok: true });
+        assert.strictEqual(svc.phonePlaceNow(), 'work');
+        await h({ ws: {}, message: { type: 'traffic_place', requestId: 'p2', place: 'home' }, clientInfo: { userType: 'user' } });
+        assert.strictEqual(out.pop().code, 'INSUFFICIENT_PERMISSIONS');
+        assert.strictEqual(svc.phonePlaceNow(), 'work', 'a non-admin changes nothing');
+        await h({ ws: {}, message: { type: 'traffic_place', requestId: 'p3', place: null }, clientInfo: { userType: 'admin' } });
+        assert.strictEqual(svc.phonePlaceNow(), null);
     });
 
     await ok('settings save cleans input', async () => {

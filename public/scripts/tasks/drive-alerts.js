@@ -25,6 +25,9 @@
  * passed, the car leaves it, stops at Home / Work or the drive ends. An older host (start data {}) keeps the 1 mi
  * notification. No timers, no extra requests.
  *
+ * Where the phone is (#1289): on a change of place (Home / Work / neither) the server is told traffic_place { place },
+ * only while the link is on (fixes and the drive's start), so it can skip a "To Home" notice at Home. No link wake.
+ *
  * The pure parts are CafeTasks.lib.drive: the page's Traffic uses the same functions.
  */
 (function (root) {
@@ -294,10 +297,23 @@
         return best;
     }
 
-    function atPlace(s, fix) {
+    /** 'home' | 'work' (the nearer one within the radius) | null. */
+    function placeAt(s, fix) {
         const p = places(s);
         const r = Math.max(p.radiusM, fix.accuracyM || 0);
-        return (p.home && lib.distM(fix, p.home) <= r) || (p.work && lib.distM(fix, p.work) <= r);
+        const dh = p.home ? lib.distM(fix, p.home) : Infinity;
+        const dw = p.work ? lib.distM(fix, p.work) : Infinity;
+        if (dh <= r && dh <= dw) return 'home';
+        if (dw <= r) return 'work';
+        return null;
+    }
+
+    /** Tell the server where the phone is, once per change (the reply is ignored). */
+    function sendPlace(ctx, place) {
+        const s = ctx.state;
+        if (s.sentPlace === place) return;
+        s.sentPlace = place;
+        ctx.request('traffic_place', { place }, 'place');
     }
 
     function onFix(ctx, fix) {
@@ -306,7 +322,9 @@
         if ((fix.accuracyM || 0) > 500) return;
         const done = alertedSet(s, ctx.now);
         const appr = canApproach(s);
-        if (atPlace(s, fix)) { endApproach(ctx); s.mode = ''; setFeed(ctx, ''); setLevel(ctx, 'low'); publish(ctx); return; }
+        const here = placeAt(s, fix);
+        if (here) sendPlace(ctx, here);
+        if (here) { endApproach(ctx); s.mode = ''; setFeed(ctx, ''); setLevel(ctx, 'low'); publish(ctx); return; }
         const route = onRoute(s, fix);
         if (route) {
             s.mode = 'route';
@@ -363,6 +381,7 @@
             ctx.link(true);
             askReports(ctx, true);
             setLevel(ctx, 'low');
+            if (s.sentPlace !== null) sendPlace(ctx, null);
         } else {
             s.mode = '';
             s.direction = '';
@@ -387,7 +406,7 @@
         name: 'drive-alerts',
         api: 1,
         init(s) {
-            Object.assign(s, { active: false, driveSince: 0, mode: '', direction: '', level: 'off', feed: '', reports: {}, reportsAt: 0, places: null, area: { box: null, items: [] }, along: {}, last: {}, alerted: {}, asking: {}, outSig: '', hostOps: [], appr: null });
+            Object.assign(s, { active: false, driveSince: 0, mode: '', direction: '', level: 'off', feed: '', reports: {}, reportsAt: 0, places: null, area: { box: null, items: [] }, along: {}, last: {}, alerted: {}, asking: {}, outSig: '', hostOps: [], appr: null, sentPlace: '' });
         },
         on: {
             start(ctx, d) {
@@ -428,6 +447,8 @@
                     if (!r.ok) return;
                     const d = r.data || {};
                     if (d.box) s.area = { box: d.box, items: (d.cameras || []).concat(d.police || []) };
+                } else if (r.tag === 'place') {
+                    return; // nothing to take: a failed one is simply not retried until the place changes
                 } else if (r.tag === 'feed' && r.ok && r.data && r.data.items) {
                     mergePolice(s, { feed: r.data.feed || s.feed, items: r.data.items }, true);
                 }

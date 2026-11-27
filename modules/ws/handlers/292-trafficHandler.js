@@ -24,6 +24,11 @@ const trafficService = require('../../trafficService');
 //   traffic_where          {}                          { lat, lon, source, accuracyKm }: the phone's place by
 //                                                      its IP, for a browser without device location (a
 //                                                      home-network or unknown IP answers the configured place)
+//   traffic_place          { place }                   { ok: true }; admins. The phone reports where it is: 'home' |
+//                                                      'work' | null (on the road / left a place). The server has no
+//                                                      phone position, so a scheduled To Home / To Work notice is
+//                                                      skipped while the phone is at that destination (a report
+//                                                      older than 12 h counts for nothing; #1289)
 //
 // Broadcasts to admin clients:
 //   traffic_updated           { direction, report }                 after every check
@@ -151,6 +156,16 @@ async function handleSave(handlersCtx, ws, message, clientInfo) {
     }
 }
 
+async function handlePlace(handlersCtx, ws, message, clientInfo) {
+    if (!guard(handlersCtx, ws, message, clientInfo, true)) return;
+    try {
+        trafficService.setPhonePlace(message.place);
+        reply(handlersCtx, ws, message, { ok: true });
+    } catch (error) {
+        fail(handlersCtx, ws, message, error, 'The phone place could not be saved');
+    }
+}
+
 function registerPackets(handlersCtx) {
     if (!handlersCtx) {
         console.warn('[292-trafficHandler] registerPackets: missing handlersCtx');
@@ -167,6 +182,7 @@ function registerPackets(handlersCtx) {
     reg('traffic_advise', handleAdvise);
     reg('traffic_settings_save', handleSave, { destructive: true });
     reg('traffic_where', handleWhere);
+    reg('traffic_place', handlePlace);
     reg('traffic_nearby', handleNearby);
     trafficService.startScheduler();
 }

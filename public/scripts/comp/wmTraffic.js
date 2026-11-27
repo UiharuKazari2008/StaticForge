@@ -309,6 +309,9 @@
         return null;
     }
 
+    // the place last told to the server (#1289); undefined until the first device read
+    let lastSentPlace;
+
     function readPosition(force) {
         if (geoBusy || document.hidden || !configured()) return;
         // in the drive window inside the app: every minute (the device's own position, no request to the server)
@@ -323,6 +326,12 @@
             const p = placeNow();
             if (p) { try { localStorage.setItem(LS_PLACE, JSON.stringify({ place: p, at: Date.now() })); } catch (_) { /* none */ } }
             if (p === 'work') noteAtWork();
+            // tell the server on a change of place only (it skips a "To Home" notice at Home); an IP answer is
+            // not where the phone is (#890: client_ip, configured, any lookup), never blocks anything
+            if (here.source === 'device' && p !== lastSentPlace) {
+                lastSentPlace = p;
+                try { ask('traffic_place', { place: p || null }).catch(() => {}); } catch (_) { /* none */ }
+            }
             const now = commuteNow();
             if (now && (now !== before || (now === 'home' && hereMoved()))) { const r = latest[now]; if (!r || Date.now() - Date.parse(r.at) > STALE_MS || hereMoved()) quietCheck(now); }
             changed();
