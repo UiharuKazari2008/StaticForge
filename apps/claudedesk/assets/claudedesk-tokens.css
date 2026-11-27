@@ -2,6 +2,11 @@
 :root {
     --cd-busy-tint: #e8f1fb;
     --cd-c-c42b1c: #c42b1c;
+    --cd-chart-cost: #3a8fd9;
+    --cd-chart-sess: #8fbf7a;
+    --cd-chart-week: #c2571a;
+    --cd-chart-grid: #d5d5d5;
+    --cd-chart-text: #555;
     --cd-busy-green: #3ca636;
     --cd-busy-a: #2b5797;
     --cd-busy-b: #3a8fd9;
@@ -14,6 +19,7 @@
     --cd-c-333: #333;
     --cd-c-444: #444;
     --cd-c-555: #555;
+    --cd-c-5c0000: #5c0000;
     --cd-c-6b1111: #6b1111;
     --cd-c-6d6d6d: #6d6d6d;
     --cd-c-7a3e00: #7a3e00;
@@ -21,6 +27,7 @@
     --cd-c-a00000: #a00000;
     --cd-c-a8d8eb: #a8d8eb;
     --cd-c-b3b3b3: #b3b3b3;
+    --cd-c-b86b6b: #b86b6b;
     --cd-c-c5c5c5: #c5c5c5;
     --cd-c-c5d5ea: #c5d5ea;
     --cd-c-c8c8c8: #c8c8c8;
@@ -34,8 +41,10 @@
     --cd-c-efefef: #efefef;
     --cd-c-f0f0f0: #f0f0f0;
     --cd-c-f5f5f5: #f5f5f5;
+    --cd-c-fde4e4: #fde4e4;
     --cd-c-fde8e8: #fde8e8;
     --cd-c-fff: #fff;
+    --cd-c-ffffe1: #ffffe1;
     --cd-font-mono: Consolas, "Lucida Console", monospace;
     --cd-font-ui: "Segoe UI", Tahoma, sans-serif;
 }
