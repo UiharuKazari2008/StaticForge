@@ -1151,7 +1151,7 @@ function tellUploads(knownIds) {
         const id = `videos:upload:${v.id}`;
         try {
             if (inbox.get(undefined, id)) return;
-            inbox.publish({ app: 'youtube', id, cls: 'notification', alert: true, title: `${v.channel || 'A channel'} uploaded`, text: v.title || '', actions: [], data: { app: 'youtube', open: `yt:${v.id}` }, ttlMs: 24 * 60 * MIN });
+            inbox.publish({ app: 'youtube', id, cls: 'notification', alert: true, title: `${v.channel || 'A channel'} uploaded`, text: v.title || 'New upload', actions: [], data: { app: 'youtube', open: `yt:${v.id}` }, ttlMs: 24 * 60 * MIN });
         } catch (e) { console.warn(`[youtube] upload notice: ${e.message}`); }
     });
 }

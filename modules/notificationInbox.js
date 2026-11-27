@@ -190,10 +190,69 @@ function safeJson(s, fallback) {
     }
 }
 
+// ---- the guard (Yukimi, Nov 27 2026, #1299): a notice with no body or no call to action registers nothing ----
+// She saw a Fleet notice on the phone with an EMPTY body and only Dismiss / Menu: "I do not want any notification that can't
+// provide a body or any call to action to be able to register anything, and it should send an error report to the system
+// error reporting store." So publish() (the single path and the stacked one: a stack's body comes from its items, so an item
+// is judged as a notice of its own) refuses, before any row, broadcast or phone push, a notice that has
+//   - NO BODY: its text, trimmed, is empty; or
+//   - NO CALL TO ACTION: none of these (what a tap or a key does on the page: wmNotificationInbox openFor / answerKeys):
+//       a. actions: a non-empty array with an entry (an id string such as 'view', or an object such as { id, label });
+//       b. data.buttons (non-empty) with data.answerType: an answerable notice, its keys are the answer (isAnswerable);
+//       c. a tap target: data.app (else the notice's own app) is a non-empty string - openFor opens that app on a tap
+//          (Lapis, Traffic, Videos, Weather, Fleet 'claudedesk' with data.workId / data.page, any wmShell program). Mail,
+//          texts and Messenger carry data.app too, so their adopters (data.kind) need no rule of their own.
+// A refused notice returns null, exactly like a notice with no id or title, and is filed to the server fault store
+// (serverFaultCapture.capture, kind 'swallowed', its message names the problem, extra carries app / id / cls / title /
+// missing / source) once per source + gap per GUARD_WINDOW_MS (an in-memory Map, no timer), so a flood is one report.
+// Exempt: the test lane (user 'test': the harness of modules/testDevices.js sends bare notices to prove delivery).
+const GUARD_WINDOW_MS = 60 * 60 * 1000;
+const GUARD_MAX_SOURCES = 200;
+const guardFiled = new Map(); // `${source}|${missing}` -> when it was last filed
+
+/** '' (the notice may register), or what it lacks: 'body' | 'action' | 'body+action'. */
+function noticeGap(notice) {
+    const n = notice || {};
+    const d = n.data && typeof n.data === 'object' ? n.data : {};
+    const body = String(n.text == null ? '' : n.text).trim() !== '';
+    const keys = Array.isArray(n.actions) && n.actions.some((a) => (typeof a === 'string' ? a.trim() !== '' : !!a && typeof a === 'object'));
+    const answers = isAnswerable(d) && Array.isArray(d.buttons) && d.buttons.length > 0;
+    const app = d.app || n.app;
+    const taps = typeof app === 'string' && app.trim() !== '';
+    const action = keys || answers || taps;
+    return body ? (action ? '' : 'action') : (action ? 'body' : 'body+action');
+}
+
+/** The refusal's report: once per source + gap per hour, never throws. */
+function fileRefusal(notice, missing, id, title) {
+    try {
+        const n = notice || {};
+        const app = String(n.app || '').slice(0, 40);
+        const source = app || id.split(':')[0] || 'unknown';
+        const key = `${source}|${missing}`;
+        const now = nowFn();
+        const last = guardFiled.get(key);
+        if (last !== undefined && now - last < GUARD_WINDOW_MS) return false;
+        if (guardFiled.size >= GUARD_MAX_SOURCES) guardFiled.delete(guardFiled.keys().next().value);
+        guardFiled.delete(key);
+        guardFiled.set(key, now);
+        const cls = String(n.cls || n.kind || '').slice(0, 60);
+        const clipped = title.length > 80 ? `${title.slice(0, 77)}...` : title;
+        const err = new Error(`Notice refused by the inbox guard: no ${missing.replace('+', ' and no ')} (source ${source}, class ${cls || '-'}); it was not registered, nothing was sent to a phone`);
+        err.name = 'NoticeRefused';
+        // serverFaultCapture keeps source and note in the report; app / id / cls / title / missing ride along in extra and in the note
+        const note = `app=${app || '-'} id=${id} cls=${cls || '-'} missing=${missing} title=${clipped}`;
+        require('./serverFaultCapture').capture(err, 'swallowed', { source: `notificationInbox.guard:${source}`, note, app, id, cls, title: clipped, missing });
+        return true;
+    } catch (_e) {
+        return false; // reporting is best effort: the refusal itself stands
+    }
+}
+
 /**
  * Store a notice (new, or replacing one of the same id — a countdown step keeps the id so it supersedes
  * the last). Broadcasts inbox_updated. Producers call this as well as their own live broadcast.
- * @returns the stored notice, or null when it is not stored (no id/title, or already expired)
+ * @returns the stored notice, or null when it is not stored (no id/title, already expired, or refused by the guard: no body / no call to action)
  */
 function publish(notice = {}) {
     if (!gr) return null;
@@ -204,6 +263,11 @@ function publish(notice = {}) {
     const now = nowFn();
     const expiresAt = Number.isFinite(Number(notice.ttlMs)) && Number(notice.ttlMs) > 0 ? now + Number(notice.ttlMs) : (Number.isFinite(Number(notice.expiresAt)) ? Number(notice.expiresAt) : null);
     if (expiresAt && expiresAt <= now) return null;
+    // the guard (see above): no body or no call to action registers nothing (the test lane is exempt)
+    if (user !== 'test') {
+        const missing = noticeGap(notice);
+        if (missing) { fileRefusal(notice, missing, id, title); return null; }
+    }
     const cls = String(notice.cls || notice.kind || '').slice(0, 60);
     // a class the phone shows without a message (Sounds & Notifications: Display message on screen off):
     // kept for the title bar's state, never popped on resume nor posted on Android
@@ -1066,6 +1130,7 @@ function broadcast(user, message) {
 module.exports = {
     bind,
     publish,
+    noticeGap,
     get,
     list,
     count,
@@ -1087,6 +1152,8 @@ module.exports = {
     broadcast,
     clients,
     _test: {
+        guardReset: () => guardFiled.clear(),
+        GUARD_WINDOW_MS,
         resendDue,
         database,
         setNow: (fn) => {
@@ -1101,6 +1168,7 @@ module.exports = {
             if (db) db.close();
             db = null;
             quietCache.clear();
+            guardFiled.clear();
         },
     },
 };

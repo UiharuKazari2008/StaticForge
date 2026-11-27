@@ -44,7 +44,7 @@ const eventsTo = (who, name) => sent.filter((s) => s.to.startsWith(who) && s.msg
 const reset = () => { sent.length = 0; };
 
 // ---- before the emulator is marked: it is a household phone like any other (nothing changes for real phones)
-inbox.publish({ id: 'sms:1', title: 'New Text Message', text: 'hi' });
+inbox.publish({ id: 'sms:1', title: 'New Text Message', text: 'hi', app: 'messaging' });
 assert.strictEqual(eventsTo('f409', 'inbox.notice').length, 1, 'the Fold gets household notices');
 assert.strictEqual(eventsTo('0123', 'inbox.notice').length, 1, 'an unmarked emulator does too');
 
@@ -53,7 +53,7 @@ assert.ok(testDevices.mark(EMU, { name: 'Test Fold (emulator)' }));
 assert.ok(!testDevices.mark('nope'), 'a bad id is refused');
 assert.ok(testDevices.isTestDevice(EMU) && !testDevices.isTestDevice(FOLD));
 reset();
-inbox.publish({ id: 'mail:a:1', title: 'New E-mail Message', text: 'x' });
+inbox.publish({ id: 'mail:a:1', title: 'New E-mail Message', text: 'x', app: 'messaging' });
 assert.strictEqual(eventsTo('f409', 'inbox.notice').length, 1, 'the Fold still gets household notices');
 assert.strictEqual(eventsTo('0123', 'inbox.notice').length, 0, 'a test device never gets a household notice');
 assert.ok(!sent.some((s) => s.to.startsWith('0123')), 'nor any household broadcast');

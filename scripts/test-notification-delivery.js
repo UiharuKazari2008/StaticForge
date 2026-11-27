@@ -47,7 +47,7 @@ assert.strictEqual(got.length, 3, 'confirmed: never again');
 
 // link down at publish: nothing recorded as sent; the hello catches up and that delivery is tracked
 linkUp = false;
-inbox.publish({ id: 'mail:9', title: 'New E-mail Message', text: 'x' });
+inbox.publish({ id: 'mail:9', title: 'New E-mail Message', text: 'x', app: 'messaging' });
 assert.strictEqual(got.length, 3);
 linkUp = true;
 const before = got.length;
@@ -62,7 +62,7 @@ now += 20000; const n0 = got.length; inbox._test.resendDue();
 assert.ok(!got.slice(n0).some((g) => g.id === 'mail:9'), 'seen elsewhere: not sent again');
 
 // a link that stays silent: attempts are counted while it is down, and stop after the backoff runs out
-inbox.publish({ id: 'dir:1', title: 'Turn finished' });
+inbox.publish({ id: 'dir:1', title: 'Turn finished', text: 'Done.', app: 'director' });
 linkUp = false;
 for (let i = 0; i < 8; i++) { now += 400000; inbox._test.resendDue(); }
 const row = inbox.openDeliveries('fold').find((r) => r.id === 'dir:1');

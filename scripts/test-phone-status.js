@@ -29,7 +29,7 @@ ps.bind(gr);
     await ps._test.run();
     assert.strictEqual(sentEv.length, 1, 'nothing changed: nothing sent');
 
-    inbox.publish({ id: 'dmail:7', title: 'New E-mail Message', text: 'x', cls: 'mail' });
+    inbox.publish({ id: 'dmail:7', title: 'New E-mail Message', text: 'x', cls: 'mail', actions: ['view'] });
     ps.directorStatus({ running: true });
     await ps._test.run();
     const d = sentEv[1].detail;
@@ -51,7 +51,7 @@ ps.bind(gr);
     assert.strictEqual(sentEv[3].detail.fields.mail.fresh, 0, 'read: the icon input drops');
 
     // #1098: a flood of mail is one stack:mail row; the icon input counts the mails in it, the holder carries the count
-    for (let i = 1; i <= 3; i++) inbox.publish({ id: `dmail:s${i}`, stack: 'mail', title: 'New E-mail Message', text: `From: a${i}\nhi`, cls: 'mail', data: { from: `a${i}`, subject: 'hi' } });
+    for (let i = 1; i <= 3; i++) inbox.publish({ id: `dmail:s${i}`, stack: 'mail', title: 'New E-mail Message', text: `From: a${i}\nhi`, cls: 'mail', actions: ['view'], data: { from: `a${i}`, subject: 'hi' } });
     await ps._test.run();
     const last = sentEv[sentEv.length - 1].detail.fields;
     assert.strictEqual(last.mail.fresh, 3, 'a stack of three counts three');
@@ -64,7 +64,7 @@ ps.bind(gr);
     // list; every other notice carries neither field (a small packet)
     inbox.publish({ id: 'device-ask:S20', cls: 'notification', title: 'Claude 3 wants the A53 phone', text: 'For up to 20 min. Why: x.', actions: [{ id: 'allow', label: 'Allow' }],
         data: { kind: 'device-ask', answerType: 'device_consent_answer', buttons: [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }, { id: 'long', label: 'A label that is far too long to show' }, { id: 'fourth', label: 'Fourth' }] } });
-    inbox.publish({ id: 'plain:S20', cls: 'notification', title: 'Plain', text: 'nothing to answer', data: { buttons: [{ id: 'x', label: 'X' }] } });
+    inbox.publish({ id: 'plain:S20', cls: 'notification', title: 'Plain', text: 'nothing to answer', actions: ['view'], data: { buttons: [{ id: 'x', label: 'X' }] } });
     await ps._test.run();
     const list20 = sentEv[sentEv.length - 1].detail.fields.notices.list;
     const ask20 = list20.find((n) => n.id === 'device-ask:S20');

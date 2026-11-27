@@ -23,6 +23,11 @@
  * item leaves its stack when its notice comes down (a state change, an item ended quietly, a switch turned off, its life over).
  * The account login notice and the routine ones stay single rows.
  *
+ * Body and key (Yukimi, Nov 27 2026: a Fleet notice reached her phone with an empty body and no key; the inbox refuses one like it, notificationInbox
+ * noticeGap): every Fleet notice has a one-line body (done: the item's own outcome line, never the title again; needs you: the first
+ * open question; stopped: the reason; login: where to sign in; routine: the producer's text) and an Open key (actions [{ id: 'open' }]) that
+ * opens its place - the work item (data.workId) or the page (data.page) - the way a tap on the notice does.
+ *
  * Lives (#1291; "is done" for two days looked like never): done 4 h, needs you / stopped 12 h, account login 24 h, routine
  * (maintenance, usage) 4 h. Each stack item has its own expiry; notificationInbox takes it out of the stack when it is over.
  */
@@ -49,6 +54,17 @@ const clip = (s, n) => {
     const t = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     return t.length > n ? `${t.slice(0, n - 3)}...` : t;
 };
+// the call to action every Fleet notice carries (the inbox guard, Yukimi Nov 27 2026: no body or no call to action registers nothing):
+// Open takes her to the thing - data.app 'claudedesk' + data.workId (a work item) or data.page (accounts / devices) - the way a tap on
+// the notice does (wmNotificationInbox openFor -> wmShell.open('claude-accounts', { workId, page }))
+const openKey = () => [{ id: 'open', label: 'Open' }];
+/** One line of what landed or why it stopped: the item's own message (its outcome / last report line), clipped; '' when it only repeats the title or says nothing. */
+function said(row, title) {
+    const line = clip(row && row.message, 140);
+    const low = line.toLowerCase();
+    if (!line || low === 'done' || low === 'done.' || low === String(title || '').toLowerCase() || low.startsWith(`${String(title || '').toLowerCase()} is `)) return '';
+    return line;
+}
 const doneId = (id) => `fleet-work:${id}:done`;
 const acctId = (a) => `fleet-account:${a.id || `i${a.index}`}:login`;
 const attnId = (id) => `fleet-work:${id}:attention`;
@@ -102,14 +118,16 @@ function workChanged(row, prevState, at) {
         inbox.publish({
             user: USER, app: APP, id: doneId(id), cls: CLS, alert: true,
             digest: `done:${id}:${row.ended_at || when}`,
-            title: `${title} is done`, text: '',
+            // the body says what landed (never the title again); the inbox guard refuses a notice with none
+            title: `${title} is done`, text: said(row, title) || 'Finished. The report is in Fleet.', actions: openKey(),
             data: { app: APP, kind: 'work-done', workId: id }, stack: STACK_DONE, ttlMs: LIFE.done
         });
         return 'done';
     }
     if (attn) {
         if (!on('workAttention')) return did;
-        let text = ''; // stopped: the title says it, the reason is in Fleet
+        // the body (the inbox guard refuses a notice with none): stopped - the reason in one line; needs you - the first question
+        let text = '';
         if (state !== 'failed') {
             const qs = savedQuestions(row);
             // an AskUserQuestion is already a request form that notifies her (notificationInboxSources.onQuestion): no second notice
@@ -117,10 +135,11 @@ function workChanged(row, prevState, at) {
             const open = qs.filter((q) => !String(q.answer || '').trim());
             text = clip(((open.length ? open : qs)[0] || {}).question || '', 140); // the first question only
         }
+        text = text || said(row, title) || (state === 'failed' ? 'It stopped before it finished. The reason is in Fleet.' : 'It is waiting for your answer in Fleet.');
         inbox.publish({
             user: USER, app: APP, id: attnId(id), cls: CLS, alert: true,
             digest: `attn:${id}:${state}:${(state === 'failed' && row.ended_at) || when}`,
-            title: state === 'failed' ? `${title} stopped` : `${title} needs you`, text,
+            title: state === 'failed' ? `${title} stopped` : `${title} needs you`, text, actions: openKey(),
             data: { app: APP, kind: 'work-attention', workId: id, state }, stack: STACK_ATTN, ttlMs: LIFE.attention
         });
         return 'attention';
@@ -146,7 +165,10 @@ function routine(kind, notice) {
     if (on(kind) && n.id && n.title) {
         // a routine notice lives four hours whatever its producer asked for (a "needs a look" two days old is no news)
         const ttlMs = Number(n.ttlMs) > 0 ? Math.min(Number(n.ttlMs), LIFE.routine) : LIFE.routine;
-        published = !!inbox.publish(Object.assign({ user: USER, app: APP, cls: CLS }, n, { data: Object.assign({ app: APP }, n.data || {}), ttlMs }));
+        // a body and the Open key whatever the producer sent (the inbox guard refuses a notice with neither)
+        const text = String(n.text == null ? '' : n.text).trim() ? n.text : 'The details are in Fleet.';
+        const actions = Array.isArray(n.actions) && n.actions.length ? n.actions : openKey();
+        published = !!inbox.publish(Object.assign({ user: USER, app: APP, cls: CLS }, n, { text, actions, data: Object.assign({ app: APP }, n.data || {}), ttlMs }));
     }
     return { told, published };
 }
@@ -206,7 +228,7 @@ function accountLogin(acct, gr) {
         user: USER, app: APP, id: acctId(a), cls: CLS, alert: true,
         digest: `login:${a.id || a.index}:${a.since || 0}`,
         title: `Claude account ${name} needs signing in`,
-        text: 'Sign in again: Fleet > Accounts.',
+        text: 'Sign in again: Fleet > Accounts.', actions: openKey(),
         data: { app: APP, kind: 'account-login', accountIndex: a.index, page: 'accounts' }, ttlMs: LIFE.login
     });
 }

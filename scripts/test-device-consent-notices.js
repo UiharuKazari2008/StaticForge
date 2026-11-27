@@ -130,7 +130,7 @@ async function test(name, f) {
     await test('clear on removal (asks and holds), others stay', () => {
         cn.sync({ asks: [ask(), ask({ leaseId: 'L3' })], holds: [hold()] }, {}, {});
         assert.strictEqual(mine().length, 3);
-        inbox.publish({ user: 'admin', id: 'other:1', title: 'unrelated', cls: 'fleet' });
+        inbox.publish({ user: 'admin', id: 'other:1', title: 'unrelated', text: 'unrelated', app: 'claudedesk', cls: 'fleet' });
         const r = cn.sync({ asks: [ask({ leaseId: 'L3' })], holds: [] }, {}, {});
         assert.deepStrictEqual(r.cleared.sort(), ['device-ask:L1', 'device-hold:fold']);
         assert.deepStrictEqual(mine().map((n) => n.id), ['device-ask:L3']);

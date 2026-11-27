@@ -144,7 +144,7 @@ const mailRows = () => inbox.list('admin').filter((n) => /^(mail|dmail|stack):/.
     inbox._test.reset();
     inbox._test.setNow(() => now);
     inbox.bind(gr);
-    const put = (id, cls, ago, extra) => { const t = now; now -= ago; inbox.publish(Object.assign({ id, cls, title: id, text: id, ttlMs: 86400000 }, extra)); now = t; };
+    const put = (id, cls, ago, extra) => { const t = now; now -= ago; inbox.publish(Object.assign({ id, cls, title: id, text: id, actions: ['view'], ttlMs: 86400000 }, extra)); now = t; }; // actions: the guard needs a call to action
     now = Date.parse('2026-11-25T18:00:00Z');
     put('old-low', 'notification', 5 * 3600000);
     put('old-mail', 'mail', 4 * 3600000);

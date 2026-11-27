@@ -93,7 +93,10 @@ const qs = (list) => JSON.stringify(list);
         const n = live(`fleet-work:${id}:done`);
         assert.strictEqual(n.length, 1);
         assert.match(n[0].title, /is done$/);
-        assert.strictEqual(n[0].text, '', 'a done notice says what is done and nothing else (Yukimi, Nov 26 2026: too wordy)');
+        // Yukimi, Nov 27 2026: a notice with no body or no call to action registers nothing - the body is the item's own outcome line
+        // (one line, never the title), the Open key opens the item in Fleet
+        assert.strictEqual(n[0].text, 'All built and tested', 'a done notice says what landed in one line (not wordy, not the title)');
+        assert.deepStrictEqual(n[0].actions, [{ id: 'open', label: 'Open' }], 'its Open key');
         assert.strictEqual(n[0].data.app, 'claudedesk');
         assert.strictEqual(n[0].data.workId, id);
         assert.strictEqual(n[0].cls, 'notification', '"Other notifications": the sound she chose, no sound class of its own');
@@ -190,10 +193,39 @@ const qs = (list) => JSON.stringify(list);
         const n = live(`fleet-work:${id}:attention`);
         assert.strictEqual(n.length, 1);
         assert.match(n[0].title, /stopped$/);
-        assert.strictEqual(n[0].text, '', 'stopped: the title says it, no reason text');
+        assert.strictEqual(n[0].text, 'No account with a working login', 'stopped: the reason in one line');
+        assert.deepStrictEqual(n[0].actions, [{ id: 'open', label: 'Open' }], 'its Open key');
         assert.strictEqual(loud(), 1);
         sup.setWork(id, { state: 'queued', ended_at: null });
         assert.strictEqual(live(`fleet-work:${id}:attention`).length, 0);
+    });
+
+    await test('no outcome to say (message "Done", the title again, empty, a long one): a short fallback body, clipped, never the title; every state has the Open key', () => {
+        const check = (state, message) => {
+            mark();
+            const id = item();
+            sup.setWork(id, { state, ended_at: Date.now(), message });
+            const w = row(id);
+            const n = live(`fleet-work:${id}:${state === 'done' ? 'done' : 'attention'}`);
+            assert.strictEqual(n.length, 1, `${state} / ${message}: one notice (the guard let it through)`);
+            assert.ok(n[0].text.trim(), 'a body');
+            assert.ok(n[0].text.length <= 140, 'one short line');
+            assert.ok(!n[0].text.includes('\n'), 'one line');
+            assert.notStrictEqual(n[0].text.toLowerCase(), w.title.toLowerCase(), 'it never repeats the title');
+            assert.deepStrictEqual(n[0].actions, [{ id: 'open', label: 'Open' }]);
+            assert.strictEqual(n[0].data.workId, id, 'a tap opens the item');
+            return n[0];
+        };
+        assert.strictEqual(check('done', 'Done').text, 'Finished. The report is in Fleet.');
+        assert.strictEqual(check('done', '').text, 'Finished. The report is in Fleet.');
+        assert.strictEqual(check('failed', '').text, 'It stopped before it finished. The reason is in Fleet.');
+        const longOne = check('done', `Landed ${'x'.repeat(400)}`);
+        assert.ok(longOne.text.length === 140 && longOne.text.endsWith('...'), 'clipped to 140');
+        // the title itself as the message: the fallback, not the title again
+        mark();
+        const id = item({ title: 'Same words' });
+        sup.setWork(id, { state: 'done', ended_at: Date.now(), message: 'Same words' });
+        assert.strictEqual(live(`fleet-work:${id}:done`)[0].text, 'Finished. The report is in Fleet.');
     });
 
     await test('input -> failed keeps one attention notice (new event, sounds)', () => {
@@ -278,7 +310,12 @@ const qs = (list) => JSON.stringify(list);
         assert.strictEqual(n.length, 1);
         assert.strictEqual(n[0].cls, 'notification');
         assert.strictEqual(n[0].app, 'claudedesk');
+        assert.ok(n[0].text.trim(), 'a body');
+        assert.deepStrictEqual(n[0].actions, [{ id: 'open', label: 'Open' }], 'the Open key');
         assert.strictEqual(loud(), 1);
+        // a producer with no text still reaches the phone with a body (the inbox guard refuses one without)
+        assert.strictEqual(fn.routine('maintenance', { id: 'fleet-maintenance:bare', title: 'Bare', data: {} }).published, true);
+        assert.strictEqual(live('fleet-maintenance:bare')[0].text, 'The details are in Fleet.');
         assert.strictEqual(fn.routine('usage', flag('usage-flag:k2')).published, false, 'usage is still off');
     });
 
@@ -322,6 +359,8 @@ const qs = (list) => JSON.stringify(list);
         assert.strictEqual(loud(), 1);
         assert.strictEqual(n[0].title, 'Claude account Douglas needs signing in');
         assert.strictEqual(n[0].text, 'Sign in again: Fleet > Accounts.');
+        assert.deepStrictEqual(n[0].actions, [{ id: 'open', label: 'Open' }], 'its Open key (the tap opens Fleet on Accounts: data.page)');
+        assert.strictEqual(n[0].data.page, 'accounts');
         assert.strictEqual(n[0].data.kind, 'account-login');
         // it works again
         fs8.availability({ index: 61, id: 'dddddddddddddddd', name: 'Douglas', limits: [{ kind: 'session', label: 's', percent: 3, resetsAt: 1 }] }, fs8.DEFAULTS);
@@ -360,7 +399,10 @@ const qs = (list) => JSON.stringify(list);
         assert.strictEqual(lines[0], `${row(ids[19]).title} is done`, 'a line is the item title without the Fleet: prefix, the newest first');
         assert.strictEqual(lines[6], '+ 14 more');
         assert.deepStrictEqual(workIds('fleetdone'), ids.slice().reverse(), 'newest first, each its own workId');
+        assert.deepStrictEqual(st.actions, [{ id: 'open', label: 'Open' }], 'the stack row carries the Open key (its newest item\'s)');
         st.data.items.forEach((it) => {
+            assert.ok(String(it.text).trim(), 'every item has a body (the guard judges an item as a notice)');
+            assert.deepStrictEqual(it.actions, [{ id: 'open', label: 'Open' }], 'and its own Open key');
             assert.strictEqual(it.id, `fleet-work:${it.data.workId}:done`, 'the item keeps its own id');
             assert.strictEqual(it.data.app, 'claudedesk');
             assert.strictEqual(it.data.kind, 'work-done');
