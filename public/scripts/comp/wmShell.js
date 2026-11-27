@@ -3324,6 +3324,7 @@
             // force-stopped: its card flies off as Close's, the app ends it with its task
             const card = taskSwitcherCards().find((c) => c.dataset.app === id);
             if (card) { card.dataset.gone = '1'; taskSwitch.ending.add(id); }
+            stopTaskMedia(at.package);
             try { if (typeof b.endTask === 'function') b.endTask(Number(at.taskId), String(at.package || ''), `tk${++androidTs.req}`); } catch (_) { /* older app */ }
             if (card && taskSwitcherMotion()) {
                 const a = card.animate([{ transform: 'none', opacity: 1 }, { transform: `translateY(${-(card.offsetHeight || 1)}px)`, opacity: 0 }], { duration: TS_FLY_MS, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' });
@@ -3458,10 +3459,17 @@
         try { b.front(Number(t.taskId), String(t.package || ''), req); } catch (_) { window.removeEventListener('androidtasksresult', onResult); }
     }
 
+    /** What an Android program plays stops with its task (#1287): its media sessions get pause + stop, nobody else's do. */
+    function stopTaskMedia(pkg) {
+        const A = window.wmMediaApps;
+        if (pkg && A && typeof A.stopPackage === 'function') { try { A.stopPackage(String(pkg)); } catch (_) { /* no media bridge */ } }
+    }
+
     /** Android programs closed one after another (each is one shell call), then the list read again. */
     function androidTasksEnd(list) {
         const b = androidTasksBridge();
         if (!b || !list.length) return Promise.resolve();
+        list.forEach((t) => stopTaskMedia(t.package));
         return new Promise((resolve) => {
             let left = list.length;
             const reqs = new Set();
