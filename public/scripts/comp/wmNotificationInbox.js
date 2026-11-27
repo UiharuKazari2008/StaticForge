@@ -86,6 +86,12 @@
         // Melaton Videos: a channel went live (data.open = 'kick:<channel>'): the program, on that stream
         if (app === 'youtube' && window.wmYouTube) { window.wmYouTube.open(d.open || undefined); return; }
         if (app === 'weather' && window.wmWeather && typeof window.wmWeather.open === 'function') { window.wmWeather.open(); return; }
+        // Fleet (#1291): the phone's program is 'claude-accounts' (apps/claudedesk is the desktop's package id); a work item's
+        // notice names its item (data.workId) and a login notice its page (data.page 'accounts'): handed to the program's
+        // show(page, { workId, page }) through the open's options
+        if (app === 'claudedesk' && window.wmShell) {
+            try { window.wmShell.open('claude-accounts', { workId: d.workId, page: d.page }); return; } catch (_) { /* no Fleet */ }
+        }
         if (window.wmShell && app) { try { window.wmShell.open(app); return; } catch (_) { /* no such app */ } }
     }
 
@@ -95,14 +101,21 @@
     const isStack = (n) => !!n && /^stack:/.test(String(n.id || ''));
     const inAndroidApp = () => !!(window.AndroidActiveSync || window.AndroidNotification || window.AndroidDevice);
     const stackItems = (n) => (n && n.data && Array.isArray(n.data.items) ? n.data.items.filter((x) => x && x.id != null) : []);
+    // the mail stack (stack:mail), against another source's (Fleet's stack:fleetdone / stack:fleetattn, #1291): the mail
+    // stack's list is Messaging's, any other opens its own app (a stack row's data has no kind: its id and its items say)
+    const isMailStack = (n) => !!n && (String(n.id || '') === 'stack:mail' || stackItems(n).some((x) => x.data && (x.data.kind === 'mail' || x.data.accountId)));
     const stacks = new Map(); // stack id -> the notice the open box was last drawn from (a tap looks its item up here)
 
     /** One item as a row: "<from> - <subject>" for mail, else the first line of its text. One line, ellipsis (ui-standard 10). */
     function stackRow(it) {
         const d = it.data && typeof it.data === 'object' ? it.data : {};
-        const from = String(d.from || '').trim();
+        let from = String(d.from || '').trim();
         let text = String(d.subject || '').trim();
-        if (!from && !text) text = String(it.text || it.title || '').split('\n')[0].trim();
+        // not mail (Fleet's work items, #1291): "<title> - <first line of its text>", each item still tells which one it is
+        if (!from && !text) {
+            const line = String(it.text || '').split('\n')[0].trim();
+            if (it.title && line) { from = String(it.title).trim(); text = line; } else text = String(line || it.title || '').trim();
+        }
         const full = [from, text].filter(Boolean).join(' - ');
         return `<button type="button" class="wm-stack-row" data-item="${esc(it.id)}" title="${esc(full)}">${from ? `<b class="wm-stack-from">${esc(from)}</b>${text ? ' - ' : ''}` : ''}${esc(text)}</button>`;
     }
@@ -117,7 +130,9 @@
         const html = rows.length
             ? `<div class="wm-stack" data-wm-tap="list">${rows.map(stackRow).join('')}${more > 0 ? `<div class="wm-stack-more">+ ${more} more</div>` : ''}</div>`
             : esc(notice.text || '').replace(/\n/g, '<br>');
-        const title = notice.title || (count > 1 ? `${count} New E-mail Messages` : 'New E-mail Message');
+        // the server names a stack's title; only mail has the default (a stack of something else shows its count)
+        const mailStack = !notice.id || isMailStack(notice);
+        const title = notice.title || (mailStack ? (count > 1 ? `${count} New E-mail Messages` : 'New E-mail Message') : (count > 1 ? `${count} notifications` : 'Notification'));
         return { title, html, badge: count > 1 ? count : 0, sig: `${title}\u0001${html}\u0001${count}\u0001${Number(notice.sortAt) || 0}\u0001${Number(notice.prio) || 0}` };
     }
 
@@ -133,6 +148,8 @@
         const held = shownNotes.get(stackId);
         if (held && held.handle) { try { held.handle.hide(); } catch (_) { /* gone */ } }
         if (m && d.accountId && d.uid != null && typeof m.openImapMessage === 'function') m.openImapMessage(d.accountId, d.folder || 'INBOX', d.uid);
+        // another source's item (Fleet's work item, #1291): its own data names the app and the place (app 'claudedesk' + workId)
+        else if (d.app && !isMailStack(notice)) openFor({ id: String(it.id), data: d });
         else if (m && d.id != null && typeof m.openMail === 'function') m.openMail(d.id);
         else openFor(notice);
     }
@@ -142,6 +159,7 @@
         const items = stackItems(notice);
         ack(notice.id, 'acted');
         close(notice.id);
+        if (!isMailStack(notice)) { openFor(notice); return; }
         const m = window.wmMessaging;
         const imap = items.filter((x) => x.data && x.data.accountId);
         const one = imap.length === items.length && items.length && imap.every((x) => x.data.accountId === imap[0].data.accountId);
@@ -322,7 +340,7 @@
     // notices only the server raises (no page app shows its own live note for them): the inbox shows them itself
     // test: the test lane's notices (modules/testDevices.js, the emulator harness) have no page producer either
     // director: the turn-finished notice (wmShell no longer posts one of its own: it was a second notification, #997)
-    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key', 'test', 'director', 'work-done', 'work-attention']); // work-*: Fleet notices (modules/fleetNotices.js, #1196)
+    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key', 'test', 'director', 'work-done', 'work-attention', 'account-login', 'maintenance', 'usage-flag']); // Fleet's notices (modules/fleetNotices.js, #1196, #1291)
 
     let iconPrefsSent = '';
     function sendIconPrefs() {

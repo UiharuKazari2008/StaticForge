@@ -37,7 +37,11 @@
         rain: 'status-rain-alarm', wxalert: 'status-weather-alert', chat: 'status-messenger', mail: 'status-mail',
         sms: 'status-sms', prints: 'status-prints', director: 'status-director', received: 'status-activesync',
         update: 'status-update', continuity: 'status-continuity', nightshade: 'status-nightshade',
-        batterylow: 'status-battery-low', xmrec: 'status-tape'
+        batterylow: 'status-battery-low', xmrec: 'status-tape',
+        // Fleet's notices (#1291): a work item done (a check), one that needs Yukimi (an exclamation mark), a Claude account to
+        // sign in again (a key); scripts/generate-wm-fleet-status-icons.py. Fleet's routine notices (maintenance, usage
+        // flags) are the plain `notify` (they are switched off by default).
+        fleetdone: 'status-fleet-done', fleetattn: 'status-fleet-attn', fleetlogin: 'status-fleet-login'
     };
     const glyphNames = new Set(Object.values(glyphs));
     // the phone's own icons: WM's ROM glyph families in the status atlas (each state its own glyph)
@@ -64,7 +68,9 @@
         batterylow: 'wm65/v651-drawer-battery-low', xmrec: 'wm65/start-xmradio',
         bluetooth: 'wm65/v651-drawer-bluetooth', data: 'wm65/v651-drawer-connectivity', cell: 'wm65/v651-drawer-phone',
         roaming: 'wm65/v651-drawer-roaming', signal: 'wm65/v651-drawer-phone', volume: 'wm65/v651-drawer-volume',
-        battery: 'wm65/v651-drawer-battery'
+        battery: 'wm65/v651-drawer-battery',
+        // Fleet's glyph kinds (#1291): each its own holder picture, as holderKinds' fleet-*
+        fleetdone: 'wm65/holder-fleet-done', fleetattn: 'wm65/holder-fleet-attention', fleetlogin: 'wm65/holder-fleet-login'
     };
     /*
      * The holder's picture per notification KIND (Yukimi, Nov 22 2026, #1056): several notices of one app showed the same
@@ -89,7 +95,11 @@
         // pictures from the ROM (shellres.192), the full battery and the empty one with the warning badge
         'battery-full': 'wm65/v651-drawer-battery', 'battery-low': 'wm65/v651-drawer-battery-low',
         // weather (Nov 22 2026): rain due or falling, a weather alert, a severe one - each its own picture
-        'rain-alarm': 'wm65/holder-rain-alarm', 'weather-alert': 'wm65/holder-weather-alert', 'weather-severe': 'wm65/holder-weather-severe'
+        'rain-alarm': 'wm65/holder-rain-alarm', 'weather-alert': 'wm65/holder-weather-alert', 'weather-severe': 'wm65/holder-weather-severe',
+        // Fleet's notices (#1291): its box truck with a green check (a work item done), a warning (one that needs her), a key
+        // (a Claude account to sign in again), an info bubble (the routine ones: maintenance, usage flags)
+        'fleet-done': 'wm65/holder-fleet-done', 'fleet-attention': 'wm65/holder-fleet-attention',
+        'fleet-login': 'wm65/holder-fleet-login', 'fleet-routine': 'wm65/holder-fleet-routine'
     };
     // the page's own notices name their glyph (appNote icon), not a kind: the glyphs that stand for a holder kind (#1061)
     const ICON_KIND = { 'status-battery-full': 'battery-full', 'status-battery-low': 'battery-low', 'status-camera': 'traffic',
@@ -104,6 +114,21 @@
         promo: 'notify', recommendation: 'notify', workout: 'notify', location_sharing: 'notify' };
 
     /**
+     * Fleet's notice kinds (#1291, modules/fleetNotices.js, app 'claudedesk'): by id first (fleet-work:<id>:done / :attention,
+     * the stack rows stack:fleetdone / stack:fleetattn, fleet-account:<id>:login), then by data.kind (work-done,
+     * work-attention, account-login, maintenance, usage-flag). -> { glyph kind, holder kind } or null.
+     */
+    function fleetKind(n) {
+        const id = String((n && n.id) || '');
+        const dk = String(((n && n.data) || {}).kind || '');
+        if (/^fleet-work:.*:done$/.test(id) || id === 'stack:fleetdone' || dk === 'work-done') return { glyph: 'fleetdone', holder: 'fleet-done' };
+        if (/^fleet-work:.*:attention$/.test(id) || id === 'stack:fleetattn' || dk === 'work-attention') return { glyph: 'fleetattn', holder: 'fleet-attention' };
+        if (/^fleet-account:/.test(id) || dk === 'account-login') return { glyph: 'fleetlogin', holder: 'fleet-login' };
+        if (((dk === 'maintenance' || dk === 'usage-flag') && String(((n && n.data) || {}).app || '') === 'claudedesk') || /^fleet-(maintenance|usage):/.test(id)) return { glyph: 'notify', holder: 'fleet-routine' };
+        return null;
+    }
+
+    /**
      * A notice's holder kind (#1056): what it is about, for its picture in the holder (holderArt). The notice as the server's
      * inbox holds it ({ id, cls, data }) or as the page holds it ({ id, type }); unknown ones fall back to noteKind.
      */
@@ -113,6 +138,8 @@
         const cls = String((n && n.cls) || '');
         const dk = String(d.kind || '');
         if (n && n.icon && ICON_KIND[n.icon]) return ICON_KIND[n.icon];
+        const fk = fleetKind(n);
+        if (fk) return fk.holder;
         if (/^lapis:/.test(id) || d.app === 'lapis') {
             const k = dk || (/^lapis:([a-z-]+):/.exec(id) || [])[1] || (id === 'lapis:run-left' ? 'run-left' : '');
             return LAPIS_KIND[k] || 'caralert';
@@ -153,6 +180,8 @@
     function noteKind(n) {
         const id = String((n && n.id) || '');
         const d = (n && n.data) || {};
+        const fk = fleetKind(n);
+        if (fk) return fk.glyph;
         if (/^rem:/.test(id)) return 'reminder';
         if (/^lapis:/.test(id) || d.app === 'lapis') return 'caralert';
         if (/^traffic:/.test(id) || d.app === 'traffic') return 'traffic';

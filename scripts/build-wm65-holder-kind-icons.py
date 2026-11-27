@@ -59,6 +59,15 @@ JOBS = {
     'rain-alarm': ('badge', 'wm65/ti-wx-rain', 'wm61/app-weather-lg'),
     'weather-alert': ('badge', 'wm61/app-weather-lg', 'wm61/msgbox-warning'),
     'weather-severe': ('badge', 'wm65/ti-wx-storm', 'wm61/msgbox-error'),
+    # Fleet's notices (StaticForge #1291, Yukimi Nov 26 2026: "a correct icon in the notification tray that is specific to
+    # the notification type"): Fleet's own box truck (wm-android/fleet-lg, the program's large icon) badged by what the
+    # notice is - a work item done (a green check, drawn here: the ROM has no tick), one that needs her (the message box
+    # warning), a Claude account that must sign in (the ROM's key), and the routine ones (maintenance, usage flags: the
+    # message box info). Their bar glyphs are status-fleet-* (scripts/generate-wm-fleet-status-icons.py)
+    'fleet-done': ('badge', 'wm-android/fleet-lg', 'draw:check'),
+    'fleet-attention': ('badge', 'wm-android/fleet-lg', 'wm61/msgbox-warning'),
+    'fleet-login': ('badge', 'wm-android/fleet-lg', 'rom:10_2503'),
+    'fleet-routine': ('badge', 'wm-android/fleet-lg', 'wm61/msgbox-info'),
 }
 S4 = 128          # the @4x side
 BADGE = 64        # the badge's side at @4x (half the picture), in the bottom right corner
@@ -124,12 +133,45 @@ def upscale4(a, out_size):
 _cache = {}
 
 
+def draw_check(size):
+    """a glossy green disc with a white check mark (the ROM has no tick), supersampled 4x, in the message boxes' style"""
+    from PIL import ImageDraw, ImageFilter
+    k = 4
+    n = size * k
+    yy, xx = np.mgrid[0:n, 0:n].astype(float)
+    c = (n - 1) / 2
+    r = n * 0.47
+    d = np.hypot(xx - c, yy - c)
+    disc = np.clip(r - d + 0.5, 0, 1)
+    t = np.clip(yy / n, 0, 1)
+    # light green at the top to deep green at the bottom, a lighter rim, a soft highlight on the upper half
+    top, bot = np.array([0.45, 0.85, 0.35]), np.array([0.07, 0.52, 0.16])
+    col = top[None, None, :] * (1 - t[..., None]) + bot[None, None, :] * t[..., None]
+    rim = np.clip((d - (r - n * 0.05)) / (n * 0.03), 0, 1)[..., None]
+    col = col * (1 - rim) + np.array([0.82, 0.96, 0.8])[None, None, :] * rim * 0.9
+    gloss = np.clip(1 - (d / (r * 0.95)), 0, 1) * (yy < c)
+    col = np.clip(col + gloss[..., None] * 0.18, 0, 1)
+    img = np.dstack([col, disc])
+    chk = Image.new('L', (n, n), 0)
+    dr = ImageDraw.Draw(chk)
+    pts = [(n * 0.26, n * 0.52), (n * 0.43, n * 0.69), (n * 0.76, n * 0.32)]
+    dr.line(pts, fill=255, width=int(n * 0.14), joint='curve')
+    for x, y in (pts[0], pts[-1]):
+        rr = n * 0.07
+        dr.ellipse([x - rr, y - rr, x + rr, y + rr], fill=255)
+    m = np.asarray(chk).astype(float)[..., None] / 255
+    img[..., :3] = img[..., :3] * (1 - m) + m
+    return premul_resize(img, size, size)
+
+
 def at4(ref, size=S4):
     """a source at @4x: a ROM icon (upscaled) or our own @4x file, fitted to size"""
     key = (ref, size)
     if key in _cache:
         return _cache[key]
-    if ref.startswith('rom:'):
+    if ref.startswith('draw:check'):
+        a = draw_check(size)
+    elif ref.startswith('rom:'):
         base = _cache.get((ref, 'up'))
         if base is None:
             base = upscale4(rom_square(ref[4:]), S4)

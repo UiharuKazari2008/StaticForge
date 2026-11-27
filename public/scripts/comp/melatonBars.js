@@ -475,7 +475,10 @@
     const TRAY_KINDS = { notification: 'status-notify-many', reminder: 'status-reminder', warning: 'status-warning', error: 'status-error',
         lapis: 'caralert', traffic: 'traffic', wxalert: 'wxalert', rain: 'rain', prints: 'prints', update: 'update',
         // the kinds status-order.js noteKind gives beyond the app's trayKind (#1026; the app falls back to notification)
-        mail: 'mail', sms: 'sms', chat: 'chat', director: 'director', caralert: 'caralert' };
+        mail: 'mail', sms: 'sms', chat: 'chat', director: 'director', caralert: 'caralert',
+        // Fleet's notices (#1291): the glyph kinds status-order.js noteKind gives them (their holder kinds fleet-* ride in with
+        // holderKinds on 6.5; the routine ones are the plain notice)
+        fleetdone: 'fleetdone', fleetattn: 'fleetattn', fleetlogin: 'fleetlogin' };
     /**
      * Task Manager's panel for the app to draw as its own overlay (wmShell taskSwitcher.sample): the panel, a program's
      * card (plain and for the program on screen), the empty text and where each stands, as drawing lists in device px.

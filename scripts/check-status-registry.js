@@ -78,11 +78,45 @@ const fixtures = [
     [{ id: 'lapis:service:maintenance', data: { app: 'lapis', kind: 'service' } }, 'lapis-service'],
     [{ id: 'lapis:x-2', data: { app: 'lapis', kind: 'command' } }, 'lapis-failed'],
     [{ id: 'lapis:run-left', data: { app: 'lapis', kind: 'run-left' } }, 'lapis-run-left'],
+    // Fleet's notices (#1291): by id (the cls is 'fleet' once modules/fleetNotices.js sends it, 'notification' before), by
+    // data.kind where the id says nothing; the stack rows too - a fall back to the plain notice fails here
+    [{ id: 'fleet-work:42:done', cls: 'fleet', data: { app: 'claudedesk', kind: 'work-done', workId: 42 } }, 'fleet-done'],
+    [{ id: 'fleet-work:42:done', cls: 'notification', data: { app: 'claudedesk' } }, 'fleet-done'],
+    [{ id: 'fleet-work:42:attention', cls: 'fleet', data: { app: 'claudedesk', kind: 'work-attention', workId: 42, state: 'input' } }, 'fleet-attention'],
+    [{ id: 'stack:fleetdone', cls: 'fleet', data: { app: 'claudedesk', count: 3, items: [] } }, 'fleet-done'],
+    [{ id: 'stack:fleetattn', cls: 'fleet', data: { app: 'claudedesk', count: 2, items: [] } }, 'fleet-attention'],
+    [{ id: 'fleet-account:2:login', cls: 'fleet', data: { app: 'claudedesk', kind: 'account-login', accountIndex: 2, page: 'accounts' } }, 'fleet-login'],
+    [{ id: 'x', cls: 'fleet', data: { app: 'claudedesk', kind: 'work-done' } }, 'fleet-done'],
+    [{ id: 'x', cls: 'fleet', data: { app: 'claudedesk', kind: 'work-attention' } }, 'fleet-attention'],
+    [{ id: 'x', cls: 'fleet', data: { app: 'claudedesk', kind: 'account-login' } }, 'fleet-login'],
+    [{ id: 'fleet-maint:1', cls: 'fleet', data: { app: 'claudedesk', kind: 'maintenance' } }, 'fleet-routine'],
+    [{ id: 'fleet-usage:1', cls: 'fleet', data: { app: 'claudedesk', kind: 'usage-flag' } }, 'fleet-routine'],
     [{ id: 'x', cls: 'notification' }, 'notify'],
     // the page's own notices by their glyph (#1061): battery full / low
     [{ id: 'toast-1', icon: 'status-battery-full' }, 'battery-full'],
     [{ id: 'toast-2', icon: 'status-battery-low' }, 'battery-low'],
 ];
+// the bar glyph kind of the same notices (noteKind): Fleet's own glyphs, the routine ones the plain notice's
+const glyphFixtures = [
+    [{ id: 'fleet-work:42:done', cls: 'fleet', data: { app: 'claudedesk', kind: 'work-done' } }, 'fleetdone', 'status-fleet-done'],
+    [{ id: 'fleet-work:42:attention', cls: 'fleet', data: { app: 'claudedesk', kind: 'work-attention' } }, 'fleetattn', 'status-fleet-attn'],
+    [{ id: 'stack:fleetdone', cls: 'fleet', data: { app: 'claudedesk' } }, 'fleetdone', 'status-fleet-done'],
+    [{ id: 'stack:fleetattn', cls: 'fleet', data: { app: 'claudedesk' } }, 'fleetattn', 'status-fleet-attn'],
+    [{ id: 'fleet-account:2:login', cls: 'fleet', data: { app: 'claudedesk', kind: 'account-login' } }, 'fleetlogin', 'status-fleet-login'],
+    [{ id: 'x', cls: 'fleet', data: { app: 'claudedesk', kind: 'work-done' } }, 'fleetdone', 'status-fleet-done'],
+    [{ id: 'fleet-maint:1', cls: 'fleet', data: { app: 'claudedesk', kind: 'maintenance' } }, 'notify', 'status-notify-many'],
+    [{ id: 'fleet-usage:1', cls: 'fleet', data: { app: 'claudedesk', kind: 'usage-flag' } }, 'notify', 'status-notify-many'],
+];
+glyphFixtures.forEach(([n, kind, glyph]) => {
+    if (tbl.noteKind(n) !== kind) missing.push(`note kind of ${n.id} ${JSON.stringify(n.data)}: ${tbl.noteKind(n)}, wanted ${kind}`);
+    if (tbl.noteGlyph(n) !== glyph) missing.push(`note glyph of ${n.id}: ${tbl.noteGlyph(n)}, wanted ${glyph}`);
+    ['', '@2x', '@4x'].forEach((d) => { if (!fs.existsSync(path.join(img, 'wm61', `${glyph}${d}.png`))) missing.push(`${glyph}${d}.png missing`); });
+});
+// Fleet's three glyphs differ from each other and from the generic ones (a glyph file copied under another name fails)
+const sameBytes = (a, b) => fs.readFileSync(path.join(img, 'wm61', `${a}.png`)).equals(fs.readFileSync(path.join(img, 'wm61', `${b}.png`)));
+['status-fleet-done', 'status-fleet-attn', 'status-fleet-login'].forEach((g, i, all) => {
+    all.slice(i + 1).concat(['status-notify-many', 'status-warning']).forEach((o) => { if (sameBytes(g, o)) missing.push(`${g} is the same picture as ${o}`); });
+});
 if (typeof tbl.holderKind !== 'function') missing.push('holderKind: missing (#1056)');
 else {
     fixtures.forEach(([n, want]) => {

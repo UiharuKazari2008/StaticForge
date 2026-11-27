@@ -1822,7 +1822,11 @@
         });
     }
 
-    function show() {
+    function show(_page, opts) {
+        // a Fleet notice names its place (wmShell.open('claude-accounts', { workId, page }), #1291): that work item's detail
+        // on the Queue, or the Accounts page for an expired login
+        if (opts && opts.workId != null && opts.workId !== '') { tab = 'queue'; qpage = 'list'; qGo('detail', `w:${opts.workId}`); }
+        else if (opts && opts.page === 'accounts') tab = 'accounts';
         syncWatch();
         render();
         if (!loaded && tab !== 'queue') userRefresh(); else void load(); // the queue needs no wait cursor: its own note says it is reading
