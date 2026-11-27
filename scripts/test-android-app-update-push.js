@@ -636,5 +636,173 @@ const hello = (w, extra = {}) => w.taps[0]({ id: dev, speaker: 'service', sessio
         h.stop();
         console.log('ok  detail: at most 300 characters whatever the text, counts kept');
     }
+
+    // 17. the accepted mark (#1371): the setting is injected (deps.getSetting), the hold is the setting's own (the env switch is off)
+    {
+        const lane = 'c'.repeat(32);
+        const A = 'a1a1a1a1a1a1a1a1';        // a household phone one build below the mark
+        const B = 'b2b2b2b2b2b2b2b2';        // a household phone at the mark
+        const C = 'e5e5e5e5e5e5e5e5';        // a household phone far behind
+        const rel = (code, kept = true) => ({ id: code, versionCode: code, versionName: `1.0.${code}`, sha: String(code).padStart(40, 'a'), sha256: 'b'.repeat(64), size: 1234, branches: [], commits: [], apkFile: `${code}-aaaaaaa.apk`, kept });
+        /** A world whose releases are 198, 199, 200 (N) and 201 (N+1, the latest); the setting is the caller's. */
+        async function marked(setting, { phones = { [A]: 199, [B]: 200, [lane]: 100 }, greet = true } = {}) {
+            push._test.resetForTests();
+            const w = world();
+            w.setting = setting;
+            w.releases = [rel(198), rel(199), rel(200), rel(201)];
+            w.androidBuilds.latestRelease = () => w.releases[w.releases.length - 1];
+            w.androidBuilds.newestReleaseUpTo = (n) => w.releases.filter((r) => r.versionCode <= n && r.kept).sort((x, y) => y.versionCode - x.versionCode)[0] || null;
+            const h = push.start({}, { activeSync: w.as, androidBuilds: w.androidBuilds, sendFile: w.sendFile, getSetting: (key) => { if (w.setting instanceof Error) throw w.setting; return key === 'androidUpdates' ? w.setting : null; } });
+            for (const [id, code] of Object.entries(phones)) { w.rows.set(id, { app: `Dreamscape/1.0.${code}+${code}`, name: id }); w.online.set(id, 'partner'); }
+            w.helloOf = (id) => w.taps[0]({ id, speaker: 'service', session: 'partner', name: id, test: false, ops: ['apps.update', 'stream.receive'] });
+            if (greet) { for (const id of Object.keys(phones)) w.helloOf(id); await settle(); }
+            return { w, h };
+        }
+        const sentTo = (w) => Object.fromEntries(w.calls.map((c) => [c.id, c.args.versionCode]));
+        const ownApp = (w, id, versionCode, state) => w.evTaps[0]('apps.updateWaiting', { package: OWN, versionCode, versionName: `1.0.${versionCode}`, state, why: '', tries: 0 }, { id });
+        delete process.env.ANDROID_UPDATES_TEST_UNHELD;
+        try {
+            testDevices.mark(lane, { name: 'aemu-fold-1' });
+
+            // (a) hold false, no accepted: the latest release, as before the mark existed
+            {
+                const { w, h } = await marked({ hold: false });
+                assert.deepStrictEqual(sentTo(w), { [A]: 201, [B]: 201, [lane]: 201 }, 'no mark: everybody gets the latest');
+                h.stop();
+            }
+
+            // (b) accepted 200 while the latest is 201
+            {
+                const { w, h } = await marked({ hold: false, accepted: 200 });
+                assert.deepStrictEqual(sentTo(w), { [A]: 200, [lane]: 201 }, 'N-1 gets N, N gets nothing, the lane device gets the latest');
+                assert.strictEqual(w.deliveries.get(A).state, 'staged');
+                assert.strictEqual(w.deliveries.get(A).versionCode, 200);
+                assert.strictEqual(w.deliveries.has(B), false, 'a phone at the mark: nothing recorded');
+                assert.strictEqual(w.sends.length, 2);
+                assert.ok(w.sends.find((x) => x.id === A).file.endsWith('200-aaaaaaa.apk'), 'the APK of the accepted release');
+                // a release event and a hello change nothing: the household phones are never offered 201
+                w.releases.push(rel(202));
+                w.androidBuilds.events.emit('release', w.releases[w.releases.length - 1]); await settle();
+                for (const id of [A, B]) w.helloOf(id);
+                await settle();
+                assert.deepStrictEqual(sentTo(w), { [A]: 200, [lane]: 202 }, 'a new release: the lane device takes it, the household phones stay at the mark');
+                assert.strictEqual(w.deliveries.has(B), false);
+                // an offer with the same mark changes nothing
+                const n = w.sends.length;
+                w.androidBuilds.events.emit('offer'); await settle();
+                assert.strictEqual(w.sends.length, n, 'the same mark offered again: nothing new');
+
+                // (c) the mark raised to 201 and an offer: the phone at 200 is offered 201 now, with no hello and no release
+                w.setting = { hold: false, accepted: 201 };
+                w.androidBuilds.events.emit('offer'); await settle();
+                assert.strictEqual(w.calls.filter((c) => c.id === B).length, 1);
+                assert.strictEqual(w.calls.filter((c) => c.id === B)[0].args.versionCode, 201, 'N is offered N+1 after the mark was raised');
+                assert.strictEqual(w.calls.filter((c) => c.id === A).pop().args.versionCode, 201, 'N-1 too, its delivery of 200 is staged: a new versionCode');
+                assert.ok(w.calls.every((c) => c.id === lane || c.args.versionCode <= 201));
+                h.stop();
+            }
+
+            // (d) a resend from a phone never yields a release above the mark
+            {
+                const { w, h } = await marked({ hold: false, accepted: 200 }, { phones: { [A]: 199, [C]: 150 } });
+                assert.deepStrictEqual(sentTo(w), { [A]: 200, [C]: 200 });
+                // the record is of the release the phone is offered (not the latest, 201): another versionCode's resend does not rewrite it
+                ownApp(w, A, 250, 'resend'); await settle();
+                assert.deepStrictEqual([w.deliveries.get(A).versionCode, w.deliveries.get(A).state], [200, 'staged'], 'the offered release\'s record stands');
+                assert.strictEqual(w.calls.length, 2, 'and nothing is sent');
+                // consider() itself refuses a release above the mark, whoever hands it over
+                assert.strictEqual(await push._test.consider(C, w.releases[3]), null);
+                assert.strictEqual(w.calls.length, 2, 'consider(201) sent nothing');
+                // it lost the file of 200: asked again, sent 200 again
+                ownApp(w, A, 200, 'resend'); await settle();
+                assert.strictEqual(w.calls.filter((c) => c.id === A).length, 2);
+                // it names a versionCode above the mark (a delivery from before the mark; the record is rewritten by the resend)
+                for (const code of [201, 202, 300]) { ownApp(w, A, code, 'resend'); ownApp(w, C, code, 'resend'); await settle(); }
+                // a record of a newer release than the offered one, and the same resend
+                w.deliveries.set(C, { versionCode: 201, state: 'failed', at: 0, detail: JSON.stringify({ attempts: 1, info: 'x' }) });
+                ownApp(w, C, 150, 'resend'); await settle();
+                ownApp(w, C, 201, 'resend'); await settle();
+                assert.ok(w.calls.length >= 3);
+                assert.ok(w.calls.every((c) => c.args.versionCode <= 200), `a resend sent a release above the mark: ${JSON.stringify(sentTo(w))}`);
+                assert.ok(w.sends.every((x) => !/^20[1-9]|^2[1-9]\d|^[3-9]\d\d/.test(path.basename(x.file))), 'no APK above the mark left the server');
+                // the mark raised: the resend is the new mark's release
+                w.setting = { hold: false, accepted: 201 };
+                ownApp(w, A, 200, 'resend'); await settle();
+                assert.strictEqual(w.calls[w.calls.length - 1].args.versionCode, 201);
+                h.stop();
+            }
+
+            // (e) a mark below every release: nothing is offered by any path, and a bad mark is no mark at all (nothing)
+            for (const accepted of [100, 0, -5, 'soon', false, NaN]) {
+                const { w, h } = await marked({ hold: false, accepted }, { phones: { [A]: 50, [lane]: 50 } });
+                assert.deepStrictEqual(sentTo(w), { [lane]: 201 }, `accepted ${String(accepted)}: only the lane device`);
+                w.androidBuilds.events.emit('release', w.releases[3]); w.androidBuilds.events.emit('offer'); await settle();
+                ownApp(w, A, 198, 'resend'); await settle();
+                assert.deepStrictEqual(sentTo(w), { [lane]: 201 });
+                h.stop();
+            }
+
+            // (f) hold true with accepted set: nothing for a household phone, whatever the mark; the lane is never held
+            {
+                const { w, h } = await marked({ hold: true, accepted: 200 });
+                assert.deepStrictEqual(sentTo(w), { [lane]: 201 });
+                w.androidBuilds.events.emit('release', w.releases[3]); w.androidBuilds.events.emit('offer'); await settle();
+                ownApp(w, A, 199, 'resend'); await settle();
+                assert.deepStrictEqual(sentTo(w), { [lane]: 201 });
+                h.stop();
+            }
+            // an unreadable setting: held, so nothing, and the mark logic never offers on a failure either
+            {
+                const { w, h } = await marked(new Error('db gone'));
+                assert.deepStrictEqual(sentTo(w), { [lane]: 201 });
+                w.androidBuilds.events.emit('offer'); await settle();
+                assert.deepStrictEqual(sentTo(w), { [lane]: 201 });
+                h.stop();
+            }
+            // an unset setting stays held (the default)
+            {
+                const { w, h } = await marked(null);
+                assert.deepStrictEqual(sentTo(w), { [lane]: 201 });
+                h.stop();
+            }
+
+            // the accepted release's APK is gone: nothing, never an older release in its place (199 was not accepted)
+            {
+                const { w, h } = await marked({ hold: false, accepted: 200 }, { greet: false });
+                w.releases[2].kept = false;                      // 200's APK was pruned
+                for (const id of [A, B, lane]) w.helloOf(id);
+                await settle();
+                assert.deepStrictEqual(sentTo(w), { [lane]: 201 }, 'only the lane device');
+                w.rows.set(C, { app: 'Dreamscape/1.0.150+150', name: C }); w.online.set(C, 'partner');
+                w.helloOf(C); await settle();
+                w.androidBuilds.events.emit('offer'); await settle();
+                ownApp(w, C, 199, 'resend'); await settle();
+                assert.strictEqual(w.calls.filter((c) => c.id === C).length, 0, 'a phone far behind is not offered 199 or 198');
+                assert.strictEqual(w.calls.filter((c) => c.id === A).length, 0);
+                assert.strictEqual(w.calls.filter((c) => c.id === B).length, 0);
+                h.stop();
+            }
+            // a mark that names no release (between 199 and 200 there is none; 199 exists below it): nothing
+            {
+                const { w, h } = await marked({ hold: false, accepted: 199.5 }, { phones: { [C]: 150, [lane]: 100 } });
+                assert.deepStrictEqual(sentTo(w), { [lane]: 201 });
+                w.setting = { hold: false, accepted: 205 };      // above every release: no release has that versionCode
+                w.androidBuilds.events.emit('offer'); await settle();
+                assert.deepStrictEqual(sentTo(w), { [lane]: 201 }, 'a mark that is not a release offers nothing');
+                h.stop();
+            }
+            // an old fake without newestReleaseUpTo (a builds module that cannot answer): a mark offers nothing
+            {
+                const { w, h } = await marked({ hold: false, accepted: 200 }, { greet: false });
+                w.androidBuilds.newestReleaseUpTo = undefined;
+                for (const id of [A, B]) w.helloOf(id);
+                await settle();
+                assert.strictEqual(w.calls.length, 0);
+                h.stop();
+            }
+        } finally { process.env.ANDROID_UPDATES_TEST_UNHELD = '1'; }
+        console.log('ok  accepted mark: no mark = latest; N-1 gets N, N nothing, lane the latest; raised mark + offer; resends never above it; low / bad mark and hold: nothing');
+    }
+
     console.log('all passed');
 })().catch((error) => { console.error(error); process.exit(1); });

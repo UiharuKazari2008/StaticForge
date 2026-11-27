@@ -4,13 +4,16 @@
 // builds and stays above a phone-reported one, a Release is published ('release' emitted), 409 while a build runs and
 // while another agent's coord gate for DSApp-Kotlin is open (a real temp coord db), the server holds its own gate while
 // it builds, the local worker refuses unconfigured, an unreachable worker fails at once, the push token never reaches a
-// command line, the routes are admin only, and the agent socket (dsapp_build) answers.
+// command line, the routes are admin only, and the agent socket (dsapp_build) answers, also its offer action (#1371); the
+// newest release up to a versionCode skips an APK that was pruned; scripts/android/accept-release.js against a temp builds.json
+// and a temp coord database (dry run writes nothing, a real run writes the setting and asks the socket, refusals exit 3).
 const assert = require('assert');
 const crypto = require('crypto');
 const fs = require('fs');
 const net = require('net');
 const os = require('os');
 const path = require('path');
+const { execFile } = require('child_process');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'android-builds-test-'));
 process.env.AGENT_COORD_DB = path.join(tmp, 'coord.db');
@@ -249,13 +252,105 @@ const props = () => fs.readFileSync(path.join(tmp, 'data', 'repo', 'gradle.prope
     assert.strictEqual((await ask({ op: 'status', id: 424242 })).ok, false);
     assert.strictEqual((await ask({ op: 'nope' })).ok, false);
     console.log(`agent socket: request -> build ${sr.result.id}, status -> ${ss.result.job.state}, list latest ${sl.result.latest}`);
+
+    // the offer action (#1371): the delivery's 'offer' event, emitted now; no listener is told as such
+    let offers = 0;
+    const so0 = await ask({ op: 'offer' });
+    assert.deepStrictEqual(so0, { ok: true, result: { offered: false, listeners: 0 } });
+    ab.events.on('offer', () => { offers += 1; });
+    const so1 = await ask({ op: 'offer' });
+    assert.deepStrictEqual(so1, { ok: true, result: { offered: true, listeners: 1 } });
+    assert.strictEqual(offers, 1, 'the event was emitted once');
+    console.log(`agent socket: offer -> ${JSON.stringify(so1.result)}`);
+
+    // ---- scripts/android/accept-release.js: temp builds.json, temp coord db (AGENT_COORD_DB), temp socket; never the real ones
+    await ab._test.flush();
+    const accept = path.join(__dirname, 'android', 'accept-release.js');
+    const run = (args) => new Promise((resolve) => {
+        execFile(process.execPath, [accept, ...args], { env: Object.assign({}, process.env, { ACCEPT_RELEASE_BUILDS_JSON: path.join(tmp, 'data', 'builds.json'), AGENT_ANDROID_BUILDS_SOCKET: sockFile, AGENT_COORD_DB: path.join(tmp, 'coord.db') }), timeout: 30000 },
+            (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stdout, stderr }));
+    });
+    const kept = ab._test.listView().builds.map((b) => ab._test.buildStatus(b.id).release).filter((x) => x && fs.existsSync(ab.releaseApkPath(x)));
+    assert.ok(kept.length >= 2, 'two kept releases to accept');
+    const [high, low] = kept; // newest first
+    assert.strictEqual(store.getSetting('androidUpdates'), null);
+    let c = await run([String(high.versionCode), '--by', 'tester', '--why', 'a dry run', '--dry-run']);
+    assert.strictEqual(c.code, 0, c.stderr + c.stdout);
+    assert.ok(c.stdout.includes(high.sha) && c.stdout.includes(high.sha256) && c.stdout.includes(high.versionName), c.stdout);
+    for (const b of high.branches) assert.ok(c.stdout.includes(b.name) && c.stdout.includes(b.sha), `branch ${b.name} listed with its sha`);
+    assert.ok(/dry run/.test(c.stdout) && /"accepted": \d+/.test(c.stdout) && /"hold": false/.test(c.stdout) && /"liftedBy": "tester"/.test(c.stdout), c.stdout);
+    assert.strictEqual(store.getSetting('androidUpdates'), null, 'a dry run writes nothing');
+    assert.strictEqual(offers, 1, 'a dry run asks nothing of the server');
+    // usage: --by and --why are required, one whole versionCode
+    for (const args of [[String(high.versionCode), '--why', 'x'], [String(high.versionCode), '--by', 'x'], ['--by', 'x', '--why', 'y'], ['abc', '--by', 'x', '--why', 'y'], [String(high.versionCode), '--by', 'x', '--why', 'y', '--nope'], [String(high.versionCode), '--by', '--why', 'y']]) {
+        c = await run(args);
+        assert.strictEqual(c.code, 2, `usage: ${args.join(' ')}`);
+    }
+    // refused: not a release, and nothing written
+    c = await run(['1234', '--by', 'x', '--why', 'y']);
+    assert.strictEqual(c.code, 3); assert.ok(/not a release/.test(c.stderr), c.stderr);
+    assert.strictEqual(store.getSetting('androidUpdates'), null);
+    // a real run against the temp store: the setting is written (with the old value as prev) and the socket's offer action is asked
+    store.setSetting('androidUpdates', { hold: true, heldBy: 'someone', prev: { hold: true, older: true } });
+    c = await run([String(high.versionCode), '--by', 'tester', '--why', 'proved on the lane', '--lower']);
+    assert.strictEqual(c.code, 0, c.stderr + c.stdout);
+    let set = store.getSetting('androidUpdates');
+    assert.strictEqual(set.hold, false); assert.strictEqual(set.accepted, high.versionCode);
+    assert.strictEqual(set.liftedBy, 'tester'); assert.strictEqual(set.why, 'proved on the lane');
+    assert.ok(!Number.isNaN(Date.parse(set.liftedAt)));
+    assert.deepStrictEqual(set.prev, { hold: true, heldBy: 'someone' }, 'prev: the old value without its own prev');
+    assert.strictEqual(offers, 2, 'the running server was asked to offer');
+    assert.ok(/the server answered/.test(c.stdout) && /"offered":true/.test(c.stdout), c.stdout);
+    // refuses to lower the mark unless --lower
+    c = await run([String(low.versionCode), '--by', 'tester', '--why', 'lower']);
+    assert.strictEqual(c.code, 3); assert.ok(/--lower/.test(c.stderr), c.stderr);
+    assert.strictEqual(store.getSetting('androidUpdates').accepted, high.versionCode);
+    assert.strictEqual(offers, 2);
+    c = await run([String(low.versionCode), '--by', 'tester', '--why', 'lower', '--lower']);
+    assert.strictEqual(c.code, 0, c.stderr + c.stdout);
+    set = store.getSetting('androidUpdates');
+    assert.strictEqual(set.accepted, low.versionCode);
+    assert.strictEqual(set.prev.accepted, high.versionCode); assert.ok(!('prev' in set.prev), 'one level of prev only');
+    // no running server: the setting is written and it says the phones get it at their next hello
     await ab._test.closeSocket();
+    c = await run([String(high.versionCode), '--by', 'tester', '--why', 'no server']);
+    assert.strictEqual(c.code, 0, c.stderr + c.stdout);
+    assert.ok(/next hello/.test(c.stdout), c.stdout);
+    assert.strictEqual(store.getSetting('androidUpdates').accepted, high.versionCode);
+    console.log('accept-release: dry run lists the branches and writes nothing; real run writes the setting + offers; usage 2; refused 3; --lower; no socket');
 
     // keep the last 10 APKs
     for (let i = 0; i < 6; i += 1) { const x = ab._test.requestBuild({}); await waitDone(x.id); }
     const apks = fs.readdirSync(path.join(tmp, 'data', 'apk')).filter((f) => f.endsWith('.apk'));
     assert.strictEqual(apks.length, 10, `apks kept: ${apks.length}`);
     assert.ok(fs.existsSync(ab.releaseApkPath(ab.latestRelease())));
+
+    // ---- newestReleaseUpTo: the newest release at or below a versionCode whose APK is still kept
+    {
+        const list = ab._test.listView().builds.map((b) => ab._test.buildStatus(b.id).release); // newest first
+        const [L, P, Q] = list;
+        assert.ok(L.versionCode > P.versionCode && P.versionCode > Q.versionCode);
+        assert.strictEqual(ab.newestReleaseUpTo(L.versionCode).id, L.id);
+        assert.strictEqual(ab.newestReleaseUpTo(L.versionCode + 1000).id, L.id, 'above every release: the latest');
+        assert.strictEqual(ab.newestReleaseUpTo(L.versionCode - 1).id, P.id, 'below the latest: the one before');
+        assert.strictEqual(ab.newestReleaseUpTo(P.versionCode).id, P.id);
+        assert.strictEqual(ab.newestReleaseUpTo(P.versionCode - 1).id, Q.id);
+        // the first releases' APKs were pruned: they do not count, and nothing below them is left
+        assert.ok(!fs.existsSync(ab.releaseApkPath(rel1)) && !fs.existsSync(ab.releaseApkPath(rel3)), 'pruned');
+        assert.strictEqual(ab.newestReleaseUpTo(rel3.versionCode), null);
+        assert.strictEqual(ab.newestReleaseUpTo(rel1.versionCode), null);
+        assert.strictEqual(ab.newestReleaseUpTo(0), null);
+        assert.strictEqual(ab.newestReleaseUpTo(NaN), null);
+        assert.strictEqual(ab.newestReleaseUpTo('x'), null);
+        // an APK that is gone is skipped, the next older kept one is the answer
+        fs.unlinkSync(ab.releaseApkPath(P));
+        assert.strictEqual(ab.newestReleaseUpTo(L.versionCode - 1).id, Q.id);
+        assert.strictEqual(ab.newestReleaseUpTo(P.versionCode).id, Q.id);
+        assert.strictEqual(ab.newestReleaseUpTo(L.versionCode).id, L.id);
+        fs.unlinkSync(ab.releaseApkPath(L));
+        assert.strictEqual(ab.newestReleaseUpTo(L.versionCode + 1000).id, Q.id);
+        console.log(`newestReleaseUpTo: ${L.versionCode} / ${P.versionCode} / ${Q.versionCode}; a pruned or deleted APK is skipped; none below the pruned ones`);
+    }
 
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log('android builds: all checks passed');

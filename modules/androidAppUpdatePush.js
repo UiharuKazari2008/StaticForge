@@ -11,14 +11,24 @@
  *   - a phone's hello (activeSync.onDeviceHello): its `app` string is `Dreamscape/<versionName>+<versionCode>`;
  *     the version is recorded (androidBuilds.recordDeviceVersion), a delivery the phone has caught up with
  *     becomes 'installed', and the newest release is offered when the phone is behind it;
- *   - androidBuilds.events 'release': every online phone that is behind it;
+ *   - androidBuilds.events 'release': every online phone that is behind the release it is offered (below);
+ *   - androidBuilds.events 'offer' (the android-builds socket's offer action, asked by scripts/android/accept-release.js after the
+ *     accepted mark was set or raised): the same, now, for every online phone, whatever the latest release is;
  *   - the phone's as_event apps.updateWaiting with state 'resend' (below).
  *
  * Delivery: the APK goes to the phone's temporary folder with the ActiveSync transfer machinery
  * (sendServerFile below: stream.receive temp, the phone pulls it), then op apps.update
  * { temp, name, versionCode, versionName, sha256, size, buildId, sha } asks the phone to check and stage it.
+ * The release a phone is offered (releaseFor): a device of the test lane gets the latest release. Any other phone gets the
+ * accepted release: the one whose versionCode is the accepted mark of coord setting 'androidUpdates' { hold, accepted?, ... }
+ * (its APK must still be kept), and nothing when that release is gone, when the mark is not a positive number, or when the
+ * setting cannot be read. Never an older release in its place: a release below the mark was not accepted (it may carry a
+ * branch commit that failed and was fixed later). A setting with no `accepted` offers the latest release, as it did before the
+ * mark existed. A phone is never offered a release above its mark by any path (hello, release, offer, resend), and never one
+ * at or below the version it runs (below).
+ *
  * Pushed only when: not held, the phone is online with a connection and permits files and control, its background
- * service answers apps.update (the hello's ops), its reported versionCode is > 0 and < the release's (an app without
+ * service answers apps.update (the hello's ops), its reported versionCode is > 0 and < the offered release's (an app without
  * +<code> is an old build with no apps.update), and no delivery for this versionCode is staged / sending (and running) /
  * waiting / installed. One at a time per phone, at most MAX_ATTEMPTS per versionCode (a resend starts the attempts
  * again). A 'failed' delivery is tried again at the phone's next hello, the next release or a resend, nothing else.
@@ -31,7 +41,7 @@
  *
  * A newer app build leaves no APK on the phone (StaticForge #1332): the file is removed as soon as its install answers.
  * So when a silent route is back it sends apps.updateWaiting with state 'resend' (why ''): the delivery is recorded
- * 'failed' with no attempts ("asked again") and the latest release is offered under the same rules as above; the app
+ * 'failed' with no attempts ("asked again") and the release the phone is offered is sent under the same rules as above; the app
  * installs it by itself once staged. Ignored when the phone is already at that versionCode or newer, while its delivery
  * is 'sending' or 'installed', and after MAX_RESENDS per phone + versionCode (the count lives in the delivery record's detail). The record of a newer or of the latest
  * release is never rewritten for a resend of another versionCode. No Fleet notice for a resend. A 'waiting' report (or
@@ -187,7 +197,13 @@ async function sendServerFile(globalResources, deviceId, filePath, opts = {}) {
  * The hold (Yukimi, Nov 26 2026: "Shizuku is running, why am I being asked to install the app through the Android installer"):
  * while the installed app cannot install silently, every release an agent builds reaches the phone and pops the installer.
  * coord setting 'androidUpdates' { hold: true } stops all deliveries until it is lifted (Fleet / a work item that proved the
- * silent install on the emulator lane lifts it). Default: held.
+ * silent install on the emulator lane lifts it). Default: held. Devices of the test lane are never held.
+ *
+ * The accepted mark (#1371): a release is the app's main plus EVERY unmerged branch, proven or not, and agents build one many
+ * times a day for their own tests, so lifting the hold alone would install unproven work on the household's phones. With
+ * { hold: false, accepted: <versionCode> } a household phone is offered only the release with that versionCode; whoever
+ * proved a release sets the mark (scripts/android/accept-release.js, which then sends the socket's offer action so the phones
+ * are considered at once). A test lane device is not limited by it. The setting is read through deps.getSetting (tests).
  */
 /**
  * A device of the test lane (modules/testDevices.js). The agents' A53 with a fence-only mark is not one (#1334): only its
@@ -197,12 +213,45 @@ function isTest(deviceId) {
     try { return require('./testDevices').inLane(deviceId); } catch (_) { return false; }
 }
 
+/** One coord setting: the injected reader (tests) or the agent-coord store's. */
+function readSetting(key) {
+    return ctx && ctx.getSetting ? ctx.getSetting(key) : require('./agentCoord/store').getSetting(key);
+}
+
 function held(deviceId) {
     if (process.env.ANDROID_UPDATES_TEST_UNHELD === '1') return false; // the delivery tests; never set in the server
     // a device of the test lane (the emulator lane, modules/testDevices.js) is never held: the lane proves the real delivery path
     // and the silent install on emulators, and no person's phone is in it (#1309)
     if (deviceId && isTest(deviceId)) return false;
-    try { const s = require('./agentCoord/store').getSetting('androidUpdates'); return !(s && s.hold === false); } catch (_) { return true; }
+    try { const s = readSetting('androidUpdates'); return !(s && s.hold === false); } catch (_) { return true; }
+}
+
+/**
+ * The highest versionCode this device may be offered: Infinity for a test lane device and for a setting with no `accepted`,
+ * the mark when it is a positive whole number, and 0 (nothing) for any other mark or an unreadable setting.
+ */
+function capOf(deviceId) {
+    if (deviceId && isTest(deviceId)) return Infinity;
+    let s = null;
+    try { s = readSetting('androidUpdates'); } catch (_) { return 0; }
+    if (!s || typeof s !== 'object' || s.accepted === undefined || s.accepted === null) return Infinity;
+    const mark = Number(s.accepted);
+    return Number.isInteger(mark) && mark > 0 ? mark : 0;      // a versionCode is a whole number: anything else is no mark
+}
+
+/**
+ * The release this device is offered: the latest one (`fallback` when the builds module has none) for a test lane device and
+ * when the setting has no mark, else the accepted release itself (the mark's versionCode, its APK still kept), else null.
+ */
+function releaseFor(deviceId, fallback) {
+    if (!ctx) return null;
+    const cap = capOf(deviceId);
+    if (cap === Infinity) {
+        try { return ctx.builds.latestRelease() || fallback || null; } catch (_) { return fallback || null; }
+    }
+    if (!(cap > 0) || typeof ctx.builds.newestReleaseUpTo !== 'function') return null;
+    // the accepted release and nothing older: with its APK gone the phone waits for the next mark
+    try { const r = ctx.builds.newestReleaseUpTo(cap); return r && Number(r.versionCode) === cap ? r : null; } catch (_) { return null; }
 }
 
 /** What this round's outcome must not overwrite: the phone's own newer word on this versionCode. */
@@ -213,13 +262,10 @@ function overtaken(deviceId, code) {
     return !!now && now.versionCode === code && (now.state === 'waiting' || now.state === 'installed');
 }
 
-/** The latest release to a phone again, after an event that is not a hello or a release. */
+/** The release the phone is offered, to it again, after an event that is not a hello, a release or an offer. */
 function offerLatest(deviceId) {
     if (!ctx) return;
-    const { log, builds } = ctx;
-    let latest = null;
-    try { latest = builds.latestRelease(); } catch (_) { latest = null; }
-    consider(deviceId, latest).catch((error) => log(error.message));
+    consider(deviceId, releaseFor(deviceId)).catch((error) => ctx && ctx.log(error.message));
 }
 
 /**
@@ -230,6 +276,7 @@ async function consider(deviceId, release) {
     if (held(deviceId)) return null;
     const have = versionOf(deviceId);
     const code = Number(release.versionCode) || 0;
+    if (code > capOf(deviceId)) return null;                // never above the accepted mark, whoever asked
     if (!(have.versionCode > 0 && have.versionCode < code)) return null;
     if (!supports.has(deviceId)) return null;
     // a connection the owner has not yet chosen (pending) cannot take calls; guest or partner can
@@ -310,7 +357,8 @@ function onWaiting(name, detail, me) {
 
 /**
  * The phone no longer holds the APK of versionCode `code` and a silent route is back: send it again (#1332). No notice.
- * What is sent is always the latest release, under all of consider()'s rules.
+ * What is sent is always the release this phone is offered (releaseFor: the latest, or the accepted release),
+ * under all of consider()'s rules.
  *   - the record is of another versionCode that is newer, or is the latest release's: it is not rewritten (its counts
  *     stay), and consider() decides as at a hello: nothing when it is staged / waiting / installed, another try within
  *     its own attempts when it 'failed' (or its 'sending' was cut by a restart).
@@ -320,8 +368,7 @@ function onWaiting(name, detail, me) {
  */
 function onResend(deviceId, code) {
     const prior = deliveryOf(deviceId);
-    let latest = null;
-    try { latest = ctx.builds.latestRelease(); } catch (_) { latest = null; }
+    const latest = releaseFor(deviceId);
     if (prior && prior.versionCode !== code && (prior.versionCode > code || (latest && prior.versionCode === Number(latest.versionCode)))) {
         offerLatest(deviceId);
         return 'offered';
@@ -383,26 +430,27 @@ async function onHello(d) {
             }
         } catch (_) { /* no delivery */ }
     }
-    let latest = null;
-    try { latest = ctx.builds.latestRelease(); } catch (_) { latest = null; }
-    return consider(deviceId, latest);
+    return consider(deviceId, releaseFor(deviceId));
 }
 
-/** A release was built: every online phone behind it. */
-async function onRelease(release) {
+/** Every online phone, considered for the release it is offered (a new release, or an offer: the mark changed). */
+async function considerAll(release) {
     if (!ctx) return [];
-    let latest = release;
-    try { latest = ctx.builds.latestRelease() || release; } catch (_) { latest = release; }
-    if (!latest) return [];
     let devices = [];
     try { devices = ctx.as.list(ctx.globalResources, null, { includeTest: true }).devices || []; } catch (_) { devices = []; }
     const jobs = [];
     for (const dev of devices) {
         if (!dev.online || dev.platform === 'cafeready') continue;
-        jobs.push(consider(dev.deviceId, latest));
+        jobs.push(consider(dev.deviceId, releaseFor(dev.deviceId, release)));
     }
     return Promise.all(jobs);
 }
+
+/** A release was built: every online phone behind the release it is offered. */
+function onRelease(release) { return considerAll(release); }
+
+/** The accepted mark changed (androidBuilds 'offer'): every online phone again, now. */
+function onOffer() { return considerAll(null); }
 
 /** What the server delivered, for an admin view: one entry per phone that has a delivery. */
 function deliveriesSnapshot() {
@@ -420,7 +468,7 @@ function deliveriesSnapshot() {
 }
 
 /**
- * Register the two taps. deps are for tests (activeSync, androidBuilds, sendFile); a server without the
+ * Register the two taps. deps are for tests (activeSync, androidBuilds, sendFile, getSetting(key) for the coord settings); a server without the
  * builds module (or without the transfer helper) starts nothing.
  */
 function start(globalResources, deps = {}) {
@@ -432,10 +480,12 @@ function start(globalResources, deps = {}) {
         const t = require('./activeSyncTransfers');
         return (typeof t.sendServerFile === 'function' ? t.sendServerFile : sendServerFile)(...args);
     });
+    const getSetting = typeof deps.getSetting === 'function' ? deps.getSetting : (key) => require('./agentCoord/store').getSetting(key);
     const log = (m) => console.warn(`[androidAppUpdatePush] ${m}`);
     const guard = (p) => { Promise.resolve(p).catch((error) => log(error.message)); };
     const helloTap = (d) => { setImmediate(() => guard(onHello(d))); };
     const releaseTap = (release) => { setImmediate(() => guard(onRelease(release))); };
+    const offerTap = () => { setImmediate(() => guard(onOffer())); };
     if (!tappedOn.has(as)) {
         tappedOn.add(as);
         as.onDeviceHello(helloTap);
@@ -443,8 +493,9 @@ function start(globalResources, deps = {}) {
         if (typeof as.onDeviceEvent === 'function') as.onDeviceEvent((name, detail, me) => { try { onWaiting(name, detail, me); } catch (error) { log(error.message); } });
     }
     builds.events.on('release', releaseTap);
-    const handle = { stop() { builds.events.off('release', releaseTap); ctx = null; } };
-    ctx = { globalResources, builds, as, sendFile, log, handle };
+    builds.events.on('offer', offerTap);
+    const handle = { stop() { builds.events.off('release', releaseTap); builds.events.off('offer', offerTap); ctx = null; } };
+    ctx = { globalResources, builds, as, sendFile, log, getSetting, handle };
     return handle;
 }
 
@@ -457,4 +508,4 @@ function resetForTests() {
     capTold.clear();
 }
 
-module.exports = { start, deliveriesSnapshot, parseApp, sendServerFile, _test: { onHello, onRelease, consider, onWaiting, resetForTests } };
+module.exports = { start, deliveriesSnapshot, parseApp, sendServerFile, _test: { onHello, onRelease, onOffer, consider, releaseFor, onWaiting, resetForTests } };

@@ -30,7 +30,10 @@
  *   Default worker: ruiko over ssh, C:/Users/ykaza/claude-build, folder dsapp-latest, build-latest.ps1.
  *
  * Phones: part 2 calls recordDeviceVersion at every hello (the next versionCode stays above any phone's),
- * recordDelivery / deliveryOf for the push state, and listens to 'release' (no polling, server-push-not-polling).
+ * recordDelivery / deliveryOf for the push state, and listens to 'release' and 'offer' (no polling, server-push-not-polling).
+ * 'offer' is emitted by the socket's offer action: someone raised the accepted mark (scripts/android/accept-release.js) and
+ * every online phone is considered again now; newestReleaseUpTo(versionCode) finds the accepted release (the delivery offers it only
+ * when its versionCode is the mark itself).
  * Agents: the dsapp_build MCP tool (modules/agentCoord/mcpServer.js) talks to this module over a unix socket next to
  * the agent-coord database (android-builds.sock, 0600, like the Supervisor's).
  *
@@ -132,6 +135,22 @@ function latestRelease() {
 }
 
 function releaseById(id) { return index.releases.find((r) => r.id === id) || null; }
+
+/**
+ * The newest release whose versionCode is <= `versionCode` and whose APK is still in apk/ (a pruned one does not count):
+ * what a phone is offered when releases are accepted only up to a mark (modules/androidAppUpdatePush.js). null when none.
+ */
+function newestReleaseUpTo(versionCode) {
+    const limit = Number(versionCode);
+    if (!Number.isFinite(limit)) return null;
+    let best = null;
+    for (const r of index.releases) {
+        const code = Number(r && r.versionCode) || 0;
+        if (code <= 0 || code > limit || (best && code <= best.versionCode)) continue;
+        if (r.apkFile && fs.existsSync(releaseApkPath(r))) best = r;
+    }
+    return best;
+}
 
 function releaseApkPath(release) {
     return path.join(apkDir(), String(release && release.apkFile || ''));
@@ -651,8 +670,13 @@ function serveSocket() {
             let req = null;
             try { req = JSON.parse(buf.slice(0, i)); } catch (_) { req = null; }
             let out;
-            if (!req || (req.op !== 'request' && req.op !== 'status')) out = { ok: false, error: 'op must be request or status' };
-            else if (req.op === 'request') {
+            if (!req || (req.op !== 'request' && req.op !== 'status' && req.op !== 'offer')) out = { ok: false, error: 'op must be request, status or offer' };
+            else if (req.op === 'offer') {
+                // the accepted mark changed: the delivery considers every online phone again (events only, no timer)
+                const listeners = events.listenerCount('offer');
+                try { events.emit('offer'); } catch (e) { console.warn(`[androidBuilds] offer listener: ${e.message}`); }
+                out = { ok: true, result: { offered: listeners > 0, listeners } };
+            } else if (req.op === 'request') {
                 const r = requestBuild({ note: req.note, agentId: req.agentId });
                 out = r.status === 200 ? { ok: true, result: { id: r.id, state: r.state } } : { ok: true, result: { refused: true, code: r.code, error: r.error, running: r.running, gates: r.gates } };
             } else if (req.id !== undefined && req.id !== null && req.id !== '') {
@@ -675,7 +699,7 @@ function closeSocket() {
 loadIndex();
 
 module.exports = {
-    mount, events, latestRelease, releaseApkPath, recordDeviceVersion, recordDelivery, deliveryOf, deviceVersionOf, maxReportedVersionCode,
+    mount, events, latestRelease, newestReleaseUpTo, releaseApkPath, recordDeviceVersion, recordDelivery, deliveryOf, deviceVersionOf, maxReportedVersionCode,
     _test: {
         setRoot(dir) { T.root = dir; loadIndex(); },
         setExec(fn) { T.exec = fn; },
