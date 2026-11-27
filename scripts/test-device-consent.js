@@ -524,6 +524,24 @@ const withRealRules = async (fn) => {
 };
 const wipe = () => { store.open().prepare("UPDATE device_queue SET state = 'cancelled' WHERE state IN ('held', 'waiting')").run(); store.open().prepare("UPDATE device_queue SET ended_at = ? WHERE state = 'denied'").run(Date.now() - 60 * 60000); };
 
+t('Yukimi Nov 27: a pending A53 ask written by an old agent-coord process is allowed at once by the server, never shown', async () => {
+    await withRealRules(async () => {
+        wipe(); reset({ consentDevices: ['fold', 'a53'] }); // even a settings list that still names the a53
+        // an old process (code from before the A53 change) writes a held, pending lease for the a53
+        const now = Date.now();
+        const info = store.open().prepare("INSERT INTO device_queue (device, agent_id, why, minutes, state, requested_at, started_at, ends_at, consent, consent_at) VALUES ('a53', 'old', 'old process ask', 15, 'held', ?, ?, ?, 'pending', ?)").run(now, now, now + 24 * 3600000, now);
+        dc.changed('a53', true);
+        const r = store.open().prepare('SELECT consent, ends_at FROM device_queue WHERE id = ?').get(info.lastInsertRowid);
+        assert.strictEqual(r.consent, 'allowed', 'settled by the server');
+        assert.ok(r.ends_at <= Date.now() + 15 * 60000 + 1000, 'its clock runs from now');
+        const snap = lastSync().snapshot;
+        assert.ok(!snap.asks.some((a) => a.device === 'a53'), 'no ask');
+        assert.ok(!snap.holds.some((h) => h.device === 'a53'), 'no in-use notice either');
+        assert.strictEqual(dc.check({ deviceId: 'a53' }, { kind: 'shell', command: 'input tap 1 1' }, { agentId: 'old' }).ok, true);
+        wipe(); reset();
+    });
+});
+
 t('S1 settings: testConsentDevices defaults to [], is normalised and validated; the Fold and the browsers are refused', () => {
     reset();
     assert.deepStrictEqual(dc.settings().testConsentDevices, []);

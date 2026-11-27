@@ -482,10 +482,30 @@ function setConsent(leaseId, answer, by) {
     return { ok: true, lease };
 }
 
-/** The consent view the notices are built from: asks (held, pending) and holds (held, allowed and still running). */
+/**
+ * Yukimi, Nov 27 2026 (#1305): "I should never see any consent prompts for the A53 ... I do not care about that phone". A pending
+ * ask on a device that needs no consent (the A53 test phone; written by an agent-coord process still on code from before the A53
+ * change) is allowed at once by the server: no notice, no sound. Returns how many it settled. Safe to call from any process.
+ */
+function settleNoConsent() {
+    let n = 0;
+    let rows = [];
+    try { rows = db().prepare("SELECT id, device FROM device_queue WHERE state = 'held' AND consent = 'pending'").all(); } catch (_) { return 0; }
+    for (const r of rows) {
+        if (needsConsent(r.device)) continue;
+        try { if (setConsent(r.id, 'allowed', 'the test phone never asks').ok) n += 1; } catch (_) { /* the next change settles it */ }
+    }
+    return n;
+}
+
+/**
+ * The consent view the notices are built from: asks (held, pending) and holds (held, allowed and still running) - only on devices that
+ * need consent: the A53 test phone (and any device off the consent list) never shows an ask or an in-use notice (#1305).
+ */
 function snapshotConsent() {
     const t = store.now();
-    const rows = db().prepare("SELECT * FROM device_queue WHERE state = 'held' AND consent IN ('pending', 'allowed') ORDER BY id").all().map(row);
+    const rows = db().prepare("SELECT * FROM device_queue WHERE state = 'held' AND consent IN ('pending', 'allowed') ORDER BY id").all().map(row)
+        .filter((r) => { try { return needsConsent(r.device); } catch (_) { return true; } });
     const nameOf = (id) => { const a = store.getAgent(id); return a ? (a.name || a.id) : id; };
     const lanes = new Map();
     const laneOf = (dev) => { if (!lanes.has(dev)) lanes.set(dev, isTestLane(dev) ? 'test' : 'admin'); return lanes.get(dev); };
@@ -497,4 +517,4 @@ function snapshotConsent() {
     };
 }
 
-module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, isTestLane, canBeTestLane, setConsent, requireConsent, snapshotConsent, KNOWN, DEFAULT_CONSENT_DEVICES, isPhysicalPhone, OFF_LIMITS_MSG, foldApproval, DEFAULT_MIN, MAX_MIN, IDLE_MS, DENY_HOLD_MS };
+module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, isTestLane, canBeTestLane, setConsent, requireConsent, snapshotConsent, settleNoConsent, KNOWN, DEFAULT_CONSENT_DEVICES, isPhysicalPhone, OFF_LIMITS_MSG, foldApproval, DEFAULT_MIN, MAX_MIN, IDLE_MS, DENY_HOLD_MS };

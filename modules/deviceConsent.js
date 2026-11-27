@@ -218,6 +218,8 @@ function armPending(asks) {
 function changed(device, force) {
     let snap;
     let cfg;
+    // an ask on the A53 test phone (an old agent-coord process wrote it) is allowed at once, never shown (Yukimi, Nov 27 2026)
+    try { if (typeof dq.settleNoConsent === 'function') dq.settleNoConsent(); } catch (_) { /* the snapshot still leaves it out */ }
     try { snap = dq.snapshotConsent(); cfg = settings(); } catch (_) { return; }
     armAsks(snap.asks, cfg);
     armHold(snap.holds);
