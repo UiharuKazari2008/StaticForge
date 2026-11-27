@@ -33,7 +33,8 @@
  *   builds     build gates: a build of a target in a repo is requested, every live agent in the repo answers
  *              ready or not (an agent that is not busy and holds no claim there counts as ready by itself),
  *              and it begins only when nobody is pending or not ready and no other build of the target runs
- *   device_queue  who holds a shared test device (A53, Fold, a test browser) and who waits for it (modules/agentCoord/deviceQueue.js)
+ *   device_queue  who holds a shared test device (A53, Fold, a test browser) and who waits for it (modules/agentCoord/deviceQueue.js); consent / consent_at: a phone is usable only after Yukimi's Allow
+ *   coord_settings  small shared JSON settings (key, value), e.g. the phone consent settings (modules/deviceConsent.js)
  */
 
 const fs = require('fs');
@@ -121,7 +122,15 @@ function open() {
             requested_at INTEGER NOT NULL, started_at INTEGER, ends_at INTEGER, ended_at INTEGER, end_reason TEXT NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS device_queue_open ON device_queue (state, device, id);
+        CREATE TABLE IF NOT EXISTS coord_settings (
+            key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL DEFAULT 0
+        );
     `);
+    // phones need Yukimi's consent before an agent may use them (modules/deviceConsent.js): none | pending | allowed | denied
+    const dqCols = new Set(db.prepare('PRAGMA table_info(device_queue)').all().map((c) => c.name));
+    [['consent', "TEXT NOT NULL DEFAULT 'none'"], ['consent_at', 'INTEGER']].forEach(([c, t]) => {
+        if (!dqCols.has(c)) db.exec(`ALTER TABLE device_queue ADD COLUMN ${c} ${t}`);
+    });
     const cols = new Set(db.prepare('PRAGMA table_info(agents)').all().map((c) => c.name));
     [['model', 'TEXT'], ['effort', 'TEXT'], ['dispatched_by', 'TEXT'], ['config_dir', 'TEXT']].forEach(([c, t]) => {
         if (!cols.has(c)) db.exec(`ALTER TABLE agents ADD COLUMN ${c} ${t}`);
@@ -487,6 +496,17 @@ function prune() {
     d.prepare('DELETE FROM scans WHERE session_id NOT IN (SELECT session_id FROM agents WHERE session_id IS NOT NULL) AND COALESCE(last_at, 0) < ?').run(t - 14 * 86400000);
 }
 
+/** A small shared setting (JSON text) both the MCP processes and the Dreamscape server read: null when unset. */
+function getSetting(key) {
+    const r = open().prepare('SELECT value FROM coord_settings WHERE key = ?').get(String(key));
+    if (!r) return null;
+    try { return JSON.parse(r.value); } catch (_) { return null; }
+}
+
+function setSetting(key, value) {
+    open().prepare('INSERT INTO coord_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').run(String(key), JSON.stringify(value), now());
+}
+
 Object.assign(module.exports, require('./storeV2')({
     open, now, text, getAgent, resolveAgent, listAgents, liveClaims, post, repoOf, pidAlive: (pid) => pidAlive(pid)
 }));
@@ -494,7 +514,7 @@ module.exports = Object.assign(module.exports, {
     dbPath, open, close, repoOf, normPath, overlaps, now, pidAlive: (pid) => pidAlive(pid),
     upsertAgent, getAgent, resolveAgent, listAgents, setStatus,
     liveClaims, claim, release, releaseAll, check,
-    post, markDelivered, inbox, unreadCount, recentMessages, prune,
+    post, markDelivered, inbox, unreadCount, recentMessages, prune, getSetting, setSetting,
     DEFAULT_LEASE_MIN, MAX_LEASE_MIN, _setPidAlive
 });
 const { plantLock, removeLocks } = module.exports;

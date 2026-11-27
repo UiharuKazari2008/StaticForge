@@ -4380,8 +4380,12 @@ function serveSocket() {
             buf = '';
             let out;
             try {
-                if (!req || !['check', 'enqueue', 'pause', 'resume', 'ask_user'].concat(FLEET_OPS, TASK_OPS).includes(req.op)) throw new Error('op must be check, enqueue, pause, resume, ask_user, a task_* or a fleet_* op');
-                if (TASK_OPS.includes(req.op)) {
+                if (!req || !['check', 'enqueue', 'pause', 'resume', 'ask_user', 'device-consent'].concat(FLEET_OPS, TASK_OPS).includes(req.op)) throw new Error('op must be check, enqueue, pause, resume, ask_user, device-consent, a task_* or a fleet_* op');
+                if (req.op === 'device-consent') {
+                    // a shared phone's queue changed in an MCP process: notices and ask timeouts follow (modules/deviceConsent.js)
+                    require('./deviceConsent').changed(String(req.device || '').slice(0, 40));
+                    out = { ok: true };
+                } else if (TASK_OPS.includes(req.op)) {
                     out = { ok: true, result: sessionTasks().agentOp(req) };
                 } else if (FLEET_OPS.includes(req.op)) {
                     out = { ok: true, result: await fleetOp(req) };
@@ -4434,6 +4438,8 @@ function start(gr) {
         console.warn(`[supervisor] cannot watch ${sessionsDir()}: ${e.message}`);
     }
     serveSocket();
+    // shared phones ask Yukimi before an agent may use them: queue changes reach the notices, and open asks come back from the DB (#1284)
+    try { require('./deviceConsent').start(); } catch (e) { console.warn(`[supervisor] device consent: ${e.message}`); }
     pumpWork().catch(() => {});
     // work whose session ended while the server was down comes back; holds and waits left open are watched again (only when there are any)
     const boot = setTimeout(() => { try { sweepDead(); armWatch(); recheckAll().catch(() => {}); sweepFinishedSessions('boot').catch(() => {}); } catch (_) { /* later */ } }, 20000);

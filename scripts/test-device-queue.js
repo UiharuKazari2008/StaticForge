@@ -4,6 +4,7 @@
 /**
  * modules/agentCoord/deviceQueue.js: grant, FIFO order, release handing on with a steer message, expiry by
  * time, by a gone session and by idleness, renew, releaseAgent, aliases, and the MCP tool round trip.
+ * Consent for phones is switched off here (settings consentDevices empty); see test-device-consent.js.
  *
  *   node scripts/test-device-queue.js
  */
@@ -20,6 +21,8 @@ fs.mkdirSync(path.join(tmp, '.claude', 'sessions'), { recursive: true });
 
 const store = require('../modules/agentCoord/store');
 const dq = require('../modules/agentCoord/deviceQueue');
+// this test is about the queue itself: phones asking Yukimi for consent (#1284) is scripts/test-device-consent.js
+store.setSetting('deviceConsent', { consentDevices: [] });
 const mcp = require('../modules/agentCoord/mcpServer');
 
 let n = 0;
