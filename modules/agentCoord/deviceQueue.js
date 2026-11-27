@@ -38,6 +38,33 @@ const KNOWN = {
 const ALIAS = new Map();
 Object.keys(KNOWN).forEach((id) => KNOWN[id].aliases.forEach((a) => ALIAS.set(a, id)));
 
+/**
+ * The emulator pool (the test lane): the ONE list of instance ids. Keep it in step with the pool table in
+ * scripts/aemu-lane/lane.sh (pool_row / POOL_IDS); it is not read from that file because the server must not parse a
+ * shell script at load (and lane.sh is edited by other sessions), so a new instance is added in both places by hand.
+ */
+const EMULATOR_IDS = ['aemu-a53-1', 'aemu-a53-2', 'aemu-a53-3', 'aemu-a53-4', 'aemu-fold-1', 'aemu-fold-2', 'aemu-fold-3', 'aemu-fold-4'];
+/** Shape aliases of coord_device_request: ask for "a free instance of this shape" instead of a named instance. */
+const SHAPES = {
+    'aemu-a53': { name: 'any A53 emulator', ids: EMULATOR_IDS.filter((i) => i.startsWith('aemu-a53-')) },
+    'aemu-fold': { name: 'any Fold emulator', ids: EMULATOR_IDS.filter((i) => i.startsWith('aemu-fold-')) },
+    emulator: { name: 'any emulator', ids: EMULATOR_IDS.slice() }
+};
+const SHAPE_ALIAS = new Map([['aemu-a53', 'aemu-a53'], ['aemu-fold', 'aemu-fold'], ['emulator', 'emulator'], ['emulators', 'emulator'], ['aemu', 'emulator']]);
+/** The shape key a device argument names ('aemu-a53', 'aemu-fold', 'emulator'), or ''. */
+function shapeKey(device) {
+    const s = String(device || '').toLowerCase().trim().replace(/\s+/g, '-');
+    return SHAPE_ALIAS.get(s) || '';
+}
+/** The shape keys whose waiters may take this instance. */
+function shapesOf(dev) { return Object.keys(SHAPES).filter((k) => SHAPES[k].ids.includes(dev)); }
+/** Every queue key that competes for the instances of a shape: its instances and the shape keys that overlap it. */
+function overlapping(key) {
+    const ids = SHAPES[key].ids;
+    return ids.concat(Object.keys(SHAPES).filter((k) => SHAPES[k].ids.some((i) => ids.includes(i))));
+}
+const marks = (n) => new Array(n).fill('?').join(', ');
+
 /** Devices that need Yukimi's consent by default; her settings list (coord_settings 'deviceConsent', modules/deviceConsent.js) replaces it. */
 const DEFAULT_CONSENT_DEVICES = ['fold'];
 // HARD RULE (Yukimi, Nov 26 2026: "no more touching my phone ... the A53 is not my phone, it's a phone for testing"): agents never
@@ -191,18 +218,21 @@ function fmtClock(ms) { const d = new Date(ms); return `${String(d.getHours()).p
 function promote(device, t) {
     const d = db();
     for (;;) {
-        const w = d.prepare("SELECT * FROM device_queue WHERE device = ? AND state = 'waiting' ORDER BY id LIMIT 1").get(device);
+        // the first waiter in line for this instance: one asking for it by id or one waiting on a shape that covers it (one FIFO, by id)
+        const keys = [device].concat(shapesOf(device));
+        const w = d.prepare(`SELECT * FROM device_queue WHERE device IN (${marks(keys.length)}) AND state = 'waiting' ORDER BY id LIMIT 1`).get(...keys);
         if (!w) return null;
         const gone = lostReason(w.agent_id, { started_at: w.requested_at }, t);
-        if (gone && gone !== 'idle for 10 minutes') { finish(w.id, 'dropped', gone, t); touch(device); continue; }
+        if (gone && gone !== 'idle for 10 minutes') { finish(w.id, 'dropped', gone, t); touch(device); touch(w.device); continue; }
         touch(device);
+        touch(w.device);
         if (needsConsent(device)) {
-            d.prepare("UPDATE device_queue SET state = 'held', consent = 'pending', consent_at = ?, started_at = NULL, ends_at = ? WHERE id = ?").run(t, t + PENDING_PLACEHOLDER_MS, w.id);
+            d.prepare("UPDATE device_queue SET device = ?, state = 'held', consent = 'pending', consent_at = ?, started_at = NULL, ends_at = ? WHERE id = ?").run(device, t, t + PENDING_PLACEHOLDER_MS, w.id);
             const p = row(d.prepare('SELECT * FROM device_queue WHERE id = ?').get(w.id));
             say(p.agentId, `Device ${device} is next for you (${p.why || 'no reason given'}), but Yukimi has to tap Allow on the phone first. Do NOT touch the device (no adb, device_shell, device_screenshot, taps) until a steer message says it is allowed.`);
             return p;
         }
-        d.prepare("UPDATE device_queue SET state = 'held', started_at = ?, ends_at = ? WHERE id = ?").run(t, t + w.minutes * 60000, w.id);
+        d.prepare("UPDATE device_queue SET device = ?, state = 'held', started_at = ?, ends_at = ? WHERE id = ?").run(device, t, t + w.minutes * 60000, w.id);
         const g = row(d.prepare('SELECT * FROM device_queue WHERE id = ?').get(w.id));
         say(g.agentId, `Device ${device} is yours until ${fmtClock(g.endsAt)} (${g.why || 'no reason given'}). Run your test now and release it with coord_device_release when done.`);
         return g;
@@ -211,6 +241,12 @@ function promote(device, t) {
 
 /** Frees leases that ran out or lost their agent, grants the next in line (a pending ask whose agent is gone is dropped too). Touches only the given device when named. The change hook fires once the caller flushes. */
 function sweepRaw(only) {
+    if (only && SHAPES[only]) {
+        // a shape: every instance of it is swept (leases freed, waiters on the instance or the shape promoted)
+        const all = new Set();
+        SHAPES[only].ids.forEach((i) => sweepRaw(i).forEach((x) => all.add(x)));
+        return all;
+    }
     const d = db();
     const t = store.now();
     const held = only ? d.prepare("SELECT * FROM device_queue WHERE state = 'held' AND device = ?").all(only) : d.prepare("SELECT * FROM device_queue WHERE state = 'held'").all();
@@ -226,12 +262,13 @@ function sweepRaw(only) {
         }
     });
     // waiters whose session is gone leave the queue
-    (only ? d.prepare("SELECT * FROM device_queue WHERE state = 'waiting' AND device = ?").all(only) : d.prepare("SELECT * FROM device_queue WHERE state = 'waiting'").all()).forEach((w) => {
+    const waitKeys = only ? [only].concat(shapesOf(only)) : [];
+    (only ? d.prepare(`SELECT * FROM device_queue WHERE state = 'waiting' AND device IN (${marks(waitKeys.length)})`).all(...waitKeys) : d.prepare("SELECT * FROM device_queue WHERE state = 'waiting'").all()).forEach((w) => {
         const a = store.getAgent(w.agent_id);
         if (!a || a.status === 'gone' || a.status === 'done' || (a.pid && !store.pidAlive(a.pid))) { finish(w.id, 'dropped', 'its session is gone', t); touch(w.device); }
     });
     // a free device with waiters (also after a drop) gets its next holder
-    const free = only ? [only] : d.prepare("SELECT DISTINCT device FROM device_queue WHERE state = 'waiting'").all().map((r) => r.device);
+    const free = only ? [only] : [...new Set(d.prepare("SELECT DISTINCT device FROM device_queue WHERE state = 'waiting'").all().flatMap((r) => (SHAPES[r.device] ? SHAPES[r.device].ids : [r.device])))];
     free.forEach((dev) => {
         if (!d.prepare("SELECT 1 FROM device_queue WHERE device = ? AND state = 'held'").get(dev)) promote(dev, t);
     });
@@ -258,7 +295,66 @@ function holderInfo(h) {
     return h ? { agentId: h.agent_id, name: a ? (a.name || a.id) : h.agent_id, why: h.why, endsAt: h.ends_at } : null;
 }
 
+/** The instance of a shape this agent holds (or waits on, as the shape key), else the instance/shape as given. */
+function heldIn(agentId, key) {
+    const h = db().prepare(`SELECT device FROM device_queue WHERE agent_id = ? AND state = 'held' AND device IN (${marks(SHAPES[key].ids.length)}) ORDER BY id LIMIT 1`).get(String(agentId), ...SHAPES[key].ids);
+    return h ? h.device : key;
+}
+
+/**
+ * A shape alias (aemu-a53, aemu-fold, emulator): the first free instance is granted at once (the answer names it: device and
+ * instance); only when every instance of the shape is held does the agent queue on the shape. The first instance to free up then goes
+ * to the first waiter on the shape (promote), ahead of later requests, with the usual "Device <instance> is yours" steer.
+ */
+function requestShape(agentId, key, opts) {
+    if (!store.getAgent(agentId)) throw new Error('Unknown agent: call coord_hello first');
+    const shape = SHAPES[key];
+    const minutes = Math.max(1, Math.min(MAX_MIN, Math.round(Number(opts.minutes)) || DEFAULT_MIN));
+    shape.ids.forEach((i) => sweepRaw(i));
+    const d = db();
+    const t = store.now();
+    const mineHeld = heldIn(agentId, key);
+    if (mineHeld !== key) return Object.assign(request(agentId, mineHeld, opts), { shape: key, instance: mineHeld });
+    const waiting = mine(agentId, key, 'waiting');
+    if (!waiting) {
+        const free = shape.ids.filter((i) => !d.prepare("SELECT 1 FROM device_queue WHERE device = ? AND state = 'held'").get(i) && !d.prepare("SELECT 1 FROM device_queue WHERE device = ? AND state = 'waiting'").get(i));
+        let denied = null;
+        for (const inst of free) {
+            try {
+                const r = request(agentId, inst, opts);
+                if (r.granted || r.consent === 'pending') return Object.assign(r, { shape: key, instance: inst });
+            } catch (e) { denied = denied || e; }
+        }
+        if (free.length && denied && free.every((i) => !mine(agentId, i, 'waiting'))) throw denied;
+        const r = d.prepare("INSERT INTO device_queue (device, agent_id, session_id, why, minutes, state, requested_at) VALUES (?, ?, ?, ?, ?, 'waiting', ?)").run(key, String(agentId), text(opts.sessionId, 60), text(opts.why, 200), minutes, t);
+        touch(key);
+        flush();
+        return queuedShapeAnswer(key, d.prepare('SELECT * FROM device_queue WHERE id = ?').get(r.lastInsertRowid));
+    }
+    flush();
+    return queuedShapeAnswer(key, waiting);
+}
+
+function queuedShapeAnswer(key, w) {
+    const d = db();
+    const t = store.now();
+    const keys = overlapping(key);
+    const ahead = d.prepare(`SELECT COUNT(*) AS n FROM device_queue WHERE state = 'waiting' AND id < ? AND device IN (${marks(keys.length)})`).get(w.id, ...keys).n;
+    const holds = d.prepare(`SELECT * FROM device_queue WHERE state = 'held' AND device IN (${marks(SHAPES[key].ids.length)}) ORDER BY ends_at`).all(...SHAPES[key].ids).map(row);
+    const nameOf = (id) => { const a = store.getAgent(id); return a ? (a.name || a.id) : id; };
+    const soonest = holds[0];
+    return {
+        granted: false, device: key, shape: key, position: ahead + 1,
+        holder: soonest ? { agentId: soonest.agentId, name: nameOf(soonest.agentId), why: soonest.why, endsAt: soonest.endsAt, instance: soonest.device } : null,
+        holders: holds.map((h) => ({ instance: h.device, agentId: h.agentId, name: nameOf(h.agentId), endsAt: h.endsAt })),
+        eta: soonest ? (soonest.endsAt || t + soonest.minutes * 60000) : t,
+        note: `Every ${SHAPES[key].name} is held: you are in line on the shape. Do not use any instance yet: a steer message names the instance when it is yours.`
+    };
+}
+
 function request(agentId, device, opts = {}) {
+    const sk = shapeKey(device);
+    if (sk) return requestShape(agentId, sk, opts);
     const dev = normalise(device);
     let noAsk = false;
     if (isPhysicalPhone(dev)) {
@@ -298,7 +394,8 @@ function request(agentId, device, opts = {}) {
         w = d.prepare('SELECT * FROM device_queue WHERE id = ?').get(r.lastInsertRowid);
         if (!d.prepare("SELECT 1 FROM device_queue WHERE device = ? AND state = 'held'").get(dev)) {
             // free device and nobody ahead: granted at once (no steer message: the answer says so)
-            const first = d.prepare("SELECT id FROM device_queue WHERE device = ? AND state = 'waiting' ORDER BY id LIMIT 1").get(dev);
+            const fk = [dev].concat(shapesOf(dev));
+            const first = d.prepare(`SELECT id FROM device_queue WHERE device IN (${marks(fk.length)}) AND state = 'waiting' ORDER BY id LIMIT 1`).get(...fk);
             if (first && first.id === w.id) {
                 touch(dev);
                 if (noAsk) {
@@ -331,7 +428,8 @@ function pendingAnswer(dev, lease) {
 }
 
 function release(agentId, device) {
-    const dev = normalise(device);
+    const sk = shapeKey(device);
+    const dev = sk ? heldIn(agentId, sk) : normalise(device);
     sweepRaw(dev);
     const t = store.now();
     const h = mine(agentId, dev, 'held');
@@ -349,7 +447,8 @@ function release(agentId, device) {
 }
 
 function renew(agentId, device, minutes) {
-    const dev = normalise(device);
+    const sk = shapeKey(device);
+    const dev = sk ? heldIn(agentId, sk) : normalise(device);
     sweepRaw(dev);
     const h = mine(agentId, dev, 'held');
     if (!h) { flush(); throw new Error(`You do not hold ${dev} (coord_device_request it first)`); }
@@ -403,12 +502,13 @@ function releaseAgent(agentId) {
 
 /** Holders and queues, per device: the known devices always, other devices while someone holds or waits. */
 function status(device) {
-    const only = device ? normalise(device) : '';
+    const sk = device ? shapeKey(device) : '';
+    const only = sk || (device ? normalise(device) : '');
     sweep(only || undefined);
     const d = db();
     const t = store.now();
     const rows = d.prepare("SELECT * FROM device_queue WHERE state IN ('held', 'waiting') ORDER BY id").all().map(row);
-    const ids = only ? [only] : [...new Set(Object.keys(KNOWN).concat(rows.map((r) => r.device)))];
+    const ids = sk ? [sk].concat(SHAPES[sk].ids) : only ? [only] : [...new Set(Object.keys(KNOWN).concat(rows.map((r) => r.device)))];
     const nameOf = (id) => { const a = store.getAgent(id); return a ? (a.name || a.id) : id; };
     const devices = ids.map((id) => {
         const h = rows.find((r) => r.device === id && r.state === 'held');
@@ -419,7 +519,7 @@ function status(device) {
             return { agentId: r.agentId, name: nameOf(r.agentId), why: r.why, minutes: r.minutes, since: r.requestedAt, eta };
         });
         return {
-            device: id, label: KNOWN[id] ? KNOWN[id].name : id,
+            device: id, label: KNOWN[id] ? KNOWN[id].name : SHAPES[id] ? `${SHAPES[id].name} (queue on the shape)` : id,
             holder: h ? { agentId: h.agentId, name: nameOf(h.agentId), why: h.why, startedAt: h.startedAt, endsAt: h.endsAt, minutesLeft: h.endsAt ? Math.max(0, Math.ceil((h.endsAt - t) / 60000)) : h.minutes, consent: h.consent } : null,
             queue
         };
@@ -517,4 +617,4 @@ function snapshotConsent() {
     };
 }
 
-module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, isTestLane, canBeTestLane, setConsent, requireConsent, snapshotConsent, settleNoConsent, KNOWN, DEFAULT_CONSENT_DEVICES, isPhysicalPhone, OFF_LIMITS_MSG, foldApproval, DEFAULT_MIN, MAX_MIN, IDLE_MS, DENY_HOLD_MS };
+module.exports = { request, release, renew, status, releaseAgent, forceRelease, sweep, normalise, setNotifier, setChangeHook, needsConsent, isTestLane, canBeTestLane, setConsent, requireConsent, snapshotConsent, settleNoConsent, KNOWN, EMULATOR_IDS, SHAPES, DEFAULT_CONSENT_DEVICES, isPhysicalPhone, OFF_LIMITS_MSG, foldApproval, DEFAULT_MIN, MAX_MIN, IDLE_MS, DENY_HOLD_MS };

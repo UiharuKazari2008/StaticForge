@@ -412,6 +412,145 @@ t('S1: a test-lane device (settings testConsentDevices) asks like a phone, on th
     }
 });
 
+// ---- shape aliases (aemu-a53, aemu-fold, emulator): a free instance at once, a queue on the shape only when all are held
+function shapeFixture() {
+    store.open().prepare("UPDATE device_queue SET state = 'cancelled' WHERE state IN ('held', 'waiting')").run();
+    store.setSetting('deviceConsent', { consentDevices: [] });
+    ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10'].forEach((id) => agent(id));
+}
+
+t('shape alias: aemu-a53 grants the first free instance and names it', () => {
+    shapeFixture();
+    assert.deepStrictEqual(dq.EMULATOR_IDS.filter((i) => i.startsWith('aemu-a53-')), ['aemu-a53-1', 'aemu-a53-2', 'aemu-a53-3', 'aemu-a53-4']);
+    const r = dq.request('s1', 'aemu-a53', { why: 'shape', minutes: 10 });
+    assert.strictEqual(r.granted, true);
+    assert.strictEqual(r.device, 'aemu-a53-1');
+    assert.strictEqual(r.instance, 'aemu-a53-1');
+    assert.strictEqual(r.shape, 'aemu-a53');
+    assert.strictEqual(r.lease.minutes, 10);
+    assert.strictEqual(q('aemu-a53-1').holder.agentId, 's1');
+});
+
+t('shape alias: the second request gets the next free instance; a repeat renews the same one', () => {
+    const r = dq.request('s2', 'aemu-a53', { why: 'second' });
+    assert.strictEqual(r.granted, true);
+    assert.strictEqual(r.instance, 'aemu-a53-2');
+    const again = dq.request('s1', 'aemu-a53', { why: 'again', minutes: 20 });
+    assert.strictEqual(again.instance, 'aemu-a53-1');
+    assert.strictEqual(again.renewed, true);
+    assert.strictEqual(q('aemu-a53-3').holder, null);
+    assert.strictEqual(dq.request('s3', 'aemu-a53', {}).instance, 'aemu-a53-3');
+    assert.strictEqual(dq.request('s4', 'aemu-a53', {}).instance, 'aemu-a53-4');
+});
+
+t('shape alias: all instances held -> queued on the shape, FIFO, answer shows position and holders', () => {
+    const r = dq.request('s5', 'aemu-a53', { why: 'waits', minutes: 7 });
+    assert.strictEqual(r.granted, false);
+    assert.strictEqual(r.shape, 'aemu-a53');
+    assert.strictEqual(r.position, 1);
+    assert.strictEqual(r.holders.length, 4);
+    assert.ok(r.holder && /^aemu-a53-\d$/.test(r.holder.instance));
+    const r6 = dq.request('s6', 'aemu-a53', { why: 'waits too' });
+    assert.strictEqual(r6.position, 2);
+    assert.strictEqual(dq.request('s5', 'aemu-a53', {}).position, 1, 'asking again keeps the place');
+    const st = q('aemu-a53');
+    assert.deepStrictEqual(st.queue.map((x) => x.agentId), ['s5', 's6']);
+    assert.ok(/aemu-a53|A53 emulator/.test(st.label));
+    // the Fold shape and an exact id of another shape are unaffected
+    assert.strictEqual(dq.request('s7', 'aemu-fold', {}).instance, 'aemu-fold-1');
+});
+
+t('shape alias: a release of any instance grants the first shape waiter and steers it with the instance id', () => {
+    const before = steerTo('s5').length;
+    const rel = dq.release('s3', 'aemu-a53-3');
+    assert.strictEqual(rel.released, true);
+    assert.strictEqual(rel.next, 's5');
+    assert.strictEqual(q('aemu-a53-3').holder.agentId, 's5');
+    const sm = steerTo('s5');
+    assert.strictEqual(sm.length, before + 1);
+    assert.ok(/Device aemu-a53-3 is yours/.test(sm[sm.length - 1].body), sm[sm.length - 1].body);
+    assert.deepStrictEqual(q('aemu-a53').queue.map((x) => x.agentId), ['s6']);
+    // s6 gets the next freed instance (another one), not lost to a later request
+    dq.request('s8', 'aemu-a53', { why: 'later' });
+    dq.release('s1', 'aemu-a53'); // release by the shape name frees the instance the agent holds
+    assert.strictEqual(q('aemu-a53-1').holder.agentId, 's6');
+    assert.ok(/Device aemu-a53-1 is yours/.test(steerTo('s6').pop().body));
+    assert.deepStrictEqual(q('aemu-a53').queue.map((x) => x.agentId), ['s8']);
+});
+
+t('shape alias: an earlier instance-specific waiter keeps its place; a shape waiter ahead of a later exact waiter wins', () => {
+    shapeFixture();
+    ['aemu-a53-1', 'aemu-a53-2', 'aemu-a53-3', 'aemu-a53-4'].forEach((i, k) => dq.request(`s${k + 1}`, i, {}));
+    dq.request('s5', 'aemu-a53-2', { why: 'exact first' }); // earlier than the shape waiter
+    dq.request('s6', 'aemu-a53', { why: 'shape second' });
+    dq.request('s7', 'aemu-a53-1', { why: 'exact third' });
+    dq.release('s1', 'aemu-a53-1'); // s6 (shape, id order) is ahead of s7 (exact on -1)
+    assert.strictEqual(q('aemu-a53-1').holder.agentId, 's6');
+    dq.release('s2', 'aemu-a53-2'); // s5 asked for -2 by id and is first for it
+    assert.strictEqual(q('aemu-a53-2').holder.agentId, 's5');
+    dq.release('s3', 'aemu-a53-3');
+    assert.strictEqual(q('aemu-a53-3').holder, null, 'nobody waits on -3 or the shape');
+    assert.strictEqual(q('aemu-a53-1').queue.length, 1, 's7 still waits on -1');
+});
+
+t('shape alias: "emulator" picks any shape; a waiter on it takes whichever instance frees first', () => {
+    shapeFixture();
+    const ids = dq.EMULATOR_IDS;
+    ids.forEach((i, k) => assert.strictEqual(dq.request(`s${(k % 8) + 1}`, i, {}).granted, true));
+    // eight instances held by s1..s8 (s9 and s10 free to ask)
+    const r = dq.request('s9', 'emulator', { why: 'any' });
+    assert.strictEqual(r.granted, false);
+    assert.strictEqual(r.shape, 'emulator');
+    assert.strictEqual(dq.request('s10', 'aemu-fold', { why: 'fold only' }).position, 2, 'behind the older emulator waiter');
+    dq.release('s5', 'aemu-fold-1');
+    assert.strictEqual(q('aemu-fold-1').holder.agentId, 's9', 'the older waiter on the generic shape wins');
+    assert.deepStrictEqual(q('aemu-fold').queue.map((x) => x.agentId), ['s10']);
+    // with free instances of both shapes the generic ask takes the first listed free one
+    shapeFixture();
+    dq.request('s1', 'aemu-a53-1', {});
+    assert.strictEqual(dq.request('s2', 'emulator', {}).instance, 'aemu-a53-2');
+    // leaving the shape queue
+    ids.forEach((i, k) => { try { dq.request(`s${(k % 8) + 3}`, i, {}); } catch (_) { /* held */ } });
+});
+
+t('shape alias: leaving the queue, a gone waiter is skipped, and an exact instance id works as before', () => {
+    shapeFixture();
+    dq.EMULATOR_IDS.slice(0, 4).forEach((i, k) => dq.request(`s${k + 1}`, i, {}));
+    dq.request('s5', 'aemu-a53', {});
+    dq.request('s6', 'aemu-a53', {});
+    assert.strictEqual(dq.release('s5', 'aemu-a53').leftQueue, true);
+    assert.deepStrictEqual(q('aemu-a53').queue.map((x) => x.agentId), ['s6']);
+    store.upsertAgent({ id: 's6', kind: 'other', name: 's6', status: 'gone' });
+    dq.release('s2', 'aemu-a53-2');
+    assert.strictEqual(q('aemu-a53-2').holder, null, 'a gone waiter does not take it');
+    store.upsertAgent({ id: 's6', kind: 'other', name: 's6', pid: 1, status: 'active' });
+    agent('s6');
+    // exact id: held -> queue on the instance, release hands on
+    assert.strictEqual(dq.request('s2', 'aemu-a53-1', {}).granted, false);
+    assert.strictEqual(dq.release('s1', 'aemu-a53-1').next, 's2');
+    assert.strictEqual(dq.request('s7', 'aemu-fold-3', {}).device, 'aemu-fold-3');
+});
+
+t('shape alias: status and coord_devices stay readable, per shape and overall', () => {
+    shapeFixture();
+    dq.EMULATOR_IDS.slice(0, 4).forEach((i, k) => dq.request(`s${k + 1}`, i, {}));
+    dq.request('s5', 'aemu-a53', { why: 'queued' });
+    const all = dq.status();
+    assert.ok(all.devices.some((x) => x.device === 'aemu-a53' && x.queue.length === 1 && /queue on the shape/.test(x.label)));
+    assert.ok(all.devices.some((x) => x.device === 'aemu-a53-1' && x.holder));
+    assert.ok(!all.devices.some((x) => x.device === 'aemu-fold-1'), 'idle instances are not listed');
+    const one = dq.status('aemu-a53');
+    assert.strictEqual(one.devices.length, 5);
+    assert.strictEqual(one.holding, 4);
+    const m = mcp.run('coord_devices', { device: 'aemu-a53' });
+    assert.strictEqual(m.devices.length, 5);
+    const mr = mcp.run('coord_device_request', { device: 'emulator', why: 'mcp shape' });
+    assert.strictEqual(mr.granted !== undefined, true);
+    JSON.stringify(m);
+    JSON.stringify(mr);
+    store.open().prepare("UPDATE device_queue SET state = 'cancelled' WHERE state IN ('held', 'waiting')").run();
+});
+
 (async () => {
     for (const [name, fn] of asyncTests) {
         await fn();
