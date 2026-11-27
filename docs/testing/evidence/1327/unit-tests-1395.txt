@@ -1,23 +1,26 @@
-#1395 / #1327 Output panel and Quick Access: Back, drawn once, router stopped on leaving - Android unit tests
-commit        30731833744b1a4c86c86f593d4542bae795a2ca (feat/1327-output-panel)
+#1395 / #1327 Output panel and Quick Access: Back, drawn once, presented as one drawer, names inside their rows, one naming,
+Home from the panels - Android unit tests
+commit        94d2420a527d95c367a530e2cf2312964d31bd52 (feat/1327-output-panel; on 3073183, the first round)
 includes      origin/main d0f34369d50edc0d8490340ef85e0a4fbc11219e (merge b94e84f, clean)
 What          gradlew.bat --no-daemon testDebugUnitTest on Ruiko, JAVA_HOME = Android Studio jbr, ANDROID_HOME = E:\Users\kazari\android\sdk,
               fresh folder C:\Users\ykaza\claude-build\dsapp-ut-1395 from git archive of the commit above (claude-build\ut-1395.ps1)
-Build gate    #283 (dsapp-unit-test-1395)
-Date          2026-11-27 03:25 EST
-Note          341 = 286 @Test on origin/main + 28 OutputPanelTest + 27 PopupRulesTest (new). The 363 in evidence/1371 was a
-              simulated merge with other unmerged branches. Both warnings below are on lines this commit did not change.
-Not covered   no device or emulator run, no install: Back, the edge swipe and the single draw were not seen on a screen.
+Build gate    #291 (dsapp-unit-test-1395)
+Date          2026-11-27 04:26 EST
+Checks        check-perf-rules --dsapp: ok (169 files); check-notifications --dsapp: ok (169 files); check-app-scope: ok (597 files)
+Note          371 = 286 @Test on that origin/main + 28 OutputPanelTest + 32 PopupRulesTest + 25 OutFitTest. Both warnings below
+              are on lines this branch did not change.
+Not covered   no device or emulator run, no install: nothing here was seen on a screen. The tests cover the pure rules
+              (PopupRules, DrawOnce, OutFit, OutputRows naming), not the service's windows, touch handling or painting.
 
 GRADLE EXIT=0
 > Task :app:compileDebugKotlin
 > Task :app:compileDebugUnitTestKotlin
 > Task :app:testDebugUnitTest
-BUILD SUCCESSFUL in 2m 18s
+BUILD SUCCESSFUL in 1m 22s
 27 actionable tasks: 27 executed
 --- warnings in the files this change edited or added ---
 w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1395/app/src/main/java/jp/net/seventhreeseven/dreamscape/MelatonBars.kt:990:38 Condition is always 'true'.
-w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1395/app/src/main/java/jp/net/seventhreeseven/dreamscape/MelatonBars.kt:4423:86 'static field MODE_BACKGROUND_ACTIVITY_START_ALLOWED: Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/ykaza/claude-build/dsapp-ut-1395/app/src/main/java/jp/net/seventhreeseven/dreamscape/MelatonBars.kt:4500:86 'static field MODE_BACKGROUND_ACTIVITY_START_ALLOWED: Int' is deprecated. Deprecated in Java.
 --- tests ---
 jp.net.seventhreeseven.dreamscape.activesync.AnswerLingerTest: tests=12 failures=0 errors=0 skipped=0
 jp.net.seventhreeseven.dreamscape.activesync.NoteAnswerLogicTest: tests=26 failures=0 errors=0 skipped=0
@@ -31,30 +34,35 @@ jp.net.seventhreeseven.dreamscape.ExampleUnitTest: tests=1 failures=0 errors=0 s
 jp.net.seventhreeseven.dreamscape.NavRoomPolicyTest: tests=31 failures=0 errors=0 skipped=0
 jp.net.seventhreeseven.dreamscape.NoteSoundChoiceTest: tests=6 failures=0 errors=0 skipped=0
 jp.net.seventhreeseven.dreamscape.NotifySoundRulesTest: tests=21 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.OutFitTest: tests=25 failures=0 errors=0 skipped=0
 jp.net.seventhreeseven.dreamscape.OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
 jp.net.seventhreeseven.dreamscape.PlaybackRulesTest: tests=44 failures=0 errors=0 skipped=0
-jp.net.seventhreeseven.dreamscape.PopupRulesTest: tests=27 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.PopupRulesTest: tests=32 failures=0 errors=0 skipped=0
 jp.net.seventhreeseven.dreamscape.screensaver.PictureNamesTest: tests=5 failures=0 errors=0 skipped=0
 jp.net.seventhreeseven.dreamscape.ShizukuStarterTest: tests=6 failures=0 errors=0 skipped=0
 jp.net.seventhreeseven.dreamscape.SocialNotificationsTest: tests=5 failures=0 errors=0 skipped=0
 jp.net.seventhreeseven.dreamscape.TestLaneTest: tests=10 failures=0 errors=0 skipped=0
 jp.net.seventhreeseven.dreamscape.ToneSchedulerTest: tests=9 failures=0 errors=0 skipped=0
-TOTAL classes=20 tests=341 failures=0 errors=0 skipped=0
+TOTAL classes=21 tests=371 failures=0 errors=0 skipped=0
 
 PopupRulesTest cases:
+  ok   withNothingMarkedOrAKindWithNoNameThereIsNone
   ok   aDrawThatCancelsFromInsideItselfRunsOnce
   ok   aHeldKeysRepeatsStayHereAlsoWhenThePopupWent
   ok   anEmptyListStillOnItsWayIsNot
   ok   anotherBubbleInThePanelsPlaceLeavesIt
+  ok   theOutputPanelAndQuickAccessWithItsPagesArePanels
   ok   aReleaseThatNeverCameDoesNotEatTheNextPress
   ok   otherwiseItWaitsAndIsDrawnOnceWhenItIsThere
   ok   aSwipeInPastTheTravelIsBack
   ok   theReleaseOfAKeptDownNeverReachesTheProgram
   ok   theSingleShotDrawsWhatIsTrueThen
   ok   theStripsRunBetweenTheBars
-  ok   backClosesTheOutputPanelAndQuickAccessWithItsPages
+  ok   anyOtherPopupInQuickAccesssPlaceLeavesItTheOutputPanelToo
+  ok   onlyAMostlyUpwardSwipeCanBeHome
   ok   aCanceledDrawNeverRuns
   ok   slidersAndSlideGroupsKeepTheirOwnDrag
+  ok   theCurrentOutputIsNamedAsThePanelsRow
   ok   afterACancelOrADrawTheNextRequestIsItsOwn
   ok   outwardsMostlyUpOrDownOrFromNoStripIsNot
   ok   aPressOverThePopupKeepsTheDownAndClosesOnTheRelease
@@ -69,3 +77,42 @@ PopupRulesTest cases:
   ok   whatIsThereAlreadyIsDrawnAtOnceWithNothingPosted
   ok   everyOtherPopupIsLeftAsItWas
   ok   withNoSuchPopupTheWholePressGoesToTheProgram
+  ok   anotherPageOfQuickAccessIsTheSamePanel
+
+OutFitTest cases:
+  ok   noLineEndsInHalfASurrogatePair
+  ok   leftAlignedLinesStayLeftAligned
+  ok   theWidePanelsOneLineSampleGivesALeftAlignedBoxToTheGlasssSide
+  ok   whatFitsIsOneLineAsItIs
+  ok   thePagesOwnCentreIsKeptAndTheRoomIsWhatIsLeftOnItsNearerSide
+  ok   aSentenceCutsAWordTooWideAndGoesOn
+  ok   whatDoesNotFitTheLastLineEndsInAnEllipsis
+  ok   theWideRowTakesTwoLinesCentredWhenHighEnough
+  ok   theOneColumnStripCentresTheNameInTheRowLessOneUnitASide
+  ok   aNameOfOneWordTooWideEndsInAnEllipsisNeverBrokenInTwo
+  ok   aTallerFontLineStillGetsTwoLines
+  ok   theTwoColumnStripHasTheWiderRoom
+  ok   theSmallestBoxHoldingTheLinesIsTheGlass
+  ok   aRoomNarrowerThanALetterStillEnds
+  ok   inTheOneColumnStripALongNameTakesTwoLinesInsideItsRow
+  ok   aWrappedSampleGivesOneCentredBoxInsideTheGlass
+  ok   aLineThePageCentredIsCentred
+  ok   aLongNameBreaksAtASpace
+  ok   headphonesTooWideForOneColumnEndsInAnEllipsisInside
+  ok   theWidePanelsNameStartsAtTheSampleAndStopsBeforeTheCheck
+  ok   noSampleNoBox
+  ok   thePhonesOwnSpeakersStaysWholeInOneColumn
+  ok   withNoGlassTheSamplesOwnExtentIsTheBox
+  ok   oneLineOnlyEndsInAnEllipsis
+  ok   aShrunkStripRowHasRoomForOneLine
+
+--- simulated merge with origin/main 17af0aab449bf7763162c27af4f964b14f487135 (#1340 landed after the branch's merge of main) ---
+git merge-tree: clean (MelatonBars.kt auto-merged). Tree 848c2adfbd555eda5557801b3592d11393d4d53b, same command, fresh folder dsapp-ut-1395-sim, not pushed.
+GRADLE EXIT=0
+BUILD SUCCESSFUL in 1m 19s
+jp.net.seventhreeseven.dreamscape.BarsHealPolicyTest: tests=62 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.NavRoomPolicyTest: tests=31 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.OutFitTest: tests=25 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.OutputPanelTest: tests=28 failures=0 errors=0 skipped=0
+jp.net.seventhreeseven.dreamscape.PopupRulesTest: tests=32 failures=0 errors=0 skipped=0
+TOTAL classes=22 tests=433 failures=0 errors=0 skipped=0
